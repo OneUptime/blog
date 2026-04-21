@@ -8,9 +8,9 @@ Description: Learn how to use tofu import and import blocks to bring existing cl
 
 ## Introduction
 
-When you have existing cloud resources that were created manually or by another tool, you can bring them under OpenTofu management using `import`. OpenTofu 1.5+ supports declarative `import` blocks in addition to the legacy `tofu import` CLI command. This guide covers both approaches.
+When you have existing cloud resources that were created manually or by another tool, you can bring them under OpenTofu management using `import`. OpenTofu 1.6+ supports declarative `import` blocks in addition to the `tofu import` CLI command. This guide covers both approaches.
 
-## Method 1: Import Blocks (Recommended, OpenTofu 1.5+)
+## Method 1: Import Blocks (Recommended, OpenTofu 1.6+)
 
 Declare imports in your configuration:
 
@@ -44,9 +44,9 @@ tofu plan
 tofu apply
 ```
 
-## Method 2: CLI Import (Legacy)
+## Method 2: CLI Import
 
-For older OpenTofu versions:
+You can also import resources with the CLI command:
 
 ```bash
 # Import syntax:
@@ -109,7 +109,7 @@ tofu plan
 Update your configuration to match the real resource state, then run plan again until you see:
 
 ```text
-No changes. Infrastructure is up-to-date.
+No changes. Your infrastructure matches the configuration.
 ```
 
 ## Finding Resource Import IDs
@@ -135,8 +135,8 @@ tofu import aws_db_instance.main my-rds-identifier
 # AWS IAM Role
 tofu import aws_iam_role.app my-role-name
 
-# AWS Route53 Record (zone_id/name/type)
-tofu import aws_route53_record.www Z1PA6795UKMFR9/example.com/A
+# AWS Route53 Record (zone_id_record_name_record_type)
+tofu import aws_route53_record.www Z1PA6795UKMFR9_example.com_A
 ```
 
 ## Generate Config with -generate-config-out
@@ -164,4 +164,4 @@ tofu apply
 
 ## Conclusion
 
-Importing existing resources is essential when adopting Infrastructure as Code for brownfield environments. Use import blocks (OpenTofu 1.5+) for declarative, reviewable imports, and combine with `-generate-config-out` (1.6+) to automatically generate the resource configuration. After any import, reconcile your configuration until `tofu plan` shows no changes to ensure your IaC accurately reflects reality.
+Importing existing resources is essential when adopting Infrastructure as Code for brownfield environments. Use import blocks (OpenTofu 1.6+) for declarative, reviewable imports, and combine with `-generate-config-out` (1.6+) to automatically generate the resource configuration. After any import, reconcile your configuration until `tofu plan` shows no changes to ensure your IaC accurately reflects reality.
