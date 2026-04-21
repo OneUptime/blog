@@ -1,20 +1,21 @@
-# How to Configure SSL Termination for Services in Portainer
+# How to Configure Network Segmentation for Services in Portainer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, SSL, TLS, Nginx, Security
+Tags: Portainer, Docker, Networking, Nginx, Security
 
-Description: Set up SSL/TLS termination for containerized services in Portainer to secure HTTP traffic with HTTPS.
+Description: Set up segmented Docker networks for containerized services in Portainer to reduce exposed traffic paths.
 
 ## Introduction
 
-Set up SSL/TLS termination for containerized services in Portainer to secure HTTP traffic with HTTPS. Network configuration is a critical aspect of containerized infrastructure, and getting it right ensures your services are secure, performant, and reliable.
+Set up segmented Docker networks for containerized services in Portainer to reduce exposed traffic paths. Network configuration is a critical aspect of containerized infrastructure, and getting it right ensures your services are secure, performant, and reliable.
 
 ## Prerequisites
 
 - Portainer CE or BE installed
-- Docker or Kubernetes environment connected
-- Basic understanding of networking concepts (subnets, DNS, TLS)
+- Docker Engine environment connected
+- Docker Swarm mode enabled if you plan to use overlay networks
+- Basic understanding of networking concepts (subnets, DNS, firewalls)
 
 ## Docker Network Types Overview
 
@@ -49,8 +50,6 @@ Navigate to **Networks** > **Add Network**:
 ```yaml
 # Define networks in your stack
 
-version: "3.8"
-
 networks:
   # DMZ network - connected to reverse proxy
   dmz:
@@ -77,11 +76,12 @@ networks:
       config:
         - subnet: 172.21.0.0/24
 
-  # External overlay network (for Swarm)
+  # Encrypted overlay network (for Swarm stacks only)
   swarm-overlay:
     driver: overlay
     attachable: true
-    encrypted: true
+    driver_opts:
+      encrypted: "true"
 ```
 
 ## Step 3: Connect Services to Networks
@@ -102,7 +102,7 @@ services:
       - "80:80"
       - "443:443"
   
-  # API - connected to frontend and backend
+  # API - connected to frontend, backend, and database networks
   api:
     image: my-api:latest
     networks:
@@ -123,26 +123,26 @@ services:
 
 ## Step 4: Configure Network Security
 
-Add network encryption and security settings:
+For Swarm overlay networks, configure encryption as a driver option:
 
 ```yaml
 networks:
   secure-overlay:
     driver: overlay
-    # Encrypt all overlay network traffic
-    encrypted: true
+    attachable: true
     driver_opts:
-      # Use IPsec for encryption
+      # Use IPsec encryption for VXLAN overlay traffic
       encrypted: "true"
 ```
 
-Firewall rules via Portainer host access:
+Firewall rules on the Docker host:
 
 ```bash
-# Configure UFW for container networks
-ufw allow from 172.20.0.0/24 to any port 80
-ufw allow from 172.20.0.0/24 to any port 443
-ufw deny from 172.21.0.0/24 to any  # Isolate DB network
+# Docker-published ports bypass UFW INPUT/OUTPUT rules; use DOCKER-USER for forwarded container traffic
+sudo iptables -I DOCKER-USER 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# Replace eth0 with your external interface
+sudo iptables -I DOCKER-USER 2 -i eth0 -d 172.21.0.0/24 -j DROP
 ```
 
 ## Step 5: Troubleshoot Network Issues
@@ -154,8 +154,8 @@ Debug container networking from Portainer's console:
 docker exec api-container nslookup postgres
 
 # Test connectivity
-docker exec api-container ping postgres
-docker exec api-container curl -I http://frontend:3000
+docker exec api-container ping -c 3 postgres
+docker exec api-container curl -I http://proxy
 
 # Inspect network configuration
 docker network inspect stack-name_backend
@@ -176,14 +176,16 @@ services:
   # Network traffic monitoring
   ntopng:
     image: ntop/ntopng:latest
-    ports:
-      - "3000:3000"
     volumes:
       - ntopng-data:/var/lib/ntopng
     cap_add:
       - NET_ADMIN
       - NET_RAW
-    network_mode: host  # Required for traffic inspection
+    network_mode: host  # Required for host-interface traffic inspection
+    command: ["-i", "eth0"]  # Replace eth0 with the host interface to monitor
+
+volumes:
+  ntopng-data:
 ```
 
 ## Common Network Patterns
@@ -203,7 +205,7 @@ networks:
 networks:
   presentation: {}   # Web/UI layer
   business: {}       # API/Logic layer
-  data: {}           # DB layer (internal only)
+  data:              # DB layer (internal only)
     internal: true
 ```
 
