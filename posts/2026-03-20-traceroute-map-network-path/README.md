@@ -24,7 +24,7 @@ sequenceDiagram
     S->>R2: TTL=2 probe
     R2->>S: ICMP Time Exceeded (reveals R2's IP)
     S->>D: TTL=3 probe
-    D->>S: ICMP Echo Reply or Port Unreachable (destination reached)
+    D->>S: ICMP Echo Reply, Port Unreachable, or TCP response (destination reached)
 ```
 
 ## Running Traceroute
@@ -34,7 +34,7 @@ sequenceDiagram
 
 traceroute 8.8.8.8
 
-# ICMP-based traceroute (less likely to be filtered)
+# ICMP-based traceroute (uses ICMP Echo probes)
 traceroute -I 8.8.8.8
 
 # TCP-based traceroute on port 80 (most firewall-friendly)
@@ -83,7 +83,7 @@ Column meanings:
 
 ```bash
 # Paris traceroute: maintains constant flow hash to avoid ECMP path variation
-apt install paris-traceroute
+# Install from source or from your distribution's package archive if available
 paris-traceroute 8.8.8.8
 
 # Dublin traceroute: handles MPLS and ECMP networks better
@@ -106,4 +106,4 @@ fi
 
 ## Conclusion
 
-Traceroute is invaluable for understanding the physical and logical path of traffic. It helps you identify where latency is introduced, where packets are being dropped, and whether routing is following expected paths. Combine it with MTR for ongoing path analysis, and Paris traceroute for networks with ECMP.
+Traceroute is invaluable for understanding the logical forwarding path of traffic. It helps you identify where latency is introduced, where packets are being dropped, and whether routing is following expected paths. Combine it with MTR for ongoing path analysis, and Paris traceroute for networks with ECMP.
