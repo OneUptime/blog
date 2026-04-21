@@ -90,8 +90,9 @@ systemctl restart systemd-resolved
 ## DNS Resolver Unreachable
 
 ```bash
-# Test UDP port 53 to the resolver:
-nc -zu 8.8.8.8 53 && echo "UDP 53 open" || echo "UDP 53 blocked"
+# Test UDP DNS to the resolver with an actual DNS query:
+dig +timeout=2 +tries=1 @8.8.8.8 google.com
+# If this times out: network path to 8.8.8.8:53 is blocked or unreachable
 
 # Test TCP port 53 (fallback):
 nc -z 8.8.8.8 53 && echo "TCP 53 open" || echo "TCP 53 blocked"
@@ -100,9 +101,7 @@ nc -z 8.8.8.8 53 && echo "TCP 53 open" || echo "TCP 53 blocked"
 iptables -L OUTPUT -n | grep -E "REJECT|DROP"
 # Any rule matching UDP or TCP port 53 could block DNS
 
-# Test with timeout:
-dig +time=2 +tries=1 @8.8.8.8 google.com
-# If times out: network path to 8.8.8.8:53 is blocked
+# If UDP fails but TCP works: UDP/53 may be blocked or dropped
 ```
 
 ## NSS (Name Service Switch) Configuration
@@ -110,13 +109,15 @@ dig +time=2 +tries=1 @8.8.8.8 google.com
 ```bash
 # The order of resolution is controlled by /etc/nsswitch.conf:
 grep ^hosts /etc/nsswitch.conf
-# Standard: hosts: files dns
+# Common simple setup: hosts: files dns
 # files = /etc/hosts checked first
 # dns = DNS queried second
+# On systemd-resolved systems, 'resolve' may be used instead of 'dns'
 
-# If 'dns' is missing, DNS won't be used:
-# hosts: files   ← DNS never queried!
-# Fix:
+# If neither 'dns' nor a resolver module like 'resolve' is present,
+# DNS won't be used by NSS:
+# hosts: files   ← DNS never queried by NSS!
+# Fix for a simple nss-dns setup:
 sed -i 's/^hosts:.*/hosts: files dns/' /etc/nsswitch.conf
 ```
 
@@ -127,18 +128,21 @@ sed -i 's/^hosts:.*/hosts: files dns/' /etc/nsswitch.conf
 # if the resolver thinks signatures are invalid:
 
 # Test without DNSSEC validation:
-dig +cd google.com   # +cd = checking disabled
+dig +cd cloudflare.com   # +cd = checking disabled
 
 # Compare with validation:
-dig google.com
+dig cloudflare.com
 # If +cd works but normal doesn't: DNSSEC validation is rejecting the response
 
 # Check if your resolver validates DNSSEC:
-dig @8.8.8.8 +dnssec google.com | grep -E "RRSIG|AD"
-# AD flag = Authentic Data (DNSSEC validated)
+dig +dnssec cloudflare.com | grep -E "flags:|RRSIG"
+# ad in the flags line = Authentic Data (DNSSEC validated by the resolver)
+# RRSIG records show DNSSEC records were returned
 
 # Temporarily disable DNSSEC in systemd-resolved:
-# /etc/systemd/resolved.conf: DNSSEC=no
+# /etc/systemd/resolved.conf:
+# [Resolve]
+# DNSSEC=no
 systemctl restart systemd-resolved
 ```
 
