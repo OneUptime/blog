@@ -72,13 +72,15 @@ kubectl exec dnstest -- nslookup kubernetes.default.svc.cluster.local 10.96.0.10
 ## Step 5: Check Network Connectivity to CoreDNS
 
 ```bash
-# Check if CoreDNS UDP port 53 is reachable
-kubectl exec dnstest -- wget -qO- --timeout=3 http://10.96.0.10  # should refuse (not HTTP)
-# If timeout: NetworkPolicy may be blocking DNS traffic
+# Check that the CoreDNS service exposes DNS ports
+kubectl get svc kube-dns -n kube-system
+# PORT(S) should include 53/UDP and 53/TCP
+
+# If direct nslookup to CoreDNS times out: NetworkPolicy may be blocking DNS traffic
 
 # Check NetworkPolicies blocking DNS
 kubectl get networkpolicy --all-namespaces
-# Look for policies that might block egress port 53
+# Look for policies that might block egress to CoreDNS on UDP or TCP port 53
 ```
 
 ## Step 6: DNS Timeout Issues (ndots Problem)
@@ -86,8 +88,8 @@ kubectl get networkpolicy --all-namespaces
 The `ndots:5` setting causes slow resolution for external names:
 
 ```bash
-# With ndots:5, "google.com" triggers 5 search domain queries before trying the bare name
-# This causes slow DNS for external hosts
+# With ndots:5, "google.com" has fewer than 5 dots, so the resolver tries the configured search domains before the bare name
+# This can slow DNS for external hosts
 
 # Fix: add a dot suffix to skip search domains
 kubectl exec dnstest -- nslookup google.com.  # trailing dot skips search domains
@@ -117,7 +119,7 @@ spec:
 | Slow DNS lookups | High `ndots` value | Set `ndots: 2` |
 | DNS works for services, not external | Forward rule missing | Add upstream in CoreDNS |
 | Intermittent DNS failures | CoreDNS CPU throttling | Increase CoreDNS resources |
-| All DNS fails | NetworkPolicy blocking port 53 | Add egress rule for DNS |
+| All DNS fails | NetworkPolicy blocking port 53 | Add egress rule for DNS on UDP and TCP port 53 |
 
 ## Restart CoreDNS
 
@@ -126,4 +128,4 @@ kubectl rollout restart deployment/coredns -n kube-system
 kubectl rollout status deployment/coredns -n kube-system
 ```
 
-The most common DNS issues are `ndots`-related slowness and NetworkPolicies blocking egress to CoreDNS on UDP port 53.
+The most common DNS issues are `ndots`-related slowness and NetworkPolicies blocking egress to CoreDNS on UDP or TCP port 53.
