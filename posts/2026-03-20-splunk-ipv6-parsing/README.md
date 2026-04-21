@@ -13,7 +13,7 @@ IPv6 addresses appear in multiple formats in logs:
 - Compressed: `2001:db8::1`
 - Mixed: `::ffff:192.168.1.1` (IPv4-mapped)
 - With brackets: `[2001:db8::1]:443`
-- With port: `2001:db8::1.443` (Cisco format)
+- With port: `2001:db8::1/443` (Cisco ASA syslog format)
 
 Splunk's automatic field extraction often misidentifies IPv6 as multiple fields or fails entirely.
 
@@ -26,32 +26,28 @@ Splunk's automatic field extraction often misidentifies IPv6 as multiple fields 
 
 [syslog]
 # Extract source IPv6 from firewall logs
-EXTRACT-src_ipv6 = (?:SRC=|src=|source=|from\s+)(?P<src_ip>[0-9a-fA-F:]+:[0-9a-fA-F:]+)
+EXTRACT-src_ipv6 = (?:SRC=|src=|source=|from\s+)\[?(?P<src_ip>[0-9A-Fa-f:.%]*:[0-9A-Fa-f:.%]+)\]?(?::\d+|/\d+)?
 
 # Extract destination IPv6
-EXTRACT-dst_ipv6 = (?:DST=|dst=|dest=|destination=)(?P<dst_ip>[0-9a-fA-F:]+:[0-9a-fA-F:]+)
+EXTRACT-dst_ipv6 = (?:DST=|dst=|dest=|destination=)\[?(?P<dst_ip>[0-9A-Fa-f:.%]*:[0-9A-Fa-f:.%]+)\]?(?::\d+|/\d+)?
 
 # Extract IPv6 from nginx access logs
 [nginx_access]
-EXTRACT-client_ipv6 = ^(?P<client_ip>[0-9a-fA-F:]+:[0-9a-fA-F:]+)\s
+EXTRACT-client_ipv6 = ^\[?(?P<client_ip>[0-9A-Fa-f:.%]*:[0-9A-Fa-f:.%]+)\]?\s
 
 # Extract from Apache combined log (handles both IPv4 and IPv6)
 [access_combined]
-EXTRACT-remote_host = ^(?P<remote_host>\[?[0-9a-fA-F:.]+\]?)\s
+EXTRACT-remote_host = ^\[?(?P<remote_host>(?:[0-9A-Fa-f:.%]*:[0-9A-Fa-f:.%]+|[0-9]{1,3}(?:\.[0-9]{1,3}){3}))\]?\s
 ```
 
-## Transforms.conf: IPv6 Normalization
+## Transforms.conf: IPv6 Prefix Lookup
 
 ```ini
-# /opt/splunk/etc/system/local/transforms.conf
-# Normalize IPv6 addresses to compressed form
-
-[normalize_ipv6]
-INGEST_EVAL = src_ip=if(match(src_ip, "^[0-9a-fA-F:]+:[0-9a-fA-F:]+$"), src_ip, src_ip)
-
+# /opt/splunk/etc/apps/network_security/local/transforms.conf
 # Lookup table for IPv6 prefix classification
 [ipv6_prefix_lookup]
 filename = ipv6_prefixes.csv
+match_type = CIDR(prefix)
 case_sensitive_match = false
 ```
 
@@ -70,53 +66,50 @@ ff00::/8,multicast,Multicast
 ## SPL: IPv6 Search Patterns
 
 ```text
-| SPL queries for IPv6 analysis
-
--- Search for all events with IPv6 source addresses
 index=firewall
-| regex src_ip="^[0-9a-fA-F:]+:[0-9a-fA-F:]+$"
+| where cidrmatch("::/0", src_ip)
 | stats count by src_ip, action
 | sort -count
+```
 
--- Extract IPv6 /64 prefix (first 64 bits = 4 groups)
+```text
 index=firewall
-| rex field=src_ip "^(?P<src_prefix64>(?:[0-9a-fA-F]{0,4}:){4})"
+| normalizeipv6 field=src_ip output=src_ip_expanded format=exploded
+| rex field=src_ip_expanded "^(?P<src_prefix64>(?:[0-9a-f]{4}:){4})"
+| eval src_prefix64=rtrim(src_prefix64, ":")."::/64"
 | stats dc(src_ip) as unique_hosts, count as events by src_prefix64
 | sort -events
+```
 
--- Detect IPv6 addresses from suspicious ranges
+```text
 index=network
-| search src_ip="2001:*" OR src_ip="fe80:*"
-| eval addr_type=case(
-    match(src_ip, "^fe80:"), "link-local",
-    match(src_ip, "^fc"), "ula",
-    match(src_ip, "^ff"), "multicast",
-    match(src_ip, "^2001:db8:"), "documentation",
-    true(), "global"
-)
+| where cidrmatch("2001::/16", src_ip) OR cidrmatch("fe80::/10", src_ip)
+| lookup ipv6_prefix_lookup prefix AS src_ip OUTPUT type AS addr_type description
+| eval addr_type=coalesce(addr_type, "global")
 | stats count by addr_type, src_ip
 ```
 
 ## SPL: IPv6 Subnet Matching
 
-```text
-| Splunk doesn't natively support IPv6 CIDR matching
-| Use cidrmatch() - it works for IPv6 in Splunk 8.x+
+Use `cidrmatch()` for IPv6 CIDR matching:
 
+```text
 index=firewall
 | where cidrmatch("2001:db8::/32", src_ip)
 | stats count by src_ip, dst_ip, action
+```
 
--- Find all traffic from RFC 4193 ULA range
+```text
 index=network
 | where cidrmatch("fc00::/7", src_ip)
 | stats count by src_ip, dst_ip
 | sort -count
+```
 
--- Traffic from multiple subnets
+```text
 index=firewall
-| eval in_corp=cidrmatch("2001:db8:corp::/48", src_ip)
-| eval in_dmz=cidrmatch("2001:db8:dmz::/48", src_ip)
+| eval in_corp=cidrmatch("2001:db8:100::/48", src_ip)
+| eval in_dmz=cidrmatch("2001:db8:200::/48", src_ip)
 | search in_corp=1 OR in_dmz=1
 | stats count by src_ip, in_corp, in_dmz
 ```
@@ -124,20 +117,27 @@ index=firewall
 ## IPv6 Address Expansion for Normalization
 
 ```text
-| Splunk eval: expand compressed IPv6 for consistent lookup
-
 index=network
 | eval normalized_src=lower(src_ip)
--- Remove brackets
-| eval normalized_src=replace(normalized_src, "[\[\]]", "")
--- Extract just the IP if port is appended
-| rex field=normalized_src "^(?P<normalized_src>[0-9a-fA-F:]+)"
+| rex field=normalized_src "^\[(?P<bracket_ip>[0-9a-f:.%]+)\](?::\d+)?$"
+| eval normalized_src=coalesce(bracket_ip, normalized_src)
+| rex field=normalized_src "^(?P<addr_only>[0-9a-f:.%]+)(?:/\d+)?$"
+| eval normalized_src=coalesce(addr_only, normalized_src)
+| fields - bracket_ip addr_only
+```
 
--- Use Python script to normalize IPv6 (custom command)
+```text
 index=network src_ip="*:*"
-| eval src_ip=src_ip
-| script normalize_ipv6.py src_ip
-| stats count by src_ip
+| normalizeipv6 field=src_ip output=normalized_src format=compressed
+| stats count by normalized_src
+```
+
+```ini
+# /opt/splunk/etc/apps/network_security/default/commands.conf
+[normalizeipv6]
+filename = normalize_ipv6.py
+chunked = true
+python.version = python3
 ```
 
 ```python
@@ -145,18 +145,43 @@ index=network src_ip="*:*"
 # Custom Splunk command for IPv6 normalization
 import sys
 import ipaddress
-from splunklib.searchcommands import dispatch, StreamingCommand, Configuration, Option
+from splunklib.searchcommands import dispatch, StreamingCommand, Configuration, Option, validators
 
-@Configuration()
+
+def clean_address(value):
+    if value is None:
+        return ''
+
+    addr = str(value).strip()
+    if addr.startswith('[') and ']' in addr:
+        addr = addr[1:addr.index(']')]
+    elif '/' in addr:
+        host, suffix = addr.rsplit('/', 1)
+        if suffix.isdigit():
+            addr = host
+
+    if '%' in addr:
+        addr = addr.split('%', 1)[0]
+
+    return addr
+
+
+@Configuration(type='streaming')
 class NormalizeIPv6Command(StreamingCommand):
-    field = Option(require=True)
+    field = Option(require=True, validate=validators.Fieldname())
+    output = Option(require=False, validate=validators.Fieldname())
+    format = Option(require=False, default='compressed')
 
     def stream(self, records):
         for record in records:
-            addr = record.get(self.field, '')
+            addr = clean_address(record.get(self.field, ''))
             try:
-                normalized = str(ipaddress.ip_address(addr))
-                record[self.field] = normalized
+                ip_obj = ipaddress.ip_address(addr)
+                target_field = self.output or self.field
+                if (self.format or 'compressed').lower() == 'exploded':
+                    record[target_field] = ip_obj.exploded
+                else:
+                    record[target_field] = ip_obj.compressed
             except ValueError:
                 pass
             yield record
@@ -176,9 +201,9 @@ dispatch(NormalizeIPv6Command, sys.argv, sys.stdin, sys.stdout, __name__)
         index=firewall
         | where cidrmatch("::/0", src_ip) AND NOT cidrmatch("::ffff:0:0/96", src_ip)
         | eval addr_type=case(
-            match(src_ip, "^fe80:"), "Link-Local",
-            match(src_ip, "^fc"), "ULA",
-            match(src_ip, "^ff"), "Multicast",
+            cidrmatch("fe80::/10", src_ip), "Link-Local",
+            cidrmatch("fc00::/7", src_ip), "ULA",
+            cidrmatch("ff00::/8", src_ip), "Multicast",
             true(), "Global"
           )
         | timechart span=1h count by addr_type
@@ -191,4 +216,4 @@ dispatch(NormalizeIPv6Command, sys.argv, sys.stdin, sys.stdout, __name__)
 
 ## Conclusion
 
-Splunk IPv6 parsing requires custom field extractions in `props.conf` because auto-extraction often fails with colons and compressed notation. Use regex patterns matching `[0-9a-fA-F:]+:[0-9a-fA-F:]+` for basic IPv6 extraction. Splunk's `cidrmatch()` function (version 8.x+) supports IPv6 CIDR matching for subnet filtering. For normalization, create a custom streaming command using Python's `ipaddress.ip_address()` to expand compressed addresses to full form. Store prefix classification in a CSV lookup table and join at search time to enrich IPv6 addresses with type information.
+Splunk IPv6 parsing often benefits from custom field extractions in `props.conf` because auto-extraction can struggle with colons and compressed notation. Use regex patterns to capture IPv6 candidates, then validate them with `cidrmatch("::/0", field)` or normalize them with a custom command. Splunk's `cidrmatch()` function supports IPv6 CIDR matching for subnet filtering. For normalization, create a custom streaming command using Python's `ipaddress.ip_address()` and the `.compressed` or `.exploded` address forms. Store prefix classification in a CSV lookup table with `match_type = CIDR(prefix)` and use `lookup` at search time to enrich IPv6 addresses with type information.
