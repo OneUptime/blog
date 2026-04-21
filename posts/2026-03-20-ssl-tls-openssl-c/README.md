@@ -11,12 +11,16 @@ Description: Learn how to add TLS encryption to IPv4 TCP sockets in C using the 
 ```c
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-/* Call once at program startup (OpenSSL 1.1+ does this automatically) */
+/* OpenSSL 1.1.0+ initializes itself automatically; this is explicit and current. */
 void init_openssl(void) {
-    SSL_library_init();
-    SSL_load_error_strings();
-    OpenSSL_add_all_algorithms();
+    if (!OPENSSL_init_ssl(0, NULL)) {
+        fprintf(stderr, "OPENSSL_init_ssl failed\n");
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
 }
 
 /* Print OpenSSL error queue and optionally exit */
@@ -43,7 +47,7 @@ void openssl_fatal(const char *msg) {
 #define KEYFILE  "server.key"
 
 SSL_CTX *create_server_ctx(void) {
-    /* TLS_server_method() supports TLS 1.2 and 1.3 */
+    /* TLS_server_method() uses a version-flexible TLS method */
     SSL_CTX *ctx = SSL_CTX_new(TLS_server_method());
     if (!ctx) openssl_fatal("SSL_CTX_new failed");
 
@@ -88,16 +92,19 @@ int main(void) {
 
         if (SSL_accept(ssl) <= 0) {
             ERR_print_errors_fp(stderr);
-        } else {
-            printf("TLS handshake OK: %s\n", SSL_get_cipher(ssl));
+            SSL_free(ssl);
+            close(client_fd);
+            continue;
+        }
 
-            char buf[1024];
-            int  n = SSL_read(ssl, buf, sizeof(buf) - 1);
-            if (n > 0) {
-                buf[n] = '\0';
-                printf("Received: %s\n", buf);
-                SSL_write(ssl, "Hello from TLS server!\n", 23);
-            }
+        printf("TLS handshake OK: %s\n", SSL_get_cipher(ssl));
+
+        char buf[1024];
+        int  n = SSL_read(ssl, buf, sizeof(buf) - 1);
+        if (n > 0) {
+            buf[n] = '\0';
+            printf("Received: %s\n", buf);
+            SSL_write(ssl, "Hello from TLS server!\n", 23);
         }
 
         SSL_shutdown(ssl);
@@ -116,6 +123,7 @@ int main(void) {
 ```c
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/x509_vfy.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -149,18 +157,29 @@ int main(void) {
     SSL *ssl = SSL_new(ctx);
     SSL_set_fd(ssl, fd);
 
-    /* Set SNI hostname (required for virtual hosting) */
-    SSL_set_tlsext_host_name(ssl, "localhost");
+    /* Set SNI and the expected hostname for certificate verification */
+    if (!SSL_set_tlsext_host_name(ssl, "localhost"))
+        openssl_fatal("Cannot set SNI hostname");
+
+    if (!SSL_set1_host(ssl, "localhost"))
+        openssl_fatal("Cannot set verification hostname");
 
     if (SSL_connect(ssl) <= 0) {
         openssl_fatal("TLS handshake failed");
     }
 
+    long verify_result = SSL_get_verify_result(ssl);
+    if (verify_result != X509_V_OK) {
+        fprintf(stderr, "Certificate verification failed: %s\n",
+                X509_verify_cert_error_string(verify_result));
+        exit(EXIT_FAILURE);
+    }
+
     printf("Connected: cipher=%s protocol=%s\n",
            SSL_get_cipher(ssl), SSL_get_version(ssl));
 
-    /* Verify the server's certificate */
-    X509 *cert = SSL_get_peer_certificate(ssl);
+    /* Display the verified server certificate */
+    X509 *cert = SSL_get1_peer_certificate(ssl);
     if (!cert) fprintf(stderr, "No server certificate presented\n");
     else {
         char subj[256];
@@ -189,7 +208,8 @@ int main(void) {
 # Generate a private key and self-signed certificate
 
 openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt \
-    -days 365 -nodes -subj "/CN=localhost"
+    -days 365 -noenc -subj "/CN=localhost" \
+    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
 
 # Use server.crt as the CA certificate on the client side
 cp server.crt ca.crt
@@ -204,4 +224,4 @@ gcc -Wall -o tls_client tls_client.c -lssl -lcrypto
 
 ## Conclusion
 
-OpenSSL wraps a TCP socket in a TLS session: create an `SSL_CTX` with `TLS_server_method()` or `TLS_client_method()`, load certificate files, create an `SSL` object, bind it to the socket fd with `SSL_set_fd()`, then call `SSL_accept()` (server) or `SSL_connect()` (client) to perform the TLS handshake. Use `SSL_read()`/`SSL_write()` instead of `recv()`/`send()`. Always call `SSL_shutdown()` before `close()` to send the TLS close-notify alert. Verify the peer certificate with `SSL_get_peer_certificate()` and `SSL_get_verify_result()` on the client side to prevent MITM attacks.
+OpenSSL wraps a TCP socket in a TLS session: create an `SSL_CTX` with `TLS_server_method()` or `TLS_client_method()`, load certificate files, create an `SSL` object, bind it to the socket fd with `SSL_set_fd()`, then call `SSL_accept()` (server) or `SSL_connect()` (client) to perform the TLS handshake. Use `SSL_read()`/`SSL_write()` instead of `recv()`/`send()`. After a successful TLS connection, call `SSL_shutdown()` before `close()` to send the TLS close-notify alert. Configure hostname verification with `SSL_set1_host()`, require peer verification, and check `SSL_get_verify_result()` on the client side to prevent MITM attacks.
