@@ -24,12 +24,12 @@ Policy-based routing routes packets based on the source IP address rather than j
 # eth0: 192.168.1.10/24 via gateway 192.168.1.1 (ISP1)
 # eth1: 10.0.0.10/24 via gateway 10.0.0.1 (ISP2)
 
-# Step 1: Create a separate routing table (table 100) for ISP2 traffic
+# Step 1: Send ISP2 source traffic to routing table 100
 ip rule add from 10.0.0.10/32 lookup 100
 
 # Step 2: Add routes to table 100
-ip route add default via 10.0.0.1 table 100
 ip route add 10.0.0.0/24 dev eth1 table 100
+ip route add default via 10.0.0.1 dev eth1 table 100
 
 # Step 3: Verify
 ip rule show
@@ -62,7 +62,8 @@ echo "100 isp2" >> /etc/iproute2/rt_tables
 
 # Now use the name
 ip rule add from 10.0.0.10 lookup isp2
-ip route add default via 10.0.0.1 table isp2
+ip route add 10.0.0.0/24 dev eth1 table isp2
+ip route add default via 10.0.0.1 dev eth1 table isp2
 ```
 
 ## Making Rules Persistent with systemd-networkd
@@ -81,6 +82,10 @@ Table=100
 Priority=100
 
 [Route]
+Destination=10.0.0.0/24
+Table=100
+
+[Route]
 Destination=0.0.0.0/0
 Gateway=10.0.0.1
 Table=100
@@ -91,10 +96,12 @@ Table=100
 ```bash
 auto eth1
 iface eth1 inet static
-  address 10.0.0.10
-  netmask 255.255.255.0
+  address 10.0.0.10/24
   up ip rule add from 10.0.0.10 lookup 100
-  up ip route add default via 10.0.0.1 table 100
+  up ip route add 10.0.0.0/24 dev eth1 table 100
+  up ip route add default via 10.0.0.1 dev eth1 table 100
+  down ip route del default via 10.0.0.1 dev eth1 table 100
+  down ip route del 10.0.0.0/24 dev eth1 table 100
   down ip rule del from 10.0.0.10 lookup 100
 ```
 
