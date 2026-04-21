@@ -6,7 +6,7 @@ Tags: tcpdump, PCAP, Linux, Networking, Monitoring, File Management
 
 Description: Configure tcpdump to automatically rotate capture files based on size or time intervals to enable long-running captures without filling disk space.
 
-Long-running captures without rotation create single huge files that are hard to analyze and can fill disk space. tcpdump's built-in rotation options create manageable file segments with automatic cleanup.
+Long-running captures without rotation create single huge files that are hard to analyze and can fill disk space. tcpdump's built-in rotation options create manageable file segments; use `-W` with size rotation, repeating time-based filenames, or cleanup jobs to control retention.
 
 ## Rotate by File Size
 
@@ -21,7 +21,7 @@ sudo tcpdump -i eth0 -C 100 -W 5 -w /tmp/capture.pcap
 # After capture.pcap4, wraps back to capture.pcap0 (circular buffer)
 
 # Rotate at 50 MB, keep last 10 files
-sudo tcpdump -i eth0 -C 50 -W 10 -w /var/pcap/capture.pcap
+sudo tcpdump -i eth0 -C 50 -W 10 -Z root -w /var/pcap/capture.pcap
 
 # The -C value is in MEGABYTES (not bytes)
 ```
@@ -41,17 +41,17 @@ sudo tcpdump -i eth0 -G 60 -w /tmp/capture-%Y%m%d-%H%M%S.pcap
 # Rotate every 5 minutes (300 seconds)
 sudo tcpdump -i eth0 -G 300 -w /tmp/capture-%Y%m%d-%H%M.pcap
 
-# Rotate every hour, keep last 24 files
-sudo tcpdump -i eth0 -G 3600 -W 24 -w /tmp/capture-%H%M.pcap
+# Rotate every hour, overwrite the same 24 hourly files
+sudo tcpdump -i eth0 -G 3600 -w /tmp/capture-%H.pcap
 ```
 
 ## Combine Size and Time Rotation
 
-Both `-C` and `-G` can be used together - files rotate when EITHER condition is met:
+Both `-C` and `-G` can be used together - files rotate when EITHER condition is met. Use cleanup separately for retention because `-W` is ignored for retention when both options are combined:
 
 ```bash
-# Rotate at 100 MB or 15 minutes, keep 20 files
-sudo tcpdump -i eth0 -C 100 -G 900 -W 20 -w /tmp/capture.pcap
+# Rotate at 100 MB or 15 minutes
+sudo tcpdump -i eth0 -C 100 -G 900 -w /tmp/capture-%Y%m%d-%H%M%S.pcap
 ```
 
 ## Run as a Service for Continuous Capture
@@ -64,10 +64,10 @@ Description=Continuous tcpdump capture with rotation
 After=network.target
 
 [Service]
-# Rotate every 10 minutes, keep 144 files = 24 hours of 10-min captures
-ExecStart=/usr/sbin/tcpdump -i eth0 \
-    -G 600 -W 144 \
-    -w /var/pcap/capture-%Y%m%d-%H%M%S.pcap \
+# Rotate every 10 minutes, overwrite the same 144 time-slot files each day
+ExecStart=tcpdump -i eth0 \
+    -G 600 -Z root \
+    -w /var/pcap/capture-%%H%%M.pcap \
     -n 'not port 22'
 Restart=always
 User=root
