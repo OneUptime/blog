@@ -43,9 +43,9 @@ Always protect the dashboard behind authentication. Generate a bcrypt password h
 # Install htpasswd (apache2-utils)
 apt install apache2-utils
 
-# Generate password hash (replace 'admin' and 'yourpassword')
-htpasswd -nb admin yourpassword
-# Output: admin:$apr1$xyz...
+# Generate bcrypt password hash (replace 'admin')
+htpasswd -nB admin
+# Output: admin:$2y$05$xyz...
 
 # Escape $ signs in Docker labels by doubling them: $ → $$
 ```
@@ -66,13 +66,13 @@ services:
     labels:
       - "traefik.enable=true"
       # Dashboard router
-      - "traefik.http.routers.dashboard.rule=Host(`traefik.yourdomain.com`)"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.yourdomain.com`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
       - "traefik.http.routers.dashboard.entrypoints=websecure"
       - "traefik.http.routers.dashboard.tls=true"
       - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
       - "traefik.http.routers.dashboard.service=api@internal"
       # Basic auth middleware
-      - "traefik.http.middlewares.dashboard-auth.basicauth.users=admin:$$apr1$$HASHHERE"
+      - "traefik.http.middlewares.dashboard-auth.basicauth.users=admin:$$2y$$05$$HASHHERE"
       - "traefik.http.routers.dashboard.middlewares=dashboard-auth"
 ```
 
@@ -92,8 +92,6 @@ labels:
 
 ```yaml
 # Both accessible via clean subdomains
-version: "3.8"
-
 services:
   traefik:
     image: traefik:v3.0
@@ -125,7 +123,7 @@ volumes:
 
 Once deployed:
 
-1. Visit `https://traefik.yourdomain.com` - Traefik dashboard
+1. Visit `https://traefik.yourdomain.com/dashboard/` - Traefik dashboard
 2. Visit `https://portainer.yourdomain.com` - Portainer UI
 3. Both are HTTPS with valid Let's Encrypt certificates
 
