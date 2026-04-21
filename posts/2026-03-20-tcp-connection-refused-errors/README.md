@@ -8,7 +8,7 @@ Description: Diagnose TCP Connection Refused errors by identifying whether the s
 
 ## Introduction
 
-"Connection Refused" means the destination host is reachable but actively rejected your connection attempt. In TCP terms, the server sent a RST packet in response to your SYN. This is different from a timeout (where no response arrives) - a refuse is an explicit rejection. The distinction immediately narrows your investigation.
+"Connection Refused" means the destination host is reachable, or a firewall on the path is responding, but your connection attempt was actively rejected. In TCP terms, the server or firewall sent a RST packet in response to your SYN. This is different from a timeout (where no response arrives) - a refusal is an explicit rejection. The distinction immediately narrows your investigation.
 
 ## Symptoms and Quick Test
 
@@ -35,16 +35,16 @@ nc -zv 10.20.0.5 8080
 ```bash
 # Check if the service is listening on the expected port
 ss -tlnp | grep ":8080"
-# or
+# or, on older systems with net-tools installed
 netstat -tlnp | grep ":8080"
 
-# If nothing: the service is not running
+# If nothing: no process is listening on that port
 systemctl status myapp
 systemctl start myapp
 
 # Check if service binds to all interfaces or only localhost
 ss -tlnp | grep ":8080"
-# "0.0.0.0:8080" = all interfaces (accessible remotely)
+# "0.0.0.0:8080" = all IPv4 interfaces (remotely reachable if routing/firewall allow)
 # "127.0.0.1:8080" = loopback only (not accessible remotely)
 ```
 
@@ -65,21 +65,21 @@ server {
 ### Cause 3: Firewall Rejecting with RST
 
 ```bash
-# iptables REJECT rule sends RST back (appears as connection refused)
-iptables -L INPUT -n | grep "8080"
+# iptables REJECT with tcp-reset sends RST back (appears as connection refused)
+iptables -L INPUT -n --line-numbers | grep "8080"
 
-# If you see a REJECT rule for port 8080:
-iptables -D INPUT -p tcp --dport 8080 -j REJECT
+# If you see a REJECT rule for port 8080 with reject-with tcp-reset:
+iptables -D INPUT -p tcp --dport 8080 -j REJECT --reject-with tcp-reset
 
 # Or adjust to ACCEPT
 iptables -I INPUT -p tcp --dport 8080 -j ACCEPT
 ```
 
-### Cause 4: Port Not in Valid Range
+### Cause 4: Low Port Requires Privileges
 
 ```bash
-# Some ports require root privileges (< 1024)
-# If running as non-root and binding to port 80, it fails
+# Privileged ports (< 1024) require root or CAP_NET_BIND_SERVICE on Linux
+# If running as non-root without that capability and binding to port 80, it fails
 ss -tlnp | grep ":80"   # Check if anything is listening
 
 # Check application logs for bind errors
@@ -92,14 +92,14 @@ setcap 'cap_net_bind_service=+ep' /usr/bin/myapp
 ## Capturing the RST Packet
 
 ```bash
-# Capture to confirm the server is sending RST
+# Capture to confirm the server or firewall is sending RST
 tcpdump -i eth0 -n 'tcp and host 10.20.0.5 and port 8080'
 
 # Expected output for connection refused:
 # Client > Server: Flags [S]      <- SYN sent
-# Server > Client: Flags [R.]     <- RST received (connection refused)
+# Server/Firewall > Client: Flags [R.]     <- RST received (connection refused)
 ```
 
 ## Conclusion
 
-Connection Refused is an explicit rejection - either no service is listening, the service is bound to the wrong interface, or a firewall is sending RST. Start with `ss -tlnp` to verify what's listening where, then check firewall rules if the service is running correctly. Capturing with tcpdump confirms the RST is genuinely coming from the server (vs a timeout which produces no packets).
+Connection Refused is an explicit rejection - either no service is listening, the service is bound to the wrong interface, or a firewall is sending RST. Start with `ss -tlnp` to verify what's listening where, then check firewall rules if the service is running correctly. Capturing with tcpdump confirms the RST is genuinely coming from the server or firewall (vs a timeout where you see SYN retries but no response).
