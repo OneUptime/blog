@@ -10,24 +10,24 @@ Description: Learn how to configure TLS 1.3 on Nginx to enforce modern cipher su
 
 TLS 1.3 offers significant improvements over TLS 1.2:
 - **Faster handshake:** 1-RTT (vs 2-RTT for TLS 1.2) with optional 0-RTT resumption
-- **Stronger security:** Only strong cipher suites supported, no negotiation needed
-- **Forward secrecy:** All key exchanges use ephemeral keys
+- **Stronger security:** Only AEAD cipher suites are supported, with fewer legacy negotiation choices
+- **Forward secrecy:** Certificate-based handshakes use ephemeral (EC)DHE key exchange; 0-RTT and PSK-only modes do not provide the same protection
 - **Simpler:** Removes many legacy options that created vulnerabilities
 
-Nginx 1.13.0+ with OpenSSL 1.1.1+ supports TLS 1.3.
+Nginx 1.13.0+ built with the HTTP SSL module and OpenSSL 1.1.1+ supports TLS 1.3.
 
 ## Step 1: Verify Nginx and OpenSSL Support
 
 ```bash
 # Check Nginx version and TLS support
 
-nginx -V 2>&1 | grep -E "version|TLS|ssl"
+nginx -V 2>&1 | grep -E "version|OpenSSL|http_ssl_module"
 
 # Check OpenSSL version (must be 1.1.1+)
 openssl version
 
 # Verify TLS 1.3 ciphersuites are available
-openssl ciphers -v TLSv1.3
+openssl ciphers -v -s -tls1_3
 ```
 
 ## Step 2: Configure TLS 1.3 in Nginx
@@ -45,21 +45,21 @@ server {
     ssl_certificate     /etc/ssl/certs/example.com.crt;
     ssl_certificate_key /etc/ssl/private/example.com.key;
 
-    # Enable TLS 1.3 only (remove TLSv1.2 if you want TLS 1.3 only)
+    # Enable TLS 1.2 and TLS 1.3 (remove TLSv1.2 if you want TLS 1.3 only)
     # To support older clients, include both:
     ssl_protocols TLSv1.2 TLSv1.3;
 
-    # TLS 1.3 cipher suites (set automatically by OpenSSL for TLS 1.3)
-    # For TLS 1.2 fallback, specify strong cipher suites:
+    # ssl_ciphers applies to TLS 1.2 and older.
+    # OpenSSL's default TLS 1.3 ciphersuites are used here.
     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
 
-    # Prefer server cipher order
-    ssl_prefer_server_ciphers off;   # For TLS 1.3, disable server preference
+    # Let clients choose among the strong allowed suites
+    ssl_prefer_server_ciphers off;
 
     # Enable session caching for performance
     ssl_session_cache   shared:SSL:10m;
     ssl_session_timeout 1d;
-    ssl_session_tickets off;         # Disable for perfect forward secrecy
+    ssl_session_tickets off;         # Avoid long-lived ticket-key resumption risk
 
     # OCSP stapling
     ssl_stapling on;
@@ -89,14 +89,14 @@ server {
 
 ## Step 3: Generate a Strong DH Parameters File
 
-For TLS 1.2 fallback, use 2048-bit DH parameters:
+If you add DHE cipher suites for TLS 1.2 fallback, use 2048-bit or stronger DH parameters. The ECDHE-only cipher list above does not need this file:
 
 ```bash
 # Generate DH parameters (takes a few minutes)
 openssl dhparam -out /etc/nginx/dhparam.pem 2048
 ```
 
-Add to nginx config:
+Add to nginx config when DHE ciphers are enabled:
 
 ```nginx
 ssl_dhparam /etc/nginx/dhparam.pem;
@@ -116,14 +116,14 @@ sudo systemctl reload nginx
 
 ```bash
 # Test TLS 1.3 handshake
-openssl s_client -connect example.com:443 -tls1_3 2>&1 | grep -E "Protocol|Cipher"
+openssl s_client -4 -connect example.com:443 -tls1_3 2>&1 | grep -E "Protocol|Cipher"
 
 # Expected output:
 # Protocol  : TLSv1.3
-# Cipher    : TLS_AES_256_GCM_SHA384
+# Cipher    : TLS_AES_256_GCM_SHA384  (or another enabled TLS 1.3 suite)
 
 # Test with curl
-curl -vI --tlsv1.3 https://example.com 2>&1 | grep -E "TLS|SSL"
+curl -4 -vI --tlsv1.3 https://example.com 2>&1 | grep -E "TLS|SSL"
 ```
 
 ## Step 6: Check SSL Rating
@@ -132,15 +132,15 @@ Run your site through SSL Labs to verify the configuration:
 
 ```bash
 # Using sslyze for local testing
-pip install sslyze
-python3 -m sslyze --regular example.com:443
+pip install --upgrade sslyze
+python3 -m sslyze example.com:443
 
 # Or use testssl.sh
 ./testssl.sh example.com
 ```
 
-An A+ rating requires TLS 1.3, strong ciphers, HSTS, and no known vulnerabilities.
+An A+ rating depends on the full SSL Labs scoring rules; in practice you need an A-grade configuration with HSTS, strong key exchange/ciphers, and no grade-capping vulnerabilities. TLS 1.3 is recommended, but TLS 1.2 can also score well when configured correctly.
 
 ## Conclusion
 
-Configuring TLS 1.3 on Nginx requires Nginx 1.13+ with OpenSSL 1.1.1+. Set `ssl_protocols TLSv1.2 TLSv1.3` for broad compatibility, disable TLS 1.0/1.1, configure strong TLS 1.2 ciphers for fallback, enable OCSP stapling, and add HSTS headers. Verify with `openssl s_client -tls1_3` and test your SSL rating with sslyze or testssl.sh.
+Configuring TLS 1.3 on Nginx requires Nginx 1.13+ built with the HTTP SSL module and OpenSSL 1.1.1+. Set `ssl_protocols TLSv1.2 TLSv1.3` for broad compatibility, disable TLS 1.0/1.1, configure strong TLS 1.2 ciphers for fallback, enable OCSP stapling, and add HSTS headers. Verify with `openssl s_client -tls1_3` and test your SSL rating with sslyze or testssl.sh.
