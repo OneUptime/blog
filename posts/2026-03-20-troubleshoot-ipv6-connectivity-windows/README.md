@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Window, Troubleshooting, Network Diagnostics, PowerShell
+Tags: IPv6, Windows, Troubleshooting, Network Diagnostics, PowerShell
 
 Description: A systematic guide to diagnosing and resolving IPv6 connectivity problems on Windows, covering address assignment issues, routing problems, DNS failures, and firewall blocks.
 
@@ -28,7 +28,7 @@ Get-NetIPAddress -AddressFamily IPv6
 # Show all IPv6 addresses
 ipconfig /all | Select-String "IPv6"
 
-# Check for global IPv6 address (should start with 2xxx or fcxx)
+# Check for non-link-local IPv6 address (global unicast 2000::/3 or ULA fc00::/7)
 Get-NetIPAddress -AddressFamily IPv6 |
     Where-Object {$_.IPAddress -notlike "fe80*" -and $_.IPAddress -ne "::1"}
 
@@ -60,10 +60,10 @@ ping -6 ipv6.google.com
 # Check for default IPv6 route
 Get-NetRoute -AddressFamily IPv6 -DestinationPrefix "::/0"
 
-# If no default route, add one manually
+# If no default route, add one manually (replace fe80::1 with your router's IPv6 next hop)
 New-NetRoute -InterfaceAlias "Ethernet" `
     -DestinationPrefix "::/0" `
-    -NextHop "2001:db8::1"
+    -NextHop "fe80::1"
 
 # Find route for a specific destination
 Find-NetRoute -RemoteIPAddress "2001:4860:4860::8888"
@@ -115,7 +115,7 @@ pathping -6 ipv6.google.com
 ```
 
 ```powershell
-Test-NetConnection -ComputerName "2001:4860:4860::8888" -Port 443 -InformationLevel Detailed
+Test-NetConnection -ComputerName "2001:4860:4860::8888" -Port 53 -InformationLevel Detailed
 ```
 
 ## Common Issues and Fixes
@@ -128,7 +128,7 @@ Test-NetConnection -ComputerName "2001:4860:4860::8888" -Port 443 -InformationLe
 # Issue: IPv6 connectivity but DNS fails
 # Fix: Add IPv6 DNS server
 Set-DnsClientServerAddress -InterfaceAlias "Ethernet" `
-    -ServerAddresses "2001:4860:4860::8888", "8.8.8.8"
+    -ServerAddresses "2001:4860:4860::8888", "2001:4860:4860::8844"
 
 # Issue: Connection uses IPv4 instead of IPv6
 # Check prefix policy
@@ -143,4 +143,4 @@ netsh winsock reset
 
 ## Summary
 
-Troubleshoot Windows IPv6 connectivity in layers: (1) verify IPv6 enabled via `Get-NetAdapterBinding`, (2) check for global address with `ipconfig /all`, (3) test ping to `2001:4860:4860::8888`, (4) verify default route with `Get-NetRoute -DestinationPrefix "::/0"`, (5) test DNS with `Resolve-DnsName`, (6) check firewall rules. Reset the IPv6 stack with `netsh interface ipv6 reset` as a last resort.
+Troubleshoot Windows IPv6 connectivity in layers: (1) verify IPv6 enabled via `Get-NetAdapterBinding`, (2) check for a non-link-local address with `ipconfig /all`, (3) test ping to `2001:4860:4860::8888`, (4) verify default route with `Get-NetRoute -DestinationPrefix "::/0"`, (5) test DNS with `Resolve-DnsName`, (6) check firewall rules. Reset the IPv6 stack with `netsh interface ipv6 reset` as a last resort.
