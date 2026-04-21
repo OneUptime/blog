@@ -8,7 +8,7 @@ Description: Set up Squid transparent proxy with iptables REDIRECT or TPROXY rul
 
 ## Introduction
 
-Transparent IPv4 interception requires two components: Squid configured in `intercept` mode and iptables rules that redirect traffic to Squid's port. Two methods exist: `REDIRECT` (simple, changes destination IP) and `TPROXY` (preserves original destination, requires kernel support).
+Transparent IPv4 interception requires two components: Squid configured with an interception listener and iptables rules that redirect traffic to Squid's port. Two methods exist: `REDIRECT` (simple, changes destination IP) and `TPROXY` (preserves original destination, requires kernel support).
 
 ## Method 1: REDIRECT (Simpler)
 
@@ -17,7 +17,7 @@ Transparent IPv4 interception requires two components: Squid configured in `inte
 
 # Intercept mode: accept redirected connections
 
-http_port 127.0.0.1:3129 intercept
+http_port 0.0.0.0:3129 intercept
 
 # Standard explicit proxy port
 http_port 0.0.0.0:3128
@@ -36,25 +36,21 @@ iptables rules for REDIRECT:
 
 LAN_INTERFACE="eth1"   # Interface facing LAN clients
 LAN_SUBNET="192.168.0.0/16"
+PROXY_LAN_IP="192.168.0.1"
 SQUID_PORT="3129"
 
 # Enable IP forwarding
 echo 1 > /proc/sys/net/ipv4/ip_forward
 
-# Don't intercept traffic FROM the proxy itself (prevent loops)
-iptables -t nat -A PREROUTING -i ${LAN_INTERFACE} \
-  -s ${LAN_SUBNET} -p tcp --dport 80 \
-  -m owner --uid-owner proxy -j RETURN
-
 # Don't intercept traffic to the proxy server itself
 iptables -t nat -A PREROUTING -i ${LAN_INTERFACE} \
   -s ${LAN_SUBNET} -p tcp --dport 80 \
-  -d 127.0.0.1 -j RETURN
+  -d ${PROXY_LAN_IP} -j RETURN
 
 # Redirect all other HTTP to Squid
 iptables -t nat -A PREROUTING -i ${LAN_INTERFACE} \
   -s ${LAN_SUBNET} -p tcp --dport 80 \
-  -j REDIRECT --to-port ${SQUID_PORT}
+  -j REDIRECT --to-ports ${SQUID_PORT}
 
 # Persist rules
 iptables-save > /etc/iptables/rules.v4
@@ -66,12 +62,12 @@ TPROXY allows Squid to see the original destination IP:
 
 ```bash
 # /etc/squid/squid.conf
-http_port 0.0.0.0:3129 tproxy intercept
+http_port 0.0.0.0:3129 tproxy
 ```
 
 ```bash
 #!/bin/bash
-# TPROXY requires nfqueue and routing marks
+# TPROXY requires kernel TPROXY support and routing marks
 
 # Mark packets for TPROXY
 iptables -t mangle -A PREROUTING -i eth1 \
@@ -99,25 +95,27 @@ sudo iptables -t nat -L PREROUTING -n -v | grep REDIRECT
 
 # Check Squid listening ports
 sudo ss -tlnp | grep squid
-# Should show both 3128 (explicit) and 3129 (intercept)
+# Should show 3129, plus 3128 if you configured the explicit proxy port
 ```
 
 ## Excluding Traffic from Interception
 
 ```bash
+# For REDIRECT, add bypass rules before the REDIRECT interception rule
+
 # Don't intercept HTTPS (port 443) - use a separate ssl-bump setup
-iptables -t nat -A PREROUTING -i eth1 \
+iptables -t nat -I PREROUTING 1 -i eth1 \
   -p tcp --dport 443 -j RETURN
 
 # Don't intercept traffic to specific servers
-iptables -t nat -A PREROUTING -i eth1 \
+iptables -t nat -I PREROUTING 1 -i eth1 \
   -d 10.0.0.0/8 -j RETURN  # Don't proxy internal traffic
 
 # Don't intercept traffic from specific hosts
-iptables -t nat -A PREROUTING -i eth1 \
+iptables -t nat -I PREROUTING 1 -i eth1 \
   -s 192.168.0.200 -j RETURN  # Bypass proxy for this host
 ```
 
 ## Conclusion
 
-Squid transparent proxy with iptables REDIRECT is the simplest approach: configure `http_port <port> intercept` in Squid and add `iptables -j REDIRECT` rules to redirect LAN HTTP traffic to that port. Always exclude traffic from the proxy process itself to prevent routing loops, exclude direct internal traffic, and optionally exclude specific hosts that need unproxied internet access.
+Squid transparent proxy with iptables REDIRECT is the simplest approach: configure `http_port <port> intercept` in Squid and add `iptables -j REDIRECT` rules to redirect LAN HTTP traffic to that port. Always exclude traffic to the proxy server itself, exclude direct internal traffic, and optionally exclude specific hosts that need unproxied internet access.
