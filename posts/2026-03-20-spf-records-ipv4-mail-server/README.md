@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SPF, IPv4, DNS, Email Security, Postfix, Anti-Spam
 
-Description: Create SPF DNS records that authorize specific IPv4 addresses and ranges to send email on behalf of your domain, preventing spoofing and improving deliverability.
+Description: Create SPF DNS records that authorize specific IPv4 addresses and ranges to send email on behalf of your domain, helping reduce spoofing and improving deliverability.
 
 ## Introduction
 
-SPF (Sender Policy Framework) is a DNS TXT record that lists the IPv4 (and IPv6) addresses authorized to send mail for your domain. Receiving mail servers check SPF to verify that incoming mail comes from an authorized source.
+SPF (Sender Policy Framework) is an email authentication mechanism published in DNS TXT records that lists the IPv4 (and IPv6) addresses authorized to send mail for your domain. Receiving mail servers check SPF against the SMTP `MAIL FROM` or `HELO` identity to verify that incoming mail comes from an authorized source.
 
 ## Basic SPF Record Syntax
 
@@ -22,7 +22,7 @@ example.com. IN TXT "v=spf1 ip4:203.0.113.10 ~all"
 ; Allow an IPv4 CIDR range
 example.com. IN TXT "v=spf1 ip4:203.0.113.0/24 ~all"
 
-; Allow the server that handles your MX records
+; Allow hosts listed in your MX records
 example.com. IN TXT "v=spf1 mx ~all"
 
 ; Allow the A record of your domain
@@ -34,24 +34,26 @@ example.com. IN TXT "v=spf1 ip4:203.0.113.10 mx include:sendgrid.net ~all"
 
 ## SPF Qualifiers
 
-| Qualifier | Meaning | Action if matched |
+| Qualifier | Meaning | Typical receiver handling |
 |---|---|---|
-| `+` (default) | Pass | Accept mail |
-| `-` | Fail (hard) | Reject mail |
-| `~` | SoftFail | Accept but mark as suspicious |
-| `?` | Neutral | No policy |
+| `+` (default) | Pass | Authorized; continue normal filtering |
+| `-` | Fail (hard) | Not authorized; may reject or mark according to local policy |
+| `~` | SoftFail | Not authorized but transitional; usually accept and tag |
+| `?` | Neutral | No assertion |
 
 ## Typical Multi-Server SPF Record
 
 ```dns
 ; Production mail server
-example.com. IN TXT "v=spf1 \
-    ip4:203.0.113.10 \
-    ip4:203.0.113.11 \
-    ip4:198.51.100.0/26 \
-    include:_spf.google.com \
-    include:sendgrid.net \
-    ~all"
+example.com. IN TXT (
+    "v=spf1 "
+    "ip4:203.0.113.10 "
+    "ip4:203.0.113.11 "
+    "ip4:198.51.100.0/26 "
+    "include:_spf.google.com "
+    "include:sendgrid.net "
+    "~all"
+)
 ```
 
 ## Verifying Your SPF Record
@@ -62,12 +64,12 @@ example.com. IN TXT "v=spf1 \
 dig TXT example.com | grep spf
 
 # Test SPF for a specific sending IP
-# Using spf-tools
-pip install pyspf
+# Using pyspf
+python -m pip install pyspf
 python -c "
 import spf
-result, code, text = spf.check2('203.0.113.10', 'user@example.com', 'mail.example.com')
-print(f'Result: {result}, Code: {code}, Text: {text}')
+result, text = spf.check2('203.0.113.10', 'user@example.com', 'mail.example.com')
+print(f'Result: {result}, Text: {text}')
 "
 
 # Online tools:
@@ -77,20 +79,20 @@ print(f'Result: {result}, Code: {code}, Text: {text}')
 # Check from the sending server
 swaks --to check@receiver-test.net \
   --from user@example.com \
-  --server 203.0.113.10
+  --local-interface 203.0.113.10
 ```
 
 ## SPF for Subdomains
 
-Each subdomain needs its own SPF record:
+Each sending subdomain needs its own SPF record; SPF is looked up on the exact `MAIL FROM` or `HELO` domain and is not inherited from the parent:
 
 ```dns
 ; Different sending IPs per subdomain
 mail.example.com.          IN TXT "v=spf1 ip4:203.0.113.10 ~all"
-newsletter.example.com.    IN TXT "v=spf1 include:mailchimp-relay.com ~all"
+newsletter.example.com.    IN TXT "v=spf1 include:servers.mcsv.net ~all"
 transactional.example.com. IN TXT "v=spf1 include:sendgrid.net ~all"
 
-; Block all other subdomains from sending (no authorized senders)
+; Default policy for otherwise undefined subdomains (wildcards do not override existing DNS names)
 *.example.com.             IN TXT "v=spf1 -all"
 ```
 
@@ -115,4 +117,4 @@ smtpd_recipient_restrictions =
 
 ## Conclusion
 
-SPF records authorize IPv4 addresses to send mail for your domain using DNS TXT records. Start with `ip4:` mechanisms for explicit IPs, add `include:` for third-party senders (SendGrid, Google Workspace), and end with `~all` (soft fail) rather than `-all` (hard fail) while testing. Use `dig TXT example.com` to verify your record, and monitor SPF check results in mail logs to identify unauthorized senders.
+SPF records authorize IPv4 addresses to use your domain in SMTP `MAIL FROM` or `HELO` identities using DNS TXT records. Start with `ip4:` mechanisms for explicit IPs, add `include:` for third-party senders (SendGrid, Google Workspace), and end with `~all` (soft fail) rather than `-all` (hard fail) while testing. Use `dig TXT example.com` to verify your record, and monitor SPF check results in mail logs to identify unauthorized senders.
