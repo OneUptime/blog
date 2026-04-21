@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Node.js, IPv6, Testing, Jest, Mocha, Integration Test
+Tags: Node.js, IPv6, Testing, Jest, Integration Test
 
-Description: Test IPv6 networking code in Node.js using Jest and Mocha with in-process servers, parameterized tests, and conditional test skipping.
+Description: Test IPv6 networking code in Node.js using Jest with in-process servers, parameterized tests, and conditional availability checks.
 
 ## Testing IPv6 Validation Logic
 
@@ -158,7 +158,7 @@ describe('IPv6 TCP Echo Server', () => {
         server = await createEchoServer('::1', 0);
     });
 
-    afterAll(() => server.close());
+    afterAll((done) => server.close(done));
 
     test('echoes data over IPv6', async () => {
         const port = server.address().port;
@@ -171,14 +171,14 @@ describe('IPv6 TCP Echo Server', () => {
 ## Conditional Tests for IPv6 Availability
 
 ```javascript
-// Skip tests if IPv6 is not available on the test machine
+// Return early if IPv6 is not available on the test machine
 function isIPv6Available() {
     return new Promise((resolve) => {
         const server = require('net').createServer();
+        server.once('error', () => resolve(false));
         server.listen(0, '::1', () => {
             server.close(() => resolve(true));
         });
-        server.on('error', () => resolve(false));
     });
 }
 
@@ -191,7 +191,7 @@ beforeAll(async () => {
 
 test('IPv6 TCP connection', async () => {
     if (!ipv6Available) {
-        console.log('Skipping: IPv6 not available');
+        console.log('IPv6 not available; test not run');
         return;
     }
     // ... IPv6 test
@@ -242,4 +242,4 @@ describe('Express IPv6 middleware', () => {
 
 ## Conclusion
 
-Testing IPv6 Node.js code follows standard patterns with a few adjustments. Bind in-process test servers to `'::1'` for loopback IPv6 testing. Use `supertest` with `http://[::1]:port` URL format for HTTP testing. Conditional test skipping handles CI environments without IPv6 support. Parameterized tests with `test.each` efficiently cover many IPv6 address edge cases. Mock `X-Forwarded-For` headers in middleware tests to simulate proxy-forwarded IPv6 addresses.
+Testing IPv6 Node.js code follows standard patterns with a few adjustments. Bind in-process test servers to `'::1'` for loopback IPv6 testing. Use `supertest` with `http://[::1]:port` URL format for HTTP testing. Conditional availability checks handle CI environments without IPv6 support. Parameterized tests with `test.each` efficiently cover many IPv6 address edge cases. Mock `X-Forwarded-For` headers in middleware tests to simulate proxy-forwarded IPv6 addresses.
