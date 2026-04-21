@@ -6,7 +6,7 @@ Tags: Traceroute, IPv4, Networking, Diagnostic, Linux, Routing
 
 Description: Use traceroute to map the path IPv4 packets take through the network, identify the number of hops, and pinpoint where connectivity breaks down.
 
-Traceroute reveals the exact path packets take from your machine to a destination, showing every router along the way. This is invaluable for diagnosing routing failures, identifying slow links, and understanding network topology.
+Traceroute reveals the path packets appear to take from your machine to a destination, showing the routers that respond along the way. This is invaluable for diagnosing routing failures, identifying likely slow links, and understanding network topology.
 
 ## How Traceroute Works
 
@@ -19,7 +19,7 @@ Traceroute exploits the TTL (Time To Live) field to reveal each hop:
 2. Send packet with TTL=2 → Second router sends ICMP "Time Exceeded"
    → We record second router's IP
 
-3. ... continue until destination responds with ICMP "Destination Unreachable" or ICMP Echo Reply
+3. ... continue until the destination responds (usually ICMP "Port Unreachable" for UDP probes, ICMP Echo Reply for ICMP probes, or a TCP response for TCP probes)
 ```
 
 ## Basic Usage
@@ -68,7 +68,7 @@ traceroute -n 8.8.8.8
 # ICMP probes (same as Windows tracert)
 sudo traceroute -I -n 8.8.8.8
 
-# TCP SYN probes (best at bypassing firewalls)
+# TCP SYN probes (useful when UDP or ICMP probes are filtered)
 sudo traceroute -T -p 80 -n 8.8.8.8
 # or
 sudo tcptraceroute 8.8.8.8 80
@@ -89,7 +89,7 @@ traceroute -s 192.168.2.100 -n 8.8.8.8
 ```bash
 # Find where connectivity fails
 traceroute -n 10.50.0.1
-# If traceroute stops at hop 3 → router at hop 3 has no route forward
+# If traceroute stops after hop 3 → traffic or traceroute replies are blocked beyond that point
 
 # Compare two paths (load balancing detection)
 for i in 1 2 3 4 5; do traceroute -n -m 5 8.8.8.8; done
@@ -97,10 +97,10 @@ for i in 1 2 3 4 5; do traceroute -n -m 5 8.8.8.8; done
 
 # Check latency at each hop to find the slow link
 traceroute -n 8.8.8.8
-# If hop 5 jumps from 10ms to 150ms → the link between hop 5 and 6 is slow
+# If latency jumps at hop 5 and stays high afterward → the issue likely starts near hop 5
 
 # Traceroute to detect MPLS tunnels
-traceroute --mpls 8.8.8.8    # Shows MPLS labels if supported
+traceroute -e 8.8.8.8    # Shows ICMP extensions, including MPLS labels if present
 ```
 
 ## Script to Check Multiple Paths
