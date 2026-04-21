@@ -40,7 +40,7 @@ Each new module needs to export values the others depend on:
 # modules/networking/outputs.tf
 
 output "vpc_id"         { value = aws_vpc.main.id }
-output "subnet_ids"     { value = aws_subnet.public[*].id }
+output "subnet_ids"     { value = [for subnet in aws_subnet.public : subnet.id] }
 output "sg_web_id"      { value = aws_security_group.web.id }
 ```
 
@@ -105,9 +105,10 @@ moved {
 }
 ```
 
-## Step 5: Verify with tofu plan
+## Step 5: Reinitialize and Verify with tofu plan
 
 ```bash
+tofu init
 tofu plan
 ```
 
@@ -132,7 +133,7 @@ tofu state list
 
 ## Cleaning Up
 
-Once the split is applied and the old module no longer exists, remove the `moved` blocks (they are no longer needed) and delete the old module directory.
+Once the split is applied and the old module no longer exists, you can delete the old module directory. Only remove the `moved` blocks after every workspace or module consumer has successfully applied the split; for shared modules, keep historical `moved` blocks to preserve the upgrade path.
 
 ## Conclusion
 
