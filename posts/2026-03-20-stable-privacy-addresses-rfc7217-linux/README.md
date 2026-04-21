@@ -12,60 +12,63 @@ RFC 7217 defines a method for generating semantically opaque Interface Identifie
 
 ## How RFC 7217 Works
 
-The address is derived from a one-way hash that combines:
+The IID is derived from a pseudorandom function, often implemented with a cryptographic hash, that combines:
 - The network prefix
-- The interface name
-- The interface's stable hardware identifier
+- A stable interface identifier, such as the interface name or another implementation-specific stable value
 - A network ID (optional)
-- A secret key (generated randomly at boot)
+- A DAD counter for resolving duplicate-address conflicts
+- A secret key (generated once and kept stable)
 
-This means the same device gets the same address on the same network, but a different address on a different network - so cross-network tracking via the IID is not possible.
+This means the same device gets the same address on the same network, but a different address on a different network - so cross-network tracking via the IID is much harder.
 
 ```mermaid
 flowchart LR
-    A[Network Prefix] --> H[SHA-256 Hash]
-    B[Interface Name] --> H
-    C[MAC Address] --> H
-    D[Secret Key] --> H
-    H --> E[Stable IID]
-    E --> F[Full IPv6 Address]
+    A[Network Prefix] --> H[PRF / Hash]
+    B[Stable Interface Identifier] --> H
+    C[Network ID Optional] --> H
+    D[DAD Counter] --> H
+    E[Secret Key] --> H
+    H --> I[Stable IID]
+    I --> F[Full IPv6 Address]
 ```
 
 ## Enabling RFC 7217 on Linux with NetworkManager
 
 Modern NetworkManager (v1.2+) supports RFC 7217 via the `addr-gen-mode` setting.
 
-The following command sets the address generation mode to `stable-privacy` for an interface named `eth0`:
+The following commands find the NetworkManager connection profile active on `eth0` and set its address generation mode to `stable-privacy`:
 
 ```bash
 # Set stable privacy address generation for eth0
+CONNECTION=$(nmcli -g GENERAL.CONNECTION device show eth0)
 
-nmcli connection modify eth0 ipv6.addr-gen-mode stable-privacy
+nmcli connection modify "$CONNECTION" ipv6.addr-gen-mode stable-privacy
 
 # Apply the change
-nmcli connection up eth0
+nmcli connection up "$CONNECTION" ifname eth0
 ```
 
 To verify the setting is active:
 
 ```bash
 # Check the connection profile for addr-gen-mode
-nmcli connection show eth0 | grep addr-gen-mode
+CONNECTION=$(nmcli -g GENERAL.CONNECTION device show eth0)
+nmcli connection show "$CONNECTION" | grep ipv6.addr-gen-mode
 ```
 
 ## Configuring via NetworkManager Config File
 
-For system-wide configuration, edit or create a file in `/etc/NetworkManager/conf.d/`:
+For a system-wide default for profiles that use NetworkManager defaults, edit or create a file in `/etc/NetworkManager/conf.d/`:
 
 ```ini
 # /etc/NetworkManager/conf.d/ipv6-privacy.conf
-# Enforce stable privacy addresses globally for all connections
+# Default to stable privacy addresses for matching connections
 
 [connection]
 ipv6.addr-gen-mode=stable-privacy
 ```
 
-Reload NetworkManager to apply:
+Reload NetworkManager, then reconnect affected active profiles to regenerate addresses:
 
 ```bash
 sudo systemctl reload NetworkManager
@@ -87,7 +90,7 @@ The MAC address of `00:11:22:33:44:55` would produce EUI-64 IID `0211:22ff:fe33:
 
 ## Checking the Secret Key
 
-NetworkManager stores the secret key used for address generation:
+NetworkManager stores the host-specific secret key that participates in address generation:
 
 ```bash
 # Location of the secret key file
@@ -101,20 +104,24 @@ This key is machine-specific and should not be shared. If it is regenerated (e.g
 For testing without NetworkManager:
 
 ```bash
-# Generate a stable privacy address manually using iproute2 (kernel 4.7+)
-# The kernel automatically uses stable-privacy mode when configured via sysctl
+# Generate a per-host secret for testing and configure eth0 to use it
+SECRET=$(openssl rand -hex 16 | sed 's/..../&:/g;s/:$//')
+sudo sysctl -w "net.ipv6.conf.eth0.stable_secret=$SECRET"
 
 # Enable stable privacy in the kernel for eth0
-echo 2 | sudo tee /proc/sys/net/ipv6/conf/eth0/addr_gen_mode
-# 0 = EUI-64, 1 = none, 2 = stable-privacy (RFC 7217), 3 = random
+sudo ip link set dev eth0 addrgenmode stable_secret
+
+# eui64 = EUI-64, none = disable automatic address generation,
+# stable_secret = stable privacy using stable_secret (RFC 7217),
+# random = stable privacy with a random secret if stable_secret is unset
 ```
 
 To make this persistent across reboots:
 
 ```bash
-# /etc/sysctl.d/99-ipv6-privacy.conf
-net.ipv6.conf.default.addr_gen_mode = 2
-net.ipv6.conf.all.addr_gen_mode = 2
+# Generate a persistent per-host secret and write /etc/sysctl.d/99-ipv6-privacy.conf
+SECRET=$(openssl rand -hex 16 | sed 's/..../&:/g;s/:$//')
+printf 'net.ipv6.conf.default.stable_secret = %s\nnet.ipv6.conf.default.addr_gen_mode = 2\nnet.ipv6.conf.all.addr_gen_mode = 2\n' "$SECRET" | sudo tee /etc/sysctl.d/99-ipv6-privacy.conf
 ```
 
 Apply immediately:
@@ -125,4 +132,4 @@ sudo sysctl -p /etc/sysctl.d/99-ipv6-privacy.conf
 
 ## Conclusion
 
-RFC 7217 stable privacy addresses give Linux systems a strong privacy posture without the instability of purely random temporary addresses. They are the recommended default for most modern Linux deployments and are supported natively by the Linux kernel and NetworkManager. Enable them system-wide via sysctl or per-connection via NetworkManager to ensure your devices remain untraceable across different networks.
+RFC 7217 stable privacy addresses give Linux systems a strong privacy posture without the instability of purely random temporary addresses. They are the recommended default for most modern Linux deployments and are supported natively by the Linux kernel and NetworkManager. Enable them system-wide via sysctl or per-connection via NetworkManager to reduce IID-based tracking across different networks.
