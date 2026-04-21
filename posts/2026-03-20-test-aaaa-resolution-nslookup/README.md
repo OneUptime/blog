@@ -35,7 +35,7 @@ $ nslookup -type=AAAA google.com 8.8.8.8
 Server:     8.8.8.8           ← DNS server used for query
 Address:    8.8.8.8#53        ← DNS server IP and port
 
-Non-authoritative answer:     ← From cache, not authoritative
+Non-authoritative answer:     ← Returned by a recursive resolver, not an authoritative server
 Name:   google.com
 Address: 2607:f8b0:4004:c08::65  ← IPv6 AAAA record
 Name:   google.com
@@ -63,7 +63,7 @@ nslookup
 
 > set type=ANY
 > example.com
-# Shows all record types
+# Requests ANY; many servers return only a subset of records
 
 > exit
 ```
@@ -90,29 +90,29 @@ nslookup
 
 ```bash
 # When a domain has an A record but no AAAA (NODATA response):
-nslookup -type=AAAA ipv4only-domain.example
+nslookup -type=AAAA ipv4only.arpa 8.8.8.8
 
 # Output for NODATA:
 # Server: 8.8.8.8
 # Address: 8.8.8.8#53
-# ** server can't find ipv4only-domain.example: NXDOMAIN
-# (some resolvers return NXDOMAIN for NODATA -- this is incorrect behavior)
-
-# Or:
 # Non-authoritative answer:
-# *** Can't find ipv4only-domain.example: No answer
+# *** Can't find ipv4only.arpa: No answer
+
+# NXDOMAIN means the domain name itself does not exist:
+nslookup -type=AAAA no-such-host.example 8.8.8.8
+# ** server can't find no-such-host.example: NXDOMAIN
 ```
 
 ## Testing Reverse DNS (PTR) for IPv6
 
 ```bash
 # Test PTR for an IPv6 address (nslookup handles the reversal automatically)
-nslookup 2001:db8::1
+nslookup 2001:4860:4860::8888
 
 # Or explicitly:
-nslookup -type=PTR 1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa
+nslookup -type=PTR 8.8.8.8.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.6.8.4.0.6.8.4.1.0.0.2.ip6.arpa
 
-# Expected: PTR record → hostname
+# Expected: PTR record → hostname (for example, dns.google)
 ```
 
 ## Comparing Responses from Multiple DNS Servers
@@ -123,8 +123,8 @@ nslookup -type=PTR 1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0
 DOMAIN=${1:-"example.com"}
 echo "AAAA records for $DOMAIN:"
 for SERVER in 8.8.8.8 1.1.1.1 9.9.9.9; do
-    echo -n "  $SERVER: "
-    nslookup -type=AAAA $DOMAIN $SERVER 2>/dev/null | grep "Address:" | tail -1
+    RESULT=$(nslookup -type=AAAA "$DOMAIN" "$SERVER" 2>/dev/null | awk '/^Name:/ {found=1; next} found && /^Address:/ {print $2}' | paste -sd, -)
+    echo "  $SERVER: ${RESULT:-No AAAA answer}"
 done
 ```
 
@@ -136,7 +136,7 @@ done
 | Available on Linux | Yes | Yes (usually pre-installed) |
 | Output detail | Moderate | Full/configurable |
 | DNSSEC info | Limited | Full |
-| Batch mode | No | Yes (+batch) |
+| Batch mode | No | Yes (-f) |
 | Scripting | Harder | Easier |
 
 ## Summary
