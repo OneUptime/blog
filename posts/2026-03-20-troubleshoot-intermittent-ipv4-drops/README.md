@@ -12,8 +12,8 @@ Intermittent drops are challenging because:
 - They may not be reproducible on demand
 - Physical layer issues (cable, transceiver) often cause random drops
 - CPU overload on routers creates sporadic drops
-- DHCP lease renewals can cause brief interruptions
-- STP topology changes cause temporary loops
+- DHCP lease changes or failed renewals can cause brief interruptions
+- STP topology changes can cause brief reconvergence and MAC relearning
 
 ## Step 1: Measure Packet Loss Continuously
 
@@ -41,13 +41,13 @@ mtr --report --report-cycles 300 8.8.8.8
 ethtool -S eth0 | grep -E "error|drop|miss|overflow"
 
 # Check interface statistics
-ip -s link show eth0
-# Look for: RX errors, TX errors, dropped packets
+ip -s -s link show eth0
+# Look for: RX errors, frame/CRC errors, TX errors, dropped packets
 
-# Framing errors suggest cable/connector problems:
+# Frame/CRC errors suggest cable/connector problems:
 # Example:
-# RX: bytes  packets  errors  dropped  missed  mcast
-#     ...      ...      152      0       0       0  <- 152 errors = bad cable
+# RX errors:  length    crc   frame    fifo overrun
+#                  0    152       0       0       0  <- CRC errors = check cable/SFP
 
 # Check cable/SFP
 ethtool eth0 | grep -i "link detected\|speed\|duplex"
@@ -64,13 +64,19 @@ ethtool eth0 | grep -i "link detected\|speed\|duplex"
 ethtool eth0 | grep Duplex
 # Should show: Duplex: Full
 
-# Fix: force duplex settings (instead of auto-negotiation)
-sudo ethtool -s eth0 speed 1000 duplex full autoneg off
+# Fix: make both ends match; prefer auto-negotiation where supported
+sudo ethtool -s eth0 autoneg on
 
 # Or on switch (Cisco):
 # interface GigabitEthernet0/1
+#  speed auto
+#  duplex auto
+
+# If you must hard-code a legacy 10/100 link, set both ends identically
+sudo ethtool -s eth0 speed 100 duplex full autoneg off
+# Cisco:
+#  speed 100
 #  duplex full
-#  speed 1000
 ```
 
 ## Step 4: Check System Resources
@@ -80,16 +86,16 @@ sudo ethtool -s eth0 speed 1000 duplex full autoneg off
 top -bn1 | head -5
 vmstat 1 5
 
-# Check for softirq drops (CPU can't process packets fast enough)
+# Check for softirq drops (CPU or softnet backlog can't process packets fast enough)
 cat /proc/net/softnet_stat | head -5
-# Column 1: processed, Column 2: dropped, Column 3: time squeeze
-# Non-zero column 2 = CPU packet drop
+# Values are hexadecimal; column 1: processed, column 2: dropped, column 3: time_squeeze
+# Increasing column 2 or 3 = softnet backlog drops or CPU packet-processing pressure
 
 # Check NIC ring buffer drops
 ethtool -S eth0 | grep -E "rx_dropped|rx_missed|rx_no_buffer"
 
 # Increase ring buffer if dropping
-ethtool -G eth0 rx 4096
+sudo ethtool -G eth0 rx 4096
 ```
 
 ## Step 5: Correlate with System Events
@@ -98,13 +104,14 @@ ethtool -G eth0 rx 4096
 # Check system logs around the time of drops
 journalctl --since "1 hour ago" | grep -iE "link|eth0|network|dhcp"
 
-# Look for DHCP renewals causing brief drops
+# Look for DHCP lease changes or failed renewals causing brief drops
 journalctl -u NetworkManager | grep -E "renew|lease|state"
 
 # Check for STP topology changes on the switch
 # (Cisco switch logs)
 # show log | include STP|topology
-# Each topology change causes ~30 second MAC table flush = packet drops
+# Topology changes can accelerate MAC aging or flush learned entries,
+# causing brief flooding/relearning during reconvergence
 
 # Check for interface flaps
 dmesg | grep -E "eth0|Link is|carrier"
@@ -138,7 +145,9 @@ done
 
 ```bash
 # Run as background service
-sudo systemctl edit --force connectivity-monitor.service << 'EOF'
+sudo chmod +x /usr/local/bin/connectivity-monitor.sh
+
+sudo tee /etc/systemd/system/connectivity-monitor.service > /dev/null << 'EOF'
 [Unit]
 Description=Connectivity Monitor
 After=network.target
@@ -151,8 +160,9 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
+sudo systemctl daemon-reload
 sudo systemctl enable --now connectivity-monitor.service
-tail -f /var/log/connectivity.log
+sudo tail -f /var/log/connectivity.log
 ```
 
 ## Step 7: Check for QoS/Policing Drops
@@ -172,4 +182,4 @@ sar -n DEV 1 10 | grep eth0
 
 ## Conclusion
 
-Intermittent IPv4 drops require time-series measurement with `mtr --report-cycles 300` to capture statistical patterns. Check physical errors with `ethtool -S eth0`, resource drops with `cat /proc/net/softnet_stat`, and correlate with system logs via `journalctl`. Common causes include cable/transceiver faults (ethtool errors), CPU ring buffer overflow (increase rx ring buffer), DHCP lease renewals (extend lease time), and STP topology changes (enable STP portfast on access ports).
+Intermittent IPv4 drops require time-series measurement with `mtr --report --report-cycles 300` to capture statistical patterns. Check physical errors with `ethtool -S eth0`, resource drops with `cat /proc/net/softnet_stat`, and correlate with system logs via `journalctl`. Common causes include cable/transceiver faults (ethtool errors), NIC RX ring buffer overflow (increase rx ring buffer), DHCP lease changes or failed renewals (check lease timing), and STP topology changes (enable STP PortFast on access ports where appropriate).
