@@ -18,7 +18,7 @@ Max throughput = Window Size / RTT
 On a 1 Gbps link with 100ms RTT, TCP is limited to just 5 Mbps!
 ```
 
-TCP Window Scaling (RFC 1323) extends the window to up to 1 GB using a multiplier, solving this problem.
+TCP Window Scaling (introduced in RFC 1323 and specified today in RFC 7323) extends the window to up to 1 GiB using a multiplier, solving this problem.
 
 ## Step 1: Verify Window Scaling Is Enabled
 
@@ -29,9 +29,9 @@ sysctl net.ipv4.tcp_window_scaling
 
 # Expected: net.ipv4.tcp_window_scaling = 1
 
-# Also check tcp_timestamps (required for window scaling)
+# TCP timestamps are a separate TCP extension, not a prerequisite for window scaling
 sysctl net.ipv4.tcp_timestamps
-# Should also be 1
+# Usually: net.ipv4.tcp_timestamps = 1
 ```
 
 ## Step 2: Enable Window Scaling If Not Active
@@ -40,7 +40,7 @@ sysctl net.ipv4.tcp_timestamps
 # Enable window scaling
 sudo sysctl -w net.ipv4.tcp_window_scaling=1
 
-# Enable TCP timestamps (required for window scaling)
+# Leave TCP timestamps enabled unless you have a specific reason to disable them
 sudo sysctl -w net.ipv4.tcp_timestamps=1
 
 # Make persistent
@@ -57,8 +57,8 @@ Window scaling only helps if the buffers are large enough. Set them to match you
 # For 10 Gbps link with 100ms RTT:
 # BDP = 10Gbps × 100ms = 1,000,000,000 bits = 125,000,000 bytes = 125 MB
 
-# Set buffers to 2× BDP for overhead
-# max receive buffer = 256 MB
+# Set buffers to roughly 2× BDP for overhead
+# max receive buffer = 256 MiB
 sudo sysctl -w net.core.rmem_max=268435456
 sudo sysctl -w net.ipv4.tcp_rmem="4096 65536 268435456"
 
@@ -76,11 +76,11 @@ sudo tcpdump -i any -c 10 -w /tmp/tcp-handshake.pcap 'tcp[tcpflags] & tcp-syn !=
 
 # Analyze the SYN packet with tshark
 tshark -r /tmp/tcp-handshake.pcap -T fields \
-  -e tcp.window_size \
+  -e tcp.window_size_value \
   -e tcp.options.wscale.shift
 
-# Expected output:
-# 65535   7       <- window_size=65535, scale_shift=7 means actual window = 65535 × 128 = ~8MB
+# Example output:
+# 65535   7       <- SYN window field is unscaled; scale_shift=7 means later window fields can use a 2^7 multiplier, allowing up to 65535 × 128 = ~8MB
 ```
 
 ## Step 5: Check Window Scale Factor on Connections
@@ -92,8 +92,8 @@ ss -tin | grep wscale
 # Output example:
 # cubic wscale:7,7 rto:200 rtt:1.5/0.5 ato:40 mss:1460 pmtu:1500
 #              ^^^
-# wscale:7 means both sides use 2^7=128 multiplier
-# Max window = 65535 × 128 = 8.4 MB
+# wscale:7,7 means send and receive scale factors are both 7 (2^7=128)
+# Max representable window in either scaled direction = 65535 × 128 = 8.4 MB
 ```
 
 ## Step 6: Test Throughput with Window Scaling
@@ -122,7 +122,7 @@ Some broken firewalls or middleboxes incorrectly modify or drop packets with win
 # Disable window scaling (USE ONLY FOR DEBUGGING)
 sudo sysctl -w net.ipv4.tcp_window_scaling=0
 
-# Test if this fixes connectivity issues through firewalls
+# Confirm basic reachability, then test a TCP connection through the same path
 ping -c 3 destination
 curl --max-time 10 https://destination
 
