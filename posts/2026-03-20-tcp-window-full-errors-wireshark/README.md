@@ -8,7 +8,7 @@ Description: Identify and diagnose TCP Window Full events in Wireshark that indi
 
 ## Introduction
 
-"TCP Window Full" appears in Wireshark when the sender has filled the receiver's advertised window and must stop sending until it receives an ACK with an updated (larger) window. This is a flow control mechanism - not an error - but frequent window-full events indicate a throughput bottleneck caused by either a slow receiver or undersized buffers.
+"TCP Window Full" appears in Wireshark when the sender has filled the receiver's advertised window and must stop sending new data until ACKs advance or reopen the usable send window. This is a flow control mechanism - not an error - but frequent window-full events indicate a throughput bottleneck caused by either a slow receiver or undersized buffers.
 
 ## What TCP Window Full Means
 
@@ -20,7 +20,7 @@ When window fills:
 1. Sender sends data until unacked bytes = receiver's window
 2. Sender STOPS (pauses)
 3. Receiver processes data, frees buffer space
-4. Receiver sends ACK with updated window
+4. Receiver sends ACK that advances or updates the window
 5. Sender resumes
 
 If receiver processes slowly: sender pauses frequently → low throughput
@@ -45,13 +45,18 @@ tcp.analysis.window_full or tcp.analysis.zero_window
 
 ```bash
 # Capture and look for small window advertisements
-tcpdump -i eth0 -n -v 'tcp and host 10.20.0.5' | grep "win [0-9]" | \
-  awk '{
-    match($0, /win ([0-9]+)/, a)
-    if (a[1]+0 < 1000) print "SMALL WINDOW:", $0
-  }'
+tcpdump -i eth0 -n -v 'tcp and host 10.20.0.5' | \
+  awk '
+    /win [0-9]/ {
+      if (match($0, /win [0-9]+/)) {
+        win = substr($0, RSTART + 4, RLENGTH - 4)
+        if (win + 0 < 1000) print "SMALL WINDOW:", $0
+      }
+    }'
 
-# A rapidly shrinking window in sequential packets indicates receiver saturation
+# With TCP window scaling, tcpdump's win value is the 16-bit header field;
+# apply the negotiated wscale from the SYN/SYN-ACK to calculate the effective window.
+# A rapidly shrinking effective window in sequential packets suggests receiver saturation
 ```
 
 ## Diagnosing the Root Cause
@@ -75,8 +80,9 @@ strace -p $(pgrep myapp) -e trace=recv,recvfrom,recvmsg 2>&1 | head -20
 # Check current receive buffer sizes
 sysctl net.ipv4.tcp_rmem
 
-# If default is 128KB and your BDP is larger, buffer is the bottleneck
-# Increase max receive buffer
+# If the max is below your BDP, the receive buffer can be the bottleneck
+# Increase the TCP autotuning ceiling and the core receive-buffer cap
+sysctl -w net.core.rmem_max=16777216
 sysctl -w net.ipv4.tcp_rmem="4096 262144 16777216"
 ```
 
@@ -96,13 +102,13 @@ cat /proc/net/sockstat | grep TCP
 ```text
 In Wireshark's TCP stream graph (Statistics → TCP Stream Graphs):
 1. Open "Time-Sequence (Stevens)" graph
-2. Flat sections (no new sequence numbers advancing) = Window Full pauses
-3. Long flat sections = severe window starvation
+2. Flat sections (no new sequence numbers advancing) can indicate pauses; correlate them with Window Full or Zero Window packets before attributing them to flow control
+3. Long flat sections correlated with those events = severe window starvation
 
 Timeline patterns:
-- Regular flat sections: periodic window stalls (application processing delay)
-- Rare flat sections: normal TCP flow control
-- Long flat section followed by burst: Zero Window recovery
+- Regular flat sections aligned with Window Full/Zero Window: periodic window stalls (application processing delay)
+- Rare flat sections: normal TCP flow control or application idle time
+- Long flat section followed by burst: often Zero Window recovery when accompanied by Zero Window/Window Update packets
 ```
 
 ## Conclusion
