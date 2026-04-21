@@ -41,11 +41,11 @@ def decode_teredo_address(teredo_addr: str) -> dict:
     if addr not in teredo_prefix:
         raise ValueError(f"{teredo_addr} is not a Teredo address")
 
-    # Extract components (bits 32-63 = server, 64-79 = flags,
-    # 80-95 = port, 96-127 = client IP)
-    server_ip_int = (addr_int >> 96) & 0xFFFFFFFF
-    flags = (addr_int >> 80) & 0xFFFF
-    client_port_obfuscated = (addr_int >> 64) & 0xFFFF
+    # Extract components after the 32-bit Teredo prefix:
+    # server IPv4, flags, obfuscated port, obfuscated client IPv4.
+    server_ip_int = (addr_int >> 64) & 0xFFFFFFFF
+    flags = (addr_int >> 48) & 0xFFFF
+    client_port_obfuscated = (addr_int >> 32) & 0xFFFF
     client_ip_obfuscated = addr_int & 0xFFFFFFFF
 
     # De-obfuscate
@@ -83,7 +83,7 @@ Teredo is increasingly deprecated for security reasons:
 # netsh interface teredo set state disabled
 
 # Disable Teredo on Linux (it's rarely enabled by default)
-# Just ensure no ip6tnl0 or teredo interfaces are up
+# Just ensure no Teredo interface is up
 ip link show | grep teredo
 
 # Block Teredo traffic at the firewall
@@ -100,9 +100,9 @@ Teredo should be replaced with better mechanisms:
 |---|---|---|
 | Teredo | IPv6 behind NAT | Deprecated (security concerns) |
 | 6rd | ISP-provided IPv6 | Still used |
-| DS-Lite | Dual-stack ISP | Widely deployed |
-| MAP-T/MAP-E | IPv6 to IPv4 translation | Growing |
-| 464XLAT | Mobile IPv6 | Standard for LTE |
+| DS-Lite | IPv4 service over IPv6 access networks | Widely deployed |
+| MAP-E/MAP-T | IPv4 service over IPv6 access networks | Growing |
+| 464XLAT | IPv4 connectivity on IPv6-only networks | Widely deployed in mobile networks |
 
 ## Detecting Teredo Traffic
 
@@ -111,9 +111,9 @@ Teredo should be replaced with better mechanisms:
 sudo tcpdump -i eth0 -n "udp port 3544"
 
 # Identify IPv6 traffic via Teredo tunnel
-sudo tcpdump -i eth0 -n "ip6 src 2001::/32"
+sudo tcpdump -i eth0 -n "ip6 and src net 2001::/32"
 ```
 
 ## Conclusion
 
-Teredo's `2001::/32` address space identifies tunnel endpoints and carries NAT traversal metadata. It is largely deprecated due to security issues (Teredo traffic can bypass firewalls). Modern deployments should use 464XLAT or DS-Lite instead. Block Teredo at network boundaries and monitor for unexpected `2001::/32` traffic using OneUptime's network monitoring.
+Teredo's `2001::/32` address space identifies tunnel endpoints and carries NAT traversal metadata. It is largely deprecated due to security issues (Teredo traffic can bypass firewalls). Modern deployments should use native IPv6 or an appropriate ISP transition mechanism such as 464XLAT, DS-Lite, MAP-E/MAP-T, or 6rd instead. Block Teredo at network boundaries and monitor for unexpected `2001::/32` traffic using OneUptime's network monitoring.
