@@ -12,17 +12,17 @@ SUSE Observability (formerly StackState) is a full-stack observability platform 
 
 ## Prerequisites
 
-- Kubernetes cluster (v1.24+)
-- Rancher v2.7+ (for Rancher-integrated installation)
-- Helm v3.x
-- At least 16 GB RAM available in the cluster
-- A SUSE Observability license key
+- Supported Kubernetes or OpenShift cluster
+- Rancher version that matches the SUSE Observability compatibility matrix (for Rancher-integrated installation)
+- Helm v3.13.1+
+- Resources for the selected sizing profile; the trial profile requests about 7 vCPU and 22.7 GiB memory, and HA profiles require at least 3 nodes
+- A SUSE Observability license key and admin password
 
 ## Understanding SUSE Observability Architecture
 
 SUSE Observability consists of:
 
-- **StackState Server**: Core processing and storage engine
+- **SUSE Observability Server**: Core processing and storage engine
 - **Agents**: Collect data from Kubernetes nodes and services
 - **Receiver**: Accepts data from agents and integrations
 - **UI**: Web interface for topology visualization and monitoring
@@ -38,26 +38,30 @@ helm repo update
 # Create namespace
 kubectl create namespace suse-observability
 
-# Install with your license key
-helm install suse-observability suse-observability/suse-observability \
+# Install with your license key, admin password, and sizing profile
+helm upgrade --install suse-observability \
+  suse-observability/suse-observability \
   --namespace suse-observability \
-  --set license="your-license-key" \
-  --set baseUrl="https://observability.example.com"
+  --set-string global.suseObservability.license="your-license-key" \
+  --set-string global.suseObservability.baseUrl="https://observability.example.com" \
+  --set-string global.suseObservability.sizing.profile="trial" \
+  --set-string global.suseObservability.adminPassword="your-admin-password"
 ```
 
 ## Step 2: Deploy the Agent
 
 ```bash
-# Add agent Helm repository
-helm repo add suse-observability-agent https://charts.rancher.com/server-charts/prime/suse-observability-agent
+# The agent chart is published in the same SUSE Observability Helm repository
 helm repo update
 
 # Deploy agent on target cluster
-helm install stackstate-agent suse-observability-agent/suse-observability-agent \
+helm upgrade --install stackstate-agent \
+  suse-observability/suse-observability-agent \
   --namespace stackstate \
   --create-namespace \
-  --set stackstate.apiKey="your-api-key" \
-  --set stackstate.url="https://observability.example.com/receiver/sinks/generic"
+  --set-string stackstate.apiKey="your-receiver-api-key" \
+  --set-string stackstate.url="https://observability.example.com/receiver/stsAgent" \
+  --set-string stackstate.cluster.name="production-cluster"
 ```
 
 ## Step 3: Configure Data Collection
@@ -65,32 +69,24 @@ helm install stackstate-agent suse-observability-agent/suse-observability-agent 
 ```yaml
 # agent-values.yaml
 stackstate:
-  url: "https://observability.example.com/receiver/sinks/generic"
-  apiKey: "your-api-key"
+  url: "https://observability.example.com/receiver/stsAgent"
+  apiKey: "your-receiver-api-key"
+  cluster:
+    name: "production-cluster"
 
-# Cluster name for identification
-clusterName: "production-cluster"
-
-# Enable all Kubernetes data collection
-kubernetes:
-  enabled: true
-  
-# Collect container metrics
-containerRuntime:
-  enabled: true
-  
-# Collect node metrics
+# Adjust node agent resources when needed
 nodeAgent:
-  enabled: true
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
+  containers:
+    agent:
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "256Mi"
 ```
 
 ```bash
 helm upgrade --install stackstate-agent \
-  suse-observability-agent/suse-observability-agent \
+  suse-observability/suse-observability-agent \
   --namespace stackstate \
   --values agent-values.yaml
 ```
@@ -99,29 +95,34 @@ helm upgrade --install stackstate-agent \
 
 ```bash
 # Check agent pods are running
-kubectl get pods -n stackstate
+kubectl get pods -n stackstate \
+  -l app.kubernetes.io/instance=stackstate-agent
 
 # View agent logs
 kubectl logs -n stackstate \
-  -l app.kubernetes.io/name=stackstate-agent \
+  -l app.kubernetes.io/instance=stackstate-agent \
+  --all-containers=true \
+  --tail=100 \
   --follow
 
-# Check agent is sending data
+# Check recent agent logs for receiver/API errors
 kubectl logs -n stackstate \
-  -l app.kubernetes.io/name=stackstate-agent \
-  | grep "Successfully sent"
+  -l app.kubernetes.io/instance=stackstate-agent \
+  --all-containers=true \
+  --tail=200 \
+  | grep -Ei "error|forbidden|unauthorized|timeout"
 ```
 
 ## Step 5: Access the SUSE Observability UI
 
 ```bash
-# Get the service URL
-kubectl get svc -n suse-observability \
-  -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}'
+# Access the configured external URL
+open https://observability.example.com
 
-# Or set up port forwarding
+# Or set up port forwarding to the router service for local debugging.
+# If you use localhost, include http://localhost:8080 in stackstate.allowedOrigins.
 kubectl port-forward -n suse-observability \
-  svc/suse-observability 8080:8080 &
+  svc/suse-observability-router 8080:8080 &
 
 # Access the UI
 open http://localhost:8080
@@ -139,44 +140,70 @@ Navigate to **Topology** in the UI to see:
 
 ### Health States
 
-Configure health propagation rules to reflect component status:
+SUSE Observability accepts external health data through the Receiver API. A health state must be bound to an existing topology element identifier:
 
-```yaml
-# Example health rule configuration via API
-health_rule:
-  name: "High CPU Usage"
-  component_type: "kubernetes-pod"
-  conditions:
-    - metric: "cpu.usage.percent"
-      threshold: 80
-      operator: ">"
-  severity: "warning"
+```json
+{
+  "collection_timestamp": 1548857167,
+  "internalHostname": "local.test",
+  "health": [
+    {
+      "consistency_model": "REPEAT_STATES",
+      "expiry": {
+        "repeat_interval_s": 300,
+        "expiry_interval_s": 600
+      },
+      "stream": {
+        "urn": "urn:health:custom:production"
+      },
+      "check_states": [
+        {
+          "checkStateId": "high-cpu-api",
+          "name": "High CPU Usage",
+          "message": "CPU usage is above 80%.",
+          "health": "Deviating",
+          "topologyElementIdentifier": "<topology-element-identifier>"
+        }
+      ]
+    }
+  ]
+}
 ```
 
 ### Monitors and Alerts
 
 ```bash
-# Configure alert channels via CLI
-stackstate monitor create \
-  --name "Pod Restart Alert" \
-  --query "kubernetes_pod_restart_count > 5" \
-  --severity warning \
-  --notify-channel slack
+# Create or update a monitor definition through the SUSE Observability CLI
+sts monitor apply -f monitor.yaml
+
+# Verify and inspect monitors
+sts monitor list
+sts monitor status --id <id>
 ```
 
 ## Troubleshooting
 
 ```bash
-# Check server health
-kubectl exec -n suse-observability \
-  -it $(kubectl get pods -n suse-observability -l app=suse-observability -o name | head -1) \
-  -- curl -s localhost:7070/api/server/health | jq .
+# Check SUSE Observability pods
+kubectl get pods -n suse-observability
+
+# Inspect router logs; repeat with suspected component labels as needed
+kubectl logs -n suse-observability \
+  -l app.kubernetes.io/component=router \
+  --all-containers=true \
+  --tail=200
+
+# Describe a suspected pod
+kubectl describe pod -n suse-observability <pod-name>
 
 # Restart agent if not sending data
-kubectl rollout restart daemonset stackstate-agent -n stackstate
+kubectl rollout restart daemonset/stackstate-agent-node-agent -n stackstate
+kubectl rollout restart deployment/stackstate-agent-cluster-agent -n stackstate
+kubectl rollout restart deployment/stackstate-agent-checks-agent -n stackstate
 
 # Check agent configuration
-kubectl get configmap stackstate-agent-config -n stackstate -o yaml
+kubectl get configmap stackstate-agent-url -n stackstate -o yaml
+kubectl get configmap stackstate-agent-cluster-name -n stackstate -o yaml
 ```
 
 ## Conclusion
