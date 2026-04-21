@@ -57,14 +57,18 @@ Paste the stack YAML in **Stacks > Add Stack**. Portainer creates the encrypted 
 ## Step 3: Verify Encryption is Active
 
 ```bash
-# Check network options
-docker network inspect secure-backend | grep -i encrypted
-# Expected: "com.docker.network.driver.overlay.vxlanid_list": "...", "encrypted": "true"
+# Check network options for a CLI-created network
+docker network inspect secure-backend --format '{{ index .Options "encrypted" }}'
+
+# For a Portainer stack, replace mystack with the stack name
+docker network inspect mystack_secure-backend --format '{{ index .Options "encrypted" }}'
+
+# Expected: true
 ```
 
 ## Step 4: Performance Considerations
 
-Encryption adds CPU overhead for IPsec processing - typically 5-15% on modern hardware. For workloads where performance is critical and traffic is already protected by application-layer TLS (HTTPS), the additional overlay encryption may be redundant.
+Encryption adds CPU overhead for IPsec processing, and the exact impact depends on your hardware, kernel, and workload. For workloads where performance is critical and traffic is already protected by application-layer TLS (HTTPS), the additional overlay encryption may be redundant.
 
 Recommendation:
 - **Enable** for networks carrying unencrypted database traffic or internal API calls
@@ -72,7 +76,7 @@ Recommendation:
 
 ## Step 5: Autolock for Cluster Key Protection
 
-Enable Swarm Autolock to protect the cluster encryption keys at rest. Without autolock, Swarm keys are stored on disk and readable by anyone with file system access:
+Enable Swarm Autolock to protect the cluster encryption keys at rest. Without autolock, the mutual TLS key and the key used to encrypt and decrypt Raft logs are stored unencrypted on manager disks:
 
 ```bash
 # Enable autolock when initializing a new swarm
@@ -87,14 +91,10 @@ docker swarm unlock-key
 
 After enabling autolock, managers require the unlock key after restart.
 
-## Step 6: Rotate Network Keys
+## Step 6: Network Key Rotation
 
-Periodically rotate network encryption keys:
-
-```bash
-docker network inspect secure-backend --format '{{.ID}}' | xargs docker network update --ingress=false
-```
+Swarm rotates overlay network encryption keys automatically. There is no supported `docker network update` command to manually rotate the IPsec keys for a single overlay network.
 
 ## Summary
 
-Swarm overlay network encryption is a transparent, application-agnostic security control. By setting `encrypted: "true"` in your network definition, all container-to-container traffic on that network is automatically encrypted with AES-128-GCM without requiring application changes. Portainer's stack interface makes enabling encryption as simple as adding a network option to your YAML.
+Swarm overlay network encryption is a transparent, application-agnostic security control. By setting `encrypted: "true"` in your network definition, container-to-container traffic crossing swarm nodes on that network is automatically encrypted with AES-128-GCM without requiring application changes. Portainer's stack interface makes enabling encryption as simple as adding a network option to your YAML.
