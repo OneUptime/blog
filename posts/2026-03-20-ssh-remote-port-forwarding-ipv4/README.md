@@ -13,7 +13,7 @@ SSH remote port forwarding (`-R`) opens a port on the remote SSH server that tun
 ## Basic Remote Port Forwarding
 
 ```text
-Local Machine         SSH Server            External Client
+Local Machine         SSH Server            Remote-side Client
      │                     │                      │
      │ SSH connection ──────│                      │
      │                      │ ←──── connects to ───│
@@ -47,14 +47,15 @@ ssh user@203.0.113.10 "ss -tlnp | grep 8080"
 
 ## Binding Remote Port to Specific IPv4
 
-By default, the remote port binds only to `127.0.0.1` on the server. To expose it on a specific IPv4:
+By default, the remote port binds only to the loopback interface on the server (for IPv4, `127.0.0.1`). To expose it on a specific IPv4:
 
 ```bash
 # Bind remote port to specific IPv4 on server
-# (Requires GatewayPorts yes in server's sshd_config)
+# (Requires GatewayPorts clientspecified in server's sshd_config)
 ssh -R 203.0.113.10:8080:localhost:3000 user@203.0.113.10
 
 # Or bind to all interfaces on server:
+# (Requires GatewayPorts yes or GatewayPorts clientspecified)
 ssh -R 0.0.0.0:8080:localhost:3000 user@203.0.113.10
 ```
 
@@ -62,9 +63,9 @@ Enable `GatewayPorts` on the SSH server:
 
 ```bash
 # /etc/ssh/sshd_config
-GatewayPorts yes    # Allow remote forwards to bind to non-loopback addresses
-# or
 GatewayPorts clientspecified  # Let client specify the bind address
+# or
+GatewayPorts yes    # Force remote forwards to bind to wildcard addresses
 
 sudo systemctl restart sshd
 ```
@@ -94,9 +95,9 @@ ssh -fN expose-dev
 ```bash
 # Expose multiple local services in a single SSH session
 ssh -4 -fN \
-  -R 8080:localhost:3000 \   # Web app
-  -R 3306:localhost:3306 \   # MySQL
-  -R 6379:localhost:6379 \   # Redis
+  -R 8080:localhost:3000 \
+  -R 3306:localhost:3306 \
+  -R 6379:localhost:6379 \
   user@203.0.113.10
 ```
 
@@ -115,4 +116,4 @@ curl http://203.0.113.10:8080/
 
 ## Conclusion
 
-SSH remote port forwarding (`-R`) exposes local IPv4 services on a remote SSH server's port. Enable `GatewayPorts yes` in `sshd_config` when you need the remote port to be accessible on a specific IPv4 address rather than just `127.0.0.1`. Use `autossh` or systemd service units for production reverse tunnels that must restart automatically after network interruptions.
+SSH remote port forwarding (`-R`) exposes local IPv4 services on a remote SSH server's port. Enable `GatewayPorts clientspecified` in `sshd_config` when you need the remote port to be accessible on a specific IPv4 address rather than just the loopback interface; use `GatewayPorts yes` when you want remote forwards to bind to wildcard addresses. Use `autossh` or systemd service units for production reverse tunnels that must restart automatically after network interruptions.
