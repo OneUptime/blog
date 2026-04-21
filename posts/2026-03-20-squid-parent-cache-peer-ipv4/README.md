@@ -29,14 +29,17 @@ graph LR
 # --- Parent cache peer definition ---
 
 # cache_peer <hostname/IP> parent <http_port> <icp_port> [options]
-# ICP port 0 disables ICP; use 7 for ICP-based cache queries
+# ICP port 0 disables ICP/HTCP queries; use the peer's ICP port,
+# commonly 3130, only if ICP is enabled on the peer
 cache_peer 10.0.0.1 parent 3128 0 no-query default
 
 # --- Tell Squid to always forward to the parent (don't try direct) ---
 never_direct allow all
 
-# --- Or: use the parent only for cache misses, allow direct for hits ---
+# --- Or: prefer the parent but allow direct fallback if the parent is unavailable ---
+# Use these instead of never_direct if you want fallback behavior.
 # prefer_direct off
+# nonhierarchical_direct off
 
 # --- Listening port ---
 http_port 3128
@@ -86,21 +89,21 @@ squid -k reconfigure
 curl -x http://192.168.1.10:3128 http://example.com
 
 # Check cache manager for peer statistics
-squidclient -h 192.168.1.10 mgr:server_list
+curl http://192.168.1.10:3128/squid-internal-mgr/server_list
 ```
 
 ## Confirming Parent Usage in Access Logs
 
 ```bash
-# On the child: look for MISS/TCP_MISS with FIRSTUP_PARENT in the access log
-tail -f /var/log/squid/access.log | grep FIRSTUP_PARENT
+# On the child: look for TCP_MISS with DEFAULT_PARENT in the access log
+tail -f /var/log/squid/access.log | grep DEFAULT_PARENT
 ```
 
-A log line containing `FIRSTUP_PARENT/10.0.0.1` confirms the request was forwarded to the parent.
+A log line containing `DEFAULT_PARENT/10.0.0.1` confirms the request was forwarded to the parent.
 
 ## Key Takeaways
 
 - `cache_peer <ip> parent <port> 0 no-query default` defines the parent and disables ICP.
 - `never_direct allow all` forces all traffic through the parent; remove it to allow direct connections for performance.
 - Use `proxy-only` to prevent the child from caching locally, relying entirely on the parent cache.
-- Monitor parent usage in the child's access log by grepping for `FIRSTUP_PARENT`.
+- Monitor parent usage in the child's access log by grepping for `DEFAULT_PARENT`.
