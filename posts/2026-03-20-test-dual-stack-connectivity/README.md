@@ -26,10 +26,10 @@ ping6 2001:4860:4860::8888
 
 # On Windows
 ping 8.8.8.8
-ping -6 2001:4860:4860::8888
+ping /6 2001:4860:4860::8888
 
 # Test link-local (must specify interface)
-ping6 fe80::1%eth0
+ping -6 fe80::1%eth0
 ```
 
 ## Traceroute Both Paths
@@ -37,11 +37,11 @@ ping6 fe80::1%eth0
 ```bash
 # IPv4 traceroute
 traceroute -4 example.com         # Linux
-tracert -4 example.com            # Windows
+tracert /4 example.com            # Windows
 
 # IPv6 traceroute
 traceroute -6 example.com         # Linux
-tracert -6 example.com            # Windows
+tracert /6 example.com            # Windows
 
 # Compare: if IPv4 and IPv6 paths diverge significantly, investigate
 # routing policy. Asymmetric paths increase troubleshooting complexity.
@@ -69,11 +69,11 @@ dig @2001:4860:4860::8888 A example.com  # IPv6 resolver
 ```bash
 # Force IPv4
 curl -4 -v https://example.com 2>&1 | grep "Connected to"
-# Connected to example.com (93.184.216.34) port 443
+# Connected to example.com (<IPv4 address>) port 443
 
 # Force IPv6
 curl -6 -v https://example.com 2>&1 | grep "Connected to"
-# Connected to example.com (2606:2800:220::1) port 443
+# Connected to example.com (<IPv6 address>) port 443
 
 # Show which address family was used (no force)
 curl -v https://example.com 2>&1 | grep "Connected to"
@@ -89,7 +89,7 @@ curl -6 -o /dev/null -s -w "IPv6 connect: %{time_connect}s total: %{time_total}s
 |---|---|---|
 | test-ipv6.com | https://test-ipv6.com | Browser IPv6 connectivity |
 | ipv6-test.com | https://ipv6-test.com | IPv6 readiness score |
-| whatismyipv6.com | https://whatismyipv6.com | Shows current IPv6 address |
+| whatismyv6ip.com | https://www.whatismyv6ip.com | Shows current IPv4/IPv6 address |
 | RIPE Atlas | https://atlas.ripe.net | Global IPv4/IPv6 path tests |
 | Hurricane Electric | https://bgp.he.net | IPv6 BGP prefix visibility |
 
@@ -122,8 +122,8 @@ ss -tlnp | grep :443
 # tcp  LISTEN  0  128  0.0.0.0:443  0.0.0.0:*   # IPv4
 # tcp  LISTEN  0  128  [::]:443     [::]:*       # IPv6 needed
 
-# Test direct connection to IPv6 service
-curl -6 https://[2001:db8::10]/
+# Test HTTPS service on a specific IPv6 address while preserving Host/SNI
+curl -6 --resolve "www.example.com:443:[2001:db8::10]" https://www.example.com/
 
 # Test SSH over IPv6
 ssh -6 admin@2001:db8::10
