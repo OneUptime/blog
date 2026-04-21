@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: WiFi, macOS, Static IP, IPv4, Network Configuration
 
-Description: Learn how to configure a static IPv4 address for WiFi on macOS using System Preferences and the networksetup command-line tool.
+Description: Learn how to configure a static IPv4 address for WiFi on macOS using System Settings/System Preferences and the networksetup command-line tool.
 
 ## When to Use a Static WiFi IP on macOS
 
@@ -17,12 +17,12 @@ Static IPs on macOS WiFi are useful for:
 ## Step 1: Check Current Network Configuration
 
 ```bash
-# View current IP, gateway, and DNS via command line
+# View current IP and interface details via command line
 
 ifconfig en0
 # en0 is typically the WiFi adapter on Macs
 
-# Or with networksetup
+# Or view IP, subnet mask, and router with networksetup
 networksetup -getinfo "Wi-Fi"
 # Output:
 # DHCP Configuration
@@ -30,24 +30,28 @@ networksetup -getinfo "Wi-Fi"
 # Subnet mask: 255.255.255.0
 # Router: 192.168.1.1
 
-# Check interface name
+# Check configured DNS servers
+networksetup -getdnsservers "Wi-Fi"
+
+# Check service and interface names
 networksetup -listallnetworkservices
+networksetup -listallhardwareports
 ```
 
-## Step 2: Configure Static IP via System Preferences
+## Step 2: Configure Static IP via System Settings/System Preferences
 
-1. Open **System Preferences** (or **System Settings** on macOS Ventura+)
+1. Open **System Settings** (or **System Preferences** on macOS Monterey and earlier)
 2. Click **Network**
-3. Select **Wi-Fi** in the left panel
-4. Click **Advanced** (bottom right)
-5. Go to **TCP/IP** tab
+3. Select **Wi-Fi** in the sidebar
+4. On macOS Ventura or later, click **Details**; on macOS Monterey and earlier, click **Advanced** (bottom right)
+5. Go to the **TCP/IP** tab
 6. Change **Configure IPv4** from **Using DHCP** to **Manually**
 7. Enter:
    - **IPv4 Address**: 192.168.1.50
    - **Subnet Mask**: 255.255.255.0
    - **Router**: 192.168.1.1
-8. Go to **DNS** tab, click **+**, add `8.8.8.8` and `8.8.4.4`
-9. Click **OK** → **Apply**
+8. Go to the **DNS** tab, click **+**, add `8.8.8.8` and `8.8.4.4`
+9. Click **OK**, then click **Apply** on older macOS if prompted
 
 ## Step 3: Configure Static IP via networksetup
 
@@ -93,15 +97,16 @@ macOS supports named network "Locations" for switching between configurations:
 
 ```bash
 # Create a new location for static IP
-# System Preferences → Network → Location → Edit Locations → +
+# macOS Ventura or later: System Settings -> Network -> More (...) -> Locations -> Edit Locations -> +
+# macOS Monterey and earlier: System Preferences -> Network -> Location -> Edit Locations -> +
 # Name: "StaticHome"
 # Configure as needed
 
 # Switch locations from command line
-sudo scselect "StaticHome"
+sudo networksetup -switchtolocation "StaticHome"
 
 # Switch back to automatic
-sudo scselect "Automatic"
+sudo networksetup -switchtolocation "Automatic"
 
 # List available locations
 networksetup -listlocations
@@ -116,8 +121,9 @@ sudo networksetup -setdhcp "Wi-Fi"
 # Clear manual DNS settings
 sudo networksetup -setdnsservers "Wi-Fi" empty
 
-# Renew DHCP lease
+# Renew DHCP lease if needed (replace en0 with your Wi-Fi device if different)
 sudo ipconfig set en0 DHCP
+# ipconfig set is temporary; networksetup -setdhcp above keeps DHCP as the saved service setting.
 # Or disconnect and reconnect WiFi
 
 # Verify
@@ -153,4 +159,4 @@ networksetup -getinfo "$IFACE"
 
 ## Conclusion
 
-Configure a static WiFi IP on macOS via System Preferences → Network → Wi-Fi → Advanced → TCP/IP, or via the command line with `sudo networksetup -setmanual "Wi-Fi" <IP> <mask> <gateway>`. Use macOS Locations to quickly switch between static and DHCP configurations. Always verify with `ping` to the gateway and `nslookup` after configuration, and revert to DHCP with `sudo networksetup -setdhcp "Wi-Fi"` when static IP is no longer needed.
+Configure a static WiFi IP on macOS via System Settings/System Preferences -> Network -> Wi-Fi -> Details/Advanced -> TCP/IP, or via the command line with `sudo networksetup -setmanual "Wi-Fi" <IP> <mask> <gateway>`. Use macOS Locations to quickly switch between static and DHCP configurations. Always verify with `ping` to the gateway and `nslookup` after configuration, and revert to DHCP with `sudo networksetup -setdhcp "Wi-Fi"` when static IP is no longer needed.
