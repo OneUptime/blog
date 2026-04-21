@@ -17,7 +17,7 @@ High-throughput applications require kernel networking parameters tuned beyond t
 
 # TCP socket receive and send buffer sizes
 
-# Default is ~212KB; increase to 16MB for high-throughput
+# RHEL defaults are ~212KB; raise defaults to 256KB and max to 16MB
 net.core.rmem_default = 262144
 net.core.wmem_default = 262144
 net.core.rmem_max = 16777216
@@ -28,7 +28,7 @@ net.core.wmem_max = 16777216
 net.ipv4.tcp_rmem = 4096 87380 16777216
 net.ipv4.tcp_wmem = 4096 65536 16777216
 
-# Enable TCP window scaling (RFC 1323)
+# Enable TCP window scaling (RFC 7323)
 net.ipv4.tcp_window_scaling = 1
 ```
 
@@ -62,14 +62,16 @@ net.ipv4.ip_local_port_range = 1024 65535
 # Increase network interface receive queue size
 net.core.netdev_max_backlog = 250000
 
-# Enable receive packet steering for multi-queue NICs
-# (Set via ethtool or /sys/class/net/eth0/queues/rx-*/rps_cpus)
+# Tune RSS with ethtool, or configure RPS via:
+# /sys/class/net/eth0/queues/rx-*/rps_cpus
 ```
 
 ## Congestion Control
 
 ```bash
 # Use BBR congestion control (Linux 4.9+, available on RHEL 8+)
+# Red Hat recommends fq queueing with BBR
+net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
 
 # Verify available algorithms
@@ -106,6 +108,8 @@ iperf3 -c 10.0.0.1 -P 8 -t 30   # 8 parallel streams, 30 seconds
 
 ```bash
 # /etc/sysctl.d/99-network-performance.conf
+net.core.rmem_default = 262144
+net.core.wmem_default = 262144
 net.core.rmem_max = 16777216
 net.core.wmem_max = 16777216
 net.ipv4.tcp_rmem = 4096 87380 16777216
@@ -114,15 +118,17 @@ net.ipv4.tcp_window_scaling = 1
 net.core.somaxconn = 65535
 net.ipv4.tcp_max_syn_backlog = 65535
 net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_max_tw_buckets = 1440000
 net.ipv4.ip_local_port_range = 1024 65535
 net.core.netdev_max_backlog = 250000
+net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
 fs.file-max = 2097152
 ```
 
 ## Key Takeaways
 
-- Increase TCP buffer sizes (`tcp_rmem`/`tcp_wmem`) to at least 16MB for high-throughput workloads.
+- Increase maximum TCP buffer sizes (`tcp_rmem`/`tcp_wmem`) to 16MB or more for high-throughput workloads.
 - Raise `somaxconn` and `tcp_max_syn_backlog` for services with high connection rates.
 - Enable `tcp_tw_reuse` to recycle TIME_WAIT ports quickly on high-connection-rate services.
-- Use BBR congestion control on RHEL 8+ for better throughput on high-latency or lossy links.
+- Use BBR congestion control with `fq` queueing on RHEL 8+ for better throughput on high-latency or lossy links.
