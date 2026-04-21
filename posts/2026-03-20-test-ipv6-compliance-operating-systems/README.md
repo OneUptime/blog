@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Compliance Testing, Operating System, Linux, Window, macOS
+Tags: IPv6, Compliance Testing, Operating System, Linux, Windows, macOS
 
 Description: Test operating system IPv6 stack compliance including address assignment, ICMPv6 behavior, SLAAC, DHCPv6, privacy extensions, and socket API support.
 
@@ -15,11 +15,13 @@ Operating system IPv6 compliance testing verifies that the OS IPv6 stack correct
 ```bash
 # Test 1: Basic IPv6 support enabled
 
-# Check IPv6 module loaded
-lsmod | grep ipv6
+# Check IPv6 kernel support is present (module or built in)
+if lsmod | grep -q "^ipv6" || test -d /proc/sys/net/ipv6; then
+  echo "IPv6 kernel support present"
+fi
 
-# Check IPv6 is not disabled
-sysctl net.ipv6.conf.all.disable_ipv6
+# Check IPv6 is not disabled on the interface under test
+sysctl net.ipv6.conf.eth0.disable_ipv6
 # Must be 0
 
 # Verify IPv6 socket support
@@ -44,7 +46,7 @@ ip -6 addr show eth0 | grep "fe80"
 cat /proc/sys/net/ipv6/conf/eth0/autoconf
 # Must be 1
 
-# Simulate router advertisement arrival
+# Solicit router advertisements from the test router
 sudo rdisc6 eth0
 
 # Verify SLAAC address assigned
@@ -61,14 +63,14 @@ ip -6 addr show eth0 | grep "valid_lft"
 
 # When an address is assigned, it should go through tentative state
 # Add an address and watch for tentative
-sudo ip -6 addr add 2001:db8::test/64 dev eth0
+sudo ip -6 addr add 2001:db8::10/64 dev eth0
 
 # Immediately check - should be tentative
 ip -6 addr show eth0 | grep "tentative"
 
 # After DAD completes (usually <1 second), it becomes preferred
 sleep 2
-ip -6 addr show eth0 | grep "2001:db8::test"
+ip -6 addr show eth0 | grep "2001:db8::10"
 
 # If duplicate detected, address should be marked "dadfailed"
 # This prevents using a duplicate address
@@ -77,7 +79,7 @@ ip -6 addr show eth0 | grep "2001:db8::test"
 ## DHCPv6 Testing
 
 ```bash
-# Test DHCPv6 client (RFC 3315/RFC 8415)
+# Test DHCPv6 client (RFC 8415, which obsoletes RFC 3315)
 
 # Start DHCPv6 client
 sudo dhclient -6 -v eth0
@@ -93,7 +95,7 @@ cat /var/lib/dhcp/dhclient6.eth0.leases 2>/dev/null || \
 ## Privacy Extensions Testing
 
 ```bash
-# Test RFC 4941 Privacy Extensions (temporary addresses)
+# Test RFC 8981 Privacy Extensions (temporary addresses)
 
 # Check if privacy extensions enabled
 sysctl net.ipv6.conf.eth0.use_tempaddr
@@ -163,12 +165,15 @@ def test_dual_stack():
 
 def test_ipv6_resolution():
     """Test getaddrinfo returns IPv6 results."""
-    results = socket.getaddrinfo('ipv6.google.com', 80,
-                                  socket.AF_INET6, socket.SOCK_STREAM)
-    if results:
-        print(f"PASS: IPv6 DNS resolution: {results[0][4][0]}")
-    else:
-        print("FAIL: No IPv6 DNS results")
+    try:
+        results = socket.getaddrinfo('ipv6.google.com', 80,
+                                      socket.AF_INET6, socket.SOCK_STREAM)
+        if results:
+            print(f"PASS: IPv6 DNS resolution: {results[0][4][0]}")
+        else:
+            print("FAIL: No IPv6 DNS results")
+    except Exception as e:
+        print(f"FAIL: IPv6 DNS resolution: {e}")
 
 if __name__ == '__main__':
     print("=== IPv6 Socket API Tests ===")
@@ -197,8 +202,7 @@ Test-NetConnection -ComputerName "ipv6.google.com" -Port 80
 Resolve-DnsName -Name "ipv6.google.com" -Type AAAA
 
 # Test SLAAC
-Get-NetIPAddress -IPAddress "2*" -AddressFamily IPv6 |
-  Where-Object PrefixOrigin -eq "RouterAdvertisement"
+Get-NetIPAddress -AddressFamily IPv6 -PrefixOrigin RouterAdvertisement
 ```
 
 OS-level IPv6 compliance testing focuses on address autoconfiguration mechanisms (SLAAC, DAD, DHCPv6), privacy extension support, and socket API correctness, with the socket API tests being particularly important for verifying that applications can use IPv6 without workarounds.
