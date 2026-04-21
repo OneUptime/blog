@@ -121,7 +121,7 @@ resource "aws_ssm_parameter" "app_config" {
   type  = "String"
   value = templatefile("${path.module}/templates/app-config.yaml.tpl", {
     environment    = var.environment
-    enable_cache   = var.environment == "prod"
+    enable_cache   = var.enable_cache
     cache_endpoint = var.enable_cache ? aws_elasticache_cluster.main[0].cache_nodes[0].address : ""
     feature_flags  = var.feature_flags
   })
@@ -131,7 +131,6 @@ resource "aws_ssm_parameter" "app_config" {
 ## IAM Policy Template
 
 ```json
-// templates/s3-policy.json.tpl
 {
   "Version": "2012-10-17",
   "Statement": [
