@@ -12,14 +12,14 @@ A stateful firewall tracks the state of network connections and makes decisions 
 
 ## Connection Tracking States
 
-nftables uses four primary connection states:
+Common nftables connection tracking states include:
 
 | State | Meaning |
 |---|---|
-| `new` | First packet of a new connection |
-| `established` | Part of an already-tracked connection |
+| `new` | Packets for a connection that has only been seen in one direction so far |
+| `established` | Packets for a connection where traffic has been seen in both directions |
 | `related` | Related to an existing connection (e.g., FTP data channel) |
-| `invalid` | Does not match any tracked connection |
+| `invalid` | Does not follow the expected behavior of a tracked connection |
 
 ## Basic Stateful Firewall
 
@@ -37,6 +37,9 @@ table inet filter {
 
         # Allow established and related (permits replies to outbound connections)
         ct state established,related accept
+
+        # Allow essential IPv6 neighbor discovery
+        icmpv6 type { nd-neighbor-solicit, nd-router-advert, nd-neighbor-advert } accept
 
         # Drop invalid packets (protects against some attacks)
         ct state invalid drop
@@ -106,7 +109,7 @@ conntrack -C
 ## Flush the Connection Tracking Table
 
 ```bash
-# Remove all tracked connections (use with caution - drops all sessions)
+# Remove all tracked connections (use with caution - may disrupt active sessions)
 conntrack -F
 
 # Flush only connections from a specific host
