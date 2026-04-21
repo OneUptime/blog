@@ -13,6 +13,7 @@ Learn how to use Terramate to orchestrate OpenTofu stacks with change detection 
 ## Prerequisites
 
 - OpenTofu v1.6+ installed
+- Terramate CLI installed
 - Basic knowledge of OpenTofu concepts
 - Relevant cloud credentials configured
 
@@ -20,8 +21,10 @@ Learn how to use Terramate to orchestrate OpenTofu stacks with change detection 
 
 ```bash
 # Verify OpenTofu installation
-
 tofu version
+
+# Verify Terramate installation
+terramate version
 
 # Set up required environment variables
 export TF_LOG=INFO  # Enable logging
@@ -76,17 +79,23 @@ provider "aws" {
 ## Step 3: Implement the Core Feature
 
 ```bash
-# Initialize the project
-tofu init -backend-config=backend.tfvars
+# Import existing OpenTofu root modules as Terramate stacks
+terramate create --all-terraform
 
-# Create a plan and save it
-tofu plan -out=tfplan -var-file=production.tfvars
+# List detected stacks
+terramate list
 
-# Review the plan
-tofu show tfplan
+# Initialize each stack
+terramate run -- tofu init -backend-config=backend.tfvars
 
-# Apply the saved plan
-tofu apply tfplan
+# Create a plan for changed stacks and their dependencies
+terramate run --changed --include-all-dependencies -- tofu plan -out=tfplan -var-file=production.tfvars
+
+# Review the saved plans
+terramate run --changed --include-all-dependencies -- tofu show tfplan
+
+# Apply the saved plans
+terramate run --changed --include-all-dependencies -- tofu apply tfplan
 ```
 
 ## Step 4: Set Up Automation
@@ -104,36 +113,44 @@ on:
 permissions:
   id-token: write
   contents: read
-  pull-requests: write
+  pull-requests: read
 
 jobs:
   plan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Terramate
+        uses: terramate-io/terramate-action@v3
+        with:
+          version: "0.16.0"
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.7.0"
+          tofu_wrapper: false
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
 
-      - name: OpenTofu Init
-        run: tofu init
+      - name: Terramate Init
+        run: terramate run --changed --include-all-dependencies -- tofu init
 
-      - name: OpenTofu Plan
-        run: tofu plan -no-color -out=tfplan
+      - name: Terramate Plan
+        run: terramate run --changed --include-all-dependencies -- tofu plan -no-color -out=tfplan
 
       - name: Upload Plan
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
-          name: tfplan
-          path: tfplan
+          name: tfplans
+          path: "**/tfplan"
 
   apply:
     needs: plan
@@ -141,45 +158,53 @@ jobs:
     environment: production
     if: github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Terramate
+        uses: terramate-io/terramate-action@v3
+        with:
+          version: "0.16.0"
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.7.0"
+          tofu_wrapper: false
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Download Plan
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v8
         with:
-          name: tfplan
+          name: tfplans
 
-      - name: OpenTofu Init
-        run: tofu init
+      - name: Terramate Init
+        run: terramate run --changed --include-all-dependencies -- tofu init
 
-      - name: OpenTofu Apply
-        run: tofu apply -auto-approve tfplan
+      - name: Terramate Apply
+        run: terramate run --changed --include-all-dependencies -- tofu apply tfplan
 ```
 
 ## Step 5: Monitor and Verify
 
 ```bash
 # Check current state
-tofu show
+terramate run -- tofu show
 
 # List all managed resources
-tofu state list
+terramate run -- tofu state list
 
 # Verify resource configuration
-tofu state show aws_instance.main
+terramate run -- tofu state show RESOURCE_ADDRESS
 
 # Check for drift
-tofu plan -refresh-only
+terramate run -- tofu plan -refresh-only
 ```
 
 ## Step 6: Implement Best Practices
@@ -214,7 +239,7 @@ If you encounter issues:
 
 1. Enable debug logging: `export TF_LOG=DEBUG`
 2. Check provider credentials: Verify environment variables
-3. Review state consistency: Run `tofu refresh` then `tofu plan`
+3. Review state consistency: Run `terramate run -- tofu apply -refresh-only` then `terramate run -- tofu plan`
 4. Consult provider documentation for service-specific errors
 
 ## Conclusion
