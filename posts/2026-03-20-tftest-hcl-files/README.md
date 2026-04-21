@@ -15,7 +15,7 @@ OpenTofu's native testing framework uses `.tftest.hcl` files to define test case
 A `.tftest.hcl` file can contain:
 - `variables` blocks - global variable overrides
 - `run` blocks - individual test cases
-- `mock_provider` blocks - provider mocks (OpenTofu 1.7+)
+- `mock_provider` blocks - provider mocks (OpenTofu 1.8+)
 - `provider` blocks - provider configurations for tests
 
 ## Basic Test File
@@ -60,7 +60,7 @@ run "subnets_are_created" {
 
 ```hcl
 run "example" {
-  # command: plan (default) or apply
+  # command: apply (default) or plan
   command = apply
 
   # Override variables for this run only
@@ -73,10 +73,10 @@ run "example" {
     aws = aws.alternate
   }
 
-  # Expected failures (for testing validation)
+  # Expected failures (for input validation or custom conditions)
   expect_failures = [
     var.environment,
-    aws_instance.web,
+    check.web,
   ]
 }
 ```
@@ -139,7 +139,7 @@ run "module_outputs" {
 tofu test
 
 # Run a specific file
-tofu test --filter=tests/networking.tftest.hcl
+tofu test -filter=tests/networking.tftest.hcl
 
 # Verbose output
 tofu test -verbose
