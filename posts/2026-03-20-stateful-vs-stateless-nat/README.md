@@ -39,7 +39,7 @@ NAT looks up table → translates back to 192.168.1.10:54321
 
 - Works with PAT (many hosts, one public IP)
 - Return traffic automatically matched to correct internal host
-- Provides incidental firewall (stateful packet inspection)
+- Can provide a firewall-like effect because unsolicited inbound packets lack matching state, but NAT is not a firewall by itself
 - Handles TCP, UDP, ICMP with appropriate state
 
 ### Disadvantages
@@ -63,23 +63,23 @@ Rule: Map 203.0.113.x → 192.168.1.x (1:1 prefix mapping)
 
 ### Examples of Stateless NAT
 
-- NAT66 (IPv6 prefix translation, RFC 6296)
-- NAT-PT (deprecated)
-- Some hardware NAT implementations
-- Basic 1:1 NAT without port translation
+- NPTv6 (IPv6 prefix translation, RFC 6296)
+- SIIT/stateless IP/ICMP translation (RFC 7915)
+- Some hardware implementations of fixed 1:1 or prefix translation
+- Static 1:1 NAT without port translation
 
 ### Advantages
 
-- No memory overhead for state tables
-- No session limits
+- No per-session memory overhead for state tables
+- No state-table session limits
 - Easily distributable across multiple devices (no shared state)
 - Deterministic, predictable behavior
 
 ### Disadvantages
 
-- Cannot support PAT (requires state for port tracking)
+- Cannot support dynamic many-to-one PAT (requires state for port tracking)
 - No protection against unsolicited inbound packets
-- Requires dedicated IP per internal host
+- Requires a fixed external address or prefix mapping for each internal address
 - Does not handle protocols that embed IP addresses in payloads
 
 ## Comparison Table
@@ -87,15 +87,15 @@ Rule: Map 203.0.113.x → 192.168.1.x (1:1 prefix mapping)
 | Feature | Stateful NAT | Stateless NAT |
 |---------|-------------|--------------|
 | Session tracking | Yes | No |
-| PAT support | Yes | No (1:1 only) |
-| Memory overhead | High | Minimal |
-| Session limits | Yes | No |
-| Firewall effect | Yes | No |
+| Dynamic PAT support | Yes | No |
+| Per-session memory overhead | Yes | No |
+| State-table session limits | Yes | No |
+| Firewall-like effect | Often, for unsolicited inbound traffic | No state-based filtering |
 | HA/failover | Complex | Simple |
-| Performance | Moderate | High |
+| Performance | State lookup overhead | No state lookup overhead |
 | Use cases | Typical home/enterprise | Network prefix translation, large-scale 1:1 |
 
-## Stateless NAT in Practice: NAT66
+## Stateless NAT in Practice: NPTv6
 
 RFC 6296 defines NPTv6 (Network Prefix Translation for IPv6) as a stateless 1:1 prefix mapping:
 
@@ -110,9 +110,9 @@ fd00::2 ↔ 2001:db8::2
 ## Key Takeaways
 
 - Stateful NAT tracks connections and is required for PAT (many-to-one).
-- Stateless NAT is simpler, faster, and scales better but only works for 1:1 mappings.
-- Most enterprise and home NAT uses stateful NAT with conntrack.
-- Stateless NAT is used in high-performance scenarios (datacenter routers) and IPv6 prefix translation.
+- Stateless NAT is simpler and scales well for fixed or algorithmic mappings, commonly 1:1 address or prefix mappings.
+- Most enterprise and home NAT uses stateful NAT with connection tracking.
+- Stateless NAT is useful in high-performance scenarios and IPv6 prefix translation because it does not require per-flow state.
 
 **Related Reading:**
 
