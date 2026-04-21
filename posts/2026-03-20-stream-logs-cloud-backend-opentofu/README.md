@@ -8,7 +8,7 @@ Description: Learn how to stream and access run logs from the Terraform Cloud ba
 
 ## Introduction
 
-When using the cloud backend with remote execution, `tofu plan` and `tofu apply` output streams back to your terminal in real time. The same logs are also stored in Terraform Cloud and accessible via API, making it possible to integrate run logs with external monitoring systems, audit tools, and notification pipelines.
+When using a cloud backend with remote execution, `tofu plan` and `tofu apply` output streams back to your terminal in real time. The same logs are also stored in HCP Terraform (formerly Terraform Cloud) and accessible via API, making it possible to integrate run logs with external monitoring systems, audit tools, and notification pipelines.
 
 ## Real-Time Log Streaming
 
@@ -18,7 +18,7 @@ When using the cloud backend with remote execution, `tofu plan` and `tofu apply`
 tofu plan
 
 # Output:
-# Running plan in Terraform Cloud. Output will stream here. Waiting for the plan to start...
+# Running plan in HCP Terraform. Output will stream here. Waiting for the plan to start...
 #
 # Terraform v1.7.0
 # on linux_amd64
@@ -36,16 +36,19 @@ tofu plan
 # To perform exactly these actions, run the following command to apply:
 #   tofu apply
 
-# The run URL is printed at the end:
+# The run URL is printed during the remote run:
 # Run URL: https://app.terraform.io/app/my-company/workspaces/production/runs/run-abc123
 ```
 
 ## Controlling Log Verbosity
 
 ```bash
-# Enable debug logging for remote runs
+# Enable debug logging in the local OpenTofu CLI
 export TF_LOG=DEBUG
-tofu plan  # Shows verbose output including API calls
+tofu plan  # Shows verbose local CLI output including API calls
+
+# For remote worker logs, set TF_LOG as an environment variable
+# in the cloud workspace.
 
 # Available log levels
 # TRACE   - Most verbose
@@ -54,9 +57,11 @@ tofu plan  # Shows verbose output including API calls
 # WARN    - Warnings only
 # ERROR   - Errors only
 
-# Log to file (useful for CI/CD)
+# Write local OpenTofu debug logs to a file
 export TF_LOG=INFO
-export TF_LOG_PATH=/var/log/opentofu/plan.log
+export TF_LOG_PATH=/tmp/opentofu-plan-debug.log
+
+# Capture streamed plan/apply output in CI/CD
 tofu apply 2>&1 | tee /tmp/apply-output.txt
 ```
 
@@ -64,51 +69,52 @@ tofu apply 2>&1 | tee /tmp/apply-output.txt
 
 ```bash
 # Get the run ID from the last plan
+RUN_OPERATIONS="plan_only,plan_and_apply,save_plan,refresh_only,destroy,empty_apply,action_only"
+
 RUN_ID=$(curl -s \
   -H "Authorization: Bearer $TF_TOKEN" \
-  "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/runs?page%5Bsize%5D=1" | \
+  "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/runs?page%5Bsize%5D=1&filter%5Boperation%5D=$RUN_OPERATIONS" | \
   jq -r '.data[0].id')
 
 echo "Run ID: $RUN_ID"
 
-# Get plan log URL
-PLAN_LOG_URL=$(curl -s \
-  -H "Authorization: Bearer $TF_TOKEN" \
-  "https://app.terraform.io/api/v2/runs/$RUN_ID" | \
-  jq -r '.data.relationships.plan.data.id')
-
-# Get the plan object and log URL
+# Get the plan ID from the run
 PLAN_ID=$(curl -s \
   -H "Authorization: Bearer $TF_TOKEN" \
   "https://app.terraform.io/api/v2/runs/$RUN_ID" | \
   jq -r '.data.relationships.plan.data.id')
 
-# Retrieve plan logs
-curl -s \
+# Get the plan object's pre-authenticated log URL
+PLAN_LOG_URL=$(curl -s \
   -H "Authorization: Bearer $TF_TOKEN" \
-  "https://app.terraform.io/api/v2/plans/$PLAN_ID/log"
+  "https://app.terraform.io/api/v2/plans/$PLAN_ID" | \
+  jq -r '.data.attributes."log-read-url"')
+
+# Retrieve plan logs
+curl -s "$PLAN_LOG_URL"
 ```
 
-## Streaming Logs via API
+## Polling Logs via API
 
 ```bash
 #!/bin/bash
-# stream-run-logs.sh - Stream logs from a running Terraform Cloud run
+# poll-run-logs.sh - Poll an HCP Terraform run and retrieve available plan/apply logs
 
 RUN_ID="${1:?Usage: $0 <run-id>}"
 
-# Poll for log output while run is in progress
+# Poll run status while the run is in progress
 while true; do
-  RUN_STATUS=$(curl -s \
+  RUN_JSON=$(curl -s \
     -H "Authorization: Bearer $TF_TOKEN" \
-    "https://app.terraform.io/api/v2/runs/$RUN_ID" | \
-    jq -r '.data.attributes.status')
+    "https://app.terraform.io/api/v2/runs/$RUN_ID")
+
+  RUN_STATUS=$(echo "$RUN_JSON" | jq -r '.data.attributes.status')
 
   echo "Run status: $RUN_STATUS"
 
   case "$RUN_STATUS" in
-    "planned"|"applied"|"errored"|"canceled"|"discarded")
-      echo "Run completed with status: $RUN_STATUS"
+    "planned"|"planned_and_finished"|"planned_and_saved"|"policy_soft_failed"|"applied"|"errored"|"canceled"|"force_canceled"|"discarded")
+      echo "Run reached log retrieval status: $RUN_STATUS"
       break
       ;;
   esac
@@ -116,16 +122,32 @@ while true; do
   sleep 5
 done
 
-# Get final log
-PLAN_ID=$(curl -s \
-  -H "Authorization: Bearer $TF_TOKEN" \
-  "https://app.terraform.io/api/v2/runs/$RUN_ID" | \
-  jq -r '.data.relationships.plan.data.id')
+PLAN_ID=$(echo "$RUN_JSON" | jq -r '.data.relationships.plan.data.id // empty')
+APPLY_ID=$(echo "$RUN_JSON" | jq -r '.data.relationships.apply.data.id // empty')
 
-echo "=== Plan Output ==="
-curl -s \
-  -H "Authorization: Bearer $TF_TOKEN" \
-  "https://app.terraform.io/api/v2/plans/$PLAN_ID/log"
+if [ -n "$PLAN_ID" ]; then
+  PLAN_LOG_URL=$(curl -s \
+    -H "Authorization: Bearer $TF_TOKEN" \
+    "https://app.terraform.io/api/v2/plans/$PLAN_ID" | \
+    jq -r '.data.attributes."log-read-url" // empty')
+
+  if [ -n "$PLAN_LOG_URL" ]; then
+    echo "=== Plan Output ==="
+    curl -s "$PLAN_LOG_URL"
+  fi
+fi
+
+if [ -n "$APPLY_ID" ]; then
+  APPLY_LOG_URL=$(curl -s \
+    -H "Authorization: Bearer $TF_TOKEN" \
+    "https://app.terraform.io/api/v2/applies/$APPLY_ID" | \
+    jq -r '.data.attributes."log-read-url" // empty')
+
+  if [ -n "$APPLY_LOG_URL" ]; then
+    echo "=== Apply Output ==="
+    curl -s "$APPLY_LOG_URL"
+  fi
+fi
 ```
 
 ## GitHub Actions Log Integration
@@ -135,8 +157,12 @@ curl -s \
 - name: OpenTofu Apply
   id: apply
   run: |
+    set +e
     tofu apply -auto-approve -no-color 2>&1 | tee /tmp/apply-output.txt
-    echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+    exit_code=${PIPESTATUS[0]}
+    set -e
+    echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+    exit "$exit_code"
 
 - name: Upload apply logs as artifact
   if: always()
@@ -159,16 +185,17 @@ curl -s \
 
 ```bash
 #!/bin/bash
-# forward-logs-to-splunk.sh - Forward Terraform Cloud run logs to Splunk
+# forward-logs-to-splunk.sh - Forward HCP Terraform run logs to Splunk
 
 ORG="my-company"
+RUN_OPERATIONS="plan_only,plan_and_apply,save_plan,refresh_only,destroy,empty_apply,action_only"
 SPLUNK_HEC_URL="https://splunk.internal.company.com:8088/services/collector/event"
 SPLUNK_TOKEN="your-hec-token"
 
 # Get recent runs
 RUNS=$(curl -s \
   -H "Authorization: Bearer $TF_TOKEN" \
-  "https://app.terraform.io/api/v2/organizations/$ORG/runs?page%5Bsize%5D=10" | \
+  "https://app.terraform.io/api/v2/organizations/$ORG/runs?page%5Bsize%5D=10&filter%5Boperation%5D=$RUN_OPERATIONS" | \
   jq -r '.data[] | @base64')
 
 for RUN_B64 in $RUNS; do
@@ -184,10 +211,20 @@ for RUN_B64 in $RUNS; do
     "https://app.terraform.io/api/v2/runs/$RUN_ID" | \
     jq -r '.data.relationships.plan.data.id')
 
-  PLAN_LOG=$(curl -s \
+  if [ -z "$PLAN_ID" ] || [ "$PLAN_ID" = "null" ]; then
+    continue
+  fi
+
+  PLAN_LOG_URL=$(curl -s \
     -H "Authorization: Bearer $TF_TOKEN" \
-    "https://app.terraform.io/api/v2/plans/$PLAN_ID/log" | \
-    head -c 10000)  # Limit log size
+    "https://app.terraform.io/api/v2/plans/$PLAN_ID" | \
+    jq -r '.data.attributes."log-read-url" // empty')
+
+  if [ -z "$PLAN_LOG_URL" ]; then
+    continue
+  fi
+
+  PLAN_LOG=$(curl -s "$PLAN_LOG_URL" | head -c 10000)  # Limit log size
 
   # Forward to Splunk HEC
   curl -s -X POST \
@@ -207,10 +244,10 @@ for RUN_B64 in $RUNS; do
 done
 ```
 
-## Audit Log Webhook
+## Run Event Webhook
 
 ```bash
-# Terraform Cloud can send webhooks for run events
+# HCP Terraform can send webhooks for run events
 # Configure notification webhook to receive run event data
 
 curl -X POST \
@@ -219,12 +256,12 @@ curl -X POST \
   "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/notification-configurations" \
   -d '{
     "data": {
-      "type": "notification-configurations",
+      "type": "notification-configuration",
       "attributes": {
         "destination-type": "generic",
         "enabled": true,
-        "name": "Audit Log Webhook",
-        "url": "https://audit-log.internal.company.com/terraform-events",
+        "name": "Run Event Webhook",
+        "url": "https://run-events.internal.company.com/terraform-events",
         "token": "webhook-secret-for-verification",
         "triggers": [
           "run:created",
@@ -240,4 +277,4 @@ curl -X POST \
 
 ## Conclusion
 
-Terraform Cloud streams run logs to the local terminal automatically during remote execution. The same logs are accessible via API using the run ID, plan ID, or apply ID - enabling integration with external log management systems like Splunk, DataDog, or ELK. For CI/CD, capture output with `tee` and upload as artifacts for historical reference. Webhook notifications provide event-driven log forwarding without polling the API.
+Cloud backends that support remote execution stream run logs to the local terminal automatically. The same logs are accessible via API by fetching the plan or apply object's `log-read-url` - enabling integration with external log management systems like Splunk, DataDog, or ELK. For CI/CD, capture output with `tee` and upload as artifacts for historical reference. Webhook notifications provide event-driven triggers for log retrieval without polling for run status.
