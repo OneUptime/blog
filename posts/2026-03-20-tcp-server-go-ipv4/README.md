@@ -45,7 +45,7 @@ func handleClient(conn net.Conn) {
 }
 
 func main() {
-    // "tcp4" restricts to IPv4 only; use "tcp" for dual-stack
+    // "tcp4" restricts the listener to IPv4 only
     listener, err := net.Listen("tcp4", "0.0.0.0:9000")
     if err != nil {
         log.Fatalf("Failed to listen: %v", err)
@@ -75,7 +75,7 @@ listener, err := net.Listen("tcp4", "192.168.1.50:9000")
 
 Use `0.0.0.0:9000` to accept on all interfaces, or a specific IP to restrict.
 
-## Reading Fixed-Size Binary Data
+## Reading Length-Prefixed Binary Data
 
 ```go
 import (
@@ -109,7 +109,7 @@ func writeMessage(conn net.Conn, data []byte) error {
 }
 ```
 
-## Setting Read/Write Deadlines
+## Setting Read Deadlines
 
 ```go
 import (
@@ -138,16 +138,23 @@ func handleClientWithDeadline(conn net.Conn) {
 ```go
 import (
     "context"
+    "log"
     "net"
     "os/signal"
+    "sync"
     "syscall"
 )
 
 func main() {
-    listener, _ := net.Listen("tcp4", ":9000")
+    listener, err := net.Listen("tcp4", ":9000")
+    if err != nil {
+        log.Fatalf("Failed to listen: %v", err)
+    }
 
     ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
     defer stop()
+
+    var wg sync.WaitGroup
 
     go func() {
         <-ctx.Done()
@@ -158,14 +165,23 @@ func main() {
     for {
         conn, err := listener.Accept()
         if err != nil {
-            break  // listener.Close() was called
+            if ctx.Err() != nil {
+                break
+            }
+            log.Printf("Accept error: %v", err)
+            continue
         }
-        go handleClient(conn)
+        wg.Add(1)
+        go func(conn net.Conn) {
+            defer wg.Done()
+            handleClient(conn)
+        }(conn)
     }
+    wg.Wait()
     log.Println("Server stopped")
 }
 ```
 
 ## Conclusion
 
-Go makes TCP server development straightforward with `net.Listen("tcp4", addr)` and goroutines for concurrency. Use `io.ReadFull` for reading exact byte counts, set deadlines with `SetReadDeadline`, and close the listener on SIGTERM for graceful shutdown. Go's lightweight goroutines can handle tens of thousands of concurrent connections.
+Go makes TCP server development straightforward with `net.Listen("tcp4", addr)` and goroutines for concurrency. Use `io.ReadFull` for reading exact byte counts, set deadlines with `SetReadDeadline`, and close the listener and wait for handlers on SIGTERM for graceful shutdown. Go's lightweight goroutines can handle tens of thousands of concurrent connections.
