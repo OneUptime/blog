@@ -8,13 +8,13 @@ Description: Learn how to use command = plan in OpenTofu test run blocks to vali
 
 ## Introduction
 
-OpenTofu tests support two modes: `command = plan` and `command = apply`. Plan-mode tests run `tofu plan` in the background and validate the planned changes without creating any real resources. This makes them fast, free, and safe for unit testing. Understanding what you can and cannot test with plan helps you write effective tests.
+OpenTofu tests support two modes: `command = plan` and `command = apply`. Plan-mode tests run `tofu plan` as part of `tofu test` and validate the planned changes without creating any real resources. This can make them fast and safe for unit-style testing, especially when you use `mock_provider` or offline provider configuration. Understanding what you can and cannot test with plan helps you write effective tests.
 
 ## Plan Mode Basics
 
 ```hcl
 run "test_name" {
-  # command = plan is the default - you can omit it
+  # command = apply is the default - set plan explicitly
   command = plan
 
   assert {
@@ -95,9 +95,9 @@ run "can_now_test_computed_values" {
 }
 ```
 
-## Testing Variable Validation with Plan
+## Testing Preconditions with Plan
 
-Plan mode is the right mode for testing that invalid inputs are rejected:
+Plan mode is the right mode for testing preconditions that can be evaluated during planning:
 
 ```hcl
 mock_provider "aws" {}
@@ -197,9 +197,9 @@ run "skips_log_group_when_disabled" {
 |------------------------------|-------------------------------|
 | Testing configuration logic | Testing actual resource creation |
 | Testing validation rules | Verifying provider behavior |
-| Running in CI without credentials | Running in integration test environment |
+| Running mocked or offline tests in CI | Running in integration test environment |
 | Testing conditionals and counts | Testing outputs from real resources |
 
 ## Conclusion
 
-Plan-mode tests are the foundation of fast, credential-free module testing. Use them to validate configuration logic, variable handling, conditional resource creation, and output format. Combine with `mock_provider` to make provider-computed values testable at plan time. Reserve `command = apply` for integration tests that need to validate actual infrastructure behavior.
+Plan-mode tests are the foundation of fast module testing without creating infrastructure. Use them to validate configuration logic, variable handling, conditional resource creation, and output format. Combine with `mock_provider` to make provider-computed values testable at plan time and to run credential-free tests. Reserve `command = apply` for integration tests that need to validate actual infrastructure behavior.
