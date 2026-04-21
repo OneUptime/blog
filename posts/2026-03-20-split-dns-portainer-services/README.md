@@ -48,7 +48,8 @@ sudo apt update && sudo apt install -y dnsmasq
 sudo systemctl stop systemd-resolved
 sudo systemctl disable systemd-resolved
 
-# Point /etc/resolv.conf to localhost
+# Replace the systemd-resolved symlink and point /etc/resolv.conf to localhost
+sudo rm -f /etc/resolv.conf
 echo "nameserver 127.0.0.1" | sudo tee /etc/resolv.conf
 ```
 
@@ -70,6 +71,9 @@ address=/app1.example.com/192.168.1.100
 address=/app2.example.com/192.168.1.100
 address=/grafana.example.com/192.168.1.100
 
+# Use only the upstream resolvers listed here
+no-resolv
+
 # Forward all other queries to upstream public DNS
 server=1.1.1.1
 server=8.8.8.8
@@ -87,10 +91,10 @@ nslookup portainer.example.com 127.0.0.1
 
 ## Step 4: Configure Public DNS
 
-In your domain registrar or Cloudflare DNS, create public records pointing to your external IP.
+In your domain registrar or Cloudflare DNS, create public records pointing to your external IP. If you use Cloudflare and want DNS lookups to return this public IP, set these records to **DNS only**.
 
 ```text
-# Public DNS (e.g., Cloudflare) - resolves to your public IP
+# Public DNS (e.g., Cloudflare DNS-only) - resolves to your public IP
 portainer.example.com   A   203.0.113.10
 app1.example.com        A   203.0.113.10
 app2.example.com        A   203.0.113.10
@@ -111,7 +115,7 @@ nslookup portainer.example.com 192.168.1.10
 
 # Confirm external DNS resolves differently
 nslookup portainer.example.com 1.1.1.1
-# Should resolve to: 203.0.113.10 (public IP)
+# Should resolve to: 203.0.113.10 (public IP for DNS-only records)
 ```
 
 ---
@@ -142,4 +146,4 @@ server {
 
 ## Summary
 
-Split DNS for Portainer services routes internal clients directly to your LAN IP while external clients use your public IP. The key components are: an internal DNS server (dnsmasq, Pi-hole, or AdGuard) with custom A records for your service hostnames, matching public DNS records pointing to your external IP, and a reverse proxy on the internal host to terminate SSL and forward requests to Portainer containers.
+Split DNS for Portainer services routes internal clients directly to your LAN IP while external clients use your public IP. The key components are: an internal DNS server (dnsmasq, Pi-hole, or AdGuard) with custom A records for your service hostnames, matching public DNS records pointing to your external IP (or Cloudflare records set to DNS only), and a reverse proxy on the internal host to terminate SSL and forward requests to Portainer containers.
