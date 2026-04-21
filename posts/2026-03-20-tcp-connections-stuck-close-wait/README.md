@@ -29,13 +29,13 @@ Stuck CLOSE_WAIT:
 ```bash
 # Count CLOSE_WAIT connections
 
-ss -tn state close-wait | wc -l
+ss -Htn state close-wait | wc -l
 
 # Show CLOSE_WAIT connections with process information
 ss -tnp state close-wait
 
 # Watch if the count grows over time (indicates a leak)
-watch -n 5 "ss -tn state close-wait | wc -l"
+watch -n 5 "ss -Htn state close-wait | wc -l"
 
 # Identify which process is responsible
 ss -tnp state close-wait | grep -oP 'pid=\K\d+'
@@ -47,16 +47,16 @@ ls -la /proc/<pid>/fd | grep socket
 
 ```bash
 # Too many CLOSE_WAIT sockets may exhaust file descriptors
-# Check current FD usage for the offending process
-cat /proc/<pid>/status | grep FDSize
-ls -la /proc/<pid>/fd | wc -l
+# Check FD limits and current FD usage for the offending process
+grep "Max open files" /proc/<pid>/limits
+ls -1 /proc/<pid>/fd | wc -l
 
-# System-wide FD limits
-ulimit -n              # Per-process limit
+# Process and system-wide FD limits
+ulimit -n              # Current shell's per-process limit
 cat /proc/sys/fs/file-max  # System total limit
 
 # If FDs exhausted, application will fail to open new sockets
-lsof -p <pid> | wc -l
+lsof -p <pid>
 ```
 
 ## Tracing the Application Bug
@@ -92,10 +92,10 @@ def handle_request():
     finally:
         conn.close()   # Always closes, even on exception
 
-# BETTER: use context manager
+# BETTER: use a context manager that closes on exit
 with get_db_connection() as conn:
     result = conn.execute("SELECT ...")
-# Automatically calls close() on exit
+# Cleanup runs automatically on exit
 ```
 
 ### Bug 2: Not Responding to EOF
