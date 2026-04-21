@@ -32,15 +32,15 @@ flowchart TD
 ```bash
 # Can you reach the remote gateway?
 
-ping6 -c 3 2001:db8:gw2::1
+ping6 -c 3 2001:db8:100::1
 
 # Is UDP 500 (IKE) reachable? Use netcat or nmap
-nmap -6 -p U:500,U:4500 2001:db8:gw2::1
+nmap -6 -sU -p 500,4500 2001:db8:100::1
 
 # Check for blocking firewalls
-tcpdump -i eth0 'udp port 500 and host 2001:db8:gw2::1' &
+tcpdump -i eth0 'udp port 500 and host 2001:db8:100::1' &
 swanctl --initiate conn:my-vpn
-# Should see outbound packet - if no response, remote firewall is blocking
+# Should see outbound packet - if no response, the path, remote firewall, or responder may be blocking
 ```
 
 ## Step 2: Analyze IKEv2 Negotiation
@@ -50,7 +50,8 @@ swanctl --initiate conn:my-vpn
 # /etc/strongswan.d/charon.conf or /etc/strongswan.conf
 charon {
     filelog {
-        /var/log/charon.log {
+        charon-log {
+            path = /var/log/charon.log
             default = 1
             ike = 3
             cfg = 2
@@ -67,7 +68,7 @@ tail -f /var/log/charon.log
 swanctl --initiate conn:my-vpn
 
 # Key messages to look for:
-# "IKE_SA_INIT request 0 sent to 2001:db8:gw2::1"  ← Request sent
+# "IKE_SA_INIT request 0 sent to 2001:db8:100::1"  ← Request sent
 # "received IKE_SA_INIT response"                    ← Response received
 # "authentication of 'gw2.example.com' with RSA signature successful"  ← Auth OK
 # "CHILD_SA site1-site2 established"                ← Tunnel up
@@ -84,12 +85,12 @@ Diagnosis:
 # Enable detailed logging and look for:
 # "no acceptable PROPOSAL found"
 
-Fix: Ensure both sides have matching proposals
+Fix: Ensure both sides have compatible proposals
 # GW1:
 proposals = aes256-sha256-ecp256
-esp_proposals = aes256gcm128-prfsha256-ecp256
+esp_proposals = aes256gcm16-ecp256
 
-# GW2 must have the SAME proposals
+# GW2 must have at least one compatible proposal
 # Test with a broader proposal set first to identify accepted ciphers:
 proposals = aes256-sha256-ecp256,aes256-sha256-modp2048
 ```
@@ -118,11 +119,13 @@ Possible causes:
 ```bash
 # Debug certificate validation
 # Run with extra certificate debugging
-strongswan:
 charon {
     filelog {
-        /var/log/charon.log {
-            cert = 4   ! Maximum cert debugging
+        charon-log {
+            path = /var/log/charon.log
+            # Extra ASN.1/X.509 certificate parsing logs
+            asn = 2
+            cfg = 2
         }
     }
 }
@@ -136,12 +139,12 @@ IKE SA established but CHILD_SA fails:
 → local_ts/remote_ts don't match between peers
 
 # GW1 expects:
-local_ts  = 2001:db8:site1::/48
-remote_ts = 2001:db8:site2::/48
+local_ts  = 2001:db8:1::/48
+remote_ts = 2001:db8:2::/48
 
 # GW2 must have the MIRROR:
-local_ts  = 2001:db8:site2::/48
-remote_ts = 2001:db8:site1::/48
+local_ts  = 2001:db8:2::/48
+remote_ts = 2001:db8:1::/48
 ```
 
 ## Common Failure: SA Installed But No Traffic
@@ -154,14 +157,14 @@ sysctl net.ipv6.conf.all.forwarding
 # Must be 1
 
 # 2. Check routing - does a route exist to remote site?
-ip -6 route | grep site2
+ip -6 route | grep "2001:db8:2::/48"
 
 # 3. Check if traffic matches IPsec policy
 # Use ip xfrm to test policy lookup
-ip xfrm policy get src 2001:db8:site1::10 dst 2001:db8:site2::10 proto tcp dir out
+ip xfrm policy get src 2001:db8:1::10 dst 2001:db8:2::10 proto tcp dir out
 
 # 4. Check firewall forwarding rules
-ip6tables -L FORWARD -n -v | grep site2
+ip6tables -L FORWARD -n -v | grep "2001:db8:2::/48"
 
 # 5. Check if traffic is being encrypted
 ip -s xfrm state list | grep bytes
@@ -172,11 +175,11 @@ ip -s xfrm state list | grep bytes
 
 ```bash
 # Symptom: Large transfers fail, small packets work
-# Cause: IPsec adds ~50-80 bytes overhead, exceeding MTU
+# Cause: IPsec adds overhead, often 50-100+ bytes depending on mode, cipher, and encapsulation
 
 # Test with explicit packet sizes
-ping6 -c 3 -s 1400 2001:db8:site2::1   # Should work
-ping6 -c 3 -s 1450 2001:db8:site2::1   # May fail
+ping6 -c 3 -s 1400 2001:db8:2::1   # Should work
+ping6 -c 3 -s 1450 2001:db8:2::1   # May fail
 
 # Fix: Reduce MTU on client interfaces or adjust TCP MSS
 ip6tables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN \
@@ -211,4 +214,4 @@ journalctl -u strongswan --since "5 minutes ago" | tail -50
 
 ## Summary
 
-IPv6 IPsec troubleshooting proceeds in order: network reachability → IKE negotiation → authentication → CHILD SA installation → traffic flow. The most common failures are: NO_PROPOSAL_CHOSEN (mismatched cipher suites - verify both sides have identical `proposals`/`esp_proposals`), AUTHENTICATION_FAILED (wrong PSK or untrusted certificate), TS_UNACCEPTABLE (traffic selector mismatch - `local_ts`/`remote_ts` must mirror on each side), and MTU issues (large transfers fail due to ESP overhead). Enable `ike = 3` in charon.conf for detailed negotiation logs.
+IPv6 IPsec troubleshooting proceeds in order: network reachability → IKE negotiation → authentication → CHILD SA installation → traffic flow. The most common failures are: NO_PROPOSAL_CHOSEN (mismatched cipher suites - verify both sides have compatible `proposals`/`esp_proposals`), AUTHENTICATION_FAILED (wrong PSK or untrusted certificate), TS_UNACCEPTABLE (traffic selector mismatch - `local_ts`/`remote_ts` must mirror on each side), and MTU issues (large transfers fail due to ESP overhead). Enable `ike = 3` in charon.conf for detailed negotiation logs.
