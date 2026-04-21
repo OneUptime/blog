@@ -61,7 +61,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
 
       - name: Configure Encryption and Deploy
         env:
@@ -91,7 +91,8 @@ jobs:
 ```yaml
 deploy:
   script:
-    - export TF_ENCRYPTION="$(cat <<'EOF'
+    - |
+      export TF_ENCRYPTION="$(cat <<EOF
       key_provider "pbkdf2" "main" {
         passphrase = "$STATE_PASSPHRASE"
       }
@@ -99,6 +100,10 @@ deploy:
         keys = key_provider.pbkdf2.main
       }
       state {
+        method = method.aes_gcm.main
+        enforced = true
+      }
+      plan {
         method = method.aes_gcm.main
         enforced = true
       }
@@ -117,6 +122,7 @@ export TF_ENCRYPTION='
 key_provider "aws_kms" "main" {
   kms_key_id = "alias/terraform-state"
   region     = "us-east-1"
+  key_spec   = "AES_256"
 }
 
 method "aes_gcm" "main" {
@@ -194,7 +200,7 @@ export TF_ENCRYPTION='{
 export TF_ENCRYPTION='key_provider "pbkdf2" "k" { passphrase = "secret" }...'
 
 # Better: Load from a secrets manager
-export TF_ENCRYPTION=$(vault kv get -field=tf_encryption secret/terraform)
+export TF_ENCRYPTION=$(vault kv get -mount=secret -field=tf_encryption terraform)
 
 # Or use a file (excluded from version control)
 export TF_ENCRYPTION=$(cat /run/secrets/tf_encryption)
