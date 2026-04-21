@@ -29,7 +29,7 @@ Examples:
 
 ```text
 IP Header (byte offsets):
-  0: version+IHL    4: DSCP/ECN
+  0: version+IHL    1: DSCP/ECN
   2: total length   8: TTL
   9: protocol      12: source IP
  16: dest IP       20+: options (if IHL > 5)
@@ -37,7 +37,7 @@ IP Header (byte offsets):
 TCP Header (byte offsets, relative to TCP start):
   0: src port       2: dst port
   4: seq number     8: ack number
- 12: data offset   13: flags
+ 12: data offset/reserved   13: flags
  14: window size   20: options
 ```
 
@@ -69,8 +69,8 @@ sudo tcpdump 'tcp[13] & 0x12 = 0x12'
 # Filter by IP TTL
 sudo tcpdump 'ip[8] < 10'      # TTL less than 10 (many hops used)
 
-# Filter by DSCP value (bytes 1-bit shifted in byte 1)
-sudo tcpdump 'ip[1] & 0xfc = 46'  # DSCP EF (Expedited Forwarding)
+# Filter by DSCP value (upper 6 bits of byte 1)
+sudo tcpdump 'ip[1] >> 2 = 46'  # DSCP EF (Expedited Forwarding)
 
 # Filter by protocol number (byte 9 of IP header)
 sudo tcpdump 'ip[9] = 6'     # TCP (protocol 6)
@@ -91,9 +91,9 @@ sudo tcpdump 'ip[2:2] > 1400'
 # Packets smaller than 64 bytes (control traffic)
 sudo tcpdump 'ip[2:2] < 64'
 
-# Alternative using built-in keywords
-sudo tcpdump 'greater 1400'
-sudo tcpdump 'less 64'
+# Alternative using built-in packet length keywords (inclusive)
+sudo tcpdump 'greater 1400'  # packet length >= 1400
+sudo tcpdump 'less 64'       # packet length <= 64
 ```
 
 ## Filter HTTP Verbs in TCP Payload
@@ -106,14 +106,14 @@ sudo tcpdump -A 'tcp dst port 80 and tcp[((tcp[12:1] & 0xf0) >> 2):4] = 0x474554
 # HTTP POST
 sudo tcpdump -A 'tcp dst port 80 and tcp[((tcp[12:1] & 0xf0) >> 2):4] = 0x504f5354'
 
-# Any HTTP method (G,P,D,H,O,C,T first byte)
-sudo tcpdump 'tcp dst port 80 and tcp[tcp[12] >> 2] >= 0x40'
+# Likely HTTP method (uppercase ASCII first byte)
+sudo tcpdump 'tcp dst port 80 and tcp[((tcp[12] & 0xf0) >> 2):1] >= 0x41 and tcp[((tcp[12] & 0xf0) >> 2):1] <= 0x5a'
 ```
 
 ## ICMP Type Filters
 
 ```bash
-# ICMP echo request (ping)
+# ICMP echo request/reply (ping)
 sudo tcpdump 'icmp[icmptype] = icmp-echo'          # or: icmp[0] = 8
 sudo tcpdump 'icmp[icmptype] = icmp-echoreply'     # or: icmp[0] = 0
 
