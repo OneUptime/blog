@@ -8,7 +8,7 @@ Description: Learn how to switch between OpenTofu workspaces using tofu workspac
 
 ## Introduction
 
-After creating multiple workspaces, you need to switch between them to plan and apply changes to different environments. The `tofu workspace select` command changes the active workspace, causing all subsequent operations to use that workspace's state file.
+After creating multiple workspaces, you need to switch between them to plan and apply changes to different environments. The `tofu workspace select` command changes the active workspace, causing all subsequent operations to use that workspace's state data.
 
 ## Basic Switching
 
@@ -77,17 +77,17 @@ variable "config" {
   }))
   default = {
     development = {
-      instance_type  = "t3.micro"
+      instance_type  = "db.t3.micro"
       instance_count = 1
       enable_deletion_protection = false
     }
     staging = {
-      instance_type  = "t3.small"
+      instance_type  = "db.t3.small"
       instance_count = 2
       enable_deletion_protection = false
     }
     production = {
-      instance_type  = "t3.large"
+      instance_type  = "db.t3.large"
       instance_count = 3
       enable_deletion_protection = true
     }
@@ -108,15 +108,20 @@ resource "aws_db_instance" "app" {
 # GitHub Actions
 jobs:
   deploy:
-    matrix:
-      environment: [staging, production]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [staging, production]
 
     steps:
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
+
       - name: Deploy to ${{ matrix.environment }}
         run: |
           tofu init
           tofu workspace select ${{ matrix.environment }}
-          tofu apply -auto-approve -var="environment=${{ matrix.environment }}"
+          tofu apply -auto-approve -var-file="${{ matrix.environment }}.tfvars"
 ```
 
 ## Safety Check Before Switching
@@ -153,7 +158,7 @@ tofu workspace select nonexistent
 # You can create a new workspace with the "workspace new" command.
 
 # Create and switch in one step
-tofu workspace select nonexistent 2>/dev/null || tofu workspace new nonexistent
+tofu workspace select -or-create nonexistent
 ```
 
 ## Returning to Default
