@@ -60,10 +60,10 @@ data "terraform_remote_state" "networking" {
 
 # Use the output values from the remote state
 resource "aws_instance" "app" {
-  ami           = "ami-0c55b159cbfafe1f0"
+  ami           = "resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
   instance_type = "t3.micro"
 
-  # Reference VPC and subnet from remote state
+  # Reference subnet from remote state
   subnet_id = data.terraform_remote_state.networking.outputs.private_subnet_ids[0]
 
   tags = {
@@ -74,7 +74,7 @@ resource "aws_instance" "app" {
 
 ## Step 3: Reference Outputs from Remote State
 
-All outputs from the remote configuration are available under `.outputs`:
+All root-level outputs from the remote configuration are available under `.outputs`:
 
 ```hcl
 # Access a single output value
@@ -86,13 +86,14 @@ locals {
 resource "aws_security_group" "app" {
   name   = "app-security-group"
   vpc_id = local.vpc_id
+}
 
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+resource "aws_vpc_security_group_ingress_rule" "app_https" {
+  security_group_id = aws_security_group.app.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 443
+  ip_protocol       = "tcp"
+  to_port           = 443
 }
 ```
 
@@ -164,9 +165,19 @@ resource "aws_iam_policy" "read_remote_state" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = ["s3:GetObject"]
-        Resource = "arn:aws:s3:::my-terraform-state/networking/*"
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = "arn:aws:s3:::my-terraform-state"
+        Condition = {
+          StringLike = {
+            "s3:prefix" = "networking/*"
+          }
+        }
+      },
+      {
+        Effect   = "Allow"
+        Action   = "s3:GetObject"
+        Resource = "arn:aws:s3:::my-terraform-state/networking/terraform.tfstate"
       }
     ]
   })
