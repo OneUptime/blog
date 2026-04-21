@@ -8,32 +8,32 @@ Description: Learn how to use terraform-docs to generate and maintain consistent
 
 ## Introduction
 
-Learn how to use terraform-docs to generate and maintain consistent documentation for OpenTofu modules. This guide provides step-by-step instructions with practical examples to help you implement this in your infrastructure workflow.
+Learn how to use terraform-docs to generate and maintain consistent documentation for OpenTofu modules. This guide provides step-by-step instructions with practical examples to help you implement this in your infrastructure workflow. For full generated inputs, outputs, providers, and resources, keep module code in `.tf` files; terraform-docs has only limited support for parsing `.tofu` files.
 
 ## Prerequisites
 
 - OpenTofu v1.6+ installed
+- terraform-docs v0.22.0 installed
 - Basic knowledge of OpenTofu concepts
-- Relevant cloud credentials configured
+- An OpenTofu module with documented variables and outputs
 
 ## Step 1: Set Up the Environment
 
 ```bash
-# Verify OpenTofu installation
+# Install terraform-docs if it is not already installed
+TERRAFORM_DOCS_VERSION=0.22.0
+curl -sSLo terraform-docs.tar.gz "https://terraform-docs.io/dl/v${TERRAFORM_DOCS_VERSION}/terraform-docs-v${TERRAFORM_DOCS_VERSION}-$(uname)-amd64.tar.gz"
+tar -xzf terraform-docs.tar.gz
+chmod +x terraform-docs
+sudo mv terraform-docs /usr/local/bin/terraform-docs
 
+# Verify OpenTofu and terraform-docs are available
 tofu version
+terraform-docs --help
 
-# Set up required environment variables
-export TF_LOG=INFO  # Enable logging
-export TF_INPUT=false  # Disable interactive input
-
-# Configure cloud credentials
-# AWS
-export AWS_PROFILE=your-profile
-# Azure
-export ARM_SUBSCRIPTION_ID=your-subscription-id
-# GCP
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+# Configure non-interactive OpenTofu output for automation
+export TF_INPUT=false
+export TF_IN_AUTOMATION=true
 ```
 
 ## Step 2: Configure Your OpenTofu Project
@@ -42,150 +42,8 @@ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 # main.tf
 terraform {
   required_version = ">= 1.6.0"
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-
-  # Remote state backend for team collaboration
-  backend "s3" {
-    bucket         = "my-opentofu-state"
-    key            = "production/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
-  }
 }
 
-provider "aws" {
-  region = var.aws_region
-
-  default_tags {
-    tags = {
-      ManagedBy   = "OpenTofu"
-      Environment = var.environment
-      Repository  = var.repository_url
-    }
-  }
-}
-```
-
-## Step 3: Implement the Core Feature
-
-```bash
-# Initialize the project
-tofu init -backend-config=backend.tfvars
-
-# Create a plan and save it
-tofu plan -out=tfplan -var-file=production.tfvars
-
-# Review the plan
-tofu show tfplan
-
-# Apply the saved plan
-tofu apply tfplan
-```
-
-## Step 4: Set Up Automation
-
-```yaml
-# .github/workflows/infrastructure.yml
-name: Infrastructure Deployment
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-permissions:
-  id-token: write
-  contents: read
-  pull-requests: write
-
-jobs:
-  plan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.7.0"
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Plan
-        run: tofu plan -no-color -out=tfplan
-
-      - name: Upload Plan
-        uses: actions/upload-artifact@v3
-        with:
-          name: tfplan
-          path: tfplan
-
-  apply:
-    needs: plan
-    runs-on: ubuntu-latest
-    environment: production
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.7.0"
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: Download Plan
-        uses: actions/download-artifact@v3
-        with:
-          name: tfplan
-
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Apply
-        run: tofu apply -auto-approve tfplan
-```
-
-## Step 5: Monitor and Verify
-
-```bash
-# Check current state
-tofu show
-
-# List all managed resources
-tofu state list
-
-# Verify resource configuration
-tofu state show aws_instance.main
-
-# Check for drift
-tofu plan -refresh-only
-```
-
-## Step 6: Implement Best Practices
-
-```hcl
-# Use locals for computed values
 locals {
   name_prefix = "${var.project}-${var.environment}"
   common_tags = {
@@ -196,9 +54,14 @@ locals {
   }
 }
 
-# Use validation for variables
+# variables.tf
+variable "project" {
+  description = "Short project name used in generated resource names."
+  type        = string
+}
+
 variable "environment" {
-  description = "Deployment environment"
+  description = "Deployment environment."
   type        = string
 
   validation {
@@ -206,17 +69,153 @@ variable "environment" {
     error_message = "Environment must be dev, staging, or production."
   }
 }
+
+variable "team_email" {
+  description = "Team email address used for ownership tags."
+  type        = string
+}
+
+# outputs.tf
+output "name_prefix" {
+  description = "Computed prefix shared by resources in this module."
+  value       = local.name_prefix
+}
+
+output "common_tags" {
+  description = "Common tags applied by this module."
+  value       = local.common_tags
+}
+```
+
+```markdown
+# README.md
+# Example OpenTofu Module
+
+<!-- BEGIN_TF_DOCS -->
+<!-- END_TF_DOCS -->
+```
+
+## Step 3: Implement the Core Feature
+
+```bash
+# Initialize without configuring a backend for reusable module validation
+tofu init -backend=false
+
+# Validate the module's OpenTofu syntax
+tofu validate
+
+# Generate or update the README documentation
+terraform-docs markdown table --output-file README.md --output-mode inject .
+
+# Check whether the generated README content is current
+terraform-docs markdown table --output-file README.md --output-mode inject --output-check .
+```
+
+## Step 4: Set Up Automation
+
+```yaml
+# .github/workflows/opentofu-docs.yml
+name: OpenTofu Documentation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    env:
+      TF_INPUT: "false"
+      TF_IN_AUTOMATION: "true"
+      TERRAFORM_DOCS_VERSION: "0.22.0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.7.0"
+          tofu_wrapper: false
+
+      - name: Install terraform-docs
+        run: |
+          curl -sSLo terraform-docs.tar.gz "https://terraform-docs.io/dl/v${TERRAFORM_DOCS_VERSION}/terraform-docs-v${TERRAFORM_DOCS_VERSION}-$(uname)-amd64.tar.gz"
+          tar -xzf terraform-docs.tar.gz
+          chmod +x terraform-docs
+          sudo mv terraform-docs /usr/local/bin/terraform-docs
+
+      - name: OpenTofu Init
+        run: tofu init -backend=false
+
+      - name: OpenTofu Validate
+        run: tofu validate
+
+      - name: Check terraform-docs Output
+        run: terraform-docs markdown table --output-file README.md --output-mode inject --output-check .
+```
+
+## Step 5: Monitor and Verify
+
+```bash
+# Check formatting
+tofu fmt -check
+
+# Validate the module
+tofu init -backend=false
+tofu validate
+
+# Verify generated documentation is current
+terraform-docs markdown table --output-file README.md --output-mode inject --output-check .
+
+# Check that README.md has no uncommitted generated changes
+git diff --exit-code README.md
+```
+
+## Step 6: Implement Best Practices
+
+```yaml
+# .terraform-docs.yml
+formatter: "markdown table"
+version: ">= 0.22.0, < 1.0.0"
+
+recursive:
+  enabled: false
+  path: modules
+
+output:
+  file: README.md
+  mode: inject
+  template: |-
+    <!-- BEGIN_TF_DOCS -->
+    {{ .Content }}
+    <!-- END_TF_DOCS -->
+
+sort:
+  enabled: true
+  by: name
+
+settings:
+  hide-empty: true
+  lockfile: true
+  read-comments: true
+  required: true
+  type: true
 ```
 
 ## Troubleshooting
 
 If you encounter issues:
 
-1. Enable debug logging: `export TF_LOG=DEBUG`
-2. Check provider credentials: Verify environment variables
-3. Review state consistency: Run `tofu refresh` then `tofu plan`
-4. Consult provider documentation for service-specific errors
+1. Regenerate stale documentation: `terraform-docs markdown table --output-file README.md --output-mode inject .`
+2. Check README markers: Verify `<!-- BEGIN_TF_DOCS -->` and `<!-- END_TF_DOCS -->` exist
+3. Review missing sections: Add descriptions to variables and outputs, and keep module interface files in `.tf`
+4. Debug OpenTofu validation: Run `tofu init -backend=false`, then `tofu validate`, and enable logging with `export TF_LOG=DEBUG` if needed
 
 ## Conclusion
 
-You have successfully implemented How to Set Up OpenTofu Documentation with terraform-docs. This approach provides a repeatable, auditable, and collaborative infrastructure management workflow. Combine with code review processes, automated testing, and proper access controls for a production-ready setup.
+You have successfully implemented OpenTofu documentation with terraform-docs. This approach provides a repeatable, auditable, and collaborative documentation workflow. Combine with code review processes, automated checks, and clear module interfaces for a production-ready setup.
