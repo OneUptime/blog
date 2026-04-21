@@ -8,7 +8,7 @@ Description: Learn how to install and configure Tekton Pipelines on a Rancher-ma
 
 ---
 
-Tekton is a cloud-native CI/CD framework that runs entirely on Kubernetes. Installing it on a Rancher-managed cluster gives you portable, repeatable pipelines that integrate with Rancher's RBAC and project model.
+Tekton is a cloud-native CI/CD framework that runs entirely on Kubernetes. Installing it on a Rancher-managed cluster gives you portable, repeatable pipelines that work with the Kubernetes namespaces and RBAC policies that Rancher manages.
 
 ---
 
@@ -18,11 +18,14 @@ Tekton is a cloud-native CI/CD framework that runs entirely on Kubernetes. Insta
 # Install the core Tekton Pipelines components
 
 kubectl apply -f \
-  https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
+  https://infra.tekton.dev/tekton-releases/pipeline/latest/release.yaml
 
 # Install the Tekton Dashboard for a visual UI
 kubectl apply -f \
-  https://storage.googleapis.com/tekton-releases/dashboard/latest/release.yaml
+  https://infra.tekton.dev/tekton-releases/dashboard/latest/release.yaml
+
+# Create the namespace used by the examples
+kubectl create namespace my-app
 
 # Verify pods are running
 kubectl get pods -n tekton-pipelines
@@ -36,10 +39,10 @@ kubectl get pods -n tekton-pipelines
 # macOS
 brew install tektoncd-cli
 
-# Linux (replace VERSION with latest)
-curl -LO https://github.com/tektoncd/cli/releases/download/v0.37.0/tkn_0.37.0_Linux_x86_64.tar.gz
-tar xvzf tkn_0.37.0_Linux_x86_64.tar.gz tkn
-sudo mv tkn /usr/local/bin/
+# Linux x86_64
+VERSION=v0.44.0
+curl -LO https://github.com/tektoncd/cli/releases/download/${VERSION}/tkn_${VERSION#v}_Linux_x86_64.tar.gz
+sudo tar xvzf tkn_${VERSION#v}_Linux_x86_64.tar.gz -C /usr/local/bin/ tkn
 ```
 
 ---
@@ -47,6 +50,17 @@ sudo mv tkn /usr/local/bin/
 ## Step 3: Create a Task
 
 A Task is the basic unit in Tekton. This task builds and pushes a Docker image using Kaniko (a daemon-less builder):
+
+```bash
+# Create this once with credentials for your registry
+REGISTRY_USERNAME="your-username"
+REGISTRY_PASSWORD="your-password"
+kubectl create secret docker-registry docker-registry-credentials \
+  --namespace my-app \
+  --docker-server=registry.example.com \
+  --docker-username="$REGISTRY_USERNAME" \
+  --docker-password="$REGISTRY_PASSWORD"
+```
 
 ```yaml
 # task-build-push.yaml
@@ -70,7 +84,6 @@ spec:
         - --dockerfile=Dockerfile
         - --context=dir://$(workspaces.source.path)/$(params.CONTEXT)
         - --destination=$(params.IMAGE)
-        - --skip-tls-verify
       volumeMounts:
         - name: docker-config
           mountPath: /kaniko/.docker
@@ -78,8 +91,15 @@ spec:
     - name: docker-config
       secret:
         secretName: docker-registry-credentials
+        items:
+          - key: .dockerconfigjson
+            path: config.json
   workspaces:
     - name: source
+```
+
+```bash
+kubectl apply -f task-build-push.yaml
 ```
 
 ---
@@ -87,6 +107,12 @@ spec:
 ## Step 4: Create a Pipeline
 
 This Pipeline chains a git-clone task with the build-push task:
+
+```bash
+# Install the git-clone Task in the same namespace as the Pipeline
+kubectl apply -n my-app -f \
+  https://raw.githubusercontent.com/tektoncd/catalog/main/task/git-clone/0.10/git-clone.yaml
+```
 
 ```yaml
 # pipeline-build-deploy.yaml
@@ -107,7 +133,6 @@ spec:
     - name: clone
       taskRef:
         name: git-clone
-        kind: ClusterTask
       params:
         - name: url
           value: $(params.repo-url)
@@ -128,6 +153,10 @@ spec:
       workspaces:
         - name: source
           workspace: shared-workspace
+```
+
+```bash
+kubectl apply -f pipeline-build-deploy.yaml
 ```
 
 ---
@@ -162,9 +191,9 @@ spec:
 ```
 
 ```bash
-kubectl apply -f pipelinerun-example.yaml
-# Watch pipeline progress
-tkn pipelinerun logs -f -n my-app
+kubectl create -f pipelinerun-example.yaml
+# Watch the most recent pipeline run in the namespace
+tkn pipelinerun logs --last -f -n my-app
 ```
 
 ---
@@ -175,7 +204,9 @@ Install Tekton Triggers to automatically start pipelines on GitHub pushes:
 
 ```bash
 kubectl apply -f \
-  https://storage.googleapis.com/tekton-releases/triggers/latest/release.yaml
+  https://infra.tekton.dev/tekton-releases/triggers/latest/release.yaml
+kubectl apply -f \
+  https://infra.tekton.dev/tekton-releases/triggers/latest/interceptors.yaml
 ```
 
 Then create an `EventListener` that accepts GitHub webhook events and starts the pipeline automatically. See the [Tekton Triggers docs](https://tekton.dev/docs/triggers/) for full details.
@@ -184,6 +215,6 @@ Then create an `EventListener` that accepts GitHub webhook events and starts the
 
 ## Best Practices
 
-- Use **ClusterTasks** for common operations like `git-clone` so they are available cluster-wide.
+- Use versioned **Tasks** or Tekton resolvers for common operations like `git-clone`; `ClusterTask` is deprecated.
 - Store Tekton pipelines in Git and manage them with Rancher Fleet for GitOps.
-- Use **PipelineResource** workspaces backed by Longhorn PVCs for large build caches.
+- Use **Workspaces** backed by Longhorn PVCs for large build caches.
