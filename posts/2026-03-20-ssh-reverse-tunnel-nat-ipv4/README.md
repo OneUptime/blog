@@ -24,7 +24,7 @@ graph LR
 On the private host behind NAT:
 
 ```bash
-# Open port 2222 on the public server that tunnels back to port 22 here
+# Open loopback port 2222 on the public server that tunnels back to port 22 here
 
 ssh -4 -fN \
   -R 2222:localhost:22 \
@@ -32,27 +32,30 @@ ssh -4 -fN \
   -o "ServerAliveCountMax 3" \
   user@203.0.113.10
 
-# Port 2222 on 203.0.113.10 now reaches port 22 on the private host
+# Port 2222 on the public server's loopback interface now reaches port 22 on the private host
 ```
 
-On the public server, enable `GatewayPorts` if you need external access:
+On the public server, enable `GatewayPorts` if you need external access and specify a non-loopback bind address in the `-R` option:
 
 ```bash
 # /etc/ssh/sshd_config (on public server)
-GatewayPorts clientspecified    # Allow client to specify bind address
+GatewayPorts clientspecified    # Allow client to specify a non-loopback bind address
 AllowTcpForwarding yes
 ```
 
 ## Accessing the Private Host Through the Tunnel
 
-From any machine (or the public server itself):
+From the public server itself:
 
 ```bash
-# Connect to private host via the reverse tunnel
-ssh -p 2222 private-user@203.0.113.10
-
-# Or from the public server directly:
+# Connect to private host via the loopback reverse tunnel
 ssh -p 2222 -o "NoHostAuthenticationForLocalhost yes" private-user@127.0.0.1
+```
+
+From any machine after binding the tunnel to the public address as shown in the next section:
+
+```bash
+ssh -p 2222 private-user@203.0.113.10
 ```
 
 ## Persistent Reverse Tunnel with autossh
@@ -64,7 +67,7 @@ On the private host, create a systemd service:
 
 [Unit]
 Description=Reverse SSH Tunnel to Public Server
-After=network.target
+After=network-online.target
 Wants=network-online.target
 
 [Service]
@@ -118,10 +121,10 @@ sudo iptables -A INPUT -p tcp --dport 2222 -j ACCEPT
 # /etc/ssh/sshd_config
 
 Match User tunnel
-    AllowTcpForwarding yes
+    AllowTcpForwarding remote
     PermitTTY no           # No shell for tunnel user
     X11Forwarding no
-    PermitOpen localhost:2222   # Only allow specific forward
+    PermitListen 2222      # Only allow remote forwards listening on port 2222
     ForceCommand /usr/sbin/nologin
 ```
 
@@ -134,10 +137,10 @@ ss -tlnp | grep :2222
 # Test connectivity
 ssh -p 2222 private-user@127.0.0.1
 
-# View autossh logs
+# On private host: view autossh logs
 sudo journalctl -u reverse-tunnel -f
 ```
 
 ## Conclusion
 
-Reverse SSH tunnels enable IPv4 access to machines behind NAT by having them dial out to a public server. Use `autossh` with systemd for reliable persistence, set `GatewayPorts clientspecified` on the public server for internet-accessible tunnels, and lock down the tunnel user with `PermitTTY no` and `PermitOpen` restrictions to minimize the attack surface on the public server.
+Reverse SSH tunnels enable IPv4 access to machines behind NAT by having them dial out to a public server. Use `autossh` with systemd for reliable persistence, set `GatewayPorts clientspecified` on the public server for internet-accessible tunnels, and lock down the tunnel user with `PermitTTY no` and `PermitListen` restrictions to minimize the attack surface on the public server.
