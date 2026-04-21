@@ -123,7 +123,7 @@ use std::io;
 fn main() -> io::Result<()> {
     let stream = TcpStream::connect("127.0.0.1:9000")?;
 
-    // Set read timeout; returns Err with ErrorKind::WouldBlock (or TimedOut) on expiry
+    // If a read times out, it returns ErrorKind::WouldBlock on Unix or TimedOut on Windows
     stream.set_read_timeout(Some(Duration::from_secs(30)))?;
     stream.set_write_timeout(Some(Duration::from_secs(10)))?;
     stream.set_nodelay(true)?;  // Disable Nagle's algorithm
