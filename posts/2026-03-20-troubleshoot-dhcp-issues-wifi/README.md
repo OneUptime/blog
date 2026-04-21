@@ -21,25 +21,26 @@ sequenceDiagram
     S->>C: DHCPACK (confirmed lease)
 ```
 
-A failure at any step causes the client to get no IP or an APIPA address (169.254.x.x).
+A failure at any step can leave the client with no DHCP lease or, on clients that use IPv4 link-local fallback, a 169.254.x.x address.
 
 ## Step 1: Identify the Failure Point
 
 ```bash
 # Linux: Watch DHCP negotiation
 
-sudo dhclient -v -i wlan0 2>&1 | head -30
+sudo dhclient -v wlan0 2>&1 | head -30
 
 # Or with journald
 journalctl -u NetworkManager -f | grep -i dhcp
 
 # Windows: View DHCP events
-# Event Viewer → Windows Logs → System → Filter for "DHCPv4"
+# Event Viewer → Applications and Services Logs → Microsoft → Windows → DHCP-Client → Operational/Admin
 
 # macOS:
+sudo wdutil log +dhcp
 sudo ipconfig set en0 BOOTP
 sudo ipconfig set en0 DHCP
-# Watch /var/log/system.log for DHCP messages
+sudo wdutil dump
 ```
 
 ## Step 2: Check DHCP Lease on the Router/Server
@@ -47,8 +48,8 @@ sudo ipconfig set en0 DHCP
 On the DHCP server or router:
 
 ```bash
-# Linux DHCP server (ISC DHCPD) - view active leases
-cat /var/lib/dhcp/dhcpd.leases | grep -A8 "lease 192.168"
+# Legacy Linux DHCP server (ISC DHCPD) - inspect raw lease entries
+grep -A8 "lease 192.168" /var/lib/dhcp/dhcpd.leases
 
 # dnsmasq - view leases
 cat /var/lib/misc/dnsmasq.leases
@@ -59,13 +60,13 @@ grep "no free leases" /var/log/syslog
 # Router CLI (Cisco IOS)
 show ip dhcp pool
 show ip dhcp binding
-show ip dhcp statistics
+show ip dhcp server statistics
 ```
 
 ## Step 3: Verify DHCP Server Configuration
 
 ```bash
-# Check ISC DHCPD configuration
+# Check legacy ISC DHCPD configuration
 cat /etc/dhcp/dhcpd.conf
 
 # Verify the subnet definition matches the interface
@@ -79,7 +80,7 @@ subnet 192.168.1.0 netmask 255.255.255.0 {
 
 # Check if DHCPD is running on the correct interface
 grep -E "INTERFACES|INTERFACESv4" /etc/default/isc-dhcp-server
-# Should list your server's interface: INTERFACES="eth0"
+# Should list your server's interface: INTERFACESv4="eth0"
 ```
 
 ## Step 4: Test DHCP with a Manual DHCP Request
@@ -89,7 +90,7 @@ grep -E "INTERFACES|INTERFACESv4" /etc/default/isc-dhcp-server
 sudo dhclient -r wlan0   # Release
 sudo dhclient -v wlan0   # Request new lease
 
-# Force DHCP renewal
+# One-shot DHCP attempt (exits with failure if no lease is received)
 sudo dhclient -1 wlan0
 
 # Windows:
@@ -104,14 +105,14 @@ sudo ipconfig set en0 DHCP
 
 ```bash
 # Capture DHCP traffic (UDP ports 67 and 68)
-sudo tcpdump -i wlan0 -n port 67 or port 68 -vv
+sudo tcpdump -i wlan0 -n -vv 'udp and (port 67 or port 68)'
 
 # Output should show DISCOVER → OFFER → REQUEST → ACK sequence
-# If no OFFER is seen, the server is not responding
-# If REQUEST is seen but no ACK, the server is rejecting the request
+# If no OFFER is seen, the server is not responding or replies are not reaching the client
+# If REQUEST is seen but no ACK/NAK returns, the server may be rejecting the request or replies may be blocked
 
 # Save for Wireshark analysis
-sudo tcpdump -i wlan0 -w /tmp/dhcp-capture.pcap port 67 or port 68
+sudo tcpdump -i wlan0 -w /tmp/dhcp-capture.pcap 'udp and (port 67 or port 68)'
 ```
 
 ## Step 6: Common DHCP Issues and Fixes
@@ -122,19 +123,22 @@ sudo tcpdump -i wlan0 -w /tmp/dhcp-capture.pcap port 67 or port 68
 # In dhcpd.conf:
 range 192.168.1.50 192.168.1.250;    # Was .100-.150
 
-# Delete old stale leases
-echo "" > /var/lib/dhcp/dhcpd.leases
-systemctl restart isc-dhcp-server
+# Only rebuild the ISC lease database during a maintenance window; it forgets active leases
+sudo systemctl stop isc-dhcp-server
+sudo cp /var/lib/dhcp/dhcpd.leases /var/lib/dhcp/dhcpd.leases.bak
+sudo sh -c ': > /var/lib/dhcp/dhcpd.leases'
+sudo systemctl start isc-dhcp-server
 ```
 
 **DHCP Server Not Receiving Broadcasts:**
 ```bash
 # Check if firewall is blocking UDP 67/68
 sudo iptables -L INPUT -n | grep -E "67|68"
+sudo iptables -L OUTPUT -n | grep -E "67|68"
 
-# Allow DHCP
+# Allow DHCP server requests and replies
 sudo iptables -I INPUT -p udp --dport 67 -j ACCEPT
-sudo iptables -I INPUT -p udp --dport 68 -j ACCEPT
+sudo iptables -I OUTPUT -p udp --sport 67 --dport 68 -j ACCEPT
 ```
 
 **DHCP on Wrong Interface:**
@@ -146,4 +150,4 @@ INTERFACESv4="eth0"    # Not wlan0 if this is the server's wired interface
 
 ## Conclusion
 
-DHCP issues on WiFi are diagnosed by tracing the DORA sequence: use `sudo dhclient -v wlan0` to watch the negotiation, `tcpdump port 67 or port 68` to capture packets, and check the DHCP server logs for pool exhaustion or rejection messages. The most common causes are exhausted DHCP pools, firewall blocking UDP 67/68, and the DHCP server not listening on the correct interface.
+DHCP issues on WiFi are diagnosed by tracing the DORA sequence: use `sudo dhclient -v wlan0` to watch the negotiation, `tcpdump 'udp and (port 67 or port 68)'` to capture packets, and check the DHCP server logs for pool exhaustion or rejection messages. The most common causes are exhausted DHCP pools, firewall blocking UDP 67/68, and the DHCP server not listening on the correct interface.
