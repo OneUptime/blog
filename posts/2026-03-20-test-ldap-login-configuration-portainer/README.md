@@ -26,7 +26,7 @@ Portainer includes a **Test LDAP connectivity** button in the authentication set
 TOKEN=$(curl -s -X POST \
   https://localhost:9443/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' \
+  -d '{"Username":"admin","Password":"yourpassword"}' \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
 # Test LDAP configuration without saving it
@@ -40,7 +40,7 @@ curl -X POST \
       "AnonymousMode": false,
       "ReaderDN": "cn=portainer,dc=example,dc=com",
       "Password": "ldap-reader-password",
-      "URLs": ["ldaps://ldap.example.com:636"],
+      "URL": "ldap.example.com:636",
       "TLSConfig": {
         "TLS": true,
         "TLSSkipVerify": false
