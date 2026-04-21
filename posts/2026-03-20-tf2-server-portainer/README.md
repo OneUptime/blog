@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Team Fortress 2, Game Server, Docker, Self-Hosted
 
-Description: Deploy a dedicated Team Fortress 2 game server using Portainer with custom plugins and map management.
+Description: Deploy a dedicated Team Fortress 2 game server using Portainer with persistent storage and backups.
 
 ## Introduction
 
@@ -15,14 +15,15 @@ Running your own dedicated game server gives you full control over game settings
 - Portainer installed with Docker
 - At least 4-8 GB RAM (varies by game and player count)
 - Adequate disk space (10-50 GB)
-- Required ports open in firewall: 27015:27015/udp 27015:27015/tcp
+- Required inbound firewall ports: 27015/udp and 27015/tcp
 
 ## Step 1: Open Required Firewall Ports
 
 ```bash
 # Open game server ports
 
-ufw allow 27015:27015/udp 27015:27015/tcp
+ufw allow 27015/udp
+ufw allow 27015/tcp
 ufw reload
 ```
 
@@ -32,20 +33,24 @@ Create a new stack in Portainer > Stacks > Add Stack:
 
 ```yaml
 # docker-compose.yml for Game Server
-version: "3.8"
-
 services:
   game-server:
     image: cm2network/tf2:latest
     container_name: game-server
     restart: unless-stopped
+    stdin_open: true
+    tty: true
     ports:
-      - "27015:27015/udp 27015:27015/tcp"
+      - "27015:27015/udp"
+      - "27015:27015/tcp"
     volumes:
-      # Persist game world and configuration data
-      - tf2-data:/game-data
+      # Persist game server files and configuration data
+      - tf2-data:/home/steam/tf-dedicated
     environment:
-      SRCDS_TOKEN=your-token SRCDS_MAXPLAYERS=24 SRCDS_TICKRATE=66 SRCDS_MAP=ctf_2fort
+      SRCDS_TOKEN: "your-token"
+      SRCDS_MAXPLAYERS: "24"
+      SRCDS_TICKRATE: "66"
+      SRCDS_STARTMAP: "ctf_2fort"
     healthcheck:
       test: ["CMD", "true"]
       interval: 60s
@@ -62,16 +67,16 @@ services:
   game-backup:
     image: alpine:latest
     container_name: game-backup
-    restart: "no"
+    restart: unless-stopped
     volumes:
-      - tf2-data:/game-data:ro
+      - tf2-data:/home/steam/tf-dedicated:ro
       - backup-data:/backups
     command: >
       sh -c "
         while true; do
-          DATE=\$(date +%Y%m%d_%H%M%S);
-          tar czf /backups/world-\$DATE.tar.gz -C /game-data .;
-          echo 'Backup created: world-'\$DATE'.tar.gz';
+          DATE=$$(date +%Y%m%d_%H%M%S);
+          tar czf /backups/tf2-$$DATE.tar.gz -C /home/steam/tf-dedicated .;
+          echo 'Backup created: tf2-'$$DATE'.tar.gz';
           ls -t /backups/*.tar.gz | tail -n +8 | xargs rm -f;
           sleep 21600;
         done
@@ -81,7 +86,9 @@ services:
 
 volumes:
   tf2-data:
+    name: tf2-data
   backup-data:
+    name: tf2-backups
 
 networks:
   game-net:
@@ -90,11 +97,14 @@ networks:
 
 ## Step 3: Configure Server Settings
 
-Access the container via Portainer's console to configure settings:
+Access the container via Portainer's console to configure settings, or run Docker commands from the host:
 
 ```bash
 # Access container console via Portainer
 # Portainer > Containers > game-server > Console
+
+# Edit server.cfg from the Docker host
+docker exec -it game-server nano /home/steam/tf-dedicated/tf/cfg/server.cfg
 
 # View server logs
 docker logs game-server -f --tail 100
@@ -116,39 +126,35 @@ Optimal resource usage:
 - Memory: Configure server RAM to 70-80% of available
 - Network: Monitor for unusual traffic spikes
 
-## Step 5: Configure Automatic Updates
+## Step 5: Configure Updates
 
-Many game server images support automatic updates:
+The `cm2network/tf2` image updates the game on container startup, so restart the container after a TF2 update is released:
 
-```yaml
-# Add to environment variables
-environment:
-  - AUTO_UPDATE=true
-  - AUTO_REBOOT=true
-  - CRON_AUTO_UPDATE="0 4 * * *"  # Update daily at 4 AM
+```bash
+docker restart game-server
 ```
 
-Configure restart policy in Portainer:
+The stack already sets `restart: unless-stopped`. If you configure a container manually in Portainer:
 1. Go to **Containers** > edit container
 2. Set **Restart Policy** to "Unless stopped"
 
-## Step 6: Set Up Player Backups
+## Step 6: Set Up Server Backups
 
-Automate world backups to prevent data loss:
+Back up server files and configuration to prevent data loss:
 
 ```bash
 #!/bin/bash
 # Manual backup trigger
 BACKUP_DIR="/game-backups"
 DATE=$(date +%Y%m%d_%H%M%S)
-mkdir -p $BACKUP_DIR
+mkdir -p "$BACKUP_DIR"
 
 docker run --rm \
-  -v tf2-data:/game-data:ro \
-  -v $BACKUP_DIR:/backup \
-  alpine tar czf /backup/world-$DATE.tar.gz -C /game-data .
+  -v tf2-data:/home/steam/tf-dedicated:ro \
+  -v "$BACKUP_DIR":/backup \
+  alpine tar czf /backup/tf2-$DATE.tar.gz -C /home/steam/tf-dedicated .
 
-echo "Backup saved: $BACKUP_DIR/world-$DATE.tar.gz"
+echo "Backup saved: $BACKUP_DIR/tf2-$DATE.tar.gz"
 ```
 
 ## Step 7: Server Administration
@@ -159,8 +165,8 @@ Admin commands and management:
 # Connect to server console (if supported)
 docker attach game-server
 
-# Restart server without full container restart
-docker exec game-server /restart-server.sh
+# Restart server container
+docker restart game-server
 
 # Check connected players (if applicable)
 docker logs game-server | grep "connected" | tail -20
@@ -176,4 +182,4 @@ docker logs game-server | grep "connected" | tail -20
 
 ## Conclusion
 
-Deploying this game server via Portainer provides a convenient, manageable dedicated server experience. With persistent volumes ensuring your world data survives container restarts, automated backups preventing data loss, and Portainer's visual interface simplifying server management, you can focus on playing rather than server administration. Regular updates keep your server secure and compatible with the latest game clients.
+Deploying this game server via Portainer provides a convenient, manageable dedicated server experience. With persistent volumes ensuring your server files and configuration survive container restarts, automated backups preventing data loss, and Portainer's visual interface simplifying server management, you can focus on playing rather than server administration. Regular updates keep your server secure and compatible with the latest game clients.
