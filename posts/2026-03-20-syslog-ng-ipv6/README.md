@@ -19,20 +19,20 @@ syslog-ng is a flexible syslog daemon that supports IPv6 natively. Sources can b
 @include "scl.conf"
 
 options {
-    use_dns(no);
-    use_fqdn(no);
-    keep_hostname(yes);
-    chain_hostnames(off);
+    use-dns(no);
+    use-fqdn(no);
+    keep-hostname(yes);
+    chain-hostnames(no);
 };
 
 # Source: accept UDP syslog on all IPv6 interfaces
 
 source s_ipv6_udp {
     network(
-        ip("::"),
-        port(5140),
-        transport("udp"),
-        ip_protocol(6),    # 6 = IPv6
+        ip("::")
+        port(5140)
+        transport("udp")
+        ip-protocol(6)    # 6 = IPv6
         flags(syslog-protocol)
     );
 };
@@ -40,21 +40,21 @@ source s_ipv6_udp {
 # Source: accept TCP syslog on all IPv6 interfaces
 source s_ipv6_tcp {
     network(
-        ip("::"),
-        port(5140),
-        transport("tcp"),
-        ip_protocol(6),
-        max_connections(100)
+        ip("::")
+        port(5140)
+        transport("tcp")
+        ip-protocol(6)
+        max-connections(100)
     );
 };
 
 # Source: dual-stack (accept both IPv4 and IPv6)
 source s_dualstack {
     network(
-        ip("::"),
-        port(514),
-        transport("udp"),
-        ip_protocol(6)     # :: with ip_protocol(6) accepts both on Linux
+        ip("::")
+        port(514)
+        transport("udp")
+        ip-protocol(6)     # :: with ip-protocol(6) accepts both on Linux
     );
 };
 
@@ -71,10 +71,10 @@ source s_local {
 # Forward to a remote syslog server over IPv6
 destination d_remote_ipv6 {
     network(
-        "2001:db8::20",
-        port(514),
-        transport("tcp"),
-        ip_protocol(6)
+        "2001:db8::20"
+        port(514)
+        transport("tcp")
+        ip-protocol(6)
     );
 };
 
@@ -84,7 +84,7 @@ destination d_elasticsearch {
         url("http://[2001:db8::10]:9200/syslog-_log/_doc")
         method("POST")
         headers("Content-Type: application/json")
-        template("$(format-json --scope everything)\n")
+        body("$(format-json --scope everything)\n")
     );
 };
 
@@ -102,7 +102,7 @@ destination d_ipv6_file {
 ```syslog-ng
 # Filter: match messages from any IPv6 source
 filter f_from_ipv6 {
-    netmask6("::/0");
+    netmask6("::/1") or netmask6("8000::/1");
 };
 
 # Filter: match from specific IPv6 subnet
@@ -133,6 +133,7 @@ filter f_ipv6_errors {
 log {
     source(s_ipv6_udp);
     source(s_ipv6_tcp);
+    filter(f_from_ipv6);
     filter(f_not_loopback);
     destination(d_ipv6_file);
     destination(d_remote_ipv6);
@@ -158,11 +159,8 @@ log {
 ```syslog-ng
 # Rewrite rules to add IPv6 metadata
 rewrite r_add_ip_version {
-    if (netmask6("::/0")) {
-        set("ipv6" value("IP_VERSION"));
-    } else {
-        set("ipv4" value("IP_VERSION"));
-    }
+    set("ipv6" value("IP_VERSION") condition(filter(f_from_ipv6)));
+    set("ipv4" value("IP_VERSION") condition(not filter(f_from_ipv6)));
 };
 
 log {
@@ -179,11 +177,11 @@ log {
 syslog-ng --syntax-only
 
 # Send a test syslog message to IPv6 source
-logger -n "::1" -P 5140 --ipv6 "Test IPv6 syslog message"
+logger -n "::1" -P 5140 -d --rfc5424 "Test IPv6 syslog message"
 
 # Or use netcat
-echo "<13>Mar 20 10:00:00 testhost app: Test IPv6 message" | \
-    nc -u ::1 5140
+echo "<13>1 2026-03-20T10:00:00Z testhost app - - - Test IPv6 message" | \
+    nc -6 -u -w 1 ::1 5140
 
 # Check syslog-ng stats for IPv6 sources
 syslog-ng-ctl stats | grep s_ipv6
@@ -191,4 +189,4 @@ syslog-ng-ctl stats | grep s_ipv6
 
 ## Conclusion
 
-syslog-ng supports IPv6 by setting `ip_protocol(6)` in network source and destination definitions and binding to `::` for all-interface listening. The `netmask6()` filter function enables subnet-based routing of log messages from IPv6 address ranges. Use this to separate internal (ULA, link-local) and external (global unicast) traffic into different log files or forwarding destinations.
+syslog-ng supports IPv6 by setting `ip-protocol(6)` in network source and destination definitions and binding to `::` for all-interface listening. The `netmask6()` filter function enables subnet-based routing of log messages from IPv6 address ranges. Use this to separate internal (ULA, link-local) and external (global unicast) traffic into different log files or forwarding destinations.
