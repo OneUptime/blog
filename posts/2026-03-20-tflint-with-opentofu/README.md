@@ -8,7 +8,7 @@ Description: Learn how to configure and use TFLint with OpenTofu to enforce codi
 
 ## Introduction
 
-TFLint is a pluggable linter designed for Terraform and OpenTofu. While `tofu validate` checks syntax, TFLint goes further by checking for provider-specific errors, deprecated arguments, and enforcing custom rules - all before you run `tofu plan`.
+TFLint is a pluggable linter for Terraform configuration files that can be used in OpenTofu workflows. While `tofu validate` checks syntax and internal consistency, TFLint goes further by checking for provider-specific errors, deprecated arguments, and enforcing custom rules - all before you run `tofu plan`.
 
 ## Installation
 
@@ -41,7 +41,7 @@ plugin "terraform" {
 
 plugin "aws" {
   enabled = true
-  version = "0.30.0"
+  version = "0.47.0"
   source  = "github.com/terraform-linters/tflint-ruleset-aws"
 }
 ```
@@ -59,10 +59,10 @@ tflint --init
 
 tflint
 
-# Show detailed output
+# Show compact output
 tflint --format=compact
 
-# Lint recursively across all modules
+# Lint recursively across directories/modules
 tflint --recursive
 ```
 
@@ -72,8 +72,8 @@ tflint --recursive
 
 ```hcl
 resource "aws_instance" "web" {
-  instance_type = "t2.badtype"   # Error: Invalid instance type
-  ami           = "ami-abc"       # Warning: potentially invalid format
+  ami           = "ami-0ff8a91507f77f867"
+  instance_type = "t1.2xlarge"    # Error: invalid instance type
 }
 ```
 
@@ -116,10 +116,10 @@ rule "aws_instance_previous_type" {
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/terraform-linters/tflint
-    rev: v0.50.0
+  - repo: https://github.com/tofuutils/pre-commit-opentofu
+    rev: v2.3.0
     hooks:
-      - id: tflint
+      - id: tofu_tflint
 ```
 
 ## Exit Codes
@@ -127,11 +127,11 @@ repos:
 | Code | Meaning |
 |------|---------|
 | 0 | No issues found |
-| 1 | Issues found |
-| 2 | Error running TFLint |
+| 1 | Error running TFLint |
+| 2 | Issues found |
 
 ```bash
-tflint || echo "Linting issues found"
+tflint || echo "TFLint failed or found issues"
 ```
 
 ## Conclusion
