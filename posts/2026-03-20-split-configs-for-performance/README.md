@@ -88,28 +88,37 @@ resource "aws_eks_cluster" "main" {
 ## Migrating Resources from a Monolith
 
 ```bash
-# 1. Identify resources to move
+# 1. Identify resources to move from the monolith
+cd /path/to/monolith
 tofu state list | grep "aws_vpc\|aws_subnet\|aws_route_table"
 
-# 2. Initialize the new networking config
-cd infrastructure/networking/
-tofu init
+# 2. Back up the source state and initialize the new config without its remote backend
+tofu state pull > /tmp/monolith.tfstate
+cd /path/to/infrastructure/networking/
+tofu init -backend=false
 
-# 3. Move state entries to the new config
+# 3. Move state entries into a new local state file
 tofu state mv \
-  -state=/old/terraform.tfstate \
+  -state=/tmp/monolith.tfstate \
   -state-out=./terraform.tfstate \
   aws_vpc.main aws_vpc.main
 
 # 4. Move all networking resources
 for resource in aws_subnet.private aws_subnet.public aws_internet_gateway.main; do
   tofu state mv \
-    -state=/old/terraform.tfstate \
+    -state=/tmp/monolith.tfstate \
     -state-out=./terraform.tfstate \
     "$resource" "$resource"
 done
 
-# 5. Verify
+# 5. Push the updated monolith state and migrate the new local state to S3
+cd /path/to/monolith
+tofu state push /tmp/monolith.tfstate
+
+cd /path/to/infrastructure/networking/
+tofu init -migrate-state
+
+# 6. Verify
 tofu state list
 tofu plan   # Should show no changes
 ```
