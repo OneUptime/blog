@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Traefik, TCP, Database, Port Routing
 
-Description: Learn how to configure Traefik TCP routing to expose non-HTTP services like databases and message brokers deployed via Portainer, without exposing ports directly on the host.
+Description: Learn how to configure Traefik TCP routing to expose non-HTTP services like databases and message brokers deployed via Portainer, without publishing each backend container's port directly on the host.
 
 ## When to Use TCP Routing
 
@@ -23,7 +23,7 @@ Traefik TCP routing proxies these services on dedicated ports.
 |---------|-------------|-------------|
 | Protocol | HTTP/HTTPS | Any TCP |
 | TLS termination | Yes | Optional (passthrough) |
-| Path/host routing | Yes | SNI only |
+| Path/host routing | Path and Host header | SNI only (no paths) |
 | Middleware support | Full | Limited |
 
 ## Step 1: Define TCP EntryPoints in Traefik
@@ -86,17 +86,18 @@ services:
 
 ## Step 3: TCP with TLS Passthrough
 
-For encrypted database connections (TLS at the application level):
+For encrypted PostgreSQL connections (Traefik supports PostgreSQL STARTTLS, so it can inspect SNI before passing the TLS stream through):
 
 ```yaml
 labels:
-  - "traefik.tcp.routers.mysql.rule=HostSNI(`db.example.com`)"
-  - "traefik.tcp.routers.mysql.entrypoints=mysql"
-  - "traefik.tcp.routers.mysql.tls.passthrough=true"
-  - "traefik.tcp.services.mysql.loadbalancer.server.port=3306"
+  - "traefik.tcp.routers.postgres.rule=HostSNI(`db.example.com`)"
+  - "traefik.tcp.routers.postgres.entrypoints=postgres"
+  - "traefik.tcp.routers.postgres.tls=true"
+  - "traefik.tcp.routers.postgres.tls.passthrough=true"
+  - "traefik.tcp.services.postgres.loadbalancer.server.port=5432"
 ```
 
-With TLS passthrough, Traefik doesn't terminate TLS - the backend handles it. SNI-based routing allows multiplexing multiple backends on port 443.
+With TLS passthrough, Traefik doesn't terminate TLS - the backend handles it. SNI-based routing allows multiplexing multiple backends on port 443 when the client sends TLS SNI. MySQL's protocol starts with a server handshake, so route MySQL on a dedicated entrypoint with ``HostSNI(`*`)`` and let Traefik pass the connection through as opaque TCP.
 
 ## TCP Routing on Port 443 with SNI
 
@@ -116,6 +117,7 @@ services:
       - "traefik.enable=true"
       - "traefik.tcp.routers.postgres.rule=HostSNI(`db.example.com`)"
       - "traefik.tcp.routers.postgres.entrypoints=websecure"
+      - "traefik.tcp.routers.postgres.tls=true"
       - "traefik.tcp.routers.postgres.tls.passthrough=true"
       - "traefik.tcp.services.postgres.loadbalancer.server.port=5432"
 ```
@@ -136,7 +138,9 @@ labels:
   # TCP service - routes by SNI (different subdomain)
   - "traefik.tcp.routers.db.rule=HostSNI(`db.example.com`)"
   - "traefik.tcp.routers.db.entrypoints=websecure"
+  - "traefik.tcp.routers.db.tls=true"
   - "traefik.tcp.routers.db.tls.passthrough=true"
+  - "traefik.tcp.services.db.loadbalancer.server.port=5432"
 ```
 
 ## Verifying TCP Routing
@@ -148,10 +152,10 @@ mysql -h traefik.example.com -P 3306 -u root -p
 # Test PostgreSQL
 psql -h traefik.example.com -p 5432 -U postgres
 
-# Check TCP routers in Traefik API
+# Check TCP routers in Traefik API, if the API is enabled
 curl http://localhost:8080/api/tcp/routers | jq '.[] | {name, rule, entrypoints}'
 ```
 
 ## Conclusion
 
-Traefik TCP routing allows Portainer-managed non-HTTP services like databases to be accessed through Traefik without exposing ports directly on every host. SNI-based routing even allows multiplexing multiple TCP services on a single port, keeping your firewall rules minimal while maintaining access control.
+Traefik TCP routing allows Portainer-managed non-HTTP services like databases to be accessed through Traefik without publishing each backend container's port directly on every host. SNI-based routing even allows multiplexing multiple TLS-capable TCP services on a single port, keeping your firewall rules minimal while maintaining access control.
