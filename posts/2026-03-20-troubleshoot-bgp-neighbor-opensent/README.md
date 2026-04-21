@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BGP, Troubleshooting, OpenSent, Cisco IOS, Networking
 
-Description: Learn how to diagnose BGP sessions stuck in the OpenSent state by identifying mismatched OPEN message parameters like hold time, BGP version, and router ID conflicts.
+Description: Learn how to diagnose BGP sessions stuck in the OpenSent state by identifying OPEN message problems like remote AS mismatches, unacceptable hold times, and router ID conflicts.
 
 ## What Is the OpenSent State?
 
@@ -24,7 +24,7 @@ stateDiagram-v2
 Router# show ip bgp summary
 
 Neighbor        V     AS   MsgRcvd MsgSent   TblVer  InQ OutQ Up/Down  State/PfxRcd
-203.0.113.2     4  65002        1       1        0    0    0  00:02:00  OpenSent
+203.0.113.2     4  65002        0       1        0    0    0  00:02:00  OpenSent
 ```
 
 `MsgSent: 1` and `MsgRcvd: 0` (or low) is characteristic of OpenSent-the OPEN was sent but nothing valid has come back.
@@ -39,17 +39,17 @@ Router# show log | include BGP|NOTIFICATION
 ! Common notification messages:
 ! %BGP-3-NOTIFICATION: received from neighbor 203.0.113.2 2/2 (peer in wrong AS) 0 bytes
 ! %BGP-3-NOTIFICATION: received from neighbor 203.0.113.2 2/6 (Unacceptable Hold Time) 0 bytes
-! %BGP-3-NOTIFICATION: received from neighbor 203.0.113.2 2/4 (Bad BGP Identifier) 0 bytes
+! %BGP-3-NOTIFICATION: received from neighbor 203.0.113.2 2/3 (BGP identifier wrong) 4 bytes
 ```
 
 ## Step 3: Identify Error Code Meaning
 
 | Error Code | Sub-code | Meaning |
 |---|---|---|
-| 2/2 | Peer in wrong AS | AS number mismatch in OPEN |
-| 2/6 | Unacceptable Hold Time | Hold timer mismatch |
-| 2/4 | Bad BGP Identifier | Duplicate Router ID detected |
-| 2/8 | Unsupported Optional Parameter | Capability mismatch |
+| 2/2 | Bad Peer AS (peer in wrong AS) | AS number in the OPEN is unacceptable |
+| 2/6 | Unacceptable Hold Time | Peer proposed a hold time of 1 or 2 seconds, or a value rejected by local policy |
+| 2/3 | Bad BGP Identifier | Router ID is invalid, zero, or duplicates the local ID for an iBGP peer |
+| 2/7 | Unsupported Capability | Required capability is not supported by the peer |
 
 ## Step 4: Fix AS Number Mismatch (Error 2/2)
 
@@ -68,9 +68,9 @@ router bgp 65001
  neighbor 203.0.113.2 remote-as 65003       ! Add correct AS
 ```
 
-## Step 5: Fix Hold Time Mismatch (Error 2/6)
+## Step 5: Fix Unacceptable Hold Time (Error 2/6)
 
-BGP requires a minimum hold time of 3 seconds. If one side sends 0 (disable hold timer) and the other doesn't accept it:
+BGP Hold Time must be either 0 (disable the HoldTimer and periodic KEEPALIVE messages) or at least 3 seconds. Values of 1 or 2 seconds must be rejected. If one side sends 0 and the other doesn't accept it:
 
 ```text
 ! Check configured hold time
@@ -84,9 +84,9 @@ router bgp 65001
 
 The hold time is negotiated to the lower of the two values in the OPEN messages.
 
-## Step 6: Fix Duplicate Router ID (Error 2/4)
+## Step 6: Fix Duplicate Router ID (Error 2/3)
 
-Two BGP routers in the same AS cannot have the same Router ID:
+Two BGP routers in the same AS should not have the same Router ID:
 
 ```text
 ! Check Router ID on both routers
@@ -106,8 +106,8 @@ For detailed OPEN message inspection:
 
 ```text
 ! Enable BGP open message debugging (use carefully)
-Router# debug ip bgp 203.0.113.2 events
-Router# debug ip bgp 203.0.113.2 opens
+Router# debug ip bgp events
+Router# debug ip bgp 203.0.113.2
 
 ! Look for:
 ! BGP: 203.0.113.2 OPEN rcvd: version 4, my as 65003, holdtime 90, id 3.3.3.3
@@ -118,7 +118,7 @@ Router# no debug all
 
 ## Step 8: Check for Capability Negotiation Issues
 
-If a peer doesn't support a BGP capability you're advertising (like multiprotocol extensions), disable it:
+If the logs show an unsupported/disjoint capability (often error 2/7), disable the capability negotiation causing the reset:
 
 ```text
 ! Disable capability negotiation if peer doesn't support it
@@ -128,4 +128,4 @@ router bgp 65001
 
 ## Conclusion
 
-BGP sessions stuck in OpenSent indicate that the TCP session was established but the OPEN message exchange failed. Always start by checking system logs for NOTIFICATION error codes. AS number mismatches (error 2/2) are most common-verify with `show run` that `remote-as` matches the peer's actual AS. For hold time or Router ID issues, adjust the relevant parameters and clear the session to retry.
+BGP sessions stuck in OpenSent indicate that the TCP session was established but the OPEN message exchange failed. Always start by checking system logs for NOTIFICATION error codes. AS number mismatches (error 2/2) are most common-verify with `show run` that `remote-as` matches the peer's actual AS. For unacceptable hold time or Router ID issues, adjust the relevant parameters and clear the session to retry.
