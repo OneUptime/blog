@@ -33,7 +33,7 @@ resource "google_compute_subnetwork" "us_central" {
   region        = "us-central1"
   network       = google_compute_network.main.id
 
-  private_ip_google_access = true  # Allow GCP API access without internet
+  private_ip_google_access = true  # Allow Google API access without external IPs
 
   log_config {
     aggregation_interval = "INTERVAL_5_SEC"
@@ -65,7 +65,7 @@ resource "google_compute_subnetwork" "gke" {
 
   secondary_ip_range {
     range_name    = "gke-pods"
-    ip_cidr_range = "10.193.0.0/16"  # Pod IPs (/alias)
+    ip_cidr_range = "10.193.0.0/16"  # Pod IPs (alias IPs)
   }
 
   secondary_ip_range {
@@ -77,7 +77,7 @@ resource "google_compute_subnetwork" "gke" {
 }
 ```
 
-## Cloud Router and NAT (for Private Subnet Internet Access)
+## Cloud Router and NAT (for Private Subnet Internet Access in us-central1)
 
 ```hcl
 resource "google_compute_router" "main" {
@@ -117,4 +117,4 @@ output "subnet_self_links" {
 
 ## Conclusion
 
-GCP custom VPCs in Terraform use `auto_create_subnetworks = false` and explicit `google_compute_subnetwork` resources per region. Enable `private_ip_google_access` to allow VMs to reach Google APIs without public IPs. Use secondary ranges for GKE pod and service CIDRs. Add Cloud Router + Cloud NAT for private subnet internet egress.
+GCP custom VPCs in Terraform use `auto_create_subnetworks = false` and explicit `google_compute_subnetwork` resources per region. Enable `private_ip_google_access` to allow VMs to reach Google APIs without public IPs. Use secondary ranges for GKE pod and service CIDRs. Add regional Cloud Router + Cloud NAT for private subnet internet egress in each region that needs NAT.
