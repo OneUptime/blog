@@ -18,9 +18,9 @@ IPv6 training is often overlooked in migration planning, leading to configuratio
 |--------|----------|--------|
 | IPv6 Address Format | 2h | Hex notation, groups, :: compression, EUI-64, interface IDs |
 | Address Types | 2h | Global unicast, link-local, multicast, anycast, ULA |
-| SLAAC and DHCPv6 | 2h | RA flags (M/O/A), stateless vs stateful, prefix delegation |
+| SLAAC and DHCPv6 | 2h | RA M/O flags, Prefix Information A flag, stateless vs stateful, prefix delegation |
 | Routing | 2h | OSPFv3, BGP4+, route summarization differences |
-| Transition Mechanisms | 2h | Dual-stack, NAT64/DNS64, 6to4, Teredo |
+| Transition Mechanisms | 2h | Dual-stack, NAT64/DNS64, legacy 6to4/Teredo |
 | Security | 2h | RA Guard, DHCPv6 snooping, ICMPv6 policy, NDP |
 | Hands-on Lab | 4h | Configure dual-stack on routers and switches |
 
@@ -39,7 +39,7 @@ IPv6 training is often overlooked in migration planning, leading to configuratio
 | Module | Duration | Topics |
 |--------|----------|--------|
 | Reading IPv6 Addresses | 1h | Compressed form, recognizing address types |
-| Troubleshooting Tools | 1h | ping6, traceroute6, ss, ip -6, dig AAAA |
+| Troubleshooting Tools | 1h | ping -6, traceroute -6, ss, ip -6, dig AAAA |
 | Log Analysis | 1h | Parsing IPv6 in logs, filter commands |
 | Monitoring | 1h | Updating alert rules for IPv6 addresses |
 
@@ -53,22 +53,22 @@ Provide this cheat sheet during training:
 ip -6 addr show scope global
 
 # Ping IPv6 (loopback test)
-ping6 ::1
-ping6 -c 4 2001:4860:4860::8888
+ping -6 ::1
+ping -6 -c 4 2001:4860:4860::8888
 
 # Traceroute over IPv6
-traceroute6 2001:4860:4860::8888
+traceroute -6 2001:4860:4860::8888
 
 # DNS: look up AAAA record
 dig AAAA google.com
 nslookup -type=AAAA google.com
 
 # Check if a service listens on IPv6
-ss -tlnp | grep -E '\[::'
+ss -6 -tlnp
 
 # Test HTTP over IPv6
 curl -6 https://ipv6.google.com
-curl -v http://[2001:db8::1]:8080/health
+curl -v http://[fd00:10ab::10]/
 
 # Check IPv6 routing table
 ip -6 route show
@@ -90,21 +90,21 @@ networks:
     enable_ipv6: true
     ipam:
       config:
-        - subnet: "fd00:lab::/64"
+        - subnet: "fd00:10ab::/64"
 
 services:
   router:
     image: ubuntu:22.04
-    command: bash -c "apt-get update -q && apt-get install -y iproute2 iputils-ping curl dnsutils && sleep infinity"
+    command: bash -c "apt-get update -q && apt-get install -y iproute2 iputils-ping traceroute curl dnsutils && sleep infinity"
     networks:
       ipv6-lab:
-        ipv6_address: "fd00:lab::1"
+        ipv6_address: "fd00:10ab::1"
     cap_add:
       - NET_ADMIN
 
   client1:
     image: ubuntu:22.04
-    command: bash -c "apt-get update -q && apt-get install -y iproute2 iputils-ping curl dnsutils && sleep infinity"
+    command: bash -c "apt-get update -q && apt-get install -y iproute2 iputils-ping traceroute curl dnsutils && sleep infinity"
     networks:
       - ipv6-lab
 
@@ -112,7 +112,7 @@ services:
     image: nginx:alpine
     networks:
       ipv6-lab:
-        ipv6_address: "fd00:lab::10"
+        ipv6_address: "fd00:10ab::10"
 ```
 
 ```bash
@@ -123,8 +123,8 @@ docker compose up -d
 docker compose exec client1 bash
 
 # Try exercises:
-# 1. ping6 fd00:lab::1
-# 2. curl http://[fd00:lab::10]/
+# 1. ping -6 fd00:10ab::1
+# 2. curl http://[fd00:10ab::10]/
 # 3. ip -6 addr show
 # 4. ip -6 route show
 ```
@@ -133,11 +133,11 @@ docker compose exec client1 bash
 
 | Misconception | Correct Understanding |
 |--------------|----------------------|
-| "IPv6 is just IPv4 with longer addresses" | Different header format, no NAT, new concepts (NDP, RA, SLAAC) |
-| ":: means unknown" | `::` is the unspecified address; `::1` is loopback |
-| "IPv6 is optional" | IANA IPv4 exhaustion means new devices need IPv6 |
-| "IPv6 is slower" | Same or better - eliminates NAT overhead |
-| "We can skip training" | Misconfiguration is the #1 IPv6 issue source |
+| "IPv6 is just IPv4 with longer addresses" | Different header format, no broadcast, no routine NAT requirement, new concepts (NDP, RA, SLAAC) |
+| ":: means unknown" | By itself, `::` is the unspecified address; inside an address, it compresses one or more zero groups; `::1` is loopback |
+| "IPv6 is optional" | IPv4 exhaustion and public IPv4 scarcity mean new Internet-facing growth should plan for IPv6 |
+| "IPv6 is slower" | IPv6 is not inherently slower; performance depends on network paths, hardware, and policy |
+| "We can skip training" | Misconfiguration is a common IPv6 issue source |
 
 ## Conclusion
 
