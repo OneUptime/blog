@@ -38,8 +38,8 @@ bao read transit/keys/terraform-state
 ```bash
 # Create a policy file
 cat > terraform-state-policy.hcl << 'EOF'
-# Allow OpenTofu to encrypt/decrypt with the key
-path "transit/encrypt/terraform-state" {
+# Allow OpenTofu to generate and decrypt data keys with the key
+path "transit/datakey/plaintext/terraform-state" {
   capabilities = ["create", "update"]
 }
 
@@ -73,6 +73,11 @@ bao write auth/approle/role/opentofu \
 # Get Role ID and Secret ID
 bao read auth/approle/role/opentofu/role-id
 bao write -f auth/approle/role/opentofu/secret-id
+
+# Exchange Role ID and Secret ID for a client token, then pass that token to OpenTofu
+bao write auth/approle/login \
+  role_id="<role_id>" \
+  secret_id="<secret_id>"
 ```
 
 ### Using Token Authentication
@@ -98,26 +103,18 @@ terraform {
       address = "https://openbao.example.com:8200"
 
       # Transit key name
-      transit_key_name = "terraform-state"
+      key_name = "terraform-state"
 
-      # Transit secrets engine mount path (default: "transit")
-      # transit_mount_path = "transit"
+      # Transit secrets engine mount path (default: "/transit")
+      # transit_engine_path = "/transit"
 
-      # Authentication - using token
+      # Data key length in bytes (default: 32)
+      key_length = 32
+
+      # Authentication - using a token or BAO_TOKEN
       token = var.openbao_token
 
-      # Or using AppRole
-      # auth_login_path = "auth/approle/login"
-      # auth_login_params = {
-      #   role_id   = var.openbao_role_id
-      #   secret_id = var.openbao_secret_id
-      # }
-
-      # Skip TLS verification (for self-signed certs in dev)
-      # skip_tls_verify = true
-
-      # Custom CA certificate
-      # ca_cert_file = "/path/to/ca.crt"
+      # If you use AppRole, log in first and pass the resulting client token here.
     }
 
     method "aes_gcm" "state_method" {
@@ -142,24 +139,13 @@ variable "openbao_token" {
   type      = string
   sensitive = true
 }
-
-# Or for AppRole
-variable "openbao_role_id" {
-  type      = string
-  sensitive = true
-}
-
-variable "openbao_secret_id" {
-  type      = string
-  sensitive = true
-}
 ```
 
 ```bash
 # Set environment variables
-export TF_VAR_openbao_token="s.XXXXX"
-export OPENBAO_ADDR="https://openbao.example.com:8200"
-export OPENBAO_TOKEN="s.XXXXX"
+export TF_VAR_openbao_token="<openbao-client-token>"
+export BAO_ADDR="https://openbao.example.com:8200"
+export BAO_TOKEN="<openbao-client-token>"
 ```
 
 ## Step 6: Apply and Verify
@@ -169,27 +155,24 @@ export OPENBAO_TOKEN="s.XXXXX"
 tofu init
 
 # Plan and apply
+# For existing unencrypted state, add a temporary unencrypted fallback before the first apply.
 tofu plan
 tofu apply
 
-# Verify encryption by checking OpenBao audit logs
+# Confirm audit devices are enabled before checking logs for Transit calls
 bao audit list
 ```
 
 ## High Availability Setup
 
-For production, run OpenBao in HA mode:
+For production, run OpenBao in HA mode and point OpenTofu at a stable load-balanced address:
 
 ```hcl
 key_provider "openbao" "state_key" {
   address          = "https://openbao-lb.example.com:8200"
-  transit_key_name = "terraform-state"
+  key_name         = "terraform-state"
   token            = var.openbao_token
-
-  # Retry configuration
-  max_retries = 3
-  retry_wait_min = 0
-  retry_wait_max = 30
+  key_length       = 32
 }
 ```
 
@@ -201,9 +184,10 @@ OpenBao Transit automatically manages key versions. To manually rotate:
 # Rotate the encryption key
 bao write -f transit/keys/terraform-state/rotate
 
-# Rewrap all existing encrypted data with the new key
+# Existing OpenTofu state remains decryptable through OpenBao's keyring.
+# For separately managed Transit ciphertexts, rewrap individual values:
 bao write transit/rewrap/terraform-state \
-  ciphertext="<existing_ciphertext>"
+  ciphertext="<existing_transit_ciphertext>"
 ```
 
 ## Conclusion
