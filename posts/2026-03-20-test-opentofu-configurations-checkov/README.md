@@ -57,11 +57,11 @@ Check: CKV_AWS_24: "Ensure no security groups allow ingress from 0.0.0.0:0 to po
 
 | Check ID | Description |
 |----------|-------------|
-| CKV_AWS_57 | S3 bucket not public |
+| CKV_AWS_57 | S3 public WRITE ACLs |
 | CKV_AWS_23 | Security group descriptions |
-| CKV_AWS_8 | EC2 detailed monitoring |
+| CKV_AWS_8 | EC2/launch configuration EBS encryption |
 | CKV_AWS_79 | IMDSv2 required |
-| CKV_AWS_111 | IAM policy wildcards |
+| CKV_AWS_111 | IAM write access without constraints |
 
 ## Skipping Specific Checks
 
@@ -71,7 +71,7 @@ Skip false positives with inline suppression:
 resource "aws_s3_bucket" "public_assets" {
   bucket = "my-public-assets"
 
-  # checkov:skip=CKV_AWS_57:Public assets bucket intentionally public
+  # checkov:skip=CKV_AWS_20:Public assets bucket intentionally public
 }
 ```
 
@@ -109,14 +109,14 @@ Or with plain CLI:
     checkov -d . --framework terraform
 ```
 
-## Scanning for Specific Compliance Framework
+## Scanning Specific Checks
 
 ```bash
-# CIS AWS benchmarks only
-checkov -d . --check CIS_AWS
+# Specific AWS checks only
+checkov -d . --check CKV_AWS_20,CKV_AWS_57
 
-# All checks for specific category
-checkov -d . --check encryption
+# All checks matching a prefix
+checkov -d . --check CKV_AWS*
 ```
 
 ## Conclusion
