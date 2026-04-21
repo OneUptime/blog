@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Traefik, Service Discovery, Docker Labels, Routing
 
-Description: Learn how to use Docker labels to configure Traefik routing rules for containers deployed via Portainer, enabling automatic service discovery without any configuration files.
+Description: Learn how to use Docker labels to configure Traefik routing rules for containers deployed via Portainer, enabling automatic service discovery without per-service configuration files.
 
 ## How Traefik Label-Based Discovery Works
 
-Traefik watches the Docker socket and automatically detects containers with `traefik.enable=true`. When Portainer deploys a container with the right labels, Traefik picks it up and starts routing traffic to it - no restarts needed.
+With the Docker provider enabled, Traefik watches the Docker socket and automatically detects containers. In setups where `exposedByDefault=false`, containers need `traefik.enable=true` to opt in. When Portainer deploys a container with the right labels, Traefik picks it up and starts routing traffic to it - no restarts needed.
 
-```bash
+```text
 Portainer deploys container with labels
         ↓
 Traefik detects new container via Docker socket
@@ -24,7 +24,7 @@ Traffic routes to container immediately
 
 ```yaml
 labels:
-  # Required: opt this container into Traefik
+  # Required when exposedByDefault=false: opt this container into Traefik
   - "traefik.enable=true"
 
   # Router: define how requests are matched
@@ -56,15 +56,13 @@ labels:
 - "traefik.http.routers.app.rule=Host(`example.com`) && Method(`POST`)"
 
 # Match with regex
-- "traefik.http.routers.app.rule=HostRegexp(`{subdomain:[a-z]+}.example.com`)"
+- "traefik.http.routers.app.rule=HostRegexp(`^[a-z]+\\.example\\.com$`)"
 ```
 
 ## Full Example: Web App with HTTPS
 
 ```yaml
 # In Portainer: Stacks > Add Stack
-version: "3.8"
-
 services:
   webapp:
     image: myapp:latest
@@ -111,7 +109,7 @@ services:
 
 ## Priority: Resolving Routing Conflicts
 
-When multiple routers could match a request, Traefik uses rule specificity. More specific rules win:
+When multiple routers could match a request, Traefik uses router priority. By default, priority is based on rule length, so set explicit priorities when rules overlap:
 
 ```yaml
 # This more specific rule takes priority
@@ -126,7 +124,7 @@ When multiple routers could match a request, Traefik uses rule specificity. More
 ## Verifying Discovery
 
 ```bash
-# Check Traefik API for discovered routers
+# If the Traefik API is exposed locally on :8080, check discovered routers
 curl http://localhost:8080/api/http/routers | jq '.[] | {name: .name, rule: .rule}'
 
 # Check discovered services
@@ -135,4 +133,4 @@ curl http://localhost:8080/api/http/services | jq '.[] | {name: .name}'
 
 ## Conclusion
 
-Traefik's label-based service discovery means deploying a new service through Portainer and exposing it over HTTPS requires only adding the right labels to the container. No Traefik configuration files need to be changed, no restarts required, and Portainer's deployment workflow integrates seamlessly with Traefik's automatic discovery.
+Traefik's label-based service discovery means deploying a new service through Portainer and exposing it over HTTPS requires only adding the right labels to the container. No per-service Traefik configuration files need to be changed, no restarts required, and Portainer's deployment workflow integrates seamlessly with Traefik's automatic discovery.
