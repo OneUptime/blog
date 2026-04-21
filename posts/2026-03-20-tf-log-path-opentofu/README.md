@@ -30,12 +30,10 @@ export TF_LOG=DEBUG
 export TF_LOG_PATH="./tofu-debug.log"
 tofu plan
 
-# Core and provider logs to separate files
+# Core and provider logs at different levels in one file
 export TF_LOG_CORE=DEBUG
-export TF_LOG_PATH_CORE="./tofu-core.log"
-
 export TF_LOG_PROVIDER=TRACE
-export TF_LOG_PATH_PROVIDER="./tofu-provider.log"
+export TF_LOG_PATH="./tofu-debug.log"
 
 tofu plan
 
@@ -77,10 +75,10 @@ jobs:
       TF_LOG_PATH: /tmp/tofu-debug.log
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
 
       - name: Init
         run: tofu init
@@ -92,7 +90,7 @@ jobs:
 
       - name: Upload debug log on failure
         if: steps.plan.outcome == 'failure'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tofu-debug-${{ github.run_id }}
           path: /tmp/tofu-debug.log
@@ -110,10 +108,12 @@ jobs:
 # Use a log rotation approach to prevent huge single files
 
 export TF_LOG=INFO  # Less verbose for apply operations
-export TF_LOG_PATH="/var/log/opentofu/apply-$(date +%Y%m%d).log"
+mkdir -p logs
+LOG_DATE="$(date +%Y%m%d)"
+export TF_LOG_PATH="./logs/apply-${LOG_DATE}.log"
 
-# Apply with tee to see output and save to file simultaneously
-tofu apply 2>&1 | tee -a /var/log/opentofu/apply-$(date +%Y%m%d).log
+# Run apply; debug logs are appended to TF_LOG_PATH
+tofu apply
 ```
 
 ## Log Analysis Scripts
@@ -162,7 +162,7 @@ echo "*.log" >> .gitignore
 echo "logs/" >> .gitignore
 
 # 4. Use INFO level in production CI to reduce sensitive data exposure
-# DEBUG/TRACE logs contain full HTTP request/response bodies
+# DEBUG/TRACE logs can contain HTTP request/response details
 ```
 
 ## Automated Log Cleanup
