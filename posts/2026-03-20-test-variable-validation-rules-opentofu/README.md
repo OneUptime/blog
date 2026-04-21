@@ -8,7 +8,7 @@ Description: Learn how to write tests that verify variable validation rules in O
 
 ## Introduction
 
-OpenTofu's built-in `tofu test` command supports `expect_failures` blocks that let you test that variables with validation rules correctly reject invalid values. This ensures your validation logic works as intended and doesn't accidentally allow bad configurations.
+OpenTofu's built-in `tofu test` command supports `expect_failures` lists inside `run` blocks that let you test that variables with validation rules correctly reject invalid values. This ensures your validation logic works as intended and doesn't accidentally allow bad configurations.
 
 ## Defining Variables with Validation
 
@@ -119,7 +119,7 @@ run "reject_zero_retention" {
 
 ```bash
 tofu test
-tofu test --test-directory=tests -verbose
+tofu test -test-directory=tests -verbose
 ```
 
 ## Combining Multiple expect_failures
