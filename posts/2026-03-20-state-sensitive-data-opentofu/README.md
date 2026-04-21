@@ -8,7 +8,7 @@ Description: Learn how to identify, mitigate, and prevent sensitive data exposur
 
 ## Introduction
 
-OpenTofu state files contain the full configuration and attribute values of every managed resource - including secrets such as database passwords, API keys, and private keys. This makes state files a high-value target for attackers and a compliance concern for regulated industries. Understanding and mitigating sensitive data exposure is critical.
+OpenTofu state files contain resource IDs and all resource attributes for managed resources - including secrets such as database passwords, API keys, and private keys. This makes state files a high-value target for attackers and a compliance concern for regulated industries. Understanding and mitigating sensitive data exposure is critical.
 
 ## What Kind of Data Ends Up in State?
 
@@ -24,13 +24,13 @@ Example - a state entry for an RDS instance includes the password in plaintext:
 
 ```json
 {
-  "type": "aws_rds_cluster",
+  "type": "aws_db_instance",
   "name": "main",
   "instances": [
     {
       "attributes": {
-        "master_password": "supersecretpassword123",
-        "master_username": "admin"
+        "password": "supersecretpassword123",
+        "username": "admin"
       }
     }
   ]
@@ -65,8 +65,15 @@ terraform {
 variable "state_encryption_passphrase" {
   type      = string
   sensitive = true
+
+  validation {
+    condition     = length(var.state_encryption_passphrase) >= 16
+    error_message = "The state encryption passphrase must be at least 16 characters long."
+  }
 }
 ```
+
+For an existing unencrypted state file, add an `unencrypted` fallback method during the migration and remove it after `tofu apply`.
 
 ## Step 2: Mark Variables as Sensitive
 
@@ -76,45 +83,33 @@ Mark any variable that holds sensitive data as `sensitive = true`:
 variable "db_password" {
   type        = string
   description = "Database master password"
-  sensitive   = true  # Prevents the value from appearing in logs and plan output
+  sensitive   = true  # Redacts the value in plan and apply output
 }
 
 resource "aws_db_instance" "main" {
-  engine         = "postgres"
-  instance_class = "db.t3.micro"
-  password       = var.db_password
+  allocated_storage = 10
+  engine            = "postgres"
+  instance_class    = "db.t3.micro"
+  username          = "admin"
+  password          = var.db_password
   # ...
 }
 ```
 
-Note: Marking a variable sensitive prevents it from appearing in CLI output but it still ends up in the state file unless you use external secret management.
+Note: Marking a variable sensitive prevents it from appearing in CLI output, but it can still end up in the state file when passed to normal resource arguments. To avoid that, use provider-supported write-only or ephemeral arguments, or service-managed secrets that OpenTofu never receives.
 
 ## Step 3: Use External Secret Management
 
-The best approach is to never pass secrets as OpenTofu variables at all. Instead, create secrets via AWS Secrets Manager, HashiCorp Vault, or similar, and reference them:
+The best approach is to never pass secrets as OpenTofu variables at all. Where the service supports it, let the service create and manage the secret in AWS Secrets Manager, HashiCorp Vault, or similar:
 
 ```hcl
-# Generate and store the password in Secrets Manager
-resource "aws_secretsmanager_secret" "db_password" {
-  name = "prod/db/master-password"
-}
-
-resource "aws_secretsmanager_secret_version" "db_password" {
-  secret_id     = aws_secretsmanager_secret.db_password.id
-  secret_string = random_password.db.result
-}
-
-resource "random_password" "db" {
-  length  = 32
-  special = true
-}
-
+# Let RDS generate and store the master password in Secrets Manager
 resource "aws_db_instance" "main" {
-  engine         = "postgres"
-  instance_class = "db.t3.micro"
-  # The password is still in state via random_password,
-  # but managed_master_user_password avoids this entirely:
-  manage_master_user_password = true  # AWS manages rotation
+  allocated_storage           = 10
+  engine                      = "postgres"
+  instance_class              = "db.t3.micro"
+  username                    = "admin"
+  manage_master_user_password = true  # RDS manages rotation
 }
 ```
 
@@ -131,7 +126,7 @@ resource "aws_s3_bucket_policy" "state" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "DenyPublicAccess"
+        Sid    = "DenyInsecureTransport"
         Effect = "Deny"
         Principal = "*"
         Action = "s3:*"
@@ -146,7 +141,7 @@ resource "aws_s3_bucket_policy" "state" {
         }
       },
       {
-        Sid    = "AllowTerraformRoles"
+        Sid    = "AllowTerraformRolesListBucket"
         Effect = "Allow"
         Principal = {
           AWS = [
@@ -154,7 +149,19 @@ resource "aws_s3_bucket_policy" "state" {
             "arn:aws:iam::123456789012:role/terraform-admin"
           ]
         }
-        Action = ["s3:GetObject", "s3:PutObject"]
+        Action   = ["s3:ListBucket"]
+        Resource = "${aws_s3_bucket.state.arn}"
+      },
+      {
+        Sid    = "AllowTerraformRolesStateObjects"
+        Effect = "Allow"
+        Principal = {
+          AWS = [
+            "arn:aws:iam::123456789012:role/terraform-ci",
+            "arn:aws:iam::123456789012:role/terraform-admin"
+          ]
+        }
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
         Resource = "${aws_s3_bucket.state.arn}/*"
       }
     ]
