@@ -13,7 +13,8 @@ Use tmpfs mounts in Portainer containers for temporary in-memory storage that do
 ## Prerequisites
 
 - Portainer installed (CE or BE)
-- At least one Docker or Kubernetes environment connected
+- At least one Docker or Swarm environment connected
+- A Linux-based Docker host for Docker tmpfs mounts
 - Basic familiarity with Docker concepts
 
 ## Using the Portainer UI
@@ -21,29 +22,34 @@ Use tmpfs mounts in Portainer containers for temporary in-memory storage that do
 ### Step 1: Navigate to the Relevant Section
 
 1. Log in to your Portainer instance
-2. Select your environment from the home screen
-3. Navigate to **Containers** (or **Stacks** for compose-based tasks)
+2. Select your Docker environment from the home screen
+3. Navigate to **Volumes** (or **Stacks** for compose-based tasks)
 
-### Step 2: Locate Your Container
+### Step 2: Create the tmpfs Volume
 
-Use the search and filter options in Portainer:
+Use the volume creation options in Portainer:
 
-1. Click the **Containers** menu item
-2. Use the search box to find your container
-3. Filter by status (running, stopped, unhealthy)
-4. Click on the container name for details
+1. Click the **Volumes** menu item
+2. Click **Add volume**
+3. Set a descriptive name, such as `app-tmpfs`
+4. Set **Driver** to `local`
+5. Add driver options with `type=tmpfs`, `device=tmpfs`, and `o=size=100m,uid=1000`
+6. Click **Create the volume**, then attach it to a container like any other Docker volume
 
 ## Step-by-Step Instructions
 
-### View Container Details
+### Verify the tmpfs Mount
 
 ```bash
 # Using Docker CLI equivalent
 
 docker inspect container-name
 
-# View formatted output
-docker inspect container-name | jq '.[0].Config'
+# View mount details
+docker inspect --format '{{ json .Mounts }}' container-name | jq
+
+# Check the mounted filesystem inside the container
+docker exec container-name df -h /run/app
 
 # Via Portainer: Containers > container-name > Inspect
 ```
@@ -52,8 +58,6 @@ docker inspect container-name | jq '.[0].Config'
 
 ```yaml
 # docker-compose.yml example
-version: "3.8"
-
 services:
   app:
     image: your-app:latest
@@ -74,15 +78,20 @@ services:
     # Environment
     environment:
       - NODE_ENV=production
-    # Volumes
+    # tmpfs-backed volume
     volumes:
-      - app-data:/data
+      - app-tmpfs:/run/app
     # Network
     networks:
       - app-net
 
 volumes:
-  app-data:
+  app-tmpfs:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=100m,uid=1000,gid=1000,mode=1770
 
 networks:
   app-net:
@@ -94,42 +103,47 @@ networks:
 Useful Docker commands for this task:
 
 ```bash
-# Basic inspection commands
-docker ps -a                              # List all containers
-docker stats container-name               # View resource usage
-docker logs container-name --tail 100     # View recent logs
-docker inspect container-name             # Full container config
-docker exec -it container-name /bin/sh   # Access container shell
+# Create a tmpfs-backed Docker volume
+docker volume create --driver local \
+  --opt type=tmpfs \
+  --opt device=tmpfs \
+  --opt o=size=100m,uid=1000,gid=1000,mode=1770 \
+  app-tmpfs
 
-# Advanced filtering
-docker ps --filter "status=running" \
-           --filter "label=env=production" \
-           --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+# Run a container with the tmpfs-backed volume
+docker run -d --name my-app \
+  --mount type=volume,source=app-tmpfs,target=/run/app \
+  your-app:latest
 
-# File operations
-docker cp /host/path container-name:/container/path
-docker cp container-name:/container/path /host/path
+# Run a container with a direct tmpfs mount instead of a named volume
+docker run -d --name my-app-direct \
+  --mount type=tmpfs,destination=/run/app,tmpfs-size=104857600,tmpfs-mode=1770 \
+  your-app:latest
+
+# Verify the mount
+docker inspect --format '{{ json .Mounts }}' my-app | jq
+docker exec my-app df -h /run/app
 ```
 
 ## Portainer-Specific Features
 
 Portainer provides several UI conveniences for this task:
 
-1. **Visual Stats Dashboard**: Click any container > Stats for real-time graphs
-2. **Log Streaming**: Click Logs for real-time log output with search
-3. **Container Console**: Click Console for direct shell access
-4. **Quick Actions**: Stop, restart, kill from the container list
-5. **Inspect View**: Formatted JSON view of container configuration
+1. **Volume Management**: Create a local volume with tmpfs driver options from the Volumes page
+2. **Inspect View**: Confirm the attached mount in the formatted JSON view
+3. **Container Console**: Run `df -h /run/app` or similar checks from a shell
+4. **Log Streaming**: Click Logs for real-time log output with search
+5. **Quick Actions**: Stop, restart, kill from the container list
 
 ## Troubleshooting Common Issues
 
-**Issue: Container not appearing in list**
+**Issue: tmpfs mount not appearing**
 ```bash
-# Check all containers including stopped ones
-docker ps -a
+# Check the container mount list
+docker inspect --format '{{ json .Mounts }}' container-name | jq
 
-# Refresh Portainer's environment
-# Settings > Environments > Re-sync
+# Check the mount from inside the container
+docker exec container-name df -h /run/app
 ```
 
 **Issue: Permission denied errors**
@@ -137,14 +151,26 @@ docker ps -a
 # Check container user
 docker inspect container-name | jq '.[0].Config.User'
 
-# Run container with specific user
-docker run --user 1000:1000 your-image
+# Check volume options
+docker volume inspect app-tmpfs | jq '.[0].Options'
+
+# Stop containers using it, remove the old volume, then recreate it
+docker volume rm app-tmpfs
+
+docker volume create --driver local \
+  --opt type=tmpfs \
+  --opt device=tmpfs \
+  --opt o=size=100m,uid=1000,gid=1000,mode=1770 \
+  app-tmpfs
 ```
 
-**Issue: Resource limits not applying**
+**Issue: tmpfs size not applying**
 ```bash
-# Verify limits are applied
-docker inspect container-name | jq '.[0].HostConfig | {Memory, CpuShares, CpuQuota}'
+# Verify configured options
+docker volume inspect app-tmpfs | jq '.[0].Options'
+
+# Verify the mounted size inside the container
+docker exec container-name df -h /run/app
 ```
 
 ## Automating with the Portainer API
@@ -152,16 +178,30 @@ docker inspect container-name | jq '.[0].HostConfig | {Memory, CpuShares, CpuQuo
 Automate this task via the Portainer API:
 
 ```bash
-# Authenticate and get JWT token
-TOKEN=$(curl -s -X POST \
-  "https://portainer.example.com/api/auth" \
-  -H "Content-Type: application/json" \
-  -d '{"Username":"admin","Password":"password"}' | jq -r .jwt)
+# Use a Portainer access token from My account > Access tokens
+PORTAINER_URL="https://portainer.example.com"
+API_KEY="ptr_your_access_token"
+ENDPOINT_ID=1
 
-# List containers
+# Create a tmpfs-backed volume through Portainer's Docker API gateway
+curl -s -X POST \
+  "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/volumes/create" \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "Name": "app-tmpfs",
+    "Driver": "local",
+    "DriverOpts": {
+      "type": "tmpfs",
+      "device": "tmpfs",
+      "o": "size=100m,uid=1000"
+    }
+  }' | jq .
+
+# Inspect the created volume
 curl -s -X GET \
-  "https://portainer.example.com/api/endpoints/1/docker/containers/json" \
-  -H "Authorization: Bearer $TOKEN" | jq '.[] | {Names, Status, Image}'
+  "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/volumes/app-tmpfs" \
+  -H "X-API-Key: $API_KEY" | jq '{Name, Driver, Options}'
 ```
 
 ## Conclusion
