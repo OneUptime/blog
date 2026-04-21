@@ -8,7 +8,7 @@ Description: Understand the SRv6 SID address space 5f00::/16 allocated by RFC 96
 
 ## Introduction
 
-RFC 9602 (2024) formally allocates `5f00::/16` as the globally routable address space for SRv6 Segment Identifiers (SIDs). This is a 16-bit prefix, providing an enormous address space for SRv6 deployments worldwide. Unlike earlier SRv6 deployments that used arbitrary IPv6 addresses, using `5f00::/16` provides interoperability and clear identification.
+RFC 9602 (2024) formally allocates `5f00::/16` as a dedicated IPv6 special-purpose address block for SRv6 Segment Identifiers (SIDs). This is a 16-bit prefix, providing an enormous address space for SRv6 deployments. IANA marks the block as forwardable but not globally reachable, so operators should use it inside an SR domain or between collaborating SR domains rather than assuming Internet-wide reachability. Unlike earlier SRv6 deployments that used arbitrary IPv6 addresses, using `5f00::/16` provides a common, clearly identifiable block.
 
 ## Key Properties
 
@@ -19,7 +19,7 @@ RFC 9602 (2024) formally allocates `5f00::/16` as the globally routable address 
 | Source | True |
 | Destination | True |
 | Forwardable | True |
-| Globally Reachable | True |
+| Globally Reachable | False |
 
 ## Address Space Scale
 
@@ -36,14 +36,14 @@ print(f"Total /48 locators available: {2**(48-16):,}")
 print(f"Total /128 SIDs: {2**(128-16):,}")
 # An astronomically large number
 
-# Typical allocation:
-# /16 global SRv6 space: 5f00::/16
-# /32 per-AS block: 5f00:asn::/32
-# /48 per-node locator: 5f00:asn:node::/48
-# /128 per-SID: 5f00:asn:node:function::
+# Example allocation plan within one SR domain:
+# /16 dedicated SRv6 SID space: 5f00::/16
+# /32 operator/domain block: 5f00:domain::
+# /48 per-node locator: 5f00:domain:node::/48
+# /128 per-SID: 5f00:domain:node:function::
 
 example_allocations = {
-    "AS65001 block":    "5f00:fe81::/32",   # ASN 65001 = 0xFE81
+    "SR domain block":  "5f00:fe81::/32",
     "Node R1 locator":  "5f00:fe81:1::/48",
     "Node R2 locator":  "5f00:fe81:2::/48",
     "R1 End SID":       "5f00:fe81:1:0001::/128",
@@ -57,45 +57,54 @@ for name, prefix in example_allocations.items():
 ## Routing 5f00::/16
 
 ```bash
-# 5f00::/16 is globally routable via BGP
-# Each operator advertises their sub-prefix
+# 5f00::/16 is forwardable, but it is not globally reachable by default
+# Advertise SRv6 locator prefixes only in the intended SR domain
 
-# FRR: advertise your SRv6 locator block via BGP
+# FRR: advertise your SRv6 locator block via BGP when collaborating SR domains need it
+# The prefix must exist in the RIB for current FRR defaults
 router bgp 65001
   address-family ipv6 unicast
-    network 5f00:fe81::/32  ! Your AS block
+    network 5f00:fe81::/32  ! Your SR domain block
   !
 !
 
-# Each node advertises its /48 locator via IS-IS or OSPF
+# Configure the SRv6 locator in zebra
+segment-routing
+  srv6
+    locators
+      locator MAIN
+        prefix 5f00:fe81:1::/48 block-len 32 node-len 16 func-bits 16
+!
+
+# Then have IS-IS advertise the configured locator
 router isis CORE
   segment-routing srv6
     locator MAIN
-      prefix 5f00:fe81:1::/48
 ```
 
 ## Filtering in BGP
 
 ```bash
 # Accept SRv6 locators from trusted peers only
-# Do not accept 5f00::/16 more-specifics from customers
+# Do not accept 5f00::/16 more-specifics from untrusted customers
 # (they should not advertise SRv6 SIDs)
 
-# FRR route map
+# FRR IPv6 prefix list
 ip prefix-list DENY_SRV6_SPACE seq 5 deny 5f00::/16 le 128
 ip prefix-list DENY_SRV6_SPACE seq 100 permit ::/0 le 128
 
 # Apply to customer BGP sessions
 router bgp 65001
-  neighbor 2001:db8::customer route-map DENY_SRV6_SPACE in
+  address-family ipv6 unicast
+    neighbor 2001:db8::2 prefix-list DENY_SRV6_SPACE in
 ```
 
 ## Verifying 5f00::/16 Routing
 
 ```bash
-# Check if your SRv6 locator is reachable from the internet
-# (requires 5f00::/16 to be routed in your BGP)
-traceroute6 5f00:fe81:2::  # Should reach Node R2
+# Check if your SRv6 locator is reachable from an intended SR-domain vantage point
+# (requires the locator prefix to be advertised in that domain)
+traceroute6 5f00:fe81:2:0001::  # Should reach a programmed SID on Node R2 from an allowed source
 
 # Check BGP advertisement
 show bgp ipv6 unicast 5f00:fe81::/32
@@ -107,4 +116,4 @@ ip -6 route show 5f00:fe81:1:e001::/128
 
 ## Conclusion
 
-The `5f00::/16` allocation makes SRv6 SIDs globally routable and clearly distinguishable. Operators should obtain a sub-prefix from their RIR or use their ASN to carve a deterministic block. Structure allocations hierarchically: /32 per AS, /48 per node, /128 per SID function. Monitor SRv6 locator reachability from multiple vantage points using OneUptime to ensure your SRv6 infrastructure is globally visible.
+The `5f00::/16` allocation makes SRv6 SIDs forwardable and clearly distinguishable. Operators should use a documented allocation plan that is coordinated inside their SR domain or between collaborating SR domains. Structure allocations hierarchically: /32 per operator or SR domain, /48 per node, /128 per SID function. Monitor SRv6 locator reachability from multiple allowed vantage points using OneUptime to ensure your SRv6 infrastructure is visible where it is intended to be reachable.
