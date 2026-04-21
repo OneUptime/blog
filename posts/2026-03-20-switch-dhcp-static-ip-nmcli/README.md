@@ -76,8 +76,8 @@ nmcli connection up eth0-dhcp
 ## Checking Current IP Method
 
 ```bash
-# Show IPv4 method for all connections
-nmcli -t -f NAME,DEVICE,TYPE,GENERAL.STATE,IP4.ADDRESS connection show --active
+# Show active connections
+nmcli -t -f NAME,DEVICE,TYPE,STATE connection show --active
 
 # Check specific connection
 nmcli connection show eth0 | grep ipv4.method
@@ -98,7 +98,7 @@ nmcli connection up eth0
 # (from console or out-of-band access)
 
 # Revert to DHCP
-nmcli connection modify eth0 ipv4.method auto ipv4.addresses "" ipv4.gateway ""
+nmcli connection modify eth0 ipv4.method auto ipv4.addresses "" ipv4.gateway "" ipv4.dns ""
 nmcli connection up eth0
 
 # Or restore a known-good static config
@@ -112,4 +112,4 @@ nmcli connection up eth0
 - Use `nmcli connection modify <name> ipv4.method manual` with IP/gateway to switch to static.
 - Use `ipv4.method auto` with empty addresses/gateway/dns to switch back to DHCP.
 - Apply changes with `nmcli connection up <name>` - modifications are not applied until the connection is (re)activated.
-- Maintain a separate DHCP and static profile per interface for safe switching without risk of losing access.
+- Maintain a separate DHCP and static profile per interface for safer switching with less risk of losing access.
