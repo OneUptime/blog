@@ -20,7 +20,7 @@ The most important technique: schedule a rule revert BEFORE applying changes:
 
 # Schedule automatic revert in 5 minutes
 
-at now + 5 minutes << 'EOF'
+JOB=$(LC_ALL=C at now + 5 minutes 2>&1 << 'EOF'
 echo "SAFETY REVERT: Restoring firewall rules" | logger -t firewall
 ip6tables -F
 ip6tables -P INPUT ACCEPT
@@ -28,9 +28,16 @@ ip6tables -P FORWARD ACCEPT
 ip6tables -P OUTPUT ACCEPT
 ip6tables-restore < /etc/iptables/rules.v6.backup
 EOF
+)
+JOB_ID=$(printf '%s\n' "$JOB" | awk '/^job / {print $2}')
+if [ -z "$JOB_ID" ]; then
+    echo "ERROR: failed to schedule safety timer:" >&2
+    printf '%s\n' "$JOB" >&2
+    exit 1
+fi
 
 echo "Safety timer set. You have 5 minutes to test."
-echo "If access is maintained, cancel with: atrm $(atq | tail -1 | awk '{print $1}')"
+echo "If access is maintained, cancel with: atrm ${JOB_ID}"
 ```
 
 ## Step-by-Step Safe Testing Process
@@ -79,12 +86,17 @@ if [ $? -ne 0 ]; then
 fi
 
 # Step 3: Schedule revert
-JOB=$(at now + ${REVERT_MINUTES} minutes 2>&1 << EOF
+JOB=$(LC_ALL=C at now + ${REVERT_MINUTES} minutes 2>&1 << EOF
 ip6tables-restore < $BACKUP
 echo "REVERTED at \$(date)" | logger -t firewall-revert
 EOF
 )
-JOB_ID=$(atq | tail -1 | awk '{print $1}')
+JOB_ID=$(printf '%s\n' "$JOB" | awk '/^job / {print $2}')
+if [ -z "$JOB_ID" ]; then
+    echo "ERROR: failed to schedule safety timer:" >&2
+    printf '%s\n' "$JOB" >&2
+    exit 1
+fi
 echo "Safety revert scheduled as job ${JOB_ID} (runs in ${REVERT_MINUTES} minutes)"
 
 # Step 4: Apply new rules
@@ -105,11 +117,26 @@ echo "If access is lost, wait ${REVERT_MINUTES} minutes for automatic revert"
 If you only have one SSH session:
 
 ```bash
-# Method: Apply rules with immediate test and auto-revert on failure
+# Method: Keep a safety timer, then run a local sanity check
 
 apply_and_test() {
     local RULES_FILE="$1"
     local BACKUP="$2"
+    local REVERT_MINUTES="${3:-3}"
+    local JOB
+    local JOB_ID
+
+    JOB=$(LC_ALL=C at now + ${REVERT_MINUTES} minutes 2>&1 << EOF
+ip6tables-restore < $BACKUP
+echo "REVERTED at \$(date)" | logger -t firewall-revert
+EOF
+)
+    JOB_ID=$(printf '%s\n' "$JOB" | awk '/^job / {print $2}')
+    if [ -z "$JOB_ID" ]; then
+        echo "ERROR: failed to schedule safety timer:" >&2
+        printf '%s\n' "$JOB" >&2
+        return 1
+    fi
 
     # Apply new rules
     ip6tables-restore < "$RULES_FILE"
@@ -117,11 +144,13 @@ apply_and_test() {
     # Test: can we do basic operations?
     # Check: are our own connections still established?
     if conntrack -L -f ipv6 2>/dev/null | grep -q "ESTABLISHED"; then
-        echo "Conntrack shows established connections - rules likely OK"
+        echo "Conntrack shows established connections - weak local signal only"
+        echo "Try a new SSH connection if possible; cancel revert with: atrm ${JOB_ID}"
         return 0
     else
         echo "WARNING: No established connections found - reverting"
         ip6tables-restore < "$BACKUP"
+        atrm "$JOB_ID" 2>/dev/null
         return 1
     fi
 }
@@ -133,13 +162,13 @@ apply_and_test() {
 # Test an ADDITIONAL rule without rebuilding the whole ruleset
 
 # Add a test rule
-ip6tables -A INPUT -s 2001:db8:test::/48 -j ACCEPT
+ip6tables -A INPUT -s 2001:db8:100::/48 -j ACCEPT
 
-# Test (from a host in 2001:db8:test::/48)
+# Test (from a host in 2001:db8:100::/48)
 # If it works, make it permanent
 
 # Remove if test fails
-ip6tables -D INPUT -s 2001:db8:test::/48 -j ACCEPT
+ip6tables -D INPUT -s 2001:db8:100::/48 -j ACCEPT
 ```
 
 ## nftables Testing
@@ -151,23 +180,33 @@ nft -f /etc/nftables.conf
 
 # Dry run check
 nft -c -f /etc/nftables.conf
-# Output: syntax errors only, doesn't apply anything
+# Validates commands without applying anything
 
 # Apply with automatic save-and-rollback
 nft_safe_apply() {
     local FILE="$1"
+    local BACKUP="/tmp/nft-backup.nft"
+    local JOB
+    local JOB_ID
 
     # Save current
-    nft list ruleset > /tmp/nft-backup.nft
+    {
+        echo "flush ruleset"
+        nft list ruleset
+    } > "$BACKUP"
 
     # Schedule revert
-    at now + 3 minutes << 'REVERT'
-nft flush ruleset
-nft -f /tmp/nft-backup.nft
+    JOB=$(LC_ALL=C at now + 3 minutes 2>&1 << EOF
+nft -f "$BACKUP"
 logger "REVERTED nftables to backup"
-REVERT
-
-    JOB_ID=$(atq | tail -1 | awk '{print $1}')
+EOF
+)
+    JOB_ID=$(printf '%s\n' "$JOB" | awk '/^job / {print $2}')
+    if [ -z "$JOB_ID" ]; then
+        echo "ERROR: failed to schedule safety timer:" >&2
+        printf '%s\n' "$JOB" >&2
+        return 1
+    fi
 
     # Apply
     nft -f "$FILE"
