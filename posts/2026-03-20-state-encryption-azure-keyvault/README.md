@@ -82,27 +82,29 @@ resource "azurerm_role_assignment" "terraform_sp_key_user" {
 
 Required role: `Key Vault Crypto User` (allows encrypt/decrypt/wrap/unwrap operations)
 
+For the identity that creates and manages `azurerm_key_vault_key`, use `Key Vault Crypto Officer` or `Key Vault Administrator` so Terraform can create the key and set its rotation policy.
+
 ## Step 3: Configure the Azure Key Vault Key Provider
 
 ```hcl
 # encryption.tf
 terraform {
-  required_version = ">= 1.7.0"
+  required_version = ">= 1.11.0"
 
   encryption {
-    key_provider "azure_keyvault" "state_key" {
+    key_provider "azure_vault" "state_key" {
       # Key Vault URL
-      key_vault_url = "https://kv-terraform-state.vault.azure.net/"
+      vault_uri = "https://kv-terraform-state.vault.azure.net/"
 
       # Key name
-      key_name    = "terraform-state-key"
+      vault_key_name = "terraform-state-key"
 
-      # Optional: specific key version (omit to always use the latest)
-      # key_version = "abc123def456..."
+      # Generate a 32-byte data encryption key for AES-GCM
+      key_length = 32
     }
 
     method "aes_gcm" "state_method" {
-      keys = key_provider.azure_keyvault.state_key
+      keys = key_provider.azure_vault.state_key
     }
 
     state {
@@ -130,7 +132,9 @@ export ARM_TENANT_ID="00000000-0000-0000-0000-000000000000"
 export ARM_SUBSCRIPTION_ID="00000000-0000-0000-0000-000000000000"
 
 # Managed Identity (for Azure-hosted runners)
-# Automatically uses the VM's managed identity - no credentials needed
+export ARM_USE_MSI=true
+export ARM_TENANT_ID="00000000-0000-0000-0000-000000000000"
+export ARM_SUBSCRIPTION_ID="00000000-0000-0000-0000-000000000000"
 ```
 
 ## Step 5: Using with Azure Backend
@@ -147,13 +151,14 @@ terraform {
   }
 
   encryption {
-    key_provider "azure_keyvault" "state_key" {
-      key_vault_url = "https://kv-terraform-state.vault.azure.net/"
-      key_name      = "terraform-state-key"
+    key_provider "azure_vault" "state_key" {
+      vault_uri      = "https://kv-terraform-state.vault.azure.net/"
+      vault_key_name = "terraform-state-key"
+      key_length     = 32
     }
 
     method "aes_gcm" "state_method" {
-      keys = key_provider.azure_keyvault.state_key
+      keys = key_provider.azure_vault.state_key
     }
 
     state {
@@ -177,7 +182,7 @@ resource "azurerm_monitor_diagnostic_setting" "key_vault" {
     category = "AuditEvent"
   }
 
-  metric {
+  enabled_metric {
     category = "AllMetrics"
   }
 }
