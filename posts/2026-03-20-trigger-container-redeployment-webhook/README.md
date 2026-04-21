@@ -8,7 +8,9 @@ Description: Use Portainer's container webhook URL to trigger automatic containe
 
 ---
 
-Portainer webhooks enable CI/CD pipelines to automatically redeploy containers after a new image is built. This creates a complete GitOps workflow from code push to container update.
+Portainer webhooks enable CI/CD pipelines to automatically redeploy containers after a new image is built. This creates an automated deployment workflow from code push to container update.
+
+Container webhooks are available in Portainer Business Edition and only on non-Edge environments.
 
 ## Enable Container Webhooks in Portainer
 
@@ -26,7 +28,7 @@ The URL format: `https://portainer.example.com/api/webhooks/<uuid>`
 
 curl -X POST https://portainer.example.com/api/webhooks/<webhook-uuid>
 
-# With SERVICE_TAG to specify a specific image tag
+# With the tag query parameter to specify a specific image tag
 curl -X POST "https://portainer.example.com/api/webhooks/<webhook-uuid>?tag=v1.2.3"
 ```
 
@@ -44,7 +46,7 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build and push Docker image
         run: |
@@ -81,11 +83,11 @@ deploy:
         "${PORTAINER_WEBHOOK_URL}?tag=${CI_COMMIT_SHA}" \
         --fail
       echo "Deployment triggered for tag ${CI_COMMIT_SHA}"
-  only:
-    - main
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
 ```
 
-## Using SERVICE_TAG Variable
+## Using the tag Query Parameter
 
 When Portainer receives a webhook with a `tag` query parameter, it updates the container to use that image tag:
 
