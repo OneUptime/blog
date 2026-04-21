@@ -32,7 +32,7 @@ output "instance_ids" {
 
 ## The Full Splat Operator (`[*]`)
 
-The full splat operator is more expressive and works with tuples and objects:
+The full splat operator is more expressive and works with lists, sets, and tuples:
 
 ```hcl
 resource "aws_instance" "web" {
@@ -80,7 +80,7 @@ output "tag_names" {
 }
 ```
 
-## Using Splat in Variable Validation
+## Using Splat with Input Variables
 
 ```hcl
 variable "instances" {
@@ -105,9 +105,9 @@ locals {
 | Transforming values | `for` expression |
 | Multiple attributes | Either |
 
-## Common Pitfall: Null Values
+## Common Pitfall: Empty and Null Values
 
-Splat expressions on a potentially null resource return an empty list rather than causing an error, which can be useful for conditional resources:
+Splat expressions over a counted resource with `count = 0` return an empty list. When `[*]` is applied to a null single value, it returns an empty tuple rather than causing an error:
 
 ```hcl
 # Returns [] if count = 0, or [ip1, ip2, ...] if count > 0
