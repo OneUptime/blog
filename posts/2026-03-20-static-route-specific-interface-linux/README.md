@@ -8,14 +8,14 @@ Description: Learn how to add a static route through a specific network interfac
 
 ---
 
-By default, Linux routes traffic based on the longest-match prefix and next-hop gateway. You can force traffic through a specific interface by adding the `dev` parameter to static routes.
+By default, Linux selects routes from its routing policy and routing tables, usually using the longest matching destination prefix and route metrics. You can force traffic through a specific interface by adding the `dev` parameter to static routes.
 
 ## Adding a Route Through a Specific Interface
 
 ```bash
-# Route to 10.10.0.0/24 via gateway 10.10.0.1 on eth1
+# Route to 10.20.0.0/24 via gateway 10.10.0.1 on eth1
 
-ip route add 10.10.0.0/24 via 10.10.0.1 dev eth1
+ip route add 10.20.0.0/24 via 10.10.0.1 dev eth1
 
 # Route without a gateway (directly connected network on eth1)
 ip route add 192.168.99.0/24 dev eth1
@@ -30,10 +30,10 @@ ip route add 172.16.0.0/12 via 172.16.1.1 dev eth0
 # Problem: Two interfaces on the same /24 subnet (rare but possible)
 # eth0: 10.0.0.5/24 (ISP1 LAN)
 # eth1: 10.0.0.6/24 (ISP2 LAN, same subnet range)
-# Without dev, kernel picks one interface; explicitly specify:
+# Use policy routing so traffic sourced from eth1 uses eth1:
 
-ip route add 10.0.0.0/24 dev eth0
 ip route add 10.0.0.0/24 dev eth1 table 200
+ip rule add pref 1000 from 10.0.0.6/32 table 200
 
 # More common: default routes on multi-homed hosts
 ip route add default via 192.168.1.1 dev eth0  # ISP1 default
@@ -45,8 +45,9 @@ ip route add default via 192.168.1.1 dev eth0  # ISP1 default
 # Route VPN subnet through tun0 (no gateway needed for tunnel)
 ip route add 10.8.0.0/24 dev tun0
 
-# Route all traffic through VPN
-ip route add 0.0.0.0/0 dev tun0
+# Route all traffic through a point-to-point VPN
+# Keep a separate route to the VPN server outside the tunnel
+ip route add default dev tun0
 ```
 
 ## Verifying the Interface Route
@@ -56,11 +57,11 @@ ip route add 0.0.0.0/0 dev tun0
 ip route show | grep eth1
 
 # Use ip route get to confirm
-ip route get 10.10.0.5
-# 10.10.0.5 via 10.10.0.1 dev eth1 src 10.10.0.100
+ip route get 10.20.0.5
+# 10.20.0.5 via 10.10.0.1 dev eth1 src 10.10.0.100
 
 # Check which interface the traffic leaves on
-traceroute -i eth1 10.10.0.5
+traceroute -i eth1 10.20.0.5
 ```
 
 ## Persistent Route with systemd-networkd
@@ -88,7 +89,7 @@ iface eth1 inet static
   address 10.10.0.100
   netmask 255.255.255.0
   up ip route add 172.16.0.0/12 via 10.10.0.1 dev eth1
-  down ip route del 172.16.0.0/12
+  down ip route del 172.16.0.0/12 via 10.10.0.1 dev eth1
 ```
 
 ## Persistent Route with nmcli (RHEL)
@@ -104,5 +105,5 @@ nmcli connection up eth1
 
 - Add `dev <interface>` to an `ip route add` command to explicitly bind the route to an interface.
 - Interface-bound routes are useful for multi-homed hosts where the kernel might choose the wrong interface.
-- For tunnel interfaces (tun0, gre1), specify `dev` without a gateway since the tunnel is a point-to-point link.
+- For point-to-point tunnel interfaces (tun0, gre1), specify `dev` without a gateway since the tunnel is the directly connected next hop.
 - In systemd-networkd, routes defined in an interface's `.network` file are automatically bound to that interface.
