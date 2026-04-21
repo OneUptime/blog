@@ -68,7 +68,7 @@ locals {
 locals {
   # AWS ARNs often need the resource ID extracted
   role_arn    = "arn:aws:iam::123456789012:role/my-role"
-  resource_id = trimprefix(role_arn, "arn:aws:iam::123456789012:role/")
+  resource_id = trimprefix(local.role_arn, "arn:aws:iam::123456789012:role/")
   # "my-role"
 }
 ```
