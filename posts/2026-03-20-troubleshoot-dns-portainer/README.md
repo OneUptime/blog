@@ -15,13 +15,14 @@ DNS failures are among the most common container networking issues. When contain
 ```bash
 # Access the container (via Portainer Exec or CLI)
 
-docker exec -it my_container bash
+docker exec -it my_container sh
 
 # Check what DNS servers the container is using
 cat /etc/resolv.conf
-# Expected output:
+# Typical output on a user-defined Docker network:
 # nameserver 127.0.0.11   <- Docker's embedded DNS
 # options ndots:0
+# Containers on the default bridge network may inherit the host DNS servers instead.
 
 # Test Docker service name resolution
 nslookup database
@@ -55,7 +56,7 @@ time nslookup database
 time nslookup google.com
 
 # Watch DNS traffic in real-time
-tcpdump -n port 53
+tcpdump -ni any port 53
 ```
 
 ## Step 3: Common Issue - Containers on Different Networks
@@ -84,14 +85,15 @@ docker network inspect shared_network | jq '.[].Containers | keys'
 docker exec api_container nslookup database 127.0.0.11
 # If this fails but external DNS works, Docker DNS has issues
 
-# Check iptables rules (Docker sets up NAT for DNS)
-iptables -t nat -L DOCKER_OUTPUT -n
-# Should show rule redirecting port 53 to 127.0.0.11
+# Check DNS NAT rules in the container's network namespace
+container_pid=$(docker inspect -f '{{.State.Pid}}' api_container)
+sudo nsenter -t "$container_pid" -n iptables -t nat -L DOCKER_OUTPUT -n
+# Should show UDP/TCP port 53 rules for 127.0.0.11 when Docker uses the iptables backend
 
-# Check if Docker's DNS port is blocked by firewall
-iptables -L -n | grep 53
+# If external DNS is blocked, check host forwarding rules
+sudo iptables -L DOCKER-USER -n -v
 
-# Restart Docker if DNS rules are corrupted
+# Restart Docker and recreate affected containers if DNS rules are corrupted
 sudo systemctl restart docker
 ```
 
@@ -99,8 +101,6 @@ sudo systemctl restart docker
 
 ```yaml
 # Fix: Configure custom upstream DNS servers
-version: "3.8"
-
 services:
   api:
     image: myapp/api:latest
@@ -113,40 +113,45 @@ services:
       - attempts:3    # Retry 3 times
 ```
 
+In `/etc/docker/daemon.json`, set global DNS for new containers:
+
 ```json
-// /etc/docker/daemon.json - Set global DNS for all containers
 {
   "dns": ["1.1.1.1", "8.8.8.8"],
   "dns-opts": ["timeout:3", "attempts:3"]
 }
 ```
 
+Restart Docker after changing `daemon.json` so newly created containers use the updated daemon configuration.
+
 ## Step 6: Common Issue - ndots Causing Slow DNS
 
 ```bash
 # Problem: Every lookup tries multiple search domains
-# With ndots:5, 'api' becomes:
+# With ndots:5 and a search list, 'api' can be tried as:
 # api.svc.cluster.local (fail)
 # api.cluster.local (fail)
 # api.local (fail)
-# api (success - after 3 failed attempts)
+# api (success - after search-domain attempts)
 
 # Check current ndots setting
 docker exec api_container cat /etc/resolv.conf
+```
 
+```yaml
 # Fix in compose file
 services:
   api:
     dns_opt:
-      - ndots:1   # Only append search domain if hostname has < 1 dot
-      # Use ndots:0 to never append search domains
+      - ndots:0   # Try short names directly before walking search domains
+      # Use ndots:1 to try names with at least one dot directly first
 ```
 
 ## Step 7: Diagnose with DNS Debug Script
 
 ```bash
 # Run comprehensive DNS diagnostics from inside a container
-docker exec api_container bash -c '
+docker exec api_container sh -c '
   echo "=== resolv.conf ==="
   cat /etc/resolv.conf
 
