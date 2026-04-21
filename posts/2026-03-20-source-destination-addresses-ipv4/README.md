@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Networking, IP Addresses, Packet Analysis, TCP/IP
 
-Description: The Source and Destination Address fields in the IPv4 header each occupy 32 bits and identify the originating and target hosts, forming the basis for all routing and filtering decisions.
+Description: The Source and Destination Address fields in the IPv4 header each occupy 32 bits and identify the originating and target hosts, forming a basis for routing and filtering decisions.
 
 ## Address Fields in the IPv4 Header
 
@@ -12,7 +12,7 @@ The IPv4 header contains two 32-bit address fields:
 - **Source Address** (bytes 12–15): The IP address of the sender.
 - **Destination Address** (bytes 16–19): The IP address of the intended recipient.
 
-These addresses remain unchanged across the entire path (unless NAT is applied). Routers make forwarding decisions based solely on the destination address.
+Under ordinary forwarding, these addresses remain unchanged across the path. NAT rewrites these fields, and IPv4 source-routing options can also alter the destination address. In standard destination-based forwarding, routers select routes by matching the destination address.
 
 ## Parsing Addresses from a Raw Packet
 
@@ -38,12 +38,12 @@ def parse_ipv4_addresses(raw_packet: bytes):
 header = struct.pack("!BBHHHBBH4s4s",
     0x45, 0, 60, 0, 0, 64, 6, 0,
     socket.inet_aton("192.168.1.100"),   # Source
-    socket.inet_aton("93.184.216.34"),   # Destination (example.com)
+    socket.inet_aton("203.0.113.10"),    # Destination (TEST-NET-3 example address)
 )
 
 src, dst = parse_ipv4_addresses(header)
 print(f"Source: {src}  Destination: {dst}")
-# Source: 192.168.1.100  Destination: 93.184.216.34
+# Source: 192.168.1.100  Destination: 203.0.113.10
 ```
 
 ## Filtering by Address with tcpdump
@@ -95,6 +95,6 @@ print(f"0x{ip_int:08X} = {ip_back}")
 ## Key Takeaways
 
 - Source and Destination Addresses occupy bytes 12–15 and 16–19 of the IPv4 header.
-- All routing decisions are based on the Destination Address using longest-prefix match.
+- Standard destination-based forwarding uses the Destination Address and longest-prefix match.
 - NAT modifies these fields; addresses seen at intermediate hops may differ from endpoints.
 - Use `socket.inet_aton()` and `socket.inet_ntoa()` in Python for address conversions.
