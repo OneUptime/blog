@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Ansible, local-exec, Provisioner, Automation
 
-Description: Learn how to use OpenTofu's local-exec provisioner to trigger Ansible playbooks immediately after infrastructure resources are created or modified.
+Description: Learn how to use OpenTofu's local-exec provisioner to trigger Ansible playbooks immediately after infrastructure resources are created or replaced.
 
 ## Introduction
 
@@ -24,9 +24,10 @@ resource "aws_instance" "web" {
   tags = { Name = "web-server" }
 }
 
-resource "null_resource" "configure_web" {
-  triggers = {
-    instance_id = aws_instance.web.id
+resource "terraform_data" "configure_web" {
+  triggers_replace = {
+    instance_id  = aws_instance.web.id
+    environment  = var.environment
   }
 
   # Wait for SSH availability first
@@ -71,10 +72,14 @@ provisioner "local-exec" {
 ## Passing OpenTofu Values to Ansible
 
 ```hcl
-resource "null_resource" "configure_app" {
-  triggers = {
+resource "terraform_data" "configure_app" {
+  triggers_replace = {
     instance_id  = aws_instance.app.id
     db_endpoint  = aws_db_instance.main.endpoint
+    db_name      = var.db_name
+    redis_host   = aws_elasticache_replication_group.main.primary_endpoint_address
+    app_version  = var.app_version
+    environment  = var.environment
   }
 
   provisioner "local-exec" {
@@ -100,24 +105,30 @@ resource "null_resource" "configure_app" {
 }
 ```
 
-## Using when = "destroy" for Deregistration
+## Using when = destroy for Deregistration
 
 ```hcl
-resource "null_resource" "ansible_lifecycle" {
-  triggers = {
+resource "terraform_data" "ansible_lifecycle" {
+  input = {
     instance_ip    = aws_instance.web.public_ip
     instance_id    = aws_instance.web.id
     lb_target_arn  = aws_lb_target_group.web.arn
   }
+
+  triggers_replace = [
+    aws_instance.web.public_ip,
+    aws_instance.web.id,
+    aws_lb_target_group.web.arn,
+  ]
 
   # Run on destroy to deregister from load balancer gracefully
   provisioner "local-exec" {
     when    = destroy
     command = <<-EOT
       ansible-playbook \
-        -i "${self.triggers.instance_ip}," \
+        -i "${self.output.instance_ip}," \
         playbooks/deregister-web.yml \
-        -e "lb_target_arn=${self.triggers.lb_target_arn}"
+        -e "lb_target_arn=${self.output.lb_target_arn}"
     EOT
 
     on_failure = continue  # Don't block destroy if deregistration fails
@@ -161,4 +172,4 @@ Use separate pipeline stages when:
 
 ## Conclusion
 
-The `local-exec` + `null_resource` pattern is effective for initial server bootstrapping, but overusing it creates tight coupling between infrastructure state and application configuration. Use the `triggers` map carefully - it determines when Ansible re-runs, and accidentally triggering it on every `tofu apply` can cause unnecessary configuration churn.
+The `local-exec` + `terraform_data` pattern is effective for initial server bootstrapping, but overusing it creates tight coupling between infrastructure state and application configuration. Use `triggers_replace` carefully - it determines when Ansible re-runs, and accidentally triggering it on every `tofu apply` can cause unnecessary configuration churn.
