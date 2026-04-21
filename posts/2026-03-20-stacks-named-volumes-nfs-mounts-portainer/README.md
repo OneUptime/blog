@@ -15,7 +15,6 @@ Named volumes and NFS mounts provide persistent, identifiable storage for your c
 Named volumes are managed by Docker and persist across container restarts and stack redeployments:
 
 ```yaml
-version: "3.8"
 services:
   database:
     image: postgres:16-alpine
@@ -34,7 +33,7 @@ services:
 
 volumes:
   postgres-data:
-    name: production-postgres-data   # Explicit name (optional but recommended)
+    name: production-postgres-data   # Explicit, stable Docker volume name
   app-uploads:
     name: production-app-uploads
   app-config:
@@ -78,7 +77,7 @@ volumes:
 
 ## Volume Labels and Backup Integration
 
-Label volumes to enable automated backups:
+Label volumes so backup tooling can identify them:
 
 ```yaml
 volumes:
@@ -111,4 +110,4 @@ volumes:
 
 ## Summary
 
-Named volumes and NFS mounts in Portainer stacks provide durable, portable storage. Use named volumes for single-host persistence and NFS for shared storage across multiple hosts or containers. Always name your volumes explicitly to make backup and management operations predictable.
+Named volumes and NFS mounts in Portainer stacks provide durable, portable storage. Use named volumes for single-host persistence and NFS for shared storage across multiple hosts or containers. Name volumes explicitly when you need stable Docker volume names for backup and management operations.
