@@ -15,7 +15,7 @@ curl -6 -X POST http://[::1]:4000/graphql \
   -H "Content-Type: application/json" \
   -d '{"query": "{ hello }"}'
 
-# Against a remote IPv6 server
+# Against a remote IPv6 server; replace 2001:db8::1 with your server address
 curl -6 -X POST http://[2001:db8::1]:4000/graphql \
   -H "Content-Type: application/json" \
   -d '{"query": "{ users { id name } }"}'
@@ -58,7 +58,17 @@ describe('GraphQL API over IPv6', () => {
         });
     });
 
-    afterAll(() => server.close());
+    afterAll(async () => {
+        await new Promise((resolve, reject) => {
+            server.close((error) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                resolve();
+            });
+        });
+    });
 
     async function query(q, variables = {}) {
         const response = await fetch(serverUrl, {
@@ -136,7 +146,7 @@ def test_against_multiple_ipv6_addresses(ipv6_address):
     try:
         result = graphql_request("{ __typename }", url=url)
         assert result["data"]["__typename"] == "Query"
-    except requests.exceptions.ConnectionError:
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
         pytest.skip(f"Cannot connect to {ipv6_address}")
 ```
 
@@ -147,7 +157,7 @@ def test_against_multiple_ipv6_addresses(ipv6_address):
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
-// k6 supports IPv6 addresses in URLs
+// k6 supports IPv6 addresses in URLs; replace 2001:db8::1 with your server address
 const GRAPHQL_URL = 'http://[2001:db8::1]:4000/graphql';
 
 export const options = {
@@ -178,7 +188,7 @@ export default function () {
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to set up automated GraphQL health checks over IPv6. Configure HTTP monitors that POST a simple introspection query `{ __typename }` to your IPv6 endpoint and alert when the server becomes unreachable or returns errors.
+Use [OneUptime](https://oneuptime.com) to set up automated GraphQL health checks over IPv6. Configure API monitors that POST a simple introspection query `{ __typename }` to your IPv6 endpoint and alert when the server becomes unreachable or returns errors.
 
 ## Conclusion
 
