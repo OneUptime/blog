@@ -12,7 +12,7 @@ Description: A systematic troubleshooting guide for diagnosing and resolving IPv
 2. **DNS resolver not listening on IPv6**: Resolver only accepts IPv4 queries
 3. **Firewall blocking DNS over IPv6**: Port 53 UDP/TCP blocked for IPv6
 4. **DNSSEC validation failure**: Zone signing error causes SERVFAIL
-5. **Resolver not configured**: Client using IPv4-only DNS server that doesn't forward
+5. **Resolver not configured**: Client using a resolver that doesn't answer or forward AAAA queries
 6. **DNS64 misconfiguration**: Synthesis prefix mismatch
 
 ## Step 1: Check if the AAAA Record Exists
@@ -22,7 +22,7 @@ Description: A systematic troubleshooting guide for diagnosing and resolving IPv
 
 dig AAAA www.example.com @$(dig NS example.com +short | head -1) +short
 
-# If empty: no AAAA record exists for this domain
+# If empty: confirm the full dig output; NOERROR with an empty ANSWER means no AAAA record exists for this name
 # If returns IP: AAAA record exists
 
 # Check if there's an A record (domain exists, just no IPv6)
@@ -37,11 +37,11 @@ cat /etc/resolv.conf
 
 # Test if the DNS server accepts IPv6 transport
 dig AAAA google.com @::1  # localhost IPv6
-dig AAAA google.com @2001:db8::53  # specific IPv6 DNS server
+dig AAAA google.com @2001:4860:4860::8888  # Google Public DNS over IPv6
 
-# Check if the DNS server is listening on IPv6
-ss -6 -tlnp | grep ':53'
-# Empty output means DNS server is NOT listening on IPv6
+# Check if the DNS server is listening on IPv6 TCP or UDP
+ss -6 -lntup | grep -E '(:53[[:space:]]|:53$)'
+# Empty output means no DNS server is listening on IPv6 TCP/UDP port 53
 ```
 
 ## Step 3: Check Firewall Rules for IPv6 DNS
@@ -50,14 +50,14 @@ ss -6 -tlnp | grep ':53'
 # Check ip6tables for port 53 rules
 ip6tables -L -n | grep -E '53|dns'
 
-# If no ACCEPT rule for port 53 over IPv6, add one:
+# If INPUT policy drops inbound DNS and no earlier ACCEPT rule allows port 53 over IPv6, add rules appropriate for your firewall:
 ip6tables -A INPUT -p udp --dport 53 -j ACCEPT
 ip6tables -A INPUT -p tcp --dport 53 -j ACCEPT
 
-# Test connectivity to DNS server over IPv6
-nc -6 -v -w 3 2001:db8::53 53
-# "Connected" = port is open
-# Timeout = firewall is blocking
+# Test TCP connectivity to DNS server over IPv6
+nc -6 -vz -w 3 2001:4860:4860::8888 53
+# "succeeded" or "Connected" = TCP port is reachable
+# Timeout = firewall or routing issue (or server not reachable)
 ```
 
 ## Step 4: Test DNS Resolution Path Step by Step
@@ -81,14 +81,14 @@ dig AAAA example.com @$NS
 
 ```bash
 # Check if DNSSEC is causing SERVFAIL
-# Add +cd to disable DNSSEC checking
-dig AAAA example.com +cd
+# Add +cdflag to set the DNSSEC Checking Disabled bit
+dig AAAA example.com +cdflag
 
-# If query succeeds with +cd but fails without:
+# If query succeeds with +cdflag but fails without:
 # DNSSEC validation is failing
-# Check zone signing status:
-dig DNSKEY example.com
-dig RRSIG AAAA example.com
+# Check zone signing status and RRSIG records returned for the AAAA RRset:
+dig DNSKEY example.com +dnssec
+dig AAAA example.com +dnssec
 
 # Detailed DNSSEC validation output
 delv AAAA example.com
@@ -98,7 +98,7 @@ delv AAAA example.com
 
 ```bash
 # Check if a negative AAAA result is cached (NXDOMAIN or NODATA)
-dig AAAA example.com +ttl | grep -E 'SOA|status'
+dig AAAA example.com +ttlid | grep -E 'SOA|status'
 # If status is NOERROR with empty answer: NODATA (cached negative)
 # TTL on SOA record shows how long the negative is cached
 
@@ -129,22 +129,23 @@ except Exception as e:
 
 # Check nsswitch.conf - what hostname resolution order is used
 cat /etc/nsswitch.conf | grep hosts
-# Should include: hosts: files dns
+# Should include a DNS-capable source such as dns or resolve
 ```
 
 ## Step 8: Check for IPv6 Disabled Globally
 
 ```bash
-# Verify IPv6 is not disabled on the system
+# Verify IPv6 is not disabled by default or on all interfaces
+sysctl net.ipv6.conf.default.disable_ipv6
 sysctl net.ipv6.conf.all.disable_ipv6
-# Should return 0 (enabled)
+# Values should be 0 (enabled); also check net.ipv6.conf.<interface>.disable_ipv6 for the affected interface
 
-# If disabled, re-enable:
+# If disabled via sysctl, re-enable:
 sysctl -w net.ipv6.conf.all.disable_ipv6=0
 
 # Check if IPv6 is disabled in GRUB kernel parameters
-grep ipv6.disable /proc/cmdline
-# If present: ipv6 was disabled at boot
+grep -o 'ipv6.disable=[^ ]*' /proc/cmdline
+# ipv6.disable=1 means IPv6 was disabled at boot
 ```
 
 ## Diagnostic Script
@@ -157,21 +158,21 @@ DOMAIN=${1:-"example.com"}
 echo "=== IPv6 DNS Diagnostics for $DOMAIN ==="
 
 echo -e "\n[1] AAAA Record Check"
-dig AAAA $DOMAIN +short | head -3
+dig AAAA "$DOMAIN" +short | head -3
 
 echo -e "\n[2] DNS Server IPv6 Support"
-ss -6 -tlnp 2>/dev/null | grep ':53' || echo "No IPv6 DNS listeners found"
+ss -6 -lntup 2>/dev/null | grep -E '(:53[[:space:]]|:53$)' || echo "No IPv6 DNS TCP/UDP listeners found"
 
 echo -e "\n[3] IPv6 Connectivity"
-ping6 -c 2 2001:4860:4860::8888 2>/dev/null && echo "IPv6 OK" || echo "IPv6 BROKEN"
+ping -6 -c 2 2001:4860:4860::8888 2>/dev/null && echo "IPv6 OK" || echo "IPv6 BROKEN"
 
 echo -e "\n[4] DNSSEC Check"
-dig AAAA $DOMAIN +dnssec 2>/dev/null | grep -E 'status|RRSIG' | head -3
+dig AAAA "$DOMAIN" +dnssec 2>/dev/null | grep -E 'status|RRSIG' | head -3
 
 echo -e "\n[5] Negative Cache Check"
-dig AAAA $DOMAIN +ttl | grep -E 'SOA|NOERROR|NXDOMAIN' | head -2
+dig AAAA "$DOMAIN" +ttlid | grep -E 'SOA|NOERROR|NXDOMAIN' | head -2
 ```
 
 ## Summary
 
-IPv6 DNS resolution failures follow a consistent troubleshooting path: verify the AAAA record exists, confirm the DNS resolver listens on IPv6 and accepts queries, check firewall rules for IPv6 port 53, diagnose DNSSEC validation errors with `+cd`, flush negative caches, and verify IPv6 is not disabled at the OS level. The `dig`, `delv`, and Python `socket.getaddrinfo()` tests cover different layers of the resolution stack.
+IPv6 DNS resolution failures follow a consistent troubleshooting path: verify the AAAA record exists, confirm the DNS resolver listens on IPv6 and accepts queries, check firewall rules for IPv6 port 53, diagnose DNSSEC validation errors with `+cdflag`, flush negative caches, and verify IPv6 is not disabled at the OS level. The `dig`, `delv`, and Python `socket.getaddrinfo()` tests cover different layers of the resolution stack.
