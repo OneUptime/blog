@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Provisioner, SSH, Connection Blocks, Infrastructure as Code
 
-Description: Learn how to configure SSH connection blocks in OpenTofu to authenticate provisioners to remote Linux and Unix resources using passwords, key files, or agent forwarding.
+Description: Learn how to configure SSH connection blocks in OpenTofu to authenticate provisioners to remote Linux and Unix resources using passwords, key files, or SSH agents.
 
 ## Introduction
 
@@ -23,7 +23,7 @@ resource "aws_instance" "web" {
     user = "ubuntu"
 
     # Authenticate with a PEM private key file
-    private_key = file("~/.ssh/my-ec2-key.pem")
+    private_key = file(pathexpand("~/.ssh/my-ec2-key.pem"))
 
     # Connect to the instance's public IP
     host = self.public_ip
@@ -51,11 +51,12 @@ connection {
 ### Private Key from Variable (Secure)
 
 ```hcl
-# The private key content is stored securely (e.g., in Vault or CI secrets)
+# The private key content is supplied securely (e.g., from Vault or CI secrets)
 
 variable "ssh_private_key" {
   type      = string
   sensitive = true
+  ephemeral = true
 }
 
 connection {
@@ -67,6 +68,8 @@ connection {
 ```
 
 ### Dynamically Generated Key Pair
+
+This is convenient for temporary environments, but the private key is stored in OpenTofu state.
 
 ```hcl
 # Generate a key pair with OpenTofu and use it immediately
@@ -86,7 +89,7 @@ resource "aws_instance" "web" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    # Use the in-memory private key - never touches disk
+    # Use the generated private key value from state
     private_key = tls_private_key.deploy.private_key_pem
     host        = self.public_ip
   }
@@ -97,7 +100,7 @@ resource "aws_instance" "web" {
 }
 ```
 
-### SSH Agent Forwarding
+### SSH Agent Authentication
 
 ```hcl
 connection {
@@ -181,4 +184,4 @@ resource "aws_instance" "web" {
 
 ## Conclusion
 
-A properly configured `connection` block is the foundation of all remote provisioning in OpenTofu. Using dynamically generated key pairs is the most secure approach, as the private key never needs to be stored on disk. Always set a generous `timeout` to account for instance boot time.
+A properly configured `connection` block is the foundation of all remote provisioning in OpenTofu. Dynamically generated key pairs can be useful for temporary environments, but the private key is stored in OpenTofu state, so protect state carefully. Always set a generous `timeout` to account for instance boot time.
