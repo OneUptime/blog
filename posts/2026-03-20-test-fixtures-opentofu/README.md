@@ -71,12 +71,15 @@ resource "aws_security_group" "db" {
   name   = "test-fixture-db-sg"
   vpc_id = aws_vpc.test.id
 
-  ingress {
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = [aws_vpc.test.cidr_block]
-  }
+  tags = { Name = "test-fixture-db-sg", Purpose = "testing" }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "db_postgres" {
+  security_group_id = aws_security_group.db.id
+  cidr_ipv4         = aws_vpc.test.cidr_block
+  from_port         = 5432
+  to_port           = 5432
+  ip_protocol       = "tcp"
 }
 ```
 
@@ -99,7 +102,7 @@ run "setup_networking" {
   command = apply
 
   module {
-    source = "./fixtures/networking"
+    source = "./tests/fixtures/networking"
   }
 }
 
@@ -131,8 +134,8 @@ run "test_database_creation" {
 # tests/fixtures/shared/main.tf (deployed once per test session)
 # ...
 
-# tests/integration/database_test.tftest.hcl
-# Reference pre-existing fixture via data sources
+# tests/fixtures/shared_lookup/main.tf
+# Reference pre-existing fixture via data sources from a helper module
 data "aws_vpc" "test_fixture" {
   tags = {
     Name    = "test-fixture-vpc"
@@ -150,12 +153,26 @@ data "aws_subnets" "test_fixture_private" {
   }
 }
 
+output "vpc_id"             { value = data.aws_vpc.test_fixture.id }
+output "private_subnet_ids" { value = data.aws_subnets.test_fixture_private.ids }
+```
+
+```hcl
+# tests/integration/database_test.tftest.hcl
+run "lookup_shared_fixture" {
+  command = apply
+
+  module {
+    source = "./tests/fixtures/shared_lookup"
+  }
+}
+
 run "test_with_shared_fixture" {
   command = apply
 
   variables {
-    vpc_id     = data.aws_vpc.test_fixture.id
-    subnet_ids = data.aws_subnets.test_fixture_private.ids
+    vpc_id     = run.lookup_shared_fixture.vpc_id
+    subnet_ids = run.lookup_shared_fixture.private_subnet_ids
   }
 }
 ```
@@ -163,8 +180,8 @@ run "test_with_shared_fixture" {
 ## Fixture Lifecycle Management
 
 ```bash
-# scripts/setup-test-fixtures.sh
 #!/bin/bash
+# scripts/setup-test-fixtures.sh
 
 echo "Deploying test fixtures..."
 cd tests/fixtures/networking
@@ -173,15 +190,22 @@ tofu apply -auto-approve
 FIXTURE_OUTPUTS=$(tofu output -json)
 
 # Export fixture outputs for tests
-export TEST_VPC_ID=$(echo $FIXTURE_OUTPUTS | jq -r '.vpc_id.value')
-export TEST_SUBNET_IDS=$(echo $FIXTURE_OUTPUTS | jq -r '.private_subnet_ids.value | join(",")')
+export TEST_VPC_ID=$(echo "$FIXTURE_OUTPUTS" | jq -r '.vpc_id.value')
+export TEST_SUBNET_IDS=$(echo "$FIXTURE_OUTPUTS" | jq -r '.private_subnet_ids.value | join(",")')
+
+if [ -n "${GITHUB_ENV:-}" ]; then
+  {
+    echo "TEST_VPC_ID=$TEST_VPC_ID"
+    echo "TEST_SUBNET_IDS=$TEST_SUBNET_IDS"
+  } >> "$GITHUB_ENV"
+fi
 
 echo "Fixtures deployed: VPC=$TEST_VPC_ID"
 ```
 
 ```bash
-# scripts/teardown-test-fixtures.sh
 #!/bin/bash
+# scripts/teardown-test-fixtures.sh
 
 echo "Destroying test fixtures..."
 cd tests/fixtures/networking
@@ -196,9 +220,13 @@ echo "Fixtures destroyed"
 jobs:
   integration:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: opentofu/setup-opentofu@v2
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.TEST_ROLE_ARN }}
           aws-region: us-east-1
@@ -206,8 +234,11 @@ jobs:
       - name: Deploy fixtures
         run: bash scripts/setup-test-fixtures.sh
 
+      - name: Initialize integration tests
+        run: tofu init -test-directory=tests/integration
+
       - name: Run integration tests
-        run: tofu test tests/integration/ -verbose
+        run: tofu test -test-directory=tests/integration -verbose
 
       - name: Teardown fixtures
         if: always()  # Always clean up
@@ -216,4 +247,4 @@ jobs:
 
 ## Conclusion
 
-Test fixtures reduce integration test complexity by separating prerequisite infrastructure from the module under test. The `run "setup" { module { source = "./fixtures/..." } }` pattern in OpenTofu test files is convenient for self-contained tests, while shared fixtures deployed once per test session are more efficient for suites with many test files that need the same prerequisites.
+Test fixtures reduce integration test complexity by separating prerequisite infrastructure from the module under test. The `run "setup" { module { source = "./tests/fixtures/..." } }` pattern in OpenTofu test files is convenient for self-contained tests, while shared fixtures deployed once per test session are more efficient for suites with many test files that need the same prerequisites.
