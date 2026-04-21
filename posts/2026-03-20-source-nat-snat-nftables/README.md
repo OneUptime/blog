@@ -12,7 +12,7 @@ Source NAT (SNAT) rewrites the source IP address of outgoing packets to a fixed 
 
 ## Prerequisites
 
-- Linux router with a static public IP on the WAN interface (`eth0`)
+- Linux router with a static public IP on the WAN interface (`eth0`) and LAN interface (`eth1`)
 - nftables installed
 - IP forwarding enabled
 
@@ -36,7 +36,7 @@ nft add table ip nat
 nft add chain ip nat postrouting { type nat hook postrouting priority 100 \; }
 
 # SNAT: rewrite source IP to 203.0.113.1 for all LAN traffic leaving eth0
-nft add rule ip nat postrouting oif "eth0" snat to 203.0.113.1
+nft add rule ip nat postrouting oifname "eth0" snat to 203.0.113.1
 ```
 
 ## SNAT for a Specific Source Subnet Only
@@ -45,7 +45,7 @@ If you want SNAT applied only to a particular private subnet:
 
 ```bash
 # Apply SNAT only to traffic originating from 10.0.0.0/24
-nft add rule ip nat postrouting ip saddr 10.0.0.0/24 oif "eth0" snat to 203.0.113.1
+nft add rule ip nat postrouting ip saddr 10.0.0.0/24 oifname "eth0" snat to 203.0.113.1
 ```
 
 ## SNAT to an IP Range (Load Distribution)
@@ -54,7 +54,7 @@ nftables supports SNAT to a range of source IPs, distributing connections across
 
 ```bash
 # SNAT to a range of public IPs
-nft add rule ip nat postrouting oif "eth0" snat to 203.0.113.1-203.0.113.5
+nft add rule ip nat postrouting oifname "eth0" snat to 203.0.113.1-203.0.113.5
 ```
 
 ## Full SNAT Configuration
@@ -69,7 +69,7 @@ table ip nat {
         type nat hook postrouting priority 100; policy accept;
 
         # SNAT all private 10.0.0.0/24 traffic to static public IP
-        ip saddr 10.0.0.0/24 oif "eth0" snat to 203.0.113.1
+        ip saddr 10.0.0.0/24 oifname "eth0" snat to 203.0.113.1
     }
 }
 
@@ -77,7 +77,7 @@ table inet filter {
     chain input {
         type filter hook input priority 0; policy drop;
 
-        iif lo accept
+        iifname lo accept
         ct state established,related accept
         ct state invalid drop
         tcp dport 22 accept
@@ -87,8 +87,8 @@ table inet filter {
         type filter hook forward priority 0; policy drop;
 
         # Allow LAN hosts to reach the internet
-        iif "eth1" oif "eth0" ct state new,established,related accept
-        iif "eth0" oif "eth1" ct state established,related accept
+        iifname "eth1" oifname "eth0" ct state new,established,related accept
+        iifname "eth0" oifname "eth1" ct state established,related accept
     }
 
     chain output {
@@ -113,7 +113,7 @@ table inet filter {
 nft list table ip nat
 
 # From a LAN client, check the public IP used
-curl ifconfig.me
+curl -4 ifconfig.me
 
 # Save rules
 nft list ruleset > /etc/nftables.conf
