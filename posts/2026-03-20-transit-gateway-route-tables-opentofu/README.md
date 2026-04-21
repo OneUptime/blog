@@ -14,7 +14,9 @@ AWS Transit Gateway acts as a network hub connecting multiple VPCs and on-premis
 
 - OpenTofu v1.6+
 - AWS credentials with networking permissions
-- Existing Transit Gateway and VPC attachments
+- Existing VPCs and subnet IDs for the Transit Gateway VPC attachments
+- VPC subnet route table routes to the Transit Gateway for the destination CIDRs you want to reach
+- VPN or Direct Connect gateway Transit Gateway attachment ID if you add the on-premises static route
 
 ## Step 1: Create the Transit Gateway
 
@@ -39,9 +41,11 @@ resource "aws_ec2_transit_gateway" "main" {
 ```hcl
 # Attach production VPC to the Transit Gateway
 resource "aws_ec2_transit_gateway_vpc_attachment" "prod" {
-  subnet_ids         = var.prod_subnet_ids
-  transit_gateway_id = aws_ec2_transit_gateway.main.id
-  vpc_id             = var.prod_vpc_id
+  subnet_ids                                      = var.prod_subnet_ids
+  transit_gateway_id                              = aws_ec2_transit_gateway.main.id
+  vpc_id                                          = var.prod_vpc_id
+  transit_gateway_default_route_table_association = false
+  transit_gateway_default_route_table_propagation = false
 
   tags = {
     Name = "prod-tgw-attachment"
@@ -50,9 +54,11 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "prod" {
 
 # Attach shared services VPC
 resource "aws_ec2_transit_gateway_vpc_attachment" "shared" {
-  subnet_ids         = var.shared_subnet_ids
-  transit_gateway_id = aws_ec2_transit_gateway.main.id
-  vpc_id             = var.shared_vpc_id
+  subnet_ids                                      = var.shared_subnet_ids
+  transit_gateway_id                              = aws_ec2_transit_gateway.main.id
+  vpc_id                                          = var.shared_vpc_id
+  transit_gateway_default_route_table_association = false
+  transit_gateway_default_route_table_propagation = false
 
   tags = {
     Name = "shared-tgw-attachment"
@@ -119,10 +125,10 @@ resource "aws_ec2_transit_gateway_route_table_propagation" "shared_to_prod" {
 
 ```hcl
 # Add a static route for on-premises CIDR in the prod route table
-# pointing to the VPN or Direct Connect attachment
+# pointing to the VPN or Direct Connect gateway attachment
 resource "aws_ec2_transit_gateway_route" "onprem" {
   destination_cidr_block         = "10.0.0.0/8"
-  transit_gateway_attachment_id  = var.vpn_attachment_id
+  transit_gateway_attachment_id  = var.onprem_attachment_id
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.prod.id
 }
 ```
