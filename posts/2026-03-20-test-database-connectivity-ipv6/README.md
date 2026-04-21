@@ -11,7 +11,7 @@ Description: Learn how to systematically test database connectivity over IPv6 fo
 ```bash
 # Test ICMP reachability
 
-ping6 -c 4 2001:db8::10
+ping -6 -c 4 2001:db8::10
 
 # Test TCP port reachability with netcat
 nc -6 -zv 2001:db8::10 5432   # PostgreSQL
@@ -69,7 +69,7 @@ redis-cli -6 -h 2001:db8::10 -p 6379 ping
 redis-cli -6 -h 2001:db8::10 -p 6379 -a mypassword ping
 
 # Raw TCP test
-echo "PING" | nc -6 2001:db8::10 6379
+printf "PING\r\n" | nc -6 -w 5 2001:db8::10 6379
 # Expected: +PONG
 
 # Get server info
@@ -166,4 +166,4 @@ for port, name in services:
 
 ## Summary
 
-Test database IPv6 connectivity with these tools: `ping6` for ICMP reachability, `nc -6 -zv` for TCP port checks, and database-native clients (`psql -h`, `mysql -h`, `redis-cli -6 -h`, `mongosh`) for application-level tests. Use `pg_isready` for PostgreSQL health checks. Automate with a bash or Python script that checks all services. A successful `nc -6 -zv` but failed client connection usually indicates authentication/access control issues rather than network problems.
+Test database IPv6 connectivity with these tools: `ping -6` for ICMP reachability, `nc -6 -zv` for TCP port checks, and database-native clients (`psql -h`, `mysql -h`, `redis-cli -6 -h`, `mongosh`) for application-level tests. Use `pg_isready` for PostgreSQL health checks. Automate with a bash or Python script that checks all services. A successful `nc -6 -zv` but failed client connection often indicates application-layer issues such as authentication, TLS, protocol settings, or database access control rather than basic TCP reachability.
