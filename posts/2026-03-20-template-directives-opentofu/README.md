@@ -142,9 +142,9 @@ locals {
 locals {
   without_spaces = <<-EOF
     enabled_features:
-    %{~for feature in var.features~}
+    %{for feature in var.features~}
     - ${feature}
-    %{~endfor~}
+    %{endfor~}
   EOF
 }
 ```
@@ -194,7 +194,7 @@ variable "is_private" {
 
 # Template directives work in regular strings too
 locals {
-  subnet_type = "subnet-${var.is_private ? "private" : "public"}"
+  subnet_type = "subnet-%{if var.is_private}private%{else}public%{endif}"
   # Note: for simple conditionals, ternary is cleaner
   # Use template directives for multi-line or complex cases
 }
