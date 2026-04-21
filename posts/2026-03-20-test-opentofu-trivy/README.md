@@ -17,7 +17,7 @@ Trivy is a comprehensive security scanner from Aqua Security that scans containe
 
 brew install trivy  # macOS
 # or
-curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin v0.70.0
 
 # Scan current directory
 trivy config .
@@ -41,20 +41,20 @@ trivy config -f sarif -o trivy-results.sarif .
 # Example output:
 # main.tf (terraform)
 # ==================
-# Tests: 20 (SUCCESSES: 18, FAILURES: 2, EXCEPTIONS: 0)
+# Tests: 20 (SUCCESSES: 18, FAILURES: 2)
 # Failures: 2 (HIGH: 1, CRITICAL: 1)
 #
-# CRITICAL: Security group should restrict access on port 22
+# HIGH: Security groups should not allow unrestricted ingress to SSH or RDP from any IP address.
 # ════════════════════════════════════════════
-#  ID             CVE-2022-0001
-#  File           main.tf:15-25
-#  Message        Security group allows SSH access from the internet
+# Security groups provide stateful filtering of ingress and egress network traffic.
+# See https://avd.aquasec.com/misconfig/aws-0107
+# main.tf:15-25
 ```
 
 ## Common OpenTofu Issues Trivy Catches
 
 ```hcl
-# Trivy check: AVD-AWS-0057 - S3 bucket without versioning
+# Trivy check: AWS-0090 - S3 bucket without versioning
 # FIX:
 resource "aws_s3_bucket_versioning" "this" {
   bucket = aws_s3_bucket.main.id
@@ -63,7 +63,7 @@ resource "aws_s3_bucket_versioning" "this" {
   }
 }
 
-# Trivy check: AVD-AWS-0086 - Security group allows unrestricted SSH
+# Trivy check: AWS-0107 - Security group allows unrestricted SSH
 # FIX: Restrict SSH to specific CIDRs
 resource "aws_security_group_rule" "ssh" {
   type        = "ingress"
@@ -75,7 +75,7 @@ resource "aws_security_group_rule" "ssh" {
   security_group_id = aws_security_group.main.id
 }
 
-# Trivy check: AVD-AWS-0132 - RDS without deletion protection
+# Trivy check: AWS-0177 - RDS without deletion protection
 # FIX:
 resource "aws_db_instance" "main" {
   # ...
@@ -87,43 +87,86 @@ resource "aws_db_instance" "main" {
 
 ```rego
 # policies/require_tags.rego
-package user.terraform.require_tags
+# METADATA
+# title: Required AWS resource tags
+# description: Ensure required tags are set on selected AWS resources.
+# scope: package
+# schemas:
+#   - input: schema["terraform-raw"]
+# custom:
+#   id: USR-TFRAW-0001
+#   severity: MEDIUM
+#   short_code: required-aws-tags
+#   recommended_actions: Add the required tags to AWS resources.
+#   input:
+#     selector:
+#     - type: terraform-raw
+package user.terraform.required_aws_tags
 
-import future.keywords.contains
-import future.keywords.if
+import rego.v1
 
-deny contains msg if {
-    resource := input.config.resource.aws_instance[_]
-    not resource.tags.Environment
-    msg := sprintf("aws_instance must have an Environment tag: %s", [resource.name])
+required_tags_by_type := {
+    "aws_instance": {"Environment"},
+    "aws_s3_bucket": {"Owner"},
 }
 
-deny contains msg if {
-    resource := input.config.resource.aws_s3_bucket[_]
-    not resource.tags.Owner
-    msg := sprintf("aws_s3_bucket must have an Owner tag: %s", [resource.name])
+resources_to_check := {block |
+    some module in input.modules
+    some block in module.blocks
+    block.kind == "resource"
+    required_tags_by_type[block.type]
+}
+
+deny contains res if {
+    some block in resources_to_check
+    not block.attributes.tags
+    required_tags := required_tags_by_type[block.type]
+    res := result.new(
+        sprintf("%s must define required tags: %v", [block.type, required_tags]),
+        block,
+    )
+}
+
+deny contains res if {
+    some block in resources_to_check
+    tags_attr := block.attributes.tags
+    tags := object.keys(tags_attr.value)
+    required_tags := required_tags_by_type[block.type]
+    missing_tags := required_tags - tags
+    count(missing_tags) > 0
+    res := result.new(
+        sprintf("%s is missing required tags: %v", [block.type, missing_tags]),
+        tags_attr,
+    )
 }
 ```
 
 ```bash
-# Use custom policy directory
-trivy config --policy policies/ .
+# Use a custom policy with raw Terraform/OpenTofu input
+trivy config \
+  --config-check policies/require_tags.rego \
+  --check-namespaces user \
+  --misconfig-scanners terraform \
+  --raw-config-scanners terraform .
 ```
 
 ## Trivy Configuration File
 
 ```yaml
-# .trivyignore.yaml - ignore specific checks
-rules:
-  - id: AVD-AWS-0144  # S3 cross-region replication - not required
-    reason: "Cross-region replication not required for dev environment"
+# .trivyignore.yaml - ignore specific misconfiguration checks
+misconfigurations:
+  - id: AWS-0090  # S3 versioning - not required for this dev bucket
+    statement: "Versioning not required for dev environment"
     paths:
-      - "environments/dev/**"
+      - "environments/dev/main.tf"
 ```
 
 ```bash
+# Use the YAML ignore file
+trivy config --ignorefile ./.trivyignore.yaml .
+
 # Or use inline suppression comment in .tf files
-# trivy:ignore:AVD-AWS-0057
+# trivy:ignore:AWS-0090
 resource "aws_s3_bucket" "logs" {
   bucket = "log-bucket"
   # Versioning not needed for access logs
@@ -136,11 +179,8 @@ resource "aws_s3_bucket" "logs" {
 # Run against CIS AWS Foundations Benchmark
 trivy config --compliance aws-cis-1.2 .
 
-# Run against SOC2 compliance
-trivy config --compliance soc2 .
-
-# List available compliance frameworks
-trivy config --list-all-policies
+# Run against a newer CIS AWS Foundations Benchmark
+trivy config --compliance aws-cis-1.4 .
 ```
 
 ## CI/CD Integration
@@ -154,11 +194,14 @@ on: [pull_request]
 jobs:
   trivy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
       - name: Run Trivy config scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: config
           scan-ref: .
@@ -168,7 +211,7 @@ jobs:
           exit-code: '1'
 
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy-results.sarif
@@ -179,7 +222,7 @@ jobs:
 | Feature | Trivy | Checkov |
 |---------|-------|---------|
 | IaC scanning | Yes | Yes |
-| Container scanning | Yes | No |
+| Container scanning | Yes | Yes |
 | Custom policies | Rego | Python/YAML |
 | CIS Benchmarks | Yes | Yes |
 | Speed | Fast | Fast |
