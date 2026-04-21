@@ -14,15 +14,13 @@ Running Portainer over plain HTTP exposes your container management interface to
 
 - Docker and Docker Compose installed
 - A domain name pointing to your server
-- Ports 80 and 443 accessible from the internet (for Let's Encrypt)
+- Ports 80 and 443 accessible from the internet (80 for Let's Encrypt HTTP-01 validation and 443 for HTTPS traffic)
 
 ## Docker Compose Setup
 
 Deploy both Portainer and Nginx Proxy Manager:
 
 ```yaml
-version: "3.8"
-
 services:
   portainer:
     image: portainer/portainer-ce:latest
