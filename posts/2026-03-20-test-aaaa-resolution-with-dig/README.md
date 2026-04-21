@@ -46,7 +46,7 @@ dig AAAA google.com
 #
 # ;; Query time: 10 msec
 # ;; SERVER: 8.8.8.8#53(8.8.8.8)        ← DNS server used
-# ;; WHEN: Thu Mar 20 10:00:00 UTC 2026
+# ;; WHEN: Fri Mar 20 10:00:00 UTC 2026
 # ;; MSG SIZE rcvd: 67
 ```
 
@@ -55,17 +55,18 @@ dig AAAA google.com
 ```bash
 # Check if a domain has any AAAA records
 dig AAAA www.example.com +short
-# Empty output = no AAAA record
+# Empty output usually means no AAAA answer; run without +short to confirm status
 
 # Check AAAA record TTL (useful during TTL changes)
-dig AAAA www.example.com | grep AAAA
+dig AAAA www.example.com +noall +answer
 # www.example.com. 3600 IN AAAA 2001:db8::1
 #                  ^^^^--- TTL in seconds
 
 # Check authoritative answer (not from cache)
-dig AAAA www.example.com +norecurse @ns1.example.com
+AUTH_NS=$(dig NS example.com +short | head -n 1)
+dig AAAA www.example.com +norecurse @"$AUTH_NS"
 
-# Check AAAA with DNSSEC validation info
+# Request DNSSEC records (RRSIGs) when available
 dig AAAA www.example.com +dnssec
 
 # Check NXDOMAIN vs NODATA for AAAA
@@ -88,19 +89,19 @@ done
 
 ## Verifying DNS64 Synthesis
 
-When using DNS64+NAT64, verify that synthesized AAAA records start with the NAT64 prefix:
+When using DNS64+NAT64, verify that synthesized AAAA records use the NAT64 prefix:
 
 ```bash
-# Query via DNS64 resolver for a domain with only A records
-dig AAAA example.com @dns64-resolver-ip +short
-# Expected: 64:ff9b::5db8:d822 (NAT64 prefix + embedded IPv4)
+# Query via a DNS64 resolver for the special IPv4-only name
+dig AAAA ipv4only.arpa @2001:4860:4860::64 +short
+# Expected with the well-known /96 prefix: 64:ff9b::c000:aa and 64:ff9b::c000:ab
 
-# Verify the prefix is correct
-dig AAAA example.com @dns64-resolver-ip +short | grep -c "^64:ff9b::"
-# Should return: 1 (synthesis working)
+# Verify the prefix is correct for a resolver using 64:ff9b::/96
+dig AAAA ipv4only.arpa @2001:4860:4860::64 +short | grep -c "^64:ff9b::"
+# Should return: 2 (synthesis working)
 
-# Compare with native resolver (should return empty for IPv4-only domain)
-dig AAAA example.com @8.8.8.8 +short
+# Compare with native resolver (should return empty because ipv4only.arpa has no native AAAA records)
+dig AAAA ipv4only.arpa @8.8.8.8 +short
 # Should return: (empty)
 ```
 
@@ -109,7 +110,7 @@ dig AAAA example.com @8.8.8.8 +short
 ```bash
 # Test reverse lookup for an IPv6 address
 dig -x 2001:db8::1 +short
-# Expected: server1.example.com.
+# If a PTR record exists: server1.example.com.
 
 # Without +short to see full response
 dig -x 2001:db8::1
@@ -121,17 +122,20 @@ dig -x 2001:db8::1 @127.0.0.1
 ## Checking Response Time and Caching
 
 ```bash
-# Check query time (first query vs cached)
+# Check query time
 dig AAAA google.com | grep "Query time"
-# First query: 50 msec
+# Example: 50 msec
 
-# Second query (should hit cache)
+# Run again and compare (recursive resolvers may answer from cache)
 dig AAAA google.com | grep "Query time"
-# Cached: 1 msec
+# Example cached response: 1 msec
 
-# Force non-cached query
-dig AAAA google.com +cd  # disable DNSSEC cache
-dig AAAA google.com +nocache  # some versions support this
+# To avoid a recursive resolver cache, query an authoritative name server
+AUTH_NS=$(dig NS google.com +short | head -n 1)
+dig AAAA google.com @"$AUTH_NS" +norecurse | grep "Query time"
+
+# Check DNSSEC validation separately
+dig AAAA google.com +cd  # asks resolver to disable DNSSEC validation
 ```
 
 ## Batch Testing Multiple Domains
@@ -147,8 +151,9 @@ DNS_SERVER=${2:-8.8.8.8}
 echo "Testing AAAA records against $DNS_SERVER"
 echo "---"
 
-while read DOMAIN; do
-    RESULT=$(dig AAAA $DOMAIN @$DNS_SERVER +short | head -1)
+while IFS= read -r DOMAIN; do
+    [ -z "$DOMAIN" ] && continue
+    RESULT=$(dig AAAA "$DOMAIN" @"$DNS_SERVER" +short | head -n 1)
     if [ -z "$RESULT" ]; then
         echo "MISSING: $DOMAIN (no AAAA record)"
     else
@@ -163,7 +168,7 @@ done < "$DOMAINS_FILE"
 # Force dig to use IPv6 transport for the query (not just query type)
 dig -6 AAAA example.com @2001:4860:4860::8888
 
-# This sends the DNS query over IPv6 UDP
+# By default this sends the DNS query over IPv6 UDP; dig retries over TCP if the response is truncated
 # Verify with: dig -6 A example.com @2001:4860:4860::8888
 # SERVER shows IPv6 address used
 ```
