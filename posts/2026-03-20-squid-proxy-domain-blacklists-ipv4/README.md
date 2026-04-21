@@ -17,8 +17,8 @@ Squid is a widely-used open-source caching proxy that can enforce web access pol
 
 sudo apt-get install squid
 
-# CentOS/RHEL
-sudo yum install squid
+# CentOS/RHEL/Fedora
+sudo dnf install squid
 ```
 
 ## Understanding Squid ACLs
@@ -78,7 +78,7 @@ http_access deny blocked_domains
 # Block URLs containing certain patterns
 acl porn_pattern url_regex -i pornography adult xxx
 
-# Block specific URL paths
+# Block specific URL paths visible to Squid, such as plain HTTP requests
 acl blocked_paths urlpath_regex \
     /gambling \
     /casino \
@@ -90,19 +90,22 @@ http_access deny blocked_paths
 
 ## Redirecting Blocked Requests to a Custom Page
 
-Instead of returning an error, redirect to a custom block page:
+Instead of returning Squid's default access-denied page, use `deny_info` for the ACL that denied the request:
 
 ```squid
-# In squid.conf - set a custom error directory
-error_directory /usr/share/squid/errors/English
-
-# Create a custom denial page at /usr/share/squid/errors/English/ERR_ACCESS_DENIED
+# Redirect blocked domain requests to a hosted block page
+deny_info http://proxy.example.com/blocked.html blocked_domains
+http_access deny blocked_domains
 ```
 
-Or use a redirect helper:
+Or serve a custom Squid error template:
 
 ```squid
-url_rewrite_program /usr/local/bin/squid-redirector.sh
+# Copy the default error templates to /etc/squid/errors first, then customize them
+error_directory /etc/squid/errors
+deny_info ERR_ACCESS_DENIED blocked_domains
+
+# Customize /etc/squid/errors/ERR_ACCESS_DENIED
 ```
 
 ## Restricting to Specific IPv4 Clients
@@ -144,10 +147,10 @@ sudo systemctl restart squid
 # Watch Squid access log for denied requests
 sudo tail -f /var/log/squid/access.log | grep TCP_DENIED
 
-# Count denials by domain
-sudo awk '/DENIED/ {print $7}' /var/log/squid/access.log | sort | uniq -c | sort -rn | head 20
+# Count denials by requested URL
+sudo awk '/TCP_DENIED/ {print $7}' /var/log/squid/access.log | sort | uniq -c | sort -rn | head -n 20
 ```
 
 ## Conclusion
 
-Squid's ACL-based blacklisting provides a flexible, auditable way to enforce web access policies for IPv4 clients. For production deployments, consider integrating with commercial or community-maintained blocklists (e.g., Shallalist, URLhaus) and automate updates via cron.
+Squid's ACL-based blacklisting provides a flexible, auditable way to enforce web access policies for IPv4 clients. For production deployments, consider integrating with commercial or community-maintained blocklists (e.g., UT1 Blacklists, URLhaus) and automate updates via cron.
