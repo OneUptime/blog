@@ -32,13 +32,17 @@ services:
       - "traefik.http.routers.myapp.entrypoints=websecure"
       - "traefik.http.routers.myapp.tls.certresolver=letsencrypt"
       # Define auth middleware
-      - "traefik.http.middlewares.myapp-auth.basicauth.users=admin:$$apr1$$HASH"
+      - "traefik.http.middlewares.myapp-auth.basicauth.users=admin:$$apr1$$SALT$$HASH"
       # Attach middleware to router
       - "traefik.http.routers.myapp.middlewares=myapp-auth"
       - "traefik.http.services.myapp.loadbalancer.server.port=8080"
+
+networks:
+  proxy:
+    external: true
 ```
 
-Generate a password hash: `htpasswd -nb admin yourpassword`
+Generate an escaped password hash for Compose labels: `htpasswd -nb admin yourpassword | sed -e 's/\$/\$\$/g'`
 
 ## Rate Limiting Middleware
 
@@ -101,6 +105,7 @@ labels:
   - "traefik.http.middlewares.legacy-redirect.redirectregex.regex=^https?://example.com/old/(.*)"
   - "traefik.http.middlewares.legacy-redirect.redirectregex.replacement=https://example.com/new/$${1}"
   - "traefik.http.middlewares.legacy-redirect.redirectregex.permanent=true"
+  - "traefik.http.routers.myapp.middlewares=legacy-redirect"
 ```
 
 ## Chaining Multiple Middlewares
@@ -117,7 +122,7 @@ Middlewares are applied in the order listed.
 
 ## Reusable Middlewares in Dynamic Config
 
-Define middlewares once in a file and reuse them:
+Define middlewares once in a file loaded by the file provider and reuse them:
 
 ```yaml
 # /opt/traefik/config/middlewares.yml
@@ -130,9 +135,9 @@ http:
         browserXssFilter: true
 
     default-auth:
-      basicauth:
+      basicAuth:
         users:
-          - "admin:$apr1$HASH"
+          - "admin:$apr1$SALT$HASH"
 ```
 
 Then reference by name with `@file`:
