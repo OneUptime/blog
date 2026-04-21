@@ -15,7 +15,7 @@ Testing email delivery over IPv6 requires verifying both the transport layer (IP
 ```bash
 # Install testing tools
 
-sudo apt install -y swaks telnet dnsutils mailutils
+sudo apt install -y swaks telnet dnsutils netcat-openbsd mailutils
 
 # Install swaks (SMTP Swiss Army Knife) if not available
 sudo apt install -y swaks
@@ -26,7 +26,11 @@ sudo apt install -y swaks
 ```bash
 # Look up MX records for the target domain
 dig MX gmail.com +short
+# 5 gmail-smtp-in.l.google.com.
 # 10 alt1.gmail-smtp-in.l.google.com.
+# 20 alt2.gmail-smtp-in.l.google.com.
+# 30 alt3.gmail-smtp-in.l.google.com.
+# 40 alt4.gmail-smtp-in.l.google.com.
 
 # Check if the MX server has an AAAA record
 dig AAAA alt1.gmail-smtp-in.l.google.com +short
@@ -41,10 +45,10 @@ telnet -6 alt1.gmail-smtp-in.l.google.com 25
 
 ```bash
 # Connect and check SMTP greeting
-openssl s_client -connect [2607:f8b0:4003:c00::1a]:25 -starttls smtp 2>/dev/null | head -10
+openssl s_client -6 -connect alt1.gmail-smtp-in.l.google.com:25 -starttls smtp 2>/dev/null | head -10
 
 # Manual SMTP session (no TLS)
-(echo "EHLO mail.example.com"; sleep 1; echo "QUIT") | nc -6 2607:f8b0:4003:c00::1a 25
+(sleep 1; printf 'EHLO mail.example.com\r\nQUIT\r\n') | nc -6 alt1.gmail-smtp-in.l.google.com 25
 ```
 
 ## Step 3: Send Test Email with swaks
@@ -52,17 +56,17 @@ openssl s_client -connect [2607:f8b0:4003:c00::1a]:25 -starttls smtp 2>/dev/null
 `swaks` is the most powerful SMTP testing tool:
 
 ```bash
-# Basic test sending from an IPv6 address
+# Basic test sending through an IPv6 SMTP server
 swaks --from sender@example.com \
       --to recipient@example.com \
-      --server [2001:db8::10]:25 \
+      --server "[2001:db8::10]:25" \
       --body "IPv6 delivery test" \
       --header "Subject: IPv6 Test $(date)"
 
 # Test with TLS/STARTTLS
 swaks --from sender@example.com \
       --to recipient@example.com \
-      --server [2001:db8::10]:587 \
+      --server "[2001:db8::10]:587" \
       --tls \
       --auth LOGIN \
       --auth-user sender@example.com \
@@ -81,16 +85,16 @@ swaks --from sender@example.com \
 Several free services reply with authentication results:
 
 ```bash
-# Port25 verifier - replies with detailed auth report
+# Port25 verifier - replies with detailed SPF/DKIM auth report
 swaks --from sender@example.com \
       --to check-auth@verifier.port25.com \
-      --server [2001:db8::10]:25
+      --server "[2001:db8::10]:25"
 
 # Mail-tester.com - web-based score (need to send to their unique address)
 # Visit https://www.mail-tester.com to get a test address, then:
 swaks --from sender@example.com \
       --to test-xxxxx@srv1.mail-tester.com \
-      --server [2001:db8::10]:25
+      --server "[2001:db8::10]:25"
 ```
 
 ## Step 5: Test with Gmail and Check Headers
@@ -100,14 +104,14 @@ Send to a Gmail account you control and view headers:
 ```bash
 swaks --from sender@example.com \
       --to yourtest@gmail.com \
-      --server [2001:db8::10]:25 \
+      --server "[2001:db8::10]:25" \
       --header "Subject: IPv6 Header Test"
 ```
 
 In Gmail, click the three-dot menu → **Show original** and look for:
 
 ```text
-Received: from mail.example.com ([2001:db8::10])
+Received: from mail.example.com ([IPv6:2001:db8::10])
 Authentication-Results: mx.google.com;
    dkim=pass header.i=@example.com;
    spf=pass (google.com: domain of sender@example.com designates 2001:db8::10 as permitted sender);
@@ -120,10 +124,10 @@ Monitor mail logs during testing to confirm IPv6 is used:
 
 ```bash
 # Postfix log
-sudo tail -f /var/log/mail.log | grep -E "::|\[2[0-9a-f]+:"
+sudo tail -f /var/log/mail.log | grep --line-buffered -Ei "ipv6:|\[[0-9a-f:]+\]"
 
 # Exim4 log
-sudo tail -f /var/log/exim4/mainlog | grep "IPv6\|::"
+sudo tail -f /var/log/exim4/mainlog | grep --line-buffered -Ei "ipv6|::"
 ```
 
 ## Step 7: Automated SMTP Test Script
@@ -139,11 +143,11 @@ SERVER="2001:db8::10"
 echo "=== Testing IPv6 SMTP Connectivity ==="
 echo "Server: $SERVER"
 
-# Check IPv6 reachability
+# Optional ICMP reachability check
 if ping6 -c 1 -W 2 "$SERVER" &>/dev/null; then
     echo "[PASS] IPv6 ping to $SERVER successful"
 else
-    echo "[FAIL] IPv6 ping to $SERVER failed"
+    echo "[WARN] IPv6 ping to $SERVER failed or ICMP echo is filtered"
 fi
 
 # Check SMTP port
@@ -158,9 +162,9 @@ echo "[INFO] Sending test email via swaks..."
 swaks --from "$SENDER" --to "$RECIPIENT" \
       --server "[$SERVER]:25" \
       --header "Subject: IPv6 SMTP Test $(date)" \
-      --quit-after RCPT 2>&1 | tail -5
+      --body "IPv6 SMTP Test" 2>&1 | tail -5
 ```
 
 ## Conclusion
 
-Testing IPv6 email delivery involves verifying connectivity with `nc` and `telnet`, sending authenticated test messages with `swaks`, and reviewing header authentication results in the delivered email. Using dedicated verification services like Port25 provides a complete picture of SPF, DKIM, and DMARC status for IPv6 senders.
+Testing IPv6 email delivery involves verifying connectivity with `nc` and `telnet`, sending authenticated test messages with `swaks`, and reviewing header authentication results in the delivered email. Using dedicated verification services like Port25 plus mailbox headers from Gmail provides a complete picture of SPF, DKIM, and DMARC status for IPv6 senders.
