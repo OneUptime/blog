@@ -12,8 +12,8 @@ Description: Learn how to use tcpdump to capture and filter traffic on specific 
 
 ## Prerequisites
 
-- `tcpdump` installed (`apt install tcpdump` or `yum install tcpdump`)
-- Root or `cap_net_raw` capability
+- `tcpdump` installed (`sudo apt install tcpdump` or `sudo yum install tcpdump`)
+- Root privileges, or `CAP_NET_RAW` plus `CAP_NET_ADMIN` when capturing in promiscuous mode
 - A VLAN-tagged interface or a trunk interface
 
 ## Listing Available Interfaces
@@ -31,7 +31,7 @@ If your system has a VLAN sub-interface (e.g., `eth0.100` for VLAN 100):
 sudo tcpdump -i eth0.100
 ```
 
-This captures all traffic on VLAN 100 after the 802.1Q tag is stripped.
+This captures traffic delivered through VLAN 100. On Linux VLAN devices, the 802.1Q tag is normally hidden from the capture on the sub-interface.
 
 ## Filtering by VLAN ID on a Trunk Interface
 
@@ -58,7 +58,7 @@ sudo tcpdump -i eth0 'vlan'
 Save to a `.pcap` file for analysis in Wireshark:
 
 ```bash
-sudo tcpdump -i eth0 'vlan 100' -w /tmp/vlan100.pcap
+sudo tcpdump -i eth0 -w /tmp/vlan100.pcap 'vlan 100'
 ```
 
 Read back:
@@ -95,12 +95,12 @@ sudo tcpdump -i eth0 'vlan 100 and host 10.10.100.5'
 
 ```bash
 # Capture 1000 packets then stop
-sudo tcpdump -i eth0 'vlan 100' -c 1000
+sudo tcpdump -i eth0 -c 1000 'vlan 100'
 
 # Capture for 60 seconds
-sudo timeout 60 tcpdump -i eth0 'vlan 100' -w /tmp/vlan100.pcap
+sudo timeout 60 tcpdump -i eth0 -w /tmp/vlan100.pcap 'vlan 100'
 ```
 
 ## Conclusion
 
-`tcpdump` provides flexible VLAN filtering capabilities that make it invaluable for troubleshooting inter-VLAN routing issues, capturing traffic for security analysis, and verifying VLAN segmentation. Use VLAN sub-interfaces for untagged captures or trunk interface filtering for raw 802.1Q packet inspection.
+`tcpdump` provides flexible VLAN filtering capabilities that make it invaluable for troubleshooting inter-VLAN routing issues, capturing traffic for security analysis, and verifying VLAN segmentation. Use VLAN sub-interfaces for captures as delivered to a VLAN device, or trunk interface filtering when VLAN tags are visible to tcpdump.
