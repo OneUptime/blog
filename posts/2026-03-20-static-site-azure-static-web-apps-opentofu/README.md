@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Static Web Apps, Static Site, CDN, Custom Domain, Infrastructure as Code
 
-Description: Learn how to deploy static websites using Azure Static Web Apps with OpenTofu, including custom domain configuration, environment slots, and function app integration for API backends.
+Description: Learn how to deploy static websites using Azure Static Web Apps with OpenTofu, including custom domain configuration, preview environments, and function app integration for API backends.
 
 ---
 
@@ -68,17 +68,9 @@ resource "azurerm_dns_cname_record" "app" {
   record              = azurerm_static_web_app.main.default_host_name
 }
 
-# For apex domain, use alias record or TXT + CNAME workaround
-resource "azurerm_dns_txt_record" "apex_validation" {
-  name                = "@"
-  zone_name           = var.dns_zone_name
-  resource_group_name = var.dns_resource_group
-  ttl                 = 300
-
-  record {
-    value = azurerm_static_web_app.main.default_host_name
-  }
-}
+# Apex domains must use dns-txt-token validation in the custom domain resource.
+# Use the azurerm_static_web_app_custom_domain validation_token in the TXT record,
+# then route the apex with ALIAS, ANAME, or CNAME flattening where supported.
 
 # Bind custom domain to Static Web App
 resource "azurerm_static_web_app_custom_domain" "main" {
@@ -115,9 +107,9 @@ resource "azurerm_static_web_app" "main" {
 ```hcl
 # Store deployment token as GitHub Actions secret
 resource "github_actions_secret" "swa_token" {
-  repository      = var.github_repo
-  secret_name     = "AZURE_STATIC_WEB_APPS_API_TOKEN"
-  plaintext_value = azurerm_static_web_app.main.api_key
+  repository  = var.github_repo
+  secret_name = "AZURE_STATIC_WEB_APPS_API_TOKEN"
+  value       = azurerm_static_web_app.main.api_key
 }
 ```
 
@@ -131,9 +123,13 @@ name: Deploy Static Web App
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [main]
 
 jobs:
   deploy:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -147,30 +143,59 @@ jobs:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
-          app_location: "/"
-          output_location: "dist"
+          app_location: "dist"
+          output_location: ""
+          skip_app_build: true
+
+  close_pull_request:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close preview environment
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: "close"
 ```
 
 ## Staging Environments
 
-```hcl
-# Static Web Apps automatically creates preview environments for PRs
-# Named branches also get their own URL: https://<branch>.<random>.azurestaticapps.net
+```yaml
+# Static Web Apps creates preview environments for PRs when the workflow includes
+# a pull_request trigger. Branch previews get stable URLs like:
+# https://<DEFAULT_HOST_NAME>-<branch>.<LOCATION>.azurestaticapps.net
 
-# For explicit named environments:
-locals {
-  environments = var.environment == "production" ? {} : {
-    staging = {
-      branch = "staging"
-    }
-  }
-}
+name: Deploy Static Web App Preview
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [main]
+
+jobs:
+  deploy:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "/"
+          output_location: "dist"
+          production_branch: "main"
+          # For an explicit named preview environment, use:
+          # deployment_environment: "staging"
 ```
 
 ## Best Practices
 
-- Use `sku_tier = "Standard"` for production - the Free tier doesn't support custom domains with HTTPS or private endpoints.
+- Use `sku_tier = "Standard"` for production when you need an SLA, more preview environments or custom domains, bring-your-own Functions, custom authentication roles, or private endpoints. The Free tier supports custom domains with managed HTTPS, but has lower quotas and no private endpoints.
 - Store the `api_key` (deployment token) as a GitHub Actions secret or Azure DevOps variable - it grants write access to your Static Web App.
-- Use the `cname-delegation` validation type for subdomains - it's simpler than TXT validation. For apex domains, use `dns-txt-token` validation instead.
-- Leverage the built-in preview environments for PRs - Static Web Apps automatically deploys PR branches to isolated preview URLs at no extra cost.
+- Use the `cname-delegation` validation type for regular subdomains when you are not using Enterprise Grade Edge. For apex domains and Enterprise Grade Edge custom domains, use `dns-txt-token` validation instead.
+- Leverage the built-in preview environments for PRs - Static Web Apps deploys PR branches to isolated preview URLs when the workflow handles `pull_request` events, within the preview-environment limits of the hosting plan.
 - Keep infrastructure (`opentofu`) and deployment (GitHub Actions) concerns separate - OpenTofu provisions the resource and DNS; CI/CD deploys the content.
