@@ -4,16 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Compose, Networking, Stack, DevOps
 
-Description: Configure custom Docker networks in Portainer stacks for service isolation, external access, and multi-host connectivity.
+Description: Configure custom Docker networks in Portainer stacks for service isolation and controlled external access, with notes for Swarm multi-host networking.
 
 ## Introduction
 
-Configure custom Docker networks in Portainer stacks for service isolation, external access, and multi-host connectivity. This guide provides practical examples and best practices for implementing this in your Portainer deployments.
+Configure custom Docker networks in Portainer stacks for service isolation and controlled external access, with notes for Swarm multi-host networking. This guide provides practical examples and best practices for implementing this in your Portainer deployments.
 
 ## Prerequisites
 
 - Portainer CE or BE installed
-- Docker or Docker Swarm environment connected
+- Docker Standalone or Docker Swarm environment connected
 - Familiarity with Docker Compose YAML syntax
 
 ## Core Concepts
@@ -28,10 +28,10 @@ Understanding Docker Compose stack features in Portainer helps you create more m
 
 ## Step 2: Create the Stack Configuration
 
+The example below targets Docker Standalone stacks in Portainer. For Docker Swarm stacks, use overlay networks for multi-host connectivity and avoid relying on Compose-only behavior such as profiles or `depends_on.condition`.
+
 ```yaml
 # docker-compose.yml
-
-version: "3.8"
 
 # Reusable configuration using YAML anchors
 x-common-env: &common-env
@@ -49,11 +49,10 @@ x-common-resources: &common-resources
         memory: 128M
 
 x-common-healthcheck: &common-healthcheck
-  healthcheck:
-    interval: 30s
-    timeout: 10s
-    retries: 3
-    start_period: 60s
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 60s
 
 services:
   # Frontend service
@@ -67,7 +66,7 @@ services:
       API_URL: http://api:3000
     healthcheck:
       <<: *common-healthcheck
-      test: ["CMD", "wget", "-q", "http://localhost/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/health"]
     depends_on:
       api:
         condition: service_healthy
@@ -81,7 +80,7 @@ services:
     <<: *common-resources
     environment:
       <<: *common-env
-      DB_URL: postgresql://postgres:5432/appdb
+      DB_URL: postgresql://appuser:${DB_PASSWORD}@postgres:5432/appdb
     healthcheck:
       <<: *common-healthcheck
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
@@ -145,8 +144,10 @@ networks:
 Set stack-level environment variables in Portainer:
 
 ```bash
-# Required environment variables
+# Required by the compose file above
 DB_PASSWORD=secure-database-password
+
+# Optional application-specific variables
 REDIS_PASSWORD=secure-redis-password
 APP_SECRET=your-application-secret
 DOMAIN=app.example.com
@@ -179,6 +180,8 @@ services:
 Start specific profiles in Portainer by setting:
 `COMPOSE_PROFILES=monitoring`
 
+For Docker Swarm stacks, avoid relying on Compose profiles. Swarm stacks are deployed with `docker stack deploy`, which uses the legacy Compose file version 3 format rather than the full Compose Specification.
+
 ## Step 5: Configure NFS Volumes
 
 For shared storage across multiple hosts:
@@ -210,6 +213,9 @@ docker compose config
 
 # Check for any configuration issues
 docker compose config --quiet && echo "Config is valid"
+
+# For Swarm stacks, also check compatibility with docker stack deploy
+docker stack config --compose-file docker-compose.yml
 ```
 
 Then deploy in Portainer:
@@ -224,7 +230,7 @@ After deployment, monitor stack health in Portainer:
 1. Go to **Stacks** > your stack
 2. View container statuses
 3. Check individual container logs
-4. View resource usage per service
+4. View resource usage per container or service
 
 ## Updating Stacks
 
@@ -232,15 +238,18 @@ Update running stacks:
 1. Edit the stack compose file
 2. Update image tags or configuration
 3. Click **Update the stack**
-4. Portainer performs a rolling update
+4. Portainer redeploys the stack with the updated configuration
 
 ## Troubleshooting
 
 Common issues and solutions:
 
 ```bash
-# Stack fails to deploy - check logs
+# Docker Standalone stack fails to deploy - check logs
 docker compose logs service-name
+
+# Swarm service logs
+docker service logs stack-name_service-name
 
 # Service can't connect to another service
 # Check they're on the same network
@@ -252,4 +261,4 @@ docker exec app ls -la /data
 
 ## Conclusion
 
-Mastering advanced Docker Compose features in Portainer stacks enables you to build more robust, maintainable, and production-ready deployments. Using YAML anchors to avoid duplication, profiles for environment-specific services, and proper health checks with dependencies creates self-healing stacks that handle failures gracefully. Portainer's visual interface makes managing these complex configurations straightforward.
+Mastering advanced Docker Compose features in Portainer stacks enables you to build more robust, maintainable, and production-ready deployments. Using YAML anchors to avoid duplication, profiles for environment-specific services, and proper health checks with dependencies improves startup ordering and operational visibility. Portainer's visual interface makes managing these complex configurations straightforward.
