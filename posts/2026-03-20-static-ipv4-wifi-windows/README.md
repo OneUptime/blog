@@ -29,7 +29,7 @@ REM Subnet Mask: 255.255.255.0
 REM Default Gateway: 192.168.1.1
 REM DNS Servers: 192.168.1.1
 
-REM Check what IPs are in use to avoid conflicts
+REM View recently resolved IP/MAC entries (not a complete conflict check)
 arp -a
 ```
 
@@ -41,7 +41,7 @@ arp -a
 4. Change from **Automatic (DHCP)** to **Manual**
 5. Enable **IPv4** and enter:
    - **IP address**: 192.168.1.50 (unused address in range)
-   - **Subnet prefix length**: 24 (for /24 = 255.255.255.0)
+   - **Subnet mask**: 255.255.255.0 (or **Subnet prefix length**: 24 if shown)
    - **Gateway**: 192.168.1.1
    - **Preferred DNS**: 8.8.8.8
    - **Alternate DNS**: 8.8.4.4
@@ -57,9 +57,9 @@ arp -a
 Get-NetAdapter | Where-Object {$_.Name -like "*Wi-Fi*" -or $_.Name -like "*Wireless*"}
 # Note the adapter name, e.g., "Wi-Fi"
 
-# Remove existing IP (if DHCP-assigned)
-Remove-NetIPAddress -InterfaceAlias "Wi-Fi" -Confirm:$false -ErrorAction SilentlyContinue
-Remove-NetRoute -InterfaceAlias "Wi-Fi" -DestinationPrefix "0.0.0.0/0" -Confirm:$false -ErrorAction SilentlyContinue
+# Remove existing IPv4 address and default route
+Remove-NetIPAddress -InterfaceAlias "Wi-Fi" -AddressFamily IPv4 -Confirm:$false -ErrorAction SilentlyContinue
+Remove-NetRoute -InterfaceAlias "Wi-Fi" -AddressFamily IPv4 -DestinationPrefix "0.0.0.0/0" -Confirm:$false -ErrorAction SilentlyContinue
 
 # Set static IP address
 New-NetIPAddress `
@@ -111,7 +111,9 @@ ipconfig /all
 
 ```powershell
 # Switch back to DHCP
-Set-NetIPInterface -InterfaceAlias "Wi-Fi" -Dhcp Enabled
+Remove-NetIPAddress -InterfaceAlias "Wi-Fi" -AddressFamily IPv4 -Confirm:$false -ErrorAction SilentlyContinue
+Remove-NetRoute -InterfaceAlias "Wi-Fi" -AddressFamily IPv4 -DestinationPrefix "0.0.0.0/0" -Confirm:$false -ErrorAction SilentlyContinue
+Set-NetIPInterface -InterfaceAlias "Wi-Fi" -AddressFamily IPv4 -Dhcp Enabled
 Set-DnsClientServerAddress -InterfaceAlias "Wi-Fi" -ResetServerAddresses
 
 # Or with netsh
@@ -124,4 +126,4 @@ ipconfig /renew
 
 ## Conclusion
 
-Setting a static WiFi IP on Windows is straightforward through Settings → Network → WiFi properties or via PowerShell with `New-NetIPAddress`. Always check the router's DHCP pool range before choosing a static IP to avoid conflicts - set your static IP outside the DHCP range (e.g., if DHCP assigns .100-.200, use .50 for static devices). Test connectivity with `ping` after configuration and revert to DHCP with `Set-NetIPInterface -Dhcp Enabled` if needed.
+Setting a static WiFi IP on Windows is straightforward through Settings → Network → WiFi properties or via PowerShell with `New-NetIPAddress`. Always check the router's DHCP pool range before choosing a static IP to avoid conflicts - set your static IP outside the DHCP range (e.g., if DHCP assigns .100-.200, use .50 for static devices). Test connectivity with `ping` after configuration and revert to DHCP with `Set-NetIPInterface -AddressFamily IPv4 -Dhcp Enabled` if needed.
