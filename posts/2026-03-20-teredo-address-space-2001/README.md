@@ -21,11 +21,12 @@ Teredo (RFC 4380) is an IPv6 tunneling mechanism that encapsulates IPv6 packets 
  ~ = bitwise complement (XOR with 0xFFFF or 0xFFFFFFFF)
 
  Example:
-   Teredo server: 65.54.227.120 (0x4136E378) = teredo.ipv6.microsoft.com
-   Client NAT IP: 192.168.1.100 (0xC0A80164) → complement = 0x3F57FE9B
+   Teredo server: 65.54.227.120 (0x4136E378)
+   Flags: 0x0000
+   Client mapped IP: 192.0.2.100 (0xC0000264) → complement = 0x3FFFFD9B
    Client UDP port: 40000 (0x9C40) → complement = 0x63BF
 
-   Teredo address: 2001:0:4136:e378:63bf:9c40:3f57:fe9b
+   Teredo address: 2001:0:4136:e378:0:63bf:3fff:fd9b
 ```
 
 ## Python: Parsing Teredo Addresses
@@ -70,7 +71,7 @@ def parse_teredo_address(ipv6_str: str) -> dict:
 
 # Example
 
-result = parse_teredo_address("2001:0:4136:e378:63bf:9c40:3f57:fe9b")
+result = parse_teredo_address("2001:0:4136:e378:0:63bf:3fff:fd9b")
 for k, v in result.items():
     print(f"  {k}: {v}")
 ```
@@ -112,7 +113,7 @@ def contains_teredo(addresses: list) -> list:
 
 # Check access logs for Teredo addresses
 suspicious = contains_teredo([
-    "2001:0:4136:e378:63bf:9c40:3f57:fe9b",
+    "2001:0:4136:e378:0:63bf:3fff:fd9b",
     "2001:db8::1",  # Not Teredo (Documentation)
     "2001:4860:4860::8888",  # Not Teredo (Google)
 ])
