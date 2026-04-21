@@ -8,29 +8,30 @@ Description: Learn how to show or hide Kubernetes system resources and namespace
 
 ## What Are System Resources?
 
-Kubernetes system resources are workloads and configurations that manage the cluster itself, running in:
+Kubernetes system resources are workloads and configurations that manage or support the cluster itself, commonly running in namespaces such as:
 
-- `kube-system` - Core components (kube-dns, kube-proxy, metrics-server, CNI plugins)
-- `kube-public` - Public cluster information
-- `portainer` - The Portainer agent itself
+- `kube-system` - Kubernetes system objects and add-ons such as CoreDNS/kube-dns, kube-proxy, metrics-server, and CNI components when your cluster deploys them there
+- `kube-public` - Cluster information that is readable by all clients
+- `kube-node-lease` - Lease objects used by kubelets for node heartbeats
+- `portainer` - Portainer components, if Portainer was installed in the default Portainer namespace
 
-By default, Portainer hides these to keep the UI focused on user workloads.
+By default, Portainer hides resources in namespaces marked as system to keep the UI focused on user workloads.
 
 ## Toggling System Resource Visibility
 
 In Portainer, within your Kubernetes environment:
 
-1. Navigate to **Applications**.
-2. Look for the **Show system resources** toggle (usually a checkbox or toggle switch at the top of the list).
-3. Enable it to show system namespaces and their workloads.
+1. Navigate to **Applications** or the relevant Kubernetes resource list, such as **ConfigMaps & Secrets** or **Networking > Services**.
+2. Open the table settings menu (the three-dot menu at the top right of the table).
+3. Check **Show system resources** to show resources from namespaces marked as system.
 
 ## What Becomes Visible
 
 After enabling system resources:
 
-- System namespaces (`kube-system`, `kube-public`, `portainer`) appear in namespace lists.
-- System pods (CoreDNS, kube-proxy, network plugin pods) appear in the applications list.
-- System ConfigMaps and Secrets become visible.
+- System namespaces (`kube-system`, `kube-public`, `kube-node-lease`, and your Portainer namespace if marked system) appear in namespace filters or lists.
+- System workloads (CoreDNS, kube-proxy, network plugin pods) appear in the applications list when they are deployed as workloads in the cluster and your account has access.
+- System ConfigMaps and Secrets become visible in **ConfigMaps & Secrets**.
 
 ## Viewing System Namespaces via CLI
 
@@ -45,11 +46,11 @@ kubectl get pods --namespace=kube-system
 # Check DNS pods specifically
 kubectl get pods -n kube-system -l k8s-app=kube-dns
 
-# Check all system components status
-kubectl get componentstatuses
+# Check API server readiness checks
+kubectl get --raw='/readyz?verbose'
 
 # View system resource usage
-kubectl top pods --namespace=kube-system
+kubectl top pod --namespace=kube-system
 ```
 
 ## Inspecting kube-system Components
