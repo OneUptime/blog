@@ -4,14 +4,14 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ss, TCP, CWND, RTT, Linux, Performance
 
-Description: Use ss -i to display TCP internal statistics including congestion window (cwnd), retransmission rate, round-trip time, and sender/receiver buffer information for performance analysis.
+Description: Use ss -i to display TCP internal statistics including congestion window (cwnd), retransmission counters, round-trip time, and receive-side autotuning information for performance analysis.
 
-`ss -i` exposes the TCP stack's internal state for each connection. This is far more detailed than anything netstat can show, enabling precise diagnosis of throughput problems, packet loss, and TCP tuning effectiveness.
+`ss -i` exposes the TCP stack's internal state for each connection. This is far more detailed than anything netstat can show, helping diagnose throughput problems, retransmissions, and TCP tuning effectiveness.
 
 ## Display TCP Internal Information
 
 ```bash
-# Show internal TCP info for all established connections
+# Show internal TCP info for TCP connections
 
 ss -ti
 
@@ -46,28 +46,38 @@ ss -ti
 ```yaml
 Field           Description                        What to Look For
 --------------  ---------------------------------  ----------------------------
-rtt:X/Y         Round-trip time / variance         X=avg, Y=mean deviation
+rtt:X/Y         Round-trip time / variation        X=avg, Y=mean deviation
                                                    High Y = jitter problem
-cwnd:N          Congestion window (segments)       Low cwnd = packet loss throttling
-                                                   Max cwnd = limited bandwidth
-bytes_retrans   Bytes retransmitted                > 0 = packet loss occurring
+cwnd:N          Congestion window (segments)       Low cwnd can limit throughput
+                                                   Loss/slow start may reduce cwnd
+bytes_retrans   Bytes retransmitted                > 0 = data was retransmitted
 bytes_sent      Total bytes sent                   Throughput indicator
 send NNMbps     Current send rate estimate         Compare to link capacity
-pacing_rate     TCP pacing rate (send ceiling)     Limited by slow receiver or loss
-delivery_rate   Actual delivery rate               Lower than send = loss/congestion
+pacing_rate     TCP pacing rate                    Compare to send/delivery rate
+delivery_rate   ACK-clocked delivery estimate      Low value needs context
 ```
 
-## Diagnose Packet Loss with ss -ti
+## Diagnose Retransmissions with ss -ti
 
 ```bash
-# Check for retransmissions (non-zero = packet loss)
+# Check for retransmissions (non-zero = data was retransmitted)
 ss -ti | grep bytes_retrans
 
 # Calculate retransmission rate
-ss -ti | awk '/bytes_retrans/{
-    match($0, /bytes_retrans:([0-9]+)/, r)
-    match($0, /bytes_sent:([0-9]+)/, s)
-    if(s[1]>0) printf "Retrans: %.2f%%\n", (r[1]/s[1])*100
+ss -ti | awk '
+/bytes_/ {
+    sent = retrans = 0
+    for (i = 1; i <= NF; i++) {
+        if ($i ~ /^bytes_sent:/) {
+            split($i, s, ":")
+            sent = s[2]
+        }
+        if ($i ~ /^bytes_retrans:/) {
+            split($i, r, ":")
+            retrans = r[2]
+        }
+    }
+    if (sent > 0) printf "Retrans: %.2f%%\n", (retrans/sent)*100
 }'
 ```
 
@@ -80,10 +90,10 @@ ss -ti | grep cwnd
 # A small cwnd indicates:
 # - Recent packet loss (TCP reduced cwnd)
 # - Connection is in slow start
-# - Network is limiting throughput
+# - The congestion window is limiting throughput
 
-# cwnd=10 with MSS=1460 → max in-flight = 14600 bytes ≈ 116Kbps at 10ms RTT
-# Formula: throughput ≈ cwnd * MSS / RTT
+# cwnd=10 with MSS=1460 -> max in-flight = 14600 bytes ~= 11.7Mbps at 10ms RTT
+# Formula (bits/s): throughput ~= cwnd * MSS * 8 / RTT
 ```
 
 ## Measure Actual TCP Throughput
@@ -92,9 +102,9 @@ ss -ti | grep cwnd
 # For a connection to a file server, see the delivery rate
 ss -ti dst 10.0.0.50
 
-# send 11.8Mbps = TCP thinks it can send at 11.8 Mbps
-# delivery_rate 11.8Mbps = actually being delivered at 11.8 Mbps
-# If delivery_rate << send rate → packet loss or congestion
+# send 11.8Mbps = current egress rate estimate
+# delivery_rate 11.8Mbps = recent ACK-clocked delivery rate estimate
+# If delivery_rate << send rate -> check for loss, congestion, receiver limits, or app-limited traffic
 ```
 
 ## Monitor TCP Health in Real Time
@@ -105,10 +115,20 @@ ss -ti dst 10.0.0.50
 
 while true; do
     echo "=== TCP Health $(date '+%H:%M:%S') ==="
-    ss -ti state established | grep -E 'rtt:|bytes_retrans:|cwnd:' | \
-      awk '
-        /rtt:/ { match($0, /rtt:([0-9.]+)/, m); rtt+=m[1]; count++ }
-        /bytes_retrans:/ { match($0, /bytes_retrans:([0-9]+)/, m); retrans+=m[1] }
+    ss -ti state established | awk '
+        /rtt:/ || /bytes_retrans:/ || /cwnd:/ {
+          for (i = 1; i <= NF; i++) {
+            if ($i ~ /^rtt:/) {
+              split($i, rtt_fields, "[:/]")
+              rtt += rtt_fields[2]
+              count++
+            }
+            if ($i ~ /^bytes_retrans:/) {
+              split($i, retrans_fields, ":")
+              retrans += retrans_fields[2]
+            }
+          }
+        }
         END {
           if(count>0) printf "Avg RTT: %.1fms | Total retrans: %d bytes\n", rtt/count, retrans
         }
@@ -117,4 +137,4 @@ while true; do
 done
 ```
 
-`ss -i` provides the richest TCP connection data available on Linux - it's the primary tool for understanding why a specific connection is performing poorly.
+`ss -i` provides rich TCP connection data on Linux - it's a primary tool for understanding why a specific connection is performing poorly.
