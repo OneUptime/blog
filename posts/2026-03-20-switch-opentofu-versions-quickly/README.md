@@ -33,16 +33,16 @@ tofuenv use latest
 ## Quick Switch with asdf
 
 ```bash
-# Set global version
-asdf global opentofu 1.9.0
+# Set default version in ~/.tool-versions
+asdf set -u opentofu 1.9.0
 tofu version
 
-# Switch to another version globally
-asdf global opentofu 1.8.5
+# Switch to another default version
+asdf set -u opentofu 1.8.5
 tofu version
 
 # Set local version for current directory
-asdf local opentofu 1.7.3
+asdf set opentofu 1.7.3
 tofu version  # Uses 1.7.3 in this directory
 ```
 
@@ -53,7 +53,7 @@ tofu version  # Uses 1.7.3 in this directory
 tofuenv install 1.9.0 && tofuenv use 1.9.0
 
 # Install and immediately switch (asdf)
-asdf install opentofu 1.9.0 && asdf global opentofu 1.9.0
+asdf install opentofu 1.9.0 && asdf set -u opentofu 1.9.0
 ```
 
 ## Using Aliases for Version Switching
@@ -100,13 +100,15 @@ sudo apt-get install -y direnv
 echo 'eval "$(direnv hook bash)"' >> ~/.bashrc
 # or for zsh:
 echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc
-source ~/.bashrc
+# Reload your shell config (choose one):
+source ~/.bashrc   # bash
+# source ~/.zshrc  # zsh
 
 # In project directory, create .envrc
 cat > .envrc <<'EOF'
 # Auto-switch OpenTofu version
 if [ -f ".opentofu-version" ]; then
-  tofuenv use $(cat .opentofu-version)
+  export TOFUENV_TOFU_VERSION="$(cat .opentofu-version)"
 fi
 EOF
 
