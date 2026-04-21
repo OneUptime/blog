@@ -8,13 +8,13 @@ Description: Configure the GatewayPorts directive in sshd_config to allow SSH re
 
 ## Introduction
 
-By default, SSH remote port forwards (`-R`) bind only to `127.0.0.1` on the server. The `GatewayPorts` directive in `sshd_config` controls whether remote forwards can bind to all interfaces (`yes`) or a client-specified IPv4 address (`clientspecified`).
+By default, SSH remote port forwards (`-R`) bind only to loopback addresses on the server (`127.0.0.1` for IPv4). The `GatewayPorts` directive in `sshd_config` controls whether remote forwards can bind to all interfaces (`yes`) or a client-specified IPv4 address (`clientspecified`).
 
 ## Understanding GatewayPorts Options
 
 | Value | Behavior |
 |---|---|
-| `no` (default) | Remote forwards bind to `127.0.0.1` only |
+| `no` (default) | Remote forwards bind to loopback only (`127.0.0.1` for IPv4) |
 | `yes` | Remote forwards bind to `0.0.0.0` (all interfaces) |
 | `clientspecified` | Client can specify the bind address |
 
@@ -23,16 +23,17 @@ By default, SSH remote port forwards (`-R`) bind only to `127.0.0.1` on the serv
 ```bash
 # /etc/ssh/sshd_config
 
-# Option 1: Allow all remote forwards on all interfaces
+# Choose one GatewayPorts option:
 
-GatewayPorts yes
+# Option 1: Allow all remote forwards on all interfaces
+#GatewayPorts yes
 
 # Option 2: Let clients choose the bind address (recommended)
 GatewayPorts clientspecified
 
 # Related settings for port forwarding
-AllowTcpForwarding yes    # Enable all port forwarding
-PermitOpen any            # Allow forwards to any destination
+AllowTcpForwarding yes    # Enable TCP port forwarding
+PermitListen any          # Allow remote forwards to listen on any address/port
 ```
 
 Apply changes:
@@ -60,8 +61,8 @@ ssh -R 203.0.113.10:8080:localhost:3000 user@203.0.113.10
 # Bind to all server interfaces
 ssh -R 0.0.0.0:8080:localhost:3000 user@203.0.113.10
 
-# With no address specified, defaults to 127.0.0.1 even with clientspecified
-ssh -R 8080:localhost:3000 user@203.0.113.10  # Still only 127.0.0.1:8080
+# With no address specified, defaults to loopback even with clientspecified
+ssh -R 8080:localhost:3000 user@203.0.113.10  # Still only loopback/127.0.0.1 for IPv4
 ```
 
 ## Security Considerations
@@ -77,13 +78,13 @@ GatewayPorts no
 Match User tunnel-user
     GatewayPorts yes
     AllowTcpForwarding yes
-    PermitTTY no           # No shell for this user
+    PermitTTY no           # No pseudo-TTY allocation
     X11Forwarding no
 ```
 
 ## Firewall Rules for Remote-Forwarded Ports
 
-When GatewayPorts is enabled, opened ports need firewall rules:
+When GatewayPorts is enabled, opened ports may need firewall rules:
 
 ```bash
 # Open the forwarded port in iptables
@@ -104,7 +105,7 @@ ssh -R 203.0.113.10:8080:localhost:3000 -N user@203.0.113.10 &
 ssh user@203.0.113.10 "ss -tlnp | grep 8080"
 # With GatewayPorts yes:       0.0.0.0:8080
 # With clientspecified + IP:   203.0.113.10:8080
-# Without GatewayPorts:        127.0.0.1:8080
+# Without GatewayPorts:        loopback/127.0.0.1:8080
 
 # External test (if firewall allows)
 curl http://203.0.113.10:8080/
@@ -112,4 +113,4 @@ curl http://203.0.113.10:8080/
 
 ## Conclusion
 
-`GatewayPorts clientspecified` is the recommended setting: it gives flexibility without automatically exposing all remote forwards on public interfaces. The client controls the bind address per-connection. Combine with `Match User` blocks to restrict gateway port capabilities to specific tunnel accounts, and always add firewall rules for any ports made externally accessible.
+`GatewayPorts clientspecified` is the recommended setting: it gives flexibility without automatically exposing all remote forwards on public interfaces. The client controls the bind address per-connection. Combine with `Match User` blocks to restrict gateway port capabilities to specific tunnel accounts, and ensure firewall rules allow only the intended sources for any ports made externally accessible.
