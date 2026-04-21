@@ -23,7 +23,7 @@ resource "aws_instance" "app" {
   connection {
     type        = "ssh"
     user        = "ec2-user"
-    private_key = file("~/.ssh/id_rsa")
+    private_key = file(pathexpand("~/.ssh/id_rsa"))
     host        = self.public_ip
   }
 
@@ -45,12 +45,12 @@ For instances without public IPs, tunnel through a bastion:
 connection {
   type        = "ssh"
   user        = "ec2-user"
-  private_key = file("~/.ssh/id_rsa")
+  private_key = file(pathexpand("~/.ssh/id_rsa"))
   host        = self.private_ip
 
   bastion_host        = aws_instance.bastion.public_ip
   bastion_user        = "ec2-user"
-  bastion_private_key = file("~/.ssh/id_rsa")
+  bastion_private_key = file(pathexpand("~/.ssh/id_rsa"))
 }
 ```
 
@@ -62,7 +62,7 @@ Key-based (recommended):
 connection {
   type        = "ssh"
   user        = "ubuntu"
-  private_key = file(var.private_key_path)
+  private_key = file(pathexpand(var.private_key_path))
   host        = self.public_ip
 }
 ```
@@ -97,7 +97,7 @@ connection {
 connection {
   type        = "ssh"
   user        = "ec2-user"
-  private_key = file("~/.ssh/id_rsa")
+  private_key = file(pathexpand("~/.ssh/id_rsa"))
   host        = self.public_ip
   timeout     = "10m"
 }
