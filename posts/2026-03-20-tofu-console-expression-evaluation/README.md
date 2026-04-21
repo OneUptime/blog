@@ -28,7 +28,7 @@ Press `Ctrl+D` or `Ctrl+C` to exit.
 ```bash
 # Evaluate string interpolation
 > "hello ${terraform.workspace}"
-"hello production"
+"hello default"
 
 # Evaluate arithmetic
 > 2 + 2
@@ -52,7 +52,6 @@ Press `Ctrl+D` or `Ctrl+C` to exit.
 
 # Explore all subnets
 > aws_subnet.public[*].id
-tofu console
 [
   "subnet-0a1b2c3d",
   "subnet-0e1f2a3b",
@@ -77,12 +76,11 @@ tofu console
 "a, b, c"
 
 > split(",", "a,b,c")
-toml
-[
+tolist([
   "a",
   "b",
   "c",
-]
+])
 
 # Number functions
 > max(1, 5, 3, 9, 2)
@@ -106,7 +104,6 @@ toml
 true
 
 > keys({a = 1, b = 2})
-toml
 [
   "a",
   "b",
@@ -138,7 +135,7 @@ toml
 
 ## Using Variables in Console
 
-Variables are available in the console if they have default values:
+Variables are available in the console if they have default values or are supplied with variable assignment options such as `-var` or `-var-file`:
 
 ```hcl
 # variables.tf
@@ -218,10 +215,10 @@ true
 false
 
 # Test try()
-> try(tostring(null), "default-value")
+> try(tonumber("not-a-number"), "default-value")
 "default-value"
 ```
 
 ## Conclusion
 
-`tofu console` is an underutilized but powerful debugging tool. Use it to test function calls before writing them into configurations, explore current state values, validate complex expressions like `for`, `lookup`, and `merge`, and understand how your configuration evaluates. The non-interactive mode (`echo 'expr' | tofu console`) is useful for quick one-off expression evaluation in scripts.
+`tofu console` is an underutilized but powerful debugging tool. Use it to test function calls before writing them into configurations, explore current state values, validate complex expressions like `for`, `lookup`, and `merge`, and understand how your configuration evaluates. The non-interactive mode (`echo 'expr' | tofu console`) is useful for quick one-off expression evaluation from a shell, but the OpenTofu docs warn that `tofu console` is not designed for scripts.
