@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, Validation, Testing, HCL, Infrastructure as Code
 
-Description: Learn how to write and test custom validation rules for OpenTofu variables and outputs to enforce infrastructure policies and catch misconfigurations early.
+Description: Learn how to write and test custom validation rules for OpenTofu input variables to enforce infrastructure policies and catch misconfigurations early.
 
 ## Introduction
 
-OpenTofu supports custom validation rules in variable definitions that run before any resources are created. Testing these rules ensures your validation logic works correctly and catches misconfigurations before they reach production.
+OpenTofu supports custom validation rules in variable definitions. Testing these rules ensures your validation logic works correctly and catches misconfigurations before they reach production.
 
 ## Defining Custom Validation Rules
 
@@ -31,7 +31,7 @@ variable "cidr_block" {
 
   validation {
     condition     = can(cidrhost(var.cidr_block, 0))
-    error_message = "Must be a valid IPv4 CIDR block."
+    error_message = "Must be a valid CIDR block."
   }
 }
 
@@ -75,9 +75,12 @@ run "valid_environment_prod" {
 
 ```hcl
 run "invalid_environment" {
+  command = plan
+
   variables {
-    environment = "production"  # should fail
-    cidr_block  = "10.0.0.0/16"
+    environment    = "production"  # should fail
+    cidr_block     = "10.0.0.0/16"
+    instance_count = 3
   }
 
   expect_failures = [
@@ -86,9 +89,12 @@ run "invalid_environment" {
 }
 
 run "invalid_cidr" {
+  command = plan
+
   variables {
-    environment = "dev"
-    cidr_block  = "not-a-cidr"  # should fail
+    environment    = "dev"
+    cidr_block     = "not-a-cidr"  # should fail
+    instance_count = 3
   }
 
   expect_failures = [
@@ -97,6 +103,8 @@ run "invalid_cidr" {
 }
 
 run "invalid_instance_count_zero" {
+  command = plan
+
   variables {
     environment    = "dev"
     cidr_block     = "10.0.0.0/16"
