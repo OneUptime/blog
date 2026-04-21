@@ -65,14 +65,14 @@ docker exec my-container cat /etc/resolv.conf
 
 docker exec my-container nslookup google.com
 
-# If DNS fails, check Docker's embedded resolver
+# If DNS fails on a custom network, check Docker's embedded resolver
 docker exec my-container nslookup google.com 127.0.0.11
 ```
 
 ## Step 6: Check iptables on the Host
 
 ```bash
-# Is Docker's FORWARD chain accepting traffic?
+# Are Docker's rules present in the FORWARD chain?
 sudo iptables -L FORWARD -n -v | grep DOCKER
 
 # Check if ip_forward is enabled
@@ -98,7 +98,7 @@ Name-based DNS only works on user-defined networks, not the default bridge.
 
 ## Step 8: Restart Docker Networking
 
-As a last resort, restart Docker (disconnects all containers briefly):
+As a last resort, restart Docker (this can interrupt container networking and, without live restore or suitable restart policies, can stop running containers):
 
 ```bash
 sudo systemctl restart docker
