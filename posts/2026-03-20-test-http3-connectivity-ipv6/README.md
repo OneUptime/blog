@@ -8,12 +8,12 @@ Description: A comprehensive guide to testing HTTP/3 and QUIC connectivity over 
 
 ## Testing with curl
 
-curl is the most accessible tool for testing HTTP/3. Modern versions (7.86+) include HTTP/3 support:
+curl is the most accessible tool for testing HTTP/3 when it is built with QUIC/HTTP/3 support. The `--http3` flag was added in curl 7.66.0, and examples that use `--http3-only` need curl 7.88.0 or newer:
 
 ```bash
 # Check if your curl supports HTTP/3
 
-curl --version | grep -E "HTTP3|quic|ngtcp2|quiche"
+curl --version | grep -Ei "HTTP3|quic|ngtcp2|nghttp3|quiche"
 
 # Test HTTP/3 over IPv6 (force IPv6 with -6)
 curl -6 --http3 https://example.com -v 2>&1 | head -30
@@ -35,27 +35,31 @@ curl -6 --http3 https://example.com \
 Cloudflare's quiche library includes a test client:
 
 ```bash
-# Install quiche-client
-cargo install quiche-client 2>/dev/null || \
-  docker run --rm cloudflare/quiche-tools quiche-client https://[2001:db8::1]/
+# Run quiche-client from a cloned quiche checkout
+git clone --recursive https://github.com/cloudflare/quiche
+cd quiche
+cargo run --bin quiche-client -- --no-verify "https://[2001:db8::1]/"
+
+# Or run the published Docker image
+docker run --rm cloudflare/quiche quiche-client --no-verify "https://[2001:db8::1]/"
 
 # Test QUIC handshake to IPv6 address
 quiche-client --no-verify "https://[2001:db8::1]/"
 
-# Test with specific ALPN
-quiche-client --no-verify --alpn h3 "https://[2001:db8::1]/"
+# Test with HTTP/3 ALPN only
+quiche-client --no-verify --http-version HTTP/3 "https://[2001:db8::1]/"
 ```
 
 ## Using ngtcp2
 
-ngtcp2 is a reference QUIC implementation useful for testing:
+ngtcp2 is a widely used QUIC implementation useful for testing:
 
 ```bash
-# Test QUIC connection to IPv6 server
-ngtcp2client 2001:db8::1 443 https://example.com/
+# Test QUIC connection to IPv6 server (choose the client matching your TLS backend)
+examples/wsslclient 2001:db8::1 443 https://example.com/
 
-# With verbose QUIC log
-NGTCP2_LOG=all ngtcp2client 2001:db8::1 443 https://example.com/
+# With qlog output
+examples/wsslclient --qlog-file=client.sqlog 2001:db8::1 443 https://example.com/
 ```
 
 ## Browser-Based Testing
@@ -69,21 +73,21 @@ chrome://net-internals/#quic
 2. Network tab → right-click column header → enable "Protocol"
 3. Reload page and look for "h3" in the Protocol column
 
-# Firefox: check in about:networking#dns
-about:networking#quic
+# Firefox: check the HTTP table and HTTP Version column
+about:networking#http
 ```
 
 ## Online Testing Tools
 
 ```bash
-# Check HTTP/3 support from public test sites
-curl -6 https://http3check.net/check?host=example.com
+# Check HTTP/3 support from a public test site
+curl "https://http3check.net/?host=example.com"
 
-# Use Cloudflare's HTTP/3 checker
-curl "https://www.cloudflare.com/api/v2/quic/check?domain=example.com"
+# Check Cloudflare's HTTP/3 test endpoint
+curl -6 -I https://cloudflare-quic.com/ | grep -i alt-svc
 
-# QUIC.Cloud checker
-curl "https://quic.cloud/tools/http3-check/?host=example.com"
+# Alternative browser-based checker
+# https://http3.net/
 ```
 
 ## Automated Testing Script
@@ -108,6 +112,7 @@ def test_http3_ipv6(url):
         "--http3-only",          # Fail if HTTP/3 not available
         "--max-time", "10",      # Timeout
         "--silent",
+        "--show-error",
         "--output", "/dev/null",
         "--write-out", "%{http_version} %{http_code} %{time_total}",
         url
@@ -123,17 +128,19 @@ def test_http3_ipv6(url):
     except subprocess.TimeoutExpired:
         return False, "Timeout"
 
+results = []
 for endpoint in ENDPOINTS:
     ok, msg = test_http3_ipv6(endpoint)
+    results.append(ok)
     status = "PASS" if ok else "FAIL"
     print(f"[{status}] {endpoint}: {msg}")
 
-sys.exit(0 if all(test_http3_ipv6(e)[0] for e in ENDPOINTS) else 1)
+sys.exit(0 if all(results) else 1)
 ```
 
 ## Checking Alt-Svc Headers
 
-HTTP/3 is discovered via the Alt-Svc response header from HTTP/1.1 or HTTP/2:
+HTTP/3 can be advertised via the Alt-Svc response header from HTTP/1.1 or HTTP/2:
 
 ```bash
 # Check if server advertises HTTP/3
@@ -147,7 +154,7 @@ curl -6 -I https://example.com 2>&1 | awk -F': ' '/alt-svc/i {print "HTTP/3 adve
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to set up automated HTTP monitors against your IPv6 QUIC endpoints. These can detect when HTTP/3 availability drops while HTTP/2 remains functional, helping isolate QUIC-specific issues.
+Use [OneUptime](https://oneuptime.com) to monitor the HTTPS endpoints that expose HTTP/3 over IPv6, and pair the monitor with a QUIC-specific check such as the `curl --http3-only` script above. A plain HTTP monitor can still pass over HTTP/2, so the HTTP/3-only check is what detects when HTTP/3 availability drops while HTTP/2 remains functional.
 
 ## Conclusion
 
