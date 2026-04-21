@@ -17,15 +17,15 @@ When players cannot connect to your IPv6 game server, systematic troubleshooting
 
 ip -6 addr show scope global
 
-# Verify address is not just link-local (fe80::)
-# You need a global unicast address (2001:db8::, 2603::, etc.)
+# Verify address is not just link-local (fe80::/10) or ULA (fc00::/7)
+# You need a routable global unicast address, usually from 2000::/3
 
 # Check default route exists
 ip -6 route show default
 
 # Verify outbound IPv6 connectivity
-ping6 -c 4 google.com
-ping6 -c 4 2001:4860:4860::8888
+ping -6 -c 4 google.com
+ping -6 -c 4 2001:4860:4860::8888
 ```
 
 ## Step 2: Verify Server is Listening on IPv6
@@ -55,13 +55,14 @@ sudo ip6tables -L INPUT -n -v
 # Check for DROP rules affecting game ports
 sudo ip6tables -L INPUT -n -v | grep "25565\|27015\|2456\|34197"
 
-# Temporarily allow all (for testing only)
-sudo ip6tables -P INPUT ACCEPT
+# Save current IPv6 firewall rules before temporary testing
+sudo ip6tables-save > /tmp/ip6tables.before
 
-# Then test connection, and restore
-sudo ip6tables -P INPUT DROP
-sudo ip6tables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-sudo ip6tables -A INPUT -p tcp --dport 25565 -j ACCEPT
+# Temporarily allow all INPUT traffic (for testing only)
+sudo ip6tables -I INPUT 1 -j ACCEPT
+
+# Then test connection, and restore the saved rules exactly
+sudo ip6tables-restore < /tmp/ip6tables.before
 ```
 
 ## Step 4: DNS Troubleshooting
@@ -72,7 +73,8 @@ dig AAAA gameserver.example.com +short
 
 # If no AAAA record, clients can't connect by hostname
 # Add AAAA record to your DNS zone:
-# gameserver.example.com. IN AAAA 2001:db8::gameserver
+# gameserver.example.com. IN AAAA 2001:db8::10
+# Replace the documentation address with your server's real IPv6 address
 
 # Test from client side
 nslookup gameserver.example.com
@@ -83,14 +85,14 @@ nslookup -type=AAAA gameserver.example.com
 
 ```bash
 # From another host with IPv6 connectivity
-nmap -6 -sT -p 25565 2001:db8::gameserver
-nmap -6 -sU -p 27015 2001:db8::gameserver
+nmap -6 -sT -p 25565 2001:db8::10
+sudo nmap -6 -sU -p 27015 2001:db8::10
 
 # Simple TCP test
-nc -6 -w 5 2001:db8::gameserver 25565 && echo "OPEN" || echo "CLOSED"
+nc -6 -z -w 5 2001:db8::10 25565 && echo "OPEN" || echo "CLOSED"
 
 # Traceroute over IPv6
-traceroute6 2001:db8::gameserver
+traceroute6 2001:db8::10
 ```
 
 ## Step 6: Diagnose Dual-Stack Issues
@@ -100,17 +102,18 @@ traceroute6 2001:db8::gameserver
 # Check if game client supports IPv6
 
 # On Linux client, force IPv6 connection
-curl -6 http://[2001:db8::gameserver]:8080/
+curl -6 http://[2001:db8::10]:8080/
 
 # Check Happy Eyeballs behavior
-# Some games implement RFC 6555 happy eyeballs
+# Some games implement Happy Eyeballs (RFC 8305; RFC 6555 was earlier)
 
 # If clients connect via IPv4 but not IPv6:
-# 1. Check getaddrinfo preference on client
-cat /etc/gai.conf | grep "^precedence"
+# 1. Check getaddrinfo preference on Linux/glibc clients
+grep "^precedence" /etc/gai.conf
 
-# Force IPv6 preference
-echo "precedence ::ffff:0:0/96 10" | sudo tee -a /etc/gai.conf
+# Prefer IPv6 by keeping native IPv6 (::/0) above IPv4-mapped IPv6 (::ffff:0:0/96)
+# If you set precedence lines, include the full table; one precedence line disables defaults
+sudoedit /etc/gai.conf
 ```
 
 ## Common Issues and Fixes
@@ -124,11 +127,11 @@ sudo ip6tables -I INPUT 1 -p tcp --dport 25565 -j ACCEPT
 
 # Issue: Router not routing IPv6 to server
 # Fix: Ensure firewall on router/CPE allows forwarding
-ip6tables -A FORWARD -d 2001:db8::gameserver -j ACCEPT
+sudo ip6tables -A FORWARD -d 2001:db8::10 -j ACCEPT
 
 # Issue: IPv6 address expired or deprecated
 ip -6 addr show | grep "preferred_lft\|valid_lft"
-# Renew via DHCPv6: sudo dhclient -6 eth0
+# Renew via DHCPv6 only if the address came from DHCPv6: sudo dhclient -6 eth0
 ```
 
 ## Logging Connection Attempts
