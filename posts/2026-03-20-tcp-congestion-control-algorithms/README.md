@@ -29,19 +29,19 @@ Algorithms differ in:
 Algorithm behavior:
 1. Slow Start: CWND doubles each RTT (exponential growth)
 2. At threshold: switches to Congestion Avoidance (+1 MSS per RTT)
-3. On loss (3 duplicate ACKs): CWND = CWND / 2 (Fast Recovery)
+3. On loss (3 duplicate ACKs): ssthresh ≈ in-flight data / 2; CWND is reduced to about half after Fast Recovery
 4. On timeout: CWND = 1 MSS (Slow Start restart)
 
 Weakness: Very conservative on high-bandwidth × high-latency paths
-          CWND/2 reduction wastes most of the available pipe
+          Window halving can make recovery slow on very large pipes
 ```
 
-## TCP CUBIC (Linux Default)
+## TCP CUBIC (Common Linux Default)
 
-```javascript
+```text
 Algorithm behavior:
-1. Uses a cubic function to grow CWND (independent of RTT)
-2. On congestion: CWND × 0.8 (20% reduction, less aggressive than Reno)
+1. Uses a cubic function based on elapsed time since the last congestion event
+2. On congestion: CWND × 0.7 (30% reduction, less aggressive than Reno)
 3. Probes back to previous window quickly using cubic curve
 4. Scales well with very high bandwidth links
 
@@ -57,9 +57,9 @@ Algorithm behavior:
 1. Estimates actual bottleneck bandwidth by measuring delivery rate
 2. Estimates minimum RTT to find queue-free path
 3. Sets CWND and pacing rate based on bandwidth × RTT model
-4. Does NOT react to packet loss as primary signal (avoids over-slowing)
+4. Does not use packet loss as the primary congestion signal (avoids over-slowing on random loss)
 
-# Good for: high-latency WAN, satellite links, congested networks
+# Good for: high-latency WAN, satellite links, shallow-buffer or random-loss paths
 # Can be unfair to CUBIC/Reno connections at the same bottleneck
 ```
 
@@ -70,19 +70,19 @@ Algorithm behavior:
 sysctl net.ipv4.tcp_available_congestion_control
 # cubic bbr reno ...
 
-# View current default
+# View current default for new TCP connections
 sysctl net.ipv4.tcp_congestion_control
 
 # Test each algorithm with iperf3
-sysctl -w net.ipv4.tcp_congestion_control=cubic
+sudo sysctl -w net.ipv4.tcp_congestion_control=cubic
 iperf3 -c 10.20.0.5 -t 30
 echo "CUBIC done"
 
-sysctl -w net.ipv4.tcp_congestion_control=bbr
+sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
 iperf3 -c 10.20.0.5 -t 30
 echo "BBR done"
 
-sysctl -w net.ipv4.tcp_congestion_control=reno
+sudo sysctl -w net.ipv4.tcp_congestion_control=reno
 iperf3 -c 10.20.0.5 -t 30
 echo "Reno done"
 ```
@@ -92,13 +92,13 @@ echo "Reno done"
 | Scenario | Recommended |
 |---|---|
 | Standard datacenter (low RTT, low loss) | CUBIC |
-| High-bandwidth WAN (>50ms RTT) | BBR |
+| High-bandwidth WAN (>50ms RTT) | BBR or CUBIC (benchmark both) |
 | Satellite / high-latency (>200ms RTT) | BBR |
 | Lossy wireless networks | BBR |
-| Bulk file transfer between servers | BBR |
-| Real-time gaming / VoIP | BBR or CUBIC |
-| Legacy compatibility | CUBIC |
+| Bulk file transfer over high-BDP WAN | BBR |
+| TCP-based interactive traffic | BBR or CUBIC (benchmark both) |
+| Legacy compatibility | Reno |
 
 ## Conclusion
 
-CUBIC is the right default for most LAN and datacenter scenarios. BBR excels on high-latency or lossy paths where loss-based algorithms react too conservatively. The practical performance difference between CUBIC and BBR can be dramatic on paths with 100ms+ RTT - BBR can achieve 5-10× higher throughput by not over-reacting to loss signals.
+CUBIC is a solid default for most LAN and many datacenter scenarios. BBR excels on high-latency, random-loss, shallow-buffer, or bufferbloat-prone paths where loss-based algorithms react too conservatively. The practical performance difference between CUBIC and BBR can be dramatic on paths with 100ms+ RTT when loss or buffering limits a loss-based flow - in those cases, BBR can achieve several times higher throughput by not over-reacting to loss signals.
