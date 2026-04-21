@@ -13,9 +13,9 @@ Knowing which process owns which socket is essential for debugging, security aud
 ```bash
 # Show all sockets with process info
 
-sudo ss -p
+sudo ss -ap
 
-# TCP sockets with process info
+# Established TCP sockets with process info
 sudo ss -tp
 
 # Listening ports with process info
@@ -93,7 +93,7 @@ sudo kill 12345
 ss -tnp state established
 
 # Sockets owned by other users show:
-# ESTAB  0.0.0.0:22  203.0.113.5:54321  (no process info shown)
+# ESTAB  192.0.2.10:22  203.0.113.5:54321  (no process info shown)
 
 # With root, all processes are visible:
 sudo ss -tnp state established
@@ -109,9 +109,22 @@ echo "=== Listening Services ==="
 printf "%-20s %-10s %-20s\n" "Process" "PID" "Address:Port"
 echo "---"
 
-sudo ss -tlnp | awk 'NR>1 {
-    match($0, /users:\(\("([^"]+)",pid=([0-9]+)/, arr)
-    printf "%-20s %-10s %-20s\n", arr[1], arr[2], $4
+sudo ss -H -tlnp | awk '
+/users:\(\("/ {
+    line = $0
+    while (match(line, /"[^"]+",pid=[0-9]+/)) {
+        entry = substr(line, RSTART, RLENGTH)
+        process = entry
+        sub(/^"/, "", process)
+        sub(/",pid=.*/, "", process)
+
+        pid = entry
+        sub(/^.*pid=/, "", pid)
+
+        printf "%-20s %-10s %-20s\n", process, pid, $4
+
+        line = substr(line, RSTART + RLENGTH)
+    }
 }'
 ```
 
