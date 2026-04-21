@@ -13,11 +13,11 @@ Docker Swarm placement strategies control which nodes run your service replicas.
 ## Placement Concepts
 
 - **Constraints**: Hard filters - a node must match for a replica to run on it
-- **Preferences**: Soft suggestions - spread or pack replicas according to a label value
+- **Preferences**: Soft suggestions - spread replicas across values of a label
 
 ## Step 1: Add Node Labels
 
-From Portainer's terminal or the Nodes view, add labels to classify nodes:
+From a Swarm manager shell or Portainer's node view, add labels to classify nodes:
 
 ```bash
 # Label nodes by hardware type
@@ -28,7 +28,7 @@ docker node update --label-add zone=us-east-1a node-worker-2
 docker node update --label-add zone=us-east-1b node-worker-3
 ```
 
-In Portainer, labels can also be added via **Swarm > Nodes > [node] > Labels**.
+In Portainer, labels can also be added via **Swarm > Details > [node] > Node Details**.
 
 ## Step 2: Placement Constraints in Stack YAML
 
@@ -67,7 +67,7 @@ Swarm provides built-in node properties for constraints:
 | `node.role` | `node.role == worker` |
 | `node.hostname` | `node.hostname == node-worker-1` |
 | `node.id` | `node.id == xyzabc` |
-| `engine.labels.ostype` | `engine.labels.ostype == linux` |
+| `node.platform.os` | `node.platform.os == linux` |
 
 ## Step 4: Deploy via Portainer
 
@@ -75,11 +75,11 @@ Paste the stack YAML in **Stacks > Add Stack**. Portainer deploys replicas accor
 
 ## Step 5: Troubleshoot Placement Failures
 
-If replicas stay Pending, no nodes satisfy the constraints:
+If replicas stay Pending because of placement constraints, check which nodes satisfy the labels:
 
 ```bash
 # Check which nodes match your constraint
-docker node ls --filter label=tier=gpu
+docker node ls --filter node.label=tier=gpu
 
 # Inspect service placement failure
 docker service ps <service-name> --no-trunc
