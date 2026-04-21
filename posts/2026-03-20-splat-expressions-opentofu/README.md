@@ -8,7 +8,7 @@ Description: A guide to using splat expressions in OpenTofu to extract attribute
 
 ## Introduction
 
-Splat expressions in OpenTofu provide a concise way to extract a specific attribute from all instances of a resource or all elements in a list. The `[*]` splat operator is equivalent to a for expression that iterates over all elements and extracts a named attribute.
+Splat expressions in OpenTofu provide a concise way to extract a specific attribute or nested value from all instances of a count-based resource or all elements in a list, set, or tuple. When used with those collection values, the `[*]` splat operator is equivalent to a for expression that iterates over all elements and applies the attribute or index operations on its right.
 
 ## Basic Splat Expression
 
@@ -188,7 +188,7 @@ resource "aws_instance" "web" {
   instance_type = "t3.micro"
 }
 
-# Splat: concise, attribute access only
+# Splat: concise for attribute and index access
 output "ips_splat" {
   value = aws_instance.web[*].public_ip
 }
@@ -201,4 +201,4 @@ output "ips_for" {
 
 ## Conclusion
 
-Splat expressions provide a concise shorthand for extracting a single attribute from all instances of a count-based resource or list. The `[*]` operator is the modern syntax, replacing the legacy `.*`. For `for_each` resources, use `values()` combined with splat or a for expression, as the map structure doesn't directly support the splat operator. Splat expressions are most useful for extracting attribute lists for outputs, passing to other resources, or using with functions like `join()`, `sort()`, and `length()`.
+Splat expressions provide a concise shorthand for extracting attributes or nested values from all instances of a count-based resource or a list, set, or tuple. The `[*]` operator is the modern syntax, preferred over the legacy `.*`. For `for_each` resources, use `values()` combined with splat or a for expression, as the map structure doesn't directly support the splat operator. Splat expressions are most useful for extracting attribute lists for outputs, passing to other resources, or using with functions like `join()`, `sort()`, and `length()`.
