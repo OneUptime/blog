@@ -8,11 +8,11 @@ Description: Learn how to test that existing Terraform configurations are compat
 
 ## Introduction
 
-Before migrating production infrastructure from Terraform to OpenTofu, validate compatibility in a lower environment. The key test is: `tofu plan` should produce the same plan as `terraform plan` - no unexpected creates, updates, or destroys.
+Before migrating production infrastructure from Terraform to OpenTofu, validate compatibility in a lower environment. The key test is: `tofu plan` should produce the same planned resource actions as `terraform plan` - no unexpected creates, updates, or destroys.
 
 ## Test 1: Plan Comparison
 
-The most important test - identical plans mean OpenTofu is compatible:
+The most important test - matching planned actions are a strong compatibility signal:
 
 ```bash
 # Step 1: Generate Terraform plan as JSON
@@ -24,14 +24,14 @@ terraform show -json tf-plan.binary > terraform-plan.json
 # Step 2: Generate OpenTofu plan as JSON
 tofu init
 tofu plan -out=tofu-plan.binary
-tofu show -json tofu-plan.binary > opentofu-plan.json
+tofu show -json -plan=tofu-plan.binary > opentofu-plan.json
 
-# Step 3: Compare resource_changes - should be identical
-jq '.resource_changes | map({address, change: {actions: .change.actions}})' terraform-plan.json > tf-changes.json
-jq '.resource_changes | map({address, change: {actions: .change.actions}})' opentofu-plan.json > tofu-changes.json
+# Step 3: Compare resource actions - should match
+jq '.resource_changes | sort_by(.address) | map({address, change: {actions: .change.actions}})' terraform-plan.json > tf-changes.json
+jq '.resource_changes | sort_by(.address) | map({address, change: {actions: .change.actions}})' opentofu-plan.json > tofu-changes.json
 
 diff tf-changes.json tofu-changes.json
-# No output = compatible plans
+# No output = same planned resource actions
 ```
 
 ## Test 2: No-Change Plan After tofu init
@@ -62,15 +62,20 @@ tofu plan -detailed-exitcode
 ## Test 3: Provider Compatibility
 
 ```bash
-# Check all required providers are available in OpenTofu registry
-cat .terraform.lock.hcl | grep "provider" | grep -v "#"
+# Verify required providers can be installed from the OpenTofu registry
+tofu init
 
-# For each provider, verify it's in the OpenTofu registry
+# Inspect selected providers and versions in the lock file
+grep -E 'provider|version' .terraform.lock.hcl
+
+# Inspect provider requirements and state provider addresses
 tofu providers
 
-# Example output shows resolved providers:
-# registry.opentofu.org/hashicorp/aws 5.31.0
-# registry.opentofu.org/hashicorp/random 3.6.0
+# Example output shows provider addresses:
+# Providers required by configuration:
+# .
+# |-- provider[registry.opentofu.org/hashicorp/aws]
+# `-- provider[registry.opentofu.org/hashicorp/random]
 ```
 
 ## Test 4: Automated Compatibility Test Suite
@@ -99,13 +104,17 @@ for env in "${ENVIRONMENTS[@]}"; do
     tofu -chdir="$DIR" validate 2>&1
 
     # Plan must show no changes (exit code 0)
-    tofu -chdir="$DIR" plan -detailed-exitcode -input=false 2>&1
-    EXIT_CODE=$?
+    if tofu -chdir="$DIR" plan -detailed-exitcode -input=false 2>&1; then
+      EXIT_CODE=0
+    else
+      EXIT_CODE=$?
+    fi
 
     if [ $EXIT_CODE -eq 0 ]; then
       echo "  ✅ $DIR: Compatible, no changes"
     elif [ $EXIT_CODE -eq 2 ]; then
-      echo "  ⚠️  $DIR: Compatible but has pending changes"
+      echo "  ⚠️  $DIR: Changes detected; investigate before migrating"
+      exit 1
     else
       echo "  ❌ $DIR: INCOMPATIBLE or error"
       exit 1
@@ -150,22 +159,24 @@ func TestVPCModuleOpenTofu(t *testing.T) {
 ## Test 6: Feature Compatibility Matrix
 
 ```bash
-# Test OpenTofu-specific features you plan to use
+# Test version-specific features you plan to use
 # Create a test configuration with the new features
 
+mkdir -p /tmp/test-write-only
 cat > /tmp/test-write-only/main.tf << 'EOF'
 terraform {
-  required_version = ">= 1.10"
+  required_version = ">= 1.11"
   required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.0" }
+    aws = { source = "hashicorp/aws", version = "~> 6.0" }
   }
 }
 
-# Test write-only attributes (OpenTofu 1.10+)
+# Test write-only attributes (OpenTofu 1.11+)
 resource "aws_ssm_parameter" "test" {
-  name  = "/test/write-only"
-  type  = "SecureString"
-  value = "test-value"  # Would be write-only in production
+  name             = "/test/write-only"
+  type             = "SecureString"
+  value_wo         = "test-value"
+  value_wo_version = 1
 }
 EOF
 
@@ -176,4 +187,4 @@ echo "Write-only attributes supported: $?"
 
 ## Conclusion
 
-Test OpenTofu compatibility by comparing plan JSON output from both tools - identical plans mean a safe migration. Run `tofu plan -detailed-exitcode` against existing Terraform state and verify exit code 0 (no changes). Automate this with a compatibility test script across all environments and modules. Use Terratest with `TerraformBinary: "tofu"` to validate module behavior. Only migrate to production after all compatibility tests pass in development and staging.
+Test OpenTofu compatibility by comparing plan JSON output from both tools - matching planned resource actions are a strong signal for a safe migration. Run `tofu plan -detailed-exitcode` against existing Terraform state and verify exit code 0 (no changes). Automate this with a compatibility test script across all environments and modules. Use Terratest with `TerraformBinary: "tofu"` to validate module behavior. Only migrate to production after all compatibility tests pass in development and staging.
