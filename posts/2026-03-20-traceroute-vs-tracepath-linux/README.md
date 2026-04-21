@@ -4,22 +4,22 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Traceroute, Tracepath, Linux, Networking, MTU, Diagnostic
 
-Description: Compare traceroute and tracepath on Linux, understand when to use each, and leverage tracepath's unique ability to discover path MTU alongside hop information.
+Description: Compare traceroute and tracepath on Linux, understand when to use each, and leverage tracepath's automatic Path MTU discovery alongside hop information.
 
-Both tools map network paths but work differently. `tracepath` doesn't require root privileges and automatically discovers Path MTU - making it ideal for quick diagnostics from non-privileged user accounts.
+Both tools map network paths but work differently. `tracepath` doesn't require root privileges and discovers Path MTU by default - making it ideal for quick diagnostics from non-privileged user accounts.
 
 ## Key Differences
 
 ```bash
-Feature              traceroute           tracepath
--------------------  -------------------  -----------------------
-Requires root?       Yes (for ICMP/TCP)   No (uses UDP unprivileged)
-Protocol             UDP/ICMP/TCP         UDP (PMTUD probes)
-MTU discovery        No                   Yes (built-in)
-DNS resolution       Configurable         Yes (use -n to disable)
-Multiple probes      3 per hop            1 per hop
-Output format        Standard hops        Hops + MTU info
-Installation         sudo apt install     Usually pre-installed
+Feature              traceroute                         tracepath
+-------------------  ----------------------------------  ------------------------------------
+Requires root?       Default UDP: no; ICMP/TCP: sometimes  No (uses UDP unprivileged)
+Protocol             UDP/ICMP/TCP/other                 UDP (PMTUD probes)
+MTU discovery        Optional (--mtu)                   Yes (built-in/default)
+DNS resolution       Configurable                       Yes (use -n to disable)
+Multiple probes      3 per hop                          1 per hop
+Output format        Hops; optional MTU info            Hops + MTU info
+Installation         sudo apt install traceroute        sudo apt install iputils-tracepath
 ```
 
 ## Using tracepath
@@ -48,14 +48,14 @@ tracepath -n 8.8.8.8
 tracepath -n 192.168.1.1
 
 # Key fields:
-# "pmtu 1500" - Path MTU discovered at this point in the path
-# "asymm 4"   - Asymmetric route: forward hops ≠ return hops
+# "pmtu 1500" - Current detected Path MTU reported at this point
+# "asymm 4"   - Estimated return hop count differs from the forward path
 # "reached"   - Destination responded
 
 # If MTU changes:
 # 1:  192.168.1.1    pmtu 1500
 # 3:  10.0.0.1       pmtu 1492  ← MTU shrinks here (PPPoE link)
-# This tells you exactly where the MTU reduction occurs
+# This helps identify where the MTU reduction is reported
 ```
 
 ## Using traceroute
@@ -64,11 +64,14 @@ tracepath -n 192.168.1.1
 # Standard UDP traceroute
 traceroute -n 8.8.8.8
 
-# ICMP traceroute (works through more firewalls)
+# ICMP traceroute (uses ICMP Echo probes)
 sudo traceroute -I -n 8.8.8.8
 
-# TCP traceroute on port 80 (bypasses ICMP/UDP filters)
+# TCP traceroute on port 80 (tries an allowed TCP port through ICMP/UDP filters)
 sudo traceroute -T -p 80 -n 8.8.8.8
+
+# Automatic MTU discovery with traceroute
+traceroute --mtu -n 8.8.8.8
 
 # Set timeout per hop (default 5 seconds)
 traceroute -w 2 -n 8.8.8.8
@@ -82,7 +85,7 @@ traceroute -m 15 -n 8.8.8.8
 ```bash
 # Use tracepath when:
 #   - You don't have root access
-#   - You also need to check path MTU
+#   - You also need to check path MTU without extra flags
 #   - Quick hop-count is all you need
 tracepath -n 8.8.8.8
 
@@ -93,7 +96,7 @@ tracepath -n 8.8.8.8
 sudo traceroute -I -n -w 1 8.8.8.8
 
 # Use TCP traceroute when:
-#   - Standard traceroute shows *** for many hops (firewall blocking)
+#   - Standard traceroute shows *** for many hops (possible filtering)
 sudo traceroute -T -p 443 -n 8.8.8.8
 ```
 
@@ -111,7 +114,7 @@ tracepath -n 8.8.8.8
 
 ## tracepath for MTU Debugging
 
-tracepath's MTU discovery is its killer feature for VPN/tunnel troubleshooting:
+tracepath's automatic MTU discovery is its killer feature for VPN/tunnel troubleshooting:
 
 ```bash
 # Check path MTU to a server behind a VPN
@@ -120,10 +123,10 @@ tracepath -n 10.200.0.1
 # If output shows:
 # 1:  10.8.0.1      pmtu 1500
 # 3:  10.8.0.1      pmtu 1420  ← MTU reduced at tunnel entry
-# This explains why large file transfers fail over the VPN
+# This can explain why large file transfers fail over the VPN
 
 # Fix: set MTU on the VPN interface to match
-sudo ip link set tun0 mtu 1420
+sudo ip link set dev tun0 mtu 1420
 ```
 
 Use `tracepath` as your first tool when you want quick path info without root, and `traceroute` when you need protocol control for bypassing firewalls or collecting multi-probe statistics.
