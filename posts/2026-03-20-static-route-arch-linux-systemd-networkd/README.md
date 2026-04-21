@@ -8,7 +8,7 @@ Description: Learn how to add persistent static routes on Arch Linux using syste
 
 ---
 
-Arch Linux typically uses systemd-networkd for network configuration. Static routes are defined in `.network` files in `/etc/systemd/network/`.
+Arch Linux can use systemd-networkd for network configuration. When systemd-networkd manages an interface, static routes are defined in `.network` files in `/etc/systemd/network/`.
 
 ## Enabling systemd-networkd on Arch
 
@@ -51,12 +51,14 @@ Gateway=10.0.0.254
 [Route]
 Destination=0.0.0.0/0
 Gateway=10.0.0.1
-Metric=100    # Lower metric = higher priority
+# Lower metric = higher priority
+Metric=100
 
 [Route]
 Destination=0.0.0.0/0
 Gateway=10.0.0.2
-Metric=200    # Backup default route
+# Backup default route
+Metric=200
 ```
 
 ## Route to Specific Table (Policy Routing)
@@ -65,7 +67,8 @@ Metric=200    # Backup default route
 [Route]
 Destination=0.0.0.0/0
 Gateway=10.0.0.1
-Table=100     # Add to routing table 100
+# Add to routing table 100
+Table=100
 
 [RoutingPolicyRule]
 From=10.0.0.5/32
@@ -79,7 +82,8 @@ Priority=100
 # For tunnel interfaces or directly reachable networks not in local subnet
 [Route]
 Destination=10.8.0.0/24
-Scope=link    # On-link: route directly without gateway
+# On-link: route directly without gateway
+Scope=link
 ```
 
 ## Applying Configuration
@@ -102,7 +106,7 @@ ip route get 192.168.2.10
 # Check networkd journal
 journalctl -u systemd-networkd -f
 
-# List all network files
+# List links and their status
 networkctl list
 
 # Show detailed interface status
