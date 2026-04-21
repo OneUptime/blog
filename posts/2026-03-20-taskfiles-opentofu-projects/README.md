@@ -31,10 +31,8 @@ scoop install task
 version: '3'
 
 vars:
-  ENVIRONMENT:
-    sh: echo "${ENVIRONMENT:-dev}"
-  REGION:
-    sh: echo "${AWS_REGION:-us-east-1}"
+  ENVIRONMENT: '{{.ENVIRONMENT | default "dev"}}'
+  REGION: '{{.AWS_REGION | default "us-east-1"}}'
   PLAN_FILE: "{{.ENVIRONMENT}}.tfplan"
   VARS_FILE: "environments/{{.ENVIRONMENT}}.tfvars"
 
@@ -64,7 +62,7 @@ tasks:
       - tofu validate
 
   fmt:
-    desc: Format all Terraform files
+    desc: Format all OpenTofu configuration files
     cmds:
       - tofu fmt -recursive
 
@@ -77,7 +75,7 @@ tasks:
     desc: Run OpenTofu plan and save to file
     deps: [validate]
     cmds:
-      - tofu plan -var-file={{.VARS_FILE}} -out={{.PLAN_FILE}}
+      - tofu plan -out={{.PLAN_FILE}}
     generates:
       - "{{.PLAN_FILE}}"
 
@@ -112,9 +110,9 @@ tasks:
       - tflint --recursive
 
   security-scan:
-    desc: Run tfsec security scan
+    desc: Run Trivy IaC security scan
     cmds:
-      - tfsec .
+      - trivy config .
 
   ci:
     desc: Full CI pipeline (fmt-check, validate, plan)
@@ -131,34 +129,43 @@ tasks:
 task
 
 # Initialize for staging
-ENVIRONMENT=staging task init
+task init ENVIRONMENT=staging
 
 # Plan and apply
-ENVIRONMENT=staging task plan
-ENVIRONMENT=staging task apply
+task plan ENVIRONMENT=staging
+task apply ENVIRONMENT=staging
 
 # Run full CI pipeline
-ENVIRONMENT=staging task ci
+task ci ENVIRONMENT=staging
 ```
 
 ## Advanced Features
 
 ```yaml
-# Taskfile.yml additions
+# Taskfile.yml environment wrapper
+# Move the reusable tasks from the basic example to Taskfile.opentofu.yml.
 
-  # Task with multiple environments using includes
+version: '3'
+
 includes:
+  current:
+    taskfile: ./Taskfile.opentofu.yml
+    dir: .
+    internal: true
+    vars:
+      ENVIRONMENT: '{{.ENVIRONMENT | default "dev"}}'
   dev:
-    taskfile: ./Taskfile.yml
+    taskfile: ./Taskfile.opentofu.yml
     dir: .
     vars:
       ENVIRONMENT: dev
   staging:
-    taskfile: ./Taskfile.yml
+    taskfile: ./Taskfile.opentofu.yml
     dir: .
     vars:
       ENVIRONMENT: staging
 
+tasks:
   # Watch for file changes and revalidate
   watch-validate:
     desc: Validate on file changes
@@ -167,7 +174,7 @@ includes:
       - "**/*.tf"
       - "**/*.tofu"
     cmds:
-      - task: validate
+      - task: current:validate
 ```
 
 ## Calling Specific Environment Tasks
