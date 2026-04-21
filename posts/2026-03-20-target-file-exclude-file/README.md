@@ -8,7 +8,7 @@ Description: Learn how to use the -target-file and -exclude-file flags in OpenTo
 
 ## Introduction
 
-When you need to target or exclude many resources, listing them as individual `-target` or `-exclude` flags becomes unwieldy. OpenTofu supports `-target-file` and `-exclude-file` flags that read resource addresses from files, making it easier to manage large targeted operations.
+When you need to target or exclude many resources, listing them as individual `-target` or `-exclude` flags becomes unwieldy. OpenTofu 1.10 and later releases support `-target-file` and `-exclude-file` flags that read resource addresses from files, making it easier to manage large targeted operations.
 
 ## -target-file Usage
 
@@ -60,7 +60,7 @@ aws_instance.api
 module.database.aws_db_instance.primary
 ```
 
-Lines starting with `#` are treated as comments (if your version supports it, check the docs).
+Lines starting with `#` are treated as comments, and blank lines are ignored.
 
 ## Generating Target Files Dynamically
 
@@ -71,7 +71,7 @@ tofu state list | grep "module.compute" > compute-targets.txt
 # Target all compute resources
 tofu plan -target-file=compute-targets.txt
 
-# Generate based on tag or pattern
+# Generate based on resource type or address pattern
 tofu state list | grep "aws_instance" > instance-targets.txt
 ```
 
@@ -88,10 +88,9 @@ tofu apply \
   -exclude-file=exclusions.txt \
   -auto-approve
 
-# Use both target and exclude files
-tofu plan \
-  -target-file=targets.txt \
-  -exclude-file=exclusions.txt
+# Target and exclude files are mutually exclusive; choose one mode
+tofu plan -target-file=targets.txt
+tofu plan -exclude-file=exclusions.txt
 ```
 
 ## CI/CD Use Case

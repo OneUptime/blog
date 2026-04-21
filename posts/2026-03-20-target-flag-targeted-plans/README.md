@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Terraform, IaC, DevOps
 
-Description: Learn how to use the OpenTofu -target flag to limit plan and apply operations to specific resources or modules, and understand when this is appropriate.
+Description: Learn how to use the OpenTofu -target flag to focus plan and apply operations on specific resources or modules and their dependencies, and understand when this is appropriate.
 
 ## Introduction
 
-The `-target` flag limits `tofu plan` and `tofu apply` to specific resources or modules. While powerful for specific use cases, it should be used carefully as it bypasses OpenTofu's full dependency graph evaluation and can leave state in an inconsistent condition.
+The `-target` flag limits `tofu plan` and `tofu apply` to specific resources or modules and any objects they depend on. While powerful for specific use cases, it should be used carefully because the resulting plan may not include every change requested by the current configuration.
 
 ## Basic Usage
 
@@ -76,6 +76,8 @@ tofu apply -target=aws_security_group.app
 -target=module.environment.module.networking
 ```
 
+Current OpenTofu documentation warns not to rely on individual resource instance addresses with `-target`; prefer whole-resource addresses unless OpenTofu specifically directs otherwise.
+
 ## Why -target Should Be a Last Resort
 
 OpenTofu shows a warning when you use `-target`:
@@ -83,16 +85,15 @@ OpenTofu shows a warning when you use `-target`:
 ```hcl
 Warning: Resource targeting is in effect
 ...
-Note that the -target option is not suitable for routine use, and is
-provided only for exceptional circumstances such as recovering from mistakes
-or working around OpenTofu limitations.
+the result of this plan may not represent all of the changes requested by
+the current configuration.
 ```
 
 Reasons to be cautious:
-- Applies may succeed while dependent resources are out of sync
-- Can leave state in an inconsistent state
+- Applies may succeed while non-targeted resources or outputs are out of sync
+- Can leave configuration changes unapplied or output values not fully updated
 - Subsequent full applies may behave unexpectedly
-- Bypasses proper dependency graph evaluation
+- Narrows planning to the target and its dependencies, so the plan can miss other required changes
 
 ## Follow Up with a Full Plan
 
@@ -112,7 +113,7 @@ tofu plan
 Instead of targeting, consider:
 
 1. **Split configurations**: Move the target resource to its own state
-2. **Use `depends_on`**: Fix actual dependency issues
+2. **Use references or `depends_on`**: Fix actual dependency issues
 3. **Lifecycle rules**: Use `create_before_destroy` or `ignore_changes`
 
 ## Conclusion
