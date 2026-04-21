@@ -84,10 +84,9 @@ let listener = TcpListener::bind("127.0.0.1:9000")?;
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::collections::VecDeque;
 
 struct ThreadPool {
-    workers: Vec<thread::JoinHandle<()>>,
+    _workers: Vec<thread::JoinHandle<()>>,
     sender: std::sync::mpsc::Sender<TcpStream>,
 }
 
@@ -97,7 +96,7 @@ impl ThreadPool {
         let receiver = Arc::new(Mutex::new(receiver));
         let mut workers = Vec::with_capacity(size);
 
-        for id in 0..size {
+        for _ in 0..size {
             let rx = Arc::clone(&receiver);
             workers.push(thread::spawn(move || {
                 loop {
@@ -110,7 +109,7 @@ impl ThreadPool {
             }));
         }
 
-        ThreadPool { workers, sender }
+        ThreadPool { _workers: workers, sender }
     }
 
     fn execute(&self, stream: TcpStream) {
@@ -136,7 +135,7 @@ fn main() -> std::io::Result<()> {
 ## Setting Socket Options
 
 ```rust
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpStream;
 use std::time::Duration;
 
 fn configure_client(stream: &TcpStream) -> std::io::Result<()> {
@@ -146,11 +145,11 @@ fn configure_client(stream: &TcpStream) -> std::io::Result<()> {
     stream.set_write_timeout(Some(Duration::from_secs(10)))?;
     // Disable Nagle's algorithm for low-latency
     stream.set_nodelay(true)?;
-    // Enable TCP keepalive (using socket2 crate for full control)
+    // For TCP keepalive, use the socket2 crate for full control
     Ok(())
 }
 ```
 
 ## Conclusion
 
-Rust's `TcpListener::bind("0.0.0.0:9000")` creates an IPv4 TCP server. Use `for stream in listener.incoming()` to accept connections in a loop, and `thread::spawn` to handle each client concurrently. For production workloads, use a thread pool (`std::sync::mpsc`) to bound resource usage, or switch to async Tokio for higher concurrency.
+Rust's `TcpListener::bind("0.0.0.0:9000")` creates an IPv4 TCP server. Use `for stream in listener.incoming()` to accept connections in a loop, and `thread::spawn` to handle each client concurrently. For production workloads, use a thread pool (`std::sync::mpsc`) to limit the number of handler threads, and use a bounded queue such as `std::sync::mpsc::sync_channel` if you need backpressure; or switch to async Tokio for higher concurrency.
