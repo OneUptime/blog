@@ -77,7 +77,7 @@ terraform {
     # AWS KMS key provider
     key_provider "aws_kms" "state_key" {
       # Reference by ARN for reliability
-      kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/mrk-abc123"
+      kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
 
       # Or use the alias (more readable)
       # kms_key_id = "alias/terraform-state"
@@ -85,8 +85,8 @@ terraform {
       # AWS region where the KMS key is located
       region = "us-east-1"
 
-      # Optional: key spec for the data key
-      # key_spec = "AES_256"  # default
+      # Key spec for the generated data key
+      key_spec = "AES_256"
     }
 
     method "aes_gcm" "state_method" {
@@ -134,7 +134,7 @@ Required IAM permissions for the role:
         "kms:Decrypt",
         "kms:DescribeKey"
       ],
-      "Resource": "arn:aws:kms:us-east-1:123456789012:key/mrk-abc123"
+      "Resource": "arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
     }
   ]
 }
@@ -147,12 +147,15 @@ For multi-region deployments, use AWS KMS Multi-Region Keys:
 ```hcl
 key_provider "aws_kms" "state_key" {
   # Multi-region key ARN
-  kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/mrk-abc123def456"
+  kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/mrk-1234567890abcdef1234567890abcdef"
   region     = "us-east-1"
+  key_spec   = "AES_256"
 }
 ```
 
 ## Step 5: Apply and Verify
+
+For a new project, initialize and apply. For existing unencrypted state, configure an `unencrypted` fallback during the first migration apply, then remove it after OpenTofu rewrites the state:
 
 ```bash
 # Initialize and apply
@@ -170,12 +173,14 @@ Check CloudTrail for KMS activity:
 aws cloudtrail lookup-events \
   --lookup-attributes AttributeKey=EventName,AttributeValue=GenerateDataKey \
   --start-time 2026-03-20T00:00:00Z \
-  --query 'Events[*].[EventTime,Username,RequestParameters]'
+  --query 'Events[*].[EventTime,Username,EventName,CloudTrailEvent]'
 ```
 
 ## Using KMS with the S3 Backend
 
 Combine KMS state encryption with S3 backend encryption for defense in depth:
+
+The role that initializes this backend also needs `kms:Encrypt`, `kms:Decrypt`, and `kms:GenerateDataKey` on the S3 backend KMS key.
 
 ```hcl
 terraform {
@@ -185,15 +190,16 @@ terraform {
     region         = "us-east-1"
 
     # S3-side encryption (server-side)
-    kms_key_id     = "arn:aws:kms:us-east-1:123456789012:key/s3-key"
+    kms_key_id     = "arn:aws:kms:us-east-1:123456789012:key/2234abcd-12ab-34cd-56ef-1234567890ab"
     encrypt        = true
   }
 
   encryption {
     # OpenTofu-side encryption (client-side) with a different key
     key_provider "aws_kms" "state_key" {
-      kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/opentofu-key"
+      kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/3234abcd-12ab-34cd-56ef-1234567890ab"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
     method "aes_gcm" "state_method" {
