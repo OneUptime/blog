@@ -93,7 +93,7 @@ tolist(["age", "name"])
 When run in a directory with existing state, the console can access resource attributes:
 
 ```hcl
-# Access output values
+# Access resource attributes
 > aws_instance.web.public_ip
 "54.23.45.67"
 
@@ -161,4 +161,4 @@ tolist([3, 4, 5])
 
 ## Summary
 
-`tofu console` is your sandbox for HCL expression development. Use it to test string interpolations before embedding them in resources, validate built-in function behavior, explore current state values, and debug complex `for` expressions. Opening the console in a directory with existing state gives you live access to all your infrastructure's current attribute values.
+`tofu console` is your sandbox for HCL expression development. Use it to test string interpolations before embedding them in resources, validate built-in function behavior, explore current state values, and debug complex `for` expressions. Opening the console in a directory with existing state gives you access to the resource attribute values currently saved in state.
