@@ -13,7 +13,7 @@ Configure named volumes and NFS-backed storage in Portainer stacks for persisten
 ## Prerequisites
 
 - Portainer CE or BE installed
-- Docker or Docker Swarm environment connected
+- Docker Standalone environment connected
 - Familiarity with Docker Compose YAML syntax
 
 ## Core Concepts
@@ -31,8 +31,6 @@ Understanding Docker Compose stack features in Portainer helps you create more m
 ```yaml
 # docker-compose.yml
 
-version: "3.8"
-
 # Reusable configuration using YAML anchors
 x-common-env: &common-env
   LOG_LEVEL: info
@@ -49,11 +47,10 @@ x-common-resources: &common-resources
         memory: 128M
 
 x-common-healthcheck: &common-healthcheck
-  healthcheck:
-    interval: 30s
-    timeout: 10s
-    retries: 3
-    start_period: 60s
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 60s
 
 services:
   # Frontend service
@@ -81,7 +78,7 @@ services:
     <<: *common-resources
     environment:
       <<: *common-env
-      DB_URL: postgresql://postgres:5432/appdb
+      DB_URL: "postgresql://appuser:${DB_PASSWORD}@postgres:5432/appdb"
     healthcheck:
       <<: *common-healthcheck
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
@@ -145,14 +142,11 @@ networks:
 Set stack-level environment variables in Portainer:
 
 ```bash
-# Required environment variables
+# Required by the compose file above
 DB_PASSWORD=secure-database-password
-REDIS_PASSWORD=secure-redis-password
-APP_SECRET=your-application-secret
-DOMAIN=app.example.com
 ```
 
-Enter these in Portainer's Stack editor under the **Environment variables** section.
+Enter this in Portainer's Stack editor under the **Environment variables** section.
 
 ## Step 4: Add Profiles for Optional Services
 
@@ -176,7 +170,7 @@ services:
     profiles: ["debug"]
 ```
 
-Start specific profiles in Portainer by setting:
+Start specific profiles with Docker Compose by setting:
 `COMPOSE_PROFILES=monitoring`
 
 ## Step 5: Configure NFS Volumes
@@ -232,7 +226,7 @@ Update running stacks:
 1. Edit the stack compose file
 2. Update image tags or configuration
 3. Click **Update the stack**
-4. Portainer performs a rolling update
+4. Portainer redeploys the stack with the updated configuration
 
 ## Troubleshooting
 
@@ -247,9 +241,9 @@ docker compose logs service-name
 docker network inspect stack-name_backend-net
 
 # Volume permissions issue
-docker exec app ls -la /data
+docker compose exec service-name ls -la /data
 ```
 
 ## Conclusion
 
-Mastering advanced Docker Compose features in Portainer stacks enables you to build more robust, maintainable, and production-ready deployments. Using YAML anchors to avoid duplication, profiles for environment-specific services, and proper health checks with dependencies creates self-healing stacks that handle failures gracefully. Portainer's visual interface makes managing these complex configurations straightforward.
+Mastering advanced Docker Compose features in Portainer stacks enables you to build more robust, maintainable, and production-ready deployments. Using YAML anchors to avoid duplication, profiles for environment-specific services, and proper health checks with dependencies improves startup ordering and observability. Portainer's visual interface makes managing these complex configurations straightforward.
