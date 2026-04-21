@@ -82,7 +82,7 @@ Test fixtures provide reusable configurations for tests:
 # tests/fixtures/minimal/main.tf
 
 module "under_test" {
-  source = "../../"
+  source = "../../../"
 
   name        = "test-${random_id.suffix.hex}"
   environment = "dev"
@@ -96,7 +96,7 @@ Reference in test file:
 # tests/integration/basic.tftest.hcl
 run "basic_deployment" {
   module {
-    source = "./fixtures/minimal"
+    source = "./tests/fixtures/minimal"
   }
 
   assert {
@@ -110,7 +110,7 @@ run "basic_deployment" {
 
 | File Pattern | Purpose |
 |-------------|---------|
-| `*.tftest.hcl` | OpenTofu native test files |
+| `*.tftest.hcl`, `*.tofutest.hcl` | OpenTofu native test files |
 | `*_test.go` | Terratest Go test files |
 | `fixtures/` | Reusable test configurations |
 | `mocks/` | Mock provider data |
@@ -119,10 +119,10 @@ run "basic_deployment" {
 
 ```bash
 # Unit tests only
-tofu test --test-directory=tests/unit
+tofu test -test-directory=tests/unit
 
 # Integration tests
-tofu test --test-directory=tests/integration
+tofu test -test-directory=tests/integration
 
 # All tests
 tofu test
