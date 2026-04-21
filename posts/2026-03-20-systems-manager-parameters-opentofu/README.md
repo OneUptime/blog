@@ -33,7 +33,7 @@ resource "aws_ssm_parameter" "app_env" {
   type        = "String"
   value       = "production"
   description = "Application environment name"
-  tier        = "Standard"  # Standard (free) or Advanced (paid, up to 8KB)
+  tier        = "Standard"  # Standard (free, up to 4KB) or Advanced (paid, up to 8KB)
 
   tags = {
     Environment = "production"
@@ -97,7 +97,7 @@ resource "aws_ssm_parameter" "allowed_origins" {
 # Data source to read an existing parameter
 data "aws_ssm_parameter" "db_host" {
   name            = "/myapp/production/db/host"
-  with_decryption = true  # Required for SecureString
+  with_decryption = true  # Decrypt SecureString values (default: true)
 }
 
 # Use in a Lambda environment variable
@@ -116,6 +116,8 @@ resource "aws_lambda_function" "app" {
 ## Step 5: Create Parameter with IAM Policy
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
 # IAM policy to allow reading specific path
 resource "aws_iam_policy" "read_app_params" {
   name = "read-app-parameters"
