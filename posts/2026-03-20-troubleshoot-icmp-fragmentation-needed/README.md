@@ -25,8 +25,9 @@ tcpdump -i eth0 -n -v 'icmp[0] = 3 and icmp[1] = 4'
 
 # Generate test Fragmentation Needed message:
 # On another terminal, send oversized packet:
-ping -M do -s 1473 -c 1 10.20.0.5
-# tcpdump should capture the resulting ICMP type 3 code 4
+# For a 1400-byte bottleneck and a 1500-byte local MTU:
+ping -M do -s 1373 -c 1 10.20.0.5
+# tcpdump should capture the resulting ICMP type 3 code 4 if ICMP is allowed
 ```
 
 ## Understand the Message Structure
@@ -77,9 +78,7 @@ icmp.mtu > 0
 # 4. Subsequent packets use smaller size
 
 # Test PMTUD:
-# Monitor kernel PMTU cache:
-ip route cache show | grep -i mtu
-# Or for more detail:
+# Query the kernel PMTU entry:
 ip route get 10.20.0.5
 # If PMTU has been discovered: shows "cache expires XX sec mtu XXXX"
 
@@ -107,10 +106,10 @@ watch -n 1 "ss -tin state established dst 10.20.0.5 | grep mss"
 
 # Test: send oversized DF packets and watch for ICMP:
 tcpdump -i eth0 -n 'icmp' &
-ping -M do -s 1473 -c 3 -W 3 10.20.0.5
+ping -M do -s 1373 -c 3 -W 3 10.20.0.5
 
-# If NO ICMP captured: black hole (ICMP being dropped somewhere)
-# If ICMP captured: PMTUD working correctly
+# If oversized packets leave but NO ICMP returns: likely black hole (ICMP being dropped somewhere)
+# If ICMP returns to the sender: PMTUD signaling is flowing
 
 # Check firewall rules blocking ICMP:
 iptables -L INPUT -n | grep -E "ICMP|icmp" | grep -i "DROP\|REJECT"
@@ -127,14 +126,14 @@ iptables -I OUTPUT -p icmp --icmp-type fragmentation-needed -j ACCEPT
 iptables -I FORWARD -p icmp --icmp-type fragmentation-needed -j ACCEPT
 
 # For nftables:
-nft add rule inet filter input icmp type destination-unreachable accept
-nft add rule inet filter output icmp type destination-unreachable accept
-nft add rule inet filter forward icmp type destination-unreachable accept
+nft add rule inet filter input icmp type destination-unreachable icmp code frag-needed accept
+nft add rule inet filter output icmp type destination-unreachable icmp code frag-needed accept
+nft add rule inet filter forward icmp type destination-unreachable icmp code frag-needed accept
 
 # This is the minimum ICMP that should NEVER be blocked
-# Per RFC 4890: ICMP fragmentation needed must be permitted for PMTUD
+# Per RFC 1191/RFC 1812: ICMP fragmentation needed is required for IPv4 PMTUD
 ```
 
 ## Conclusion
 
-ICMP type 3 code 4 is the mechanism that makes PMTUD work. Capture with `tcpdump -n 'icmp[0] = 3 and icmp[1] = 4'` to verify it is flowing. If ICMP is blocked, TCP connections hang when sending large data (MTU black hole). Always allow ICMP type 3 through firewalls - per RFC 4890, blocking fragmentation needed messages breaks PMTUD and violates TCP/IP standards. The next-hop MTU field in the ICMP message tells the sender exactly what size to use, making PMTUD fast and efficient when ICMP is not filtered.
+ICMP type 3 code 4 is the mechanism that makes PMTUD work. Capture with `tcpdump -n 'icmp[0] = 3 and icmp[1] = 4'` to verify it is flowing. If ICMP is blocked, TCP connections hang when sending large data (MTU black hole). Always allow ICMP type 3 code 4 through firewalls - per RFC 1191/RFC 1812, blocking fragmentation needed messages breaks standards-based PMTUD. The next-hop MTU field in the ICMP message tells the sender exactly what size to use, making PMTUD fast and efficient when ICMP is not filtered.
