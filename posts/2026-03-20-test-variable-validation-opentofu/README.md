@@ -98,20 +98,20 @@ run "invalid_cidr_not_cidr" {
   expect_failures = [var.vpc_cidr]
 }
 
-run "invalid_cidr_too_large_prefix" {
+run "invalid_cidr_prefix_too_short" {
   command = plan
   variables {
-    vpc_cidr           = "10.0.0.0/8"  # /8 is larger than /16 max
+    vpc_cidr           = "10.0.0.0/8"  # /8 is shorter than the /16 minimum
     availability_zones = ["us-east-1a", "us-east-1b"]
     environment        = "dev"
   }
   expect_failures = [var.vpc_cidr]
 }
 
-run "invalid_cidr_too_small_prefix" {
+run "invalid_cidr_prefix_too_long" {
   command = plan
   variables {
-    vpc_cidr           = "10.0.0.0/28"  # /28 is smaller than /24 min
+    vpc_cidr           = "10.0.0.0/28"  # /28 is longer than the /24 maximum
     availability_zones = ["us-east-1a", "us-east-1b"]
     environment        = "dev"
   }
@@ -206,7 +206,7 @@ run "invalid_environment_uppercase" {
 
 ```bash
 # Run all validation tests
-tofu test tests/variable_validation.tftest.hcl -verbose
+tofu test -filter=tests/variable_validation.tftest.hcl -verbose
 
 # Expected output:
 # run "valid_cidr_16"... pass
