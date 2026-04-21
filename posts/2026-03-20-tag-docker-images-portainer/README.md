@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Image, Tag, Registry
 
-Description: Add or modify tags on Docker images in Portainer for version management and registry organization.
+Description: Add or modify tags on Docker images with Docker CLI or Portainer's registry manager for version management and registry organization.
 
 ---
 
-Portainer's image management features provide a web-based interface for the full image lifecycle: pulling, building, tagging, inspecting, and cleaning up Docker images.
+Portainer's image and registry management features provide a web-based interface for the image lifecycle: pulling, building, importing, exporting, viewing tags, and cleaning up Docker images.
 
 ## Navigating Image Management
 
@@ -30,7 +30,7 @@ docker login registry.example.com
 docker pull registry.example.com/private/image:tag
 ```
 
-In Portainer: **Images > Pull image** - enter the image name and tag, optionally select a registry.
+In Portainer: **Images** - select the registry, enter the image name and tag, then click **Pull the image**.
 
 ## Build Images
 
@@ -45,7 +45,7 @@ docker build -f Dockerfile.prod -t myapp:prod .
 docker build --build-arg NODE_ENV=production -t myapp:prod .
 ```
 
-In Portainer: **Images > Build image** - paste Dockerfile content or upload a file.
+In Portainer: **Images > Build a new image** - write Dockerfile content in the web editor or upload a Dockerfile.
 
 ## Import/Export Images
 
@@ -70,13 +70,15 @@ docker tag myapp:latest registry.example.com/myapp:v2.0.0
 docker push registry.example.com/myapp:v2.0.0
 ```
 
+In Portainer: **Registries > Browse > repository** - clone an existing tag to add a new tag. To retag an image, clone the existing tag to the new name, then remove the old tag. When importing an image from a tar file, **Images > Import** can also apply a local or registry tag.
+
 ## Clean Up Images
 
 ```bash
 # Remove a specific image
 docker rmi myapp:old
 
-# Remove all dangling images (untagged layers)
+# Remove all dangling images (untagged images not referenced by containers)
 docker image prune
 
 # Remove all unused images (not referenced by any container)
@@ -89,11 +91,11 @@ docker system df
 ## Identify Outdated Images
 
 ```bash
-# Check if a newer digest exists for an image
-docker pull nginx:latest 2>&1 | grep -E "Pull complete|up to date"
+# Refresh a tag and see whether Docker downloads a newer image
+docker pull nginx:latest
 
 # View image creation date
-docker inspect nginx:latest --format '{{.Created}}'
+docker image inspect nginx:latest --format '{{.Created}}'
 ```
 
 ---
