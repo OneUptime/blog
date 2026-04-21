@@ -21,16 +21,16 @@ Test from the router itself (or log into router admin):
 
 ```text
 Router admin panel → Status → WAN
-Check: IPv6 Address field shows 2xxx:xxxx:... (global address)
-Check: IPv6 Gateway or Default Route is populated
+Check: IPv6 Address or Delegated Prefix is populated (global addresses are currently in 2000::/3)
+Check: IPv6 Gateway or Default Route is populated (a fe80:: link-local gateway is normal)
 ```
 
 If the router has SSH access:
 
 ```bash
-# On OpenWRT: check WAN IPv6
+# On OpenWrt: check WAN IPv6
 
-ip -6 addr show wan
+ifstatus wan6
 ip -6 route show default
 ```
 
@@ -39,11 +39,12 @@ ip -6 route show default
 Verify the router distributed a prefix to LAN devices:
 
 ```bash
-# On OpenWRT router: check delegated prefix
-ip -6 addr show br-lan | grep "scope global"
+# On OpenWrt router: check delegated prefix and LAN address
+ifstatus wan6 | grep -A 6 "ipv6-prefix"
+ip -6 addr show dev br-lan | grep "scope global"
 
-# Expected: 2001:db8:1234:abcd::1/64
-# This means the /64 was derived from the /56 delegated by ISP
+# Example format: 2001:db8:1234:abcd::1/64
+# This means the /64 was derived from the prefix delegated by ISP
 ```
 
 ## Layer 3: Device IPv6 Addresses
@@ -61,8 +62,8 @@ ipconfig | Select-String -Pattern "IPv6 Address|Temporary IPv6"
 
 ### macOS
 ```bash
-# Show global IPv6 addresses (excludes link-local)
-ifconfig | grep "inet6" | grep -v "fe80"
+# Show currently allocated global IPv6 addresses
+ifconfig | grep "inet6 " | grep -E "inet6 [23]"
 ```
 
 ### Linux
@@ -70,7 +71,7 @@ ifconfig | grep "inet6" | grep -v "fe80"
 ip -6 addr show scope global
 ```
 
-Expected: an address like `2001:db8:1234:abcd:aaaa:bbbb:cccc:dddd`
+Expected: a global unicast address in `2000::/3`. Documentation examples often use `2001:db8::/32`, but your real prefix will be different.
 
 ## Layer 4: IPv6 DNS Resolution
 
@@ -82,10 +83,10 @@ nslookup -type=AAAA ipv6.google.com
 # or
 dig AAAA ipv6.google.com
 
-# Expected: returns a 2xxx::xxxx address
+# Expected: returns a global IPv6 address
 
 # Test that DNS server is reachable over IPv6
-dig AAAA google.com @2001:4860:4860::8888
+dig -6 AAAA google.com @2001:4860:4860::8888
 ```
 
 ## Layer 5: Application Connectivity
@@ -108,9 +109,9 @@ curl -6 https://www.cloudflare.com -w "\nConnect time: %{time_connect}s\n"
 The most complete automated test is at `https://test-ipv6.com`. It checks:
 - IPv4 reachability
 - IPv6 reachability
-- IPv4 fallback (Happy Eyeballs)
+- Dual-stack reachability and fallback behavior
 - Large packet IPv6 (PMTUD)
-- DNS over IPv6
+- ISP DNS resolver IPv6 capability
 
 A 10/10 score means excellent IPv6 deployment.
 
@@ -129,7 +130,7 @@ curl -4 -s -o /dev/null -w "IPv4: %{http_code}\n" https://google.com
 
 | Test | Expected Pass |
 |------|-------------|
-| Router WAN has global IPv6 | `2xxx:` or `3xxx:` address |
+| Router has WAN IPv6/default route | Global IPv6 address or delegated prefix plus default route |
 | Devices have global IPv6 | Same prefix as router LAN |
 | DNS AAAA queries work | AAAA records returned |
 | Ping ipv6.google.com | 0% packet loss |
