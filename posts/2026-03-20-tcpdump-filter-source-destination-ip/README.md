@@ -45,7 +45,7 @@ sudo tcpdump -i eth0 -n -v host 192.168.1.100
 ## Step 2: Filter by Subnet/Network Range
 
 ```bash
-# All traffic within the 192.168.1.0/24 subnet
+# All traffic involving the 192.168.1.0/24 subnet
 sudo tcpdump -i eth0 -n 'net 192.168.1.0/24'
 # or
 sudo tcpdump -i eth0 -n 'net 192.168.1.0 mask 255.255.255.0'
@@ -72,7 +72,7 @@ sudo tcpdump -i eth0 -n 'src 192.168.1.100 and dst port 443'
 # Traffic between two specific hosts on a specific port
 sudo tcpdump -i eth0 -n 'host 192.168.1.100 and host 10.0.0.50 and port 8080'
 
-# Traffic from IP but NOT on SSH port (exclude SSH noise)
+# Traffic involving an IP but NOT on SSH port (exclude SSH noise)
 sudo tcpdump -i eth0 -n 'host 192.168.1.100 and not port 22'
 ```
 
@@ -85,8 +85,8 @@ sudo tcpdump -i eth0 -n 'src 192.168.1.100 and tcp'
 # ICMP from/to a specific host
 sudo tcpdump -i eth0 -n 'host 192.168.1.100 and icmp'
 
-# DNS queries from a subnet (UDP port 53)
-sudo tcpdump -i eth0 -n 'src net 192.168.1.0/24 and udp port 53'
+# DNS queries from a subnet (UDP destination port 53)
+sudo tcpdump -i eth0 -n 'src net 192.168.1.0/24 and udp dst port 53'
 
 # HTTP/HTTPS traffic from specific source
 sudo tcpdump -i eth0 -n 'src 192.168.1.100 and (port 80 or port 443)'
@@ -128,12 +128,12 @@ tcpdump -r /tmp/all-capture.pcap 'dst 192.168.1.100 and port 443'
 
 # Match traffic from 192.168.1.x (first three octets)
 # 192=0xc0, 168=0xa8, 1=0x01
-sudo tcpdump -i eth0 'ip[12:3] = 0xc0a801'
+sudo tcpdump -i eth0 'ip[12:4] & 0xffffff00 = 0xc0a80100'
 
 # More commonly, just use the 'src net' syntax which is cleaner:
 sudo tcpdump -i eth0 'src net 192.168.1.0/24'
 
-# Filter by TTL (e.g., only TTL=64 packets - likely Linux origin)
+# Filter by TTL (e.g., only packets observed with TTL=64)
 sudo tcpdump -i eth0 'ip[8] = 64 and src 192.168.1.100'
 ```
 
@@ -144,13 +144,13 @@ sudo tcpdump -i eth0 'ip[8] = 64 and src 192.168.1.100'
 sudo tcpdump -i eth0 -n -v '(src 10.0.1.10 and dst 10.0.2.20) or (src 10.0.2.20 and dst 10.0.1.10)'
 
 # Scenario 2: Is a client actually sending requests to the API?
-sudo tcpdump -i eth0 -n 'src 192.168.1.50 and dst port 8080' -A
+sudo tcpdump -i eth0 -n -A 'src 192.168.1.50 and dst port 8080'
 
 # Scenario 3: Track all connections a suspect device is making
-sudo tcpdump -i eth0 -n 'src 192.168.1.99' -c 100 | awk '{print $5}' | sort | uniq -c | sort -rn
+sudo tcpdump -i eth0 -n -c 100 'src 192.168.1.99' | awk '{print $5}' | sort | uniq -c | sort -rn
 
 # Scenario 4: Verify firewall is blocking traffic correctly
-sudo tcpdump -i eth0 -n 'src 10.0.0.0/8 and dst 192.168.1.50 and tcp'
+sudo tcpdump -i eth0 -n 'net 10.0.0.0/8 and host 192.168.1.50 and tcp'
 # If blocked: you'll see SYN packets but no SYN-ACK responses
 ```
 
