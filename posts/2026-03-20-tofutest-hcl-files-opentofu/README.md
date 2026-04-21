@@ -8,16 +8,16 @@ Description: Understand the `.tofutest.hcl` file extension introduced in OpenTof
 
 ## Introduction
 
-OpenTofu supports two test file extensions: `.tftest.hcl` and `.tofutest.hcl`. The `.tofutest.hcl` extension was introduced as an OpenTofu-specific alternative, useful when you want to clearly distinguish OpenTofu test files from Terraform test files in a shared or migrating codebase.
+OpenTofu supports two HCL test file extensions: `.tftest.hcl` and `.tofutest.hcl`. The `.tofutest.hcl` extension was introduced as an OpenTofu-specific alternative, useful when you want to clearly distinguish OpenTofu test files from Terraform test files in a shared or migrating codebase.
 
-Both extensions are functionally identical-every feature available in `.tftest.hcl` works the same way in `.tofutest.hcl`.
+Both HCL extensions use the same test syntax: every feature available in `.tftest.hcl` works the same way in `.tofutest.hcl`. The main difference is file precedence: if `main.tftest.hcl` and `main.tofutest.hcl` both exist in the same directory, OpenTofu loads `main.tofutest.hcl` and ignores `main.tftest.hcl`.
 
 ## When to Use `.tofutest.hcl`
 
 Choose `.tofutest.hcl` when:
 
 - Your repository is in the process of migrating from Terraform to OpenTofu and you want to keep the test suites separate during transition.
-- Your CI pipeline runs both `terraform test` and `tofu test`, and you need each tool to pick up only its own test files.
+- You maintain OpenTofu-only tests that `terraform test` should ignore.
 - Your organisation's style guide mandates OpenTofu-specific naming to signal toolchain alignment.
 
 Choose `.tftest.hcl` when:
@@ -73,11 +73,11 @@ run "correct_number_of_subnets_created" {
 
 tofu test
 
-# Run only files in a specific directory (picks up both extensions)
+# Use a specific test directory; files in the current directory are still loaded
 tofu test -test-directory=tests/
 ```
 
-If you need to run only `.tofutest.hcl` files, use the `-filter` flag to match specific file names:
+If you need to run a specific `.tofutest.hcl` file, use the `-filter` flag. Repeat the flag for more than one file:
 
 ```bash
 # Run only the vpc test file
@@ -86,7 +86,7 @@ tofu test -filter=tests/vpc.tofutest.hcl
 
 ## Mixing Both Extensions
 
-You can safely mix both extensions in the same project. OpenTofu treats them identically at runtime:
+You can safely mix both extensions in the same project. OpenTofu uses the same test syntax for both, with one important precedence rule: when a `.tofutest.hcl` file has the same base name as a `.tftest.hcl` file in the same directory, OpenTofu runs the `.tofutest.hcl` file and ignores the `.tftest.hcl` file.
 
 ```text
 modules/
@@ -94,11 +94,11 @@ modules/
     main.tf
     variables.tf
     outputs.tf
-    networking.tftest.hcl       ← shared with Terraform
-    networking.tofutest.hcl     ← OpenTofu-only tests (e.g., using mock providers)
+    networking.tftest.hcl       ← Terraform-compatible tests
+    networking.tofutest.hcl     ← OpenTofu replacement tests with the same base name
 ```
 
-This pattern is useful during gradual migration: keep the Terraform-compatible tests in `.tftest.hcl` and move advanced OpenTofu-specific tests (like mock providers) into `.tofutest.hcl`.
+This pattern is useful during gradual migration: keep the Terraform-compatible tests in `.tftest.hcl` and move OpenTofu-specific replacement tests into `.tofutest.hcl`. If you want OpenTofu to run both files, give them different base names or use `-filter` to select the exact files to run.
 
 ## Conclusion
 
