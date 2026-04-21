@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, Terraform Enterprise, Migration, OpenTofu Cloud, Infrastructure as Code, DevOps
+Tags: OpenTofu, Terraform Enterprise, HCP Terraform, Terraform Cloud, Migration, Infrastructure as Code, DevOps
 
-Description: Learn how to migrate from Terraform Enterprise (TFE) or Terraform Cloud (TFC) to OpenTofu-compatible platforms - covering workspace migration, state transfer, and CI/CD updates.
+Description: Learn how to migrate from Terraform Enterprise (TFE) or HCP Terraform (formerly Terraform Cloud) to OpenTofu-compatible platforms - covering workspace migration, state transfer, and CI/CD updates.
 
 ## Introduction
 
-Terraform Enterprise (TFE) and Terraform Cloud (TFC) are the managed platforms for Terraform at scale. When migrating to OpenTofu, you can either self-host OpenTofu with open-source tooling (Atlantis, Spacelift, env0) or use OpenTofu Cloud. This guide covers the migration path.
+HCP Terraform (formerly Terraform Cloud) is HashiCorp's managed platform, and Terraform Enterprise (TFE) is the self-hosted distribution for Terraform at scale. When migrating to OpenTofu, you can self-host OpenTofu with open-source tooling such as Atlantis, run it in CI, or use a commercial OpenTofu-compatible TACOS platform such as Spacelift or env0. This guide covers the migration path.
 
 ## Options After Leaving Terraform Enterprise
 
@@ -17,28 +17,31 @@ Terraform Enterprise (TFE) and Terraform Cloud (TFC) are the managed platforms f
 | Atlantis | Open-source PR automation, self-hosted | Teams wanting full control |
 | Spacelift | Commercial, policy-as-code, audit logs | Enterprise features |
 | env0 | Commercial, cost management, TTL destroy | FinOps-focused teams |
-| OpenTofu Cloud | OpenTofu's own managed service | Direct TFC replacement |
+| Managed TACOS platform | Third-party managed OpenTofu-compatible service | HCP Terraform-style hosted workflows |
 | GitHub Actions | DIY with tofu CLI | Simple pipelines |
 
-## Step 1: Export State from Terraform Cloud/Enterprise
+## Step 1: Export State from HCP Terraform/Enterprise
 
 ```bash
-# Install Terraform Cloud API client or use curl
+# Install jq and use curl against HCP Terraform or your TFE hostname
 
 TFC_TOKEN="your-terraform-cloud-token"
+TFC_HOST="app.terraform.io" # For Terraform Enterprise, use your TFE hostname.
 ORGANIZATION="my-org"
 WORKSPACE="production-vpc"
 
 # Get the workspace ID
 WORKSPACE_ID=$(curl -s \
   -H "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/organizations/$ORGANIZATION/workspaces/$WORKSPACE" \
+  -H "Content-Type: application/vnd.api+json" \
+  "https://$TFC_HOST/api/v2/organizations/$ORGANIZATION/workspaces/$WORKSPACE" \
   | jq -r '.data.id')
 
 # Get the current state version
 STATE_URL=$(curl -s \
   -H "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/current-state-version" \
+  -H "Content-Type: application/vnd.api+json" \
+  "https://$TFC_HOST/api/v2/workspaces/$WORKSPACE_ID/current-state-version" \
   | jq -r '.data.attributes."hosted-state-download-url"')
 
 # Download the state file
@@ -62,7 +65,7 @@ echo "State uploaded to S3"
 ## Step 3: Update Backend Configuration
 
 ```hcl
-# Before: Terraform Cloud backend
+# Before: HCP Terraform cloud block
 terraform {
   cloud {
     organization = "my-org"
@@ -90,12 +93,11 @@ terraform {
 ## Step 4: Re-Initialize with OpenTofu
 
 ```bash
-# Remove old .terraform directory
+# Remove old backend metadata but keep the provider lock file
 rm -rf .terraform/
-rm -f .terraform.lock.hcl
 
 # Initialize with new backend
-tofu init
+tofu init -reconfigure
 
 # Verify state is intact
 tofu show | head -30
@@ -114,37 +116,41 @@ projects:
   - name: production-vpc
     dir: environments/production/vpc
     workspace: default
-    terraform_version: opentofu:1.9.0
+    terraform_distribution: opentofu
+    terraform_version: 1.9.0
 
 workflows:
   default:
     plan:
       steps:
-        - run: tofu init -input=false
-        - run: tofu plan -input=false -out=tfplan
+        - init:
+            extra_args: ["-input=false"]
+        - plan:
+            extra_args: ["-input=false"]
     apply:
       steps:
-        - run: tofu apply tfplan
+        - apply
 ```
 
 ## Step 6: Replace Sentinel with OPA
 
-Terraform Enterprise uses Sentinel for policy enforcement. Replace with OPA/conftest:
+If your Terraform Enterprise policy sets use Sentinel, replace them with OPA/conftest:
 
 ```rego
 # policies/require_encryption.rego (replaces Sentinel policy)
 package main
 
-import future.keywords.in
-
-deny[msg] {
-    resource := input.resource_changes[_]
+deny contains msg if {
+    some resource in input.resource_changes
     resource.type == "aws_s3_bucket_server_side_encryption_configuration"
-    resource.change.actions[_] in ["create", "update"]
+    some action in resource.change.actions
+    action in ["create", "update"]
 
-    resource.change.after.rule[_].apply_server_side_encryption_by_default[_].sse_algorithm != "aws:kms"
+    some rule in resource.change.after.rule
+    some encryption in rule.apply_server_side_encryption_by_default
+    encryption.sse_algorithm != "aws:kms"
 
-    msg := sprintf("S3 bucket '%s' must use KMS encryption", [resource.address])
+    msg := sprintf("S3 bucket encryption configuration '%s' must use KMS encryption", [resource.address])
 }
 ```
 
@@ -171,4 +177,4 @@ Terraform Enterprise stores workspace variables. Replace with CI/CD secrets:
 
 ## Conclusion
 
-Migrating from Terraform Enterprise to OpenTofu requires: exporting state from TFC/TFE via API, uploading it to your chosen backend (S3, GCS, AzureRM), updating backend configuration, and replacing Sentinel policies with OPA/conftest. Choose Atlantis for self-hosted PR automation, or Spacelift/env0 for managed enterprise features. The state format is identical, so no state conversion is needed.
+Migrating from Terraform Enterprise to OpenTofu requires: exporting state from HCP Terraform/TFE via API, uploading it to your chosen backend (S3, GCS, AzureRM), updating backend configuration, and replacing Sentinel policies with OPA/conftest. Choose Atlantis for self-hosted PR automation, or Spacelift/env0 for managed enterprise features. For supported Terraform/OpenTofu version pairs, no separate state conversion step is usually needed.
