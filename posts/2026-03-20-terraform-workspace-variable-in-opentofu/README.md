@@ -122,19 +122,23 @@ resource "aws_iam_role" "lambda" {
 Prevent accidental applies to the `default` workspace when your convention uses named environments:
 
 ```hcl
-locals {
-  # Raise an error if someone tries to apply in the default workspace
-  workspace_guard = terraform.workspace == "default" ? tobool(
-    "ERROR: Do not apply in the 'default' workspace. Use 'staging' or 'production'."
-  ) : true
+resource "terraform_data" "workspace_guard" {
+  input = terraform.workspace
+
+  lifecycle {
+    precondition {
+      condition     = terraform.workspace != "default"
+      error_message = "Do not apply in the 'default' workspace. Use 'staging' or 'production'."
+    }
+  }
 }
 ```
 
 ## Limitations
 
-- `terraform.workspace` is evaluated at plan time, so it cannot be used in `provider` block `alias` names.
+- `terraform.workspace` cannot be used to generate dynamic `provider` block `alias` names; provider configuration references are not normal expressions.
 - Avoid complex business logic solely based on workspace - prefer variable files for configurations that change frequently.
-- Workspaces share the same provider configuration, which can be a limitation for multi-account setups.
+- Workspaces use the same backend and are not a strong isolation boundary for deployments that require separate credentials and access controls.
 
 ## Conclusion
 
