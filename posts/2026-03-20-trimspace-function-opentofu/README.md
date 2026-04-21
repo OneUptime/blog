@@ -64,18 +64,17 @@ data "http" "public_ip" {
   url = "https://ipv4.icanhazip.com"
 }
 
-resource "aws_security_group_rule" "my_ip" {
-  type              = "ingress"
+resource "aws_vpc_security_group_ingress_rule" "my_ip" {
+  security_group_id = aws_security_group.app.id
   from_port         = 443
   to_port           = 443
-  protocol          = "tcp"
+  ip_protocol       = "tcp"
   # trimspace() is equivalent to chomp() for simple trailing newlines
-  cidr_blocks       = ["${trimspace(data.http.public_ip.response_body)}/32"]
-  security_group_id = aws_security_group.app.id
+  cidr_ipv4         = "${trimspace(data.http.public_ip.response_body)}/32"
 }
 ```
 
-Note: `chomp()` removes only a trailing newline, while `trimspace()` removes all leading and trailing whitespace.
+Note: `chomp()` removes trailing newline characters, while `trimspace()` removes all leading and trailing whitespace.
 
 ---
 
@@ -115,7 +114,7 @@ variable "bucket_name" {
 locals {
   with_newline = "hello\n"
 
-  # chomp: removes only a trailing newline (\n or \r\n)
+  # chomp: removes trailing newline characters (\n or \r\n)
   chomped = chomp("hello\n")    # "hello"
 
   # trimspace: removes ALL leading and trailing whitespace
@@ -123,10 +122,10 @@ locals {
 }
 ```
 
-Use `chomp()` when you only need to remove a trailing newline (common for command output). Use `trimspace()` for full whitespace cleanup.
+Use `chomp()` when you only need to remove trailing newline characters (common for command output). Use `trimspace()` for full whitespace cleanup.
 
 ---
 
 ## Summary
 
-`trimspace()` removes all leading and trailing whitespace - spaces, tabs, and newlines - from a string. It's most commonly used when reading file contents or HTTP responses that include trailing newlines, and for normalizing user-provided string variables. Use `chomp()` if you only need to remove a single trailing newline.
+`trimspace()` removes all leading and trailing whitespace - spaces, tabs, and newlines - from a string. It's most commonly used when reading file contents or HTTP responses that include trailing newlines, and for normalizing user-provided string variables. Use `chomp()` if you only need to remove trailing newline characters.
