@@ -13,8 +13,11 @@ import ipaddress
 
 def mask_to_cidr(mask: str) -> int:
     """Convert dotted-decimal subnet mask to CIDR prefix length."""
-    # IPv4Network accepts a host address / mask to derive prefix length
+    # IPv4Network accepts a host address / mask to derive prefix length.
+    # It also accepts host masks, so compare against .netmask for subnet masks.
     net = ipaddress.IPv4Network(f"0.0.0.0/{mask}")
+    if mask != str(net.netmask):
+        raise ValueError(f"{mask!r} is a host mask, not a subnet mask")
     return net.prefixlen
 
 print(mask_to_cidr("255.0.0.0"))       # 8
@@ -49,11 +52,12 @@ import ipaddress
 def is_valid_mask(mask: str) -> bool:
     """
     A valid subnet mask is a contiguous block of 1-bits followed by 0-bits.
-    ipaddress.IPv4Network raises ValueError for non-contiguous masks.
+    ipaddress.IPv4Network raises ValueError for non-contiguous masks, but
+    accepts host masks too, so compare the input against .netmask.
     """
     try:
-        ipaddress.IPv4Network(f"0.0.0.0/{mask}")
-        return True
+        net = ipaddress.IPv4Network(f"0.0.0.0/{mask}")
+        return mask == str(net.netmask)
     except ValueError:
         return False
 
@@ -61,6 +65,7 @@ print(is_valid_mask("255.255.255.0"))   # True
 print(is_valid_mask("255.255.255.128")) # True
 print(is_valid_mask("255.0.255.0"))     # False - non-contiguous
 print(is_valid_mask("255.255.256.0"))   # False - octet > 255
+print(is_valid_mask("0.0.0.255"))       # False - host mask, not subnet mask
 ```
 
 ## Lookup Table for All Common Masks
@@ -112,4 +117,4 @@ print(normalize_network("10.0.0.5/8"))
 
 ## Conclusion
 
-Python's `ipaddress.IPv4Network(f"0.0.0.0/{mask}")` is the standard trick for converting a dotted-decimal mask to a prefix length via `.prefixlen`, and the reverse via `.netmask`. The library validates that the mask is contiguous (a valid subnet mask) and raises `ValueError` for non-contiguous patterns like `255.0.255.0`. Always use `strict=False` when constructing a network from an interface address to avoid errors from host bits being set.
+Python's `ipaddress.IPv4Network(f"0.0.0.0/{mask}")` is the standard trick for converting a dotted-decimal mask to a prefix length via `.prefixlen`, and the reverse via `.netmask`. The library validates contiguous net masks and host masks, so compare the input to `.netmask` when you need to reject host-mask patterns like `0.0.0.255`. It raises `ValueError` for non-contiguous patterns like `255.0.255.0`. Always use `strict=False` when constructing a network from an interface address to avoid errors from host bits being set.
