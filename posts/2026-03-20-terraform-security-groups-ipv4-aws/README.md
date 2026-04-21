@@ -8,7 +8,7 @@ Description: Configure AWS security groups for IPv4 using Terraform, covering in
 
 ## Introduction
 
-AWS security groups act as stateful firewalls for EC2 instances and other resources. Terraform's `aws_security_group` and `aws_security_group_rule` resources manage them declaratively.
+AWS security groups act as stateful firewalls for EC2 instances and other resources. Terraform's `aws_security_group`, `aws_vpc_security_group_ingress_rule`, and `aws_vpc_security_group_egress_rule` resources manage them declaratively.
 
 ## Web Server Security Group
 
@@ -20,45 +20,47 @@ resource "aws_security_group" "web" {
   description = "Security group for web servers"
   vpc_id      = aws_vpc.main.id
 
-  # HTTP inbound
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow HTTP from internet"
-  }
-
-  # HTTPS inbound
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow HTTPS from internet"
-  }
-
-  # SSH only from management subnet
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["10.64.99.0/27"]
-    description = "SSH from management subnet"
-  }
-
-  # All outbound
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound"
-  }
-
   tags = {
     Name = "web-sg"
   }
+}
+
+# HTTP inbound
+resource "aws_vpc_security_group_ingress_rule" "web_http_ipv4" {
+  security_group_id = aws_security_group.web.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 80
+  to_port           = 80
+  ip_protocol       = "tcp"
+  description       = "Allow HTTP from internet"
+}
+
+# HTTPS inbound
+resource "aws_vpc_security_group_ingress_rule" "web_https_ipv4" {
+  security_group_id = aws_security_group.web.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+  description       = "Allow HTTPS from internet"
+}
+
+# SSH only from management subnet
+resource "aws_vpc_security_group_ingress_rule" "web_ssh_management_ipv4" {
+  security_group_id = aws_security_group.web.id
+  cidr_ipv4         = "10.64.99.0/27"
+  from_port         = 22
+  to_port           = 22
+  ip_protocol       = "tcp"
+  description       = "SSH from management subnet"
+}
+
+# All outbound
+resource "aws_vpc_security_group_egress_rule" "web_all_outbound_ipv4" {
+  security_group_id = aws_security_group.web.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+  description       = "Allow all outbound"
 }
 ```
 
@@ -70,31 +72,32 @@ resource "aws_security_group" "database" {
   description = "RDS database security group"
   vpc_id      = aws_vpc.main.id
 
-  # Allow only from web tier SG
-  ingress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.web.id]
-    description     = "PostgreSQL from web tier"
-  }
-
-  ingress {
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = ["10.64.99.0/27"]  # Management subnet
-    description = "PostgreSQL from management"
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
   tags = { Name = "database-sg" }
+}
+
+# Allow only from web tier SG
+resource "aws_vpc_security_group_ingress_rule" "database_postgres_from_web" {
+  security_group_id            = aws_security_group.database.id
+  referenced_security_group_id = aws_security_group.web.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  description                  = "PostgreSQL from web tier"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "database_postgres_from_management" {
+  security_group_id = aws_security_group.database.id
+  cidr_ipv4         = "10.64.99.0/27" # Management subnet
+  from_port         = 5432
+  to_port           = 5432
+  ip_protocol       = "tcp"
+  description       = "PostgreSQL from management"
+}
+
+resource "aws_vpc_security_group_egress_rule" "database_all_outbound_ipv4" {
+  security_group_id = aws_security_group.database.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
 }
 ```
 
@@ -106,14 +109,13 @@ resource "aws_security_group" "app" {
   vpc_id = aws_vpc.main.id
 }
 
-resource "aws_security_group_rule" "app_from_web" {
-  type                     = "ingress"
-  from_port                = 8080
-  to_port                  = 8080
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.web.id
-  security_group_id        = aws_security_group.app.id
-  description              = "App port from web tier"
+resource "aws_vpc_security_group_ingress_rule" "app_from_web" {
+  security_group_id            = aws_security_group.app.id
+  referenced_security_group_id = aws_security_group.web.id
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
+  description                  = "App port from web tier"
 }
 ```
 
@@ -139,4 +141,4 @@ terraform output web_sg_id
 
 ## Conclusion
 
-AWS security groups in Terraform use `ingress`/`egress` blocks for inline rules or separate `aws_security_group_rule` resources for modular management. Reference other security groups with `security_groups = [sg_id]` to create dynamic rules that follow instance membership changes. Restrict SSH and admin ports to management CIDR ranges rather than `0.0.0.0/0`.
+AWS security groups in Terraform use `aws_security_group` for the group and separate `aws_vpc_security_group_ingress_rule` or `aws_vpc_security_group_egress_rule` resources for rule management. Reference other security groups with `referenced_security_group_id = sg_id` to create dynamic rules that follow instance membership changes. Restrict SSH and admin ports to management CIDR ranges rather than `0.0.0.0/0`.
