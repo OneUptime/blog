@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Spot Instance, AWS, EC2, Cost Optimization, Infrastructure as Code
 
-Description: Learn how to run EC2 Spot Instances with OpenTofu - configuring Spot requests, interruption handlers, mixed instance ASGs, and Spot Fleet for cost-optimized compute workloads.
+Description: Learn how to run EC2 Spot Instances with OpenTofu - configuring Spot requests, interruption handlers, mixed instance ASGs, and EC2 Fleet for cost-optimized compute workloads.
 
 ## Introduction
 
-EC2 Spot Instances offer up to 90% cost savings over On-Demand pricing by using spare AWS capacity. The trade-off is a two-minute interruption notice when AWS reclaims capacity. OpenTofu manages Spot configuration for individual instances, Auto Scaling Groups, and Spot Fleets - with interruption handling built into the launch template.
+EC2 Spot Instances offer up to 90% cost savings over On-Demand pricing by using spare AWS capacity. The trade-off is a two-minute interruption notice when AWS reclaims capacity. OpenTofu manages Spot configuration for individual instances, Auto Scaling Groups, and EC2 Fleets - with interruption handling built into the launch template.
 
 ## Spot Instance via Launch Template
 
@@ -46,13 +46,22 @@ resource "aws_launch_template" "spot" {
 # Polls IMDSv2 every 5 seconds for interruption notice
 cat > /usr/local/bin/spot-interrupt-handler.sh << 'EOF'
 #!/bin/bash
-TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
-  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+refresh_token() {
+  curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"
+}
+
+TOKEN=$(refresh_token)
 
 while true; do
   STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
     -H "X-aws-ec2-metadata-token: $TOKEN" \
-    http://169.254.169.254/latest/meta-data/spot/termination-time)
+    http://169.254.169.254/latest/meta-data/spot/instance-action)
+
+  if [ "$STATUS" -eq 401 ]; then
+    TOKEN=$(refresh_token)
+    continue
+  fi
 
   if [ "$STATUS" -eq 200 ]; then
     echo "Spot interruption notice received - draining..."
@@ -79,13 +88,14 @@ resource "aws_autoscaling_group" "spot_mixed" {
   min_size            = 2
   max_size            = 50
   desired_capacity    = 10
+  enabled_metrics     = ["GroupInServiceInstances"]
 
   mixed_instances_policy {
     instances_distribution {
       on_demand_base_capacity                  = 2     # Always keep 2 On-Demand
       on_demand_percentage_above_base_capacity = 0     # All additional capacity = Spot
       spot_allocation_strategy                 = "capacity-optimized"  # Best for interruption avoidance
-      spot_max_price                           = ""    # Empty = current Spot price cap
+      spot_max_price                           = ""    # Empty = On-Demand price cap
     }
 
     launch_template {
@@ -105,41 +115,63 @@ resource "aws_autoscaling_group" "spot_mixed" {
 }
 ```
 
-## Spot Fleet for Batch Workloads
+## EC2 Fleet for Batch Workloads
 
 ```hcl
-resource "aws_spot_fleet_request" "batch" {
-  iam_fleet_role  = aws_iam_role.spot_fleet.arn
-  target_capacity = 20
-  spot_price      = "0.10"
+resource "aws_launch_template" "batch" {
+  name_prefix = "${var.environment}-batch-"
+  image_id    = data.aws_ami.amazon_linux.id
+  user_data   = filebase64("${path.module}/batch_user_data.sh")
 
-  allocation_strategy         = "capacityOptimized"
-  terminate_instances_with_expiration = true
+  iam_instance_profile {
+    arn = aws_iam_instance_profile.batch.arn
+  }
 
-  launch_specification {
-    instance_type          = "m5.large"
-    ami                    = data.aws_ami.amazon_linux.id
-    subnet_id              = aws_subnet.private[0].id
-    iam_instance_profile   = aws_iam_instance_profile.batch.arn
-    vpc_security_group_ids = [aws_security_group.batch.id]
-    user_data              = base64encode(file("${path.module}/batch_user_data.sh"))
+  vpc_security_group_ids = [aws_security_group.batch.id]
 
-    ebs_block_device {
-      device_name = "/dev/xvda"
+  block_device_mappings {
+    device_name = "/dev/xvda"
+
+    ebs {
       volume_size = 30
       volume_type = "gp3"
     }
-
-    tags = { Workload = "batch", Environment = var.environment }
   }
 
-  launch_specification {
-    instance_type          = "m5a.large"
-    ami                    = data.aws_ami.amazon_linux.id
-    subnet_id              = aws_subnet.private[1].id
-    iam_instance_profile   = aws_iam_instance_profile.batch.arn
-    vpc_security_group_ids = [aws_security_group.batch.id]
-    user_data              = base64encode(file("${path.module}/batch_user_data.sh"))
+  tag_specifications {
+    resource_type = "instance"
+    tags = { Workload = "batch", Environment = var.environment }
+  }
+}
+
+resource "aws_ec2_fleet" "batch" {
+  type                = "maintain"
+  terminate_instances = true
+
+  launch_template_config {
+    launch_template_specification {
+      launch_template_id = aws_launch_template.batch.id
+      version            = aws_launch_template.batch.latest_version
+    }
+
+    override {
+      instance_type = "m5.large"
+      subnet_id     = aws_subnet.private[0].id
+    }
+
+    override {
+      instance_type = "m5a.large"
+      subnet_id     = aws_subnet.private[1].id
+    }
+  }
+
+  target_capacity_specification {
+    default_target_capacity_type = "spot"
+    total_target_capacity        = 20
+  }
+
+  spot_options {
+    allocation_strategy = "price-capacity-optimized"
   }
 }
 ```
@@ -151,12 +183,12 @@ resource "aws_cloudwatch_metric_alarm" "spot_capacity" {
   alarm_name          = "${var.environment}-spot-capacity-low"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "GroupDesiredCapacity"
+  metric_name         = "GroupInServiceInstances"
   namespace           = "AWS/AutoScaling"
   period              = 60
   statistic           = "Average"
   threshold           = var.asg_min_size
-  alarm_description   = "ASG desired capacity below minimum - possible Spot interruptions"
+  alarm_description   = "ASG in-service capacity below minimum - possible Spot interruptions"
 
   dimensions = {
     AutoScalingGroupName = aws_autoscaling_group.spot_mixed.name
@@ -168,4 +200,4 @@ resource "aws_cloudwatch_metric_alarm" "spot_capacity" {
 
 ## Conclusion
 
-Spot Instances with OpenTofu deliver significant cost savings for fault-tolerant workloads. Use `capacity-optimized` allocation strategy to minimize interruptions by letting AWS pick the pool with the most available capacity. Always provide multiple instance types (5+) to maximize Spot availability across pools. For stateless web applications, maintain a small On-Demand base (`on_demand_base_capacity = 2`) for reliability while running the bulk of traffic on Spot. For batch jobs, Spot Fleet with `capacityOptimized` provides the best price-to-interruption balance.
+Spot Instances with OpenTofu deliver significant cost savings for fault-tolerant workloads. Use `capacity-optimized` allocation strategy to minimize interruptions by letting AWS pick the pool with the most available capacity. Provide multiple instance types and Availability Zones to maximize Spot availability; AWS recommends being flexible across at least 10 instance types for each workload. For stateless web applications, maintain a small On-Demand base (`on_demand_base_capacity = 2`) for reliability while running the bulk of traffic on Spot. For batch jobs, EC2 Fleet with `price-capacity-optimized` provides the best price-to-interruption balance.
