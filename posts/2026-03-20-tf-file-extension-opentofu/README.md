@@ -8,11 +8,13 @@ Description: A guide to using .tf files in OpenTofu projects, including file org
 
 ## Introduction
 
-OpenTofu uses files with the `.tf` extension to store HCL (HashiCorp Configuration Language) configurations. Understanding how OpenTofu loads and processes these files is fundamental to organizing your infrastructure code effectively.
+OpenTofu can use files with the `.tf` extension to store HCL (HashiCorp Configuration Language) configurations. It also supports `.tofu` files, but this guide focuses on `.tf` files. Understanding how OpenTofu loads and processes these files is fundamental to organizing your infrastructure code effectively.
 
 ## How OpenTofu Reads .tf Files
 
-OpenTofu reads **all** `.tf` files in a directory when you run any command. The order of the files doesn't matter - OpenTofu merges all configurations together:
+OpenTofu normally reads **all** top-level `.tf` files in a module directory when you run configuration commands such as `tofu plan` or `tofu apply`. The order of normal configuration files doesn't matter - OpenTofu merges all configurations together:
+
+If a `.tf` file and a `.tofu` file have the same base name in the same directory, OpenTofu loads the `.tofu` file and ignores the `.tf` file.
 
 ```bash
 # All these files are read together
@@ -88,7 +90,7 @@ project/
 ├── variables.tf      # All variables
 ├── outputs.tf        # All outputs
 ├── locals.tf         # All locals
-├── versions.tf       # Terraform + provider versions
+├── versions.tf       # OpenTofu + provider versions
 ├── networking.tf     # VPC, subnets, route tables
 ├── compute.tf        # EC2 instances, ASGs
 ├── security.tf       # Security groups, IAM
@@ -115,15 +117,15 @@ variable "instance_type" {
 ## What NOT to Do
 
 ```bash
-# Don't create files that OpenTofu might confuse:
-# - Don't name files with spaces
-# - Don't create .tf.backup files in the project directory
+# Avoid files that cause surprises:
+# - Avoid spaces in file names because shell commands need quoting
+# - Don't keep backup files that still end in .tf, such as main.backup.tf
 # - Keep each .tf file focused on a specific concern
 ```
 
 ## Referencing Across Files
 
-OpenTofu merges all `.tf` files in a directory, so resources defined in different files can reference each other freely:
+OpenTofu merges normal top-level `.tf` files in a module directory, so resources defined in different files can reference each other freely:
 
 ```hcl
 # networking.tf
@@ -131,11 +133,10 @@ resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
 }
 
-# compute.tf - Can reference resources from networking.tf
-resource "aws_instance" "web" {
-  ami           = data.aws_ami.ubuntu.id
-  instance_type = var.instance_type
-  subnet_id     = aws_subnet.public.id  # Defined in networking.tf
+# security.tf - Can reference resources from networking.tf
+resource "aws_security_group" "web" {
+  name   = "web"
+  vpc_id = aws_vpc.main.id  # Defined in networking.tf
 }
 ```
 
@@ -154,4 +155,4 @@ find . -name "*.tf" -not -path "./.terraform/*" | wc -l
 
 ## Conclusion
 
-The `.tf` file extension is the standard for OpenTofu HCL configurations. OpenTofu merges all `.tf` files in a directory, giving you flexibility to organize code across multiple files by concern. Follow the convention of separating variables, outputs, locals, and resources into dedicated files for better readability and maintainability.
+The `.tf` file extension is supported for OpenTofu HCL configurations. OpenTofu merges normal top-level `.tf` files in a module directory, giving you flexibility to organize code across multiple files by concern. Follow the convention of separating variables, outputs, locals, and resources into dedicated files for better readability and maintainability.
