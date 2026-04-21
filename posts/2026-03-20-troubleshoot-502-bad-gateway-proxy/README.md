@@ -8,7 +8,7 @@ Description: A systematic guide to diagnosing and resolving HTTP 502 Bad Gateway
 
 ## What Is a 502 Bad Gateway?
 
-A `502 Bad Gateway` error means the proxy (Nginx, HAProxy, etc.) received an invalid or no response from the upstream server. The proxy itself is running fine-the problem lies between the proxy and your application server.
+A `502 Bad Gateway` error means the proxy (Nginx, HAProxy, etc.) received an invalid or unusable response from the upstream server. The proxy process is running, but the failure is in the proxy-to-upstream path or the upstream application.
 
 ## Common Causes
 
@@ -24,12 +24,12 @@ A `502 Bad Gateway` error means the proxy (Nginx, HAProxy, etc.) received an inv
 ```bash
 # Tail the error log for recent 502 entries
 
-tail -f /var/log/nginx/error.log | grep "502\|upstream\|connect"
+tail -f /var/log/nginx/error.log | grep -E "502|upstream|connect"
 ```
 
 Common error patterns:
 - `connect() failed (111: Connection refused)` - upstream not listening
-- `upstream timed out` - upstream too slow to respond
+- `upstream prematurely closed connection` - upstream closed the connection before sending a complete response
 - `no live upstreams while connecting to upstream` - all upstream servers are down
 
 ## Step 2: Verify the Upstream Is Running
@@ -63,7 +63,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
 
-        # Increase timeouts to rule out slow upstream responses
+        # Set explicit upstream connection and response timeouts
         proxy_connect_timeout 10s;
         proxy_read_timeout    60s;
         proxy_send_timeout    60s;
@@ -119,11 +119,11 @@ flowchart TD
     D -- No --> E[Check upstream logs for errors]
     D -- Yes --> F{Nginx proxy_pass address correct?}
     F -- No --> G[Fix proxy_pass and reload Nginx]
-    F -- Yes --> H{Timeout errors in Nginx log?}
-    H -- Yes --> I[Increase proxy_read_timeout]
+    F -- Yes --> H{Premature close or reset errors in Nginx log?}
+    H -- Yes --> I[Check upstream crashes, protocol, or keepalive handling]
     H -- No --> J[Check network/firewall between proxy and upstream]
 ```
 
 ## Conclusion
 
-502 errors always originate upstream. Start by checking whether the upstream process is running and accepting connections, then work through Nginx configuration, timeouts, and system resources. The Nginx error log is your most important diagnostic tool.
+502 errors usually point to a failure in the upstream path. Start by checking whether the upstream process is running and accepting connections, then work through Nginx configuration and system resources. The Nginx error log is your most important diagnostic tool.
