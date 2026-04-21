@@ -11,9 +11,9 @@ Testing for IPv6 VPN leaks requires checking whether your actual IPv6 address is
 ## Understanding What a Leak Looks Like
 
 ```text
-Before VPN: Your real IPv6 = 2001:db8::your-real-address
+Before VPN: Your real IPv6 = 2001:db8::1234
 After VPN (no leak): IPv6 address = VPN server's IPv6 or no IPv6 response
-After VPN (leak!): IPv6 address = 2001:db8::your-real-address (unchanged!)
+After VPN (leak!): IPv6 address = 2001:db8::1234 (unchanged!)
 ```
 
 ## Step 1: Record Your IPv6 Address Before VPN
@@ -50,16 +50,16 @@ curl -s https://ipv6.icanhazip.com
 DNS queries can also leak over IPv6:
 
 ```bash
-# Test which DNS server is being used
-dig -6 myip.opendns.com @2620:0:ccc::2   # OpenDNS IPv6
+# Test which recursive resolver is being used
+dig +short TXT whoami.ds.akahelp.net
 
-# More thorough DNS leak test
+# More thorough DNS resolver checks (Google, Quad9, Cloudflare)
 for server in \
-  2001:4860:4860::8888 \    # Google
-  2620:fe::fe \              # Quad9
-  2606:4700:4700::1111; do   # Cloudflare
+  2001:4860:4860::8888 \
+  2620:fe::fe \
+  2606:4700:4700::1111; do
   echo -n "DNS $server: "
-  dig +short TXT whoami.cloudflare @$server 2>/dev/null || echo "blocked"
+  dig -6 +short TXT whoami.ipv6.akahelp.net @"$server" 2>/dev/null || echo "blocked"
 done
 ```
 
@@ -82,20 +82,21 @@ else
     echo "    No IPv6 connectivity (may be blocked or tunneled)"
 fi
 
-# Test 2: IPv6 DNS resolution
+# Test 2: DNS resolver identity
 echo ""
-echo "[2] IPv6 DNS Test:"
-dns_result=$(dig +short AAAA ipv6.google.com 2>/dev/null)
+echo "[2] DNS Resolver Test:"
+dns_result=$(dig +short TXT whoami.ds.akahelp.net 2>/dev/null)
 if [ -n "$dns_result" ]; then
-    echo "    IPv6 DNS works: $dns_result"
+    echo "    Resolver visible: $dns_result"
+    echo "    WARNING: Check if this resolver belongs to your VPN provider"
 else
-    echo "    IPv6 DNS blocked or no IPv6"
+    echo "    DNS resolver identity unavailable"
 fi
 
 # Test 3: Traceroute to IPv6 host
 echo ""
 echo "[3] IPv6 Route:"
-traceroute6 -m 3 2001:4860:4860::8888 2>/dev/null | head -5
+traceroute -6 -m 3 2001:4860:4860::8888 2>/dev/null | head -5
 
 echo ""
 echo "=== Test Complete ==="
@@ -110,7 +111,7 @@ Run these while connected to your VPN:
 |---|---|---|
 | IP Leak | https://ipleak.net | IPv4, IPv6, DNS |
 | IPv6 Leak | https://ipv6leak.com | IPv6 specific |
-| BrowserLeaks | https://browserleaks.com/ipv6 | Browser WebRTC |
+| BrowserLeaks | https://browserleaks.com/webrtc | Browser WebRTC |
 | DNS Leak Test | https://dnsleaktest.com | DNS over IPv6 |
 
 ## Interpreting Results
