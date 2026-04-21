@@ -31,11 +31,11 @@ echo "=== IPv6 ===" && curl -6 -w "%{time_total}s\n" -o /dev/null https://cdn.ex
 
 ```bash
 # Check which CDN edge server is responding (IPv6)
-curl -6 -v https://cdn.example.com/ 2>&1 | grep -E "Server|X-Cache|CF-RAY|X-Served-By"
+curl -6 -v https://cdn.example.com/ 2>&1 | grep -Ei "^(< )?(server|x-cache|cf-ray|x-served-by):"
 
 # Get the IPv6 address of the edge server
 curl -6 -v https://cdn.example.com/ 2>&1 | grep "Connected to"
-# Output: Connected to cdn.example.com (2606:4700::xxxx) port 443
+# Output: Connected to cdn.example.com (2606:4700::1234) port 443
 
 # Identify edge location
 # Cloudflare: decode CF-RAY header (e.g., CF-RAY: xxxx-LGA = New York)
@@ -45,11 +45,11 @@ curl -6 -v https://cdn.example.com/ 2>&1 | grep "Connected to"
 ## Testing Cache Behavior Over IPv6
 
 ```bash
-# First request: should be MISS
-curl -6 -D - https://cdn.example.com/asset.js | grep -E "X-Cache|Age"
+# First request: often MISS if the object is not already cached
+curl -6 -D - -o /dev/null https://cdn.example.com/asset.js | grep -Ei "^(x-cache|cf-cache-status|age):"
 
-# Second request: should be HIT
-curl -6 -D - https://cdn.example.com/asset.js | grep -E "X-Cache|Age"
+# Second request: should be HIT when the object is cacheable and the same edge handles it
+curl -6 -D - -o /dev/null https://cdn.example.com/asset.js | grep -Ei "^(x-cache|cf-cache-status|age):"
 
 # Verify cache headers
 curl -6 -I https://cdn.example.com/asset.js
@@ -64,12 +64,13 @@ Test from multiple geographic locations:
 # Using online tools:
 # https://globalping.io (test from multiple probes)
 
-# Globalping CLI
-npm install -g @jsdelivr/globalping-cli
+# Globalping CLI (Ubuntu/Debian install example)
+curl -s https://packagecloud.io/install/repositories/jsdelivr/globalping/script.deb.sh | sudo bash
+sudo apt install globalping
 
 globalping http https://cdn.example.com/health \
   --limit 10 \
-  --type ipv6 \
+  --ipv6 \
   --from "world"
 
 # Check results for IPv6 connectivity from:
@@ -116,8 +117,11 @@ run_test "IPv6 HTTP connection" \
 
 # Performance Test
 TTFB=$(curl -6 -s -o /dev/null -w "%{time_starttransfer}" https://$CDN_HOST$TEST_PATH)
+TTFB_STATUS=$?
 echo "INFO: IPv6 TTFB = ${TTFB}s"
-if (( $(echo "$TTFB < 1.0" | bc -l) )); then
+if [ "$TTFB_STATUS" -ne 0 ]; then
+  echo "FAIL: IPv6 TTFB request failed"
+elif awk -v ttfb="$TTFB" 'BEGIN {exit !(ttfb < 1.0)}'; then
   echo "PASS: IPv6 TTFB under 1 second ($TTFB)"
 else
   echo "WARN: IPv6 TTFB over 1 second ($TTFB)"
@@ -125,7 +129,7 @@ fi
 
 # Cache Test
 CACHE_STATUS=$(curl -6 -s -D - https://$CDN_HOST/cacheable-asset.css -o /dev/null | \
-  grep -i "x-cache" | awk '{print $2}')
+  grep -Ei "^(x-cache|cf-cache-status):" | awk '{print $2}')
 echo "INFO: Cache status = $CACHE_STATUS"
 
 echo "=== Tests Complete ==="
@@ -134,27 +138,32 @@ echo "=== Tests Complete ==="
 ## Testing IPv6 with Different Clients
 
 ```bash
-# Test with Python requests
+# Test with Python urllib, forcing IPv6 address resolution
 python3 -c "
+import socket
 import urllib.request
-req = urllib.request.Request('https://cdn.example.com/')
-req.add_header('Host', 'cdn.example.com')
-# Python uses IPv6 when available
-response = urllib.request.urlopen(req)
-print('Status:', response.status)
+
+orig_getaddrinfo = socket.getaddrinfo
+
+def getaddrinfo_ipv6(host, port, family=0, type=0, proto=0, flags=0):
+    return orig_getaddrinfo(host, port, socket.AF_INET6, type, proto, flags)
+
+socket.getaddrinfo = getaddrinfo_ipv6
+with urllib.request.urlopen('https://cdn.example.com/') as response:
+    print('Status:', response.status)
 "
 
 # Test with wget
 wget -6 -O - https://cdn.example.com/health
 
-# Test with httpie
-http --follow GET https://cdn.example.com/ --check-status
+# Test with httpie (uses the system resolver; use curl -6 or wget -6 to force IPv6)
+http --follow --check-status GET https://cdn.example.com/
 ```
 
 ## Continuous IPv6 CDN Monitoring
 
 ```yaml
-# Prometheus Blackbox Exporter config for IPv6 CDN
+# blackbox.yml
 modules:
   http_ipv6:
     prober: http
@@ -164,8 +173,10 @@ modules:
       ip_protocol_fallback: false    # Fail if can't use IPv6
       valid_status_codes: [200]
       fail_if_not_ssl: true
+```
 
-# Scrape config
+```yaml
+# prometheus.yml
 scrape_configs:
   - job_name: cdn_ipv6
     metrics_path: /probe
