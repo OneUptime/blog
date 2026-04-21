@@ -8,7 +8,7 @@ Description: Diagnose and fix Docker container network connectivity issues using
 
 ---
 
-Docker networking is fundamental to container communication. Portainer provides a visual interface for creating and managing all Docker network types.
+Docker networking is fundamental to container communication. Portainer provides a visual interface for creating and managing Docker networks, including bridge, macvlan, ipvlan, and overlay networks.
 
 ## Docker Network Types
 
