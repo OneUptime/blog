@@ -27,10 +27,9 @@ mock_provider "aws" {
 }
 
 mock_provider "cloudflare" {
-  mock_resource "cloudflare_record" {
+  mock_resource "cloudflare_dns_record" {
     defaults = {
-      id       = "mock-record-id"
-      hostname = "api.example.com"
+      id = "mock-record-id"
     }
   }
 }
@@ -44,7 +43,7 @@ run "dns_record_points_to_alb" {
   command = plan
 
   assert {
-    condition     = cloudflare_record.api.value == aws_lb.main.dns_name
+    condition     = cloudflare_dns_record.api.content == aws_lb.main.dns_name
     error_message = "Cloudflare record should point to the ALB DNS name"
   }
 }
@@ -54,14 +53,13 @@ run "dns_record_points_to_alb" {
 
 ```hcl
 # main.tf - module using provider aliases
-provider "aws" {
-  region = "us-east-1"
-  alias  = "primary"
-}
-
-provider "aws" {
-  region = "us-west-2"
-  alias  = "replica"
+terraform {
+  required_providers {
+    aws = {
+      source                = "hashicorp/aws"
+      configuration_aliases = [aws.primary, aws.replica]
+    }
+  }
 }
 
 resource "aws_instance" "primary" {
@@ -137,17 +135,12 @@ run "both_regions_get_instances" {
 
 ```hcl
 # Module using different AWS accounts
-provider "aws" {
-  alias = "shared_services"
-  assume_role {
-    role_arn = var.shared_services_role_arn
-  }
-}
-
-provider "aws" {
-  alias = "workload"
-  assume_role {
-    role_arn = var.workload_role_arn
+terraform {
+  required_providers {
+    aws = {
+      source                = "hashicorp/aws"
+      configuration_aliases = [aws.shared_services, aws.workload]
+    }
   }
 }
 ```
@@ -204,7 +197,7 @@ mock_provider "aws" {
 }
 
 mock_provider "kubernetes" {
-  mock_resource "kubernetes_namespace" {
+  mock_resource "kubernetes_namespace_v1" {
     defaults = {
       id = "my-namespace"
     }
@@ -225,7 +218,7 @@ run "eks_and_namespace_planned" {
   }
 
   assert {
-    condition     = kubernetes_namespace.app.id == "my-namespace"
+    condition     = kubernetes_namespace_v1.app.id == "my-namespace"
     error_message = "Kubernetes namespace should be planned"
   }
 }
@@ -233,4 +226,4 @@ run "eks_and_namespace_planned" {
 
 ## Conclusion
 
-Testing modules with multiple providers or provider aliases requires declaring a `mock_provider` block for each provider alias. Use `alias` in both the `mock_provider` block and the test's `provider` block to match the aliases defined in your module. This pattern works for multi-region AWS, multi-cloud (AWS + Cloudflare), and mixed provider scenarios (AWS + Kubernetes). All providers can be mocked independently, giving you full control over each provider's simulated behavior.
+Testing modules with multiple providers or provider aliases requires declaring a `mock_provider` block for each provider alias you want to mock, or a matching `provider` block for any alias you want to use with a real provider configuration. Use `alias` in those test blocks to match the aliases declared in your module. This pattern works for multi-region AWS, multi-cloud (AWS + Cloudflare), and mixed provider scenarios (AWS + Kubernetes). All providers can be mocked independently, giving you full control over each provider's simulated behavior.
