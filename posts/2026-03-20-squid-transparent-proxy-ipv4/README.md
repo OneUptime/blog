@@ -28,8 +28,8 @@ http_port 0.0.0.0:3129 intercept
 # Standard proxy port (optional, for explicit proxy clients)
 http_port 0.0.0.0:3128
 
-# Access control: allow all LAN clients
-acl lan src 192.168.0.0/16
+# Access control: allow LAN clients
+acl lan src 192.168.0.0/24
 http_access allow lan
 http_access deny all
 
@@ -38,7 +38,7 @@ cache_mem 256 MB
 cache_dir ufs /var/spool/squid 10000 16 256
 
 # Logging
-access_log /var/log/squid/access.log squid
+access_log daemon:/var/log/squid/access.log logformat=squid
 ```
 
 ## iptables Rules for Traffic Redirection
@@ -54,21 +54,23 @@ echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
 
 # Redirect outbound HTTP (port 80) from LAN to Squid (port 3129)
 # Replace 192.168.0.0/24 with your LAN subnet
+# Replace eth1 with your LAN interface
+
+# Don't redirect traffic from the proxy's own LAN IP
+# Replace 192.168.0.1 with the gateway/proxy IP on eth1
 iptables -t nat -A PREROUTING \
-  -i eth1 \          # LAN interface
-  -s 192.168.0.0/24 \
+  -i eth1 \
+  -s 192.168.0.1/32 \
   -p tcp \
   --dport 80 \
-  -j REDIRECT --to-port 3129
+  -j RETURN
 
-# Don't redirect traffic FROM the proxy itself
 iptables -t nat -A PREROUTING \
   -i eth1 \
   -s 192.168.0.0/24 \
   -p tcp \
   --dport 80 \
-  -m owner --uid-owner proxy \
-  -j RETURN
+  -j REDIRECT --to-ports 3129
 
 # Save iptables rules
 sudo iptables-save > /etc/iptables/rules.v4
@@ -87,7 +89,7 @@ sudo tail -f /var/log/squid/access.log
 # Verify iptables redirect is in place
 sudo iptables -t nat -L PREROUTING -n -v
 
-# Check Squid is listening in intercept mode
+# Check Squid is listening on the intercept port
 sudo ss -tlnp | grep 3129
 ```
 
@@ -106,17 +108,21 @@ forwarded_for on
 
 ## Handling HTTPS in Transparent Mode
 
-HTTP interception works seamlessly, but HTTPS requires SSL bump:
+HTTP interception works seamlessly, but HTTPS requires SSL bump and a CA certificate trusted by clients:
 
 ```bash
 # /etc/squid/squid.conf
 # HTTPS transparent interception requires ssl-bump configuration
-http_port 3130 ssl-bump \
-    cert=/etc/squid/ssl/squid.pem \
+https_port 3130 intercept ssl-bump \
+    tls-cert=/etc/squid/ssl/squid.pem \
     generate-host-certificates=on
 
+acl step1 at_step SslBump1
+ssl_bump peek step1
+ssl_bump bump all
+
 # Redirect HTTPS to ssl-bump port
-# iptables -t nat -A PREROUTING ... --dport 443 -j REDIRECT --to-port 3130
+# iptables -t nat -A PREROUTING ... --dport 443 -j REDIRECT --to-ports 3130
 ```
 
 ## Conclusion
