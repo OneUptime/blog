@@ -8,7 +8,7 @@ Description: Configure a dedicated staging environment in Portainer that mirrors
 
 ## Introduction
 
-A staging environment is an exact copy of production where you test changes before they go live. Portainer's multi-environment support makes this straightforward - you can manage separate Docker endpoints (staging vs production) from a single Portainer instance. This guide covers setting up a proper staging environment.
+A staging environment is a close replica of production where you test changes before they go live. Portainer's multi-environment support makes this straightforward - you can manage separate Docker endpoints (staging vs production) from a single Portainer instance. This guide covers setting up a proper staging environment.
 
 ## Step 1: Add Staging Environment to Portainer
 
@@ -28,15 +28,14 @@ docker run -d \
 In Portainer (on your main server):
 1. Go to **Environments** > **Add environment**
 2. Select **Docker Standalone**
-3. Enter your staging server IP: `tcp://staging-server:9001`
-4. Name it "Staging"
+3. Under **More options**, select **Agent**
+4. Enter your staging server address: `staging-server:9001`
+5. Name it "Staging"
 
 ## Step 2: Staging Stack Configuration
 
 ```yaml
 # docker-compose.staging.yml - Staging environment
-version: "3.8"
-
 networks:
   staging_network:
     driver: bridge
@@ -68,6 +67,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.staging-api.rule=Host(`api.staging.yourdomain.com`)"
       - "traefik.http.routers.staging-api.entrypoints=websecure"
+      - "traefik.http.routers.staging-api.tls=true"
       - "traefik.http.services.staging-api.loadbalancer.server.port=8000"
     networks:
       - staging_network
@@ -83,7 +83,7 @@ services:
       - POSTGRES_PASSWORD=staging_pass
     volumes:
       - staging_db:/var/lib/postgresql/data
-      # Load test data automatically
+      # Load test data automatically on first database initialization
       - ./seed/staging-seed.sql:/docker-entrypoint-initdb.d/seed.sql
     networks:
       - staging_network
@@ -139,15 +139,14 @@ INSERT INTO products (id, name, price, stock) VALUES
 
 ## Step 4: Staging vs Production Comparison
 
-Use Portainer's multi-environment view:
+Use Portainer's multi-environment view, or compare from the CLI with Docker SSH access:
 
 ```bash
 # Compare running image versions
-# Staging environment
-STAGING_VERSIONS=$(docker -H staging-server:9001 ps --format '{{.Image}}' | sort)
+# Requires Docker CLI SSH access to each host
+STAGING_VERSIONS=$(docker -H ssh://staging-server ps --format '{{.Image}}' | sort)
 
-# Production environment
-PROD_VERSIONS=$(docker -H production-server:9001 ps --format '{{.Image}}' | sort)
+PROD_VERSIONS=$(docker -H ssh://production-server ps --format '{{.Image}}' | sort)
 
 # Show differences
 diff <(echo "$STAGING_VERSIONS") <(echo "$PROD_VERSIONS")
@@ -159,19 +158,26 @@ diff <(echo "$STAGING_VERSIONS") <(echo "$PROD_VERSIONS")
 #!/bin/bash
 # deploy-to-staging.sh - Deploy to staging after tests pass
 
-IMAGE_TAG="$1"
+set -euo pipefail
 
-# Update the staging stack
-curl -X PUT \
+IMAGE_TAG="$1"
+STACK_FILE="docker-compose.staging.yml"
+
+# Update the staging stack. This example is for a file-based Portainer stack.
+curl -f -X PUT \
   -H "X-API-Key: $PORTAINER_API_KEY" \
   -H "Content-Type: application/json" \
   "$PORTAINER_URL/api/stacks/$STAGING_STACK_ID?endpointId=$STAGING_ENDPOINT_ID" \
-  -d "{
-    \"env\": [
-      {\"name\": \"IMAGE_TAG\", \"value\": \"$IMAGE_TAG\"}
-    ],
-    \"pullImage\": true
-  }"
+  --data "$(jq -n \
+    --arg image_tag "$IMAGE_TAG" \
+    --rawfile stack_file "$STACK_FILE" \
+    '{
+      Env: [
+        {"name": "IMAGE_TAG", "value": $image_tag}
+      ],
+      StackFileContent: $stack_file,
+      RepullImageAndRedeploy: true
+    }')"
 
 echo "Deployed $IMAGE_TAG to staging"
 
@@ -189,16 +195,11 @@ echo "Staging deployment verified!"
 
 ## Step 6: Environment Comparison Dashboard
 
-```yaml
-# docker-compose.yml - Portainer multi-environment stack
-# Deploy this to view all environments in Portainer
-
-services:
-  # Each environment is a separate Portainer endpoint
-  # You can switch between them using the environment selector in Portainer UI
-
-  # Staging: api.staging.yourdomain.com (IMAGE_TAG = develop-abc123)
-  # Production: api.yourdomain.com (IMAGE_TAG = main-def456)
+```text
+# No Compose file is required for this dashboard view.
+# Each environment is a separate Portainer endpoint.
+# Staging: api.staging.yourdomain.com (IMAGE_TAG = develop-abc123)
+# Production: api.yourdomain.com (IMAGE_TAG = main-def456)
 ```
 
 In Portainer's top navigation, switch between environments with the environment selector. You'll see each environment's containers, stacks, and resource usage independently.
