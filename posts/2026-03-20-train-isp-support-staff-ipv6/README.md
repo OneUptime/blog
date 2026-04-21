@@ -18,7 +18,7 @@ A two-day intensive training program covers:
 - IPv6 address format and notation
 - Address types (global unicast, link-local, ULA, multicast)
 - How SLAAC and DHCPv6 work
-- Differences from IPv4 (no NAT, ICMPv6, NDP)
+- Differences from IPv4 (usually no NAT, ICMPv6, NDP)
 
 **Day 2 - Customer Troubleshooting**
 - ISP-specific IPv6 architecture
@@ -40,7 +40,7 @@ Compressed IPv6: 2001:db8:0:1::100
 Key differences for support staff:
 - IPv6 addresses are longer - this is normal
 - Customers have multiple IPv6 addresses per device - this is normal
-- No NAT in IPv6 - all devices are directly accessible (firewall is important!)
+- IPv6 usually does not use NAT - devices with global addresses are globally addressable, but firewall rules control inbound access
 - Link-local (fe80::) addresses are always present - they are not global
 ```
 
@@ -62,14 +62,14 @@ Decision Tree:
 Explain Happy Eyeballs to the customer:
 
 ```text
-"Your device is trying IPv6 first, and if the site is slow over IPv6,
-it should automatically fall back to IPv4 within a few seconds.
+"Your device may try IPv6 and IPv4 close together and use whichever
+connection succeeds first.
 If it's consistently slow, we can investigate the path to that specific site."
 ```
 
 ### Scenario 3: "My security camera doesn't work"
 
-Explain that IPv6 devices are directly reachable without port forwarding - the router firewall must be configured to allow or block inbound connections.
+Explain that IPv6 devices with global addresses can be reachable without port forwarding if the router firewall allows inbound connections.
 
 ## Module 3: Diagnostic Commands
 
@@ -85,7 +85,8 @@ ifconfig | grep "inet6"
 
 # Test IPv6 connectivity
 ping -6 ipv6.google.com          # Windows
-ping6 ipv6.google.com            # Mac/Linux
+ping -6 ipv6.google.com          # Linux
+ping6 ipv6.google.com            # macOS/BSD
 
 # Test IPv6 website
 curl -6 https://ipv6.google.com
