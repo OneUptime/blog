@@ -64,7 +64,8 @@ bridge link show
 # BLOCKED ports won't forward traffic
 
 # Check STP state
-cat /sys/class/net/br0/bridge/stp_state
+ip -d link show br0
+# Look for: stp_state 0 or stp_state 1
 
 # If STP is blocking and there are no loops, disable it
 ip link set br0 type bridge stp_state 0
@@ -74,13 +75,13 @@ ip link set br0 type bridge forward_delay 0
 ## Step 5: Capture Traffic to Find the Issue
 
 ```bash
-# Capture on the bridge to see all bridged traffic
+# Capture on the bridge to inspect traffic visible on br0
 tcpdump -i br0 -n
 
 # Capture on a specific port
 tcpdump -i eth0 -n
 
-# Look for ARP requests - if ARP is working but pings fail, it's a routing issue
+# Look for ARP requests - if ARP is working but pings fail, check routing or firewall policy
 tcpdump -i br0 arp -n
 ```
 
@@ -106,21 +107,24 @@ ip neigh show dev br0
 | Interface not added to bridge | No L2 forwarding | `ip link set eth0 master br0` |
 | Port state DOWN | No traffic | `ip link set eth0 up` |
 | MTU mismatch | Large packets fail | Match MTU on all bridge ports |
-| Bridge filter rules | Traffic dropped | Check ebtables/iptables FORWARD chain |
+| Bridge filter rules | Traffic dropped | Check nftables/ebtables/iptables FORWARD chain |
 
 ## Check Bridge Filter Rules
 
 ```bash
-# Check ebtables rules (bridge-level)
+# Check nftables rules (modern bridge and inet filtering)
+nft list ruleset
+
+# Check ebtables rules (bridge-level, legacy)
 ebtables -L
 
-# Check iptables FORWARD chain (for bridge-nf)
+# Check iptables FORWARD chain (only affects bridged traffic when bridge-nf is enabled)
 iptables -L FORWARD -n -v
 
-# Check bridge-nf is enabled
+# Check whether bridge-nf is enabled for iptables
 cat /proc/sys/net/bridge/bridge-nf-call-iptables
 ```
 
 ## Conclusion
 
-Bridge troubleshooting follows a consistent checklist: interfaces up and in forwarding state, IP assigned to bridge (not physical port), FDB populated, STP not blocking, and no firewall rules dropping traffic. tcpdump on the bridge interface is the most powerful diagnostic tool - if packets arrive at br0 but don't forward, check ebtables and FORWARD chain rules.
+Bridge troubleshooting follows a consistent checklist: interfaces up and in forwarding state, IP assigned to bridge (not physical port), FDB populated, STP not blocking, and no firewall rules dropping traffic. tcpdump on the bridge interface is the most powerful diagnostic tool - if packets arrive at br0 but don't forward, check nftables, ebtables, and FORWARD chain rules.
