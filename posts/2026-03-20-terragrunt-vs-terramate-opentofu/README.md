@@ -16,12 +16,12 @@ Both Terragrunt and Terramate solve the same core problem: orchestrating multipl
 |---|---|---|
 | Configuration language | HCL (terragrunt.hcl) | HCL (*.tm.hcl) |
 | Primary abstraction | Module wrapper | Stack |
-| Change detection | No (needs external tooling) | Yes, built-in |
-| Code generation | Limited (via `generate`) | Powerful (generate_hcl, generate_file) |
-| Dependency management | `dependency` blocks | `after` stacks |
+| Change detection | Yes, via `run --all --filter-affected` / git filters | Yes, built-in |
+| Code generation | Basic (via `generate`) | Powerful (generate_hcl, generate_file) |
+| Dependency / ordering model | `dependency` blocks / `dependencies` for ordering | `after` / `before` for execution order; experimental `input` / `output` for shared data |
 | Backend config sharing | `remote_state` block | Code generation |
 | Maturity | ~2016, very stable | ~2021, growing fast |
-| Cloud platform | Gruntwork (commercial) | Terramate Cloud (commercial) |
+| Commercial platform | Terragrunt Scale | Terramate Cloud |
 
 ## Terragrunt: Wrapper Approach
 
@@ -57,17 +57,17 @@ inputs = {
 **Best when:**
 - Your team already knows HCL and Terraform patterns
 - You want explicit dependency management
-- You need `run-all` orchestration with well-tested behavior
+- You need `run --all` orchestration with well-tested behavior
 
 ## Terramate: Stack Approach
 
-Terramate treats each directory as an independent stack and focuses on change detection:
+Terramate treats directories that declare a `stack {}` block as independent stacks and focuses on change detection:
 
 ```hcl
 # stack.tm.hcl
 stack {
   name = "vpc"
-  id   = "uuid-here"
+  id   = "7b5f4d89-70a7-42f0-972f-3be8550e65df"
   after = []
 }
 ```
@@ -79,7 +79,7 @@ generate_hcl "backend.tf" {
     terraform {
       backend "s3" {
         bucket = "my-state"
-        key    = "${terramate.stack.path}/tofu.tfstate"
+        key    = "${terramate.stack.path.relative}/tofu.tfstate"
         region = "us-east-1"
       }
     }
