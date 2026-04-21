@@ -8,7 +8,7 @@ Description: Learn how to configure storage replication for disaster recovery ac
 
 ## Overview
 
-Storage replication for DR ensures object data is durably replicated across geographic regions. OpenTofu configures S3 Cross-Region Replication, Azure Blob geo-redundancy, and GCS multi-region buckets with appropriate retention and lifecycle policies.
+Storage replication for DR ensures object data is durably replicated across geographic regions. OpenTofu configures S3 Cross-Region Replication, Azure Blob geo-redundancy, and GCS dual-region buckets with appropriate retention and lifecycle policies.
 
 ## Step 1: AWS S3 Cross-Region Replication
 
@@ -81,36 +81,28 @@ resource "aws_iam_role_policy" "replication" {
 # Replication configuration
 resource "aws_s3_bucket_replication_configuration" "main" {
   provider   = aws.primary
-  depends_on = [aws_s3_bucket_versioning.source]
+  depends_on = [
+    aws_s3_bucket_versioning.source,
+    aws_s3_bucket_versioning.replica
+  ]
   bucket     = aws_s3_bucket.source.id
   role       = aws_iam_role.replication.arn
 
   rule {
-    id     = "replicate-all"
-    status = "Enabled"
+    id       = "replicate-all"
+    priority = 1
+    status   = "Enabled"
 
-    # S3 Replication Time Control (99.99% within 15 minutes)
-    source_selection_criteria {
-      replica_modifications { status = "Enabled" }
-      sse_kms_encrypted_objects { status = "Enabled" }
-    }
-
-    replication_time {
-      status = "Enabled"
-      time { minutes = 15 }
-    }
-
-    metrics {
-      status = "Enabled"
-      event_threshold { minutes = 15 }
-    }
+    filter {}
 
     destination {
       bucket        = aws_s3_bucket.replica.arn
       storage_class = "STANDARD_IA"
 
-      encryption_configuration {
-        replica_kms_key_id = aws_kms_key.dr_s3.arn
+      # S3 Replication Time Control with the required 15-minute metrics threshold
+      metrics {
+        status = "Enabled"
+        event_threshold { minutes = 15 }
       }
 
       replication_time {
@@ -124,10 +116,10 @@ resource "aws_s3_bucket_replication_configuration" "main" {
 }
 ```
 
-## Step 2: Azure Blob with GRS
+## Step 2: Azure Blob with GZRS
 
 ```hcl
-# Azure Storage Account with Geo-Redundant Storage
+# Azure Storage Account with Geo-Zone-Redundant Storage
 resource "azurerm_storage_account" "gzrs" {
   name                     = "appgzrsstorage"
   resource_group_name      = azurerm_resource_group.rg.name
@@ -154,15 +146,15 @@ resource "azurerm_storage_account" "gzrs" {
 }
 ```
 
-## Step 3: GCP Multi-Region Bucket with Turbo Replication
+## Step 3: GCP Dual-Region Bucket with Turbo Replication
 
 ```hcl
 # Dual-region GCS bucket with Turbo Replication
 resource "google_storage_bucket" "dual_region" {
   name     = "app-data-us-dual-region"
-  location = "US-CENTRAL1+US-EAST1"
+  location = "NAM4" # Dual-region: US-CENTRAL1 + US-EAST1
 
-  # Turbo replication: 99% of objects replicated within 15 minutes
+  # Turbo replication: 15-minute RPO for newly written objects
   rpo = "ASYNC_TURBO"
 
   uniform_bucket_level_access = true
@@ -187,4 +179,4 @@ resource "google_storage_bucket" "dual_region" {
 
 ## Summary
 
-Storage replication for DR configured with OpenTofu provides multiple tiers of protection. AWS S3 CRR with Replication Time Control guarantees 99.99% of objects replicated within 15 minutes with SLA-backed guarantees. Azure GZRS combines zone redundancy within a region with geo-replication to a secondary region, providing protection from both zone and regional failures. GCP's Turbo Replication (dual-region buckets) offers an SLA for 15-minute replication at a higher storage cost than standard dual-region.
+Storage replication for DR configured with OpenTofu provides multiple tiers of protection. AWS S3 CRR with Replication Time Control is designed to replicate 99.99% of new objects within 15 minutes, with an SLA commitment measured at 99.9%. Azure GZRS combines zone redundancy within a region with geo-replication to a secondary region, providing protection from both zone and regional failures. GCP's Turbo Replication (dual-region buckets) offers a 15-minute RPO with SLA terms for monthly replication conformance at a higher storage cost than standard dual-region.
