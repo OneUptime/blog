@@ -45,7 +45,7 @@ The trust policy must include the source account or specific principal.
     "Principal": {
       "AWS": "arn:aws:iam::111111111111:root"
     },
-    "Action": "sts:AssumeRole"
+    "Action": ["sts:AssumeRole", "sts:TagSession"]
   }]
 }
 ```
@@ -65,10 +65,10 @@ resource "aws_iam_role" "opentofu_cross_account" {
       Principal = {
         AWS = "arn:aws:iam::111111111111:root"  # source account
       }
-      Action    = "sts:AssumeRole"
+      Action    = ["sts:AssumeRole", "sts:TagSession"]
       # Optional: restrict to specific source role
       Condition = {
-        StringEquals = {
+        ArnEquals = {
           "aws:PrincipalArn" = "arn:aws:iam::111111111111:role/OpenTofuCIRole"
         }
       }
@@ -79,18 +79,19 @@ resource "aws_iam_role" "opentofu_cross_account" {
 
 ## Step 2: Verify Source IAM Permissions
 
-The source identity needs permission to call `sts:AssumeRole`.
+The source identity needs permission to call `sts:AssumeRole`. If the provider passes session tags, it also needs `sts:TagSession`.
 
 ```bash
 # Check if the current identity can assume the role
 aws sts assume-role \
   --role-arn arn:aws:iam::222222222222:role/OpenTofuRole \
-  --role-session-name debug-session
+  --role-session-name debug-session \
+  --tags Key=ManagedBy,Value=opentofu
 
 # If that fails, check the source role/user policy
 aws iam simulate-principal-policy \
   --policy-source-arn arn:aws:iam::111111111111:role/ci-role \
-  --action-names sts:AssumeRole \
+  --action-names sts:AssumeRole sts:TagSession \
   --resource-arns arn:aws:iam::222222222222:role/OpenTofuRole
 ```
 
@@ -112,6 +113,7 @@ provider "aws" {
     role_arn     = "arn:aws:iam::222222222222:role/OpenTofuRole"
     session_name = "opentofu-${terraform.workspace}"
     # Optional: tag the session for CloudTrail
+    # Requires sts:TagSession in the target role trust policy
     tags = {
       ManagedBy = "opentofu"
     }
@@ -149,10 +151,10 @@ aws sts assume-role \
 
 ## Step 5: S3 State Bucket Cross-Account Access
 
-If the state bucket is in a different account, the bucket policy must allow the assumed role.
+If the state bucket is in a different account, the bucket policy must allow the IAM principal used by the S3 backend. Provider aliases do not configure backend access; unless the backend has its own `assume_role`, backend operations use the credentials passed to `tofu init`.
 
 ```hcl
-# Add bucket policy to allow cross-account state access
+# Add bucket policy to allow the backend identity to access state
 resource "aws_s3_bucket_policy" "state" {
   bucket = aws_s3_bucket.state.id
 
@@ -161,7 +163,7 @@ resource "aws_s3_bucket_policy" "state" {
     Statement = [{
       Effect    = "Allow"
       Principal = {
-        AWS = "arn:aws:iam::222222222222:role/OpenTofuRole"
+        AWS = "arn:aws:iam::111111111111:role/OpenTofuCIRole"
       }
       Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
       Resource = [
@@ -175,4 +177,4 @@ resource "aws_s3_bucket_policy" "state" {
 
 ## Summary
 
-Cross-account access failures follow a checklist: verify the target role's trust policy includes the source identity, confirm the source has `sts:AssumeRole` permission for the target role ARN, check provider alias `assume_role` configuration matches the exact role ARN, and for state buckets in another account, add a bucket policy granting the assumed role access. Use `aws sts assume-role` manually to test each hop before debugging OpenTofu - if the CLI fails, OpenTofu will too.
+Cross-account access failures follow a checklist: verify the target role's trust policy includes the source identity, confirm the source has `sts:AssumeRole` permission for the target role ARN and `sts:TagSession` when tagging sessions, check provider alias `assume_role` configuration matches the exact role ARN, and for state buckets in another account, add a bucket policy granting the backend identity access. Use `aws sts assume-role` manually to test each hop before debugging OpenTofu - if the CLI fails, OpenTofu will too.
