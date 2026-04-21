@@ -34,7 +34,7 @@ def canonical_ip(addr: str) -> str:
 
 print(canonical_ip("2001:0DB8:0000:0000:0000:0000:0000:0001"))  # 2001:db8::1
 print(canonical_ip("[2001:db8::1]"))                             # 2001:db8::1
-print(canonical_ip("::FFFF:192.168.1.1"))                       # ::ffff:192.168.1.1
+print(canonical_ip("::FFFF:192.168.1.1"))                       # ::ffff:c0a8:101
 print(canonical_ip("fe80::1%eth0"))                              # fe80::1
 ```
 
@@ -59,6 +59,12 @@ class IPv6JSONFormatter(logging.Formatter):
         except ValueError:
             return addr
 
+    def ip_version(self, addr: str):
+        try:
+            return ipaddress.ip_address(addr).version
+        except ValueError:
+            return None
+
     def format(self, record: logging.LogRecord) -> str:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -68,13 +74,18 @@ class IPv6JSONFormatter(logging.Formatter):
         }
 
         # Normalize IP fields if present
-        for field in ("client_ip", "src_ip", "dst_ip", "remote_addr"):
+        for field in ("client_ip", "src_ip", "dst_ip"):
             if hasattr(record, field):
                 log_entry[field] = self.normalize_ip(getattr(record, field))
 
+        if hasattr(record, "remote_addr"):
+            log_entry["remote_addr"] = getattr(record, "remote_addr")
+
         # Add ip_version metadata
         if "client_ip" in log_entry and log_entry["client_ip"]:
-            log_entry["ip_version"] = 6 if ':' in log_entry["client_ip"] else 4
+            version = self.ip_version(log_entry["client_ip"])
+            if version:
+                log_entry["ip_version"] = version
 
         return json.dumps(log_entry)
 
@@ -157,15 +168,17 @@ Use consistent field names across all services:
 
 **Problem: Logging raw socket address strings**
 ```python
+remote_addr = "[2001:db8::1]:54321"
+
 # BAD: logs "[2001:db8::1]:54321" - hard to query
-logger.info(f"Connection from {request.remote_addr}")
+logger.info(f"Connection from {remote_addr}")
 
 # GOOD: extract and normalize the IP
-from flask import request
+from urllib.parse import urlsplit
 import ipaddress
-addr, port = request.remote_addr.rsplit(':', 1)
-normalized = str(ipaddress.ip_address(addr.strip('[]')))
-logger.info("Connection received", extra={"client_ip": normalized, "client_port": int(port)})
+parsed = urlsplit(f"//{remote_addr}")
+normalized = str(ipaddress.ip_address(parsed.hostname))
+logger.info("Connection received", extra={"client_ip": normalized, "client_port": parsed.port})
 ```
 
 **Problem: Not logging ip_version**
