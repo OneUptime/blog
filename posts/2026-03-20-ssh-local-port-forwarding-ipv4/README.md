@@ -51,12 +51,12 @@ psql -h 127.0.0.1 -p 5432 -U dbuser mydb
 ## Bind to Specific Local IPv4 Address
 
 ```bash
-# Bind the local end to a specific IPv4 (default: 127.0.0.1)
+# Bind the local end to a specific IPv4 (default: local loopback)
 ssh -L 10.0.0.1:8080:192.168.1.100:80 user@jump.example.com
-# Now other machines on 10.0.0.0/8 can use 10.0.0.1:8080 as a tunnel
+# Now machines that can reach 10.0.0.1 can use 10.0.0.1:8080 as a tunnel
 
-# To allow all local interfaces (GatewayPorts must be enabled on SSH server):
-ssh -L 0.0.0.0:8080:192.168.1.100:80 user@jump.example.com
+# To allow all local interfaces (use -g or client-side GatewayPorts):
+ssh -g -L 0.0.0.0:8080:192.168.1.100:80 user@jump.example.com
 ```
 
 ## SSH Config File for Permanent Tunnels
