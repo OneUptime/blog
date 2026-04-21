@@ -8,7 +8,7 @@ Description: Learn how to use the terraform.workspace expression in OpenTofu con
 
 ## Introduction
 
-The `terraform.workspace` expression returns the name of the current workspace as a string. It's available anywhere in your configuration and is the primary mechanism for writing workspace-aware OpenTofu code. This guide covers practical patterns for using this expression effectively.
+The `terraform.workspace` expression returns the name of the current workspace as a string. It's available anywhere OpenTofu expressions are allowed and is the primary mechanism for writing workspace-aware OpenTofu code. This guide covers practical patterns for using this expression effectively.
 
 ## Basic Usage
 
@@ -92,10 +92,11 @@ locals {
 }
 
 resource "aws_db_instance" "main" {
-  instance_class      = local.is_production ? "db.r5.large" : "db.t3.micro"
-  multi_az            = local.is_production
-  deletion_protection = local.is_production
-  skip_final_snapshot = local.is_lower_env
+  instance_class            = local.is_production ? "db.r5.large" : "db.t3.micro"
+  multi_az                  = local.is_production
+  deletion_protection       = local.is_production
+  skip_final_snapshot       = local.is_lower_env
+  final_snapshot_identifier = local.is_lower_env ? null : "main-${terraform.workspace}-final-snapshot"
 
   backup_retention_period = local.is_production ? 30 : (
     local.is_staging ? 7 : 1
@@ -179,11 +180,13 @@ output "api_endpoint" {
 ## Preventing Default Workspace in Production
 
 ```hcl
-# Fail fast if someone tries to run in the default workspace
-check "not_default_workspace" {
-  assert {
-    condition     = terraform.workspace != "default"
-    error_message = "Do not run in the 'default' workspace. Select a named workspace: development, staging, or production."
+resource "terraform_data" "workspace_guard" {
+  lifecycle {
+    precondition {
+      # Fail fast if someone tries to run in the default workspace
+      condition     = terraform.workspace != "default"
+      error_message = "Do not run in the 'default' workspace. Select a named workspace: development, staging, or production."
+    }
   }
 }
 ```
