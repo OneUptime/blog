@@ -57,6 +57,15 @@ variable "user_policies" {
   }
 }
 
+variable "policy_arns" {
+  type = map(string)
+  default = {
+    ReadOnly = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+    S3Admin  = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+    EC2Admin = "arn:aws:iam::aws:policy/AmazonEC2FullAccess"
+  }
+}
+
 locals {
   # Invert: which users need each policy?
   policy_users = transpose(var.user_policies)
@@ -65,18 +74,27 @@ locals {
   #   "S3Admin"   = ["alice", "carol"]
   #   "EC2Admin"  = ["carol"]
   # }
+
+  policy_user_pairs = flatten([
+    for policy, users in local.policy_users : [
+      for user in users : {
+        policy = policy
+        user   = user
+      }
+    ]
+  ])
 }
 
-# Create policy attachments grouped by policy
+# Create one attachment per policy/user pair
 
 resource "aws_iam_user_policy_attachment" "attachments" {
   for_each = {
-    for policy, users in local.policy_users :
-    policy => users
+    for pair in local.policy_user_pairs :
+    "${pair.policy}-${pair.user}" => pair
   }
 
-  # Use for_each over users within each policy group...
-  # (simplified example - real implementation would need nested for_each)
+  user       = each.value.user
+  policy_arn = var.policy_arns[each.value.policy]
 }
 ```
 
