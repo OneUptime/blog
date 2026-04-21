@@ -17,9 +17,9 @@ The `terraform_data` resource is a built-in resource type that stores arbitrary 
 
 resource "terraform_data" "config_version" {
   input = {
-    version    = var.app_version
+    version     = var.app_version
     config_hash = sha256(jsonencode(var.app_config))
-    timestamp  = timestamp()
+    environment = var.environment
   }
 }
 
@@ -112,10 +112,10 @@ resource "terraform_data" "example" {
 ```hcl
 locals {
   deployment_config = {
-    app_version  = var.app_version
-    config_hash  = sha256(jsonencode(var.app_config))
-    environment  = var.environment
-    deployed_at  = timestamp()
+    app_version   = var.app_version
+    config_hash   = sha256(jsonencode(var.app_config))
+    environment   = var.environment
+    deployment_id = var.deployment_id
   }
 }
 
@@ -173,7 +173,7 @@ resource "terraform_data" "metadata" {
     cluster_name = aws_eks_cluster.main.name
     region       = var.region
     account_id   = data.aws_caller_identity.current.account_id
-    created_at   = timestamp()
+    environment  = var.environment
   }
 }
 
