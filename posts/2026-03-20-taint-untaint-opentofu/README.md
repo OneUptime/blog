@@ -8,7 +8,7 @@ Description: A guide to using taint and untaint commands in OpenTofu to mark res
 
 ## Introduction
 
-The `tofu taint` command marks a resource in the state file for forced recreation on the next apply. The `tofu untaint` command removes that marking. While `tofu apply -replace` is now preferred for most use cases, understanding taint is useful for existing workflows and situations where you need to mark resources without immediately applying.
+The `tofu taint` command marks a resource instance in the state file as tainted, causing the next plan to propose replacing it. The `tofu untaint` command removes that marking. While `tofu apply -replace` is now preferred for most use cases, understanding taint is useful for existing workflows and situations where you need to mark resources before a later plan/apply.
 
 ## Basic taint Usage
 
@@ -34,17 +34,17 @@ tofu untaint aws_instance.web
 ## Taint vs -replace Flag
 
 ```bash
-# Taint: modifies state file, replacement happens on next apply
+# Taint: modifies the state file; the next plan/apply proposes replacement
 tofu taint aws_instance.web
 tofu apply  # Will recreate web instance
 
-# -replace flag: atomic plan + apply in one command (preferred)
+# -replace flag: includes the requested replacement in the plan/apply operation (preferred)
 tofu apply -replace="aws_instance.web"
 
-# When to use taint over -replace:
-# 1. When you want to schedule replacement for a later apply
-# 2. When working with CI/CD pipelines that run separate plan/apply
-# 3. Legacy workflows that expect taint behavior
+# When you might still encounter taint:
+# 1. When you intentionally need to mark state before a later plan/apply
+# 2. Legacy CI/CD pipelines that already depend on taint behavior
+# 3. Older workflows or documentation that expect taint behavior
 ```
 
 ## Taint with Resource Indices
@@ -65,15 +65,16 @@ tofu taint 'module.workers.aws_instance.worker[1]'
 ## Listing Tainted Resources
 
 ```bash
-# Check if any resources are tainted
-tofu show
+# Check whether the next plan includes replacements due to tainted resources
+tofu plan
 
-# Or use state list to see all resources, then check each
+# Inspect the latest state snapshot
+tofu show -state
+
+# Or list resources and inspect one resource interactively
 tofu state list
-
-# Look for "tainted" in state show output
 tofu state show aws_instance.web
-# The state show output indicates tainted status
+# For scripts, parse tofu state pull JSON rather than scraping human-readable output
 ```
 
 ## Practical Use Cases
@@ -111,7 +112,7 @@ tofu taint aws_db_instance.main  # Marked for replacement
 tofu untaint aws_db_instance.main
 
 # Verify untaint worked
-tofu plan  # Should show no replacements planned
+tofu plan  # Should no longer show a replacement caused by that taint
 ```
 
 ## Taint in Automated Workflows
@@ -127,7 +128,7 @@ tofu taint "${RESOURCE_TO_REPLACE}"
 tofu plan -out=tainted-plan.tfplan
 
 # Review plan (in CI, this might be a manual approval gate)
-tofu show tainted-plan.tfplan
+tofu show -plan=tainted-plan.tfplan
 
 # Apply
 tofu apply tainted-plan.tfplan
@@ -137,7 +138,7 @@ tofu apply tainted-plan.tfplan
 
 ```bash
 # Taint modifies the state file directly
-# In team environments, state locking prevents conflicts
+# In team environments, state locking helps prevent concurrent state writes while the command runs
 
 # Check state after taint
 tofu state pull | python3 -c "
@@ -146,7 +147,15 @@ state = json.load(sys.stdin)
 for resource in state.get('resources', []):
     for instance in resource.get('instances', []):
         if instance.get('status') == 'tainted':
-            print(f\"Tainted: {resource['type']}.{resource['name']}\")
+            prefix = resource.get('module', '')
+            if prefix:
+                prefix += '.'
+            resource_addr = prefix + resource.get('type', '') + '.' + resource.get('name', '')
+            key = instance.get('index_key')
+            if key is not None:
+                key_text = json.dumps(key) if isinstance(key, str) else str(key)
+                resource_addr += '[' + key_text + ']'
+            print('Tainted: ' + resource_addr)
 "
 ```
 
@@ -154,7 +163,7 @@ for resource in state.get('resources', []):
 
 ```bash
 # For new workflows, prefer -replace over taint
-# It's atomic and doesn't modify state before the operation
+# The replacement request is part of the plan and doesn't leave a tainted state snapshot before the operation
 
 # Old workflow:
 tofu taint aws_instance.web
@@ -170,4 +179,4 @@ tofu apply replace.tfplan
 
 ## Conclusion
 
-The `tofu taint` and `tofu untaint` commands provide a way to schedule forced resource recreation for a later apply operation. While `tofu apply -replace` is generally preferred for its atomicity, taint remains useful in workflows where planning and applying are separate steps. Understanding taint also helps when working with older OpenTofu/Terraform configurations that use this pattern. Use `tofu untaint` to cancel a planned replacement if circumstances change before the next apply.
+The `tofu taint` and `tofu untaint` commands provide a way to schedule forced resource recreation for a later apply operation. While `tofu apply -replace` is generally preferred because it keeps the replacement request in the plan/apply workflow, taint remains relevant for legacy workflows or cases where you intentionally need to mark state before a later plan. For separated plan/apply workflows, `tofu plan -replace="aws_instance.web" -out=replace.tfplan` followed by `tofu apply replace.tfplan` is the preferred modern approach. Understanding taint also helps when working with older OpenTofu/Terraform configurations that use this pattern. Use `tofu untaint` to cancel a planned replacement if circumstances change before the next apply.
