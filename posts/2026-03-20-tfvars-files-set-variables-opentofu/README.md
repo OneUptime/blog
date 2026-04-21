@@ -102,13 +102,16 @@ OpenTofu automatically loads specific `.tfvars` files:
 | `terraform.tfvars` | Yes |
 | `terraform.tfvars.json` | Yes |
 | `*.auto.tfvars` | Yes (all matching files) |
+| `*.auto.tfvars.json` | Yes (all matching files) |
 | `production.tfvars` | No - must use `-var-file` |
 | `staging.tfvars` | No - must use `-var-file` |
 
 ```bash
-# These are equivalent:
-tofu plan                              # loads terraform.tfvars
-tofu plan -var-file="terraform.tfvars" # explicit load
+# terraform.tfvars is loaded automatically:
+tofu plan
+
+# Use -var-file for files that are not auto-loaded:
+tofu plan -var-file="production.tfvars"
 ```
 
 ---
