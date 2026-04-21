@@ -61,7 +61,7 @@ Test it with `netcat` or `telnet` in another terminal:
 
 ```bash
 # Connect and send a message
-echo "Hello, server!" | nc 127.0.0.1 9000
+echo "Hello, server!" | nc -N 127.0.0.1 9000
 ```
 
 ## Handling Connection Errors Gracefully
