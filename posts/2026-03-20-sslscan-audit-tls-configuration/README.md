@@ -17,7 +17,7 @@ Description: Learn how to use sslscan to audit TLS/SSL configuration on a server
 
 apt install sslscan -y
 
-# RHEL/CentOS
+# RHEL/CentOS (with EPEL enabled)
 dnf install sslscan -y
 
 # macOS
@@ -78,14 +78,14 @@ Preferred TLSv1.2  256 bits  ECDHE-RSA-AES256-GCM-SHA384   Curve P-384 DHE 384
 ## Scanning for Specific Issues
 
 ```bash
-# Show only failed (weak) results
+# Filter for enabled, weak, or export findings
 sslscan --no-colour example.com | grep -i "enabled\|weak\|export"
 
 # Check for TLSv1.0/1.1 (deprecated)
 sslscan example.com | grep -E "TLSv1\.[01]"
 
 # Check certificate expiry
-sslscan --show-certificate example.com | grep -E "Not After|Subject:"
+sslscan --show-certificate example.com | grep -E "Not valid after|Subject:"
 
 # XML output for automation
 sslscan --xml=/tmp/results.xml example.com
@@ -96,7 +96,7 @@ sslscan --xml=/tmp/results.xml example.com
 ```bash
 sslscan --show-certificate example.com
 # Output includes:
-#   Subject, Issuer, SANs, Not Before/After, Public key size
+#   Subject, Issuer, Altnames/SANs, Not valid before/after, RSA key strength
 ```
 
 ## Automating with a Script
@@ -122,11 +122,11 @@ done
 | RC4 or DES ciphers | High | Remove from cipher list |
 | Certificate expiry < 30 days | Medium | Renew certificate |
 | Heartbleed vulnerable | Critical | Patch OpenSSL |
-| No HSTS | Low | Add Strict-Transport-Security header |
+| Weak certificate signature or short RSA key | Medium | Reissue with SHA-256+ and RSA 2048-bit+ |
 
 ## Key Takeaways
 
 - `sslscan` quickly reveals deprecated protocols (TLSv1.0/1.1), weak ciphers, and certificate issues.
 - Use `--xml` output for integration with CI/CD pipelines and compliance reports.
 - Run scans after every certificate renewal or server configuration change.
-- Aim for TLSv1.2 and TLSv1.3 only, with ECDHE key exchange and AES-GCM ciphers.
+- Aim for TLSv1.2 and TLSv1.3 only, with forward-secret key exchange and AEAD ciphers such as AES-GCM or ChaCha20-Poly1305.
