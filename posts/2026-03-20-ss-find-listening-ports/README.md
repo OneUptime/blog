@@ -34,24 +34,24 @@ sudo ss -tulnp
 sudo ss -tulnp
 
 # Output:
-# Netid State  Recv-Q Send-Q  Local Address:Port  Process
-# tcp   LISTEN     0    128   0.0.0.0:22          users:(("sshd",pid=1234))
-# tcp   LISTEN     0    511   0.0.0.0:80          users:(("nginx",pid=5678))
-# tcp   LISTEN     0    511   0.0.0.0:443         users:(("nginx",pid=5678))
-# tcp   LISTEN     0    100  127.0.0.1:5432       users:(("postgres",pid=9012))
-# udp   UNCONN     0      0   0.0.0.0:53          users:(("named",pid=1100))
+# Netid State  Recv-Q Send-Q  Local Address:Port  Peer Address:Port  Process
+# tcp   LISTEN     0    128   0.0.0.0:22          0.0.0.0:*          users:(("sshd",pid=1234))
+# tcp   LISTEN     0    511   0.0.0.0:80          0.0.0.0:*          users:(("nginx",pid=5678))
+# tcp   LISTEN     0    511   0.0.0.0:443         0.0.0.0:*          users:(("nginx",pid=5678))
+# tcp   LISTEN     0    100   127.0.0.1:5432      0.0.0.0:*          users:(("postgres",pid=9012))
+# udp   UNCONN     0      0   0.0.0.0:53          0.0.0.0:*          users:(("named",pid=1100))
 
 # Local Address:
-#   0.0.0.0:port  = listening on ALL IPv4 interfaces (externally accessible)
+#   0.0.0.0:port  = listening on all IPv4 addresses (potentially reachable externally if firewall/routing allows)
 #   127.0.0.1:port = listening on loopback only (not externally accessible)
-#   10.0.0.1:port  = listening on specific interface only
+#   10.0.0.1:port  = listening on that specific local IPv4 address
 ```
 
 ## Security Audit: Find Unexpected Open Ports
 
 ```bash
-# List all externally accessible ports (listening on 0.0.0.0)
-sudo ss -tlnp | grep '0.0.0.0:'
+# List TCP/UDP sockets bound to the IPv4 wildcard address (0.0.0.0)
+sudo ss -tulnp | awk '$5 ~ /^0\.0\.0\.0:/'
 
 # Should only see ports you intentionally opened
 # Unexpected entries could be:
@@ -60,7 +60,7 @@ sudo ss -tlnp | grep '0.0.0.0:'
 # - Development servers left running
 
 # Compare current ports to known-good baseline
-sudo ss -tlnp | awk 'NR>1 {print $4}' | sort > /tmp/current-ports.txt
+sudo ss -H -tulnp | awk '{print $5}' | sort > /tmp/current-ports.txt
 diff /tmp/baseline-ports.txt /tmp/current-ports.txt
 ```
 
@@ -68,15 +68,10 @@ diff /tmp/baseline-ports.txt /tmp/current-ports.txt
 
 ```bash
 # Find services on ports < 1024 (privileged ports)
-sudo ss -tlnp | awk 'NR>1' | while read line; do
-    port=$(echo $line | awk '{print $4}' | cut -d: -f2)
-    if [ "$port" -lt 1024 ] 2>/dev/null; then
-        echo "$line"
-    fi
-done
+sudo ss -tulnp 'sport < :1024'
 
 # Find services on non-standard ports
-ss -tlnp | grep -v -E ':(22|80|443|25|53|3306|5432)\b'
+sudo ss -H -tulnp | grep -v -E ':(22|80|443|25|53|3306|5432)\b'
 ```
 
 ## Verify Service Is Listening Before Connecting
@@ -92,7 +87,7 @@ TIMEOUT=30
 echo "Waiting for $HOST:$PORT..."
 
 for i in $(seq 1 $TIMEOUT); do
-    if ss -tnl | grep -q ":${PORT} "; then
+    if ss -H -tnl "( src ${HOST}:${PORT} or src 0.0.0.0:${PORT} or src [::]:${PORT} )" | grep -q .; then
         echo "Service is listening on port $PORT"
         exit 0
     fi
@@ -107,10 +102,10 @@ exit 1
 
 ```bash
 # Check if a service listens on both IPv4 and IPv6
-sudo ss -tlnp | grep ':80 '
+sudo ss -tlnp 'sport = :80'
 
 # IPv4 only: 0.0.0.0:80
-# IPv6 only (may handle IPv4 too): [::]:80
+# IPv6 wildcard: [::]:80 (may also accept IPv4-mapped connections if IPV6_V6ONLY is off)
 # Both: two lines
 
 # For nginx: to listen on both, use two listen directives:
