@@ -8,7 +8,7 @@ Description: Use tracepath to discover the path MTU between two hosts, interpret
 
 ## Introduction
 
-`tracepath` is a Linux utility that combines traceroute functionality with Path MTU Discovery. It sends packets with increasing TTL values while simultaneously probing the MTU at each hop. Unlike `traceroute`, `tracepath` requires no root privileges and shows the MTU reduction points along the path. This makes it the first tool to reach for when diagnosing MTU and fragmentation issues.
+`tracepath` is a Linux utility that combines traceroute functionality with Path MTU Discovery. It sends packets with increasing TTL values and reports the path MTU when it changes. `tracepath` requires no root privileges and can show MTU reduction points along the path when routers return enough ICMP information. This makes it the first tool to reach for when diagnosing MTU and fragmentation issues.
 
 ## Basic tracepath Usage
 
@@ -21,7 +21,7 @@ tracepath 10.20.0.5
 tracepath -n 10.20.0.5
 
 # IPv6 path MTU:
-tracepath6 -n 2001:db8::1
+tracepath -6 -n 2001:db8::1
 
 # Example output:
 # 1?: [LOCALHOST]                     pmtu 1500
@@ -33,7 +33,7 @@ tracepath6 -n 2001:db8::1
 #     Resume: pmtu 1500 hops 4 back 4
 
 # "pmtu" shows the discovered path MTU
-# "asymm" means reverse path is different
+# "asymm" shows a guessed return-hop count when the path may be asymmetric
 ```
 
 ## Interpret tracepath Output
@@ -47,20 +47,20 @@ tracepath output fields:
 └─ hop number
 
 10.0.0.1          1.234ms  asymm  2
-│                  │         │     └─ reverse TTL (asymmetric route if different)
-│                  │         └─ asymmetric routing detected
+│                  │         │     └─ guessed return-hop count
+│                  │         └─ possible asymmetric routing
 │                  └─ round trip time
 └─ router IP address
 
-* * *            No response (ICMP not returned or hop silent)
+2:  no reply     No response (ICMP not returned or hop silent)
 
 Resume: pmtu 1480 hops 6 back 6
-         │           │      └─ TTL in return packets (should match hops for symmetric)
+         │           │      └─ guessed return-hop count
          │           └─ number of hops
          └─ final path MTU discovered
 
 If pmtu decreases mid-path:
-  The hop where it decreases is the MTU bottleneck
+  The hop reporting the decrease is where tracepath learned about the bottleneck
 ```
 
 ## Find MTU Bottleneck
@@ -77,16 +77,16 @@ tracepath -n 203.0.113.50
 # 4:  203.0.113.50                    5.9ms   reached
 #     Resume: pmtu 1480 hops 4 back 4
 
-# Hop 3 at 203.0.113.1 is where MTU drops to 1480
-# This is your bottleneck router
+# Hop 3 at 203.0.113.1 reports the drop to 1480
+# This is the router reporting the bottleneck
 
 # If you see pmtu drop at a tunnel entry:
 # 3:  10.200.0.1                     1.2ms   pmtu 1476
-# Indicates GRE tunnel with 24-byte overhead
+# Often indicates simple GRE over IPv4 with 24-byte overhead
 
 # VXLAN tunnel:
 # 2:  10.100.0.1                     0.8ms   pmtu 1450
-# Indicates VXLAN with 50-byte overhead
+# Often indicates VXLAN over IPv4/UDP with about 50 bytes of overhead
 ```
 
 ## Compare tracepath with Other Tools
@@ -99,15 +99,16 @@ tracepath -n 10.20.0.5
 ping -M do -s 1472 -c 1 10.20.0.5  # Tests exactly 1500 bytes
 ping -M do -s 1452 -c 1 10.20.0.5  # Tests exactly 1480 bytes
 
-# traceroute: shows hops but not MTU
+# traceroute: default output shows hops; --mtu enables MTU discovery on Linux
 traceroute -n 10.20.0.5
+traceroute --mtu -n 10.20.0.5
 
-# mtr: real-time traceroute, no built-in MTU
+# mtr: real-time traceroute, no automatic PMTU discovery
 mtr -n 10.20.0.5
 
 # For complete MTU discovery:
 # tracepath gives you the pmtu
-# Then verify with ping -M do at that size
+# Then verify with ping -M do at that IPv4 size
 ping -M do -s $(($(tracepath -n 10.20.0.5 | grep 'pmtu' | \
   grep -oP 'pmtu \K[0-9]+' | tail -1) - 28)) -c 3 10.20.0.5
 ```
@@ -116,14 +117,14 @@ ping -M do -s $(($(tracepath -n 10.20.0.5 | grep 'pmtu' | \
 
 ```bash
 #!/bin/bash
-# Discover MTU at each tracepath hop
+# Discover IPv4 MTU changes reported by tracepath
 
 DEST=$1
 echo "Path MTU Discovery to $DEST"
 echo "================================"
 
 # Run tracepath and parse pmtu values:
-tracepath -n "$DEST" 2>/dev/null | while IFS= read -r line; do
+tracepath -4 -n "$DEST" 2>/dev/null | while IFS= read -r line; do
     HOP=$(echo "$line" | awk '{print $1}')
     IP=$(echo "$line" | grep -oP '\d+\.\d+\.\d+\.\d+' | head -1)
     PMTU=$(echo "$line" | grep -oP 'pmtu \K[0-9]+')
@@ -131,19 +132,14 @@ tracepath -n "$DEST" 2>/dev/null | while IFS= read -r line; do
     if [ -n "$PMTU" ]; then
         echo "Hop $HOP ($IP): MTU change detected -> $PMTU bytes"
     fi
-
-    if echo "$line" | grep -q "reached"; then
-        FINAL_PMTU=$(echo "$line" | grep -oP 'pmtu \K[0-9]+')
-        # Final from Resume line
-    fi
 done
 
 # Get final pmtu from Resume line:
-FINAL=$(tracepath -n "$DEST" 2>/dev/null | grep "Resume" | \
+FINAL=$(tracepath -4 -n "$DEST" 2>/dev/null | grep "Resume" | \
   grep -oP 'pmtu \K[0-9]+')
 echo ""
 echo "Final Path MTU: ${FINAL:-unknown} bytes"
-echo "Recommended TCP MSS: $((${FINAL:-1500} - 40)) bytes"
+echo "Recommended IPv4 TCP MSS: $((${FINAL:-1500} - 40)) bytes"
 ```
 
 ## tracepath Limitations and Workarounds
@@ -159,15 +155,15 @@ tracepath -n 10.20.0.5
 # If no pmtu changes but connections fail: MTU black hole
 
 # Limitation 3: IPv6 path MTU behaves differently
-# IPv6 never fragments in transit; all fragmentation is end-to-end
-tracepath6 -n 2001:db8::1
+# IPv6 routers never fragment in transit; fragmentation, when used, is done by the source
+tracepath -6 -n 2001:db8::1
 
 # Limitation 4: Asymmetric paths
-# tracepath only discovers forward path MTU
+# tracepath discovers PMTU for traffic sent from this host to the destination
 # Return path may have different MTU
 # Test from destination back to source if possible
 ```
 
 ## Conclusion
 
-`tracepath -n <destination>` is the fastest way to discover path MTU on Linux - it requires no root privileges and shows MTU at each hop. Look for `pmtu` values that decrease along the path to identify bottleneck routers. The final `Resume: pmtu N` line shows the effective path MTU. Use this value to configure application payload sizes, tunnel interface MTU, and TCP MSS clamping rules. For hops that don't respond, verify with `ping -M do` at specific sizes to confirm the MTU boundary.
+`tracepath -n <destination>` is the fastest way to discover path MTU on Linux - it requires no root privileges and shows PMTU changes along the path. Look for `pmtu` values that decrease along the path to identify routers reporting MTU bottlenecks. The final `Resume: pmtu N` line shows the effective path MTU. Use this value to configure application payload sizes, tunnel interface MTU, and TCP MSS clamping rules. For hops that don't respond, verify with `ping -M do` at specific sizes to confirm the MTU boundary.
