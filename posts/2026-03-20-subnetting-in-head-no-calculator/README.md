@@ -8,12 +8,12 @@ Description: Mental subnetting uses the 'block size' (magic number) method and m
 
 ## The Magic Number / Block Size Method
 
-For any subnet mask, the "block size" (or magic number) in the interesting octet is:
+For any subnet mask with a partial octet, the "block size" (or magic number) in the interesting octet is:
 ```text
 Block size = 256 - (interesting octet of the mask)
 ```
 
-The interesting octet is the first non-255, non-0 octet in the mask.
+The interesting octet is the first mask octet that is neither 255 nor 0.
 
 ## Step-by-Step Example: 192.168.10.45/26
 
@@ -56,12 +56,13 @@ The interesting octet is the first non-255, non-0 octet in the mask.
 ## Quick Formula Summary
 
 ```text
-1. Find the interesting octet (first non-255, non-0 octet in mask)
+For typical IPv4 subnets that have separate network and broadcast addresses:
+1. Find the interesting octet (first mask octet that is neither 255 nor 0)
 2. Block = 256 - mask_octet
-3. Subnet = largest multiple of Block ≤ IP octet
-4. Broadcast = Subnet + Block - 1
-5. First host = Subnet + 1
-6. Last host = Broadcast - 1
+3. Network address = largest multiple of Block ≤ IP octet in that octet; lower host octets become 0
+4. Broadcast address = Network + Block - 1 in that octet; lower host octets become 255
+5. First host = Network address + 1
+6. Last host = Broadcast address - 1
 ```
 
 ## Python Validator
@@ -86,7 +87,7 @@ mental_check("192.168.10.45/26")
 
 ## Key Takeaways
 
-- Block size = 256 − interesting_mask_octet.
+- For masks with a partial octet, block size = 256 − interesting_mask_octet.
 - The subnet start is the largest multiple of block size ≤ the IP in that octet.
 - Broadcast = subnet + block − 1 (in that octet).
 - Practice with the prefix sizes /25 through /30 until the block sizes are instant recall.
