@@ -8,7 +8,7 @@ Description: Use SSH ProxyJump (-J flag and ProxyJump directive) to connect to i
 
 ## Introduction
 
-`ProxyJump` (introduced in OpenSSH 7.3) is the modern, clean way to connect through SSH jump hosts. It establishes an SSH connection to the jump host and then creates a second SSH connection through it-using a single command and a single key authentication step.
+`ProxyJump` (introduced in OpenSSH 7.3) is the modern, clean way to connect through SSH jump hosts. It establishes an SSH connection to the jump host and then creates a second SSH connection through it-using a single command, with authentication handled for each SSH hop.
 
 ## Basic ProxyJump Usage
 
@@ -18,7 +18,7 @@ Description: Use SSH ProxyJump (-J flag and ProxyJump directive) to connect to i
 # Connect to 10.0.0.10 via bastion at 203.0.113.10
 ssh -J user@203.0.113.10 admin@10.0.0.10
 
-# Force IPv4 throughout
+# Use IPv4-only mode with IPv4 addresses
 ssh -4 -J user@203.0.113.10 admin@10.0.0.10
 
 # Jump through multiple hops (comma-separated)
@@ -115,9 +115,9 @@ ssh -J user@203.0.113.10 \
 psql -h 127.0.0.1 -p 5432 -U dbuser mydb
 ```
 
-## Agent Forwarding for Key Authentication
+## SSH Agent for Key Authentication
 
-When the target server requires the same key as the jump host:
+When the target server accepts the same local key as the jump host:
 
 ```bash
 # ~/.ssh/config
@@ -125,7 +125,6 @@ When the target server requires the same key as the jump host:
 Host jump
     HostName 203.0.113.10
     User alice
-    ForwardAgent yes    # Forward local SSH agent to jump host
 
 Host internal
     HostName 10.0.0.10
@@ -134,10 +133,10 @@ Host internal
 ```
 
 ```bash
-# Add key to agent
-ssh-add ~/.ssh/id_rsa
+# Add key to the local agent
+ssh-add ~/.ssh/id_ed25519
 
-# Connect (agent handles authentication at both hops)
+# Connect (the local client can use the agent for both SSH authentications)
 ssh internal
 ```
 
