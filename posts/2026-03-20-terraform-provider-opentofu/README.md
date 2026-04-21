@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, Provider, Infrastructure as Code, IaC, Provider Registry
 
-Description: Learn how to use Terraform providers from the public registry with OpenTofu using the provider mirror protocol.
+Description: Learn how to use Terraform-compatible providers from the public OpenTofu Registry with OpenTofu.
 
 ## Introduction
 
-Learn how to use Terraform providers from the public registry with OpenTofu using the provider mirror protocol. This guide provides step-by-step instructions with practical examples to help you implement this in your infrastructure workflow.
+Learn how to use Terraform-compatible providers from the public OpenTofu Registry with OpenTofu. This guide provides step-by-step instructions with practical examples to help you implement this in your infrastructure workflow.
 
 ## Prerequisites
 
@@ -113,7 +113,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.7.0"
 
@@ -130,7 +130,7 @@ jobs:
         run: tofu plan -no-color -out=tfplan
 
       - name: Upload Plan
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tfplan
           path: tfplan
@@ -144,7 +144,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.7.0"
 
@@ -155,7 +155,7 @@ jobs:
           aws-region: us-east-1
 
       - name: Download Plan
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: tfplan
 
@@ -163,7 +163,7 @@ jobs:
         run: tofu init
 
       - name: OpenTofu Apply
-        run: tofu apply -auto-approve tfplan
+        run: tofu apply tfplan
 ```
 
 ## Step 5: Monitor and Verify
@@ -176,7 +176,7 @@ tofu show
 tofu state list
 
 # Verify resource configuration
-tofu state show aws_instance.main
+tofu state show <resource_address>
 
 # Check for drift
 tofu plan -refresh-only
@@ -214,7 +214,7 @@ If you encounter issues:
 
 1. Enable debug logging: `export TF_LOG=DEBUG`
 2. Check provider credentials: Verify environment variables
-3. Review state consistency: Run `tofu refresh` then `tofu plan`
+3. Review state consistency: Run `tofu plan -refresh-only`
 4. Consult provider documentation for service-specific errors
 
 ## Conclusion
