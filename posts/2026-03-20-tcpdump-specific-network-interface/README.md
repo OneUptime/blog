@@ -56,6 +56,7 @@ sudo tcpdump -i wg0 -nn
 # Shows: actual application traffic (decrypted)
 
 # Capture ENCRYPTED WireGuard packets on the physical interface
+# Replace 51820 with the ListenPort/Endpoint port your tunnel uses
 sudo tcpdump -i eth0 -nn udp port 51820
 # Shows: UDP packets with encrypted payload
 
@@ -67,14 +68,14 @@ sudo tcpdump -i eth0 -nn udp port 51820
 ## Capturing Docker Container Traffic
 
 ```bash
-# Capture traffic between all Docker containers (docker bridge)
+# Capture traffic between containers on the default Docker bridge
 sudo tcpdump -i docker0 -nn
 
-# Capture traffic on a specific container interface
-# First, get container's interface name:
-docker inspect container_name | grep "NetworkMode"
-# Then capture on that interface
-sudo tcpdump -i br-abc123def456 -nn
+# Capture traffic on the host-side veth for a specific container
+CONTAINER_PID=$(docker inspect -f '{{.State.Pid}}' container_name)
+CONTAINER_IFLINK=$(sudo nsenter -t "$CONTAINER_PID" -n -- cat /sys/class/net/eth0/iflink)
+HOST_IFACE=$(ip -o link | awk -F': ' -v iflink="$CONTAINER_IFLINK" '$1 == iflink {print $2}' | cut -d@ -f1)
+sudo tcpdump -i "$HOST_IFACE" -nn
 
 # Capture traffic inside a specific container:
 CONTAINER_PID=$(docker inspect -f '{{.State.Pid}}' container_name)
@@ -101,10 +102,12 @@ sudo pkill tcpdump
 
 ```bash
 # Find interface names by type
-ip link show type ether     # Physical Ethernet
-ip link show type veth      # Virtual Ethernet pairs (containers)
-ip link show type tun       # TUN tunnels (OpenVPN)
-ip link show type wireguard # WireGuard
+ip -o link show | grep 'link/ether'          # Ethernet-style interfaces
+ip link show type veth                       # Virtual Ethernet pairs (containers)
+ip link show type bridge                     # Linux bridges (Docker/user-defined bridges)
+ip -o link show | grep -E ': (tun|tap)[0-9]' # Common OpenVPN TUN/TAP names
+ip link show type gre                        # GRE tunnel devices
+wg show interfaces                           # WireGuard interfaces
 
 # Capture on specific tunnel type
 # For OpenVPN (tun0):
@@ -119,6 +122,7 @@ sudo tcpdump -i gre1 -nn
 ```bash
 # Test that VPN is routing traffic:
 # Terminal 1: capture on physical interface
+# Replace 51820 with the ListenPort/Endpoint port your tunnel uses
 sudo tcpdump -i eth0 -nn udp port 51820 -c 10
 
 # Terminal 2: capture on VPN interface
