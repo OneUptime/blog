@@ -8,16 +8,16 @@ Description: Use Portainer's visual web interface as a teaching tool to explain 
 
 ---
 
-The Docker CLI is powerful but intimidating for beginners. Portainer's web UI makes every Docker concept visible: you can see containers running, inspect their logs, browse volume contents, and trace network connections without typing a single command. This makes it an ideal teaching companion for Docker fundamentals courses.
+The Docker CLI is powerful but intimidating for beginners. Portainer's web UI makes many Docker concepts visible: you can see containers running, inspect their logs, browse volume contents when using Docker Swarm or the Portainer Agent, and inspect network attachments without typing a single command. This makes it an ideal teaching companion for Docker fundamentals courses.
 
 ## Core Docker Concepts Mapped to Portainer UI
 
 | Docker Concept | Portainer Location | What to Show |
 |---|---|---|
 | Containers | Containers > List | Running/stopped state, resource usage |
-| Images | Images > List | Layers, size, tags |
+| Images | Images > List | Image IDs, size, tags |
 | Volumes | Volumes | Mount points, usage |
-| Networks | Networks | Bridge/overlay topologies |
+| Networks | Networks | Bridge/overlay network types and container attachments |
 | Logs | Container > Logs | stdout/stderr streams |
 | Exec | Container > Console | Live shell in container |
 
@@ -41,31 +41,32 @@ Navigate to `http://<host>:8080` - students immediately see their running web se
 
 ## Lesson 2: Container Lifecycle
 
-Show the three container states using the Portainer container list controls:
+Show common lifecycle actions using the Portainer container list controls:
 
 ```text
 Start → Stop → Restart → Remove
 ```
 
-Students observe state changes in real time. Explain that stopped containers retain their data until removed.
+Students observe state changes in real time. Explain that stopped containers retain their writable layer until removed, while persistent application data should be kept in volumes.
 
 ## Lesson 3: Environment Variables
 
-Deploy a container with environment variables set via Portainer's **Env** tab:
+Deploy a long-running container with environment variables set via Portainer's **Env** tab:
 
 ```bash
 # Equivalent Docker CLI for reference
 
-docker run -e MY_NAME=Alice -e MY_ENV=development ubuntu:22.04 env
+docker run -d --name env-demo -e MY_NAME=Alice -e MY_ENV=development nginx:alpine
+docker exec env-demo env
 ```
 
-In Portainer, add the variables in the **ENV** section of the container creation form. Use the **Console** to run `env` inside the container and verify the variables are set.
+In Portainer, add the variables in the **ENV** section of the container creation form. Use the **Console** to run `env` inside the running container, selecting `/bin/ash` for Alpine-based images, and verify the variables are set.
 
 ## Lesson 4: Volumes - Persistent Data
 
 1. Create a volume: **Volumes > Add Volume**, name it `lesson-data`
 2. Deploy an Nginx container with the volume mounted at `/usr/share/nginx/html`
-3. Use Portainer's file browser to drop an `index.html` into the volume
+3. Use Portainer's volume browser, available with Docker Swarm or the Portainer Agent, to upload an `index.html` into the volume
 4. Verify the page updates in the browser
 
 Then show what happens when you remove and recreate the container with the same volume - the data persists.
@@ -75,8 +76,8 @@ Then show what happens when you remove and recreate the container with the same 
 Create two containers on different networks and demonstrate isolation:
 
 1. Create a **bridge** network named `lesson-net`
-2. Deploy two Alpine containers - one on `lesson-net`, one on the default bridge
-3. Use the Console to `ping` between them and show that cross-network traffic is blocked by default
+2. Deploy two Alpine containers with a long-running command such as `sleep 3600` - one on `lesson-net`, one on the default bridge
+3. Use the Console, selecting `/bin/ash` for Alpine, to `ping` the other container's IP address and show that cross-network traffic is blocked by default
 
 ## Lesson 6: Docker Compose with Stacks
 
@@ -84,7 +85,6 @@ Show a two-service application using Portainer Stacks:
 
 ```yaml
 # Paste this in Stacks > Add Stack
-version: "3.8"
 services:
   web:
     image: nginx:alpine
