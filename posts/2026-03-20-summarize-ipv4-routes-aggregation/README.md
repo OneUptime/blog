@@ -29,7 +29,7 @@ Can be summarized (contiguous):
 Cannot be summarized efficiently (non-contiguous):
   10.1.0.0/24
   10.1.2.0/24   (gap: 10.1.1.0 missing)
-  → Would require 10.1.0.0/21 which includes unowned addresses
+  → Would require 10.1.0.0/22 which includes unowned addresses
 ```
 
 ## Step 2: Calculate the Summary Route
@@ -85,7 +85,7 @@ summarize_routes(['192.168.0.0/24', '192.168.1.0/24', '192.168.10.0/24', '192.16
 ## Step 4: Find the Tightest Summary for Any Route Set
 
 ```python
-from ipaddress import ip_network
+from ipaddress import ip_network, collapse_addresses
 
 def find_supernet(networks):
     """Find the tightest supernet that covers all given networks."""
@@ -109,8 +109,9 @@ print(f"Tightest summary: {supernet}")  # 10.1.0.0/22
 # Check if the supernet includes extra space
 nets = [ip_network('10.1.0.0/24'), ip_network('10.1.1.0/24'),
         ip_network('10.1.2.0/24'), ip_network('10.1.3.0/24')]
-all_hosts_in_supernet = [n for n in supernet.subnets(prefixlen_diff=0)
-                          if any(n.overlaps(owned) for owned in nets)]
+covered = list(collapse_addresses(nets))
+extra_addresses = supernet.num_addresses - sum(n.num_addresses for n in covered)
+print(f"Extra addresses covered: {extra_addresses}")  # 0
 ```
 
 ## Step 5: Configure Route Summarization in Cisco IOS
@@ -131,7 +132,7 @@ router bgp 65001
 
 **Static Route Aggregation:**
 ```text
-! Advertise the aggregate, pull traffic with more-specific statics
+! Install the aggregate route; advertise it with your routing protocol
 ip route 10.1.0.0 255.255.252.0 Null0   ! Aggregate (discard route)
 ! More-specific routes pointing to actual next-hops
 ip route 10.1.0.0 255.255.255.0 192.168.1.2
@@ -140,4 +141,4 @@ ip route 10.1.1.0 255.255.255.0 192.168.1.3
 
 ## Conclusion
 
-Route summarization requires contiguous, power-of-2 aligned address blocks. Calculate summaries by finding the common bit prefix with Python's `ipaddress.collapse_addresses()`. Configure summarization in OSPF with `area X range` at ABRs and in BGP with `aggregate-address`. Hierarchical addressing design (where address allocation follows topology) is the key prerequisite for clean summarization - you can only summarize well what you planned well.
+Clean route summarization requires contiguous, power-of-2 aligned address blocks. Calculate a single covering prefix by finding the common bit prefix, or use Python's `ipaddress.collapse_addresses()` to produce the minimum set of prefixes. Configure summarization in OSPF with `area X range` at ABRs and in BGP with `aggregate-address`. Hierarchical addressing design (where address allocation follows topology) is the key prerequisite for clean summarization - you can only summarize well what you planned well.
