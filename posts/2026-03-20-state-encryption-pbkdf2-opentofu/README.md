@@ -21,7 +21,7 @@ The derived key is then used with AES-GCM encryption for the state file.
 
 ## Step 1: Configure the Encryption Block
 
-Add an `encryption` block to your `terraform` configuration:
+For a new project with no existing state file, add an `encryption` block to your `terraform` configuration:
 
 ```hcl
 # encryption.tf
@@ -84,15 +84,31 @@ Never hardcode passphrases. Use environment variables or a secrets manager:
 export TF_VAR_state_encryption_passphrase="your-secure-passphrase-here"
 
 # Or pass via CLI (less secure - shows in process list)
-tofu apply -var="state_encryption_passphrase=your-passphrase"
+tofu apply -var="state_encryption_passphrase=your-secure-passphrase"
 
 # Or use a tfvars file (excluded from git)
-echo 'state_encryption_passphrase = "your-passphrase"' > secrets.tfvars
+echo 'state_encryption_passphrase = "your-secure-passphrase"' > secrets.tfvars
 echo 'secrets.tfvars' >> .gitignore
 tofu apply -var-file=secrets.tfvars
 ```
 
 ## Step 4: Initialize and Apply
+
+If this project already has an unencrypted state file, OpenTofu requires a temporary `unencrypted` fallback for the first migration apply. Add the `unencrypted` method inside the `encryption` block and use this migration version of the `state` block before running `tofu apply`:
+
+```hcl
+method "unencrypted" "migrate" {}
+
+state {
+  method = method.aes_gcm.state_method
+
+  fallback {
+    method = method.unencrypted.migrate
+  }
+}
+```
+
+After `tofu apply` rewrites the state, remove the `method "unencrypted"` block and the `fallback` block. Repeat the fallback in `plan {}` only if you need to migrate saved plan files.
 
 ```bash
 # Initialize with the new encryption configuration
@@ -110,8 +126,8 @@ After applying, the state file in your backend is now encrypted with AES-GCM usi
 ## Step 5: Verify Encryption
 
 ```bash
-# For local backend, check the state file is not readable as plain JSON
-cat terraform.tfstate  # Should show encrypted binary/base64 content
+# For local backend, check the state file contains an encrypted envelope
+cat terraform.tfstate  # Should show encrypted_data, not plain state JSON
 
 # Verify you can still read state using OpenTofu
 tofu state list  # Should work normally
@@ -124,7 +140,7 @@ You can also configure encryption via an environment variable without modifying 
 ```bash
 export TF_ENCRYPTION='
 key_provider "pbkdf2" "state_key" {
-  passphrase = "my-passphrase"
+  passphrase = "my-long-passphrase"
 }
 method "aes_gcm" "state_method" {
   keys = key_provider.pbkdf2.state_key
