@@ -13,13 +13,13 @@ On dual-stack systems, socket listings mix IPv4 and IPv6, making output harder t
 ```bash
 # All IPv4 sockets
 
-ss -4
+ss -4a
 
 # All IPv4 TCP sockets
-ss -4t
+ss -4ta
 
 # All IPv4 UDP sockets
-ss -4u
+ss -4ua
 
 # IPv4 listening TCP sockets
 ss -4tl
@@ -78,14 +78,14 @@ ss -4tn src 192.168.1.0/24
 
 ```bash
 # Count all active IPv4 TCP connections
-ss -4tn state established | wc -l
+ss -4Htn state established | wc -l
 
 # Count IPv4 connections per remote IP
-ss -4tn state established | awk 'NR>1 {print $5}' \
+ss -4Htn state established | awk '{print $5}' \
   | cut -d: -f1 | sort | uniq -c | sort -rn | head -10
 
 # Count IPv4 connections per destination port
-ss -4tn state established | awk 'NR>1 {print $4}' \
+ss -4Htn state established | awk '{print $5}' \
   | cut -d: -f2 | sort | uniq -c | sort -rn
 ```
 
@@ -98,12 +98,12 @@ sudo ss -tlnp | grep nginx
 # IPv4 only:
 # LISTEN 0.0.0.0:80   0.0.0.0:*   users:(("nginx"))
 
-# IPv6 (which also handles IPv4 on many systems via IPv4-mapped):
+# IPv6 (may also handle IPv4 on Linux when IPV6_V6ONLY is off):
 # LISTEN [::]:80      [::]:*       users:(("nginx"))
 
 # Both:
-# LISTEN 0.0.0.0:80   → explicit IPv4
-# LISTEN [::]:80      → IPv6 + IPv4-mapped (handles both)
+# LISTEN 0.0.0.0:80   -> explicit IPv4
+# LISTEN [::]:80      -> IPv6 listener; IPv4 handling depends on IPV6_V6ONLY
 ```
 
 ## Monitor IPv4 Connection Counts Over Time
