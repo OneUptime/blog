@@ -81,19 +81,27 @@ docker network connect proxy portainer
 # Check the service port label
 docker inspect portainer | jq '.[].Config.Labels | to_entries[] | select(.key | contains("loadbalancer.server.port"))'
 
-# Common mistake: using HTTPS port 9443 instead of 9000
-# Wrong:
+# Common mistake: pointing at Portainer's HTTPS port without changing the scheme
+# Wrong if you leave Traefik's default backend scheme as HTTP:
 # - "traefik.http.services.portainer.loadbalancer.server.port=9443"
-# Right:
+# Right for Portainer's HTTP interface:
 # - "traefik.http.services.portainer.loadbalancer.server.port=9000"
 ```
 
-For the Portainer HTTPS interface, you need to set the scheme:
+For the Portainer HTTPS interface, define a `ServersTransport` for the self-signed backend certificate and reference it from the Docker labels:
+
+```yaml
+# dynamic.yml
+http:
+  serversTransports:
+    insecureTransport:
+      insecureSkipVerify: true
+```
 
 ```yaml
 - "traefik.http.services.portainer.loadbalancer.server.port=9443"
 - "traefik.http.services.portainer.loadbalancer.server.scheme=https"
-- "traefik.http.services.portainer.loadbalancer.serversTransport=insecureTransport"
+- "traefik.http.services.portainer.loadbalancer.serversTransport=insecureTransport@file"
 ```
 
 ## Step 6: Fix Label Syntax Errors
@@ -101,24 +109,24 @@ For the Portainer HTTPS interface, you need to set the scheme:
 Labels in Docker Compose must escape `$` signs:
 
 ```yaml
-# Wrong - shell will interpret $apr1
-- "traefik.http.middlewares.auth.basicauth.users=admin:$apr1$hash"
+# Wrong - Compose will interpolate each $... segment as variables
+- "traefik.http.middlewares.auth.basicauth.users=admin:$apr1$H6uskkkW$IgXLP6ewTrSuBkTrqE8wj/"
 
-# Correct - double $ escapes in YAML/Docker Compose
-- "traefik.http.middlewares.auth.basicauth.users=admin:$$apr1$$hash"
+# Correct - double $ escapes Compose interpolation
+- "traefik.http.middlewares.auth.basicauth.users=admin:$$apr1$$H6uskkkW$$IgXLP6ewTrSuBkTrqE8wj/"
 ```
 
 ## Step 7: Check Certificate Issues
 
 ```bash
 # Check acme.json for your domain
-cat /opt/traefik/data/acme.json | jq '.letsencrypt.Certificates[] | select(.domain.main == "portainer.example.com")'
+cat /opt/traefik/data/acme.json | jq --arg domain "portainer.example.com" '.[]?.Certificates[]? | select(.domain.main == $domain or ((.domain.sans // []) | index($domain)))'
 
 # Check if port 80 is accessible
 curl -I http://portainer.example.com
 
 # Check Traefik ACME logs
-docker logs traefik 2>&1 | grep -i "acme\|certificate\|error"
+docker logs traefik 2>&1 | grep -Ei "acme|certificate|error"
 ```
 
 ## Diagnostic Script
@@ -142,7 +150,7 @@ echo -e "\n4. Service health:"
 curl -s http://localhost:8080/api/http/services | jq ".[] | select(.name | contains(\"portainer\"))"
 
 echo -e "\n5. Certificate status:"
-cat /opt/traefik/data/acme.json | jq ".letsencrypt.Certificates[] | select(.domain.main == \"$DOMAIN\") | .domain"
+cat /opt/traefik/data/acme.json | jq --arg domain "$DOMAIN" '.[]?.Certificates[]? | select(.domain.main == $domain or ((.domain.sans // []) | index($domain))) | .domain'
 ```
 
 ## Conclusion
