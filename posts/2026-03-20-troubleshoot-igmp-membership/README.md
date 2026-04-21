@@ -30,7 +30,7 @@ tcpdump -i eth0 -n 'igmp'
 # Capture with verbose IGMP details:
 tcpdump -i eth0 -n -v 'igmp'
 
-# Capture IGMP type 3 (IGMPv3 reports):
+# Capture IGMP type 0x22 (IGMPv3 reports):
 tcpdump -i eth0 -n 'igmp[0] == 0x22'
 # 0x11 = Membership Query
 # 0x16 = Version 2 Membership Report
@@ -45,22 +45,28 @@ tcpdump -i eth0 -n 'igmp[0] == 0x22'
 cat /proc/net/igmp
 
 # Parse readable output:
-awk 'NR>1 {
-    if (NF >= 5 && $4 != "Querier") {
-        gsub(/\r/, "")
-        hex = $4
-        # Convert little-endian hex to IP
-        a = strtonum("0x" substr(hex,7,2))
-        b = strtonum("0x" substr(hex,5,2))
-        c = strtonum("0x" substr(hex,3,2))
-        d = strtonum("0x" substr(hex,1,2))
-        printf "Interface: %s Group: %d.%d.%d.%d\n", $2, a, b, c, d
-    }
-}' /proc/net/igmp
+python3 - <<'PY'
+import socket
+import sys
+
+iface = None
+with open("/proc/net/igmp") as f:
+    next(f, None)
+    for line in f:
+        fields = line.split()
+        if not fields:
+            continue
+        if ":" in fields:
+            iface = fields[1]
+            continue
+        if iface and len(fields[0]) == 8:
+            group = socket.inet_ntoa(int(fields[0], 16).to_bytes(4, sys.byteorder))
+            print(f"Interface: {iface} Group: {group}")
+PY
 
 # Or use ip command:
 ip maddr show
-# Shows all multicast group memberships per interface
+# Shows multicast addresses per interface, including link-layer and IP memberships
 
 # Check IGMPv3 source-specific memberships:
 cat /proc/net/mcfilter
@@ -68,7 +74,7 @@ cat /proc/net/mcfilter
 
 # Check IGMP version used:
 cat /proc/net/igmp | head -5
-# Version column shows 1, 2, or 3
+# Querier column shows V1, V2, or V3 for each interface
 ```
 
 ## Diagnose Missing IGMP Joins
@@ -77,8 +83,8 @@ cat /proc/net/igmp | head -5
 # Problem: multicast traffic not arriving despite app subscribing
 
 # Step 1: Verify app joined the group
-cat /proc/net/igmp | grep -i "eth0"
-# Should list the group address your app joined
+ip maddr show dev eth0
+# Should list the group address your app joined under an "inet" entry
 
 # Step 2: Watch for IGMP reports when app starts:
 tcpdump -i eth0 -n 'igmp' &
@@ -86,14 +92,14 @@ tcpdump -i eth0 -n 'igmp' &
 # Should see: IP <host> > <mcast-group>: igmp v2 report <group>
 
 # Step 3: Verify IGMP query/response cycle:
-# Router should send queries every 60-125 seconds (default)
+# Routers commonly send queries every 60-125 seconds; the IGMPv2 default is 125 seconds
 tcpdump -i eth0 -n 'igmp[0] == 0x11'  # Membership queries
 # If NO queries arrive: no IGMP querier present
 # If no querier: memberships may not be maintained in switches
 
 # Step 4: Check IGMP state on router (Cisco):
 # show ip igmp groups
-# show ip igmp interface eth0
+# show ip igmp interface <interface>
 ```
 
 ## Check IGMP Suppression and Timers
@@ -107,19 +113,18 @@ tcpdump -i eth0 -n -v 'igmp[0] == 0x11' 2>/dev/null | grep "max resp"
 # Default: 10 seconds max response time
 
 # IGMP membership timeout:
-# If no query arrives within group-membership-interval:
+# If no reports refresh the entry within group-membership-interval:
 #   group-membership-interval = robustness * query-interval + max-response-time
 #   Default: 2 * 125 + 10 = 260 seconds
 
 # Check kernel IGMP timers:
 cat /proc/net/igmp
-# Timer column: time until next report (in jiffies or ms)
+# Timer column: running flag and remaining time in kernel clock ticks
 
-# Force immediate IGMP report (by toggling membership):
-# Leave and rejoin the group:
-ip maddr del 239.1.1.1 dev eth0
-ip maddr add 239.1.1.1 dev eth0
-# Or restart the application that joined
+# Force immediate IGMP report by causing the application/socket to leave and rejoin.
+# `ip maddr add/del` only manages static link-layer multicast filters;
+# it does not join IP multicast groups or send IGMP reports.
+# Restart the application that joined, or have it drop and re-add IP_ADD_MEMBERSHIP.
 
 # Watch for the resulting IGMP report:
 tcpdump -i eth0 -n 'igmp' -c 5
@@ -143,9 +148,9 @@ timeout 10 tcpdump -i eth0 -n 'dst 239.1.1.1' 2>/dev/null | wc -l
 
 # Force IGMP version to v2 (some switches have v3 issues):
 echo 2 > /proc/sys/net/ipv4/conf/eth0/force_igmp_version
-# 0 = auto-negotiate (default)
+# 0 = no enforced version; IGMPv1/v2 fallback allowed (default)
 # 2 = force IGMPv2
-# 3 = force IGMPv3
+# 3 = force IGMPv3; Linux recommends the default 0 for normal use
 
 # Check current IGMP version:
 cat /proc/sys/net/ipv4/conf/eth0/force_igmp_version
