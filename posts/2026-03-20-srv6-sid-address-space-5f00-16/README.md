@@ -8,15 +8,15 @@ Description: Understand the IANA-allocated 5f00::/16 address block for SRv6 Segm
 
 ## Introduction
 
-RFC 9602 allocates `5f00::/16` as the global SRv6 SID address space. This provides a well-known, universally recognizable prefix for SRv6 deployments, enabling consistent hardware optimization and simpler access control compared to operator-specific prefixes.
+RFC 9602 allocates `5f00::/16` as the dedicated SRv6 SID address space. This provides a well-known, IANA-registered prefix for SRv6 deployments, enabling simpler filtering and operational identification compared to operator-specific prefixes.
 
 ## Why 5f00::/16?
 
-Before RFC 9602, operators used their own allocated prefixes for SIDs, making it impossible for network equipment to optimize specifically for SRv6 SIDs. The dedicated `5f00::/16` allocation allows:
+Before RFC 9602, operators used their own allocated prefixes for SIDs, so there was no universal prefix that network equipment and tooling could recognize as SRv6 SID space. The dedicated `5f00::/16` allocation allows:
 
-1. Hardware vendors to optimize forwarding for this prefix
+1. Network devices and tooling to recognize the SRv6 SID block consistently
 2. Operators to consistently filter SRv6 SIDs at network boundaries
-3. Monitoring systems to identify SRv6 traffic universally
+3. Monitoring systems to identify traffic destined to SRv6 SID space
 
 ## Address Space Properties
 
@@ -28,10 +28,10 @@ import ipaddress
 block = ipaddress.IPv6Network("5f00::/16")
 
 print(f"Network address: {block.network_address}")  # 5f00::
-print(f"Broadcast: {block.broadcast_address}")       # 5fff:ffff:...
+print(f"Last address: {block[-1]}")                  # 5f00:ffff:...
 print(f"Total addresses: {block.num_addresses}")     # 2^112
 
-# Globally routable: Yes
+# Globally reachable: No
 # Source valid: Yes
 # Destination valid: Yes
 # Forwardable: Yes
@@ -45,16 +45,16 @@ def is_srv6_sid(addr: str) -> bool:
         return False
 
 print(is_srv6_sid("5f00:1:1::1"))  # True
-print(is_srv6_sid("5fff::"))       # True
-print(is_srv6_sid("6000::"))       # False
+print(is_srv6_sid("5f00:ffff::"))  # True
+print(is_srv6_sid("5f01::"))       # False
 ```
 
 ## Allocating from 5f00::/16
 
 ```text
-Recommended hierarchy:
-  5f00:SITE:NODE::/48   - Node locator
-  5f00:SITE:NODE:FUNC:: - Specific SID function
+Example hierarchy (locator lengths are operator-chosen):
+  5f00:<site-id>:<node-id>::/48       - Node locator
+  5f00:<site-id>:<node-id>:<func-id>:: - Specific SID function
 
 Example for a 3-site network:
   Site 1: 5f00:0001::/32
@@ -67,15 +67,15 @@ Example for a 3-site network:
 ## Filtering Configuration
 
 ```bash
+# Block SRv6 SIDs from external untrusted sources first
+ip6tables -A FORWARD -d 5f00::/16 \
+  -i eth-external -j DROP
+
 # Allow SRv6 SID traffic within your AS
 ip6tables -A FORWARD -d 5f00::/16 \
   -s 5f00::/16 -j ACCEPT  # SRv6 internal
-
-# Block SRv6 SIDs from external untrusted sources
-ip6tables -A FORWARD -d 5f00::/16 \
-  -i eth-external -j DROP
 ```
 
 ## Conclusion
 
-The `5f00::/16` SRv6 SID allocation provides a globally recognizable, hardware-optimizable prefix for SRv6 deployments. New SRv6 deployments should use this space. Use OneUptime to monitor locator prefix reachability within `5f00::/16` as a health indicator for your SRv6 infrastructure.
+The `5f00::/16` SRv6 SID allocation provides a well-known, filterable prefix for SRv6 deployments. New SRv6 deployments can use this space, but IANA marks it as not globally reachable, so keep SR-domain boundary filtering in place. Use OneUptime to monitor locator prefix reachability within `5f00::/16` as a health indicator for your SRv6 infrastructure.
