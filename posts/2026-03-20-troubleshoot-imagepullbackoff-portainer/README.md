@@ -26,7 +26,8 @@ In Portainer, open the failing pod and check the Events section:
 
 ```text
 Events:
-  Warning  Failed     BackOff pulling image "my-registry.internal/api:v1.5"
+  Warning  Failed     Failed to pull image "my-registry.internal/api:v1.5": ...
+  Normal   BackOff    Back-off pulling image "my-registry.internal/api:v1.5"
   Warning  Failed     Error: ImagePullBackOff
 ```
 
@@ -46,7 +47,7 @@ curl -u user:pass https://my-registry.internal/v2/api/tags/list
 
 ## Step 3: Check Registry Credentials in Portainer
 
-Go to **Portainer > Registries** and verify the registry is configured:
+Go to **Cluster > Registries** in the Kubernetes environment and verify the registry is configured:
 
 1. Registry URL matches the image reference
 2. Credentials (username/password) are correct
@@ -54,15 +55,17 @@ Go to **Portainer > Registries** and verify the registry is configured:
 
 ## Step 4: Create an Image Pull Secret for Kubernetes
 
-If using Kubernetes, ensure an imagePullSecret is referenced in your deployment:
+If using Kubernetes, ensure `imagePullSecrets` is referenced in the pod template for your workload:
 
 ```yaml
 spec:
-  imagePullSecrets:
-    - name: registry-credentials
-  containers:
-    - name: api
-      image: my-registry.internal/api:v1.5
+  template:
+    spec:
+      imagePullSecrets:
+        - name: registry-credentials
+      containers:
+        - name: api
+          image: my-registry.internal/api:v1.5
 ```
 
 Create the secret:
@@ -77,10 +80,10 @@ If the error indicates a network issue:
 
 ```bash
 ## From inside a debug pod, test registry connectivity
-kubectl run debug --image=curlimages/curl --rm -it -- sh
+kubectl run debug --image=curlimages/curl --rm -it --restart=Never --command -- /bin/sh
 curl -v https://my-registry.internal/v2/
 ```
 
 ## Summary
 
-ImagePullBackOff is almost always caused by an incorrect image reference, missing credentials, or network connectivity to the registry. Portainer's pod event view pinpoints the exact error message, and the Registries configuration panel lets you update credentials without redeploying your application stacks.
+ImagePullBackOff is almost always caused by an incorrect image reference, missing credentials, or network connectivity to the registry. Portainer's application Events tab shows the exact error message, and the Registries configuration panel lets you update registry configuration and namespace access.
