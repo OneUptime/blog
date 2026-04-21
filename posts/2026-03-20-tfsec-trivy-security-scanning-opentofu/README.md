@@ -15,10 +15,10 @@ tfsec was a popular standalone Terraform/OpenTofu security scanner. Aqua Securit
 ```bash
 # macOS
 
-brew install aquasecurity/trivy/trivy
+brew install trivy
 
 # Linux
-curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
 
 # Docker
 docker pull aquasec/trivy
@@ -47,13 +47,13 @@ trivy config . --exit-code 1 --severity HIGH,CRITICAL
 
 ## Sample Output
 
-```hcl
+```text
 main.tf (terraform)
 
 Tests: 47 (SUCCESSES: 44, FAILURES: 3, EXCEPTIONS: 0)
-Failures: 3 (HIGH: 2, CRITICAL: 1)
+Failures: 3 (HIGH: 3, CRITICAL: 0)
 
-CRITICAL: Security group allows unrestricted ingress on port 22
+HIGH: Security group allows unrestricted ingress on port 22
 ══════════════════════════════════════════════════════════════════
 Ensure no security groups allow ingress from 0.0.0.0/0 to port 22
 
@@ -62,7 +62,7 @@ Ensure no security groups allow ingress from 0.0.0.0/0 to port 22
  19 ┃     from_port   = 22
  20 ┃     to_port     = 22
  21 ┃     protocol    = "tcp"
- 22 ┃     cidr_blocks = ["0.0.0.0/0"]   ← CRITICAL
+ 22 ┃     cidr_blocks = ["0.0.0.0/0"]   ← HIGH
  ...
 ```
 
@@ -83,14 +83,14 @@ resource "aws_security_group" "web" {
   }
 }
 
-# Fix: AVD-AWS-0086 - RDS should not be publicly accessible
+# Fix: AVD-AWS-0180 - RDS should not be publicly accessible
 resource "aws_db_instance" "main" {
   identifier         = "prod-postgres"
   publicly_accessible = false  # Must be false
   # ...
 }
 
-# Fix: AVD-AWS-0028 - EBS volumes should be encrypted
+# Fix: AVD-AWS-0131 - root block device should be encrypted
 resource "aws_instance" "web" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = "t3.medium"
@@ -101,19 +101,20 @@ resource "aws_instance" "web" {
 }
 ```
 
-## Suppressing False Positives
+## Suppressing False Positives or Accepted Exceptions
 
 ```hcl
-# Suppress a specific finding with a justification
-resource "aws_security_group" "public_alb" {
-  name = "public-alb-sg"
+# Suppress a specific finding with a justification when the exception is approved
+# Temporary emergency SSH access during migration; remove after VPN cutover.
+#trivy:ignore:AVD-AWS-0107
+resource "aws_security_group" "temporary_bastion" {
+  name = "temporary-bastion-sg"
 
   ingress {
-    from_port   = 443
-    to_port     = 443
+    from_port   = 22
+    to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    # tfsec:ignore:AVD-AWS-0107 - Public ALB must accept traffic from the internet
   }
 }
 ```
@@ -122,7 +123,7 @@ resource "aws_security_group" "public_alb" {
 
 ```yaml
 - name: Trivy IaC Security Scan
-  uses: aquasecurity/trivy-action@master
+  uses: aquasecurity/trivy-action@0.35.0
   with:
     scan-type: config
     scan-ref: .
@@ -130,10 +131,11 @@ resource "aws_security_group" "public_alb" {
     output: trivy-results.sarif
     exit-code: 1
     severity: HIGH,CRITICAL
+    limit-severities-for-sarif: true
     trivyignores: .trivyignore
 
 - name: Upload Trivy Results to GitHub Security
-  uses: github/codeql-action/upload-sarif@v3
+  uses: github/codeql-action/upload-sarif@v4
   if: always()
   with:
     sarif_file: trivy-results.sarif
@@ -143,12 +145,12 @@ resource "aws_security_group" "public_alb" {
 
 ```text
 # .trivyignore - project-wide finding suppressions
-# Format: AVD-ID[=reason]
+# Format: one finding ID per line; use comments for reasons.
 
-# Public website S3 bucket - intentionally public
+# S3 server access logging handled by centralized CloudTrail data events
 AVD-AWS-0089
 
-# Public ALB for internet-facing web tier
+# Temporary break-glass SSH security group approved during migration
 AVD-AWS-0107
 ```
 
