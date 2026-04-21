@@ -19,7 +19,7 @@ graph LR
     B -->|Forwarded| A
 ```
 
-An external client connects to `203.0.113.10:8080`. SSH tunnels that connection back to `localhost:3000` on your local machine.
+When the remote forward is bound to a non-loopback address, an external client connects to `203.0.113.10:8080`. SSH tunnels that connection back to `localhost:3000` on your local machine.
 
 ## Basic Remote Port Forward
 
@@ -33,21 +33,21 @@ ssh -R 8080:localhost:3000 user@203.0.113.10
 ssh -fN -R 8080:localhost:3000 user@203.0.113.10
 ```
 
-After this command, anyone who connects to `203.0.113.10:8080` is forwarded to your `localhost:3000`.
+After this command, connections to `localhost:8080` on the remote server are forwarded to your `localhost:3000`. External clients need a non-loopback bind as shown below.
 
 ## Binding to a Specific IPv4 Address on the Remote Server
 
-By default, the forwarded port binds to `127.0.0.1` on the remote server (not accessible externally). To bind to a public IPv4 address, use the full bind syntax:
+By default, the forwarded port binds to the loopback interface on the remote server (not accessible externally). To bind to a public IPv4 address, use the full bind syntax:
 
 ```bash
-# Bind to a specific remote IPv4 address (requires GatewayPorts yes on server)
+# Bind to a specific remote IPv4 address (requires GatewayPorts clientspecified on server)
 ssh -R 203.0.113.10:8080:localhost:3000 user@203.0.113.10
 ```
 
 ```bash
 # /etc/ssh/sshd_config on the remote server
-# Allow remote port forwards to bind to non-loopback addresses
-GatewayPorts yes
+# Allow remote port forwards to bind to the address requested by the client
+GatewayPorts clientspecified
 ```
 
 ## Persistent Tunnel with SSH Config
@@ -89,15 +89,16 @@ autossh -M 0 -fN \
 
 ```bash
 # Expose multiple local services through a single SSH session
+# Remote loopback only unless you request and allow non-loopback binds
 ssh -fN \
-  -R 8080:localhost:3000 \   # Web app
-  -R 5432:localhost:5432 \   # PostgreSQL (only accessible from remote loopback)
+  -R 8080:localhost:3000 \
+  -R 5432:localhost:5432 \
   user@203.0.113.10
 ```
 
 ## Key Takeaways
 
-- `ssh -R remote_port:localhost:local_port` exposes a local service on the remote server.
-- By default, the remote port binds to `127.0.0.1`; set `GatewayPorts yes` on the server to bind to a public IPv4 address.
+- `ssh -R remote_port:localhost:local_port` exposes a local service on the remote server's loopback interface by default.
+- By default, the remote port binds to loopback; set `GatewayPorts clientspecified` on the server to bind to a specific public IPv4 address.
 - Use `autossh` for persistent tunnels that reconnect automatically after network interruptions.
 - Use `-fN` to run the tunnel in the background without starting a shell session.
