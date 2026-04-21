@@ -8,7 +8,7 @@ Description: Create SSH tunnels to securely access MySQL and PostgreSQL database
 
 ## Introduction
 
-Database servers should never have their ports (3306, 5432) exposed to the internet. SSH tunneling provides encrypted, authenticated access to databases on private IPv4 networks through a bastion host.
+Database servers should never have their ports (3306, 5432) exposed to the internet. SSH tunneling provides encrypted, authenticated access from your machine to a bastion host, which can then reach databases on private IPv4 networks. If the database runs on a separate host from the bastion, use database-native TLS when you also need encryption on the bastion-to-database hop.
 
 ## MySQL Access Through SSH Tunnel
 
@@ -22,8 +22,8 @@ ssh -4 -fN \
 # Connect MySQL client through the tunnel
 mysql -h 127.0.0.1 -P 3307 -u appuser -p mydatabase
 
-# Run MySQL Workbench: set "Standard TCP/IP over SSH" connection type
-# Or: connect to 127.0.0.1:3307 with tunnel running
+# MySQL Workbench: either configure "Standard TCP/IP over SSH" to use the bastion
+# or choose "Standard TCP/IP" and connect to 127.0.0.1:3307 with this tunnel running
 ```
 
 ## PostgreSQL Access Through SSH Tunnel
@@ -47,6 +47,7 @@ psql -h 127.0.0.1 -p 5433 -U dbadmin -d production
 
 [Unit]
 Description=SSH Tunnel to MySQL Production Database
+Wants=network-online.target
 After=network-online.target
 
 [Service]
@@ -143,4 +144,4 @@ redis-cli -h 127.0.0.1 -p 6380 ping
 
 ## Conclusion
 
-SSH tunnels provide secure database access by mapping remote database ports to local ports. Use `127.0.0.1` as the bind address to limit access to your machine only, run tunnels as systemd services with `autossh` for persistence, and configure your applications to connect to `127.0.0.1:<tunnel-port>`. This approach requires no database firewall changes and all traffic is encrypted within the SSH session.
+SSH tunnels provide secure database access by mapping remote database ports to local ports. Use `127.0.0.1` as the bind address to limit access to your machine only, run tunnels as systemd services with `autossh` for persistence, and configure your applications to connect to `127.0.0.1:<tunnel-port>`. This approach avoids exposing database ports publicly; SSH encrypts the client-to-bastion connection, and database-native TLS is still needed if the bastion-to-database hop also needs encryption.
