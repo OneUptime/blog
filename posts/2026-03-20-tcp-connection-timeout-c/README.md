@@ -63,9 +63,11 @@ The `connect()` system call blocks by default until the TCP handshake completes 
 #include <sys/select.h>
 #include <sys/time.h>
 #include <fcntl.h>
+#include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 
 /* Connect with a custom timeout in seconds.
@@ -111,7 +113,11 @@ int connect_with_timeout(const char *ip, uint16_t port, int timeout_sec) {
     /* Check if connect actually succeeded */
     int err = 0;
     socklen_t len = sizeof(err);
-    getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len);
+    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) < 0) {
+        perror("getsockopt(SO_ERROR)");
+        close(fd);
+        return -1;
+    }
     if (err != 0) {
         errno = err;
         perror("connect (async)");
@@ -144,7 +150,7 @@ int main(void) {
 | `SO_RCVTIMEO` | `recv()` / `recvfrom()` deadline | `setsockopt` with `struct timeval` |
 | `SO_SNDTIMEO` | `send()` / `sendto()` deadline | `setsockopt` with `struct timeval` |
 | Non-blocking + `select()` | `connect()` deadline | `fcntl(O_NONBLOCK)` + `select()` |
-| `alarm()` / `SIGALRM` | Any blocking call | Signal-based (non-reentrant) |
+| `alarm()` / `SIGALRM` | Blocking calls that are interruptible by signals | Signal-based (`EINTR` / `SA_RESTART` caveats) |
 
 ## Checking Timeout Errors
 
@@ -157,10 +163,11 @@ if (errno == EAGAIN || errno == EWOULDBLOCK) {
 /* After non-blocking connect select() check SO_ERROR */
 int so_err;
 socklen_t slen = sizeof(so_err);
-getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_err, &slen);
-/* so_err == 0 means success; otherwise it holds the connect errno */
+if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_err, &slen) == 0) {
+    /* so_err == 0 means success; otherwise it holds the connect errno */
+}
 ```
 
 ## Conclusion
 
-Set `SO_RCVTIMEO` and `SO_SNDTIMEO` with a `struct timeval` to bound `recv()` and `send()` calls - they return `-1` with `errno` set to `EAGAIN`/`EWOULDBLOCK` when the deadline passes. For `connect()`, put the socket into non-blocking mode with `fcntl(O_NONBLOCK)`, call `connect()` which returns `EINPROGRESS`, then wait in `select()` on the writable set with a `struct timeval` deadline. After `select()` returns, verify success by reading `SO_ERROR` with `getsockopt`. Always restore blocking mode after a successful non-blocking connect if the rest of the code expects blocking semantics.
+Set `SO_RCVTIMEO` and `SO_SNDTIMEO` with a `struct timeval` to bound `recv()` and `send()` calls - if no data is transferred before the timeout, they return `-1` with `errno` set to `EAGAIN`/`EWOULDBLOCK`; if some data is transferred first, the call returns the byte count. For `connect()`, put the socket into non-blocking mode with `fcntl(O_NONBLOCK)`, call `connect()` which returns `EINPROGRESS`, then wait in `select()` on the writable set with a `struct timeval` deadline. After `select()` returns, verify success by reading `SO_ERROR` with `getsockopt`. Always restore blocking mode after a successful non-blocking connect if the rest of the code expects blocking semantics.
