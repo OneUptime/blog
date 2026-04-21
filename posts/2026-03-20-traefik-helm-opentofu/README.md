@@ -19,22 +19,25 @@ resource "helm_release" "traefik" {
   name             = "traefik"
   repository       = "https://traefik.github.io/charts"
   chart            = "traefik"
-  version          = "26.1.0"
+  version          = "39.0.8"
   namespace        = "traefik"
   create_namespace = true
 
   values = [yamlencode({
     deployment = {
-      replicas = 2
+      # Use a single replica with Traefik's built-in ACME storage.
+      replicas = 1
     }
 
     # Enable ACME (Let's Encrypt) for automatic TLS
-    certResolvers = {
+    certificatesResolvers = {
       letsencrypt = {
-        email = var.acme_email
-        storage = "/data/acme.json"
-        httpChallenge = {
-          entryPoint = "web"
+        acme = {
+          email   = var.acme_email
+          storage = "/data/acme.json"
+          httpChallenge = {
+            entryPoint = "web"
+          }
         }
       }
     }
@@ -43,21 +46,32 @@ resource "helm_release" "traefik" {
     ports = {
       web = {
         port = 8000
-        expose = true
+        expose = {
+          default = true
+        }
         exposedPort = 80
         protocol = "TCP"
-        redirectTo = {
-          port = "websecure"
+        http = {
+          redirections = {
+            entryPoint = {
+              to     = "websecure"
+              scheme = "https"
+            }
+          }
         }
       }
       websecure = {
         port = 8443
-        expose = true
+        expose = {
+          default = true
+        }
         exposedPort = 443
         protocol = "TCP"
-        tls = {
-          enabled = true
-          certResolver = "letsencrypt"
+        http = {
+          tls = {
+            enabled      = true
+            certResolver = "letsencrypt"
+          }
         }
       }
     }
@@ -88,23 +102,6 @@ resource "helm_release" "traefik" {
       requests = { cpu = "100m", memory = "128Mi" }
       limits   = { cpu = "500m", memory = "512Mi" }
     }
-
-    # Horizontal Pod Autoscaler
-    autoscaling = {
-      enabled     = true
-      minReplicas = 2
-      maxReplicas = 10
-      metrics = [{
-        type = "Resource"
-        resource = {
-          name = "cpu"
-          target = {
-            type               = "Utilization"
-            averageUtilization = 70
-          }
-        }
-      }]
-    }
   })]
 }
 ```
@@ -114,6 +111,8 @@ resource "helm_release" "traefik" {
 ```hcl
 # Traefik IngressRoute with TLS
 resource "kubernetes_manifest" "ingress_route" {
+  depends_on = [helm_release.traefik]
+
   manifest = {
     apiVersion = "traefik.io/v1alpha1"
     kind       = "IngressRoute"
@@ -157,6 +156,8 @@ resource "kubernetes_manifest" "ingress_route" {
 ```hcl
 # Rate limiting middleware
 resource "kubernetes_manifest" "rate_limit_middleware" {
+  depends_on = [helm_release.traefik]
+
   manifest = {
     apiVersion = "traefik.io/v1alpha1"
     kind       = "Middleware"
@@ -181,6 +182,8 @@ resource "kubernetes_manifest" "rate_limit_middleware" {
 
 # Basic auth middleware
 resource "kubernetes_manifest" "basic_auth_middleware" {
+  depends_on = [helm_release.traefik]
+
   manifest = {
     apiVersion = "traefik.io/v1alpha1"
     kind       = "Middleware"
@@ -199,4 +202,4 @@ resource "kubernetes_manifest" "basic_auth_middleware" {
 
 ## Summary
 
-Traefik deployed with OpenTofu provides a developer-friendly ingress controller with built-in Let's Encrypt integration, eliminating the need for cert-manager in simpler setups. The middleware system enables request transformation, authentication, and rate limiting as reusable components. IngressRoute custom resources provide more expressive routing rules than standard Kubernetes Ingress, supporting complex matching conditions and weighted traffic splitting.
+Traefik deployed with OpenTofu provides a developer-friendly ingress controller with built-in Let's Encrypt integration, eliminating the need for cert-manager in single-instance setups. The middleware system enables request transformation, authentication, and rate limiting as reusable components. IngressRoute custom resources provide more expressive routing rules than standard Kubernetes Ingress, supporting complex matching conditions and weighted traffic splitting.
