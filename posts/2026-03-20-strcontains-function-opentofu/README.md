@@ -44,9 +44,14 @@ variable "instance_type" {
 
 locals {
   # Check if it's a burstable instance type
-  is_burstable = strcontains(var.instance_type, "t2.") || strcontains(var.instance_type, "t3.")
+  is_burstable = (
+    strcontains(var.instance_type, "t2.") ||
+    strcontains(var.instance_type, "t3.") ||
+    strcontains(var.instance_type, "t3a.") ||
+    strcontains(var.instance_type, "t4g.")
+  )
 
-  # Check if it's a compute-optimized type
+  # Check for selected compute-optimized instance families
   is_compute_optimized = strcontains(var.instance_type, "c5.") || strcontains(var.instance_type, "c6i.")
 }
 
@@ -54,6 +59,11 @@ resource "aws_cloudwatch_metric_alarm" "cpu_burst" {
   count               = local.is_burstable ? 1 : 0
   alarm_name          = "cpu-credit-balance"
   comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "CPUCreditBalance"
+  namespace           = "AWS/EC2"
+  period              = 300
+  statistic           = "Average"
   threshold           = 20
   # ... only created for burstable instances
 }
