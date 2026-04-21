@@ -13,7 +13,7 @@ On Windows, Docker can run in two modes:
 - **Linux container mode**: Uses a lightweight Linux VM (Hyper-V or WSL2) to run Linux images
 - **Windows container mode**: Runs native Windows container images on the Windows kernel
 
-You can only run one mode at a time, and switching requires restarting Docker.
+Docker Desktop exposes one active engine to the default Docker CLI context at a time, so containers from the inactive mode are not visible through that context.
 
 ## How to Switch Container Modes
 
@@ -24,89 +24,95 @@ You can only run one mode at a time, and switching requires restarting Docker.
 - If "Switch to Windows containers..." appears → you're in Linux mode
 - If "Switch to Linux containers..." appears → you're in Windows mode
 
-**Method 2**: Via command line
+**Method 2**: Via command line (Docker Desktop 4.37 and later)
 
 ```powershell
-# Switch to Windows containers
+# List available engines and the current selection
+docker desktop engine ls
 
-& "$Env:ProgramFiles\Docker\Docker\DockerCli.exe" -SwitchWindowsEngine
+# Switch to Windows containers
+docker desktop engine use windows
 
 # Switch to Linux containers
-& "$Env:ProgramFiles\Docker\Docker\DockerCli.exe" -SwitchLinuxEngine
+docker desktop engine use linux
 ```
 
 ### Docker on Windows Server
 
 ```powershell
-# Check current mode
-docker version | grep "OS/Arch"
-# linux/amd64 = Linux mode
-# windows/amd64 = Windows mode
+# Check the daemon OS
+docker info --format '{{.OSType}}'
+# linux = Linux daemon
+# windows = Windows daemon
 
-# Switch via configuration (requires restart)
-# Edit C:\ProgramData\Docker\config\daemon.json
-# Add: "experimental": true (if needed for your version)
-# Then configure isolation level
+# Windows Server with Docker Engine runs Windows containers.
+# Docker Engine's experimental LCOW mode was removed in Docker Engine 23.0,
+# so use Docker Desktop with WSL2 for Linux containers on a Windows host.
 ```
 
 ## What Happens to Portainer When You Switch?
 
-When you switch container modes, **running containers are not accessible** in the new mode. Portainer itself must be restarted to reconnect to the new Docker engine context.
+When you switch container modes, **running containers from the previous mode are not accessible** in the new default Docker context. Run Portainer using the image and socket mount that matches the active engine.
 
 ```powershell
 # 1. Stop Portainer
 docker stop portainer
 
 # 2. Switch container mode
-& "$Env:ProgramFiles\Docker\Docker\DockerCli.exe" -SwitchWindowsEngine
+docker desktop engine use windows
 
-# 3. Restart Portainer (using Windows container mode syntax)
-docker start portainer
-# OR create a new Portainer container appropriate for Windows containers
+# 3. Create Portainer for Windows containers
+docker volume create portainer_data
 docker run -d `
-  -p 9000:9000 `
+  -p 9443:9443 `
   -p 8000:8000 `
   --name portainer-win `
   --restart always `
   -v \\.\pipe\docker_engine:\\.\pipe\docker_engine `
   -v portainer_data:C:\data `
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Recommended Pattern: Two Portainer Instances
 
-Run separate Portainer instances for each mode:
+Keep separate Portainer instances and data volumes for each mode, and start the one that matches the active engine:
 
 ```powershell
-# Portainer for Linux containers (port 9000)
+# Portainer for Linux containers (https://localhost:9443)
+docker volume create portainer_linux_data
 docker run -d `
-  -p 9000:9000 `
+  -p 9443:9443 `
+  -p 8000:8000 `
   --name portainer-linux `
-  -v \\.\pipe\docker_engine:\\.\pipe\docker_engine `
-  -v portainer_linux_data:C:\data `
-  portainer/portainer-ce:latest
+  --restart always `
+  -v /var/run/docker.sock:/var/run/docker.sock `
+  -v portainer_linux_data:/data `
+  portainer/portainer-ce:lts
 
-# Portainer for Windows containers (port 9001)
+# Portainer for Windows containers (https://localhost:9444)
+docker volume create portainer_windows_data
 docker run -d `
-  -p 9001:9000 `
+  -p 9444:9443 `
+  -p 8001:8000 `
   --name portainer-windows `
+  --restart always `
   -v \\.\pipe\docker_engine:\\.\pipe\docker_engine `
   -v portainer_windows_data:C:\data `
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
-Access:
-- Linux containers: `http://localhost:9000`
-- Windows containers: `http://localhost:9001`
+Access when the matching engine is active:
+- Linux containers: `https://localhost:9443`
+- Windows containers: `https://localhost:9444`
 
 ## Verifying Current Mode
 
 ```powershell
 # Check Docker mode
-docker version --format '{{.Server.Os}}'
+docker info --format '{{.OSType}}'
 # Outputs: linux or windows
 
-# Check available images by architecture
+# Check available local images
 docker images --format "{{.Repository}}:{{.Tag}} {{.ID}}"
 
 # Check if a specific image is available for current mode
@@ -118,9 +124,9 @@ docker manifest inspect nginx:alpine | Select-String "os"
 | Image Type | Linux Mode | Windows Mode |
 |-----------|-----------|-------------|
 | `nginx:alpine` | ✓ Works | ✗ Fails |
-| `mcr.microsoft.com/windows/servercore/iis` | ✗ Fails | ✓ Works |
-| `mcr.microsoft.com/dotnet/aspnet:8.0` | ✓ Works | ✓ Works (different tag) |
+| `mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2022` | ✗ Fails | ✓ Works |
+| `mcr.microsoft.com/dotnet/aspnet:8.0` | ✓ Works | ✗ Use a Windows-specific tag such as `8.0-nanoserver-ltsc2022` |
 
 ## Conclusion
 
-Switching between Linux and Windows container modes is a Docker-level operation that affects Portainer's view of the environment. For teams that need both container types, either maintain separate Portainer instances or use a Portainer Business Edition environment that spans both contexts. The most common setup for development is Linux containers via WSL2 (no mode switching needed), with Windows container mode used only for Windows-specific workloads.
+Switching between Linux and Windows container modes is a Docker-level operation that affects Portainer's view of the environment. For teams that need both container types, either maintain separate Portainer instances or manage separate Docker environments, such as one Linux host and one Windows container host. The most common setup for development is Linux containers via WSL2 (no mode switching needed), with Windows container mode used only for Windows-specific workloads.
