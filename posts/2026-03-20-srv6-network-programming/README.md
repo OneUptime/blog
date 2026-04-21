@@ -8,7 +8,7 @@ Description: Understand SRv6 Network Programming, the model for encoding forward
 
 ## Introduction
 
-SRv6 Network Programming, defined in RFC 8986, is a framework for encoding sequences of network behaviors directly in IPv6 packet headers. Each Segment Identifier (SID) in the Segment Routing Header (SRH) represents a specific network function at a specific node.
+SRv6 Network Programming, defined in RFC 8986, is a framework for encoding sequences of network behaviors directly in IPv6 packet headers. Each Segment Identifier (SID), either active in the IPv6 destination address or carried in the Segment Routing Header (SRH), identifies a specific behavior at a specific node.
 
 ## The Programming Model
 
@@ -18,21 +18,21 @@ SRv6 network programming: the source encodes a complete forwarding/service progr
 
 ```mermaid
 graph LR
-    Source -->|"SRH: [FW:e001, LB:e002, Dst:e003]\nPacket 'program'"| R1
-    R1 -->|"Execute FW:e001\n(firewall inspection)"| FW
-    FW -->|"Execute LB:e002\n(load balance)"| LB
-    LB -->|"Execute Dst:e003\n(deliver)"| Dst
+    Source -->|"SR Policy: FW:e001 → LB:e002 → Dst:e003\nPacket 'program'"| R1
+    R1 -->|"Active SID FW:e001\n(steer through firewall)"| FW
+    FW -->|"Active SID LB:e002\n(steer through load balancer)"| LB
+    LB -->|"Active SID Dst:e003\n(deliver)"| Dst
 ```
 
 ## SRv6 Instruction Set Architecture
 
-RFC 8986 defines a set of standard behaviors (instructions):
+RFC 8986 defines a base set of endpoint and SR policy headend behaviors. Related IANA registrations and Linux implementations also include SRH insertion behaviors:
 
-### Transit Functions (no SRH processing)
+### Transit Forwarding (no local SID processing)
 
 ```text
-T: Transit - forward without changing SRH
-   SID format: none (implicit, no SRH for plain transit)
+Transit node - ordinary IPv6 forwarding toward the active SID
+   SID format: none (no locally instantiated SID behavior)
 ```
 
 ### Endpoint Functions (process SRH at this node)
@@ -41,8 +41,8 @@ T: Transit - forward without changing SRH
 End        - Update SL, forward to next SID destination
 End.X      - Update SL, forward out specific interface
 End.T      - Update SL, lookup in specified table
-End.B6     - Insert SRH (policy insertion at midpoint)
-End.B6.Encaps - Encapsulate with new SRH
+End.B6.Insert - Insert SRH (policy insertion at midpoint; Linux iproute2 action End.B6)
+End.B6.Encaps - Encapsulate with new IPv6 header and SRH
 
 Endpoint with Decapsulation:
 End.DX2    - Decap + L2 cross-connect
@@ -59,16 +59,16 @@ End.DT46   - Decap + IPv4/IPv6 table lookup
 Goal: Route traffic through Firewall → IDS → Load Balancer → Server
 
 Step 1: Assign SIDs
-  Firewall (FW):   5f00:1:1:0:e001::   End.X (inspect + forward)
-  IDS:             5f00:2:1:0:e001::   End.X (inspect + forward)
-  Load Balancer:   5f00:3:1:0:e002::   End.X (select server)
-  Server A:        5f00:4:1:0:e000::   End.DT6
+  Firewall (FW):   5f00:1:1:0:e001::   End.X (steer through firewall node)
+  IDS:             5f00:2:1:0:e001::   End.X (steer through IDS node)
+  Load Balancer:   5f00:3:1:0:e002::   End.X (steer through load balancer node)
+  Server A:        5f00:4:1:0:e000::   End.DT6 (tenant IPv6 table lookup)
 
 Step 2: Source (or ingress PE) adds SRH
   Original packet: src=client dst=server
   After encapsulation:
     Outer IPv6: src=ingress dst=FW:e001
-    SRH: [IDS:e001, LB:e002, Server:e000], SL=2
+    SRH (wire order): [Server:e000, LB:e002, IDS:e001, FW:e001], SL=3
     Inner packet (original)
 ```
 
@@ -87,11 +87,11 @@ ip -6 route add 5f00:1:1:0:e001::/128 \
   nh6 2001:db8::2 \
   dev eth0
 
-# Configure End.DT6 (IPv6 L3VPN endpoint)
+# Configure End.DT6 (IPv6 L3VPN endpoint; requires VRF strict mode)
 ip -6 route add 5f00:1:1:0:e000::/128 \
   encap seg6local action End.DT6 \
   vrftable 100 \
-  dev lo
+  dev vrf100
 
 # Configure End.DX4 (IPv4 decap and forward)
 ip -6 route add 5f00:1:1:0:e002::/128 \
@@ -106,13 +106,13 @@ ip -6 route add 5f00:1:1:0:e002::/128 \
 # At the ingress node: encapsulate a packet with an SRH
 # Route packets matching 10.0.0.0/24 via SRv6 path
 
-ip -6 route add 5f00:4::/32 \
+ip route add 10.0.0.0/24 \
   encap seg6 mode encap \
   segs 5f00:1:1:0:e001::,5f00:2:1:0:e001::,5f00:3:1:0:e000:: \
   dev eth0
 
 # Verify encapsulation is applied
-ip -6 route show | grep seg6
+ip route show | grep seg6
 ```
 
 ## Inline Mode (No Encapsulation)
@@ -128,4 +128,4 @@ ip -6 route add 5f00:4::/32 \
 
 ## Conclusion
 
-SRv6 Network Programming provides a flexible instruction set for encoding forwarding and service instructions directly in IPv6 packets. The programmability enables service chaining, traffic engineering, and VPN services without additional signaling protocols. Monitor SRv6 service chain health end-to-end with OneUptime by checking application response from the path's perspective.
+SRv6 Network Programming provides a flexible instruction set for encoding forwarding and service instructions directly in IPv6 packets. The programmability enables service chaining, traffic engineering, and VPN services using IPv6 SIDs, with control-plane signaling handled by routing protocols, an SDN controller, or static configuration. Monitor SRv6 service chain health end-to-end with OneUptime by checking application response from the path's perspective.
