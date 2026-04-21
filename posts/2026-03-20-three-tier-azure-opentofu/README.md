@@ -85,6 +85,12 @@ resource "azurerm_application_gateway" "app_gw" {
     port = 443
   }
 
+  ssl_certificate {
+    name     = "app-cert"
+    data     = filebase64(var.app_gateway_certificate_path)
+    password = var.app_gateway_certificate_password
+  }
+
   backend_address_pool {
     name  = "app-service-pool"
     fqdns = [azurerm_linux_web_app.app.default_hostname]
@@ -97,6 +103,20 @@ resource "azurerm_application_gateway" "app_gw" {
     protocol              = "Https"
     probe_name            = "app-probe"
     pick_host_name_from_backend_address = true
+  }
+
+  probe {
+    name                                      = "app-probe"
+    protocol                                  = "Https"
+    path                                      = "/"
+    interval                                  = 30
+    timeout                                   = 30
+    unhealthy_threshold                       = 3
+    pick_host_name_from_backend_http_settings = true
+
+    match {
+      status_code = ["200-399"]
+    }
   }
 
   http_listener {
@@ -116,7 +136,7 @@ resource "azurerm_application_gateway" "app_gw" {
     priority                   = 100
   }
 
-  # WAF policy
+  # WAF configuration
   waf_configuration {
     enabled          = true
     firewall_mode    = "Prevention"
@@ -148,6 +168,10 @@ resource "azurerm_linux_web_app" "app" {
   # VNet integration for private database access
   virtual_network_subnet_id = azurerm_subnet.app.id
 
+  identity {
+    type = "SystemAssigned"
+  }
+
   site_config {
     vnet_route_all_enabled = true
     application_stack {
@@ -172,6 +196,7 @@ resource "azurerm_mssql_server" "sql" {
   location                     = azurerm_resource_group.rg.location
   version                      = "12.0"
   administrator_login          = "sqladmin"
+  administrator_login_password = var.sql_admin_password
   minimum_tls_version          = "1.2"
   public_network_access_enabled = false  # Private endpoint only
 
@@ -179,6 +204,26 @@ resource "azurerm_mssql_server" "sql" {
     login_username = "AzureAD Admin"
     object_id      = data.azuread_client_config.current.object_id
   }
+}
+
+# Azure SQL Database
+resource "azurerm_mssql_database" "db" {
+  name      = "three-tier-db"
+  server_id = azurerm_mssql_server.sql.id
+  sku_name  = "S0"
+}
+
+# Private DNS zone for Azure SQL private endpoint resolution
+resource "azurerm_private_dns_zone" "sql" {
+  name                = "privatelink.database.windows.net"
+  resource_group_name = azurerm_resource_group.rg.name
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "sql" {
+  name                  = "sql-private-dns-link"
+  resource_group_name   = azurerm_resource_group.rg.name
+  private_dns_zone_name = azurerm_private_dns_zone.sql.name
+  virtual_network_id    = azurerm_virtual_network.vnet.id
 }
 
 # Private endpoint for SQL Server
@@ -194,9 +239,14 @@ resource "azurerm_private_endpoint" "sql" {
     is_manual_connection           = false
     subresource_names              = ["sqlServer"]
   }
+
+  private_dns_zone_group {
+    name                 = "sql-dns-zone-group"
+    private_dns_zone_ids = [azurerm_private_dns_zone.sql.id]
+  }
 }
 ```
 
 ## Summary
 
-The Azure three-tier architecture built with OpenTofu uses Application Gateway v2 with WAF for DDoS protection and OWASP rule enforcement at the presentation tier. App Service VNet integration enables private communication to Azure SQL, which is accessible only through a private endpoint, never the public internet. Azure Application Insights provides end-to-end observability across all three tiers.
+The Azure three-tier architecture built with OpenTofu uses Application Gateway v2 with WAF for Layer 7 web attack protection and OWASP rule enforcement at the presentation tier. App Service VNet integration enables private communication to Azure SQL, which is accessible only through a private endpoint, never the public internet. Azure Application Insights provides end-to-end observability across all three tiers.
