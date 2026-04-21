@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Azure, NSG, Network Security Group, IPv4, Infrastructure as Code
 
-Description: Configure Azure Network Security Groups (NSGs) for IPv4 using Terraform, covering inbound and outbound security rules, subnet and NIC associations, and priority management.
+Description: Configure Azure Network Security Groups (NSGs) for IPv4 using Terraform, covering inbound security rules, subnet and NIC associations, and priority management.
 
 ## Introduction
 
@@ -79,10 +79,12 @@ resource "azurerm_network_security_group" "web" {
 
 ## Separate Security Rule Resources
 
+Use standalone `azurerm_network_security_rule` resources instead of inline `security_rule` blocks for a given NSG; do not manage the same NSG's rules with both styles.
+
 ```hcl
 resource "azurerm_network_security_rule" "block_bad_cidr" {
   name                        = "Block-Known-Bad"
-  priority                    = 50
+  priority                    = 100
   direction                   = "Inbound"
   access                      = "Deny"
   protocol                    = "*"
@@ -123,4 +125,4 @@ terraform apply
 
 ## Conclusion
 
-Azure NSGs in Terraform use priority-based rules (100–4096; lower = higher priority). Inline `security_rule` blocks are convenient for small NSGs; separate `azurerm_network_security_rule` resources are better for dynamic rule management. Associate NSGs with subnets for broad policies and with NICs for instance-specific overrides. Always end rules with an explicit deny-all at priority 4096.
+Azure NSGs in Terraform use priority-based rules (100–4096; lower = higher priority). Inline `security_rule` blocks are convenient for small NSGs; separate `azurerm_network_security_rule` resources are better for dynamic rule management. Do not combine inline rules and separate rule resources on the same NSG. Associate NSGs with subnets for broad policies and with NICs for instance-specific filtering; if both are associated, both must allow the traffic. Add explicit deny-all rules at priority 4096 only when you intentionally want to block remaining traffic before Azure's built-in default rules; Azure already includes default deny-all rules at priority 65500.
