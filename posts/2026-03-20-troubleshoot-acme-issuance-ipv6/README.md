@@ -35,7 +35,8 @@ ip -6 addr show | grep "scope global"
 
 # Check for CAA records that might restrict issuance
 dig CAA yourdomain.example.com +short
-# If CAA records exist, ensure letsencrypt.org is listed
+dig CAA example.com +short
+# If CAA records exist on the name or parent domain, ensure letsencrypt.org is listed
 ```
 
 ## Step 2: Test Port 80 Reachability over IPv6
@@ -56,13 +57,14 @@ nmap -6 -p 80 yourdomain.example.com
 
 ```bash
 # Verify the web server is listening on IPv6
-ss -tlnp | grep ':80'
+sudo ss -tlnp 'sport = :80'
+# Look for [::]:80 or your server's specific IPv6 address on port 80
 
 # For Nginx - check configuration
-nginx -T | grep "listen.*\[::\]"
+sudo nginx -T | grep "listen.*\[::\]"
 
 # If not listening on IPv6, add to Nginx config
-# listen [::]:80;  ← Must be in server block
+# listen [::]:80;  # Must be in a server block
 ```
 
 ## Step 4: Simulate the ACME Challenge Manually
@@ -72,6 +74,7 @@ Before running certbot, manually test the challenge process:
 ```bash
 # Create a test challenge token
 TOKEN="test-$(date +%s)"
+sudo mkdir -p /var/www/html/.well-known/acme-challenge
 echo "testcontent" | sudo tee \
   /var/www/html/.well-known/acme-challenge/$TOKEN
 
@@ -88,7 +91,7 @@ sudo rm /var/www/html/.well-known/acme-challenge/$TOKEN
 ## Step 5: Run certbot with Verbose Logging
 
 ```bash
-# Run with maximum verbosity to capture all details
+# Run with high verbosity to capture more details
 sudo certbot certonly \
   --webroot \
   --webroot-path /var/www/html \
@@ -96,10 +99,10 @@ sudo certbot certonly \
   --email admin@example.com \
   --agree-tos \
   --dry-run \
-  --verbose 2>&1 | tee /tmp/certbot-debug.log
+  -vvv 2>&1 | tee /tmp/certbot-debug.log
 
 # Analyze the output
-grep -E "ERROR|WARNING|ipv6|connection|timeout|refused" /tmp/certbot-debug.log
+grep -Ei "ERROR|WARNING|ipv6|connection|timeout|refused" /tmp/certbot-debug.log
 ```
 
 ## Step 6: Check ACME Server Reachability
@@ -138,7 +141,9 @@ sudo ip6tables -A INPUT -p tcp --dport 80 -j ACCEPT
 # Fix: Wait for DNS propagation, then retry
 # Add propagation delay:
 certbot certonly --dns-cloudflare \
-  --dns-cloudflare-propagation-seconds 120 ...
+  --dns-cloudflare-credentials ~/.secrets/certbot/cloudflare.ini \
+  --dns-cloudflare-propagation-seconds 120 \
+  -d yourdomain.example.com
 
 # Error: "CAA record does not allow"
 # Fix: Add letsencrypt.org to CAA records
@@ -146,7 +151,9 @@ certbot certonly --dns-cloudflare \
 
 # Error: "too many certificates already issued"
 # Fix: Use --dry-run for testing, wait for rate limit reset
-certbot certonly --dry-run ...
+certbot certonly --dry-run --webroot \
+  --webroot-path /var/www/html \
+  -d yourdomain.example.com
 ```
 
 ## Using Let's Encrypt Staging for Testing
@@ -165,7 +172,7 @@ sudo certbot certonly \
   --verbose
 
 # Staging certificates are not trusted but confirm the process works
-# Switch to --no-staging (or remove --staging) for production
+# Remove --staging for production
 ```
 
 ## Using Online Tools to Validate
@@ -173,9 +180,12 @@ sudo certbot certonly \
 ```bash
 # Use letsdebug.net to pre-check your setup
 # It simulates Let's Encrypt validation:
-curl -s "https://letsdebug.net/yourdomain.example.com/new" \
-  -H "Content-Type: application/json" \
-  -d '{"method":"http-01"}' | jq .
+TEST_ID=$(curl -s --data \
+  '{"method":"http-01","domain":"yourdomain.example.com"}' \
+  -H "Content-Type: application/json" https://letsdebug.net | jq -r '.ID')
+sleep 10
+curl -s -H "Accept: application/json" \
+  "https://letsdebug.net/yourdomain.example.com/$TEST_ID" | jq .
 
 # Check IPv6 connectivity to your server
 # https://ipv6-test.com/validate.php?url=http://yourdomain.example.com/
