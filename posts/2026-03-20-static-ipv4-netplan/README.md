@@ -62,6 +62,8 @@ network:
 
 Replace `ens3` with your interface name, `192.168.1.100/24` with your desired IP and prefix, and `192.168.1.1` with your gateway.
 
+If you are specifically on Ubuntu 18.04, replace the `routes` block with `gateway4: 192.168.1.1`; Netplan in that release does not support `to: default`.
+
 ## Applying the Configuration
 
 Test the configuration first (reverts after 120 seconds if you don't confirm):
