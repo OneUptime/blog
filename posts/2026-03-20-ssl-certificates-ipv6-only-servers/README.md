@@ -8,7 +8,7 @@ Description: Learn how to obtain and configure SSL/TLS certificates for servers 
 
 ---
 
-IPv6-only servers present unique certificate challenges. Certificate Authorities don't issue certificates for bare IPv6 addresses in the same way as domain names, and DNS-based validation becomes critical when inbound port 80 may not be reachable over IPv4.
+IPv6-only servers present unique certificate challenges. Certificate Authorities issue certificates for domain names that resolve to IPv6 addresses, and some public CAs now issue certificates for bare IP addresses with additional constraints. DNS-based validation becomes useful when inbound HTTP/TLS challenge ports are not reachable or when you need wildcard certificates.
 
 ## Certificate Options for IPv6-Only Servers
 
@@ -30,7 +30,7 @@ ipv6server  IN  AAAA  2001:db8::10
 # Verify AAAA record resolves
 dig AAAA ipv6server.example.com +short
 
-# Obtain Let's Encrypt certificate using DNS-01 (no inbound IPv4 needed)
+# Obtain Let's Encrypt certificate using DNS-01 (no inbound HTTP needed)
 certbot certonly \
   --dns-cloudflare \
   --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini \
@@ -41,12 +41,14 @@ certbot certonly \
 
 ## Approach 2: IP SAN Certificate (IPv6 Address in Certificate)
 
-You can include an IPv6 address directly in a certificate's SAN. Public CAs like Let's Encrypt don't support this, but you can use an internal CA:
+You can include an IPv6 address directly in a certificate's SAN. Public CAs can support this, but Let's Encrypt requires IP address certificates to use its short-lived profile with HTTP-01 or TLS-ALPN-01 validation, not DNS-01. For internal IPv6-only services, you can use an internal CA:
 
 ```bash
 # Create a private CA
 openssl genrsa -out ca.key 4096
 openssl req -new -x509 -key ca.key -out ca.crt -days 3650 \
+  -addext "basicConstraints = critical,CA:TRUE" \
+  -addext "keyUsage = critical,keyCertSign,cRLSign" \
   -subj "/CN=Internal CA/O=MyOrg"
 
 # Create server private key
@@ -64,6 +66,9 @@ req_extensions = v3_req
 CN = 2001:db8::10
 
 [v3_req]
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
 subjectAltName = IP:2001:db8::10, DNS:ipv6server.example.com
 EOF
 
@@ -81,7 +86,8 @@ openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
 ```nginx
 server {
     # IPv6-only listen
-    listen [::]:443 ssl http2 ipv6only=on;
+    listen [::]:443 ssl ipv6only=on;
+    http2 on;
 
     server_name ipv6server.example.com;
 
@@ -98,11 +104,11 @@ server {
 
 ```bash
 # Check the certificate's SAN field
-openssl x509 -in server.crt -noout -text | grep -A 5 "Subject Alternative"
+openssl x509 -in server.crt -noout -ext subjectAltName
 
-# Expected output:
+# Expected output includes:
 # X509v3 Subject Alternative Name:
-#   IP Address:2001:DB8::10, DNS:ipv6server.example.com
+#   IP Address:2001:DB8:0:0:0:0:0:10, DNS:ipv6server.example.com
 ```
 
 ## Connecting to the Server Using the IPv6 Address
@@ -133,7 +139,7 @@ For IPv6-only servers using Let's Encrypt with DNS-01:
   --dns-cloudflare \
   --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini \
   --quiet \
-  --post-hook "systemctl reload nginx"
+  --deploy-hook "systemctl reload nginx"
 ```
 
 ## Monitoring Certificate Expiry on IPv6 Servers
@@ -146,7 +152,8 @@ PORT=443
 
 # Get expiry date
 EXPIRY=$(echo | openssl s_client \
-  -connect "[$HOST]:$PORT" \
+  -6 \
+  -connect "$HOST:$PORT" \
   -servername "$HOST" 2>/dev/null \
   | openssl x509 -noout -enddate 2>/dev/null \
   | cut -d= -f2)
@@ -154,4 +161,4 @@ EXPIRY=$(echo | openssl s_client \
 echo "Certificate expires: $EXPIRY"
 ```
 
-IPv6-only servers can be fully secured with TLS using domain-based certificates and DNS-01 validation, which requires no IPv4 connectivity and supports wildcard certificates.
+IPv6-only servers can be fully secured with TLS using domain-based certificates and DNS-01 validation, which requires no inbound HTTP connectivity and supports wildcard certificates.
