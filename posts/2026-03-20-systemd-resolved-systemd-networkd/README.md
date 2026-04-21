@@ -8,7 +8,7 @@ Description: Learn how to configure systemd-resolved alongside systemd-networkd 
 
 ## Introduction
 
-`systemd-resolved` is a DNS resolver and name server that integrates tightly with `systemd-networkd`. Together they provide a complete network stack including IP configuration and DNS resolution for Linux servers and desktops.
+`systemd-resolved` is a DNS resolver and local stub DNS server that integrates tightly with `systemd-networkd`. Together they provide a complete network stack including IP configuration and DNS resolution for Linux servers and desktops.
 
 ## Enabling the Services
 
@@ -25,7 +25,7 @@ Replace the default `/etc/resolv.conf` with the systemd-resolved stub:
 sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 ```
 
-This makes all DNS queries go through the systemd-resolved stub listener at `127.0.0.53`.
+This makes DNS clients that read `/etc/resolv.conf` use the systemd-resolved stub listener at `127.0.0.53`.
 
 ## Configuring DNS in Network Unit Files
 
@@ -93,7 +93,7 @@ DNSSEC=yes
 Test DNSSEC:
 
 ```bash
-resolvectl query --dnssec=yes google.com
+resolvectl query --validate=yes google.com
 ```
 
 ## Flushing the DNS Cache
