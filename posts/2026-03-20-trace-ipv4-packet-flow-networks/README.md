@@ -23,7 +23,7 @@ Description: Tracing IPv4 packet flow involves using tools like traceroute, ping
 
 traceroute 8.8.8.8
 
-# ICMP-based traceroute (requires root)
+# ICMP-based traceroute (may require root/CAP_NET_RAW)
 traceroute -I 8.8.8.8
 
 # TCP SYN traceroute on port 80
@@ -60,9 +60,8 @@ def trace_route(destination: str, max_hops: int = 30, timeout: int = 2):
         elif reply.haslayer(ICMP):
             src = reply[IP].src
             print(f"{ttl:2d}  {src}")
-            if reply[ICMP].type == 0:  # Echo Reply = destination reached
-                break
-            if reply[ICMP].type == 3:  # Port Unreachable = destination reached
+            icmp = reply[ICMP]
+            if icmp.type == 3 and icmp.code == 3:  # Port Unreachable = destination reached
                 break
 
 trace_route("8.8.8.8")
@@ -83,10 +82,10 @@ flowchart LR
 On a Linux box acting as a router, capture traffic on each interface to follow the flow:
 
 ```bash
-# Watch incoming packets on the WAN interface
+# Watch packets leaving through the WAN interface
 tcpdump -i eth0 -n 'host 8.8.8.8' -w /tmp/wan.pcap &
 
-# Watch forwarded packets on the LAN interface
+# Watch packets arriving from the LAN interface
 tcpdump -i eth1 -n 'host 8.8.8.8' -w /tmp/lan.pcap &
 ```
 
@@ -94,5 +93,5 @@ tcpdump -i eth1 -n 'host 8.8.8.8' -w /tmp/lan.pcap &
 
 - `traceroute`/`mtr` use TTL expiry to map each hop along a path.
 - `tcpdump` captures confirm exact packet fields at specific observation points.
-- Asterisks (`* * *`) in traceroute indicate ICMP Time Exceeded responses are blocked, not necessarily a down router.
+- Asterisks (`* * *`) in traceroute indicate no response was received before the timeout, often because ICMP Time Exceeded responses are blocked or rate-limited, not necessarily a down router.
 - TCP-based traceroute (`-T`) often bypasses firewalls that block UDP/ICMP probes.
