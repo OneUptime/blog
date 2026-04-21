@@ -17,10 +17,9 @@ As infrastructure grows, `tofu plan` can take 5–30 minutes in large configurat
 
 time tofu plan
 
-# Enable debug logging to see which resources take longest
+# Enable debug logging to inspect refresh activity
 TF_LOG=DEBUG TF_LOG_PATH=/tmp/plan-timing.log tofu plan
-grep "Refreshing state" /tmp/plan-timing.log | \
-  awk '{print $1, $NF}' | sort
+grep -i "refresh" /tmp/plan-timing.log | head
 ```
 
 ## Optimization 1: Skip Refresh for Known-Stable Infrastructure
@@ -47,11 +46,11 @@ tofu plan -parallelism=30
 ## Optimization 3: Target Specific Resources
 
 ```bash
-# Only plan the resources you are changing
+# Focus planning on a module or whole resource address while developing
 tofu plan -target=module.eks
 tofu plan -target=aws_instance.web -target=aws_security_group.web
 
-# Useful during development - always run a full plan before merging
+# Use targeting sparingly - always run a full plan before merging
 ```
 
 ## Optimization 4: Split Configuration into Smaller State Files
@@ -71,7 +70,7 @@ After:
 
 ## Optimization 5: Cache Providers
 
-Provider binary download at each `tofu init` adds startup time:
+Provider binary downloads during `tofu init` add startup time in fresh working directories or CI runs:
 
 ```bash
 # Configure a plugin cache directory
@@ -84,7 +83,7 @@ echo 'export TF_PLUGIN_CACHE_DIR="$HOME/.terraform.d/plugin-cache"' >> ~/.zshrc
 
 ## Optimization 6: Reduce Data Sources
 
-Each data source makes a cloud API call. Consolidate or eliminate unnecessary reads:
+Many provider data sources make API calls. Consolidate or eliminate unnecessary reads:
 
 ```hcl
 # BAD - 10 separate data source calls for availability zones
