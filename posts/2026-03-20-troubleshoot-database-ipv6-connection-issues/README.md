@@ -50,13 +50,13 @@ ss -tlnp | grep ':5432'  # Shows both IPv4 and IPv6
 ip -6 addr show
 
 # Ping the database server over IPv6
-ping6 2001:db8::10
+ping -6 2001:db8::10
 
 # Test port reachability
 nc -6 -zv 2001:db8::10 5432
 
 # Traceroute over IPv6
-traceroute6 2001:db8::10
+traceroute -6 2001:db8::10
 
 # Or using mtr
 mtr -6 2001:db8::10
@@ -89,13 +89,13 @@ ufw allow 5432/tcp
 grep -i listen_addresses /etc/postgresql/*/main/postgresql.conf
 
 # MySQL/MariaDB - check bind-address
-grep -i bind.address /etc/mysql/mariadb.conf.d/*.cnf /etc/my.cnf.d/*.cnf 2>/dev/null
+grep -Ei 'bind[-_]address' /etc/mysql/mysql.conf.d/*.cnf /etc/mysql/mariadb.conf.d/*.cnf /etc/mysql/my.cnf /etc/my.cnf /etc/my.cnf.d/*.cnf 2>/dev/null
 
 # Redis - check bind
 grep -i "^bind" /etc/redis/redis.conf
 
-# MongoDB - check bindIp
-grep -i bindIp /etc/mongod.conf
+# MongoDB - check bindIp and IPv6 support
+grep -Ei "bindIp|ipv6" /etc/mongod.conf
 
 # After finding the issue, edit the config and restart
 systemctl restart postgresql
@@ -112,6 +112,7 @@ grep -E "^host.*::" /etc/postgresql/*/main/pg_hba.conf
 
 # If missing, add IPv6 entry
 echo "host all all 2001:db8::/32 scram-sha-256" >> /etc/postgresql/15/main/pg_hba.conf
+systemctl reload postgresql
 
 # MySQL/MariaDB - check user grants
 mysql -u root -p -e "SELECT User, Host FROM mysql.user WHERE Host LIKE '%:%';"
@@ -130,7 +131,7 @@ PGSSLMODE=disable psql "host=2001:db8::10 port=5432 user=postgres dbname=postgre
 mysql -h 2001:db8::10 -u root -p --verbose
 
 # Redis with netcat
-echo "PING" | nc -6 2001:db8::10 6379
+printf "PING\r\n" | nc -6 -w 2 2001:db8::10 6379
 
 # MongoDB with mongosh verbose
 mongosh "mongodb://[2001:db8::10]:27017" --verbose
@@ -141,6 +142,7 @@ mongosh "mongodb://[2001:db8::10]:27017" --verbose
 ```bash
 # Fix 1: Database not listening on IPv6
 # → Update bind-address / listen_addresses to IPv6 address or ::
+# For MongoDB, also enable net.ipv6: true and set net.bindIp/net.bindIpAll
 
 # Fix 2: Firewall blocking
 ip6tables -A INPUT -p tcp --dport 5432 -j ACCEPT
@@ -153,9 +155,9 @@ systemctl reload postgresql
 # Force IPv6 resolution explicitly using the IPv6 address directly
 
 # Fix 5: Application connecting to hostname that resolves to IPv4
-# Configure application to use IPv6 address literal: [2001:db8::10]
+# Use an IPv6 address literal directly; in URI-style connection strings, wrap it in brackets: [2001:db8::10]
 ```
 
 ## Summary
 
-Troubleshoot database IPv6 connectivity systematically: (1) verify the database is listening on IPv6 with `ss -6 -tlnp`; (2) test network reachability with `ping6` and `nc -6 -zv`; (3) check firewall rules with `ip6tables -L`; (4) verify database bind address in config files; (5) check access control (pg_hba.conf, MySQL user host grants, Redis bind); (6) test with verbose clients. Most issues are bind address misconfiguration or missing firewall rules.
+Troubleshoot database IPv6 connectivity systematically: (1) verify the database is listening on IPv6 with `ss -6 -tlnp`; (2) test network reachability with `ping -6` and `nc -6 -zv`; (3) check firewall rules with `ip6tables -L`; (4) verify database bind address in config files; (5) check access control (pg_hba.conf, MySQL user host grants, Redis bind); (6) test with verbose clients. Most issues are bind address misconfiguration or missing firewall rules.
