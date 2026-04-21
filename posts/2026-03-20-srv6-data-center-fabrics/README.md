@@ -8,57 +8,71 @@ Description: Understand how SRv6 is deployed in data center Clos fabrics to repl
 
 ## Introduction
 
-Data centers use Clos (spine-leaf) fabrics where traffic engineering and multi-tenancy have traditionally required MPLS+EVPN. SRv6 replaces the MPLS data plane while retaining EVPN as the control plane, simplifying the architecture and eliminating MPLS label management overhead.
+Data centers use Clos (spine-leaf) fabrics where traffic engineering and multi-tenancy are often implemented with MPLS+EVPN or VXLAN+EVPN overlays. In an SRv6-based design, EVPN can remain the control plane while SRv6 service SIDs replace MPLS labels in the data plane, reducing label-signaling dependencies in the underlay.
 
 ## SRv6 in a Clos Fabric
 
-```yaml
+```text
                     +------------------+
                     |   Spine Layer    |
-                    |  5f00:spine::/48 |
+                    | 2001:db8:ff::/48 |
                     +------------------+
                    /                    \
       +-----------+                      +-----------+
       |  Leaf 1   |                      |  Leaf 2   |
-      | 5f00:1::/48|                    | 5f00:2::/48|
+      |2001:db8:1:0::/64|              |2001:db8:2:0::/64|
       +-----------+                      +-----------+
            |                                   |
       Server A (VRF Red)               Server B (VRF Red)
-      fd00:red::a/64                   fd00:red::b/64
+      fd00:101::a/64                   fd00:101::b/64
 ```
 
-## BGP EVPN with SRv6 Transport
+## BGP VPN with SRv6 Transport
 
-```javascript
-! Leaf 1 BGP configuration (FRR example)
+```text
+! Leaf 1 BGP configuration (FRR L3VPN/SRv6 example)
+segment-routing
+  srv6
+    encapsulation
+      source-address 2001:db8:1:0::1
+    !
+    locators
+      locator MAIN
+        prefix 2001:db8:1:0::/64
+      !
+    !
+  !
+!
+
 router bgp 65001
   bgp router-id 1.1.1.1
 
-  neighbor 5f00:spine:: remote-as 65000
-  neighbor 5f00:spine:: update-source lo
+  neighbor 2001:db8:ff:1::1 remote-as 65000
+  neighbor 2001:db8:ff:1::1 update-source lo
 
-  address-family l2vpn evpn
-    neighbor 5f00:spine:: activate
-    advertise-all-vni
-    advertise-svi-ip
+  address-family ipv6 vpn
+    neighbor 2001:db8:ff:1::1 activate
+    neighbor 2001:db8:ff:1::1 encapsulation-srv6
   !
 
   address-family ipv6 unicast
-    network 5f00:1::/48  ! Advertise own locator
+    network 2001:db8:1:0::/64  ! Advertise own locator
+  !
+
+  segment-routing srv6
+    locator MAIN
+    encap-behavior H_Encaps_Red
   !
 !
 
 ! VRF with SRv6 End.DT6 SID
-vrf RED
-  vni 10100
-  !
-
-! Assign End.DT6 SID for VRF Red
-! SID: 5f00:1:0:e100:: (function e100 = VRF Red)
-segment-routing
-  srv6
-    locator MAIN
-    !
+router bgp 65001 vrf RED
+  address-family ipv6 unicast
+    rd vpn export 65001:10100
+    rt vpn both 65001:10100
+    import vpn
+    export vpn
+    sid vpn export explicit 2001:db8:1:0:e100::
   !
 !
 ```
@@ -67,14 +81,14 @@ segment-routing
 
 ```text
 EVPN Type-2 (MAC/IP route) with SRv6:
-  Route: MAC=aa:bb:cc:dd:ee:ff, IP=fd00:red::a
-  SRv6 L3 VPN SID: 5f00:1:0:e100::
-  → Leaf 2 installs: route to fd00:red::a
-    via encap seg6 mode encap segs [5f00:1:0:e100::]
+  Route: MAC=aa:bb:cc:dd:ee:ff, IP=fd00:101::a
+  SRv6 L3 Service SID: 2001:db8:1:0:e100::
+  → Leaf 2 installs: route to fd00:101::a
+    via encap seg6 mode encap segs 2001:db8:1:0:e100::
 
 EVPN Type-5 (IP prefix route) with SRv6:
-  Prefix: fd00:red::/64
-  SRv6 L3 VPN SID: 5f00:1:0:e100::
+  Prefix: fd00:101::/64
+  SRv6 L3 Service SID: 2001:db8:1:0:e100::
   → Remote leafs install forwarding entry with SRv6 encap
 ```
 
@@ -86,12 +100,12 @@ EVPN Type-5 (IP prefix route) with SRv6:
 # Normal path: Leaf1 → Spine1 → Leaf2
 # Engineered path: Leaf1 → Spine2 → Leaf2 (lower latency spine)
 
-ip -6 route add 5f00:2::/48 \
+ip -6 route add 2001:db8:2:0::/64 \
   encap seg6 mode encap \
-  segs 5f00:spine2:0:e001::,5f00:2:0:e000:: \
+  segs 2001:db8:ff:2:e001::,2001:db8:2:0:e000:: \
   dev eth-spine2
 
-# This ensures VRF Red traffic from Leaf1 to Leaf2 uses Spine2
+# Traffic matching this route or SR policy uses Spine2
 ```
 
 ## ECMP and Load Balancing with SRv6
@@ -100,28 +114,30 @@ ip -6 route add 5f00:2::/48 \
 # SRv6 works with ECMP - multiple paths to same locator
 # Leaf 1 has two spines: traffic is hashed across both
 
-ip -6 route add 5f00:2::/48 \
-  nexthop via fd00:l1-s1::spine1 dev eth0 weight 1 \
-  nexthop via fd00:l1-s2::spine2 dev eth1 weight 1
+ip -6 route add 2001:db8:2:0::/64 \
+  nexthop via fd00:1:1::1 dev eth0 weight 1 \
+  nexthop via fd00:1:2::1 dev eth1 weight 1
 
-# With SRv6, the outer IPv6 header provides 5-tuple for ECMP hashing:
-# src=5f00:1::, dst=5f00:2:0:e100:: - deterministic per-flow
+# SRv6 ECMP hashing includes the outer IPv6 source, destination,
+# and flow label, keeping packets for the same flow on one path.
 
 # Verify ECMP distribution
-ethtool -S eth0 | grep rx_queue
+for dev in eth0 eth1; do
+  ethtool -S "$dev" | grep -E 'tx.*(packets|bytes)'
+done
 ```
 
 ## Monitoring SRv6 Fabric Health
 
 ```bash
 # Ping all leaf locators from a spine
-for leaf in 5f00:1:: 5f00:2:: 5f00:3:: 5f00:4::; do
+for leaf in 2001:db8:1:0::1 2001:db8:2:0::1 2001:db8:3:0::1 2001:db8:4:0::1; do
   result=$(ping6 -c 2 -W 1 "$leaf" 2>&1 | grep -oP '\d+\.\d+ ms' | tail -1)
   echo "Leaf $leaf: $result"
 done
 
 # Monitor SRv6 encap counter (kernel stats)
-ip -s -6 route show 5f00:2::/48 | grep -A3 "encap"
+ip -s -6 route show 2001:db8:2:0::/64 | grep -A3 "encap"
 ```
 
 ## Conclusion
