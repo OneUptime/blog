@@ -42,9 +42,9 @@ http_access deny all
 ## Destination IP Whitelisting
 
 ```text
-# Whitelist destination IP ranges
-acl allowed_dest dst 93.184.216.0/24   # example.com IP range
-acl allowed_dest dst 140.82.112.0/20   # GitHub IP range
+# Whitelist destination IP ranges (replace example ranges with your targets)
+acl allowed_dest dst 203.0.113.0/24
+acl allowed_dest dst 198.51.100.0/24
 
 http_access allow allowed_clients allowed_dest
 http_access deny all
@@ -137,11 +137,11 @@ http_access deny all
 ## Reloading ACL Changes
 
 ```bash
-# Reload Squid config without restart
-sudo squid -k reconfigure
-
 # Verify new config syntax first
 sudo squid -k parse
+
+# Reload Squid config without restart
+sudo squid -k reconfigure
 ```
 
 ## Testing ACL Rules
@@ -151,9 +151,9 @@ sudo squid -k parse
 curl -x http://squid-server:3128 https://github.com -I
 
 # Test from a non-whitelisted IP (should fail)
-# Use curl --interface to simulate different source IPs in testing
+# Use curl --interface with a configured local IP or interface to test source-based rules
 ```
 
 ## Conclusion
 
-Squid ACLs follow a top-down, first-match-wins evaluation model. Define ACLs for sources (`src`), destinations (`dstdomain`, `dst`), methods, times, and users. Place deny rules before allows for blocklists. Use external ACL files for large domain or IP lists. Always reload with `squid -k reconfigure` after changes.
+Squid ACLs follow a top-down, first-match-wins evaluation model. Define ACLs for sources (`src`), destinations (`dstdomain`, `dst`), methods, times, and users. Place deny rules before allows for blocklists. Use external ACL files for large domain or IP lists. Always verify with `squid -k parse`, then reload with `squid -k reconfigure` after changes.
