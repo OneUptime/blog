@@ -13,8 +13,8 @@ Description: Learn how to diagnose and fix gRPC IPv4 connection failures using s
 | `UNAVAILABLE` (14) | Server unreachable | Wrong IP/port, server down, firewall |
 | `DEADLINE_EXCEEDED` (4) | Call timed out | Slow server, network latency |
 | `UNIMPLEMENTED` (12) | Method not found | Wrong proto, wrong server |
-| `INTERNAL` (13) | Server error | Bug in server handler |
-| `UNAUTHENTICATED` (16) | TLS/cert failure | Wrong CA, expired cert |
+| `INTERNAL` (13) | Internal error | Protocol/parsing error, explicit server error |
+| `UNAUTHENTICATED` (16) | Invalid auth credentials | Missing or invalid call credentials |
 
 ## Test with grpcurl
 
@@ -26,7 +26,7 @@ go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 # List services (server must have reflection enabled)
 grpcurl -plaintext 192.168.1.10:50051 list
 
-# Call a specific method
+# Call a specific method (uses reflection unless you pass -proto or -protoset)
 grpcurl -plaintext -d '{"name":"world"}' \
     192.168.1.10:50051 helloworld.Greeter/SayHello
 
@@ -38,8 +38,9 @@ grpcurl -cacert ca.crt -cert client.crt -key client.key \
 ## Enable gRPC Verbose Logging
 
 ```bash
-# Python - set environment variable before running
-GRPC_VERBOSITY=DEBUG GRPC_TRACE=all python client.py
+# Python/C-core - set environment variables before running
+# GRPC_VERBOSITY is deprecated; use only for local debugging
+GRPC_VERBOSITY=DEBUG GRPC_TRACE=client_channel,connectivity_state,handshaker python client.py
 
 # Go
 export GRPC_GO_LOG_VERBOSITY_LEVEL=99
@@ -63,14 +64,14 @@ with grpc.insecure_channel("192.168.1.10:50051") as channel:
     except grpc.RpcError as e:
         print(f"Code:    {e.code()}")
         print(f"Details: {e.details()}")
-        print(f"Debug:   {dict(e.trailing_metadata())}")
+        print(f"Trailing metadata: {dict(e.trailing_metadata() or [])}")
 
         if e.code() == grpc.StatusCode.UNAVAILABLE:
-            print("→ Check: is server running? correct IP? firewall?")
+            print("→ Check: is server running? correct IP? firewall? TLS settings?")
         elif e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
             print("→ Increase timeout or investigate server latency")
         elif e.code() == grpc.StatusCode.UNAUTHENTICATED:
-            print("→ Check TLS certificates and CA trust")
+            print("→ Check auth metadata and call credentials")
 ```
 
 ## Network-Level Checks
@@ -83,7 +84,8 @@ timeout 3 bash -c 'echo > /dev/tcp/192.168.1.10/50051' && echo "open" || echo "c
 tcpdump -i eth0 'host 192.168.1.10 and port 50051' -w /tmp/grpc.pcap
 
 # Check for TLS issues
-openssl s_client -connect 192.168.1.10:50051 -CAfile ca.crt
+openssl s_client -connect 192.168.1.10:50051 -alpn h2 \
+    -CAfile ca.crt -verify_ip 192.168.1.10 -verify_return_error
 
 # Check that the gRPC server is actually bound to the expected address
 ss -tlnp | grep 50051
@@ -107,4 +109,4 @@ python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. hello.proto
 
 ## Conclusion
 
-Start with `grpcurl` to verify the server is reachable and responding. Enable verbose logging (`GRPC_VERBOSITY=DEBUG`) to see connection handshakes and status codes. Check network-level connectivity with `tcpdump` and `ss` before assuming it's a gRPC configuration issue. Most `UNAVAILABLE` errors are caused by the server binding to `127.0.0.1` instead of `0.0.0.0`, a firewall rule, or the server crashing on startup.
+Start with `grpcurl` to verify the server is reachable and responding. Enable targeted gRPC tracing (`GRPC_TRACE=client_channel,connectivity_state,handshaker`) with debug logging to see connection handshakes and status codes. Check network-level connectivity with `tcpdump` and `ss` before assuming it's a gRPC configuration issue. Common `UNAVAILABLE` errors are caused by the server binding to `127.0.0.1` instead of `0.0.0.0`, a firewall rule, or the server crashing on startup.
