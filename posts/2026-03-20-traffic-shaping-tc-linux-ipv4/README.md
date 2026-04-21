@@ -46,7 +46,7 @@ The Token Bucket Filter (TBF) is the simplest way to limit an interface rate:
 # Limit eth0 to 10 Mbps outbound
 sudo tc qdisc add dev eth0 root tbf \
   rate 10mbit \
-  burst 32kbit \
+  burst 32kb \
   latency 400ms
 
 # Remove the qdisc
@@ -79,23 +79,26 @@ sudo tc class add dev eth0 parent 1:1 classid 1:30 htb rate 10mbit ceil 100mbit 
 ```bash
 # Send traffic to TCP port 22 (SSH) to the high priority class
 sudo tc filter add dev eth0 protocol ip parent 1:0 prio 1 u32 \
+  match ip protocol 6 0xff \
   match ip dport 22 0xffff flowid 1:10
 
 # Send traffic to port 80/443 (HTTP/HTTPS) to normal class
 sudo tc filter add dev eth0 protocol ip parent 1:0 prio 2 u32 \
+  match ip protocol 6 0xff \
   match ip dport 80 0xffff flowid 1:20
 sudo tc filter add dev eth0 protocol ip parent 1:0 prio 2 u32 \
+  match ip protocol 6 0xff \
   match ip dport 443 0xffff flowid 1:20
 ```
 
 ## Step 5: Make Rules Persistent
 
-`tc` rules are lost on reboot. Add them to a startup script or use `netplan` post-up hooks:
+`tc` rules are lost on reboot. Add them to a startup script, use ifupdown hooks, or on Netplan systems use networkd-dispatcher/NetworkManager dispatcher hooks:
 
 ```bash
-# /etc/network/if-up.d/tc-shaping
 #!/bin/bash
-/sbin/tc qdisc add dev eth0 root tbf rate 10mbit burst 32kbit latency 400ms
+# /etc/network/if-up.d/tc-shaping (ifupdown systems)
+/sbin/tc qdisc add dev eth0 root tbf rate 10mbit burst 32kb latency 400ms
 ```
 
 ```bash
