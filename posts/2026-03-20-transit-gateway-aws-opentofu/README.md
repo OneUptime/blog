@@ -29,7 +29,7 @@ graph TD
 resource "aws_ec2_transit_gateway" "main" {
   description = "${var.prefix} Transit Gateway"
 
-  # Auto-accept attachments from same account
+  # Auto-accept shared attachment requests
   auto_accept_shared_attachments = "enable"
 
   # DNS support for VPCs attached to TGW
@@ -140,6 +140,14 @@ resource "aws_ec2_transit_gateway_route_table" "development" {
   }
 }
 
+resource "aws_ec2_transit_gateway_route_table" "shared" {
+  transit_gateway_id = aws_ec2_transit_gateway.main.id
+
+  tags = {
+    Name = "${var.prefix}-tgw-rt-shared"
+  }
+}
+
 # Associate attachments with route tables
 resource "aws_ec2_transit_gateway_route_table_association" "production" {
   transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.production.id
@@ -149,6 +157,11 @@ resource "aws_ec2_transit_gateway_route_table_association" "production" {
 resource "aws_ec2_transit_gateway_route_table_association" "development" {
   transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.development.id
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.development.id
+}
+
+resource "aws_ec2_transit_gateway_route_table_association" "shared" {
+  transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.shared.id
+  transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.shared.id
 }
 
 # Routes: production can reach shared services, not dev
@@ -164,6 +177,19 @@ resource "aws_ec2_transit_gateway_route" "development_to_shared" {
   transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.shared.id
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.development.id
 }
+
+# Shared services can return traffic to production and development
+resource "aws_ec2_transit_gateway_route" "shared_to_production" {
+  destination_cidr_block         = var.production_vpc_cidr
+  transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.production.id
+  transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.shared.id
+}
+
+resource "aws_ec2_transit_gateway_route" "shared_to_development" {
+  destination_cidr_block         = var.development_vpc_cidr
+  transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.development.id
+  transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.shared.id
+}
 ```
 
 ## VPC Route Table Updates
@@ -171,12 +197,28 @@ resource "aws_ec2_transit_gateway_route" "development_to_shared" {
 ```hcl
 # vpc_routes.tf - add TGW routes to VPC route tables
 
-# Route all 10.x.x.x traffic (other VPCs) through TGW
+# Route 10.x.x.x traffic for other VPCs through TGW
 resource "aws_route" "production_to_tgw" {
   count = length(var.production_private_route_table_ids)
 
   route_table_id         = var.production_private_route_table_ids[count.index]
-  destination_cidr_block = "10.0.0.0/8"  # All RFC1918 addresses via TGW
+  destination_cidr_block = "10.0.0.0/8"  # Summary route for 10.x private VPC CIDRs
+  transit_gateway_id     = aws_ec2_transit_gateway.main.id
+}
+
+resource "aws_route" "development_to_tgw" {
+  count = length(var.development_private_route_table_ids)
+
+  route_table_id         = var.development_private_route_table_ids[count.index]
+  destination_cidr_block = "10.0.0.0/8"  # Summary route for 10.x private VPC CIDRs
+  transit_gateway_id     = aws_ec2_transit_gateway.main.id
+}
+
+resource "aws_route" "shared_to_tgw" {
+  count = length(var.shared_private_route_table_ids)
+
+  route_table_id         = var.shared_private_route_table_ids[count.index]
+  destination_cidr_block = "10.0.0.0/8"  # Summary route for 10.x private VPC CIDRs
   transit_gateway_id     = aws_ec2_transit_gateway.main.id
 }
 ```
