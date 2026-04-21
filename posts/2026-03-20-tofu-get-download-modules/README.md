@@ -26,7 +26,7 @@ tofu get
 
 OpenTofu modules can come from various sources:
 
-### OpenTofu/Terraform Registry
+### OpenTofu Registry
 
 ```hcl
 module "vpc" {
@@ -68,7 +68,7 @@ module "shared" {
 # Download the latest allowed versions of modules
 tofu get -update
 
-# Equivalent behavior during init
+# Similar module-upgrade behavior during init; also upgrades providers
 tofu init -upgrade
 ```
 
@@ -78,7 +78,7 @@ tofu init -upgrade
 # After tofu get, modules are in .terraform/modules/
 ls .terraform/modules/
 
-# View the modules.json to see resolved versions
+# View the module manifest to see source metadata and registry module versions
 cat .terraform/modules/modules.json | python3 -m json.tool
 ```
 
@@ -112,14 +112,14 @@ module "vpc" {
 For private module registries:
 
 ```bash
-# Configure credentials in .terraformrc or .tofurc
+# Configure credentials in .terraformrc or .tofurc for the registry hostname
 cat > ~/.tofurc << 'EOF'
 credentials "app.terraform.io" {
   token = "your-api-token"
 }
 EOF
 
-tofu get  # Will use the configured token
+tofu get  # Will use the token for matching registry hosts
 ```
 
 ## Conclusion
