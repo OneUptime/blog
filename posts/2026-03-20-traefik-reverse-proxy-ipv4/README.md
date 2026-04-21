@@ -19,7 +19,7 @@ The most common Traefik deployment: Traefik discovers services from Docker label
 
 services:
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.6
     command:
       - "--api.insecure=true"
       - "--providers.docker=true"
@@ -128,9 +128,21 @@ http:
   routers:
     api:
       rule: "Host(`api.example.com`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
       middlewares:
         - ratelimit
         - auth
+        - headers
+      service: api-svc
+
+  services:
+    api-svc:
+      loadBalancer:
+        servers:
+          - url: "http://10.0.1.20:8080"
 
   middlewares:
     ratelimit:
@@ -141,11 +153,10 @@ http:
     auth:
       basicAuth:
         users:
-          - "admin:$apr1$xyz..."  # htpasswd format
+          - "admin:$apr1$H6uskkkW$IgXLP6ewTrSuBkTrqE8wj/"  # htpasswd format
 
     headers:
       headers:
-        sslRedirect: true
         customRequestHeaders:
           X-Real-IP: ""
         customResponseHeaders:
@@ -165,7 +176,7 @@ entryPoints:
 ## Checking the Dashboard
 
 ```bash
-# Access the dashboard (if enabled with insecure=true)
+# Access the API used by the dashboard (if enabled with insecure=true)
 curl http://localhost:8080/api/http/routers | python3 -m json.tool
 ```
 
@@ -175,7 +186,7 @@ curl http://localhost:8080/api/http/routers | python3 -m json.tool
 # Docker Compose
 docker compose logs -f traefik
 
-# Check access log
+# Check access log if accessLog.filePath is set to /var/log/traefik/access.log
 sudo tail -f /var/log/traefik/access.log
 ```
 
