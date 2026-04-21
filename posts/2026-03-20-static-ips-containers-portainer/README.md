@@ -37,8 +37,6 @@ In Portainer: **Networks** > **Add network**
 
 ```yaml
 # docker-compose.yml - Static IP assignments
-version: "3.8"
-
 networks:
   static_net:
     external: true  # Reference the pre-created network
@@ -92,8 +90,6 @@ If you prefer to define the network in the same compose file:
 
 ```yaml
 # docker-compose.yml - Network defined inline
-version: "3.8"
-
 networks:
   app_static:
     driver: bridge
@@ -130,8 +126,6 @@ services:
 ## Step 4: Containers on Multiple Networks with Static IPs
 
 ```yaml
-version: "3.8"
-
 networks:
   frontend:
     driver: bridge
