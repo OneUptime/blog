@@ -30,10 +30,10 @@ locals {
   # Remove leading/trailing slashes
   example1 = trim("/path/to/resource/", "/")   # "path/to/resource"
 
-  # Remove multiple characters (any of: /, -, _)
+  # Remove leading/trailing dashes
   example2 = trim("--my-value--", "-")         # "my-value"
 
-  # Remove multiple character types
+  # Remove leading/trailing dots
   example3 = trim("...hello...", ".")           # "hello"
 
   # Multiple chars in the set: removes any of those chars
@@ -48,13 +48,13 @@ locals {
 ```hcl
 variable "path_prefix" {
   type    = string
-  default = "/api/v1/"
+  default = "/api/"
 }
 
 locals {
   # Normalize path - remove leading and trailing slashes
   clean_path = trim(var.path_prefix, "/")
-  # "/api/v1/" → "api/v1"
+  # "/api/" → "api"
 }
 
 resource "aws_api_gateway_resource" "api" {
