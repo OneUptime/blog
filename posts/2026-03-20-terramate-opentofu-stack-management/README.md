@@ -8,7 +8,7 @@ Description: Learn how to use Terramate to organize OpenTofu configurations into
 
 ## Introduction
 
-Terramate is an orchestration tool for OpenTofu and Terraform that introduces the concept of "stacks" - self-contained units of infrastructure. Its killer feature is change detection: when you open a pull request, Terramate only runs `tofu plan` on the stacks that were actually modified, making large monorepos practical.
+Terramate is an orchestration tool for OpenTofu and Terraform that introduces the concept of "stacks" - self-contained units of infrastructure. Its killer feature is change detection: when you open a pull request, you can configure Terramate to run `tofu plan` only on the stacks that were actually modified, making large monorepos practical.
 
 ## Installing Terramate
 
@@ -17,44 +17,34 @@ Terramate is an orchestration tool for OpenTofu and Terraform that introduces th
 
 brew install terramate
 
-# Linux
-curl -LO https://github.com/terramate-io/terramate/releases/latest/download/terramate_linux_amd64.tar.gz
-tar -xzf terramate_linux_amd64.tar.gz && sudo mv terramate /usr/local/bin/
+# Ubuntu/Debian Linux
+echo "deb [trusted=yes] https://repo.terramate.io/apt/ /" \
+  | sudo tee /etc/apt/sources.list.d/terramate.list
+sudo apt update
+sudo apt install -y terramate
 
 # Verify
-terramate --version
+terramate version
 ```
 
 ## Initializing a Terramate Project
 
 ```bash
-# Create the root Terramate config
+# Create an optional root Terramate config
 cat > terramate.tm.hcl <<'EOF'
 terramate {
-  config {
-    # Tell Terramate which binary to use
-    run {
-      env {
-        TF_CLI_ARGS = ""
-      }
-    }
-  }
+  config {}
 }
 EOF
 ```
 
-## Configuring OpenTofu as the Binary
+## Running OpenTofu Commands
 
-```hcl
-# terramate.tm.hcl (root)
-terramate {
-  config {
-    # Override the terraform binary with tofu
-    terraform {
-      tofu_binary = "tofu"
-    }
-  }
-}
+Terramate does not require a Terraform binary override. It runs the command you pass after `--`, so use `tofu` directly:
+
+```bash
+terramate run -- tofu init
+terramate run -- tofu plan
 ```
 
 ## Creating Stacks
@@ -63,7 +53,7 @@ Each stack is a directory with a `stack.tm.hcl` file:
 
 ```bash
 # Create stacks for different environments/components
-terramate create stacks/networking
+terramate create stacks/networking --description "VPC, subnets, and routing"
 terramate create stacks/eks-cluster
 terramate create stacks/rds
 ```
@@ -90,7 +80,7 @@ generate_hcl "backend.tf" {
     terraform {
       backend "s3" {
         bucket         = "my-opentofu-state"
-        key            = "${terramate.stack.path}/tofu.tfstate"
+        key            = "${terramate.stack.path.relative}/tofu.tfstate"
         region         = "us-east-1"
         dynamodb_table = "opentofu-locks"
         encrypt        = true
@@ -108,17 +98,17 @@ terramate generate
 
 ## Detecting Changed Stacks
 
-Terramate compares the current branch to the default branch to find stacks with modified files:
+Terramate uses Git change detection to find stacks with modified files. You can set the comparison base explicitly with `--git-change-base`:
 
 ```bash
 # List stacks changed compared to main
-terramate list --changed
+terramate list --changed --git-change-base origin/main
 
 # Run tofu plan only on changed stacks
-terramate run --changed -- tofu plan
+terramate run --changed --git-change-base origin/main -- tofu plan
 
 # Run tofu apply on changed stacks
-terramate run --changed -- tofu apply -auto-approve
+terramate run --changed --git-change-base origin/main -- tofu apply -auto-approve
 ```
 
 ## CI/CD Integration
@@ -138,16 +128,22 @@ jobs:
         with:
           fetch-depth: 0   # Required for change detection
 
-      - name: Install OpenTofu
-        run: |
-          curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.0/tofu_1.9.0_linux_amd64.zip
-          unzip tofu_1.9.0_linux_amd64.zip && sudo mv tofu /usr/local/bin/
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_wrapper: false
 
       - name: Install Terramate
-        run: brew install terramate
+        run: |
+          echo "deb [trusted=yes] https://repo.terramate.io/apt/ /" \
+            | sudo tee /etc/apt/sources.list.d/terramate.list
+          sudo apt update
+          sudo apt install -y terramate
+
+      - name: Initialize changed stacks
+        run: terramate run --changed --git-change-base origin/${{ github.base_ref }} -- tofu init
 
       - name: Plan changed stacks
-        run: terramate run --changed -- tofu plan
+        run: terramate run --changed --git-change-base origin/${{ github.base_ref }} -- tofu plan
 ```
 
 ## Conclusion
