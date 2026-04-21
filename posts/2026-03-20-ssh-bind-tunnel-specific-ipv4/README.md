@@ -8,16 +8,16 @@ Description: Configure SSH local port forwards to bind to a specific IPv4 addres
 
 ## Introduction
 
-By default, SSH local port forwards (`-L`) bind to `127.0.0.1`, making the tunnel accessible only from the local machine. Binding to a network IPv4 address shares the tunnel with other clients on the same network.
+By default, SSH local port forwards (`-L`) bind to loopback addresses (for IPv4, typically `127.0.0.1`), making the tunnel accessible only from the local machine. Binding to a network IPv4 address shares the tunnel with other clients on the same network.
 
 ## Default vs. Specific Bind Address
 
 ```bash
-# Default: bind to 127.0.0.1 only (accessible only locally)
+# Default: bind to loopback only (accessible only locally)
 
 ssh -L 5432:db.internal:5432 user@203.0.113.10
 
-# Bind to specific IPv4 (accessible from 10.0.0.5 on the network)
+# Bind to specific IPv4 (accessible at 10.0.0.5 on the network)
 ssh -L 10.0.0.5:5432:db.internal:5432 user@203.0.113.10
 
 # Bind to all interfaces (accessible from any machine that can reach you)
@@ -26,36 +26,35 @@ ssh -L 0.0.0.0:5432:db.internal:5432 user@203.0.113.10
 
 ## Enabling Non-Localhost Bind
 
-This requires `GatewayPorts` or sshd configuration:
+An explicit local bind address does not require `GatewayPorts` in `sshd_config`. For local port forwards (`-L`), the SSH client controls the local listening address; the SSH server only needs to permit TCP forwarding.
 
 ```bash
-# /etc/ssh/sshd_config (on the SSH server, NOT the local machine)
-# Note: For LOCAL forwards, GatewayPorts controls the LOCAL bind on the CLIENT side
-# This is controlled by the client's sshd config when using -R
+# /etc/ssh/sshd_config (on the SSH server)
+# No server-side GatewayPorts change is needed for -L.
+# GatewayPorts in sshd_config controls non-loopback binds for -R (remote forwards).
 
-# For local forwards from client to server, the client controls the bind:
-# No server-side config change needed for -L
+# Optional server-side policy if forwarding has been disabled:
+AllowTcpForwarding yes
 ```
 
-For local port forwards (`-L`), the client simply specifies the bind address:
+For local port forwards (`-L`), specify the bind address on the client:
 
 ```bash
-# Share database tunnel with entire 10.0.0.0/8 subnet
+# Share database tunnel on the 10.0.0.5 interface
 ssh -4 -fN \
   -L 10.0.0.5:5432:db.internal:5432 \
   user@203.0.113.10
 
-# Other machines can now:
+# Other machines that can reach 10.0.0.5 can now:
 # psql -h 10.0.0.5 -p 5432 -U dbuser mydb
 ```
 
-## Using AllowStreamLocalForwarding in sshd
+## Using Server Forwarding Controls in sshd
 
 ```bash
 # sshd_config on the SSH server
-AllowTcpForwarding yes
-AllowStreamLocalForwarding yes
-GatewayPorts clientspecified   # For -R with specific bind address
+AllowTcpForwarding yes          # Required for TCP local/remote forwarding
+GatewayPorts clientspecified    # Only for -R with a specific non-loopback bind address
 ```
 
 ## SSH Config with Specific Bind
