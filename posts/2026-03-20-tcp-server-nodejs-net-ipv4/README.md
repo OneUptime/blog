@@ -43,8 +43,8 @@ server.on('error', (err) => {
     process.exit(1);
 });
 
-// Start listening; passing family: 4 forces IPv4
-server.listen({ host: HOST, port: PORT, family: 4 }, () => {
+// Start listening; HOST is an IPv4 wildcard address
+server.listen({ host: HOST, port: PORT }, () => {
     console.log(`TCP server listening on ${HOST}:${PORT}`);
 });
 ```
@@ -54,7 +54,7 @@ server.listen({ host: HOST, port: PORT, family: 4 }, () => {
 ```javascript
 const net = require('net');
 
-const clients = new Map();  // Map of socket -> clientId
+const clients = new Map();  // Map of socket -> client info
 
 let clientCounter = 0;
 
@@ -100,7 +100,7 @@ server.listen(9000, '0.0.0.0', () => {
 const net = require('net');
 
 const server = net.createServer((socket) => {
-    // Set read timeout: close idle connections after 30 seconds
+    // Set idle timeout: close idle connections after 30 seconds
     socket.setTimeout(30000);
     socket.on('timeout', () => {
         console.log(`Timeout: closing ${socket.remoteAddress}`);
@@ -149,4 +149,4 @@ process.on('SIGTERM', shutdown);
 
 ## Conclusion
 
-Node.js TCP servers are built with `net.createServer()`, binding with `server.listen({ host, port, family: 4 })`. Each client connection emits a `socket` object with `data`, `end`, and `error` events. Use `socket.setNoDelay()` for low-latency applications, `socket.setTimeout()` for idle connection management, and `server.close()` for graceful shutdown.
+Node.js TCP servers are built with `net.createServer()`, binding with `server.listen({ host, port })` or `server.listen(port, host)`. Use an IPv4 literal such as `0.0.0.0` or `127.0.0.1` as the host when you want an IPv4 listener. Each client connection provides a `socket` object, which emits `data`, `end`, and `error` events. Use `socket.setNoDelay()` for low-latency applications, `socket.setTimeout()` for idle connection management, and `server.close()` for graceful shutdown.
