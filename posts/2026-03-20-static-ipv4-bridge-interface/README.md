@@ -65,7 +65,13 @@ nmcli connection add type bridge con-name br0 ifname br0 \
     ipv4.method manual \
     ipv4.addresses "192.168.1.100/24" \
     ipv4.gateway "192.168.1.1" \
-    ipv4.dns "8.8.8.8"
+    ipv4.dns "8.8.8.8" \
+    connection.autoconnect-ports 1
+
+nmcli connection add type ethernet port-type bridge \
+    con-name br0-port-eth0 ifname eth0 controller br0
+
+nmcli connection up br0
 ```
 
 ## Persistent with systemd-networkd
