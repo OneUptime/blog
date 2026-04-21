@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Squid, IPv6, Forward Proxy, HTTP, HTTPS, Caching, ACL
 
-Description: Configure Squid as an explicit forward proxy for IPv6 clients, with ACLs, caching, and SSL inspection.
+Description: Configure Squid as an explicit forward proxy for IPv6 clients, with ACLs, caching, and HTTPS CONNECT tunneling.
 
 ## Introduction
 
-Configure Squid as an explicit forward proxy for IPv6 clients, with ACLs, caching, and SSL inspection. This guide covers the essential configuration, code patterns, and verification steps.
+Configure Squid as an explicit forward proxy for IPv6 clients, with ACLs, caching, and HTTPS CONNECT tunneling. This guide covers the essential configuration, code patterns, and verification steps.
 
 ## Step 1: Prerequisites and Setup
 
@@ -16,85 +16,67 @@ Configure Squid as an explicit forward proxy for IPv6 clients, with ACLs, cachin
 # Ensure IPv6 is enabled and functional
 
 ip -6 addr show
-ping6 -c 3 ::1
+ping -6 -c 3 ::1
 
-# Install required dependencies
-pip install ipaddress netaddr  # Python
-# or
-npm install ipaddr.js          # JavaScript
+# Install Squid and curl on Debian/Ubuntu
+sudo apt-get update
+sudo apt-get install -y squid curl
 ```
 
 ## Step 2: Core Implementation
 
-```python
-import ipaddress
-from typing import Optional
+```conf
+# /etc/squid/squid.conf
+http_port [::]:3128
 
-def check_ipv6_subnet(client_ip: str, allowed_prefix: str) -> bool:
-    """Check if an IPv6 address is within an allowed subnet."""
-    try:
-        addr = ipaddress.ip_address(client_ip)
-        network = ipaddress.ip_network(allowed_prefix, strict=False)
-        return addr in network
-    except ValueError:
-        return False
+# Replace this documentation prefix with your client IPv6 prefix.
+acl ipv6_clients src 2001:db8:1234::/48
+acl localhost src 127.0.0.1 ::1
 
-# Example usage
-allowed_networks = [
-    "2001:db8:trusted::/48",
-    "::1/128",
-    "fe80::/10",
-]
+acl SSL_ports port 443
+acl Safe_ports port 80
+acl Safe_ports port 443
+acl CONNECT method CONNECT
 
-def is_allowed(client_ip: str) -> bool:
-    """Check if client IP is in any allowed network."""
-    for network in allowed_networks:
-        if check_ipv6_subnet(client_ip, network):
-            return True
-    return False
-
-# Tests
-print(is_allowed("2001:db8:trusted::1"))   # True
-print(is_allowed("2001:db8:unknown::1"))   # False
-print(is_allowed("::1"))                   # True
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+http_access allow localhost
+http_access allow ipv6_clients
+http_access deny all
 ```
 
 ## Step 3: Configuration
 
-```yaml
-# Configuration example for Squid IPv6 Forward Proxy
-ipv6:
-  enabled: true
-  networks:
-    - prefix: "2001:db8::/32"
-      description: "Internal network"
-      action: allow
-    - prefix: "::/0"
-      description: "Default"
-      action: deny
+```conf
+# Enable a small disk cache and write access logs.
+cache_dir ufs /var/spool/squid 100 16 256
+access_log stdio:/var/log/squid/access.log logformat=squid
 ```
 
 ## Step 4: Apply and Verify
 
 ```bash
+# Check the Squid configuration
+sudo squid -k parse
+
+# Create cache directories the first time you enable cache_dir
+sudo systemctl stop squid
+sudo squid -z
+
 # Apply configuration
-python3 configure.py --config config.yaml
+sudo systemctl start squid
 
 # Verify functionality
-python3 -c "
-import ipaddress
-addr = ipaddress.IPv6Address('2001:db8::1')
-net = ipaddress.IPv6Network('2001:db8::/32')
-print(f'{addr} in {net}: {addr in net}')
-"
+curl -x "http://[::1]:3128" http://example.com/
 
-# Test connectivity
-curl -6 http://[::1]:8080/health
+# Test HTTPS CONNECT tunneling through the proxy
+curl -x "http://[::1]:3128" https://example.com/
 ```
 
 ## Step 5: Monitoring
 
 ```python
+import ipaddress
 import logging
 
 logger = logging.getLogger(__name__)
@@ -115,4 +97,4 @@ def log_ipv6_access(client_ip: str, allowed: bool):
 
 ## Conclusion
 
-Squid IPv6 Forward Proxy requires understanding IPv6 address structure, CIDR notation, and address classification. Use Python's  module for validation and subnet matching. Log all IPv6 access attempts for security auditing. Monitor your implementation with OneUptime to detect access pattern anomalies.
+Squid IPv6 Forward Proxy requires understanding IPv6 address structure, CIDR notation, and address classification. Use Python's `ipaddress` module for validation and subnet matching. Log all IPv6 access attempts for security auditing. Monitor your implementation with OneUptime to detect access pattern anomalies.
