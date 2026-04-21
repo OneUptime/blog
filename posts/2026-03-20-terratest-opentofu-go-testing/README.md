@@ -31,8 +31,9 @@ go get github.com/stretchr/testify/require
 package test
 
 import (
-    "testing"
     "fmt"
+    "testing"
+    "time"
 
     "github.com/gruntwork-io/terratest/modules/aws"
     "github.com/gruntwork-io/terratest/modules/random"
@@ -63,7 +64,7 @@ func TestVPCModule(t *testing.T) {
             "AWS_DEFAULT_REGION": awsRegion,
         },
 
-        // Retry on retryable errors (throttling, eventual consistency)
+        // Retry on common transient provider and registry errors
         MaxRetries:         3,
         TimeBetweenRetries: 5 * time.Second,
     })
@@ -82,17 +83,28 @@ func TestVPCModule(t *testing.T) {
     // Validate VPC exists in AWS
     require.NotEmpty(t, vpcID)
     vpc := aws.GetVpcById(t, vpcID, awsRegion)
-    assert.Equal(t, "10.99.0.0/16", aws.GetTagValue(t, awsRegion, vpcID, "vpc", "Environment") == "test")
+    require.NotNil(t, vpc.CidrBlock)
+    assert.Equal(t, "10.99.0.0/16", *vpc.CidrBlock)
+    assert.Equal(t, "test", vpc.Tags["Environment"])
 
     // Validate subnets
     assert.Equal(t, 2, len(privateSubnetIDs))
     assert.Equal(t, 2, len(publicSubnetIDs))
 
     // Validate subnets are in different AZs
-    for _, subnetID := range privateSubnetIDs {
-        subnet := aws.GetSubnetById(t, subnetID, awsRegion)
-        assert.Contains(t, []string{"us-east-1a", "us-east-1b"}, aws.GetAvailabilityZoneForSubnet(t, awsRegion, subnetID))
+    subnetsByID := make(map[string]aws.Subnet)
+    for _, subnet := range vpc.Subnets {
+        subnetsByID[subnet.Id] = subnet
     }
+
+    privateSubnetAZs := map[string]bool{}
+    for _, subnetID := range privateSubnetIDs {
+        subnet, exists := subnetsByID[subnetID]
+        require.Truef(t, exists, "subnet %s should exist in VPC %s", subnetID, vpcID)
+        assert.Contains(t, []string{"us-east-1a", "us-east-1b"}, subnet.AvailabilityZone)
+        privateSubnetAZs[subnet.AvailabilityZone] = true
+    }
+    assert.Len(t, privateSubnetAZs, 2)
 }
 ```
 
@@ -109,7 +121,6 @@ import (
 
     "github.com/gruntwork-io/terratest/modules/http-helper"
     "github.com/gruntwork-io/terratest/modules/terraform"
-    "github.com/stretchr/testify/assert"
 )
 
 func TestWebServer(t *testing.T) {
@@ -146,8 +157,6 @@ func TestWebServer(t *testing.T) {
 
 ```go
 func TestVPCModuleVariants(t *testing.T) {
-    t.Parallel()
-
     testCases := []struct {
         name             string
         enableNatGateway bool
@@ -162,14 +171,13 @@ func TestVPCModuleVariants(t *testing.T) {
     for _, tc := range testCases {
         tc := tc // capture range variable
         t.Run(tc.name, func(t *testing.T) {
-            t.Parallel()
-
             opts := &terraform.Options{
                 TerraformBinary: "tofu",
                 TerraformDir:    "../modules/vpc",
                 Vars: map[string]interface{}{
                     "vpc_cidr":           "10.99.0.0/16",
                     "environment":        "test",
+                    "name_prefix":        fmt.Sprintf("test-%s-%s", tc.name, random.UniqueId()),
                     "enable_nat_gateway": tc.enableNatGateway,
                     "single_nat_gateway": tc.singleNat,
                     "azs":                []string{"us-east-1a", "us-east-1b"},
@@ -179,9 +187,9 @@ func TestVPCModuleVariants(t *testing.T) {
             defer terraform.Destroy(t, opts)
             terraform.InitAndApply(t, opts)
 
-            // Use AWS SDK to count NAT gateways
-            natGateways := aws.GetNatGatewaysByVpc(t, terraform.Output(t, opts, "vpc_id"), "us-east-1")
-            assert.Equal(t, tc.expectedNatCount, len(natGateways))
+            // Use module output to count NAT gateways
+            natGatewayIDs := terraform.OutputList(t, opts, "nat_gateway_ids")
+            assert.Equal(t, tc.expectedNatCount, len(natGatewayIDs))
         })
     }
 }
@@ -195,13 +203,14 @@ func TestVPCModuleVariants(t *testing.T) {
 cd test && go test -v -timeout 30m ./...
 
 # Run a specific test
-go test -v -run TestVPCModule -timeout 30m ./...
+go test -v -run '^TestVPCModule$' -timeout 30m ./...
 
 # Run with parallelism
 go test -v -timeout 60m -parallel 4 ./...
 
-# Skip cleanup for debugging (dangerous!)
-go test -v -run TestVPCModule -timeout 30m -skip-teardown ./...
+# Preserve infrastructure for debugging (dangerous!)
+# Terratest does not provide a built-in -skip-teardown flag. Add your own guard
+# around terraform.Destroy before using a custom flag or environment variable.
 ```
 
 ## Conclusion
