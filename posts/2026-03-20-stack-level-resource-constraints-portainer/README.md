@@ -4,18 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Resource Limit, Stack, CPU, Memory, Performance
 
-Description: Apply CPU, memory, and I/O resource constraints across all services in a Portainer stack to ensure fair resource sharing between applications on shared Docker hosts.
+Description: Apply CPU and memory resource constraints per service in a Portainer stack to ensure fair resource sharing between applications on shared Docker hosts.
 
 ---
 
-Stack-level resource management ensures that no single application can monopolize host resources, making multi-application hosts stable and predictable.
+Per-service resource management in a stack helps ensure that no single service can monopolize host resources, making multi-application hosts stable and predictable.
 
 ## Per-Service Resource Limits
 
 Set limits on each service in the stack:
 
 ```yaml
-version: "3.8"
 services:
   webapp:
     image: myapp:1.2.3
@@ -47,6 +46,7 @@ services:
           cpus: "0.5"
           memory: 256M
         reservations:
+          cpus: "0.1"
           memory: 64M
 ```
 
@@ -101,4 +101,4 @@ docker stats --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}
 
 ## Summary
 
-Resource constraints in Portainer stacks protect host stability by preventing any service from consuming unbounded CPU or memory. Set both limits (hard caps) and reservations (guaranteed minimums) for all production services, and plan your total stack resource budget against available host capacity.
+Per-service resource constraints in Portainer stacks protect host stability by preventing any service from consuming unbounded CPU or memory. Set limits (hard caps) and reservations where your deployment mode supports them, and plan your total stack resource budget against available host capacity.
