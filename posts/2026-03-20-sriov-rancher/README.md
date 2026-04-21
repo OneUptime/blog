@@ -2,176 +2,203 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Sriov, Networking, Kubernetes, High-Performance
+Tags: Rancher, SR-IOV, Networking, Kubernetes, High-Performance
 
 Description: Guide to configuring SR-IOV network virtualization in Rancher for high-performance network workloads.
 
 ## Introduction
 
-How to Configure SR-IOV in Rancher is an important networking capability for production Kubernetes clusters managed by Rancher. This guide provides practical configuration steps and examples for implementing this feature.
+How to Configure SR-IOV in Rancher is an important networking capability for production Kubernetes clusters managed by Rancher. This guide provides practical configuration steps and examples for implementing SR-IOV as a secondary pod network.
 
 ## Prerequisites
 
-- Rancher v2.7+ cluster
+- Rancher-managed RKE2 cluster with Multus enabled as the first CNI entry
 - Cluster admin access
 - Understanding of Kubernetes networking fundamentals
-- CNI plugin compatible with this feature
+- A primary CNI plugin such as Canal, Calico, or Cilium alongside Multus
+- SR-IOV-capable NICs, IOMMU enabled on the host, and compatible host drivers
+- SR-IOV Network Operator installed from Rancher Apps or Helm
+- Whereabouts IPAM enabled for the `SriovNetwork` example below, or another installed IPAM plugin configured in its place
 
 ## Architecture Overview
 
-Network configuration in Rancher-managed Kubernetes clusters leverages the CNI (Container Network Interface) plugin framework. Different networking features require different CNI configurations or additional plugins.
+SR-IOV in Rancher-managed RKE2 clusters is configured through Multus, the SR-IOV CNI plugin, the SR-IOV device plugin, and the SR-IOV Network Operator. The primary CNI still provides the default pod network; SR-IOV is attached as an additional pod interface backed by virtual functions (VFs) from a physical NIC.
 
 ## Step 1: Verify Current Network Configuration
 
 ```bash
-# Check current CNI plugin
+# On each SR-IOV node, confirm the NIC can expose virtual functions
+NIC=ens1f0
+cat /sys/class/net/${NIC}/device/sriov_totalvfs
 
-kubectl get configmap -n kube-system kube-proxy -o yaml | grep mode
+# Check that Multus is deployed by RKE2
+kubectl get daemonset -n kube-system rke2-multus-ds
 
-# Check network policies
-kubectl get networkpolicies --all-namespaces
+# Check SR-IOV operator pods
+kubectl get pods -n sriov-network-operator
 
-# View current pod networking
-kubectl describe nodes | grep -E "PodCIDR|InternalIP"
+# Check SR-IOV node labels
+kubectl get nodes -L feature.node.kubernetes.io/network-sriov.capable
 
-# Check CNI configuration
-ls -la /etc/cni/net.d/
-cat /etc/cni/net.d/10-*.conf 2>/dev/null || cat /etc/cni/net.d/10-*.conflist 2>/dev/null
+# Check discovered SR-IOV interfaces
+kubectl get sriovnetworknodestates.sriovnetwork.openshift.io -n sriov-network-operator
 ```
 
 ## Step 2: Configure the Network Feature
 
 ```yaml
-# network-feature-config.yaml
-apiVersion: v1
-kind: ConfigMap
+# sriov-network-config.yaml
+apiVersion: sriovnetwork.openshift.io/v1
+kind: SriovNetworkNodePolicy
 metadata:
-  name: network-config
-  namespace: kube-system
-data:
-  config.conf: |
+  name: policy-netdevice
+  namespace: sriov-network-operator
+spec:
+  priority: 90
+  nodeSelector:
+    feature.node.kubernetes.io/network-sriov.capable: "true"
+  resourceName: intelnics
+  deviceType: netdevice
+  numVfs: 4
+  mtu: 1500
+  nicSelector:
+    pfNames:
+    - ens1f0
+---
+apiVersion: sriovnetwork.openshift.io/v1
+kind: SriovNetwork
+metadata:
+  name: sriov-net
+  namespace: sriov-network-operator
+spec:
+  networkNamespace: production
+  resourceName: intelnics
+  vlan: 0
+  ipam: |
     {
-      "name": "custom-network",
-      "cniVersion": "0.4.0",
-      "plugins": [
-        {
-          "type": "main-cni-plugin",
-          "ipam": {
-            "type": "host-local",
-            "ranges": [[{"subnet": "10.244.0.0/24"}]]
-          }
-        }
-      ]
+      "type": "whereabouts",
+      "range": "10.56.217.0/24",
+      "exclude": [
+        "10.56.217.0/28"
+      ],
+      "routes": [{
+        "dst": "0.0.0.0/0"
+      }],
+      "gateway": "10.56.217.1"
     }
 ```
 
-## Step 3: Apply Network Policy
+## Step 3: Attach the SR-IOV Network to a Pod
 
 ```yaml
-# network-policy.yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
+# sriov-test-pod.yaml
+apiVersion: v1
+kind: Pod
 metadata:
-  name: custom-network-policy
+  name: sriov-test
   namespace: production
+  annotations:
+    k8s.v1.cni.cncf.io/networks: sriov-net
 spec:
-  podSelector:
-    matchLabels:
-      app: web-service
-  policyTypes:
-  - Ingress
-  - Egress
-  ingress:
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          environment: production
-    ports:
-    - protocol: TCP
-      port: 8080
-  egress:
-  - to:
-    - namespaceSelector:
-        matchLabels:
-          environment: production
-    ports:
-    - protocol: TCP
-      port: 5432    # Database
+  containers:
+  - name: netshoot
+    image: nicolaka/netshoot
+    command: ["sleep", "3600"]
+    resources:
+      requests:
+        rancher.io/intelnics: "1"
+      limits:
+        rancher.io/intelnics: "1"
 ```
 
 ## Step 4: Test Network Configuration
 
 ```bash
-# Test pod-to-pod connectivity
-kubectl run net-test --image=nicolaka/netshoot --rm -it   --restart=Never -- /bin/bash
+# Apply SR-IOV policy and network
+kubectl apply -f sriov-network-config.yaml
 
-# Inside the pod:
-# ping <target-pod-ip>
-# curl http://<service-name>:<port>
-# nslookup <service-name>
+# Wait until the node policy is reflected in node allocatable resources
+kubectl describe nodes | grep -A5 rancher.io/intelnics
 
-# Test with specific network features
-kubectl exec -n production   $(kubectl get pods -n production -o name | head -1)   -- ip addr show
+# Create a pod with an SR-IOV secondary interface
+kubectl apply -f sriov-test-pod.yaml
+kubectl wait -n production --for=condition=Ready pod/sriov-test --timeout=2m
+
+# Confirm Multus added the SR-IOV interface
+kubectl exec -n production sriov-test -- ip addr show net1
+kubectl exec -n production sriov-test -- ip -d link show net1
+
+# Test connectivity on the SR-IOV network
+kubectl exec -n production sriov-test -- ping -c 3 <target-sriov-ip>
 ```
 
 ## Step 5: Monitor Network Traffic
 
 ```bash
-# View network statistics
-kubectl exec -n production   $(kubectl get pods -n production -o name | head -1)   -- netstat -tunapl
+# View SR-IOV interface counters inside the pod
+kubectl exec -n production sriov-test -- ip -s link show net1
 
-# Check bandwidth usage with cilium/calico CLI
-kubectl exec -n kube-system   $(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1)   -- calico-node -show-status
+# Check the generated NetworkAttachmentDefinition
+kubectl get network-attachment-definitions.k8s.cni.cncf.io -n production sriov-net -o yaml
+
+# Check SR-IOV node state and sync status
+kubectl get sriovnetworknodestates.sriovnetwork.openshift.io -n sriov-network-operator -o yaml
 ```
 
 ## Step 6: Configure Prometheus Metrics for Network
 
 ```yaml
-# network-metrics-probe.yaml
+# sriov-network-alerts.yaml
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: network-health
+  name: sriov-network-health
   namespace: cattle-monitoring-system
+  labels:
+    release: rancher-monitoring # Adjust to match your Prometheus ruleSelector.
 spec:
   groups:
-  - name: network.rules
+  - name: sriov-network.rules
     rules:
-    - alert: PodNetworkUnreachable
+    - alert: SriovConfigDaemonUnavailable
       expr: |
-        up{job="network-probe"} == 0
+        kube_daemonset_status_number_unavailable{namespace="sriov-network-operator",daemonset="sriov-network-config-daemon"} > 0
       for: 5m
       labels:
         severity: critical
       annotations:
-        summary: "Network probe failing for {{ $labels.instance }}"
-    
-    - alert: HighNetworkErrors
+        summary: "SR-IOV config daemon unavailable"
+
+    - alert: SriovNodeNetworkErrors
       expr: |
-        rate(node_network_transmit_errs_total[5m]) > 0.1
+        rate(node_network_transmit_errs_total{device!="lo"}[5m]) > 0.1
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "High network error rate on {{ $labels.device }}"
+        summary: "High network transmit error rate on {{ $labels.device }}"
 ```
 
 ## Step 7: Troubleshooting Common Issues
 
 ```bash
-# Debug network issues with netshoot
-kubectl run netdebug   --image=nicolaka/netshoot   --rm -it   --restart=Never   -- /bin/bash
+# Check operator status and logs
+kubectl get pods -n sriov-network-operator
+kubectl logs -n sriov-network-operator daemonset/sriov-network-config-daemon --tail=100
 
-# Check DNS resolution
-kubectl run dns-test   --image=busybox   --rm -it   --restart=Never   -- nslookup kubernetes.default.svc.cluster.local
+# Check whether your NIC is allowed by the operator hardware list
+kubectl get configmap supported-nic-ids -n sriov-network-operator -o yaml
 
-# View CNI logs
-journalctl -u kubelet --since "1 hour ago" | grep -i cni
+# Check pod scheduling and resource allocation failures
+kubectl describe pod -n production sriov-test
+kubectl get events -A --sort-by=.lastTimestamp | grep -i sriov
 
-# Check pod network namespace
-kubectl exec -n kube-system   $(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1)   -- calico-node -show-status 2>/dev/null || true
+# On the node, confirm IOMMU and VF configuration
+dmesg | grep -Ei "DMAR|IOMMU"
+cat /sys/class/net/ens1f0/device/sriov_numvfs
+cat /sys/class/net/ens1f0/device/sriov_totalvfs
 ```
 
 ## Conclusion
 
-How to Configure SR-IOV in Rancher configuration in Rancher requires careful understanding of the underlying CNI plugin and network topology. Test thoroughly in a staging environment before applying changes to production. Monitor network metrics and set up alerts to detect issues early.
+How to Configure SR-IOV in Rancher configuration in Rancher requires careful understanding of Multus, the SR-IOV operator, hardware capabilities, and network topology. Test thoroughly in a staging environment before applying changes to production. Monitor network metrics and set up alerts to detect issues early.
