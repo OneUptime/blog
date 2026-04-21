@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, EC2, User Data, Template, Infrastructure as Code
 
-Description: Learn how to use OpenTofu's templatefile function and the template provider to generate dynamic user data scripts for cloud instances, making bootstrapping configurations maintainable.
+Description: Learn how to use OpenTofu's templatefile function to generate dynamic user data scripts for cloud instances, making bootstrapping configurations maintainable.
 
 ## Introduction
 
@@ -48,6 +48,7 @@ yum update -y
 yum install -y httpd
 
 # Configure application
+mkdir -p /etc/myapp
 cat > /etc/myapp/config.env <<EOF
 APP_VERSION=$${APP_VERSION}
 DB_HOST=$${DB_ENDPOINT}
@@ -105,8 +106,10 @@ user_data = templatefile("${path.module}/templates/cloud_init.yaml.tpl", {
 ```hcl
 resource "aws_launch_template" "app" {
   user_data = base64encode(templatefile("${path.module}/templates/user_data.sh.tpl", {
-    app_version = var.app_version
-    environment = var.environment
+    app_version  = var.app_version
+    environment  = var.environment
+    db_endpoint  = aws_db_instance.main.endpoint
+    s3_bucket    = aws_s3_bucket.app.bucket
   }))
 }
 ```
