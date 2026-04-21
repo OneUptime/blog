@@ -89,4 +89,4 @@ for site, cidr in site_allocations.items():
 - A /16 provides 16 bits of host space; every borrowed bit doubles subnet count.
 - Dividing /16 into /24s gives 256 subnets of 254 hosts each - suitable for floor/VLAN-per-subnet designs.
 - Use hierarchical allocation: /20 per site, /24 per VLAN within a site.
-- The entire /16 can always be summarized in BGP/routing as a single advertisement.
+- The entire /16 can be summarized in routing as a single internal route when the subnets share the same routing policy.
