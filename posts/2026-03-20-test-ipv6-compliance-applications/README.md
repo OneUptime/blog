@@ -21,7 +21,7 @@ Application IPv6 compliance testing verifies that software correctly handles IPv
 curl -6 https://app.example.com/
 
 # Test with specific IPv6 source
-curl -6 --interface 2001:db8::test-client \
+curl -6 --interface 2001:db8::10 \
   https://app.example.com/api/v1/health
 
 # Test redirects over IPv6
@@ -61,7 +61,7 @@ def test_ipv6_validation():
 
 # Test 2: IPv6 in URL construction
 def test_ipv6_in_url():
-    ipv6_addr = "2001:db8::web"
+    ipv6_addr = "2001:db8::80"
     port = 8080
     # IPv6 in URLs MUST use bracket notation
     url = f"http://[{ipv6_addr}]:{port}/api/v1/"
@@ -75,7 +75,7 @@ def test_ipv6_in_url():
 def test_ipv6_regex():
     # Simplified IPv6 pattern (use ipaddress module in production)
     ipv6_pattern = r'[0-9a-fA-F:]{3,39}'
-    test_log = "Connection from 2001:db8::client on port 443"
+    test_log = "Connection from 2001:db8::20 on port 443"
     match = re.search(ipv6_pattern, test_log)
     if match:
         print(f"PASS: Extracted IPv6: {match.group()}")
@@ -105,7 +105,7 @@ import json
 # Test log parsing with IPv6 source
 log_entry = json.dumps({
     "timestamp": "2026-03-20T10:00:00Z",
-    "source_ip": "2001:db8::client",
+    "source_ip": "2001:db8::20",
     "method": "GET",
     "path": "/api/v1/resource",
     "status": 200
@@ -135,7 +135,7 @@ CREATE TABLE connections (
 );
 
 -- Insert IPv6 address
-INSERT INTO connections (client_ip) VALUES ('2001:db8::client');
+INSERT INTO connections (client_ip) VALUES ('2001:db8::20');
 
 -- Query with IPv6 subnet
 SELECT * FROM connections
@@ -173,7 +173,7 @@ def block_ip():
 # Test the endpoint with IPv6
 # curl -X POST http://localhost:5000/api/v1/block-ip \
 #   -H "Content-Type: application/json" \
-#   -d '{"ip": "2001:db8::bad-actor"}'
+#   -d '{"ip": "2001:db8::bad"}'
 ```
 
 ## Testing Email Sending over IPv6
@@ -187,7 +187,7 @@ nc -6 -w 5 smtp.example.com 587
 # Send test email via IPv6 SMTP
 swaks --to recipient@example.com \
   --from sender@yourdomain.com \
-  --server [2001:db8::smtp-server]:587 \
+  --server [2001:db8::25]:587 \
   --auth LOGIN \
   --auth-user sender@yourdomain.com \
   --auth-password password
