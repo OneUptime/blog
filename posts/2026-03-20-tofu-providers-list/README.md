@@ -45,7 +45,7 @@ tofu providers schema -json | \
 # Get required attributes for a resource
 tofu providers schema -json | jq '
   .provider_schemas["registry.opentofu.org/hashicorp/aws"]
-  .resource_schemas["aws_instance"].attributes |
+  .resource_schemas["aws_instance"].block.attributes |
   to_entries[] |
   select(.value.required == true) |
   .key'
@@ -123,10 +123,9 @@ provider "aws" {
 ```
 
 ```bash
-# Both show in providers output
+# The provider requirement appears once in providers output; aliases are not listed separately
 tofu providers
-# provider[registry.opentofu.org/hashicorp/aws] (aliased as "us_east")
-# provider[registry.opentofu.org/hashicorp/aws] (aliased as "eu_west")
+# provider[registry.opentofu.org/hashicorp/aws]
 ```
 
 ## Conclusion
