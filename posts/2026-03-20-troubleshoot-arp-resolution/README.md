@@ -65,7 +65,7 @@ If no response, the issue may be:
 
 ```bash
 # Watch for ARP requests and replies
-tcpdump -n -e arp -i eth0
+tcpdump -n -e -i eth0 arp
 
 # Look for:
 # - ARP request going out? (broadcast)
@@ -79,12 +79,12 @@ If no request is going out, check your routing table and interface configuration
 On Linux, check for arp_filter and arp_ignore settings:
 
 ```bash
-# Check ARP filter setting (1 = respond only from interface that received the request)
+# Check ARP filter setting (1 = answer only when routing would use this interface)
 cat /proc/sys/net/ipv4/conf/eth0/arp_filter
 
 # Check ARP ignore setting
-# 0 = respond to all
-# 1 = respond only if target IP is configured on that interface
+# 0 = reply for any local target IP, even if configured on another interface
+# 1 = reply only if the target IP is configured on the incoming interface
 cat /proc/sys/net/ipv4/conf/eth0/arp_ignore
 ```
 
@@ -101,7 +101,7 @@ sudo sysctl -w net.ipv4.conf.eth0.arp_filter=0
 # Check if proxy ARP is enabled (can cause issues)
 cat /proc/sys/net/ipv4/conf/eth0/proxy_arp
 
-# Check iptables for any ARP-blocking rules
+# Check ebtables for any ARP-blocking rules
 ebtables -L 2>/dev/null || echo "ebtables not installed"
 ```
 
