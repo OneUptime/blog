@@ -33,12 +33,12 @@ provider "registry.opentofu.org/hashicorp/aws" {
   constraints = "~> 5.0"
 
   hashes = [
-    # Checksums for each platform/OS combination
+    # Checksums for provider packages (truncated examples)
     "h1:abc123...",  # darwin_amd64
     "h1:def456...",  # darwin_arm64
     "h1:ghi789...",  # linux_amd64
     "h1:jkl012...",  # linux_arm64
-    "zh:mno345...",  # Source zip hash
+    "zh:mno345...",  # Provider package zip hash
   ]
 }
 
@@ -86,19 +86,19 @@ tofu init
 # Subsequent runs - uses versions from lock file
 tofu init
 
-# Upgrade a specific provider within constraints
+# Upgrade all providers within constraints
 tofu init -upgrade
 
-# Upgrade all providers within constraints
+# Refresh lock-file checksum metadata from origin registries
 tofu providers lock
 
 # Add checksums for additional platforms (for cross-platform teams)
 tofu providers lock \
-  -platform=linux/amd64 \
-  -platform=linux/arm64 \
-  -platform=darwin/amd64 \
-  -platform=darwin/arm64 \
-  -platform=windows/amd64
+  -platform=linux_amd64 \
+  -platform=linux_arm64 \
+  -platform=darwin_amd64 \
+  -platform=darwin_arm64 \
+  -platform=windows_amd64
 ```
 
 ## Updating the Lock File
@@ -110,7 +110,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.40"  # Previously was "~> 5.0"
+      version = "~> 5.40.0"  # Previously was "~> 5.0"
     }
   }
 }
@@ -141,7 +141,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.6.x"
 
@@ -150,10 +150,11 @@ jobs:
 
       - name: Verify lock file is up to date
         run: |
-          # If lock file changed during init, it wasn't committed
-          if ! git diff --quiet .terraform.lock.hcl; then
+          # If lock file changed or was created during init, it wasn't committed
+          if [ -n "$(git status --porcelain -- .terraform.lock.hcl)" ]; then
             echo "Lock file is out of date. Run 'tofu init' locally and commit the changes."
-            git diff .terraform.lock.hcl
+            git status --short -- .terraform.lock.hcl
+            git diff -- .terraform.lock.hcl
             exit 1
           fi
 ```
@@ -164,19 +165,19 @@ jobs:
 # Team uses Linux (CI) and macOS (local dev)
 # Generate checksums for all platforms at once
 tofu providers lock \
-  -platform=linux/amd64 \
-  -platform=linux/arm64 \
-  -platform=darwin/amd64 \
-  -platform=darwin/arm64
+  -platform=linux_amd64 \
+  -platform=linux_arm64 \
+  -platform=darwin_amd64 \
+  -platform=darwin_arm64
 
 # Lock file will include hashes for all platforms
-# This prevents "hash mismatch" errors when different team members run init
+# This avoids platform-specific checksum drift when different team members run init
 ```
 
 ## Best Practices
 
 - Always commit `.terraform.lock.hcl` to version control - it's not a build artifact, it's a dependency specification that ensures reproducible deployments.
 - Never add `.terraform.lock.hcl` to `.gitignore` - this is a common mistake that causes providers to upgrade unexpectedly in CI/CD when new patch versions are released.
-- Run `tofu providers lock -platform=...` for all platforms your team uses when adding new providers - this prevents "hash mismatch" errors for team members on different operating systems.
+- Run `tofu providers lock -platform=...` for all platforms your team uses when adding new providers - this avoids platform-specific checksum drift for team members on different operating systems.
 - Treat lock file updates as infrastructure changes requiring review - a provider upgrade may introduce breaking changes, so PR review for lock file changes is appropriate.
 - In CI/CD, run `tofu init` without `-upgrade` and fail if the lock file changes - this ensures CI always uses the committed provider versions.
