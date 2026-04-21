@@ -70,9 +70,9 @@ locals {
 
 ---
 
-## Domain Name Reversal for DNS Operations
+## Domain Name Reversal for DNS-Related Organization
 
-DNS records are sometimes processed in reversed order for zone organization:
+Domain names are sometimes processed in reversed label order for grouping or zone organization:
 
 ```hcl
 variable "domain" {
@@ -81,10 +81,10 @@ variable "domain" {
 }
 
 locals {
-  # Reverse the domain components for reverse DNS lookup record
-  parts         = split(".", var.domain)
-  reversed_parts = reverse(parts)
-  reverse_zone   = join(".", reversed_parts)
+  # Reverse the domain components for organization
+  parts          = split(".", var.domain)
+  reversed_parts = reverse(local.parts)
+  reverse_zone   = join(".", local.reversed_parts)
   # "com.example.api"
 }
 ```
