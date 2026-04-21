@@ -82,7 +82,7 @@ On older systems without `-W` support:
 Host internal-server
     HostName 10.0.0.50
     User admin
-    ProxyCommand ssh jumpuser@203.0.113.10 nc -q0 %h %p
+    ProxyCommand ssh jumpuser@203.0.113.10 nc %h %p
 ```
 
 ## One-Liner Without Config File
@@ -100,23 +100,23 @@ scp -J jumpuser@203.0.113.10 file.txt admin@10.0.0.50:/tmp/
 
 ## Agent Forwarding for Key Authentication
 
-Avoid storing private keys on bastion hosts by using agent forwarding.
+With `ProxyJump`, your local SSH client authenticates to each host through the forwarded TCP connection, so you do not need to store private keys on bastion hosts. Enable agent forwarding only if you need to start new SSH connections from the remote host.
 
 ```bash
 # ~/.ssh/config
 Host bastion
     HostName 203.0.113.10
-    ForwardAgent yes    # Forward local SSH agent to the bastion
+    ForwardAgent no     # Default; avoid forwarding unless required
 
 Host internal-server
     HostName 10.0.0.50
     ProxyJump bastion
-    # Agent forwarded from bastion is used to authenticate here
+    # Your local keys or local ssh-agent authenticate this connection
 ```
 
 ## Key Takeaways
 
 - `ProxyJump` is the cleanest multi-hop SSH method for OpenSSH 7.3+.
-- `ProxyCommand ssh -W %h:%p bastion` provides equivalent functionality on older clients.
+- `ProxyCommand ssh -W %h:%p bastion` provides equivalent functionality on clients that support `-W` but not `ProxyJump`.
 - Use `-J` on the command line for ad-hoc multi-hop without a config file.
-- Enable `ForwardAgent yes` to authenticate to all hops using your local SSH key without copying keys to bastions.
+- Keep private keys local; only enable `ForwardAgent yes` when a remote host must initiate further SSH connections.
