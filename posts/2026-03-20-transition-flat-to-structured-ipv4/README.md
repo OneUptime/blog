@@ -17,12 +17,13 @@ Many organizations start with everything in one large subnet:
 ## Step 1: Document the Current State
 
 ```bash
-# Discover all active devices on the flat network
+# Discover responding devices on the flat network
 
-nmap -sn 10.0.0.0/8 -oG - | awk '/Up$/{print $2}' > /tmp/all-hosts.txt
+nmap -sn 10.0.0.0/8 -oN /tmp/ping-scan.txt
+awk '/Nmap scan report for/{host=$NF} /Host is up/{gsub(/[()]/,"",host); print host}' /tmp/ping-scan.txt > /tmp/all-hosts.txt
 
 # Try to identify device types by port scan
-nmap -p 22,80,443,8080,3389,8443 -oG /tmp/service-scan.txt 10.0.0.0/8
+nmap -p 22,80,443,8080,3389,8443 -oN /tmp/service-scan.txt 10.0.0.0/8
 
 # Parse to identify:
 # - Port 22: Servers, network devices
@@ -30,8 +31,8 @@ nmap -p 22,80,443,8080,3389,8443 -oG /tmp/service-scan.txt 10.0.0.0/8
 # - Port 80/443: Web servers, management interfaces
 # - Port 8080/8443: Cameras, IoT devices
 
-cat /tmp/service-scan.txt | grep "22/open" | wc -l     # Likely servers
-cat /tmp/service-scan.txt | grep "3389/open" | wc -l   # Windows devices
+grep -Ec '^22/tcp[[:space:]]+open' /tmp/service-scan.txt     # Likely servers
+grep -Ec '^3389/tcp[[:space:]]+open' /tmp/service-scan.txt   # Windows devices
 ```
 
 ## Step 2: Design the Target State
@@ -39,17 +40,17 @@ cat /tmp/service-scan.txt | grep "3389/open" | wc -l   # Windows devices
 ```text
 Target: Segmented network with security zones
 
-VLAN 10 - Corporate Users    10.1.10.0/24  (254 hosts)
-VLAN 20 - Servers            10.1.20.0/24  (254 hosts)
-VLAN 30 - DMZ                10.1.30.0/28  (14 hosts - small!)
-VLAN 40 - Management/OOB     10.1.40.0/27  (30 network devices)
-VLAN 50 - VoIP               10.1.50.0/24  (254 phones)
-VLAN 60 - IoT                10.1.60.0/24  (isolated, no internet)
-VLAN 99 - Native/Trunk       (untagged management traffic)
+VLAN 10 - Corporate Users    172.16.10.0/24  (254 hosts)
+VLAN 20 - Servers            172.16.20.0/24  (254 hosts)
+VLAN 30 - DMZ                172.16.30.0/28  (14 hosts - small!)
+VLAN 40 - Management/OOB     172.16.40.0/27  (30 network devices)
+VLAN 50 - VoIP               172.16.50.0/24  (254 phones)
+VLAN 60 - IoT                172.16.60.0/24  (isolated by ACL/firewall, no internet)
+VLAN 99 - Native/Trunk       (unused native VLAN for untagged trunk traffic)
 
 Migration from flat:
   Old: 10.0.0.0/8 (everything)
-  New: 10.1.X.0/24 (structured)
+  New: 172.16.X.0 with right-sized prefixes (structured, non-overlapping during migration)
 ```
 
 ## Step 3: Plan the Migration Sequence
@@ -62,7 +63,7 @@ Phase 1: Network infrastructure (switches, routers, APs)
   - Low risk: these devices don't have users
 
 Phase 2: Servers
-  - Add secondary IPs in new subnet
+  - Add new IPs on the new subnet/VLAN while keeping old IPs
   - Update DNS to new IPs
   - Move production traffic to new IPs
   - Remove old IPs after verification
@@ -99,36 +100,39 @@ vlan 50
 vlan 60
  name IOT
 
-! Layer 3 switch (router-on-a-stick or L3 switch)
+! Layer 3 switch SVIs
 interface Vlan10
- ip address 10.1.10.1 255.255.255.0
- ip helper-address 10.1.20.10    ! DHCP server
+ ip address 172.16.10.1 255.255.255.0
+ ip helper-address 172.16.20.10    ! DHCP server
 !
 interface Vlan20
- ip address 10.1.20.1 255.255.255.0
+ ip address 172.16.20.1 255.255.255.0
 !
 interface Vlan40
- ip address 10.1.40.1 255.255.255.224
+ ip address 172.16.40.1 255.255.255.224
 ```
 
 ## Step 5: Migrate a Server Without Downtime
 
 ```bash
-# Phase 1: Add new IP as secondary
-ip addr add 10.1.20.50/24 dev eth0
+# Phase 1: Add the new VLAN/IP while keeping the old flat-network IP
+# The switch port must allow VLAN 20 during the transition.
+sudo ip link add link eth0 name eth0.20 type vlan id 20
+sudo ip addr add 172.16.20.50/24 dev eth0.20
+sudo ip link set eth0.20 up
 
 # Phase 2: Update DNS (low TTL)
-# In DNS: server1.example.com A → 10.1.20.50 (TTL 60 seconds)
+# In DNS: server1.example.com A → 172.16.20.50 (TTL 60 seconds)
 
-# Phase 3: Verify new IP is reachable
-ping 10.1.20.50
+# Phase 3: Verify new IP is reachable from the routed network
+ping 172.16.20.50
 
 # Phase 4: Monitor that clients are using new IP
-tcpdump -i eth0 dst 10.0.0.50 -n | head   # Should decrease
-tcpdump -i eth0 dst 10.1.20.50 -n | head  # Should increase
+sudo tcpdump -ni any dst host 10.0.0.50 | head      # Should decrease
+sudo tcpdump -ni any dst host 172.16.20.50 | head   # Should increase
 
 # Phase 5: Remove old IP (after all DNS TTLs expire)
-ip addr del 10.0.0.50/8 dev eth0
+sudo ip addr del 10.0.0.50/8 dev eth0
 
 # Phase 6: Update application configs, monitoring, etc.
 ```
@@ -141,15 +145,15 @@ ip addr del 10.0.0.50/8 dev eth0
 # option routers 10.0.0.1;
 
 # New DHCP pool (structured)
-# range 10.1.10.100 10.1.10.200;
-# option routers 10.1.10.1;
+# range 172.16.10.100 172.16.10.200;
+# option routers 172.16.10.1;
 
 # Migration approach: change DHCP pool in maintenance window
 # Users reconnect after lease expiry or reconnection
 # Typically happens within 2-4 hours for all clients
 
-# Force immediate renewal on Linux clients
-sudo dhclient -r && sudo dhclient wlan0
+# Force immediate reconnect on NetworkManager Linux clients
+sudo nmcli device disconnect wlan0 && sudo nmcli device connect wlan0
 
 # Force renewal on Windows
 ipconfig /release && ipconfig /renew
@@ -157,4 +161,4 @@ ipconfig /release && ipconfig /renew
 
 ## Conclusion
 
-Transitioning from a flat network to a structured design requires planning the target VLAN/subnet architecture first, then migrating devices in phases: infrastructure first, then servers (using dual-IP during transition), then VoIP, IoT, and finally user workstations via DHCP pool cutover. The most critical step is maintaining the old IP as a secondary during server migration so services remain available throughout the transition.
+Transitioning from a flat network to a structured design requires planning the target VLAN/subnet architecture first, then migrating devices in phases: infrastructure first, then servers (using dual-IP during transition), then VoIP, IoT, and finally user workstations via DHCP pool cutover. The most critical step is maintaining the old IP while introducing the new VLAN/IP during server migration so services remain available throughout the transition.
