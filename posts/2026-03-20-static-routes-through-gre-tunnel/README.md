@@ -13,7 +13,7 @@ After creating a GRE tunnel, you need to add static routes so the Linux routing 
 ## Prerequisites
 
 - GRE tunnel configured and up (gre0)
-- Tunnel endpoints assigned IPs (e.g., 172.16.0.1 on Host A, 172.16.0.2 on Host B)
+- Tunnel interface IPs assigned (e.g., 172.16.0.1 on Host A, 172.16.0.2 on Host B)
 - IP forwarding enabled
 
 ## Add a Route for a Remote Subnet
@@ -48,13 +48,13 @@ ip route add 172.20.0.0/14 via 172.16.0.2
 ## Route All Traffic Through the Tunnel (VPN-style)
 
 ```bash
-# Route all internet traffic through the tunnel
-# (Useful for privacy/VPN scenarios)
-ip route add 0.0.0.0/0 via 172.16.0.2
+# First ensure the tunnel's underlay traffic bypasses the tunnel default route
+# Add a specific host route for the remote GRE underlay endpoint via the physical interface
+ip route replace 10.0.0.2/32 via <physical-gateway> dev <physical-interface>
 
-# But first ensure the tunnel's underlay traffic bypasses the default route
-# Add a specific host route for the remote tunnel endpoint via the physical interface
-ip route add 10.0.0.2/32 via <physical-gateway>
+# Route all internet traffic through the tunnel
+# (VPN-style routing; GRE itself does not encrypt traffic)
+ip route replace default via 172.16.0.2 dev gre0
 ```
 
 ## Verify Routes
@@ -96,13 +96,21 @@ Gateway=172.16.0.2
 ```
 
 ```yaml
-# Netplan (Ubuntu)
-vlans:    # Under the relevant interface
-  routes:
-    - to: 192.168.2.0/24
-      via: 172.16.0.2
+# Netplan (Ubuntu): add routes under the gre0 tunnel definition
+network:
+  version: 2
+  tunnels:
+    gre0:
+      mode: gre
+      local: 10.0.0.1
+      remote: 10.0.0.2
+      addresses:
+        - 172.16.0.1/30
+      routes:
+        - to: 192.168.2.0/24
+          via: 172.16.0.2
 ```
 
 ## Conclusion
 
-Static routes through GRE tunnels direct traffic for remote subnets to the tunnel's far-end endpoint IP. Use `ip route add <remote-subnet> via <tunnel-far-end-ip>` on each side. For persistence, add routes in systemd-networkd `.network` files or equivalent configuration. Verify with `ip route get <remote-ip>` to confirm the routing decision uses the tunnel.
+Static routes through GRE tunnels direct traffic for remote subnets to the tunnel's far-end interface IP. Use `ip route add <remote-subnet> via <far-end-tunnel-interface-ip>` on each side. For persistence, add routes in systemd-networkd `.network` files or equivalent configuration. Verify with `ip route get <remote-ip>` to confirm the routing decision uses the tunnel.
