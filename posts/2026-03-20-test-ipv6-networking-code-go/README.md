@@ -14,6 +14,7 @@ Go tests can create real IPv6 servers and clients using the loopback address `::
 package main
 
 import (
+    "io"
     "net"
     "testing"
     "time"
@@ -40,9 +41,7 @@ func startTestServer(t *testing.T) (string, func()) {
             }
             go func(c net.Conn) {
                 defer c.Close()
-                buf := make([]byte, 1024)
-                n, _ := c.Read(buf)
-                c.Write(buf[:n])  // Echo
+                io.Copy(c, c) // Echo
             }(conn)
         }
     }()
@@ -69,7 +68,7 @@ func TestIPv6TCPConnection(t *testing.T) {
     }
 
     buf := make([]byte, len(msg))
-    if _, err := conn.Read(buf); err != nil {
+    if _, err := io.ReadFull(conn, buf); err != nil {
         t.Fatalf("Read failed: %v", err)
     }
 
@@ -98,7 +97,7 @@ func TestIPv6Parsing(t *testing.T) {
         wantIs6   bool
     }{
         {
-            name:     "global unicast",
+            name:     "documentation address",
             input:    "2001:db8::1",
             wantAddr: "2001:db8::1",
             wantIs6:  true,
@@ -127,7 +126,7 @@ func TestIPv6Parsing(t *testing.T) {
             wantErr: true,
         },
         {
-            name:    "ipv4 rejected",
+            name:    "ipv4 input",
             input:   "192.168.1.1",
             wantIs6: false,
         },
@@ -166,11 +165,33 @@ func TestIPv6Parsing(t *testing.T) {
 package main
 
 import (
+    "net"
     "net/http"
     "net/http/httptest"
+    "net/netip"
     "strings"
     "testing"
 )
+
+func GetClientIP(req *http.Request) (netip.Addr, error) {
+    host := req.RemoteAddr
+    if forwardedFor := req.Header.Get("X-Forwarded-For"); forwardedFor != "" {
+        host, _, _ = strings.Cut(forwardedFor, ",")
+        host = strings.TrimSpace(host)
+    } else {
+        var err error
+        host, _, err = net.SplitHostPort(req.RemoteAddr)
+        if err != nil {
+            return netip.Addr{}, err
+        }
+    }
+
+    addr, err := netip.ParseAddr(host)
+    if err != nil {
+        return netip.Addr{}, err
+    }
+    return addr.Unmap(), nil
+}
 
 func TestClientIPExtractionIPv6(t *testing.T) {
     tests := []struct {
