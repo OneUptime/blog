@@ -13,15 +13,13 @@ Running the Traefik dashboard alongside Portainer gives you visibility into your
 ## Docker Compose Configuration
 
 ```yaml
-version: "3.8"
-
 services:
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.6
     container_name: traefik
     restart: unless-stopped
     command:
-      - "--api.dashboard=true"
+      - "--api=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
@@ -34,15 +32,17 @@ services:
       - traefik_certs:/certs
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.example.com`)"
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.example.com`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.traefik-dashboard.tls=true"
       - "traefik.http.routers.traefik-dashboard.service=api@internal"
       - "traefik.http.routers.traefik-dashboard.middlewares=auth"
-      - "traefik.http.middlewares.auth.basicauth.users=admin:$$apr1$$xyz$$hashedpassword"
+      - "traefik.http.middlewares.auth.basicauth.users=admin:$$apr1$$H6uskkkW$$bt.NuB5KexSb229ZuoK13/"
     networks:
       - proxy
 
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:lts
     container_name: portainer
     restart: unless-stopped
     volumes:
@@ -52,6 +52,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.portainer.rule=Host(`portainer.example.com`)"
       - "traefik.http.routers.portainer.entrypoints=websecure"
+      - "traefik.http.routers.portainer.tls=true"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
     networks:
       - proxy
@@ -73,7 +74,7 @@ networks:
 apt install apache2-utils
 
 # Generate hashed password
-htpasswd -nb admin yourpassword
+htpasswd -nbm admin yourpassword
 # Output: admin:$apr1$...
 
 # In docker-compose, escape $ as $$
@@ -107,6 +108,7 @@ Then add to each router label:
 
 ```yaml
 - "traefik.http.routers.portainer.tls.certresolver=letsencrypt"
+- "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
 ```
 
 ## Conclusion
