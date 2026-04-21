@@ -34,8 +34,12 @@ echo "Host: $(hostname)"
 echo ""
 
 # Test 1: IPv6 is not disabled
-if sysctl net.ipv6.conf.all.disable_ipv6 2>/dev/null | grep -q "= 0"; then
-    log_pass "IPv6 is enabled (disable_ipv6=0)"
+if IPV6_DISABLED=$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null); then
+    if [ "$IPV6_DISABLED" = "0" ]; then
+        log_pass "IPv6 is enabled (disable_ipv6=0)"
+    else
+        log_fail "IPv6 is disabled (disable_ipv6=$IPV6_DISABLED)"
+    fi
 else
     log_warn "IPv6 disable_ipv6 sysctl not available (may be container)"
 fi
@@ -63,8 +67,7 @@ else
 fi
 
 # Test 5: IPv6 external connectivity
-if curl -6 -s --max-time 10 https://ipv6.icanhazip.com > /dev/null 2>&1; then
-    EXTERNAL_IPV6=$(curl -6 -s --max-time 10 https://ipv6.icanhazip.com)
+if EXTERNAL_IPV6=$(curl -6 -fsS --max-time 10 https://ipv6.icanhazip.com 2>/dev/null) && echo "$EXTERNAL_IPV6" | grep -q ":"; then
     log_pass "External IPv6 connectivity OK (using $EXTERNAL_IPV6)"
 else
     log_warn "No external IPv6 connectivity (may be expected in some CI environments)"
@@ -114,13 +117,13 @@ jobs:
 
       - name: Enable Docker IPv6
         run: |
-          echo '{"ipv6": true, "fixed-cidr-v6": "fd00::/80"}' | \
+          echo '{"ipv6": true, "fixed-cidr-v6": "fd00:dead:beef::/64"}' | \
             sudo tee /etc/docker/daemon.json
-          sudo systemctl reload docker
+          sudo systemctl restart docker
 
       - name: Run IPv6 connectivity tests in Docker
         run: |
-          docker network create --ipv6 --subnet fd00::/80 test-net
+          docker network create --ipv6 --subnet fd00:1::/64 test-net
           docker run --rm --network test-net ubuntu:22.04 bash -c "
             apt-get update -q && apt-get install -y iproute2 curl python3 dnsutils -q
             ip -6 addr show
@@ -156,6 +159,15 @@ s.close()
 
 import socket
 import pytest
+
+def _has_external_ipv6() -> bool:
+    """Check if external IPv6 connectivity is available."""
+    import urllib.request
+    try:
+        with urllib.request.urlopen('https://ipv6.icanhazip.com', timeout=10) as response:
+            return ':' in response.read().decode().strip()
+    except Exception:
+        return False
 
 def test_ipv6_socket_creation():
     """Test that IPv6 sockets can be created."""
@@ -196,31 +208,34 @@ def test_ipv6_loopback_connectivity():
 
 def test_ipv6_dual_stack_server():
     """Test that a dual-stack server accepts both IPv4 and IPv6."""
-    s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    # IPV6_V6ONLY=0 enables dual-stack (accepts IPv4 as IPv4-mapped IPv6)
-    s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
-    s.bind(('::', 0))
-    s.listen(1)
-    s.close()
+    if not socket.has_dualstack_ipv6():
+        pytest.skip("Dual-stack IPv6 sockets are not supported")
+
+    server = socket.create_server(('::', 0), family=socket.AF_INET6, dualstack_ipv6=True)
+    server.settimeout(5)
+    port = server.getsockname()[1]
+
+    try:
+        for host in ('::1', '127.0.0.1'):
+            client = socket.create_connection((host, port), timeout=5)
+            try:
+                conn, addr = server.accept()
+                conn.close()
+            finally:
+                client.close()
+    finally:
+        server.close()
 
 @pytest.mark.skipif(
-    not _has_global_ipv6(),
-    reason="No global IPv6 address available"
+    not _has_external_ipv6(),
+    reason="No external IPv6 connectivity available"
 )
 def test_external_ipv6():
-    """Test external IPv6 connectivity (skipped if no global IPv6)."""
+    """Test external IPv6 connectivity (skipped if unavailable)."""
     import urllib.request
-    response = urllib.request.urlopen('https://ipv6.icanhazip.com', timeout=10)
-    addr = response.read().decode().strip()
+    with urllib.request.urlopen('https://ipv6.icanhazip.com', timeout=10) as response:
+        addr = response.read().decode().strip()
     assert ':' in addr  # Must be an IPv6 address
-
-def _has_global_ipv6() -> bool:
-    """Check if any global IPv6 address is available."""
-    import subprocess
-    result = subprocess.run(['ip', '-6', 'addr', 'show', 'scope', 'global'],
-                          capture_output=True, text=True)
-    return 'inet6' in result.stdout
 ```
 
 ## GitLab CI Integration
@@ -231,7 +246,7 @@ ipv6-tests:
   stage: test
   image: ubuntu:22.04
   script:
-    - apt-get update -q && apt-get install -y python3 iproute2 curl dnsutils -q
+    - apt-get update -q && apt-get install -y python3 python3-pytest iproute2 curl dnsutils -q
     - chmod +x test_ipv6_connectivity.sh
     - ./test_ipv6_connectivity.sh
     - python3 -m pytest tests/test_ipv6_connectivity.py -v
@@ -239,4 +254,4 @@ ipv6-tests:
 
 ## Conclusion
 
-Testing IPv6 connectivity in CI/CD pipelines requires a layered approach: kernel-level sysctl checks, socket binding tests, DNS resolution verification, and optional external connectivity tests. The provided shell script and Python test suite cover these layers and can be integrated into any CI/CD platform. Use `@pytest.mark.skipif` guards for tests that require external IPv6 connectivity, ensuring pipelines pass even in environments without internet-facing IPv6.
+Testing IPv6 connectivity in CI/CD pipelines requires a layered approach: kernel-level sysctl checks, socket binding tests, DNS resolution verification, and optional external connectivity tests. The provided shell script and Python test suite cover these layers and can be integrated into any CI/CD platform. Use `@pytest.mark.skipif` guards that check external IPv6 reachability for tests that require external IPv6 connectivity, ensuring pipelines pass even in environments without internet-facing IPv6.
