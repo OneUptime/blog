@@ -8,17 +8,17 @@ Description: Learn how to configure SSH client and server keepalive settings to 
 
 ---
 
-Idle SSH tunnels are commonly dropped by firewalls, NAT gateways, and cloud load balancers after a period of inactivity. SSH's keepalive mechanism sends periodic "null" packets to keep the connection alive and detect when the remote end has gone away.
+Idle SSH tunnels are commonly dropped by firewalls, NAT gateways, and cloud load balancers after a period of inactivity. OpenSSH's keepalive mechanism sends periodic encrypted probe messages to keep the connection alive and detect when the remote end has gone away.
 
 ## How SSH Keepalives Work
 
 ```text
 Client                    Server
   |   (idle for 30s)       |
-  |--ServerAliveMessage--->|  (probe packet)
+  |--server alive request->|  (encrypted probe message)
   |<-----response---------|
   |   (another 30s idle)   |
-  |--ServerAliveMessage--->|
+  |--server alive request->|
   |         (no response - server gone)
   |   (repeat CountMax times, then disconnect)
 ```
@@ -28,13 +28,6 @@ Client                    Server
 ```bash
 # ~/.ssh/config (or /etc/ssh/ssh_config for system-wide)
 
-Host *
-    # Send a keepalive packet every 30 seconds of idle time
-    ServerAliveInterval 30
-
-    # Disconnect after 3 consecutive unanswered keepalives (90 seconds total)
-    ServerAliveCountMax 3
-
 # Apply stricter settings for tunnel connections specifically
 
 Host *-tunnel
@@ -42,6 +35,13 @@ Host *-tunnel
     ServerAliveCountMax 5
     AddressFamily inet   # Force IPv4
     TCPKeepAlive yes     # Enable OS-level TCP keepalives too
+
+Host *
+    # Send a keepalive packet every 30 seconds of idle time
+    ServerAliveInterval 30
+
+    # Disconnect after 3 consecutive unanswered keepalives (90 seconds total)
+    ServerAliveCountMax 3
 ```
 
 ## Command-Line KeepAlive Options
@@ -105,7 +105,7 @@ sysctl -p
 | Use Case | ServerAliveInterval | ServerAliveCountMax | Notes |
 |----------|-------------------|-------------------|-------|
 | Corporate firewall (15m timeout) | 60s | 3 | Conservative |
-| AWS/cloud (5m NAT timeout) | 60s | 5 | Start keepalives early |
+| Cloud NAT/load balancer timeout | 60s | 5 | Check provider-specific idle timeout |
 | Aggressive reliability | 20s | 3 | For critical tunnels |
 | Low-bandwidth links | 120s | 3 | Reduce keepalive traffic |
 
@@ -114,4 +114,4 @@ sysctl -p
 - `ServerAliveInterval` is the most important setting - set it lower than your network's idle timeout.
 - `ServerAliveCountMax` controls how many missed keepalives trigger a disconnect.
 - `TCPKeepAlive yes` adds OS-level TCP keepalives for additional protection against dead connections.
-- For cloud environments (AWS, GCP, Azure), set `ServerAliveInterval 60` to beat the typical 5-minute NAT idle timeout.
+- For cloud environments, check the provider-specific NAT or load balancer idle timeout; `ServerAliveInterval 60` is below common defaults such as AWS NAT Gateway's 350 seconds, Azure NAT Gateway's 4 minutes, and Google Cloud NAT's 20 minutes for established TCP connections.
