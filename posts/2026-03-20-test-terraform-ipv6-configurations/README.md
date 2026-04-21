@@ -18,11 +18,11 @@ Use `validation` blocks in variable declarations to catch invalid IPv6 CIDRs ear
 variable "ipv6_vpc_cidr" {
   type        = string
   description = "IPv6 CIDR block for the VPC"
-  default     = "::/0"
+  default     = "fd00::/56"
 
   validation {
-    # Ensure the CIDR contains :: (IPv6 notation)
-    condition     = can(cidrnetmask(var.ipv6_vpc_cidr)) && strcontains(var.ipv6_vpc_cidr, ":")
+    # Ensure the CIDR parses as IPv6 notation
+    condition     = can(cidrhost(var.ipv6_vpc_cidr, 0)) && strcontains(var.ipv6_vpc_cidr, ":")
     error_message = "ipv6_vpc_cidr must be a valid IPv6 CIDR block."
   }
 }
@@ -34,7 +34,7 @@ variable "ipv6_subnet_cidrs" {
   validation {
     condition = alltrue([
       for cidr in var.ipv6_subnet_cidrs :
-      can(cidrnetmask(cidr)) && endswith(cidr, "/64")
+      can(cidrhost(cidr, 0)) && strcontains(cidr, ":") && endswith(cidr, "/64")
     ])
     error_message = "All subnet CIDRs must be valid /64 IPv6 blocks."
   }
@@ -102,7 +102,7 @@ func TestIPv6Infrastructure(t *testing.T) {
     vpcIPv6CIDR := terraform.Output(t, opts, "vpc_ipv6_cidr")
     assert.True(t, strings.Contains(vpcIPv6CIDR, ":"), "VPC should have an IPv6 CIDR")
 
-    // Test DNS resolution returns AAAA record
+    // Validate instance has an IPv6 address
     instanceIPv6 := terraform.Output(t, opts, "instance_ipv6")
     assert.True(t, strings.Contains(instanceIPv6, ":"), "Instance should have IPv6 address")
 
@@ -157,7 +157,7 @@ echo "=== All tests passed ==="
 terraform validate
 
 # Run Terraform plan with variable validation
-terraform plan -var="ipv6_subnet_cidrs=[\"fd00::/64\",\"fd00::1:0:0/64\"]"
+terraform plan -var="ipv6_subnet_cidrs=[\"fd00::/64\",\"fd00:0:0:1::/64\"]"
 
 # Run Terratest
 go test -v -timeout 30m ./test/...
