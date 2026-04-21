@@ -8,7 +8,7 @@ Description: Diagnose and resolve common DNS server IPv6 binding failures includ
 
 ## Introduction
 
-DNS servers fail to bind to IPv6 addresses for several reasons: the address is not yet assigned, IPv6 is disabled on the interface, `bind-interfaces` conflicts with wildcard listening, or the OS does not have IPv6 enabled. This guide covers the most common failures and their fixes.
+DNS servers fail to bind to IPv6 addresses for several reasons: the address is not yet assigned, IPv6 is disabled on the interface, explicit listen-address configuration conflicts with wildcard listening, or the OS does not have IPv6 enabled. This guide covers the most common failures and their fixes.
 
 ## Common Error Messages
 
@@ -30,20 +30,22 @@ listen tcp6 [::]:53: bind: address already in use
 ## Step 1: Verify IPv6 is Enabled
 
 ```bash
-# Check IPv6 is not disabled globally
-sysctl net.ipv6.conf.all.disable_ipv6
+# Check IPv6 is not disabled for new interfaces
+sysctl net.ipv6.conf.default.disable_ipv6
 # Should be 0
 
-# Check per interface
+# Check the target interface
 sysctl net.ipv6.conf.eth0.disable_ipv6
 # Should be 0
 
 # Re-enable if disabled
 sysctl -w net.ipv6.conf.all.disable_ipv6=0
+sysctl -w net.ipv6.conf.default.disable_ipv6=0
 sysctl -w net.ipv6.conf.eth0.disable_ipv6=0
 
 # Persist
 echo "net.ipv6.conf.all.disable_ipv6=0" >> /etc/sysctl.conf
+echo "net.ipv6.conf.default.disable_ipv6=0" >> /etc/sysctl.conf
 ```
 
 ## Step 2: Check IPv6 Address is Assigned
@@ -73,7 +75,8 @@ ss -lntp | grep :53
 
 # Common culprit: systemd-resolved
 systemctl status systemd-resolved
-# If active and listening on [::1]:53, disable stub listener
+# If active and listening on 127.0.0.53:53
+# or an extra IPv6 stub listener, disable the stub listener
 
 # /etc/systemd/resolved.conf
 # [Resolve]
@@ -90,23 +93,27 @@ systemctl start bind9
 # Check BIND compilation for IPv6 support
 named -V | grep -i "ipv6\|use-v6"
 
-# Ensure named.conf has IPv6 enabled
+# Modern BIND listens on IPv6 by default.
+# If named.conf.options explicitly disables IPv6, replace:
 # named.conf.options:
+# listen-on-v6 { none; };
+# with:
 # listen-on-v6 { any; };
 
-# If using bind-interfaces, ensure the address exists before named starts
+# If binding to a specific IPv6 address, ensure the address exists before named starts
 # Add a delay or use systemd ordering
 # /etc/systemd/system/bind9.service.d/override.conf:
 # [Service]
 # ExecStartPre=/bin/sh -c 'until ip -6 addr show scope global | grep -q inet6; do sleep 1; done'
+# Run systemctl daemon-reload after creating or changing the drop-in.
 ```
 
 ```nginx
-# Common mistake: listen-on-v6 is missing
+# Common mistake: IPv6 listening is explicitly disabled
 options {
     listen-on    { 127.0.0.1; };
-    # listen-on-v6 missing - BIND won't listen on IPv6!
-    listen-on-v6 { any; };  # ADD THIS
+    # listen-on-v6 { none; };  # disables IPv6
+    listen-on-v6 { any; };     # replace "none" with "any"
 };
 ```
 
@@ -123,10 +130,12 @@ options {
 # interface: ::0
 
 # Or add a pre-start check
+mkdir -p /etc/systemd/system/unbound.service.d
 cat > /etc/systemd/system/unbound.service.d/wait-ipv6.conf << 'EOF'
 [Service]
 ExecStartPre=/bin/sh -c 'until ip -6 addr show | grep "2001:db8::53"; do sleep 1; done'
 EOF
+systemctl daemon-reload
 ```
 
 ## Step 6: Firewall Blocking DNS on IPv6
@@ -139,12 +148,9 @@ ip6tables -L INPUT -n -v | grep -E "53|dns"
 ip6tables -A INPUT -p udp --dport 53 -j ACCEPT
 ip6tables -A INPUT -p tcp --dport 53 -j ACCEPT
 
-# Test connectivity
-nc -6 -u -z -w 2 2001:db8::53 53 && echo "UDP 53 open"
-nc -6 -z -w 2 2001:db8::53 53 && echo "TCP 53 open"
-
-# Test DNS query
-dig AAAA google.com @2001:db8::53
+# Test DNS queries over UDP and TCP
+dig +tries=1 +timeout=2 AAAA google.com @2001:db8::53
+dig +tcp +tries=1 +timeout=2 AAAA google.com @2001:db8::53
 ```
 
 ## Step 7: Debug with strace
@@ -160,4 +166,4 @@ strace -f -e trace=bind,socket named -g 2>&1 | grep -E "bind|AF_INET6"
 
 ## Conclusion
 
-IPv6 DNS binding issues stem from disabled IPv6, unassigned addresses, port conflicts with systemd-resolved, or missing `listen-on-v6` directives. Systematically check: IPv6 enabled → address assigned → port free → firewall open → DNS server config. Use OneUptime to continuously monitor DNS server availability on IPv6 and alert before users are impacted.
+IPv6 DNS binding issues stem from disabled IPv6, unassigned addresses, port conflicts with systemd-resolved, or `listen-on-v6` directives that explicitly disable IPv6. Systematically check: IPv6 enabled → address assigned → port free → firewall open → DNS server config. Use OneUptime to continuously monitor DNS server availability on IPv6 and alert before users are impacted.
