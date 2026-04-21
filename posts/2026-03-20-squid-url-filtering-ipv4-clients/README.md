@@ -63,7 +63,8 @@ http_access deny all
 ## Blocking URL Patterns with Regular Expressions
 
 ```squid
-# ACL matching URLs containing specific patterns (case insensitive)
+# ACL matching visible URLs containing specific patterns (case insensitive)
+# Without SSL bump, HTTPS CONNECT requests expose the host:port, not the URL path.
 acl blocked_patterns url_regex -i "/etc/squid/blocked_patterns.txt"
 http_access deny blocked_patterns
 ```
@@ -83,11 +84,13 @@ Apply different policies during business hours vs. after hours.
 
 ```squid
 # Allow social media only outside business hours (before 9am and after 5pm)
+acl localnet src 192.168.0.0/16
 acl business_hours time MTWHF 09:00-17:00
 acl social_media dstdomain .twitter.com .linkedin.com .reddit.com
 
-http_access deny social_media business_hours
-http_access allow social_media   # Allow outside business hours
+http_access deny localnet social_media business_hours
+http_access allow localnet
+http_access deny all
 ```
 
 ## Per-Group URL Policies
@@ -118,12 +121,13 @@ squid -k parse
 # Reload to apply new lists without restart
 squid -k reconfigure
 
-# Test a blocked site
-curl -x http://127.0.0.1:3128 http://facebook.com
+# Test a blocked site from an IPv4 client that matches localnet
+# Replace 192.168.1.10 with your Squid proxy's IPv4 address
+curl -x http://192.168.1.10:3128 http://facebook.com
 # Should return: 403 Forbidden or Squid denial page
 
 # Test an allowed site
-curl -x http://127.0.0.1:3128 http://github.com
+curl -x http://192.168.1.10:3128 http://github.com
 ```
 
 ## Key Takeaways
