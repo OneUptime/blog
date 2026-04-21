@@ -32,7 +32,7 @@ resource "aws_instance" "app" {
 
 ## Waiting for SSH to Become Available
 
-Add a sleep or retry before running Ansible to ensure SSH is ready:
+Add a sleep or retry before running Ansible so SSH has time to become available:
 
 ```hcl
 provisioner "local-exec" {
@@ -41,7 +41,7 @@ provisioner "local-exec" {
     ansible-playbook \
       -i '${self.public_ip},' \
       -u ec2-user \
-      --private-key ${var.private_key_path} \
+      --private-key "${var.private_key_path}" \
       --extra-vars "env=${var.environment} app_version=${var.app_version}" \
       playbooks/configure-app.yml
   EOT
@@ -50,7 +50,7 @@ provisioner "local-exec" {
 
 ## Using an Inventory File
 
-Generate a dynamic inventory file then run Ansible:
+Generate an inventory file then run Ansible:
 
 ```hcl
 resource "local_file" "ansible_inventory" {
@@ -61,10 +61,10 @@ resource "local_file" "ansible_inventory" {
   EOT
 }
 
-resource "null_resource" "run_ansible" {
+resource "terraform_data" "run_ansible" {
   depends_on = [aws_instance.app, local_file.ansible_inventory]
 
-  triggers = {
+  triggers_replace = {
     instance_id = aws_instance.app.id
     playbook_hash = filemd5("${path.module}/playbooks/configure-app.yml")
   }
