@@ -192,11 +192,17 @@ mock_provider "aws" {
   }
 }
 
+variables {
+  username = "test_user"
+  password = "test_password"
+  db_name  = "app"
+}
+
 run "connection_string_is_not_empty" {
   command = plan
 
   assert {
-    # Can check emptiness - sensitive value is redacted in error messages
+    # Check emptiness without including the sensitive value in the failure message
     condition     = output.connection_string != ""
     error_message = "connection_string output should not be empty"
   }
@@ -230,4 +236,4 @@ run "verify_output_matches_reality" {
 
 ## Conclusion
 
-Testing module output values ensures your module's public API is correct. Use mock providers with explicit `defaults` to control the values that feed into output calculations. Test output format (lowercase, non-empty), output counts (for list outputs), and that computed outputs match their expected formulas. For sensitive outputs, assert on emptiness or length rather than exact values. Output tests are particularly valuable for library modules used across many configurations.
+Testing module output values ensures your module's public API is correct. Use mock providers with explicit `defaults` for provider-computed values that feed into output calculations. Test output format (lowercase, non-empty), output counts (for list outputs), and that computed outputs match their expected formulas. For sensitive outputs, assert on non-secret properties like emptiness or length, and avoid including exact values in failure messages. Output tests are particularly valuable for library modules used across many configurations.
