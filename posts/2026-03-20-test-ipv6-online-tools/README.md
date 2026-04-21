@@ -20,12 +20,12 @@ The most comprehensive IPv6 connectivity tester:
 curl -s https://ipv6.icanhazip.com
 # If this returns an IPv6 address, you have working IPv6
 
-# Full test-ipv6.com API
-curl -s https://ipv4.test-ipv6.com/ip/?callback=
-curl -s https://ipv6.test-ipv6.com/ip/?callback=
+# test-ipv6.com IP endpoints
+curl -s https://test-ipv6.com/ip/?callback=
+curl -6 -s http://ipv6.test-ipv6.com/ip/?callback=
 
 # Check your IPv6 address
-curl -6 -s https://api6.my-ip.io/ip
+curl -6 -s https://api6.ipify.org
 ```
 
 ## Checking IPv6 from Server Side
@@ -37,15 +37,15 @@ curl -6 -s https://api6.my-ip.io/ip
 echo "=== Server IPv6 Connectivity Test ==="
 
 # 1. What is my IPv4 address?
-IPV4=$(curl -4 -s --max-time 5 https://api4.my-ip.io/ip 2>/dev/null)
+IPV4=$(curl -4 -s --max-time 5 https://api.ipify.org 2>/dev/null)
 echo "IPv4: ${IPV4:-NOT AVAILABLE}"
 
 # 2. What is my IPv6 address?
-IPV6=$(curl -6 -s --max-time 5 https://api6.my-ip.io/ip 2>/dev/null)
+IPV6=$(curl -6 -s --max-time 5 https://api6.ipify.org 2>/dev/null)
 echo "IPv6: ${IPV6:-NOT AVAILABLE}"
 
 # 3. Default protocol test
-PROTO_IP=$(curl -s --max-time 5 https://api64.my-ip.io/ip 2>/dev/null)
+PROTO_IP=$(curl -s --max-time 5 https://api64.ipify.org 2>/dev/null)
 echo "Default: ${PROTO_IP:-NOT AVAILABLE}"
 
 # 4. IPv6 connectivity score
@@ -80,25 +80,24 @@ done
 ```bash
 # Get your IPv6 address
 curl -6 https://ipv6.icanhazip.com
-curl -6 https://api6.my-ip.io/ip
+curl -6 https://api6.ipify.org
 curl -6 https://v6.ident.me/
 
 # IPv6-only endpoints (tests pure IPv6)
 curl -6 https://ipv6.google.com
-curl -6 https://ip6.me/api/
+curl -6 https://ip6only.me/api/
 
 # Dual-stack test (tests which protocol is preferred)
-curl https://api64.my-ip.io/ip   # Returns IPv6 if available
+curl https://api64.ipify.org   # Returns IPv6 if curl connects over IPv6
 
 # HTTP over IPv6
-curl -6 http://[2001:4860:4860::8888]  # Not a web server, but tests routing
+curl -6 -I https://ipv6.google.com
 ```
 
 ## Testing from a Web Application
 
 ```python
 import requests
-import socket
 
 def test_ipv6_connectivity():
     """Test IPv6 connectivity from a Python application."""
@@ -106,8 +105,7 @@ def test_ipv6_connectivity():
 
     # Test IPv6-only endpoint
     try:
-        # Force IPv6 by resolving to IPv6 address first
-        socket.setdefaulttimeout(5)
+        # ipv6.icanhazip.com publishes only AAAA records, so this requires IPv6.
         session = requests.Session()
         resp = session.get('https://ipv6.icanhazip.com', timeout=5)
         results['ipv6_address'] = resp.text.strip()
@@ -197,4 +195,4 @@ echo "Score: $SCORE/$TOTAL"
 
 ## Conclusion
 
-Online IPv6 testing tools like test-ipv6.com, icanhazip.com, and my-ip.io provide quick external validation of IPv6 connectivity. Combine these with command-line tests (`ping6`, `curl -6`, `dig AAAA`) for comprehensive coverage. Run the readiness check script after any IPv6 configuration change to confirm all aspects of IPv6 are working correctly.
+Online IPv6 testing tools like test-ipv6.com, icanhazip.com, and ipify.org provide quick external validation of IPv6 connectivity. Combine these with command-line tests (`ping6`, `curl -6`, `dig AAAA`) for comprehensive coverage. Run the readiness check script after any IPv6 configuration change to confirm all aspects of IPv6 are working correctly.
