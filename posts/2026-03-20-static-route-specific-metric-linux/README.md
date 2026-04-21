@@ -8,7 +8,7 @@ Description: Add static routes with custom metric values on Linux to control rou
 
 ## Introduction
 
-Route metric determines the preference between multiple routes to the same destination. The route with the lowest metric is preferred. Setting custom metrics allows you to create primary/backup routing policies without dynamic routing protocols.
+Route metric determines the preference between multiple equally specific routes to the same destination. The route with the lowest metric is preferred. Setting custom metrics allows you to create primary/backup routing policies without dynamic routing protocols.
 
 ## Add a Route with a Specific Metric
 
@@ -42,12 +42,12 @@ ip route add default via 192.168.1.254 metric 200
 
 ## Route Selection Based on Metric
 
-Linux selects the route with the lowest metric when multiple routes match:
+Linux uses the most specific route first, then selects the lowest metric when multiple equally specific routes match:
 
 ```bash
 # Check which route will be used
 ip route get 192.168.2.100
-# Shows the lowest-metric matching route
+# Shows the selected matching route
 ```
 
 ## Persistent Configuration with Metrics
@@ -89,8 +89,9 @@ Metric=100
 ## Change a Route's Metric
 
 ```bash
-# Replace route to change its metric
-ip route replace 192.168.2.0/24 via 10.0.0.1 metric 50
+# Delete the old metric and add the route with the new metric
+ip route del 192.168.2.0/24 via 10.0.0.1 metric 100
+ip route add 192.168.2.0/24 via 10.0.0.1 metric 50
 ```
 
 ## Automatic Failover Simulation
@@ -102,10 +103,10 @@ Routes with metrics don't automatically failover - that requires link detection.
 ip route add default via 10.0.0.1 metric 100
 ip route add default via 10.0.1.1 metric 200
 
-# If eth0 goes DOWN, the kernel removes its routes automatically
+# If eth0 goes DOWN and its lower-metric route is removed,
 # eth1's route (metric 200) then becomes active
 ```
 
 ## Conclusion
 
-Route metrics control preference when multiple routes exist to the same destination. Lower metric = preferred. Use `metric <number>` with `ip route add` to set the priority. Primary routes should have metric 100 (or similar) and backups a higher value. When the primary interface fails, Linux automatically falls back to the next-lowest-metric route. Always persist routes with metrics via Netplan, nmcli, or systemd-networkd.
+Route metrics control preference when multiple equally specific routes exist to the same destination. Lower metric = preferred. Use `metric <number>` with `ip route add` to set the priority. Primary routes should have metric 100 (or similar) and backups a higher value. When the lower-metric route is removed, Linux falls back to the next-lowest-metric route. Always persist routes with metrics via Netplan, nmcli, or systemd-networkd.
