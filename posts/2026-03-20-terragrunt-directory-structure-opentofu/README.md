@@ -8,13 +8,13 @@ Description: Learn how to organize a Terragrunt repository structure for OpenTof
 
 ## Introduction
 
-Terragrunt adds a configuration layer on top of OpenTofu that enables DRY multi-environment setups. A well-organized directory structure makes it clear where environment-specific values live versus shared configuration, and enables commands like `run-all` to orchestrate deployments across the entire hierarchy.
+Terragrunt adds a configuration layer on top of OpenTofu that enables DRY multi-environment setups. A well-organized directory structure makes it clear where environment-specific values live versus shared configuration, and enables commands like `run --all` to orchestrate deployments across the entire hierarchy.
 
 ## Recommended Directory Structure
 
 ```text
 infrastructure/
-├── terragrunt.hcl              # Root config (backend, provider, tags)
+├── root.hcl                    # Root config (backend, provider, tags)
 ├── _envcommon/                 # Shared config snippets
 │   ├── networking.hcl
 │   ├── database.hcl
@@ -43,10 +43,10 @@ infrastructure/
     └── ecs-service/
 ```
 
-## Root terragrunt.hcl
+## Root Configuration File
 
 ```hcl
-# terragrunt.hcl (root)
+# root.hcl
 
 # This is the root configuration inherited by all child configs
 
@@ -113,16 +113,16 @@ locals {
 ```hcl
 # environments/prod/networking/terragrunt.hcl
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 include "envcommon" {
-  path   = "${dirname(find_in_parent_folders())}/_envcommon/networking.hcl"
+  path   = "${dirname(find_in_parent_folders("root.hcl"))}/_envcommon/networking.hcl"
   expose = true
 }
 
 terraform {
-  source = "${dirname(find_in_parent_folders())}//modules/vpc"
+  source = "${dirname(find_in_parent_folders("root.hcl"))}//modules/vpc"
 }
 
 locals {
@@ -140,15 +140,15 @@ inputs = {
 
 ```bash
 # Plan all modules in production
-terragrunt run-all plan --terragrunt-working-dir environments/prod
+terragrunt run --all --working-dir environments/prod -- plan
 
 # Apply all modules in dev (auto-approves)
-terragrunt run-all apply --terragrunt-working-dir environments/dev
+terragrunt run --all --working-dir environments/dev -- apply
 
 # Destroy a specific environment
-terragrunt run-all destroy --terragrunt-working-dir environments/dev
+terragrunt run --all --working-dir environments/dev -- destroy
 ```
 
 ## Conclusion
 
-The Terragrunt directory structure mirrors your environment hierarchy. The root `terragrunt.hcl` provides shared backend and provider configuration, `env.hcl` files capture per-environment values, and child `terragrunt.hcl` files include both. This structure scales to many environments and components without config duplication.
+The Terragrunt directory structure mirrors your environment hierarchy. The root `root.hcl` provides shared backend and provider configuration, `env.hcl` files capture per-environment values, and child `terragrunt.hcl` files include both. This structure scales to many environments and components without config duplication.
