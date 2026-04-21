@@ -6,31 +6,31 @@ Tags: ss, netstat, Linux, Networking, Socket, Diagnostic
 
 Description: Use the ss command as a faster, more powerful replacement for netstat to investigate socket connections, listening ports, and TCP internals on modern Linux systems.
 
-`ss` (socket statistics) queries the kernel directly via netlink, making it significantly faster than netstat (which reads /proc). It provides all netstat functionality plus deeper inspection of TCP internals like congestion window and RTT.
+`ss` (socket statistics) queries the kernel directly via netlink, making it significantly faster than netstat (which reads /proc). It covers the common socket-inspection parts of netstat plus deeper inspection of TCP internals like congestion window and RTT.
 
 ## Why ss Over netstat?
 
 ```text
-Feature            netstat        ss
------------------  -------------  ------------------
-Speed              Slow (/proc)   Fast (netlink)
-TCP internals      No             Yes (-i flag)
-Still maintained?  No (deprecated)  Yes
-Memory efficient?  No             Yes (for huge tables)
-Available?         Needs install  Pre-installed
+Feature            netstat                 ss
+-----------------  ----------------------  ---------------------
+Speed              Slow (/proc)            Fast (netlink)
+TCP internals      No                      Yes (-i flag)
+Still maintained?  Mostly obsolete         Yes
+Memory efficient?  No                      Yes (for huge tables)
+Available?         net-tools package       iproute2 package
 ```
 
 ## Basic Equivalents to netstat
 
 ```bash
-# Show all connections (netstat equivalent)
+# Show all sockets (netstat equivalent)
 
 ss -a
 
-# Show all TCP (netstat -t)
+# Show TCP sockets (netstat -t)
 ss -t
 
-# Show all UDP (netstat -u)
+# Show UDP sockets (netstat -u)
 ss -u
 
 # Show listening only (netstat -l)
@@ -72,7 +72,7 @@ ss -t state established
 # Show only listening sockets
 ss -t state listening
 
-# Show TIME_WAIT sockets (may indicate high traffic or connection leak)
+# Show TIME_WAIT sockets (may indicate high traffic or connection churn)
 ss -t state time-wait
 
 # Count connections in each state
@@ -82,17 +82,17 @@ ss -ta | awk 'NR>1 {print $1}' | sort | uniq -c | sort -rn
 ## Filter by Port
 
 ```bash
-# All sockets on port 80
-ss -n '( dport = :80 or sport = :80 )'
+# All TCP/UDP sockets on port 80
+ss -tuna '( dport = :80 or sport = :80 )'
 
-# All connections TO port 443
-ss -n dport = :443
+# TCP/UDP sockets TO port 443
+ss -tun dport = :443
 
-# All connections FROM port 22
-ss -n sport = :22
+# TCP/UDP sockets with source port 22
+ss -tun sport = :22
 
-# Connections to a specific IP
-ss -n dst 8.8.8.8
+# TCP/UDP sockets to a specific IP
+ss -tun dst 8.8.8.8
 ```
 
 ## Show with Process Information
@@ -130,7 +130,7 @@ sudo ss -tin dst 8.8.8.8
 # Key fields:
 # rtt:     Round-trip time / variance
 # cwnd:    Congestion window (higher = more throughput potential)
-# bytes_retrans: Retransmissions (> 0 = packet loss)
+# bytes_retrans: Retransmissions (may indicate packet loss or reordering)
 ```
 
 `ss` is the preferred tool on all modern Linux systems - use it instead of netstat for faster results, richer TCP debugging, and future compatibility as netstat continues to age out.
