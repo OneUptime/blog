@@ -15,40 +15,45 @@ In multi-tenant environments, image registry access is as important as environme
 ```yaml
 # docker-compose.yml - Tenant-isolated registries
 
-version: "3.8"
-
 services:
   # Registry for Team Alpha
   registry-alpha:
-    image: registry:2
+    image: registry:3
     container_name: registry_alpha
     restart: unless-stopped
     environment:
-      - REGISTRY_HTTP_ADDR=0.0.0.0:5001
-      - REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/data
+      REGISTRY_HTTP_ADDR: 0.0.0.0:5001
+      REGISTRY_HTTP_TLS_CERTIFICATE: /certs/registry.crt
+      REGISTRY_HTTP_TLS_KEY: /certs/registry.key
+      REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: /data
       # Basic auth for registry access
-      - REGISTRY_AUTH=htpasswd
-      - REGISTRY_AUTH_HTPASSWD_REALM="Alpha Corp Registry"
-      - REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: Alpha Corp Registry
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
     volumes:
       - registry_alpha_data:/data
-      - ./auth/alpha:/auth
+      - ./auth/alpha:/auth:ro
+      - ./certs/alpha:/certs:ro
     ports:
       - "5001:5001"
 
   # Registry for Team Beta
   registry-beta:
-    image: registry:2
+    image: registry:3
     container_name: registry_beta
     restart: unless-stopped
     environment:
-      - REGISTRY_HTTP_ADDR=0.0.0.0:5002
-      - REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/data
-      - REGISTRY_AUTH=htpasswd
-      - REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd
+      REGISTRY_HTTP_ADDR: 0.0.0.0:5002
+      REGISTRY_HTTP_TLS_CERTIFICATE: /certs/registry.crt
+      REGISTRY_HTTP_TLS_KEY: /certs/registry.key
+      REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: /data
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: Beta Inc Registry
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
     volumes:
       - registry_beta_data:/data
-      - ./auth/beta:/auth
+      - ./auth/beta:/auth:ro
+      - ./certs/beta:/certs:ro
     ports:
       - "5002:5002"
 
@@ -59,7 +64,11 @@ volumes:
 
 ```bash
 # Generate htpasswd credentials for each team
-mkdir -p auth/alpha auth/beta
+mkdir -p auth/alpha auth/beta certs/alpha certs/beta
+
+# Place TLS certificates trusted by Docker and Portainer:
+# certs/alpha/registry.crt and certs/alpha/registry.key
+# certs/beta/registry.crt and certs/beta/registry.key
 
 # Team Alpha credentials
 htpasswd -Bbn alpha-user alpha-password > auth/alpha/htpasswd
@@ -72,17 +81,18 @@ htpasswd -Bbn beta-user beta-password > auth/beta/htpasswd
 
 ```bash
 PORTAINER_URL="https://portainer.example.com"
-ADMIN_TOKEN="admin_token"
+ADMIN_API_KEY="admin_api_key"
 
 # Register Alpha Corp's registry
 ALPHA_REGISTRY_ID=$(curl -s -X POST \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -H "Content-Type: application/json" \
   "$PORTAINER_URL/api/registries" \
   -d '{
     "Name": "Alpha Corp Registry",
-    "Type": 1,
+    "Type": 3,
     "URL": "registry-alpha.internal:5001",
+    "TLS": true,
     "Authentication": true,
     "Username": "alpha-user",
     "Password": "alpha-password"
@@ -92,13 +102,14 @@ echo "Alpha registry ID: $ALPHA_REGISTRY_ID"
 
 # Register Beta Inc's registry
 BETA_REGISTRY_ID=$(curl -s -X POST \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -H "Content-Type: application/json" \
   "$PORTAINER_URL/api/registries" \
   -d '{
     "Name": "Beta Inc Registry",
-    "Type": 1,
+    "Type": 3,
     "URL": "registry-beta.internal:5002",
+    "TLS": true,
     "Authentication": true,
     "Username": "beta-user",
     "Password": "beta-password"
@@ -110,49 +121,54 @@ echo "Beta registry ID: $BETA_REGISTRY_ID"
 ## Step 3: Restrict Registry Access by Team
 
 ```bash
+# Registry access is configured per Docker environment in Portainer
+ENVIRONMENT_ID="1"
+
 # Get team IDs
 ALPHA_TEAM_ID=$(curl -s \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   "$PORTAINER_URL/api/teams" | \
   jq -r '.[] | select(.Name == "Alpha Corp") | .Id')
 
 BETA_TEAM_ID=$(curl -s \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   "$PORTAINER_URL/api/teams" | \
   jq -r '.[] | select(.Name == "Beta Inc") | .Id')
 
 # Restrict Alpha registry to Alpha team ONLY
 curl -s -X PUT \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -H "Content-Type: application/json" \
-  "$PORTAINER_URL/api/registries/$ALPHA_REGISTRY_ID/access" \
+  "$PORTAINER_URL/api/endpoints/$ENVIRONMENT_ID/registries/$ALPHA_REGISTRY_ID" \
   -d "{
-    \"AuthorizedTeams\": [$ALPHA_TEAM_ID],
-    \"AuthorizedUsers\": []
+    \"TeamAccessPolicies\": {
+      \"$ALPHA_TEAM_ID\": {\"RoleId\": 0}
+    },
+    \"UserAccessPolicies\": {}
   }"
 
 # Restrict Beta registry to Beta team ONLY
 curl -s -X PUT \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -H "Content-Type: application/json" \
-  "$PORTAINER_URL/api/registries/$BETA_REGISTRY_ID/access" \
+  "$PORTAINER_URL/api/endpoints/$ENVIRONMENT_ID/registries/$BETA_REGISTRY_ID" \
   -d "{
-    \"AuthorizedTeams\": [$BETA_TEAM_ID],
-    \"AuthorizedUsers\": []
+    \"TeamAccessPolicies\": {
+      \"$BETA_TEAM_ID\": {\"RoleId\": 0}
+    },
+    \"UserAccessPolicies\": {}
   }"
 
 echo "Registry access restrictions applied."
 ```
 
-## Step 4: Configure Registry Mirror with Authentication
+## Step 4: Configure Registry Proxy with Authentication
 
 ```yaml
 # For organizations using a shared registry with namespace isolation
 # (e.g., ECR, Docker Hub Pro, GHCR)
 
 # docker-compose.yml - Registry proxy with per-tenant namespace enforcement
-version: "3.8"
-
 services:
   registry-proxy:
     image: nginx:alpine
@@ -161,34 +177,54 @@ services:
     volumes:
       - ./nginx-registry.conf:/etc/nginx/nginx.conf:ro
       - ./certs:/etc/nginx/certs:ro
+      - ./auth:/etc/nginx/auth:ro
     ports:
       - "5443:443"
 ```
 
 ```nginx
 # nginx-registry.conf - Namespace-enforcing registry proxy
-upstream registry_backend {
-  server registry.internal:5000;
-}
+events {}
 
-server {
-  listen 443 ssl;
-
-  # Extract tenant from Basic Auth username
-  # and validate namespace access
-
-  location ~ ^/v2/alpha/(.*)$ {
-    # Only allow requests authenticated as alpha users
-    auth_basic "Alpha Corp Registry";
-    auth_basic_user_file /etc/nginx/auth/alpha.htpasswd;
-    proxy_pass http://registry_backend;
+http {
+  upstream registry_backend {
+    server registry.internal:5000;
   }
 
-  location ~ ^/v2/beta/(.*)$ {
-    # Only allow requests authenticated as beta users
-    auth_basic "Beta Inc Registry";
-    auth_basic_user_file /etc/nginx/auth/beta.htpasswd;
-    proxy_pass http://registry_backend;
+  server {
+    listen 443 ssl;
+
+    ssl_certificate /etc/nginx/certs/registry.crt;
+    ssl_certificate_key /etc/nginx/certs/registry.key;
+
+    add_header Docker-Distribution-Api-Version "registry/2.0" always;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    location = /v2/ {
+      proxy_pass http://registry_backend;
+    }
+
+    # Use the repository namespace in the URL to select the htpasswd file.
+
+    location /v2/alpha/ {
+      # Only allow requests authenticated as alpha users
+      auth_basic "Alpha Corp Registry";
+      auth_basic_user_file /etc/nginx/auth/alpha/htpasswd;
+      proxy_pass http://registry_backend;
+    }
+
+    location /v2/beta/ {
+      # Only allow requests authenticated as beta users
+      auth_basic "Beta Inc Registry";
+      auth_basic_user_file /etc/nginx/auth/beta/htpasswd;
+      proxy_pass http://registry_backend;
+    }
+
+    location /v2/ {
+      return 403;
+    }
   }
 }
 ```
@@ -197,18 +233,18 @@ server {
 
 ```bash
 # Team Alpha: tag and push to their registry
+printf '%s\n' 'alpha-password' | docker login registry-alpha.internal:5001 --username alpha-user --password-stdin
 docker tag myapp/api:latest registry-alpha.internal:5001/alpha/api:latest
 docker push registry-alpha.internal:5001/alpha/api:latest
 
 # docker-compose.yml for Team Alpha uses their registry
-# version: "3.8"
 # services:
 #   api:
 #     image: registry-alpha.internal:5001/alpha/api:latest
 
-# Team Beta: cannot push to or pull from Alpha's registry
-docker pull registry-alpha.internal:5001/alpha/api:latest
-# Error: authentication required (Beta's credentials won't work)
+# Team Beta: cannot authenticate to Alpha's registry with Beta credentials
+printf '%s\n' 'beta-password' | docker login registry-alpha.internal:5001 --username beta-user --password-stdin
+# Error: unauthorized
 ```
 
 ## Step 6: Verify Registry Isolation
@@ -224,19 +260,23 @@ ALICE_TOKEN=$(curl -s -X POST \
 # Alice should only see Alpha Corp Registry
 curl -s \
   -H "Authorization: Bearer $ALICE_TOKEN" \
-  "$PORTAINER_URL/api/registries" | \
+  "$PORTAINER_URL/api/endpoints/$ENVIRONMENT_ID/registries" | \
   jq '.[].Name'
 # Returns: "Alpha Corp Registry"
 # Does NOT return: "Beta Inc Registry"
 
-# Verify image browsing is restricted
-curl -s \
+# Verify direct registry inspection is restricted
+BETA_STATUS=$(curl -s -o /tmp/beta-registry.json -w "%{http_code}" \
   -H "Authorization: Bearer $ALICE_TOKEN" \
-  "$PORTAINER_URL/api/registries/$BETA_REGISTRY_ID/repositories" | \
-  jq '.message'
+  "$PORTAINER_URL/api/registries/$BETA_REGISTRY_ID?endpointId=$ENVIRONMENT_ID")
+
+echo "$BETA_STATUS"
+# Returns: 403
+
+jq '.message' /tmp/beta-registry.json
 # Returns: "Access denied to resource"
 ```
 
 ## Conclusion
 
-Tenant-specific registries close the image supply chain isolation gap. Without registry restrictions, environment access control alone doesn't prevent a team from deploying another team's images if they know the image name. Portainer's registry access control feature restricts which teams can see and pull from each registry, enforcing complete tenant separation from image build to deployment. For organizations using cloud registries (ECR, GHCR, Docker Hub), use Portainer's registry credentials management to give each team credentials scoped to only their repository namespace.
+Tenant-specific registries close the image supply chain isolation gap. Without registry restrictions, environment access control alone doesn't prevent a team from deploying another team's images if they know the image name. Portainer's registry access control feature restricts which teams can see and use each registry in a given environment, while the registry credentials enforce direct push and pull access. For organizations using cloud registries (ECR, GHCR, Docker Hub), create separate registry credentials in the provider scoped to each team's repository namespace, then add those scoped credentials to Portainer.
