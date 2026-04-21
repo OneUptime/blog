@@ -89,10 +89,8 @@ Host *
 ## Troubleshooting
 
 ```bash
-# If SSH still seems to use IPv6, check for IPv6 in known_hosts
-# The host may be cached with an IPv6 address
-ssh-keygen -R [::1]          # Remove IPv6 loopback from known_hosts
-ssh-keygen -R hostname        # Remove any cached entry for a hostname
+# If SSH still seems to use IPv6, confirm the effective client setting
+ssh -G hostname | grep -i "^addressfamily"
 
 # Confirm connection is IPv4 in verbose mode
 ssh -v -4 user@host 2>&1 | grep "Connecting to"
