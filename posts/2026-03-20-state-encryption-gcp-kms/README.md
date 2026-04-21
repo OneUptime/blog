@@ -49,8 +49,9 @@ terraform {
 
   encryption {
     key_provider "gcp_kms" "state_key" {
-      # Full resource name of the KMS crypto key version
+      # Full resource name of the KMS crypto key
       kms_encryption_key = "projects/my-project/locations/global/keyRings/terraform-state-keyring/cryptoKeys/terraform-state-key"
+      key_length         = 32
 
       # Optional: specify credentials file path
       # credentials = "/path/to/service-account.json"
@@ -71,6 +72,8 @@ terraform {
 }
 ```
 
+For an existing unencrypted state file, add an `unencrypted` fallback during the first migration so OpenTofu can read and rewrite the current state.
+
 ## Step 3: Configure GCP Authentication
 
 ```bash
@@ -80,12 +83,11 @@ gcloud auth application-default login
 # Service account key file
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
 
-# Service account impersonation (preferred in CI/CD)
+# Service account impersonation (for local ADC testing)
 gcloud auth application-default login \
   --impersonate-service-account=terraform@my-project.iam.gserviceaccount.com
 
-# For Workload Identity (GKE/Cloud Run)
-# Credentials are automatically injected
+# In CI/CD, prefer Workload Identity Federation or an attached service account.
 ```
 
 ## Step 4: Required IAM Permissions
@@ -94,14 +96,15 @@ The service account needs these permissions on the KMS key:
 
 ```hcl
 # Grant encrypt/decrypt permission
-resource "google_kms_crypto_key_iam_binding" "terraform" {
-  crypto_key_id = google_kms_crypto_key.terraform_state.id
-  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
-
-  members = [
+resource "google_kms_crypto_key_iam_member" "terraform" {
+  for_each = toset([
     "serviceAccount:terraform-ci@my-project.iam.gserviceaccount.com",
     "serviceAccount:terraform-admin@my-project.iam.gserviceaccount.com"
-  ]
+  ])
+
+  crypto_key_id = google_kms_crypto_key.terraform_state.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = each.value
 }
 ```
 
@@ -119,14 +122,15 @@ terraform {
     bucket = "my-terraform-state"
     prefix = "prod"
 
-    # GCS-side encryption with CMEK
-    encryption_key = "projects/my-project/locations/global/keyRings/gcs-keyring/cryptoKeys/gcs-key"
+    # GCS-side encryption with CMEK. Use a key in the same location as the bucket.
+    kms_encryption_key = "projects/my-project/locations/us/keyRings/gcs-keyring/cryptoKeys/gcs-key"
   }
 
   encryption {
     # OpenTofu client-side encryption with a separate key
     key_provider "gcp_kms" "state_key" {
       kms_encryption_key = "projects/my-project/locations/global/keyRings/terraform-state-keyring/cryptoKeys/terraform-state-key"
+      key_length         = 32
     }
 
     method "aes_gcm" "state_method" {
@@ -142,10 +146,12 @@ terraform {
 
 ## Step 6: Verify Encryption with Cloud Audit Logs
 
+Make sure Data Access audit logs are enabled for Cloud KMS encrypt and decrypt operations.
+
 ```bash
 # View KMS usage in Cloud Audit Logs
 gcloud logging read \
-  'protoPayload.methodName="EncryptRequest" OR protoPayload.methodName="DecryptRequest"' \
+  'protoPayload.serviceName="cloudkms.googleapis.com" AND (protoPayload.methodName="Encrypt" OR protoPayload.methodName="Decrypt")' \
   --project=my-project \
   --freshness=1d \
   --format="table(timestamp,protoPayload.authenticationInfo.principalEmail,protoPayload.methodName)"
