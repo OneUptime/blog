@@ -16,7 +16,6 @@ import (
     "fmt"
     "log"
     "net"
-    "time"
 )
 
 func main() {
@@ -63,7 +62,7 @@ func connectWithTimeout(host string, port string, timeout time.Duration) (net.Co
     // DialTimeout sets a deadline for the connection attempt
     conn, err := net.DialTimeout("tcp4", net.JoinHostPort(host, port), timeout)
     if err != nil {
-        return nil, fmt.Errorf("connection to %s:%s timed out after %v: %w", host, port, timeout, err)
+        return nil, fmt.Errorf("failed to connect to %s:%s with timeout %v: %w", host, port, timeout, err)
     }
     return conn, nil
 }
@@ -75,7 +74,7 @@ func main() {
     }
     defer conn.Close()
 
-    // Set a deadline for the entire connection lifetime
+    // Set a read/write deadline for future I/O operations
     conn.SetDeadline(time.Now().Add(30 * time.Second))
 
     fmt.Fprintf(conn, "Hello!\n")
@@ -107,7 +106,7 @@ func main() {
         Timeout:   5 * time.Second,    // Connection timeout
         KeepAlive: 30 * time.Second,   // TCP keepalive interval
 
-        // Force IPv4 by using a specific local address
+        // Use an IPv4 local address; "tcp4" below forces IPv4
         LocalAddr: &net.TCPAddr{
             IP:   net.ParseIP("0.0.0.0"),
             Port: 0,   // Let OS choose source port
