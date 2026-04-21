@@ -13,13 +13,13 @@ Rather than opening a separate SSH connection for each port tunnel, you can forw
 ## Multiple -L Flags in One Command
 
 ```bash
-# Forward 3 ports in one SSH session
+# Forward 4 ports in one SSH session
 
 ssh -4 -fN \
-  -L 5432:db.internal:5432 \    # PostgreSQL
-  -L 6379:redis.internal:6379 \ # Redis
-  -L 9200:es.internal:9200 \    # Elasticsearch
-  -L 8080:web.internal:80 \     # Web UI
+  -L 5432:db.internal:5432 \
+  -L 6379:redis.internal:6379 \
+  -L 9200:es.internal:9200 \
+  -L 8080:web.internal:80 \
   user@203.0.113.10
 ```
 
@@ -60,8 +60,8 @@ curl http://127.0.0.1:8080/  # Grafana UI
 
 ```bash
 ssh -4 -fN \
-  -L 5432:db.internal:5432 \    # Local: access remote DB locally
-  -R 8080:localhost:3000 \       # Remote: expose local app remotely
+  -L 5432:db.internal:5432 \
+  -R 8080:localhost:3000 \
   -L 9090:prometheus.internal:9090 \
   user@203.0.113.10
 ```
@@ -87,8 +87,8 @@ Host *-via-bastion
 ssh user@203.0.113.10
 
 # Add more port forwards through the existing connection
-ssh -fN -L 5432:db.internal:5432 -S ~/.ssh/cm-user@203.0.113.10:22 user@203.0.113.10
-ssh -fN -L 6379:redis.internal:6379 -S ~/.ssh/cm-user@203.0.113.10:22 user@203.0.113.10
+ssh -O forward -L 5432:db.internal:5432 -S ~/.ssh/cm-user@203.0.113.10:22 user@203.0.113.10
+ssh -O forward -L 6379:redis.internal:6379 -S ~/.ssh/cm-user@203.0.113.10:22 user@203.0.113.10
 ```
 
 ## Script to Start All Tunnels
@@ -114,6 +114,7 @@ for tunnel in "${TUNNELS[@]}"; do
 done
 SSH_CMD+=" -o 'ServerAliveInterval 30'"
 SSH_CMD+=" -o 'ServerAliveCountMax 3'"
+SSH_CMD+=" -o 'ExitOnForwardFailure yes'"
 SSH_CMD+=" ${JUMP_HOST}"
 
 eval "${SSH_CMD}"
