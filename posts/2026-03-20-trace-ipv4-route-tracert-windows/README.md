@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Window, Networking, Tracert, IPv4, Route Tracing, Diagnostic
+Tags: Windows, Networking, Tracert, IPv4, Route Tracing, Diagnostic
 
-Description: Use tracert on Windows to trace the IPv4 path to a destination, interpret each hop's latency and IP address, and identify where packet loss or delays occur.
+Description: Use tracert on Windows to trace the IPv4 path to a destination, interpret each hop's latency and IP address, and identify where responses time out or delays appear.
 
 ## Introduction
 
@@ -39,7 +39,7 @@ over a maximum of 30 hops:
 | Column 1 | Hop number |
 | Columns 2-4 | RTT for three probes (ms) |
 | Last column | IP/hostname of the router |
-| `* * *` | No response (firewall filtering ICMP TTL Exceeded) |
+| `* * *` | No response before the timeout (ICMP Time Exceeded may be filtered or rate-limited) |
 
 ## Useful Options
 
@@ -61,14 +61,14 @@ tracert -4 google.com
 
 `* * *` does not always mean packet loss. Many routers filter ICMP "Time Exceeded" responses for security. If the trace continues past a `* * *` hop, the path is intact - only that router is not responding.
 
-A true failure shows all remaining hops as `* * *` and never reaches the destination.
+An apparent failure shows all remaining hops as `* * *` and never reaches the destination, but confirm with other tests because ICMP replies can also be filtered.
 
 ## Measuring Latency Increases
 
 Compare RTT at each hop:
-- Sudden jump from 5ms to 200ms at hop 4: possible congestion or routing issue at that router
-- Consistent high latency from hop 4 onward: congestion at or near hop 4
-- Decreasing latency: ICMP prioritization artifact - not a real problem
+- Sudden jump from 5ms to 200ms at hop 4: possible congestion or routing issue around that hop
+- Consistent high latency from hop 4 onward: possible congestion at or near hop 4
+- Decreasing latency: often an ICMP prioritization artifact - not a forwarding problem by itself
 
 ## Using tracert to Find Routing Asymmetry
 
@@ -77,14 +77,14 @@ Run tracert in both directions (from A to B and from B to A). If the hops differ
 ## PowerShell Alternative
 
 ```powershell
-# Equivalent to tracert in PowerShell
+# PowerShell route trace
 
 Test-NetConnection -ComputerName "google.com" -TraceRoute
 
 # Or use the built-in tracert via cmd
-Start-Process cmd -ArgumentList "/c tracert -d 8.8.8.8" -Wait
+cmd /c tracert -d 8.8.8.8
 ```
 
 ## Conclusion
 
-`tracert -d` (skip DNS) is the fastest form for network path analysis. Read RTT columns for latency, identify where `* * *` becomes permanent (the failure hop), and note which hop first shows elevated latency (the congestion point).
+`tracert -d` (skip DNS) often speeds up network path analysis. Read RTT columns as latency hints, identify where `* * *` becomes persistent, and note where elevated latency first appears and whether it continues on later hops.
