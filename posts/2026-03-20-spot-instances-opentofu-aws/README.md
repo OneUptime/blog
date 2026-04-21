@@ -13,6 +13,21 @@ AWS Spot Instances offer unused EC2 capacity at up to 90% discount compared to O
 ## Single Spot Instance
 
 ```hcl
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-2023.*-x86_64"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
+}
+
 resource "aws_instance" "spot_worker" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = "m5.large"
@@ -21,7 +36,6 @@ resource "aws_instance" "spot_worker" {
     market_type = "spot"
 
     spot_options {
-      max_price          = "0.05"
       spot_instance_type = "one-time"
     }
   }
@@ -34,20 +48,13 @@ resource "aws_instance" "spot_worker" {
 
 ## Using a Launch Template
 
-Launch templates make it easier to manage Spot Instance configurations:
+Launch templates make it easier to manage the instance settings that Auto Scaling uses for Spot capacity:
 
 ```hcl
 resource "aws_launch_template" "worker" {
   name_prefix   = "spot-worker-"
   image_id      = data.aws_ami.amazon_linux.id
   instance_type = "m5.large"
-
-  instance_market_options {
-    market_type = "spot"
-    spot_options {
-      max_price = "0.05"
-    }
-  }
 
   user_data = base64encode(<<-EOF
     #!/bin/bash
@@ -73,7 +80,7 @@ resource "aws_autoscaling_group" "workers" {
     instances_distribution {
       on_demand_base_capacity                  = 1
       on_demand_percentage_above_base_capacity = 20
-      spot_allocation_strategy                 = "capacity-optimized"
+      spot_allocation_strategy                 = "price-capacity-optimized"
     }
 
     launch_template {
@@ -100,14 +107,19 @@ resource "aws_autoscaling_group" "workers" {
 
 ## Handling Spot Interruptions
 
-Configure a termination handler to drain gracefully:
+Configure an interruption handler to drain gracefully:
 
 ```bash
-# Check for spot interruption notice every 5 seconds
+# Check for a Spot interruption notice every 5 seconds
 
 while true; do
+  TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+
   STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-    http://169.254.169.254/latest/meta-data/spot/termination-time)
+    -H "X-aws-ec2-metadata-token: $TOKEN" \
+    http://169.254.169.254/latest/meta-data/spot/instance-action)
+
   if [ "$STATUS" = "200" ]; then
     echo "Spot interruption notice received, draining..."
     # Add your graceful shutdown logic here
@@ -127,4 +139,4 @@ tofu apply
 
 ## Conclusion
 
-OpenTofu simplifies provisioning AWS Spot Instances and Auto Scaling groups with mixed instance policies. By using capacity-optimized allocation and handling interruption notices gracefully, you can achieve significant cost savings while maintaining workload reliability.
+OpenTofu simplifies provisioning AWS Spot Instances and Auto Scaling groups with mixed instance policies. By using price-capacity-optimized allocation and handling interruption notices gracefully, you can achieve significant cost savings while maintaining workload reliability.
