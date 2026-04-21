@@ -13,7 +13,8 @@ Description: Learn how to configure tofu fmt in pre-commit hooks to automaticall
 ## tofu fmt Basics
 
 ```bash
-# Format all .tf files in the current directory
+# Format supported OpenTofu files in the current directory
+# (.tf, .tofu, .tfvars, .tftest.hcl, .tofutest.hcl)
 
 tofu fmt
 
@@ -24,11 +25,11 @@ tofu fmt -recursive
 tofu fmt -check
 tofu fmt -check -recursive
 
-# Show what would change (dry run with diff)
-tofu fmt -diff
-tofu fmt -diff -recursive
+# Show what would change without modifying files (dry run with diff)
+tofu fmt -diff -write=false
+tofu fmt -diff -write=false -recursive
 
-# Check exit code: 0 = no changes, 1 = would format, 2 = error
+# Check exit code: 0 = formatted, non-zero = formatting needed or error
 tofu fmt -check; echo "Exit code: $?"
 ```
 
@@ -68,12 +69,13 @@ pip install pre-commit
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.92.0
+    rev: v1.105.0
     hooks:
       - id: terraform_fmt
         name: OpenTofu fmt
-        # Override to use tofu instead of terraform
+        # Use tofu instead of terraform, even if both binaries are installed
         args:
+          - --hook-config=--tf-path=tofu
           - --args=-recursive
 ```
 
@@ -86,10 +88,10 @@ repos:
     hooks:
       - id: tofu-fmt
         name: OpenTofu Format Check
-        language: system
+        language: unsupported
         entry: tofu fmt
         args: [-recursive, -check]
-        files: \.tf$
+        files: \.(tf|tofu|tfvars|tftest\.hcl|tofutest\.hcl)$
         pass_filenames: false
 ```
 
@@ -102,15 +104,17 @@ repos:
     hooks:
       - id: tofu-fmt-fix
         name: OpenTofu Format (auto-fix)
-        language: system
+        language: unsupported
         entry: bash
         args:
           - -c
           - |
             tofu fmt -recursive .
             # Stage any files that were modified
-            git diff --name-only -- '*.tf' | xargs git add
-        files: \.tf$
+            git diff --name-only -z -- '*.tf' '*.tofu' '*.tfvars' '*.tftest.hcl' '*.tofutest.hcl' | while IFS= read -r -d '' file; do
+              git add -- "$file"
+            done
+        files: \.(tf|tofu|tfvars|tftest\.hcl|tofutest\.hcl)$
         pass_filenames: false
 ```
 
@@ -125,6 +129,7 @@ pre-commit run --all-files
 
 # Test a specific hook
 pre-commit run tofu-fmt --all-files
+# or: pre-commit run terraform_fmt --all-files
 
 # Skip the hook for a specific commit (use sparingly)
 git commit -m "WIP" --no-verify
@@ -142,8 +147,8 @@ jobs:
   fmt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
 
       - name: Check formatting
         run: |
@@ -171,7 +176,10 @@ insert_final_newline = true
 ```bash
 # First run - format everything in the repo
 tofu fmt -recursive .
-git commit -am "chore: apply tofu fmt formatting"
+git diff --name-only -z -- '*.tf' '*.tofu' '*.tfvars' '*.tftest.hcl' '*.tofutest.hcl' | while IFS= read -r -d '' file; do
+  git add -- "$file"
+done
+git commit -m "chore: apply tofu fmt formatting"
 
 # Now enable the pre-commit hook
 pre-commit install
