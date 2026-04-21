@@ -8,13 +8,13 @@ Description: Learn how to use the TF_LOG environment variable to enable debug lo
 
 ---
 
-OpenTofu's `TF_LOG` environment variable controls the verbosity of debug output. When troubleshooting provider errors, API failures, or unexpected plan behavior, enabling debug logging reveals the underlying API calls and provider decision-making that isn't visible in normal output.
+OpenTofu's `TF_LOG` environment variable controls the verbosity of debug output. When troubleshooting provider errors, API failures, or unexpected plan behavior, enabling debug logging can reveal underlying API calls and provider decision-making that isn't visible in normal output.
 
 ## Log Level Hierarchy
 
 ```mermaid
 graph TD
-    A[TRACE<br/>Most verbose<br/>All API requests/responses] --> B[DEBUG<br/>Provider decisions<br/>Internal logic]
+    A[TRACE<br/>Most verbose<br/>Detailed internals<br/>May include sensitive data] --> B[DEBUG<br/>Provider decisions<br/>Internal logic]
     B --> C[INFO<br/>High-level operations]
     C --> D[WARN<br/>Warnings only]
     D --> E[ERROR<br/>Errors only]
@@ -26,7 +26,7 @@ graph TD
 ```bash
 # Levels from most to least verbose:
 
-export TF_LOG=TRACE   # Everything - API request bodies, responses, provider internals
+export TF_LOG=TRACE   # Most detailed logs - may include request/response details and sensitive data
 export TF_LOG=DEBUG   # Provider logic and decisions
 export TF_LOG=INFO    # General operation information
 export TF_LOG=WARN    # Warnings that don't stop execution
@@ -40,7 +40,7 @@ tofu plan
 TF_LOG=DEBUG tofu plan
 
 # Disable logging
-export TF_LOG=
+export TF_LOG=off
 # or
 unset TF_LOG
 ```
@@ -56,14 +56,14 @@ export TF_LOG_PROVIDER=DEBUG
 
 # Separate log levels for core and providers
 export TF_LOG_CORE=INFO
-export TF_LOG_PROVIDER=TRACE  # Full provider API debugging
+export TF_LOG_PROVIDER=TRACE  # Most detailed provider logs
 ```
 
 ## Saving Logs to a File
 
 ```bash
 # TF_LOG writes to stderr by default
-# Redirect to a file for analysis
+# TF_LOG_PATH appends logs to a file while logging is enabled
 
 export TF_LOG=DEBUG
 export TF_LOG_PATH="./tofu-debug.log"
@@ -86,7 +86,7 @@ grep "HTTP/1.1 4" tofu-debug.log  # Find 4xx errors
 # Scenario 1: Provider authentication errors
 export TF_LOG=DEBUG
 tofu plan 2>&1 | grep -A 5 "auth"
-# Shows: credential resolution, STS calls, assumed role ARN
+# May show: credential resolution, STS calls, assumed role ARN
 
 # Scenario 2: Resource creation timing out
 export TF_LOG=DEBUG
@@ -112,7 +112,7 @@ tofu init 2>&1 | grep -i "version"
 2026-03-20T10:15:31.234Z [DEBUG] provider.terraform-provider-aws: API call: DescribeInstances
 2026-03-20T10:15:31.456Z [DEBUG] provider.terraform-provider-aws: Response: 200 OK
 
-# TRACE adds full HTTP request/response bodies:
+# TRACE may add HTTP request/response details:
 2026-03-20T10:15:31.678Z [TRACE] provider.terraform-provider-aws: HTTP Request:
   POST /  HTTP/1.1
   Host: ec2.us-east-1.amazonaws.com
@@ -146,20 +146,37 @@ grep -oP "(?<=provider\.terraform-provider-aws: )[A-Z][a-zA-Z]+" /tmp/tofu.log |
 
 ```yaml
 # .github/workflows/terraform.yml
+on:
+  workflow_dispatch:
+    inputs:
+      debug_enabled:
+        description: Enable OpenTofu debug logging
+        required: false
+        type: boolean
+        default: false
+
 jobs:
   plan:
+    runs-on: ubuntu-latest
     env:
       # Enable debug logging only when manually triggered with debug flag
-      TF_LOG: ${{ github.event.inputs.debug_enabled == 'true' && 'DEBUG' || '' }}
-      TF_LOG_PATH: ${{ github.event.inputs.debug_enabled == 'true' && '/tmp/tofu-debug.log' || '' }}
+      TF_LOG: ${{ inputs.debug_enabled && 'DEBUG' || 'off' }}
+      TF_LOG_PATH: ${{ inputs.debug_enabled && '/tmp/tofu-debug.log' || '' }}
 
     steps:
+      - uses: actions/checkout@v6
+
+      - uses: opentofu/setup-opentofu@v2
+
+      - name: OpenTofu Init
+        run: tofu init
+
       - name: OpenTofu Plan
         run: tofu plan
 
       - name: Upload debug log
-        if: github.event.inputs.debug_enabled == 'true'
-        uses: actions/upload-artifact@v4
+        if: ${{ always() && inputs.debug_enabled }}
+        uses: actions/upload-artifact@v7
         with:
           name: tofu-debug-log
           path: /tmp/tofu-debug.log
@@ -168,7 +185,7 @@ jobs:
 
 ## Best Practices
 
-- Use `TF_LOG=DEBUG` as your first debugging step - it reveals provider decisions without the overwhelming volume of TRACE output.
+- Use `TF_LOG=DEBUG` as your first debugging step - it can reveal provider decisions without the overwhelming volume of TRACE output.
 - Always use `TF_LOG_PATH` to write logs to a file - debug output is voluminous and difficult to parse when mixed with normal plan output in the terminal.
 - Never commit `TF_LOG` to CI/CD configuration without a conditional - permanent debug logging in CI creates multi-megabyte log files and may expose sensitive API responses.
 - Use `TF_LOG_PROVIDER=TRACE` and `TF_LOG_CORE=ERROR` when debugging a specific provider - this reduces noise from the OpenTofu core while maximizing provider visibility.
