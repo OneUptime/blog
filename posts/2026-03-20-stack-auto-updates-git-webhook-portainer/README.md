@@ -23,8 +23,6 @@ Navigate to **Stacks > Add stack** to create a new stack. You can:
 ```yaml
 # Paste this in the Portainer web editor
 
-version: "3.8"
-
 services:
   web:
     image: nginx:latest
@@ -47,7 +45,7 @@ volumes:
 
 ## Stack from Git Repository
 
-1. Select **Repository** as the build method
+1. Select **Git Repository** as the build method
 2. Enter the repository URL: `https://github.com/org/repo`
 3. Optionally set a branch and compose file path
 4. Enable **GitOps updates** for automatic redeployment
@@ -59,23 +57,21 @@ volumes:
 TOKEN=$(curl -s -X POST \
   https://localhost:9443/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' \
+  -d '{"Username":"admin","Password":"yourpassword"}' \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
 # Create a stack with environment variables via API
 curl -X POST \
-  https://localhost:9443/api/stacks \
+  "https://localhost:9443/api/stacks/create/standalone/string?endpointId=1" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "myapp",
-    "stackFileContent": "version: \"3.8\"\nservices:\n  web:\n    image: nginx:latest",
-    "env": [
+    "Name": "myapp",
+    "StackFileContent": "services:\n  web:\n    image: nginx:latest\n    environment:\n      APP_ENV: ${APP_ENV}\n      DB_PASSWORD: ${DB_PASSWORD}",
+    "Env": [
       {"name": "DB_PASSWORD", "value": "secretpassword"},
       {"name": "APP_ENV", "value": "production"}
-    ],
-    "type": 2,
-    "endpointId": 1
+    ]
   }' \
   --insecure
 ```
@@ -88,23 +84,25 @@ Configure polling interval in the stack settings:
 
 ## Stack Webhook
 
+Stack webhooks are available in Portainer Business Edition and only on non-Edge environments.
+
 ```bash
 # Trigger stack redeployment via webhook
 STACK_WEBHOOK_URL="https://portainer.example.com/api/stacks/webhooks/<uuid>"
 
 curl -X POST "$STACK_WEBHOOK_URL"
-# Portainer redeploys the stack with --pull-always
+# Portainer checks Git and updates the stack if a new commit is found
 ```
 
 ## Fix stack.env Not Found
 
 ```bash
 # Error: "stack.env: no such file or directory"
-# Cause: Docker Compose expects a .env file in the same directory as compose.yml
+# Cause: the compose file references env_file: stack.env, but that file is not available during deployment
 
-# Fix 1: Upload .env file via Portainer UI (Stack > .env file tab)
-# Fix 2: Remove ${VARIABLE} references and use Portainer env vars instead
-# Fix 3: Create the .env file in the Git repository alongside compose.yml
+# Fix 1: Use Portainer env vars with ${VARIABLE} references and no env_file entry
+# Fix 2: On Docker Standalone or Podman, define/upload variables in Portainer and reference stack.env via env_file
+# Fix 3: Commit the referenced env file to the Git repository alongside compose.yml, or fix the env_file path
 ```
 
 ---
