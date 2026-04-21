@@ -63,7 +63,7 @@ resource "google_compute_firewall" "allow_internal" {
 
   direction     = "INGRESS"
   priority      = 1000
-  source_ranges = [google_compute_network.main.subnetworks_self_links[0]]
+  source_ranges = [google_compute_subnetwork.main.ip_cidr_range]
 
   allow {
     protocol = "all"
@@ -96,7 +96,7 @@ resource "google_compute_firewall" "deny_all_ingress" {
 ## Egress Rule (Restrict Outbound)
 
 ```hcl
-resource "google_compute_firewall" "deny_egress_except_http" {
+resource "google_compute_firewall" "allow_egress_http" {
   name     = "allow-egress-http"
   network  = google_compute_network.main.name
   priority = 1000
@@ -107,6 +107,19 @@ resource "google_compute_firewall" "deny_egress_except_http" {
   allow {
     protocol = "tcp"
     ports    = ["80", "443"]
+  }
+}
+
+resource "google_compute_firewall" "deny_all_egress" {
+  name     = "deny-all-egress"
+  network  = google_compute_network.main.name
+  priority = 65534
+
+  direction          = "EGRESS"
+  destination_ranges = ["0.0.0.0/0"]
+
+  deny {
+    protocol = "all"
   }
 }
 ```
