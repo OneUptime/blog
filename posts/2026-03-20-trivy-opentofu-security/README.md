@@ -4,15 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Trivy, Security Scanning, Infrastructure as Code, IaC, DevSecOps
 
-Description: Learn how to use Trivy to scan OpenTofu IaC files for security vulnerabilities and compliance issues.
+Description: Learn how to use Trivy to scan OpenTofu IaC files for security misconfigurations and exposed secrets.
 
 ## Introduction
 
-Learn how to use Trivy to scan OpenTofu IaC files for security vulnerabilities and compliance issues. This guide provides step-by-step instructions with practical examples to help you implement this in your infrastructure workflow.
+Learn how to use Trivy to scan OpenTofu IaC files for security misconfigurations and exposed secrets. This guide provides step-by-step instructions with practical examples to help you implement this in your infrastructure workflow.
 
 ## Prerequisites
 
 - OpenTofu v1.6+ installed
+- Trivy installed
 - Basic knowledge of OpenTofu concepts
 - Relevant cloud credentials configured
 
@@ -22,6 +23,9 @@ Learn how to use Trivy to scan OpenTofu IaC files for security vulnerabilities a
 # Verify OpenTofu installation
 
 tofu version
+
+# Verify Trivy installation
+trivy --version
 
 # Set up required environment variables
 export TF_LOG=INFO  # Enable logging
@@ -73,16 +77,27 @@ provider "aws" {
 }
 ```
 
-## Step 3: Implement the Core Feature
+## Step 3: Scan OpenTofu Configuration and Plans
 
 ```bash
+# Scan OpenTofu HCL files for security misconfigurations and secrets
+trivy config --severity HIGH,CRITICAL --exit-code 1 .
+
+# Use tfvars when Trivy needs environment-specific variable values
+trivy config --tf-vars production.tfvars --severity HIGH,CRITICAL --exit-code 1 .
+
 # Initialize the project
 tofu init -backend-config=backend.tfvars
 
 # Create a plan and save it
 tofu plan -out=tfplan -var-file=production.tfvars
 
-# Review the plan
+# Convert the saved plan to JSON and scan it with Trivy
+# Keep tfplan and tfplan.json private because plan data can contain sensitive values
+tofu show -json tfplan > tfplan.json
+trivy config --severity HIGH,CRITICAL --exit-code 1 tfplan.json
+
+# Review the plan before applying it
 tofu show tfplan
 
 # Apply the saved plan
@@ -105,20 +120,35 @@ permissions:
   id-token: write
   contents: read
   pull-requests: write
+  security-events: write
 
 jobs:
   plan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+
+      - name: Trivy OpenTofu Config Scan
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: "config"
+          hide-progress: true
+          format: "sarif"
+          output: "trivy-config-results.sarif"
+          exit-code: "1"
+          severity: "CRITICAL,HIGH"
+
+      - name: Upload Trivy Config Results
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: "trivy-config-results.sarif"
 
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.7.0"
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
@@ -129,33 +159,52 @@ jobs:
       - name: OpenTofu Plan
         run: tofu plan -no-color -out=tfplan
 
+      - name: Convert Plan to JSON
+        run: tofu show -json tfplan > tfplan.json
+
+      - name: Trivy OpenTofu Plan Scan
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: "config"
+          scan-ref: "tfplan.json"
+          hide-progress: true
+          format: "sarif"
+          output: "trivy-plan-results.sarif"
+          exit-code: "1"
+          severity: "CRITICAL,HIGH"
+
+      - name: Upload Trivy Plan Results
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: "trivy-plan-results.sarif"
+
       - name: Upload Plan
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: tfplan
           path: tfplan
+          retention-days: 1
 
   apply:
     needs: plan
     runs-on: ubuntu-latest
     environment: production
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.7.0"
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Download Plan
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v8
         with:
           name: tfplan
 
@@ -163,7 +212,7 @@ jobs:
         run: tofu init
 
       - name: OpenTofu Apply
-        run: tofu apply -auto-approve tfplan
+        run: tofu apply tfplan
 ```
 
 ## Step 5: Monitor and Verify
@@ -214,9 +263,9 @@ If you encounter issues:
 
 1. Enable debug logging: `export TF_LOG=DEBUG`
 2. Check provider credentials: Verify environment variables
-3. Review state consistency: Run `tofu refresh` then `tofu plan`
+3. Review state consistency: Run `tofu plan -refresh-only`, then `tofu apply -refresh-only` only after reviewing the proposed state update
 4. Consult provider documentation for service-specific errors
 
 ## Conclusion
 
-You have successfully implemented How to Use Trivy for OpenTofu Security Scanning. This approach provides a repeatable, auditable, and collaborative infrastructure management workflow. Combine with code review processes, automated testing, and proper access controls for a production-ready setup.
+You have successfully implemented Trivy security scanning for OpenTofu. This approach provides a repeatable, auditable, and collaborative infrastructure management workflow. Combine with code review processes, automated testing, and proper access controls for a production-ready setup.
