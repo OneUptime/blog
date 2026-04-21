@@ -54,10 +54,10 @@ interface eth0
 # Check RIP database on FRR
 vtysh -c "show ip rip"
 
-# Check which routes are being advertised out each interface
-vtysh -c "debug ip rip"
+# Enable packet debugging to see RIP updates being sent and received
+vtysh -c "debug rip packet"
 
-# Check RIP neighbors
+# Check RIP status and peer information
 vtysh -c "show ip rip status"
 ```
 
@@ -81,7 +81,7 @@ interface eth0
   no ip rip split-horizon
 ```
 
-## Split Horizon vs Route Poisoning
+## Split Horizon vs Poison Reverse
 
 | Feature | Split Horizon | Poison Reverse |
 |---|---|---|
