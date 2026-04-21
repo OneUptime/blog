@@ -17,18 +17,18 @@ The tradeoff: the proxy cannot inspect or modify HTTP headers (like adding X-For
 
 ## Step 1: Enable the Stream Module
 
-TLS passthrough requires Nginx's `stream` module (for TCP proxying), not the `http` module:
+TLS passthrough requires Nginx's `stream` module (for TCP proxying), not the `http` module. SNI-based routing also requires the `ssl_preread` module:
 
 ```bash
 # Verify stream module is available
 
-nginx -V 2>&1 | grep stream
+nginx -V 2>&1 | tr ' ' '\n' | grep -E '^--with-stream(=dynamic)?$'
 
-# If not included, install nginx-full or nginx-extras
-sudo apt-get install -y nginx-extras
+# Verify ssl_preread is available for SNI-based routing
+nginx -V 2>&1 | tr ' ' '\n' | grep '^--with-stream_ssl_preread_module$'
 
-# Verify stream module is loaded
-nginx -V 2>&1 | grep -- --with-stream
+# If not included, install a package that provides the stream module (Debian/Ubuntu)
+sudo apt-get install -y libnginx-mod-stream
 ```
 
 ## Step 2: Configure Stream Passthrough in Nginx
@@ -103,22 +103,29 @@ stream {
 
 ## Step 4: Configure Mixed HTTP and HTTPS Routing
 
-To handle both HTTP (L7, termination) and HTTPS (passthrough) on the same Nginx instance:
+To handle both HTTP (L7 handling) and HTTPS (passthrough) on the same Nginx instance:
 
 ```nginx
 # nginx.conf - Use both http and stream modules
 
 # Stream block - TCP passthrough for port 443
 stream {
+    upstream ssl_backend {
+        server 192.168.1.10:443;
+    }
+
     server {
         listen 443;
-        ssl_preread on;
-        proxy_pass $backend;
+        proxy_pass ssl_backend;
     }
 }
 
 # HTTP block - standard HTTP handling on port 80
 http {
+    upstream backend_http {
+        server 192.168.1.30:80;
+    }
+
     server {
         listen 80;
         location / {
@@ -139,7 +146,7 @@ openssl s_client -connect proxy.example.com:443 -servername api.example.com 2>&1
 # (since the proxy never decrypts the traffic)
 
 # Test with curl
-curl -v --resolve api.example.com:443:proxy-ip https://api.example.com/
+curl -v --resolve api.example.com:443:192.168.1.100 https://api.example.com/
 ```
 
 ## Step 6: Verify Nginx Configuration
@@ -161,7 +168,7 @@ sudo tail -f /var/log/nginx/error.log
 | Inspect/modify headers | No | Yes |
 | Certificate management | On each backend | On proxy only |
 | End-to-end encryption | Yes | No (proxy can see plaintext) |
-| WAF/DDoS protection | Limited | Full |
+| L7 WAF/inspection | Limited | Full |
 
 ## Conclusion
 

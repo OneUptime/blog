@@ -17,21 +17,24 @@ TLS termination means the load balancer (HAProxy) handles the TLS encryption/dec
 
 sudo apt-get install -y haproxy
 
-# Verify version (2.4+ recommended for TLS 1.3)
-haproxy -v
+# Verify version and OpenSSL build details
+haproxy -vv
 ```
 
 ## Step 2: Prepare the Certificate
 
-HAProxy expects a single PEM file containing the certificate, chain, and private key:
+For this simple `crt` configuration, HAProxy can use a single PEM file containing the certificate, chain, and private key:
 
 ```bash
+# Create the certificate directory
+sudo mkdir -p /etc/haproxy/certs
+
 # Combine certificate chain and private key into one file
-cat fullchain.pem privkey.pem > /etc/haproxy/certs/example.com.pem
+sudo sh -c 'cat fullchain.pem privkey.pem > /etc/haproxy/certs/example.com.pem'
 
 # Set secure permissions
-chmod 600 /etc/haproxy/certs/example.com.pem
-chown haproxy:haproxy /etc/haproxy/certs/example.com.pem
+sudo chmod 600 /etc/haproxy/certs/example.com.pem
+sudo chown haproxy:haproxy /etc/haproxy/certs/example.com.pem
 ```
 
 ## Step 3: Configure HAProxy for TLS Termination
@@ -65,13 +68,8 @@ defaults
 # HTTPS Frontend - TLS Termination
 #------------------------------------------------------
 frontend https_frontend
-    bind *:443 ssl crt /etc/haproxy/certs/example.com.pem
-    bind *:443 ssl crt /etc/haproxy/certs/other-site.pem   # Multiple certs via SNI
-
-    # Use TLS 1.2 minimum
-    bind *:443 ssl crt /etc/haproxy/certs/example.com.pem \
-        ssl-min-ver TLSv1.2 \
-        alpn h2,http/1.1
+    # Use TLS 1.2 minimum and load multiple certs for SNI
+    bind *:443 ssl crt /etc/haproxy/certs/example.com.pem crt /etc/haproxy/certs/other-site.pem ssl-min-ver TLSv1.2 alpn h2,http/1.1
 
     # Set HSTS header on all HTTPS responses
     http-response set-header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
@@ -122,13 +120,13 @@ frontend stats
 
 ```bash
 # Validate configuration syntax
-haproxy -c -f /etc/haproxy/haproxy.cfg
+sudo haproxy -c -f /etc/haproxy/haproxy.cfg
 
 # Reload without dropping connections (graceful reload)
 sudo systemctl reload haproxy
 
-# Or use socket command for zero-downtime reload
-echo "reload" | sudo socat stdio /run/haproxy/admin.sock
+# Or use the HAProxy master CLI, if you configured a master socket
+echo "reload" | sudo socat -t300 /run/haproxy-master.sock stdin
 ```
 
 ## Step 6: Add Multiple Certificates (SNI)
@@ -150,20 +148,20 @@ frontend https_frontend
     bind *:443 ssl crt /etc/haproxy/certs/ alpn h2,http/1.1
 ```
 
-HAProxy automatically selects the correct certificate based on the SNI hostname.
+HAProxy automatically selects the correct certificate when the SNI hostname matches a certificate's CN or SAN.
 
 ## Step 7: Verify TLS Configuration
 
 ```bash
 # Test TLS handshake
-openssl s_client -connect example.com:443 -servername example.com 2>&1 | \
+echo | openssl s_client -connect example.com:443 -servername example.com 2>&1 | \
   grep -E "Protocol|Cipher|Verify"
 
 # Run testssl.sh for comprehensive check
 ./testssl.sh example.com
 
 # Check HAProxy stats
-curl -u admin:StatsP@ss! http://server:8404/stats
+curl -u 'admin:StatsP@ss!' http://server:8404/stats
 ```
 
 ## Conclusion
