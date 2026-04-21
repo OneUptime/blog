@@ -16,18 +16,25 @@ Generate a local CA certificate for Squid to sign bumped connections:
 
 ```bash
 # Generate CA key and certificate
+sudo mkdir -p /etc/squid/ssl
 
-openssl req -new -newkey rsa:4096 -sha256 -days 3650 -nodes -x509 \
+sudo openssl req -new -newkey rsa:4096 -sha256 -days 3650 -noenc -x509 \
   -subj "/C=US/O=Corporate CA/CN=Squid Proxy CA" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign" \
   -keyout /etc/squid/ssl/squid.key \
   -out /etc/squid/ssl/squid.crt
 
 # Combine into PEM bundle
-cat /etc/squid/ssl/squid.crt /etc/squid/ssl/squid.key > /etc/squid/ssl/squid.pem
-chmod 600 /etc/squid/ssl/squid.pem
+sudo sh -c 'cat /etc/squid/ssl/squid.crt /etc/squid/ssl/squid.key > /etc/squid/ssl/squid.pem'
+sudo chmod 600 /etc/squid/ssl/squid.pem
 
 # Create SSL certificate database directory
 sudo /usr/lib/squid/security_file_certgen -c -s /var/lib/squid/ssl_db -M 4MB
+
+# Allow Squid's runtime user to write the certificate database
+# On some distributions, replace proxy:proxy with squid:squid
+sudo chown -R proxy:proxy /var/lib/squid/ssl_db
 ```
 
 Distribute `squid.crt` to clients as a trusted CA certificate.
@@ -39,8 +46,7 @@ Distribute `squid.crt` to clients as a trusted CA certificate.
 
 # SSL bump port
 http_port 0.0.0.0:3128 ssl-bump \
-    cert=/etc/squid/ssl/squid.pem \
-    key=/etc/squid/ssl/squid.key \
+    tls-cert=/etc/squid/ssl/squid.pem \
     generate-host-certificates=on \
     dynamic_cert_mem_cache_size=4MB
 
@@ -54,10 +60,10 @@ acl ssl_step2 at_step SslBump2
 acl ssl_step3 at_step SslBump3
 
 # Define sites to NOT bump (banking, sensitive sites)
-acl no_bump dstdomain .bank.com .healthcare.gov .myfinance.com
+acl no_bump ssl::server_name .bank.com .healthcare.gov .myfinance.com
 
 # SSL bump rules:
-# peek: inspect TLS ClientHello to get SNI (Step 1)
+# peek: read the TLS ClientHello so SNI is available at Step 2
 # bump: perform full MITM interception
 # splice: pass through without interception (for no_bump sites)
 ssl_bump peek ssl_step1
@@ -80,16 +86,16 @@ iptables -t nat -A PREROUTING \
   -i eth1 \
   -s 192.168.0.0/24 \
   -p tcp --dport 443 \
-  -j REDIRECT --to-port 3129
+  -j REDIRECT --to-ports 3129
 
-# Also need transparent HTTP port:
-# http_port 3129 intercept ssl-bump cert=...
+# Also need a matching intercepted HTTPS port:
+# https_port 3129 intercept ssl-bump tls-cert=/etc/squid/ssl/squid.pem generate-host-certificates=on dynamic_cert_mem_cache_size=4MB
 ```
 
 ## Deploying the CA Certificate to Clients
 
 ```bash
-# Linux clients: add to system trust store
+# Debian/Ubuntu clients: add to system trust store
 sudo cp /etc/squid/ssl/squid.crt /usr/local/share/ca-certificates/squid-ca.crt
 sudo update-ca-certificates
 
@@ -103,11 +109,11 @@ curl -x http://proxy-server:3128 https://httpbin.org/ip
 ## Monitoring SSL Bump Activity
 
 ```bash
-# View HTTPS requests in access log
+# View explicit HTTPS CONNECT requests in access log
 sudo tail -f /var/log/squid/access.log | grep CONNECT
 
-# Check SSL certificate cache stats
-sudo squid -k rotate  # Rotate logs to check cert cache usage
+# Check SSL certificate cache usage
+sudo du -sh /var/lib/squid/ssl_db
 
 # Check for certificate generation errors
 sudo tail -f /var/log/squid/cache.log | grep ssl
