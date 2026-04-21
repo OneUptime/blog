@@ -63,7 +63,7 @@ infra/
     ├── integration/
     │   └── full_platform.tftest.hcl
     └── fixtures/
-        └── shared_mocks.tftest.hcl  # Shared mock provider configs
+        └── shared_variables.tfvars  # Shared variable presets
 ```
 
 ## Shared Fixtures Pattern
@@ -101,21 +101,26 @@ Map your directory structure to CI jobs:
 
 ```yaml
 # .github/workflows/test.yml
+on:
+  pull_request:
+  push:
+    branches: [main]
+
 jobs:
   unit:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    on: [pull_request]
     steps:
-      - uses: opentofu/setup-opentofu@v1
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
       - run: tofu init && tofu test -test-directory=tests/unit
 
   integration:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    on:
-      push:
-        branches: [main]
     steps:
-      - uses: opentofu/setup-opentofu@v1
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
       - run: tofu init && tofu test -test-directory=tests/integration
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -124,11 +129,11 @@ jobs:
 
 ## What Goes in Each Directory
 
-**`tests/unit/`**: Tests using `mock_provider`, `override_resource`, or `command = plan`. No credentials required. Run on every commit.
+**`tests/unit/`**: Tests that avoid real provider calls, typically using `mock_provider`, `override_resource`, or `command = plan` when the run does not need real provider API calls. No cloud credentials required. Run on every commit.
 
 **`tests/integration/`**: Tests using real providers that create actual cloud resources. Require credentials. Run on merge to main or nightly.
 
-**`tests/fixtures/`**: Shared `.tfvars` files, reusable mock provider configurations, and common variable presets.
+**`tests/fixtures/`**: Shared `.tfvars` files and common variable presets.
 
 ## Conclusion
 
