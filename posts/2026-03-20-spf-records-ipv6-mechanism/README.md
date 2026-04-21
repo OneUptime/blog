@@ -8,7 +8,7 @@ Description: Configure SPF TXT records to authorize IPv6 mail servers using the 
 
 ## Introduction
 
-Sender Policy Framework (SPF) allows domain owners to specify which mail servers are authorized to send email on behalf of their domain. IPv6 sending addresses must be explicitly authorized using the `ip6:` mechanism, otherwise email from IPv6-enabled mail servers will fail SPF checks.
+Sender Policy Framework (SPF) allows domain owners to specify which mail servers are authorized to send email on behalf of their domain. IPv6 sending addresses must be explicitly authorized using the `ip6:` mechanism when mail is sent over IPv6, otherwise SPF evaluation will not match that IPv6 host and the final result depends on the rest of the policy.
 
 ## SPF Record Structure
 
@@ -75,12 +75,12 @@ dig @8.8.8.8 TXT example.com
 # Test SPF validation for a specific sending IP
 python3 -c "
 import spf
-result, code, explanation = spf.check2(
+result, explanation = spf.check2(
     i='2001:db8::10',
     s='sender@example.com',
     h='mail.example.com'
 )
-print(f'Result: {result}, Code: {code}')
+print(f'Result: {result}')
 print(f'Explanation: {explanation}')
 "
 ```
@@ -119,10 +119,10 @@ swaks --from sender@example.com \
 ## All Mechanisms: Soft vs Hard Fail
 
 ```dns
-# ~all = soft fail (mark as suspicious but accept)
+# ~all = softfail (typically mark as suspicious but accept)
 "v=spf1 ip6:2001:db8::10 ~all"
 
-# -all = hard fail (reject mail not from authorized IPs)
+# -all = fail (receivers may reject mail not from authorized IPs)
 "v=spf1 ip6:2001:db8::10 -all"
 
 # +all = allow all (never use this)
