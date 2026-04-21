@@ -8,7 +8,7 @@ Description: Learn how to capture packets on a specific VLAN using tcpdump on Li
 
 ## VLAN Traffic and 802.1Q Tags
 
-VLANs use 802.1Q tagging - a 4-byte tag inserted into the Ethernet frame containing the VLAN ID. On trunk ports (carrying multiple VLANs), each frame has a tag. On access ports (single VLAN), frames are untagged at the port.
+VLANs use 802.1Q tagging - a 4-byte tag inserted into the Ethernet frame containing the VLAN ID. On trunk ports (carrying multiple VLANs), tagged VLAN frames have a tag, though some trunks can also carry an untagged/native VLAN. On access ports (single VLAN), frames are untagged at the port.
 
 ## Step 1: Capture Tagged VLAN Traffic on Trunk Interface
 
@@ -87,10 +87,10 @@ network:
 ## Step 4: Capture Multiple VLANs
 
 ```bash
-# Capture on multiple specific VLANs
-sudo tcpdump -i eth0 -n 'vlan 100 or vlan 200 or vlan 300'
+# Capture on multiple outer VLAN IDs
+sudo tcpdump -i eth0 -n 'vlan and (ether[14:2] & 0x0fff == 100 or ether[14:2] & 0x0fff == 200 or ether[14:2] & 0x0fff == 300)'
 
-# Capture any VLAN traffic going to a specific host
+# Capture any VLAN traffic to or from a specific host
 sudo tcpdump -i eth0 -n 'vlan and host 192.168.100.50'
 
 # Capture all VLAN traffic and save to PCAP
@@ -109,7 +109,7 @@ In Wireshark:
    vlan.id == 100
 
 2. Filter for VLAN range:
-   vlan.id >= 100 and vlan.id <= 200
+   vlan.id in {100..200}
 
 3. Show VLAN priority (QoS):
    vlan.priority
@@ -118,11 +118,11 @@ In Wireshark:
    not vlan
 
 5. VLAN traffic statistics:
-   Statistics → Conversations → Ethernet
-   Shows conversations per VLAN
+   Apply vlan.id == 100, then use Statistics → Conversations → Ethernet
+   Shows Ethernet conversations for the displayed VLAN traffic
 
 6. Double-tagged (QinQ) traffic:
-   vlan.id == 100 and vlan.id == 200
+   vlan.id#1 == 100 and vlan.id#2 == 200
    (Match outer VLAN 100, inner VLAN 200)
 ```
 
@@ -130,18 +130,19 @@ In Wireshark:
 
 ```bash
 # If you have a SPAN port mirroring trunk traffic:
-# The SPAN destination receives tagged frames from the trunk
+# Configure the SPAN destination to preserve or tag VLAN encapsulation
+# otherwise some switches may send mirrored traffic untagged
 
 # On the capture device (connected to SPAN destination)
 # List all VLANs seen
-sudo tcpdump -i eth0 -n 'vlan' | awk '{print $3}' | sort | uniq -c | sort -rn
+sudo tcpdump -i eth0 -l -n -e 'vlan' | awk '{for (i=1; i<=NF; i++) if ($i == "vlan") {gsub(",", "", $(i+1)); print $(i+1)}}' | sort -n | uniq -c | sort -rn
 # Counts frames per VLAN ID
 
 # Capture SPAN traffic filtered to VLAN 100
 sudo tcpdump -i eth0 -n -w /tmp/vlan100-span.pcap 'vlan 100'
 
-# See all devices in VLAN 100
-sudo tcpdump -i eth0 -n 'vlan 100' | awk '{print $3, $5}' | sort | uniq
+# See source and destination MAC addresses in VLAN 100
+sudo tcpdump -i eth0 -l -n -e 'vlan 100' | awk '{src=$2; dst=$4; gsub(",", "", dst); print src, dst}' | sort | uniq
 ```
 
 ## Step 7: Script to Capture Multiple VLANs Simultaneously
