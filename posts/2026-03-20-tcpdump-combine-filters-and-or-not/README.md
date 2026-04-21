@@ -33,7 +33,7 @@ sudo tcpdump '!port 22'
 ## Using Parentheses for Grouping
 
 ```bash
-# Without parentheses - ambiguous precedence
+# Without parentheses - easy to misread
 sudo tcpdump 'host 10.0.0.1 and port 80 or port 443'
 # Interpreted as: (host 10.0.0.1 AND port 80) OR port 443
 
@@ -42,7 +42,7 @@ sudo tcpdump 'host 10.0.0.1 and (port 80 or port 443)'
 # Correctly: host 10.0.0.1 AND (port 80 OR port 443)
 
 # Always use parentheses when mixing AND and OR
-# AND has higher precedence than OR in BPF
+# AND and OR have equal precedence in libpcap filters and evaluate left-to-right
 ```
 
 ## Practical Filter Combinations
