@@ -58,11 +58,11 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "app" {
       sse_algorithm     = "aws:kms"
       kms_master_key_id = aws_kms_key.app.arn
     }
-    bucket_key_enabled = true  # Reduces KMS API costs by ~99%
+    bucket_key_enabled = true  # Can reduce KMS API costs by up to 99%
   }
 }
 
-# Deny unencrypted uploads
+# Deny uploads that do not use the bucket KMS key
 
 resource "aws_s3_bucket_policy" "require_encryption" {
   bucket = aws_s3_bucket.app.id
@@ -77,7 +77,7 @@ resource "aws_s3_bucket_policy" "require_encryption" {
       Resource  = "${aws_s3_bucket.app.arn}/*"
       Condition = {
         StringNotEquals = {
-          "s3:x-amz-server-side-encryption" = "aws:kms"
+          "s3:x-amz-server-side-encryption-aws-kms-key-id" = aws_kms_key.app.arn
         }
       }
     }]
@@ -119,11 +119,14 @@ resource "aws_launch_template" "app" {
 
 ```hcl
 resource "aws_db_instance" "app" {
-  identifier        = "${var.environment}-app-db"
-  engine            = "postgres"
-  engine_version    = "15.4"
-  instance_class    = "db.t3.medium"
-  allocated_storage = 100
+  identifier                    = "${var.environment}-app-db"
+  engine                        = "postgres"
+  engine_version                = "15.17"
+  instance_class                = "db.t3.medium"
+  allocated_storage             = 100
+  username                      = var.db_username
+  manage_master_user_password   = true
+  master_user_secret_kms_key_id = aws_kms_key.app.arn
 
   storage_encrypted = true
   kms_key_id        = aws_kms_key.app.arn
@@ -135,7 +138,7 @@ resource "aws_db_instance" "app" {
 }
 ```
 
-## Azure Disk Encryption
+## Azure Managed Disk Encryption
 
 ```hcl
 resource "azurerm_key_vault" "app" {
@@ -145,8 +148,27 @@ resource "azurerm_key_vault" "app" {
   tenant_id           = data.azurerm_client_config.current.tenant_id
   sku_name            = "standard"
 
-  purge_protection_enabled   = true
-  soft_delete_retention_days = 90
+  enabled_for_disk_encryption = true
+  purge_protection_enabled    = true
+  soft_delete_retention_days  = 90
+}
+
+resource "azurerm_key_vault_access_policy" "current_user" {
+  key_vault_id = azurerm_key_vault.app.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = data.azurerm_client_config.current.object_id
+
+  key_permissions = [
+    "Create",
+    "Delete",
+    "Get",
+    "GetRotationPolicy",
+    "List",
+    "Purge",
+    "Recover",
+    "SetRotationPolicy",
+    "Update",
+  ]
 }
 
 resource "azurerm_key_vault_key" "disk" {
@@ -155,6 +177,8 @@ resource "azurerm_key_vault_key" "disk" {
   key_type     = "RSA"
   key_size     = 4096
   key_opts     = ["decrypt", "encrypt", "sign", "unwrapKey", "verify", "wrapKey"]
+
+  depends_on = [azurerm_key_vault_access_policy.current_user]
 
   rotation_policy {
     automatic {
@@ -166,10 +190,11 @@ resource "azurerm_key_vault_key" "disk" {
 }
 
 resource "azurerm_disk_encryption_set" "app" {
-  name                = "${var.environment}-disk-encryption-set"
-  resource_group_name = azurerm_resource_group.app.name
-  location            = azurerm_resource_group.app.location
-  key_vault_key_id    = azurerm_key_vault_key.disk.id
+  name                      = "${var.environment}-disk-encryption-set"
+  resource_group_name       = azurerm_resource_group.app.name
+  location                  = azurerm_resource_group.app.location
+  key_vault_key_id          = azurerm_key_vault_key.disk.versionless_id
+  auto_key_rotation_enabled = true
 
   identity {
     type = "SystemAssigned"
@@ -183,6 +208,12 @@ resource "azurerm_key_vault_access_policy" "disk_encryption" {
   object_id    = azurerm_disk_encryption_set.app.identity[0].principal_id
 
   key_permissions = ["Get", "WrapKey", "UnwrapKey"]
+}
+
+resource "azurerm_role_assignment" "disk_encryption_reader" {
+  scope                = azurerm_key_vault.app.id
+  role_definition_name = "Reader"
+  principal_id         = azurerm_disk_encryption_set.app.identity[0].principal_id
 }
 ```
 
@@ -205,6 +236,10 @@ resource "google_kms_crypto_key" "app" {
   }
 }
 
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
 # Encrypt GCS bucket with CMEK
 resource "google_storage_bucket" "encrypted" {
   name     = "${var.project_id}-data-${var.environment}"
@@ -213,6 +248,8 @@ resource "google_storage_bucket" "encrypted" {
   encryption {
     default_kms_key_name = google_kms_crypto_key.app.id
   }
+
+  depends_on = [google_kms_crypto_key_iam_member.gcs]
 }
 
 # Grant GCS service account permission to use the key
@@ -220,6 +257,13 @@ resource "google_kms_crypto_key_iam_member" "gcs" {
   crypto_key_id = google_kms_crypto_key.app.id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
   member        = "serviceAccount:${data.google_storage_project_service_account.main.email_address}"
+}
+
+# Grant Compute Engine service agent permission to use the key
+resource "google_kms_crypto_key_iam_member" "compute" {
+  crypto_key_id = google_kms_crypto_key.app.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:service-${data.google_project.current.number}@compute-system.iam.gserviceaccount.com"
 }
 
 # Encrypt persistent disk with CMEK
@@ -230,12 +274,13 @@ resource "google_compute_disk" "app" {
   size  = 100
 
   disk_encryption_key {
-    kms_key_self_link       = google_kms_crypto_key.app.id
-    kms_key_service_account = google_service_account.app.email
+    kms_key_self_link = google_kms_crypto_key.app.id
   }
+
+  depends_on = [google_kms_crypto_key_iam_member.compute]
 }
 ```
 
 ## Conclusion
 
-Storage encryption with OpenTofu should be enforced at every layer - object storage, block storage, and databases. Use customer-managed keys (CMK) rather than provider-managed keys when you need audit trails, key rotation control, or the ability to revoke access by disabling the key. Enable `bucket_key_enabled = true` for S3 with KMS to reduce API costs. On AWS, set `aws_ebs_encryption_by_default` to ensure no EC2 volume is ever created unencrypted, even from manual console actions.
+Storage encryption with OpenTofu should be enforced at every layer - object storage, block storage, and databases. Use customer-managed keys (CMK) rather than provider-managed keys when you need audit trails, key rotation control, or the ability to revoke access by disabling the key. Enable `bucket_key_enabled = true` for S3 with KMS to reduce API costs. On AWS, set `aws_ebs_encryption_by_default` to ensure new EBS volumes in that Region are encrypted by default, even from manual console actions.
