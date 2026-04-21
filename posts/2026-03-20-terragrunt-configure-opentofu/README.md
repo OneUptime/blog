@@ -8,7 +8,7 @@ Description: Learn how to configure Terragrunt to invoke OpenTofu instead of Ter
 
 ## Introduction
 
-Terragrunt is a thin wrapper around OpenTofu (and Terraform) that provides extra tools for keeping your configurations DRY. Since OpenTofu is a drop-in replacement for Terraform, Terragrunt works with it by simply pointing it to the `tofu` binary.
+Terragrunt is a thin wrapper around OpenTofu (and Terraform) that provides extra tools for keeping your configurations DRY. Since OpenTofu is a drop-in replacement for Terraform, Terragrunt works with it by invoking the `tofu` binary. Current Terragrunt releases default to `tofu`, and the settings below make that choice explicit.
 
 ## Installing Prerequisites
 
@@ -20,7 +20,7 @@ brew install opentofu    # macOS
 
 # Install Terragrunt
 brew install terragrunt  # macOS
-# or download from https://terragrunt.gruntwork.io/
+# or follow https://docs.terragrunt.com/getting-started/install/
 
 # Verify both are installed
 tofu version
@@ -29,23 +29,23 @@ terragrunt --version
 
 ## Configuring Terragrunt to Use OpenTofu
 
-Terragrunt respects the `TERRAGRUNT_TFPATH` environment variable to override which binary it calls:
+Terragrunt respects the `TG_TF_PATH` environment variable to override which binary it calls:
 
 ```bash
 # Use tofu for all terragrunt commands in this shell session
-export TERRAGRUNT_TFPATH=$(which tofu)
+export TG_TF_PATH=$(which tofu)
 
 # Verify
-terragrunt --version
-# Should show OpenTofu version in the output
+terragrunt info print
+# The terraform_binary field should point to tofu
 ```
 
-## Permanent Configuration via terragrunt.hcl
+## Permanent Configuration via root.hcl
 
-You can hard-code the OpenTofu binary path in your root `terragrunt.hcl`:
+You can hard-code the OpenTofu binary name or path in your root `root.hcl`:
 
 ```hcl
-# root terragrunt.hcl
+# root.hcl
 # Tell Terragrunt to use OpenTofu instead of Terraform
 terraform_binary = "tofu"
 
@@ -92,7 +92,7 @@ A typical Terragrunt project using OpenTofu looks like this:
 
 ```text
 infrastructure/
-├── terragrunt.hcl          # Root config (sets terraform_binary = "tofu")
+├── root.hcl                # Root config (sets terraform_binary = "tofu")
 ├── common_vars.yaml        # Shared variables
 ├── modules/
 │   ├── vpc/
@@ -104,11 +104,9 @@ infrastructure/
 │       └── ...
 └── environments/
     ├── dev/
-    │   ├── terragrunt.hcl  # Inherits root config
     │   └── vpc/
     │       └── terragrunt.hcl
     └── prod/
-        ├── terragrunt.hcl
         └── vpc/
             └── terragrunt.hcl
 ```
@@ -118,7 +116,7 @@ infrastructure/
 ```hcl
 # environments/dev/vpc/terragrunt.hcl
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {
@@ -142,27 +140,29 @@ terragrunt plan
 terragrunt apply
 
 # Run across all modules in the environment
-terragrunt run-all plan
+terragrunt run --all plan
 
 # Apply all modules respecting dependency order
-terragrunt run-all apply
+terragrunt run --all apply
 ```
 
 ## CI/CD Integration
 
 ```yaml
 # .github/workflows/infra.yml
-- name: Install OpenTofu
-  run: |
-    curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.0/tofu_1.9.0_linux_amd64.zip
-    unzip tofu_1.9.0_linux_amd64.zip && sudo mv tofu /usr/local/bin/
+- name: Install Terragrunt and OpenTofu
+  uses: gruntwork-io/terragrunt-action@v3
+  with:
+    tg_version: "1.0.2"
+    tofu_version: "1.11.6"
 
 - name: Terragrunt Plan
   env:
-    TERRAGRUNT_TFPATH: /usr/local/bin/tofu
-  run: terragrunt run-all plan --terragrunt-non-interactive
+    TG_TF_PATH: tofu
+    TG_NON_INTERACTIVE: "true"
+  run: terragrunt run --all plan
 ```
 
 ## Conclusion
 
-Configuring Terragrunt to use OpenTofu is straightforward - set `terraform_binary = "tofu"` in your root `terragrunt.hcl` or export `TERRAGRUNT_TFPATH`. From there, all Terragrunt features like DRY backends, dependency management, and `run-all` work seamlessly with OpenTofu.
+Configuring Terragrunt to use OpenTofu is straightforward - set `terraform_binary = "tofu"` in your root `root.hcl` or export `TG_TF_PATH`. From there, all Terragrunt features like DRY backends, dependency management, and `run --all` work seamlessly with OpenTofu.
