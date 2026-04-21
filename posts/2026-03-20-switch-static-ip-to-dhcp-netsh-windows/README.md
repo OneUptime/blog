@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Window, Networking, Netsh, DHCP, IPv4, Network Configuration
+Tags: Windows, Networking, Netsh, DHCP, IPv4, Network Configuration
 
 Description: Switch a Windows network adapter from a static IPv4 configuration back to DHCP using netsh commands, and reset DNS to automatic assignment as well.
 
@@ -31,7 +31,7 @@ This removes the static address and tells the adapter to request an address from
 
 ```cmd
 :: Set DNS to automatic (obtained via DHCP)
-netsh interface ipv4 set dns name="Ethernet" source=dhcp
+netsh interface ipv4 set dnsservers name="Ethernet" source=dhcp
 ```
 
 ## Releasing and Renewing the DHCP Lease
@@ -59,36 +59,36 @@ Look for `DHCP Enabled . . . . . . . . . . : Yes` and a non-manual IP address.
 
 $adapter = Get-NetAdapter -Name "Ethernet"
 
-# Remove static IP and switch to DHCP
-Set-NetIPInterface -InterfaceIndex $adapter.InterfaceIndex -Dhcp Enabled
+# Switch IPv4 to DHCP
+Set-NetIPInterface -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv4 -Dhcp Enabled
 
-# Remove any static IP entries
-Remove-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -Confirm:$false
+# Remove any static IPv4 entries
+Remove-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv4 -PrefixOrigin Manual -Confirm:$false
 
 # Reset DNS to automatic
 Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ResetServerAddresses
 
 # Renew the lease
-ipconfig /renew
+ipconfig /renew "Ethernet"
 ```
 
 ## Checking DHCP Server Assignment
 
 ```cmd
 :: Show DHCP lease details
-ipconfig /all | findstr /i "DHCP\|IPv4\|Default Gateway\|DNS"
+ipconfig /all | findstr /i /c:"DHCP" /c:"IPv4" /c:"Default Gateway" /c:"DNS"
 ```
 
 ## Batch Script to Switch All Adapters to DHCP
 
 ```cmd
 @echo off
-:: Switch all Ethernet adapters to DHCP
-for /f "tokens=*" %%A in ('netsh interface show interface ^| findstr /i "ethernet"') do (
-    for /f "tokens=4" %%B in ("%%A") do (
-        echo Switching %%B to DHCP...
-        netsh interface ipv4 set address name="%%B" source=dhcp
-        netsh interface ipv4 set dns name="%%B" source=dhcp
+:: Switch all listed interfaces to DHCP
+for /f "skip=2 tokens=1,2,3,*" %%A in ('netsh interface show interface') do (
+    if not "%%D"=="" (
+        echo Switching %%D to DHCP...
+        netsh interface ipv4 set address name="%%D" source=dhcp
+        netsh interface ipv4 set dnsservers name="%%D" source=dhcp
     )
 )
 ipconfig /release
@@ -97,4 +97,4 @@ ipconfig /renew
 
 ## Conclusion
 
-`netsh interface ipv4 set address source=dhcp` switches the adapter to DHCP mode in one command. Always switch DNS to `source=dhcp` as well, then release/renew to obtain a fresh lease immediately.
+`netsh interface ipv4 set address name="Ethernet" source=dhcp` switches the adapter to DHCP mode in one command. Always switch DNS to `source=dhcp` as well, then release/renew to obtain a fresh lease immediately.
