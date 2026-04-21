@@ -81,7 +81,7 @@ foreach ($t in $targets) {
 
 ```powershell
 # Returns True/False - suppress all output except the boolean
-$reachable = (Test-NetConnection -ComputerName 8.8.8.8 -WarningAction SilentlyContinue).PingSucceeded
+$reachable = Test-NetConnection -ComputerName 8.8.8.8 -InformationLevel Quiet -WarningAction SilentlyContinue
 if ($reachable) {
     Write-Host "Host is UP"
 } else {
@@ -93,12 +93,12 @@ if ($reachable) {
 
 ```powershell
 # Check all common service ports on a server
-$host = "192.168.1.100"
+$targetHost = "192.168.1.100"
 $ports = @(22, 80, 443, 3389, 5432)
 
 $ports | ForEach-Object {
-    $r = Test-NetConnection -ComputerName $host -Port $_ -WarningAction SilentlyContinue
-    "$host`:$_ = $(if ($r.TcpTestSucceeded) {'OPEN'} else {'CLOSED'})"
+    $r = Test-NetConnection -ComputerName $targetHost -Port $_ -WarningAction SilentlyContinue
+    "$targetHost`:$_ = $(if ($r.TcpTestSucceeded) {'OPEN'} else {'CLOSED'})"
 }
 ```
 
@@ -113,4 +113,4 @@ $ports | ForEach-Object {
 
 ## Conclusion
 
-`Test-NetConnection` with `-Port` is the single most useful PowerShell network diagnostic tool, replacing both `ping` and `telnet` for connectivity testing. Combine with `-TraceRoute` to get path information, and use `-WarningAction SilentlyContinue` in scripts to suppress informational messages.
+`Test-NetConnection` with `-Port` is the single most useful PowerShell network diagnostic tool, replacing both `ping` and `telnet` for connectivity testing. Combine with `-TraceRoute` to get path information, and use `-WarningAction SilentlyContinue` in scripts to suppress warning messages.
