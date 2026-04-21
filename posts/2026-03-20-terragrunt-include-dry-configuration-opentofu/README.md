@@ -8,7 +8,7 @@ Description: Learn how to use Terragrunt include blocks to inherit configuration
 
 ## Introduction
 
-Terragrunt `include` blocks pull in configuration from other `terragrunt.hcl` files, merging their locals, inputs, generate blocks, and remote_state settings into the current module. This creates a parent-child hierarchy where shared config lives once at the root and all child modules inherit it automatically.
+Terragrunt `include` blocks pull in configuration from other HCL files, merging supported settings such as inputs, generate blocks, and remote_state settings into the current module. Locals are not merged, but they can be referenced from an exposed include. This creates a parent-child hierarchy where shared config lives once at the root and all child modules inherit it automatically.
 
 ## Basic include Block
 
@@ -18,7 +18,7 @@ Terragrunt `include` blocks pull in configuration from other `terragrunt.hcl` fi
 # Include the root config (backend, provider, common tags)
 
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {
@@ -31,7 +31,7 @@ inputs = {
 }
 ```
 
-The `find_in_parent_folders()` function walks up the directory tree until it finds a `terragrunt.hcl` without an `include` block - that becomes the root.
+The `find_in_parent_folders("root.hcl")` function walks up the directory tree from the current `terragrunt.hcl` file until it finds the first parent `root.hcl` file.
 
 ## Multiple includes
 
@@ -40,12 +40,12 @@ The `find_in_parent_folders()` function walks up the directory tree until it fin
 
 # Root config: backend + provider
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 # Shared ECS service config
 include "envcommon" {
-  path   = "${dirname(find_in_parent_folders())}/_envcommon/ecs-service.hcl"
+  path   = "${dirname(find_in_parent_folders("root.hcl"))}/_envcommon/ecs-service.hcl"
   expose = true
 }
 
@@ -72,7 +72,7 @@ When `expose = true`, the included config's locals, inputs, and other values bec
 
 ```hcl
 include "common" {
-  path   = "${dirname(find_in_parent_folders())}/_envcommon/rds.hcl"
+  path   = "${dirname(find_in_parent_folders("root.hcl"))}/_envcommon/rds.hcl"
   expose = true
 }
 
@@ -102,7 +102,7 @@ locals {
 }
 
 terraform {
-  source = "${dirname(find_in_parent_folders())}//modules/database"
+  source = "${dirname(find_in_parent_folders("root.hcl"))}//modules/database"
 }
 
 inputs = {
@@ -119,11 +119,11 @@ inputs = {
 ```hcl
 # environments/prod/database/terragrunt.hcl
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 include "envcommon" {
-  path   = "${dirname(find_in_parent_folders())}/_envcommon/rds.hcl"
+  path   = "${dirname(find_in_parent_folders("root.hcl"))}/_envcommon/rds.hcl"
   expose = true
 }
 
@@ -143,7 +143,7 @@ inputs = merge(
 Terragrunt merges included configurations with the following rules:
 
 ```hcl
-# Parent terragrunt.hcl (root)
+# Parent root.hcl
 inputs = {
   environment = "prod"
   tags = { ManagedBy = "OpenTofu" }
@@ -153,9 +153,9 @@ inputs = {
 ```hcl
 # Child terragrunt.hcl
 include "root" {
-  path   = find_in_parent_folders()
-  # merge_strategy defaults to "deep_merge_map_only"
-  merge_strategy = "deep_merge"
+  path   = find_in_parent_folders("root.hcl")
+  # merge_strategy defaults to "shallow"
+  merge_strategy = "deep"
 }
 
 inputs = {
@@ -165,10 +165,9 @@ inputs = {
 ```
 
 Available merge strategies:
-- `no_merge` - child config is used as-is, parent ignored
-- `shallow_merge` - child top-level keys override parent (default)
-- `deep_merge` - deep recursive merge, child wins on conflicts
-- `deep_merge_map_only` - deep merge only for map attributes
+- `no_merge` - included config is not merged into the child
+- `shallow` - child top-level keys override parent (default)
+- `deep` - deep recursive merge, child wins on conflicts
 
 ## Dynamic include Path
 
@@ -180,11 +179,11 @@ locals {
 }
 
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 include "service_common" {
-  path   = "${dirname(find_in_parent_folders())}/_envcommon/${local.service_type}-service.hcl"
+  path   = "${dirname(find_in_parent_folders("root.hcl"))}/_envcommon/${local.service_type}-service.hcl"
   expose = true
 }
 ```
