@@ -41,6 +41,8 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     labels:
+      - "traefik.enable=true"
+
       # HTTP router - only purpose is to redirect
       - "traefik.http.routers.portainer-http.rule=Host(`portainer.example.com`)"
       - "traefik.http.routers.portainer-http.entrypoints=web"
@@ -95,7 +97,7 @@ If you see a redirect loop, check:
 
 ```bash
 # Check for redirect loops
-curl -I --max-redirs 5 http://portainer.example.com
+curl -IL --max-redirs 5 http://portainer.example.com
 # Should stop at the HTTPS URL, not loop
 ```
 
@@ -105,7 +107,7 @@ curl -I --max-redirs 5 http://portainer.example.com
 # docker-compose.yml
 services:
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.6
     ports:
       - "80:80"
       - "443:443"
@@ -124,6 +126,9 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_data:/data
+
+volumes:
+  traefik_data:
 ```
 
 ## Conclusion
