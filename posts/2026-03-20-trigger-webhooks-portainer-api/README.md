@@ -8,55 +8,59 @@ Description: Learn how to create, list, and trigger Portainer webhooks programma
 
 ## What Are Portainer Webhooks?
 
-Portainer webhooks are unique URLs that trigger a redeploy of a stack or service when called via HTTP POST. They allow CI/CD systems to trigger deployments without needing full Portainer API credentials.
+Portainer webhooks are unique URLs that trigger a redeploy of a stack, service, or container when called via HTTP POST. They allow CI/CD systems to trigger deployments without needing full Portainer API credentials for the trigger itself. Stack and container webhooks are Business Edition features; service webhooks are available for Docker Swarm services.
 
 ## Listing Webhooks
 
 ```bash
-# List all webhooks
+# List service/container webhooks
 
 curl -s "${PORTAINER_URL}/api/webhooks" \
-  -H "Authorization: Bearer ${API_TOKEN}" | \
-  jq '[.[] | {id: .Id, token: .Token, resourceId: .ResourceID, type: .Type}]'
+  -H "X-API-Key: ${PORTAINER_API_KEY}" | \
+  jq '[.[] | {id: .Id, token: .Token, resourceId: .ResourceId, endpointId: .EndpointId, type: .Type}]'
 ```
 
 ## Creating a Webhook via API
 
 ```bash
-# Create a webhook for a stack (Type 1 = stack webhook)
+# Create a webhook for a Docker Swarm service (WebhookType 1 = service webhook)
 curl -X POST "${PORTAINER_URL}/api/webhooks" \
-  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "X-API-Key: ${PORTAINER_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
-    "ResourceID": "my-stack",
+    "ResourceID": "abc12345-abcd-2345-ab12-58005b4a0260",
     "EndpointID": 1,
     "WebhookType": 1
   }'
 
 # Response includes the token
-# {"Id": "...", "Token": "abc123-token-here", ...}
+# {"Id": 1, "Token": "abc123-token-here", "ResourceId": "...", "EndpointId": 1, "Type": 1}
 ```
 
 ## Triggering a Webhook
 
 ```bash
-# Trigger a webhook to redeploy a stack
+# Trigger a service or container webhook
 WEBHOOK_TOKEN="abc123-token-here"
 
 curl -X POST "${PORTAINER_URL}/api/webhooks/${WEBHOOK_TOKEN}"
-# Returns 204 No Content on success
+# Returns 202 Accepted on success
+
+# Trigger a stack webhook (use the token from the stack webhook URL)
+curl -X POST "${PORTAINER_URL}/api/stacks/webhooks/${WEBHOOK_TOKEN}"
+# Returns 200 OK on success
 
 # Trigger with a specific image tag
-curl -X POST "${PORTAINER_URL}/api/webhooks/${WEBHOOK_TOKEN}?tag=v2.1.0"
+curl -X POST "${PORTAINER_URL}/api/stacks/webhooks/${WEBHOOK_TOKEN}?tag=v2.1.0"
 ```
 
 ## Webhook Types
 
-| Type | Value | Target |
-|------|-------|--------|
-| Stack | 1 | Re-deploys a Docker Compose stack |
-| Service | 2 | Updates a Swarm service image |
-| Container | 3 | Recreates a container with latest image |
+| Type | Value or endpoint | Target |
+|------|-------------------|--------|
+| Stack | `/api/stacks/webhooks/{token}` | Re-deploys a Git-backed stack with webhook auto-update enabled |
+| Service | `WebhookType: 1` | Updates a Swarm service image via `/api/webhooks/{token}` |
+| Container | `WebhookType: 2` (Business Edition) | Recreates a container with latest image via `/api/webhooks/{token}` |
 
 ## Automating Webhook Triggers in CI/CD
 
@@ -74,7 +78,7 @@ RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
 
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
 
-if [ "$HTTP_CODE" -eq 204 ]; then
+if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 202 ]; then
   echo "Deployment triggered successfully"
 else
   echo "Deployment trigger failed with HTTP ${HTTP_CODE}"
@@ -93,7 +97,7 @@ fi
     HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
       -X POST "${PORTAINER_WEBHOOK_URL}?tag=${{ github.sha }}")
 
-    if [ "$HTTP_STATUS" != "204" ]; then
+    if [ "$HTTP_STATUS" != "200" ] && [ "$HTTP_STATUS" != "202" ]; then
       echo "Deployment failed: HTTP $HTTP_STATUS"
       exit 1
     fi
@@ -103,14 +107,14 @@ fi
 ## Deleting a Webhook
 
 ```bash
-# Get webhook ID first
+# Get service/container webhook ID first
 WEBHOOK_ID=$(curl -s "${PORTAINER_URL}/api/webhooks" \
-  -H "Authorization: Bearer ${API_TOKEN}" | \
+  -H "X-API-Key: ${PORTAINER_API_KEY}" | \
   jq -r '.[] | select(.Token == "abc123-token-here") | .Id')
 
 # Delete the webhook
 curl -X DELETE "${PORTAINER_URL}/api/webhooks/${WEBHOOK_ID}" \
-  -H "Authorization: Bearer ${API_TOKEN}"
+  -H "X-API-Key: ${PORTAINER_API_KEY}"
 ```
 
 ## Security Best Practices for Webhooks
