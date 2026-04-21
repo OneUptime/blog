@@ -155,7 +155,7 @@ modules/
         full_network.tftest.hcl ← real providers
 ```
 
-Run isolated tests only:
+From `modules/networking`, run isolated tests only:
 ```bash
 tofu test -test-directory=tests/unit
 ```
