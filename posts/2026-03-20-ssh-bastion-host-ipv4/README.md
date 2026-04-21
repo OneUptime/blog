@@ -41,14 +41,10 @@ PubkeyAuthentication yes
 
 # Disable X11 and forwarding for most users
 X11Forwarding no
-AllowTcpForwarding no   # Default off; override per-user below
+AllowTcpForwarding no   # Set forwarding off by default; override per-user below
 
 # Only allow specific users
 AllowUsers alice bob carol
-
-# For users who need forwarding:
-Match User alice
-    AllowTcpForwarding yes
 
 # Timeout settings
 ClientAliveInterval 300
@@ -57,6 +53,10 @@ LoginGraceTime 30
 
 # Logging
 LogLevel VERBOSE
+
+# For users who need ProxyJump or port forwarding:
+Match User alice
+    AllowTcpForwarding yes
 ```
 
 ## Client-Side ~/.ssh/config with ProxyJump
@@ -108,7 +108,7 @@ ssh -4 -J alice@203.0.113.10 ubuntu@10.0.0.10
 scp -J alice@203.0.113.10 file.txt ubuntu@10.0.0.10:/home/ubuntu/
 
 # Port forwarding through bastion to internal service
-ssh -L 5432:10.0.0.20:5432 -J alice@203.0.113.10 ubuntu@10.0.0.10 -N
+ssh -L 5432:10.0.0.20:5432 alice@203.0.113.10 -N
 ```
 
 ## Auditing Bastion Access
@@ -117,7 +117,9 @@ ssh -L 5432:10.0.0.20:5432 -J alice@203.0.113.10 ubuntu@10.0.0.10 -N
 # Monitor all connections through the bastion
 sudo tail -f /var/log/auth.log | grep sshd
 
-# Log all commands executed on the bastion (if using it as a shell server)
+# Record interactive shell history on the bastion (if using it as a shell server)
+# Create the history directory once:
+# sudo install -d -m 1733 /var/log/bash_history
 # Add to /etc/profile or /etc/bash.bashrc:
 # export HISTFILE=/var/log/bash_history/$(whoami)_$(date +%F)
 # export HISTTIMEFORMAT="%F %T "
@@ -130,21 +132,24 @@ sudo tail -f /var/log/auth.log | grep sshd
 sudo auditctl -w /etc/ssh/sshd_config -p rwxa -k sshd_config
 ```
 
-## Bastion Firewall Rules
+## Bastion and Internal Firewall Rules
 
 ```bash
-# Allow SSH from internet only (restrict to known IPs if possible)
-sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+# Allow SSH to the bastion from trusted admin IPs only
+sudo iptables -A INPUT -i eth0 -p tcp -s 198.51.100.0/24 --dport 22 -j ACCEPT
+sudo iptables -A INPUT -i eth0 -p tcp --dport 22 -j DROP
 
-# Allow SSH from bastion to internal servers
-sudo iptables -A FORWARD -s 203.0.113.10 -p tcp --dport 22 \
-  -d 10.0.0.0/8 -j ACCEPT
+# Allow outbound SSH from bastion to internal servers
+sudo iptables -A OUTPUT -p tcp -d 10.0.0.0/8 --dport 22 -j ACCEPT
+
+# If the bastion is not a router, block packet forwarding through it
 sudo iptables -A FORWARD -j DROP
 
-# Block internet from reaching internal directly
-sudo iptables -A FORWARD -i eth0 -d 10.0.0.0/8 -j DROP
+# On each internal server or its cloud firewall, allow SSH only from the bastion's private IP
+sudo iptables -A INPUT -p tcp -s 10.0.0.5 --dport 22 -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 22 -j DROP
 ```
 
 ## Conclusion
 
-An SSH bastion host centralizes and audits all administrative access to internal IPv4 infrastructure. Configure `ProxyJump` in `~/.ssh/config` to make bastion-mediated access transparent to developers. Harden the bastion with key-only auth, `PermitRootLogin no`, and `AllowUsers`, and use firewall rules to ensure the bastion is the only path to internal servers.
+An SSH bastion host centralizes and audits all administrative access to internal IPv4 infrastructure. Configure `ProxyJump` in `~/.ssh/config` to make bastion-mediated access transparent to developers. Harden the bastion with key-only auth, `PermitRootLogin no`, and `AllowUsers`, and use internal-host or cloud firewall rules to ensure the bastion is the only SSH path to internal servers.
