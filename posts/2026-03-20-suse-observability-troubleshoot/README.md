@@ -48,20 +48,22 @@ kubectl logs -n suse-observability \
 ## Step 2: Verify the API Key and Server URL
 
 ```bash
-# Check the API key stored in the secret
-kubectl get secret suse-observability-agent \
+# Check the API key stored in the Helm-managed agent secret
+kubectl get secret suse-observability-agent-secrets \
   -n suse-observability \
-  -o jsonpath='{.data.stackstate-api-key}' | base64 -d
+  -o jsonpath='{.data.STS_API_KEY}' | base64 -d
 
 # Verify the server URL from the agent config
-kubectl get configmap suse-observability-agent \
-  -n suse-observability -o yaml | grep url
+kubectl get configmap suse-observability-agent-url \
+  -n suse-observability \
+  -o jsonpath='{.data.STS_URL}'
 
 # Test connectivity from the agent pod to the server
 kubectl exec -n suse-observability \
   $(kubectl get pod -n suse-observability \
-    -l app.kubernetes.io/component=cluster-agent -o name | head -1) \
-  -- curl -v https://observability.example.com/receiver/solarwinds/health
+    -l app.kubernetes.io/component=cluster-agent -o name | head -n 1) \
+  -- curl -v "$(kubectl get configmap suse-observability-agent-url \
+    -n suse-observability -o jsonpath='{.data.STS_URL}')"
 ```
 
 ---
@@ -74,12 +76,14 @@ kubectl get pods -n suse-observability
 
 # Look at the receiver service logs
 kubectl logs -n suse-observability \
-  deployment/suse-observability-receiver \
-  | tail -100
+  -l app.kubernetes.io/component-group=receiver \
+  --all-containers=true \
+  --tail=100
 
 # Check Kafka consumer lag (high lag = ingestion bottleneck)
 kubectl exec -n suse-observability \
-  $(kubectl get pod -n suse-observability -l app=kafka -o name | head -1) \
+  $(kubectl get pod -n suse-observability \
+    -l app.kubernetes.io/component=kafka -o name | head -n 1) \
   -- kafka-consumer-groups.sh \
      --bootstrap-server localhost:9092 \
      --describe --all-groups
@@ -93,8 +97,8 @@ If specific resource types are missing from the topology:
 
 ```bash
 # Check which collectors are enabled
-kubectl get configmap suse-observability-agent \
-  -n suse-observability -o yaml | grep -A 5 collection
+kubectl get configmap suse-observability-agent-cluster-agent \
+  -n suse-observability -o yaml | grep -A 30 kubernetes_api_topology_conf
 
 # Verify the cluster agent has RBAC permissions to read the missing resources
 kubectl auth can-i list deployments \
@@ -110,22 +114,22 @@ kubectl rollout restart \
 
 ## Step 5: Check Elasticsearch Health
 
-SUSE Observability stores topology and metric data in Elasticsearch:
+SUSE Observability stores events and logs in Elasticsearch:
 
 ```bash
 # Check Elasticsearch cluster health
 kubectl exec -n suse-observability \
-  $(kubectl get pod -n suse-observability -l app=elasticsearch,role=master -o name | head -1) \
-  -- curl -s localhost:9200/_cluster/health | jq .
+  suse-observability-elasticsearch-master-0 \
+  -- curl -s localhost:9200/_cluster/health
 
 # Check disk usage
 kubectl exec -n suse-observability \
-  $(kubectl get pod -n suse-observability -l app=elasticsearch,role=master -o name | head -1) \
+  suse-observability-elasticsearch-master-0 \
   -- curl -s localhost:9200/_cat/allocation?v
 
 # If Elasticsearch is RED, check for unassigned shards
 kubectl exec -n suse-observability \
-  $(kubectl get pod -n suse-observability -l app=elasticsearch,role=master -o name | head -1) \
+  suse-observability-elasticsearch-master-0 \
   -- curl -s localhost:9200/_cat/shards?h=index,shard,prirep,state,docs \
      | grep UNASSIGNED
 ```
@@ -134,7 +138,7 @@ kubectl exec -n suse-observability \
 
 ## Step 6: Restart Components in the Correct Order
 
-If the server has issues, restart components in this order to avoid data loss:
+If the server has issues and a restart is needed, restart stateful dependencies first and wait after each rollout:
 
 ```bash
 # 1. Restart Zookeeper first
@@ -146,10 +150,12 @@ kubectl rollout restart statefulset/suse-observability-kafka -n suse-observabili
 
 # 3. Then restart Elasticsearch
 kubectl rollout status statefulset/suse-observability-kafka -n suse-observability
-kubectl rollout restart statefulset/suse-observability-elasticsearch -n suse-observability
+kubectl rollout restart statefulset/suse-observability-elasticsearch-master -n suse-observability
 
-# 4. Finally restart the main server
-kubectl rollout restart deployment/suse-observability-server -n suse-observability
+# 4. Finally restart SUSE Observability application deployments
+kubectl rollout status statefulset/suse-observability-elasticsearch-master -n suse-observability
+kubectl rollout restart deployment -n suse-observability \
+  -l app.kubernetes.io/instance=suse-observability
 ```
 
 ---
@@ -167,8 +173,8 @@ helm upgrade suse-observability-agent \
 
 # Tail logs with debug output
 kubectl logs -n suse-observability \
-  daemonset/suse-observability-agent-node-agent -f \
-  | grep -v "DEBUG" | head -200
+  daemonset/suse-observability-agent-node-agent \
+  --tail=200 -f
 ```
 
 ---
@@ -200,5 +206,5 @@ kubectl get pods -n suse-observability
 ## Best Practices
 
 - Monitor the SUSE Observability server itself with Prometheus and alert on Elasticsearch disk usage and Kafka consumer lag.
-- Keep the agent and server versions in sync - version mismatches can cause silent data loss.
+- Keep the agent on the latest supported version; SUSE states that the latest agent is compatible with supported platform versions.
 - Use `helm upgrade --reuse-values` when changing a single setting to avoid accidentally resetting other configuration.
