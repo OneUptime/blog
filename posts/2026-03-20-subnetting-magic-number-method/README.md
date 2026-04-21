@@ -89,7 +89,7 @@ for ip, pfx in [("172.20.50.100", 21), ("192.168.1.45", 26), ("10.0.0.0", 11)]:
 
 ## Quick Reference Cheat Sheet
 
-| Mask Octet | Block Size | Common Prefix |
+| Mask Octet | Block Size | Common Prefix (4th Octet) |
 |-----------|-----------|--------------|
 | 252 | 4 | /30 |
 | 248 | 8 | /29 |
