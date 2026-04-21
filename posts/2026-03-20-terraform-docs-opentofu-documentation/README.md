@@ -21,7 +21,7 @@ brew install terraform-docs
 On Linux:
 
 ```bash
-curl -Lo ./terraform-docs.tar.gz https://github.com/terraform-docs/terraform-docs/releases/latest/download/terraform-docs-linux-amd64.tar.gz
+curl -sSLo ./terraform-docs.tar.gz https://github.com/terraform-docs/terraform-docs/releases/download/v0.22.0/terraform-docs-v0.22.0-linux-amd64.tar.gz
 tar -xzf terraform-docs.tar.gz
 chmod +x terraform-docs
 sudo mv terraform-docs /usr/local/bin/
@@ -95,7 +95,7 @@ Some manual documentation here.
 Then run:
 
 ```bash
-terraform-docs . --output-mode inject
+terraform-docs markdown table --output-file README.md --output-mode inject .
 ```
 
 The section between the markers is automatically updated.
@@ -107,10 +107,10 @@ Add to `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/terraform-docs/terraform-docs
-    rev: "v0.17.0"
+    rev: "v0.22.0"
     hooks:
       - id: terraform-docs-go
-        args: ["./"]
+        args: ["markdown", "table", "--output-file", "README.md", "--output-mode", "inject", "./modules/networking"]
 ```
 
 ## CI/CD Integration
