@@ -17,11 +17,11 @@ Regular SSH tunnels die silently when the network drops. `autossh` monitors tunn
 
 sudo apt install autossh
 
-# RHEL/CentOS
+# RHEL/CentOS (with EPEL enabled)
 sudo yum install autossh
 
 # Verify
-autossh --help | head -5
+autossh -V
 ```
 
 ## Basic autossh Tunnel
@@ -73,6 +73,8 @@ Create a systemd service that starts at boot and restarts on failure:
 [Unit]
 Description=SSH Tunnel to Database
 After=network.target
+# Disable start rate limiting so systemd keeps retrying
+StartLimitIntervalSec=0
 
 [Service]
 User=tunnel-user
@@ -89,7 +91,6 @@ ExecStart=/usr/bin/autossh -M 0 -4 -N \
 # Restart autossh if it exits
 Restart=always
 RestartSec=10
-StartLimitBurst=0
 
 [Install]
 WantedBy=multi-user.target
@@ -129,14 +130,14 @@ AUTOSSH_DEBUG=1 autossh -M 0 -N -L 5432:db.internal:5432 user@203.0.113.10
 ```bash
 # Create multiple tunnel service files from a template
 for tunnel in db-primary db-replica cache; do
-  cat > /etc/systemd/system/ssh-tunnel-${tunnel}.service << EOF
+  sudo tee /etc/systemd/system/ssh-tunnel-${tunnel}.service > /dev/null << EOF
 [Unit]
 Description=SSH Tunnel - ${tunnel}
 After=network.target
 
 [Service]
 User=tunnel-user
-ExecStart=/usr/bin/autossh -M 0 -4 -N -fN ssh-${tunnel}-config
+ExecStart=/usr/bin/autossh -M 0 -4 -N ssh-${tunnel}-config
 Restart=always
 RestartSec=10
 
