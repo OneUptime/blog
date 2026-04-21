@@ -8,7 +8,7 @@ Description: Implement TCP connection draining to allow in-flight requests to co
 
 ## Introduction
 
-TCP connection draining is the process of gracefully stopping a server by allowing active connections to finish naturally while refusing new ones. Without draining, a sudden server shutdown sends RST packets to all active connections, causing errors for users whose requests were in progress. Proper draining is essential for zero-downtime deployments.
+TCP connection draining is the process of gracefully stopping a server by allowing active connections to finish naturally while refusing new ones. Without draining, an abrupt shutdown can close or reset active connections, causing errors for users whose requests were in progress. Proper draining is essential for zero-downtime deployments.
 
 ## The Draining Process
 
@@ -30,16 +30,21 @@ nginx -s quit
 # Then shuts down completely
 
 # Check nginx is draining (workers showing low connection count)
-nginx -s status   # (available in nginx Plus)
+ps -o pid,ppid,stat,cmd -C nginx
 # or
-ss -tlnp | grep nginx
-# Socket will disappear once all connections drain
+ss -tanp | grep nginx
+# Established sockets will disappear once all connections drain
 ```
 
 ## Draining in Node.js
 
 ```javascript
 const http = require('http');
+
+function handleRequest(req, res) {
+    res.end('OK');
+}
+
 const server = http.createServer(handleRequest);
 
 // Track active connections
@@ -68,6 +73,8 @@ function gracefulShutdown() {
 
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
+
+server.listen(8080);
 ```
 
 ## Draining with iptables (Graceful Linux Service Shutdown)
@@ -89,7 +96,7 @@ curl -X POST http://lb-api/deregister/$(hostname)
 echo "Step 3: Wait for existing connections to drain"
 ELAPSED=0
 while [ $ELAPSED -lt $DRAIN_TIMEOUT ]; do
-    ACTIVE=$(ss -tn state established "( dport = :$PORT or sport = :$PORT )" | wc -l)
+    ACTIVE=$(ss -H -tn state established "( dport = :$PORT or sport = :$PORT )" | wc -l)
     if [ "$ACTIVE" -eq 0 ]; then
         echo "All connections drained after ${ELAPSED}s"
         break
@@ -119,7 +126,7 @@ spec:
               # Sleep to allow the load balancer to deregister the pod
               # and drain its connection table before SIGTERM
               command: ["/bin/sleep", "15"]
-        terminationGracePeriodSeconds: 60
+      terminationGracePeriodSeconds: 60
 ```
 
 ## Conclusion
