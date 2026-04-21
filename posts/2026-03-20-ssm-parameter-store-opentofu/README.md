@@ -8,12 +8,12 @@ Description: Learn how to store and retrieve application configuration and secre
 
 ## Introduction
 
-AWS Systems Manager Parameter Store provides secure, hierarchical storage for configuration data and secrets. It supports plain text (String, StringList) and encrypted (SecureString) parameter types, integrates natively with EC2, Lambda, ECS, and EKS for automatic secret injection, and offers free standard parameters or paid advanced parameters for large values and higher throughput.
+AWS Systems Manager Parameter Store provides secure, hierarchical storage for configuration data and secrets. It supports plain text (String, StringList) and encrypted (SecureString) parameter types, can be referenced by AWS services such as EC2, ECS, Lambda, CloudFormation, and CodeBuild, and offers no-additional-charge standard parameters, paid advanced parameters for larger values and parameter policies, plus an optional higher-throughput setting.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with SSM Parameter Store permissions
+- AWS credentials with SSM Parameter Store permissions and KMS permissions for the customer-managed key
 
 ## Step 1: Create Plain Text Configuration Parameters
 
@@ -51,7 +51,7 @@ resource "aws_ssm_parameter" "allowed_origins" {
 resource "aws_ssm_parameter" "database_password" {
   name   = "/${var.project_name}/${var.environment}/secrets/DATABASE_PASSWORD"
   type   = "SecureString"
-  value  = var.database_password  # Mark as sensitive in Terraform
+  value  = var.database_password  # Declare this input variable as sensitive in OpenTofu
   key_id = var.kms_key_arn        # Use customer-managed KMS key
 
   tags = {
@@ -61,7 +61,7 @@ resource "aws_ssm_parameter" "database_password" {
   }
 
   lifecycle {
-    ignore_changes = [value]  # Don't overwrite if value changed outside Terraform
+    ignore_changes = [value]  # Don't overwrite if value changed outside OpenTofu
   }
 }
 
@@ -119,28 +119,33 @@ resource "aws_iam_policy" "ssm_read" {
 import boto3
 import os
 
-ssm = boto3.client('ssm', region_name='us-east-1')
+ssm = boto3.client('ssm', region_name=os.environ.get('AWS_REGION', 'us-east-1'))
+
+def get_parameters(path, with_decryption):
+    paginator = ssm.get_paginator('get_parameters_by_path')
+    parameters = []
+
+    for page in paginator.paginate(
+        Path=path,
+        Recursive=True,
+        WithDecryption=with_decryption
+    ):
+        parameters.extend(page['Parameters'])
+
+    return parameters
 
 def get_config():
     """Load all parameters for this service from Parameter Store."""
     prefix = f"/{os.environ['PROJECT_NAME']}/{os.environ['ENVIRONMENT']}"
 
     # Get all parameters under the prefix
-    response = ssm.get_parameters_by_path(
-        Path=f"{prefix}/config/",
-        Recursive=True,
-        WithDecryption=False
-    )
+    config_parameters = get_parameters(f"{prefix}/config/", False)
 
     # Get secrets
-    secret_response = ssm.get_parameters_by_path(
-        Path=f"{prefix}/secrets/",
-        Recursive=True,
-        WithDecryption=True  # Required for SecureString
-    )
+    secret_parameters = get_parameters(f"{prefix}/secrets/", True)  # Required for SecureString
 
     config = {}
-    for param in response['Parameters'] + secret_response['Parameters']:
+    for param in config_parameters + secret_parameters:
         # Extract the parameter name without the path prefix
         key = param['Name'].split('/')[-1]
         config[key] = param['Value']
@@ -151,12 +156,12 @@ def get_config():
 ## Step 5: Use Parameters in Lambda
 
 ```hcl
-# Lambda environment variable referencing SSM parameter
+# Lambda environment variables that tell the function which parameters to load
 resource "aws_lambda_function" "app" {
   # ...
   environment {
     variables = {
-      # Reference SSM parameter ARN for Lambda to load at startup
+      # Lambda stores this as a literal path; the function code fetches the parameter
       DB_PASSWORD_SSM_PATH = aws_ssm_parameter.database_password.name
       CONFIG_PREFIX        = "/${var.project_name}/${var.environment}"
     }
@@ -180,4 +185,4 @@ aws ssm get-parameter \
 
 ## Conclusion
 
-Use a hierarchical naming convention like `/{project}/{environment}/{type}/{name}` to organize parameters and enable path-based IAM policies that grant least-privilege access. Use `lifecycle { ignore_changes = [value] }` for secrets managed outside Terraform to prevent accidental overwrites during deployments. For Lambda and ECS, load parameters at startup using `GetParametersByPath` to reduce SSM API calls and improve performance.
+Use a hierarchical naming convention like `/{project}/{environment}/{type}/{name}` to organize parameters and enable path-based IAM policies that grant least-privilege access. Use `lifecycle { ignore_changes = [value] }` for secrets managed outside OpenTofu to prevent accidental overwrites during deployments. For Lambda, load parameters at startup using `GetParametersByPath` or the AWS Parameters and Secrets Lambda Extension; for ECS, either use native SSM parameter injection in the task definition or load a path at startup to reduce SSM API calls.
