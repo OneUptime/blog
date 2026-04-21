@@ -22,7 +22,7 @@ A Class A network like `10.0.0.0/8` has:
 | /24 | 65,536 | 254 |
 | /26 | 262,144 | 62 |
 
-## Three-Tier Hierarchy: /8 → /16 → /24
+## Three-Tier Hierarchy: /8 → /16 → /20 → /24
 
 ```python
 import ipaddress
@@ -65,16 +65,18 @@ allocations = {
 
 for cidr, description in allocations.items():
     net = ipaddress.IPv4Network(cidr)
-    indent = "  " * cidr.count("/") // 3
-    print(f"{cidr:20s}  ({net.num_addresses - 2:>9,d} hosts)  {description}")
+    hierarchy_depth = {8: 0, 16: 1, 20: 2, 24: 3}.get(net.prefixlen, 0)
+    indent = "  " * hierarchy_depth
+    print(f"{cidr:20s}  ({net.num_addresses - 2:>9,d} hosts)  {indent}{description}")
 ```
 
 ## Summarizing Routes from Subnets
 
-All subnets of `10.0.0.0/8` summarize back to a single /8 advertisement:
+Inside a private routing domain, all subnets of `10.0.0.0/8` can summarize back to a single /8 advertisement:
 
 ```bash
-# BGP: advertise the entire 10/8 block instead of individual /16s
+# Internal BGP: advertise the entire 10/8 summary instead of individual /16s
+# Requires a matching 10.0.0.0/8 route in the local routing table
 # This keeps the routing table small
 network 10.0.0.0 mask 255.0.0.0
 ```
@@ -82,6 +84,6 @@ network 10.0.0.0 mask 255.0.0.0
 ## Key Takeaways
 
 - A /8 has 24 bits of subnetting flexibility - enough for massive hierarchical designs.
-- Use the three-tier model: /8 (global) → /16 (region/site) → /24 (VLAN).
-- The entire /8 summarizes to a single BGP advertisement, keeping the routing table manageable.
+- Use the three-tier model: /8 (global) → /16 (region) → /20 (site) → /24 (VLAN).
+- The entire /8 can summarize to a single internal BGP advertisement, keeping the routing table manageable.
 - Document all allocations in an IPAM tool to avoid overlap as the network grows.
