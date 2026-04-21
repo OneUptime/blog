@@ -12,17 +12,17 @@ Description: Learn how to diagnose and fix DHCP relay agent issues where clients
 sequenceDiagram
     participant C as Client (VLAN 10)
     participant R as Router (Relay Agent)
-    participant D as DHCP Server (192.168.1.1)
+    participant D as DHCP Server (192.168.1.100)
 
     C->>R: DHCP Discover (broadcast)
-    Note over R: ip helper-address 192.168.1.1<br/>configured on interface
+    Note over R: ip helper-address 192.168.1.100<br/>configured on interface
     R->>D: DHCP Discover (unicast, giaddr set)
     D->>R: DHCP Offer (unicast to relay)
-    R->>C: DHCP Offer (broadcast to client)
+    R->>C: DHCP Offer (broadcast or unicast to client)
     C->>R: DHCP Request
     R->>D: DHCP Request (forwarded)
     D->>R: DHCP Acknowledge
-    R->>C: DHCP Acknowledge
+    R->>C: DHCP Acknowledge (broadcast or unicast to client)
 ```
 
 ## Step 1: Confirm the Problem
@@ -32,7 +32,7 @@ sequenceDiagram
 
 # Linux
 sudo dhclient -v eth0 2>&1 | head -20
-# Look for: "No DHCPOFFERS received" - relay not forwarding
+# Look for: "No DHCPOFFERS received" - DHCP path is failing
 
 # Windows
 ipconfig /release
@@ -40,7 +40,7 @@ ipconfig /renew
 # If it gets 169.254.x.x = DHCP failed completely
 
 # Check if other VLANs (on same DHCP server) work
-# If VLAN 20 works but VLAN 10 doesn't: relay issue specific to VLAN 10
+# If VLAN 20 works but VLAN 10 doesn't: issue is specific to the VLAN 10 path/config
 ```
 
 ## Step 2: Check Relay Agent Configuration (Cisco IOS)
@@ -60,8 +60,8 @@ Router(config-if)# ip helper-address 192.168.1.100
 Router(config-if)# end
 Router# write memory
 
-! Verify relay statistics
-Router# show ip dhcp relay information statistics
+! Verify DHCP message counters
+Router# show ip dhcp server statistics
 ```
 
 ## Step 3: Verify Routing Between Relay and DHCP Server
@@ -83,7 +83,7 @@ ip route get 192.168.1.100
 ## Step 4: Check DHCP Server for Scope Issues
 
 ```bash
-# ISC DHCPD - verify subnet scope exists for the relay VLAN
+# ISC DHCPD (legacy/EOL) - verify subnet scope exists for the relay VLAN
 # /etc/dhcp/dhcpd.conf must have a subnet matching the relay's giaddr
 
 # The giaddr is the relay agent's IP on the client VLAN (10.10.0.1)
@@ -112,11 +112,10 @@ sudo iptables -L -n | grep -E "67|68"
 
 # Allow DHCP relay traffic
 sudo iptables -I INPUT -p udp --dport 67 -j ACCEPT
-sudo iptables -I INPUT -p udp --dport 68 -j ACCEPT
-sudo iptables -I FORWARD -p udp --dport 67 -j ACCEPT
-sudo iptables -I FORWARD -p udp --dport 68 -j ACCEPT
+sudo iptables -I OUTPUT -p udp --dport 67 -j ACCEPT
+sudo iptables -I OUTPUT -p udp --dport 68 -j ACCEPT
 
-# On DHCP server - must accept relay traffic from relay agent IP
+# On DHCP server - must accept relay traffic from the relay source/giaddr IP
 sudo iptables -I INPUT -s 10.10.0.1 -p udp --dport 67 -j ACCEPT
 ```
 
@@ -124,10 +123,10 @@ sudo iptables -I INPUT -s 10.10.0.1 -p udp --dport 67 -j ACCEPT
 
 ```bash
 # Install
-sudo apt-get install isc-dhcp-relay   # Debian/Ubuntu
-sudo yum install dhcp                  # RHEL/CentOS
+sudo apt-get install isc-dhcp-relay   # Debian/Ubuntu (legacy ISC dhcrelay)
+sudo dnf install dhcp-relay            # RHEL/CentOS 8+
 
-# Configure
+# Configure Debian/Ubuntu
 sudo tee /etc/default/isc-dhcp-relay << 'EOF'
 # DHCP servers to relay to
 SERVERS="192.168.1.100"
@@ -142,6 +141,13 @@ EOF
 sudo systemctl enable isc-dhcp-relay
 sudo systemctl start isc-dhcp-relay
 
+# RHEL/CentOS 8+ uses dhcrelay.service; configure ExecStart like:
+# ExecStart=/usr/sbin/dhcrelay -d --no-pid -i eth1 192.168.1.100
+# Then run:
+# sudo systemctl daemon-reload
+# sudo systemctl enable dhcrelay.service
+# sudo systemctl start dhcrelay.service
+
 # Verify relay is running and listening
 ss -ulnp | grep :67
 ```
@@ -151,18 +157,18 @@ ss -ulnp | grep :67
 ```bash
 # On relay agent - capture DHCP traffic on both interfaces
 # Client-facing interface (should see broadcasts)
-sudo tcpdump -i eth1 -n port 67 or port 68 -v
+sudo tcpdump -i eth1 -n '(port 67 or port 68)' -v
 
 # Server-facing interface (should see unicast relay)
-sudo tcpdump -i eth0 -n port 67 or port 68 -v
+sudo tcpdump -i eth0 -n '(port 67 or port 68)' -v
 
-# Expected relay flow:
+# Typical broadcast relay flow:
 # eth1: 0.0.0.0.68 > 255.255.255.255.67: BOOTP/DHCP Request (Discover)
-# eth0: 10.10.0.1.67 > 192.168.1.100.67: BOOTP/DHCP Request (Discover) <- relay
+# eth0: 10.10.0.1.67 > 192.168.1.100.67: BOOTP/DHCP Request (Discover, giaddr 10.10.0.1) <- relay
 # eth0: 192.168.1.100.67 > 10.10.0.1.67: BOOTP/DHCP Reply (Offer)
-# eth1: 10.10.0.1.67 > 255.255.255.255.68: BOOTP/DHCP Reply (Offer)
+# eth1: 10.10.0.1.67 > 255.255.255.255.68: BOOTP/DHCP Reply (Offer, or unicast to client)
 ```
 
 ## Conclusion
 
-DHCP relay failures are diagnosed by checking for `ip helper-address` on the client VLAN interface (Cisco), verifying routing between the relay and DHCP server with a sourced ping, and confirming the DHCP server has a subnet scope matching the relay's giaddr. Use `tcpdump port 67 or port 68` on both relay interfaces to trace exactly where the DHCP conversation breaks down.
+DHCP relay failures are diagnosed by checking for `ip helper-address` on the client VLAN interface (Cisco), verifying routing between the relay and DHCP server with a sourced ping, and confirming the DHCP server has a subnet scope matching the relay's giaddr. Use `tcpdump '(port 67 or port 68)'` on both relay interfaces to trace exactly where the DHCP conversation breaks down.
