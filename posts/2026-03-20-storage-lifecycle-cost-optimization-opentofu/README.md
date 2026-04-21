@@ -15,7 +15,7 @@ Storage costs accumulate silently - S3 objects, EBS snapshots, and CloudWatch lo
 ```mermaid
 graph LR
     A[New Data<br/>S3 Standard] --> B[30 days<br/>S3 Standard-IA]
-    B --> C[90 days<br/>S3 Glacier Instant]
+    B --> C[90 days<br/>S3 Glacier Instant Retrieval]
     C --> D[365 days<br/>S3 Glacier Deep Archive]
     D --> E[2555 days<br/>Delete]
 ```
@@ -38,17 +38,17 @@ resource "aws_s3_bucket_lifecycle_configuration" "data_lake" {
 
     transition {
       days          = 30
-      storage_class = "STANDARD_IA"  # 45% cheaper than Standard
+      storage_class = "STANDARD_IA"  # Lower-cost infrequent access
     }
 
     transition {
       days          = 90
-      storage_class = "GLACIER_IR"   # 68% cheaper than Standard
+      storage_class = "GLACIER_IR"   # S3 Glacier Instant Retrieval
     }
 
     transition {
       days          = 365
-      storage_class = "DEEP_ARCHIVE"  # 95% cheaper than Standard
+      storage_class = "DEEP_ARCHIVE"  # Lowest-cost archive tier
     }
 
     expiration {
@@ -74,7 +74,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "data_lake" {
     }
 
     transition {
-      days          = 14
+      days          = 30
       storage_class = "STANDARD_IA"
     }
 
@@ -106,16 +106,17 @@ resource "aws_s3_bucket_lifecycle_configuration" "data_lake" {
 
 ```hcl
 resource "aws_s3_bucket_intelligent_tiering_configuration" "archives" {
-  bucket = aws_s3_bucket.data.id
+  # Applies to objects uploaded or transitioned to S3 Intelligent-Tiering
+  bucket = aws_s3_bucket.data_lake.id
   name   = "entire-bucket"
 
-  # Move to Archive tier after 90 days without access
+  # Move to Archive Access tier after 90 days without access
   tiering {
     access_tier = "ARCHIVE_ACCESS"
     days        = 90
   }
 
-  # Move to Deep Archive after 180 days
+  # Move to Deep Archive Access tier after 180 days without access
   tiering {
     access_tier = "DEEP_ARCHIVE_ACCESS"
     days        = 180
@@ -158,7 +159,7 @@ resource "aws_dlm_lifecycle_policy" "ebs_snapshots" {
       name = "weekly-snapshots"
 
       create_rule {
-        cron_expression = "cron(0 3 ? * SAT *)"  # Every Saturday at 3 AM
+        cron_expression = "cron(0 3 ? * SAT *)"  # Every Saturday at 03:00 UTC
       }
 
       retain_rule {
@@ -196,6 +197,6 @@ resource "aws_cloudwatch_log_group" "app" {
 
 - Set lifecycle rules on every S3 bucket - objects without lifecycle policies accumulate indefinitely.
 - Use `abort_incomplete_multipart_upload` rules on all buckets to delete failed upload fragments that silently accumulate.
-- Use Intelligent Tiering for data with unknown access patterns - it automatically moves data to cheaper tiers without predefined rules.
+- Use Intelligent Tiering for data with unknown access patterns - it automatically moves eligible objects between access tiers without fixed lifecycle transitions.
 - Set CloudWatch Log Group retention policies when creating log groups in OpenTofu - the default is to keep logs forever.
 - EBS snapshot policies save significantly over time - without policies, teams often accumulate years of daily snapshots.
