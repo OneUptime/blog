@@ -1,10 +1,10 @@
-# How to Set Up tc tbf (Token Bucket Filter) for IPv4 Rate Limiting
+# How to Set Up tc tbf (Token Bucket Filter) for Outbound Rate Limiting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: tc, TBF, IPv4, Linux, Rate Limiting, QoS
+Tags: tc, TBF, Linux, Rate Limiting, QoS
 
-Description: Use the Linux tc Token Bucket Filter (TBF) qdisc to apply simple and effective rate limiting to IPv4 traffic on a network interface.
+Description: Use the Linux tc Token Bucket Filter (TBF) qdisc to apply simple and effective outbound rate limiting on a network interface.
 
 The Token Bucket Filter (TBF) is the simplest tc qdisc for rate limiting. It allows a configured rate with controlled bursting, making it suitable for applying a flat rate cap to an interface.
 
@@ -23,10 +23,13 @@ Packet arrives → Enough tokens in bucket? → Send immediately
 ```bash
 # Limit interface eth0 to 10 Mbps outbound
 
+# rate: target rate, 10 megabits per second
+# burst: token bucket size, 32 kilobytes
+# latency: maximum latency before dropping, 400 milliseconds
 sudo tc qdisc add dev eth0 root tbf \
-  rate 10mbit \      # Target rate: 10 megabits per second
-  burst 32kbit \     # Size of the token bucket (must be >= rate/HZ)
-  latency 400ms      # Maximum latency before dropping: 400 milliseconds
+  rate 10mbit \
+  burst 32kb \
+  latency 400ms
 
 # Verify the qdisc was added
 sudo tc qdisc show dev eth0
@@ -37,14 +40,14 @@ sudo tc qdisc show dev eth0
 | Parameter | Description |
 |---|---|
 | `rate` | Target throughput (bits per second) |
-| `burst` | Token bucket size; must be ≥ `rate/HZ` (HZ = kernel timer rate, usually 250) |
+| `burst` | Token bucket size in bytes; must be at least `rate / 8 / HZ` bytes (HZ = kernel timer rate) |
 | `latency` | Max time a packet sits in the queue before being dropped |
 | `limit` | Alternative to `latency`; max bytes in queue |
 
 Calculate minimum burst:
 
 ```bash
-# For rate=10mbit and HZ=250: minimum burst = 10_000_000 / 8 / 250 = 5000 bytes ≈ 5kbit
+# For rate=10mbit and HZ=250: minimum burst = 10_000_000 / 8 / 250 = 5000 bytes ≈ 5 KB (40 kbit)
 # Use a larger burst for smoother traffic
 ```
 
@@ -52,10 +55,10 @@ Calculate minimum burst:
 
 ```bash
 # Limit the LAN interface to 100 Mbps
-sudo tc qdisc add dev eth1 root tbf rate 100mbit burst 100kbit latency 400ms
+sudo tc qdisc add dev eth1 root tbf rate 100mbit burst 100kb latency 400ms
 
 # Limit a WireGuard VPN interface to 20 Mbps
-sudo tc qdisc add dev wg0 root tbf rate 20mbit burst 64kbit latency 400ms
+sudo tc qdisc add dev wg0 root tbf rate 20mbit burst 64kb latency 400ms
 ```
 
 ## Allowing Burstable Rates
