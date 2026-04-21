@@ -44,18 +44,18 @@ dot -V
 ## Graph Types
 
 ```bash
-# Default: configuration graph (plan-time dependencies)
+# Default: plan graph from the current configuration
 tofu graph
 
-# Plan graph: shows only what would change
+# Saved plan graph: renders the graph for applying a saved plan
 tofu plan -out=tfplan.binary
 tofu graph -plan=tfplan.binary | dot -Tpng > plan-graph.png
 
 # Apply graph: shows apply-time dependencies
 tofu graph -type=apply | dot -Tpng > apply-graph.png
 
-# Destroy graph: reverse dependency order
-tofu graph -type=destroy | dot -Tpng > destroy-graph.png
+# Destroy-plan graph: reverse dependency order
+tofu graph -type=plan-destroy | dot -Tpng > destroy-graph.png
 ```
 
 ## Reading the DOT Output
@@ -92,8 +92,11 @@ The `->` arrows show dependency direction (resource needs the target to exist fi
 For large configs, filter the graph output to focus on specific resources:
 
 ```bash
-# Show only database-related dependencies
-tofu graph | grep -E "aws_db|aws_rds|aws_subnet" | dot -Tpng > db-graph.png
+# Show only database-related dependency lines
+tofu graph | grep -E "aws_db|aws_rds|aws_subnet"
+
+# Keep DOT structure while rendering matching resource lines
+tofu graph | grep -E 'digraph|compound|newrank|subgraph|^[[:space:]]*}|aws_db|aws_rds|aws_subnet' | dot -Tpng > db-graph.png
 
 # Remove provider nodes for cleaner output
 tofu graph | grep -v "provider\[" | dot -Tpng > clean-graph.png
@@ -101,11 +104,11 @@ tofu graph | grep -v "provider\[" | dot -Tpng > clean-graph.png
 
 ## Module Graph
 
-For configurations with modules, the graph shows module boundaries:
+For configurations with modules, the graph includes module paths in node names:
 
 ```bash
-# Show module-level graph (collapse module internals)
-tofu graph -draw-cycles | dot -Tpng > module-graph.png
+# Render the full graph, including module paths in node names
+tofu graph | dot -Tpng > module-graph.png
 ```
 
 ## Detecting Cycles
@@ -123,13 +126,22 @@ tofu validate
 
 ```yaml
 # GitHub Actions: Generate and upload dependency graph on each PR
+- uses: actions/checkout@v6
+
+- uses: opentofu/setup-opentofu@v1
+  with:
+    tofu_wrapper: false
+
+- name: Install Graphviz
+  run: sudo apt-get update && sudo apt-get install -y graphviz
+
 - name: Generate dependency graph
   run: |
     tofu init
     tofu graph | dot -Tsvg > /tmp/dependency-graph.svg
 
 - name: Upload graph artifact
-  uses: actions/upload-artifact@v4
+  uses: actions/upload-artifact@v7
   with:
     name: dependency-graph
     path: /tmp/dependency-graph.svg
@@ -141,15 +153,15 @@ tofu validate
 For interactive graph exploration:
 
 ```bash
-# blast-radius creates an interactive web visualization
-pip install blast-radius
+# blast-radius can render DOT graphs from stdin
+pip install blastradius
 
-# Serve interactive graph
+# Export OpenTofu's graph to SVG
+tofu graph | blast-radius --svg > graph.svg
+
+# Serve an interactive graph when Terraform CLI is available
 blast-radius --serve .
 # Open http://localhost:5000 in browser
-
-# Or export to HTML
-blast-radius . > graph.html
 ```
 
 ## Practical Use Cases
@@ -171,4 +183,4 @@ tofu graph | dot -Tpng > /tmp/graph.png
 
 ## Conclusion
 
-`tofu graph` generates a DOT-format dependency graph that, when rendered with Graphviz, provides a visual map of your infrastructure. Use it to understand apply order, debug dependency issues, detect cycles early, and onboard new team members. The `-plan` flag shows only resources that would change, making it useful for reviewing large plans. For interactive exploration, `blast-radius` provides a web-based visualization of the same graph data.
+`tofu graph` generates a DOT-format dependency graph that, when rendered with Graphviz, provides a visual map of your infrastructure. Use it to understand apply order, debug dependency issues, detect cycles early, and onboard new team members. The `-plan` flag renders the graph from a saved plan file, making it useful for reviewing planned changes. For interactive exploration, `blast-radius` provides a web-based visualization of Terraform-compatible graph data.
