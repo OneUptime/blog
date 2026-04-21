@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terragrunt, Input, Variable, DRY Configuration
 
-Description: Learn how to use Terragrunt inputs blocks to pass environment-specific variable values to OpenTofu modules without creating tfvars files in every module directory.
+Description: Learn how to use the Terragrunt inputs attribute to pass environment-specific variable values to OpenTofu modules without creating tfvars files in every module directory.
 
 ## Introduction
 
-Terragrunt's `inputs` block passes values to OpenTofu module variables, eliminating the need for separate `.tfvars` files per environment. Values can come from Terragrunt locals, dependency outputs, environment variables, and function calls.
+Terragrunt's `inputs` attribute passes values to OpenTofu module variables, eliminating the need for separate `.tfvars` files per environment. Values can come from Terragrunt locals, dependency outputs, environment variables, and function calls.
 
-## Basic inputs Block
+## Basic inputs Attribute
 
 ```hcl
 # environments/prod/networking/terragrunt.hcl
 
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {
@@ -111,12 +111,12 @@ inputs = {
 ```hcl
 # environments/prod/services/api/terragrunt.hcl
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 # Include shared ECS inputs
 include "envcommon" {
-  path   = "${dirname(find_in_parent_folders())}/_envcommon/ecs-service.hcl"
+  path   = "${dirname(find_in_parent_folders("root.hcl"))}/_envcommon/ecs-service.hcl"
   expose = true
 }
 
