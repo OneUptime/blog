@@ -18,7 +18,7 @@ TCP connections progress through a well-defined state machine from creation to t
 ss -tn state all
 
 # Count connections per state
-ss -tn state all | awk 'NR>1{print $1}' | sort | uniq -c | sort -rn
+ss -Htn state all | awk '{print $1}' | sort | uniq -c | sort -rn
 ```
 
 ## State Reference
@@ -31,7 +31,7 @@ ss -tn state all | awk 'NR>1{print $1}' | sort | uniq -c | sort -rn
 | ESTABLISHED | Both | Data can flow in both directions |
 | FIN_WAIT1 | Active closer | FIN sent, waiting for ACK or FIN |
 | FIN_WAIT2 | Active closer | ACK received, waiting for remote FIN |
-| TIME_WAIT | Active closer | Both FINs exchanged, waiting 2×MSL before reuse |
+| TIME_WAIT | Active closer (or both in simultaneous close) | Both FINs exchanged, waiting 2×MSL before reuse |
 | CLOSE_WAIT | Passive closer | FIN received, waiting for application to close |
 | LAST_ACK | Passive closer | FIN sent, waiting for final ACK |
 | CLOSING | Both | Both sent FIN simultaneously |
@@ -43,8 +43,8 @@ ss -tn state all | awk 'NR>1{print $1}' | sort | uniq -c | sort -rn
 # ESTABLISHED connections (healthy, active)
 ss -tn state established
 
-# TIME_WAIT connections (closing, waiting 2 minutes)
-ss -tn state time-wait | wc -l
+# TIME_WAIT connections (closing, waiting for the TIME_WAIT timer)
+ss -Htn state time-wait | wc -l
 # High count = many short-lived connections (normal for HTTP/1.0 servers)
 
 # CLOSE_WAIT connections (application not closing its end)
@@ -52,7 +52,7 @@ ss -tn state close-wait
 # Persistent CLOSE_WAIT = application bug (not calling close())
 
 # SYN_RECV connections (half-open, during handshake or SYN flood)
-ss -tn state syn-received | wc -l
+ss -Htn state syn-recv | wc -l
 # High count = potential SYN flood attack
 
 # LISTEN sockets (services accepting connections)
@@ -62,16 +62,16 @@ ss -tlnp
 ## TIME_WAIT Explained
 
 ```bash
-# TIME_WAIT lasts 2×MSL (Maximum Segment Lifetime) = typically 60-120 seconds
+# TIME_WAIT lasts 2×MSL (Maximum Segment Lifetime); Linux uses about 60 seconds
 # Purpose: ensures late packets for old connections don't confuse new connections
 
 # View TIME_WAIT count
-ss -tn state time-wait | wc -l
+ss -Htn state time-wait | wc -l
 
-# Configure TIME_WAIT timeout
-sysctl net.ipv4.tcp_fin_timeout   # Controls FIN_WAIT2 timeout, affects TIME_WAIT
+# Check FIN_WAIT2 timeout (not TIME_WAIT timeout)
+sysctl net.ipv4.tcp_fin_timeout   # Controls orphaned FIN_WAIT2 timeout only
 
-# Enable TIME_WAIT socket reuse (safe for outbound connections to different servers)
+# Enable TIME_WAIT socket reuse when protocol-safe (use with care; default may be loopback-only)
 sysctl -w net.ipv4.tcp_tw_reuse=1
 
 # View TIME_WAIT sockets with addresses
@@ -88,7 +88,7 @@ ss -tn state time-wait | head -20
 ss -tnp state close-wait
 
 # Check if socket count grows over time (memory/fd leak)
-watch -n 5 "ss -tn state close-wait | wc -l"
+watch -n 5 "ss -Htn state close-wait | wc -l"
 # If it keeps growing: application is not closing connections properly
 
 # Application fix (Python example):
