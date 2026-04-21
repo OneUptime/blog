@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SSH, Security, IPv4, Sshd_config, Tunneling, Access Control, AllowTcpForwarding
 
-Description: Learn how to restrict SSH tunneling and port forwarding to specific IPv4 addresses in sshd_config to prevent unauthorized tunnel abuse.
+Description: Learn how to restrict SSH tunneling and port forwarding to specific IPv4 addresses in sshd_config to reduce unauthorized tunnel abuse.
 
 ---
 
@@ -16,7 +16,7 @@ SSH tunneling (port forwarding) is a powerful feature that can be abused to bypa
 |-----------|-------------|
 | `AllowTcpForwarding` | Enable/disable all TCP forwarding |
 | `GatewayPorts` | Allow remote port forwards to bind to non-loopback IPs |
-| `PermitOpen` | Restrict which host:port can be forwarded to |
+| `PermitOpen` | Restrict local forwarding destinations by host:port |
 | `Match Address` | Apply settings only to specific source IPs |
 
 ## Disable Tunneling Globally, Enable for Trusted IPs
@@ -45,13 +45,13 @@ Match Address 203.0.113.5
 ```bash
 # /etc/ssh/sshd_config
 
-# Allow all clients to connect via SSH
+# Allow TCP forwarding for authenticated clients
 AllowTcpForwarding yes
 
-# But restrict forwarding to only specific host:port combinations
+# But restrict local forwarding to only specific host:port combinations
 # Useful for bastion hosts that should only proxy to known servers
 PermitOpen 10.0.0.10:22 10.0.0.11:22 10.0.0.12:5432
-# All other forwarding destinations are denied
+# All other local forwarding destinations are denied
 ```
 
 ## Restricting Tunneling Per User
@@ -62,14 +62,14 @@ PermitOpen 10.0.0.10:22 10.0.0.11:22 10.0.0.12:5432
 # Global: no tunneling
 AllowTcpForwarding no
 
-# Allow tunneling for members of the 'developers' group from the office IP
-Match Group developers Address 203.0.113.0/24
-    AllowTcpForwarding yes
-
-# Deny tunneling for a specific user regardless of IP
+# Deny tunneling for a specific user regardless of later IP/group matches
 Match User deployment_bot
     AllowTcpForwarding no
     X11Forwarding no
+
+# Allow tunneling for members of the 'developers' group from the office IP
+Match Group developers Address 203.0.113.0/24
+    AllowTcpForwarding yes
 ```
 
 ## Restricting via authorized_keys
@@ -91,15 +91,15 @@ sshd -t
 systemctl reload sshd
 
 # Test that tunneling is blocked from an unauthorized IP
-ssh -L 8080:localhost:80 user@server  # Should fail if AllowTcpForwarding is no
+ssh -L 8080:localhost:80 user@server  # Traffic through localhost:8080 should fail if AllowTcpForwarding is no
 
 # Test that tunneling works from an authorized IP
-ssh -4 -L 8080:10.0.0.10:80 user@server  # Should succeed
+ssh -4 -L 8080:10.0.0.10:80 user@server  # Traffic through localhost:8080 should succeed
 ```
 
 ## Key Takeaways
 
 - Default `AllowTcpForwarding no` globally, then re-enable with `Match Address` for trusted IPv4 ranges.
-- `PermitOpen` limits which destinations can be forwarded to, even when forwarding is enabled.
+- `PermitOpen` limits local forwarding destinations, even when forwarding is enabled.
 - `GatewayPorts no` ensures remote forwards only bind to loopback (not public IPs).
 - Use `from="ip"` in `authorized_keys` to tie key usage to a specific source IPv4 address.
