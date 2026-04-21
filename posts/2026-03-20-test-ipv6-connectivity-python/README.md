@@ -24,7 +24,7 @@ def check_ipv6_connectivity(host: str = "2001:4860:4860::8888", port: int = 53) 
         result = sock.connect_ex((host, port, 0, 0))
         sock.close()
         return result == 0
-    except (socket.error, OSError):
+    except OSError:
         return False
 
 def check_ipv6_dns_resolution(hostname: str) -> Tuple[bool, list[str]]:
@@ -137,10 +137,10 @@ import pytest
 import socket
 import ipaddress
 
-# Skip IPv6 tests if no IPv6 connectivity
+# Skip IPv6 tests if IPv6 is not supported on this platform
 pytestmark = pytest.mark.skipif(
-    not check_ipv6_connectivity(),
-    reason="No IPv6 connectivity available"
+    not socket.has_ipv6,
+    reason="IPv6 is not supported on this platform"
 )
 
 @pytest.fixture
