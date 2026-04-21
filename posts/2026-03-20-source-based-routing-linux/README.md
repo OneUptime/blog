@@ -49,11 +49,11 @@ ip route add 198.51.100.0/24 dev eth1 scope link table 200
 ## Step 3: Create Policy Rules
 
 ```bash
-# Rule: if source IP is from ISP1's subnet, look up table 100
-ip rule add from 203.0.113.5 table 100
+# Rule: if source IP is ISP1's interface address, look up table 100
+ip rule add from 203.0.113.5 table 100 priority 100
 
-# Rule: if source IP is from ISP2's subnet, look up table 200
-ip rule add from 198.51.100.5 table 200
+# Rule: if source IP is ISP2's interface address, look up table 200
+ip rule add from 198.51.100.5 table 200 priority 200
 
 # Verify rules (lower priority number = evaluated first)
 ip rule show
@@ -61,6 +61,7 @@ ip rule show
 # 100:    from 203.0.113.5 lookup isp1
 # 200:    from 198.51.100.5 lookup isp2
 # 32766:  from all lookup main
+# 32767:  from all lookup default
 ```
 
 ## Step 4: Verify Source-Based Routing
@@ -84,8 +85,8 @@ iface eth0 inet static
     address 203.0.113.5
     netmask 255.255.255.0
     post-up ip route add default via 203.0.113.1 table 100
-    post-up ip rule add from 203.0.113.5 table 100
-    pre-down ip rule del from 203.0.113.5 table 100
+    post-up ip rule add from 203.0.113.5 table 100 priority 100
+    pre-down ip rule del from 203.0.113.5 table 100 priority 100
 ```
 
 Or with a NetworkManager dispatcher script:
@@ -94,7 +95,7 @@ Or with a NetworkManager dispatcher script:
 #!/bin/bash
 # /etc/NetworkManager/dispatcher.d/50-policy-routing
 if [ "$1" = "eth1" ] && [ "$2" = "up" ]; then
-    ip rule add from 198.51.100.5 table 200
+    ip rule add from 198.51.100.5 table 200 priority 200
     ip route add default via 198.51.100.1 table 200
 fi
 ```
