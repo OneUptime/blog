@@ -57,6 +57,9 @@ resource "google_service_networking_connection" "private_vpc_connection" {
 resource "google_cloud_run_v2_service" "app" {
   name     = "three-tier-app"
   location = "us-central1"
+  ingress  = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+
+  invoker_iam_disabled = true
 
   template {
     scaling {
@@ -65,7 +68,7 @@ resource "google_cloud_run_v2_service" "app" {
     }
 
     containers {
-      image = "gcr.io/${var.project_id}/app:latest"
+      image = "us-central1-docker.pkg.dev/${var.project_id}/app/app:latest"
 
       resources {
         limits = {
@@ -155,7 +158,7 @@ resource "google_sql_database_instance" "db" {
   deletion_protection = true
 
   settings {
-    tier = "db-n1-standard-4"
+    tier = "db-custom-4-15360"
 
     backup_configuration {
       enabled                        = true
