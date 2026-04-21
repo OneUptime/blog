@@ -16,49 +16,63 @@ Start with the most important fact: nearly every `terraform` command has a direc
 
 | Terraform | OpenTofu | Notes |
 |-----------|----------|-------|
-| `terraform init` | `tofu init` | Identical behavior |
-| `terraform plan` | `tofu plan` | Identical behavior |
-| `terraform apply` | `tofu apply` | Identical behavior |
-| `terraform destroy` | `tofu destroy` | Identical behavior |
-| `terraform fmt` | `tofu fmt` | Identical behavior |
-| `terraform validate` | `tofu validate` | Identical behavior |
-| `terraform state` | `tofu state` | Identical behavior |
-| `terraform test` | `tofu test` | OpenTofu has more features |
+| `terraform init` | `tofu init` | Same core workflow |
+| `terraform plan` | `tofu plan` | Same core workflow |
+| `terraform apply` | `tofu apply` | Same core workflow |
+| `terraform destroy` | `tofu destroy` | Same core workflow |
+| `terraform fmt` | `tofu fmt` | Same formatting workflow |
+| `terraform validate` | `tofu validate` | Same validation workflow |
+| `terraform state` | `tofu state` | Same state-management workflow |
+| `terraform test` | `tofu test` | Similar test workflow; OpenTofu also supports `.tofutest.*` files |
 
 ## Day 2: HCL Configuration Compatibility
 
-Walk through existing configurations and demonstrate they work unchanged:
+Walk through existing configurations and demonstrate what works unchanged:
 
 ```bash
-# Existing Terraform configurations work without modification
+# Most Terraform configurations work without modification after a verified migration
 
 tofu init
 tofu validate
 tofu plan
 ```
 
-## Day 3: OpenTofu-Specific Features
+## Day 3: OpenTofu Features and Testing
 
-Introduce features unique to OpenTofu:
+Introduce OpenTofu-specific state encryption and testing workflow updates:
 
-**State encryption:**
+**State encryption for an existing migrated state:**
 ```hcl
+variable "state_passphrase" {
+  type      = string
+  sensitive = true
+}
+
 terraform {
   encryption {
+    method "unencrypted" "migrate" {}
+
     key_provider "pbkdf2" "my_key" {
+      # Use a long passphrase of at least 16 characters.
       passphrase = var.state_passphrase
     }
+
     method "aes_gcm" "my_method" {
       keys = key_provider.pbkdf2.my_key
     }
+
     state {
       method = method.aes_gcm.my_method
+      # Remove this fallback after the first successful tofu apply.
+      fallback {
+        method = method.unencrypted.migrate
+      }
     }
   }
 }
 ```
 
-**Enhanced `tofu test` with mock providers:**
+**`tofu test` with mock providers:**
 ```hcl
 mock_provider "aws" {
   mock_resource "aws_vpc" {
