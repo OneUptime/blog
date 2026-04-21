@@ -123,16 +123,17 @@ resource "aws_network_acl" "private" {
 ## Block Specific IPs with NACL
 
 ```hcl
-resource "aws_network_acl_rule" "block_attacker" {
-  network_acl_id = aws_network_acl.public.id
-  rule_number    = 10   # Lower number = higher priority
-  egress         = false
-  protocol       = "-1"
-  rule_action    = "deny"
-  cidr_block     = "203.0.113.0/24"
+# Add this inside aws_network_acl.public when using inline rules.
+ingress {
+  rule_no    = 10   # Lower number = higher priority
+  protocol   = "-1"
+  action     = "deny"
+  cidr_block = "203.0.113.0/24"
+  from_port  = 0
+  to_port    = 0
 }
 ```
 
 ## Conclusion
 
-NACLs in Terraform require explicit inbound and outbound rules because they are stateless. Always allow ephemeral ports (1024–65535) for return traffic on inbound rules. Use rule number 10–90 for explicit denies (processed before allows at 100+). NACLs complement security groups; they are best used to block known-bad CIDRs at the subnet level.
+NACLs in Terraform require explicit inbound and outbound rules because they are stateless. Allow the appropriate ephemeral port range for return traffic in the direction the response enters the subnet; 1024-65535 is a broad practical range for mixed clients and AWS-managed services. Use lower rule numbers for explicit denies than for broad allows (for example, 10-90 when allow rules start at 100). NACLs complement security groups; they are best used to block known-bad CIDRs at the subnet level.
