@@ -29,7 +29,7 @@ tofu output
 ```bash
 # Get a specific output value
 tofu output vpc_id
-# vpc-0abc123def456789
+# "vpc-0abc123def456789"
 
 # Get a specific output (without quotes for raw string)
 tofu output -raw vpc_id
@@ -117,7 +117,7 @@ steps:
 # Get outputs from a different state file/directory
 tofu output -state=/path/to/terraform.tfstate vpc_id
 
-# Get outputs from a specific module directory
+# Get outputs from a specific root module directory
 cd /path/to/environment/prod
 tofu output vpc_id
 ```
