@@ -12,7 +12,7 @@ Stochastic Fairness Queueing (SFQ) is a queueing discipline that hashes flows in
 
 ## How SFQ Works
 
-SFQ uses a hash of the 5-tuple (source IP, destination IP, source port, destination port, protocol) to classify packets into buckets. Each bucket is served in round-robin order, so even if one flow generates thousands of packets, other flows still get their turn.
+SFQ uses a packet hash to classify packets into buckets. With the internal classifier, it uses source and destination addresses and, when available for supported protocols, source and destination ports. Each bucket is served in round-robin order, so even if one flow generates thousands of packets, other flows still get their turn.
 
 ## Basic SFQ Configuration
 
@@ -25,27 +25,27 @@ sudo tc qdisc add dev eth0 root sfq perturb 10
 sudo tc qdisc show dev eth0
 ```
 
-The `perturb 10` parameter re-hashes the flows every 10 seconds to prevent hash collisions from permanently disadvantaging a flow.
+The `perturb 10` parameter perturbs the internal hash every 10 seconds to prevent hash collisions from permanently disadvantaging a flow.
 
 ## SFQ Parameters
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `perturb N` | Re-hash flows every N seconds | 0 (disabled) |
-| `quantum N` | Bytes sent per round per bucket | MTU |
+| `quantum N` | Bytes dequeued per round per flow | MTU |
 | `limit N` | Total queue depth in packets | 127 |
-| `divisor N` | Number of hash buckets (power of 2) | 1024 |
+| `divisor N` | Hash table size (power of 2) | 1024 |
 
 ## Combining SFQ with an Outer Rate Limiter
 
 SFQ provides fairness but not rate limiting. Combine with HTB or TBF to limit total throughput while maintaining fairness:
 
 ```bash
-# Create root HTB qdisc with a rate limit
-sudo tc qdisc add dev eth0 root handle 1: htb default 1
+# Create root HTB qdisc and send unclassified traffic to class 1:10
+sudo tc qdisc add dev eth0 root handle 1: htb default 10
 
 # Create a rate-limited class (100 Mbit/s total)
-sudo tc class add dev eth0 parent 1:1 classid 1:10 htb \
+sudo tc class add dev eth0 parent 1: classid 1:10 htb \
   rate 100mbit \
   ceil 100mbit
 
@@ -64,19 +64,20 @@ With this setup:
 sudo tc qdisc add dev eth0 root handle 1: htb default 30
 
 # High priority: interactive traffic (SSH, DNS)
-sudo tc class add dev eth0 parent 1:1 classid 1:10 htb rate 10mbit ceil 50mbit
+sudo tc class add dev eth0 parent 1: classid 1:10 htb rate 10mbit ceil 50mbit prio 0
 sudo tc qdisc add dev eth0 parent 1:10 handle 10: sfq perturb 10
 
 # Normal priority: web traffic
-sudo tc class add dev eth0 parent 1:1 classid 1:20 htb rate 40mbit ceil 80mbit
+sudo tc class add dev eth0 parent 1: classid 1:20 htb rate 40mbit ceil 80mbit prio 1
 sudo tc qdisc add dev eth0 parent 1:20 handle 20: sfq perturb 10
 
 # Low priority: bulk transfers
-sudo tc class add dev eth0 parent 1:1 classid 1:30 htb rate 10mbit ceil 30mbit
+sudo tc class add dev eth0 parent 1: classid 1:30 htb rate 10mbit ceil 30mbit prio 2
 sudo tc qdisc add dev eth0 parent 1:30 handle 30: sfq perturb 10
 
 # Classify SSH to high priority class
 sudo tc filter add dev eth0 parent 1: protocol ip prio 1 u32 \
+  match ip protocol 6 0xff \
   match ip dport 22 0xffff \
   flowid 1:10
 ```
