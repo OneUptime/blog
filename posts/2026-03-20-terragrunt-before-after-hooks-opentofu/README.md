@@ -52,7 +52,7 @@ terraform {
 }
 ```
 
-## after_hook for Notifications
+## Hooks for Notifications
 
 ```hcl
 terraform {
@@ -62,18 +62,18 @@ terraform {
     commands     = ["apply"]
     execute      = [
       "bash", "-c",
-      "curl -s -X POST $SLACK_WEBHOOK_URL -d '{\"text\":\"Deploy complete: ${path_relative_to_include()}\"}'"
+      "curl -s -X POST $SLACK_WEBHOOK_URL -d '{\"text\":\"Deploy complete: ${get_terragrunt_dir()}\"}'"
     ]
     run_on_error = false  # Only notify on success
   }
 
-  after_hook "notify_on_failure" {
+  error_hook "notify_on_failure" {
     commands     = ["apply"]
     execute      = [
       "bash", "-c",
-      "curl -s -X POST $SLACK_WEBHOOK_URL -d '{\"text\":\"FAILED: ${path_relative_to_include()}\"}'"
+      "curl -s -X POST $SLACK_WEBHOOK_URL -d '{\"text\":\"FAILED: ${get_terragrunt_dir()}\"}'"
     ]
-    run_on_error = true  # Only run if apply failed
+    on_errors    = [".*"]  # Only run if apply failed
   }
 }
 ```
@@ -104,25 +104,34 @@ terraform {
 
 ## Hooks in Root Configuration
 
-Define hooks at the root level so they apply to all child modules:
+Define hooks in an included parent configuration so they apply to child modules. If child configurations also define a `terraform` block, include the parent with a deep merge so the hook blocks are combined:
 
 ```hcl
-# Root terragrunt.hcl
+# root.hcl
 terraform {
-  # Run tofu init in upgrade mode occasionally
-  before_hook "init_upgrade" {
+  # Print a message before tofu init runs
+  before_hook "init_message" {
     commands = ["init"]
     execute  = ["echo", "Initializing OpenTofu..."]
   }
 
-  # Log all apply operations for audit
+  # Log all apply and destroy operations for audit
   before_hook "audit_log" {
     commands = ["apply", "destroy"]
     execute  = [
       "bash", "-c",
-      "echo \"$(date -u +%Y-%m-%dT%H:%M:%SZ) USER=$USER CMD=$$1 MODULE=${path_relative_to_include()}\" >> /var/log/tofu-audit.log"
+      "echo \"$(date -u +%Y-%m-%dT%H:%M:%SZ) USER=$USER CMD=$TG_CTX_COMMAND MODULE=${path_relative_to_include()}\" >> /var/log/tofu-audit.log"
     ]
   }
+}
+```
+
+Child `terragrunt.hcl` files can include the parent configuration:
+
+```hcl
+include "root" {
+  path           = find_in_parent_folders("root.hcl")
+  merge_strategy = "deep"
 }
 ```
 
@@ -171,10 +180,11 @@ terraform {
   # Only require approval confirmation in production
   before_hook "prod_confirmation" {
     commands = ["apply", "destroy"]
-    execute  = local.is_prod ? [
+    execute  = [
       "bash", "-c",
       "read -p 'Applying to PRODUCTION. Type yes to confirm: ' c && [ \"$c\" = \"yes\" ]"
-    ] : ["echo", "Non-prod apply proceeding..."]
+    ]
+    if       = local.is_prod
   }
 }
 ```
