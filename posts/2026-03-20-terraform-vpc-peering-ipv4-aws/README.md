@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, AWS, VPC Peering, IPv4, Infrastructure as Code, Networking
 
-Description: Configure AWS VPC peering connections for IPv4 using Terraform, including peering requests, accepters, route propagation, and DNS resolution settings.
+Description: Configure AWS VPC peering connections for IPv4 using Terraform, including peering requests, accepters, route table updates, and DNS resolution settings.
 
 ## Introduction
 
@@ -59,13 +59,14 @@ resource "aws_vpc_peering_connection_accepter" "cross_account" {
 
 ## DNS Resolution Options
 
+The peering connection must be active, and both VPCs must have DNS support and DNS hostnames enabled before enabling remote DNS resolution.
+
 ```hcl
 resource "aws_vpc_peering_connection_options" "requester" {
   vpc_peering_connection_id = aws_vpc_peering_connection.main.id
 
   requester {
-    allow_remote_vpc_dns_resolution  = true
-    allow_classic_link_to_remote_vpc = false
+    allow_remote_vpc_dns_resolution = true
   }
 }
 
@@ -73,8 +74,7 @@ resource "aws_vpc_peering_connection_options" "accepter" {
   vpc_peering_connection_id = aws_vpc_peering_connection.main.id
 
   accepter {
-    allow_remote_vpc_dns_resolution  = true
-    allow_classic_link_to_remote_vpc = false
+    allow_remote_vpc_dns_resolution = true
   }
 }
 ```
@@ -101,17 +101,16 @@ resource "aws_route" "secondary_to_main" {
 ## Security Group Rule Allowing Peered Traffic
 
 ```hcl
-resource "aws_security_group_rule" "from_peered_vpc" {
-  type              = "ingress"
+resource "aws_vpc_security_group_ingress_rule" "from_peered_vpc" {
+  security_group_id = aws_security_group.database.id
+  cidr_ipv4         = aws_vpc.secondary.cidr_block
   from_port         = 5432
   to_port           = 5432
-  protocol          = "tcp"
-  cidr_blocks       = [aws_vpc.secondary.cidr_block]
-  security_group_id = aws_security_group.database.id
+  ip_protocol       = "tcp"
   description       = "PostgreSQL from peered VPC"
 }
 ```
 
 ## Conclusion
 
-VPC peering in Terraform requires three components: the peering connection resource, route table entries on both sides pointing to the peering connection, and security group rules allowing the traffic. Use `auto_accept = true` for same-account peering; for cross-account use a separate `aws_vpc_peering_connection_accepter` in the second account's provider.
+VPC peering in Terraform typically involves three components: the peering connection resource, route table entries on both sides pointing to the peering connection, and security group rules or network ACLs allowing the traffic. Use `auto_accept = true` for same-account, same-region peering; for cross-account use a separate `aws_vpc_peering_connection_accepter` in the second account's provider.
