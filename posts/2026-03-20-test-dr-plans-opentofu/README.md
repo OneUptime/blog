@@ -42,34 +42,36 @@ resource "aws_vpc" "dr_test" {
 ## Step 2: Chaos Injection Module
 
 ```hcl
-# Simulate primary region failure by removing Route53 health check
+# Simulate primary region failure by inverting the Route53 health check
 variable "simulate_primary_failure" {
   type    = bool
   default = false
 }
 
 resource "aws_route53_health_check" "primary_test" {
-  count    = var.simulate_primary_failure ? 0 : 1
-  fqdn     = aws_lb.primary.dns_name
-  port     = 443
-  type     = "HTTPS"
-  resource_path = "/health"
+  fqdn               = aws_lb.primary.dns_name
+  port               = 443
+  type               = "HTTPS"
+  resource_path      = "/health"
   failure_threshold = 3
   request_interval  = 30
+  invert_healthcheck = var.simulate_primary_failure
 }
 
-# When simulate_primary_failure = true, health check is removed
-# Route53 sees primary as unhealthy and fails over to DR
+# When simulate_primary_failure = true, Route53 inverts the health check result
+# so a normally healthy primary is treated as unhealthy and fails over to DR
 ```
 
 ## Step 3: DR Validation Tests
 
 ```hcl
-# Null resource to run validation scripts after DR failover
-resource "null_resource" "dr_validation" {
+# Built-in terraform_data resource to run validation scripts after DR failover
+resource "terraform_data" "dr_validation" {
   count = var.run_dr_validation ? 1 : 0
 
   provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+
     command = <<-EOT
       #!/bin/bash
       set -e
@@ -78,9 +80,9 @@ resource "null_resource" "dr_validation" {
 
       # Test 1: DNS resolution points to DR
       echo "Testing DNS resolution..."
-      DR_IP=$(dig +short app.example.com)
-      DR_ALB_IP=$(dig +short ${aws_lb.dr.dns_name} | head -1)
-      if [ "$DR_IP" == "$DR_ALB_IP" ]; then
+      DR_IPS=$(dig +short app.example.com | sort -u)
+      DR_ALB_IPS=$(dig +short ${aws_lb.dr.dns_name} | sort -u)
+      if [ -n "$DR_IPS" ] && [ -n "$DR_ALB_IPS" ] && comm -12 <(printf "%s\n" "$DR_IPS") <(printf "%s\n" "$DR_ALB_IPS") | grep -q .; then
         echo "✓ DNS resolved to DR ALB"
       else
         echo "✗ DNS still pointing to primary"
@@ -113,7 +115,7 @@ resource "null_resource" "dr_validation" {
     EOT
   }
 
-  triggers = {
+  triggers_replace = {
     run_validation = var.run_dr_validation
   }
 }
@@ -162,4 +164,4 @@ resource "aws_cloudwatch_event_target" "dr_test_sfn" {
 
 ## Summary
 
-DR testing with OpenTofu uses workspace isolation to create throwaway test environments that mirror production without impacting live users. Chaos injection simulates failures by temporarily removing health checks or infrastructure components. Automated validation scripts measure actual RTO from failure detection to successful health checks in the DR environment, providing evidence that the DR plan meets its RTO/RPO objectives. Quarterly automated DR drills scheduled via EventBridge ensure the plan remains valid as infrastructure evolves.
+DR testing with OpenTofu uses workspace isolation to create throwaway test environments that mirror production without impacting live users. Chaos injection simulates failures by temporarily inverting health checks or failing controlled infrastructure components. Automated validation scripts measure actual RTO from failure detection to successful health checks in the DR environment, providing evidence that the DR plan meets its RTO/RPO objectives. Quarterly automated DR drills scheduled via EventBridge ensure the plan remains valid as infrastructure evolves.
