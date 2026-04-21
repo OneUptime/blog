@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SSH, SOCKS5, Dynamic Port Forwarding, IPv4, Proxy, Tunneling
 
-Description: Configure SSH dynamic port forwarding (-D) to create a SOCKS5 proxy that routes all traffic through an IPv4 SSH server, enabling secure browsing and application proxying.
+Description: Configure SSH dynamic port forwarding (-D) to create a SOCKS5 proxy that routes supported application TCP connections through an IPv4 SSH server, enabling secure browsing and application proxying.
 
 ## Introduction
 
-SSH dynamic port forwarding (`-D`) creates a SOCKS5 proxy on a local port. Unlike `-L` (specific destination) or `-R` (remote exposure), `-D` routes any traffic through the SSH server, which makes outbound connections on your behalf-effectively routing your traffic through the server's IPv4 address.
+SSH dynamic port forwarding (`-D`) creates a SOCKS4/SOCKS5 proxy on a local TCP port. Unlike `-L` (specific destination) or `-R` (remote exposure), `-D` lets SOCKS-aware applications choose destinations dynamically; the SSH server makes outbound TCP connections on your behalf, effectively routing proxied TCP traffic through the server's egress address.
 
 ## Basic SOCKS5 Proxy Setup
 
@@ -28,7 +28,7 @@ ssh -4 -fN -D 1080 user@203.0.113.10
 
 ```bash
 # Bind SOCKS5 proxy to specific local interface
-# (other machines on 10.0.0.0/8 can use 10.0.0.5:1080 as proxy)
+# (machines that can reach 10.0.0.5 can use 10.0.0.5:1080 as proxy)
 ssh -4 -fN -D 10.0.0.5:1080 user@203.0.113.10
 
 # Allow all local interfaces (use carefully)
@@ -60,24 +60,23 @@ ssh -fN socks-proxy
 Configure applications to route through the proxy:
 
 ```bash
-# Test with curl
-curl --socks5 127.0.0.1:1080 http://ifconfig.me
-# Should show the SSH server's IP address (203.0.113.10)
+# Test with curl and let the proxy resolve hostnames
+curl --socks5-hostname 127.0.0.1:1080 http://ifconfig.me
+# Should show the SSH server's outbound IP address
 
-# Use with wget
-wget -e "use_proxy=yes" -e "http_proxy=socks5://127.0.0.1:1080" http://example.com/
+# GNU Wget does not support SOCKS proxies directly; use proxychains below.
 
-# Use with git
-git config --global http.proxy socks5://127.0.0.1:1080
+# Use with git HTTP/HTTPS remotes
+git config --global http.proxy socks5h://127.0.0.1:1080
 
-# Use with Python requests
-# proxies = {'http': 'socks5://127.0.0.1:1080', 'https': 'socks5://127.0.0.1:1080'}
+# Use with Python requests (requires: python -m pip install "requests[socks]")
+# proxies = {'http': 'socks5h://127.0.0.1:1080', 'https': 'socks5h://127.0.0.1:1080'}
 # requests.get('http://example.com', proxies=proxies)
 ```
 
 ## Browser Configuration
 
-For Firefox: Settings → Network Settings → Manual proxy → SOCKS5 Host: `127.0.0.1` Port: `1080`
+For Firefox: Settings → Network Settings → Manual proxy → SOCKS5 Host: `127.0.0.1` Port: `1080`. Enable "Proxy DNS when using SOCKS v5" if you want DNS lookups to use the tunnel.
 
 ```bash
 # Or start a Chrome instance with the SOCKS proxy:
@@ -97,7 +96,8 @@ sudo apt install proxychains4
 
 # Run any command through the SOCKS proxy
 proxychains4 curl http://ifconfig.me
-proxychains4 nmap -sT 192.168.1.0/24
+proxychains4 wget http://example.com/
+proxychains4 nmap -sT -Pn 192.168.1.0/24
 ```
 
 ## Monitoring SOCKS Proxy Connections
@@ -115,4 +115,4 @@ sudo tcpdump -i lo port 1080 -n
 
 ## Conclusion
 
-SSH dynamic port forwarding (`-D`) creates a SOCKS5 proxy by opening a local port that tunnels all traffic through the SSH server's IPv4 connection. Use `-fN` for background operation, configure `~/.ssh/config` for reusable proxy entries, and use `proxychains` to route non-SOCKS-aware applications. The server's `AllowTcpForwarding yes` setting is required (enabled by default).
+SSH dynamic port forwarding (`-D`) creates a SOCKS4/SOCKS5 proxy by opening a local TCP port that tunnels proxied TCP connections through the SSH server. Use `-fN` for background operation, configure `~/.ssh/config` for reusable proxy entries, and use `proxychains` to route non-SOCKS-aware applications. The server's `AllowTcpForwarding yes` setting is required (enabled by default).
