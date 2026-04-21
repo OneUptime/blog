@@ -4,35 +4,37 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Terraform, IaC, DevOps
 
-Description: Learn how to use OpenTofu's tofu metadata subcommands to retrieve information about functions, schemas, and provider capabilities for tooling and integration.
+Description: Learn how to use OpenTofu's tofu metadata functions subcommand to retrieve function signatures for tooling and integration.
 
 ## Introduction
 
-The `tofu metadata` command group provides introspection capabilities - it lets you query information about OpenTofu functions, provider schemas, and configuration options. These commands are primarily used by tooling, editor extensions, and automation scripts rather than in day-to-day infrastructure management.
+The `tofu metadata` command group provides introspection capabilities - it lets you query information about OpenTofu function signatures. These commands are primarily used by tooling, editor extensions, and automation scripts rather than in day-to-day infrastructure management. For provider schemas, use the separate `tofu providers schema -json` command.
 
 ## tofu metadata functions
 
-List all built-in OpenTofu functions:
+List all available OpenTofu function signatures:
 
 ```bash
-# List all available functions
+# Print all available function signatures as JSON
 
-tofu metadata functions
+tofu metadata functions -json
 
 # Output (partial):
-# +------------------------+------+
-# | name                   | type |
-# +------------------------+------+
-# | abs                    | math |
-# | base64decode           | encoding |
-# | base64encode           | encoding |
-# | base64gzip             | encoding |
-# | cidrhost               | ipnet |
-# | cidrnetmask            | ipnet |
-# | cidrsubnet             | ipnet |
-# | coalesce               | collection |
-# | ...                    | ...  |
-# +------------------------+------+
+# {
+#   "format_version": "1.0",
+#   "function_signatures": {
+#     "abs": {
+#       "return_type": "number",
+#       "parameters": [
+#         {
+#           "name": "num",
+#           "type": "number"
+#         }
+#       ]
+#     },
+#     ...
+#   }
+# }
 ```
 
 ## tofu metadata functions -json
@@ -42,30 +44,30 @@ tofu metadata functions
 tofu metadata functions -json
 
 # Get all function names
-tofu metadata functions -json | jq '.[].name'
+tofu metadata functions -json | jq -r '.function_signatures | keys[]'
 
-# Get functions by category
-tofu metadata functions -json | jq '[.[] | select(.category == "string")]'
+# Search function names
+tofu metadata functions -json | jq -r '.function_signatures | keys[] | select(test("string|join|split"))'
 
 # Get function signature
-tofu metadata functions -json | jq '.[] | select(.name == "cidrsubnet")'
+tofu metadata functions -json | jq '.function_signatures.cidrsubnet'
 ```
 
 ## Practical Function Discovery
 
 ```bash
-# Find all encoding functions
-tofu metadata functions -json | jq '[.[] | select(.category == "encoding") | .name]'
+# Find encoding and decoding functions by name
+tofu metadata functions -json | jq '.function_signatures | keys[] | select(test("base64|json|yaml|csv|url"))'
 
-# Find all network functions
-tofu metadata functions -json | jq '[.[] | select(.category == "ipnet") | .name]'
+# Find CIDR network functions
+tofu metadata functions -json | jq '.function_signatures | keys[] | select(test("(^|::)cidr"))'
 
 # Get a function's parameters
 tofu metadata functions -json | \
-  jq '.[] | select(.name == "format") | {name, params: .params}'
+  jq '.function_signatures.format | {parameters, variadic_parameter}'
 ```
 
-## tofu metadata schemas (when available)
+## tofu providers schema
 
 Retrieve provider schema information programmatically:
 
@@ -74,21 +76,21 @@ Retrieve provider schema information programmatically:
 tofu providers schema -json
 
 # Get schema for a specific provider's resource
-tofu providers schema -json | jq '.provider_schemas["registry.opentofu.org/hashicorp/aws"].resource_schemas["aws_instance"].attributes'
+tofu providers schema -json | jq '.provider_schemas["registry.opentofu.org/hashicorp/aws"].resource_schemas["aws_instance"].block.attributes'
 ```
 
 ## Using Metadata in IDE Tooling
 
 The `tofu metadata` commands are primarily used by:
 
-- Language servers (terraform-ls)
+- Language servers (tofu-ls)
 - VS Code extensions
 - IntelliJ plugins
 - Custom tooling that needs to validate configurations
 
 ```bash
 # Example: Check if a function exists
-FUNC_EXISTS=$(tofu metadata functions -json | jq -r '.[] | select(.name == "yamldecode") | .name')
+FUNC_EXISTS=$(tofu metadata functions -json | jq -r '.function_signatures | keys[] | select(. == "yamldecode")')
 if [ -n "$FUNC_EXISTS" ]; then
   echo "yamldecode is available"
 fi
@@ -109,4 +111,4 @@ tofu metadata functions --help
 
 ## Conclusion
 
-The `tofu metadata` commands are designed for tooling integration and programmatic discovery of OpenTofu capabilities. Use `tofu metadata functions` to explore available built-in functions and their signatures. For most day-to-day infrastructure work, the OpenTofu documentation and IDE extensions provide better interfaces for this information, but the CLI commands are invaluable for building custom tools and automation around OpenTofu.
+The `tofu metadata` commands are designed for tooling integration and programmatic discovery of OpenTofu capabilities. Use `tofu metadata functions -json` to explore available built-in functions and their signatures. For most day-to-day infrastructure work, the OpenTofu documentation and IDE extensions provide better interfaces for this information, but the CLI commands are invaluable for building custom tools and automation around OpenTofu.
