@@ -22,7 +22,7 @@ infrastructure/
 │   │   ├── api/          # API service ECS resources
 │   │   ├── worker/       # Worker service resources
 │   │   └── scheduler/    # Scheduler service resources
-│   └── platform/         # EKS, ECR, service mesh
+│   └── platform/         # ECS/EKS, ECR, service mesh
 ```
 
 ## Backend Configuration Per Component
@@ -56,16 +56,25 @@ terraform {
 
 ## Cross-Component Data Sharing via Remote State
 
-Services consume networking outputs through remote state data sources:
+Services consume networking, security, and platform outputs through remote state data sources:
 
 ```hcl
 # prod/services/api/main.tf
-# Read networking outputs from the networking state file
+# Read shared outputs from separate component state files
 data "terraform_remote_state" "networking" {
   backend = "s3"
   config = {
     bucket = "my-company-tofu-state"
     key    = "prod/networking/terraform.tfstate"
+    region = "us-east-1"
+  }
+}
+
+data "terraform_remote_state" "platform" {
+  backend = "s3"
+  config = {
+    bucket = "my-company-tofu-state"
+    key    = "prod/platform/terraform.tfstate"
     region = "us-east-1"
   }
 }
@@ -79,10 +88,11 @@ data "terraform_remote_state" "security" {
   }
 }
 
-# Use networking and security outputs in the service configuration
+# Use networking, security, and platform outputs in the service configuration
 resource "aws_ecs_service" "api" {
   name            = "api"
-  cluster         = data.terraform_remote_state.networking.outputs.ecs_cluster_arn
+  cluster         = data.terraform_remote_state.platform.outputs.ecs_cluster_arn
+  task_definition = var.task_definition_arn
   desired_count   = var.desired_count
 
   network_configuration {
