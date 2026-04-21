@@ -60,6 +60,10 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.0"
     }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.0"
+    }
   }
 }
 EOF
@@ -128,10 +132,6 @@ locals {
 }
 EOF
 }
-
-inputs = {
-  password = local.db_password
-}
 ```
 
 ## Generating Terraform Configuration for Feature Flags
@@ -155,4 +155,4 @@ EOF
 
 ## Conclusion
 
-Terragrunt `generate` blocks eliminate configuration duplication across modules. Use `if_exists = "overwrite_terragrunt"` (not just "overwrite") to only regenerate files created by Terragrunt, preserving any manually created files with the same name. The combination of root-level generates for providers and versions, plus child-level generates for module-specific data, covers the full range of boilerplate elimination.
+Terragrunt `generate` blocks eliminate configuration duplication across modules. Use `if_exists = "overwrite_terragrunt"` (not just "overwrite") to only regenerate files created by Terragrunt, failing instead of overwriting any manually created files with the same name. The combination of root-level generates for providers and versions, plus child-level generates for module-specific data, covers the full range of boilerplate elimination.
