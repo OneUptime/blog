@@ -15,19 +15,19 @@ openssl s_client -connect example.com:443 -servername example.com 2>/dev/null | 
   openssl x509 -noout -dates
 
 # Output:
-# notBefore=Jan  1 00:00:00 2026 GMT
-# notAfter=Apr  1 00:00:00 2026 GMT
+# notBefore=Apr  2 21:18:57 2026 GMT
+# notAfter=Jul  1 21:24:46 2026 GMT
                 # ^^^^^^^^^^^^^^^^^ This is the expiry date
 ```
 
 ## Step 1: Check Days Until Expiry
 
 ```bash
-# Get the expiry date as a Unix timestamp
+# Get the expiry date string
 EXPIRY=$(openssl s_client -connect example.com:443 -servername example.com 2>/dev/null | \
   openssl x509 -noout -enddate | sed 's/notAfter=//')
 
-# Calculate days remaining
+# Convert it to a Unix timestamp and calculate days remaining
 EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s)
 NOW=$(date +%s)
 DAYS=$(( (EXPIRY_EPOCH - NOW) / 86400 ))
@@ -46,7 +46,7 @@ openssl s_client -connect example.com:443 -servername example.com 2>/dev/null | 
 # Check expiry of a certificate file
 openssl x509 -enddate -noout -in /etc/ssl/certs/example.com.crt
 
-# Days remaining for a local file
+# Expiry date for a local file
 CERT="/etc/letsencrypt/live/example.com/cert.pem"
 openssl x509 -enddate -noout -in "$CERT"
 
@@ -108,6 +108,10 @@ for ENTRY in "${DOMAINS[@]}"; do
     if [ -z "$EXPIRY_EPOCH" ]; then
         EXPIRY_EPOCH=$(date -jf "%b %d %H:%M:%S %Y %Z" "$RESULT" +%s 2>/dev/null)
     fi
+    if [ -z "$EXPIRY_EPOCH" ]; then
+        echo "ERROR: ${HOST}:${PORT} - Could not parse expiry date: ${RESULT}"
+        continue
+    fi
     NOW=$(date +%s)
     DAYS=$(( (EXPIRY_EPOCH - NOW) / 86400 ))
 
@@ -134,10 +138,10 @@ curl -vI https://example.com/ 2>&1 | grep -E "expire|issuer|subject"
 
 # Check with curl's --head option
 curl --head --silent https://example.com/ \
-  --write-out "%{ssl_verify_result} expires: %{ssl_certificate_expiry}\n" \
-  --output /dev/null
+  --write-out "verify_result: %{ssl_verify_result}\n%{certs}" \
+  --output /dev/null | grep -E "verify_result|Subject:|Issuer:|Expire date:"
 
-# Note: ssl_certificate_expiry requires curl 7.52.0+
+# Note: %{certs} requires curl 7.88.0+ and a supported TLS backend
 ```
 
 ## Step 5: Nagios/Check_MK Plugin for Expiry Monitoring
@@ -153,7 +157,18 @@ CRITICAL="${4:-7}"
 
 EXPIRY=$(openssl s_client -connect "${HOST}:${PORT}" -servername "${HOST}" \
           2>/dev/null | openssl x509 -noout -enddate | sed 's/notAfter=//')
-DAYS=$(( ($(date -d "$EXPIRY" +%s) - $(date +%s)) / 86400 ))
+if [ -z "$EXPIRY" ]; then
+    echo "UNKNOWN: ${HOST} certificate could not be retrieved"
+    exit 3
+fi
+
+EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s 2>/dev/null)
+if [ -z "$EXPIRY_EPOCH" ]; then
+    echo "UNKNOWN: ${HOST} certificate expiry date could not be parsed"
+    exit 3
+fi
+
+DAYS=$(( (EXPIRY_EPOCH - $(date +%s)) / 86400 ))
 
 if [ "$DAYS" -lt 0 ]; then
     echo "CRITICAL: ${HOST} certificate EXPIRED ${DAYS#-} days ago"
@@ -174,14 +189,15 @@ fi
 
 ```bash
 # Get the OCSP responder URL from the certificate
-OCSP_URL=$(openssl s_client -connect example.com:443 2>/dev/null | \
-  openssl x509 -noout -text | grep "OCSP.*http" | awk '{print $NF}')
+OCSP_URL=$(openssl s_client -connect example.com:443 -servername example.com 2>/dev/null | \
+  openssl x509 -noout -ocsp_uri | head -n 1)
 
 # Check revocation status via OCSP
 openssl ocsp -issuer /etc/ssl/certs/intermediate.pem \
   -cert /etc/ssl/certs/example.com.crt \
   -url "$OCSP_URL" \
-  -text 2>&1 | grep -E "good|revoked|error"
+  -no_nonce \
+  -text 2>&1 | grep -Ei "good|revoked|error"
 ```
 
 ## Conclusion
