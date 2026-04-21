@@ -21,7 +21,8 @@ curl -6 https://example.com
 curl -6 -v https://example.com 2>&1 | grep -E "Connected|IPv6|Trying"
 
 # Test a specific IPv6 address with Host header
-curl --resolve "example.com:443:2001:db8::1" https://example.com
+# Replace 2001:db8::1 with your server's IPv6 address
+curl -6 --resolve "example.com:443:[2001:db8::1]" https://example.com
 
 # Test all endpoints with IPv6
 for endpoint in / /api/v1/status /api/v1/health; do
@@ -31,7 +32,7 @@ for endpoint in / /api/v1/status /api/v1/health; do
 done
 
 # Check that HTTPS certificate is valid for IPv6 connection
-curl -6 -v --cacert /etc/ssl/certs/ca-certificates.crt https://example.com 2>&1 | \
+curl -6 -v https://example.com 2>&1 | \
     grep -E "certificate|SSL|TLS|CN="
 ```
 
@@ -46,9 +47,8 @@ Create a temporary IPv4-free test environment on Linux:
 # Remove default IPv4 route
 sudo ip route del default
 
-# Optionally block all IPv4 outbound
-sudo iptables -A OUTPUT -p all --match addrtype --dst-type UNICAST ! -d 0.0.0.0/0 -j DROP
-sudo iptables -I OUTPUT -d 0.0.0.0/0 -j DROP  # Block all IPv4
+# Optionally block all IPv4 traffic
+sudo iptables -I OUTPUT -d 0.0.0.0/0 -j DROP
 sudo iptables -I INPUT -s 0.0.0.0/0 -j DROP
 
 # Now test your app - any IPv4 dependency will fail
@@ -56,6 +56,8 @@ curl https://example.com  # This will fail if no AAAA record
 curl -6 https://example.com  # This should work
 
 # Restore IPv4 connectivity after testing
+sudo iptables -D OUTPUT -d 0.0.0.0/0 -j DROP
+sudo iptables -D INPUT -s 0.0.0.0/0 -j DROP
 sudo ip route add default via YOUR_GATEWAY_IPV4
 ```
 
@@ -66,12 +68,13 @@ sudo ip route add default via YOUR_GATEWAY_IPV4
 docker network create \
     --driver bridge \
     --ipv6 \
-    --subnet="2001:db8:test::/64" \
-    --gateway="2001:db8:test::1" \
+    --ipv4=false \
+    --subnet="fd00:dead:beef:1::/64" \
+    --gateway="fd00:dead:beef:1::1" \
     ipv6only-test
 
 # Run your application container in the IPv6-only network
-docker run --rm \
+docker run -d --rm \
     --network ipv6only-test \
     --name app-ipv6-test \
     your-app:latest
@@ -80,7 +83,7 @@ docker run --rm \
 docker run --rm \
     --network ipv6only-test \
     curlimages/curl \
-    -6 -v http://[2001:db8:test::2]:8080/api/health
+    -6 -v http://app-ipv6-test:8080/api/health
 ```
 
 ## Method 4: Browser IPv6 Testing
@@ -88,17 +91,16 @@ docker run --rm \
 Test browsers with IPv6:
 
 ```bash
-# Start Chrome with IPv6 preferences (disable IPv4 for testing)
-# Use Chrome's built-in connectivity test:
-# Navigate to: chrome://net-internals/#dns
-# Or check: https://test-ipv6.com
+# Chrome does not provide a supported per-browser "disable IPv4" switch.
+# Run Chrome from an IPv6-only network or test host.
+# Check: https://test-ipv6.com
 
 # Firefox: about:config
-# network.dns.disableIPv4 = true (temporarily)
 # network.dns.disableIPv6 = false
+# network.dns.preferIPv6 = true (optional)
 
 # Check what IP browser used for a request via DevTools:
-# Network tab → Click request → Headers → Remote Address
+# Network tab -> right-click the request table header -> enable Remote address
 ```
 
 ## Method 5: Automated IPv6 Testing with Python
@@ -165,7 +167,7 @@ strace -e trace=connect ./your-app 2>&1 | grep "AF_INET," | grep -v "AF_INET6"
 # Monitor active connections during test
 watch -n1 "ss -tnp | grep ESTAB | awk '{print \$5}' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'"
 
-# Check DNS resolver queries (should only see AAAA in IPv6-only test)
+# Check DNS resolver queries (AAAA should be present; A-only lookups can reveal IPv4-only code paths)
 sudo tcpdump -n port 53 -i any 2>/dev/null | grep -E "A\? |AAAA\?"
 ```
 
