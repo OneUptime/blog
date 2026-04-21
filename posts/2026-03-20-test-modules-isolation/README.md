@@ -38,7 +38,7 @@ run "validate_vpc_configuration" {
 }
 ```
 
-## Using Mock Providers (OpenTofu 1.7+)
+## Using Mock Providers (OpenTofu 1.8+)
 
 Mock providers allow you to test without real credentials:
 
@@ -85,6 +85,18 @@ provider "aws" {
   region = "us-east-1"
 }
 
+variable "name" {
+  type = string
+}
+
+variable "environment" {
+  type = string
+}
+
+variable "cidr_block" {
+  type = string
+}
+
 module "networking" {
   source      = "../../../"
   name        = var.name
@@ -114,13 +126,15 @@ run "fixture_test" {
 }
 ```
 
-## Override Files for Isolation
+## Data Source Overrides for Isolation
 
-Use `override.tf` files in tests to substitute dependencies:
+Use `override_data` blocks in tests to substitute dependencies:
 
 ```hcl
-# tests/unit/override.tf
-override_data "aws_availability_zones" "available" {
+# tests/unit/main.tftest.hcl
+override_data {
+  target = data.aws_availability_zones.available
+
   values = {
     names = ["us-east-1a", "us-east-1b", "us-east-1c"]
   }
