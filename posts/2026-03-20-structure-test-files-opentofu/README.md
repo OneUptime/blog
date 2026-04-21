@@ -101,8 +101,8 @@ run "accepts_valid_environment" {
   }
   # No expect_failures - should succeed
   assert {
-    condition     = true
-    error_message = "Should not reach here"
+    condition     = var.environment == "production"
+    error_message = "Environment should be set to production"
   }
 }
 
@@ -177,13 +177,13 @@ run "resources_are_accessible" {
 
 ```bash
 # Run only unit tests (fast, for development)
-tofu test tests/unit.tftest.hcl tests/validation.tftest.hcl tests/outputs.tftest.hcl
+tofu test -filter=tests/unit.tftest.hcl -filter=tests/validation.tftest.hcl -filter=tests/outputs.tftest.hcl
 
 # Run only integration tests (slow, for CI)
-tofu test tests/integration.tftest.hcl
+tofu test -filter=tests/integration.tftest.hcl
 
 # Run all tests
-tofu test tests/
+tofu test
 ```
 
 ## Makefile for Test Targets
@@ -192,10 +192,10 @@ tofu test tests/
 .PHONY: test test-unit test-integration
 
 test-unit:
-	tofu test tests/unit.tftest.hcl tests/validation.tftest.hcl -verbose
+	tofu test -filter=tests/unit.tftest.hcl -filter=tests/validation.tftest.hcl -filter=tests/outputs.tftest.hcl -verbose
 
 test-integration:
-	tofu test tests/integration.tftest.hcl -verbose
+	tofu test -filter=tests/integration.tftest.hcl -verbose
 
 test: test-unit test-integration
 ```
