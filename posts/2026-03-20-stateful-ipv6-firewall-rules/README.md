@@ -14,8 +14,8 @@ Stateful firewalling tracks the state of each connection and allows packets that
 
 | State | Meaning |
 |-------|---------|
-| NEW | First packet of a new connection |
-| ESTABLISHED | Part of an already-established connection |
+| NEW | Packet for a connection that has not seen traffic in both directions yet |
+| ESTABLISHED | Packet for a connection that has seen traffic in both directions |
 | RELATED | Related to an established connection (e.g., ICMP error for TCP) |
 | INVALID | Packet that doesn't fit any known connection |
 | UNTRACKED | Packet marked to bypass conntrack |
@@ -35,11 +35,21 @@ ip6tables -A INPUT -m conntrack --ctstate INVALID -j DROP
 # 3. Allow established and related (the key stateful rule)
 ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-# 4. Allow new connections only to specific services
+# 4. Allow essential ICMPv6 (errors and Neighbor Discovery)
+ip6tables -A INPUT -p icmpv6 --icmpv6-type destination-unreachable -j ACCEPT
+ip6tables -A INPUT -p icmpv6 --icmpv6-type packet-too-big -j ACCEPT
+ip6tables -A INPUT -p icmpv6 --icmpv6-type time-exceeded -j ACCEPT
+ip6tables -A INPUT -p icmpv6 --icmpv6-type parameter-problem -j ACCEPT
+ip6tables -A INPUT -p icmpv6 --icmpv6-type router-solicitation -j ACCEPT
+ip6tables -A INPUT -p icmpv6 --icmpv6-type router-advertisement -j ACCEPT
+ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbor-solicitation -j ACCEPT
+ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbor-advertisement -j ACCEPT
+
+# 5. Allow new connections only to specific services
 ip6tables -A INPUT -m conntrack --ctstate NEW -p tcp --dport 22 -j ACCEPT
 ip6tables -A INPUT -m conntrack --ctstate NEW -p tcp --dport 443 -j ACCEPT
 
-# 5. Drop everything else (new connections to unlisted services)
+# 6. Drop everything else (new connections to unlisted services)
 ip6tables -A INPUT -j DROP
 ```
 
@@ -63,9 +73,9 @@ table inet filter {
         ct state new tcp dport { 80, 443 } accept
 
         # ICMPv6 essential (NEW and ESTABLISHED/RELATED)
-        ip6 nexthdr icmpv6 icmpv6 type packet-too-big accept
-        ip6 nexthdr icmpv6 icmpv6 type { destination-unreachable, time-exceeded, parameter-problem } accept
-        ip6 saddr fe80::/10 ip6 nexthdr icmpv6 icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit, nd-router-advert } accept
+        icmpv6 type packet-too-big accept
+        icmpv6 type { destination-unreachable, time-exceeded, parameter-problem } accept
+        icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit, nd-router-advert } accept
     }
 
     chain output {
@@ -91,7 +101,7 @@ table inet forward-filter {
         iifname "eth1" oifname "eth0" ct state new accept  # LAN → WAN
 
         # Allow Packet Too Big to pass (required for PMTUD through router)
-        ip6 nexthdr icmpv6 icmpv6 type packet-too-big accept
+        icmpv6 type packet-too-big accept
 
         # Block new connections from external → internal (default deny)
         # iifname "eth0" oifname "eth1" ct state new drop  ← implicit from policy drop
@@ -104,7 +114,7 @@ table inet forward-filter {
 ICMPv6 is partially connection-tracked:
 
 ```bash
-# Echo request/reply - conntrack tracks these as ESTABLISHED
+# Echo request/reply - conntrack tracks the request/reply pair
 ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-request -m conntrack --ctstate NEW -j ACCEPT
 ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-reply -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
@@ -119,8 +129,8 @@ ip6tables -A INPUT -p icmpv6 --icmpv6-type packet-too-big -m conntrack --ctstate
 conntrack -L -f ipv6
 
 # Sample output:
-# ipv6  6  431996  ESTABLISHED src=2001:db8:1::1 dst=2001:db8:2::1 sport=54321 dport=443
-#                              src=2001:db8:2::1 dst=2001:db8:1::1 sport=443 dport=54321 [ASSURED] mark=0
+# tcp      6  431996  ESTABLISHED src=2001:db8:1::1 dst=2001:db8:2::1 sport=54321 dport=443
+#                               src=2001:db8:2::1 dst=2001:db8:1::1 sport=443 dport=54321 [ASSURED] mark=0
 
 # Count connections by state
 conntrack -L -f ipv6 2>/dev/null | awk '{print $4}' | sort | uniq -c
