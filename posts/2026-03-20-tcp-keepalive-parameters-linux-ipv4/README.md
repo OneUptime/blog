@@ -29,7 +29,7 @@ sysctl net.ipv4.tcp_keepalive_probes
 
 # Or all at once:
 
-sysctl net.ipv4 | grep keepalive
+sysctl net.ipv4.tcp_keepalive_time net.ipv4.tcp_keepalive_intvl net.ipv4.tcp_keepalive_probes
 ```
 
 ## Changing Values Temporarily (Until Reboot)
@@ -40,7 +40,7 @@ sudo sysctl -w net.ipv4.tcp_keepalive_intvl=30
 sudo sysctl -w net.ipv4.tcp_keepalive_probes=5
 ```
 
-With these settings, the kernel will probe after 5 minutes of idle time, retry every 30 seconds, and close after 5 failures (total 2.5 minutes before declaring dead).
+With these settings, the kernel will probe after 5 minutes of idle time, retry every 30 seconds, and close after 5 failures (about 2.5 minutes of retries after probing starts, or roughly 7.5 minutes after the connection first becomes idle).
 
 ## Persisting Changes Across Reboots
 
