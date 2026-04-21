@@ -13,9 +13,10 @@ TCP sequence numbers track every byte sent on a connection. When something goes 
 ## Understanding Sequence Number Basics
 
 ```text
-Initial Sequence Number (ISN): random, chosen at SYN
-Subsequent segments: ISN + bytes_sent_so_far
-ACK number: "I've received up to byte N, send me N+1 next"
+Initial Sequence Number (ISN): generated 32-bit value, carried in SYN
+First data byte after SYN: ISN + 1
+Subsequent data segments: previous data sequence + payload bytes sent
+ACK number N: "I've received bytes before N, send me byte N next"
 
 Example flow:
 SYN:        seq=1000, len=0    → ISN is 1000
@@ -36,20 +37,21 @@ tcpdump -i eth0 -n -S host 10.20.0.5 and port 80
 # Show relative sequence numbers (default, easier to read)
 tcpdump -i eth0 -n host 10.20.0.5 and port 80
 
-# Output shows:
+# With default relative sequence numbers, output shows:
 # Flags [S], seq 3232323, win 65535
 # Flags [S.], seq 1234567, ack 3232324, win 65535
-# Flags [.], ack 1234568
+# Flags [.], ack 1
 # Flags [P.], seq 1:501, ack 1, length 500   ← data: bytes 1-500
 
-# Spot retransmissions: same seq number appearing twice
-tcpdump -r capture.pcap -n | awk '{print $5}' | sort | uniq -d
-# Duplicate sequence ranges = retransmissions
+# Spot possible retransmissions in one direction: same data seq range appearing twice
+tcpdump -tt -r capture.pcap -n 'tcp and src host 10.20.0.5 and src port 80' | \
+  sed -n 's/.* seq \([0-9][0-9]*:[0-9][0-9]*\),.*/\1/p' | sort | uniq -d
+# Duplicate data sequence ranges are retransmission candidates; confirm with ACKs/timing
 ```
 
 ## Wireshark Time-Sequence Graph
 
-```sql
+```text
 In Wireshark:
 1. Open capture file
 2. Select a packet in the TCP stream
@@ -57,8 +59,8 @@ In Wireshark:
 
 What to look for:
 - Normal: smooth upward diagonal line (bytes increasing over time)
-- Retransmission: vertical backtrack (same sequence resent)
-- Zero window: horizontal flat line (no new data sent)
+- Retransmission: backtrack to an earlier sequence value (same data resent)
+- Stall or zero window: flat line or repeated same sequence values (no forward progress)
 - Slow start: visible exponential growth at start
 - Congestion event: sudden slope reduction after loss
 ```
@@ -74,10 +76,10 @@ tcp.analysis.retransmission
 # Show out-of-order segments (receiver got higher seq before lower)
 tcp.analysis.out_of_order
 
-# Gaps in received sequence space (missing segments)
+# Previous segment(s) not captured; a sequence gap in the trace
 tcp.analysis.lost_segment
 
-# Duplicate ACKs (receiver got out-of-order, sending dup ACKs)
+# Duplicate ACKs (often caused by a gap or out-of-order data)
 tcp.analysis.duplicate_ack
 
 # Combined: all TCP analysis events
@@ -91,27 +93,31 @@ tcp.analysis.flags
 # - Segment was lost (most common)
 # - Segment arrived out of order (reordering)
 # - Segment is still in transit
+# - Segment was not captured by your capture point
 
 # Distinguish loss from reordering:
-# Loss: gap is never filled → sender retransmits after 3 dup ACKs or RTO
-# Reorder: gap fills in within a few milliseconds from a later packet
+# Loss: gap is not filled by the original segment → sender retransmits after duplicate ACKs or RTO
+# Reorder: gap fills later without retransmission, often quickly
 
-# Check for reordering with tcpdump:
-tcpdump -r capture.pcap -n 'tcp and host 10.20.0.5' | \
-  awk '/seq/{seq=$5; print NR, seq}' | sort -k2 -n | head -20
-# If sequence numbers arrive out of numerical order: reordering
+# Check for out-of-order or retransmitted data in one direction:
+tcpdump -tt -r capture.pcap -n 'tcp and src host 10.20.0.5 and src port 80' | \
+  sed -n 's/^\([^ ]*\).* seq \([0-9][0-9]*\):\([0-9][0-9]*\),.*/\1 \2 \3/p' | \
+  awk 'NR > 1 && $2 < last_end { print "earlier seq after later data:", "time=" $1, "seq=" $2 ":" $3, "previous_end=" last_end } { if ($3 > last_end) last_end=$3 }'
+# Lower sequence ranges arriving after later bytes can indicate reordering or retransmission
 ```
 
 ## Calculating Throughput from Sequence Numbers
 
 ```bash
-# From a tcpdump capture, calculate actual data throughput:
-tcpdump -r capture.pcap -n 'tcp and dst host 10.20.0.5 and dst port 80' | \
-  awk 'NR==1{first=$1; start_seq=$8}
-       {last=$1; end_seq=$8}
+# From one direction in a tcpdump capture, calculate sequence-byte throughput:
+tcpdump -tt -r capture.pcap -n 'tcp and src host 10.20.0.5 and src port 80' | \
+  sed -n 's/^\([^ ]*\).* seq \([0-9][0-9]*\):\([0-9][0-9]*\),.*/\1 \2 \3/p' | \
+  awk 'NR==1{first=$1; start_seq=$2}
+       {last=$1; if ($3 > end_seq) end_seq=$3}
        END{
          duration=last-first
-         bytes=(end_seq+0)-(start_seq+0)
+         if (duration <= 0) { print "Need at least two data packets"; exit }
+         bytes=end_seq-start_seq
          mbps=bytes*8/duration/1e6
          printf "Duration: %.2f sec, Bytes: %d, Throughput: %.2f Mbps\n",
            duration, bytes, mbps
@@ -120,4 +126,4 @@ tcpdump -r capture.pcap -n 'tcp and dst host 10.20.0.5 and dst port 80' | \
 
 ## Conclusion
 
-TCP sequence number analysis transforms "something is slow" into "packet at byte offset X was retransmitted at time T." Use `tcpdump -S` to trace absolute sequences in terminal. Use Wireshark's time-sequence graph for visual analysis. Duplicate sequence numbers always mean retransmission; gaps with subsequent fill-in mean reordering; gaps that stay = loss. This level of analysis makes it possible to pinpoint exactly which packets are being lost and when.
+TCP sequence number analysis transforms "something is slow" into "packet at byte offset X was retransmitted at time T." Use `tcpdump -S` to trace absolute sequences in terminal. Use Wireshark's time-sequence graph for visual analysis. Duplicate data sequence ranges are retransmission candidates; gaps with subsequent fill-in often mean reordering; gaps that stay open usually mean loss or missing capture data. This level of analysis makes it possible to pinpoint exactly which packets are being lost and when.
