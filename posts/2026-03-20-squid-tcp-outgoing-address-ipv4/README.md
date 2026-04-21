@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Squid, IPv4, Tcp_outgoing_address, Source IP, Proxy, Outbound
 
-Description: Use Squid's tcp_outgoing_address directive to control which IPv4 source address is used when making outbound connections to origin servers.
+Description: Use Squid's tcp_outgoing_address directive in Squid 7 and earlier to control which IPv4 source address is used when making outbound connections to origin servers.
 
 ## Introduction
 
-On multi-homed servers, Squid can be configured to use a specific IPv4 address as the source IP for outbound connections. This is useful for routing outbound traffic through specific interfaces, applying different source IPs for different client groups, or meeting allowlisting requirements at destination servers.
+On multi-homed servers running Squid 7 or earlier, Squid can be configured to use a specific IPv4 address as the source IP for outbound connections. This is useful for routing outbound traffic through specific interfaces, applying different source IPs for different client groups, or meeting allowlisting requirements at destination servers.
 
 ## Basic tcp_outgoing_address
 
@@ -25,12 +25,14 @@ http_port 10.0.0.1:3128
 
 ## Different Source IPs for Different Client Groups
 
-Use ACLs to assign different outbound IPs per client subnet:
+Use ACLs to assign different outbound IPs per client subnet. Because these ACLs are client-dependent, disable server-side persistent connections:
 
 ```bash
 # /etc/squid/squid.conf
 
 http_port 10.0.0.1:3128
+
+server_persistent_connections off
 
 # Define client groups
 acl dept_engineering src 10.0.1.0/24
@@ -58,11 +60,10 @@ Use different source IPs when accessing specific destinations:
 
 ```bash
 acl blocked_for_ip1 dstdomain .restricted-site.com
-acl normal_traffic  all
 
 # Use alternate IP for restricted destinations
 tcp_outgoing_address 203.0.113.20 blocked_for_ip1
-tcp_outgoing_address 203.0.113.10 normal_traffic
+tcp_outgoing_address 203.0.113.10
 ```
 
 ## Combining with Routing Tables
@@ -85,7 +86,7 @@ sudo ip route get 8.8.8.8 from 203.0.113.11
 
 ```bash
 # From a client using the proxy, check what source IP reaches the destination
-curl -x http://10.0.0.1:3128 http://httpbin.org/ip
+curl -x http://10.0.0.1:3128 https://httpbin.org/ip
 
 # Expected: shows the tcp_outgoing_address IPv4
 # { "origin": "203.0.113.10" }
@@ -96,4 +97,4 @@ sudo tail -f /var/log/squid/access.log
 
 ## Conclusion
 
-`tcp_outgoing_address` in Squid controls the source IPv4 for outbound proxy connections. Use it without ACLs for a global source IP override, or combine with ACLs to apply different source addresses per client group, destination domain, or time of day. Ensure the OS routing table is configured to route traffic from each source IP through the correct gateway.
+`tcp_outgoing_address` in Squid 7 and earlier controls the source IPv4 for outbound proxy connections. Use it without ACLs for a global source IP override, or combine with ACLs to apply different source addresses per client group, destination domain, or time of day. Ensure the OS routing table is configured to route traffic from each source IP through the correct gateway.
