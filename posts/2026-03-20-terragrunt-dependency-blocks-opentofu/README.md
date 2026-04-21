@@ -8,7 +8,7 @@ Description: Learn how to use Terragrunt dependency blocks to pass outputs betwe
 
 ## Introduction
 
-Terragrunt `dependency` blocks let one module consume the outputs of another without using remote state data sources. Terragrunt handles reading the output values and passing them as inputs, and also enforces correct deployment order when using `run-all`.
+Terragrunt `dependency` blocks let one module consume the outputs of another without using remote state data sources. Terragrunt handles reading the output values and passing them as inputs, and also enforces correct deployment order when using `run --all`.
 
 ## Basic Dependency Block
 
@@ -92,19 +92,19 @@ inputs = {
 }
 ```
 
-## Dependency Ordering with run-all
+## Dependency Ordering with run --all
 
 Terragrunt automatically determines and respects dependency order:
 
 ```bash
-# Terragrunt runs-all in correct order:
+# Terragrunt runs units in the correct order:
 # 1. networking (no deps)
 # 2. database (depends on networking)
 # 3. cache (depends on networking)
 # 4. api (depends on networking, database, cache)
 # 5. worker (depends on networking, database, cache)
 
-terragrunt run-all apply --terragrunt-working-dir environments/prod
+terragrunt run --all --working-dir environments/prod -- apply
 ```
 
 ## Handling Optional Dependencies
@@ -113,18 +113,18 @@ terragrunt run-all apply --terragrunt-working-dir environments/prod
 # Conditionally access dependency output
 dependency "monitoring" {
   config_path = "../monitoring"
-  skip_outputs = true  # Don't read outputs - only enforce ordering
 
+  # Use a null mock during plan/validate before monitoring has been applied
   mock_outputs = {
-    sns_topic_arn = "arn:aws:sns:us-east-1:mock:mock-topic"
+    sns_topic_arn = null
   }
+
+  mock_outputs_allowed_terraform_commands = ["plan", "validate"]
 }
 
 inputs = {
   # Only use monitoring SNS topic if it exists
-  alarm_actions = can(dependency.monitoring.outputs.sns_topic_arn) ? [
-    dependency.monitoring.outputs.sns_topic_arn
-  ] : []
+  alarm_actions = compact([try(dependency.monitoring.outputs.sns_topic_arn, null)])
 }
 ```
 
