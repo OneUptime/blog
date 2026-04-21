@@ -8,7 +8,7 @@ Description: Learn how to implement retention policies for OpenTofu state files 
 
 ## Introduction
 
-State file retention policies define how long historical versions of state files are kept. Keeping too many versions wastes storage; keeping too few limits your recovery window. Well-designed retention policies use tiered storage to balance cost and recoverability.
+State file retention policies define how long historical versions of state files are kept. Keeping too many versions wastes storage; keeping too few limits your recovery window. Well-designed retention policies use tiered storage to balance cost and recoverability. These examples assume the S3 bucket that stores state has bucket versioning enabled; non-current version actions only apply after versions exist. By default, S3 does not transition objects smaller than 128 KB to another storage class, so add an object-size filter only if you intentionally want to transition small state files.
 
 ## Tiered Retention Policy
 
@@ -24,13 +24,13 @@ resource "aws_s3_bucket_lifecycle_configuration" "state" {
 
     # Target non-current (historical) versions
     noncurrent_version_transition {
-      # Move to Standard-IA after 30 days (versions older than 30 days)
+      # Move eligible versions to Standard-IA after 30 days
       noncurrent_days = 30
       storage_class   = "STANDARD_IA"
     }
 
     noncurrent_version_transition {
-      # Move to Glacier after 90 days for long-term retention
+      # Move eligible versions to Glacier after 90 days for long-term retention
       noncurrent_days = 90
       storage_class   = "GLACIER"
     }
@@ -61,12 +61,12 @@ Production state deserves longer retention than development:
 locals {
   retention_policies = {
     dev = {
-      standard_ia_days   = 7
-      glacier_days       = 30
+      standard_ia_days   = 30
+      glacier_days       = 60
       expiration_days    = 90
     }
     staging = {
-      standard_ia_days   = 14
+      standard_ia_days   = 30
       glacier_days       = 60
       expiration_days    = 180
     }
@@ -79,30 +79,33 @@ locals {
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "state" {
-  for_each = local.retention_policies
-
   bucket = aws_s3_bucket.state.id
 
-  rule {
-    id     = "${each.key}-retention"
-    status = "Enabled"
+  dynamic "rule" {
+    for_each = local.retention_policies
+    iterator = retention
 
-    filter {
-      prefix = "${each.key}/"  # Apply to env-specific prefix
-    }
+    content {
+      id     = "${retention.key}-retention"
+      status = "Enabled"
 
-    noncurrent_version_transition {
-      noncurrent_days = each.value.standard_ia_days
-      storage_class   = "STANDARD_IA"
-    }
+      filter {
+        prefix = "${retention.key}/"  # Apply to env-specific prefix
+      }
 
-    noncurrent_version_transition {
-      noncurrent_days = each.value.glacier_days
-      storage_class   = "GLACIER"
-    }
+      noncurrent_version_transition {
+        noncurrent_days = retention.value.standard_ia_days
+        storage_class   = "STANDARD_IA"
+      }
 
-    noncurrent_version_expiration {
-      noncurrent_days = each.value.expiration_days
+      noncurrent_version_transition {
+        noncurrent_days = retention.value.glacier_days
+        storage_class   = "GLACIER"
+      }
+
+      noncurrent_version_expiration {
+        noncurrent_days = retention.value.expiration_days
+      }
     }
   }
 }
@@ -113,14 +116,24 @@ resource "aws_s3_bucket_lifecycle_configuration" "state" {
 For regulated workloads, retain state for auditing purposes:
 
 ```hcl
+resource "aws_s3_bucket_versioning" "compliance" {
+  bucket = aws_s3_bucket.state_compliance.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 resource "aws_s3_bucket_lifecycle_configuration" "compliance" {
   bucket = aws_s3_bucket.state_compliance.id
+
+  depends_on = [aws_s3_bucket_versioning.compliance]
 
   rule {
     id     = "compliance-retention"
     status = "Enabled"
 
-    # For SOC2/HIPAA: keep 7 years of state history
+    # For workloads with a 7-year audit-retention requirement
     noncurrent_version_transition {
       noncurrent_days = 90
       storage_class   = "GLACIER"
@@ -136,9 +149,11 @@ resource "aws_s3_bucket_lifecycle_configuration" "compliance" {
   }
 }
 
-# Object lock for immutable compliance records
+# Object Lock default retention for new state object versions
 resource "aws_s3_bucket_object_lock_configuration" "compliance" {
   bucket = aws_s3_bucket.state_compliance.id
+
+  depends_on = [aws_s3_bucket_versioning.compliance]
 
   rule {
     default_retention {
@@ -152,10 +167,10 @@ resource "aws_s3_bucket_object_lock_configuration" "compliance" {
 ## Cost Estimation for Retention Policies
 
 ```bash
-# Estimate storage costs for current state versions
+# Estimate storage used by non-current state versions
 aws s3api list-object-versions \
   --bucket my-company-tofu-state \
-  --query 'sum(Versions[].Size)' \
+  --query 'sum(Versions[?IsLatest==`false`].Size)' \
   --output text
 
 # Count non-current versions accumulating
