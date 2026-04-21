@@ -13,7 +13,7 @@ Dual-stack deployments introduce new failure modes: an application may prefer IP
 ## Happy Eyeballs and Protocol Selection
 
 ```bash
-# Happy Eyeballs (RFC 8305): clients try IPv6 first, fall back to IPv4 if IPv6 fails
+# Happy Eyeballs (RFC 8305): clients prefer IPv6, then start IPv4 shortly after if IPv6 is slow or unreachable
 
 # When something is "slow" in dual-stack, IPv6 is often broken
 
@@ -30,7 +30,7 @@ curl -6 https://example.com  # Force IPv6 (will fail if IPv6 broken)
 
 ```bash
 # Step 1: Is IPv6 working at all?
-ping -6 ::1              # Loopback (should always work)
+ping -6 ::1              # Loopback (should work if IPv6 stack is enabled)
 ping -6 2001:4860:4860::8888   # Google's IPv6 DNS
 
 # Step 2: Is the IPv6 default route configured?
@@ -39,8 +39,10 @@ ip -6 route show default
 
 # Step 3: Can you reach the IPv6 gateway?
 ping -6 <your-ipv6-gateway>
+# If the gateway is link-local, include the interface:
+ping -6 fe80::1%eth0
 
-# Step 4: Is IPv6 DNS resolving?
+# Step 4: Are AAAA records resolving?
 dig AAAA google.com
 # Expected: AAAA records returned
 
@@ -52,22 +54,26 @@ cat /proc/sys/net/ipv6/conf/eth0/disable_ipv6
 ## DNS Issues in Dual-Stack
 
 ```bash
-# DNS returns AAAA but IPv6 is broken → connection hangs then falls back
+# DNS returns AAAA but IPv6 is broken → connection may stall before falling back
 
 # Check what DNS returns:
 host example.com
 # Should show both A and AAAA if host is dual-stack
 
 # Test specific record types:
-dig -4 A example.com       # Force IPv4 DNS query
-dig -6 AAAA example.com    # Force IPv6 DNS query
+dig A example.com          # Query IPv4 address records
+dig AAAA example.com       # Query IPv6 address records
+
+# If you need to test DNS transport:
+dig -4 AAAA example.com    # Send DNS query over IPv4
+dig -6 AAAA example.com    # Send DNS query over IPv6
 
 # Compare:
 host -t A example.com
 host -t AAAA example.com
 
 # If AAAA exists but IPv6 doesn't work:
-# The application will be slow (waits for IPv6 timeout)
+# The application may be slow (waits for IPv6 timeout or Happy Eyeballs delay)
 # Fix: either make IPv6 work OR remove AAAA record
 ```
 
@@ -88,20 +94,23 @@ traceroute -6 google.com   # IPv6 path
 ip -6 route get 2001:4860:4860::8888
 # Shows: via <gateway> dev <interface> src <local-ipv6>
 
-# Test MTU (IPv6 requires minimum 1280 bytes):
+# Test IPv6 minimum MTU (1232 data + 8 ICMPv6 + 40 IPv6 = 1280):
+ping -6 -s 1232 -M do 2001:4860:4860::8888
+
+# Test a 1500-byte path (1452 data + headers = 1500):
 ping -6 -s 1452 -M do 2001:4860:4860::8888
-# If this fails, MTU issues exist on the IPv6 path
+# If smaller packets work but larger ones hang, MTU or ICMPv6 Packet Too Big handling issues may exist on the path
 ```
 
 ## Protocol Preference Issues
 
 ```bash
 # Check /etc/gai.conf for address preference ordering
-cat /etc/gai.conf | grep -v "^#\|^$"
+grep -vE '^[[:space:]]*(#|$)' /etc/gai.conf
 
-# Default: IPv6 preferred over IPv4
+# Default policy generally prefers IPv6 over IPv4 when both are suitable
 # To prefer IPv4 in gai.conf:
-sudo sed -i 's/^#\s*precedence ::ffff:0:0\/96  100/precedence ::ffff:0:0\/96  100/' /etc/gai.conf
+sudo sed -i 's/^#[[:space:]]*precedence[[:space:]]*::ffff:0:0\/96[[:space:]]*100/precedence ::ffff:0:0\/96  100/' /etc/gai.conf
 
 # Or add at end of /etc/gai.conf:
 echo "precedence ::ffff:0:0/96  100" | sudo tee -a /etc/gai.conf
@@ -115,15 +124,16 @@ python3 -c "import socket; print([r[4][0] for r in socket.getaddrinfo('google.co
 ```bash
 # Test if an application listens on both protocols:
 sudo ss -tlnp | grep :443
-# Expect: both 0.0.0.0:443 and :::443 (or *:443 for both)
+# Expect: 0.0.0.0:443 for IPv4 and [::]:443/:::443 for IPv6
+# On Linux, one IPv6 wildcard listener may also accept IPv4 if net.ipv6.bindv6only=0
 
 # Or for Python/Ruby/Node apps that may only bind to IPv4:
 # Check bind address in application configuration
 
 # Test with nc:
-nc -4 example.com 80    # IPv4 connection
-nc -6 example.com 80    # IPv6 connection
-echo "GET / HTTP/1.0" | nc -6 example.com 80
+nc -4 -vz -w 5 example.com 80    # IPv4 connection
+nc -6 -vz -w 5 example.com 80    # IPv6 connection
+printf 'GET / HTTP/1.0\r\nHost: example.com\r\n\r\n' | nc -6 -w 5 example.com 80
 ```
 
 ## Conclusion
