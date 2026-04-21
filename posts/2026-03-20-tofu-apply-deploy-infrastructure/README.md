@@ -39,7 +39,7 @@ tofu apply prod.tfplan
 ```
 
 Benefits of saved plans:
-- No drift between review and apply
+- No implicit re-planning between review and apply
 - What you approved is exactly what runs
 - Audit trail of reviewed plans
 
@@ -122,11 +122,11 @@ When an apply partially fails:
 # Apply fails mid-way
 # Error: error creating Instance: InvalidSubnetID.NotFound
 
-# State is partially updated - some resources were created
+# State is updated as resources complete - some resources may have been created
 tofu state list  # Shows what was created
 
 # Fix the issue and re-run apply
-# OpenTofu knows what was already created and won't recreate it
+# OpenTofu uses state to avoid recreating resources it successfully recorded
 tofu apply
 ```
 
@@ -181,4 +181,4 @@ tofu output -json | jq '.vpc_id.value'
 
 ## Conclusion
 
-`tofu apply` is where infrastructure changes become real. Always review the plan before applying, save plan files for production deployments to ensure what you reviewed is what runs, and use `-auto-approve` only in automated pipelines with proper review gates. When applies fail partially, OpenTofu's state tracking means you can safely re-run after fixing the issue without duplicating already-created resources.
+`tofu apply` is where infrastructure changes become real. Always review the plan before applying, save plan files for production deployments to ensure what you reviewed is what runs, and use `-auto-approve` only in automated pipelines with proper review gates. When applies fail partially, OpenTofu's state tracking means you can usually re-run after fixing the issue without duplicating resources that were successfully recorded in state.
