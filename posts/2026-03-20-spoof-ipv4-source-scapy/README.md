@@ -17,6 +17,7 @@ IP source address spoofing is the technique of sending packets with a forged sou
 ```bash
 pip install scapy
 # Root/sudo required for raw socket access
+# Install libpcap/Npcap if you use BPF capture filters with sniff()
 
 ```
 
@@ -57,26 +58,27 @@ send(pkt)
 
 ## Testing BCP38 Enforcement (Anti-Spoofing Validation)
 
-BCP38 (Network Ingress Filtering) requires ISPs and network operators to drop packets with source IPs that cannot originate from the customer's subnet. Test whether your router enforces it:
+BCP38 (Network Ingress Filtering) recommends that ISPs and network operators filter traffic from downstream networks so packets are allowed only when their source addresses can legitimately originate there. Test whether anti-spoofing is enforced at your edge or upstream provider using an authorized remote sensor or lab target:
 
 ```python
 from scapy.all import IP, ICMP, send
 
 # Send a packet with a source IP from a completely different range
-# Should be dropped if BCP38 is enforced on your router
+# Should be dropped by your edge router or upstream provider
 pkt = IP(
-    src="1.2.3.4",         # External IP - should not originate from your subnet
-    dst="8.8.8.8"          # Send toward the internet
+    src="192.0.2.123",     # TEST-NET-1 example; use an authorized non-local source in real tests
+    dst="198.51.100.10"    # Authorized remote sensor or lab target
 ) / ICMP()
 
-send(pkt, iface="eth0")
-# If this packet leaves your network, BCP38 is NOT enforced
+send(pkt)
+# Confirm with firewall/router logs or a packet capture at the edge/remote sensor.
+# A local send() call alone cannot prove that the packet left your network.
 ```
 
 ## Sending Multiple Spoofed Packets
 
 ```python
-from scapy.all import IP, UDP, send, RandShort
+from scapy.all import IP, UDP, Raw, send
 import ipaddress
 
 # Send UDP packets with rotating spoofed source IPs
@@ -84,35 +86,35 @@ network = ipaddress.ip_network("203.0.113.0/24")
 hosts = list(network.hosts())
 
 for src_ip in hosts[:10]:
-    pkt = IP(src=str(src_ip), dst="10.0.0.1") / UDP(dport=53) / b"\x00" * 10
+    pkt = IP(src=str(src_ip), dst="10.0.0.1") / UDP(dport=53) / Raw(load=b"\x00" * 10)
     send(pkt, verbose=False)
     print(f"Sent packet from {src_ip}")
 ```
 
 ## Validating Firewall Rules
 
-Test that your firewall correctly drops spoofed traffic from untrusted ranges:
+Test that your firewall correctly drops spoofed traffic from untrusted ranges by checking firewall logs or a target-side packet capture:
 
 ```python
-from scapy.all import IP, TCP, sr1
+from scapy.all import IP, TCP, send
 
-# Send a SYN from a private range - should be blocked by the firewall
-probe = IP(src="192.168.99.1", dst="TARGET_IP") / TCP(dport=443, flags="S")
-response = sr1(probe, timeout=2, verbose=False)
+# Send a SYN from a private range - it should not reach the protected target
+probe = IP(src="192.168.99.1", dst="10.0.0.10") / TCP(dport=443, flags="S")
+send(probe, verbose=False)
 
-if response is None:
-    print("No response - firewall is blocking (expected)")
-else:
-    print(f"Got response: {response.summary()} - check your firewall rules")
+print("Check firewall logs or a target-side capture; replies go to the spoofed source.")
 ```
 
 ## Capturing Responses to Spoofed Packets
 
-For testing scenarios where you want to see if responses come back to the spoofed IP (reflection), capture on a separate interface:
+For testing scenarios where you want to see if responses come back to the spoofed IP (reflection), capture on the host that owns the spoofed IP or on a SPAN/mirror interface:
 
 ```python
 from scapy.all import sniff, IP, ICMP, send
 import threading
+import time
+
+SNIFF_IFACE = "eth1"  # Replace with the spoofed-IP host interface or SPAN/mirror interface
 
 def send_spoofed():
     pkt = IP(src="10.0.0.99", dst="10.0.0.1") / ICMP()
@@ -120,12 +122,13 @@ def send_spoofed():
 
 # Start a sniffer looking for responses to the spoofed IP
 def capture():
-    pkts = sniff(filter="host 10.0.0.99 and icmp", count=5, timeout=3)
+    pkts = sniff(iface=SNIFF_IFACE, filter="icmp and dst host 10.0.0.99", count=5, timeout=3)
     for p in pkts:
         print(f"Response: {p.summary()}")
 
 t = threading.Thread(target=capture)
 t.start()
+time.sleep(0.2)
 send_spoofed()
 t.join()
 ```
