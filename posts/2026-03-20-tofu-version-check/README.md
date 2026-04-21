@@ -37,8 +37,7 @@ tofu version -json
 #   "provider_selections": {
 #     "registry.opentofu.org/hashicorp/aws": "5.40.0",
 #     "registry.opentofu.org/hashicorp/random": "3.6.0"
-#   },
-#   "terraform_outdated": false
+#   }
 # }
 ```
 
@@ -65,36 +64,32 @@ fi
 ```hcl
 terraform {
   required_version = ">= 1.7.0"  # Minimum version
-}
 
-# Or pin exactly
-terraform {
-  required_version = "1.8.0"
-}
+  # Or pin exactly
+  # required_version = "1.8.0"
 
-# Or range
-terraform {
-  required_version = ">= 1.7.0, < 2.0.0"
+  # Or range
+  # required_version = ">= 1.7.0, < 2.0.0"
 }
 ```
 
-## Managing Versions with tfenv
+## Managing Versions with tenv
 
 ```bash
-# Install tfenv for version management
-brew install tfenv  # macOS
+# Install tenv for OpenTofu version management
+brew install tenv  # macOS
 
-# Install a specific version
-tfenv install 1.8.0
-tfenv use 1.8.0
+# Install and use a specific OpenTofu version
+tenv tofu install 1.8.0
+tenv tofu use 1.8.0
 
 # Set version in project directory
-echo "1.8.0" > .terraform-version
+echo "1.8.0" > .opentofu-version
 ```
 
 ## Team Version Consistency
 
-```bash
+```yaml
 # Enforce version in your CI pipeline
 - name: Check OpenTofu Version
   run: |
