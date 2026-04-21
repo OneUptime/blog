@@ -8,7 +8,7 @@ Description: Learn how to run Terraform and OpenTofu side by side during migrati
 
 ## Introduction
 
-During a migration, you may need both Terraform and OpenTofu available on the same machine and in CI. Since both tools use the same state format, the risk of accidentally running the wrong tool against a state file is real. This guide covers safe side-by-side operation.
+During a migration, you may need both Terraform and OpenTofu available on the same machine and in CI. Since OpenTofu can read compatible Terraform state during migration, the risk of accidentally running the wrong tool against a state file is real. This guide covers safe side-by-side operation.
 
 ## Installing Both Tools
 
@@ -17,15 +17,18 @@ During a migration, you may need both Terraform and OpenTofu available on the sa
 
 brew install opentofu   # macOS
 # or
-curl -fsSL https://get.opentofu.org/install-opentofu.sh | sh
+curl --proto '=https' --tlsv1.2 -fsSL https://get.opentofu.org/install-opentofu.sh -o install-opentofu.sh
+chmod +x install-opentofu.sh
+./install-opentofu.sh --install-method standalone
+rm -f install-opentofu.sh
 
-# Both tools are now available
-terraform --version   # HashiCorp Terraform v1.9.0
+# With Terraform already installed, both tools are now available
+terraform --version   # HashiCorp Terraform v1.9.8
 tofu --version        # OpenTofu v1.9.0
 
 # No conflict - different binary names
-which terraform   # /usr/local/bin/terraform
-which tofu        # /usr/local/bin/tofu
+which terraform   # e.g. /usr/local/bin/terraform
+which tofu        # e.g. /usr/local/bin/tofu
 ```
 
 ## Version Management with asdf
@@ -35,12 +38,12 @@ which tofu        # /usr/local/bin/tofu
 asdf plugin add terraform
 asdf plugin add opentofu
 
-asdf install terraform 1.9.0
+asdf install terraform 1.9.8
 asdf install opentofu 1.9.0
 
 # Set per-directory versions
 cd legacy-terraform-project/
-echo "terraform 1.9.0" > .tool-versions
+echo "terraform 1.9.8" > .tool-versions
 
 cd new-opentofu-project/
 echo "opentofu 1.9.0" > .tool-versions
@@ -50,11 +53,11 @@ echo "opentofu 1.9.0" > .tool-versions
 
 The cleanest approach is clear ownership by directory:
 
-```hcl
+```text
 infrastructure/
   legacy/         ← Managed by Terraform (migrating soon)
     main.tf
-    .tool-versions  # terraform 1.9.0
+    .tool-versions  # terraform 1.9.8
   networking/     ← Already migrated to OpenTofu
     main.tf
     .tool-versions  # opentofu 1.9.0
@@ -91,16 +94,16 @@ terraform {
 
 ## Warning: Don't Mix Tools on the Same State
 
-Running both `terraform apply` and `tofu apply` against the same state file is safe (same format), but can cause lock file confusion:
+Do not alternate `terraform apply` and `tofu apply` against the same state file as a normal workflow. Treat a same-directory switch as a migration: back up state, verify the plan, and regenerate the provider lock file for the new tool:
 
 ```bash
-# After running terraform apply:
-# .terraform.lock.hcl has Terraform registry hashes
+# After running terraform init:
+# .terraform.lock.hcl records Terraform registry provider checksums
 
 # If you then run tofu init on the same directory:
 # ERROR: lock file hash mismatch (registry.opentofu.org vs registry.terraform.io)
 
-# Solution: regenerate lock file when switching tools
+# Solution for a one-way migration: regenerate the lock file with OpenTofu
 rm .terraform.lock.hcl
 tofu init
 ```
@@ -116,18 +119,18 @@ jobs:
   terraform-legacy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: "1.9.0"
+          terraform_version: "1.9.8"
       - run: terraform -chdir=legacy init && terraform -chdir=legacy apply -auto-approve
 
   # Migrated workloads on OpenTofu
   opentofu-networking:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.9.0"
       - run: tofu -chdir=networking init && tofu -chdir=networking apply -auto-approve
@@ -136,8 +139,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: opentofu-networking
     steps:
-      - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version: "1.9.0"
       - run: tofu -chdir=compute init && tofu -chdir=compute apply -auto-approve
 ```
 
@@ -160,4 +165,4 @@ Track migration status in a simple file:
 
 ## Conclusion
 
-Running Terraform and OpenTofu side by side is safe because they share the same binary interface - just different binary names. Use separate directories with `.tool-versions` files to declare which tool manages which workload. Use different state keys to avoid accidentally running the wrong tool against a state file. Migrate component by component, tracking progress in a status document, and decommission Terraform once all workloads are migrated.
+Running Terraform and OpenTofu side by side is safe when each workload has one owning tool and one state. The CLIs are similar but use different binary names. Use separate directories with `.tool-versions` files to declare which tool manages which workload. Use different state keys to avoid accidentally running the wrong tool against a state file. Migrate component by component, tracking progress in a status document, and decommission Terraform once all workloads are migrated.
