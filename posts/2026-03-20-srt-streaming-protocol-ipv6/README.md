@@ -26,7 +26,7 @@ make -j4
 sudo make install
 
 # Verify installation
-srt-live-transmit --version
+srt-live-transmit -version
 
 # Install FFmpeg with SRT support
 sudo apt install ffmpeg -y
@@ -38,17 +38,17 @@ ffmpeg -protocols | grep srt
 ```bash
 # SRT Receiver (listener mode on IPv6)
 # Listen on all IPv6 interfaces
-srt-live-transmit "srt://:9000" "file://con"
+srt-live-transmit "srt://[::]:9000?mode=listener&ipv6only=1" "file://con"
 
 # Listen on specific IPv6 address
-srt-live-transmit "srt://[2001:db8::server]:9000" "file://con"
+srt-live-transmit "srt://[2001:db8::10]:9000?mode=listener" "file://con"
 
 # SRT Sender (caller mode connecting to IPv6 receiver)
-srt-live-transmit "file://video.ts" "srt://[2001:db8::server]:9000"
+cat video.ts | srt-live-transmit "file://con" "srt://[2001:db8::10]:9000?mode=caller"
 
 # SRT with options over IPv6
 srt-live-transmit \
-  "srt://[2001:db8::server]:9000?latency=200&encryption=1&passphrase=SecurePass" \
+  "srt://[2001:db8::10]:9000?mode=caller&latency=200&pbkeylen=16&passphrase=SecurePass" \
   "file://con"
 ```
 
@@ -60,20 +60,20 @@ ffmpeg -re -i input.mp4 \
   -c:v libx264 \
   -c:a aac \
   -f mpegts \
-  "srt://[2001:db8::server]:9000?mode=caller"
+  "srt://[2001:db8::10]:9000?mode=caller"
 
 # Receive SRT stream from IPv6 sender and convert to HLS
-ffmpeg -i "srt://[::]:9000?mode=listener" \
+ffmpeg -i "srt://[2001:db8::10]:9000?mode=listener" \
   -c:v copy \
   -c:a copy \
   -f hls \
   /var/www/html/hls/stream.m3u8
 
 # SRT rendezvous mode (both sides connect simultaneously)
-# Useful for NAT traversal between IPv6 endpoints
+# Useful when both IPv6 endpoints must initiate through firewalls
 ffmpeg -i input.ts \
   -f mpegts \
-  "srt://[2001:db8::peer]:9000?mode=rendezvous"
+  "srt://[2001:db8::20]:9000?mode=rendezvous"
 ```
 
 ## SRT Relay with srt-live-transmit
@@ -82,27 +82,27 @@ ffmpeg -i input.ts \
 # Relay SRT from IPv4 source to IPv6 destination
 srt-live-transmit \
   "srt://source-server:9000" \
-  "srt://[2001:db8::destination]:9001"
+  "srt://[2001:db8::30]:9001?mode=caller"
 
-# Bidirectional relay (both IPv4 and IPv6 endpoints)
+# Relay from IPv6 listener to IPv6 destination
 srt-live-transmit \
-  "srt://[::]:9000?mode=listener" \
-  "srt://[2001:db8::encoder]:9001"
+  "srt://[::]:9000?mode=listener&ipv6only=1" \
+  "srt://[2001:db8::40]:9001?mode=caller"
 ```
 
 ## SRT Server with srtla (SRT Link Aggregation)
 
 ```bash
 # Install srtla for multi-path SRT
-# Useful for mobile streaming with both IPv4 and IPv6 uplinks
+# Useful for mobile streaming with multiple uplinks
 git clone https://github.com/BELABOX/srtla.git
 cd srtla && make
 
-# Start srtla receiver (accepts IPv4 and IPv6)
-./srtla_rec 9000 [::1] 9001
-
 # Start SRT server listening for relay
-srt-live-transmit "srt://[::1]:9001" "file://con"
+srt-live-transmit "srt://127.0.0.1:9001?mode=listener" "file://con" &
+
+# Start srtla receiver and forward to the local SRT listener
+./srtla_rec 9000 127.0.0.1 9001
 ```
 
 ## Firewall Rules for SRT over IPv6
@@ -113,7 +113,7 @@ sudo ip6tables -A INPUT -p udp --dport 9000 -j ACCEPT
 sudo ip6tables -A INPUT -p udp --dport 9001 -j ACCEPT
 
 # Save rules
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo sh -c 'ip6tables-save > /etc/ip6tables/rules.v6'
 
 # Verify SRT is listening on IPv6
 ss -6 -ulnp | grep 9000
@@ -124,17 +124,19 @@ ss -6 -ulnp | grep 9000
 ```bash
 # Test latency and connection quality
 srt-live-transmit \
-  "srt://[2001:db8::server]:9000?mode=caller&latency=200" \
-  "null://"
+  "srt://[2001:db8::10]:9000?mode=caller&latency=200" \
+  "file://con" > /dev/null
 
-# Check SRT stats (use srt-live-transmit with verbose flag)
-srt-live-transmit -v \
-  "srt://[2001:db8::server]:9000" \
-  "file://output.ts"
+# Check SRT stats
+srt-live-transmit \
+  "srt://[2001:db8::10]:9000?mode=caller" \
+  "file://con" \
+  -statsout srt-stats.log \
+  -s 100 > /dev/null
 
 # Verify IPv6 connectivity before SRT test
-ping6 -c 4 2001:db8::server
-nc -6 -u -w 3 2001:db8::server 9000
+ping6 -c 4 2001:db8::10
+nc -6 -u -w 3 2001:db8::10 9000
 ```
 
-SRT's native IPv6 support through bracket-notation addressing in connection URLs (`srt://[2001:db8::server]:9000`) enables low-latency contribution links and distribution between IPv6 endpoints with the same ARQ-based reliability as IPv4 connections.
+SRT's native IPv6 support through bracket-notation addressing in connection URLs (`srt://[2001:db8::10]:9000`) enables low-latency contribution links and distribution between IPv6 endpoints with the same ARQ-based reliability as IPv4 connections.
