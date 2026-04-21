@@ -23,6 +23,7 @@ for ns in R1 R2 R3; do
     ip netns exec $ns ip link set lo up
     ip netns exec $ns sysctl -w net.ipv6.conf.all.forwarding=1
     ip netns exec $ns sysctl -w net.ipv6.conf.all.seg6_enabled=1
+    ip netns exec $ns sysctl -w net.ipv6.conf.default.seg6_enabled=1
 done
 
 # Create veth pairs between routers
@@ -40,10 +41,17 @@ ip link set r2r3-r3 netns R3
 ip netns exec R2 ip link set r2r3-r2 up
 ip netns exec R3 ip link set r2r3-r3 up
 
-# Assign link-local addresses (auto) and locator addresses
+# Enable SRH processing on the lab interfaces
+ip netns exec R1 sysctl -w net.ipv6.conf.r1r2-r1.seg6_enabled=1
+ip netns exec R2 sysctl -w net.ipv6.conf.r1r2-r2.seg6_enabled=1
+ip netns exec R2 sysctl -w net.ipv6.conf.r2r3-r2.seg6_enabled=1
+ip netns exec R3 sysctl -w net.ipv6.conf.r2r3-r3.seg6_enabled=1
+
+# Assign link-local addresses (auto), locator addresses, and a test service address
 ip netns exec R1 ip -6 addr add 5f00:1::/128 dev lo
 ip netns exec R2 ip -6 addr add 5f00:2::/128 dev lo
 ip netns exec R3 ip -6 addr add 5f00:3::/128 dev lo
+ip netns exec R3 ip -6 addr add fd00:99::1/128 dev lo
 
 # Assign link addresses
 ip netns exec R1 ip -6 addr add fd00:12::1/64 dev r1r2-r1
@@ -58,6 +66,8 @@ ip netns exec R2 ip -6 route add 5f00:1::/32 via fd00:12::1
 ip netns exec R2 ip -6 route add 5f00:3::/32 via fd00:23::3
 ip netns exec R3 ip -6 route add 5f00:1::/32 via fd00:23::2
 ip netns exec R3 ip -6 route add 5f00:2::/32 via fd00:23::2
+ip netns exec R1 ip -6 route add fd00:23::/64 via fd00:12::2
+ip netns exec R3 ip -6 route add fd00:12::/64 via fd00:23::2
 
 # Configure SRv6 endpoints
 # R2: End function
@@ -66,15 +76,15 @@ ip netns exec R2 ip -6 route add 5f00:2:0:e001::/128 \
 
 # R3: End.DT6 function
 ip netns exec R3 ip -6 route add 5f00:3:0:e000::/128 \
-    encap seg6local action End.DT6 vrftable 254 dev lo
+    encap seg6local action End.DT6 table 254 dev lo
 
 # R1: encapsulate traffic via SRv6
 ip netns exec R1 ip -6 route add fd00:99::/64 \
     encap seg6 mode encap segs 5f00:2:0:e001::,5f00:3:0:e000:: \
-    dev r1r2-r1
+    via fd00:12::2 dev r1r2-r1
 
 echo "SRv6 lab ready!"
-echo "Test: ip netns exec R1 ping6 5f00:3::"
+echo "Test: ip netns exec R1 ping -6 -I 5f00:1:: 5f00:3::"
 ```
 
 ## Option 2: Containerlab with FRRouting
@@ -145,21 +155,32 @@ run_test() {
     fi
 }
 
-# Test 1: SID reachability
-run_test "R2 End SID reachable" \
-    "ip netns exec R1 ping6 -c 2 -W 2 5f00:2:0:e001::"
+capture_srh() {
+    rm -f /tmp/test.pcap
+    ip netns exec R1 timeout 5 tcpdump -i r1r2-r1 -c 1 'ip6 proto 43' -w /tmp/test.pcap >/dev/null 2>&1 &
+    local tcpdump_pid=$!
+    sleep 1
+    ip netns exec R1 ping -6 -I 5f00:1:: -c 1 -W 2 fd00:99::1 >/dev/null 2>&1
+    local ping_rc=$?
+    wait "$tcpdump_pid"
+    local tcpdump_rc=$?
+    return $((ping_rc || tcpdump_rc))
+}
 
-# Test 2: R3 SID reachable
-run_test "R3 End.DT6 SID reachable" \
-    "ip netns exec R1 ping6 -c 2 -W 2 5f00:3:0:e000::"
+# Test 1: R2 End SID programmed
+run_test "R2 End SID installed" \
+    "ip netns exec R2 ip -6 route show 5f00:2:0:e001::/128 | grep -q 'seg6local action End'"
+
+# Test 2: R3 End.DT6 SID programmed
+run_test "R3 End.DT6 SID installed" \
+    "ip netns exec R3 ip -6 route show 5f00:3:0:e000::/128 | grep -q 'seg6local action End.DT6 table 254'"
 
 # Test 3: Service chain end-to-end
 run_test "SRv6 service chain working" \
-    "ip netns exec R1 ping6 -c 2 -W 2 fd00:99::1"
+    "ip netns exec R1 ping -6 -I 5f00:1:: -c 2 -W 2 fd00:99::1"
 
 # Test 4: SRH present in captured packets
-run_test "SRH in encapsulated packets" \
-    "ip netns exec R1 tcpdump -i r1r2-r1 -c 1 'ip6 proto 43' -w /tmp/test.pcap & sleep 1 && ip netns exec R1 ping6 -c 1 fd00:99::1"
+run_test "SRH in encapsulated packets" "capture_srh"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
