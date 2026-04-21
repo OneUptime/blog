@@ -8,7 +8,7 @@ Description: Learn how to host a static website on GCP Cloud Storage with Cloud 
 
 ---
 
-GCP Cloud Storage serves static websites via HTTP, but for HTTPS and a custom domain you need a load balancer in front. OpenTofu manages the full stack: Cloud Storage bucket, backend bucket, HTTPS load balancer, SSL certificate, and Cloud DNS records.
+GCP Cloud Storage serves static websites on custom domains via HTTP, but for HTTPS on a custom domain you need a load balancer in front. OpenTofu manages the full stack: Cloud Storage bucket, backend bucket, HTTPS load balancer, SSL certificate, and Cloud DNS records.
 
 ## Architecture
 
@@ -21,6 +21,8 @@ graph LR
 ```
 
 ## Cloud Storage Bucket
+
+Because this example uses the domain as the bucket name, verify ownership of the domain-named bucket before applying.
 
 ```hcl
 # storage.tf
@@ -188,8 +190,8 @@ output "bucket_name" {
 
 ## Best Practices
 
-- Use a global load balancer in front of the bucket rather than direct bucket website hosting - this provides HTTPS, Cloud CDN, and custom domain support.
+- Use a global load balancer in front of the bucket rather than direct bucket website hosting - this provides HTTPS and Cloud CDN for your custom domain.
 - Enable `uniform_bucket_level_access` on the storage bucket - it disables ACLs and forces use of IAM, which is easier to audit and manage.
 - Use `cache_mode = "CACHE_ALL_STATIC"` for static site assets - Cloud CDN will automatically cache assets by content type and significantly reduce origin load.
-- Google-managed SSL certificates take 10-60 minutes to provision after DNS propagates - the load balancer will return 502 errors until the certificate is ready.
-- Upload site content using the `gsutil rsync` command or Cloud Build rather than OpenTofu `google_storage_bucket_object` resources - managing hundreds of files via state is inefficient.
+- Google-managed SSL certificates can take up to 60-90 minutes to provision and propagate after DNS and load balancer configuration are visible - HTTPS might not be usable until the certificate is active.
+- Upload site content using the `gcloud storage rsync` command or Cloud Build rather than OpenTofu `google_storage_bucket_object` resources - managing hundreds of files via state is inefficient.
