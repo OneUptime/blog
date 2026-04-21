@@ -8,30 +8,31 @@ Description: A comprehensive guide to the Terraform Rancher2 provider covering c
 
 ## Introduction
 
-The Terraform Rancher2 provider exposes the full Rancher API as Terraform resources. Beyond simple projects and namespaces, it supports provisioning downstream clusters on cloud providers, managing node templates, deploying catalog apps, and configuring monitoring.
+The Terraform Rancher2 provider manages many Rancher v2 API-backed resources as Terraform resources. Beyond simple projects and namespaces, it supports provisioning downstream RKE2 and K3s clusters on supported infrastructure providers, managing machine configs, deploying catalog apps, and configuring monitoring-related resources.
 
 ## Provider Resources Overview
 
 The Rancher2 provider includes resources for:
-- Cluster provisioning (RKE, RKE2, K3s, EKS, AKS, GKE)
-- Node templates and node pools
+- Cluster provisioning (RKE2, K3s, EKS, AKS, GKE, and RKE1 on Rancher versions that still support it)
+- Machine configs and machine pools
 - Projects, namespaces, and RBAC
 - Catalog apps and Helm chart deployments
 - Secrets and registry credentials
-- Monitoring and alerting configuration
+- Monitoring-related apps and configuration
 
 ## Step 1: Provision an RKE2 Cluster
 
 ```hcl
 # rke2-cluster.tf
 
-# Node template for cloud provider (example: AWS)
+# Machine config for cloud provider (example: AWS)
 
 resource "rancher2_machine_config_v2" "worker" {
   generate_name = "worker-"
   amazonec2_config {
     ami           = "ami-0abcdef1234567890"   # Amazon Linux 2 AMI
     region        = "us-east-1"
+    zone          = "a"
     instance_type = "t3.medium"
     vpc_id        = "vpc-12345678"
     subnet_id     = "subnet-12345678"
@@ -41,14 +42,14 @@ resource "rancher2_machine_config_v2" "worker" {
 
 # Provision a complete RKE2 cluster
 resource "rancher2_cluster_v2" "production" {
-  name              = "production"
-  kubernetes_version = "v1.28.8+rke2r1"
-  cloud_credential_secret_name = rancher2_cloud_credential.aws.name
+  name                         = "production"
+  kubernetes_version           = "<rke2-version-supported-by-your-rancher-version>"
+  cloud_credential_secret_name = rancher2_cloud_credential.aws.id
 
   rke_config {
     machine_pools {
       name                         = "control-plane"
-      cloud_credential_secret_name = rancher2_cloud_credential.aws.name
+      cloud_credential_secret_name = rancher2_cloud_credential.aws.id
       control_plane_role           = true
       etcd_role                    = true
       worker_role                  = false
@@ -62,7 +63,7 @@ resource "rancher2_cluster_v2" "production" {
 
     machine_pools {
       name                         = "workers"
-      cloud_credential_secret_name = rancher2_cloud_credential.aws.name
+      cloud_credential_secret_name = rancher2_cloud_credential.aws.id
       control_plane_role           = false
       etcd_role                    = false
       worker_role                  = true
@@ -95,17 +96,26 @@ resource "rancher2_cloud_credential" "aws" {
 ```hcl
 # apps.tf
 
-# Deploy cert-manager from the catalog
+# Register the Jetstack Helm chart repository as a Rancher catalog
+resource "rancher2_catalog_v2" "jetstack" {
+  cluster_id = rancher2_cluster_v2.production.cluster_v1_id
+  name       = "jetstack"
+  url        = "https://charts.jetstack.io"
+}
+
+# Deploy cert-manager from the Jetstack catalog
 resource "rancher2_app_v2" "cert_manager" {
   cluster_id    = rancher2_cluster_v2.production.cluster_v1_id
   name          = "cert-manager"
   namespace     = "cert-manager"
-  repo_name     = "rancher-stable"
+  repo_name     = rancher2_catalog_v2.jetstack.name
   chart_name    = "cert-manager"
-  chart_version = "1.14.4"
+  chart_version = "v1.20.2"
 
   values = yamlencode({
-    installCRDs = true
+    crds = {
+      enabled = true
+    }
     replicaCount = 2
   })
 }
@@ -115,6 +125,11 @@ resource "rancher2_app_v2" "cert_manager" {
 
 ```hcl
 # registry.tf
+resource "rancher2_project" "myapp" {
+  name       = "myapp"
+  cluster_id = rancher2_cluster_v2.production.cluster_v1_id
+}
+
 resource "rancher2_registry" "dockerhub" {
   name       = "dockerhub-credentials"
   project_id = rancher2_project.myapp.id
@@ -144,4 +159,4 @@ terraform output -raw kubeconfig > ~/.kube/production-config
 
 ## Conclusion
 
-The Rancher2 Terraform provider covers the complete Rancher management plane as code. For large environments, organize resources into separate Terraform modules per cluster and use a CI/CD pipeline with remote state locking to safely manage concurrent applies across teams.
+The Rancher2 Terraform provider covers much of the Rancher management plane as code. For large environments, organize resources into separate Terraform modules per cluster and use a CI/CD pipeline with remote state locking to safely manage concurrent applies across teams.
