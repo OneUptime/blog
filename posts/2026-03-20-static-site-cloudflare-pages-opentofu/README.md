@@ -8,7 +8,7 @@ Description: Learn how to configure Cloudflare Pages projects, custom domains, a
 
 ---
 
-Cloudflare Pages provides a global edge network for static sites with automatic builds from Git, preview deployments for every PR, and zero-config HTTPS. OpenTofu manages the Pages project, custom domain bindings, and environment variables.
+Cloudflare Pages provides a global edge network for static sites with automatic builds from Git, preview deployments for pull requests from the connected repository, and zero-config HTTPS. OpenTofu manages the Pages project, custom domain bindings, and environment variables.
 
 ## Architecture
 
@@ -46,7 +46,7 @@ resource "cloudflare_pages_project" "main" {
     root_dir            = ""  # Root of repo
   }
 
-  # Connect to GitHub/GitLab repository
+  # Connect to a GitHub repository
   source {
     type = "github"
     config {
@@ -96,6 +96,12 @@ resource "cloudflare_pages_domain" "main" {
   domain       = var.domain_name
 }
 
+resource "cloudflare_pages_domain" "www" {
+  account_id   = var.cloudflare_account_id
+  project_name = cloudflare_pages_project.main.name
+  domain       = "www.${var.domain_name}"
+}
+
 # DNS record pointing to Pages project
 data "cloudflare_zone" "main" {
   name = var.domain_name
@@ -105,7 +111,7 @@ resource "cloudflare_record" "pages_apex" {
   zone_id = data.cloudflare_zone.main.id
   name    = "@"
   type    = "CNAME"
-  value   = cloudflare_pages_project.main.subdomain
+  content = cloudflare_pages_project.main.subdomain
   proxied = true  # Through Cloudflare proxy for DDoS protection + caching
   ttl     = 1     # Auto TTL when proxied
 }
@@ -114,7 +120,7 @@ resource "cloudflare_record" "pages_www" {
   zone_id = data.cloudflare_zone.main.id
   name    = "www"
   type    = "CNAME"
-  value   = var.domain_name
+  content = cloudflare_pages_project.main.subdomain
   proxied = true
   ttl     = 1
 }
@@ -173,7 +179,7 @@ resource "cloudflare_web_analytics_site" "main" {
 }
 
 output "web_analytics_tag" {
-  description = "Add this tag to your HTML for Web Analytics"
+  description = "Cloudflare Web Analytics site tag"
   value       = cloudflare_web_analytics_site.main.site_tag
 }
 ```
@@ -194,8 +200,8 @@ output "production_url" {
 
 ## Best Practices
 
-- Set `proxied = true` on the DNS CNAME record to route traffic through Cloudflare's proxy - this enables DDoS protection, caching, and WAF without additional configuration.
-- Use the `secrets` field in `deployment_configs` for API keys and sensitive values - they're stored encrypted and not exposed in logs or the dashboard.
+- Set `proxied = true` on the DNS CNAME record to route traffic through Cloudflare's proxy - this enables DDoS protection, caching, WAF, and other security/performance features.
+- Use the `secrets` field in `deployment_configs` for API keys and sensitive values - Cloudflare stores them encrypted and hides their values in the dashboard after creation; still protect your state file.
 - Configure `preview_branch_includes` to only build specific branches as previews rather than all branches - this prevents accidental exposure of unfinished work.
 - Leverage Cloudflare Pages' built-in preview deployments for PR review workflows instead of managing separate staging infrastructure.
 - Use `pr_comments_enabled = true` to automatically comment on PRs with preview deployment URLs - this improves code review workflows significantly.
