@@ -14,25 +14,26 @@ SolarWinds NPM provides enterprise-grade IPv6 monitoring capabilities including 
 
 ```text
 Requirements:
-- SolarWinds NPM 12.x or later (for full IPv6 support)
+- Supported SolarWinds NPM release on a SolarWinds Platform version that supports IPv6
 - Polling engine with IPv6 connectivity
 - SNMP v2c or v3 configured on IPv6 devices
 - DNS AAAA records for clean hostname resolution
 - Additional Polling Engine (APE) in IPv6-only segments
 
 Verify IPv6 capability:
-Settings > All Settings > Polling Settings
-Check IPv6 Polling is enabled
+- Confirm the SolarWinds Platform server or polling engine has IPv6 enabled
+- Test reachability from the polling engine to the device's IPv6 address
+- Verify DNS AAAA resolution if you monitor by hostname
 ```
 
 ## Adding IPv6 Nodes to SolarWinds
 
-```sql
+```text
 Method 1: Manual Add
-1. My Dashboards > Network > Manage Nodes > Add Node
-2. Enter IPv6 address: 2001:db8::router1
+1. Settings > Manage Nodes > Add Node
+2. Enter IPv6 address: 2001:db8:100::1
    (SolarWinds accepts IPv6 addresses directly)
-3. Select Polling Method: SNMP
+3. Select Polling Method: Most Devices: SNMP and ICMP
 4. SNMP Version: v2c
    Community: public
    OR
@@ -44,21 +45,23 @@ Method 1: Manual Add
 6. Add Node
 
 Method 2: Network Discovery
-1. Settings > Network Discovery > New Discovery
-2. Add IPv6 Subnets: 2001:db8:network::/48
-   (Note: discovery of /64 is impractical - use subnets)
+1. Settings > Network Discovery > Add New Discovery
+2. Use IP Addresses / Specific Nodes and add targeted IPv6 addresses or hostnames:
+   2001:db8:100::1
+   2001:db8:100::2
+   (SolarWinds Platform documentation lists CIDR notation as unsupported for IPv6 addresses, so avoid broad IPv6 subnet scans)
 3. Configure SNMP credentials for IPv6 devices
 4. Run discovery
 ```
 
 ## IPv6 Interface Monitoring in NPM
 
-```sql
+```text
 After node is added:
 1. Node Details page > Interfaces tab
 2. Select interfaces to monitor
 3. Interface statistics collected via SNMP over IPv6:
-   - InOctets/OutOctets (64-bit counters)
+   - ifHCInOctets/ifHCOutOctets (64-bit counters, when available)
    - InErrors/OutErrors
    - Interface utilization %
    - Operational status
@@ -66,8 +69,8 @@ After node is added:
 For IPv6-specific interface stats:
 1. Manage Nodes > Select IPv6 device
 2. Add Custom SNMP Pollers:
-   OID: 1.3.6.1.2.1.4.31.1.1.3.2 (IPv6 packets in)
-   OID: 1.3.6.1.2.1.4.31.1.1.4.2 (IPv6 packets out)
+   OID: 1.3.6.1.2.1.4.31.1.1.4.2 (ipSystemStatsHCInReceives for IPv6)
+   OID: 1.3.6.1.2.1.4.31.1.1.31.2 (ipSystemStatsHCOutTransmits for IPv6)
 ```
 
 ## SolarWinds NCM (Network Configuration Manager) for IPv6
@@ -77,7 +80,7 @@ Configure NCM for IPv6 device management:
 1. Settings > NCM Settings
 2. Enable SSH for device connection
 3. Configure credential profiles with IPv6:
-   - SSH to 2001:db8::device
+   - SSH to 2001:db8:100::10
    - Telnet over IPv6 (not recommended)
 
 NCM can back up configs from:
@@ -109,12 +112,13 @@ Custom Properties for IPv6:
 
 ```text
 SolarWinds NetPath with IPv6:
-1. My Dashboards > NetPath > New Service
-2. Target: [2001:db8::destination]:80
-3. Protocol: TCP or UDP
-4. NetPath traces path to IPv6 destination
+1. My Dashboards > Network > NetPath Services > Create New Service
+2. Target: 2001:db8:100::20
+3. Port: 80
+4. Protocol: TCP
+5. NetPath traces path to IPv6 destination
 
-Network Atlas/Maps:
+Intelligent Maps:
 1. Add IPv6 nodes to network maps
 2. Color-code by IP version for visual distinction
 3. Map shows real-time status of IPv6 infrastructure
@@ -125,21 +129,23 @@ Network Atlas/Maps:
 ```powershell
 # Query SolarWinds API for IPv6 nodes (PowerShell)
 
+Import-Module SwisPowerShell
+
 $swis = Connect-Swis -Hostname localhost -Username admin -Password pass
 
 # Get all IPv6 nodes
 $query = "SELECT NodeID, Caption, IPAddress, Status
           FROM Orion.Nodes
-          WHERE IPAddress LIKE '2001:%' OR IPAddress LIKE 'fd%'"
+          WHERE IPAddressType = 'IPv6'"
 
 $results = Get-SwisData $swis $query
 $results | Format-Table
 
 # Get IPv6 interface data
-$intQuery = "SELECT n.Caption, i.Name, i.InBitsPerSec, i.OutBitsPerSec
+$intQuery = "SELECT n.Caption, i.Name, i.Inbps AS InBitsPerSec, i.Outbps AS OutBitsPerSec
              FROM Orion.Nodes n
              JOIN Orion.NPM.Interfaces i ON n.NodeID = i.NodeID
-             WHERE n.IPAddress LIKE '2001:%'"
+             WHERE n.IPAddressType = 'IPv6'"
 
 Get-SwisData $swis $intQuery | Format-Table
 ```
