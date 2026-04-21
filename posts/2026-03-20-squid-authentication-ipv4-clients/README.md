@@ -60,20 +60,21 @@ Trusted servers (monitoring, backup agents) can bypass authentication.
 ```squid
 # Trusted internal monitoring servers that don't need authentication
 acl trusted_hosts src 10.0.0.5/32 10.0.0.6/32
+acl localnet src 192.168.1.0/24
 
 # Allow trusted hosts without authentication
 http_access allow trusted_hosts
 
-# Require authentication for everyone else
+# Require authentication for other internal IPv4 clients
 acl authenticated proxy_auth REQUIRED
-http_access allow authenticated
+http_access allow localnet authenticated
 http_access deny all
 ```
 
 ## Testing Authentication
 
 ```bash
-# Request without credentials - should return 407 Proxy Authentication Required
+# Request from an allowed IPv4 client without credentials - should return 407 Proxy Authentication Required
 curl -x http://192.168.1.10:3128 http://example.com
 
 # Request with valid credentials
@@ -88,9 +89,9 @@ curl -x http://baduser:wrongpass@192.168.1.10:3128 http://example.com
 By default Squid logs the authenticated username in the access log.
 
 ```bash
-# View access log - third field is the authenticated username
+# View access log - with the default squid logformat, the username appears after the URL
 tail -f /var/log/squid/access.log
-# Example: 1710844800.000  100 192.168.1.5 TCP_MISS/200 ... user1 DIRECT/...
+# Example: 1710844800.000  100 192.168.1.5 TCP_MISS/200 1024 GET http://example.com/ user1 DIRECT/93.184.216.34 text/html
 ```
 
 ## Reloading Configuration
@@ -108,4 +109,4 @@ squid -k reconfigure
 - `auth_param basic program /usr/lib/squid/basic_ncsa_auth` sets the authentication helper.
 - `acl authenticated proxy_auth REQUIRED` requires any authenticated user.
 - Use `credentialsttl` to reduce repeated authentication overhead for busy clients.
-- Trusted IPv4 addresses can be exempted from authentication using `src` ACLs placed before the `authenticated` ACL.
+- Trusted IPv4 addresses can be exempted from authentication using `src` ACLs with `http_access` allow rules placed before authentication-required rules.
