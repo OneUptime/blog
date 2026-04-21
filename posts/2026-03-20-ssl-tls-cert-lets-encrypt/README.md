@@ -8,7 +8,7 @@ Description: Learn how to use Certbot to obtain and install a free SSL/TLS certi
 
 ## Why Let's Encrypt?
 
-Let's Encrypt is a free, automated, and open Certificate Authority that issues 90-day SSL/TLS certificates. Combined with Certbot (the official ACME client), the entire process-issuance, installation, and renewal-is fully automated.
+Let's Encrypt is a free, automated, and open Certificate Authority that issues default 90-day SSL/TLS certificates. Combined with Certbot (the recommended ACME client), the entire process-issuance, installation, and renewal-can be automated.
 
 ## Step 1: Install Certbot
 
@@ -16,7 +16,7 @@ Let's Encrypt is a free, automated, and open Certificate Authority that issues 9
 # Ubuntu/Debian with Snap (recommended)
 
 sudo snap install --classic certbot
-sudo ln -s /snap/bin/certbot /usr/bin/certbot
+sudo ln -s /snap/bin/certbot /usr/local/bin/certbot
 
 # Or via apt (older method)
 sudo apt-get install -y certbot python3-certbot-nginx python3-certbot-apache
@@ -31,17 +31,18 @@ Certbot can automatically configure Nginx:
 sudo certbot --nginx -d example.com -d www.example.com
 
 # Interactive mode - you'll be prompted for:
-# - Email address (for expiry notifications)
+# - Email address, if requested, for account contact
 # - Agree to terms of service
 # - Share email with EFF (optional)
-# - Redirect HTTP to HTTPS (choose option 2 for HTTPS redirect)
+# Certbot enables HTTP-to-HTTPS redirects by default for install/run;
+# add --no-redirect if you do not want that redirect.
 ```
 
 Certbot will:
-1. Create a temporary ACME challenge file
+1. Complete an ACME HTTP-01 challenge on port 80
 2. Request the certificate from Let's Encrypt
 3. Automatically update your Nginx configuration
-4. Set up automatic renewal
+4. Save renewal configuration for the preinstalled Certbot renewal job
 
 ## Step 3: Obtain a Certificate for Apache
 
@@ -95,7 +96,7 @@ server {
 
 ## Step 6: Verify Automatic Renewal
 
-Let's Encrypt certificates expire after 90 days. Certbot sets up a cron job or systemd timer for automatic renewal:
+Let's Encrypt default certificates currently expire after 90 days. Certbot packages set up a cron job or systemd timer for automatic renewal:
 
 ```bash
 # Verify the renewal timer is active
@@ -125,6 +126,8 @@ For `*.example.com`, use DNS-01 challenge:
 
 ```bash
 # Wildcard certificates require DNS challenge
+# Note: --manual certificates do not auto-renew unless you automate
+# the challenge with --manual-auth-hook and --manual-cleanup-hook.
 sudo certbot certonly \
   --manual \
   --preferred-challenges dns \
@@ -135,8 +138,18 @@ sudo certbot certonly \
 # _acme-challenge.example.com TXT "randomvalue123..."
 
 # Or use a DNS plugin for automated DNS challenge:
-# For Cloudflare:
-sudo apt-get install python3-certbot-dns-cloudflare
+# For Cloudflare with the snap installation:
+sudo snap set certbot trust-plugin-with-root=ok
+sudo snap install certbot-dns-cloudflare
+
+# For apt-based Certbot installations instead:
+# sudo apt-get install python3-certbot-dns-cloudflare
+
+# Create /etc/letsencrypt/cloudflare.ini with:
+# dns_cloudflare_api_token = your_cloudflare_api_token
+# then restrict permissions:
+sudo chmod 600 /etc/letsencrypt/cloudflare.ini
+
 sudo certbot certonly \
   --dns-cloudflare \
   --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini \
@@ -149,7 +162,7 @@ sudo certbot certonly \
 Set up alerts before the certificate expires:
 
 ```bash
-# Check days remaining
+# Check expiration date
 openssl x509 -enddate -noout -in /etc/letsencrypt/live/example.com/cert.pem
 
 # Script to alert if < 30 days remaining
@@ -167,4 +180,4 @@ fi
 
 ## Conclusion
 
-Let's Encrypt with Certbot provides free, automated SSL/TLS certificates with zero ongoing manual effort. Use `certbot --nginx` or `certbot --apache` for automatic web server configuration, verify automatic renewal with `certbot renew --dry-run`, and monitor expiry dates to catch any renewal failures before they cause outages.
+Let's Encrypt with Certbot provides free, automated SSL/TLS certificates with minimal ongoing manual effort when renewals are configured correctly. Use `certbot --nginx` or `certbot --apache` for automatic web server configuration, verify automatic renewal with `certbot renew --dry-run`, and monitor expiry dates to catch any renewal failures before they cause outages.
