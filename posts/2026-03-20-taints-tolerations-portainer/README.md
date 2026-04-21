@@ -8,19 +8,19 @@ Description: Learn how to configure Kubernetes taints and tolerations through Po
 
 ## Introduction
 
-Kubernetes taints and tolerations work together to control which pods can be scheduled on which nodes. Taints repel pods from nodes, while tolerations allow specific pods to be scheduled on tainted nodes. Portainer provides a UI to manage these settings.
+Kubernetes taints and tolerations work together to control which pods can be scheduled on which nodes. Taints repel pods from nodes, while tolerations allow specific pods to be scheduled on tainted nodes. Portainer provides a UI to manage node taints and can deploy manifests that define pod tolerations.
 
 ## Understanding Taints and Tolerations
 
 - **Taint**: Applied to a node to repel pods that don't tolerate it
-- **Toleration**: Applied to a pod to allow it to be scheduled on tainted nodes
+- **Toleration**: Applied to a pod to allow it to be scheduled on nodes with matching taints
 - **Effects**: `NoSchedule`, `PreferNoSchedule`, `NoExecute`
 
 ## Adding a Taint to a Node via Portainer
 
-1. In Portainer, navigate to **Cluster** > **Nodes**
-2. Click on the node you want to taint
-3. Scroll to **Taints** section
+1. In Portainer, navigate to **Cluster** > **Details**
+2. Scroll to **Nodes** and click on the node you want to taint
+3. Scroll to the **Taints** section
 4. Click **Add taint**
 5. Enter:
    - **Key**: `dedicated`
@@ -35,15 +35,17 @@ kubectl taint nodes node1 dedicated=gpu-workloads:NoSchedule
 
 ## Adding Tolerations to a Deployment via Portainer
 
-When deploying a workload in Portainer:
+Portainer's form-based placement rules are based on node labels. To add a Kubernetes toleration, deploy the workload from a manifest in Portainer:
 
-1. Go to **Applications** > **Add application**
-2. Scroll to **Placement** section
-3. Add a toleration:
+1. Go to **Applications** > **Create from code**
+2. Choose **Manifest**
+3. Add the toleration under `spec.template.spec.tolerations` in the Deployment manifest:
    - **Key**: `dedicated`
    - **Operator**: `Equal`
    - **Value**: `gpu-workloads`
    - **Effect**: `NoSchedule`
+
+A toleration lets the pod run on a matching tainted node, but it does not force the pod onto that node. If the workload must run only on those nodes, also use a matching node label with `nodeSelector` or node affinity.
 
 ## Defining Tolerations in YAML
 
@@ -114,4 +116,4 @@ kubectl get pods -o wide --field-selector spec.nodeName=node1
 
 ## Conclusion
 
-Taints and tolerations in Portainer give you fine-grained control over workload placement in Kubernetes clusters. Use them to dedicate nodes for specific purposes, enforce hardware affinity, and isolate workloads by team or environment.
+Using Portainer with Kubernetes taints and tolerations gives you fine-grained control over workload placement in Kubernetes clusters. Use them to keep general workloads off dedicated nodes, combine them with labels or affinity for hardware-specific placement, and isolate workloads by team or environment.
