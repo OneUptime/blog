@@ -27,7 +27,7 @@ Apply a rate limit and verify iperf3 throughput matches:
 
 ```bash
 # On client: Apply 10 Mbps TBF limit
-sudo tc qdisc add dev eth0 root tbf rate 10mbit burst 32kbit latency 400ms
+sudo tc qdisc replace dev eth0 root tbf rate 10mbit burst 32kb latency 400ms
 
 # Run iperf3 test (should show ≈ 10 Mbps)
 iperf3 -c <SERVER_IP> -t 30
@@ -38,21 +38,25 @@ iperf3 -c <SERVER_IP> -t 30
 
 # Check tc stats to confirm overlimits
 sudo tc -s qdisc show dev eth0
-# Look for: overlimits > 0 (packets delayed or dropped by TBF)
+# Look for: overlimits > 0 (packets shaped/delayed by TBF; drops are reported separately)
 ```
 
 ## Test 2: Verify HTB Priority Classes
 
 ```bash
 # Set up HTB with two classes
-sudo tc qdisc add dev eth0 root handle 1: htb default 20
+sudo tc qdisc replace dev eth0 root handle 1: htb default 20
 sudo tc class add dev eth0 parent 1: classid 1:1 htb rate 20mbit
 sudo tc class add dev eth0 parent 1:1 classid 1:10 htb rate 15mbit ceil 20mbit prio 1
 sudo tc class add dev eth0 parent 1:1 classid 1:20 htb rate 5mbit ceil 20mbit prio 2
 
 # Filter: traffic to port 5201 (iperf3 default) → high priority class
 sudo tc filter add dev eth0 protocol ip parent 1:0 prio 1 u32 \
+  match ip protocol 6 0xff \
   match ip dport 5201 0xffff flowid 1:10
+
+# On server: start a second iperf3 instance for the background flow
+iperf3 -s -p 5202 &
 
 # Run competing flows: priority flow (port 5201) and background flow (port 5202)
 iperf3 -c <SERVER_IP> -t 30 -p 5201 &  # Priority
@@ -67,7 +71,7 @@ sudo tc -s class show dev eth0
 
 ```bash
 # Apply netem latency for realistic conditions
-sudo tc qdisc add dev eth0 root netem delay 20ms 5ms rate 50mbit
+sudo tc qdisc replace dev eth0 root netem delay 20ms 5ms rate 50mbit
 
 # UDP test with iperf3 (measures jitter and loss)
 iperf3 -c <SERVER_IP> -u -b 10M -t 30 -J
@@ -85,8 +89,7 @@ iperf3 -c <SERVER_IP> -u -b 10M -t 30 -J
 iperf3 -c <SERVER_IP> --bidir -t 30
 
 # Apply CAKE and re-test
-sudo tc qdisc del dev eth0 root
-sudo tc qdisc add dev eth0 root cake bandwidth 50mbit diffserv4
+sudo tc qdisc replace dev eth0 root cake bandwidth 50mbit diffserv4
 
 iperf3 -c <SERVER_IP> --bidir -t 30
 ```
@@ -108,9 +111,9 @@ iperf3 -c <SERVER_IP> -P 4 -t 30
 
 | Result | Meaning | Action |
 |---|---|---|
-| Throughput < limit | QoS working correctly | None needed |
+| Throughput ≈ limit | Rate limit is being enforced | None needed |
 | Throughput > limit | Policy not applied | Check tc filter hits |
 | High jitter | Queue depth too large | Reduce burst/latency |
-| Priority flow not faster | Filter not matching | Verify filter with `tc -s filter show` |
+| Priority flow not faster | Filter not matching | Verify filter with `tc -s filter show dev eth0 parent 1:0` |
 
 Systematic testing with iperf3 closes the loop between policy configuration and actual network behavior.
