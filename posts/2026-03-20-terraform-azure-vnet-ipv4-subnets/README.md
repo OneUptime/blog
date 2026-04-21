@@ -52,7 +52,7 @@ resource "azurerm_subnet" "data" {
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.128.30.0/24"]
 
-  # Service endpoint for Azure SQL
+  # Service endpoints for Azure SQL and Storage
   service_endpoints = ["Microsoft.Sql", "Microsoft.Storage"]
 }
 
@@ -86,11 +86,29 @@ resource "azurerm_subnet" "aks_nodes" {
 ## VNet Peering
 
 ```hcl
+resource "azurerm_virtual_network" "secondary" {
+  name                = "vnet-secondary"
+  address_space       = ["10.129.0.0/16"]
+  location            = azurerm_resource_group.networking.location
+  resource_group_name = azurerm_resource_group.networking.name
+}
+
 resource "azurerm_virtual_network_peering" "main_to_secondary" {
   name                      = "peer-main-to-secondary"
   resource_group_name       = azurerm_resource_group.networking.name
   virtual_network_name      = azurerm_virtual_network.main.name
   remote_virtual_network_id = azurerm_virtual_network.secondary.id
+
+  allow_virtual_network_access = true
+  allow_forwarded_traffic      = true
+  allow_gateway_transit        = false
+}
+
+resource "azurerm_virtual_network_peering" "secondary_to_main" {
+  name                      = "peer-secondary-to-main"
+  resource_group_name       = azurerm_resource_group.networking.name
+  virtual_network_name      = azurerm_virtual_network.secondary.name
+  remote_virtual_network_id = azurerm_virtual_network.main.id
 
   allow_virtual_network_access = true
   allow_forwarded_traffic      = true
@@ -116,4 +134,4 @@ output "subnet_ids" {
 
 ## Conclusion
 
-Azure VNet Terraform configuration defines address space, then subnets as separate resources referencing the VNet. Use service endpoints to restrict Azure PaaS service access to specific subnets, subnet delegation for managed Azure services (AKS, App Service), and the reserved `GatewaySubnet` name for VPN/ExpressRoute gateways. Subnets cannot overlap within a VNet.
+Azure VNet Terraform configuration defines address space, then subnets as separate resources referencing the VNet. Use service endpoints with service-side network rules to restrict Azure PaaS service access to specific subnets, subnet delegation for managed Azure services (AKS, App Service), and the reserved `GatewaySubnet` name for VPN/ExpressRoute gateways. Subnets cannot overlap within a VNet.
