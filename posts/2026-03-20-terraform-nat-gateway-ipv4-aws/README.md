@@ -8,7 +8,7 @@ Description: Create AWS NAT Gateways for IPv4 using Terraform to allow private s
 
 ## Introduction
 
-AWS NAT Gateways enable private subnet resources (EC2, ECS, Lambda in VPC) to initiate outbound IPv4 connections to the internet while remaining unreachable from the outside. Each NAT Gateway requires an Elastic IP and resides in a public subnet.
+AWS NAT Gateways enable private subnet resources (EC2, ECS, Lambda in VPC) to initiate outbound IPv4 connections to the internet while remaining unreachable from the outside. Each public zonal NAT Gateway requires an Elastic IP and resides in a public subnet.
 
 ## NAT Gateway with Elastic IP
 
@@ -65,7 +65,7 @@ resource "aws_route_table_association" "private_a" {
 ## HA NAT Gateway (One per AZ)
 
 ```hcl
-# For high availability, one NAT Gateway per AZ
+# For high availability with zonal NAT Gateways, one NAT Gateway per AZ
 
 resource "aws_eip" "nat" {
   count  = length(local.azs)
@@ -124,9 +124,10 @@ resource "aws_nat_gateway" "single" {
   count         = var.single_nat_gateway ? 1 : length(local.azs)
   allocation_id = aws_eip.nat[count.index].id
   subnet_id     = aws_subnet.public[count.index].id
+  depends_on    = [aws_internet_gateway.main]
 }
 ```
 
 ## Conclusion
 
-AWS NAT Gateways in Terraform require an Elastic IP allocation, placement in a public subnet, and a private route table with a default route via the NAT gateway. Deploy one NAT Gateway per AZ for production HA. Use `single_nat_gateway = true` for dev/test environments to reduce the ~$32/month per NAT Gateway cost.
+Public zonal AWS NAT Gateways in Terraform require an Elastic IP allocation, placement in a public subnet, and a private route table with a default route via the NAT gateway. Deploy one NAT Gateway per AZ for production HA with zonal NAT Gateways. Use `single_nat_gateway = true` for dev/test environments to reduce hourly NAT Gateway charges (for example, about $33/month at $0.045/hour, before data processing, data transfer, and public IPv4 address charges).
