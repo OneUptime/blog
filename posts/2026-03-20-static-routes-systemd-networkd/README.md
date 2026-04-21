@@ -30,11 +30,11 @@ Gateway=192.168.1.1
 DNS=8.8.8.8
 
 [Route]
-Gateway=10.10.0.1
+Gateway=192.168.1.254
 Destination=10.20.0.0/16
 
 [Route]
-Gateway=10.10.0.1
+Gateway=192.168.1.254
 Destination=172.16.0.0/12
 ```
 
@@ -63,12 +63,12 @@ Use the `Metric=` option to control route preference (lower metric = higher prio
 ```ini
 [Route]
 Gateway=192.168.1.1
-Destination=default
+Destination=0.0.0.0/0
 Metric=100
 
 [Route]
-Gateway=192.168.2.1
-Destination=default
+Gateway=192.168.1.254
+Destination=0.0.0.0/0
 Metric=200
 ```
 
@@ -108,7 +108,7 @@ ip route get 10.20.5.10
 Remove the `[Route]` section from the `.network` file and restart systemd-networkd. To temporarily remove without editing files:
 
 ```bash
-sudo ip route del 10.20.0.0/16 via 10.10.0.1
+sudo ip route del 10.20.0.0/16 via 192.168.1.254
 ```
 
 This will be reverted after the next networkd restart.
