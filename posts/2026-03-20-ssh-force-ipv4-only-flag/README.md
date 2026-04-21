@@ -87,7 +87,7 @@ ssh -4 -v user@host.example.com 2>&1 | grep -E "Connecting|IPv|address"
 ssh -4 -v user@host.example.com  # IPv4 attempt
 ssh -6 -v user@host.example.com  # IPv6 attempt
 
-# Use curl to check what IP resolves to
+# Use curl to check HTTP connectivity over each address family
 curl -4 http://host.example.com/  # Force IPv4
 curl -6 http://host.example.com/  # Force IPv6
 ```
