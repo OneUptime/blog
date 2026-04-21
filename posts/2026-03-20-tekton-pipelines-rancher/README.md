@@ -8,7 +8,7 @@ Description: Learn how to install Tekton Pipelines on a Rancher-managed Kubernet
 
 ---
 
-Tekton is a Kubernetes-native CI/CD framework that runs pipelines as Kubernetes resources. On Rancher, you can deploy Tekton via Helm and manage pipelines alongside your workloads.
+Tekton is a Kubernetes-native CI/CD framework that runs pipelines as Kubernetes resources. On a Rancher-managed cluster, you can install Tekton with the official release manifests and manage pipelines alongside your workloads.
 
 ---
 
@@ -18,18 +18,20 @@ Tekton is a Kubernetes-native CI/CD framework that runs pipelines as Kubernetes 
 # Install Tekton Pipelines using kubectl
 
 kubectl apply --filename \
-  https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
+  https://infra.tekton.dev/tekton-releases/pipeline/latest/release.yaml
 
 # Install Tekton Triggers (for webhook-triggered pipelines)
 kubectl apply --filename \
-  https://storage.googleapis.com/tekton-releases/triggers/latest/release.yaml
+  https://infra.tekton.dev/tekton-releases/triggers/latest/release.yaml
+kubectl apply --filename \
+  https://infra.tekton.dev/tekton-releases/triggers/latest/interceptors.yaml
 
 # Install Tekton Dashboard for UI
 kubectl apply --filename \
-  https://storage.googleapis.com/tekton-releases/dashboard/latest/release.yaml
+  https://infra.tekton.dev/tekton-releases/dashboard/latest/release.yaml
 
 # Verify all Tekton pods are running
-kubectl get pods -n tekton-pipelines
+kubectl get pods --namespace tekton-pipelines --watch
 ```
 
 ---
@@ -38,9 +40,8 @@ kubectl get pods -n tekton-pipelines
 
 ```bash
 # Install tkn CLI
-curl -LO https://github.com/tektoncd/cli/releases/latest/download/tkn_Linux_x86_64.tar.gz
-tar xvzf tkn_Linux_x86_64.tar.gz
-sudo mv tkn /usr/local/bin/
+curl -LO https://github.com/tektoncd/cli/releases/download/v0.44.0/tkn_0.44.0_Linux_x86_64.tar.gz
+sudo tar xvzf tkn_0.44.0_Linux_x86_64.tar.gz -C /usr/local/bin/ tkn
 
 # Verify
 tkn version
@@ -48,10 +49,40 @@ tkn version
 
 ---
 
-## Step 3: Create a Pipeline Task
+## Step 3: Create Pipeline Tasks
 
 ```yaml
 # build-task.yaml
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: git-clone
+  namespace: tekton-pipelines
+spec:
+  params:
+    - name: url
+      type: string
+    - name: revision
+      type: string
+      default: main
+    - name: subdirectory
+      type: string
+      default: source
+  workspaces:
+    - name: output
+  steps:
+    - name: clone
+      image: alpine/git:latest
+      script: |
+        #!/bin/sh
+        set -eu
+
+        checkout_dir="$(workspaces.output.path)/$(params.subdirectory)"
+        rm -rf "$checkout_dir"
+        git clone "$(params.url)" "$checkout_dir"
+        cd "$checkout_dir"
+        git checkout "$(params.revision)"
+---
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
@@ -64,7 +95,7 @@ spec:
       description: The image to build and push
     - name: context
       type: string
-      default: "."
+      default: source
   workspaces:
     - name: source
       description: The git repository source
@@ -86,6 +117,18 @@ spec:
         items:
           - key: .dockerconfigjson
             path: config.json
+```
+
+```bash
+# Create the registry credentials used by the Kaniko step
+kubectl create secret docker-registry registry-credentials \
+  --docker-server=ghcr.io \
+  --docker-username=<github-username> \
+  --docker-password=<github-token> \
+  --namespace tekton-pipelines \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl apply -f build-task.yaml
 ```
 
 ---
@@ -114,7 +157,6 @@ spec:
     - name: clone
       taskRef:
         name: git-clone
-        kind: ClusterTask
       params:
         - name: url
           value: $(params.repo-url)
@@ -134,6 +176,10 @@ spec:
       workspaces:
         - name: source
           workspace: shared-workspace
+```
+
+```bash
+kubectl apply -f pipeline.yaml
 ```
 
 ---
@@ -166,10 +212,10 @@ spec:
 ```
 
 ```bash
-kubectl apply -f pipeline-run.yaml
+kubectl create -f pipeline-run.yaml
 
 # Watch the pipeline run
-tkn pipelinerun logs -f -n tekton-pipelines
+tkn pipelinerun logs --last -f -n tekton-pipelines
 ```
 
 ---
@@ -211,12 +257,77 @@ spec:
                 resources:
                   requests:
                     storage: 1Gi
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: pipeline-trigger-binding
+  namespace: tekton-pipelines
+spec:
+  params:
+    - name: gitrepourl
+      value: $(body.repository.clone_url)
+    - name: gitrevision
+      value: $(body.after)
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tekton-triggers-sa
+  namespace: tekton-pipelines
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tekton-triggers-sa-binding
+  namespace: tekton-pipelines
+subjects:
+  - kind: ServiceAccount
+    name: tekton-triggers-sa
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tekton-triggers-eventlistener-roles
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tekton-triggers-sa-clusterbinding
+subjects:
+  - kind: ServiceAccount
+    name: tekton-triggers-sa
+    namespace: tekton-pipelines
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tekton-triggers-eventlistener-clusterroles
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: pipeline-event-listener
+  namespace: tekton-pipelines
+spec:
+  serviceAccountName: tekton-triggers-sa
+  triggers:
+    - name: github-push-trigger
+      bindings:
+        - ref: pipeline-trigger-binding
+      template:
+        ref: pipeline-trigger-template
+```
+
+```bash
+kubectl apply -f trigger-template.yaml
+
+# For local testing. Use an Ingress or LoadBalancer URL for real Git provider webhooks.
+kubectl port-forward service/el-pipeline-event-listener 8080:8080 -n tekton-pipelines
 ```
 
 ---
 
 ## Best Practices
 
-- Use Tekton ClusterTasks for reusable steps like `git-clone` and `kaniko-build` instead of writing custom tasks for common operations.
-- Always use workspaces with `volumeClaimTemplate` for pipeline runs - this ensures each run gets its own ephemeral storage.
+- Use reusable namespaced Tasks or remote Task resolution for common steps like Git clone and image builds instead of relying on deprecated ClusterTasks.
+- Use workspaces with `volumeClaimTemplate` for pipeline runs when each run should get its own PersistentVolumeClaim.
 - Expose the Tekton Dashboard through an Ingress with authentication to give developers visibility into pipeline runs without `kubectl` access.
