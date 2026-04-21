@@ -19,10 +19,10 @@ nmcli device status
 
 ## Setting a Static IPv4 Address
 
-Replace `eth0` with your interface name and adjust the IP addresses:
+Replace `connection-name` with the NetworkManager connection profile name from `nmcli connection show` and adjust the IP addresses:
 
 ```bash
-nmcli connection modify eth0 \
+nmcli connection modify "connection-name" \
   ipv4.method manual \
   ipv4.addresses 192.168.1.100/24 \
   ipv4.gateway 192.168.1.1 \
@@ -34,7 +34,7 @@ nmcli connection modify eth0 \
 Ensure DHCP is turned off for the connection:
 
 ```bash
-nmcli connection modify eth0 ipv4.method manual
+nmcli connection modify "connection-name" ipv4.method manual
 ```
 
 ## Applying the Configuration
@@ -42,8 +42,8 @@ nmcli connection modify eth0 ipv4.method manual
 Bring the connection down and back up to apply changes:
 
 ```bash
-nmcli connection down eth0
-nmcli connection up eth0
+nmcli connection down "connection-name"
+nmcli connection up "connection-name"
 ```
 
 Or restart NetworkManager (less preferred):
@@ -72,8 +72,8 @@ nmcli connection up static-eth0
 ## Verifying the Configuration
 
 ```bash
-nmcli connection show eth0
-ip -4 addr show eth0
+nmcli connection show "connection-name"
+ip -4 addr show interface-name
 ip route show
 ```
 
@@ -87,20 +87,20 @@ ping -c 4 google.com
 ## Adding DNS Search Domains
 
 ```bash
-nmcli connection modify eth0 ipv4.dns-search "example.local,corp.internal"
+nmcli connection modify "connection-name" ipv4.dns-search "example.local,corp.internal"
 ```
 
 ## Setting Multiple IP Addresses
 
 ```bash
-nmcli connection modify eth0 \
+nmcli connection modify "connection-name" \
   ipv4.addresses "192.168.1.100/24,192.168.1.101/24"
 ```
 
 ## Viewing Connection Details
 
 ```bash
-nmcli -p connection show eth0
+nmcli -p connection show "connection-name"
 ```
 
 ## Conclusion
