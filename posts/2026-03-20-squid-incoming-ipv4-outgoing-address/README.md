@@ -8,7 +8,7 @@ Description: Learn how to configure Squid to use different outgoing IPv4 source 
 
 ---
 
-Squid's `tcp_outgoing_address` directive controls which IPv4 source address is used for outbound connections. By combining this with ACLs matching incoming ports or client addresses, you can route traffic from different clients through different public IPv4 addresses.
+On Squid v7 and earlier, Squid's `tcp_outgoing_address` directive controls which IPv4 source address is used for outbound connections. By combining this with ACLs matching incoming ports or client addresses, you can route traffic from different clients through different public IPv4 addresses.
 
 ## Use Cases
 
@@ -18,7 +18,7 @@ Squid's `tcp_outgoing_address` directive controls which IPv4 source address is u
 
 ## Prerequisites
 
-Your server must have multiple IPv4 addresses assigned to its network interface.
+Your server must have multiple routable IPv4 addresses assigned to its network interface. The `203.0.113.0/24` addresses below are documentation placeholders; replace them with IPv4 addresses assigned to your server.
 
 ```bash
 # Assign additional IPv4 addresses to eth0
@@ -45,6 +45,9 @@ http_port 3129
 # Port 3130: dedicated port for Tenant B
 http_port 3130
 
+# Disable server-side connection reuse so ACL-based source-IP selection is applied correctly
+server_persistent_connections off
+
 # --- ACLs matching the local port Squid received the request on ---
 acl port_tenant_a localport 3129
 acl port_tenant_b localport 3130
@@ -69,6 +72,9 @@ http_access allow all
 # ACL matching a specific client subnet
 acl tenant_a_clients src 10.1.0.0/24
 acl tenant_b_clients src 10.2.0.0/24
+
+# Disable server-side connection reuse so ACL-based source-IP selection is applied correctly
+server_persistent_connections off
 
 # Outgoing IP based on which client subnet made the request
 tcp_outgoing_address 203.0.113.10 tenant_a_clients
@@ -95,7 +101,8 @@ curl -x http://localhost:3130 http://ipinfo.io/ip
 
 ## Key Takeaways
 
-- `tcp_outgoing_address <ip> <acl>` maps an outgoing IPv4 address to a specific ACL match.
+- On Squid v7 and earlier, `tcp_outgoing_address <ip> <acl>` maps an outgoing IPv4 address to a specific ACL match.
 - `localport` ACLs match on the port Squid received the connection on (useful for multi-port setups).
 - `src` ACLs match on the client's IPv4 address for per-client outbound IP assignment.
-- The last `tcp_outgoing_address` line without an ACL is the default for unmatched traffic.
+- Disable `server_persistent_connections` when the outgoing address choice depends on client or request ACLs.
+- Put the `tcp_outgoing_address` line without an ACL after the specific rules to make it the default for unmatched traffic.
