@@ -12,7 +12,7 @@ Learn how to write infrastructure code that works with both Terraform and OpenTo
 
 ## Prerequisites
 
-- OpenTofu v1.6+ installed
+- OpenTofu or Terraform v1.10+ installed
 - Basic knowledge of OpenTofu concepts
 - Relevant cloud credentials configured
 
@@ -41,7 +41,7 @@ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 ```hcl
 # main.tf
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.10.0"
 
   required_providers {
     aws = {
@@ -55,7 +55,7 @@ terraform {
     bucket         = "my-opentofu-state"
     key            = "production/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     encrypt        = true
   }
 }
@@ -115,7 +115,7 @@ jobs:
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
         with:
-          tofu_version: "1.7.0"
+          tofu_version: "1.11.0"
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -130,7 +130,7 @@ jobs:
         run: tofu plan -no-color -out=tfplan
 
       - name: Upload Plan
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: tfplan
           path: tfplan
@@ -146,7 +146,7 @@ jobs:
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
         with:
-          tofu_version: "1.7.0"
+          tofu_version: "1.11.0"
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -155,7 +155,7 @@ jobs:
           aws-region: us-east-1
 
       - name: Download Plan
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v8
         with:
           name: tfplan
 
@@ -214,7 +214,7 @@ If you encounter issues:
 
 1. Enable debug logging: `export TF_LOG=DEBUG`
 2. Check provider credentials: Verify environment variables
-3. Review state consistency: Run `tofu refresh` then `tofu plan`
+3. Review state consistency: Run `tofu apply -refresh-only` to review and apply state refreshes
 4. Consult provider documentation for service-specific errors
 
 ## Conclusion
