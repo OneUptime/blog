@@ -36,7 +36,7 @@ tofu validate
 - **References**: Variables, locals, and resources referenced correctly
 - **Provider schema**: Resource arguments match the provider's schema
 - **Required arguments**: All required arguments are present
-- **Type mismatches**: Variable types match their values
+- **Type mismatches**: Argument values and variable defaults match expected types
 
 ## What tofu validate Does NOT Check
 
@@ -64,7 +64,7 @@ tofu validate -json
 # {
 #   "format_version": "1.0",
 #   "valid": false,
-#   "error_count": 2,
+#   "error_count": 1,
 #   "warning_count": 0,
 #   "diagnostics": [
 #     {
@@ -89,10 +89,10 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
 
       - name: Init (needed for provider schema validation)
         run: tofu init -backend=false
@@ -129,14 +129,14 @@ tofu apply tfplan
 ```hcl
 # Missing required argument
 resource "aws_instance" "web" {
-  # ami is required but missing
+  # ami is required here because no launch_template is configured
   instance_type = "t3.micro"
 }
 ```
 
 ```text
 Error: Missing required argument
-  The argument "ami" is required, but no definition was found.
+  "ami": one of `ami,launch_template` must be specified
 ```
 
 ### Invalid Reference
@@ -147,7 +147,7 @@ resource "aws_security_group" "app" {
 }
 ```
 
-```hcl
+```text
 Error: Reference to undeclared resource
   A managed resource "aws_vpc" "typo_here" has not been declared.
 ```
@@ -155,20 +155,18 @@ Error: Reference to undeclared resource
 ### Type Mismatch
 
 ```hcl
-variable "count" {
-  type = number
-}
-
 resource "aws_instance" "web" {
-  count = "not-a-number"  # String where number expected
+  ami           = "ami-1234567890abcdef0"
+  instance_type = "t3.micro"
+  count         = "not-a-number"  # String where number expected
 }
 ```
 
 ## Validate a Specific Directory
 
 ```bash
-# Validate a specific directory
-tofu validate /path/to/module/
+# Validate after changing to a specific directory
+cd /path/to/module/ && tofu validate
 
 # Validate with chdir
 tofu -chdir=/path/to/config validate
@@ -180,9 +178,11 @@ tofu -chdir=/path/to/config validate
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.92.0
+    rev: v1.105.0
     hooks:
       - id: terraform_validate
+        args:
+          - --hook-config=--tf-path=tofu
 ```
 
 ## Conclusion
