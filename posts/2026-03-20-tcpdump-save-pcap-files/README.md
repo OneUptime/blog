@@ -18,7 +18,7 @@ sudo tcpdump -i eth0 -w /tmp/capture.pcap
 # Save with filter (capture only HTTP/HTTPS)
 sudo tcpdump -i eth0 'tcp and (port 80 or port 443)' -w /tmp/web-traffic.pcap
 
-# Capture all packets with full content (default snap length is full)
+# Capture with the default 262144-byte snapshot length
 sudo tcpdump -i eth0 -s 0 -w /tmp/full-capture.pcap
 
 # Capture with packet limit (stop after 1000 packets)
@@ -53,12 +53,12 @@ For long-running captures, rotate files to prevent single huge files:
 sudo tcpdump -i eth0 -C 100 -W 5 -w /tmp/capture.pcap
 # Creates: capture.pcap0, capture.pcap1, ... capture.pcap4
 
-# Rotate every 60 seconds, keep 10 files
+# Rotate every 60 seconds, stop after 10 files
 sudo tcpdump -i eth0 -G 60 -W 10 -w /tmp/capture-%Y%m%d-%H%M%S.pcap
 # Creates timestamped files: capture-20260319-101500.pcap
 
 # Both size and time rotation (whichever triggers first)
-sudo tcpdump -i eth0 -C 50 -G 300 -W 20 -w /tmp/capture.pcap
+sudo tcpdump -i eth0 -C 50 -G 300 -w /tmp/capture-%Y%m%d-%H%M%S.pcap
 ```
 
 ## Compress Captures to Save Space
@@ -96,11 +96,11 @@ ssh user@server sudo tcpdump -i eth0 -w - 'not port 22' | wireshark -k -i -
 sudo apt install wireshark-common -y
 
 # Merge captures from multiple interfaces or time windows
-mergecap -w /tmp/merged.pcap /tmp/capture1.pcap /tmp/capture2.pcap
+mergecap -w /tmp/merged.pcapng /tmp/capture1.pcap /tmp/capture2.pcap
 
 # Filter and merge
-sudo tcpdump -r /tmp/capture1.pcap -w - | \
-  mergecap /tmp/capture2.pcap - -w /tmp/filtered-merged.pcap
+mergecap -w - /tmp/capture1.pcap /tmp/capture2.pcap | \
+  tcpdump -r - -w /tmp/filtered-merged.pcap 'tcp and port 80'
 ```
 
 Saving to PCAP gives you a replayable record of network activity - essential for post-incident investigation, reproducing bugs, and detailed protocol analysis in Wireshark.
