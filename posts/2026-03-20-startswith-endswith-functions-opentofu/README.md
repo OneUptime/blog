@@ -103,7 +103,7 @@ locals {
 
 ## Route53 Zone Name Normalization
 
-DNS zone names should end with a dot:
+DNS zone names are often represented as fully qualified names with a trailing dot:
 
 ```hcl
 variable "zone_name" {
@@ -112,7 +112,7 @@ variable "zone_name" {
 }
 
 locals {
-  # Ensure zone name ends with a dot (required by Route53)
+  # Ensure zone name ends with a dot when you want the fully qualified form
   normalized_zone = endswith(var.zone_name, ".") ? var.zone_name : "${var.zone_name}."
   # "example.com" → "example.com."
 }
