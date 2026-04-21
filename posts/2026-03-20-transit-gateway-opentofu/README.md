@@ -70,7 +70,7 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "main" {
 ## Route Tables
 
 ```hcl
-# Shared services route table - all VPCs can reach shared services
+# Shared services route table - shared services can reach app VPCs
 
 resource "aws_ec2_transit_gateway_route_table" "shared" {
   transit_gateway_id = aws_ec2_transit_gateway.main.id
@@ -125,7 +125,7 @@ resource "aws_vpn_connection" "on_prem" {
 
 # Associate VPN attachment with apps route table
 resource "aws_ec2_transit_gateway_route_table_association" "vpn" {
-  transit_gateway_attachment_id  = tolist(aws_vpn_connection.on_prem.transit_gateway_attachments)[0].transit_gateway_attachment_id
+  transit_gateway_attachment_id  = aws_vpn_connection.on_prem.transit_gateway_attachment_id
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.apps.id
 }
 ```
@@ -133,10 +133,10 @@ resource "aws_ec2_transit_gateway_route_table_association" "vpn" {
 ## VPC Route Tables: Point to TGW
 
 ```hcl
-# App VPCs route all traffic through TGW
+# App VPCs route private 10/8 traffic through TGW
 resource "aws_route" "app1_to_tgw" {
   route_table_id         = aws_route_table.app1_private.id
-  destination_cidr_block = "10.0.0.0/8"  # All RFC1918 via TGW
+  destination_cidr_block = "10.0.0.0/8"  # Private 10/8 via TGW
   transit_gateway_id     = aws_ec2_transit_gateway.main.id
 
   depends_on = [aws_ec2_transit_gateway_vpc_attachment.main]
