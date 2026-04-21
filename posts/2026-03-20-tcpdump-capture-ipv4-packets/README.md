@@ -11,11 +11,11 @@ tcpdump is the standard packet capture tool on Linux. It captures network packet
 ## Install and Basic Usage
 
 ```bash
-# Install (usually pre-installed)
+# Install on Debian/Ubuntu (often pre-installed)
 
 sudo apt install tcpdump -y
 
-# Capture all packets on default interface
+# Capture on tcpdump's automatically selected interface
 sudo tcpdump
 
 # Capture on specific interface
@@ -28,22 +28,22 @@ sudo tcpdump -D
 ## Essential Flags
 
 ```bash
-# -n: Don't resolve hostnames (faster, clearer output)
+# -n: Don't resolve addresses or port numbers to names (faster, clearer output)
 sudo tcpdump -n -i eth0
 
-# -nn: Don't resolve hostnames OR port names
+# -nn: Commonly used form for numeric addresses and port numbers
 sudo tcpdump -nn -i eth0
 
 # -v: Verbose (more header details)
 sudo tcpdump -v -i eth0
 
-# -vv: Very verbose (full header decode)
+# -vv: Even more verbose output
 sudo tcpdump -vv -i eth0
 
 # -c: Stop after N packets
 sudo tcpdump -c 100 -i eth0
 
-# -s: Snap length (0 = full packet, default 262144)
+# -s: Snap length (0 = default snap length, 262144 bytes in current tcpdump)
 sudo tcpdump -s 0 -i eth0
 ```
 
@@ -133,11 +133,11 @@ sudo tcpdump -nn -r /tmp/capture.pcap port 80
 ## Capture Only Specific Traffic
 
 ```bash
-# Capture only TCP SYN packets (new connections)
-sudo tcpdump -nn 'tcp[tcpflags] & tcp-syn != 0'
+# Capture initial TCP SYN packets (new connection attempts)
+sudo tcpdump -nn 'tcp[tcpflags] & (tcp-syn|tcp-ack) == tcp-syn'
 
 # Capture DNS queries
-sudo tcpdump -nn 'udp port 53'
+sudo tcpdump -nn 'udp dst port 53'
 
 # Capture HTTP GET requests
 sudo tcpdump -nn -A 'tcp port 80 and tcp[((tcp[12:1] & 0xf0) >> 2):4] = 0x47455420'
