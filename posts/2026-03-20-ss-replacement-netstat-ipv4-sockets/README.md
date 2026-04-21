@@ -13,24 +13,24 @@ Description: Use the ss command as a modern, faster replacement for netstat to i
 ## Show All IPv4 Sockets
 
 ```bash
-# Show all IPv4 connections (TCP + UDP + raw)
+# Show all IPv4 TCP, UDP, and raw sockets
 
-ss -4
+ss -4tuwa
 
-# More useful: show with numeric ports and addresses
-ss -4n
+# More useful: show all IPv4 TCP, UDP, and raw sockets with numeric ports and addresses
+ss -4tuwna
 ```
 
 ## Show IPv4 TCP Connections
 
 ```bash
-# Show all TCP connections
+# Show TCP connections
 ss -4t
 
-# Show all TCP connections with more detail
+# Show TCP connections with numeric addresses and ports
 ss -4tn
 
-# Numeric addresses and ports
+# Show all TCP sockets, including listening sockets, with numeric addresses and ports
 ss -4tna
 ```
 
@@ -43,15 +43,15 @@ ss -4tln
 # Show listening UDP sockets
 ss -4uln
 
-# Show all listening sockets (TCP + UDP)
-ss -4ln
+# Show all listening TCP and UDP sockets
+ss -4tuln
 ```
 
 ## Show Process Information
 
 ```bash
-# Include process name and PID for each socket
-ss -4tlnp
+# Include process name and PID for listening TCP and UDP sockets where permitted
+ss -4tulnp
 
 # Example output:
 # State   Recv-Q  Send-Q   Local Address:Port   Peer Address:Port   Process
@@ -64,8 +64,8 @@ ss -4tlnp
 # IPv4 TCP established connections
 ss -4t state established
 
-# Show the IPs of all established TCP connections
-ss -4tn state established | grep ESTAB
+# Show numeric endpoints for all established TCP connections
+ss -4tn state established
 ```
 
 ## Filter by Port
@@ -113,4 +113,4 @@ ss -s
 
 ## Conclusion
 
-`ss -4tlnp` shows all IPv4 listening ports with process information - the most common diagnostic command. Use `ss -4tn state established` for active connections. `ss` is faster than `netstat` especially on busy systems with thousands of connections. The `-4` flag restricts output to IPv4 only.
+`ss -4tulnp` shows IPv4 listening TCP and UDP sockets with process information where permitted - the most common diagnostic command. Use `ss -4tn state established` for active connections. `ss` is faster than `netstat` especially on busy systems with thousands of connections. The `-4` flag restricts output to IPv4 only.
