@@ -93,7 +93,7 @@ variable "workspace" {
 locals {
   # Get the first 4 characters to detect environment
   env_prefix = substr(var.workspace, 0, 4)
-  is_prod    = env_prefix == "prod"
+  is_prod    = local.env_prefix == "prod"
 }
 ```
 
@@ -142,7 +142,7 @@ locals {
 | Extract by position and length | `substr(s, offset, length)` |
 | Remove leading chars | `trimprefix(s, prefix)` |
 | Split on delimiter | `split(sep, s)` |
-| Find position of substring | `index(split("", s), char)` |
+| Find position of a character | `index(split("", s), char)` |
 
 ---
 
