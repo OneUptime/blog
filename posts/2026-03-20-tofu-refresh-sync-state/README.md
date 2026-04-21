@@ -8,7 +8,7 @@ Description: Learn how to use tofu refresh and tofu apply -refresh-only to synch
 
 ## Introduction
 
-`tofu refresh` (and the preferred `tofu apply -refresh-only`) updates the state file to reflect the actual current state of your cloud infrastructure, without making any changes to the infrastructure itself. Use it when your state may be out of sync with reality.
+`tofu refresh` (and the preferred `tofu apply -refresh-only`) updates the state file and root module output values to reflect the actual current state of your cloud infrastructure, without making any changes to the infrastructure itself. Use it when your state may be out of sync with reality.
 
 ## tofu apply -refresh-only (Preferred)
 
@@ -25,13 +25,13 @@ tofu apply -refresh-only
 
 This two-step approach shows you what changed before committing the state update.
 
-## tofu refresh (Legacy)
+## tofu refresh (Deprecated)
 
 ```bash
 # Immediately refresh state (no preview)
 tofu refresh
 
-# Note: This command is considered legacy
+# Note: This command is deprecated
 # Prefer: tofu apply -refresh-only
 ```
 
@@ -41,16 +41,20 @@ tofu refresh
 
 ```bash
 # Someone changed the instance type in the AWS console
-# Plan shows the change:
+# Plan reports the outside change and may also plan to undo it:
 tofu plan
+# Note: Objects have changed outside of OpenTofu
 # ~ aws_instance.web
-#     instance_type = "t3.micro" -> "t3.small"  (detected drift)
+#     instance_type = "t3.micro" -> "t3.small"  (remote drift)
 
-# Accept the change by refreshing state
+# Record the current remote value in state
 tofu apply -refresh-only
 # State is now updated to show t3.small
 
-# Now plan shows no drift
+# This does not change configuration. To keep t3.small, also update your
+# .tf files (or use lifecycle ignore_changes for intentionally external changes).
+
+# Now plan shows no drift after configuration and state agree
 tofu plan
 # No changes. Infrastructure is up-to-date.
 ```
@@ -60,7 +64,8 @@ tofu plan
 ```bash
 # Auto-scaling changed the desired count outside of OpenTofu
 tofu apply -refresh-only
-# Updates state to reflect current instance count
+# Updates state to reflect the observed value. A later normal plan may still
+# propose changes unless configuration or ignore_changes matches that value.
 ```
 
 ### Syncing Before Destructive Operations
@@ -120,16 +125,26 @@ grep "Objects have changed" refresh-output.txt
 #!/bin/bash
 # daily-refresh.sh - Run via cron to detect drift
 
-tofu plan -refresh-only -detailed-exitcode -json > refresh.json
+PLAN_DIR=$(mktemp -d)
+PLAN_FILE="$PLAN_DIR/tfplan"
+trap 'rm -rf "$PLAN_DIR"' EXIT
+
+tofu plan -refresh-only -detailed-exitcode -out="$PLAN_FILE" >/dev/null
 
 EXIT_CODE=$?
-DRIFT_COUNT=$(jq '.resource_drift | length' refresh.json)
 
-if [ $EXIT_CODE -eq 2 ] && [ "$DRIFT_COUNT" -gt 0 ]; then
-  echo "DRIFT DETECTED: $DRIFT_COUNT resources changed outside OpenTofu"
-  jq '.resource_drift[].address' refresh.json
-  # Send alert...
-elif [ $EXIT_CODE -eq 0 ]; then
+if [ "$EXIT_CODE" -eq 2 ]; then
+  tofu show -json -plan="$PLAN_FILE" > refresh.json || exit 1
+  DRIFT_COUNT=$(jq '(.resource_drift // []) | length' refresh.json)
+
+  if [ "$DRIFT_COUNT" -gt 0 ]; then
+    echo "DRIFT DETECTED: $DRIFT_COUNT resources changed outside OpenTofu"
+    jq -r '(.resource_drift // [])[].address' refresh.json
+    # Send alert...
+  else
+    echo "Refresh-only changes detected, but no resource drift was reported"
+  fi
+elif [ "$EXIT_CODE" -eq 0 ]; then
   echo "No drift detected - state is current"
 else
   echo "Error during refresh"
@@ -148,4 +163,4 @@ fi
 
 ## Conclusion
 
-Use `tofu apply -refresh-only` as the standard way to synchronize your state file with reality. The two-step approach (plan then apply) gives you visibility into what changed before committing. For automation, use the `-detailed-exitcode` flag to detect drift and trigger alerts. Regular state refresh is an important practice for maintaining accurate state in dynamic environments where changes occur outside of OpenTofu.
+Use `tofu apply -refresh-only` as the standard way to synchronize your state file with reality. The two-step approach (plan then apply) gives you visibility into what changed before committing. For automation, use the `-detailed-exitcode` flag to detect refresh-only changes and trigger alerts. Regular state refresh is an important practice for maintaining accurate state in dynamic environments where changes occur outside of OpenTofu.
