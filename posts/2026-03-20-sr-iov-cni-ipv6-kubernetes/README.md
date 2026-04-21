@@ -41,11 +41,17 @@ ACTION=="add", SUBSYSTEM=="net", ENV{ID_NET_DRIVER}=="i40e", \
 EOF
 ```
 
-## Step 2: Install SR-IOV CNI and Device Plugin
+## Step 2: Install SR-IOV CNI, Whereabouts, and Device Plugin
 
 ```bash
 # Install SR-IOV CNI
 kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/sriov-cni/master/images/sriov-cni-daemonset.yaml
+
+# Install Whereabouts IPAM and CRDs
+kubectl apply \
+  -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/master/doc/crds/daemonset-install.yaml \
+  -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/master/doc/crds/whereabouts.cni.cncf.io_ippools.yaml \
+  -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/master/doc/crds/whereabouts.cni.cncf.io_overlappingrangeipreservations.yaml
 
 # Install SR-IOV Device Plugin
 kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/sriov-network-device-plugin/master/deployments/sriovdp-daemonset.yaml
@@ -66,13 +72,13 @@ data:
       "resourceList": [
         {
           "resourceName": "intel_sriov_netdevice",
-          "selectors": {
+          "selectors": [{
             "vendors": ["8086"],
             "devices": ["154c", "10ed"],
             "drivers": ["iavf", "i40evf"],
             "pciAddresses": ["0000:18:02.0", "0000:18:02.1",
                             "0000:18:02.2", "0000:18:02.3"]
-          }
+          }]
         }
       ]
     }
@@ -109,8 +115,8 @@ spec:
         "kubernetes": {
           "kubeconfig": "/etc/cni/net.d/whereabouts.d/whereabouts.kubeconfig"
         },
-        "range": "2001:db8:sriov::/64",
-        "gateway": "2001:db8:sriov::1",
+        "range": "2001:db8:100::/64",
+        "gateway": "2001:db8:100::1",
         "routes": [
           { "dst": "::/0" }
         ]
@@ -145,22 +151,22 @@ kubectl apply -f sriov-ipv6-pod.yaml
 
 # Check IPv6 address on VF interface
 kubectl exec sriov-ipv6-workload -- ip -6 addr show net1
-# inet6 2001:db8:sriov::5/64 scope global
+# inet6 2001:db8:100::5/64 scope global
 ```
 
 ## Step 6: Performance Validation
 
 ```bash
-# Test latency with iperf3 over IPv6 SR-IOV
+# Test throughput with iperf3 over IPv6 SR-IOV
 # Server pod
 kubectl exec sriov-server -- iperf3 -s -6
 
 # Client pod
-kubectl exec sriov-client -- iperf3 -c 2001:db8:sriov::server -6 -t 30
+kubectl exec sriov-client -- iperf3 -c 2001:db8:100::10 -6 -t 30
 
-# Expected: near line-rate throughput, sub-microsecond latency
+# Expected: near line-rate throughput when NIC, NUMA, MTU, and CPU tuning are aligned
 ```
 
 ## Conclusion
 
-SR-IOV CNI provides kernel-bypass performance for IPv6 workloads by assigning VFs directly to pods. Use Whereabouts IPAM for dynamic IPv6 address allocation from a dedicated SR-IOV IPv6 pool. Resource requests ensure VFs are exclusively allocated. This setup is ideal for telco, HPC, and low-latency financial services workloads. Monitor SR-IOV pod network performance with OneUptime's synthetic checks.
+SR-IOV CNI provides high-throughput, low-overhead networking for IPv6 workloads by assigning VFs directly to pods; DPDK-bound VFs require a separate userspace-driver configuration. Use Whereabouts IPAM for dynamic IPv6 address allocation from a dedicated SR-IOV IPv6 pool. Resource requests ensure VFs are exclusively allocated. This setup is ideal for telco, HPC, and low-latency financial services workloads. Monitor SR-IOV pod network performance with OneUptime's synthetic checks.
