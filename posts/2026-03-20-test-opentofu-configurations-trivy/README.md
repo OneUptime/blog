@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, Trivy, Security Scanning, Infrastructure as Code, DevSecOps
 
-Description: Learn how to use Trivy to scan OpenTofu and Terraform configurations for security misconfigurations, vulnerabilities, and compliance violations.
+Description: Learn how to use Trivy to scan OpenTofu and Terraform configurations for security misconfigurations in infrastructure-as-code.
 
 ## Introduction
 
@@ -15,13 +15,13 @@ Trivy is an all-in-one security scanner by Aqua Security that supports container
 On macOS:
 
 ```bash
-brew install aquasecurity/trivy/trivy
+brew install trivy
 ```
 
 On Linux:
 
 ```bash
-curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin v0.70.0
 ```
 
 Verify:
@@ -61,7 +61,7 @@ HIGH: Security group rule allows ingress from 0.0.0.0/0 to port 22
 Fail only on HIGH and CRITICAL findings:
 
 ```bash
-trivy config --severity HIGH,CRITICAL ./
+trivy config --severity HIGH,CRITICAL --exit-code 1 ./
 ```
 
 ## Outputting Results as JSON
@@ -92,16 +92,18 @@ AVD-AWS-0086
 ```yaml
 # GitHub Actions
 - name: Trivy IaC Scan
-  uses: aquasecurity/trivy-action@master
+  uses: aquasecurity/trivy-action@0.35.0
   with:
     scan-type: config
     scan-ref: .
     severity: HIGH,CRITICAL
     format: sarif
     output: trivy-results.sarif
+    exit-code: '1'
 
 - name: Upload SARIF
-  uses: github/codeql-action/upload-sarif@v3
+  if: always()
+  uses: github/codeql-action/upload-sarif@v4
   with:
     sarif_file: trivy-results.sarif
 ```
