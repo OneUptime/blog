@@ -13,6 +13,7 @@ Description: Learn how to use the Tokio async runtime to build high-concurrency 
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
+anyhow = "1"
 ```
 
 ## Async TCP Echo Server
@@ -157,11 +158,11 @@ async fn main() -> anyhow::Result<()> {
 
 ## Tokio vs Threads Performance
 
-| Approach | Concurrent Connections | Memory per Unit |
+| Approach | Practical Concurrency | Memory per Unit |
 |----------|----------------------|-----------------|
-| `thread::spawn` | ~10,000 | ~2MB stack |
-| `tokio::spawn` | ~1,000,000+ | ~1KB task |
+| `thread::spawn` | Limited by OS threads and stack memory | Platform-dependent stack; currently 2 MiB on Rust Tier-1 platforms |
+| `tokio::spawn` | Thousands to millions of tasks, workload-dependent | One allocation and 64 bytes of task overhead, plus future state |
 
 ## Conclusion
 
-Tokio's async TCP and UDP APIs mirror the standard library but are prefixed with `Async` and require `.await`. Use `tokio::spawn` for each connection-tasks are far lighter than threads, enabling millions of concurrent connections. `into_split()` separates a stream into independent reader/writer halves for use across async tasks. Always add `tokio::time::timeout` around connection attempts to prevent hanging.
+Tokio's async TCP and UDP types live under `tokio::net`, while utility traits such as `AsyncReadExt` and `AsyncWriteExt` provide `.await`-able I/O methods. Use `tokio::spawn` for each connection; tasks are far lighter than threads, making high concurrency practical. `into_split()` separates a stream into independent reader/writer halves that can be moved across async tasks. Use `tokio::time::timeout` around connection attempts when you need an application-level deadline.
