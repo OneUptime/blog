@@ -10,7 +10,8 @@ Description: Learn how to combine syslog and SNMP to build comprehensive network
 
 Syslog and SNMP are complementary monitoring approaches:
 - **Syslog**: Push-based event logging (device sends events when they happen).
-- **SNMP**: Pull-based metrics polling (monitoring system queries device statistics periodically).
+- **SNMP polling**: Pull-based metrics polling (monitoring system queries device statistics periodically).
+- **SNMP traps**: Push-based notifications (device sends SNMP events when they happen).
 
 Using both together gives you complete observability: event visibility from syslog and performance trends from SNMP.
 
@@ -18,10 +19,12 @@ Using both together gives you complete observability: event visibility from sysl
 
 ```mermaid
 graph TD
-    D[Network Device\n192.168.1.1] -->|Syslog UDP 514| S[rsyslog Server\n10.0.0.50]
-    D -->|SNMP Traps UDP 162| S
+    D[Network Device\n192.168.1.1] -->|Syslog UDP/TCP 514| S[rsyslog Server\n10.0.0.50]
+    D -->|SNMP Traps UDP 162| T[snmptrapd Server\n10.0.0.50]
     M[Prometheus/PRTG] -->|SNMP Poll UDP 161| D
-    S --> G[Grafana Loki\nor Elasticsearch]
+    S --> L[Grafana Loki\nor Elasticsearch]
+    T --> L
+    L --> G[Grafana Dashboard]
     M --> G
 ```
 
@@ -37,12 +40,18 @@ input(type="imudp" port="514" address="10.0.0.50")
 
 # Enable TCP syslog reception (more reliable)
 module(load="imtcp")
-input(type="imtcp" port="514")
+input(type="imtcp" port="514" address="10.0.0.50")
 
 # Store logs by source IP in separate files
-$template PerDeviceLog,"/var/log/devices/%FROMHOST-IP%.log"
-if $fromhost-ip startswith "192.168." then ?PerDeviceLog
+template(name="PerDeviceLog" type="string" string="/var/log/devices/%FROMHOST-IP%.log")
+if $fromhost-ip startswith "192.168." then {
+    action(type="omfile" dynaFile="PerDeviceLog" createDirs="on")
+    stop
+}
+```
 
+```bash
+# Restart rsyslog after saving the configuration
 systemctl restart rsyslog
 ```
 
@@ -52,10 +61,10 @@ systemctl restart rsyslog
 # /etc/snmp/snmptrapd.conf
 # Accept SNMP traps from network devices
 
-# Authentication: allow community "public" from all sources
+# Access control: allow community "public" from all sources
 authCommunity log,execute,net public
 
-# Log traps to syslog
+# Log traps to a file
 logOption f /var/log/snmptraps.log
 
 # Or execute a script when a trap arrives
@@ -81,7 +90,7 @@ snmp-server community public ro
 snmp-server host 10.0.0.50 traps version 2c public
 snmp-server enable traps
 snmp-server enable traps snmp linkup linkdown
-snmp-server enable traps ospf state-change
+snmp-server enable traps ospf cisco-specific state-change
 ```
 
 ## Step 4: Poll SNMP Metrics with Prometheus
@@ -96,7 +105,8 @@ scrape_configs:
           - 192.168.1.2    # Switch IPv4
     metrics_path: /snmp
     params:
-      module: [cisco_wlc]
+      auth: [public_v2]
+      module: [if_mib]
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -115,7 +125,7 @@ scrape_configs:
 
 ## Key Takeaways
 
-- Syslog catches event-driven notifications (link failures, authentication errors) while SNMP captures continuous performance metrics.
+- Syslog catches event-driven logs (link failures, authentication errors) while SNMP polling captures continuous performance metrics; SNMP traps add protocol-specific notifications.
 - Use `snmptrapd` to receive trap notifications; parse them with `snmptt` for structured logging.
 - Correlate syslog timestamps with SNMP metric anomalies in Grafana for root cause analysis.
 - Enable both `logging trap` and `snmp-server enable traps` on network devices for maximum visibility.
