@@ -15,7 +15,7 @@ String variables are the most common type in OpenTofu. They hold text values and
 ```hcl
 # Basic string variable
 
-variable "environment" {
+variable "project_name" {
   type = string
 }
 
@@ -106,6 +106,10 @@ locals {
 ## Multi-Line Strings (Heredoc)
 
 ```hcl
+variable "ubuntu_ami_id" {
+  type = string
+}
+
 variable "user_data" {
   type = string
   default = <<-EOT
@@ -117,7 +121,7 @@ variable "user_data" {
 }
 
 resource "aws_instance" "web" {
-  ami           = "ami-0c55b159cbfafe1f0"
+  ami           = var.ubuntu_ami_id
   instance_type = "t2.micro"
   user_data     = var.user_data
 }
@@ -158,7 +162,7 @@ variable "email" {
 variable "api_key" {
   type        = string
   description = "API key for the external service"
-  sensitive   = true  # Will not appear in logs or plan output
+  sensitive   = true  # Redacted in plan/apply output, but still stored in state
 }
 
 variable "database_password" {
@@ -169,4 +173,4 @@ variable "database_password" {
 
 ## Conclusion
 
-String variables are foundational in OpenTofu configurations. Using type constraints, validation rules, and the `sensitive` flag, you can create robust, self-documenting variables that prevent misconfiguration and protect sensitive information. String interpolation and built-in string functions make it easy to compose resource names and configuration values dynamically.
+String variables are foundational in OpenTofu configurations. Using type constraints, validation rules, and the `sensitive` flag, you can create robust, self-documenting variables that prevent misconfiguration and reduce accidental exposure of sensitive values in CLI output. String interpolation and built-in string functions make it easy to compose resource names and configuration values dynamically.
