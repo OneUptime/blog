@@ -15,16 +15,15 @@ IPv6-only networks - those with no IPv4 connectivity whatsoever - require time s
 ```bash
 # Verify there is no IPv4 connectivity
 
-ping -4 8.8.8.8 2>&1
+ping -4 -c 3 8.8.8.8 2>&1
 # Should fail: "Network is unreachable" or "No route to host"
 
 # Verify IPv6 works
-ping6 -c 3 2001:4860:4860::8888
+ping -6 -c 3 2001:4860:4860::8888
 # Should succeed
 
 # Check if your NTP pool has IPv6
-dig AAAA pool.ntp.org +short
-dig AAAA ipv6.pool.ntp.org +short
+dig AAAA 2.pool.ntp.org +short
 ```
 
 ## Designing the NTP Hierarchy
@@ -47,12 +46,11 @@ This reduces external traffic and provides redundancy.
 # /etc/chrony.conf (Internal IPv6-only NTP master)
 
 # Sync from IPv6-capable public NTP servers
-server time.google.com iburst
-server time.cloudflare.com iburst
-pool ipv6.pool.ntp.org iburst maxsources 4
+server time.cloudflare.com iburst ipv6
+pool 2.pool.ntp.org iburst maxsources 3 ipv6
 
-# Fall back to local clock if all upstream sources fail
-# (prevents time from drifting wildly in isolated network)
+# Fall back to the server's local clock if all upstream sources fail
+# (keeps clients on a common time source while isolated)
 local stratum 10
 
 # Allow all internal IPv6 clients to sync from this server
@@ -78,8 +76,8 @@ chronyc sources
 # /etc/chrony.conf (IPv6-only client)
 
 # Point to internal NTP master (IPv6 address)
-server 2001:db8:internal::10 iburst prefer
-server 2001:db8:internal::11 iburst
+server 2001:db8:100::10 iburst prefer
+server 2001:db8:100::11 iburst
 
 # No fallback to IPv4 NTP - this is IPv6-only
 # Set makestep to handle large initial drift
@@ -97,8 +95,8 @@ For lightweight clients:
 # /etc/systemd/timesyncd.conf
 [Time]
 # Internal IPv6 NTP server addresses
-NTP=2001:db8:internal::10 2001:db8:internal::11
-FallbackNTP=ipv6.pool.ntp.org
+NTP=2001:db8:100::10 2001:db8:100::11
+FallbackNTP=2.pool.ntp.org
 ```
 
 ```bash
@@ -119,7 +117,7 @@ docker run --rm alpine date
 # For VMs, configure NTP in the guest
 # pointing to the IPv6 NTP master:
 # /etc/chrony.conf in the VM
-# server 2001:db8:internal::10 iburst
+# server 2001:db8:100::10 iburst
 ```
 
 ## Kubernetes Pod Time Sync in IPv6-Only Cluster
@@ -165,7 +163,7 @@ metadata:
   namespace: kube-system
 data:
   chrony.conf: |
-    server 2001:db8:internal::10 iburst
+    server 2001:db8:100::10 iburst
     makestep 1.0 3
     driftfile /var/lib/chrony/drift
 ```
@@ -177,16 +175,16 @@ data:
 # Verify all hosts sync over IPv6 only
 
 HOSTS=(
-  "2001:db8::10"
-  "2001:db8::11"
-  "2001:db8::12"
+  "2001:db8:100::10"
+  "2001:db8:100::11"
+  "2001:db8:100::12"
 )
 
 for host in "${HOSTS[@]}"; do
   echo -n "NTP check on [$host]: "
   # SSH and check sync status
-  result=$(ssh -6 "root@[$host]" "chronyc tracking 2>/dev/null | head -5")
-  if echo "$result" | grep -q "Reference ID"; then
+  result=$(ssh -6 "root@$host" "chronyc tracking 2>/dev/null")
+  if echo "$result" | grep -q "Leap status" && ! echo "$result" | grep -q "Leap status.*Not synchronised"; then
     echo "SYNCED - $(echo "$result" | grep 'Reference ID')"
   else
     echo "NOT SYNCHRONIZED"
