@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SUSE Observability, Rancher, Kubernetes, Monitoring, Topology, Helm, SUSE Rancher
 
-Description: Learn how to install SUSE Observability on a Rancher-managed Kubernetes cluster using Helm, configure the receiver, and connect the Rancher UI for topology-aware cluster monitoring.
+Description: Learn how to install SUSE Observability on a Rancher-managed Kubernetes cluster using Helm, configure the receiver, and connect a monitored cluster for topology-aware Kubernetes monitoring.
 
 ---
 
@@ -14,10 +14,11 @@ SUSE Observability (formerly StackState) provides topology-aware observability f
 
 ## Prerequisites
 
-- Rancher 2.7+ managing a downstream cluster
-- Kubernetes 1.25+ on the target cluster
-- Helm 3.10+
-- Minimum resources: 8 CPU, 32 GB RAM for the Observability server
+- A Rancher-managed RKE2/Kubernetes cluster supported by the SUSE Observability compatibility matrix
+- Kubernetes version supported by the SUSE Observability compatibility matrix on the target cluster
+- Helm 3.13.1+
+- A SUSE Observability license key
+- Resources and storage for your chosen sizing profile; for example, the `10-nonha` profile requests about 7 CPU, 22.7 GiB memory, and 358 GB storage
 
 ---
 
@@ -46,44 +47,29 @@ Create a `values.yaml` file for your installation:
 ```yaml
 # values.yaml
 global:
-  receiverApiKey: "your-receiver-api-key"   # Generate with: openssl rand -hex 32
-  imageRegistry: ""
-
-stackstate:
-  baseUrl: "https://observability.example.com"
-  license:
-    key: "your-license-key"
+  imageRegistry: "registry.rancher.com"
+  # storageClass: "your-storage-class"  # Optional; omit to use the default StorageClass
+  suseObservability:
+    receiverApiKey: "your-receiver-api-key"   # Optional; generate with: openssl rand -hex 32
+    baseUrl: "https://observability.example.com"
+    license: "your-license-key"
+    adminPassword: "change-me-admin-password"
+    sizing:
+      profile: "10-nonha"  # Use an HA profile, such as 150-ha, for production
 
 ingress:
   enabled: true
+  ingressClassName: nginx
   annotations:
-    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  path: /
   hosts:
     - host: observability.example.com
-      paths:
-        - path: /
-          pathType: Prefix
   tls:
     - secretName: observability-tls
       hosts:
         - observability.example.com
-
-# Storage configuration
-elasticsearch:
-  master:
-    persistence:
-      size: 50Gi
-  data:
-    persistence:
-      size: 100Gi
-
-kafka:
-  persistence:
-    size: 20Gi
-
-zookeeper:
-  persistence:
-    size: 10Gi
 ```
 
 ---
@@ -92,7 +78,7 @@ zookeeper:
 
 ```bash
 # Install using Helm
-helm install suse-observability \
+helm upgrade --install suse-observability \
   suse-observability/suse-observability \
   --namespace suse-observability \
   --values values.yaml \
@@ -114,19 +100,19 @@ kubectl get pods -n suse-observability
 # Check the services
 kubectl get svc -n suse-observability
 
-# View the Observability server logs
-kubectl logs -n suse-observability deployment/suse-observability-server -f
+# View the Observability API logs
+kubectl logs -n suse-observability deployment/suse-observability-api -f
 ```
 
 ---
 
 ## Step 5: Install the SUSE Observability Agent on the Monitored Cluster
 
-The agent collects topology and metrics from the monitored Kubernetes cluster:
+The agent collects topology, events, logs, changes, and metrics from the monitored Kubernetes cluster. In the SUSE Observability UI, create a Kubernetes StackPack instance first, then use the matching cluster name and API key for the agent:
 
 ```bash
-# Add the agent Helm repo
-helm repo add suse-observability-agent https://charts.rancher.com/server-charts/prime/suse-observability-agent
+# Add or update the SUSE Observability Helm repo
+helm repo add suse-observability https://charts.rancher.com/server-charts/prime/suse-observability --force-update
 helm repo update
 
 # Create agent values
@@ -135,22 +121,21 @@ stackstate:
   apiKey: "your-receiver-api-key"
   cluster:
     name: "production-cluster"
-  url: "https://observability.example.com/receiver/solarwinds"
-
-# Enable all collectors
-nodeAgent:
-  enabled: true
+  url: "https://observability.example.com"
 
 clusterAgent:
   enabled: true
 
 logsAgent:
   enabled: true
+
+checksAgent:
+  enabled: true
 EOF
 
 # Install the agent
-helm install suse-observability-agent \
-  suse-observability-agent/suse-observability-agent \
+helm upgrade --install suse-observability-agent \
+  suse-observability/suse-observability-agent \
   --namespace suse-observability \
   --create-namespace \
   --values agent-values.yaml
@@ -169,7 +154,7 @@ kubectl port-forward -n suse-observability svc/suse-observability-router 8080:80
 # Then access http://localhost:8080
 ```
 
-Log in with the default admin credentials and verify the monitored cluster appears in the topology view.
+Log in as `admin` with the admin password you set in `values.yaml` and verify the monitored cluster appears in the topology view.
 
 ---
 
@@ -177,8 +162,8 @@ Log in with the default admin credentials and verify the monitored cluster appea
 
 In the Observability UI:
 
-1. Navigate to **Views** → **Kubernetes**
-2. Verify your cluster name appears
+1. Open the main menu and navigate to **Kubernetes**
+2. Select **Clusters** and verify your cluster name appears
 3. Check that Pods, Services, and Deployments are visible in the topology map
 4. Verify metrics are flowing by checking **Health** indicators on components
 
@@ -186,6 +171,6 @@ In the Observability UI:
 
 ## Best Practices
 
-- Use a dedicated StorageClass with SSD-backed volumes for Elasticsearch and Kafka - these are I/O intensive components.
+- Use a dedicated StorageClass with SSD-backed volumes for SUSE Observability persistent volumes - these are I/O intensive components.
 - Set the `apiKey` value as a Kubernetes Secret rather than hardcoding it in the values file.
 - Install the SUSE Observability agent on every cluster you want to monitor - each cluster needs its own agent deployment.
