@@ -23,13 +23,13 @@ Check that both containers are running and healthy in Portainer's container list
 
 ```bash
 docker ps | grep -E "container-a|container-b"
-# Both should show "Up" status and passing health checks
+# Both should show "Up" status and "healthy" if health checks are configured
 
 ```
 
 ## Step 2: Check Network Membership
 
-Containers can only communicate if they're on the same Docker network:
+Containers need a shared Docker network for direct communication by container or service name:
 
 ```bash
 # List networks a container is connected to
@@ -54,8 +54,9 @@ docker exec container-a nslookup target-service
 docker exec container-a getent hosts target-service
 
 # Expected output:
-# Server: 127.0.0.11 (Docker's embedded DNS)
-# Address: 10.0.0.x
+# Server: 127.0.0.11 (Docker's embedded DNS on custom networks)
+# Name: target-service
+# Address: 172.18.0.x
 ```
 
 Common DNS issue: containers on different networks cannot resolve each other's names.
@@ -75,14 +76,14 @@ docker exec container-a curl -v http://target-service:8080/health
 
 ## Step 5: Check Firewall Rules
 
-Host firewall can interfere with Docker networking:
+On Linux hosts using Docker's iptables backend, host firewall rules can interfere with Docker networking:
 
 ```bash
 # Check iptables rules affecting Docker
 sudo iptables -L DOCKER -n --line-numbers
 sudo iptables -L DOCKER-USER -n --line-numbers
 
-# Check if Docker's network is being blocked
+# Check for DROP policies or rules in the FORWARD chain
 sudo iptables -L FORWARD -n | grep DROP
 ```
 
@@ -121,7 +122,7 @@ networks:
 
 ### Issue: Container using default bridge (no DNS)
 
-The default `bridge` network doesn't support DNS. Move containers to a custom network:
+The default `bridge` network doesn't support automatic container-name DNS. Move containers to a custom network:
 
 ```yaml
 # Fix: Always use custom named networks
