@@ -14,6 +14,7 @@ Description: Learn how to write a TCP echo server in C using POSIX sockets with 
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
 
 #define PORT    9000
@@ -105,7 +106,7 @@ gcc -Wall -Wextra -o echo_server echo_server.c
 
 # Test with netcat
 
-echo "Hello, server!" | nc 127.0.0.1 9000
+echo "Hello, server!" | nc -N 127.0.0.1 9000
 
 # Or with telnet
 telnet 127.0.0.1 9000
@@ -118,6 +119,8 @@ telnet 127.0.0.1 9000
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 
 int main(void) {
     int    fd;
