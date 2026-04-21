@@ -140,23 +140,29 @@ EOT
 
 ```gitignore
 # .gitignore - Exclude sensitive tfvars files
-*.tfvars          # Exclude all (add exceptions for safe ones)
-!example.tfvars   # Keep example files
-!dev.tfvars       # Keep dev if non-sensitive
-secrets.tfvars    # Always exclude secrets
-prod.tfvars       # Exclude prod values
+# Exclude all (add exceptions for safe ones)
+*.tfvars
+# Keep example files
+!example.tfvars
+# Keep dev if non-sensitive
+!dev.tfvars
+# Always exclude secrets
+secrets.tfvars
+# Exclude prod values
+prod.tfvars
 ```
 
 ## terraform.tfvars Auto-loading
 
 ```bash
-# terraform.tfvars and terraform.tfvars.json are loaded automatically
+# terraform.tfvars, terraform.tfvars.json, and *.auto.tfvars/*.auto.tfvars.json
+# are loaded automatically
 # No -var-file flag needed
 
 # Just run:
-tofu plan   # automatically loads terraform.tfvars
+tofu plan   # automatically loads terraform.tfvars and auto tfvars files
 
-# For other named files, explicit flag required:
+# For non-auto-loaded named files, explicit flag required:
 tofu plan -var-file="prod.tfvars"
 ```
 
