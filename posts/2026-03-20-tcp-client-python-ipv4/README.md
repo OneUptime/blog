@@ -38,6 +38,8 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
 
 ## Sending and Receiving Multiple Messages
 
+This simple pattern assumes the server sends one complete, short response for each request; TCP itself does not preserve message boundaries.
+
 ```python
 import socket
 
@@ -91,6 +93,8 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
 `sendall()` handles partial sends internally. However, for large payloads or custom protocols, you may need `send()` with a loop:
 
 ```python
+import socket
+
 def send_all(sock: socket.socket, data: bytes) -> None:
     """Ensure all bytes are sent, handling partial writes."""
     total_sent = 0
@@ -106,6 +110,8 @@ def send_all(sock: socket.socket, data: bytes) -> None:
 When the response length is variable, read until the server closes the connection or you detect a message boundary:
 
 ```python
+import socket
+
 def receive_all(sock: socket.socket, buffer_size: int = 4096) -> bytes:
     """Receive all data until the server closes the connection."""
     data = b""
