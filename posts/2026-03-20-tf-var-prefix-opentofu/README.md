@@ -111,6 +111,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      id-token: write
+      contents: read
 
     env:
       TF_VAR_aws_account_id: ${{ secrets.AWS_ACCOUNT_ID }}
@@ -118,10 +121,10 @@ jobs:
       TF_VAR_api_key: ${{ secrets.API_KEY }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
@@ -147,7 +150,7 @@ export TF_VAR_environment="dev"
 export TF_VAR_project_name="myapp"
 
 # Fetch sensitive values from AWS Secrets Manager or 1Password
-# eval $(aws secretsmanager get-secret-value --secret-id dev/terraform-vars --query SecretString --output text | jq -r 'to_entries | .[] | "export TF_VAR_\(.key)=\(.value)"')
+# eval "$(aws secretsmanager get-secret-value --secret-id dev/terraform-vars --query SecretString --output text | jq -r 'to_entries | .[] | "export TF_VAR_\(.key)=\(.value | @sh)"')"
 ```
 
 ## Variable Precedence Order
@@ -155,18 +158,17 @@ export TF_VAR_project_name="myapp"
 ```bash
 # OpenTofu resolves variables in this order (later takes precedence):
 # 1. Default values in variable declarations
-# 2. terraform.tfvars file
-# 3. terraform.tfvars.json file
-# 4. *.auto.tfvars and *.auto.tfvars.json files
-# 5. TF_VAR_ environment variables
-# 6. -var flags on the command line
-# 7. -var-file flags on the command line
+# 2. TF_VAR_ environment variables
+# 3. terraform.tfvars file
+# 4. terraform.tfvars.json file
+# 5. *.auto.tfvars and *.auto.tfvars.json files, processed in lexical order
+# 6. -var and -var-file options on the command line, in the order provided
 
-# TF_VAR_ takes precedence over tfvars files
-# This is useful for overriding tfvars defaults in CI/CD
+# TF_VAR_ is a fallback and is overridden by tfvars files and command-line options
+# This is useful for setting automation defaults that explicit files or flags can override
 
 export TF_VAR_environment="production"
-tofu plan -var-file=dev.tfvars  # TF_VAR_environment still wins over dev.tfvars
+tofu plan -var-file=dev.tfvars  # dev.tfvars overrides TF_VAR_environment if it sets environment
 ```
 
 ## Debugging Variable Values
@@ -179,14 +181,14 @@ tofu console
 > var.environment
 "production"
 
-# Or check in plan output
-tofu plan -var=environment=test 2>&1 | grep "environment"
+# Or check in plan output if the variable affects planned resources
+tofu plan 2>&1 | grep "environment"
 ```
 
 ## Best Practices
 
-- Use `TF_VAR_` environment variables for secrets in CI/CD rather than `-var` flags - environment variables don't appear in process listings (`ps aux`) or shell history.
-- Mark sensitive variables with `sensitive = true` in their declarations - this prevents OpenTofu from printing the value in plan output and logs.
+- Use `TF_VAR_` environment variables for secrets in CI/CD rather than `-var` flags - this avoids putting secret values directly in the `tofu` command line, where they can appear in process listings (`ps aux`) or shell history.
+- Mark sensitive variables with `sensitive = true` in their declarations - this prevents OpenTofu from printing the value in plan/apply output, but state and saved plan files can still contain sensitive data.
 - Set development defaults in shell profiles but always override in CI/CD - this prevents accidentally deploying development configurations to production.
-- Use consistent naming: if your variable is named `database_password`, the environment variable is `TF_VAR_database_password` (case-sensitive, exact match).
+- Use consistent naming: on case-sensitive operating systems, if your variable is named `database_password`, the environment variable is `TF_VAR_database_password` (exact match).
 - For complex objects and lists, validate the HCL syntax before setting the environment variable - invalid syntax produces confusing error messages during `tofu plan`.
