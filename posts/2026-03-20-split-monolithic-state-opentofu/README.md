@@ -83,7 +83,7 @@ tofu state mv \
 
 ## Step 4: Handle Cross-State Dependencies with Outputs
 
-Resources in one state that are referenced by another need to become outputs and be consumed via `terraform_remote_state`:
+Values from resources in one state that are referenced by another can be exposed as root outputs and consumed via `terraform_remote_state`:
 
 ```hcl
 # networking/outputs.tf
@@ -114,20 +114,9 @@ resource "aws_instance" "web" {
 }
 ```
 
-## Step 5: Upload New State Files to Backend
+## Step 5: Migrate New State Files to Backend
 
-If using remote backends, push the new state files:
-
-```bash
-# For S3, upload the new state files
-aws s3 cp infrastructure/networking/terraform.tfstate \
-  s3://my-terraform-state/networking/terraform.tfstate
-
-aws s3 cp infrastructure/compute/terraform.tfstate \
-  s3://my-terraform-state/compute/terraform.tfstate
-```
-
-Configure each sub-configuration to use the correct backend:
+If using remote backends, configure each sub-configuration to use the correct backend:
 
 ```hcl
 # networking/backend.tf
@@ -140,18 +129,28 @@ terraform {
 }
 ```
 
+Then migrate each local state file into its configured backend:
+
+```bash
+cd infrastructure/networking
+tofu init -migrate-state
+
+cd ../compute
+tofu init -migrate-state
+```
+
 ## Step 6: Validate Each New State
 
 ```bash
 # Validate networking state
 cd infrastructure/networking
-tofu init -reconfigure
+tofu init
 tofu state list
 tofu plan  # Should show no changes
 
 # Validate compute state
 cd ../compute
-tofu init -reconfigure
+tofu init
 tofu state list
 tofu plan  # Should show no changes
 ```
