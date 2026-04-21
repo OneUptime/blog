@@ -6,7 +6,7 @@ Tags: Traceroute, Asymmetric Routing, Networking, IPv4, BGP, Diagnostic
 
 Description: Detect and diagnose asymmetric routing where forward and return network paths differ, using traceroute and analyzing RTT patterns and hop asymmetry indicators.
 
-Asymmetric routing - where packets travel different paths in each direction - causes connection problems, firewall stateful inspection failures, and confusing network behavior. Traceroute usually captures only the forward path, making asymmetry hard to detect without the right techniques.
+Asymmetric routing - where packets travel different paths in each direction - can cause connection problems, firewall stateful inspection failures, and confusing network behavior. Traceroute primarily reveals the forward path; the replies used to measure RTT may return over a different path, making asymmetry hard to prove without the right techniques.
 
 ## What Is Asymmetric Routing?
 
@@ -30,13 +30,14 @@ Problems caused:
 ```bash
 tracepath -n 8.8.8.8
 
-# "asymm X" in tracepath output = forward hops ≠ return hops at this point
+# "asymm X" in tracepath output = estimated return hops differ from forward hops
 
 # 3:  no reply
 # 4:  72.14.218.46                                       17.232ms asymm  5
 #                                                                   ^^^^^^
-# "asymm 5" means: return path reached here in 5 hops, but we're on hop 4
-# The difference (5 vs 4) = asymmetric routing detected
+# "asymm 5" means: tracepath estimates the reply took 5 hops back,
+# while this responder is at forward hop 4
+# The difference (5 vs 4) is a hint of asymmetric routing, not proof by itself
 ```
 
 ## Running Traceroute from Both Ends
@@ -50,7 +51,8 @@ traceroute -n 10.200.0.1
 # Run from host B (target):
 traceroute -n 10.100.0.1
 
-# Compare the hops - if they're different, you have asymmetric routing
+# Compare the hops - if they're materially different, you likely have
+# asymmetric routing for this probe type
 # Forward: A → R1 → R2 → R3 → B
 # Return:  B → R5 → R6 → A   ← completely different path
 ```
@@ -64,29 +66,31 @@ traceroute -n 8.8.8.8
 
 #  1  192.168.1.1     1ms
 #  2  10.1.0.1        8ms
-#  3  * * *           ← asymmetric: this hop doesn't respond on the return path
+#  3  * * *           ← no reply from this hop
 #  4  72.14.0.1      12ms
 #  5  8.8.8.8        12ms
 
-# The *** at hop 3 with a normal hop 4 often indicates:
-# - Hop 3 exists on the forward path
-# - But ICMP Time Exceeded comes back via a different path
-# - That different path doesn't traverse hop 3
+# The *** at hop 3 with a normal hop 4 usually indicates:
+# - Hop 3 forwarded traffic, because later hops still respond
+# - Hop 3 did not send ICMP Time Exceeded, or its reply was filtered,
+#   rate-limited, or lost
+# - This is not proof of asymmetry; confirm with reverse traceroute or tracepath
 ```
 
 ## When Asymmetric Routing Breaks Things
 
 ```bash
 # Symptom: TCP connections timeout or reset unexpectedly
-# Cause: stateful firewall sees SYN going out, but RST/ACK returns via
-# different interface that the firewall doesn't associate with the connection
+# Cause: stateful firewall sees SYN going out, but SYN/ACK or later packets
+# return via a different path or interface that the firewall doesn't associate
+# with the connection
 
 # Test: can packets go out but not come back?
 # On firewall/gateway, check:
-sudo conntrack -L | grep 10.200.0.1   # Should show ESTABLISHED
+sudo conntrack -L | grep 10.200.0.1   # Active TCP sessions should show ESTABLISHED
 
-# If SYN is there but no ESTABLISHED:
-# → Return traffic isn't reaching this firewall
+# If SYN_SENT is there but no ESTABLISHED:
+# → Reply traffic isn't reaching this firewall, or is dropped before tracking
 # → Asymmetric routing bypasses the stateful firewall
 
 # Fix: ensure traffic goes through the same firewall in both directions
@@ -113,14 +117,15 @@ ip rule show
 ip route show table eth0-rt
 ```
 
-## Using mtr to Visualize Asymmetry
+## Using mtr to Visualize Path Behavior
 
 ```bash
-# mtr -b shows bidirectional latency hints
+# mtr repeats traceroute-style probes and reports per-hop RTT/loss
 sudo mtr -n --report --report-cycles=10 8.8.8.8
 
-# High jitter at intermediate hops (not destination) suggests
-# asymmetric ICMP responses - forward path differs from return
+# Sustained loss/jitter that continues through to the destination can indicate
+# an end-to-end path issue. Loss or jitter only at intermediate hops often means
+# ICMP rate limiting/deprioritization, not necessarily asymmetric routing.
 ```
 
-Asymmetric routing is often benign on the internet but causes severe problems when stateful firewalls or NAT are involved - policy routing is the primary fix for controlled environments.
+Asymmetric routing is often benign on the internet but can cause severe problems when stateful firewalls or NAT are involved - routing-metric changes and policy routing are common fixes for controlled environments.
