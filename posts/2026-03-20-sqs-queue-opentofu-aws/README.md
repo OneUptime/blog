@@ -18,6 +18,17 @@ Amazon SQS is a fully managed message queuing service that enables decoupled and
 ## Step 1: Configure the Provider
 
 ```hcl
+variable "aws_region" {
+  description = "AWS Region for the SQS queues"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "publisher_role_arn" {
+  description = "IAM role ARN allowed to publish to the queue"
+  type        = string
+}
+
 terraform {
   required_providers {
     aws = {
@@ -63,7 +74,7 @@ resource "aws_sqs_queue" "main" {
   message_retention_seconds = 86400  # 1 day
 
   # Maximum message size (bytes)
-  max_message_size = 262144  # 256 KB
+  max_message_size = 262144  # 256 KiB
 
   # Long polling - wait time for receiving messages
   receive_wait_time_seconds = 20
@@ -74,7 +85,7 @@ resource "aws_sqs_queue" "main" {
   # Dead-letter queue configuration
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.dlq.arn
-    maxReceiveCount     = 5  # Move to DLQ after 5 failed attempts
+    maxReceiveCount     = 5  # Move to DLQ when ReceiveCount exceeds 5
   })
 
   tags = {
