@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, .tofu Extension, HCL, Infrastructure as Code, DevOps
 
-Description: A guide to using OpenTofu's native .tofu file extension, which takes precedence over .tf files when both exist.
+Description: A guide to using OpenTofu's native .tofu file extension in OpenTofu 1.8 and later, which takes precedence over .tf files when both exist.
 
 ## Introduction
 
-OpenTofu supports a native `.tofu` file extension in addition to the standard `.tf` extension. The `.tofu` extension was introduced to allow OpenTofu-specific configurations that won't be processed by Terraform, enabling organizations to maintain separate configurations for each tool.
+OpenTofu 1.8 and later support a native `.tofu` file extension in addition to the standard `.tf` extension. The `.tofu` extension was introduced to allow OpenTofu-specific configurations that won't be processed by Terraform, enabling organizations to maintain separate configurations for each tool.
 
 ## The .tofu File Extension
 
@@ -22,7 +22,7 @@ Files with the `.tofu` extension are processed identically to `.tf` files but wi
 # This file will only be processed by OpenTofu, not Terraform
 
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.8.0"
 
   required_providers {
     aws = {
@@ -69,7 +69,7 @@ terraform {
 # This replaces versions.tf when running with OpenTofu
 
 terraform {
-  required_version = ">= 1.6.0"  # OpenTofu version
+  required_version = ">= 1.8.0"  # OpenTofu version
 
   # OpenTofu uses S3 backend instead of Terraform Cloud
   backend "s3" {
@@ -105,7 +105,7 @@ cp versions.tf versions.tofu
 
 ## Directory Structure with .tofu Files
 
-```hcl
+```text
 project/
 ├── main.tf         # Shared configuration (used by both)
 ├── variables.tf    # Shared variables
@@ -115,16 +115,16 @@ project/
 └── backends.tofu   # OpenTofu-specific backend (no .tf equivalent needed)
 ```
 
-## Checking Which Files Are Loaded
+## Checking Which .tf Files Are Ignored
 
 ```bash
-# OpenTofu tells you in debug output which files it loaded
+# Debug output can show .tf files ignored because a .tofu alternative exists
 TF_LOG=DEBUG tofu validate 2>&1 | grep "\.tofu\|\.tf"
 ```
 
 ## When to Use .tofu vs .tf
 
-```hcl
+```text
 Use .tf when:
 - Configuration works for both Terraform and OpenTofu
 - You're not using OpenTofu-specific features
