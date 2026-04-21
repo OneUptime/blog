@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Debugging, TF_LOG_PROVIDER, Provider, Troubleshooting, Infrastructure as Code
 
-Description: Learn how to use TF_LOG_PROVIDER to capture verbose debug logging only for providers, exposing raw API calls and responses to diagnose provider-level failures.
+Description: Learn how to use TF_LOG_PROVIDER to capture verbose debug logging only for providers, including provider-specific API call and response details to diagnose provider-level failures.
 
 ## Introduction
 
-Provider errors - authentication failures, rate limits, unexpected API responses - are best debugged by looking at what the provider is actually sending to and receiving from the cloud API. `TF_LOG_PROVIDER` enables verbose logging only for providers, keeping core engine output clean.
+Provider errors - authentication failures, rate limits, unexpected API responses - are best debugged by looking at provider logs for what the provider is doing when it calls the cloud API. `TF_LOG_PROVIDER` enables verbose logging for providers without enabling core engine logs.
 
 ## Enabling Provider-Level Logging
 
@@ -18,11 +18,12 @@ Provider errors - authentication failures, rate limits, unexpected API responses
 export TF_LOG_PROVIDER=DEBUG
 tofu plan
 
-# TRACE level - includes raw HTTP request/response bodies
+# TRACE level - most verbose provider logging; HTTP detail depends on the provider
 export TF_LOG_PROVIDER=TRACE
 tofu apply
 
 # Disable core logging while debugging providers
+unset TF_LOG
 export TF_LOG_CORE=OFF
 export TF_LOG_PROVIDER=TRACE
 tofu plan
@@ -30,7 +31,7 @@ tofu plan
 
 ## What Provider TRACE Logs Show
 
-Provider TRACE logs expose every detail of provider communication:
+Provider TRACE logs can expose provider framework details and, when the provider emits HTTP transaction logs, API request and response details:
 
 ```text
 2026-03-20T10:05:00.000Z [TRACE] provider.terraform-provider-aws: starting provider
@@ -73,15 +74,15 @@ grep -E "429|ThrottlingException|RateLimitExceeded|retry|backoff" /tmp/rate-limi
 
 ## Diagnosing Unexpected Plan Diffs
 
-If OpenTofu plans changes you do not expect, provider DEBUG shows what the provider read back from the API vs what is in state:
+If OpenTofu plans changes you do not expect, provider logs can help show refresh and read activity to compare what the provider read from the API with what is in state:
 
 ```bash
-export TF_LOG_PROVIDER=DEBUG
+export TF_LOG_PROVIDER=TRACE
 export TF_LOG_PATH=/tmp/plan-debug.log
 tofu plan
 
 # Find Read calls (what the provider read from the API)
-grep "ReadResource\|RefreshState\|Refresh:" /tmp/plan-debug.log
+grep -E "ReadResource|RefreshState|Refresh:" /tmp/plan-debug.log
 ```
 
 ## Filtering Logs for a Specific Provider
@@ -108,10 +109,10 @@ touch /tmp/provider-debug.log
 chmod 600 /tmp/provider-debug.log
 TF_LOG_PROVIDER=TRACE TF_LOG_PATH=/tmp/provider-debug.log tofu plan
 
-# Shred the file when done
+# Remove the file when done; use a platform-specific secure deletion process if required
 shred -u /tmp/provider-debug.log
 ```
 
 ## Conclusion
 
-`TF_LOG_PROVIDER` gives you X-ray vision into what your providers are doing: every API call, every response, and every retry. Start with `DEBUG` for general provider issues and escalate to `TRACE` when you need the raw request and response bodies. Always treat provider logs as sensitive artifacts due to potential credential exposure.
+`TF_LOG_PROVIDER` gives you focused visibility into what your providers are doing: API calls, responses, retries, and provider framework activity when those details are logged by the provider. Start with `DEBUG` for general provider issues and escalate to `TRACE` when you need the most detailed provider logs. Always treat provider logs as sensitive artifacts due to potential credential exposure.
