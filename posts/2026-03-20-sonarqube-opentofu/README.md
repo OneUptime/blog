@@ -36,6 +36,12 @@ provider "helm" {
   }
 }
 
+provider "kubernetes" {
+  host                   = var.cluster_endpoint
+  cluster_ca_certificate = base64decode(var.cluster_ca_cert)
+  token                  = var.cluster_token
+}
+
 resource "kubernetes_namespace" "sonarqube" {
   metadata {
     name = "sonarqube"
@@ -93,7 +99,7 @@ resource "helm_release" "sonarqube" {
         jdbcPassword = var.postgres_password
       }
 
-      # Persistent storage for SonarQube data
+      # Persistent storage for SonarQube's bundled Elasticsearch indexes
       persistence = {
         enabled          = true
         storageClass     = var.storage_class
@@ -102,14 +108,14 @@ resource "helm_release" "sonarqube" {
 
       ingress = {
         enabled = true
+        ingressClassName = "nginx"
         annotations = {
-          "kubernetes.io/ingress.class"    = "nginx"
           "cert-manager.io/cluster-issuer" = "letsencrypt-prod"
         }
         hosts = [
           {
             name  = var.sonarqube_hostname
-            paths = ["/"]
+            path  = "/"
           }
         ]
         tls = [
@@ -132,8 +138,10 @@ resource "helm_release" "sonarqube" {
       }
 
       # JVM memory settings
-      jvmOpts    = "-Xmx1536m -Xms1536m"
-      jvmCeOpts  = "-Xmx512m -Xms128m"
+      sonarProperties = {
+        "sonar.web.javaOpts" = "-Xmx1536m -Xms1536m"
+        "sonar.ce.javaOpts"  = "-Xmx512m -Xms128m"
+      }
     })
   ]
 }
@@ -178,7 +186,7 @@ resource "kubernetes_daemon_set_v1" "sysctl" {
 
         container {
           name  = "pause"
-          image = "k8s.gcr.io/pause:3.9"
+          image = "registry.k8s.io/pause:3.9"
         }
       }
     }
