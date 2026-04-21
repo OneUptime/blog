@@ -12,7 +12,7 @@ Terratest is a Go testing library from Gruntwork that allows you to write automa
 
 ## Prerequisites
 
-- Go 1.21 or later installed
+- Go 1.26 or later installed
 - OpenTofu installed
 - Cloud provider credentials configured
 
@@ -37,6 +37,7 @@ Initialize Go module:
 cd test
 go mod init github.com/myorg/infra-tests
 go get github.com/gruntwork-io/terratest/modules/terraform
+go get github.com/aws/aws-sdk-go-v2/service/ec2
 go get github.com/stretchr/testify/assert
 ```
 
@@ -80,8 +81,19 @@ func TestNetworkingModule(t *testing.T) {
 ## Testing with AWS SDK Validation
 
 ```go
+// test/compute_test.go
+package test
+
 import (
-    "github.com/gruntwork-io/terratest/modules/aws"
+    "context"
+    "testing"
+
+    "github.com/aws/aws-sdk-go-v2/service/ec2"
+    "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+    terratestaws "github.com/gruntwork-io/terratest/modules/aws"
+    "github.com/gruntwork-io/terratest/modules/terraform"
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
 )
 
 func TestEC2Instance(t *testing.T) {
@@ -96,9 +108,18 @@ func TestEC2Instance(t *testing.T) {
 
     instanceId := terraform.Output(t, opts, "instance_id")
 
-    instance := aws.GetEc2InstanceById(t, instanceId, region)
-    assert.Equal(t, "running", aws.GetInstanceState(t, instanceId, region))
-    assert.Equal(t, "t3.micro", *instance.InstanceType)
+    ec2Client := terratestaws.NewEc2Client(t, region)
+    result, err := ec2Client.DescribeInstances(context.Background(), &ec2.DescribeInstancesInput{
+        InstanceIds: []string{instanceId},
+    })
+    require.NoError(t, err)
+    require.Len(t, result.Reservations, 1)
+    require.Len(t, result.Reservations[0].Instances, 1)
+
+    instance := result.Reservations[0].Instances[0]
+    require.NotNil(t, instance.State)
+    assert.Equal(t, types.InstanceStateNameRunning, instance.State.Name)
+    assert.Equal(t, types.InstanceTypeT3Micro, instance.InstanceType)
 }
 ```
 
@@ -117,7 +138,7 @@ go test -v -timeout 60m ./...
 
 ## Best Practices
 
-- Use unique, random names to avoid test conflicts: `terratest/modules/random`
+- Use unique, random names to avoid test conflicts with `random.UniqueId()` from `github.com/gruntwork-io/terratest/modules/random`
 - Always use `defer terraform.Destroy()` to clean up
 - Set generous timeouts for real infrastructure operations
 - Use `t.Parallel()` to run independent tests concurrently
