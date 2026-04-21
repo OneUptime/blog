@@ -47,6 +47,10 @@ http_access deny CONNECT !SSL_ports
 # Block requests to unsafe ports
 http_access deny !Safe_ports
 
+# Only allow cache manager access from localhost
+http_access allow localhost manager
+http_access deny manager
+
 # Allow access from local networks
 http_access allow localnet
 
@@ -54,7 +58,7 @@ http_access allow localnet
 http_access deny all
 
 # Log location
-access_log /var/log/squid/access.log squid
+access_log daemon:/var/log/squid/access.log logformat=squid
 cache_log  /var/log/squid/cache.log
 
 # Disk cache
@@ -64,6 +68,11 @@ cache_dir ufs /var/spool/squid 4096 16 256
 ## Start and Enable Squid
 
 ```bash
+# Validate the configuration and initialize cache directories
+sudo squid -k parse
+sudo systemctl stop squid
+sudo squid -z
+
 sudo systemctl enable squid
 sudo systemctl start squid
 
@@ -122,7 +131,7 @@ sudo awk '{print $3}' /var/log/squid/access.log | sort | uniq -c | sort -rn | he
 ## Squid Cache Statistics
 
 ```bash
-sudo squidclient -h 127.0.0.1 mgr:info 2>/dev/null | head -40
+curl -s http://127.0.0.1:3128/squid-internal-mgr/info | head -40
 ```
 
 ## Reload Configuration Without Restart
