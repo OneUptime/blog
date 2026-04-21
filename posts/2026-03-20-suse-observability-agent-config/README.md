@@ -43,11 +43,10 @@ stackstate:
   cluster:
     name: "production-us-west"    # Unique name for this cluster
     authToken: ""                 # Optional: for secure cluster identification
-  url: "https://observability.example.com/receiver/solarwinds"
+  url: "https://observability.example.com/receiver/stsAgent"
 
 # Node agent runs on every node
 nodeAgent:
-  enabled: true
   tolerations:
     - key: node-role.kubernetes.io/control-plane
       operator: Exists
@@ -60,7 +59,8 @@ clusterAgent:
     kubernetesTopology: true
     kubernetesMetrics: true
     kubernetesEvents: true
-    kubernetesState: true
+    kubeStateMetrics:
+      enabled: true
 ```
 
 ---
@@ -71,40 +71,34 @@ clusterAgent:
 # Enable log collection from pods
 logsAgent:
   enabled: true
-  # Collect logs from all containers by default
-  containerCollectAll: true
-  # Exclude specific namespaces from log collection
-  excludeNamespaces:
-    - kube-system
-    - cert-manager
-
-# Add log processing rules
-logProcessing:
-  rules:
-    - name: mask-sensitive-data
-      type: mask_sequences
-      pattern: \d{4}-\d{4}-\d{4}-\d{4}    # Mask credit card patterns
-      replacePlaceholder: "[MASKED]"
+  resources:
+    requests:
+      cpu: 20m
+      memory: 100Mi
+    limits:
+      cpu: 500m
+      memory: 192Mi
 ```
 
 ---
 
-## Step 3: Add Custom Tags to All Data
+## Step 3: Add Custom Tags to Agent Data
 
-Tags help filter and group data in the Observability UI:
+Tags help filter and group agent data in the Observability UI:
 
 ```yaml
-# Apply custom tags to all collected data
+# Apply custom tags to the agent containers
 global:
-  extraEnvVars:
-    - name: STS_TAGS
-      value: "env:production,team:platform,region:us-west-2"
+  extraEnv:
+    open:
+      DD_TAGS: "env:production,team:platform,region:us-west-2"
 
-# Or configure per-component
+# Or configure only the node agent container
 nodeAgent:
-  extraEnvVars:
-    - name: STS_TAGS
-      value: "component:node-agent"
+  containers:
+    agent:
+      env:
+        DD_TAGS: "component:node-agent"
 ```
 
 ---
@@ -118,8 +112,8 @@ The agent supports built-in checks for common services:
 nodeAgent:
   config:
     override:
-      - name: auto_conf/nginx.yaml
-        path: /etc/stackstate-agent/conf.d
+      - name: auto_conf.yaml
+        path: /etc/stackstate-agent/conf.d/nginx.d
         data: |
           ad_identifiers:
             - nginx
@@ -135,13 +129,23 @@ nodeAgent:
 ```yaml
 # Set resource requests and limits for the agent
 nodeAgent:
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
+  containers:
+    agent:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+    processAgent:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 250m
+          memory: 400Mi
 
 clusterAgent:
   resources:
@@ -159,9 +163,10 @@ clusterAgent:
 
 ```bash
 # Upgrade the agent deployment with new values
-helm upgrade suse-observability-agent \
-  suse-observability-agent/suse-observability-agent \
+helm upgrade --install suse-observability-agent \
+  suse-observability/suse-observability-agent \
   --namespace suse-observability \
+  --create-namespace \
   --values agent-values.yaml \
   --wait
 
@@ -181,10 +186,10 @@ kubectl logs -n suse-observability daemonset/suse-observability-agent-node-agent
 kubectl logs -n suse-observability deployment/suse-observability-agent-cluster-agent \
   | grep -i "topology\|metrics\|error"
 
-# List all running checks
+# Show node-agent status and running checks
 kubectl exec -n suse-observability \
   $(kubectl get pod -n suse-observability -l app.kubernetes.io/component=node-agent -o name | head -1) \
-  -- stackstate-agent check kubernetes_state
+  -- stackstate-agent status
 ```
 
 ---
@@ -197,8 +202,8 @@ kubectl logs -n suse-observability daemonset/suse-observability-agent-node-agent
   | grep -i "connection\|refused\|timeout"
 
 # Check the API key is correct
-kubectl get secret -n suse-observability suse-observability-agent \
-  -o jsonpath='{.data.stackstate-api-key}' | base64 -d
+kubectl get secret -n suse-observability suse-observability-agent-secrets \
+  -o jsonpath='{.data.STS_API_KEY}' | base64 -d
 
 # Restart the agent
 kubectl rollout restart daemonset/suse-observability-agent-node-agent -n suse-observability
@@ -209,5 +214,5 @@ kubectl rollout restart daemonset/suse-observability-agent-node-agent -n suse-ob
 ## Best Practices
 
 - Set a meaningful `cluster.name` that identifies the environment and region - this name appears in the topology view and cannot be easily changed.
-- Enable log collection selectively for namespaces with high log volume to avoid overwhelming the Observability server.
+- Disable `logsAgent.enabled` when pod log shipping is not required, or use a separate log pipeline if you need custom namespace filtering.
 - Use `tolerations` on the node agent to ensure it runs on control-plane nodes for complete cluster visibility.
