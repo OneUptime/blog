@@ -26,17 +26,17 @@ journalctl -u dnsmasq -n 50
 
 # Windows Server
 Get-Service -Name "DHCPServer"
-Get-EventLog -LogName System -Source DhcpServer -Newest 20
+Get-WinEvent -LogName "Microsoft-Windows-DHCP Server Events/Operational" -MaxEvents 20
 ```
 
 ## Step 2: Verify the DHCP Server Process is Listening
 
 ```bash
 # Should show UDP port 67 listening
-ss -ulnp | grep 67
+sudo ss -ulnp 'sport = :67'
 
 # Or
-netstat -ulnp | grep dhcpd
+sudo ss -ulnp | grep -E "dhcpd|dnsmasq"
 ```
 
 ## Step 3: Check Firewall Rules
@@ -48,7 +48,7 @@ sudo iptables -L -n | grep -E "DHCP|67|68"
 
 # Allow DHCP if blocked
 sudo iptables -A INPUT -p udp --dport 67 -j ACCEPT
-sudo iptables -A INPUT -p udp --dport 68 -j ACCEPT
+sudo iptables -A OUTPUT -p udp --sport 67 --dport 68 -j ACCEPT
 
 # Windows Server firewall
 Get-NetFirewallRule -DisplayName "*DHCP*"
@@ -72,10 +72,10 @@ grep ^interface /etc/dnsmasq.conf
 ## Step 5: Check Address Pool Exhaustion
 
 ```bash
-# Count active leases vs pool size
-grep "^lease" /var/lib/dhcp/dhcpd.leases | wc -l
+# Estimate active lease records vs pool size
+grep -c "binding state active" /var/lib/dhcp/dhcpd.leases
 
-# View all currently bound leases
+# View active lease records
 grep -A5 "binding state active" /var/lib/dhcp/dhcpd.leases
 
 # Windows Server
@@ -89,7 +89,8 @@ Get-DhcpServerv4ScopeStatistics -ScopeId 192.168.1.0
 sudo nmap --script broadcast-dhcp-discover -e eth0
 
 # Or use dhcping
-sudo dhcping -s 192.168.1.1 -h AA:BB:CC:DD:EE:FF
+# Use a client IP/MAC that is valid for your DHCP scope or reservation
+sudo dhcping -s 192.168.1.1 -c 192.168.1.50 -h AA:BB:CC:DD:EE:FF
 ```
 
 ## Step 7: Check for Rogue DHCP Servers
@@ -97,7 +98,7 @@ sudo dhcping -s 192.168.1.1 -h AA:BB:CC:DD:EE:FF
 ```bash
 # Multiple DHCP servers can conflict
 sudo nmap --script broadcast-dhcp-discover -e eth0
-# If more than one DHCP offer is received, there's a rogue server
+# If offers come from an unexpected server, investigate a rogue or misconfigured server
 ```
 
 ## Key Takeaways
