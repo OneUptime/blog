@@ -8,7 +8,7 @@ Description: Learn how to use TFLint to catch errors, enforce best practices, an
 
 ## Introduction
 
-TFLint is a linter for Terraform and OpenTofu that catches errors not detected by `tofu validate`, such as invalid instance types, deprecated parameters, and module best-practice violations. It supports provider-specific rules through a plugin system.
+TFLint is a Terraform linter that can lint Terraform-compatible OpenTofu configurations stored in `.tf` files. It catches errors not detected by `tofu validate`, such as invalid instance types, deprecated parameters, and module best-practice violations. It supports provider-specific rules through a plugin system.
 
 ## Installing TFLint
 
@@ -37,13 +37,13 @@ Create a `.tflint.hcl` configuration file:
 ```hcl
 plugin "aws" {
   enabled = true
-  version = "0.30.0"
+  version = "0.47.0"
   source  = "github.com/terraform-linters/tflint-ruleset-aws"
 }
 
 plugin "azurerm" {
   enabled = true
-  version = "0.26.0"
+  version = "0.31.1"
   source  = "github.com/terraform-linters/tflint-ruleset-azurerm"
 }
 ```
@@ -70,20 +70,27 @@ tflint --recursive
 
 ## Common Issues Caught by TFLint
 
-```bash
+```hcl
 # Invalid EC2 instance type
 resource "aws_instance" "web" {
-  instance_type = "t2.invalidtype"  # TFLint catches this
+  ami           = "ami-0abcdef1234567890"
+  instance_type = "t2.invalidtype" # TFLint catches this
 }
 
-# Deprecated resource
-resource "aws_alb" "web" {  # Should use aws_lb
-  ...
+# Deprecated security group rule resource
+resource "aws_security_group_rule" "ssh" {
+  type              = "ingress"
+  security_group_id = "sg-12345678"
+  from_port         = 22
+  to_port           = 22
+  protocol          = "tcp"
+  cidr_blocks       = ["10.0.0.0/8"]
 }
 
 # Missing required tags
 resource "aws_s3_bucket" "logs" {
-  # TFLint can enforce required tags via custom rules
+  bucket = "example-company-logs"
+  # TFLint can enforce required tags with aws_resource_missing_tags
 }
 ```
 
@@ -99,6 +106,11 @@ rule "aws_instance_previous_type" {
   enabled = true
 }
 
+rule "aws_resource_missing_tags" {
+  enabled = true
+  tags    = ["Environment", "Owner"]
+}
+
 rule "terraform_deprecated_interpolation" {
   enabled = true
 }
@@ -108,7 +120,9 @@ rule "terraform_deprecated_interpolation" {
 
 ```hcl
 resource "aws_instance" "legacy" {
-  instance_type = "t1.micro"  # tflint-ignore: aws_instance_previous_type
+  ami           = "ami-0abcdef1234567890"
+  # tflint-ignore: aws_instance_previous_type
+  instance_type = "t1.micro"
 }
 ```
 
@@ -117,16 +131,16 @@ resource "aws_instance" "legacy" {
 ```yaml
 - name: TFLint
   run: |
-    tflint --init
+    tflint --recursive --init
     tflint --recursive
 ```
 
 GitHub Actions:
 
 ```yaml
-- uses: terraform-linters/setup-tflint@v4
+- uses: terraform-linters/setup-tflint@v6
 - name: Init TFLint
-  run: tflint --init
+  run: tflint --recursive --init
 - name: Run TFLint
   run: tflint --recursive
 ```
