@@ -12,11 +12,11 @@ The `netem` (Network Emulator) qdisc in Linux's traffic control subsystem can si
 
 ## Understanding Packet Corruption
 
-Packet corruption flips random bits within a packet's payload. The receiving host's checksum validation will detect the corruption, causing the packet to be dropped and retransmitted at the TCP layer. This simulates poor physical links (noisy Ethernet, bad fiber, bit errors on wireless).
+Packet corruption modifies packet contents at a random position. For TCP traffic, corruption detected by checksum validation causes the segment to be discarded, and TCP can retransmit the lost data. UDP and other protocols may instead see drops or application-level errors. This simulates poor physical links (noisy Ethernet, bad fiber, bit errors on wireless).
 
 ## Enabling Packet Corruption
 
-Apply a netem qdisc to a network interface:
+Apply a netem qdisc to outbound traffic on a network interface:
 
 ```bash
 # Add netem qdisc with 0.1% packet corruption to eth0
@@ -27,7 +27,7 @@ sudo tc qdisc add dev eth0 root netem corrupt 0.1%
 sudo tc qdisc show dev eth0
 ```
 
-`corrupt 0.1%` means each packet has a 0.1% chance of having a single bit flipped.
+`corrupt 0.1%` means each packet has a 0.1% chance of being corrupted at a random position.
 
 ## Increasing Corruption for Stress Testing
 
@@ -42,11 +42,12 @@ You can simulate multiple conditions simultaneously:
 
 ```bash
 # Combine corruption with packet loss and delay
+# 50ms delay with 10ms jitter, 1% loss, 0.5% corruption, and 0.1% duplication
 sudo tc qdisc add dev eth0 root netem \
-  delay 50ms 10ms \       # 50ms delay with ±10ms jitter
-  loss 1% \               # 1% random packet loss
-  corrupt 0.5% \          # 0.5% packet corruption
-  duplicate 0.1%          # 0.1% packet duplication
+  delay 50ms 10ms \
+  loss 1% \
+  corrupt 0.5% \
+  duplicate 0.1%
 ```
 
 ## Modifying an Existing Rule
@@ -61,7 +62,7 @@ sudo tc qdisc change dev eth0 root netem corrupt 2%
 ## Removing the Rule
 
 ```bash
-# Remove all tc rules from the interface
+# Remove the root qdisc from the interface
 sudo tc qdisc del dev eth0 root
 ```
 
