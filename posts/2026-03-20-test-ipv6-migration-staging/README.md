@@ -13,17 +13,18 @@ Testing IPv6 migration in staging before production reduces risk significantly. 
 ## Step 1: Set Up IPv6-Enabled Staging Network
 
 ```bash
-# Create a Docker network with IPv6 for staging tests
+# Create a Docker network with IPv6 and no IPv4 address assignment
 
 docker network create \
     --driver bridge \
     --ipv6 \
-    --subnet 172.28.0.0/16 \
-    --subnet fd00:staging::/64 \
+    --ipv4=false \
+    --subnet fd00:172:28::/64 \
     staging-ipv6-net
 
-# Verify IPv6 is enabled
-docker network inspect staging-ipv6-net | grep -A5 "IPAM"
+# Verify the IPv6 subnet
+docker network inspect staging-ipv6-net \
+    --format '{{json .IPAM.Config}}'
 ```
 
 ## Step 2: Run the Application in IPv6-Only Mode
@@ -47,7 +48,7 @@ echo "App IPv6: $IPV6_ADDR"
 
 # Test from another container (IPv6-only)
 docker run --rm --network staging-ipv6-net \
-    alpine/curl curl -6 "http://[$IPV6_ADDR]:8080/health"
+    curlimages/curl:latest -6 "http://[$IPV6_ADDR]:8080/health"
 ```
 
 ## Step 3: Automated IPv6 Test Suite
@@ -61,6 +62,8 @@ import urllib.request
 import ssl
 import pytest
 import os
+import ipaddress
+import re
 
 APP_IPV6 = os.environ.get("APP_IPV6_ADDR", "::1")
 APP_PORT = int(os.environ.get("APP_PORT", "8080"))
@@ -99,7 +102,18 @@ class TestIPv6Connectivity:
             ["docker", "logs", "--tail=5", "app-ipv6-test"],
             capture_output=True, text=True
         ).stdout
-        assert ":" in logs, f"IPv6 address not found in logs: {logs}"
+        tokens = re.findall(r"[0-9A-Fa-f:]+", logs)
+        has_ipv6 = False
+        for token in tokens:
+            if ":" not in token:
+                continue
+            try:
+                if ipaddress.ip_address(token).version == 6:
+                    has_ipv6 = True
+                    break
+            except ValueError:
+                pass
+        assert has_ipv6, f"IPv6 address not found in logs: {logs}"
 
     def test_ipv6_only_socket(self):
         """Direct TCP test via IPv6."""
@@ -155,7 +169,7 @@ host staging.example.com staging-dns-server
 
 # Test AAAA resolution from staging client
 dig AAAA api.staging.example.com +short
-# Should return: fd00:staging::10
+# Should return: fd00:172:28::10
 ```
 
 ## Step 5: Staging Test Report
@@ -174,11 +188,22 @@ python -m pytest tests/test_ipv6_staging.py -v \
     --junitxml=/tmp/ipv6-test-results.xml
 
 # Summary
-PASS=$(grep -c 'testcase.*time' /tmp/ipv6-test-results.xml)
-FAIL=$(grep -c 'failure' /tmp/ipv6-test-results.xml)
+read -r PASS FAIL ERROR SKIP < <(python - <<'PY'
+import xml.etree.ElementTree as ET
+
+root = ET.parse("/tmp/ipv6-test-results.xml").getroot()
+stats = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
+for suite in root.iter("testsuite"):
+    for key in stats:
+        stats[key] += int(suite.attrib.get(key, 0))
+
+passed = stats["tests"] - stats["failures"] - stats["errors"] - stats["skipped"]
+print(passed, stats["failures"], stats["errors"], stats["skipped"])
+PY
+)
 echo ""
-echo "Results: $PASS passed, $FAIL failed"
-[ $FAIL -eq 0 ] && echo "READY FOR PRODUCTION" || echo "NOT READY - Fix failures first"
+echo "Results: $PASS passed, $FAIL failed, $ERROR errors, $SKIP skipped"
+[ $((FAIL + ERROR)) -eq 0 ] && echo "READY FOR PRODUCTION" || echo "NOT READY - Fix failures first"
 ```
 
 ## Conclusion
