@@ -61,7 +61,7 @@ locals {
 
 ## Selecting the Smallest or Largest Value
 
-Use `sort` and index access to pick the minimum or maximum value.
+Use `sort` and index access to pick the lexicographically first or last string value.
 
 ```hcl
 locals {
@@ -81,7 +81,7 @@ locals {
 
 ## Sorting AMI IDs by Creation Date
 
-When multiple AMIs match a filter, sort by name (which often encodes the date) to get the latest.
+When multiple AMIs match a filter, use creation-time ordering to get the latest.
 
 ```hcl
 data "aws_ami" "app" {
@@ -97,7 +97,8 @@ data "aws_ami" "app" {
 # For multiple AMIs, use a data source that returns a list
 
 data "aws_ami_ids" "app_versions" {
-  owners = ["self"]
+  owners         = ["self"]
+  sort_ascending = false
 
   filter {
     name   = "name"
@@ -106,11 +107,8 @@ data "aws_ami_ids" "app_versions" {
 }
 
 locals {
-  # AMI IDs are returned in an unspecified order; sort for determinism
-  sorted_ami_ids = sort(data.aws_ami_ids.app_versions.ids)
-
-  # Pick the lexicographically last AMI ID as a proxy for "latest"
-  latest_ami_id  = local.sorted_ami_ids[length(local.sorted_ami_ids) - 1]
+  # AMI IDs are sorted by creation time according to sort_ascending
+  latest_ami_id = data.aws_ami_ids.app_versions.ids[0]
 }
 ```
 
