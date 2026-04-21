@@ -39,7 +39,7 @@ WHERE family(client_ip) = 6;
 -- Query: find clients in a specific IPv6 subnet
 SELECT client_ip
 FROM connection_logs
-WHERE client_ip << '2001:db8::/32';  -- << means "is contained in"
+WHERE client_ip << '2001:db8::/32';  -- << means "is strictly contained in"
 ```
 
 ## PostgreSQL Indexing for IP Addresses
@@ -59,13 +59,13 @@ WHERE client_ip << '2001:db8::/32';
 
 ## MySQL/MariaDB: VARBINARY(16) Storage
 
-MySQL doesn't have a native inet type for IPv6. Use `VARBINARY(16)` for efficient binary storage:
+MySQL doesn't have a native inet type for IPv6. MariaDB 10.5+ also offers an `INET6` type, but for portable MySQL/MariaDB schemas you can use `VARBINARY(16)` for efficient binary storage:
 
 ```sql
 -- Create table with binary IP storage
 CREATE TABLE access_logs (
     id         BIGINT AUTO_INCREMENT PRIMARY KEY,
-    client_ip  VARBINARY(16) NOT NULL,  -- 16 bytes = 128-bit IPv6
+    client_ip  VARBINARY(16) NOT NULL,  -- Up to 16 bytes for IPv6; IPv4 uses 4 bytes
     client_ip_str VARCHAR(45) GENERATED ALWAYS AS (INET6_NTOA(client_ip)) VIRTUAL,
     logged_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_client_ip (client_ip)
@@ -76,7 +76,7 @@ INSERT INTO access_logs (client_ip)
 VALUES
     (INET6_ATON('2001:db8::1')),
     (INET6_ATON('::1')),
-    (INET6_ATON('192.168.1.5'));  -- INET6_ATON handles IPv4-mapped too
+    (INET6_ATON('192.168.1.5'));  -- INET6_ATON handles IPv4 too
 
 -- Query: retrieve as string
 SELECT INET6_NTOA(client_ip) AS ip, logged_at
@@ -110,24 +110,22 @@ def normalize_ipv6_for_storage(addr_str: str) -> str:
     Handles IPv4-mapped addresses, zone IDs, and brackets.
     """
     # Strip brackets (URL notation)
-    addr_str = addr_str.strip('[]')
+    addr_str = addr_str.strip()
+    if addr_str.startswith('[') and addr_str.endswith(']'):
+        addr_str = addr_str[1:-1]
     # Strip zone ID
-    addr_str = addr_str.split('%')[0]
-    # Strip IPv4-mapped prefix for pure IPv4 addresses
-    if addr_str.startswith('::ffff:'):
-        try:
-            # Try to parse as IPv4-mapped
-            addr = ipaddress.IPv6Address(addr_str)
-            if addr.ipv4_mapped:
-                return str(addr.ipv4_mapped)
-        except ValueError:
-            pass
+    addr_str = addr_str.split('%', 1)[0]
 
     # Normalize to compressed form
     try:
-        return str(ipaddress.ip_address(addr_str))
+        addr = ipaddress.ip_address(addr_str)
     except ValueError:
         raise ValueError(f"Invalid IP address: {addr_str}")
+
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+        return str(addr.ipv4_mapped)
+
+    return str(addr)
 
 # Examples
 
@@ -178,4 +176,4 @@ CREATE INDEX idx_ip_version ON audit_log (ip_version);
 
 ## Conclusion
 
-PostgreSQL's native `inet` type is the best option for IPv6 storage, providing built-in CIDR operators, GiST indexing, and automatic normalization. MySQL requires `VARBINARY(16)` with `INET6_ATON()`/`INET6_NTOP()` functions. Always normalize addresses at the application layer before storage to ensure consistent comparison and indexing behavior.
+PostgreSQL's native `inet` type is the best option for IPv6 storage, providing built-in CIDR operators, GiST indexing, and automatic normalization. MySQL requires `VARBINARY(16)` with `INET6_ATON()`/`INET6_NTOA()` functions. Always normalize addresses at the application layer before storage to ensure consistent comparison and indexing behavior.
