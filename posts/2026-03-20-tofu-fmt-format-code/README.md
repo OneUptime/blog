@@ -13,7 +13,7 @@ Description: Learn how to use tofu fmt to automatically format OpenTofu configur
 ## Basic Usage
 
 ```bash
-# Format all .tf files in the current directory
+# Format supported OpenTofu native-syntax files in the current directory
 
 tofu fmt
 
@@ -28,11 +28,10 @@ tofu fmt  # Silent = already formatted
 ## What tofu fmt Does
 
 The formatter:
-- Aligns `=` signs in attribute assignments
+- Aligns `=` signs in consecutive single-line attribute assignments
 - Adjusts indentation to 2 spaces
-- Removes excess blank lines
+- Normalizes spacing around arguments and nested structures
 - Normalizes trailing spaces
-- Formats string concatenation
 
 ```hcl
 # Before formatting:
@@ -59,7 +58,7 @@ resource "aws_instance" "web" {
 ## Recursive Formatting
 
 ```bash
-# Format all .tf files in subdirectories
+# Format supported OpenTofu native-syntax files in subdirectories
 tofu fmt -recursive
 
 # Useful for formatting a project with modules
@@ -76,8 +75,7 @@ tofu fmt -check
 # Exit code 3: files need formatting
 
 # Useful in CI to fail on unformatted code
-tofu fmt -check -recursive
-if [ $? -ne 0 ]; then
+if ! tofu fmt -check -recursive; then
   echo "Files need formatting. Run: tofu fmt -recursive"
   exit 1
 fi
@@ -87,7 +85,7 @@ fi
 
 ```bash
 # Show what would change without modifying files
-tofu fmt -diff
+tofu fmt -diff -write=false
 
 # Output:
 # main.tf
@@ -122,8 +120,7 @@ jobs:
 
       - name: Check Formatting
         run: |
-          tofu fmt -check -recursive
-          if [ $? -ne 0 ]; then
+          if ! tofu fmt -check -recursive; then
             echo "::error::OpenTofu files are not formatted. Run 'tofu fmt -recursive' locally."
             exit 1
           fi
@@ -138,21 +135,22 @@ repos:
     rev: v1.92.0
     hooks:
       - id: terraform_fmt
-        args: [--args=-recursive]
+        args: [--hook-config=--tf-path=tofu, --args=-recursive]
 ```
 
 ## Editor Integration
 
 ### VS Code (OpenTofu Extension)
 
-Install the "OpenTofu" or "HashiCorp Terraform" extension and enable format on save:
+Install the "OpenTofu" extension and enable format on save:
 
 ```json
 // .vscode/settings.json
 {
-  "[terraform]": {
-    "editor.defaultFormatter": "hashicorp.terraform",
-    "editor.formatOnSave": true
+  "[opentofu][opentofu-vars]": {
+    "editor.defaultFormatter": "opentofu.vscode-opentofu",
+    "editor.formatOnSave": true,
+    "editor.formatOnSaveMode": "file"
   }
 }
 ```
@@ -166,13 +164,17 @@ autocmd BufWritePost *.tf silent exec "!tofu fmt %"
 
 ### IntelliJ IDEA
 
-The HashiCorp Terraform plugin includes automatic formatting on save.
+The Terraform and HCL plugin can invoke `terraform fmt` or `tofu fmt` when reformatting code. Enable Reformat code on save in the IDE if you want save-time formatting.
 
 ## Formatting JSON Files
 
 ```bash
-# Format .tf.json files too
-tofu fmt  # Automatically handles .tf.json
+# tofu fmt ignores JSON-format configs when scanning directories
+tofu fmt
+
+# Format JSON configs with a JSON formatter instead
+python3 -m json.tool config.tf.json > config.tf.json.tmp
+mv config.tf.json.tmp config.tf.json
 
 # Validate JSON-format configs are well-formed
 python3 -m json.tool config.tf.json > /dev/null
@@ -180,9 +182,10 @@ python3 -m json.tool config.tf.json > /dev/null
 
 ## What tofu fmt Does NOT Format
 
-- Comments (content and placement)
-- HCL2 template syntax
+- Comment text
+- Template content inside strings or heredocs
 - Variable values (it formats structure, not content)
+- JSON-format OpenTofu files (for example, `.tf.json`, `.tofu.json`, `.tfvars.json`, `.tftest.json`)
 - JSON values within strings
 
 ## Conclusion
