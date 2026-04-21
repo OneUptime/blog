@@ -8,7 +8,7 @@ Description: Diagnose and fix asymmetric routing problems where forward and retu
 
 ## Introduction
 
-Asymmetric routing occurs when the forward path (client to server) and the return path (server to client) traverse different network devices. While the network layer tolerates this, stateful firewalls and connection-tracking systems expect to see both directions of a flow - and will drop packets when they see only one side.
+Asymmetric routing occurs when the forward path (client to server) and the return path (server to client) traverse different network devices. While the network layer tolerates this, stateful firewall policies built on connection tracking expect to see both directions of a flow - and may drop packets when they see only one side.
 
 ## Detecting Asymmetric Routing
 
@@ -28,16 +28,16 @@ traceroute 192.168.1.10
 On Linux, check which interface traffic leaves through:
 
 ```bash
-# Show which interface and gateway the kernel will use for a destination
+# From host A, show which interface and gateway the kernel will use for host B
 ip route get 10.20.0.10
 
-# Check the reverse path
+# From host B, check the reverse path to host A
 ip route get 192.168.1.10
 ```
 
 ## Common Causes
 
-1. **ECMP without flow tracking** - different paths selected for forward and return
+1. **ECMP or per-packet load balancing** - different paths selected for forward and return
 2. **Dual-ISP with asymmetric BGP** - inbound and outbound traffic use different ISP links
 3. **Policy routing** - source-based routing sends return traffic via a different interface
 4. **Misconfigured static routes** - return route points to a different next-hop
@@ -65,16 +65,18 @@ ip rule add from 198.51.100.5 table 200
 
 ## Handling Asymmetric Routing with Stateful Firewalls
 
-If you cannot avoid asymmetric routing (e.g., in a data center with BGP), configure iptables to accept related/established traffic regardless of direction:
+If you cannot avoid asymmetric routing (e.g., in a data center with BGP), make sure Linux reverse path filtering is not in strict mode. Stateful firewall rules such as `ESTABLISHED,RELATED` still need conntrack state; they do not fix a path where one direction bypasses the firewall.
 
 ```bash
-# Disable strict reverse path filtering (rp_filter) to allow asymmetric flows
-sysctl -w net.ipv4.conf.all.rp_filter=0
-sysctl -w net.ipv4.conf.eth0.rp_filter=0
-
-# For connection tracking with asymmetric routing, use loose mode
-# net.ipv4.conf.all.rp_filter=2 means loose mode
+# Use loose reverse path filtering for asymmetric flows
+# net.ipv4.conf.*.rp_filter=2 means loose mode
 sysctl -w net.ipv4.conf.all.rp_filter=2
+sysctl -w net.ipv4.conf.eth0.rp_filter=2
+
+# To disable reverse path filtering completely, set both all and the interface to 0
+# because Linux uses the max of conf/all and conf/<interface>.
+# sysctl -w net.ipv4.conf.all.rp_filter=0
+# sysctl -w net.ipv4.conf.eth0.rp_filter=0
 ```
 
 ## Verifying the Fix
@@ -87,7 +89,7 @@ ip route get 10.20.0.10 from 203.0.113.5
 # Test with TCP to confirm stateful connections work
 curl -v http://10.20.0.10
 
-# Check conntrack for confirmed bidirectional entries
+# Check conntrack entries; the TCP flow should not be marked [UNREPLIED]
 conntrack -L | grep "10.20.0.10"
 ```
 
