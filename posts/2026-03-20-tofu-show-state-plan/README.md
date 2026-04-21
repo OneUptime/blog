@@ -37,7 +37,7 @@ tofu show
 tofu plan -out=changes.tfplan
 
 # Review the saved plan
-tofu show changes.tfplan
+tofu show -plan=changes.tfplan
 
 # Output shows the planned changes in detail:
 # aws_instance.web will be created
@@ -53,29 +53,29 @@ tofu show changes.tfplan
 tofu show -json
 
 # Saved plan as JSON
-tofu show -json changes.tfplan
+tofu show -plan=changes.tfplan -json
 
 # Pipe to jq for extraction
-tofu show -json | jq '.values.root_module.resources[] | {type: .type, name: .name, id: .values.id}'
+tofu show -json | jq 'def resources: .resources[]?, (.child_modules[]? | resources); .values.root_module | resources | {type: .type, name: .name, id: .values.id}'
 
 # Extract all resource IDs
-tofu show -json | jq '.values.root_module.resources[] | "\(.type).\(.name): \(.values.id)"'
+tofu show -json | jq 'def resources: .resources[]?, (.child_modules[]? | resources); .values.root_module | resources | "\(.address): \(.values.id)"'
 ```
 
 ## Practical Examples
 
 ```bash
 # Get a specific resource's attributes
-tofu show -json | jq '.values.root_module.resources[] | select(.type == "aws_instance") | .values'
+tofu show -json | jq 'def resources: .resources[]?, (.child_modules[]? | resources); .values.root_module | resources | select(.type == "aws_instance") | .values'
 
 # Get all resource addresses
-tofu show -json | jq '.values.root_module.resources[] | .address'
+tofu show -json | jq 'def resources: .resources[]?, (.child_modules[]? | resources); .values.root_module | resources | .address'
 
 # Count resources by type
-tofu show -json | jq '[.values.root_module.resources[] | .type] | group_by(.) | map({type: .[0], count: length})'
+tofu show -json | jq 'def resources: .resources[]?, (.child_modules[]? | resources); [.values.root_module | resources | .type] | group_by(.) | map({type: .[0], count: length})'
 
 # Find all resources with a specific tag
-tofu show -json | jq '.values.root_module.resources[] | select(.values.tags.Environment == "production")'
+tofu show -json | jq 'def resources: .resources[]?, (.child_modules[]? | resources); .values.root_module | resources | select(.values.tags.Environment == "production")'
 ```
 
 ## Comparing State vs Plan
@@ -88,7 +88,7 @@ tofu show > current-state.txt
 tofu plan -out=changes.tfplan
 
 # Show what will change
-tofu show changes.tfplan > planned-changes.txt
+tofu show -plan=changes.tfplan > planned-changes.txt
 
 # Compare
 diff current-state.txt planned-changes.txt
@@ -97,10 +97,10 @@ diff current-state.txt planned-changes.txt
 ## Showing Module Resources
 
 ```bash
-# Show includes module resources
-tofu show -json | jq '.values.root_module.child_modules[]? | .resources[]?'
+# Show includes resources from child modules
+tofu show -json | jq 'def resources: .resources[]?, (.child_modules[]? | resources); .values.root_module | resources | select(.address | startswith("module."))'
 
-# Get module outputs
+# Get root module outputs
 tofu show -json | jq '.values.outputs'
 ```
 
@@ -108,8 +108,9 @@ tofu show -json | jq '.values.outputs'
 
 ```bash
 # Generate a full infrastructure inventory
-tofu show -json | jq '[
-  .values.root_module.resources[] |
+tofu show -json | jq 'def resources: .resources[]?, (.child_modules[]? | resources);
+[
+  .values.root_module | resources |
   {
     address: .address,
     type: .type,
@@ -121,4 +122,4 @@ tofu show -json | jq '[
 
 ## Conclusion
 
-`tofu show` is a versatile command for inspecting both current state and planned changes. Use the human-readable format for quick reviews and the JSON format (`-json`) for automation and tooling. Always review saved plan files with `tofu show` before applying them in production to confirm the changes match your expectations.
+`tofu show` is a versatile command for inspecting both current state and planned changes. Use the human-readable format for quick reviews and the JSON format (`-json`) for automation and tooling. Always review saved plan files with `tofu show -plan=...` before applying them in production to confirm the changes match your expectations.
