@@ -8,7 +8,7 @@ Description: Learn how OpenTofu state locking works with DynamoDB, how to resolv
 
 ---
 
-State locking prevents two OpenTofu operations from modifying the same state file simultaneously. Without locking, concurrent applies can corrupt state or cause partial deployments. DynamoDB provides the locking mechanism for S3 backends.
+State locking prevents two OpenTofu operations from modifying the same state file simultaneously. Without locking, concurrent applies can corrupt state or cause partial deployments. For S3 backends, DynamoDB provides a locking mechanism when the backend is configured with `dynamodb_table`; current OpenTofu versions can also use S3-native lockfiles.
 
 ## How State Locking Works
 
@@ -30,7 +30,8 @@ sequenceDiagram
 ## DynamoDB Lock Table
 
 ```hcl
-# The LockID is the S3 state path - DynamoDB uses it as the partition key
+# The LockID is the S3 state path - DynamoDB uses it as the partition key.
+# OpenTofu stores active lock metadata in an Info attribute on the lock item.
 
 resource "aws_dynamodb_table" "state_lock" {
   name         = "tofu-state-lock"
@@ -40,12 +41,6 @@ resource "aws_dynamodb_table" "state_lock" {
   attribute {
     name = "LockID"
     type = "S"
-  }
-
-  # Enable TTL to auto-clean stale locks (optional safety net)
-  ttl {
-    attribute_name = "ExpireTime"
-    enabled        = true
   }
 
   point_in_time_recovery {
@@ -79,7 +74,7 @@ resource "aws_dynamodb_table" "state_lock" {
 # If a process crashed while holding a lock, you'll need to force-unlock
 # Only do this after verifying no other operation is running
 
-# Get the lock ID from the error message or DynamoDB console
+# Get the unique lock ID from the error message or from the DynamoDB item's Info.ID field
 LOCK_ID="12345678-abcd-1234-efgh-123456789012"
 
 # Force release the lock
@@ -95,7 +90,7 @@ aws dynamodb scan \
 ## Checking Locks via DynamoDB
 
 ```hcl
-# Query current locks in your CI/CD or monitoring
+# Query a known lock item; this data source fails if the item does not exist
 data "aws_dynamodb_table_item" "current_lock" {
   table_name = "tofu-state-lock"
   key = jsonencode({
@@ -111,7 +106,7 @@ data "aws_dynamodb_table_item" "current_lock" {
 - name: Apply with lock timeout
   run: |
     # Wait up to 10 minutes for a lock to be released
-    tofu apply -lock-timeout=10m -auto-approve tfplan
+    tofu apply -lock-timeout=10m tfplan
   env:
     TF_CLI_ARGS: "-lock=true"
 ```
@@ -119,9 +114,9 @@ data "aws_dynamodb_table_item" "current_lock" {
 ## Lock-Free Operations
 
 ```bash
-# Some read-only operations can skip locking (use with caution)
-tofu plan -lock=false    # OK for read-only plan in CI that shows plans only
-tofu output -lock=false  # Safe for reading outputs
+# Some operations are read-only; only commands that support -lock can disable locking
+tofu plan -lock=false    # OK for speculative plans in CI that shows plans only
+tofu output              # Safe for reading outputs; this command has no -lock option
 
 # NEVER skip locking for apply
 # tofu apply -lock=false  # Dangerous - never do this
@@ -130,18 +125,21 @@ tofu output -lock=false  # Safe for reading outputs
 ## Monitoring Stale Locks with CloudWatch
 
 ```hcl
+# Publish this custom metric from CI/CD or a Lambda that reads the lock item's Info.Created timestamp
 resource "aws_cloudwatch_metric_alarm" "stale_lock" {
   alarm_name          = "tofu-stale-lock"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
-  metric_name         = "ItemCount"
-  namespace           = "AWS/DynamoDB"
-  period              = 3600  # 1 hour
+  metric_name         = "LockAgeSeconds"
+  namespace           = "OpenTofu/StateLocks"
+  period              = 300
   statistic           = "Maximum"
-  threshold           = 0
+  threshold           = 3600  # 1 hour
+  treat_missing_data  = "notBreaching"
 
   dimensions = {
-    TableName = aws_dynamodb_table.state_lock.name
+    LockTable = aws_dynamodb_table.state_lock.name
+    LockID    = "mycompany-tofu-state/environments/production/terraform.tfstate"
   }
 
   alarm_description = "A lock has been held for over an hour - may be stale"
@@ -154,5 +152,5 @@ resource "aws_cloudwatch_metric_alarm" "stale_lock" {
 - Never use `tofu force-unlock` without first confirming no other process is running - check CI/CD job status and running pipelines first.
 - Set `-lock-timeout` in CI/CD to wait for locks rather than failing immediately, reducing flaky pipeline runs.
 - Use pay-per-request billing on the lock table - lock operations are infrequent and don't benefit from provisioned capacity.
-- Enable DynamoDB TTL as a safety net for locks from processes that crash - set TTL to 2-4 hours beyond the maximum expected apply duration.
-- Alert on locks older than 1 hour - legitimate applies rarely take that long, and a stale lock may indicate a crashed process.
+- Do not rely on DynamoDB TTL to clear OpenTofu locks unless your own automation writes a numeric TTL attribute to each lock item; OpenTofu's DynamoDB lock item does not include one by default.
+- Alert on lock age using a custom metric from the lock item's `Info.Created` timestamp - legitimate applies rarely take that long, and a stale lock may indicate a crashed process.
