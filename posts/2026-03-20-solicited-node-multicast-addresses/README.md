@@ -8,13 +8,13 @@ Description: A detailed explanation of solicited-node multicast addresses in IPv
 
 ## What Are Solicited-Node Multicast Addresses?
 
-A solicited-node multicast address is an IPv6 multicast address automatically derived from a unicast or anycast address. It is used by Neighbor Discovery Protocol (NDP) to find the MAC address of a neighboring host - the IPv6 equivalent of ARP.
+A solicited-node multicast address is an IPv6 multicast address automatically derived from a unicast or anycast address. It is used by Neighbor Discovery Protocol (NDP) to find the link-layer address (the MAC address on Ethernet) of a neighboring host - the IPv6 equivalent of ARP.
 
 ## Why Solicited-Node Multicast Instead of Broadcast?
 
 In IPv4, ARP sends broadcast packets (`ff:ff:ff:ff:ff:ff`) to all hosts on the link. Every host must process the broadcast, even if it's not the intended target.
 
-IPv6 replaces this broadcast with targeted multicast: only the host(s) sharing the same last 24 bits of their address will receive and process the solicited-node multicast - everyone else discards it at the network interface level.
+IPv6 replaces this broadcast with targeted multicast: only the host(s) sharing the same last 24 bits of their address should be members of the solicited-node multicast group and process the Neighbor Solicitation - everyone else discards it at the link or IPv6 multicast layer.
 
 ## How the Solicited-Node Address Is Computed
 
@@ -68,19 +68,19 @@ sequenceDiagram
     participant B as Host B<br/>(2001:db8::2)
     participant C as Host C<br/>(2001:db8::200)
 
-    Note over A: A wants to reach 2001:db8::2<br/>Needs B's MAC address
+    Note over A: A wants to reach 2001:db8::2<br/>Needs B's link-layer address
 
     A->>S: Neighbor Solicitation<br/>Target: 2001:db8::2
     Note over B: B joined ff02::1:ff00:2<br/>(last 24 bits of its address)
     Note over C: C's solicited-node is<br/>ff02::1:ff00:200, NOT ::2<br/>C ignores this packet
 
-    B-->>A: Neighbor Advertisement<br/>MAC: aa:bb:cc:dd:ee:02
+    B-->>A: Neighbor Advertisement<br/>Link-layer: aa:bb:cc:dd:ee:02
 ```
 
 ## Viewing Solicited-Node Groups on Linux
 
 ```bash
-# Every configured IPv6 address creates a solicited-node group
+# Every configured unicast or anycast IPv6 address creates a solicited-node group
 ip -6 maddr show dev eth0
 
 # Example output:
@@ -100,22 +100,22 @@ ip -6 maddr show dev eth0 | grep 'ff02::1:ff'
 When an interface configures an IPv6 address, it performs DAD:
 
 1. Sends a Neighbor Solicitation to the **new address's solicited-node group**
-2. If no Neighbor Advertisement is received, the address is unique
-3. If a NA is received, there is an address conflict (DAD failure)
+2. If no Neighbor Advertisement or conflicting Neighbor Solicitation is received, the address is unique
+3. If a valid NA or conflicting NS is received, there is an address conflict (DAD failure)
 
 ```bash
 # Watch DAD in action when assigning a new IPv6 address
-tcpdump -i eth0 -n 'icmp6 and (ip6[40] == 135 or ip6[40] == 136)' &
+tcpdump -i eth0 -n 'icmp6 and (icmp6[icmp6type] == icmp6-neighborsolicit or icmp6[icmp6type] == icmp6-neighboradvert)' &
 
 # Assign a new IPv6 address (triggers DAD)
 ip -6 addr add 2001:db8::100/64 dev eth0
 
-# You'll see NS sent to ff02::1:ff00:100 and possibly NA in response
+# You'll see NS sent to ff02::1:ff00:100 and possibly another NS or NA in response
 ```
 
 ## Address Collision with Solicited-Node Groups
 
-Because solicited-node groups share the last 24 bits, different addresses can share the same solicited-node group (1 in 2^24 = ~16 million chance per address):
+Because solicited-node groups share the last 24 bits, different addresses can share the same solicited-node group. For two randomly distributed addresses, the chance of sharing the same group is 1 in 2^24 (about 1 in 16.7 million):
 
 ```text
 2001:db8::1 → ff02::1:ff00:0001
@@ -126,4 +126,4 @@ Hosts in this situation receive NS packets for both addresses and must check the
 
 ## Summary
 
-Solicited-node multicast addresses are automatically derived from the last 24 bits of each unicast address and prefixed with `ff02::1:ff`. They replace IPv4 ARP broadcasts with targeted multicast, dramatically reducing unnecessary traffic on large links. Every configured IPv6 address automatically causes the OS to join the corresponding solicited-node multicast group. NDP uses these groups for neighbor resolution and Duplicate Address Detection.
+Solicited-node multicast addresses are automatically derived from the last 24 bits of each unicast or anycast address and prefixed with `ff02::1:ff00:0/104`. They replace IPv4 ARP broadcasts with targeted multicast, dramatically reducing unnecessary traffic on large links. Every configured unicast or anycast IPv6 address automatically causes the OS to join the corresponding solicited-node multicast group. NDP uses these groups for neighbor resolution and Duplicate Address Detection.
