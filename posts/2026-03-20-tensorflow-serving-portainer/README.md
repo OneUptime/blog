@@ -30,7 +30,7 @@ df -h
 
 # For GPU workloads, check NVIDIA availability
 nvidia-smi
-docker run --rm --gpus all nvidia/cuda:12.0-base-ubuntu22.04 nvidia-smi
+docker run --rm --gpus all ubuntu nvidia-smi
 ```
 
 ## Step 2: Create the Stack in Portainer
@@ -38,22 +38,20 @@ docker run --rm --gpus all nvidia/cuda:12.0-base-ubuntu22.04 nvidia-smi
 Navigate to **Stacks** > **Add Stack** and use the following docker-compose.yml:
 
 ```yaml
-version: "3.8"
-
 services:
-  app:
-    image: relevant-image:latest
-    container_name: ml-app
-    restart: always
+  tensorflow-serving:
+    image: tensorflow/serving:latest
+    container_name: tensorflow-serving
+    restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8501:8501" # REST API
+      - "8500:8500" # gRPC API
     volumes:
-      - app-data:/data
-      - ./models:/models
+      - /data/tensorflow-serving/models/my_model:/models/my_model:ro
     environment:
-      - ENV=production
-      - LOG_LEVEL=info
+      - MODEL_NAME=my_model
     # GPU support (uncomment if needed)
+    # image: tensorflow/serving:latest-gpu
     # deploy:
     #   resources:
     #     reservations:
@@ -62,7 +60,7 @@ services:
     #           count: all
     #           capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/127.0.0.1/8501'"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -74,9 +72,6 @@ services:
     networks:
       - ml-net
 
-volumes:
-  app-data:
-
 networks:
   ml-net:
     driver: bridge
@@ -84,27 +79,17 @@ networks:
 
 ## Step 3: Configure the Application
 
-Access configuration through Portainer's Configs section:
+Configure TensorFlow Serving through stack environment variables and bind-mounted files. Portainer's Configs section is only available for Docker Swarm environments:
 
-```yaml
-# Application configuration
-server:
-  host: 0.0.0.0
-  port: 8080
-
-storage:
-  backend: local
-  path: /data
-
-logging:
-  level: INFO
-  format: json
-
-# Database connection (if applicable)
-database:
-  host: postgres
-  port: 5432
-  name: appdb
+```protobuf
+# models.config (optional, for multiple models or version policies)
+model_config_list {
+  config {
+    name: 'my_model'
+    base_path: '/models/my_model'
+    model_platform: 'tensorflow'
+  }
+}
 ```
 
 ## Step 4: Initialize and Verify
@@ -113,15 +98,15 @@ After deployment, verify the service is running:
 
 ```bash
 # Check container health
-docker ps | grep ml-app
+docker ps | grep tensorflow-serving
 
 # View logs via Portainer or CLI
-docker logs ml-app --tail 50
+docker logs tensorflow-serving --tail 50
 
-# Test the API endpoint
-curl http://localhost:8080/health
+# Test the model status endpoint
+curl http://localhost:8501/v1/models/my_model
 
-# Access UI at http://your-server:8080
+# REST listens at http://your-server:8501 and gRPC listens on your-server:8500
 ```
 
 ## Step 5: Configure Persistent Storage
@@ -130,34 +115,51 @@ Ensure data persists across container restarts:
 
 ```yaml
 # In docker-compose.yml
-volumes:
-  app-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /data/ml-app
+services:
+  tensorflow-serving:
+    volumes:
+      - /data/tensorflow-serving/models/my_model:/models/my_model:ro
 ```
 
-Create the host directory:
+Create the host directory before deploying or redeploying the stack:
 
 ```bash
-mkdir -p /data/ml-app
-chmod 755 /data/ml-app
+mkdir -p /data/tensorflow-serving/models/my_model
+chmod 755 /data/tensorflow-serving /data/tensorflow-serving/models /data/tensorflow-serving/models/my_model
 ```
+
+Place SavedModel exports under versioned subdirectories, such as `/data/tensorflow-serving/models/my_model/1/`.
 
 ## Step 6: Monitor Performance
 
 Use Portainer's built-in monitoring and set up Prometheus metrics:
 
+```protobuf
+# monitoring_config.txt
+prometheus_config {
+  enable: true
+  path: "/monitoring/prometheus/metrics"
+}
+```
+
 ```yaml
-# Add Prometheus metrics scraping
+# Add monitoring config and Prometheus metrics scraping
+services:
+  tensorflow-serving:
+    volumes:
+      - /data/tensorflow-serving/models/my_model:/models/my_model:ro
+      - /data/tensorflow-serving/monitoring_config.txt:/models/monitoring_config.txt:ro
+    command:
+      - --monitoring_config_file=/models/monitoring_config.txt
+
   prometheus:
     image: prom/prometheus:latest
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - /data/tensorflow-serving/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
       - "9090:9090"
+    networks:
+      - ml-net
 ```
 
 ```yaml
@@ -166,10 +168,10 @@ global:
   scrape_interval: 15s
 
 scrape_configs:
-  - job_name: 'ml-app'
+  - job_name: 'tensorflow-serving'
     static_configs:
-      - targets: ['ml-app:8080']
-    metrics_path: /metrics
+      - targets: ['tensorflow-serving:8501']
+    metrics_path: /monitoring/prometheus/metrics
 ```
 
 ## Step 7: Backup and Recovery
@@ -180,20 +182,20 @@ Configure automated backups via Portainer:
 #!/bin/bash
 # backup.sh - run as a Portainer Edge Job or scheduled task
 
-BACKUP_DIR="/backups/ml-app"
+BACKUP_DIR="/backups/tensorflow-serving"
 DATE=$(date +%Y%m%d_%H%M%S)
-mkdir -p $BACKUP_DIR
+mkdir -p "$BACKUP_DIR"
 
-# Backup application data
+# Backup SavedModel data
 docker run --rm \
-  -v app-data:/source:ro \
-  -v $BACKUP_DIR:/backup \
-  alpine tar czf /backup/app-data-$DATE.tar.gz -C /source .
+  -v /data/tensorflow-serving/models:/source:ro \
+  -v "$BACKUP_DIR:/backup" \
+  alpine tar czf "/backup/models-$DATE.tar.gz" -C /source .
 
-echo "Backup completed: app-data-$DATE.tar.gz"
+echo "Backup completed: models-$DATE.tar.gz"
 
 # Retain last 7 backups
-ls -t $BACKUP_DIR/*.tar.gz | tail -n +8 | xargs rm -f
+ls -t "$BACKUP_DIR"/models-*.tar.gz 2>/dev/null | tail -n +8 | xargs -r rm -f
 ```
 
 ## Conclusion
