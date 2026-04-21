@@ -98,7 +98,7 @@ sudo dmesg | grep TRACE
 ```bash
 # Check stats for backend status
 curl -s http://localhost:8404/stats?csv | awk -F',' '{print $2, $18, $19, $20}'
-# Column 18 = status, 19 = active sessions, 20 = weight
+# Column 18 = status, 19 = weight, 20 = act (active servers/flag)
 
 # A server showing "DOWN" will not receive traffic
 ```
