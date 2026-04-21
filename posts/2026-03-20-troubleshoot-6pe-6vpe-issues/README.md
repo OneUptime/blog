@@ -26,7 +26,7 @@ show bgp vpnv6 unicast all summary   # 6VPE
 # → BGP session not established
 
 # Debug BGP session establishment
-debug ip bgp 10.0.0.2
+debug ip bgp events
 # Check for: Open message errors, capability negotiation failures
 
 # Common issues:
@@ -45,15 +45,15 @@ show bgp ipv6 unicast summary | include 10.0.0.2
 # 6PE - Verify IPv6 prefixes with labels are in BGP table
 show bgp ipv6 unicast
 # Look for: * = valid, > = best, i = iBGP
-# *>i 2001:db8:site-b::/48  10.0.0.2   0    100    0   65002 i
+# *>i 2001:db8:2::/48  ::FFFF:10.0.0.2   0    100    0   65002 i
 
 # If prefix is missing:
 show bgp ipv6 unicast neighbors 10.0.0.2 received-routes
 # Check if PE2 is sending the prefix
 
 # Check if CE is advertising to PE
-show bgp ipv6 unicast neighbors 2001:db8:pe1-ce1::2 received-routes
-# Should show CE's prefix: 2001:db8:site-a::/48
+show bgp ipv6 unicast neighbors 2001:db8:100::2 received-routes
+# Should show CE's prefix: 2001:db8:1::/48
 
 # 6VPE - Check VPNv6 routes
 show bgp vpnv6 unicast all
@@ -71,13 +71,14 @@ show bgp vpnv6 unicast all detail | include "Route Target\|65000:100"
 # Check that IPv6 prefixes have MPLS labels
 show bgp ipv6 unicast labels
 # Network               Next Hop        In label/Out label
-# 2001:db8:site-b::/48  10.0.0.2        imp-null/16
+# 2001:db8:2::/48       ::FFFF:10.0.0.2 nolabel/16
 
 # If labels missing:
-# Ensure MP-BGP is configured for labeled-unicast (not just unicast)
-# Cisco: "family inet6 labeled-unicast" vs "family inet6 unicast"
+# Ensure MP-BGP is configured to advertise labels with IPv6 routes
+# Cisco IOS: "neighbor 10.0.0.2 send-label" under address-family ipv6
+# Junos: "family inet6 labeled-unicast" instead of only "family inet6 unicast"
 
-# Check MPLS forwarding table has IPv6 entries
+# On the PE, check MPLS forwarding table has IPv6 entries
 show mpls forwarding-table | include IPv6
 
 # Juniper: Check inet6.3 table
@@ -85,7 +86,8 @@ show route table inet6.3
 
 # Verify LDP transport labels exist
 show mpls ldp bindings | include 10.0.0.2
-# Should show: Local binding: label 16, Remote binding: label 16
+# Should show local and remote bindings for the PE loopback
+# Label values may differ or be implicit-null
 
 # If no transport label for peer IP:
 # Check LDP is running on all backbone interfaces
@@ -109,22 +111,22 @@ show vrf CUSTOMER-A detail | include "Export\|Import"
 show bgp vpnv6 unicast all | include 65000:100
 show bgp vpnv6 unicast rd 65000:100
 
-# 3. Verify RD matches
-show bgp vpnv6 unicast all | include "2001:db8:site-b\|RD"
+# 3. Verify the route is present under the expected RD
+show bgp vpnv6 unicast all | include "2001:db8:2\|RD"
 
 # Test VRF connectivity
-ping vrf CUSTOMER-A ipv6 2001:db8:site-b::10
+ping vrf CUSTOMER-A ipv6 2001:db8:2::10
 ! If fails: check VRF routing and label forwarding
 
 # Traceroute in VRF
-traceroute vrf CUSTOMER-A ipv6 2001:db8:site-b::10
+traceroute vrf CUSTOMER-A ipv6 2001:db8:2::10
 ```
 
 ## Step 5: Check CEF/Forwarding Plane
 
 ```bash
 # Verify IPv6 CEF entry exists
-show ipv6 cef 2001:db8:site-b::/48
+show ipv6 cef 2001:db8:2::/48
 # Should show: nexthop with MPLS label
 
 # If CEF not programmed:
@@ -132,18 +134,18 @@ show ipv6 cef 2001:db8:site-b::/48
 show ipv6 cef detail | include ipv6
 
 # Check CEF for VPN
-show ipv6 cef vrf CUSTOMER-A 2001:db8:site-b::/48
+show ipv6 cef vrf CUSTOMER-A 2001:db8:2::/48
 
 # Test with specific source
-ping ipv6 2001:db8:site-b::10 source 2001:db8:site-a::1
+ping ipv6 2001:db8:2::10 source 2001:db8:1::1
 
 # Extended ping for MPLS testing
-ping ipv6 2001:db8:site-b::10 source 2001:db8:site-a::1 repeat 100 size 1500
+ping ipv6 2001:db8:2::10 source 2001:db8:1::1 repeat 100 size 1500
 ! Watch for drops at large MTU - MTU/fragmentation issue
 
 # Check MPLS MTU
 show mpls interfaces detail | include MTU
-! MPLS MTU must accommodate IPv6 (1500) + label stack (4-8 bytes per label)
+! MPLS MTU must accommodate IPv6 (1500) + label stack (4 bytes per label)
 ```
 
 ## Step 6: Systematic End-to-End Test
@@ -151,24 +153,24 @@ show mpls interfaces detail | include MTU
 ```bash
 # 6PE end-to-end test procedure:
 
-echo "Step 1: Test IPv6 from CE to PE"
-ping6 2001:db8:pe1-ce1::1
+# Step 1: Test IPv6 from CE to PE
+ping ipv6 2001:db8:100::1
 
-echo "Step 2: Test PE to PE (MPLS backbone)"
+# Step 2: Test PE to PE (MPLS backbone)
 ping 10.0.0.2  # IPv4 PE-PE reachability
 
-echo "Step 3: Test IPv6 PE to PE via BGP next-hop"
-show bgp ipv6 unicast 2001:db8:site-b::/48
+# Step 3: Test IPv6 PE to PE via BGP next-hop
+show bgp ipv6 unicast 2001:db8:2::/48
 # Verify nexthop is reachable
 
-echo "Step 4: LSP ping (verifies label-switched path)"
-ping mpls ipv6 2001:db8:site-b::/48
+# Step 4: LSP ping to the IPv4 BGP next-hop (verifies transport LSP)
+ping mpls ipv4 10.0.0.2/32
 
-echo "Step 5: Test end-to-end IPv6"
-ping ipv6 2001:db8:site-b::1 source 2001:db8:site-a::1
+# Step 5: Test end-to-end IPv6
+ping ipv6 2001:db8:2::1 source 2001:db8:1::1
 
-echo "Step 6: Traceroute with MPLS labels"
-traceroute mpls ipv6 2001:db8:site-b::/48
+# Step 6: Traceroute transport LSP
+traceroute mpls ipv4 10.0.0.2/32 verbose
 ```
 
 ## Common Error Messages and Fixes
@@ -184,11 +186,11 @@ Error: "% Nexthop ::ffff:10.0.0.2 is not reachable"
 Fix: Verify MPLS LDP has label for 10.0.0.2 in forwarding table
 
 Error: "VPNv6 unicast: 0 routes" (no VPN routes)
-Fix: Check RT import/export, verify RD matches advertised prefix
+Fix: Check RT import/export, verify the expected RD carries the advertised prefix
 
-Error: "LSP ping failed, return code 3"
-Fix: MPLS echo request reached egress but no IPv6 FIB entry at PE2
-    → Check BGP has IPv6 prefix in VPNv6 or global IPv6 table
+Error: "LSP ping failed, return code 4"
+Fix: Replying router has no mapping for the FEC
+    → Check the LDP/RSVP/SR transport LSP to the BGP next-hop
 ```
 
 6PE/6VPE troubleshooting typically resolves to either BGP address-family configuration errors (missing `activate` or wrong address family), Route Target mismatch preventing VPNv6 route import, or missing MPLS transport labels when LDP is not running on backbone interfaces between PE routers.
