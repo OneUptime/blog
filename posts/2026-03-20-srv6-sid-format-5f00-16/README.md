@@ -8,7 +8,7 @@ Description: Understand the IANA-allocated SRv6 SID address space (5f00::/16), t
 
 ## Introduction
 
-RFC 9602 allocates the `5f00::/16` prefix as the global SRv6 SID address space. SIDs using this prefix are routable global IPv6 addresses that encode both routing (locator) and service (function+arguments) information.
+RFC 9602 allocates the `5f00::/16` prefix as the dedicated SRv6 SID address space. SIDs using this prefix are IPv6 special-purpose addresses that can encode both routing (locator) and service (function+arguments) information. IANA marks the block as source-valid, destination-valid, and forwardable, but not globally reachable.
 
 ## The 5f00::/16 Address Block
 
@@ -16,14 +16,14 @@ RFC 9602 allocates the `5f00::/16` prefix as the global SRv6 SID address space. 
 5f00::/16 is allocated by IANA for SRv6 SIDs:
   Range: 5f00:: through 5fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
   Purpose: SRv6 Segment Identifiers
-  Status: Globally routable (unicast)
+  Status: Source-valid, destination-valid, and forwardable; not globally reachable
 ```
 
 ## SID Structure
 
 A SRv6 SID is a 128-bit IPv6 address divided into three parts:
 
-```javascript
+```text
 128 bits total:
 |<---- Locator ---->|<- Function ->|<--- Arguments --->|
 |     L bits        |   F bits     |      A bits       |
@@ -32,14 +32,14 @@ Example with 48/16/64 split:
 |  48-bit locator   | 16-bit func  |   64-bit args     |
 | 5f00:1:1::/48     |   e000       |    :: (none)      |
 
-SID: 5f00:1:1:0:e000::
+SID: 5f00:1:1:e000::
 ```
 
 ## Locator, Function, Arguments Explained
 
 ### Locator
 
-The locator is the routable prefix that identifies the **node** (or cluster of nodes) owning this SID. It is advertised via IGP (IS-IS or OSPF) as a regular IPv6 prefix.
+The locator is the routable prefix within the SR domain that identifies the **node** (or cluster of nodes) owning this SID. It can be advertised via IGP (IS-IS or OSPF) as a regular IPv6 prefix.
 
 ```text
 Locator examples:
@@ -50,10 +50,10 @@ Locator examples:
 
 ### Function
 
-The function portion encodes what action the endpoint node should take when it receives a packet with this SID as the destination.
+The function portion is an opaque local identifier bound to an endpoint behavior. The endpoint node uses that local SID binding to decide what action to take when it receives a packet with this SID as the destination.
 
-```javascript
-Function examples (16-bit):
+```text
+Example local function allocations (16-bit, operator chosen; these are not IANA behavior codepoints):
   0x0001  - End (plain routing)
   0xe000  - End.DT6 (IPv6 L3 table lookup)
   0xe001  - End.DT4 (IPv4 L3 table lookup)
@@ -102,7 +102,7 @@ def parse_srv6_sid(sid: str, locator_bits: int = 48,
 
 # Example usage
 
-result = parse_srv6_sid("5f00:1:1:0:e000::")
+result = parse_srv6_sid("5f00:1:1:e000::")
 print(f"Locator: {result['locator']}")
 print(f"Function: {result['function']}")
 print(f"Arguments: {result['arguments']}")
@@ -122,11 +122,11 @@ print(f"Arguments: {result['arguments']}")
 ip -6 route add 5f00:1:1::/48 dev lo
 
 # Add specific SID for End function
-ip -6 route add 5f00:1:1::1/128 encap seg6local action End dev lo
+ip -6 route add 5f00:1:1:1::/128 encap seg6local action End dev lo
 
 # Add SID for End.DT6 (IPv6 L3VPN table)
-ip -6 route add 5f00:1:1:0:e000::/128 \
-  encap seg6local action End.DT6 vrftable 100 dev lo
+ip -6 route add 5f00:1:1:e000::/128 \
+  encap seg6local action End.DT6 table 100 dev lo
 ```
 
 ## 5f00::/16 vs Operator Prefixes
@@ -135,15 +135,15 @@ Before RFC 9602, operators used their own allocated prefixes for SIDs:
 
 ```text
 Before RFC 9602:
-  Operator A: 2001:db8:1::/48 - SRv6 SIDs
-  Operator B: 2001:db8:2::/48 - SRv6 SIDs
+  Operator A: operator-owned IPv6 prefix - SRv6 SIDs
+  Operator B: operator-owned IPv6 prefix - SRv6 SIDs
   (No globally recognized SRv6 prefix)
 
 After RFC 9602:
-  All operators use 5f00::/16 subspace
-  Benefits: Consistent filtering, easy identification, hardware optimization
+  Operators can use 5f00::/16 subspace
+  Benefits: Consistent filtering and easy identification at SR domain edges
 ```
 
 ## Conclusion
 
-The `5f00::/16` SRv6 SID address space provides a globally recognizable prefix for SRv6 deployments. Understanding the locator/function/argument structure enables you to plan SID allocation, configure SRv6 routers, and debug SRv6 forwarding. Use OneUptime to monitor the reachability of locator prefixes as a proxy for SRv6 node health.
+The `5f00::/16` SRv6 SID address space provides a globally recognizable prefix for SRv6 deployments. Understanding the locator/function/argument structure enables you to plan SID allocation, configure SRv6 routers, and debug SRv6 forwarding. Use OneUptime to monitor the internal reachability of locator prefixes as a proxy for SRv6 node health.
