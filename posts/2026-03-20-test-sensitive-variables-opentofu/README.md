@@ -40,7 +40,8 @@ variable "api_key" {
 export TF_VAR_db_password="test-password-at-least-16-chars"
 export TF_VAR_api_key="test-api-key-for-unit-tests"
 
-tofu test tests/unit.tftest.hcl
+tofu init
+tofu test -filter=tests/unit.tftest.hcl
 ```
 
 ## Method 2: Ephemeral Test Values in Test File
@@ -75,6 +76,10 @@ Test that validation rules correctly reject short passwords:
 # tests/validation.tftest.hcl
 mock_provider "aws" {}
 
+variables {
+  api_key = "test-api-key-not-real"
+}
+
 run "rejects_short_password" {
   command = plan
 
@@ -95,7 +100,7 @@ run "accepts_long_enough_password" {
 
   # No failures expected - password meets requirements
   assert {
-    condition     = true
+    condition     = length(var.db_password) >= 16
     error_message = "Should accept password that meets length requirement"
   }
 }
@@ -118,14 +123,14 @@ mock_provider "aws" {
 
   mock_resource "aws_secretsmanager_secret_version" {
     defaults = {
-      id            = "mock-secret/AWSCURRENT"
-      secret_string = "{\"password\":\"mock-value\"}"
+      id = "mock-secret/AWSCURRENT"
     }
   }
 }
 
 variables {
   db_password = "test-password-sixteen-chars"
+  api_key     = "test-api-key-not-real"
 }
 
 run "secret_is_stored_in_secrets_manager" {
@@ -170,6 +175,7 @@ variables {
   db_password = "test-password-sixteen-ch"
   db_username = "admin"
   db_name     = "myapp"
+  api_key     = "test-api-key-not-real"
 }
 
 run "sensitive_output_is_populated" {
@@ -210,7 +216,9 @@ jobs:
         env:
           TF_VAR_db_password: ${{ secrets.TEST_DB_PASSWORD }}
           TF_VAR_api_key: ${{ secrets.TEST_API_KEY }}
-        run: tofu test tests/unit.tftest.hcl
+        run: |
+          tofu init
+          tofu test -filter=tests/unit.tftest.hcl
 ```
 
 ## Conclusion
