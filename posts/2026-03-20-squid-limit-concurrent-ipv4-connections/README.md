@@ -62,12 +62,12 @@ http_access deny all
 ## Setting a System-Wide Maximum
 
 ```squid
-# Limit total active connections to Squid from all clients
-# This is a hard cap on Squid's file descriptor usage
-# Default is 0 (unlimited)
-max_filedesc 4096
+# Set the file descriptor ceiling Squid can use
+# Client connections consume file descriptors along with open files and logs
+# If omitted, Squid inherits the OS soft limit set by ulimit
+max_filedescriptors 4096
 
-# Recommended: set the connection limit via the OS too
+# Recommended: set the file descriptor limit via the OS too
 # ulimit -n 4096  (or in systemd service file: LimitNOFILE=4096)
 ```
 
@@ -75,23 +75,24 @@ max_filedesc 4096
 
 ```bash
 # View per-client connection statistics via the cache manager
-squidclient -h localhost -p 3128 mgr:client_list
+curl -s http://127.0.0.1:3128/squid-internal-mgr/client_list
 
-# Example output line:
-# 192.168.1.5      Requests: 42   Connections: 8
+# Example output:
+# Address: 192.168.1.5
+# Currently established connections: 8
 
 # Watch active connections in real time
-watch -n2 "squidclient -h localhost -p 3128 mgr:client_list | head -30"
+watch -n2 "curl -s http://127.0.0.1:3128/squid-internal-mgr/client_list | grep -E 'Address:|Currently established connections' | head -30"
 ```
 
 ## Logging When the Limit Is Hit
 
 ```bash
-# Check access log for TCP_DENIED entries
-grep "TCP_DENIED" /var/log/squid/access.log | grep "maxconn"
+# Check access log for access-control denials, including maxconn denials
+grep "TCP_DENIED/403" /var/log/squid/access.log
 
-# Count denials per client IP
-grep "TCP_DENIED" /var/log/squid/access.log | awk '{print $3}' | sort | uniq -c | sort -rn
+# Count denied requests per client IP (all access-control denials)
+awk '$4 ~ /^TCP_DENIED\/403$/ {print $3}' /var/log/squid/access.log | sort | uniq -c | sort -rn
 ```
 
 ## Key Takeaways
@@ -99,4 +100,4 @@ grep "TCP_DENIED" /var/log/squid/access.log | awk '{print $3}' | sort | uniq -c 
 - `client_db on` is required for `maxconn` ACLs to work.
 - Place `http_access deny too_many_connections` before general allow rules.
 - Apply different `maxconn` limits to different IPv4 subnets for per-group policies.
-- Use `squidclient mgr:client_list` to view current per-client connection counts in real time.
+- Use the cache manager `client_list` report to view current per-client connection counts in real time.
