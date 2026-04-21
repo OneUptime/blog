@@ -13,6 +13,7 @@ Learn how to use Terragrunt to keep OpenTofu configurations DRY with remote stat
 ## Prerequisites
 
 - OpenTofu v1.6+ installed
+- Terragrunt v1.0+ installed
 - Basic knowledge of OpenTofu concepts
 - Relevant cloud credentials configured
 
@@ -23,23 +24,49 @@ Learn how to use Terragrunt to keep OpenTofu configurations DRY with remote stat
 
 tofu version
 
+# Verify Terragrunt installation
+terragrunt --version
+
 # Set up required environment variables
 export TF_LOG=INFO  # Enable logging
 export TF_INPUT=false  # Disable interactive input
 
-# Configure cloud credentials
-# AWS
+# Configure AWS credentials for the examples below
 export AWS_PROFILE=your-profile
-# Azure
-export ARM_SUBSCRIPTION_ID=your-subscription-id
-# GCP
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 ```
 
 ## Step 2: Configure Your OpenTofu Project
 
 ```hcl
-# main.tf
+# root.hcl
+locals {
+  aws_region     = "us-east-1"
+  environment    = "production"
+  repository_url = "https://github.com/example/infrastructure"
+}
+
+remote_state {
+  backend = "s3"
+
+  generate = {
+    path      = "backend.tf"
+    if_exists = "overwrite_terragrunt"
+  }
+
+  config = {
+    bucket         = "my-opentofu-state"
+    key            = "${path_relative_to_include()}/tofu.tfstate"
+    region         = local.aws_region
+    dynamodb_table = "terraform-locks"
+    encrypt        = true
+  }
+}
+
+generate "provider" {
+  path      = "provider.tf"
+  if_exists = "overwrite_terragrunt"
+
+  contents = <<EOF
 terraform {
   required_version = ">= 1.6.0"
 
@@ -49,44 +76,76 @@ terraform {
       version = "~> 5.0"
     }
   }
-
-  # Remote state backend for team collaboration
-  backend "s3" {
-    bucket         = "my-opentofu-state"
-    key            = "production/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
-  }
 }
 
 provider "aws" {
-  region = var.aws_region
+  region = "${local.aws_region}"
 
   default_tags {
     tags = {
       ManagedBy   = "OpenTofu"
-      Environment = var.environment
-      Repository  = var.repository_url
+      Environment = "${local.environment}"
+      Repository  = "${local.repository_url}"
     }
   }
+}
+EOF
+}
+
+# live/production/app/terragrunt.hcl
+include "root" {
+  path   = find_in_parent_folders("root.hcl")
+  expose = true
+}
+
+terraform {
+  source = "../../../modules/app"
+}
+
+dependency "network" {
+  config_path = "../network"
+
+  mock_outputs = {
+    vpc_id = "vpc-00000000000000000"
+  }
+
+  mock_outputs_allowed_terraform_commands = ["plan", "validate"]
+}
+
+inputs = {
+  environment = include.root.locals.environment
+  vpc_id      = dependency.network.outputs.vpc_id
+}
+
+# modules/app/variables.tf
+variable "environment" {
+  description = "Deployment environment"
+  type        = string
+}
+
+variable "vpc_id" {
+  description = "VPC ID from the network dependency"
+  type        = string
 }
 ```
 
 ## Step 3: Implement the Core Feature
 
 ```bash
-# Initialize the project
-tofu init -backend-config=backend.tfvars
+# Move into the Terragrunt unit
+cd live/production/app
+
+# Initialize the project and generated backend
+terragrunt init
 
 # Create a plan and save it
-tofu plan -out=tfplan -var-file=production.tfvars
+terragrunt run -- plan -out=/tmp/tfplan
 
 # Review the plan
-tofu show tfplan
+terragrunt run -- show /tmp/tfplan
 
 # Apply the saved plan
-tofu apply tfplan
+terragrunt run -- apply /tmp/tfplan
 ```
 
 ## Step 4: Set Up Automation
@@ -104,82 +163,83 @@ on:
 permissions:
   id-token: write
   contents: read
-  pull-requests: write
 
 jobs:
   plan:
     runs-on: ubuntu-latest
+    env:
+      TG_WORKING_DIR: live/production/app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+      - name: Install Terragrunt and OpenTofu
+        uses: gruntwork-io/terragrunt-action@v3
         with:
-          tofu_version: "1.7.0"
+          tg_version: "1.0.0"
+          tofu_version: "1.11.6"
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
 
-      - name: OpenTofu Init
-        run: tofu init
+      - name: Terragrunt Init
+        working-directory: ${{ env.TG_WORKING_DIR }}
+        run: terragrunt init
 
-      - name: OpenTofu Plan
-        run: tofu plan -no-color -out=tfplan
-
-      - name: Upload Plan
-        uses: actions/upload-artifact@v3
-        with:
-          name: tfplan
-          path: tfplan
+      - name: Terragrunt Plan
+        working-directory: ${{ env.TG_WORKING_DIR }}
+        run: terragrunt run -- plan -no-color
 
   apply:
     needs: plan
     runs-on: ubuntu-latest
     environment: production
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    env:
+      TG_WORKING_DIR: live/production/app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+      - name: Install Terragrunt and OpenTofu
+        uses: gruntwork-io/terragrunt-action@v3
         with:
-          tofu_version: "1.7.0"
+          tg_version: "1.0.0"
+          tofu_version: "1.11.6"
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
 
-      - name: Download Plan
-        uses: actions/download-artifact@v3
-        with:
-          name: tfplan
+      - name: Terragrunt Init
+        working-directory: ${{ env.TG_WORKING_DIR }}
+        run: terragrunt init
 
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Apply
-        run: tofu apply -auto-approve tfplan
+      - name: Terragrunt Apply
+        working-directory: ${{ env.TG_WORKING_DIR }}
+        run: terragrunt run -- apply -auto-approve
 ```
 
 ## Step 5: Monitor and Verify
 
 ```bash
+# Move into the Terragrunt unit
+cd live/production/app
+
 # Check current state
-tofu show
+terragrunt run -- show
 
 # List all managed resources
-tofu state list
+terragrunt run -- state list
 
 # Verify resource configuration
-tofu state show aws_instance.main
+terragrunt run -- state show aws_instance.main
 
 # Check for drift
-tofu plan -refresh-only
+terragrunt run -- plan -refresh-only
 ```
 
 ## Step 6: Implement Best Practices
@@ -214,7 +274,7 @@ If you encounter issues:
 
 1. Enable debug logging: `export TF_LOG=DEBUG`
 2. Check provider credentials: Verify environment variables
-3. Review state consistency: Run `tofu refresh` then `tofu plan`
+3. Review state consistency: Run `terragrunt run -- plan -refresh-only` before `terragrunt run -- plan`
 4. Consult provider documentation for service-specific errors
 
 ## Conclusion
