@@ -19,19 +19,19 @@ An external host crafts a packet with a crafted SRH pointing to internal End.DX4
 ```text
 Attack:
   External packet:
-    dst=5f00:internal:1:0:e000::  (End.DT6 for internal VPN)
-    SRH: [internal_server_sid]
+    dst=5f00:1:1:0:e000::  (End.DT6 for internal VPN)
+    SRH: [5f00:1:2::10]
 
 Impact: Traffic bypasses perimeter security controls
 ```
 
-### 2. SRH Amplification
+### 2. SRH Processing Overhead
 
 A packet with a large SRH (many SIDs) consumes more processing than a plain IPv6 packet.
 
 ### 3. Topology Disclosure
 
-SRH segment lists expose network topology (SID addresses = node addresses).
+SRH segment lists can expose network topology because SID locators can identify SR nodes.
 
 ## Mitigation 1: Perimeter Filtering (Most Important)
 
@@ -42,14 +42,15 @@ SRH segment lists expose network topology (SID addresses = node addresses).
 
 # ip6tables on edge router
 # Drop any packet with Routing Header from external sources
+# External interface: eth0
 ip6tables -A FORWARD \
-  -i eth0 \                          # External interface
-  -m ipv6header --soft --header routing \
+  -i eth0 \
+  -m ipv6header --soft --header route \
   -j DROP
 
 # Or use a more specific match for RH Type 4 (SRH)
 ip6tables -A INPUT \
-  -m ipv6header --soft --header routing \
+  -m ipv6header --soft --header route \
   -m rt --rt-type 4 \
   -j DROP
 
@@ -61,14 +62,15 @@ ip6tables -A INPUT \
 
 ## Mitigation 2: HMAC Authentication (SRH Integrity)
 
-RFC 8754 defines an HMAC TLV for the SRH that authenticates the segment list.
+RFC 8754 defines an optional HMAC TLV for the SRH that verifies the SRH was authorized and that the segment list was not modified.
 
 ```bash
-# Linux: configure HMAC key
-ip sr hmac set 1 SHA256 \
-  aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899
+# Linux: configure HMAC key ID 1.
+# This command prompts for the shared HMAC secret.
+ip sr hmac set 1 sha256
 
 # Require HMAC on incoming SRv6 packets
+sysctl net.ipv6.conf.eth0.seg6_enabled=1
 sysctl net.ipv6.conf.eth0.seg6_require_hmac=1
 
 # Packets without valid HMAC are dropped
@@ -76,25 +78,36 @@ sysctl net.ipv6.conf.eth0.seg6_require_hmac=1
 ```
 
 ```python
-from scapy.all import *
-
-def compute_srh_hmac(segment_list: list, key: bytes, key_id: int) -> bytes:
+def compute_srh_hmac(
+    source_address: str,
+    segment_list: list[str],
+    key: bytes,
+    key_id: int,
+    flags: int = 0,
+    d_bit: bool = False,
+) -> bytes:
     """
-    Compute HMAC-SHA256 over the SRH segment list.
-    RFC 8754 §4
+    Compute the RFC 8754 SRH HMAC-SHA256 value.
+    RFC 8754 §2.1.2.1
     """
     import hmac
     import hashlib
+    import socket
     import struct
 
-    # Build the message: key_id (4 bytes) || segment_list
-    message = struct.pack("!I", key_id)
+    if not segment_list:
+        raise ValueError("segment_list must contain at least one SID")
+
+    last_entry = len(segment_list) - 1
+    hmac_flags_reserved = 0x8000 if d_bit else 0
+
+    message = socket.inet_pton(socket.AF_INET6, source_address)
+    message += struct.pack("!BBHI", last_entry, flags, hmac_flags_reserved, key_id)
     for sid in segment_list:
-        # Each SID is 16 bytes (128 bits)
         message += socket.inet_pton(socket.AF_INET6, sid)
 
     mac = hmac.new(key, message, hashlib.sha256).digest()
-    return mac[:16]  # Truncate to 128 bits
+    return mac[:32]  # RFC 8754 truncates the HMAC field to at most 32 octets.
 ```
 
 ## Mitigation 3: SID Access Control Lists
@@ -106,13 +119,13 @@ Restrict which sources can invoke each SID.
 # On the router owning 5f00:1:1::/48
 
 ip6tables -A INPUT \
-  -d 5f00:1:1:0:e001:: \             # End.X SID
-  ! -s 5f00:controller::/32 \        # Must come from controller subnet
+  -d 5f00:1:1:0:e001:: \
+  ! -s 5f00:100::/32 \
   -j DROP
 
 ip6tables -A INPUT \
   -d 5f00:1:1:0:e001:: \
-  -s 5f00:controller::/32 \
+  -s 5f00:100::/32 \
   -j ACCEPT
 ```
 
@@ -122,7 +135,7 @@ ip6tables -A INPUT \
 ! Cisco IOS-XR infrastructure ACL
 ipv6 access-list INFRA_ACL
   remark Block SRH to internal infrastructure SIDs from external
-  deny ipv6 any 5f00::/16 routing-type 4 any
+  deny ipv6 any 5f00::/16 routing
   permit ipv6 any any
 !
 interface GigabitEthernet0/0/0/0
@@ -138,7 +151,7 @@ interface GigabitEthernet0/0/0/0
 
 # Summarize SRv6 locators at the border
 # Advertise only an aggregate, not individual /48 locators
-ip -6 route add 5f00:1::/32 dev null  # Aggregate black hole at border
+ip -6 route add blackhole 5f00:1::/32  # Aggregate black hole at border
 # Only /128 routes to actual SIDs installed on the node
 
 # For BGP: apply a route policy to filter SRv6 SIDs from external BGP
@@ -164,7 +177,7 @@ srv6_security_checklist:
   monitoring:
     - [ ] Alert on unexpected SRH packets at edge
     - [ ] Log HMAC validation failures
-    - [ ] Monitor for SRH amplification attacks (high SRH packet rate)
+    - [ ] Monitor for SRH processing overhead (high SRH packet rate)
 ```
 
 ## Conclusion
