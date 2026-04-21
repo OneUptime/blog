@@ -8,12 +8,12 @@ Description: Learn how to use tofu destroy to safely remove all managed infrastr
 
 ## Introduction
 
-`tofu destroy` removes all resources managed by your OpenTofu configuration. It's the cleanest way to decommission an environment - OpenTofu knows the dependency order and destroys resources in the correct sequence. This guide covers safe destroy practices and how to protect critical resources.
+`tofu destroy` removes all resources managed by your current OpenTofu configuration and workspace. It's the cleanest way to decommission an environment - OpenTofu knows the dependency order and destroys resources in the correct sequence. This guide covers safe destroy practices and how to protect critical resources.
 
 ## Basic Usage
 
 ```bash
-# Destroy all managed infrastructure (with confirmation)
+# Destroy all infrastructure managed by the current configuration and workspace (with confirmation)
 
 tofu destroy
 
@@ -29,11 +29,12 @@ tofu destroy
 
 OpenTofu destroys resources in reverse dependency order:
 - Resources that depend on others are destroyed first
-- Foundational resources (VPCs, security groups) are destroyed last
+- Foundational resources (VPCs, security groups) are destroyed later
+- Independent resources can be destroyed in parallel
 
 ```text
-Creation order:   VPC → Subnet → Security Group → EC2 Instance
-Destruction order: EC2 Instance → Security Group → Subnet → VPC
+Creation order:   VPC → Subnet/Security Group → EC2 Instance
+Destruction order: EC2 Instance → Subnet/Security Group → VPC
 ```
 
 ## Auto-Approve for CI/CD
@@ -53,7 +54,7 @@ tofu plan -destroy
 
 # Or save a destroy plan
 tofu plan -destroy -out=destroy.tfplan
-tofu show destroy.tfplan  # Review the destruction plan
+tofu show -plan=destroy.tfplan  # Review the destruction plan
 
 # Apply the destruction plan
 tofu apply destroy.tfplan
@@ -131,7 +132,9 @@ aws ec2 describe-instances --filters "Name=tag:ManagedBy,Values=OpenTofu" \
 #!/bin/bash
 # cleanup-environment.sh
 
-ENVIRONMENT="${1}"
+set -euo pipefail
+
+ENVIRONMENT="${1:-}"
 
 if [ -z "$ENVIRONMENT" ]; then
   echo "Usage: $0 <environment>"
