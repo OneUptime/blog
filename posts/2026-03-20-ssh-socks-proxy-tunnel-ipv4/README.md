@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SSH, SOCKS Proxy, IPv4, Tunneling, Port Forwarding, Security
 
-Description: Use SSH dynamic port forwarding to create a SOCKS5 proxy that tunnels IPv4 traffic through an SSH connection to a remote server, bypassing network restrictions.
+Description: Use SSH dynamic port forwarding to create a SOCKS5 proxy that tunnels TCP application traffic to IPv4 destinations through an SSH connection to a remote server, bypassing network restrictions.
 
 ## Introduction
 
-SSH dynamic port forwarding creates a SOCKS proxy on your local machine. Traffic sent to the local SOCKS port is forwarded through the SSH tunnel to the remote server, which makes the requests on your behalf. This is useful for accessing resources on a remote network or bypassing local restrictions.
+SSH dynamic port forwarding creates a SOCKS proxy on your local machine for TCP connections. Traffic sent to the local SOCKS port is forwarded through the SSH tunnel to the remote server, which makes the requests on your behalf. This is useful for accessing resources on a remote network or bypassing local restrictions.
 
 ## Basic SSH SOCKS Proxy
 
@@ -46,7 +46,7 @@ curl --socks5-hostname 127.0.0.1:1080 https://example.com
 
 # Test what IP the remote server sees
 curl --socks5-hostname 127.0.0.1:1080 https://icanhazip.com
-# Should return remote-server.example.com's IP
+# Should return the remote server's public egress IP
 ```
 
 ## Persistent SSH Tunnel with AutoSSH
@@ -98,9 +98,8 @@ sudo systemctl enable --now ssh-socks-tunnel
 ## Configuring Applications to Use the Tunnel
 
 ```bash
-# Git
+# Git (HTTP and HTTPS remotes)
 git config --global http.proxy 'socks5://127.0.0.1:1080'
-git config --global https.proxy 'socks5://127.0.0.1:1080'
 
 # npm
 npm config set proxy 'socks5://127.0.0.1:1080'
@@ -117,7 +116,7 @@ print(urllib.request.urlopen('https://icanhazip.com').read())
 "
 ```
 
-## ProxyChains for Any Application
+## ProxyChains for TCP Applications
 
 ```bash
 sudo apt-get install -y proxychains4
@@ -126,9 +125,9 @@ sudo apt-get install -y proxychains4
 # Comment out socks4 127.0.0.1 9050, add:
 # socks5 127.0.0.1 1080
 
-# Use any application through the SOCKS proxy
+# Use compatible TCP applications through the SOCKS proxy
 proxychains4 curl https://example.com
-proxychains4 nmap -sT 10.0.2.0/24
+proxychains4 nmap -sT -Pn 10.0.2.0/24
 ```
 
 ## Forwarding Multiple Local Ports
@@ -144,4 +143,4 @@ ssh -D 1080 \
 
 ## Conclusion
 
-SSH dynamic forwarding (`-D port`) creates a SOCKS5 proxy on your local machine. Use `-f -N` to run it in the background. Use `--socks5-hostname` with curl to prevent DNS leaks. For production persistent tunnels, use autossh or a systemd service with `Restart=always`. Always prefer key-based authentication for tunnel accounts.
+SSH dynamic forwarding (`-D port`) creates a SOCKS proxy for TCP connections on your local machine. Use `-f -N` to run it in the background. Use `--socks5-hostname` with curl to prevent DNS leaks. For production persistent tunnels, use autossh or a systemd service with `Restart=always`. Always prefer key-based authentication for tunnel accounts.
