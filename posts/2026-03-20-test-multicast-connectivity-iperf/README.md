@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, Multicast, iperf, Network Testing, Linux, Performance
 
-Description: Use iperf and iperf3 to test multicast UDP connectivity, measure throughput, and verify that packets are being delivered to all group members on your network.
+Description: Use iperf2 to test multicast UDP connectivity, measure throughput, and verify that packets are being delivered to all group members on your network.
 
 ## Introduction
 
@@ -13,7 +13,7 @@ Description: Use iperf and iperf3 to test multicast UDP connectivity, measure th
 ## Prerequisites
 
 - `iperf` (v2) installed on sender and receivers (`sudo apt install iperf`)
-- All hosts on a network where multicast routing is enabled
+- All hosts on the same Layer 2 network, or multicast routing enabled between subnets
 - Receivers able to join the test group
 
 ## Basic Multicast Test with iperf (v2)
@@ -44,7 +44,7 @@ Expected receiver output:
 [  3]  0.0- 1.0 sec  125 KBytes  1.02 Mbits/sec  0.123 ms   0/  89 (0%)
 ```
 
-Zero lost datagrams confirms multicast delivery is working.
+Zero lost datagrams confirms multicast delivery is working for that receiver.
 
 ## Testing with Multiple Receivers
 
@@ -84,10 +84,10 @@ sudo tcpdump -i eth0 -n "dst 224.1.1.1 and udp port 5001"
 
 | Metric | Good | Problem Indicator |
 |---|---|---|
-| Lost/Total | 0% loss | >1% = switch flooding or buffer issues |
+| Lost/Total | 0% loss | >1% = congestion, forwarding, or buffer issues |
 | Jitter | <1ms | >5ms = congestion or scheduling issues |
-| Bandwidth | Matches sent rate | Lower = packet drops in network |
+| Bandwidth | Matches sent rate | Lower = packet drops in the network or on the receiver |
 
 ## Conclusion
 
-iperf2 provides the simplest multicast UDP test: start receivers on the group, fire the sender, and read per-receiver statistics. Zero packet loss confirms end-to-end multicast delivery; any loss points to forwarding or buffering problems along the path.
+iperf2 provides the simplest multicast UDP test: start receivers on the group, fire the sender, and read per-receiver statistics. Zero packet loss confirms end-to-end multicast delivery for that receiver; any loss points to forwarding, congestion, or buffering problems along the path.
