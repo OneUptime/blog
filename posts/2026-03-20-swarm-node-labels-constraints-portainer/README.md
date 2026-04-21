@@ -12,9 +12,9 @@ Node labels in Docker Swarm are key-value metadata attached to nodes. They enabl
 
 ## Step 1: View and Add Labels via Portainer
 
-In Portainer, go to **Swarm > Nodes** and select a node. The detail view shows existing labels and allows you to add new ones.
+In Portainer, go to **Swarm > Details**, then select a node from the Nodes section. The detail view shows existing labels and allows you to add new ones.
 
-Via terminal:
+Run the Docker CLI examples from a swarm manager node. Via terminal:
 
 ```bash
 # Add labels to nodes
@@ -73,15 +73,15 @@ docker node update --label-rm tier node-worker-1
 
 ```bash
 # Find all GPU nodes
-docker node ls --filter label=tier=gpu
+docker node ls --filter node.label=tier=gpu
 
 # Find all nodes in a specific zone
-docker node ls --filter label=zone=us-east-1a
+docker node ls --filter node.label=zone=us-east-1a
 ```
 
 ## Step 5: Dynamic Label Management
 
-For cloud environments where nodes are added and removed frequently, automate label assignment using cloud provider metadata in your node provisioning script:
+For cloud environments where nodes are added and removed frequently, automate label assignment using cloud provider metadata in your node provisioning script. Run the `docker node update` step from a swarm manager or automation with manager access:
 
 ```bash
 # Example: label node based on instance type
