@@ -67,8 +67,8 @@ resource "aws_iam_role" "app" {
 }
 
 resource "aws_s3_bucket" "logs" {
-  # Use replace to make strings URL-safe
-  bucket = "${replace(var.prefix, "/[^a-z0-9-]/", "-")}-logs-${var.environment}"
+  # Use lower and replace to build a lowercase bucket-name prefix
+  bucket = "${replace(lower(var.prefix), "/[^a-z0-9-]/", "-")}-logs-${var.environment}"
 }
 ```
 
@@ -163,7 +163,7 @@ resource "aws_instance" "app" {
 }
 ```
 
-## Escaping Dollar Signs
+## Escaping Interpolation Sequences
 
 ```hcl
 resource "aws_iam_role_policy" "app" {
@@ -174,17 +174,18 @@ resource "aws_iam_role_policy" "app" {
     Statement = [{
       Effect = "Allow"
       Action = ["ec2:*"]
-      # Use $$ to include a literal $ in the string
+      # Use $${ to include a literal ${ sequence in the string
       # (needed when mixing OpenTofu interpolation with other template languages)
       Resource = "*"
     }]
   })
 }
 
-# Example with literal dollar sign:
+# Example with literal shell and template syntax:
 
 locals {
-  shell_script = "echo $$HOME"  # $$ becomes $ in the output
+  shell_script     = "echo $HOME"     # A plain $ does not need escaping
+  template_literal = "echo $${HOME}"  # $${ becomes ${ in the output
 }
 ```
 
@@ -209,4 +210,4 @@ locals {
 
 ## Conclusion
 
-String interpolation using `${}` is fundamental to OpenTofu configurations, enabling dynamic resource naming, tag generation, and script templating. It works in regular strings, heredoc strings, and anywhere a string value is expected in HCL. For complex multi-line content, combine interpolation with heredoc syntax. When generating JSON content, prefer `jsonencode()` over string interpolation to avoid escaping issues with special characters. Use `$$` to include a literal dollar sign when the string itself uses dollar signs for other purposes.
+String interpolation using `${}` is fundamental to OpenTofu configurations, enabling dynamic resource naming, tag generation, and script templating. It works in regular strings, heredoc strings, and anywhere a string value is expected in HCL. For complex multi-line content, combine interpolation with heredoc syntax. When generating JSON content, prefer `jsonencode()` over string interpolation to avoid escaping issues with special characters. Use `$${` to include a literal `${` sequence when the string itself uses interpolation syntax for other purposes.
