@@ -4,13 +4,14 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Subnetting, Powers of Two, Networking, Mental Math
 
-Description: The Powers of Two method for subnetting uses the observation that borrowed bits double the subnet count while halving host capacity, enabling quick mental calculation of subnet requirements...
+Description: The Powers of Two method for subnetting uses the observation that borrowed bits double the subnet count while halving address block size, enabling quick mental calculation of subnet requirements...
 
 ## The Core Relationship
 
 Every time you borrow 1 bit from the host portion:
 - Subnet count × 2
-- Hosts per subnet ÷ 2
+- Address block size ÷ 2
+- Usable hosts = 2^host_bits − 2
 
 Starting from /24 (254 hosts, 1 subnet within its /24):
 
@@ -29,8 +30,7 @@ Starting from /24 (254 hosts, 1 subnet within its /24):
 **Question**: You need at least 25 hosts per subnet and want to split `192.168.5.0/24`.
 
 1. Find the smallest 2^n − 2 ≥ 25: 2^5 − 2 = 30 ✓ → 5 host bits → /27
-2. Borrowed bits = 32 − 27 − 0 = 3 (relative to /24 parent)... 
-   Actually: host bits = 32 − 27 = 5, borrowed = 8 − 5 = 3
+2. Borrowed bits = new prefix − parent prefix = 27 − 24 = 3
 3. Subnets = 2^3 = 8
 4. Block size = 2^5 = 32
 
@@ -72,8 +72,8 @@ def from_prefix(prefix: int):
     import ipaddress
     net = ipaddress.IPv4Network(f"0.0.0.0/{prefix}")
     host_bits = 32 - prefix
-    total = 2 ** host_bits
-    usable = max(total - 2, 0)
+    total = net.num_addresses
+    usable = total if prefix >= 31 else total - 2  # /31 and /32 are special cases
     block = total  # Block size = subnet size
 
     print(f"/{prefix}: block={block}  total={total}  usable={usable}")
@@ -84,7 +84,7 @@ for p in range(24, 33):
 
 ## Key Takeaways
 
-- Each additional borrowed bit: subnets × 2, hosts ÷ 2.
+- Each additional borrowed bit: subnets × 2, address block size ÷ 2.
 - To find prefix: host_bits = ⌈log₂(needed_hosts + 2)⌉, prefix = 32 − host_bits.
 - To find subnets: borrowed = new_prefix − parent_prefix, subnets = 2^borrowed.
 - This method works without memorizing mask tables - just powers of 2.
