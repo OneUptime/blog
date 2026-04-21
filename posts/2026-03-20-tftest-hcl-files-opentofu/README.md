@@ -12,12 +12,16 @@ OpenTofu's testing framework recognises files with the `.tftest.hcl` extension a
 
 ## File Structure Overview
 
-A `.tftest.hcl` file can contain three top-level block types:
+A `.tftest.hcl` file can contain these top-level block types:
 
 | Block | Purpose |
 |---|---|
 | `variables` | Default variable values shared across all run blocks |
-| `provider` | Provider configuration overrides or mock definitions |
+| `provider` | Provider configuration overrides |
+| `mock_provider` | Mock provider definitions |
+| `override_resource` | Resource overrides shared across run blocks |
+| `override_data` | Data source overrides shared across run blocks |
+| `override_module` | Module call overrides shared across run blocks |
 | `run` | Individual test scenario |
 
 ```hcl
@@ -66,7 +70,7 @@ Each `run` block maps to one test case. The key arguments are:
 
 ```hcl
 run "descriptive_test_name" {
-  # "apply" (default) or "plan" - plan is faster but cannot check resource attributes
+  # "apply" (default) or "plan" - plan avoids creating resources, but apply-only values may be unknown
   command = apply
 
   # Override variables just for this run
@@ -93,12 +97,14 @@ When you want to verify that a validation rule or precondition rejects bad input
 
 ```hcl
 run "rejects_invalid_environment" {
+  command = plan
+
   variables {
     environment = "staging-invalid"
   }
 
   # Tell OpenTofu that this run is expected to fail
-  # on the named validation rule
+  # on the referenced variable validation
   expect_failures = [
     var.environment,
   ]
@@ -134,10 +140,12 @@ run "with_overridden_region" {
 By default, `tofu test` searches for `.tftest.hcl` files in:
 
 1. The current working directory.
-2. Any directory specified with `-test-directory`.
+2. The default `tests/` directory.
+
+Use `-test-directory=path` to search a different test directory; OpenTofu still also searches the current working directory.
 
 Keep test files next to the module they test for co-location, or in a `tests/` subdirectory for larger projects.
 
 ## Conclusion
 
-`.tftest.hcl` files give you a declarative, HCL-native way to write infrastructure tests. Mastering the `variables`, `provider`, and `run` blocks lets you cover happy paths, error cases, and complex multi-step scenarios-all within the same familiar OpenTofu workflow.
+`.tftest.hcl` files give you a declarative, HCL-native way to write infrastructure tests. Mastering the `variables`, `provider`, `mock_provider`, `override_resource`, `override_data`, `override_module`, and `run` blocks lets you cover happy paths, error cases, and complex multi-step scenarios-all within the same familiar OpenTofu workflow.
