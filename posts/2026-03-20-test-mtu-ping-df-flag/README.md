@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MTU, Ping, DF Flag, Linux, macOS, Window, Networking
+Tags: MTU, Ping, DF Flag, Linux, macOS, Windows, Networking
 
 Description: Test the maximum transmission unit by sending ping packets of varying sizes with the Don't Fragment bit set to discover the path MTU between hosts.
 
 ## Introduction
 
-Testing MTU with ping is the simplest way to verify path MTU, diagnose fragmentation issues, and confirm that a network change didn't break large packet delivery. The technique works by sending ICMP echo requests of increasing size with the Don't Fragment bit set. When a packet is too large for the path, it either triggers an ICMP error (and you see the actual MTU) or is silently dropped (MTU black hole).
+Testing MTU with ping is the simplest way to verify path MTU, diagnose fragmentation issues, and confirm that a network change didn't break large packet delivery. The technique works by sending IPv4 ICMP echo requests of increasing size with the Don't Fragment bit set. When a packet is too large for the path, it either triggers an ICMP error (which may include the actual MTU) or is silently dropped (possible MTU black hole).
 
 ## Linux ping MTU Test
 
@@ -39,7 +39,7 @@ ping -M do -s 1473 -c 1 10.20.0.5
 
 DEST="${1:-10.20.0.5}"
 LOW=1       # Min payload
-HIGH=8972   # Max payload for 9000 MTU jumbo frames
+HIGH=8973   # One byte above the max payload for 9000 MTU jumbo frames
 
 while [ $((HIGH - LOW)) -gt 1 ]; do
     MID=$(( (LOW + HIGH) / 2 ))
@@ -84,11 +84,11 @@ done
 
 ```powershell
 # Windows ping for MTU test:
-# -f: set DF bit
-# -l: payload size
+# /f: set DF bit
+# /l: payload size
 
 # Test standard MTU:
-ping -f -l 1472 10.20.0.5
+ping /f /l 1472 10.20.0.5
 
 # Expected success output:
 # Reply from 10.20.0.5: bytes=1472 time=1ms TTL=64
@@ -99,8 +99,8 @@ ping -f -l 1472 10.20.0.5
 # Find MTU:
 $dest = "10.20.0.5"
 for ($size = 1472; $size -ge 1; $size -= 1) {
-    $result = ping -f -l $size -n 1 $dest 2>&1
-    if ($result -match "Reply from") {
+    $result = ping /f /l $size /n 1 $dest 2>&1
+    if ($result -match "bytes=$size") {
         Write-Host "Path MTU: $($size + 28)"
         break
     }
@@ -111,9 +111,9 @@ for ($size = 1472; $size -ge 1; $size -= 1) {
 
 ```bash
 # Test VPN tunnel MTU (WireGuard):
-# WireGuard typically reduces MTU by 80 bytes
-ping -M do -s 1340 -c 3 10.0.0.2  # Remote host via WireGuard (1420 MTU - 28 + 20)
-# Actually test at MTU - overhead:
+# wg-quick commonly subtracts 80 bytes from the underlay MTU
+ping -M do -s 1340 -c 3 10.0.0.2  # Conservative test via a typical 1420 MTU WireGuard interface
+# Test at the tunnel interface MTU minus IPv4/ICMP headers:
 # 1420 MTU - 28 bytes overhead = 1392 max payload
 ping -M do -s 1392 -c 3 10.0.0.2
 
@@ -126,7 +126,7 @@ ping -M do -s 1464 -c 3 remote.host  # 1492 - 28 = 1464
 
 # Test for black hole (expect error but get timeout):
 ping -M do -s 1473 -c 1 -W 5 10.20.0.5
-# If no response at all (not even error): MTU black hole
+# If no response at all (not even error): possible MTU black hole
 # If error message received: PMTUD working correctly
 ```
 
@@ -149,10 +149,10 @@ for host in "${HOSTS[@]}"; do
     if ping -M do -s $EXPECTED_PAYLOAD -c 1 -W 2 $host > /dev/null 2>&1; then
         echo "OK: $host supports $EXPECTED_MTU MTU"
     else
-        # Find actual MTU:
+        # Find a lower working MTU estimate:
         for payload in 1448 1400 1300 1200 1000 576; do
             if ping -M do -s $payload -c 1 -W 2 $host > /dev/null 2>&1; then
-                echo "WARN: $host MTU = $((payload + 28)) (expected $EXPECTED_MTU)"
+                echo "WARN: $host supports at least $((payload + 28)) MTU (expected $EXPECTED_MTU)"
                 break
             fi
         done
@@ -162,4 +162,4 @@ done
 
 ## Conclusion
 
-Ping with the DF bit is the universal MTU test tool. On Linux, use `ping -M do -s SIZE`; on macOS `ping -D -s SIZE`; on Windows `ping -f -l SIZE`. The payload size plus 28 bytes (IP + ICMP headers) equals the total packet size. When a packet fails with "Frag needed," Linux shows the actual bottleneck MTU in the error message. When packets fail silently (no error), it indicates an MTU black hole where ICMP messages are blocked. Use the binary search script to find exact path MTU efficiently.
+Ping with the DF bit is the universal IPv4 MTU test tool. On Linux, use `ping -M do -s SIZE`; on macOS `ping -D -s SIZE`; on Windows `ping /f /l SIZE`. For IPv4 without IP options, the payload size plus 28 bytes (IP + ICMP headers) equals the total packet size. When a packet fails with "Frag needed," Linux can show the bottleneck MTU in the error message. When oversized packets fail silently (no error) while smaller packets work, it may indicate an MTU black hole where ICMP messages are blocked. Use the binary search script to find exact path MTU efficiently.
