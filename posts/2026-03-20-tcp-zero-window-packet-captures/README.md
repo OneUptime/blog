@@ -8,18 +8,18 @@ Description: Understand TCP Zero Window events in packet captures, what they ind
 
 ## Introduction
 
-A TCP Zero Window event occurs when the receiver's buffer is completely full and it advertises a window size of zero to the sender. The sender must stop transmitting completely and wait for a Zero Window Probe or a Window Update from the receiver. This is TCP's emergency brake - it completely halts the sender to give the receiver time to drain its buffer.
+A TCP Zero Window event occurs when the receiver has no receive window available and advertises a window size of zero to the sender. The sender must stop sending new data into that flow-control window, periodically probe the window, and wait for a Window Update from the receiver. This is TCP's emergency brake - it pauses normal transmission to give the receiver time to drain its buffer.
 
 ## What Happens During Zero Window
 
 ```text
 Normal: Receiver window = 32KB (sender can transmit up to 32KB ahead)
-Zero Window: Receiver window = 0 (sender MUST STOP completely)
+Zero Window: Receiver window = 0 (sender MUST STOP sending new data)
 
 Sequence:
 1. Receiver's buffer fills → advertises window=0
-2. Sender stops sending data
-3. Sender sends Zero Window Probe (1-byte payload) every few seconds
+2. Sender stops sending new data
+3. Sender sends Zero Window Probe segments periodically (typically a 1-byte probe, with timer backoff)
 4. When receiver drains buffer: sends Window Update (window > 0)
 5. Sender resumes transmission
 ```
@@ -34,7 +34,7 @@ tcp.analysis.zero_window
 # Filter for Zero Window Probes (sender checking if receiver recovered)
 tcp.analysis.zero_window_probe
 
-# Filter for Window Updates (receiver recovered from Zero Window)
+# Filter for Window Updates (receiver advertised more space)
 tcp.analysis.window_update
 
 # Combined view of the full event sequence
@@ -45,12 +45,12 @@ tcp.analysis.zero_window or tcp.analysis.zero_window_probe or tcp.analysis.windo
 
 ```bash
 # Capture and flag packets with window size 0
-tcpdump -i eth0 -n -v 'tcp' 2>/dev/null | \
-  awk '/win 0 /{print "ZERO WINDOW:", $0}'
+tcpdump -i eth0 -n -l -v 'tcp' 2>/dev/null | \
+  awk '/win 0([, ]|$)/{print "ZERO WINDOW:", $0}'
 
 # Or filter at the packet level
-tcpdump -i eth0 -n 'tcp[14:2] == 0 and tcp[tcpflags] != tcp-syn'
-# tcp[14:2] = window field; filter out SYN (which sometimes has window=0)
+tcpdump -i eth0 -n 'tcp[14:2] == 0 and (tcp[tcpflags] & tcp-syn) == 0'
+# tcp[14:2] = raw TCP window field; filter out packets with the SYN bit set
 ```
 
 ## Diagnosing the Root Cause
@@ -60,7 +60,7 @@ tcpdump -i eth0 -n 'tcp[14:2] == 0 and tcp[tcpflags] != tcp-syn'
 # The receive buffer fills up because data arrives faster than the app reads it
 
 # Check the receiving application's CPU usage
-top -p $(pgrep your-app)
+top -p $(pgrep -d, your-app)
 
 # Check if the application has slow I/O (disk writes, DB queries)
 iostat -xz 1 5
@@ -68,24 +68,24 @@ iostat -xz 1 5
 
 # Check for memory pressure limiting buffer allocation
 free -m
-cat /proc/sys/vm/pressure_cache
+cat /proc/pressure/memory
 
 # Profile application socket reads
-strace -p $(pgrep your-app) -e trace=recv,recvfrom -T 2>&1 | \
-  awk '{match($0, /<([0-9.]+)>/, t); if(t[1]+0>0.01) print "SLOW RECV:", $0}'
+strace -p $(pgrep -n your-app) -e trace=read,recv,recvfrom,recvmsg,recvmmsg -T 2>&1 | \
+  awk '{ if (match($0, /<[0-9.]+>/)) { elapsed=substr($0, RSTART+1, RLENGTH-2); if (elapsed+0>0.01) print "SLOW RECV:", $0 } }'
 ```
 
 ## Duration Analysis
 
 ```bash
 # In Wireshark: measure how long the Zero Window persisted
-# 1. Filter: tcp.analysis.zero_window_probe
-# 2. Note the timestamp of the first probe
+# 1. Filter: tcp.analysis.zero_window
+# 2. Note the timestamp of the first Zero Window packet
 # 3. Filter: tcp.analysis.window_update for the same stream
-# 4. Calculate: window_update_time - first_zero_window_time = Zero Window duration
+# 4. Calculate: window_update_time - zero_window_time = Zero Window duration
 
-# Long Zero Window duration (>1 second) indicates serious receiver bottleneck
-# Short Zero Window duration (<100ms) is acceptable in normal operation
+# Repeated or second-scale Zero Window duration usually deserves investigation
+# Brief sub-100ms Zero Window duration can be normal during short bursts
 ```
 
 ## Fixes for Zero Window Issues
@@ -100,8 +100,8 @@ sysctl -w net.ipv4.tcp_rmem="4096 262144 16777216"
 # Fix 3: For transfers: use dedicated transfer threads
 # Don't mix processing and socket reading in the same thread
 
-# Fix 4: Enable socket-level flow control in the application
-# Use non-blocking sockets with select/poll/epoll
+# Fix 4: Improve socket read scheduling in the application
+# Use non-blocking sockets with select/poll/epoll so reads keep draining promptly
 ```
 
 ## Conclusion
