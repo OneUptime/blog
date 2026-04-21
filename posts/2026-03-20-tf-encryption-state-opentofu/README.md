@@ -32,12 +32,16 @@ terraform {
     key_provider "aws_kms" "main" {
       kms_key_id = var.kms_key_arn  # Must exist before first init
       region     = var.region
+      key_spec   = "AES_256"
     }
 
     # Method: AES-GCM encryption
     method "aes_gcm" "state" {
       keys = key_provider.aws_kms.main
     }
+
+    # Migration method: allows reading existing unencrypted state
+    method "unencrypted" "migration" {}
 
     # Apply to state file
     state {
@@ -177,8 +181,9 @@ tofu plan
 terraform {
   encryption {
     key_provider "aws_kms" "main" {
-      kms_key_id = aws_kms_key.state_encryption.arn
+      kms_key_id = var.kms_key_arn
       region     = var.region
+      key_spec   = "AES_256"
     }
 
     method "aes_gcm" "state" {
@@ -208,7 +213,7 @@ tofu apply -refresh-only  # Reads unencrypted, writes encrypted
 
 # Step 4: Verify state is now encrypted
 aws s3 cp s3://bucket/path/terraform.tfstate /tmp/state.json
-cat /tmp/state.json  # Should show encrypted binary data, not JSON
+cat /tmp/state.json  # Should show encrypted JSON metadata/ciphertext, not plaintext state attributes
 ```
 
 ## Best Practices
