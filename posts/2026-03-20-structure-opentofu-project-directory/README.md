@@ -20,12 +20,17 @@ infrastructure/
 │   │   ├── main.tf              # Module calls for dev
 │   │   ├── variables.tf         # Dev-specific variable declarations
 │   │   ├── terraform.tfvars     # Dev variable values (no secrets)
-│   │   └── outputs.tf
+│   │   ├── outputs.tf
+│   │   └── .terraform.lock.hcl  # COMMITTED - provider version lock
 │   ├── staging/
 │   │   └── ... (same structure)
 │   └── prod/
 │       └── ... (same structure)
 ├── modules/
+│   ├── shared/
+│   │   ├── data-sources.tf      # Shared data lookups exposed as outputs
+│   │   ├── locals.tf            # Local values used inside this module
+│   │   └── outputs.tf
 │   ├── vpc/
 │   │   ├── main.tf
 │   │   ├── variables.tf
@@ -35,10 +40,6 @@ infrastructure/
 │   │   └── ...
 │   └── rds/
 │       └── ...
-├── shared/
-│   ├── data-sources.tf          # Shared data sources (AMI lookups etc.)
-│   └── locals.tf                # Shared local values
-├── .terraform.lock.hcl          # COMMITTED - provider version lock
 ├── .gitignore
 └── README.md
 ```
@@ -69,7 +70,7 @@ terraform {
 ```hcl
 # environments/prod/main.tf
 module "networking" {
-  source      = "../../modules/networking"
+  source      = "../../modules/vpc"
   environment = var.environment
   vpc_cidr    = var.vpc_cidr
 }
@@ -118,16 +119,30 @@ output "private_subnet_ids" {
 
 ```gitignore
 # .gitignore
-.terraform/              # Downloaded providers and modules
-*.tfstate                # Never commit local state
+
+# Downloaded providers and modules
+.terraform/
+
+# Never commit local state
+*.tfstate
 *.tfstate.backup
-*.tfvars                 # Exclude secret var files
-!example.tfvars          # But include an example template
-.terraform.tfstate       # Workspace state
-crash.log                # Provider crash logs
-*.tfplan                 # Binary plan files
+
+# Exclude secret var files
+*.tfvars
+
+# But include an example template
+!example.tfvars
+
+# Workspace state
+.terraform.tfstate
+
+# Provider crash logs
+crash.log
+
+# Binary plan files
+*.tfplan
 ```
 
 ## Conclusion
 
-A consistent directory structure with environments at the top, reusable modules in a separate directory, and standardized files within each environment makes OpenTofu projects navigable by any team member. The key principles: keep environments DRY by sharing modules, separate variable declarations from values, and always commit the lock file.
+A consistent directory structure with environments at the top, reusable modules in a separate directory, and standardized files within each environment makes OpenTofu projects navigable by any team member. The key principles: keep environments DRY by sharing modules, separate variable declarations from values, and always commit the lock file for each root environment.
