@@ -16,18 +16,18 @@ Traefik is a modern HTTP reverse proxy and load balancer that supports IPv6 nati
 entryPoints:
   # Listen on all interfaces (IPv4 and IPv6)
   web:
-    address: ":80"           # :: (all interfaces) on port 80
+    address: ":80"           # All interfaces on port 80
 
   websecure:
-    address: ":443"          # :: on port 443
+    address: ":443"          # All interfaces on port 443
 
-  # Listen on specific IPv6 address only
-  ipv6-only:
+  # Listen on the IPv6 wildcard address
+  ipv6:
     address: "[::]:80"       # Explicit IPv6 all-interfaces
 
   # Listen on specific IPv6 address
   ipv6-specific:
-    address: "[2001:db8::proxy]:80"
+    address: "[2001:db8::10]:80"
 ```
 
 ## Docker Compose with IPv6 Traefik
@@ -58,17 +58,19 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.webapp.rule=Host(`example.com`)"
       - "traefik.http.routers.webapp.entrypoints=websecure"
+      - "traefik.http.routers.webapp.tls=true"
       - "traefik.http.services.webapp.loadbalancer.server.port=80"
     networks:
       - traefik-net
 
 networks:
   traefik-net:
+    name: traefik-net
     driver: bridge
     enable_ipv6: true
     ipam:
       config:
-        - subnet: "fd00:traefik::/64"
+        - subnet: "fd00:10:244::/64"
 ```
 
 ## IPv6 Backend Services
@@ -82,8 +84,8 @@ http:
       loadBalancer:
         servers:
           # IPv6 backend servers (use brackets for IPv6 in URLs)
-          - url: "http://[2001:db8::server1]:8080"
-          - url: "http://[2001:db8::server2]:8080"
+          - url: "http://[2001:db8::11]:8080"
+          - url: "http://[2001:db8::12]:8080"
 
         healthCheck:
           path: /health
@@ -141,7 +143,7 @@ spec:
 
 ## IPv6 Real IP Forwarding
 
-Configure Traefik to pass the real IPv6 client IP to backends:
+Configure Traefik to trust forwarded headers from known IPv6 proxies. Traefik automatically forwards client information to backends in `X-Forwarded-For` and `X-Real-Ip` headers:
 
 ```yaml
 # traefik.yml
@@ -151,15 +153,15 @@ entryPoints:
     address: ":80"
     forwardedHeaders:
       trustedIPs:
-        - "2001:db8:proxy::/64"    # Trusted proxy IPv6 range
+        - "2001:db8:100::/64"      # Trusted proxy IPv6 range
         - "::1/128"                 # Localhost
 
-http:
-  middlewares:
-    real-ip:
-      headers:
-        customRequestHeaders:
-          X-Real-IP: ""             # Forward original IP
+  websecure:
+    address: ":443"
+    forwardedHeaders:
+      trustedIPs:
+        - "2001:db8:100::/64"      # Trusted proxy IPv6 range
+        - "::1/128"                 # Localhost
 ```
 
 ## Verifying IPv6 Traefik
@@ -169,11 +171,10 @@ http:
 docker compose up -d
 
 # Verify Traefik listens on IPv6
-ss -6 -tlnp | grep traefik
+ss -6 -tlnp | grep -E ':(80|443|8080)[[:space:]]'
 
 # Test IPv6 access
-curl -6 http://[::1]/health
-curl -6 https://example.com/
+curl -6 -k --resolve example.com:443:[::1] https://example.com/
 
 # Check Traefik dashboard
 curl http://localhost:8080/api/rawdata | python3 -m json.tool | grep -A 5 "entryPoints"
@@ -187,10 +188,10 @@ docker network inspect traefik-net | grep -A 5 "IPv6"
 
 # Enable IPv6 in Docker daemon
 # /etc/docker/daemon.json:
-# {"ipv6": true, "fixed-cidr-v6": "fd00:docker::/80"}
+# {"ipv6": true, "fixed-cidr-v6": "fd00:10:245::/64"}
 
 # Verify backend container has IPv6 address
-docker inspect webapp | grep "GlobalIPv6Address"
+docker inspect "$(docker compose ps -q webapp)" | grep "GlobalIPv6Address"
 ```
 
 Traefik's automatic service discovery combined with native IPv6 support makes it straightforward to deploy IPv6-capable load balancing for containerized applications with minimal configuration.
