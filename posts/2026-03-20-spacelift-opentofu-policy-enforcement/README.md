@@ -8,11 +8,11 @@ Description: Learn how to connect Spacelift to your OpenTofu stacks and use its 
 
 ## Introduction
 
-Spacelift is a CI/CD platform purpose-built for infrastructure-as-code. Its standout feature is policy enforcement: every `tofu plan` output can be evaluated against Open Policy Agent (OPA) policies that can warn, block, or auto-approve changes based on your organization's rules.
+Spacelift is a CI/CD platform purpose-built for infrastructure-as-code. Its standout feature is policy enforcement: OpenTofu plan data can be evaluated against Open Policy Agent (OPA) policies that warn or block changes, while approval policies can require sign-off before changes are applied.
 
 ## Creating a Spacelift Stack for OpenTofu
 
-In the Spacelift UI (or via its Terraform/OpenTofu provider), create a stack that uses the OpenTofu runner:
+In the Spacelift UI (or via its Terraform/OpenTofu provider), create a stack that uses the OpenTofu workflow tool:
 
 ```hcl
 # spacelift.tf - manage Spacelift stacks with OpenTofu
@@ -30,21 +30,22 @@ provider "spacelift" {}
 
 resource "spacelift_stack" "production_infra" {
   name       = "production-infra"
-  repository = "my-org/infra-repo"
+  repository = "infra-repo"
   branch     = "main"
   project_root = "environments/production"
 
   # Use OpenTofu instead of Terraform
-  opentofu_version = "1.9.0"
+  terraform_workflow_tool = "OPEN_TOFU"
+  terraform_version       = "1.9.0"
 
-  # Auto-apply on push to main (use with caution in production)
+  # Keep auto-apply on push to main disabled for production
   autodeploy = false
 }
 ```
 
 ## Writing an OPA Policy in Spacelift
 
-Spacelift policies are written in Rego. This example denies any plan that destroys more than 5 resources:
+Spacelift policies are written in Rego. The examples below use Rego v1 syntax. This example denies any plan that destroys more than 5 resources:
 
 ```rego
 # policies/deny-mass-destroy.rego
@@ -52,20 +53,21 @@ package spacelift
 
 # Collect all resources that will be destroyed
 destroyed_resources := [resource |
-    resource := input.terraform.resource_changes[_]
-    resource.change.actions[_] == "delete"
+    some resource in input.terraform.resource_changes
+    "delete" in resource.change.actions
 ]
 
 # Deny if more than 5 resources would be destroyed at once
-deny["Mass destruction: more than 5 resources would be deleted"] {
+deny contains "Mass destruction: more than 5 resources would be deleted" if {
     count(destroyed_resources) > 5
 }
 
 # Warn if any resource change involves a database instance
-warn["Database instance change detected - review carefully"] {
-    resource := input.terraform.resource_changes[_]
+warn contains "Database instance change detected - review carefully" if {
+    some resource in input.terraform.resource_changes
     contains(resource.type, "db_instance")
-    resource.change.actions[_] != "no-op"
+    some action in resource.change.actions
+    action != "no-op"
 }
 ```
 
@@ -77,18 +79,27 @@ package spacelift
 
 required_tags := {"Environment", "Owner", "CostCenter"}
 
-# Collect resources missing required tags
-resources_missing_tags := [resource.address |
-    resource := input.terraform.resource_changes[_]
-    resource.change.actions[_] != "delete"
-    resource.change.actions[_] != "no-op"
-    remaining := required_tags - {tag | tag := resource.change.after.tags[_]}
-    count(remaining) > 0
-]
+has_action(resource, action) if {
+    some planned_action in resource.change.actions
+    planned_action == action
+}
 
-deny[msg] {
+has_required_tag(resource, tag) if {
+    _ := resource.change.after.tags[tag]
+}
+
+# Collect resources missing required tag keys
+resources_missing_tags := {resource.address |
+    some resource in input.terraform.resource_changes
+    not has_action(resource, "delete")
+    not has_action(resource, "no-op")
+    some tag in required_tags
+    not has_required_tag(resource, tag)
+}
+
+deny contains msg if {
     count(resources_missing_tags) > 0
-    msg := sprintf("Resources missing required tags: %v", [resources_missing_tags])
+    msg := sprintf("Resources missing required tags: %v", [sort(resources_missing_tags)])
 }
 ```
 
@@ -97,9 +108,10 @@ deny[msg] {
 ```hcl
 # Create the policy resource
 resource "spacelift_policy" "deny_mass_destroy" {
-  name = "deny-mass-destroy"
-  body = file("policies/deny-mass-destroy.rego")
-  type = "PLAN"
+  name        = "deny-mass-destroy"
+  body        = file("policies/deny-mass-destroy.rego")
+  type        = "PLAN"
+  engine_type = "REGO_V1"
 }
 
 # Attach it to the stack
@@ -112,7 +124,7 @@ resource "spacelift_policy_attachment" "production_deny_mass_destroy" {
 ## Environment Variables and Secrets
 
 ```hcl
-# Inject AWS credentials as environment variables into the stack
+# Inject AWS configuration as environment variables into the stack
 resource "spacelift_environment_variable" "aws_region" {
   stack_id   = spacelift_stack.production_infra.id
   name       = "AWS_DEFAULT_REGION"
@@ -137,9 +149,12 @@ Use an approval policy to require human sign-off before applying:
 package spacelift
 
 # Require at least one approval for production stacks
-approve { input.reviews.approvals >= 1 }
+approve if {
+    count(input.reviews.current.approvals) >= 1
+    count(input.reviews.current.rejections) == 0
+}
 ```
 
 ## Conclusion
 
-Spacelift provides a managed GitOps platform for OpenTofu with built-in OPA policy enforcement. By attaching plan, access, and approval policies to your stacks, you get automated guardrails that prevent destructive changes, enforce tagging standards, and require human review - all before a single resource is modified in production.
+Spacelift provides a managed GitOps platform for OpenTofu with built-in OPA policy enforcement. By attaching plan and approval policies to your stacks, you get automated guardrails that prevent destructive changes, enforce tagging standards, and require human review - all before a single resource is modified in production.
