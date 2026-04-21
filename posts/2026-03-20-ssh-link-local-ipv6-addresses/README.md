@@ -43,10 +43,10 @@ ssh -v user@fe80::1:2:3:4%eth0
 
 ## URL Encoding the Scope ID
 
-Some tools require URL-encoded scope ID (`%25` for `%`):
+Tools that take a URI, such as curl, may require a URL-encoded scope ID (`%25` for `%`):
 
 ```bash
-# Browser / curl style - use %25 for the literal %
+# curl URI style - use %25 for the literal %
 curl "http://[fe80::1:2:3:4%25eth0]:8080/"
 
 # SSH typically accepts the % directly
@@ -66,18 +66,18 @@ ssh 'user@fe80::1:2:3:4%eth0'
 
 # SSH to link-local address via eth0
 Host local-device
-    HostName fe80::aabb:ccdd:eeff:1234%eth0
+    HostName fe80::aabb:ccdd:eeff:1234%%eth0
     User admin
     AddressFamily inet6
     IdentityFile ~/.ssh/id_ed25519
 
 # Multiple link-local hosts on same segment
 Host router
-    HostName fe80::1%eth0
+    HostName fe80::1%%eth0
     User admin
 
 Host switch
-    HostName fe80::2%eth0
+    HostName fe80::2%%eth0
     User admin
 ```
 
@@ -87,11 +87,11 @@ Host switch
 # Discover IPv6 neighbors on local segment
 ip -6 neigh show
 
-# Or use nmap to scan link-local range
-nmap -6 fe80::%eth0/64 --exclude fe80::1%eth0
+# Or use nmap's IPv6 multicast discovery script
+nmap -6 --script=targets-ipv6-multicast-echo --script-args 'newtargets,interface=eth0' -sL
 
 # Ping all nodes on link (multicast)
-ping6 ff02::1%eth0
+ping -6 ff02::1%eth0
 
 # Check neighbor discovery cache
 ip -6 neigh show dev eth0 | grep "fe80"
@@ -110,8 +110,8 @@ ssh -i ~/.ssh/admin_key admin@fe80::dead:beef:cafe:1234%eth0
 # Use case 3: Connect to container with link-local address
 # Find container's link-local address
 docker exec mycontainer ip -6 addr show eth0 | grep fe80
-# Connect to it
-ssh user@fe80::containeraddr%veth0
+# Connect to it (replace the address and host-side interface)
+ssh user@fe80::aabb:ccdd:eeff:5678%veth0
 
 # Use case 4: Connect to VM over bridge interface
 ssh user@fe80::1:2:3:4%virbr0
@@ -123,7 +123,7 @@ ssh user@fe80::1:2:3:4%virbr0
 # SCP to link-local address (bracket notation required)
 scp -6 file.txt "user@[fe80::1:2:3:4%eth0]:/remote/path/"
 
-# The % in shell needs quoting
+# Quote the remote spec so the brackets and % are passed literally
 scp file.txt 'user@[fe80::1:2:3:4%eth0]:/path/'
 
 # rsync to link-local
@@ -139,7 +139,7 @@ rsync -av -e "ssh -6" /local/dir/ "user@[fe80::1:2:3:4%eth0]:/remote/"
 # Right:  ssh user@fe80::1:2:3:4%eth0
 
 # Verify the target is a neighbor
-ping6 fe80::1:2:3:4%eth0
+ping -6 fe80::1:2:3:4%eth0
 ip -6 neigh | grep "fe80::1:2:3:4"
 
 # Verify your interface has a link-local address
@@ -151,4 +151,4 @@ ip -6 addr show eth0 | grep "fe80"
 
 ## Summary
 
-SSH to link-local IPv6 addresses (fe80::/10) by appending the network interface as a scope ID: `ssh user@fe80::1:2:3:4%eth0`. The interface is required because link-local addresses are not globally routable and the system needs to know which interface to use. For `~/.ssh/config`, set `HostName fe80::1:2:3:4%eth0`. For SCP/rsync, use bracket notation and quote the `%`: `scp file 'user@[fe80::addr%eth0]:/path/'`. First verify reachability with `ping6 fe80::addr%eth0`.
+SSH to link-local IPv6 addresses (fe80::/10) by appending the network interface as a scope ID: `ssh user@fe80::1:2:3:4%eth0`. The interface is required because link-local addresses are not globally routable and the system needs to know which interface to use. For `~/.ssh/config`, set `HostName fe80::1:2:3:4%%eth0` because SSH config uses `%` for token expansion. For SCP/rsync, use bracket notation and quote the remote spec: `scp file 'user@[fe80::addr%eth0]:/path/'`. First verify reachability with `ping -6 fe80::addr%eth0`.
