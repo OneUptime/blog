@@ -8,7 +8,7 @@ Description: Learn how to use TF_LOG_CORE to isolate debug logging to OpenTofu's
 
 ## Introduction
 
-When you suspect a problem in OpenTofu's core engine (dependency graph, state operations, plan generation) rather than in a provider, `TF_LOG_CORE` lets you enable verbose logging only for the core subsystem without drowning in provider-level HTTP traffic.
+When you suspect a problem in OpenTofu's core engine (dependency graph, state operations, plan generation) rather than in a provider, `TF_LOG_CORE` lets you enable verbose logging only for the core subsystem without drowning in provider-level HTTP traffic, as long as broader `TF_LOG` logging is not also set.
 
 ## TF_LOG_CORE vs TF_LOG
 
@@ -23,14 +23,17 @@ When you suspect a problem in OpenTofu's core engine (dependency graph, state op
 ```bash
 # Enable DEBUG only for the core engine
 
+unset TF_LOG TF_LOG_PROVIDER
 export TF_LOG_CORE=DEBUG
 tofu plan
 
 # Enable TRACE for the most detailed core logging
+unset TF_LOG TF_LOG_PROVIDER
 export TF_LOG_CORE=TRACE
 tofu apply
 
 # Disable provider logging entirely while debugging core
+unset TF_LOG
 export TF_LOG_CORE=TRACE
 export TF_LOG_PROVIDER=OFF
 tofu plan
@@ -46,14 +49,14 @@ Core-level logging includes:
 - **Module loading**: How module sources are resolved and loaded
 - **Variable evaluation**: How input variables and locals are resolved
 
-Example core DEBUG output:
+Example core TRACE output:
 
 ```text
-2026-03-20T10:00:01.000Z [DEBUG] tofu.NewContext: building graph
-2026-03-20T10:00:01.010Z [DEBUG] Graph: adding vertex "aws_vpc.main"
-2026-03-20T10:00:01.011Z [DEBUG] Graph: adding vertex "aws_subnet.public"
-2026-03-20T10:00:01.012Z [DEBUG] Graph: adding edge "aws_subnet.public" -> "aws_vpc.main"
-2026-03-20T10:00:01.020Z [DEBUG] tofu.walkApply: walking 5 vertices
+2026-03-20T10:00:01.000Z [DEBUG] Building and walking plan graph for normal
+2026-03-20T10:00:01.010Z [TRACE] building graph for walkPlan
+2026-03-20T10:00:01.011Z [TRACE] Executing graph transform *tofu.ConfigTransformer
+2026-03-20T10:00:01.012Z [DEBUG] Starting graph walk: walkPlan
+2026-03-20T10:00:01.020Z [TRACE] vertex "aws_vpc.main": starting visit (*tofu.NodePlannableResourceInstance)
 ```
 
 ## Diagnosing Dependency Cycle Errors
@@ -62,30 +65,33 @@ Core TRACE logs show exactly how the dependency graph is built, which helps trac
 
 ```bash
 # Enable TRACE for core to see full graph construction
+unset TF_LOG TF_LOG_PROVIDER
 export TF_LOG_CORE=TRACE
 export TF_LOG_PATH=core-debug.log
 tofu plan 2>/dev/null
 
 # Search the log for cycle detection
-grep -i "cycle\|circular\|dependency" core-debug.log
+grep -Ei "cycle|circular|dependency" core-debug.log
 ```
 
 ## Diagnosing State Lock Issues
 
 ```bash
 # Debug state lock operations
+unset TF_LOG TF_LOG_PROVIDER
 export TF_LOG_CORE=DEBUG
 export TF_LOG_PATH=lock-debug.log
 tofu apply
 
 # Find lock-related messages
-grep -i "lock\|unlock" lock-debug.log
+grep -Ei "lock|unlock" lock-debug.log
 ```
 
 ## Combining Core and Provider Logging at Different Levels
 
 ```bash
 # Core at TRACE, providers at WARN - maximum core detail, minimal provider noise
+unset TF_LOG
 export TF_LOG_CORE=TRACE
 export TF_LOG_PROVIDER=WARN
 export TF_LOG_PATH=selective-debug.log
@@ -96,10 +102,11 @@ tofu plan
 
 ```bash
 # Capture core trace with timestamps
-TF_LOG_CORE=TRACE TF_LOG_PATH=/tmp/opentofu-core.log tofu apply
+unset TF_LOG
+TF_LOG_CORE=TRACE TF_LOG_PROVIDER=OFF TF_LOG_PATH=/tmp/opentofu-core.log tofu apply
 
 # Extract just the graph walk entries
-grep "walkApply\|walkPlan\|Graph:" /tmp/opentofu-core.log | head -100
+grep -E "Starting graph walk|building graph|Executing graph transform|vertex" /tmp/opentofu-core.log | head -100
 ```
 
 ## Conclusion
