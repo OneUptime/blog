@@ -8,38 +8,51 @@ Description: A guide to using the tofu.applying built-in value to differentiate 
 
 ## Introduction
 
-OpenTofu provides a built-in value `tofu.applying` that evaluates to `true` during an apply operation and `false` during a plan operation. This allows you to write expressions that behave differently depending on whether you are previewing changes or actually applying them.
+OpenTofu 1.11 and later versions provide a built-in value `tofu.applying` that evaluates to `true` while the apply phase is running and `false` in other phases such as plan and validate. This is about the apply phase, not just the `tofu apply` command: `tofu apply` first runs a planning phase where `tofu.applying` is `false`, then an apply phase where it is `true`.
+
+`tofu.applying` is an ephemeral value. Any expression that includes it becomes ephemeral too, so it can only be used in contexts that accept ephemeral values, such as locals that flow into provisioners, provider configuration, ephemeral resources, child-module ephemeral outputs, resource connection blocks, and resource write-only attributes. It cannot be used directly in ordinary resource arguments or root module outputs.
 
 ## Basic tofu.applying Usage
 
 ```hcl
-# tofu.applying is true during apply, false during plan
+# tofu.applying is true during the apply phase, false during plan/validate
 
-output "current_phase" {
-  value = tofu.applying ? "apply" : "plan"
+locals {
+  phase_label = tofu.applying ? "apply" : "plan"
 }
 
-# Use in locals for phase-specific configuration
-locals {
-  # Use a timestamp only during apply (stable for plans)
-  deployment_id = tofu.applying ? timestamp() : "plan-preview"
+resource "terraform_data" "phase_example" {
+  input = var.app_version
+
+  # Provisioner blocks can use ephemeral values.
+  provisioner "local-exec" {
+    command = "echo 'Running during ${local.phase_label} phase'"
+  }
 }
 ```
 
 ## Ephemeral Values with tofu.applying
 
 ```hcl
-# Fetch credentials only during apply, use placeholder during plan
+# Use a plan-safe credential source during plan and the deployment
+# credential source during apply. The result is still ephemeral.
 ephemeral "aws_secretsmanager_secret_version" "api_key" {
-  secret_id = "myapp/api-key"
+  secret_id = tofu.applying ? "myapp/apply-api-key" : "myapp/plan-api-key"
 }
 
 locals {
-  # During plan: use a placeholder to avoid unnecessary secret reads
-  # During apply: use the actual secret value
-  api_key = tofu.applying ? (
-    ephemeral.aws_secretsmanager_secret_version.api_key.secret_string
-  ) : "plan-time-placeholder"
+  api_key = ephemeral.aws_secretsmanager_secret_version.api_key.secret_string
+}
+
+variable "api_key_version" {
+  type = number
+}
+
+resource "aws_ssm_parameter" "api_key" {
+  name             = "/myapp/api-key"
+  type             = "SecureString"
+  value_wo         = local.api_key
+  value_wo_version = var.api_key_version
 }
 ```
 
@@ -47,14 +60,14 @@ locals {
 
 ```hcl
 # timestamp() changes every plan, causing perpetual diffs
-# Use tofu.applying to only record timestamps during apply
+# tofu.applying is ephemeral, so it cannot be used in normal resource input.
+# Use plantimestamp() for a stable timestamp captured during planning.
 
 resource "terraform_data" "deployment_record" {
   input = {
     version     = var.app_version
     environment = var.environment
-    # Only set actual timestamp during apply
-    deployed_at = tofu.applying ? timestamp() : null
+    planned_at  = plantimestamp()
   }
 }
 
@@ -69,16 +82,14 @@ output "deployment_info" {
 resource "terraform_data" "setup" {
   triggers_replace = var.app_version
 
-  # Use tofu.applying to set realistic values only during apply
   input = {
-    run_time = tofu.applying ? timestamp() : "(will be set during apply)"
-    version  = var.app_version
+    version = var.app_version
   }
 
   provisioner "local-exec" {
     command = tofu.applying ? (
       "echo 'Deploying version ${var.app_version}'"
-    ) : "true"  # No-op during plan
+    ) : "true"
   }
 }
 ```
@@ -86,17 +97,20 @@ resource "terraform_data" "setup" {
 ## Notifications During Apply
 
 ```hcl
-# Send notification only during actual apply, not during plan
+# Provisioners run during apply, not during plan. The false branch keeps
+# the expression valid if evaluated outside the apply phase.
 resource "terraform_data" "deploy_notification" {
   triggers_replace = var.app_version
 
   provisioner "local-exec" {
-    command = tofu.applying ? <<-EOT
+    command = tofu.applying ? (
+      <<-EOT
       curl -X POST \
         -H "Content-Type: application/json" \
         -d '{"text": "Deploying ${var.app_name} v${var.app_version}"}' \
         ${var.slack_webhook_url}
-    EOT : "echo 'Plan phase - no notification'"
+    EOT
+    ) : "true"
   }
 }
 ```
@@ -104,42 +118,45 @@ resource "terraform_data" "deploy_notification" {
 ## Using with Ephemeral Resources
 
 ```hcl
-# Some ephemeral resources are expensive to create
-# Use tofu.applying to avoid creating them during plan
-
-variable "generate_certificate" {
-  type    = bool
-  default = true
-}
-
 ephemeral "tls_private_key" "app" {
-  # Only generate the key during actual apply
-  enabled   = tofu.applying && var.generate_certificate
-  algorithm = "RSA"
-  rsa_bits  = 4096
+  # Use a lighter key during planning and the deployment key during apply.
+  # Ephemeral resource values must flow only into ephemeral contexts.
+  algorithm   = tofu.applying ? "RSA" : "ECDSA"
+  rsa_bits    = 4096
+  ecdsa_curve = "P256"
 }
 
-resource "aws_acm_certificate" "app" {
-  enabled         = var.generate_certificate
-  private_key     = tofu.applying ? ephemeral.tls_private_key.app.private_key_pem : null
-  certificate_body = tofu.applying ? var.certificate_body : null
+resource "terraform_data" "install_key" {
+  input = var.app_version
+
+  provisioner "local-exec" {
+    command = "./install-key.sh"
+    environment = {
+      PRIVATE_KEY = ephemeral.tls_private_key.app.private_key_pem
+    }
+  }
 }
 ```
 
 ## Plan-Safe Outputs
 
 ```hcl
-# Some outputs may reference ephemeral values
-# Make them plan-safe with tofu.applying
+# Root outputs cannot directly expose tofu.applying or other ephemeral values.
+# ephemeralasnull() strips ephemeral values before writing the output.
 
 ephemeral "vault_generic_secret" "app_token" {
   path = "secret/myapp/token"
 }
 
+locals {
+  app_token_preview = {
+    token = tofu.applying ? ephemeral.vault_generic_secret.app_token.data["token"] : null
+    note  = "ephemeral token value is replaced with null"
+  }
+}
+
 output "app_token_preview" {
-  value = tofu.applying ? (
-    "Token fetched (${length(ephemeral.vault_generic_secret.app_token.data["token"])} chars)"
-  ) : "(available after apply)"
+  value       = ephemeralasnull(local.app_token_preview)
   description = "Summary of app token status"
 }
 ```
@@ -150,9 +167,9 @@ output "app_token_preview" {
 locals {
   # Build configuration that varies by phase
   operation_config = {
-    phase       = tofu.applying ? "apply" : "plan"
-    timestamp   = tofu.applying ? timestamp() : null
-    dry_run     = !tofu.applying
+    phase     = tofu.applying ? "apply" : "plan"
+    timestamp = tofu.applying ? timestamp() : null
+    dry_run   = !tofu.applying
 
     # Fetch real values only during apply
     api_endpoint = tofu.applying ? (
@@ -162,29 +179,34 @@ locals {
 }
 
 resource "terraform_data" "operation_log" {
-  input = local.operation_config
+  input = var.app_version
+
+  provisioner "local-exec" {
+    command = "echo \"$OPERATION_CONFIG\""
+    environment = {
+      OPERATION_CONFIG = jsonencode(local.operation_config)
+    }
+  }
 }
 ```
 
 ## Debugging Phase Differences
 
 ```hcl
-# Add phase indicator to help debug plan vs apply differences
-output "debug_phase" {
-  value = {
-    phase      = tofu.applying ? "APPLY" : "PLAN"
-    is_applying = tofu.applying
-  }
+variable "phase_record_version" {
+  type = number
 }
 
-# In practice, this helps understand why values differ between plan and apply
+# Normal resource arguments cannot use tofu.applying, but write-only
+# arguments can accept ephemeral expressions.
 resource "aws_ssm_parameter" "deployment_phase" {
-  name  = "/myapp/last-operation-phase"
-  type  = "String"
-  value = tofu.applying ? "apply-${timestamp()}" : "plan-preview"
+  name             = "/myapp/last-operation-phase"
+  type             = "String"
+  value_wo         = tofu.applying ? "apply-${timestamp()}" : "plan-preview"
+  value_wo_version = var.phase_record_version
 }
 ```
 
 ## Conclusion
 
-The `tofu.applying` built-in value enables you to write configurations that behave intelligently based on the current operation phase. It is particularly useful when working with ephemeral resources (to avoid unnecessary credential fetches during plan), timestamps (to prevent perpetual diffs), notifications (to only alert during actual deployments), and debugging (to understand what values will look like during apply vs plan). Use `tofu.applying` to make your configurations more efficient and to avoid side effects during the planning phase.
+The `tofu.applying` built-in value enables phase-aware expressions in OpenTofu, but only in ephemeral contexts. It is useful when configuring ephemeral resources, provider settings, provisioners, connection blocks, and write-only attributes. Do not use it as a general-purpose switch inside ordinary resource arguments or root outputs; OpenTofu will reject those because ephemeral values cannot be stored in plan or state. For ordinary timestamp handling, use `plantimestamp()`, the Time provider, or lifecycle settings appropriate to the resource.
