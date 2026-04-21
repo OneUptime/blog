@@ -10,11 +10,11 @@ Description: Troubleshoot common DHCPv6 relay problems including clients not get
 
 | Symptom | Most Likely Cause |
 |---|---|
-| Client stays in INIT-RECONF | No relay or RA M-flag not set |
-| Relay forwards but no REPLY | Server unreachable or misconfigured |
-| Wrong address from wrong pool | Wrong relay link-address/Option 18 |
+| Client never gets an IA_NA address | No relay path or RA M-flag not set |
+| Relay forwards but no RELAY-REPL response | Server unreachable or misconfigured |
+| Wrong address from wrong pool | Wrong relay link-address or Option 18 (Interface-Id) |
 | Intermittent failures | Relay dropping under load |
-| Address assigned then lost | Short lease / relay restart |
+| Address assigned then lost | Short lease or renew/rebind path failure |
 
 ## Problem 1: Clients Not Receiving Addresses
 
@@ -26,11 +26,11 @@ echo "=== DHCPv6 Relay Diagnosis ==="
 
 # 1. Is relay daemon running?
 
-if systemctl is-active --quiet isc-dhcp-relay6; then
+if systemctl is-active --quiet dhcrelay6 || systemctl is-active --quiet isc-dhcp-relay6; then
     echo "PASS: Relay daemon running"
 else
     echo "FAIL: Relay daemon not running"
-    echo "Fix: systemctl start isc-dhcp-relay6"
+    echo "Fix: systemctl start dhcrelay6 (or your distro's DHCPv6 relay service)"
 fi
 
 # 2. Is relay listening on UDP 547?
@@ -50,16 +50,16 @@ else
 fi
 
 # 4. Is server reachable?
-if ping6 -c 3 -W 2 2001:db8::dhcp-server &>/dev/null; then
+if ping6 -c 3 -W 2 2001:db8::10 &>/dev/null; then
     echo "PASS: DHCPv6 server reachable"
 else
-    echo "FAIL: Server 2001:db8::dhcp-server unreachable"
+    echo "FAIL: Server 2001:db8::10 unreachable"
     echo "Fix: Check IPv6 routing to server"
 fi
 
-# 5. RA flags on client interface
-MANAGED=$(sysctl -n net.ipv6.conf.eth0.forwarding)
-echo "INFO: Client interface IPv6 forwarding: ${MANAGED}"
+# 5. Router Advertisement flags on client interface
+echo "INFO: Capture Router Advertisements and verify the managed address flag:"
+echo "      tcpdump -i eth0 -c 5 -n -vv 'icmp6 and ip6[40] == 134'"
 ```
 
 ## Problem 2: Relay Receiving But Not Forwarding
@@ -81,7 +81,7 @@ grep -r "dhcp-server" /etc/dhcp/ /etc/wide-dhcpv6/ 2>/dev/null
 ip link show eth1
 
 # 3. Is there a route to the server?
-ip -6 route get 2001:db8::dhcp-server
+ip -6 route get 2001:db8::10
 ```
 
 ## Problem 3: Wrong Address Pool Assigned
@@ -90,20 +90,17 @@ ip -6 route get 2001:db8::dhcp-server
 # Verify relay link-address matches server subnet configuration
 
 # Check what link-address the relay is using
-tcpdump -i eth1 -n -v 'udp port 547' | grep "link-address"
+tcpdump -i eth1 -n -vv 'udp port 547' | grep "linkaddr"
 
-# Expected: relay sends link-address = 2001:db8:1::1 (its client-facing address)
+# Expected: relay sends linkaddr=2001:db8:1::1 (its client-facing address)
 # Server should have a subnet matching this address range
 
 # If wrong: check relay configuration
-# dhcrelay: the source address is the relay's interface address
-# ISC Kea server: check if subnet matches relay's link-address
-cat /etc/kea/kea-dhcp6.conf | python3 -c "
-import json, sys
-config = json.load(sys.stdin)
-for subnet in config['Dhcp6']['subnet6']:
-    print(f\"Subnet: {subnet['subnet']}\")
-"
+# ISC dhcrelay: the link-address defaults to the first non-link-local
+# address on the lower (client-facing) interface unless specified explicitly
+# ISC Kea server: validate the config and check if subnet matches relay's link-address
+kea-dhcp6 -t /etc/kea/kea-dhcp6.conf
+grep -n '"subnet"[[:space:]]*:' /etc/kea/kea-dhcp6.conf
 ```
 
 ## Problem 4: Relay Dropping Messages
@@ -115,7 +112,10 @@ for subnet in config['Dhcp6']['subnet6']:
 
 # Linux - check if relay is hitting resource limits
 # Increase relay process limits
-cat /proc/$(pgrep dhcrelay)/limits | grep "Max open files"
+for pid in $(pgrep dhcrelay); do
+    echo "dhcrelay PID ${pid}"
+    grep "Max open files" /proc/${pid}/limits
+done
 # If too low: increase ulimit
 
 # Check for duplicate relay configuration
@@ -134,20 +134,22 @@ ip6tables -L -n -v | grep DROP | grep 547
 
 # On server: enable debug logging (ISC Kea)
 # Set log level to DEBUG in kea-dhcp6.conf
-# journalctl -u kea-dhcp6 -f | grep -E "RELAY|subnet|query"
+# journalctl -u kea-dhcp6 -u isc-kea-dhcp6-server -f | grep -E "RELAY|subnet|query"
 
 # Common cause: server doesn't have a subnet matching relay link-address
 # Server needs: subnet matching the relay's link-address
 
 # Example: relay has link-address 2001:db8:1::1
-# Server kea-dhcp6.conf must have:
+# Server kea-dhcp6.conf must have a subnet matching the link-address:
 # {
-#   "subnet": "2001:db8:1::/64",
-#   "relay": {"ip-addresses": ["2001:db8:1::1"]}
+#   "subnet": "2001:db8:1::/64"
 # }
+#
+# Add "relay": {"ip-addresses": ["3000::1"]} only when the relay
+# link-address does not belong to the subnet being served.
 
-# Check Kea logs for "no subnet found for address"
-journalctl -u kea-dhcp6 | grep "no subnet"
+# Check Kea logs for subnet selection failures
+journalctl -u kea-dhcp6 -u isc-kea-dhcp6-server | grep -E "DHCP6_SUBNET_SELECTION_FAILED|failed to select subnet|no subnet"
 ```
 
 ## Quick Diagnostic Script
@@ -157,7 +159,7 @@ journalctl -u kea-dhcp6 | grep "no subnet"
 # quick-dhcpv6-relay-check.sh
 
 RELAY_IFACE=${1:-eth0}
-SERVER_ADDR=${2:-"2001:db8::dhcp-server"}
+SERVER_ADDR=${2:-"2001:db8::10"}
 
 PASS=0; FAIL=0
 
@@ -174,7 +176,7 @@ check "Relay listening UDP 547" "ss -6 -ulnp | grep ':547'"
 check "Interface ${RELAY_IFACE} up" "ip link show ${RELAY_IFACE} | grep -q UP"
 check "Multicast ff02::1:2 joined" "ip -6 maddr show ${RELAY_IFACE} | grep ff02::1:2"
 check "Server ${SERVER_ADDR} reachable" "ping6 -c 2 -W 3 ${SERVER_ADDR}"
-check "IPv6 forwarding enabled" "[ \$(sysctl -n net.ipv6.conf.all.forwarding) -eq 1 ]"
+check "IPv6 forwarding enabled if relay is also the router" "[ \$(sysctl -n net.ipv6.conf.all.forwarding) -eq 1 ]"
 
 echo ""
 echo "Result: ${PASS} passed, ${FAIL} failed"
@@ -182,4 +184,4 @@ echo "Result: ${PASS} passed, ${FAIL} failed"
 
 ## Conclusion
 
-DHCPv6 relay troubleshooting proceeds from client to relay to server. Verify each link in the chain with `tcpdump`: client SOLICIT → relay RELAY-FORW → server RELAY-REPL → client REPLY. The most common issues are: relay daemon not running, server unreachable due to missing IPv6 route, incorrect server subnet configuration (server doesn't have a subnet matching the relay's link-address), and firewall blocking UDP 547. The quick diagnostic script automates the most common checks.
+DHCPv6 relay troubleshooting proceeds from client to relay to server. Verify each link in the chain with `tcpdump`: client SOLICIT → relay RELAY-FORW → server RELAY-REPL → client ADVERTISE/REPLY. The most common issues are: relay daemon not running, server unreachable due to missing IPv6 route, incorrect server subnet configuration (server doesn't have a subnet matching the relay's link-address), and firewall blocking UDP 547. The quick diagnostic script automates the most common checks.
