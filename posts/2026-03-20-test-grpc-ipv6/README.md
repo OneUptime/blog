@@ -17,25 +17,25 @@ go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 # Or: brew install grpcurl
 
 # List available services over IPv6
-grpcurl -plaintext '[2001:db8::1]:50051' list
+grpcurl -plaintext '[::1]:50051' list
 
 # List methods in a service
-grpcurl -plaintext '[2001:db8::1]:50051' list helloworld.Greeter
+grpcurl -plaintext '[::1]:50051' list helloworld.Greeter
 
 # Describe a method
-grpcurl -plaintext '[2001:db8::1]:50051' describe helloworld.Greeter.SayHello
+grpcurl -plaintext '[::1]:50051' describe helloworld.Greeter.SayHello
 
 # Call a method
 grpcurl -plaintext \
   -d '{"name": "IPv6 World"}' \
-  '[2001:db8::1]:50051' \
+  '[::1]:50051' \
   helloworld.Greeter/SayHello
 
 # With proto file (no server reflection needed)
 grpcurl -plaintext \
   -proto hello.proto \
   -d '{"name": "test"}' \
-  '[2001:db8::1]:50051' \
+  '[::1]:50051' \
   helloworld.Greeter/SayHello
 ```
 
@@ -48,6 +48,7 @@ package main
 import (
     "context"
     "net"
+    "os"
     "testing"
 
     "google.golang.org/grpc"
@@ -67,14 +68,14 @@ func startTestServer(t *testing.T) (pb.GreeterClient, func()) {
 
     go s.Serve(lis)
 
-    conn, err := grpc.NewClient("passthrough://bufnet",
+    conn, err := grpc.NewClient("passthrough:///bufnet",
         grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
             return lis.DialContext(ctx)
         }),
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
     if err != nil {
-        t.Fatalf("Failed to connect: %v", err)
+        t.Fatalf("Failed to create client: %v", err)
     }
 
     return pb.NewGreeterClient(conn), func() {
@@ -83,7 +84,7 @@ func startTestServer(t *testing.T) (pb.GreeterClient, func()) {
     }
 }
 
-func TestSayHelloOverIPv6(t *testing.T) {
+func TestSayHelloWithBufconn(t *testing.T) {
     client, cleanup := startTestServer(t)
     defer cleanup()
 
@@ -98,17 +99,22 @@ func TestSayHelloOverIPv6(t *testing.T) {
     }
 }
 
-// Integration test against real IPv6 address
+// Integration test against a real IPv6 endpoint
 func TestSayHelloRealIPv6(t *testing.T) {
     if testing.Short() {
         t.Skip("Skipping integration test")
     }
 
-    conn, err := grpc.NewClient("[2001:db8::1]:50051",
+    target := os.Getenv("GRPC_IPV6_TARGET")
+    if target == "" {
+        target = "[::1]:50051"
+    }
+
+    conn, err := grpc.NewClient(target,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
     if err != nil {
-        t.Fatalf("Connect failed: %v", err)
+        t.Fatalf("Failed to create client: %v", err)
     }
     defer conn.Close()
 
@@ -125,9 +131,9 @@ func TestSayHelloRealIPv6(t *testing.T) {
 
 ```python
 # test_greeter.py
+import os
 import pytest
 import grpc
-from unittest.mock import MagicMock
 import hello_pb2
 import hello_pb2_grpc
 
@@ -135,7 +141,8 @@ import hello_pb2_grpc
 def grpc_channel():
     """Create gRPC channel to IPv6 test server."""
     # For integration tests
-    channel = grpc.insecure_channel("[::1]:50051")
+    target = os.environ.get("GRPC_IPV6_TARGET", "[::1]:50051")
+    channel = grpc.insecure_channel(target)
     yield channel
     channel.close()
 
@@ -152,7 +159,7 @@ def test_say_hello_ipv6(greeter_stub):
 
 def test_say_hello_with_custom_ipv6():
     """Test connecting to a specific IPv6 address."""
-    ipv6_address = "[2001:db8::1]:50051"
+    ipv6_address = os.environ.get("GRPC_IPV6_TARGET", "[::1]:50051")
     with grpc.insecure_channel(ipv6_address) as channel:
         stub = hello_pb2_grpc.GreeterStub(channel)
         response = stub.SayHello(
@@ -168,7 +175,7 @@ def test_say_hello_with_custom_ipv6():
 #!/bin/bash
 # test-grpc-ipv6.sh
 
-GRPC_SERVER="[2001:db8::1]:50051"
+GRPC_SERVER="${GRPC_SERVER:-[::1]:50051}"
 PASS=0
 FAIL=0
 
@@ -211,7 +218,7 @@ exit $FAIL
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to continuously run health check monitors against your gRPC services over IPv6. Configure TCP monitors on the gRPC port for your IPv6 addresses and set up synthetic transaction monitors that make actual gRPC calls.
+Use [OneUptime](https://oneuptime.com) to continuously monitor your gRPC services over IPv6. Configure port monitors on the gRPC port for your IPv6 addresses, and keep grpcurl or client-based integration tests for protocol-level gRPC health and RPC validation.
 
 ## Conclusion
 
