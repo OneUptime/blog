@@ -18,9 +18,9 @@ SUSE Observability provides a topology-aware view of your Kubernetes cluster - s
 |---|---|
 | Component | Any Kubernetes resource (Pod, Deployment, Service, Node) |
 | Relation | A dependency or connection between components |
-| Health state | GREEN, ORANGE, RED, or UNKNOWN for each component |
-| Perspective | A filtered view of the topology |
-| Monitor | A rule that evaluates component health over time |
+| Health state | CLEAR, DEVIATING, CRITICAL, or UNKNOWN for each component |
+| Perspective | A tab in a view, such as Topology, Events, Metrics, or Traces |
+| Monitor | A rule that calculates health state from metrics, events, logs, or topology |
 
 ---
 
@@ -28,8 +28,8 @@ SUSE Observability provides a topology-aware view of your Kubernetes cluster - s
 
 After logging in to SUSE Observability:
 
-1. Go to **Views** → **Kubernetes**
-2. Select your cluster from the left panel
+1. Open **Kubernetes** from the main menu
+2. Select a Kubernetes resource view, such as **Clusters**, and choose your cluster
 3. The topology map shows all components and their connections
 4. Click any component to see its health, metrics, events, and related components
 
@@ -40,82 +40,93 @@ After logging in to SUSE Observability:
 ```ini
 Topology Map Navigation:
   ┌────────────────────────────────────────┐
-  │  Filter bar: namespace, label, type    │
+  │  Filter bar: cluster, namespace        │
   ├────────────────────────────────────────┤
   │                                        │
   │   [Node] ──> [Pod] ──> [Service]       │
   │              │                         │
   │              └──> [ConfigMap]          │
   │                                        │
-  │   Health: ● GREEN  ● ORANGE  ● RED     │
+  │   Health: CLEAR / DEVIATING / CRITICAL │
   └────────────────────────────────────────┘
 ```
 
 Filter the topology by namespace to focus on a specific workload:
 
 ```text
-Views → Kubernetes → Filter by: namespace = production
+Kubernetes → namespace filter: production
 ```
 
 ---
 
 ## Step 2: Investigate a Failing Component
 
-When a component shows RED health:
+When a component shows CRITICAL (red) health:
 
 1. Click the component in the topology map
-2. In the right panel, click **Health** to see active health violations
-3. Click **Metrics** to view CPU, memory, and network graphs
-4. Click **Events** to see Kubernetes events for this component
-5. Click **Related** to see which other components are affected
+2. In the right panel details, review the health state and active monitors
+3. Open the component metrics to view CPU, memory, and network graphs
+4. Open the **Events** perspective to see Kubernetes events for this component
+5. Use **Explore component** or the topology links to see which other components are affected
 
 ---
 
-## Step 3: Use the CLI for Topology Queries
+## Step 3: Use STQL for Topology Queries
 
 SUSE Observability provides a query language (STQL) for searching topology:
 
 ```stql
-# Find all pods in the production namespace with RED health
+# Find all pods in the production namespace with CRITICAL health
 
-type = "kubernetes-pod"
+type = "pod"
   AND label = "namespace:production"
-  AND healthState = "RED"
+  AND healthstate = "CRITICAL"
 
-# Find all deployments with more than 0 failed replicas
-type = "kubernetes-deployment"
-  AND metrics.kube_deployment_status_replicas_unavailable > 0
+# Find all unhealthy deployments
+type = "deployment"
+  AND healthstate IN ("DEVIATING", "CRITICAL")
 
-# Find components changed in the last hour
-type IN ("kubernetes-deployment", "kubernetes-statefulset")
-  AND lastUpdated > "-1h"
+# Find dependencies around a component named checkout
+withNeighborsOf(direction = "both", components = (name = "checkout"), levels = "1")
 ```
 
-Enter STQL queries in the search bar of the topology view.
+In an Explore view or another view that supports advanced topology filters, enter STQL queries by switching the topology filter to STQL mode.
 
 ---
 
 ## Step 4: Set Up Health Monitors
 
-Health monitors alert you when a component's state changes:
+Monitors calculate health state for components. Configure notifications separately to alert on CRITICAL or DEVIATING states:
 
 ```yaml
-# SUSE Observability supports monitors defined via the API
-# Example: Alert when pod restart count exceeds threshold
-POST /api/v1/monitors
-{
-  "name": "High Pod Restart Count",
-  "query": {
-    "type": "MetricQuery",
-    "metric": "kube_pod_container_status_restarts_total",
-    "threshold": {
-      "critical": 10,
-      "warning": 5
-    },
-    "window": "5m"
-  },
-  "componentFilter": "type = \"kubernetes-pod\""
-}
+# monitor.yaml
+nodes:
+- _type: Monitor
+  arguments:
+    metric:
+      query: "kubernetes_state_deployment_replicas_available"
+      unit: "short"
+      aliasTemplate: "Deployment replicas"
+    comparator: "LTE"
+    threshold: 0.0
+    failureState: "DEVIATING"
+    urnTemplate: "urn:kubernetes:/${cluster_name}:${namespace}:deployment/${deployment}"
+    titleTemplate: "Deployment has no available replicas"
+  description: "Monitor whether a deployment has available replicas."
+  function: {{ get "urn:stackpack:kubernetes-v2:shared:monitor-function:threshold" }}
+  identifier: urn:custom:monitor:deployment-has-available-replicas
+  intervalSeconds: 30
+  name: Deployment has available replicas
+  remediationHint: "Check pods and rollout status for deployment {{ labels.deployment }}."
+  status: "ENABLED"
+  tags:
+  - "deployments"
+```
+
+Apply the monitor with the SUSE Observability CLI:
+
+```bash
+sts monitor apply -f monitor.yaml
 ```
 
 ---
@@ -124,7 +135,7 @@ POST /api/v1/monitors
 
 ```bash
 # From the UI, navigate to:
-# Views → Kubernetes → Nodes
+# Kubernetes → Nodes
 
 # Each node shows:
 # - CPU and memory utilization
@@ -136,19 +147,19 @@ POST /api/v1/monitors
 kubectl get nodes -o wide
 
 # Cross-reference with Observability by filtering:
-# type = "kubernetes-node" AND healthState = "ORANGE"
+# type = "node" AND healthstate = "DEVIATING"
 ```
 
 ---
 
 ## Step 6: Track Changes Over Time
 
-SUSE Observability records every change to your topology:
+SUSE Observability lets you time travel to topology snapshots and inspect events or configuration changes:
 
-1. Click any component in the topology map
-2. Select the **Changes** tab in the right panel
-3. View a timeline of configuration changes, restarts, and scaling events
-4. Use the timeline slider to see the topology state at any point in time
+1. Use the timeline at the bottom of the UI
+2. Select a custom topology time or telemetry interval
+3. Open the **Events** perspective to review events for that topology snapshot
+4. For Kubernetes deployments, use the change diff view to compare the current configuration with the previous one
 
 This makes it easy to correlate a performance degradation with a specific deployment or configuration change.
 
@@ -159,40 +170,34 @@ This makes it easy to correlate a performance degradation with a specific deploy
 Save a filtered topology view for your team:
 
 ```text
-1. Apply filters: namespace = production, type = Pod
-2. Click "Save View" in the top right
+1. Apply filters: namespace = production, type = pod
+2. Click "Save view as..." in the top navigation bar
 3. Name the view: "Production Pods"
-4. Set visibility: Team or Personal
-5. Share the view URL with your team
+4. Add a description or identifier if needed
+5. Share the view URL or star the view for quick access
 ```
 
 ---
 
 ## Useful Metric Queries
 
-From the component metrics panel, use these metric names:
+From the Metrics Explorer or custom metric bindings, use SUSE Observability metric names and PromQL patterns such as:
 
 ```text
 # CPU usage by pod
-container_cpu_usage_seconds_total
+sum(max_over_time(container_cpu_usage{cluster_name="${tags.cluster-name}", namespace="${tags.namespace}", pod_name="${name}"}[${__interval}])) by (cluster_name, namespace, pod_name) / 1000000000
 
-# Memory usage by pod
-container_memory_working_set_bytes
-
-# Pod restart count
-kube_pod_container_status_restarts_total
+# Container restarts by pod
+max by (cluster_name, namespace, pod_name, container) (kubernetes_state_container_restarts{cluster_name="${tags.cluster-name}", namespace="${tags.namespace}", pod_name="${name}"})
 
 # Number of unavailable replicas
-kube_deployment_status_replicas_unavailable
-
-# Node disk pressure
-kube_node_status_condition{condition="DiskPressure",status="true"}
+max_over_time(kubernetes_state_deployment_replicas_unavailable{cluster_name="${tags.cluster-name}", namespace="${tags.namespace}", deployment="${name}"}[${__interval}])
 ```
 
 ---
 
 ## Best Practices
 
-- Use topology filtering (by namespace or label) to create focused views for each team rather than giving everyone access to the full cluster topology.
-- Set up health monitors for critical workloads so your team is alerted before users notice issues.
-- Use the Change History feature to correlate incidents with recent deployments - this dramatically reduces mean time to identify the root cause.
+- Use topology filtering (by namespace or label) to create focused views for each team rather than asking everyone to start from the full cluster topology.
+- Set up health monitors and notifications for critical workloads so your team is alerted before users notice issues.
+- Use the timeline, events, and deployment change diff features to correlate incidents with recent deployments - this dramatically reduces mean time to identify the root cause.
