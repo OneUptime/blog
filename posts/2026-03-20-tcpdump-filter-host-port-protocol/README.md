@@ -71,7 +71,7 @@ sudo tcpdump arp
 Use `and`, `or`, `not` to combine primitives:
 
 ```bash
-# TCP traffic to port 80 OR 443
+# TCP traffic on port 80 OR 443
 sudo tcpdump 'tcp and (port 80 or port 443)'
 
 # Traffic from a host on port 22
@@ -96,10 +96,10 @@ sudo tcpdump 'tcp[tcpflags] & tcp-syn != 0 and dst port 22 and not src net 192.1
 # Capture ICMP echo requests (pings) only
 sudo tcpdump 'icmp[icmptype] = icmp-echo'
 
-# Capture packets larger than 1000 bytes
+# Capture packets 1000 bytes or larger
 sudo tcpdump 'greater 1000'
 
-# Capture small packets (ARP, DNS, etc.) under 100 bytes
+# Capture small packets (ARP, DNS, etc.) 100 bytes or smaller
 sudo tcpdump 'less 100'
 
 # Capture TCP FIN or RST packets
@@ -115,7 +115,7 @@ sudo tcpdump -nn -v 'tcp and port 443 and host 10.0.0.1' -w /tmp/https.pcap
 # Filter + packet count limit
 sudo tcpdump -c 200 'udp and port 53'
 
-# Filter + hex output (see raw bytes)
+# Filter + hex and ASCII output (see raw bytes)
 sudo tcpdump -X 'tcp and dst port 80'
 
 # Filter + ASCII output (readable for HTTP)
