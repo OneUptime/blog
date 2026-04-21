@@ -21,6 +21,11 @@ resource "kubernetes_stateful_set" "postgresql_ha" {
     namespace = "database"
   }
 
+  depends_on = [
+    kubernetes_service.postgresql_headless,
+    kubernetes_storage_class.zone_redundant
+  ]
+
   spec {
     service_name = "postgresql-ha-headless"
     replicas     = 3
@@ -64,8 +69,62 @@ resource "kubernetes_stateful_set" "postgresql_ha" {
           port { container_port = 5432 }
 
           env {
-            name  = "POSTGRESQL_REPMGR_PARTNER_NODES"
-            value = "postgresql-ha-0,postgresql-ha-1,postgresql-ha-2"
+            name = "MY_POD_NAME"
+            value_from {
+              field_ref {
+                field_path = "metadata.name"
+              }
+            }
+          }
+
+          env {
+            name = "REPMGR_NAMESPACE"
+            value_from {
+              field_ref {
+                field_path = "metadata.namespace"
+              }
+            }
+          }
+
+          # Store real values in a Secret named postgresql-ha-secret.
+          env {
+            name = "POSTGRESQL_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = "postgresql-ha-secret"
+                key  = "postgresql-password"
+              }
+            }
+          }
+
+          env {
+            name = "REPMGR_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = "postgresql-ha-secret"
+                key  = "repmgr-password"
+              }
+            }
+          }
+
+          env {
+            name  = "REPMGR_PRIMARY_HOST"
+            value = "postgresql-ha-0.postgresql-ha-headless.$(REPMGR_NAMESPACE).svc.cluster.local"
+          }
+
+          env {
+            name  = "REPMGR_PARTNER_NODES"
+            value = "postgresql-ha-0.postgresql-ha-headless.$(REPMGR_NAMESPACE).svc.cluster.local,postgresql-ha-1.postgresql-ha-headless.$(REPMGR_NAMESPACE).svc.cluster.local,postgresql-ha-2.postgresql-ha-headless.$(REPMGR_NAMESPACE).svc.cluster.local"
+          }
+
+          env {
+            name  = "REPMGR_NODE_NAME"
+            value = "$(MY_POD_NAME)"
+          }
+
+          env {
+            name  = "REPMGR_NODE_NETWORK_NAME"
+            value = "$(MY_POD_NAME).postgresql-ha-headless.$(REPMGR_NAMESPACE).svc.cluster.local"
           }
 
           readiness_probe {
@@ -88,7 +147,7 @@ resource "kubernetes_stateful_set" "postgresql_ha" {
       metadata { name = "data" }
       spec {
         access_modes       = ["ReadWriteOnce"]
-        storage_class_name = "premium-ssd"
+        storage_class_name = "premium-ssd-zrs"
         resources {
           requests = { storage = "50Gi" }
         }
@@ -125,9 +184,6 @@ resource "kubernetes_service" "postgresql_headless" {
   metadata {
     name      = "postgresql-ha-headless"
     namespace = "database"
-    annotations = {
-      "service.alpha.kubernetes.io/tolerate-unready-endpoints" = "true"
-    }
   }
 
   spec {
@@ -179,9 +235,9 @@ resource "kubernetes_storage_class" "zone_redundant" {
   volume_binding_mode    = "WaitForFirstConsumer"
 
   parameters = {
-    skuName           = "Premium_ZRS"  # Zone-redundant SSD
-    cachingmode       = "ReadOnly"
-    kind              = "Managed"
+    skuName     = "Premium_ZRS"  # Zone-redundant SSD
+    cachingMode = "ReadOnly"
+    kind        = "managed"
   }
 }
 ```
