@@ -4,24 +4,24 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Education, Team, Docker, Multi-Tenant, Training
 
-Description: Use Portainer's Teams feature to create isolated student environments on a shared Docker host, giving each learner their own scoped access to containers, stacks, and volumes.
+Description: Use Portainer's Teams feature to create scoped student environments on a shared Docker host, giving each learner controlled access to containers, stacks, and volumes.
 
 ---
 
-Portainer Teams allow you to segment access to a Docker environment by group. In an educational context, each student or project group gets their own team with scoped permissions - they can deploy and manage containers within their scope without interfering with others. This is the foundation of a practical multi-student Docker lab.
+Portainer Teams allow you to segment access to a Docker environment by group. In an educational context, each student or project group gets their own team with scoped permissions - they can deploy and manage containers within their team's access controls without interfering with others. This is the foundation of a practical multi-student Docker lab.
 
 ## Step 1: Create a Dedicated Learning Environment
 
 In Portainer, add the shared Docker host as a standalone environment:
 
-1. Go to **Environments > Add Environment**
-2. Choose **Docker Standalone**
+1. Go to **Environment-related > Environments > Add environment**
+2. Choose **Docker Standalone** and click **Start Wizard**
 3. Name it `docker-lab`
-4. Connect via the agent or Docker socket
+4. Connect via the Edge Agent, agent, Docker API, or Docker socket
 
 ## Step 2: Create Teams
 
-Go to **Settings > Teams > Add Team**:
+Go to **User-related > Teams** and add teams:
 
 ```text
 Team: cohort-2026-a
@@ -33,53 +33,67 @@ Create one team per class section or project group.
 
 ## Step 3: Create Student User Accounts
 
-Go to **Settings > Users > Add User**:
+Go to **User-related > Users > Add user**:
 
 ```text
 Username: student01
 Password: (set or generate)
-Role: Standard User (not Administrator)
+Administrator: disabled
 ```
 
-Assign each student to their team by opening the team and clicking **Add member**.
+Assign each student to their team by opening **User-related > Teams**, selecting the team, and clicking **Add** next to the user.
 
 ## Step 4: Assign Team Access to the Environment
 
-Open the `docker-lab` environment settings and under **Access control**, assign teams:
+Open **Environment-related > Environments**, locate `docker-lab`, and select **Manage access**. Assign teams with the **Role** dropdown:
 
 ```text
-cohort-2026-a → Read-Write
-cohort-2026-b → Read-Write
+cohort-2026-a → Standard User
+cohort-2026-b → Standard User
 ```
 
-This ensures students from one cohort cannot see containers or stacks belonging to another cohort.
+This lets students create and manage resources their team owns. To keep cohorts separated, set each stack or container's access control to **Restricted** for the owning team; existing resources are administrator-only by default unless you make them public or assign them to users or teams.
 
 ## Step 5: Pre-deploy Exercise Stacks Per Team
 
-Optionally, pre-deploy starter stacks for each team via Portainer's API so students can hit the ground running:
+Optionally, pre-deploy starter stacks via Portainer's API and assign each stack's resource control to the target team so students can hit the ground running:
 
 ```bash
-# Portainer API - deploy a stack for a specific team
+# Portainer API - deploy a stack and assign it to a specific team
+# Requires jq and an API key for an administrator or instructor with access to the environment.
+# Set ENDPOINT_ID to the docker-lab environment ID and TEAM_ID to the target team ID.
 
-curl -X POST https://portainer:9443/api/stacks \
-  -H "Authorization: Bearer $TOKEN" \
+STACK_RESPONSE=$(curl -sS -X POST "https://portainer:9443/api/stacks/create/standalone/string?endpointId=${ENDPOINT_ID}" \
+  -H "X-API-Key: $PORTAINER_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "Name": "student01-starter",
-    "StackFileContent": "version: \"3.8\"\nservices:\n  web:\n    image: nginx:alpine\n    ports:\n      - \"8100:80\"",
-    "Env": []
-  }'
+    "StackFileContent": "services:\n  web:\n    image: nginx:alpine\n    ports:\n      - \"8100:80\"",
+    "Env": [],
+    "FromAppTemplate": false
+  }')
+
+RESOURCE_CONTROL_ID=$(printf '%s' "$STACK_RESPONSE" | jq -r '.ResourceControl.Id')
+
+curl -sS -X PUT "https://portainer:9443/api/resource_controls/${RESOURCE_CONTROL_ID}" \
+  -H "X-API-Key: $PORTAINER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"Public\": false,
+    \"AdministratorsOnly\": false,
+    \"Users\": [],
+    \"Teams\": [${TEAM_ID}]
+  }"
 ```
 
 ## Step 6: Configure Resource Limits
 
-In Portainer Business Edition, set resource limits per team to prevent any student from monopolizing the shared host:
+For Docker Standalone labs, set resource limits on each exercise container or Compose service to prevent any student from monopolizing the shared host:
 
-- Maximum containers: 5
 - Memory limit per container: 512 MB
-- CPU shares limit: 1.0
+- Maximum CPU usage: 1 CPU
 
-For CE, enforce limits through Docker daemon configuration or at the container level in the deployment form.
+For a hard cap on the number of containers per student, use separate lab hosts, Kubernetes namespaces with quotas, or automation around the Portainer API. Portainer CE team access on Docker Standalone does not provide a per-team maximum-container quota.
 
 ## Step 7: Student Workflow
 
@@ -88,8 +102,8 @@ Once configured, students log in to the Portainer UI and see only their team's r
 1. Deploy containers from **App Templates** or the container creation form
 2. View logs and use the Console for debugging
 3. Create stacks for multi-service exercises
-4. Browse volumes and inspect network configurations
+4. View volumes and inspect network configurations; with the Portainer Agent, browse volume contents
 
 ## Summary
 
-Portainer Teams provide the multi-tenancy needed for a shared Docker learning lab. Each student works in an isolated scope, instructors retain admin visibility across all teams, and shared resources are partitioned fairly. The entire setup requires only a single Docker host and Portainer CE - no Kubernetes, no cloud infrastructure required.
+Portainer Teams provide the access scoping needed for a shared Docker learning lab. Each student works in a team-scoped view, instructors retain admin visibility across all teams, and shared resources can be constrained with per-container limits and external quotas. The entire setup requires only a single Docker host and Portainer CE - no Kubernetes, no cloud infrastructure required.
