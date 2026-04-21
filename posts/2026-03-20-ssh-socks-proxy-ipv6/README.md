@@ -15,13 +15,13 @@ SSH's dynamic port forwarding (`-D`) creates a local SOCKS5 proxy that tunnels a
 ```bash
 # Create SOCKS5 proxy on port 1080 via IPv6 SSH server
 
-ssh -D 1080 user@2001:db8::sshserver
+ssh -D 1080 user@2001:db8::10
 
 # Bind the SOCKS port to localhost IPv6 only
-ssh -D "[::1]:1080" user@2001:db8::sshserver
+ssh -D "[::1]:1080" user@2001:db8::10
 
 # Background mode with no pseudo-terminal
-ssh -D "[::1]:1080" -N -f user@2001:db8::sshserver
+ssh -D "[::1]:1080" -N -f user@2001:db8::10
 
 # Options:
 # -D [bind_address:]port : Dynamic port forwarding (SOCKS)
@@ -35,7 +35,7 @@ ssh -D "[::1]:1080" -N -f user@2001:db8::sshserver
 # ~/.ssh/config
 
 Host ipv6-proxy
-    HostName 2001:db8::sshserver
+    HostName 2001:db8::10
     User myuser
     Port 22
     DynamicForward [::1]:1080
@@ -56,32 +56,34 @@ ssh -N ipv6-proxy
 ```bash
 # curl via SOCKS5 proxy
 curl --socks5-hostname "[::1]:1080" http://example.com/
-curl --socks5-hostname "[::1]:1080" http://[2001:db8::server]/
+curl --socks5-hostname "[::1]:1080" http://[2001:db8::20]/
 
-# wget via SOCKS proxy
+# curl via proxy environment variable
 # Export proxy environment variables
 export ALL_PROXY="socks5h://[::1]:1080"
-wget http://example.com/
+curl http://example.com/
 
 # Test IPv6 exit node
 curl --socks5-hostname "[::1]:1080" http://ipv6.icanhazip.com/
-# Returns the IPv6 address of the SSH server
+# Returns the IPv6 egress address of the SSH server
 ```
 
 ## Step 4: Configure Applications to Use the SOCKS Proxy
 
 ```python
-# Python - use SOCKS5 via socks module
+# Python - use SOCKS5 via PySocks
 import socks
-import socket
 
-socks.set_default_proxy(socks.SOCKS5, "::1", 1080)
-socket.socket = socks.socksocket
+with socks.create_connection(
+    ("2001:db8::30", 80),
+    proxy_type=socks.SOCKS5,
+    proxy_addr="::1",
+    proxy_port=1080,
+) as sock:
+    sock.sendall(b"GET / HTTP/1.1\r\nHost: [2001:db8::30]\r\nConnection: close\r\n\r\n")
+    print(sock.recv(4096))
 
-import urllib.request
-# All requests now go through the SSH SOCKS proxy
-response = urllib.request.urlopen("http://[2001:db8::service]/")
-print(response.read())
+# This TCP connection goes through the SSH SOCKS proxy
 ```
 
 ```bash
@@ -89,7 +91,7 @@ print(response.read())
 # /etc/proxychains.conf
 # socks5 ::1 1080
 
-proxychains curl http://[2001:db8::server]/
+proxychains curl http://[2001:db8::20]/
 proxychains ssh user@internal-ipv6-host
 ```
 
@@ -104,7 +106,7 @@ autossh -M 0 -N \
     -D "[::1]:1080" \
     -o "ServerAliveInterval 30" \
     -o "ServerAliveCountMax 3" \
-    user@2001:db8::sshserver &
+    user@2001:db8::10 &
 
 # Systemd service for persistent proxy
 cat > /etc/systemd/system/ssh-socks-proxy.service << 'EOF'
@@ -116,7 +118,7 @@ After=network.target
 ExecStart=/usr/bin/autossh -M 0 -N \
     -D "[::1]:1080" \
     -o "ServerAliveInterval 30" \
-    user@2001:db8::sshserver
+    user@2001:db8::10
 Restart=always
 RestartSec=5
 User=proxyuser
@@ -141,4 +143,4 @@ Check: Proxy DNS when using SOCKS v5
 
 ## Conclusion
 
-SSH dynamic port forwarding creates a SOCKS5 proxy in seconds: `ssh -D "[::1]:1080" user@2001:db8::server`. The proxy accepts local connections (IPv4 or IPv6) and tunnels them through the SSH server, which can reach IPv6 destinations. Use autossh for persistent proxies and systemd for process management. Monitor the SSH tunnel health with OneUptime by checking the SOCKS5 port availability.
+SSH dynamic port forwarding creates a SOCKS5 proxy in seconds: `ssh -D "[::1]:1080" user@2001:db8::10`. The proxy accepts local connections on the address you bind (for example, IPv6 loopback with `[::1]`) and tunnels them through the SSH server, which can reach IPv4 or IPv6 destinations. Use autossh for persistent proxies and systemd for process management. Monitor the SSH tunnel health with OneUptime by checking the SOCKS5 port availability.
