@@ -13,8 +13,8 @@ Diagnose and fix cross-network communication issues between containers in Portai
 ## Prerequisites
 
 - Portainer CE or BE installed
-- Docker or Kubernetes environment connected
-- Basic understanding of networking concepts (subnets, DNS, TLS)
+- Docker standalone or Docker Swarm environment connected
+- Basic understanding of networking concepts (subnets, DNS, IPsec)
 
 ## Docker Network Types Overview
 
@@ -44,12 +44,10 @@ Internet
 
 ## Step 2: Create Networks via Portainer
 
-Navigate to **Networks** > **Add Network**:
+Navigate to **Stacks** > **Add stack** when defining networks in a Compose stack (or **Networks** > **Add network** for individual networks):
 
 ```yaml
 # Define networks in your stack
-
-version: "3.8"
 
 networks:
   # DMZ network - connected to reverse proxy
@@ -77,11 +75,12 @@ networks:
       config:
         - subnet: 172.21.0.0/24
 
-  # External overlay network (for Swarm)
+  # Overlay network (for Swarm)
   swarm-overlay:
     driver: overlay
     attachable: true
-    encrypted: true
+    driver_opts:
+      encrypted: "true"
 ```
 
 ## Step 3: Connect Services to Networks
@@ -102,7 +101,7 @@ services:
       - "80:80"
       - "443:443"
   
-  # API - connected to frontend and backend
+  # API - connected to frontend, backend, and db-net
   api:
     image: my-api:latest
     networks:
@@ -130,19 +129,18 @@ networks:
   secure-overlay:
     driver: overlay
     # Encrypt all overlay network traffic
-    encrypted: true
     driver_opts:
       # Use IPsec for encryption
       encrypted: "true"
 ```
 
-Firewall rules via Portainer host access:
+Firewall rules via Portainer host access (for Docker's iptables backend):
 
 ```bash
-# Configure UFW for container networks
-ufw allow from 172.20.0.0/24 to any port 80
-ufw allow from 172.20.0.0/24 to any port 443
-ufw deny from 172.21.0.0/24 to any  # Isolate DB network
+# Add Docker-aware host firewall rules before Docker's own chains
+iptables -I DOCKER-USER 1 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+iptables -I DOCKER-USER 2 -s 172.21.0.0/24 ! -d 172.21.0.0/24 -j DROP  # Keep DB network internal
+iptables -I DOCKER-USER 3 -s 172.20.0.0/24 -p tcp -m multiport --dports 80,443 -j ACCEPT
 ```
 
 ## Step 5: Troubleshoot Network Issues
@@ -155,7 +153,7 @@ docker exec api-container nslookup postgres
 
 # Test connectivity
 docker exec api-container ping postgres
-docker exec api-container curl -I http://frontend:3000
+docker exec api-container curl -I http://nginx
 
 # Inspect network configuration
 docker network inspect stack-name_backend
@@ -176,14 +174,15 @@ services:
   # Network traffic monitoring
   ntopng:
     image: ntop/ntopng:latest
-    ports:
-      - "3000:3000"
     volumes:
       - ntopng-data:/var/lib/ntopng
     cap_add:
       - NET_ADMIN
       - NET_RAW
-    network_mode: host  # Required for traffic inspection
+    network_mode: host  # Required for traffic inspection; do not also use ports
+
+volumes:
+  ntopng-data:
 ```
 
 ## Common Network Patterns
@@ -203,8 +202,8 @@ networks:
 networks:
   presentation: {}   # Web/UI layer
   business: {}       # API/Logic layer
-  data: {}           # DB layer (internal only)
-    internal: true
+  data:
+    internal: true   # DB layer (internal only)
 ```
 
 ## Conclusion
