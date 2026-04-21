@@ -106,8 +106,8 @@ http_access allow internet
 ```bash
 # /etc/squid/squid.conf
 
-# Log denied requests to separate file
-access_log /var/log/squid/access.log squid
+# Log requests to the access log
+access_log daemon:/var/log/squid/access.log logformat=squid
 # Denied requests show TCP_DENIED in access log
 
 # Parse denied requests
