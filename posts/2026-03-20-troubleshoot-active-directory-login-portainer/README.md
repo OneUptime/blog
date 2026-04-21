@@ -13,7 +13,7 @@ AD authentication failures in Portainer can be frustrating. This guide provides 
 ## Step 1: Check Portainer Logs
 
 ```bash
-# Enable debug logging and watch for AD-related messages
+# Review logs and watch for AD-related messages
 
 docker logs portainer 2>&1 | grep -i "ldap\|auth\|error\|warn" | tail -50
 
@@ -24,12 +24,12 @@ docker logs -f portainer 2>&1 | grep -i "ldap\|auth"
 ## Step 2: Verify Network Connectivity
 
 ```bash
-# From inside the Portainer container
-docker exec portainer /bin/sh -c "
+# From a temporary diagnostic container sharing Portainer's network namespace
+docker run --rm --network container:portainer alpine:3.23 /bin/sh -c "
   # Check DNS resolution
   nslookup dc01.corp.example.com
 
-  # Check LDAPS port reachability
+  # Check LDAP/LDAPS port reachability
   nc -zv dc01.corp.example.com 636 2>&1
   nc -zv dc01.corp.example.com 389 2>&1
 "
@@ -74,9 +74,9 @@ ldapwhoami \
 
 ```bash
 # Error code 52e means bad username or password
-# Check the UserNameAttribute setting
-# If sAMAccountName: user logs in as "jsmith" (no domain)
-# If userPrincipalName: user logs in as "jsmith@corp.example.com"
+# Check the Username attribute (LDAP) or Username Format (Microsoft Active Directory) setting
+# If Username attribute is sAMAccountName or Username Format is username: user logs in as "jsmith"
+# If Username attribute is userPrincipalName or Username Format is username@domainname: user logs in as "jsmith@corp.example.com"
 
 # Find a user's sAMAccountName
 ldapsearch -H ldaps://dc01.corp.example.com:636 \
@@ -109,28 +109,26 @@ ldapsearch -H ldaps://dc01.corp.example.com:636 \
 
 ```bash
 # Get the DC's SSL certificate
-openssl s_client -connect dc01.corp.example.com:636 -showcerts </dev/null 2>/dev/null | \
+openssl s_client -connect dc01.corp.example.com:636 -servername dc01.corp.example.com -showcerts </dev/null 2>/dev/null | \
   openssl x509 -noout -subject -issuer -enddate
 
-# If the cert is from internal CA, trust it
-openssl s_client -connect dc01.corp.example.com:636 </dev/null 2>/dev/null | \
-  openssl x509 > /tmp/dc-cert.pem
+# If the cert is from an internal CA, save the presented chain for inspection
+openssl s_client -connect dc01.corp.example.com:636 -servername dc01.corp.example.com -showcerts </dev/null 2>/dev/null > /tmp/dc-chain.pem
 
-sudo cp /tmp/dc-cert.pem /usr/local/share/ca-certificates/dc01.crt
-sudo update-ca-certificates
-docker restart portainer
+# Upload the issuing/root CA certificate in Portainer's TLS CA certificate field
+# under AD Connectivity Security (or LDAP security when using LDAP mode), then save.
 ```
 
 ## Portainer AD Diagnostic Checklist
 
-- [ ] DNS resolves the DC hostname from inside the container
-- [ ] Port 636 (LDAPS) is reachable from inside the container
+- [ ] DNS resolves the DC hostname from Portainer's network namespace
+- [ ] Port 636 (LDAPS) is reachable from Portainer's network namespace
 - [ ] Service account credentials are correct and account is not expired
 - [ ] Service account is not locked out
-- [ ] BaseDN is correct (use the full DN)
+- [ ] BaseDN/User Search Path is correct (use the full DN where LDAP mode requires it)
 - [ ] Search filter returns users when tested with ldapsearch
 - [ ] SSL certificate is valid and trusted
-- [ ] UserNameAttribute matches the attribute used for login
+- [ ] Username attribute / Username Format matches the format used for login
 
 ---
 
