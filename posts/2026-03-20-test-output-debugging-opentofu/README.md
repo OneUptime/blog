@@ -27,21 +27,21 @@ tofu test
 
 ## Verbose Mode
 
-Use `-verbose` to see assertion-level output:
+Use `-verbose` to print the plan or state for each test run block as it executes:
 
 ```bash
 tofu test -verbose
 
 # tests/unit.tftest.hcl... in progress
-#   run "creates_instance"...
-#     "instance type is correct" ... pass
-#     "instance has public IP" ... pass
-#   run "validates_tags"...
-#     "environment tag is set" ... pass
-#     "owner tag is set" ... fail
-#       Error: Check assertion failed
-#       Missing required tag: Owner
+#   run "creates_instance"... pass
+#
+# OpenTofu also prints the plan or state for each run block.
+# Use that output to inspect the resource attributes your assertions check.
+#
 #   run "validates_tags"... fail
+#       Error: Test assertion failed
+#       Missing required tag: Owner
+# tests/unit.tftest.hcl... fail
 ```
 
 ## JSON Output for Parsing
@@ -57,9 +57,11 @@ tofu test -json | jq .
 tofu test -json | jq 'select(.type == "test_run") | select(.test_run.status == "fail")'
 
 # Count passes and failures
-tofu test -json | jq '[.[] | select(.type == "test_run")] | {
-  passed: [.[] | select(.test_run.status == "pass")] | length,
-  failed: [.[] | select(.test_run.status == "fail")] | length
+tofu test -json | jq 'select(.type == "test_summary") | {
+  passed: .test_summary.passed,
+  failed: .test_summary.failed,
+  errored: .test_summary.errored,
+  skipped: .test_summary.skipped
 }'
 ```
 
@@ -114,7 +116,8 @@ Run the module normally to see the full plan:
 # See the full plan for what's being tested
 tofu plan -var="environment=production" -var="instance_type=t3.micro"
 
-# This shows the exact resource attributes that assertions check
+# Match the test variables and provider setup as closely as possible
+# This helps you inspect the resource attributes that assertions check
 # Plan output is more readable than test failure output
 ```
 
@@ -144,7 +147,7 @@ variables {
 run "inspect_locals" {
   command = plan
 
-  # Print the debug output to understand what the module computes
+  # Include the debug output when the assertion fails
   assert {
     condition     = output.debug_locals.is_production == true
     error_message = "is_production=${output.debug_locals.is_production}, instance_class=${output.debug_locals.instance_class}"
@@ -174,8 +177,8 @@ true
 ## Test Failure Investigation Workflow
 
 ```bash
-# 1. Run failing test with verbose
-tofu test -run="failing_test_name" -verbose
+# 1. Run the failing test file with verbose output
+tofu test -filter=tests/failing.tftest.hcl -verbose
 
 # 2. Check the full plan for the failing scenario
 tofu plan -var="environment=production"
@@ -186,7 +189,7 @@ tofu console -var="environment=production"
 # 4. Add temporary debug output if needed
 # 5. Fix the module or test
 # 6. Run the test again
-tofu test -run="failing_test_name" -verbose
+tofu test -filter=tests/failing.tftest.hcl -verbose
 ```
 
 ## CI Failure Output
@@ -205,4 +208,4 @@ tofu test -run="failing_test_name" -verbose
 
 ## Conclusion
 
-Effective test debugging combines verbose mode for assertion-level detail, informative error messages with actual values, and the `tofu console` for interactive expression evaluation. Write error messages that include both expected and actual values using string interpolation. Use JSON output to integrate test results into CI reporting systems. The combination of good test structure and informative messages significantly reduces time spent diagnosing failures.
+Effective test debugging combines verbose mode for plan or state detail, informative error messages with actual values, and the `tofu console` for interactive expression evaluation. Write error messages that include both expected and actual values using string interpolation. Use JSON output to integrate test results into CI reporting systems. The combination of good test structure and informative messages significantly reduces time spent diagnosing failures.
