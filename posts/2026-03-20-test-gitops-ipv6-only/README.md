@@ -23,12 +23,12 @@ networking:
   ipFamily: ipv6
 
   # IPv6 pod subnet
-  podSubnet: "fd00:pods::/64"
+  podSubnet: "fd00:10:244::/56"
 
   # IPv6 service subnet
-  serviceSubnet: "fd00:svcs::/112"
+  serviceSubnet: "fd00:10:96::/112"
 
-  # Disable IPv4
+  # Keep kind's default CNI enabled
   disableDefaultCNI: false
 
 nodes:
@@ -48,11 +48,11 @@ kubectl get nodes -o wide | grep -v "NAME"
 
 # Check pod networking is IPv6
 kubectl get pod -n kube-system -o wide | head -5
-# Pod IPs should be fd00:pods:: addresses
+# Pod IPs should be fd00:10:244:: addresses
 
 # Check service CIDR is IPv6
 kubectl get svc kubernetes -o jsonpath='{.spec.clusterIP}'
-# Should return fd00:svcs:: address
+# Should return fd00:10:96:: address
 ```
 
 ## Install Flux in IPv6-Only Cluster
@@ -67,11 +67,12 @@ kubectl get pods -n flux-system
 
 # Check Flux services have IPv6 cluster IPs
 kubectl get svc -n flux-system -o wide
-# ClusterIPs should be in fd00:svcs:: range
+# ClusterIPs should be in fd00:10:96:: range
 
 # Create a GitRepository pointing to an IPv6 Git server
+# Replace 2001:db8::10 with the IPv6 address of your Git server
 flux create source git myapp \
-    --url="ssh://git@[2001:db8::git]:22/org/myapp.git" \
+    --url="ssh://git@[2001:db8::10]:22/org/myapp.git" \
     --branch=main \
     --secret-ref=git-ssh-key
 ```
@@ -81,19 +82,19 @@ flux create source git myapp \
 ```bash
 # Install ArgoCD
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Wait for ArgoCD to be ready
 kubectl rollout status deployment/argocd-server -n argocd
 
 # Check ArgoCD has IPv6 cluster IPs
 kubectl get svc argocd-server -n argocd -o jsonpath='{.spec.clusterIP}'
-# Should be fd00:svcs:: address
+# Should be fd00:10:96:: address
 
-# Port-forward over IPv6 for testing
+# Port-forward for local testing
 kubectl port-forward svc/argocd-server -n argocd 8080:443 &
 
-# Access ArgoCD (via localhost which is IPv6-capable)
+# Access ArgoCD through the local port-forward
 argocd login localhost:8080 --insecure
 ```
 
@@ -119,12 +120,10 @@ spec:
     spec:
       containers:
         - name: app
-          image: nginx:alpine
-          env:
-            - name: LISTEN_ADDR
-              value: "[::]:80"
+          image: python:3.12-alpine
+          command: ["python", "-m", "http.server", "8080", "--bind", "::"]
           ports:
-            - containerPort: 80
+            - containerPort: 8080
 ---
 apiVersion: v1
 kind: Service
@@ -137,13 +136,14 @@ spec:
     app: test-app
   ports:
     - port: 80
+      targetPort: 8080
 EOF
 
 kubectl apply -f test-app.yaml
 
 # Verify service got IPv6 cluster IP
 kubectl get svc test-app -o jsonpath='{.spec.clusterIP}'
-# Should be fd00:svcs:: address
+# Should be fd00:10:96:: address
 
 # Test connectivity over IPv6
 kubectl run -it --rm debug --image=nicolaka/netshoot --restart=Never -- \
@@ -163,8 +163,7 @@ import ipaddress
 
 def run(cmd: list) -> str:
     result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        return f"ERROR: {result.stderr}"
+    assert result.returncode == 0, f"{' '.join(cmd)} failed: {result.stderr.strip()}"
     return result.stdout.strip()
 
 def is_ipv6(addr: str) -> bool:
@@ -179,19 +178,21 @@ def test_nodes_have_ipv6():
     nodes = json.loads(out)
     for node in nodes["items"]:
         addresses = node["status"]["addresses"]
-        internal_ip = next((a["address"] for a in addresses if a["type"] == "InternalIP"), None)
-        assert internal_ip and is_ipv6(internal_ip), f"Node {node['metadata']['name']} has no IPv6 internal IP"
-    print("✓ All nodes have IPv6 internal IPs")
+        internal_ips = [a["address"] for a in addresses if a["type"] == "InternalIP"]
+        assert internal_ips, f"Node {node['metadata']['name']} has no InternalIP"
+        non_ipv6 = [ip for ip in internal_ips if not is_ipv6(ip)]
+        assert not non_ipv6, f"Node {node['metadata']['name']} has non-IPv6 InternalIP(s): {non_ipv6}"
+    print("✓ All nodes have only IPv6 internal IPs")
 
 def test_services_have_ipv6():
     out = run(["kubectl", "get", "svc", "-A", "-o", "json"])
     services = json.loads(out)
     for svc in services["items"]:
-        cluster_ips = svc["spec"].get("clusterIPs", [])
-        if cluster_ips and cluster_ips != ["None"]:
-            has_ipv6 = any(is_ipv6(ip) for ip in cluster_ips)
-            assert has_ipv6, f"Service {svc['metadata']['name']} has no IPv6 cluster IP"
-    print("✓ All services have IPv6 cluster IPs")
+        cluster_ips = [ip for ip in svc["spec"].get("clusterIPs", []) if ip != "None"]
+        if cluster_ips:
+            non_ipv6 = [ip for ip in cluster_ips if not is_ipv6(ip)]
+            assert not non_ipv6, f"Service {svc['metadata']['name']} has non-IPv6 cluster IP(s): {non_ipv6}"
+    print("✓ All services have only IPv6 cluster IPs")
 
 def test_flux_sources_ready():
     out = run(["kubectl", "get", "gitrepositories", "-A", "-o", "json"])
@@ -210,9 +211,10 @@ def test_pods_have_ipv6():
         if pod["status"].get("phase") != "Running":
             continue
         pod_ips = [p["ip"] for p in pod["status"].get("podIPs", [])]
-        has_ipv6 = any(is_ipv6(ip) for ip in pod_ips)
-        assert has_ipv6, f"Pod {pod['metadata']['name']} has no IPv6 pod IP"
-    print("✓ All running pods have IPv6 addresses")
+        assert pod_ips, f"Pod {pod['metadata']['name']} has no pod IPs"
+        non_ipv6 = [ip for ip in pod_ips if not is_ipv6(ip)]
+        assert not non_ipv6, f"Pod {pod['metadata']['name']} has non-IPv6 pod IP(s): {non_ipv6}"
+    print("✓ All running pods have only IPv6 addresses")
 
 if __name__ == "__main__":
     tests = [
@@ -245,6 +247,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Flux CLI
+        uses: fluxcd/flux2/action@main
+
       - name: Enable IPv6 on runner
         run: |
           sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0
@@ -271,4 +276,4 @@ jobs:
 
 ## Conclusion
 
-Testing GitOps pipelines in IPv6-only environments requires a test cluster with IPv6-only pod and service subnets, created with `kind` using `ipFamily: ipv6` or k3s with `--cluster-cidr` set to IPv6 prefixes. Flux CD and ArgoCD install and operate identically in IPv6-only clusters - their pods receive IPv6 addresses from the cluster CNI. The key validation is that GitOps sources (GitRepository, HelmRepository) can reach their upstream servers over IPv6. An automated test suite checks node IPs, pod IPs, service IPs, and GitOps source readiness using `ipaddress.ip_address()` to validate IPv6 format. CI pipelines can integrate this testing by creating kind IPv6 clusters, deploying applications via GitOps, and asserting IPv6 connectivity before merging.
+Testing GitOps pipelines in IPv6-only environments requires a test cluster with IPv6-only pod and service subnets, created with `kind` using `ipFamily: ipv6` or k3s with `--cluster-cidr` and `--service-cidr` set to IPv6 prefixes. Flux CD and ArgoCD install and operate identically in IPv6-only clusters - their pods receive IPv6 addresses from the cluster CNI. The key validation is that GitOps sources (GitRepository, HelmRepository) can reach their upstream servers over IPv6. An automated test suite checks node IPs, pod IPs, service IPs, and GitOps source readiness using `ipaddress.ip_address()` to validate IPv6 format. CI pipelines can integrate this testing by creating kind IPv6 clusters, deploying applications via GitOps, and asserting IPv6 connectivity before merging.
