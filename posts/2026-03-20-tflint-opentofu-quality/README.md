@@ -13,6 +13,7 @@ Learn how to configure TFLint to enforce best practices and catch provider-speci
 ## Prerequisites
 
 - OpenTofu v1.6+ installed
+- TFLint installed
 - Basic knowledge of OpenTofu concepts
 - Relevant cloud credentials configured
 
@@ -22,6 +23,9 @@ Learn how to configure TFLint to enforce best practices and catch provider-speci
 # Verify OpenTofu installation
 
 tofu version
+
+# Verify TFLint installation
+tflint --version
 
 # Set up required environment variables
 export TF_LOG=INFO  # Enable logging
@@ -73,11 +77,31 @@ provider "aws" {
 }
 ```
 
+```hcl
+# .tflint.hcl
+plugin "terraform" {
+  enabled = true
+  preset  = "recommended"
+}
+
+plugin "aws" {
+  enabled = true
+  version = "0.47.0"
+  source  = "github.com/terraform-linters/tflint-ruleset-aws"
+}
+```
+
 ## Step 3: Implement the Core Feature
 
 ```bash
 # Initialize the project
 tofu init -backend-config=backend.tfvars
+
+# Install configured TFLint plugins
+tflint --init
+
+# Run TFLint before planning
+tflint --recursive --config "$(pwd)/.tflint.hcl" --format compact
 
 # Create a plan and save it
 tofu plan -out=tfplan -var-file=production.tfvars
@@ -123,6 +147,19 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
 
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v6
+        with:
+          cache: true
+
+      - name: TFLint Init
+        run: tflint --init
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: TFLint
+        run: tflint --recursive --config "$(pwd)/.tflint.hcl" --format compact
+
       - name: OpenTofu Init
         run: tofu init
 
@@ -130,7 +167,7 @@ jobs:
         run: tofu plan -no-color -out=tfplan
 
       - name: Upload Plan
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: tfplan
           path: tfplan
@@ -155,7 +192,7 @@ jobs:
           aws-region: us-east-1
 
       - name: Download Plan
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v8
         with:
           name: tfplan
 
@@ -177,6 +214,9 @@ tofu state list
 
 # Verify resource configuration
 tofu state show aws_instance.main
+
+# Re-run linting after changes
+tflint --recursive --config "$(pwd)/.tflint.hcl" --format compact
 
 # Check for drift
 tofu plan -refresh-only
@@ -212,9 +252,9 @@ variable "environment" {
 
 If you encounter issues:
 
-1. Enable debug logging: `export TF_LOG=DEBUG`
+1. Enable debug logging: `export TFLINT_LOG=debug` for TFLint or `export TF_LOG=DEBUG` for OpenTofu
 2. Check provider credentials: Verify environment variables
-3. Review state consistency: Run `tofu refresh` then `tofu plan`
+3. Review state consistency: Run `tofu plan -refresh-only`, then apply the refresh-only plan only after review
 4. Consult provider documentation for service-specific errors
 
 ## Conclusion
