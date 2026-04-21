@@ -11,7 +11,7 @@ Description: A systematic guide to diagnosing and resolving IPv6 load balancer c
 ```text
 Cannot reach IPv6 load balancer VIP?
 ├─ VIP has IPv6 address?
-│   ip -6 addr show | grep vip
+│   ip -6 addr show | grep "2001:db8::100"
 ├─ LB is listening on IPv6 port?
 │   ss -6 -tlnp | grep <port>
 ├─ Firewall allows traffic to VIP?
@@ -27,15 +27,15 @@ Cannot reach IPv6 load balancer VIP?
 ```bash
 # Check VIP is on an interface
 
-ip -6 addr show | grep "2001:db8::vip"
+ip -6 addr show | grep "2001:db8::100"
 
 # For keepalived VIP: check which node owns it
 # Run on MASTER candidate:
 sudo systemctl status keepalived
-ip -6 addr show | grep vip   # Should be present on MASTER only
+ip -6 addr show | grep "2001:db8::100"   # Should be present on MASTER only
 
 # For IPVS:
-sudo ipvsadm -L -n | grep "2001:db8::vip"
+sudo ipvsadm -L -n | grep "2001:db8::100"
 ```
 
 ## Step 2: Check Load Balancer Is Listening
@@ -48,7 +48,7 @@ ss -6 -tlnp | grep haproxy
 ss -6 -tlnp | grep nginx
 
 # IPVS (virtual service exists)
-sudo ipvsadm -L -n | grep "2001:db8::vip"
+sudo ipvsadm -L -n | grep "2001:db8::100"
 
 # LVS doesn't listen on ports like HAProxy/nginx - it works at kernel level
 # Verify the virtual service exists in ipvsadm
@@ -58,13 +58,13 @@ sudo ipvsadm -L -n | grep "2001:db8::vip"
 
 ```bash
 # From a client: test basic IPv6 connectivity to VIP
-ping6 -c 3 2001:db8::vip
+ping -6 -c 3 2001:db8::100
 
 # Test TCP connection to VIP port
-nc -6 -w 5 2001:db8::vip 443
+nc -6 -w 5 2001:db8::100 443
 
 # Full HTTP test
-curl -6 -v --max-time 10 https://2001:db8::vip/health
+curl -6 -v --max-time 10 "https://[2001:db8::100]/health"
 
 # If ping works but HTTP doesn't: issue is in the LB or backend
 # If ping fails: routing or firewall issue
@@ -79,15 +79,18 @@ sudo ip6tables -L -n -v --line-numbers
 # Check if port is allowed
 sudo ip6tables -L INPUT -n | grep -E "dpt:443|dpt:80"
 
-# Trace a specific packet through the firewall
+# Check IPv6 NAT PREROUTING counters
 sudo ip6tables -t nat -L PREROUTING -n -v
 
-# Add a trace rule to debug (match and log packets)
+# Add a TRACE rule to debug matching packets
 sudo ip6tables -t raw -A PREROUTING \
-  -d 2001:db8::vip -p tcp --dport 80 \
+  -d 2001:db8::100 -p tcp --dport 80 \
   -j TRACE
 
-# View trace output
+# View trace output on iptables-nft systems
+sudo xtables-monitor --trace
+
+# On iptables-legacy systems, TRACE may appear in kernel logs
 sudo dmesg | grep TRACE
 ```
 
@@ -97,7 +100,7 @@ sudo dmesg | grep TRACE
 
 ```bash
 # Check stats for backend status
-curl -s http://localhost:8404/stats?csv | awk -F',' '{print $2, $18, $19, $20}'
+curl -s "http://localhost:8404/stats;csv" | awk -F',' '{print $2, $18, $19, $20}'
 # Column 18 = status, 19 = weight, 20 = act (active servers/flag)
 
 # A server showing "DOWN" will not receive traffic
@@ -111,7 +114,7 @@ sudo ipvsadm -L -n
 
 # Look for:
 # -> RemoteAddress:Port    Forward Weight ActiveConn InActConn
-# -> [2001:db8::server1]:80  Masq    1      0          0
+# -> [2001:db8::101]:80  Masq    1      0          0
 # Zero ActiveConn may mean no traffic is reaching that backend
 ```
 
@@ -119,7 +122,7 @@ sudo ipvsadm -L -n
 
 ```bash
 # Enable nginx_status
-# In nginx.conf: location /nginx_status { stub_status on; }
+# In nginx.conf: location /nginx_status { stub_status; }
 curl http://localhost/nginx_status
 
 # Check error_log for upstream errors
@@ -130,11 +133,11 @@ sudo tail -f /var/log/nginx/error.log | grep -i "upstream\|IPv6\|connect"
 
 ```bash
 # Bypass the load balancer - test backends directly
-for server in 2001:db8::server1 2001:db8::server2 2001:db8::server3; do
+for server in 2001:db8::101 2001:db8::102 2001:db8::103; do
   echo -n "Testing $server: "
   curl -6 -s -o /dev/null -w "%{http_code}" \
     --max-time 5 \
-    http://[$server]/health
+    "http://[$server]/health"
   echo ""
 done
 ```
@@ -142,7 +145,7 @@ done
 ## Step 7: Check IPv6 Forwarding
 
 ```bash
-# Forwarding must be enabled for NAT/IPVS
+# Forwarding must be enabled for NAT or routed IPVS modes
 cat /proc/sys/net/ipv6/conf/all/forwarding
 # Must be 1
 
@@ -157,21 +160,21 @@ sudo sysctl -w net.ipv6.conf.all.forwarding=1
 
 | Issue | Symptom | Fix |
 |---|---|---|
-| No VIP on interface | ping6 VIP fails | Start keepalived or add address manually |
+| No VIP on interface | ping -6 VIP fails | Start keepalived or add address manually |
 | LB not listening | Connection refused | Start HAProxy/nginx service |
 | Firewall blocking | No response (timeout) | Open port in ip6tables |
-| No IPv6 forwarding | Backends unreachable | `sysctl net.ipv6.conf.all.forwarding=1` |
-| No masquerade | Backends can't respond | Add ip6tables POSTROUTING MASQUERADE |
+| No IPv6 forwarding | NAT/routed backends unreachable | `sysctl net.ipv6.conf.all.forwarding=1` |
+| No source NAT or return route | Backends can't respond | Add a return route or POSTROUTING SNAT/MASQUERADE |
 | Backend health failing | Traffic not distributed | Fix backend service or health check URL |
 
 ## Packet Capture for Deep Debugging
 
 ```bash
 # Capture on VIP interface
-sudo tcpdump -i eth0 -n -w lb-debug.pcap 'ip6 and host 2001:db8::vip'
+sudo tcpdump -i eth0 -n -w lb-debug.pcap 'ip6 and host 2001:db8::100'
 
 # Capture on LVS with IPVS
-sudo tcpdump -i eth0 -n 'ip6 and (host 2001:db8::vip or host 2001:db8::server1)'
+sudo tcpdump -i eth0 -n 'ip6 and (host 2001:db8::100 or host 2001:db8::101)'
 
 # Analyze in Wireshark
 wireshark lb-debug.pcap
