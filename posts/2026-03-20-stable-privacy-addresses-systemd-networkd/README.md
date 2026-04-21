@@ -8,20 +8,20 @@ Description: Configure RFC 7217 stable privacy IPv6 addresses using systemd-netw
 
 ## Introduction
 
-systemd-networkd is the network management daemon included with systemd, widely used on servers and minimal Linux installations. It has native support for IPv6 stable privacy addresses via the `IPv6PrivacyExtensions` directive, giving administrators fine-grained control over address generation behavior.
+systemd-networkd is the network management daemon included with systemd, widely used on servers and minimal Linux installations. It has native support for RFC 7217-style stable SLAAC interface identifiers via the `[IPv6AcceptRA]` `Token=prefixstable` setting. The `IPv6PrivacyExtensions` directive is separate: it controls temporary RFC 4941 addresses.
 
 ## Understanding the IPv6PrivacyExtensions Directive
 
-systemd-networkd's `[Network]` section supports these values for `IPv6PrivacyExtensions`:
+systemd-networkd's `[Network]` section supports these values for `IPv6PrivacyExtensions`, which controls temporary addresses:
 
 | Value | Behavior |
 |---|---|
-| `no` | Use EUI-64 (MAC-based) addresses |
-| `prefer-public` | Generate temporary addresses but prefer the stable one |
+| `no` | Do not generate RFC 4941 temporary addresses |
+| `prefer-public` | Generate temporary addresses but prefer the public, non-temporary address |
 | `yes` | Generate temporary addresses and prefer them |
-| `kernel` | Defer to kernel sysctl settings |
+| `kernel` | Leave the kernel `use_tempaddr` sysctl setting in place |
 
-For RFC 7217-style stable privacy, set `IPv6PrivacyExtensions=no` combined with kernel-level stable-privacy `addr_gen_mode`.
+For RFC 7217-style stable privacy with systemd-networkd, set `Token=prefixstable` in the `[IPv6AcceptRA]` section. Keep `IPv6PrivacyExtensions=no` if you want stable opaque addresses without temporary addresses.
 
 ## Configuring a Network File
 
@@ -39,21 +39,20 @@ Name=eth0
 DHCP=ipv4
 IPv6AcceptRA=yes
 
-# Use stable-privacy address generation (RFC 7217)
-# This disables temporary addresses in favor of a single stable opaque address
+# Disable RFC 4941 temporary addresses and use stable-privacy link-local IIDs
 IPv6PrivacyExtensions=no
+IPv6LinkLocalAddressGenerationMode=stable-privacy
+
+[IPv6AcceptRA]
+# Use RFC 7217 stable opaque IIDs for SLAAC prefixes received in RAs
+Token=prefixstable
 ```
 
-Then set the kernel addr_gen_mode to stable-privacy:
+No `addr_gen_mode` sysctl is needed for SLAAC prefixes handled by systemd-networkd. When `IPv6AcceptRA=yes` is used, systemd-networkd uses its own Router Advertisement client, so the RA token controls the SLAAC interface identifier.
 
-```bash
-# Set addr_gen_mode to 2 (stable-privacy) for eth0
-echo 2 | sudo tee /proc/sys/net/ipv6/conf/eth0/addr_gen_mode
-```
+## Using systemd-networkd for Full RFC 7217 Support
 
-## Using Kernel-Mode Privacy for Full RFC 7217 Support
-
-The cleanest approach combines systemd-networkd's `kernel` setting with sysctl:
+The cleanest approach keeps the temporary-address policy explicit and configures the Router Advertisement token in the network file:
 
 ```ini
 # /etc/systemd/network/10-eth0.network
@@ -64,23 +63,14 @@ Name=eth0
 [Network]
 DHCP=ipv4
 IPv6AcceptRA=yes
-IPv6PrivacyExtensions=kernel
+IPv6PrivacyExtensions=no
+IPv6LinkLocalAddressGenerationMode=stable-privacy
+
+[IPv6AcceptRA]
+Token=prefixstable
 ```
 
-Configure sysctl to use stable-privacy mode globally:
-
-```bash
-# /etc/sysctl.d/60-ipv6-privacy.conf
-# 2 = stable-privacy (RFC 7217) for all interfaces
-net.ipv6.conf.default.addr_gen_mode = 2
-net.ipv6.conf.all.addr_gen_mode = 2
-```
-
-Apply sysctl settings:
-
-```bash
-sudo sysctl --system
-```
+The `kernel` value for `IPv6PrivacyExtensions` only leaves the kernel's RFC 4941 `use_tempaddr` setting unchanged; it does not select RFC 7217 address generation for systemd-networkd's userspace RA client.
 
 ## Restarting systemd-networkd
 
@@ -104,6 +94,7 @@ ip -6 addr show eth0
 
 # Note down the IID (last 64 bits of the address)
 # Reboot and verify the same IID appears on the same network
+# A SLAAC address may still be marked "dynamic"; it should not be marked "temporary"
 ```
 
 For a quick comparison, compute what the EUI-64 address would look like:
@@ -112,8 +103,12 @@ For a quick comparison, compute what the EUI-64 address would look like:
 # Get the MAC address of eth0
 MAC=$(cat /sys/class/net/eth0/address)
 echo "MAC: $MAC"
-# If your IPv6 IID differs from the EUI-64 derived from this MAC,
-# stable-privacy is working correctly
+IFS=: read -r o1 o2 o3 o4 o5 o6 <<EOF
+$MAC
+EOF
+printf 'Modified EUI-64 IID: %02x%s:%sff:fe%s:%s%s\n' "$((0x$o1 ^ 0x02))" "$o2" "$o3" "$o4" "$o5" "$o6"
+# If your stable SLAAC IID differs from this value and remains stable on the same prefix,
+# stable-privacy address generation is working correctly
 ```
 
 ## Configuring Multiple Interfaces
@@ -129,7 +124,11 @@ Name=en*
 [Network]
 DHCP=ipv4
 IPv6AcceptRA=yes
-IPv6PrivacyExtensions=kernel
+IPv6PrivacyExtensions=no
+IPv6LinkLocalAddressGenerationMode=stable-privacy
+
+[IPv6AcceptRA]
+Token=prefixstable
 ```
 
 ## Viewing networkctl Status
@@ -140,9 +139,9 @@ Use `networkctl` to confirm the configuration is applied:
 # Show detailed status for eth0
 networkctl status eth0
 
-# Look for "IPv6PrivacyExtensions" in the output
+# Look for the matched "Network File" and "IPv6 Address Generation Mode: stable-privacy"
 ```
 
 ## Conclusion
 
-systemd-networkd provides straightforward support for RFC 7217 stable privacy addresses through its `.network` file directives combined with kernel sysctl settings. This approach is ideal for servers and headless Linux systems managed without NetworkManager. The resulting addresses are opaque, stable per network, and do not expose the hardware MAC address.
+systemd-networkd provides straightforward support for RFC 7217 stable privacy addresses through its `.network` file directives. This approach is ideal for servers and headless Linux systems managed without NetworkManager. The resulting addresses are opaque, stable per network, and do not expose the hardware MAC address.
