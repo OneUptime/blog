@@ -111,8 +111,8 @@ terraform import aws_eip.bastion eipalloc-0a1b2c3d4e5f67890
 ## EIP Lifecycle Considerations
 
 ```hcl
-# EIPs incur charges when NOT associated with a running instance
-# Use count = 0 to release during non-working hours (cost saving)
+# AWS charges for Elastic IPs whether they are associated or idle
+# Use count = 0 to release a dev EIP when the environment is inactive (cost saving)
 
 resource "aws_eip" "dev_server" {
   count  = var.dev_environment_active ? 1 : 0
@@ -122,4 +122,4 @@ resource "aws_eip" "dev_server" {
 
 ## Conclusion
 
-AWS Elastic IPs in Terraform are allocated with `aws_eip { domain = "vpc" }` and associated with EC2 instances or NAT gateways via `aws_eip_association`. Use `prevent_destroy = true` for production EIPs to prevent accidental release. EIPs have no charge when associated with running instances but are billed when unassociated - destroy them when not in use.
+AWS Elastic IPs in Terraform are allocated with `aws_eip { domain = "vpc" }` and associated with EC2 instances via `aws_eip_association`, or assigned to NAT gateways through the NAT gateway `allocation_id`. Use `prevent_destroy = true` for production EIPs to prevent accidental release. AWS bills Elastic IPs whether they are associated or idle - release them when not in use.
