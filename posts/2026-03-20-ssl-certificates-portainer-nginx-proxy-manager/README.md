@@ -23,7 +23,7 @@ The simplest option for public-facing servers:
 1. Go to **SSL Certificates → Add SSL Certificate → Let's Encrypt**
 2. Fill in:
    - **Domain Names**: `portainer.yourdomain.com`
-   - **Email**: your email for expiration notices
+   - **Email**: your ACME account contact email
    - Check **I Agree to...**
 3. Click **Save** - NPM requests and stores the certificate
 
@@ -56,10 +56,11 @@ For internal use or corporate CA certificates:
 ```bash
 # Self-signed for internal use
 
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+openssl req -x509 -noenc -days 365 -newkey rsa:2048 \
   -keyout portainer.key \
   -out portainer.crt \
-  -subj "/CN=portainer.internal.lan"
+  -subj "/CN=portainer.internal.lan" \
+  -addext "subjectAltName=DNS:portainer.internal.lan"
 ```
 
 2. In NPM: **SSL Certificates → Add SSL Certificate → Custom**
@@ -86,8 +87,11 @@ docker logs nginx-proxy-manager 2>&1 | grep -i "renew\|certbot"
 # View certificate expiration in NPM
 # Dashboard → SSL Certificates → shows expiry date for each cert
 
-# Manual renewal trigger (via NPM container)
-docker exec nginx-proxy-manager certbot renew --dry-run
+# Manual renewal test (via NPM container)
+docker exec nginx-proxy-manager certbot renew --dry-run \
+  --config /etc/letsencrypt.ini \
+  --work-dir /tmp/letsencrypt-lib \
+  --logs-dir /data/logs
 ```
 
 ## Verifying the Certificate
@@ -104,14 +108,15 @@ curl -vI https://portainer.yourdomain.com 2>&1 | grep -A 10 "Server certificate"
 
 ## Backup Your Certificates
 
-NPM stores certificates in its data volume. Back up regularly:
+NPM stores Let's Encrypt certificates in the volume mounted at `/etc/letsencrypt`; its database and custom certificates are stored in `/data`. Back up the equivalent bind paths or named volumes regularly:
 
 ```bash
-# Backup NPM data (includes certificates)
+# Backup NPM data and Let's Encrypt certificate volumes
 docker run --rm \
-  -v npm_letsencrypt:/source:ro \
+  -v npm_data:/source/data:ro \
+  -v npm_letsencrypt:/source/letsencrypt:ro \
   -v /backup:/backup \
-  alpine tar czf /backup/npm-letsencrypt-$(date +%Y%m%d).tar.gz -C /source .
+  alpine tar czf /backup/npm-backup-$(date +%Y%m%d).tar.gz -C /source .
 ```
 
 ## Troubleshooting Certificate Issues
@@ -123,9 +128,8 @@ curl -I http://portainer.yourdomain.com
 # Check NPM error logs
 docker logs nginx-proxy-manager 2>&1 | tail -50
 
-# Check Let's Encrypt rate limits (max 5 failed per hour)
-# Switch to staging for testing:
-# In NPM → SSL Certificates, check "Let's Encrypt Staging"
+# Check Let's Encrypt rate limits (5 authorization failures per identifier per account per hour)
+# Switch to staging for testing by setting LE_STAGING=true on the NPM container
 ```
 
 ## Conclusion
