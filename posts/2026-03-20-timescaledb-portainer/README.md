@@ -15,8 +15,6 @@ TimescaleDB extends PostgreSQL with time-series capabilities - automatic partiti
 ```yaml
 # docker-compose.yml - TimescaleDB
 
-version: "3.8"
-
 networks:
   timescale_net:
     driver: bridge
@@ -37,8 +35,6 @@ services:
       - POSTGRES_DB=metrics
       - POSTGRES_USER=tsadmin
       - POSTGRES_PASSWORD=timescale_secure_password
-      # Tune for time-series workloads
-      - POSTGRES_TUNE_SHARED_BUFFERS=256MB
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -83,7 +79,7 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=grafana_password
-      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+      - GF_PLUGINS_PREINSTALL=grafana-clock-panel
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
@@ -117,8 +113,8 @@ CREATE TABLE IF NOT EXISTS sensor_readings (
 );
 
 -- Convert to hypertable (time-series optimized)
-SELECT create_hypertable('sensor_readings', 'time',
-    chunk_time_interval => INTERVAL '1 day',
+SELECT create_hypertable('sensor_readings',
+    by_range('time', INTERVAL '1 day'),
     if_not_exists => TRUE
 );
 
@@ -171,8 +167,8 @@ CREATE TABLE IF NOT EXISTS app_metrics (
     error       BOOLEAN DEFAULT FALSE
 );
 
-SELECT create_hypertable('app_metrics', 'time',
-    chunk_time_interval => INTERVAL '1 hour',
+SELECT create_hypertable('app_metrics',
+    by_range('time', INTERVAL '1 hour'),
     if_not_exists => TRUE
 );
 
@@ -200,6 +196,10 @@ SELECT add_continuous_aggregate_policy('slo_metrics_5min',
     end_offset => INTERVAL '5 minutes',
     schedule_interval => INTERVAL '5 minutes'
 );
+
+-- Grant table access after schema objects are created
+GRANT USAGE ON SCHEMA public TO appuser;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO appuser;
 ```
 
 ## Step 3: Write Data to TimescaleDB
@@ -279,30 +279,30 @@ FROM slo_metrics_5min
 WHERE bucket > NOW() - INTERVAL '24 hours'
 ORDER BY bucket DESC;
 
--- Compression: compress chunks older than 7 days
-SELECT compress_chunk(i) FROM show_chunks('sensor_readings', older_than => INTERVAL '7 days') i;
+-- List chunks older than 7 days before moving them to the columnstore
+SELECT show_chunks('sensor_readings', older_than => INTERVAL '7 days');
 ```
 
-## Step 5: Enable Compression
+## Step 5: Enable Columnstore Compression
 
 ```sql
--- Add compression settings to the hypertable
+-- Add columnstore settings to the hypertable
 ALTER TABLE sensor_readings SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'sensor_id',
-    timescaledb.compress_orderby = 'time DESC'
+    timescaledb.enable_columnstore,
+    timescaledb.segmentby = 'sensor_id',
+    timescaledb.orderby = 'time DESC'
 );
 
--- Automatic compression policy (compress data older than 7 days)
-SELECT add_compression_policy('sensor_readings',
-    INTERVAL '7 days',
+-- Automatic columnstore policy (move chunks older than 7 days to the columnstore)
+CALL add_columnstore_policy('sensor_readings',
+    after => INTERVAL '7 days',
     if_not_exists => TRUE
 );
 
--- Check compression stats
-SELECT * FROM chunk_compression_stats('sensor_readings');
+-- Check columnstore stats
+SELECT * FROM chunk_columnstore_stats('sensor_readings');
 ```
 
 ## Conclusion
 
-TimescaleDB brings time-series capabilities to PostgreSQL without requiring a new database system. Your existing PostgreSQL knowledge, tools, and ORMs work unchanged. Hypertables provide automatic time-based partitioning for query performance, continuous aggregates pre-compute common queries, and compression dramatically reduces storage for historical data. Portainer manages the entire stack, making it easy to monitor resource usage and update TimescaleDB when new versions are released.
+TimescaleDB brings time-series capabilities to PostgreSQL without requiring a new database system. Your existing PostgreSQL knowledge, tools, and ORMs work unchanged. Hypertables provide automatic time-based partitioning for query performance, continuous aggregates pre-compute common queries, and columnstore compression dramatically reduces storage for historical data. Portainer manages the entire stack, making it easy to monitor resource usage and update TimescaleDB when new versions are released.
