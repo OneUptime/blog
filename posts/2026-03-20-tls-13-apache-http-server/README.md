@@ -8,7 +8,7 @@ Description: Learn how to enable TLS 1.3 on Apache HTTP Server with strong ciphe
 
 ## Prerequisites
 
-- Apache 2.4.36+ (for TLS 1.3 support)
+- Apache 2.4.37+ (for TLS 1.3 support)
 - OpenSSL 1.1.1+ (for TLS 1.3 support)
 - mod_ssl enabled
 
@@ -43,9 +43,8 @@ Edit your SSL virtual host configuration:
     DocumentRoot /var/www/html
 
     SSLEngine on
-    SSLCertificateFile      /etc/ssl/certs/example.com.crt
+    SSLCertificateFile      /etc/ssl/certs/example.com-fullchain.crt
     SSLCertificateKeyFile   /etc/ssl/private/example.com.key
-    SSLCACertificateFile    /etc/ssl/certs/chain.crt
 
     # Enable TLS 1.2 and TLS 1.3 (disable older versions)
     SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1
@@ -53,19 +52,14 @@ Edit your SSL virtual host configuration:
     # Cipher suites for TLS 1.2 (TLS 1.3 suites are automatic)
     SSLCipherSuite ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384
 
-    # TLS 1.3 specific cipher suites (Apache 2.4.36+)
+    # TLS 1.3 specific cipher suites (Apache 2.4.37+)
     SSLCipherSuite TLSv1.3 TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
 
-    # Honor client cipher preference for TLS 1.3 (let client choose)
+    # Use client cipher preference where applicable
     SSLHonorCipherOrder off
-
-    # Session cache for performance
-    SSLSessionCache         shmcb:/var/run/apache2/ssl_scache(512000)
-    SSLSessionCacheTimeout  300
 
     # Enable OCSP stapling
     SSLUseStapling On
-    SSLStaplingCache "shmcb:${APACHE_RUN_DIR}/ssl_stapling(32768)"
     SSLStaplingResponderTimeout 5
     SSLStaplingReturnResponderErrors off
 
@@ -91,6 +85,10 @@ Edit `/etc/apache2/mods-enabled/ssl.conf` for global settings:
 SSLRandomSeed startup file:/dev/urandom 256
 SSLRandomSeed connect builtin
 
+# Session cache for performance
+SSLSessionCache         shmcb:${APACHE_RUN_DIR}/ssl_scache(512000)
+SSLSessionCacheTimeout  300
+
 # Global OCSP stapling
 SSLUseStapling On
 SSLStaplingCache "shmcb:${APACHE_RUN_DIR}/ssl_stapling(32768)"
@@ -98,8 +96,7 @@ SSLStaplingCache "shmcb:${APACHE_RUN_DIR}/ssl_stapling(32768)"
 # Disable SSL compression (CRIME vulnerability)
 SSLCompression off
 
-# Enable SSL session ticket keys
-SSLSessionTicketKeyFile /etc/apache2/ssl_ticket.key
+# TLS session tickets are enabled by default; only configure a rotated ticket key file for clustered setups
 ```
 
 ## Step 4: Add HTTP to HTTPS Redirect
@@ -167,4 +164,4 @@ chmod +x testssl.sh
 
 ## Conclusion
 
-TLS 1.3 on Apache HTTP Server requires Apache 2.4.36+ and OpenSSL 1.1.1+. Use `SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1` to enable TLS 1.2 and 1.3 only, configure TLS 1.3 cipher suites with `SSLCipherSuite TLSv1.3`, enable OCSP stapling for performance, and add HSTS headers to enforce HTTPS. Always test with `openssl s_client -tls1_3` and testssl.sh to verify the configuration is correct.
+TLS 1.3 on Apache HTTP Server requires Apache 2.4.37+ and OpenSSL 1.1.1+. Use `SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1` to enable TLS 1.2 and 1.3 only, configure TLS 1.3 cipher suites with `SSLCipherSuite TLSv1.3`, enable OCSP stapling for performance, and add HSTS headers to enforce HTTPS. Always test with `openssl s_client -tls1_3` and testssl.sh to verify the configuration is correct.
