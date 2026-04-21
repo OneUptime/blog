@@ -15,6 +15,13 @@ tofuenv is the OpenTofu equivalent of rbenv or nvm - it lets you install multipl
 ## Install tofuenv
 
 ```bash
+# Install tofuenv dependencies on Debian/Ubuntu
+sudo apt-get update -y
+sudo apt-get install -y jq gnupg
+
+# For macOS:
+brew install jq gnupg grep
+
 # Clone tofuenv from GitHub
 
 git clone --depth=1 https://github.com/tofuutils/tofuenv.git ~/.tofuenv
@@ -80,11 +87,13 @@ tofuenv use latest
 Create a `.opentofu-version` file in your project directory to pin the version for that project.
 
 ```bash
+# Change into your project directory
+cd /path/to/your/project
+
 # Create a version pin file for the current project
 echo "1.8.5" > .opentofu-version
 
 # tofuenv will automatically use this version in this directory
-cd /path/to/your/project
 tofu version
 # OpenTofu v1.8.5  (pinned by .opentofu-version)
 
@@ -126,10 +135,12 @@ In CI/CD pipelines, use tofuenv to ensure the correct version is used.
 
 ```yaml
 # .github/workflows/tofu.yml
+- uses: actions/checkout@v6
+
 - name: Set up tofuenv
   run: |
     git clone --depth=1 https://github.com/tofuutils/tofuenv.git ~/.tofuenv
-    echo "$HOME/.tofuenv/bin" >> $GITHUB_PATH
+    echo "$HOME/.tofuenv/bin" >> "$GITHUB_PATH"
 
 - name: Install OpenTofu version from .opentofu-version
   run: |
