@@ -8,21 +8,21 @@ Description: Diagnose and fix GRE tunnel connectivity problems including missing
 
 ## Introduction
 
-GRE tunnel issues typically fall into four categories: the tunnel interface is not up, the underlay cannot reach the remote host, a firewall is blocking GRE protocol packets, or routing is incorrect. This guide walks through a systematic debugging process.
+GRE tunnel issues typically fall into a few categories: the tunnel interface is not up, the underlay cannot reach the remote host, a firewall is blocking GRE protocol packets, or routing is incorrect. This guide walks through a systematic debugging process.
 
 ## Step 1: Check Tunnel Interface State
 
 ```bash
 # Check if the tunnel interface is UP
 
-ip link show gre0
-# Look for: state UP LOWER_UP
+ip link show gre1
+# Look for: UP in the flags; GRE tunnels may show state UNKNOWN
 
 # Check IP assignment
-ip addr show gre0
+ip addr show gre1
 
 # If DOWN, bring it up
-ip link set gre0 up
+ip link set gre1 up
 ```
 
 ## Step 2: Test Underlay Connectivity
@@ -33,7 +33,7 @@ The GRE tunnel requires IP connectivity between the local and remote underlay IP
 # Test connectivity to the remote underlay IP
 ping -c 3 10.0.0.2
 
-# If this fails, the GRE tunnel cannot work
+# If this fails because the host or route is unreachable, the GRE tunnel cannot work
 # Fix the underlay routing first
 ip route get 10.0.0.2
 ```
@@ -59,11 +59,13 @@ nft add rule inet filter output ip protocol 47 accept
 ## Step 4: Check ip_gre Module
 
 ```bash
-# Verify the module is loaded
+# Verify the module is loaded when GRE is modular
 lsmod | grep ip_gre
 
 # If not loaded, load it
 modprobe ip_gre
+
+# If modprobe succeeds but lsmod still shows nothing, GRE may be built into the kernel
 ```
 
 ## Step 5: Capture GRE Traffic
@@ -81,10 +83,10 @@ tcpdump -i eth0 proto gre -n
 
 ```bash
 # Show detailed tunnel configuration
-ip -d tunnel show gre0
+ip -d tunnel show gre1
 
 # Verify local and remote IPs match what is expected
-# local=10.0.0.1 remote=10.0.0.2
+# local 10.0.0.1 remote 10.0.0.2
 
 # Check IP forwarding
 sysctl net.ipv4.ip_forward
@@ -95,10 +97,10 @@ sysctl net.ipv4.ip_forward
 ```bash
 # Test if routing decision uses the tunnel
 ip route get 192.168.2.1
-# Should show: via 172.16.0.2 dev gre0
+# Should show: via 172.16.0.2 dev gre1
 
 # If route is missing, add it
-ip route add 192.168.2.0/24 via 172.16.0.2
+ip route add 192.168.2.0/24 via 172.16.0.2 dev gre1
 
 # Test end-to-end ping
 ping -c 3 192.168.2.1
@@ -108,22 +110,22 @@ ping -c 3 192.168.2.1
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Tunnel interface DOWN | Underlay unreachable | Fix underlay routing |
+| Tunnel interface DOWN | Interface administratively down or tunnel not configured | Bring it up and verify tunnel config |
 | Tunnel up, no traffic | GRE blocked by firewall | Allow protocol 47 |
 | Ping works, TCP fails | MTU too large | Set MTU 1476, add MSS clamping |
 | Traffic lost in one direction | Asymmetric routing | Check routes on both hosts |
-| ip_gre not found | Module not loaded | `modprobe ip_gre` |
+| No `ip_gre` in `lsmod` | Module not loaded or GRE support built into the kernel | `modprobe ip_gre`; if unavailable, check kernel support |
 
 ## Check Tunnel Statistics
 
 ```bash
 # Show TX/RX packets and bytes
-ip -s link show gre0
+ip -s link show gre1
 
-# If TX increases but RX stays at 0, remote end is not sending back
-# If both stay at 0, packets are not reaching the tunnel
+# If TX increases but RX stays at 0, return traffic is not reaching or decapsulating on this host
+# If both stay at 0, traffic is not being routed into the tunnel
 ```
 
 ## Conclusion
 
-GRE tunnel troubleshooting follows: check interface state, verify underlay IP connectivity, ensure firewall allows protocol 47, verify the `ip_gre` module is loaded, and check routing. Use `tcpdump proto gre` on the physical interface to see if GRE packets are being exchanged. MTU issues (large TCP failing while small pings work) indicate you need MSS clamping or reduced MTU.
+GRE tunnel troubleshooting follows: check interface state, verify underlay IP connectivity, ensure firewall allows protocol 47, verify GRE kernel support is available, and check routing. Use `tcpdump proto gre` on the physical interface to see if GRE packets are being exchanged. MTU issues (large TCP failing while small pings work) indicate you need MSS clamping or reduced MTU.
