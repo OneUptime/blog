@@ -34,7 +34,7 @@ checkov -d . --framework terraform
 
 ```bash
 # Example output:
-# Check: CKV_AWS_20: "Ensure the S3 bucket has access control list (ACL) is private"
+# Check: CKV_AWS_20: "S3 Bucket has an ACL defined which allows public READ access."
 #   PASSED for resource: aws_s3_bucket.example
 #
 # Check: CKV_AWS_18: "Ensure the S3 bucket has access logging enabled"
@@ -57,7 +57,7 @@ resource "aws_s3_bucket" "app_assets" {
 
 resource "aws_s3_bucket_logging" "app_assets" {
   bucket        = aws_s3_bucket.app_assets.id
-  target_bucket = aws_s3_bucket.log_bucket.id
+  target_bucket = "my-app-access-logs"
   target_prefix = "s3-access-logs/"
 }
 
@@ -79,11 +79,11 @@ resource "aws_security_group" "public_lb" {
   vpc_id = var.vpc_id
 
   ingress {
-    from_port   = 443
-    to_port     = 443
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    # checkov:skip=CKV_AWS_25:ALB must accept public HTTPS traffic
+    # checkov:skip=CKV_AWS_260:ALB must accept public HTTP traffic for HTTPS redirect
   }
 }
 ```
@@ -94,7 +94,7 @@ resource "aws_security_group" "public_lb" {
 # policies/require_environment_tag.yaml
 metadata:
   name: "Require Environment Tag"
-  id: "CKV_CUSTOM_1"
+  id: "CKV2_CUSTOM_1"
   category: "GENERAL_SECURITY"
   severity: "MEDIUM"
 
@@ -113,6 +113,7 @@ definition:
 
 ```python
 # policies/check_encrypted_ebs.py
+# Create an empty policies/__init__.py when loading Python checks from this directory.
 from checkov.common.models.enums import CheckCategories, CheckResult
 from checkov.terraform.checks.resource.base_resource_check import BaseResourceCheck
 
@@ -131,7 +132,7 @@ class CheckEBSEncryption(BaseResourceCheck):
             encrypted = encrypted[0]
         return CheckResult.PASSED if encrypted else CheckResult.FAILED
 
-scanner = CheckEBSEncryption()
+check = CheckEBSEncryption()
 ```
 
 ## Checkov Configuration File
@@ -140,19 +141,21 @@ scanner = CheckEBSEncryption()
 # .checkov.yaml
 soft-fail: false
 check:
-  - CKV_AWS_20   # S3 bucket ACL private
+  - CKV_AWS_20   # S3 public READ ACL
   - CKV_AWS_18   # S3 access logging
-  - CKV_AWS_57   # S3 versioning
+  - CKV_AWS_21   # S3 versioning
 skip-check:
   - CKV_AWS_144  # S3 cross-region replication (not required)
 directory:
   - .
 framework:
   - terraform
+external-checks-dir:
+  - ./policies
 output:
   - cli
   - sarif
-output-file-path: checkov-results.sarif
+output-file-path: console,checkov-results.sarif
 ```
 
 ## CI/CD Integration
@@ -165,6 +168,10 @@ on: [pull_request]
 
 jobs:
   checkov:
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
