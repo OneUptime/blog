@@ -71,17 +71,23 @@ docker top my-container aux
 ## Fix Nginx Reverse Proxy Log Buffering
 
 ```nginx
+# Add this in the http context so $connection_upgrade is available
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
 # Disable proxy buffering for Portainer log streaming
 location / {
     proxy_pass https://localhost:9443;
     proxy_buffering off;           # Critical for log streaming
     proxy_cache off;
-    proxy_set_header X-Accel-Buffering no;  # Disable nginx buffering
+    proxy_ignore_headers X-Accel-Buffering;  # Prevent upstream headers from changing buffering
     
     # WebSocket support for console
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
+    proxy_set_header Connection $connection_upgrade;
     
     proxy_read_timeout 3600s;
     proxy_send_timeout 3600s;
@@ -91,6 +97,12 @@ location / {
 ## Fix WebSocket Console Errors
 
 ```nginx
+# Add this in the http context so $connection_upgrade is available
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
 # Ensure WebSocket headers are forwarded for console access
 location / {
     proxy_pass https://localhost:9443;
