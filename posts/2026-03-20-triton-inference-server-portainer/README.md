@@ -13,9 +13,11 @@ How to Deploy NVIDIA Triton Inference Server via Portainer provides a comprehens
 ## Prerequisites
 
 - Portainer installed with Docker
-- Adequate hardware resources (CPU/GPU/RAM as needed)
 - Docker and Docker Compose installed
-- Network access to required services
+- NVIDIA Container Toolkit installed for GPU workloads
+- For the `26.03-py3` image below, a supported NVIDIA driver for CUDA 13.2 and a GPU with CUDA compute capability 7.5 or later for GPU workloads
+- A Triton model repository prepared on the host
+- Network access to NVIDIA NGC to pull the Triton container image
 
 ## Step 1: Prepare Your Environment
 
@@ -30,7 +32,10 @@ df -h
 
 # For GPU workloads, check NVIDIA availability
 nvidia-smi
-docker run --rm --gpus all nvidia/cuda:12.0-base-ubuntu22.04 nvidia-smi
+docker run --rm --gpus all nvidia/cuda:12.9.0-base-ubuntu22.04 nvidia-smi
+
+# Create a host directory for the Triton model repository
+mkdir -p /data/triton/models
 ```
 
 ## Step 2: Create the Stack in Portainer
@@ -38,21 +43,22 @@ docker run --rm --gpus all nvidia/cuda:12.0-base-ubuntu22.04 nvidia-smi
 Navigate to **Stacks** > **Add Stack** and use the following docker-compose.yml:
 
 ```yaml
-version: "3.8"
-
 services:
-  app:
-    image: relevant-image:latest
-    container_name: ml-app
+  triton:
+    image: nvcr.io/nvidia/tritonserver:26.03-py3
+    container_name: tritonserver
     restart: always
+    command: ["tritonserver", "--model-repository=/models"]
+    shm_size: "1g"
+    ulimits:
+      memlock: -1
+      stack: 67108864
     ports:
-      - "8080:8080"
+      - "8000:8000" # HTTP
+      - "8001:8001" # gRPC
+      - "8002:8002" # Prometheus metrics
     volumes:
-      - app-data:/data
-      - ./models:/models
-    environment:
-      - ENV=production
-      - LOG_LEVEL=info
+      - triton-models:/models
     # GPU support (uncomment if needed)
     # deploy:
     #   resources:
@@ -62,7 +68,7 @@ services:
     #           count: all
     #           capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/v2/health/ready', timeout=2)\""]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -72,39 +78,26 @@ services:
         max-size: "100m"
         max-file: "3"
     networks:
-      - ml-net
+      - triton-net
 
 volumes:
-  app-data:
+  triton-models:
 
 networks:
-  ml-net:
+  triton-net:
     driver: bridge
 ```
 
 ## Step 3: Configure the Application
 
-Access configuration through Portainer's Configs section:
+Configure Triton through server arguments and the model repository you mount at `/models`. The repository must follow Triton's required layout:
 
-```yaml
-# Application configuration
-server:
-  host: 0.0.0.0
-  port: 8080
-
-storage:
-  backend: local
-  path: /data
-
-logging:
-  level: INFO
-  format: json
-
-# Database connection (if applicable)
-database:
-  host: postgres
-  port: 5432
-  name: appdb
+```text
+/data/triton/models/
+  <model-name>/
+    config.pbtxt
+    1/
+      <model-definition-file>
 ```
 
 ## Step 4: Initialize and Verify
@@ -113,15 +106,20 @@ After deployment, verify the service is running:
 
 ```bash
 # Check container health
-docker ps | grep ml-app
+docker ps | grep tritonserver
 
 # View logs via Portainer or CLI
-docker logs ml-app --tail 50
+docker logs tritonserver --tail 50
 
-# Test the API endpoint
-curl http://localhost:8080/health
+# Test the Triton readiness endpoint
+curl -f http://localhost:8000/v2/health/ready
 
-# Access UI at http://your-server:8080
+# List models in the repository
+curl -X POST http://localhost:8000/v2/repository/index \
+  -H "Content-Type: application/json" \
+  -d '{"ready":true}'
+
+# Access the HTTP API at http://your-server:8000/v2
 ```
 
 ## Step 5: Configure Persistent Storage
@@ -131,19 +129,19 @@ Ensure data persists across container restarts:
 ```yaml
 # In docker-compose.yml
 volumes:
-  app-data:
+  triton-models:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /data/ml-app
+      device: /data/triton/models
 ```
 
 Create the host directory:
 
 ```bash
-mkdir -p /data/ml-app
-chmod 755 /data/ml-app
+mkdir -p /data/triton/models
+chmod 755 /data/triton/models
 ```
 
 ## Step 6: Monitor Performance
@@ -155,9 +153,11 @@ Use Portainer's built-in monitoring and set up Prometheus metrics:
   prometheus:
     image: prom/prometheus:latest
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
       - "9090:9090"
+    networks:
+      - triton-net
 ```
 
 ```yaml
@@ -166,9 +166,9 @@ global:
   scrape_interval: 15s
 
 scrape_configs:
-  - job_name: 'ml-app'
+  - job_name: 'tritonserver'
     static_configs:
-      - targets: ['ml-app:8080']
+      - targets: ['tritonserver:8002']
     metrics_path: /metrics
 ```
 
@@ -180,20 +180,20 @@ Configure automated backups via Portainer:
 #!/bin/bash
 # backup.sh - run as a Portainer Edge Job or scheduled task
 
-BACKUP_DIR="/backups/ml-app"
+BACKUP_DIR="/backups/triton"
 DATE=$(date +%Y%m%d_%H%M%S)
-mkdir -p $BACKUP_DIR
+mkdir -p "$BACKUP_DIR"
 
-# Backup application data
+# Backup the Triton model repository
 docker run --rm \
-  -v app-data:/source:ro \
-  -v $BACKUP_DIR:/backup \
-  alpine tar czf /backup/app-data-$DATE.tar.gz -C /source .
+  -v triton-models:/source:ro \
+  -v "$BACKUP_DIR":/backup \
+  alpine tar czf /backup/triton-models-$DATE.tar.gz -C /source .
 
-echo "Backup completed: app-data-$DATE.tar.gz"
+echo "Backup completed: triton-models-$DATE.tar.gz"
 
 # Retain last 7 backups
-ls -t $BACKUP_DIR/*.tar.gz | tail -n +8 | xargs rm -f
+ls -t "$BACKUP_DIR"/*.tar.gz 2>/dev/null | tail -n +8 | xargs -r rm -f
 ```
 
 ## Conclusion
