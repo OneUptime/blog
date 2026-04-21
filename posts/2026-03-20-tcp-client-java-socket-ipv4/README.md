@@ -57,22 +57,29 @@ public class TcpClient {
 ## Forcing IPv4 Connection
 
 ```java
+import java.io.*;
 import java.net.*;
 
-// Resolve hostname to IPv4 only
-public static InetAddress resolveIPv4(String hostname) throws UnknownHostException {
-    InetAddress[] addresses = InetAddress.getAllByName(hostname);
-    for (InetAddress addr : addresses) {
-        if (addr instanceof Inet4Address) {
-            return addr;
+public class IPv4TcpClient {
+    // Resolve hostname to IPv4 only
+    public static InetAddress resolveIPv4(String hostname) throws UnknownHostException {
+        InetAddress[] addresses = InetAddress.getAllByName(hostname);
+        for (InetAddress addr : addresses) {
+            if (addr instanceof Inet4Address) {
+                return addr;
+            }
+        }
+        throw new UnknownHostException("No IPv4 address found for " + hostname);
+    }
+
+    public static void main(String[] args) throws IOException {
+        // Usage
+        InetAddress ipv4 = resolveIPv4("example.com");
+        try (Socket socket = new Socket(ipv4, 443)) {
+            System.out.printf("Connected to %s%n", socket.getRemoteSocketAddress());
         }
     }
-    throw new UnknownHostException("No IPv4 address found for " + hostname);
 }
-
-// Usage
-InetAddress ipv4 = resolveIPv4("api.example.com");
-Socket socket = new Socket(ipv4, 443);
 ```
 
 ## Sending and Receiving Binary Data
@@ -152,10 +159,14 @@ public class TcpClientWrapper implements Closeable {
     }
 }
 
-// Usage
-try (TcpClientWrapper client = new TcpClientWrapper("127.0.0.1", 9009, 5000)) {
-    client.send("{\"type\":\"hello\"}");
-    System.out.println(client.receive());
+class TcpClientWrapperExample {
+    public static void main(String[] args) throws IOException {
+        // Usage
+        try (TcpClientWrapper client = new TcpClientWrapper("127.0.0.1", 9009, 5000)) {
+            client.send("{\"type\":\"hello\"}");
+            System.out.println(client.receive());
+        }
+    }
 }
 ```
 
