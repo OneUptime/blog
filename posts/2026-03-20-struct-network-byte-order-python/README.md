@@ -13,7 +13,7 @@ import struct
 
 # Format prefixes for byte order:
 
-#   '>' = big-endian (network byte order) - use this for all network protocols
+#   '>' = big-endian - use for fields specified in network byte order
 #   '<' = little-endian (host byte order on x86)
 #   '!' = same as '>' (network byte order alias)
 #   '=' = native byte order, standard size
@@ -120,7 +120,7 @@ LENGTH_FMT  = "!I"   # 4-byte unsigned int, big-endian
 LENGTH_SIZE = struct.calcsize(LENGTH_FMT)   # 4
 
 def send_message(sock: socket.socket, payload: bytes) -> None:
-    """Prefix the payload with its 4-byte length and send atomically."""
+    """Prefix the payload with its 4-byte length and send all bytes."""
     header = struct.pack(LENGTH_FMT, len(payload))
     sock.sendall(header + payload)
 
@@ -154,4 +154,4 @@ def _recvn(sock: socket.socket, n: int) -> bytes:
 
 ## Conclusion
 
-Python's `struct` module serializes and deserializes binary data using format strings. Always prefix format strings with `!` (or `>`) for network byte order (big-endian) when building or parsing network packets. `struct.pack()` returns bytes; `struct.unpack()` returns a tuple - index into it or use tuple unpacking. Use `struct.calcsize()` to compute header size at module load time rather than hardcoding it. Combine `struct` with `socket.inet_aton()`/`inet_ntoa()` or `socket.inet_pton()`/`inet_ntop()` for IP address serialization.
+Python's `struct` module serializes and deserializes binary data using format strings. Prefix format strings with `!` (or `>`) when building or parsing protocol fields specified in network byte order (big-endian). `struct.pack()` returns bytes; `struct.unpack()` returns a tuple - index into it or use tuple unpacking. Use `struct.calcsize()` to compute header size at module load time rather than hardcoding it. Combine `struct` with `socket.inet_aton()`/`inet_ntoa()` or `socket.inet_pton()`/`inet_ntop()` for IP address serialization.
