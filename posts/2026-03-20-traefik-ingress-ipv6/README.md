@@ -8,7 +8,7 @@ Description: Configure Traefik Ingress Controller in Kubernetes to accept IPv6 t
 
 ## Introduction
 
-Traefik is a cloud-native ingress controller for Kubernetes that automatically discovers services and configures routing. For IPv6, Traefik must be configured to listen on IPv6 entry points, and the Kubernetes service exposing Traefik must have an IPv6 external IP. Both standard Ingress resources and Traefik's native IngressRoute CRDs support IPv6 backends.
+Traefik is a cloud-native ingress controller for Kubernetes that automatically discovers services and configures routing. For IPv6, Traefik entry points should listen on all interfaces in the pod, and the Kubernetes service exposing Traefik must be provisioned with an IPv6 external IP. Both standard Ingress resources and Traefik's native IngressRoute CRDs support dual-stack backend services.
 
 ## Install Traefik with IPv6 Entry Points (Helm)
 
@@ -20,27 +20,36 @@ deployment:
 
 service:
   # Dual-stack service for Traefik's LoadBalancer
-  ipFamilyPolicy: PreferDualStack
-  ipFamilies:
-    - IPv4
-    - IPv6
+  spec:
+    type: LoadBalancer
+    ipFamilyPolicy: PreferDualStack
+    ipFamilies:
+      - IPv4
+      - IPv6
 
 ports:
   web:
-    port: 80
+    port: 8000
+    exposedPort: 80
+    forwardedHeaders:
+      trustedIPs:
+        - "10.0.0.0/8"
+        - "fd00::/8"
+        - "2001:db8::/32"
   websecure:
-    port: 443
-    tls:
-      enabled: true
+    port: 8443
+    exposedPort: 443
+    http:
+      tls:
+        enabled: true
+    forwardedHeaders:
+      trustedIPs:
+        - "10.0.0.0/8"
+        - "fd00::/8"
+        - "2001:db8::/32"
 
-# Traefik listens on all interfaces (IPv4 and IPv6) by default
-
-# with [::]:port when the container has IPv6
-additionalArguments:
-  - "--entrypoints.web.address=:80"
-  - "--entrypoints.websecure.address=:443"
-  - "--entrypoints.web.forwardedHeaders.trustedIPs=10.0.0.0/8,fd00::/8,2001:db8::/32"
-  - "--entrypoints.websecure.forwardedHeaders.trustedIPs=10.0.0.0/8,fd00::/8,2001:db8::/32"
+# The chart generates entry point addresses like :8000/tcp and :8443/tcp,
+# which listen on all interfaces in the pod when IPv6 is available.
 ```
 
 ```bash
@@ -53,7 +62,7 @@ helm install traefik traefik/traefik \
 
 # Verify Traefik service has IPv6 external IP
 kubectl get svc traefik -n traefik-system -o wide
-# Should show IPv6 in EXTERNAL-IP column (from cloud load balancer)
+# Should show an IPv6 address in EXTERNAL-IP when the cloud load balancer supports IPv6
 ```
 
 ## Standard Ingress for IPv6
@@ -67,9 +76,8 @@ metadata:
   name: myapp-ingress
   namespace: production
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
-    # Strip the X-Forwarded-For header and use the real client IP
-    traefik.ingress.kubernetes.io/router.middlewares: production-real-ip@kubernetescrd
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
   ingressClassName: traefik
   rules:
@@ -110,24 +118,8 @@ spec:
         - name: myapp
           port: 8080
 
-      # Middleware for IPv6 client IP handling
-      middlewares:
-        - name: real-ip-ipv6
-
   tls:
-    certResolver: letsencrypt
-
----
-# Middleware to handle IPv6 X-Forwarded-For
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: real-ip-ipv6
-  namespace: production
-spec:
-  headers:
-    customRequestHeaders:
-      X-Forwarded-Proto: "https"
+    secretName: app-tls-cert
 ```
 
 ## Traefik with IPv6 IP Allowlist
@@ -144,10 +136,10 @@ spec:
   ipAllowList:
     sourceRange:
       - "fd00::/8"            # Internal ULA
-      - "2001:db8:corp::/48"  # Corporate IPv6
+      - "2001:db8:100::/48"   # Example corporate IPv6
       - "10.0.0.0/8"          # IPv4 internal (dual-stack)
     ipStrategy:
-      depth: 1   # Skip 1 proxy (the load balancer)
+      depth: 1   # Select the rightmost IP in X-Forwarded-For
 ```
 
 ```yaml
@@ -168,10 +160,10 @@ spec:
           port: 8080
 ```
 
-## Traefik Service for Dual-Stack
+## Backend Service for Dual-Stack
 
 ```yaml
-# traefik-service-dualstack.yaml
+# myapp-service-dualstack.yaml
 
 # Ensure backend services are dual-stack
 apiVersion: v1
@@ -195,28 +187,30 @@ spec:
 ## Verify Traefik IPv6 Operation
 
 ```bash
-# Check Traefik pod has IPv6
-kubectl exec -n traefik-system deployment/traefik -- \
-    ip -6 addr show
+# Check Traefik pods have IPv6 addresses assigned by Kubernetes
+kubectl get pod -n traefik-system -l app.kubernetes.io/name=traefik \
+    -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.podIPs}{"\n"}{end}'
 
-# Check Traefik entry points are listening on IPv6
-kubectl exec -n traefik-system deployment/traefik -- \
-    ss -tlnp | grep ":80\|:443"
-# Should show [::]:80 and [::]:443
+# Check Traefik entry point arguments
+kubectl get deployment traefik -n traefik-system \
+    -o jsonpath='{range .spec.template.spec.containers[0].args[*]}{.}{"\n"}{end}' \
+    | grep "entryPoints.*address"
 
-# Test HTTP access over IPv6
-curl -6 -H "Host: app.example.com" "http://[2001:db8::traefik]:80/"
+# Test HTTPS access over IPv6
+TRAEFIK_IPV6="2001:db8::10" # replace with the IPv6 address from EXTERNAL-IP
+curl -6 --resolve "app.example.com:443:[${TRAEFIK_IPV6}]" \
+     "https://app.example.com/"
 
 # Check that Traefik passes correct client IPv6
-curl -6 -H "Host: app.example.com" \
-     "http://[2001:db8::traefik]:80/api/ip"
-# Expected: {"ip": "2001:db8::client", "version": 6}
+curl -6 --resolve "app.example.com:443:[${TRAEFIK_IPV6}]" \
+     "https://app.example.com/api/ip"
+# Example response: {"ip": "2001:db8::20", "version": 6}
 
-# View Traefik dashboard (port-forward)
-kubectl port-forward -n traefik-system svc/traefik 9000:9000 &
-curl http://localhost:9000/dashboard/
+# View Traefik dashboard if api.insecure is enabled for a local test
+kubectl port-forward -n traefik-system deployment/traefik 8080:8080 &
+curl http://localhost:8080/dashboard/
 ```
 
 ## Conclusion
 
-Traefik Ingress Controller supports IPv6 by listening on all interfaces via `[:]:port` in entry point configuration. The Kubernetes service exposing Traefik uses `ipFamilyPolicy: PreferDualStack` to obtain both IPv4 and IPv6 external addresses from the cloud load balancer. Standard Kubernetes Ingress resources and Traefik IngressRoute CRDs both route to IPv6-capable backend services without IPv6-specific configuration. The `forwardedHeaders.trustedIPs` configuration must include both IPv4 and IPv6 CIDR ranges for correct client IP extraction from X-Forwarded-For. IP allowlist middleware supports IPv6 CIDRs natively via the `sourceRange` field.
+Traefik Ingress Controller supports IPv6 by listening on all interfaces via `:port` entry point configuration, or `[::]:port` if you want to bind explicitly to the IPv6 wildcard address. The Kubernetes service exposing Traefik uses `ipFamilyPolicy: PreferDualStack` to request dual-stack behavior from the cloud load balancer, which must also support IPv6. Standard Kubernetes Ingress resources and Traefik IngressRoute CRDs both route to IPv6-capable backend services without IPv6-specific configuration. The `forwardedHeaders.trustedIPs` configuration must include the IPv4 and IPv6 CIDR ranges of the trusted proxies or load balancers that set X-Forwarded-For. IP allowlist middleware supports IPv6 CIDRs natively via the `sourceRange` field.
