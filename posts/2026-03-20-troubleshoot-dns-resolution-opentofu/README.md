@@ -27,7 +27,9 @@ aws route53 list-resource-record-sets \
 
 # If it exists and should be managed by OpenTofu, import it
 tofu import aws_route53_record.api Z1234567890ABCDE_api.example.com_A
+```
 
+```hcl
 # If OpenTofu and an external system both manage the same record,
 # use allow_overwrite
 resource "aws_route53_record" "api" {
@@ -87,21 +89,22 @@ dig @ns-1234.awsdns-56.org api.example.com
 # Check local resolution (may be cached)
 dig api.example.com
 
-# Check TTL - low TTL means changes propagate faster
-dig api.example.com | grep "TTL"
+# Check TTL - shorter TTLs reduce how long recursive resolvers cache answers
+dig api.example.com +noall +answer
 
-# Force bypass DNS cache for testing
+# Query a public resolver instead of the local resolver (it may still have cached data)
 dig @8.8.8.8 api.example.com
 ```
 
 ## Private Hosted Zone Not Resolving in VPC
 
-Private hosted zones only resolve from within the associated VPC.
+Private hosted zones resolve through Route 53 Resolver in associated VPCs (or through an inbound Resolver endpoint for hybrid networks), and the VPC must have DNS support enabled.
 
 ```bash
-# Check VPC association
-aws route53 list-vpc-association-authorizations \
-  --hosted-zone-id Z1234567890ABCDE
+# Check the VPCs currently associated with the hosted zone
+aws route53 get-hosted-zone \
+  --id Z1234567890ABCDE \
+  --query "VPCs"
 
 # From within the VPC, test resolution
 # (SSH to an EC2 instance in the VPC)
@@ -115,6 +118,10 @@ resource "aws_route53_zone" "private" {
 
   vpc {
     vpc_id = aws_vpc.main.id
+  }
+
+  lifecycle {
+    ignore_changes = [vpc]  # avoid diffs when additional associations are managed separately
   }
 }
 
@@ -132,7 +139,7 @@ Different DNS responses for internal vs. external clients.
 ```hcl
 # Public zone - for external clients
 resource "aws_route53_zone" "public" {
-  name = "api.example.com"
+  name = "example.com"
 }
 
 resource "aws_route53_record" "public_api" {
@@ -140,12 +147,12 @@ resource "aws_route53_record" "public_api" {
   name    = "api.example.com"
   type    = "A"
   ttl     = 300
-  records = [aws_eip.nat.public_ip]  # public IP
+  records = [aws_eip.api.public_ip]  # public IP
 }
 
 # Private zone - for internal clients in VPC
 resource "aws_route53_zone" "private" {
-  name = "api.example.com"
+  name = "example.com"
   vpc {
     vpc_id = aws_vpc.main.id
   }
@@ -155,8 +162,12 @@ resource "aws_route53_record" "private_api" {
   zone_id = aws_route53_zone.private.zone_id
   name    = "api.example.com"
   type    = "A"
-  ttl     = 60
-  records = [aws_lb.internal.dns_name]  # internal ALB
+
+  alias {
+    name                   = aws_lb.internal.dns_name
+    zone_id                = aws_lb.internal.zone_id
+    evaluate_target_health = true
+  }
 }
 ```
 
