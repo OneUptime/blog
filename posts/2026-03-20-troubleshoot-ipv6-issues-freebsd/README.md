@@ -19,7 +19,8 @@ ifconfig em0 | grep inet6
 # Expected: at minimum a link-local address
 # inet6 fe80::1234:5678:9abc:def0%em0 prefixlen 64 scopeid 0x1
 
-# If no link-local: IPv6 is disabled on this interface
+# If no link-local: IPv6 may be disabled on this interface
+# or automatic link-local configuration may be disabled
 # Fix: enable IPv6 in rc.conf
 ```
 
@@ -66,8 +67,8 @@ ndp -a
 # Look for gateway in NDP table
 ndp -an | grep 'fe80::1'
 
-# If gateway is not in NDP table, send NS to it
-ndp -n em0 fe80::1
+# If gateway is not in NDP table, trigger neighbor discovery
+ping6 -c 1 fe80::1%em0
 
 # Capture NDP traffic to diagnose
 tcpdump -i em0 -n icmp6
@@ -81,8 +82,8 @@ tcpdump -i em0 -n icmp6
 service rtsold status
 pgrep rtsold
 
-# Start rtsold if not running
-service rtsold start
+# Start rtsold once if not enabled in rc.conf
+service rtsold onestart
 
 # Check if RAs are being received
 tcpdump -i em0 -n 'icmp6 and ip6[40] == 134'
@@ -93,23 +94,23 @@ rtsol -D em0
 
 # Check kernel sysctl for RA acceptance
 sysctl net.inet6.ip6.accept_rtadv
-# Should be 0 (acceptance is per-interface, not global)
+# This controls the default; the active setting is per-interface
 # Check per-interface:
-ifconfig em0 | grep accept_rtadv
+ifconfig em0 | grep -i accept_rtadv
 ```
 
 ## Step 6: Check Firewall (pf/ipfw)
 
 ```bash
 # Check if pf is blocking IPv6
-pfctl -s rules | grep -i 'inet6\|ipv6\|icmp6'
+pfctl -s rules | grep -Ei 'inet6|ipv6|icmp6'
 
 # Check if essential ICMPv6 is allowed
 # NDP requires type 135, 136 to pass
 tcpdump -i em0 icmp6   # Monitor ICMPv6 traffic
 
 # If ipfw is running
-ipfw list | grep -i 'ipv6\|icmp6'
+ipfw list | grep -Ei 'ipv6|icmp6'
 ```
 
 ## Common Issues and Fixes
@@ -117,7 +118,7 @@ ipfw list | grep -i 'ipv6\|icmp6'
 ```bash
 # Issue: No IPv6 address at all
 # Check: Is IPv6 enabled on the interface?
-ifconfig em0 | grep -i 'RUNNING\|UP'
+ifconfig em0 | grep -Ei 'inet6|IFDISABLED|AUTO_LINKLOCAL'
 # Fix: Enable in rc.conf and restart network
 echo 'ifconfig_em0_ipv6="inet6 accept_rtadv"' >> /etc/rc.conf
 service netif restart em0
