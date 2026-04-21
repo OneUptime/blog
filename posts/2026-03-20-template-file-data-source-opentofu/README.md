@@ -8,7 +8,7 @@ Description: Learn how to use the template_file data source and templatefile fun
 
 ---
 
-The `template_file` data source from the `hashicorp/template` provider was the historical way to render templates in Terraform/OpenTofu. Modern configurations use the built-in `templatefile()` function instead, which doesn't require a separate provider. Both approaches are covered here.
+The `template_file` data source from the deprecated `hashicorp/template` provider was the historical way to render templates in Terraform/OpenTofu. Modern configurations use the built-in `templatefile()` function instead, which doesn't require a separate provider. Both approaches are covered here.
 
 ---
 
@@ -31,7 +31,7 @@ resource "aws_instance" "app" {
 
   user_data = templatefile("${path.module}/templates/user_data.sh.tpl", {
     environment = var.environment
-    db_host     = aws_db_instance.main.endpoint
+    db_host     = aws_db_instance.main.address
     app_port    = var.app_port
   })
 }
@@ -64,7 +64,7 @@ data "template_file" "user_data" {
 
   vars = {
     environment = var.environment
-    db_host     = aws_db_instance.main.endpoint
+    db_host     = aws_db_instance.main.address
   }
 }
 
@@ -75,9 +75,11 @@ resource "aws_instance" "app" {
 }
 ```
 
+Note: The legacy `template_file` data source's `vars` map only accepts primitive values. Use `templatefile()` for lists, maps, objects, and modern OpenTofu syntax.
+
 ---
 
-## Inline Templates with templatefile
+## Inline Templates with templatestring
 
 For short templates, you can inline the template string with `templatestring()`:
 
@@ -105,7 +107,7 @@ locals {
 }
 ```
 
-Note: In heredoc templates, `${...}` must be escaped as `$${...}` to avoid being interpreted as HCL interpolation.
+Note: In a template string passed to `templatestring()`, escape template markers as `$${...}` and `%%{...}` in the outer HCL string so OpenTofu passes literal `${...}` and `%{...}` into `templatestring()`.
 
 ---
 
@@ -165,4 +167,4 @@ The `~` trims whitespace/newlines around a directive.
 
 ## Summary
 
-Use the built-in `templatefile()` function for rendering templates in modern OpenTofu - it takes a file path and a map of variables and returns the rendered string. The older `template_file` data source from `hashicorp/template` works the same way but requires an extra provider. Both support `${variable}` interpolation, `%{ for }` loops, and `%{ if }` conditionals.
+Use the built-in `templatefile()` function for rendering templates in modern OpenTofu - it takes a file path and a map of variables and returns the rendered string. The older `template_file` data source from the deprecated `hashicorp/template` provider serves a similar purpose but requires an extra provider and only accepts primitive values in its `vars` map. Template syntax supports `${variable}` interpolation, `%{ for }` loops, and `%{ if }` conditionals.
