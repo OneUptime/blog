@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, S3, CloudFront, Static Site, CDN, ACM, Route53, Infrastructure as Code
 
-Description: Learn how to deploy a static website on AWS S3 with CloudFront CDN, custom domain, HTTPS via ACM, and automatic cache invalidation using OpenTofu.
+Description: Learn how to deploy a static website on AWS S3 with CloudFront CDN, custom domain, and HTTPS via ACM using OpenTofu.
 
 ---
 
-Hosting a static site on S3 with CloudFront provides global CDN distribution, HTTPS, and sub-millisecond TTFB from edge locations. OpenTofu manages the entire stack: S3 bucket, CloudFront distribution, ACM certificate, and Route 53 DNS records.
+Hosting a static site on S3 with CloudFront provides global CDN distribution, HTTPS, and low-latency responses from edge locations. OpenTofu manages the entire stack: S3 bucket, CloudFront distribution, ACM certificate, and Route 53 DNS records.
 
 ## Architecture
 
@@ -80,7 +80,7 @@ resource "aws_s3_bucket_policy" "site" {
 ```hcl
 # cloudfront.tf
 
-# Origin Access Control - replaces deprecated OAI
+# Origin Access Control - recommended for new S3 origins instead of legacy OAI
 resource "aws_cloudfront_origin_access_control" "site" {
   name                              = var.domain_name
   description                       = "OAC for ${var.domain_name}"
@@ -94,7 +94,7 @@ resource "aws_cloudfront_distribution" "site" {
   is_ipv6_enabled     = true
   default_root_object = "index.html"
   aliases             = [var.domain_name, "www.${var.domain_name}"]
-  price_class         = "PriceClass_100"  # US, Canada, Europe
+  price_class         = "PriceClass_100"  # US, Canada, Europe, and Israel
 
   origin {
     domain_name              = aws_s3_bucket.site.bucket_regional_domain_name
@@ -109,7 +109,7 @@ resource "aws_cloudfront_distribution" "site" {
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
 
-    # Use managed cache policy - optimized for S3 origins
+    # Use managed cache policy - optimized for cache efficiency
     cache_policy_id            = "658327ea-f89d-4fab-a63d-7e88639e58f6"  # CachingOptimized
     origin_request_policy_id   = "88a5eaf4-2fd4-4709-b370-b4c650ea3fcf"  # CORS-S3Origin
   }
@@ -179,6 +179,23 @@ resource "aws_acm_certificate_validation" "main" {
 
 ```hcl
 # dns.tf
+resource "aws_route53_record" "cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.main.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = aws_route53_zone.main.zone_id
+}
+
 resource "aws_route53_record" "apex" {
   zone_id = aws_route53_zone.main.zone_id
   name    = var.domain_name
@@ -202,8 +219,8 @@ resource "aws_route53_record" "www" {
 
 ## Best Practices
 
-- Use Origin Access Control (OAC) rather than the deprecated Origin Access Identity (OAI) - OAC supports AWS Signature Version 4 and is the current best practice for S3-CloudFront integration.
+- Use Origin Access Control (OAC) rather than the legacy Origin Access Identity (OAI) - OAC supports AWS Signature Version 4 and is the current best practice for S3-CloudFront integration.
 - Set `block_public_access` on the S3 bucket - the bucket should never be publicly accessible directly; only CloudFront should access it.
-- Set `price_class = "PriceClass_100"` unless you have global traffic - it restricts distribution to US/Canada/Europe and reduces costs significantly.
-- Use managed cache policies (`CachingOptimized`) rather than custom cache behaviors - they're maintained by AWS and optimized for common use cases.
+- Set `price_class = "PriceClass_100"` unless you have global traffic - it restricts distribution to US/Canada/Europe/Israel and reduces costs significantly.
+- Use managed cache policies (`CachingOptimized`) rather than custom cache policies - they're maintained by AWS and optimized for common use cases.
 - For single-page applications, add custom error responses for 403 and 404 that return `index.html` with 200 status - this enables client-side routing.
