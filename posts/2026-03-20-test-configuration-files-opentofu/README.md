@@ -8,7 +8,7 @@ Description: Learn the structure and syntax of OpenTofu test configuration files
 
 ## Introduction
 
-OpenTofu test files use the `.tftest.hcl` (or `.tofutest.hcl`) extension and contain a specific set of blocks: `variables`, `provider`, `mock_provider`, and `run`. Understanding the structure of test files lets you write clear, maintainable tests for your infrastructure modules.
+OpenTofu test files use the `.tftest.hcl` (or `.tofutest.hcl`) extension and can contain blocks such as `variables`, `provider`, `mock_provider`, `override_resource`, `override_data`, `override_module`, and `run`. Understanding the structure of test files lets you write clear, maintainable tests for your infrastructure modules.
 
 ## Test File Top-Level Blocks
 
@@ -140,13 +140,12 @@ Each `run` block represents a test scenario:
 
 ```hcl
 run "complete_run_block_example" {
-  # command: plan (default) or apply
+  # command: apply (default) or plan
   command = plan
 
   # Override the module to test (optional)
   module {
-    source  = "./alternate-module"
-    version = "1.0.0"
+    source = "./alternate-module"
   }
 
   # Variable overrides for this run only
@@ -154,9 +153,9 @@ run "complete_run_block_example" {
     environment = "staging"
   }
 
-  # Expected errors (for negative tests)
+  # Expected custom condition failures (for negative tests)
   expect_failures = [
-    aws_instance.web,  # This resource should fail
+    aws_instance.web,  # This resource's precondition/postcondition should fail
     var.instance_type, # This variable validation should fail
   ]
 
@@ -175,11 +174,11 @@ run "complete_run_block_example" {
 
 ## Multiple Run Blocks with State Sharing
 
-Run blocks within a file share state by default:
+Run blocks that target the same module share state within the test file by default:
 
 ```hcl
 variables {
-  bucket_name = "test-bucket-${random_id.suffix.hex}"
+  bucket_name = "example-test-bucket-12345"
 }
 
 run "create_bucket" {
@@ -191,7 +190,7 @@ run "create_bucket" {
   }
 }
 
-# This run sees the state from the previous run
+# This run sees the state from the previous run because it targets the same module
 run "verify_versioning" {
   command = apply
 
@@ -217,4 +216,4 @@ Both `.tftest.hcl` and `.tofutest.hcl` extensions are recognized by `tofu test`.
 
 ## Conclusion
 
-OpenTofu test files are organized around `variables`, `provider`, `mock_provider`, and `run` blocks. Use top-level `variables` for shared defaults and override them per run block. Mock providers eliminate the need for real credentials in unit tests. Multiple run blocks in a file share state, enabling multi-step test scenarios that simulate real deployment sequences.
+OpenTofu test files are organized around `run` blocks, with optional `variables`, `provider`, `mock_provider`, and override blocks. Use top-level `variables` for shared defaults and override them per run block. Mock providers eliminate the need for real credentials in unit tests. Multiple run blocks that target the same module share state, enabling multi-step test scenarios that simulate real deployment sequences.
