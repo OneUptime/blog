@@ -17,13 +17,14 @@ public class TcpEchoServer {
     private static final int PORT = 9000;
 
     public static void main(String[] args) throws IOException {
-        // InetAddress.getByName("0.0.0.0") listens on all IPv4 interfaces
+        // "0.0.0.0" is the IPv4 wildcard address for binding
         InetAddress bindAddr = InetAddress.getByName(HOST);
 
-        // ServerSocket(port, backlog, bindAddr)
-        // backlog=50 means up to 50 queued connections
-        try (ServerSocket serverSocket = new ServerSocket(PORT, 50, bindAddr)) {
+        // Create the socket unbound so SO_REUSEADDR can be set before bind()
+        // backlog=50 requests a pending connection queue length of 50
+        try (ServerSocket serverSocket = new ServerSocket()) {
             serverSocket.setReuseAddress(true);
+            serverSocket.bind(new InetSocketAddress(bindAddr, PORT), 50);
             System.out.printf("TCP server listening on %s:%d%n", HOST, PORT);
 
             while (true) {
@@ -126,6 +127,7 @@ clientSocket.setSendBufferSize(65536);
 ## Graceful Server Shutdown
 
 ```java
+import java.io.*;
 import java.net.*;
 import java.util.concurrent.atomic.*;
 
@@ -167,4 +169,4 @@ public class GracefulServer {
 
 ## Conclusion
 
-Java's `ServerSocket` binds to an IPv4 address and port, while `Socket` represents each client connection. Use `readFully()` for binary protocols to ensure complete reads, `setSoTimeout()` for idle connection management, and a shutdown hook for graceful termination. For high-concurrency servers, use `ExecutorService` with a thread pool instead of creating unbounded threads.
+In these examples, Java's `ServerSocket` binds to an IPv4 address and port, while `Socket` represents each client connection. Use `readFully()` for binary protocols to ensure complete reads, `setSoTimeout()` for idle connection management, and a shutdown hook for graceful termination. For high-concurrency servers, use `ExecutorService` with a thread pool instead of creating unbounded threads.
