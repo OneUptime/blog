@@ -32,7 +32,7 @@ dig AAAA myapp.example.com @2001:4860:4860::8888
 dig +short AAAA myapp.example.com
 ```
 
-The response should contain a valid IPv6 address. No answer section means the record is missing.
+The response should contain a valid IPv6 address. No answer section, or a non-`NOERROR` status, means DNS is not returning a usable AAAA record.
 
 ## Step 2: Ping the Ingress Endpoint
 
@@ -50,10 +50,10 @@ ping -6 -c 4 myapp.example.com
 ## Step 3: Test HTTP over IPv6 with curl
 
 ```bash
-# Force IPv6 and show verbose output (including TLS handshake)
+# Force IPv6 and show verbose output
 curl -6 -v http://myapp.example.com/
 
-# Test HTTPS over IPv6
+# Test HTTPS over IPv6 (including TLS handshake details)
 curl -6 -v https://myapp.example.com/
 
 # Test using a literal IPv6 address (Host header required)
@@ -88,8 +88,9 @@ spec:
 ```bash
 kubectl apply -f test-pod.yaml
 
-# Exec in and test connectivity to the ingress service ClusterIP
+# Exec in and test connectivity to the ingress service IPv6 ClusterIP
 kubectl exec -it ipv6-test -- curl -6 -v \
+  -H "Host: myapp.example.com" \
   http://[<ingress-clusterip>]/
 
 # Test service DNS resolution from inside
@@ -121,9 +122,9 @@ HOST="myapp.example.com"
 EXPECTED_CODE=200
 
 # Resolve AAAA record
-IPV6_ADDR=$(dig +short AAAA "$HOST" | head -1)
+IPV6_ADDR=$(dig +short AAAA "$HOST" | grep ':' | head -1)
 if [ -z "$IPV6_ADDR" ]; then
-  echo "FAIL: No AAAA record for $HOST"
+  echo "FAIL: No usable AAAA record for $HOST"
   exit 1
 fi
 echo "OK: AAAA record = $IPV6_ADDR"
