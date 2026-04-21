@@ -8,14 +8,14 @@ Description: Understand the SRv6 SID address format using the 5f00::/16 prefix, 
 
 ## Introduction
 
-RFC 9602 allocates `5f00::/16` as the globally routable address space for SRv6 Segment Identifiers (SIDs). A SID is a 128-bit IPv6 address that encodes both a locator (identifying the node) and a function (the behavior to invoke at that node). Understanding the SID format is essential for planning, configuring, and troubleshooting SRv6 deployments.
+RFC 9602 allocates `5f00::/16` as a dedicated IPv6 special-purpose address space for SRv6 Segment Identifiers (SIDs). IANA marks this block as forwardable but not globally reachable, so it should be routed within the intended SR domain or between collaborating SR domains. A SID is a 128-bit IPv6 address that encodes both a locator (identifying the node) and a function (the local behavior bound to that SID). Understanding the SID format is essential for planning, configuring, and troubleshooting SRv6 deployments.
 
 ## SID Structure
 
-```javascript
+```text
  | <--- Locator (N bits) ---> | <-- Function (F bits) --> | <- Args (A bits) -> |
  |                            |                           |                     |
- |  Block  |   Node ID        |  Function Code            |    Arguments        |
+ |  Block  |   Node ID        |  Function Value           |    Arguments        |
  | 16 bits |  variable        |  variable                 |    variable         |
 
  Total = 128 bits = Locator + Function + Arguments
@@ -23,7 +23,7 @@ RFC 9602 allocates `5f00::/16` as the globally routable address space for SRv6 S
  Typical allocation:
    Block:    16 bits  (5f00::/16 from RFC 9602)
    Node ID:  32 bits  (identifies specific router)
-   Function: 16 bits  (behavior at that node)
+   Function: 16 bits  (local behavior binding at that node)
    Args:     64 bits  (optional, for stateless parameters)
 
  Example:
@@ -43,36 +43,45 @@ NODE_R1_LOCATOR="5f00:1::/48"
 NODE_R2_LOCATOR="5f00:2::/48"
 NODE_R3_LOCATOR="5f00:3::/48"
 
-# Assign locator to loopback
-ip -6 addr add 5f00:1::/128 dev lo      # Loopback SID (End function)
-ip -6 addr add 5f00:1:0:e001::/128 dev lo  # End.X SID (function e001)
-ip -6 addr add 5f00:1:0:e002::/128 dev lo  # End.X SID to different next-hop
-
-# Enable SRv6 on interface
+# Enable IPv6 forwarding and SRv6 on the ingress interface
+sysctl -w net.ipv6.conf.all.forwarding=1
 sysctl -w net.ipv6.conf.eth0.seg6_enabled=1
 sysctl -w net.ipv6.conf.all.seg6_enabled=1
+
+# Install local SID behaviors in the Linux data plane
+ip -6 route add 5f00:1:0:1::/128 encap seg6local action End dev lo
+ip -6 route add 5f00:1:0:e001::/128 encap seg6local action End.X nh6 fe80::2 dev eth0
+ip -6 route add 5f00:1:0:e002::/128 encap seg6local action End.X nh6 fe80::3 dev eth0
 ```
 
-## Well-Known Function Codes
+## Endpoint Behavior Codepoints
 
-```javascript
-Function 0x0001 = End
-Function 0x0002 = End.X
-Function 0x0003 = End.T
-Function 0x0004 = End.DX2
-Function 0x0005 = End.DX2V
-Function 0x0006 = End.DT2U
-Function 0x0007 = End.DT2M
-Function 0x000B = End.DX6
-Function 0x000C = End.DX4
-Function 0x000D = End.DT6
-Function 0x000E = End.DT4
-Function 0x000F = End.DT46
-Function 0x0010 = End.B6.Encaps
-Function 0x001C = End.BM
+```text
+Endpoint Behavior 0x0001 = End
+Endpoint Behavior 0x0005 = End.X
+Endpoint Behavior 0x0009 = End.T
+Endpoint Behavior 0x0015 = End.DX2
+Endpoint Behavior 0x0016 = End.DX2V
+Endpoint Behavior 0x0017 = End.DT2U
+Endpoint Behavior 0x0018 = End.DT2M
+Endpoint Behavior 0x0010 = End.DX6
+Endpoint Behavior 0x0011 = End.DX4
+Endpoint Behavior 0x0012 = End.DT6
+Endpoint Behavior 0x0013 = End.DT4
+Endpoint Behavior 0x0014 = End.DT46
+Endpoint Behavior 0x000E = End.B6.Encaps
+Endpoint Behavior 0x000F = End.BM
 
-Note: Well-known functions are below 0x8000.
-      Locally significant functions are 0x8000-0xFFFF.
+Note: These are IANA SRv6 Endpoint Behavior codepoints for control-plane signaling,
+      not the values encoded in the SID's Function field. The Function bits are
+      locally assigned and opaque; an SR source cannot infer the behavior by
+      looking at the Function value alone.
+
+      IANA behavior-codepoint ranges:
+      0x0001-0x7FFF = First Come First Served
+      0x8000-0x87FF = Private Use
+      0x8800-0xFFFE = Reserved
+      0xFFFF        = Reserved Opaque
 ```
 
 ## SID Construction in Python
@@ -100,9 +109,9 @@ def build_srv6_sid(block: str, node_id: int, function: int, args: int = 0) -> st
     return str(ipaddress.IPv6Address(sid_int))
 
 # Examples
-print(build_srv6_sid("5f00", 1, 0xe001))   # 5f00:1:0:e001::
-print(build_srv6_sid("5f00", 2, 0xe000))   # 5f00:2:0:e000::
-print(build_srv6_sid("5f00", 3, 0x0001))   # 5f00:3:0:1::  (End)
+print(build_srv6_sid("5f00", 0x00010000, 0xe001))   # 5f00:1:0:e001::
+print(build_srv6_sid("5f00", 0x00020000, 0xe000))   # 5f00:2:0:e000::
+print(build_srv6_sid("5f00", 0x00030000, 0x0001))   # 5f00:3:0:1::  (local function bound to End)
 
 def parse_srv6_sid(sid: str) -> dict:
     """Parse an SRv6 SID into components."""
@@ -121,14 +130,19 @@ print(parse_srv6_sid("5f00:1:0:e001::"))
 ## Advertising SIDs via IS-IS or BGP
 
 ```bash
-# FRR IS-IS: advertise SRv6 locator
+# FRR: define the locator in Zebra, then let IS-IS use it
 # /etc/frr/frr.conf
+# segment-routing
+#  srv6
+#   locators
+#    locator MAIN
+#     prefix 5f00:1::/48 block-len 16 node-len 32 func-bits 16
+# !
 # router isis CORE
 #   segment-routing srv6
 #    locator MAIN
-#     prefix 5f00:1::/48
 ```
 
 ## Conclusion
 
-The `5f00::/16` address space provides globally routable SRv6 SIDs. Each SID encodes a locator (node identity) and function (behavior). Plan your SID allocation with a clear locator hierarchy. Use the Python parsing functions above to validate SIDs in automation scripts. Monitor SID reachability with OneUptime to ensure the control plane is advertising all required segments.
+The `5f00::/16` address space provides dedicated SRv6 SID space for SR domains. Each SID encodes a locator (node identity) and function (local behavior binding). Plan your SID allocation with a clear locator hierarchy. Use the Python parsing functions above to validate SIDs in automation scripts. Monitor SID reachability with OneUptime to ensure the control plane is advertising all required segments.
