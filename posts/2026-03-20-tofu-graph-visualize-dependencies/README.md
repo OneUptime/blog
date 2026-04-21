@@ -33,7 +33,7 @@ tofu graph
 brew install graphviz
 
 # Ubuntu/Debian:
-apt-get install graphviz
+sudo apt install graphviz
 
 # Generate a PNG image
 tofu graph | dot -Tpng -o infrastructure.png
@@ -55,14 +55,14 @@ tofu graph -type=plan
 # Apply graph - shows apply operations
 tofu graph -type=apply
 
-# Destroy graph - shows destruction order
-tofu graph -type=destroy-complete
+# Refresh-only plan graph - shows refresh-only operations
+tofu graph -type=plan-refresh-only
 
 # Plan with destroy - destroy plan graph
 tofu graph -type=plan-destroy
 ```
 
-## Filtering with -draw-cycles
+## Highlighting with -draw-cycles
 
 ```bash
 # Draw dependency cycles (helps debug circular dependencies)
@@ -81,16 +81,13 @@ tofu graph | grep -A5 "aws_eks_cluster"
 tofu graph | unflatten -l 10 | dot -Tsvg -o infrastructure.svg
 ```
 
-## Using blast2dot for Better Visualization
+## Using Graphviz Options for Better Visualization
 
 For better-looking graphs:
 
 ```bash
-# Install blast2dot
-pip install blast2dot
-
-# Generate a cleaner graph
-tofu graph | blast2dot | dot -Tsvg -o clean-graph.svg
+# Generate a cleaner left-to-right graph
+tofu graph | dot -Tsvg -Grankdir=LR -o clean-graph.svg
 ```
 
 ## Online DOT Visualization
@@ -124,10 +121,10 @@ Arrow direction: `A -> B` means A depends on B (B is created first).
 
 ```bash
 # Graph including module internals
-tofu graph -module-depth=2
+tofu graph | dot -Tsvg -o modules.svg
 
-# Limit module depth (cleaner for deeply nested configs)
-tofu graph -module-depth=1 | dot -Tsvg -o modules.svg
+# Focus on a specific module's nodes in the DOT output
+tofu graph | grep -A5 'module\.network'
 ```
 
 ## Practical Example
