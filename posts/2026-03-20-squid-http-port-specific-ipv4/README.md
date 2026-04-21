@@ -20,7 +20,7 @@ Squid's `http_port` directive defines where it accepts client connections. By de
 # http_port 3128
 
 # Bind to specific IPv4 address
-http_port 10.0.0.1:3128
+# http_port 10.0.0.1:3128
 
 # Multiple listen addresses
 http_port 10.0.0.1:3128    # Internal network proxy
@@ -38,9 +38,9 @@ http_port 10.0.0.1:3128
 # Transparent proxy on DMZ interface
 http_port 192.168.10.1:3129 intercept
 
-# SSL bump (HTTPS interception) port
+# SSL bump-capable port (requires ssl_bump rules to decrypt traffic)
 http_port 10.0.0.1:3130 ssl-bump \
-    cert=/etc/squid/ssl/squid.pem \
+    tls-cert=/etc/squid/ssl/squid.pem \
     generate-host-certificates=on \
     dynamic_cert_mem_cache_size=4MB
 ```
@@ -107,7 +107,7 @@ maximum_object_size 100 MB
 cache_dir ufs /var/spool/squid 10000 16 256
 
 # Logging
-access_log /var/log/squid/access.log squid
+access_log daemon:/var/log/squid/access.log logformat=squid
 cache_log /var/log/squid/cache.log
 ```
 
