@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SYN Flood, SYN Cookies, Linux, Security, DDoS, TCP
 
-Description: Enable and configure TCP SYN cookies on Linux to defend against SYN flood DDoS attacks without dropping legitimate connections.
+Description: Enable and configure TCP SYN cookies on Linux to defend against SYN flood DDoS attacks while preserving resources for legitimate connections.
 
 A SYN flood exhausts the server's TCP connection backlog by sending thousands of SYN packets without completing the handshake. SYN cookies allow the server to handle these connections without maintaining state, preserving resources for legitimate users.
 
@@ -27,8 +27,8 @@ With SYN cookies, the server encodes connection state into the SYN-ACK sequence 
 ```text
 SYN Cookie Flow:
   Client → SYN → Server
-  Server ← SYN-ACK (sequence = cryptographic cookie) - NO state stored
-  Client → ACK → Server (ACK = cookie + 1)
+  Server → SYN-ACK (sequence = cryptographic cookie) → Client - NO state stored
+  Client → ACK (ACK = cookie + 1) → Server
   Server: validates cookie, creates connection entry
 ```
 
@@ -82,10 +82,7 @@ sudo iptables -A INPUT -p tcp --syn \
   -m limit --limit 100/second --limit-burst 200 \
   -j ACCEPT
 
-# Drop SYNs that exceed the limit
-sudo iptables -A INPUT -p tcp --syn -j DROP
-
-# Log flood events before dropping
+# Log and drop SYNs that exceed the limit
 sudo iptables -A INPUT -p tcp --syn \
   -j LOG --log-prefix "SYN-FLOOD: " --log-level 4
 sudo iptables -A INPUT -p tcp --syn -j DROP
@@ -98,7 +95,7 @@ sudo iptables -A INPUT -p tcp --syn -j DROP
 watch -n 1 'ss -s | grep -i syn'
 
 # Count SYN_RECV connections (half-open = potential flood)
-ss -n state syn-recv | wc -l
+ss -Htan state syn-recv | wc -l
 
 # Check if SYN cookies are being used
 netstat -s | grep "SYNs to LISTEN"
@@ -107,19 +104,19 @@ netstat -s | grep -i cookie
 
 # View TCP statistics
 sudo ss -s
-# Output will show SYN retransmissions if a flood is occurring
+# Output summarizes socket counts, including SYN_RECV when present
 ```
 
 ## Detect and Block SYN Flood Sources
 
 ```bash
 # Find top IPs sending SYN packets during an attack
-sudo tcpdump -n 'tcp[tcpflags] & tcp-syn != 0' -c 1000 2>/dev/null \
-  | grep -oP 'IP \K\S+(?= >)' \
+sudo tcpdump -nn -c 1000 'tcp[tcpflags] & (tcp-syn|tcp-ack) == tcp-syn' 2>/dev/null \
+  | awk '/ IP / { sub(/\.[0-9]+$/, "", $3); print $3 }' \
   | sort | uniq -c | sort -rn | head -10
 
 # Block the top attacker IPs
 sudo iptables -A INPUT -s <attacker-ip> -j DROP
 ```
 
-SYN cookies combined with iptables rate limiting provide a robust two-layer defense against SYN flood attacks, maintaining legitimate service availability during attacks.
+SYN cookies combined with iptables rate limiting provide a robust two-layer defense against SYN flood attacks, helping maintain legitimate service availability during attacks.
