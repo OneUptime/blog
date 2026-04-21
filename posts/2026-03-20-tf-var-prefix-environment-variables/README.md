@@ -8,7 +8,7 @@ Description: Learn how to use the TF_VAR_ prefix to set OpenTofu variable values
 
 ---
 
-Any environment variable prefixed with `TF_VAR_` is automatically read by OpenTofu as a variable value. This is the most secure way to pass sensitive values like passwords and API keys - they never appear in command history, process listings, or log files.
+Any environment variable prefixed with `TF_VAR_` and followed by the name of a declared root input variable can be read by OpenTofu as a variable value. This is safer than passing sensitive values like passwords and API keys directly with `-var` because the values are not part of the OpenTofu command line, but you should still avoid printing environment variables in logs and protect any state that may contain those values.
 
 ---
 
@@ -21,7 +21,7 @@ export TF_VAR_region="us-east-1"
 export TF_VAR_instance_count="3"
 export TF_VAR_environment="production"
 
-# OpenTofu reads them automatically - no -var flags needed
+# OpenTofu reads matching declared variables automatically - no -var flags needed
 tofu plan
 tofu apply
 ```
@@ -36,15 +36,15 @@ The environment variable name maps to the variable name:
 ## Passing Sensitive Values Securely
 
 ```bash
-# INSECURE: password visible in shell history
+# INSECURE: password visible in shell history and command-line arguments
 tofu apply -var="database_password=mysecret"
 
-# SECURE: use TF_VAR_ - doesn't appear in history
-export TF_VAR_database_password="mysecret"
+# SAFER: set TF_VAR_ from an existing secret source instead of putting the value in the command
+export TF_VAR_database_password="$DB_PASSWORD"
 tofu apply
 
-# Even more secure: don't export, pass only for the single command
-TF_VAR_database_password="mysecret" tofu apply
+# Scope it to one command when the value is already in another environment variable
+TF_VAR_database_password="$DB_PASSWORD" tofu apply
 ```
 
 ---
@@ -78,7 +78,7 @@ deploy:
 
 ## Complex Types via TF_VAR_
 
-For complex types, use JSON syntax in the environment variable value:
+For variables declared with complex type constraints, use JSON-compatible OpenTofu expression syntax in the environment variable value:
 
 ```bash
 # Pass a list
@@ -97,15 +97,15 @@ tofu plan
 
 ## Variable Precedence Including TF_VAR_
 
-OpenTofu evaluates variables in this order (highest wins):
+OpenTofu evaluates variables in this order (lowest to highest priority; later sources win):
 
 ```text
-1. -var flags on the command line (highest priority)
-2. -var-file flags on the command line
-3. *.auto.tfvars files (alphabetically)
-4. terraform.tfvars
-5. TF_VAR_ environment variables
-6. Variable defaults in configuration (lowest priority)
+1. Variable defaults in configuration (lowest priority)
+2. TF_VAR_ environment variables
+3. terraform.tfvars
+4. terraform.tfvars.json
+5. *.auto.tfvars and *.auto.tfvars.json files (lexical filename order)
+6. -var and -var-file options on the command line, in the order provided (highest priority)
 ```
 
 ```bash
@@ -120,17 +120,17 @@ tofu plan -var="region=us-west-2"
 ## Listing Active TF_VAR_ Variables
 
 ```bash
-# See all TF_VAR_ variables currently set in your environment
-env | grep ^TF_VAR_
+# See all TF_VAR_ variable names currently set in your environment
+env | grep '^TF_VAR_' | cut -d= -f1
 
 # Output:
-# TF_VAR_region=us-east-1
-# TF_VAR_environment=production
-# TF_VAR_database_password=[hidden]
+# TF_VAR_region
+# TF_VAR_environment
+# TF_VAR_database_password
 ```
 
 ---
 
 ## Summary
 
-The `TF_VAR_` prefix is the recommended way to pass secrets and CI/CD-specific variable values to OpenTofu. Values set this way never appear in shell history or process tables, and CI/CD platforms like GitHub Actions and GitLab CI inject them from their secret stores automatically. For complex types (lists, maps, objects), use JSON syntax in the environment variable value.
+The `TF_VAR_` prefix is a common way to pass CI/CD-specific input variable values to OpenTofu. When values come from a CI/CD secret store or another protected source, this avoids embedding secrets in `-var` arguments, but you should still mark variables as `sensitive` or `ephemeral` where appropriate and protect state. For complex types (lists, maps, objects), use JSON-compatible OpenTofu expression syntax in the environment variable value.
