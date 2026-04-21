@@ -8,7 +8,7 @@ Description: Configure AWS VPC route tables for IPv4 using Terraform, covering p
 
 ## Introduction
 
-AWS route tables define where IPv4 traffic is directed. Terraform manages route tables, individual routes, and subnet associations declaratively with full drift detection.
+AWS route tables define where IPv4 traffic is directed. Terraform manages route tables, individual routes, and subnet associations declaratively, with drift detection for the resources you define.
 
 ## Public Route Table
 
@@ -85,7 +85,7 @@ resource "aws_route" "to_peer_vpc" {
 resource "aws_route_table" "database" {
   vpc_id = aws_vpc.main.id
 
-  # No internet route - database subnets are completely isolated
+  # No internet route - database subnets use only the implicit local VPC route
   tags = {
     Name = "database-rt"
     Tier = "database"
@@ -123,4 +123,4 @@ output "private_route_table_ids" {
 
 ## Conclusion
 
-AWS route tables in Terraform are managed as separate resources from routes and associations, allowing fine-grained control. Create one public route table for all public subnets (shared internet gateway route), separate private route tables per AZ (each pointing to its own NAT gateway for fault isolation), and isolated route tables for database subnets with no internet route.
+In this pattern, AWS route tables in Terraform are managed as separate resources from routes and associations, allowing fine-grained control. Create one public route table for all public subnets (shared internet gateway route), separate private route tables per AZ (each pointing to its own NAT gateway for fault isolation), and database route tables with no internet route.
