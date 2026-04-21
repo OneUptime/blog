@@ -21,7 +21,7 @@ Server → Response
 
 TCP Fast Open (repeat connection):
 Client → SYN + TFO Cookie + Request data   (RTT 1: handshake + data together)
-Server → SYN-ACK + Response
+Server → SYN-ACK (+ Response if ready)
 Client → ACK
 ```
 
@@ -30,17 +30,18 @@ The TFO cookie is issued by the server on the first connection and cached by the
 ## Enabling TCP Fast Open on Linux
 
 ```bash
-# Check current TFO setting (default: 1 = client only)
+# Check current TFO bitmap (default: 1 = client support)
 
 sysctl net.ipv4.tcp_fastopen
 
-# Values:
+# Common values:
 # 0 = disabled
-# 1 = client only (outbound TFO)
-# 2 = server only (inbound TFO)
-# 3 = both client and server
+# 1 = client support (outbound TFO)
+# 2 = server support (inbound TFO)
+# 3 = client + server support
+# 0x400 = with server support, enable TFO on all listeners without TCP_FASTOPEN setsockopt()
 
-# Enable TFO for both client and server
+# Enable basic TFO support for both client and server
 sysctl -w net.ipv4.tcp_fastopen=3
 
 # Persist
@@ -109,11 +110,18 @@ http {
 ## Verifying TFO is Working
 
 ```bash
-# Check TFO statistics (cookies sent, used, failed)
-cat /proc/net/netstat | grep TcpExt | tr ' ' '\n' | grep -i fast
+# Check TFO statistics (cookies requested, accepted, failed)
+awk '/^TcpExt:/ {
+  if (!header) {
+    for (i = 2; i <= NF; i++) name[i] = $i
+    header = 1
+  } else {
+    for (i = 2; i <= NF; i++) if (name[i] ~ /FastOpen/) print "TcpExt" name[i], $i
+  }
+}' /proc/net/netstat
 
 # Or with nstat
-nstat | grep TcpFast
+nstat -az | grep -i FastOpen
 
 # Key counters:
 # TcpExtTCPFastOpenCookieReqd: TFO cookies requested by clients
@@ -127,4 +135,4 @@ tcpdump -i eth0 -n -v 'tcp[tcpflags] & tcp-syn != 0 and tcp port 80'
 
 ## Conclusion
 
-TCP Fast Open provides meaningful latency reduction for repeat connections - typically saving one full RTT per connection. Enable it on servers (value 3) in all environments. The main limitation is that TFO data is not idempotent by default (could be replayed), so it's best for safe GET requests and similar read-only operations. Most modern browsers and HTTP clients support TFO transparently.
+TCP Fast Open provides meaningful latency reduction for repeat connections - typically saving up to one full RTT per connection. Enable it only where the application can tolerate replay of data sent in the SYN packet. It is best for safe GET requests and similar read-only operations, and client support varies by browser and HTTP client.
