@@ -8,7 +8,7 @@ Description: Learn how to use the `tofu graph` command to generate and visualize
 
 ## Introduction
 
-The `tofu graph` command outputs a visual representation of the dependencies between resources in your configuration in DOT graph language format. This helps you understand how resources relate to each other, identify circular dependencies, and document your infrastructure architecture.
+The `tofu graph` command outputs a visual representation of either the current configuration or an execution plan in DOT graph language format. This helps you understand how resources relate to each other, diagnose cycle errors with `-draw-cycles`, and document your infrastructure architecture.
 
 ## Running the Graph Command
 
@@ -34,7 +34,7 @@ Install Graphviz to render the DOT output as an image:
 brew install graphviz
 
 # Ubuntu/Debian
-apt install graphviz
+sudo apt install graphviz
 ```
 
 Generate a PNG:
@@ -51,32 +51,32 @@ tofu graph | dot -Tsvg > graph.svg
 
 ## Graph Types
 
-The `-type` flag controls what is graphed:
+The `-type` flag controls which operation is graphed. With a configuration, the default is `plan`:
 
 ```bash
-# Default - shows planned resources
+# Default with a configuration - show the plan graph
 tofu graph -type=plan
 
-# Show applied resources and state
+# Show the apply operation graph
 tofu graph -type=apply
 
-# Show planned destroy operations
+# Show the destroy plan graph
 tofu graph -type=plan-destroy
 ```
 
 ## Filtering the Graph
 
-Focus on a specific resource and its dependencies:
+Search the DOT output for lines mentioning a specific resource:
 
 ```bash
-tofu graph -type=plan | grep -A5 "aws_instance"
+tofu graph -type=plan | grep "aws_instance"
 ```
 
 ## Online Visualization
 
 Paste the DOT output into an online viewer:
-- `dreampuf.github.io/GraphvizOnline`
-- `viz-js.com`
+- `https://dreampuf.github.io/GraphvizOnline/`
+- `https://viz-js.com/`
 
 ## Example: Reading the Output
 
@@ -99,7 +99,7 @@ Arrows represent dependencies - `aws_subnet.public` depends on `aws_vpc.main`.
 1. **Onboarding** - Help new team members understand infrastructure structure
 2. **Debugging** - Identify unexpected dependencies causing apply failures
 3. **Documentation** - Generate architecture diagrams automatically
-4. **Circular dependency detection** - Visualize cycles before they cause errors
+4. **Circular dependency diagnosis** - Use `-draw-cycles` to highlight cycles when diagnosing cycle errors
 
 ## Automation in CI
 
@@ -112,4 +112,4 @@ Arrows represent dependencies - `aws_subnet.public` depends on `aws_vpc.main`.
 
 ## Conclusion
 
-`tofu graph` is a simple but powerful tool for understanding and documenting your OpenTofu infrastructure. By converting the DOT output to an image with Graphviz, you get an automatic architecture diagram that always reflects your current configuration.
+`tofu graph` is a simple but powerful tool for understanding and documenting your OpenTofu infrastructure. By converting the DOT output to an image with Graphviz, you get an automatic dependency diagram generated from your current configuration or execution plan.
