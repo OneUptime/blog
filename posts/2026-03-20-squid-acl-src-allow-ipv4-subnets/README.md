@@ -19,7 +19,7 @@ http_port 10.0.0.1:3128
 
 # Define ACLs for allowed source IPs
 
-acl office_network    src 203.0.113.0/24      # Office public IP range
+acl office_network    src 203.0.113.0/24      # Example office public IP range
 acl internal_network  src 10.0.0.0/8          # RFC 1918 private
 acl developer_ips     src 192.168.1.10         # Specific developer machine
 acl developer_ips     src 192.168.1.11         # Another developer
@@ -88,11 +88,11 @@ acl internal_clients  src 10.0.0.0/8
 acl approved_sites    dstdomain .example.com .partner.com
 acl social_media      dstdomain .twitter.com .facebook.com .tiktok.com
 
-# Allow internal clients to approved sites
-http_access allow internal_clients approved_sites
-
 # Block social media for internal clients
 http_access deny internal_clients social_media
+
+# Allow internal clients to approved sites
+http_access allow internal_clients approved_sites
 
 # Deny everything else
 http_access deny all
@@ -104,10 +104,10 @@ http_access deny all
 # Test access from allowed IP
 curl -x http://10.0.0.1:3128 http://httpbin.org/ip
 
-# Test from blocked IP (should get access denied)
-curl -x http://10.0.0.1:3128 --interface 203.0.113.200 http://httpbin.org/ip
+# Test from a blocked client (should get access denied)
+curl -x http://10.0.0.1:3128 http://httpbin.org/ip
 
-# Check Squid cache log for ACL decisions
+# Check Squid cache log for ACL debug output after enabling debug_options ALL,1 33,2
 sudo tail -f /var/log/squid/cache.log
 
 # Parse access log to find denied requests
