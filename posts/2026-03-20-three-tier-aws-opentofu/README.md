@@ -8,7 +8,7 @@ Description: Learn how to build a production-ready three-tier web application ar
 
 ## Overview
 
-The three-tier architecture separates presentation (load balancer + static assets), application logic (ECS containers), and data (RDS Aurora) into distinct layers. OpenTofu provisions the complete stack with proper network isolation and security groups.
+The three-tier architecture separates presentation (Application Load Balancer), application logic (ECS containers), and data (RDS Aurora) into distinct layers. OpenTofu provisions the complete stack with proper network isolation and security groups.
 
 ## Step 1: VPC with Public and Private Subnets
 
@@ -22,15 +22,16 @@ module "vpc" {
   name = "three-tier-vpc"
   cidr = "10.0.0.0/16"
 
-  azs             = ["us-east-1a", "us-east-1b", "us-east-1c"]
-  public_subnets  = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]   # ALB tier
-  private_subnets = ["10.0.11.0/24", "10.0.12.0/24", "10.0.13.0/24"] # App tier
+  azs              = ["us-east-1a", "us-east-1b", "us-east-1c"]
+  public_subnets   = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]    # ALB tier
+  private_subnets  = ["10.0.11.0/24", "10.0.12.0/24", "10.0.13.0/24"] # App tier
   database_subnets = ["10.0.21.0/24", "10.0.22.0/24", "10.0.23.0/24"] # Data tier
 
   enable_nat_gateway   = true
-  single_nat_gateway   = false  # One per AZ for HA
-  enable_dns_hostnames = true
-  enable_dns_support   = true
+  single_nat_gateway   = false
+  one_nat_gateway_per_az = true  # One per AZ for HA
+  enable_dns_hostnames  = true
+  enable_dns_support    = true
 }
 ```
 
@@ -50,6 +51,19 @@ resource "aws_lb" "app" {
   access_logs {
     bucket  = aws_s3_bucket.alb_logs.bucket
     enabled = true
+  }
+}
+
+resource "aws_lb_target_group" "app" {
+  name        = "three-tier-app-tg"
+  port        = 8080
+  protocol    = "HTTP"
+  vpc_id      = module.vpc.vpc_id
+  target_type = "ip"  # Required for ECS tasks using awsvpc/Fargate
+
+  health_check {
+    path    = "/health"
+    matcher = "200-399"
   }
 }
 
@@ -113,7 +127,7 @@ resource "aws_ecs_task_definition" "app" {
       { name = "DB_HOST", value = aws_rds_cluster.aurora.endpoint }
     ]
     secrets = [
-      { name = "DB_PASSWORD", valueFrom = aws_secretsmanager_secret.db_password.arn }
+      { name = "DB_PASSWORD", valueFrom = "${aws_rds_cluster.aurora.master_user_secret[0].secret_arn}:password::" }
     ]
     logConfiguration = {
       logDriver = "awslogs"
@@ -148,6 +162,9 @@ resource "aws_ecs_service" "app" {
     enable   = true
     rollback = true
   }
+
+  # Ensures the target group is associated with the ALB before ECS registers tasks.
+  depends_on = [aws_lb_listener.https]
 }
 ```
 
@@ -163,7 +180,7 @@ resource "aws_db_subnet_group" "aurora" {
 resource "aws_rds_cluster" "aurora" {
   cluster_identifier      = "three-tier-aurora"
   engine                  = "aurora-postgresql"
-  engine_version          = "15.4"
+  engine_version          = "15.17"
   database_name           = "appdb"
   master_username         = "dbadmin"
   manage_master_user_password = true  # AWS Secrets Manager
@@ -183,11 +200,12 @@ resource "aws_rds_cluster_instance" "aurora_instances" {
   count              = 2
   cluster_identifier = aws_rds_cluster.aurora.id
   instance_class     = "db.r6g.large"
-  engine             = "aurora-postgresql"
+  engine             = aws_rds_cluster.aurora.engine
+  engine_version     = aws_rds_cluster.aurora.engine_version
   publicly_accessible = false
 }
 ```
 
 ## Summary
 
-The three-tier architecture on AWS built with OpenTofu isolates each layer in dedicated subnets with restrictive security groups: the ALB accepts only internet traffic, app containers communicate only with the ALB and database, and Aurora accepts connections only from the application subnet. This design provides defense-in-depth, scales each tier independently, and uses managed services to minimize operational overhead.
+The three-tier architecture on AWS built with OpenTofu isolates each layer in dedicated subnets with restrictive security groups: the ALB accepts internet traffic on the listener ports, app containers receive traffic only from the ALB and connect to the database, and Aurora accepts connections only from the application security group. This design provides defense-in-depth, scales each tier independently, and uses managed services to minimize operational overhead.
