@@ -8,7 +8,7 @@ Description: Learn how to use the tofu init command to initialize an OpenTofu pr
 
 ## Introduction
 
-`tofu init` is the first command you run in any OpenTofu project. It prepares the working directory by downloading provider plugins, installing modules, and configuring the state backend. You must run it before any other OpenTofu commands.
+`tofu init` is normally the first command you run after creating or cloning an OpenTofu project. It prepares the working directory by downloading provider plugins, installing modules, and configuring the state backend. Run it before commands that rely on an initialized working directory, such as `tofu plan` or `tofu apply`.
 
 ## Basic Usage
 
@@ -17,7 +17,7 @@ Description: Learn how to use the tofu init command to initialize an OpenTofu pr
 
 tofu init
 
-# Expected output:
+# Example output (with an AWS provider constraint):
 # Initializing the backend...
 # Initializing provider plugins...
 # - Finding hashicorp/aws versions matching "~> 5.0"...
@@ -53,13 +53,13 @@ project/
 
 ## Common Flags
 
-### -upgrade: Update Providers
+### -upgrade: Update Providers and Modules
 
 ```bash
-# Upgrade all providers to the latest allowed version
+# Upgrade providers to the latest allowed versions and refresh modules
 tofu init -upgrade
 
-# Useful when you've relaxed version constraints
+# Useful when you've relaxed provider constraints or want newer module source code
 ```
 
 ### -reconfigure: Reset Backend
@@ -141,8 +141,9 @@ echo ".terraform/" >> .gitignore
 # Use a local provider mirror
 tofu init -plugin-dir=/path/to/local/providers
 
-# Or set the TOFU_CLI_CONFIG_FILE to point to a config with a mirror
-cat > ~/.tofurc << 'EOF'
+# Or set TF_CLI_CONFIG_FILE to point to a config with a mirror
+export TF_CLI_CONFIG_FILE="$HOME/providers.tfrc"
+cat > "$TF_CLI_CONFIG_FILE" << 'EOF'
 provider_installation {
   filesystem_mirror {
     path = "/usr/share/opentofu/providers"
