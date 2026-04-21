@@ -17,7 +17,7 @@ If you already have a key pair, upload the public key to AWS:
 ```hcl
 resource "aws_key_pair" "deployer" {
   key_name   = "deployer-key"
-  public_key = file("~/.ssh/id_rsa.pub")
+  public_key = file(pathexpand("~/.ssh/id_rsa.pub"))
 }
 
 resource "aws_instance" "web" {
@@ -29,13 +29,14 @@ resource "aws_instance" "web" {
 
 ## Generating a Key Pair with the TLS Provider
 
-For fully automated key management, generate the key pair in OpenTofu:
+For development or bootstrapping workflows, generate the key pair in OpenTofu. The TLS provider stores generated private keys in OpenTofu state, so protect or encrypt state and avoid this pattern for production key material:
 
 ```hcl
 terraform {
   required_providers {
     tls = { source = "hashicorp/tls" }
     aws = { source = "hashicorp/aws" }
+    local = { source = "hashicorp/local" }
   }
 }
 
@@ -52,7 +53,7 @@ resource "aws_key_pair" "app" {
 
 ## Storing the Private Key Securely
 
-Store the generated private key in AWS Secrets Manager:
+If you generate the key in OpenTofu, you can store a copy in AWS Secrets Manager. Protect or encrypt your OpenTofu state as well because the private key remains in state:
 
 ```hcl
 resource "aws_secretsmanager_secret" "ssh_key" {
@@ -75,7 +76,7 @@ resource "local_sensitive_file" "private_key" {
 }
 ```
 
-## Outputting the Key ARN
+## Outputting the Key Name and Secret ARN
 
 ```hcl
 output "key_pair_name" {
@@ -118,4 +119,4 @@ ssh -i app.pem ec2-user@<instance-public-ip>
 
 ## Conclusion
 
-OpenTofu provides flexible options for SSH key pair management - from uploading existing keys to generating new ones programmatically with the TLS provider. Storing generated private keys in Secrets Manager keeps them secure and accessible to authorized team members.
+OpenTofu provides flexible options for SSH key pair management - from uploading existing public keys to generating new ones programmatically with the TLS provider. For generated private keys, use Secrets Manager for authorized retrieval and protect or encrypt your OpenTofu state because the key material is still stored there.
