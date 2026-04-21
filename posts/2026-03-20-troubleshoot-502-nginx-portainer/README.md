@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix 502 Bad Gateway errors when using Ngi
 
 ## Introduction
 
-A 502 Bad Gateway error from Nginx means the proxy successfully connected to Nginx, but Nginx could not connect to the upstream backend (Portainer). This guide covers the most common causes and how to resolve them.
+A 502 Bad Gateway error from Nginx means the client reached Nginx, but Nginx could not get a valid response from the upstream backend (Portainer). This guide covers the most common causes and how to resolve them.
 
 ## Step 1: Check if Portainer is Running
 
@@ -30,22 +30,24 @@ Check the port Portainer is bound to:
 
 ```bash
 docker port portainer
-# or
+# or, for a host-published port
 
-ss -tlnp | grep 9000
+ss -tlnp | grep -E ':9000|:9443'
 ```
 
 ## Step 3: Test Direct Connectivity to Portainer
 
-From the host or another container:
+From the host, test the published port; from a container on the same Docker network, test the Docker hostname:
 
 ```bash
+curl -vk https://localhost:9443
+# or, if legacy HTTP port 9000 is enabled
 curl -v http://localhost:9000
-# or if using Docker network
+# or from a container on the same Docker network
 curl -v http://portainer:9000
 ```
 
-If this fails, the problem is with Portainer, not Nginx.
+If the host-port test fails, the problem is with Portainer or the published port. If the Docker-network test fails, check Docker DNS and networking before changing Nginx.
 
 ## Step 4: Check Nginx Configuration
 
@@ -62,8 +64,8 @@ location / {
 ```
 
 Common issues:
-- Wrong port (Portainer CE: 9000, Portainer BE: 9443 for HTTPS)
-- Wrong hostname (must match Docker network service name)
+- Wrong port or protocol (Portainer exposes HTTPS UI/API on 9443 by default; port 9000 is the legacy HTTP port and may not be published on the host unless configured)
+- Wrong hostname (must match a container/service name or network alias on the same user-defined Docker network)
 - Missing trailing slash inconsistency
 
 ## Step 5: Check Network Connectivity
@@ -71,15 +73,18 @@ Common issues:
 Ensure Nginx and Portainer are on the same Docker network:
 
 ```bash
-docker network inspect bridge
+docker network ls
+docker network inspect proxy
 docker inspect portainer | grep Networks -A10
 docker inspect nginx | grep Networks -A10
 ```
 
-If they're on different networks:
+If they're on different networks, connect the missing container to the proxy network:
 
 ```bash
 docker network connect proxy portainer
+# or
+docker network connect proxy nginx
 ```
 
 ## Step 6: Review Nginx Error Logs
@@ -105,7 +110,7 @@ location / {
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
-    proxy_read_timeout 86400;
+    proxy_read_timeout 86400s;
 }
 ```
 
@@ -117,4 +122,4 @@ docker restart portainer nginx
 
 ## Conclusion
 
-502 errors between Nginx and Portainer usually stem from network connectivity issues, wrong ports, or missing WebSocket headers. Systematically checking each layer - from container health to network membership to Nginx configuration - quickly identifies the root cause.
+502 errors between Nginx and Portainer usually stem from network connectivity issues, wrong ports or protocols, or upstream response problems. Missing WebSocket headers can also break Portainer features after the page loads. Systematically checking each layer - from container health to network membership to Nginx configuration - quickly identifies the root cause.
