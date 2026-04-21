@@ -8,7 +8,7 @@ Description: Learn how to use tflint to lint OpenTofu configurations, catch depr
 
 ## Introduction
 
-tflint is a linter for OpenTofu/Terraform that catches errors not detectable by `tofu validate` - deprecated resource arguments, invalid instance types, naming convention violations, and provider-specific issues. It's faster than running `tofu plan` and works without cloud credentials.
+tflint is a Terraform-language linter you can use with OpenTofu/Terraform configurations. It catches errors not detectable by `tofu validate` - deprecated syntax, invalid instance types, naming convention violations, and provider-specific issues. It's faster than running `tofu plan` for local/static checks; AWS deep checking needs read-only cloud credentials.
 
 ## Installation and Configuration
 
@@ -19,7 +19,7 @@ brew install tflint  # macOS
 # or
 curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
 
-# Install AWS ruleset
+# Install configured rulesets (run after creating .tflint.hcl)
 tflint --init
 ```
 
@@ -34,7 +34,7 @@ config {
 
 plugin "aws" {
   enabled = true
-  version = "0.32.0"
+  version = "0.47.0"
   source  = "github.com/terraform-linters/tflint-ruleset-aws"
 }
 
@@ -78,13 +78,13 @@ rule "terraform_documented_outputs" {
 # Run tflint in the current directory
 tflint
 
-# Run recursively across all modules
-tflint --recursive
+# Run recursively across all modules with the project-root config
+tflint --recursive --config "$(pwd)/.tflint.hcl"
 
 # Run with specific format
 tflint --format=compact
 
-# Show all rules (including disabled)
+# Save lint results as JSON
 tflint --format=json > tflint-results.json
 
 # Initialize plugins before first run
@@ -97,7 +97,7 @@ tflint --init
 # FINDING: aws_instance_invalid_type
 resource "aws_instance" "web" {
   # tflint catches invalid instance types before applying
-  instance_type = "t2.xlarge"  # Warning: consider t3.xlarge for better performance
+  instance_type = "t1.2xlarge"  # Warning: invalid instance type
 }
 
 # FINDING: terraform_deprecated_interpolation
@@ -127,7 +127,7 @@ variable "instance_type" {
 # aws_iam_policy_sid_invalid_characters - validates IAM policy SID format
 # aws_elasticache_cluster_invalid_type - validates ElastiCache node types
 
-tflint --only=aws_instance_invalid_type,aws_db_instance_invalid_engine
+tflint --only=aws_instance_invalid_type --only=aws_db_instance_invalid_engine
 ```
 
 ## Custom Rules
@@ -137,6 +137,8 @@ tflint --only=aws_instance_invalid_type,aws_db_instance_invalid_engine
 package rules
 
 import (
+    "strings"
+
     "github.com/terraform-linters/tflint-plugin-sdk/hclext"
     "github.com/terraform-linters/tflint-plugin-sdk/tflint"
 )
@@ -156,6 +158,34 @@ func (r *AwsS3BucketPrefixRule) Enabled() bool {
 func (r *AwsS3BucketPrefixRule) Severity() tflint.Severity {
     return tflint.WARNING
 }
+
+func (r *AwsS3BucketPrefixRule) Check(runner tflint.Runner) error {
+    resources, err := runner.GetResourceContent("aws_s3_bucket", &hclext.BodySchema{
+        Attributes: []hclext.AttributeSchema{{Name: "bucket"}},
+    }, nil)
+    if err != nil {
+        return err
+    }
+
+    for _, resource := range resources.Blocks {
+        attr, exists := resource.Body.Attributes["bucket"]
+        if !exists {
+            continue
+        }
+
+        err := runner.EvaluateExpr(attr.Expr, func(bucket string) error {
+            if strings.HasPrefix(bucket, "prod-") {
+                return nil
+            }
+            return runner.EmitIssue(r, "S3 bucket name must start with prod-", attr.Expr.Range())
+        }, nil)
+        if err != nil {
+            return err
+        }
+    }
+
+    return nil
+}
 ```
 
 ## CI/CD Integration
@@ -173,15 +203,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup tflint
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@v6
         with:
-          tflint_version: v0.50.0
+          tflint_version: v0.62.0
 
       - name: Init tflint plugins
         run: tflint --init
 
       - name: Run tflint
-        run: tflint --recursive --format=compact
+        run: tflint --recursive --config "$(pwd)/.tflint.hcl" --format=compact
 ```
 
 ## Ignoring Specific Rules per File
@@ -196,4 +226,4 @@ resource "aws_s3_bucket" "S3Bucket" {
 
 ## Conclusion
 
-tflint catches a class of errors that `tofu validate` misses - provider-specific invalid values, deprecated syntax, and convention violations. Run it in pre-commit hooks for immediate developer feedback and as a required CI check. The recursive mode (`--recursive`) lints all modules in a monorepo with a single command, making it practical for large infrastructure codebases.
+tflint catches a class of errors that `tofu validate` misses - provider-specific invalid values, deprecated syntax, and convention violations. Run it in pre-commit hooks for immediate developer feedback and as a required CI check. The recursive mode (`--recursive --config "$(pwd)/.tflint.hcl"`) lints modules in a monorepo with a single command while sharing the root configuration, making it practical for large infrastructure codebases.
