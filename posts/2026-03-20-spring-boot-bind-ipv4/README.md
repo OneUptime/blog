@@ -9,12 +9,12 @@ Description: Learn how to configure a Spring Boot application to bind its embedd
 ## application.properties
 
 ```properties
-# Bind to all interfaces (default)
+# Bind to all IPv4 interfaces
 
 server.address=0.0.0.0
 server.port=8080
 
-# Bind to localhost only (for services behind a reverse proxy)
+# Bind to localhost only (for services behind a local reverse proxy)
 # server.address=127.0.0.1
 
 # Bind to specific network interface
@@ -86,6 +86,7 @@ java -Dspring.profiles.active=prod -jar app.jar
 
 ```java
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -105,16 +106,13 @@ public class IpController {
 
 ## Forcing IPv4 Stack
 
-```properties
-# Ensure Spring Boot uses IPv4 when both stacks are available
-spring.main.web-application-type=servlet
-```
+Spring Boot does not provide an `application.properties` setting to force the JVM IPv4 stack. Use a JVM system property instead:
 
 ```bash
-# JVM flag to prefer IPv4
+# JVM flag to prefer IPv4-only sockets
 java -Djava.net.preferIPv4Stack=true -jar app.jar
 ```
 
 ## Conclusion
 
-`server.address` in `application.properties` or `application.yml` is the canonical way to set the bind address. Externalize it via environment variables (`SERVER_ADDRESS`) or JVM properties (`-Dserver.address=...`) for deployment flexibility without rebuilding. In production, bind to `127.0.0.1` and front the service with Nginx or a cloud load balancer. Use Spring profiles to automatically apply the correct address per environment.
+`server.address` in `application.properties` or `application.yml` is the canonical way to set the bind address. Externalize it via environment variables (`SERVER_ADDRESS`) or JVM properties (`-Dserver.address=...`) for deployment flexibility without rebuilding. In production, bind to `127.0.0.1` only when the reverse proxy runs on the same host; for a cloud load balancer or another host/container, bind to an address the load balancer can reach and restrict access with network controls. Use Spring profiles to automatically apply the correct address per environment.
