@@ -29,10 +29,10 @@ aws ec2 describe-instances \
   --instance-ids i-xxxxxxxxxxxxxxxxx \
   --query 'Reservations[0].Instances[0].SecurityGroups'
 
-# Check inbound rules
+# Check inbound and outbound rules
 aws ec2 describe-security-groups \
   --group-ids sg-xxxxxxxxxxxxxxxxx \
-  --query 'SecurityGroups[0].IpPermissions'
+  --query 'SecurityGroups[0].{Inbound:IpPermissions,Outbound:IpPermissionsEgress}'
 ```
 
 Common issues:
@@ -44,10 +44,16 @@ Common issues:
 Ensure the subnet has routes to reach the destination:
 
 ```bash
-# Get subnet route table
+# Get subnet route table for an explicit subnet association
 aws ec2 describe-route-tables \
   --filters "Name=association.subnet-id,Values=subnet-xxxxxxxxxxxxxxxxx"
+
+# If this returns no route table, check the VPC's main route table
+aws ec2 describe-route-tables \
+  --filters "Name=vpc-id,Values=vpc-xxxxxxxxxxxxxxxxx" "Name=association.main,Values=true"
 ```
+
+Subnets without an explicit route table association use the VPC's main route table.
 
 For internet access, look for:
 - `0.0.0.0/0` → Internet Gateway (for public subnets)
@@ -78,7 +84,7 @@ aws ec2 describe-nat-gateways \
   --filter "Name=vpc-id,Values=vpc-xxxxxxxxxxxxxxxxx"
 ```
 
-Ensure NAT Gateway state is `available`.
+Ensure NAT Gateway state is `available`. For internet-bound IPv4 traffic, confirm it is a public NAT gateway in a public subnet with a route to an Internet Gateway.
 
 ## Step 7: Use VPC Flow Logs
 
@@ -90,7 +96,8 @@ aws ec2 create-flow-logs \
   --resource-ids vpc-xxxxxxxxxxxxxxxxx \
   --traffic-type ALL \
   --log-destination-type cloud-watch-logs \
-  --log-group-name /aws/vpc/flowlogs
+  --log-group-name /aws/vpc/flowlogs \
+  --deliver-logs-permission-arn arn:aws:iam::123456789012:role/publishFlowLogs
 ```
 
 Query rejected traffic in CloudWatch Logs Insights:
