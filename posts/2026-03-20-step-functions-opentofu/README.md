@@ -58,14 +58,21 @@ resource "aws_iam_role_policy" "step_functions" {
           aws_lambda_function.process.arn,
           aws_lambda_function.charge.arn,
           aws_lambda_function.notify.arn,
+          aws_lambda_function.transform.arn,
+          aws_lambda_function.load.arn,
         ]
       },
       {
         Effect = "Allow"
         Action = [
-          "logs:CreateLogGroup",
           "logs:CreateLogDelivery",
+          "logs:CreateLogStream",
+          "logs:GetLogDelivery",
+          "logs:UpdateLogDelivery",
+          "logs:DeleteLogDelivery",
+          "logs:ListLogDeliveries",
           "logs:PutLogEvents",
+          "logs:PutResourcePolicy",
           "logs:DescribeLogGroups",
           "logs:DescribeResourcePolicies"
         ]
@@ -73,7 +80,12 @@ resource "aws_iam_role_policy" "step_functions" {
       },
       {
         Effect = "Allow"
-        Action = ["xray:PutTraceSegments", "xray:GetSamplingRules"]
+        Action = [
+          "xray:PutTraceSegments",
+          "xray:PutTelemetryRecords",
+          "xray:GetSamplingRules",
+          "xray:GetSamplingTargets"
+        ]
         Resource = "*"
       }
     ]
@@ -169,11 +181,11 @@ resource "aws_sfn_state_machine" "order_processing" {
 ## Express Workflow for High-Throughput
 
 ```hcl
-# Express workflows: fast, at-least-once, up to 5 minutes
+# Express workflows: fast, up to 5 minutes; asynchronous executions are at-least-once
 resource "aws_sfn_state_machine" "data_pipeline" {
   name     = "${var.environment}-data-pipeline"
   role_arn = aws_iam_role.step_functions.arn
-  type     = "EXPRESS"  # High throughput, at-least-once
+  type     = "EXPRESS"  # High throughput; async executions are at-least-once
 
   definition = jsonencode({
     StartAt = "Transform"
@@ -192,10 +204,10 @@ resource "aws_sfn_state_machine" "data_pipeline" {
   })
 
   logging_configuration {
-    # Express workflows require CloudWatch Logs
+    # Configure CloudWatch Logs to inspect Express execution history
     log_destination        = "${aws_cloudwatch_log_group.sfn_express.arn}:*"
     include_execution_data = false  # Don't log payload for Express
-    level                  = "ALL"  # Express requires ALL level
+    level                  = "ALL"  # Log all events when you need execution history
   }
 }
 ```
@@ -217,7 +229,7 @@ resource "aws_cloudwatch_log_group" "sfn_express" {
 ## Best Practices
 
 - Use Standard workflows for business-critical processes that need exactly-once execution and execution history.
-- Use Express workflows for high-throughput data pipelines - they're 10x cheaper but are at-least-once.
+- Use Express workflows for high-throughput data pipelines - they can reduce costs at scale, and asynchronous executions are at-least-once.
 - Always configure `Retry` on Lambda task states - Lambda can throttle under load.
 - Enable `include_execution_data = true` for Standard workflows to debug failures from the CloudWatch console.
-- Define error handling with `Catch` blocks at each task state rather than a single top-level catch - granular error handling produces better diagnostics.
+- Define error handling with `Catch` blocks on task states where you need distinct recovery paths - granular error handling produces better diagnostics.
