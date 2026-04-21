@@ -96,8 +96,7 @@ iface eth0 inet manual
 
 auto eth0.100
 iface eth0.100 inet static
-    address 192.168.100.10
-    netmask 255.255.255.0
+    address 192.168.100.10/24
     gateway 192.168.100.1
     dns-nameservers 8.8.8.8 8.8.4.4
     vlan-raw-device eth0
