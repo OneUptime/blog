@@ -32,7 +32,6 @@ Look for errors and drops:
 
 ```bash
 ip -s link show eth0
-netstat -i
 ```
 
 High error counts suggest hardware or driver issues.
@@ -45,21 +44,20 @@ High error counts suggest hardware or driver issues.
 mtr --report --report-cycles=60 8.8.8.8
 ```
 
-This helps identify where in the path the loss occurs.
+Persistent loss that starts at one hop and continues through later hops helps identify where in the path the loss occurs.
 
 ## Step 4: Check ARP Table
 
 Intermittent issues often relate to ARP problems:
 
 ```bash
-arp -n
-ip neigh show
+ip -4 neigh show dev eth0
 ```
 
-Stale or incomplete ARP entries cause intermittent failures. Flush and refresh:
+FAILED or INCOMPLETE neighbor entries can indicate ARP resolution problems. Flush and refresh:
 
 ```bash
-sudo ip neigh flush dev eth0
+sudo ip -4 neigh flush dev eth0
 ```
 
 ## Step 5: Check for Duplicate IP Addresses
@@ -67,8 +65,8 @@ sudo ip neigh flush dev eth0
 Duplicate IPs cause intermittent connectivity:
 
 ```bash
-arping -D -I eth0 192.168.1.100
-# Returns 1 if duplicate found
+sudo arping -D -c 3 -I eth0 192.168.1.100
+# Exit 0 means no replies/no duplicate; nonzero means duplicate detected or command failed
 ```
 
 ## Step 6: Check DNS
@@ -111,11 +109,11 @@ ethtool eth0 | grep "Link detected"
 
 ## Step 10: TCP Retransmissions
 
-High retransmission rates indicate packet loss:
+High or rapidly increasing retransmission counters indicate packet loss:
 
 ```bash
-ss -s
-netstat -s | grep "retransmit\|failed"
+ss -ti
+nstat -az TcpRetransSegs TcpExtTCPLostRetransmit TcpAttemptFails
 ```
 
 ## Conclusion
