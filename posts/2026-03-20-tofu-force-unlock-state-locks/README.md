@@ -20,7 +20,7 @@ tofu plan
 # Error message: ConditionalCheckFailedException
 # Lock Info:
 #   ID:        abc12345-1234-1234-1234-abc123456789
-#   Path:      s3://my-bucket/prod/terraform.tfstate
+#   Path:      my-bucket/prod/terraform.tfstate
 #   Operation: OperationTypeApply
 #   Who:       user@hostname
 #   Version:   1.8.0
@@ -85,10 +85,9 @@ az storage blob lease break \
 ### Local Backend
 
 ```bash
-# Delete the lock file
+# Remove stale local lock metadata for the default state path
+# The local backend also uses OS file locking, so stop the process first
 rm .terraform.tfstate.lock.info
-# Or
-rm terraform.tfstate.lock.info
 ```
 
 ## Safety Protocol
@@ -116,13 +115,13 @@ tofu force-unlock -force <lock-id>
 # check-stale-locks.sh
 
 # Check DynamoDB for locks older than 1 hour
-HOUR_AGO=$(date -u -d '1 hour ago' '+%Y-%m-%dT%H:%M:%S' 2>/dev/null || date -u -v-1H '+%Y-%m-%dT%H:%M:%S')
+HOUR_AGO=$(date -u -d '1 hour ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v-1H '+%Y-%m-%dT%H:%M:%SZ')
 
 aws dynamodb scan \
   --table-name terraform-state-locks \
   --query "Items[*]" \
   --output json | jq --arg cutoff "$HOUR_AGO" \
-  '.[] | select(.Info.S | fromjson | .Created < $cutoff)'
+  '.[] | select(.Info.S? != null) | select((.Info.S | fromjson | .Created) < $cutoff)'
 ```
 
 ## Conclusion
