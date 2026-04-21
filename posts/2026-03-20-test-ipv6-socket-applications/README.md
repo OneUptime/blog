@@ -8,7 +8,7 @@ Description: Test IPv6 socket applications using netcat, socat, and automated te
 
 ## Introduction
 
-Testing IPv6 socket applications requires verifying that servers listen on IPv6, clients connect using IPv6, and that protocol-level communication works correctly over IPv6. This guide covers manual testing with command-line tools, unit testing with mock sockets, and integration testing with real IPv6 connections.
+Testing IPv6 socket applications requires verifying that servers listen on IPv6, clients connect using IPv6, and that protocol-level communication works correctly over IPv6. This guide covers manual testing with command-line tools, unit testing address handling and socket binding, and integration testing with real IPv6 connections.
 
 ## Manual Testing with netcat
 
@@ -22,7 +22,7 @@ nc -6 -z -v 2001:db8::10 443
 echo "Hello IPv6 server" | nc -6 ::1 8080
 
 # Listen for incoming IPv6 connections (simulate a server)
-nc -6 -l -p 8080
+nc -6 -l 8080
 
 # Test from a different terminal
 nc -6 ::1 8080
@@ -58,19 +58,19 @@ echo "hello udp ipv6" | socat - UDP6:[::1]:5007
 # After starting your application, verify it's bound to IPv6
 # Method 1: ss (recommended)
 ss -tlnp | grep ':8080'
-# Look for :::8080 (IPv6) or *:8080
+# Look for [::]:8080 (IPv6-only) or *:8080 (dual-stack)
 
 # Method 2: netstat
 netstat -tlnp | grep 8080
 
 # Method 3: lsof
-lsof -i 6 -i TCP:8080
+lsof -i6TCP:8080
 
 # Verify dual-stack behavior
 ss -tlnp | grep '8080'
-# IPv6-only shows: LISTEN  0  128  :::8080  :::*
+# IPv6-only shows: LISTEN  0  128  [::]:8080  [::]:*
 # IPv4-only shows: LISTEN  0  128  0.0.0.0:8080  0.0.0.0:*
-# Dual-stack may show just: LISTEN  0  128  :::8080  :::*
+# Dual-stack may show just: LISTEN  0  128  *:8080  *:*
 #   (dual-stack on Linux)
 ```
 
@@ -131,7 +131,7 @@ class TestIPv6Socket(unittest.TestCase):
             conn, addr = server_sock.accept()
             data = conn.recv(1024)
             received_data.append(data)
-            conn.send(b"REPLY:" + data)
+            conn.sendall(b"REPLY:" + data)
             conn.close()
             server_sock.close()
 
@@ -141,7 +141,7 @@ class TestIPv6Socket(unittest.TestCase):
         # Client connects over IPv6 loopback
         client = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
         client.connect(('::1', port, 0, 0))
-        client.send(b"HELLO IPv6")
+        client.sendall(b"HELLO IPv6")
         reply = client.recv(1024)
         client.close()
 
@@ -219,4 +219,4 @@ kill $TCPDUMP_PID
 
 ## Conclusion
 
-IPv6 socket testing requires verifying three things: the server binds to `:::port` (not just `0.0.0.0:port`), clients connect using IPv6 addresses, and data flows correctly. Use `nc -6` and `socat` for manual testing, `ss -tlnp` to verify bind addresses, and Python's `unittest` for automated unit tests. Integration tests should connect via the IPv6 loopback `::1` to validate end-to-end functionality.
+IPv6 socket testing requires verifying three things: the server binds to an IPv6 wildcard such as `[::]:port` or `:::port` (not just `0.0.0.0:port`), clients connect using IPv6 addresses, and data flows correctly. Use `nc -6` and `socat` for manual testing, `ss -tlnp` to verify bind addresses, and Python's `unittest` for automated unit tests. Integration tests should connect via the IPv6 loopback `::1` to validate end-to-end functionality.
