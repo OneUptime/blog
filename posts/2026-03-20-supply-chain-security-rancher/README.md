@@ -33,46 +33,53 @@ How to Configure Supply Chain Security in Rancher addresses these challenges by 
 # Run a basic security audit
 
 kubectl get pods --all-namespaces -o json | jq -r '
-  .items[] | 
+  .items[] |
   select(
-    .spec.containers[].securityContext.runAsRoot == true or
-    .spec.containers[].securityContext.privileged == true
+    (.spec.securityContext.runAsUser == 0) or
+    ([.spec.initContainers[]?, .spec.containers[]?, .spec.ephemeralContainers[]?] |
+      any(.securityContext.privileged == true or .securityContext.runAsUser == 0))
   ) |
   [.metadata.namespace, .metadata.name] |
   @csv'
 
-# Check for pods running as root
-kubectl get pods --all-namespaces -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,USER:.spec.securityContext.runAsUser'
+# Check for containers explicitly configured to run as UID 0
+kubectl get pods --all-namespaces -o json | jq -r '
+  .items[] | . as $pod |
+  [.spec.initContainers[]?, .spec.containers[]?, .spec.ephemeralContainers[]?] |
+  .[] |
+  select((.securityContext.runAsUser // $pod.spec.securityContext.runAsUser // -1) == 0) |
+  [$pod.metadata.namespace, $pod.metadata.name, .name] |
+  @tsv'
 
 # Check privileged pods
-kubectl get pods --all-namespaces -o json |   jq -r '.items[] | select(.spec.containers[].securityContext.privileged==true) | 
+kubectl get pods --all-namespaces -o json | jq -r '.items[] | select([.spec.initContainers[]?, .spec.containers[]?, .spec.ephemeralContainers[]?] | any(.securityContext.privileged == true)) |
   .metadata.namespace + "/" + .metadata.name'
 ```
 
 ## Step 2: Configure Security Feature
 
 ```yaml
-# security-feature-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: security-config
-  namespace: kube-system
-data:
-  config.yaml: |
-    # Security feature configuration
-    enabled: true
-    level: "strict"
-    
-    # Audit settings
-    audit:
-      enabled: true
-      outputPath: /var/log/security-audit.log
-    
-    # Alert settings
-    alerts:
-      enabled: true
-      webhook: "https://alerts.example.com/security"
+# pod-security-admission.yaml
+# Pass this file to kube-apiserver with --admission-control-config-file.
+apiVersion: apiserver.config.k8s.io/v1
+kind: AdmissionConfiguration
+plugins:
+- name: PodSecurity
+  configuration:
+    apiVersion: pod-security.admission.config.k8s.io/v1
+    kind: PodSecurityConfiguration
+    defaults:
+      enforce: "privileged"
+      enforce-version: "latest"
+      audit: "restricted"
+      audit-version: "latest"
+      warn: "restricted"
+      warn-version: "latest"
+    exemptions:
+      usernames: []
+      runtimeClasses: []
+      namespaces:
+      - kube-system
 ```
 
 ## Step 3: Apply Pod Security Standards
@@ -85,11 +92,13 @@ kind: Namespace
 metadata:
   name: production
   labels:
-    # Enforce strict Pod Security Standard
+    # Enforce the restricted Pod Security Standard
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
     pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
 ```
 
 ## Step 4: Configure Security Context for Workloads
@@ -102,7 +111,13 @@ metadata:
   name: secure-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: secure-app
   template:
+    metadata:
+      labels:
+        app: secure-app
     spec:
       # Pod-level security context
       securityContext:
@@ -112,11 +127,11 @@ spec:
         fsGroup: 2000
         seccompProfile:
           type: RuntimeDefault
-      
+
       containers:
       - name: app
-        image: registry.example.com/app:latest
-        
+        image: registry.example.com/app:v1.0.0
+
         # Container-level security context
         securityContext:
           allowPrivilegeEscalation: false
@@ -126,14 +141,14 @@ spec:
             - ALL            # Drop all Linux capabilities
             add:
             - NET_BIND_SERVICE  # Only add what's needed
-        
+
         # Required volume for writable locations
         volumeMounts:
         - name: tmp
           mountPath: /tmp
-        - name: cache
-          mountPath: /app/cache
-      
+      - name: cache
+        mountPath: /app/cache
+
       volumes:
       - name: tmp
         emptyDir: {}
@@ -145,12 +160,14 @@ spec:
 
 ```bash
 # Install via Helm
-helm repo add security-charts https://charts.example.com/security
-helm repo update
+helm repo add kubewarden https://charts.kubewarden.io
+helm repo update kubewarden
 
-helm install security-tool security-charts/security-tool   --namespace security-system   --create-namespace   --set rules.enabled=true   --set alerting.enabled=true   --set alerting.slack.webhook=YOUR_WEBHOOK_URL
+helm install --wait -n kubewarden --create-namespace kubewarden-crds kubewarden/kubewarden-crds
+helm install --wait -n kubewarden kubewarden-controller kubewarden/kubewarden-controller
+helm install --wait -n kubewarden kubewarden-defaults kubewarden/kubewarden-defaults
 
-kubectl get pods -n security-system
+kubectl get pods -n kubewarden
 ```
 
 ## Step 6: Create Alert Rules
@@ -166,26 +183,23 @@ spec:
   groups:
   - name: security.alerts
     rules:
-    - alert: PrivilegedContainerDetected
+    - alert: PodSecurityAdmissionErrors
       expr: |
-        kube_pod_container_info{container!=""} * on(pod, namespace)
-        kube_pod_spec_container_security_context_privileged{privileged="true"} > 0
-      for: 0m
+        rate(pod_security_errors_total[5m]) > 0
+      for: 5m
       labels:
         severity: critical
       annotations:
-        summary: "Privileged container in {{ $labels.namespace }}/{{ $labels.pod }}"
-    
-    - alert: ContainerRunningAsRoot
+        summary: "Pod Security Admission evaluation errors detected"
+
+    - alert: PodSecurityAdmissionExemptions
       expr: |
-        kube_pod_container_status_running * on(pod, namespace)
-        kube_pod_container_info{container_id!=""} and
-        kube_pod_spec_container_security_context_run_as_user{run_as_user="0"} > 0
+        rate(pod_security_exemptions_total[5m]) > 0
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Container running as root in {{ $labels.namespace }}"
+        summary: "Pod Security Admission exemptions are being used"
 ```
 
 ## Step 7: Verify Security Controls
@@ -197,16 +211,16 @@ spec:
 echo "=== Security Control Verification ==="
 
 echo "1. Checking for privileged containers..."
-PRIV_COUNT=$(kubectl get pods --all-namespaces -o json |   jq '[.items[].spec.containers[].securityContext.privileged // false | select(.)] | length')
+PRIV_COUNT=$(kubectl get pods --all-namespaces -o json | jq '[.items[] | [.spec.initContainers[]?, .spec.containers[]?, .spec.ephemeralContainers[]?][] | select(.securityContext.privileged == true)] | length')
 echo "   Privileged containers: $PRIV_COUNT"
 
 echo ""
 echo "2. Checking namespaces with Pod Security Standards..."
-kubectl get namespaces -o custom-columns='NAME:.metadata.name,PSS:.metadata.labels[pod-security\.kubernetes\.io/enforce]'
+kubectl get namespaces -o json | jq -r '.items[] | [.metadata.name, (.metadata.labels["pod-security.kubernetes.io/enforce"] // "unset")] | @tsv'
 
 echo ""
 echo "3. Checking for host network pods..."
-kubectl get pods --all-namespaces -o json |   jq -r '.items[] | select(.spec.hostNetwork==true) | 
+kubectl get pods --all-namespaces -o json | jq -r '.items[] | select(.spec.hostNetwork==true) |
   .metadata.namespace + "/" + .metadata.name'
 
 echo "=== Verification Complete ==="
