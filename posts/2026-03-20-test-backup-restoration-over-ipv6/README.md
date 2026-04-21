@@ -26,7 +26,7 @@ Testing hierarchy for IPv6 backup restoration:
 #!/bin/bash
 # test_restore_files_ipv6.sh
 
-BACKUP_SERVER="2001:db8::backup"
+BACKUP_SERVER="2001:db8::10"
 BACKUP_USER="backupuser"
 BACKUP_PATH="/backups/$(hostname)"
 TEST_RESTORE_DIR="/tmp/restore-test-$(date +%Y%m%d)"
@@ -50,7 +50,7 @@ rsync -avz \
 
 # Verify restored files
 if [ -d "$TEST_RESTORE_DIR/nginx" ] && \
-   [ "$(ls -A $TEST_RESTORE_DIR/nginx)" ]; then
+   [ "$(ls -A "$TEST_RESTORE_DIR/nginx")" ]; then
   FILE_COUNT=$(find "$TEST_RESTORE_DIR/nginx" -type f | wc -l)
   echo "SUCCESS: Restored $FILE_COUNT files from backup"
 else
@@ -69,7 +69,7 @@ echo "Cleanup complete"
 #!/bin/bash
 # test_db_restore_ipv6.sh
 
-BACKUP_SERVER="2001:db8::backup"
+BACKUP_SERVER="2001:db8::10"
 BACKUP_USER="backupuser"
 TEST_DB="restore_test_$(date +%Y%m%d)"
 
@@ -87,20 +87,25 @@ gunzip -c /tmp/restore_test.dump.gz > /tmp/restore_test.dump
 sudo -u postgres createdb "$TEST_DB"
 
 # Restore to test database
-sudo -u postgres pg_restore \
+if ! sudo -u postgres pg_restore \
+  --exit-on-error \
   -d "$TEST_DB" \
   -v \
   /tmp/restore_test.dump \
-  2>&1 | tail -20
+  > /tmp/restore_test_pg_restore.log 2>&1; then
+  tail -20 /tmp/restore_test_pg_restore.log
+  exit 1
+fi
+tail -20 /tmp/restore_test_pg_restore.log
 
-# Verify data in restored database
-RECORD_COUNT=$(sudo -u postgres psql -d "$TEST_DB" -t \
-  -c "SELECT COUNT(*) FROM information_schema.tables;")
-echo "Restored database has $RECORD_COUNT tables"
+# Verify user tables in restored database
+TABLE_COUNT=$(sudo -u postgres psql -d "$TEST_DB" -t \
+  -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_type = 'BASE TABLE';")
+echo "Restored database has $TABLE_COUNT user tables"
 
 # Clean up test database
 sudo -u postgres dropdb "$TEST_DB"
-rm /tmp/restore_test.dump*
+rm /tmp/restore_test.dump* /tmp/restore_test_pg_restore.log
 echo "Test database cleaned up"
 ```
 
@@ -111,7 +116,9 @@ echo "Test database cleaned up"
 # test_borg_restore_ipv6.sh
 
 export BORG_PASSPHRASE="YourPassphrase"
-BORG_REPO="borguser@borg-server:/backups/$(hostname)"
+export BORG_RSH="ssh -6"
+BORG_SERVER="2001:db8::10"
+BORG_REPO="ssh://borguser@[$BORG_SERVER]/backups/$(hostname)"
 RESTORE_DIR="/tmp/borg-restore-test"
 
 echo "=== Borg Backup Restoration Test ==="
@@ -125,6 +132,7 @@ LATEST=$(borg list --short "$BORG_REPO" | tail -1)
 echo "Testing restoration from: $LATEST"
 
 # Create restore directory
+rm -rf "$RESTORE_DIR"
 mkdir -p "$RESTORE_DIR"
 
 # Restore specific path from latest archive
@@ -136,20 +144,26 @@ borg extract \
   2>&1
 
 # Actual restore (remove --dry-run for real test)
-borg extract \
-  --verbose \
-  "$BORG_REPO::$LATEST" \
-  etc/nginx \
-  --strip-components 1 \
-  --destination "$RESTORE_DIR" \
-  2>&1
+(
+  cd "$RESTORE_DIR"
+  borg extract \
+    --verbose \
+    --strip-components 1 \
+    "$BORG_REPO::$LATEST" \
+    etc/nginx \
+    2>&1
+)
 
 FILE_COUNT=$(find "$RESTORE_DIR" -type f | wc -l)
 echo "Restored $FILE_COUNT files"
 
 # Verify integrity
-borg check "$BORG_REPO"
-echo "Repository integrity: OK"
+if borg check "$BORG_REPO"; then
+  echo "Repository integrity: OK"
+else
+  echo "Repository integrity: FAILED"
+  exit 1
+fi
 
 # Cleanup
 rm -rf "$RESTORE_DIR"
@@ -161,7 +175,7 @@ rm -rf "$RESTORE_DIR"
 #!/bin/bash
 # measure_rto_ipv6.sh - Measure actual recovery time over IPv6
 
-BACKUP_SERVER="2001:db8::backup"
+BACKUP_SERVER="2001:db8::10"
 DATA_SIZE_GB=10
 
 echo "=== Recovery Time Measurement ==="
@@ -174,7 +188,7 @@ rsync -avz \
   -e "ssh -6 -i ~/.ssh/backup_key" \
   "backupuser@[$BACKUP_SERVER]:/backups/$(hostname)/" \
   "/tmp/rto-test/" \
-  2>&1 > /tmp/rto-rsync.log
+  > /tmp/rto-rsync.log 2>&1
 
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
@@ -195,12 +209,10 @@ rm -rf /tmp/rto-test/
 ```bash
 # /etc/cron.d/backup-restore-test
 # Run restoration test every week (Sunday at 3am)
-0 3 * * 0 root /usr/local/bin/test_restore_files_ipv6.sh \
-  >> /var/log/restore-test.log 2>&1
+0 3 * * 0 root /usr/local/bin/test_restore_files_ipv6.sh >> /var/log/restore-test.log 2>&1
 
 # Monthly full database restoration test
-0 4 1 * * root /usr/local/bin/test_db_restore_ipv6.sh \
-  >> /var/log/db-restore-test.log 2>&1
+0 4 1 * * root /usr/local/bin/test_db_restore_ipv6.sh >> /var/log/db-restore-test.log 2>&1
 ```
 
 Regular restoration testing over IPv6 backup infrastructure validates both your backup completeness and your recovery procedures, giving you confidence that your data is genuinely recoverable when needed.
