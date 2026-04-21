@@ -8,7 +8,7 @@ Description: Learn how to use the test directory option in OpenTofu's native tes
 
 ## Introduction
 
-OpenTofu's built-in testing framework (`tofu test`) supports a `--test-directory` flag that lets you store test files in a dedicated directory rather than alongside your module code. This keeps your module clean and separates production code from test code.
+OpenTofu's built-in testing framework (`tofu test`) supports a `-test-directory` option that lets you store test files in a dedicated directory rather than alongside your module code. This keeps your module clean and separates production code from test code.
 
 ## Default Behavior
 
@@ -32,13 +32,7 @@ tofu test
 
 ## Using a Custom Test Directory
 
-Specify a different directory with `--test-directory`:
-
-```bash
-tofu test --test-directory=integration-tests
-```
-
-Or using the short form:
+Specify a different directory with `-test-directory`:
 
 ```bash
 tofu test -test-directory=integration-tests
@@ -64,13 +58,13 @@ module/
 Run unit tests:
 
 ```bash
-tofu test --test-directory=unit-tests
+tofu test -test-directory=unit-tests
 ```
 
 Run integration tests:
 
 ```bash
-tofu test --test-directory=integration-tests
+tofu test -test-directory=integration-tests
 ```
 
 ## Example Test File
@@ -99,21 +93,21 @@ run "validate_basic_plan" {
 # CI/CD pipeline
 
 - name: Run unit tests
-  run: tofu test --test-directory=unit-tests
+  run: tofu test -test-directory=unit-tests
 
 - name: Run integration tests
-  run: tofu test --test-directory=integration-tests
+  run: tofu test -test-directory=integration-tests
   if: github.ref == 'refs/heads/main'
 ```
 
 ## Filtering Test Files
 
-Run only specific test files within a directory:
+Run only specific test files within a custom test directory:
 
 ```bash
-tofu test --filter=unit-tests/validation.tftest.hcl
+tofu test -test-directory=unit-tests -filter=unit-tests/validation.tftest.hcl
 ```
 
 ## Conclusion
 
-The `--test-directory` option in OpenTofu gives you flexibility to organize tests separately from module code and run different test suites for different purposes. This separation supports a clean module structure while enabling comprehensive test coverage across unit, integration, and end-to-end test categories.
+The `-test-directory` option in OpenTofu gives you flexibility to organize tests separately from module code and run different test suites for different purposes. This separation supports a clean module structure while enabling comprehensive test coverage across unit, integration, and end-to-end test categories.
