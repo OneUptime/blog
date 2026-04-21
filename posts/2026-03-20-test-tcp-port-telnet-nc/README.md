@@ -23,9 +23,9 @@ telnet 192.168.1.100 22
 # (Press Ctrl+] then quit to exit)
 
 # Failure outputs:
-# "Connection refused" → host is up, port is closed/service not running
+# "Connection refused" → host responded, but port is closed/service not running
 # "No route to host"   → routing problem
-# (hangs)              → firewall silently dropping packets (timeout)
+# (hangs)              → firewall, host, or network silently dropping packets (timeout)
 ```
 
 ## Testing with nc (netcat)
@@ -47,7 +47,7 @@ nc -zv 192.168.1.100 22
 # Test multiple ports
 nc -zv 192.168.1.100 22 80 443
 
-# Set timeout (default waits forever)
+# Set timeout (default is no nc timeout)
 nc -zv -w 5 192.168.1.100 3306
 # -w 5: timeout after 5 seconds
 ```
@@ -82,7 +82,7 @@ nc can also send test data to verify application protocols:
 
 ```bash
 # Send an HTTP request manually
-echo -e "GET / HTTP/1.0\r\nHost: example.com\r\n\r\n" | nc example.com 80
+printf "GET / HTTP/1.0\r\nHost: example.com\r\n\r\n" | nc example.com 80
 # Returns HTTP response headers and body
 
 # Test SMTP greeting
@@ -90,7 +90,7 @@ nc -v smtp.example.com 25
 # Should see: 220 smtp.example.com ESMTP Postfix
 
 # Test Redis
-echo "PING" | nc -v 127.0.0.1 6379
+printf "PING\r\n" | nc -v 127.0.0.1 6379
 # Should see: +PONG
 ```
 
@@ -101,7 +101,8 @@ echo "PING" | nc -v 127.0.0.1 6379
 nc -uzv 192.168.1.100 53    # Test DNS UDP port
 
 # Note: UDP testing is unreliable (no connection concept)
-# Success means packet was sent but may not confirm receipt
+# Some nc versions report success for -uz regardless of target state
+# Success does not confirm receipt unless you also observe a response or packet capture
 ```
 
 ## Diagnose Firewall vs Service Down
@@ -110,16 +111,17 @@ nc -uzv 192.168.1.100 53    # Test DNS UDP port
 # Port closed (service not running):
 nc -zv 192.168.1.100 3306
 # nc: connect to ... port 3306 (tcp) failed: Connection refused
-# → TCP RST received = host is up, port is closed
+# → TCP RST received = host responded, but nothing accepted the connection
 
 # Port firewalled:
 nc -zv -w 5 192.168.1.100 3306
 # (no output for 5 seconds, then timeout)
-# → No RST = firewall is dropping packets silently
+# → No response before timeout = packets may be dropped by a firewall,
+#   the host may be down, or routing may be broken
 
 # Difference:
-# "Connection refused" = fast response → service/port issue
-# Timeout            = slow response  → firewall issue
+# "Connection refused" = fast response → usually service/port issue or active reject
+# Timeout            = slow response  → often firewall drop, host down, or routing issue
 ```
 
 telnet and nc are the "is the door open?" tools of networking - before spending time debugging application configuration, always confirm the basic TCP connection works.
