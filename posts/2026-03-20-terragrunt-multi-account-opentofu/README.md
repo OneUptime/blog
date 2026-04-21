@@ -12,7 +12,7 @@ Terragrunt is a thin wrapper around OpenTofu that adds DRY configuration, automa
 
 ```text
 infra/
-├── terragrunt.hcl              # Root config (shared backend, provider vars)
+├── root.hcl                    # Root config (shared backend, provider vars)
 ├── accounts/
 │   ├── production/
 │   │   ├── account.hcl         # Account-specific vars (account ID, region)
@@ -31,10 +31,10 @@ infra/
     └── compute/
 ```
 
-## Root terragrunt.hcl
+## Root Configuration
 
 ```hcl
-# infra/terragrunt.hcl - Root configuration
+# infra/root.hcl - Root configuration
 
 # Automatically configure S3 backend for every module
 
@@ -59,7 +59,7 @@ generate "provider" {
   if_exists = "overwrite_terragrunt"
   contents  = <<-EOT
     provider "aws" {
-      region = local.account_vars.locals.aws_region
+      region = "${local.account_vars.locals.aws_region}"
       assume_role {
         role_arn = "arn:aws:iam::${local.account_vars.locals.aws_account_id}:role/DeploymentRole"
       }
@@ -88,11 +88,11 @@ locals {
 ```hcl
 # infra/accounts/production/networking/terragrunt.hcl
 include "root" {
-  path = find_in_parent_folders()  # Picks up root terragrunt.hcl
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {
-  source = "../../../../modules/networking"
+  source = "../../../modules/networking"
 }
 
 inputs = {
@@ -110,11 +110,11 @@ locals {
 ```hcl
 # infra/accounts/production/compute/terragrunt.hcl
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {
-  source = "../../../../modules/compute"
+  source = "../../../modules/compute"
 }
 
 # Declare dependency on networking module
@@ -133,16 +133,17 @@ inputs = {
 ```bash
 # Deploy all modules in all accounts
 cd infra/accounts
-terragrunt run-all apply
+terragrunt run --all apply
 
 # Deploy only production
-cd infra/accounts/production
-terragrunt run-all apply
+cd production
+terragrunt run --all apply
 
 # Deploy networking in all accounts
-terragrunt run-all apply --terragrunt-include-dir "*/networking"
+cd ..
+terragrunt run --all --filter "*/networking" -- apply
 ```
 
 ## Conclusion
 
-Terragrunt eliminates the repetition of backend and provider configuration across accounts and environments. Define the backend and provider generation once in the root `terragrunt.hcl`, use `account.hcl` files for account-specific variables, and declare cross-module dependencies explicitly. Use `run-all` for orchestrated multi-module deployments.
+Terragrunt eliminates the repetition of backend and provider configuration across accounts and environments. Define the backend and provider generation once in the root `root.hcl`, use `account.hcl` files for account-specific variables, and declare cross-module dependencies explicitly. Use `run --all` for orchestrated multi-module deployments.
