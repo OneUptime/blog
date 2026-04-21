@@ -40,6 +40,8 @@ for subnet in parent.subnets(new_prefix=26):
 Borrow 3 bits: 2^3 = 8 subnets, each /27 (30 hosts):
 
 ```python
+import ipaddress
+
 for subnet in ipaddress.IPv4Network("192.168.1.0/24").subnets(new_prefix=27):
     print(f"{subnet}  ({subnet.num_addresses - 2} hosts)")
 ```
@@ -74,17 +76,17 @@ for dept, subnet in zip(departments, subnets):
 
 ## Route Summarization After Subnetting
 
-All subnets remain summarizable to the parent /24:
+All eight /27 subnets are contiguous, so they can be summarized to the parent /24 when they share the same next hop:
 
 ```bash
-# On a router: instead of advertising all 8 /27s,
-# advertise the single /24 summary
-ip route add 192.168.10.0/24 via 192.168.10.1
+# On a router: instead of adding all 8 /27 static routes,
+# add the single /24 summary via a reachable next hop
+ip route add 192.168.10.0/24 via 10.0.0.2
 ```
 
 ## Key Takeaways
 
-- Each borrowed bit doubles the number of subnets and halves host capacity.
-- A /24 can be divided into up to 64 subnets (/30) while still having 2 usable hosts each.
+- Each borrowed bit doubles the number of subnets and halves the address block size.
+- For traditional subnets that reserve network and broadcast addresses, a /24 can be divided into up to 64 /30 subnets with 2 usable hosts each.
 - Python's `network.subnets(new_prefix=N)` provides a clean way to enumerate all subnets.
-- All subnets of a /24 remain summarizable to the original /24 in routing tables.
+- Contiguous subnets of a /24 can be summarized to the original /24 in routing tables when they share the same routing path.
