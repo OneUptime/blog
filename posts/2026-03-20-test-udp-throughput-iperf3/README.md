@@ -20,14 +20,13 @@ iperf3 -s
 # Run UDP test from client (sends at 100 Mbps for 10 seconds):
 iperf3 -c 10.20.0.5 -u -b 100M -t 10
 # -u: UDP mode
-# -b 100M: target bitrate (required for UDP, unlike TCP)
+# -b 100M: target bitrate (set explicitly for UDP; default is 1 Mbps)
 # -t 10: test duration in seconds
 
 # Sample output:
 # [ ID] Interval      Transfer   Bitrate    Jitter   Lost/Total Datagrams
-# [  5]  0.00-10.00s  119 MBytes  100 Mbits/sec  0.054 ms  0/85415 (0%)
-# [  5]  0.00-10.00s  119 MBytes  100 Mbits/sec  0.054 ms  0/85415 (0%)  sender
-# [  5]  0.00-10.00s  119 MBytes  99.8 Mbits/sec  0.054 ms  282/85415 (0.33%)  receiver
+# [  5]  0.00-10.00 sec  119 MBytes  100 Mbits/sec  85415  sender
+# [  5]  0.00-10.00 sec  119 MBytes  99.8 Mbits/sec  0.054 ms  282/85415 (0.33%)  receiver
 ```
 
 ## Key UDP Metrics
@@ -58,9 +57,9 @@ echo "-----------|-----------|--------|-------"
 
 for RATE in "${RATES[@]}"; do
     RESULT=$(iperf3 -c $SERVER -u -b $RATE -t 10 -J 2>/dev/null)
-    RECV_BPS=$(echo "$RESULT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['end']['sum']['bits_per_second'])" 2>/dev/null)
-    LOSS=$(echo "$RESULT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['end']['sum']['lost_percent'])" 2>/dev/null)
-    JITTER=$(echo "$RESULT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['end']['sum']['jitter_ms'])" 2>/dev/null)
+    RECV_BPS=$(echo "$RESULT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['end']['sum_received']['bits_per_second'])" 2>/dev/null)
+    LOSS=$(echo "$RESULT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['end']['sum_received']['lost_percent'])" 2>/dev/null)
+    JITTER=$(echo "$RESULT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['end']['sum_received']['jitter_ms'])" 2>/dev/null)
     RECV_MBPS=$(echo "scale=1; ${RECV_BPS:-0} / 1000000" | bc 2>/dev/null)
     printf "%-10s | %-9s | %-6s | %s ms\n" "$RATE" "${RECV_MBPS}M" "${LOSS}%" "$JITTER"
 done
@@ -71,10 +70,10 @@ done
 ```bash
 # VoIP typically uses small packets (160-200 bytes) at ~50 pps per call
 # Simulate 100 concurrent VoIP calls:
-# 100 calls * 50 pps * 200 bytes = 1000 pps, 200 KB/s
+# 100 calls * 50 pps * 200 bytes = 5000 pps, 1 MB/s (8 Mbits/sec)
 
-iperf3 -c 10.20.0.5 -u -b 200K -l 200 -t 30
-# -l 200: 200-byte UDP packet size (simulates G.711 VoIP payload)
+iperf3 -c 10.20.0.5 -u -b 8M -l 200 -t 30
+# -l 200: 200-byte UDP payload size (VoIP-sized datagrams)
 # Focus on jitter (target: < 5ms)
 
 # For video streaming simulation (1 Mbps HD stream):
@@ -88,7 +87,7 @@ iperf3 -c 10.20.0.5 -u -b 1M -l 1316 -t 30
 # Test in both directions simultaneously:
 iperf3 -c 10.20.0.5 -u -b 100M -t 10 --bidir
 # Shows TX and RX separately
-# Different loss in each direction = asymmetric path issue
+# Different loss in each direction can indicate an asymmetric path issue
 
 # Reverse direction only (server sends to client):
 iperf3 -c 10.20.0.5 -u -b 100M -t 10 -R
@@ -106,15 +105,16 @@ import json
 with open('/tmp/udp_result.json') as f:
     data = json.load(f)
 
-end = data['end']['sum']
-print(f"Sent:     {end['bits_per_second']/1e6:.1f} Mbps")
-print(f"Received: {data['end']['sum_received']['bits_per_second']/1e6:.1f} Mbps")
-print(f"Loss:     {end['lost_percent']:.2f}%")
-print(f"Jitter:   {end['jitter_ms']:.3f} ms")
-print(f"Packets:  {end['packets']} sent, {end['lost_packets']} lost")
+sent = data['end']['sum_sent']
+received = data['end']['sum_received']
+print(f"Sent:     {sent['bits_per_second']/1e6:.1f} Mbps")
+print(f"Received: {received['bits_per_second']/1e6:.1f} Mbps")
+print(f"Loss:     {received['lost_percent']:.2f}%")
+print(f"Jitter:   {received['jitter_ms']:.3f} ms")
+print(f"Packets:  {sent['packets']} sent, {received['lost_packets']} lost")
 EOF
 ```
 
 ## Conclusion
 
-`iperf3 -u` measures UDP throughput, packet loss, and jitter with a single command. Always specify the `-b` rate for UDP tests - without it, iperf3 defaults to 1 Mbps. Use the sweep test to find the point where loss begins increasing. For VoIP and real-time applications, focus on jitter: target under 5ms for acceptable call quality. The JSON output (`-J`) enables automated integration with monitoring systems.
+`iperf3 -u` measures UDP throughput, packet loss, and jitter with a single command. Always specify the `-b` rate for UDP tests to avoid the 1 Mbps default. Use the sweep test to find the point where loss begins increasing. For VoIP and real-time applications, focus on jitter: target under 5ms for acceptable call quality. The JSON output (`-J`) enables automated integration with monitoring systems.
