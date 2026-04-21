@@ -13,7 +13,7 @@ The `host` command is a simple DNS lookup utility available on Linux and macOS. 
 ## Basic AAAA Queries
 
 ```bash
-# Query all records for a domain (shows both A and AAAA)
+# Query default records for a domain (A, AAAA, MX, and in newer BIND versions HTTPS)
 
 host example.com
 
@@ -32,8 +32,11 @@ host -t AAAA example.com 2001:4860:4860::8888
 ```bash
 $ host -t AAAA google.com
 
-google.com has IPv6 address 2607:f8b0:4004:c08::65
-google.com has IPv6 address 2607:f8b0:4004:c08::66
+# Example output (addresses vary by resolver and location):
+google.com has IPv6 address 2a00:1450:4009:c08::64
+google.com has IPv6 address 2a00:1450:4009:c08::66
+google.com has IPv6 address 2a00:1450:4009:c08::65
+google.com has IPv6 address 2a00:1450:4009:c08::8b
 
 # If no AAAA record exists:
 $ host -t AAAA ipv4only.example.com
@@ -43,12 +46,15 @@ ipv4only.example.com has no AAAA record
 ## Testing Both A and AAAA Together
 
 ```bash
-# The default host output shows both record types
+# The default host output includes A, AAAA, and MX records
+# Newer BIND versions may also include HTTPS records
 host example.com
 
-# Example output:
-# example.com has address 93.184.216.34          (A record)
-# example.com has IPv6 address 2606:2800:220:1:248:1893:25c8:1946  (AAAA record)
+# Example output (records may vary):
+# example.com has address 172.66.147.243        (A record)
+# example.com has address 104.20.23.154         (A record)
+# example.com has IPv6 address 2606:4700:10::ac42:93f3  (AAAA record)
+# example.com has IPv6 address 2606:4700:10::6814:179a  (AAAA record)
 # example.com mail is handled by 0 .            (MX record)
 
 # Query only AAAA explicitly
@@ -59,18 +65,18 @@ host -t AAAA example.com
 
 ```bash
 # Reverse lookup: IPv6 address → hostname
-host 2001:db8::1
+host 2001:4860:4860::8888
 
-# Expected output:
-# 1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa domain name pointer server1.example.com.
+# Example output:
+# 8.8.8.8.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.6.8.4.0.6.8.4.1.0.0.2.ip6.arpa domain name pointer dns.google.
 
-# Shorter format with -t PTR
-host -t PTR 1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa
+# Explicit PTR query with -t PTR
+host -t PTR 8.8.8.8.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.6.8.4.0.6.8.4.1.0.0.2.ip6.arpa
 # Or let host handle the conversion automatically:
-host 2001:db8::1
+host 2001:4860:4860::8888
 
 # Test against a specific server
-host 2001:db8::1 127.0.0.1
+host 2001:4860:4860::8888 8.8.8.8
 ```
 
 ## Verbose Output with -v
@@ -79,12 +85,13 @@ host 2001:db8::1 127.0.0.1
 # Verbose output shows full query and response details
 host -v -t AAAA example.com
 
-# Example verbose output:
+# Example verbose output (TTL, ID, resolver, and addresses may vary):
 # Trying "example.com"
 # ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 12345
 # ;; ANSWER SECTION:
-# example.com.  3600  IN  AAAA  2606:2800:220:1:248:1893:25c8:1946
-# Received 79 bytes from 8.8.8.8#53
+# example.com.  255  IN  AAAA  2606:4700:10::ac42:93f3
+# example.com.  255  IN  AAAA  2606:4700:10::6814:179a
+# Received 85 bytes from 127.0.0.53#53 in 0 ms
 ```
 
 ## Checking Multiple Domains
