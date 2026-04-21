@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Tanzu, VMware, IPv6, Kubernetes, Antrea, Dual-Stack
 
-Description: A guide to configuring VMware Tanzu Kubernetes Grid (TKG) with IPv6 and dual-stack networking using Antrea CNI and NSX-T Advanced Load Balancer.
+Description: A guide to configuring VMware Tanzu Kubernetes Grid (TKG) with IPv6 and dual-stack networking using Antrea CNI and Avi Load Balancer (NSX Advanced Load Balancer).
 
-VMware Tanzu Kubernetes Grid supports dual-stack IPv4/IPv6 networking using Antrea as the CNI plugin. This guide covers TKG cluster configuration for IPv6, NSX-T integration, and workload verification.
+VMware Tanzu Kubernetes Grid supports dual-stack IPv4/IPv6 networking using Antrea as the CNI plugin. This guide covers TKG cluster configuration for IPv6, VMware NSX integration, and workload verification.
 
 ## Tanzu Kubernetes Grid IPv6 Requirements
 
-- TKG 2.1+ for dual-stack support
-- Antrea CNI (included with TKG)
-- vSphere 7.0 U3+ or vSphere 8 with NSX-T
+- TKG 2.5.x for full dual-stack workload cluster support with Kube-VIP and Avi Load Balancer
+- Antrea CNI (included with TKG and used by default)
+- vSphere 7.0 or vSphere 8 with vCenter configured for IPv4 and IPv6 connectivity
 - Nodes must have dual-stack IP addresses
 
 ## TKG Management Cluster with Dual-Stack
@@ -22,30 +22,33 @@ VMware Tanzu Kubernetes Grid supports dual-stack IPv4/IPv6 networking using Antr
 
 CLUSTER_NAME: mgmt-cluster
 CLUSTER_PLAN: prod
+INFRASTRUCTURE_PROVIDER: vsphere
 
 # Network configuration
 
-SERVICE_CIDR: "100.64.0.0/13,fd00:svc::/108"
-CLUSTER_CIDR: "100.96.0.0/11,fd00:pod::/48"
+SERVICE_CIDR: "100.64.0.0/13,fd00:100:64::/108"
+CLUSTER_CIDR: "100.96.0.0/11,fd00:100:96::/48"
 
-# Antrea CNI (required for dual-stack)
-CNI: antrea
+# Standard vSphere settings are required; add values for your environment:
+# VSPHERE_SERVER, VSPHERE_USERNAME, VSPHERE_PASSWORD, VSPHERE_DATACENTER,
+# VSPHERE_RESOURCE_POOL, VSPHERE_DATASTORE, VSPHERE_FOLDER,
+# VSPHERE_SSH_AUTHORIZED_KEY, and VSPHERE_TLS_THUMBPRINT or VSPHERE_INSECURE.
 
 # Node network
-NETWORK: "VM Network"
+VSPHERE_NETWORK: "VM Network"
 
-# Enable IPv6
-ENABLE_IPV6: true
+# Enable IPv4-primary dual-stack networking
+TKG_IP_FAMILY: ipv4,ipv6
 ```
 
 ```bash
 # Initialize management cluster
-tanzu management-cluster create \
+tanzu mc create \
   --file management-cluster.yaml \
   --timeout 60m
 
 # Verify management cluster
-tanzu management-cluster get
+tanzu mc get
 kubectl get nodes -o wide
 ```
 
@@ -54,28 +57,20 @@ kubectl get nodes -o wide
 ```yaml
 # workload-cluster.yaml
 
-apiVersion: cluster.x-k8s.io/v1beta1
-kind: Cluster
-metadata:
-  name: workload-ipv6
-  namespace: default
-spec:
-  clusterNetwork:
-    pods:
-      cidrBlocks:
-        - "100.96.0.0/11"
-        - "fd00:pod::/48"
-    services:
-      cidrBlocks:
-        - "100.64.0.0/13"
-        - "fd00:svc::/108"
-  topology:
-    class: tkg-vsphere-default-v1.1.0
-    version: v1.27.5+vmware.1
-    variables:
-      - name: network
-        value:
-          ipFamily: ipv4,ipv6
+CLUSTER_NAME: workload-ipv6
+CLUSTER_PLAN: prod
+INFRASTRUCTURE_PROVIDER: vsphere
+
+# Dual-stack network configuration
+TKG_IP_FAMILY: ipv4,ipv6
+SERVICE_CIDR: "100.64.0.0/13,fd00:100:64::/108"
+CLUSTER_CIDR: "100.96.0.0/11,fd00:100:96::/48"
+
+# Antrea CNI
+CNI: antrea
+
+# Standard vSphere settings are required; add values for your environment.
+VSPHERE_NETWORK: "VM Network"
 ```
 
 ```bash
@@ -91,19 +86,16 @@ KUBECONFIG=workload-kubeconfig.yaml kubectl get nodes -o wide
 
 ## Antrea Dual-Stack Configuration
 
-Antrea is configured by the antrea-config ConfigMap:
+Antrea is configured by the `antrea-config` ConfigMap:
 
-```yaml
+```bash
 # Check current Antrea configuration
 kubectl get configmap antrea-config -n kube-system -o yaml
 
-# Key settings for dual-stack:
-# antrea-agent.conf:
-#   featureGates:
-#     AntreaIPAM: true
-# antrea-controller.conf:
-#   featureGates:
-#     AntreaPolicy: true
+# Dual-stack is selected through the TKG cluster settings at creation time:
+# TKG_IP_FAMILY: ipv4,ipv6
+# CLUSTER_CIDR: 100.96.0.0/11,fd00:100:96::/48
+# SERVICE_CIDR: 100.64.0.0/13,fd00:100:64::/108
 ```
 
 ```bash
@@ -118,25 +110,25 @@ kubectl logs -n kube-system \
 # Check antctl (Antrea CLI) for network info
 kubectl exec -n kube-system \
   $(kubectl get pod -n kube-system -l component=antrea-agent -o name | head -1) \
-  -- antctl get networkpolicy
+  -c antrea-agent -- antctl get networkpolicy
 ```
 
-## NSX-T Integration with IPv6
+## VMware NSX Integration with IPv6
 
-When using TKG with NSX-T, IPv6 is configured in NSX-T Manager:
+When using TKG with NSX-backed vSphere networking, IPv6 is configured in NSX Manager:
 
 ```bash
-# Verify NSX-T node network adapter has IPv6
+# Verify the node network adapter has IPv6
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{.status.addresses}{"\n\n"}{end}'
 
-# NSX-T segments should be configured for dual-stack
-# This is done in NSX-T Manager UI:
+# NSX segments should be configured for dual-stack
+# This is done in NSX Manager UI:
 # Networking > Segments > <segment> > Subnets > Add IPv6 subnet
 
-# Verify overlay tunnel is working (NSX-T uses GENEVE encapsulation)
+# Verify Antrea OVS flows include IPv6 forwarding entries
 kubectl exec -n kube-system \
   $(kubectl get pod -n kube-system -l component=antrea-agent -o name | head -1) \
-  -- antctl get ovsflows | grep -i ipv6
+  -c antrea-agent -- antctl get ovsflows | grep -i ipv6
 ```
 
 ## Dual-Stack Service Deployment
@@ -159,13 +151,18 @@ spec:
       targetPort: 8080
   type: ClusterIP
 ---
-# LoadBalancer service (requires NSX-T ALB or AKO)
+# LoadBalancer service (requires Avi Load Balancer/AKO or another LB provider)
+# In TKG 2.5, Avi Load Balancer service type LoadBalancer uses a single frontend VIP.
 apiVersion: v1
 kind: Service
 metadata:
   name: my-app-lb
 spec:
   type: LoadBalancer
+  ipFamilyPolicy: RequireDualStack
+  ipFamilies:
+    - IPv4
+    - IPv6
   selector:
     app: my-app
   ports:
@@ -176,8 +173,10 @@ spec:
 kubectl apply -f services.yaml
 
 # Check dual-stack ClusterIP
-kubectl get svc my-app-svc -o jsonpath='{.spec.clusterIPs}'
-# Output: ["100.x.x.x","fd00:svc::x"]
+kubectl get svc my-app-svc -o jsonpath='{range .spec.clusterIPs[*]}{.}{"\n"}{end}'
+# Output:
+# 100.x.x.x
+# fd00:100:64::x
 ```
 
 ## Verifying IPv6 in Tanzu Workloads
@@ -191,13 +190,14 @@ kubectl exec netshoot -- ip -6 addr show
 kubectl exec netshoot -- ip -6 route show
 
 # Test IPv6 connectivity between pods
-kubectl exec netshoot -- ping6 -c 3 fd00:pod::another-pod
+kubectl get pod -o wide
+kubectl exec netshoot -- ping -6 -c 3 fd00:100:96::10
 
 # Test DNS resolves AAAA records
-kubectl exec netshoot -- nslookup -type=AAAA kubernetes.default.svc.cluster.local
+kubectl exec netshoot -- nslookup -type=AAAA my-app-svc.default.svc.cluster.local
 
 # Test IPv6 service connectivity
-kubectl exec netshoot -- curl -6 http://[fd00:svc::x]/
+kubectl exec netshoot -- curl -6 http://[fd00:100:64::10]/
 
 # Cleanup
 kubectl delete pod netshoot
