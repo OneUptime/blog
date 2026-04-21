@@ -8,11 +8,11 @@ Description: Learn how to read, parse, and understand the OpenTofu state file JS
 
 ## Introduction
 
-OpenTofu state files are stored as JSON. Understanding the structure allows you to write scripts that extract resource information, build audit tools, validate consistency, or integrate with other systems. This guide walks through the state file format and common patterns for working with it programmatically.
+OpenTofu state snapshots are stored as JSON, but the raw state file format can change between OpenTofu versions. Understanding the structure allows you to write scripts that extract resource information, build audit tools, validate consistency, or integrate with other systems. This guide walks through the state file format and common patterns for working with it programmatically.
 
 ## The Top-Level Structure
 
-A state file has this top-level structure:
+A raw state snapshot, such as a local `terraform.tfstate` file or the output of `tofu state pull`, has this top-level structure:
 
 ```json
 {
@@ -26,7 +26,7 @@ A state file has this top-level structure:
       "type": "string"
     }
   },
-  "resources": [...],
+  "resources": [],
   "check_results": null
 }
 ```
@@ -34,14 +34,16 @@ A state file has this top-level structure:
 Key fields:
 - `version`: The state format version (currently 4)
 - `terraform_version`: The version of OpenTofu that last modified the state
-- `serial`: Monotonically increasing counter; prevents state conflicts
+- `serial`: Monotonically increasing counter; helps detect state conflicts
 - `lineage`: Unique ID for this state lineage; mismatches cause errors
 - `outputs`: Map of output values from the root module
-- `resources`: Array of all managed resources
+- `resources`: Array of managed resources and data sources tracked in state
+
+The documented `tofu show -json` output uses a different top-level structure with `format_version`, `terraform_version`, `values`, and `checks`.
 
 ## The Resources Array
 
-Each entry in `resources` represents a resource block:
+Each entry in the raw state's `resources` array represents a managed resource or data source block:
 
 ```json
 {
@@ -98,13 +100,13 @@ For scripts and automation, use `jq` to parse state JSON:
 
 ```bash
 # Get all resource types and names
-tofu show -json | jq '.values.root_module.resources[] | {type: .type, name: .name}'
+tofu show -json | jq 'def resources(m): (m.resources[]?), (m.child_modules[]? | resources(.)); resources(.values.root_module) | {address: .address, type: .type, name: .name}'
 
 # Get all EC2 instance IDs
-tofu show -json | jq '.values.root_module.resources[] | select(.type == "aws_instance") | .values.id'
+tofu show -json | jq 'def resources(m): (m.resources[]?), (m.child_modules[]? | resources(.)); resources(.values.root_module) | select(.mode == "managed" and .type == "aws_instance") | .values.id'
 
 # Get resource count by type
-tofu show -json | jq '[.values.root_module.resources[] | .type] | group_by(.) | map({type: .[0], count: length})'
+tofu show -json | jq 'def resources(m): (m.resources[]?), (m.child_modules[]? | resources(.)); [resources(.values.root_module) | .type] | group_by(.) | map({type: .[0], count: length})'
 
 # List all outputs
 tofu output -json | jq 'to_entries[] | {name: .key, value: .value.value}'
@@ -125,22 +127,29 @@ import json
 with open('infrastructure-state.json') as f:
     state = json.load(f)
 
+def walk_module(module):
+    for resource in module.get('resources', []):
+        yield resource
+    for child in module.get('child_modules', []):
+        yield from walk_module(child)
+
 # List all resource addresses
-for resource in state.get('values', {}).get('root_module', {}).get('resources', []):
-    print(f"{resource['type']}.{resource['name']}: {resource['values'].get('id', 'N/A')}")
+root_module = state.get('values', {}).get('root_module', {})
+for resource in walk_module(root_module):
+    print(f"{resource['address']}: {resource.get('values', {}).get('id', 'N/A')}")
 EOF
 ```
 
 ## Understanding Sensitive Values in State JSON
 
-When you run `tofu show -json`, sensitive values are redacted:
+When you run `tofu show -json`, sensitive values are not redacted; they are included in `values` and marked separately in `sensitive_values`:
 
 ```json
 {
   "type": "aws_db_instance",
   "name": "main",
   "values": {
-    "password": null,
+    "password": "actual-password",
     "username": "admin"
   },
   "sensitive_values": {
@@ -149,7 +158,7 @@ When you run `tofu show -json`, sensitive values are redacted:
 }
 ```
 
-The actual raw state file still contains these values unredacted unless state encryption is enabled.
+Treat JSON output from `tofu show -json` and `tofu output -json` as sensitive. The actual raw state file can also contain these values unredacted unless state encryption is enabled.
 
 ## Working with Module Resources
 
@@ -157,11 +166,13 @@ Resources inside modules have a different address format:
 
 ```json
 {
-  "module": "module.networking",
+  "address": "module.networking.aws_vpc.main",
   "mode": "managed",
   "type": "aws_vpc",
   "name": "main",
-  ...
+  "values": {
+    "id": "vpc-0a1b2c3d"
+  }
 }
 ```
 
@@ -173,7 +184,7 @@ tofu state list | grep "^module\."
 tofu state show 'module.networking.aws_vpc.main'
 
 # Extract module resources with jq
-tofu show -json | jq '.values.root_module.child_modules[] | .resources[]'
+tofu show -json | jq 'def resources(m): (m.resources[]?), (m.child_modules[]? | resources(.)); .values.root_module.child_modules[]? | resources(.)'
 ```
 
 ## Conclusion
