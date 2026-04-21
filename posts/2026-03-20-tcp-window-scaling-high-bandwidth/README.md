@@ -54,7 +54,13 @@ sysctl -w net.core.rmem_max=16777216
 sysctl -w net.core.wmem_max=16777216
 
 # Persist
-echo "net.ipv4.tcp_window_scaling=1" >> /etc/sysctl.conf
+cat >/etc/sysctl.d/99-tcp-window-scaling.conf <<'EOF'
+net.ipv4.tcp_window_scaling=1
+net.ipv4.tcp_rmem=4096 87380 16777216
+net.ipv4.tcp_wmem=4096 87380 16777216
+net.core.rmem_max=16777216
+net.core.wmem_max=16777216
+EOF
 ```
 
 ## Diagnosing Window Scaling Issues
@@ -65,12 +71,13 @@ echo "net.ipv4.tcp_window_scaling=1" >> /etc/sysctl.conf
 tcpdump -i eth0 -n -v 'tcp[tcpflags] & tcp-syn != 0' -c 5 2>/dev/null
 
 # If wscale is 0 or 1: scale factor is very small
-# Desired: wscale 7 or higher (128× or more)
+# On high-BDP links, wscale 7 or higher (128× or more) is common
 
 # What determines the scale factor?
-# Linux selects scale factor based on tcp_rmem max value
+# Linux selects scale factor from the maximum receive window it may advertise,
+# including tcp_rmem max and net.core.rmem_max, capped by per-socket/window limits
 # With max=6MB: scale = 7 (128×, giving max window = 64KB × 128 = 8MB)
-# With max=16MB: scale = 8 (256×, giving max window = 64KB × 256 = 16MB)
+# With max=16MiB (16777216): scale = 9 (512×, giving max window ≈ 32MB)
 ```
 
 ## Verifying Effective Window in a Transfer
@@ -79,18 +86,32 @@ tcpdump -i eth0 -n -v 'tcp[tcpflags] & tcp-syn != 0' -c 5 2>/dev/null
 # Start a large transfer
 scp large_file.tar.gz user@10.20.0.5:/tmp/
 
-# In another terminal, monitor the window sizes being advertised
-tcpdump -i eth0 -n -v 'tcp and host 10.20.0.5 and port 22' 2>/dev/null | \
-  awk '/win /{match($0, /win ([0-9]+)/, a); if(a[1]+0>10000) print a[1]" bytes"}'
+# First note the wscale value in the server's SYN-ACK
+tcpdump -i eth0 -n -v 'tcp[tcpflags] & tcp-syn != 0 and host 10.20.0.5 and port 22' -c 2
 
-# Values much larger than 65535 confirm window scaling is active
+# In another terminal, monitor the raw 16-bit window field and apply that scale
+SERVER_WSCALE=7
+tcpdump -i eth0 -l -n -v 'tcp and src host 10.20.0.5 and src port 22' 2>/dev/null | \
+  awk -v scale="$SERVER_WSCALE" '
+    BEGIN { factor = 1; for (i = 0; i < scale; i++) factor *= 2 }
+    /win / {
+      raw = $0
+      sub(/^.*win /, "", raw)
+      sub(/[^0-9].*$/, "", raw)
+      if (raw + 0 > 0) {
+        effective = raw * factor
+        if (effective > 65535) print effective " bytes (raw win " raw ")"
+      }
+    }'
+
+# Effective values larger than 65535 confirm window scaling is active
 ```
 
 ## Middle Box Issues with Window Scaling
 
 ```bash
 # Some old firewalls/NAT devices strip or modify window scaling options
-# Symptom: connection works but throughput is limited to ~5 Mbps (64KB/10ms RTT)
+# Symptom: connection works but throughput is limited to ~52 Mbps (64KB/10ms RTT)
 
 # Test: compare throughput with window scaling vs without
 sysctl -w net.ipv4.tcp_window_scaling=0   # Disable temporarily
@@ -98,7 +119,7 @@ iperf3 -c 10.20.0.5 -t 10
 sysctl -w net.ipv4.tcp_window_scaling=1   # Re-enable
 iperf3 -c 10.20.0.5 -t 10
 
-# If no difference in throughput: middlebox stripping scaling options
+# If captures show missing wscale options even when enabled: middlebox may be stripping options
 # Fix: update/replace the problematic middlebox
 ```
 
