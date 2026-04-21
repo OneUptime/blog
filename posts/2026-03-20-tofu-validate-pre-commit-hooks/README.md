@@ -23,7 +23,7 @@ tofu validate
 # Validate and output JSON (for CI parsing)
 tofu validate -json
 
-# Validate with compact output
+# Validate without color output
 tofu validate -no-color
 
 # Exit codes:
@@ -43,19 +43,18 @@ resource "aws_instance" "web" {
 
 # CATCH 2: Undefined variable reference
 resource "aws_instance" "web" {
-  ami           = data.aws_ami.ubuntu.id
+  ami           = "ami-12345"
   instance_type = var.instance_type  # var not declared
 }
 # Error: Reference to undeclared input variable "instance_type"
 
 # CATCH 3: Type mismatch
-variable "count" {
-  type = number
-}
 resource "aws_instance" "web" {
-  count = "three"  # String, not number
+  count         = "three"  # count must be a number
+  ami           = "ami-12345"
+  instance_type = "t3.medium"
 }
-# Error: Invalid value for input variable
+# Error: Incorrect value type
 
 # CATCH 4: Syntax errors
 resource "aws_s3_bucket" "example" {
@@ -86,7 +85,7 @@ repos:
           - -c
           - |
             set -e
-            for dir in $(find . -name "*.tf" -not -path "*/.terraform/*" | xargs dirname | sort -u); do
+            find . -name "*.tf" -not -path "*/.terraform/*" -exec dirname {} \; | sort -u | while IFS= read -r dir; do
               echo "Validating $dir..."
               (cd "$dir" && tofu init -backend=false -input=false -no-color > /dev/null && tofu validate -no-color)
             done
@@ -110,11 +109,16 @@ repos:
           - |
             set -e
             # Get unique directories of changed .tf files
-            DIRS=$(echo "$@" | tr ' ' '\n' | xargs dirname | sort -u)
-            for dir in $DIRS; do
+            while IFS= read -r dir; do
               echo "Validating $dir"
               (cd "$dir" && tofu init -backend=false -input=false -no-color > /dev/null && tofu validate -no-color)
-            done
+            done < <(
+              for file in "$@"; do
+                dirname "$file"
+              done | sort -u
+            )
+          # "_" becomes $0 for bash -c so "$@" contains every changed file
+          - _
         files: \.tf$
         # Pass changed .tf files as arguments
 ```
@@ -130,8 +134,9 @@ repos:
       - id: terraform_validate
         name: OpenTofu Validate
         args:
+          # Use OpenTofu even if terraform is also installed
+          - --hook-config=--tf-path=tofu
           - --hook-config=--retry-once-with-cleanup=true
-          # Override terraform binary with tofu
           - --tf-init-args=-backend=false
 ```
 
@@ -172,12 +177,12 @@ jobs:
 # When running validate locally without backend credentials:
 tofu init -backend=false
 
-# When the module requires variables:
+# When the module has ordinary required variables:
 tofu validate
-# Passes even if required variables don't have values yet
-# (validate doesn't execute variable validation conditions)
+# Passes even if required variables don't have values yet, unless those
+# values are needed for module sources or validation checks
 
-# For modules with complex variable dependencies:
+# When validate needs input values:
 cat > /tmp/test.tfvars << 'EOF'
 environment = "test"
 vpc_cidr    = "10.0.0.0/16"
