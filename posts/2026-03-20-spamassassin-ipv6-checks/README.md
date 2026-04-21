@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SpamAssassin, IPv6, Email, Spam Filtering, Mail Server, DNSBL
 
-Description: Configure SpamAssassin to correctly handle IPv6 sender addresses in trusted networks, DNSBL checks, and whitelist rules for accurate spam scoring.
+Description: Configure SpamAssassin to correctly handle IPv6 sender addresses in trusted networks, DNSBL checks, and welcomelist rules for accurate spam scoring.
 
 ## Introduction
 
-SpamAssassin performs many checks based on the sender's IP address, including DNSBL lookups, trusted network detection, and whitelist matching. When mail arrives from or through IPv6 addresses, SpamAssassin needs proper configuration to avoid false positives and ensure accurate spam detection.
+SpamAssassin performs many checks based on the sender's IP address, including DNSBL lookups, trusted network detection, and welcomelist matching. When mail arrives from or through IPv6 addresses, SpamAssassin needs proper configuration to avoid false positives and ensure accurate spam detection.
 
 ## Installing SpamAssassin
 
 ```bash
 # Ubuntu/Debian
 
-sudo apt update && sudo apt install -y spamassassin spamc
+sudo apt update && sudo apt install -y spamassassin spamc spamd
 
 # Enable and start the daemon
-sudo systemctl enable --now spamassassin
+sudo systemctl enable --now spamd
 ```
 
 ## Configuring Trusted Networks with IPv6
@@ -39,35 +39,29 @@ internal_networks 2001:db8::/32
 EOF
 ```
 
-## Configuring IPv6 Whitelist Entries
+## Configuring IPv6 Welcomelist Entries
 
-Whitelist specific IPv6 sender addresses or ranges:
+Welcomelist sender addresses only when they arrive from expected IPv6 relays. In SpamAssassin 4.x the current directive is `welcomelist_from_rcvd`; `whitelist_from_rcvd` remains as a compatibility alias until SpamAssassin 4.1. IPv6 relay IPs must be enclosed in square brackets, and ranges can use CIDR prefixes:
 
 ```bash
 sudo tee -a /etc/spamassassin/local.cf << 'EOF'
-# Whitelist specific IPv6 senders
-whitelist_from_rcvd *@trusted.example.com 2001:db8::10
-whitelist_from_rcvd *@trusted.example.com [2001:db8::10]
-
-# Add IP-based whitelist rule
-# score will be applied if sender IP matches
+# Welcomelist senders only when received from these IPv6 relays
+welcomelist_from_rcvd *@trusted.example.com [2001:db8::10]
+welcomelist_from_rcvd *@trusted.example.com [2001:db8:1234::/48]
 EOF
 ```
 
 ## Configuring DNSBL for IPv6
 
-SpamAssassin's DNSBL plugin supports IPv6 natively. The DNS lookup format differs for IPv6:
+SpamAssassin's DNSEval plugin handles DNSBL lookups for IPv4 and IPv6 addresses. Use DNSBL zones that support IPv6; SpamAssassin handles the address-to-query conversion:
 
 ```bash
-# Check which DNSBL plugins are active
-grep -r "URIBL\|DNSBL\|RBL" /etc/spamassassin/ | grep "^[^#]"
+# Check that the DNSBL-related plugins are loaded
+grep -RhE "^[[:space:]]*loadplugin .*DNSEval|^[[:space:]]*loadplugin .*URIDNSBL" /etc/spamassassin/*.pre
 
-# Add an IPv6-compatible DNSBL check in local.cf
+# SpamAssassin already ships Spamhaus ZEN rules such as RCVD_IN_XBL.
+# Adjust the built-in score instead of redefining the rule name.
 sudo tee -a /etc/spamassassin/local.cf << 'EOF'
-# IPv6-aware DNSBL check
-header   RCVD_IN_XBL     eval:check_rbl('xbl', 'xbl.spamhaus.org.')
-describe RCVD_IN_XBL     Received via a relay in Spamhaus XBL
-tflags   RCVD_IN_XBL     net
 score    RCVD_IN_XBL     2.0
 EOF
 ```
@@ -75,12 +69,12 @@ EOF
 ## Updating SpamAssassin Rules
 
 ```bash
-# Update rule sets (includes IPv6-related rules)
+# Update rule sets (including current DNSBL/network rule definitions)
 sudo sa-update
-sudo systemctl restart spamassassin
+sudo systemctl restart spamd
 
 # Run sa-update in verbose mode to see what's updated
-sudo sa-update --debug 2>&1 | grep -i "ipv6\|update"
+sudo sa-update -v 2>&1 | grep -i "update"
 ```
 
 ## Testing SpamAssassin with an IPv6 Message
@@ -106,17 +100,17 @@ EOF
 spamassassin -t < /tmp/test-ipv6.eml
 
 # Check specific scores
-spamassassin -t -D all < /tmp/test-ipv6.eml 2>&1 | grep -E "IPv6|trusted|whitelist"
+spamassassin -t -D all < /tmp/test-ipv6.eml 2>&1 | grep -Ei "IPv6|trusted|welcomelist|whitelist"
 ```
 
 ## Checking How SpamAssassin Sees IPv6 Addresses
 
 ```bash
 # Use spamassassin debug mode to see IP address handling
-spamassassin -t -D bayes,dns < /tmp/test-ipv6.eml 2>&1 | grep -i "ip\|relay\|rdns"
+spamassassin -t -D received-header,dns,dnseval < /tmp/test-ipv6.eml 2>&1 | grep -Ei "ip|relay|rdns|rbl|dns"
 
 # Check trusted_networks evaluation
-spamassassin -t -D network < /tmp/test-ipv6.eml 2>&1 | grep "trusted\|internal"
+spamassassin -t -D received-header,config < /tmp/test-ipv6.eml 2>&1 | grep -Ei "trusted|internal|relay"
 ```
 
 ## Handling spamd for IPv6 Connections
@@ -124,13 +118,13 @@ spamassassin -t -D network < /tmp/test-ipv6.eml 2>&1 | grep "trusted\|internal"
 If using spamd as a daemon, ensure it accepts connections from IPv6 clients:
 
 ```bash
-# Edit the spamd options in /etc/default/spamassassin
-sudo nano /etc/default/spamassassin
+# Edit the spamd options in /etc/default/spamd
+sudo nano /etc/default/spamd
 
-# Set OPTIONS to bind on IPv6
-OPTIONS="--create-prefs --max-children 5 --username spamd --helper-home-dir /var/lib/spamassassin -s /var/log/spamd.log --listen :: --listen 0.0.0.0"
+# Set OPTIONS to bind on IPv6 and allow your spamc client subnet
+OPTIONS="--create-prefs --max-children 5 --helper-home-dir --listen=[::]:783 --listen=0.0.0.0:783 --allowed-ips=[2001:db8::]/32,::1,127.0.0.1"
 
-sudo systemctl restart spamassassin
+sudo systemctl restart spamd
 
 # Verify spamd is listening on IPv6
 ss -tlnp | grep 783
@@ -138,4 +132,4 @@ ss -tlnp | grep 783
 
 ## Conclusion
 
-SpamAssassin IPv6 configuration centers on three areas: defining `trusted_networks` and `internal_networks` with IPv6 CIDR blocks, configuring IPv6-aware DNSBL checks, and ensuring spamd listens on IPv6 if used as a daemon. With these changes, SpamAssassin accurately evaluates IPv6 mail without incorrectly penalizing legitimate internal senders.
+SpamAssassin IPv6 configuration centers on three areas: defining `trusted_networks` and `internal_networks` with IPv6 CIDR blocks, configuring IPv6-aware DNSBL checks, and ensuring spamd listens on IPv6 and allows the expected IPv6 spamc clients if used as a daemon. With these changes, SpamAssassin accurately evaluates IPv6 mail without incorrectly penalizing legitimate internal senders.
