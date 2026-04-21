@@ -33,6 +33,10 @@ on:
   pull_request:
     types: [closed]  # Trigger when PR is merged or closed
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   destroy:
     runs-on: ubuntu-latest
@@ -48,21 +52,25 @@ jobs:
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
 
+      - name: Initialize OpenTofu
+        run: tofu init -input=false
+        working-directory: infrastructure
+
       - name: Select workspace
         run: |
           WORKSPACE="pr-${{ github.event.pull_request.number }}"
-          tofu workspace select $WORKSPACE
+          tofu workspace select "$WORKSPACE"
         working-directory: infrastructure
 
       - name: Destroy preview environment
-        run: tofu destroy -auto-approve
+        run: tofu destroy -auto-approve -input=false
         working-directory: infrastructure
 
       - name: Remove workspace
         run: |
           WORKSPACE="pr-${{ github.event.pull_request.number }}"
           tofu workspace select default
-          tofu workspace delete $WORKSPACE
+          tofu workspace delete "$WORKSPACE"
         working-directory: infrastructure
 ```
 
@@ -89,7 +97,7 @@ resource "aws_lambda_function" "cleanup_stale" {
   }
 }
 
-# Run cleanup every night at midnight
+# Run cleanup every night at midnight UTC
 resource "aws_cloudwatch_event_rule" "nightly_cleanup" {
   name                = "cleanup-ephemeral-environments"
   schedule_expression = "cron(0 0 * * ? *)"
@@ -99,6 +107,14 @@ resource "aws_cloudwatch_event_target" "cleanup_lambda" {
   rule      = aws_cloudwatch_event_rule.nightly_cleanup.name
   target_id = "cleanup-lambda"
   arn       = aws_lambda_function.cleanup_stale.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_cleanup" {
+  statement_id  = "AllowExecutionFromEventBridgeCleanup"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.cleanup_stale.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.nightly_cleanup.arn
 }
 ```
 
@@ -135,7 +151,7 @@ resource "aws_budgets_budget" "temp_env" {
 
   cost_filter {
     name   = "TagKeyValue"
-    values = ["user:PRNumber$${var.pr_number}"]
+    values = [format("user:PRNumber$%s", var.pr_number)]
   }
 
   notification {
@@ -150,8 +166,8 @@ resource "aws_budgets_budget" "temp_env" {
 
 ## Best Practices
 
-- Always tag ephemeral resources with `EnvironmentType = "ephemeral"` and `PR = "<number>"` for automated cleanup.
-- Run `tofu plan -destroy` and review before applying destroy - check for resources not in state that may be orphaned.
-- Set AWS Budgets alerts for ephemeral environments to catch runaway costs early.
-- Keep state files after destroy long enough (7+ days) to debug any issues with cleanup.
+- Always tag ephemeral resources with `EnvironmentType = "ephemeral"` and `PRNumber = "<number>"` for automated cleanup.
+- Run `tofu plan -destroy` and review before applying destroy - separately check tagged cloud resources for orphaned objects not in state.
+- Activate the `PRNumber` cost allocation tag and set AWS Budgets alerts for ephemeral environments to catch runaway costs early.
+- Keep destroy logs or backend state version history after destroy long enough (7+ days) to debug any issues with cleanup.
 - Remove workspace state after destroy to prevent confusion - `tofu workspace delete` after `tofu destroy`.

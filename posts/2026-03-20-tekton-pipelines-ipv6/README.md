@@ -36,7 +36,7 @@ spec:
         image: ubuntu:22.04
         script: |
           #!/bin/bash
-          apt-get update -q && apt-get install -y iproute2 iputils-ping curl -q
+          apt-get update -qq && apt-get install -y -qq iproute2 iputils-ping curl
           echo "IPv6 addresses:"
           ip -6 addr show scope global
           echo "Testing external IPv6:"
@@ -71,8 +71,8 @@ spec:
       image: alpine/git:latest
       script: |
         #!/bin/sh
-        # Configure git to use IPv6 if the URL is an IPv6 address
-        git config --global http.sslVerify false  # For self-signed certs only
+        # Git supports bracketed IPv6 literals in HTTP(S) URLs.
+        # Make sure the image trusts your Git server's TLS certificate.
 
         # Clone the repository
         git clone "$(params.repo-url)" "$(workspaces.output.path)/repo"
@@ -97,7 +97,7 @@ spec:
     name: git-clone-ipv6
   params:
     - name: repo-url
-      value: "https://[2001:db8::gitea]/org/my-app.git"
+      value: "https://[2001:db8::10]/org/my-app.git"
   workspaces:
     - name: output
       emptyDir: {}
@@ -140,9 +140,9 @@ spec:
             image: ubuntu:22.04
             script: |
               #!/bin/bash
-              apt-get install -y iputils-ping curl -q
+              apt-get update -qq && apt-get install -y -qq iputils-ping curl
               # Verify IPv6 works in this cluster
-              if ping6 -c 2 2606:4700:4700::1111; then
+              if ping -6 -c 2 2606:4700:4700::1111; then
                 echo "IPv6 connectivity: OK"
               else
                 echo "WARNING: No external IPv6 connectivity"
@@ -155,11 +155,11 @@ spec:
           - name: image
         steps:
           - name: build
-            image: gcr.io/kaniko-project/executor:latest
+            image: registry.example.com/kaniko/executor:latest
             args:
               - --context=/workspace/source
               - --destination=$(params.image)
-              # Kaniko uses IPv6 for registry connections if available
+              # Use a maintained Kaniko executor image and an IPv6-reachable registry
       params:
         - name: image
           value: "$(params.image-name)"
@@ -178,7 +178,7 @@ spec:
     name: ipv6-app-pipeline
   params:
     - name: git-url
-      value: "https://[2001:db8::gitea]/org/my-app.git"
+      value: "https://[2001:db8::10]/org/my-app.git"
     - name: image-name
       value: "myregistry.example.com/myapp:latest"
   workspaces:
