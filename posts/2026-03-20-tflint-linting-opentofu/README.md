@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, TFLint, Linting, Code Quality, Infrastructure as Code, DevOps
 
-Description: Learn how to use tflint to catch configuration errors, deprecated attributes, and provider-specific best practice violations in OpenTofu configurations before planning.
+Description: Learn how to use tflint to catch deprecated syntax, naming violations, and provider-specific best practice violations in Terraform-compatible OpenTofu configurations before planning.
 
 ## Introduction
 
-`tflint` goes beyond `tofu validate` - while validate catches syntax errors, tflint catches semantic issues: deprecated attributes, invalid instance types, missing required module arguments, and provider-specific configuration mistakes. It integrates with provider plugins to know what valid values look like.
+`tflint` complements `tofu validate` for Terraform-compatible OpenTofu configurations - while validate checks syntax, argument names and types, and internal consistency, tflint catches lint issues: deprecated syntax, invalid instance types, naming convention violations, and provider-specific configuration mistakes. It integrates with TFLint ruleset plugins to know what valid values look like.
 
 ## Installing tflint
 
@@ -21,17 +21,18 @@ brew install tflint
 curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
 
 # Docker
-docker pull ghcr.io/terraform-linters/tflint-bundle:latest
+docker run --rm -v "$(pwd):/data" -t ghcr.io/terraform-linters/tflint --version
 
+# Verify local install
 tflint --version
 ```
 
-## Installing Provider Plugins
+## Installing Ruleset Plugins
 
-tflint's provider plugins enable provider-specific rule checking:
+tflint's ruleset plugins enable provider-specific rule checking:
 
 ```bash
-# Initialize tflint with provider plugins
+# Initialize tflint with configured ruleset plugins
 tflint --init
 
 # Or specify explicitly
@@ -43,23 +44,23 @@ tflint --init --config .tflint.hcl
 ```hcl
 # .tflint.hcl
 config {
-  # Use OpenTofu module mode
-  module = true
-  # Force exit 1 on violations
+  # Inspect all local and remote module calls
+  call_module_type = "all"
+  # Keep a non-zero exit status when issues are found
   force = false
 }
 
 # AWS provider rules
 plugin "aws" {
   enabled    = true
-  version    = "0.31.0"
+  version    = "0.47.0"
   source     = "github.com/terraform-linters/tflint-ruleset-aws"
 }
 
 # Google provider rules
 plugin "google" {
   enabled = true
-  version = "0.28.0"
+  version = "0.39.0"
   source  = "github.com/terraform-linters/tflint-ruleset-google"
 }
 
@@ -98,10 +99,10 @@ tflint
 # Lint with specific config
 tflint --config .tflint.hcl
 
-# Lint all modules recursively
+# Lint each configuration directory recursively
 tflint --recursive
 
-# Show only errors (not warnings)
+# Fail only on errors (warnings and notices are still printed)
 tflint --minimum-failure-severity=error
 
 # Format output as JSON
@@ -112,10 +113,10 @@ tflint --format=json
 
 ```hcl
 # VIOLATION: aws_instance_invalid_type
-# Error: "t2.nano" is an invalid value as instance_type
+# Error: "t1.2xlarge" is an invalid value as instance_type
 resource "aws_instance" "web" {
   ami           = data.aws_ami.amazon_linux.id
-  instance_type = "t2.nano"   # Invalid - use t3.nano
+  instance_type = "t1.2xlarge"   # Invalid - use t3.nano
 }
 
 # FIX
@@ -139,11 +140,12 @@ variable "db_password" {
 
 ```yaml
 - name: tflint
-  uses: reviewdog/action-tflint@master
+  uses: reviewdog/action-tflint@v1.25.0
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     reporter: github-pr-review
-    flags: "--recursive --module"
+    tflint_init: "true"
+    flags: "--recursive --call-module-type=all"
     tflint_rulesets: "aws google"
 ```
 
@@ -153,13 +155,14 @@ variable "db_password" {
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.83.6
+    rev: v1.104.0
     hooks:
       - id: terraform_tflint
         args:
           - --args=--config=.tflint.hcl
+          - --args=--call-module-type=all
 ```
 
 ## Conclusion
 
-tflint catches issues that `tofu validate` misses - invalid cloud resource configurations, deprecated syntax, and naming convention violations. Install provider plugins to get provider-specific rule checking, configure naming convention rules to enforce your team's standards, and run tflint in pre-commit hooks and CI to prevent these issues from reaching code review.
+tflint catches issues that `tofu validate` misses - invalid cloud resource configurations, deprecated syntax, and naming convention violations. Install ruleset plugins to get provider-specific rule checking, configure naming convention rules to enforce your team's standards, and run tflint in pre-commit hooks and CI to prevent these issues from reaching code review.
