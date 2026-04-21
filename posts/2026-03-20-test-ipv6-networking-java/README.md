@@ -24,7 +24,7 @@ class IPv6AddressTest {
         "::1, true",
         "::, true",
         "2001:0db8:0000:0000:0000:0000:0000:0001, true",
-        "not-an-address, false",
+        "2001:db8:::1, false",
         "2001:db8::gg, false",
     })
     void testIPv6Parsing(String addr, boolean shouldSucceed) {
@@ -65,6 +65,8 @@ import org.junit.jupiter.api.*;
 import java.io.*;
 import java.net.*;
 import java.util.concurrent.*;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class IPv6ServerIntegrationTest {
 
@@ -126,6 +128,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import java.net.*;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 class DualStackTest {
 
     @ParameterizedTest
@@ -149,15 +153,19 @@ class DualStackTest {
 
 ```java
 import org.junit.jupiter.api.condition.*;
+import org.junit.jupiter.api.Test;
 import java.net.*;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class IPv6ConditionalTest {
 
     static boolean isIPv6Available() {
-        try {
-            new Socket().connect(new InetSocketAddress("::1", 1), 100);
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress("::1", 1), 100);
+            return true;
         } catch (java.net.ConnectException e) {
-            return true;  // Refused = port exists, IPv6 works
+            return true;  // Refused = IPv6 loopback is reachable, but nothing is listening
         } catch (Exception e) {
             // Check if we can at least bind to IPv6
         }
@@ -221,4 +229,4 @@ class ClientIPExtractorTest {
 
 ## Conclusion
 
-Testing IPv6 networking code in Java uses the same JUnit 5 tooling as any other test. Parameterized tests with both `127.0.0.1` and `::1` ensure dual-stack compatibility. In-process servers on `::1` provide fast integration tests without external dependencies. Conditional test execution with `@EnabledIf` skips IPv6 tests in CI environments without IPv6 support. Mock `HttpServletRequest` objects from Spring Test enable header extraction testing without running a real HTTP server.
+Testing IPv6 networking code in Java uses the same JUnit 5 tooling as any other test. Parameterized tests with both `127.0.0.1` and `::1` help check loopback compatibility for both protocols. In-process servers on `::1` provide fast integration tests without external dependencies. Conditional test execution with `@EnabledIf` skips IPv6 tests in CI environments without IPv6 support. Mock `HttpServletRequest` objects from Spring Test enable header extraction testing without running a real HTTP server.
