@@ -107,7 +107,7 @@ output "prod_account_teams" {
 
 ## Building IAM Policies from Transposed Data
 
-Use transposed data to construct IAM policies that grant users access to their appropriate resources.
+Use transposed data to construct IAM policies that can be attached to grant users access to their appropriate resources.
 
 ```hcl
 locals {
@@ -122,7 +122,7 @@ locals {
   user_buckets = transpose(local.bucket_users)
 }
 
-# Create an IAM policy for each user with access to their buckets
+# Create an IAM policy for each user that can be attached to grant bucket access
 resource "aws_iam_policy" "user_s3_access" {
   for_each = local.user_buckets
 
@@ -133,7 +133,14 @@ resource "aws_iam_policy" "user_s3_access" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
+        Action   = ["s3:ListBucket"]
+        Resource = [
+          for bucket in each.value : "arn:aws:s3:::${bucket}"
+        ]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject"]
         Resource = [
           for bucket in each.value : "arn:aws:s3:::${bucket}/*"
         ]
