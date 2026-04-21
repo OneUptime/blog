@@ -8,14 +8,12 @@ Description: Deploy Trivy in server mode via Portainer to provide a shared vulne
 
 ## Introduction
 
-Running Trivy in client-server mode separates the vulnerability database from the scanner client, enabling faster scans (no database download per scan) and centralized scanning infrastructure. This guide covers deploying Trivy server via Portainer, setting up the database update schedule, integrating with a private registry, and querying the API.
+Running Trivy in client-server mode separates the vulnerability database from the scanner client, enabling faster scans (no database download per scan) and centralized scanning infrastructure. This guide covers deploying Trivy server via Portainer, pre-warming the database cache, integrating with a private registry, and querying the API.
 
 ## Step 1: Deploy Trivy Server Stack
 
 ```yaml
 # docker-compose.yml - Trivy server deployment
-
-version: "3.8"
 
 services:
   trivy-server:
@@ -34,16 +32,14 @@ services:
       - trivy_cache:/cache
     ports:
       - "4954:4954"
-    environment:
-      # GitHub token to avoid rate limiting when downloading DB
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
     healthcheck:
-      test: ["CMD", "trivy", "health"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4954/healthz | grep -q ok"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  # Auto-update vulnerability database daily
+  # Optional: pre-warm and refresh the vulnerability database daily.
+  # The Trivy server also updates the database in the background.
   trivy-db-updater:
     image: aquasec/trivy:latest
     container_name: trivy_db_updater
@@ -87,15 +83,13 @@ trivy image \
   myapp/api:latest
 
 # Parse results with jq
-cat scan-results.json | jq '.Results[].Vulnerabilities[] | select(.Severity == "CRITICAL") | {ID: .VulnerabilityID, Package: .PkgName, Fixed: .FixedVersion}'
+jq '.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL") | {ID: .VulnerabilityID, Package: .PkgName, Fixed: .FixedVersion}' scan-results.json
 ```
 
 ## Step 3: Scan a Private Registry
 
 ```yaml
 # docker-compose.yml - Trivy with private registry access
-version: "3.8"
-
 services:
   trivy-server:
     image: aquasec/trivy:latest
@@ -123,10 +117,9 @@ trivy image \
   --server http://trivy-server:4954 \
   registry.internal.com/myapp/api:latest
 
-# With explicit credentials
-trivy image \
-  --username registry_user \
-  --password registry_password \
+# With credentials passed to the client
+TRIVY_USERNAME=registry_user TRIVY_PASSWORD=registry_password trivy image \
+  --server http://trivy-server:4954 \
   registry.internal.com/myapp/api:latest
 ```
 
@@ -135,6 +128,13 @@ trivy image \
 ```bash
 #!/bin/bash
 # pre-deploy-scan.sh - Called before Portainer webhook
+
+set -euo pipefail
+
+if [ $# -ne 1 ]; then
+  echo "Usage: $0 IMAGE"
+  exit 2
+fi
 
 TRIVY_SERVER="http://trivy-server:4954"
 IMAGE=$1
@@ -150,8 +150,8 @@ RESULTS=$(trivy image \
   --quiet \
   "$IMAGE")
 
-CRITICAL=$(echo "$RESULTS" | jq '[.Results[].Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length')
-HIGH=$(echo "$RESULTS" | jq '[.Results[].Vulnerabilities[]? | select(.Severity == "HIGH")] | length')
+CRITICAL=$(echo "$RESULTS" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length')
+HIGH=$(echo "$RESULTS" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length')
 
 echo "Critical: $CRITICAL, High: $HIGH"
 
@@ -171,9 +171,10 @@ exit 0
 
 ## Step 5: Scan Reports Dashboard
 
+Trivy does not include a built-in PostgreSQL importer; the `scan-all.sh` script must run scans and insert the JSON results into `scan-db`, then Grafana can visualize them.
+
 ```yaml
-# Add a scan results dashboard using Grafana
-version: "3.8"
+# Add scan result storage and a Grafana dashboard
 
 services:
   trivy-server:
@@ -194,7 +195,7 @@ services:
     volumes:
       - scan_db_data:/var/lib/postgresql/data
 
-  # Scan result importer
+  # Custom scan result importer
   scan-importer:
     image: aquasec/trivy:latest
     restart: unless-stopped
@@ -206,9 +207,19 @@ services:
       - TRIVY_SERVER=http://trivy-server:4954
       - DB_HOST=scan-db
 
+  # Grafana dashboard UI
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+
 volumes:
   trivy_cache:
   scan_db_data:
+  grafana_data:
 ```
 
 ## Step 6: Monitor Trivy Server Health
@@ -216,16 +227,14 @@ volumes:
 ```bash
 # Check Trivy server health
 curl http://YOUR_SERVER_IP:4954/healthz
-# Returns: OK
+# Returns: ok
 
 # Check database version
-trivy image \
-  --server http://YOUR_SERVER_IP:4954 \
-  --format json \
-  alpine:latest 2>&1 | jq '.SchemaVersion, .CreatedAt'
+curl -s http://YOUR_SERVER_IP:4954/version | jq '.VulnerabilityDB, .JavaDB, .PolicyBundle'
 
 # Monitor cache directory size
-du -sh /var/lib/docker/volumes/trivy_cache/_data/
+STACK_NAME=your_stack_name
+docker volume inspect "${STACK_NAME}_trivy_cache" --format '{{ .Mountpoint }}' | xargs du -sh
 
 # Test scan latency (server mode is much faster than standalone)
 time trivy image \
@@ -233,9 +242,9 @@ time trivy image \
   --quiet \
   nginx:alpine
 # With server: ~2-5 seconds (DB already loaded)
-# Without server: ~30-60 seconds (downloads DB)
+# Without server on the first run: ~30-60 seconds (downloads DB)
 ```
 
 ## Conclusion
 
-Trivy server mode transforms vulnerability scanning from a slow per-invocation process into a fast shared service. The database loads once, stays in memory, and all scan clients benefit from instant access. Deploying Trivy server via Portainer alongside your other infrastructure services gives your team a reliable scanning endpoint for CI/CD pipelines, pre-deployment checks, and scheduled audits. Combined with Portainer's webhook deployment triggers, you can create gates that block deployments of images with critical vulnerabilities.
+Trivy server mode transforms vulnerability scanning from a slow per-invocation process into a fast shared service. The database is downloaded and maintained by the server, and all scan clients benefit from instant access. Deploying Trivy server via Portainer alongside your other infrastructure services gives your team a reliable scanning endpoint for CI/CD pipelines, pre-deployment checks, and scheduled audits. Combined with Portainer's webhook deployment triggers, you can create gates that block deployments of images with critical vulnerabilities.
