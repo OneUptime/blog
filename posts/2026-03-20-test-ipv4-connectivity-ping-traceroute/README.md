@@ -8,12 +8,12 @@ Description: Use ping and traceroute to test IPv4 connectivity, measure latency 
 
 ## Introduction
 
-`ping` and `traceroute` are the two most fundamental network diagnostic tools. `ping` tests end-to-end reachability and measures round-trip latency. `traceroute` maps each hop along the path and identifies where delays or failures occur.
+`ping` and `traceroute` are the two most fundamental network diagnostic tools. `ping` tests ICMP end-to-end reachability and measures round-trip latency. `traceroute` maps responding hops along the path and helps identify where delays or failures occur.
 
 ## Basic ping
 
 ```bash
-# Ping a host - sends 4 ICMP echo requests by default (Linux sends continuously)
+# Ping a host - send 4 ICMP echo requests (Linux sends continuously without -c)
 
 ping -c 4 8.8.8.8
 
@@ -41,7 +41,7 @@ rtt min/avg/max/mdev = 10.8/11.0/11.2/0.200 ms
 | `ttl=118` | Time-to-Live remaining on arrival |
 | `time=11.2 ms` | Round-trip latency |
 | `0% packet loss` | No packets dropped |
-| `mdev` | Mean deviation (jitter) |
+| `mdev` | RTT variability (population standard deviation) |
 
 ## Continuous Monitoring with ping
 
@@ -49,7 +49,7 @@ rtt min/avg/max/mdev = 10.8/11.0/11.2/0.200 ms
 # Ping every 0.2 seconds - good for watching intermittent loss
 ping -i 0.2 192.168.1.1
 
-# Flood ping (requires root) - tests bandwidth
+# Flood ping (requires root) - stress-tests packet handling and loss
 sudo ping -f -c 1000 192.168.1.1
 ```
 
@@ -85,7 +85,7 @@ traceroute to 8.8.8.8, 30 hops max
  5  8.8.8.8        11.456 ms  11.300 ms  11.400 ms
 ```
 
-- `* * *`: no ICMP Time Exceeded reply (hop is filtering ICMP, but path continues)
+- `* * *`: no reply within the timeout, often due to filtering, rate limiting, or loss
 - Three latency values: three separate probe packets per hop
 
 ## tracepath - Alternative Without Root
@@ -98,7 +98,7 @@ tracepath 8.8.8.8
 ## mtr - Combined ping + traceroute
 
 ```bash
-# Install mtr
+# Install mtr on Debian/Ubuntu
 sudo apt install mtr-tiny
 
 # Run interactive traceroute with continuous pings to each hop
@@ -110,4 +110,4 @@ mtr -n -r -c 100 8.8.8.8
 
 ## Conclusion
 
-Start with `ping` to confirm basic reachability and measure latency. If ping fails, use `traceroute` or `mtr` to find the hop where connectivity breaks. `mtr` is the most powerful single tool, combining both and showing per-hop loss and latency over time.
+Start with `ping` to confirm basic ICMP reachability and measure latency. If ping fails, use `traceroute` or `mtr` to narrow down where probes stop receiving replies. `mtr` is the most powerful single tool, combining both and showing per-hop loss and latency over time.
