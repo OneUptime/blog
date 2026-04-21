@@ -31,20 +31,15 @@ import ipaddress
 
 def summarize_networks(networks: list) -> str:
     """
-    Return the smallest prefix that covers all given networks.
-    Networks must be contiguous for a clean summary.
+    Return one clean summary prefix for the given networks.
+    Networks must be contiguous and aligned for a single summary.
     """
     nets = [ipaddress.IPv4Network(n, strict=False) for n in networks]
-    # Use collapse_addresses for potentially non-contiguous input
+    # Collapse contiguous or overlapping networks into the shortest prefix list.
     summary = list(ipaddress.collapse_addresses(nets))
-    if len(summary) == 1:
-        return str(summary[0])
-    else:
-        # Multiple blocks needed - find the covering supernet
-        first = min(nets, key=lambda n: n.network_address)
-        last  = max(nets, key=lambda n: n.broadcast_address)
-        return str(list(first.supernet(new_prefix=
-            first.prefixlen - 1))[0])
+    if len(summary) != 1:
+        raise ValueError("Networks do not form one clean summary prefix")
+    return str(summary[0])
 
 # Four contiguous /24s
 
