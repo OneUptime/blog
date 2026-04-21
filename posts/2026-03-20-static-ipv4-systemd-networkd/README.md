@@ -48,10 +48,7 @@ Address=192.168.1.100/24
 Gateway=192.168.1.1
 DNS=8.8.8.8
 DNS=8.8.4.4
-Domains=example.local
-
-[Route]
-Gateway=192.168.1.1
+Domains=example.com
 ```
 
 Replace `ens3` with your interface name and update the IP addresses accordingly.
