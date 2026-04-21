@@ -6,9 +6,9 @@ Tags: Telegraf, IPv6, InfluxDB, Monitoring, Metric, Time Series
 
 Description: A guide to configuring Telegraf input plugins to collect IPv6 metrics, scrape IPv6 endpoints, and report data to InfluxDB or other outputs.
 
-Telegraf is InfluxData's agent for collecting and reporting metrics. It supports IPv6 across its input and output plugins, allowing it to scrape IPv6 endpoints and write to IPv6-addressed InfluxDB instances.
+Telegraf is InfluxData's agent for collecting and reporting metrics. Many networked input and output plugins accept IPv6 endpoints, allowing it to scrape IPv6 endpoints and write to IPv6-addressed InfluxDB instances.
 
-## Step 1: Configure Telegraf to Listen on IPv6
+## Step 1: Configure Telegraf to Write to an IPv6 InfluxDB Endpoint
 
 ```toml
 # telegraf.conf - Core agent configuration
@@ -19,7 +19,7 @@ Telegraf is InfluxData's agent for collecting and reporting metrics. It supports
 
 # Output to InfluxDB (supports IPv6 endpoints)
 [[outputs.influxdb_v2]]
-  urls = ["http://[2001:db8::influx]:8086"]
+  urls = ["http://[2001:db8::1]:8086"]
   token = "$INFLUX_TOKEN"
   organization = "my-org"
   bucket = "ipv6-metrics"
@@ -35,15 +35,15 @@ Telegraf is InfluxData's agent for collecting and reporting metrics. It supports
   interfaces = ["eth0", "eth1"]
 
   # This collects bytes sent/received per interface
-  # For dedicated IPv6 stats, use the kernel input
+  # For dedicated IPv6 stats, use the nstat input
 
-[[inputs.kernel]]
-  # Collects /proc/net/snmp6 statistics
-  # Provides dedicated IPv6 packet counters
+[[inputs.nstat]]
+  # Collects /proc/net/netstat, /proc/net/snmp, and /proc/net/snmp6
+  # Provides dedicated IPv6 packet counters such as Ip6InReceives and Icmp6InMsgs
 
 # Optionally use the netstat input for connection state
 [[inputs.netstat]]
-  # Reports per-protocol connection counts including tcp6, udp6
+  # Reports TCP connection state counts and UDP socket counts
 ```
 
 ## Step 3: Scrape Prometheus IPv6 Targets with Telegraf
@@ -58,7 +58,7 @@ Telegraf is InfluxData's agent for collecting and reporting metrics. It supports
     "http://[::1]:9090/metrics"             # Local Prometheus
   ]
 
-  # Namespace to add to metric names
+  # Controls how Prometheus metrics map into Telegraf metrics
   metric_version = 2
 
   # Tags to add to all metrics from these targets
@@ -72,7 +72,7 @@ Telegraf is InfluxData's agent for collecting and reporting metrics. It supports
 ```toml
 # http_response input - Active check for IPv6 HTTP endpoints
 [[inputs.http_response]]
-  address = "http://[2001:db8::10]:80/"
+  urls = ["http://[2001:db8::10]:80/"]
   method = "GET"
   response_timeout = "10s"
   follow_redirects = true
@@ -83,12 +83,13 @@ Telegraf is InfluxData's agent for collecting and reporting metrics. It supports
     ip_family = "ipv6"
 
 [[inputs.http_response]]
-  address = "https://www.example.com/"
+  urls = ["http://[2001:db8::11]:80/"]
   method = "GET"
   response_timeout = "10s"
 
   [inputs.http_response.tags]
-    instance = "example-com-ipv6"
+    instance = "web-02-ipv6"
+    ip_family = "ipv6"
 ```
 
 ## Step 5: Ping Plugin for IPv6 ICMP Checks
@@ -131,7 +132,7 @@ Telegraf is InfluxData's agent for collecting and reporting metrics. It supports
   record_type = "AAAA"
 
   # Timeout
-  timeout = 5
+  timeout = "5s"
 ```
 
 ## Step 7: Test the Configuration
@@ -151,15 +152,13 @@ telegraf --config /etc/telegraf/telegraf.conf --input-filter ping --test
 
 ```text
 # From net plugin
-net_bytes_recv{interface="eth0"} = X        # Total bytes received
-net_bytes_sent{interface="eth0"} = X
+net,interface=eth0 bytes_recv=123456i,bytes_sent=654321i
 
 # From http_response plugin
-http_response_response_time{server="[2001:db8::10]:80"} = 0.025
+http_response,method=GET,result=success,server=http://[2001:db8::10]:80/,status_code=200 response_time=0.025,result_code=0i
 
 # From ping plugin
-ping_average_response_ms{url="2001:4860:4860::8888"} = 12.3
-ping_packet_loss_percent{url="2001:4860:4860::8888"} = 0.0
+ping,url=2001:4860:4860::8888 average_response_ms=12.3,percent_packet_loss=0.0,result_code=0i
 ```
 
 Telegraf's broad plugin ecosystem makes it an excellent single-agent solution for collecting IPv6 metrics from network interfaces, HTTP endpoints, DNS resolvers, and ICMP targets in one unified configuration.
