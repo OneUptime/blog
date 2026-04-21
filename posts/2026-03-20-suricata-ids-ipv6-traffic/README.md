@@ -18,10 +18,12 @@ Suricata is a high-performance Network IDS, IPS, and Network Security Monitoring
 sudo apt install suricata -y
 
 # RHEL/CentOS
-sudo dnf install suricata -y
+sudo dnf install -y epel-release dnf-plugins-core
+sudo dnf -y copr enable @oisf/suricata-8.0
+sudo dnf install -y suricata
 
 # Check version
-suricata --build-info | grep "Version"
+suricata -V
 
 # Update rules (Emerging Threats)
 sudo suricata-update
@@ -60,30 +62,29 @@ af-packet:
 ```bash
 # /etc/suricata/rules/local.rules
 
-# Detect IPv6 scanning (many extension headers)
+# Detect IPv6 Hop-by-Hop Options header bursts
 alert ipv6 any any -> $HOME_NET any \
-  (msg:"IPv6 Extension Header Scan Attempt"; \
-   ip6-exthdr:hopopts; \
-   threshold:type threshold,track by_src,count 20,seconds 10; \
+  (msg:"IPv6 Hop-by-Hop Options Header Burst"; \
+   ipv6.hdr; content:"|00|"; offset:6; depth:1; \
+   threshold: type threshold, track by_src, count 20, seconds 10; \
    sid:9000001; rev:1;)
 
 # Detect ICMPv6 router advertisement flooding
-alert icmp6 any any -> $HOME_NET any \
+alert icmpv6 any any -> [$HOME_NET,ff02::/16] any \
   (msg:"ICMPv6 Router Advertisement Flood"; \
    itype:134; \
-   threshold:type threshold,track by_src,count 10,seconds 5; \
+   threshold: type threshold, track by_src, count 10, seconds 5; \
    sid:9000002; rev:1;)
 
 # Detect IPv6 Neighbor Discovery spoofing
-alert icmp6 any any -> $HOME_NET any \
+alert icmpv6 any any -> [$HOME_NET,ff02::/16] any \
   (msg:"Suspicious ICMPv6 Neighbor Advertisement"; \
    itype:136; \
    sid:9000003; rev:1;)
 
-# Detect IPv4-mapped IPv6 tunneling
-alert ipv6 any any -> any any \
-  (msg:"IPv4-Mapped IPv6 Address Detected"; \
-   ip6.src:ffff:0:0/96; \
+# Detect IPv4-mapped IPv6 source addresses
+alert ipv6 ::ffff:0:0/96 any -> any any \
+  (msg:"IPv4-Mapped IPv6 Source Address Detected"; \
    sid:9000004; rev:1;)
 ```
 
@@ -108,18 +109,30 @@ sudo tail -f /var/log/suricata/fast.log
 ```bash
 # IPS mode using NFQ (Netfilter Queue)
 # Configure iptables to send IPv6 traffic to Suricata
-sudo ip6tables -A FORWARD -j NFQUEUE --queue-num 0
-sudo ip6tables -A INPUT -j NFQUEUE --queue-num 0
-sudo ip6tables -A OUTPUT -j NFQUEUE --queue-num 0
+sudo ip6tables -I FORWARD -j NFQUEUE --queue-num 0
+sudo ip6tables -I INPUT -j NFQUEUE --queue-num 0
+sudo ip6tables -I OUTPUT -j NFQUEUE --queue-num 0
 
 # Start Suricata in IPS mode
 sudo suricata -c /etc/suricata/suricata.yaml -q 0
 
-# IPS mode with af-packet (better performance)
+# IPS mode with AF_PACKET (requires two interfaces)
 # In suricata.yaml:
-# nfq:
-#   mode: accept
-#   fail-open: yes
+# af-packet:
+#   - interface: eth0
+#     cluster-id: 98
+#     cluster-type: cluster_flow
+#     defrag: no
+#     copy-mode: ips
+#     copy-iface: eth1
+#   - interface: eth1
+#     cluster-id: 97
+#     cluster-type: cluster_flow
+#     defrag: no
+#     copy-mode: ips
+#     copy-iface: eth0
+# stream:
+#   inline: auto
 ```
 
 ## Systemd Service for Suricata
@@ -132,9 +145,9 @@ After=network-online.target
 
 [Service]
 Type=forking
-ExecStart=/usr/bin/suricata -c /etc/suricata/suricata.yaml -i eth0 -D
+ExecStart=/usr/bin/suricata -c /etc/suricata/suricata.yaml -i eth0 -D --pidfile /run/suricata.pid
 ExecReload=/bin/kill -USR2 $MAINPID
-PIDFile=/var/run/suricata.pid
+PIDFile=/run/suricata.pid
 
 [Install]
 WantedBy=multi-user.target
@@ -155,7 +168,7 @@ for line in sys.stdin:
 "
 
 # Filter IPv6 events with jq
-sudo cat /var/log/suricata/eve.json | jq 'select(.src_ip | contains(":"))' | head
+sudo cat /var/log/suricata/eve.json | jq 'select((.src_ip? // "") | contains(":"))' | head
 ```
 
 Suricata's native IPv6 support enables comprehensive intrusion detection across all IP versions, with the `HOME_NET` variable being the key configuration point for defining your IPv6 address space to properly classify internal versus external traffic.
