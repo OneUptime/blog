@@ -8,7 +8,7 @@ Description: Learn how to create an SSH SOCKS5 proxy to tunnel browser traffic o
 
 ---
 
-An SSH SOCKS proxy creates an encrypted tunnel between your machine and a remote server. By configuring your browser to use this proxy, all web traffic is relayed through the remote server's IPv4 address - useful for accessing region-restricted content or securing traffic on untrusted networks.
+An SSH SOCKS proxy creates an encrypted tunnel between your machine and a remote server. By configuring your browser to use this proxy, browser traffic is relayed through the remote server's public egress address - useful for accessing region-restricted content or securing traffic on untrusted networks.
 
 ## Creating the SOCKS Proxy
 
@@ -34,7 +34,7 @@ ss -tlnp | grep 1080
 # Quick connectivity test
 curl --socks5-hostname localhost:1080 http://example.com
 curl --socks5-hostname localhost:1080 https://ifconfig.me
-# Should show the remote server's IPv4 address
+# Should show the remote server's public egress address
 ```
 
 ## Configuring Firefox
@@ -51,12 +51,12 @@ google-chrome --proxy-server="socks5://127.0.0.1:1080" \
               --host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE localhost"
 ```
 
-## System-Wide SOCKS Proxy (Linux)
+## CLI SOCKS Proxy Environment Variables (Linux)
 
 ```bash
 # Set SOCKS proxy environment variables for CLI tools
-export ALL_PROXY=socks5://127.0.0.1:1080
-export all_proxy=socks5://127.0.0.1:1080
+export ALL_PROXY=socks5h://127.0.0.1:1080
+export all_proxy=socks5h://127.0.0.1:1080
 
 # Test with curl using the environment variable
 curl https://ifconfig.me
@@ -97,4 +97,4 @@ kill <PID>
 - `ssh -D 1080` creates a SOCKS5 proxy listening on `localhost:1080`.
 - Use `-4` to force the SSH connection itself over IPv4.
 - Configure the browser's SOCKS proxy to `127.0.0.1:1080` and enable "Proxy DNS" to prevent DNS leaks.
-- `ALL_PROXY=socks5://127.0.0.1:1080` routes most CLI tools through the tunnel without per-tool configuration.
+- `ALL_PROXY=socks5h://127.0.0.1:1080` routes tools that honor proxy environment variables through the tunnel without per-tool configuration.
