@@ -13,13 +13,13 @@ Traffic management is one of the most powerful features of a service mesh. It al
 ## Prerequisites
 
 - Portainer connected to a Kubernetes cluster
-- Istio or Linkerd installed (see previous guides)
+- Istio installed, with the `production` namespace enrolled in the mesh (for example, sidecar injection enabled)
 - Basic understanding of Kubernetes services and deployments
 - kubectl CLI access for verification
 
 ## Traffic Management Concepts
 
-Modern service meshes provide several traffic management primitives:
+Istio provides several traffic management primitives:
 
 - **VirtualService**: Defines routing rules for traffic to a service
 - **DestinationRule**: Defines policies for traffic after routing (circuit breaking, load balancing)
@@ -28,10 +28,10 @@ Modern service meshes provide several traffic management primitives:
 
 ## Step 1: Deploy Multiple Service Versions
 
-First, deploy both versions of your application via Portainer Stacks:
+First, deploy both versions of your application via Portainer's Kubernetes application manifest workflow:
 
 ```yaml
-# app-v1-v2-stack.yaml - Deploy via Portainer Kubernetes manifest
+# app-v1-v2.yaml - Deploy via Portainer Kubernetes manifest
 
 apiVersion: apps/v1
 kind: Deployment
@@ -109,7 +109,7 @@ Apply a VirtualService to control traffic distribution:
 
 ```yaml
 # virtualservice-canary.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-vs
@@ -140,7 +140,7 @@ spec:
       weight: 10
 ---
 # DestinationRule defines the subsets (v1 and v2)
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -157,7 +157,7 @@ spec:
   trafficPolicy:
     # Configure load balancing
     loadBalancer:
-      simple: LEAST_CONN
+      simple: LEAST_REQUEST
     # Connection pool settings
     connectionPool:
       tcp:
@@ -167,68 +167,93 @@ spec:
         http2MaxRequests: 1000
 ```
 
-Apply these via Portainer's **Kubernetes** > **Manifests** section.
+Apply these via Portainer's **Applications** > **Add application** > **Create from manifest** flow. For the later examples, update this same `my-service-vs` and `my-service-dr` instead of applying separate resources for the same host.
 
 ## Step 3: Configure Circuit Breaking
 
-Protect services from cascading failures with circuit breaking:
+Protect services from cascading failures by updating the same DestinationRule with circuit breaking:
 
 ```yaml
 # circuit-breaker.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: my-service-circuit-breaker
+  name: my-service-dr
   namespace: production
 spec:
   host: my-service
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
   trafficPolicy:
+    loadBalancer:
+      simple: LEAST_REQUEST
     connectionPool:
       tcp:
         maxConnections: 100
       http:
-        # Maximum pending requests before circuit opens
+        # Maximum pending HTTP/1.1 requests
         http1MaxPendingRequests: 1000
+        # Maximum active HTTP/2 requests
         http2MaxRequests: 10000
     outlierDetection:
       # Eject a host after 5 consecutive 5xx errors
-      consecutiveGatewayErrors: 5
+      consecutive5xxErrors: 5
       # Scan every 1 second
       interval: 1s
       # Keep ejected for 30 seconds
       baseEjectionTime: 30s
       # Maximum 50% of hosts can be ejected
       maxEjectionPercent: 50
-      # Minimum requests before ejection can happen
+      # Disable outlier detection if fewer than 50% of hosts are healthy
       minHealthPercent: 50
 ```
 
 ## Step 4: Configure Retries and Timeouts
 
-Add resilience with retries and timeouts:
+Add resilience by updating the VirtualService with retries and timeouts:
 
 ```yaml
 # retries-timeouts.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: my-service-resilience
+  name: my-service-vs
   namespace: production
 spec:
   hosts:
   - my-service
   http:
-  - route:
+  - name: "canary-route"
+    match:
+    - headers:
+        x-canary:
+          exact: "true"
+    route:
+    - destination:
+        host: my-service
+        subset: v2
+  - name: "primary-route"
+    route:
     - destination:
         host: my-service
         subset: v1
-    # Timeout for the entire request
-    timeout: 3s
+      weight: 90
+    - destination:
+        host: my-service
+        subset: v2
+      weight: 10
+    # Timeout for the entire request, including retries
+    timeout: 10s
     # Retry configuration
     retries:
       # Retry 3 times
       attempts: 3
-      # Wait 2s between retries
+      # Timeout for each try
       perTryTimeout: 2s
       # Only retry on these conditions
       retryOn: gateway-error,connect-failure,retriable-4xx
@@ -236,14 +261,14 @@ spec:
 
 ## Step 5: Configure Traffic Mirroring
 
-Mirror production traffic to a new version for testing without impact:
+Update the VirtualService to mirror production traffic to a new version for testing without impact:
 
 ```yaml
 # traffic-mirroring.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: my-service-mirror
+  name: my-service-vs
   namespace: production
 spec:
   hosts:
@@ -268,10 +293,10 @@ Route specific users to different versions:
 
 ```yaml
 # ab-testing.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: my-service-ab
+  name: my-service-vs
   namespace: production
 spec:
   hosts:
@@ -314,23 +339,23 @@ Gradually increase traffic to v2 by updating the weights in Portainer:
 # Phase 5: 0/100 - v2 fully promoted
 ```
 
-Update the VirtualService weight via Portainer's Kubernetes manifest editor each phase.
+Update the VirtualService weight via Portainer's application manifest editor each phase.
 
 ## Monitoring Traffic Distribution
 
-Verify traffic distribution through Portainer metrics:
+Verify traffic distribution through Prometheus:
 
 ```bash
 # Check traffic distribution
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant \
-  'rate(istio_requests_total{destination_service_name="my-service"}[5m])'
+  promtool query instant http://localhost:9090 \
+  'sum by (destination_version) (rate(istio_requests_total{destination_service_name="my-service",destination_service_namespace="production",reporter="destination"}[5m]))'
 ```
 
 Or access the Kiali dashboard for visual traffic management:
 
-1. In Portainer, port-forward to the Kiali service
-2. Navigate to the Graph view
+1. Port-forward to the Kiali service: `kubectl port-forward -n istio-system svc/kiali 20001:20001`
+2. Navigate to `https://localhost:20001/` and open the Graph view
 3. Filter by namespace `production`
 
 ## Conclusion
