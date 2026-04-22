@@ -15,12 +15,18 @@ Samba 4 can act as a full Active Directory Domain Controller (AD DC), providing 
 ```bash
 # Install Samba AD tools
 
-apt install samba krb5-user winbind smbclient -y  # Debian/Ubuntu
-# or
-dnf install samba samba-dc krb5-workstation -y    # RHEL/Rocky
+apt install acl attr samba samba-ad-dc krb5-config krb5-user winbind \
+  smbclient dnsutils ldap-utils libsasl2-modules-gssapi-mit -y  # Debian/Ubuntu
+# RHEL-compatible distributions do not ship a supported Samba AD DC build in
+# the standard Samba packages; build Samba with AD DC support or use a trusted
+# third-party build instead.
 
-# Stop any existing Samba services
-systemctl stop smbd nmbd winbind
+# Stop and mask any standalone Samba services
+systemctl disable --now smbd nmbd winbind
+systemctl mask smbd nmbd winbind
+
+# Move the package-provided smb.conf aside before provisioning
+mv /etc/samba/smb.conf /etc/samba/smb.conf.initial
 ```
 
 ## Provisioning the Domain
@@ -34,19 +40,22 @@ samba-tool domain provision \
   --dns-backend=SAMBA_INTERNAL \
   --realm=EXAMPLE.COM \
   --domain=EXAMPLE \
-  --adminpass='Admin@Password1!'
+  --adminpass='Admin@Password1!' \
+  --option="interfaces=lo 192.168.1.10/24" \
+  --option="bind interfaces only=yes"
 
 # realm: Kerberos realm (uppercase)
 # domain: NetBIOS domain name
 # adminpass: Administrator password (must meet complexity requirements)
+# --option: restricts Samba to loopback and the DC's IPv4 interface during provisioning
 ```
 
-Samba will create `/etc/samba/smb.conf` and `/var/lib/samba/private/`.
+Samba will create `/etc/samba/smb.conf` and `/var/lib/samba/private/`. Keep the IPv4 binding options in `/etc/samba/smb.conf` after provisioning.
 
-## Generated smb.conf (Excerpt)
+## smb.conf (Excerpt with IPv4 Binding)
 
 ```ini
-# /etc/samba/smb.conf (auto-generated, do not edit directly for AD DC)
+# /etc/samba/smb.conf (excerpt with IPv4 binding)
 
 [global]
     workgroup = EXAMPLE
@@ -71,7 +80,7 @@ cp /var/lib/samba/private/krb5.conf /etc/krb5.conf
 ## Starting the AD DC
 
 ```bash
-# On systemd systems, use the samba service (not smbd/nmbd)
+# On systemd systems, use the AD DC service (not smbd/nmbd/winbind)
 systemctl unmask samba-ad-dc
 systemctl enable --now samba-ad-dc
 
@@ -89,10 +98,10 @@ kinit Administrator@EXAMPLE.COM
 samba-tool user list
 
 # Check DNS is working (SRV records for AD)
-host -t SRV _ldap._tcp.example.com
+host -t SRV _ldap._tcp.example.com 192.168.1.10
 
-# Check LDAP
-ldapsearch -H ldap://192.168.1.10 -b "DC=example,DC=com" -W -D "administrator@example.com" "(objectClass=user)"
+# Check LDAP using the Kerberos ticket
+ldapsearch -H ldap://dc1.example.com -Y GSSAPI -b "DC=example,DC=com" "(objectClass=user)"
 ```
 
 ## Joining a Windows Client
@@ -104,6 +113,6 @@ On the Windows workstation:
 ## Key Takeaways
 
 - `samba-tool domain provision` creates the entire AD DS structure including Kerberos, DNS, and LDAP services.
-- Set `interfaces` to your IPv4 address to prevent the DC from binding to IPv6.
+- Set `interfaces` with `bind interfaces only = yes` to bind the DC to loopback and its IPv4 address.
 - Use `SAMBA_INTERNAL` DNS backend for simplicity; configure `dns forwarder` for internet resolution.
 - Verify with `samba-tool domain level show` and `kinit Administrator` after provisioning.
