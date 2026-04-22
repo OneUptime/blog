@@ -13,7 +13,7 @@ Docker Swarm rollback policies define how a service reverts to its previous vers
 ## Automatic vs Manual Rollback
 
 - **Automatic**: Set `failure_action: rollback` in `update_config` - Swarm triggers rollback automatically when failure threshold is exceeded
-- **Manual**: Operator triggers `docker service rollback` via Portainer's terminal
+- **Manual**: Operator triggers `docker service rollback` via a Portainer terminal connected to a Swarm manager node
 
 ## Step 1: Configure Rollback in Stack YAML
 
@@ -48,7 +48,7 @@ services:
 If an update is partially deployed and you want to revert:
 
 ```bash
-# Roll back to the previous service version
+# Run from a Swarm manager node, then roll back to the previous service version
 
 docker service rollback my-stack_api
 
@@ -58,13 +58,13 @@ docker service ps my-stack_api
 
 ## Step 3: Check Rollback History
 
-Swarm retains the previous service spec for one rollback. To see update history:
+Swarm retains the previous service spec for one rollback. To inspect that retained spec:
 
 ```bash
-docker service inspect --pretty my-stack_api
+docker service inspect --format '{{json .PreviousSpec}}' my-stack_api
 ```
 
-The output shows the `PreviousSpec` with the previous image and configuration.
+The output shows the `PreviousSpec` JSON with the previous image and configuration when a previous spec is available.
 
 ## Step 4: Automate Rollback with Health Checks
 
@@ -83,10 +83,10 @@ services:
     deploy:
       update_config:
         failure_action: rollback
-        monitor: 30s   # Monitor includes health check evaluation
+        monitor: 60s   # Keep this longer than start_period + retries * interval
 ```
 
-When a new replica's health check fails during the monitor window, Swarm counts it as a failed task and triggers rollback if `max_failure_ratio` is exceeded.
+When a new replica becomes unhealthy during the monitor window, Swarm counts it as a failed task and triggers rollback if `max_failure_ratio` is exceeded.
 
 ## Step 5: Test Rollback Before Production
 
