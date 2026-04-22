@@ -15,8 +15,8 @@ Python socket errors are subclasses of `OSError`. Here are the most important on
 | `ConnectionRefusedError` | Server not listening on the port |
 | `ConnectionResetError` | Remote host forcibly closed the connection |
 | `BrokenPipeError` | Writing to a closed connection |
-| `socket.timeout` | Operation exceeded the timeout |
-| `ConnectionAbortedError` | Connection aborted locally |
+| `TimeoutError` (`socket.timeout` in older code) | Operation exceeded the timeout |
+| `ConnectionAbortedError` | Connection attempt aborted by the peer |
 | `OSError` (EADDRINUSE) | Port already in use when binding |
 
 ## Handling Connection Errors in a Client
@@ -36,10 +36,10 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         print(data.decode())
 
     except ConnectionRefusedError:
-        # Port is closed or firewall is dropping connections with RST
+        # Port is closed or a firewall is rejecting connections with RST
         print(f"Connection refused: {HOST}:{PORT} is not listening")
 
-    except socket.timeout:
+    except TimeoutError:
         # No response within timeout (often means packet is dropped by firewall)
         print(f"Timeout connecting to {HOST}:{PORT}")
 
@@ -53,9 +53,11 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
 ```python
 import socket
 import threading
+import errno
 
 def handle_client(conn: socket.socket, addr: tuple) -> None:
     with conn:
+        conn.settimeout(30.0)
         while True:
             try:
                 data = conn.recv(4096)
@@ -76,7 +78,7 @@ def handle_client(conn: socket.socket, addr: tuple) -> None:
                 print(f"[{addr}] Broken pipe - client gone")
                 break
 
-            except socket.timeout:
+            except TimeoutError:
                 # Client was inactive too long
                 print(f"[{addr}] Read timeout - closing")
                 break
@@ -91,7 +93,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
         srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         srv.bind(("0.0.0.0", 9000))
     except OSError as e:
-        if e.errno == 98:  # EADDRINUSE
+        if e.errno == errno.EADDRINUSE:
             print("Port 9000 is already in use!")
         raise
 
@@ -116,9 +118,9 @@ try:
     sock.bind(("0.0.0.0", 9000))   # Will fail if port is busy
 except OSError as e:
     if e.errno == errno.EADDRINUSE:
-        print("Address already in use - try a different port or set SO_REUSEADDR")
+        print("Address already in use - try a different port or set SO_REUSEADDR for recently closed sockets")
     elif e.errno == errno.EACCES:
-        print("Permission denied - ports below 1024 require root")
+        print("Permission denied - binding privileged ports may require elevated privileges")
     else:
         raise
 ```
@@ -137,7 +139,7 @@ def connect_with_retry(host: str, port: int, max_attempts: int = 5) -> socket.so
             sock.settimeout(5.0)
             sock.connect((host, port))
             return sock
-        except (ConnectionRefusedError, socket.timeout) as e:
+        except (ConnectionRefusedError, TimeoutError) as e:
             wait = 2 ** attempt  # 1, 2, 4, 8, 16 seconds
             print(f"Attempt {attempt + 1} failed: {e}. Retrying in {wait}s...")
             sock.close()
@@ -148,4 +150,4 @@ def connect_with_retry(host: str, port: int, max_attempts: int = 5) -> socket.so
 
 ## Conclusion
 
-Robust Python socket code handles at minimum: `ConnectionRefusedError`, `ConnectionResetError`, `BrokenPipeError`, `socket.timeout`, and `OSError`. Use `errno` constants to distinguish specific OS errors when you need different handling per error code. Always implement retry logic with backoff for transient connection failures.
+Robust Python socket code handles at minimum: `ConnectionRefusedError`, `ConnectionResetError`, `BrokenPipeError`, `TimeoutError`, and `OSError`. Use `errno` constants to distinguish specific OS errors when you need different handling per error code. Always implement retry logic with backoff for transient connection failures.
