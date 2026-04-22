@@ -8,11 +8,11 @@ Description: Configure and run privileged containers in Portainer when full host
 
 ---
 
-Advanced container configuration in Portainer exposes Docker's full feature set through the web UI, allowing you to configure specialized settings without writing raw Docker commands.
+Advanced container configuration in Portainer exposes many Docker runtime options through the web UI, allowing you to configure specialized settings without writing raw Docker commands.
 
 ## Accessing Advanced Container Settings
 
-When creating or editing a container in Portainer:
+When creating a container in Portainer:
 1. Navigate to **Containers > Add container**
 2. Fill in basic settings (image, name, ports)
 3. Expand the **Advanced container settings** section
@@ -29,7 +29,7 @@ docker run -d \
   myimage:latest
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > Devices**
+In Portainer UI: **Advanced container settings > Runtime & Resources > Runtime > Devices**
 
 ## Sysctls Configuration
 
@@ -42,7 +42,7 @@ docker run -d \
   nginx:latest
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > Sysctls**
+In Portainer UI: **Advanced container settings > Runtime & Resources > Runtime > Sysctls**
 
 ## GPU Configuration (NVIDIA)
 
@@ -58,7 +58,7 @@ docker run -d \
   python train.py
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > GPUs**
+In Portainer UI: **Advanced container settings > Runtime & Resources > GPU**
 
 ## Linux Capabilities
 
@@ -66,8 +66,11 @@ In Portainer UI: **Advanced settings > Runtime & Resources > GPUs**
 # Drop all capabilities, add only what's needed (secure approach)
 docker run -d \
   --cap-drop ALL \
-  --cap-add NET_BIND_SERVICE \
   --cap-add CHOWN \
+  --cap-add DAC_OVERRIDE \
+  --cap-add NET_BIND_SERVICE \
+  --cap-add SETGID \
+  --cap-add SETUID \
   --name secure-nginx \
   nginx:latest
 ```
@@ -98,7 +101,7 @@ docker run -d \
 
 ```bash
 # Only use privileged mode when absolutely necessary
-# Privileged containers have full host access
+# Privileged containers get broad access to host devices and kernel capabilities
 docker run -d \
   --privileged \
   --name system-tool \
