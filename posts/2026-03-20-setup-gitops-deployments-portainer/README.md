@@ -30,12 +30,12 @@ graph LR
 3. Select **Git repository** as the source.
 4. Enter:
    - **Repository URL**: `https://github.com/myorg/my-repo`
-   - **Branch**: `main`
-   - **Compose file path**: `docker/docker-compose.yml`
+   - **Repository reference**: `main`
+   - **Compose path**: `docker/docker-compose.yml`
 5. Enable **GitOps updates**.
 6. Choose update method:
    - **Polling**: Portainer checks Git every N minutes.
-   - **Webhook**: Git triggers Portainer via webhook on push.
+   - **Webhook**: Portainer provides a webhook URL that your Git provider or CI/CD workflow calls on push.
 
 ## Organizing Your Git Repository for GitOps
 
@@ -56,11 +56,9 @@ my-repo/
 ```yaml
 # docker/docker-compose.yml
 
-version: "3.8"
-
 services:
   web:
-    # Use a versioned tag, not 'latest', for proper change detection
+    # Use a versioned tag, not 'latest', so Git records the deployed version
     image: registry.mycompany.com/web:${APP_VERSION:-1.0.0}
     deploy:
       replicas: 2
@@ -76,15 +74,17 @@ services:
     environment:
       - DB_HOST=postgres
       - DB_NAME=production
+      - DB_PASSWORD=${DB_PASSWORD}
+      - API_KEY=${API_KEY}
 ```
 
 ## Setting Environment Variables for GitOps Stacks
 
-Since `.env` files from Git may contain secrets, Portainer lets you override environment variables in the stack configuration:
+Since `.env` files from Git may contain secrets, Portainer lets you define environment variables in the stack configuration:
 
 1. After setting up the Git-backed stack.
 2. Scroll to **Environment variables** in the stack settings.
-3. Add key-value pairs that override values from the `.env` file in Git.
+3. Add key-value pairs for placeholders referenced by the Compose file.
 
 ```bash
 # Never commit real secrets to Git
@@ -95,10 +95,10 @@ API_KEY=<set_in_portainer_not_in_git>
 
 ## Verifying GitOps Updates
 
-After enabling GitOps updates, Portainer shows:
+After enabling GitOps updates, check:
 - **Last update time**
-- **Current Git commit hash**
-- **Pull status** (success or error)
+- **Deployed Git commit hash**
+- **Update status** (success or error)
 
 ## Rollback via Git
 
