@@ -49,6 +49,8 @@ resource "aws_dynamodb_table" "items" {
 ## Step 2: Lambda Functions
 
 ```hcl
+data "aws_region" "current" {}
+
 # IAM role for Lambda functions
 resource "aws_iam_role" "lambda" {
   name = "serverless-api-lambda"
@@ -61,6 +63,16 @@ resource "aws_iam_role" "lambda" {
       Action    = "sts:AssumeRole"
     }]
   })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_basic" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_xray" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
 }
 
 resource "aws_iam_role_policy" "lambda_dynamodb" {
@@ -82,7 +94,7 @@ resource "aws_lambda_function" "api_handler" {
   function_name = "api-handler"
   role          = aws_iam_role.lambda.arn
   handler       = "index.handler"
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs22.x"
   timeout       = 30
   memory_size   = 512
 
@@ -91,19 +103,24 @@ resource "aws_lambda_function" "api_handler" {
   environment {
     variables = {
       TABLE_NAME = aws_dynamodb_table.items.name
-      REGION     = "us-east-1"
+      REGION     = data.aws_region.current.id
     }
   }
 
   tracing_config {
     mode = "Active"  # X-Ray tracing
   }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.lambda_basic,
+    aws_iam_role_policy_attachment.lambda_xray
+  ]
 }
 
-# Lambda URL for direct invocation (no API Gateway)
+# Lambda URL for IAM-protected direct invocation (no API Gateway)
 resource "aws_lambda_function_url" "api_handler" {
   function_name      = aws_lambda_function.api_handler.function_name
-  authorization_type = "NONE"
+  authorization_type = "AWS_IAM"
 
   cors {
     allow_origins = ["https://app.example.com"]
@@ -122,6 +139,35 @@ resource "aws_apigatewayv2_api" "api" {
   protocol_type = "HTTP"
 }
 
+resource "aws_cloudwatch_log_group" "api_gw" {
+  name              = "/aws/apigateway/serverless-api"
+  retention_in_days = 14
+}
+
+resource "aws_iam_role" "api_gw_cloudwatch" {
+  name = "api-gateway-cloudwatch"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "apigateway.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "api_gw_cloudwatch" {
+  role       = aws_iam_role.api_gw_cloudwatch.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+}
+
+resource "aws_api_gateway_account" "api_gw" {
+  cloudwatch_role_arn = aws_iam_role.api_gw_cloudwatch.arn
+
+  depends_on = [aws_iam_role_policy_attachment.api_gw_cloudwatch]
+}
+
 resource "aws_apigatewayv2_stage" "prod" {
   api_id      = aws_apigatewayv2_api.api.id
   name        = "prod"
@@ -135,19 +181,32 @@ resource "aws_apigatewayv2_stage" "prod" {
       error     = "$context.error.message"
     })
   }
+
+  depends_on = [aws_api_gateway_account.api_gw]
 }
 
 resource "aws_apigatewayv2_integration" "lambda" {
-  api_id             = aws_apigatewayv2_api.api.id
-  integration_type   = "AWS_PROXY"
-  integration_uri    = aws_lambda_function.api_handler.invoke_arn
+  api_id                 = aws_apigatewayv2_api.api.id
+  integration_type       = "AWS_PROXY"
+  integration_method     = "POST"
+  integration_uri        = aws_lambda_function.api_handler.invoke_arn
   payload_format_version = "2.0"
 }
 
+resource "aws_apigatewayv2_route" "items_root" {
+  api_id             = aws_apigatewayv2_api.api.id
+  route_key          = "ANY /items"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.jwt.id
+}
+
 resource "aws_apigatewayv2_route" "items" {
-  api_id    = aws_apigatewayv2_api.api.id
-  route_key = "ANY /items/{proxy+}"
-  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+  api_id             = aws_apigatewayv2_api.api.id
+  route_key          = "ANY /items/{proxy+}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.jwt.id
 }
 
 resource "aws_lambda_permission" "api_gw" {
@@ -179,9 +238,11 @@ resource "aws_cognito_user_pool_client" "api" {
   user_pool_id = aws_cognito_user_pool.api.id
 
   explicit_auth_flows = ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
+  allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows = ["code"]
   allowed_oauth_scopes = ["openid", "email", "profile"]
   callback_urls = ["https://app.example.com/callback"]
+  supported_identity_providers = ["COGNITO"]
 }
 
 # JWT authorizer using Cognito
@@ -193,11 +254,11 @@ resource "aws_apigatewayv2_authorizer" "jwt" {
 
   jwt_configuration {
     audience = [aws_cognito_user_pool_client.api.id]
-    issuer   = "https://cognito-idp.us-east-1.amazonaws.com/${aws_cognito_user_pool.api.id}"
+    issuer   = "https://${aws_cognito_user_pool.api.endpoint}"
   }
 }
 ```
 
 ## Summary
 
-A serverless API on AWS built with OpenTofu eliminates server management entirely. Lambda scales to zero when idle and handles millions of requests without capacity planning. DynamoDB's on-demand pricing matches the serverless cost model. Cognito JWT authorization protects endpoints without writing authentication logic, and X-Ray provides distributed tracing across the full request path from API Gateway through Lambda.
+A serverless API on AWS built with OpenTofu eliminates server management entirely. Lambda scales to zero when idle and handles millions of requests without capacity planning. DynamoDB's on-demand pricing matches the serverless cost model. Cognito JWT authorization protects endpoints without writing authentication logic, and CloudWatch access logs with X-Ray tracing for Lambda help you observe requests through the backend.
