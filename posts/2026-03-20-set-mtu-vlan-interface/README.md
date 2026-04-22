@@ -33,6 +33,7 @@ ip link show eth0.100
 
 ```bash
 # Create VLAN interface and immediately set MTU
+ip link set eth0 mtu 9000
 ip link add link eth0 name eth0.100 type vlan id 100
 ip link set eth0.100 mtu 9000
 ip link set eth0.100 up
@@ -52,6 +53,8 @@ Name=eth0
 MTUBytes=9000
 
 [Network]
+VLAN=eth0.100
+LinkLocalAddressing=no
 # No IP on parent interface
 ```
 
