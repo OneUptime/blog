@@ -6,7 +6,7 @@ Tags: OpenTofu, AWS, Secrets Manager, Secret Rotation, Infrastructure as Code
 
 Description: Learn how to configure automatic secret rotation with OpenTofu using AWS Secrets Manager and Lambda rotation functions for database credentials and API keys.
 
-Automatic secret rotation reduces the risk from leaked credentials by regularly replacing them without application downtime. OpenTofu configures the rotation schedule and Lambda function while the rotation logic handles the actual credential update.
+Automatic secret rotation reduces the risk from leaked credentials by regularly replacing them without planned application downtime when applications fetch the current value from Secrets Manager. OpenTofu configures the rotation schedule and Lambda function while the rotation logic handles the actual credential update.
 
 ## AWS Secrets Manager Rotation
 
@@ -21,11 +21,11 @@ resource "aws_secretsmanager_secret" "db_credentials" {
 
 resource "aws_secretsmanager_secret_rotation" "db_credentials" {
   secret_id           = aws_secretsmanager_secret.db_credentials.id
-  rotation_lambda_arn = aws_lambda_function.db_rotator.arn
+  rotation_lambda_arn = data.aws_lambda_function.db_rotator.arn
 
   rotation_rules {
-    automatically_after_days = 30  # Rotate every 30 days
-    duration                 = "2h"  # Complete rotation within 2 hours
+    schedule_expression = "rate(30 days)"  # Rotate every 30 days
+    duration            = "2h"             # Use a 2-hour rotation window
   }
 }
 ```
@@ -37,8 +37,7 @@ AWS provides ready-made rotation Lambdas for RDS databases:
 ```hcl
 # Deploy AWS rotation Lambda from Serverless Application Repository
 data "aws_serverlessapplicationrepository_application" "rotator" {
-  application_id   = "arn:aws:serverlessrepo:us-east-1:297356227824:applications/SecretsManagerRDSPostgreSQLRotationSingleUser"
-  semantic_version = "1.1.225"
+  application_id = "arn:aws:serverlessrepo:us-east-1:297356227824:applications/SecretsManagerRDSPostgreSQLRotationSingleUser"
 }
 
 resource "aws_serverlessapplicationrepository_cloudformation_stack" "db_rotator" {
@@ -52,6 +51,12 @@ resource "aws_serverlessapplicationrepository_cloudformation_stack" "db_rotator"
   }
 
   capabilities = ["CAPABILITY_IAM", "CAPABILITY_RESOURCE_POLICY"]
+}
+
+data "aws_lambda_function" "db_rotator" {
+  function_name = "db-secret-rotator"
+
+  depends_on = [aws_serverlessapplicationrepository_cloudformation_stack.db_rotator]
 }
 ```
 
@@ -118,12 +123,35 @@ resource "aws_iam_role_policy" "rotator" {
           "secretsmanager:PutSecretValue",
           "secretsmanager:UpdateSecretVersionStage",
         ]
-        Resource = aws_secretsmanager_secret.db_credentials.arn
+        Resource = [
+          aws_secretsmanager_secret.db_credentials.arn,
+          aws_secretsmanager_secret.api_key.arn,
+        ]
       },
       {
         Effect   = "Allow"
-        Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
+        Action   = ["secretsmanager:GetRandomPassword"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:DescribeKey", "kms:GenerateDataKey"]
         Resource = aws_kms_key.secrets.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "ec2:CreateNetworkInterface",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DescribeSubnets",
+          "ec2:DeleteNetworkInterface",
+          "ec2:AssignPrivateIpAddresses",
+          "ec2:UnassignPrivateIpAddresses",
+        ]
+        Resource = "*"
       }
     ]
   })
@@ -133,20 +161,48 @@ resource "aws_iam_role_policy" "rotator" {
 ## Rotation Monitoring
 
 ```hcl
-resource "aws_cloudwatch_metric_alarm" "rotation_failed" {
-  alarm_name          = "secret-rotation-failed"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "RotationFailed"
-  namespace           = "AWS/SecretsManager"
-  period              = 300
-  statistic           = "Sum"
-  threshold           = 0
-  alarm_description   = "Secret rotation failed - credential may be expired"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
+resource "aws_cloudwatch_event_rule" "rotation_failed" {
+  name        = "secret-rotation-failed"
+  description = "Capture failed Secrets Manager rotations"
+  state       = "ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS"
+
+  event_pattern = jsonencode({
+    source      = ["aws.secretsmanager"]
+    detail-type = ["AWS Service Event via CloudTrail"]
+    detail = {
+      eventSource = ["secretsmanager.amazonaws.com"]
+      eventName   = ["RotationFailed", "TestRotationFailed"]
+    }
+  })
+}
+
+data "aws_iam_policy_document" "alerts_from_eventbridge" {
+  statement {
+    effect    = "Allow"
+    actions   = ["SNS:Publish"]
+    resources = [aws_sns_topic.alerts.arn]
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "alerts_from_eventbridge" {
+  arn    = aws_sns_topic.alerts.arn
+  policy = data.aws_iam_policy_document.alerts_from_eventbridge.json
+}
+
+resource "aws_cloudwatch_event_target" "rotation_failed" {
+  rule      = aws_cloudwatch_event_rule.rotation_failed.name
+  target_id = "SendToSNS"
+  arn       = aws_sns_topic.alerts.arn
+
+  depends_on = [aws_sns_topic_policy.alerts_from_eventbridge]
 }
 ```
 
 ## Conclusion
 
-Secret rotation configured in OpenTofu automates credential hygiene. Use AWS-provided rotation Lambdas for RDS databases to get battle-tested rotation logic without writing code. Configure CloudWatch alarms on RotationFailed metrics to catch rotation failures before credentials expire. Set rotation periods to 30-90 days for database credentials and use shorter periods for high-value API keys.
+Secret rotation configured in OpenTofu automates credential hygiene. Use AWS-provided rotation Lambdas for RDS databases to get battle-tested rotation logic without writing code. Configure EventBridge rules for RotationFailed events to catch rotation failures before credentials expire. Set rotation periods to 30-90 days for database credentials and use shorter periods for high-value API keys.
