@@ -41,14 +41,15 @@ gcloud compute routers nats create prod-nat \
 ## Step 3: Verify VMs Can Reach the Internet
 
 ```bash
-# VMs without external IPs should now reach internet
+# Use IAP to SSH to the private VM, then test outbound internet access
 gcloud compute ssh private-vm-01 \
   --project=$PROJECT_ID \
   --zone=us-central1-a \
+  --tunnel-through-iap \
   --command="curl -s https://icanhazip.com"
 ```
 
-The returned IP is the Cloud NAT's automatically allocated external IP.
+The returned IP is one of the Cloud NAT gateway's automatically allocated external IP addresses.
 
 ## Using Static External IPs for NAT
 
@@ -60,25 +61,23 @@ gcloud compute addresses create nat-ip-1 \
   --project=$PROJECT_ID \
   --region=$REGION
 
-# Create NAT with the static IP
-gcloud compute routers nats create prod-nat \
+# Update NAT to use the static IP
+gcloud compute routers nats update prod-nat \
   --project=$PROJECT_ID \
   --router=prod-router \
   --region=$REGION \
-  --nat-external-ip-pool=nat-ip-1 \
-  --nat-all-subnet-ip-ranges
+  --nat-external-ip-pool=nat-ip-1
 ```
 
 ## Limiting NAT to Specific Subnets
 
 ```bash
-# Only NAT traffic from specific subnets
-gcloud compute routers nats create prod-nat \
+# Only NAT traffic from all ranges in specific subnets
+gcloud compute routers nats update prod-nat \
   --project=$PROJECT_ID \
   --router=prod-router \
   --region=$REGION \
-  --auto-allocate-nat-external-ips \
-  --nat-custom-subnet-ip-ranges=app-subnet,db-subnet
+  --nat-custom-subnet-ip-ranges=app-subnet:ALL,db-subnet:ALL
 ```
 
 ## Configuring NAT Port Allocation
@@ -92,12 +91,12 @@ gcloud compute routers nats update prod-nat \
   --min-ports-per-vm=128
 ```
 
-Default is 64 ports per VM. High-concurrency apps may need 128–1024.
+With the default static port allocation used here, the default is 64 ports per VM. High-concurrency apps may need 128–1024.
 
 ## Enabling Cloud NAT Logging
 
 ```bash
-# Enable logging for all NAT translations
+# Enable logging for NAT translations and errors
 gcloud compute routers nats update prod-nat \
   --project=$PROJECT_ID \
   --router=prod-router \
