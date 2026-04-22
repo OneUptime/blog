@@ -8,7 +8,7 @@ Description: Configure DNS server distribution via the RDNSS option in IPv6 Rout
 
 ## Introduction
 
-The RDNSS (Recursive DNS Server) option (RFC 8106) allows IPv6 routers to include DNS server addresses directly in Router Advertisements. Hosts that support RDNSS can configure DNS entirely from SLAAC, without needing a DHCPv6 server. The DNSSL (DNS Search List) option provides domain search suffixes. RDNSS is supported in Linux (kernel 2.6.24+), macOS, Windows (Server 2008+), iOS, and Android, making it a practical alternative to DHCPv6 for DNS distribution in SLAAC-only deployments.
+The RDNSS (Recursive DNS Server) option (RFC 8106) allows IPv6 routers to include DNS server addresses directly in Router Advertisements. Hosts that support RDNSS can configure DNS entirely from SLAAC, without needing a DHCPv6 server. The DNSSL (DNS Search List) option provides domain search suffixes. RDNSS is supported by modern Linux network managers such as systemd-networkd, NetworkManager, or rdnssd, as well as macOS, Windows 10 Creators Update and later, iOS, and Android, making it a practical alternative to DHCPv6 for DNS distribution in SLAAC-only deployments.
 
 ## RDNSS Option Format
 
@@ -30,16 +30,17 @@ RDNSS Option (Type 25) Wire Format:
 
 Fields:
   Type:     25 (RDNSS)
-  Length:   in units of 8 bytes = (2 + 2*n) where n = number of DNS servers
+  Length:   in units of 8 bytes = (1 + 2*n) where n = number of DNS servers
   Reserved: 0
   Lifetime: How long DNS servers are valid (seconds)
-            Should be at least 2*MaxRtrAdvInterval
+            Should by default be at least 3*MaxRtrAdvInterval
             0xFFFFFFFF = infinite
   Addresses: One or more 16-byte IPv6 DNS server addresses
 
 DNSSL Option (Type 31):
-  Same structure but contains DNS search domain names
-  Instead of addresses: null-terminated DNS domain strings
+  Same Type/Length/Reserved/Lifetime structure, but contains DNS search domain names
+  Instead of addresses: RFC 1035 domain-name encodings ending in a zero octet
+  Domain-name data is padded to an 8-byte boundary and is not compressed
 ```
 
 ## Configuring RDNSS in radvd
@@ -47,7 +48,7 @@ DNSSL Option (Type 31):
 ```bash
 # Add RDNSS and DNSSL to radvd configuration
 
-cat > /etc/radvd.conf << 'EOF'
+sudo tee /etc/radvd.conf > /dev/null << 'EOF'
 interface eth1 {
     AdvSendAdvert on;
     MaxRtrAdvInterval 600;
@@ -65,13 +66,13 @@ interface eth1 {
     RDNSS 2001:4860:4860::8888 2001:4860:4860::8844 {
         # Lifetime: how long DNS servers are valid
         # Should be >= MaxRtrAdvInterval (600s)
-        # Recommendation: at least 2 * MaxRtrAdvInterval
-        AdvRDNSSLifetime 1200;   # 20 minutes
+        # Recommendation: at least 3 * MaxRtrAdvInterval
+        AdvRDNSSLifetime 1800;   # 30 minutes
     };
 
     # DNSSL: Provide DNS search domain list
     DNSSL corp.example.com example.com {
-        AdvDNSSLLifetime 1200;
+        AdvDNSSLLifetime 1800;
     };
 };
 EOF
@@ -83,25 +84,26 @@ sudo radvdump
 # Should show:
 #  Recursive DNS server: 2001:4860:4860::8888
 #  Recursive DNS server: 2001:4860:4860::8844
-#   DNS server lifetime: 1200 seconds
+#   DNS server lifetime: 1800 seconds
 ```
 
-## Configuring RDNSS on Cisco Routers
+## Configuring RDNSS on Cisco IOS XE Devices
 
 ```text
-! Configure RDNSS on Cisco IOS router interface
+! Configure RDNSS on Cisco IOS XE interface
 interface GigabitEthernet0/1
  ! Add DNS servers to RA
- ipv6 nd ra dns server 2001:4860:4860::8888 lifetime 1200
- ipv6 nd ra dns server 2001:4860:4860::8844 lifetime 1200
+ ipv6 nd ra dns server 2001:4860:4860::8888 1200 sequence 0
+ ipv6 nd ra dns server 2001:4860:4860::8844 1200 sequence 1
 
  ! Add DNS search domain
- ipv6 nd ra dns search-list corp.example.com lifetime 1200
+ ipv6 nd ra dns search-list corp.example.com 1200 sequence 1
 
 ! Verify RDNSS configuration
-show ipv6 interface GigabitEthernet0/1 | include dns
+show ipv6 nd ra dns server
+show ipv6 nd ra dns search-list
 
-! Note: RDNSS support in Cisco IOS requires IOS 15.3+ or IOS-XE 3.9+
+! Note: Cisco support and syntax vary by platform and software release
 ```
 
 ## Verifying RDNSS on Linux Hosts
@@ -121,7 +123,7 @@ resolvectl status eth0
 # With NetworkManager:
 nmcli device show eth0 | grep DNS
 
-# Check /etc/resolv.conf
+# If your resolver writes DNS directly to /etc/resolv.conf:
 cat /etc/resolv.conf
 # nameserver 2001:4860:4860::8888
 # nameserver 2001:4860:4860::8844
@@ -143,10 +145,10 @@ Problem: Host must not use expired DNS server
   - Host loses DNS configuration intermittently
 
 Recommendation:
-  AdvRDNSSLifetime ≥ 2 * MaxRtrAdvInterval + buffer
+  AdvRDNSSLifetime ≥ 3 * MaxRtrAdvInterval
   Example: MaxRtrAdvInterval=600s → AdvRDNSSLifetime ≥ 1800s
 
-  Or: Set to AdvRDNSSLifetime=0xFFFFFFFF (infinite)
+  Or: Set AdvRDNSSLifetime infinity; in radvd (wire value 0xFFFFFFFF)
   Use for stable DNS servers that rarely change
 
 When DNS server changes:
@@ -174,7 +176,7 @@ RDNSS (RA Option):
   Cons:
     - Less granular control (same DNS for all hosts)
     - No per-host DNS configuration possible
-    - Requires OS support (all modern OS do support it)
+    - Requires OS support (most current OSes do support it)
 
 DHCPv6 for DNS (O flag):
   Pros:
@@ -194,4 +196,4 @@ Recommendation:
 
 ## Conclusion
 
-RDNSS eliminates the need for DHCPv6 in pure SLAAC environments by embedding DNS server addresses directly in Router Advertisements. Configure RDNSS in radvd with `RDNSS <addr1> <addr2> { AdvRDNSSLifetime 1200; }` and add search domains with `DNSSL`. Set the lifetime to at least 2x the MaxRtrAdvInterval to prevent DNS configuration from expiring between RA messages. All modern operating systems support RDNSS. Verify DNS was applied with `resolvectl status` on Linux or equivalent commands on other platforms.
+RDNSS eliminates the need for DHCPv6 in pure SLAAC environments by embedding DNS server addresses directly in Router Advertisements. Configure RDNSS in radvd with `RDNSS <addr1> <addr2> { AdvRDNSSLifetime 1800; }` and add search domains with `DNSSL`. Set the lifetime to at least 3x the MaxRtrAdvInterval to prevent DNS configuration from expiring between RA messages. Most current operating systems support RDNSS. Verify DNS was applied with `resolvectl status` on Linux or equivalent commands on other platforms.
