@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Secret, Configuration, AWS, Infrastructure as Code
 
-Description: Learn how to reference secrets from AWS Secrets Manager and SSM Parameter Store in OpenTofu configurations without storing sensitive values in state.
+Description: Learn how to reference secrets from AWS Secrets Manager and SSM Parameter Store in OpenTofu configurations by passing secret identifiers instead of reading secret values into state.
 
-Referencing secrets properly in OpenTofu means the secret value flows from a secrets store to its destination without appearing in your code or being committed to version control. OpenTofu can wire the ARN/ID of a secret to a service without needing the value itself.
+Referencing secrets properly in OpenTofu means the secret value flows from a secrets store to its destination without appearing in your code, version control, or OpenTofu state. OpenTofu can wire the ARN, name, or ID of a secret to a service without needing the value itself.
 
 ## Referencing Secrets by ARN in ECS
 
@@ -47,8 +47,8 @@ resource "aws_ecs_task_definition" "app" {
 ## SSM Parameter References in ECS
 
 ```hcl
-data "aws_ssm_parameter" "api_key" {
-  name = "/production/myapp/STRIPE_API_KEY"
+locals {
+  stripe_api_key_parameter_name = "/production/myapp/STRIPE_API_KEY"
 }
 
 resource "aws_ecs_task_definition" "app" {
@@ -63,7 +63,9 @@ resource "aws_ecs_task_definition" "app" {
     secrets = [
       {
         name      = "STRIPE_API_KEY"
-        valueFrom = data.aws_ssm_parameter.api_key.arn
+        # Use the parameter name directly for same-Region tasks.
+        # Use the full ARN for cross-Region parameters.
+        valueFrom = local.stripe_api_key_parameter_name
       }
     ]
   }])
@@ -96,7 +98,7 @@ resource "aws_lambda_function" "app" {
 # Create ExternalSecret CRD that maps AWS Secrets Manager to Kubernetes Secrets
 resource "kubectl_manifest" "external_secret" {
   yaml_body = <<-YAML
-    apiVersion: external-secrets.io/v1beta1
+    apiVersion: external-secrets.io/v1
     kind: ExternalSecret
     metadata:
       name: db-credentials
@@ -124,23 +126,24 @@ resource "kubectl_manifest" "external_secret" {
 ## Sensitive Variable References
 
 ```hcl
-# Mark outputs as sensitive to prevent accidental logging
+# Mark outputs as sensitive to prevent accidental CLI output
 output "db_connection_string" {
   value     = "postgresql://${var.db_username}@${aws_db_instance.main.address}:5432/${var.db_name}"
-  sensitive = true  # Will show [sensitive] in plan/apply output
+  sensitive = true  # Redacts CLI output; state still contains the value
 }
 
-# Reference a data source without exposing the value in state
+# Reading a secret version brings the secret value into OpenTofu state.
+# Avoid this pattern unless OpenTofu itself must use the value.
 data "aws_secretsmanager_secret_version" "db" {
   secret_id = aws_secretsmanager_secret.db_credentials.id
 }
 
 locals {
-  # jsondecode is available but the value is still sensitive
+  # jsondecode is available, but the decoded value is still sensitive
   db_config = jsondecode(data.aws_secretsmanager_secret_version.db.secret_string)
 }
 ```
 
 ## Conclusion
 
-Secret references in OpenTofu keep sensitive values out of configuration files. Pass secret ARNs to ECS, Lambda, and Kubernetes rather than injecting values directly - services retrieve them at runtime. Use sensitive = true on outputs that might contain derived secret values to prevent accidental exposure in logs and CI/CD output.
+Secret references in OpenTofu keep sensitive values out of configuration files and state when you pass identifiers instead of reading values. Pass secret ARNs, names, or external secret references to ECS, Lambda, and Kubernetes controllers rather than injecting values directly - the runtime service or operator retrieves them. Use sensitive = true on outputs that might contain derived secret values to prevent accidental exposure in logs and CI/CD output; it does not remove those values from state.
