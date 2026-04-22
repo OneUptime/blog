@@ -8,12 +8,12 @@ Description: Create an AWS Network Load Balancer with IPv4 target groups, TCP li
 
 ## Introduction
 
-AWS Network Load Balancer (NLB) operates at Layer 4 (TCP/UDP/TLS). It handles millions of connections per second with ultra-low latency. NLB preserves client source IP addresses, supports static Elastic IPs per AZ, and is required for PrivateLink-based services.
+AWS Network Load Balancer (NLB) operates at Layer 4 (TCP/UDP/TLS). It handles millions of connections per second with ultra-low latency. NLB can preserve client source IP addresses, supports static Elastic IPs per AZ, and can be used for PrivateLink endpoint services.
 
 ## Step 1: Create the Target Group
 
 ```bash
-VPC_ID="vpc-0abc123def456"
+VPC_ID="vpc-0abc123def4567890"
 
 # TCP target group for web servers on port 80
 
@@ -35,14 +35,14 @@ TG_ARN=$(aws elbv2 create-target-group \
 # Register EC2 instances
 aws elbv2 register-targets \
   --target-group-arn $TG_ARN \
-  --targets Id=i-0abc123def456 Id=i-0abc123def789
+  --targets Id=i-0abc123def4567890 Id=i-0123456789abcdef0
 ```
 
 ## Step 2: Create the NLB
 
 ```bash
-SUBNET1="subnet-0pub1a"
-SUBNET2="subnet-0pub1b"
+SUBNET1="subnet-0abc123def4567890"
+SUBNET2="subnet-0123456789abcdef0"
 
 # Create an internet-facing NLB
 NLB_ARN=$(aws elbv2 create-load-balancer \
@@ -93,7 +93,7 @@ NLB_ARN=$(aws elbv2 create-load-balancer \
 ## TLS Termination at NLB
 
 ```bash
-CERT_ARN="arn:aws:acm:us-east-1:123456789:certificate/abc-def"
+CERT_ARN="arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
 
 aws elbv2 create-listener \
   --load-balancer-arn $NLB_ARN \
@@ -104,7 +104,7 @@ aws elbv2 create-listener \
   --default-actions Type=forward,TargetGroupArn=$TG_ARN
 ```
 
-## IP Target Group (for containers, Lambda, or off-VPC targets)
+## IP Target Group (for containers or private off-VPC targets)
 
 ```bash
 # Create IP-based target group
@@ -144,11 +144,11 @@ aws elbv2 describe-target-health \
 | Feature | NLB | ALB |
 |---|---|---|
 | Protocol | TCP/UDP/TLS | HTTP/HTTPS |
-| Source IP preserved | Yes | No (unless proxy protocol) |
+| Source IP preserved | Yes (target-type dependent) | No (uses X-Forwarded-For) |
 | Static IP per AZ | Yes | No |
 | Routing | By port | By path/host/header |
-| Latency | ~100μs | ~1ms |
+| Latency | Ultra-low | Higher due to Layer 7 routing |
 
 ## Conclusion
 
-NLB is ideal for TCP/UDP protocols, source IP preservation, static IPs, and ultra-low latency. Use TCP target groups for general TCP, TLS for encrypted termination. Register targets by instance ID or IP. Enable cross-zone load balancing for even distribution when AZs have unequal instance counts.
+NLB is ideal for TCP/UDP protocols, source IP preservation, static IPs, and ultra-low latency. Use TCP target groups for general TCP, and TLS listeners for encrypted termination. Register targets by instance ID or IP. Enable cross-zone load balancing for even distribution when AZs have unequal instance counts.
