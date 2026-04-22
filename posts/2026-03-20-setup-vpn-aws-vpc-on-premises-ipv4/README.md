@@ -8,7 +8,7 @@ Description: Learn how to configure a Site-to-Site VPN connection between an AWS
 
 ## Introduction
 
-AWS Site-to-Site VPN creates an encrypted IPsec tunnel between your AWS VPC and your on-premises network, allowing private communication over the public internet. This guide walks through the setup using the AWS Management Console and CLI.
+AWS Site-to-Site VPN creates two encrypted IPsec tunnels between your AWS VPC and your on-premises network, allowing private communication over the public internet. This guide walks through the setup using the AWS Management Console and CLI.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ The Customer Gateway represents your on-premises VPN device:
 ```bash
 aws ec2 create-customer-gateway \
   --type ipsec.1 \
-  --public-ip 203.0.113.10 \
+  --ip-address 203.0.113.10 \
   --bgp-asn 65000 \
   --tag-specifications 'ResourceType=customer-gateway,Tags=[{Key=Name,Value=on-prem-cgw}]'
 ```
@@ -87,7 +87,7 @@ aws ec2 describe-vpn-connections \
   --query 'VpnConnections[0].VgwTelemetry'
 ```
 
-Both tunnels should show `UP` status. Test with a ping from an on-premises host to an AWS instance.
+Both tunnels should show `UP` status. Test with a ping from an on-premises host to an AWS instance after allowing ICMP from the on-premises CIDR in the instance security group, network ACLs, and host firewall.
 
 ## Conclusion
 
