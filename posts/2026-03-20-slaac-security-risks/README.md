@@ -8,7 +8,7 @@ Description: Understand the security risks associated with SLAAC including rogue
 
 ## Introduction
 
-SLAAC's stateless design creates several security risks that IPv4 DHCP does not have. The lack of a central authority means any device can send a Router Advertisement and become a gateway for all hosts on the segment. EUI-64 addresses expose MAC addresses. The absence of address tracking makes forensic investigation harder. Understanding these risks enables appropriate countermeasures.
+SLAAC's stateless design creates several security risks that IPv4 DHCP does not have. The lack of a central authority means any device that can send accepted Router Advertisements can advertise itself as a default router to hosts on the segment. Modified EUI-64 addresses can expose MAC addresses. The absence of address tracking makes forensic investigation harder. Understanding these risks enables appropriate countermeasures.
 
 ## Risk 1: Rogue Router Advertisement (RA) Attacks
 
@@ -18,17 +18,17 @@ The most critical SLAAC security risk is an unauthorized RA.
 Rogue RA Attack Impact:
 
 Attack type: Default gateway hijacking
-  Attacker sends RA with RouterLifetime=1800 and gateway=attacker
-  All hosts on the segment add attacker as default gateway
-  All traffic flows through attacker (MITM)
+  Attacker sends RA from its link-local address with RouterLifetime=1800
+  Accepting hosts add attacker to default router list
+  Off-link traffic may flow through attacker (MITM)
 
 Attack type: Prefix hijacking
-  Attacker sends RA with wrong prefix (e.g., attacker's prefix)
+  Attacker sends RA with wrong Prefix Information option (A flag set)
   Hosts generate addresses in attacker's prefix
-  Attacker's subnet → traffic routed through attacker
+  If attacker is also a default router → off-link traffic routes through attacker
 
 Attack type: DoS via RA Lifetime=0
-  Attacker sends RA with RouterLifetime=0 for legitimate router
+  Attacker spoofs legitimate router's RA with RouterLifetime=0
   Hosts remove legitimate router from default router list
   Hosts lose connectivity (DoS)
 
@@ -43,19 +43,19 @@ Mitigation:
   Detection: NDPMon or tcpdump monitoring
 ```
 
-## Risk 2: EUI-64 Address Prediction
+## Risk 2: Modified EUI-64 Address Prediction
 
-EUI-64 addresses are deterministic from MAC addresses.
+Modified EUI-64 SLAAC addresses are deterministic from MAC addresses.
 
 ```text
-EUI-64 Predictability:
+Modified EUI-64 Predictability:
 
 From MAC address 00:11:22:33:44:55:
   → IPv6 address 2001:db8::211:22ff:fe33:4455
 
 Attack implications:
   1. Device tracking across networks:
-     Same MAC → same IID on every network
+     Same MAC → same IID on every network where that MAC is used
      Attacker knows device moved between networks
 
   2. Targeted scanning:
@@ -69,7 +69,8 @@ Attack implications:
      MAC vendor lookup reveals device type
 
 Mitigation:
-  Enable privacy extensions: use_tempaddr=2
+  On Linux, enable privacy extensions: use_tempaddr=2
+  On other clients, enable equivalent temporary/private IPv6 addressing
   Or use RFC 7217 stable privacy addresses
   Both prevent MAC from appearing in IPv6 address
 ```
@@ -83,7 +84,7 @@ Forensic Limitations with SLAAC:
 
 DHCPv4:
   DHCP server log: "2024-01-15 10:23:45 LEASE 192.168.1.100 to MAC aa:bb:cc:dd:ee:ff"
-  → Can trace IP to user to time
+  → Can trace an IP to a MAC/device at a point in time
 
 SLAAC:
   No central log of which host used which address
@@ -91,15 +92,15 @@ SLAAC:
   → Privacy advantages for users, disadvantages for security teams
 
 With privacy extensions (random IIDs):
-  No MAC in address + changes daily
+  No MAC in address + changes periodically (often daily by default)
   → Even harder to correlate with physical device
 
 Mitigations for tracking:
-  1. Deploy IPv6 ND Inspection / IPFIX:
+  1. Deploy IPv6 ND Inspection / IPv6 snooping:
      Switch binding table maps address to port
      Correlate port to physical machine
   2. Use stateful DHCPv6 for enterprise:
-     Full address-to-identity tracking
+     Central lease records for address-to-client tracking
   3. RADIUS/802.1X:
      Authenticate users at network level
      Correlate user identity to port → to IPv6 address
@@ -107,18 +108,19 @@ Mitigations for tracking:
 
 ## Risk 4: SLAAC with Router Flags Attack
 
-Manipulating RA flags to redirect clients to DHCPv6 server.
+Manipulating RA flags to steer clients toward DHCPv6.
 
 ```text
 Flag Manipulation Attack:
 
 Attacker sends RA with M=1 (Managed Address Configuration):
-  Effect: Hosts send DHCPv6 SOLICIT to ff02::1:2
+  Effect: Hosts that honor the flag send DHCPv6 SOLICIT to ff02::1:2
   Attacker runs rogue DHCPv6 server on link
-  Attacker assigns: address + DNS=attacker's_DNS + gateway=attacker
+  Attacker supplies: address + DNS=attacker's_DNS
+  Default gateway still comes from Router Advertisements
 
 Combined attack (M=1 + rogue DHCPv6 + rogue router):
-  - M=1 in rogue RA triggers DHCPv6
+  - M=1 in rogue RA triggers DHCPv6 on hosts that honor the flag
   - Rogue DHCPv6 provides address and DNS
   - Rogue router provides default gateway
   - Full MITM without any host interaction
@@ -129,15 +131,15 @@ Mitigation:
   Both must be deployed together
 ```
 
-## Risk 5: Neighbor Solicitation Spoofing via SLAAC
+## Risk 5: Neighbor Discovery Spoofing Against Predictable Addresses
 
 ```text
-NA Spoofing via SLAAC:
+ND/NA Spoofing Against Predictable SLAAC Addresses:
 
 If SLAAC generates addresses predictably (EUI-64):
-  Attacker knows victim's IPv6 address
-  Attacker can send targeted NA spoofing for that address
-  → Poison victim's neighbor cache for specific targets
+  Attacker can infer a victim's IPv6 address
+  Attacker can send targeted spoofed NA/NS messages involving that address
+  → Poison other hosts' neighbor caches for traffic to the victim, or poison the victim's cache for known peers
 
 If SLAAC generates random addresses (privacy extensions):
   Attacker must first discover the address
@@ -160,12 +162,12 @@ Switch Level:
   ☑ Enable IPv6 Source Guard (after binding table populated)
 
 Host Level:
-  ☑ Enable privacy extensions (use_tempaddr=2) on all clients
-  ☑ Restrict RA acceptance to known router sources (ip6tables)
+  ☑ Enable privacy/private addressing on all clients (Linux: use_tempaddr=2)
+  ☑ Restrict RA acceptance to known router sources (nftables/ip6tables)
   ☑ Monitor RA sources with NDPMon or similar
 
 Router Level:
-  ☑ Use strong RA parameters (correct Router Lifetime)
+  ☑ Use correct RA parameters (Router Lifetime, flags, prefix lifetimes)
   ☑ Disable SLAAC on server-facing interfaces if needed
   ☑ Configure appropriate prefix lifetimes
 
@@ -177,4 +179,4 @@ Monitoring:
 
 ## Conclusion
 
-SLAAC security risks include rogue RA attacks (mitigated by RA Guard), EUI-64 address prediction and tracking (mitigated by privacy extensions or RFC 7217), and lack of address tracking (mitigated by ND Inspection binding tables or stateful DHCPv6). The combination of RA Guard at the switch, privacy extensions on clients, and ND Inspection for binding records provides a comprehensive SLAAC security posture. For environments requiring strict address control and tracking, stateful DHCPv6 should supplement or replace SLAAC.
+SLAAC security risks include rogue RA attacks (mitigated by RA Guard), Modified EUI-64 address prediction and tracking (mitigated by privacy extensions or RFC 7217), and lack of address tracking (mitigated by ND Inspection binding tables or stateful DHCPv6). The combination of RA Guard at the switch, privacy extensions on clients, and ND Inspection for binding records provides a comprehensive SLAAC security posture. For environments requiring strict address control and tracking, stateful DHCPv6 should supplement or replace SLAAC.
