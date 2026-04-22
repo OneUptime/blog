@@ -12,14 +12,21 @@ Manually creating snapshots is not practical for production environments with ma
 
 ## Understanding Recurring Jobs
 
-Longhorn recurring jobs support two types of operations:
-- **snapshot**: Creates a local snapshot of the volume
-- **backup**: Creates a backup to an external backup target (requires backup target configuration)
+Longhorn recurring jobs support several operation types, including:
+- **snapshot**: Creates a local snapshot after cleaning up outdated snapshots
+- **snapshot-force-create**: Creates a local snapshot
+- **snapshot-cleanup**: Purges removable snapshots and system snapshots
+- **snapshot-delete**: Removes and purges snapshots that exceed the retention count
+- **backup**: Creates a backup to an external backup target after cleaning up outdated snapshots (requires backup target configuration)
+- **backup-force-create**: Creates a backup to an external backup target (requires backup target configuration)
+- **filesystem-trim**: Trims the filesystem to reclaim disk space
 
-Each job can be configured with:
+RecurringJob specs can be configured with:
 - A cron schedule
-- Retention count (number of snapshots/backups to keep)
-- Labels for volume group assignment
+- Retention count (for snapshot/backup retention; no effect for `snapshot-cleanup`)
+- Concurrency (number of jobs to run at the same time)
+- Groups for assigning jobs to volumes
+- Labels to apply to the created snapshots or backups
 
 ## Creating a Recurring Snapshot Job via Longhorn UI
 
@@ -53,7 +60,7 @@ spec:
   retain: 7
   # Maximum number of concurrent snapshot jobs
   concurrency: 2
-  # Labels to associate with volumes (optional)
+  # Labels to apply to created snapshots (optional)
   labels:
     schedule: daily
 ```
@@ -174,19 +181,20 @@ kubectl label volumes.longhorn.io my-production-volume \
 
 ## Default Recurring Job Group
 
-You can set a default group that applies to all volumes automatically:
+Longhorn's built-in `default` group applies recurring jobs to volumes that have no recurring job labels. Add a recurring job to that group by including `default` in `spec.groups`:
 
 ```bash
-# Set the default recurring job group
-kubectl patch settings.longhorn.io recurring-job-max-retention \
+# Add the daily snapshot job to the default recurring job group
+kubectl patch recurringjobs.longhorn.io daily-snapshot \
   -n longhorn-system \
   --type merge \
-  -p '{"value": "100"}'
+  -p '{"spec":{"groups":["default"]}}'
 ```
 
 In Longhorn UI:
-1. Navigate to **Setting** → **General**
-2. Find **Default Recurring Job** or configure it per volume
+1. Navigate to **Recurring Job**
+2. Edit or create a recurring job
+3. Add the **default** group
 
 ## Applying Recurring Jobs via StorageClass
 
@@ -203,7 +211,7 @@ allowVolumeExpansion: true
 parameters:
   numberOfReplicas: "3"
   fsType: "ext4"
-  # Associate with the daily snapshot recurring job group
+  # Associate with the daily snapshot recurring job
   recurringJobSelector: '[{"name":"daily-snapshot","isGroup":false}]'
 ```
 
@@ -213,7 +221,7 @@ parameters:
 # List all recurring jobs
 kubectl get recurringjobs.longhorn.io -n longhorn-system
 
-# Check recurring job details including last run time
+# Check recurring job details
 kubectl describe recurringjob.longhorn.io daily-snapshot -n longhorn-system
 
 # Check Longhorn manager logs for snapshot job execution
@@ -224,7 +232,7 @@ kubectl logs -n longhorn-system \
 
 ## Common Cron Expressions
 
-```bash
+```text
 # Every hour
 0 * * * *
 
