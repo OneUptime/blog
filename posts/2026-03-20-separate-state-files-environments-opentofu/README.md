@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, State Management, Environment Separation, S3, Backend, Infrastructure as Code
 
-Description: Learn how to configure separate state files per environment in OpenTofu using directory-based separation for complete isolation between dev, staging, and production.
+Description: Learn how to configure separate state files per environment in OpenTofu using directory-based separation for strong isolation between dev, staging, and production.
 
 ---
 
-Separate state files per environment ensure that a mistake in dev can never corrupt production state. Unlike workspaces (which share a configuration), directory-based separation provides independent configurations, backends, and provider settings per environment.
+Separate state files per environment help prevent a mistake in dev from corrupting production state. Unlike workspaces (which share a configuration), directory-based separation provides independent configurations, backends, and provider settings per environment.
 
 ## Directory Structure
 
@@ -121,6 +121,6 @@ resource "aws_ecs_service" "app" {
 
 - Use separate S3 buckets for production state - isolate it from dev/staging with strict IAM policies.
 - Enable S3 bucket versioning on all state buckets for point-in-time recovery.
-- Never share a DynamoDB state lock table between environments - use separate tables.
+- For stricter isolation, use separate DynamoDB state lock tables between environments, or enforce fine-grained IAM controls if you share one.
 - Use different AWS accounts for production vs non-production for strong isolation.
 - Automate deployment with a script that `cd`s into the appropriate environment directory and runs `tofu apply`.
