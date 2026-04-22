@@ -13,8 +13,8 @@ Traditionally, the S3 backend required a DynamoDB table for state locking. OpenT
 ## Prerequisites
 
 - OpenTofu 1.10 or later
-- S3 bucket with object locking capability or S3 conditional writes support
-- AWS region that supports the S3 conditional writes API
+- S3 bucket for state storage (bucket versioning recommended)
+- AWS S3, or an S3-compatible service that supports conditional `If-None-Match` writes
 
 ## Configuring Native S3 Locking
 
@@ -35,17 +35,17 @@ terraform {
 }
 ```
 
-The `use_lockfile = true` setting enables a lock file approach - OpenTofu creates a `.tfstate.lock` file in S3 to prevent concurrent operations.
+The `use_lockfile = true` setting enables a lock file approach - OpenTofu creates a `.tflock` file in S3 to prevent concurrent operations.
 
 ## How Native Locking Works
 
 When a `tofu plan` or `tofu apply` starts:
 
-1. OpenTofu creates a `.tfstate.lock` file in S3 alongside the state file
+1. OpenTofu creates a `.tflock` file in S3 alongside the state file
 2. If the lock file already exists, the operation waits or fails
 3. When the operation completes, the lock file is deleted
 
-Lock file path: `prod/terraform.tfstate.lock` (adjacent to the state file)
+Lock file path: `prod/terraform.tfstate.tflock` (adjacent to the state file)
 
 ## Creating the S3 Bucket for Native Locking
 
@@ -113,6 +113,8 @@ With native locking, you need slightly different S3 permissions:
 
 No DynamoDB permissions needed - a significant simplification.
 
+If you use a customer-managed KMS key for bucket encryption, also grant the OpenTofu role the required KMS permissions.
+
 ## Migrating from DynamoDB Locking to Native Locking
 
 ```hcl
@@ -154,13 +156,13 @@ tofu init -reconfigure
 
 ```bash
 # View lock file in S3
-aws s3 ls s3://my-terraform-state/ | grep ".lock"
+aws s3 ls s3://my-terraform-state/prod/terraform.tfstate.tflock
 
 # Force unlock via OpenTofu
 tofu force-unlock <lock-id>
 
 # Or manually delete the lock file
-aws s3 rm s3://my-terraform-state/prod/terraform.tfstate.lock
+aws s3 rm s3://my-terraform-state/prod/terraform.tfstate.tflock
 ```
 
 ## Compatibility Note
