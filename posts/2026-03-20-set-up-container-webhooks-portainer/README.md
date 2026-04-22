@@ -8,12 +8,12 @@ Description: Configure container webhooks in Portainer to enable automated conta
 
 ---
 
-Portainer webhooks enable CI/CD pipelines to automatically redeploy containers after a new image is built. This creates a complete GitOps workflow from code push to container update.
+Portainer container webhooks in Business Edition on non-Edge environments enable CI/CD pipelines to automatically redeploy containers after a new image is built. This creates an automated deployment workflow from code push to container update.
 
 ## Enable Container Webhooks in Portainer
 
 1. Navigate to **Containers > [Container Name]**
-2. Scroll to the **Container webhooks** section
+2. Scroll to the **Container webhook** option
 3. Toggle the webhook switch to **Enabled**
 4. Copy the generated webhook URL
 
@@ -24,9 +24,9 @@ The URL format: `https://portainer.example.com/api/webhooks/<uuid>`
 ```bash
 # Simple POST request triggers container recreation with the latest image
 
-curl -X POST https://portainer.example.com/api/webhooks/<webhook-uuid>
+curl -X POST "https://portainer.example.com/api/webhooks/<webhook-uuid>"
 
-# With SERVICE_TAG to specify a specific image tag
+# With the tag query parameter to specify a specific image tag
 curl -X POST "https://portainer.example.com/api/webhooks/<webhook-uuid>?tag=v1.2.3"
 ```
 
@@ -85,7 +85,7 @@ deploy:
     - main
 ```
 
-## Using SERVICE_TAG Variable
+## Using the tag Query Parameter
 
 When Portainer receives a webhook with a `tag` query parameter, it updates the container to use that image tag:
 
