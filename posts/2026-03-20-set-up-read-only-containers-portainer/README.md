@@ -8,7 +8,7 @@ Description: Configure containers to run with read-only root filesystems in Port
 
 ---
 
-Running containers with a read-only root filesystem is a security best practice that prevents malware or exploited applications from modifying the container filesystem. Portainer makes it easy to configure this in your stack definitions.
+Running containers with a read-only root filesystem is a security best practice that prevents malware or exploited applications from modifying the container root filesystem. Portainer makes it easy to configure this in your stack definitions.
 
 ## Why Read-Only Containers?
 
@@ -18,16 +18,15 @@ A compromised container with a writable filesystem can:
 - Write malicious executables to PATH directories
 
 A read-only root filesystem limits the blast radius:
-- No new files can be written to the filesystem
-- Configuration cannot be tampered with
-- Malware cannot achieve persistence
+- No new files can be written to the image-backed root filesystem
+- Configuration baked into the image cannot be tampered with directly
+- Malware has fewer filesystem locations for persistence
 
 ## Enabling Read-Only in Portainer Stacks
 
 Add `read_only: true` to any service:
 
 ```yaml
-version: "3.8"
 services:
   webapp:
     image: myapp:1.2.3
@@ -41,6 +40,10 @@ services:
       - app-logs:/app/logs
       - app-uploads:/app/uploads
     restart: unless-stopped
+
+volumes:
+  app-logs:
+  app-uploads:
 ```
 
 ## Common Writable Path Requirements
@@ -52,20 +55,23 @@ Most applications need some writable paths. Identify and provide them:
 | Web app (Node.js) | `/tmp`, `/app/logs`, possibly `/app/data` |
 | Nginx | `/var/run`, `/var/log/nginx`, `/var/cache/nginx` |
 | Python app | `/tmp`, `/app/logs` |
-| Java app | `/tmp`, `/proc` (read), `/sys` (read) |
+| Java app | `/tmp`, application log or heap dump directories |
 
 Configure them as either `tmpfs` (ephemeral) or named volumes (persistent):
 
 ```yaml
 services:
   nginx:
-    image: nginx:1.25-alpine
+    image: nginx:stable-alpine
     read_only: true
     tmpfs:
       - /var/run            # PID files - ephemeral OK
       - /var/cache/nginx    # Cache - ephemeral OK
     volumes:
       - nginx-logs:/var/log/nginx  # Logs - persistent preferred
+
+volumes:
+  nginx-logs:
 ```
 
 ## Testing Read-Only Containers
@@ -73,17 +79,19 @@ services:
 After enabling `read_only`, test that the container works correctly:
 
 ```bash
+CONTAINER=stack_webapp_1  # Replace with the actual container name or ID
+
 # Try to write to the root filesystem (should fail)
 
-docker exec webapp touch /test-file
+docker exec "$CONTAINER" touch /test-file
 # touch: /test-file: Read-only file system
 
 # Verify writable tmpfs paths work
-docker exec webapp touch /tmp/test-file
+docker exec "$CONTAINER" touch /tmp/test-file
 # Success (tmpfs is writable)
 
 # Verify volume mounts work
-docker exec webapp touch /app/logs/test.log
+docker exec "$CONTAINER" touch /app/logs/test.log
 # Success (volume mount is writable)
 ```
 
@@ -130,7 +138,8 @@ spec:
           mountPath: /tmp
   volumes:
     - name: tmp
-      emptyDir: {}
+      emptyDir:
+        medium: Memory
 ```
 
 ## Troubleshooting Read-Only Issues
@@ -142,10 +151,10 @@ If an application fails to start with `read_only: true`:
 3. Add those paths as tmpfs entries or volume mounts
 
 ```bash
-# Run with strace to identify all file writes (for debugging)
+# Run with strace, if it is installed in the image, to identify file writes (for debugging)
 docker run --rm -it \
   --entrypoint strace \
-  myapp:1.2.3 -f -e trace=file ./app 2>&1 | grep -E "openat.*O_WRONLY|creat"
+  myapp:1.2.3 -f -e trace=%file ./app 2>&1 | grep -E "openat.*O_(WRONLY|RDWR)|creat|mkdir|rename|unlink|truncate"
 ```
 
 ## Summary
