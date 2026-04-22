@@ -6,7 +6,7 @@ Tags: SI6 Networks, Scan6, IPv6, Reconnaissance, Security Testing, Network Disco
 
 Description: A guide to using the SI6 Networks scan6 tool for IPv6 host discovery and reconnaissance in authorized lab and security assessment environments.
 
-The SI6 Networks IPv6 toolkit includes `scan6`, a specialized tool for IPv6 host discovery that goes beyond what general-purpose scanners like nmap offer. It leverages IPv6-specific mechanisms such as multicast, Neighbor Discovery Protocol (NDP), and address pattern generation to find hosts in ways that are unique to IPv6.
+The SI6 Networks IPv6 toolkit includes `scan6`, a specialized tool for IPv6 host discovery. It leverages IPv6-specific mechanisms such as multicast, Neighbor Discovery Protocol (NDP), and address pattern generation to find hosts in ways that are unique to IPv6.
 
 **Note**: All techniques in this post should only be used on networks and systems you are authorized to test.
 
@@ -17,13 +17,15 @@ The SI6 Networks IPv6 toolkit includes `scan6`, a specialized tool for IPv6 host
 
 sudo apt-get install ipv6toolkit
 
-# On Arch Linux
-sudo pacman -S ipv6toolkit
+# On Arch Linux (AUR)
+git clone https://aur.archlinux.org/ipv6toolkit.git
+cd ipv6toolkit
+makepkg -si
 
 # From source
 git clone https://github.com/fgont/ipv6toolkit.git
 cd ipv6toolkit
-make
+make all
 sudo make install
 ```
 
@@ -33,8 +35,8 @@ sudo make install
 # Discover hosts on the local link (sends multicast probes)
 sudo scan6 -i eth0 -L
 
-# Scan a specific /64 prefix using EUI-64 derived addresses
-sudo scan6 -i eth0 -d 2001:db8::/64 -l
+# Scan a specific /64 prefix using low-byte address patterns
+sudo scan6 -i eth0 -d 2001:db8::/64 --tgt-low-byte
 
 # Scan a specific IPv6 address
 sudo scan6 -i eth0 -d 2001:db8::1
@@ -51,8 +53,8 @@ sudo scan6 -i eth0 -L -e
 # -L = local link scan (uses multicast)
 # -e = print link-layer (MAC) addresses
 
-# Limit to a specific prefix on the local link
-sudo scan6 -i eth0 -L -d 2001:db8:cafe::/64
+# Print only global addresses discovered on the local link
+sudo scan6 -i eth0 -L -P global
 ```
 
 ## Address Pattern-Based Scanning
@@ -63,24 +65,24 @@ Because IPv6 /64 subnets contain 2^64 addresses, scanning them sequentially is i
 # Scan using low-byte patterns (::1, ::2, ::10, etc.)
 sudo scan6 -i eth0 -d 2001:db8::/64 --tgt-low-byte
 
-# Scan using IPv4-mapped patterns (e.g., ::c0a8:101 for 192.168.1.1)
-sudo scan6 -i eth0 -d 2001:db8::/64 --tgt-ipv4-mapped
+# Scan using embedded IPv4 32-bit patterns (e.g., ::c0a8:101 for 192.168.1.1)
+sudo scan6 -i eth0 -d 2001:db8::/64 --tgt-ipv4 ipv4-32 --ipv4-host 192.168.1.0/24
 
-# Scan using embedded IPv4 patterns (common in dual-stack deployments)
-sudo scan6 -i eth0 -d 2001:db8::/64 --tgt-ipv4-embedded
+# Scan using embedded IPv4 64-bit patterns (e.g., ::192:168:1:1 for 192.168.1.1)
+sudo scan6 -i eth0 -d 2001:db8::/64 --tgt-ipv4 ipv4-64 --ipv4-host 192.168.1.0/24
 
-# Scan using word patterns (common in manually configured addresses)
-sudo scan6 -i eth0 -d 2001:db8::/64 --tgt-word
+# Scan using embedded service-port patterns
+sudo scan6 -i eth0 -d 2001:db8::/64 --tgt-port
 
 # Combine multiple pattern types
-sudo scan6 -i eth0 -d 2001:db8::/64 --tgt-low-byte --tgt-ipv4-embedded
+sudo scan6 -i eth0 -d 2001:db8::/64 --tgt-low-byte --tgt-ipv4 ipv4-32 --ipv4-host 192.168.1.0/24
 ```
 
 ## Using scan6 with a Target List
 
 ```bash
 # Provide a list of addresses or prefixes from a file
-sudo scan6 -i eth0 -l targets.txt
+sudo scan6 -i eth0 -m targets.txt
 
 # targets.txt format:
 # 2001:db8::1
@@ -92,13 +94,13 @@ sudo scan6 -i eth0 -l targets.txt
 
 ```bash
 # Set probe rate (packets per second)
-sudo scan6 -i eth0 -L --rate-limit 100
+sudo scan6 -i eth0 -d 2001:db8::/64 --tgt-low-byte --rate-limit 100pps
 
-# Set retransmission count (default 1)
-sudo scan6 -i eth0 -d 2001:db8::1 --retrans 3
+# Set retransmission count (default 0)
+sudo scan6 -i eth0 -L --retrans 3
 
 # Set timeout for responses (in seconds)
-sudo scan6 -i eth0 -d 2001:db8::1 --timeout 5
+sudo scan6 -i eth0 -L --timeout 5
 ```
 
 ## Interpreting scan6 Output
@@ -106,21 +108,21 @@ sudo scan6 -i eth0 -d 2001:db8::1 --timeout 5
 scan6 outputs discovered hosts with their IPv6 addresses and optionally MAC addresses:
 
 ```text
-2001:db8::1    (00:11:22:33:44:55)
-2001:db8::cafe (aa:bb:cc:dd:ee:ff)
-fe80::1        (00:11:22:33:44:55)
+2001:db8::1 @ 00:11:22:33:44:55
+2001:db8::cafe @ aa:bb:cc:dd:ee:ff
+fe80::1 @ 00:11:22:33:44:55
 ```
 
-From the MAC address, you can identify the vendor (using OUI lookup) and determine whether the address is EUI-64 derived, randomly generated (privacy extensions), or manually configured.
+From the MAC address, you can identify the vendor (using OUI lookup) and check whether the IPv6 address appears to be EUI-64 derived. If it does not match the MAC-derived EUI-64 form, it may be randomly generated (privacy extensions) or manually configured.
 
 ## Comparing scan6 to nmap for IPv6
 
 | Feature | scan6 | nmap -6 |
 |---|---|---|
 | Local link multicast | Native (-L flag) | Supported |
-| EUI-64 pattern probing | Built-in | Not available |
-| IPv4-mapped patterns | Built-in | Not available |
-| Port scanning | Not supported | Full support |
+| EUI-64 pattern probing | Built-in | Available through NSE target scripts |
+| IPv4-embedded patterns | Built-in | Available through NSE target scripts |
+| Port scanning | Limited probing and port-scan options | Full support |
 | OS detection | Not supported | Supported (-O) |
 | Best for | IPv6 host discovery | Full assessment |
 
@@ -133,7 +135,7 @@ scan6 is specialized for host discovery in the IPv6 address space, while nmap ex
 sudo scan6 -i eth0 -L -e > discovered-hosts.txt
 
 # Step 2: Extract addresses only
-grep -oE '([0-9a-f:]+::[0-9a-f:]+)' discovered-hosts.txt > ipv6-hosts.txt
+awk 'NF {print $1}' discovered-hosts.txt > ipv6-hosts.txt
 
 # Step 3: Pass to nmap for port scanning
 nmap -6 -sV -iL ipv6-hosts.txt -oN full-scan.txt
