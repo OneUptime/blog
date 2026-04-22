@@ -8,7 +8,7 @@ Description: Set the Maximum Transmission Unit (MTU) on a Linux network interfac
 
 ## Introduction
 
-The MTU defines the maximum payload size of an Ethernet frame. The standard Ethernet MTU is 1500 bytes. Setting a higher value (jumbo frames, typically 9000 bytes) reduces overhead for large data transfers in storage and backup networks. Setting it too high causes fragmentation or silent packet loss on paths that do not support large frames.
+On Ethernet, the MTU is the maximum Layer 3 packet size carried in the frame payload; for IPv4, that means the IP datagram size. The standard Ethernet MTU is 1500 bytes. Setting a higher value (jumbo frames, typically 9000 bytes) reduces overhead for large data transfers in storage and backup networks. Setting it too high can cause fragmentation, Path MTU Discovery failures, or dropped frames on links that do not support large packets.
 
 ## Checking the Current MTU
 
@@ -35,7 +35,7 @@ sudo ip link set eth0 mtu 9000
 ip link show eth0 | grep mtu
 ```
 
-**Important:** The switch port and all devices on the path must support the same or higher MTU. Mismatched MTU causes large packets to fail silently while small packets (like ping) succeed.
+**Important:** For jumbo frames, the NIC, switch port, and every Layer 2 hop carrying the traffic must support the same or higher MTU. Across a routed path, the effective size is limited by the smallest link MTU. Mismatched MTU can cause large packets to fail while small packets (like a default-size ping) succeed.
 
 ## Testing MTU Correctness
 
@@ -44,13 +44,13 @@ ip link show eth0 | grep mtu
 # -M do = do not fragment, -s = payload size
 ping -M do -s 1472 192.168.1.1
 
-# If this fails, the path MTU is less than 1500
+# If smaller pings succeed but this fails, the tested path likely has an MTU below 1500
 # Try smaller sizes to find the actual PMTU
 ping -M do -s 1400 192.168.1.1
 ping -M do -s 1200 192.168.1.1
 ```
 
-If the smaller ping succeeds but 1472 fails, an intermediate device has a lower MTU.
+If the smaller ping succeeds but 1472 fails, the path likely has a lower MTU or is dropping large, non-fragmentable ICMP probes.
 
 ## Making MTU Persistent with Netplan
 
