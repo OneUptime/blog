@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Variable, Sensitive, Security, Infrastructure as Code, DevOps
 
-Description: A guide to marking OpenTofu variables as sensitive to prevent secrets from appearing in logs, plan output, and state files.
+Description: A guide to marking OpenTofu variables as sensitive to redact secrets from normal CLI output and protect state files appropriately.
 
 ## Introduction
 
-The `sensitive = true` attribute in variable declarations tells OpenTofu to treat a value as a secret. Sensitive values are redacted from plan output, apply output, and terminal logs. This is essential for passwords, API keys, private keys, and other confidential information.
+The `sensitive = true` attribute in variable declarations tells OpenTofu to treat a value as a secret in normal CLI output. Sensitive values are redacted from plan and apply output, but they are still sent to providers and recorded in state, so protect the state with state encryption or an encrypted backend. This is essential for passwords, API keys, private keys, and other confidential information.
 
 ## Marking a Variable as Sensitive
 
@@ -62,7 +62,7 @@ resource "aws_db_instance" "main" {
   identifier = "production-db"
   engine     = "postgres"
   username   = "admin"
-  password   = var.db_password  # Passed to resource safely
+  password   = var.db_password  # Redacted in normal plan/apply output
 
   # ... other config
 }
@@ -130,7 +130,7 @@ tofu output -json | jq .api_key
 ## Providing Sensitive Variable Values
 
 ```bash
-# RECOMMENDED: Use environment variables (not in shell history by default)
+# RECOMMENDED: Use environment variables populated by your shell, CI system, or secrets manager
 export TF_VAR_database_password="my-secret-password"
 tofu apply
 
@@ -166,6 +166,7 @@ terraform {
 terraform {
   encryption {
     key_provider "pbkdf2" "main" {
+      # Must be at least 16 characters long
       passphrase = var.state_encryption_key
     }
     method "aes_gcm" "main" {
@@ -180,4 +181,4 @@ terraform {
 
 ## Conclusion
 
-Marking variables as `sensitive = true` is a critical security practice for handling secrets in OpenTofu. While it doesn't encrypt the state file, it prevents accidental exposure in logs and terminal output. Always combine sensitive variables with encrypted state backends, secret management systems for providing values, and access controls on your state storage. These layers together provide robust secret management for your infrastructure.
+Marking variables as `sensitive = true` is a critical security practice for handling secrets in OpenTofu. While it doesn't encrypt the state file, it prevents accidental exposure in normal plan and apply output. Always combine sensitive variables with encrypted state backends, secret management systems for providing values, and access controls on your state storage. These layers together provide robust secret management for your infrastructure.
