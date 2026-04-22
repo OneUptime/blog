@@ -25,6 +25,9 @@ How to Implement Runtime Threat Detection in Rancher addresses these challenges 
 - Rancher v2.7+ cluster with cluster admin access
 - Kubernetes 1.26+
 - Helm 3.x
+- Rancher Monitoring installed for PrometheusRule-based alerts
+- Linux worker nodes supported by Falco
+- jq for audit commands
 - Understanding of Linux security concepts
 
 ## Step 1: Assess Current Security Posture
@@ -35,44 +38,63 @@ How to Implement Runtime Threat Detection in Rancher addresses these challenges 
 kubectl get pods --all-namespaces -o json | jq -r '
   .items[] | 
   select(
-    .spec.containers[].securityContext.runAsRoot == true or
-    .spec.containers[].securityContext.privileged == true
+    ([.spec.containers[]?.securityContext.privileged // false] | any) or
+    ((.spec.securityContext.runAsUser // -1) == 0) or
+    ([.spec.containers[]?.securityContext.runAsUser // -1] | any(. == 0))
   ) |
   [.metadata.namespace, .metadata.name] |
   @csv'
 
-# Check for pods running as root
-kubectl get pods --all-namespaces -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,USER:.spec.securityContext.runAsUser'
+# Check for pods explicitly configured to run as UID 0
+kubectl get pods --all-namespaces -o json | jq -r '
+  .items[] |
+  select(
+    ((.spec.securityContext.runAsUser // -1) == 0) or
+    ([.spec.containers[]?.securityContext.runAsUser // -1] | any(. == 0))
+  ) |
+  [.metadata.namespace, .metadata.name] |
+  @csv'
 
 # Check privileged pods
-kubectl get pods --all-namespaces -o json |   jq -r '.items[] | select(.spec.containers[].securityContext.privileged==true) | 
+kubectl get pods --all-namespaces -o json | jq -r '.items[] | select([.spec.containers[]?.securityContext.privileged // false] | any) | 
   .metadata.namespace + "/" + .metadata.name'
 ```
 
 ## Step 2: Configure Security Feature
 
 ```yaml
-# security-feature-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: security-config
-  namespace: kube-system
-data:
-  config.yaml: |
-    # Security feature configuration
+# falco-values.yaml
+metrics:
+  enabled: true
+  interval: 1m
+  rulesCountersEnabled: true
+  includeEmptyValues: true
+
+serviceMonitor:
+  create: true
+  interval: 30s
+  scrapeTimeout: 10s
+
+falco:
+  json_output: true
+  webserver:
     enabled: true
-    level: "strict"
-    
-    # Audit settings
-    audit:
-      enabled: true
-      outputPath: /var/log/security-audit.log
-    
-    # Alert settings
-    alerts:
-      enabled: true
-      webhook: "https://alerts.example.com/security"
+    prometheus_metrics_enabled: true
+
+customRules:
+  local-rules.yaml: |-
+    - rule: Shell Spawned in Container
+      desc: Detect shell activity inside a running container
+      condition: >
+        spawned_process and
+        container and
+        shell_procs
+      output: >
+        Shell spawned in container
+        (user=%user.name container_id=%container.id container_name=%container.name
+        shell=%proc.name parent=%proc.pname cmdline=%proc.cmdline)
+      priority: WARNING
+      tags: [container, shell, runtime]
 ```
 
 ## Step 3: Apply Pod Security Standards
@@ -102,7 +124,13 @@ metadata:
   name: secure-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: secure-app
   template:
+    metadata:
+      labels:
+        app: secure-app
     spec:
       # Pod-level security context
       securityContext:
@@ -145,12 +173,17 @@ spec:
 
 ```bash
 # Install via Helm
-helm repo add security-charts https://charts.example.com/security
+helm repo add falcosecurity https://falcosecurity.github.io/charts
 helm repo update
 
-helm install security-tool security-charts/security-tool   --namespace security-system   --create-namespace   --set rules.enabled=true   --set alerting.enabled=true   --set alerting.slack.webhook=YOUR_WEBHOOK_URL
+helm upgrade --install falco falcosecurity/falco \
+  --namespace falco \
+  --create-namespace \
+  --set tty=true \
+  -f falco-values.yaml
 
-kubectl get pods -n security-system
+kubectl get pods -n falco
+kubectl logs -n falco daemonset/falco --tail=20
 ```
 
 ## Step 6: Create Alert Rules
@@ -160,32 +193,32 @@ kubectl get pods -n security-system
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: security-alerts
+  name: falco-runtime-alerts
   namespace: cattle-monitoring-system
 spec:
   groups:
-  - name: security.alerts
+  - name: falco.runtime.alerts
     rules:
-    - alert: PrivilegedContainerDetected
+    - alert: FalcoRuntimeDetection
       expr: |
-        kube_pod_container_info{container!=""} * on(pod, namespace)
-        kube_pod_spec_container_security_context_privileged{privileged="true"} > 0
+        sum by (rule_name, priority, source) (
+          increase(falcosecurity_falco_rules_matches_total[5m])
+        ) > 0
       for: 0m
-      labels:
-        severity: critical
-      annotations:
-        summary: "Privileged container in {{ $labels.namespace }}/{{ $labels.pod }}"
-    
-    - alert: ContainerRunningAsRoot
-      expr: |
-        kube_pod_container_status_running * on(pod, namespace)
-        kube_pod_container_info{container_id!=""} and
-        kube_pod_spec_container_security_context_run_as_user{run_as_user="0"} > 0
-      for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Container running as root in {{ $labels.namespace }}"
+        summary: "Falco rule {{ $labels.rule_name }} triggered"
+        description: "Falco detected runtime activity from source {{ $labels.source }} with priority {{ $labels.priority }}."
+    
+    - alert: FalcoOutputDrops
+      expr: |
+        increase(falcosecurity_falco_outputs_queue_num_drops_total[5m]) > 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Falco output queue is dropping events"
 ```
 
 ## Step 7: Verify Security Controls
@@ -196,17 +229,25 @@ spec:
 
 echo "=== Security Control Verification ==="
 
-echo "1. Checking for privileged containers..."
-PRIV_COUNT=$(kubectl get pods --all-namespaces -o json |   jq '[.items[].spec.containers[].securityContext.privileged // false | select(.)] | length')
+echo "1. Checking Falco pods..."
+kubectl get pods -n falco
+
+echo ""
+echo "2. Checking Falco logs..."
+kubectl logs -n falco daemonset/falco --tail=50 | grep -E "Falco initialized|local-rules.yaml|Shell Spawned in Container" || true
+
+echo ""
+echo "3. Checking for privileged containers..."
+PRIV_COUNT=$(kubectl get pods --all-namespaces -o json | jq '[.items[].spec.containers[]?.securityContext.privileged // false | select(.)] | length')
 echo "   Privileged containers: $PRIV_COUNT"
 
 echo ""
-echo "2. Checking namespaces with Pod Security Standards..."
-kubectl get namespaces -o custom-columns='NAME:.metadata.name,PSS:.metadata.labels[pod-security\.kubernetes\.io/enforce]'
+echo "4. Checking namespaces with Pod Security Standards..."
+kubectl get namespaces -L pod-security.kubernetes.io/enforce
 
 echo ""
-echo "3. Checking for host network pods..."
-kubectl get pods --all-namespaces -o json |   jq -r '.items[] | select(.spec.hostNetwork==true) | 
+echo "5. Checking for host network pods..."
+kubectl get pods --all-namespaces -o json | jq -r '.items[] | select(.spec.hostNetwork==true) | 
   .metadata.namespace + "/" + .metadata.name'
 
 echo "=== Verification Complete ==="
