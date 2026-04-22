@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, S3, Encryption, KMS, Security, Infrastructure as Code
 
-Description: Learn how to create S3 buckets with server-side encryption using SSE-S3, SSE-KMS, and DSSE-KMS encryption options in OpenTofu to protect data at rest.
+Description: Learn how to create S3 buckets with server-side encryption using SSE-S3 and SSE-KMS encryption options in OpenTofu to protect data at rest.
 
 ## Introduction
 
-S3 server-side encryption (SSE) automatically encrypts objects when stored and decrypts them when retrieved. You can choose between AWS-managed keys (SSE-S3), customer-managed KMS keys (SSE-KMS), or dual-layer encryption (DSSE-KMS). This guide covers all three options.
+S3 server-side encryption (SSE) automatically encrypts objects when stored and decrypts them when retrieved. You can choose between Amazon S3-managed keys (SSE-S3), KMS keys (SSE-KMS), or dual-layer encryption (DSSE-KMS). This guide covers SSE-S3 and SSE-KMS with a customer-managed KMS key.
 
 ## Prerequisites
 
@@ -55,20 +55,20 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "kms" {
       kms_master_key_id = aws_kms_key.s3.arn
     }
 
-    # Enforce bucket key to reduce KMS API calls and costs
+    # Enable bucket keys to reduce KMS API calls and costs
     bucket_key_enabled = true
   }
 }
 ```
 
-## Step 3: Create Bucket with SSE-S3 (AWS-Managed Keys)
+## Step 3: Create Bucket with SSE-S3 (Amazon S3-Managed Keys)
 
 ```hcl
 resource "aws_s3_bucket" "sse_s3" {
   bucket = "${var.bucket_name}-sse-s3"
 }
 
-# SSE-S3 uses AES-256 with AWS-managed keys (no KMS charges)
+# SSE-S3 uses AES-256 with Amazon S3-managed keys (no KMS charges)
 resource "aws_s3_bucket_server_side_encryption_configuration" "sse_s3" {
   bucket = aws_s3_bucket.sse_s3.id
 
@@ -103,7 +103,7 @@ resource "aws_s3_bucket_policy" "enforce_encryption" {
         }
       },
       {
-        Sid    = "DenyNonBucketKeyUploads"
+        Sid    = "DenyWrongKMSKey"
         Effect = "Deny"
         Principal = "*"
         Action = "s3:PutObject"
