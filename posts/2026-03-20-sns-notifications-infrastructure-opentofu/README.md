@@ -26,6 +26,12 @@ graph LR
 ```hcl
 # sns.tf
 
+data "aws_caller_identity" "current" {}
+
+locals {
+  infrastructure_alerts_topic_arn = "arn:aws:sns:${var.aws_region}:${data.aws_caller_identity.current.account_id}:${var.environment}-infrastructure-alerts"
+}
+
 resource "aws_sns_topic" "infrastructure_alerts" {
   name              = "${var.environment}-infrastructure-alerts"
   kms_master_key_id = aws_kms_key.sns.arn
@@ -51,6 +57,14 @@ resource "aws_kms_key" "sns" {
         }
         Action   = ["kms:GenerateDataKey*", "kms:Decrypt"]
         Resource = "*"
+        Condition = {
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:cloudwatch:${var.aws_region}:${data.aws_caller_identity.current.account_id}:alarm:*"
+          }
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
       },
       {
         Sid    = "AllowSNS"
@@ -60,6 +74,11 @@ resource "aws_kms_key" "sns" {
         }
         Action   = ["kms:GenerateDataKey*", "kms:Decrypt"]
         Resource = "*"
+        Condition = {
+          StringEquals = {
+            "kms:EncryptionContext:aws:sns:topicArn" = local.infrastructure_alerts_topic_arn
+          }
+        }
       },
       {
         Sid       = "AllowAccount"
@@ -94,6 +113,9 @@ resource "aws_sns_topic_policy" "infrastructure_alerts" {
           ArnLike = {
             "aws:SourceArn" = "arn:aws:cloudwatch:${var.aws_region}:${data.aws_caller_identity.current.account_id}:alarm:*"
           }
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
         }
       }
     ]
@@ -113,17 +135,45 @@ resource "aws_sns_topic_subscription" "ops_email" {
 
 # HTTPS endpoint (PagerDuty, OpsGenie, etc.)
 resource "aws_sns_topic_subscription" "pagerduty" {
-  topic_arn            = aws_sns_topic.infrastructure_alerts.arn
-  protocol             = "https"
-  endpoint             = var.pagerduty_endpoint_url
+  topic_arn              = aws_sns_topic.infrastructure_alerts.arn
+  protocol               = "https"
+  endpoint               = var.pagerduty_endpoint_url
   endpoint_auto_confirms = true
 }
 
 # SQS for durable processing
+data "aws_iam_policy_document" "alert_processing_queue" {
+  statement {
+    sid    = "AllowSNSSendMessage"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["sns.amazonaws.com"]
+    }
+
+    actions   = ["sqs:SendMessage"]
+    resources = [aws_sqs_queue.alert_processing.arn]
+
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [aws_sns_topic.infrastructure_alerts.arn]
+    }
+  }
+}
+
+resource "aws_sqs_queue_policy" "alert_processing" {
+  queue_url = aws_sqs_queue.alert_processing.id
+  policy    = data.aws_iam_policy_document.alert_processing_queue.json
+}
+
 resource "aws_sns_topic_subscription" "alert_queue" {
   topic_arn = aws_sns_topic.infrastructure_alerts.arn
   protocol  = "sqs"
   endpoint  = aws_sqs_queue.alert_processing.arn
+
+  depends_on = [aws_sqs_queue_policy.alert_processing]
 }
 
 # Lambda for Slack notifications
@@ -131,6 +181,8 @@ resource "aws_sns_topic_subscription" "slack_lambda" {
   topic_arn = aws_sns_topic.infrastructure_alerts.arn
   protocol  = "lambda"
   endpoint  = aws_lambda_function.slack_notifier.arn
+
+  depends_on = [aws_lambda_permission.sns_invoke_slack]
 }
 
 resource "aws_lambda_permission" "sns_invoke_slack" {
@@ -174,7 +226,7 @@ resource "aws_cloudwatch_metric_alarm" "error_rate" {
   alarm_name          = "${var.environment}-high-error-rate"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "5XXError"
+  metric_name         = "HTTPCode_Target_5XX_Count"
   namespace           = "AWS/ApplicationELB"
   period              = 60
   statistic           = "Sum"
@@ -211,6 +263,10 @@ resource "aws_cloudwatch_metric_alarm" "db_connections_critical" {
   statistic           = "Average"
   threshold           = 950
 
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.app.identifier
+  }
+
   alarm_actions = [aws_sns_topic.critical_alerts.arn]
 }
 
@@ -224,6 +280,10 @@ resource "aws_cloudwatch_metric_alarm" "db_connections_warning" {
   period              = 60
   statistic           = "Average"
   threshold           = 800
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.app.identifier
+  }
 
   alarm_actions = [aws_sns_topic.warning_alerts.arn]
 }
