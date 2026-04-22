@@ -8,7 +8,7 @@ Description: Learn how to generate self-signed TLS certificates and private keys
 
 ---
 
-Self-signed certificates are appropriate for internal services, development environments, and bootstrapping private PKI. OpenTofu's `tls` provider generates private keys, CSRs, and certificates as code - keeping certificate management reproducible and auditable.
+Self-signed certificates are appropriate for internal services, development environments, and bootstrapping private PKI. The `hashicorp/tls` provider generates private keys, CSRs, and certificates as code - keeping certificate management declarative and auditable. Generated private keys are still written to OpenTofu state, so protect state as sensitive data.
 
 ## Certificate Generation Flow
 
@@ -16,7 +16,7 @@ Self-signed certificates are appropriate for internal services, development envi
 graph LR
     A[Generate Private Key<br/>tls_private_key] --> B[Create Certificate<br/>tls_self_signed_cert]
     B --> C[Store in Secrets Manager<br/>aws_secretsmanager_secret]
-    C --> D[Mount in Application<br/>kubernetes_secret or<br/>tls_certificate]
+    C --> D[Mount in Application<br/>kubernetes_secret or<br/>application config]
 ```
 
 ## Basic Self-Signed Certificate
@@ -134,9 +134,9 @@ resource "tls_locally_signed_cert" "service" {
 ## Store Certificates in AWS Secrets Manager
 
 ```hcl
-# Store private key securely
+# Store CA-signed certificate bundle
 resource "aws_secretsmanager_secret" "tls_key" {
-  name                    = "${var.environment}/tls/${var.service_name}/private-key"
+  name                    = "${var.environment}/tls/${var.service_name}/certificate-bundle"
   recovery_window_in_days = 0  # Allow immediate deletion for dev environments
 
   tags = {
@@ -148,8 +148,8 @@ resource "aws_secretsmanager_secret" "tls_key" {
 resource "aws_secretsmanager_secret_version" "tls_key" {
   secret_id = aws_secretsmanager_secret.tls_key.id
   secret_string = jsonencode({
-    certificate = tls_self_signed_cert.server.cert_pem
-    private_key = tls_private_key.server.private_key_pem
+    certificate = tls_locally_signed_cert.service.cert_pem
+    private_key = tls_private_key.service.private_key_pem
     ca_cert     = tls_self_signed_cert.ca.cert_pem
   })
 }
@@ -207,8 +207,8 @@ resource "kubernetes_ingress_v1" "app" {
 
 ## Best Practices
 
-- Store private keys in AWS Secrets Manager or HashiCorp Vault - never in state files without encryption. Use `sensitive = true` on outputs containing key material.
+- Treat OpenTofu state as sensitive: generated private keys, Secrets Manager secret versions, and Kubernetes Secret data can all be stored in state. Use an encrypted backend and restrict state access.
 - Use a private CA (`tls_locally_signed_cert`) rather than individual self-signed certs so you can trust a single CA root across all internal services instead of trusting each certificate individually.
 - Set `validity_period_hours` to 8760 (1 year) for service certs and 87600 (10 years) for CA certs - then plan for annual rotation.
-- For production internal services, prefer AWS Private CA (`aws_acmpca_certificate_authority`) over self-signed certificates - it integrates with ACM for automated renewal.
-- Mark all outputs containing private key material as `sensitive = true` to prevent accidental exposure in CI logs.
+- For production internal services, prefer AWS Private CA (`aws_acmpca_certificate_authority`) over self-signed certificates - ACM can automatically renew eligible private certificates requested through ACM from that CA.
+- Mark all outputs containing private key material as `sensitive = true` to prevent accidental exposure in CI logs; this does not remove the value from state.
