@@ -42,7 +42,7 @@ By default, Samba listens on all available network interfaces, including loopbac
    bind interfaces only = yes
 
    # Or mix: interface name + specific IP
-   interfaces = eth0 127.0.0.1
+   # interfaces = eth0 127.0.0.1
 
    workgroup = WORKGROUP
    security = user
@@ -93,6 +93,7 @@ sudo chmod 2775 /srv/samba/shared
 
 # Create Samba user (must have a Linux account first)
 sudo useradd -M -s /usr/sbin/nologin sambauser
+sudo usermod -aG sambausers sambauser
 sudo smbpasswd -a sambauser
 ```
 
@@ -107,7 +108,7 @@ sudo systemctl restart smbd nmbd
 
 # Verify Samba is listening on the correct IP
 sudo ss -tlnp | grep -E "smbd|:445|:139"
-# Expected: 0.0.0.0:445 or 10.0.0.5:445
+# Expected: 10.0.0.5:445 (and 127.0.0.1:445 if loopback is included)
 
 # Test connectivity from a client
 smbclient -L //10.0.0.5 -U sambauser
