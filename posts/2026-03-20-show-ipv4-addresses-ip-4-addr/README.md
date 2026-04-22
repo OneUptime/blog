@@ -63,7 +63,7 @@ Output:
 192.168.1.100
 ```
 
-## List All Interfaces with IPv4 Addresses
+## List All IPv4 Addresses
 
 ```bash
 ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}'
