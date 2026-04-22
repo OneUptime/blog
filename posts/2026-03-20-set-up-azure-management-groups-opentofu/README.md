@@ -6,7 +6,7 @@ Tags: OpenTofu, Azure, Management Groups, Governance, Infrastructure as Code
 
 Description: Learn how to create and configure Azure Management Groups with OpenTofu for hierarchical subscription governance and policy enforcement.
 
-Azure Management Groups provide a governance hierarchy above subscriptions. Policies, RBAC, and Blueprints applied to a management group are inherited by all subscriptions within it. OpenTofu lets you define the management group hierarchy as code.
+Azure Management Groups provide a governance hierarchy above subscriptions. Policies and Azure RBAC role assignments applied to a management group are inherited by child management groups, subscriptions, and resources below it. OpenTofu lets you define the management group hierarchy as code.
 
 ## Creating Management Groups
 
@@ -99,10 +99,15 @@ resource "azurerm_role_assignment" "workloads_reader" {
 ```hcl
 data "azurerm_management_group" "workloads" {
   name = azurerm_management_group.workloads.name
+
+  depends_on = [
+    azurerm_management_group_subscription_association.production_sub,
+    azurerm_management_group_subscription_association.staging_sub,
+  ]
 }
 
 output "workloads_subscriptions" {
-  value = data.azurerm_management_group.workloads.subscription_ids
+  value = data.azurerm_management_group.workloads.all_subscription_ids
 }
 ```
 
