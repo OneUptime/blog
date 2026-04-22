@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, VPN Gateway, Site-to-Site, IPv4, Hybrid Connectivity, IPsec
 
-Description: Configure an Azure VPN Gateway and site-to-site IPSec/IKE VPN connection to securely connect an on-premises IPv4 network to an Azure Virtual Network.
+Description: Configure an Azure VPN Gateway and site-to-site IPsec/IKE VPN connection to securely connect an on-premises IPv4 network to an Azure Virtual Network.
 
 ## Introduction
 
-Azure VPN Gateway creates encrypted IPSec/IKE tunnels between Azure VNets and on-premises networks or other VNets. Site-to-site connections use a VPN device on-premises (or another Azure gateway) as the remote endpoint. Gateway creation takes 25–45 minutes.
+Azure VPN Gateway creates encrypted IPsec/IKE tunnels between Azure VNets and on-premises networks or other VNets. Site-to-site connections use a VPN device on-premises (or another Azure gateway) as the remote endpoint. Gateway creation can often take 45 minutes or more.
 
 ## Step 1: Create the GatewaySubnet
 
@@ -21,7 +21,7 @@ az network vnet subnet create \
   --resource-group $RESOURCE_GROUP \
   --vnet-name prod-vnet \
   --name GatewaySubnet \
-  --address-prefix 10.100.255.0/27
+  --address-prefixes 10.100.255.0/27
 ```
 
 ## Step 2: Create a Public IP for the Gateway
@@ -32,13 +32,14 @@ az network public-ip create \
   --name vpngw-pip \
   --sku Standard \
   --allocation-method Static \
+  --zone 1 2 3 \
   --location eastus
 ```
 
 ## Step 3: Create the VPN Gateway
 
 ```bash
-# VpnGw1 supports up to 650 Mbps; creation takes ~30 minutes
+# VpnGw1AZ supports up to 650 Mbps; creation can often take 45 minutes or more
 az network vnet-gateway create \
   --resource-group $RESOURCE_GROUP \
   --name vpn-gateway \
@@ -46,7 +47,7 @@ az network vnet-gateway create \
   --vnet prod-vnet \
   --gateway-type Vpn \
   --vpn-type RouteBased \
-  --sku VpnGw1 \
+  --sku VpnGw1AZ \
   --public-ip-address vpngw-pip \
   --no-wait
 ```
@@ -83,7 +84,6 @@ az network vpn-connection create \
   --name azure-to-onprem \
   --vnet-gateway1 vpn-gateway \
   --local-gateway2 onprem-local-gw \
-  --connection-type IPSec \
   --shared-key "MyVPNPreSharedKey123!" \
   --location eastus
 ```
@@ -115,7 +115,7 @@ az network vpn-connection show \
 ## IKE Policy Customization
 
 ```bash
-# Create a custom IPSec/IKE policy
+# Create a custom IPsec/IKE policy
 az network vpn-connection ipsec-policy add \
   --resource-group $RESOURCE_GROUP \
   --connection-name azure-to-onprem \
@@ -138,6 +138,8 @@ az network vpn-connection ipsec-policy add \
 | VpnGw3 | 1.25 Gbps | 30 |
 | VpnGw1AZ | 650 Mbps | 30 (zone-redundant) |
 
+For new gateways, use the corresponding AZ SKU (for example, VpnGw1AZ) because new non-AZ VpnGw1-5 gateway creation ended on November 1, 2025.
+
 ## Conclusion
 
-Site-to-site VPN requires: GatewaySubnet, VPN gateway, local network gateway (on-premises device), and a VPN connection with a shared key. Gateway provisioning takes 25–45 minutes. Use RouteBased (IKEv2) for modern devices and flexibility with multiple connections.
+Site-to-site VPN requires: GatewaySubnet, VPN gateway, local network gateway (on-premises device), and a VPN connection with a shared key. Gateway provisioning can often take 45 minutes or more. Use RouteBased for modern devices and flexibility with multiple connections; IKEv2 is used by default where applicable.
