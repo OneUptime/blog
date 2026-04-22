@@ -57,7 +57,7 @@ resource "aws_instance" "app" {
       echo "Public DNS:       ${self.public_dns}"
       echo "AZ:               ${self.availability_zone}"
       echo "Subnet:           ${self.subnet_id}"
-      echo "VPC:              ${self.vpc_security_group_ids}"
+      echo "Security groups:  ${join(", ", self.vpc_security_group_ids)}"
     EOT
   }
 }
@@ -98,24 +98,28 @@ resource "google_compute_instance" "vm" {
 
 ## Using `self` in Destroy-Time Provisioners
 
-`self` is especially important in destroy-time provisioners because you cannot reference other resources (they may already be gone):
+`self` is especially important in destroy-time provisioners because OpenTofu restricts references there to values that are still available at destroy time:
 
 ```hcl
 resource "aws_instance" "app" {
   ami           = "ami-0abcdef1234567890"
   instance_type = "t3.micro"
 
+  tags = {
+    ConsulAddress = var.consul_address
+  }
+
   provisioner "local-exec" {
     when = destroy
 
-    # self is the only safe reference in destroy-time provisioners
+    # Use self for resource attributes in destroy-time provisioners
     command = <<-EOT
       echo "Deregistering instance ${self.id} (IP: ${self.private_ip})"
       consul services deregister -id="${self.id}" || true
     EOT
 
     environment = {
-      CONSUL_HTTP_ADDR = var.consul_address
+      CONSUL_HTTP_ADDR = self.tags["ConsulAddress"]
     }
   }
 }
