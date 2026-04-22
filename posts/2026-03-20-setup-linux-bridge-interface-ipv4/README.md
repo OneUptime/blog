@@ -8,7 +8,7 @@ Description: Create a Linux software bridge, add physical interfaces as bridge m
 
 ## Introduction
 
-A Linux bridge acts as a virtual Layer 2 switch, connecting multiple interfaces at the Ethernet level. It is essential for virtual machine networking (KVM/QEMU), container networking, and creating network segments that share the same IPv4 subnet.
+A Linux bridge acts as a virtual Layer 2 switch, connecting multiple interfaces at the Ethernet level. It is commonly used for virtual machine networking (KVM/QEMU), container networking, and creating network segments that share the same IPv4 subnet.
 
 ## Creating a Bridge Interface
 
@@ -33,6 +33,7 @@ sudo ip addr flush dev eth0
 
 # Add eth0 as a bridge member (slave)
 sudo ip link set eth0 master br0
+sudo ip link set eth0 up
 
 # Verify the bridge members
 ip link show master br0
@@ -43,7 +44,7 @@ ip link show master br0
 ```bash
 # Assign the IP to the bridge, not the physical interface
 sudo ip addr add 192.168.1.100/24 dev br0
-sudo ip route add default via 192.168.1.1 dev br0
+sudo ip route replace default via 192.168.1.1 dev br0
 
 # Verify
 ip addr show br0
@@ -117,7 +118,7 @@ virt-install --name myvm --memory 1024 --disk size=10 \
   --network bridge=br0 --os-variant ubuntu22.04 --cdrom /path/to/ubuntu.iso
 ```
 
-The VM will appear on the same subnet as the host and receive a DHCP address from the network's DHCP server.
+The VM can appear on the same subnet as the host and receive a DHCP address from the network's DHCP server if DHCP is available and the guest is configured to use it.
 
 ## Conclusion
 
