@@ -18,8 +18,12 @@ The `ip addr` command displays address information for network interfaces. The `
 ip -4 addr show
 
 # Sample output:
-# 1: lo    inet 127.0.0.1/8 scope host lo
-# 2: eth0  inet 192.168.1.100/24 brd 192.168.1.255 scope global eth0
+# 1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+#     inet 127.0.0.1/8 scope host lo
+#        valid_lft forever preferred_lft forever
+# 2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+#     inet 192.168.1.100/24 brd 192.168.1.255 scope global eth0
+#        valid_lft forever preferred_lft forever
 ```
 
 ## Show IPv4 for a Specific Interface
