@@ -11,17 +11,27 @@ SaltStack's event-driven architecture and flexible state system make it well-sui
 ## Salt State File Structure
 
 ```text
-/srv/salt/
-├── ipv6/
-│   ├── init.sls         # Main state
-│   ├── sysctl.sls       # Kernel parameters
-│   ├── firewall.sls     # ip6tables rules
-│   └── interfaces.sls   # Network interfaces
+/srv/
+├── salt/
+│   └── ipv6/
+│       ├── init.sls         # Main state
+│       ├── sysctl.sls       # Kernel parameters
+│       ├── firewall.sls     # ip6tables rules
+│       └── interfaces.sls   # Network interfaces
 └── pillar/
-    └── ipv6.sls         # Pillar data (secrets/config)
+    ├── top.sls              # Pillar target mapping
+    └── ipv6.sls             # Pillar data (secrets/config)
 ```
 
 ## Pillar Data
+
+```yaml
+# /srv/pillar/top.sls
+
+base:
+  '*':
+    - ipv6
+```
 
 ```yaml
 # /srv/pillar/ipv6.sls
@@ -43,15 +53,10 @@ ipv6:
 ```yaml
 # /srv/salt/ipv6/init.sls
 
-{% set ipv6 = pillar.get('ipv6', {}) %}
-
 include:
   - ipv6.sysctl
   - ipv6.firewall
-
-{% if ipv6.get('privacy', {}).get('enabled', true) %}
-  - ipv6.privacy
-{% endif %}
+  - ipv6.interfaces
 ```
 
 ## sysctl State
@@ -98,31 +103,42 @@ ipv6_allow_loopback:
   cmd.run:
     - name: ip6tables -A INPUT -i lo -j ACCEPT
     - unless: ip6tables -C INPUT -i lo -j ACCEPT
+    - require:
+      - pkg: ipv6tables_installed
 
 # Allow established
 ipv6_allow_established:
   cmd.run:
     - name: ip6tables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
     - unless: ip6tables -C INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+    - require:
+      - pkg: ipv6tables_installed
 
 # Allow ICMPv6 (required for IPv6 operation)
 ipv6_allow_icmpv6:
   cmd.run:
     - name: ip6tables -A INPUT -p ipv6-icmp -j ACCEPT
     - unless: ip6tables -C INPUT -p ipv6-icmp -j ACCEPT
+    - require:
+      - pkg: ipv6tables_installed
 
 # Allow SSH
 ipv6_allow_ssh:
   cmd.run:
     - name: ip6tables -A INPUT -p tcp --dport 22 -j ACCEPT
     - unless: ip6tables -C INPUT -p tcp --dport 22 -j ACCEPT
+    - require:
+      - pkg: ipv6tables_installed
 
 # Save rules
 save_ip6tables:
   cmd.run:
     - name: ip6tables-save > /etc/ip6tables.rules
     - require:
+      - cmd: ipv6_allow_loopback
+      - cmd: ipv6_allow_established
       - cmd: ipv6_allow_icmpv6
+      - cmd: ipv6_allow_ssh
 ```
 
 ## Network Interface State
@@ -171,7 +187,7 @@ salt '*' cmd.run 'ip -6 addr show && sysctl net.ipv6.conf.all.disable_ipv6'
 
 ```bash
 # Target only IPv6-enabled minions
-salt -G 'ipv6:true' state.apply ipv6
+salt -G 'ipv6:*' state.apply ipv6
 
 # List minions with their IPv6 addresses
 salt '*' grains.get ipv6
