@@ -12,7 +12,7 @@ SIT (Simple Internet Transition) tunnels, also known as 6in4 tunnels, encapsulat
 
 ## Use Cases
 
-- Connect to an IPv6 tunnel broker for native IPv6 access
+- Connect to an IPv6 tunnel broker for IPv6 connectivity
 - Connect two IPv6 islands over an IPv4 backbone
 - Transition from IPv4 to IPv6 infrastructure gradually
 
@@ -51,30 +51,30 @@ ip -6 route add ::/0 dev he-ipv6
 
 ```bash
 # Host A (IPv4: 10.0.0.1)
-ip tunnel add sit0 mode sit \
+ip tunnel add sit-ipv6 mode sit \
     local 10.0.0.1 \
     remote 10.0.0.2 \
     ttl 255
-ip addr add 2001:db8:a::1/64 dev sit0
-ip link set sit0 up
+ip addr add 2001:db8:a::1/64 dev sit-ipv6
+ip link set sit-ipv6 up
 
 # Host B (IPv4: 10.0.0.2)
-ip tunnel add sit0 mode sit \
+ip tunnel add sit-ipv6 mode sit \
     local 10.0.0.2 \
     remote 10.0.0.1 \
     ttl 255
-ip addr add 2001:db8:a::2/64 dev sit0
-ip link set sit0 up
+ip addr add 2001:db8:a::2/64 dev sit-ipv6
+ip link set sit-ipv6 up
 ```
 
 ## Test IPv6 Connectivity
 
 ```bash
 # Ping the tunnel far end
-ping6 -c 3 2001:db8::1
+ping -6 -c 3 2001:db8::1
 
 # Test internet IPv6 connectivity
-ping6 -c 3 2606:4700:4700::1111
+ping -6 -c 3 2606:4700:4700::1111
 
 # Show IPv6 routes
 ip -6 route show
@@ -84,11 +84,11 @@ ip -6 route show
 
 ```bash
 # Show tunnel details
-ip tunnel show sit0
-ip -d link show sit0
+ip tunnel show he-ipv6
+ip -d link show he-ipv6
 
 # Show IPv6 address
-ip -6 addr show sit0
+ip -6 addr show he-ipv6
 ```
 
 ## Persistent Configuration with systemd-networkd
@@ -100,6 +100,7 @@ Name=he-ipv6
 Kind=sit
 
 [Tunnel]
+Independent=yes
 Local=<your-public-ipv4>
 Remote=64.62.134.130
 TTL=255
