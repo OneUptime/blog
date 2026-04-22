@@ -17,8 +17,6 @@ Docker Compose doesn't have a native init container concept, but you can impleme
 ```yaml
 # init-container-stack.yml
 
-version: "3.8"
-
 services:
   # Init container: runs database migrations before the app starts
   db-migrate:
@@ -65,6 +63,13 @@ Chain multiple init steps using sequential dependencies:
 
 ```yaml
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=mydb
+      - POSTGRES_USER=myapp
+      - POSTGRES_PASSWORD=db_password
+
   # Step 1: Wait for database
   db-wait:
     image: postgres:16-alpine
@@ -76,6 +81,12 @@ services:
   db-migrate:
     image: flyway/flyway:10
     command: migrate
+    environment:
+      - FLYWAY_URL=jdbc:postgresql://postgres:5432/mydb
+      - FLYWAY_USER=myapp
+      - FLYWAY_PASSWORD=db_password
+    volumes:
+      - ./migrations:/flyway/sql:ro
     depends_on:
       db-wait:
         condition: service_completed_successfully
@@ -107,7 +118,13 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       # Init containers run in order and must all succeed before app starts
       initContainers:
@@ -117,6 +134,10 @@ spec:
           env:
             - name: FLYWAY_URL
               value: "jdbc:postgresql://postgres:5432/mydb"
+            - name: FLYWAY_USER
+              value: "myapp"
+            - name: FLYWAY_PASSWORD
+              value: "db_password"
 
         - name: config-generator
           image: myapp-config-gen:1.0
@@ -137,7 +158,7 @@ spec:
           emptyDir: {}
 ```
 
-Deploy this via Portainer's Kubernetes manifest deployment: **Stacks > Add Stack > Kubernetes > Paste manifest**.
+Deploy this via Portainer's Kubernetes manifest deployment: **Applications > Create from code > Manifest > Web editor**.
 
 ## Summary
 
