@@ -36,8 +36,12 @@ resource "aws_dynamodb_table" "app" {
 
   global_secondary_index {
     name            = "gsi1"
-    hash_key        = "gsi1pk"
     projection_type = "ALL"
+
+    key_schema {
+      attribute_name = "gsi1pk"
+      key_type       = "HASH"
+    }
   }
 
   server_side_encryption {
@@ -60,13 +64,13 @@ resource "aws_dynamodb_table" "app" {
 ```hcl
 resource "aws_sqs_queue" "main" {
   name                       = "myapp-${var.environment}-main"
-  visibility_timeout_seconds = 300
+  visibility_timeout_seconds = 1800   # 6x Lambda timeout
   message_retention_seconds  = 86400  # 1 day
   receive_wait_time_seconds  = 20     # long polling
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.dlq.arn
-    maxReceiveCount     = 3
+    maxReceiveCount     = 5
   })
 
   kms_master_key_id = aws_kms_key.sqs.id
@@ -123,7 +127,7 @@ resource "aws_lambda_function" "functions" {
   s3_bucket     = aws_s3_bucket.lambda_code.bucket
   s3_key        = "${each.key}.zip"
   handler       = each.value.handler
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs22.x"
   role          = aws_iam_role.lambda.arn
   memory_size   = each.value.memory
   timeout       = each.value.timeout
@@ -189,6 +193,28 @@ resource "aws_apigatewayv2_stage" "default" {
     })
   }
 }
+
+resource "aws_apigatewayv2_integration" "api_handler" {
+  api_id                 = aws_apigatewayv2_api.app.id
+  integration_type       = "AWS_PROXY"
+  integration_method     = "POST"
+  integration_uri        = aws_lambda_function.functions["api_handler"].invoke_arn
+  payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_route" "default" {
+  api_id    = aws_apigatewayv2_api.app.id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.api_handler.id}"
+}
+
+resource "aws_lambda_permission" "api_gateway" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.functions["api_handler"].function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.app.execution_arn}/*/*"
+}
 ```
 
 ## EventBridge for Event Routing
@@ -214,8 +240,16 @@ resource "aws_cloudwatch_event_target" "order_processor" {
   target_id      = "process-order"
   arn            = aws_lambda_function.functions["event_processor"].arn
 }
+
+resource "aws_lambda_permission" "eventbridge_order_processor" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.functions["event_processor"].function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.order_created.arn
+}
 ```
 
 ## Summary
 
-A serverless application platform uses DynamoDB for low-latency data storage with point-in-time recovery, SQS with dead letter queues for reliable message processing, Lambda functions for compute with X-Ray tracing, HTTP API Gateway with CORS configuration, and EventBridge for event-driven routing between services. Configure SQS `ReportBatchItemFailures` on Lambda event source mappings to enable partial batch failure handling - failed messages return to the queue for retry rather than blocking the entire batch.
+A serverless application platform uses DynamoDB for low-latency data storage with point-in-time recovery, SQS with dead letter queues for reliable message processing, Lambda functions for compute with X-Ray tracing, HTTP API Gateway with CORS configuration, and EventBridge for event-driven routing between services. Configure SQS `ReportBatchItemFailures` on Lambda event source mappings and return `batchItemFailures` from the function to enable partial batch failure handling - failed messages return to the queue for retry rather than causing successfully processed messages to be retried with the entire batch.
