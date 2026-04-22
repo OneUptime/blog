@@ -45,7 +45,7 @@ tofu apply -auto-approve
 tofu plan -out=my-plan.tfplan
 
 # Step 2: Review the saved plan
-tofu show my-plan.tfplan
+tofu show -plan=my-plan.tfplan
 
 # Step 3: Apply the saved plan (no confirmation needed)
 tofu apply my-plan.tfplan
@@ -60,7 +60,7 @@ tofu apply -var="environment=production"
 # Apply with a variable file
 tofu apply -var-file="production.tfvars"
 
-# Apply only specific resources
+# Target a resource and its dependencies
 tofu apply -target=aws_instance.web_server
 
 # Apply with parallelism limit (default: 10)
@@ -137,7 +137,7 @@ tofu output -json
 ```text
 # Sample apply output:
 random_id.project_suffix: Creating...
-random_id.project_suffix: Creation complete after 0s [id=a1b2c3d4]
+random_id.project_suffix: Creation complete after 0s [id=obLD1A]
 local_file.project_info: Creating...
 local_file.project_info: Creation complete after 0s [id=abc123...]
 
