@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Privacy Extensions, SLAAC, IPv6, Temporary Addresses, RFC 8981
 
-Description: Configure IPv6 Privacy Extensions to generate random temporary addresses for SLAAC, preventing device tracking by hiding the MAC address from the IPv6 address.
+Description: Configure IPv6 Privacy Extensions to generate randomized temporary addresses for SLAAC, reducing device tracking by avoiding a long-lived interface identifier in outbound IPv6 addresses.
 
 ## Introduction
 
-IPv6 Privacy Extensions (RFC 8981, formerly RFC 4941) generate random, temporary interface identifiers instead of the MAC-based EUI-64 for SLAAC addresses. Temporary addresses change periodically, making it harder to track a device across time or correlate its activity. Modern operating systems including Windows, macOS, iOS, and Android enable privacy extensions by default. Linux requires explicit configuration.
+IPv6 Privacy Extensions (RFC 8981, formerly RFC 4941) generate randomized, temporary interface identifiers for SLAAC addresses instead of relying only on a long-lived stable address, which might be MAC-based EUI-64 or a stable privacy address. Temporary addresses change periodically, making it harder to track a device across time or correlate its activity. Modern operating systems including Windows, macOS, iOS, and Android usually enable privacy extensions by default. Linux kernel and distribution defaults vary, so check and configure explicitly when needed.
 
 ## How Privacy Extensions Work
 
 ```text
 Privacy Extensions Address Generation:
 
-Standard SLAAC (EUI-64):
+MAC-derived SLAAC (EUI-64):
   MAC:     00:11:22:33:44:55
   IID:     0211:22ff:fe33:4455 (stable, linked to hardware)
   Address: 2001:db8::211:22ff:fe33:4455 (permanent, trackable)
@@ -27,14 +27,14 @@ Privacy Extensions:
 Temporary address lifecycle:
   Generated when: prefix received from RA
   Preferred for: TEMP_PREFERRED_LIFETIME (default: 86400 sec = 1 day)
-  Valid for:     TEMP_VALID_LIFETIME (default: 604800 sec = 7 days)
-  After preferred expires: new temporary address generated
-  Old address remains valid (for existing connections) until VALID expires
+  Valid for:     TEMP_VALID_LIFETIME (default: 172800 sec = 2 days)
+  New address generated: before preferred lifetime expires
+  Old address becomes deprecated after preferred expires and remains valid until VALID expires
 
 Both addresses exist simultaneously:
   Public (EUI-64 or stable):  2001:db8::211:22ff:fe33:4455 (permanent)
   Temporary (privacy):         2001:db8::a3f2:1b8c:9d4e:7f05 (1 day preferred)
-  New connections use temporary address by default
+  New connections use temporary address by default when temporary addresses are preferred
 ```
 
 ## Enabling Privacy Extensions on Linux
@@ -43,7 +43,7 @@ Both addresses exist simultaneously:
 # Check current status
 
 cat /proc/sys/net/ipv6/conf/eth0/use_tempaddr
-# 0 = disabled (use permanent EUI-64)
+# 0 = disabled (use stable/public SLAAC address only)
 # 1 = generate temporary, but prefer permanent
 # 2 = generate temporary, prefer temporary (recommended)
 
@@ -65,9 +65,9 @@ sudo sysctl -p /etc/sysctl.d/60-ipv6-privacy.conf
 ip -6 addr show eth0
 # Should show:
 # inet6 2001:db8::a3f2:1b8c:9d4e:7f05/64 scope global temporary dynamic
-#    valid_lft 604700sec preferred_lft 86300sec   ← temporary
+#    valid_lft 172700sec preferred_lft 86300sec   ← temporary
 # inet6 2001:db8::211:22ff:fe33:4455/64 scope global dynamic
-#    valid_lft 2591900sec preferred_lft 604800sec  ← permanent (public)
+#    valid_lft 2591900sec preferred_lft 604800sec  ← stable/public
 # inet6 fe80::211:22ff:fe33:4455/64 scope link
 ```
 
@@ -79,10 +79,10 @@ ip -6 addr show eth0
 sudo sysctl -w net.ipv6.conf.eth0.temp_prefered_lft=43200  # 12 hours
 
 # Set valid lifetime for temporary addresses
-# Default: 604800 seconds (7 days)
+# Default: 172800 seconds (2 days)
 sudo sysctl -w net.ipv6.conf.eth0.temp_valid_lft=86400  # 1 day
 
-# Maximum number of temporary addresses per prefix
+# Maximum number of autoconfigured addresses per interface
 # Default: 16
 sudo sysctl -w net.ipv6.conf.eth0.max_addresses=8
 
@@ -116,10 +116,7 @@ nmcli connection up "Wired connection 1"
 #  1 = enabled but prefer public (permanent)
 #  2 = enabled and prefer temporary (privacy mode)
 
-# For systemd-networkd: configure in .network file
-# [IPv6PrivacyExtensions]
-# IPv6PrivacyExtensions=yes
-
+# For systemd-networkd: configure in the [Network] section of a .network file
 # /etc/systemd/network/eth0.network
 # [Match]
 # Name=eth0
@@ -137,8 +134,9 @@ Windows:
 
 macOS:
   Default: Enabled
-  Check: sysctl net.inet6.ip6.use_tempaddr
-  Enable: sudo sysctl -w net.inet6.ip6.use_tempaddr=2
+  Check: sysctl net.inet6.ip6.use_tempaddr net.inet6.ip6.prefer_tempaddr
+  Enable: sudo sysctl -w net.inet6.ip6.use_tempaddr=1
+          sudo sysctl -w net.inet6.ip6.prefer_tempaddr=1
 
 Android/iOS:
   Privacy extensions enabled by default
@@ -147,7 +145,7 @@ Android/iOS:
 Routers (Cisco/Juniper):
   Privacy extensions NOT recommended for router interfaces
   Router interfaces should use stable, predictable addresses
-  Disable on router interfaces: ipv6 nd privacy-disable (Cisco)
+  Configure stable/static addresses instead of temporary autoconfig addresses
 ```
 
 ## Verifying Source Address Selection
@@ -164,14 +162,17 @@ ss -6 -n | grep ":443"
 # tcp  ESTAB  0   0   [2001:db8::a3f2:1b8c:9d4e:7f05]:54321  [2607:f8b0:...]
 
 # The temporary address (a3f2:...) should be the source,
-# not the permanent EUI-64 address (211:22ff:fe33:4455)
+# not the stable/public address (211:22ff:fe33:4455)
 
-# Test source address selection policy
-ip -6 rule show  # Show routing rules
-# Source address selection follows RFC 6724
-# Rule 7: prefer temporary addresses over permanent for outgoing traffic
+# Test source address selection for a destination
+ip -6 route get 2607:f8b0:4004::200e
+# 2607:f8b0:4004::200e from :: dev eth0 src 2001:db8::a3f2:1b8c:9d4e:7f05
+
+# Inspect the address label policy used by RFC 6724 source address selection
+ip addrlabel list
+# Rule 7: prefer temporary addresses over public addresses when configured to do so
 ```
 
 ## Conclusion
 
-IPv6 Privacy Extensions generate random temporary interface identifiers for SLAAC addresses, replacing the trackable EUI-64 MAC-derived identifier. Temporary addresses change periodically (daily by default), preventing long-term tracking. On Linux, enable with `net.ipv6.conf.all.use_tempaddr=2`. The system maintains both a permanent (public) address and temporary address; new outbound connections use the temporary address by default. For servers and router interfaces, keep stable permanent addresses; for client devices, enable privacy extensions to protect user privacy.
+IPv6 Privacy Extensions generate randomized temporary interface identifiers for SLAAC addresses, avoiding long-lived identifiers such as EUI-64 MAC-derived IIDs for outbound client traffic. Temporary addresses change periodically, preventing long-term tracking. On Linux, enable with `net.ipv6.conf.all.use_tempaddr=2`. The system can maintain both a stable/public address and temporary address; new outbound connections use the temporary address by default when temporary addresses are preferred. For servers and router interfaces, keep stable permanent addresses; for client devices, enable privacy extensions to protect user privacy.
