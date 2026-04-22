@@ -79,6 +79,11 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+resource "aws_iam_role_policy_attachment" "lambda_xray" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+}
+
 resource "aws_iam_role_policy" "lambda_app" {
   name = "lambda-app-policy"
   role = aws_iam_role.lambda.id
@@ -117,7 +122,7 @@ resource "aws_lambda_function" "vpc_app" {
     security_group_ids = [aws_security_group.lambda.id]
   }
 
-  # VPC Lambda needs longer timeout for cold start
+  # Allow enough time for private resource calls
   timeout     = 60
   memory_size = 512
 }
@@ -134,24 +139,23 @@ resource "aws_iam_role_policy_attachment" "lambda_vpc" {
 ```hcl
 resource "aws_sqs_queue" "trigger" {
   name                       = "${var.environment}-lambda-trigger"
-  visibility_timeout_seconds = 60  # Must be >= Lambda timeout
+  visibility_timeout_seconds = 180  # At least 6x Lambda timeout
   message_retention_seconds  = 86400
 }
 
+resource "aws_iam_role_policy_attachment" "lambda_sqs" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole"
+}
+
 resource "aws_lambda_event_source_mapping" "sqs" {
+  depends_on = [aws_iam_role_policy_attachment.lambda_sqs]
+
   event_source_arn = aws_sqs_queue.trigger.arn
   function_name    = aws_lambda_function.app.arn
   batch_size       = 10
 
   function_response_types = ["ReportBatchItemFailures"]  # Partial batch success
-}
-
-resource "aws_lambda_permission" "sqs" {
-  statement_id  = "AllowSQSTrigger"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.app.function_name
-  principal     = "sqs.amazonaws.com"
-  source_arn    = aws_sqs_queue.trigger.arn
 }
 ```
 
@@ -222,4 +226,4 @@ output "lambda_function_url" {
 
 ## Conclusion
 
-Lambda with OpenTofu enables fully serverless application backends. Use `source_code_hash` from `archive_file` so OpenTofu only updates the function when code actually changes. Always create the CloudWatch log group explicitly with a retention policy - Lambda creates its own log group otherwise, defaulting to never-expire. For VPC Lambdas, allocate enough private IP addresses in the subnet to handle concurrent executions, and use `AWSLambdaVPCAccessExecutionRole` policy for ENI creation permissions.
+Lambda with OpenTofu enables fully serverless application backends. Use `source_code_hash` from `archive_file` so OpenTofu updates the deployed package when the archive changes. Always create the CloudWatch log group explicitly with a retention policy - Lambda creates its own log group otherwise, defaulting to never-expire. For VPC Lambdas, ensure the selected subnets have available private IP addresses for Lambda-managed Hyperplane ENIs, and use `AWSLambdaVPCAccessExecutionRole` policy for ENI creation permissions.
