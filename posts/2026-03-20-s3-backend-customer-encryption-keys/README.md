@@ -10,6 +10,8 @@ Description: Learn how to configure the OpenTofu S3 backend with customer-provid
 
 SSE-C (Server-Side Encryption with Customer-Provided Keys) gives you complete control over the encryption keys used to protect your S3 objects. Unlike SSE-S3 or SSE-KMS, with SSE-C you manage the keys entirely - AWS handles the encryption and decryption but never stores your keys. This guide covers configuring SSE-C for the OpenTofu S3 backend.
 
+As of April 2026, AWS is disabling SSE-C by default for new S3 general purpose buckets and for existing accounts without SSE-C encrypted data, so make sure SSE-C is not blocked for the state bucket before using this configuration.
+
 ## How SSE-C Works
 
 With SSE-C:
@@ -20,7 +22,7 @@ With SSE-C:
 
 ## Step 1: Generate an Encryption Key
 
-SSE-C requires a 256-bit (32-byte) AES key, base64-encoded:
+OpenTofu's S3 backend expects a 256-bit (32-byte) AES key, base64-encoded:
 
 ```bash
 # Generate a random 32-byte key and base64-encode it
@@ -39,6 +41,8 @@ aws secretsmanager create-secret \
 
 ## Step 2: Configure the S3 Backend with SSE-C
 
+Set `AWS_SSE_CUSTOMER_KEY` before running `tofu init`; the S3 backend reads `sse_customer_key` from that environment variable.
+
 ```hcl
 # backend.tf
 terraform {
@@ -48,35 +52,24 @@ terraform {
     region  = "us-east-1"
     encrypt = true
 
-    # Customer-provided encryption key (base64-encoded 32-byte key)
-    sse_customer_algorithm = "AES256"
-    sse_customer_key       = var.ssec_key
-
-    # MD5 of the key for integrity verification (optional but recommended)
-    # sse_customer_key_md5 = var.ssec_key_md5
+    # Customer-provided encryption key is read from AWS_SSE_CUSTOMER_KEY.
+    # Avoid putting sse_customer_key directly in this file because backend
+    # configuration is persisted locally in plain text.
   }
 }
 ```
 
-## Step 3: Manage the Key Variable
-
-```hcl
-variable "ssec_key" {
-  type        = string
-  description = "Base64-encoded 32-byte AES key for SSE-C"
-  sensitive   = true
-}
-```
+## Step 3: Manage the Key Environment Variable
 
 ```bash
-# Retrieve the key from Secrets Manager and set as variable
-export TF_VAR_ssec_key=$(aws secretsmanager get-secret-value \
+# Retrieve the key from Secrets Manager for the OpenTofu S3 backend
+export AWS_SSE_CUSTOMER_KEY=$(aws secretsmanager get-secret-value \
   --secret-id "terraform-state-ssec-key" \
   --query 'SecretString' \
   --output text)
 
 # Or set directly (less secure)
-export TF_VAR_ssec_key="mUbp9NXK8GNKvSvOCiSSWnBFN+pHAqBIJXnWkPMcuiI="
+export AWS_SSE_CUSTOMER_KEY="mUbp9NXK8GNKvSvOCiSSWnBFN+pHAqBIJXnWkPMcuiI="
 ```
 
 ## Step 4: Initialize and Apply
@@ -93,11 +86,21 @@ tofu apply
 
 ## Key Rotation for SSE-C
 
-SSE-C key rotation requires re-uploading all objects with the new key:
+SSE-C key rotation requires re-uploading all objects with the new key. If bucket versioning is enabled, each object version can have its own SSE-C key, so rotate the versions you still need or retain the old keys for those versions.
 
 ```bash
-# Step 1: Generate a new key
+# Step 1: Load the old key and generate a new key
+OLD_KEY=$(aws secretsmanager get-secret-value \
+  --secret-id "terraform-state-ssec-key" \
+  --query 'SecretString' \
+  --output text)
 NEW_KEY=$(openssl rand -base64 32)
+
+# The AWS CLI s3 cp SSE-C flags expect raw key bytes, not base64 text
+OLD_KEY_FILE=$(mktemp)
+NEW_KEY_FILE=$(mktemp)
+printf '%s' "$OLD_KEY" | base64 --decode > "$OLD_KEY_FILE"
+printf '%s' "$NEW_KEY" | base64 --decode > "$NEW_KEY_FILE"
 
 # Step 2: List all state files
 aws s3 ls s3://my-terraform-state/ --recursive | grep terraform.tfstate
@@ -107,21 +110,18 @@ aws s3 cp \
   s3://my-terraform-state/prod/terraform.tfstate \
   s3://my-terraform-state/prod/terraform.tfstate \
   --sse-c AES256 \
-  --sse-c-key $(echo $OLD_KEY) \
+  --sse-c-key fileb://"$NEW_KEY_FILE" \
   --sse-c-copy-source AES256 \
-  --sse-c-copy-source-key $(echo $OLD_KEY)
-
-# This is equivalent to using the new key:
-aws s3 cp \
-  s3://my-terraform-state/prod/terraform.tfstate \
-  s3://my-terraform-state/prod/terraform.tfstate \
-  --sse-c AES256 \
-  --sse-c-key $NEW_KEY
+  --sse-c-copy-source-key fileb://"$OLD_KEY_FILE"
 
 # Step 4: Update your secrets manager with the new key
 aws secretsmanager update-secret \
   --secret-id "terraform-state-ssec-key" \
   --secret-string "$NEW_KEY"
+
+# Step 5: Use the new key for subsequent OpenTofu commands
+export AWS_SSE_CUSTOMER_KEY="$NEW_KEY"
+rm -f "$OLD_KEY_FILE" "$NEW_KEY_FILE"
 ```
 
 ## Comparison with Other Encryption Options
@@ -129,7 +129,7 @@ aws secretsmanager update-secret \
 | Feature | SSE-S3 | SSE-KMS | SSE-C |
 |---------|--------|---------|-------|
 | Key management | AWS | AWS KMS | You |
-| CloudTrail audit | No | Yes | Partial |
+| CloudTrail key usage audit | No KMS key-use audit | KMS key-use events in CloudTrail | S3 data events only |
 | Key rotation | Automatic | Configurable | Manual |
 | Cost | Free | KMS charges | Free |
 | Key loss risk | None | None | Total data loss |
