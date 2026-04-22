@@ -35,6 +35,8 @@ resource "aws_sns_topic_subscription" "email_alert" {
 
 ## Adding an HTTP/HTTPS Webhook Subscription
 
+HTTP/HTTPS endpoints must confirm the SNS subscription request. Use a webhook that automatically confirms SNS subscriptions, or confirm the `SubscribeURL` from the subscription confirmation message.
+
 ```hcl
 resource "aws_sns_topic_subscription" "webhook" {
   topic_arn = aws_sns_topic.alerts.arn
@@ -99,7 +101,7 @@ tofu apply
 
 ## Verifying
 
-After deployment, confirm the subscription in the AWS console. Email subscribers will receive a confirmation email they must click. Test by publishing a message:
+After deployment, confirm pending subscriptions in the AWS console. Email subscribers will receive a confirmation email they must click, and HTTP/HTTPS endpoints must confirm the SNS subscription request before notifications are delivered. Test by publishing a message:
 
 ```bash
 aws sns publish \
