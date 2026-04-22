@@ -12,7 +12,7 @@ When writing provisioners in OpenTofu, you often need to reference the attribute
 
 ## What Is the Self Object?
 
-The `self` object is a special reference available only within `provisioner` blocks. It refers to the resource the provisioner belongs to and allows you to access any of its computed or configured attributes.
+The `self` object is a special reference available within `provisioner` blocks and their related `connection` blocks. It refers to the parent resource and allows you to access any of its computed or configured attributes.
 
 ## Basic Usage
 
@@ -42,7 +42,7 @@ resource "aws_instance" "app" {
   connection {
     type        = "ssh"
     user        = "ec2-user"
-    private_key = file("~/.ssh/id_rsa")
+    private_key = file(pathexpand("~/.ssh/id_rsa"))
     host        = self.public_ip
   }
 
@@ -74,7 +74,7 @@ resource "aws_instance" "db" {
 
 ## Accessing Nested Attributes
 
-You can access nested attributes using dot notation:
+You can access nested or map attributes using standard attribute and index expressions:
 
 ```hcl
 provisioner "local-exec" {
@@ -84,8 +84,8 @@ provisioner "local-exec" {
 
 ## Limitations of Self
 
-- `self` is only available inside `provisioner` blocks, not in `connection` blocks at the resource level
-- It cannot reference attributes from other resources
+- `self` is only available inside `provisioner` and `connection` blocks, not as a general expression elsewhere in the resource
+- It only represents the enclosing resource; use normal references for other resources where allowed
 - Avoid provisioners when possible - prefer purpose-built resources or data sources
 
 ## Conclusion
