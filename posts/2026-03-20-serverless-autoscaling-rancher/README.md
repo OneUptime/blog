@@ -33,8 +33,9 @@ spec:
       annotations:
         # KPA (Knative Pod Autoscaler) settings
         autoscaling.knative.dev/class: kpa.autoscaling.knative.dev
+        autoscaling.knative.dev/metric: "concurrency"
         
-        # Scale to zero
+        # Allow scale to zero when cluster-level scale-to-zero is enabled
         autoscaling.knative.dev/min-scale: "0"
         autoscaling.knative.dev/max-scale: "20"
         
@@ -43,14 +44,6 @@ spec:
         
         # Utilization percentage of target before scaling
         autoscaling.knative.dev/target-utilization-percentage: "70"
-        
-        # Scale-up/down rates
-        autoscaling.knative.dev/scale-up-rate: "10"
-        autoscaling.knative.dev/scale-down-rate: "1.0"
-        
-        # Panic mode: aggressive scale-up when 200% of target
-        autoscaling.knative.dev/panic-threshold-percentage: "200"
-        autoscaling.knative.dev/panic-window-percentage: "10"
     spec:
       containers:
       - image: registry.example.com/my-function:latest
@@ -70,7 +63,6 @@ helm repo update
 helm install keda kedacore/keda \
   --namespace keda \
   --create-namespace \
-  --version 2.12.0 \
   --set operator.replicaCount=2
 ```
 
@@ -91,14 +83,13 @@ spec:
   minReplicaCount: 0           # Scale to zero
   maxReplicaCount: 30
   
-  # How quickly to scale down to zero
-  cooldownPeriod: 60           # 60 seconds after last request
+  # How quickly to scale down to zero after the trigger becomes inactive
+  cooldownPeriod: 60           # 60 seconds after Prometheus reports inactivity
   
   triggers:
   - type: prometheus
     metadata:
       serverAddress: http://prometheus.cattle-monitoring-system.svc.cluster.local:9090
-      metricName: http_requests_total
       threshold: "10"           # 10 RPS per replica
       query: |
         sum(rate(nginx_ingress_controller_requests{
@@ -143,9 +134,9 @@ functions:
       # OpenFaaS autoscaling labels
       com.openfaas.scale.min: "1"
       com.openfaas.scale.max: "20"
-      com.openfaas.scale.factor: "25"      # Scale by 25% each time
       com.openfaas.scale.type: "rps"       # Scale on RPS
       com.openfaas.scale.target: "50"      # Target 50 RPS per replica
+      com.openfaas.scale.target-proportion: "0.90"
       com.openfaas.scale.zero: "true"
       com.openfaas.scale.zero-duration: "2m"
 ```
@@ -155,23 +146,19 @@ functions:
 For serverless workloads that need node-level scaling:
 
 ```yaml
-# cluster-autoscaler.yaml - Rancher provisioned cluster
-apiVersion: management.cattle.io/v3
-kind: Cluster
-metadata:
-  name: my-cluster
-spec:
-  rkeConfig:
-    machinePools:
-    - name: worker-pool
-      quantity: 2
-      machineConfigRef:
-        kind: AWSNodeTemplate
-        name: worker-template
-      # Cluster autoscaler annotations
-      annotations:
-        cluster.x-k8s.io/cluster-api-autoscaler-node-group-min-size: "2"
-        cluster.x-k8s.io/cluster-api-autoscaler-node-group-max-size: "20"
+# AWS worker Auto Scaling Group tags for Rancher custom clusters
+tags:
+  "kubernetes.io/cluster/c-xxxxx": "owned"
+  "k8s.io/cluster-autoscaler/my-cluster": "true"
+  "k8s.io/cluster-autoscaler/enabled": "true"
+```
+
+```yaml
+# cluster-autoscaler deployment args
+command:
+- ./cluster-autoscaler
+- --cloud-provider=aws
+- --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/my-cluster
 ```
 
 ## Monitoring Autoscaling
@@ -186,8 +173,8 @@ kubectl get scaledobject -A
 # Watch HPA
 kubectl get hpa -A -w
 
-# Prometheus query for scaling events
-# knative_serving_autoscaler_actual_pods
+# Prometheus metrics for scaling events
+# actual_pods / requested_pods for Knative autoscaler metrics
 # keda_scaler_active
 ```
 
