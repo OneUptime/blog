@@ -18,17 +18,18 @@ Snowflake separates compute (virtual warehouses) from storage, making it uniquel
 terraform {
   required_providers {
     snowflake = {
-      source  = "Snowflake-Labs/snowflake"
-      version = "~> 0.87"
+      source  = "snowflakedb/snowflake"
+      version = "~> 2.15"
     }
   }
 }
 
 provider "snowflake" {
-  account  = var.snowflake_account
-  username = var.snowflake_username
-  password = var.snowflake_password
-  role     = "SYSADMIN"
+  organization_name = var.snowflake_organization_name
+  account_name      = var.snowflake_account_name
+  user              = var.snowflake_user
+  password          = var.snowflake_password
+  role              = "ACCOUNTADMIN"
 }
 ```
 
@@ -41,7 +42,7 @@ resource "snowflake_database" "production" {
   name    = "PRODUCTION"
   comment = "Production data warehouse database"
 
-  # Data retention for Time Travel
+  # Data retention for Time Travel (7 days requires Enterprise Edition or higher)
   data_retention_time_in_days = 7
 }
 
@@ -57,7 +58,7 @@ resource "snowflake_schema" "analytics" {
   database = snowflake_database.production.name
   name     = "ANALYTICS"
   comment  = "Analytics-ready tables and views"
-  data_retention_time_in_days = 7
+  data_retention_time_in_days = 7  # Requires Enterprise Edition or higher
 }
 ```
 
@@ -73,7 +74,7 @@ resource "snowflake_warehouse" "etl" {
   auto_resume    = true
   comment        = "Warehouse for ETL/ELT transformations"
 
-  # Maximize resource for batch jobs
+  # Allow scale-out for concurrent batch jobs (Enterprise Edition or higher)
   max_cluster_count = 3
   min_cluster_count = 1
   scaling_policy    = "ECONOMY"
@@ -83,10 +84,11 @@ resource "snowflake_warehouse" "etl" {
 resource "snowflake_warehouse" "reporting" {
   name           = "REPORTING_WAREHOUSE"
   warehouse_size = "SMALL"
-  auto_suspend   = 120  # Users expect faster resume
+  auto_suspend   = 120  # Keep warm briefly for interactive users
   auto_resume    = true
   comment        = "Warehouse for BI tools and ad-hoc queries"
 
+  # Allow scale-out for concurrent dashboard queries (Enterprise Edition or higher)
   max_cluster_count = 5
   min_cluster_count = 1
   scaling_policy    = "STANDARD"
@@ -98,40 +100,68 @@ resource "snowflake_warehouse" "reporting" {
 ```hcl
 # roles.tf
 # Create a role for data analysts
-resource "snowflake_role" "data_analyst" {
+resource "snowflake_account_role" "data_analyst" {
   name    = "DATA_ANALYST"
   comment = "Read access to analytics schema for data analysts"
 }
 
+resource "snowflake_account_role" "etl" {
+  name    = "ETL_ROLE"
+  comment = "Role for the ETL service account"
+}
+
 # Grant usage on the database
-resource "snowflake_grant_privileges_to_role" "analyst_db_usage" {
-  role_name  = snowflake_role.data_analyst.name
-  privileges = ["USAGE"]
-  on_schema_object {
+resource "snowflake_grant_privileges_to_account_role" "analyst_db_usage" {
+  account_role_name = snowflake_account_role.data_analyst.name
+  privileges        = ["USAGE"]
+
+  on_account_object {
     object_type = "DATABASE"
     object_name = snowflake_database.production.name
   }
 }
 
+# Grant usage on the analytics schema
+resource "snowflake_grant_privileges_to_account_role" "analyst_schema_usage" {
+  account_role_name = snowflake_account_role.data_analyst.name
+  privileges        = ["USAGE"]
+
+  on_schema {
+    schema_name = snowflake_schema.analytics.fully_qualified_name
+  }
+}
+
 # Grant select on all tables in the analytics schema
-resource "snowflake_grant_privileges_to_role" "analyst_select" {
-  role_name  = snowflake_role.data_analyst.name
-  privileges = ["SELECT"]
+resource "snowflake_grant_privileges_to_account_role" "analyst_select" {
+  account_role_name = snowflake_account_role.data_analyst.name
+  privileges        = ["SELECT"]
+
   on_schema_object {
     all {
       object_type_plural = "TABLES"
-      in_schema          = "${snowflake_database.production.name}.${snowflake_schema.analytics.name}"
+      in_schema          = snowflake_schema.analytics.fully_qualified_name
     }
   }
 }
 
 # Grant warehouse usage
-resource "snowflake_grant_privileges_to_role" "analyst_warehouse" {
-  role_name  = snowflake_role.data_analyst.name
-  privileges = ["USAGE"]
-  on_schema_object {
+resource "snowflake_grant_privileges_to_account_role" "analyst_warehouse" {
+  account_role_name = snowflake_account_role.data_analyst.name
+  privileges        = ["USAGE"]
+
+  on_account_object {
     object_type = "WAREHOUSE"
     object_name = snowflake_warehouse.reporting.name
+  }
+}
+
+resource "snowflake_grant_privileges_to_account_role" "etl_warehouse" {
+  account_role_name = snowflake_account_role.etl.name
+  privileges        = ["USAGE"]
+
+  on_account_object {
+    object_type = "WAREHOUSE"
+    object_name = snowflake_warehouse.etl.name
   }
 }
 ```
@@ -141,20 +171,18 @@ resource "snowflake_grant_privileges_to_role" "analyst_warehouse" {
 ```hcl
 # users.tf
 # Create a service account user for the ETL pipeline
-resource "snowflake_user" "etl_service" {
-  name         = "ETL_SERVICE_ACCOUNT"
-  login_name   = "etl_service"
-  password     = var.etl_service_password
-  comment      = "Service account for ETL pipeline"
-  default_role = "ETL_ROLE"
+resource "snowflake_service_user" "etl_service" {
+  name              = "ETL_SERVICE_ACCOUNT"
+  login_name        = "etl_service"
+  rsa_public_key    = var.etl_service_rsa_public_key
+  comment           = "Service account for ETL pipeline"
+  default_role      = snowflake_account_role.etl.name
   default_warehouse = snowflake_warehouse.etl.name
-
-  must_change_password = false
 }
 
-resource "snowflake_role_grants" "etl_role_grant" {
-  role_name = "ETL_ROLE"
-  users     = [snowflake_user.etl_service.name]
+resource "snowflake_grant_account_role" "etl_role_grant" {
+  role_name = snowflake_account_role.etl.name
+  user_name = snowflake_service_user.etl_service.name
 }
 ```
 
@@ -162,6 +190,7 @@ resource "snowflake_role_grants" "etl_role_grant" {
 
 - Always set `auto_suspend` on warehouses - even 60 seconds of auto-suspend eliminates most idle costs.
 - Use Role-Based Access Control (RBAC) with functional roles rather than granting permissions directly to users.
-- Set `data_retention_time_in_days = 7` on production databases to enable time travel for data recovery.
-- Use Snowflake's `FUTURE GRANTS` where possible to automatically apply grants to new tables - OpenTofu models this with `on_future_schemas_in_database`.
-- Store Snowflake credentials in a secrets manager, not in OpenTofu variable files.
+- Use least-privilege automation roles or provider aliases in production instead of long-lived `ACCOUNTADMIN` credentials.
+- Set `data_retention_time_in_days = 7` on production databases to enable time travel for data recovery when your Snowflake edition supports retention periods longer than 1 day.
+- Use Snowflake's `FUTURE GRANTS` where possible to automatically apply grants to new tables - the Snowflake provider models this with the `future` block inside `on_schema_object`.
+- Store Snowflake credentials and private keys in a secrets manager, not in OpenTofu variable files.
