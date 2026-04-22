@@ -21,7 +21,7 @@ resource "aws_lb_target_group" "sticky" {
   protocol = "HTTP"
   vpc_id   = module.vpc.vpc_id
 
-  # Application-based stickiness (uses existing app cookie)
+  # Application-based stickiness (uses your app cookie name)
   stickiness {
     enabled         = true
     type            = "app_cookie"
@@ -94,44 +94,55 @@ resource "azurerm_application_gateway" "sticky" {
 ## Step 3: GCP Backend Service Session Affinity
 
 ```hcl
-# GCP Load Balancer with session affinity
+# GCP Load Balancer with stateful cookie-based session affinity
 resource "google_compute_backend_service" "sticky" {
-  name        = "sticky-backend"
-  protocol    = "HTTP"
-  timeout_sec = 30
+  name                  = "sticky-backend"
+  protocol              = "HTTP"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  port_name             = "http"
+  timeout_sec           = 30
 
-  # Client IP-based affinity
-  session_affinity = "CLIENT_IP"  # or GENERATED_COOKIE
+  # Stateful cookie-based affinity
+  session_affinity   = "STRONG_COOKIE_AFFINITY"
+  locality_lb_policy = "RING_HASH"
 
-  # Cookie-based affinity settings
-  consistent_hash {
-    http_cookie {
-      name = "GCLB_SESSION"
-      ttl {
-        seconds = 3600
-      }
+  strong_session_affinity_cookie {
+    name = "GCLB_SESSION"
+    ttl {
+      seconds = 3600
     }
-
-    minimum_ring_size = 1024  # For consistent hash load balancing
   }
 
   backend {
-    group = google_compute_instance_group_manager.app.instance_group
+    group                 = google_compute_instance_group_manager.app.instance_group
+    balancing_mode        = "RATE"
+    max_rate_per_instance = 100
   }
 
   health_checks = [google_compute_health_check.app.id]
 }
 
-# Header-based affinity (for gRPC or API services)
+# Header-based affinity (for Cloud Service Mesh or API services)
 resource "google_compute_backend_service" "header_affinity" {
-  name     = "header-affinity-backend"
-  protocol = "HTTP"
+  name                  = "header-affinity-backend"
+  protocol              = "HTTP"
+  load_balancing_scheme = "INTERNAL_SELF_MANAGED"
+  port_name             = "http"
 
-  session_affinity = "HTTP_COOKIE"
+  session_affinity   = "HEADER_FIELD"
+  locality_lb_policy = "RING_HASH"
 
   consistent_hash {
     http_header_name = "X-Session-Token"  # Route based on header
   }
+
+  backend {
+    group                 = google_compute_instance_group_manager.app.instance_group
+    balancing_mode        = "RATE"
+    max_rate_per_instance = 100
+  }
+
+  health_checks = [google_compute_health_check.app.id]
 }
 ```
 
@@ -152,18 +163,18 @@ resource "aws_ecs_service" "sticky_app" {
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.sticky.arn
+    target_group_arn = aws_lb_target_group.sticky_fargate.arn
     container_name   = "app"
     container_port   = 8080
   }
 
-  # Deregistration delay must exceed session duration for graceful shutdown
+  # Allow Application Auto Scaling to manage the running task count
   lifecycle {
     ignore_changes = [desired_count]
   }
 }
 
-# Longer deregistration delay when using sticky sessions
+# Set deregistration delay for in-flight requests during deployments
 resource "aws_lb_target_group" "sticky_fargate" {
   name                 = "sticky-fargate-tg"
   port                 = 8080
@@ -171,7 +182,7 @@ resource "aws_lb_target_group" "sticky_fargate" {
   vpc_id               = module.vpc.vpc_id
   target_type          = "ip"  # Required for Fargate
 
-  deregistration_delay = 120  # Give in-flight sessions time to complete
+  deregistration_delay = 120  # Give in-flight requests time to complete
 
   stickiness {
     enabled         = true
@@ -183,4 +194,4 @@ resource "aws_lb_target_group" "sticky_fargate" {
 
 ## Summary
 
-Session persistence configured with OpenTofu routes clients to consistent backends using cookie-based affinity. Application-based stickiness (`app_cookie`) respects your existing session cookie for seamless integration, while load balancer-generated cookies (`lb_cookie`) require no application changes. The deregistration delay should exceed the session cookie duration to prevent active sessions from being dropped during deployments. For stateless applications, prefer distributed session storage (Redis, DynamoDB) over sticky sessions to avoid uneven load distribution when instances fail.
+Session persistence configured with OpenTofu routes clients to consistent backends using cookie-based affinity. Application-based stickiness (`app_cookie`) uses your application's cookie name together with an ALB-generated application cookie for seamless integration, while load balancer-generated cookies (`lb_cookie`) require no application changes. The deregistration delay should cover expected in-flight requests and keep-alive connections during deployments; it does not need to exceed the sticky session cookie duration. For stateless applications, prefer distributed session storage (Redis, DynamoDB) over sticky sessions to avoid uneven load distribution when instances fail.
