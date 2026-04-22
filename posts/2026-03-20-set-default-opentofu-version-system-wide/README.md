@@ -4,26 +4,25 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Version Management, tofuenv, Asdf, Linux, macOS, Infrastructure as Code
 
-Description: Learn how to configure a system-wide default OpenTofu version that applies to all users and projects without a local version override.
+Description: Learn how to configure a default OpenTofu version with version managers or a true system-wide installation that applies when there is no local version override.
 
 ---
 
-A system-wide default OpenTofu version is the version used when no project-specific version file (`.opentofu-version` or `.tool-versions`) is present. Setting this correctly ensures new projects start with a sensible baseline and reduces "works on my machine" issues.
+A default OpenTofu version is the version used when no project-specific version file for your tool (`.opentofu-version` for tofuenv or `.tool-versions` for asdf) is present. With tofuenv and asdf this default is normally per user; direct binary installs and environment modules are the system-wide approaches for all users. Setting this correctly ensures new projects start with a sensible baseline and reduces "works on my machine" issues.
 
 ---
 
-## Method 1: tofuenv Global Version
+## Method 1: tofuenv User Default Version
 
 ```bash
-# Set the global (system-wide) default
-
+# Set the tofuenv default for the current user
 tofuenv use 1.9.0
 
-# tofuenv stores the global version in
+# tofuenv commonly stores this default in
 cat ~/.tofuenv/version
 # 1.9.0
 
-# Any directory without a .opentofu-version file uses this version
+# Any directory without a nearer .opentofu-version override uses this version
 cd /tmp
 tofu version
 # OpenTofu v1.9.0
@@ -31,13 +30,13 @@ tofu version
 
 ---
 
-## Method 2: asdf Global Version
+## Method 2: asdf Home Default Version
 
 ```bash
-# Set the global default with asdf
-asdf global opentofu 1.9.0
+# Set the home default with current asdf
+asdf set -u opentofu 1.9.0
 
-# asdf stores global versions in
+# asdf stores home defaults in
 cat ~/.tool-versions
 # opentofu 1.9.0
 
@@ -55,8 +54,8 @@ For a system-wide installation that all users share (without a version manager):
 ```bash
 TOFU_VERSION="1.9.0"
 
-# Download and install to /usr/local/bin (requires sudo)
-curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip"
+# Download and install to /usr/local/bin (Linux amd64 example; requires sudo)
+curl -fLO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip"
 unzip tofu_${TOFU_VERSION}_linux_amd64.zip
 sudo install -m 755 tofu /usr/local/bin/tofu
 
@@ -76,16 +75,16 @@ which tofu
 For multi-user servers with the environment modules system:
 
 ```bash
-# Create an OpenTofu module file
-mkdir -p /usr/share/modules/opentofu
-cat > /usr/share/modules/opentofu/1.9.0 << 'EOF'
+# Create an OpenTofu module file in a MODULEPATH directory
+sudo mkdir -p /usr/share/Modules/modulefiles/opentofu
+sudo tee /usr/share/Modules/modulefiles/opentofu/1.9.0 > /dev/null << 'EOF'
 #%Module1.0
 prepend-path PATH /opt/opentofu/1.9.0/bin
 setenv OPENTOFU_VERSION 1.9.0
 EOF
 
 # Set a default version
-ln -s /usr/share/modules/opentofu/1.9.0 /usr/share/modules/opentofu/default
+sudo ln -sfn 1.9.0 /usr/share/Modules/modulefiles/opentofu/default
 
 # Users load the module
 module load opentofu
@@ -94,30 +93,30 @@ tofu version
 
 ---
 
-## Verify the System Default
+## Verify the Active Default
 
 ```bash
-# Check what version is active globally (no project override)
+# Check what version is active with no project override
 cd ~
 tofu version
 
-# With tofuenv: see global vs local priority
+# With tofuenv: see default vs local priority
 tofuenv list
 # Shows * next to the currently active version with its source
 ```
 
 ---
 
-## CI/CD System-Wide Default
+## CI/CD Workflow Default
 
 For CI/CD systems (GitHub Actions, GitLab CI), pin the version in the workflow file to ensure consistent defaults.
 
 ```yaml
-# GitHub Actions - set system-wide default for the pipeline
+# GitHub Actions - set the default for the pipeline
 - name: Install OpenTofu
-  uses: opentofu/setup-opentofu@v1
+  uses: opentofu/setup-opentofu@v2
   with:
-    tofu_version: "1.9.0"   # this is the "system default" for this workflow
+    tofu_version: "1.9.0"   # this is the default for this workflow
 
 - name: Verify version
   run: tofu version
@@ -127,4 +126,4 @@ For CI/CD systems (GitHub Actions, GitLab CI), pin the version in the workflow f
 
 ## Summary
 
-Setting a system-wide default OpenTofu version depends on your version manager: `tofuenv use <version>` sets the tofuenv global, `asdf global opentofu <version>` sets the asdf global, and direct binary installation to `/usr/local/bin` sets a fixed system version. Project-level `.opentofu-version` files always override the global default.
+Setting a default OpenTofu version depends on your version manager: `tofuenv use <version>` sets the tofuenv user default, `asdf set -u opentofu <version>` sets the asdf home default, and direct binary installation to `/usr/local/bin` sets a fixed system version. Project-level `.opentofu-version` files override tofuenv's default, and project-level `.tool-versions` files override asdf's home default.
