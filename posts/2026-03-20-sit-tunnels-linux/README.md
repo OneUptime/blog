@@ -8,14 +8,14 @@ Description: Learn how to configure SIT (Simple Internet Transition) tunnels on 
 
 ## Overview
 
-SIT (Simple Internet Transition) is the Linux kernel driver for IPv6-in-IPv4 tunnels (IP protocol 41). The kernel module is named `sit`. SIT tunnels are used for 6in4 point-to-point tunnels (to tunnel brokers like Hurricane Electric) and also for `ip6ip6` (IPv6-in-IPv6) mode. SIT is the most common and lightweight IPv6 tunneling mechanism on Linux.
+SIT (Simple Internet Transition) is the Linux kernel driver for IPv6-in-IPv4 tunnels (IP protocol 41). The kernel module is named `sit`. SIT tunnels are used for 6in4 point-to-point tunnels (to tunnel brokers like Hurricane Electric) and 6rd. IPv6-in-IPv6 (`ip6ip6`) uses the `ip6tnl` driver instead. SIT is the most common and lightweight IPv6 tunneling mechanism on Linux.
 
 ## SIT vs Other Tunnel Types
 
 | Tunnel type | Linux kind | Protocol | Use case |
 |---|---|---|---|
 | `sit` (mode sit) | sit | IPv4 proto 41 | 6in4, 6rd |
-| `ip6tnl` (mode ipip6) | ip6tnl | IPv6 proto 41 | IPv4-in-IPv6 |
+| `ip6tnl` (mode ipip6/ip6ip6) | ip6tnl | IPv6 next header 4 or 41 | IPv4/IPv6-in-IPv6 |
 | `gre` | gre | IPv4 proto 47 | Multi-protocol |
 | `ip6gre` | ip6gre | IPv6 proto 47 | GRE over IPv6 |
 
@@ -76,11 +76,11 @@ Note: Wildcard tunnels are less specific than named tunnels - they have security
 # Standard 6in4 (IPv6 over IPv4) - default mode
 ip tunnel add sit1 mode sit remote 198.51.100.1 local 203.0.113.10
 
-# isatap mode - ISATAP addressing (deprecated)
+# isatap mode - ISATAP addressing
 ip tunnel add isatap0 mode isatap local 192.168.1.10
 
 # ip6ip6 mode - IPv6 over IPv6 (using ip6tnl driver instead)
-ip tunnel add tun6 mode ip6ip6 remote 2001:db8::1 local 2001:db8::2
+ip -6 tunnel add tun6 mode ip6ip6 remote 2001:db8::1 local 2001:db8::2
 ```
 
 ## 6rd Configuration via ip tunnel
@@ -90,15 +90,16 @@ Linux supports 6rd directly via the `ip tunnel` command:
 ```bash
 # Create 6rd tunnel (ISP-provisioned parameters)
 ip tunnel add 6rd mode sit remote any local 203.0.113.10 ttl 64
-ip tunnel 6rd dev 6rd relay prefix 2001:db8::/32 mappedlen 32
+ip tunnel 6rd dev 6rd 6rd-prefix 2001:db8::/32 6rd-relay_prefix 0.0.0.0/0
 
 ip link set 6rd up mtu 1480
 
-# Calculate CE address from IPv4
+# Calculate CE address from IPv4 (full 32-bit embedding)
 WAN_IP="203.0.113.10"
 HEX=$(printf '%02x%02x%02x%02x' $(echo $WAN_IP | tr '.' ' '))
-ip addr add "2001:db8:${HEX:0:4}:${HEX:4:4}::1/128" dev 6rd
-ip -6 route add ::/0 via "::203.0.113.10" dev 6rd
+BR_IP="198.51.100.1"
+ip -6 addr add "2001:db8:${HEX:0:4}:${HEX:4:4}::1/64" dev 6rd
+ip -6 route add ::/0 via "::$BR_IP" dev 6rd
 ```
 
 ## Persistence with systemd-networkd
@@ -110,6 +111,7 @@ Name=sit1
 Kind=sit
 
 [Tunnel]
+Independent=yes
 Local=203.0.113.10
 Remote=198.51.100.1
 TTL=64
@@ -140,8 +142,7 @@ networkctl status sit1
 
 auto sit1
 iface sit1 inet6 v4tunnel
-    address 2001:db8::2
-    netmask 64
+    address 2001:db8::2/64
     endpoint 198.51.100.1
     local 203.0.113.10
     ttl 64
