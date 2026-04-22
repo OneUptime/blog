@@ -21,9 +21,11 @@ Rules added with `nft add rule` are stored in memory and lost on reboot. To make
 The `nft list ruleset` command dumps the complete current ruleset in a format that can be reloaded with `nft -f`.
 
 ```bash
-# Save the entire current ruleset to the default nftables config file
-
-nft list ruleset > /etc/nftables.conf
+# Save the entire current ruleset to the Debian/Ubuntu default nftables config file
+{
+    printf 'flush ruleset\n'
+    nft list ruleset
+} > /etc/nftables.conf
 ```
 
 Verify the saved file:
@@ -34,7 +36,7 @@ cat /etc/nftables.conf
 
 ## Enable the nftables systemd Service
 
-The `nftables.service` unit reads `/etc/nftables.conf` at boot and applies the ruleset.
+On Debian/Ubuntu and many other distributions, the `nftables.service` unit reads `/etc/nftables.conf` at boot and applies the ruleset. Check your distribution's unit with `systemctl cat nftables` if it uses a different path.
 
 ```bash
 # Enable nftables to start at boot
@@ -81,7 +83,7 @@ table inet filter {
 
 ## Reload Rules Without Reboot
 
-After editing `/etc/nftables.conf`, reload the rules:
+After editing `/etc/nftables.conf`, reload the rules if your unit supports reload:
 
 ```bash
 # Reload nftables rules from the config file
@@ -106,23 +108,24 @@ For safety, write to a temporary file and move it into place:
 
 ```bash
 # Save atomically
-nft list ruleset > /tmp/nftables-new.conf && \
-    mv /tmp/nftables-new.conf /etc/nftables.conf && \
+tmpfile=$(mktemp /etc/nftables.conf.XXXXXX) && \
+    { printf 'flush ruleset\n'; nft list ruleset; } > "$tmpfile" && \
+    mv "$tmpfile" /etc/nftables.conf && \
     echo "Ruleset saved successfully"
 ```
 
 ## Debian/Ubuntu-Specific Notes
 
-On older Debian systems, nftables may use `/etc/nftables.conf` but the service file may differ:
+On Debian/Ubuntu systems, `/etc/nftables.conf` is the usual default. If you are not sure which file your package uses, check the service unit:
 
 ```bash
 # Check the service unit file
 systemctl cat nftables
 
-# On Debian, may need to install the service
+# On Debian/Ubuntu, install the service with the nftables package
 apt install nftables
 ```
 
 ## Conclusion
 
-Persisting nftables rules requires two steps: saving the ruleset with `nft list ruleset > /etc/nftables.conf` and enabling the nftables systemd service. The service reloads rules from the file at every boot, ensuring your firewall is always active. Always validate the config file syntax before applying changes to production systems.
+Persisting nftables rules requires two steps: saving the ruleset with a leading `flush ruleset` in `/etc/nftables.conf` and enabling the nftables systemd service. The service reloads rules from the file at every boot, ensuring your firewall is always active. Always validate the config file syntax before applying changes to production systems.
