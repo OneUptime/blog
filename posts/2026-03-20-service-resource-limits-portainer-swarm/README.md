@@ -66,10 +66,10 @@ docker service update \
 
 ## Monitoring Resource Usage
 
-After deploying with limits, monitor usage using Portainer's built-in stats on the container detail page, or use `docker stats`:
+After deploying with limits, monitor usage using Portainer's built-in stats on the container detail page, or use `docker stats` on the node running the task:
 
 ```bash
-# View live resource usage for all running containers
+# View live resource usage for running containers on the current Docker host
 docker stats --no-stream
 
 # View stats for a specific container by name
@@ -80,7 +80,7 @@ docker stats --no-stream my-container-name
 
 - Always set reservations so the scheduler can make intelligent placement decisions.
 - Memory limits trigger OOM (Out of Memory) kills - set them slightly above expected peak usage.
-- CPU limits prevent CPU throttling from causing latency spikes.
+- CPU limits cap CPU usage, but setting them too low can cause throttling and latency spikes.
 
 ## Conclusion
 
