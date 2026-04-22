@@ -14,6 +14,7 @@ Node.js sockets emit several events throughout their lifecycle:
 const net = require('net');
 
 const socket = net.createConnection({ host: '127.0.0.1', port: 9000, family: 4 });
+socket.setTimeout(30000);
 
 // Emitted when connection is established
 socket.on('connect', () => {
@@ -42,7 +43,7 @@ socket.on('error', (err) => {
     console.error(`Socket error: [${err.code}] ${err.message}`);
 });
 
-// Emitted when no data received within timeout period
+// Emitted when the socket is idle for the configured timeout period
 socket.on('timeout', () => {
     console.log('Socket timed out; closing');
     socket.end();
@@ -72,7 +73,7 @@ function createRobustClient(host, port) {
                 console.error(`DNS lookup failed for host: ${host}`);
                 break;
             case 'EADDRINUSE':
-                console.error(`Port ${port} is already in use`);
+                console.error('Local address or port is already in use');
                 break;
             case 'EPIPE':
                 console.error('Broken pipe: tried to write to closed socket');
@@ -98,12 +99,17 @@ const server = net.createServer((socket) => {
     const addr = `${socket.remoteAddress}:${socket.remotePort}`;
 
     socket.on('data', (data) => {
-        try {
-            socket.write(data);
-        } catch (err) {
-            // write() can throw if socket is already destroyed
-            console.error(`Write failed for ${addr}: ${err.message}`);
+        if (!socket.writable) {
+            console.error(`Write skipped for ${addr}: socket is not writable`);
+            return;
         }
+
+        socket.write(data, (err) => {
+            if (err) {
+                // write() errors are reported asynchronously through the callback
+                console.error(`Write failed for ${addr}: ${err.message}`);
+            }
+        });
     });
 
     socket.on('error', (err) => {
@@ -163,7 +169,7 @@ stateDiagram-v2
     connecting --> error: error event (ECONNREFUSED etc.)
     connected --> data: data event
     connected --> end: end event (EOF from server)
-    connected --> timeout: timeout event
+    connected --> timeout: timeout event (after setTimeout idle period)
     connected --> error: error event (ECONNRESET etc.)
     end --> closed: close event
     error --> closed: close event (hadError=true)
@@ -172,4 +178,4 @@ stateDiagram-v2
 
 ## Conclusion
 
-Always attach an `error` event listener to every socket in Node.js-unhandled error events crash the process. Use the `err.code` property to differentiate `ECONNREFUSED` (port not open), `ECONNRESET` (abrupt disconnect), `ETIMEDOUT` (firewall dropping packets), and other common errors. Call `socket.destroy()` when handling errors to ensure cleanup even if `end()` was never called.
+Always attach an `error` event listener to every socket in Node.js-unhandled error events crash the process. Use the `err.code` property to differentiate `ECONNREFUSED` (port not open), `ECONNRESET` (abrupt disconnect), `ETIMEDOUT` (operation timed out), and other common errors. Call `socket.destroy()` when handling errors to ensure cleanup even if `end()` was never called.
