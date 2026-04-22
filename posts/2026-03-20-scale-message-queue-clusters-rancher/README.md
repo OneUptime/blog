@@ -25,7 +25,7 @@ kubectl scale statefulset kafka-controller \
 kubectl get pods -n messaging -l app.kubernetes.io/name=kafka
 ```
 
-After adding brokers, existing partitions must be reassigned to use the new brokers:
+After adding brokers, existing partitions must be reassigned to use the new brokers. Save the `Proposed partition reassignment configuration` output as `reassignment.json` before executing it:
 
 ```bash
 # Inside a Kafka pod, generate a reassignment plan
@@ -44,7 +44,7 @@ kafka-reassign-partitions.sh \
 
 ## Scaling RabbitMQ Clusters
 
-RabbitMQ uses quorum queues for HA. Scale by updating the StatefulSet replica count:
+RabbitMQ can use quorum queues for HA. Scale by updating the StatefulSet replica count, then add quorum queue replicas to the new nodes if you want existing quorum queues to use them:
 
 ```bash
 # Scale RabbitMQ from 3 to 5 nodes
@@ -55,11 +55,19 @@ kubectl scale statefulset rabbitmq \
 # Verify cluster membership
 kubectl exec -it rabbitmq-0 -n messaging -- \
   rabbitmqctl cluster_status
+
+# Add quorum queue replicas to the new nodes
+# Replace these node names with the new node names shown by cluster_status
+kubectl exec -it rabbitmq-0 -n messaging -- \
+  rabbitmq-queues grow rabbit@rabbitmq-3 all
+
+kubectl exec -it rabbitmq-0 -n messaging -- \
+  rabbitmq-queues grow rabbit@rabbitmq-4 all
 ```
 
 ## Autoscaling Consumers with KEDA
 
-KEDA (Kubernetes Event-Driven Autoscaling) scales consumer deployments based on queue depth.
+KEDA (Kubernetes Event-Driven Autoscaling) scales consumer deployments based on queue depth or Kafka consumer lag.
 
 ```yaml
 # keda-kafka-scaler.yaml
@@ -79,7 +87,7 @@ spec:
         bootstrapServers: kafka.messaging.svc.cluster.local:9092
         consumerGroup: order-processors
         topic: orders
-        lagThreshold: "100"     # Scale up when lag exceeds 100 messages
+        lagThreshold: "100"     # Target total consumer lag
         offsetResetPolicy: latest
 ```
 
@@ -107,11 +115,11 @@ spec:
         protocol: amqp
         queueName: email-queue
         mode: QueueLength
-        value: "50"    # Scale when queue has more than 50 messages
+        value: "50"    # Target queue length per replica
       authenticationRef:
         name: rabbitmq-auth
 ```
 
 ## Conclusion
 
-Scaling message queue clusters in Rancher involves two layers: broker cluster scaling via StatefulSet replica adjustments and consumer autoscaling via KEDA. KEDA's event-driven scaling ensures consumer capacity always matches queue depth, preventing message backlogs while avoiding wasted resources during idle periods.
+Scaling message queue clusters in Rancher involves two layers: broker cluster scaling via StatefulSet replica adjustments and consumer autoscaling via KEDA. KEDA's event-driven scaling helps consumer capacity follow queue depth or consumer lag, reducing message backlogs while avoiding wasted resources during idle periods.
