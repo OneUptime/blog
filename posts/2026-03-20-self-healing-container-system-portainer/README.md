@@ -8,7 +8,7 @@ Description: Learn how to build a self-healing container system that automatical
 
 ---
 
-A self-healing container system automatically detects failures and recovers without manual intervention. With Docker's built-in restart policies, health checks, and the Portainer API, you can build a system that monitors container health, restarts failing services, re-pulls updated images, and sends alerts - all automatically.
+A self-healing container system automatically detects failures and recovers without manual intervention. With Docker's built-in restart policies, health checks, and the Portainer API, you can build a system that monitors container health, restarts failing services, and sends alerts - all automatically.
 
 ---
 
@@ -18,8 +18,6 @@ The first and simplest layer of self-healing. Docker automatically restarts cont
 
 ```yaml
 # self-healing-stack.yml - restart policies for each service type
-
-version: "3.8"
 
 services:
   webapp:
@@ -58,18 +56,19 @@ Build a watchdog service that polls Portainer for unhealthy containers and resta
 #!/usr/bin/env python3
 # watchdog.py - self-healing watchdog that monitors and restarts containers
 
-import requests
-import time
 import logging
-from datetime import datetime
+import os
+import time
+
+import requests
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
-PORTAINER_URL = "https://portainer.example.com"
-API_KEY = "ptr_your_api_key_here"
+PORTAINER_URL = os.environ.get("PORTAINER_URL", "https://portainer.example.com").rstrip("/")
+API_KEY = os.environ.get("PORTAINER_API_KEY", "ptr_your_api_key_here")
 HEADERS = {"X-API-Key": API_KEY}
 CHECK_INTERVAL = 60  # seconds between checks
 MAX_RESTARTS = 3     # alert instead of restart after this many attempts
@@ -80,11 +79,13 @@ def get_unhealthy_containers(env_id: int) -> list:
     """Find containers that are unhealthy."""
     r = requests.get(
         f"{PORTAINER_URL}/api/endpoints/{env_id}/docker/containers/json",
-        headers=HEADERS, params={"all": True}
+        headers=HEADERS, params={"all": "true"}, timeout=10
     )
+    r.raise_for_status()
     return [
         c for c in r.json()
-        if "unhealthy" in c.get("Status", "")
+        if c.get("Health", {}).get("Status") == "unhealthy"
+        or "unhealthy" in c.get("Status", "")
     ]
 
 def restart_container(env_id: int, container_id: str, name: str):
@@ -100,26 +101,32 @@ def restart_container(env_id: int, container_id: str, name: str):
         return
 
     logging.warning(f"Restarting unhealthy container: {name} (attempt {restart_counts[key]})")
-    requests.post(
+    r = requests.post(
         f"{PORTAINER_URL}/api/endpoints/{env_id}/docker/containers/{container_id}/restart",
-        headers=HEADERS
+        headers=HEADERS,
+        timeout=10
     )
+    r.raise_for_status()
 
 def send_alert(container_name: str, restart_count: int):
     """Send alert when a container keeps failing - integrate with your alerting system."""
     # Example: POST to a webhook (Slack, PagerDuty, OneUptime, etc.)
-    requests.post(
+    r = requests.post(
         "https://your-alerting-webhook.example.com/notify",
         json={
             "text": f"ALERT: Container '{container_name}' has failed {restart_count} times",
             "severity": "critical"
-        }
+        },
+        timeout=10
     )
+    r.raise_for_status()
 
 def watchdog_loop():
     """Main loop: check health and heal."""
     logging.info("Self-healing watchdog started")
-    envs = requests.get(f"{PORTAINER_URL}/api/endpoints", headers=HEADERS).json()
+    r = requests.get(f"{PORTAINER_URL}/api/endpoints", headers=HEADERS, timeout=10)
+    r.raise_for_status()
+    envs = r.json()
 
     while True:
         for env in envs:
@@ -149,7 +156,6 @@ Run the watchdog itself as a managed container in Portainer.
 
 ```yaml
 # watchdog-stack.yml - the self-healing watchdog as a Portainer service
-version: "3.8"
 
 services:
   watchdog:
@@ -157,7 +163,7 @@ services:
     restart: unless-stopped
     environment:
       PORTAINER_URL: https://portainer.example.com
-      API_KEY: ${PORTAINER_API_KEY}
+      PORTAINER_API_KEY: ${PORTAINER_API_KEY}
     volumes:
       - ./watchdog.py:/app/watchdog.py:ro
     working_dir: /app
