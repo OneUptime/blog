@@ -53,7 +53,7 @@ Add-DhcpServerv4ExclusionRange `
 # Reserve a specific IP for a device by MAC address
 Add-DhcpServerv4Reservation `
     -ScopeId 192.168.1.0 `
-    -IPAddress 192.168.1.50 `
+    -IPAddress 192.168.1.110 `
     -ClientId "AA-BB-CC-DD-EE-FF" `
     -Description "Web Server"
 ```
@@ -65,7 +65,7 @@ Add-DhcpServerv4Reservation `
 Get-DhcpServerv4Lease -ScopeId 192.168.1.0
 
 # View lease for a specific IP
-Get-DhcpServerv4Lease -ScopeId 192.168.1.0 -IPAddress 192.168.1.150
+Get-DhcpServerv4Lease -IPAddress 192.168.1.150
 ```
 
 ## Exporting and Importing Configuration
