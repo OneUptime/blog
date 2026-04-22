@@ -26,6 +26,12 @@ IPv6-only client
 ```nginx
 # /etc/bind/named.conf.options
 
+acl "RFC1918" {
+    10.0.0.0/8;
+    172.16.0.0/12;
+    192.168.0.0/16;
+};
+
 options {
     directory "/var/cache/bind";
 
@@ -42,12 +48,11 @@ options {
         # Clients that should receive synthesized records
         clients { any; };
 
-        # Exclude real IPv6 addresses from synthesis
-        # (don't synthesize if AAAA already exists)
-        exclude { ::ffff:0:0/96; };
+        # Ignore existing AAAA records in NAT64/v4-mapped ranges
+        # and synthesize from A records instead
+        exclude { 64:ff9b::/96; ::ffff:0:0/96; };
 
-        # Map IPv4 loopback to synthesized address?
-        # (usually no)
+        # Do not synthesize RFC 1918 private IPv4 addresses
         mapped { !RFC1918; any; };
     };
 
@@ -63,8 +68,8 @@ options {
 options {
     # If your NAT64 gateway uses a custom prefix
     dns64 2001:db8:1::/96 {
-        clients { 2001:db8:client::/48; };
-        exclude { ::ffff:0:0/96; };
+        clients { 2001:db8:100::/48; };
+        exclude { 2001:db8:1::/96; ::ffff:0:0/96; };
         mapped { any; };
         recursive-only yes;
     };
@@ -84,7 +89,7 @@ options {
     dns64 64:ff9b::/96 {
         clients { any; };
         mapped { !RFC1918; any; };
-        exclude { ::ffff:0:0/96; };
+        exclude { 64:ff9b::/96; ::ffff:0:0/96; };
     };
 };
 ```
@@ -97,16 +102,17 @@ systemctl restart bind9
 
 # Test with a domain that has only A records
 
-dig AAAA ipv4only.example.com @::1
-# Expected: synthesized AAAA like 64:ff9b::c000:0201
+dig AAAA ipv4.google.com @::1
+# Expected: synthesized AAAA records in the 64:ff9b::/96 prefix
 
 # Test with a domain that has AAAA records (no synthesis)
 dig AAAA google.com @::1
 # Expected: real AAAA record
 
-# Confirm synthesis with well-known address (RFC 7050)
+# Confirm synthesis with the RFC 7050 discovery name
 dig AAAA ipv4only.arpa @::1
-# Expected: 64:ff9b::c000:00aa (192.0.0.170 mapped)
+# Expected: 64:ff9b::c000:aa and 64:ff9b::c000:ab
+# (192.0.0.170 and 192.0.0.171 mapped)
 ```
 
 ## Step 5: Verify NAT64 Gateway Integration
@@ -120,7 +126,7 @@ ping6 64:ff9b::8.8.8.8
 # (the NAT64 gateway translates to 8.8.8.8)
 
 # curl to an IPv4-only site
-curl -6 http://ipv4only.example.com/
+curl -6 http://ipv4.google.com/
 # Should work if DNS64 + NAT64 are configured correctly
 ```
 
@@ -129,10 +135,11 @@ curl -6 http://ipv4only.example.com/
 ```bash
 # Check BIND stats for synthesis
 rndc stats
-grep "dns64" /var/cache/bind/named_stats.txt
+grep -i "dns64" /var/cache/bind/named.stats
 
 # Watch queries for synthesis
-tail -f /var/log/named/queries.log | grep AAAA
+rndc querylog on
+journalctl -u bind9 -f | grep AAAA
 ```
 
 ## Conclusion
