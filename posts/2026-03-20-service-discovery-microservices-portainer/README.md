@@ -4,20 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Microservice, Service Discovery, Consul, DNS
 
-Description: Configure automatic service discovery for microservices using Docker's built-in DNS, Consul, or Traefik as a service registry with Portainer.
+Description: Configure automatic service discovery for microservices using Docker's built-in DNS, Consul, or Traefik's Docker provider with Portainer.
 
 ## Introduction
 
-Service discovery lets microservices find each other dynamically without hardcoded IP addresses or ports. Docker provides built-in DNS-based service discovery within networks. For more advanced use cases, tools like Consul provide health-aware service registries. This guide covers multiple service discovery approaches managed through Portainer.
+Service discovery lets microservices find each other dynamically without hardcoded IP addresses. Docker provides built-in DNS-based service discovery within user-defined networks. For more advanced use cases, tools like Consul provide health-aware service registries. This guide covers multiple service discovery approaches managed through Portainer.
 
 ## Method 1: Docker Built-in DNS (Recommended for Most Cases)
 
-Docker's overlay and bridge networks include automatic DNS resolution. Every container is reachable by its service name.
+Docker's user-defined bridge networks and Swarm overlay networks include automatic DNS resolution. In a Compose app, containers on the same network can reach each other by service name.
 
 ```yaml
-# docker-compose.yml - Docker DNS service discovery
-
-version: "3.8"
+# compose.yaml - Docker DNS service discovery
 
 networks:
   app_network:
@@ -50,26 +48,24 @@ services:
       - "8003"
 ```
 
-### DNS Round-Robin Load Balancing
+### DNS Responses for Scaled Services
 
-Docker can create multiple containers for a service and balance traffic via DNS:
+Docker Compose can create multiple containers for a service. Docker DNS can return more than one IP for the service name, but client behavior determines how those addresses are used:
 
 ```bash
 # Scale a service to 3 replicas
-docker-compose up --scale user_service=3
+docker compose up -d --scale user_service=3
 
-# Docker will return multiple IPs for "user_service"
-# Each DNS lookup rotates through available IPs
-docker exec service_a nslookup user_service
+# Docker DNS can return multiple IPs for "user_service"
+docker compose exec service_a nslookup user_service
 ```
 
 ## Method 2: Consul Service Registry
 
-For production microservices with health checks and dynamic discovery:
+For microservices that need health checks and dynamic discovery:
 
 ```yaml
-# docker-compose.yml - Consul service registry
-version: "3.8"
+# compose.yaml - Consul service registry
 
 networks:
   consul_net:
@@ -84,16 +80,21 @@ services:
     image: hashicorp/consul:latest
     container_name: consul
     restart: unless-stopped
+    cap_add:
+      - NET_BIND_SERVICE
     ports:
       - "8500:8500"   # HTTP API + UI
-      - "8600:8600/udp"  # DNS
+      - "8600:53/tcp"  # DNS (host port 8600 -> Consul DNS)
+      - "8600:53/udp"
     command: >
       agent
       -server
       -bootstrap-expect=1
       -ui
       -client=0.0.0.0
-      -bind=0.0.0.0
+      -bind=172.25.0.10
+      -dns-port=53
+      -recursor=8.8.8.8
     networks:
       consul_net:
         ipv4_address: 172.25.0.10
@@ -121,9 +122,9 @@ services:
     expose:
       - "8002"
     environment:
-      # These labels are used by Registrator
+      # These environment variables are read by Registrator
       - SERVICE_NAME=user-service
-      - SERVICE_TAGS=v1,production
+      - SERVICE_TAGS=v1,production,urlprefix-/users
       - SERVICE_CHECK_HTTP=/health
       - SERVICE_CHECK_INTERVAL=10s
       - SERVICE_CHECK_TIMEOUT=3s
@@ -139,8 +140,8 @@ services:
     ports:
       - "9999:9999"   # Traffic proxy
       - "9998:9998"   # Admin UI
-    environment:
-      - CONSUL_ADDR=consul:8500
+    command:
+      - "-registry.consul.addr=consul:8500"
     depends_on:
       - consul
     networks:
@@ -174,16 +175,16 @@ dig @127.0.0.1 -p 8600 user-service.service.consul
 curl http://localhost:8500/v1/catalog/service/user-service | jq .
 ```
 
-## Method 3: Traefik as Service Registry
+## Method 3: Traefik for HTTP Routing
 
-Traefik automatically discovers services via Docker labels:
+Traefik automatically discovers Docker services and builds HTTP routers from labels:
 
 ```yaml
-# docker-compose.yml - Traefik service discovery
-version: "3.8"
+# compose.yaml - Traefik service discovery
 
 networks:
   traefik_net:
+    name: traefik_net
     driver: bridge
 
 services:
@@ -205,7 +206,7 @@ services:
     networks:
       - traefik_net
 
-  # Services register themselves via labels
+  # Services expose routes via labels
   api_gateway:
     image: api-gateway:latest
     networks:
@@ -214,7 +215,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.api.rule=PathPrefix(`/api`)"
       - "traefik.http.services.api.loadbalancer.server.port=8000"
-      # Health check for circuit breaking
+      # Active load-balancer health check
       - "traefik.http.services.api.loadbalancer.healthcheck.path=/health"
       - "traefik.http.services.api.loadbalancer.healthcheck.interval=10s"
 
@@ -232,15 +233,15 @@ services:
 
 ## Step 4: DNS Configuration for Service Discovery
 
-```bash
+```yaml
 # Configure services to use Consul DNS for resolution
-# In docker-compose.yml:
+# This assumes Consul DNS is listening on port 53 inside consul_net.
+# In compose.yaml:
 
 services:
   my_service:
     dns:
-      - 172.25.0.10   # Consul server IP
-      - 8.8.8.8       # Fallback DNS
+      - 172.25.0.10   # Consul DNS IP on consul_net
     dns_search:
       - service.consul  # Search domain
     environment:
@@ -265,7 +266,7 @@ curl -X PUT http://localhost:8500/v1/agent/service/deregister/user-service-1
 ## Monitoring Discovery in Portainer
 
 Portainer helps you see network connectivity issues:
-1. Navigate to **Networks** > select your overlay network
+1. Navigate to **Networks** > select your bridge or overlay network
 2. See which containers are connected
 3. Use **Exec** to test DNS resolution: `nslookup service_b`
 
