@@ -21,14 +21,16 @@ terraform {
     encrypt        = true
     dynamodb_table = "terraform-state-locks"
 
-    # Assume this role for backend operations
-    role_arn = "arn:aws:iam::123456789012:role/TerraformStateAccess"
+    assume_role = {
+      # Assume this role for backend operations
+      role_arn = "arn:aws:iam::123456789012:role/TerraformStateAccess"
 
-    # Optional: external ID for cross-account access
-    external_id = "my-external-id"
+      # Optional: external ID for cross-account access
+      external_id = "my-terraform-external-id"
 
-    # Optional: session name for CloudTrail visibility
-    session_name = "OpenTofu-Backend-${var.environment}"
+      # Optional: session name for CloudTrail visibility
+      session_name = "OpenTofu-Backend-prod"
+    }
   }
 }
 ```
@@ -45,8 +47,10 @@ terraform {
     region   = "us-east-1"
     encrypt  = true
 
-    # Role in the ops account (where state bucket lives)
-    role_arn = "arn:aws:iam::OPS_ACCOUNT_ID:role/TerraformStateManager"
+    assume_role = {
+      # Role in the ops account (where state bucket lives)
+      role_arn = "arn:aws:iam::OPS_ACCOUNT_ID:role/TerraformStateManager"
+    }
   }
 }
 
@@ -112,7 +116,7 @@ resource "aws_iam_role_policy" "terraform_state_access" {
       },
       {
         Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
+        Action   = ["dynamodb:DescribeTable", "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
         Resource = "arn:aws:dynamodb:us-east-1:OPS_ACCOUNT_ID:table/terraform-state-locks"
       }
     ]
@@ -125,22 +129,26 @@ resource "aws_iam_role_policy" "terraform_state_access" {
 For complex setups, you can chain role assumptions (source role → intermediate role → final role):
 
 ```bash
-# The CI runner assumes a CI role, which can assume the Terraform state role
-# This is handled automatically by AWS STS
+# The CI runner first obtains credentials for a CI role.
+# OpenTofu then uses those current credentials to call STS and assume the state role.
+# AWS limits chained role sessions to a maximum of one hour.
 ```
 
-## Session Tags for Audit
+## Session Names for Audit
 
-Use session tags to improve CloudTrail visibility:
+Use a session name to improve CloudTrail visibility:
 
 ```hcl
 terraform {
   backend "s3" {
-    bucket       = "my-terraform-state"
-    key          = "prod/terraform.tfstate"
-    region       = "us-east-1"
-    role_arn     = "arn:aws:iam::123456789012:role/TerraformStateAccess"
-    session_name = "OpenTofu-Prod-Deploy"
+    bucket = "my-terraform-state"
+    key    = "prod/terraform.tfstate"
+    region = "us-east-1"
+
+    assume_role = {
+      role_arn     = "arn:aws:iam::123456789012:role/TerraformStateAccess"
+      session_name = "OpenTofu-Prod-Deploy"
+    }
   }
 }
 ```
@@ -152,11 +160,15 @@ CloudTrail will show the session name in API calls, making it easy to trace stat
 ```hcl
 terraform {
   backend "s3" {
-    bucket            = "my-terraform-state"
-    key               = "prod/terraform.tfstate"
-    region            = "us-east-1"
-    role_arn          = "arn:aws:iam::123456789012:role/TerraformStateAccess"
-    role_session_name = "opentofu-backend"
+    bucket = "my-terraform-state"
+    key    = "prod/terraform.tfstate"
+    region = "us-east-1"
+
+    assume_role = {
+      role_arn     = "arn:aws:iam::123456789012:role/TerraformStateAccess"
+      session_name = "opentofu-backend"
+      duration     = "1h"
+    }
   }
 }
 ```
@@ -167,10 +179,11 @@ terraform {
 # Test role assumption manually
 aws sts assume-role \
   --role-arn "arn:aws:iam::123456789012:role/TerraformStateAccess" \
-  --role-session-name "test-session"
+  --role-session-name "test-session" \
+  --external-id "my-terraform-external-id"
 
 # Common errors:
-# AccessDenied: Check the trust policy allows the caller's identity
+# AccessDenied: Check the trust policy allows the caller's identity and the caller can call sts:AssumeRole
 # InvalidClientTokenId: Check AWS credentials are valid
 # The security token included in the request is expired: Refresh credentials
 ```
