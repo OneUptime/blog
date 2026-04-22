@@ -13,13 +13,20 @@ When Samba stops responding, the cause is almost always one of four things: the 
 ## Step 1: Verify Samba Services Are Running
 
 ```bash
-# Check status of smbd and nmbd
+# Check status of smbd and nmbd on Debian/Ubuntu
 
 sudo systemctl status smbd nmbd
+
+# On RHEL/CentOS/Fedora, the service units are usually smb and nmb:
+sudo systemctl status smb nmb
 
 # If not running:
 sudo systemctl start smbd nmbd
 sudo systemctl enable smbd nmbd
+
+# On RHEL/CentOS/Fedora:
+sudo systemctl start smb nmb
+sudo systemctl enable smb nmb
 
 # Check for configuration errors before starting
 sudo testparm -s
@@ -80,8 +87,7 @@ sudo iptables -A INPUT -s 10.0.0.0/24 -p tcp --dport 139 -j ACCEPT
 sudo iptables -A INPUT -s 10.0.0.0/24 -p udp --dport 137:138 -j ACCEPT
 
 # For UFW:
-sudo ufw allow from 10.0.0.0/24 to any port 445
-sudo ufw allow from 10.0.0.0/24 to any port 139
+sudo ufw allow from 10.0.0.0/24 to any app Samba
 
 # For firewalld:
 sudo firewall-cmd --permanent --add-service=samba
@@ -123,11 +129,11 @@ sudo smbcontrol smbd debug 1
 | Symptom | Cause | Fix |
 |---|---|---|
 | `connection refused` on port 445 | smbd not running or wrong bind | Start smbd, fix interfaces |
-| `no route to host` | Firewall dropping packets | Add iptables/UFW rules |
-| `NT_STATUS_ACCESS_DENIED` | User not in smbpasswd or wrong password | `smbpasswd -a username` |
+| `no route to host` | Routing issue or firewall reject | Check routes and firewall rules |
+| `NT_STATUS_ACCESS_DENIED` | Share ACL, filesystem permission, `valid users`, or SELinux denial | Check share/path permissions and SELinux labels |
 | `NT_STATUS_BAD_NETWORK_NAME` | Share doesn't exist in smb.conf | Add `[sharename]` section |
-| `NT_STATUS_LOGON_FAILURE` | Wrong credentials | Check username/password |
-| Mount succeeds but no files visible | SELinux or path permissions | `chcon -R -t samba_share_t /path` |
+| `NT_STATUS_LOGON_FAILURE` | Wrong credentials or missing/disabled Samba user | Check username/password; add or enable the user with `sudo smbpasswd -a username` |
+| Mount succeeds but no files visible | SELinux or path permissions | Fix SELinux labels and path permissions |
 
 ## SELinux Fixes (RHEL/CentOS)
 
@@ -152,19 +158,19 @@ sudo restorecon -R /srv/samba/share
 ```bash
 #!/bin/bash
 echo "=== Samba Service Status ==="
-systemctl is-active smbd nmbd
+systemctl is-active smbd nmbd 2>/dev/null || systemctl is-active smb nmb
 
 echo "=== Listening Ports ==="
-ss -tlnp | grep smbd
+sudo ss -tlnp | grep smbd
 
 echo "=== Config Test ==="
-testparm -s 2>&1 | head -20
+sudo testparm -s 2>&1 | head -20
 
 echo "=== Samba Users ==="
-pdbedit -L
+sudo pdbedit -L
 
 echo "=== Recent Log Errors ==="
-grep -i "error\|fail" /var/log/samba/log.smbd | tail -10
+sudo grep -Ei "error|fail" /var/log/samba/log.smbd | tail -10
 ```
 
 ## Conclusion
