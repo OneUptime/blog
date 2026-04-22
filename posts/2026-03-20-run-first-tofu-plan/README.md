@@ -8,7 +8,7 @@ Description: A guide to understanding and running the tofu plan command to previ
 
 ## Introduction
 
-`tofu plan` is the command that shows you what OpenTofu will do before actually making any changes. It compares your desired state (defined in .tf files) with the current state (stored in state file) and shows you the differences. Running a plan is like a dry run - it lets you review changes safely.
+`tofu plan` is the command that shows you what OpenTofu will do before actually making any changes. It compares your desired state (defined in .tf files) with the current state of managed resources (recorded in the state file and refreshed from remote objects by default) and shows you the differences. Running a plan is like a dry run - it lets you review changes safely.
 
 ## Running a Basic Plan
 
@@ -31,7 +31,7 @@ tofu plan
 #   - destroy
 #   -/+ destroy and then create as a replacement
 #
-# Tofu will perform the following actions:
+# OpenTofu will perform the following actions:
 #
 #   # aws_instance.web_server will be created
 #   + resource "aws_instance" "web_server" {
@@ -59,14 +59,14 @@ tofu plan
 # Save the plan for later use (for automated pipelines)
 tofu plan -out=my-plan.tfplan
 
-# The plan file is binary and contains all information needed to apply
+# The plan file uses an opaque format and can contain sensitive values
 ls -la my-plan.tfplan
 
 # View the saved plan
-tofu show my-plan.tfplan
+tofu show -plan=my-plan.tfplan
 
 # View as JSON for processing
-tofu show -json my-plan.tfplan | jq .
+tofu show -json -plan=my-plan.tfplan | jq .
 ```
 
 ## Common Plan Flags
@@ -105,8 +105,10 @@ set -e
 tofu init -input=false
 
 # Run plan with detailed exit code
+set +e
 tofu plan -detailed-exitcode -no-color -out=plan.tfplan
 EXIT_CODE=$?
+set -e
 
 if [ $EXIT_CODE -eq 0 ]; then
   echo "No changes detected."
