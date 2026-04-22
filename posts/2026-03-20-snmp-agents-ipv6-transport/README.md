@@ -47,7 +47,7 @@ rocommunity6 public  ::1
 rocommunity6 public  2001:db8::/32
 
 # For specific NMS IPv6 address
-rocommunity6 monitoring_community 2001:db8::nms
+rocommunity6 monitoring_community 2001:db8::10
 
 # System information
 sysLocation    "Data Center, Rack 5"
@@ -87,17 +87,17 @@ sudo systemctl restart snmpd
 ss -6 -ulnp | grep 161
 
 # Test SNMP over IPv6 (from monitoring server)
-snmpget -v2c -c public udp6:[2001:db8::target]:161 sysDescr.0
+snmpget -v2c -c public udp6:[2001:db8::20]:161 sysDescr.0
 
 # Test with SNMPv3
 snmpget -v3 -l authPriv \
   -u monitorv3 \
   -a SHA -A "AuthPassword123" \
   -x AES -X "PrivPassword123" \
-  udp6:[2001:db8::target]:161 sysDescr.0
+  udp6:[2001:db8::20]:161 sysDescr.0
 
-# Walk all OIDs over IPv6
-snmpwalk -v2c -c public udp6:[2001:db8::target]:161 system
+# Walk the system group over IPv6
+snmpwalk -v2c -c public udp6:[2001:db8::20]:161 system
 ```
 
 ## Firewall Rules for SNMP over IPv6
@@ -105,20 +105,20 @@ snmpwalk -v2c -c public udp6:[2001:db8::target]:161 system
 ```bash
 # Allow SNMP from monitoring system
 sudo ip6tables -A INPUT -p udp \
-  -s 2001:db8::nms \
+  -s 2001:db8::10 \
   --dport 161 -j ACCEPT
 
 # Allow SNMP from monitoring subnet
 sudo ip6tables -A INPUT -p udp \
-  -s 2001:db8:monitoring::/48 \
+  -s 2001:db8:100::/48 \
   --dport 161 -j ACCEPT
 
 # Allow SNMP traps outbound (to NMS)
 sudo ip6tables -A OUTPUT -p udp \
-  -d 2001:db8::nms \
+  -d 2001:db8::10 \
   --dport 162 -j ACCEPT
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo sh -c 'ip6tables-save > /etc/iptables/rules.v6'
 ```
 
 ## Configuring SNMP on Network Devices
@@ -126,8 +126,8 @@ sudo ip6tables-save > /etc/ip6tables/rules.v6
 ```text
 ! Cisco IOS - Enable SNMP over IPv6
 snmp-server community public RO
-snmp-server host 2001:db8::nms version 2c public
-! Enable IPv6 SNMP
+snmp-server host 2001:db8::10 version 2c public
+! Enable SNMP traps
 snmp-server enable traps
 
 ! Verify
@@ -135,7 +135,7 @@ show snmp
 
 ! Juniper JunOS
 set snmp community public authorization read-only
-set snmp trap-group monitors targets 2001:db8::nms
+set snmp trap-group monitors targets 2001:db8::10
 commit
 ```
 
@@ -148,12 +148,12 @@ sudo systemctl status snmpd
 # Watch SNMP queries
 sudo tcpdump -i eth0 -nn "udp port 161" -v
 
-# Log SNMP queries for debugging
-# /etc/snmp/snmpd.conf:
-# log_in_msg 5  # Log inbound messages at debug level 5
+# Log source addresses and packet dumps for debugging
+sudo systemctl stop snmpd
+sudo snmpd -f -Lo -a -d
 
 # Check for IPv6 interface counters via SNMP
-snmpwalk -v2c -c public udp6:[2001:db8::target]:161 ipv6
+snmpwalk -v2c -c public udp6:[2001:db8::20]:161 ipv6
 ```
 
 Net-SNMP's `agentAddress` directive with the `udp6:` prefix enables SNMP monitoring over IPv6, with the dual `udp:161,udp6:161` syntax allowing simultaneous IPv4 and IPv6 polling for monitoring systems that may use either transport.
