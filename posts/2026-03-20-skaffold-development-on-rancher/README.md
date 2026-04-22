@@ -23,7 +23,7 @@ Skaffold is a command-line tool that handles the development workflow for Kubern
 
 brew install skaffold
 
-# Linux
+# Linux x86_64 (amd64)
 curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64
 chmod +x skaffold && sudo mv skaffold /usr/local/bin
 ```
@@ -32,29 +32,30 @@ chmod +x skaffold && sudo mv skaffold /usr/local/bin
 
 ```yaml
 # skaffold.yaml
-apiVersion: skaffold/v4beta6
+apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: myapp
 
 build:
+  tagPolicy:
+    sha256: {}    # Use digest-based image references after push
   artifacts:
     - image: myregistry/myapp         # Your container registry path
       context: .                       # Build context (current directory)
       docker:
         dockerfile: Dockerfile
   local:
-    push: false   # Set to true for remote clusters, false for local
+    push: true   # Push to the registry so Rancher-managed clusters can pull the image
 
-tagPolicy:
-  sha256: {}    # Tag images with their content hash for immutability
+manifests:
+  rawYaml:
+    - k8s/deployment.yaml
+    - k8s/service.yaml
+    - k8s/ingress.yaml
 
 deploy:
-  kubectl:
-    manifests:
-      - k8s/deployment.yaml
-      - k8s/service.yaml
-      - k8s/ingress.yaml
+  kubectl: {}
 
 portForward:
   - resourceType: service
@@ -63,16 +64,18 @@ portForward:
     localPort: 8080    # Access http://localhost:8080 during development
 ```
 
-## Step 3: Configure Kubernetes Manifests with Image Templates
+## Step 3: Configure Kubernetes Manifests with Image References
 
-Skaffold automatically substitutes the correct image tag in your manifests:
+Skaffold automatically substitutes the correct image reference in your manifests:
 
 ```yaml
 # k8s/deployment.yaml
 spec:
-  containers:
-    - name: myapp
-      image: myregistry/myapp    # Skaffold replaces this with the built tag
+  template:
+    spec:
+      containers:
+        - name: myapp
+          image: myregistry/myapp    # Skaffold replaces this with the built image reference
 ```
 
 ## Step 4: Run Development Mode
@@ -107,20 +110,25 @@ skaffold build --tag=v1.2.3
 # skaffold.yaml profiles section
 profiles:
   - name: production
-    deploy:
-      helm:
-        releases:
-          - name: myapp
-            chartPath: charts/myapp
-            setValues:
-              replicaCount: 3
-              resources.requests.memory: 512Mi
+    patches:
+      - op: replace
+        path: /manifests
+        value: {}
+      - op: replace
+        path: /deploy
+        value:
+          helm:
+            releases:
+              - name: myapp
+                chartPath: charts/myapp
+                setValues:
+                  replicaCount: 3
+                  resources.requests.memory: 512Mi
 
   - name: development
-    deploy:
-      kubectl:
-        manifests:
-          - k8s/dev/deployment.yaml    # Lighter dev config
+    manifests:
+      rawYaml:
+        - k8s/dev/deployment.yaml    # Lighter dev config
 ```
 
 ```bash
