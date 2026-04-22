@@ -8,7 +8,7 @@ Description: Learn how to configure S3 Cross-Region Replication (CRR) and Same-R
 
 ## Introduction
 
-S3 Replication copies objects automatically between buckets - across regions (CRR) for disaster recovery, or within the same region (SRR) for log aggregation and compliance. OpenTofu manages the source bucket's replication configuration, the destination bucket, and the IAM role that S3 assumes to perform replication.
+S3 Replication copies new objects and eligible object metadata changes automatically between buckets - across regions (CRR) for disaster recovery, or within the same region (SRR) for log aggregation and compliance. OpenTofu manages the source bucket's replication configuration, the destination bucket, and the IAM role that S3 assumes to perform replication.
 
 ## IAM Role for Replication
 
@@ -55,9 +55,21 @@ resource "aws_iam_role_policy" "replication" {
         Action = [
           "s3:ReplicateObject",
           "s3:ReplicateDelete",
-          "s3:ReplicateTags"
+          "s3:ReplicateTags",
+          "s3:ObjectOwnerOverrideToBucketOwner"
         ]
         Resource = ["${aws_s3_bucket.destination.arn}/*"]
+      },
+      # Required when replicating SSE-KMS or DSSE-KMS encrypted source objects
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = [aws_kms_key.source.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Encrypt"]
+        Resource = [aws_kms_key.replica.arn]
       }
     ]
   })
@@ -78,7 +90,7 @@ resource "aws_s3_bucket_versioning" "source" {
   versioning_configuration { status = "Enabled" }
 }
 
-# Destination bucket (eu-west-1) - requires separate provider
+# Destination bucket (eu-west-1) - uses an aliased provider
 resource "aws_s3_bucket" "destination" {
   provider = aws.eu_west_1
   bucket   = "${var.project}-replica-${var.environment}"
@@ -93,12 +105,17 @@ resource "aws_s3_bucket_versioning" "destination" {
 
 ## Cross-Region Replication Configuration
 
+Each source bucket can have only one `aws_s3_bucket_replication_configuration`; treat the CRR, prefix-filtered, and SRR snippets below as alternative rule sets or combine their `rule` blocks into one resource.
+
 ```hcl
 resource "aws_s3_bucket_replication_configuration" "crr" {
   role   = aws_iam_role.replication.arn
   bucket = aws_s3_bucket.source.id
 
-  depends_on = [aws_s3_bucket_versioning.source]
+  depends_on = [
+    aws_s3_bucket_versioning.source,
+    aws_s3_bucket_versioning.destination
+  ]
 
   rule {
     id     = "replicate-all"
@@ -106,24 +123,30 @@ resource "aws_s3_bucket_replication_configuration" "crr" {
 
     filter {}  # Empty filter = replicate all objects
 
+    # Replicate SSE-KMS/DSSE-KMS encrypted objects and replica metadata changes
+    source_selection_criteria {
+      sse_kms_encrypted_objects {
+        status = "Enabled"
+      }
+
+      replica_modifications {
+        status = "Enabled"
+      }
+    }
+
     destination {
       bucket        = aws_s3_bucket.destination.arn
       storage_class = "STANDARD_IA"  # Cost-optimize replicas
 
-      # Replicate encrypted objects
+      # Encrypt replicas with a destination-Region KMS key
       encryption_configuration {
         replica_kms_key_id = aws_kms_key.replica.arn
       }
 
-      # Sync replica object modifications (tags, ACLs)
-      replica_modifications {
-        status = "Enabled"
-      }
-
-      # Replicate object metadata (delete markers)
+      # Enable S3 Replication Time Control (RTC)
       replication_time {
         status = "Enabled"
-        time { minutes = 15 }  # SLA for replication
+        time { minutes = 15 }  # RTC threshold
       }
 
       metrics {
@@ -133,7 +156,7 @@ resource "aws_s3_bucket_replication_configuration" "crr" {
     }
 
     delete_marker_replication {
-      status = "Enabled"  # Replicate deletions to replica
+      status = "Enabled"  # Replicate delete markers to replica
     }
   }
 }
@@ -146,7 +169,11 @@ resource "aws_s3_bucket_replication_configuration" "prefix_crr" {
   role   = aws_iam_role.replication.arn
   bucket = aws_s3_bucket.source.id
 
-  depends_on = [aws_s3_bucket_versioning.source]
+  depends_on = [
+    aws_s3_bucket_versioning.source,
+    aws_s3_bucket_versioning.compliance_replica,
+    aws_s3_bucket_versioning.log_replica
+  ]
 
   # Only replicate compliance records
   rule {
@@ -203,7 +230,10 @@ resource "aws_s3_bucket_replication_configuration" "srr" {
   role   = aws_iam_role.replication.arn
   bucket = aws_s3_bucket.source.id
 
-  depends_on = [aws_s3_bucket_versioning.source]
+  depends_on = [
+    aws_s3_bucket_versioning.source,
+    aws_s3_bucket_versioning.central_logs
+  ]
 
   rule {
     id     = "srr-log-aggregation"
@@ -216,6 +246,7 @@ resource "aws_s3_bucket_replication_configuration" "srr" {
       storage_class = "STANDARD"
       account       = var.log_account_id  # Cross-account SRR
 
+      # Requires a destination bucket policy unless Object Ownership is Bucket owner enforced
       access_control_translation {
         owner = "Destination"
       }
@@ -236,6 +267,7 @@ resource "aws_cloudwatch_metric_alarm" "replication_latency" {
   period              = 300
   statistic           = "Maximum"
   threshold           = 900  # 15 minutes
+  treat_missing_data  = "ignore"
   alarm_description   = "S3 replication latency exceeded 15 minutes"
 
   dimensions = {
@@ -250,4 +282,4 @@ resource "aws_cloudwatch_metric_alarm" "replication_latency" {
 
 ## Conclusion
 
-S3 Replication with OpenTofu provides automated data redundancy without manual copy jobs. Enable versioning on both source and destination - it's required for replication. Use S3 Replication Time Control (RTC) for a 15-minute SLA when your RPO requires guaranteed replication timing. Set `delete_marker_replication = "Disabled"` for compliance archives to prevent accidental deletion propagation. Monitor `ReplicationLatency` and `BytesPendingReplication` CloudWatch metrics to detect replication lag before it impacts your RPO.
+S3 Replication with OpenTofu provides automated data redundancy without manual copy jobs. Enable versioning on both source and destination - it's required for replication. Use S3 Replication Time Control (RTC) for an SLA-backed 15-minute replication objective when your RPO requires predictable replication timing. Set `delete_marker_replication { status = "Disabled" }` for compliance archives to prevent accidental deletion propagation. Monitor `ReplicationLatency` and `BytesPendingReplication` CloudWatch metrics to detect replication lag before it impacts your RPO.
