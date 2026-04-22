@@ -8,26 +8,24 @@ Description: Learn how to segment Kubernetes environments by namespace in Portai
 
 ## Namespace-Based Isolation in Portainer
 
-Portainer's namespace isolation mode gives users access to only their assigned namespaces. This creates logical tenant boundaries within a single Kubernetes cluster without running multiple clusters.
+Portainer's namespace access control gives users access to only their assigned namespaces. This creates logical tenant boundaries within a single Kubernetes cluster without running multiple clusters.
 
-## Configuring Namespace Isolation Mode
+## Configuring Namespace Access
 
 1. Select your Kubernetes environment in Portainer.
-2. Go to **Cluster > Setup**.
-3. Under **Security**, find **Namespace access mode**.
-4. Select:
-   - **Shared access**: Users see all authorized namespaces.
-   - **Isolated access**: Users only see their own namespace(s).
-5. Click **Save changes**.
+2. Make sure Kubernetes RBAC is enabled and working for the cluster.
+3. Go to **Namespaces**.
+4. Find the namespace you want to assign and click **Manage access** on the same row.
+5. Select the users or teams who should have access, then click **Create access**.
 
 ## Creating Namespace Assignments
 
 Assign teams to specific namespaces:
 
 1. Go to **Namespaces**.
-2. Click on a namespace.
-3. Click **Manage access**.
-4. Add teams or users with appropriate roles.
+2. Click **Manage access** on the same row as the namespace.
+3. Select the teams or users who should have access.
+4. Click **Create access**.
 
 ## Example: Three-Team Namespace Segmentation
 
@@ -48,7 +46,7 @@ In Portainer, assign each namespace to its corresponding team.
 
 ## Network Isolation Between Namespaces
 
-Namespace separation in Portainer controls visibility, but network traffic can still flow between namespaces. Use NetworkPolicies for true network isolation:
+Namespace separation in Portainer controls visibility, but network traffic can still flow between namespaces. Use NetworkPolicies with a network plugin that supports NetworkPolicy enforcement for true network isolation:
 
 ```yaml
 # Deny all ingress and egress by default
@@ -114,7 +112,7 @@ metadata:
   namespace: team-frontend
 subjects:
   - kind: Group
-    name: frontend-team  # Mapped from Portainer team
+    name: frontend-team  # Kubernetes auth group from your identity provider
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
@@ -128,12 +126,14 @@ roleRef:
 # Verify that team-frontend cannot see team-backend resources
 kubectl auth can-i get pods \
   --namespace=team-backend \
-  --as=frontend-user@company.com
+  --as=frontend-user@company.com \
+  --as-group=frontend-team
 # Expected: no
 
 kubectl auth can-i get pods \
   --namespace=team-frontend \
-  --as=frontend-user@company.com
+  --as=frontend-user@company.com \
+  --as-group=frontend-team
 # Expected: yes
 ```
 
