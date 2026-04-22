@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Serverless, Multi-Cloud, AWS Lambda, Azure Function, Infrastructure as Code
 
-Description: Learn how to use OpenTofu to deploy and manage serverless functions across AWS, Azure, and GCP from a single configuration using modules and provider aliases.
+Description: Learn how to use OpenTofu to deploy and manage serverless functions across AWS and Azure from a single configuration using modules and provider configurations.
 
 ## Introduction
 
-Deploying serverless functions across multiple cloud providers can be complex when done manually. OpenTofu's provider model and module system make it possible to manage AWS Lambda, Azure Functions, and Google Cloud Functions from a single codebase.
+Deploying serverless functions across multiple cloud providers can be complex when done manually. OpenTofu's provider model and module system make it possible to manage AWS Lambda and Azure Functions from a single codebase.
 
 ## Project Structure
 
@@ -20,9 +20,7 @@ serverless-multi-cloud/
 ├── modules/
 │   ├── aws-lambda/
 │   │   └── main.tf
-│   ├── azure-function/
-│   │   └── main.tf
-│   └── gcp-function/
+│   └── azure-function/
 │       └── main.tf
 ```
 
@@ -31,15 +29,25 @@ serverless-multi-cloud/
 ```hcl
 terraform {
   required_providers {
-    aws   = { source = "hashicorp/aws" }
-    azurerm = { source = "hashicorp/azurerm" }
-    google  = { source = "hashicorp/google" }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.0"
+    }
   }
 }
 
-provider "aws"    { region = var.aws_region }
-provider "azurerm" { features {} }
-provider "google"  { project = var.gcp_project; region = var.gcp_region }
+provider "aws" {
+  region = var.aws_region
+}
+
+provider "azurerm" {
+  subscription_id = var.azure_subscription_id
+  features {}
+}
 ```
 
 ## AWS Lambda Module
@@ -47,16 +55,49 @@ provider "google"  { project = var.gcp_project; region = var.gcp_region }
 ```hcl
 # modules/aws-lambda/main.tf
 
+terraform {
+  required_providers {
+    aws = {
+      source = "hashicorp/aws"
+    }
+  }
+}
+
+data "aws_iam_policy_document" "lambda_assume_role" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "lambda_exec" {
+  name               = "${var.function_name}-exec"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_logs" {
+  role       = aws_iam_role.lambda_exec.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
 resource "aws_lambda_function" "fn" {
-  function_name = var.function_name
-  runtime       = "python3.11"
-  handler       = "handler.lambda_handler"
-  role          = aws_iam_role.lambda_exec.arn
-  filename      = var.zip_path
+  function_name    = var.function_name
+  runtime          = "python3.11"
+  handler          = "handler.lambda_handler"
+  role             = aws_iam_role.lambda_exec.arn
+  filename         = var.zip_path
+  source_code_hash = filebase64sha256(var.zip_path)
 
   environment {
     variables = var.env_vars
   }
+
+  depends_on = [aws_iam_role_policy_attachment.lambda_logs]
 }
 ```
 
@@ -64,6 +105,30 @@ resource "aws_lambda_function" "fn" {
 
 ```hcl
 # modules/azure-function/main.tf
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+    }
+  }
+}
+
+resource "azurerm_storage_account" "sa" {
+  name                     = var.storage_account_name
+  resource_group_name      = var.resource_group
+  location                 = var.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+}
+
+resource "azurerm_service_plan" "plan" {
+  name                = "${var.function_name}-plan"
+  resource_group_name = var.resource_group
+  location            = var.location
+  os_type             = "Linux"
+  sku_name            = "EP1"
+}
+
 resource "azurerm_linux_function_app" "fn" {
   name                = var.function_name
   resource_group_name = var.resource_group
@@ -72,6 +137,11 @@ resource "azurerm_linux_function_app" "fn" {
 
   storage_account_name       = azurerm_storage_account.sa.name
   storage_account_access_key = azurerm_storage_account.sa.primary_access_key
+  zip_deploy_file            = var.zip_path
+
+  app_settings = {
+    WEBSITE_RUN_FROM_PACKAGE = "1"
+  }
 
   site_config {
     application_stack {
@@ -92,10 +162,12 @@ module "aws_hello" {
 }
 
 module "azure_hello" {
-  source         = "./modules/azure-function"
-  function_name  = "hello-world-azure"
-  resource_group = "my-rg"
-  location       = "East US"
+  source               = "./modules/azure-function"
+  function_name        = "hello-world-azure"
+  resource_group       = "my-rg"
+  location             = "East US"
+  storage_account_name = "helloworldazsa001"
+  zip_path             = "function.zip"
 }
 ```
 
