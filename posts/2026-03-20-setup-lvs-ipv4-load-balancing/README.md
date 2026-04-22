@@ -62,8 +62,8 @@ Real servers respond directly to clients - the director only handles incoming pa
 ### Director Configuration
 
 ```bash
-# Configure the VIP on the director's loopback (for initial routing)
-sudo ip addr add 203.0.113.100/32 dev lo
+# Configure the VIP on the director's client-facing interface
+sudo ip addr add 203.0.113.100/32 dev eth0
 
 # Add virtual service with direct routing
 sudo ipvsadm -A -t 203.0.113.100:80 -s rr
@@ -125,10 +125,10 @@ sudo ipvsadm -lc
 
 ```bash
 # Save rules
-sudo ipvsadm-save > /etc/ipvsadm.rules
+sudo sh -c 'ipvsadm-save > /etc/ipvsadm.rules'
 
-# Restore on boot
-sudo ipvsadm-restore < /etc/ipvsadm.rules
+# Restore rules
+sudo sh -c 'ipvsadm-restore < /etc/ipvsadm.rules'
 ```
 
 ## Conclusion
