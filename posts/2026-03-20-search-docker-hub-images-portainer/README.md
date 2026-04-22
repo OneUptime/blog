@@ -1,10 +1,10 @@
-# How to Search Docker Hub for Images in Portainer - Images
+# How to Pull Docker Hub Images in Portainer - Images
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker Hub, Image, Search, Registry
+Tags: Portainer, Docker Hub, Image, Pull, Registry
 
-Description: Search Docker Hub for available images directly from the Portainer web interface.
+Description: Pull Docker Hub images directly from the Portainer web interface.
 
 ---
 
@@ -30,7 +30,7 @@ docker login registry.example.com
 docker pull registry.example.com/private/image:tag
 ```
 
-In Portainer: **Images > Pull image** - enter the image name and tag, optionally select a registry.
+In Portainer: **Images > Pull image** - select the registry, then enter the image name and optional tag.
 
 ## Build Images
 
@@ -45,7 +45,7 @@ docker build -f Dockerfile.prod -t myapp:prod .
 docker build --build-arg NODE_ENV=production -t myapp:prod .
 ```
 
-In Portainer: **Images > Build image** - paste Dockerfile content or upload a file.
+In Portainer: **Images > Build a new image** - paste Dockerfile content or upload a Dockerfile.
 
 ## Import/Export Images
 
@@ -76,7 +76,7 @@ docker push registry.example.com/myapp:v2.0.0
 # Remove a specific image
 docker rmi myapp:old
 
-# Remove all dangling images (untagged layers)
+# Remove all dangling images
 docker image prune
 
 # Remove all unused images (not referenced by any container)
@@ -89,8 +89,8 @@ docker system df
 ## Identify Outdated Images
 
 ```bash
-# Check if a newer digest exists for an image
-docker pull nginx:latest 2>&1 | grep -E "Pull complete|up to date"
+# Refresh the tag and check whether Docker downloads a newer image or reports it is up to date
+docker pull nginx:latest 2>&1 | grep -E "Pull complete|Downloaded newer image|up to date"
 
 # View image creation date
 docker inspect nginx:latest --format '{{.Created}}'
