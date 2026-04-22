@@ -4,20 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Testing, IaC, DevOps, Terraform
 
-Description: Learn how to run specific test cases, test files, and test directories in OpenTofu using the tofu test command flags and filters.
+Description: Learn how to run specific test files and test directories in OpenTofu using the tofu test command flags and filters.
 
 ## Introduction
 
-When you have many tests across multiple files, running all of them for every change is slow. OpenTofu provides flags on `tofu test` to run specific files, filter by test name pattern, or target a specific test directory. This lets you run a focused subset of tests during development.
+When you have many tests across multiple files, running all of them for every change is slow. OpenTofu provides flags on `tofu test` to run specific files or target a specific test directory. OpenTofu does not currently provide a CLI flag for filtering individual `run` blocks by name, so focused test execution is done at the test file level.
 
 ## Run All Tests
 
 ```bash
-# Run all tests in the current module's tests/ directory
+# Run all tests in the current directory and the tests/ directory
 
 tofu test
 
-# Show verbose output with each assertion result
+# Print the plan or state for each run block
 tofu test -verbose
 ```
 
@@ -25,10 +25,10 @@ tofu test -verbose
 
 ```bash
 # Run tests in a specific .tftest.hcl file
-tofu test tests/unit.tftest.hcl
+tofu test -filter=tests/unit.tftest.hcl
 
 # Run multiple specific files
-tofu test tests/unit.tftest.hcl tests/validation.tftest.hcl
+tofu test -filter=tests/unit.tftest.hcl -filter=tests/validation.tftest.hcl
 ```
 
 ## Specify the Test Directory
@@ -37,7 +37,7 @@ tofu test tests/unit.tftest.hcl tests/validation.tftest.hcl
 # Use a custom test directory (default is "tests/")
 tofu test -test-directory=test
 
-# Use tests in current directory
+# Use the current directory as the configured test directory
 tofu test -test-directory=.
 
 # Run tests from a different working directory
@@ -46,20 +46,20 @@ tofu -chdir=modules/vpc test
 
 ## Filter by Test Name
 
-Use `-run` to filter tests by a regex pattern matching the run block name:
+OpenTofu's `tofu test` command does not support a `-run` option for regex filtering by `run` block name. Use `-filter` to select one or more test files, and place focused run blocks in their own test files when you need that granularity:
 
 ```bash
-# Run only tests whose name contains "instance"
-tofu test -run="instance"
+# Run a tag-focused test file
+tofu test -filter=tests/tags.tftest.hcl
 
-# Run tests matching an exact name
-tofu test -run="^creates_instance_with_correct_type$"
+# Run a validation-focused test file
+tofu test -filter=tests/validation.tftest.hcl
 
-# Run all tests with "validation" in the name
-tofu test -run="validation"
+# Run multiple focused files
+tofu test -filter=tests/tags.tftest.hcl -filter=tests/validation.tftest.hcl
 
-# Run tests in a specific file matching a pattern
-tofu test tests/unit.tftest.hcl -run="tag"
+# Run a focused file from a custom test directory
+tofu test -test-directory=extra-tests -filter=extra-tests/tags.tftest.hcl
 ```
 
 ## Example Test File with Named Runs
@@ -100,19 +100,15 @@ run "validation_rejects_invalid_type" {
 ```
 
 ```bash
-# Run only tag-related tests
-tofu test -run="tag"
+# Run every run block in this test file
+tofu test -filter=tests/unit.tftest.hcl
 # tests/unit.tftest.hcl... in progress
-#   run "creates_instance_with_correct_type"... skip
+#   run "creates_instance_with_correct_type"... pass
 #   run "instance_has_required_tags"... pass
-#   run "validation_rejects_invalid_type"... skip
-
-# Run only validation tests
-tofu test -run="validation"
-# tests/unit.tftest.hcl... in progress
-#   run "creates_instance_with_correct_type"... skip
-#   run "instance_has_required_tags"... skip
 #   run "validation_rejects_invalid_type"... pass
+
+# To run only tag-related tests, put those run blocks in their own file
+tofu test -filter=tests/tags.tftest.hcl
 ```
 
 ## Passing Variables to Test Runs
@@ -133,27 +129,29 @@ tofu test -var-file="test.tfvars"
 tofu test -json
 
 # Combined with jq for failure detection
-tofu test -json | jq '.[] | select(.type == "test_run") | select(.test_run.status == "fail")'
+tofu test -json | jq 'select(.type == "test_run") | select(.test_run.status == "fail")'
 ```
 
-## Parallel Test Execution
+## Test File Execution Order
 
-By default, tests within a file run sequentially (sharing state). Different test files run in parallel:
+Run blocks within a file run sequentially. Current OpenTofu executes selected test files in alphabetical order:
 
 ```bash
-# Tests across multiple files run in parallel automatically
-tofu test tests/
-# unit.tftest.hcl and integration.tftest.hcl run concurrently
+# Run all discovered test files in the current module and test directory
+tofu test
+
+# Run specific files; selected files execute in sorted order
+tofu test -filter=tests/unit.tftest.hcl -filter=tests/integration.tftest.hcl
 ```
 
 ## Practical Development Workflow
 
 ```bash
 # During module development: run unit tests only
-tofu test tests/unit.tftest.hcl -verbose
+tofu test -filter=tests/unit.tftest.hcl -verbose
 
 # Test a specific feature you're working on
-tofu test -run="encryption"
+tofu test -filter=tests/encryption.tftest.hcl
 
 # Before PR: run all tests
 tofu test -verbose
@@ -164,4 +162,4 @@ tofu test -json > test-results.json
 
 ## Conclusion
 
-Use `-run` for filtering by name pattern, specify test files directly for file-level filtering, and use `-test-directory` to control which directory is scanned. During development, filter to just the tests relevant to your current change for fast feedback. Run all tests before committing. The `tofu test -json` flag integrates well with CI systems that parse structured output.
+Use `-filter` for file-level filtering and `-test-directory` to control which directory is scanned. OpenTofu does not currently support `-run` style filtering by `run` block name, so organize focused tests into separate files when you want to run them independently. Run all tests before committing. The `tofu test -json` flag integrates well with CI systems that parse structured output.
