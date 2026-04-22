@@ -14,9 +14,9 @@ One of the key benefits of microservices is the ability to scale individual comp
 
 For Docker Swarm services:
 1. Navigate to **Services** in Portainer
-2. Click on a service (e.g., `myapp_order_service`)
-3. Find the **Replicas** field
-4. Change the number and click **Apply changes**
+2. Select **scale** next to a replicated service (e.g., `myapp_order_service`)
+3. Choose the desired number of replicas
+4. Click the tick icon to apply the change
 
 ## Step 2: Deploy a Scalable Swarm Stack
 
@@ -27,6 +27,7 @@ version: "3.8"
 
 networks:
   app_overlay:
+    name: app_overlay
     driver: overlay
     attachable: true
 
@@ -42,13 +43,12 @@ services:
           - node.role == manager
     ports:
       - "80:80"
-      - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     command:
-      - "--providers.docker.swarmMode=true"
-      - "--providers.docker.network=app_overlay"
-      - "--providers.docker.exposedByDefault=false"
+      - "--providers.swarm.endpoint=unix:///var/run/docker.sock"
+      - "--providers.swarm.network=app_overlay"
+      - "--providers.swarm.exposedByDefault=false"
       - "--entrypoints.web.address=:80"
     networks:
       - app_overlay
@@ -107,11 +107,16 @@ services:
         - "traefik.enable=true"
         - "traefik.http.routers.orders.rule=PathPrefix(`/api/orders`)"
         - "traefik.http.services.orders.loadbalancer.server.port=8003"
+        - "swarm.autoscale=true"
+        - "swarm.autoscale.min=2"
+        - "swarm.autoscale.max=20"
     networks:
       - app_overlay
 ```
 
 ## Step 3: Scale via Docker CLI
+
+Run these commands on a Swarm manager node:
 
 ```bash
 # Scale individual service
@@ -136,23 +141,27 @@ docker service ps myapp_order_service
 
 PORTAINER_URL="https://portainer.yourdomain.com"
 API_KEY="your-portainer-api-key"
-STACK_ID="1"
-SERVICE_ID="myapp_order_service"
+ENDPOINT_ID="1"
+SERVICE_NAME="myapp_order_service"
 NEW_REPLICAS=6
 
 # Get current service details
-SERVICE=$(curl -s \
+SERVICE=$(curl -fsS \
   -H "X-API-Key: $API_KEY" \
-  "$PORTAINER_URL/api/endpoints/1/docker/services/$SERVICE_ID")
+  "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/services/$SERVICE_NAME")
+
+VERSION=$(echo "$SERVICE" | jq -r '.Version.Index')
+UPDATED_SPEC=$(echo "$SERVICE" | jq --argjson replicas "$NEW_REPLICAS" \
+  '.Spec | .Mode.Replicated.Replicas = $replicas')
 
 # Update replica count
-curl -X POST \
+curl -fsS -X POST \
   -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
-  "$PORTAINER_URL/api/endpoints/1/docker/services/$SERVICE_ID/update?version=$(echo $SERVICE | jq '.Version.Index')" \
-  -d "$(echo $SERVICE | jq --arg r "$NEW_REPLICAS" '.Spec.Mode.Replicated.Replicas = ($r|tonumber)')"
+  "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/services/$SERVICE_NAME/update?version=$VERSION" \
+  -d "$UPDATED_SPEC"
 
-echo "Scaled $SERVICE_ID to $NEW_REPLICAS replicas"
+echo "Scaled $SERVICE_NAME to $NEW_REPLICAS replicas"
 ```
 
 ## Step 5: Auto-Scaling with Custom Metrics
@@ -167,10 +176,10 @@ SERVICE="myapp_order_service"
 # Query CPU usage per replica
 CPU_USAGE=$(curl -s "$PROMETHEUS_URL/api/v1/query" \
   --data-urlencode "query=avg(rate(container_cpu_usage_seconds_total{container_label_com_docker_swarm_service_name=\"$SERVICE\"}[5m])) * 100" \
-  | jq -r '.data.result[0].value[1]')
+  | jq -r '.data.result[0].value[1] // "0"')
 
-# Current replicas
-CURRENT_REPLICAS=$(docker service ls --filter name=$SERVICE --format '{{.Replicas}}' | cut -d'/' -f1)
+# Current desired replicas
+CURRENT_REPLICAS=$(docker service inspect "$SERVICE" --format '{{.Spec.Mode.Replicated.Replicas}}')
 
 echo "CPU Usage: ${CPU_USAGE}% | Replicas: ${CURRENT_REPLICAS}"
 
@@ -199,35 +208,37 @@ fi
 
 ```bash
 # Run auto-scaler every 2 minutes
-echo "*/2 * * * * /usr/local/bin/autoscale.sh" | crontab -
+(crontab -l 2>/dev/null; echo "*/2 * * * * /usr/local/bin/autoscale.sh") | crontab -
 ```
 
 ## Step 6: Deploy Docker Autoscaler (3rd Party)
 
 ```yaml
-# docker-compose.yml - Docker Autoscaler (Orbica)
+# docker-compose.yml - Swarm Autoscaler
 services:
   autoscaler:
-    image: orbica/docker-autoscaler:latest
-    container_name: docker_autoscaler
-    restart: unless-stopped
+    image: vayzer/swarm-autoscaler:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - DOCKER_HOST=unix:///var/run/docker.sock
-      - AUTOSCALER_PROMETHEUS_URL=http://prometheus:9090
-      - AUTOSCALER_MIN_REPLICAS=2
-      - AUTOSCALER_MAX_REPLICAS=20
-      - AUTOSCALER_TARGET_CPU=60  # Target 60% CPU
-      - AUTOSCALER_SCALE_UP_COOLDOWN=60s
-      - AUTOSCALER_SCALE_DOWN_COOLDOWN=300s
+      - AUTOSCALER_INTERVAL=120
+      - AUTOSCALER_MIN_PERCENTAGE=20
+      - AUTOSCALER_MAX_PERCENTAGE=80
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          memory: 64M
 ```
 
 ## Monitoring Scale Events in Portainer
 
 1. Navigate to **Services** to see current replica counts
 2. Click a service to see individual task health
-3. Check **Service logs** for scale event messages
+3. Check **Service logs** for application behavior after scaling
 
 ```bash
 # View scale events
@@ -242,4 +253,4 @@ docker service ps myapp_order_service
 
 ## Conclusion
 
-Portainer makes horizontal scaling intuitive - just change the replica count in the UI. For production environments, combine manual scaling (for planned events like marketing campaigns) with auto-scaling scripts based on Prometheus metrics (for unexpected load spikes). Docker Swarm ensures replicas are distributed across nodes, and Traefik's load balancer automatically routes traffic to all healthy replicas. Resource limits prevent any single service from consuming all available CPU and memory.
+Portainer makes horizontal scaling intuitive - just change the replica count in the UI. For production environments, combine manual scaling (for planned events like marketing campaigns) with auto-scaling scripts based on Prometheus metrics (for unexpected load spikes). Docker Swarm schedules replicas across eligible nodes, and Traefik routes traffic to the matching service tasks. Resource limits cap each replica's CPU and memory use.
