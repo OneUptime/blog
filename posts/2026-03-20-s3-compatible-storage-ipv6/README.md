@@ -25,7 +25,7 @@ aws s3 ls \
     --endpoint-url https://s3.dualstack.us-east-1.amazonaws.com \
     s3://mybucket
 
-# List buckets over IPv6
+# List buckets through the dual-stack endpoint
 aws s3api list-buckets \
     --endpoint-url https://s3.dualstack.us-east-1.amazonaws.com
 ```
@@ -39,7 +39,7 @@ aws s3api list-buckets \
 import boto3
 from botocore.config import Config
 
-# AWS S3 dual-stack endpoint (prefers IPv6 when available)
+# AWS S3 dual-stack endpoint (IPv6 is used when selected by the client/network)
 s3_aws = boto3.client(
     's3',
     region_name='us-east-1',
@@ -94,8 +94,7 @@ radosgw-admin user create --uid=testuser --display-name="Test User"
 
 # Access Ceph RGW S3 over IPv6
 aws s3 ls \
-    --endpoint-url http://[2001:db8::10]:7480 \
-    --no-verify-ssl
+    --endpoint-url http://[2001:db8::10]:7480
 
 # Or with mc (MinIO client)
 mc alias set ceph-rgw http://[2001:db8::10]:7480 accesskey secretkey
@@ -106,7 +105,7 @@ mc ls ceph-rgw
 
 ```bash
 # Generate TLS certificate for IPv6 SAN
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+openssl req -x509 -noenc -days 365 -newkey rsa:2048 \
     -keyout /etc/minio/certs/private.key \
     -out /etc/minio/certs/public.crt \
     -subj "/CN=minio" \
@@ -132,14 +131,14 @@ provider = Minio
 endpoint = http://[2001:db8::10]:9000
 access_key_id = minioadmin
 secret_access_key = minioadmin
-path_style = true
+force_path_style = true
 
 [aws-dualstack]
 type = s3
 provider = AWS
 region = us-east-1
 # Use dual-stack endpoint for IPv6
-endpoint = https://s3.dualstack.us-east-1.amazonaws.com
+use_dual_stack = true
 ```
 
 ```bash
@@ -192,4 +191,4 @@ traceroute6 2001:db8::10
 
 ## Conclusion
 
-S3-compatible storage over IPv6 requires the server to listen on `[::]:port` or specific IPv6 addresses, and clients to use bracket notation for IPv6 endpoint URLs (e.g., `http://[2001:db8::10]:9000`). AWS SDK clients support dual-stack endpoints via `use_dualstack_endpoint: True`, which prefers IPv6 when available. Self-hosted solutions like MinIO and Ceph RGW bind to IPv6 via their respective configuration options. TLS certificates for IPv6 endpoints must include the IPv6 address as a Subject Alternative Name (SAN) IP entry. The S3 API protocol and authentication mechanisms work identically over IPv6 as over IPv4.
+S3-compatible storage over IPv6 requires the server to listen on `[::]:port` or specific IPv6 addresses, and clients to use bracket notation for IPv6 endpoint URLs (e.g., `http://[2001:db8::10]:9000`). AWS SDK clients support dual-stack endpoints via `use_dualstack_endpoint: True`; actual IPv4 or IPv6 selection depends on the client and network stack. Self-hosted solutions like MinIO and Ceph RGW bind to IPv6 via their respective configuration options. TLS certificates for IPv6 endpoints must include the IPv6 address as a Subject Alternative Name (SAN) IP entry. The S3 API protocol and authentication mechanisms work identically over IPv6 as over IPv4.
