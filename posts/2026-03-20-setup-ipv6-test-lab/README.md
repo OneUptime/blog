@@ -64,9 +64,10 @@ ip netns exec r2 ip -6 addr add 2001:db8:2::1/128 dev lo
 ip netns exec r3 ip -6 addr add 2001:db8:3::1/128 dev lo
 
 # Bring up interfaces
-for NS in r1 r2 r3; do
-    ip netns exec ${NS} ip link set $(ip netns exec ${NS} ip link show | grep veth | head -1 | awk '{print $2}' | tr -d ':') up
-done
+ip netns exec r1 ip link set r1-r2-a up
+ip netns exec r2 ip link set r1-r2-b up
+ip netns exec r2 ip link set r2-r3-a up
+ip netns exec r3 ip link set r2-r3-b up
 
 # Enable IPv6 forwarding
 for NS in r1 r2 r3; do
@@ -74,10 +75,12 @@ for NS in r1 r2 r3; do
 done
 
 # Add static routes
-ip netns exec r1 ip -6 route add 2001:db8:3::1/128 via 2001:db8:12::2
-ip netns exec r3 ip -6 route add 2001:db8:1::1/128 via 2001:db8:23::1
+ip netns exec r1 ip -6 route add default via 2001:db8:12::2
+ip netns exec r2 ip -6 route add 2001:db8:1::1/128 via 2001:db8:12::1
+ip netns exec r2 ip -6 route add 2001:db8:3::1/128 via 2001:db8:23::2
+ip netns exec r3 ip -6 route add default via 2001:db8:23::1
 
-echo "Lab ready. Test with: ip netns exec r1 ping6 2001:db8:3::1"
+echo "Lab ready. Test with: ip netns exec r1 ping -6 2001:db8:3::1"
 ```
 
 ## Installing FRRouting for Dynamic Routing
@@ -93,15 +96,15 @@ systemctl restart frr
 # Configure OSPFv3
 vtysh << 'EOF'
 configure terminal
-ipv6 router ospf6
- router-id 1.0.0.1
+router ospf6
+ ospf6 router-id 1.0.0.1
  area 0.0.0.0 range 2001:db8:1::/48
 !
 interface eth0
  ipv6 ospf6 area 0.0.0.0
 !
 end
-write
+write memory
 EOF
 ```
 
@@ -115,24 +118,29 @@ echo "=== IPv6 Lab Validation ==="
 
 # 1. Link-local addresses assigned
 echo "1. Link-local addresses:"
-ip -6 addr show scope link | grep inet6
+for NS in r1 r2 r3; do
+    ip netns exec ${NS} ip -6 addr show scope link | grep inet6
+done
 
-# 2. Router advertisements received
-echo "2. Router discovery:"
-ip -6 route show | grep ra
+# 2. Static routes installed
+echo "2. Static routes:"
+ip netns exec r1 ip -6 route show default
+ip netns exec r2 ip -6 route show 2001:db8:1::1/128
+ip netns exec r2 ip -6 route show 2001:db8:3::1/128
+ip netns exec r3 ip -6 route show default
 
 # 3. End-to-end reachability
 echo "3. Reachability tests:"
-ping6 -c 1 -W 2 2001:db8:3::1 &>/dev/null && \
+ip netns exec r1 ping -6 -c 1 -W 2 2001:db8:3::1 &>/dev/null && \
     echo "   r1 → r3: OK" || echo "   r1 → r3: FAIL"
 
 # 4. DNS resolution
-echo "4. DNS AAAA lookup:"
+echo "4. DNS AAAA lookup (host):"
 host -t AAAA ipv6.google.com 8.8.8.8 | grep 'has IPv6'
 
 # 5. MTU path
 echo "5. MTU discovery:"
-ping6 -c 1 -M do -s 1400 2001:db8:3::1 &>/dev/null && \
+ip netns exec r1 ping -6 -c 1 -M do -s 1400 2001:db8:3::1 &>/dev/null && \
     echo "   1400-byte ping OK" || echo "   MTU issue at 1400 bytes"
 ```
 
