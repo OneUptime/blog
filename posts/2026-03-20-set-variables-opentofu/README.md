@@ -8,7 +8,7 @@ Description: A guide to using set type variables in OpenTofu for unique, unorder
 
 ## Introduction
 
-Set variables hold unique, unordered collections of values of the same type. Unlike lists, sets do not allow duplicate values and have no guaranteed order. Sets are particularly useful with `for_each` for creating resources where each item needs a stable, unique identifier.
+Set variables hold unique, unordered collections of values of the same type. Unlike lists, sets do not allow duplicate values and have no guaranteed order. Sets of strings are particularly useful with `for_each` for creating resources where each item needs a stable, unique identifier.
 
 ## Declaring Set Variables
 
@@ -46,7 +46,7 @@ variable "allowed_instance_types" {
   default = ["t3.micro", "t3.small", "t3.medium"]
 }
 
-# for_each works naturally with sets
+# for_each works naturally with sets of strings
 # Each element becomes a unique resource key
 resource "aws_iam_policy" "instance_policy" {
   for_each = var.allowed_instance_types
@@ -103,7 +103,7 @@ locals {
   # Check membership
   has_alice = contains(var.team_members, "alice")  # true
 
-  # Set operations (using for expressions)
+  # Set operations (using built-in functions)
   # Intersection-like
   active_members    = toset(["alice", "bob", "dave"])
   team_set          = var.team_members
@@ -131,18 +131,17 @@ resource "aws_security_group" "app" {
   vpc_id = aws_vpc.main.id
 }
 
-resource "aws_security_group_rule" "inbound" {
-  for_each = var.allowed_ports
+resource "aws_vpc_security_group_ingress_rule" "inbound" {
+  for_each = { for port in var.allowed_ports : tostring(port) => port }
 
-  type              = "ingress"
   security_group_id = aws_security_group.app.id
   from_port         = each.value
   to_port           = each.value
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
+  ip_protocol       = "tcp"
+  cidr_ipv4         = "0.0.0.0/0"
 }
 ```
 
 ## Conclusion
 
-Set variables are ideal for collections that need uniqueness guarantees and will be used with `for_each`. Unlike lists, sets provide stable keys for resource addressing, making state management more predictable when items are added or removed. Use sets when order doesn't matter and uniqueness is important, such as for port numbers, environment names, or unique identifiers.
+Set variables are ideal for collections that need uniqueness guarantees and will be used to build `for_each` collections. Unlike lists, string sets or maps derived from sets provide stable keys for resource addressing, making state management more predictable when items are added or removed. Use sets when order doesn't matter and uniqueness is important, such as for port numbers, environment names, or unique identifiers.
