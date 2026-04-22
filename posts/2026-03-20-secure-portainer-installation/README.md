@@ -21,26 +21,26 @@ docker run -d \
   -p 9443:9443 \
   --name portainer \
   --restart always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  -v /path/to/cert.pem:/certs/cert.pem:ro \
-  -v /path/to/key.pem:/certs/key.pem:ro \
-  portainer/portainer-ce:latest \
-  --ssl \
-  --sslcert /certs/cert.pem \
-  --sslkey /certs/key.pem
+  -v /path/to/your/certs:/certs:ro \
+  portainer/portainer-ce:sts \
+  --http-disabled \
+  --sslcert /certs/portainer.crt \
+  --sslkey /certs/portainer.key
 ```
 
 ## 2. Use a Strong Admin Password
 
 Portainer requires a minimum 12-character password by default. Use a password manager to generate a strong random password.
 
-## 3. Rename the Default Admin Username
+## 3. Set a Non-Default Admin Username
 
-Using a non-default admin username prevents automated attacks that target the default `admin` account.
+During initial setup, the username defaults to `admin` but can be changed. Using a non-default admin username prevents automated attacks that target the default `admin` account.
 
-## 4. Enable Two-Factor Authentication (Business Edition)
+## 4. Use External Authentication for MFA/2FA
 
-2FA adds a critical second layer to admin authentication.
+Portainer's internal authentication does not provide native 2FA. If MFA/2FA is required, configure an external identity provider such as OAuth, LDAP, or Active Directory.
 
 ## 5. Restrict Network Access
 
@@ -49,9 +49,13 @@ Only expose Portainer to trusted networks:
 ```bash
 # Bind Portainer to a specific IP (internal network only)
 docker run -d \
-  -p 192.168.1.10:9443:9443 \  # Only bind to internal IP
+  -p 192.168.1.10:9443:9443 \
   --name portainer \
-  portainer/portainer-ce:latest
+  --restart always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:sts \
+  --http-disabled
 ```
 
 ```nginx
@@ -68,56 +72,67 @@ location / {
 
 ```bash
 # Disable Edge agent features if not using Edge
-# In Portainer Settings > Edge Compute > Disable Edge portal
+# In Portainer Settings > Edge Compute, turn off "Enable Edge Compute features"
 ```
 
 ## 7. Configure Security Policies
 
-In **Settings > Security**:
+In **Settings > Authentication**:
 
-- Disable `Allow users to use public images from external registries`.
-- Enable `Require authentication to access Portainer`.
-- Set session timeout to 4 hours or less.
+- Use external authentication for production or internet-facing deployments, especially when MFA/2FA is required.
+- Keep the minimum password length at 12 characters or higher.
+- Set session lifetime to 4 hours or less.
 
 ## 8. Apply Container Security Policies
 
 For each Docker/Swarm environment:
 
 ```text
-Settings > Environments > [Your Env] > Security settings:
-- Disable: Allow privileged mode
-- Disable: Allow bind mounts
-- Disable: Allow host PID
-- Disable: Allow host IPC
-- Disable: Allow host network
+Host/Swarm > Setup > Docker Security Settings:
+- Enable: Hide privileged mode for non-administrators
+- Enable: Hide bind mounts for non-administrators
+- Enable: Hide the use of host PID 1 for non-administrators
+- Enable: Hide device mappings for non-administrators
+- Enable: Hide container capabilities for non-administrators
+- Enable: Hide sysctl settings for non-administrators
+- Enable: Hide security-opt for non-administrators
 ```
 
 ## 9. Keep Portainer Updated
 
 ```bash
 # Update Portainer to the latest version
-docker pull portainer/portainer-ce:latest
 docker stop portainer
 docker rm portainer
-docker run -d ... portainer/portainer-ce:latest
+docker pull portainer/portainer-ce:sts
+docker run -d \
+  -p 9443:9443 \
+  --name portainer \
+  --restart always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:sts \
+  --http-disabled
 ```
 
 ## 10. Monitor Access Logs
 
-```bash
-# Review Portainer access logs
-docker logs portainer 2>&1 | grep -E "Login|Failed|Unauthorized" | tail -50
+```text
+# Portainer Business Edition: Logs > Authentication
+# For Community Edition, monitor your reverse proxy or firewall access logs for requests to Portainer.
 ```
 
 ## 11. Backup Portainer Data
 
 ```bash
-# Backup Portainer's data volume
+# Stop Portainer before a raw volume backup to avoid copying a changing database
+docker stop portainer
 docker run --rm \
-  -v portainer_data:/data \
+  -v portainer_data:/data:ro \
   -v /backup:/backup \
   busybox \
-  tar czf /backup/portainer-backup-$(date +%Y%m%d).tar.gz /data
+  tar czf /backup/portainer-backup-$(date +%Y%m%d).tar.gz -C /data .
+docker start portainer
 ```
 
 ## Conclusion
