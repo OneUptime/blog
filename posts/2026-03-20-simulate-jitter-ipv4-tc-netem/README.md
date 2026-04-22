@@ -54,7 +54,7 @@ ping -c 100 -i 0.1 8.8.8.8
 
 # Expected output:
 # rtt min/avg/max/mdev = 175.2/200.3/225.4/12.8 ms
-# mdev (mean deviation) = jitter value
+# mdev (population standard deviation) shows RTT variability
 
 # Use mtr for ongoing measurement
 mtr --report --report-cycles 100 8.8.8.8
@@ -96,7 +96,7 @@ iperf3 -s
 # On client (UDP mode):
 iperf3 -c <SERVER_IP> -u -b 10M -t 30
 
-# iperf3 output includes: Jitter  x ms  Packet Loss x%
+# iperf3 UDP output includes: Jitter x ms  Lost/Total Datagrams x/y (z%)
 ```
 
 ## Cleanup
