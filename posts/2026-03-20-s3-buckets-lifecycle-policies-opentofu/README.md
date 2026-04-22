@@ -26,7 +26,7 @@ resource "aws_s3_bucket" "logs" {
 
 ## Defining a Lifecycle Policy
 
-The following example transitions objects through storage classes and expires them after 365 days:
+The following example transitions eligible objects through storage classes and expires them after 365 days:
 
 ```hcl
 resource "aws_s3_bucket_lifecycle_configuration" "logs_lifecycle" {
@@ -64,12 +64,14 @@ resource "aws_s3_bucket_lifecycle_configuration" "logs_lifecycle" {
 
 ## Handling Incomplete Multipart Uploads
 
-It's also good practice to abort incomplete multipart uploads:
+It's also good practice to add another rule to the same lifecycle configuration to abort incomplete multipart uploads:
 
 ```hcl
 rule {
   id     = "abort-incomplete-multipart"
   status = "Enabled"
+
+  filter {}
 
   abort_incomplete_multipart_upload {
     days_after_initiation = 7
@@ -79,12 +81,14 @@ rule {
 
 ## Expiring Old Versions
 
-If versioning is enabled on the bucket, you can expire non-current versions:
+If versioning is enabled on the bucket, you can add another rule to the same lifecycle configuration to expire non-current versions:
 
 ```hcl
 rule {
   id     = "expire-old-versions"
   status = "Enabled"
+
+  filter {}
 
   noncurrent_version_expiration {
     noncurrent_days = 90
