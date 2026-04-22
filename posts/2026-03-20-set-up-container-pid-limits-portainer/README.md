@@ -22,7 +22,6 @@ The host typically has a `pid_max` of 32,768 or more. A container using all avai
 ## Setting PID Limits in Portainer Stacks
 
 ```yaml
-version: "3.8"
 services:
   webapp:
     image: myapp:1.2.3
@@ -95,23 +94,16 @@ services:
 
 ## Kubernetes PID Limits via Portainer
 
-In Kubernetes, PID limits are set at the pod level via the container's resources:
+In Kubernetes, PID limits are not set in the Pod spec's container resources. They are configured at the node level by the kubelet:
 
 ```yaml
-# k8s-pid-limits.yaml
-apiVersion: v1
-kind: Pod
-spec:
-  containers:
-    - name: app
-      image: myapp:1.2.3
-      resources:
-        limits:
-          # Process IDs as a resource (Kubernetes 1.20+)
-          # Requires --pod-pids-limit in kubelet config
+# kubelet-config.yaml
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+podPidsLimit: 100  # Maximum PIDs in any pod on this node
 ```
 
-For Kubernetes, configure PID limits at the node level via kubelet's `--pod-pids-limit` flag.
+For Kubernetes, configure PID limits at the node level via kubelet's `--pod-max-pids` flag or the kubelet `podPidsLimit` configuration field.
 
 ## Monitoring PID Usage
 
@@ -120,7 +112,7 @@ For Kubernetes, configure PID limits at the node level via kubelet's `--pod-pids
 docker stats --no-stream --format "table {{.Name}}\t{{.PIDs}}" 
 
 # Get exact PID count for a specific container
-docker stats --no-stream container_name | awk 'NR==2 {print $7}'
+docker stats --no-stream --format "{{.PIDs}}" container_name
 ```
 
 ## Summary
