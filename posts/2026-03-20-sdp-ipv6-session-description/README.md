@@ -8,7 +8,7 @@ Description: Understand and configure SDP (Session Description Protocol) for IPv
 
 ---
 
-SDP (RFC 4566) describes multimedia sessions. For IPv6, the connection line (`c=`) and origin line (`o=`) use "IN IP6" instead of "IN IP4". IPv6 addresses appear WITHOUT brackets in SDP (unlike SIP headers).
+SDP (RFC 8866, which obsoletes RFC 4566) describes multimedia sessions. For IPv6, the connection line (`c=`) and origin line (`o=`) use "IN IP6" instead of "IN IP4". IPv6 addresses appear WITHOUT brackets in SDP (unlike IPv6 literal host portions in SIP URIs).
 
 ## SDP IPv6 Connection Line Syntax
 
@@ -24,9 +24,9 @@ a=<attribute>
 
 Example IPv6 SDP:
 v=0
-o=alice 2890844526 2890844526 IN IP6 2001:db8::alice
+o=alice 2890844526 2890844526 IN IP6 2001:db8::1
 s=Alice's IPv6 Session
-c=IN IP6 2001:db8::alice
+c=IN IP6 2001:db8::1
 t=0 0
 m=audio 49170 RTP/AVP 0 8 97
 a=rtpmap:0 PCMU/8000
@@ -48,7 +48,7 @@ c=IN IP4 192.0.2.1
 m=audio 49170 RTP/AVP 0
 
 IPv6 client SDP:
-c=IN IP6 2001:db8::media-server
+c=IN IP6 2001:db8::10
 m=audio 49180 RTP/AVP 0
 
 The media server translates between IPv4 and IPv6 RTP streams.
@@ -73,8 +73,8 @@ transport=transport-udp-ipv6
 ...
 
 # Asterisk generates:
-# c=IN IP6 2001:db8::asterisk
-# based on the transport's binding address
+# c=IN IP6 2001:db8::20
+# based on the selected IPv6 transport and media address
 ```
 
 ## Python SDP Parser for IPv6
@@ -108,7 +108,7 @@ def parse_sdp(sdp_text):
                 if idx + 1 < len(parts):
                     addr = parts[idx + 1]
                     try:
-                        ip = ipaddress.ip_address(addr)
+                        ip = ipaddress.IPv6Address(addr)
                         result['origin_address'] = str(ip)
                     except ValueError:
                         pass
@@ -122,7 +122,7 @@ def parse_sdp(sdp_text):
                 if ip_version == 'IP6':
                     # IPv6 in SDP has NO brackets
                     try:
-                        ip = ipaddress.ip_address(addr)
+                        ip = ipaddress.IPv6Address(addr)
                         result['connection_addresses'].append(str(ip))
                     except ValueError:
                         print(f"Warning: Invalid IPv6 in SDP: {addr}")
@@ -137,9 +137,9 @@ def parse_sdp(sdp_text):
 
 # Test SDP parsing
 test_sdp = """v=0
-o=alice 2890844526 2890844526 IN IP6 2001:db8::alice
+o=alice 2890844526 2890844526 IN IP6 2001:db8::1
 s=Test
-c=IN IP6 2001:db8::alice
+c=IN IP6 2001:db8::1
 t=0 0
 m=audio 49170 RTP/AVP 0
 a=rtpmap:0 PCMU/8000
@@ -172,7 +172,7 @@ a=sendrecv
     return sdp
 
 # Example
-sdp = generate_ipv6_sdp_offer("2001:db8::phone", 10000)
+sdp = generate_ipv6_sdp_offer("2001:db8::30", 10000)
 print(sdp)
 ```
 
@@ -181,11 +181,11 @@ print(sdp)
 ```text
 WebRTC SDP includes ICE candidates which DO show IPv6 addresses:
 
-a=candidate:1 1 udp 2113937151 2001:db8::client 50000 typ host
-a=candidate:2 1 udp 1845501695 2001:db8::stun 50001 typ srflx raddr 2001:db8::client rport 50000
+a=candidate:1 1 udp 2113937151 2001:db8::100 50000 typ host
+a=candidate:2 1 udp 1845501695 2001:db8::200 50001 typ srflx raddr 2001:db8::100 rport 50000
 a=rtcp-mux
 
 Note: IPv6 ICE candidates in SDP use raw IPv6 notation (no brackets)
 ```
 
-The key rule for IPv6 in SDP is that addresses appear WITHOUT brackets in the `c=` and `o=` lines (unlike SIP headers where brackets are required), making proper SDP generation and parsing critical for correct media path establishment in IPv6 VoIP deployments.
+The key rule for IPv6 in SDP is that addresses appear WITHOUT brackets in the `c=` and `o=` lines (unlike IPv6 literal host portions in SIP URIs where brackets are required), making proper SDP generation and parsing critical for correct media path establishment in IPv6 VoIP deployments.
