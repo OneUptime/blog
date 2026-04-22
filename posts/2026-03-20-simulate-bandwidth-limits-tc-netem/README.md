@@ -6,16 +6,16 @@ Tags: tc, Netem, IPv4, Bandwidth, Network Simulation, Linux
 
 Description: Use tc netem's rate option to simulate constrained IPv4 bandwidth on a network interface for testing application behavior under limited throughput.
 
-The netem `rate` parameter allows you to simulate a specific bandwidth cap directly within the netem qdisc, making it easy to emulate slow connections like DSL, mobile networks, or degraded WAN links.
+The netem `rate` parameter allows you to simulate a specific bandwidth cap directly within the netem qdisc, making it easy to emulate slow connections like DSL, mobile networks, or degraded WAN links. Applied as a root qdisc, these examples shape outbound traffic from the interface; use IFB or traffic classification when you need inbound or IPv4-only shaping.
 
 ## Basic Bandwidth Simulation
 
 ```bash
-# Simulate a 1 Mbps connection (typical slow DSL)
+# Simulate a 1 Mbps outbound link (typical slow DSL)
 
 sudo tc qdisc add dev eth0 root netem rate 1mbit
 
-# Simulate a 10 Mbps connection
+# Simulate a 10 Mbps outbound link
 sudo tc qdisc add dev eth0 root netem rate 10mbit
 
 # Verify
@@ -43,7 +43,7 @@ sudo tc qdisc add dev eth0 root netem \
 # Dial-up modem (56K)
 sudo tc qdisc add dev eth0 root netem rate 56kbit delay 150ms
 
-# ADSL (2 Mbps down, asymmetric - use IFB for inbound shaping)
+# ADSL-style (2 Mbps outbound; use IFB for inbound shaping)
 sudo tc qdisc add dev eth0 root netem rate 2mbit delay 20ms
 
 # Cable internet (50 Mbps)
@@ -59,7 +59,7 @@ sudo tc qdisc add dev eth0 root netem rate 20mbit delay 40ms 10ms 20%
 ## Testing Bandwidth with iperf3
 
 ```bash
-# Apply a 10 Mbps limit
+# Apply a 10 Mbps outbound limit
 sudo tc qdisc add dev eth0 root netem rate 10mbit
 
 # Test actual throughput with iperf3
@@ -84,17 +84,16 @@ sudo tc qdisc change dev eth0 root netem rate 5mbit
 ## Rate with Packet Overhead Accounting
 
 ```bash
-# Account for Ethernet frame overhead (26 bytes per frame)
+# Account for additional per-packet overhead (26 bytes)
 sudo tc qdisc add dev eth0 root netem \
-  rate 10mbit \
-  packetoverhead 26
+  rate 10mbit 26
 ```
 
 ## Using netem Rate vs. TBF for Rate Limiting
 
 | Feature | netem rate | TBF |
 |---|---|---|
-| Burst support | No | Yes |
+| Configurable burst support | No | Yes |
 | Combine with loss/delay | Yes | No (separately) |
 | Accuracy at low rates | Good | Excellent |
 | Use case | Testing/simulation | Production rate limiting |
