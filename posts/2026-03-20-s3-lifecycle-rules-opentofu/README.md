@@ -13,7 +13,7 @@ S3 lifecycle rules automate the movement of objects through storage tiers as the
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with S3 permissions
+- AWS credentials with S3 and CloudWatch permissions
 
 ## Step 1: Create an S3 Bucket
 
@@ -33,6 +33,8 @@ resource "aws_s3_bucket_versioning" "data" {
 
 ```hcl
 resource "aws_s3_bucket_lifecycle_configuration" "data" {
+  depends_on = [aws_s3_bucket_versioning.data]
+
   bucket = aws_s3_bucket.data.id
 
   # Rule for application logs
@@ -56,7 +58,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "data" {
       storage_class = "GLACIER"
     }
 
-    # Permanently delete after 365 days
+    # Expire current versions after 365 days
     expiration {
       days = 365
     }
@@ -68,7 +70,6 @@ resource "aws_s3_bucket_lifecycle_configuration" "data" {
     status = "Enabled"
 
     filter {
-      prefix = "analytics/"
       # Filter by tags too
       and {
         prefix = "analytics/"
@@ -130,7 +131,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "data" {
       prefix = "tmp/"
     }
 
-    # Delete temporary files after 7 days
+    # Expire current temporary files after 7 days
     expiration {
       days = 7
     }
@@ -138,10 +139,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "data" {
 }
 ```
 
-## Step 3: Monitor Storage Class Distribution
+## Step 3: Monitor Standard Storage Size
 
 ```hcl
-# CloudWatch metric to track S3 storage costs
+# CloudWatch metric to track S3 Standard storage size
 
 resource "aws_cloudwatch_metric_alarm" "s3_storage" {
   alarm_name          = "${var.bucket_name}-storage-size"
@@ -170,4 +171,4 @@ tofu apply
 
 ## Conclusion
 
-S3 lifecycle rules are one of the most effective cost optimization tools for S3. A typical transition pattern-STANDARD for 30 days, STANDARD_IA for 30-90 days, GLACIER for 90-365 days, then DELETE-can reduce storage costs by 80%+ for log data. Always configure `abort_incomplete_multipart_upload` to prevent orphaned uploads from accumulating hidden costs.
+S3 lifecycle rules are one of the most effective cost optimization tools for S3. A typical transition pattern-STANDARD for 30 days, STANDARD_IA for 30-90 days, GLACIER for 90-365 days, then expire current versions-can reduce storage costs by 80%+ for log data. Always configure `abort_incomplete_multipart_upload` to prevent orphaned uploads from accumulating hidden costs.
