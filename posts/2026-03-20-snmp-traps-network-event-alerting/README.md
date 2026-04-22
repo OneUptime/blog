@@ -17,9 +17,9 @@ SNMP traps are unsolicited notifications sent by a network device to a managemen
 | linkDown/linkUp | Interface status change |
 | coldStart/warmStart | Router rebooted |
 | authenticationFailure | Wrong SNMP community |
-| bgpBackwardTransition | BGP session dropped |
+| bgpBackwardTransNotification | BGP session dropped (legacy name: bgpBackwardTransition) |
 | ospfNbrStateChange | OSPF neighbor state change |
-| envMonTemperature | Temperature threshold |
+| ciscoEnvMonTemperatureNotification | Temperature threshold |
 
 ## Step 1: Configure Traps on the Cisco Device
 
@@ -31,15 +31,18 @@ Router(config)# snmp-server host 192.168.1.100 version 2c public
 Router(config)# snmp-server enable traps snmp authentication linkdown linkup
 Router(config)# snmp-server enable traps bgp
 Router(config)# snmp-server enable traps ospf state-change
-Router(config)# snmp-server enable traps config                ! Config changes
-Router(config)# snmp-server enable traps syslog               ! Syslog-level events
-Router(config)# snmp-server enable traps envmon temperature   ! Temperature alerts
+! Config changes
+Router(config)# snmp-server enable traps config
+! Syslog-level events
+Router(config)# snmp-server enable traps syslog
+! Temperature alerts
+Router(config)# snmp-server enable traps envmon temperature
 
 ! Set source interface for traps
 Router(config)# snmp-server trap-source Loopback0
 
-! Set retry parameters
-Router(config)# snmp-server trap-timeout 30    ! Retry every 30 seconds
+! Set retransmission interval for traps queued because no route is available
+Router(config)# snmp-server trap timeout 30
 ```
 
 ## Step 2: Install and Configure snmptrapd on Linux
@@ -50,7 +53,7 @@ Router(config)# snmp-server trap-timeout 30    ! Retry every 30 seconds
 sudo apt-get install -y snmp snmptrapd
 
 # Configure snmptrapd to accept traps
-cat > /etc/snmp/snmptrapd.conf << 'EOF'
+sudo tee /etc/snmp/snmptrapd.conf > /dev/null << 'EOF'
 # Accept SNMPv2c traps with community "public"
 authCommunity log,execute,net public
 
@@ -77,14 +80,17 @@ sudo systemctl start snmptrapd
 TRAP_DATA=$(cat)
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 HOSTNAME=$(echo "$TRAP_DATA" | head -1)
-TRAP_OID=$(echo "$TRAP_DATA" | grep snmpTrapOID | awk '{print $NF}')
+TRAP_OID=$(echo "$TRAP_DATA" | awk '/snmpTrapOID|1\.3\.6\.1\.6\.3\.1\.1\.4\.1\.0/ {print $NF; exit}')
 
 # Log all traps
 echo "${TIMESTAMP} | ${HOSTNAME} | ${TRAP_OID}" >> /var/log/snmp_traps.log
 
 # Alert on interface down
-if echo "$TRAP_OID" | grep -q "linkDown"; then
-    INTERFACE=$(echo "$TRAP_DATA" | grep ifDescr | awk '{print $NF}')
+if echo "$TRAP_OID" | grep -Eq "linkDown|1\.3\.6\.1\.6\.3\.1\.1\.5\.3"; then
+    INTERFACE=$(echo "$TRAP_DATA" | awk '/ifDescr|1\.3\.6\.1\.2\.1\.2\.2\.1\.2/ {print $NF; exit}')
+    if [ -z "$INTERFACE" ]; then
+        INTERFACE=$(echo "$TRAP_DATA" | awk '/ifIndex|1\.3\.6\.1\.2\.1\.2\.2\.1\.1/ {print $NF; exit}')
+    fi
     echo "${TIMESTAMP} ALERT: ${HOSTNAME} interface ${INTERFACE} went DOWN" >> /var/log/alerts.log
     # Send webhook alert
     curl -s -X POST "https://hooks.example.com/alerts" \
@@ -92,14 +98,14 @@ if echo "$TRAP_OID" | grep -q "linkDown"; then
          -d "{\"text\": \"Interface DOWN: ${HOSTNAME} - ${INTERFACE}\"}"
 fi
 
-# Alert on BGP session drop
-if echo "$TRAP_OID" | grep -q "bgpBackwardTransition"; then
+# Alert on BGP session drop (current and legacy BGP4-MIB names)
+if echo "$TRAP_OID" | grep -Eq "bgpBackwardTransNotification|bgpBackwardTransition|1\.3\.6\.1\.2\.1\.15\.(0\.2|7\.2)"; then
     echo "${TIMESTAMP} CRITICAL: BGP session dropped on ${HOSTNAME}" >> /var/log/alerts.log
 fi
 ```
 
 ```bash
-chmod +x /usr/local/bin/handle_snmp_trap.sh
+sudo chmod +x /usr/local/bin/handle_snmp_trap.sh
 ```
 
 ## Step 4: Test Trap Delivery
@@ -127,19 +133,22 @@ You should see a linkDown trap in the log within seconds.
 
 ## Step 5: Integrate with Monitoring Tools
 
-Many monitoring platforms (Zabbix, Nagios, Grafana, etc.) have built-in SNMP trap receivers. For Zabbix:
+Many monitoring platforms can ingest SNMP trap events directly or through receivers such as `snmptrapd` and SNMPTT. For Zabbix:
 
-```xml
-<!-- zabbix_trappers.conf snippet -->
-<!-- Define a trap item linked to a host -->
-<!-- Type: SNMP trap, Key: snmptrap.fallback -->
+```text
+# zabbix_server.conf or zabbix_proxy.conf
+StartSNMPTrapper=1
+SNMPTrapperFile=/path/to/zabbix-formatted-trap-file
+
+# Define a trap item linked to a host
+# Type: SNMP trap, Key: snmptrap.fallback
 ```
 
 ## Step 6: Verify Traps Are Arriving
 
 ```bash
 # Check snmptrapd is listening
-ss -lunp | grep 162
+sudo ss -lunp | grep ':162'
 
 # View received traps in snmptrapd log
 journalctl -u snmptrapd -f
