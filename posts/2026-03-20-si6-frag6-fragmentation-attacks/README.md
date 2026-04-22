@@ -13,32 +13,32 @@ The `frag6` tool from the SI6 Networks IPv6 toolkit tests IPv6 fragmentation han
 ## Installing the SI6 Networks Toolkit
 
 ```bash
-sudo apt-get install ipv6toolkit   # Debian/Ubuntu
-sudo pacman -S ipv6toolkit          # Arch Linux
+sudo apt-get install ipv6toolkit   # Debian/Ubuntu/Kali
+# Arch Linux: install the AUR package named ipv6toolkit with your preferred AUR workflow
 ```
 
 ## IPv6 Fragmentation Basics
 
 IPv6 uses a Fragment Extension Header (Next Header value 44) to carry fragmented packets. Each fragment includes:
 - Fragment ID (32-bit, identifies which fragments belong together)
-- Fragment Offset (13-bit, position of this fragment in original datagram)
+- Fragment Offset (13-bit, in 8-octet units relative to the fragmentable part)
 - More Fragments (M) flag
 
 ## Basic frag6 Usage
 
 ```bash
-# Send fragmented packets to a target
+# Send an IPv6 atomic fragment to a target
 
-sudo frag6 -i eth0 -d 2001:db8::target
+sudo frag6 -i eth0 -d 2001:db8::1 --frag-type atomic
 
-# Fragment at a specific size
-sudo frag6 -i eth0 -d 2001:db8::target --frag-size 64
+# Send a first fragment at a specific payload size
+sudo frag6 -i eth0 -d 2001:db8::1 --frag-type first --frag-size 64
 
-# Send overlapping fragments (tests reassembly ambiguity)
-sudo frag6 -i eth0 -d 2001:db8::target --overlap
+# Assess reassembly behavior with overlapping-fragment tests
+sudo frag6 -i eth0 -d 2001:db8::1 --frag-reass-policy -v
 
-# Send a fragmented packet with a specific payload
-sudo frag6 -i eth0 -d 2001:db8::target --data "test payload"
+# Send a fragment without the timestamp payload used for timeout measurement
+sudo frag6 -i eth0 -d 2001:db8::1 --frag-type middle --frag-size 104 --no-timestamp
 ```
 
 ## Tiny Fragment Attack
@@ -46,37 +46,34 @@ sudo frag6 -i eth0 -d 2001:db8::target --data "test payload"
 Small fragments can cause some firewalls to fail to inspect the upper-layer header:
 
 ```bash
-# Send extremely small fragments (8 bytes - minimum)
-sudo frag6 -i eth0 -d 2001:db8::target --frag-size 8
+# Send the smallest first-fragment ICMPv6 Echo probe frag6 can build
+sudo frag6 -i eth0 -d 2001:db8::1 --frag-type first --frag-size 8
 
-# The first fragment is too small to contain the full TCP/UDP header
-# Some firewalls pass these without proper inspection
+# For non-ICMPv6 traffic, first fragments that do not contain the entire
+# header chain violate RFC 8200/RFC 7112 and should be dropped or rejected
 ```
 
 ## Overlapping Fragment Attack
 
-Overlapping fragments cause ambiguity during reassembly - different OSes use different policies to resolve overlaps:
+Overlapping fragments used to cause ambiguity during reassembly. Modern IPv6 nodes must discard the whole datagram when overlaps are detected, and `frag6` can test whether the target follows that behavior:
 
 ```bash
-# Send overlapping fragments (may bypass IDS signatures)
-sudo frag6 -i eth0 -d 2001:db8::target \
-  --overlap \
-  --overlap-data "AAAA"    # Data in overlapping region
-
-# Test different overlap strategies
-sudo frag6 -i eth0 -d 2001:db8::target --overlap-type first
-sudo frag6 -i eth0 -d 2001:db8::target --overlap-type last
+# Run frag6's built-in overlapping-fragment reassembly policy tests
+sudo frag6 -i eth0 -d 2001:db8::1 --frag-reass-policy -v
 ```
 
 ## Fragment ID Prediction and Collision
 
 ```bash
-# Set a specific Fragment ID
-sudo frag6 -i eth0 -d 2001:db8::target --frag-id 12345
+# Assess the target's Fragment ID generation policy
+sudo frag6 -i eth0 -d 2001:db8::1 --frag-id-policy -v
 
-# Send multiple fragments with same ID but different offsets (fragment confusion)
-sudo frag6 -i eth0 -d 2001:db8::target --frag-id 12345 --frag-offset 0
-sudo frag6 -i eth0 -d 2001:db8::target --frag-id 12345 --frag-offset 8
+# Set a specific Fragment ID
+sudo frag6 -i eth0 -d 2001:db8::1 --frag-id 12345 --frag-type first --frag-size 104
+
+# Send multiple fragments with the same ID but different byte offsets (fragment confusion)
+sudo frag6 -i eth0 -d 2001:db8::1 --frag-id 12345 --frag-type first --frag-offset 0 --frag-size 104
+sudo frag6 -i eth0 -d 2001:db8::1 --frag-id 12345 --frag-type middle --frag-offset 104 --frag-size 104
 ```
 
 ## Reassembly Timeout DoS
@@ -86,22 +83,25 @@ IPv6 hosts maintain a reassembly buffer for incomplete fragment sets. Sending fi
 ```bash
 # Send first fragments only (M-bit set, no final fragment)
 # Fills reassembly buffer until timeout (typically 60 seconds)
-sudo frag6 -i eth0 -d 2001:db8::target \
-  --frag-id-shuffle \    # Different fragment IDs
-  --no-last-frag \       # Never send the completing fragment
+sudo frag6 -i eth0 -d 2001:db8::1 \
+  --frag-type first \
+  --flood-frags 100 \
   --loop \
-  --sleep 0 \
-  --loop-count 10000
+  --sleep 5 \
+  --no-responses
 ```
 
 ## Testing Firewall Fragment Inspection
 
 ```bash
-# Test whether firewall passes fragmented ICMPv6
-sudo frag6 -i eth0 -d 2001:db8::target --proto icmpv6 --frag-size 16
+# Test whether firewall passes first-fragmented ICMPv6 Echo Requests
+sudo frag6 -i eth0 -d 2001:db8::1 --frag-type first --frag-size 16 -v
 
-# Test whether firewall passes fragmented TCP (trying to evade port filters)
-sudo frag6 -i eth0 -d 2001:db8::target --proto tcp --dport 443 --frag-size 8
+# Test whether firewall handles IPv6 atomic fragments
+sudo frag6 -i eth0 -d 2001:db8::1 --frag-type atomic -v
+
+# For fragmented TCP port-filter tests, use tcp6 rather than frag6
+sudo tcp6 -i eth0 -d 2001:db8::1 --dst-port 443 --frag-hdr 8
 ```
 
 ## Defenses Against IPv6 Fragmentation Attacks
@@ -109,19 +109,19 @@ sudo frag6 -i eth0 -d 2001:db8::target --proto tcp --dport 443 --frag-size 8
 ```bash
 # On Linux: limit fragment reassembly time and memory
 sysctl -w net.ipv6.ip6frag_time=30        # 30 second timeout (default 60)
-sysctl -w net.ipv6.ip6frag_high_thresh=4194304  # 4MB max reassembly memory
+sysctl -w net.ipv6.ip6frag_high_thresh=4194304  # 4MB reassembly memory threshold
 
 # Block all fragmented IPv6 with ip6tables (if your app doesn't need it)
-sudo ip6tables -A INPUT -m frag --fragmore -j DROP
+sudo ip6tables -A INPUT -m ipv6header --header frag --soft -j DROP
 
-# Linux kernel drops packets with fragment + routing header together
-# (mitigates some evasion techniques)
+# Modern IPv6 stacks must discard overlapping fragments; enforce extension-header
+# policy explicitly in your firewall for traffic your application does not need
 ```
 
 | Attack Type | Defense |
 |---|---|
-| Tiny fragments | Firewall minimum fragment size enforcement |
-| Overlapping fragments | RFC 5722 - discard overlapping fragments |
+| Tiny fragments | Enforce complete first-fragment header chain (RFC 7112/RFC 8200) |
+| Overlapping fragments | RFC 5722/RFC 8200 - discard overlapping fragments |
 | Reassembly DoS | Reduce frag timeout, limit memory |
 | Header inspection evasion | Deep packet inspection with reassembly |
 
