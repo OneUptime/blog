@@ -14,7 +14,6 @@ Rust's standard library `TcpStream` supports per-socket read and write timeouts 
 
 ```rust
 use std::net::TcpStream;
-use std::io::{Read, Write};
 use std::time::Duration;
 
 fn connect_with_timeouts(address: &str) -> std::io::Result<()> {
@@ -38,13 +37,16 @@ fn connect_with_timeouts(address: &str) -> std::io::Result<()> {
 ## Client with Send/Receive and Timeout Handling
 
 ```rust
-use std::net::TcpStream;
-use std::io::{self, Read, Write, BufRead, BufReader};
+use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+use std::io::{self, Write, BufRead, BufReader};
 use std::time::Duration;
 
 fn send_request(host: &str, port: u16) -> io::Result<String> {
-    // Force IPv4 by using a specific IPv4 address
-    let address = format!("{}:{}", host, port);
+    // Resolve the host and pick an IPv4 address
+    let address = (host, port)
+        .to_socket_addrs()?
+        .find(SocketAddr::is_ipv4)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::AddrNotAvailable, "no IPv4 address found"))?;
     let stream = TcpStream::connect(address)?;
     
     // Set timeouts
@@ -54,7 +56,7 @@ fn send_request(host: &str, port: u16) -> io::Result<String> {
     let mut stream = stream;
     
     // Write request
-    let request = "GET / HTTP/1.0\r\nHost: example.com\r\n\r\n";
+    let request = format!("GET / HTTP/1.0\r\nHost: {}\r\n\r\n", host);
     stream.write_all(request.as_bytes())?;
     
     // Read response
@@ -82,8 +84,11 @@ fn send_request(host: &str, port: u16) -> io::Result<String> {
 }
 
 fn main() {
-    match send_request("93.184.216.34", 80) {  // example.com IPv4
-        Ok(response) => println!("Response:\n{}", &response[..200.min(response.len())]),
+    match send_request("example.com", 80) {
+        Ok(response) => {
+            let preview: String = response.chars().take(200).collect();
+            println!("Response:\n{}", preview);
+        }
         Err(e) => eprintln!("Error: {}", e),
     }
 }
@@ -93,7 +98,7 @@ fn main() {
 
 ```rust
 use std::net::{TcpListener, TcpStream};
-use std::io::{Read, Write, BufRead, BufReader};
+use std::io::{Write, BufRead, BufReader};
 use std::time::Duration;
 use std::thread;
 
@@ -172,8 +177,8 @@ stream.set_write_timeout(None)?;
 
 | Error Kind | Meaning |
 |------------|---------|
-| `ErrorKind::WouldBlock` | Non-blocking socket would block (same as `TimedOut` on some platforms) |
-| `ErrorKind::TimedOut` | Explicit timeout expired |
+| `ErrorKind::WouldBlock` | Operation would need to block; timeout expiration is reported this way on Unix-like platforms |
+| `ErrorKind::TimedOut` | Timeout expired; Windows may report read/write timeouts this way |
 | `ErrorKind::ConnectionReset` | Remote peer reset the connection |
 | `ErrorKind::BrokenPipe` | Tried to write to a closed connection |
 
