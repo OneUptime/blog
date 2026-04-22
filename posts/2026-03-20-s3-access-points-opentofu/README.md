@@ -60,15 +60,25 @@ resource "aws_s3control_access_point_policy" "analytics" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { AWS = var.analytics_role_arn }
-      Action    = ["s3:GetObject", "s3:ListBucket"]
-      Resource = [
-        aws_s3_access_point.analytics.arn,
-        "${aws_s3_access_point.analytics.arn}/object/analytics/*"
-      ]
-    }]
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { AWS = var.analytics_role_arn }
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_access_point.analytics.arn}/object/analytics/*"
+      },
+      {
+        Effect    = "Allow"
+        Principal = { AWS = var.analytics_role_arn }
+        Action    = "s3:ListBucket"
+        Resource  = aws_s3_access_point.analytics.arn
+        Condition = {
+          StringLike = {
+            "s3:prefix" = ["analytics/*"]
+          }
+        }
+      }
+    ]
   })
 }
 
@@ -97,6 +107,8 @@ resource "aws_s3control_access_point_policy" "ingestion" {
 
 ```hcl
 # The bucket policy must delegate access to the access points
+data "aws_caller_identity" "current" {}
+
 resource "aws_s3_bucket_policy" "delegate_to_access_points" {
   bucket = aws_s3_bucket.shared_data.id
 
@@ -106,7 +118,7 @@ resource "aws_s3_bucket_policy" "delegate_to_access_points" {
       Sid    = "DelegateToAccessPoints"
       Effect = "Allow"
       Principal = "*"
-      Action    = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
+      Action    = ["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload", "s3:ListBucket"]
       Resource = [
         aws_s3_bucket.shared_data.arn,
         "${aws_s3_bucket.shared_data.arn}/*"
