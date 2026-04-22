@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Terraform, IaC, DevOps, AWS, Security, Encryption
 
-Description: Learn how to configure the OpenTofu S3 backend with server-side encryption using SSE-S3, SSE-KMS, and DSSE-KMS to protect state files at rest in Amazon S3.
+Description: Learn how to configure the OpenTofu S3 backend with server-side encryption using SSE-S3, SSE-KMS, and bucket-level DSSE-KMS to protect state files at rest in Amazon S3.
 
 ## Introduction
 
-Server-side encryption (SSE) ensures that your OpenTofu state files are encrypted at rest in S3. AWS offers three SSE options: SSE-S3 (S3-managed keys), SSE-KMS (AWS KMS-managed keys), and DSSE-KMS (dual-layer KMS encryption). This guide covers each option and when to use them.
+Server-side encryption (SSE) ensures that your OpenTofu state files are encrypted at rest in S3. This guide focuses on three AWS-managed S3 SSE options: SSE-S3 (S3-managed keys), SSE-KMS (AWS KMS-managed keys), and DSSE-KMS (dual-layer KMS encryption). It covers the OpenTofu backend settings for SSE-S3 and SSE-KMS, and the bucket-level default encryption configuration required for DSSE-KMS.
 
 ## Option 1: SSE-S3 (S3-Managed Keys)
 
@@ -21,9 +21,8 @@ terraform {
     key     = "prod/terraform.tfstate"
     region  = "us-east-1"
 
-    # Enable SSE-S3 encryption
-    encrypt               = true
-    server_side_encryption = "aws:s3"  # AES-256 with S3-managed keys
+    # Enable SSE-S3 encryption (AES-256 with S3-managed keys)
+    encrypt = true
   }
 }
 ```
@@ -44,7 +43,7 @@ terraform {
 
     encrypt = true
     # Use a specific KMS key
-    kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/mrk-abc123"
+    kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-4abc-9234-123456789012"
 
     # Or use the alias
     # kms_key_id = "alias/terraform-state"
@@ -73,7 +72,7 @@ resource "aws_kms_key" "s3_state" {
         Principal = {
           Service = "s3.amazonaws.com"
         }
-        Action = ["kms:GenerateDataKey", "kms:Decrypt"]
+        Action = ["kms:GenerateDataKey", "kms:Encrypt", "kms:Decrypt"]
         Resource = "*"
       },
       {
@@ -82,7 +81,7 @@ resource "aws_kms_key" "s3_state" {
         Principal = {
           AWS = "arn:aws:iam::123456789012:role/TerraformStateAccess"
         }
-        Action = ["kms:GenerateDataKey", "kms:Decrypt", "kms:DescribeKey"]
+        Action = ["kms:GenerateDataKey", "kms:Encrypt", "kms:Decrypt", "kms:DescribeKey"]
         Resource = "*"
       },
       {
@@ -149,26 +148,34 @@ resource "aws_s3_bucket_policy" "enforce_encryption" {
 
 ## Option 3: DSSE-KMS (Dual-Layer KMS Encryption)
 
-For compliance requirements needing double encryption:
+For compliance requirements needing double encryption, configure DSSE-KMS as the bucket default. OpenTofu's S3 backend does not have a DSSE-KMS-specific argument, so do not set `encrypt` or `kms_key_id` in the backend when you want S3 to apply the bucket's DSSE-KMS default:
 
 ```hcl
 terraform {
   backend "s3" {
-    bucket         = "my-terraform-state"
-    key            = "prod/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
+    bucket = "my-terraform-state"
+    key    = "prod/terraform.tfstate"
+    region = "us-east-1"
+  }
+}
 
-    # Dual-layer SSE with KMS
-    server_side_encryption = "aws:kms:dsse"
-    kms_key_id             = "arn:aws:kms:us-east-1:123456789012:key/mrk-abc123"
+resource "aws_s3_bucket_server_side_encryption_configuration" "state_dsse" {
+  bucket = aws_s3_bucket.terraform_state.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms:dsse"
+      kms_master_key_id = aws_kms_key.s3_state.arn
+    }
   }
 }
 ```
 
+Because this relies on the bucket default, do not combine it with a bucket policy that denies PUT requests solely because the `s3:x-amz-server-side-encryption` request header is absent.
+
 ## Combining S3 SSE with OpenTofu State Encryption
 
-For defense in depth, use both S3 SSE and OpenTofu's native state encryption:
+For defense in depth, use both S3 SSE and OpenTofu's native state encryption. For an existing unencrypted state, first migrate with an `unencrypted` fallback block as described by OpenTofu; the example below is for a new or already migrated state:
 
 ```hcl
 terraform {
@@ -183,6 +190,7 @@ terraform {
   encryption {
     key_provider "aws_kms" "opentofu_key" {
       kms_key_id = "alias/terraform-state-opentofu"  # OpenTofu-side encryption (different key)
+      key_spec   = "AES_256"
       region     = "us-east-1"
     }
 
