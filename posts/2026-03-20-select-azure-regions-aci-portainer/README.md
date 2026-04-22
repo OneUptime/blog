@@ -12,7 +12,7 @@ Choosing the right Azure region for ACI deployments affects:
 
 - **Latency**: Deploy close to your users or downstream services.
 - **Compliance**: Data residency laws may require specific geographic regions.
-- **Availability**: Not all Azure services and VM sizes are available in every region.
+- **Availability**: Not all ACI features, quotas, and regional capacity are available in every region.
 - **Cost**: Pricing varies slightly by region.
 
 ## Regions Available for ACI
@@ -20,28 +20,29 @@ Choosing the right Azure region for ACI deployments affects:
 ```bash
 # List all regions where ACI is available
 
-az provider show -n Microsoft.ContainerInstance \
-  --query "resourceTypes[?resourceType=='containerGroups'].locations" \
+az provider show --namespace Microsoft.ContainerInstance \
+  --query "resourceTypes[?resourceType=='containerGroups'].locations | [0]" \
   -o table
 ```
 
-Common ACI-supported regions:
+Common ACI-supported Azure CLI region names:
 - `eastus`, `eastus2` - US East Coast
 - `westus`, `westus2`, `westus3` - US West Coast
 - `northeurope`, `westeurope` - Europe
 - `eastasia`, `southeastasia` - Asia Pacific
 - `australiaeast` - Australia
 
-## Selecting a Region When Adding the ACI Environment in Portainer
+## Selecting a Region When Adding a Container in Portainer
 
-When connecting an ACI environment:
+After connecting an ACI environment:
 
-1. Go to **Environments > Add environment > Azure ACI**.
-2. Enter your subscription and resource group details.
-3. In the **Region** dropdown, select your target Azure region.
-4. Click **Connect**.
+1. Open the Azure ACI environment in Portainer.
+2. From the menu select **Container instances**, then click **Add container**.
+3. Select the subscription and resource group for the container.
+4. In the **Location** field, select your target Azure datacenter/region.
+5. Click **Deploy the container**.
 
-The region selection determines where new container groups are deployed.
+The location selection determines where that container group is deployed.
 
 ## Deploying to a Specific Region via CLI
 
@@ -51,7 +52,7 @@ az container create \
   --resource-group my-resource-group \
   --name my-app \
   --image nginx:alpine \
-  --location westeurope \   # Target region
+  --location westeurope \
   --cpu 1 \
   --memory 1 \
   --ports 80
@@ -91,13 +92,13 @@ az container create \
 Not all container configurations are available in every region:
 
 ```bash
-# Check if GPU containers are available in a region
-az container show -h  # Check supported GPU SKUs by region
-
-# Check availability zone support for ACI
-az provider show -n Microsoft.ContainerInstance \
-  --query "resourceTypes[?resourceType=='containerGroups'].zoneMappings"
+# Check availability zone support metadata for ACI container groups
+az provider show --namespace Microsoft.ContainerInstance \
+  --query "resourceTypes[?resourceType=='containerGroups'].zoneMappings | [0]" \
+  -o json
 ```
+
+GPU-enabled ACI container groups were retired on July 14, 2025. Check Microsoft's ACI resource availability and quota limits before selecting preview or specialized features such as Spot containers, confidential containers, or zonal deployments.
 
 ## Region Selection Checklist
 
@@ -109,4 +110,4 @@ Before selecting a region:
 
 ## Conclusion
 
-Region selection for ACI in Portainer is straightforward - configure it once when adding the environment. For production workloads with compliance requirements, always verify data residency rules before deploying to a region.
+Region selection for ACI in Portainer is straightforward - choose the location when deploying the container. For production workloads with compliance requirements, always verify data residency rules before deploying to a region.
