@@ -103,7 +103,12 @@ az network vnet peering update \
 Global peering works the same way but VNets are in different regions:
 
 ```bash
-# VNet in westus
+# Get VNet IDs
+EAST_ID=$(az network vnet show \
+  --resource-group $RESOURCE_GROUP \
+  --name vnet-hub \
+  --query id --output tsv)
+
 WEST_ID=$(az network vnet show \
   --resource-group $RESOURCE_GROUP \
   --name vnet-west \
@@ -116,9 +121,17 @@ az network vnet peering create \
   --vnet-name vnet-hub \
   --remote-vnet $WEST_ID \
   --allow-vnet-access true
+
+# Peer westus to eastus
+az network vnet peering create \
+  --resource-group $RESOURCE_GROUP \
+  --name west-to-east \
+  --vnet-name vnet-west \
+  --remote-vnet $EAST_ID \
+  --allow-vnet-access true
 ```
 
-Note: Global peering has bandwidth charges and higher latency than same-region peering.
+Note: Global peering uses zone-based bandwidth charges and typically has higher latency than same-region peering.
 
 ## Testing Connectivity After Peering
 
