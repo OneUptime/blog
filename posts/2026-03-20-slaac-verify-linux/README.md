@@ -8,7 +8,7 @@ Description: Verify that SLAAC is working correctly on Linux by examining addres
 
 ## Introduction
 
-After configuring SLAAC on a Linux host or router, verification confirms that addresses are being assigned correctly, default routes are learned, and DNS is configured. This guide covers the complete set of verification commands for checking SLAAC operation, from address state inspection to packet captures.
+After configuring SLAAC on a Linux host or on a forwarding interface configured to accept RAs, verification confirms that addresses are being assigned correctly, default routes are learned, and DNS is configured. This guide covers the complete set of verification commands for checking SLAAC operation, from address state inspection to packet captures.
 
 ## Checking SLAAC Addresses
 
@@ -18,10 +18,11 @@ After configuring SLAAC on a Linux host or router, verification confirms that ad
 ip -6 addr show
 
 # SLAAC indicators to look for:
-# - "dynamic" keyword: address was learned dynamically (from SLAAC or DHCPv6)
-# - "autoconf" (on some kernels): explicitly marks SLAAC address
-# - "valid_lft" and "preferred_lft": have non-zero values
-# - Scope "global": it's a global unicast address (not link-local)
+# - "dynamic" keyword: IPv6 address was installed by stateless address configuration
+# - "proto kernel_ra" (newer iproute2): address was installed from Router Advertisement
+# - "valid_lft": non-zero while the address is valid
+# - "preferred_lft": non-zero while preferred; 0 means the address is deprecated
+# - Scope "global": address is not link-local (can include GUAs or ULAs)
 
 # Example expected output:
 # 2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 ...
@@ -34,17 +35,17 @@ ip -6 addr show
 ip -6 addr show scope global | grep dynamic
 
 # Show with detailed flags
-ip -6 addr show eth0 details
+ip -d -6 addr show dev eth0
 # Flags may include: dynamic, mngtmpaddr, nodad, noprefixroute
 ```
 
 ## Checking SLAAC-Learned Routes
 
 ```bash
-# Show prefix routes learned via SLAAC (proto kernel)
-ip -6 route show | grep "proto kernel"
+# Show routes learned from Router Advertisements
+ip -6 route show proto ra
 # Expected:
-# 2001:db8::/64 dev eth0 proto kernel metric 256 expires 2591897sec
+# 2001:db8::/64 dev eth0 proto ra metric 1024 expires 2591897sec
 
 # Show default route from RA
 ip -6 route show default
@@ -52,10 +53,10 @@ ip -6 route show default
 # default via fe80::1 dev eth0 proto ra metric 1024 expires 1799sec
 # "proto ra" = route learned from Router Advertisement
 
-# Show all IPv6 routes with details
-ip -6 route show detail
+# Show all IPv6 routes
+ip -6 route show
 
-# Check route expiry (important: routes expire when RA Router Lifetime expires)
+# Check default route expiry (important: default routes expire when RA Router Lifetime expires)
 ip -6 route show default
 # "expires 1799sec" = 30 minutes remaining from RA Router Lifetime=1800
 ```
@@ -69,13 +70,13 @@ cat /proc/sys/net/ipv6/conf/eth0/accept_ra
 cat /proc/sys/net/ipv6/conf/eth0/autoconf
 
 # Show received Router Advertisement statistics
-cat /proc/net/snmp6 | grep -i "icmpv6inrouter"
-# Icmp6InRouterAdvertisements: 42  ← Number of RAs received
+cat /proc/net/snmp6 | grep Icmp6InRouterAdvertisements
+# Icmp6InRouterAdvertisements        42  # Number of RAs received
 
 # Or with nstat:
 nstat -az | grep -i "router"
 
-# Complete NDP statistics
+# Complete ICMPv6 statistics
 cat /proc/net/snmp6 | grep Icmp6
 
 # rdisc6: Send RS and display received RA content
@@ -99,17 +100,17 @@ rdisc6 eth0
 
 ```bash
 # Check for addresses still in TENTATIVE state (DAD in progress)
-ip -6 addr show | grep TENTATIVE
+ip -6 addr show | grep -i tentative
 # Should be empty in normal operation
-# TENTATIVE = DAD not yet complete
+# tentative = DAD not yet complete
 
 # Check DAD status
-ip -6 addr show eth0 | grep -E "TENTATIVE|DADFAILED"
-# DADFAILED = duplicate address detected
-# If DADFAILED: change MAC address or manually choose different IID
+ip -6 addr show dev eth0 | grep -Ei "tentative|dadfailed"
+# dadfailed = duplicate address detected
+# If dadfailed: change MAC address or manually choose different IID
 
 # Monitor DAD process
-ip monitor all 2>&1 | grep -E "TENTATIVE|DADFAILED|scope global"
+ip monitor all 2>&1 | grep -Ei "tentative|dadfailed|scope global"
 
 # DAD sends NS with unspecified source (::) to solicited-node multicast
 # Capture DAD packets
@@ -151,39 +152,39 @@ echo "=== SLAAC Verification for $IFACE ==="
 
 echo ""
 echo "1. IPv6 Addresses:"
-ip -6 addr show $IFACE | grep "inet6"
+ip -6 addr show dev "$IFACE" | grep "inet6"
 
 echo ""
 echo "2. SLAAC (dynamic) addresses:"
-ip -6 addr show $IFACE | grep dynamic
+ip -6 addr show dev "$IFACE" | grep dynamic
 if [ $? -ne 0 ]; then
     echo "  WARNING: No dynamic (SLAAC) addresses found"
 fi
 
 echo ""
 echo "3. Default route from RA:"
-ip -6 route show default | grep "proto ra"
+ip -6 route show default dev "$IFACE" | grep "proto ra"
 if [ $? -ne 0 ]; then
     echo "  WARNING: No default route from Router Advertisement"
 fi
 
 echo ""
 echo "4. accept_ra setting:"
-ACCEPT_RA=$(cat /proc/sys/net/ipv6/conf/$IFACE/accept_ra)
+ACCEPT_RA=$(cat /proc/sys/net/ipv6/conf/"$IFACE"/accept_ra)
 echo "  accept_ra = $ACCEPT_RA"
 [ "$ACCEPT_RA" = "0" ] && echo "  WARNING: accept_ra=0 disables SLAAC!"
 
 echo ""
 echo "5. RA received count:"
-cat /proc/net/snmp6 | grep InRouterAdv
+cat /proc/net/snmp6 | grep Icmp6InRouterAdvertisements
 
 echo ""
 echo "6. Connectivity test:"
-ping6 -c 2 2001:4860:4860::8888 2>/dev/null && \
+ping -6 -c 2 2001:4860:4860::8888 2>/dev/null && \
     echo "  PASS: Google DNS reachable" || \
     echo "  FAIL: Cannot reach Google DNS"
 ```
 
 ## Conclusion
 
-SLAAC verification on Linux involves checking for dynamic global addresses with valid/preferred lifetimes (`ip -6 addr show`), verifying the default route has `proto ra` (`ip -6 route show default`), and confirming prefix routes are present (`ip -6 route show | grep 'proto kernel'`). Use `rdisc6` to inspect the RA content and verify the prefix, router lifetime, and flags. Check `accept_ra` and `autoconf` sysctl values if SLAAC isn't working. Monitor DAD with `ip -6 addr show | grep TENTATIVE` to ensure addresses are completing DAD successfully.
+SLAAC verification on Linux involves checking for dynamic global addresses with valid/preferred lifetimes (`ip -6 addr show`), verifying the default route has `proto ra` (`ip -6 route show default`), and confirming RA-learned prefix routes are present (`ip -6 route show proto ra`). Use `rdisc6` to inspect the RA content and verify the prefix, router lifetime, and flags. Check `accept_ra` and `autoconf` sysctl values if SLAAC isn't working. Monitor DAD with `ip -6 addr show | grep -i tentative` to ensure addresses are completing DAD successfully.
