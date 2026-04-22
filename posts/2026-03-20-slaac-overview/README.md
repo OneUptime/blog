@@ -8,7 +8,7 @@ Description: Understand how IPv6 Stateless Address Autoconfiguration (SLAAC) all
 
 ## Introduction
 
-Stateless Address Autoconfiguration (SLAAC, RFC 4862) is the mechanism by which IPv6 hosts automatically configure global unicast addresses using prefix information received from Router Advertisements (RAs). Unlike DHCPv4, SLAAC requires no central server - the host constructs its own address by combining the advertised prefix with a locally generated interface identifier. SLAAC is the default address configuration mechanism for IPv6 and is used on virtually all IPv6-capable networks.
+Stateless Address Autoconfiguration (SLAAC, RFC 4862) is the mechanism by which IPv6 hosts automatically configure global unicast addresses using prefix information received from Router Advertisements (RAs). Unlike DHCPv4, SLAAC requires no central server - the host constructs its own address by combining the advertised prefix with a locally generated interface identifier. SLAAC processing is enabled by default on IPv6 hosts and is widely used on IPv6-capable networks.
 
 ## SLAAC Overview
 
@@ -16,7 +16,7 @@ Stateless Address Autoconfiguration (SLAAC, RFC 4862) is the mechanism by which 
 SLAAC Process Summary:
 
 1. Host connects to network
-2. Host generates link-local address (fe80::/10 + interface ID)
+2. Host generates link-local address (fe80::/10 link-local prefix, zero-filled as needed, + interface ID)
 3. Host performs DAD (Duplicate Address Detection) for link-local
 4. Host sends Router Solicitation (RS) to ff02::2 (all routers)
 5. Router responds with Router Advertisement (RA) containing:
@@ -27,7 +27,7 @@ SLAAC Process Summary:
    Example: 2001:db8:: + ::211:22ff:fe33:4455
            = 2001:db8::211:22ff:fe33:4455
 7. Host performs DAD for the new global address
-8. Address enters PREFERRED state if DAD passes
+8. Address enters PREFERRED state if DAD passes and Preferred Lifetime is nonzero
 ```
 
 ## SLAAC vs DHCPv4 vs DHCPv6
@@ -45,13 +45,13 @@ SLAAC (IPv6):
   - Host generates its own address
   - No central server required
   - Based on RA prefix + interface ID
-  - Works out of the box with any router
+  - Works out of the box with routers that advertise an autonomous prefix
 
 Stateful DHCPv6 (IPv6):
   - DHCPv6 server assigns address (like DHCPv4)
   - Server tracks assignments
   - Requires DHCPv6 server infrastructure
-  - Triggered when RA has M=1 flag
+  - Indicated when RA has M=1 flag
 
 Stateless DHCPv6 (IPv6):
   - SLAAC provides address (A=1 in RA)
@@ -86,12 +86,12 @@ Key Flags:
   A (autonomous): Use this prefix for SLAAC address generation
   R: Router address flag (RFC 6275)
 
-Critical: A=1 triggers SLAAC address generation
+Critical: A=1 allows SLAAC address generation
 Critical: L=1 makes the prefix on-link (entries in prefix list)
 
 Lifetimes:
   Valid Lifetime: How long the address is valid
-  Preferred Lifetime: How long the address is preferred (shorter)
+  Preferred Lifetime: How long the address is preferred (not greater than Valid Lifetime)
   When Preferred expires → address is DEPRECATED (still usable)
   When Valid expires → address is INVALID (cannot use)
 ```
@@ -128,7 +128,7 @@ Methods for Interface Identifier:
 ## SLAAC Lifecycle States
 
 ```text
-Address Lifecycle (RFC 4862 Section 5.5.4):
+Address Lifecycle (RFC 4862 Sections 5.4 and 5.5.4):
 
 TENTATIVE:
   - Address being validated by DAD
@@ -152,9 +152,9 @@ INVALID:
   - No traffic can use this address
 
 Timers:
-  TENTATIVE → PREFERRED: ~1 second (DAD duration)
-  PREFERRED → DEPRECATED: Preferred Lifetime from RA
-  DEPRECATED → INVALID: Valid Lifetime from RA
+  TENTATIVE → PREFERRED: DAD duration (often ~1 second by default)
+  PREFERRED → DEPRECATED: when Preferred Lifetime expires
+  DEPRECATED → INVALID: when Valid Lifetime expires
 ```
 
 ## Verifying SLAAC on Linux
@@ -185,4 +185,4 @@ ip -6 route show default
 
 ## Conclusion
 
-SLAAC allows IPv6 hosts to automatically configure global unicast addresses by combining the prefix from a Router Advertisement with a locally generated interface identifier. It requires no DHCP server, making IPv6 address configuration simpler than IPv4. The A flag in the RA Prefix Information option triggers SLAAC. Interface identifiers can be EUI-64 (from MAC), privacy extensions (random), or stable privacy (pseudo-random). SLAAC is the foundation of IPv6 address management and is supplemented by stateless or stateful DHCPv6 when additional configuration (DNS, NTP) is needed.
+SLAAC allows IPv6 hosts to automatically configure global unicast addresses by combining the prefix from a Router Advertisement with a locally generated interface identifier. It requires no DHCP server, making IPv6 address configuration simpler than IPv4. The A flag in the RA Prefix Information option allows SLAAC. Interface identifiers can be EUI-64 (from MAC), privacy extensions (random), or stable privacy (pseudo-random). SLAAC is the foundation of IPv6 address management and is supplemented by stateless or stateful DHCPv6 when additional configuration (DNS, NTP) is needed.
