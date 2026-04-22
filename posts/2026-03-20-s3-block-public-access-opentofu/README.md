@@ -13,14 +13,14 @@ S3 Block Public Access settings provide a centralized way to ensure S3 buckets a
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with S3 permissions
+- AWS credentials with S3, S3 Control, and AWS Config permissions
 
 ## Step 1: Enable Account-Level Block Public Access
 
 ```hcl
 # Block all public access at the account level
 
-# This overrides individual bucket settings
+# S3 applies the most restrictive combination with bucket-level settings
 resource "aws_s3_account_public_access_block" "account" {
   # Blocks any ACL that grants public access
   block_public_acls = true
@@ -55,11 +55,11 @@ resource "aws_s3_bucket_public_access_block" "private" {
 }
 ```
 
-## Step 3: Configure for Static Website (Selective Public Access)
+## Step 3: Configure for Static Website with CloudFront
 
 ```hcl
-# Website bucket served via CloudFront only
-# Requires partial public access block for bucket policy
+# Website bucket served via CloudFront Origin Access Control
+# Keep Block Public Access enabled; the CloudFront OAC bucket policy is not public
 resource "aws_s3_bucket" "website" {
   bucket = "${var.project_name}-website"
 }
@@ -67,31 +67,31 @@ resource "aws_s3_bucket" "website" {
 resource "aws_s3_bucket_public_access_block" "website" {
   bucket = aws_s3_bucket.website.id
 
-  # Allow public ACLs to be set (needed for legacy configs)
+  # Blocks any ACL that grants public access
   block_public_acls = true
 
-  # Must be false to allow CloudFront bucket policy
-  block_public_policy = false
+  # Blocks bucket policies that grant public access
+  block_public_policy = true
 
   # Ignore any pre-existing public ACLs
   ignore_public_acls = true
 
-  # Must be false to serve objects via bucket policy
-  restrict_public_buckets = false
+  # Restricts access if a public policy is attached
+  restrict_public_buckets = true
 }
 ```
 
 ## Step 4: Enforce via AWS Config Rule
 
 ```hcl
-# AWS Config rule to detect publicly accessible S3 buckets
+# AWS Config rule to detect bucket-level public access block drift
 resource "aws_config_config_rule" "s3_public_access" {
-  name        = "s3-bucket-public-access-prohibited"
-  description = "Checks that S3 buckets do not allow public access"
+  name        = "s3-bucket-level-public-access-prohibited"
+  description = "Checks that S3 bucket-level public access block settings prohibit public access"
 
   source {
     owner             = "AWS"
-    source_identifier = "S3_BUCKET_PUBLIC_ACCESS_PROHIBITED"
+    source_identifier = "S3_BUCKET_LEVEL_PUBLIC_ACCESS_PROHIBITED"
   }
 
   tags = { Name = "s3-public-access-check" }
@@ -99,7 +99,7 @@ resource "aws_config_config_rule" "s3_public_access" {
 
 # AWS Config rule for account-level public access block
 resource "aws_config_config_rule" "s3_account_public_access" {
-  name        = "s3-account-level-public-access-blocks"
+  name        = "s3-account-level-public-access-blocks-periodic"
   description = "Checks that S3 account-level public access blocks are enabled"
 
   source {
