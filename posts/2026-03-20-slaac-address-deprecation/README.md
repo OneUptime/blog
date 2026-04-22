@@ -8,7 +8,7 @@ Description: Understand how IPv6 SLAAC addresses transition through PREFERRED an
 
 ## Introduction
 
-Address deprecation is an important concept in IPv6 SLAAC address management. A DEPRECATED address has exceeded its Preferred Lifetime but remains within its Valid Lifetime. Deprecated addresses continue to receive and transmit traffic for existing connections, but the source address selection algorithm avoids using them for new connections. This mechanism enables graceful network renumbering and address rotation without breaking existing sessions.
+Address deprecation is an important concept in IPv6 SLAAC address management. A DEPRECATED address has exceeded its Preferred Lifetime but remains within its Valid Lifetime. Deprecated addresses continue to receive and transmit traffic for existing connections, but the source address selection algorithm avoids using them for new connections when a non-deprecated address is available. This mechanism enables graceful network renumbering and address rotation without breaking existing sessions.
 
 ## DEPRECATED State Definition
 
@@ -34,8 +34,9 @@ INVALID:
   - No traffic possible on this address
 
 Source Address Selection Rule 3 (RFC 6724):
-  "Prefer appropriate scope" - but for same scope:
-  "Avoid deprecated addresses when a non-deprecated address exists"
+  "Avoid deprecated addresses"
+  If one candidate source is preferred and another is deprecated,
+  prefer the preferred source.
   Deprecated = lower preference for new connection source
 ```
 
@@ -50,7 +51,7 @@ ip -6 addr show eth0
 #                                    ^^^^ preferred = 0 = DEPRECATED
 
 # Filter: show only deprecated addresses
-ip -6 addr show | awk '/preferred_lft 0sec/{found=1} /inet6/{if(found){print; found=0}}'
+ip -6 addr show deprecated
 
 # Show all addresses with state labels
 ip -6 addr show | grep -E "inet6|deprecated|tentative"
@@ -111,7 +112,7 @@ ip -6 addr show eth0
 
 # Test: deprecated address is not used for new connections
 # (a new PREFERRED address should be present on the interface first)
-curl -v --interface eth0 https://example.com
+curl -6 -v --interface eth0 https://example.com
 # Source should be the PREFERRED address, not the deprecated one
 ```
 
@@ -123,9 +124,8 @@ curl -v --interface eth0 https://example.com
 #   2001:db8::2 - DEPRECATED (valid_lft=3600, preferred_lft=0)
 
 # Verify source address selection uses PREFERRED
-strace -e trace=connect curl -6 https://ipv6.example.com 2>&1 | \
-    grep "sin6_addr"
-# Should show 2001:db8::1 as source (PREFERRED)
+ip -6 route get 2001:4860:4860::8888 oif eth0
+# Should show "src 2001:db8::1" (PREFERRED)
 
 # Manual test with ip6tables LOG
 sudo ip6tables -A OUTPUT -s 2001:db8::2 \
@@ -134,7 +134,7 @@ sudo ip6tables -A OUTPUT -s 2001:db8::2 \
 
 # More direct test: check which source address is used
 ss -6 -n | grep ":443"
-# After curl: shows source IP of the connection
+# While curl is running: shows source IP of the connection
 ```
 
 ## Deprecation in Address Rotation (Privacy Extensions)
@@ -149,15 +149,15 @@ Day 1 (TEMP_PREFERRED_LIFETIME expires):
   2001:db8::AAAA transitions to DEPRECATED
   New temporary address 2001:db8::BBBB generated (PREFERRED)
 
-Day 7 (TEMP_VALID_LIFETIME expires):
+Later (when TEMP_VALID_LIFETIME expires; RFC 8981 default is 2 days):
   2001:db8::AAAA transitions to INVALID → removed from interface
-  2001:db8::BBBB still PREFERRED
+  A newer temporary address is used for new connections
 
 Effect on connections:
   Existing connection using 2001:db8::AAAA:
   - Works fine while still in DEPRECATED state
-  - Will break when address becomes INVALID (day 7)
-  - Browser will reconnect using 2001:db8::BBBB
+  - Will fail when address becomes INVALID
+  - Application/browser must reconnect using a newer PREFERRED address
 ```
 
 ## Practical Impact: When to Expect Issues
@@ -167,7 +167,7 @@ Deprecation issues in practice:
 
 Issue 1: Long-lived connections break after ValidLifetime
   Example: Persistent SSH session, long download
-  When DEPRECATED → INVALID: TCP connection resets
+  When DEPRECATED → INVALID: the connection can reset or time out
   Mitigation: Use longer ValidLifetime for stable addresses
   Or: Use RFC 7217 stable addresses (don't expire if RA keeps them alive)
 
@@ -183,4 +183,4 @@ Issue 3: Firewall rules matching deprecated address
 
 ## Conclusion
 
-Address deprecation is a graceful IPv6 mechanism for transitioning addresses without breaking existing connections. When a SLAAC address's Preferred Lifetime expires, it becomes DEPRECATED - still valid for existing connections but skipped for new ones. The source address selection algorithm (RFC 6724) ensures new connections use PREFERRED addresses when available. Routers trigger deprecation by sending RA with Preferred Lifetime = 0. This mechanism enables clean network renumbering by deprecating old prefixes before withdrawing them.
+Address deprecation is a graceful IPv6 mechanism for transitioning addresses without breaking existing connections. When a SLAAC address's Preferred Lifetime expires, it becomes DEPRECATED - still valid for existing connections but avoided for new ones when a PREFERRED alternative is available. The source address selection algorithm (RFC 6724) ensures new connections use PREFERRED addresses when available. Routers trigger deprecation by sending RA with Preferred Lifetime = 0. This mechanism enables clean network renumbering by deprecating old prefixes before withdrawing them.
