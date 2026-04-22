@@ -22,19 +22,19 @@ Timeline:
 
 PREFERRED state (0 to PreferredLifetime):
   - Address is fully usable
-  - Selected as source address for new connections
+  - Eligible and normally preferred as source address for new connections
   - Normal operation
 
 DEPRECATED state (PreferredLifetime to ValidLifetime):
   - Address is still valid (can receive traffic)
   - Existing connections continue to work
-  - NOT selected as source for new connections
-  - New connections use newer PREFERRED addresses
+  - Avoided as source for new connections when a suitable PREFERRED address exists
+  - New connections prefer newer PREFERRED addresses
 
 INVALID state (after ValidLifetime):
   - Address is removed from interface
   - No traffic can use this address
-  - Existing connections drop (connection reset)
+  - Existing connections using it fail or time out
 
 Typical defaults from RFC 4861:
   PreferredLifetime: 604800 seconds (7 days)
@@ -73,50 +73,61 @@ ip -6 addr show eth0 | awk '
 
 ## Lifetime Updates from RA
 
-The kernel updates address lifetimes every time an RA is received.
+The host stack processes address lifetimes when an RA is received. The preferred lifetime is reset from a matching Prefix Information option; the valid lifetime follows RFC 4862's safeguards.
 
 ```text
-RA Lifetime Update Rules (RFC 4862 Section 5.5.3):
+RA Lifetime Update Rules for an existing SLAAC address
+(RFC 4862 Section 5.5.3):
+
+Before applying a Prefix Information option:
+  - Ignore it if PreferredLifetime > ValidLifetime
+  - Always reset Preferred lifetime to received PreferredLifetime
 
 Case 1: Received ValidLifetime > 2 hours OR
-        Received ValidLifetime >= remaining ValidLifetime:
-  → Update both Valid and Preferred lifetimes
+        Received ValidLifetime > remaining ValidLifetime:
+  → Set remaining ValidLifetime to received ValidLifetime
 
-Case 2: Received ValidLifetime < 2 hours AND
-        Received ValidLifetime < remaining ValidLifetime:
+Case 2: Remaining ValidLifetime <= 2 hours:
+  → Ignore received ValidLifetime for unauthenticated RA
+  → If the RA is authenticated (for example with SEND),
+    use received ValidLifetime
+
+Case 3: Received ValidLifetime <= 2 hours AND
+        Received ValidLifetime < remaining ValidLifetime AND
+        remaining ValidLifetime > 2 hours:
   → Set remaining ValidLifetime to 2 hours (floor protection)
-  → This prevents attack: sending RA with ValidLifetime=0
+  → This prevents attack: sending RA with a very small ValidLifetime
 
-Case 3: ValidLifetime = 0:
-  → Prefix is being withdrawn
-  → Preferred Lifetime must also be 0
-  → Address is deprecated immediately
-  → Removed when current valid lifetime expires
+ValidLifetime = 0:
+  → Used to withdraw a prefix, but unauthenticated RAs cannot
+    immediately reduce an existing address below the 2-hour floor
+  → PreferredLifetime must also be 0, otherwise the PIO is ignored
+  → Address is deprecated immediately because PreferredLifetime resets to 0
+  → Address is removed when its remaining ValidLifetime expires
 
 Why 2-hour floor?
   Prevents a rogue RA from setting lifetime to 0 and
-  immediately invalidating all existing addresses (DoS attack)
+  immediately invalidating existing addresses (DoS attack)
 ```
 
 ## Address Lifetime on Different Systems
 
-```bash
+```text
 # Linux
 ip -6 addr show eth0 | grep "valid_lft"
 
 # macOS
-# macOS shows "expires" time in absolute seconds since epoch
 ifconfig en0 inet6
-# Limited lifetime info; use scutil for details
+# Shows IPv6 addresses and address state flags such as autoconf/deprecated.
+# Prefix lifetime details are in the Neighbor Discovery prefix list:
+ndp -p
+# Look for vltime (valid lifetime), pltime (preferred lifetime), and expire.
 
 # Windows
-Get-NetIPAddress -AddressFamily IPv6 |
-    Select IPAddress, ValidLifetime, PreferredLifetime
-# ValidLifetime:    Infinite or number of seconds
-# PreferredLifetime: Same
-
-# Note: Windows may show "Infinite" for SLAAC addresses
-# due to how it handles RA lifetime updates
+Get-NetIPAddress -AddressFamily IPv6 -PrefixOrigin RouterAdvertisement |
+    Select-Object IPAddress, ValidLifetime, PreferredLifetime
+# ValidLifetime and PreferredLifetime are TimeSpan values.
+# Infinite is [TimeSpan]::MaxValue.
 ```
 
 ## Configuring Lifetimes on the Router (radvd)
@@ -163,14 +174,15 @@ Phase 1: Prepare (announce new prefix)
 Phase 2: Deprecate old prefix
   - Set old prefix PreferredLifetime = 0 in RA
   - Old address transitions to DEPRECATED
-  - New connections use new address
+  - New connections prefer new address
   - Existing connections using old address still work
 
 Phase 3: Withdraw old prefix
-  - Decrease old prefix ValidLifetime to 0
-  - Wait for ValidLifetime to expire on all hosts
-  - Old address becomes INVALID
-  - Router stops advertising old prefix
+  - Advertise old prefix with PreferredLifetime = 0 and ValidLifetime = 0
+  - Hosts that receive the withdrawal may keep old addresses valid for up to 2 hours because of RFC 4862 floor protection
+  - Keep advertising the withdrawal until the latest possible remaining valid lifetime has passed
+  - Old address becomes INVALID when each host's ValidLifetime expires
+  - Router stops advertising old prefix after the withdrawal period
 
 Phase 4: Complete
   - Only new prefix 2001:db8:new::/64 active
@@ -182,4 +194,4 @@ For faster renumbering: use shorter ValidLifetime from start
 
 ## Conclusion
 
-SLAAC address lifetimes control the transition from PREFERRED to DEPRECATED to INVALID states. The Preferred Lifetime determines when an address stops being selected for new connections. The Valid Lifetime determines when the address is completely removed. The kernel's 2-hour floor protection prevents rogue RAs from immediately invalidating addresses. Plan lifetimes according to your renumbering requirements: shorter lifetimes (hours) allow faster renumbering but require more frequent RA updates; longer lifetimes (days/weeks) provide stability but slower renumbering.
+SLAAC address lifetimes control the transition from PREFERRED to DEPRECATED to INVALID states. The Preferred Lifetime determines when an address stops being preferred for new connections. The Valid Lifetime determines when the address is completely removed. The host stack's 2-hour floor protection prevents unauthenticated rogue RAs from immediately invalidating existing SLAAC addresses. Plan lifetimes according to your renumbering requirements: shorter lifetimes (hours, planned ahead and refreshed regularly) allow faster renumbering but require more frequent RA updates; longer lifetimes (days/weeks) provide stability but slower renumbering.
