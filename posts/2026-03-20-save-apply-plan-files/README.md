@@ -8,7 +8,7 @@ Description: Learn how to save OpenTofu plan files with -out, review them, and a
 
 ## Introduction
 
-Saving plan files (`tofu plan -out`) and applying them later (`tofu apply planfile`) is one of the most important safety practices in OpenTofu. It ensures that the exact changes you reviewed are the changes that get applied - no drift can occur between the review and deployment.
+Saving plan files (`tofu plan -out`) and applying them later (`tofu apply planfile`) is one of the most important safety practices in OpenTofu. It ensures that OpenTofu applies the exact plan you reviewed instead of creating a new plan at deployment time; if the saved plan is no longer usable because the backend state changed, you need to re-plan.
 
 ## Saving a Plan
 
@@ -37,8 +37,8 @@ tofu show -json changes.tfplan
 # Extract key metrics
 tofu show -json changes.tfplan | jq '
   .resource_changes |
-  group_by(.change.actions[0]) |
-  map({action: .[0].change.actions[0], count: length})
+  group_by(.change.actions | join(",")) |
+  map({action: (.[0].change.actions | join(",")), count: length})
 '
 ```
 
@@ -54,12 +54,12 @@ tofu apply changes.tfplan
 
 ## Plan File Format
 
-Saved plan files are binary (not plain text JSON) and are encrypted if you've configured state encryption:
+Saved plan files are opaque binary files (not plain text JSON). By default, they can contain sensitive values in cleartext; they are encrypted only if you've configured OpenTofu plan encryption:
 
 ```bash
-# Don't try to cat or read plan files directly
+# Don't try to cat or parse plan files directly
 file changes.tfplan
-# changes.tfplan: data  (binary format)
+# Output identifies it as data/opaque binary, not JSON text
 
 # Use tofu show to read them
 tofu show changes.tfplan
@@ -67,17 +67,17 @@ tofu show changes.tfplan
 
 ## Plan Validity Window
 
-A saved plan is valid as long as:
-1. No changes have been made to the configuration since planning
-2. No resources have changed state since planning
-3. The backend/state hasn't changed
+A saved plan is tied to the state snapshot, backend configuration, plan options, and non-ephemeral input values captured at plan time. Re-plan if any of these are no longer true:
+1. The backend state has not been updated by another OpenTofu operation since planning
+2. The backend configuration, credentials, and encryption settings captured in the plan are still usable
+3. Any ephemeral variables used during planning are supplied again during apply
 
 If state changes after planning:
 
 ```bash
-# Plan becomes stale if state changes
+# Plan becomes stale if the backend state changes
 tofu apply outdated.tfplan
-# Error: Applied changes since plan was created...
+# OpenTofu reports that the saved plan is stale
 # You need to re-plan
 ```
 
@@ -93,18 +93,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_wrapper: false
+
+      - name: Init
+        run: tofu init -input=false
+
       - name: Plan
-        run: |
-          tofu plan -out=plan.tfplan -detailed-exitcode
         id: plan
-        continue-on-error: true
+        run: |
+          set +e
+          tofu plan -input=false -out=plan.tfplan -detailed-exitcode
+          exitcode=$?
+          set -e
+
+          echo "exitcode=$exitcode" >> "$GITHUB_OUTPUT"
+
+          if [ "$exitcode" -eq 1 ]; then
+            exit 1
+          elif [ "$exitcode" -ne 0 ] && [ "$exitcode" -ne 2 ]; then
+            exit "$exitcode"
+          fi
 
       - name: Check for Changes
         id: check
         run: |
-          echo "has-changes=${{ steps.plan.outcome == 'failure' || steps.plan.outputs.exitcode == '2' }}" >> $GITHUB_OUTPUT
+          echo "has-changes=${{ steps.plan.outputs.exitcode == '2' }}" >> "$GITHUB_OUTPUT"
 
       - name: Upload Plan
+        if: steps.plan.outputs.exitcode == '2'
         uses: actions/upload-artifact@v4
         with:
           name: tfplan-${{ github.sha }}
@@ -114,10 +132,17 @@ jobs:
   apply:
     needs: plan
     if: needs.plan.outputs.has-changes == 'true' && github.ref == 'refs/heads/main'
-    environment: production  # Requires approval
+    environment: production  # Use environment protection rules for approval
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_wrapper: false
+
+      - name: Init
+        run: tofu init -input=false
 
       - name: Download Plan
         uses: actions/download-artifact@v4
@@ -125,7 +150,7 @@ jobs:
           name: tfplan-${{ github.sha }}
 
       - name: Apply
-        run: tofu apply plan.tfplan
+        run: tofu apply -input=false plan.tfplan
 ```
 
 ## Naming Plan Files
@@ -145,4 +170,4 @@ tofu plan -out="${TF_WORKSPACE}-$(date +%Y%m%d).tfplan"
 
 ## Conclusion
 
-Saving and applying plan files is the gold standard for safe infrastructure deployments. The two-step workflow (plan → review → apply plan file) ensures that what you approved is exactly what gets deployed, with no possibility of drift between review and execution. Implement this pattern in all production CI/CD pipelines for maximum safety and auditability.
+Saving and applying plan files is the gold standard for safe infrastructure deployments. The two-step workflow (plan → review → apply plan file) ensures that what you approved is exactly what gets deployed, without generating a different plan between review and execution. Implement this pattern in all production CI/CD pipelines for maximum safety and auditability.
