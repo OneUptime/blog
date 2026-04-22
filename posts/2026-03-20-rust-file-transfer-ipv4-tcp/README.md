@@ -13,7 +13,7 @@ Rust's ownership model and zero-cost abstractions make it excellent for high-per
 ## File Transfer Server
 
 ```rust
-// server.rs
+// src/bin/server.rs
 use std::net::{TcpListener, TcpStream};
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::fs::{File, create_dir_all};
@@ -61,7 +61,11 @@ fn receive_file(stream: TcpStream, save_dir: &Path) -> io::Result<()> {
     
     while bytes_received < file_size {
         let remaining = file_size - bytes_received;
-        let to_read = buffer.len().min(remaining as usize);
+        let to_read = if remaining < buffer.len() as u64 {
+            remaining as usize
+        } else {
+            buffer.len()
+        };
         
         let n = reader.read(&mut buffer[..to_read])?;
         if n == 0 {
@@ -114,7 +118,7 @@ fn main() -> io::Result<()> {
 ## File Transfer Client
 
 ```rust
-// client.rs
+// src/bin/client.rs
 use std::net::TcpStream;
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::fs::File;
@@ -198,7 +202,7 @@ fn main() {
 ## Running the Transfer
 
 ```bash
-# Build both binaries
+# Build both binaries (place code in src/bin/server.rs and src/bin/client.rs)
 
 cargo build --release
 
