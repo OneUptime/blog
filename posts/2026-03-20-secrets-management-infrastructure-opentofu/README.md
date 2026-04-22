@@ -29,11 +29,23 @@ resource "aws_kms_key" "secrets" {
         Resource  = "*"
       },
       {
-        Sid    = "AllowSecretsManagerUse"
+        Sid    = "AllowSecretsManagerUseInAccount"
         Effect = "Allow"
-        Principal = { Service = "secretsmanager.amazonaws.com" }
-        Action = ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*"]
+        Principal = { AWS = "*" }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey"
+        ]
         Resource = "*"
+        Condition = {
+          StringEquals = {
+            "kms:CallerAccount" = data.aws_caller_identity.current.account_id
+            "kms:ViaService"    = "secretsmanager.${var.region}.amazonaws.com"
+          }
+        }
       }
     ]
   })
@@ -62,11 +74,13 @@ resource "aws_secretsmanager_secret_version" "db" {
   secret_id = aws_secretsmanager_secret.db.id
 
   secret_string = jsonencode({
-    username = "myapp"
-    password = var.db_initial_password  # rotated automatically after setup
-    host     = aws_db_instance.main.address
-    port     = 5432
-    dbname   = "myapp"
+    username             = "myapp"
+    password             = var.db_initial_password  # rotated automatically after setup
+    engine               = "postgres"
+    host                 = aws_db_instance.main.address
+    port                 = 5432
+    dbname               = "myapp"
+    dbInstanceIdentifier = aws_db_instance.main.id
   })
 
   lifecycle {
@@ -80,36 +94,42 @@ resource "aws_secretsmanager_secret_version" "db" {
 ```hcl
 resource "aws_secretsmanager_secret_rotation" "db" {
   secret_id           = aws_secretsmanager_secret.db.id
-  rotation_lambda_arn = aws_lambda_function.db_rotation.arn
+  rotation_lambda_arn = data.aws_lambda_function.db_rotation.arn
 
   rotation_rules {
     automatically_after_days = 30
   }
+
+  depends_on = [aws_secretsmanager_secret_version.db]
 }
 
 # Use AWS-provided rotation Lambda for RDS
-resource "aws_lambda_function" "db_rotation" {
+data "aws_region" "current" {}
+data "aws_partition" "current" {}
+
+data "aws_serverlessapplicationrepository_application" "postgres_rotation" {
+  application_id = "arn:aws:serverlessrepo:us-east-1:297356227824:applications/SecretsManagerRDSPostgreSQLRotationSingleUser"
+}
+
+resource "aws_serverlessapplicationrepository_cloudformation_stack" "db_rotation" {
+  name             = "myapp-${var.environment}-db-rotation"
+  application_id   = data.aws_serverlessapplicationrepository_application.postgres_rotation.application_id
+  semantic_version = data.aws_serverlessapplicationrepository_application.postgres_rotation.semantic_version
+  capabilities     = data.aws_serverlessapplicationrepository_application.postgres_rotation.required_capabilities
+
+  parameters = {
+    endpoint            = "https://secretsmanager.${data.aws_region.current.name}.${data.aws_partition.current.dns_suffix}"
+    functionName        = "myapp-${var.environment}-db-rotation"
+    kmsKeyArn           = aws_kms_key.secrets.arn
+    vpcSecurityGroupIds = aws_security_group.rotation_lambda.id
+    vpcSubnetIds        = join(",", module.vpc.private_subnets)
+  }
+}
+
+data "aws_lambda_function" "db_rotation" {
   function_name = "myapp-${var.environment}-db-rotation"
-  description   = "Rotates RDS credentials in Secrets Manager"
 
-  # AWS provides rotation lambdas for common databases
-  # Deploy from the Serverless Application Repository
-  s3_bucket         = "awsserverlessrepo-changesets-${data.aws_caller_identity.current.account_id}"
-  s3_key            = "SecretsManagerRDSPostgreSQLRotationSingleUser"
-  handler           = "lambda_function.lambda_handler"
-  runtime           = "python3.11"
-  role              = aws_iam_role.rotation_lambda.arn
-  timeout           = 30
-  vpc_config {
-    subnet_ids         = module.vpc.private_subnets
-    security_group_ids = [aws_security_group.rotation_lambda.id]
-  }
-
-  environment {
-    variables = {
-      SECRETS_MANAGER_ENDPOINT = "https://secretsmanager.${var.region}.amazonaws.com"
-    }
-  }
+  depends_on = [aws_serverlessapplicationrepository_cloudformation_stack.db_rotation]
 }
 ```
 
@@ -161,9 +181,46 @@ resource "aws_secretsmanager_secret_policy" "db" {
     Statement = [{
       Effect    = "Allow"
       Principal = { AWS = "arn:aws:iam::${var.workload_account_id}:role/AppRole" }
-      Action    = ["secretsmanager:GetSecretValue"]
-      Resource  = "*"
+      Action    = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+      Resource  = aws_secretsmanager_secret.db.arn
     }]
+  })
+}
+
+resource "aws_kms_grant" "workload_secret_decrypt" {
+  name              = "myapp-${var.environment}-workload-secret-decrypt"
+  key_id            = aws_kms_key.secrets.key_id
+  grantee_principal = "arn:aws:iam::${var.workload_account_id}:role/AppRole"
+  operations        = ["Decrypt", "DescribeKey"]
+
+  constraints {
+    encryption_context_subset = {
+      SecretARN = aws_secretsmanager_secret.db.arn
+    }
+  }
+}
+
+# Configure an aws.workload provider alias for the workload account
+resource "aws_iam_role_policy" "workload_app_secrets" {
+  provider = aws.workload
+
+  name = "myapp-${var.environment}-cross-account-secrets-read"
+  role = "AppRole"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+        Resource = aws_secretsmanager_secret.db.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:DescribeKey"]
+        Resource = aws_kms_key.secrets.arn
+      }
+    ]
   })
 }
 ```
