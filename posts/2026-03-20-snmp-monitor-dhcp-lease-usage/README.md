@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SNMP, DHCP, Monitoring, IPv4, Lease, Network Management, OID
 
-Description: Learn how to monitor DHCP pool utilization and lease counts using SNMP OIDs from Microsoft DHCP Server and ISC DHCP, enabling proactive capacity management.
+Description: Learn how to monitor DHCP pool utilization and lease counts using Microsoft DHCP Server SNMP OIDs and Net-SNMP extend scripts for ISC DHCP, enabling proactive capacity management.
 
 ---
 
@@ -18,9 +18,9 @@ Microsoft's DHCP server exposes pool statistics via the `DHCP-MIB`:
 
 | OID | Description |
 |-----|-------------|
-| `1.3.6.1.4.1.311.1.3.2.1.1.3` | Addresses in use per scope |
-| `1.3.6.1.4.1.311.1.3.2.1.1.4` | Addresses available per scope |
-| `1.3.6.1.4.1.311.1.3.2.1.1.2` | Subnet address (scope IP) |
+| `1.3.6.1.4.1.311.1.3.2.1.1.1` | Subnet address (scope IP) |
+| `1.3.6.1.4.1.311.1.3.2.1.1.2` | Addresses in use per scope |
+| `1.3.6.1.4.1.311.1.3.2.1.1.3` | Addresses available per scope |
 
 ```bash
 # Walk all DHCP scopes on a Windows DHCP server
@@ -28,10 +28,10 @@ Microsoft's DHCP server exposes pool statistics via the `DHCP-MIB`:
 snmpwalk -v2c -c public 192.168.1.10 1.3.6.1.4.1.311.1.3.2.1
 
 # Get addresses in use for all scopes
-snmpwalk -v2c -c public 192.168.1.10 1.3.6.1.4.1.311.1.3.2.1.1.3
+snmpwalk -v2c -c public 192.168.1.10 1.3.6.1.4.1.311.1.3.2.1.1.2
 
 # Get available addresses
-snmpwalk -v2c -c public 192.168.1.10 1.3.6.1.4.1.311.1.3.2.1.1.4
+snmpwalk -v2c -c public 192.168.1.10 1.3.6.1.4.1.311.1.3.2.1.1.3
 ```
 
 ### ISC DHCP Server (Linux) - via Custom Script
@@ -45,12 +45,72 @@ ISC DHCP doesn't expose SNMP natively. Use a script to parse the lease file and 
 
 SUBNET="192.168.1"
 LEASE_FILE="/var/lib/dhcpd/dhcpd.leases"
+POOL_SIZE=254  # Total IPs in the pool (x.x.x.1-254)
 
 # Count active (not expired) leases in the subnet
-ACTIVE=$(grep -B1 "binding state active" "$LEASE_FILE" | \
-  grep "^lease" | grep "^lease ${SUBNET}" | wc -l)
+NOW_UTC=$(date -u +%Y%m%d%H%M%S)
+NOW_EPOCH=$(date -u +%s)
 
-POOL_SIZE=254  # Total IPs in the pool (x.x.x.1-254)
+ACTIVE=$(awk -v subnet="$SUBNET" -v now="$NOW_UTC" -v now_epoch="$NOW_EPOCH" '
+function is_expired() {
+  if (end_value == "never") return 0
+  if (end_epoch != "") return end_epoch <= now_epoch
+  if (end_value != "") return end_value <= now
+  return 1
+}
+
+function finish_lease() {
+  if (ip == "" || index(ip, subnet ".") != 1) return
+
+  if (state == "active" && !is_expired()) {
+    active[ip] = 1
+  } else {
+    delete active[ip]
+  }
+}
+
+/^[[:space:]]*lease[[:space:]]+[0-9.]+[[:space:]]+\{/ {
+  finish_lease()
+  ip = $2
+  state = ""
+  end_value = ""
+  end_epoch = ""
+  next
+}
+
+ip != "" && /^[[:space:]]*binding state/ {
+  state = $3
+  sub(/;$/, "", state)
+  next
+}
+
+ip != "" && /^[[:space:]]*ends/ {
+  if ($2 == "never;") {
+    end_value = "never"
+  } else if ($2 == "epoch") {
+    end_epoch = $3
+    sub(/;$/, "", end_epoch)
+  } else {
+    date = $3
+    time = $4
+    gsub(/[\/:;]/, "", date)
+    gsub(/[\/:;]/, "", time)
+    end_value = date time
+  }
+  next
+}
+
+ip != "" && /^[[:space:]]*}/ {
+  finish_lease()
+  ip = ""
+}
+
+END {
+  finish_lease()
+  for (lease in active) count++
+  print count + 0
+}
+' "$LEASE_FILE")
 
 echo "$ACTIVE"
 echo "$POOL_SIZE"
@@ -71,11 +131,11 @@ snmpwalk -v2c -c public 127.0.0.1 1.3.6.1.4.1.8072.1.3.2
 
 ```bash
 # Install the DHCP exporter for Prometheus
-go install github.com/DRuggeri/dhcp_exporter@latest
+go install github.com/DRuggeri/dhcpd_leases_exporter@latest
 
 # Run it pointing at the lease file
-dhcp_exporter \
-  --dhcp.leases-file=/var/lib/dhcpd/dhcpd.leases \
+dhcpd_leases_exporter \
+  --dhcpd.leases=/var/lib/dhcpd/dhcpd.leases \
   --web.listen-address=10.0.0.5:9667
 
 # Prometheus scrape config
@@ -92,22 +152,23 @@ groups:
   - name: dhcp
     rules:
       - alert: DHCPPoolNearlyExhausted
-        expr: dhcp_pool_utilization_percent > 85
+        # Replace 254 with the usable size of the monitored pool.
+        expr: (dhcpd_leases_stats_valid / 254) * 100 > 85
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "DHCP pool {{ $labels.subnet }} is {{ $value }}% utilized"
+          summary: "DHCP leases on {{ $labels.instance }} are {{ $value }}% utilized"
           description: "Pool may be exhausted soon. Add more IPs or split the scope."
 ```
 
 ### PRTG Alert
 
-In PRTG, create a custom SNMP sensor pointing to the Microsoft DHCP OID and set a threshold alert at 85% utilization.
+In PRTG, create custom SNMP sensors for the Microsoft `noAddInUse` and `noAddFree` OIDs and alert on low free addresses or calculated utilization above 85%.
 
 ## Key Takeaways
 
-- Microsoft DHCP server exposes per-scope lease counts via OID `1.3.6.1.4.1.311.1.3.2.1.1.3`.
+- Microsoft DHCP server exposes per-scope lease counts via OID `1.3.6.1.4.1.311.1.3.2.1.1.2`.
 - ISC DHCP requires a helper script and `extend` in `snmpd.conf` to expose lease counts via SNMP.
 - Alert at 80-85% utilization to provide time to add IP addresses or resize pools before exhaustion.
 - For production monitoring, use a dedicated Prometheus exporter or Nagios plugin for richer DHCP metrics.
