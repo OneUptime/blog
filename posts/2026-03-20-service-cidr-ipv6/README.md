@@ -8,16 +8,15 @@ Description: Configure IPv6 Service CIDR ranges in Kubernetes clusters, understa
 
 ## Introduction
 
-The service CIDR in Kubernetes defines the IP range for ClusterIPs assigned to Services. In dual-stack clusters, the service CIDR includes both IPv4 and IPv6 ranges. The kube-apiserver allocates ClusterIPs from these ranges when Services are created. The IPv6 service CIDR must be sized appropriately for the number of services in the cluster - a `/108` provides 1,048,576 addresses, sufficient for most deployments.
+The service CIDR in Kubernetes defines the IP range for ClusterIPs assigned to Services. In dual-stack clusters, the service CIDR includes both IPv4 and IPv6 ranges. The kube-apiserver allocates ClusterIPs from these ranges when Services are created. The IPv6 service CIDR must be sized appropriately for the number of services in the cluster - a `/108` contains 1,048,576 addresses, with 1,048,574 allocatable Service IPs, sufficient for most deployments.
 
 ## Configure Service CIDR in kubeadm
 
 ```yaml
 # kubeadm-config.yaml - service CIDR sizing
 
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
-kubernetesVersion: v1.29.0
 networking:
   podSubnet: "10.244.0.0/16,fd00:10:244::/56"
   # IPv4 /12 = 1M service IPs
@@ -25,13 +24,18 @@ networking:
   serviceSubnet: "10.96.0.0/12,fd00:10:96::/108"
 apiServer:
   extraArgs:
-    service-cluster-ip-range: "10.96.0.0/12,fd00:10:96::/108"
+    - name: service-cluster-ip-range
+      value: "10.96.0.0/12,fd00:10:96::/108"
 controllerManager:
   extraArgs:
-    cluster-cidr: "10.244.0.0/16,fd00:10:244::/56"
-    service-cluster-ip-range: "10.96.0.0/12,fd00:10:96::/108"
-    node-cidr-mask-size-ipv4: "24"
-    node-cidr-mask-size-ipv6: "64"
+    - name: cluster-cidr
+      value: "10.244.0.0/16,fd00:10:244::/56"
+    - name: service-cluster-ip-range
+      value: "10.96.0.0/12,fd00:10:96::/108"
+    - name: node-cidr-mask-size-ipv4
+      value: "24"
+    - name: node-cidr-mask-size-ipv6
+      value: "64"
 ```
 
 ## View Current Service CIDR
@@ -45,29 +49,30 @@ kubectl -n kube-system get pod kube-apiserver-<node> -o yaml | \
 kubectl -n kube-system get pod kube-controller-manager-<node> -o yaml | \
     grep "service-cluster-ip-range"
 
-# View how many services exist vs capacity
+# View how many Services exist (not all Service types consume ClusterIPs)
 kubectl get svc -A --no-headers | wc -l
-# If this approaches your service CIDR size, expand soon
+# If allocated ClusterIPs approach capacity, plan expansion before exhaustion
 
 # Check kubernetes service (first IP in service CIDR)
-kubectl get svc kubernetes -o jsonpath='{.spec.clusterIPs}'
-# ["10.96.0.1","fd00:10:96::1"]
+kubectl get svc kubernetes -o jsonpath='{.spec.clusterIPs[*]}'
+# 10.96.0.1 fd00:10:96::1
 ```
 
 ## IPv6 Service CIDR Sizing Guide
 
 ```text
 Service CIDR Size Reference:
-  IPv6 /108:  2^20 = 1,048,576 service IPs     (recommended for production)
-  IPv6 /112:  2^16 = 65,536 service IPs         (small/medium clusters)
-  IPv6 /116:  2^12 = 4,096 service IPs          (development/testing)
+  IPv6 /108:  2^20 - 2 = 1,048,574 service IPs  (recommended for production)
+  IPv6 /112:  2^16 - 2 = 65,534 service IPs     (small/medium clusters)
+  IPv6 /116:  2^12 - 2 = 4,094 service IPs      (development/testing)
 
-Minimum IPv6 service CIDR prefix: /108 for >65K services
+Use /108 when you need more than 65K Service IPs with the legacy allocator.
+Kubernetes v1.33+ with MultiCIDRServiceAllocator supports larger IPv6 ServiceCIDRs down to /64.
 The IPv6 service CIDR must not overlap with pod CIDRs or node CIDRs.
 
 Choose from ULA range:
   fd00:10:96::/108  (aligned with 10.96.0.0/12 IPv4 range)
-  fd00:svc::/108    (semantic naming)
+  fd00:10:97::/108  (separate example service range)
 ```
 
 ## Create Services and Verify IPv6 ClusterIP Allocation
@@ -78,13 +83,15 @@ for i in $(seq 1 5); do
     kubectl create service clusterip "svc-$i" \
         --tcp=80:80 \
         --dry-run=client -o yaml | \
-        kubectl patch --dry-run=client -f - \
-        -p '{"spec":{"ipFamilyPolicy":"PreferDualStack"}}' | \
+        kubectl patch --local -f - --type=merge \
+        -p '{"metadata":{"labels":{"app":"service-cidr-ipv6-demo"}},"spec":{"ipFamilyPolicy":"PreferDualStack"}}' \
+        -o yaml | \
         kubectl apply -f -
 done
 
 # View allocated ClusterIPs
-kubectl get svc -l "": -o jsonpath='{range .items[*]}{.metadata.name}: {.spec.clusterIPs}{"\n"}{end}'
+kubectl get svc -l app=service-cidr-ipv6-demo \
+    -o jsonpath='{range .items[*]}{.metadata.name}: {.spec.clusterIPs[*]}{"\n"}{end}'
 
 # Clean up
 for i in $(seq 1 5); do kubectl delete svc "svc-$i"; done
@@ -93,15 +100,15 @@ for i in $(seq 1 5); do kubectl delete svc "svc-$i"; done
 ## Monitor Service IP Exhaustion
 
 ```bash
-# Count allocated service IPs
-TOTAL_SVCS=$(kubectl get svc -A --no-headers | wc -l)
-echo "Total services: $TOTAL_SVCS"
+# Count allocated IPv6 ClusterIPs
+ALLOCATED_IPV6=$(kubectl get svc -A -o jsonpath='{range .items[*]}{range .spec.clusterIPs[*]}{.}{"\n"}{end}{end}' | awk '/:/' | wc -l)
+echo "Allocated IPv6 ClusterIPs: $ALLOCATED_IPV6"
 
-# IPv6 /108 capacity
-CAPACITY=$((2**20))
+# IPv6 /108 allocatable capacity
+CAPACITY=$((2**20 - 2))
 echo "Service CIDR capacity: $CAPACITY"
 
-USAGE_PCT=$((TOTAL_SVCS * 100 / CAPACITY))
+USAGE_PCT=$((ALLOCATED_IPV6 * 100 / CAPACITY))
 echo "Usage: ${USAGE_PCT}%"
 
 # Alert if >80% full
@@ -112,4 +119,4 @@ fi
 
 ## Conclusion
 
-Configure the IPv6 service CIDR in `kubeadm-config.yaml` under `serviceSubnet` with a comma-separated IPv4 and IPv6 CIDR. Pass the same value to kube-apiserver's `service-cluster-ip-range` and kube-controller-manager's matching flag. Use a `/108` IPv6 service CIDR for production clusters (1M addresses). The first IP in the service CIDR is reserved for the `kubernetes` service. Service CIDRs cannot be changed after cluster initialization without migrating all services, so size them generously at creation time.
+Configure the IPv6 service CIDR in `kubeadm-config.yaml` under `serviceSubnet` with a comma-separated IPv4 and IPv6 CIDR. If overriding control-plane component flags directly, keep kube-apiserver's `service-cluster-ip-range` and kube-controller-manager's matching flag consistent. Use a `/108` IPv6 service CIDR for production clusters (about 1M allocatable addresses). The first allocatable IP in the service CIDR is reserved for the `kubernetes` service. Replacing the primary Service CIDR after cluster initialization requires migration; Kubernetes v1.33+ can extend available ranges by adding ServiceCIDR objects, but changing the primary range still requires careful reconfiguration.
