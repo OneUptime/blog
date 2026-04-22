@@ -8,7 +8,7 @@ Description: Configure SNMP trap sending and receiving over IPv6, enabling devic
 
 ---
 
-SNMP traps are asynchronous notifications sent from network devices to management systems when events occur. Configuring trap transport over IPv6 requires setting the trap destination as an IPv6 address in both the agent and the trap receiver.
+SNMP traps are asynchronous notifications sent from network devices to management systems when events occur. Configuring trap transport over IPv6 requires using IPv6 transport/address notation for the trap destination and binding the trap receiver on IPv6.
 
 ## Configuring SNMP Trap Sending (Agent Side)
 
@@ -17,19 +17,14 @@ SNMP traps are asynchronous notifications sent from network devices to managemen
 
 # Send SNMPv2c traps to IPv6 NMS
 
-trapsink udp6:[2001:db8::nms]:162 public
+trap2sink udp6:[2001:db8::10]:162 public
 
 # Send to multiple NMS over IPv6
-trap2sink udp6:[2001:db8::nms1]:162 public
-trap2sink udp6:[2001:db8::nms2]:162 backup_community
+trap2sink udp6:[2001:db8::11]:162 public
+trap2sink udp6:[2001:db8::12]:162 backup_community
 
-# SNMPv3 inform (acknowledged trap)
-informsink udp6:[2001:db8::nms]:162 \
-  -v 3 \
-  -l authPriv \
-  -u trapuser \
-  -a SHA -A AuthPass123 \
-  -x AES -X PrivPass123
+# SNMPv3 inform (acknowledged notification)
+trapsess -Ci -v 3 -l authPriv -u trapuser -a SHA -A AuthPass123 -x AES -X PrivPass123 udp6:[2001:db8::10]:162
 
 # Configure what to trap
 # Link up/down traps
@@ -50,8 +45,8 @@ authCommunity log,execute,net public
 # Accept traps from specific IPv6 subnet
 authCommunity log,execute,net monitoring_comm 2001:db8::/32
 
-# SNMPv3 trap user
-createUser -e 0x8000000001020304 trapuser SHA "AuthPass123" AES "PrivPass123"
+# SNMPv3 inform user
+createUser trapuser SHA "AuthPass123" AES "PrivPass123"
 authUser log,execute trapuser priv
 
 # Log file
@@ -68,7 +63,7 @@ sudo snmptrapd -c /etc/snmp/snmptrapd.conf \
   -Lo \
   udp6:162
 
-# Or with systemd override
+# Or with Debian/Ubuntu service defaults
 # /etc/default/snmptrapd
 # TRAPDOPTS='-Lsd -p /run/snmptrapd.pid udp:162 udp6:162'
 
@@ -83,12 +78,12 @@ sudo ss -6 -ulnp | grep 162
 snmptrap \
   -v 2c \
   -c public \
-  udp6:[2001:db8::nms]:162 \
+  udp6:[2001:db8::10]:162 \
   '' \
   .1.3.6.1.6.3.1.1.5.3 \
-  ifIndex i 1 \
-  ifAdminStatus i 1 \
-  ifOperStatus i 2
+  .1.3.6.1.2.1.2.2.1.1.1 i 1 \
+  .1.3.6.1.2.1.2.2.1.7.1 i 1 \
+  .1.3.6.1.2.1.2.2.1.8.1 i 2
 
 # Send SNMPv3 inform over IPv6
 snmpinform \
@@ -97,7 +92,7 @@ snmpinform \
   -u trapuser \
   -a SHA -A "AuthPass123" \
   -x AES -X "PrivPass123" \
-  udp6:[2001:db8::nms]:162 \
+  udp6:[2001:db8::10]:162 \
   '' \
   .1.3.6.1.6.3.1.1.5.4
 
@@ -110,7 +105,7 @@ sudo tail -f /var/log/snmptrapd.log
 ```bash
 # Allow outbound traps (from agent to NMS)
 sudo ip6tables -A OUTPUT -p udp \
-  -d 2001:db8::nms \
+  -d 2001:db8::10 \
   --dport 162 -j ACCEPT
 
 # Allow inbound traps (at NMS)
@@ -119,7 +114,7 @@ sudo ip6tables -A INPUT -p udp \
   --dport 162 -j ACCEPT
 
 # Save rules
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo sh -c 'ip6tables-save > /etc/ip6tables/rules.v6'
 ```
 
 ## Processing Traps with Handler Script
@@ -129,11 +124,13 @@ sudo ip6tables-save > /etc/ip6tables/rules.v6
 # /usr/local/bin/handle_linkdown.sh
 # Called by snmptrapd on link down trap
 
-# SNMPTRAPD passes trap data via stdin and environment variables
-HOSTNAME="${SNMPTRAPD_NOTIFY_CATEGORY}"
-TRAPOID="${SNMPTRAPD_NOTIFY_OID}"
+# SNMPTRAPD passes hostname, source address, and varbinds via stdin
+read -r HOSTNAME
+read -r IPADDRESS
+TRAP_DATA="$(cat)"
 
-echo "$(date): Link DOWN on ${HOSTNAME}" >> /var/log/trap_events.log
+echo "$(date): Link DOWN from ${HOSTNAME} (${IPADDRESS})" >> /var/log/trap_events.log
+echo "${TRAP_DATA}" >> /var/log/trap_events.log
 
 # Optionally page the NOC
 # curl -X POST "https://api.pagerduty.com/events" \
@@ -146,16 +143,16 @@ echo "$(date): Link DOWN on ${HOSTNAME}" >> /var/log/trap_events.log
 ```text
 ! Cisco IOS - Send traps over IPv6
 snmp-server enable traps
-snmp-server host 2001:db8::nms version 2c public udp-port 162
+snmp-server host 2001:db8::10 version 2c public udp-port 162
 
 ! Verify trap destinations
 show snmp host
 
 ! Juniper - Send traps over IPv6
-set snmp trap-group monitors targets 2001:db8::nms
+set snmp trap-group monitors targets 2001:db8::10
 set snmp trap-group monitors version v2
 set snmp trap-group monitors categories link
 commit
 ```
 
-SNMP traps over IPv6 require only changing the trap destination address format to IPv6 notation in agent configurations, with `snmptrapd` automatically handling both IPv4 and IPv6 when bound to both `udp:162` and `udp6:162` simultaneously.
+SNMP traps over IPv6 require using valid IPv6 transport/address notation in agent configurations, with `snmptrapd` handling both IPv4 and IPv6 when bound to both `udp:162` and `udp6:162` simultaneously.
