@@ -18,7 +18,7 @@ sudo apt install ufw -y
 # Check current status
 sudo ufw status verbose
 
-# Enable UFW (enable BEFORE setting rules if not already running)
+# Enable UFW (enable AFTER setting rules if not already running)
 # WARNING: ensure you allow SSH first to avoid lockout
 sudo ufw enable
 ```
@@ -62,7 +62,7 @@ sudo ufw allow 'Nginx Full' # Allow HTTP + HTTPS via app profile
 
 ```bash
 # Allow SSH only from your office IP
-sudo ufw allow from 203.0.113.10 to any port 22
+sudo ufw allow proto tcp from 203.0.113.10 to any port 22
 
 # Allow all traffic from a trusted subnet
 sudo ufw allow from 10.0.0.0/8
@@ -119,13 +119,13 @@ sudo ufw allow 'OpenSSH'
 ## Enable Logging
 
 ```bash
-# Enable UFW logging (logs to /var/log/ufw.log)
+# Enable UFW logging (commonly logs to /var/log/ufw.log via rsyslog)
 sudo ufw logging on
 
 # Set log level (low, medium, high, full)
 sudo ufw logging medium
 
-# View UFW logs
+# View UFW logs (if rsyslog writes /var/log/ufw.log)
 sudo tail -f /var/log/ufw.log
 
 # Example UFW log entry:
@@ -143,8 +143,10 @@ sudo ufw status verbose
 # Show in numbered format for management
 sudo ufw status numbered
 
-# Test rule matching without enabling (dry run)
-# UFW doesn't have dry run, but you can verify with iptables:
+# Preview rule changes without applying them (dry run)
+sudo ufw --dry-run allow http
+
+# Inspect active UFW-managed iptables rules
 sudo iptables -L -n | grep -A5 "ufw"
 ```
 
