@@ -67,18 +67,13 @@ fn handle_client(stream: TcpStream, clients: Clients) {
         return;
     }
     
-    // Check if username is taken
+    // Check if username is taken and register the client
     {
-        let map = clients.lock().unwrap();
+        let mut map = clients.lock().unwrap();
         if map.contains_key(&username) {
             let _ = writeln!(write_stream, "Username '{}' is already taken", username);
             return;
         }
-    }
-    
-    // Register the client
-    {
-        let mut map = clients.lock().unwrap();
         map.insert(username.clone(), write_stream.try_clone().unwrap());
     }
     
@@ -146,7 +141,7 @@ fn handle_client(stream: TcpStream, clients: Clients) {
 fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("0.0.0.0:3000")?;
     println!("Chat server on port 3000");
-    println!("Connect with: telnet localhost 3000");
+    println!("Connect with: telnet 127.0.0.1 3000");
     
     let clients: Clients = Arc::new(Mutex::new(HashMap::new()));
     
@@ -171,9 +166,9 @@ cargo run
 
 # Connect from multiple terminals
 
-telnet localhost 3000
+telnet 127.0.0.1 3000
 # Or
-nc localhost 3000
+nc 127.0.0.1 3000
 ```
 
 ## Key Rust Patterns Used
