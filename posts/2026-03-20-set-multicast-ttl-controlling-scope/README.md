@@ -12,7 +12,7 @@ The Time-to-Live (TTL) field in IPv4 multicast packets controls how many router 
 
 ## TTL Threshold Convention
 
-Multicast routers enforce TTL thresholds on outbound interfaces. If a packet's TTL is less than or equal to the threshold, the router will not forward it.
+Multicast routers enforce TTL thresholds on outbound interfaces. If a packet's remaining TTL is less than or equal to the threshold, the router will not forward it.
 
 | TTL Value | Typical Scope |
 |---|---|
@@ -63,10 +63,10 @@ sudo iptables -t mangle -A OUTPUT \
 
 ## Capping Incoming Multicast TTL
 
-To prevent high-TTL multicast from entering your network:
+To prevent high-TTL multicast from reaching this host:
 
 ```bash
-# Drop multicast packets with TTL > 15 arriving on eth0
+# Drop multicast packets with TTL > 15 arriving on eth0 for this host
 sudo iptables -A INPUT -i eth0 \
   -d 224.0.0.0/4 \
   -m ttl --ttl-gt 15 \
@@ -88,21 +88,21 @@ IP (ttl 1, proto UDP, length 52) 192.168.1.10.5000 > 239.1.2.3.5000
 
 ## Configuring Router Interface TTL Thresholds (Cisco)
 
-On a Cisco router, set the TTL threshold per interface to prevent forwarding low-TTL multicast:
+On a Cisco IOS release that supports this command, set the TTL threshold per interface to prevent forwarding low-TTL multicast:
 
 ```text
 interface GigabitEthernet0/1
  ip multicast ttl-threshold 16
 ```
 
-Packets with TTL ≤ 16 arriving from this interface will not be forwarded.
+Packets with TTL <= 16 will not be forwarded out of this interface.
 
 ## Recommended Settings
 
-- **Service discovery / mDNS**: TTL = 1 (never leaves subnet)
+- **Service discovery on custom multicast groups**: TTL = 1 (never leaves subnet; mDNS itself uses 224.0.0.251 and should send responses with IP TTL = 255)
 - **LAN streaming**: TTL = 15 (site-local)
 - **Enterprise-wide multicast**: TTL = 63
-- **Global multicast**: TTL = 127–255
+- **Global multicast**: TTL = 255
 
 ## Conclusion
 
