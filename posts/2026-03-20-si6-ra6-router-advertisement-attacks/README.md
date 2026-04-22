@@ -14,7 +14,7 @@ The `ra6` tool from the SI6 Networks IPv6 toolkit crafts and sends ICMPv6 Router
 
 ```bash
 sudo apt-get install ipv6toolkit   # Debian/Ubuntu
-sudo pacman -S ipv6toolkit          # Arch Linux
+yay -S ipv6toolkit                  # Arch Linux (AUR)
 ```
 
 ## Basic ra6 Usage
@@ -22,13 +22,13 @@ sudo pacman -S ipv6toolkit          # Arch Linux
 ```bash
 # Send a basic Router Advertisement from eth0
 
-sudo ra6 -i eth0
+sudo ra6 -i eth0 -d ff02::1
 
 # Send an RA announcing a specific prefix
-sudo ra6 -i eth0 -P 2001:db8:cafe::/64
+sudo ra6 -i eth0 -d ff02::1 -P 2001:db8:cafe::/64
 
-# Send an RA to a specific target (unicast)
-sudo ra6 -i eth0 -d fe80::target
+# Send an RA to a specific target with a known Ethernet destination (unicast)
+sudo ra6 -i eth0 -d fe80::1 -D 00:11:22:33:44:55
 
 # Send an RA to the all-nodes multicast (affects all hosts on segment)
 sudo ra6 -i eth0 -d ff02::1
@@ -38,45 +38,42 @@ sudo ra6 -i eth0 -d ff02::1
 
 ```bash
 # Set router lifetime (0 = not a default router)
-sudo ra6 -i eth0 --router-lifetime 0
+sudo ra6 -i eth0 -d ff02::1 --lifetime 0
 
-# Set router lifetime to maximum (flood default routes)
-sudo ra6 -i eth0 --router-lifetime 65535
+# Set router lifetime to the 16-bit field maximum
+sudo ra6 -i eth0 -d ff02::1 --lifetime 65535
 
-# Set hop limit in the RA
-sudo ra6 -i eth0 --cur-hop-limit 64
+# Set the Cur Hop Limit field in the RA
+sudo ra6 -i eth0 -d ff02::1 --curhop 64
 
 # Include a Recursive DNS Server (RDNSS) option
-sudo ra6 -i eth0 --rdnss 2001:db8::53
-
-# Include a DNS Search List (DNSSL) option
-sudo ra6 -i eth0 --dnssl "example.com"
+sudo ra6 -i eth0 -d ff02::1 --rdnss-opt 1800#2001:db8::53
 ```
 
 ## Prefix Information Options
 
 ```bash
 # Announce a prefix with SLAAC flag (A-bit) set
-sudo ra6 -i eth0 -P 2001:db8::/64 --prefix-opt-a
+sudo ra6 -i eth0 -d ff02::1 -P 2001:db8::/64#A
 
 # Announce a prefix with on-link flag (L-bit) set
-sudo ra6 -i eth0 -P 2001:db8::/64 --prefix-opt-l
+sudo ra6 -i eth0 -d ff02::1 -P 2001:db8::/64#L
 
 # Set prefix valid and preferred lifetime
-sudo ra6 -i eth0 -P 2001:db8::/64 --prefix-opt-valid 3600 --prefix-opt-preferred 1800
+sudo ra6 -i eth0 -d ff02::1 -P 2001:db8::/64#LA#3600#1800
 ```
 
 ## Testing RA Flood Resilience
 
 ```bash
 # Send multiple RAs in quick succession to test rate limiting
-sudo ra6 -i eth0 -P 2001:db8::/64 --loop --sleep 0
+sudo ra6 -i eth0 -d ff02::1 -P 2001:db8::/64 --loop --sleep 1
 
 # Send RAs with different prefixes to fill routing tables
 # (Use with --loop and varying -P values in a script)
 
-# Test with maximum prefix count per RA
-sudo ra6 -i eth0 -P 2001:db8:1::/64 -P 2001:db8:2::/64 -P 2001:db8:3::/64
+# Test with multiple prefix options per RA
+sudo ra6 -i eth0 -d ff02::1 -P 2001:db8:1::/64 -P 2001:db8:2::/64 -P 2001:db8:3::/64
 ```
 
 ## Testing RA Guard Bypass
@@ -85,10 +82,10 @@ RA Guard is a network switch feature that filters unauthorized RAs. `ra6` can te
 
 ```bash
 # Send RA with extension headers (may bypass some RA Guard implementations)
-sudo ra6 -i eth0 --frag-hdr -P 2001:db8::/64
+sudo ra6 -i eth0 -d ff02::1 --frag-hdr 8 -P 2001:db8::/64
 
 # Send RA with hop-by-hop header
-sudo ra6 -i eth0 --hbh-opt -P 2001:db8::/64
+sudo ra6 -i eth0 -d ff02::1 --hbh-opt-hdr 8 -P 2001:db8::/64
 ```
 
 ## Verifying RA Impact on Hosts
