@@ -87,7 +87,7 @@ module "network_azure" {
 
 ## Publishing Modules to a Registry
 
-Push modules to the OpenTofu Registry or a private registry:
+After publishing modules to the OpenTofu Registry or a private registry, reference them with a registry source address:
 
 ```hcl
 module "network_aws" {
