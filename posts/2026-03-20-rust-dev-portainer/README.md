@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Rust, Development, Cargo, Systems Programming
 
-Description: Build a complete Rust development environment with cargo-watch, debugging support, and dependency caching using Docker and Portainer.
+Description: Build a complete Rust development environment with cargo-watch and dependency caching using Docker and Portainer.
 
 ## Introduction
 
-Rust development in Docker can be challenging due to long compile times, but with proper layer caching and cargo-watch for incremental rebuilds, it becomes manageable. This guide covers setting up a Rust development environment with sccache for distributed compilation caching, debugging support, and supporting services.
+Rust development in Docker can be challenging due to long compile times, but with proper layer caching and cargo-watch for incremental rebuilds, it becomes manageable. This guide covers setting up a Rust development environment with sccache for compiler caching and supporting services.
 
 ## Step 1: Create the Rust Development Dockerfile
 
 ```dockerfile
 # Dockerfile.dev - Rust development environment
 
-FROM rust:1.76-slim-bookworm
+FROM rust:1-slim-bookworm
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -34,10 +34,11 @@ RUN cargo install \
     cargo-edit \
     cargo-audit \
     cargo-outdated \
-    cargo-tarpaulin \
-    diesel_cli --no-default-features --features postgres \
-    sea-orm-cli \
-    && cargo install sccache
+    cargo-tarpaulin && \
+    cargo install diesel_cli --no-default-features --features postgres && \
+    cargo install sea-orm-cli && \
+    cargo install sqlx-cli --version 0.8.6 --no-default-features --features native-tls,postgres && \
+    cargo install sccache
 
 # Set sccache as the compiler cache
 ENV RUSTC_WRAPPER=sccache
@@ -60,16 +61,14 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs && \
     cargo build && \
     rm src/main.rs
 
-EXPOSE 8080   # Application
-EXPOSE 5678   # Debugger
+# Application
+EXPOSE 8080
 ```
 
 ## Step 2: Deploy Rust Stack in Portainer
 
 ```yaml
 # docker-compose.yml - Rust Development Stack
-version: "3.8"
-
 networks:
   rust_dev:
     driver: bridge
@@ -108,11 +107,18 @@ services:
       - sccache_data:/sccache
     # cargo-watch for hot-rebuild
     command: cargo watch -x run
+    # Required by cargo-tarpaulin when collecting coverage inside Docker
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp=unconfined
     networks:
       - rust_dev
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   # PostgreSQL
   postgres:
@@ -127,6 +133,11 @@ services:
       - POSTGRES_PASSWORD=devpassword
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devuser -d devdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - rust_dev
 
@@ -139,6 +150,11 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - rust_dev
 ```
@@ -154,20 +170,20 @@ edition = "2021"
 
 [dependencies]
 # Web framework
-axum = { version = "0.7", features = ["macros"] }
+axum = { version = "0.8", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["trace", "cors"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "cors"] }
 
 # Database
-sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "chrono"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Async Redis
-redis = { version = "0.24", features = ["tokio-comp"] }
+redis = { version = "1", features = ["tokio-comp"] }
 
 # Tracing
 tracing = "0.1"
@@ -175,7 +191,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Error handling
 anyhow = "1"
-thiserror = "1"
+thiserror = "2"
 
 # Environment variables
 dotenvy = "0.15"
@@ -255,7 +271,7 @@ async fn health_check(State(state): State<Arc<AppState>>) -> (StatusCode, Json<V
 
 ```bash
 # Create migration
-docker exec rust_app sqlx migrate add create_users_table
+docker exec rust_app sqlx migrate add -r create_users_table
 
 # Run migrations
 docker exec rust_app sqlx migrate run
@@ -293,7 +309,7 @@ docker exec rust_app cargo outdated
 
 ```dockerfile
 # Dockerfile - Production build (minimal image)
-FROM rust:1.76 AS builder
+FROM rust:1-bookworm AS builder
 
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
@@ -301,6 +317,7 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs && cargo build --release
 RUN rm src/main.rs
 
 COPY src ./src
+COPY migrations ./migrations
 RUN touch src/main.rs && cargo build --release
 
 # Final stage - distroless or scratch
