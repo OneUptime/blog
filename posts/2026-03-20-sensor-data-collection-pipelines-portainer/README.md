@@ -27,13 +27,11 @@ Navigate to **Stacks > Add Stack** and paste the following:
 ```yaml
 # sensor-pipeline.yml
 
-version: "3.8"
-
 services:
   mosquitto:
     image: eclipse-mosquitto:2.0
     volumes:
-      - mosquitto-config:/mosquitto/config
+      - /opt/sensor-pipeline/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto-data:/mosquitto/data
       - mosquitto-log:/mosquitto/log
     ports:
@@ -61,6 +59,7 @@ services:
       - DOCKER_INFLUXDB_INIT_MODE=setup
       - DOCKER_INFLUXDB_INIT_USERNAME=admin
       - DOCKER_INFLUXDB_INIT_PASSWORD=secure_password_here
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=sensor_pipeline_token_here
       - DOCKER_INFLUXDB_INIT_ORG=sensors-org
       - DOCKER_INFLUXDB_INIT_BUCKET=sensor-data
       - DOCKER_INFLUXDB_INIT_RETENTION=30d
@@ -87,7 +86,6 @@ services:
       - sensor-net
 
 volumes:
-  mosquitto-config:
   mosquitto-data:
   mosquitto-log:
   influxdb-data:
@@ -98,9 +96,28 @@ networks:
     driver: bridge
 ```
 
-## Step 2: Configure Telegraf
+## Step 2: Configure Mosquitto and Telegraf
 
-Create `/opt/sensor-pipeline/telegraf.conf` on the host before deploying:
+Create `/opt/sensor-pipeline/mosquitto.conf` and `/opt/sensor-pipeline/telegraf.conf` on the host before deploying:
+
+```conf
+# mosquitto.conf
+# Listen for MQTT and MQTT-over-WebSocket clients
+
+allow_anonymous true
+
+listener 1883
+protocol mqtt
+
+listener 9001
+protocol websockets
+
+persistence true
+persistence_location /mosquitto/data/
+log_dest file /mosquitto/log/mosquitto.log
+```
+
+For production, replace `allow_anonymous true` with a password file or another authentication method before exposing the broker outside a trusted network.
 
 ```toml
 # telegraf.conf
@@ -116,16 +133,19 @@ Create `/opt/sensor-pipeline/telegraf.conf` on the host before deploying:
   # Subscribe to all sensor topics
   topics = ["sensors/#"]
   data_format = "json"
+  tag_keys = ["device_id"]
+  json_time_key = "timestamp"
+  json_time_format = "unix"
 
-  # Parse JSON fields from sensor messages
+  # Extract the sensor location from topics like sensors/building-a/data
   [[inputs.mqtt_consumer.topic_parsing]]
-    topic = "sensors/+/temperature"
-    tags = "_/_/measurement"
+    topic = "sensors/+/data"
+    tags = "_/location/_"
 
 # Write to InfluxDB 2.x
 [[outputs.influxdb_v2]]
   urls = ["http://influxdb:8086"]
-  token = "your-influxdb-token"
+  token = "sensor_pipeline_token_here"
   organization = "sensors-org"
   bucket = "sensor-data"
 ```
@@ -141,8 +161,9 @@ import json
 import time
 import random
 
-client = mqtt.Client()
-client.connect("localhost", 1883)  # Connect to local Mosquitto
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+client.connect("edge-gateway.local", 1883)  # Connect to your Mosquitto host
+client.loop_start()
 
 while True:
     # Build sensor reading payload
@@ -152,7 +173,7 @@ while True:
         "humidity": 60.0 + random.uniform(-5, 5),
         "timestamp": int(time.time())
     }
-    # Publish to a topic like sensors/building-a/temperature
+    # Publish to a topic like sensors/building-a/data
     client.publish("sensors/building-a/data", json.dumps(payload))
     time.sleep(5)
 ```
@@ -167,4 +188,4 @@ After deploying the stack:
 
 ## Summary
 
-With Portainer stacks, you can deploy and manage the full sensor data collection pipeline as a single unit. Update individual components, scale Telegraf for higher throughput, or swap InfluxDB for TimescaleDB - all from the Portainer UI.
+With Portainer stacks, you can deploy and manage the full sensor data collection pipeline as a single unit. Update individual components, scale Telegraf with shared MQTT subscriptions or partitioned topics for higher throughput, or swap InfluxDB for TimescaleDB - all from the Portainer UI.
