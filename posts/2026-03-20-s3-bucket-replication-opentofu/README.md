@@ -14,9 +14,23 @@ S3 bucket replication allows you to automatically copy objects from one S3 bucke
 
 - OpenTofu installed (version 1.6 or later)
 - AWS credentials configured
+- AWS provider configured for the source region and, for cross-region replication, an aliased destination region
 - Two S3 buckets (source and destination)
 
 ## Setting Up the Source Bucket
+
+For cross-region replication, configure the default AWS provider for the source region and an aliased provider for the destination region:
+
+```hcl
+provider "aws" {
+  region = "us-east-1"
+}
+
+provider "aws" {
+  alias  = "us_west_2"
+  region = "us-west-2"
+}
+```
 
 First, define the source bucket with versioning enabled, which is required for replication:
 
@@ -101,7 +115,10 @@ resource "aws_iam_role_policy" "replication" {
 
 ```hcl
 resource "aws_s3_bucket_replication_configuration" "replication" {
-  depends_on = [aws_s3_bucket_versioning.source]
+  depends_on = [
+    aws_s3_bucket_versioning.source,
+    aws_s3_bucket_versioning.destination
+  ]
 
   role   = aws_iam_role.replication.arn
   bucket = aws_s3_bucket.source.id
@@ -109,6 +126,8 @@ resource "aws_s3_bucket_replication_configuration" "replication" {
   rule {
     id     = "replicate-all"
     status = "Enabled"
+
+    filter {}
 
     destination {
       bucket        = aws_s3_bucket.destination.arn
