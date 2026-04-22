@@ -33,13 +33,14 @@ resource "aws_sns_topic" "notifications" {
   name         = "${var.environment}-app-notifications"
   display_name = "Application Notifications"
 
-  # Enable server-side encryption
-  kms_master_key_id = "alias/aws/sns"
+  # Enable server-side encryption. Use a customer-managed KMS key
+  # if AWS services such as CloudWatch alarms publish to this topic.
+  kms_master_key_id = var.sns_kms_key_id
 
   tags = var.common_tags
 }
 
-# FIFO topic for ordered, exactly-once message delivery
+# FIFO topic for ordered, deduplicated delivery to FIFO-compatible subscribers
 resource "aws_sns_topic" "orders_fifo" {
   name                        = "${var.environment}-orders.fifo"  # Must end in .fifo
   fifo_topic                  = true
@@ -163,6 +164,14 @@ resource "aws_sns_topic_policy" "notifications" {
         }
         Action    = "SNS:Publish"
         Resource  = aws_sns_topic.notifications.arn
+        Condition = {
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:cloudwatch:${var.aws_region}:${data.aws_caller_identity.current.account_id}:alarm:*"
+          }
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
       }
     ]
   })
@@ -177,4 +186,4 @@ data "aws_caller_identity" "current" {}
 - Use `raw_message_delivery = true` for SQS subscribers when your consumer doesn't need SNS metadata.
 - Set filter policies to route messages to the right subscribers without building complex routing logic in consumers.
 - Enable KMS encryption for topics containing sensitive business data.
-- Use FIFO topics when message ordering and exactly-once delivery are required (e.g., financial transactions).
+- Use FIFO topics with SQS FIFO subscribers when strict ordering and duplicate suppression are required (e.g., financial transactions).
