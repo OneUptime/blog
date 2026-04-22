@@ -2,26 +2,25 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Ipv6Addr, IPv6, Standard Library, Std::net, Network Programming
+Tags: Rust, Ipv6Addr, IPv6, Standard Library, std::net, Network Programming
 
 Description: Use Rust's std::net::Ipv6Addr type for IPv6 address parsing, classification, manipulation, and prefix operations in network applications.
 
 ## Introduction
 
-Rust's standard library includes `std::net::Ipv6Addr` for IPv6 address representation. It is a Copy type (stack allocated), supports all standard address classifications, and can be combined with the `ipnet` crate for prefix operations.
+Rust's standard library includes `std::net::Ipv6Addr` for IPv6 address representation. It is a Copy type that does not allocate, supports common address classifications, and can be combined with the `ipnet` crate for prefix operations.
 
 ## Basic Ipv6Addr Operations
 
 ```rust
-use std::net::{IpAddr, Ipv6Addr};
-use std::str::FromStr;
+use std::net::Ipv6Addr;
 
 fn main() {
     // Parse IPv6 address
     let addr: Ipv6Addr = "2001:db8::1".parse().unwrap();
 
     println!("{}", addr);             // 2001:db8::1
-    println!("{:?}", addr.segments()); // [0x2001, 0x0db8, 0, 0, 0, 0, 0, 1]
+    println!("{:?}", addr.segments()); // [8193, 3512, 0, 0, 0, 0, 0, 1]
     println!("{}", addr.is_loopback()); // false
     println!("{}", addr.is_unspecified()); // false
 
@@ -48,6 +47,12 @@ fn main() {
 ```rust
 use std::net::Ipv6Addr;
 
+fn is_documentation(addr: Ipv6Addr) -> bool {
+    let segments = addr.segments();
+    (segments[0] == 0x2001 && segments[1] == 0x0db8)
+        || (segments[0] == 0x3fff && segments[1] & 0xf000 == 0)
+}
+
 fn classify_ipv6(addr: Ipv6Addr) -> &'static str {
     if addr.is_loopback() {
         "loopback"
@@ -61,8 +66,10 @@ fn classify_ipv6(addr: Ipv6Addr) -> &'static str {
         "unique-local (ULA)"
     } else if addr.to_ipv4_mapped().is_some() {
         "IPv4-mapped"
+    } else if is_documentation(addr) {
+        "documentation"
     } else {
-        "global unicast"
+        "other unicast"
     }
 }
 
@@ -88,7 +95,7 @@ fn main() {
 ## IPv4-Mapped IPv6 Handling
 
 ```rust
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::IpAddr;
 
 fn normalize_ip(addr: IpAddr) -> IpAddr {
     match addr {
