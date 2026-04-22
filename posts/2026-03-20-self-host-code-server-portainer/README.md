@@ -13,18 +13,15 @@ Code-server brings the full VS Code editor to the browser. You can edit code, ru
 ## Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   code-server:
     image: codercom/code-server:latest
     restart: unless-stopped
     ports:
-      - "8443:8443"
+      - "8443:8080"
     environment:
       # Password to access the editor
       PASSWORD: changeme-strong-password
-      SUDO_PASSWORD: changeme-sudo-pass    # For sudo inside the container
     volumes:
       # Persist your home directory and project files
       - code_server_data:/home/coder
@@ -51,17 +48,24 @@ From the code-server terminal, install development tools:
 ```bash
 # Install Node.js via nvm
 
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
 source ~/.bashrc
-nvm install 20
+nvm install --lts
 
 # Install Python tools
-pip3 install virtualenv black flake8 mypy
+sudo apt-get update
+sudo apt-get install -y python3 python3-venv python3-pip
+python3 -m venv ~/.venvs/devtools
+source ~/.venvs/devtools/bin/activate
+python -m pip install --upgrade pip
+python -m pip install virtualenv black flake8 mypy
 
 # Install Go
-wget https://go.dev/dl/go1.22.linux-amd64.tar.gz
-sudo tar -C /usr/local -xzf go1.22.linux-amd64.tar.gz
+wget https://go.dev/dl/go1.26.2.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go
+sudo tar -C /usr/local -xzf go1.26.2.linux-amd64.tar.gz
 echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+source ~/.bashrc
 ```
 
 ## HTTPS with a Reverse Proxy
@@ -73,12 +77,16 @@ server {
     listen 443 ssl;
     server_name code.example.com;
 
+    ssl_certificate /etc/letsencrypt/live/code.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/code.example.com/privkey.pem;
+
     location / {
         proxy_pass http://localhost:8443;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
+        proxy_set_header Accept-Encoding gzip;
     }
 }
 ```
@@ -89,4 +97,4 @@ VS Code extensions install to `~/.local/share/code-server/extensions/`, which is
 
 ## Monitoring
 
-Use OneUptime to monitor `http://<host>:8443` for HTTP 200/302 (redirect to login). Alert on downtime to know when your remote development environment needs attention.
+Use OneUptime to monitor `http://<host>:8443/healthz` for HTTP 200. Alert on downtime to know when your remote development environment needs attention.
