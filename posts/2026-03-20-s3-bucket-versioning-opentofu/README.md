@@ -8,7 +8,7 @@ Description: Learn how to enable S3 bucket versioning with OpenTofu to preserve,
 
 ## Introduction
 
-S3 versioning maintains multiple versions of an object in the same bucket. When enabled, every PUT, POST, and DELETE creates a new version rather than overwriting. This provides protection against accidental deletions and enables point-in-time recovery of objects.
+S3 versioning maintains multiple versions of an object in the same bucket. When enabled, every PUT and POST creates a new version rather than overwriting, and a simple DELETE adds a delete marker rather than removing existing versions. This provides protection against accidental deletions and enables point-in-time recovery of objects.
 
 ## Prerequisites
 
@@ -39,8 +39,9 @@ resource "aws_s3_bucket_versioning" "main" {
     # "Disabled" is the default state (cannot be set after enabling)
     status = "Enabled"
 
-    # MFA Delete adds a second factor for deleting versions
-    # Requires the bucket owner's MFA device
+    # MFA Delete adds a second factor for permanently deleting versions or changing versioning state
+    # Requires the bucket-owner root account's MFA device and the resource-level mfa argument
+    # Cannot be used with lifecycle configurations
     # mfa_delete = "Enabled"
   }
 }
@@ -52,6 +53,8 @@ resource "aws_s3_bucket_versioning" "main" {
 # Lifecycle rules to manage old versions and reduce costs
 resource "aws_s3_bucket_lifecycle_configuration" "versioned" {
   bucket = aws_s3_bucket.versioned.id
+
+  depends_on = [aws_s3_bucket_versioning.main]
 
   rule {
     id     = "expire-old-versions"
@@ -118,7 +121,7 @@ aws s3api list-object-versions \
   --bucket my-versioned-bucket \
   --prefix "documents/report.pdf"
 
-# Restore a specific version by downloading it
+# Download a specific version
 aws s3api get-object \
   --bucket my-versioned-bucket \
   --key "documents/report.pdf" \
