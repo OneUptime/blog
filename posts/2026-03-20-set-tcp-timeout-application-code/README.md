@@ -64,7 +64,7 @@ func main() {
 
     // HTTP client with all timeout types
     client := &http.Client{
-        Timeout: 30 * time.Second,  // Total request timeout (connect + response)
+        Timeout: 30 * time.Second,  // Overall request timeout, including redirects and response body reads
         Transport: &http.Transport{
             DialContext:           dialer.DialContext,
             TLSHandshakeTimeout:   5 * time.Second,
@@ -75,7 +75,8 @@ func main() {
 
     resp, err := client.Get("http://10.20.0.5:8080")
     if err != nil {
-        // err will contain context deadline exceeded if timed out
+        // err may report a timeout, such as context deadline exceeded or i/o timeout
+        return
     }
     defer resp.Body.Close()
 }
@@ -106,7 +107,7 @@ public class TCPTimeoutExample {
 
             // Use the connection...
             InputStream in = socket.getInputStream();
-            // If no data arrives within 30s: SocketTimeoutException
+            in.read();  // If no data arrives within 30s: SocketTimeoutException
 
         } catch (SocketTimeoutException e) {
             System.err.println("Timeout: " + e.getMessage());
@@ -148,7 +149,7 @@ socket.on('error', (err) => {
 
 ```text
 Connect timeout: 1-5 seconds
-  - Should be slightly less than your load balancer's connection timeout
+  - Should fit within your overall request deadline and retry budget
   - Fail fast so you can try another server
 
 Read timeout: 30-60 seconds for APIs, 300s+ for long-running queries
@@ -156,10 +157,10 @@ Read timeout: 30-60 seconds for APIs, 300s+ for long-running queries
   - Never set to infinity (no timeout)
 
 Write timeout: 10-30 seconds
-  - Time to send the full request body
+  - Time to make progress sending request body data
   - Important for large file uploads
 
-Total request timeout = connect + TLS + write + read
+Overall request deadline: connect + TLS + write + read
   - Set an overall deadline that covers all phases
 ```
 
