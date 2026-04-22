@@ -26,13 +26,13 @@ graph LR
 # .pre-commit-config.yaml
 
 repos:
-  - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.86.0
+  - repo: https://github.com/tofuutils/pre-commit-opentofu
+    rev: v2.3.0
     hooks:
-      - id: terraform_fmt         # Auto-format HCL
-      - id: terraform_validate    # Validate syntax
-      - id: terraform_tflint      # Lint for best practices
-      - id: terraform_docs        # Generate module docs
+      - id: tofu_fmt         # Auto-format HCL
+      - id: tofu_validate    # Validate syntax
+      - id: tofu_tflint      # Lint for best practices
+      - id: tofu_docs        # Generate module docs
         args:
           - --args=--output-file README.md
 ```
@@ -70,7 +70,7 @@ fmt: ## Format all OpenTofu files
 
 .PHONY: validate
 validate: ## Validate all OpenTofu configurations
-	find . -name "*.tf" -not -path "*/\.*" -exec dirname {} \; | sort -u | xargs -I{} sh -c 'cd {} && tofu validate'
+	find . \( -name "*.tf" -o -name "*.tf.json" -o -name "*.tofu" -o -name "*.tofu.json" \) -not -path '*/.*' -exec dirname {} \; | sort -u | while read -r dir; do (cd "$$dir" && tofu init -backend=false && tofu validate); done
 
 .PHONY: docs
 docs: ## Generate documentation for all modules
@@ -84,17 +84,17 @@ docs: ## Generate documentation for all modules
 name: OpenTofu Workflow
 on:
   pull_request:
-    paths: ['**.tf', '**.tfvars']
+    paths: ['**.tf', '**.tf.json', '**.tofu', '**.tofu.json', '**.tfvars', '**.tfvars.json']
   push:
     branches: [main]
-    paths: ['**.tf', '**.tfvars']
+    paths: ['**.tf', '**.tf.json', '**.tofu', '**.tofu.json', '**.tfvars', '**.tfvars.json']
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
       - name: Format check
         run: tofu fmt -check -recursive .
       - name: Validate
@@ -108,10 +108,12 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
       - name: Plan
-        run: make plan ENVIRONMENT=production
+        run: |
+          make init ENVIRONMENT=production
+          make plan ENVIRONMENT=production
 
   apply:
     needs: validate
@@ -119,10 +121,13 @@ jobs:
     environment: production
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
       - name: Apply
-        run: make apply ENVIRONMENT=production
+        run: |
+          make init ENVIRONMENT=production
+          make plan ENVIRONMENT=production
+          make apply ENVIRONMENT=production
 ```
 
 ## Team Conventions Document
@@ -154,7 +159,7 @@ jobs:
 ## Best Practices
 
 - Document your workflow - a shared `CONTRIBUTING.md` prevents "how do I do X?" questions.
-- Make the common path easy: a Makefile with `make plan ENV=production` lowers friction.
+- Make the common path easy: a Makefile with `make plan ENVIRONMENT=production` lowers friction.
 - Enforce formatting with pre-commit hooks - don't leave it to CI to catch formatting issues in PRs.
 - Use a consistent version of OpenTofu across all machines with `.tool-versions` or `mise.toml`.
 - Review `tofu plan` output in every PR - infrastructure changes should be as visible as code changes.
