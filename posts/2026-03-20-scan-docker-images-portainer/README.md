@@ -61,8 +61,6 @@ done
 
 ```yaml
 # docker-compose.yml - Trivy server for team use
-version: "3.8"
-
 services:
   trivy-server:
     image: aquasec/trivy:latest
@@ -77,7 +75,7 @@ services:
     environment:
       - TRIVY_CACHE_DIR=/root/.cache
 
-  # Scheduled scanner - scans all running containers daily
+  # Scheduled scanner - scans configured images daily
   trivy-cron:
     image: aquasec/trivy:latest
     container_name: trivy_cron
@@ -86,12 +84,15 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - trivy_cache:/root/.cache
       - ./scan-results:/results
+    environment:
+      - TRIVY_CACHE_DIR=/root/.cache
+      - IMAGES=nginx:alpine myapp/api:latest
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
         while true; do
           echo "Starting daily scan at $(date)"
-          for img in $(docker images --format "{{.Repository}}:{{.Tag}}" | grep -v trivy); do
+          for img in $IMAGES; do
             echo "Scanning $img..."
             trivy image --format json --output /results/$(echo $img | tr '/:' '--').json \
               --severity HIGH,CRITICAL "$img"
@@ -108,12 +109,12 @@ volumes:
 
 ```bash
 # Install Grype
-curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+curl -sSfL https://get.anchore.io/grype | sudo sh -s -- -b /usr/local/bin
 
 # Scan an image
 grype nginx:alpine
 
-# Only show high severity
+# Fail if high or critical vulnerabilities exist
 grype nginx:alpine --fail-on high
 
 # Compare two image versions to see new vulnerabilities
@@ -126,7 +127,7 @@ diff scan_v1.txt scan_v2.txt
 
 ```bash
 # Docker Scout is integrated into Docker Desktop and CLI
-# Enable Docker Scout
+# Quick vulnerability overview
 docker scout quickview myapp:latest
 
 # Detailed CVE list
@@ -136,10 +137,10 @@ docker scout cves myapp:latest
 docker scout recommendations myapp:latest
 
 # Compare with previous version
-docker scout compare myapp:latest --to myapp:previous
+docker scout compare --to myapp:previous myapp:latest
 
 # Policy evaluation (fails if policy violated)
-docker scout policy evaluate myapp:latest
+docker scout policy --exit-code myapp:latest
 ```
 
 ## Step 6: Automate Scanning in CI/CD with Portainer Webhooks
@@ -149,7 +150,7 @@ docker scout policy evaluate myapp:latest
 # scan-and-deploy.sh - Scan before deploying to Portainer
 
 IMAGE="myapp/api:${BUILD_TAG}"
-PORTAINER_WEBHOOK="https://portainer.example.com/api/webhooks/abc123"
+PORTAINER_WEBHOOK="https://portainer.example.com/api/stacks/webhooks/abc123"
 SEVERITY_THRESHOLD="CRITICAL"
 
 echo "Building image: $IMAGE"
@@ -180,4 +181,4 @@ echo "Deployment triggered successfully."
 
 ## Conclusion
 
-Vulnerability scanning should happen at every stage: during development, in CI/CD pipelines, and periodically on running containers. Trivy's `--exit-code 1` flag makes it easy to fail builds with critical vulnerabilities. Running Trivy as a persistent service in Portainer gives your team a shared scanning endpoint without requiring local installation. Regular scheduled scans catch newly published CVEs in images that were clean when originally deployed, ensuring your running containers stay secure over time.
+Vulnerability scanning should happen at every stage: during development, in CI/CD pipelines, and periodically on running images. Trivy's `--exit-code 1` flag makes it easy to fail builds with critical vulnerabilities. Running Trivy as a persistent service in Portainer gives your team a shared vulnerability database endpoint without requiring each client to download and maintain its own database. Regular scheduled scans catch newly published CVEs in images that were clean when originally deployed, ensuring your running containers stay secure over time.
