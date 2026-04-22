@@ -8,7 +8,7 @@ Description: Learn how to configure S3 Intelligent-Tiering storage class using O
 
 ## Introduction
 
-S3 Intelligent-Tiering automatically moves objects between access tiers based on changing access patterns, optimizing costs without performance impact or operational overhead. It's ideal for data with unknown or unpredictable access patterns-you pay a small monitoring fee but avoid manual tier management.
+S3 Intelligent-Tiering automatically moves objects between access tiers based on changing access patterns, optimizing costs without operational overhead. Its low-latency tiers have no performance impact, while optional archive tiers trade retrieval latency for lower storage costs. It's ideal for data with unknown or unpredictable access patterns-you pay a small monitoring fee for eligible monitored objects but avoid manual tier management.
 
 ## Prerequisites
 
@@ -66,10 +66,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "intelligent" {
     id     = "transition-to-intelligent-tiering"
     status = "Enabled"
 
-    # Objects larger than 128 KB benefit from Intelligent-Tiering
-    # (Small objects are not eligible for automatic tiering)
+    # Objects 128 KB and larger are eligible for automatic tiering
+    # (Objects smaller than 128 KB are not eligible for automatic tiering)
     filter {
-      object_size_greater_than = 131072  # 128 KB in bytes
+      object_size_greater_than = 131071  # Include objects >= 128 KB
     }
 
     transition {
@@ -82,7 +82,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "intelligent" {
     id     = "cleanup-small-objects"
     status = "Enabled"
 
-    # Small objects don't benefit from IT - put them on a simple lifecycle
+    # Objects smaller than 128 KB don't auto-tier in IT - put them on a simple lifecycle
     filter {
       object_size_less_than = 131072
     }
@@ -147,4 +147,4 @@ tofu apply
 
 ## Conclusion
 
-S3 Intelligent-Tiering eliminates the need to manually manage storage tiers for data with variable access patterns. Enable the Archive and Deep Archive tiers for maximum savings on infrequently accessed data. Note that Intelligent-Tiering has a minimum object size of 128 KB-smaller objects are not tiered and incur only the monitoring fee without cost savings, so apply separate lifecycle rules for small objects.
+S3 Intelligent-Tiering eliminates the need to manually manage storage tiers for data with variable access patterns. Enable the Archive and Deep Archive tiers for maximum savings on infrequently accessed data that can be restored asynchronously. Note that Intelligent-Tiering has a minimum eligible object size of 128 KB for automatic tiering-smaller objects are not monitored, remain in the Frequent Access tier, and do not incur the monitoring and automation charge, so apply separate lifecycle rules for small objects.
