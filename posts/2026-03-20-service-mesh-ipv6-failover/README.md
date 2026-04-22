@@ -10,17 +10,23 @@ Service mesh failover ensures traffic is redirected when endpoints become unheal
 
 ## Understanding Endpoint Failover with IPv6
 
-In a dual-stack cluster, a service may have both IPv4 and IPv6 endpoints. The service mesh's load balancer treats each pod's IPv4 and IPv6 addresses as the same endpoint - failover removes the entire pod from rotation, not just one IP version.
+In a dual-stack cluster, a service may have both IPv4 and IPv6 endpoints. Kubernetes represents these with EndpointSlices, with separate slices for IPv4 and IPv6. Kubernetes readiness changes remove the pod's addresses from load balancing for both IP families, while Envoy outlier detection ejects the failing upstream host/IP:port.
 
 ```bash
 # Check current endpoints for a service (both IPv4 and IPv6)
 
-kubectl get endpoints my-service -o yaml
+kubectl get endpointslice -l kubernetes.io/service-name=my-service -o yaml
 
-# In dual-stack, each endpoint has two addresses:
-# addresses:
-# - ip: 10.0.0.5
-# - ip: fd00::5
+# In dual-stack, there are separate EndpointSlices per IP family:
+# addressType: IPv4
+# endpoints:
+# - addresses:
+#   - 10.0.0.5
+#
+# addressType: IPv6
+# endpoints:
+# - addresses:
+#   - fd00::5
 
 # Verify Envoy sees both in its cluster
 istioctl proxy-config endpoints <pod-name> | grep my-service
@@ -30,7 +36,7 @@ istioctl proxy-config endpoints <pod-name> | grep my-service
 
 ```yaml
 # DestinationRule with aggressive outlier detection for fast failover
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-failover
@@ -58,8 +64,8 @@ spec:
 ## Locality-Based Load Balancing and Failover
 
 ```yaml
-# DestinationRule with locality failover (prefer same zone)
-apiVersion: networking.istio.io/v1beta1
+# DestinationRule with locality failover (region-level; zone failover is automatic)
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-locality
@@ -71,18 +77,9 @@ spec:
       localityLbSetting:
         enabled: true
         failover:
-          # If us-east-1a is unhealthy, fail over to us-east-1b
-          - from: us-east-1/us-east-1a
-            to: us-east-1/us-east-1b
-          # Then to the other region
+          # If us-east-1 is unhealthy, fail over to us-west-2
           - from: us-east-1
             to: us-west-2
-        distribute:
-          # Normally distribute within the region
-          - from: "us-east-1/*"
-            to:
-              "us-east-1/us-east-1a": 60
-              "us-east-1/us-east-1b": 40
     outlierDetection:
       consecutive5xxErrors: 3
       interval: 10s
@@ -95,16 +92,16 @@ For multi-cluster service mesh with IPv6:
 
 ```yaml
 # ServiceEntry for remote cluster service (IPv6 endpoints)
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: my-service-remote
   namespace: default
 spec:
   hosts:
-    - my-service.default.global
+    - my-service-remote.default.svc.cluster.local
   addresses:
-    - 240.0.0.2/32       # Unique IP for routing (Istio multi-cluster)
+    - 2001:db8:ffff::2/128  # Unique IPv6 VIP for routing
   ports:
     - number: 80
       name: http
@@ -113,13 +110,13 @@ spec:
   resolution: STATIC
   endpoints:
     # IPv6 endpoints in remote cluster
-    - address: "2001:db8:remote::10"
+    - address: "2001:db8:10::10"
       ports:
         http: 80
       locality: us-west-2/us-west-2a
       labels:
         version: v1
-    - address: "2001:db8:remote::11"
+    - address: "2001:db8:10::11"
       ports:
         http: 80
       locality: us-west-2/us-west-2b
@@ -130,8 +127,8 @@ spec:
 ## VirtualService with Retry-Based Failover
 
 ```yaml
-# Automatic retry with failover to another version
-apiVersion: networking.istio.io/v1beta1
+# Automatic retry with failover to another endpoint or locality
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-retry-failover
@@ -143,7 +140,6 @@ spec:
     - route:
         - destination:
             host: my-service.default.svc.cluster.local
-            subset: primary
           weight: 100
       timeout: 10s
       retries:
@@ -154,15 +150,19 @@ spec:
         retryRemoteLocalities: true  # Try different locality on retry
 ```
 
-## Linkerd Failover with HTTPRoute
+## Linkerd Retry-Based Failover with HTTPRoute
 
 ```yaml
-# Linkerd backend weight-based failover
-apiVersion: policy.linkerd.io/v1beta2
+# Linkerd HTTPRoute with retries across weighted backends
+apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: my-service-failover-route
   namespace: default
+  annotations:
+    retry.linkerd.io/http: "5xx,gateway-error"
+    retry.linkerd.io/limit: "2"
+    retry.linkerd.io/timeout: "300ms"
 spec:
   parentRefs:
     - name: my-service
@@ -176,27 +176,28 @@ spec:
           weight: 100
         - name: my-service-backup
           port: 80
-          weight: 0      # Zero weight - only used when v1 is unhealthy
+          weight: 1      # Weight 0 receives no traffic; use a small non-zero fallback weight
 ```
 
 ## Testing IPv6 Failover
 
 ```bash
-# Simulate an IPv6 endpoint failure by killing a pod
+# Simulate a pod endpoint failure
 kubectl delete pod <my-service-pod-name>
 
-# Watch endpoints update
-kubectl get endpoints my-service -w
+# Watch EndpointSlices update
+kubectl get endpointslice -l kubernetes.io/service-name=my-service -w
 
-# Verify outlier detection ejected the failed endpoint
+# Verify outlier detection is configured for the cluster
 istioctl proxy-config clusters <calling-pod-name> \
   --fqdn my-service.default.svc.cluster.local -o json | \
   python3 -m json.tool | grep -A 10 "outlierDetection"
 
-# Check Envoy's ejected hosts via admin API
+# If you simulate failures while the endpoint remains registered,
+# check Envoy's outlier detection stats via admin API
 kubectl exec <calling-pod-name> -c istio-proxy -- \
-  curl -s http://localhost:15000/clusters | \
-  grep -A 3 "ejected"
+  curl -s http://localhost:15000/stats | \
+  grep "outlier_detection.*ejections"
 
 # Test that IPv6 traffic fails over automatically
 # Run continuous requests from an IPv6 client
@@ -210,7 +211,7 @@ kubectl exec test-pod -- bash -c \
 ```promql
 # Prometheus: track outlier detection ejections
 sum(
-  rate(envoy_cluster_outlier_detection_ejections_active[5m])
+  rate(envoy_cluster_outlier_detection_ejections_enforced_total[5m])
 ) by (cluster_name)
 
 # Track failover-related errors
@@ -224,4 +225,4 @@ sum(envoy_cluster_outlier_detection_ejections_active) by (cluster_name)
 sum(envoy_cluster_membership_total) by (cluster_name)
 ```
 
-Service mesh failover for IPv6 services works through the same outlier detection and locality-based load balancing mechanisms as IPv4. The critical configuration is setting `consecutive5xxErrors` and short `connectTimeout` values so IPv6 connectivity failures are detected quickly and traffic fails over without extended client-visible errors.
+Service mesh failover for IPv6 services works through the same outlier detection and locality-based load balancing mechanisms as IPv4. The critical configuration is setting `consecutive5xxErrors` for upstream 5xx responses, `consecutiveLocalOriginFailures` for local connection failures, and short `connectTimeout` values so IPv6 connectivity failures are detected quickly and traffic fails over without extended client-visible errors.
