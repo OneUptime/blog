@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, DNS, IPv4, UDP, Networking, Protocol, Std::net
+Tags: Rust, DNS, IPv4, UDP, Networking, Protocol, std::net
 
 Description: Build a DNS A record resolver in Rust that sends UDP DNS queries directly to a resolver and parses the IPv4 address responses without external DNS libraries.
 
@@ -22,7 +22,7 @@ Answer section:    NAME, TYPE, CLASS, TTL, RDLENGTH, RDATA (IPv4 = 4 bytes)
 
 ```rust
 use std::net::UdpSocket;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Build a DNS A record query packet for the given hostname.
 fn build_dns_query(hostname: &str, query_id: u16) -> Vec<u8> {
@@ -55,8 +55,38 @@ fn build_dns_query(hostname: &str, query_id: u16) -> Vec<u8> {
 ```rust
 use std::net::Ipv4Addr;
 
+fn skip_dns_name(response: &[u8], pos: &mut usize) -> bool {
+    while *pos < response.len() {
+        let len = response[*pos];
+        
+        if len & 0xC0 == 0xC0 {
+            if *pos + 2 > response.len() {
+                return false;
+            }
+            *pos += 2;
+            return true;
+        }
+        
+        if len & 0xC0 != 0 {
+            return false;
+        }
+        
+        *pos += 1;
+        if len == 0 {
+            return true;
+        }
+        
+        if *pos + len as usize > response.len() {
+            return false;
+        }
+        *pos += len as usize;
+    }
+    
+    false
+}
+
 /// Parse IPv4 addresses from a DNS A record response.
-fn parse_dns_response(response: &[u8]) -> Vec<Ipv4Addr> {
+fn parse_dns_response(response: &[u8], expected_id: u16) -> Vec<Ipv4Addr> {
     let mut ips = Vec::new();
     
     if response.len() < 12 {
@@ -64,8 +94,13 @@ fn parse_dns_response(response: &[u8]) -> Vec<Ipv4Addr> {
     }
     
     // Parse header
-    let _id = u16::from_be_bytes([response[0], response[1]]);
+    let id = u16::from_be_bytes([response[0], response[1]]);
     let flags = u16::from_be_bytes([response[2], response[3]]);
+    
+    if id != expected_id {
+        eprintln!("Mismatched DNS response ID");
+        return ips;
+    }
     
     // Check QR bit (bit 15) - should be 1 for response
     if flags & 0x8000 == 0 {
@@ -86,41 +121,36 @@ fn parse_dns_response(response: &[u8]) -> Vec<Ipv4Addr> {
     // Skip the question section
     let mut pos = 12;
     for _ in 0..qdcount {
-        // Skip QNAME (labels terminated by 0)
-        while pos < response.len() && response[pos] != 0 {
-            if response[pos] & 0xC0 == 0xC0 {
-                // DNS name compression pointer (2 bytes)
-                pos += 2;
-                break;
-            }
-            pos += 1 + response[pos] as usize;
+        if !skip_dns_name(response, &mut pos) {
+            return ips;
         }
-        if pos < response.len() && response[pos] == 0 { pos += 1; }
+        if pos + 4 > response.len() {
+            return ips;
+        }
         pos += 4; // QTYPE + QCLASS
     }
     
     // Parse answer section
     for _ in 0..ancount {
         // Skip NAME (could be pointer)
-        if pos + 2 > response.len() { break; }
-        if response[pos] & 0xC0 == 0xC0 {
-            pos += 2; // Compression pointer
-        } else {
-            while pos < response.len() && response[pos] != 0 {
-                pos += 1 + response[pos] as usize;
-            }
-            pos += 1;
+        if !skip_dns_name(response, &mut pos) {
+            break;
         }
         
         if pos + 10 > response.len() { break; }
         
         let rtype = u16::from_be_bytes([response[pos], response[pos + 1]]);
+        let rclass = u16::from_be_bytes([response[pos + 2], response[pos + 3]]);
         // Skip: TYPE(2) + CLASS(2) + TTL(4) = 8 bytes
         let rdlength = u16::from_be_bytes([response[pos + 8], response[pos + 9]]) as usize;
         pos += 10;
         
-        // TYPE 1 = A record (IPv4)
-        if rtype == 1 && rdlength == 4 && pos + 4 <= response.len() {
+        if pos + rdlength > response.len() {
+            break;
+        }
+        
+        // TYPE 1 = A record (IPv4), CLASS 1 = IN (Internet)
+        if rtype == 1 && rclass == 1 && rdlength == 4 {
             let ip = Ipv4Addr::new(
                 response[pos],
                 response[pos + 1],
@@ -145,7 +175,10 @@ fn resolve_ipv4(hostname: &str, dns_server: &str) -> std::io::Result<Vec<Ipv4Add
     socket.set_read_timeout(Some(Duration::from_secs(5)))?;
     socket.connect(format!("{}:53", dns_server))?;
     
-    let query_id: u16 = rand::random::<u16>(); // Use a random ID
+    let query_id = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.subsec_nanos() as u16)
+        .unwrap_or(0);
     let query = build_dns_query(hostname, query_id);
     
     socket.send(&query)?;
@@ -153,7 +186,7 @@ fn resolve_ipv4(hostname: &str, dns_server: &str) -> std::io::Result<Vec<Ipv4Add
     let mut response = vec![0u8; 512];
     let n = socket.recv(&mut response)?;
     
-    Ok(parse_dns_response(&response[..n]))
+    Ok(parse_dns_response(&response[..n], query_id))
 }
 
 fn main() {
@@ -174,7 +207,7 @@ fn main() {
 }
 ```
 
-For production DNS resolution in Rust, use the `trust-dns-resolver` or `hickory-resolver` crates which handle DNS over TCP, DNSSEC, and all edge cases.
+For production DNS resolution in Rust, use the current `hickory-resolver` crate (the renamed Trust-DNS resolver project), which handles DNS over TCP, DNSSEC support, and many protocol edge cases.
 
 ## Conclusion
 
