@@ -11,13 +11,13 @@ Smokeping is a network latency measurement tool that graphs RTT and packet loss 
 ## Step 1: Install Smokeping and IPv6 Dependencies
 
 ```bash
-# Install Smokeping and fping6 on Ubuntu/Debian
+# Install Smokeping and fping on Ubuntu/Debian
 
 sudo apt update
 sudo apt install smokeping fping
 
-# Verify fping6 supports IPv6
-fping6 -c 3 2001:4860:4860::8888
+# Verify fping can send IPv6 probes
+fping -6 -c 3 2001:4860:4860::8888
 ```
 
 ## Step 2: Configure Smokeping for IPv6 Targets
@@ -54,6 +54,7 @@ probe = FPing6
 # Root menu entry
 menu = IPv6 Network Health
 title = IPv6 Network Health Monitoring
+alerts = ipv6-loss-alert,ipv6-latency-alert
 
 + GoogleDNS
 menu = Google DNS
@@ -82,6 +83,7 @@ probe = FPing6
 menu = Internal Servers
 title = Internal IPv6 Infrastructure
 
+# 2001:db8::/32 is reserved for documentation; replace with real internal IPv6 addresses.
 ++ WebServer01
 host = 2001:db8::10
 title = Web Server 01 IPv6
@@ -104,13 +106,13 @@ from = smokeping@example.com
 
 + ipv6-loss-alert
 type = loss
-# Alert if packet loss exceeds 20% for 3 consecutive measurements
+# Alert when packet loss transitions from 0% to above 20% for 3 consecutive measurements
 pattern = ==0%,==0%,==0%,==0%,>20%,>20%,>20%
 comment = IPv6 packet loss exceeded 20%
 
 + ipv6-latency-alert
 type = rtt
-# Alert if latency exceeds 200ms for 5 consecutive measurements
+# Alert when latency transitions from below 200ms to above 200ms for 5 consecutive measurements
 pattern = <200,<200,<200,<200,>200,>200,>200,>200,>200
 comment = IPv6 latency exceeded 200ms
 ```
@@ -128,9 +130,10 @@ sendmail = /usr/sbin/sendmail
 imgcache = /var/cache/smokeping/images
 imgurl = /smokeping/images
 datadir = /var/lib/smokeping
-piddir = /var/run/smokeping
-smokemail = /etc/smokeping/smokemail.dist
-tmail = /etc/smokeping/tmail.dist
+piddir = /run/smokeping
+cgiurl = http://your-server/smokeping/smokeping.cgi
+smokemail = /etc/smokeping/smokemail
+tmail = /etc/smokeping/tmail
 syslogfacility = local0
 ```
 
@@ -146,15 +149,15 @@ sudo systemctl start smokeping
 
 # Verify it's running and probing IPv6
 sudo systemctl status smokeping
-tail -f /var/log/syslog | grep smokeping
+sudo journalctl -u smokeping -f
 ```
 
 ## Step 7: Access the IPv6 Dashboard
 
 ```bash
 # Smokeping web interface (served by Apache/nginx)
-# Default URL: http://your-server/smokeping/
-firefox http://your-server/smokeping/?target=InternalServers.WebServer01
+# Default Debian/Ubuntu CGI URL: http://your-server/smokeping/smokeping.cgi
+firefox "http://your-server/smokeping/smokeping.cgi?target=InternalServers.WebServer01"
 ```
 
 ## Common IPv6 Issues Caught by Smokeping
