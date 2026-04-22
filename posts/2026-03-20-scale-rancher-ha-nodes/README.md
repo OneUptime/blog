@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, High Availability, Scaling, etcd, Kubernetes, Capacity
 
-Description: Scale Rancher HA from 3 to 5 or more server nodes, covering etcd expansion requirements, node join procedures, and load balancer updates.
+Description: Scale Rancher HA from 3 to 5 or 7 server nodes, covering etcd expansion requirements, node join procedures, and load balancer updates.
 
 ## Introduction
 
-Rancher HA clusters can be scaled to increase capacity, but etcd cluster size must always be an odd number (3, 5, 7) to maintain quorum. Scaling from 3 to 5 nodes increases fault tolerance to 2 simultaneous node failures rather than just 1.
+Rancher HA clusters can be scaled to increase Rancher Server capacity, but etcd cluster size must always be an odd number (3, 5, 7) to maintain quorum. Scaling from 3 to 5 nodes increases fault tolerance to 2 simultaneous node failures rather than just 1.
 
 ## When to Scale
 
-- etcd CPU or memory is consistently above 70%
+- Rancher Server CPU or memory is consistently above 70%
 - You need to tolerate 2 simultaneous node failures
 - Rancher Server pod scheduling is constrained to 3 nodes
 
@@ -35,14 +35,14 @@ Add 2 new nodes (maintaining odd-number etcd membership):
 # On each new server node
 curl -sfL https://get.rke2.io | sh -
 
+mkdir -p /etc/rancher/rke2
+
 cat > /etc/rancher/rke2/config.yaml << 'EOF'
-server: https://10.0.0.11:9345    # Existing server node
+server: https://10.0.0.10:9345    # Fixed registration address or load balancer VIP
 token: <your-cluster-token>
 tls-san:
   - rancher.example.com
   - 10.0.0.10    # Load balancer VIP
-node-taint:
-  - "CriticalAddonsOnly=true:NoExecute"
 EOF
 
 systemctl enable rke2-server.service
@@ -52,10 +52,14 @@ systemctl start rke2-server.service
 ## Step 3: Verify etcd Expansion
 
 ```bash
+# Run from an RKE2 server node
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+export PATH=$PATH:/var/lib/rancher/rke2/bin
+
 # Wait for new nodes to join and etcd to sync
 kubectl get nodes -w
 
-# Verify 5 etcd members
+# Verify 5 etcd members. This requires etcdctl installed on the server node.
 ETCDCTL="etcdctl --endpoints=https://127.0.0.1:2379 \
   --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
   --cert=/var/lib/rancher/rke2/server/tls/etcd/client.crt \
@@ -64,13 +68,13 @@ ETCDCTL="etcdctl --endpoints=https://127.0.0.1:2379 \
 $ETCDCTL member list
 # Should show 5 members, all started
 
-$ETCDCTL endpoint health
+$ETCDCTL endpoint health --cluster
 # All 5 endpoints should show "is healthy"
 ```
 
 ## Step 4: Update Load Balancer Configuration
 
-Add the two new nodes to the load balancer pool:
+Add the two new nodes to the load balancer pool. If this load balancer is also the RKE2 fixed registration address, add the new nodes to the 9345 and 6443 backends as well:
 
 ```bash
 # HAProxy - update backend
