@@ -25,34 +25,92 @@ The trade-off compared to Ceph is that Longhorn only provides block storage (no 
 
 ## Talos Machine Configuration for Longhorn
 
-Longhorn needs some specific settings on Talos nodes. Here is the machine configuration:
+Longhorn needs `iscsiadm` and `nsenter` on each node, plus the `iscsi_tcp` kernel module. Talos ships a minimal immutable image with neither of those binaries nor that module, so you cannot load them by adding entries under `machine.kernel.modules`. Instead, you bake two official system extensions into the Talos installer image:
+
+- `siderolabs/iscsi-tools` - provides `iscsiadm` and the `iscsi_tcp` kernel module
+- `siderolabs/util-linux-tools` - provides `nsenter`, required by Longhorn v1.5 and later
+
+System extensions are layered into the root filesystem at install/upgrade time via a custom image produced by the Talos [Image Factory](https://factory.talos.dev/). See the official Talos docs on [system extensions](https://www.talos.dev/latest/talos-guides/configuration/system-extensions/) and the [Image Factory](https://www.talos.dev/latest/learn-more/image-factory/) for background.
+
+### Build a Talos installer with the required extensions
+
+Submit a schematic describing the extensions you want:
+
+```bash
+cat > longhorn-schematic.yaml << 'EOF'
+customization:
+  systemExtensions:
+    officialExtensions:
+      - siderolabs/iscsi-tools
+      - siderolabs/util-linux-tools
+EOF
+
+SCHEMATIC_ID=$(curl -sX POST \
+  --data-binary @longhorn-schematic.yaml \
+  https://factory.talos.dev/schematics \
+  -H "Content-Type: application/yaml" | jq -r '.id')
+
+# Installer image for machine configs and upgrades
+echo "factory.talos.dev/installer/${SCHEMATIC_ID}:v1.9.0"
+
+# Boot assets (ISO, PXE, disk images) are available under the same schematic ID
+# https://factory.talos.dev/image/${SCHEMATIC_ID}/v1.9.0/metal-amd64.iso
+```
+
+Pin the Talos version (`v1.9.0` above) to whatever your cluster runs.
+
+### Machine config
+
+Reference the factory installer and add the kubelet mount Longhorn needs. This matches the worker patch Sidero uses in the Talos Longhorn integration tests ([`hack/test/patches/longhorn.yaml`](https://github.com/siderolabs/talos/blob/release-1.10/hack/test/patches/longhorn.yaml)):
 
 ```yaml
 machine:
-  kernel:
-    modules:
-      - name: iscsi_tcp  # Required for Longhorn
-      - name: dm_crypt   # For encrypted volumes
+  install:
+    image: factory.talos.dev/installer/<SCHEMATIC_ID>:v1.9.0
   kubelet:
     extraMounts:
-      # Longhorn data directory
       - destination: /var/lib/longhorn
         type: bind
         source: /var/lib/longhorn
         options:
           - bind
           - rshared
-  sysctls:
-    # Recommended for Longhorn
-    vm.max_map_count: "262144"
+          - rw
 ```
 
-Apply this to all worker nodes:
+### Extra config for the Longhorn v2 data engine (optional)
+
+The default Longhorn v1 engine only needs the two extensions above. If you plan to enable the v2 data engine (`defaultSettings.v2DataEngine: true`), which uses SPDK over NVMe-over-TCP, also add the v2 engine prerequisites from the Longhorn docs: 2 GiB of 2 MiB hugepages and the `nvme_tcp`, `vfio_pci`, `uio_pci_generic` kernel modules (these ship in the default Talos kernel, so no extension is needed):
+
+```yaml
+machine:
+  sysctls:
+    vm.nr_hugepages: "1024"
+  kernel:
+    modules:
+      - name: nvme_tcp
+      - name: vfio_pci
+      - name: uio_pci_generic
+```
+
+### Apply to worker nodes
+
+For a fresh install, boot each node from the factory ISO and apply the config. For a running cluster, apply the config and run an upgrade pointed at the factory installer so the extensions get layered in:
 
 ```bash
-talosctl apply-config --nodes 192.168.1.11 --file worker-longhorn.yaml
-talosctl apply-config --nodes 192.168.1.12 --file worker-longhorn.yaml
-talosctl apply-config --nodes 192.168.1.13 --file worker-longhorn.yaml
+for node in 192.168.1.11 192.168.1.12 192.168.1.13; do
+  talosctl apply-config --nodes $node --file worker-longhorn.yaml
+  talosctl -n $node upgrade \
+    --image factory.talos.dev/installer/<SCHEMATIC_ID>:v1.9.0
+  talosctl -n $node health
+done
+```
+
+Verify the extensions are present after the node comes back:
+
+```bash
+talosctl -n 192.168.1.11 get extensions
+# Expect iscsi-tools and util-linux-tools in the output
 ```
 
 ## Preparing Storage for Longhorn
@@ -329,7 +387,8 @@ Key metrics to watch:
 ## Troubleshooting on Talos
 
 **Instance manager pods failing:**
-- Verify the `iscsi_tcp` module is loaded: `talosctl get kernelmodules --nodes <ip>`
+- Confirm both extensions are installed: `talosctl -n <ip> get extensions` should list `iscsi-tools` and `util-linux-tools`
+- Verify the `iscsi_tcp` module is loaded: `talosctl -n <ip> read /proc/modules | grep iscsi`
 - Check Longhorn manager logs: `kubectl -n longhorn-system logs -l app=longhorn-manager`
 
 **Volumes stuck in attaching state:**
@@ -342,4 +401,4 @@ Key metrics to watch:
 
 ## Summary
 
-Longhorn on Talos Linux provides a straightforward path to distributed block storage for Kubernetes. The setup requires Talos-specific configuration (kernel modules, kubelet mounts, dedicated disk) but the deployment itself is a standard Helm install. Longhorn's built-in backup support, snapshot capabilities, and web UI make it an excellent choice for teams that want reliable persistent storage without the operational overhead of Ceph. Start with the Helm deployment, verify with a test workload, configure backups, and monitor through Prometheus.
+Longhorn on Talos Linux provides a straightforward path to distributed block storage for Kubernetes. The setup requires Talos-specific configuration (the `iscsi-tools` and `util-linux-tools` system extensions baked in via the Image Factory, plus kubelet mounts and an optional dedicated disk), but the deployment itself is a standard Helm install. Longhorn's built-in backup support, snapshot capabilities, and web UI make it an excellent choice for teams that want reliable persistent storage without the operational overhead of Ceph. Start with the Helm deployment, verify with a test workload, configure backups, and monitor through Prometheus.
