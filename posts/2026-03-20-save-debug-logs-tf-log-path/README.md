@@ -25,7 +25,7 @@ tofu plan
 
 ## Timestamped Log Files
 
-For multiple runs in the same session, append timestamps to avoid overwriting:
+For multiple runs in the same session, append timestamps to keep each run in its own file:
 
 ```bash
 #!/bin/bash
@@ -49,15 +49,15 @@ echo "Log saved to: $TF_LOG_PATH"
 ## Separate Core and Provider Log Files
 
 ```bash
-# Direct core and provider logs to separate files
+# Direct core and provider logs to one file with separate levels
 export TF_LOG_CORE=DEBUG
 export TF_LOG_PROVIDER=TRACE
 export TF_LOG_PATH=/tmp/opentofu-all.log
 
 tofu plan
 
-# Or split them using a wrapper:
-TF_LOG_CORE=DEBUG TF_LOG_PROVIDER=OFF TF_LOG_PATH=/tmp/core.log tofu plan &
+# Or capture separate files by running the command with different filters:
+TF_LOG_CORE=DEBUG TF_LOG_PROVIDER=OFF TF_LOG_PATH=/tmp/core.log tofu plan
 TF_LOG_CORE=OFF TF_LOG_PROVIDER=TRACE TF_LOG_PATH=/tmp/providers.log tofu plan
 ```
 
@@ -74,14 +74,14 @@ grep -A 5 "\[ERROR\]" /tmp/opentofu-debug.log
 grep "Request:" /tmp/opentofu-debug.log | wc -l
 
 # Show timeline of operations
-grep -E "^\d{4}-\d{2}-\d{2}" /tmp/opentofu-debug.log | \
+grep -E "^[0-9]{4}-[0-9]{2}-[0-9]{2}" /tmp/opentofu-debug.log | \
   awk '{print $1, $2, $4}' | head -50
 ```
 
 ## Rotating Logs in Long Pipelines
 
 ```bash
-# Rotate log files by size using logrotate
+# Rotate log files daily using logrotate
 cat > /etc/logrotate.d/opentofu <<EOF
 /var/log/opentofu/*.log {
     daily
@@ -127,7 +127,7 @@ tofu apply
 # Encrypt before sharing
 gpg --symmetric --cipher-algo AES256 /tmp/private-debug.log
 
-# Delete securely when done
+# On suitable filesystems, delete securely when done
 shred -u /tmp/private-debug.log
 ```
 
