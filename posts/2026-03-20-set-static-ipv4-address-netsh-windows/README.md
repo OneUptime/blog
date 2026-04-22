@@ -8,7 +8,7 @@ Description: Set a static IPv4 address, subnet mask, and default gateway on a Wi
 
 ## Introduction
 
-`netsh` (Network Shell) is Windows' built-in command-line utility for network configuration. Assigning a static IPv4 address with `netsh` is faster than navigating the Control Panel and works reliably in scripts and remote administration sessions.
+`netsh` (Network Shell) is Windows' built-in command-line utility for network configuration. Assigning a static IPv4 address with `netsh` is faster than navigating the Control Panel and can be used in scripts and remote administration sessions.
 
 ## Prerequisites
 
@@ -48,10 +48,10 @@ After assigning the static IP, set DNS separately:
 
 ```cmd
 :: Set primary DNS server
-netsh interface ipv4 set dns name="Ethernet" source=static address=8.8.8.8
+netsh interface ipv4 set dnsservers name="Ethernet" source=static address=8.8.8.8
 
 :: Add secondary DNS server
-netsh interface ipv4 add dns name="Ethernet" address=1.1.1.1 index=2
+netsh interface ipv4 add dnsservers name="Ethernet" address=1.1.1.1 index=2
 ```
 
 ## Verifying the Configuration
@@ -95,8 +95,8 @@ set DNS1=8.8.8.8
 set DNS2=1.1.1.1
 
 netsh interface ipv4 set address name="%ADAPTER%" source=static address=%IP% mask=%MASK% gateway=%GATEWAY%
-netsh interface ipv4 set dns name="%ADAPTER%" source=static address=%DNS1%
-netsh interface ipv4 add dns name="%ADAPTER%" address=%DNS2% index=2
+netsh interface ipv4 set dnsservers name="%ADAPTER%" source=static address=%DNS1%
+netsh interface ipv4 add dnsservers name="%ADAPTER%" address=%DNS2% index=2
 
 echo Static IP configuration applied.
 ipconfig /all | findstr /i "IPv4 Gateway DNS"
@@ -104,4 +104,4 @@ ipconfig /all | findstr /i "IPv4 Gateway DNS"
 
 ## Conclusion
 
-`netsh interface ipv4 set address` is the authoritative command-line method for static IP assignment on Windows. It works in CMD and PowerShell, is scriptable, and takes effect immediately without a reboot.
+`netsh interface ipv4 set address` is the documented `netsh` command-line method for static IP assignment on Windows. It works in CMD and PowerShell, is scriptable, and takes effect immediately without a reboot.
