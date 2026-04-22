@@ -29,6 +29,7 @@ echo "net.ipv6.conf.all.forwarding = 1" | \
 sudo sysctl -w net.ipv6.conf.eth0.accept_ra=2  # eth0 = WAN interface
 
 # Assign an IPv6 address to the LAN interface
+# Replace 2001:db8::/64 with your routed/delegated LAN prefix
 sudo ip -6 addr add 2001:db8::1/64 dev eth1
 # eth1 = LAN interface (where radvd sends RAs)
 ```
@@ -37,7 +38,7 @@ sudo ip -6 addr add 2001:db8::1/64 dev eth1
 
 ```bash
 # Create /etc/radvd.conf
-cat > /etc/radvd.conf << 'EOF'
+sudo tee /etc/radvd.conf > /dev/null << 'EOF'
 interface eth1 {
     AdvSendAdvert on;
 
@@ -56,25 +57,25 @@ sudo systemctl enable radvd
 sudo systemctl status radvd
 
 # Verify RA is being sent
-sudo radvdump   # Dumps RA content being sent on all interfaces
+sudo radvdump   # Dumps incoming RA content visible to this host
 ```
 
 ## Full radvd Configuration with Comments
 
 ```bash
-cat > /etc/radvd.conf << 'EOF'
+sudo tee /etc/radvd.conf > /dev/null << 'EOF'
 interface eth1 {
     # Send RA messages (required)
     AdvSendAdvert on;
 
     # RA sending interval (min/max in seconds)
     # Routers must send RA at least every MaxRtrAdvInterval
-    # Default max: 600 (10 minutes), min: 200 (MaxRtrAdvInterval/3)
+    # Default max: 600 (10 minutes), min: 0.33 * MaxRtrAdvInterval
     MinRtrAdvInterval 200;
     MaxRtrAdvInterval 600;
 
     # IgnoreIfMissing: don't fail if interface doesn't exist yet
-    IgnoreIfMissing off;
+    IgnoreIfMissing on;
 
     # Router Lifetime: how long this router is valid as default gw
     # 0 = not a default router (only advertise prefix info)
@@ -148,7 +149,7 @@ sudo systemctl restart radvd
 ## Multiple Interfaces Configuration
 
 ```bash
-cat > /etc/radvd.conf << 'EOF'
+sudo tee /etc/radvd.conf > /dev/null << 'EOF'
 # VLAN 10: corporate network
 interface eth1.10 {
     AdvSendAdvert on;
@@ -193,10 +194,10 @@ sudo systemctl restart radvd
 
 ```bash
 # Check radvd configuration syntax
-radvd --configtest -C /etc/radvd.conf
-# Should output: radvd: config file is okay
+sudo radvd --configtest -C /etc/radvd.conf
+# Should output: config file, /etc/radvd.conf, syntax ok
 
-# Dump RA content being sent
+# Dump RA content visible to this host
 sudo radvdump
 # Shows exactly what's in each RA packet
 
@@ -206,7 +207,7 @@ sudo tcpdump -i eth1 -vvv "icmp6 and ip6[40] == 134"
 # Check radvd log output
 sudo journalctl -u radvd -f
 
-# Verify radvd is sending (check statistics)
+# Verify radvd is running
 sudo systemctl status radvd
 # Check "Active" and recent log lines
 
