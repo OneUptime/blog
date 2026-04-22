@@ -63,7 +63,7 @@ TTL = 60 (1 minute):
 
 # SOA record negative TTL:
 # How long to cache NXDOMAIN:    300-3600
-# Low value reduces impact of typos in /etc/hosts or code
+# Low value reduces impact of mistyped DNS names in code
 ```
 
 ## Setting TTL in Zone Files
@@ -117,7 +117,7 @@ EOF
 
 # Step 2: Verify low TTL is propagated:
 dig example.com | grep -A1 "ANSWER SECTION" | tail -1 | awk '{print $2}'
-# Should show: 300 (or close to 0 if just fetched)
+# Should show: 300 (or lower if the resolver cached it earlier and the TTL is counting down)
 
 # Step 3: Make the actual IP change
 # Update A record to new IP, keep TTL=300
