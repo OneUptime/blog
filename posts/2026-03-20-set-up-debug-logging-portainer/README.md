@@ -42,15 +42,15 @@ docker logs --tail 200 portainer
 docker logs portainer 2>&1 | grep -i "error\|warn\|ldap\|auth"
 ```
 
-## Increase Logging on a Running Container
+## Increase Logging for an Existing Container
 
-To enable debug logging without recreating the container, restart with updated flags:
+To enable debug logging with the startup flag after the container has been created, recreate it with updated flags:
 
 ```bash
 # Stop current container
 docker stop portainer
 
-# Get the current run command flags
+# Check the current Portainer command arguments
 docker inspect portainer --format '{{.Args}}'
 
 # Restart with debug flag added
