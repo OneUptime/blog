@@ -37,7 +37,7 @@ Portainer requires these OAuth settings:
 
 In your OAuth provider, create a new OAuth application with:
 - **Redirect/Callback URL**: `https://portainer.example.com/`
-- Required scopes: at minimum `openid`, `profile`, `email`
+- Required scopes: follow your provider's documentation; for OpenID Connect providers this is commonly `openid profile email`
 
 ### Step 2: Configure OAuth in Portainer
 
@@ -97,7 +97,7 @@ The redirect URL in Portainer must exactly match what's registered in your OAuth
 https://portainer.example.com/
 ```
 
-Note the trailing slash - it's required. If Portainer is on a non-standard port:
+Note the trailing slash in this example - register the URL exactly as it appears in Portainer's Redirect URL field. If Portainer is accessed on a port in the URL:
 
 ```text
 https://portainer.example.com:9443/
