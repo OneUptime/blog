@@ -13,14 +13,14 @@ A self-hosted monitoring stack gives you full visibility into your infrastructur
 ## Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   prometheus:
     image: prom/prometheus:latest
     restart: unless-stopped
     ports:
       - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal=host-gateway"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -29,30 +29,30 @@ services:
       - --storage.tsdb.retention.time=30d    # Keep 30 days of metrics
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: ghcr.io/google/cadvisor:0.56.2
     restart: unless-stopped
     privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
     ports:
       - "8098:8080"
 
   node-exporter:
-    image: prom/node-exporter:latest
+    image: quay.io/prometheus/node-exporter:latest
     restart: unless-stopped
     # Expose host system metrics (CPU, memory, disk)
     network_mode: host
     pid: host
     volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
+      - /:/host:ro,rslave
     command:
-      - --path.procfs=/host/proc
-      - --path.sysfs=/host/sys
+      - --path.rootfs=/host
 
   grafana:
     image: grafana/grafana:latest
@@ -87,9 +87,9 @@ scrape_configs:
     static_configs:
       - targets: ['cadvisor:8080']
 
-  - job_name: 'node-exporter'
+  - job_name: 'node'
     static_configs:
-      - targets: ['localhost:9100']
+      - targets: ['host.docker.internal:9100']
 ```
 
 ## Grafana Dashboard Setup
