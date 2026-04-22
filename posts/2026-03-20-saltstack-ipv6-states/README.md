@@ -18,10 +18,12 @@ base:
     - common
   'role:webserver':
     - match: grain
-    - ipv6.webserver
+    - ipv6.sysctl
+    - ipv6.firewall
   'role:router':
     - match: grain
-    - ipv6.router
+    - ipv6.sysctl
+    - ipv6.firewall
 ```
 
 ## Pillar Data for IPv6
@@ -32,7 +34,7 @@ base:
 base:
   '*':
     - ipv6_common
-  'hostname:webserver01':
+  'host:webserver01':
     - match: grain
     - ipv6_webserver01
 ```
@@ -57,7 +59,7 @@ ipv6:
 ipv6:
   interfaces:
     eth0:
-      address: "2001:db8::web01/64"
+      address: "2001:db8::10/64"
       gateway: "2001:db8::1"
 ```
 
@@ -93,9 +95,9 @@ ipv6_sysctl_config:
         net.ipv6.conf.all.use_tempaddr = {{ ipv6.get('privacy', {}).get('use_tempaddr', 1) }}
 
 ipv6_sysctl_reload:
-  cmd.wait:
+  cmd.run:
     - name: sysctl --system
-    - watch:
+    - onchanges:
       - file: ipv6_sysctl_config
 ```
 
@@ -129,7 +131,11 @@ ipv6tables_port_{{ port }}:
 ipv6tables_save:
   cmd.run:
     - name: ip6tables-save > /etc/ip6tables.rules
-    - require:
+    - onchanges:
+      - cmd: ipv6tables_loopback
+{% if fw.get('allow_icmpv6', true) %}
+      - cmd: ipv6tables_icmpv6
+{% endif %}
 {% for port in fw.get('allow_ports', []) %}
       - cmd: ipv6tables_port_{{ port }}
 {% endfor %}
@@ -145,7 +151,9 @@ stage1_test:
   salt.state:
     - tgt: 'environment:test'
     - tgt_type: grain
-    - sls: ipv6
+    - sls:
+      - ipv6.sysctl
+      - ipv6.firewall
     - failhard: true
 
 # Stage 2: Staging (only after test passes)
@@ -153,7 +161,9 @@ stage2_staging:
   salt.state:
     - tgt: 'environment:staging'
     - tgt_type: grain
-    - sls: ipv6
+    - sls:
+      - ipv6.sysctl
+      - ipv6.firewall
     - require:
       - salt: stage1_test
 
@@ -162,7 +172,9 @@ stage3_production:
   salt.state:
     - tgt: 'environment:production'
     - tgt_type: grain
-    - sls: ipv6
+    - sls:
+      - ipv6.sysctl
+      - ipv6.firewall
     - require:
       - salt: stage2_staging
 ```
@@ -172,7 +184,7 @@ stage3_production:
 salt-run state.orchestrate orch.ipv6_rollout
 
 # Monitor execution
-salt-run jobs.list_jobs search_function='state.apply'
+salt-run jobs.list_jobs search_function='state.sls'
 ```
 
 ## Verification with Execution Modules
@@ -182,13 +194,13 @@ salt-run jobs.list_jobs search_function='state.apply'
 salt '*' sysctl.get net.ipv6.conf.all.disable_ipv6
 
 # Check IPv6 addresses on all minions
-salt '*' network.ip_addrs version=6
+salt '*' network.ip_addrs6
 
 # Verify ip6tables rules
 salt '*' cmd.run 'ip6tables -L INPUT -n | grep -c ACCEPT'
 
 # Test IPv6 connectivity from all minions
-salt '*' network.ping 2001:4860:4860::8888 family=inet6
+salt '*' network.ping 2001:4860:4860::8888 return_boolean=True
 ```
 
 SaltStack's combination of Jinja2 templating, grain-based targeting, and orchestration runners provides a complete framework for deploying IPv6 configuration safely across large, heterogeneous environments with staged rollout and validation.
