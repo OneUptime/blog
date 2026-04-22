@@ -8,7 +8,7 @@ Description: Configure UDP multicast streaming on Linux to send video or audio t
 
 ## Introduction
 
-UDP multicast allows a single sender to reach multiple receivers simultaneously without sending separate copies. The sender transmits one stream to a multicast group address (224.0.0.0 - 239.255.255.255), and only network switches and routers that have receivers subscribed forward the traffic. This is far more efficient than unicast for distributing the same data to many consumers.
+UDP multicast allows a single sender to reach multiple receivers simultaneously without sending separate copies. The sender transmits one stream to a multicast group address (224.0.0.0 - 239.255.255.255); switches with IGMP snooping and multicast routers can forward it only toward receivers that have subscribed, while unmanaged or unsnooped LANs may flood it like broadcast traffic. This is far more efficient than unicast for distributing the same data to many consumers.
 
 ## Sender Setup
 
@@ -20,7 +20,7 @@ import socket
 import struct
 import time
 
-MULTICAST_GROUP = '239.1.2.3'  # Private multicast range
+MULTICAST_GROUP = '239.1.2.3'  # Administratively scoped multicast range
 PORT = 5004
 TTL = 32  # How many router hops multicast can traverse
 
@@ -57,7 +57,7 @@ import struct
 
 MULTICAST_GROUP = '239.1.2.3'
 PORT = 5004
-INTERFACE = '0.0.0.0'  # All interfaces
+INTERFACE = '0.0.0.0'  # Bind all local addresses; kernel chooses multicast interface
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
@@ -70,7 +70,7 @@ sock.bind((INTERFACE, PORT))
 # Join the multicast group:
 mreq = struct.pack('4s4s',
     socket.inet_aton(MULTICAST_GROUP),
-    socket.inet_aton(INTERFACE))  # Interface to receive on
+    socket.inet_aton(INTERFACE))  # Local interface; 0.0.0.0 lets the kernel choose
 sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
 print(f"Joined multicast group {MULTICAST_GROUP}:{PORT}")
@@ -96,7 +96,7 @@ gst-launch-1.0 udpsrc uri=udp://239.1.2.3:5004 multicast-iface=eth0 ! \
 vlc -vvv input.mp4 --sout '#rtp{dst=239.1.2.3,port=5004,mux=ts}' --loop
 
 # VLC multicast receiver:
-vlc udp://@239.1.2.3:5004
+vlc rtp://@239.1.2.3:5004
 ```
 
 ## Verify Multicast Group Membership
@@ -110,8 +110,8 @@ cat /proc/net/igmp
 # Check multicast routing (if configured):
 ip mroute show
 
-# Test multicast connectivity with ping:
-ping 239.1.2.3  # Should receive your own reply (loopback) unless disabled
+# Limited multicast ping test (many Linux hosts ignore multicast ICMP by default):
+ping -I eth0 239.1.2.3
 
 # Monitor multicast traffic:
 tcpdump -i eth0 -n 'multicast'
@@ -136,4 +136,4 @@ iptables -A INPUT -d 239.1.2.3 -p udp --dport 5004 -j ACCEPT
 
 ## Conclusion
 
-UDP multicast streaming sends a single packet stream that all subscribed receivers receive, making it ideal for live video/audio distribution on a LAN or IPTV systems. Use addresses in the 239.0.0.0/8 range (administratively scoped, won't escape your network). Set TTL appropriately - use 1 for LAN only, higher for routed networks. Verify group membership with `ip maddr show` and multicast traffic flow with `tcpdump -n 'multicast'`. For internet delivery, multicast does not scale; use CDN or unicast replication instead.
+UDP multicast streaming sends a single packet stream that all subscribed receivers receive, making it ideal for live video/audio distribution on a LAN or IPTV systems. Use addresses in the 239.0.0.0/8 range (administratively scoped for local or organizational domains). Set TTL appropriately - use 1 for LAN only, higher for routed networks with multicast routing and scope boundaries configured. Verify group membership with `ip maddr show` and multicast traffic flow with `tcpdump -n 'multicast'`. For public internet delivery, multicast is generally not available end-to-end; use CDN or unicast replication instead.
