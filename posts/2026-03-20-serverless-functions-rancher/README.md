@@ -8,16 +8,16 @@ Description: Practical guide to deploying serverless functions on Rancher coveri
 
 ## Introduction
 
-Deploying serverless functions on Rancher gives you the benefits of serverless computing (pay-per-use, auto-scaling, simplified deployment) while maintaining full control over your infrastructure. This guide covers deployment patterns across multiple serverless frameworks.
+Deploying serverless functions on Rancher gives you the benefits of serverless computing patterns (scale-to-zero, auto-scaling, simplified deployment) while maintaining full control over your infrastructure. This guide covers deployment patterns across multiple serverless frameworks.
 
 ## Choosing the Right Framework
 
 | Framework | Best For | Cold Start | Scale to Zero |
 |-----------|----------|-----------|---------------|
 | Knative | HTTP APIs, event processing | Moderate | Yes |
-| OpenFaaS | Simple functions, any language | Moderate | Yes |
-| Fission | Low-latency APIs | Minimal | No |
-| Kubeless | Kubernetes-native | Moderate | No |
+| OpenFaaS | Simple functions, any language | Moderate | Yes (Pro/Edge, opt-in) |
+| Fission | Low-latency APIs | Minimal with PoolMgr, higher with NewDeploy | Yes with NewDeploy minscale 0 |
+| Kubeless (unmaintained) | Legacy Kubernetes-native functions | Moderate | No |
 | KEDA | Event-driven scaling | N/A | Yes |
 
 ## Pattern 1: HTTP API Function
@@ -67,7 +67,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: data-processor-$(date +%Y%m%d%H%M%S)
+  generateName: data-processor-
   namespace: functions
 spec:
   completions: 10          # Process 10 items
@@ -248,8 +248,12 @@ jobs:
     
     - name: Deploy to Rancher
       env:
-        KUBECONFIG: ${{ secrets.KUBECONFIG }}
+        KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG }}
       run: |
+        mkdir -p "$HOME/.kube"
+        printf '%s' "$KUBECONFIG_CONTENT" > "$HOME/.kube/config"
+        chmod 600 "$HOME/.kube/config"
+        export KUBECONFIG="$HOME/.kube/config"
         kubectl patch ksvc my-function \
           --namespace functions \
           --type=json \
