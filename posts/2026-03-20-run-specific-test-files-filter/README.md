@@ -11,7 +11,7 @@ Description: Learn how to run specific OpenTofu test files and filter test execu
 Running all infrastructure tests on every change can be slow and expensive. Test filtering allows you to:
 
 - Run only the tests relevant to a changed module
-- Debug a specific failing test without running the full suite
+- Debug a specific failing test file without running the full suite
 - Run fast unit tests in every CI run, with full integration tests on merge
 - Focus on a subset of tests during development
 
@@ -21,7 +21,7 @@ Running all infrastructure tests on every change can be slow and expensive. Test
 tofu test
 ```
 
-This runs all `.tftest.hcl` files in the current module directory and its `tests/` subdirectory.
+This runs all supported test files (`*.tftest.hcl`, `*.tftest.json`, `*.tofutest.hcl`, and `*.tofutest.json`) in the current module directory and its `tests/` subdirectory.
 
 ## Running a Specific Test File
 
@@ -44,34 +44,30 @@ tofu test \
 Use `-chdir` to run tests for a specific module:
 
 ```bash
-tofu test -chdir=modules/vpc
-tofu test -chdir=modules/rds
+tofu -chdir=modules/vpc test
+tofu -chdir=modules/rds test
 ```
 
-## Filtering by Run Name
+## Filtering by Test File, Not Run Name
 
-You can filter to run only specific `run` blocks by name within a test file:
+OpenTofu's `tofu test` command filters test execution by test file. It does not provide a CLI flag for running an individual `run` block by name, so put independently runnable scenarios in separate test files:
 
 ```bash
-# Run only the "create_vpc" run block from all test files
-
-tofu test -run=create_vpc
+tofu test -filter=tests/create_vpc.tftest.hcl
 ```
-
-Note: The `-run` flag uses substring matching, so `-run=vpc` would match `create_vpc`, `test_vpc_cidr`, etc.
 
 ## Combining Filters
 
 ```bash
-# Run a specific file and only matching run blocks
+# Run a specific file from a custom test directory
 tofu test \
-  -filter=tests/integration.tftest.hcl \
-  -run=basic_deployment
+  -test-directory=tests/integration \
+  -filter=tests/integration/basic_deployment.tftest.hcl
 ```
 
 ## Verbose Output
 
-See full output from each test run, including all assertions:
+See the plan or state for each test run block as it executes:
 
 ```bash
 tofu test -verbose
@@ -85,13 +81,13 @@ tofu test -json | tee test-results.ndjson
 
 ## Practical CI/CD Workflow
 
-### Fast path: Plan-only unit tests on every PR
+### Fast path: Unit test files on every PR
 
 ```yaml
-- name: Unit Tests (plan only)
+- name: Unit Tests
   run: |
     tofu test \
-      -filter=tests/unit/ \
+      -test-directory=tests/unit \
       -json | tee unit-results.ndjson
 ```
 
@@ -102,7 +98,7 @@ tofu test -json | tee test-results.ndjson
   if: github.ref == 'refs/heads/main'
   run: |
     tofu test \
-      -filter=tests/integration/ \
+      -test-directory=tests/integration \
       -verbose \
       -json | tee integration-results.ndjson
 ```
@@ -118,7 +114,7 @@ CHANGED_MODULES=$(git diff --name-only HEAD~1 | grep "^modules/" | cut -d/ -f1-2
 
 for module in $CHANGED_MODULES; do
   echo "Testing $module..."
-  tofu test -chdir="$module" -json | tee "${module//\//-}-results.ndjson"
+  tofu -chdir="$module" test -json | tee "${module//\//-}-results.ndjson"
 done
 ```
 
@@ -145,14 +141,14 @@ tofu test -filter=tests/unit/cidr_allocation.tftest.hcl
 
 Run all integration tests:
 ```bash
-tofu test -filter=tests/integration/
+tofu test -test-directory=tests/integration
 ```
 
 ## Checking Available Tests
 
 ```bash
 # List test files without running them
-find . -name "*.tftest.hcl" -type f | sort
+find . -type f \( -name "*.tftest.hcl" -o -name "*.tftest.json" -o -name "*.tofutest.hcl" -o -name "*.tofutest.json" \) | sort
 ```
 
 ## Debugging a Failing Test
@@ -162,7 +158,6 @@ When a test fails, run it in isolation with verbose output:
 ```bash
 tofu test \
   -filter=tests/integration/basic_vpc.tftest.hcl \
-  -run=create_vpc \
   -verbose \
   -json
 ```
@@ -170,11 +165,11 @@ tofu test \
 ## Best Practices
 
 1. **Organize tests in subdirectories** (unit/, integration/) for easy filtering
-2. **Name run blocks descriptively** to make `-run` filtering meaningful
+2. **Name test files and run blocks descriptively** to make output and file filtering meaningful
 3. **Run unit tests on every PR**, integration tests only on merge
 4. **Use JSON output** in CI for machine-parseable results
 5. **Keep test file names descriptive** so `-filter` paths are self-documenting
 
 ## Conclusion
 
-OpenTofu's test filtering capabilities - via `-filter`, `-run`, and `-chdir` - give you fine-grained control over test execution. By organizing tests into unit and integration suites and using these flags in your CI/CD pipeline, you can balance test thoroughness with execution speed.
+OpenTofu's test filtering capabilities - via `-filter`, `-test-directory`, and `-chdir` - give you fine-grained control over test execution. By organizing tests into unit and integration suites and using these flags in your CI/CD pipeline, you can balance test thoroughness with execution speed.
