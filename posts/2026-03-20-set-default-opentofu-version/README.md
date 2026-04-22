@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Version Management, System Configuration, Infrastructure as Code, DevOps
 
-Description: A guide to setting a default OpenTofu version system-wide for all users and sessions on Linux and macOS.
+Description: A guide to setting a default OpenTofu version system-wide for users and login sessions on Linux and macOS where supported.
 
 ## Introduction
 
-Setting a system-wide default OpenTofu version ensures that all users and processes on a machine use the same version by default. This is particularly important for shared build servers, CI/CD agents, and team workstations.
+Setting a system-wide default OpenTofu version ensures that all users and shell sessions that inherit the system PATH use the same version by default. This is particularly important for shared build servers, CI/CD agents, and team workstations.
 
 ## Method 1: System-Wide Default with tofuenv
 
@@ -19,7 +19,7 @@ sudo git clone --depth=1 https://github.com/tofuutils/tofuenv.git /usr/local/tof
 
 # Add to system PATH
 echo 'export PATH="/usr/local/tofuenv/bin:$PATH"' | sudo tee /etc/profile.d/tofuenv.sh
-chmod +x /etc/profile.d/tofuenv.sh
+sudo chmod 755 /etc/profile.d/tofuenv.sh
 
 # Install desired version as all users
 sudo /usr/local/tofuenv/bin/tofuenv install 1.9.0
@@ -71,40 +71,43 @@ su - user2 -c "tofu version"
 ## Method 4: Using Package Manager (System-Wide by Default)
 
 ```bash
-# APT-based systems - installs system-wide automatically
+# APT-based systems with the OpenTofu repository configured
 sudo apt-get install -y tofu
 
-# RPM-based systems
-sudo dnf install -y tofu
+# Fedora
+sudo dnf install -y opentofu
 
-# Both install to /usr/bin/tofu which is accessible to all users
+# RHEL, AlmaLinux, and other RPM-based systems with the OpenTofu repository configured
+sudo yum install -y tofu
+
+# These packages install a tofu binary that is accessible to all users
 which tofu
-ls -la /usr/bin/tofu
+ls -la "$(command -v tofu)"
 ```
 
-## Method 5: asdf Global Version
+## Method 5: asdf User Default Version
 
 ```bash
-# With asdf, global sets the default for the current user
-asdf global opentofu 1.9.0
+# With asdf 0.16+, set the default in the current user's home .tool-versions file
+asdf set -u opentofu 1.9.0
 
 # This updates ~/.tool-versions
 cat ~/.tool-versions
 # opentofu 1.9.0
 
-# For system-wide, each user sets their own global
-# Or use a centralized /etc/environment approach
+# For system-wide, each user sets their own home default
+# Or use ASDF_OPENTOFU_VERSION=1.9.0 in a centralized /etc/environment file
 ```
 
 ## Setting System-Wide Environment Variables
 
 ```bash
-# Set the version for all users via /etc/environment
-echo "OPENTOFU_VERSION=1.9.0" | sudo tee -a /etc/environment
+# If using tofuenv, set the version for all users via /etc/environment
+echo "TOFUENV_TOFU_VERSION=1.9.0" | sudo tee -a /etc/environment
 
 # Or for all bash sessions
 cat << 'EOF' | sudo tee /etc/profile.d/opentofu.sh
-export OPENTOFU_VERSION="1.9.0"
+export TOFUENV_TOFU_VERSION="1.9.0"
 # If using tofuenv
 export PATH="/usr/local/tofuenv/bin:$PATH"
 EOF
@@ -123,9 +126,9 @@ for user in $(cut -d: -f1 /etc/passwd); do
 done
 
 # Check the default binary location
-ls -la $(which tofu)
+ls -la "$(command -v tofu)"
 ```
 
 ## Conclusion
 
-Setting a system-wide default OpenTofu version is important for shared servers and CI/CD infrastructure. Package managers like apt and dnf handle this automatically. For more control over versioning, tools like update-alternatives or tofuenv installed at the system level provide flexible management. Always verify that the default version meets your infrastructure project requirements after making system-wide changes.
+Setting a system-wide default OpenTofu version is important for shared servers and CI/CD infrastructure. Package managers like apt, dnf, and yum handle this automatically after the appropriate package or repository is configured. For more control over versioning, tools like update-alternatives or tofuenv installed at the system level provide flexible management. Always verify that the default version meets your infrastructure project requirements after making system-wide changes.
