@@ -12,7 +12,7 @@ Self-healing infrastructure automatically detects failures and recovers from the
 
 ## EC2 Auto Recovery
 
-AWS Auto Recovery automatically restarts EC2 instances when underlying hardware fails.
+AWS Auto Recovery recovers supported EC2 instances when system status checks fail, such as after underlying hardware or power issues.
 
 ```hcl
 # main.tf
@@ -88,7 +88,7 @@ resource "aws_autoscaling_group" "app" {
 
   target_group_arns = [aws_lb_target_group.app.arn]
 
-  # Terminate unhealthy instances first during scale-in
+  # During scale-in, terminate the oldest instances before using the default policy
   termination_policies = ["OldestInstance", "Default"]
 }
 ```
@@ -118,7 +118,7 @@ resource "aws_ecs_service" "app" {
     rollback = true  # Automatically rollback failed deployments
   }
 
-  # Detect and replace unhealthy containers
+  # Use the ECS rolling deployment controller required by the circuit breaker
   deployment_controller {
     type = "ECS"
   }
@@ -132,7 +132,7 @@ resource "aws_ecs_service" "app" {
 resource "aws_db_instance" "app" {
   identifier             = "${var.app_name}-db"
   engine                 = "postgres"
-  engine_version         = "15.4"
+  engine_version         = "15.17"
   instance_class         = "db.t3.medium"
   allocated_storage      = 50
   db_name                = var.db_name
@@ -157,15 +157,15 @@ resource "aws_db_instance" "app" {
   maintenance_window         = "sun:04:00-sun:05:00"
 }
 
-# CloudWatch alarm to notify when failover occurs
+# CloudWatch alarm to flag a possible outage during failover
 resource "aws_cloudwatch_metric_alarm" "rds_failover" {
   alarm_name          = "${var.app_name}-rds-failover"
-  comparison_operator = "GreaterThanOrEqualToThreshold"
+  comparison_operator = "LessThanOrEqualToThreshold"
   evaluation_periods  = 1
   metric_name         = "DatabaseConnections"
   namespace           = "AWS/RDS"
   period              = 60
-  statistic           = "Sum"
+  statistic           = "Minimum"
   threshold           = 0
   treat_missing_data  = "breaching"
 
@@ -182,6 +182,6 @@ resource "aws_cloudwatch_metric_alarm" "rds_failover" {
 
 - Use ELB health checks (not EC2 health checks) for ASG groups - they verify application availability, not just instance reachability.
 - Set appropriate health check grace periods - too short and healthy instances get terminated during startup.
-- Enable deployment circuit breakers on ECS services to stop automatic rollback when new task definitions keep failing.
+- Enable deployment circuit breakers on ECS services to stop failed rollouts and automatically roll back when new task definitions keep failing.
 - Pair self-healing with alerting - automatic recovery is great, but your team should still know when healing events occur.
 - Test recovery regularly using Chaos Engineering tools (AWS FIS, chaos-mesh) to verify your healing mechanisms work as expected.
