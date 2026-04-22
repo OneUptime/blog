@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: tc, Netem, IPv4, Packet Loss, Network Testing, Linux
 
-Description: Use tc netem to simulate IPv4 packet loss with configurable rates and correlation to test application resilience under poor network conditions.
+Description: Use tc netem to simulate IPv4 packet loss with configurable rates and burst-loss models to test application resilience under poor network conditions.
 
 Simulating packet loss helps validate how TCP applications handle retransmissions, UDP applications handle missing data, and how quickly applications detect and recover from network degradation.
 
@@ -19,25 +19,25 @@ sudo tc qdisc add dev eth0 root netem loss 5%
 ping -c 20 8.8.8.8
 
 # Expected: ~1 out of 20 packets dropped (on the outgoing side)
-# Actual packet loss ≈ 10% since server replies may also experience loss
+# Ping should report roughly 5% loss because this qdisc affects packets leaving eth0
 ```
 
 ## Correlated Packet Loss (Bursty Loss)
 
-Real-world packet loss often comes in bursts, not randomly. Correlation links the probability of a drop to whether the previous packet was dropped:
+Real-world packet loss often comes in bursts, not purely independently. The older correlated random-loss parameter is deprecated, so use the state model for a bursty pattern:
 
 ```bash
-# 10% loss with 25% correlation (bursty pattern)
-sudo tc qdisc add dev eth0 root netem loss 10% 25%
+# 4-state Markov loss: p13 enters the burst-loss state, p31 leaves it
+sudo tc qdisc add dev eth0 root netem loss state 10% 25%
 ```
 
 ## Gilbert-Elliott Loss Model (Realistic Bursty Loss)
 
 ```bash
 # Two-state Markov model for realistic bursty packet loss
-# p: probability of entering loss state, r: probability of leaving loss state
-# 1-h: loss probability in good state, 1-k: loss probability in loss state
-sudo tc qdisc add dev eth0 root netem loss gemodel p 10% r 80% 1-h 0% 1-k 100%
+# p: probability of entering the bad state, r: probability of leaving the bad state
+# 1-h: loss probability in the bad state, 1-k: loss probability in the good state
+sudo tc qdisc add dev eth0 root netem loss gemodel 10% 80% 100% 0%
 ```
 
 ## Combined Loss with Delay
@@ -63,14 +63,14 @@ sudo tc qdisc del dev lo root
 ## Monitoring Loss Effects
 
 ```bash
-# Use ping with count and flood option to measure loss
-ping -c 100 -f 8.8.8.8
+# Use ping with count and flood option to measure loss (requires root for flood mode)
+sudo ping -c 100 -f 8.8.8.8
 
 # Use mtr for continuous monitoring with per-hop loss stats
 mtr --report --report-cycles 50 8.8.8.8
 
-# Capture with tcpdump and analyze TCP retransmissions
-sudo tcpdump -i eth0 -n 'tcp[tcpflags] & tcp-syn != 0' -c 50
+# Capture TCP traffic for later retransmission analysis
+sudo tcpdump -i eth0 -w tcp-loss-test.pcap -c 200 tcp
 ```
 
 ## Testing TCP Retransmission Behavior
@@ -83,9 +83,7 @@ sudo tc qdisc add dev eth0 root netem loss 5%
 scp largefile.bin user@remote:/tmp/
 
 # Check TCP retransmission counters
-netstat -s | grep retransmit
-# or
-ss -s
+nstat -az TcpRetransSegs TcpExtTCPSynRetrans
 ```
 
 ## Removing Loss Simulation
