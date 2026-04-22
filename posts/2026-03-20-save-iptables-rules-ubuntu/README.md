@@ -24,7 +24,7 @@ sudo apt install iptables-persistent -y
 # /etc/iptables/rules.v6 (IPv6)
 
 # After install, view saved rules
-cat /etc/iptables/rules.v4
+sudo cat /etc/iptables/rules.v4
 ```
 
 ## Save Rules After Making Changes
@@ -33,15 +33,15 @@ When you add new rules later, save them again:
 
 ```bash
 # Save current rules
-sudo iptables-save > /etc/iptables/rules.v4
-sudo ip6tables-save > /etc/iptables/rules.v6
+sudo iptables-save -f /etc/iptables/rules.v4
+sudo ip6tables-save -f /etc/iptables/rules.v6
 
 # Or use the netfilter-persistent service
 sudo netfilter-persistent save
 
 # Verify the saved file was updated
 ls -la /etc/iptables/rules.v4
-cat /etc/iptables/rules.v4
+sudo cat /etc/iptables/rules.v4
 ```
 
 ## Method 2: Systemd Service
@@ -50,7 +50,8 @@ Create a systemd service that restores rules at boot:
 
 ```bash
 # Save current rules
-sudo iptables-save > /etc/iptables/rules.v4
+sudo mkdir -p /etc/iptables
+sudo iptables-save -f /etc/iptables/rules.v4
 
 # Create systemd service
 sudo tee /etc/systemd/system/iptables-restore.service << 'EOF'
@@ -61,7 +62,7 @@ Wants=network-pre.target
 
 [Service]
 Type=oneshot
-ExecStart=/sbin/iptables-restore /etc/iptables/rules.v4
+ExecStart=/usr/sbin/iptables-restore /etc/iptables/rules.v4
 RemainAfterExit=yes
 
 [Install]
@@ -75,15 +76,17 @@ sudo systemctl start iptables-restore
 ## Method 3: /etc/rc.local (Legacy)
 
 ```bash
-# Add restore command to rc.local
-sudo tee -a /etc/rc.local << 'EOF'
+# Create rc.local
+sudo tee /etc/rc.local > /dev/null << 'EOF'
+#!/bin/sh -e
 # Restore iptables rules
-iptables-restore < /etc/iptables/rules.v4
+/usr/sbin/iptables-restore /etc/iptables/rules.v4
+exit 0
 EOF
 
-# Make rc.local executable
+# Make rc.local executable so systemd-rc-local-generator picks it up
 sudo chmod +x /etc/rc.local
-sudo systemctl enable rc-local
+sudo systemctl daemon-reload
 ```
 
 ## Verify Rules Load on Boot
@@ -91,7 +94,7 @@ sudo systemctl enable rc-local
 ```bash
 # Test by simulating a reboot restore
 sudo iptables -F  # Flush current rules
-sudo iptables-restore < /etc/iptables/rules.v4
+sudo iptables-restore /etc/iptables/rules.v4
 
 # Verify rules are back
 sudo iptables -L -n -v
@@ -100,24 +103,25 @@ sudo iptables -L -n -v
 ## What the Saved File Looks Like
 
 ```bash
-cat /etc/iptables/rules.v4
+sudo cat /etc/iptables/rules.v4
 
-# *filter
-# :INPUT DROP [0:0]
-# :FORWARD DROP [0:0]
-# :OUTPUT ACCEPT [0:0]
-# -A INPUT -i lo -j ACCEPT
-# -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-# -A INPUT -p tcp -m tcp --dport 22 -j ACCEPT
-# -A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
-# -A INPUT -p tcp -m tcp --dport 443 -j ACCEPT
-# COMMIT
-# *nat
-# :PREROUTING ACCEPT [0:0]
-# :OUTPUT ACCEPT [0:0]
-# :POSTROUTING ACCEPT [0:0]
-# -A POSTROUTING -s 192.168.1.0/24 -o eth0 -j MASQUERADE
-# COMMIT
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+-A INPUT -i lo -j ACCEPT
+-A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+-A INPUT -p tcp -m tcp --dport 22 -j ACCEPT
+-A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
+-A INPUT -p tcp -m tcp --dport 443 -j ACCEPT
+COMMIT
+*nat
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+-A POSTROUTING -s 192.168.1.0/24 -o eth0 -j MASQUERADE
+COMMIT
 ```
 
 ## Update Workflow
@@ -130,7 +134,7 @@ sudo iptables -A INPUT -p tcp --dport 8080 -j ACCEPT
 # ...
 
 # When satisfied, save permanently
-sudo iptables-save > /etc/iptables/rules.v4
+sudo iptables-save -f /etc/iptables/rules.v4
 sudo netfilter-persistent reload
 ```
 
