@@ -14,25 +14,28 @@ Silver Peak SD-WAN, now HPE Aruba EdgeConnect, supports IPv6 on LAN and WAN inte
 
 ```text
 HPE Aruba Orchestrator:
-Navigate to: Configuration > Appliances > [Appliance Name] > Deployment
+Navigate to: Configuration > Networking > Deployment
+Edit: [Appliance Name]
 
 LAN Interface Configuration:
   Interface: lan0
   IPv4: 192.168.1.1/24
-  IPv6: 2001:db8:site-a::1/64 (Static)
-  IPv6 DHCPv6 Server: Enabled
-    Pool: 2001:db8:site-a::100 to ::ffff
-    DNS: 2001:4860:4860::8888
-  Router Advertisement: Enabled
-    Interval: 30s
-    Prefix: 2001:db8:site-a::/64
+  IPv6: 2001:db8:100::1/64 (Static)
+  Router Advertisement: Enabled (V6 tab)
+    Max Interval: 30s
+    Min Interval: 10s
+    Prefix: 2001:db8:100::/64
     Autonomous: Yes
+    Onlink: Yes
+    Managed Flag: No
+    Other Flag: Yes
 
 WAN Interface Configuration:
   Interface: wan0
-  IPv4: Dynamic (DHCP from ISP)
-  IPv6: Dynamic (DHCPv6 from ISP)
-  Label: MPLS or Broadband
+  Mode: DHCPv4 + DHCPv6 or DHCPv4 + SLAAC
+  IPv4: Dynamic (DHCPv4 from ISP)
+  IPv6: Dynamic (DHCPv6 or SLAAC from ISP)
+  Label: MPLS, Internet, or Broadband
 ```
 
 ## EdgeConnect Local Configuration
@@ -42,131 +45,217 @@ WAN Interface Configuration:
 
 ssh admin@edgeconnect-ip
 
-# Show IPv6 interface status
-show interfaces ipv6
+# Show interface status, including IPv6 addresses
+show interfaces lan0
+show interfaces wan0
 
-# Configure IPv6 on LAN interface
-configure interface lan0 ipv6 address 2001:db8:site-a::1/64
+# EdgeConnect deployment changes are normally pushed from Orchestrator.
+# If you configure locally, use the CLI syntax from the EdgeConnect CLI reference:
+interface lan0 ip-address 2001:db8:100::1/64
 
 # Configure IPv6 default route
-configure ipv6 route default-route 2001:db8:wan::gateway wan0
+ip default-gateway 2001:db8:200::1 wan0
 
-# Show IPv6 routing table
-show ip route ipv6
+# Show routing and default-gateway state
+show ip route
+show ip default-gateway
 
-# Verify SD-WAN tunnels (typically IPv4 underlay, IPv6 overlay)
-show tunnels
+# Verify SD-WAN tunnels
+show tunnel summary
+show tunnel <tunnel-name> ipsec status
+show tunnel <tunnel-name> stats latency
 
 # Test IPv6 connectivity
-ping6 source-interface lan0 2001:4860:4860::8888
+ping -I lan0 2001:4860:4860::8888
 ```
 
 ## Business Intent Overlay for IPv6
 
 ```text
-Orchestrator > Configuration > Business Intent Overlays
+Orchestrator > Configuration > Overlays & Security > Business Intent Overlays
 
 Create Overlay: "IPv6-VoIP-Overlay"
-  Application Definition:
-    Match: IPv6
+  Match:
+    ACL rule matching IPv6 voice subnets or applications
     Protocol: UDP
     Destination Port: 10000-20000
     DSCP: EF
-  Path Quality:
+  Service Level Objective (SLO):
     Latency: < 100ms
     Loss: < 1%
     Jitter: < 20ms
-  Bonding:
-    Mode: Highest Bandwidth
-    WAN Links: MPLS, Broadband
+  WAN Links:
+    Primary: MPLS, Broadband
+  Link Bonding Policy:
+    Mode: High Availability or High Quality
 
 Create Overlay: "IPv6-Bulk-Overlay"
-  Application Definition:
-    Match: IPv6
+  Match:
+    ACL rule matching IPv6 bulk-data subnets or applications
     Protocol: TCP
-    Destination: All
-  Path Quality:
+    Destination: Internal IPv6 subnets
+  Service Level Objective (SLO):
     Loss: < 5%
-  Bonding:
-    Mode: Load Balance
+  Link Bonding Policy:
+    Mode: High Efficiency
 ```
 
 ## IPv6 Tunnel Configuration
 
 ```bash
-# Silver Peak can create IPv6-in-IPv4 or IPv6-in-IPv6 tunnels
+# EdgeConnect tunnels are built from WAN interface labels and overlay policy.
+# In modern deployments, IPSec over UDP is the default tunnel mode.
 
-# Check tunnel endpoints
-show tunnels detail | grep -i ipv6
+# Check tunnel state and endpoints
+show tunnel summary
+show tunnel peers
+show tunnel <tunnel-name> configured
+show tunnel <tunnel-name> ipsec status
+show tunnel <tunnel-name> stats latency
 
-# Configure tunnel with IPv6 endpoint
+# Configure a WAN interface with IPv6 addressing
 # In Orchestrator UI:
-# Configuration > Topology > [Site] > Tunnels
-# WAN IP: 2001:db8::edgeconnect (if ISP provides IPv6 WAN)
+# Configuration > Networking > Deployment
+# WAN IP: 2001:db8:200::10/64 (if ISP provides IPv6 WAN)
+# Next Hop: 2001:db8:200::1
 # Local WAN Label: Broadband-IPv6
 
-# Silver Peak uses UDP 4163 for tunnel encapsulation
-# Works over both IPv4 and IPv6 WAN connections
+# The default UDP destination port for tunnel UDP mode is 4163.
 ```
 
-## Monitor IPv6 Traffic in Orchestrator
+## Monitor IPv6 Traffic with EdgeConnect APIs
 
 ```python
 #!/usr/bin/env python3
-# silverpeak_ipv6_monitor.py - Monitor IPv6 via Silver Peak API
+# silverpeak_ipv6_monitor.py - Monitor IPv6 via EdgeConnect appliance APIs
 
+import csv
+import io
+import tarfile
 import requests
 
-ORCH_URL = "https://orchestrator.example.com"
-USERNAME = "admin"
+EDGE_URL = "https://edgeconnect.example.com/rest/json"
+USERNAME = "api-user"
 PASSWORD = "password"
+TIMEOUT = (5, 30)
+VERIFY_SSL = True
 
 def get_session():
-    """Authenticate to Orchestrator."""
-    resp = requests.post(
-        f"{ORCH_URL}/gms/rest/authentication/login",
-        json={"user": USERNAME, "password": PASSWORD},
-        verify=False
-    )
+    """Authenticate to the EdgeConnect appliance API."""
     session = requests.Session()
-    session.cookies.update(resp.cookies)
+    resp = session.post(
+        f"{EDGE_URL}/login",
+        json={"user": USERNAME, "password": PASSWORD},
+        timeout=TIMEOUT,
+        verify=VERIFY_SSL,
+    )
+    resp.raise_for_status()
+
+    csrf_token = session.cookies.get("edgeosCsrfToken")
+    if csrf_token:
+        session.headers.update({"X-XSRF-Token": csrf_token})
+
     return session
 
-def get_ipv6_flows(session, appliance_id):
-    """Get active IPv6 flows."""
-    resp = session.get(
-        f"{ORCH_URL}/gms/rest/flows/appliances/{appliance_id}",
-        params={"ipVersion": "IPv6", "maxCount": 100}
-    )
-    return resp.json()
+def has_ipv6_value(record):
+    """Return True when any field in an API record contains an IPv6 address."""
+    return any(":" in str(value) for value in record.values())
 
-def get_tunnel_stats(session, appliance_id):
-    """Get tunnel statistics including IPv6."""
+def get_ipv6_flows(session):
+    """Get active IPv6 flows from the appliance."""
     resp = session.get(
-        f"{ORCH_URL}/gms/rest/stats/appliances/{appliance_id}/tunnels"
+        f"{EDGE_URL}/flows",
+        params={"filter": "all", "uptime": "last5m"},
+        timeout=TIMEOUT,
+        verify=VERIFY_SSL,
     )
-    tunnels = resp.json()
-    # Filter IPv6 tunnels
-    ipv6_tunnels = [t for t in tunnels if ':' in t.get('remoteIp', '')]
-    return ipv6_tunnels
+    resp.raise_for_status()
+    payload = resp.json()
+
+    if isinstance(payload, list):
+        records = payload
+    elif isinstance(payload, dict):
+        records = next(
+            (value for value in payload.values() if isinstance(value, list)),
+            []
+        )
+    else:
+        records = []
+
+    return [
+        record for record in records
+        if isinstance(record, dict) and has_ipv6_value(record)
+    ]
+
+def get_latest_minute_stats(session):
+    """Download the latest per-minute statistics archive."""
+    range_resp = session.get(
+        f"{EDGE_URL}/stats/minuteRange",
+        timeout=TIMEOUT,
+        verify=VERIFY_SSL,
+    )
+    range_resp.raise_for_status()
+    newest = range_resp.json()["newest"]
+
+    stats_resp = session.get(
+        f"{EDGE_URL}/stats/minuteStats/st2-{newest}.tgz",
+        timeout=TIMEOUT,
+        verify=VERIFY_SSL,
+    )
+    stats_resp.raise_for_status()
+    return stats_resp.content
+
+def print_ipv6_flow_rows(stats_tgz):
+    """Print IPv6 rows from flow.csv in the minute statistics archive."""
+    with tarfile.open(fileobj=io.BytesIO(stats_tgz), mode="r:gz") as archive:
+        flow_member = next(
+            (member for member in archive.getmembers()
+             if member.name.endswith("flow.csv")),
+            None,
+        )
+        if not flow_member:
+            print("flow.csv was not present in the minute stats archive")
+            return
+
+        flow_file = archive.extractfile(flow_member)
+        if flow_file is None:
+            print("flow.csv could not be read from the minute stats archive")
+            return
+
+        data = flow_file.read().decode("utf-8", errors="replace")
+        rows = [
+            row for row in csv.DictReader(io.StringIO(data))
+            if has_ipv6_value(row)
+        ]
+
+    print(f"IPv6 flow rows in latest minute stats: {len(rows)}")
+    for row in rows[:10]:
+        print(row)
 
 if __name__ == '__main__':
     session = get_session()
-    appliance_id = "appliance-id"
+    try:
+        flows = get_ipv6_flows(session)
+        print(f"Active IPv6 flows: {len(flows)}")
 
-    flows = get_ipv6_flows(session, appliance_id)
-    print(f"Active IPv6 flows: {len(flows)}")
+        for flow in flows[:10]:
+            print(flow)
 
-    for flow in flows[:10]:
-        print(f"  {flow.get('srcIpv6')} → {flow.get('dstIpv6')} "
-              f"App: {flow.get('application')} BW: {flow.get('bandwidth')}Kbps")
+        print_ipv6_flow_rows(get_latest_minute_stats(session))
+    finally:
+        session.post(
+            f"{EDGE_URL}/logout",
+            timeout=TIMEOUT,
+            verify=VERIFY_SSL,
+        )
 ```
 
 ## Quality of Service for IPv6
 
 ```bash
 # EdgeConnect QoS for IPv6 traffic
-# Configure in Orchestrator: Configuration > QoS
+# Configure traffic class and DSCP handling in:
+# Configuration > Overlays & Security > Business Intent Overlays
 
 # QoS classes for IPv6:
 # Class EF: VoIP RTP (DSCP EF, port 10000-20000)
@@ -174,14 +263,17 @@ if __name__ == '__main__':
 # Class CS3: SIP signaling (DSCP CS3)
 # Class BE: Best effort
 
-# Apply QoS policy via CLI
-configure qos map-profile "IPv6-VoIP" \
-    priority-queue 1 dscp ef
-configure qos map-profile "IPv6-Video" \
-    priority-queue 2 dscp af41
+# Apply DSCP-based QoS policy via CLI
+qos-map IPv6-QoS 10 match dscp ef
+qos-map IPv6-QoS 10 set traffic-class 1 lan-qos trust-lan wan-qos ef
+qos-map IPv6-QoS 20 match dscp af41
+qos-map IPv6-QoS 20 set traffic-class 2 lan-qos trust-lan wan-qos af41
+qos-map IPv6-QoS activate
 
-# Verify QoS statistics
-show qos stats interface lan0 | grep "IPv6\|EF\|AF41"
+# Verify QoS configuration and tunnel QoS statistics
+show qos-map IPv6-QoS
+show qos-map IPv6-QoS stats
+show tunnel <tunnel-name> stats qos ef
 ```
 
-HPE Aruba EdgeConnect SD-WAN IPv6 deployment centers on configuring dual-stack LAN interfaces with DHCPv6 for client addressing, defining Business Intent Overlays that match IPv6 flows for intelligent path selection, and leveraging the Orchestrator's centralized policy management to ensure consistent IPv6 QoS and routing across all branch sites.
+HPE Aruba EdgeConnect SD-WAN IPv6 deployment centers on configuring IPv6-enabled LAN interfaces with Router Advertisements for client addressing, defining Business Intent Overlays that match IPv6 flows for intelligent path selection, and leveraging the Orchestrator's centralized policy management to ensure consistent IPv6 QoS and routing across all branch sites.
