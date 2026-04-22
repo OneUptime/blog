@@ -8,7 +8,7 @@ Description: Understand how SLAAC handles multiple prefix advertisements, how ho
 
 ## Introduction
 
-When a router advertises multiple prefixes in its Router Advertisements, SLAAC-capable hosts generate one address per prefix. Multiple prefixes arise in dual-stack environments, ISP prefix delegation scenarios, IPv6 renumbering, and multihomed environments. Understanding how hosts manage multiple SLAAC addresses and which address is chosen for outbound connections is essential for troubleshooting IPv6 connectivity.
+When a router advertises multiple prefixes in its Router Advertisements, SLAAC-capable hosts generate one or more addresses for each advertised prefix that has the Autonomous flag set. Multiple prefixes arise in GUA + ULA deployments, ISP prefix delegation scenarios, IPv6 renumbering, and multihomed environments. Understanding how hosts manage multiple SLAAC addresses and which address is chosen for outbound connections is essential for troubleshooting IPv6 connectivity.
 
 ## How Multiple Prefixes Arise
 
@@ -16,8 +16,8 @@ When a router advertises multiple prefixes in its Router Advertisements, SLAAC-c
 Scenarios with Multiple IPv6 Prefixes:
 
 1. Renumbering (old + new prefix):
-   Old prefix: 2001:db8:old::/64 (being phased out)
-   New prefix: 2001:db8:new::/64 (being introduced)
+   Old prefix: 2001:db8:0:1::/64 (being phased out)
+   New prefix: 2001:db8:0:2::/64 (being introduced)
    → Both advertised simultaneously during transition
    → Hosts have two global addresses
 
@@ -28,8 +28,8 @@ Scenarios with Multiple IPv6 Prefixes:
    → Hosts have two global addresses
 
 3. GUA + ULA (common enterprise pattern):
-   Global prefix: 2001:db8::/64 (public, internet-routable)
-   ULA prefix:    fd00::/64 (private, local use only)
+   Global prefix: 2001:db8::/64 (documentation GUA example; use your routed prefix)
+   ULA prefix:    fd12:3456:789a::/64 (private, local use only)
    → Both advertised in RA
    → Hosts have one GUA + one ULA address
 
@@ -66,9 +66,10 @@ ip -6 addr show eth0
 # inet6 fe80::211:22ff:fe33:4455/64 scope link
 #    valid_lft forever preferred_lft forever
 
-# Both global addresses exist simultaneously
-# Same interface identifier (EUI-64) for both
-# With privacy extensions: random IID per prefix (different IID for each)
+# Both global addresses can exist simultaneously
+# With classic EUI-64 IID generation: same interface identifier for both
+# With RFC 7217 stable privacy IIDs: stable opaque IID usually differs per prefix
+# With RFC 8981 temporary addresses: additional per-prefix temporary addresses may exist and rotate over time
 ```
 
 ## Source Address Selection with Multiple Prefixes
@@ -85,6 +86,8 @@ Rule 2: Prefer appropriate scope
 Rule 3: Avoid deprecated addresses
 Rule 4: Prefer home address (Mobile IPv6)
 Rule 5: Prefer outgoing interface
+Rule 5.5: Prefer addresses in a prefix advertised by the next-hop
+        (when the implementation tracks that relationship)
 Rule 6: Prefer matching label
         (uses Policy Table to match src prefix to dst prefix)
 Rule 7: Prefer temporary addresses (privacy extensions)
@@ -92,19 +95,20 @@ Rule 8: Use longest matching prefix
 
 For multiple GUA prefixes without specific policy:
   - Rule 8 (longest match) often determines selection
-  - If equal prefix length: implementation-specific
-  - May be round-robin or first-configured wins
+  - If the rules still tie: implementation-specific
+  - Usually a stable ordering or another implementation-specific tiebreaker
 ```
 
 ## Policy Table for Source Address Selection
 
 ```bash
-# View current source address selection policy table
-ip -6 rule show
+# View current kernel address label table used for IPv6 source selection
+ip addrlabel list
 # (Note: ip rule and ip -6 rule show routing policy, not address selection)
 
-# Source address selection policy table (RFC 6724 Section 2.1)
-# Kernel hardcodes the default policy table:
+# RFC 6724 source/destination address selection policy table (actual Linux addrlabel defaults can vary by release)
+# Source selection uses the Label column; destination sorting uses Precedence.
+# Linux exposes kernel labels with ip addrlabel; user-space precedence is commonly configured via /etc/gai.conf.
 # Prefix        Precedence  Label
 # ::1/128       50          0      (loopback)
 # ::/0          40          1      (global)
@@ -121,16 +125,17 @@ ip -6 rule show
 
 # ULA (fc00::/7, label 13) prefers ULA destinations
 # Global (label 1) prefers global destinations
-# This prevents ULA source from being used for global destinations
+# This helps a host with both addresses prefer a GUA source for GUA destinations instead of a ULA source
 ```
 
 ## Testing Multiple Address Source Selection
 
 ```bash
 # Force a specific source address for testing
+# Replace the documentation address below with an address assigned to your host
 curl -6 --interface 2001:db8:a::211:22ff:fe33:4455 https://example.com
 
-# Or use -6 source address selection test:
+# Or run a source address selection test:
 # Create a connection and check source
 python3 -c "
 import socket
@@ -140,11 +145,12 @@ print('Source address:', s.getsockname()[0])
 s.close()
 "
 
-# Use ip to manipulate source address selection
-# Add a preferred source address for specific destinations
-sudo ip -6 rule add from 2001:db8:a::/64 lookup 100
-sudo ip -6 route add default via fe80::1 dev eth0 table 100
-# Packets sourced from a:: use table 100 (specific routing)
+# Use ip to inspect the selected route and source
+ip -6 route get 2001:4860:4860::8888
+
+# Add a preferred source address for a specific destination route
+sudo ip -6 route add 2001:4860:4860::8888/128 via fe80::1 dev eth0 src 2001:db8:a::211:22ff:fe33:4455
+# The route src attribute is the preferred source for destinations covered by that route
 ```
 
 ## ULA + GUA Coexistence
@@ -152,21 +158,21 @@ sudo ip -6 route add default via fe80::1 dev eth0 table 100
 ```bash
 # Common pattern: ULA for internal traffic, GUA for internet
 # Router advertises:
-#   Global: 2001:db8::/64 (internet routing)
-#   ULA:    fd00::/64 (internal only)
+#   Global: 2001:db8::/64 (documentation GUA example; use your routed prefix)
+#   ULA:    fd12:3456:789a::/64 (internal only)
 
 # Host addresses:
 ip -6 addr show eth0
 # inet6 2001:db8::211:22ff:fe33:4455/64 scope global  ← GUA
-# inet6 fd00::211:22ff:fe33:4455/64 scope global      ← ULA
+# inet6 fd12:3456:789a::211:22ff:fe33:4455/64 scope global  ← ULA
 
 # Source address selection:
 # For destination on internet (2001:...):
-#   ULA source: would work (router NAT66 or not routable externally)
+#   ULA source: would usually fail without translation because ULA is not globally routed
 #   GUA source: preferred (internet-routable)
-#   → RFC 6724 Rule 2 (scope) + label table → prefers GUA for global dest
+#   → RFC 6724 treats ULA as global scope, so Rule 2 ties; Rule 6 label matching prefers GUA for GUA destinations
 
-# For destination on local network (fd00::...):
+# For destination on local network (fd12:3456:789a::...):
 #   ULA source: preferred (same label in policy table = label 13)
 #   GUA source: different label → less preferred for ULA dest
 #   → RFC 6724 Rule 6 (label matching) → prefers ULA for ULA dest
@@ -181,7 +187,7 @@ print('Internet source:', s.getsockname()[0])
 s.close()
 # Test internal destination
 s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
-s.connect(('fd00::1', 53))
+s.connect(('fd12:3456:789a::1', 53))
 print('Internal source:', s.getsockname()[0])
 s.close()
 "
@@ -189,4 +195,4 @@ s.close()
 
 ## Conclusion
 
-SLAAC hosts generate one address per advertised prefix, resulting in multiple global unicast addresses when multiple prefixes are advertised. Source address selection (RFC 6724) uses an 8-rule priority system to choose among available source addresses. Key rules are: avoid deprecated addresses (Rule 3), prefer temporary addresses (Rule 7), and match the policy label (Rule 6). The ULA + GUA pattern relies on label matching (Rule 6) to ensure ULA sources are preferred for internal destinations and GUA sources for internet destinations. Understanding multiple-prefix behavior is essential for troubleshooting connectivity in multihomed or renumbering scenarios.
+SLAAC hosts generate one or more addresses per autonomous advertised prefix, resulting in multiple IPv6 addresses when multiple prefixes are advertised. Source address selection (RFC 6724) uses ordered comparison rules to choose among available source addresses. Key rules are: avoid deprecated addresses (Rule 3), prefer temporary addresses (Rule 7), and match the policy label (Rule 6). The ULA + GUA pattern relies on label matching (Rule 6) to normally prefer ULA sources for internal ULA destinations and GUA sources for internet destinations. Understanding multiple-prefix behavior is essential for troubleshooting connectivity in multihomed or renumbering scenarios.
