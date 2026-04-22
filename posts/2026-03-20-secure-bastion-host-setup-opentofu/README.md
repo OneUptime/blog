@@ -8,7 +8,7 @@ Description: Learn how to build a secure bastion host setup on AWS with OpenTofu
 
 ## Introduction
 
-A bastion host provides secure SSH access to private network resources. Modern bastion designs minimize attack surface by using EC2 Instance Connect (which eliminates permanent SSH keys), strict security group rules, CloudWatch audit logging, and auto-shutdown policies. This guide builds a production-grade bastion with these features.
+A bastion host provides secure SSH access to private network resources. Modern bastion designs minimize attack surface by using EC2 Instance Connect (which uses temporary SSH public keys instead of permanent keys on the instance), strict security group rules, CloudWatch audit logging, and auto-shutdown policies. This guide builds a production-grade bastion with these features.
 
 ## Security Group for Bastion
 
@@ -27,7 +27,7 @@ resource "aws_security_group" "bastion" {
     cidr_blocks = var.allowed_ssh_cidrs  # ["203.0.113.0/24"]
   }
 
-  # No direct internet egress - route through NAT
+  # No direct internet egress - use VPC endpoints for AWS APIs/logging
   egress {
     from_port   = 0
     to_port     = 0
@@ -52,8 +52,8 @@ resource "aws_instance" "bastion" {
   vpc_security_group_ids = [aws_security_group.bastion.id]
   iam_instance_profile   = aws_iam_instance_profile.bastion.name
 
-  # EC2 Instance Connect eliminates need for long-lived SSH keys
-  # Users connect via: aws ec2-instance-connect send-ssh-public-key + ssh
+  # EC2 Instance Connect avoids long-lived public keys on the instance
+  # Users can connect with AWS CLI v2: aws ec2-instance-connect ssh --instance-id i-...
   key_name = null  # no persistent key pair
 
   metadata_options {
@@ -67,13 +67,17 @@ resource "aws_instance" "bastion" {
     encrypted   = true
   }
 
-  user_data = base64encode(<<-EOF
+  user_data = <<-EOF
     #!/bin/bash
-    # Install EC2 Instance Connect
+    # AL2023 standard AMIs include EC2 Instance Connect by default.
+    # Install it explicitly for minimal/custom AMIs.
     yum install -y ec2-instance-connect
 
-    # Configure SSH to log all sessions to CloudWatch
-    yum install -y awslogs
+    # Ship SSH authentication/session logs to CloudWatch Logs.
+    # With restricted egress, this requires private access to Amazon Linux
+    # repositories and CloudWatch Logs, such as VPC endpoints.
+    yum install -y rsyslog amazon-cloudwatch-agent
+    systemctl enable --now rsyslog
 
     # Configure bastion audit logging
     cat >> /etc/ssh/sshd_config << 'SSHD'
@@ -81,14 +85,34 @@ resource "aws_instance" "bastion" {
     PrintLastLog yes
     SSHD
 
+    cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CWAGENT'
+    {
+      "logs": {
+        "logs_collected": {
+          "files": {
+            "collect_list": [
+              {
+                "file_path": "/var/log/secure",
+                "log_group_name": "/aws/ec2/bastion",
+                "log_stream_name": "{instance_id}/secure"
+              }
+            ]
+          }
+        }
+      }
+    }
+    CWAGENT
+
     systemctl restart sshd
+    /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+      -a fetch-config -m ec2 -s \
+      -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
   EOF
-  )
 
   tags = {
     Name        = "bastion-${var.environment}"
     Environment = var.environment
-    AutoStop    = "true"  # tag for auto-shutdown Lambda
+    AutoStop    = "true"  # tag for automation/inventory
   }
 }
 ```
@@ -112,6 +136,11 @@ resource "aws_iam_role" "bastion" {
 resource "aws_iam_role_policy_attachment" "bastion_ssm" {
   role       = aws_iam_role.bastion.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_role_policy_attachment" "bastion_cloudwatch" {
+  role       = aws_iam_role.bastion.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 }
 
 resource "aws_iam_instance_profile" "bastion" {
@@ -155,12 +184,15 @@ resource "aws_iam_role_policy_attachment" "app_ssm" {
 
 # Connect via:
 # aws ssm start-session --target i-0abc12345def67890
-# No SSH, no bastion, no open ports, all sessions logged
+# No SSH, no bastion, no open inbound ports; session data can be logged
+# when Session Manager logging preferences are configured
 ```
 
 ## Auto-Stop the Bastion When Idle
 
 ```hcl
+data "aws_region" "current" {}
+
 resource "aws_cloudwatch_metric_alarm" "bastion_idle" {
   alarm_name          = "bastion-idle"
   comparison_operator = "LessThanThreshold"
@@ -171,7 +203,7 @@ resource "aws_cloudwatch_metric_alarm" "bastion_idle" {
   statistic           = "Average"
   threshold           = 1.0
   alarm_description   = "Stop bastion if idle for 30 minutes"
-  alarm_actions       = [aws_sns_topic.bastion_stop.arn]
+  alarm_actions       = ["arn:aws:automate:${data.aws_region.current.id}:ec2:stop"]
 
   dimensions = {
     InstanceId = aws_instance.bastion.id
@@ -181,4 +213,4 @@ resource "aws_cloudwatch_metric_alarm" "bastion_idle" {
 
 ## Summary
 
-A secure bastion host uses EC2 Instance Connect for temporary SSH keys (no persistent key pairs), IMDSv2 enforcement, encrypted EBS volumes, restrictive security groups allowing SSH only from known CIDRs, and CloudWatch logging for audit trails. Consider replacing the traditional bastion entirely with AWS Systems Manager Session Manager - it requires no open SSH ports, logs all session activity, and integrates with IAM for access control. The SSM approach eliminates the bastion host attack surface entirely.
+A secure bastion host uses EC2 Instance Connect for temporary SSH public keys (no persistent EC2 key pair on the instance), IMDSv2 enforcement, encrypted EBS volumes, restrictive security groups allowing SSH only from known CIDRs, and CloudWatch logging for audit trails. Consider replacing the traditional bastion entirely with AWS Systems Manager Session Manager - it requires no open inbound SSH ports, can log session activity when configured, and integrates with IAM for access control. The SSM approach eliminates the bastion host attack surface entirely.
