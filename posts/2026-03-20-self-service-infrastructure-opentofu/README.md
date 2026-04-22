@@ -127,7 +127,7 @@ resource "aws_ecs_task_definition" "service" {
       logDriver = "awslogs"
       options = {
         "awslogs-group"         = "/ecs/${var.service_name}-${var.environment}"
-        "awslogs-region"        = data.aws_region.current.name
+        "awslogs-region"        = data.aws_region.current.id
         "awslogs-stream-prefix" = "ecs"
       }
     }
@@ -170,7 +170,7 @@ output "service_url" {
 
 ## Pull Request Workflow for Self-Service
 
-````yaml
+````markdown
 # .github/pull_request_template.md
 ## Infrastructure Change Request
 
