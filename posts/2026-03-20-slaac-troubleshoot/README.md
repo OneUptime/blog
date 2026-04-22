@@ -21,13 +21,13 @@ Is IPv6 enabled?      → check: ip link show; sysctl accept_ra
   ↓ YES
 Is link-local present? → check: ip -6 addr show | grep fe80
   ↓ YES
-Is RA being received? → check: tcpdump icmpv6 type 134
+Is RA being received? → check: tcpdump 'icmp6 and ip6[40] == 134'
   ↓ YES
 Does RA have A=1?     → check: rdisc6 eth0 | grep Autonomous
   ↓ YES
 Is prefix /64?        → check: rdisc6 eth0 | grep Prefix
   ↓ YES
-Did DAD succeed?      → check: ip -6 addr | grep TENTATIVE/DADFAILED
+Did DAD succeed?      → check: ip -6 addr | grep -E 'tentative|dadfailed'
   ↓ YES
 Check address state   → ip -6 addr show | grep dynamic
 ```
@@ -67,13 +67,13 @@ cat /proc/sys/net/ipv6/conf/eth0/autoconf
 ## Problem 2: No Router Advertisement Received
 
 ```bash
-# Capture RA messages (should appear within ~10 seconds of connect)
+# Capture RA messages (periodic RAs may be minutes apart; trigger RS below if needed)
 sudo tcpdump -i eth0 -n "icmp6 and ip6[40] == 134" -c 5
-# If nothing: router is not sending RAs
+# If nothing appears, trigger RS and keep capturing
 
 # Trigger immediate RS to request RA
 sudo rdisc6 eth0  # Sends Router Solicitation
-# If no RA returned within 3 seconds: router issue
+# If no RA returned after its default retries (~12 seconds): router or firewall issue
 
 # Check from router side (if accessible):
 # Is radvd running?
@@ -83,8 +83,8 @@ sudo systemctl status radvd
 sudo radvdump  # On router: show RA content
 
 # Check firewall blocking RAs
-# RAs use ICMPv6 type 134 on ff02::1 (all-nodes multicast)
-sudo ip6tables -L INPUT -v | grep "icmpv6"
+# RAs use ICMPv6 type 134; periodic RAs go to ff02::1, solicited RAs may be unicast
+sudo ip6tables -L INPUT -v | grep -E "icmpv6|ipv6-icmp"
 # If a DROP rule matches ICMPv6: it may be blocking RAs
 
 # Allow RA on host
@@ -105,10 +105,10 @@ sudo rdisc6 eth0
 # If "Autonomous address conf.: No" (A=0):
 # Router is not advertising prefix for SLAAC
 # Fix on router (radvd): set AdvAutonomous on;
-# Fix on Cisco: verify 'no ipv6 nd prefix ... off off ...'
+# Fix on Cisco: remove no-autoconfig from the ipv6 nd prefix configuration
 
 # If prefix is wrong (/128, /48, etc):
-# SLAAC requires exactly /64
+# On Ethernet LANs, SLAAC normally requires a /64 prefix
 # Router config error
 
 # If prefix is correct but Pref. time = 0:
@@ -120,12 +120,12 @@ sudo rdisc6 eth0
 
 ```bash
 # Check for DAD failure
-ip -6 addr show eth0 | grep DADFAILED
-# inet6 2001:db8::211:22ff:fe33:4455/64 scope global DADFAILED
+ip -6 addr show eth0 | grep -i dadfailed
+# inet6 2001:db8::211:22ff:fe33:4455/64 scope global dadfailed
 
 # This means another device has the same IPv6 address
 # Causes:
-# 1. VM clone with same MAC address (same EUI-64)
+# 1. VM clone with same MAC address (same interface ID when EUI-64 is used)
 # 2. Static address conflict
 # 3. NDP spoofing/attack
 
@@ -134,7 +134,7 @@ ip -6 addr show eth0 | grep DADFAILED
 # Then: sudo ip link set eth0 down && sudo ip link set eth0 up
 
 # Fix for static conflict:
-# Find the other device: sudo arping6 -I eth0 2001:db8::211:22ff:fe33:4455
+# Find the other device: sudo ndisc6 2001:db8::211:22ff:fe33:4455 eth0
 # Remove static conflicting address from other device
 
 # Monitor DAD process:
@@ -161,7 +161,7 @@ ping6 -c 3 "$ROUTER%eth0"
 # Step 3: Check on-link route
 ip -6 route show | grep "proto kernel"
 # Should show: 2001:db8::/64 dev eth0 proto kernel ...
-# If missing: prefix not being added to routing table
+# If missing: prefix is not on-link (L=1) or address has noprefixroute
 
 # Step 4: Verify address is not deprecated
 ip -6 addr show eth0 | grep deprecated
@@ -169,7 +169,7 @@ ip -6 addr show eth0 | grep deprecated
 # Wait for new address or trigger fresh RS
 
 # Step 5: Test IPv6 connectivity step by step
-ping6 -c 2 fe80::1%eth0   # Ping router link-local
+ping6 -c 2 "$ROUTER%eth0"        # Ping router link-local
 ping6 -c 2 2001:4860:4860::8888  # Ping Google DNS
 ping6 -c 2 ipv6.google.com        # Test DNS + connectivity
 ```
@@ -177,14 +177,15 @@ ping6 -c 2 ipv6.google.com        # Test DNS + connectivity
 ## Problem 6: IPv6 Forwarding Breaks SLAAC
 
 ```bash
-# Common issue: enabling ip6_forward disables accept_ra
+# Common issue: enabling IPv6 forwarding makes accept_ra=1 ineffective
 # Result: host/router that should SLAAC from upstream loses SLAAC
 
 cat /proc/sys/net/ipv6/conf/eth0/forwarding
 # 1 = forwarding enabled
 
 cat /proc/sys/net/ipv6/conf/eth0/accept_ra
-# 0 = RA not accepted (auto-set when forwarding=1)
+# 1 = accept RA only when forwarding is disabled
+# With forwarding=1, RAs are ignored unless accept_ra=2
 
 # This is intentional behavior to prevent routing loops
 # But for a router that also needs SLAAC from upstream:
@@ -194,4 +195,4 @@ sudo sysctl -w net.ipv6.conf.eth0.accept_ra=2
 
 ## Conclusion
 
-SLAAC troubleshooting follows a layered approach: verify IPv6 is enabled, confirm link-local address exists, check that RA is being received, inspect RA content for correct prefix with A=1 flag, verify DAD passes, and confirm routes are installed. Key sysctl parameters are `accept_ra` (must be 1 or 2) and `autoconf` (must be 1). Use `rdisc6` for comprehensive RA inspection, `tcpdump icmpv6` for packet capture, and `ip -6 addr show` plus `ip -6 route show` for state verification.
+SLAAC troubleshooting follows a layered approach: verify IPv6 is enabled, confirm link-local address exists, check that RA is being received, inspect RA content for correct prefix with A=1 flag, verify DAD passes, and confirm routes are installed. Key sysctl parameters are `accept_ra` (use 1 for hosts, or 2 when forwarding is enabled) and `autoconf` (must be 1). Use `rdisc6` for comprehensive RA inspection, `tcpdump icmp6` for packet capture, and `ip -6 addr show` plus `ip -6 route show` for state verification.
