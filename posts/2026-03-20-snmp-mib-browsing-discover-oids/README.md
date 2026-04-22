@@ -8,7 +8,7 @@ Description: Learn how to use SNMP tools to browse MIBs and discover available O
 
 ---
 
-SNMP MIBs (Management Information Bases) are databases of OIDs (Object Identifiers) that define what can be monitored on a device. Before configuring custom SNMP sensors, you need to discover which OIDs are available and what data they return.
+SNMP MIBs (Management Information Bases) are collections of OID (Object Identifier) definitions that describe what can be monitored on a device. Before configuring custom SNMP sensors, you need to discover which OIDs are available and what data they return.
 
 ## Installing SNMP Tools
 
@@ -19,11 +19,11 @@ apt install snmp snmp-mibs-downloader -y   # Debian/Ubuntu
 dnf install net-snmp-utils -y             # RHEL/Rocky
 ```
 
-## Method 1: snmpwalk - Walk the Entire OID Tree
+## Method 1: snmpwalk - Walk a Broad OID Tree
 
 ```bash
-# Walk the full SNMP tree of a device (SNMP v2c)
-snmpwalk -v2c -c public 192.168.1.10
+# Walk a broad SNMP subtree of a device (SNMP v2c)
+snmpwalk -v2c -c public 192.168.1.10 .1.3
 
 # Walk from a specific OID subtree
 snmpwalk -v2c -c public 192.168.1.10 system
@@ -33,8 +33,8 @@ snmpwalk -v2c -c public 192.168.1.10 1.3.6.1.2.1.2.2  # IF-MIB::ifTable
 # Use human-readable MIB names instead of numeric OIDs
 snmpwalk -v2c -c public -m ALL 192.168.1.10 system
 
-# Save full walk to a file for offline browsing
-snmpwalk -v2c -c public 192.168.1.10 > /tmp/device-mibs.txt
+# Save a broad walk to a file for offline browsing
+snmpwalk -v2c -c public 192.168.1.10 .1.3 > /tmp/device-mibs.txt
 ```
 
 ## Method 2: snmpget - Query a Specific OID
@@ -58,7 +58,7 @@ snmptranslate -m ALL 1.3.6.1.2.1.1.1.0
 # Output: SNMPv2-MIB::sysDescr.0
 
 # Find the OID for a known MIB object
-snmptranslate -m ALL IF-MIB::ifOperStatus
+snmptranslate -On -m ALL IF-MIB::ifOperStatus
 # Output: .1.3.6.1.2.1.2.2.1.8
 
 # Get full description of an OID
@@ -90,9 +90,9 @@ snmpwalk -v2c -c public 192.168.1.10 1.3.6.1.2.1.15
 ## Using MIB Browser GUI Tools
 
 ```bash
-# Install mbrowse (GTK MIB browser)
-apt install mbrowse -y
-mbrowse &
+# Install tkmib (Tk/Perl MIB browser)
+apt install tkmib -y
+tkmib &
 
 # Or use snmpB (cross-platform)
 # Download from https://sourceforge.net/projects/snmpb/
@@ -105,12 +105,12 @@ mbrowse &
 # Place .mib files in /usr/share/snmp/mibs/
 
 # Walk using a custom MIB
-snmpwalk -v2c -c public -M +/path/to/vendor/mibs -m VENDOR-MIB 192.168.1.10 enterprises
+snmpwalk -v2c -c public -M +/path/to/vendor/mibs -m +VENDOR-MIB 192.168.1.10 enterprises
 ```
 
 ## Key Takeaways
 
-- `snmpwalk` discovers all available OIDs on a device; save the output to a file for offline analysis.
+- `snmpwalk` discovers available OIDs in the subtree you walk, subject to the SNMP view you are allowed to access; save the output to a file for offline analysis.
 - `snmptranslate -Td` provides full descriptions of OIDs including syntax, access, and status.
 - Load vendor MIBs from the device's support site for human-readable names of proprietary OIDs.
-- Standard MIB subtrees like `1.3.6.1.2.1.2.2` (interfaces) are consistent across all SNMP-capable devices.
+- Standard MIB subtrees like `1.3.6.1.2.1.2.2` (interfaces) are consistent across devices that implement the corresponding standard MIB.
