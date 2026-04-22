@@ -44,8 +44,12 @@ import requests
 import os
 
 PORTAINER_URL = os.environ["PORTAINER_URL"]
-PORTAINER_TOKEN = os.environ["PORTAINER_TOKEN"]
+PORTAINER_API_KEY = os.environ["PORTAINER_API_KEY"]
 ENDPOINT_ID = 1
+HEADERS = {
+    "X-API-Key": PORTAINER_API_KEY,
+    "Content-Type": "application/json"
+}
 
 def create_preview_environment(branch_name: str, image_tag: str, requester: str) -> dict:
     """Deploy a preview stack for a given branch."""
@@ -53,7 +57,6 @@ def create_preview_environment(branch_name: str, image_tag: str, requester: str)
     
     # Build a dynamic stack definition
     stack_content = f"""
-version: "3.8"
 services:
   api:
     image: my-registry/api:{image_tag}
@@ -61,22 +64,22 @@ services:
       - ENVIRONMENT=preview
       - BRANCH={branch_name}
     ports:
-      - "0:8080"  # Dynamic port assignment
+      - "8080"  # Dynamic host port assignment
     labels:
       - "preview.requester={requester}"
       - "preview.branch={branch_name}"
 """
     
     resp = requests.post(
-        f"{PORTAINER_URL}/api/stacks?type=2&method=string&endpointId={ENDPOINT_ID}",
-        headers={
-            "Authorization": f"Bearer {PORTAINER_TOKEN}",
-            "Content-Type": "application/json"
-        },
+        f"{PORTAINER_URL}/api/stacks/create/standalone/string?endpointId={ENDPOINT_ID}",
+        headers=HEADERS,
         json={
             "Name": stack_name,
             "StackFileContent": stack_content,
-            "Env": []
+            "Env": [
+                {"name": "PREVIEW_REQUESTER", "value": requester},
+                {"name": "PREVIEW_BRANCH", "value": branch_name}
+            ]
         }
     )
     resp.raise_for_status()
@@ -90,9 +93,13 @@ def list_preview_environments(requester: str) -> list:
     """List all preview stacks belonging to a requester."""
     resp = requests.get(
         f"{PORTAINER_URL}/api/stacks",
-        headers={"Authorization": f"Bearer {PORTAINER_TOKEN}"}
+        headers=HEADERS
     )
+    resp.raise_for_status()
     stacks = resp.json()
+
+    def stack_env(stack: dict) -> dict:
+        return {item["name"]: item["value"] for item in stack.get("Env") or []}
     
     # Filter to only this requester's previews
     return [
@@ -103,7 +110,7 @@ def list_preview_environments(requester: str) -> list:
             "created": s["CreationDate"]
         }
         for s in stacks
-        if s["Name"].startswith("preview-")
+        if s["Name"].startswith("preview-") and stack_env(s).get("PREVIEW_REQUESTER") == requester
     ]
 ```
 
@@ -112,10 +119,11 @@ def list_preview_environments(requester: str) -> list:
 ```python
 def delete_preview_environment(stack_id: int) -> None:
     """Remove a preview environment and its resources."""
-    requests.delete(
+    resp = requests.delete(
         f"{PORTAINER_URL}/api/stacks/{stack_id}?endpointId={ENDPOINT_ID}",
-        headers={"Authorization": f"Bearer {PORTAINER_TOKEN}"}
+        headers=HEADERS
     )
+    resp.raise_for_status()
 ```
 
 ## Step 5: GitHub Actions Integration
@@ -135,14 +143,19 @@ jobs:
       - name: Create Preview Environment
         if: github.event.action != 'closed'
         run: |
-          curl -X POST ${{ secrets.PORTAL_URL }}/environments \
+          curl -X POST "${{ secrets.PORTAL_URL }}/environments" \
             -H "Authorization: Bearer ${{ secrets.PORTAL_TOKEN }}" \
-            -d "{\"branch\": \"${{ github.head_ref }}\", \"tag\": \"${{ github.sha }}\"}"
+            -H "Content-Type: application/json" \
+            -d "{\"branch\": \"${{ github.head_ref }}\", \"tag\": \"${{ github.event.pull_request.head.sha }}\"}"
       
       - name: Destroy Preview Environment
         if: github.event.action == 'closed'
+        env:
+          BRANCH_NAME: ${{ github.head_ref }}
         run: |
-          curl -X DELETE ${{ secrets.PORTAL_URL }}/environments/${{ github.head_ref }}
+          BRANCH_ID=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["BRANCH_NAME"], safe=""))')
+          curl -X DELETE "${{ secrets.PORTAL_URL }}/environments/${BRANCH_ID}" \
+            -H "Authorization: Bearer ${{ secrets.PORTAL_TOKEN }}"
 ```
 
 ## Summary
