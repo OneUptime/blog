@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Rust, Game Server, Docker, Self-Hosted
 
-Description: Deploy a dedicated Rust survival game server using Portainer with Oxide plugins and automatic wipes.
+Description: Deploy a dedicated Rust survival game server using Portainer with Oxide plugins and automatic backups.
 
 ## Introduction
 
@@ -15,14 +15,16 @@ Running your own dedicated game server gives you full control over game settings
 - Portainer installed with Docker
 - At least 4-8 GB RAM (varies by game and player count)
 - Adequate disk space (10-50 GB)
-- Required ports open in firewall: 28015:28015/udp 28016:28016/tcp
+- Required ports open in firewall: 28015/udp for the game server, 28017/udp for server queries, and 28016/tcp for RCON admin access
 
 ## Step 1: Open Required Firewall Ports
 
 ```bash
 # Open game server ports
 
-ufw allow 28015:28015/udp 28016:28016/tcp
+ufw allow 28015/udp
+ufw allow 28017/udp
+ufw allow 28016/tcp
 ufw reload
 ```
 
@@ -32,20 +34,25 @@ Create a new stack in Portainer > Stacks > Add Stack:
 
 ```yaml
 # docker-compose.yml for Game Server
-version: "3.8"
-
 services:
   game-server:
     image: didstopia/rust-server:latest
     container_name: game-server
     restart: unless-stopped
     ports:
-      - "28015:28015/udp 28016:28016/tcp"
+      - "28015:28015/udp"
+      - "28017:28017/udp"
+      - "28016:28016/tcp"
     volumes:
       # Persist game world and configuration data
-      - rust-data:/game-data
+      - rust-data:/steamcmd/rust
     environment:
-      RUST_SERVER_NAME=My Rust Server RUST_SERVER_SEED=12345 RUST_SERVER_MAXPLAYERS=50 RUST_OXIDE_ENABLED=1
+      RUST_SERVER_NAME: "My Rust Server"
+      RUST_SERVER_SEED: "12345"
+      RUST_SERVER_QUERYPORT: "28017"
+      RUST_SERVER_MAXPLAYERS: "50"
+      RUST_RCON_PASSWORD: "change-this-password"
+      RUST_OXIDE_ENABLED: "1"
     healthcheck:
       test: ["CMD", "true"]
       interval: 60s
@@ -64,18 +71,19 @@ services:
     container_name: game-backup
     restart: "no"
     volumes:
-      - rust-data:/game-data:ro
+      - rust-data:/steamcmd/rust:ro
       - backup-data:/backups
-    command: >
-      sh -c "
+    command:
+      - /bin/sh
+      - -c
+      - |
         while true; do
-          DATE=\$(date +%Y%m%d_%H%M%S);
-          tar czf /backups/world-\$DATE.tar.gz -C /game-data .;
-          echo 'Backup created: world-'\$DATE'.tar.gz';
-          ls -t /backups/*.tar.gz | tail -n +8 | xargs rm -f;
-          sleep 21600;
+          DATE=$$(date +%Y%m%d_%H%M%S)
+          tar czf /backups/world-$$DATE.tar.gz -C /steamcmd/rust .
+          echo "Backup created: world-$$DATE.tar.gz"
+          ls -t /backups/*.tar.gz 2>/dev/null | tail -n +8 | xargs rm -f
+          sleep 21600
         done
-      "
     networks:
       - game-net
 
@@ -97,7 +105,7 @@ Access the container via Portainer's console to configure settings:
 # Portainer > Containers > game-server > Console
 
 # View server logs
-docker logs game-server -f --tail 100
+docker logs -f --tail 100 game-server
 
 # Check server status
 docker stats game-server
@@ -118,14 +126,14 @@ Optimal resource usage:
 
 ## Step 5: Configure Automatic Updates
 
-Many game server images support automatic updates:
+The didstopia image updates on startup and can also check for updates automatically:
 
 ```yaml
 # Add to environment variables
 environment:
-  - AUTO_UPDATE=true
-  - AUTO_REBOOT=true
-  - CRON_AUTO_UPDATE="0 4 * * *"  # Update daily at 4 AM
+  RUST_UPDATE_CHECKING: "1"
+  RUST_UPDATE_BRANCH: "public"
+  RUST_OXIDE_UPDATE_ON_BOOT: "1"
 ```
 
 Configure restart policy in Portainer:
@@ -144,9 +152,9 @@ DATE=$(date +%Y%m%d_%H%M%S)
 mkdir -p $BACKUP_DIR
 
 docker run --rm \
-  -v rust-data:/game-data:ro \
-  -v $BACKUP_DIR:/backup \
-  alpine tar czf /backup/world-$DATE.tar.gz -C /game-data .
+  -v rust-data:/steamcmd/rust:ro \
+  -v "$BACKUP_DIR:/backup" \
+  alpine tar czf /backup/world-$DATE.tar.gz -C /steamcmd/rust .
 
 echo "Backup saved: $BACKUP_DIR/world-$DATE.tar.gz"
 ```
@@ -156,11 +164,12 @@ echo "Backup saved: $BACKUP_DIR/world-$DATE.tar.gz"
 Admin commands and management:
 
 ```bash
-# Connect to server console (if supported)
-docker attach game-server
+# Send a command through the image's RCON helper
+docker exec game-server rcon say "Hello from RCON"
 
-# Restart server without full container restart
-docker exec game-server /restart-server.sh
+# Save and stop the Rust process; the restart policy starts it again
+docker exec game-server rcon server.save
+docker exec game-server rcon quit
 
 # Check connected players (if applicable)
 docker logs game-server | grep "connected" | tail -20
