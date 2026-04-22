@@ -24,18 +24,8 @@ Log in to the switch CLI and configure sFlow:
 ! Access the switch CLI
 Switch# configure terminal
 
-! Enable sFlow globally
-Switch(config)# sflow enable
-
 ! Configure the sFlow receiver (collector)
-Switch(config)# sflow receiver 1 name "sflow-collector" address 192.168.1.200 \
-  port 6343 owner "sflow-collector"
-
-! Set the polling interval for counter sampling (in seconds)
-Switch(config)# sflow polling receiver 1 interval 30
-
-! Set the packet sampling rate (1 in 512 packets on GigE)
-Switch(config)# sflow sampling receiver 1 rate 512
+Switch(config)# sflow 1 destination 192.168.1.200 6343
 ```
 
 ## Step 2: Enable sFlow on Specific Interfaces
@@ -44,18 +34,16 @@ Apply sFlow sampling to the interfaces you want to monitor:
 
 ```text
 ! Enable sFlow on uplink interfaces
-Switch(config)# interface 1/1
-Switch(config-if)# sflow sampling 512
-Switch(config-if)# sflow polling 30
+Switch(config)# sflow 1 sampling 1/1 512
+Switch(config)# sflow 1 polling 1/1 30
 
 ! Enable on multiple interfaces
-Switch(config)# interface 1/2
-Switch(config-if)# sflow sampling 512
-Switch(config-if)# sflow polling 30
+Switch(config)# sflow 1 sampling 1/2 512
+Switch(config)# sflow 1 polling 1/2 30
 
 ! Enable on a trunk/LAG
-Switch(config)# interface trk1
-Switch(config-if)# sflow sampling 512
+Switch(config)# sflow 1 sampling Trk1 512
+Switch(config)# sflow 1 polling Trk1 30
 ```
 
 ## Step 3: Configure sFlow on ArubaOS-CX (Aruba CX Switches)
@@ -64,37 +52,45 @@ Newer Aruba CX switches use a different CLI:
 
 ```text
 ! ArubaOS-CX sFlow configuration
-switch(config)# sflow
-switch(config-sflow)# agent-ip 10.0.0.1       ! Switch management IP
-switch(config-sflow)# collector 1 ip 192.168.1.200 port 6343
+switch(config)# sflow agent-ip 10.0.0.1       ! Switch management IP
+switch(config)# sflow collector 192.168.1.200 port 6343
+switch(config)# sflow sampling 4096           ! 1 in 4096 packets
+switch(config)# sflow polling 30
 
 ! Enable sampling on interfaces
 switch(config)# interface 1/1/1
-switch(config-if)# sflow enable
-switch(config-if)# sflow sampling-rate 512    ! 1 in 512 packets
-
-! Enable counter polling
-switch(config-if)# sflow polling-interval 30
+switch(config-if)# sflow
 ```
 
 ## Step 4: Verify sFlow Configuration
 
-```yaml
-! Show sFlow status
-Switch# show sflow
+```text
+! ArubaOS-Switch/ProCurve
+Switch# show sflow agent
+Switch# show sflow 1 destination
+Switch# show sflow 1 sampling-polling 1/1,1/2,Trk1
 
-sFlow: enabled
-Collector: 192.168.1.200  Port: 6343
-Agent IP: 10.0.0.1
-Polling interval: 30 seconds
+! ArubaOS-CX
+switch# show sflow
 
-Interface   Sampling Rate  Counters Polling
------------ -------------- -----------------
-1/1         512            30
-1/2         512            30
+sFlow Global Configuration
+-----------------------------------------
+sFlow enabled
+Collector IP/Port/Vrf 192.168.1.200/6343/default
+Agent Address 10.0.0.1
+Sampling Rate 4096
+Polling Interval 30
+
+sFlow Status
+-----------------------------------------
+Running - Yes
+
+sFlow enabled on Interfaces:
+-----------------------------------------
+1/1/1
 ```
 
-## Step 5: Set Up an sFlow Collector (sflowtool/nfsen)
+## Step 5: Set Up an sFlow Collector (sflowtool)
 
 Install sflowtool on Linux to receive and decode sFlow data:
 
@@ -107,25 +103,30 @@ sudo apt-get install -y sflowtool
 sflowtool -p 6343
 
 # Output to a file for analysis
-sflowtool -p 6343 >> /var/log/sflow/sflow.log &
+sudo mkdir -p /var/log/sflow
+sudo sh -c 'sflowtool -p 6343 >> /var/log/sflow/sflow.log' &
 
 # Parse specific fields
-sflowtool -p 6343 -l | awk '{print $1, $5, $9, $11}' | \
-  while read ts srcip dstip bytes; do
+sflowtool -p 6343 -L localtime,srcIP,dstIP,sampledPacketSize | \
+  while IFS=, read -r ts srcip dstip bytes; do
     echo "$ts: $srcip -> $dstip ($bytes bytes)"
   done
 ```
 
 ## Step 6: Use ntopng as an sFlow Collector
 
-ntopng provides a web dashboard for sFlow analysis:
+ntopng provides a web dashboard for sFlow analysis through nProbe, which may require a license:
 
 ```bash
-# Install ntopng
-sudo apt-get install -y ntopng
+# Install ntopng and nProbe
+sudo apt-get install -y ntopng nprobe
 
-# Start ntopng with sFlow collector enabled
-ntopng --interface="sflow:192.168.1.200:6343" \
+# Collect sFlow on UDP 6343 and export it to ntopng over ZMQ
+nprobe -i none -n none --collector-port 6343 \
+       --zmq tcp://127.0.0.1:5556 &
+
+# Start ntopng on the nProbe ZMQ interface
+ntopng -i tcp://127.0.0.1:5556 \
        --http-port 3000
 
 # Access dashboard at http://your-server:3000
@@ -135,13 +136,13 @@ ntopng --interface="sflow:192.168.1.200:6343" \
 
 | Link Speed | Recommended Sampling Rate |
 |---|---|
-| 1 Gbps | 1 in 512–1000 |
-| 10 Gbps | 1 in 2000–5000 |
-| 40 Gbps | 1 in 5000–10000 |
-| 100 Gbps | 1 in 10000–50000 |
+| 1 Gbps | 1 in 1000 |
+| 10 Gbps | 1 in 10000 |
+| 40 Gbps | 1 in 40000 |
+| 100 Gbps | 1 in 100000 |
 
-Lower sampling rates are more accurate but use more CPU and bandwidth. Start with 1:1000 and adjust based on CPU load.
+Lower numeric sampling intervals are more accurate but use more CPU and bandwidth. Start with the switch vendor default, or the table above, and adjust based on CPU load.
 
 ## Conclusion
 
-sFlow on HP/Aruba switches provides lightweight, scalable traffic visibility using statistical sampling. Configure the receiver IP and port, set the sampling rate appropriate for your link speed, and enable sFlow on uplink interfaces. Connect the collector to ntopng, ElastiFlow, or sflowtool for traffic analysis dashboards.
+sFlow on HP/Aruba switches provides lightweight, scalable traffic visibility using statistical sampling. Configure the receiver IP and port, set the sampling rate appropriate for your link speed, and enable sFlow on uplink interfaces. Use nProbe with ntopng, ElastiFlow, or sflowtool for traffic analysis dashboards.
