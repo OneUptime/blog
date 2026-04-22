@@ -13,8 +13,8 @@ A shared services VPC centralizes common infrastructure components-such as inter
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with VPC and networking permissions
-- Existing Transit Gateway or peering capability
+- AWS credentials and an AWS Region configured with VPC and networking permissions
+- Existing Transit Gateway ID
 
 ## Step 1: Create the Shared Services VPC
 
@@ -36,6 +36,15 @@ resource "aws_vpc" "shared" {
 ## Step 2: Create Public and Private Subnets
 
 ```hcl
+data "aws_availability_zones" "available" {
+  state = "available"
+
+  filter {
+    name   = "opt-in-status"
+    values = ["opt-in-not-required"]
+  }
+}
+
 # Private subnets for internal services across two AZs
 resource "aws_subnet" "private" {
   count             = 2
@@ -80,22 +89,44 @@ resource "aws_nat_gateway" "shared" {
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.public[0].id
   tags          = { Name = "shared-nat-gw" }
+
+  depends_on = [aws_internet_gateway.shared]
 }
 ```
 
 ## Step 4: Route Tables
 
 ```hcl
+# Public route table for NAT Gateway subnets
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.shared.id
+
+  tags = { Name = "shared-public-rt" }
+}
+
+resource "aws_route" "public_internet" {
+  route_table_id         = aws_route_table.public.id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.shared.id
+}
+
+resource "aws_route_table_association" "public" {
+  count          = length(aws_subnet.public)
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
 # Private route table routes outbound traffic through the NAT Gateway
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.shared.id
 
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.shared.id
-  }
-
   tags = { Name = "shared-private-rt" }
+}
+
+resource "aws_route" "private_nat" {
+  route_table_id         = aws_route_table.private.id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = aws_nat_gateway.shared.id
 }
 
 resource "aws_route_table_association" "private" {
@@ -108,8 +139,13 @@ resource "aws_route_table_association" "private" {
 ## Step 5: Attach to Transit Gateway
 
 ```hcl
+variable "transit_gateway_id" {
+  description = "ID of the existing Transit Gateway"
+  type        = string
+}
+
 # Attach the shared services VPC to the Transit Gateway
-# so workload VPCs can reach shared services
+# so it can exchange traffic with workload VPCs that also have TGW routes
 resource "aws_ec2_transit_gateway_vpc_attachment" "shared" {
   subnet_ids         = aws_subnet.private[*].id
   transit_gateway_id = var.transit_gateway_id
@@ -118,11 +154,13 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "shared" {
   tags = { Name = "shared-services-tgw-attachment" }
 }
 
-# Route traffic from workload VPCs through the Transit Gateway
+# Route traffic from the shared services VPC to workload VPC CIDRs
 resource "aws_route" "to_workloads" {
   route_table_id         = aws_route_table.private.id
   destination_cidr_block = "10.0.0.0/8"
   transit_gateway_id     = var.transit_gateway_id
+
+  depends_on = [aws_ec2_transit_gateway_vpc_attachment.shared]
 }
 ```
 
@@ -162,4 +200,4 @@ tofu apply
 
 ## Conclusion
 
-You now have a shared services VPC connected to your Transit Gateway, ready to host centralized infrastructure. Workload VPCs can reach shared services without direct peering between each other, simplifying your network topology and reducing operational overhead.
+You now have a shared services VPC connected to your Transit Gateway, ready to host centralized infrastructure. After the workload VPC route tables and Transit Gateway route tables include the corresponding routes, workload VPCs can reach shared services without direct peering between each other, simplifying your network topology and reducing operational overhead.
