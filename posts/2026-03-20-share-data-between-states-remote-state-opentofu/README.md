@@ -8,11 +8,11 @@ Description: Learn how to use terraform_remote_state data sources in OpenTofu to
 
 ## Introduction
 
-`terraform_remote_state` lets you read the outputs of one OpenTofu state file as a data source in another. This enables loose coupling between infrastructure components - the networking stack exposes VPC IDs and subnet IDs, and all other stacks consume them without tight code dependencies.
+`terraform_remote_state` lets you read the root module outputs of one OpenTofu state file as a data source in another. This enables loose coupling between infrastructure components - the networking stack exposes VPC IDs and subnet IDs, and all other stacks consume them without tight code dependencies. The consuming stack still needs access to the full source state snapshot, so avoid using this pattern for states that contain sensitive data you do not want shared.
 
 ## Defining Outputs for Remote State Consumption
 
-The consuming state reads your outputs, so export everything that other stacks might need:
+The consuming state reads your root module outputs, so export everything that other stacks might need:
 
 ```hcl
 # networking/outputs.tf
@@ -75,7 +75,8 @@ data "terraform_remote_state" "data_layer" {
 
 # Use the networking outputs
 resource "aws_ecs_task_definition" "api" {
-  family = "api"
+  family       = "api"
+  network_mode = "awsvpc"
   container_definitions = jsonencode([{
     name = "api"
     image = "${var.ecr_url}:${var.image_tag}"
@@ -90,8 +91,9 @@ resource "aws_ecs_task_definition" "api" {
 }
 
 resource "aws_ecs_service" "api" {
-  name    = "api"
-  cluster = var.cluster_arn
+  name            = "api"
+  cluster         = var.cluster_arn
+  task_definition = aws_ecs_task_definition.api.arn
   network_configuration {
     # Read subnet IDs from networking state
     subnets = data.terraform_remote_state.networking.outputs.private_subnet_ids
@@ -129,7 +131,7 @@ data "terraform_remote_state" "security" {
 
 ## Workspace-Aware Remote State
 
-When using workspaces, include the workspace in the state key:
+When using workspaces, select the workspace to read:
 
 ```hcl
 data "terraform_remote_state" "networking" {
@@ -145,4 +147,4 @@ data "terraform_remote_state" "networking" {
 
 ## Conclusion
 
-Remote state is the standard mechanism for cross-stack data sharing in OpenTofu. Export rich output objects from foundation stacks (not just individual IDs), use a consistent backend config pattern to avoid repetition, and document what each state file exports in its outputs.tf. This creates a self-describing infrastructure where stacks can be composed without reading each other's source code.
+Remote state is a common mechanism for cross-stack data sharing in OpenTofu. Export rich output objects from foundation stacks (not just individual IDs), use a consistent backend config pattern to avoid repetition, and document what each state file exports in its outputs.tf. For sensitive or separately controlled data, publish values to a dedicated store instead. This creates a self-describing infrastructure where stacks can be composed without reading each other's source code.
