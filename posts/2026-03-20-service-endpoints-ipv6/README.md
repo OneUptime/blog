@@ -8,16 +8,17 @@ Description: Verify that Kubernetes Services have IPv6 endpoints, inspect Endpoi
 
 ## Introduction
 
-Kubernetes Services route traffic to pods through Endpoints and EndpointSlices. In dual-stack clusters, EndpointSlices contain IPv6 addresses for pods that have IPv6 addresses. The EndpointSlice addressType can be `IPv4`, `IPv6`, or `FQDN`. For dual-stack services, Kubernetes creates separate EndpointSlices for IPv4 and IPv6. Verifying that Services have IPv6 endpoints confirms that IPv6 traffic will be properly load-balanced to pods.
+Kubernetes Services route traffic to pods through EndpointSlices. The older Endpoints API is deprecated and does not support dual-stack clusters. In dual-stack clusters, Services configured for IPv6 or dual-stack can have EndpointSlices with IPv6 addresses for pods that have IPv6 addresses. For Service-backed EndpointSlices, the addressType is `IPv4` or `IPv6`. The API still includes `FQDN`, but it is deprecated and not processed by kube-proxy. For dual-stack services, Kubernetes creates separate EndpointSlices for IPv4 and IPv6. Verifying that Services have IPv6 endpoints confirms that IPv6 traffic can be load-balanced to pods.
 
 ## Check Service Endpoints for IPv6
 
 ```bash
-# View endpoints for a service
+# View legacy Endpoints for a service
+# Note: Endpoints are deprecated and do not show dual-stack backends.
 
 kubectl get endpoints web-service
 
-# More detailed endpoint info
+# More detailed legacy endpoint info
 kubectl describe endpoints web-service
 
 # Check EndpointSlices (preferred in Kubernetes 1.21+)
@@ -96,10 +97,11 @@ kubectl get endpointslices -l kubernetes.io/service-name=web-service \
 # Test direct connectivity to IPv6 endpoint
 ENDPOINT_IPV6=$(kubectl get endpointslices \
     -l kubernetes.io/service-name=web-service \
-    -o jsonpath='{range .items[?(@.addressType=="IPv6")].endpoints[0]}{.addresses[0]}{end}')
+    -o jsonpath='{range .items[?(@.addressType=="IPv6")].endpoints[*]}{.addresses[0]}{"\n"}{end}' | \
+    head -n 1)
 
 echo "Testing endpoint: $ENDPOINT_IPV6"
-kubectl run tester --image=alpine --rm -it --command -- \
+kubectl run tester --image=alpine --restart=Never --rm -it --command -- \
     wget -qO- "http://[$ENDPOINT_IPV6]/"
 ```
 
@@ -115,15 +117,15 @@ kubectl get pods -l app=web -o jsonpath='{range .items[*]}{.metadata.name}: {.st
 kubectl get svc web-service -o jsonpath='{.spec.clusterIPs}'
 
 # Check 3: Check endpoint-slice-controller logs
-kubectl -n kube-system logs deployment/kube-controller-manager | \
+# Control-plane components are often static Pods rather than Deployments.
+kubectl -n kube-system logs -l component=kube-controller-manager --all-containers=true --tail=-1 | \
     grep -i "endpointslice\|ipv6"
 
-# Check 4: Verify EndpointSlice feature gate is enabled
-kubectl -n kube-system get pod kube-apiserver-$(hostname) -o yaml | \
-    grep -i "EndpointSlice"
+# Check 4: Verify the EndpointSlice API is available
+kubectl api-resources --api-group=discovery.k8s.io | grep -w endpointslices
 
-# Fix: Restart endpoint slice controller
-kubectl -n kube-system rollout restart deployment/kube-controller-manager
+# Fix: Correct the Service and cluster dual-stack configuration, then recreate
+# or update the affected Service. EndpointSlices are reconciled automatically.
 ```
 
 ## Script: Check Service IPv6 Endpoint Health
@@ -141,7 +143,7 @@ while read NS SVC; do
     V6_COUNT=$(kubectl get endpointslices -n "$NS" \
         -l "kubernetes.io/service-name=$SVC" \
         -o jsonpath='{range .items[?(@.addressType=="IPv6")].endpoints[*]}{.addresses[0]}{"\n"}{end}' 2>/dev/null | \
-        grep -c ":" || echo 0)
+        grep -c ":")
 
     if [ "$V6_COUNT" -gt 0 ]; then
         echo "  $NS/$SVC: $V6_COUNT IPv6 endpoints"
@@ -151,4 +153,4 @@ done
 
 ## Conclusion
 
-Kubernetes Services in dual-stack clusters create separate EndpointSlices for IPv4 (`addressType: IPv4`) and IPv6 (`addressType: IPv6`) pod addresses. Verify IPv6 endpoints with `kubectl get endpointslices -l kubernetes.io/service-name=<name>` and filter for `addressType: IPv6`. If IPv6 EndpointSlices are missing, check that pods have IPv6 addresses (`status.podIPs`) and the service has an IPv6 ClusterIP. The endpoint-slice controller (part of kube-controller-manager) creates IPv6 slices automatically when pods have IPv6 addresses.
+Kubernetes Services configured for dual-stack create separate EndpointSlices for IPv4 (`addressType: IPv4`) and IPv6 (`addressType: IPv6`) pod addresses. Verify IPv6 endpoints with `kubectl get endpointslices -l kubernetes.io/service-name=<name>` and filter for `addressType: IPv6`. If IPv6 EndpointSlices are missing, check that pods have IPv6 addresses (`status.podIPs`) and the service has an IPv6 ClusterIP. The endpoint-slice controller (part of kube-controller-manager) creates IPv6 slices automatically when the Service and matching pods have IPv6 addresses.
