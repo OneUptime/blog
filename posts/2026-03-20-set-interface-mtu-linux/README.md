@@ -120,7 +120,7 @@ SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="aa:bb:cc:dd:ee:ff", RUN+="/sbin
 EOF
 
 udevadm control --reload-rules
-# Takes effect on next interface up event
+# Takes effect on the next matching udev add event
 ```
 
 ## Set MTU for Tunnel and Virtual Interfaces
@@ -172,4 +172,4 @@ done
 
 ## Conclusion
 
-MTU changes with `ip link set` take effect immediately but are lost on reboot. For persistent configuration, use the method appropriate for your system: systemd-networkd, NetworkManager, Netplan, or `/etc/network/interfaces`. Virtual interfaces (tunnels, bridges, Docker) need MTU set explicitly to account for encapsulation overhead. Always verify with `ip link show` after making changes, and test with `ping -M do` to confirm large packets traverse the path correctly.
+MTU changes with `ip link set` take effect immediately but are lost on reboot. For persistent configuration, use the method appropriate for your system: systemd-networkd, NetworkManager, Netplan, or `/etc/network/interfaces`. Virtual interfaces (tunnels, bridges, Docker) need MTU set explicitly to account for encapsulation overhead. Always verify with `ip link show` after making changes, and test with `ping -M do -s <payload-size> <destination>` to confirm large packets traverse the path correctly.
