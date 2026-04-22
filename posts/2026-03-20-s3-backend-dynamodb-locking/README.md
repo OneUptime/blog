@@ -57,8 +57,7 @@ terraform {
     # DynamoDB table for state locking
     dynamodb_table = "terraform-state-locks"
 
-    # Optional: use the bucket region if DynamoDB is in a different region
-    # dynamodb_endpoint = "https://dynamodb.us-east-1.amazonaws.com"
+    # The DynamoDB table must be in the configured backend region
   }
 }
 ```
@@ -110,16 +109,22 @@ When OpenTofu acquires a lock:
 1. It writes an item to DynamoDB with a `LockID` = `<bucket>/<key>`
 2. The item contains the operation type, user, timestamp, and lock ID
 3. If an item with that `LockID` already exists, the operation fails with a lock error
-4. When the operation completes, the item is deleted
+4. When the operation completes, the active lock item is deleted
+5. OpenTofu stores a separate state digest item with `LockID` = `<bucket>/<key>-md5` for consistency checks
 
-DynamoDB lock record structure:
+DynamoDB lock and digest record structures:
 
 ```json
-{
-  "LockID": {"S": "my-terraform-state/prod/terraform.tfstate"},
-  "Info": {"S": "{\"ID\":\"abc123\",\"Operation\":\"OperationTypeApply\",\"Who\":\"user@host\",\"Version\":\"1.8.0\",\"Created\":\"2026-03-20T10:00:00Z\"}"},
-  "Digest": {"S": "sha256..."}
-}
+[
+  {
+    "LockID": {"S": "my-terraform-state/prod/terraform.tfstate"},
+    "Info": {"S": "{\"ID\":\"abc123\",\"Operation\":\"OperationTypeApply\",\"Who\":\"user@host\",\"Version\":\"1.8.0\",\"Created\":\"2026-03-20T10:00:00Z\"}"}
+  },
+  {
+    "LockID": {"S": "my-terraform-state/prod/terraform.tfstate-md5"},
+    "Digest": {"S": "d41d8cd98f00b204e9800998ecf8427e"}
+  }
+]
 ```
 
 ## Viewing Active Locks
@@ -128,6 +133,7 @@ DynamoDB lock record structure:
 # Check for active locks
 aws dynamodb scan \
   --table-name terraform-state-locks \
+  --filter-expression "attribute_exists(Info)" \
   --query 'Items[*]' \
   --output table
 
@@ -149,20 +155,18 @@ aws dynamodb delete-item \
   --key '{"LockID": {"S": "my-terraform-state/prod/terraform.tfstate"}}'
 ```
 
-## Cross-Region DynamoDB
+## DynamoDB Region
 
-If your team operates across multiple regions, the DynamoDB table can be in any region:
+If your team operates across multiple regions, configure the backend to use one AWS Region for both the S3 state bucket and the DynamoDB lock table:
 
 ```hcl
 terraform {
   backend "s3" {
     bucket         = "my-terraform-state"
     key            = "prod/terraform.tfstate"
-    region         = "us-east-1"  # S3 region
+    region         = "us-east-1"  # S3 bucket and DynamoDB table region
     encrypt        = true
     dynamodb_table = "terraform-state-locks"
-    # DynamoDB is assumed to be in the same region as S3
-    # Use dynamodb_endpoint to specify a different region
   }
 }
 ```
