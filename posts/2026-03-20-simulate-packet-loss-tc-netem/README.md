@@ -42,17 +42,17 @@ tc qdisc add dev eth0 root netem loss random 5%
 ## Loss Models
 
 ```bash
-# State-based loss using 4-state Markov model
+# State-based loss with only P13 specified (equivalent to Bernoulli loss)
 tc qdisc add dev eth0 root netem loss state 5%
 
-# Gemodel (Gilbert-Elliott model - burst losses)
+# Gemodel with two parameters (Simple Gilbert burst-loss model)
 tc qdisc add dev eth0 root netem loss gemodel 5% 10%
 ```
 
 ## Combine Packet Loss with Delay
 
 ```bash
-# Simulate a poor mobile connection: 100ms delay + 2% loss
+# Simulate a poor mobile connection: 100ms delay with 20ms jitter + 2% loss
 tc qdisc add dev eth0 root netem delay 100ms 20ms loss 2%
 ```
 
@@ -66,7 +66,7 @@ tc qdisc add dev eth0 root netem loss 1% corrupt 0.1%
 ## Simulate Packet Reordering
 
 ```bash
-# 25% of packets delayed by 10ms (causes reordering)
+# 25% of packets sent immediately while others are delayed by 10ms (causes reordering)
 tc qdisc add dev eth0 root netem delay 10ms reorder 25% 50%
 ```
 
@@ -115,4 +115,4 @@ tc qdisc del dev lo root
 
 ## Conclusion
 
-`tc qdisc add dev <interface> root netem loss <percent>%` simulates packet loss for all outgoing traffic. Combine with `delay`, `jitter`, `corrupt`, and `reorder` for comprehensive network degradation testing. Always clean up with `tc qdisc del dev <interface> root` when done. netem is the standard Linux tool for network condition simulation and chaos engineering.
+`tc qdisc add dev <interface> root netem loss <percent>%` simulates packet loss for all outgoing traffic. Combine with `delay <time> <jitter>`, `corrupt`, and `reorder` for comprehensive network degradation testing. Always clean up with `tc qdisc del dev <interface> root` when done. netem is the standard Linux tool for network condition simulation and chaos engineering.
