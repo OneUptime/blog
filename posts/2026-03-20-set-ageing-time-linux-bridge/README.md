@@ -33,13 +33,15 @@ brctl showstp br0 | grep "ageing time"
 
 # Via sysfs
 cat /sys/class/net/br0/bridge/ageing_time
-# Value in jiffies (100 = 1 second on most systems)
-# 30000 jiffies / 100 = 300 seconds
+# Value in clock ticks (USER_HZ; 100 = 1 second on most systems)
+# 30000 clock ticks / 100 = 300 seconds
 ```
 
 ## Setting Ageing Time with brctl
 
 ```bash
+# brctl is obsolete; prefer iproute2 on modern systems.
+
 # Set ageing time to 60 seconds
 brctl setageing br0 60
 
@@ -53,10 +55,9 @@ brctl showstp br0 | grep "ageing time"
 ## Setting Ageing Time with ip link
 
 ```bash
-# Set ageing time (in seconds)
-ip link set br0 type bridge ageing_time 6000   # 60 seconds (value in centiseconds)
-# Note: ip link uses centiseconds (1/100 second)
-# 60 seconds = 6000 centiseconds
+# Set ageing time (value in clock ticks; 100 = 1 second on most systems)
+ip link set br0 type bridge ageing_time 6000   # 60 seconds when USER_HZ=100
+# 60 seconds * 100 USER_HZ = 6000
 
 # Verify
 ip -d link show br0 | grep ageing
@@ -91,13 +92,13 @@ iface br0 inet static
 
 ```bash
 # View all FDB entries with age
-bridge fdb show br br0
+bridge -s fdb show br br0
 
 # Check FDB entry count
 bridge fdb show br br0 | wc -l
 
 # Flush all dynamic entries (forces relearning)
-bridge fdb flush dev br0
+bridge fdb flush dev br0 dynamic
 ```
 
 ## When to Adjust Ageing Time
@@ -105,13 +106,13 @@ bridge fdb flush dev br0
 | Scenario | Recommended Ageing |
 |----------|-------------------|
 | Default (stable LAN) | 300 seconds |
-| Live VM migration | 5-30 seconds (quick MAC move detection) |
+| Live VM migration | 5-30 seconds (shorter stale-entry lifetime) |
 | High-churn WiFi | 60-120 seconds |
 | Static environments | 600+ seconds (less flooding) |
 
 ## Key Takeaways
 
 - Ageing time controls how long the bridge retains MAC-to-port mappings in the forwarding database.
-- Use `brctl setageing br0 <seconds>` or `ip link set br0 type bridge ageing_time <centiseconds>`.
-- Reduce ageing time during live VM migration to accelerate MAC address table updates on the bridge.
-- `bridge fdb flush dev br0` forcefully clears the MAC table, useful after topology changes.
+- Use `ip link set br0 type bridge ageing_time <clock_ticks>` on modern systems; `brctl setageing br0 <seconds>` is the legacy bridge-utils equivalent.
+- Reduce ageing time during live VM migration to limit how long stale mappings can persist.
+- `bridge fdb flush dev br0 dynamic` forcefully clears the dynamic MAC table, useful after topology changes.
