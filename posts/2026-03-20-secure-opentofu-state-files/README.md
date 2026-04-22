@@ -25,7 +25,7 @@ terraform {
 
     # Server-side encryption with AWS KMS
     encrypt        = true
-    kms_key_id     = "arn:aws:kms:us-east-1:123456789012:key/mrk-abc123"
+    kms_key_id     = "arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
 
     # DynamoDB table for state locking
     dynamodb_table = "opentofu-state-locks"
@@ -108,7 +108,7 @@ resource "aws_iam_policy" "opentofu_state" {
           "s3:PutObject",
           "s3:DeleteObject"
         ]
-        Resource = "arn:aws:s3:::my-opentofu-state-prod/*"
+        Resource = "arn:aws:s3:::my-opentofu-state-prod/environments/prod/vpc/tofu.tfstate"
       },
       {
         Effect   = "Allow"
@@ -118,6 +118,7 @@ resource "aws_iam_policy" "opentofu_state" {
       {
         Effect = "Allow"
         Action = [
+          "dynamodb:DescribeTable",
           "dynamodb:GetItem",
           "dynamodb:PutItem",
           "dynamodb:DeleteItem"
@@ -127,6 +128,7 @@ resource "aws_iam_policy" "opentofu_state" {
       {
         Effect = "Allow"
         Action = [
+          "kms:Encrypt",
           "kms:Decrypt",
           "kms:GenerateDataKey"
         ]
