@@ -12,7 +12,10 @@ The `rs6` tool from the SI6 Networks IPv6 toolkit crafts and sends ICMPv6 Router
 
 ```bash
 sudo apt-get install ipv6toolkit   # Debian/Ubuntu
-sudo pacman -S ipv6toolkit          # Arch Linux
+
+# Arch Linux: ipv6toolkit is available from the AUR, not the official pacman repositories
+git clone https://aur.archlinux.org/ipv6toolkit.git
+cd ipv6toolkit && makepkg -si
 ```
 
 ## What is a Router Solicitation?
@@ -42,17 +45,17 @@ sudo rs6 -i eth0 -d ff02::2
 sudo rs6 -i eth0 -s fe80::1234 -d ff02::2
 
 # Send RS to a specific router's link-local address
-sudo rs6 -i eth0 -d fe80::router
+sudo rs6 -i eth0 -d fe80::1
 ```
 
 ## Source Link-Layer Address (SLLA) Option
 
 ```bash
-# Include source link-layer address option (standard in RS)
-sudo rs6 -i eth0 --slla
+# Include source link-layer address option
+sudo rs6 -i eth0 -e
 
-# Spoof the source link-layer address
-sudo rs6 -i eth0 --slla 00:11:22:33:44:55
+# Set the SLLA option to a chosen address
+sudo rs6 -i eth0 -E 00:11:22:33:44:55
 
 # Send from unspecified source (::) - allowed in RS per RFC 4861
 sudo rs6 -i eth0 -s ::
@@ -64,11 +67,11 @@ IPv6 routers should rate-limit RAs to prevent flooding. Test this with rapid RS 
 
 ```bash
 # Send 100 RS messages to trigger multiple RAs
-sudo rs6 -i eth0 --loop --sleep 0 --loop-count 100
+sudo rs6 -i eth0 -e -F 100
 
 # Measure RA response rate
-sudo tcpdump -i eth0 -n icmp6 and ip6[40] == 134 &   # Type 134 = RA
-sudo rs6 -i eth0 --loop --sleep 0 --loop-count 100
+sudo tcpdump -i eth0 -n 'icmp6 and ip6[40] == 134' &   # Type 134 = RA
+sudo rs6 -i eth0 -e -F 100
 ```
 
 ## RS from Multiple Sources (Flooding Test)
@@ -77,10 +80,8 @@ sudo rs6 -i eth0 --loop --sleep 0 --loop-count 100
 # Send RS from many different source addresses to stress-test the router
 # This tests router behavior under high RS load
 sudo rs6 -i eth0 \
-  --src-addr-shuffle \   # Randomize source addresses
-  --loop \
-  --sleep 0 \
-  --loop-count 1000
+  -e \
+  -F 1000
 ```
 
 ## Triggering SLAAC on Demand
@@ -88,8 +89,8 @@ sudo rs6 -i eth0 \
 `rs6` can be used to manually trigger address autoconfiguration without waiting for the next periodic RA:
 
 ```bash
-# Trigger RA from default router (useful after interface comes up)
-sudo rs6 -i eth0
+# Trigger a multicast RA response on the link (useful after interface comes up)
+sudo rs6 -i eth0 -s ::
 
 # Verify new addresses appeared after RA
 ip -6 addr show eth0
@@ -111,7 +112,7 @@ Both `rs6` and `rdisc6` (from ndisc6 package) can trigger RS/RA exchanges:
 |---|---|---|
 | rs6 | SI6 Networks | Custom RS crafting, flood testing |
 | rdisc6 | ndisc6 | Simple RA display |
-| nmap --script ipv6-ra-flood | nmap | Basic testing |
+| nmap --script ipv6-ra-flood | nmap | RA flood testing (sends RAs, not RS) |
 
 ```bash
 # Simple RA discovery using rdisc6
@@ -125,7 +126,7 @@ sudo rs6 -i eth0 -s :: -d ff02::2
 
 `rs6`-style attacks don't directly harm hosts, but routers responding to many RS messages can be overwhelmed:
 
-- Router RA rate limiting should be configured (typically 1 RA per 3-10 seconds per interface)
+- Router RA rate limiting should be configured; RFC 4861 limits consecutive multicast RAs to no more than one every 3 seconds
 - Monitor for unusual RS floods using NDPMon or Wireshark
 - Legitimate IPv6 hosts send RS only on interface state changes, not continuously
 
