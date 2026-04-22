@@ -15,8 +15,8 @@ Serverless functions on Kubernetes abstract away pod management, routing, and sc
 | Framework | Cold Start | Scale-to-Zero | Language Support | Best For |
 |---|---|---|---|---|
 | Knative | Medium | Yes | Any | HTTP workloads |
-| OpenFaaS | Fast | Yes | Any | General purpose |
-| Fission | Fastest | Yes | 8+ languages | Latency-sensitive |
+| OpenFaaS | Fast | Yes (Pro/Edge) | Any | General purpose |
+| Fission | Low with poolmgr | Yes with newdeploy minscale 0 | 8+ languages | Latency-sensitive |
 | KEDA Jobs | N/A | Yes | Any | Batch processing |
 
 ## Step 1: Prepare Your Function
@@ -24,19 +24,22 @@ Serverless functions on Kubernetes abstract away pod management, routing, and sc
 Write a function with a clear contract:
 
 ```python
-# process_image.py
+# handler.py
 
-import json
-import base64
-from PIL import Image
 import io
 
-def handle(event, context):
+from flask import Flask, jsonify, request
+from PIL import Image
+from waitress import serve
+
+app = Flask(__name__)
+
+@app.post("/")
+def handle():
     """Process an image and return metadata."""
     try:
-        # Decode base64 image from request body
-        image_data = base64.b64decode(event.body)
-        img = Image.open(io.BytesIO(image_data))
+        # Read raw image bytes from request body
+        img = Image.open(io.BytesIO(request.get_data()))
 
         result = {
             "width": img.width,
@@ -45,24 +48,28 @@ def handle(event, context):
             "mode": img.mode
         }
 
-        return json.dumps(result), 200
+        return jsonify(result), 200
 
     except Exception as e:
-        return json.dumps({"error": str(e)}), 500
+        return jsonify({"error": str(e)}), 400
+
+if __name__ == "__main__":
+    serve(app, host="0.0.0.0", port=5000)
 ```
 
 ## Step 2: Package as a Dockerfile
 
 ```dockerfile
-# Use the OpenFaaS Python template as a base
-FROM ghcr.io/openfaas/classic-watchdog:0.2.1 as watchdog
+# Use the OpenFaaS of-watchdog to proxy the Python HTTP server
+FROM --platform=${TARGETPLATFORM:-linux/amd64} ghcr.io/openfaas/of-watchdog:0.11.5 AS watchdog
 
-FROM python:3.11-slim
+FROM --platform=${TARGETPLATFORM:-linux/amd64} python:3.11-slim
 COPY --from=watchdog /fwatchdog /usr/bin/fwatchdog
 RUN chmod +x /usr/bin/fwatchdog
 
 WORKDIR /home/app
 COPY requirements.txt .
+# requirements.txt should include flask, pillow, and waitress
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY handler.py .
@@ -70,8 +77,9 @@ COPY handler.py .
 ENV fprocess="python handler.py"
 ENV mode="http"
 ENV upstream_url="http://127.0.0.1:5000"
+ENV cgi_headers="true"
 
-HEALTHCHECK --interval=3s CMD [ -e /tmp/.lock ] || exit 1
+HEALTHCHECK --interval=5s CMD [ -e /tmp/.lock ] || exit 1
 CMD ["fwatchdog"]
 ```
 
@@ -82,13 +90,14 @@ CMD ["fwatchdog"]
 faas-cli deploy \
   --image myregistry/process-image:latest \
   --name process-image \
-  --gateway http://openfaas-gateway:8080 \
-  --memory-limit 256m \
+  --gateway http://127.0.0.1:8080 \
+  --fprocess "python handler.py" \
+  --memory-limit 256Mi \
   --cpu-limit 250m \
-  --env MAX_INFLIGHT=10 \
-  --label com.openfaas.scale.min=0 \
+  --env max_inflight=10 \
   --label com.openfaas.scale.max=10 \
-  --label com.openfaas.scale.factor=20
+  --label com.openfaas.scale.zero=true \
+  --label com.openfaas.scale.zero-duration=10m
 ```
 
 ## Step 4: Implement Function Versioning
@@ -98,13 +107,14 @@ faas-cli deploy \
 faas-cli deploy \
   --image myregistry/process-image:v2.0 \
   --name process-image-v2 \
-  --gateway http://openfaas-gateway:8080
+  --gateway http://127.0.0.1:8080 \
+  --fprocess "python handler.py"
 
 # Test v2 before promoting
-curl -X POST http://openfaas-gateway:8080/function/process-image-v2 \
+curl -X POST http://127.0.0.1:8080/function/process-image-v2 \
   --data-binary @test-image.jpg
 
-# Promote v2 to production by updating the canary deployment
+# Promote v2 to production by updating the production function or external routing layer
 ```
 
 ## Step 5: Configure Timeouts and Retries
@@ -112,21 +122,24 @@ curl -X POST http://openfaas-gateway:8080/function/process-image-v2 \
 ```yaml
 # Function configuration with production settings
 annotations:
-  com.openfaas.timeout: "30s"           # Function execution timeout
-  com.openfaas.hard-timeout: "35s"      # Hard kill timeout
-  topic: "image-processor"              # Subscribe to NATS/Kafka topic for async
+  com.openfaas.retry.attempts: "3"      # Async retry attempts with OpenFaaS Pro queue-worker
+  com.openfaas.retry.codes: "429,500,502,503,504"
+  com.openfaas.retry.min_wait: "5s"
+  com.openfaas.retry.max_wait: "1m"
+  com.openfaas.queue: "image-processor" # Dedicated async queue name
 
 environment:
-  - MAX_INFLIGHT: "10"                  # Concurrent requests per replica
-  - WRITE_TIMEOUT: "30s"
-  - READ_TIMEOUT: "30s"
+  max_inflight: "10"                    # Concurrent requests per replica
+  exec_timeout: "30s"
+  write_timeout: "31s"
+  read_timeout: "31s"
 ```
 
 ## Step 6: Monitor Function Performance
 
 ```bash
 # View function metrics
-curl http://openfaas-gateway:8080/system/functions | jq '.[] | select(.name == "process-image")'
+faas-cli list --gateway http://127.0.0.1:8080 | grep process-image
 
 # Check invocation count and replica count
 ```
