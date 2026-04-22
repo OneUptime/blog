@@ -90,7 +90,7 @@ docker node ls
 # Inspect a node
 docker node inspect --pretty <node-id>
 
-# View node resource usage
+# View tasks running on a node
 docker node ps <node-id>
 ```
 
