@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: iptables, CentOS, RHEL, Linux, Firewall, Persistence
 
-Description: Save iptables rules on CentOS and RHEL so they persist across reboots using the iptables service or iptables-services package.
+Description: Save iptables rules on CentOS and RHEL so they persist across reboots using the iptables service from the iptables-services or iptables-nft-services package.
 
-CentOS and RHEL handle iptables persistence differently from Ubuntu. They use the `iptables` systemd service with configuration files in `/etc/sysconfig/`, and require the `iptables-services` package on newer versions where firewalld is the default.
+CentOS and RHEL handle iptables persistence differently from Ubuntu. They use the `iptables` systemd service with configuration files in `/etc/sysconfig/`, and require the `iptables-services` package on RHEL/CentOS 7 and 8 where firewalld is the default. On RHEL 9 and CentOS Stream 9, use `iptables-nft-services` for the compatibility service; Red Hat recommends firewalld or nftables for new firewall configurations.
 
 ## Check Current Firewall Backend
 
@@ -17,28 +17,35 @@ sudo systemctl status firewalld
 sudo systemctl status iptables
 
 # On RHEL 7+/CentOS 7+, firewalld is default
-# You can use either, but not both simultaneously
+# Run one firewall manager at a time to avoid conflicting rules
 ```
 
-## Install iptables-services
+## Install iptables Service Package
 
-On RHEL 7/8/9 and CentOS 7/8, install the iptables service:
+On RHEL/CentOS 7/8, install the iptables service. On RHEL 9/CentOS Stream 9, install the nft-backed compatibility service:
 
 ```bash
 # RHEL/CentOS 7
 sudo yum install iptables-services -y
 
-# RHEL/CentOS 8/9
+# RHEL/CentOS 8
 sudo dnf install iptables-services -y
+
+# RHEL 9/CentOS Stream 9
+sudo dnf install iptables-nft-services -y
 
 # Disable firewalld if switching to iptables
 sudo systemctl stop firewalld
 sudo systemctl disable firewalld
 sudo systemctl mask firewalld
 
-# Enable iptables service
+# Enable iptables services
 sudo systemctl enable iptables
 sudo systemctl start iptables
+
+# Enable ip6tables too if you manage IPv6 rules
+sudo systemctl enable ip6tables
+sudo systemctl start ip6tables
 ```
 
 ## Save Current Rules
@@ -47,13 +54,15 @@ sudo systemctl start iptables
 # Save IPv4 rules to /etc/sysconfig/iptables
 sudo service iptables save
 # or
-sudo /sbin/iptables-save > /etc/sysconfig/iptables
+sudo sh -c '/sbin/iptables-save > /etc/sysconfig/iptables'
 
 # Save IPv6 rules
-sudo /sbin/ip6tables-save > /etc/sysconfig/ip6tables
+sudo service ip6tables save
+# or
+sudo sh -c '/sbin/ip6tables-save > /etc/sysconfig/ip6tables'
 
 # Verify saved rules
-cat /etc/sysconfig/iptables
+sudo cat /etc/sysconfig/iptables
 ```
 
 ## What the Config File Looks Like
@@ -77,7 +86,7 @@ COMMIT
 
 ```bash
 # Restore rules from saved file
-sudo iptables-restore < /etc/sysconfig/iptables
+sudo sh -c '/sbin/iptables-restore < /etc/sysconfig/iptables'
 
 # Or use the service
 sudo service iptables restart
@@ -98,10 +107,10 @@ curl http://localhost:8080
 # 3. Save permanently
 sudo service iptables save
 # or
-sudo /sbin/iptables-save > /etc/sysconfig/iptables
+sudo sh -c '/sbin/iptables-save > /etc/sysconfig/iptables'
 
 # 4. Verify the file was updated
-grep 8080 /etc/sysconfig/iptables
+sudo grep 8080 /etc/sysconfig/iptables
 ```
 
 ## Using firewall-cmd to Save (if firewalld is used)
@@ -114,7 +123,7 @@ sudo firewall-cmd --permanent --add-port=8080/tcp
 sudo firewall-cmd --reload
 
 # Rules without --permanent are temporary
-sudo firewall-cmd --add-port=9090/tcp   # Lost on restart
+sudo firewall-cmd --add-port=9090/tcp   # Lost on reload or restart
 
 # View permanent rules
 sudo firewall-cmd --permanent --list-all
@@ -122,14 +131,18 @@ sudo firewall-cmd --permanent --list-all
 
 ## SELinux Considerations
 
-On RHEL/CentOS with SELinux, iptables changes may need SELinux context:
+On RHEL/CentOS with SELinux, iptables rule changes usually do not require SELinux changes. If you manually create or copy `/etc/sysconfig/iptables`, check the file context if the service cannot read it:
 
 ```bash
 # Check if SELinux is blocking anything related to iptables
 sudo ausearch -c iptables --raw | audit2why
 
+# Restore the default context for saved rules files
+sudo restorecon -v /etc/sysconfig/iptables
+sudo restorecon -v /etc/sysconfig/ip6tables  # If you use IPv6 rules
+
 # Most iptables operations work fine with SELinux enabled
 # SELinux primarily affects file access, not network rules
 ```
 
-On RHEL/CentOS, always use `service iptables save` rather than manual file editing - the save command ensures the format is exactly what the iptables service expects on startup.
+On RHEL/CentOS, prefer `service iptables save` when available rather than manual file editing. If you do edit or copy the file directly, keep the `iptables-save` format exactly as the iptables service expects on startup.
