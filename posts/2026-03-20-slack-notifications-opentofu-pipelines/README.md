@@ -25,7 +25,7 @@ Create a reusable shell script that sends formatted messages to Slack.
 #!/bin/bash
 # scripts/notify-slack.sh
 
-# Usage: ./notify-slack.sh "message" "color" "title"
+# Usage: bash scripts/notify-slack.sh "message" "color" "title"
 
 MESSAGE="$1"
 COLOR="${2:-good}"   # good (green), warning (yellow), danger (red)
@@ -42,6 +42,7 @@ PAYLOAD=$(cat <<EOF
   "attachments": [
     {
       "color": "${COLOR}",
+      "mrkdwn_in": ["text"],
       "title": "${TITLE}",
       "text": "${MESSAGE}",
       "footer": "OpenTofu Pipeline",
@@ -75,10 +76,12 @@ jobs:
   plan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_wrapper: false
 
       - name: OpenTofu Init
         run: tofu init
@@ -86,62 +89,87 @@ jobs:
       - name: OpenTofu Plan
         id: plan
         run: |
+          set +e
           tofu plan -out=tfplan -no-color 2>&1 | tee plan_output.txt
-          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+          exit_code=${PIPESTATUS[0]}
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          exit "$exit_code"
 
       - name: Notify Slack – Plan Success
-        if: steps.plan.outputs.exit_code == '0'
+        if: success() && steps.plan.outputs.exit_code == '0'
         run: |
           CHANGES=$(grep -E "^Plan:" plan_output.txt || echo "No changes detected")
-          ./scripts/notify-slack.sh "Plan completed on *${{ github.ref_name }}*\n$CHANGES" "good" "OpenTofu Plan"
+          bash scripts/notify-slack.sh "Plan completed on *${{ github.ref_name }}*\n$CHANGES" "good" "OpenTofu Plan"
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Upload Plan
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.plan.outputs.exit_code == '0'
+        uses: actions/upload-artifact@v7
+        with:
+          name: tfplan
+          path: tfplan
+          retention-days: 1
 
       - name: Notify Slack – Plan Failed
         if: failure()
         run: |
-          ./scripts/notify-slack.sh "Plan FAILED on *${{ github.ref_name }}* by ${{ github.actor }}" "danger" "OpenTofu Plan Failed"
+          bash scripts/notify-slack.sh "Plan FAILED on *${{ github.ref_name }}* by ${{ github.actor }}" "danger" "OpenTofu Plan Failed"
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
   apply:
     needs: plan
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_wrapper: false
+
+      - name: OpenTofu Init
+        run: tofu init
+
+      - name: Download Plan
+        uses: actions/download-artifact@v8
+        with:
+          name: tfplan
+          path: .
 
       - name: Notify Slack – Apply Started
         run: |
-          ./scripts/notify-slack.sh "Apply started on *main* by ${{ github.actor }}" "warning" "OpenTofu Apply"
+          bash scripts/notify-slack.sh "Apply started on *main* by ${{ github.actor }}" "warning" "OpenTofu Apply"
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
       - name: OpenTofu Apply
         id: apply
-        run: tofu apply -auto-approve tfplan
+        run: tofu apply -no-color tfplan
 
       - name: Notify Slack – Apply Success
         if: success()
         run: |
-          ./scripts/notify-slack.sh "Apply *succeeded* on main :white_check_mark:" "good" "OpenTofu Apply Complete"
+          bash scripts/notify-slack.sh "Apply *succeeded* on main :white_check_mark:" "good" "OpenTofu Apply Complete"
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
       - name: Notify Slack – Apply Failed
         if: failure()
         run: |
-          ./scripts/notify-slack.sh "Apply *FAILED* on main :rotating_light: – manual review required" "danger" "OpenTofu Apply Failed"
+          bash scripts/notify-slack.sh "Apply *FAILED* on main :rotating_light: – manual review required" "danger" "OpenTofu Apply Failed"
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 ```
 
 ## Using the Slack Terraform Provider
 
-You can also manage Slack channels and webhooks as OpenTofu resources.
+You can also manage Slack channels as OpenTofu resources.
 
 ```hcl
-# Requires the puppetlabs/slack provider (community)
+# Requires the pablovarela/slack provider (community)
 terraform {
   required_providers {
     slack = {
