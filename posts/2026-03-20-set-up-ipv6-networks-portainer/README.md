@@ -8,7 +8,7 @@ Description: Configure Docker networks with IPv6 support in Portainer for modern
 
 ---
 
-Docker networking is fundamental to container communication. Portainer provides a visual interface for creating and managing all Docker network types.
+Docker networking is fundamental to container communication. Portainer provides a visual interface for creating and managing supported Docker network types.
 
 ## Docker Network Types
 
@@ -29,23 +29,28 @@ Docker networking is fundamental to container communication. Portainer provides 
 docker network create \
   --driver bridge \
   --subnet 172.20.0.0/16 \
-  --gateway 172.20.0.1 \
-  --ip-range 172.20.10.0/24 \
+  --subnet fd00:172:20::/64 \
+  --ipv6 \
   my-bridge-network
 
-# Macvlan network (direct L2 access)
+# Macvlan network (direct L2 access, dual-stack)
 docker network create \
   --driver macvlan \
   --subnet 192.168.1.0/24 \
   --gateway 192.168.1.1 \
+  --subnet fd00:192:168:1::/64 \
+  --gateway fd00:192:168:1::1 \
   -o parent=eth0 \
   macvlan-network
 
-# IPvlan network
+# IPvlan network (dual-stack)
 docker network create \
   --driver ipvlan \
   --subnet 192.168.1.0/24 \
   --gateway 192.168.1.1 \
+  --subnet fd00:192:168:2::/64 \
+  --gateway fd00:192:168:2::1 \
+  --ipv6 \
   -o parent=eth0 \
   -o ipvlan_mode=l2 \
   ipvlan-network
@@ -76,6 +81,7 @@ docker network disconnect my-bridge-network my-container
 docker run -d \
   --network my-bridge-network \
   --ip 172.20.0.100 \
+  --ip6 fd00:172:20::100 \
   --name my-static-container \
   nginx:latest
 ```
