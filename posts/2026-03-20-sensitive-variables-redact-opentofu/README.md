@@ -8,7 +8,7 @@ Description: Learn how to declare input variables, locals, and outputs as sensit
 
 ## Introduction
 
-OpenTofu's `sensitive = true` attribute tells the engine to treat a value as a secret throughout its lifecycle. Sensitive values are replaced with `(sensitive value)` in all terminal output, log files, and JSON plan files, while remaining fully functional at the infrastructure level.
+OpenTofu's `sensitive = true` attribute tells the engine to hide a value from normal CLI output. Sensitive values are shown with placeholders such as `(sensitive value)` in `tofu plan` and `tofu apply` output, while remaining fully functional at the infrastructure level. Sensitive values are still stored in cleartext in state and saved plan files, and commands such as `tofu output -json` and `tofu output -raw` can display them in plain text.
 
 ## Declaring a Sensitive Input Variable
 
@@ -36,7 +36,7 @@ variable "tls_private_key" {
 
 When a sensitive variable is used in a resource, OpenTofu redacts it automatically:
 
-```hcl
+```text
   # aws_db_instance.main will be updated in-place
   ~ resource "aws_db_instance" "main" {
         id       = "prod-postgres"
@@ -46,11 +46,11 @@ When a sensitive variable is used in a resource, OpenTofu redacts it automatical
 
 ## Sensitive Locals
 
-If you compute a value derived from a sensitive variable, mark the local as sensitive too:
+If you compute a value derived from a sensitive variable, OpenTofu propagates sensitivity automatically. You can also wrap a local value with `sensitive()` to make that intent explicit:
 
 ```hcl
 locals {
-  # Mark the local sensitive to propagate suppression downstream
+  # Sensitivity already propagates from var.db_password; this makes the intent explicit
   db_connection_string = sensitive(
     "postgresql://${var.db_user}:${var.db_password}@${aws_db_instance.main.address}:5432/mydb"
   )
@@ -80,7 +80,7 @@ Error: Output refers to sensitive values
 
 ## Reading Sensitive Outputs Programmatically
 
-Sensitive outputs are accessible despite being masked in the terminal:
+Sensitive outputs are accessible despite being masked in normal CLI output:
 
 ```bash
 # Read the sensitive output as JSON (value visible in JSON)
@@ -122,4 +122,4 @@ variable "db_password" {
 
 ## Conclusion
 
-Marking variables and outputs as `sensitive = true` is the simplest and most effective way to keep secrets out of OpenTofu's terminal output and JSON plans. Combined with the `sensitive()` function for computed values and `nonsensitive()` for intentional unwrapping, you have fine-grained control over what appears in logs without sacrificing functionality.
+Marking variables and outputs as `sensitive = true` is the simplest and most effective way to keep secrets out of OpenTofu's normal plan and apply terminal output. It does not encrypt state or saved plan data. Combined with the `sensitive()` function for computed values and `nonsensitive()` for intentional unwrapping, you have fine-grained control over what appears in CLI output without sacrificing functionality.
