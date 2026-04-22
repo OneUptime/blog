@@ -63,10 +63,10 @@ Hosts on different VNIs cannot communicate directly - even if they use overlappi
 
 ```bash
 # Host A: VNI 100, IP 10.100.0.1
-# Host B: VNI 200, IP 10.100.0.1 (same IP, different VNI - completely isolated)
+# Host B: VNI 200, IP 10.100.0.2 (same IP range, different VNI - isolated at Layer 2)
 
-# This ping will NOT work - different VNIs are completely isolated
-# ping 10.100.0.1 from VNI 100 cannot reach VNI 200
+# This ping will NOT work directly - different VNIs are isolated at Layer 2
+# ping 10.100.0.2 from VNI 100 cannot reach Host B on VNI 200
 ```
 
 ## VNI Assignment Conventions
