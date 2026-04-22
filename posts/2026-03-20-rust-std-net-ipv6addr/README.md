@@ -42,10 +42,10 @@ fn classify_ipv6(addr: Ipv6Addr) -> &'static str {
         "multicast"
     } else if addr.is_unicast_link_local() {
         "link-local unicast"
-    } else if addr.is_unicast_global() {
-        "global unicast"
+    } else if addr.is_unique_local() {
+        "unique local"
     } else {
-        "other"
+        "other unicast"
     }
 }
 
@@ -83,7 +83,7 @@ fn main() {
 
     // IPv4-mapped IPv6: detect and convert
     let mapped: Ipv6Addr = "::ffff:192.168.1.1".parse().unwrap();
-    if let Some(ipv4) = mapped.to_ipv4() {
+    if let Some(ipv4) = mapped.to_ipv4_mapped() {
         println!("IPv4-mapped: {}", ipv4);  // 192.168.1.1
     }
 
@@ -109,9 +109,10 @@ fn main() {
 use std::net::Ipv6Addr;
 
 fn is_documentation(addr: &Ipv6Addr) -> bool {
-    // 2001:db8::/32 is the documentation prefix (RFC 3849)
+    // Documentation prefixes: 2001:db8::/32 (RFC 3849) and 3fff::/20 (RFC 9637)
     let segs = addr.segments();
-    segs[0] == 0x2001 && segs[1] == 0x0db8
+    (segs[0] == 0x2001 && segs[1] == 0x0db8)
+        || (segs[0] == 0x3fff && (segs[1] & 0xf000) == 0)
 }
 
 fn is_6to4(addr: &Ipv6Addr) -> bool {
@@ -148,7 +149,7 @@ fn main() -> std::io::Result<()> {
 
     // For link-local addresses, set scope_id to interface index
     let link_local: Ipv6Addr = "fe80::1".parse().unwrap();
-    let _ll_addr = SocketAddrV6::new(link_local, 22, 0, 2); // scope_id=2 for eth0
+    let _ll_addr = SocketAddrV6::new(link_local, 22, 0, 2); // example interface index
 
     Ok(())
 }
@@ -180,4 +181,4 @@ fn main() {
 
 ## Conclusion
 
-`std::net::Ipv6Addr` provides the foundational IPv6 type in Rust. It supports parsing, formatting, classification via predicate methods (`is_loopback()`, `is_multicast()`, `is_unicast_global()`), and conversion to/from octets and `u128`. For CIDR operations, use the `ipnet` crate. For socket programming, pair it with `SocketAddrV6` to carry the port and scope ID alongside the address.
+`std::net::Ipv6Addr` provides the foundational IPv6 type in Rust. It supports parsing, formatting, classification via predicate methods (`is_loopback()`, `is_multicast()`, `is_unique_local()`), and conversion to/from octets and `u128`. For CIDR operations, use the `ipnet` crate. For socket programming, pair it with `SocketAddrV6` to carry the port and scope ID alongside the address.
