@@ -8,7 +8,7 @@ Description: Learn how to capture and analyze live IPv4 network traffic using Sc
 
 ## Overview
 
-Scapy's `sniff()` function puts your network interface into promiscuous mode and captures packets matching optional BPF (Berkeley Packet Filter) filters. It's useful for network debugging, security monitoring, and protocol analysis.
+Scapy's `sniff()` function captures packets on a network interface and can use promiscuous mode, depending on Scapy's configuration and platform support. It captures packets matching optional BPF (Berkeley Packet Filter) filters and is useful for network debugging, security monitoring, and protocol analysis.
 
 ## Basic Packet Sniffing
 
@@ -136,4 +136,4 @@ sniff(filter="udp port 53", stop_filter=check_stop, store=False)
 
 ## Conclusion
 
-Scapy's `sniff()` is a powerful one-call packet capture tool. Use BPF filters to limit captured traffic, `prn` callbacks to process packets on the fly, and `wrpcap` to save captures for later analysis. Root privileges are required for promiscuous mode sniffing.
+Scapy's `sniff()` is a powerful one-call packet capture tool. Use BPF filters to limit captured traffic, `prn` callbacks to process packets on the fly, and `wrpcap` to save captures for later analysis. Root/administrator or equivalent packet-capture privileges are usually required for live sniffing and promiscuous mode.
