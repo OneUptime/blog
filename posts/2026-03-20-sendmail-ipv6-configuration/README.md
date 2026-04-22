@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Sendmail, IPv6, Email, SMTP, Mail Server, Linux
 
-Description: Configure Sendmail to listen on and send mail over IPv6 by modifying sendmail.mc, enabling DAEMON_OPTIONS for IPv6, and updating address class settings.
+Description: Configure Sendmail to listen on and send mail over IPv6 by modifying sendmail.mc, enabling DAEMON_OPTIONS for IPv6, and updating access map settings.
 
 ## Introduction
 
@@ -42,6 +42,8 @@ sudo nano /etc/mail/sendmail.mc
 Add IPv6 DAEMON_OPTIONS alongside existing IPv4 options:
 
 ```m4
+FEATURE(`no_default_msa')dnl
+
 dnl # IPv4 listener on port 25
 DAEMON_OPTIONS(`Port=smtp,Addr=0.0.0.0,Name=MTA')dnl
 dnl # IPv6 listener on port 25
@@ -59,30 +61,29 @@ After editing sendmail.mc, compile it to sendmail.cf:
 
 ```bash
 # Compile sendmail.mc to sendmail.cf
-sudo m4 /etc/mail/sendmail.mc > /etc/mail/sendmail.cf
+sudo sh -c 'm4 /etc/mail/sendmail.mc > /etc/mail/sendmail.cf'
 
 # On some systems, use this approach
-cd /etc/mail
-sudo make
+sudo make -C /etc/mail
 
 # Restart Sendmail
 sudo systemctl restart sendmail
 
 # Verify IPv6 listener
 ss -tlnp | grep ':25'
-# Should show both 0.0.0.0:25 and :::25
+# Should show both 0.0.0.0:25 and [::]:25 or :::25
 ```
 
 ## Configuring Trusted IPv6 Networks (access.db)
 
-Update `/etc/mail/access` to trust IPv6 clients for relay:
+With ``FEATURE(`access_db')`` enabled in `sendmail.mc`, update `/etc/mail/access` to trust IPv6 clients for relay:
 
 ```bash
 sudo tee -a /etc/mail/access << 'EOF'
 # Trust IPv6 loopback
-IPv6:1                          RELAY
-# Trust specific IPv6 subnet
-IPv6:2001:db8:                  RELAY
+IPv6:::1                        RELAY
+# Trust specific IPv6 prefix
+IPv6:2001:db8                   RELAY
 # Trust specific IPv6 host
 IPv6:2001:db8::10               RELAY
 EOF
@@ -94,17 +95,17 @@ sudo systemctl reload sendmail
 
 ## Configuring Outbound IPv6
 
-For Sendmail to prefer IPv6 on outbound delivery, edit the CLIENT_OPTIONS in sendmail.mc:
+For Sendmail to use a specific IPv6 source address on outbound delivery, edit the CLIENT_OPTIONS in sendmail.mc:
 
 ```m4
-dnl # Use IPv6 for outbound connections when available
-CLIENT_OPTIONS(`Family=inet6,Address=2001:db8::10')dnl
+dnl # Use this IPv6 source address for outbound IPv6 connections
+CLIENT_OPTIONS(`Family=inet6,Addr=2001:db8::10')dnl
 ```
 
 After this change, recompile and restart:
 
 ```bash
-sudo m4 /etc/mail/sendmail.mc > /etc/mail/sendmail.cf
+sudo sh -c 'm4 /etc/mail/sendmail.mc > /etc/mail/sendmail.cf'
 sudo systemctl restart sendmail
 ```
 
@@ -119,6 +120,8 @@ mailq
 
 # Check Sendmail logs
 sudo tail -f /var/log/maillog | grep -E "IPv6|ipv6|:::"
+# On Debian/Ubuntu, use /var/log/mail.log instead
+sudo tail -f /var/log/mail.log | grep -E "IPv6|ipv6|:::"
 
 # Test SMTP connection on IPv6 directly
 telnet -6 ::1 25
@@ -127,11 +130,11 @@ telnet -6 ::1 25
 ## Checking the Sendmail IPv6 Feature
 
 ```bash
-# Verify the IPv6_full feature in the compiled cf
-grep -i "inet6\|ipv6" /etc/mail/sendmail.cf
+# Verify the IPv6 daemon/client options in the compiled cf
+grep -Ei "DaemonPortOptions=.*Family=inet6|ClientPortOptions=.*Family=inet6" /etc/mail/sendmail.cf
 
-# Check that the confNET_ADDR parameter is correct
-grep "confBIND_OPTS\|confNET_ADDR" /etc/mail/sendmail.cf
+# Check resolver options generated from confBIND_OPTS, if configured
+grep "ResolverOptions" /etc/mail/sendmail.cf
 ```
 
 ## Troubleshooting
@@ -140,7 +143,7 @@ grep "confBIND_OPTS\|confNET_ADDR" /etc/mail/sendmail.cf
 
 **Access map not recognizing IPv6**: Use `IPv6:` prefix (capital IPv6) in the access file, not `ipv6:`.
 
-**Sendmail refuses to start after changes**: Validate your `.mc` file with `m4 sendmail.mc | grep -i error` before applying.
+**Sendmail refuses to start after changes**: Generate a test `.cf` file with `m4 /etc/mail/sendmail.mc > /tmp/sendmail.cf.test` and check the command output before applying.
 
 ## Conclusion
 
