@@ -18,7 +18,7 @@ When a PVC is created without a `storageClassName`, Kubernetes uses the storage 
 storageclass.kubernetes.io/is-default-class: "true"
 ```
 
-Only one StorageClass should have this annotation set to `"true"`. If multiple classes have this annotation, Kubernetes will reject PVC creation requests that do not specify a class.
+Only one StorageClass should have this annotation set to `"true"`. If multiple classes have this annotation, Kubernetes will use the most recently created default StorageClass for PVCs that do not specify a class.
 
 ## Check Your Current Default Storage Class
 
@@ -35,10 +35,10 @@ kubectl get storageclass
 
 ## Remove the Existing Default Storage Class
 
-If another storage class is already set as the default, remove its default annotation first:
+If another storage class is already set as the default, mark it as non-default first:
 
 ```bash
-# Remove the default annotation from the existing default class
+# Mark the existing default class as non-default
 # Replace "local-path" with your current default class name
 kubectl patch storageclass local-path \
   -p '{"metadata": {"annotations": {"storageclass.kubernetes.io/is-default-class": "false"}}}'
@@ -92,12 +92,7 @@ helm install longhorn longhorn/longhorn \
 
 ### Using the Longhorn Settings
 
-You can also configure this through the Longhorn UI:
-
-1. Open the Longhorn UI
-2. Navigate to **Setting** → **General**
-3. Find **Default Longhorn Static StorageClass Name**
-4. Ensure it matches the StorageClass you want to be default
+The Longhorn UI setting **Default Longhorn Static StorageClass Name** does not mark the Kubernetes `longhorn` StorageClass as the default for dynamically provisioned PVCs. It only sets the `storageClassName` used when Longhorn creates PV/PVC objects for an existing Longhorn volume. To make Longhorn the Kubernetes default StorageClass, use the Kubernetes annotation method above or set `persistence.defaultClass` during Helm installation.
 
 ## Creating a PVC Without a StorageClass
 
@@ -151,7 +146,7 @@ spec:
 If you need to remove Longhorn as the default storage class:
 
 ```bash
-# Remove the default annotation from Longhorn
+# Mark Longhorn as non-default
 kubectl patch storageclass longhorn \
   -p '{"metadata": {"annotations": {"storageclass.kubernetes.io/is-default-class": "false"}}}'
 
