@@ -8,7 +8,7 @@ Description: Use Samba's hosts allow and hosts deny directives to restrict SMB/C
 
 ## Introduction
 
-Samba's `hosts allow` and `hosts deny` directives control which client IP addresses can connect, independent of Samba authentication. These work at the connection level-denied clients never get a login prompt. This adds a network-level access control layer before user authentication.
+Samba's `hosts allow` and `hosts deny` directives control which client IP addresses can access services, independent of Samba authentication. Global rules work at the connection level; per-share rules are checked when a client accesses that share. This adds a network-level access control layer in addition to user authentication.
 
 ## Global hosts allow Configuration
 
@@ -90,11 +90,11 @@ hosts allow = 10.0.0.0/24 EXCEPT 10.0.0.99
 
 ```bash
 # Test from allowed IP
-smbclient -L //10.0.0.5 -U username
+smbclient -L 10.0.0.5 -U username
 # Should: show shares
 
-# Test from blocked IP (simulate with source routing or from another host)
-# Should get: "Connection refused" or "NT_STATUS_HOST_UNREACHABLE"
+# Test from blocked IP (from another host or network namespace)
+# Should fail before share access; exact error varies by client and firewall behavior
 
 # Check who is currently connected
 sudo smbstatus
@@ -119,4 +119,4 @@ sudo iptables -A INPUT -p tcp --dport 139 -j DROP
 
 ## Conclusion
 
-`hosts allow` and `hosts deny` in smb.conf provide connection-level access control before authentication. Apply globally in `[global]` or per share for granular control. Use `hosts allow = <subnet>` with `hosts deny = ALL` as a whitelist pattern. Combine with `bind interfaces only` and iptables rules for a complete defense-in-depth security model.
+`hosts allow` and `hosts deny` in smb.conf provide host-based access control in addition to authentication. Apply globally in `[global]` or per share for granular control. Use `hosts allow = <subnet>` with `hosts deny = ALL` as a whitelist pattern. Combine with `bind interfaces only` and iptables rules for a stronger defense-in-depth security model.
