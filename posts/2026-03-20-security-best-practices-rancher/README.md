@@ -21,16 +21,22 @@ apiVersion: management.cattle.io/v3
 kind: RoleTemplate
 metadata:
   name: developer
-spec:
-  displayName: Developer
-  rules:
-    - apiGroups: ["", "apps", "batch"]
-      resources: ["pods", "deployments", "jobs", "services"]
-      verbs: ["get", "list", "watch"]
-    - apiGroups: [""]
-      resources: ["pods/log", "pods/exec"]
-      verbs: ["get", "create"]
-    # No create/delete on production resources
+displayName: Developer
+context: project
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log", "pods/exec"]
+    verbs: ["get", "create"]
+  # No create/delete on production resources
 ```
 
 ```bash
@@ -107,10 +113,9 @@ spec:
 ## Step 4: Enable Image Scanning
 
 ```bash
-# Install Trivy for image scanning
-kubectl apply -f https://raw.githubusercontent.com/aquasecurity/trivy-operator/main/deploy/static/trivy-operator.yaml
-
-# Configure automatic scanning on image push
+# Install Trivy Operator for automatic in-cluster workload scanning
+helm repo add aqua https://aquasecurity.github.io/helm-charts/
+helm repo update
 helm install trivy-operator aqua/trivy-operator \
   --namespace trivy-system \
   --create-namespace \
@@ -121,23 +126,15 @@ helm install trivy-operator aqua/trivy-operator \
 ## Step 5: Secrets Management
 
 ```bash
-# Enable etcd encryption at rest
-# In RKE2, configure encryption provider config
-cat > /etc/rancher/rke2/encryption-config.yaml << 'EOF'
-apiVersion: apiserver.config.k8s.io/v1
-kind: EncryptionConfiguration
-resources:
-  - resources: [secrets]
-    providers:
-      - aescbc:
-          keys:
-            - name: key1
-              secret: <base64-encoded-32-byte-key>
-      - identity: {}
+# Verify RKE2-managed Kubernetes secret encryption at rest
+rke2 secrets-encrypt status
+
+# Optional: set the provider explicitly; aescbc is the default
+cat >> /etc/rancher/rke2/config.yaml << 'EOF'
+secrets-encryption-provider: aescbc
 EOF
 
-# Reference in RKE2 config
-echo "kube-apiserver-arg: encryption-provider-config=/etc/rancher/rke2/encryption-config.yaml" >> /etc/rancher/rke2/config.yaml
+systemctl restart rke2-server
 ```
 
 ## Step 6: Audit Logging
@@ -146,7 +143,7 @@ echo "kube-apiserver-arg: encryption-provider-config=/etc/rancher/rke2/encryptio
 # Enable Kubernetes audit logging in RKE2
 # /etc/rancher/rke2/config.yaml
 kube-apiserver-arg:
-  - "audit-log-path=/var/log/kubernetes/audit.log"
+  - "audit-log-path=/var/lib/rancher/rke2/server/logs/audit.log"
   - "audit-log-maxage=30"
   - "audit-log-maxbackup=10"
   - "audit-log-maxsize=100"
@@ -158,6 +155,9 @@ kube-apiserver-arg:
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
+  - level: None
+    users: ["system:kube-proxy"]
+    verbs: ["watch"]
   - level: Metadata
     resources:
       - group: ""
@@ -166,26 +166,24 @@ rules:
     verbs: ["create", "update", "delete", "patch"]
     resources:
       - group: "rbac.authorization.k8s.io"
-        resources: ["roles", "clusterroles", "rolebindings"]
-  - level: None
-    users: ["system:kube-proxy"]
-    verbs: ["watch"]
+        resources: ["roles", "clusterroles", "rolebindings", "clusterrolebindings"]
 ```
 
-## Step 7: Enable Rancher CIS Benchmarks
+## Step 7: Enable Rancher Compliance Scans
 
 ```bash
 # Run CIS scan on clusters via Rancher UI:
-# Cluster > CIS Benchmark > Scan
+# Cluster Management > <cluster> > Explore > Compliance > Scan
 
-# Or via kubectl
+# Or via kubectl; first choose an installed profile for your cluster version
+kubectl get clusterscanprofiles.compliance.cattle.io
 kubectl apply -f - <<EOF
-apiVersion: cis.cattle.io/v1
+apiVersion: compliance.cattle.io/v1
 kind: ClusterScan
 metadata:
   name: rke2-cis-benchmark
 spec:
-  scanProfileName: rke2-cis-1.24-profile
+  scanProfileName: rke2-cis-1.11-profile
 EOF
 ```
 
@@ -194,14 +192,14 @@ EOF
 - RBAC reviewed and least-privilege applied
 - Pod Security Standards enforced (restricted)
 - Network policies default-deny + explicit allows
-- etcd encryption at rest enabled
+- Kubernetes Secrets encrypted at rest in etcd
 - Image scanning on all deployed images
 - Audit logging configured and forwarded to SIEM
-- CIS benchmark scan scheduled monthly
+- Compliance/CIS benchmark scan scheduled monthly
 - Secrets managed via external vault (not raw K8s Secrets)
 - Container images from trusted registries only (Harbor)
 - Runtime security monitoring (Falco)
 
 ## Conclusion
 
-Security in Rancher is layered-no single control is sufficient. Combining RBAC, Pod Security Standards, network policies, image scanning, and secrets encryption provides defense-in-depth. Run CIS benchmarks regularly to identify regressions, and integrate Falco for runtime threat detection. The CIS Rancher Benchmark profile provides a comprehensive checklist tailored specifically to Rancher-managed clusters.
+Security in Rancher is layered-no single control is sufficient. Combining RBAC, Pod Security Standards, network policies, image scanning, and secrets encryption provides defense-in-depth. Run compliance benchmarks regularly to identify regressions, and integrate Falco for runtime threat detection. Rancher Compliance profiles provide a comprehensive checklist tailored specifically to Rancher-managed Kubernetes clusters.
