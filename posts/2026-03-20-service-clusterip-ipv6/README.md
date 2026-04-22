@@ -40,8 +40,9 @@ spec:
 kubectl apply -f dual-stack-service.yaml
 
 # View assigned ClusterIPs
-kubectl get svc web-service -o jsonpath='{.spec.clusterIPs}'
-# ["10.96.x.x", "fd00:10:96::x"]
+kubectl get svc web-service -o jsonpath='{range .spec.clusterIPs[*]}{@}{"\n"}{end}'
+# 10.96.x.x
+# fd00:10:96::x
 
 kubectl get svc web-service -o wide
 # Shows: CLUSTER-IP  10.96.x.x
@@ -76,21 +77,21 @@ kubectl apply -f ipv6-only-service.yaml
 kubectl get svc internal-v6 -o jsonpath='{.spec.clusterIP}'
 # fd00:10:96::abc
 
-kubectl get svc internal-v6 -o jsonpath='{.spec.ipFamilies}'
-# ["IPv6"]
+kubectl get svc internal-v6 -o jsonpath='{range .spec.ipFamilies[*]}{@}{"\n"}{end}'
+# IPv6
 ```
 
 ## Understand ipFamilyPolicy Values
 
 ```bash
-# SingleStack: one ClusterIP (whichever ipFamilies[0] is, default)
+# SingleStack: one ClusterIP (ipFamilies[0] if set, otherwise the first service cluster IP range)
 # PreferDualStack: both ClusterIPs if cluster supports dual-stack
 # RequireDualStack: both ClusterIPs, fail if cluster is single-stack
 
 # Check existing service IP family
 kubectl get svc my-service -o jsonpath='{.spec.ipFamilyPolicy}'
-kubectl get svc my-service -o jsonpath='{.spec.ipFamilies}'
-kubectl get svc my-service -o jsonpath='{.spec.clusterIPs}'
+kubectl get svc my-service -o jsonpath='{range .spec.ipFamilies[*]}{@}{"\n"}{end}'
+kubectl get svc my-service -o jsonpath='{range .spec.clusterIPs[*]}{@}{"\n"}{end}'
 
 # Patch existing service to prefer dual-stack
 kubectl patch svc my-service -p '{"spec":{"ipFamilyPolicy":"PreferDualStack"}}'
@@ -147,4 +148,4 @@ kubectl exec client -- nslookup web-headless.default.svc.cluster.local
 
 ## Conclusion
 
-Kubernetes Services in dual-stack clusters support IPv6 ClusterIPs through `ipFamilyPolicy: PreferDualStack` or `RequireDualStack`. The `clusterIPs` field shows all assigned ClusterIPs (one per IP family). IPv6 ClusterIPs allow pods to connect to services using IPv6 addresses - useful for testing IPv6 connectivity or for services that must be IPv6-accessible. CoreDNS returns AAAA records for services with IPv6 ClusterIPs. Use `kubectl get svc -o jsonpath='{.spec.clusterIPs}'` to view all ClusterIPs for a service.
+Kubernetes Services in dual-stack clusters support IPv6 ClusterIPs through `ipFamilyPolicy: PreferDualStack` or `RequireDualStack`. The `clusterIPs` field shows all assigned ClusterIPs (one per IP family). IPv6 ClusterIPs allow pods to connect to services using IPv6 addresses - useful for testing IPv6 connectivity or for services that must be IPv6-accessible. CoreDNS returns AAAA records for services with IPv6 ClusterIPs. Use `kubectl get svc -o jsonpath='{range .spec.clusterIPs[*]}{@}{"\n"}{end}'` to view all ClusterIPs for a service.
