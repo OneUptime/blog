@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, SAML, Federation, AWS, IAM, SSO, Infrastructure as Code
 
-Description: Learn how to configure SAML 2.0 federation with AWS IAM using OpenTofu to enable Single Sign-On from external identity providers like Okta or Azure AD.
+Description: Learn how to configure SAML 2.0 federation with AWS IAM using OpenTofu to enable Single Sign-On from external identity providers like Okta or Microsoft Entra ID.
 
 ## Introduction
 
@@ -13,7 +13,7 @@ SAML (Security Assertion Markup Language) federation allows users to authenticat
 ## Creating an IAM SAML Identity Provider
 
 ```hcl
-# The metadata XML is obtained from your IdP (Okta, Azure AD, etc.)
+# The metadata XML is obtained from your IdP (Okta, Microsoft Entra ID, etc.)
 
 resource "aws_iam_saml_provider" "corporate_idp" {
   name                   = "corporate-sso"
@@ -80,7 +80,7 @@ resource "aws_iam_role_policy_attachment" "saml_admin" {
 
 ## Scoping Access with SAML Attributes
 
-Restrict which IdP groups can assume a role using SAML condition attributes.
+Restrict which SAML subjects can assume a role using supported SAML condition attributes.
 
 ```hcl
 resource "aws_iam_role" "saml_devops" {
@@ -98,7 +98,7 @@ resource "aws_iam_role" "saml_devops" {
         StringEquals = {
           "SAML:aud" = "https://signin.aws.amazon.com/saml"
         }
-        # Only allow users in the DevOps group from the IdP
+        # Only allow SAML subjects that match the configured prefix
         "StringLike" = {
           "SAML:sub" = "devops-*"
         }
