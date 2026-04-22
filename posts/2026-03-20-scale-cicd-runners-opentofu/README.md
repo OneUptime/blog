@@ -14,7 +14,7 @@ Scaling CI/CD runners requires matching compute capacity to pipeline demand - to
 
 ```mermaid
 graph TD
-    A[Job Queue Depth<br/>CloudWatch / Metrics] --> B[Scaling Policy<br/>Target Tracking]
+    A[Job Queue Depth<br/>CloudWatch / Metrics] --> B[Scaler<br/>Lambda / Scheduled Actions]
     B --> C[ASG / Node Pool<br/>Scale Out]
     C --> D[Runner Instances<br/>Execute Jobs]
     D --> E[Queue Empty<br/>Scale to Zero]
@@ -23,7 +23,7 @@ graph TD
 ## Queue-Depth-Based Scaling with Lambda
 
 ```hcl
-# scaling.tf - Lambda checks GitHub/GitLab queue and adjusts ASG
+# scaling.tf - Lambda checks the GitHub runner queue and adjusts ASG
 
 resource "aws_lambda_function" "runner_scaler" {
   function_name = "${var.prefix}-runner-scaler"
@@ -79,18 +79,18 @@ resource "aws_autoscaling_schedule" "morning_scale_up" {
   min_size               = 2
   max_size               = var.max_runners
   recurrence             = "0 8 * * MON-FRI"  # 8 AM UTC Mon-Fri
-  time_zone              = "UTC"
+  time_zone              = "Etc/UTC"
 }
 
-# Scale down after hours
+# Scale down after hours Monday-Thursday
 resource "aws_autoscaling_schedule" "evening_scale_down" {
   scheduled_action_name  = "evening-scale-down"
   autoscaling_group_name = aws_autoscaling_group.runners.name
   desired_capacity       = 0
   min_size               = 0
   max_size               = var.max_runners
-  recurrence             = "0 18 * * MON-FRI"  # 6 PM UTC Mon-Fri
-  time_zone              = "UTC"
+  recurrence             = "0 18 * * MON-THU"  # 6 PM UTC Mon-Thu
+  time_zone              = "Etc/UTC"
 }
 
 # Zero capacity on weekends
@@ -101,7 +101,7 @@ resource "aws_autoscaling_schedule" "weekend_zero" {
   min_size               = 0
   max_size               = var.max_runners
   recurrence             = "0 18 * * FRI"
-  time_zone              = "UTC"
+  time_zone              = "Etc/UTC"
 }
 ```
 
@@ -117,7 +117,7 @@ resource "aws_eks_node_group" "ci_runners" {
   node_role_arn   = var.node_role_arn
   subnet_ids      = var.private_subnet_ids
 
-  instance_types = ["c6i.xlarge", "c6a.xlarge", "c5.xlarge"]
+  instance_types = ["c7i.xlarge", "c7a.xlarge", "c6i.xlarge", "c6a.xlarge", "c5.xlarge", "c5a.xlarge"]
   capacity_type  = "SPOT"
 
   scaling_config {
@@ -127,14 +127,34 @@ resource "aws_eks_node_group" "ci_runners" {
   }
 
   labels = {
-    "node-role"                   = "ci-runner"
-    "k8s.io/cluster-autoscaler/enabled" = "true"
+    "node-role" = "ci-runner"
   }
 
   taint {
     key    = "dedicated"
     value  = "ci-runners"
     effect = "NO_SCHEDULE"
+  }
+}
+
+# Tags used by Cluster Autoscaler when scaling this node group from zero
+resource "aws_autoscaling_group_tag" "ci_runner_label" {
+  autoscaling_group_name = aws_eks_node_group.ci_runners.resources[0].autoscaling_groups[0].name
+
+  tag {
+    key                 = "k8s.io/cluster-autoscaler/node-template/label/node-role"
+    value               = "ci-runner"
+    propagate_at_launch = true
+  }
+}
+
+resource "aws_autoscaling_group_tag" "ci_runner_taint" {
+  autoscaling_group_name = aws_eks_node_group.ci_runners.resources[0].autoscaling_groups[0].name
+
+  tag {
+    key                 = "k8s.io/cluster-autoscaler/node-template/taint/dedicated"
+    value               = "ci-runners:NoSchedule"
+    propagate_at_launch = true
   }
 }
 
@@ -155,9 +175,11 @@ resource "helm_release" "cluster_autoscaler" {
       awsRegion = var.aws_region
 
       # Scale down aggressively for cost savings
-      scaleDownUnneededTime          = "2m"
-      scaleDownDelayAfterAdd         = "2m"
-      scaleDownUtilizationThreshold  = 0.5
+      extraArgs = {
+        "scale-down-unneeded-time"         = "2m"
+        "scale-down-delay-after-add"       = "2m"
+        "scale-down-utilization-threshold" = "0.5"
+      }
 
       rbac = {
         serviceAccount = {
@@ -196,10 +218,11 @@ resource "aws_cloudwatch_dashboard" "runners" {
       {
         type = "metric"
         properties = {
-          title  = "Spot Instance Savings"
-          period = 3600
+          title  = "Runner Pending and Terminating Capacity"
+          period = 60
           metrics = [
-            ["AWS/EC2Spot", "AvailableInstancePoolsCount"],
+            ["AWS/AutoScaling", "GroupPendingCapacity", "AutoScalingGroupName", aws_autoscaling_group.runners.name],
+            [".", "GroupTerminatingCapacity", ".", "."],
           ]
         }
       }
@@ -211,7 +234,7 @@ resource "aws_cloudwatch_dashboard" "runners" {
 ## Best Practices
 
 - Implement scale-to-zero for non-business-hours - CI workloads are predictable and bursty. Scheduling zero capacity at night and on weekends can reduce runner costs by 60%+.
-- Use Spot instances with diverse instance types - specify at least 5-6 instance types so the ASG can always find available capacity at a good price.
+- Use Spot instances with diverse instance types - specify at least 5-6 instance types so the ASG has more options for available capacity at a good price.
 - Monitor queue depth, not instance count - the right metric to scale on is the number of pending jobs, not CPU utilization. Idle runners waiting for jobs look healthy on CPU metrics but waste money.
-- Set aggressive scale-down thresholds for runner nodes - `scaleDownUnneededTime = 2m` is appropriate for CI nodes since they have no stateful workloads.
+- Set aggressive scale-down thresholds for runner nodes - `scale-down-unneeded-time = 2m` is appropriate for CI nodes since they have no stateful workloads.
 - Tag runner instances with the CI job ID so costs can be attributed to specific pipelines or teams in AWS Cost Explorer.
