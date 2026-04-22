@@ -8,7 +8,7 @@ Description: Configure Azure ExpressRoute to establish a private, dedicated IPv4
 
 ## Introduction
 
-ExpressRoute provides a private, dedicated network connection from your on-premises infrastructure to Azure through a connectivity provider. Unlike VPN connections, ExpressRoute does not traverse the public internet, offering more reliability, consistent latency, and higher throughput (up to 100 Gbps).
+ExpressRoute provides a private, dedicated network connection from your on-premises infrastructure to Azure through a connectivity provider. Unlike VPN connections, ExpressRoute does not traverse the public internet, offering more reliability, consistent latency, and higher throughput. Provider circuits support up to 10 Gbps, while ExpressRoute Direct supports dual 10-Gbps, 100-Gbps, or 400-Gbps connectivity.
 
 ## ExpressRoute Components
 
@@ -46,10 +46,10 @@ After creating the circuit, get the service key:
 az network express-route show \
   --resource-group $RESOURCE_GROUP \
   --name my-er-circuit \
-  --query '{serviceKey:serviceKey, provisioningState:provisioningState, circuitProvisioningState:circuitProvisioningState}'
+  --query '{serviceKey:serviceKey, provisioningState:provisioningState, circuitProvisioningState:circuitProvisioningState, serviceProviderProvisioningState:serviceProviderProvisioningState}'
 ```
 
-Provide the service key to your connectivity provider to provision the physical circuit. Wait for `circuitProvisioningState` to show `Provisioned`.
+Provide the service key to your connectivity provider to provision the physical circuit. Wait for `serviceProviderProvisioningState` to show `Provisioned` and `circuitProvisioningState` to show `Enabled`.
 
 ## Step 2: Configure Private Peering (BGP)
 
@@ -73,13 +73,6 @@ az network express-route peering create \
 ## Step 3: Create an ExpressRoute Gateway
 
 ```bash
-# Create public IP for the ExpressRoute gateway
-az network public-ip create \
-  --resource-group $RESOURCE_GROUP \
-  --name er-gw-pip \
-  --sku Standard \
-  --allocation-method Static
-
 # Create ExpressRoute gateway (not VPN gateway)
 az network vnet-gateway create \
   --resource-group $RESOURCE_GROUP \
@@ -88,7 +81,6 @@ az network vnet-gateway create \
   --vnet prod-vnet \
   --gateway-type ExpressRoute \
   --sku UltraPerformance \
-  --public-ip-address er-gw-pip \
   --no-wait
 ```
 
@@ -122,15 +114,15 @@ az network express-route list-route-tables \
   --resource-group $RESOURCE_GROUP \
   --name my-er-circuit \
   --peering-name AzurePrivatePeering \
-  --device-path primary
+  --path primary
 ```
 
 ## ExpressRoute SKU Options
 
-| SKU Tier | Coverage | Max Circuits per VNet |
+| SKU Tier | Coverage | Max VNet links per circuit |
 |---|---|---|
-| Standard | Azure public regions | 10 |
-| Premium | Global Azure regions + M365 | 10 |
+| Standard | Azure regions in the same geopolitical region | 10 |
+| Premium | Global Azure regions | More than 10, depending on circuit bandwidth |
 
 | SKU Family | Billing |
 |---|---|
@@ -139,8 +131,10 @@ az network express-route list-route-tables \
 
 ## Route Filter for Microsoft Peering
 
+Route filters apply to Microsoft peering only; the `MicrosoftPeering` peering must already exist on the circuit.
+
 ```bash
-# Create route filter for Microsoft 365 services
+# Create route filter for selected Microsoft 365 services
 az network route-filter create \
   --resource-group $RESOURCE_GROUP \
   --name er-route-filter \
@@ -152,6 +146,12 @@ az network route-filter rule create \
   --name allow-m365 \
   --access Allow \
   --communities 12076:5010 12076:5020
+
+az network express-route peering update \
+  --resource-group $RESOURCE_GROUP \
+  --circuit-name my-er-circuit \
+  --name MicrosoftPeering \
+  --route-filter er-route-filter
 ```
 
 ## Conclusion
