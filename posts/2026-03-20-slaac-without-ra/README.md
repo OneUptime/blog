@@ -10,7 +10,7 @@ Description: Understand how IPv6 hosts automatically generate link-local address
 
 ## Introduction
 
-IPv6 hosts generate link-local addresses (fe80::/10 prefix) automatically when an interface is enabled, before any Router Advertisement is received. This process is part of SLAAC but is independent of router prefix delegation. Link-local addresses enable communication within a single link (subnet) without a router. They are used for NDP, routing protocols between directly connected routers, and as the source/destination for many control-plane functions.
+IPv6 hosts generate link-local addresses (fe80::/10 prefix) automatically when an interface is enabled, before any Router Advertisement is received. This process is part of SLAAC but is independent of router-advertised prefixes. Link-local addresses enable communication within a single link (subnet) without a router. They are used for NDP, routing protocols between directly connected routers, and as the source/destination for many control-plane functions.
 
 ## Link-Local Address Generation
 
@@ -19,8 +19,8 @@ Link-Local Address Generation Process:
 
 Step 1: Interface enabled (UP)
   - Host immediately creates a TENTATIVE link-local address
-  - Format: fe80::<interface-identifier>/10
-  - Interface identifier: EUI-64 (from MAC) or random (privacy)
+  - Format: fe80::<interface-identifier>/64
+  - Interface identifier: EUI-64 (from MAC), stable privacy, or OS-specific
 
 Step 2: DAD for link-local address
   - Host sends NS (Neighbor Solicitation) to solicited-node multicast
@@ -33,12 +33,12 @@ Step 3: If no NA received (no conflict):
   - Link-local address is ready to use
 
 Step 4: Host sends Router Solicitation (RS)
-  - Source: fe80::<link-local>
+  - Source: fe80::<link-local> if assigned, or :: if no address is assigned yet
   - Destination: ff02::2 (all routers)
   - Waits for RA to get global prefix
 
-Link-local is ALWAYS assigned (even if no router exists)
-Global SLAAC address requires RA with prefix
+Link-local is normally assigned (even if no router exists)
+Global SLAAC address requires RA with an autonomous prefix
 ```
 
 ## Link-Local Address Properties
@@ -59,15 +59,15 @@ Lifetime: Infinite (permanent)
   Removed only when interface goes down or is deleted
 
 Uniqueness:
-  Must be unique on the link (guaranteed by DAD)
-  Different on each interface (each interface has its own IID)
+  Must be unique on the link (checked by DAD when enabled)
+  Typically different on each interface (each interface has its own IID)
   Can be the same address on different interfaces (scope includes interface)
 
 Usage:
-  NDP: RS, RA, NS, NA use link-local as source
+  NDP: RA uses link-local as source; RS/NS may use :: before an address is assigned
   Routing protocols: OSPFv3, RIPng peer over link-local
-  Default gateway: RA router is specified by link-local address
-  DHCPv6: relay agents use link-local as source
+  Default gateway: RA router is learned from the RA link-local source address
+  DHCPv6: clients use link-local to reach on-link servers/relays
 ```
 
 ## Link-Local Without a Router
@@ -113,8 +113,9 @@ ip -6 addr show eth0 | grep fe80
 #    valid_lft forever preferred_lft forever
 
 # Identify the interface for link-local
-ip -6 addr show | grep fe80
-# The number after "fe80" address: "%eth0" (interface scope)
+ip -o -6 addr show scope link
+# 2: eth0    inet6 fe80::211:22ff:fe33:4455/64 scope link ...
+# Use the interface name as the scope: "%eth0"
 
 # When using link-local: MUST specify the interface
 ping6 fe80::1%eth0    # CORRECT: specify interface scope
@@ -127,13 +128,14 @@ ping6 fe80::1         # WRONG: ambiguous without interface
 ## Forcing/Modifying the Link-Local Address
 
 ```bash
-# Disable automatic link-local generation (unusual)
-sudo sysctl -w net.ipv6.conf.eth0.addr_gen_mode=1  # random, not EUI-64
-sudo sysctl -w net.ipv6.conf.eth0.addr_gen_mode=0  # EUI-64 (default)
+# Change Linux link-local address generation mode
+sudo sysctl -w net.ipv6.conf.eth0.addr_gen_mode=1  # do not generate a link-local address
+sudo sysctl -w net.ipv6.conf.eth0.addr_gen_mode=2  # stable privacy address
+sudo sysctl -w net.ipv6.conf.eth0.addr_gen_mode=0  # EUI-64 (kernel default)
 
 # Manually set a specific link-local address
 # (useful for routers that need predictable link-local addresses)
-sudo ip -6 addr add fe80::1/10 dev eth0
+sudo ip -6 addr add fe80::1/64 dev eth0
 # Note: adds as additional link-local, kernel keeps auto-generated one
 
 # Remove auto-generated link-local and use manual only
@@ -156,25 +158,25 @@ Link-Local in Routing Protocols:
 OSPFv3:
   - Neighbors form adjacency using link-local addresses
   - Link-local as source for hello packets
-  - Next-hop in OSPFv3 LSAs is link-local address
+  - Link-LSAs carry the router's link-local address for next-hop calculation
   - Command: show ipv6 ospf neighbor (shows link-local of neighbor)
 
 RIPng:
-  - Router advertisements use link-local as next-hop
+  - RIPng updates can specify a link-local next-hop RTE
   - Peers use link-local addresses
 
 BGP over IPv6:
   - Can use link-local as BGP peer address
   - Requires specifying interface
-  - Used in unnumbered BGP (RFC 5549)
+  - Used in unnumbered BGP, often with RFC 8950 extended next-hop
   - Common in data center fabrics
 
 Default gateway from RA:
-  - RA always specifies router link-local as gateway
-  - Hosts add "default via fe80::1 dev eth0"
+  - RA's link-local source address identifies the default router
+  - Hosts add a route such as "default via fe80::1 dev eth0"
   - Not routable but sufficient for link-local next-hop lookup
 ```
 
 ## Conclusion
 
-IPv6 link-local addresses (fe80::/10) are generated automatically by every IPv6-capable host when an interface is enabled, before any Router Advertisement arrives. They enable link-local communication, NDP, and routing protocol peering without a global prefix. Link-local addresses are permanent, never expire, and must include the interface scope when used in commands (`fe80::1%eth0`). While link-local alone is insufficient for internet access, it is the foundation of IPv6 networking and enables initial bootstrapping of the network, including receiving the Router Advertisements that trigger SLAAC global address generation.
+IPv6 link-local addresses (fe80::/10) are generated automatically by IPv6-capable hosts when IPv6 is enabled on an interface, before any Router Advertisement arrives. They enable link-local communication, NDP, and routing protocol peering without a global prefix. Link-local addresses are permanent, never expire, and must include the interface scope when used in commands (`fe80::1%eth0`). While link-local alone is insufficient for internet access, it is the foundation of IPv6 networking and enables initial bootstrapping of the network, including receiving the Router Advertisements that trigger SLAAC global address generation.
