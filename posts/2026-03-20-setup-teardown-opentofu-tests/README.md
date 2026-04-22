@@ -14,7 +14,7 @@ OpenTofu tests automatically handle cleanup: after a test file completes, the fr
 
 OpenTofu automatically destroys applied resources when a test file completes:
 
-```hcl
+```text
 Test lifecycle:
 1. Run "setup" block → apply → creates VPC, subnets
 2. Run "test" block → apply → creates main resources
@@ -36,9 +36,24 @@ terraform {
   }
 }
 
+variable "vpc_cidr" {
+  type = string
+}
+
+variable "suffix" {
+  type = string
+}
+
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
 resource "aws_vpc" "test" {
   cidr_block = var.vpc_cidr
-  tags       = { Name = "test-vpc-${var.suffix}" }
+  tags = {
+    Name    = "test-vpc-${var.suffix}"
+    TestRun = var.suffix
+  }
 }
 
 resource "aws_subnet" "private" {
@@ -46,11 +61,19 @@ resource "aws_subnet" "private" {
   vpc_id            = aws_vpc.test.id
   cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 1)
   availability_zone = data.aws_availability_zones.available.names[count.index]
+  tags = {
+    Name    = "test-private-${count.index}-${var.suffix}"
+    TestRun = var.suffix
+  }
 }
 
 resource "aws_security_group" "test" {
   name   = "test-sg-${var.suffix}"
   vpc_id = aws_vpc.test.id
+  tags = {
+    Name    = "test-sg-${var.suffix}"
+    TestRun = var.suffix
+  }
 }
 ```
 
@@ -131,7 +154,7 @@ run "validate_configuration" {
 
 ## Handling Teardown Failures
 
-If teardown fails (resources can't be destroyed), OpenTofu reports the error but continues:
+If teardown fails (resources can't be destroyed), OpenTofu reports the error and writes an `errored_test.tfstate` file if resources remain in state:
 
 ```bash
 tofu test
@@ -139,12 +162,10 @@ tofu test
 # tests/integration.tftest.hcl... in progress
 #   run "setup"... pass
 #   run "creates_database"... pass
-# tests/integration.tftest.hcl... tearing down
-#   run "creates_database"... destroyed
-#   run "setup"... ERROR: VPC has dependencies
 #
-# Warning: Cleanup failed
-# Some resources could not be destroyed and may need manual cleanup.
+# Error: deleting EC2 VPC: DependencyViolation
+# OpenTofu reports the left-over resources and writes them to errored_test.tfstate.
+# Use that state file to find and clean up the resources manually.
 ```
 
 To prevent orphaned resources, use unique naming:
@@ -157,15 +178,17 @@ variables {
 }
 ```
 
-## Conditional Setup Based on Environment
+## Setup for a Real AWS Environment
 
 ```hcl
 # tests/integration.tftest.hcl
 
 variables {
-  # Whether to create real AWS resources or use mocks
-  use_real_aws = true
-  region       = "us-east-1"
+  region = "us-east-1"
+}
+
+provider "aws" {
+  region = var.region
 }
 
 run "setup_networking" {
@@ -193,16 +216,19 @@ run "test_with_real_vpc" {
 ```yaml
 # Ensure cleanup happens even if tests fail
 - name: Run integration tests
-  run: tofu test tests/integration.tftest.hcl
+  run: |
+    tofu init
+    tofu test -filter=tests/integration.tftest.hcl
   # OpenTofu handles teardown automatically, even on test failure
 
-- name: Emergency cleanup (if OpenTofu teardown failed)
+- name: List resources for emergency cleanup (if OpenTofu teardown failed)
   if: always()
   run: |
     aws resourcegroupstaggingapi get-resources \
-      --tag-filters Key=TestRun,Values=ci-${{ github.run_id }} \
+      --tag-filters Key=TestRun \
       --query 'ResourceTagMappingList[*].ResourceARN' \
-      --output text | xargs -I{} aws resource-cleanup {}
+      --output text
+    # Delete the returned ARNs with service-specific AWS CLI commands.
 ```
 
 ## Conclusion
