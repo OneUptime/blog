@@ -43,7 +43,8 @@ Guest shares allow any user on the network to connect without credentials. They'
 
     # Read-only
     read only = yes
-    write list =       # No one has write access
+    # No one has write access
+    write list =
 
     # Restrict to the internal IPv4 subnet
     hosts allow = 192.168.1.0/24
@@ -61,7 +62,8 @@ Guest shares allow any user on the network to connect without credentials. They'
     guest ok = yes
     writable = yes
 
-    # Guests can upload but not read other users' files
+    # New files/directories are private to the forced Unix account.
+    # Anonymous guests share that account, so this is not per-client isolation.
     create mask = 0600
     directory mask = 0700
 
@@ -86,9 +88,9 @@ mkdir -p /srv/samba/public /srv/samba/dropbox
 chown root:samba-guest /srv/samba/public
 chmod 755 /srv/samba/public
 
-# Dropbox: writable by samba-guest, not readable by others
-chown samba-guest:samba-guest /srv/samba/dropbox
-chmod 1733 /srv/samba/dropbox   # sticky bit: can write, can't delete others' files
+# Dropbox: writable by the samba-guest group, not listable by that group
+chown root:samba-guest /srv/samba/dropbox
+chmod 1730 /srv/samba/dropbox   # group can create/traverse; sticky bit set
 
 # Verify nobody is the guest fallback user
 getent passwd nobody
@@ -100,18 +102,19 @@ getent passwd nobody
 # Validate configuration
 testparm
 
-# Restart Samba
+# Restart Samba (service names vary by distribution)
 systemctl restart smb nmb
+# Debian/Ubuntu commonly use: systemctl restart smbd nmbd
 ```
 
 ## Testing Guest Access
 
 ```bash
 # Connect without credentials (anonymous guest)
-smbclient //192.168.1.10/public
+smbclient //192.168.1.10/public -N   # -N = no password prompt
 
-# Or explicitly as guest
-smbclient //192.168.1.10/public -N   # -N = no password
+# Or explicitly use an empty username and password
+smbclient //192.168.1.10/public -U%
 
 # Mount the guest share on a Linux client
 mount -t cifs //192.168.1.10/public /mnt/public -o guest
@@ -122,7 +125,7 @@ mount -t cifs //192.168.1.10/public /mnt/public -o guest
 
 ## Key Takeaways
 
-- `map to guest = bad user` allows clients who fail authentication to connect as guest.
+- `map to guest = bad user` maps unknown usernames to the guest account; bad passwords for existing users are still rejected.
 - `guest ok = yes` in a share definition enables anonymous access.
 - Always combine with `hosts allow` to restrict guest access to trusted IPv4 ranges.
 - Use `force user` and `force group` with a dedicated low-privilege account to isolate guest file operations.
