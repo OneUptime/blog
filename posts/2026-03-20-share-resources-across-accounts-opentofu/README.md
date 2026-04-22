@@ -6,7 +6,7 @@ Tags: OpenTofu, Multi-Account, Resource Sharing, AWS RAM, Infrastructure as Code
 
 Description: Learn how to share AWS resources across accounts with OpenTofu using AWS Resource Access Manager (RAM) and cross-account IAM roles.
 
-Sharing resources across AWS accounts - VPCs, Transit Gateways, Route 53 zones, AMIs - avoids resource duplication and reduces costs. AWS Resource Access Manager (RAM) and cross-account IAM roles are the primary mechanisms, and both are manageable with OpenTofu.
+Sharing resources across AWS accounts - VPC subnets, Transit Gateways, Route 53 Resolver rules, AMIs - avoids resource duplication and reduces costs. AWS Resource Access Manager (RAM) and cross-account IAM roles are the primary mechanisms, and both are manageable with OpenTofu.
 
 ## Sharing a VPC Subnet with AWS RAM
 
@@ -44,22 +44,9 @@ resource "aws_ram_principal_association" "production" {
 }
 ```
 
-## Accepting the Resource Share (Production Account)
+## Accessing the Resource Share (Production Account)
 
-```hcl
-provider "aws" {
-  alias  = "production"
-  region = "us-east-1"
-  assume_role {
-    role_arn = "arn:aws:iam::${var.production_account_id}:role/DeploymentRole"
-  }
-}
-
-resource "aws_ram_resource_share_accepter" "accept_subnets" {
-  provider  = aws.production
-  share_arn = aws_ram_resource_share.vpc_subnets.arn
-}
-```
+For a subnet share within AWS Organizations, there is no invitation to accept. When RAM sharing with AWS Organizations is enabled, the production account gets access automatically after the principal association is created, so do not add an `aws_ram_resource_share_accepter` for this share.
 
 ## Sharing an AMI Across Accounts
 
@@ -96,6 +83,8 @@ resource "aws_s3_bucket_policy" "cross_account" {
 }
 ```
 
+The production account's role or user still needs an identity-based IAM policy that allows the same S3 actions.
+
 ## Cross-Account KMS Key Policy
 
 ```hcl
@@ -125,6 +114,8 @@ resource "aws_kms_key" "shared" {
 }
 ```
 
+The production account's role or user also needs an IAM policy allowing those KMS actions on this key ARN; the key policy alone is not sufficient for cross-account use.
+
 ## Conclusion
 
-Cross-account resource sharing in OpenTofu combines AWS RAM for managed sharing (subnets, Transit Gateways, License Manager), resource-based policies (S3, KMS, ECR) for bucket and key sharing, and AMI launch permissions for shared machine images. Use provider aliases for each account and declare the sharing resources in the account that owns them.
+Cross-account resource sharing in OpenTofu combines AWS RAM for managed sharing (subnets, Transit Gateways, License Manager), resource-based policies plus consumer-account IAM permissions (S3, KMS, ECR) for bucket and key sharing, and AMI launch permissions for shared machine images. Use provider aliases for each account and declare the sharing resources in the account that owns them.
