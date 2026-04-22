@@ -43,13 +43,13 @@ graph TD
     read only = yes
 
     # Allow specific users to write
-    write list = @data-writers, admin
+    write list = @samba, admin
 
     # Restrict access to the internal IPv4 subnet
     hosts allow = 192.168.1.0/24
     hosts deny = ALL
 
-    # Force all files to be created with these permissions
+    # Set maximum permissions for newly created files/directories
     create mask = 0664
     directory mask = 0775
 
@@ -69,9 +69,6 @@ graph TD
 
     # All devteam members have read/write access
     writable = yes
-
-    # Users NOT in the group are denied
-    invalid users =
 
     create mask = 0660
     directory mask = 0770
