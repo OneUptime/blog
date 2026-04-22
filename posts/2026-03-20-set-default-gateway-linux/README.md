@@ -8,14 +8,14 @@ Description: Set the default gateway on Linux using ip route to define where tra
 
 ## Introduction
 
-The default gateway is the router that a host sends traffic to when no specific route matches the destination. Without a default gateway, a host can only communicate with directly connected networks. Setting the correct default gateway is essential for internet connectivity.
+The default gateway is the router that a host sends traffic to when no specific route matches the destination. Without a default gateway, a host is typically limited to directly connected networks and any explicitly configured routes. Setting the correct default gateway is essential for internet connectivity.
 
 ## Set the Default Gateway
 
 ```bash
 # Add a default gateway
 
-# 'default' is equivalent to 0.0.0.0/0
+# For IPv4, 'default' is equivalent to 0.0.0.0/0
 ip route add default via 192.168.1.1
 
 # Or be explicit
@@ -28,7 +28,7 @@ ip route add default via 192.168.1.1 dev eth0
 ## View the Current Default Gateway
 
 ```bash
-# Show all routes (default route appears as '0.0.0.0/0' or 'default')
+# Show all routes (the default route normally appears as 'default')
 ip route show
 
 # Show only the default route
@@ -53,10 +53,10 @@ ip route replace default via 192.168.1.254
 
 ## Set Default Gateway via DHCP
 
-If using DHCP, the gateway is provided automatically. Manually trigger DHCP:
+If using DHCP, the gateway can be provided automatically by the DHCP server. Manually trigger DHCP:
 
 ```bash
-dhclient eth0    # Renews DHCP lease including gateway
+dhclient eth0    # Requests a DHCP lease including gateway information
 ```
 
 ## Persistent Default Gateway
@@ -77,8 +77,8 @@ network:
 ### nmcli (RHEL)
 
 ```bash
-nmcli connection modify eth0 ipv4.gateway "192.168.1.1"
-nmcli connection up eth0
+nmcli connection modify "<connection-name>" ipv4.gateway "192.168.1.1"
+nmcli connection up "<connection-name>"
 ```
 
 ### systemd-networkd
