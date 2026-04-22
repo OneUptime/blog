@@ -55,7 +55,7 @@ spec:
 
 ## Creating a Custom Seccomp Profile
 
-For tighter control, create a custom profile on each node at `/var/lib/kubelet/seccomp/profiles/custom-nginx.json`:
+For tighter control, create a custom profile on each node at `/var/lib/kubelet/seccomp/profiles/custom-nginx.json` after auditing the workload's actual syscalls. The example below shows the OCI seccomp profile format, but the final syscall list must be generated and tested for your image, runtime, architecture, and kernel:
 
 ```json
 {
@@ -87,17 +87,17 @@ securityContext:
 
 ## Enabling Seccomp via Rancher UI
 
-In the Rancher UI, navigate to your workload, click **Edit**, expand **Security Context**, and set the **Seccomp Profile** field to `RuntimeDefault` or your custom profile path.
+In Rancher v2.14.0 and later, navigate to your workload, click **Edit**, expand **Security Context**, and set **Seccomp Profile** to `RuntimeDefault`. For a custom profile, choose `Localhost` and set **Localhost Profile** to `profiles/custom-nginx.json`.
 
 ## Auditing with Logs
 
-To audit which syscalls a container attempts, temporarily use `SCMP_ACT_LOG` as the default action and review kernel logs:
+To audit which syscalls a container attempts, temporarily use `SCMP_ACT_LOG` as the default action and review the node's kernel or audit logs:
 
 ```bash
-kubectl logs -n kube-system <node-agent-pod>
-# or on the node:
-
-dmesg | grep "seccomp"
+sudo journalctl -k | grep -i "seccomp"
+# or, depending on the node OS:
+sudo dmesg | grep -i "seccomp"
+sudo grep -i "seccomp" /var/log/syslog
 ```
 
 ## Conclusion
