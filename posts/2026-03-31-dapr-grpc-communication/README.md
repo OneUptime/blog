@@ -103,7 +103,7 @@ func main() {
 
 ## Enabling gRPC Proxying (Pass-through)
 
-For native gRPC-to-gRPC communication, Dapr supports gRPC proxying. Since Dapr v1.7, gRPC proxying is stable and enabled by default — no additional configuration is needed.
+For native gRPC-to-gRPC communication, Dapr supports gRPC proxying. Since Dapr v1.7, gRPC proxying is stable and enabled by default - no additional configuration is needed.
 
 For older Dapr versions (prior to v1.7), enable gRPC proxying in the Dapr Configuration:
 

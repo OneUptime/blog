@@ -16,7 +16,7 @@ By default, Dapr's placement service treats actor types globally. With namespace
 
 ## How Namespace-Scoped Actor Placement Works
 
-Dapr's placement service automatically partitions actor placement by namespace when actors are deployed in separate Kubernetes namespaces. Sidecars in one namespace do not receive placement information for applications in another namespace. No special Helm configuration is needed to enable this — it is the default behavior of the placement service.
+Dapr's placement service automatically partitions actor placement by namespace when actors are deployed in separate Kubernetes namespaces. Sidecars in one namespace do not receive placement information for applications in another namespace. No special Helm configuration is needed to enable this - it is the default behavior of the placement service.
 
 To use namespaced actors, deploy your actor services and their state store components in separate Kubernetes namespaces, as shown in the sections below.
 

@@ -106,7 +106,7 @@ log.Printf("Decrypted: %s", decrypted)
 
 ## Wrapping and Unwrapping Keys
 
-The Dapr Cryptography building block supports envelope encryption (wrapping a data encryption key with a key-encrypting key) through the Subtle Crypto gRPC API (`SubtleWrapKeyAlpha1` / `SubtleUnwrapKeyAlpha1`). However, these operations are not yet exposed in the Go SDK's high-level client. The high-level `Encrypt` method handles envelope encryption internally when you specify a `KeyWrapAlgorithm` — Dapr generates a random data encryption key, wraps it with the named key, and includes the wrapped key in the ciphertext output.
+The Dapr Cryptography building block supports envelope encryption (wrapping a data encryption key with a key-encrypting key) through the Subtle Crypto gRPC API (`SubtleWrapKeyAlpha1` / `SubtleUnwrapKeyAlpha1`). However, these operations are not yet exposed in the Go SDK's high-level client. The high-level `Encrypt` method handles envelope encryption internally when you specify a `KeyWrapAlgorithm` - Dapr generates a random data encryption key, wraps it with the named key, and includes the wrapped key in the ciphertext output.
 
 To use an RSA key for key wrapping during encryption:
 

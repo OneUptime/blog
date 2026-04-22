@@ -47,7 +47,7 @@ The `metadataDevice` field places both WAL and DB on the specified device. Rook 
 
 ## Controlling WAL and DB Partition Sizes
 
-Rook does not support placing WAL and DB on separate devices via config keys — `metadataDevice` always places both on the same device. However, you can control the size of each partition using `databaseSizeMB` and `walSizeMB`:
+Rook does not support placing WAL and DB on separate devices via config keys - `metadataDevice` always places both on the same device. However, you can control the size of each partition using `databaseSizeMB` and `walSizeMB`:
 
 ```yaml
 spec:

@@ -97,7 +97,7 @@ locals {
 
 ## Use Case 5: Fallback Across Multiple Expressions
 
-`try` accepts multiple fallback expressions, evaluating them left to right. Each expression must actually raise an error for the next to be tried — `null` is a valid value, not an error, so plain references to nullable variables will not fall through:
+`try` accepts multiple fallback expressions, evaluating them left to right. Each expression must actually raise an error for the next to be tried - `null` is a valid value, not an error, so plain references to nullable variables will not fall through:
 
 ```hcl
 variable "tags" {

@@ -28,10 +28,10 @@ ceph mgr module ls | grep mds_autoscaler
 
 The autoscaler monitors the CephFS file system map (FSMap) for changes to:
 
-- `max_mds` — the configured number of active MDS ranks
-- `standby_count_wanted` — the configured number of desired standby daemons
+- `max_mds` - the configured number of active MDS ranks
+- `standby_count_wanted` - the configured number of desired standby daemons
 
-When these settings change, the module calculates the total number of MDS daemons needed (`max_mds + standby_count_wanted`) and updates the orchestrator's MDS service placement specification so the correct number of daemon processes are deployed. The module does not make autonomous scaling decisions based on workload metrics — it automates MDS daemon deployment in response to administrator-configured settings.
+When these settings change, the module calculates the total number of MDS daemons needed (`max_mds + standby_count_wanted`) and updates the orchestrator's MDS service placement specification so the correct number of daemon processes are deployed. The module does not make autonomous scaling decisions based on workload metrics - it automates MDS daemon deployment in response to administrator-configured settings.
 
 ## Checking Current MDS Configuration
 

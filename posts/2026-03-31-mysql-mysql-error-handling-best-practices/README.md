@@ -47,7 +47,7 @@ END $$
 DELIMITER ;
 ```
 
-The `EXIT HANDLER` executes the handler body when the condition is raised, then exits the enclosing `BEGIN...END` block. It does not perform an automatic rollback — add an explicit `ROLLBACK` in the handler body if needed.
+The `EXIT HANDLER` executes the handler body when the condition is raised, then exits the enclosing `BEGIN...END` block. It does not perform an automatic rollback - add an explicit `ROLLBACK` in the handler body if needed.
 
 ## Deadlock Handling in Application Code
 

@@ -27,7 +27,7 @@ When `user_id` is the sharding key, each shard owns all rows for a given `user_i
 
 When you know the aggregation is already complete on shards, instruct the initiator not to re-merge. This setting accepts three values:
 
-- `0` (default): Normal behavior — the initiator merges partial aggregation states from all shards.
+- `0` (default): Normal behavior - the initiator merges partial aggregation states from all shards.
 - `1`: The initiator does not merge aggregation states and simply proxies shard results. Note that `ORDER BY` and `LIMIT` are also not applied on the initiator.
 - `2`: Same as `1`, but the initiator still applies `ORDER BY` and `LIMIT`. This is usually the more practical choice.
 
@@ -65,7 +65,7 @@ GROUP BY user_id
 HAVING total > 1000;
 ```
 
-With `HAVING`, each shard filters out groups that do not meet the threshold before sending results to the initiator, reducing network traffic. Avoid wrapping the aggregation in a subquery with an outer `WHERE` for this purpose — predicate push-down through subqueries on Distributed tables is unreliable and may prevent aggregation from being pushed to shards.
+With `HAVING`, each shard filters out groups that do not meet the threshold before sending results to the initiator, reducing network traffic. Avoid wrapping the aggregation in a subquery with an outer `WHERE` for this purpose - predicate push-down through subqueries on Distributed tables is unreliable and may prevent aggregation from being pushed to shards.
 
 ## Monitor Aggregation Memory
 

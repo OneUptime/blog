@@ -98,7 +98,7 @@ ClickHouse supports regex-based masking of query logs and server logs so sensiti
 </query_masking_rules>
 ```
 
-Matched patterns are rewritten before entries are written to `system.query_log`, the server log files, and the process list. This protects against accidental PII exposure in log-based audits, but it does not affect the data returned by actual queries — use views or row policies for that.
+Matched patterns are rewritten before entries are written to `system.query_log`, the server log files, and the process list. This protects against accidental PII exposure in log-based audits, but it does not affect the data returned by actual queries - use views or row policies for that.
 
 ## Practical Example - GDPR-Compliant Query Layer
 

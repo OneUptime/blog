@@ -76,7 +76,7 @@ from fastapi import FastAPI, Request
 app = FastAPI()
 
 def decode_jwt_claims(token: str) -> dict:
-    """Decode claims from a validated JWT (no signature check needed — Dapr already validated it)."""
+    """Decode claims from a validated JWT (no signature check needed - Dapr already validated it)."""
     payload = token.split(".")[1]
     # Add padding if needed
     payload += "=" * (4 - len(payload) % 4)
@@ -84,7 +84,7 @@ def decode_jwt_claims(token: str) -> dict:
 
 @app.get("/api/profile")
 async def get_profile(request: Request):
-    # Dapr has already validated the token — extract claims from it
+    # Dapr has already validated the token - extract claims from it
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.removeprefix("Bearer ")
     claims = decode_jwt_claims(token)
@@ -134,7 +134,7 @@ curl -H "Authorization: Bearer $EXPIRED_TOKEN" \
 ```go
 func claimExtractorMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        // Dapr has already validated the token — extract claims from it
+        // Dapr has already validated the token - extract claims from it
         authHeader := r.Header.Get("Authorization")
         if !strings.HasPrefix(authHeader, "Bearer ") {
             http.Error(w, "missing user context", http.StatusUnauthorized)
@@ -142,7 +142,7 @@ func claimExtractorMiddleware(next http.Handler) http.Handler {
         }
         token := strings.TrimPrefix(authHeader, "Bearer ")
 
-        // Decode the payload (no signature check needed — Dapr validated it)
+        // Decode the payload (no signature check needed - Dapr validated it)
         parts := strings.Split(token, ".")
         if len(parts) != 3 {
             http.Error(w, "invalid token format", http.StatusUnauthorized)

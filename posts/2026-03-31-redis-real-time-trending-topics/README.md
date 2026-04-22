@@ -25,7 +25,7 @@ def record_mention(topic: str):
     now = time.time()
     day_bucket = int(now // 86400)
     key = f"trending:topics:{day_bucket}"
-    # Weight by position in the day — a simple daily decay cycle
+    # Weight by position in the day - a simple daily decay cycle
     hours_elapsed = (now % 86400) / 3600
     decay_score = math.exp(-DECAY_FACTOR * hours_elapsed)
     r.zincrby(key, decay_score, topic)

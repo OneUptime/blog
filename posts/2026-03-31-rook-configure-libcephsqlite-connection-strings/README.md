@@ -18,7 +18,7 @@ The libcephsqlite connection string follows SQLite's URI format:
 file:///<pool>:[<namespace>]/<dbname>?vfs=ceph
 ```
 
-Note the triple `///` — the URI authority must be empty or localhost for SQLite to parse it correctly.
+Note the triple `///` - the URI authority must be empty or localhost for SQLite to parse it correctly.
 
 Key components:
 - `<pool>` - the RADOS pool name (or `*<poolid>` to use a numeric pool ID)
@@ -148,4 +148,4 @@ validate_ceph_connection("mypool", "test.db")
 
 ## Summary
 
-libcephsqlite connection strings use SQLite's URI format with `?vfs=ceph` to route the connection through the RADOS backend. The path follows the format `file:///pool:[namespace]/dbname?vfs=ceph`, with the pool and optional namespace separated by a colon. Configuration such as the Ceph config path, keyring, and client ID are set via environment variables (`CEPH_CONF`, `CEPH_KEYRING`, `CEPH_ARGS`), not through URI query parameters. Note that libcephsqlite does not yet support concurrent readers — all database access is protected by a single exclusive lock. WAL mode is supported only with `locking_mode=EXCLUSIVE`. Always create the pool and Ceph auth user with appropriate OSD caps before attempting connections, and test connectivity with a simple `SELECT 1` before deploying to production.
+libcephsqlite connection strings use SQLite's URI format with `?vfs=ceph` to route the connection through the RADOS backend. The path follows the format `file:///pool:[namespace]/dbname?vfs=ceph`, with the pool and optional namespace separated by a colon. Configuration such as the Ceph config path, keyring, and client ID are set via environment variables (`CEPH_CONF`, `CEPH_KEYRING`, `CEPH_ARGS`), not through URI query parameters. Note that libcephsqlite does not yet support concurrent readers - all database access is protected by a single exclusive lock. WAL mode is supported only with `locking_mode=EXCLUSIVE`. Always create the pool and Ceph auth user with appropriate OSD caps before attempting connections, and test connectivity with a simple `SELECT 1` before deploying to production.

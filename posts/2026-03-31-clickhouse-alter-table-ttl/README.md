@@ -40,7 +40,7 @@ ALTER TABLE events
     MODIFY COLUMN sensitive_data REMOVE TTL;
 ```
 
-Use `MODIFY COLUMN ... REMOVE TTL` to drop the TTL from a column. Reissuing `MODIFY COLUMN` without the `TTL` clause does **not** remove an existing TTL — the `REMOVE TTL` clause is required.
+Use `MODIFY COLUMN ... REMOVE TTL` to drop the TTL from a column. Reissuing `MODIFY COLUMN` without the `TTL` clause does **not** remove an existing TTL - the `REMOVE TTL` clause is required.
 
 ## Table-Level TTL
 

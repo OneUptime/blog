@@ -57,7 +57,7 @@ WHERE has(s2GetNeighbors(geoToS2(37.6156, 55.7522)), geoToS2(longitude, latitude
 
 ## Building a Bounding Rectangle
 
-`s2RectAdd(s2PointLow, s2PointHigh, s2Point)` incrementally expands an S2 latitude/longitude rectangle to contain a given cell. It takes three UInt64 arguments — the low and high points of the existing rectangle and the new point to include — and returns a tuple `(s2PointLow, s2PointHigh)`:
+`s2RectAdd(s2PointLow, s2PointHigh, s2Point)` incrementally expands an S2 latitude/longitude rectangle to contain a given cell. It takes three UInt64 arguments - the low and high points of the existing rectangle and the new point to include - and returns a tuple `(s2PointLow, s2PointHigh)`:
 
 ```sql
 SELECT s2RectAdd(
@@ -78,7 +78,7 @@ SELECT s2RectUnion(
 
 ## Checking Cell Containment
 
-`s2RectContains(s2PointLow, s2PointHigh, s2Point)` checks whether a bounding rectangle contains a given S2 cell. It takes three UInt64 arguments — the low and high points of the rectangle and the point to test:
+`s2RectContains(s2PointLow, s2PointHigh, s2Point)` checks whether a bounding rectangle contains a given S2 cell. It takes three UInt64 arguments - the low and high points of the rectangle and the point to test:
 
 ```sql
 SELECT s2RectContains(

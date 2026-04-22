@@ -12,7 +12,7 @@ The Ceph Manager crash module collects crash reports from all Ceph daemons (OSDs
 
 ## The Crash Module
 
-The crash module is always enabled by default and cannot be disabled. No action is needed to activate it — crash data collection begins automatically when the Ceph cluster is running.
+The crash module is always enabled by default and cannot be disabled. No action is needed to activate it - crash data collection begins automatically when the Ceph cluster is running.
 
 By default, crash data is retained for a configurable period (1 year) before being automatically pruned.
 

@@ -34,7 +34,7 @@ clickhouse-git-import \
 
 ## Tables and Loading the Data
 
-The tool does not connect to ClickHouse. You create the tables yourself — the exact DDL is printed by `clickhouse-git-import --help` — and then load the TSV files with `clickhouse-client`:
+The tool does not connect to ClickHouse. You create the tables yourself - the exact DDL is printed by `clickhouse-git-import --help` - and then load the TSV files with `clickhouse-client`:
 
 ```bash
 clickhouse-client --query "CREATE DATABASE IF NOT EXISTS git_analytics"
@@ -115,7 +115,7 @@ Import multiple repositories into the same database with different table prefixe
 
 ## Re-importing After New Commits
 
-Each run is a full snapshot — the tool has no incremental mode. To refresh the data, truncate the tables, re-run the import to regenerate the TSVs, and reload them:
+Each run is a full snapshot - the tool has no incremental mode. To refresh the data, truncate the tables, re-run the import to regenerate the TSVs, and reload them:
 
 ```bash
 clickhouse-client --database git_analytics --query "TRUNCATE TABLE commits"

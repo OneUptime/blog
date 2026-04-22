@@ -10,7 +10,7 @@ Description: A practical guide to instrumenting Azure App Services with OpenTele
 
 > Azure App Service is a Platform-as-a-Service offering. You don't get the host, you don't get root, and you can't run a daemon next to your app the way you would on a VM. That changes how you approach OpenTelemetry.
 
-On IaaS you'd drop a Collector agent on the box, point your application at `localhost:4318`, and be done. On App Service you have to work around a locked-down sandbox — which means in-process instrumentation in the app itself, and a separate pipeline for the platform-level telemetry the SDK can't see. This post walks through a setup that covers both.
+On IaaS you'd drop a Collector agent on the box, point your application at `localhost:4318`, and be done. On App Service you have to work around a locked-down sandbox - which means in-process instrumentation in the app itself, and a separate pipeline for the platform-level telemetry the SDK can't see. This post walks through a setup that covers both.
 
 ---
 
@@ -18,8 +18,8 @@ On IaaS you'd drop a Collector agent on the box, point your application at `loca
 
 There are two telemetry streams on App Service, and you need both:
 
-1. **Application telemetry** — traces, metrics, and logs emitted by your code. The OpenTelemetry SDK lives inside your app process and exports OTLP directly (or to a Collector).
-2. **Platform telemetry** — HTTP logs, console logs, platform/container events, and platform metrics such as CPU, memory, HTTP queue length, and response times. These come from the App Service runtime itself and are exposed through **Diagnostic Settings**. They need a separate path to OTLP.
+1. **Application telemetry** - traces, metrics, and logs emitted by your code. The OpenTelemetry SDK lives inside your app process and exports OTLP directly (or to a Collector).
+2. **Platform telemetry** - HTTP logs, console logs, platform/container events, and platform metrics such as CPU, memory, HTTP queue length, and response times. These come from the App Service runtime itself and are exposed through **Diagnostic Settings**. They need a separate path to OTLP.
 
 Treat them as two pipelines that happen to land in the same backend. Teams that only do #1 are blind when the platform misbehaves (scale-in killing requests, cold starts, quota throttling). Teams that only do #2 have no trace data and can't correlate errors to requests.
 
@@ -36,7 +36,7 @@ Treat them as two pipelines that happen to land in the same backend. Teams that 
 
 ## Step 1: Instrument the application
 
-The fastest path is auto-instrumentation. You install the OpenTelemetry SDK for your runtime, set a handful of environment variables, and the SDK takes over — wrapping HTTP handlers, database clients, and outbound calls without code changes.
+The fastest path is auto-instrumentation. You install the OpenTelemetry SDK for your runtime, set a handful of environment variables, and the SDK takes over - wrapping HTTP handlers, database clients, and outbound calls without code changes.
 
 ### Node.js
 
@@ -82,7 +82,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT = https://oneuptime.com/otlp
 OTEL_EXPORTER_OTLP_HEADERS = x-oneuptime-token=YOUR_TOKEN
 ```
 
-On Windows App Service, use `CORECLR_PROFILER_PATH_32` or `CORECLR_PROFILER_PATH_64` for the Windows DLL path; the profiler CLSID stays the same. If you prefer explicit wiring, add the `OpenTelemetry.Extensions.Hosting` NuGet and configure the tracer provider in `Program.cs` — either approach works.
+On Windows App Service, use `CORECLR_PROFILER_PATH_32` or `CORECLR_PROFILER_PATH_64` for the Windows DLL path; the profiler CLSID stays the same. If you prefer explicit wiring, add the `OpenTelemetry.Extensions.Hosting` NuGet and configure the tracer provider in `Program.cs` - either approach works.
 
 ### Java
 
@@ -133,14 +133,14 @@ If you configure `OTEL_RESOURCE_ATTRIBUTES` directly in the Azure Portal as an A
 
 ## Step 3: Get platform telemetry out via Diagnostic Settings
 
-The SDK inside your app can't see what happens before the request reaches your code — front-end HTTP logs, App Service platform events, resource metrics, container startup failures. For that, use **Diagnostic Settings**.
+The SDK inside your app can't see what happens before the request reaches your code - front-end HTTP logs, App Service platform events, resource metrics, container startup failures. For that, use **Diagnostic Settings**.
 
 Go to **App Service → Monitoring → Diagnostic settings → Add diagnostic setting** and enable at least:
 
-- `AppServiceHTTPLogs` — the front-end HTTP request log
-- `AppServiceConsoleLogs` — stdout/stderr from your container
-- `AppServicePlatformLogs` — container lifecycle and platform events
-- `AllMetrics` — CPU, memory, HTTP queue length, response times
+- `AppServiceHTTPLogs` - the front-end HTTP request log
+- `AppServiceConsoleLogs` - stdout/stderr from your container
+- `AppServicePlatformLogs` - container lifecycle and platform events
+- `AllMetrics` - CPU, memory, HTTP queue length, response times
 
 Route them to an **Event Hub**. If you choose a named Event Hub in the diagnostic setting, all selected categories can go through that hub. If you leave the Event Hub name blank, Azure Monitor writes category-specific hubs such as `insights-logs-appservicehttplogs` and `insights-metrics-pt1m`, so configure one receiver per hub.
 
@@ -190,12 +190,12 @@ Run that Collector on Azure Container Apps or an AKS cluster in the same region 
 For a small app, exporting OTLP straight from the SDK to your backend works. For anything that matters in production, put a Collector between the two. Reasons:
 
 - **Batching and retries.** The Collector buffers during backend hiccups. The SDK dropping spans during a 30-second outage is a familiar pain.
-- **Enrichment.** Strip secrets, add tenant IDs, normalize attribute names once — not in every service.
+- **Enrichment.** Strip secrets, add tenant IDs, normalize attribute names once - not in every service.
 - **Multi-backend fan-out.** Send traces to OneUptime and metrics to a long-term metrics store without re-instrumenting.
 
 On App Service you have two Collector placement options:
 
-1. **Sidecar container on Web App for Containers.** Add the `otel/opentelemetry-collector-contrib` image as a sidecar to your main app container. The SDK talks to the sidecar on `localhost:4318`. This is the path Microsoft now recommends — Docker Compose multi-container support is on retirement (ending March 31, 2027) in favor of sidecar containers, so start here even if you've used compose in the past.
+1. **Sidecar container on Web App for Containers.** Add the `otel/opentelemetry-collector-contrib` image as a sidecar to your main app container. The SDK talks to the sidecar on `localhost:4318`. This is the path Microsoft now recommends - Docker Compose multi-container support is on retirement (ending March 31, 2027) in favor of sidecar containers, so start here even if you've used compose in the past.
 2. **Dedicated Collector on Azure Container Apps or AKS.** The SDK exports over HTTPS to the Collector's public endpoint (or private endpoint via VNet integration). Works for every App Service runtime without changing the deployment artifact.
 
 ---
@@ -204,7 +204,7 @@ On App Service you have two Collector placement options:
 
 These are the things that consistently bite teams moving OpenTelemetry onto App Service:
 
-- **Enable "Always On".** Without it, the app unloads during idle periods and takes the SDK's background exporter with it — partial traces, missing metrics, and cold-start latency that looks like a bug in your code.
+- **Enable "Always On".** Without it, the app unloads during idle periods and takes the SDK's background exporter with it - partial traces, missing metrics, and cold-start latency that looks like a bug in your code.
 - **The writable path is `/home` on Linux and `D:\home` on Windows.** If you want to write the Collector binary or a Java agent somewhere persistent on Linux, put it under `/home/site/wwwroot/`. For custom containers, make sure App Service storage is enabled if you expect `/home` to persist.
 - **Slot swaps recycle the process.** Keep `OTEL_BSP_SCHEDULE_DELAY` at its default `5000` ms, or lower it carefully, so in-flight spans flush before the old slot shuts down. Just don't bump it up.
 - **Private networking.** If the Collector is inside a VNet, enable **VNet Integration** on the App Service and verify the outbound egress rules allow traffic to the Collector's private endpoint.
@@ -229,6 +229,6 @@ If all four pass, your two pipelines are healthy and you can start building SLOs
 
 ## Sending it all to OneUptime
 
-Point `OTEL_EXPORTER_OTLP_ENDPOINT` at your OneUptime OTLP ingest URL, set the `x-oneuptime-token` header, and traces, metrics, and logs land in the corresponding telemetry services — no Azure Monitor workspace or vendor-specific agents. The Collector pipeline for platform logs sends to the same endpoint, so application and platform telemetry sit next to each other in the same UI.
+Point `OTEL_EXPORTER_OTLP_ENDPOINT` at your OneUptime OTLP ingest URL, set the `x-oneuptime-token` header, and traces, metrics, and logs land in the corresponding telemetry services - no Azure Monitor workspace or vendor-specific agents. The Collector pipeline for platform logs sends to the same endpoint, so application and platform telemetry sit next to each other in the same UI.
 
-The point of OpenTelemetry on a PaaS like App Service is to keep the observability story portable. You get the same SDK, the same wire format, and the same backend choices you'd have on Kubernetes or bare metal. App Service just adds a few constraints — a locked-down sandbox, a separate path for platform telemetry, and a handful of runtime quirks — that are worth knowing up front.
+The point of OpenTelemetry on a PaaS like App Service is to keep the observability story portable. You get the same SDK, the same wire format, and the same backend choices you'd have on Kubernetes or bare metal. App Service just adds a few constraints - a locked-down sandbox, a separate path for platform telemetry, and a handful of runtime quirks - that are worth knowing up front.

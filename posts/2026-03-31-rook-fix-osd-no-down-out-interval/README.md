@@ -28,7 +28,7 @@ HEALTH_WARN mons have mon_osd_down_out_interval set to 0
 
 ## Why This Is Dangerous
 
-With `mon_osd_down_out_interval` set to zero, Ceph will never automatically mark a down OSD as "out." This means if an OSD goes down — whether from a disk failure, node crash, or network partition — the cluster will not redistribute data to maintain the configured number of replicas. The degraded placement groups will remain degraded indefinitely until an administrator manually marks the OSD out with `ceph osd out <osd-id>`. This leaves the cluster vulnerable to further failures and potential data loss.
+With `mon_osd_down_out_interval` set to zero, Ceph will never automatically mark a down OSD as "out." This means if an OSD goes down - whether from a disk failure, node crash, or network partition - the cluster will not redistribute data to maintain the configured number of replicas. The degraded placement groups will remain degraded indefinitely until an administrator manually marks the OSD out with `ceph osd out <osd-id>`. This leaves the cluster vulnerable to further failures and potential data loss.
 
 ## Checking Current Value
 

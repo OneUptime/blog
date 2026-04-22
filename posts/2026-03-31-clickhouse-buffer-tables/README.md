@@ -174,7 +174,7 @@ ORDER BY total_rows DESC;
 ## Limitations of Buffer Tables
 
 - **No persistence**: buffer contents are lost if ClickHouse crashes before flushing. Use async inserts or Kafka as a durable queue if data loss is not acceptable.
-- **No deduplication**: duplicate inserts in the buffer are not detected. Buffer tables also break `ReplicatedMergeTree` insert deduplication on the destination — the flush randomizes block order and sizes, so the dedup hash no longer matches. Do not use Buffer tables where reliable exactly-once writes are required.
+- **No deduplication**: duplicate inserts in the buffer are not detected. Buffer tables also break `ReplicatedMergeTree` insert deduplication on the destination - the flush randomizes block order and sizes, so the dedup hash no longer matches. Do not use Buffer tables where reliable exactly-once writes are required.
 - **No filtering**: all data inserted into a Buffer table goes to the same destination table. You cannot route different rows to different destination tables.
 - **Memory**: buffers consume server RAM. Size the `max_bytes` threshold relative to available memory: on a server with 64 GB RAM, avoid total buffer size exceeding 8-10 GB.
 - **Schema changes**: if you `ALTER TABLE events` to add a column, you must drop and recreate the Buffer table to match the new schema.

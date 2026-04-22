@@ -58,7 +58,7 @@ if (collections.length > 0) {
 await db.collection('orders').dropIndex('userId_1');
 ```
 
-Note that `createIndex` does **not** trigger this error — it implicitly creates the collection if it does not exist. However, `dropIndex` and `dropIndexes` require the collection to already exist.
+Note that `createIndex` does **not** trigger this error - it implicitly creates the collection if it does not exist. However, `dropIndex` and `dropIndexes` require the collection to already exist.
 
 **Fix:** Ensure the collection exists before dropping indexes:
 

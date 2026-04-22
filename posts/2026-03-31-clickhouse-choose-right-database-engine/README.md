@@ -56,7 +56,7 @@ CREATE DATABASE archive
 ENGINE = Lazy(7200);
 ```
 
-The single positional argument is `expiration_time_in_seconds` — how long a table is kept in RAM after its last access. Lazy can only host `*Log` family tables.
+The single positional argument is `expiration_time_in_seconds` - how long a table is kept in RAM after its last access. Lazy can only host `*Log` family tables.
 
 ### Federated Queries to MySQL
 

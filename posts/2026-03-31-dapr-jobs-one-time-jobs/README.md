@@ -41,7 +41,7 @@ curl -X POST http://localhost:3500/v1.0-alpha1/jobs/welcome-followup-user123 \
 "30s"      # 30 seconds from now
 "5m"       # 5 minutes from now
 "2h"       # 2 hours from now
-# "7d" is NOT valid — Go durations do not support "d"; use "168h" for 7 days
+# "7d" is NOT valid - Go durations do not support "d"; use "168h" for 7 days
 
 # RFC3339 timestamps (absolute time)
 "2026-04-15T09:00:00Z"    # Specific UTC time

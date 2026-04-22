@@ -29,7 +29,7 @@ CREATE DATABASE archive_logs
 ENGINE = Lazy(3600);
 ```
 
-The parameter (required) defines the expiration time in seconds — how long a table stays in memory after its last access. After 3600 seconds (1 hour) of inactivity, the table is unloaded from RAM.
+The parameter (required) defines the expiration time in seconds - how long a table stays in memory after its last access. After 3600 seconds (1 hour) of inactivity, the table is unloaded from RAM.
 
 ## Creating Tables Inside a Lazy Database
 

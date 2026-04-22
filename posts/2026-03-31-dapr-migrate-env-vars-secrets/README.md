@@ -70,7 +70,7 @@ spec:
     value: "/"
 ```
 
-secrets.json (local dev only — gitignored):
+secrets.json (local dev only - gitignored):
 
 ```json
 {

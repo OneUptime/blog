@@ -93,7 +93,7 @@ SETTINGS join_use_nulls = 1;
 
 ## Column Type Conversion
 
-When `join_use_nulls = 1`, ClickHouse automatically converts the result column types of the joined side to `Nullable` so that unmatched rows can hold `NULL`. The source table columns do **not** need to be declared `Nullable` — the conversion happens in the query result:
+When `join_use_nulls = 1`, ClickHouse automatically converts the result column types of the joined side to `Nullable` so that unmatched rows can hold `NULL`. The source table columns do **not** need to be declared `Nullable` - the conversion happens in the query result:
 
 ```sql
 -- Source columns can be non-Nullable; result columns become Nullable at query time

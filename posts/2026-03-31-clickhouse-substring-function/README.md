@@ -40,7 +40,7 @@ first_five | from_position_8 | last_six_chars
 Hello      | World!          | World!
 ```
 
-Negative offset `-6` on a 13-character string starts at position 8 (which is 'W'), returning everything from there to the end — the same as `substring('Hello, World!', 8)`.
+Negative offset `-6` on a 13-character string starts at position 8 (which is 'W'), returning everything from there to the end - the same as `substring('Hello, World!', 8)`.
 
 ## Extracting Domain Names from URLs
 
@@ -164,7 +164,7 @@ FROM (
 );
 ```
 
-For "données", `substring(str, 1, 3)` returns "don" (3 bytes). `substringUTF8(str, 1, 3)` returns "don" too in this case because the first 3 characters are ASCII. But `substringUTF8(str, 1, 5)` returns "donné" (5 characters), while `substring(str, 1, 5)` returns only 5 bytes — the four ASCII characters "donn" plus the first byte of the two-byte 'é' — producing garbled output.
+For "données", `substring(str, 1, 3)` returns "don" (3 bytes). `substringUTF8(str, 1, 3)` returns "don" too in this case because the first 3 characters are ASCII. But `substringUTF8(str, 1, 5)` returns "donné" (5 characters), while `substring(str, 1, 5)` returns only 5 bytes - the four ASCII characters "donn" plus the first byte of the two-byte 'é' - producing garbled output.
 
 ```sql
 SELECT

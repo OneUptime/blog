@@ -43,15 +43,13 @@ module "compute" {
 mock_provider "aws" {
   mock_resource "aws_vpc" {
     defaults = {
-      id         = "vpc-mock123"
-      cidr_block = "10.0.0.0/16"
+      id = "vpc-mock123"
     }
   }
 
   mock_resource "aws_subnet" {
     defaults = {
-      id     = "subnet-mock123"
-      vpc_id = "vpc-mock123"
+      id = "subnet-mock123"
     }
   }
 
@@ -102,7 +100,7 @@ Use multiple run blocks to test the composition incrementally:
 run "networking_layer" {
   command = apply
 
-  # Only target the networking module
+  # Test only the networking module
   module {
     source = "./modules/vpc"
   }
@@ -126,6 +124,10 @@ run "networking_layer" {
 run "database_layer" {
   command = apply
 
+  module {
+    source = "./modules/rds"
+  }
+
   variables {
     vpc_id     = run.networking_layer.vpc_id
     subnet_ids = run.networking_layer.private_subnet_ids
@@ -140,6 +142,10 @@ run "database_layer" {
 run "compute_layer" {
   command = apply
 
+  module {
+    source = "./modules/ec2"
+  }
+
   variables {
     vpc_id      = run.networking_layer.vpc_id
     subnet_ids  = run.networking_layer.public_subnet_ids
@@ -147,7 +153,7 @@ run "compute_layer" {
   }
 
   assert {
-    condition     = output.instance_ids != []
+    condition     = length(output.instance_ids) > 0
     error_message = "Compute instances should be created"
   }
 }
@@ -195,6 +201,7 @@ mock_provider "aws" {}
 
 variables {
   environment = "production"
+  vpc_cidr    = "10.0.0.0/16"
 }
 
 run "environment_tag_propagates" {

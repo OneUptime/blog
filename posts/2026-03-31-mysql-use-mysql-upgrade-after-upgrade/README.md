@@ -90,7 +90,7 @@ mysql_upgrade -u root -p --socket=/var/run/mysqld/mysqld.sock
 
 ## Handling Errors During Upgrade
 
-If `mysql_upgrade` reports errors on specific tables, you may need to repair them manually. Note that `REPAIR TABLE` only works with MyISAM, ARCHIVE, and CSV storage engines — it does not work with InnoDB tables:
+If `mysql_upgrade` reports errors on specific tables, you may need to repair them manually. Note that `REPAIR TABLE` only works with MyISAM, ARCHIVE, and CSV storage engines - it does not work with InnoDB tables:
 
 ```sql
 -- Check a specific table for upgrade issues

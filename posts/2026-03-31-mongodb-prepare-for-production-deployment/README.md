@@ -92,7 +92,7 @@ net.core.somaxconn=65535
 # Apply settings
 sudo sysctl -p
 
-# Disable transparent huge pages (THP) — MongoDB 7.0 and earlier only.
+# Disable transparent huge pages (THP) - MongoDB 7.0 and earlier only.
 # MongoDB 8.0+ recommends keeping THP enabled (upgraded TCMalloc benefits from it).
 # Add to /etc/rc.local or systemd service
 echo never > /sys/kernel/mm/transparent_hugepage/enabled

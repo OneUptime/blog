@@ -54,7 +54,7 @@ spec:
     instances: 2
 ```
 
-After applying, Rook mounts the CA bundle into the RGW pods. Note that this bundle is **not** used by the Rook operator for health checks — for the operator to trust the RGW's TLS certificate, include the full certificate chain in the `cert` key of the `sslCertificateRef` secret.
+After applying, Rook mounts the CA bundle into the RGW pods. Note that this bundle is **not** used by the Rook operator for health checks - for the operator to trust the RGW's TLS certificate, include the full certificate chain in the `cert` key of the `sslCertificateRef` secret.
 
 ## Verifying the CA Bundle is Mounted
 
@@ -124,4 +124,4 @@ kubectl -n rook-ceph rollout restart deployment -l app=rook-ceph-rgw
 
 ## Summary
 
-CA bundles for Rook object store are stored as Kubernetes secrets with a `cabundle` key and referenced via the `caBundleRef` field in the `CephObjectStore` gateway spec. Rook injects the CA into RGW pods for use when RGW makes outbound connections. Note that the Rook operator does not use this bundle for health checks — for that, include the full certificate chain in the `sslCertificateRef` secret. Client pods accessing the HTTPS endpoint must also be configured with the same CA bundle using environment variables like `AWS_CA_BUNDLE`.
+CA bundles for Rook object store are stored as Kubernetes secrets with a `cabundle` key and referenced via the `caBundleRef` field in the `CephObjectStore` gateway spec. Rook injects the CA into RGW pods for use when RGW makes outbound connections. Note that the Rook operator does not use this bundle for health checks - for that, include the full certificate chain in the `sslCertificateRef` secret. Client pods accessing the HTTPS endpoint must also be configured with the same CA bundle using environment variables like `AWS_CA_BUNDLE`.

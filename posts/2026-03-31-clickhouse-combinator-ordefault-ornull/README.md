@@ -152,7 +152,7 @@ us-west  0                     1
 
 ## Combining Combinators: -OrDefaultIf and -OrNullIf
 
-You can chain `-If` with `-OrDefault` or `-OrNull`. The combined suffix is spelled `-OrDefaultIf` / `-OrNullIf` — `-If` filters the rows, then `-OrDefault`/`-OrNull` handles the case where the filter leaves zero rows.
+You can chain `-If` with `-OrDefault` or `-OrNull`. The combined suffix is spelled `-OrDefaultIf` / `-OrNullIf` - `-If` filters the rows, then `-OrDefault`/`-OrNull` handles the case where the filter leaves zero rows.
 
 ```text
 aggFuncOrDefaultIf(value, condition)

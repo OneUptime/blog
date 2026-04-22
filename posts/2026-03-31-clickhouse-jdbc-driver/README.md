@@ -360,7 +360,7 @@ try (Connection conn = DriverManager.getConnection(url, user, pass)) {
 - ClickHouse does not provide ACID transactions. The 0.6.x driver implements a JDBC-compliant transaction shim when `jdbcCompliant=true` (the default), but this does not give you real transactional guarantees on the server. Treat each statement as effectively committed on execution.
 - The JDBC driver uses the HTTP interface (port 8123). Do not use port 9000 (native protocol) with JDBC URLs.
 - Use the `all` classifier jar to get a self-contained fat jar. Without it, you need to manage transitive dependencies manually.
-- The 0.6.x driver streams result sets over HTTP by default, so large queries do not need to be buffered fully in memory. `setFetchSize()` on `Statement` is stored on the statement but is not the primary streaming control — review the driver's `fetch_size` / `result_set_type` properties if you need to tune row delivery.
+- The 0.6.x driver streams result sets over HTTP by default, so large queries do not need to be buffered fully in memory. `setFetchSize()` on `Statement` is stored on the statement but is not the primary streaming control - review the driver's `fetch_size` / `result_set_type` properties if you need to tune row delivery.
 
 ## Summary
 

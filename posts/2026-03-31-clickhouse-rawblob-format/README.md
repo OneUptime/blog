@@ -121,7 +121,7 @@ The MD5 values must match.
 
 ## Size Limitations
 
-`String` columns in ClickHouse have no formal size limit — they can hold strings of arbitrary length. However, practical limits are governed by available memory and settings like `max_memory_usage`. For very large files:
+`String` columns in ClickHouse have no formal size limit - they can hold strings of arbitrary length. However, practical limits are governed by available memory and settings like `max_memory_usage`. For very large files:
 
 ```sql
 -- Check the size of stored blobs

@@ -109,7 +109,7 @@ For workloads where only some writes require durability guarantees, consider usi
 
 ## Interaction with Sentinel and Cluster
 
-In a network partition, `min-replicas-to-write` prevents an isolated primary from accepting new writes, reducing data divergence before Sentinel completes failover. Sentinel itself does not use this directive in its failover decisions — failover timing is governed by Sentinel's own `down-after-milliseconds` configuration.
+In a network partition, `min-replicas-to-write` prevents an isolated primary from accepting new writes, reducing data divergence before Sentinel completes failover. Sentinel itself does not use this directive in its failover decisions - failover timing is governed by Sentinel's own `down-after-milliseconds` configuration.
 
 In Redis Cluster, each shard is an independent primary-replica group. Set `min-replicas-to-write` in `redis.conf` on each primary node.
 

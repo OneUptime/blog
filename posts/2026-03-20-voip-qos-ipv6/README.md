@@ -140,7 +140,7 @@ cos=3
 
 ## FreeSWITCH QoS for IPv6
 
-FreeSWITCH's sofia SIP profiles do not expose native DSCP/ToS parameters — mod_sofia never calls `setsockopt(IP_TOS)` on its RTP or SIP sockets, and param names like `rtp-tos`/`sip-tos` are silently ignored. Bind sofia to IPv6 in the profile, then rely on OS-level marking via the nftables rules above (matching SIP ports 5060/5061 and the RTP port range) to set DSCP on FreeSWITCH traffic.
+FreeSWITCH's sofia SIP profiles do not expose native DSCP/ToS parameters - mod_sofia never calls `setsockopt(IP_TOS)` on its RTP or SIP sockets, and param names like `rtp-tos`/`sip-tos` are silently ignored. Bind sofia to IPv6 in the profile, then rely on OS-level marking via the nftables rules above (matching SIP ports 5060/5061 and the RTP port range) to set DSCP on FreeSWITCH traffic.
 
 ```xml
 <!-- /etc/freeswitch/sip_profiles/internal.xml -->

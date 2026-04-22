@@ -122,7 +122,7 @@ CREATE USER 'monitoring'@'localhost'
   ACCOUNT LOCK;  -- locked until explicitly unlocked
 ```
 
-While locked, the account cannot connect using any authentication method, including socket auth. Once unlocked, it will only accept socket-based authentication — no password login is possible.
+While locked, the account cannot connect using any authentication method, including socket auth. Once unlocked, it will only accept socket-based authentication - no password login is possible.
 
 ## Summary
 

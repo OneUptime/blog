@@ -85,4 +85,4 @@ Queries filter on `deleted = 0` without needing actual deletes.
 
 ## Summary
 
-ClickHouse serializes mutations per table — including lightweight DELETEs — but lightweight DELETEs drain the queue much faster because they only update a mask column instead of rewriting parts. Batch your delete predicates to reduce mutation count, monitor `system.mutations` to avoid queue buildup, and consider logical soft-deletes via `ReplacingMergeTree` for high-frequency removal patterns.
+ClickHouse serializes mutations per table - including lightweight DELETEs - but lightweight DELETEs drain the queue much faster because they only update a mask column instead of rewriting parts. Batch your delete predicates to reduce mutation count, monitor `system.mutations` to avoid queue buildup, and consider logical soft-deletes via `ReplacingMergeTree` for high-frequency removal patterns.

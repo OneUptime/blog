@@ -10,7 +10,7 @@ Description: Learn how to configure Coroot to use ClickHouse for storing OpenTel
 
 ## What Is Coroot
 
-Coroot is an open-source observability tool that automatically maps infrastructure dependencies using eBPF-based telemetry. It uses ClickHouse to store logs, traces, profiles, and metrics for long-term analysis. (Project and user configuration live in a separate Postgres or SQLite database — ClickHouse is the telemetry store only.)
+Coroot is an open-source observability tool that automatically maps infrastructure dependencies using eBPF-based telemetry. It uses ClickHouse to store logs, traces, profiles, and metrics for long-term analysis. (Project and user configuration live in a separate Postgres or SQLite database - ClickHouse is the telemetry store only.)
 
 ## Architecture
 

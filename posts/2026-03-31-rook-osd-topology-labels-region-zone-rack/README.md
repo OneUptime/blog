@@ -80,7 +80,7 @@ Rook uses a predefined list of topology keys in priority order. Nodes are placed
 10. kubernetes.io/hostname (always last)
 ```
 
-Rook automatically creates CRUSH buckets for whichever labels in this list are present on your nodes — only apply the labels that match your infrastructure.
+Rook automatically creates CRUSH buckets for whichever labels in this list are present on your nodes - only apply the labels that match your infrastructure.
 
 To configure which topology labels the CSI driver uses for volume provisioning, set `CSI_TOPOLOGY_DOMAIN_LABELS` in the operator ConfigMap:
 

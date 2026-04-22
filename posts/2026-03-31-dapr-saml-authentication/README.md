@@ -24,7 +24,7 @@ The SAML-to-OIDC bridge handles the IdP redirect flow, validates the SAML assert
 
 ## Setting Up the OIDC Provider
 
-After the SAML-to-OIDC bridge authenticates the user, you need an OIDC provider to issue JWT tokens that Dapr can validate. Authelia can serve as the OIDC provider in this architecture. Note that Authelia does not support SAML directly — you need a separate SAML SP such as Keycloak or oauth2-proxy to handle the SAML assertion flow.
+After the SAML-to-OIDC bridge authenticates the user, you need an OIDC provider to issue JWT tokens that Dapr can validate. Authelia can serve as the OIDC provider in this architecture. Note that Authelia does not support SAML directly - you need a separate SAML SP such as Keycloak or oauth2-proxy to handle the SAML assertion flow.
 
 ```yaml
 # authelia-config.yaml

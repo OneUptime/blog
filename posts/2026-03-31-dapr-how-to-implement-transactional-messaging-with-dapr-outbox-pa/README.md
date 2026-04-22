@@ -72,7 +72,7 @@ spec:
 
 ## Writing Transactions with the Outbox
 
-When you use Dapr's transactional state API with outbox enabled, Dapr automatically publishes a message to the configured pub/sub topic for each state operation in the transaction. You do not need to create separate outbox records — just save your state normally and Dapr handles the rest. You can optionally customize the CloudEvent envelope using `cloudevent.*` metadata on individual operations.
+When you use Dapr's transactional state API with outbox enabled, Dapr automatically publishes a message to the configured pub/sub topic for each state operation in the transaction. You do not need to create separate outbox records - just save your state normally and Dapr handles the rest. You can optionally customize the CloudEvent envelope using `cloudevent.*` metadata on individual operations.
 
 ```python
 import requests

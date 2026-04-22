@@ -106,7 +106,7 @@ If you pass an array with fewer than two elements, MongoDB returns an error:
 Error: $mod requires an array with two elements [divisor, remainder]
 ```
 
-Note that non-integer values do not cause an error — MongoDB truncates them to integers. For example, `{ $mod: [2.5, 0] }` is treated as `{ $mod: [2, 0] }`. Always validate your inputs before running modulo queries in production code.
+Note that non-integer values do not cause an error - MongoDB truncates them to integers. For example, `{ $mod: [2.5, 0] }` is treated as `{ $mod: [2, 0] }`. Always validate your inputs before running modulo queries in production code.
 
 ## Summary
 

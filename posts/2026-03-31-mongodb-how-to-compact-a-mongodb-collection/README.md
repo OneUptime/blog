@@ -49,7 +49,7 @@ db.runCommand({ compact: "orders" })
 db.runCommand({ compact: "orders", force: true })
 ```
 
-Before MongoDB 4.4, `compact` blocked all operations on the database and required `force: true` to run on a primary. Starting in MongoDB 4.4 (WiredTiger), `compact` no longer blocks CRUD operations — it only blocks metadata operations like `drop`, `createIndex`, and `dropIndex`.
+Before MongoDB 4.4, `compact` blocked all operations on the database and required `force: true` to run on a primary. Starting in MongoDB 4.4 (WiredTiger), `compact` no longer blocks CRUD operations - it only blocks metadata operations like `drop`, `createIndex`, and `dropIndex`.
 
 ## Running compact on a Replica Set
 

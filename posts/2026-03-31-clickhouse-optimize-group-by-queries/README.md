@@ -26,7 +26,7 @@ FROM requests
 GROUP BY status;
 ```
 
-For general hash-based aggregation, the order of keys in the GROUP BY clause does not affect performance — the number of distinct key combinations is the same regardless of column order.
+For general hash-based aggregation, the order of keys in the GROUP BY clause does not affect performance - the number of distinct key combinations is the same regardless of column order.
 
 ## Use group_by_overflow_mode
 

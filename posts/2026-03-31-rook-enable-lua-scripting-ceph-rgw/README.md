@@ -29,7 +29,7 @@ kubectl -n rook-ceph exec deploy/rook-ceph-rgw-my-store-a -- \
 
 ## Step 2 - Upload a Lua Script
 
-Lua scripting is available in RGW without any additional configuration. Scripts are managed via the `radosgw-admin script` CLI commands. No config option needs to be set to enable Lua support — it is available as soon as RGW is running with a Lua-enabled build.
+Lua scripting is available in RGW without any additional configuration. Scripts are managed via the `radosgw-admin script` CLI commands. No config option needs to be set to enable Lua support - it is available as soon as RGW is running with a Lua-enabled build.
 
 ## Step 3 - Write Your First Lua Script
 

@@ -69,7 +69,7 @@ If the node starts successfully and has a consistent snapshot, it will replay it
 
 ## Step 3: Force Single-Node Recovery Mode
 
-If 2 of 3 nodes are permanently lost (disk failure, destroyed VMs), and you have only 1 surviving node, use Keeper's force recovery mode. Recovery mode is not an XML configuration option — it is activated either via the `rcvr` four-letter-word command or by starting the binary with the `--force-recovery` flag.
+If 2 of 3 nodes are permanently lost (disk failure, destroyed VMs), and you have only 1 surviving node, use Keeper's force recovery mode. Recovery mode is not an XML configuration option - it is activated either via the `rcvr` four-letter-word command or by starting the binary with the `--force-recovery` flag.
 
 Stop the surviving Keeper:
 
@@ -127,7 +127,7 @@ Once quorum is restored and the node is serving clients, return it to normal ope
 sudo systemctl restart clickhouse-keeper
 ```
 
-If you used the `rcvr` command, no restart is required — the node exits recovery mode automatically once quorum is achieved.
+If you used the `rcvr` command, no restart is required - the node exits recovery mode automatically once quorum is achieved.
 
 ## Step 5: Restore Lost Nodes from Snapshots
 

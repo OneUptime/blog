@@ -30,7 +30,7 @@ mongodump \
   --out=/tmp/mongo_dump
 ```
 
-This creates `/tmp/mongo_dump/myapp/orders.bson`. The file is already a stream of concatenated BSON documents — exactly the format `BSONEachRow` expects — so it can be fed to ClickHouse directly without conversion.
+This creates `/tmp/mongo_dump/myapp/orders.bson`. The file is already a stream of concatenated BSON documents - exactly the format `BSONEachRow` expects - so it can be fed to ClickHouse directly without conversion.
 
 ## Reading BSON in ClickHouse
 

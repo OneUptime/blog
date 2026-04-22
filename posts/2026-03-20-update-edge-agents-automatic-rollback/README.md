@@ -80,7 +80,7 @@ docker run -d \
   portainer/agent:latest
 ```
 
-In async mode the ping, snapshot, and command intervals are configured on the Portainer server (Edge Compute settings, or per-environment overrides) and pushed down to the agent through the poll response — they are not set as environment variables on the agent container.
+In async mode the ping, snapshot, and command intervals are configured on the Portainer server (Edge Compute settings, or per-environment overrides) and pushed down to the agent through the poll response - they are not set as environment variables on the agent container.
 
 ## ARM / Windows Variations
 

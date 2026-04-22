@@ -57,7 +57,7 @@ spec:
 
 ## How Timeouts Contribute to Circuit Breaking
 
-When a request exceeds the `timeout` policy duration, Dapr cancels it and counts it as an error. These timeout-induced errors feed into the circuit breaker's failure tracking. If enough requests time out within a single `interval` cycle, the `consecutiveFailures` threshold is breached and the circuit opens. Note that the `interval` is a cyclic period — when it elapses, all internal counts are reset to zero.
+When a request exceeds the `timeout` policy duration, Dapr cancels it and counts it as an error. These timeout-induced errors feed into the circuit breaker's failure tracking. If enough requests time out within a single `interval` cycle, the `consecutiveFailures` threshold is breached and the circuit opens. Note that the `interval` is a cyclic period - when it elapses, all internal counts are reset to zero.
 
 ## Application Code with Timeout Handling
 

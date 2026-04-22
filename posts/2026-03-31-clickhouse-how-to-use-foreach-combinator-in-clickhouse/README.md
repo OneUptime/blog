@@ -104,7 +104,7 @@ WHERE date = today();
 
 - Arrays of equal length across rows produce predictable per-position aggregates.
 - If arrays differ in length, the result has the length of the longest input array, with missing positions in shorter arrays skipped during aggregation.
-- Works with any aggregate function, not just numeric ones — common examples include `sum`, `avg`, `min`, `max`, `count`, `uniq`, and `groupArray`.
+- Works with any aggregate function, not just numeric ones - common examples include `sum`, `avg`, `min`, `max`, `count`, `uniq`, and `groupArray`.
 
 ```sql
 -- Ensure consistent array length before using ForEach

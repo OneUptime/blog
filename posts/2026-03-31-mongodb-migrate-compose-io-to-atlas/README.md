@@ -136,7 +136,7 @@ MONGO_URI=mongodb+srv://user:pass@cluster0.example.mongodb.net/mydb?retryWrites=
 
 ## Recreate Users in Atlas
 
-Compose.io database users must be recreated in Atlas. Atlas does not support `db.createUser()` via mongosh — any user modifications made that way are automatically rolled back. Use the Atlas UI, Atlas CLI, or the Atlas Administration API instead:
+Compose.io database users must be recreated in Atlas. Atlas does not support `db.createUser()` via mongosh - any user modifications made that way are automatically rolled back. Use the Atlas UI, Atlas CLI, or the Atlas Administration API instead:
 
 ```bash
 # Create user in Atlas via Atlas CLI

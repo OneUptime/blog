@@ -10,7 +10,7 @@ Description: Learn how to use the format() function in ClickHouse for template-b
 
 ## What Is the format() Function
 
-`format(template, arg1, arg2, ...)` in ClickHouse formats a string using a template with `{}` placeholders, similar to a simplified Python `str.format()`. Placeholders can be empty `{}` (auto-numbered) or numbered `{0}`, `{1}` for explicit positions. Format specifiers (e.g. `{:.2f}`) are NOT supported — only digits are allowed inside the braces. Use `{{` and `}}` to emit literal braces. The template must be a constant string.
+`format(template, arg1, arg2, ...)` in ClickHouse formats a string using a template with `{}` placeholders, similar to a simplified Python `str.format()`. Placeholders can be empty `{}` (auto-numbered) or numbered `{0}`, `{1}` for explicit positions. Format specifiers (e.g. `{:.2f}`) are NOT supported - only digits are allowed inside the braces. Use `{{` and `}}` to emit literal braces. The template must be a constant string.
 
 ```sql
 -- Basic syntax

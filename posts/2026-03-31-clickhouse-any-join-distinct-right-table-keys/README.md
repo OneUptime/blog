@@ -35,7 +35,7 @@ This setting enables legacy ClickHouse server behavior in `ANY INNER|LEFT JOIN` 
 | Value | Behavior |
 |---|---|
 | `0` (default) | Modern behavior. `t1 ANY LEFT JOIN t2` and `t2 ANY RIGHT JOIN t1` produce equal results. `ANY INNER JOIN` returns one row per key from both tables. |
-| `1` | Legacy behavior. `t1 ANY LEFT JOIN t2` and `t2 ANY RIGHT JOIN t1` are *not* equal — a many-to-one left-to-right keys mapping is used. `ANY INNER JOIN` returns all rows from the left table (similar to `SEMI LEFT JOIN`). |
+| `1` | Legacy behavior. `t1 ANY LEFT JOIN t2` and `t2 ANY RIGHT JOIN t1` are *not* equal - a many-to-one left-to-right keys mapping is used. `ANY INNER JOIN` returns all rows from the left table (similar to `SEMI LEFT JOIN`). |
 
 In both modes `ANY JOIN` still returns at most one right-table row per matched left key; the setting changes the symmetry guarantees and the `ANY INNER JOIN` semantics, not the deduplication strategy itself. The ClickHouse documentation recommends using this setting only for backward compatibility if your existing code depends on legacy `JOIN` behavior.
 
@@ -150,7 +150,7 @@ INNER JOIN (
 ) AS u ON e.user_id = u.user_id;
 ```
 
-The subquery approach using `argMax` is explicit about which row is kept (the one with the latest `updated_at`). `ANY JOIN` does not give you control over which duplicate is retained — it picks an arbitrary matching row.
+The subquery approach using `argMax` is explicit about which row is kept (the one with the latest `updated_at`). `ANY JOIN` does not give you control over which duplicate is retained - it picks an arbitrary matching row.
 
 Use the subquery approach when you need deterministic control over which duplicate row is used. Use `ANY JOIN` when any one match per key is acceptable.
 
@@ -206,7 +206,7 @@ Enable `any_join_distinct_right_table_keys = 1` only when:
 
 Leave it at the default `0` when:
 
-- You are writing new queries — the modern behavior is symmetric (`t1 ANY LEFT JOIN t2` and `t2 ANY RIGHT JOIN t1` produce equal results) and is the recommended path going forward.
+- You are writing new queries - the modern behavior is symmetric (`t1 ANY LEFT JOIN t2` and `t2 ANY RIGHT JOIN t1` produce equal results) and is the recommended path going forward.
 - You want consistent semantics across the `ANY LEFT`, `ANY RIGHT`, and `ANY INNER` variants.
 
 ## Conclusion

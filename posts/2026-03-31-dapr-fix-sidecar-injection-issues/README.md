@@ -27,7 +27,7 @@ kubectl logs -n dapr-system -l app=dapr-sidecar-injector --tail=50
 
 ## Check Namespace Label
 
-Dapr's default installation does not require namespace labels for sidecar injection — the pod annotation `dapr.io/enabled: "true"` is sufficient. However, if the webhook is configured with a namespace selector (for example, via Helm values), injection only occurs in namespaces matching the selector:
+Dapr's default installation does not require namespace labels for sidecar injection - the pod annotation `dapr.io/enabled: "true"` is sufficient. However, if the webhook is configured with a namespace selector (for example, via Helm values), injection only occurs in namespaces matching the selector:
 
 ```bash
 # Check your namespace labels

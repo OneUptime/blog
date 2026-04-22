@@ -54,7 +54,7 @@ Use HARD reset when you need to completely disassociate a node from any cluster 
 | Generate new node ID | No | Yes |
 | Reset config epoch to 0 | No | Yes |
 
-Note: If the node is a replica, `CLUSTER RESET` flushes its dataset and promotes it to an empty master. For master nodes, the command does not flush data — in fact, it **refuses to run on a master that holds any keys**. You must run `FLUSHALL` on the master first, then execute `CLUSTER RESET`.
+Note: If the node is a replica, `CLUSTER RESET` flushes its dataset and promotes it to an empty master. For master nodes, the command does not flush data - in fact, it **refuses to run on a master that holds any keys**. You must run `FLUSHALL` on the master first, then execute `CLUSTER RESET`.
 
 ## Typical Use Cases
 

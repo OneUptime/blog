@@ -107,7 +107,7 @@ PMTUD issues occur when intermediate devices don't support IPv6 fragmentation:
 ```bash
 # IPv6 PMTU Discovery is mandatory per RFC 8201 and always on;
 # the kernel learns PMTUs from ICMPv6 "Packet Too Big" messages automatically.
-# Tunables live under net.ipv6.route.* — e.g. lower the cache lifetime to
+# Tunables live under net.ipv6.route.* - e.g. lower the cache lifetime to
 # re-probe paths more aggressively after topology changes.
 sysctl -w net.ipv6.route.mtu_expires=600
 

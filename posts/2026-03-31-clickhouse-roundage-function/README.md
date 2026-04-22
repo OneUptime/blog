@@ -182,4 +182,4 @@ FROM (
 
 ## Summary
 
-`roundAge()` provides a concise way to assign raw age values to standard demographic buckets (0, 17, 18, 25, 35, 45, 55) in ClickHouse, returning a UInt8. Use it directly in GROUP BY for demographic aggregation, in CASE expressions for readable group labels, and in cross-tabulations for marketing and product analytics. Note that `roundAge()` is not identical to `roundDown()` with the same boundary array — the two differ for ages 1–16. For custom age groupings, use `roundDown()` with a tailored boundary array instead.
+`roundAge()` provides a concise way to assign raw age values to standard demographic buckets (0, 17, 18, 25, 35, 45, 55) in ClickHouse, returning a UInt8. Use it directly in GROUP BY for demographic aggregation, in CASE expressions for readable group labels, and in cross-tabulations for marketing and product analytics. Note that `roundAge()` is not identical to `roundDown()` with the same boundary array - the two differ for ages 1–16. For custom age groupings, use `roundDown()` with a tailored boundary array instead.

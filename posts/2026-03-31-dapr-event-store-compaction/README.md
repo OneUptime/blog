@@ -124,7 +124,7 @@ if err := client.ScheduleJobAlpha1(context.Background(), job); err != nil {
 ```
 
 ```go
-// Job handler — Dapr calls POST /job/<name> when the job triggers
+// Job handler - Dapr calls POST /job/<name> when the job triggers
 http.HandleFunc("/job/event-compaction", func(w http.ResponseWriter, r *http.Request) {
     config := CompactionConfig{
         AggregateTypes: []string{"Order", "User", "Product"},

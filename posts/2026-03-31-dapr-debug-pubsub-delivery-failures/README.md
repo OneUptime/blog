@@ -37,7 +37,7 @@ kubectl port-forward <app-pod> 3500:3500 &
 curl http://localhost:3500/v1.0/metadata | jq '.components'
 ```
 
-This returns each component's name, type, version, and capabilities. If your pub/sub component is missing from the list, it failed to initialize — check the sidecar logs for credential or connectivity errors.
+This returns each component's name, type, version, and capabilities. If your pub/sub component is missing from the list, it failed to initialize - check the sidecar logs for credential or connectivity errors.
 
 ## Test the Subscription Endpoint
 

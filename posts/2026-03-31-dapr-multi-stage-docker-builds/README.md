@@ -46,7 +46,7 @@ Build only the production stage:
 docker build --target production -t order-service:1.0.0 .
 ```
 
-Run tests in CI before building the final image. Tests execute during the build step itself — if the build succeeds, the tests passed:
+Run tests in CI before building the final image. Tests execute during the build step itself - if the build succeeds, the tests passed:
 
 ```bash
 docker build --target tester -t order-service:test .

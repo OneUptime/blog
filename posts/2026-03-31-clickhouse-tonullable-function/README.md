@@ -89,7 +89,7 @@ SELECT
 
 ## Type Alignment for Array Functions
 
-You can use `toNullable()` inside array lambdas to produce an `Array(Nullable(T))` when you need nullable elements — for example, when combining arrays that mix nullable and non-nullable element types.
+You can use `toNullable()` inside array lambdas to produce an `Array(Nullable(T))` when you need nullable elements - for example, when combining arrays that mix nullable and non-nullable element types.
 
 ```sql
 -- Convert array elements to nullable

@@ -127,7 +127,7 @@ Checklist:
 ## 7. Workflow and Actors
 
 Checklist:
-- [ ] Workflow state store uses a durable, actor-compatible store (e.g., Redis, PostgreSQL — not in-memory)
+- [ ] Workflow state store uses a durable, actor-compatible store (e.g., Redis, PostgreSQL - not in-memory)
 - [ ] Actor placement service has `replicaCount >= 3`
 - [ ] Actor idle timeout and scan interval tuned for your workload
 - [ ] Workflow history purge configured to prevent unbounded growth

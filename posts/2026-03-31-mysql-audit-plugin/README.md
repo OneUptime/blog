@@ -61,7 +61,7 @@ audit_log_policy = ALL
 
 ### Audit Log Format
 
-`audit_log_format` is a read-only variable — it can only be set at server startup in the configuration file, not at runtime.
+`audit_log_format` is a read-only variable - it can only be set at server startup in the configuration file, not at runtime.
 
 ```ini
 # /etc/mysql/mysql.conf.d/mysqld.cnf
@@ -70,24 +70,24 @@ audit_log_policy = ALL
 audit_log_format = JSON
 
 # Other valid values:
-# NEW  — new-style XML (default)
-# OLD  — old-style XML
+# NEW  - new-style XML (default)
+# OLD  - old-style XML
 ```
 
 ### Audit Log Policy (What to Log)
 
-`audit_log_policy` is a read-only variable — it can only be set at server startup in the configuration file, not at runtime. It is also deprecated as of MySQL 8.0.34; prefer rule-based filtering with `audit_log_filter_set_filter()` instead.
+`audit_log_policy` is a read-only variable - it can only be set at server startup in the configuration file, not at runtime. It is also deprecated as of MySQL 8.0.34; prefer rule-based filtering with `audit_log_filter_set_filter()` instead.
 
 ```ini
 # /etc/mysql/mysql.conf.d/mysqld.cnf
 [mysqld]
-# Log everything (logins + queries) — this is the default
+# Log everything (logins + queries) - this is the default
 audit_log_policy = ALL
 
 # Other valid values:
-# LOGINS  — log only logins and logouts
-# QUERIES — log only queries
-# NONE    — log nothing
+# LOGINS  - log only logins and logouts
+# QUERIES - log only queries
+# NONE    - log nothing
 ```
 
 ### Audit Log Rotation

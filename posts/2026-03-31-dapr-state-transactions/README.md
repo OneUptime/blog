@@ -39,7 +39,7 @@ sequenceDiagram
 ## Prerequisites
 
 - Dapr initialized with a transactional state store
-- Redis (supports multi-key transaction batches, but without rollback — if one operation fails, others still execute) or PostgreSQL/CosmosDB for full ACID transactions
+- Redis (supports multi-key transaction batches, but without rollback - if one operation fails, others still execute) or PostgreSQL/CosmosDB for full ACID transactions
 
 ## Transaction via HTTP API
 

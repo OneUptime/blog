@@ -75,7 +75,7 @@ kubectl create secret generic storage-secret \
 
 ## Default Start Position
 
-When a Dapr sidecar starts and no checkpoint exists for a partition, the Azure Event Hubs SDK defaults to reading from the latest position, meaning only new events are consumed. Existing checkpoints always take priority—the consumer resumes from the last checkpointed offset.
+When a Dapr sidecar starts and no checkpoint exists for a partition, the Azure Event Hubs SDK defaults to reading from the latest position, meaning only new events are consumed. Existing checkpoints always take priority-the consumer resumes from the last checkpointed offset.
 
 To reprocess events from the beginning, delete the existing checkpoint blobs (see "Resetting Checkpoints" below) and restart the Dapr sidecar.
 

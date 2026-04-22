@@ -12,7 +12,7 @@ For the `SAMPLE` clause to work on a ClickHouse query, the underlying MergeTree 
 
 ## How SAMPLE BY Works
 
-`SAMPLE BY` defines the column (or expression) used to assign each row to a deterministic subset. The expression must evaluate to an unsigned integer, and ClickHouse uses its value to divide rows into ranges. When you issue `SAMPLE 0.1`, ClickHouse reads the portion covering 10% of the value range. For even sampling, the expression values should be uniformly distributed — which is why wrapping keys in a hash function like `intHash32` is recommended.
+`SAMPLE BY` defines the column (or expression) used to assign each row to a deterministic subset. The expression must evaluate to an unsigned integer, and ClickHouse uses its value to divide rows into ranges. When you issue `SAMPLE 0.1`, ClickHouse reads the portion covering 10% of the value range. For even sampling, the expression values should be uniformly distributed - which is why wrapping keys in a hash function like `intHash32` is recommended.
 
 ## Basic SAMPLE BY Definition
 

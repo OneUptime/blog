@@ -12,7 +12,7 @@ Description: Use Dapr's Cryptography API to sign data and verify digital signatu
 
 Dapr's Subtle Cryptography API supports digital signature operations (sign and verify) using asymmetric key pairs stored in a crypto provider. Application code never handles the private key material. Supported algorithms include RSA-PSS, RSA-PKCS1, ECDSA, and Ed25519.
 
-> **Note:** The sign/verify operations are part of Dapr's **Subtle Crypto** API, which is an alpha feature that requires the `subtlecrypto` build tag to be enabled on the Dapr sidecar. The subtle API operates on pre-hashed digests, not raw data — your application must hash the data before calling sign, and hash again before calling verify.
+> **Note:** The sign/verify operations are part of Dapr's **Subtle Crypto** API, which is an alpha feature that requires the `subtlecrypto` build tag to be enabled on the Dapr sidecar. The subtle API operates on pre-hashed digests, not raw data - your application must hash the data before calling sign, and hash again before calling verify.
 
 ## Architecture
 
@@ -139,7 +139,7 @@ type VerifyResponse struct {
 func main() {
     payload := []byte(`{"orderId":"order-1","amount":99.95,"timestamp":"2026-03-31T10:00:00Z"}`)
 
-    // Hash the payload first — the subtle API operates on digests
+    // Hash the payload first - the subtle API operates on digests
     digest := sha256.Sum256(payload)
     digestB64 := base64.StdEncoding.EncodeToString(digest[:])
 
@@ -210,7 +210,7 @@ BASE_URL = f"http://localhost:{DAPR_PORT}/v1.0-alpha1/subtlecrypto/localstorecry
 
 payload = b'{"orderId":"order-1","amount":99.95}'
 
-# Hash the payload — the subtle API operates on digests
+# Hash the payload - the subtle API operates on digests
 digest = hashlib.sha256(payload).digest()
 digest_b64 = base64.b64encode(digest).decode()
 
@@ -242,7 +242,7 @@ print(f"Valid: {verify_resp.json()['valid']}")
 ## Step 3: Sign Using HTTP API (curl)
 
 ```bash
-# Hash and base64-encode the payload — the subtle API expects a digest
+# Hash and base64-encode the payload - the subtle API expects a digest
 DIGEST=$(echo -n '{"orderId":"order-1"}' | openssl dgst -sha256 -binary | base64)
 
 # Sign the digest
@@ -301,7 +301,7 @@ func buildJWT(daprPort string, claims JWTClaims) (string, error) {
     claimsB64 := base64.RawURLEncoding.EncodeToString(claimsJSON)
     signingInput := []byte(headerB64 + "." + claimsB64)
 
-    // Hash the signing input — the subtle API expects a digest
+    // Hash the signing input - the subtle API expects a digest
     digest := sha256.Sum256(signingInput)
 
     signReq, _ := json.Marshal(map[string]string{
@@ -352,7 +352,7 @@ func buildJWT(daprPort string, claims JWTClaims) (string, error) {
 
 ```go
 func saveSignedState(daprPort string, stateStore string, key string, value []byte) error {
-    // Hash the value — the subtle API expects a digest
+    // Hash the value - the subtle API expects a digest
     digest := sha256.Sum256(value)
 
     signReq, _ := json.Marshal(map[string]string{

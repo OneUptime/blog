@@ -21,7 +21,7 @@ redis-cli EVAL "return math.random()" 0
 
 Starting with Redis 7.0, `math.random()` is seeded with random data per invocation, so it produces different results each time. However, passing randomness as script arguments remains a best practice for explicit control and testability.
 
-`os.time()` is not available in the Redis Lua sandbox — the `os` library is removed entirely to maintain the sandboxed environment.
+`os.time()` is not available in the Redis Lua sandbox - the `os` library is removed entirely to maintain the sandboxed environment.
 
 ## Getting Time with redis.call('TIME')
 

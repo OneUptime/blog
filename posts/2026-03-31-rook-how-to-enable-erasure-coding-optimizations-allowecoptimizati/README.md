@@ -61,7 +61,7 @@ ceph osd pool set ec-optimized allow_ec_optimizations true
 
 ## EC Partial Write Optimizations
 
-Ceph Tentacle and later introduced EC partial writes as part of the FastEC feature, which allow small in-stripe updates without a full RMW cycle. This is a significant improvement for RBD workloads on EC pools. EC partial writes are enabled automatically when `allow_ec_optimizations` is set on a pool — no separate config option is needed:
+Ceph Tentacle and later introduced EC partial writes as part of the FastEC feature, which allow small in-stripe updates without a full RMW cycle. This is a significant improvement for RBD workloads on EC pools. EC partial writes are enabled automatically when `allow_ec_optimizations` is set on a pool - no separate config option is needed:
 
 ```bash
 # Enable EC optimizations including partial writes (Ceph Tentacle+)

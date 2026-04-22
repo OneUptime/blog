@@ -38,7 +38,7 @@ center_lat      center_lon
 
 ## Argument Order: Latitude First
 
-As of ClickHouse v25.5, `geoToH3()` takes `(latitude, longitude)`, matching the H3 reference library. This differs from ClickHouse geo functions like `geohashEncode()` which still take `(longitude, latitude)` — double-check argument order when porting queries.
+As of ClickHouse v25.5, `geoToH3()` takes `(latitude, longitude)`, matching the H3 reference library. This differs from ClickHouse geo functions like `geohashEncode()` which still take `(longitude, latitude)` - double-check argument order when porting queries.
 
 ```sql
 -- Encode several cities at resolution 5 (~8 km edge, ~253 km² area)

@@ -8,7 +8,7 @@ Description: Learn how to systematically diagnose and fix HTTP 504 Gateway Timeo
 
 ## What Is a 504 Gateway Timeout?
 
-A `504 Gateway Timeout` means the proxy (Nginx, HAProxy, AWS ALB, etc.) sent a request to the upstream server but did not receive a response within the configured timeout window. Unlike a 502, the upstream is reachable-it's just too slow.
+A `504 Gateway Timeout` means the proxy (Nginx, HAProxy, AWS ALB, etc.) did not receive a timely response from an upstream server it needed to access. Unlike a 502, which means the proxy received an invalid upstream response, a 504 means the gateway timed out while connecting, sending the request, or waiting for the upstream response.
 
 ## Common Causes
 
@@ -54,13 +54,13 @@ server {
         # Time to establish connection with upstream
         proxy_connect_timeout 10s;
 
-        # Time to wait for upstream to send response headers
+        # Timeout between reads from the upstream response
         proxy_read_timeout 120s;
 
-        # Time to transmit the request to upstream
+        # Timeout between writes while transmitting the request to upstream
         proxy_send_timeout 30s;
 
-        # For long-polling or streaming endpoints, set higher
+        # For long-polling or streaming endpoints with long idle gaps, set higher
         # proxy_read_timeout 300s;
     }
 }
@@ -76,20 +76,21 @@ If your application is backed by a database, enable slow query logging:
 -- MySQL: enable slow query log
 SET GLOBAL slow_query_log = 'ON';
 SET GLOBAL long_query_time = 1;  -- log queries taking > 1 second
+SHOW VARIABLES LIKE 'slow_query_log_file';
 ```
 
 ```bash
-# View slow query log
-tail -f /var/log/mysql/slow.log
+# View the slow query log path reported by MySQL
+tail -f /path/from/slow_query_log_file
 ```
 
 ## Step 5: Monitor Upstream Concurrency
 
 ```bash
 # Count active connections to upstream (e.g., Node.js on port 3000)
-ss -tn state established '( dport = :3000 or sport = :3000 )' | wc -l
+ss -Htn state established '( dport = :3000 or sport = :3000 )' | wc -l
 
-# Check Nginx upstream status (requires stub_status or upstream_check_module)
+# Check Nginx connection status (requires stub_status)
 curl http://127.0.0.1:8080/nginx_status
 ```
 
@@ -109,9 +110,9 @@ response = requests.get("http://internal-service/api", timeout=(5, 30))
 
 | Error | Meaning |
 |-------|---------|
-| 502   | Upstream unreachable or returned invalid response |
-| 504   | Upstream reachable but too slow to respond |
+| 502   | Proxy received an invalid upstream response, or the upstream connection failed before a valid response |
+| 504   | Proxy did not receive a timely upstream response |
 
 ## Conclusion
 
-504 errors indicate a slow upstream, not a broken one. Start by measuring upstream response time directly, then decide whether to optimize the upstream code (preferred) or increase proxy timeouts (acceptable for legitimate long operations). Always add application-level timeouts to prevent cascading slowdowns.
+504 errors indicate the gateway timed out waiting for an upstream response. Start by measuring upstream response time directly, then decide whether to optimize the upstream code (preferred) or increase proxy timeouts (acceptable for legitimate long operations). Always add application-level timeouts to prevent cascading slowdowns.

@@ -14,15 +14,15 @@ For teams already using Terraform, adopting OpenTofu is mostly about familiarity
 
 For engineers with Terraform experience, the transition is minimal:
 
-```hcl
+```text
 Week 1: Conceptual differences
   - Why OpenTofu exists (MPL 2.0 fork vs BSL)
   - What's the same: HCL syntax, state format, providers, modules
-  - What's new: OpenTofu-only features (provider iteration, write-only attributes)
+  - What's new: OpenTofu-specific provider iteration and 1.11+ write-only attributes
   - Hands-on: Run tofu plan on existing Terraform configs
 
 Week 2: New features in OpenTofu
-  - Write-only attributes and ephemeral resources (1.10+)
+  - Write-only attributes and ephemeral resources (1.11+)
   - Native state encryption
   - Provider iteration with for_each
   - Lab: Implement write-only password for a database resource
@@ -58,7 +58,7 @@ Week 5-6: Modules and best practices
 Week 7-8: CI/CD integration
   - PR-based workflows with GitHub Actions
   - Plan review and approval gates
-  - Security scanning with tflint and Checkov
+  - Linting with TFLint and security scanning with Checkov
   - Lab: Build a complete CI/CD pipeline
 ```
 
@@ -76,6 +76,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -90,6 +94,11 @@ variable "student_name"  { type = string }
 resource "aws_s3_bucket" "lab" {
   # Each student gets their own unique bucket
   bucket = "tofu-lab-${var.student_name}-${random_id.suffix.hex}"
+
+  tags = {
+    Environment = var.environment
+    Student     = var.student_name
+  }
 }
 
 resource "random_id" "suffix" {
@@ -145,31 +154,31 @@ Use `tofu` (not `terraform`) for all infrastructure operations.
 | terraform import | tofu import |
 
 ## CI/CD
-All pipelines use `opentofu/setup-opentofu@v1` GitHub Action.
+All pipelines use `opentofu/setup-opentofu@v2` GitHub Action.
 See `.github/workflows/opentofu.yml` for the canonical pipeline.
 
 ## Version
-Current OpenTofu version: 1.9.x (pinned in `.tool-versions`)
+Current OpenTofu version: 1.11.x (pinned in `.tool-versions`)
 ```
 
 ## `.tool-versions` for Version Management
 
-```hcl
+```text
 # .tool-versions (asdf version manager)
-opentofu 1.9.0
+opentofu 1.11.6
 ```
 
 ```bash
 # Team members install the pinned version
 asdf plugin add opentofu
-asdf install opentofu 1.9.0
-asdf local opentofu 1.9.0
+asdf install opentofu 1.11.6
+asdf local opentofu 1.11.6
 
 # Verify
-tofu --version
-# OpenTofu v1.9.0
+tofu version
+# OpenTofu v1.11.6
 ```
 
 ## Conclusion
 
-Training a Terraform team to use OpenTofu is low-effort - the concepts and syntax are identical. Focus on: the binary name change, the new registry, lock file regeneration, and CI/CD pipeline updates. For IaC beginners, use the same OpenTofu learning resources as you would for Terraform, focusing on the `tofu` command. Pin the OpenTofu version with `.tool-versions` and update team runbooks with the command reference table.
+Training a Terraform team to use OpenTofu is low-effort - the core concepts and most existing Terraform syntax are compatible. Focus on: the binary name change, the new registry, lock file regeneration, and CI/CD pipeline updates. For IaC beginners, use the same OpenTofu learning resources as you would for Terraform, focusing on the `tofu` command. Pin the OpenTofu version with `.tool-versions` and update team runbooks with the command reference table.

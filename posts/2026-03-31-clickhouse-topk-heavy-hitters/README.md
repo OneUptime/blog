@@ -99,7 +99,7 @@ The original Space-Saving algorithm provides these theoretical guarantees:
 
 For a dataset of 1 million events with `topK(10)`, this means items with frequency above 90,909 (~1/11 of total) would be captured, with at most 90,909 overcount.
 
-Note that ClickHouse uses a Filtered Space-Saving variant, and the documentation states that the function does not provide guaranteed results — in certain situations, errors can occur and it may return frequent values that are not the actual most frequent values. In practice, it works well for identifying heavy hitters, but should not be relied upon for exact guarantees.
+Note that ClickHouse uses a Filtered Space-Saving variant, and the documentation states that the function does not provide guaranteed results - in certain situations, errors can occur and it may return frequent values that are not the actual most frequent values. In practice, it works well for identifying heavy hitters, but should not be relied upon for exact guarantees.
 
 ## Comparing topK vs Exact COUNT Group By
 

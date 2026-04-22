@@ -138,7 +138,7 @@ clickhouse-obfuscator \
 
 ## Obfuscating Specific Columns Only
 
-The obfuscator transforms all columns in its input — there is no flag to skip specific columns. To keep some columns unchanged, export and obfuscate only the sensitive columns, then join them back:
+The obfuscator transforms all columns in its input - there is no flag to skip specific columns. To keep some columns unchanged, export and obfuscate only the sensitive columns, then join them back:
 
 ```bash
 # Export only sensitive columns

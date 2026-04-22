@@ -96,4 +96,4 @@ dapr status -k   # for Kubernetes deployments
 
 ## Summary
 
-Upgrade the Dapr CLI by re-running the official installation script or using a package manager like Homebrew or Winget. After upgrading the CLI, also upgrade the Dapr runtime — use `dapr uninstall` followed by `dapr init` for self-hosted, or `dapr upgrade -k` for Kubernetes — to maintain version compatibility between the CLI and runtime.
+Upgrade the Dapr CLI by re-running the official installation script or using a package manager like Homebrew or Winget. After upgrading the CLI, also upgrade the Dapr runtime - use `dapr uninstall` followed by `dapr init` for self-hosted, or `dapr upgrade -k` for Kubernetes - to maintain version compatibility between the CLI and runtime.

@@ -123,7 +123,7 @@ Configure the actor idle timeout to match your session TTL:
 }
 ```
 
-When a session actor is idle for 30 minutes, Dapr deactivates it from memory. Note that deactivation does not remove persisted state — if a subsequent call arrives, Dapr reactivates the actor and restores its state from the state store. Session expiry is enforced by the `ExpiresAt` timestamp check in `GetSession`, which returns an error and removes state when the session has expired. The idle timeout serves as a resource optimization, freeing memory for inactive sessions.
+When a session actor is idle for 30 minutes, Dapr deactivates it from memory. Note that deactivation does not remove persisted state - if a subsequent call arrives, Dapr reactivates the actor and restores its state from the state store. Session expiry is enforced by the `ExpiresAt` timestamp check in `GetSession`, which returns an error and removes state when the session has expired. The idle timeout serves as a resource optimization, freeing memory for inactive sessions.
 
 ## Invalidating Sessions Explicitly
 

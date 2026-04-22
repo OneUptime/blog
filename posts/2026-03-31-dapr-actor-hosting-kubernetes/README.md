@@ -165,7 +165,7 @@ const server = new DaprServer({
 });
 ```
 
-If you referenced a Dapr `Configuration` resource via the `dapr.io/config` annotation (as shown in Step 3), that resource is used for general sidecar settings like tracing, metrics, and mTLS — not for actor-specific configuration:
+If you referenced a Dapr `Configuration` resource via the `dapr.io/config` annotation (as shown in Step 3), that resource is used for general sidecar settings like tracing, metrics, and mTLS - not for actor-specific configuration:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1

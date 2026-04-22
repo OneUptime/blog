@@ -14,7 +14,7 @@ Dapr supports streaming HTTP responses through service invocation. When a target
 
 ## HTTP Streaming Behavior
 
-Since Dapr v1.12, HTTP streaming through service invocation is enabled by default. Dapr automatically detects streaming requests — those using chunked transfer encoding or without a known `Content-Length` header — and forwards response chunks directly to the caller without buffering them in memory.
+Since Dapr v1.12, HTTP streaming through service invocation is enabled by default. Dapr automatically detects streaming requests - those using chunked transfer encoding or without a known `Content-Length` header - and forwards response chunks directly to the caller without buffering them in memory.
 
 No special annotations or configuration are required to enable streaming. Note that retry policies are bypassed for streaming requests because the request body is consumed as it is read and cannot be replayed.
 
@@ -94,7 +94,7 @@ curl http://localhost:3500/v1.0/invoke/order-service/method/orders/export \
 
 ## gRPC Streaming
 
-For gRPC server streaming, Dapr supports it natively when the app is configured with `dapr.io/app-protocol: grpc`. Clients must set the `dapr-stream` metadata to `true` when making streaming RPCs. Note that resiliency policies only apply to the initial handshake — if a stream is interrupted after establishment, the application must recreate it.
+For gRPC server streaming, Dapr supports it natively when the app is configured with `dapr.io/app-protocol: grpc`. Clients must set the `dapr-stream` metadata to `true` when making streaming RPCs. Note that resiliency policies only apply to the initial handshake - if a stream is interrupted after establishment, the application must recreate it.
 
 ```go
 func (s *OrderServer) WatchOrders(req *pb.WatchRequest, stream pb.OrderService_WatchOrdersServer) error {

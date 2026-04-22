@@ -143,7 +143,7 @@ LEFT JOIN employees e ON d.id = e.dept_id
 GROUP BY d.id, d.name;
 ```
 
-Without this check, departments with no employees return `[null]` (an array containing a JSON null element) rather than an empty array. This happens because the `LEFT JOIN` still produces a row with NULL column values, and `JSON_ARRAYAGG` aggregates that NULL into the array. Since `[null]` is a valid JSON value and not SQL `NULL`, `COALESCE` would not catch it — using `IF` with `COUNT` is the correct approach.
+Without this check, departments with no employees return `[null]` (an array containing a JSON null element) rather than an empty array. This happens because the `LEFT JOIN` still produces a row with NULL column values, and `JSON_ARRAYAGG` aggregates that NULL into the array. Since `[null]` is a valid JSON value and not SQL `NULL`, `COALESCE` would not catch it - using `IF` with `COUNT` is the correct approach.
 
 ## Performance Considerations
 

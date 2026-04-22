@@ -96,7 +96,7 @@ Not all conditions can be placed in `PREWHERE`:
 
 - `PREWHERE` is only supported by MergeTree family tables (MergeTree, ReplacingMergeTree, SummingMergeTree, etc.).
 - `ALIAS` columns cannot be used in `PREWHERE`.
-- Columns used in `PREWHERE` can safely appear in the `SELECT` list — ClickHouse retains the column data for rows that pass the filter.
+- Columns used in `PREWHERE` can safely appear in the `SELECT` list - ClickHouse retains the column data for rows that pass the filter.
 
 ```sql
 -- Works correctly: status in both PREWHERE and SELECT

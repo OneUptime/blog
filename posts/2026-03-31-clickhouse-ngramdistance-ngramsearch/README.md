@@ -24,7 +24,7 @@ ngramSearch(haystack, needle)
 ngramSearchCaseInsensitive(haystack, needle)
 ```
 
-Returns a `Float32` in the range `[0, 1]`. Unlike `ngramDistance`, this is a non-symmetric comparison — it measures how well the needle's n-grams are represented in the haystack.
+Returns a `Float32` in the range `[0, 1]`. Unlike `ngramDistance`, this is a non-symmetric comparison - it measures how well the needle's n-grams are represented in the haystack.
 
 ## Understanding the Distance Value
 

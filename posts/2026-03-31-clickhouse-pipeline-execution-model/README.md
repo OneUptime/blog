@@ -45,7 +45,7 @@ Each thread has its own reader and processes its assigned granules independently
 
 ## Thread Pool and Scheduling
 
-ClickHouse uses a `PipelineExecutor` that drives a reactive scheduling loop. The executor calls each processor's `prepare()` method, which returns a status indicating what the processor needs (e.g., `NeedData`, `Ready`, `PortFull`, `Async`, `Finished`). Based on these statuses, the executor schedules `work()` calls on a thread pool. Processors do not block or sleep — the executor efficiently manages the graph of dependencies.
+ClickHouse uses a `PipelineExecutor` that drives a reactive scheduling loop. The executor calls each processor's `prepare()` method, which returns a status indicating what the processor needs (e.g., `NeedData`, `Ready`, `PortFull`, `Async`, `Finished`). Based on these statuses, the executor schedules `work()` calls on a thread pool. Processors do not block or sleep - the executor efficiently manages the graph of dependencies.
 
 ```sql
 -- See thread pool usage
@@ -81,4 +81,4 @@ WHERE query_id = 'your-query-id';
 
 ## Summary
 
-ClickHouse's pipeline execution model connects processors — each performing a single operation like filtering, aggregating, or sorting — through bounded queues that carry columnar chunks. Parallel processors read granules independently, back-pressure prevents memory overuse, and the reactive `PipelineExecutor` efficiently maps processor work to CPU threads based on declared processor statuses.
+ClickHouse's pipeline execution model connects processors - each performing a single operation like filtering, aggregating, or sorting - through bounded queues that carry columnar chunks. Parallel processors read granules independently, back-pressure prevents memory overuse, and the reactive `PipelineExecutor` efficiently maps processor work to CPU threads based on declared processor statuses.

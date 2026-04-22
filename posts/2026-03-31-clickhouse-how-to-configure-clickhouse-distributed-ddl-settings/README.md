@@ -124,7 +124,7 @@ ALTER TABLE events_local ON CLUSTER my_cluster
 
 ## Disabling Distributed DDL for a Cluster
 
-To run DDL only on the local node, simply omit the `ON CLUSTER` clause — DDL executes locally by default:
+To run DDL only on the local node, simply omit the `ON CLUSTER` clause - DDL executes locally by default:
 
 ```sql
 CREATE TABLE local_only_table (...) ENGINE = MergeTree() ORDER BY id;

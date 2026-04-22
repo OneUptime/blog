@@ -63,9 +63,9 @@ Lightweight deletes use a different mechanism (a deletion mask via the `_row_exi
 
 Since ClickHouse v24.7, you can control this behavior with the `lightweight_mutation_projection_mode` setting:
 
-- `throw` (default) — raises an error, preventing the inconsistency
-- `drop` — drops the affected projection parts; the delete is fast but those parts lose projection optimization until the next merge rebuilds them
-- `rebuild` — rebuilds the affected projection parts to reflect the deletion; slower but preserves projection optimization
+- `throw` (default) - raises an error, preventing the inconsistency
+- `drop` - drops the affected projection parts; the delete is fast but those parts lose projection optimization until the next merge rebuilds them
+- `rebuild` - rebuilds the affected projection parts to reflect the deletion; slower but preserves projection optimization
 
 ```sql
 SET lightweight_mutation_projection_mode = 'drop';

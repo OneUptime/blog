@@ -145,7 +145,7 @@ az monitor metrics alert create \
 
 ## Replaying Dead-Lettered Messages
 
-After fixing the bug, replay DLQ messages. There is no built-in Azure CLI command for this — use Service Bus Explorer (available in the Azure Portal) or write a script with the Azure Service Bus SDK:
+After fixing the bug, replay DLQ messages. There is no built-in Azure CLI command for this - use Service Bus Explorer (available in the Azure Portal) or write a script with the Azure Service Bus SDK:
 
 ```python
 from azure.servicebus import ServiceBusClient

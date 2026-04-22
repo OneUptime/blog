@@ -57,7 +57,7 @@ Or configure it globally in `users.xml`:
 
 In standard hash join, one thread builds the entire hash table from the right-side table, then all threads probe it in parallel.
 
-In parallel hash join, the data is split into buckets — one per thread, as determined by `max_threads` — and each thread builds its own hash table for its bucket simultaneously. This reduces the time to build the hash table proportionally to the number of threads.
+In parallel hash join, the data is split into buckets - one per thread, as determined by `max_threads` - and each thread builds its own hash table for its bucket simultaneously. This reduces the time to build the hash table proportionally to the number of threads.
 
 ## Controlling Parallelism
 

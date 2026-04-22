@@ -8,7 +8,7 @@ Description: Learn how the netloc() function extracts the network location (host
 
 ---
 
-`netloc(url)` extracts the network locality from a URL in the format `username:password@host:port`, returning whichever of those components are present in the URL string. In practice, for most URLs this means it returns `host:port` when a port is specified, or just the `host` when no port is present. Unlike `domain()`, which always returns just the hostname, `netloc()` preserves the port number exactly as written in the URL — it does not strip default ports like 443 or 80. Use `netloc()` when your infrastructure uses non-standard ports and you need to distinguish between services running on different ports of the same host.
+`netloc(url)` extracts the network locality from a URL in the format `username:password@host:port`, returning whichever of those components are present in the URL string. In practice, for most URLs this means it returns `host:port` when a port is specified, or just the `host` when no port is present. Unlike `domain()`, which always returns just the hostname, `netloc()` preserves the port number exactly as written in the URL - it does not strip default ports like 443 or 80. Use `netloc()` when your infrastructure uses non-standard ports and you need to distinguish between services running on different ports of the same host.
 
 ## Basic Usage
 

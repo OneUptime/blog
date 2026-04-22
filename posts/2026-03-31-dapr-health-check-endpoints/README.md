@@ -49,7 +49,7 @@ Note: Port 3500 is the default Dapr HTTP port on the sidecar. The injected probe
 
 ## Configuring Readiness Probe with Outbound Check
 
-You can also check the outbound health endpoint directly from your application. The `/v1.0/healthz/outbound` endpoint verifies that all Dapr components are initialized and the HTTP port is available, without requiring the app channel to be established. This is useful for startup sequencing — your app can call Dapr APIs (like the secrets API) before the app channel is ready.
+You can also check the outbound health endpoint directly from your application. The `/v1.0/healthz/outbound` endpoint verifies that all Dapr components are initialized and the HTTP port is available, without requiring the app channel to be established. This is useful for startup sequencing - your app can call Dapr APIs (like the secrets API) before the app channel is ready.
 
 The outbound endpoint returns HTTP 204 when the sidecar and all components are initialized, or HTTP 500 otherwise.
 

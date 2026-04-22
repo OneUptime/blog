@@ -113,7 +113,7 @@ spec:
     default: /orders
 ```
 
-When using the Kafka protocol surface, consumer groups are auto-created by the Kafka protocol layer. The `consumerGroup` value in the Dapr component configuration is used automatically — no manual creation is needed.
+When using the Kafka protocol surface, consumer groups are auto-created by the Kafka protocol layer. The `consumerGroup` value in the Dapr component configuration is used automatically - no manual creation is needed.
 
 ## Using Managed Identity
 

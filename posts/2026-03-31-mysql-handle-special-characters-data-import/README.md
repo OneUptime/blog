@@ -152,7 +152,7 @@ ALTER TABLE contacts MODIFY bio TEXT CHARACTER SET binary;
 ALTER TABLE contacts MODIFY bio TEXT CHARACTER SET utf8mb4;
 ```
 
-Note: `ALTER TABLE ... CONVERT TO CHARACTER SET utf8mb4` re-encodes data from the current character set, which will not fix garbled data — it only helps when the data is correctly stored in a different character set and you want to change it.
+Note: `ALTER TABLE ... CONVERT TO CHARACTER SET utf8mb4` re-encodes data from the current character set, which will not fix garbled data - it only helps when the data is correctly stored in a different character set and you want to change it.
 
 ## Summary
 

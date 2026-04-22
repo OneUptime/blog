@@ -10,7 +10,7 @@ Description: ClickHouse supports recursive CTEs since version 24.4, but pre-flat
 
 ## Why Alternative Patterns Still Matter
 
-ClickHouse added support for recursive CTEs (`WITH RECURSIVE`) in version 24.4, enabled by default since version 24.8 via the new query analyzer. However, recursive CTEs involve iterative row-level processing that can be slower than ClickHouse's native columnar operations for large-scale analytical workloads. Pre-flattened hierarchies and array-based patterns leverage ClickHouse's strengths — columnar reads, vectorized execution, and batch processing — and are often the better choice for production OLAP queries on tree-structured data.
+ClickHouse added support for recursive CTEs (`WITH RECURSIVE`) in version 24.4, enabled by default since version 24.8 via the new query analyzer. However, recursive CTEs involve iterative row-level processing that can be slower than ClickHouse's native columnar operations for large-scale analytical workloads. Pre-flattened hierarchies and array-based patterns leverage ClickHouse's strengths - columnar reads, vectorized execution, and batch processing - and are often the better choice for production OLAP queries on tree-structured data.
 
 ## Common Recursive CTE Use Case: Category Hierarchy
 

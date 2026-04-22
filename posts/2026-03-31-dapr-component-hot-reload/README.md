@@ -12,7 +12,7 @@ Description: Enable and use Dapr component hot reload in self-hosted mode to upd
 
 Dapr component hot reload allows you to modify component YAML files and have Dapr pick up the changes without restarting the sidecar or your application. This feature is available as a preview feature from Dapr v1.13+ and is especially useful during development.
 
-Note: Hot reload does not apply to Actor State Store or Workflow Backend components — those still require a sidecar restart.
+Note: Hot reload does not apply to Actor State Store or Workflow Backend components - those still require a sidecar restart.
 
 ## Prerequisites
 

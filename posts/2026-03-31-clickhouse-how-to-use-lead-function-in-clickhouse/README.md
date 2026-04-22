@@ -10,7 +10,7 @@ Description: Learn how to use the LEAD() window function in ClickHouse to access
 
 ## What Is leadInFrame()
 
-`leadInFrame(expr, offset, default)` is ClickHouse's window function that returns the value of `expr` from a row that is `offset` rows **after** the current row within the ordered frame. It is the forward-looking counterpart to `lagInFrame()`. ClickHouse does not implement the standard SQL `LEAD()` function directly — use `leadInFrame()` instead.
+`leadInFrame(expr, offset, default)` is ClickHouse's window function that returns the value of `expr` from a row that is `offset` rows **after** the current row within the ordered frame. It is the forward-looking counterpart to `lagInFrame()`. ClickHouse does not implement the standard SQL `LEAD()` function directly - use `leadInFrame()` instead.
 
 ```sql
 leadInFrame(expr [, offset [, default]]) OVER (
@@ -237,4 +237,4 @@ ORDER BY date;
 
 ## Summary
 
-`leadInFrame()` in ClickHouse accesses values from subsequent rows within an ordered window, making it ideal for session duration calculations, page flow analysis, and future period comparisons. ClickHouse does not implement the standard SQL `LEAD()` function, so use `leadInFrame()` and remember that it respects the window frame — add `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING` to look at rows beyond the current one. The optional default value handles the last rows where no next value exists. Use `leadInFrame()` with `PARTITION BY` to analyze sequences within groups (sessions, users, products), and combine it with `lagInFrame()` when you need both backward and forward context in the same query.
+`leadInFrame()` in ClickHouse accesses values from subsequent rows within an ordered window, making it ideal for session duration calculations, page flow analysis, and future period comparisons. ClickHouse does not implement the standard SQL `LEAD()` function, so use `leadInFrame()` and remember that it respects the window frame - add `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING` to look at rows beyond the current one. The optional default value handles the last rows where no next value exists. Use `leadInFrame()` with `PARTITION BY` to analyze sequences within groups (sessions, users, products), and combine it with `lagInFrame()` when you need both backward and forward context in the same query.

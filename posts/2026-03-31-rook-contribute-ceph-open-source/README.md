@@ -19,7 +19,7 @@ Start by building Ceph from source:
 git clone https://github.com/ceph/ceph.git
 cd ceph
 
-# Initialize submodules (required — Ceph has many vendored dependencies)
+# Initialize submodules (required - Ceph has many vendored dependencies)
 git submodule update --init --recursive
 
 # Install build dependencies

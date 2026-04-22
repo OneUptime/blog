@@ -82,7 +82,7 @@ GROUP BY event_date;
 
 ## sumMapFiltered - Restrict to Specific Keys
 
-`sumMapFiltered` is a parametric aggregate function that takes the same arguments as `sumMap`. The filter — a constant array of keys you care about — is passed as the function parameter (in the first set of parentheses), while the key and value arrays remain the function arguments (in the second set). This avoids accumulating data for hundreds of keys when you only need a few.
+`sumMapFiltered` is a parametric aggregate function that takes the same arguments as `sumMap`. The filter - a constant array of keys you care about - is passed as the function parameter (in the first set of parentheses), while the key and value arrays remain the function arguments (in the second set). This avoids accumulating data for hundreds of keys when you only need a few.
 
 ```sql
 -- Only sum values for HTTP status codes 200 and 500

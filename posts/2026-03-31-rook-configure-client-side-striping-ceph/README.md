@@ -80,7 +80,7 @@ rados_striper_set_object_layout_stripe_unit(striper, 1048576);   // 1 MiB
 rados_striper_set_object_layout_stripe_count(striper, 4);
 rados_striper_set_object_layout_object_size(striper, 4194304);   // 4 MiB
 
-// Write data — the striper handles splitting across RADOS objects
+// Write data - the striper handles splitting across RADOS objects
 rados_striper_write(striper, "myobject", data, data_len, 0);
 
 rados_striper_destroy(striper);

@@ -23,7 +23,7 @@ CREATE TABLE local_csv (
 ENGINE = File(CSV);
 ```
 
-By default, ClickHouse stores the file at `{data_path}/data/default/local_csv/data.CSV`. ClickHouse Server does not allow specifying an arbitrary filesystem path for the `File` engine — files must live under the configured data directory. For reading a file by relative path from `user_files_path`, use the `file()` table function instead:
+By default, ClickHouse stores the file at `{data_path}/data/default/local_csv/data.CSV`. ClickHouse Server does not allow specifying an arbitrary filesystem path for the `File` engine - files must live under the configured data directory. For reading a file by relative path from `user_files_path`, use the `file()` table function instead:
 
 ```sql
 SELECT host, count() AS requests

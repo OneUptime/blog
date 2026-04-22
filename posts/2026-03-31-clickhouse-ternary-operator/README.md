@@ -22,7 +22,7 @@ FROM users
 
 ## Short-Circuit Behavior
 
-By default, `if()` in ClickHouse does not short-circuit — both branches are evaluated regardless of the condition. You can enable short-circuit evaluation with the `short_circuit_function_evaluation` setting. When short-circuiting is disabled, guard expressions that could produce incorrect results in either branch.
+By default, `if()` in ClickHouse does not short-circuit - both branches are evaluated regardless of the condition. You can enable short-circuit evaluation with the `short_circuit_function_evaluation` setting. When short-circuiting is disabled, guard expressions that could produce incorrect results in either branch.
 
 ```sql
 -- Safe division using if to avoid division by zero

@@ -21,7 +21,7 @@ import json
 from dapr.clients import DaprClient
 
 with DaprClient() as client:
-    # The value must be a string or bytes — serialize to JSON first
+    # The value must be a string or bytes - serialize to JSON first
     state_value = {"user_id": 123, "name": "Alice"}
     client.save_state(store_name="statestore", key="user-123", value=json.dumps(state_value))
 

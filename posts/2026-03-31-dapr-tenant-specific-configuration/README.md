@@ -114,7 +114,7 @@ spec:
     enabled: false
 ```
 
-Note that Dapr's Configuration CRD settings are applied at sidecar startup and cannot be queried at runtime via an HTTP API. The `/v1.0/configuration/` API endpoint is for the Configuration building block, which reads from external configuration stores — not the sidecar's own Configuration CRD.
+Note that Dapr's Configuration CRD settings are applied at sidecar startup and cannot be queried at runtime via an HTTP API. The `/v1.0/configuration/` API endpoint is for the Configuration building block, which reads from external configuration stores - not the sidecar's own Configuration CRD.
 
 ## Automating Configuration Deployment
 

@@ -117,7 +117,7 @@ GRANT us_reader TO tenant_101;
 
 ## Row Policies and INSERT ... SELECT
 
-Row policies defined `FOR SELECT` also filter the `SELECT` part of `INSERT ... SELECT` operations. For example, if `tenant_101` has a row policy restricting them to `tenant_id = 101`, then an `INSERT ... SELECT` run by that user will only read rows matching the policy filter. Note that row policies do not restrict direct `INSERT VALUES` statements — they make sense only for users with readonly access.
+Row policies defined `FOR SELECT` also filter the `SELECT` part of `INSERT ... SELECT` operations. For example, if `tenant_101` has a row policy restricting them to `tenant_id = 101`, then an `INSERT ... SELECT` run by that user will only read rows matching the policy filter. Note that row policies do not restrict direct `INSERT VALUES` statements - they make sense only for users with readonly access.
 
 ## Default Restrictive Policy
 

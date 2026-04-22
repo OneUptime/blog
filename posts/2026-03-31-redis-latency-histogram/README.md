@@ -43,7 +43,7 @@ LATENCY HISTOGRAM [command [command ...]]
       12) (integer) 150000
 ```
 
-Each pair is `[upper-bound-microseconds, cumulative-count]`. This is a cumulative histogram — each count includes all calls at or below that latency bound, so values are non-decreasing.
+Each pair is `[upper-bound-microseconds, cumulative-count]`. This is a cumulative histogram - each count includes all calls at or below that latency bound, so values are non-decreasing.
 
 ## Understanding the Histogram Format
 

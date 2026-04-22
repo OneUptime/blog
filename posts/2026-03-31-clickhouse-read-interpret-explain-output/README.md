@@ -89,7 +89,7 @@ PrimaryKey
   Granules: 45231/45231
 ```
 
-When the "after" count equals the "before" count (e.g., `Parts: 892/892`), no pruning happened — the query reads all data. This means the WHERE clause is not effectively using the primary key. Check if your filter column is in the table's `ORDER BY` definition.
+When the "after" count equals the "before" count (e.g., `Parts: 892/892`), no pruning happened - the query reads all data. This means the WHERE clause is not effectively using the primary key. Check if your filter column is in the table's `ORDER BY` definition.
 
 ## Reading Filter Pushdown
 

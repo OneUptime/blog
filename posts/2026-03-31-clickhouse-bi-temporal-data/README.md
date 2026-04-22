@@ -70,7 +70,7 @@ INSERT INTO contracts_bitemporal VALUES
 (101, 42, 'enterprise', 1000.0, '2026-01-01', '2299-12-31', now64(3), '2299-12-31 23:59:59', 2);
 ```
 
-We use `ALTER TABLE ... UPDATE` (a mutation) rather than an `INSERT ... SELECT` to close the old row, because ClickHouse `MergeTree` is append-only — an `INSERT` would leave the original open row in place and the "current view" query below would return both versions. Mutations are asynchronous and relatively expensive, so `mutations_sync = 1` waits for the rewrite to complete before returning.
+We use `ALTER TABLE ... UPDATE` (a mutation) rather than an `INSERT ... SELECT` to close the old row, because ClickHouse `MergeTree` is append-only - an `INSERT` would leave the original open row in place and the "current view" query below would return both versions. Mutations are asynchronous and relatively expensive, so `mutations_sync = 1` waits for the rewrite to complete before returning.
 
 ## Querying the Current View of Current State
 

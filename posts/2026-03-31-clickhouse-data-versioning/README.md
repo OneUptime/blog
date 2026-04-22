@@ -86,7 +86,7 @@ WHERE user_id = 1
 ORDER BY version;
 ```
 
-After a background merge completes, only the latest version is retained on disk. Note that FINAL does not trigger a physical merge — it performs a virtual merge at query time so the result reflects only the latest version, while older rows remain on disk until background merges consolidate them.
+After a background merge completes, only the latest version is retained on disk. Note that FINAL does not trigger a physical merge - it performs a virtual merge at query time so the result reflects only the latest version, while older rows remain on disk until background merges consolidate them.
 
 ## CollapsingMergeTree for Explicit Cancellation
 

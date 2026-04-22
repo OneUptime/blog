@@ -32,7 +32,7 @@ systemLog:
       verbosity: 1
 ```
 
-MongoDB 4.4+ uses JSON format by default. There is no configuration option to switch between log formats — structured JSON is the only format in 4.4 and later. Versions before 4.4 use a plaintext log format and do not support structured JSON logging.
+MongoDB 4.4+ uses JSON format by default. There is no configuration option to switch between log formats - structured JSON is the only format in 4.4 and later. Versions before 4.4 use a plaintext log format and do not support structured JSON logging.
 
 ## Understanding a Structured Log Entry
 

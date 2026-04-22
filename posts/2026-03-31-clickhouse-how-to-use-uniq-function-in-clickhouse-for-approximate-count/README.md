@@ -55,7 +55,7 @@ SELECT uniqHLL12(user_id) AS approx_users
 FROM page_views;
 ```
 
-Note: ClickHouse does not recommend this function in most cases — `uniq` or `uniqCombined` typically deliver better accuracy. `uniqHLL12()` error is up to ~10% for small cardinalities (<10K distinct values) and grows again for very large sets (>100M).
+Note: ClickHouse does not recommend this function in most cases - `uniq` or `uniqCombined` typically deliver better accuracy. `uniqHLL12()` error is up to ~10% for small cardinalities (<10K distinct values) and grows again for very large sets (>100M).
 
 ## uniqCombined() - Best Default
 

@@ -41,7 +41,7 @@ bitXor(a, b)  -> integer with bits = max(bits(a), bits(b))
 bitNot(a)     -> same integer width as a
 ```
 
-All four functions accept any pair of integer types (`UInt8`, `UInt16`, `UInt32`, `UInt64`, `Int8` ... `Int64`); floating-point arguments are cast to `Int64`. The two operands of the binary functions do not need to be the same type — the result width is the maximum of the two, and the result is signed if at least one argument is signed.
+All four functions accept any pair of integer types (`UInt8`, `UInt16`, `UInt32`, `UInt64`, `Int8` ... `Int64`); floating-point arguments are cast to `Int64`. The two operands of the binary functions do not need to be the same type - the result width is the maximum of the two, and the result is signed if at least one argument is signed.
 
 ## Basic Behavior
 

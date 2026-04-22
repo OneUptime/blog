@@ -92,7 +92,7 @@ WHERE metric LIKE '%Mutation%';
 <background_schedule_pool_size>16</background_schedule_pool_size>
 ```
 
-After editing the config, apply the change (note that only increases take effect at runtime — lowering the pool requires a server restart):
+After editing the config, apply the change (note that only increases take effect at runtime - lowering the pool requires a server restart):
 
 ```sql
 SYSTEM RELOAD CONFIG;

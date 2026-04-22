@@ -62,7 +62,7 @@ vtysh -c "show ip ospf database"
 
 # Check for OSPF interface state
 vtysh -c "show ip ospf interface eth0"
-# Should show: State DR/BDR/DROther (broadcast), Point-to-Point, or Loopback — not Down
+# Should show: State DR/BDR/DROther (broadcast), Point-to-Point, or Loopback - not Down
 ```
 
 ## Step 4: BGP Route Missing

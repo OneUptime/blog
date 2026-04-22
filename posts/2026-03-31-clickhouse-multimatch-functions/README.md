@@ -190,7 +190,7 @@ ORDER BY flagged_events DESC;
 
 ## Hyperscan Requirements and Limitations
 
-Hyperscan (via the Vectorscan fork) is available in official ClickHouse builds for both x86-64 and ARM (aarch64) platforms. Builds compiled without Vectorscan do not fall back to another regex engine — the `multiMatch` functions are simply not available and will return a `NOT_IMPLEMENTED` error.
+Hyperscan (via the Vectorscan fork) is available in official ClickHouse builds for both x86-64 and ARM (aarch64) platforms. Builds compiled without Vectorscan do not fall back to another regex engine - the `multiMatch` functions are simply not available and will return a `NOT_IMPLEMENTED` error.
 
 For best performance, supply the pattern array as a constant expression at query planning time. This allows Hyperscan to compile all patterns into a single database once rather than per-row.
 

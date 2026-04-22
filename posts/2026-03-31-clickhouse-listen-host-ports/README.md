@@ -97,7 +97,7 @@ graph LR
 </clickhouse>
 ```
 
-ClickHouse resolves the hostname at startup and binds to the resolved IP address. If the DNS record later changes, the listening socket does not automatically rebind — you must restart ClickHouse for the new IP to take effect.
+ClickHouse resolves the hostname at startup and binds to the resolved IP address. If the DNS record later changes, the listening socket does not automatically rebind - you must restart ClickHouse for the new IP to take effect.
 
 ## listen_try Setting
 

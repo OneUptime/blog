@@ -120,4 +120,4 @@ await client.insert({
 
 ## Summary
 
-ClickHouse's Node.js client supports streaming inserts natively. Pass any `Readable` stream as the `values` option — use `Readable.from()` to convert sync or async generators into a stream. This approach handles datasets of any size without exhausting Node.js heap memory, and backpressure is managed automatically by the stream API when using `Readable.from()` with generators.
+ClickHouse's Node.js client supports streaming inserts natively. Pass any `Readable` stream as the `values` option - use `Readable.from()` to convert sync or async generators into a stream. This approach handles datasets of any size without exhausting Node.js heap memory, and backpressure is managed automatically by the stream API when using `Readable.from()` with generators.

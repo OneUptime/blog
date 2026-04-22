@@ -110,7 +110,7 @@ A slow or unavailable dictionary source can delay server startup if dictionaries
 <dictionaries_lazy_load>true</dictionaries_lazy_load>
 ```
 
-Note that `LIFETIME(MIN 0 MAX 3600)` controls how often a loaded dictionary is refreshed, not whether it is loaded lazily — lazy loading is controlled by the server setting above.
+Note that `LIFETIME(MIN 0 MAX 3600)` controls how often a loaded dictionary is refreshed, not whether it is loaded lazily - lazy loading is controlled by the server setting above.
 
 ## Test Dictionary Before Deploying
 

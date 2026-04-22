@@ -135,7 +135,7 @@ kubectl get pvc -A | grep -v Bound
 
 ## Prevention
 
-Prevent accidental namespace deletion by restricting RBAC — ensure only specific administrators have the `delete` verb on `namespaces` resources. Avoid granting broad `cluster-admin` access to users or service accounts that do not need it.
+Prevent accidental namespace deletion by restricting RBAC - ensure only specific administrators have the `delete` verb on `namespaces` resources. Avoid granting broad `cluster-admin` access to users or service accounts that do not need it.
 
 For stronger protection, use admission webhooks or OPA/Gatekeeper policies to block deletion of critical namespaces like `rook-ceph`.
 

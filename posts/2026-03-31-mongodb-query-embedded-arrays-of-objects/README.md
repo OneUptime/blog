@@ -138,7 +138,7 @@ db.orders.createIndex({ "items.sku": 1 })
 db.orders.createIndex({ "items.sku": 1, "items.price": 1 })
 ```
 
-Note: compound multikey indexes have restrictions — at most one indexed field path in a compound index can traverse through an array. You can index multiple scalar sub-fields of the same array (as shown above), but you cannot create a compound index on two separate array fields in the same document (e.g., `{ arrayA: 1, arrayB: 1 }` where both `arrayA` and `arrayB` are arrays).
+Note: compound multikey indexes have restrictions - at most one indexed field path in a compound index can traverse through an array. You can index multiple scalar sub-fields of the same array (as shown above), but you cannot create a compound index on two separate array fields in the same document (e.g., `{ arrayA: 1, arrayB: 1 }` where both `arrayA` and `arrayB` are arrays).
 
 ## Summary
 

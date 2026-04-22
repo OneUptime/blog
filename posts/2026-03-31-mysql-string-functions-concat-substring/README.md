@@ -159,7 +159,7 @@ ORDER BY char_length DESC;
 
 ## REPLACE
 
-`REPLACE` substitutes all occurrences of a substring with a new value. The search respects the column's collation — it is case-insensitive under default collations like `utf8mb4_0900_ai_ci`, and case-sensitive only with binary or `_bin` collations.
+`REPLACE` substitutes all occurrences of a substring with a new value. The search respects the column's collation - it is case-insensitive under default collations like `utf8mb4_0900_ai_ci`, and case-sensitive only with binary or `_bin` collations.
 
 **Syntax:**
 

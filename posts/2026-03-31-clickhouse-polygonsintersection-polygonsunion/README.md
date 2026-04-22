@@ -12,7 +12,7 @@ ClickHouse provides polygon set-operations through `polygonsIntersectionCartesia
 
 ## Polygon Representation
 
-ClickHouse represents a polygon as `Array(Array(Tuple(Float64, Float64)))` — the outer array holds rings, where the first ring is the exterior boundary and any additional rings are holes. The polygon set-operation functions accept multi-polygons typed as `Array(Array(Array(Tuple(Float64, Float64))))` (an array of polygons):
+ClickHouse represents a polygon as `Array(Array(Tuple(Float64, Float64)))` - the outer array holds rings, where the first ring is the exterior boundary and any additional rings are holes. The polygon set-operation functions accept multi-polygons typed as `Array(Array(Array(Tuple(Float64, Float64))))` (an array of polygons):
 
 ```sql
 -- A simple square polygon centered near London

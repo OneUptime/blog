@@ -28,7 +28,7 @@ SELECT rankCorr(x, y) AS spearman_r
 FROM your_table;
 ```
 
-If you need more control — for example, to apply your own tie-handling strategy — you can implement it manually by ranking values with window functions and applying `corr()` to the ranks:
+If you need more control - for example, to apply your own tie-handling strategy - you can implement it manually by ranking values with window functions and applying `corr()` to the ranks:
 
 ```sql
 WITH ranked AS (

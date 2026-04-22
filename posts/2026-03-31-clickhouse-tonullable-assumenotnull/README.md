@@ -78,7 +78,7 @@ user_id  score  non_nullable_score  type_before       type_after
 5        8.8    8.8                 Nullable(Float64)  Float64
 ```
 
-The NULL rows show `0.0` here, but the official documentation states that `assumeNotNull` on a NULL value produces an arbitrary result — the output is not guaranteed to be the type default. Only use `assumeNotNull` when you have verified (or can guarantee) that the column has no NULLs.
+The NULL rows show `0.0` here, but the official documentation states that `assumeNotNull` on a NULL value produces an arbitrary result - the output is not guaranteed to be the type default. Only use `assumeNotNull` when you have verified (or can guarantee) that the column has no NULLs.
 
 ## Practical Use of assumeNotNull: Enabling Array Functions
 

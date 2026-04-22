@@ -59,7 +59,7 @@ Edit `/etc/mysql/my.cnf` or `/etc/my.cnf` (location varies by distribution):
 default-time-zone = '+00:00'
 ```
 
-Or use a named time zone (requires time zone tables to be loaded first — see below):
+Or use a named time zone (requires time zone tables to be loaded first - see below):
 
 ```text
 [mysqld]

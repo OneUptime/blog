@@ -14,7 +14,7 @@ The Dapr Twitter binding (`bindings.twitter`) was deprecated in Dapr v1.10 and r
 
 ## Overview
 
-The Dapr Twitter binding connects to the Twitter v1.1 streaming API and supports both input and output operations. The input binding delivers tweets matching a search query to your application — each matching tweet triggers a POST request to your app endpoint. The output binding supports a `get` operation for searching tweets.
+The Dapr Twitter binding connects to the Twitter v1.1 streaming API and supports both input and output operations. The input binding delivers tweets matching a search query to your application - each matching tweet triggers a POST request to your app endpoint. The output binding supports a `get` operation for searching tweets.
 
 ```mermaid
 flowchart LR

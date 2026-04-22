@@ -10,7 +10,7 @@ Description: Learn how to use $ifNull and $coalesce in MongoDB aggregation to ha
 
 ## How $ifNull and $coalesce Work
 
-`$ifNull` returns a replacement value when an expression evaluates to `null` or is a missing field. Starting in MongoDB 5.0, `$ifNull` accepts any number of input expressions, returning the first non-null value — providing COALESCE-like functionality similar to SQL's `COALESCE`.
+`$ifNull` returns a replacement value when an expression evaluates to `null` or is a missing field. Starting in MongoDB 5.0, `$ifNull` accepts any number of input expressions, returning the first non-null value - providing COALESCE-like functionality similar to SQL's `COALESCE`.
 
 Note: MongoDB does **not** have a separate `$coalesce` operator. The multi-argument form of `$ifNull` is the idiomatic way to achieve coalesce behavior.
 
@@ -134,7 +134,7 @@ Output:
 
 ### Example 4 - Multi-Argument $ifNull as COALESCE (MongoDB 5.0+)
 
-The multi-argument `$ifNull` from Example 3 is the MongoDB equivalent of SQL's `COALESCE`. There is no separate `$coalesce` operator in MongoDB — use multi-argument `$ifNull` as shown in Example 3 to achieve the same result.
+The multi-argument `$ifNull` from Example 3 is the MongoDB equivalent of SQL's `COALESCE`. There is no separate `$coalesce` operator in MongoDB - use multi-argument `$ifNull` as shown in Example 3 to achieve the same result.
 
 ### Example 5 - $ifNull with Default Array
 
@@ -231,7 +231,7 @@ Both handle null values, but differ in approach:
 }
 ```
 
-Note: Both approaches handle missing fields, since missing fields compare equal to `null` in MongoDB aggregation. The key difference is conciseness — `$ifNull` is shorter and purpose-built for null/missing checks, while `$cond` can express arbitrary conditions beyond null checking.
+Note: Both approaches handle missing fields, since missing fields compare equal to `null` in MongoDB aggregation. The key difference is conciseness - `$ifNull` is shorter and purpose-built for null/missing checks, while `$cond` can express arbitrary conditions beyond null checking.
 
 ## Use Cases
 
@@ -243,4 +243,4 @@ Note: Both approaches handle missing fields, since missing fields compare equal 
 
 ## Summary
 
-`$ifNull` returns a replacement value when an expression is `null` or the field is missing. With multiple arguments (MongoDB 5.0+), it returns the first non-null value in the chain, providing COALESCE-like functionality. Note that MongoDB does not have a separate `$coalesce` operator — use multi-argument `$ifNull` instead. Use `$ifNull` defensively to prevent pipeline errors and provide meaningful defaults for incomplete documents.
+`$ifNull` returns a replacement value when an expression is `null` or the field is missing. With multiple arguments (MongoDB 5.0+), it returns the first non-null value in the chain, providing COALESCE-like functionality. Note that MongoDB does not have a separate `$coalesce` operator - use multi-argument `$ifNull` instead. Use `$ifNull` defensively to prevent pipeline errors and provide meaningful defaults for incomplete documents.

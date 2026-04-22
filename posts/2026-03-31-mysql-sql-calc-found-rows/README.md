@@ -65,7 +65,7 @@ SELECT @total AS total_active_users;
 - The extra work is roughly equivalent to running the query without `LIMIT`
 - This makes it no faster than running two separate queries
 
-In practice, a query with `SQL_CALC_FOUND_ROWS` takes roughly as long as the same query without `LIMIT`, because MySQL must examine all matching rows to produce the count — not just the rows returned by `LIMIT`.
+In practice, a query with `SQL_CALC_FOUND_ROWS` takes roughly as long as the same query without `LIMIT`, because MySQL must examine all matching rows to produce the count - not just the rows returned by `LIMIT`.
 
 ## Deprecated in MySQL 8.0
 

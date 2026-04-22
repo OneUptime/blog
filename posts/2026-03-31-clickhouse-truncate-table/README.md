@@ -50,7 +50,7 @@ Replace `'{cluster}'` with the actual cluster name defined in your `config.xml`,
 TRUNCATE TABLE analytics.events ON CLUSTER my_cluster;
 ```
 
-ClickHouse will execute the DDL on every shard and replica in the cluster. Since ReplicatedMergeTree tables replicate truncation automatically, ON CLUSTER is primarily needed for Distributed or non-replicated engine setups. By default, truncation on replicated tables happens asynchronously — add the `SYNC` keyword to wait for all replicas to complete the operation:
+ClickHouse will execute the DDL on every shard and replica in the cluster. Since ReplicatedMergeTree tables replicate truncation automatically, ON CLUSTER is primarily needed for Distributed or non-replicated engine setups. By default, truncation on replicated tables happens asynchronously - add the `SYNC` keyword to wait for all replicas to complete the operation:
 
 ```sql
 TRUNCATE TABLE analytics.events SYNC;

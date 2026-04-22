@@ -10,7 +10,7 @@ Description: Learn how to use polygonsWithinCartesian() and polygonsWithinSpheri
 
 ClickHouse provides two polygon containment functions: `polygonsWithinCartesian()` for flat/projected coordinate systems and `polygonsWithinSpherical()` for geographic longitude/latitude coordinates. Each returns 1 (UInt8) if the first polygon is fully within the second polygon, and 0 otherwise.
 
-**Note:** There is no bare `polygonsWithin()` function in ClickHouse — you must use either the `Cartesian` or `Spherical` variant.
+**Note:** There is no bare `polygonsWithin()` function in ClickHouse - you must use either the `Cartesian` or `Spherical` variant.
 
 ## Function Signatures
 

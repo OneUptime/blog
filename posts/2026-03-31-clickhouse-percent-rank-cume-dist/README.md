@@ -141,7 +141,7 @@ An employee at the 80th percentile within their department earns more than 80% o
 
 ## Building a Cumulative Distribution Function
 
-`CUME_DIST()` directly produces the CDF when each row represents one observation. When you bucket data with `GROUP BY`, each row represents a bucket rather than an individual observation, so `CUME_DIST()` would give the fraction of buckets at or below a value — not the fraction of requests. Instead, use a cumulative sum of counts divided by the total:
+`CUME_DIST()` directly produces the CDF when each row represents one observation. When you bucket data with `GROUP BY`, each row represents a bucket rather than an individual observation, so `CUME_DIST()` would give the fraction of buckets at or below a value - not the fraction of requests. Instead, use a cumulative sum of counts divided by the total:
 
 ```sql
 SELECT

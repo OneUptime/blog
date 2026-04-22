@@ -36,7 +36,7 @@ SELECT categoricalInformationValue(category1, category2, tag_column) AS iv
 FROM table_name;
 ```
 
-Because the arguments must be `UInt8`, string-valued categorical features need to be encoded first — typically by mapping known values to small integers, or by hashing them into a bounded numeric range (e.g. `toUInt8(cityHash64(col) % 200)`).
+Because the arguments must be `UInt8`, string-valued categorical features need to be encoded first - typically by mapping known values to small integers, or by hashing them into a bounded numeric range (e.g. `toUInt8(cityHash64(col) % 200)`).
 
 ## Basic Example
 

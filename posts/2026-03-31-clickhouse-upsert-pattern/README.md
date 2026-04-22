@@ -97,7 +97,7 @@ INSERT INTO events VALUES (1, 'click', '2024-01-15 10:30:00');
 INSERT INTO events VALUES (1, 'click', '2024-01-15 10:30:00');
 ```
 
-Note that deduplication works at the block level — two INSERT blocks with identical data are deduplicated. If the data differs (e.g., different timestamps), they are treated as separate blocks.
+Note that deduplication works at the block level - two INSERT blocks with identical data are deduplicated. If the data differs (e.g., different timestamps), they are treated as separate blocks.
 
 This prevents duplicate inserts but does not handle key-based replacement.
 

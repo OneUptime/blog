@@ -148,7 +148,7 @@ MsgPack is roughly 2x faster to parse than JSON and produces significantly small
 MsgPack naturally handles arrays:
 
 ```python
-# Python side — write each column as a separate MsgPack value
+# Python side - write each column as a separate MsgPack value
 import msgpack
 
 with open("data.msgpack", "wb") as f:

@@ -33,7 +33,7 @@ curl -X POST http://localhost:3500/v1.0/state/statestore \
   ]'
 ```
 
-All items are saved as a batch. This is not atomic — individual items may succeed or fail independently. For atomic multi-key writes, use the transaction endpoint.
+All items are saved as a batch. This is not atomic - individual items may succeed or fail independently. For atomic multi-key writes, use the transaction endpoint.
 
 ## Bulk Get
 

@@ -24,7 +24,7 @@ MinHash and SimHash operate on these shingle sets to produce compact signatures 
 SELECT wordShingleMinHash('the quick brown fox jumps over the lazy dog', 3, 1) AS minhash
 ```
 
-Signature: `wordShingleMinHash(text, shingle_size, hash_count)` returns a `Tuple(UInt64, UInt64)` — the minimum and maximum hash values. The `hash_count` parameter controls how many min/max hashes are computed internally before being aggregated into the two returned values.
+Signature: `wordShingleMinHash(text, shingle_size, hash_count)` returns a `Tuple(UInt64, UInt64)` - the minimum and maximum hash values. The `hash_count` parameter controls how many min/max hashes are computed internally before being aggregated into the two returned values.
 
 For near-duplicate detection, compare hashes from two texts with `tupleHammingDistance`:
 
@@ -129,7 +129,7 @@ SELECT
 FROM text_pairs
 ```
 
-Since `wordShingleMinHash` returns a `Tuple(UInt64, UInt64)` (aggregated min and max hashes), `tupleHammingDistance` returns a value between 0 and 2 — 0 means both min and max hashes match. Increasing `hash_count` (up to 25) increases the number of hashes considered when selecting these aggregated min/max values.
+Since `wordShingleMinHash` returns a `Tuple(UInt64, UInt64)` (aggregated min and max hashes), `tupleHammingDistance` returns a value between 0 and 2 - 0 means both min and max hashes match. Increasing `hash_count` (up to 25) increases the number of hashes considered when selecting these aggregated min/max values.
 
 ## Summary
 

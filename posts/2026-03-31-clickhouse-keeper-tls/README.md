@@ -24,8 +24,8 @@ flowchart LR
 
 Port reference used in this guide:
 - 2181 = plain Keeper client port (`tcp_port`, documented default)
-- 9281 = TLS Keeper client port (`tcp_port_secure`, no documented default — `9281` is a convention)
-- 9234 = Raft internal port (used in official examples; TLS reuses the same port — there is no separate TLS Raft port)
+- 9281 = TLS Keeper client port (`tcp_port_secure`, no documented default - `9281` is a convention)
+- 9234 = Raft internal port (used in official examples; TLS reuses the same port - there is no separate TLS Raft port)
 
 TLS for the Raft channel is enabled once for the whole quorum via `<secure>true</secure>` inside `<raft_configuration>`; the same `<port>` is reused.
 

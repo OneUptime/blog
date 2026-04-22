@@ -78,14 +78,14 @@ With `insert_quorum = 2`, ClickHouse waits until at least two replicas confirm t
 
 ## Mistake 6: Not Restoring a Replica After Keeper Metadata Loss
 
-If a replica's state is lost from ZooKeeper/Keeper (for example, after a Keeper data loss incident), the table enters readonly mode and stops replicating even though local parts are still on disk. Simply recreating the table will not recover it — you need to explicitly restore the replica so it re-registers its local parts in Keeper and refetches anything missing from peers.
+If a replica's state is lost from ZooKeeper/Keeper (for example, after a Keeper data loss incident), the table enters readonly mode and stops replicating even though local parts are still on disk. Simply recreating the table will not recover it - you need to explicitly restore the replica so it re-registers its local parts in Keeper and refetches anything missing from peers.
 
 ```bash
 clickhouse-client --query \
   "SYSTEM RESTORE REPLICA events ON CLUSTER my_cluster"
 ```
 
-For targeted recovery of specific partitions from another replica, use `ALTER TABLE events FETCH PARTITION <partition_id> FROM '/clickhouse/tables/01/events'` and then `ATTACH PARTITION`. Note that creating a brand-new replica against an existing ZooKeeper path does not need this step — ClickHouse fetches data automatically once the table is created.
+For targeted recovery of specific partitions from another replica, use `ALTER TABLE events FETCH PARTITION <partition_id> FROM '/clickhouse/tables/01/events'` and then `ATTACH PARTITION`. Note that creating a brand-new replica against an existing ZooKeeper path does not need this step - ClickHouse fetches data automatically once the table is created.
 
 ## Summary
 

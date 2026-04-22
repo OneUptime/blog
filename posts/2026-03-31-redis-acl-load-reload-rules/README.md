@@ -158,7 +158,7 @@ cp /deploy/users.acl $ACL_FILE
 if $REDIS_CLI ACL LOAD; then
     echo "ACL reloaded successfully"
 else
-    echo "ACL LOAD failed — check file syntax" >&2
+    echo "ACL LOAD failed - check file syntax" >&2
     exit 1
 fi
 

@@ -78,7 +78,7 @@ WHERE event_date = today();
 
 ## topK Error
 
-`topK` implements the Filtered Space-Saving algorithm. Per the ClickHouse documentation, it does not provide a guaranteed result — in certain situations, errors may occur and it may return frequent values that aren't the most frequent values. In practice, items that are significantly more frequent than others are reliably returned, while frequency estimates may be slightly overestimated:
+`topK` implements the Filtered Space-Saving algorithm. Per the ClickHouse documentation, it does not provide a guaranteed result - in certain situations, errors may occur and it may return frequent values that aren't the most frequent values. In practice, items that are significantly more frequent than others are reliably returned, while frequency estimates may be slightly overestimated:
 
 ```sql
 SELECT topK(10)(event_name) AS top_10_events FROM events WHERE event_date = today();

@@ -8,7 +8,7 @@ Description: Learn how to use quantileGK() in ClickHouse, which implements the G
 
 ---
 
-`quantileGK(accuracy, level)(value)` computes an approximate quantile using the Greenwald-Khanna (GK) streaming algorithm. Unlike `quantileTDigest`, which approximates with variable accuracy, GK provides an epsilon-accuracy guarantee: the returned quantile is within `1/accuracy` of the true rank with high probability. The `accuracy` parameter is a positive integer — larger values mean tighter bounds (e.g., `accuracy=100` gives a 1% error bound). This makes it the right choice when you need a provable error bound rather than a best-effort approximation.
+`quantileGK(accuracy, level)(value)` computes an approximate quantile using the Greenwald-Khanna (GK) streaming algorithm. Unlike `quantileTDigest`, which approximates with variable accuracy, GK provides an epsilon-accuracy guarantee: the returned quantile is within `1/accuracy` of the true rank with high probability. The `accuracy` parameter is a positive integer - larger values mean tighter bounds (e.g., `accuracy=100` gives a 1% error bound). This makes it the right choice when you need a provable error bound rather than a best-effort approximation.
 
 ## Syntax
 
@@ -145,4 +145,4 @@ WHERE log_date = today();
 
 ## Summary
 
-`quantileGK(accuracy, level)(value)` implements the Greenwald-Khanna streaming algorithm, providing an epsilon-accuracy guarantee with high probability: the result rank will not deviate by more than `1/accuracy` from the true rank. The `accuracy` parameter is a positive integer — larger values yield tighter bounds. Use it when you need a mathematical guarantee on approximation quality rather than best-effort accuracy, such as for SLA reporting, compliance monitoring, or scenarios where the cost of an inaccurate percentile is high. For best-effort approximation with good tail accuracy, prefer `quantileTDigest`; for exact results at higher memory cost, use `quantileExact`.
+`quantileGK(accuracy, level)(value)` implements the Greenwald-Khanna streaming algorithm, providing an epsilon-accuracy guarantee with high probability: the result rank will not deviate by more than `1/accuracy` from the true rank. The `accuracy` parameter is a positive integer - larger values yield tighter bounds. Use it when you need a mathematical guarantee on approximation quality rather than best-effort accuracy, such as for SLA reporting, compliance monitoring, or scenarios where the cost of an inaccurate percentile is high. For best-effort approximation with good tail accuracy, prefer `quantileTDigest`; for exact results at higher memory cost, use `quantileExact`.

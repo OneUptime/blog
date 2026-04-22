@@ -37,7 +37,7 @@ Suppose you store user permissions as a bitmask in a `users` collection:
 { _id: 3, name: "Carol", permissions: 1 }  // binary: 0001 - read only
 ```
 
-Find users who do not have delete (bit 2) or admin (bit 3) permissions — that is, where both those bits are clear (set to 0):
+Find users who do not have delete (bit 2) or admin (bit 3) permissions - that is, where both those bits are clear (set to 0):
 
 ```javascript
 // Check bits 2 and 3 are both 0: bitmask = 4 + 8 = 12

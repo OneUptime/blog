@@ -65,7 +65,7 @@ ceph osd unset noup
 
 ## Allowing a Specific OSD to Come Up
 
-There is no command to manually mark an individual OSD as `up` — the OSD daemon must report to the monitors itself. The global `noup` flag cannot be overridden on a per-OSD basis. To test a specific OSD while keeping others down, briefly unset the global flag and then re-set it:
+There is no command to manually mark an individual OSD as `up` - the OSD daemon must report to the monitors itself. The global `noup` flag cannot be overridden on a per-OSD basis. To test a specific OSD while keeping others down, briefly unset the global flag and then re-set it:
 
 ```bash
 # Unset noup, let the target OSD come up
@@ -78,7 +78,7 @@ ceph osd tree
 ceph osd set noup
 ```
 
-Note that Ceph also supports per-OSD noup flags via `ceph osd add-noup osd.3` and `ceph osd rm-noup osd.3`, but these only add restrictions — they do not override the global `noup` flag.
+Note that Ceph also supports per-OSD noup flags via `ceph osd add-noup osd.3` and `ceph osd rm-noup osd.3`, but these only add restrictions - they do not override the global `noup` flag.
 
 ## Unsetting noup
 

@@ -85,7 +85,7 @@ curl http://localhost:3500/v1.0/state/statestore/order-001
 
 ## Cross-App State Sharing
 
-Dapr does not allow one app to read another app's prefixed keys through the state API. The `||` separator is a reserved string and cannot appear in user-supplied keys — Dapr rejects such requests with an error. To share state between services, configure a dedicated state store component with `keyPrefix: none`:
+Dapr does not allow one app to read another app's prefixed keys through the state API. The `||` separator is a reserved string and cannot appear in user-supplied keys - Dapr rejects such requests with an error. To share state between services, configure a dedicated state store component with `keyPrefix: none`:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1

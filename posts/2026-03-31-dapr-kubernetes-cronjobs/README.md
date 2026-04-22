@@ -110,7 +110,7 @@ async function shutdownSidecar() {
   await fetch('http://localhost:3500/v1.0/shutdown', { method: 'POST' });
 }
 
-// Call explicitly before process.exit() — do not rely on beforeExit,
+// Call explicitly before process.exit() - do not rely on beforeExit,
 // as it does not fire when process.exit() is called.
 await shutdownSidecar();
 process.exit(0);

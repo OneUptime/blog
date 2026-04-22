@@ -69,7 +69,7 @@ Both tenants use the same component name (`statestore`) but the namespace ensure
 
 ## Namespace-Scoped Service Invocation
 
-By default, Dapr service invocation targets the calling app's namespace. An app in `tenant-a` calling a service by app ID alone will reach services in the same namespace. Cross-namespace invocation is allowed by default using the `appid.namespace` format — to restrict it, use Dapr access control policies:
+By default, Dapr service invocation targets the calling app's namespace. An app in `tenant-a` calling a service by app ID alone will reach services in the same namespace. Cross-namespace invocation is allowed by default using the `appid.namespace` format - to restrict it, use Dapr access control policies:
 
 ```javascript
 // This call from tenant-a can only reach tenant-a services

@@ -48,7 +48,7 @@ If native ports are unavailable or outdated, use the Linux compatibility layer t
 kldload linux64
 sysrc linux_enable="YES"
 
-# Install Linux base packages (Rocky Linux 9 — the current default; linux_base-c7 is deprecated)
+# Install Linux base packages (Rocky Linux 9 - the current default; linux_base-c7 is deprecated)
 pkg install linux_base-rl9
 
 # Download Linux ClickHouse binary

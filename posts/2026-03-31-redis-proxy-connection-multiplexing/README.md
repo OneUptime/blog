@@ -92,7 +92,7 @@ PROXY_PORT = 6381
 REDIS_HOST = '127.0.0.1'
 REDIS_PORT = 6379
 
-# Shared connection pool — all clients multiplex over these connections
+# Shared connection pool - all clients multiplex over these connections
 pool = aioredis.ConnectionPool.from_url(
     f"redis://{REDIS_HOST}:{REDIS_PORT}",
     max_connections=20,

@@ -162,7 +162,7 @@ ops.inprog.forEach(function(op) {
 ## What Happens When You Kill an Operation
 
 - The operation receives an interrupt signal
-- For non-transactional multi-document writes (`updateMany`, `deleteMany`, `insertMany`), documents already modified before the kill are **not** rolled back — only the remaining work is stopped
+- For non-transactional multi-document writes (`updateMany`, `deleteMany`, `insertMany`), documents already modified before the kill are **not** rolled back - only the remaining work is stopped
 - The client receives an error: `"operation was interrupted"`
 - The connection is preserved; the client can issue new operations
 

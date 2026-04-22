@@ -13,10 +13,10 @@ Terragrunt provides a set of built-in functions that read data from the environm
 ## find_in_parent_folders
 
 ```hcl
-# Find the root terragrunt.hcl by walking up the directory tree
+# Find the root.hcl by walking up the directory tree
 
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 # Find a specific named file
@@ -28,7 +28,7 @@ locals {
 ## read_terragrunt_config
 
 ```hcl
-# Read and parse another terragrunt.hcl file
+# Read and parse another Terragrunt config file
 locals {
   env_vars    = read_terragrunt_config(find_in_parent_folders("env.hcl"))
   region_vars = read_terragrunt_config(find_in_parent_folders("region.hcl"))
@@ -101,8 +101,8 @@ locals {
   # Absolute path to the directory containing this terragrunt.hcl
   module_dir = get_terragrunt_dir()
 
-  # Absolute path to the parent include's directory
-  root_dir   = get_parent_terragrunt_dir()
+  # Absolute path to the root include's directory
+  root_dir   = get_parent_terragrunt_dir("root")
 }
 
 # Reference files relative to the current module directory
@@ -173,7 +173,7 @@ locals {
 }
 
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {
@@ -189,4 +189,4 @@ inputs = {
 
 ## Conclusion
 
-Terragrunt's read functions eliminate the need for environment variables and wrapper scripts to inject context into configurations. `read_terragrunt_config` enables a clean hierarchy of configuration files, `get_aws_account_id` removes hard-coded account IDs, and `run_cmd` provides an escape hatch for any data source that doesn't have a built-in function.
+Terragrunt's read functions reduce the need for hard-coded values and wrapper scripts to inject context into configurations. `read_terragrunt_config` enables a clean hierarchy of configuration files, `get_aws_account_id` removes hard-coded account IDs, and `run_cmd` provides an escape hatch for any data source that doesn't have a built-in function.

@@ -16,7 +16,7 @@ ClickHouse must be able to reach the Redis server on its port (default 6379). En
 
 ## Creating a Redis Engine Table
 
-The first column is the primary key and becomes the Redis key. All other columns are serialized together into a single binary value stored as a Redis string (via `MSET`/`MGET`). This means the non-key column data is not individually accessible from Redis — it is a binary blob that only ClickHouse can decode.
+The first column is the primary key and becomes the Redis key. All other columns are serialized together into a single binary value stored as a Redis string (via `MSET`/`MGET`). This means the non-key column data is not individually accessible from Redis - it is a binary blob that only ClickHouse can decode.
 
 ```sql
 CREATE TABLE redis_user_cache

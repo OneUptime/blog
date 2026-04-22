@@ -45,7 +45,7 @@ spec:
         disabled: false
 ```
 
-The `gateway.healthCheck` section controls the startup and readiness probes for the RGW pods. Rook does not expose a configurable liveness probe for RGW in the CRD — it internally uses a TCP socket liveness check, since restarting RGW via an HTTP-based liveness probe could cause more harm than good when RGW is temporarily overloaded.
+The `gateway.healthCheck` section controls the startup and readiness probes for the RGW pods. Rook does not expose a configurable liveness probe for RGW in the CRD - it internally uses a TCP socket liveness check, since restarting RGW via an HTTP-based liveness probe could cause more harm than good when RGW is temporarily overloaded.
 
 ## Customizing Startup and Readiness Probes
 
@@ -70,7 +70,7 @@ gateway:
         successThreshold: 3
 ```
 
-Rook automatically configures the probe handler as an `exec` probe that runs an internal script using `curl` to check the RGW endpoint. You only need to customize the timing parameters shown above. Note that the CRD does not expose a `livenessProbe` for RGW — Rook internally uses a TCP socket liveness check, and restarting RGW via an HTTP-based liveness probe could cause cascading failures when all RGW instances are under load.
+Rook automatically configures the probe handler as an `exec` probe that runs an internal script using `curl` to check the RGW endpoint. You only need to customize the timing parameters shown above. Note that the CRD does not expose a `livenessProbe` for RGW - Rook internally uses a TCP socket liveness check, and restarting RGW via an HTTP-based liveness probe could cause cascading failures when all RGW instances are under load.
 
 ## Understanding the RGW Health Endpoint
 
@@ -132,4 +132,4 @@ The `.status.conditions` array shows the reconciliation status of the object sto
 
 ## Summary
 
-Health probes for RGW in Rook are configured through the `gateway.healthCheck.startupProbe` and `gateway.healthCheck.readinessProbe` fields in the CephObjectStore CRD. Rook does not expose a configurable liveness probe for RGW in the CRD — it internally uses a TCP socket liveness check. The startup probe ensures the pod initializes correctly, while the readiness probe removes not-ready pods from service rotation. Rook automatically configures an `exec`-based probe handler that uses `curl` to check the RGW endpoint. Tune `initialDelaySeconds` and `periodSeconds` to match your environment's startup behavior.
+Health probes for RGW in Rook are configured through the `gateway.healthCheck.startupProbe` and `gateway.healthCheck.readinessProbe` fields in the CephObjectStore CRD. Rook does not expose a configurable liveness probe for RGW in the CRD - it internally uses a TCP socket liveness check. The startup probe ensures the pod initializes correctly, while the readiness probe removes not-ready pods from service rotation. Rook automatically configures an `exec`-based probe handler that uses `curl` to check the RGW endpoint. Tune `initialDelaySeconds` and `periodSeconds` to match your environment's startup behavior.

@@ -100,7 +100,7 @@ SELECT groupArrayInsertAt(0.0, 10)(toFloat64(val), pos) FROM my_table GROUP BY i
 SELECT groupArrayInsertAt('', 10)(label, pos) FROM my_table GROUP BY id;
 ```
 
-Note that `groupArrayInsertAt` does not preserve `NULL` values from `Nullable` columns — NULLs are skipped by the aggregation (this is the standard ClickHouse aggregate-function behavior). If you need NULL-aware positional aggregation, wrap the value in a tuple, e.g. `groupArrayInsertAt(tuple(toNullable(val)), pos).1`.
+Note that `groupArrayInsertAt` does not preserve `NULL` values from `Nullable` columns - NULLs are skipped by the aggregation (this is the standard ClickHouse aggregate-function behavior). If you need NULL-aware positional aggregation, wrap the value in a tuple, e.g. `groupArrayInsertAt(tuple(toNullable(val)), pos).1`.
 
 ## Omitting Default and Size
 

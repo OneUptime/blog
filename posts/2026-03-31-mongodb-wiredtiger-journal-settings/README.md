@@ -129,7 +129,7 @@ db.orders.insertOne(
 
 ## Disabling Journaling (Development Only)
 
-Journaling can be disabled on standalone development instances to improve write speed. Never do this in production. Note that `storage.journal.enabled` was removed in MongoDB 6.1 — journaling is always enabled in MongoDB 6.1+.
+Journaling can be disabled on standalone development instances to improve write speed. Never do this in production. Note that `storage.journal.enabled` was removed in MongoDB 6.1 - journaling is always enabled in MongoDB 6.1+.
 
 ```yaml
 # FOR DEVELOPMENT ONLY (MongoDB < 6.1)

@@ -26,7 +26,7 @@ Delete a specific user:
 ceph auth del client.myapp
 ```
 
-If the deletion succeeds, no output is returned. If the user does not exist, the command still succeeds silently — `ceph auth del` is idempotent.
+If the deletion succeeds, no output is returned. If the user does not exist, the command still succeeds silently - `ceph auth del` is idempotent.
 
 ## Pre-Deletion Checklist
 

@@ -17,7 +17,7 @@ Sunday  02:00  Full backup      (complete snapshot, ~2-4 hours)
 Mon-Sat 02:00  Incremental      (changed parts only, ~10-30 minutes)
 ```
 
-This means at most 7 days of incremental history on top of the weekly full backup. Because each day's incremental uses the previous Sunday's full backup as its base, a point-in-time restore to any day requires only the full backup and that day's incremental — intermediate days are not needed.
+This means at most 7 days of incremental history on top of the weekly full backup. Because each day's incremental uses the previous Sunday's full backup as its base, a point-in-time restore to any day requires only the full backup and that day's incremental - intermediate days are not needed.
 
 ## Backup Script
 

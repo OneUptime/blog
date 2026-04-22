@@ -73,7 +73,7 @@ class OrderFSMActor extends AbstractActor {
       payload
     });
 
-    // Save new state and history — Dapr commits all changes atomically at end of turn
+    // Save new state and history - Dapr commits all changes atomically at end of turn
     await stateManager.setState('state', nextState);
     await stateManager.setState('history', history);
 

@@ -269,7 +269,7 @@ echo "cons" | nc keeper1.internal 2181
 # Server configuration
 echo "conf" | nc keeper1.internal 2181
 
-# Server stats — includes the Mode line (leader, follower, or standalone)
+# Server stats - includes the Mode line (leader, follower, or standalone)
 echo "srvr" | nc keeper1.internal 2181 | grep -i mode
 
 # Dump all ephemeral nodes (shows all active sessions)

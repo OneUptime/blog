@@ -21,7 +21,7 @@ annotations:
   dapr.io/enable-profiling: "true"
 ```
 
-The profiling endpoint defaults to port 7777. This port is not configurable via annotation — use the `--profile-port` flag on `daprd` if you need a different port.
+The profiling endpoint defaults to port 7777. This port is not configurable via annotation - use the `--profile-port` flag on `daprd` if you need a different port.
 
 For local development with `dapr run`:
 

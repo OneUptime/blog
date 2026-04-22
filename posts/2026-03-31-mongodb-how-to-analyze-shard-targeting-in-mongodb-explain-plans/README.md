@@ -147,7 +147,7 @@ The overall `executionTimeMillis` is the max across all shards, so a slow shard 
 1. Filter does not include the shard key
 2. Range query on shard key spans multiple chunks
 3. $or query where branches route to different shards
-4. Sort does not help with shard targeting — the filter must still include the shard key
+4. Sort does not help with shard targeting - the filter must still include the shard key
 5. Collection is not sharded (routes to primary shard)
 ```
 

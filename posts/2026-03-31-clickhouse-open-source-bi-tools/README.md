@@ -47,7 +47,7 @@ Once connected, create datasets from your tables or SQL queries and build charts
 
 ## Connecting Metabase
 
-Starting with Metabase 54, the ClickHouse driver is bundled as a built-in core driver. Simply add ClickHouse as a new database from the admin panel — no extra installation required.
+Starting with Metabase 54, the ClickHouse driver is bundled as a built-in core driver. Simply add ClickHouse as a new database from the admin panel - no extra installation required.
 
 For older Metabase versions (prior to 54), download the driver JAR from the ClickHouse GitHub releases and place it in the `/plugins` directory:
 

@@ -35,7 +35,7 @@ INTO OUTFILE '/path/to/exports/events_today.parquet'
 FORMAT Parquet;
 ```
 
-`INTO OUTFILE` is a client-side feature: the file is written on the machine running `clickhouse-client` or `clickhouse-local`, not on the ClickHouse server. It is not supported via the HTTP interface — a query sent over HTTP with `INTO OUTFILE` will fail. To export over HTTP, pipe the response body to a file (see below).
+`INTO OUTFILE` is a client-side feature: the file is written on the machine running `clickhouse-client` or `clickhouse-local`, not on the ClickHouse server. It is not supported via the HTTP interface - a query sent over HTTP with `INTO OUTFILE` will fail. To export over HTTP, pipe the response body to a file (see below).
 
 ## Exporting via clickhouse-client
 

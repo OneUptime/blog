@@ -59,7 +59,7 @@ spec:
       protocol: grpc
 ```
 
-This configuration allows only state management and pub/sub APIs. All other APIs (bindings, actors, secrets, etc.) will be blocked — HTTP requests to blocked APIs return `404 Not Found` (because the endpoints are not registered), and gRPC calls return `Unimplemented`.
+This configuration allows only state management and pub/sub APIs. All other APIs (bindings, actors, secrets, etc.) will be blocked - HTTP requests to blocked APIs return `404 Not Found` (because the endpoints are not registered), and gRPC calls return `Unimplemented`.
 
 ## Apply the Configuration to a Deployment
 

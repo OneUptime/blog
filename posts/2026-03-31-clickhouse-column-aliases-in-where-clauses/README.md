@@ -8,7 +8,7 @@ Description: Learn how ClickHouse handles column aliases in WHERE clauses and th
 
 ---
 
-In standard SQL, column aliases defined in SELECT cannot be used in the WHERE clause of the same query because WHERE is evaluated before SELECT. ClickHouse, however, supports this as a non-standard extension — aliases defined in SELECT are visible in WHERE for non-aggregate expressions. This post covers how ClickHouse handles aliases in WHERE and the alternative patterns that are useful when the extension doesn't apply or when you want portable SQL.
+In standard SQL, column aliases defined in SELECT cannot be used in the WHERE clause of the same query because WHERE is evaluated before SELECT. ClickHouse, however, supports this as a non-standard extension - aliases defined in SELECT are visible in WHERE for non-aggregate expressions. This post covers how ClickHouse handles aliases in WHERE and the alternative patterns that are useful when the extension doesn't apply or when you want portable SQL.
 
 ## The Problem
 
@@ -23,7 +23,7 @@ FROM events
 WHERE duration_sec > 5;  -- Error in standard SQL: column 'duration_sec' does not exist
 ```
 
-ClickHouse accepts the query above — aliases from SELECT are visible in WHERE. The patterns below are still useful when you want portable SQL, when you filter on an aggregate alias (which must use HAVING), when the same complex expression is reused, or when alias substitution conflicts with a real column name.
+ClickHouse accepts the query above - aliases from SELECT are visible in WHERE. The patterns below are still useful when you want portable SQL, when you filter on an aggregate alias (which must use HAVING), when the same complex expression is reused, or when alias substitution conflicts with a real column name.
 
 ## Solution 1: Repeat the Expression
 
@@ -67,7 +67,7 @@ SELECT * FROM base WHERE duration_sec > 5;
 
 ## Solution 3: Direct Alias Reference (ClickHouse Extension)
 
-ClickHouse lets you reference a SELECT alias directly in WHERE for any non-aggregate expression — no setting required:
+ClickHouse lets you reference a SELECT alias directly in WHERE for any non-aggregate expression - no setting required:
 
 ```sql
 SELECT
@@ -77,7 +77,7 @@ FROM events
 WHERE duration_sec > 5;  -- works in ClickHouse
 ```
 
-Caveats: aggregate aliases cannot be used in WHERE (ClickHouse raises `ILLEGAL_AGGREGATION` — use HAVING instead), and when an alias shares its name with a real column, the `prefer_column_name_to_alias` setting controls which one wins during resolution. Unexpected substitution in this case is a common source of confusing errors.
+Caveats: aggregate aliases cannot be used in WHERE (ClickHouse raises `ILLEGAL_AGGREGATION` - use HAVING instead), and when an alias shares its name with a real column, the `prefer_column_name_to_alias` setting controls which one wins during resolution. Unexpected substitution in this case is a common source of confusing errors.
 
 ## HAVING for Post-Aggregation Filtering
 

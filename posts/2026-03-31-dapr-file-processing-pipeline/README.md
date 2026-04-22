@@ -14,7 +14,7 @@ File processing pipelines ingest uploaded files, transform them, and store resul
 
 ## Binding Configuration
 
-The Dapr S3 binding is output-only — it supports operations like `get`, `create`, `list`, and `delete`, but cannot trigger on file uploads directly. To build an event-driven pipeline, configure S3 to send upload notifications to an SQS queue, then use a Dapr SQS input binding to trigger processing:
+The Dapr S3 binding is output-only - it supports operations like `get`, `create`, `list`, and `delete`, but cannot trigger on file uploads directly. To build an event-driven pipeline, configure S3 to send upload notifications to an SQS queue, then use a Dapr SQS input binding to trigger processing:
 
 ```yaml
 apiVersion: dapr.io/v1alpha1

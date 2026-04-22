@@ -81,7 +81,7 @@ clickhouse-client \
   --query "SELECT 1"
 ```
 
-Provide the correct CA certificate via a client config file (there is no CLI flag for this — `clickhouse-client` reads `openSSL.client.caConfig` from its config):
+Provide the correct CA certificate via a client config file (there is no CLI flag for this - `clickhouse-client` reads `openSSL.client.caConfig` from its config):
 
 ```xml
 <!-- ~/.clickhouse-client/config.xml -->

@@ -178,7 +178,7 @@ SELECT CONVERT_TZ('2025-03-09 02:30:00', 'America/New_York', 'UTC');
 -- Returns a result (the gap time is interpreted as EST, i.e. UTC-5)
 ```
 
-CONVERT_TZ() returns NULL when arguments are NULL or when named time zones are not found in the time zone tables — not because of DST gaps. Always test edge cases around DST transition dates (March and November in North America).
+CONVERT_TZ() returns NULL when arguments are NULL or when named time zones are not found in the time zone tables - not because of DST gaps. Always test edge cases around DST transition dates (March and November in North America).
 
 ## Summary
 

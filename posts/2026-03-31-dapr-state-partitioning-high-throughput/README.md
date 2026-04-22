@@ -110,7 +110,7 @@ async function getAllActiveUsers() {
   const results = await Promise.all(
     SHARDS.map(shard => client.state.getBulk(shard, ['active-users-index']))
   );
-  // Merge results from all shards — getBulk returns an array of {key, data} objects
+  // Merge results from all shards - getBulk returns an array of {key, data} objects
   return results.flatMap(r => {
     const item = r.find(i => i.key === 'active-users-index');
     return item?.data || [];

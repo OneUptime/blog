@@ -130,7 +130,7 @@ const app = express();
 function getClaims(req) {
   const authHeader = req.headers['authorization'] || '';
   const token = authHeader.replace('Bearer ', '');
-  // Token is already validated by Dapr — safe to decode without verification
+  // Token is already validated by Dapr - safe to decode without verification
   return jwt.decode(token) || {};
 }
 
@@ -171,7 +171,7 @@ app = FastAPI()
 def get_claims(request: Request) -> dict:
     auth_header = request.headers.get("authorization", "")
     token = auth_header.replace("Bearer ", "", 1)
-    # Token is already validated by Dapr — safe to decode without verification
+    # Token is already validated by Dapr - safe to decode without verification
     return jwt.decode(token, options={"verify_signature": False})
 
 @app.get("/api/profile")

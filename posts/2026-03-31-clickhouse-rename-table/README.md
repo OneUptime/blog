@@ -98,4 +98,4 @@ EXISTS TABLE analytics.user_events; -- 1
 
 ## Summary
 
-RENAME TABLE in ClickHouse is a metadata operation that completes instantly regardless of table size. Multi-table renames in a single statement are convenient but not atomic — for truly atomic swaps, use EXCHANGE TABLES. Use a cross-database rename to move a table between schemas without touching data on disk.
+RENAME TABLE in ClickHouse is a metadata operation that completes instantly regardless of table size. Multi-table renames in a single statement are convenient but not atomic - for truly atomic swaps, use EXCHANGE TABLES. Use a cross-database rename to move a table between schemas without touching data on disk.

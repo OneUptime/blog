@@ -8,7 +8,7 @@ Description: Learn why MySQL triggers can cause recursive modification errors, h
 
 ---
 
-A recursive trigger situation occurs when a trigger fires, and the SQL inside the trigger body modifies the same table that the trigger is attached to (or a table whose trigger modifies the original table), causing a circular dependency. In MySQL, this does not result in an infinite loop — the storage engine detects the conflict and raises `ERROR 1442 (HY000): Can't update table in stored function/trigger body because it is already used by statement which invoked this stored function/trigger`.
+A recursive trigger situation occurs when a trigger fires, and the SQL inside the trigger body modifies the same table that the trigger is attached to (or a table whose trigger modifies the original table), causing a circular dependency. In MySQL, this does not result in an infinite loop - the storage engine detects the conflict and raises `ERROR 1442 (HY000): Can't update table in stored function/trigger body because it is already used by statement which invoked this stored function/trigger`.
 
 ## How MySQL Handles Trigger Recursion
 
@@ -119,4 +119,4 @@ Alternatively, use a stored procedure that performs both updates in the correct 
 
 ## Summary
 
-MySQL unconditionally prevents trigger recursion — both direct and indirect — by raising ERROR 1442 whenever a trigger attempts to modify a table already in use by the invoking statement. For direct cases, use `BEFORE` triggers with `SET NEW.col = value` to modify the current row without a separate `UPDATE`. For indirect cases, break the circular dependency by removing one trigger from the chain and handling that synchronization in application code or a stored procedure.
+MySQL unconditionally prevents trigger recursion - both direct and indirect - by raising ERROR 1442 whenever a trigger attempts to modify a table already in use by the invoking statement. For direct cases, use `BEFORE` triggers with `SET NEW.col = value` to modify the current row without a separate `UPDATE`. For indirect cases, break the circular dependency by removing one trigger from the chain and handling that synchronization in application code or a stored procedure.

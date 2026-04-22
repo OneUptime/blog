@@ -65,7 +65,7 @@ clickhouse-benchmark \
 |---|---|---|
 | `--concurrency` | 1 | Number of simultaneous query threads |
 | `--iterations` | 0 (unlimited) | Total queries to send (0 = run until Ctrl+C) |
-| `--query` / `-q` | — | Inline query string (alternative to reading from stdin) |
+| `--query` / `-q` | - | Inline query string (alternative to reading from stdin) |
 | `--delay` | 1 | Delay between statistics outputs (seconds) |
 | `--timelimit` | 0 | Stop after N seconds |
 | `--randomize` | (flag) | Randomly pick queries from the input instead of cycling in order |

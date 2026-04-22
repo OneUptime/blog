@@ -151,7 +151,7 @@ kubectl exec test-ipv6-pod-2 -- ip -6 addr show net1
 
 ```yaml
 # Reserve specific IPv6 addresses across namespaces.
-# The reserved IP is encoded in metadata.name — whereabouts replaces ":" with "-"
+# The reserved IP is encoded in metadata.name - whereabouts replaces ":" with "-"
 # since ":" is not a valid character in Kubernetes resource names.
 apiVersion: whereabouts.cni.cncf.io/v1alpha1
 kind: OverlappingRangeIPReservation

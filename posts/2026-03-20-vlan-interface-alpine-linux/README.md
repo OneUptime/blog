@@ -8,7 +8,7 @@ Description: Learn how to configure 802.1Q VLAN interfaces on Alpine Linux using
 
 ---
 
-Alpine Linux uses `ifupdown-ng` by default with `/etc/network/interfaces`, and it has built-in 802.1Q VLAN support — you do not need to install an extra package on modern Alpine. (Note: installing the legacy `vlan` package on an ifupdown-ng system will remove `ifupdown-ng` and break networking; only use it on systems running busybox ifupdown.)
+Alpine Linux uses `ifupdown-ng` by default with `/etc/network/interfaces`, and it has built-in 802.1Q VLAN support - you do not need to install an extra package on modern Alpine. (Note: installing the legacy `vlan` package on an ifupdown-ng system will remove `ifupdown-ng` and break networking; only use it on systems running busybox ifupdown.)
 
 ## Loading the 8021q Kernel Module
 
@@ -103,7 +103,7 @@ ping -c3 10.10.0.1
 
 ## Key Takeaways
 
-- Modern Alpine uses `ifupdown-ng` by default with built-in VLAN support — do not install the legacy `vlan` package, as it will remove `ifupdown-ng` and break networking.
+- Modern Alpine uses `ifupdown-ng` by default with built-in VLAN support - do not install the legacy `vlan` package, as it will remove `ifupdown-ng` and break networking.
 - Load the `8021q` kernel module before configuring VLAN interfaces, and persist it by adding `8021q` to `/etc/modules`.
 - In Alpine's ifupdown-ng, just name the interface `eth0.10` and it automatically uses `eth0` as the parent; the explicit `vlan-raw-device` / `vlan_id` stanzas are also supported.
 - Alpine's minimal footprint makes it ideal for router/firewall containers where VLAN support is needed.

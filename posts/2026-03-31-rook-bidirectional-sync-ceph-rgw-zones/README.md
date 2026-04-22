@@ -165,4 +165,4 @@ curl -s http://zone-west-rgw:9283/metrics | grep rgw_data_sync
 
 ## Summary
 
-Bidirectional sync in Ceph RGW uses symmetrical sync policy flows to replicate objects between zones in both directions. Setting up requires a shared realm and zonegroup, system user credentials for inter-zone authentication, and the `symmetrical` flow type in the sync policy. Ceph resolves write conflicts deterministically — for non-versioned buckets the most recently replicated write takes precedence, while versioned buckets use OLH epochs — making active-active deployments feasible for workloads that tolerate eventual consistency.
+Bidirectional sync in Ceph RGW uses symmetrical sync policy flows to replicate objects between zones in both directions. Setting up requires a shared realm and zonegroup, system user credentials for inter-zone authentication, and the `symmetrical` flow type in the sync policy. Ceph resolves write conflicts deterministically - for non-versioned buckets the most recently replicated write takes precedence, while versioned buckets use OLH epochs - making active-active deployments feasible for workloads that tolerate eventual consistency.

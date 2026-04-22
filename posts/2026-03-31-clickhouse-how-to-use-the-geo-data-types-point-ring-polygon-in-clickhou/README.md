@@ -35,7 +35,7 @@ ORDER BY id;
 
 ## Working with Point
 
-ClickHouse's `Point` is just a `Tuple(Float64, Float64)` — the axis order is a convention you choose. This post stores coordinates as `(latitude, longitude)`. Note that ClickHouse geo functions like `greatCircleDistance` expect `(longitude, latitude)` ordering, so we pass the tuple elements in the right order at call time:
+ClickHouse's `Point` is just a `Tuple(Float64, Float64)` - the axis order is a convention you choose. This post stores coordinates as `(latitude, longitude)`. Note that ClickHouse geo functions like `greatCircleDistance` expect `(longitude, latitude)` ordering, so we pass the tuple elements in the right order at call time:
 
 ```sql
 -- Insert points

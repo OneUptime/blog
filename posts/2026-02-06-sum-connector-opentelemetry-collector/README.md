@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Collector, Connector, Sum Connector, Metrics, Attribute Agg
 
 Description: Learn how to use the Sum connector in the OpenTelemetry Collector to sum numeric attribute values from spans, span events, data points, and logs into output metrics.
 
-The Sum connector in the OpenTelemetry Collector sums numeric values found inside telemetry attributes and emits them as a metric time series. It bridges pipeline types: it consumes spans, span events, metric data points, or logs, and produces metrics. It is not a cross-pipeline "totaliser" that merges multiple metric streams — its job is to read a numeric attribute off each telemetry item, add those values up, and expose the running total as a metric.
+The Sum connector in the OpenTelemetry Collector sums numeric values found inside telemetry attributes and emits them as a metric time series. It bridges pipeline types: it consumes spans, span events, metric data points, or logs, and produces metrics. It is not a cross-pipeline "totaliser" that merges multiple metric streams - its job is to read a numeric attribute off each telemetry item, add those values up, and expose the running total as a metric.
 
 ## What the Sum Connector Actually Does
 
@@ -164,16 +164,16 @@ This reads `http.request.body.size` off every data point flowing through the con
 
 ## Required Settings
 
-- **Telemetry type** — one of `spans`, `spanevents`, `datapoints`, or `logs`. Use `datapoints` for metric inputs and `spans` / `spanevents` for trace inputs.
-- **Output metric name** — the name of the metric the connector will emit.
-- **`source_attribute`** — the attribute whose numeric value is summed. Values are coerced to float; non-numeric strings are dropped.
+- **Telemetry type** - one of `spans`, `spanevents`, `datapoints`, or `logs`. Use `datapoints` for metric inputs and `spans` / `spanevents` for trace inputs.
+- **Output metric name** - the name of the metric the connector will emit.
+- **`source_attribute`** - the attribute whose numeric value is summed. Values are coerced to float; non-numeric strings are dropped.
 
 ## Optional Settings
 
-- **`conditions`** — a list of [OTTL](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/LANGUAGE.md) expressions. Conditions are ORed: if any one matches, the item's value is included in the sum. Use this to filter out items you don't want counted.
-- **`attributes`** — a list of attributes to group by. Each unique combination of values produces its own data point on the output metric.
-  - `key` (required) — attribute name to read off the input item.
-  - `default_value` (optional) — string, int, or float fallback when the attribute is missing.
+- **`conditions`** - a list of [OTTL](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/LANGUAGE.md) expressions. Conditions are ORed: if any one matches, the item's value is included in the sum. Use this to filter out items you don't want counted.
+- **`attributes`** - a list of attributes to group by. Each unique combination of values produces its own data point on the output metric.
+  - `key` (required) - attribute name to read off the input item.
+  - `default_value` (optional) - string, int, or float fallback when the attribute is missing.
 
 ## Multiple Output Metrics From One Connector
 

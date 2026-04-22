@@ -82,7 +82,7 @@ aws ec2 authorize-security-group-egress \
   --cidr 192.168.248.0/21
 ```
 
-Atlas manages its own security groups on the MongoDB-controlled VPC. You do not need to modify any security group on the Atlas side — access control is handled through the Atlas IP Access List in the next step.
+Atlas manages its own security groups on the MongoDB-controlled VPC. You do not need to modify any security group on the Atlas side - access control is handled through the Atlas IP Access List in the next step.
 
 ## Step 6: Update Atlas IP Access List
 

@@ -143,7 +143,7 @@ INSERT INTO pg_orders VALUES
     (88001, 22001, 'pending', 299.99, now(), now());
 ```
 
-ClickHouse translates this into a PostgreSQL `INSERT` statement. Note that `UPDATE` and `DELETE` are not supported through either the engine or the table function — only `SELECT` and `INSERT` operations are available. For mutations, execute them directly on the PostgreSQL server.
+ClickHouse translates this into a PostgreSQL `INSERT` statement. Note that `UPDATE` and `DELETE` are not supported through either the engine or the table function - only `SELECT` and `INSERT` operations are available. For mutations, execute them directly on the PostgreSQL server.
 
 ## Using the postgresql() Table Function
 

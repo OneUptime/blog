@@ -54,7 +54,7 @@ config:
   databaseSizeMB: "20480"    # 20 GiB per OSD on the metadata device
 ```
 
-Ceph documentation recommends allocating between 1% and 4% of the data device size for the DB, depending on workload — closer to 1-2% for RBD and up to 4% for RGW. Without an explicit `databaseSizeMB`, ceph-volume divides the available space on the metadata device equally among the OSDs sharing it. Setting an explicit value caps the partition size per OSD and lets multiple HDDs share one SSD more predictably.
+Ceph documentation recommends allocating between 1% and 4% of the data device size for the DB, depending on workload - closer to 1-2% for RBD and up to 4% for RGW. Without an explicit `databaseSizeMB`, ceph-volume divides the available space on the metadata device equally among the OSDs sharing it. Setting an explicit value caps the partition size per OSD and lets multiple HDDs share one SSD more predictably.
 
 ## Sizing the Metadata Device
 

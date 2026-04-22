@@ -125,7 +125,7 @@ SELECT
     parseDateTime('2026-03-31 09:00:00', '%Y-%m-%d %H:%i:%S', 'America/New_York') AS ny_local,
     parseDateTime('2026-03-31 09:00:00', '%Y-%m-%d %H:%i:%S', 'Europe/Berlin')    AS de_local;
 -- ny_local stores 2026-03-31 13:00:00 UTC (EDT, UTC-4)
--- de_local stores 2026-03-31 07:00:00 UTC (CEST, UTC+2 — DST began March 29)
+-- de_local stores 2026-03-31 07:00:00 UTC (CEST, UTC+2 - DST began March 29)
 ```
 
 ## Choosing Between the Two Functions

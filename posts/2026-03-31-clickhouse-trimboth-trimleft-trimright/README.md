@@ -141,7 +141,7 @@ raw_tag          | normalized_tag
 api              | api
 ```
 
-Note that only characters at the edges are removed, but all characters in the specified set are stripped consecutively from each end until a character not in the set is encountered. This is why `#  cache  #` becomes `cache` — the `#` signs and spaces are all in the character set and are all removed from both ends.
+Note that only characters at the edges are removed, but all characters in the specified set are stripped consecutively from each end until a character not in the set is encountered. This is why `#  cache  #` becomes `cache` - the `#` signs and spaces are all in the character set and are all removed from both ends.
 
 ## Practical Example - Cleaning User-Submitted Form Fields
 

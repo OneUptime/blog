@@ -189,7 +189,7 @@ services:
 
 ## Step 3: Set Up LDAP Authentication (Enterprise)
 
-For team wikis, connecting to LDAP/Active Directory centralizes authentication. Wiki.js does not expose LDAP settings through environment variables — configure it from the admin UI after the initial setup wizard:
+For team wikis, connecting to LDAP/Active Directory centralizes authentication. Wiki.js does not expose LDAP settings through environment variables - configure it from the admin UI after the initial setup wizard:
 
 1. Log in as the admin and open **Administration** > **Authentication**
 2. Click **Add Strategy** and select **LDAP / Active Directory**

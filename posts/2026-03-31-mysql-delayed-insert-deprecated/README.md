@@ -22,7 +22,7 @@ The server queued this row and inserted it when the table was not otherwise in u
 
 ## Why It Was Removed
 
-- **Limited storage engine support** - `INSERT DELAYED` only worked with MyISAM, MEMORY, ARCHIVE, and BLACKHOLE tables — not with InnoDB, NDB, or most other storage engines
+- **Limited storage engine support** - `INSERT DELAYED` only worked with MyISAM, MEMORY, ARCHIVE, and BLACKHOLE tables - not with InnoDB, NDB, or most other storage engines
 - **No guarantee of execution** - if the server crashed before flushing the queue, queued rows were lost
 - **No reliable LAST_INSERT_ID** - the function could not return the AUTO_INCREMENT value because the row was not yet inserted
 - **Deprecated in MySQL 5.6.6**, and its functionality was removed in **MySQL 5.7** (the syntax is still accepted but ignored)

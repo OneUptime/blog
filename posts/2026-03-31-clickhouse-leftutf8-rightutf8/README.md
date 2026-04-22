@@ -28,7 +28,7 @@ byte_slice | char_slice
 П�         | При
 ```
 
-`byte_slice` contains 3 raw bytes — the complete 2-byte character П plus the leading byte of р — producing an invalid UTF-8 sequence that displays as a replacement character.
+`byte_slice` contains 3 raw bytes - the complete 2-byte character П plus the leading byte of р - producing an invalid UTF-8 sequence that displays as a replacement character.
 
 ```sql
 -- Taking 5 bytes cuts through the third Cyrillic character
@@ -43,7 +43,7 @@ broken_slice | correct_3_chars
 Пр�          | При
 ```
 
-`broken_slice` contains 5 bytes — two complete Cyrillic characters Пр (4 bytes) plus the leading byte of и — ending with a partial byte sequence that displays as a replacement character.
+`broken_slice` contains 5 bytes - two complete Cyrillic characters Пр (4 bytes) plus the leading byte of и - ending with a partial byte sequence that displays as a replacement character.
 
 ## Basic Usage of leftUTF8() and rightUTF8()
 

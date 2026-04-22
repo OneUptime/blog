@@ -42,7 +42,7 @@ Redis listens on both localhost and the internal network interface at `10.0.0.5`
 
 `protected-mode` is an additional safety layer introduced in Redis 3.2. When enabled (the default), Redis refuses connections from non-loopback addresses unless a password is set via `requirepass`.
 
-In Redis 3.2 through 6.2, protected-mode only activated when no explicit `bind` directive was configured **and** no password was set — setting **either** one would disable the check. In Redis 7.0+, the `bind` directive is no longer part of the protected-mode check because the default bind already restricts to loopback. Setting a password alone is sufficient to allow remote connections through protected-mode.
+In Redis 3.2 through 6.2, protected-mode only activated when no explicit `bind` directive was configured **and** no password was set - setting **either** one would disable the check. In Redis 7.0+, the `bind` directive is no longer part of the protected-mode check because the default bind already restricts to loopback. Setting a password alone is sufficient to allow remote connections through protected-mode.
 
 ```redis
 protected-mode yes   # default

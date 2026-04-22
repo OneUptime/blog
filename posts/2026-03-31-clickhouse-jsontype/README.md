@@ -8,7 +8,7 @@ Description: Learn how JSONType() identifies the JSON type of a field in ClickHo
 
 ---
 
-`JSONType` returns an `Enum8` describing the JSON type of a value at a given path within a JSON string. The possible return values are `String`, `Int64`, `UInt64`, `Double`, `Bool`, `Array`, `Object`, and `Null`. Note that `Null` is also returned when the key does not exist, so `JSONType` alone cannot distinguish a missing key from an explicit JSON `null` — pair it with `JSONHas` for that. This function is useful for inspecting the actual type before extracting, auditing mixed-type fields, and debugging payloads that do not conform to an expected schema.
+`JSONType` returns an `Enum8` describing the JSON type of a value at a given path within a JSON string. The possible return values are `String`, `Int64`, `UInt64`, `Double`, `Bool`, `Array`, `Object`, and `Null`. Note that `Null` is also returned when the key does not exist, so `JSONType` alone cannot distinguish a missing key from an explicit JSON `null` - pair it with `JSONHas` for that. This function is useful for inspecting the actual type before extracting, auditing mixed-type fields, and debugging payloads that do not conform to an expected schema.
 
 ## Basic Usage
 

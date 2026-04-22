@@ -67,7 +67,7 @@ volumes:
               storage: 50Gi
 ```
 
-CephFS ephemeral volumes provide POSIX filesystem semantics for per-pod temporary storage. Note that each pod in a parallel Job gets its own ephemeral PVC — GenericEphemeralVolumes are not shared across pods. To share a volume across parallel pods, use a regular PVC instead.
+CephFS ephemeral volumes provide POSIX filesystem semantics for per-pod temporary storage. Note that each pod in a parallel Job gets its own ephemeral PVC - GenericEphemeralVolumes are not shared across pods. To share a volume across parallel pods, use a regular PVC instead.
 
 ## Lifecycle and Cleanup Behavior
 

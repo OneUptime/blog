@@ -12,8 +12,8 @@ Description: Learn how to use ST_X() and ST_Y() in MySQL to extract coordinates 
 
 `ST_X()` and `ST_Y()` are MySQL spatial functions that extract the X and Y coordinate values from a `POINT` geometry:
 
-- `ST_X(point)` returns the X coordinate — the value of the first axis defined in the point's spatial reference system (SRS). For SRID 4326 (WGS 84), the first axis is **latitude**.
-- `ST_Y(point)` returns the Y coordinate — the value of the second axis. For SRID 4326, the second axis is **longitude**.
+- `ST_X(point)` returns the X coordinate - the value of the first axis defined in the point's spatial reference system (SRS). For SRID 4326 (WGS 84), the first axis is **latitude**.
+- `ST_Y(point)` returns the Y coordinate - the value of the second axis. For SRID 4326, the second axis is **longitude**.
 
 Both functions can also be used in their two-argument form to set the X or Y value, returning a new POINT with the updated coordinate.
 
@@ -210,7 +210,7 @@ For large tables, use `MBRContains` with a spatial index instead of `ST_X`/`ST_Y
 
 - For SRID 4326, `ST_X` returns latitude (first axis) and `ST_Y` returns longitude (second axis). This follows the EPSG:4326 axis order, which is the reverse of the common "lon, lat" programming convention.
 - For updates, use `SET location = ST_X(location, new_lat)` rather than reconstructing the entire WKT string.
-- Use `ST_Longitude` and `ST_Latitude` (MySQL 8.0+) for self-documenting code on SRID 4326 columns — they always return the correct geographic coordinate regardless of axis order.
+- Use `ST_Longitude` and `ST_Latitude` (MySQL 8.0+) for self-documenting code on SRID 4326 columns - they always return the correct geographic coordinate regardless of axis order.
 - Avoid `ST_X`/`ST_Y` range filters on large tables. Use a spatial index with `MBRContains` or `ST_Within` for indexed coordinate range queries.
 
 ## Summary

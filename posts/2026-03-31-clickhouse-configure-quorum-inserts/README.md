@@ -54,7 +54,7 @@ If replication is slow or a replica is temporarily unavailable, increase the tim
 
 ## Parallel Quorum Inserts
 
-By default, ClickHouse allows parallel quorum inserts into the same table (`insert_quorum_parallel = 1`). Disable this setting if you need strict serialization of quorum inserts — for example, when you rely on `select_sequential_consistency` for read-after-write guarantees:
+By default, ClickHouse allows parallel quorum inserts into the same table (`insert_quorum_parallel = 1`). Disable this setting if you need strict serialization of quorum inserts - for example, when you rely on `select_sequential_consistency` for read-after-write guarantees:
 
 ```sql
 SET insert_quorum = 2;

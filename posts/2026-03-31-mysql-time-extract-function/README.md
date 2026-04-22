@@ -151,7 +151,7 @@ Use `TIME()` when you need the full time value for comparison or storage. Use `H
 
 ## Performance Note
 
-Like `DATE()`, using `TIME()` on an indexed column in a `WHERE` clause prevents index usage. Note that `HOUR()` has the same limitation — any function wrapping a column prevents index seeks:
+Like `DATE()`, using `TIME()` on an indexed column in a `WHERE` clause prevents index usage. Note that `HOUR()` has the same limitation - any function wrapping a column prevents index seeks:
 
 ```sql
 -- Not index-friendly (function wraps the column)

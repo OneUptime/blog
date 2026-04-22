@@ -62,7 +62,7 @@ SELECT quantileDD(0.01, 0.99)(response_time_ms)
 FROM http_logs;
 ```
 
-The first argument (`0.01`) controls the relative error bound — lower values yield higher accuracy at the cost of more memory.
+The first argument (`0.01`) controls the relative error bound - lower values yield higher accuracy at the cost of more memory.
 
 ## Using t-digest in Materialized Views
 

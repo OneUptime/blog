@@ -196,7 +196,7 @@ func main() {
 
     ctx := context.Background()
 
-    // Wire up the stub — the SDK populates function fields via reflection
+    // Wire up the stub - the SDK populates function fields via reflection
     stub := new(OrderActorClientStub)
     client.ImplActorClientStub(stub)
 

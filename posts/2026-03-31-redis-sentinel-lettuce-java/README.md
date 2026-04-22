@@ -129,7 +129,7 @@ client.getResources().eventBus().get()
 String pong = commands.ping();
 System.out.println(pong); // PONG
 
-// Check role — role() returns a List<Object>, e.g. [master, 0, []]
+// Check role - role() returns a List<Object>, e.g. [master, 0, []]
 List<Object> role = commands.role();
 System.out.println("Role: " + role.get(0)); // master
 ```

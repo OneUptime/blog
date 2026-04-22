@@ -78,13 +78,13 @@ use std::net::{TcpStream, TcpListener, SocketAddrV4, Ipv4Addr, SocketAddr};
 
 fn connect_to_v4(ip: Ipv4Addr, port: u16) -> std::io::Result<TcpStream> {
     let addr = SocketAddrV4::new(ip, port);
-    // SocketAddrV4 implements Into<SocketAddr>
+    // TcpStream::connect accepts any ToSocketAddrs; SocketAddr implements it
     TcpStream::connect(SocketAddr::V4(addr))
 }
 
 fn listen_on_v4(ip: Ipv4Addr, port: u16) -> std::io::Result<TcpListener> {
     let addr = SocketAddrV4::new(ip, port);
-    TcpListener::bind(addr)  // TcpListener::bind accepts Into<SocketAddr>
+    TcpListener::bind(addr)  // TcpListener::bind accepts ToSocketAddrs
 }
 ```
 
@@ -135,4 +135,4 @@ fn main() {
 
 ## Conclusion
 
-`SocketAddrV4` pairs an `Ipv4Addr` with a port number and is the typed IPv4 address-port representation in Rust. Use `SocketAddr` when writing generic code that accepts both IPv4 and IPv6. Both types parse from `"ip:port"` strings and implement `Into<SocketAddr>`, making them interchangeable in most standard library networking functions.
+`SocketAddrV4` pairs an `Ipv4Addr` with a port number and is the typed IPv4 address-port representation in Rust. Use `SocketAddr` when writing generic code that accepts both IPv4 and IPv6. Both types parse from `"ip:port"` strings and implement `ToSocketAddrs`, and `SocketAddrV4` converts into `SocketAddr`, making them usable in most standard library networking functions.

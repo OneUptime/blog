@@ -14,7 +14,7 @@ Redis transactions use `MULTI` and `EXEC` to batch commands atomically. All queu
 
 - Commands queued after `MULTI` are executed atomically on `EXEC`
 - Syntax errors during queuing cause the entire transaction to be discarded on `EXEC`
-- Runtime errors in individual commands do **not** roll back other commands — unlike relational databases, there is no rollback
+- Runtime errors in individual commands do **not** roll back other commands - unlike relational databases, there is no rollback
 - `DISCARD` cancels the queued transaction
 
 ## Basic MULTI/EXEC Transaction

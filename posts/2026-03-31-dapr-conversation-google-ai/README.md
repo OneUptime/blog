@@ -133,7 +133,7 @@ app.listen(6001);
 
 ## Google AI vs Vertex AI
 
-Google AI (via AI Studio) is what the `conversation.googleai` component uses. For enterprise use on Google Cloud, Vertex AI is a separate service with additional features like VPC-SC support and enterprise SLAs. As of Dapr 1.14, there is no dedicated `conversation.vertexai` component — use the `conversation.googleai` component with your Google AI API key for Dapr Conversation workloads.
+Google AI (via AI Studio) is what the `conversation.googleai` component uses. For enterprise use on Google Cloud, Vertex AI is a separate service with additional features like VPC-SC support and enterprise SLAs. As of Dapr 1.14, there is no dedicated `conversation.vertexai` component - use the `conversation.googleai` component with your Google AI API key for Dapr Conversation workloads.
 
 ## Summary
 

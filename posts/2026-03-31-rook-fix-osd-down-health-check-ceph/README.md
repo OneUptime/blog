@@ -88,7 +88,7 @@ If the OSD recovered but is still marked out:
 ceph osd in 3
 ```
 
-The "up" state is managed automatically by the OSD daemon — when the daemon starts and sends heartbeats to the monitors, the OSD is marked up. If the OSD is not coming up, restart the OSD pod (see above) and check its logs for errors.
+The "up" state is managed automatically by the OSD daemon - when the daemon starts and sends heartbeats to the monitors, the OSD is marked up. If the OSD is not coming up, restart the OSD pod (see above) and check its logs for errors.
 
 ## Checking Disk Health
 

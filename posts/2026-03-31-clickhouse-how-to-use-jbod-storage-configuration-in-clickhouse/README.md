@@ -81,7 +81,7 @@ ClickHouse distributes new parts across disks in a volume using round-robin by d
 </policies>
 ```
 
-Use `max_data_part_size_bytes` to cap the size of a part on this volume — larger merged parts will be written to the next volume:
+Use `max_data_part_size_bytes` to cap the size of a part on this volume - larger merged parts will be written to the next volume:
 
 ```xml
 <max_data_part_size_bytes>1073741824</max_data_part_size_bytes>

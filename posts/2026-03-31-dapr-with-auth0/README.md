@@ -10,7 +10,7 @@ Description: Integrate Auth0 with Dapr middleware to validate tokens and forward
 
 ## Auth0 and Dapr Integration
 
-Auth0 issues JWTs that your Dapr sidecar can validate using the bearer token middleware. The sidecar acts as a gatekeeper — it rejects requests with invalid or missing tokens before they reach your service. Valid requests are forwarded with the original `Authorization` header intact, so your service can decode the already-validated JWT to read claims without needing to verify the signature again.
+Auth0 issues JWTs that your Dapr sidecar can validate using the bearer token middleware. The sidecar acts as a gatekeeper - it rejects requests with invalid or missing tokens before they reach your service. Valid requests are forwarded with the original `Authorization` header intact, so your service can decode the already-validated JWT to read claims without needing to verify the signature again.
 
 ## Auth0 Application Setup
 

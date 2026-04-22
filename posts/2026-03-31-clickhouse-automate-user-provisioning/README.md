@@ -77,7 +77,7 @@ For large teams, sync users from LDAP instead of managing credentials locally:
 </ldap_servers>
 ```
 
-ClickHouse binds to LDAP as the end user during each login — `bind_dn` is a template where `{user_name}` is substituted with the login name, and the user's own password is used for the bind. There is no service-account credential in this config.
+ClickHouse binds to LDAP as the end user during each login - `bind_dn` is a template where `{user_name}` is substituted with the login name, and the user's own password is used for the bind. There is no service-account credential in this config.
 
 Then reference the LDAP server in user config so ClickHouse delegates authentication to LDAP.
 
