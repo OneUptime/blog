@@ -8,16 +8,16 @@ Description: Learn how to configure Sendmail's DaemonPortOptions directive to bi
 
 ---
 
-Sendmail's `DaemonPortOptions` controls which IP address and port the SMTP daemon listens on. By default Sendmail may listen on both IPv4 and IPv6; using `DaemonPortOptions` you can restrict it to specific IPv4 addresses.
+Sendmail's `DaemonPortOptions` controls which IP address and port the SMTP daemon listens on. Sendmail can listen on both IPv4 and IPv6 when configured with separate daemon options; using `DaemonPortOptions` you can restrict it to specific IPv4 addresses.
 
 ## Default Behavior
 
-Without explicit configuration, Sendmail listens on all interfaces (both IPv4 and IPv6). To restrict this, add `DaemonPortOptions` entries to the Sendmail configuration.
+Without explicit `DAEMON_OPTIONS` entries in the m4 configuration, Sendmail creates default IPv4 listeners for SMTP and MSA. IPv6 listeners require separate `Family=inet6` entries. To restrict this, add `DaemonPortOptions` entries to the Sendmail configuration.
 
 ## Locating the Sendmail Configuration
 
-Sendmail uses two configuration files:
-- `/etc/mail/sendmail.cf` - compiled binary config (do not edit directly)
+Sendmail commonly uses two configuration files:
+- `/etc/mail/sendmail.cf` - generated text config (avoid editing directly when using `sendmail.mc`)
 - `/etc/mail/sendmail.mc` - human-readable source (edit this, then recompile)
 
 ## Configuring DaemonPortOptions in sendmail.mc
@@ -52,7 +52,7 @@ DAEMON_OPTIONS(`Port=smtp, Addr=0.0.0.0, Name=MTA, Family=inet')dnl
 
 ## Recompiling the Configuration
 
-After editing `sendmail.mc`, recompile it to generate the binary `sendmail.cf`:
+After editing `sendmail.mc`, recompile it to generate `sendmail.cf`:
 
 ```bash
 # Recompile the configuration
@@ -61,7 +61,7 @@ m4 /etc/mail/sendmail.mc > /etc/mail/sendmail.cf
 # Or use the makefile provided by the sendmail package
 cd /etc/mail && make
 
-# Verify the compiled config contains the DaemonPortOptions
+# Verify the generated config contains the DaemonPortOptions
 grep "DaemonPortOptions" /etc/mail/sendmail.cf
 ```
 
@@ -73,7 +73,7 @@ systemctl restart sendmail
 
 # Verify it's listening on the correct IPv4 address and port
 ss -tlnp | grep sendmail
-# Expected: 192.168.1.10:25 and 127.0.0.1:25
+# Expected: 192.168.1.10:25, 127.0.0.1:25, and 192.168.1.10:587
 ```
 
 ## Testing Connectivity
@@ -92,6 +92,6 @@ tail -f /var/log/maillog
 ## Key Takeaways
 
 - `DaemonPortOptions` entries in `sendmail.mc` control IPv4 binding; use `Family=inet` for IPv4-only.
-- Always edit `sendmail.mc` and recompile with `m4` - never edit `sendmail.cf` directly.
+- If your system uses `sendmail.mc`, edit it and regenerate `sendmail.cf` instead of hand-editing the generated config.
 - Add separate `DAEMON_OPTIONS` lines for port 25, port 587, and loopback as needed.
 - Use `ss -tlnp | grep sendmail` to confirm Sendmail is bound to the correct IPv4 addresses after restart.
