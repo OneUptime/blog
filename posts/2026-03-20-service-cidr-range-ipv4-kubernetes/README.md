@@ -6,7 +6,7 @@ Tags: Kubernetes, IPv4, Service CIDR, ClusterIP, Networking, Kubeadm
 
 Description: Set the IPv4 service CIDR for Kubernetes ClusterIP addresses during cluster initialization and understand how it affects service IP assignment.
 
-The service CIDR defines the IPv4 range from which Kubernetes assigns ClusterIP addresses to services. These are virtual IPs implemented by kube-proxy using iptables or IPVS - they don't correspond to real network interfaces.
+The service CIDR defines the IPv4 range from which Kubernetes assigns ClusterIP addresses to services. These are virtual IPs implemented by kube-proxy using modes such as iptables, nftables, or IPVS - they are service virtual IPs, not Pod or node interface addresses.
 
 ## Planning the Service CIDR
 
@@ -18,8 +18,8 @@ Small:   10.96.0.0/20 (4,094 services)
 Rules:
 - Must not overlap with Pod CIDR
 - Must not overlap with host network ranges
-- First IP is reserved as the Kubernetes API server ClusterIP (10.96.0.1)
-- Second IP block is for CoreDNS (typically 10.96.0.10)
+- First usable IP is used by the kubernetes.default API server service (10.96.0.1 for the default CIDR)
+- CoreDNS commonly uses the 10th IP (typically 10.96.0.10), but Kubernetes does not reserve it automatically
 ```
 
 ## Setting Service CIDR with kubeadm
@@ -27,7 +27,7 @@ Rules:
 ```yaml
 # kubeadm-config.yaml
 
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 networking:
   podSubnet: "10.244.0.0/16"
@@ -99,12 +99,13 @@ kubectl get svc my-fixed-ip-service
 ## Checking for IP Exhaustion
 
 ```bash
-# Count services with ClusterIPs
-kubectl get svc --all-namespaces --no-headers | grep -v None | grep -v NodePort | wc -l
-
-# View all ClusterIPs
+# Count services with IPv4 ClusterIPs
 kubectl get svc --all-namespaces -o jsonpath='{range .items[*]}{.spec.clusterIP}{"\n"}{end}' | \
-  grep -v None | sort -t. -k4 -n
+  grep -E '^[0-9]+(\.[0-9]+){3}$' | wc -l
+
+# View all IPv4 ClusterIPs
+kubectl get svc --all-namespaces -o jsonpath='{range .items[*]}{.spec.clusterIP}{"\n"}{end}' | \
+  grep -E '^[0-9]+(\.[0-9]+){3}$' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n
 ```
 
-The service CIDR is set at cluster creation and cannot be changed without rebuilding the cluster, so plan its size carefully based on expected service count.
+With kubeadm, plan the primary service CIDR at cluster creation: kubeadm upgrade does not support changing the Service CIDR later. On Kubernetes versions that support ServiceCIDR objects, you can extend the available Service IP ranges, but replacing the primary range is a disruptive reconfiguration task.
