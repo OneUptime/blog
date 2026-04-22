@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, S3, Event Notification, Lambda, SQS, EventBridge, Infrastructure as Code
 
-Description: Learn how to configure S3 event notifications using OpenTofu to trigger Lambda functions, send messages to SQS, or publish to SNS when objects are created, deleted, or modified.
+Description: Learn how to configure S3 event notifications using OpenTofu to trigger Lambda functions, send messages to SQS, or publish to SNS when supported S3 object events occur.
 
 ## Introduction
 
@@ -13,7 +13,7 @@ S3 event notifications let you react in real time to changes in S3 buckets. When
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with S3, Lambda, and SQS permissions
+- AWS credentials with S3, Lambda, SQS, SNS, EventBridge, and IAM permissions
 
 ## Step 1: Create Processing Resources
 
@@ -103,7 +103,8 @@ resource "aws_sns_topic_policy" "uploads" {
 
 ```hcl
 resource "aws_s3_bucket_notification" "uploads" {
-  bucket = aws_s3_bucket.uploads.id
+  bucket      = aws_s3_bucket.uploads.id
+  eventbridge = true  # Routes all supported S3 events to EventBridge
 
   # Trigger Lambda for all CSV uploads for data processing
   lambda_function {
@@ -121,7 +122,7 @@ resource "aws_s3_bucket_notification" "uploads" {
     filter_suffix = ".jpg"
   }
 
-  # Publish all deletions to SNS for audit trail
+  # Publish object removal events to SNS for audit trail
   topic {
     topic_arn = aws_sns_topic.upload_notifications.arn
     events    = ["s3:ObjectRemoved:*"]
@@ -138,13 +139,7 @@ resource "aws_s3_bucket_notification" "uploads" {
 ## Step 4: Use EventBridge for Advanced Routing
 
 ```hcl
-# Enable EventBridge notifications for advanced routing rules
-resource "aws_s3_bucket_notification" "eventbridge" {
-  bucket      = aws_s3_bucket.uploads.id
-  eventbridge = true  # Routes all events to EventBridge
-}
-
-# EventBridge rule to route large file uploads to a specific target
+# With EventBridge enabled above, route large file uploads to a specific target
 resource "aws_cloudwatch_event_rule" "large_uploads" {
   name        = "s3-large-file-upload"
   description = "Trigger on large file uploads"
@@ -158,6 +153,20 @@ resource "aws_cloudwatch_event_rule" "large_uploads" {
     }
   })
 }
+
+resource "aws_cloudwatch_event_target" "large_uploads" {
+  rule      = aws_cloudwatch_event_rule.large_uploads.name
+  target_id = "LargeUploadProcessor"
+  arn       = aws_lambda_function.processor.arn
+}
+
+resource "aws_lambda_permission" "eventbridge_invoke" {
+  statement_id  = "AllowEventBridgeInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.processor.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.large_uploads.arn
+}
 ```
 
 ## Step 5: Deploy
@@ -170,4 +179,4 @@ tofu apply
 
 ## Conclusion
 
-S3 event notifications enable real-time event-driven workflows triggered by object changes. Use Lambda for synchronous processing, SQS for decoupled queue-based workflows, SNS for fan-out to multiple consumers, and EventBridge for complex routing rules. For new architectures, EventBridge provides the most flexibility with content-based filtering and multiple target types without needing to configure multiple notification targets.
+S3 event notifications enable real-time event-driven workflows triggered by object changes. Use Lambda for direct asynchronous processing, SQS for decoupled queue-based workflows, SNS for fan-out to multiple consumers, and EventBridge for complex routing rules. For new architectures, EventBridge provides the most flexibility with content-based filtering and multiple target types without needing to configure multiple S3 notification targets.
