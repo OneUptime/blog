@@ -8,210 +8,146 @@ Description: Guide to automating SBOM (Software Bill of Materials) generation fo
 
 ## Introduction
 
-How to Set Up SBOM Generation in Rancher is a critical security capability for hardening Rancher-managed Kubernetes environments. This guide provides practical implementation steps for security teams and platform engineers.
+SBOM generation in Rancher-managed Kubernetes environments starts with discovering the images that are running in your clusters, then generating Software Bills of Materials for those image references with a tool such as Syft. This guide provides practical implementation steps for security teams and platform engineers.
 
 ## Why This Matters
 
-Container and Kubernetes environments face unique security challenges:
-- Dynamic workloads create large attack surfaces
-- Container escape vulnerabilities can compromise host systems
-- Supply chain attacks target container images and dependencies
-- Lateral movement is easy in flat networks
+Container and Kubernetes environments face unique supply chain challenges:
+- Dynamic workloads make it hard to keep an accurate image inventory
+- Supply chain attacks target container images and their dependencies
+- Compliance programs often require component and license inventories
+- Vulnerability response depends on knowing which workloads include affected packages
 
-How to Set Up SBOM Generation in Rancher addresses these challenges by adding defense-in-depth controls.
+SBOM generation in Rancher addresses these challenges by giving teams a repeatable inventory of the software components deployed in their clusters.
 
 ## Prerequisites
 
-- Rancher v2.7+ cluster with cluster admin access
-- Kubernetes 1.26+
-- Helm 3.x
-- Understanding of Linux security concepts
+- Rancher-managed Kubernetes cluster with permission to list pods
+- kubectl configured with a kubeconfig downloaded from Rancher, or access to the Rancher kubectl shell
+- Syft 1.x installed for SBOM generation
+- jq and standard Unix tools such as sort and tr
+- Registry credentials for any private images you need to scan
 
-## Step 1: Assess Current Security Posture
-
-```bash
-# Run a basic security audit
-
-kubectl get pods --all-namespaces -o json | jq -r '
-  .items[] | 
-  select(
-    .spec.containers[].securityContext.runAsRoot == true or
-    .spec.containers[].securityContext.privileged == true
-  ) |
-  [.metadata.namespace, .metadata.name] |
-  @csv'
-
-# Check for pods running as root
-kubectl get pods --all-namespaces -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,USER:.spec.securityContext.runAsUser'
-
-# Check privileged pods
-kubectl get pods --all-namespaces -o json |   jq -r '.items[] | select(.spec.containers[].securityContext.privileged==true) | 
-  .metadata.namespace + "/" + .metadata.name'
-```
-
-## Step 2: Configure Security Feature
-
-```yaml
-# security-feature-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: security-config
-  namespace: kube-system
-data:
-  config.yaml: |
-    # Security feature configuration
-    enabled: true
-    level: "strict"
-    
-    # Audit settings
-    audit:
-      enabled: true
-      outputPath: /var/log/security-audit.log
-    
-    # Alert settings
-    alerts:
-      enabled: true
-      webhook: "https://alerts.example.com/security"
-```
-
-## Step 3: Apply Pod Security Standards
-
-```yaml
-# namespace-security-labels.yaml
-# Label namespace to enforce Pod Security Standards
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: production
-  labels:
-    # Enforce strict Pod Security Standard
-    pod-security.kubernetes.io/enforce: restricted
-    pod-security.kubernetes.io/enforce-version: latest
-    pod-security.kubernetes.io/audit: restricted
-    pod-security.kubernetes.io/warn: restricted
-```
-
-## Step 4: Configure Security Context for Workloads
-
-```yaml
-# secure-deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: secure-app
-  namespace: production
-spec:
-  template:
-    spec:
-      # Pod-level security context
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 3000
-        fsGroup: 2000
-        seccompProfile:
-          type: RuntimeDefault
-      
-      containers:
-      - name: app
-        image: registry.example.com/app:latest
-        
-        # Container-level security context
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop:
-            - ALL            # Drop all Linux capabilities
-            add:
-            - NET_BIND_SERVICE  # Only add what's needed
-        
-        # Required volume for writable locations
-        volumeMounts:
-        - name: tmp
-          mountPath: /tmp
-        - name: cache
-          mountPath: /app/cache
-      
-      volumes:
-      - name: tmp
-        emptyDir: {}
-      - name: cache
-        emptyDir: {}
-```
-
-## Step 5: Install Security Tooling
+## Step 1: Assess Current Image Inventory
 
 ```bash
-# Install via Helm
-helm repo add security-charts https://charts.example.com/security
-helm repo update
+# List unique init container and application container images across all namespaces
+kubectl get pods --all-namespaces \
+  -o jsonpath="{.items[*].spec['initContainers', 'containers'][*].image}" |
+  tr -s '[[:space:]]' '\n' |
+  sort -u > images.txt
 
-helm install security-tool security-charts/security-tool   --namespace security-system   --create-namespace   --set rules.enabled=true   --set alerting.enabled=true   --set alerting.slack.webhook=YOUR_WEBHOOK_URL
+cat images.txt
 
-kubectl get pods -n security-system
+# Optional: map images back to the pod that uses them
+kubectl get pods --all-namespaces \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{":\t"}{range .spec.containers[*]}{.image}{" "}{end}{range .spec.initContainers[*]}{.image}{" "}{end}{"\n"}{end}' |
+  sort
 ```
 
-## Step 6: Create Alert Rules
-
-```yaml
-# security-prometheus-rules.yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: security-alerts
-  namespace: cattle-monitoring-system
-spec:
-  groups:
-  - name: security.alerts
-    rules:
-    - alert: PrivilegedContainerDetected
-      expr: |
-        kube_pod_container_info{container!=""} * on(pod, namespace)
-        kube_pod_spec_container_security_context_privileged{privileged="true"} > 0
-      for: 0m
-      labels:
-        severity: critical
-      annotations:
-        summary: "Privileged container in {{ $labels.namespace }}/{{ $labels.pod }}"
-    
-    - alert: ContainerRunningAsRoot
-      expr: |
-        kube_pod_container_status_running * on(pod, namespace)
-        kube_pod_container_info{container_id!=""} and
-        kube_pod_spec_container_security_context_run_as_user{run_as_user="0"} > 0
-      for: 5m
-      labels:
-        severity: warning
-      annotations:
-        summary: "Container running as root in {{ $labels.namespace }}"
-```
-
-## Step 7: Verify Security Controls
+## Step 2: Configure SBOM Tooling
 
 ```bash
-#!/bin/bash
-# security-verification.sh
+# Install Syft on your workstation or CI runner
+curl -sSfL https://get.anchore.io/syft | sudo sh -s -- -b /usr/local/bin
 
-echo "=== Security Control Verification ==="
+# Verify the installation
+syft version
+```
 
-echo "1. Checking for privileged containers..."
-PRIV_COUNT=$(kubectl get pods --all-namespaces -o json |   jq '[.items[].spec.containers[].securityContext.privileged // false | select(.)] | length')
-echo "   Privileged containers: $PRIV_COUNT"
+## Step 3: Generate an SBOM for a Workload Image
 
-echo ""
-echo "2. Checking namespaces with Pod Security Standards..."
-kubectl get namespaces -o custom-columns='NAME:.metadata.name,PSS:.metadata.labels[pod-security\.kubernetes\.io/enforce]'
+```bash
+mkdir -p sboms
 
-echo ""
-echo "3. Checking for host network pods..."
-kubectl get pods --all-namespaces -o json |   jq -r '.items[] | select(.spec.hostNetwork==true) | 
-  .metadata.namespace + "/" + .metadata.name'
+# Replace this with an image from images.txt; prefer immutable digests in production
+IMAGE=registry.example.com/app:1.0.0
+SBOM_NAME=$(printf '%s' "$IMAGE" | tr '/:@' '---')
 
+# Generate SPDX JSON and CycloneDX JSON outputs
+syft "$IMAGE" \
+  -o spdx-json="sboms/${SBOM_NAME}.spdx.json" \
+  -o cyclonedx-json="sboms/${SBOM_NAME}.cdx.json"
+```
+
+## Step 4: Generate SBOMs for Rancher Workloads
+
+```bash
+mkdir -p sboms
+
+while IFS= read -r image; do
+  [ -n "$image" ] || continue
+  sbom_name=$(printf '%s' "$image" | tr '/:@' '---')
+  syft "$image" -o spdx-json="sboms/${sbom_name}.spdx.json"
+done < images.txt
+```
+
+## Step 5: Automate SBOM Generation
+
+```yaml
+# .github/workflows/sbom.yaml
+name: Generate SBOM
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      IMAGE_REF: registry.example.com/app:${{ github.sha }}
+    steps:
+      - name: Generate image SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE_REF }}
+          registry-username: ${{ secrets.REGISTRY_USERNAME }}
+          registry-password: ${{ secrets.REGISTRY_PASSWORD }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          artifact-name: sbom.spdx.json
+```
+
+## Step 6: Scan SBOMs for Vulnerabilities and Licenses
+
+```bash
+# Trivy can read SPDX and CycloneDX SBOMs and correlate them with vulnerability data
+trivy sbom sboms/registry.example.com-app-1.0.0.spdx.json
+
+# Include license scanning when your compliance process requires it
+trivy sbom --scanners vuln,license sboms/registry.example.com-app-1.0.0.spdx.json
+```
+
+## Step 7: Verify SBOM Generation
+
+```bash
+#!/usr/bin/env bash
+# sbom-verification.sh
+
+set -euo pipefail
+
+echo "=== SBOM Generation Verification ==="
+
+expected=$(grep -cve '^[[:space:]]*$' images.txt)
+actual=$(find sboms -name '*.spdx.json' -type f | wc -l | tr -d ' ')
+
+echo "Images found: $expected"
+echo "SPDX SBOMs generated: $actual"
+
+test "$actual" -ge "$expected"
+
+for sbom in sboms/*.spdx.json; do
+  jq -e '.spdxVersion and (.packages | type == "array")' "$sbom" >/dev/null
+done
+
+echo "SBOM validation checks passed"
 echo "=== Verification Complete ==="
 ```
 
 ## Conclusion
 
-Implementing How to Set Up SBOM Generation in Rancher on Rancher adds an important layer of defense to your Kubernetes security posture. Combine with other security controls (network policies, RBAC, admission webhooks) for comprehensive defense-in-depth. Regular security audits and automated compliance checks ensure controls remain effective over time.
+Implementing SBOM generation for Rancher-managed workloads adds an important layer of supply chain visibility to your Kubernetes security posture. Combine SBOM generation with image scanning, admission controls, network policies, and RBAC for comprehensive defense-in-depth. Regular SBOM generation in CI/CD and periodic checks against running cluster images help ensure your inventory remains accurate over time.
