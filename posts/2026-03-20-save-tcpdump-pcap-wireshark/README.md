@@ -25,7 +25,7 @@ sudo tcpdump -i eth0 -w /tmp/capture.pcap
 # Save with filter (only interesting traffic)
 sudo tcpdump -i eth0 -w /tmp/web-traffic.pcap 'port 80 or port 443'
 
-# Save with -n (don't resolve names - smaller output, faster)
+# Save host traffic (-n skips name resolution for printed output; PCAP size is unchanged)
 sudo tcpdump -i eth0 -n -w /tmp/capture.pcap host 192.168.1.50
 
 # Limit capture to N packets then stop
@@ -53,7 +53,7 @@ sudo tcpdump -i eth0 -w '/tmp/capture-%Y%m%d-%H%M%S.pcap' -G 300
 
 # Files: capture-20261015-120000.pcap, capture-20261015-120500.pcap, ...
 
-# Combine: rotate every 5 minutes, keep 12 (1 hour of captures)
+# Combine: rotate every 5 minutes, write 12 files (1 hour), then stop
 sudo tcpdump -i eth0 \
     -w '/tmp/capture-%Y%m%d-%H%M%S.pcap' \
     -G 300 \
@@ -67,7 +67,7 @@ sudo tcpdump -i eth0 \
 # Read PCAP and display
 tcpdump -r /tmp/capture.pcap
 
-# Read with display filter
+# Read with tcpdump capture/BPF filter
 tcpdump -r /tmp/capture.pcap 'host 192.168.1.50'
 tcpdump -r /tmp/capture.pcap 'port 443'
 tcpdump -r /tmp/capture.pcap -n 'tcp and dst 8.8.8.8'
@@ -106,11 +106,11 @@ wireshark /tmp/capture.pcap
 scp user@server:/tmp/capture.pcap /tmp/remote-capture.pcap
 wireshark /tmp/remote-capture.pcap
 
-# Open compressed file (Wireshark handles .pcap.gz natively)
+# Open compressed file (Wireshark handles .pcap.gz when built with gzip/zlib support)
 wireshark /tmp/capture.pcap.gz
 ```
 
-```bash
+```text
 Wireshark workflow after opening PCAP:
 1. Apply display filter: ip.addr == 192.168.1.50
 2. Statistics → Conversations → TCP (see all connections)
@@ -125,16 +125,18 @@ Wireshark workflow after opening PCAP:
 #!/bin/bash
 # /usr/local/bin/continuous-capture.sh
 # Continuous packet capture with rotation and retention management
+# Run this script as root (for example: sudo /usr/local/bin/continuous-capture.sh)
 
 INTERFACE="eth0"
 CAPTURE_DIR="/var/captures"
 MAX_AGE_HOURS=24
 MAX_SIZE_GB=10
+MAX_SIZE_KB=$((MAX_SIZE_GB * 1024 * 1024))
 
 mkdir -p "$CAPTURE_DIR"
 
 # Start capture with rotation
-sudo tcpdump -i "$INTERFACE" \
+tcpdump -i "$INTERFACE" \
     -w "${CAPTURE_DIR}/capture-%Y%m%d-%H%M%S.pcap" \
     -G 300 \
     -n \
@@ -142,7 +144,7 @@ sudo tcpdump -i "$INTERFACE" \
 
 TCPDUMP_PID=$!
 echo "tcpdump started: PID $TCPDUMP_PID"
-echo $TCPDUMP_PID > /var/run/tcpdump.pid
+echo "$TCPDUMP_PID" > /var/run/tcpdump.pid
 
 # Cleanup old files in background
 while true; do
@@ -150,8 +152,10 @@ while true; do
     find "$CAPTURE_DIR" -name "*.pcap" -mmin +$((MAX_AGE_HOURS * 60)) -delete
 
     # Remove oldest if over size limit
-    while [ "$(du -sg $CAPTURE_DIR | cut -f1)" -gt "$MAX_SIZE_GB" ]; do
-        ls -t "$CAPTURE_DIR"/*.pcap | tail -1 | xargs rm -f
+    while [ "$(du -sk "$CAPTURE_DIR" | cut -f1)" -gt "$MAX_SIZE_KB" ]; do
+        oldest_file=$(ls -t "$CAPTURE_DIR"/*.pcap 2>/dev/null | tail -1)
+        [ -n "$oldest_file" ] || break
+        rm -f "$oldest_file"
     done
 
     sleep 300
@@ -166,10 +170,10 @@ done
 sudo apt-get install wireshark-common
 
 # Merge all captures from today
-mergecap -w /tmp/merged.pcap /tmp/capture-*.pcap
+mergecap -F pcap -w /tmp/merged.pcap /tmp/capture-*.pcap
 
 # Merge with specific files
-mergecap -w /tmp/merged.pcap /tmp/capture1.pcap /tmp/capture2.pcap /tmp/capture3.pcap
+mergecap -F pcap -w /tmp/merged.pcap /tmp/capture1.pcap /tmp/capture2.pcap /tmp/capture3.pcap
 
 # Verify merged file
 tcpdump -r /tmp/merged.pcap | wc -l    # Count total packets
