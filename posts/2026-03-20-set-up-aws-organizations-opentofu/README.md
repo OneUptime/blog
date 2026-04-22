@@ -17,6 +17,7 @@ resource "aws_organizations_organization" "main" {
     "config.amazonaws.com",
     "sso.amazonaws.com",
     "account.amazonaws.com",
+    "securityhub.amazonaws.com",
   ]
 
   feature_set = "ALL"  # ALL or CONSOLIDATED_BILLING
@@ -96,10 +97,10 @@ resource "aws_organizations_policy_attachment" "deny_outside_regions" {
 ## Delegated Administrators
 
 ```hcl
-# Delegate Security Hub administration to the security account
-resource "aws_organizations_delegated_administrator" "security_hub" {
-  account_id        = var.security_account_id
-  service_principal = "securityhub.amazonaws.com"
+# Delegate Security Hub administration to the security account in the provider region
+resource "aws_securityhub_organization_admin_account" "security_hub" {
+  depends_on       = [aws_organizations_organization.main]
+  admin_account_id = var.security_account_id
 }
 ```
 
