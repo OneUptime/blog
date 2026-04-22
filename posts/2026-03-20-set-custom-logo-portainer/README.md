@@ -2,26 +2,26 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Customization, Branding, Business Edition, UI
+Tags: Portainer, Customization, Branding, UI
 
-Description: Learn how to replace the default Portainer logo with your own organization's branding in Portainer Business Edition.
+Description: Learn how to replace the default Portainer logo with your own organization's branding in Portainer.
 
 ---
 
-Portainer Business Edition allows organizations to white-label the interface by replacing the default Portainer logo with a custom image. This is useful for MSPs and enterprises delivering Portainer as a managed service.
+Portainer allows organizations to customize the interface by replacing the default Portainer logo with a custom image. This is useful for MSPs and enterprises delivering Portainer as a managed service.
 
 ## Prerequisites
 
-- Portainer Business Edition (custom branding requires BE)
+- Portainer Community Edition or Business Edition
 - Admin access to the Portainer UI
-- Logo image hosted at a publicly accessible URL (PNG, SVG, or JPEG)
+- Logo image hosted at a URL reachable by users' browsers (PNG, SVG, or JPEG)
 
 ## Set Custom Logo via the UI
 
 ### Step 1: Prepare Your Logo
 
 Your logo should:
-- Be hosted at a publicly accessible HTTPS URL
+- Use an HTTPS URL reachable by users' browsers when possible
 - Have a transparent background for best results (PNG or SVG recommended)
 - Ideally be 155×55 pixels or a similar landscape format
 
@@ -29,14 +29,14 @@ Example: `https://example.com/images/company-logo.png`
 
 ### Step 2: Navigate to Customization Settings
 
-1. Log in to Portainer BE as an administrator
+1. Log in to Portainer as an administrator
 2. Go to **Settings** in the left sidebar
-3. Select **Authentication** or look for **Branding** under **Settings**
-4. Find the **Custom Logo** field
+3. Stay on **General**
+4. Find **Use custom logo**
 
 ### Step 3: Enter the Logo URL
 
-Paste the full URL to your logo image and click **Save**. The logo appears immediately in the top-left of the Portainer interface.
+Toggle **Use custom logo** on, paste the full URL to your logo image, and click **Apply Changes**. The logo appears in the top-left of the Portainer interface.
 
 ## Set Custom Logo via API
 
@@ -64,12 +64,10 @@ echo "Custom logo configured"
 
 ## Hosting Your Logo for Portainer
 
-If your logo isn't publicly accessible, you can host it inside the same Docker environment:
+If your logo isn't already hosted, you can host it inside the same Docker environment:
 
 ```yaml
 # docker-compose.yml - Include a simple nginx server to host the logo
-version: "3.8"
-
 services:
   portainer:
     image: portainer/portainer-ee:latest
@@ -91,7 +89,7 @@ volumes:
   portainer_data:
 ```
 
-Then set the logo URL to `http://logo-server:8080/logo.png` (or use the host IP if Portainer needs external access).
+Then set the logo URL to `http://<host-ip-or-dns>:8080/logo.png` so users' browsers can fetch the image.
 
 ## Remove Custom Logo
 
