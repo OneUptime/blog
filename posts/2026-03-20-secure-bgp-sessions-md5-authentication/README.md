@@ -28,22 +28,21 @@ router bgp 65002
  neighbor 203.0.113.1 password SecureBGP@2026!
 ```
 
-If passwords don't match, the TCP handshake fails silently and the session stays in Active state.
+If passwords don't match, the TCP connection cannot be made and the session typically stays in Active state. Platforms such as Cisco IOS log TCP MD5 authentication failures when logging or debugging is enabled.
 
 ## Step 2: Verify MD5 Is Active
 
 ```text
-Router# show ip bgp neighbors 203.0.113.2
+Router# show ip bgp neighbors 203.0.113.2 | include BGP state
+  BGP state = Established, up for 00:08:26
 
-BGP neighbor is 203.0.113.2, remote AS 65002
-  ...
-  Outgoing update AS path filter: none
-  Enhanced refresh request: enabled, limit: 25
-  Incoming update AS path filter: none
-  MD5 authentication enabled, keystring 08264E4D0A2F
+Router# show running-config | section router bgp
+router bgp 65001
+ neighbor 203.0.113.2 remote-as 65002
+ neighbor 203.0.113.2 password SecureBGP@2026!
 ```
 
-The `MD5 authentication enabled` line confirms authentication is negotiated.
+RFC 2385 does not negotiate TCP MD5. The configured password line confirms local MD5 configuration; an Established BGP state confirms that the peer accepted the same key.
 
 ## Step 3: Use Encrypted Password Storage
 
@@ -56,8 +55,9 @@ Router(config)# service password-encryption
 ! After enabling service password-encryption, the password appears as:
 ! neighbor 203.0.113.2 password 7 082E4A4D0B2F1B3D
 
-! For stronger storage, use type 6 encryption (AES-256)
-Router(config)# key config-key password-encrypt MyMasterKey!
+! For stronger reversible storage on supported IOS XE platforms, use type 6 encryption (AES)
+Router(config)# key config-key password-encrypt
+! Enter the master key at the prompt, then:
 Router(config)# password encryption aes
 ```
 
@@ -65,8 +65,8 @@ Note: Type 7 encryption is easily reversed. Type 6 is much stronger.
 
 ## Step 4: MD5 Authentication on FRRouting (Linux)
 
-```bash
-# In FRR vtysh or /etc/frr/bgpd.conf
+```text
+! In FRR vtysh or /etc/frr/bgpd.conf
 
 router bgp 65001
  neighbor 203.0.113.2 remote-as 65002
@@ -75,7 +75,7 @@ router bgp 65001
 
 ## Step 5: Harden with TTL Security (GTSM)
 
-Generalized TTL Security Mechanism (GTSM, RFC 5082) complements MD5 by setting the expected TTL of incoming BGP packets to 255. Spoofed packets from the Internet arrive with a lower TTL and are dropped at the kernel:
+Generalized TTL Security Mechanism (GTSM, RFC 5082) complements MD5 by sending BGP packets with TTL 255 and accepting only incoming packets whose TTL is within the configured range. Spoofed packets from farther away arrive with a lower TTL and are silently discarded:
 
 ```text
 ! Configure TTL security - expect packets with TTL >= 254 (1 hop away)
@@ -83,18 +83,20 @@ router bgp 65001
  neighbor 203.0.113.2 ttl-security hops 1
 ```
 
-For iBGP multihop sessions, adjust the hop count accordingly.
+For multihop eBGP sessions, adjust the hop count accordingly.
 
 ## Step 6: Consider TCP Authentication Option (TCP-AO)
 
-TCP-AO (RFC 5925) is the successor to MD5 authentication. It supports multiple keys and stronger algorithms. Cisco IOS XE supports TCP-AO:
+TCP-AO (RFC 5925) is the successor to MD5 authentication. It supports multiple keys and stronger algorithms. Cisco IOS XE supports TCP-AO on supported releases and platforms:
 
 ```text
 ! Define a TCP-AO key chain
-key chain BGP_AO_KEYS
+key chain BGP_AO_KEYS tcp
  key 1
-  key-string AO_Secure_Key_2026!
+  send-id 1
+  recv-id 1
   cryptographic-algorithm hmac-sha-256
+  key-string AO_Secure_Key_2026!
 
 ! Apply to BGP neighbor
 router bgp 65001
@@ -109,7 +111,7 @@ If the session stays in Active state after adding authentication:
 
 ```text
 ! Check for auth failure messages in logs
-Router# show log | include MD5|AUTH|BGP
+Router# show logging | include BADAUTH
 
 ! Common causes:
 ! - Password mismatch (typos, case sensitivity)
@@ -117,7 +119,8 @@ Router# show log | include MD5|AUTH|BGP
 ! - TTL-security hop mismatch
 ! - ACL blocking TCP 179
 
-! Test basic TCP connectivity (ignore MD5 error if present)
+! Test basic TCP reachability before enabling MD5.
+! After MD5 is enabled, plain telnet does not include the TCP MD5 option.
 Router# telnet 203.0.113.2 179
 ```
 
