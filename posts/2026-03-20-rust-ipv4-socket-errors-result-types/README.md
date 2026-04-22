@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Error Handling, IPv4, TCP, Result, Std::io::Error, Networking
+Tags: Rust, Error Handling, IPv4, TCP, Result, std::io::Error, Networking
 
 Description: Handle IPv4 TCP socket errors idiomatically in Rust using Result types, the ? operator, pattern matching on error kinds, and custom error types.
 
 ## Introduction
 
-Rust's type system forces you to handle errors explicitly through `Result<T, E>`. Network code using `std::net` returns `std::io::Result<T>`, and matching on `std::io::ErrorKind` lets you distinguish between connection refused, timeout, reset, and other network errors - and respond appropriately to each.
+Rust's type system makes fallible operations explicit through `Result<T, E>`. Network code using `std::net` commonly returns `std::io::Result<T>`, and matching on `std::io::ErrorKind` lets you distinguish between connection refused, timeout, reset, and other network errors - and respond appropriately to each.
 
 ## Basic Error Handling with `?` Operator
 
@@ -61,7 +61,7 @@ fn handle_connection_result(result: io::Result<TcpStream>) -> Option<TcpStream> 
                     None
                 }
                 ErrorKind::TimedOut | ErrorKind::WouldBlock => {
-                    eprintln!("Connection timed out");
+                    eprintln!("Operation timed out or would block");
                     None
                 }
                 ErrorKind::NetworkUnreachable | ErrorKind::HostUnreachable => {
@@ -77,7 +77,7 @@ fn handle_connection_result(result: io::Result<TcpStream>) -> Option<TcpStream> 
                     None
                 }
                 ErrorKind::PermissionDenied => {
-                    eprintln!("Permission denied - insufficient privileges for port");
+                    eprintln!("Permission denied - operation blocked or insufficient privileges");
                     None
                 }
                 ErrorKind::AddrInUse => {
@@ -148,8 +148,8 @@ impl std::error::Error for NetworkError {}
 ## Using the Custom Error Type
 
 ```rust
-use std::net::{TcpStream, SocketAddrV4};
-use std::io::{self, Write, BufRead, BufReader, ErrorKind};
+use std::net::{SocketAddrV4, TcpStream};
+use std::io::ErrorKind;
 use std::time::Duration;
 
 fn connect(address: &str) -> Result<TcpStream, NetworkError> {
@@ -193,6 +193,8 @@ fn main() {
 ## Retry with Exponential Backoff
 
 ```rust
+use std::io;
+use std::net::TcpStream;
 use std::time::Duration;
 use std::thread;
 
@@ -217,4 +219,4 @@ fn connect_with_retry(address: &str, max_retries: u32) -> io::Result<TcpStream> 
 
 ## Conclusion
 
-Rust's `Result` types and `ErrorKind` enum enable precise, exhaustive error handling for network code. Pattern matching on error kinds lets you implement intelligent retry logic, user-friendly error messages, and proper cleanup - all enforced at compile time.
+Rust's `Result` types and `ErrorKind` enum enable precise, explicit error handling for network code. Pattern matching on known error kinds, with a wildcard for future or platform-specific cases, lets you implement intelligent retry logic, user-friendly error messages, and proper cleanup.
