@@ -6,7 +6,7 @@ Tags: OpenTofu, GCP, Organization, Folders, Infrastructure as Code
 
 Description: Learn how to set up and manage GCP Organization structure with OpenTofu, including folders, projects, and IAM bindings for governance at scale.
 
-GCP Organizations provide a hierarchy of organization, folders, and projects. Organization-level IAM policies, constraints, and billing apply across all resources. OpenTofu lets you define the folder structure and project hierarchy as code.
+GCP Organizations provide a hierarchy of organization, folders, and projects. Organization-level IAM policies and organization policies apply across descendant resources, while billing is linked to projects through Cloud Billing accounts. OpenTofu lets you define the folder structure and project hierarchy as code.
 
 ## Getting the Organization
 
@@ -98,27 +98,31 @@ resource "google_organization_iam_binding" "org_viewer" {
 
 ```hcl
 # Restrict resource creation to approved regions
-resource "google_organization_policy" "restrict_locations" {
-  org_id     = data.google_organization.main.org_id
-  constraint = "constraints/gcp.resourceLocations"
+resource "google_org_policy_policy" "restrict_locations" {
+  name   = "${data.google_organization.main.name}/policies/gcp.resourceLocations"
+  parent = data.google_organization.main.name
 
-  list_policy {
-    allow {
-      values = [
-        "in:us-locations",
-        "in:europe-locations",
-      ]
+  spec {
+    rules {
+      values {
+        allowed_values = [
+          "in:us-locations",
+          "in:europe-locations",
+        ]
+      }
     }
   }
 }
 
 # Require OS Login for VMs
-resource "google_organization_policy" "require_os_login" {
-  org_id     = data.google_organization.main.org_id
-  constraint = "constraints/compute.requireOsLogin"
+resource "google_org_policy_policy" "require_os_login" {
+  name   = "${data.google_organization.main.name}/policies/compute.requireOsLogin"
+  parent = data.google_organization.main.name
 
-  boolean_policy {
-    enforced = true
+  spec {
+    rules {
+      enforce = "TRUE"
+    }
   }
 }
 ```
@@ -138,4 +142,4 @@ resource "google_folder_iam_binding" "workloads_editor" {
 
 ## Conclusion
 
-GCP Organization management with OpenTofu starts with getting the organization data source, then creating folders and projects to mirror your team structure. Apply organization constraints to enforce security baselines across all projects, use folder-level IAM for team access, and create projects under the appropriate folder for billing and policy inheritance.
+GCP Organization management with OpenTofu starts with getting the organization data source, then creating folders and projects to mirror your team structure. Apply organization constraints to enforce security baselines across all projects, use folder-level IAM for team access, and create projects under the appropriate folder for policy inheritance, with each project linked to the intended billing account.
