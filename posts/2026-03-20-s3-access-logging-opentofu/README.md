@@ -4,16 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, S3, Access Logging, Audit, Compliance, Infrastructure as Code
 
-Description: Learn how to enable S3 server access logging using OpenTofu to capture detailed records of all requests made to an S3 bucket for auditing, security analysis, and compliance.
+Description: Learn how to enable S3 server access logging using OpenTofu to capture detailed records of requests made to an S3 bucket for auditing, security analysis, and compliance.
 
 ## Introduction
 
-S3 server access logging records detailed information about every request made to a bucket, including the requester, bucket name, request time, request action, response status, and error code. This is essential for security audits, compliance requirements, and debugging access issues.
+S3 server access logging records detailed information about requests made to a bucket on a best-effort basis, including the requester, bucket name, request time, request action, response status, and error code. This is essential for security audits, compliance requirements, and debugging access issues.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with S3 permissions
+- AWS credentials with S3, CloudTrail, CloudWatch, IAM, and SNS permissions
 
 ## Step 1: Create a Dedicated Logging Bucket
 
@@ -82,15 +82,77 @@ resource "aws_s3_bucket_logging" "source" {
 }
 ```
 
-## Step 3: Enable S3 Access Logging via CloudTrail
+## Step 3: Enable S3 Data Events via CloudTrail
 
 ```hcl
-# CloudTrail data events provide more detailed logging than S3 access logs
-# and support EventBridge integration for real-time alerting
+data "aws_caller_identity" "current" {}
+data "aws_partition" "current" {}
+data "aws_region" "current" {}
+
+resource "aws_s3_bucket" "cloudtrail_logs" {
+  bucket = "${var.bucket_name}-cloudtrail-logs"
+  tags   = { Name = "s3-cloudtrail-logs", Purpose = "CloudTrail" }
+}
+
+data "aws_iam_policy_document" "cloudtrail_logs" {
+  statement {
+    sid    = "AWSCloudTrailAclCheck"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+
+    actions   = ["s3:GetBucketAcl"]
+    resources = [aws_s3_bucket.cloudtrail_logs.arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceArn"
+      values   = ["arn:${data.aws_partition.current.partition}:cloudtrail:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:trail/s3-data-events-trail"]
+    }
+  }
+
+  statement {
+    sid    = "AWSCloudTrailWrite"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.cloudtrail_logs.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "s3:x-amz-acl"
+      values   = ["bucket-owner-full-control"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceArn"
+      values   = ["arn:${data.aws_partition.current.partition}:cloudtrail:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:trail/s3-data-events-trail"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "cloudtrail_logs" {
+  bucket = aws_s3_bucket.cloudtrail_logs.id
+  policy = data.aws_iam_policy_document.cloudtrail_logs.json
+}
+
+# CloudTrail data events provide API-level audit logging
+# and support EventBridge-based alerting
 resource "aws_cloudtrail" "s3_data_events" {
   name                          = "s3-data-events-trail"
   s3_bucket_name                = aws_s3_bucket.cloudtrail_logs.id
-  include_global_service_events = true
+  cloud_watch_logs_group_arn    = "${aws_cloudwatch_log_group.cloudtrail.arn}:*"
+  cloud_watch_logs_role_arn     = aws_iam_role.cloudtrail_cloudwatch.arn
+  include_global_service_events = false
   is_multi_region_trail         = true
 
   event_selector {
@@ -105,6 +167,11 @@ resource "aws_cloudtrail" "s3_data_events" {
   }
 
   tags = { Name = "s3-data-events-trail" }
+
+  depends_on = [
+    aws_s3_bucket_policy.cloudtrail_logs,
+    aws_iam_role_policy.cloudtrail_cloudwatch
+  ]
 }
 ```
 
@@ -115,6 +182,39 @@ resource "aws_cloudtrail" "s3_data_events" {
 resource "aws_cloudwatch_log_group" "cloudtrail" {
   name              = "/aws/cloudtrail/s3-events"
   retention_in_days = 30
+}
+
+data "aws_iam_policy_document" "cloudtrail_assume_role" {
+  statement {
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "cloudtrail_cloudwatch" {
+  name               = "cloudtrail-cloudwatch-logs-role"
+  assume_role_policy = data.aws_iam_policy_document.cloudtrail_assume_role.json
+}
+
+data "aws_iam_policy_document" "cloudtrail_cloudwatch" {
+  statement {
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
+
+    resources = ["${aws_cloudwatch_log_group.cloudtrail.arn}:*"]
+  }
+}
+
+resource "aws_iam_role_policy" "cloudtrail_cloudwatch" {
+  name   = "cloudtrail-cloudwatch-logs-policy"
+  role   = aws_iam_role.cloudtrail_cloudwatch.id
+  policy = data.aws_iam_policy_document.cloudtrail_cloudwatch.json
 }
 
 # Metric filter for 403 (Access Denied) responses
