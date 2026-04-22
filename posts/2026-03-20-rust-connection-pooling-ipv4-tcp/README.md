@@ -13,10 +13,10 @@ Establishing a new TCP connection per request adds latency from the three-way ha
 ## Connection Pool Implementation
 
 ```rust
+use std::collections::VecDeque;
+use std::io::{self, ErrorKind};
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
-use std::collections::VecDeque;
-use std::io::{self, Read, Write};
 use std::time::Duration;
 
 /// A guard that returns the connection to the pool when dropped
@@ -53,44 +53,52 @@ impl std::ops::DerefMut for PooledConnection {
 pub struct ConnectionPool {
     address: String,
     connections: VecDeque<TcpStream>,
-    max_size: usize,
+    max_idle: usize,
     timeout: Duration,
 }
 
 impl ConnectionPool {
-    pub fn new(address: &str, max_size: usize, timeout: Duration) -> Self {
+    pub fn new(address: &str, max_idle: usize, timeout: Duration) -> Self {
         ConnectionPool {
             address: address.to_string(),
             connections: VecDeque::new(),
-            max_size,
+            max_idle,
             timeout,
         }
     }
-    
+
     fn create_connection(&self) -> io::Result<TcpStream> {
         let stream = TcpStream::connect(&*self.address)?;
         stream.set_read_timeout(Some(self.timeout))?;
         stream.set_write_timeout(Some(self.timeout))?;
         Ok(stream)
     }
-    
+
     fn is_alive(stream: &TcpStream) -> bool {
-        // Check liveness with a zero-byte peek (non-destructive)
+        // Best-effort liveness check: peek without consuming data.
+        // WouldBlock means no data is queued, not that the socket is dead.
+        if stream.set_nonblocking(true).is_err() {
+            return false;
+        }
+
         let mut buf = [0u8; 1];
-        match stream.peek(&mut buf) {
-            Ok(_) | Err(_) => {
-                // If peek returns data, connection has data (still alive)
-                // We can't reliably check without sending - rely on write errors instead
+        let alive = match stream.peek(&mut buf) {
+            Ok(0) => false,
+            Ok(_) => true,
+            Err(ref e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::Interrupted) => {
                 true
             }
-        }
+            Err(_) => false,
+        };
+
+        stream.set_nonblocking(false).is_ok() && alive
     }
-    
+
     fn return_connection(&mut self, conn: TcpStream) {
-        if self.connections.len() < self.max_size {
+        if self.connections.len() < self.max_idle {
             self.connections.push_back(conn);
         }
-        // If pool is full, the connection is dropped (closed)
+        // If the idle cache is full, the connection is dropped (closed)
     }
 }
 
@@ -100,26 +108,33 @@ pub struct Pool {
 }
 
 impl Pool {
-    pub fn new(address: &str, initial_size: usize, max_size: usize, timeout: Duration) 
-        -> io::Result<Self> 
+    pub fn new(address: &str, initial_size: usize, max_idle: usize, timeout: Duration)
+        -> io::Result<Self>
     {
-        let mut inner = ConnectionPool::new(address, max_size, timeout);
-        
+        if initial_size > max_idle {
+            return Err(io::Error::new(
+                ErrorKind::InvalidInput,
+                "initial_size cannot exceed max_idle",
+            ));
+        }
+
+        let mut inner = ConnectionPool::new(address, max_idle, timeout);
+
         // Pre-fill with initial connections
         for _ in 0..initial_size {
             let conn = inner.create_connection()?;
             inner.connections.push_back(conn);
         }
-        
+
         Ok(Pool {
             inner: Arc::new(Mutex::new(inner))
         })
     }
-    
+
     /// Get a connection from the pool (creates a new one if pool is empty)
     pub fn get(&self) -> io::Result<PooledConnection> {
         let mut pool = self.inner.lock().unwrap();
-        
+
         // Try to get an existing connection
         while let Some(conn) = pool.connections.pop_front() {
             if ConnectionPool::is_alive(&conn) {
@@ -130,7 +145,7 @@ impl Pool {
             }
             // Connection is dead - discard and try next
         }
-        
+
         // Pool empty - create a new connection
         let conn = pool.create_connection()?;
         Ok(PooledConnection {
@@ -138,7 +153,7 @@ impl Pool {
             pool: Arc::clone(&self.inner),
         })
     }
-    
+
     pub fn size(&self) -> usize {
         self.inner.lock().unwrap().connections.len()
     }
@@ -148,25 +163,24 @@ impl Pool {
 ## Using the Connection Pool
 
 ```rust
-use std::sync::Arc;
-use std::thread;
 use std::io::{Write, BufRead, BufReader};
+use std::thread;
 
 fn main() -> std::io::Result<()> {
-    let pool = Arc::new(Pool::new(
+    let pool = std::sync::Arc::new(Pool::new(
         "10.0.0.10:6379",    // Backend address
         5,                    // Initial connections
-        20,                   // Max pool size
-        Duration::from_secs(10),
+        20,                   // Max idle connections kept
+        std::time::Duration::from_secs(10),
     )?);
-    
+
     println!("Pool initialized with {} connections", pool.size());
-    
+
     // Simulate 50 concurrent requests
     let mut handles = Vec::new();
-    
+
     for i in 0..50 {
-        let pool = Arc::clone(&pool);
+        let pool = std::sync::Arc::clone(&pool);
         let handle = thread::spawn(move || {
             let mut conn = match pool.get() {
                 Ok(c) => c,
@@ -175,25 +189,25 @@ fn main() -> std::io::Result<()> {
                     return;
                 }
             };
-            
+
             // Use the connection
             conn.write_all(b"PING\r\n").ok();
-            
+
             let mut response = String::new();
             let mut reader = BufReader::new(conn.stream());
             reader.read_line(&mut response).ok();
-            
+
             println!("Thread {}: {}", i, response.trim());
             // conn is automatically returned to pool when dropped
         });
-        
+
         handles.push(handle);
     }
-    
+
     for handle in handles {
         handle.join().ok();
     }
-    
+
     println!("Pool size after requests: {}", pool.size());
     Ok(())
 }
@@ -209,10 +223,10 @@ r2d2 = "0.8"
 ```
 
 ```rust
-// r2d2 manages health checks, timeouts, and connection lifecycle
-// Use with database drivers like r2d2-postgres, r2d2-redis, etc.
+// r2d2 coordinates checkout timeouts, max sizes, and lifecycle hooks
+// Pair it with managers like r2d2_postgres or the r2d2 feature of redis-rs
 ```
 
 ## Conclusion
 
-This custom pool demonstrates Rust's ownership model for safe shared state via `Arc<Mutex<>>`. The `PooledConnection` RAII guard automatically returns connections on drop, preventing leaks. For production workloads, prefer `r2d2` or `deadpool` which add connection health validation, max lifetime, and wait queues.
+This custom pool demonstrates Rust's ownership model for safe shared state via `Arc<Mutex<>>`. The `PooledConnection` RAII guard automatically returns connections on drop, preventing leaks. For production workloads, prefer `r2d2` or `deadpool` which add protocol-aware connection health validation, total connection limits, max lifetime, and wait queues.
