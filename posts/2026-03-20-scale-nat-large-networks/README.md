@@ -47,13 +47,14 @@ sysctl -p
 
 ## Tuning 3: Enable Hardware Offload (Flowtable)
 
-Linux nftables flowtable offloads established flows to a fast path:
+Linux nftables flowtable offloads established flows to a fast path; add `flags offload` when your NIC and driver support hardware offload:
 
 ```bash
 table inet filter {
     flowtable f {
         hook ingress priority 0;
         devices = { eth0, eth1 };
+        flags offload;
     }
 
     chain forward {
@@ -65,18 +66,18 @@ table inet filter {
 }
 ```
 
-This bypasses the full netfilter stack for established flows, significantly reducing CPU overhead.
+With supported hardware, this bypasses the classic forwarding path for established flows, significantly reducing CPU overhead.
 
 ## Tuning 4: Use Multiple Public IPs for PAT
 
-Single IP PAT maxes out at ~65K sessions. Use a pool:
+A single public IP can run out of TCP/UDP source ports for busy destination tuples. Use a pool:
 
 ```bash
 # SNAT across multiple public IPs
 iptables -t nat -A POSTROUTING -s 192.168.0.0/16 -o eth1 \
     -j SNAT --to-source 203.0.113.1-203.0.113.20
 
-# 20 IPs × 65535 ports = ~1.3M sessions
+# 20 IPs × ~64K source ports = much larger port space
 ```
 
 ## Tuning 5: Distribute NAT Across Multiple Gateways
@@ -118,7 +119,7 @@ sar -n DEV 1
 ## Key Takeaways
 
 - Increase `nf_conntrack_max` and reduce TCP timeouts for high-traffic NAT.
-- nftables flowtable offloads established flows to bypass the full netfilter stack.
+- nftables flowtable offloads established flows to bypass the classic forwarding path.
 - Use multiple public IPs (`--to-source IP1-IP2`) to multiply available port space.
 - ECMP routing distributes traffic across multiple NAT gateways for horizontal scaling.
 
