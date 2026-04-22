@@ -6,7 +6,7 @@ Tags: SoftEther, IPv6, VPN, Multi-Protocol, Network, Japan
 
 Description: A guide to configuring SoftEther VPN for IPv6 connectivity, including IPv6 listener setup, tunnel configuration, and dual-stack client connectivity.
 
-SoftEther VPN is a high-performance, multi-protocol VPN software developed at the University of Tsukuba. It supports L2TP/IPsec, SSTP, OpenVPN protocol, and its own proprietary protocol, all with IPv6 support. This guide covers the key IPv6 configuration aspects.
+SoftEther VPN is a high-performance, multi-protocol VPN software developed at the University of Tsukuba. It supports L2TP/IPsec, SSTP, OpenVPN protocol, and its own proprietary protocol. IPv6 support is strongest in SoftEther's Layer 2 VPN modes; some compatibility protocols and SecureNAT remain IPv4-oriented. This guide covers the key IPv6 configuration aspects.
 
 ## Installing SoftEther VPN Server
 
@@ -34,8 +34,8 @@ SoftEther can listen on IPv6 addresses:
 /usr/local/vpnserver/vpncmd localhost /SERVER
 
 # In vpncmd, add an IPv6 listener:
-# ListenerCreate /PORT:443
-# This will listen on :: (all interfaces, including IPv6) by default
+# ListenerCreate 443
+# If IPv6 listeners are enabled, the TCP listener also accepts IPv6 connections
 
 # Verify listener
 ListenerList
@@ -53,10 +53,10 @@ ListenerList
 # Select hub
 > Hub VPN
 
-# Enable SecureNAT (for IP assignment including IPv6)
+# Enable SecureNAT (for IPv4 NAT and DHCP; it does not assign IPv6 addresses)
 > SecureNatEnable
 
-# Configure SecureNAT for IPv6
+# Configure SecureNAT for IPv4
 # SecureNAT provides DHCP for IPv4; IPv6 uses SLAAC within the VHub
 ```
 
@@ -67,14 +67,14 @@ SoftEther's Virtual Hub acts as a virtual Layer 2 switch. IPv6 works transparent
 ```bash
 # In vpncmd, connected to a hub:
 
-# Enable IPv6 DHCPv6 in SecureNAT (if supported)
+# Set the SecureNAT virtual host's IPv4 address
 SecureNatHostSet /IP:192.168.30.1 /MASK:255.255.255.0
 
 # IPv6 traffic flows through the L2 VHub transparently
 # A real IPv6 router on the network provides RAs
 
-# Add a static routing table entry for IPv6
-RoutingTableAdd /IP:2001:db8:internal:: /MASK:48 /GATEWAY:2001:db8::router /METRIC:1
+# SoftEther's built-in Virtual Layer 3 Switch routing table is IPv4-only;
+# use an external IPv6 router or OS routing/radvd on the bridged segment.
 ```
 
 ## Client Configuration (L2TP/IPsec over IPv6)
@@ -82,16 +82,16 @@ RoutingTableAdd /IP:2001:db8:internal:: /MASK:48 /GATEWAY:2001:db8::router /METR
 SoftEther accepts L2TP/IPsec connections from clients using IPv6 transport:
 
 ```bash
-# Check server is listening on IPv6
-ss -6 -tlnp | grep vpnserver
+# Check IPsec/L2TP UDP listeners on IPv6
+ss -6 -ulnp | grep vpnserver
 
 # Client connects to server using IPv6 address
 # In Windows VPN settings:
-# Server: [2001:db8::softether-server]
+# Server: 2001:db8::10
 # Protocol: L2TP/IPsec with PSK
 
 # In Linux (using xl2tpd):
-# Endpoint: [2001:db8::softether-server]
+# Endpoint: 2001:db8::10
 ```
 
 ## SoftEther OpenVPN Compatibility Mode with IPv6
@@ -100,18 +100,21 @@ SoftEther can emulate an OpenVPN server. Configure IPv6 in the emulated OpenVPN:
 
 ```bash
 # In vpncmd:
-OpenVpnMakeConfig /FILE:openvpn-config.zip
+OpenVpnMakeConfig openvpn-config.zip
 
 # The generated client config can be modified to use IPv6 endpoints
 # Edit client.ovpn:
-# remote [2001:db8::softether-server] 1194 udp
+# remote 2001:db8::10 1194 udp6
 ```
 
 ## Configuration File (vpn_server.config)
 
 ```text
 # In vpn_server.config (advanced, direct file editing)
-# IPv6 listeners are configured as TCP listeners with "::" binding
+# Listener entries store TCP ports. IPv6 listener mirroring is controlled
+# by the DisableIPv6Listener setting.
+
+bool DisableIPv6Listener false
 
 declare ListenerList
 {
@@ -119,7 +122,7 @@ declare ListenerList
   {
     bool DisableDos false
     bool Enabled true
-    uint Port 443        # Listens on :: (IPv6 + IPv4)
+    uint Port 443
   }
 }
 ```
@@ -131,7 +134,7 @@ declare ListenerList
 SessionList
 
 # Check who's connected (shows IPv6 source addresses)
-SessionGet /NAME:VPN_session1
+SessionGet VPN_session1
 
 # Server log shows IPv6 client connections
 tail -f /usr/local/vpnserver/server_log/vpn_*.log | grep "IPv6\|2001\|fd00"
@@ -139,9 +142,10 @@ tail -f /usr/local/vpnserver/server_log/vpn_*.log | grep "IPv6\|2001\|fd00"
 
 ## SoftEther IPv6 Limitations and Notes
 
-- SecureNAT primarily handles IPv4 DHCP; IPv6 relies on SLAAC from an actual router
+- SecureNAT handles IPv4 NAT and DHCP; IPv6 relies on SLAAC or DHCPv6 from an actual router/server
 - IPv6 works best when there is a real IPv6 router on the virtual hub
 - The proprietary SoftEther protocol supports IPv6 transport natively
+- SoftEther's built-in Virtual Layer 3 Switch routing table is IPv4-only
 - For full IPv6 support in VPN tunnels, configure the virtual hub with an IPv6 router or use SoftEther alongside radvd
 
 SoftEther's Layer 2 virtual hub architecture means IPv6 traffic flows transparently through the VPN, making it compatible with any IPv6 routing mechanism deployed on the virtual network.
