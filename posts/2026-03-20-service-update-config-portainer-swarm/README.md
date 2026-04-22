@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker Swarm, Portainer, Rolling Update, Service Update, DevOps
 
-Description: Learn how to configure rolling update strategies for Docker Swarm services in Portainer to achieve zero-downtime deployments.
+Description: Learn how to configure rolling update strategies for Docker Swarm services in Portainer to minimize deployment downtime.
 
 ## What Is Service Update Configuration?
 
-Swarm's update configuration controls how services are updated when you push a new image or change a service definition. Properly tuned rolling updates prevent downtime by replacing tasks gradually rather than all at once.
+Swarm's update configuration controls how services are updated when you update the service to use a new image or change a service definition. Properly tuned rolling updates reduce downtime by replacing tasks gradually rather than all at once.
 
 ## Key Update Parameters
 
@@ -16,8 +16,8 @@ Swarm's update configuration controls how services are updated when you push a n
 |-----------|-------------|
 | **Parallelism** | Number of tasks updated simultaneously |
 | **Delay** | Wait time between updating batches |
-| **Failure action** | What to do if a task fails (`pause`, `continue`, `rollback`) |
-| **Max failure ratio** | Fraction of tasks allowed to fail before triggering failure action |
+| **Failure action** | What to do if an update fails (`pause`, `continue`, `rollback`) |
+| **Max failure ratio** | Fraction of tasks allowed to fail before the update is considered failed and the failure action applies |
 | **Order** | `stop-first` (stop old before starting new) or `start-first` (start new before stopping old) |
 
 ## Configuring Update Settings in Portainer
@@ -45,7 +45,7 @@ services:
         delay: 15s
         # If an update fails, roll back automatically
         failure_action: rollback
-        # Start the new container before stopping the old one (zero downtime)
+        # Start the new container before stopping the old one (helps minimize downtime)
         order: start-first
         # Allow up to 20% of tasks to fail before triggering failure_action
         max_failure_ratio: 0.2
@@ -64,7 +64,7 @@ services:
 
 docker service update --image my-api:2.1.0 api
 
-# Force re-deploy without changing the image (useful for config changes)
+# Force re-deploy without changing the service spec (useful for rolling restarts)
 docker service update --force api
 
 # Roll back to the previous version
@@ -77,10 +77,10 @@ docker service rollback api
 # Watch task status during a rolling update
 docker service ps api --no-trunc
 
-# Check service events
+# Inspect service status and update settings
 docker service inspect api --pretty
 ```
 
 ## Conclusion
 
-Configuring update policies in Portainer ensures your Swarm services update gracefully. Using `start-first` order with a sensible parallelism value and automatic rollback on failure is the recommended pattern for production deployments.
+Configuring update policies in Portainer ensures your Swarm services update gracefully. Using `start-first` order with a sensible parallelism value and automatic rollback on failure is a common production pattern for reducing deployment disruption.
