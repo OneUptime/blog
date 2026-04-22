@@ -15,6 +15,8 @@ Description: DHCP failover pairs two servers that share lease information so tha
 
 ## ISC dhcpd Failover Configuration
 
+Note: ISC DHCP is end-of-life upstream. These examples are useful for existing ISC dhcpd deployments; for new deployments, evaluate a maintained DHCP server such as Kea.
+
 ### Primary Server
 
 ```text
@@ -72,9 +74,11 @@ subnet 192.168.1.0 netmask 255.255.255.0 {
 ## Firewall Rules for Failover Sync
 
 ```bash
-# Allow failover communication between servers (TCP port 647)
+# On PRIMARY, allow failover communication with SECONDARY (TCP port 647)
 iptables -A INPUT -s 10.0.0.54 -p tcp --dport 647 -j ACCEPT
 iptables -A OUTPUT -d 10.0.0.54 -p tcp --dport 647 -j ACCEPT
+
+# On SECONDARY, use the same rules with 10.0.0.53 as the peer address
 ```
 
 ## Windows Server DHCP Failover
@@ -86,7 +90,6 @@ Add-DhcpServerv4Failover `
     -Name "HA-Failover" `
     -PartnerServer "dhcp-secondary.example.local" `
     -ScopeId 192.168.1.0 `
-    -Mode LoadBalance `
     -LoadBalancePercent 50 `
     -SharedSecret "SuperSecretKey123!"
 
@@ -106,6 +109,6 @@ journalctl -u isc-dhcp-server | grep -i "failover\|partner"
 ## Key Takeaways
 
 - ISC dhcpd failover uses TCP port 647 for lease synchronization.
-- `split 128` provides 50/50 load balancing; `split 0` makes secondary a hot standby.
+- For ISC dhcpd, `split 128` provides 50/50 load balancing; use `split 256` for a primary-preferred standby layout (`split 0` makes the secondary responsible for all clients).
 - Both servers must have identical subnet declarations.
 - Windows Server DHCP failover is simpler to configure with PowerShell cmdlets.
