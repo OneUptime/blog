@@ -112,7 +112,7 @@ kubectl apply -f pvc-prod.yaml
 5. Set the new replica count
 6. Click **OK**
 
-Longhorn will either create new replicas or mark excess replicas for deletion.
+If you increase the count, Longhorn will rebuild new replicas. If you decrease the count, Longhorn may keep extra healthy replicas unless Replica Auto Balance or Data Locality causes one to be removed; it will stop rebuilding new replicas until the healthy count falls below the new target.
 
 ### Via kubectl - Patch the Longhorn Volume
 
@@ -134,7 +134,7 @@ kubectl patch volume.longhorn.io <volume-name> \
 LONGHORN_URL="http://longhorn-frontend.longhorn-system.svc.cluster.local/v1"
 
 # Update replica count via the API (useful in scripts)
-curl -X PUT "${LONGHORN_URL}/volumes/my-volume?action=updateReplicaCount" \
+curl -X POST "${LONGHORN_URL}/volumes/my-volume?action=updateReplicaCount" \
   -H "Content-Type: application/json" \
   -d '{"replicaCount": 2}'
 ```
@@ -186,12 +186,16 @@ done
 
 ## Understanding Stale Replica Timeout
 
-The `staleReplicaTimeout` setting determines how long Longhorn waits before marking a replica as stale when it becomes unavailable:
+The `staleReplicaTimeout` StorageClass parameter is copied to new volumes and determines how many minutes after a replica is marked unhealthy before Longhorn considers it unusable for rebuilds and deletes it:
 
 ```bash
-# Get current stale replica timeout (in minutes)
-kubectl get settings.longhorn.io replica-replenishment-wait-interval \
-  -n longhorn-system -o yaml
+# Check the StorageClass stale replica timeout (in minutes)
+kubectl get storageclass longhorn-prod \
+  -o jsonpath='{.parameters.staleReplicaTimeout}'
+
+# Check the stale replica timeout copied to a Longhorn volume
+kubectl get volume.longhorn.io <volume-name> -n longhorn-system \
+  -o jsonpath='{.spec.staleReplicaTimeout}'
 ```
 
 ## Conclusion
