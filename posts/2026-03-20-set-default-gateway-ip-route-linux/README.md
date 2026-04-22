@@ -8,14 +8,14 @@ Description: Set the default IPv4 gateway on Linux using ip route add default, r
 
 ## Introduction
 
-The default gateway is the next-hop router used for all traffic that does not match a more specific route. Without it, a Linux host can only communicate on its directly-attached subnets. Setting the correct default gateway is the final step in basic network configuration.
+The default gateway is the next-hop router used for all traffic that does not match a more specific route. Without a default route or more specific static routes, a Linux host can only communicate on its directly-attached subnets. Setting the correct default gateway is the final step in basic network configuration.
 
 ## Adding a Default Route
 
 ```bash
 # Set the default gateway to 192.168.1.1 via eth0
 
-sudo ip route add default via 192.168.1.1
+sudo ip route add default via 192.168.1.1 dev eth0
 
 # Verify
 ip route show default
@@ -26,7 +26,7 @@ If no existing default route is present, this adds it immediately.
 
 ## Replacing an Existing Default Route
 
-If a default route already exists, adding another will fail with "RTNETLINK answers: File exists". Use `replace`:
+If a default route with the same table and metric already exists, adding another default route can fail with "RTNETLINK answers: File exists". Use `replace` to update it:
 
 ```bash
 # Replace the default gateway with a new one
@@ -49,7 +49,7 @@ sudo ip route add default via 192.168.1.1 dev eth0 metric 100
 sudo ip route add default via 10.0.0.1 dev eth1 metric 200
 ```
 
-The lower-metric route is used first. If eth0 goes down, traffic automatically shifts to eth1.
+The lower-metric route is used first. If eth0 goes down and its route is removed, traffic can shift to eth1; a dead gateway on an otherwise-up link usually needs separate monitoring.
 
 ## Verifying Connectivity
 
@@ -102,14 +102,14 @@ iface eth0 inet static
     gateway 192.168.1.1
 ```
 
-**NetworkManager:**
+**NetworkManager (existing static IPv4 connection):**
 
 ```bash
 nmcli con mod "Wired connection 1" ipv4.gateway 192.168.1.1
 nmcli con up "Wired connection 1"
 ```
 
-**RHEL/CentOS /etc/sysconfig/network-scripts/ifcfg-eth0:**
+**RHEL/CentOS legacy network-scripts (/etc/sysconfig/network-scripts/ifcfg-eth0):**
 
 ```text
 GATEWAY=192.168.1.1
@@ -117,4 +117,4 @@ GATEWAY=192.168.1.1
 
 ## Conclusion
 
-`ip route add default via <gateway>` sets the default route. Use `ip route replace` to change it without errors, set metrics for failover, and verify with `ip route get 8.8.8.8`. Persist through your distro's network configuration system to survive reboots.
+`ip route add default via <gateway>` sets the default route. Use `ip route replace` to change it without errors, set metrics to prefer one route over another, and verify with `ip route get 8.8.8.8`. Persist through your distro's network configuration system to survive reboots.
