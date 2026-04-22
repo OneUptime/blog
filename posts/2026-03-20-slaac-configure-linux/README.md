@@ -46,7 +46,7 @@ sudo sysctl -w net.ipv6.conf.eth0.autoconf=1
 
 ```bash
 # Create sysctl configuration file
-cat > /etc/sysctl.d/60-ipv6-slaac.conf << 'EOF'
+sudo tee /etc/sysctl.d/60-ipv6-slaac.conf > /dev/null << 'EOF'
 # Enable SLAAC on all interfaces
 net.ipv6.conf.all.accept_ra = 1
 net.ipv6.conf.default.accept_ra = 1
@@ -71,10 +71,10 @@ sudo sysctl -p /etc/sysctl.d/60-ipv6-slaac.conf
 nmcli connection show "Wired connection 1" | grep ipv6.method
 # ipv6.method: auto   ← SLAAC is enabled
 
-# Set to SLAAC (auto = use SLAAC and/or stateless DHCPv6)
+# Set to SLAAC (auto = use RA/SLAAC and DHCPv6 according to RA flags)
 nmcli connection modify "Wired connection 1" ipv6.method auto
 
-# Set to SLAAC only (ignore O flag, don't use DHCPv6 even if O=1)
+# Keep automatically configured DNS (from RA RDNSS or DHCPv6)
 nmcli connection modify "Wired connection 1" \
     ipv6.method auto \
     ipv6.ignore-auto-dns no
@@ -93,7 +93,7 @@ nmcli device show eth0 | grep IP6
 
 ```bash
 # Create or edit network file
-cat > /etc/systemd/network/10-eth0.network << 'EOF'
+sudo tee /etc/systemd/network/10-eth0.network > /dev/null << 'EOF'
 [Match]
 Name=eth0
 
@@ -102,9 +102,10 @@ DHCP=no
 IPv6AcceptRA=yes
 
 [IPv6AcceptRA]
-# Accept prefix information for SLAAC
+# Accept autonomous prefixes for SLAAC
+UseAutonomousPrefix=yes
+UseGateway=yes
 UseDNS=yes
-UseRoutes=yes
 EOF
 
 # Restart systemd-networkd
@@ -117,9 +118,9 @@ networkctl status eth0
 # Add to [Network] section:
 # IPv6PrivacyExtensions=yes
 
-# For stable privacy (RFC 7217):
-# IPv6PrivacyExtensions=kernel
-# (and set kernel stable_secret separately)
+# For stable privacy (RFC 7217) address generation:
+# Add to [IPv6AcceptRA] section:
+# Token=prefixstable
 ```
 
 ## Verifying SLAAC Operation
@@ -145,7 +146,7 @@ ip -6 route show default
 
 # Force refresh by sending Router Solicitation
 sudo rdisc6 eth0  # requires ndisc6 package
-# Or: ip -6 route flush cache
+# Or wait for the next unsolicited RA from the router
 
 # Check if SLAAC RA was received
 sudo tcpdump -i eth0 -v "icmp6 and ip6[40] == 134" -c 3
@@ -180,7 +181,7 @@ sudo ip -6 route add default via fe80::1 dev eth0
 # Problem: No SLAAC address received
 # Check 1: Is accept_ra enabled?
 cat /proc/sys/net/ipv6/conf/eth0/accept_ra
-# Expected: 1 (or 2 if ip_forward=1)
+# Expected: 1 (or 2 if IPv6 forwarding=1)
 
 # Check 2: Is IPv6 forwarding interfering?
 cat /proc/sys/net/ipv6/conf/eth0/forwarding
