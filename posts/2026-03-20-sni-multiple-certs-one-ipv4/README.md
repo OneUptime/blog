@@ -8,7 +8,7 @@ Description: Learn how Server Name Indication (SNI) allows multiple SSL/TLS cert
 
 ## What Is SNI?
 
-Server Name Indication (SNI) is a TLS extension that allows the client to specify which hostname it's connecting to during the TLS handshake. Without SNI, a server can only present one certificate per IP address. With SNI, the server reads the hostname from the ClientHello message and selects the appropriate certificate before establishing the TLS session.
+Server Name Indication (SNI) is a TLS extension that allows the client to specify which hostname it's connecting to during the TLS handshake. Without SNI, a server generally has to present one default certificate for the IP address and port, or use one certificate that covers every hostname. With SNI, the server reads the hostname from the ClientHello message and selects the appropriate certificate before establishing the TLS session.
 
 All modern browsers and operating systems support SNI (IE 7+ on Vista+, Android 3.0+, etc.).
 
@@ -38,7 +38,6 @@ server {
     ssl_certificate     /etc/ssl/certs/api.example.com.crt;
     ssl_certificate_key /etc/ssl/private/api.example.com.key;
 
-    ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
 
     location / {
@@ -54,7 +53,6 @@ server {
     ssl_certificate     /etc/ssl/certs/shop.example.com.crt;
     ssl_certificate_key /etc/ssl/private/shop.example.com.key;
 
-    ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
 
     location / {
@@ -69,6 +67,7 @@ server {
 
     ssl_certificate     /etc/ssl/certs/default.crt;
     ssl_certificate_key /etc/ssl/private/default.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
 
     return 444;   # Nginx closes connection without response
 }
@@ -82,9 +81,8 @@ server {
     ServerName api.example.com
 
     SSLEngine on
-    SSLCertificateFile      /etc/ssl/certs/api.example.com.crt
+    SSLCertificateFile      /etc/ssl/certs/api.example.com-fullchain.crt
     SSLCertificateKeyFile   /etc/ssl/private/api.example.com.key
-    SSLCACertificateFile    /etc/ssl/certs/chain.crt
 
     ProxyPass / http://api_backend:8080/
     ProxyPassReverse / http://api_backend:8080/
@@ -95,14 +93,14 @@ server {
     ServerName shop.example.com
 
     SSLEngine on
-    SSLCertificateFile      /etc/ssl/certs/shop.example.com.crt
+    SSLCertificateFile      /etc/ssl/certs/shop.example.com-fullchain.crt
     SSLCertificateKeyFile   /etc/ssl/private/shop.example.com.key
 </VirtualHost>
 ```
 
 ## Step 3: Use a Wildcard Certificate for Subdomains
 
-Instead of separate certificates, use a wildcard certificate for all `*.example.com`:
+Instead of separate certificates, use a wildcard certificate for single-label subdomains like `*.example.com`:
 
 ```bash
 # Obtain wildcard certificate with Certbot (DNS challenge required)
@@ -112,7 +110,7 @@ sudo certbot certonly \
   -d "*.example.com" -d "example.com"
 ```
 
-Then reuse one certificate for all subdomains:
+Then reuse one certificate for those subdomains:
 
 ```nginx
 # Works for api.example.com, shop.example.com, etc.
@@ -120,7 +118,7 @@ ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
 ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
 ```
 
-## Step 4: Serve ECDSAand RSA Dual Certificates
+## Step 4: Serve ECDSA and RSA Dual Certificates
 
 For maximum compatibility, serve both an ECDSA and an RSA certificate:
 
@@ -139,7 +137,7 @@ server {
 }
 ```
 
-Nginx 1.11.0+ supports multiple ssl_certificate directives-the client negotiates which to use.
+Nginx 1.11.0+ supports multiple `ssl_certificate` directives for different certificate types, and with OpenSSL 1.0.2+ it can serve separate certificate chains for each type. The server selects a compatible certificate based on the client's TLS capabilities.
 
 ## Step 5: Verify SNI Is Working
 
