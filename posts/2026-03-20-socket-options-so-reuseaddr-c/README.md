@@ -23,12 +23,15 @@ int set_opt(int fd, int level, int optname, int value) {
 int get_opt(int fd, int level, int optname) {
     int val;
     socklen_t len = sizeof(val);
-    getsockopt(fd, level, optname, &val, &len);
+    if (getsockopt(fd, level, optname, &val, &len) < 0) {
+        perror("getsockopt");
+        return -1;
+    }
     return val;
 }
 ```
 
-## SO_REUSEADDR - Restart Without TIME_WAIT
+## SO_REUSEADDR - Restart During TIME_WAIT
 
 ```c
 int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -37,7 +40,7 @@ int opt = 1;
 if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
     perror("SO_REUSEADDR");
 }
-/* Now fast server restart works - no "Address already in use" error */
+/* Allows fast restart when old connections are in TIME_WAIT */
 ```
 
 ## SO_KEEPALIVE - Detect Dead Connections
@@ -76,7 +79,7 @@ int rcvbuf = 256 * 1024;   /* 256 KB receive buffer */
 setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
 setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
 
-/* Read back actual value (kernel may adjust to double requested) */
+/* Read back actual value (Linux may report double the requested size) */
 socklen_t len = sizeof(sndbuf);
 getsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, &len);
 printf("Actual send buffer: %d bytes\n", sndbuf);
@@ -91,9 +94,9 @@ struct timeval tv;
 tv.tv_sec  = 5;   /* 5 seconds */
 tv.tv_usec = 0;
 
-/* recv() returns EAGAIN after 5 seconds of no data */
+/* recv() returns -1 with EAGAIN/EWOULDBLOCK after 5 seconds with no data */
 setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-/* send() returns EAGAIN if buffer full for 5 seconds */
+/* send() returns -1 with EAGAIN/EWOULDBLOCK if no data can be sent for 5 seconds */
 setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 ```
 
@@ -111,4 +114,4 @@ void print_socket_info(int fd) {
 
 ## Conclusion
 
-`setsockopt` takes a level (`SOL_SOCKET` for socket-level options, `IPPROTO_TCP` for TCP-specific options) and a value pointer. Always set `SO_REUSEADDR` before `bind()` for server sockets to allow fast restart. Enable `SO_KEEPALIVE` on long-lived connections to detect half-open TCP sessions caused by network failures. Set `TCP_NODELAY` for low-latency interactive protocols where Nagle's algorithm would add unwanted 40ms delays. Use `SO_RCVTIMEO` and `SO_SNDTIMEO` to impose read/write deadlines without `select`/`poll`.
+`setsockopt` takes a level (`SOL_SOCKET` for socket-level options, `IPPROTO_TCP` for TCP-specific options) and a value pointer. Always set `SO_REUSEADDR` before `bind()` for server sockets to allow fast restart when old connections are in `TIME_WAIT`. Enable `SO_KEEPALIVE` on long-lived connections to detect half-open TCP sessions caused by network failures. Set `TCP_NODELAY` for low-latency interactive protocols where Nagle's algorithm would add unwanted latency. Use `SO_RCVTIMEO` and `SO_SNDTIMEO` to impose per-call read/write timeouts without `select`/`poll`.
