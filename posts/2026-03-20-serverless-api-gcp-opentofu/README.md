@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Serverless, Cloud Run, Cloud Function, OpenTofu, Firestore, API Gateway
+Tags: GCP, Serverless, Cloud Run, OpenTofu, Firestore, API Gateway
 
-Description: Learn how to build a serverless API backend on GCP using OpenTofu with Cloud Run, Firebase API Gateway, Firestore, and IAP for authentication.
+Description: Learn how to build a serverless API backend on GCP using OpenTofu with Cloud Run, API Gateway, Firestore, and IAM-based backend authentication.
 
 ## Overview
 
-A serverless API on GCP combines Cloud Run for container-based functions, Firestore for document storage, and API Gateway for routing. OpenTofu provisions the complete stack with IAM security and Secret Manager for credentials.
+A serverless API on GCP combines Cloud Run for containerized API services, Firestore for document storage, and API Gateway for routing. OpenTofu provisions the stack with IAM security and Secret Manager for credentials.
 
 ## Step 1: Cloud Run Service
 
@@ -26,7 +26,7 @@ resource "google_cloud_run_v2_service" "api" {
     }
 
     containers {
-      image = "gcr.io/${var.project_id}/api:latest"
+      image = "us-central1-docker.pkg.dev/${var.project_id}/api/serverless-api:latest"
 
       resources {
         limits = {
@@ -54,8 +54,8 @@ resource "google_cloud_run_v2_service" "api" {
     service_account = google_service_account.api.email
   }
 
-  # Require authentication (no unauthenticated invocations)
-  ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+  # API Gateway calls the run.app URL; Cloud Run IAM controls invocation.
+  ingress = "INGRESS_TRAFFIC_ALL"
 }
 
 # Allow Cloud Run to read secrets
@@ -133,6 +133,10 @@ resource "google_api_gateway_api_config" "api_config" {
       google_service_account = google_service_account.api_gateway.email
     }
   }
+
+  depends_on = [
+    google_cloud_run_v2_service_iam_member.api_gateway_invoke
+  ]
 }
 
 resource "google_api_gateway_gateway" "api" {
@@ -153,4 +157,4 @@ resource "google_cloud_run_v2_service_iam_member" "api_gateway_invoke" {
 
 ## Summary
 
-A serverless API on GCP built with OpenTofu scales to zero during idle periods with Cloud Run, and Firestore's native mode provides document storage with automatic scaling. API Gateway provides OpenAPI-based routing and authentication without managing infrastructure. Secret Manager stores credentials securely and Cloud Run service accounts access secrets with minimal IAM permissions.
+A serverless API on GCP built with OpenTofu scales to zero during idle periods with Cloud Run, and Firestore's native mode provides document storage with automatic scaling. API Gateway provides OpenAPI-based routing, while Cloud Run IAM restricts backend invocation to the gateway service account. Secret Manager stores credentials securely and Cloud Run service accounts access secrets with minimal IAM permissions.
