@@ -13,13 +13,14 @@ S3 Batch Operations executes operations on billions of objects in parallel-far f
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with S3 Batch Operations and IAM permissions
-- An inventory CSV file or S3 Inventory report
+- AWS credentials with S3 Batch Operations and IAM permissions, including `s3:CreateJob` and `iam:PassRole`
+- A delivered S3 Inventory report manifest (`manifest.json` and its ETag)
 
 ## Step 1: Create IAM Role for Batch Operations
 
 ```hcl
 # IAM role that S3 Batch Operations assumes to perform actions
+data "aws_caller_identity" "current" {}
 
 resource "aws_iam_role" "batch_ops" {
   name = "s3-batch-operations-role"
@@ -44,15 +45,24 @@ resource "aws_iam_role_policy" "batch_ops" {
       {
         Effect = "Allow"
         Action = [
-          "s3:GetObject",
-          "s3:GetObjectVersion",
           "s3:PutObject",
-          "s3:CopyObject",
+          "s3:PutObjectAcl",
           "s3:PutObjectTagging"
         ]
+        Resource = "${var.destination_bucket_arn}/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:GetObjectVersion",
+          "s3:GetObjectAcl",
+          "s3:GetObjectTagging",
+          "s3:ListBucket"
+        ]
         Resource = [
-          "${var.source_bucket_arn}/*",
-          "${var.destination_bucket_arn}/*"
+          var.source_bucket_arn,
+          "${var.source_bucket_arn}/*"
         ]
       },
       {
@@ -79,6 +89,32 @@ resource "aws_iam_role_policy" "batch_ops" {
 
 ```hcl
 # S3 Inventory generates a manifest for Batch Operations jobs
+resource "aws_s3_bucket_policy" "inventory_destination" {
+  bucket = var.inventory_bucket_name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowS3InventoryDelivery"
+        Effect    = "Allow"
+        Principal = { Service = "s3.amazonaws.com" }
+        Action    = "s3:PutObject"
+        Resource  = "${var.inventory_bucket_arn}/inventory/${var.source_bucket_name}/*"
+        Condition = {
+          ArnLike = {
+            "aws:SourceArn" = var.source_bucket_arn
+          }
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+            "s3:x-amz-acl"      = "bucket-owner-full-control"
+          }
+        }
+      }
+    ]
+  })
+}
+
 resource "aws_s3_bucket_inventory" "source" {
   bucket = var.source_bucket_name
   name   = "full-inventory"
@@ -102,37 +138,34 @@ resource "aws_s3_bucket_inventory" "source" {
     "ETag", "IsMultipartUploaded", "EncryptionStatus",
     "ObjectLockMode", "ObjectLockRetainUntilDate"
   ]
+
+  depends_on = [aws_s3_bucket_policy.inventory_destination]
 }
 ```
 
 ## Step 3: Create a Batch Operations Job
 
 ```hcl
-# S3 Batch Operations job to copy objects with new storage class
-resource "aws_s3control_object_lambda_access_point" "copy_job" {
-  # Note: Batch Operations jobs are created via AWS CLI or SDK
-  # as the OpenTofu resource for batch jobs is limited
-  # Use null_resource with CLI for job creation
-  count = 0  # Placeholder
-}
-
-# Create the batch job via AWS CLI
+# Create the batch job via AWS CLI after S3 has delivered the inventory manifest.json
 resource "null_resource" "batch_copy_job" {
   triggers = {
     manifest_key    = var.manifest_key
+    manifest_etag   = var.manifest_etag
     source_bucket   = var.source_bucket_arn
     dest_bucket     = var.destination_bucket_arn
   }
 
   provisioner "local-exec" {
+    # For copy jobs, var.region must be the destination bucket's Region.
     command = <<-EOF
       aws s3control create-job \
         --account-id ${data.aws_caller_identity.current.account_id} \
-        --manifest '{"Spec":{"Format":"S3BatchOperations_CSV_20180820","Fields":["Bucket","Key"]},"Location":{"ObjectArn":"${var.manifest_bucket_arn}/${var.manifest_key}","ETag":"${var.manifest_etag}"}}' \
-        --operation '{"S3CopyObject":{"TargetResource":"${var.destination_bucket_arn}","NewObjectMetadata":{},"StorageClass":"STANDARD_IA"}}' \
+        --manifest '{"Spec":{"Format":"S3InventoryReport_CSV_20161130"},"Location":{"ObjectArn":"${var.manifest_bucket_arn}/${var.manifest_key}","ETag":"${var.manifest_etag}"}}' \
+        --operation '{"S3PutObjectCopy":{"TargetResource":"${var.destination_bucket_arn}","StorageClass":"STANDARD_IA"}}' \
         --report '{"Bucket":"${var.report_bucket_arn}","Format":"Report_CSV_20180820","Enabled":true,"Prefix":"batch-reports","ReportScope":"AllTasks"}' \
         --priority 10 \
         --role-arn ${aws_iam_role.batch_ops.arn} \
+        --client-request-token ${substr(sha256(join(":", [var.manifest_key, var.manifest_etag, var.destination_bucket_arn])), 0, 64)} \
         --region ${var.region} \
         --no-confirmation-required
     EOF
@@ -142,10 +175,12 @@ resource "null_resource" "batch_copy_job" {
 
 ## Step 4: Lambda-Based Custom Batch Operation
 
+Give the Lambda function's execution role `s3:PutObjectTagging` permission for the objects it updates. If your manifest includes version IDs, include `s3:PutObjectVersionTagging` as well.
+
 ```python
 # Lambda function for custom S3 Batch Operations processing
+from urllib import parse
 import boto3
-import json
 
 s3 = boto3.client('s3')
 
@@ -157,21 +192,26 @@ def handler(event, context):
 
     for task in tasks:
         task_id = task['taskId']
-        bucket = task['s3BucketArn'].split(':::')[1]
-        key = task['s3Key']
+        bucket = task['s3BucketArn'].split(':')[-1]
+        key = parse.unquote_plus(task['s3Key'], encoding='utf-8')
+        version_id = task.get('s3VersionId')
 
         try:
             # Custom processing: tag objects for lifecycle transition
-            s3.put_object_tagging(
-                Bucket=bucket,
-                Key=key,
-                Tagging={
+            tagging_request = {
+                'Bucket': bucket,
+                'Key': key,
+                'Tagging': {
                     'TagSet': [
                         {'Key': 'processed', 'Value': 'true'},
                         {'Key': 'processedDate', 'Value': '2026-03-20'}
                     ]
                 }
-            )
+            }
+            if version_id not in (None, '', 'null'):
+                tagging_request['VersionId'] = version_id
+
+            s3.put_object_tagging(**tagging_request)
             results.append({
                 'taskId': task_id,
                 'resultCode': 'Succeeded',
@@ -185,7 +225,7 @@ def handler(event, context):
             })
 
     return {
-        'invocationSchemaVersion': '1.0',
+        'invocationSchemaVersion': event['invocationSchemaVersion'],
         'treatMissingKeysAs': 'PermanentFailure',
         'invocationId': invocation_id,
         'results': results
