@@ -8,7 +8,7 @@ Description: Learn how to deploy and configure S3-compatible object storage (Min
 
 ---
 
-S3-compatible object storage is ideal for Portainer workloads that need scalable storage for file uploads, backups, logs, and media. Instead of paying for AWS S3, you can run MinIO - a high-performance, S3-compatible object store - as a container managed by Portainer. Any application that uses the AWS S3 SDK or API will work transparently with MinIO.
+S3-compatible object storage is ideal for Portainer workloads that need scalable storage for file uploads, backups, logs, and media. Instead of paying for AWS S3, you can run MinIO - a high-performance, S3-compatible object store - as a container managed by Portainer. Applications that use standard AWS S3 object APIs can typically work with MinIO after you configure the endpoint and credentials.
 
 ---
 
@@ -62,8 +62,8 @@ mc alias set local http://localhost:9000 minioadmin minioadmin-secret-password
 mc mb local/app-uploads
 mc mb local/backups
 
-# Set bucket access policy (private by default)
-mc anonymous set private local/app-uploads
+# Keep bucket access private by disabling anonymous access (private by default)
+mc anonymous set none local/app-uploads
 
 # Verify
 mc ls local/
@@ -88,7 +88,7 @@ services:
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin-secret-password
       AWS_ENDPOINT_URL: http://minio:9000   # internal container networking
-      AWS_DEFAULT_REGION: us-east-1         # required by most SDKs, value doesn't matter
+      AWS_DEFAULT_REGION: us-east-1         # required by most SDKs; use the MinIO region
       S3_BUCKET_NAME: app-uploads
     depends_on:
       - minio
@@ -120,13 +120,14 @@ networks:
 
 ## Step 4: Configure Portainer Backups to MinIO
 
-Portainer Business Edition supports S3 backups natively.
+Portainer Business Edition supports S3 backups for the Portainer configuration natively. This does not back up deployed containers, stacks, services, or volumes.
 
 In Portainer BE:
-1. Go to **Settings > Backup**
-2. Select **S3** as the backup destination
+1. Go to **Settings** and scroll to **Back up Portainer**
+2. Select **Store in S3**
 3. Enter:
-   - **S3 Compatible Host**: `http://minio:9000`
+   - **S3 Compatible Host**: `http://<minio-host-or-ip>:9000`
+   - **Region**: `us-east-1`
    - **Bucket Name**: `backups`
    - **Access Key ID**: `minioadmin`
    - **Secret Access Key**: `minioadmin-secret-password`
@@ -165,4 +166,4 @@ for obj in response.get("Contents", []):
 
 ## Summary
 
-MinIO deployed via Portainer gives you S3-compatible object storage with zero cloud cost. Applications using the AWS S3 SDK work without code changes - just point the endpoint URL to your MinIO container. For multi-container stacks, put MinIO on a shared Docker network so other containers can access it by service name.
+MinIO deployed via Portainer gives you S3-compatible object storage without AWS S3 storage charges. Applications using the AWS S3 SDK can work without code changes when they expose endpoint configuration - just point the endpoint URL to your MinIO container. For multi-container stacks, put MinIO on a shared Docker network so other containers can access it by service name.
