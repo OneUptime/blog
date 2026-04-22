@@ -87,7 +87,12 @@ fn main() -> io::Result<()> {
                             let mut buf = vec![0u8; 4096];
                             loop {
                                 match client.stream.read(&mut buf) {
-                                    Ok(0) => { to_remove = true; break; }
+                                    Ok(0) => {
+                                        if client.pending_write.is_empty() {
+                                            to_remove = true;
+                                        }
+                                        break;
+                                    }
                                     Ok(n) => {
                                         client.pending_write.extend_from_slice(&buf[..n]);
                                     }
@@ -103,6 +108,7 @@ fn main() -> io::Result<()> {
 
                         if event.is_writable() && !client.pending_write.is_empty() {
                             match client.stream.write(&client.pending_write) {
+                                Ok(0) => { to_remove = true; }
                                 Ok(n) => { client.pending_write.drain(..n); }
                                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
                                 Err(_) => { to_remove = true; }
