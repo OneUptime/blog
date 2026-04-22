@@ -37,9 +37,10 @@ resource "aws_instance" "web" {
     command = "${path.module}/scripts/register-instance.sh"
 
     environment = {
-      INSTANCE_ID = self.id
-      REGION      = var.region
-      ENV         = var.environment
+      INSTANCE_ID       = self.id
+      PRIVATE_IP        = self.private_ip
+      CONSUL_DATACENTER = var.consul_datacenter
+      ENV               = var.environment
     }
   }
 }
@@ -51,15 +52,15 @@ resource "aws_instance" "web" {
 
 set -e
 
-echo "Registering instance $INSTANCE_ID in region $REGION"
+echo "Registering instance $INSTANCE_ID at $PRIVATE_IP in datacenter $CONSUL_DATACENTER"
 
 # Register in service discovery
-curl -X POST "https://consul.example.com/v1/catalog/register" \
+curl -X PUT "https://consul.example.com/v1/catalog/register" \
   -H "Content-Type: application/json" \
   -d "{
     \"Node\": \"$INSTANCE_ID\",
-    \"Address\": \"$INSTANCE_ID\",
-    \"Datacenter\": \"$REGION\"
+    \"Address\": \"$PRIVATE_IP\",
+    \"Datacenter\": \"$CONSUL_DATACENTER\"
   }"
 
 echo "Instance $INSTANCE_ID registered successfully"
@@ -108,6 +109,7 @@ resource "aws_instance" "app" {
 
   provisioner "remote-exec" {
     inline = [
+      "set -e",
       "sudo apt-get update -y",
       "sudo apt-get install -y nginx",
       "sudo systemctl start nginx",
@@ -189,9 +191,6 @@ resource "aws_instance" "web" {
       AWS_REGION    = var.region
       DATABASE_HOST = var.db_endpoint
     }
-
-    # Specify interpreter explicitly
-    interpreter = ["python3", "-c"]
   }
 }
 ```
@@ -199,21 +198,30 @@ resource "aws_instance" "web" {
 ## Interpreter Options
 
 ```hcl
+# Default shell
 provisioner "local-exec" {
-  # Default: shell
   command = "echo hello"
+}
 
-  # Explicit bash
+# Explicit bash
+provisioner "local-exec" {
+  command     = "echo hello"
   interpreter = ["/bin/bash", "-c"]
+}
 
-  # Python
+# Python inline code
+provisioner "local-exec" {
+  command     = "print('hello')"
   interpreter = ["python3", "-c"]
+}
 
-  # PowerShell (Windows)
+# PowerShell (Windows)
+provisioner "local-exec" {
+  command     = "Write-Output 'hello'"
   interpreter = ["PowerShell", "-Command"]
 }
 ```
 
 ## Conclusion
 
-Use `local-exec` for scripts that run on the OpenTofu host machine - good for API calls, file operations, and external system notifications. Use `remote-exec` for scripts that must run on the created resource itself - but prefer user_data or Systems Manager when possible. Always pass dynamic values through environment variables rather than shell variable interpolation to avoid injection risks. Keep scripts small and focused; complex logic belongs in configuration management tools, not provisioners.
+Use `local-exec` for scripts that run on the OpenTofu host machine - good for API calls, file operations, and external system notifications. Use `remote-exec` for scripts that must run on the created resource itself - but prefer user_data or Systems Manager when possible. Pass dynamic values through environment variables rather than interpolating OpenTofu values directly into shell command strings to reduce injection risks. Keep scripts small and focused; complex logic belongs in configuration management tools, not provisioners.
