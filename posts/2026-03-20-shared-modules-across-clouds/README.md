@@ -57,6 +57,21 @@ variable "tags" {
 
 ```hcl
 # modules/compute-instance/aws/main.tf
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-2023*-x86_64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
 locals {
   instance_type_map = {
     small  = "t3.small"
@@ -97,17 +112,17 @@ output "instance_name" { value = local.common_tags["Name"] }
 
 ## Publishing to a Private Module Registry
 
-For OpenTofu Cloud or a private registry-compatible server (like GitLab), publish modules using the naming convention `terraform-<provider>-<name>`:
+For a private registry-compatible server (like GitLab), follow that registry's publishing requirements. Registry-style module repositories commonly use the naming convention `terraform-<provider>-<name>`:
 
 ```bash
 # Repository naming convention
 # github.com/my-org/terraform-aws-compute-instance
-# github.com/my-org/terraform-azure-compute-instance
+# github.com/my-org/terraform-azurerm-compute-instance
 # github.com/my-org/terraform-google-compute-instance
 
 # Tag versions for registry consumption
-git tag v1.0.0
-git push origin v1.0.0
+git tag 1.0.0
+git push origin 1.0.0
 ```
 
 ## Using Shared Modules from Git
@@ -115,7 +130,7 @@ git push origin v1.0.0
 ```hcl
 # Reference AWS module by Git tag
 module "app_server" {
-  source = "git::https://github.com/my-org/terraform-aws-compute-instance.git?ref=v1.2.0"
+  source = "git::https://github.com/my-org/terraform-aws-compute-instance.git?ref=1.2.0"
 
   name        = "app-server"
   environment = var.environment
