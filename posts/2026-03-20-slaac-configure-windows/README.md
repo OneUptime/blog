@@ -23,9 +23,9 @@ Get-NetIPAddress -AddressFamily IPv6
 # AddressFamily     : IPv6
 # PrefixLength      : 64
 # PrefixOrigin      : RouterAdvertisement   ← SLAAC
-# SuffixOrigin      : Random               ← Privacy extensions
+# SuffixOrigin      : Random               ← Temporary/randomized identifier
 # AddressState      : Preferred
-# ValidLifetime     : Infinite              ← Actually from RA
+# ValidLifetime     : Infinite              ← Depends on RA prefix lifetime
 #
 # IPAddress         : fe80::3f91:28ac:e654:102b
 # InterfaceAlias    : Ethernet
@@ -51,16 +51,17 @@ netsh interface ipv6 show addresses
 REM Enable SLAAC (Router Discovery)
 netsh interface ipv6 set interface "Ethernet" routerdiscovery=enabled
 
-REM Disable SLAAC (use static addresses only)
+REM Disable RA/SLAAC on this interface
 netsh interface ipv6 set interface "Ethernet" routerdiscovery=disabled
 
 REM Show Router Advertisement information
-netsh interface ipv6 show routes
+netsh interface ipv6 show route
 REM Shows routes including those from RA
 
 REM Force sending a Router Solicitation (refresh SLAAC)
+netsh interface ipv6 set interface "Ethernet" routerdiscovery=disabled
 netsh interface ipv6 set interface "Ethernet" routerdiscovery=enabled
-REM Disabling and re-enabling triggers RS
+REM Re-enabling Router Discovery triggers RS
 ```
 
 ## Managing Privacy Extensions on Windows
@@ -68,17 +69,23 @@ REM Disabling and re-enabling triggers RS
 ```powershell
 # Check privacy extension status
 netsh interface ipv6 show privacy
-# State      : enabled      ← Privacy extensions on
-# MaxDadAttempts : 1
-# MaxPreferredLifetime : 1d
-# MaxValidLifetime : 7d
-# RegenerateTime : 5s
+# Use Temporary Addresses             : enabled      ← Temporary address generation on
+# Duplicate Address Detection Attempts: 5
+# Maximum Preferred Lifetime          : 1d
+# Maximum Valid Lifetime              : 7d
+# Regeneration Time                   : 5s
 
-# Disable privacy extensions (use stable EUI-64 addresses)
+# Disable temporary privacy addresses
 netsh interface ipv6 set privacy state=disabled
+
+# Disable randomized interface identifiers if you need link-layer-derived stable IIDs
+netsh interface ipv6 set global randomizeidentifiers=disabled
 
 # Enable privacy extensions
 netsh interface ipv6 set privacy state=enabled
+
+# Enable randomized interface identifiers
+netsh interface ipv6 set global randomizeidentifiers=enabled
 
 # Preferred lifetime for temporary addresses (default: 1 day)
 netsh interface ipv6 set privacy maxpreferredlifetime=12h
@@ -86,7 +93,7 @@ netsh interface ipv6 set privacy maxpreferredlifetime=12h
 # Valid lifetime for temporary addresses (default: 7 days)
 netsh interface ipv6 set privacy maxvalidlifetime=1d
 
-# Check current temporary address details
+# Check current addresses with randomized suffixes (including temporary addresses)
 Get-NetIPAddress -AddressFamily IPv6 |
     Where-Object { $_.SuffixOrigin -eq "Random" } |
     Format-Table IPAddress, ValidLifetime, PreferredLifetime
@@ -95,8 +102,8 @@ Get-NetIPAddress -AddressFamily IPv6 |
 ## Static vs SLAAC on Windows
 
 ```powershell
-# Configure static IPv6 address (disables SLAAC for that address)
-# SLAAC continues for other prefixes received from RA
+# Configure static IPv6 address (adds a manual address)
+# Router Discovery/SLAAC can still continue for RA-advertised prefixes
 New-NetIPAddress -InterfaceAlias "Ethernet" `
     -IPAddress "2001:db8::10" `
     -PrefixLength 64 `
@@ -105,7 +112,7 @@ New-NetIPAddress -InterfaceAlias "Ethernet" `
 # Remove static address
 Remove-NetIPAddress -IPAddress "2001:db8::10" -Confirm:$false
 
-# Check if SLAAC is disabled for interface
+# Check Router Discovery and DHCPv6 RA flags
 Get-NetIPInterface -InterfaceAlias "Ethernet" -AddressFamily IPv6 |
     Select RouterDiscovery, ManagedAddressConfiguration,
            OtherStatefulConfiguration
@@ -123,21 +130,20 @@ Enable-NetAdapter -Name "Ethernet"
 ## Verifying Routes from SLAAC
 
 ```powershell
-# Show IPv6 routes learned via SLAAC (RouterAdvertisement protocol)
-Get-NetRoute -AddressFamily IPv6 |
-    Where-Object { $_.Protocol -eq "RouterAdvertisement" } |
+# Show IPv6 default routes from Router Advertisements
+# RA default routes appear as ::/0 routes with a link-local next hop.
+Get-NetRoute -AddressFamily IPv6 -DestinationPrefix "::/0" |
     Format-Table DestinationPrefix, NextHop, InterfaceAlias, RouteMetric
 
 # Example output:
 # DestinationPrefix  NextHop       InterfaceAlias   RouteMetric
 # ::/0               fe80::1       Ethernet         256   ← default route
-# 2001:db8::/64      ::            Ethernet         256   ← on-link route
 
 # Show all IPv6 routes
 Get-NetRoute -AddressFamily IPv6 | Format-Table -AutoSize
 
 # netsh equivalent:
-netsh interface ipv6 show routes
+netsh interface ipv6 show route
 ```
 
 ## Troubleshooting SLAAC on Windows
@@ -157,7 +163,7 @@ Get-NetIPInterface -InterfaceAlias "Ethernet" -AddressFamily IPv6 |
 
 # Check 3: Capture RA messages (requires Wireshark or pktmon)
 # Using pktmon (Windows 10+):
-pktmon filter add -p icmpv6
+pktmon filter add -t ICMPv6
 pktmon start --capture
 # Wait a few seconds, then stop:
 pktmon stop
@@ -178,13 +184,13 @@ Get-WinEvent -LogName "System" |
 
 ```powershell
 # On Windows Server: verify SLAAC is enabled
-# Windows Server may disable IPv6 components
+# Windows Server may have IPv6 components disabled by policy
 
 # Check IPv6 preference
 Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" |
     Select DisabledComponents
 # 0x00 = all IPv6 components enabled (SLAAC works)
-# 0xFF = all IPv6 components disabled
+# 0xFF = IPv6 disabled for most components (loopback/internal use remains)
 
 # Enable all IPv6 components (if disabled)
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" `
