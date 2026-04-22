@@ -21,7 +21,7 @@ A Software Bill of Materials (SBOM) is a comprehensive list of all software comp
 Syft is a popular open-source tool for generating SBOMs. Install it on your workstation:
 
 ```bash
-curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+curl -sSfL https://get.anchore.io/syft | sudo sh -s -- -b /usr/local/bin
 ```
 
 Verify the installation:
@@ -49,7 +49,8 @@ syft nginx:latest -o cyclonedx-json > nginx-sbom-cyclonedx.json
 List running images across your cluster:
 
 ```bash
-kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.spec.containers[*].image}{"\n"}{end}' | sort -u
+kubectl get pods --all-namespaces --field-selector=status.phase=Running \
+  -o jsonpath='{range .items[*]}{.spec.containers[*].image}{"\n"}{end}' | sort -u > images.txt
 ```
 
 Generate SBOMs for each:
@@ -72,7 +73,7 @@ Integrate SBOM generation into your pipeline:
       -o spdx-json > sbom.json
 
 - name: Upload SBOM as artifact
-  uses: actions/upload-artifact@v3
+  uses: actions/upload-artifact@v7
   with:
     name: sbom
     path: sbom.json
@@ -80,7 +81,7 @@ Integrate SBOM generation into your pipeline:
 
 ## Using Trivy for SBOM Generation
 
-Trivy also supports SBOM generation with vulnerability correlation:
+Trivy also supports SBOM generation:
 
 ```bash
 trivy image --format spdx-json --output trivy-sbom.json nginx:latest
@@ -88,10 +89,10 @@ trivy image --format spdx-json --output trivy-sbom.json nginx:latest
 
 ## Storing SBOMs in Rancher
 
-You can store SBOMs as ConfigMaps or in an OCI registry alongside your images:
+You can store SBOMs as ConfigMaps or publish signed SBOM attestations in an OCI registry alongside immutable image references:
 
 ```bash
-cosign attach sbom --sbom sbom.json nginx:latest
+cosign attest --yes --predicate sbom.json --type spdxjson <image-uri>@sha256:<digest>
 ```
 
 ## Conclusion
