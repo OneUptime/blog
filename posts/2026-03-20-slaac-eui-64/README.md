@@ -8,7 +8,7 @@ Description: Understand how EUI-64 derives a 64-bit interface identifier from a 
 
 ## Introduction
 
-EUI-64 (Extended Unique Identifier, 64-bit) is the original method for generating IPv6 interface identifiers from 48-bit MAC addresses. The process converts a 48-bit MAC into a 64-bit identifier by inserting the bytes `ff:fe` in the middle and flipping the universal/local bit (bit 6). While privacy extensions have largely replaced EUI-64 for client hosts, it is still used for router interfaces and in understanding how IPv6 addresses relate to hardware.
+EUI-64 (Extended Unique Identifier, 64-bit) is the original method for generating IPv6 interface identifiers from 48-bit MAC addresses. The process converts a 48-bit MAC into a 64-bit identifier by inserting the bytes `ff:fe` in the middle and flipping the universal/local bit (the `0x02` bit in the first byte). While privacy extensions have largely replaced EUI-64 for client hosts, it is still used for router interfaces and in understanding how IPv6 addresses relate to hardware.
 
 ## EUI-64 Generation Algorithm
 
@@ -26,9 +26,9 @@ Step 2: Insert 0xFF and 0xFE in the middle
   Result: 00:11:22:FF:FE:33:44:55
           (8 bytes, 64 bits)
 
-Step 3: Flip the Universal/Local bit (bit 6 of first byte)
-  Bit 6 of first byte: 00 in binary = xxxxxxx0
-  Flip bit 6 (7th bit from right, 2nd bit from left):
+Step 3: Flip the Universal/Local bit (0x02 bit of first byte)
+  First byte: 00 in binary = 0000 0000
+  Flip the U/L bit (second bit from right, bit 1 in least-significant-bit numbering):
   00 = 0000 0000 → bit 1 (0-indexed) is 0 → flip to 1
   Result: 0000 0010 = 0x02
 
@@ -47,25 +47,25 @@ SLAAC Address:
 ```text
 The Universal/Local (U/L) Bit:
 
-In IEEE 802 MAC addresses:
+In IEEE 802 MAC addresses (using least-significant-bit numbering within the first octet):
   Bit 0 of first byte: I/G bit (Individual/Group) - 0=unicast, 1=multicast
   Bit 1 of first byte: U/L bit (Universal/Local)  - 0=global, 1=local
 
   MAC 00:11:22:33:44:55
        ^^
        00 in binary = 0000 0000
-       bit 7 (I/G): 0 = unicast ✓
-       bit 6 (U/L): 0 = globally unique (assigned by IEEE)
+       bit 0 (I/G): 0 = unicast ✓
+       bit 1 (U/L): 0 = globally unique (assigned by IEEE)
 
-In IPv6 EUI-64:
+In IPv6 modified EUI-64 interface identifiers:
   The semantics are INVERTED:
   U/L bit 0 in IPv6 = locally administered
   U/L bit 1 in IPv6 = globally unique (IEEE-assigned)
 
 Why the flip?
   MAC U/L=0 means "globally unique from IEEE"
-  IPv6 EUI-64 convention: bit=1 means "derived from globally unique MAC"
-  So the bit is flipped when converting MAC → EUI-64
+  IPv6 modified EUI-64 convention: bit=1 means "derived from globally unique MAC"
+  So the bit is flipped when converting MAC → modified EUI-64 IID
 
 Common MAC prefixes and their EUI-64:
   00:... (U/L=0, global) → EUI-64: 02:...  (U/L=1)
@@ -78,6 +78,8 @@ Common MAC prefixes and their EUI-64:
 ## Examples with Different MAC Addresses
 
 ```python
+import ipaddress
+
 def mac_to_eui64(mac_str: str) -> str:
     """Convert 48-bit MAC to 64-bit EUI-64 interface identifier."""
     # Parse MAC address
@@ -90,7 +92,7 @@ def mac_to_eui64(mac_str: str) -> str:
     # Insert 0xFF and 0xFE in the middle (between byte 3 and 4)
     eui64_bytes = bytes_list[:3] + [0xFF, 0xFE] + bytes_list[3:]
 
-    # Flip the Universal/Local bit (bit 6 = bit index 1 of first byte)
+    # Flip the Universal/Local bit (0x02 = bit index 1 in least-significant-bit numbering)
     eui64_bytes[0] ^= 0x02
 
     # Format as IPv6 interface identifier
@@ -106,19 +108,19 @@ print(mac_to_eui64("aa:bb:cc:dd:ee:ff"))  # → a8bb:ccff:fedd:eeff
 print(mac_to_eui64("f0:18:98:ab:cd:ef"))  # → f218:98ff:feab:cdef
 
 # Construct full SLAAC address:
-# prefix = "2001:db8::"
-# iid = mac_to_eui64("00:11:22:33:44:55")
-# address = prefix.rstrip(":") + ":" + iid
-# → 2001:db8::211:22ff:fe33:4455 (leading zeros compressed)
+prefix = ipaddress.IPv6Network("2001:db8::/64")
+iid_int = int(mac_to_eui64("00:11:22:33:44:55").replace(":", ""), 16)
+address = ipaddress.IPv6Address(int(prefix.network_address) | iid_int)
+print(address)  # → 2001:db8::211:22ff:fe33:4455 (leading zeros compressed)
 ```
 
 ## Verifying EUI-64 on Linux
 
 ```bash
-# Show IPv6 addresses - EUI-64 derived addresses contain ff:fe in the middle
+# Show IPv6 addresses - EUI-64 addresses derived from 48-bit MACs contain ff:fe in the middle
 ip -6 addr show eth0
 
-# Identify EUI-64 addresses (contain ff:fe pattern):
+# Look for likely EUI-64 addresses (contain ff:fe pattern):
 # 2001:db8::211:22ff:fe33:4455
 #                  ^^^^  These bytes are ff:fe = EUI-64 marker
 
@@ -162,8 +164,8 @@ This enables:
 Solution: Privacy Extensions (RFC 8981)
   - Random interface identifier, changes periodically
   - Prevents tracking across time and networks
-  - Default on Windows Vista+, macOS, iOS, Android
-  - Optional on Linux (disabled by default)
+  - Commonly enabled by default on modern client systems such as Windows, macOS, iOS, and Android
+  - Optional on Linux (kernel default is disabled for most devices; distributions/network managers may enable it)
 
 Enable privacy extensions on Linux:
   sudo sysctl -w net.ipv6.conf.eth0.use_tempaddr=2
@@ -195,4 +197,4 @@ When to use EUI-64 (despite privacy concerns):
 
 ## Conclusion
 
-EUI-64 converts a 48-bit MAC address to a 64-bit IPv6 interface identifier by inserting `ff:fe` in the middle and flipping the universal/local bit. The resulting interface identifier combined with a /64 prefix from SLAAC produces a unique, stable IPv6 address tied to the hardware MAC. While simple and collision-resistant, EUI-64 exposes the MAC address in the IPv6 address, enabling device tracking. Modern systems use privacy extensions (RFC 8981) or stable privacy addresses (RFC 7217) for client devices to address this concern.
+EUI-64 converts a 48-bit MAC address to a 64-bit IPv6 interface identifier by inserting `ff:fe` in the middle and flipping the universal/local bit. The resulting interface identifier combined with a /64 prefix from SLAAC produces a stable IPv6 address intended to be unique within the subnet and tied to the hardware MAC. While simple and collision-resistant, EUI-64 exposes the MAC address in the IPv6 address, enabling device tracking. Modern systems use privacy extensions (RFC 8981) or stable privacy addresses (RFC 7217) for client devices to address this concern.
