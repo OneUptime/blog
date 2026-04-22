@@ -13,11 +13,9 @@ Rust development in Docker via Portainer isolates your Rust toolchain and ensure
 ## Dev Environment Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   rust-dev:
-    image: rust:1.77-alpine
+    image: rust:1.95.0-alpine
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -34,7 +32,7 @@ services:
     command: >
       sh -c "
         apk add --no-cache musl-dev pkgconfig &&
-        cargo install cargo-watch &&
+        cargo install cargo-watch --locked &&
         cargo watch -x run
       "
 
@@ -87,7 +85,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = "0.7"
+axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
 tracing = "0.1"
@@ -96,14 +94,14 @@ tracing-subscriber = "0.3"
 
 ## Reducing Build Times
 
-First-time compilation in Docker takes several minutes. Subsequent builds with cached volumes are fast. Key optimizations:
+First-time compilation in Docker takes several minutes. Subsequent builds with cached volumes are fast. Keep the dev profile unoptimized for fast incremental rebuilds:
 
 ```toml
-# Cargo.toml: use faster linker in dev
+# Cargo.toml: keep dev builds unoptimized
 
 [profile.dev]
 opt-level = 0    # No optimization for dev builds (faster compile)
 debug = true     # Include debug symbols
 ```
 
-Use the `sccache` distributed compiler cache for even faster builds across container restarts.
+Use `sccache` as a compiler cache, for example with `RUSTC_WRAPPER=sccache` and a persisted cache directory, for even faster rebuilds across container restarts.
