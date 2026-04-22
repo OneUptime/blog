@@ -15,7 +15,7 @@ Istio's telemetry v2 pipeline captures all traffic metrics regardless of IP vers
 ```yaml
 # Telemetry resource - customize metric collection
 
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: custom-metrics
@@ -30,13 +30,13 @@ spec:
             metric: REQUEST_COUNT
           tagOverrides:
             source_ip:
-              value: "downstream_remote_address"
-        # Track connection type
+              value: "source.address"
+        # Track upstream endpoint address for TCP connections
         - match:
             metric: TCP_OPENED_CONNECTIONS
           tagOverrides:
             destination_ip:
-              value: "upstream_peer_address"
+              value: "upstream.address"
 ```
 
 ```bash
@@ -65,17 +65,18 @@ istioctl dashboard kiali
 # Traffic is aggregated by service name, not by IP version
 
 # Kiali health indicators:
-# Green: > 99% success rate
-# Yellow: 95-99% success rate
-# Red: < 95% success rate
-# These apply equally to IPv4 and IPv6 traffic
+# Green: healthy traffic
+# Orange: degraded traffic
+# Red: failure-level traffic
+# Default thresholds are configurable; by default, 5xx HTTP errors have a low
+# degraded threshold and fail at 10%, while 4xx errors degrade at 10% and fail at 20%
 ```
 
 ## Distributed Tracing for IPv6 Request Flows
 
 ```yaml
 # Telemetry resource for tracing
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: tracing-config
@@ -86,7 +87,7 @@ spec:
         - name: jaeger
       randomSamplingPercentage: 5.0  # Sample 5% of requests
       customTags:
-        # Include the source IP (will be IPv6 for IPv6 clients)
+        # Include the forwarded client IP (can be IPv6 for IPv6 clients)
         client_ip:
           header:
             name: "x-forwarded-for"
@@ -98,7 +99,7 @@ spec:
 istioctl dashboard jaeger
 
 # Filter traces by service
-# Traces show the full request path including IPv6 hops
+# Traces show the service request path; custom tags add IPv6 client context
 
 # Use Jaeger API to find IPv6-sourced traces
 curl "http://localhost:16686/api/traces?service=my-service&limit=20" | \
@@ -124,19 +125,30 @@ linkerd viz tap deploy/my-app \
   --to deploy/backend \
   --output json | \
   python3 -c "
-import sys, json
+import sys, json, ipaddress
+
+def is_ipv6(ip):
+    if isinstance(ip, dict):
+        return 'ipv6' in ip
+    if isinstance(ip, str):
+        try:
+            return ipaddress.ip_address(ip.strip('[]')).version == 6
+        except ValueError:
+            return False
+    return False
+
 for line in sys.stdin:
     data = json.loads(line)
-    src = data.get('source', {}).get('ip', '')
-    if ':' in src:  # IPv6 address contains ':'
+    src = data.get('source', {}).get('ip')
+    if is_ipv6(src):
         print(json.dumps(data, indent=2))
 "
 ```
 
 ## ELK/Loki Log Aggregation for IPv6
 
-```yaml
-# Fluentd config to capture Istio access logs with IPv6 client IPs
+```conf
+# Fluentd config to capture JSON-formatted Istio access logs with IPv6 client IPs
 # /etc/fluent/fluent.conf
 
 <source>
@@ -153,7 +165,8 @@ for line in sys.stdin:
   @type grep
   <regexp>
     key downstream_remote_address
-    pattern /:/  # Match IPv6 addresses (contain colons)
+    # Match IPv6 addresses; a single colon also appears in IPv4 host:port values.
+    pattern /([0-9A-Fa-f]{0,4}:){2,}/
   </regexp>
 </filter>
 
@@ -168,7 +181,7 @@ for line in sys.stdin:
 ```bash
 # Kibana query for IPv6 traffic
 # index: istio-access-ipv6
-# query: downstream_remote_address: *:*
+# query: downstream_remote_address: "*:*:*"
 
 # Loki query for IPv6 access logs
 logcli query \
@@ -180,26 +193,34 @@ logcli query \
 ```yaml
 # Grafana dashboard panel configuration (as code)
 
-# Panel 1: Request rate by IP version
-# Use metric labels to detect IPv6 (when custom source_ip dimension is enabled)
-
-# Panel 2: Error rate for dual-stack services
-expr: |
-  sum(rate(istio_requests_total{response_code=~"5.*",reporter="destination"}[5m]))
-    by (destination_service_name)
-  /
-  sum(rate(istio_requests_total{reporter="destination"}[5m]))
-    by (destination_service_name)
-
-# Panel 3: P99 latency
-expr: |
-  histogram_quantile(0.99,
-    sum(rate(istio_request_duration_milliseconds_bucket[5m]))
-    by (destination_service_name, le)
-  )
-
-# Panel 4: Active TCP connections (including IPv6)
-expr: sum(node_sockstat_TCP6_inuse) by (instance)
+panels:
+  - title: Request rate by IP version
+    targets:
+      - expr: |
+          sum(rate(istio_requests_total{source_ip=~".*:.*:.*",reporter="destination"}[5m]))
+      - expr: |
+          sum(rate(istio_requests_total{source_ip!~".*:.*:.*",source_ip!="",reporter="destination"}[5m]))
+  - title: Error rate for dual-stack services
+    targets:
+      - expr: |
+          sum by (destination_service_name) (
+            rate(istio_requests_total{response_code=~"5.*",reporter="destination"}[5m])
+          )
+          /
+          sum by (destination_service_name) (
+            rate(istio_requests_total{reporter="destination"}[5m])
+          )
+  - title: P99 latency
+    targets:
+      - expr: |
+          histogram_quantile(0.99,
+            sum by (destination_service_name, le) (
+              rate(istio_request_duration_milliseconds_bucket[5m])
+            )
+          )
+  - title: Active TCP6 sockets
+    targets:
+      - expr: sum by (instance) (node_sockstat_TCP6_inuse)
 ```
 
 ## IPv6 Observability Gaps and Workarounds
@@ -209,21 +230,37 @@ expr: sum(node_sockstat_TCP6_inuse) by (instance)
 # Workaround: Add custom telemetry dimensions (shown above)
 
 # Gap 2: Kiali doesn't show IP version in service graph
-# Workaround: Use kubectl logs + grep for IPv6 in access logs
+# Workaround: Use access logs and parse the client IP address family
 
 # Gap 3: Service entry for external IPv6 services may not appear in Kiali
 # Workaround: Create ServiceEntry with explicit IPv6 address
 
-# Check access logs for IPv6 traffic
+# Check JSON-formatted access logs for IPv6 traffic
 kubectl logs <pod-name> -c istio-proxy | \
   python3 -c "
-import sys, json
+import sys, json, ipaddress
+
+def is_ipv6(value):
+    if not value:
+        return False
+    value = str(value)
+    if value.startswith('['):
+        host = value[1:].split(']', 1)[0]
+    elif value.count(':') == 1:
+        host = value.rsplit(':', 1)[0]
+    else:
+        host = value
+    try:
+        return ipaddress.ip_address(host).version == 6
+    except ValueError:
+        return False
+
 for line in sys.stdin:
     try:
         log = json.loads(line)
-        if ':' in log.get('downstream_remote_address', ''):
+        if is_ipv6(log.get('downstream_remote_address', '')):
             print(log)
-    except:
+    except json.JSONDecodeError:
         pass
 "
 ```
