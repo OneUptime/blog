@@ -8,59 +8,33 @@ Description: Learn how to host a static website on S3 with CloudFront CDN using 
 
 ## Introduction
 
-S3 static website hosting serves HTML, CSS, JavaScript, and media files directly from S3. Combined with CloudFront, you get a globally distributed CDN with HTTPS, custom domains, and edge caching. This is the standard pattern for hosting single-page applications and static sites on AWS.
+This pattern stores HTML, CSS, JavaScript, and media files in a private S3 bucket and serves them through CloudFront. With CloudFront, you get a globally distributed CDN with HTTPS, custom domains, and edge caching. This is the standard pattern for hosting single-page applications and static sites on AWS.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with S3 and CloudFront permissions
-- A registered domain and ACM certificate (for custom domains)
+- AWS credentials with S3, CloudFront, and Route 53 permissions
+- A registered domain and ACM certificate in us-east-1 (for custom domains)
 
-## Step 1: Create the S3 Website Bucket
+## Step 1: Create the S3 Origin Bucket
 
 ```hcl
 resource "aws_s3_bucket" "website" {
   bucket = var.website_bucket_name
   tags   = { Name = "static-website" }
 }
-
-# Configure the bucket as a website
-
-resource "aws_s3_bucket_website_configuration" "website" {
-  bucket = aws_s3_bucket.website.id
-
-  index_document {
-    suffix = "index.html"
-  }
-
-  error_document {
-    key = "error.html"
-  }
-
-  # Redirect rules for SPA routing
-  routing_rule {
-    condition {
-      http_error_code_returned_equals = "404"
-    }
-    redirect {
-      host_name               = var.domain_name
-      http_redirect_code      = "302"
-      replace_key_prefix_with = "#!/"
-    }
-  }
-}
 ```
 
 ## Step 2: Configure Bucket Policy for CloudFront
 
 ```hcl
-# Block direct S3 access - all traffic through CloudFront only
+# Keep direct public S3 access blocked - all traffic goes through CloudFront OAC
 resource "aws_s3_bucket_public_access_block" "website" {
   bucket                  = aws_s3_bucket.website.id
   block_public_acls       = true
-  block_public_policy     = false  # Must allow the CF OAC policy
+  block_public_policy     = true
   ignore_public_acls      = true
-  restrict_public_buckets = false
+  restrict_public_buckets = true
 }
 
 # CloudFront Origin Access Control for S3
@@ -127,7 +101,13 @@ resource "aws_cloudfront_distribution" "website" {
     compress               = true
   }
 
-  # Custom error response for SPA routing
+  # Custom error responses for SPA routing
+  custom_error_response {
+    error_code         = 403
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+
   custom_error_response {
     error_code         = 404
     response_code      = 200
@@ -155,6 +135,18 @@ resource "aws_route53_record" "website" {
   zone_id = var.hosted_zone_id
   name    = var.domain_name
   type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.website.domain_name
+    zone_id                = aws_cloudfront_distribution.website.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "website_ipv6" {
+  zone_id = var.hosted_zone_id
+  name    = var.domain_name
+  type    = "AAAA"
 
   alias {
     name                   = aws_cloudfront_distribution.website.domain_name
