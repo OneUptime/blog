@@ -43,7 +43,7 @@ resource "aws_sns_topic" "main" {
   # Enable server-side encryption using KMS
   kms_master_key_id = "alias/aws/sns"
 
-  # Message retention period for FIFO topics
+  # FIFO topic settings
   # fifo_topic                  = false
   # content_based_deduplication = false
 
