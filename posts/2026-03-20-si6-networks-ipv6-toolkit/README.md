@@ -8,7 +8,7 @@ Description: Use the SI6 Networks IPv6 Toolkit for advanced IPv6 security auditi
 
 ## Introduction
 
-The SI6 Networks IPv6 Toolkit is a comprehensive set of tools for IPv6 security assessment and network analysis. It includes tools for address scanning, header manipulation, Neighbor Discovery Protocol (NDP) analysis, and path MTU testing. Unlike standard tools, the SI6 toolkit operates at the packet level for deep protocol analysis.
+The SI6 Networks IPv6 Toolkit is a comprehensive set of tools for IPv6 security assessment and network analysis. It includes tools for address scanning, header manipulation, Neighbor Discovery Protocol (NDP) analysis, and path/fragmentation testing. Unlike standard tools, the SI6 toolkit operates at the packet level for deep protocol analysis.
 
 ## Installation
 
@@ -24,7 +24,7 @@ make
 sudo make install
 
 # Verify installation
-addr6 --version
+addr6 --help
 scan6 --help
 ```
 
@@ -40,11 +40,11 @@ addr6 -a 2001:db8::1
 # Check if address is SLAAC-generated (based on MAC)
 addr6 -a fe80::1234:56ff:fe78:9abc
 
-# Generate all addresses in a prefix
-addr6 -p 2001:db8::/64 --gen-addr
+# Accept only addresses in a prefix from stdin
+printf '%s\n' 2001:db8::1 2001:db8:1::1 | addr6 -i -j 2001:db8::/32
 
 # Convert between different address formats
-addr6 -a 2001:0db8:0000:0000:0000:0000:0000:0001 -e
+addr6 -a 2001:0db8:0000:0000:0000:0000:0000:0001 -c
 # Outputs compressed form: 2001:db8::1
 
 # Check if address is in a specific type (multicast, link-local, etc.)
@@ -69,10 +69,10 @@ sudo scan6 -i eth0 -L -v
 sudo scan6 -i eth0 -L --probe-type all
 
 # Scan for specific port (TCP)
-sudo scan6 -i eth0 -d 2001:db8::/64 --tcp-scan --dst-port 443
+sudo scan6 -i eth0 -d 2001:db8::/64 --port-scan tcp:443 --tcp-scan-type syn
 
 # Save results to file
-sudo scan6 -i eth0 -L -o /tmp/ipv6-hosts.txt
+sudo scan6 -i eth0 -L > /tmp/ipv6-hosts.txt
 ```
 
 ## na6/ns6: Neighbor Advertisement/Solicitation
@@ -81,18 +81,19 @@ Tools for NDP protocol manipulation and testing:
 
 ```bash
 # Send a Neighbor Solicitation to discover a host
-sudo ns6 -i eth0 -d 2001:db8::1
+sudo ns6 -i eth0 -d ff02::1:ff00:1 -t 2001:db8::1 -e
 
 # Send a Neighbor Advertisement
 sudo na6 -i eth0 -d ff02::1 -t 2001:db8::10 \
-    --target-lla 00:11:22:33:44:55
+    -E 00:11:22:33:44:55
 
 # Flood with Neighbor Advertisements (security testing)
 sudo na6 -i eth0 -d ff02::1 --flood-sources 100 \
-    --target-lla 00:11:22:33:44:55 -l
+    -t 2001:db8::10 -E 00:11:22:33:44:55 -l
 
 # Test NDP cache exhaustion resistance
-sudo na6 -i eth0 -d fe80::1 --flood-sources 200
+sudo na6 -i eth0 -d fe80::1 -t fe80::/64 --flood-targets 200 \
+    -E 00:11:22:33:44:55
 ```
 
 ## ra6: Router Advertisement Testing
@@ -100,18 +101,16 @@ sudo na6 -i eth0 -d fe80::1 --flood-sources 200
 ```bash
 # Send a Router Advertisement
 sudo ra6 -i eth0 -d ff02::1 \
-    --prefix 2001:db8:test::/64 \
-    --prefix-life 1800 3600 \
-    -A -l
+    -P '2001:db8:1::/64#LA#3600#1800' \
+    -l
 
-# Test RA guard bypass techniques (research/audit)
+# Send repeated Router Advertisements for RA handling tests
 sudo ra6 -i eth0 -d ff02::1 --loop \
-    --prefix 2001:db8:rogue::/64
+    -P '2001:db8:bad::/64#LA#3600#1800'
 
 # Send RA to suppress existing prefixes (lifetime=0)
 sudo ra6 -i eth0 -d ff02::1 \
-    --prefix 2001:db8::/64 \
-    --prefix-life 0 0
+    -P '2001:db8::/64#LA#0#0'
 ```
 
 ## frag6: IPv6 Fragmentation Testing
@@ -119,59 +118,59 @@ sudo ra6 -i eth0 -d ff02::1 \
 ```bash
 # Send fragmented IPv6 packets for firewall testing
 sudo frag6 -i eth0 -s 2001:db8::10 -d 2001:db8::1 \
-    --frag-size 512 --data-size 2048
+    --frag-size 512 --frag-type first
 
 # Test minimum fragment size handling
 sudo frag6 -i eth0 -s 2001:db8::10 -d 2001:db8::1 \
-    --frag-size 8
+    --frag-size 8 --frag-type middle
 
 # Assess fragment handling behavior
-sudo frag6 -i eth0 -d 2001:db8::1 --assess
+sudo frag6 -i eth0 -d 2001:db8::1 --frag-reass-policy
 ```
 
 ## flow6: IPv6 Flow Label Analysis
 
 ```bash
-# Analyze flow labels in captured traffic
-flow6 -i /tmp/capture.pcap
+# Assess flow label generation policy
+sudo flow6 -i eth0 -d 2001:db8::1 --flow-label-policy
 
-# Test flow label handling
-sudo flow6 -i eth0 -d 2001:db8::1 --flow-label 0x12345
+# Test flow label policy with TCP/443 probes
+sudo flow6 -i eth0 -d 2001:db8::1 --flow-label-policy -P TCP -p 443
 ```
 
-## ipv6loopback: Loopback Testing
+## path6: IPv6 Path Testing
 
 ```bash
-# Test IPv6 loopback path
-sudo ipv6loopback -i eth0 -d 2001:db8::1
+# Trace an IPv6 path
+sudo path6 -i eth0 -d 2001:db8::1
 
-# Measure loopback latency
-sudo ipv6loopback -i eth0 -d 2001:db8::1 --count 10
+# Probe path behavior with larger payloads
+sudo path6 -i eth0 -d 2001:db8::1 --payload-size 1200
 ```
 
 ## Real-World Security Audit Use Cases
 
 ```bash
 # 1. Discover all IPv6 hosts on your network segment
-sudo scan6 -i eth0 -L -v 2>/dev/null | grep "^2"
+sudo scan6 -i eth0 -L -v 2>/dev/null
 
 # 2. Check for rogue Router Advertisements
-sudo tcpdump -n -i eth0 icmp6 and ip6[40] == 134 2>/dev/null &
-sleep 10; kill %1
+sudo timeout 10 tcpdump -n -i eth0 'icmp6 and ip6[40] == 134' 2>/dev/null
 # Type 134 = Router Advertisement
 
 # 3. Scan for IPv6 hosts that don't appear in your inventory
-sudo scan6 -i eth0 -L -o /tmp/ipv6-actual.txt
+sudo scan6 -i eth0 -L > /tmp/ipv6-actual.txt
 diff /tmp/ipv6-expected.txt /tmp/ipv6-actual.txt
 
 # 4. Test NDP cache sizes (DoS resistance)
 echo "Testing NDP cache with 100 fake entries..."
-sudo na6 -i eth0 -d fe80::router \
-    --flood-sources 100 \
-    --target-lla 00:00:00:00:00:00 \
-    --loop --rate 10
+sudo na6 -i eth0 -d fe80::1 \
+    --flood-targets 100 \
+    -t fe80::/64 \
+    -E 00:00:00:00:00:00 \
+    --loop --sleep 10
 ```
 
 ## Conclusion
 
-The SI6 Networks IPv6 Toolkit provides tools that go far beyond standard system utilities for IPv6 analysis and security auditing. `scan6` discovers hosts using multiple NDP techniques, `addr6` analyzes address properties, and tools like `ra6` and `na6` enable deep testing of NDP protocol behavior. These tools are valuable for security auditing, network inventory, and IPv6 protocol research. Always use these tools only on networks you own or have explicit permission to test.
+The SI6 Networks IPv6 Toolkit provides tools that go far beyond standard system utilities for IPv6 analysis and security auditing. `scan6` discovers hosts using multiple IPv6 probing techniques, `addr6` analyzes address properties, and tools like `ra6` and `na6` enable deep testing of NDP protocol behavior. These tools are valuable for security auditing, network inventory, and IPv6 protocol research. Always use these tools only on networks you own or have explicit permission to test.
