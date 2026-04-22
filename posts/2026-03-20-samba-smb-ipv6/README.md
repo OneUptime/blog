@@ -8,7 +8,7 @@ Description: Configure Samba (SMB/CIFS) server on Linux to share files over IPv6
 
 ## Introduction
 
-Samba provides SMB/CIFS file sharing on Linux and supports IPv6 natively from version 3.6+. Configuring Samba for IPv6 involves binding to IPv6 interfaces in `smb.conf`, ensuring NetBIOS and SMB ports are accessible over IPv6, and accessing shares from Windows clients using IPv6 UNC paths.
+Samba provides SMB/CIFS file sharing on Linux and supports IPv6 natively from version 3.6+. Configuring Samba for IPv6 involves binding to IPv6 interfaces in `smb.conf`, ensuring direct-hosted SMB over TCP port 445 is accessible over IPv6, and accessing shares from Windows clients using IPv6 UNC paths.
 
 ## Basic smb.conf for IPv6
 
@@ -20,8 +20,8 @@ Samba provides SMB/CIFS file sharing on Linux and supports IPv6 natively from ve
     server string = Samba Server
 
     # Bind to specific IPv6 interfaces or all IPv6
-    # Use the interface name or IPv6 address
-    interfaces = lo eth0 [2001:db8::10]
+    # Use the interface name or IPv6 address; do not use brackets in smb.conf
+    interfaces = lo eth0 2001:db8::10
     bind interfaces only = yes
 
     # Alternatively, bind to all interfaces (IPv4 and IPv6)
@@ -59,13 +59,13 @@ systemctl restart smbd nmbd
 
 # Check that smbd listens on IPv6
 ss -tlnp | grep smbd
-# Should show [::]:445 (SMB over TCP) and [::]:139 (NetBIOS)
+# Should show [::]:445 (direct-hosted SMB over TCP)
 # Or specific: [2001:db8::10]:445
 
 # Check Samba configuration
 testparm /etc/samba/smb.conf
 
-# Check network bindings
+# Check active smbd processes
 smbstatus --processes | head -20
 ```
 
@@ -87,17 +87,17 @@ usermod -aG sambagroup sambauser
 
 ```bash
 # List shares on IPv6 Samba server
-smbclient -L [2001:db8::10] -U sambauser
+smbclient -L 2001:db8::10 -U sambauser
 
 # Connect to a share
-smbclient //[2001:db8::10]/data -U sambauser
+smbclient //2001:db8::10/data -U sambauser
 
 # Mount CIFS share over IPv6
-mount -t cifs //[2001:db8::10]/data /mnt/samba \
+mount -t cifs //2001:db8::10/data /mnt/samba \
     -o username=sambauser,password=pass,vers=3.0,addr=2001:db8::10
 
 # /etc/fstab entry for IPv6 CIFS mount
-//[2001:db8::10]/data  /mnt/samba  cifs  username=sambauser,password=pass,vers=3.0,addr=2001:db8::10,_netdev  0  0
+//2001:db8::10/data  /mnt/samba  cifs  username=sambauser,password=pass,vers=3.0,addr=2001:db8::10,_netdev  0  0
 ```
 
 ## Access from Windows Client over IPv6
@@ -153,24 +153,22 @@ print(f'{literal}.ipv6-literal.net')
 ## Firewall Rules for Samba over IPv6
 
 ```bash
-# Allow SMB/CIFS from trusted IPv6 clients
-ip6tables -A INPUT -p tcp --dport 445 -s 2001:db8:clients::/48 -j ACCEPT
-ip6tables -A INPUT -p tcp --dport 139 -s 2001:db8:clients::/48 -j ACCEPT
-ip6tables -A INPUT -p udp --dport 137 -s 2001:db8:clients::/48 -j ACCEPT
-ip6tables -A INPUT -p udp --dport 138 -s 2001:db8:clients::/48 -j ACCEPT
+# Allow direct-hosted SMB/CIFS from trusted IPv6 clients
+ip6tables -A INPUT -p tcp --dport 445 -s 2001:db8:100::/48 -j ACCEPT
 
-# SMB3 encryption - only port 445 is needed for modern clients
-ip6tables -A INPUT -p tcp --dport 445 -j ACCEPT
+# Legacy NetBIOS ports (137/udp, 138/udp, 139/tcp) are for NetBIOS over TCP/IP
+# and are not normally used for IPv6 SMB access.
 
-ip6tables-save > /etc/ip6tables/rules.v6
+# Persist rules on systems using iptables-persistent (Debian/Ubuntu)
+ip6tables-save > /etc/iptables/rules.v6
 ```
 
 ## Verify SMB over IPv6
 
 ```bash
 # Test from Linux client
-smbclient -L [2001:db8::10] -U sambauser -N
-# Lists shares without password
+smbclient -L 2001:db8::10 -U sambauser
+# Prompts for the Samba password and lists shares
 
 # Check SMB traffic on IPv6
 tcpdump -i eth0 -n "ip6 and port 445"
@@ -181,4 +179,4 @@ tail -f /var/log/samba/log.smbd | grep -E "[0-9a-fA-F:]{3,}"
 
 ## Conclusion
 
-Samba supports IPv6 by configuring the `interfaces` directive in `smb.conf` with IPv6 addresses or interface names. CIFS mounts from Linux use `//[2001:db8::10]/share` syntax with `addr=` option specifying the IPv6 address. Windows clients access IPv6 Samba shares using the `.ipv6-literal.net` address format where colons are replaced with hyphens. SMB3 (port 445) is preferred over NetBIOS (port 139) for IPv6 deployments as it requires fewer firewall rules and supports encryption. Samba 3.6+ handles IPv6 automatically when the system has IPv6 interfaces configured.
+Samba supports IPv6 by configuring the `interfaces` directive in `smb.conf` with IPv6 addresses or interface names. CIFS mounts from Linux can use `//2001:db8::10/share` syntax with the `addr=` option specifying the IPv6 address. Windows clients access IPv6 Samba shares using the `.ipv6-literal.net` address format where colons are replaced with hyphens. Direct-hosted SMB over TCP port 445 is preferred over NetBIOS for IPv6 deployments as it requires fewer firewall rules and supports modern SMB features such as encryption. Samba 3.6+ handles IPv6 automatically when the system has IPv6 interfaces configured.
