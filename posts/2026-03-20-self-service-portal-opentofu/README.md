@@ -54,6 +54,11 @@ tags:
 ```hcl
 # environments/dynamic/main.tf
 
+terraform {
+  # Backend settings are passed with tofu init -backend-config=backend.hcl
+  backend "s3" {}
+}
+
 locals {
   # Read environment request from YAML file
   request = yamldecode(file("${path.module}/request.yaml"))
@@ -74,13 +79,14 @@ locals {
 resource "aws_db_instance" "env_db" {
   count = contains([for s in local.request.services : s.type], "rds") ? 1 : 0
 
-  identifier     = "${local.request.name}-db"
-  engine         = "postgres"
-  engine_version = [for s in local.request.services : s.version if s.type == "rds"][0]
-  instance_class = local.config.db_class
+  identifier        = "${local.request.name}-db"
+  allocated_storage = 20
+  engine            = "postgres"
+  engine_version    = [for s in local.request.services : s.version if s.type == "rds"][0]
+  instance_class    = local.config.db_class
 
-  username = "appuser"
-  password = random_password.db.result
+  username                    = "appuser"
+  manage_master_user_password = true
 
   db_subnet_group_name   = var.db_subnet_group_name
   vpc_security_group_ids = [aws_security_group.env.id]
@@ -106,34 +112,58 @@ on:
     paths:
       - "environments/requests/*.yaml"
 
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-east-1
+  TOFU_STATE_BUCKET: ${{ vars.TOFU_STATE_BUCKET }}
+
 jobs:
   provision:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Find changed request files
         id: changed
         run: |
-          CHANGED=$(git diff --name-only HEAD~1 HEAD -- 'environments/requests/*.yaml')
-          echo "files=${CHANGED}" >> $GITHUB_OUTPUT
+          BASE="${{ github.event.before }}"
+          if [[ "$BASE" == "0000000000000000000000000000000000000000" ]]; then
+            CHANGED=$(git ls-files 'environments/requests/*.yaml' | tr '\n' ' ')
+          else
+            CHANGED=$(git diff --name-only --diff-filter=AM "$BASE" "${{ github.sha }}" -- 'environments/requests/*.yaml' | tr '\n' ' ')
+          fi
+          echo "files=${CHANGED}" >> "$GITHUB_OUTPUT"
 
-      - uses: opentofu/setup-opentofu@v1
+      - uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: opentofu/setup-opentofu@v2
 
       - name: Provision environments
-        for each changed request file do
         run: |
           for request_file in ${{ steps.changed.outputs.files }}; do
             env_name=$(basename "$request_file" .yaml)
             mkdir -p "environments/active/${env_name}"
-            cp "environments/requests/${env_name}.yaml" "environments/active/${env_name}/request.yaml"
+            cp "$request_file" "environments/active/${env_name}/request.yaml"
             cp environments/dynamic/*.tf "environments/active/${env_name}/"
 
             cd "environments/active/${env_name}"
-            tofu init
+            cat > backend.hcl <<EOF
+          bucket       = "${TOFU_STATE_BUCKET}"
+          key          = "self-service/environments/${env_name}.tfstate"
+          region       = "${AWS_REGION}"
+          use_lockfile = true
+          EOF
+
+            tofu init -backend-config=backend.hcl
             tofu apply -auto-approve
             cd -
 
@@ -151,28 +181,65 @@ on:
   schedule:
     - cron: "0 0 * * *"  # daily at midnight
 
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  AWS_REGION: us-east-1
+  TOFU_STATE_BUCKET: ${{ vars.TOFU_STATE_BUCKET }}
+
 jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: opentofu/setup-opentofu@v2
 
       - name: Find and destroy expired environments
         run: |
-          TODAY=$(date +%Y-%m-%d)
+          set -euo pipefail
+          shopt -s nullglob
+
+          TODAY=$(date -u +%Y-%m-%d)
           for request_file in environments/requests/*.yaml; do
-            expires=$(grep 'expires:' "$request_file" | awk '{print $2}' | tr -d '"')
+            expires=$(grep '^expires:' "$request_file" | awk '{print $2}' | tr -d '"')
             if [[ "$expires" < "$TODAY" ]]; then
               env_name=$(basename "$request_file" .yaml)
               echo "Destroying expired environment: ${env_name} (expired: ${expires})"
+
+              mkdir -p "environments/active/${env_name}"
+              cp "$request_file" "environments/active/${env_name}/request.yaml"
+              cp environments/dynamic/*.tf "environments/active/${env_name}/"
+
               cd "environments/active/${env_name}"
+              cat > backend.hcl <<EOF
+          bucket       = "${TOFU_STATE_BUCKET}"
+          key          = "self-service/environments/${env_name}.tfstate"
+          region       = "${AWS_REGION}"
+          use_lockfile = true
+          EOF
+
+              tofu init -backend-config=backend.hcl
               tofu destroy -auto-approve
               cd -
-              git rm "environments/requests/${env_name}.yaml"
+              rm -rf "environments/active/${env_name}"
+              git rm "$request_file"
             fi
           done
-          git commit -m "chore: clean up expired environments" --allow-empty
-          git push
+
+          if ! git diff --cached --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "chore: clean up expired environments"
+            git push
+          fi
 ```
 
 ## Summary
