@@ -17,11 +17,12 @@ sudo tc qdisc add dev eth0 root netem delay 100ms
 
 # Verify the qdisc was applied
 sudo tc qdisc show dev eth0
-# Expected: qdisc netem 8001: root refcnt 2 limit 1000 delay 100ms
+# Example: qdisc netem 8001: root refcnt 2 limit 1000 delay 100ms
 
 # Test the delay with ping
 ping -c 5 8.8.8.8
-# Expected: RTT ≈ 200ms (100ms each way)
+# Expected: RTT increases by about 100ms because this delays egress traffic on eth0
+# To see about 200ms RTT, apply comparable delay on the return path too
 ```
 
 ## Adding Latency to a Specific Interface (e.g., VPN or loopback)
@@ -76,15 +77,16 @@ sudo tc qdisc add dev eth0 root netem delay 100ms loss 1%
 To apply latency only to specific traffic, combine netem with HTB:
 
 ```bash
-# Create HTB root
-sudo tc qdisc add dev eth0 root handle 1: htb default 10
+# Create HTB root; unclassified traffic goes to class 1:20
+sudo tc qdisc add dev eth0 root handle 1: htb default 20
 sudo tc class add dev eth0 parent 1: classid 1:1 htb rate 100mbit
 sudo tc class add dev eth0 parent 1:1 classid 1:10 htb rate 100mbit
+sudo tc class add dev eth0 parent 1:1 classid 1:20 htb rate 100mbit
 
-# Apply netem (latency) as the leaf qdisc on the default class
+# Apply netem (latency) as the leaf qdisc on the target class
 sudo tc qdisc add dev eth0 parent 1:10 handle 10: netem delay 100ms
 
-# Now filter specific traffic to this class
+# Now filter specific traffic to the delayed class
 sudo tc filter add dev eth0 protocol ip parent 1:0 prio 1 u32 \
   match ip dst 10.0.0.0/24 flowid 1:10
 ```
@@ -92,7 +94,7 @@ sudo tc filter add dev eth0 protocol ip parent 1:0 prio 1 u32 \
 ## Verifying with mtr
 
 ```bash
-# mtr shows per-hop latency and will reflect the simulated delay
+# mtr reports round-trip times per hop and will reflect added delay on the path being tested
 mtr --report 8.8.8.8
 
 # Or test round-trip with ping
