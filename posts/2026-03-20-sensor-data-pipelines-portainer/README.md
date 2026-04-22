@@ -20,7 +20,7 @@ Sensors -> MQTT Broker -> Telegraf -> InfluxDB -> Grafana
 
 ## Prerequisites
 
-- Portainer installed with Docker or Docker Swarm
+- Portainer installed with a Docker Standalone environment
 - At least 4 GB RAM for the full pipeline
 - Network access to IoT sensors (or simulated sensors)
 
@@ -31,8 +31,6 @@ Create a Portainer stack with all pipeline components:
 ```yaml
 # sensor-pipeline-stack.yaml
 
-version: "3.8"
-
 services:
   # MQTT Broker - receives sensor data
   mosquitto:
@@ -41,8 +39,6 @@ services:
     restart: always
     ports:
       - "1883:1883"    # MQTT plain
-      - "8883:8883"    # MQTT TLS
-      - "9001:9001"    # WebSocket
     volumes:
       - mosquitto-data:/mosquitto/data
       - mosquitto-log:/mosquitto/log
@@ -112,6 +108,7 @@ services:
       - GF_SERVER_DOMAIN=${DOMAIN}
       - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
       - INFLUXDB_ORG=${INFLUXDB_ORG}
+      - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
     networks:
       - pipeline-net
 
@@ -122,30 +119,34 @@ services:
     restart: unless-stopped
     depends_on:
       - mosquitto
-    command: >
-      sh -c "pip install paho-mqtt &&
-        python3 -c \"
-import paho.mqtt.client as mqtt
-import time, random, json, math
+    command:
+      - sh
+      - -c
+      - |
+        pip install paho-mqtt &&
+        python3 - <<'PY'
+        import paho.mqtt.client as mqtt
+        import time, random, json, math
 
-client = mqtt.Client()
-client.connect('mosquitto', 1883)
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+        client.connect('mosquitto', 1883)
+        client.loop_start()
 
-i = 0
-while True:
-    # Simulate temperature, humidity, and pressure sensors
-    data = {
-        'temperature': 22.5 + 5*math.sin(i/100) + random.gauss(0, 0.2),
-        'humidity': 65 + 10*math.cos(i/80) + random.gauss(0, 0.5),
-        'pressure': 1013.25 + random.gauss(0, 0.1),
-        'device_id': 'sensor-001',
-        'timestamp': int(time.time())
-    }
-    client.publish('sensors/environment', json.dumps(data))
-    print(f'Published: {data}')
-    time.sleep(5)
-    i += 1
-\""
+        i = 0
+        while True:
+            # Simulate temperature, humidity, and pressure sensors
+            data = {
+                'temperature': 22.5 + 5*math.sin(i/100) + random.gauss(0, 0.2),
+                'humidity': 65 + 10*math.cos(i/80) + random.gauss(0, 0.5),
+                'pressure': 1013.25 + random.gauss(0, 0.1),
+                'device_id': 'sensor-001',
+                'timestamp': int(time.time())
+            }
+            client.publish('sensors/environment', json.dumps(data))
+            print(f'Published: {data}')
+            time.sleep(5)
+            i += 1
+        PY
     networks:
       - pipeline-net
 
@@ -225,25 +226,24 @@ DOMAIN=monitoring.example.com
 
 ## Step 3: Configure Grafana Data Source
 
-After deployment, configure InfluxDB as a data source in Grafana:
+Configure InfluxDB as a data source in Grafana. For file provisioning, use a YAML file under `/etc/grafana/provisioning/datasources/`:
 
-```json
-// grafana-datasource.json - for provisioning
-{
-  "name": "InfluxDB Sensors",
-  "type": "influxdb",
-  "access": "proxy",
-  "url": "http://influxdb:8086",
-  "jsonData": {
-    "version": "Flux",
-    "organization": "myorg",
-    "defaultBucket": "sensors",
-    "tlsSkipVerify": false
-  },
-  "secureJsonData": {
-    "token": "${INFLUXDB_TOKEN}"
-  }
-}
+```yaml
+# grafana-datasource.yaml - for provisioning
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB Sensors
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    jsonData:
+      version: Flux
+      organization: $INFLUXDB_ORG
+      defaultBucket: $INFLUXDB_BUCKET
+      tlsSkipVerify: false
+    secureJsonData:
+      token: $INFLUXDB_TOKEN
 ```
 
 ## Step 4: Create a Grafana Dashboard Query
@@ -267,7 +267,7 @@ Configure Grafana alerting for sensor thresholds:
 1. Go to Grafana > Alerting > Alert Rules
 2. Create a new rule
 3. Set condition: temperature > 30 for 5 minutes
-4. Configure notification channels (email, Slack, PagerDuty)
+4. Configure contact points and notification policies (email, Slack, PagerDuty)
 
 ## Monitoring the Pipeline Health
 
@@ -286,4 +286,4 @@ docker exec mosquitto mosquitto_sub -t "sensors/#" -v
 
 ## Conclusion
 
-A sensor data collection pipeline deployed via Portainer provides a complete, containerized solution for IoT data management. The combination of MQTT for lightweight device communication, Telegraf for flexible metric collection, InfluxDB for efficient time-series storage, and Grafana for visualization creates a production-ready observability stack. Portainer's stack management makes it easy to deploy, update, and scale this pipeline as your IoT deployment grows.
+A sensor data collection pipeline deployed via Portainer provides a complete, containerized solution for IoT data management. The combination of MQTT for lightweight device communication, Telegraf for flexible metric collection, InfluxDB for efficient time-series storage, and Grafana for visualization creates a practical observability stack. Portainer's stack management makes it easy to deploy, update, and extend this pipeline as your IoT deployment grows.
