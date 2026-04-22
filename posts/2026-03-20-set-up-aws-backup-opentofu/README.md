@@ -6,7 +6,7 @@ Tags: OpenTofu, AWS, Backup, Disaster Recovery, Infrastructure as Code
 
 Description: Learn how to configure AWS Backup with OpenTofu to centrally manage and automate backups across RDS, EBS, EFS, and other AWS services.
 
-AWS Backup provides a centralized, policy-driven backup service across multiple AWS services. Managing backup plans and vaults in OpenTofu ensures your RPO/RTO requirements are codified and consistently enforced.
+AWS Backup provides a centralized, policy-driven backup service across multiple AWS services. Managing backup plans and vaults in OpenTofu helps codify and consistently enforce your backup policy requirements.
 
 ## Creating a Backup Vault
 
@@ -21,12 +21,12 @@ resource "aws_backup_vault" "main" {
   }
 }
 
-# Lock the vault to prevent deletion (compliance requirement)
+# Lock the vault to protect recovery points from early deletion (compliance requirement)
 
 resource "aws_backup_vault_lock_configuration" "compliance" {
   backup_vault_name   = aws_backup_vault.main.name
   min_retention_days  = 7
-  max_retention_days  = 365
+  max_retention_days  = 730
   changeable_for_days = 3  # 3-day grace period to configure
 }
 ```
@@ -47,19 +47,17 @@ resource "aws_backup_plan" "production" {
     completion_window = 180  # Must complete within 180 minutes
 
     lifecycle {
-      cold_storage_after = 30   # Move to cold storage after 30 days
-      delete_after       = 365  # Delete after 1 year
+      delete_after = 365  # Delete after 1 year
     }
   }
 
   rule {
     rule_name         = "weekly-backups"
     target_vault_name = aws_backup_vault.main.name
-    schedule          = "cron(0 3 ? * 1 *)"  # 3 AM UTC every Monday
+    schedule          = "cron(0 3 ? * MON *)"  # 3 AM UTC every Monday
 
     lifecycle {
-      cold_storage_after = 90
-      delete_after       = 730  # Keep weekly backups for 2 years
+      delete_after = 730  # Keep weekly backups for 2 years
     }
 
     # Copy weekly backups to DR region
@@ -67,8 +65,7 @@ resource "aws_backup_plan" "production" {
       destination_vault_arn = aws_backup_vault.dr_region.arn
 
       lifecycle {
-        cold_storage_after = 90
-        delete_after        = 730
+        delete_after = 730
       }
     }
   }
@@ -138,4 +135,4 @@ resource "aws_iam_role_policy_attachment" "restore" {
 
 ## Conclusion
 
-AWS Backup in OpenTofu provides centralized backup management across services. Tag resources with Backup=true for automatic inclusion in backup plans, configure daily and weekly rules with different retention periods, copy critical backups to a DR region, and lock vaults to prevent accidental deletion. Use vault lock in compliance mode to meet regulatory requirements for immutable backups.
+AWS Backup in OpenTofu provides centralized backup management across services. Tag resources with Backup=true for automatic inclusion in backup plans, configure daily and weekly rules with different retention periods, copy critical backups to a DR region, and lock vaults to protect recovery points from accidental or early deletion. Use vault lock in compliance mode to meet regulatory requirements for immutable backups.
