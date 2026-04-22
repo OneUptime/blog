@@ -23,37 +23,36 @@ gcloud compute instances create k8s-node-01 \
   --machine-type=e2-standard-4 \
   --image-family=debian-12 \
   --image-project=debian-cloud \
-  --subnet=app-subnet \
-  --aliases=/24
+  --network-interface="subnet=app-subnet,aliases=/24"
 ```
 
-`--aliases=/24` allocates a /24 block from the subnet as an alias range - the VM can use any IP in that block.
+`aliases=/24` allocates a /24 block from the subnet as an alias range - Google Cloud routes that block to the VM interface.
 
 ## Adding Alias IP Range to an Existing Instance
 
 ```bash
-# Add a specific alias IP range to a running VM
+# Set a specific alias IP range on a running VM
 gcloud compute instances network-interfaces update k8s-node-01 \
   --project=$PROJECT_ID \
   --zone=us-central1-a \
   --aliases=10.1.2.64/26
 ```
 
+`--aliases` replaces the alias ranges on that interface, so include any existing ranges that you want to keep.
+
 ## Configuring Alias Range on the OS
 
-After adding the alias range in GCP, configure it on the Linux OS:
+On Google-provided Linux images, the guest agent normally configures alias ranges as local routes automatically. Verify the local route, and add it manually only if your image does not:
 
 ```bash
-# Add a secondary IP from the alias range
-sudo ip addr add 10.1.2.65/26 dev ens4
+# Verify that the alias range is local to the VM
+ip route show table local | grep -F "10.1.2.64/26"
 
-# Add multiple IPs (for container/pod use)
-for i in $(seq 65 70); do
-  sudo ip addr add 10.1.2.$i/32 dev ens4
-done
+# If the route is missing on a custom image, add it manually
+sudo ip route add to local 10.1.2.64/26 dev ens4 proto 66
 
 # Verify
-ip addr show ens4
+ip route show table local | grep -F "10.1.2.64/26"
 ```
 
 ## Subnet-Level Secondary IP Ranges
@@ -117,4 +116,4 @@ gcloud compute instances network-interfaces update k8s-node-01 \
 
 ## Conclusion
 
-Alias IP ranges enable secondary IPv4 addresses on GCP VM interfaces. Create subnet-level secondary ranges with `--add-secondary-ranges` and reference them with `--aliases` at instance or cluster level. VPC-native GKE clusters rely on alias IPs for pod networking, enabling direct pod IP routing within the VPC.
+Alias IP ranges enable secondary IPv4 addresses on GCP VM interfaces. Create subnet-level secondary ranges with `--add-secondary-ranges` and reference them with `--aliases` on VM instances or the GKE secondary range flags for clusters. VPC-native GKE clusters rely on alias IPs for pod networking, enabling direct pod IP routing within the VPC.
