@@ -13,13 +13,21 @@ S3 Cross-Region Replication automatically copies objects from a source bucket to
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with S3 and IAM permissions in both regions
+- AWS credentials with S3, IAM, and KMS permissions in both regions
 
 ## Step 1: Create Source and Destination Buckets
 
 ```hcl
-# Source bucket in primary region
+provider "aws" {
+  region = var.primary_region
+}
 
+provider "aws" {
+  alias  = "dr_region"
+  region = var.dr_region
+}
+
+# Source bucket in primary region
 resource "aws_s3_bucket" "source" {
   provider = aws
   bucket   = "${var.project_name}-primary"
@@ -94,6 +102,24 @@ resource "aws_iam_role_policy" "replication" {
           "s3:ReplicateTags"
         ]
         Resource = "${aws_s3_bucket.destination.arn}/*"
+      },
+      {
+        # Required when source objects are encrypted with SSE-KMS
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt"
+        ]
+        Resource = var.source_kms_key_arn
+      },
+      {
+        # Required to encrypt replicas with the destination KMS key
+        Effect = "Allow"
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:GenerateDataKey"
+        ]
+        Resource = var.dr_kms_key_arn
       }
     ]
   })
@@ -115,16 +141,23 @@ resource "aws_s3_bucket_replication_configuration" "main" {
     # Filter: empty filter means replicate all objects
     filter {}
 
+    # Opt in to replicating source objects encrypted with SSE-KMS
+    source_selection_criteria {
+      sse_kms_encrypted_objects {
+        status = "Enabled"
+      }
+    }
+
     destination {
       bucket        = aws_s3_bucket.destination.arn
       storage_class = "STANDARD_IA"  # Use cheaper class in DR region
 
-      # Replicate with the same encryption key in destination
+      # Encrypt replicas with the KMS key in the destination region
       encryption_configuration {
         replica_kms_key_id = var.dr_kms_key_arn
       }
 
-      # Replicate delete markers
+      # Enable Replication Time Control
       replication_time {
         status = "Enabled"
         time { minutes = 15 }  # 15-minute SLA (requires Replication Time Control)
@@ -141,7 +174,11 @@ resource "aws_s3_bucket_replication_configuration" "main" {
     }
   }
 
-  depends_on = [aws_s3_bucket_versioning.source]
+  depends_on = [
+    aws_iam_role_policy.replication,
+    aws_s3_bucket_versioning.source,
+    aws_s3_bucket_versioning.destination,
+  ]
 }
 ```
 
@@ -178,4 +215,4 @@ aws s3api head-object \
 
 ## Conclusion
 
-S3 Cross-Region Replication provides automatic data redundancy across AWS regions for disaster recovery. Enable Replication Time Control (RTC) if you need an SLA guarantee that objects replicate within 15 minutes. Note that only new and updated objects are replicated-existing objects must be copied manually using S3 Batch Operations or a one-time aws s3 sync.
+S3 Cross-Region Replication provides automatic data redundancy across AWS regions for disaster recovery. Enable Replication Time Control (RTC) if you need a predictable 15-minute replication target backed by an AWS SLA for eligible new objects. Note that live replication only applies automatically to new and updated objects; existing objects require S3 Batch Replication, or a one-time `aws s3 sync` if you only need to copy the current object versions.
