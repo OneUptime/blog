@@ -8,7 +8,7 @@ Description: Set up a private DNS server for internal network services using dns
 
 ## Introduction
 
-Internal networks need DNS to resolve internal service names without depending on external DNS providers. A private DNS server resolves hostnames like `db.internal`, `api.company.local`, or `redis.prod.example.com` to internal IP addresses, while forwarding all other queries to public resolvers. This guide covers setting up private DNS with dnsmasq (simpler) and Unbound (more capable).
+Internal networks need DNS to resolve internal service names without depending on external DNS providers. A private DNS server resolves hostnames like `db.internal`, `api.company.internal`, or `redis.prod.example.com` to internal IP addresses, while forwarding all other queries to public resolvers. This guide covers setting up private DNS with dnsmasq (simpler) and Unbound (more capable).
 
 ## Option 1: dnsmasq (Simple Internal DNS)
 
@@ -32,7 +32,7 @@ server=1.1.1.1
 
 # Internal domain: don't forward to internet
 local=/internal./
-local=/company.local./
+local=/company.internal./
 
 # Static host entries:
 address=/db.internal/10.20.0.20
@@ -132,23 +132,32 @@ EOF
 ## Dynamic DNS Updates (for DHCP clients)
 
 ```bash
-# DHCP clients get IPs dynamically; update DNS when IP is assigned
+# DHCP clients get IPs dynamically; dnsmasq can publish lease hostnames in DNS
 # Using dnsmasq with dynamic DNS:
 cat >> /etc/dnsmasq.d/internal.conf << 'EOF'
 # Assign hostnames from DHCP MAC addresses:
 dhcp-host=aa:bb:cc:dd:ee:ff,dev-laptop,10.20.0.50,24h
 
-# Dynamic PTR records for DHCP leases:
+# Push this DNS server to DHCP clients:
 dhcp-option=option:dns-server,10.20.0.1
 EOF
 
 # Using nsupdate for dynamic DNS updates to BIND:
-# When DHCP assigns an IP, call nsupdate to add A and PTR records
+# When DHCP assigns an IP, call nsupdate to add A and PTR records.
+# BIND must allow dynamic updates for both the forward and reverse zones.
 nsupdate << 'EOF'
 server 10.20.0.1
-zone example.com
-update delete newhost.example.com A
-update add newhost.example.com 3600 A 10.20.0.50
+zone example.com.
+update delete newhost.example.com. A
+update add newhost.example.com. 3600 A 10.20.0.50
+send
+EOF
+
+nsupdate << 'EOF'
+server 10.20.0.1
+zone 20.10.in-addr.arpa.
+update delete 50.0.20.10.in-addr.arpa. PTR
+update add 50.0.20.10.in-addr.arpa. 3600 PTR newhost.example.com.
 send
 EOF
 ```
