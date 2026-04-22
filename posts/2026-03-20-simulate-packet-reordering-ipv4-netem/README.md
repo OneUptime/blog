@@ -22,7 +22,7 @@ sudo tc qdisc add dev eth0 root netem \
   delay 10ms \
   reorder 25% 50%
 
-# The second number (50%) is the correlation to previous packet's delay
+# The second number (50%) is correlation with the previous packet's reorder decision
 ```
 
 ## Understanding Reorder Parameters
@@ -30,7 +30,7 @@ sudo tc qdisc add dev eth0 root netem \
 ```text
 netem reorder <percent> [correlation]
 - percent: probability a packet is sent immediately (before delayed packets)
-- correlation: how much the delay of consecutive packets are related
+- correlation: how much consecutive reordering decisions are related
 ```
 
 ## Simulating Out-of-Order Delivery
@@ -39,7 +39,7 @@ netem reorder <percent> [correlation]
 # More aggressive reordering: 50% of packets sent immediately
 sudo tc qdisc add dev eth0 root netem delay 100ms reorder 50%
 
-# With correlation: consecutive packets tend to be either all delayed or all immediate
+# With correlation: consecutive packets are more likely to share the same reorder decision
 sudo tc qdisc add dev eth0 root netem delay 100ms reorder 50% 75%
 ```
 
@@ -59,18 +59,17 @@ sudo tc qdisc add dev eth0 root netem delay 50ms reorder 30%
 # Generate TCP traffic to observe behavior
 iperf3 -c <SERVER_IP> -t 30 -P 4
 
-# Check TCP retransmission statistics on the receiver
-# On receiver:
-ss -s | grep -i retransmit
+# Check TCP retransmission statistics on the TCP sender
+# On sender:
+nstat -az TcpRetransSegs
 netstat -s | grep -i "segments retransmit"
 ```
 
-## Checking TCP Retransmission Rate with tcpdump
+## Capturing TCP Traffic for Retransmission Analysis
 
 ```bash
-# Capture and count TCP retransmissions
-sudo tcpdump -i eth0 -n 'tcp[tcpflags] & (tcp-syn|tcp-fin) = 0 and tcp[4:4] = 0' \
-  -c 1000 2>/dev/null | wc -l
+# Capture TCP traffic for later retransmission analysis
+sudo tcpdump -i eth0 -n -s 0 -w reorder-test.pcap "tcp and host <SERVER_IP>"
 ```
 
 ## Combining with Loss and Delay
@@ -86,11 +85,11 @@ sudo tc qdisc add dev eth0 root netem \
 ## Observing Reordering Effects
 
 ```bash
-# Use ss to check TCP internal state
+# Use ss on the sender to check TCP internal state
 ss -tin dst <SERVER_IP>
 # Look for:
-# sacked: number of SACK blocks (indicates received but out-of-order packets)
-# retrans: retransmission count
+# sacked: selectively acknowledged segments (often caused by out-of-order delivery)
+# retrans: retransmissions currently outstanding/total retransmissions
 
 # Monitor in real time
 watch -n 1 "ss -tin dst <SERVER_IP> | grep -A2 ESTABLISHED"
