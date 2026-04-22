@@ -38,6 +38,8 @@ aws ec2 create-vpc --cidr-block 10.1.0.0/16 --tag-specifications \
 
 ## Requesting the Peering Connection
 
+The following command assumes both VPCs are in the same AWS account and Region. For cross-account or cross-Region peering, include `--peer-owner-id`, `--peer-region`, or both as needed.
+
 ```bash
 aws ec2 create-vpc-peering-connection \
   --vpc-id vpc-aaaaaaaa \
@@ -47,7 +49,7 @@ aws ec2 create-vpc-peering-connection \
 
 ## Accepting the Peering Connection
 
-If both VPCs are in the same account:
+The owner of the accepter VPC must accept the peering request. If both VPCs are in the same account, you can use the same AWS credentials:
 
 ```bash
 aws ec2 accept-vpc-peering-connection \
@@ -56,9 +58,9 @@ aws ec2 accept-vpc-peering-connection \
 
 ## Updating Route Tables
 
-Add routes in both VPCs to direct traffic through the peering connection.
+Add routes in the route tables associated with the subnets that need to communicate in both VPCs.
 
-For VPC A's route table, add a route to VPC B's CIDR:
+For VPC A's relevant route table, add a route to VPC B's CIDR:
 
 ```bash
 aws ec2 create-route \
@@ -67,7 +69,7 @@ aws ec2 create-route \
   --vpc-peering-connection-id pcx-xxxxxxxxxxxxxxxxx
 ```
 
-For VPC B's route table, add a route to VPC A's CIDR:
+For VPC B's relevant route table, add a route to VPC A's CIDR:
 
 ```bash
 aws ec2 create-route \
@@ -78,14 +80,14 @@ aws ec2 create-route \
 
 ## Updating Security Groups
 
-Ensure the security groups in each VPC allow traffic from the peer VPC's CIDR:
+Ensure the security group on the destination instance allows traffic from the peer VPC's CIDR. For example, to allow ping from VPC A to an instance in VPC B:
 
 ```bash
 aws ec2 authorize-security-group-ingress \
-  --group-id sg-aaaaaaaa \
-  --protocol tcp \
-  --port 443 \
-  --cidr 10.1.0.0/16
+  --group-id sg-bbbbbbbb \
+  --protocol icmp \
+  --port -1 \
+  --cidr 10.0.0.0/16
 ```
 
 ## Verifying the Peering Connection
