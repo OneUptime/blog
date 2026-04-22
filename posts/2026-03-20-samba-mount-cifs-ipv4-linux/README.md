@@ -21,12 +21,15 @@ sudo apt install cifs-utils
 sudo dnf install cifs-utils
 
 # Verify
-mount.cifs --version
+mount.cifs -V
 ```
 
 ## Basic Mount Commands
 
 ```bash
+# Create mount points first
+sudo mkdir -p /mnt/samba /mnt/public
+
 # Mount with password on command line (insecure - shows in process list)
 sudo mount -t cifs //203.0.113.10/shared /mnt/samba -o username=smbuser,password=secret
 
@@ -35,16 +38,14 @@ sudo mount -t cifs //203.0.113.10/shared /mnt/samba -o username=smbuser
 
 # Mount as guest (no authentication)
 sudo mount -t cifs //203.0.113.10/public /mnt/public -o guest
-
-# Create mount point first
-sudo mkdir -p /mnt/samba
 ```
 
 ## Using a Credentials File (Recommended)
 
 ```bash
 # Create credentials file
-sudo cat > /etc/samba/credentials << 'EOF'
+sudo mkdir -p /etc/samba
+sudo tee /etc/samba/credentials > /dev/null << 'EOF'
 username=smbuser
 password=secretpassword
 domain=WORKGROUP
@@ -66,17 +67,17 @@ sudo mount -t cifs //203.0.113.10/shared /mnt/samba \
 | `password=` | SMB password |
 | `credentials=` | Path to credentials file |
 | `domain=` | Windows domain or workgroup |
-| `uid=` | Local user ID for file ownership |
-| `gid=` | Local group ID for file ownership |
-| `file_mode=0644` | Default file permissions |
-| `dir_mode=0755` | Default directory permissions |
-| `vers=3.0` | SMB protocol version |
+| `uid=` | Local user ID when the server does not provide ownership information |
+| `gid=` | Local group ID when the server does not provide ownership information |
+| `file_mode=0644` | Default file permissions when the server does not provide Unix modes |
+| `dir_mode=0755` | Default directory permissions when the server does not provide Unix modes |
+| `vers=3` | SMB 3.0 or later protocol version |
 | `iocharset=utf8` | Character set |
 
 ## Mount with Proper File Permissions
 
 ```bash
-# Mount with specific UID/GID so a normal user can access
+# Mount with specific UID/GID so a normal user can access when the server allows it
 sudo mount -t cifs //203.0.113.10/shared /mnt/samba \
   -o credentials=/etc/samba/credentials,\
 uid=$(id -u youruser),\
@@ -92,11 +93,11 @@ touch /mnt/samba/testfile  # Test write access
 ## Specifying SMB Version
 
 ```bash
-# SMB 3.0 (modern servers - Windows 2012+, Samba 4+)
+# SMB 3.0 or later (modern servers - Windows 2012+, Samba 4+)
 sudo mount -t cifs //203.0.113.10/shared /mnt/samba \
-  -o credentials=/etc/samba/credentials,vers=3.0
+  -o credentials=/etc/samba/credentials,vers=3
 
-# SMB 2.0 (older servers)
+# SMB 2.0 (very old servers - Windows Vista SP1/Windows Server 2008)
 sudo mount -t cifs //203.0.113.10/shared /mnt/samba \
   -o credentials=/etc/samba/credentials,vers=2.0
 ```
@@ -121,4 +122,4 @@ sudo umount /mnt/samba
 
 ## Conclusion
 
-Mount Samba shares on Linux with `mount -t cifs //server_ip/share /mnt/point -o options`. Store credentials in a root-owned file with permissions 600 and reference it with `credentials=`. Set `uid` and `gid` to match the local user for correct file ownership. Use `vers=3.0` for modern servers and `vers=2.0` for older Windows or Samba installations.
+Mount Samba shares on Linux with `mount -t cifs //server_ip/share /mnt/point -o options`. Store credentials in a root-owned file with permissions 600 and reference it with `credentials=`. Set `uid` and `gid` to match the local user for correct file ownership when the server does not provide ownership information. Let modern clients negotiate the default SMB2.1+ dialect when possible, or use `vers=3` to require SMB3 or later. Use `vers=2.0` only for very old servers such as Windows Vista SP1 or Windows Server 2008 that require it.
