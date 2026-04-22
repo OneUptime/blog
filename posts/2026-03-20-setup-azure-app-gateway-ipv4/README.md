@@ -92,6 +92,15 @@ az network application-gateway url-path-map create \
   --rule-name api-rule \
   --default-address-pool appGatewayBackendPool \
   --default-http-settings appGatewayBackendHttpSettings
+
+# Update the default HTTP rule to use the URL path map
+az network application-gateway rule update \
+  --resource-group $RESOURCE_GROUP \
+  --gateway-name my-appgw \
+  --name rule1 \
+  --rule-type PathBasedRouting \
+  --url-path-map url-path-map \
+  --priority 10
 ```
 
 ## Adding HTTPS Listener with SSL Termination
@@ -119,21 +128,37 @@ az network application-gateway http-listener create \
   --name https-listener \
   --frontend-port https-port \
   --ssl-cert my-ssl-cert
+
+# Route HTTPS traffic to the backend pool
+az network application-gateway rule create \
+  --resource-group $RESOURCE_GROUP \
+  --gateway-name my-appgw \
+  --name https-rule \
+  --http-listener https-listener \
+  --rule-type Basic \
+  --address-pool appGatewayBackendPool \
+  --http-settings appGatewayBackendHttpSettings \
+  --priority 20
 ```
 
 ## Enabling WAF (Web Application Firewall)
 
 ```bash
-# Change SKU to WAF_v2 and enable WAF
+# Change SKU to WAF_v2 and attach a WAF policy
 az network application-gateway waf-policy create \
   --resource-group $RESOURCE_GROUP \
   --name my-waf-policy
+
+WAF_POLICY_ID=$(az network application-gateway waf-policy show \
+  --resource-group $RESOURCE_GROUP \
+  --name my-waf-policy \
+  --query id --output tsv)
 
 az network application-gateway update \
   --resource-group $RESOURCE_GROUP \
   --name my-appgw \
   --sku WAF_v2 \
-  --waf-policy my-waf-policy
+  --set sku.tier=WAF_v2 firewallPolicy.id="$WAF_POLICY_ID"
 ```
 
 ## Checking Application Gateway Status
