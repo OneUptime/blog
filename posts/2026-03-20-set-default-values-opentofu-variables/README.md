@@ -79,7 +79,7 @@ variable "server_config" {
 
 ## null as a Default
 
-Use `null` as a default when the variable should be optional and you want to detect whether it was set.
+Use `null` as a default when the variable should be optional and you want to detect whether a non-null value was provided.
 
 ```hcl
 variable "custom_ami" {
@@ -139,4 +139,4 @@ variable "database_name" {
 
 ## Summary
 
-Set `default` in a variable block to make it optional. Use simple literals for basic types and HCL object/list/map syntax for complex types. Use `null` as a default when you need to distinguish between "not provided" and any valid value. Required variables (no default) force callers to be explicit about sensitive configuration.
+Set `default` in a variable block to make it optional. Use simple literals for basic types and HCL object/list/map syntax for complex types. Use `null` as a default when you need to distinguish between no configured value and a non-null configured value. Required variables (no default) force callers to be explicit about sensitive configuration.
