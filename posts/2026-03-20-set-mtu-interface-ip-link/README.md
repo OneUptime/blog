@@ -8,7 +8,7 @@ Description: Set the MTU (Maximum Transmission Unit) on a Linux network interfac
 
 ## Introduction
 
-MTU (Maximum Transmission Unit) is the largest packet size the interface can transmit. The default is 1500 bytes for Ethernet. Jumbo frames use 9000 bytes for better throughput on storage networks. Tunnels (GRE, VXLAN) require smaller MTUs to account for encapsulation overhead.
+MTU (Maximum Transmission Unit) is the largest Layer 3 packet size the interface can transmit without fragmentation. The usual default is 1500 bytes for Ethernet. Jumbo frames commonly use 9000 bytes for better throughput on storage networks. Tunnels (GRE, VXLAN) often require smaller MTUs to account for encapsulation overhead.
 
 ## Show Current MTU
 
@@ -40,11 +40,11 @@ ip link show eth0 | grep mtu
 ## Set MTU for Tunnel Interfaces
 
 ```bash
-# GRE overhead is 24 bytes, VXLAN is 50 bytes
-# Set MTU 24 bytes less than underlay for GRE
+# Basic IPv4 GRE overhead is 24 bytes, VXLAN over IPv4 is 50 bytes
+# Set MTU 24 bytes less than underlay for basic IPv4 GRE
 ip link set gre1 mtu 1476
 
-# Set MTU 50 bytes less than underlay for VXLAN
+# Set MTU 50 bytes less than underlay for VXLAN over IPv4
 ip link set vxlan0 mtu 1450
 ```
 
@@ -52,10 +52,10 @@ ip link set vxlan0 mtu 1450
 
 ```text
 Ethernet underlay MTU: 1500
-GRE overhead:           24 bytes → tunnel MTU = 1476
-VXLAN overhead:         50 bytes → tunnel MTU = 1450
-WireGuard overhead:     60 bytes → tunnel MTU = 1440
-IPsec (ESP) overhead:  ~73 bytes → tunnel MTU = 1427
+GRE (basic IPv4):       24 bytes → tunnel MTU = 1476
+VXLAN over IPv4:        50 bytes → tunnel MTU = 1450
+WireGuard over IPv4:    60 bytes → tunnel MTU = 1440
+IPsec (ESP):            varies by mode, cipher, NAT-T, and padding
 ```
 
 ## Set MTU on a VLAN Interface
@@ -65,20 +65,26 @@ IPsec (ESP) overhead:  ~73 bytes → tunnel MTU = 1427
 ip link set eth0.10 mtu 1500
 ```
 
-## Set MTU at Interface Creation (Permanent)
+## Set MTU Persistently
 
 ```bash
 # systemd-networkd (persistent)
 # /etc/systemd/network/10-eth0.network
+# [Match]
+# Name=eth0
+#
 # [Link]
 # MTUBytes=9000
 
 # Netplan (persistent)
-# ethernets:
-#   eth0:
-#     mtu: 9000
+# /etc/netplan/01-netcfg.yaml
+# network:
+#   version: 2
+#   ethernets:
+#     eth0:
+#       mtu: 9000
 
-# nmcli (persistent)
+# nmcli (persistent; use the connection profile name)
 nmcli connection modify "eth0" ethernet.mtu 9000
 ```
 
@@ -95,4 +101,4 @@ ping -M do -s 1400 192.168.1.1
 
 ## Conclusion
 
-`ip link set <interface> mtu <size>` changes the MTU immediately. Standard Ethernet uses 1500; jumbo frames use 9000. Tunnel interfaces need MTU reductions to account for encapsulation headers. For persistence, configure MTU in Netplan, nmcli, or systemd-networkd.
+`ip link set <interface> mtu <size>` changes the MTU immediately. Standard Ethernet uses 1500; jumbo frames commonly use 9000. Tunnel interfaces often need MTU reductions to account for encapsulation headers unless the underlay MTU is increased. For persistence, configure MTU in Netplan, nmcli, or systemd-networkd.
