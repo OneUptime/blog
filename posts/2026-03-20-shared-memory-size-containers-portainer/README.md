@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Shared Memory, Performance, Container
 
-Description: Increase the shared memory (dev/shm) size for containers in Portainer to support applications that require large shared memory allocations.
+Description: Increase the shared memory (/dev/shm) size for containers in Portainer to support applications that require large shared memory allocations.
 
 ---
 
-Advanced container configuration in Portainer exposes Docker's full feature set through the web UI, allowing you to configure specialized settings without writing raw Docker commands.
+Advanced container configuration in Portainer exposes many Docker runtime settings through the web UI, allowing you to configure specialized settings without writing raw Docker commands.
 
 ## Accessing Advanced Container Settings
 
-When creating or editing a container in Portainer:
+When creating a container in Portainer:
 1. Navigate to **Containers > Add container**
 2. Fill in basic settings (image, name, ports)
 3. Expand the **Advanced container settings** section
@@ -29,7 +29,7 @@ docker run -d \
   myimage:latest
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > Devices**
+In Portainer UI: **Advanced container settings > Runtime & Resources > Devices**
 
 ## Sysctls Configuration
 
@@ -42,7 +42,7 @@ docker run -d \
   nginx:latest
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > Sysctls**
+In Portainer UI: **Advanced container settings > Runtime & Resources > Sysctls**
 
 ## GPU Configuration (NVIDIA)
 
@@ -58,7 +58,7 @@ docker run -d \
   python train.py
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > GPUs**
+In Portainer UI: **Advanced container settings > Runtime & Resources > GPU**
 
 ## Linux Capabilities
 
@@ -98,7 +98,7 @@ docker run -d \
 
 ```bash
 # Only use privileged mode when absolutely necessary
-# Privileged containers have full host access
+# Privileged containers have broad host-level access
 docker run -d \
   --privileged \
   --name system-tool \
