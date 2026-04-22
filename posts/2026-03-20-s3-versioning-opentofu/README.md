@@ -8,7 +8,7 @@ Description: Learn how to configure S3 bucket versioning with OpenTofu - enablin
 
 ## Introduction
 
-S3 Versioning preserves every version of every object written to a bucket, protecting against accidental deletion and overwrites. OpenTofu manages versioning state, MFA delete protection, Object Lock for compliance, and the lifecycle rules needed to control version storage costs.
+S3 Versioning preserves every version of every object written to a bucket, protecting against accidental deletion and overwrites. OpenTofu manages versioning state, Object Lock for compliance, and the lifecycle rules needed to control version storage costs. MFA Delete requires root-account MFA through the AWS CLI or API.
 
 ## Enable Versioning
 
@@ -30,22 +30,22 @@ resource "aws_s3_bucket_versioning" "app" {
 ## MFA Delete Protection
 
 ```hcl
-# MFA delete requires the bucket owner's MFA device for permanent deletion
+# MFA delete requires the bucket owner's root-user MFA device for permanent deletion
 
-# Must be configured via CLI or SDK - OpenTofu can represent the desired state
+# Must be enabled or disabled via CLI or SDK with root credentials and MFA
 resource "aws_s3_bucket_versioning" "critical" {
   bucket = aws_s3_bucket.critical.id
 
   versioning_configuration {
-    status     = "Enabled"
-    mfa_delete = "Enabled"  # Requires MFA for permanent object deletion
+    status = "Enabled"
+    # mfa_delete is read from AWS after you enable it out-of-band.
   }
 
-  # Note: Enabling MFA delete requires aws CLI with MFA credentials:
+  # Note: Enabling MFA delete requires the AWS CLI with root MFA credentials:
   # aws s3api put-bucket-versioning \
   #   --bucket <bucket> \
   #   --versioning-configuration Status=Enabled,MFADelete=Enabled \
-  #   --mfa "arn:aws:iam::ACCOUNT:mfa/device TOTP_CODE"
+  #   --mfa "arn:aws:iam::ACCOUNT:mfa/root-account-mfa-device TOTP_CODE"
 }
 ```
 
@@ -53,8 +53,8 @@ resource "aws_s3_bucket_versioning" "critical" {
 
 ```hcl
 resource "aws_s3_bucket" "compliance" {
-  bucket        = "${var.project}-compliance-${var.environment}"
-  object_lock_enabled = true  # Must be set at creation time
+  bucket              = "${var.project}-compliance-${var.environment}"
+  object_lock_enabled = true  # Enables Object Lock when creating this bucket
 }
 
 resource "aws_s3_bucket_versioning" "compliance" {
@@ -68,7 +68,7 @@ resource "aws_s3_bucket_object_lock_configuration" "compliance" {
   rule {
     default_retention {
       mode  = "COMPLIANCE"  # or "GOVERNANCE" (admin can override)
-      years = 7             # Objects cannot be deleted for 7 years
+      years = 7             # Object versions cannot be permanently deleted for 7 years
     }
   }
 }
@@ -89,18 +89,18 @@ resource "aws_s3_bucket_lifecycle_configuration" "versioned_app" {
 
     # Keep only the 10 most recent noncurrent versions
     noncurrent_version_expiration {
-      noncurrent_days           = 30
+      noncurrent_days           = 90
       newer_noncurrent_versions = 10
     }
 
     # Move noncurrent versions to cheaper storage before deletion
     noncurrent_version_transition {
-      noncurrent_days = 7
+      noncurrent_days = 30
       storage_class   = "STANDARD_IA"
     }
 
     noncurrent_version_transition {
-      noncurrent_days = 30
+      noncurrent_days = 60
       storage_class   = "GLACIER"
     }
 
@@ -112,7 +112,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "versioned_app" {
 }
 ```
 
-## Bucket Policy to Prevent Disabling Versioning
+## Bucket Policy to Prevent Versioning Changes
 
 ```hcl
 resource "aws_s3_bucket_policy" "prevent_versioning_disable" {
@@ -122,16 +122,11 @@ resource "aws_s3_bucket_policy" "prevent_versioning_disable" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "DenyVersioningSuspend"
+        Sid    = "DenyVersioningChanges"
         Effect = "Deny"
         Principal = { AWS = "*" }
         Action    = "s3:PutBucketVersioning"
         Resource  = aws_s3_bucket.app.arn
-        Condition = {
-          StringEquals = {
-            "s3:VersionStatus" = "Suspended"
-          }
-        }
       }
     ]
   })
@@ -170,16 +165,24 @@ data "aws_s3_object" "config" {
 ## Versioning with Replication
 
 ```hcl
-# Versioning must be enabled before configuring replication
+# Versioning must be enabled on both buckets before configuring replication
 resource "aws_s3_bucket_versioning" "source" {
   bucket = aws_s3_bucket.source.id
+  versioning_configuration { status = "Enabled" }
+}
+
+resource "aws_s3_bucket_versioning" "destination" {
+  bucket = aws_s3_bucket.destination.id
   versioning_configuration { status = "Enabled" }
 }
 
 resource "aws_s3_bucket_replication_configuration" "crr" {
   bucket     = aws_s3_bucket.source.id
   role       = aws_iam_role.replication.arn
-  depends_on = [aws_s3_bucket_versioning.source]
+  depends_on = [
+    aws_s3_bucket_versioning.source,
+    aws_s3_bucket_versioning.destination
+  ]
 
   rule {
     id     = "full-replication"
@@ -199,4 +202,4 @@ resource "aws_s3_bucket_replication_configuration" "crr" {
 
 ## Conclusion
 
-S3 Versioning with OpenTofu provides a safety net against accidental object deletion and overwrites. Always pair versioning with lifecycle rules to control storage costs - without them, every version of every object accumulates indefinitely. Use Object Lock in COMPLIANCE mode for audit trails that regulators require to be immutable. Enable the `expired_object_delete_marker` expiration rule to clean up orphaned delete markers that accumulate in heavily-updated versioned buckets.
+S3 Versioning with OpenTofu provides a safety net against accidental object deletion and overwrites. Always pair versioning with lifecycle rules to control storage costs - without them, every version of every object accumulates indefinitely. Use Object Lock in COMPLIANCE mode for audit trails that regulators require to be immutable. Enable the `expired_object_delete_marker` expiration rule to clean up delete markers left after all noncurrent versions have expired.
