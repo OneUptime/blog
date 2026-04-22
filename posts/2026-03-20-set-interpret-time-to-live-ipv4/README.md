@@ -8,7 +8,7 @@ Description: The Time to Live (TTL) field in the IPv4 header limits a packet's l
 
 ## What Is TTL?
 
-TTL is an 8-bit field in the IPv4 header. Each router that forwards a packet decrements the TTL by 1. If a router receives a packet with TTL=1 (which would become 0 after decrement), it discards the packet and sends an ICMP Time Exceeded (type 11, code 0) message back to the source. This prevents routing loops from consuming network resources forever.
+TTL is an 8-bit field in the IPv4 header. Each router that forwards a packet decrements the TTL by at least 1 (normally by 1). If forwarding would reduce the TTL to 0, the router discards the packet and sends an ICMP Time Exceeded (type 11, code 0) message back to the source for non-multicast traffic. This prevents routing loops from consuming network resources forever.
 
 ## Default TTL Values by OS
 
@@ -25,14 +25,14 @@ TTL is an 8-bit field in the IPv4 header. Each router that forwards a packet dec
 ```python
 from scapy.all import IP, ICMP, sr1
 
-# Send a ping with TTL=3 - will expire at the 3rd hop
+# Send a ping with TTL=3 - should expire at the 3rd hop if the destination is farther away
 
 pkt = IP(dst="8.8.8.8", ttl=3) / ICMP()
 reply = sr1(pkt, timeout=2, verbose=False)
 
-if reply:
-    # Expect ICMP Time Exceeded if TTL expires at a router
-    print(f"Reply from {reply[IP].src}: type={reply[IP].proto}")
+if reply and ICMP in reply:
+    # Expect ICMP Time Exceeded (type 11, code 0) if TTL expires at a router
+    print(f"Reply from {reply[IP].src}: type={reply[ICMP].type}, code={reply[ICMP].code}")
 ```
 
 ## How Traceroute Uses TTL
@@ -70,20 +70,20 @@ sudo sysctl -p
 
 - **OS fingerprinting**: The initial TTL value helps identify the sender's operating system.
 - **TTL-based filtering**: Some firewalls reject packets with unusually low TTL values.
-- **Multicast TTL scoping**: Multicast packets use TTL to limit propagation scope (e.g., TTL=1 stays on the local subnet, TTL=255 is site-wide).
+- **Multicast TTL scoping**: Multicast packets use TTL to limit propagation scope (e.g., TTL=1 stays on the local subnet; TTL values greater than 1 may be forwarded by multicast routers).
 
 ## Interpreting TTL in Captured Traffic
 
 ```bash
 # Show TTL for each packet arriving on eth0
-tcpdump -i eth0 -n -v ip | grep -o 'ttl [0-9]*'
+sudo tcpdump -i eth0 -n -v ip | grep -o 'ttl [0-9]*'
 ```
 
 A received TTL of 50 from a host that started with TTL=64 means the packet traversed 14 hops.
 
 ## Key Takeaways
 
-- TTL is decremented by 1 at each router; when it reaches 0 the packet is discarded.
+- TTL is decremented by at least 1 by each forwarding router; when it reaches 0 the packet is discarded.
 - Different operating systems start with different default TTL values.
 - Traceroute exploits TTL expiration to map network paths.
 - You can change the system default TTL via the kernel parameter `net.ipv4.ip_default_ttl`.
