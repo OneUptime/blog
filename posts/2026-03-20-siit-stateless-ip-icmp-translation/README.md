@@ -8,12 +8,12 @@ Description: A detailed explanation of SIIT (Stateless IP/ICMP Translation), the
 
 ## What Is SIIT?
 
-SIIT (Stateless IP/ICMP Translation) is defined in RFC 7915 and provides the algorithmic specification for translating between IPv4 and IPv6 packet headers. It is "stateless" because each packet is translated independently without maintaining connection state - unlike NAT which tracks sessions.
+SIIT (Stateless IP/ICMP Translation) is defined in RFC 7915 and provides the algorithmic specification for translating between IPv4 and IPv6 packet headers. It is "stateless" because each packet is translated independently without maintaining connection state - unlike stateful NAT, which tracks sessions.
 
 SIIT is the building block used by:
-- NAT64 (which adds stateful address mapping on top of SIIT)
+- NAT64 (which adds stateful bindings on top of SIIT)
 - 464XLAT CLAT component
-- Tayga (in SIIT mode)
+- Tayga (stateless NAT64)
 - Jool SIIT module
 
 ## Core Translation: IPv6 to IPv4
@@ -23,13 +23,13 @@ When translating an IPv6 packet to IPv4, SIIT performs:
 | IPv6 Field | IPv4 Field | Notes |
 |---|---|---|
 | Version (6) | Version (4) | Changed |
-| Traffic Class | ToS/DSCP | Mapped directly |
+| Traffic Class | ToS/DSCP | Copied by default |
 | Flow Label | (discarded) | No IPv4 equivalent |
 | Payload Length | Total Length | Recalculated |
-| Next Header | Protocol | Same values (6=TCP, 17=UDP) |
-| Hop Limit | TTL | Same value |
-| Source Address | Source Address | Strip NAT64 prefix |
-| Destination Address | Destination Address | Strip NAT64 prefix |
+| Next Header | Protocol | Copied except ICMPv6 (58) → ICMPv4 (1) |
+| Hop Limit | TTL | Derived from Hop Limit; decremented while forwarding |
+| Source Address | Source Address | Mapped via RFC 6052 prefix or EAMT |
+| Destination Address | Destination Address | Mapped via RFC 6052 prefix or EAMT |
 
 ## Core Translation: IPv4 to IPv6
 
@@ -38,23 +38,23 @@ When translating an IPv4 packet to IPv6:
 | IPv4 Field | IPv6 Field | Notes |
 |---|---|---|
 | Version (4) | Version (6) | Changed |
-| ToS/DSCP | Traffic Class | Mapped directly |
+| ToS/DSCP | Traffic Class | Copied by default |
 | (none) | Flow Label | Set to 0 |
 | Total Length | Payload Length | Recalculated |
-| Protocol | Next Header | Same values |
-| TTL | Hop Limit | Same value |
-| Source Address | Source Address | Prepend NAT64 prefix |
-| Destination Address | Destination Address | Prepend NAT64 prefix |
+| Protocol | Next Header | Copied except ICMPv4 (1) → ICMPv6 (58) |
+| TTL | Hop Limit | Derived from TTL; decremented while forwarding |
+| Source Address | Source Address | Mapped via RFC 6052 prefix or EAMT |
+| Destination Address | Destination Address | Mapped via RFC 6052 prefix or EAMT |
 
-## Address Translation via NAT64 Prefix
+## Address Translation via RFC 6052 Prefix
 
-The key address mapping uses a configured NAT64 prefix (e.g., `64:ff9b::/96`). An IPv4 address is embedded in the last 32 bits of the IPv6 address:
+A common algorithmic address mapping uses a configured RFC 6052 translation prefix (for example, the Well-Known Prefix `64:ff9b::/96`). With a /96 prefix, an IPv4 address is embedded in the last 32 bits of the IPv6 address:
 
 ```text
 IPv4: 93.184.216.34
 In hex: 5d b8 d8 22
 
-NAT64 prefix: 64:ff9b:0000:0000:0000:0000::/96
+RFC 6052 prefix: 64:ff9b:0000:0000:0000:0000::/96
 IPv6 result:  64:ff9b:0000:0000:0000:0000:5db8:d822
 Short form:   64:ff9b::5db8:d822
 ```
@@ -68,16 +68,16 @@ ICMPv4 Echo Request (type 8, code 0) → ICMPv6 Echo Request (type 128, code 0)
 ICMPv4 Echo Reply  (type 0, code 0) → ICMPv6 Echo Reply  (type 129, code 0)
 ICMPv4 Dest Unreach (type 3)        → ICMPv6 Dest Unreach (type 1)
 ICMPv4 Time Exceeded (type 11)      → ICMPv6 Time Exceeded (type 3)
-ICMPv4 Too Big (type 3, code 4)     → ICMPv6 Too Big (type 2)
+ICMPv4 Frag Needed (type 3, code 4) → ICMPv6 Packet Too Big (type 2, code 0)
 ```
 
 ## Fragmentation in SIIT
 
 IPv6 does not allow router fragmentation (only source fragmentation). SIIT handles this differently for each direction:
 
-**IPv4 fragmented → IPv6**: SIIT reassembles IPv4 fragments before translating (since IPv6 has no fragment reassembly at routers).
+**IPv4 fragmented → IPv6**: SIIT translates fragments independently. Existing IPv4 fragments become IPv6 packets with Fragment Headers; when DF is clear and the translated packet would exceed the configured lowest IPv6 MTU, the translator fragments before translating so the resulting IPv6 packets fit.
 
-**IPv6 → IPv4**: If the translated packet would exceed the IPv4 link's MTU, SIIT must fragment the IPv4 packet using the standard IPv4 fragmentation mechanism.
+**IPv6 → IPv4**: IPv6 Fragment Headers are translated into IPv4 fragmentation fields. For non-fragmented packets, SIIT sets or clears the IPv4 DF bit according to RFC 7915; it must fragment only when an IPv6 packet of 1280 bytes or smaller still produces an IPv4 packet larger than the next-hop MTU.
 
 ## Stateless vs Stateful Translation
 
@@ -113,16 +113,16 @@ jool_siit instance add --netfilter
 
 # Add EAMT entries for specific address mappings
 jool_siit eamt add 192.0.2.1/32 2001:db8::1/128
-jool_siit eamt add 192.0.2.0/24 2001:db8::/120
+jool_siit eamt add 198.51.100.0/24 2001:db8:100::/120
 
 # Set pool6 for algorithmic (non-EAMT) mapping
-jool_siit pool6 add 64:ff9b::/96
+jool_siit global update pool6 64:ff9b::/96
 
 # Display configuration
 jool_siit eamt display
-jool_siit pool6 display
+jool_siit global display
 ```
 
 ## Summary
 
-SIIT is the stateless translation algorithm at the heart of IPv6-to-IPv4 protocol translation. It defines field-by-field header translation rules, address embedding via NAT64 prefixes, and ICMP type mapping. NAT64, 464XLAT CLAT, and SIIT-based gateways all build on these foundational translation rules defined in RFC 7915.
+SIIT is the stateless translation algorithm at the heart of IPv6-to-IPv4 protocol translation. It defines field-by-field header translation rules, address mapping via RFC 6052 prefixes and EAMT, and ICMP type mapping. NAT64, 464XLAT CLAT, and SIIT-based gateways all build on these foundational translation rules defined in RFC 7915.
