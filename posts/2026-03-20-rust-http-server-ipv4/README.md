@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, HTTP, IPv4, TCP, Server, Networking, Std::net
+Tags: Rust, HTTP, IPv4, TCP, Server, Networking, std::net
 
 Description: Build a multithreaded HTTP/1.0 server in Rust using std::net TcpListener, manually parsing HTTP requests and generating responses over IPv4.
 
@@ -17,7 +17,9 @@ use std::net::{TcpListener, TcpStream};
 use std::io::{BufRead, BufReader, Write};
 
 fn handle_request(mut stream: TcpStream) {
-    let peer = stream.peer_addr().unwrap_or_else(|_| "unknown".parse().unwrap());
+    let peer = stream.peer_addr()
+        .map(|addr| addr.to_string())
+        .unwrap_or_else(|_| "unknown".to_string());
     
     // Read the HTTP request
     let reader = BufReader::new(&stream);
@@ -138,13 +140,16 @@ fn generate_response(req: &HttpRequest) -> String {
                 "<html><body><h1>Rust HTTP Server</h1><p>Built from scratch!</p></body></html>".to_string()),
         "/health" => ("200 OK", "application/json", 
                       r#"{"status":"healthy","server":"rust"}"#.to_string()),
-        "/echo" => ("200 OK", "text/plain",
-                    format!("{} {} {}\nHeaders: {:?}", req.method, req.path, req.version, req.headers)),
+        "/echo" => {
+            let body = String::from_utf8_lossy(&req.body);
+            ("200 OK", "text/plain",
+             format!("{} {} {}\nHeaders: {:?}\nBody: {}", req.method, req.path, req.version, req.headers, body))
+        }
         _ => ("404 Not Found", "text/html", "<h1>404 Not Found</h1>".to_string()),
     };
     
     format!(
-        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.0 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         status, content_type, body.len(), body
     )
 }
