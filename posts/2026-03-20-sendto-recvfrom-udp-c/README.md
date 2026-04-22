@@ -25,7 +25,7 @@ Description: Learn how to send and receive UDP datagrams in C using sendto() and
 #include <sys/socket.h>
 
 #define PORT    9000
-#define BUFSIZE 65507   /* max UDP payload (65535 - 20 IP - 8 UDP headers) */
+#define BUFSIZE 65507   /* max IPv4 UDP payload (65535 - 20 IP - 8 UDP headers) */
 
 int main(void) {
     /* Create UDP socket */
@@ -114,7 +114,8 @@ int main(void) {
 ```c
 /* Calling connect() on a UDP socket sets a default destination
    and filters incoming datagrams to only that peer.
-   After connect(), use send()/recv() instead of sendto()/recvfrom(). */
+   After connect(), you can use send()/recv() without passing
+   the peer address each time. */
 
 int fd = socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -170,4 +171,4 @@ gcc -Wall -o udp_client udp_client.c
 
 ## Conclusion
 
-`sendto()` transmits a datagram to an explicit destination each call - no prior connection required. `recvfrom()` delivers the next queued datagram and fills in the sender's `sockaddr_in`, enabling stateless request/reply protocols. UDP preserves message boundaries, so one `sendto()` of N bytes always arrives as one `recvfrom()` of N bytes (or is dropped entirely). The maximum safe UDP payload is 1472 bytes over Ethernet to avoid fragmentation; the absolute limit is 65507 bytes. Use a connected UDP socket (`connect()` + `send()`/`recv()`) when always communicating with the same peer to simplify call sites and filter spurious datagrams.
+`sendto()` transmits a datagram to an explicit destination each call - no prior connection required. `recvfrom()` delivers the next queued datagram and fills in the sender's `sockaddr_in`, enabling stateless request/reply protocols. UDP preserves message boundaries: one successful `sendto()` creates one datagram, and one `recvfrom()` reads one datagram at a time. If the receive buffer is too small, the datagram is truncated and the excess bytes are discarded; datagrams can also be dropped entirely. On a typical 1500-byte Ethernet IPv4 path with no IP options, 1472 bytes avoids fragmentation; the actual safe size depends on the path MTU. The absolute IPv4 UDP payload limit with a 20-byte IP header is 65507 bytes. Use a connected UDP socket (`connect()` + `send()`/`recv()`) when always communicating with the same peer to simplify call sites and filter spurious datagrams.
