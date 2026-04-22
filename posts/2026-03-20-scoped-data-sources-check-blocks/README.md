@@ -8,7 +8,7 @@ Description: Learn how to use scoped data sources within OpenTofu check blocks t
 
 ## Introduction
 
-Check blocks can contain a single `data` block whose scope is limited to that check block. This scoped data source is re-evaluated on every plan and apply, allowing you to query live infrastructure state and validate it against expected conditions.
+Check blocks can contain zero or one `data` block whose scope is limited to that check block. This scoped data source is re-evaluated on every plan and apply, allowing you to query live infrastructure state and validate it against expected conditions.
 
 ## Scoped Data Source Syntax
 
@@ -53,7 +53,7 @@ check "website_health" {
 ## Example 2: Checking S3 Bucket Properties
 
 ```hcl
-check "state_bucket_secure" {
+check "state_bucket_exists" {
   data "aws_s3_bucket" "state" {
     bucket = var.state_bucket_name
   }
@@ -64,14 +64,14 @@ check "state_bucket_secure" {
   }
 }
 
-check "state_bucket_versioning" {
-  data "aws_s3_bucket" "state_versioning" {
+check "state_bucket_region" {
+  data "aws_s3_bucket" "state_region" {
     bucket = var.state_bucket_name
   }
 
   assert {
-    condition = data.aws_s3_bucket.state_versioning.versioning[0].enabled
-    error_message = "State bucket must have versioning enabled"
+    condition     = data.aws_s3_bucket.state_region.bucket_region == var.expected_bucket_region
+    error_message = "State bucket must be in ${var.expected_bucket_region}"
   }
 }
 ```
@@ -121,8 +121,8 @@ check "database_is_multi_az" {
   }
 
   assert {
-    condition     = data.aws_db_instance.primary.db_instance_status == "available"
-    error_message = "RDS instance is not in available state: ${data.aws_db_instance.primary.db_instance_status}"
+    condition     = data.aws_db_instance.primary.storage_encrypted == true
+    error_message = "RDS instance storage is not encrypted"
   }
 }
 ```
