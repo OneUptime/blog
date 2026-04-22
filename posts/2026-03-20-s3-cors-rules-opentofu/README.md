@@ -26,9 +26,9 @@ resource "aws_s3_bucket" "web_assets" {
 resource "aws_s3_bucket_public_access_block" "web_assets" {
   bucket                  = aws_s3_bucket.web_assets.id
   block_public_acls       = true
-  block_public_policy     = false  # Allow bucket policy for CloudFront
+  block_public_policy     = true
   ignore_public_acls      = true
-  restrict_public_buckets = false
+  restrict_public_buckets = true
 }
 ```
 
@@ -52,7 +52,7 @@ resource "aws_s3_bucket_cors_configuration" "web_assets" {
   cors_rule {
     id              = "direct-upload"
     allowed_origins = ["https://app.example.com"]
-    allowed_methods = ["PUT", "POST"]
+    allowed_methods = ["PUT"]
     allowed_headers = [
       "Content-Type",
       "Content-MD5",
@@ -88,6 +88,12 @@ import json
 import os
 
 s3 = boto3.client('s3')
+ALLOWED_CONTENT_TYPES = {'image/jpeg', 'image/png', 'image/webp', 'application/pdf'}
+CORS_HEADERS = {
+    'Access-Control-Allow-Origin': 'https://app.example.com',
+    'Access-Control-Allow-Methods': 'POST',
+    'Access-Control-Allow-Headers': 'Content-Type',
+}
 
 def handler(event, context):
     """Generate a pre-signed URL for direct browser upload."""
@@ -95,6 +101,13 @@ def handler(event, context):
     file_name = body['fileName']
     content_type = body['contentType']
     bucket = os.environ['BUCKET_NAME']
+
+    if content_type not in ALLOWED_CONTENT_TYPES:
+        return {
+            'statusCode': 400,
+            'headers': CORS_HEADERS,
+            'body': json.dumps({'error': 'Unsupported content type'})
+        }
 
     # Generate pre-signed URL valid for 15 minutes
     url = s3.generate_presigned_url(
@@ -111,10 +124,7 @@ def handler(event, context):
 
     return {
         'statusCode': 200,
-        'headers': {
-            'Access-Control-Allow-Origin': 'https://app.example.com',
-            'Access-Control-Allow-Methods': 'POST',
-        },
+        'headers': CORS_HEADERS,
         'body': json.dumps({'uploadUrl': url, 'key': f"uploads/{file_name}"})
     }
 ```
@@ -126,7 +136,7 @@ def handler(event, context):
 curl -X OPTIONS \
   -H "Origin: https://app.example.com" \
   -H "Access-Control-Request-Method: PUT" \
-  -H "Access-Control-Request-Headers: Content-Type" \
+  -H "Access-Control-Request-Headers: Content-Type,x-amz-server-side-encryption" \
   -v https://my-bucket.s3.amazonaws.com/test.jpg 2>&1 | grep -i "access-control"
 ```
 
@@ -140,4 +150,4 @@ tofu apply
 
 ## Conclusion
 
-S3 CORS rules enable browser-based interactions with S3 for reading assets and direct uploads. Use specific `allowed_origins` rather than wildcards in production to prevent unauthorized cross-origin access. For direct browser uploads, generate pre-signed URLs server-side with short expiration times and include content-type restrictions to prevent clients from uploading unexpected file types.
+S3 CORS rules enable browser-based interactions with S3 for reading assets and direct uploads. Use specific `allowed_origins` rather than wildcards in production to limit which browser origins can read responses; CORS is not an authorization mechanism. For direct browser uploads, generate pre-signed URLs server-side with short expiration times, validate allowed content types before signing, and include the chosen content type in the signed request so clients cannot change that header after the URL is issued.
