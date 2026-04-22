@@ -27,11 +27,6 @@ resource "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
 
   client_id_list = ["sts.amazonaws.com"]
-
-  thumbprint_list = [
-    "6938fd4d98bab03faadb97b34396831e3780aea1",
-    "1c58a3a8518e8759bf075b76b750d4f2df264fcd"
-  ]
 }
 
 # IAM role that GitHub Actions can assume
@@ -52,7 +47,7 @@ resource "aws_iam_role" "github_actions" {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           }
           StringLike = {
-            # Restrict to a specific repository and branch
+            # Restrict to a specific repository
             "token.actions.githubusercontent.com:sub" = "repo:my-org/my-repo:*"
           }
         }
@@ -81,7 +76,7 @@ resource "aws_iam_role_policy" "github_actions_state" {
       },
       {
         Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
+        Action   = ["dynamodb:DescribeTable", "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
         Resource = "arn:aws:dynamodb:us-east-1:*:table/terraform-state-locks"
       }
     ]
@@ -152,20 +147,15 @@ jobs:
 ```yaml
 # .gitlab-ci.yml
 deploy:
-  image: ghcr.io/opentofu/opentofu:latest
+  image: my-opentofu-ci:latest # Include OpenTofu and a POSIX shell
+  id_tokens:
+    GITLAB_OIDC_TOKEN:
+      aud: sts.amazonaws.com
   script:
-    - |
-      # Exchange GitLab CI_JOB_JWT_V2 for AWS credentials
-      CREDENTIALS=$(aws sts assume-role-with-web-identity \
-        --role-arn arn:aws:iam::123456789012:role/gitlab-ci-opentofu \
-        --role-session-name gitlab-ci \
-        --web-identity-token $CI_JOB_JWT_V2 \
-        --duration-seconds 3600)
-
-      export AWS_ACCESS_KEY_ID=$(echo $CREDENTIALS | jq -r '.Credentials.AccessKeyId')
-      export AWS_SECRET_ACCESS_KEY=$(echo $CREDENTIALS | jq -r '.Credentials.SecretAccessKey')
-      export AWS_SESSION_TOKEN=$(echo $CREDENTIALS | jq -r '.Credentials.SessionToken')
-
+    - printf '%s' "$GITLAB_OIDC_TOKEN" > /tmp/gitlab-oidc-token
+    - export AWS_ROLE_ARN=arn:aws:iam::123456789012:role/gitlab-ci-opentofu
+    - export AWS_ROLE_SESSION_NAME="gitlab-ci-${CI_PROJECT_ID}-${CI_PIPELINE_ID}"
+    - export AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/gitlab-oidc-token
     - tofu init
     - tofu apply -auto-approve
 ```
