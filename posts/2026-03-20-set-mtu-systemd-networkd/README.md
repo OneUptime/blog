@@ -19,7 +19,8 @@ MTU can be set in systemd-networkd through either a `.link` file (applied at ude
 MACAddress=aa:bb:cc:dd:ee:01
 
 [Link]
-MTUBytes=9000    # Set MTU at link setup time (before IP assignment)
+# Set MTU at link setup time (before IP assignment)
+MTUBytes=9000
 ```
 
 ## Setting MTU in a .network File
@@ -30,7 +31,8 @@ MTUBytes=9000    # Set MTU at link setup time (before IP assignment)
 Name=eth0
 
 [Link]
-MTUBytes=9000    # Also works here, applied when networkd processes the interface
+# Also works here, applied when networkd processes the interface
+MTUBytes=9000
 
 [Network]
 Address=10.0.0.5/24
@@ -46,14 +48,16 @@ Gateway=10.0.0.1
 MACAddress=aa:bb:cc:dd:ee:01
 
 [Link]
-MTUBytes=9000    # Set parent to 9000
+# Set parent to 9000
+MTUBytes=9000
 
 # /etc/systemd/network/20-eth0.10.network
 [Match]
 Name=eth0.10
 
 [Link]
-MTUBytes=9000    # VLAN inherits (but set explicitly to be safe)
+# VLAN inherits (but set explicitly to be safe)
+MTUBytes=9000
 
 [Network]
 Address=192.168.10.1/24
@@ -67,7 +71,8 @@ Address=192.168.10.1/24
 Name=gre1
 
 [Link]
-MTUBytes=1476    # 1500 - 24 (GRE overhead) = 1476
+# 1500 - 24 (GRE overhead) = 1476
+MTUBytes=1476
 
 [Network]
 Address=172.16.1.1/30
@@ -110,7 +115,7 @@ Kind=bond
 [Bond]
 Mode=active-backup
 MIIMonitorSec=100ms
-# Note: MTU is set in bond0.network, not here
+# Note: this example sets MTU in bond0.network, not in the [Bond] section
 
 # /etc/systemd/network/bond0.network
 [Match]
