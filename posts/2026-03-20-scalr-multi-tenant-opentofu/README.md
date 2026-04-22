@@ -47,7 +47,7 @@ terraform {
 terraform {
   required_providers {
     scalr = {
-      source  = "Scalr/scalr"
+      source  = "registry.scalr.io/scalr/scalr"
       version = "~> 2.0"
     }
   }
@@ -64,13 +64,20 @@ resource "scalr_environment" "team_alpha" {
   account_id = "acc-xxxxxxxxxx"
 }
 
+resource "scalr_environment" "team_beta" {
+  name       = "team-beta"
+  account_id = "acc-xxxxxxxxxx"
+}
+
 # Create a workspace for a specific component
 resource "scalr_workspace" "networking" {
-  name           = "networking-prod"
-  environment_id = scalr_environment.team_alpha.id
+  name            = "networking-prod"
+  environment_id  = scalr_environment.team_alpha.id
+  vcs_provider_id = "vcs-xxxxxxxxxx"
 
   # Use OpenTofu
-  opentofu_version = "1.9.0"
+  iac_platform      = "opentofu"
+  terraform_version = "1.9.0"
 
   # Auto-apply after successful plan
   auto_apply = false
@@ -93,25 +100,15 @@ resource "scalr_policy_group" "security_baseline" {
   name       = "security-baseline"
   account_id = "acc-xxxxxxxxxx"
 
-  # OPA policy files
-  opa_policies = [
-    {
-      name   = "require-tags"
-      policy = file("policies/require_tags.rego")
-      enforcement_level = "hard-mandatory"
-    },
-    {
-      name   = "deny-public-s3"
-      policy = file("policies/deny_public_s3.rego")
-      enforcement_level = "hard-mandatory"
-    }
-  ]
-}
+  # OPA policy files and scalr-policy.hcl live in this repository path.
+  vcs_provider_id = "vcs-xxxxxxxxxx"
+  environments    = ["*"]
 
-# Attach to all environments
-resource "scalr_policy_group_linkage" "alpha_security" {
-  policy_group_id = scalr_policy_group.security_baseline.id
-  environment_id  = scalr_environment.team_alpha.id
+  vcs_repo {
+    identifier = "my-org/policy-repo"
+    path       = "policies/security-baseline"
+    branch     = "main"
+  }
 }
 ```
 
@@ -124,7 +121,7 @@ Scalr supports variables at account, environment, and workspace levels. Lower le
 resource "scalr_variable" "aws_region" {
   key          = "AWS_DEFAULT_REGION"
   value        = "us-east-1"
-  category     = "env"
+  category     = "shell"
   account_id   = "acc-xxxxxxxxxx"
   final        = false  # Allow lower levels to override
 }
@@ -133,7 +130,7 @@ resource "scalr_variable" "aws_region" {
 resource "scalr_variable" "team_beta_region" {
   key            = "AWS_DEFAULT_REGION"
   value          = "eu-west-1"
-  category       = "env"
+  category       = "shell"
   environment_id = scalr_environment.team_beta.id
 }
 ```
@@ -144,7 +141,11 @@ resource "scalr_variable" "team_beta_region" {
 resource "scalr_iam_team" "alpha_engineers" {
   name       = "alpha-engineers"
   account_id = "acc-xxxxxxxxxx"
-  users      = ["user@example.com"]
+  users      = ["user-xxxxxxxxxx"]
+}
+
+data "scalr_role" "user" {
+  name = "user"
 }
 
 resource "scalr_access_policy" "alpha_env_write" {
@@ -158,8 +159,8 @@ resource "scalr_access_policy" "alpha_env_write" {
     id   = scalr_environment.team_alpha.id
   }
 
-  # Allow plan and apply within the environment
-  role_ids = ["role-plan", "role-apply"]
+  # Grant the system user role within the environment
+  role_ids = [data.scalr_role.user.id]
 }
 ```
 
