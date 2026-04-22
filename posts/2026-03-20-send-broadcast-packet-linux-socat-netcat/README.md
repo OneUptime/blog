@@ -8,7 +8,7 @@ Description: Send UDP broadcast packets from the Linux command line using socat 
 
 ## Introduction
 
-Sending a UDP broadcast packet on Linux requires the `SO_BROADCAST` socket option - a deliberate safety mechanism to prevent accidental broadcast floods. Both `socat` and `netcat` support this, making it easy to test broadcast delivery without writing custom code.
+Sending a UDP broadcast packet on Linux requires the `SO_BROADCAST` socket option - a deliberate safety mechanism to prevent accidental broadcast floods. Both `socat` and some `netcat` variants support this, making it easy to test broadcast delivery without writing custom code.
 
 ## Sending a Broadcast with socat
 
@@ -32,32 +32,25 @@ socat UDP-RECVFROM:9999,broadcast,fork -
 
 The `fork` option handles each incoming packet in a subprocess, allowing multiple packets to be received.
 
-## Sending a Broadcast with netcat (ncat)
+## Sending a Broadcast with netcat (nc)
 
-The BSD/traditional `nc` does not set `SO_BROADCAST` automatically. Use `ncat` (from nmap):
-
-```bash
-# Install ncat
-sudo apt install ncat
-
-# Send a broadcast via ncat
-echo "test" | ncat -u --broadcast 192.168.1.255 9999
-```
-
-With older `netcat` (`nc`), you need a workaround:
+Netcat implementations differ. Nmap's `ncat` does not document a broadcast option. On Debian/Ubuntu systems with OpenBSD-style `nc` that includes `-b`, use `-b` to allow UDP broadcast:
 
 ```bash
-# Traditional nc does not support SO_BROADCAST; use /dev/udp instead
-# (bash built-in, no external process needed)
-# Note: this may not set SO_BROADCAST on all kernels
-echo "broadcast test" > /dev/udp/192.168.1.255/9999
+# Install OpenBSD netcat if needed
+sudo apt install netcat-openbsd
+
+# Send a broadcast via nc
+echo "test" | nc -u -b 192.168.1.255 9999
 ```
+
+With `netcat` variants that do not provide a broadcast option, use `socat` or the Python one-liner below instead. Bash's `/dev/udp` redirection can open a UDP socket, but it does not expose a way to set `SO_BROADCAST`, so it is not a reliable broadcast workaround on Linux.
 
 For reliable broadcasting, prefer `socat`.
 
 ## Python One-Liner for Testing
 
-If neither `socat` nor `ncat` is available:
+If neither `socat` nor a `netcat` variant with broadcast support is available:
 
 ```bash
 python3 -c "
@@ -72,7 +65,7 @@ s.close()
 
 ## Receiving Broadcasts on Remote Hosts
 
-Any UDP socket bound to `0.0.0.0` on the target port will receive broadcast packets on the local segment:
+Any UDP socket bound to `0.0.0.0` on the target port can receive broadcast packets on the local segment, as long as the host firewall allows them:
 
 ```bash
 # Using socat on the receiver
@@ -91,10 +84,10 @@ sudo tcpdump -i eth0 -n "udp dst port 9999"
 
 ## Wake-on-LAN: A Real Broadcast Use Case
 
-Wake-on-LAN magic packets are broadcast UDP packets sent to port 9:
+Wake-on-LAN magic packets are often sent as broadcast UDP packets to port 9:
 
 ```bash
-# Construct and send a WoL magic packet with socat
+# Construct and send a WoL magic packet with Python
 # Replace AA:BB:CC:DD:EE:FF with the target MAC address
 python3 -c "
 import socket
