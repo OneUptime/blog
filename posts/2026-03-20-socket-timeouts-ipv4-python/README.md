@@ -8,7 +8,7 @@ Description: Learn how to configure connection and read timeouts for Python IPv4
 
 ## Why Timeouts Matter
 
-Without timeouts, a `connect()` or `recv()` call can block forever if the server is unreachable or stops responding. Always set timeouts in production socket code.
+Without timeouts, a `connect()` call can block for a long OS-defined period, and a `recv()` call can block indefinitely if the server stops responding. Always set timeouts in production socket code.
 
 ## Setting a Timeout with settimeout()
 
@@ -30,7 +30,7 @@ try:
     response = sock.recv(1024)
     print(response.decode())
 
-except socket.timeout:
+except TimeoutError:
     print("Operation timed out")
 
 except ConnectionRefusedError:
@@ -55,7 +55,7 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.settimeout(3.0)
 try:
     sock.connect(("192.168.1.100", 9000))
-except socket.timeout:
+except TimeoutError:
     print("Connection timed out after 3 seconds")
     sock.close()
     exit()
@@ -67,7 +67,7 @@ sock.sendall(b"heavy request")
 try:
     response = sock.recv(65536)
     print(f"Got {len(response)} bytes")
-except socket.timeout:
+except TimeoutError:
     print("Read timed out after 30 seconds")
 finally:
     sock.close()
@@ -78,6 +78,8 @@ finally:
 ```python
 import socket
 import select
+import errno
+import os
 
 def connect_with_timeout(host: str, port: int, timeout: float) -> socket.socket:
     """Non-blocking connect with custom timeout."""
@@ -85,12 +87,18 @@ def connect_with_timeout(host: str, port: int, timeout: float) -> socket.socket:
     sock.setblocking(False)
 
     result = sock.connect_ex((host, port))
-    # EINPROGRESS is expected for non-blocking connect
-    if result not in (0, 115):  # 115 = EINPROGRESS
-        sock.close()
-        raise ConnectionRefusedError(f"connect_ex returned {result}")
+    pending_errors = {
+        errno.EINPROGRESS,
+        errno.EWOULDBLOCK,
+        errno.EALREADY,
+    }
 
-    # Wait until the socket becomes writable (connection completed)
+    # EINPROGRESS/EWOULDBLOCK are expected for non-blocking connect
+    if result != 0 and result not in pending_errors:
+        sock.close()
+        raise OSError(result, os.strerror(result))
+
+    # Wait until the socket becomes writable (connection completed or failed)
     _, writable, _ = select.select([], [sock], [], timeout)
     if not writable:
         sock.close()
@@ -100,7 +108,7 @@ def connect_with_timeout(host: str, port: int, timeout: float) -> socket.socket:
     err = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
     if err:
         sock.close()
-        raise ConnectionRefusedError(f"Connection failed: {err}")
+        raise OSError(err, os.strerror(err))
 
     # Switch back to blocking for normal I/O
     sock.setblocking(True)
@@ -108,11 +116,11 @@ def connect_with_timeout(host: str, port: int, timeout: float) -> socket.socket:
 
 
 try:
-    s = connect_with_timeout("192.168.1.100", 9000, timeout=3.0)
-    s.sendall(b"Hello!")
-    print(s.recv(1024).decode())
-    s.close()
-except (TimeoutError, ConnectionRefusedError) as e:
+    with connect_with_timeout("192.168.1.100", 9000, timeout=3.0) as s:
+        s.settimeout(30.0)
+        s.sendall(b"Hello!")
+        print(s.recv(1024).decode())
+except OSError as e:
     print(e)
 ```
 
