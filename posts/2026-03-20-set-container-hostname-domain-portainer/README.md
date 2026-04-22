@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Hostname, Networking, Container
 
-Description: Configure custom hostnames and domain names for Docker containers in Portainer for proper service discovery and identification.
+Description: Configure custom hostnames, domain names, and DNS settings for Docker containers in Portainer for proper identification and name resolution.
 
 ---
 
-Advanced container configuration in Portainer exposes Docker's full feature set through the web UI, allowing you to configure specialized settings without writing raw Docker commands.
+Advanced container configuration in Portainer exposes many Docker container settings through the web UI, allowing you to configure specialized settings without writing raw Docker commands.
 
 ## Accessing Advanced Container Settings
 
-When creating or editing a container in Portainer:
+When creating a container in Portainer:
 1. Navigate to **Containers > Add container**
 2. Fill in basic settings (image, name, ports)
 3. Expand the **Advanced container settings** section
@@ -29,7 +29,7 @@ docker run -d \
   myimage:latest
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > Devices**
+In Portainer UI: **Advanced container settings > Runtime & Resources > Devices**
 
 ## Sysctls Configuration
 
@@ -42,7 +42,7 @@ docker run -d \
   nginx:latest
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > Sysctls**
+In Portainer UI: **Advanced container settings > Runtime & Resources > Sysctls**
 
 ## GPU Configuration (NVIDIA)
 
@@ -58,7 +58,7 @@ docker run -d \
   python train.py
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > GPUs**
+In Portainer UI: **Advanced container settings > Runtime & Resources > GPU**
 
 ## Linux Capabilities
 
@@ -68,6 +68,9 @@ docker run -d \
   --cap-drop ALL \
   --cap-add NET_BIND_SERVICE \
   --cap-add CHOWN \
+  --cap-add DAC_OVERRIDE \
+  --cap-add SETGID \
+  --cap-add SETUID \
   --name secure-nginx \
   nginx:latest
 ```
@@ -82,11 +85,13 @@ docker run -d \
   pytorch/pytorch:latest
 ```
 
-## DNS Settings
+## Hostname, Domain, and DNS Settings
 
 ```bash
-# Set custom DNS for a container
+# Set a custom hostname, domain name, and DNS for a container
 docker run -d \
+  --hostname app01 \
+  --domainname example.com \
   --dns 1.1.1.1 \
   --dns 8.8.8.8 \
   --dns-search example.com \
@@ -94,11 +99,13 @@ docker run -d \
   myapp:latest
 ```
 
+In Portainer UI: **Advanced container settings > Network > Hostname / Domain Name / Primary DNS Server / Secondary DNS Server**
+
 ## Privileged Mode (Use Sparingly)
 
 ```bash
 # Only use privileged mode when absolutely necessary
-# Privileged containers have full host access
+# Privileged containers have broad host-level access
 docker run -d \
   --privileged \
   --name system-tool \
