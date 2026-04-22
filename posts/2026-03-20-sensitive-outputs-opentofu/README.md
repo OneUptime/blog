@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Output, Sensitive, Security, Infrastructure as Code, DevOps
 
-Description: A guide to marking OpenTofu output values as sensitive to protect secrets from being displayed in logs and terminal output.
+Description: A guide to marking OpenTofu output values as sensitive to protect secrets from being displayed in normal CLI output.
 
 ## Introduction
 
-Marking outputs as `sensitive = true` prevents their values from being displayed in plan output, apply output, and `tofu output` command results. This protects passwords, private keys, tokens, and other secrets from accidental exposure in logs and terminals.
+Marking outputs as `sensitive = true` redacts their values in normal `tofu plan` and `tofu apply` messages and default `tofu output` results. This helps protect passwords, private keys, tokens, and other secrets from accidental exposure in logs and terminals, but `tofu output -raw`, `tofu output -json`, and `tofu output -show-sensitive` can still print sensitive values.
 
 ## Marking Outputs as Sensitive
 
@@ -51,7 +51,7 @@ variable "api_key" {
 # This MUST be sensitive because it references a sensitive variable
 output "api_key_length" {
   value = length(var.api_key)
-  # Even though length() doesn't reveal the key, OpenTofu requires this:
+  # Even though length() doesn't reveal the key contents, OpenTofu requires this:
   sensitive = true
 }
 
@@ -79,7 +79,7 @@ tofu output
 
 # tofu output for specific sensitive output:
 tofu output database_password
-# <sensitive>
+# database_password = <sensitive>
 
 # To see the actual value (use with care):
 tofu output -raw database_password
@@ -96,8 +96,8 @@ DB_PASSWORD=$(tofu output -raw database_password)
 kubectl create secret generic db-creds \
   --from-literal=password="$(tofu output -raw database_password)"
 
-# Save to encrypted file
-tofu output -raw private_key > /tmp/key.pem
+# Save to a file with restricted permissions
+tofu output -raw private_key_pem > /tmp/key.pem
 chmod 600 /tmp/key.pem
 # Remember to clean up after use
 ```
@@ -140,4 +140,4 @@ terraform {
 
 ## Conclusion
 
-Marking outputs as sensitive is a necessary security practice when exposing secrets from your OpenTofu configurations. While it doesn't encrypt the state file (you need an encrypted backend for that), it prevents accidental exposure in logs, CI/CD output, and terminals. Always mark database passwords, private keys, tokens, and connection strings containing credentials as sensitive, and access their values programmatically rather than displaying them in terminals.
+Marking outputs as sensitive is a necessary security practice when exposing secrets from your OpenTofu configurations. While it doesn't encrypt the state file (you need an encrypted backend for that), it helps prevent accidental exposure in normal CLI output and CI/CD logs. Always mark database passwords, private keys, tokens, and connection strings containing credentials as sensitive, and access their values programmatically rather than displaying them in terminals.
