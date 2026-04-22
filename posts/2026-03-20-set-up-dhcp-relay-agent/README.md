@@ -8,7 +8,7 @@ Description: A DHCP relay agent forwards DHCP broadcast messages from clients on
 
 ## Why You Need a DHCP Relay
 
-DHCP uses broadcast (255.255.255.255) which routers don't forward. A relay agent (also called DHCP Helper) converts the broadcast to a unicast directed to the DHCP server:
+DHCP clients use broadcasts such as 255.255.255.255 during address acquisition, and routers typically don't forward those broadcasts. A relay agent (also called DHCP Helper) receives the broadcast and sends a relay message, usually as a unicast, to the DHCP server:
 
 ```mermaid
 flowchart LR
@@ -20,6 +20,8 @@ flowchart LR
 
 ## Linux: dhcrelay (ISC DHCP Relay)
 
+ISC DHCP Relay is end-of-life upstream, but it may still be packaged and supported by your Linux distribution.
+
 ```bash
 # Install
 
@@ -27,7 +29,7 @@ sudo apt install isc-dhcp-relay
 
 # Configure /etc/default/isc-dhcp-relay
 # SERVERS="192.168.0.1"                    # DHCP server IP
-# INTERFACES="eth0 eth1 eth2"              # Interfaces to listen on
+# INTERFACES="eth0 eth1 eth2"              # Client- and server-facing interfaces
 # OPTIONS=""
 
 sudo systemctl enable --now isc-dhcp-relay
@@ -35,8 +37,8 @@ sudo systemctl enable --now isc-dhcp-relay
 
 Or run directly:
 ```bash
-# Relay DHCP requests from clients on eth1 and eth2 to server at 192.168.0.1
-sudo dhcrelay -i eth1 -i eth2 192.168.0.1
+# Relay DHCP requests from clients on eth1 and eth2 to server at 192.168.0.1 via eth0
+sudo dhcrelay -id eth1 -id eth2 -iu eth0 192.168.0.1
 ```
 
 ## Cisco IOS: ip helper-address
@@ -47,7 +49,7 @@ On a Cisco router or Layer-3 switch, configure the helper address on each VLAN i
 ! VLAN 10 interface
 interface Vlan10
   ip address 10.0.10.1 255.255.255.0
-  ip helper-address 10.0.0.53    ! DHCP server IP
+  ip helper-address 10.0.0.53
 
 ! VLAN 20 interface
 interface Vlan20
@@ -55,15 +57,9 @@ interface Vlan20
   ip helper-address 10.0.0.53
 ```
 
-## Linux Router: iptables DHCP Relay (Alternative)
+## Linux Router: Use a DHCP Relay, Not iptables
 
-If dhcrelay is not available, use iptables to forward DHCP:
-
-```bash
-# Forward DHCP broadcasts from 10.0.10.0/24 to server at 10.0.0.53
-iptables -t nat -A PREROUTING -i eth1 -p udp --dport 67 \
-  -j DNAT --to-destination 10.0.0.53:67
-```
+If `dhcrelay` is not available, use another DHCP relay agent. An iptables DNAT rule can rewrite the packet destination, but it does not set `giaddr` or generate a new DHCP relay message, so the DHCP server cannot reliably choose the client subnet or send replies through the relay.
 
 ## Verifying Relay Operation
 
@@ -73,7 +69,7 @@ tcpdump -i eth1 'port 67 or port 68'
 
 # On the DHCP server, check for relayed requests
 tcpdump -i eth0 'port 67'
-# Relayed packets have giaddr (relay agent IP) set in the DHCP header
+# Relayed packets have giaddr (relay interface IP) set in the DHCP header
 
 # ISC dhcpd logs
 journalctl -u isc-dhcp-server | grep relay
@@ -81,13 +77,13 @@ journalctl -u isc-dhcp-server | grep relay
 
 ## The giaddr Field
 
-When a relay agent forwards a DHCP Discover, it sets the `giaddr` (Gateway IP Address) field in the DHCP packet to its own IP address. The DHCP server uses this to:
-1. Select the appropriate scope (subnet matching the relay's IP)
+When a relay agent forwards a DHCP Discover with `giaddr` set to zero, it sets the `giaddr` (Gateway IP Address) field in the DHCP packet to the IP address of the interface that received the request. The DHCP server uses this to:
+1. Select the appropriate scope (subnet matching the relay interface's IP)
 2. Know where to send the reply
 
 ## Key Takeaways
 
-- DHCP relay agents convert DHCP broadcasts to unicasts forwarded to the DHCP server.
-- On Linux, use `dhcrelay -i <interface> <server-ip>`.
+- DHCP relay agents forward DHCP client broadcasts as relay messages, usually unicasts, to the DHCP server.
+- On Linux, use `dhcrelay` with the client-facing and server-facing interfaces plus `<server-ip>`.
 - On Cisco, configure `ip helper-address <server-ip>` on each VLAN SVI.
 - The `giaddr` field in the DHCP packet identifies the originating subnet to the server.
