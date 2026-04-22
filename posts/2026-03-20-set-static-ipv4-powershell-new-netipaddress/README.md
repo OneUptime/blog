@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Window, PowerShell, Networking, IPv4, Static IP, New-NetIPAddress
+Tags: Windows, PowerShell, Networking, IPv4, Static IP, New-NetIPAddress
 
 Description: Assign a static IPv4 address, prefix length, and default gateway to a Windows network adapter using the PowerShell New-NetIPAddress cmdlet.
 
@@ -33,7 +33,7 @@ $iface = Get-NetAdapter -Name "Ethernet"
 Remove-NetIPAddress -InterfaceIndex $iface.InterfaceIndex -AddressFamily IPv4 -Confirm:$false
 
 # Also remove the existing default route (gateway)
-Remove-NetRoute -InterfaceIndex $iface.InterfaceIndex -AddressFamily IPv4 -Confirm:$false
+Remove-NetRoute -InterfaceIndex $iface.InterfaceIndex -AddressFamily IPv4 -DestinationPrefix "0.0.0.0/0" -Confirm:$false
 ```
 
 ## Assigning a Static IPv4 Address
@@ -61,11 +61,11 @@ Set-DnsClientServerAddress `
 
 ## Disabling DHCP
 
-If DHCP is still active, disable it:
+To explicitly disable IPv4 DHCP:
 
 ```powershell
-# Disable DHCP on the interface
-Set-NetIPInterface -InterfaceAlias "Ethernet" -Dhcp Disabled
+# Disable IPv4 DHCP on the interface
+Set-NetIPInterface -InterfaceAlias "Ethernet" -AddressFamily IPv4 -Dhcp Disabled
 ```
 
 ## Verifying the Configuration
@@ -96,10 +96,10 @@ $iface = Get-NetAdapter -Name $AdapterName
 
 # Remove existing configuration
 Remove-NetIPAddress -InterfaceIndex $iface.InterfaceIndex -AddressFamily IPv4 -Confirm:$false -ErrorAction SilentlyContinue
-Remove-NetRoute     -InterfaceIndex $iface.InterfaceIndex -AddressFamily IPv4 -Confirm:$false -ErrorAction SilentlyContinue
+Remove-NetRoute     -InterfaceIndex $iface.InterfaceIndex -AddressFamily IPv4 -DestinationPrefix "0.0.0.0/0" -Confirm:$false -ErrorAction SilentlyContinue
 
-# Disable DHCP
-Set-NetIPInterface -InterfaceIndex $iface.InterfaceIndex -Dhcp Disabled
+# Disable IPv4 DHCP
+Set-NetIPInterface -InterfaceIndex $iface.InterfaceIndex -AddressFamily IPv4 -Dhcp Disabled
 
 # Assign static IP
 New-NetIPAddress -InterfaceIndex $iface.InterfaceIndex `
