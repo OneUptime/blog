@@ -8,7 +8,7 @@ Description: Configure and verify IPv6 SLAAC on macOS using System Settings, net
 
 ## Introduction
 
-macOS enables IPv6 SLAAC by default for all network interfaces. The macOS networking stack processes Router Advertisements and automatically generates privacy-extended IPv6 addresses (RFC 8981). Like Windows, macOS uses random interface identifiers by default. Configuration is available through System Settings (GUI), the `networksetup` command-line tool, and sysctl parameters.
+macOS enables IPv6 SLAAC by default for network services. The macOS networking stack processes Router Advertisements and automatically generates stable CGA-based IPv6 addresses (RFC 3972) plus temporary privacy addresses (RFC 8981). macOS does not use MAC-derived EUI-64 interface identifiers by default. Configuration is available through System Settings (GUI), the `networksetup` command-line tool, and sysctl parameters.
 
 ## Verifying SLAAC on macOS
 
@@ -24,7 +24,7 @@ ifconfig en0 inet6
 #     inet6 2001:db8::5c3a:f912:8b4e:2d07 prefixlen 64 autoconf temporary
 #
 # "autoconf" = SLAAC-generated address
-# "secured" = stable privacy (RFC 7217)
+# "secured" = stable CGA-based address (RFC 3972 on Apple platforms)
 # "temporary" = privacy extensions (RFC 8981)
 
 # Show SLAAC addresses across all interfaces
@@ -45,16 +45,16 @@ networksetup -getinfo "Wi-Fi"
 # IPv6 Router: fe80::1
 
 # Set IPv6 to Automatic (SLAAC)
-networksetup -setv6automatic "Wi-Fi"
+sudo networksetup -setv6automatic "Wi-Fi"
 
 # Set to static IPv6 address
-networksetup -setv6manual "Wi-Fi" 2001:db8::10 64 fe80::1
+sudo networksetup -setv6manual "Wi-Fi" 2001:db8::10 64 fe80::1
 
 # Disable IPv6 on an interface
-networksetup -setv6off "Wi-Fi"
+sudo networksetup -setv6off "Wi-Fi"
 
 # Enable IPv6 (back to SLAAC)
-networksetup -setv6automatic "Wi-Fi"
+sudo networksetup -setv6automatic "Wi-Fi"
 
 # List all network services
 networksetup -listallnetworkservices
@@ -69,18 +69,24 @@ networksetup -listallnetworkservices
 ```bash
 # Check privacy extension status
 sysctl net.inet6.ip6.use_tempaddr
-# net.inet6.ip6.use_tempaddr: 2   ← Privacy extensions enabled (prefer temp)
+# net.inet6.ip6.use_tempaddr: 1   ← Temporary addresses enabled
+
+sysctl net.inet6.ip6.prefer_tempaddr
+# net.inet6.ip6.prefer_tempaddr: 1   ← Prefer temporary addresses for new connections
 
 # Values:
-# 0 = disabled (use stable addresses only)
-# 1 = enabled but prefer stable (generate temp but don't prefer)
-# 2 = enabled and prefer temporary (default on macOS)
+# use_tempaddr: 0 = disabled, 1 = enabled
+# prefer_tempaddr: 0 = prefer stable, 1 = prefer temporary (default on macOS)
 
 # Disable privacy extensions (use stable addresses only)
 sudo sysctl -w net.inet6.ip6.use_tempaddr=0
 
 # Enable privacy extensions (default)
-sudo sysctl -w net.inet6.ip6.use_tempaddr=2
+sudo sysctl -w net.inet6.ip6.use_tempaddr=1
+sudo sysctl -w net.inet6.ip6.prefer_tempaddr=1
+
+# Prefer stable addresses while still generating temporary addresses
+sudo sysctl -w net.inet6.ip6.prefer_tempaddr=0
 
 # Temporary address preferred lifetime
 sysctl net.inet6.ip6.temppltime
@@ -96,7 +102,7 @@ sudo sysctl -w net.inet6.ip6.temppltime=21600
 
 ## System Settings (macOS Ventura and later)
 
-```sql
+```text
 Graphical configuration in macOS:
 
 1. Open System Settings → Network
@@ -107,30 +113,30 @@ Graphical configuration in macOS:
    - "Automatically" = SLAAC (default)
    - "Link-local only" = link-local address only, no global
    - "Manually" = static IPv6 configuration
-   - "Off" = disable IPv6
+   - "Off" = disable IPv6 (if shown for that network service)
 
 For Automatic:
-  macOS uses SLAAC for address (from RA Prefix Info)
-  If RA has O flag: also uses stateless DHCPv6 for DNS
-  If RA has M flag: uses stateful DHCPv6 instead of SLAAC
+  macOS uses SLAAC when RA Prefix Information has the Autonomous (A) flag
+  If RA has O flag: DHCPv6 may provide other configuration such as DNS
+  If RA has M flag: DHCPv6 may provide addresses; SLAAC still depends on the A flag
 ```
 
 ## Forcing SLAAC Refresh on macOS
 
 ```bash
-# Method 1: Renew DHCP/SLAAC lease via networksetup
-# (also triggers RS to get new RA)
+# Method 1: Recreate a temporary automatic IPv6 service with ipconfig
+# (debug/temporary; not a persistent System Settings change)
 sudo ipconfig set en0 AUTOMATIC-V6
 
 # Method 2: Turn interface off and on
 # Using networksetup:
-networksetup -setv6off "Wi-Fi"
+sudo networksetup -setv6off "Wi-Fi"
 sleep 2
-networksetup -setv6automatic "Wi-Fi"
+sudo networksetup -setv6automatic "Wi-Fi"
 
 # Method 3: Send Router Solicitation manually (requires ndisc6)
 # brew install ndisc6
-rdisc6 en0
+sudo rdisc6 en0
 
 # Method 4: Using scutil to trigger renew
 # scutil --set IPv6Configuration ...
@@ -166,8 +172,8 @@ log show --predicate 'process == "configd" AND messageType == "error"' \
 # SLAAC only works with /64 prefixes
 # /128, /48, etc. will not trigger SLAAC
 
-# Check 6: Check if IPv6 is disabled globally
-networksetup -getv6settings en0
+# Check 6: Check if the network service itself is disabled
+networksetup -getnetworkserviceenabled "Wi-Fi"
 ```
 
 ## Reading macOS IPv6 Address Details
@@ -178,20 +184,20 @@ ifconfig en0 | grep "inet6"
 
 # Address types:
 # "autoconf" = SLAAC-generated
-# "secured" = stable privacy (RFC 7217, default on macOS)
+# "secured" = stable CGA-based address (RFC 3972 on Apple platforms)
 # "temporary" = random privacy extensions (RFC 8981)
 # "deprecated" = preferred lifetime expired
 
 # Check address lifetimes
 # macOS doesn't show lifetimes in ifconfig by default
-# Use: ipconfig getv6packet en0
-# Or: scutil to query network configuration store
+ifconfig -L en0 inet6
 
 # Show full IPv6 info
-ipconfig getifaddr en0         # Primary IPv6 address
-ipconfig getoption en0 IPv6Address  # SLAAC address (if via DHCPv6)
+ipconfig getsummary en0        # IPConfiguration state summary
+ipconfig getra en0             # Latest accepted Router Advertisement
+ipconfig getv6packet en0       # Latest DHCPv6 packet, if DHCPv6 is active
 ```
 
 ## Conclusion
 
-macOS configures SLAAC automatically with privacy extensions enabled by default (`use_tempaddr=2`). Both stable privacy addresses (marked "secured") and temporary addresses are generated. Use `networksetup -setv6automatic` to ensure SLAAC is configured, and `ifconfig en0 inet6` to verify addresses were received. For troubleshooting, use tcpdump to verify RA messages are arriving and `networksetup -getinfo` to check the configuration method. Privacy extensions can be controlled via sysctl `net.inet6.ip6.use_tempaddr`.
+macOS configures SLAAC automatically with privacy extensions enabled by default (`use_tempaddr=1`, `prefer_tempaddr=1`). Both stable CGA-based addresses (marked "secured") and temporary addresses are generated. Use `sudo networksetup -setv6automatic` to ensure SLAAC is configured, and `ifconfig en0 inet6` to verify addresses were received. For troubleshooting, use tcpdump to verify RA messages are arriving and `networksetup -getinfo` to check the configuration method. Privacy extensions can be controlled via sysctl `net.inet6.ip6.use_tempaddr` and `net.inet6.ip6.prefer_tempaddr`.
