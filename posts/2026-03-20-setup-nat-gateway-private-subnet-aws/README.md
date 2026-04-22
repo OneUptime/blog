@@ -8,7 +8,7 @@ Description: Create an AWS NAT Gateway in a public subnet, allocate an Elastic I
 
 ## Introduction
 
-A NAT Gateway allows instances in private subnets to make outbound IPv4 connections to the internet (for software updates, API calls, etc.) while remaining unreachable from the internet. It must be placed in a public subnet and requires an Elastic IP.
+A public NAT Gateway allows instances in private subnets to make outbound IPv4 connections to the internet (for software updates, API calls, etc.) while remaining unreachable from the internet. This zonal setup places the NAT Gateway in a public subnet and uses an Elastic IP.
 
 ## Step 1: Allocate an Elastic IP
 
@@ -27,7 +27,7 @@ echo "EIP Allocation ID: $EIP_ALLOC"
 
 ```bash
 # Place NAT Gateway in a public subnet
-PUBLIC_SUBNET_ID=subnet-0pub1a
+PUBLIC_SUBNET_ID=subnet-0abc123def4567890
 
 NAT_ID=$(aws ec2 create-nat-gateway \
   --subnet-id $PUBLIC_SUBNET_ID \
@@ -38,7 +38,7 @@ NAT_ID=$(aws ec2 create-nat-gateway \
 
 echo "NAT Gateway: $NAT_ID"
 
-# Wait for it to become available (takes 1-2 minutes)
+# Wait for it to become available (takes a few minutes)
 echo "Waiting for NAT Gateway to become available..."
 aws ec2 wait nat-gateway-available --nat-gateway-ids $NAT_ID
 echo "NAT Gateway is ready"
@@ -47,7 +47,7 @@ echo "NAT Gateway is ready"
 ## Step 3: Configure Private Subnet Route Table
 
 ```bash
-VPC_ID=vpc-0abc123def456
+VPC_ID=vpc-0123abc456def7890
 
 # Create a private route table
 PRIV_RT=$(aws ec2 create-route-table \
@@ -65,7 +65,7 @@ aws ec2 create-route \
 # Associate private subnets
 aws ec2 associate-route-table \
   --route-table-id $PRIV_RT \
-  --subnet-id subnet-0priv1a
+  --subnet-id subnet-0123abc456def7890
 ```
 
 ## Step 4: Verify from a Private Instance
@@ -77,16 +77,16 @@ curl -s https://checkip.amazonaws.com
 # Should return the NAT Gateway's Elastic IP
 ```
 
-## High Availability: NAT Gateway Per AZ
+## High Availability: Zonal NAT Gateway Per AZ
 
-AWS recommends one NAT Gateway per Availability Zone for HA:
+AWS also supports Regional NAT Gateways for automatic multi-AZ expansion. For zonal NAT Gateways, create one NAT Gateway per Availability Zone for HA:
 
 ```bash
 # Create one NAT Gateway per AZ with its own EIP
 for AZ in us-east-1a us-east-1b us-east-1c; do
     EIP=$(aws ec2 allocate-address --domain vpc --query 'AllocationId' --output text)
     PUB_SUBNET=$(aws ec2 describe-subnets \
-      --filters "Name=availabilityZone,Values=$AZ" "Name=tag:Name,Values=public-*" \
+      --filters "Name=vpc-id,Values=$VPC_ID" "Name=availabilityZone,Values=$AZ" "Name=tag:Name,Values=public-*" \
       --query 'Subnets[0].SubnetId' --output text)
     NAT=$(aws ec2 create-nat-gateway --subnet-id $PUB_SUBNET --allocation-id $EIP \
       --query 'NatGateway.NatGatewayId' --output text)
@@ -100,4 +100,4 @@ NAT Gateways charge per hour and per GB processed. For development/test environm
 
 ## Conclusion
 
-NAT Gateways provide outbound-only internet access for private subnets. Deploy one per AZ in production, place them in public subnets, and route private subnet traffic to them. Instances behind a NAT appear on the internet with the NAT's Elastic IP.
+NAT Gateways provide outbound-only internet access for private subnets. For zonal deployments, deploy one per AZ in production, place them in public subnets, and route private subnet traffic to them. Instances behind a public NAT appear on the internet with the NAT's Elastic IP.
