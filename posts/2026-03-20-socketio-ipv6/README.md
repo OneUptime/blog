@@ -91,7 +91,7 @@ node -e 'const { io } = require("socket.io-client"); const socket = io("http://[
 sudo ss -6 -tlnp | grep 8080
 
 # Check for IPv6 in access logs if NGINX is in front
-tail -f /var/log/nginx/access.log | grep "::"
+tail -f /var/log/nginx/access.log | grep -E '^[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]* '
 ```
 
 ## Monitoring with OneUptime
