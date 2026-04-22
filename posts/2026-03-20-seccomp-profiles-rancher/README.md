@@ -22,9 +22,9 @@ How to Configure Seccomp Profiles in Rancher addresses these challenges by addin
 
 ## Prerequisites
 
-- Rancher v2.7+ cluster with cluster admin access
+- Rancher v2.7.2+ cluster with cluster admin access
 - Kubernetes 1.26+
-- Helm 3.x
+- `kubectl` access and `jq`
 - Understanding of Linux security concepts
 
 ## Step 1: Assess Current Security Posture
@@ -33,46 +33,40 @@ How to Configure Seccomp Profiles in Rancher addresses these challenges by addin
 # Run a basic security audit
 
 kubectl get pods --all-namespaces -o json | jq -r '
-  .items[] | 
+  def all_containers:
+    ((.spec.initContainers // []) + (.spec.containers // []) + (.spec.ephemeralContainers // []));
+  .items[] |
   select(
-    .spec.containers[].securityContext.runAsRoot == true or
-    .spec.containers[].securityContext.privileged == true
+    (.spec.securityContext.runAsUser // -1) == 0 or
+    any(all_containers[]; (.securityContext.runAsUser // -1) == 0 or (.securityContext.privileged // false) == true)
   ) |
   [.metadata.namespace, .metadata.name] |
   @csv'
 
-# Check for pods running as root
-kubectl get pods --all-namespaces -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,USER:.spec.securityContext.runAsUser'
+# Check for pods explicitly configured to run as UID 0
+kubectl get pods --all-namespaces -o json | jq -r '
+  def all_containers:
+    ((.spec.initContainers // []) + (.spec.containers // []) + (.spec.ephemeralContainers // []));
+  .items[] |
+  select((.spec.securityContext.runAsUser // -1) == 0 or any(all_containers[]; (.securityContext.runAsUser // -1) == 0)) |
+  .metadata.namespace + "/" + .metadata.name'
 
 # Check privileged pods
-kubectl get pods --all-namespaces -o json |   jq -r '.items[] | select(.spec.containers[].securityContext.privileged==true) | 
+kubectl get pods --all-namespaces -o json | jq -r '
+  def all_containers:
+    ((.spec.initContainers // []) + (.spec.containers // []) + (.spec.ephemeralContainers // []));
+  .items[] | select(any(all_containers[]; (.securityContext.privileged // false) == true)) |
   .metadata.namespace + "/" + .metadata.name'
 ```
 
-## Step 2: Configure Security Feature
+## Step 2: Prepare a Local Seccomp Profile
 
-```yaml
-# security-feature-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: security-config
-  namespace: kube-system
-data:
-  config.yaml: |
-    # Security feature configuration
-    enabled: true
-    level: "strict"
-    
-    # Audit settings
-    audit:
-      enabled: true
-      outputPath: /var/log/security-audit.log
-    
-    # Alert settings
-    alerts:
-      enabled: true
-      webhook: "https://alerts.example.com/security"
+Save this audit profile on every Linux node as `<kubelet-root-dir>/seccomp/profiles/audit.json`. Use it for syscall discovery before moving to `RuntimeDefault` or a tested restrictive `Localhost` profile.
+
+```json
+{
+  "defaultAction": "SCMP_ACT_LOG"
+}
 ```
 
 ## Step 3: Apply Pod Security Standards
@@ -102,7 +96,14 @@ metadata:
   name: secure-app
   namespace: production
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: secure-app
   template:
+    metadata:
+      labels:
+        app: secure-app
     spec:
       # Pod-level security context
       securityContext:
@@ -112,6 +113,9 @@ spec:
         fsGroup: 2000
         seccompProfile:
           type: RuntimeDefault
+          # For a tested Localhost profile distributed to every node:
+          # type: Localhost
+          # localhostProfile: profiles/audit.json
       
       containers:
       - name: app
@@ -144,13 +148,16 @@ spec:
 ## Step 5: Install Security Tooling
 
 ```bash
-# Install via Helm
-helm repo add security-charts https://charts.example.com/security
-helm repo update
+# Install Rancher Monitoring from the Rancher UI:
+# Cluster Management > Explore > Cluster Tools > Monitoring > Install
+# In the chart values, allowlist the namespace label used below:
+# kube-state-metrics:
+#   metricLabelsAllowlist:
+#   - namespaces=[pod-security.kubernetes.io/enforce]
 
-helm install security-tool security-charts/security-tool   --namespace security-system   --create-namespace   --set rules.enabled=true   --set alerting.enabled=true   --set alerting.slack.webhook=YOUR_WEBHOOK_URL
-
-kubectl get pods -n security-system
+# Then verify the Prometheus Operator CRDs and monitoring pods
+kubectl get crd prometheusrules.monitoring.coreos.com
+kubectl get pods -n cattle-monitoring-system
 ```
 
 ## Step 6: Create Alert Rules
@@ -166,26 +173,25 @@ spec:
   groups:
   - name: security.alerts
     rules:
-    - alert: PrivilegedContainerDetected
+    - alert: HostNetworkPodDetected
       expr: |
-        kube_pod_container_info{container!=""} * on(pod, namespace)
-        kube_pod_spec_container_security_context_privileged{privileged="true"} > 0
+        kube_pod_info{host_network="true"} == 1
       for: 0m
       labels:
         severity: critical
       annotations:
-        summary: "Privileged container in {{ $labels.namespace }}/{{ $labels.pod }}"
+        summary: "Host network pod in {{ $labels.namespace }}/{{ $labels.pod }}"
     
-    - alert: ContainerRunningAsRoot
+    - alert: NamespaceMissingRestrictedPodSecurity
       expr: |
-        kube_pod_container_status_running * on(pod, namespace)
-        kube_pod_container_info{container_id!=""} and
-        kube_pod_spec_container_security_context_run_as_user{run_as_user="0"} > 0
+        kube_namespace_status_phase{phase="Active"} == 1
+        unless on(namespace)
+        kube_namespace_labels{label_pod_security_kubernetes_io_enforce="restricted"} == 1
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Container running as root in {{ $labels.namespace }}"
+        summary: "Namespace {{ $labels.namespace }} is missing restricted Pod Security enforcement"
 ```
 
 ## Step 7: Verify Security Controls
@@ -197,16 +203,28 @@ spec:
 echo "=== Security Control Verification ==="
 
 echo "1. Checking for privileged containers..."
-PRIV_COUNT=$(kubectl get pods --all-namespaces -o json |   jq '[.items[].spec.containers[].securityContext.privileged // false | select(.)] | length')
+PRIV_COUNT=$(kubectl get pods --all-namespaces -o json | jq '
+  def all_containers:
+    ((.spec.initContainers // []) + (.spec.containers // []) + (.spec.ephemeralContainers // []));
+  [.items[] | all_containers[] | (.securityContext.privileged // false) | select(.)] | length')
 echo "   Privileged containers: $PRIV_COUNT"
 
 echo ""
 echo "2. Checking namespaces with Pod Security Standards..."
-kubectl get namespaces -o custom-columns='NAME:.metadata.name,PSS:.metadata.labels[pod-security\.kubernetes\.io/enforce]'
+kubectl get namespaces -L pod-security.kubernetes.io/enforce
 
 echo ""
-echo "3. Checking for host network pods..."
-kubectl get pods --all-namespaces -o json |   jq -r '.items[] | select(.spec.hostNetwork==true) | 
+echo "3. Checking for pods without explicit seccomp profiles..."
+kubectl get pods --all-namespaces -o json | jq -r '
+  def all_containers:
+    ((.spec.initContainers // []) + (.spec.containers // []) + (.spec.ephemeralContainers // []));
+  .items[] |
+  select((.spec.securityContext.seccompProfile.type // "") == "" and any(all_containers[]; (.securityContext.seccompProfile.type // "") == "")) |
+  .metadata.namespace + "/" + .metadata.name'
+
+echo ""
+echo "4. Checking for host network pods..."
+kubectl get pods --all-namespaces -o json | jq -r '.items[] | select(.spec.hostNetwork==true) |
   .metadata.namespace + "/" + .metadata.name'
 
 echo "=== Verification Complete ==="
