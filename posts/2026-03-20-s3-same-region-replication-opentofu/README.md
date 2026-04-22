@@ -84,9 +84,7 @@ resource "aws_iam_role_policy" "srr" {
         Action = [
           "s3:ReplicateObject",
           "s3:ReplicateDelete",
-          "s3:ReplicateTags",
-          "s3:GetObjectVersionTagging",
-          "s3:ObjectOwnerOverrideToBucketOwner"
+          "s3:ReplicateTags"
         ]
         Resource = "${aws_s3_bucket.compliance.arn}/*"
       }
@@ -104,8 +102,9 @@ resource "aws_s3_bucket_replication_configuration" "srr" {
 
   # Replicate only specific prefixes for compliance
   rule {
-    id     = "replicate-financial-records"
-    status = "Enabled"
+    id       = "replicate-financial-records"
+    priority = 1
+    status   = "Enabled"
 
     filter {
       prefix = "finance/"
@@ -113,16 +112,8 @@ resource "aws_s3_bucket_replication_configuration" "srr" {
 
     destination {
       bucket = aws_s3_bucket.compliance.arn
-      # Keep same storage class as source
+      # Store replicas in STANDARD
       storage_class = "STANDARD"
-
-      # Transfer ownership to the destination bucket owner
-      # Important when replicating to a different account
-      access_control_translation {
-        owner = "Destination"
-      }
-
-      account = data.aws_caller_identity.current.account_id
     }
 
     delete_marker_replication {
@@ -131,8 +122,9 @@ resource "aws_s3_bucket_replication_configuration" "srr" {
   }
 
   rule {
-    id     = "replicate-customer-data"
-    status = "Enabled"
+    id       = "replicate-customer-data"
+    priority = 2
+    status   = "Enabled"
 
     filter {
       prefix = "customers/"
@@ -142,9 +134,17 @@ resource "aws_s3_bucket_replication_configuration" "srr" {
       bucket        = aws_s3_bucket.compliance.arn
       storage_class = "STANDARD_IA"
     }
+
+    delete_marker_replication {
+      status = "Disabled"
+    }
   }
 
-  depends_on = [aws_s3_bucket_versioning.production]
+  depends_on = [
+    aws_iam_role_policy.srr,
+    aws_s3_bucket_versioning.production,
+    aws_s3_bucket_versioning.compliance
+  ]
 }
 ```
 
@@ -161,6 +161,8 @@ resource "aws_s3_bucket_object_lock_configuration" "compliance" {
       years = 7  # 7-year retention for financial records
     }
   }
+
+  depends_on = [aws_s3_bucket_versioning.compliance]
 }
 ```
 
