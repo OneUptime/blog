@@ -25,7 +25,7 @@ Keeping Kubernetes clusters up to date is essential for security and feature acc
 kubectl get nodes
 
 # Check current Kubernetes version
-kubectl version --short
+kubectl version
 ```
 
 ---
@@ -37,18 +37,19 @@ kubectl version --short
 3. Under **Upgrade Strategy**, configure:
    - **Control Plane Concurrency**: `1` (upgrade one control plane node at a time)
    - **Worker Concurrency**: `10%` (upgrade 10% of workers simultaneously)
-   - **Max Unavailable**: `1`
+   - **Drain Nodes**: enable for control plane and worker nodes if you want Rancher to drain nodes before upgrading them
 4. Click **Save** - Rancher will orchestrate the rolling upgrade.
 
 ---
 
 ## Upgrade via kubectl (Manual Method)
 
-For clusters not managed by Rancher's provisioner, use the System Upgrade Controller:
+For RKE2 clusters not managed by Rancher (or imported clusters with Rancher version management disabled), use the System Upgrade Controller:
 
 ```bash
 # Install the System Upgrade Controller
 kubectl apply -f \
+  https://github.com/rancher/system-upgrade-controller/releases/latest/download/crd.yaml -f \
   https://github.com/rancher/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
 ```
 
@@ -108,9 +109,20 @@ spec:
   prepare:
     image: rancher/rke2-upgrade
     args: ["prepare", "rke2-server-upgrade"]
+  serviceAccountName: system-upgrade
+  upgrade:
+    image: rancher/rke2-upgrade
   concurrency: 2
   drain:
     force: false
+```
+
+```bash
+# Label worker nodes
+kubectl label node worker-1 worker-2 rke2-upgrade=worker
+
+# Apply the worker upgrade plan
+kubectl apply -f upgrade-rke2-worker.yaml
 ```
 
 ---
@@ -132,7 +144,7 @@ kubectl get nodes -o wide
 
 ## Rollback Considerations
 
-Kubernetes does not support downgrades of the API server. If an upgrade fails:
+Kubernetes does not support an in-place API server downgrade. If an upgrade fails:
 
 1. Stop the upgrade by removing the upgrade Plan.
 2. Restore etcd from the pre-upgrade backup.
