@@ -13,9 +13,9 @@ Rancher Desktop is an open-source desktop application that provides Kubernetes a
 ## Prerequisites
 
 - A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
-- At least 8 GB of RAM (16 GB recommended)
-- At least 4 CPU cores
+- Administrator/sudo privileges may be required for installation or optional privileged features
+- 8 GB of RAM recommended
+- 4 CPU cores recommended
 
 ## Overview
 
@@ -29,14 +29,14 @@ Rancher Desktop simplifies local Kubernetes and container development by providi
 ## Step 1: Initial Setup
 
 ```bash
-# Verify Rancher Desktop is installed and running
+# Verify the rdctl CLI is installed
 
 rdctl version
 
-# Check Kubernetes cluster status
+# Check Kubernetes cluster status if Kubernetes is enabled
 kubectl cluster-info
 
-# Verify container runtime
+# Verify the active container runtime
 nerdctl version
 # or
 docker version
@@ -53,8 +53,10 @@ Open Rancher Desktop Preferences to configure:
 
 ```bash
 # Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
+rdctl set --kubernetes-version 1.34.3
 rdctl set --container-engine containerd
+# or switch to the Docker-compatible engine
+rdctl set --container-engine docker
 ```
 
 ## Step 3: Working with Containers
@@ -62,21 +64,30 @@ rdctl set --container-engine containerd
 ```bash
 # Pull an image
 nerdctl pull nginx:latest
-# or with docker compatibility
+# or with the Docker-compatible engine
 docker pull nginx:latest
 
 # Run a container
 nerdctl run -d -p 8080:80 --name my-nginx nginx:latest
+# or
+docker run -d -p 8080:80 --name my-nginx nginx:latest
 
 # List running containers
 nerdctl ps
+# or
+docker ps
 
 # View container logs
 nerdctl logs my-nginx
+# or
+docker logs my-nginx
 
 # Stop and remove
 nerdctl stop my-nginx
 nerdctl rm my-nginx
+# or
+docker stop my-nginx
+docker rm my-nginx
 ```
 
 ## Step 4: Working with Kubernetes
@@ -97,13 +108,13 @@ kubectl expose deployment hello-world \
 # Check the service
 kubectl get svc hello-world
 
-# Forward local port to the service
-kubectl port-forward svc/hello-world 8080:80 &
+# Forward local port to the service in a separate terminal
+kubectl port-forward svc/hello-world 8080:80
 
-# Test the application
+# In another terminal, test the application
 curl http://localhost:8080
 
-# Clean up
+# Stop port-forward with Ctrl+C, then clean up
 kubectl delete deployment hello-world
 kubectl delete svc hello-world
 ```
@@ -131,31 +142,32 @@ helm uninstall my-release
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
-rdctl factory-reset
+# Reset Rancher Desktop to factory defaults
+rdctl reset --factory
 
-# Check Rancher Desktop status
-rdctl status
+# Check Rancher Desktop info
+rdctl info
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
+# Show current Rancher Desktop settings
+rdctl list-settings
 
 # Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+rdctl set --kubernetes-version 1.34.3
 ```
 
 ## Troubleshooting
 
 ```bash
-# Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# Open the Rancher Desktop logs folder from Troubleshooting > Show Logs
+# macOS: ~/Library/Logs/rancher-desktop/
+# Windows: %LOCALAPPDATA%\rancher-desktop\
+# Linux: ~/.local/share/rancher-desktop/
 
 # Reset to factory defaults
-rdctl factory-reset
+rdctl reset --factory
 
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Check Rancher Desktop info and VM IP
+rdctl info
 ```
 
 ## Conclusion
