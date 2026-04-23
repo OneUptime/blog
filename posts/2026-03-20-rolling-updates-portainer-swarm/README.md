@@ -8,14 +8,12 @@ Description: Configure Docker Swarm rolling updates with Portainer for zero-down
 
 ## Introduction
 
-Rolling updates replace containers one at a time (or in small batches), ensuring your service stays available throughout the update. Docker Swarm has built-in rolling update support with configurable parallelism, delay, health checks, and rollback policies. Portainer provides a visual interface to manage and monitor these updates.
+Rolling updates replace containers one at a time (or in small batches), helping your service stay available throughout the update. Docker Swarm has built-in rolling update support with configurable parallelism, delay, health checks, and rollback policies. Portainer provides a visual interface to manage and monitor these updates.
 
 ## Step 1: Deploy Service with Update Config
 
 ```yaml
 # docker-compose.yml - Service with rolling update configuration
-
-version: "3.8"
 
 networks:
   app_overlay:
@@ -36,9 +34,9 @@ services:
         parallelism: 2
         # Wait 15s between updating batches
         delay: 15s
-        # Start new replica before stopping old (zero downtime)
+        # Start new replica before stopping old (requires spare capacity for zero downtime)
         order: start-first
-        # Wait 60s before marking update as successful
+        # Monitor each updated task for failures for 60s
         monitor: 60s
         # Roll back all replicas on failure
         failure_action: rollback
@@ -66,20 +64,21 @@ services:
           cpus: "0.5"
           memory: 256M
 
-    # Health check ensures container is ready before update proceeds
+      # Service labels (Traefik's Swarm provider reads service labels)
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.api.rule=Host(`api.yourdomain.com`)"
+        - "traefik.http.services.api.loadbalancer.server.port=8000"
+        - "traefik.http.services.api.loadbalancer.healthcheck.path=/health"
+        - "traefik.http.services.api.loadbalancer.healthcheck.interval=10s"
+
+    # Health check reports app readiness and can fail unhealthy tasks during the monitor window
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 30s
-
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.api.rule=Host(`api.yourdomain.com`)"
-      - "traefik.http.services.api.loadbalancer.server.port=8000"
-      - "traefik.http.services.api.loadbalancer.healthcheck.path=/health"
-      - "traefik.http.services.api.loadbalancer.healthcheck.interval=10s"
 ```
 
 ## Step 2: Trigger Rolling Update via Portainer
@@ -120,7 +119,7 @@ UPDATE_RESPONSE=$(curl -s -X POST \
     -H "Content-Type: application/json" \
     "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/services/$SERVICE_ID/update?version=$CURRENT_VERSION" \
     -d "$(echo "$SERVICE" | jq --arg img "$NEW_IMAGE" \
-        '.Spec.TaskTemplate.ContainerSpec.Image = $img')")
+        '.Spec | .TaskTemplate.ContainerSpec.Image = $img')")
 
 echo "Update initiated: $(echo "$UPDATE_RESPONSE" | jq '.')"
 ```
@@ -152,37 +151,47 @@ while true; do
         --format '{{.CurrentState}}' | \
         grep -c "Failed")
 
-    echo "[$(date '+%H:%M:%S')] Running: $RUNNING/$EXPECTED_REPLICAS | Preparing: $PREPARING | Failed: $FAILED"
+    UPDATE_STATE=$(docker service inspect "$SERVICE_NAME" \
+        --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{end}}')
 
-    # Check if update is complete
-    if [ "$RUNNING" -eq "$EXPECTED_REPLICAS" ] && [ "$PREPARING" -eq 0 ]; then
-        echo "Update complete! All $EXPECTED_REPLICAS replicas running."
-        break
+    echo "[$(date '+%H:%M:%S')] Running: $RUNNING/$EXPECTED_REPLICAS | Preparing: $PREPARING | Failed: $FAILED | Update: ${UPDATE_STATE:-not started}"
+
+    # Check for a paused update; with failure_action=rollback, Swarm starts rollback automatically
+    if [ "$UPDATE_STATE" = "paused" ] || [ "$UPDATE_STATE" = "rollback_paused" ]; then
+        echo "ERROR: Update paused in state: $UPDATE_STATE"
+        if [ "$UPDATE_STATE" = "paused" ]; then
+            docker service rollback "$SERVICE_NAME"
+        fi
+        exit 1
     fi
 
-    # Check for failure
-    if [ "$FAILED" -gt 0 ]; then
-        echo "ERROR: $FAILED tasks failed. Rolling back..."
-        docker service rollback "$SERVICE_NAME"
+    if [ "$UPDATE_STATE" = "rollback_started" ] || [ "$UPDATE_STATE" = "rollback_completed" ]; then
+        echo "ERROR: Update failed and rollback state is: $UPDATE_STATE"
         exit 1
+    fi
+
+    # Check if update is complete
+    if [ "$RUNNING" -eq "$EXPECTED_REPLICAS" ] && [ "$PREPARING" -eq 0 ] && [ "$UPDATE_STATE" = "completed" ]; then
+        echo "Update complete! All $EXPECTED_REPLICAS replicas running."
+        break
     fi
 
     sleep 5
 done
 
-# Verify all tasks are healthy
-echo "Verifying health checks..."
+# Give health checks time to fail unhealthy tasks, then verify desired tasks are still running
+echo "Waiting for health-check monitor window..."
 sleep 30
 
-HEALTHY=$(docker service ps "$SERVICE_NAME" \
+RUNNING_AFTER_WAIT=$(docker service ps "$SERVICE_NAME" \
     --filter "desired-state=running" \
     --format '{{.CurrentState}}' | \
     grep -c "Running")
 
-if [ "$HEALTHY" -eq "$EXPECTED_REPLICAS" ]; then
-    echo "✓ All replicas healthy. Update successful!"
+if [ "$RUNNING_AFTER_WAIT" -eq "$EXPECTED_REPLICAS" ]; then
+    echo "✓ All replicas still running after health-check window. Update successful!"
 else
-    echo "WARNING: Expected $EXPECTED_REPLICAS healthy replicas, found $HEALTHY"
+    echo "WARNING: Expected $EXPECTED_REPLICAS running replicas, found $RUNNING_AFTER_WAIT"
 fi
 ```
 
@@ -193,9 +202,17 @@ fi
 docker service rollback myapp_api
 
 # Rollback via Portainer API
+SERVICE=$(curl -s \
+    -H "X-API-Key: $API_KEY" \
+    "$PORTAINER_URL/api/endpoints/1/docker/services/myapp_api")
+
+VERSION=$(echo "$SERVICE" | jq -r '.Version.Index')
+
 curl -X POST \
     -H "X-API-Key: $API_KEY" \
-    "$PORTAINER_URL/api/endpoints/1/docker/services/myapp_api/update?version=$VERSION&rollback=true"
+    -H "Content-Type: application/json" \
+    "$PORTAINER_URL/api/endpoints/1/docker/services/myapp_api/update?version=$VERSION&rollback=previous" \
+    -d "$(echo "$SERVICE" | jq '.Spec')"
 
 # View rollback history
 docker service ps myapp_api --no-trunc
@@ -224,7 +241,8 @@ while true; do
     else
         # Show status every 10 checks
         if [ $((TOTAL % 10)) -eq 0 ]; then
-            echo "[$(date '+%H:%M:%S')] OK: $TOTAL checks, $ERRORS errors (${ERRORS}% error rate)"
+            ERROR_RATE=$((ERRORS * 100 / TOTAL))
+            echo "[$(date '+%H:%M:%S')] OK: $TOTAL checks, $ERRORS errors (${ERROR_RATE}% error rate)"
         fi
     fi
 
@@ -243,10 +261,10 @@ In Portainer's Services view during a rolling update:
 2. **Service tasks** tab shows individual replica states:
    - `Running` (old version being replaced)
    - `Preparing` (new version starting)
-   - `Running` (new version healthy)
+   - `Running` (new version task executing)
 
 3. **Update failure** automatically triggers rollback if configured
 
 ## Conclusion
 
-Docker Swarm rolling updates with Portainer provide true zero-downtime deployments. The `start-first` order ensures new replicas are healthy before old ones are stopped. Health checks prevent unhealthy replicas from being marked ready. Automatic rollback triggers if failures exceed the threshold. Portainer's Services view gives real-time visibility into the update progress, making it easy to monitor and intervene if needed.
+Docker Swarm rolling updates with Portainer can provide zero-downtime deployments when the service has enough capacity and the app handles graceful startup and shutdown. The `start-first` order starts replacement tasks before old tasks are stopped, so replicas briefly overlap. Health checks and the update monitor window help detect unhealthy tasks during rollout. Automatic rollback triggers if failures exceed the threshold. Portainer's Services view gives real-time visibility into the update progress, making it easy to monitor and intervene if needed.
