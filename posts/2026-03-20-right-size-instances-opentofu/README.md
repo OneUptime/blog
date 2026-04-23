@@ -63,15 +63,18 @@ resource "aws_instance" "web" {
 
 # rds.tf
 resource "aws_db_instance" "main" {
-  instance_class   = local.sizes.db_instance_class
-  engine           = "postgres"
-  engine_version   = "15.4"
-  allocated_storage = var.environment == "production" ? 100 : 20
-  storage_type      = var.environment == "production" ? "gp3" : "gp2"
+  instance_class              = local.sizes.db_instance_class
+  engine                      = "postgres"
+  engine_version              = "15"
+  username                    = var.db_username
+  manage_master_user_password = true
+  allocated_storage           = var.environment == "production" ? 100 : 20
+  storage_type                = var.environment == "production" ? "gp3" : "gp2"
 }
 
 # ecs.tf
 resource "aws_ecs_task_definition" "api" {
+  family = "${var.environment}-api"
   cpu    = local.sizes.ecs_cpu
   memory = local.sizes.ecs_memory
 
@@ -87,7 +90,7 @@ resource "aws_ecs_task_definition" "api" {
 ## Auto-Shutdown for Dev Environments
 
 ```hcl
-# auto_shutdown.tf - save costs by stopping dev instances outside business hours
+# auto_shutdown.tf - save costs by scaling dev ASGs down outside business hours
 resource "aws_autoscaling_schedule" "dev_shutdown" {
   count = var.environment == "dev" ? 1 : 0
 
@@ -135,9 +138,19 @@ resource "aws_launch_template" "app" {
 
 ```bash
 # Compare costs between environments
-infracost diff \
+infracost breakdown \
   --path environments/dev \
-  --compare-to environments/production \
+  --format json \
+  --out-file infracost-dev.json
+
+infracost breakdown \
+  --path environments/production \
+  --format json \
+  --out-file infracost-production.json
+
+infracost diff \
+  --path infracost-production.json \
+  --compare-to infracost-dev.json \
   --format table
 ```
 
@@ -145,6 +158,6 @@ infracost diff \
 
 - Define all environment sizing in a single `locals` map - changing sizes in one place propagates to all resources.
 - Use `t3.micro` or `t3.small` for dev and staging databases - RDS is often the biggest cost driver in non-production.
-- Enable auto-shutdown schedules for dev environments - an instance running 12 hours/day instead of 24 cuts instance costs by 50%.
-- Use spot instances for dev/staging ASGs - a t3.medium spot instance costs 70% less than on-demand.
-- Review AWS Compute Optimizer recommendations quarterly and update sizing locals based on actual CPU/memory utilization data.
+- Enable scale-down schedules for dev Auto Scaling groups - an ASG running 12 hours/day instead of 24 cuts EC2 instance-hour costs by about 50%.
+- Use spot instances for dev/staging ASGs - Spot Instances can save up to 90% compared to On-Demand pricing, but savings vary by instance type, Region, and Availability Zone.
+- Review AWS Compute Optimizer recommendations for supported resources quarterly and update sizing locals based on actual CPU/memory utilization data.
