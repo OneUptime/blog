@@ -92,6 +92,7 @@ main()
 ```python
 import selectors
 import socket
+import types
 from typing import Callable
 
 HandlerFn = Callable[[socket.socket, bytes], bytes]
@@ -109,6 +110,30 @@ class ReactorServer:
         self._server = s
         print(f"ReactorServer on {host}:{port}")
 
+    def _service(self, conn: socket.socket, mask: int) -> None:
+        data = self._sel.get_key(conn).data
+        if mask & selectors.EVENT_READ:
+            recv = conn.recv(4096)
+            if recv:
+                data.outbuf += self._handler(conn, recv)
+                if data.outbuf:
+                    self._sel.modify(
+                        conn,
+                        selectors.EVENT_READ | selectors.EVENT_WRITE,
+                        data=data,
+                    )
+            else:
+                self._sel.unregister(conn)
+                conn.close()
+                return
+
+        if mask & selectors.EVENT_WRITE:
+            if data.outbuf:
+                sent = conn.send(data.outbuf)
+                data.outbuf = data.outbuf[sent:]
+            if not data.outbuf:
+                self._sel.modify(conn, selectors.EVENT_READ, data=data)
+
     def run(self) -> None:
         try:
             while True:
@@ -116,17 +141,12 @@ class ReactorServer:
                     if key.data == "server":
                         conn, addr = self._server.accept()
                         conn.setblocking(False)
-                        self._sel.register(conn, selectors.EVENT_READ, data="client")
+                        data = types.SimpleNamespace(addr=addr, outbuf=b"")
+                        self._sel.register(conn, selectors.EVENT_READ, data=data)
                     else:
-                        conn = key.fileobj
-                        data = conn.recv(4096)
-                        if data:
-                            response = self._handler(conn, data)
-                            conn.sendall(response)
-                        else:
-                            self._sel.unregister(conn)
-                            conn.close()
+                        self._service(key.fileobj, mask)
         finally:
+            self._server.close()
             self._sel.close()
 
 # Usage
@@ -139,4 +159,4 @@ ReactorServer("0.0.0.0", 9000, echo_handler).run()
 
 ## Conclusion
 
-The Reactor pattern uses `selectors.DefaultSelector` (backed by `epoll` on Linux, `kqueue` on macOS) to multiplex I/O across many sockets in a single thread. Only subscribe to `EVENT_WRITE` when you have data to send - subscribing always causes the event loop to spin. Use `sel.modify` to change interest flags dynamically. This pattern is the foundation of event-driven frameworks like `asyncio`. For Python applications, `asyncio.start_server` provides a higher-level API on top of the same underlying mechanism.
+The Reactor pattern uses `selectors.DefaultSelector` (backed by `epoll` on Linux, `kqueue` on macOS) to multiplex I/O across many sockets in a single thread. Only subscribe to `EVENT_WRITE` when you have data to send - connected TCP sockets are usually writable, so subscribing all the time can make the event loop wake up continuously. Use `sel.modify` to change interest flags dynamically. This pattern is closely related to the event loops used by frameworks like `asyncio`. For Python applications, `asyncio.start_server` provides a higher-level API on top of `asyncio`'s event loop and platform-specific I/O primitives.
