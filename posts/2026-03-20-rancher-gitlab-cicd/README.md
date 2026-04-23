@@ -24,18 +24,16 @@ GitLab CI/CD and Rancher complement each other naturally: GitLab manages source 
 helm repo add gitlab https://charts.gitlab.io
 helm repo update
 
-# Retrieve your GitLab Runner registration token
-# GitLab UI: Project/Group → Settings → CI/CD → Runners → Registration Token
+# Create a runner in GitLab, enable Run untagged, and copy its runner authentication token
+# GitLab UI: Project → Settings → CI/CD → Runners → Create project runner
 
 # Install GitLab Runner
 helm install gitlab-runner gitlab/gitlab-runner \
   --namespace gitlab-runner \
   --create-namespace \
   --set gitlabUrl=https://gitlab.example.com \
-  --set runnerRegistrationToken=<registration-token> \
+  --set runnerToken=<runner-authentication-token> \
   --set rbac.create=true \
-  --set runners.executor=kubernetes \
-  --set runners.kubernetes.namespace=gitlab-runner \
   --set runners.privileged=true    # Required for Docker-in-Docker builds
 ```
 
@@ -43,12 +41,11 @@ helm install gitlab-runner gitlab/gitlab-runner \
 
 Store the Rancher kubeconfig as a CI/CD variable:
 
+1. In Rancher UI, go to **Cluster Management**, open the cluster menu (**⋮**), and select **Download KubeConfig**.
+
 ```bash
-# Get kubeconfig from Rancher (for the target cluster)
-curl -sk -X POST \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "https://rancher.example.com/v3/clusters/<cluster-id>?action=generateKubeconfig" \
-  | jq -r .config | base64 -w 0
+# Base64-encode the downloaded kubeconfig for GitLab
+base64 < ./rancher-kubeconfig.yaml | tr -d '\n'
 # → Copy the base64 output
 ```
 
@@ -72,21 +69,28 @@ stages:
 
 variables:
   IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
-  KUBECTL_VERSION: "1.29"
+  KUBECTL_VERSION: "1.34"   # Match your cluster minor version
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 # Build the Docker image
 build:
   stage: build
-  image: docker:24
+  image: docker:24.0.5-cli
   services:
-    - docker:24-dind
+    - name: docker:24.0.5-dind
+      variables:
+        HEALTHCHECK_TCP_PORT: "2375"
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY --username $CI_REGISTRY_USER --password-stdin
     - docker build -t $IMAGE_TAG .
     - docker push $IMAGE_TAG
-  only:
-    - main
-    - merge_requests
 
 # Run unit tests
 test:
@@ -97,9 +101,6 @@ test:
   artifacts:
     reports:
       junit: target/surefire-reports/*.xml
-  only:
-    - main
-    - merge_requests
 
 # Deploy to Rancher-managed cluster
 deploy-staging:
@@ -107,7 +108,7 @@ deploy-staging:
   image: bitnami/kubectl:${KUBECTL_VERSION}
   script:
     # Decode the kubeconfig
-    - echo "$KUBECONFIG_B64" | base64 -d > /tmp/kubeconfig
+    - printf '%s' "$KUBECONFIG_B64" | base64 -d > /tmp/kubeconfig
     - export KUBECONFIG=/tmp/kubeconfig
 
     # Update the deployment
@@ -116,24 +117,24 @@ deploy-staging:
   environment:
     name: staging
     url: https://staging.example.com
-  only:
-    - main
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 # Deploy to production (manual gate)
 deploy-production:
   stage: deploy
   image: bitnami/kubectl:${KUBECTL_VERSION}
   script:
-    - echo "$KUBECONFIG_PROD_B64" | base64 -d > /tmp/kubeconfig
+    - printf '%s' "$KUBECONFIG_PROD_B64" | base64 -d > /tmp/kubeconfig
     - export KUBECONFIG=/tmp/kubeconfig
     - kubectl set image deployment/myapp myapp=$IMAGE_TAG -n production
     - kubectl rollout status deployment/myapp -n production --timeout=5m
   environment:
     name: production
     url: https://myapp.example.com
-  when: manual    # Require manual approval
-  only:
-    - main
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
 ```
 
 ## Step 4: Use Helm for Deployments
@@ -146,7 +147,7 @@ deploy-helm:
     name: alpine/helm:3.14
     entrypoint: [""]
   script:
-    - echo "$KUBECONFIG_B64" | base64 -d > /tmp/kubeconfig
+    - printf '%s' "$KUBECONFIG_B64" | base64 -d > /tmp/kubeconfig
     - export KUBECONFIG=/tmp/kubeconfig
 
     # Upgrade or install the Helm release
@@ -155,21 +156,25 @@ deploy-helm:
         --create-namespace \
         --set image.tag=$CI_COMMIT_SHORT_SHA \
         --set image.repository=$CI_REGISTRY_IMAGE \
-        --atomic \             # Roll back automatically on failure
+        --atomic \
         --timeout 5m
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 ```
 
 ## Step 5: Multi-Cluster Deployment
 
 ```yaml
-# Deploy to multiple Rancher clusters using a matrix
+# Deploy to multiple Rancher clusters with a reusable job template
 .deploy-template: &deploy-template
   stage: deploy
-  image: bitnami/kubectl:1.29
+  image: bitnami/kubectl:${KUBECTL_VERSION}
   script:
-    - echo "$KUBECONFIG" | base64 -d > /tmp/kubeconfig
+    - printf '%s' "$KUBECONFIG" | base64 -d > /tmp/kubeconfig
     - kubectl set image deployment/myapp myapp=$IMAGE_TAG -n production --kubeconfig=/tmp/kubeconfig
     - kubectl rollout status deployment/myapp -n production --kubeconfig=/tmp/kubeconfig
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 deploy-us:
   <<: *deploy-template
@@ -186,22 +191,26 @@ deploy-eu:
     name: production-eu
 ```
 
-## Step 6: Notify Rancher on Deployment
+## Step 6: Add Deployment Metadata Visible in Rancher
 
 ```yaml
-# Update Rancher with deployment status via API
-notify-rancher:
+# Annotate the deployment so the metadata is visible in Rancher
+annotate-deployment:
   stage: deploy
-  image: curlimages/curl:latest
+  image: bitnami/kubectl:${KUBECTL_VERSION}
+  needs:
+    - deploy-production
   script:
-    - |
-      curl -sk -X POST \
-        -H "Authorization: Bearer $RANCHER_API_TOKEN" \
-        -H "Content-Type: application/json" \
-        -d "{\"description\": \"Deployed ${CI_COMMIT_SHORT_SHA} by ${GITLAB_USER_NAME}\"}" \
-        "https://rancher.example.com/v3/clusters/<cluster-id>/clusterregistrationtokens"
+    - printf '%s' "$KUBECONFIG_PROD_B64" | base64 -d > /tmp/kubeconfig
+    - export KUBECONFIG=/tmp/kubeconfig
+    - kubectl annotate --overwrite deployment/myapp -n production \
+        gitlab.com/pipeline-url="$CI_PIPELINE_URL" \
+        gitlab.com/commit-sha="$CI_COMMIT_SHA" \
+        gitlab.com/user-login="$GITLAB_USER_LOGIN"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 ```
 
 ## Conclusion
 
-GitLab CI/CD with Rancher provides a complete DevSecOps pipeline: code committed to GitLab triggers automated builds, tests, and deployments to Rancher-managed clusters. Kubernetes-native GitLab Runners eliminate the need for static build infrastructure, and manual gates for production deployments provide a safety checkpoint. This integration supports multi-cluster deployments and provides full audit trails in both GitLab and Rancher.
+GitLab CI/CD with Rancher provides a complete DevSecOps pipeline: code committed to GitLab triggers automated builds, tests, and deployments to Rancher-managed clusters. Kubernetes-native GitLab Runners eliminate the need for static build infrastructure, and manual gates for production deployments provide a safety checkpoint. This integration supports multi-cluster deployments, with GitLab providing pipeline history and Rancher reflecting the resulting workload state in the managed clusters.
