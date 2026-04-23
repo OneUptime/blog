@@ -46,6 +46,11 @@ resource "aws_db_subnet_group" "main" {
 ```hcl
 data "aws_caller_identity" "current" {}
 
+data "aws_route53_zone" "main" {
+  name         = var.domain
+  private_zone = false
+}
+
 resource "aws_s3_bucket" "data" {
   bucket = "${var.app_name}-data-${data.aws_caller_identity.current.account_id}"
 
@@ -58,7 +63,7 @@ resource "aws_s3_bucket" "data" {
 
     precondition {
       # Ensure the required external DNS zone exists
-      condition     = length(data.aws_route53_zone.main.id) > 0
+      condition     = data.aws_route53_zone.main.zone_id != ""
       error_message = "Required Route53 zone ${var.domain} not found. Create it first."
     }
   }
@@ -128,7 +133,11 @@ locals {
 ## Waiting for External Resources
 
 ```hcl
-resource "null_resource" "wait_for_external_api" {
+resource "terraform_data" "wait_for_external_api" {
+  triggers_replace = [
+    var.external_api_url
+  ]
+
   provisioner "local-exec" {
     command = <<-SCRIPT
       # Wait until an external API is reachable before deploying
@@ -142,7 +151,7 @@ resource "null_resource" "wait_for_external_api" {
 }
 
 resource "aws_lambda_function" "webhook" {
-  depends_on = [null_resource.wait_for_external_api]
+  depends_on = [terraform_data.wait_for_external_api]
   # ...
 }
 ```
