@@ -31,12 +31,13 @@ helm install flagger flagger/flagger \
 
 # Install Flagger's load testing tool for traffic generation
 helm install flagger-loadtester flagger/loadtester \
-  --namespace test
+  --namespace test \
+  --create-namespace
 ```
 
 ## Step 2: Configure Prometheus Metrics
 
-Flagger needs Prometheus metrics to evaluate deployment success. Ensure your applications expose metrics:
+Flagger needs Prometheus metrics to evaluate deployment success. With the NGINX provider, the built-in request success rate and duration checks come from ingress controller metrics that Rancher Monitoring must scrape. If you plan to use custom application metrics, ensure your applications expose metrics:
 
 ```yaml
 # ServiceMonitor for application metrics
@@ -118,7 +119,7 @@ spec:
         timeout: 5s
         metadata:
           type: cmd
-          cmd: "hey -z 1m -q 10 -c 2 http://webapp-canary.production/"
+          cmd: "hey -z 1m -q 10 -c 2 http://webapp.example.com/"
 
       # Pre-rollout smoke test
       - name: smoke-test
@@ -128,7 +129,7 @@ spec:
         metadata:
           type: bash
           cmd: |
-            curl -sd '{}' http://webapp-canary.production/api/v1/health \
+            curl -fsS http://webapp-canary.production:8080/api/v1/health \
               | jq -e '.status == "ok"'
 ```
 
@@ -181,46 +182,60 @@ kubectl -n production get canary webapp --watch
 kubectl -n production describe canary webapp
 ```
 
-Output shows progressive traffic shifting:
+Output from `kubectl describe canary webapp` shows the rollout progressing:
 
 ```text
-webapp   Progressing   10      0/5     webapp.production   waiting for approval
-webapp   Progressing   20      0/5     webapp.production   advancement confirmed, advancing weight 20
-webapp   Progressing   30      0/5     webapp.production   advancement confirmed, advancing weight 30
-webapp   Progressing   40      0/5     webapp.production   advancement confirmed, advancing weight 40
-webapp   Progressing   50      0/5     webapp.production   advancement confirmed, advancing weight 50
-webapp   Promoting     50      0/5     webapp.production   copying webapp.production template spec
-webapp   Finalising    50      0/5     webapp.production   routing all traffic to primary
-webapp   Succeeded     0       0/5     webapp.production   canary deployment completed
+Events:
+  Type     Reason  Age   From     Message
+  ----     ------  ----  ----     -------
+  Normal   Synced  3m    flagger  New revision detected webapp.production
+  Normal   Synced  3m    flagger  Scaling up webapp.production
+  Normal   Synced  3m    flagger  Advance webapp.production canary weight 10
+  Normal   Synced  2m    flagger  Advance webapp.production canary weight 20
+  Normal   Synced  2m    flagger  Advance webapp.production canary weight 30
+  Normal   Synced  1m    flagger  Advance webapp.production canary weight 40
+  Normal   Synced  1m    flagger  Advance webapp.production canary weight 50
+  Normal   Synced  25s   flagger  Copying webapp.production template spec to webapp-primary.production
+  Normal   Synced  5s    flagger  Promotion completed! Scaling down webapp.production
 ```
 
 ## Step 6: A/B Testing Configuration
 
 ```yaml
-# A/B testing with header-based routing
+# A/B testing with header and cookie-based routing
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
-  name: webapp-ab
+  name: webapp
   namespace: production
 spec:
   targetRef:
     apiVersion: apps/v1
     kind: Deployment
     name: webapp
+
+  ingressRef:
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    name: webapp-ingress
+
+  service:
+    port: 8080
+    portName: http
+
   analysis:
     interval: 1m
     threshold: 5
     iterations: 10    # Run 10 iterations before promoting
 
-    # Route based on headers (A/B test for beta users)
+    # Route based on headers or cookies (A/B test for beta users)
     match:
       - headers:
           x-beta-user:
             exact: "true"
       - headers:
           cookie:
-            regex: "^(.*?;)?(beta=1)(;.*)?$"
+            exact: "beta"
 ```
 
 ## Step 7: Blue-Green Deployment
@@ -230,21 +245,27 @@ spec:
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
-  name: webapp-bg
+  name: webapp
   namespace: production
 spec:
   targetRef:
     apiVersion: apps/v1
     kind: Deployment
     name: webapp
+
+  ingressRef:
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    name: webapp-ingress
+
+  service:
+    port: 8080
+    portName: http
+
   analysis:
     interval: 30s
     threshold: 1
-    iterations: 10    # Run 10 health checks before promoting
-
-    # No traffic split - all traffic switches at once
-    stepWeight: 100   # Jump to 100% immediately
-    maxWeight: 100
+    iterations: 10    # Run 10 analysis iterations before promoting
 
     webhooks:
       - name: acceptance-test
