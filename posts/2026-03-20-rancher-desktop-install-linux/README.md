@@ -12,7 +12,10 @@ Rancher Desktop is an open-source desktop application that provides Kubernetes a
 
 ## Prerequisites
 
-- A computer running macOS, Windows, or Linux
+- A Linux distribution that can install `.deb` or `.rpm` packages, or AppImages
+- A persistent internet connection
+- An x86_64 processor with either AMD-V or VT-x
+- Read-write access on `/dev/kvm`
 - Administrator/sudo privileges for installation
 - At least 8 GB of RAM (16 GB recommended)
 - At least 4 CPU cores
@@ -22,50 +25,77 @@ Rancher Desktop is an open-source desktop application that provides Kubernetes a
 Rancher Desktop simplifies local Kubernetes and container development by providing:
 
 - A local Kubernetes cluster (k3s-based)
-- Container runtime (containerd or dockerd)
-- Integrated CLI tools (kubectl, helm, nerdctl, docker)
+- Container runtime (containerd or moby (dockerd))
+- Integrated CLI tools (kubectl, helm, nerdctl, and docker when using Moby)
 - Simple configuration through a GUI
 
-## Step 1: Initial Setup
+## Step 1: Install Rancher Desktop
+
+Verify that your user can access `/dev/kvm`, then choose the installation method that matches your Linux distribution. If you plan to use the AppImage build, install `pass` and GPG first.
 
 ```bash
-# Verify Rancher Desktop is installed and running
+# Verify that your user can access /dev/kvm
+[ -r /dev/kvm ] && [ -w /dev/kvm ] || echo 'insufficient privileges'
 
-rdctl version
+# If needed, add your user to the kvm group and sign in again
+sudo usermod -a -G kvm "$USER"
 
-# Check Kubernetes cluster status
-kubectl cluster-info
+# Ubuntu / Debian (.deb)
+curl -s https://download.opensuse.org/repositories/isv:/Rancher:/stable/deb/Release.key | gpg --dearmor | sudo dd status=none of=/usr/share/keyrings/isv-rancher-stable-archive-keyring.gpg
+echo 'deb [signed-by=/usr/share/keyrings/isv-rancher-stable-archive-keyring.gpg] https://download.opensuse.org/repositories/isv:/Rancher:/stable/deb/ ./' | sudo dd status=none of=/etc/apt/sources.list.d/isv-rancher-stable.list
+sudo apt update
+sudo apt install rancher-desktop
 
-# Verify container runtime
-nerdctl version
-# or
-docker version
+# Fedora (.rpm)
+sudo dnf config-manager addrepo --from-repofile=https://download.opensuse.org/repositories/isv:/Rancher:/stable/fedora/isv:Rancher:stable.repo
+sudo dnf install rancher-desktop
+
+# openSUSE (.rpm)
+sudo zypper addrepo https://download.opensuse.org/repositories/isv:/Rancher:/stable/rpm/isv:Rancher:stable.repo
+sudo zypper install rancher-desktop
+
+# After downloading the AppImage, make it executable and run it
+chmod +x Rancher.Desktop-*.AppImage
+./Rancher.Desktop-*.AppImage
 ```
 
 ## Step 2: Configuration
 
-Open Rancher Desktop Preferences to configure:
+Launch Rancher Desktop. On first run, Rancher Desktop downloads Kubernetes images for the selected version, so startup may take a little longer. Open Rancher Desktop Preferences to configure:
 
 - **Kubernetes**: Version and enabled/disabled state
 - **Container Engine**: containerd or moby (dockerd)
 - **Virtual Machine**: CPU, memory, and disk allocation
-- **WSL** (Windows only): WSL2 integration settings
 
 ```bash
+# Verify Rancher Desktop is installed
+rdctl version
+
+# Check current active settings
+rdctl list-settings
+
+# Check Kubernetes cluster status if Kubernetes is enabled
+kubectl cluster-info
+
+# Verify the selected container runtime
+nerdctl version
+# or, if you selected Moby (dockerd)
+docker version
+
 # Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
-rdctl set --container-engine containerd
+rdctl set --container-engine.name=containerd
+rdctl set --kubernetes-enabled=true
 ```
 
 ## Step 3: Working with Containers
 
 ```bash
-# Pull an image
+# Pull an image with containerd
 nerdctl pull nginx:latest
-# or with docker compatibility
+# or, if you selected Moby (dockerd)
 docker pull nginx:latest
 
-# Run a container
+# Run a container with nerdctl
 nerdctl run -d -p 8080:80 --name my-nginx nginx:latest
 
 # List running containers
@@ -131,31 +161,35 @@ helm uninstall my-release
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
-rdctl factory-reset
+# Show the current active settings
+rdctl list-settings
 
-# Check Rancher Desktop status
-rdctl status
+# Switch to the Moby container engine for Docker CLI compatibility
+rdctl set --container-engine.name=moby
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
+# Disable Kubernetes if you only want the container engine
+rdctl set --kubernetes-enabled=false
 
-# Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+# Re-enable Kubernetes
+rdctl set --kubernetes-enabled=true
 ```
 
 ## Troubleshooting
 
+Use the **Show Logs** option in Rancher Desktop's Troubleshooting page to open the log directory.
+
 ```bash
-# Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# Check whether your user can access /dev/kvm
+[ -r /dev/kvm ] && [ -w /dev/kvm ] || echo 'insufficient privileges'
+
+# Show the current Rancher Desktop settings
+rdctl list-settings
+
+# Allow Traefik to bind to privileged ports on Linux if needed
+sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80
 
 # Reset to factory defaults
 rdctl factory-reset
-
-# Check virtual machine status
-rdctl list-settings | grep -i vm
 ```
 
 ## Conclusion
