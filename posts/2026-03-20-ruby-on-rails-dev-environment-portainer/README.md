@@ -8,13 +8,11 @@ Description: Learn how to set up a Ruby on Rails development environment with ho
 
 ---
 
-Containerizing Rails development with Portainer standardizes Ruby versions and gem dependencies across the team. Rails' built-in code reloader and `ruby-debug-ide` provide a smooth development experience.
+Containerizing Rails development with Portainer standardizes Ruby versions and gem dependencies across the team. Rails' built-in code reloader and Ruby's `debug`/`rdbg` debugger provide a smooth development experience.
 
 ## Dev Environment Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -27,6 +25,12 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rails -d rails_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
@@ -36,11 +40,13 @@ services:
     image: ruby:3.3-slim
     restart: unless-stopped
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     ports:
       - "3000:3000"     # Rails server
-      - "1234:1234"     # ruby-debug-ide port
+      - "1234:1234"     # rdbg port
     environment:
       RAILS_ENV: development
       DATABASE_URL: postgresql://rails:secret@postgres:5432/rails_dev
@@ -56,7 +62,7 @@ services:
         apt-get update -qq && apt-get install -y --no-install-recommends libpq-dev build-essential &&
         bundle install &&
         bundle exec rails db:create db:migrate &&
-        bundle exec rails server -b 0.0.0.0
+        bundle exec rdbg --open --host 0.0.0.0 --port 1234 --nonstop -c -- bundle exec rails server -b 0.0.0.0
       "
 
 volumes:

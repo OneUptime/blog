@@ -8,16 +8,16 @@ Description: Configure mDNS on Linux using Avahi to enable zero-configuration ho
 
 ## Introduction
 
-Multicast DNS (mDNS, RFC 6762) allows devices to resolve `.local` hostnames on a local network segment without a central DNS server. It uses multicast address `224.0.0.251` and UDP port 5353. Avahi is the standard mDNS implementation on Linux.
+Multicast DNS (mDNS, RFC 6762) allows devices to resolve `.local` hostnames on a local network segment without a central DNS server. It uses IPv4 multicast address `224.0.0.251`, IPv6 multicast address `FF02::FB`, and UDP port 5353. Avahi is the standard mDNS implementation on Linux.
 
 ## Installing Avahi
 
 ```bash
 # Ubuntu/Debian
 
-sudo apt update && sudo apt install -y avahi-daemon avahi-utils
+sudo apt update && sudo apt install -y avahi-daemon avahi-utils libnss-mdns
 
-# RHEL/CentOS/Fedora
+# RHEL/CentOS/Fedora (enable EPEL if nss-mdns is unavailable)
 sudo dnf install -y avahi avahi-tools nss-mdns
 ```
 
@@ -49,15 +49,17 @@ host-name=myserver
 # Domain to use (default: local)
 domain-name=local
 
-# Only advertise on specific interfaces (leave empty for all)
+# Only advertise on specific interfaces (leave empty for all local non-loopback interfaces)
 allow-interfaces=eth0
 
-# Do NOT run on wide-area links
+# Ignore specific interfaces
 deny-interfaces=eth1
 
 [publish]
-# Publish host name and address records
-publish-hinfo=yes
+# Publish address records for local IP addresses
+publish-addresses=yes
+
+# Publish a workstation service for browsing hosts
 publish-workstation=yes
 ```
 
@@ -133,11 +135,11 @@ sudo systemctl reload avahi-daemon
 ## Allowing mDNS Through the Firewall
 
 ```bash
-# Allow mDNS traffic (UDP port 5353 to 224.0.0.251)
+# Allow IPv4 mDNS traffic (UDP port 5353 to 224.0.0.251)
 sudo iptables -A INPUT -p udp --dport 5353 -d 224.0.0.251 -j ACCEPT
 sudo iptables -A OUTPUT -p udp --dport 5353 -d 224.0.0.251 -j ACCEPT
 ```
 
 ## Conclusion
 
-Avahi makes mDNS setup straightforward on Linux. With `avahi-daemon` running and `mdns4_minimal` in `nsswitch.conf`, devices on the same subnet can discover each other by `.local` hostname without any DNS server infrastructure.
+Avahi makes mDNS setup straightforward on Linux. With `avahi-daemon` running and `mdns4_minimal` in `nsswitch.conf`, devices on the same local link can discover each other by `.local` hostname without any DNS server infrastructure.

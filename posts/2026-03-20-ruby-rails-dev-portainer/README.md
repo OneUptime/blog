@@ -56,15 +56,17 @@ RUN bundle install
 # Install foreman for running multiple processes
 RUN gem install foreman
 
-EXPOSE 3000    # Rails server
-EXPOSE 3001    # Action Cable (if separate)
+# Rails server
+EXPOSE 3000
+
+# Action Cable (if separate)
+EXPOSE 3001
 ```
 
 ## Step 2: Deploy Rails Stack in Portainer
 
 ```yaml
 # docker-compose.yml - Rails Development Stack
-version: "3.8"
 
 networks:
   rails_dev:
@@ -108,8 +110,10 @@ services:
     networks:
       - rails_dev
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   # PostgreSQL database
   postgres:
@@ -126,6 +130,11 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - rails_dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rails -d myapp_development"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   # Redis for Action Cable and Sidekiq
   redis:
@@ -138,6 +147,11 @@ services:
       - redis_data:/data
     networks:
       - rails_dev
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   # Sidekiq background worker
   sidekiq:
@@ -157,8 +171,10 @@ services:
     networks:
       - rails_dev
     depends_on:
-      - redis
-      - postgres
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
 
   # Mailcatcher for email testing
   mailcatcher:
@@ -181,18 +197,34 @@ default: &default
   encoding: unicode
   pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
   timeout: 5000
-  url: <%= ENV['DATABASE_URL'] %>
 
 development:
   <<: *default
-  database: myapp_development
+  url: <%= ENV.fetch("DATABASE_URL") { "postgresql://rails:rails_password@postgres:5432/myapp_development" } %>
 
 test:
   <<: *default
-  database: myapp_test
+  url: <%= ENV.fetch("TEST_DATABASE_URL") { "postgresql://rails:rails_password@postgres:5432/myapp_test" } %>
 
 production:
   <<: *default
+  url: <%= ENV['DATABASE_URL'] %>
+```
+
+```yaml
+# config/cable.yml
+development:
+  adapter: redis
+  url: <%= ENV.fetch("REDIS_URL") { "redis://redis:6379/0" } %>
+  channel_prefix: myapp_development
+
+test:
+  adapter: test
+
+production:
+  adapter: redis
+  url: <%= ENV['REDIS_URL'] %>
+  channel_prefix: myapp_production
 ```
 
 ```ruby
@@ -207,7 +239,7 @@ Rails.application.configure do
   # Show full error reports
   config.consider_all_requests_local = true
 
-  # Enable server rendering with live reload
+  # Enable Server-Timing metrics in development
   config.server_timing = true
 
   # Configure Action Cable for development
@@ -252,7 +284,7 @@ docker exec rails_web bundle exec rails assets:precompile
 
 # Install new gem (update Gemfile first)
 docker exec rails_web bundle install
-docker-compose -f docker-compose.yml restart web
+docker compose -f docker-compose.yml restart web
 ```
 
 ## Step 5: Add RSpec and Factory Bot
@@ -269,14 +301,27 @@ end
 ```
 
 ```bash
+# Install the new test gems
+docker exec rails_web bundle install
+
 # Install RSpec
 docker exec rails_web bundle exec rails generate rspec:install
 
-# Run tests with coverage
+# Run tests with documentation format
 docker exec rails_web bundle exec rspec --format documentation
 ```
 
 ## Step 6: Sidekiq Configuration
+
+```ruby
+# Gemfile - Background jobs
+gem 'sidekiq'
+```
+
+```bash
+# Install Sidekiq
+docker exec rails_web bundle install
+```
 
 ```yaml
 # config/sidekiq.yml

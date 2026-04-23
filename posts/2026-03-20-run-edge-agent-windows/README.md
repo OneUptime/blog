@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Edge Agent, Window, Docker Desktop, Configuration
+Tags: Portainer, Edge Agent, Windows, Docker Desktop, Configuration
 
 Description: Deploy the Portainer Edge Agent on Windows hosts running Docker Desktop or Docker Engine for Windows remote management.
 
@@ -14,12 +14,13 @@ Portainer Edge Agents enable management of remote environments that are behind N
 
 ```mermaid
 flowchart LR
-    A[Edge Device] -->|Outbound WSS| B[Portainer Server :8000]
+    A[Edge Device] -->|Outbound HTTPS polling| B[Portainer Server :9443]
+    A -->|On-demand outbound TLS tunnel| C[Portainer Tunnel :8000]
     B -->|Commands| A
     A -->|Status/Snapshots| B
 ```
 
-The Edge Agent initiates all connections outbound to the Portainer server on port 8000 (WebSocket Secure), so no inbound ports need to be opened on the edge network.
+The Edge Agent polls the Portainer API on the UI/API port (typically 9443). In standard mode it opens an outbound TLS tunnel to the Portainer tunnel port (8000 by default) when Portainer needs an interactive management session, so no inbound ports need to be opened on the edge network.
 
 ## Generate Edge Deployment Script
 
@@ -30,24 +31,26 @@ TOKEN=$(curl -s -X POST \
   -d '{"username":"admin","password":"yourpassword"}' \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Create an edge environment and get the deployment script
+# Create an edge environment and extract the values used by the deployment command
 
-curl -X POST \
+EDGE_ENVIRONMENT=$(curl -s -X POST \
   https://portainer.example.com:9443/api/endpoints \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "Name": "edge-site-01",
-    "EndpointCreationType": 4,
-    "EdgeCheckinInterval": 30
-  }' \
-  --insecure
+  -F "Name=edge-site-01" \
+  -F "EndpointCreationType=4" \
+  -F "URL=https://portainer.example.com:9443" \
+  -F "ContainerEngine=docker" \
+  -F "EdgeCheckinInterval=30" \
+  --insecure)
+
+EDGE_ID=$(python3 -c "import sys,json,uuid; env=json.load(sys.stdin); print(env.get('EdgeID') or str(uuid.uuid4()))" <<< "$EDGE_ENVIRONMENT")
+EDGE_KEY=$(python3 -c "import sys,json; print(json.load(sys.stdin)['EdgeKey'])" <<< "$EDGE_ENVIRONMENT")
 ```
 
 ## Standard Mode Installation
 
 ```bash
-# Standard mode - agent polls frequently (real-time management)
+# Standard mode - API polling with on-demand tunnel management
 docker run -d \
   --name portainer_edge_agent \
   --restart=always \
@@ -65,7 +68,7 @@ docker run -d \
 ## Async Mode Installation
 
 ```bash
-# Async mode - less frequent polling, suitable for limited bandwidth
+# Async mode (Portainer Business Edition) - suitable for limited or intermittent connectivity
 docker run -d \
   --name portainer_edge_agent \
   --restart=always \
@@ -76,9 +79,8 @@ docker run -d \
   -e EDGE=1 \
   -e EDGE_ID="${EDGE_ID}" \
   -e EDGE_KEY="${EDGE_KEY}" \
+  -e EDGE_INSECURE_POLL=0 \
   -e EDGE_ASYNC=1 \
-  -e EDGE_CHECKIN_INTERVAL=30 \
-  -e EDGE_SNAPSHOT_INTERVAL=60 \
   portainer/agent:latest
 ```
 
@@ -87,15 +89,20 @@ docker run -d \
 ```bash
 # ARM64 (Raspberry Pi 4, Apple M1)
 docker pull portainer/agent:latest  # Multi-arch: automatically uses ARM64
+```
 
-# Windows (Docker Desktop or Docker Engine for Windows)
-docker run -d \
-  --name portainer_edge_agent \
-  --restart=always \
-  -e EDGE=1 \
-  -e EDGE_ID="${EDGE_ID}" \
-  -e EDGE_KEY="${EDGE_KEY}" \
-  -v //./pipe/docker_engine://./pipe/docker_engine \
+```powershell
+# Windows containers mode (Docker Desktop or Docker Engine for Windows)
+docker run -d `
+  --name portainer_edge_agent `
+  --restart always `
+  --mount type=npipe,src=\\.\pipe\docker_engine,dst=\\.\pipe\docker_engine `
+  --mount type=bind,src=C:\ProgramData\docker\volumes,dst=C:\ProgramData\docker\volumes `
+  --mount type=volume,src=portainer_agent_data,dst=C:\data `
+  -e EDGE=1 `
+  -e EDGE_ID="${EDGE_ID}" `
+  -e EDGE_KEY="${EDGE_KEY}" `
+  -e EDGE_INSECURE_POLL=0 `
   portainer/agent:latest
 ```
 
@@ -112,7 +119,7 @@ curl -s https://portainer.example.com:9443/api/endpoints \
 import sys, json
 envs = json.load(sys.stdin)
 for e in envs:
-    if e.get('EdgeID'):
+    if e.get('Type') in (4, 7):
         print(f'Edge: {e[\"Name\"]}, Status: {\"Online\" if e.get(\"Status\")==1 else \"Offline\"}')
 "
 ```

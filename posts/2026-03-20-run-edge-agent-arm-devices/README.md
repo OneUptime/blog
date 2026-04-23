@@ -14,34 +14,31 @@ Portainer Edge Agents enable management of remote environments that are behind N
 
 ```mermaid
 flowchart LR
-    A[Edge Device] -->|Outbound WSS| B[Portainer Server :8000]
-    B -->|Commands| A
+    A[Edge Device] -->|Outbound HTTPS poll :9443| B[Portainer Server]
+    A -->|Outbound TLS tunnel :8000 standard mode| B
+    B -->|Commands via poll/tunnel| A
     A -->|Status/Snapshots| B
 ```
 
-The Edge Agent initiates all connections outbound to the Portainer server on port 8000 (WebSocket Secure), so no inbound ports need to be opened on the edge network.
+The Edge Agent polls the Portainer API on the UI/API port, usually 9443. In standard mode it can also establish an outbound tunnel to the Portainer tunnel server on port 8000 for interactive management; async mode only requires the UI/API port.
 
 ## Generate Edge Deployment Script
 
 ```bash
-TOKEN=$(curl -s -X POST \
-  https://portainer.example.com:9443/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' \
-  --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
+PORTAINER_API_KEY="ptr_your_api_key_here"
 
-# Create an edge environment and get the deployment script
-
-curl -X POST \
+# Create an edge Docker environment and export the values used by the agent
+EDGE_ENV=$(curl -s -X POST \
   https://portainer.example.com:9443/api/endpoints \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "Name": "edge-site-01",
-    "EndpointCreationType": 4,
-    "EdgeCheckinInterval": 30
-  }' \
-  --insecure
+  -H "X-API-Key: $PORTAINER_API_KEY" \
+  -F "Name=edge-site-01" \
+  -F "EndpointCreationType=4" \
+  -F "ContainerEngine=docker" \
+  -F "URL=https://portainer.example.com:9443" \
+  -F "EdgeCheckinInterval=30")
+
+export EDGE_KEY=$(printf '%s' "$EDGE_ENV" | python3 -c 'import sys,json; print(json.load(sys.stdin)["EdgeKey"])')
+export EDGE_ID=$(printf '%s' "$EDGE_ENV" | python3 -c 'import sys,json,uuid; data=json.load(sys.stdin); print(data.get("EdgeID") or uuid.uuid4())')
 ```
 
 ## Standard Mode Installation
@@ -59,13 +56,13 @@ docker run -d \
   -e EDGE_ID="${EDGE_ID}" \
   -e EDGE_KEY="${EDGE_KEY}" \
   -e EDGE_INSECURE_POLL=0 \
-  portainer/agent:latest
+  portainer/agent:lts
 ```
 
 ## Async Mode Installation
 
 ```bash
-# Async mode - less frequent polling, suitable for limited bandwidth
+# Async mode - intervals are configured in Portainer, suitable for limited bandwidth
 docker run -d \
   --name portainer_edge_agent \
   --restart=always \
@@ -76,27 +73,29 @@ docker run -d \
   -e EDGE=1 \
   -e EDGE_ID="${EDGE_ID}" \
   -e EDGE_KEY="${EDGE_KEY}" \
+  -e EDGE_INSECURE_POLL=0 \
   -e EDGE_ASYNC=1 \
-  -e EDGE_CHECKIN_INTERVAL=30 \
-  -e EDGE_SNAPSHOT_INTERVAL=60 \
-  portainer/agent:latest
+  portainer/agent:lts
 ```
 
 ## ARM / Windows Variations
 
-```bash
+```powershell
 # ARM64 (Raspberry Pi 4, Apple M1)
-docker pull portainer/agent:latest  # Multi-arch: automatically uses ARM64
+docker pull portainer/agent:lts  # Multi-arch: Docker selects ARM64 on ARM64 hosts
 
 # Windows (Docker Desktop or Docker Engine for Windows)
-docker run -d \
-  --name portainer_edge_agent \
-  --restart=always \
-  -e EDGE=1 \
-  -e EDGE_ID="${EDGE_ID}" \
-  -e EDGE_KEY="${EDGE_KEY}" \
-  -v //./pipe/docker_engine://./pipe/docker_engine \
-  portainer/agent:latest
+docker run -d `
+  --mount type=npipe,src=\\.\pipe\docker_engine,dst=\\.\pipe\docker_engine `
+  --mount type=bind,src=C:\ProgramData\docker\volumes,dst=C:\ProgramData\docker\volumes `
+  --mount type=volume,src=portainer_agent_data,dst=C:\data `
+  --restart always `
+  -e EDGE=1 `
+  -e EDGE_ID="$Env:EDGE_ID" `
+  -e EDGE_KEY="$Env:EDGE_KEY" `
+  -e EDGE_INSECURE_POLL=0 `
+  --name portainer_edge_agent `
+  portainer/agent:lts
 ```
 
 ## Verify Edge Agent Connection
@@ -107,13 +106,12 @@ docker logs portainer_edge_agent 2>&1 | tail -20
 
 # On Portainer server, check if environment shows as connected
 curl -s https://portainer.example.com:9443/api/endpoints \
-  -H "Authorization: Bearer $TOKEN" \
-  --insecure | python3 -c "
+  -H "X-API-Key: $PORTAINER_API_KEY" | python3 -c "
 import sys, json
 envs = json.load(sys.stdin)
 for e in envs:
-    if e.get('EdgeID'):
-        print(f'Edge: {e[\"Name\"]}, Status: {\"Online\" if e.get(\"Status\")==1 else \"Offline\"}')
+    if e.get('EdgeKey'):
+        print(f'Edge: {e[\"Name\"]}, Status: {\"Online\" if e.get(\"Heartbeat\") else \"Offline\"}')
 "
 ```
 

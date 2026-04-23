@@ -25,7 +25,7 @@ ISP delegated: /32
 └── Organization /40
     └── Region-1 /48
         ├── Site-A /56 (256 /64 subnets)
-        │   ├── HVAC /64 (65,536 devices per subnet)
+        │   ├── HVAC /64 (64-bit interface ID space)
         │   ├── Lighting /64
         │   ├── Sensors-Floor-1 /64
         │   └── ...
@@ -34,6 +34,8 @@ ISP delegated: /32
 ```
 
 ## High-Availability DHCPv6 with Kea
+
+Kea HA also requires the Control Agent (or HA+MT dedicated listener) to be reachable at each peer URL. The DHCPv6 hook configuration looks like this:
 
 ```json
 // /etc/kea/kea-dhcp6.conf - HA pair configuration
@@ -52,6 +54,11 @@ ISP delegated: /32
             "password": "secure_password"
         },
         "hooks-libraries": [{
+            "library": "/usr/lib/x86_64-linux-gnu/kea/hooks/libdhcp_mysql.so"
+        }, {
+            "library": "/usr/lib/x86_64-linux-gnu/kea/hooks/libdhcp_lease_cmds.so",
+            "parameters": {}
+        }, {
             "library": "/usr/lib/x86_64-linux-gnu/kea/hooks/libdhcp_ha.so",
             "parameters": {
                 "high-availability": [{
@@ -64,13 +71,13 @@ ISP delegated: /32
                     "peers": [
                         {
                             "name": "dhcpv6-1",
-                            "url": "http://10.0.0.1:8000",
+                            "url": "http://10.0.0.1:8000/",
                             "role": "primary",
                             "auto-failover": true
                         },
                         {
                             "name": "dhcpv6-2",
-                            "url": "http://10.0.0.2:8000",
+                            "url": "http://10.0.0.2:8000/",
                             "role": "standby",
                             "auto-failover": true
                         }
@@ -79,7 +86,7 @@ ISP delegated: /32
             }
         }],
         "subnet6": [{
-            "subnet": "2001:db8:a::/48",
+            "subnet": "2001:db8:a:1::/64",
             "pools": [{"pool": "2001:db8:a:1::1000 - 2001:db8:a:1::efff"}]
         }]
     }
@@ -95,56 +102,68 @@ ISP delegated: /32
 # Automated IPv6 subnet provisioning via NetBox API
 
 import requests
-import sys
 
 NETBOX_URL = "https://netbox.example.com/api"
-NETBOX_TOKEN = "your-api-token"
+NETBOX_TOKEN = "nbt_key.token"
+SITE_PREFIX_ID = 1234
+TENANT = {"id": 42}
+VLAN_NETBOX_IDS = {
+    "hvac": 101,
+    "lighting": 102,
+    "access": 103,
+    "sensors": 104,
+}
 
 headers = {
-    "Authorization": f"Token {NETBOX_TOKEN}",
+    "Authorization": f"Bearer {NETBOX_TOKEN}",
     "Content-Type": "application/json"
 }
 
-def create_iot_subnet(site_name: str, system: str, vlan_id: int) -> dict:
+def create_iot_subnet(site_name: str, system: str, vlan_netbox_id: int) -> dict:
     """Provision a /64 IPv6 subnet for an IoT system at a site."""
 
     # Get the next available /64 from the site's /56 prefix
     response = requests.post(
-        f"{NETBOX_URL}/ipam/prefixes/",
+        f"{NETBOX_URL}/ipam/prefixes/{SITE_PREFIX_ID}/available-prefixes/",
         headers=headers,
         json={
-            "prefix": f"2001:db8:iot:{vlan_id:x}::/64",
+            "prefix_length": 64,
             "description": f"{site_name} - {system}",
-            "tags": [{"name": "iot"}, {"name": site_name}, {"name": system}],
-            "tenant": {"name": "IoT Operations"},
-            "vlan": {"vid": vlan_id}
-        }
+            "tags": ["iot"],
+            "tenant": TENANT,
+            "vlan": {"id": vlan_netbox_id}
+        },
+        timeout=30
     )
+    response.raise_for_status()
     return response.json()
 
 # Provision subnets for a new site
-for i, system in enumerate(['hvac', 'lighting', 'access', 'sensors'], 1):
-    result = create_iot_subnet('building-c', system, 100 + i)
+for system, vlan_netbox_id in VLAN_NETBOX_IDS.items():
+    result = create_iot_subnet('building-c', system, vlan_netbox_id)
     print(f"Provisioned {system}: {result.get('prefix')}")
 ```
 
 ## NDP Proxy for Large Segments
 
-In very large deployments, a single /64 can have too many devices for the border router's neighbor cache. Use NDP Proxy to prevent cache exhaustion:
+In very large deployments, a single /64 can have too many active neighbors for the border router's neighbor cache. The preferred fix is to route smaller L2 segments, each with its own /64, and tune neighbor cache limits where needed. Use NDP Proxy only when you must bridge reachability for specific addresses or a prefix across interfaces:
 
 ```bash
 # Enable NDP proxy on the border router
 sudo sysctl -w net.ipv6.conf.eth0.proxy_ndp=1
 
 # Add specific device addresses to the proxy (for frequently accessed devices)
-sudo ip -6 neigh add proxy 2001:db8:iot:1::sensor1 dev eth0
+sudo ip -6 neigh add proxy 2001:db8:a:1::1001 dev eth0
 
 # For large deployments, use ndppd (NDP Proxy Daemon)
 sudo apt-get install ndppd
 
 # /etc/ndppd.conf
-# route auto {
-#   rule 2001:db8:iot:1::/64 {
+# proxy eth0 {
+#   router yes
+#   timeout 500
+#   ttl 30000
+#   rule 2001:db8:a:1::/64 {
 #     iface lowpan0
 #   }
 # }
@@ -163,8 +182,8 @@ scrape_configs:
     static_configs:
       - targets:
           # Generated from IPAM database
-          - '[2001:db8:iot:1::sensor1]:9100'
-          - '[2001:db8:iot:1::sensor2]:9100'
+          - '[2001:db8:a:1::1001]:9100'
+          - '[2001:db8:a:1::1002]:9100'
     # For very large fleets, use file-based service discovery
   - job_name: 'iot_devices_dynamic'
     file_sd_configs:
@@ -173,21 +192,38 @@ scrape_configs:
         refresh_interval: 5m
 ```
 
-Generate the device list from IPAM:
+Generate the device list from IPAM, following NetBox pagination:
 
 ```bash
 #!/bin/bash
 # generate_prometheus_targets.sh
 # Generate Prometheus targets from NetBox IPAM
 
-curl -s -H "Authorization: Token $NETBOX_TOKEN" \
-    "https://netbox.example.com/api/ipam/ip-addresses/?tag=iot&limit=10000" \
-    | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-targets = [{'targets': ['[' + ip['address'].split('/')[0] + ']:9100'], 'labels': {'location': ip['description']}} for ip in data['results']]
+python3 - <<'PY' > /etc/prometheus/iot_devices.json
+import json
+import os
+import urllib.request
+
+netbox_url = os.environ.get("NETBOX_URL", "https://netbox.example.com/api")
+token = os.environ["NETBOX_TOKEN"]
+url = f"{netbox_url}/ipam/ip-addresses/?tag=iot&limit=1000"
+targets = []
+
+while url:
+    request = urllib.request.Request(
+        url,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    with urllib.request.urlopen(request) as response:
+        data = json.load(response)
+    targets.extend({
+        "targets": [f"[{ip['address'].split('/')[0]}]:9100"],
+        "labels": {"location": ip.get("description", "")}
+    } for ip in data["results"])
+    url = data.get("next")
+
 print(json.dumps(targets))
-" > /etc/prometheus/iot_devices.json
+PY
 ```
 
 ## Conclusion
