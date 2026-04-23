@@ -86,6 +86,7 @@ kind: Kustomization
 resources:
   - deployment.yaml
   - service.yaml
+  - hpa.yaml
 ```
 
 ## Step 3: Create Per-Cluster Overlays
@@ -118,12 +119,6 @@ spec:
 defaultNamespace: production
 kustomize:
   dir: .
-targets:
-  - name: us-east-primary
-    clusterSelector:
-      matchLabels:
-        region: us-east-1
-        environment: production
 ```
 
 ## Step 4: Register Fleet GitRepos for Each Region
@@ -163,7 +158,7 @@ spec:
 
 ## Step 5: Automate Image Tag Propagation
 
-When a new version is released, update the image tag in the base manifest:
+When a new version is released, update the image reference for the base workload:
 
 ```yaml
 # .github/workflows/replicate-update.yaml
@@ -189,7 +184,7 @@ jobs:
         run: |
           cd base
           kustomize edit set image \
-            myapp=ghcr.io/my-org/myapp:${{ github.event.inputs.image-tag }}
+            ghcr.io/my-org/myapp=ghcr.io/my-org/myapp:${{ github.event.inputs.image-tag }}
 
       - name: Commit and push
         run: |
@@ -203,8 +198,7 @@ jobs:
 ## Step 6: Implement Active-Passive Failover
 
 ```yaml
-# For active-passive, use Fleet's pause feature on the passive cluster
-# Active cluster: normal GitRepo
+# For active-passive, deploy to both clusters and route traffic only to the primary cluster
 apiVersion: fleet.cattle.io/v1alpha1
 kind: GitRepo
 metadata:
@@ -213,7 +207,8 @@ metadata:
 spec:
   repo: https://github.com/my-org/workload-replication
   branch: main
-  paused: false   # Active
+  paths:
+    - clusters/us-east-1
   targets:
     - clusterSelector:
         matchLabels:
@@ -227,7 +222,8 @@ metadata:
 spec:
   repo: https://github.com/my-org/workload-replication
   branch: main
-  paused: true    # Standby - un-pause to promote
+  paths:
+    - clusters/eu-west-1
   targets:
     - clusterSelector:
         matchLabels:
@@ -235,32 +231,27 @@ spec:
 ```
 
 ```bash
-# Failover script - promote secondary to active
-kubectl patch gitrepo myapp-secondary -n fleet-default \
-  --type=merge \
-  -p '{"spec":{"paused": false}}'
-
-# Update DNS/load balancer to route to secondary cluster
+# Failover switches traffic to the secondary cluster.
+# No Fleet GitRepo patch is required if the standby workload is already deployed.
+# Update DNS/load balancer to route to the secondary cluster
 # (Use Route 53 health checks, Azure Traffic Manager, or Google Cloud DNS for automated failover)
 ```
 
 ## Step 7: Verify Replication Status
 
 ```bash
-# Check replication status across all clusters
-kubectl get bundledeployment -A \
-  -o custom-columns="CLUSTER:.spec.clusterName,NAME:.metadata.name,READY:.status.ready,STATE:.status.state"
+# Check Fleet sync status across all regional GitRepos
+kubectl get gitrepo -n fleet-default \
+  -o custom-columns="NAME:.metadata.name,READY_CLUSTERS:.status.readyClusters,DESIRED_CLUSTERS:.status.desiredReadyClusters,STATE:.status.display.state"
 
-# Compare deployed versions
-for cluster in $(kubectl get bundledeployment -A -o jsonpath='{range .items[*]}{.spec.clusterName}{"\n"}{end}' | sort -u); do
-  echo -n "${cluster}: "
-  kubectl get bundledeployment -A \
-    --field-selector spec.clusterName="${cluster}" \
-    -o jsonpath='{.items[0].spec.options.helm.values.image.tag}' 2>/dev/null \
-    || echo "unknown"
+# Compare deployed image versions using a kubeconfig context for each downstream cluster
+for ctx in us-east-1 eu-west-1 ap-southeast-1; do
+  echo -n "${ctx}: "
+  kubectl --context "${ctx}" -n production get deployment myapp \
+    -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
 done
 ```
 
 ## Conclusion
 
-Replicating workloads across Rancher-managed clusters combines Fleet's GitOps synchronization with Kustomize overlays for per-cluster customization. For high availability, maintain identical workloads across multiple active clusters with load balancer routing. For disaster recovery, use Fleet's pause feature to pre-deploy standby workloads that can be activated in minutes. Automating image tag propagation through CI/CD ensures consistent, simultaneous updates across all cluster regions.
+Replicating workloads across Rancher-managed clusters combines Fleet's GitOps synchronization with Kustomize overlays for per-cluster customization. For high availability, maintain identical workloads across multiple active clusters with load balancer routing. For disaster recovery, keep the standby workload deployed and synchronized with Fleet, then promote it by switching DNS or load balancer traffic. Automating image tag propagation through CI/CD ensures consistent, simultaneous updates across all cluster regions.
