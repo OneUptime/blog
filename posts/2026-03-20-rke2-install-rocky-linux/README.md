@@ -10,10 +10,11 @@ Rocky Linux is an enterprise-grade Linux distribution designed as a downstream r
 
 ## Prerequisites
 
-- Rocky Linux 8.6+ or Rocky Linux 9.x
+- A supported Rocky Linux 8 or 9 release from the RKE2 support matrix
 - Minimum 2 vCPUs and 4 GB RAM
 - Root or sudo access
 - Static IP addresses for all nodes
+- Unique hostnames for all nodes
 
 ## Step 1: System Preparation
 
@@ -26,9 +27,8 @@ sudo dnf update -y
 sudo swapoff -a
 sudo sed -i '/ swap / s/^/#/' /etc/fstab
 
-# Configure SELinux (permissive mode for initial setup)
-sudo setenforce 0
-sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+# Keep SELinux enforcing; RKE2 RPM installs include SELinux support
+sudo getenforce
 
 # Load kernel modules
 sudo modprobe overlay
@@ -48,27 +48,38 @@ vm.swappiness                       = 0
 EOF
 
 sudo sysctl --system
+
+# Configure NetworkManager to ignore Canal-managed interfaces
+if systemctl is-enabled --quiet NetworkManager; then
+  sudo mkdir -p /etc/NetworkManager/conf.d
+
+  cat <<EOF | sudo tee /etc/NetworkManager/conf.d/rke2-canal.conf
+[keyfile]
+unmanaged-devices=interface-name:flannel*;interface-name:cali*;interface-name:tunl*;interface-name:vxlan.calico;interface-name:vxlan-v6.calico;interface-name:wireguard.cali;interface-name:wg-v6.cali
+EOF
+
+  sudo systemctl reload NetworkManager
+fi
 ```
 
 ## Step 2: Configure Firewall
 
 ```bash
-# Configure firewalld for Kubernetes networking
-sudo systemctl enable --now firewalld
+# RKE2's default Canal CNI manages iptables/nftables rules itself.
+# Disable firewalld on RKE2 nodes to avoid conflicts.
+if systemctl is-active --quiet firewalld || systemctl is-enabled --quiet firewalld; then
+  sudo systemctl disable --now firewalld
+fi
 
-# Control plane node ports
-sudo firewall-cmd --permanent --add-port=6443/tcp      # Kubernetes API
-sudo firewall-cmd --permanent --add-port=9345/tcp      # RKE2 registration
-sudo firewall-cmd --permanent --add-port=2379-2380/tcp # etcd
-sudo firewall-cmd --permanent --add-port=10250/tcp     # Kubelet API
-sudo firewall-cmd --permanent --add-port=10257/tcp     # kube-controller-manager
-sudo firewall-cmd --permanent --add-port=10259/tcp     # kube-scheduler
-sudo firewall-cmd --permanent --add-port=8472/udp      # Canal VXLAN
-sudo firewall-cmd --permanent --add-port=51820/udp     # Canal WireGuard
-
-# Enable masquerade for pod networking
-sudo firewall-cmd --permanent --add-masquerade
-sudo firewall-cmd --reload
+# In your external firewall or security group, allow only node-to-node traffic for:
+# 6443/tcp        - Kubernetes API to server nodes
+# 9345/tcp        - RKE2 supervisor API to server nodes
+# 2379-2381/tcp   - etcd between server nodes
+# 10250/tcp       - kubelet metrics/API between RKE2 nodes
+# 8472/udp        - Canal VXLAN between RKE2 nodes
+# 9099/tcp        - Canal health checks between RKE2 nodes
+# 51820-51821/udp - Canal WireGuard only if you enable WireGuard
+# 30000-32767/tcp - NodePort services if you use them
 ```
 
 ## Step 3: Install RKE2
@@ -80,10 +91,10 @@ curl -sfL https://get.rke2.io | sudo sh -
 # Verify the installation
 rke2 --version
 
-# The installer creates:
-# /usr/local/bin/rke2          - RKE2 binary
-# /usr/local/lib/systemd/system/rke2-server.service - Systemd unit file
-# /etc/rancher/rke2/           - Configuration directory
+# On Rocky Linux, the RPM-based installer creates:
+# /usr/bin/rke2                                  - RKE2 binary
+# /usr/lib/systemd/system/rke2-server.service   - Systemd unit file
+# /etc/rancher/rke2/                            - Configuration directory
 ```
 
 ## Step 4: Configure the Server
@@ -93,8 +104,11 @@ rke2 --version
 sudo mkdir -p /etc/rancher/rke2/
 
 cat <<EOF | sudo tee /etc/rancher/rke2/config.yaml
-# Write kubeconfig with secure permissions
+# Write kubeconfig with explicit permissions for the kubectl setup below
 write-kubeconfig-mode: "0644"
+
+# Enable SELinux support in containerd
+selinux: true
 
 # Additional SANs for the API server certificate
 tls-san:
@@ -106,11 +120,8 @@ cluster-cidr: 10.42.0.0/16
 service-cidr: 10.43.0.0/16
 cluster-dns: 10.43.0.10
 
-# Container runtime
-container-runtime-endpoint: ""
-
-# Disable default CNI (we'll use Canal which is default in RKE2)
-# cni: none
+# RKE2 uses Canal by default; set cni only when choosing a different plugin
+# cni: canal
 EOF
 
 # Start the RKE2 server
@@ -165,7 +176,7 @@ kubectl get pods -A
 sudo cat /var/lib/rancher/rke2/server/node-token
 
 # On each worker node - install RKE2 agent
-curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE="agent" sudo sh -
+curl -sfL https://get.rke2.io | sudo env INSTALL_RKE2_TYPE="agent" sh -
 
 # Configure the agent
 sudo mkdir -p /etc/rancher/rke2/
@@ -173,6 +184,7 @@ sudo mkdir -p /etc/rancher/rke2/
 cat <<EOF | sudo tee /etc/rancher/rke2/config.yaml
 server: https://<SERVER_IP>:9345
 token: <NODE_TOKEN>
+selinux: true
 EOF
 
 # Start the agent service
@@ -187,16 +199,16 @@ kubectl get nodes
 
 ```bash
 # Rocky Linux 9 uses cgroups v2 by default
-# RKE2 supports cgroups v2, but verify the configuration
+# Kubernetes supports cgroups v2, but verify the configuration
 # Check cgroup version
 stat -fc %T /sys/fs/cgroup/
 
 # For Rocky Linux 9, no special cgroup configuration is typically needed
-# RKE2 auto-detects and configures accordingly
+# The kubelet auto-detects and configures accordingly
 
-# Check if firewalld nftables backend is compatible
-firewall-cmd --version
-# Rocky Linux 9 uses nftables by default which is fully supported
+# Confirm firewalld is disabled as described above
+systemctl is-active firewalld
+# Canal requires iptables or xtables-nft packages on the node
 ```
 
 ## Conclusion
