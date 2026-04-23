@@ -8,7 +8,7 @@ Description: Learn how to configure RIPng on Linux using FRRouting's ripngd daem
 
 ## Overview
 
-FRRouting's `ripngd` daemon provides RIPng support on Linux. Configuration is done via `vtysh` and follows the same interface-based activation model as Cisco IOS.
+FRRouting's `ripngd` daemon provides RIPng support on Linux. Configuration is done via `vtysh`, and RIPng is enabled on interfaces with `network <interface>` under `router ripng`.
 
 ## Installation and Setup
 
@@ -49,7 +49,7 @@ router ripng
  ! Redistribute connected routes
  redistribute connected
 
- ! Set timers (update/timeout/holddown in seconds)
+ ! Set timers (update/timeout/garbage collection in seconds)
  timers basic 30 180 120
 
 end
@@ -66,10 +66,8 @@ router ripng
  network eth0
  network eth1
 
-! Make eth2 passive (don't send updates, only receive)
-! Passive interfaces don't send RIPng updates
-interface eth2
- ipv6 rip passive
+ ! Make eth2 passive (suppress RIPng updates on this interface)
+ passive-interface eth2
 
 end
 write memory
@@ -77,10 +75,10 @@ write memory
 
 ## Configuration File Method
 
-Alternatively, edit the config directly:
+Alternatively, edit the integrated config directly:
 
 ```text
-# /etc/frr/ripngd.conf
+# /etc/frr/frr.conf
 router ripng
  network eth0
  network eth1
@@ -89,18 +87,9 @@ router ripng
 !
 ```
 
-## Setting the Administrative Distance
+## Administrative Distance
 
-```bash
-vtysh
-configure terminal
-
-router ripng
- ! Default is 120 - change if needed
- distance 115
-
-end
-```
+FRR uses zebra's protocol administrative distance when selecting routes. RIPng uses the RIP default distance of 120; current `ripngd` does not provide a `distance` subcommand under `router ripng`.
 
 ## Generating a Default Route
 
@@ -118,10 +107,10 @@ end
 ## Verification Commands
 
 ```bash
-# Show RIPng routing status
+# Show RIPng routes
 vtysh -c "show ipv6 ripng"
 
-# Show RIPng routing table
+# Show RIPng status and configuration
 vtysh -c "show ipv6 ripng status"
 
 # Show routes in FRR's routing table from RIPng
@@ -136,15 +125,21 @@ ip -6 route show proto ripng
 ```text
 Router# show ipv6 ripng
 
-Codes: R - RIPng, C - connected, S - Static, O - OSPF, B - BGP
+Codes: K - kernel route, C - connected, L - local, S - static,
+       R - RIPng, O - OSPF, I - IS-IS, B - BGP, E - EIGRP, N - NHRP,
+       T - Table, v - VNC, V - VNC-Direct, A - Babel, F - PBR,
+       f - OpenFabric, t - Table-Direct
 Sub-codes:
       (n) - normal, (s) - static, (d) - default, (r) - redistribute,
-      (i) - interface, (a/S) - aggregated/suppressed
+      (i) - interface, (a/S) - aggregated/Suppressed
 
-Network                If         Met    Tag  Time
-C (i) 2001:db8:1::/64 eth0         1    0
-C (i) 2001:db8:2::/64 eth1         1    0
-R (n) 2001:db8:3::/64 eth0         2    0  02:48
+   Network      Next Hop                      Via     Metric Tag Time
+C(i) 2001:db8:1::/64
+                  ::                          self       1    0
+C(i) 2001:db8:2::/64
+                  ::                          self       1    0
+R(n) 2001:db8:3::/64
+                  fe80::1234:5678:abcd:1      eth0       2    0  02:48
 ```
 
 ## Redistribution
