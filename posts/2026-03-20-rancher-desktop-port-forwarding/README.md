@@ -13,9 +13,9 @@ Rancher Desktop is an open-source desktop application that provides Kubernetes a
 ## Prerequisites
 
 - A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
-- At least 8 GB of RAM (16 GB recommended)
-- At least 4 CPU cores
+- Administrator/sudo privileges may be required during installation, depending on your OS
+- Recommended: at least 8 GB of RAM
+- Recommended: at least 4 CPU cores
 
 ## Overview
 
@@ -29,7 +29,7 @@ Rancher Desktop simplifies local Kubernetes and container development by providi
 ## Step 1: Initial Setup
 
 ```bash
-# Verify Rancher Desktop is installed and running
+# Verify Rancher Desktop is installed
 
 rdctl version
 
@@ -37,8 +37,9 @@ rdctl version
 kubectl cluster-info
 
 # Verify container runtime
+# If Rancher Desktop is using containerd
 nerdctl version
-# or
+# If Rancher Desktop is using Moby (dockerd)
 docker version
 ```
 
@@ -53,30 +54,28 @@ Open Rancher Desktop Preferences to configure:
 
 ```bash
 # Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
-rdctl set --container-engine containerd
+rdctl set --kubernetes.version=<version>
+rdctl set --container-engine.name=containerd
 ```
 
 ## Step 3: Working with Containers
 
 ```bash
-# Pull an image
+# If Rancher Desktop is using containerd
 nerdctl pull nginx:latest
-# or with docker compatibility
-docker pull nginx:latest
-
-# Run a container
 nerdctl run -d -p 8080:80 --name my-nginx nginx:latest
-
-# List running containers
 nerdctl ps
-
-# View container logs
 nerdctl logs my-nginx
-
-# Stop and remove
 nerdctl stop my-nginx
 nerdctl rm my-nginx
+
+# If Rancher Desktop is using Moby (dockerd)
+docker pull nginx:latest
+docker run -d -p 8080:80 --name my-nginx nginx:latest
+docker ps
+docker logs my-nginx
+docker stop my-nginx
+docker rm my-nginx
 ```
 
 ## Step 4: Working with Kubernetes
@@ -131,31 +130,30 @@ helm uninstall my-release
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
+# Reset Rancher Desktop to factory defaults
 rdctl factory-reset
 
-# Check Rancher Desktop status
-rdctl status
+# Check Rancher Desktop information
+rdctl info
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
+# Show the configured Kubernetes version
+rdctl list-settings | jq -r '.kubernetes.version'
 
 # Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+rdctl set --kubernetes.version=<version>
 ```
 
 ## Troubleshooting
 
 ```bash
 # Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# In the Rancher Desktop UI, open Troubleshooting and click Show Logs.
 
 # Reset to factory defaults
 rdctl factory-reset
 
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Show current virtual machine settings
+rdctl list-settings | jq '.virtualMachine'
 ```
 
 ## Conclusion
