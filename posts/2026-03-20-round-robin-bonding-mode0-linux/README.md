@@ -8,12 +8,12 @@ Description: Configure Linux round-robin bonding (mode 0) to distribute outgoing
 
 ## Introduction
 
-Round-robin bonding (balance-rr, mode 0) sends packets to each slave interface in sequence: packet 1 via eth0, packet 2 via eth1, packet 3 via eth0, and so on. This provides rudimentary load balancing and fault tolerance. Note: round-robin can cause out-of-order packet delivery, which may impact TCP performance. Switch-side configuration (LACP or static aggregation) is often needed.
+Round-robin bonding (balance-rr, mode 0) sends packets to each slave interface in sequence: packet 1 via eth0, packet 2 via eth1, packet 3 via eth0, and so on. This provides rudimentary load balancing and fault tolerance. Note: round-robin can cause out-of-order packet delivery, which may impact TCP performance. Switch-side static aggregation is usually needed; LACP is used with 802.3ad mode, not balance-rr.
 
 ## Prerequisites
 
 - Two or more physical interfaces
-- Switch configured for static link aggregation (port channel/LACP) on the same port-channel
+- Switch configured for static link aggregation (port channel/EtherChannel, not LACP) on the same port-channel
 - Root access
 
 ## Configure Round-Robin with ip link
@@ -91,10 +91,10 @@ ip -s link show eth1
 ## Limitations and Considerations
 
 - Round-robin can cause out-of-order packets, which TCP handles but with reduced efficiency
-- Requires switch-side configuration (static port-channel or LACP) to avoid MAC flapping
+- Requires switch-side static port-channel/EtherChannel configuration to avoid MAC flapping
 - Not suitable for connections to switches that don't support aggregation
 - LACP (mode 4) is generally preferred over round-robin for better compatibility
 
 ## Conclusion
 
-Round-robin bonding distributes packets evenly across all slave interfaces, providing theoretical N×bandwidth throughput. In practice, it works best with switch-side static aggregation configured. For environments with LACP-capable switches, mode 4 (802.3ad) is a better choice. Use round-robin when you need simple multi-interface distribution without switch LACP support.
+Round-robin bonding distributes packets evenly across all slave interfaces, providing theoretical N×bandwidth throughput. In practice, it works best with switch-side static aggregation configured. For environments with LACP-capable switches, mode 4 (802.3ad) is a better choice. Use round-robin when you need simple multi-interface distribution and your switch supports static aggregation but not LACP.
