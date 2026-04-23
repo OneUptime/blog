@@ -4,22 +4,22 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Resource Quota, Multi-Tenant, Team, Resource Management
 
-Description: Set CPU, memory, and container count limits per team in Portainer to prevent resource starvation between tenants sharing the same Docker infrastructure.
+Description: Set CPU and memory limits for team workloads in Portainer to prevent resource starvation between tenants sharing the same Docker infrastructure.
 
 ## Introduction
 
-When multiple teams share a Docker host, resource quotas prevent one team from consuming all available CPU and memory, starving other teams' workloads. Portainer Business Edition supports resource quotas at the environment level and container-level limits for team users. This guide covers configuring resource limits at both the infrastructure and Portainer policy levels.
+When multiple teams share a Docker host, resource limits prevent one team from consuming all available CPU and memory, starving other teams' workloads. In Docker and Swarm environments, CPU and memory enforcement comes from Docker or the Linux host; Portainer Business Edition adds team access control, security policies, and custom templates that help standardize how those limits are applied. This guide covers configuring resource limits at both the infrastructure and Portainer policy levels.
 
 ## Step 1: Set Container Resource Limits in Team Stacks
 
 ```yaml
 # Team Alpha's docker-compose.yml with enforced resource limits
 
-version: "3.8"
-
 services:
   api:
     image: alpha/api:latest
+    labels:
+      - "tenant=alpha"
     deploy:
       resources:
         limits:
@@ -34,6 +34,8 @@ services:
 
   database:
     image: postgres:15-alpine
+    labels:
+      - "tenant=alpha"
     deploy:
       resources:
         limits:
@@ -41,10 +43,13 @@ services:
           memory: 2G
     mem_limit: 2g
     environment:
-      - POSTGRES_SHARED_BUFFERS=512MB  # Postgres respects memory limit
+      POSTGRES_PASSWORD: "change-me"
+    command: ["postgres", "-c", "shared_buffers=512MB"]  # Keep below memory limit
 
   worker:
     image: alpha/worker:latest
+    labels:
+      - "tenant=alpha"
     deploy:
       replicas: 2
       resources:
@@ -54,20 +59,20 @@ services:
     mem_limit: 256m
 ```
 
-## Step 2: Portainer Security Settings to Enforce Quotas
+## Step 2: Portainer Security Settings to Reduce Bypass Options
 
 ```bash
 PORTAINER_URL="https://portainer.example.com"
-ADMIN_TOKEN="admin_token"
+ADMIN_API_KEY="admin_api_key"
 ENV_ID=1  # The environment team uses
 
-# Configure security settings that prevent teams from bypassing limits
+# Configure security settings that reduce risky deployment options
 curl -s -X PUT \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -H "Content-Type: application/json" \
-  "$PORTAINER_URL/api/endpoints/$ENV_ID" \
+  "$PORTAINER_URL/api/endpoints/$ENV_ID/settings" \
   -d '{
-    "SecuritySettings": {
+    "securitySettings": {
       "allowBindMountsForRegularUsers": false,
       "allowPrivilegedModeForRegularUsers": false,
       "allowHostNamespaceForRegularUsers": false,
@@ -79,10 +84,13 @@ curl -s -X PUT \
   }'
 
 # With these settings, team users CANNOT:
-# - Deploy containers without resource limits
 # - Run privileged containers
 # - Mount host filesystem paths
+# - Map host devices into containers
 # - Modify kernel parameters
+#
+# These settings do not validate that every stack has CPU or memory limits.
+# Use templates, RBAC, and review workflows for that policy.
 ```
 
 ## Step 3: cgroups-Based Host-Level Quotas
@@ -92,20 +100,24 @@ For strict enforcement at the OS level, use cgroups:
 ```bash
 # Create cgroup hierarchy for tenant isolation
 # Linux cgroups v2
+# Requires root privileges and available cpu/memory controllers.
+
+# Enable controllers for child cgroups
+echo "+cpu +memory" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null
 
 # Create cgroup for Team Alpha
-mkdir -p /sys/fs/cgroup/team-alpha
+sudo mkdir -p /sys/fs/cgroup/team-alpha
 
 # Set CPU quota (50% of one CPU)
-echo "50000 100000" > /sys/fs/cgroup/team-alpha/cpu.max
+echo "50000 100000" | sudo tee /sys/fs/cgroup/team-alpha/cpu.max >/dev/null
 # Format: quota_microseconds period_microseconds
 # 50000/100000 = 50% of one CPU
 
 # Set memory limit (4GB)
-echo "4294967296" > /sys/fs/cgroup/team-alpha/memory.max  # 4GB in bytes
+echo "4294967296" | sudo tee /sys/fs/cgroup/team-alpha/memory.max >/dev/null  # 4GB in bytes
 
 # Set swap limit (no swap)
-echo "4294967296" > /sys/fs/cgroup/team-alpha/memory.swap.max
+echo "0" | sudo tee /sys/fs/cgroup/team-alpha/memory.swap.max >/dev/null
 
 # Docker can place containers in specific cgroups
 docker run -d \
@@ -124,32 +136,53 @@ echo "=== Team Resource Usage Report ==="
 echo "Date: $(date)"
 echo ""
 
-# Get stats for Team Alpha containers
-echo "--- Team Alpha ---"
-docker stats --no-stream \
-  $(docker ps --filter "label=tenant=alpha" -q) \
-  --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"
+print_team_stats() {
+  local team_name="$1"
+  local tenant="$2"
+  local containers=()
+
+  mapfile -t containers < <(docker ps --filter "label=tenant=$tenant" -q)
+
+  echo "--- $team_name ---"
+  if [ "${#containers[@]}" -eq 0 ]; then
+    echo "No running containers"
+    return
+  fi
+
+  docker stats --no-stream \
+    --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}" \
+    "${containers[@]}"
+}
+
+team_cpu_total() {
+  local tenant="$1"
+  local containers=()
+
+  mapfile -t containers < <(docker ps --filter "label=tenant=$tenant" -q)
+  if [ "${#containers[@]}" -eq 0 ]; then
+    echo "0.0%"
+    return
+  fi
+
+  docker stats --no-stream \
+    --format "{{.CPUPerc}}" \
+    "${containers[@]}" | \
+    awk '{gsub(/%/, "", $1); sum += $1} END {printf "%.1f%%", sum}'
+}
+
+# Get stats for each team's containers
+print_team_stats "Team Alpha" "alpha"
 
 echo ""
-echo "--- Team Beta ---"
-docker stats --no-stream \
-  $(docker ps --filter "label=tenant=beta" -q) \
-  --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"
+print_team_stats "Team Beta" "beta"
 
 # Aggregate totals
 echo ""
 echo "--- Resource Totals ---"
 
 # Sum CPU usage for each team
-ALPHA_CPU=$(docker stats --no-stream \
-  $(docker ps --filter "label=tenant=alpha" -q) \
-  --format "{{.CPUPerc}}" | \
-  awk '{sum += $1} END {printf "%.1f%%", sum}')
-
-BETA_CPU=$(docker stats --no-stream \
-  $(docker ps --filter "label=tenant=beta" -q) \
-  --format "{{.CPUPerc}}" | \
-  awk '{sum += $1} END {printf "%.1f%%", sum}')
+ALPHA_CPU=$(team_cpu_total "alpha")
+BETA_CPU=$(team_cpu_total "beta")
 
 echo "Team Alpha CPU: $ALPHA_CPU"
 echo "Team Beta CPU: $BETA_CPU"
@@ -164,10 +197,23 @@ echo "Team Beta CPU: $BETA_CPU"
 MAX_MEMORY_MB=512   # Alert if any container uses more than 512MB
 MAX_CPU_PERCENT=80  # Alert if any container uses more than 80% CPU
 
-docker stats --no-stream --format "{{.Name}} {{.MemUsage}} {{.CPUPerc}}" | \
-while read name mem_usage mem_total cpu_perc; do
+parse_mib() {
+  local value="$1"
+
+  case "$value" in
+    *GiB) awk -v v="${value%GiB}" 'BEGIN {printf "%d", v * 1024}' ;;
+    *MiB) awk -v v="${value%MiB}" 'BEGIN {printf "%d", v}' ;;
+    *KiB) awk -v v="${value%KiB}" 'BEGIN {printf "%d", v / 1024}' ;;
+    *B) awk -v v="${value%B}" 'BEGIN {printf "%d", v / 1024 / 1024}' ;;
+    *) echo 0 ;;
+  esac
+}
+
+docker stats --no-stream --format "{{.Name}}|{{.MemUsage}}|{{.CPUPerc}}" | \
+while IFS='|' read -r name mem_usage cpu_perc; do
   # Extract memory in MB
-  mem_mb=$(echo "$mem_usage" | sed 's/MiB//' | awk '{print int($1)}')
+  mem_used="${mem_usage%% / *}"
+  mem_mb=$(parse_mib "$mem_used")
   cpu_num=$(echo "$cpu_perc" | tr -d '%' | awk '{print int($1)}')
 
   if [ "$mem_mb" -gt "$MAX_MEMORY_MB" ] 2>/dev/null; then
@@ -181,51 +227,50 @@ while read name mem_usage mem_total cpu_perc; do
 done
 ```
 
-## Step 6: Enforce Limits via Portainer Stack Templates
+## Step 6: Enforce Limits via Portainer Custom Templates
 
 ```yaml
-# Create a stack template that enforces limits
-# Teams deploy from this template, ensuring limits are always set
+# Create a custom stack template that includes fixed limits
+# Teams deploy from this template, ensuring the generated stack includes limits
 
 # portainer-template-api.yml
-version: "3.8"
-
 services:
   app:
-    image: "${APP_IMAGE}"
+    image: "{{ APP_IMAGE }}"
     environment:
       - NODE_ENV=production
     deploy:
       resources:
         limits:
-          # These values come from Portainer template variables
-          cpus: "${CPU_LIMIT:-0.5}"
-          memory: "${MEMORY_LIMIT:-256M}"
-    mem_limit: "${MEMORY_LIMIT:-256m}"
+          cpus: "0.5"
+          memory: 256M
+    mem_limit: 256M
     restart: unless-stopped
     labels:
-      - "tenant=${TEAM_NAME}"
+      - "tenant={{ TEAM_NAME }}"
 ```
 
 ```bash
-# Create the template in Portainer
+# Create the custom template in Portainer
+STACK_FILE="$(cat portainer-template-api.yml)"
+
 curl -s -X POST \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -H "Content-Type: application/json" \
-  "$PORTAINER_URL/api/templates" \
-  -d '{
-    "Title": "Application Stack with Resource Limits",
-    "Description": "Deploy an application with enforced CPU and memory limits",
-    "Type": 2,
-    "Variables": [
-      {"name": "TEAM_NAME", "label": "Team Name", "default": ""},
-      {"name": "APP_IMAGE", "label": "Docker Image", "default": ""},
-      {"name": "CPU_LIMIT", "label": "CPU Limit", "default": "0.5"},
-      {"name": "MEMORY_LIMIT", "label": "Memory Limit", "default": "256m"}
+  "$PORTAINER_URL/api/custom_templates/create/string" \
+  -d "$(jq -n --arg file "$STACK_FILE" '{
+    Title: "Application Stack with Resource Limits",
+    Description: "Deploy an application with fixed CPU and memory limits",
+    Type: 2,
+    Platform: 1,
+    FileContent: $file,
+    Variables: [
+      {"name": "TEAM_NAME", "label": "Team Name", "defaultValue": ""},
+      {"name": "APP_IMAGE", "label": "Docker Image", "defaultValue": ""}
     ]
-  }'
+  }')"
 ```
 
 ## Conclusion
 
-Resource quotas in a shared Portainer environment require enforcement at multiple levels: Docker compose `mem_limit` and `cpus` settings for individual containers, Portainer security policies to prevent teams from deploying without limits, and optional OS-level cgroup quotas for hard enforcement. Monitoring scripts that track resource usage by team label provide visibility into consumption patterns. Stack templates with required resource variables ensure new deployments always include limits, preventing accidental resource exhaustion that impacts other teams.
+Resource isolation in a shared Portainer Docker environment requires enforcement at multiple levels: Docker Compose `mem_limit`, `cpus`, and `deploy.resources` settings for individual containers or services, Portainer security policies to reduce risky deployment options, and optional OS-level cgroup quotas for hard enforcement. Monitoring scripts that track resource usage by team label provide visibility into consumption patterns. Custom templates with fixed resource values help new deployments include limits, but they are not a hard security boundary unless manual deployment paths are restricted.
