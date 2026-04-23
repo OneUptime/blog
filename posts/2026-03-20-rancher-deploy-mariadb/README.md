@@ -22,6 +22,8 @@ MariaDB is a community-developed fork of MySQL with enhanced features including 
 ```yaml
 # mariadb-values.yaml - Primary-Replica configuration
 
+architecture: replication
+
 auth:
   rootPassword: "MariaDBS3cureP@ss"
   username: "appuser"
@@ -90,34 +92,47 @@ db:
   password: "AppGaleraP@ss"
   name: myapp
 
+galera:
+  name: galera_cluster
+  mariabackup:
+    password: "MariabackupP@ss"
+
 replicaCount: 3
 
 mariadbConfiguration: |
+  [client]
+  port=3306
+  socket=/opt/bitnami/mariadb/tmp/mysql.sock
+  plugin_dir=/opt/bitnami/mariadb/plugin
+
   [mysqld]
+  default_storage_engine=InnoDB
+  basedir=/opt/bitnami/mariadb
+  datadir=/bitnami/mariadb/data
+  plugin_dir=/opt/bitnami/mariadb/plugin
+  tmpdir=/opt/bitnami/mariadb/tmp
+  socket=/opt/bitnami/mariadb/tmp/mysql.sock
+  pid_file=/opt/bitnami/mariadb/tmp/mysqld.pid
+  bind_address=0.0.0.0
+  binlog_format=row
   max_connections=300
   character-set-server=utf8mb4
   collation-server=utf8mb4_unicode_ci
-
-  # Galera Provider Configuration
-  wsrep_on=ON
-  wsrep_provider=/usr/lib/galera/libgalera_smm.so
-
-  # Galera Cluster Configuration
-  wsrep_cluster_name=galera_cluster
-  wsrep_cluster_address=gcomm://
-
-  # Galera Synchronization Configuration
-  wsrep_sst_method=rsync
-
-  # Galera Node Configuration
-  wsrep_node_address=0.0.0.0
-  wsrep_node_name=galera-node
-
-  # InnoDB Configuration
+  innodb_autoinc_lock_mode=2
   innodb_buffer_pool_size=512M
   innodb_log_file_size=128M
   innodb_flush_log_at_trx_commit=2
   innodb_flush_method=O_DIRECT
+  slow_query_log=1
+  long_query_time=2
+  log_error=/opt/bitnami/mariadb/logs/mysqld.log
+
+  [galera]
+  wsrep_on=ON
+  wsrep_provider=/opt/bitnami/mariadb/lib/libgalera_smm.so
+  wsrep_cluster_name=galera_cluster
+  wsrep_cluster_address=gcomm://
+  wsrep_sst_method=mariabackup
 
 persistence:
   enabled: true
@@ -148,32 +163,48 @@ helm install mariadb-galera bitnami/mariadb-galera \
   --timeout 15m
 
 # Verify cluster status
-kubectl exec -n databases mariadb-galera-0 -- \
-  mysql -u root -p${MARIADB_ROOT_PASSWORD} \
-  -e "SHOW STATUS LIKE 'wsrep%';"
+kubectl exec -n databases mariadb-galera-0 -- bash -c \
+  'mysql -u root -p"$MARIADB_ROOT_PASSWORD" -e "SHOW STATUS LIKE \"wsrep%\";"'
 ```
 
 ## Step 3: Verify Galera Cluster Health
 
 ```bash
 # Check cluster size (should be 3)
-kubectl exec -n databases mariadb-galera-0 -- \
-  mysql -u root -p${MARIADB_ROOT_PASSWORD} \
-  -e "SHOW STATUS LIKE 'wsrep_cluster_size';"
+kubectl exec -n databases mariadb-galera-0 -- bash -c \
+  'mysql -u root -p"$MARIADB_ROOT_PASSWORD" -e "SHOW STATUS LIKE \"wsrep_cluster_size\";"'
 
 # Check cluster status
-kubectl exec -n databases mariadb-galera-0 -- \
-  mysql -u root -p${MARIADB_ROOT_PASSWORD} \
-  -e "SHOW STATUS LIKE 'wsrep_cluster_status';"
+kubectl exec -n databases mariadb-galera-0 -- bash -c \
+  'mysql -u root -p"$MARIADB_ROOT_PASSWORD" -e "SHOW STATUS LIKE \"wsrep_cluster_status\";"'
 
 # Check local state
-kubectl exec -n databases mariadb-galera-0 -- \
-  mysql -u root -p${MARIADB_ROOT_PASSWORD} \
-  -e "SHOW STATUS LIKE 'wsrep_local_state_comment';"
+kubectl exec -n databases mariadb-galera-0 -- bash -c \
+  'mysql -u root -p"$MARIADB_ROOT_PASSWORD" -e "SHOW STATUS LIKE \"wsrep_local_state_comment\";"'
 # Should show: Synced
 ```
 
 ## Step 4: Configure MaxScale for Load Balancing
+
+Create the MaxScale user on the Galera cluster first. For MariaDB 10.4 and earlier, replace `REPLICA MONITOR` with `REPLICATION CLIENT`.
+
+```bash
+kubectl exec -n databases mariadb-galera-0 -- bash -c '
+mysql -u root -p"$MARIADB_ROOT_PASSWORD" <<EOF
+CREATE USER IF NOT EXISTS '\''maxscale_user'\''@'\''%'\'' IDENTIFIED BY '\''MaxScaleP@ss'\'';
+GRANT REPLICA MONITOR ON *.* TO '\''maxscale_user'\''@'\''%'\'';
+GRANT SHOW DATABASES ON *.* TO '\''maxscale_user'\''@'\''%'\'';
+GRANT SELECT ON mysql.user TO '\''maxscale_user'\''@'\''%'\'';
+GRANT SELECT ON mysql.db TO '\''maxscale_user'\''@'\''%'\'';
+GRANT SELECT ON mysql.tables_priv TO '\''maxscale_user'\''@'\''%'\'';
+GRANT SELECT ON mysql.columns_priv TO '\''maxscale_user'\''@'\''%'\'';
+GRANT SELECT ON mysql.procs_priv TO '\''maxscale_user'\''@'\''%'\'';
+GRANT SELECT ON mysql.proxies_priv TO '\''maxscale_user'\''@'\''%'\'';
+GRANT SELECT ON mysql.roles_mapping TO '\''maxscale_user'\''@'\''%'\'';
+GRANT SELECT ON mysql.global_priv TO '\''maxscale_user'\''@'\''%'\'';
+FLUSH PRIVILEGES;
+EOF'
+```
 
 ```yaml
 # maxscale-deployment.yaml - MaxScale query router for Galera
@@ -197,7 +228,6 @@ spec:
           image: mariadb/maxscale:23.08
           ports:
             - containerPort: 3306
-            - containerPort: 8989  # Admin port
           volumeMounts:
             - name: maxscale-config
               mountPath: /etc/maxscale.cnf
@@ -206,6 +236,19 @@ spec:
         - name: maxscale-config
           configMap:
             name: maxscale-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maxscale
+  namespace: databases
+spec:
+  selector:
+    app: maxscale
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -223,7 +266,6 @@ data:
     servers=galera-node-0,galera-node-1,galera-node-2
     user=maxscale_user
     password=MaxScaleP@ss
-    auto_failover=true
 
     [Galera-Service]
     type=service
@@ -231,6 +273,12 @@ data:
     servers=galera-node-0,galera-node-1,galera-node-2
     user=maxscale_user
     password=MaxScaleP@ss
+
+    [Galera-Listener]
+    type=listener
+    service=Galera-Service
+    protocol=MariaDBClient
+    port=3306
 
     [galera-node-0]
     type=server
@@ -252,6 +300,14 @@ data:
 ```
 
 ## Step 5: Create Application Connection
+
+Create an application Secret in the `production` namespace first:
+
+```bash
+kubectl create secret generic mariadb-passwords \
+  --namespace production \
+  --from-literal=mariadb-password='AppGaleraP@ss'
+```
 
 ```yaml
 # app-deployment.yaml - Application using MaxScale/MariaDB
@@ -288,20 +344,17 @@ spec:
 # Check Galera node state
 for i in 0 1 2; do
   echo "=== Node $i ==="
-  kubectl exec -n databases mariadb-galera-$i -- \
-    mysql -u root -p${MARIADB_ROOT_PASSWORD} \
-    -e "SHOW STATUS LIKE 'wsrep_local_state_comment';" 2>/dev/null
+  kubectl exec -n databases mariadb-galera-$i -- bash -c \
+    'mysql -u root -p"$MARIADB_ROOT_PASSWORD" -e "SHOW STATUS LIKE \"wsrep_local_state_comment\";"' 2>/dev/null
 done
 
-# Check for split-brain scenario
-kubectl exec -n databases mariadb-galera-0 -- \
-  mysql -u root -p${MARIADB_ROOT_PASSWORD} \
-  -e "SHOW STATUS LIKE 'wsrep_cluster_size';"
+# Check current cluster size
+kubectl exec -n databases mariadb-galera-0 -- bash -c \
+  'mysql -u root -p"$MARIADB_ROOT_PASSWORD" -e "SHOW STATUS LIKE \"wsrep_cluster_size\";"'
 
-# Recover a broken cluster (last resort)
-kubectl exec -n databases mariadb-galera-0 -- \
-  mysql -u root -p${MARIADB_ROOT_PASSWORD} \
-  -e "SET GLOBAL wsrep_provider_options='pc.bootstrap=YES';"
+# Recover a broken cluster (last resort; only after stopping the other nodes and choosing the most advanced node)
+kubectl exec -n databases mariadb-galera-0 -- bash -c \
+  'mysql -u root -p"$MARIADB_ROOT_PASSWORD" -e "SET GLOBAL wsrep_provider_options=\"pc.bootstrap=true\";"'
 ```
 
 ## Conclusion
