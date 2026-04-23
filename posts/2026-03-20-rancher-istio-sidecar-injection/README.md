@@ -6,7 +6,7 @@ Tags: Rancher, Kubernetes, Istio, Service Mesh, Sidecar
 
 Description: Learn how to configure automatic and manual Istio sidecar injection for your workloads running in Rancher-managed Kubernetes clusters.
 
-Istio's sidecar injection is the mechanism by which Envoy proxy containers are added to your application pods. These sidecar proxies intercept all network traffic to and from your services, enabling traffic management, observability, and security features. This guide explains how to configure sidecar injection in a Rancher-managed environment.
+Istio's sidecar injection is the mechanism by which Envoy proxy containers are added to your application pods. These sidecar proxies intercept traffic to and from your services, enabling traffic management, observability, and security features. This guide explains how to configure sidecar injection in a Rancher-managed environment.
 
 ## Prerequisites
 
@@ -18,8 +18,8 @@ Istio's sidecar injection is the mechanism by which Envoy proxy containers are a
 
 Istio supports two modes of sidecar injection:
 
-1. **Automatic injection**: The Istio mutating webhook automatically injects the Envoy sidecar into all pods in labeled namespaces
-2. **Manual injection**: You explicitly annotate pods or use `istioctl kube-inject` to inject sidecars
+1. **Automatic injection**: The Istio mutating webhook automatically injects the Envoy sidecar into new pods created in labeled namespaces
+2. **Manual injection**: You explicitly generate an injected manifest with `istioctl kube-inject` and apply it to the cluster
 
 ## Step 1: Enable Automatic Sidecar Injection at the Namespace Level
 
@@ -40,10 +40,10 @@ kubectl label namespace my-app istio-injection=disabled --overwrite
 
 ## Step 2: Control Injection at the Pod Level
 
-You can override namespace-level injection settings at the individual pod level using annotations:
+You can control injection at the individual pod level using pod template labels. A pod-level `sidecar.istio.io/inject: "true"` label can opt a workload in when the namespace is otherwise unlabeled, but it does not override a namespace explicitly labeled `istio-injection=disabled`:
 
 ```yaml
-# deployment.yaml - Force inject sidecar even if namespace injection is disabled
+# deployment.yaml - Request sidecar injection for this pod
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -58,8 +58,7 @@ spec:
     metadata:
       labels:
         app: my-app
-      annotations:
-        # Force enable injection for this specific pod
+        # Request injection for this specific pod
         sidecar.istio.io/inject: "true"
     spec:
       containers:
@@ -85,7 +84,6 @@ spec:
     metadata:
       labels:
         app: my-utility
-      annotations:
         # Disable injection for this pod even if namespace has injection enabled
         sidecar.istio.io/inject: "false"
     spec:
@@ -111,21 +109,21 @@ grep -A5 "istio-proxy" deployment-injected.yaml
 
 ## Step 4: Customize Sidecar Configuration
 
-You can customize the sidecar proxy behavior using the `Sidecar` custom resource:
+You can customize the sidecar proxy behavior using the `Sidecar` custom resource. A common use is to scope which services are imported into the proxy configuration for workloads in a namespace. This scopes configuration pushed to the proxy; it is not an outbound firewall:
 
 ```yaml
-# sidecar-config.yaml - Restrict which services a workload can reach
-apiVersion: networking.istio.io/v1alpha3
+# sidecar-config.yaml - Limit the sidecar's imported hosts
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
   namespace: my-app
 spec:
   egress:
-  # Only allow traffic to services in the same namespace
+  # Import services from the same namespace
   - hosts:
     - "./*"
-    # Allow traffic to the istio-system namespace for control plane
+    # Also import services from the istio-system namespace
     - "istio-system/*"
 ```
 
@@ -139,7 +137,7 @@ kubectl apply -f sidecar-config.yaml
 After enabling injection and restarting pods, verify the sidecar is running:
 
 ```bash
-# Check that pods have 2 containers (app + istio-proxy)
+# For a single-container application pod, READY should show 2/2 (app + istio-proxy)
 kubectl get pods -n my-app
 
 # Expected output shows READY 2/2 for injected pods:
@@ -170,21 +168,28 @@ kubectl rollout restart daemonset/my-daemonset -n my-app
 
 ## Configuring Injection in Rancher UI
 
-Rancher's UI provides a convenient way to manage Istio injection settings:
+Rancher's UI also lets you enable Istio auto-injection for a namespace:
 
-1. Navigate to your cluster in the Rancher UI
-2. Go to **Istio** in the left menu (if Istio is installed)
-3. Click on **Namespaces** to view injection status
-4. Toggle the injection setting for each namespace
+1. Click **☰ > Cluster Management**
+2. Open your cluster and click **Explore**
+3. Go to **Cluster > Projects/Namespaces**
+4. Find the namespace and select **⋮ > Enable Istio Auto Injection**
 
 ## Troubleshooting Injection Issues
 
 ```bash
-# Check if the mutating webhook is properly configured
-kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o yaml
+# Check whether Istio would inject a sidecar for a workload
+istioctl experimental check-inject -n my-app deploy/my-app
+
+# List mutating webhook configurations and identify the Istio injector for your installation
+kubectl get mutatingwebhookconfigurations
+
+# Inspect the injector webhook configuration (for example, istio-sidecar-injector
+# or a revision/tag-specific webhook)
+kubectl get mutatingwebhookconfiguration <your-istio-webhook-name> -o yaml
 
 # Verify the webhook is targeting the correct namespaces
-kubectl get mutatingwebhookconfiguration istio-sidecar-injector \
+kubectl get mutatingwebhookconfiguration <your-istio-webhook-name> \
   -o jsonpath='{.webhooks[0].namespaceSelector}'
 
 # Check Istiod logs for injection errors
@@ -193,4 +198,4 @@ kubectl logs -n istio-system -l app=istiod --tail=50
 
 ## Conclusion
 
-Configuring Istio sidecar injection properly is fundamental to getting value from the service mesh. By using namespace-level labels for broad application and pod-level annotations for exceptions, you have precise control over which workloads participate in the mesh. Always restart pods after enabling injection to ensure all running workloads have the sidecar proxy deployed.
+Configuring Istio sidecar injection properly is fundamental to getting value from the service mesh. By using namespace-level labels for broad application and pod-level labels for exceptions, you have precise control over which workloads participate in the mesh. Always restart pods after enabling injection to ensure all running workloads have the sidecar proxy deployed.
