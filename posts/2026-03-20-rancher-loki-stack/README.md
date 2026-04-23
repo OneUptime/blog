@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Loki, Log Aggregation, Grafana, Observability
 
-Description: Deploy the Grafana Loki stack on Rancher for scalable, cost-effective log aggregation with Promtail for log collection and Grafana for visualization.
+Description: Deploy the Grafana Loki stack on Rancher for scalable, cost-effective log aggregation with Grafana Alloy for log collection and Grafana for visualization.
 
 ## Introduction
 
-Grafana Loki is a horizontally scalable log aggregation system inspired by Prometheus. Unlike ELK, Loki only indexes metadata (labels) rather than full log content, making it significantly cheaper to operate at scale. This guide covers deploying the complete Loki stack (Loki + Promtail + Grafana) on Rancher.
+Grafana Loki is a horizontally scalable log aggregation system inspired by Prometheus. Unlike ELK, Loki only indexes metadata (labels) rather than full log content, making it significantly cheaper to operate at scale. This guide covers deploying the complete Loki stack (Loki + Grafana Alloy + Grafana) on Rancher.
 
 ## Prerequisites
 
@@ -26,21 +26,22 @@ loki:
   auth_enabled: false  # Set to true for multi-tenancy
 
   commonConfig:
-    replication_factor: 2
+    replication_factor: 3
 
   storage:
     type: s3
+    bucketNames:
+      chunks: loki-chunks
     s3:
       endpoint: minio.observability.svc.cluster.local:9000
-      bucketnames: loki-chunks
-      access_key_id: minioadmin
-      secret_access_key: minioadmin
-      s3forcepathstyle: true
+      accessKeyId: minioadmin
+      secretAccessKey: minioadmin
+      s3ForcePathStyle: true
       insecure: true
 
   schemaConfig:
     configs:
-      - from: 2024-01-01
+      - from: 2024-04-01
         store: tsdb
         object_store: s3
         schema: v13
@@ -62,11 +63,19 @@ loki:
   compactor:
     retention_enabled: true
     retention_delete_delay: 2h
+    delete_request_store: s3
     compaction_interval: 10m
 
   # Ruler for log-based alerting
-  ruler:
+  rulerConfig:
+    enable_api: true
+    storage:
+      type: local
+      local:
+        directory: /etc/loki/rules
     alertmanager_url: http://rancher-monitoring-alertmanager.cattle-monitoring-system.svc.cluster.local:9093
+
+deploymentMode: SingleBinary
 
 singleBinary:
   replicas: 3
@@ -74,89 +83,177 @@ singleBinary:
     enabled: true
     size: 10Gi
 
-serviceMonitor:
-  enabled: true
-  namespace: cattle-monitoring-system
-  labels:
-    release: rancher-monitoring
+# Zero out replica counts for other deployment modes
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+ingester:
+  replicas: 0
+querier:
+  replicas: 0
+queryFrontend:
+  replicas: 0
+queryScheduler:
+  replicas: 0
+distributor:
+  replicas: 0
+compactor:
+  replicas: 0
+indexGateway:
+  replicas: 0
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
+  replicas: 0
+bloomGateway:
+  replicas: 0
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+    labels:
+      release: rancher-monitoring
 ```
 
 ```bash
 # Install Loki
-helm repo add grafana https://grafana.github.io/helm-charts
-helm install loki grafana/loki \
+helm repo add grafana-community https://grafana-community.github.io/helm-charts
+helm repo update
+helm install loki grafana-community/loki \
   --namespace observability \
   --create-namespace \
   --values loki-values.yaml \
   --wait
 
 # Check status
-kubectl get pods -n observability -l app.kubernetes.io/name=loki
+kubectl get pods -n observability
 ```
 
-## Step 2: Deploy Promtail for Log Collection
+## Step 2: Deploy Grafana Alloy for Log Collection
 
 ```yaml
-# promtail-values.yaml - Promtail DaemonSet configuration
-config:
-  # Send logs to Loki
-  clients:
-    - url: http://loki.observability.svc.cluster.local:3100/loki/api/v1/push
+# alloy-values.yaml - Grafana Alloy DaemonSet configuration
+controller:
+  type: daemonset
 
-  # Log scrape configuration
-  scrape_configs:
-    - job_name: kubernetes-pods
-      kubernetes_sd_configs:
-        - role: pod
-      relabel_configs:
-        # Include only pods with annotation
-        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
-          action: drop
-          regex: "false"
-        # Add pod labels as Loki labels
-        - source_labels: [__meta_kubernetes_namespace]
-          target_label: namespace
-        - source_labels: [__meta_kubernetes_pod_name]
-          target_label: pod
-        - source_labels: [__meta_kubernetes_container_name]
-          target_label: container
-        - source_labels: [__meta_kubernetes_pod_label_app]
-          target_label: app
-        # Add node name
-        - source_labels: [__meta_kubernetes_pod_node_name]
-          target_label: node
-      pipeline_stages:
-        # Parse JSON logs
-        - json:
-            expressions:
-              level: level
-              timestamp: timestamp
-              msg: msg
-              trace_id: trace_id
-        - labels:
-            level:
-        - timestamp:
-            source: timestamp
-            format: RFC3339
-        # Drop debug logs in production
-        - drop:
-            expression: '.*level=debug.*'
+alloy:
+  mounts:
+    varlog: true
 
-    # System logs
-    - job_name: system-logs
-      static_configs:
-        - targets:
-            - localhost
-          labels:
-            job: varlogs
-            __path__: /var/log/*log
+  configMap:
+    content: |
+      discovery.kubernetes "pod" {
+        role = "pod"
+
+        selectors {
+          role  = "pod"
+          field = "spec.nodeName=" + coalesce(sys.env("HOSTNAME"), constants.hostname)
+        }
+      }
+
+      discovery.relabel "pod_logs" {
+        targets = discovery.kubernetes.pod.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          action        = "replace"
+          target_label  = "namespace"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          action        = "replace"
+          target_label  = "pod"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          action        = "replace"
+          target_label  = "container"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          action        = "replace"
+          target_label  = "app"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_node_name"]
+          action        = "replace"
+          target_label  = "node"
+        }
+      }
+
+      loki.source.kubernetes "pod_logs" {
+        targets    = discovery.relabel.pod_logs.output
+        forward_to = [loki.process.pod_logs.receiver]
+      }
+
+      loki.process "pod_logs" {
+        stage.json {
+          expressions = {
+            level     = "level"
+            timestamp = "timestamp"
+            msg       = "msg"
+            trace_id  = "trace_id"
+          }
+        }
+
+        stage.labels {
+          values = {
+            level = ""
+          }
+        }
+
+        stage.timestamp {
+          source = "timestamp"
+          format = "RFC3339"
+        }
+
+        stage.match {
+          selector = "{level=\"debug\"}"
+          action   = "drop"
+        }
+
+        forward_to = [loki.write.default.receiver]
+      }
+
+      local.file_match "system_logs" {
+        path_targets = [{
+          __path__ = "/var/log/*.log",
+          job      = "varlogs",
+          node     = coalesce(sys.env("HOSTNAME"), constants.hostname),
+        }]
+      }
+
+      loki.source.file "system_logs" {
+        targets    = local.file_match.system_logs.targets
+        forward_to = [loki.write.default.receiver]
+      }
+
+      loki.write "default" {
+        endpoint {
+          url = "http://loki.observability.svc.cluster.local:3100/loki/api/v1/push"
+        }
+      }
+
+serviceMonitor:
+  enabled: true
+  additionalLabels:
+    release: rancher-monitoring
 ```
 
 ```bash
-# Install Promtail
-helm install promtail grafana/promtail \
+# Install Grafana Alloy
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+helm install alloy grafana/alloy \
   --namespace observability \
-  --values promtail-values.yaml \
+  --values alloy-values.yaml \
   --wait
 ```
 
@@ -176,15 +273,16 @@ data:
     apiVersion: 1
     datasources:
       - name: Loki
+        uid: loki
         type: loki
         url: http://loki.observability.svc.cluster.local:3100
         access: proxy
         jsonData:
           maxLines: 1000
           derivedFields:
-            # Link trace_id in logs to Tempo traces
+            # Tempo data source UID must be tempo for this link to resolve
             - datasourceUid: tempo
-              matcherRegex: '"trace_id":"(\w+)"'
+              matcherRegex: '"trace_id"\s*:\s*"([0-9a-fA-F]+)"'
               name: TraceID
               url: '$${__value.raw}'
 ```
@@ -193,7 +291,7 @@ data:
 
 LogQL is Loki's query language, similar to PromQL:
 
-```bash
+```logql
 # Query all error logs from production namespace
 {namespace="production"} |= "error"
 
@@ -218,42 +316,39 @@ sum by (app) (
 ## Step 5: Create Log-Based Alerts
 
 ```yaml
-# loki-alerts.yaml - Alert rules using LogQL
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: log-alerts
-  namespace: cattle-monitoring-system
-  labels:
-    release: rancher-monitoring
-spec:
-  groups:
-    - name: log-based-alerts
-      rules:
-        # Alert on high error rate in logs
-        - alert: HighErrorRateInLogs
-          expr: |
-            sum by (app, namespace) (
-              rate({namespace="production"} |= "ERROR" [5m])
-            ) > 10
-          for: 5m
-          labels:
-            severity: warning
-          annotations:
-            summary: "High error rate in {{ $labels.app }} logs"
+# Add to loki-values.yaml - auth_enabled: false uses the single tenant ID "fake"
+ruler:
+  directories:
+    fake:
+      log-alerts.yaml: |
+        groups:
+          - name: log-based-alerts
+            rules:
+              - alert: HighErrorRateInLogs
+                expr: |
+                  sum by (app, namespace) (
+                    rate({namespace="production"} |= "ERROR" [5m])
+                  ) > 10
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "High error rate in {{ $labels.app }} logs"
 ```
 
-## Step 6: Configure Log Retention
+```bash
+helm upgrade loki grafana-community/loki \
+  --namespace observability \
+  --values loki-values.yaml \
+  --wait
+```
+
+## Step 6: Request Log Deletion
 
 ```bash
-# Set retention via Loki admin API
-curl -X POST http://loki.observability.svc.cluster.local:3100/loki/api/v1/delete \
-  -H "Content-Type: application/json" \
-  -d '{
-    "match[]": "{namespace=\"development\"}",
-    "start": "2026-01-01T00:00:00Z",
-    "end": "2026-01-31T23:59:59Z"
-  }'
+# Submit a delete request through the Loki delete API
+curl -g -X POST \
+  'http://loki.observability.svc.cluster.local:3100/loki/api/v1/delete?query={namespace="development"}&start=2026-01-01T00:00:00Z&end=2026-01-31T23:59:59Z'
 ```
 
 ## Troubleshooting
@@ -262,10 +357,8 @@ curl -X POST http://loki.observability.svc.cluster.local:3100/loki/api/v1/delete
 # Check Loki health
 curl http://loki.observability.svc.cluster.local:3100/ready
 
-# Check Promtail targets
-kubectl port-forward -n observability \
-  daemonset/promtail 3101:3101 &
-curl http://localhost:3101/targets
+# Check Alloy logs
+kubectl logs -n observability daemonset/alloy --tail=50
 
 # Check ingestion rate
 curl http://loki.observability.svc.cluster.local:3100/metrics | \
