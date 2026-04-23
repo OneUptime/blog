@@ -13,7 +13,7 @@ Configure containers to run with read-only root filesystems in Portainer to impr
 ## Prerequisites
 
 - Portainer installed (CE or BE)
-- At least one Docker or Kubernetes environment connected
+- A Docker environment connected to Portainer
 - Basic familiarity with Docker concepts
 
 ## Using the Portainer UI
@@ -22,28 +22,27 @@ Configure containers to run with read-only root filesystems in Portainer to impr
 
 1. Log in to your Portainer instance
 2. Select your environment from the home screen
-3. Navigate to **Containers** (or **Stacks** for compose-based tasks)
+3. Navigate to **Stacks** if you manage the workload with Compose, or **Containers** for a standalone container
 
-### Step 2: Locate Your Container
+### Step 2: Locate Your Container or Stack
 
 Use the search and filter options in Portainer:
 
-1. Click the **Containers** menu item
-2. Use the search box to find your container
-3. Filter by status (running, stopped, unhealthy)
-4. Click on the container name for details
+1. For a stack-managed workload, click **Stacks**, then either create a new stack in the Web editor or select an existing stack and open the **Editor** tab
+2. For a standalone container, click **Containers** and use the search box to find your container
+3. Open the container details page and click **Duplicate/Edit** if you need to recreate it with updated settings
+4. After deployment, use **Inspect** to confirm the final runtime configuration
 
 ## Step-by-Step Instructions
 
 ### View Container Details
 
 ```bash
-# Using Docker CLI equivalent
+# Verify that the container root filesystem is read-only
+docker inspect --format '{{ .HostConfig.ReadonlyRootfs }}' container-name
 
-docker inspect container-name
-
-# View formatted output
-docker inspect container-name | jq '.[0].Config'
+# Review the writable mounts attached to the container
+docker inspect --format '{{ json .Mounts }}' container-name
 
 # Via Portainer: Containers > container-name > Inspect
 ```
@@ -51,42 +50,21 @@ docker inspect container-name | jq '.[0].Config'
 ### Key Configuration Options
 
 ```yaml
-# docker-compose.yml example
-version: "3.8"
-
+# compose.yaml example for a Portainer stack
 services:
   app:
     image: your-app:latest
-    container_name: my-app
-    restart: always
-    # Resource constraints
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-    # Health check
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    # Environment
+    read_only: true
+    restart: unless-stopped
     environment:
-      - NODE_ENV=production
-    # Volumes
+      NODE_ENV: production
     volumes:
       - app-data:/data
-    # Network
-    networks:
-      - app-net
+    tmpfs:
+      - /tmp
 
 volumes:
   app-data:
-
-networks:
-  app-net:
-    driver: bridge
 ```
 
 ## Command Line Examples
@@ -94,58 +72,49 @@ networks:
 Useful Docker commands for this task:
 
 ```bash
-# Basic inspection commands
-docker ps -a                              # List all containers
-docker stats container-name               # View resource usage
-docker logs container-name --tail 100     # View recent logs
-docker inspect container-name             # Full container config
-docker exec -it container-name /bin/sh   # Access container shell
+# List all containers
+docker ps -a
 
-# Advanced filtering
-docker ps --filter "status=running" \
-           --filter "label=env=production" \
-           --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+# Verify the read-only root filesystem setting
+docker inspect --format '{{ .HostConfig.ReadonlyRootfs }}' container-name
 
-# File operations
-docker cp /host/path container-name:/container/path
-docker cp container-name:/container/path /host/path
+# Check which mounted paths remain writable
+docker inspect --format '{{ json .Mounts }}' container-name
+
+# Docker CLI equivalent for a read-only container
+docker run -d \
+  --name my-app \
+  --read-only \
+  -v app-data:/data \
+  your-app:latest
 ```
 
 ## Portainer-Specific Features
 
 Portainer provides several UI conveniences for this task:
 
-1. **Visual Stats Dashboard**: Click any container > Stats for real-time graphs
-2. **Log Streaming**: Click Logs for real-time log output with search
-3. **Container Console**: Click Console for direct shell access
-4. **Quick Actions**: Stop, restart, kill from the container list
-5. **Inspect View**: Formatted JSON view of container configuration
+1. **Stacks Web Editor**: Deploy a Compose file that includes `read_only: true`
+2. **Stack Editor**: Update an existing stack and redeploy it from the **Editor** tab
+3. **Duplicate/Edit**: Recreate an existing standalone container with the updated runtime settings
+4. **Inspect View**: Confirm that `HostConfig.ReadonlyRootfs` is set to `true`
+5. **Logs**: Review application errors after enabling a read-only root filesystem
 
 ## Troubleshooting Common Issues
 
-**Issue: Container not appearing in list**
+**Issue: Application fails with "Read-only file system" errors**
 ```bash
-# Check all containers including stopped ones
-docker ps -a
+# Confirm the root filesystem is read-only
+docker inspect --format '{{ .HostConfig.ReadonlyRootfs }}' container-name
 
-# Refresh Portainer's environment
-# Settings > Environments > Re-sync
+# Review the writable mount points available to the container
+docker inspect --format '{{ json .Mounts }}' container-name
 ```
 
-**Issue: Permission denied errors**
-```bash
-# Check container user
-docker inspect container-name | jq '.[0].Config.User'
+If the application needs to write to disk, move those writes to a volume such as `/data`. If it needs a temporary writable directory such as `/tmp`, add a `tmpfs` mount. Docker documents `tmpfs` mounts for Linux hosts.
 
-# Run container with specific user
-docker run --user 1000:1000 your-image
-```
+**Issue: The change does not appear after editing**
 
-**Issue: Resource limits not applying**
-```bash
-# Verify limits are applied
-docker inspect container-name | jq '.[0].HostConfig | {Memory, CpuShares, CpuQuota}'
-```
+For a standalone container, use **Duplicate/Edit** and then replace the old container. For a stack-managed workload, edit the Compose file and redeploy the stack, then re-run `docker inspect` to confirm the new container has `ReadonlyRootfs` enabled.
 
 ## Automating with the Portainer API
 
@@ -160,10 +129,15 @@ TOKEN=$(curl -s -X POST \
 
 # List containers
 curl -s -X GET \
-  "https://portainer.example.com/api/endpoints/1/docker/containers/json" \
-  -H "Authorization: Bearer $TOKEN" | jq '.[] | {Names, Status, Image}'
+  "https://portainer.example.com/api/endpoints/1/docker/containers/json?all=true" \
+  -H "Authorization: Bearer $TOKEN" | jq '.[] | {Id, Names, Status, Image}'
+
+# Inspect a container and confirm the read-only root filesystem setting
+curl -s -X GET \
+  "https://portainer.example.com/api/endpoints/1/docker/containers/<container_id>/json" \
+  -H "Authorization: Bearer $TOKEN" | jq '{Name, ReadonlyRootfs: .HostConfig.ReadonlyRootfs, Mounts: [.Mounts[] | {Destination, Type, RW}]}'
 ```
 
 ## Conclusion
 
-Understanding how to Set Up Read-Only Containers in Portainer gives you greater control over your containerized infrastructure. Portainer's visual interface makes these operations accessible to team members who may not be comfortable with the Docker CLI, while also providing quick access to underlying Docker capabilities. Regular use of these features helps maintain healthy, well-monitored container environments.
+Understanding how to Set Up Read-Only Containers in Portainer helps reduce unnecessary write access inside your containers. The most reliable approach is to set `read_only: true` in a Portainer-managed stack or recreate a standalone container with the equivalent Docker setting, then verify the result in Portainer's **Inspect** view or with `docker inspect`. If your application still needs writable paths, provide them explicitly with volumes or `tmpfs` mounts instead of leaving the entire root filesystem writable.
