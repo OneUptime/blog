@@ -36,17 +36,11 @@ spec:
     storage: 20Gi
   rabbitmq:
     additionalConfig: |
-      # Use durable queues by default
-      queue.default_queue_type = quorum
+      # Use quorum queues when clients do not specify a queue type
+      default_queue_type = quorum
 
-      # AOF-style persistence for message journals
-      msg_store_index_module = rabbit_msg_store_ets_index
-
-      # Flush journal to disk
-      queue_journal_max_bytes_size = 0
-
-      # Checkpoint interval (ms)
-      queue_persistent_file_delay = 100
+      # Optional: tune quorum queue WAL segment size
+      raft.wal_max_size_bytes = 32000000
 ```
 
 ### Publish Persistent Messages
@@ -55,11 +49,15 @@ spec:
 # publisher.py - Example of publishing persistent messages
 import pika
 import json
+import os
 
 connection = pika.BlockingConnection(
     pika.ConnectionParameters(
         host='rabbitmq-persistent.messaging.svc.cluster.local',
-        credentials=pika.PlainCredentials('appuser', 'AppUserP@ss')
+        credentials=pika.PlainCredentials(
+            os.environ['RABBITMQ_USER'],
+            os.environ['RABBITMQ_PASSWORD']
+        )
     )
 )
 channel = connection.channel()
@@ -79,7 +77,7 @@ channel.basic_publish(
     routing_key='orders',
     body=json.dumps({'order_id': '123', 'item': 'widget'}),
     properties=pika.BasicProperties(
-        delivery_mode=pika.DeliveryMode.Persistent,  # Message survives restart
+        delivery_mode=pika.DeliveryMode.Persistent,  # Explicitly mark the message as persistent
         content_type='application/json'
     )
 )
@@ -91,13 +89,47 @@ channel.basic_publish(
 
 ```yaml
 # kafka-persistence.yaml - Kafka with persistent storage configuration
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: dual-role
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: kafka-persistent
+spec:
+  replicas: 3
+  roles:
+    - controller
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 100Gi
+        class: standard
+        # Important: keep data when pod is deleted
+        deleteClaim: false
+        kraftMetadata: shared
+---
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: kafka-persistent
   namespace: kafka
 spec:
   kafka:
+    version: 4.2.0
+    metadataVersion: 4.2-IV1
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      - name: tls
+        port: 9093
+        type: internal
+        tls: true
     config:
       # Retain logs for 7 days
       log.retention.hours: 168
@@ -105,30 +137,26 @@ spec:
       log.retention.bytes: 10737418240
       # Log segment size: 1GB
       log.segment.bytes: 1073741824
-      # Log cleanup policy
+      # Default broker cleanup policy
       log.cleanup.policy: delete
-      # Flush interval (let OS manage)
+      # Let the OS flush pages in the background; rely on replication for durability
       log.flush.interval.messages: 9223372036854775807
       log.flush.interval.ms: 9223372036854775807
-      # Enable log compaction for event sourcing use cases
-      # log.cleanup.policy: compact  # Use this for event sourcing
-
-    storage:
-      type: jbod
-      volumes:
-        - id: 0
-          type: persistent-claim
-          size: 100Gi
-          class: standard
-          # Important: keep data when pod is deleted
-          deleteClaim: false
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+      default.replication.factor: 3
+      min.insync.replicas: 2
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
 ```
 
 ### Configure Log Compaction for Event Store
 
 ```yaml
 # compacted-topic.yaml - Log-compacted Kafka topic (event sourcing)
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: user-events
@@ -141,11 +169,11 @@ spec:
   config:
     # Compact - keep only latest value per key
     cleanup.policy: compact
-    # Keep compacted records for 24 hours
+    # Keep records uncompacted for at least 24 hours
     min.compaction.lag.ms: "86400000"
-    # Delete records 7 days after being compacted away
+    # Keep tombstone markers for 7 days
     delete.retention.ms: "604800000"
-    # Start compaction when segment is 70% full
+    # Start compaction when at least 70% of the log is dirty
     min.cleanable.dirty.ratio: "0.7"
 ```
 
@@ -154,6 +182,9 @@ spec:
 ```yaml
 # nats-persistence-values.yaml - NATS with JetStream persistence
 config:
+  cluster:
+    enabled: true
+    replicas: 3
   jetstream:
     enabled: true
     fileStore:
@@ -162,23 +193,20 @@ config:
         enabled: true
         size: 50Gi
         storageClassName: standard
-    memStore:
-      enabled: true
-      maxSize: 1Gi  # In-memory cache for recent messages
 ```
 
 ### Create Persistent JetStream Stream
 
 ```bash
-# Create a file-backed stream
+# Create a file-backed stream with 3 replicas and 7-day retention
 kubectl exec -n messaging deployment/nats-box -- \
-  nats stream create ORDERS \
+  nats stream add ORDERS \
   --server nats://nats.messaging.svc.cluster.local:4222 \
   --subjects "orders.*" \
-  --storage file \        # File-based persistence (survives restart)
-  --replicas 3 \          # 3 copies across NATS cluster
+  --storage file \
+  --replicas 3 \
   --retention limits \
-  --max-age 168h \        # 7 days
+  --max-age 168h \
   --max-msgs 50000000 \
   --discard old
 
@@ -219,14 +247,16 @@ spec:
   concurrency: 1
 ```
 
-Tag message queue PVCs for backup:
+Label message queue PVCs for backup:
 
 ```bash
-# Tag RabbitMQ PVCs for backup
+# Label message queue PVCs for backup
 for PVC in $(kubectl get pvc -n messaging -o name); do
-  kubectl annotate $PVC \
+  kubectl label $PVC \
     -n messaging \
-    "recurring-job-group.longhorn.io/message-queues=enabled"
+    "recurring-job.longhorn.io/source=enabled" \
+    "recurring-job-group.longhorn.io/message-queues=enabled" \
+    --overwrite
 done
 ```
 
@@ -236,15 +266,30 @@ done
 #!/bin/bash
 # dr-test.sh - Test message persistence after restart
 
-NAMESPACE="messaging"
-RABBITMQ_POD="rabbitmq-persistent-0"
+set -euo pipefail
 
-echo "=== Publishing 1000 test messages ==="
+NAMESPACE="messaging"
+CLUSTER_NAME="rabbitmq-persistent"
+RABBITMQ_POD="${CLUSTER_NAME}-server-0"
+
+RABBITMQ_USER=$(kubectl -n $NAMESPACE get secret ${CLUSTER_NAME}-default-user \
+  -o jsonpath='{.data.username}' | base64 --decode)
+RABBITMQ_PASS=$(kubectl -n $NAMESPACE get secret ${CLUSTER_NAME}-default-user \
+  -o jsonpath='{.data.password}' | base64 --decode)
+
+echo "=== Declaring a durable quorum queue ==="
 kubectl exec -n $NAMESPACE $RABBITMQ_POD -- \
-  rabbitmqadmin publish \
-  exchange=amq.default \
-  routing_key=test-persistence \
-  payload="test message"
+  rabbitmqadmin --username="$RABBITMQ_USER" --password="$RABBITMQ_PASS" \
+  declare queue name=test-persistence durable=true queue_type=quorum
+
+echo "=== Publishing 1000 persistent test messages ==="
+for i in $(seq 1 1000); do
+  kubectl exec -n $NAMESPACE $RABBITMQ_POD -- \
+    rabbitmqadmin --username="$RABBITMQ_USER" --password="$RABBITMQ_PASS" \
+    publish exchange=amq.default routing_key=test-persistence \
+    payload="test message ${i}" \
+    properties='{"delivery_mode":2}'
+done
 
 echo "=== Count messages before restart ==="
 kubectl exec -n $NAMESPACE $RABBITMQ_POD -- \
@@ -254,8 +299,10 @@ echo "=== Restarting RabbitMQ pod ==="
 kubectl delete pod $RABBITMQ_POD -n $NAMESPACE
 
 echo "=== Waiting for pod to restart ==="
-kubectl wait pod -n $NAMESPACE \
-  -l app.kubernetes.io/name=rabbitmq-persistent \
+until kubectl get pod/$RABBITMQ_POD -n $NAMESPACE >/dev/null 2>&1; do
+  sleep 2
+done
+kubectl wait pod/$RABBITMQ_POD -n $NAMESPACE \
   --for=condition=Ready \
   --timeout=120s
 
