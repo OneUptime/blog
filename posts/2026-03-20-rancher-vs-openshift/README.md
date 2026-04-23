@@ -16,21 +16,21 @@ Rancher, developed by SUSE, is an open-source Kubernetes management platform tha
 
 ## What Is OpenShift?
 
-Red Hat OpenShift is an enterprise Kubernetes distribution built on top of vanilla Kubernetes. It is opinionated, security-first, and ships with a full developer platform including integrated CI/CD (Tekton/Jenkins), container registry, and developer console. It runs on RHEL CoreOS and is deeply integrated with the Red Hat ecosystem.
+Red Hat OpenShift is an enterprise Kubernetes distribution built on top of vanilla Kubernetes. It is opinionated, security-first, and provides a developer platform with a built-in container registry and developer console, while CI/CD is commonly added through OpenShift Pipelines (Tekton) or Jenkins integrations. It runs on Red Hat Enterprise Linux CoreOS (RHCOS) and is deeply integrated with the Red Hat ecosystem.
 
 ## Feature Comparison
 
 | Feature | Rancher | OpenShift |
 |---|---|---|
-| Open Source | Yes (Apache 2.0) | Community edition (OKD) only |
-| Multi-cluster Management | Yes, native | Limited (via ACM add-on) |
+| Open Source | Yes (Apache 2.0) | OKD is open source |
+| Multi-cluster Management | Yes, native | Via ACM (separate product) |
 | Supported Distros | RKE2, K3s, EKS, AKS, GKE, custom | OpenShift only |
-| Built-in CI/CD | No (integrates with external tools) | Yes (Tekton, Jenkins) |
+| CI/CD | No (integrates with external tools) | Via OpenShift Pipelines (Tekton); Jenkins available separately |
 | Container Registry | Via Harbor integration | Yes (built-in) |
-| Developer Console | Basic | Advanced (S2I, web terminal) |
+| Developer Console | Basic | Advanced (S2I, optional web terminal) |
 | Security Policies | NeuVector, Kubewarden | Built-in SCC |
 | Air-gap Support | Yes | Yes |
-| Edge Support | Yes (K3s/Fleet) | Limited |
+| Edge Support | Yes (K3s/Fleet) | Yes (Single Node OpenShift, MicroShift) |
 | Cost | Free (community) / Rancher Prime | Subscription required |
 | Installation Complexity | Low-Medium | High |
 
@@ -39,18 +39,27 @@ Red Hat OpenShift is an enterprise Kubernetes distribution built on top of vanil
 ### Rancher
 
 ```bash
-# Install Rancher using Helm - straightforward and fast
+# Install Rancher with Helm; install cert-manager first if using Rancher's default generated TLS
 
+helm repo add jetstack https://charts.jetstack.io
 helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+helm repo update
+
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --set crds.enabled=true
+
 helm install rancher rancher-stable/rancher \
   --namespace cattle-system \
+  --create-namespace \
   --set hostname=rancher.example.com \
   --set replicas=3
 ```
 
 ### OpenShift
 
-OpenShift installation requires the OpenShift installer (`openshift-install`) and a pull secret from Red Hat. The process is more involved and requires DNS configuration, load balancer setup, and RHEL CoreOS nodes.
+For installer-provisioned infrastructure, OpenShift installation requires the OpenShift installer (`openshift-install`) and a pull secret from Red Hat. The process is more involved and requires DNS configuration, load balancer setup, and Red Hat Enterprise Linux CoreOS (RHCOS) nodes.
 
 ```bash
 # Generate OpenShift install config
@@ -73,15 +82,15 @@ Rancher integrates with NeuVector for runtime security, Kubewarden for policy en
 
 ## Developer Experience
 
-OpenShift shines for developer experience with Source-to-Image (S2I) builds, integrated pipelines, a developer-centric web console, and a built-in catalog of templates. It functions more like a full PaaS.
+OpenShift shines for developer experience with Source-to-Image (S2I) builds, OpenShift Pipelines, a developer-centric web console, and a built-in catalog of templates. It functions more like a full PaaS.
 
 Rancher focuses on operations and management. Developers interact with standard Kubernetes tooling (kubectl, Helm) rather than a custom PaaS layer.
 
 ## Cost Considerations
 
-Rancher Community Edition is free and open source. Rancher Prime adds enterprise support, security advisories, and additional tooling.
+Rancher Community Edition is free and open source. Rancher Prime adds enterprise support, additional security, and extended lifecycles.
 
-OpenShift requires a Red Hat subscription. Costs scale with the number of cores and can be significant for large deployments. OKD (the community version) is free but unsupported.
+OpenShift requires a Red Hat subscription. OKD (the community version) is free but unsupported.
 
 ## When to Choose Rancher
 
@@ -94,7 +103,7 @@ OpenShift requires a Red Hat subscription. Costs scale with the number of cores 
 ## When to Choose OpenShift
 
 - Your organization is heavily invested in the Red Hat ecosystem
-- You need a fully integrated developer platform out of the box
+- You need a tightly integrated developer platform with strong built-in defaults
 - Compliance requirements favor Red Hat's certifications
 - You prioritize a more opinionated, batteries-included approach
 - Your team is primarily focused on application development, not infrastructure
