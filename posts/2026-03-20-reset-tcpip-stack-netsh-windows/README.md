@@ -21,13 +21,13 @@ Reset the TCP/IP stack when you experience:
 REM Run Command Prompt as Administrator (crucial - will fail otherwise)
 
 REM Reset Winsock catalog (fixes LSP/layered service provider corruption)
-netsh winsock reset catalog
+netsh winsock reset
 
 REM Reset IPv4 TCP/IP stack
 netsh int ip reset reset.log
 
 REM Reset IPv6 TCP/IP stack
-netsh int ipv6 reset reset6.log
+netsh interface ipv6 reset
 
 REM Flush DNS resolver cache
 ipconfig /flushdns
@@ -48,26 +48,25 @@ shutdown /r /t 0
 ```cmd
 REM After reboot, review what was reset
 type reset.log
-type reset6.log
 
 REM Example output:
-REM Reseting Interface, OK!
-REM Reseting Unicast Address, OK!
-REM Reseting Routes, OK!
+REM reset SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{GUID}\EnableDhcp
+REM old REG_DWORD = 0
+REM <completed>
 ```
 
-## Step 3: Using PowerShell Alternative
+## Step 3: Using PowerShell Session Alternative
 
 ```powershell
-# PowerShell equivalent (Windows 8/10/11)
+# PowerShell session alternative (Windows 8/10/11)
 
 # Run as Administrator
 
-# Reset network stack
+# Reset Winsock and TCP/IP
 netsh winsock reset
 netsh int ip reset
 
-# Remove all IP addresses and routes for a clean slate
+# Optional: remove IP addresses and the IPv4 default route for a deeper rebuild
 Get-NetAdapter | ForEach-Object {
     $name = $_.Name
     Remove-NetIPAddress -InterfaceAlias $name -Confirm:$false -ErrorAction SilentlyContinue
@@ -77,21 +76,24 @@ Get-NetAdapter | ForEach-Object {
 # Flush DNS
 Clear-DnsClientCache
 
-# Verify DNS cache is empty
+# Re-register DNS names
+Register-DnsClient
+
+# Inspect DNS cache entries after reset
 Get-DnsClientCache
 ```
 
 ## Step 4: Reset Network Using Windows Settings (GUI)
 
 ```text
-Settings → System → Troubleshoot → Other troubleshooters
-→ Internet Connections → Run
+Get Help → search for "connect to network and internet"
+→ Run network diagnostics
 
 Or for full reset:
 Settings → Network & Internet → Advanced network settings
 → Network reset → Reset now
 
-WARNING: Network reset removes all Wi-Fi passwords and VPN configurations
+WARNING: Network reset removes network adapters and their settings, and you might need to reinstall VPN client software afterward
 ```
 
 ## Step 5: Reset Individual Components
@@ -100,14 +102,14 @@ WARNING: Network reset removes all Wi-Fi passwords and VPN configurations
 REM Reset only Winsock (less disruptive)
 netsh winsock reset
 
-REM Reset only IP routing table
+REM Reset TCP/IP stack
 netsh int ip reset
 
-REM Reset only firewall rules to defaults
+REM Reset firewall policies to defaults
 netsh advfirewall reset
 
-REM Disable IPv6 if causing conflicts (rare)
-netsh int ipv6 set global disabled
+REM Prefer IPv4 over IPv6 instead of disabling IPv6 outright (requires reboot)
+reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" /v DisabledComponents /t REG_DWORD /d 32 /f
 ```
 
 ## Step 6: Check What Gets Reset
@@ -130,16 +132,16 @@ REM Verify TCP/IP stack is functional after reboot
 ipconfig /all
 
 REM Test connectivity layers
-ping 127.0.0.1          REM TCP/IP stack
-ping 192.168.1.1        REM Gateway
-ping 8.8.8.8            REM Internet
-nslookup google.com     REM DNS
+ping 127.0.0.1             REM IPv4 loopback
+ping <your-default-gateway> REM Gateway
+ping 8.8.8.8               REM Internet
+nslookup google.com        REM DNS
 
-REM Check Winsock providers are clean
+REM Review Winsock providers
 netsh winsock show catalog
-REM Should show only Microsoft providers, no third-party LSPs from old VPN/AV
+REM Unexpected third-party LSPs from old VPN/AV software can indicate leftover Winsock entries
 ```
 
 ## Conclusion
 
-The full TCP/IP reset sequence is `netsh winsock reset catalog` + `netsh int ip reset reset.log` + `ipconfig /flushdns` + reboot. This fixes most persistent Windows network issues by returning the TCP/IP stack to a clean state. Check the `reset.log` file after reboot to confirm which settings were changed. The network stack reset via Settings → Network reset is the most thorough option but removes all saved Wi-Fi credentials.
+The full TCP/IP reset sequence is `netsh winsock reset` + `netsh int ip reset reset.log` + `netsh interface ipv6 reset` + `ipconfig /flushdns` + reboot. This fixes most persistent Windows network issues by returning the TCP/IP stack to a clean state. Check the `reset.log` file after reboot to confirm which settings were changed. The network stack reset via Settings → Network reset also reinstalls network adapters and resets their settings, so you may need to reinstall VPN client software afterward.
