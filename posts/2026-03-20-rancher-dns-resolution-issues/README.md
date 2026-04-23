@@ -23,16 +23,16 @@ kubectl describe pod -n kube-system -l k8s-app=kube-dns
 # Check CoreDNS logs
 kubectl logs -n kube-system -l k8s-app=kube-dns --tail=100
 
-# Verify the CoreDNS service and endpoints
+# Verify the CoreDNS service and EndpointSlices
 kubectl get service -n kube-system kube-dns
-kubectl get endpoints -n kube-system kube-dns
+kubectl get endpointslices -n kube-system -l kubernetes.io/service-name=kube-dns
 ```
 
 ## Step 2: Test DNS Resolution from a Pod
 
 ```bash
 # Run a temporary debug pod
-kubectl run dns-debug --image=nicolaka/netshoot --restart=Never --rm -it -- bash
+kubectl run dns-debug --image=nicolaka/netshoot --restart=Never --rm -it --command -- bash
 
 # Inside the debug pod:
 # Test Kubernetes service DNS
@@ -45,14 +45,15 @@ nslookup google.com
 # Check the pod's /etc/resolv.conf
 cat /etc/resolv.conf
 # Should show: nameserver <kube-dns-cluster-ip>
-# And: search default.svc.cluster.local svc.cluster.local cluster.local
+# And search domains similar to: <namespace>.svc.<cluster-domain> svc.<cluster-domain> <cluster-domain>
 ```
 
 ## Step 3: Check CoreDNS Configuration
 
 ```bash
-# View the CoreDNS ConfigMap
-kubectl get configmap -n kube-system coredns -o yaml
+# Find and view the CoreDNS ConfigMap
+kubectl get configmap -n kube-system | grep coredns
+kubectl get configmap -n kube-system <coredns-configmap-name> -o yaml
 ```
 
 A typical CoreDNS Corefile looks like:
@@ -83,7 +84,7 @@ A typical CoreDNS Corefile looks like:
 Common issues:
 
 - Missing `forward` stanza (external DNS won't resolve)
-- Wrong cluster domain (not `cluster.local`)
+- Wrong cluster domain for your cluster (often `cluster.local`)
 - `loop` plugin detecting a forwarding loop
 
 ## Step 4: Fix the ndots Setting
@@ -91,11 +92,11 @@ Common issues:
 High `ndots` values cause excessive DNS lookup attempts before trying the absolute domain name:
 
 ```bash
-# Check the default ndots setting
-kubectl get configmap -n kube-system coredns -o yaml | grep ndots
+# Check the pod's current ndots setting
+kubectl exec <pod-name> -- cat /etc/resolv.conf | grep options
 
 # In pod spec, you can override ndots:
-# (For external domains like "google.com", 5 dots trigger 5 local searches first)
+# (With ndots:5, names with fewer than 5 dots are tried with the search list first)
 ```
 
 ```yaml
@@ -112,49 +113,50 @@ spec:
 ## Step 5: Debug with DNS Lookup Tools
 
 ```bash
-# From inside the cluster, use dig for detailed DNS traces
-kubectl run dig-debug --image=tutum/dnsutils --restart=Never --rm -it -- bash
+# From inside the cluster, use dig for detailed DNS lookups
+kubectl run dig-debug --image=nicolaka/netshoot --restart=Never --rm -it --command -- bash
 
-# Detailed lookup with trace
-dig @<kube-dns-ip> kubernetes.default.svc.cluster.local +norecurse
+# Detailed lookup against the cluster DNS service
+dig @<kube-dns-service-ip> kubernetes.default.svc.cluster.local +norecurse
 
-# Test upstream resolver connectivity from CoreDNS pod
-COREDNS_POD=$(kubectl get pod -n kube-system -l k8s-app=kube-dns -o jsonpath='{.items[0].metadata.name}')
-kubectl exec -n kube-system ${COREDNS_POD} -- cat /etc/resolv.conf
-
-# Check if CoreDNS can reach the upstream resolver
-kubectl exec -n kube-system ${COREDNS_POD} -- nslookup google.com 8.8.8.8
+# Identify the upstream resolver from the CoreDNS Corefile or node resolv.conf,
+# then test it directly from the debug pod
+dig @<upstream-resolver-ip> google.com
 ```
 
 ## Step 6: Fix CoreDNS Loop Detection
 
 ```bash
 # If CoreDNS logs show: "Loop (127.0.0.1:43465 -> :53) detected"
-# This happens when the node's /etc/resolv.conf points to 127.0.0.1
+# This often happens when the node resolver points to a local stub such as 127.0.0.53
 
-# Option 1: Override CoreDNS to use a specific upstream
-kubectl edit configmap -n kube-system coredns
+# Option 1: Override CoreDNS to use specific reachable upstream resolvers
+kubectl edit configmap -n kube-system <coredns-configmap-name>
 # Change: forward . /etc/resolv.conf
-# To:     forward . 8.8.8.8 8.8.4.4
+# To:     forward . <upstream-dns-ip-1> <upstream-dns-ip-2>
 
-# Option 2: Fix the node's /etc/resolv.conf (for systemd-resolved nodes)
-# On the node:
-sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+# Option 2: Point kubelet/RKE2/K3s at the real resolv.conf on systemd-resolved nodes
+# Use /run/systemd/resolve/resolv.conf instead of the stub resolver file.
+# Example RKE2/K3s config:
+# resolv-conf: /run/systemd/resolve/resolv.conf
 ```
 
 ## Step 7: Scale CoreDNS for High Load
 
 ```bash
-# Check CoreDNS metrics (if Prometheus is installed)
-kubectl port-forward -n kube-system service/kube-dns 9153:9153
+# Find the CoreDNS deployment name
+kubectl get deployment -n kube-system -l k8s-app=kube-dns
+
+# Check the CoreDNS metrics endpoint
+kubectl port-forward -n kube-system deployment/<coredns-deployment-name> 9153:9153
 curl http://localhost:9153/metrics | grep coredns_dns_requests_total
 
 # Scale CoreDNS replicas
-kubectl scale deployment -n kube-system coredns --replicas=3
+kubectl scale deployment -n kube-system <coredns-deployment-name> --replicas=3
 
 # Enable NodeLocal DNSCache for improved performance
-# (Available as a DaemonSet addon in RKE2/K3s)
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/dns/nodelocaldns/nodelocaldns.yaml
+# On RKE2, enable it with a HelmChartConfig for rke2-coredns.
+# The upstream Kubernetes manifest requires cluster-specific substitutions before use.
 ```
 
 ## Conclusion
