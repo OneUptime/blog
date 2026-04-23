@@ -15,7 +15,6 @@ A corrupted OpenTofu state file can bring your infrastructure management to a ha
 Common symptoms include:
 
 ```text
-Error: Failed to load state: state snapshot was created by an incompatible version
 Error: The state file could not be loaded: unexpected token
 panic: runtime error: index out of range
 ```
@@ -25,7 +24,7 @@ panic: runtime error: index out of range
 Before taking any action, ensure that no one runs `tofu apply` or `tofu destroy`. A corrupted state with running infrastructure could lead to resource duplication or deletion.
 
 ```bash
-# Immediately lock the state if possible, or communicate to your team
+# Communicate to your team and avoid any commands that could write state
 
 # Do NOT run tofu apply until the state is healthy
 ```
@@ -44,23 +43,25 @@ aws s3api list-object-versions \
   --query 'Versions[*].[VersionId,LastModified]' \
   --output table
 
-# Download a specific version
+# Optionally download a specific version to inspect it locally
 aws s3api get-object \
   --bucket my-terraform-state \
   --key prod/terraform.tfstate \
   --version-id "abc123EXAMPLE" \
   terraform.tfstate.backup
 
-# Copy it back as the current state
-aws s3 cp terraform.tfstate.backup \
-  s3://my-terraform-state/prod/terraform.tfstate
+# Restore that version as the current state object
+aws s3api copy-object \
+  --bucket my-terraform-state \
+  --copy-source "my-terraform-state/prod/terraform.tfstate?versionId=abc123EXAMPLE" \
+  --key prod/terraform.tfstate
 ```
 
 ### Restoring a Local Backup
 
 ```bash
-# OpenTofu creates backup files before each apply
-ls -la *.tfstate*
+# Local state writes can leave backup files such as terraform.tfstate.backup
+ls -la terraform.tfstate*
 
 # Restore the backup
 cp terraform.tfstate.backup terraform.tfstate
@@ -80,9 +81,12 @@ tofu plan
 
 ## Step 4: Manual State File Repair
 
-If no backup is available, you can manually edit the state file. The state file is valid JSON:
+If no backup is available, you can manually edit the state file as a last resort. If you use a remote backend and `tofu state pull` still works, pull the state down first. The state file is valid JSON:
 
 ```bash
+# For remote backends, pull the current state first if possible
+tofu state pull > terraform.tfstate
+
 # First, make a copy of the corrupted file
 cp terraform.tfstate terraform.tfstate.corrupted
 
@@ -90,10 +94,10 @@ cp terraform.tfstate terraform.tfstate.corrupted
 python3 -m json.tool terraform.tfstate > /dev/null
 
 # View the structure
-cat terraform.tfstate | python3 -m json.tool | head -50
+python3 -m json.tool terraform.tfstate | head -50
 ```
 
-A valid state file follows this structure:
+A valid state file is JSON and typically includes fields like these:
 
 ```json
 {
@@ -108,18 +112,24 @@ A valid state file follows this structure:
       "type": "aws_instance",
       "name": "web",
       "provider": "provider[\"registry.opentofu.org/hashicorp/aws\"]",
-      "instances": [...]
+      "instances": []
     }
   ]
 }
 ```
 
-## Step 5: Rebuild State with tofu import
+After fixing the file, push it back to the backend if needed:
 
-If the state cannot be recovered, rebuild it by importing existing resources:
+```bash
+tofu state push terraform.tfstate
+```
+
+## Step 5: Rebuild State with Import Blocks
+
+If the state cannot be recovered, rebuild it by importing existing resources that are already defined in your configuration:
 
 ```hcl
-# Use import blocks (OpenTofu 1.7+) to re-import all resources
+# Matching resource blocks must already exist in your configuration
 import {
   to = aws_vpc.main
   id = "vpc-0a1b2c3d4e5f"
@@ -134,7 +144,7 @@ import {
 ```bash
 # Apply the imports to rebuild the state
 tofu plan    # Review what will be imported
-tofu apply   # Import the resources
+tofu apply   # Import the resources into state
 ```
 
 ## Step 6: Verify Infrastructure Consistency
@@ -162,7 +172,7 @@ resource "aws_s3_bucket_versioning" "state" {
   }
 }
 
-# Enable point-in-time recovery
+# Retain noncurrent versions for recovery
 resource "aws_s3_bucket_lifecycle_configuration" "state" {
   bucket = aws_s3_bucket.terraform_state.id
 
