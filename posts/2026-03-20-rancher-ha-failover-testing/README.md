@@ -43,7 +43,9 @@ done
 ## Test 2: Single Node Failure
 
 ```bash
-# Simulate node failure by stopping RKE2/K3s on one node
+# On RKE2, stop rke2-server on one server node to simulate a control-plane failure.
+# On K3s, test an actual host outage or network isolation instead: stopping only k3s
+# leaves the existing containers running.
 ssh 10.0.0.11 "sudo systemctl stop rke2-server"
 
 # Monitor Rancher availability from a separate terminal
@@ -53,44 +55,64 @@ while true; do
     sleep 5
 done
 
-# Check that other nodes maintain quorum
+# Check that the cluster API remains available
 kubectl get nodes
 
-# After testing, restore the node
+# After testing, restore the RKE2 node
 ssh 10.0.0.11 "sudo systemctl start rke2-server"
 ```
 
 ## Test 3: etcd Leader Election Failure
 
 ```bash
-# Find the current etcd leader
-kubectl exec -n kube-system etcd-server-1 -- \
-  etcdctl endpoint status --write-out=table \
-  --endpoints=https://10.0.0.11:2379,https://10.0.0.12:2379,https://10.0.0.13:2379
+# Run this from a remaining server node with etcdctl installed.
+# Use /var/lib/rancher/rke2 on RKE2 or /var/lib/rancher/k3s on K3s.
+RANCHER_DATA_DIR=/var/lib/rancher/rke2
+export ETCDCTL_API=3
 
-# Kill the etcd leader's node
-LEADER_NODE="10.0.0.11"  # Replace with actual leader IP
+# Find the current etcd leader
+sudo etcdctl \
+  --cacert=${RANCHER_DATA_DIR}/server/tls/etcd/server-ca.crt \
+  --cert=${RANCHER_DATA_DIR}/server/tls/etcd/client.crt \
+  --key=${RANCHER_DATA_DIR}/server/tls/etcd/client.key \
+  --endpoints=https://127.0.0.1:2379 \
+  endpoint status --write-out=table
+
+# On RKE2, stop the current leader's server process on that node.
+# On K3s, test an actual host outage or isolate the leader node instead of only stopping k3s.
+LEADER_NODE="10.0.0.11"  # Replace with the server currently reporting IS LEADER=true
 ssh $LEADER_NODE "sudo systemctl stop rke2-server"
 
-# Measure time until new leader is elected
+# Measure time until the remaining etcd members report a leader again
 START=$(date +%s)
-while ! kubectl get nodes &>/dev/null; do sleep 1; done
+while ! sudo etcdctl \
+  --cacert=${RANCHER_DATA_DIR}/server/tls/etcd/server-ca.crt \
+  --cert=${RANCHER_DATA_DIR}/server/tls/etcd/client.crt \
+  --key=${RANCHER_DATA_DIR}/server/tls/etcd/client.key \
+  --endpoints=https://127.0.0.1:2379 \
+  --cluster endpoint status --write-out=table 2>/dev/null | grep -q ' true '; do
+  sleep 1
+done
 END=$(date +%s)
 echo "Leader election took: $((END-START)) seconds"
+
+# Restore the node after testing
+ssh $LEADER_NODE "sudo systemctl start rke2-server"
 ```
 
 ## Test 4: Network Partition Simulation
 
 ```bash
 # Block communication between two nodes using iptables
-ssh 10.0.0.11 "sudo iptables -A INPUT -s 10.0.0.12 -j DROP"
-ssh 10.0.0.11 "sudo iptables -A OUTPUT -d 10.0.0.12 -j DROP"
+ssh 10.0.0.11 "sudo iptables -I INPUT 1 -s 10.0.0.12 -j DROP"
+ssh 10.0.0.11 "sudo iptables -I OUTPUT 1 -d 10.0.0.12 -j DROP"
 
 # Monitor cluster health during partition
 kubectl get nodes -w
 
 # Restore network
-ssh 10.0.0.11 "sudo iptables -F"
+ssh 10.0.0.11 "sudo iptables -D INPUT -s 10.0.0.12 -j DROP"
+ssh 10.0.0.11 "sudo iptables -D OUTPUT -d 10.0.0.12 -j DROP"
 ```
 
 ## Test 5: Load Balancer Failover
@@ -107,14 +129,15 @@ sudo systemctl stop keepalived
 
 # Verify VIP has moved to secondary
 # From another host:
-curl -k https://10.0.0.10/healthz    # Should still respond
+curl -k --resolve rancher.example.com:443:10.0.0.10 \
+  https://rancher.example.com/healthz    # Should still respond
 ```
 
 ## Recording Results
 
 ```bash
 # Save failover test results
-cat > failover-test-$(date +%Y%m%d).md << 'EOF'
+cat > failover-test-$(date +%Y%m%d).md <<EOF
 # Failover Test Results
 
 Date: $(date)
