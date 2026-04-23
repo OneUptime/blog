@@ -8,14 +8,14 @@ Description: Step-by-step guide to restoring an RKE cluster from an etcd snapsho
 
 ## Introduction
 
-When a catastrophic event occurs - such as accidental deletion of critical resources, data corruption, or hardware failure - restoring from an etcd snapshot is often the fastest path to recovery. RKE provides a built-in restore command that automates the complex process of stopping the cluster, restoring the etcd data, and bringing everything back online.
+When a catastrophic event occurs - such as accidental deletion of critical resources, data corruption, or hardware failure - restoring from an etcd snapshot is often the fastest path to recovery. RKE provides a built-in restore command that automates the complex process of cleaning up the cluster, restoring the etcd data, and bringing everything back online. This guide applies to legacy RKE/RKE1 clusters; RKE1 reached end of life on July 31, 2025.
 
 ## Prerequisites
 
 - A valid etcd snapshot (local file or S3 object)
-- The original `cluster.yml` and `cluster-rkestate.json` files
-- SSH access to all etcd nodes
-- The same version of RKE used to create the snapshot
+- The original `cluster.yml` and, for older snapshots or local-state restores, the `cluster.rkestate` file
+- SSH access to all nodes in `cluster.yml`, especially the etcd nodes
+- An RKE CLI version compatible with the cluster; use the same RKE version when possible
 
 ## Understanding What Gets Restored
 
@@ -27,7 +27,7 @@ An etcd restore will bring back:
 
 What is NOT restored:
 - Data stored in PersistentVolumes (must be backed up separately)
-- Container images (must be re-pulled)
+- Container images themselves (nodes pull or reuse cached images according to image pull policy)
 
 ## Step 1: Stop Workloads and Assess the Situation
 
@@ -38,24 +38,25 @@ export KUBECONFIG=kube_config_cluster.yml
 kubectl get nodes
 kubectl get pods --all-namespaces
 
-# Identify the snapshot to restore from
-rke etcd snapshot-list --config cluster.yml
+# Identify the local snapshot to restore from
+ssh ubuntu@192.168.1.101 'sudo ls -lh /opt/rke/etcd-snapshots/'
 ```
 
 ## Step 2: Download the Snapshot (if S3-stored)
 
-If your snapshot is in S3, ensure it is available locally on the etcd nodes before restoring:
+If your snapshot is in S3 and you are not restoring directly from S3, copy it to `/opt/rke/etcd-snapshots/` on an etcd node before restoring. RKE can sync a local snapshot from one etcd node to the others during restore.
 
 ```bash
 # List snapshots in S3
 aws s3 ls s3://my-rke-backups/production/
 
-# Download the snapshot to local storage on etcd nodes
+# Download the snapshot locally
+aws s3 cp s3://my-rke-backups/production/snapshot-2024-01-15 ./snapshot-2024-01-15
+
+# Copy the snapshot to local storage on an etcd node
 # (RKE restore can also restore directly from S3 - see Step 3 alternative)
-for NODE in 192.168.1.101 192.168.1.102 192.168.1.103; do
-    ssh ubuntu@$NODE "mkdir -p /opt/rke/etcd-snapshots/"
-    scp ./snapshot-2024-01-15.zip ubuntu@$NODE:/opt/rke/etcd-snapshots/
-done
+scp ./snapshot-2024-01-15 ubuntu@192.168.1.101:/tmp/snapshot-2024-01-15
+ssh ubuntu@192.168.1.101 "sudo mkdir -p /opt/rke/etcd-snapshots/ && sudo mv /tmp/snapshot-2024-01-15 /opt/rke/etcd-snapshots/"
 ```
 
 ## Step 3: Run the Restore
@@ -65,7 +66,7 @@ done
 ```bash
 # Restore from a locally stored snapshot
 rke etcd snapshot-restore \
-    --name "snapshot-2024-01-15T12:00:00Z" \
+    --name "snapshot-2024-01-15" \
     --config cluster.yml
 ```
 
@@ -85,18 +86,18 @@ rke etcd snapshot-restore \
 ```
 
 What happens during restore:
-1. RKE stops the Kubernetes API server and all control plane components
-2. Removes the current etcd data directory
-3. Copies the snapshot to all etcd nodes
-4. Starts etcd with the `--force-new-cluster` flag to bootstrap from the snapshot
-5. Restarts all control plane and worker components
+1. RKE syncs the snapshot or downloads it from S3
+2. Checks the snapshot checksum across etcd nodes
+3. Deletes the current Kubernetes cluster and cleans old data by running the same cleanup flow as `rke remove`
+4. Restores etcd from the snapshot with `etcdctl snapshot restore`
+5. Creates the cluster again by running the `rke up` flow and restarts cluster system pods
 
 ## Step 4: Bring the Cluster Back Up
 
-After the restore completes, run `rke up` to ensure all components are configured correctly:
+For RKE v0.2.0 and later, `rke etcd snapshot-restore` runs the `rke up` flow as part of the restore. If the command reports provisioning issues or you changed `cluster.yml`, run `rke up` again to reconcile the cluster:
 
 ```bash
-# Re-run rke up to reconcile the cluster state
+# Optional: re-run rke up to reconcile the cluster state
 rke up --config cluster.yml
 
 # Monitor the output for any errors
@@ -129,11 +130,11 @@ Some pods may need to be restarted to reconnect to services after the restore:
 kubectl get deployments --all-namespaces -o json | \
     jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | \
     while read NS NAME; do
-        kubectl rollout restart deployment "$NAME" -n "$NS"
+        kubectl rollout restart deployment/"$NAME" -n "$NS"
     done
 
 # Or restart a specific deployment
-kubectl rollout restart deployment my-app -n production
+kubectl rollout restart deployment/my-app -n production
 ```
 
 ## Restoring a Single-Node Cluster
@@ -141,15 +142,15 @@ kubectl rollout restart deployment my-app -n production
 For development single-node clusters:
 
 ```bash
-# Stop RKE managed containers manually if rke up is not accessible
-ssh ubuntu@192.168.1.100 'sudo docker stop $(sudo docker ps -q)'
+# Stop RKE managed containers manually if the node is stuck
+ssh ubuntu@192.168.1.100 'sudo docker ps --format "{{.Names}}" | grep -E "^(etcd|kube-|nginx-proxy|rke-|cert-deployer)" | xargs -r sudo docker stop'
 
 # Run the restore
 rke etcd snapshot-restore \
     --name "my-snapshot" \
     --config cluster.yml
 
-# Then re-run rke up
+# If needed, re-run rke up
 rke up --config cluster.yml
 ```
 
@@ -161,8 +162,8 @@ If you have lost all etcd nodes and need to rebuild from scratch:
 # 1. Provision new nodes (same IPs if possible, or update cluster.yml)
 # 2. Copy the snapshot files to the new etcd nodes
 for NODE in 192.168.1.101 192.168.1.102 192.168.1.103; do
-    ssh ubuntu@$NODE "mkdir -p /opt/rke/etcd-snapshots/"
-    scp ./cluster-snapshot.zip ubuntu@$NODE:/opt/rke/etcd-snapshots/
+    scp ./cluster-snapshot ubuntu@$NODE:/tmp/cluster-snapshot
+    ssh ubuntu@$NODE "sudo mkdir -p /opt/rke/etcd-snapshots/ && sudo mv /tmp/cluster-snapshot /opt/rke/etcd-snapshots/"
 done
 
 # 3. Restore from snapshot
@@ -170,7 +171,7 @@ rke etcd snapshot-restore \
     --name "cluster-snapshot" \
     --config cluster.yml
 
-# 4. Bring up the cluster
+# 4. If needed, reconcile the cluster
 rke up --config cluster.yml
 
 # 5. Verify
@@ -184,7 +185,7 @@ kubectl get nodes
 The etcd nodes may not be reachable. Check SSH access and that Docker is running:
 
 ```bash
-ssh ubuntu@192.168.1.101 docker ps
+ssh ubuntu@192.168.1.101 'sudo docker ps'
 ```
 
 ### Restored Cluster Shows Old/Stale Data
@@ -192,7 +193,7 @@ ssh ubuntu@192.168.1.101 docker ps
 Ensure you used the correct snapshot name. Double-check the snapshot timestamp:
 
 ```bash
-rke etcd snapshot-list --config cluster.yml
+ssh ubuntu@192.168.1.101 'sudo ls -lh /opt/rke/etcd-snapshots/'
 ```
 
 ### API Server Fails to Start After Restore
@@ -201,4 +202,4 @@ Check for certificate issues. The restore should preserve existing certificates,
 
 ## Conclusion
 
-Restoring an RKE cluster from an etcd snapshot is a well-supported operation that RKE automates through the `etcd snapshot-restore` command. The process is straightforward when you have a valid snapshot and the original cluster configuration files. Regular backup testing ensures that when disaster strikes, you can restore your cluster with confidence and minimal downtime.
+Restoring a legacy RKE cluster from an etcd snapshot is a documented operation that RKE automates through the `etcd snapshot-restore` command. The process is straightforward when you have a valid snapshot and the original cluster configuration files. Regular backup testing ensures that when disaster strikes, you can restore your cluster with confidence and minimal downtime.
