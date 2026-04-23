@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Window, Networking, Netsh, TCP/IP, Reset, Troubleshooting
+Tags: Windows, Networking, Netsh, TCP/IP, Reset, Troubleshooting
 
 Description: Reset the Windows TCP/IP stack to its default state using netsh int ip reset to resolve persistent network connectivity issues caused by corrupted TCP/IP settings.
 
 ## Introduction
 
-When Windows TCP/IP connectivity is broken in ways that IP reconfiguration cannot fix - such as after malware infection, bad driver installation, or registry corruption - resetting the TCP/IP stack rewrites all TCP/IP registry entries to their default state.
+When Windows TCP/IP connectivity is broken in ways that IP reconfiguration cannot fix - such as after malware infection, bad driver installation, or registry corruption - resetting the TCP/IP stack overwrites the TCP/IP and DHCP registry keys used by TCP/IP to their default state.
 
 ## When to Use This Command
 
@@ -26,45 +26,36 @@ Open an **elevated** (Administrator) command prompt:
 :: Reset TCP/IP stack and save the log
 netsh int ip reset C:\tcpip-reset.log
 
-:: Or without a log file
-netsh int ip reset
+:: Or save the log in the current directory
+netsh int ip reset tcpip-reset.log
 ```
 
-Expected output:
+Typical result:
 
 ```text
-Resetting Interface, OK!
-Resetting Unicast Address, OK!
-Resetting Neighbor, OK!
-Resetting Path, OK!
-Resetting , failed.
-Access is denied.
-
-Resetting Echo Request, OK!
-...
-Reset completed, reboot is required.
+Output varies by Windows version and configuration, but a successful reset tells you to restart the computer.
 ```
 
-The "failed" line is normal - some entries require running as SYSTEM to reset. Reboot after running.
+If the command reports access denied from an elevated prompt, review the reset log and local permissions. Reboot after running.
 
 ## Complete Network Stack Reset (Multiple Commands)
 
-For a thorough reset, combine multiple `netsh` commands:
+For broader network troubleshooting, you can combine multiple reset commands:
 
 ```cmd
 :: Reset TCP/IP stack
-netsh int ip reset
+netsh int ip reset tcpip-reset.log
 
 :: Reset Winsock catalog
 netsh winsock reset
 
 :: Clear ARP cache
-netsh interface ip delete arpcache
+netsh interface ipv4 delete arpcache
 
 :: Flush DNS cache
 ipconfig /flushdns
 
-:: Release and renew DHCP
+:: Release and renew DHCP leases on DHCP-configured adapters
 ipconfig /release
 ipconfig /renew
 
@@ -78,7 +69,7 @@ netsh int ip reset C:\tcpip-reset.log
 type C:\tcpip-reset.log
 ```
 
-The log shows every registry key that was reset.
+The log records the `netsh` actions that were taken. If nothing needed to be reset, it may contain few or no entries.
 
 ## Rebooting After Reset
 
@@ -106,16 +97,13 @@ nslookup google.com
 ## PowerShell Alternative
 
 ```powershell
-# Reset IP interfaces (less comprehensive than netsh, but available)
+# There is no direct NetTCPIP cmdlet equivalent for a full TCP/IP stack reset.
+# Run the same reset commands from a PowerShell session instead.
 
-Get-NetIPAddress | Remove-NetIPAddress -Confirm:$false -ErrorAction SilentlyContinue
-Get-NetRoute     | Remove-NetRoute     -Confirm:$false -ErrorAction SilentlyContinue
-
-# Full stack reset still requires netsh
-netsh int ip reset
+netsh int ip reset C:\tcpip-reset.log
 netsh winsock reset
 ```
 
 ## Conclusion
 
-`netsh int ip reset` is the nuclear option for Windows TCP/IP stack corruption - it rewrites all TCP/IP registry entries to defaults. Always combine it with `netsh winsock reset` and `ipconfig /flushdns`, then reboot. Verify connectivity systematically from loopback outward after the restart.
+`netsh int ip reset` is the nuclear option for Windows TCP/IP stack corruption - it overwrites the TCP/IP and DHCP registry keys used by TCP/IP. If you are also troubleshooting Winsock or DNS resolver issues, `netsh winsock reset` and `ipconfig /flushdns` can help, then reboot. Verify connectivity systematically from loopback outward after the restart.
