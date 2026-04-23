@@ -8,11 +8,11 @@ Description: Deploy Open Service Mesh (OSM) on Rancher-managed clusters to enabl
 
 ## Introduction
 
-Open Service Mesh (OSM) is a lightweight, extensible cloud-native service mesh that implements the Service Mesh Interface (SMI) specification. It uses Envoy as the data plane proxy and provides automatic mTLS, traffic policy enforcement, and observability. OSM is now part of the CNCF ecosystem and is designed to be simple to install and operate.
+Open Service Mesh (OSM) is a lightweight, extensible cloud-native service mesh that implements the Service Mesh Interface (SMI) specification. It uses Envoy as the data plane proxy and provides automatic mTLS, traffic policy enforcement, and observability. OSM was a CNCF sandbox project and is now archived, so this guide pins the last released version, v1.2.4.
 
 ## Prerequisites
 
-- Rancher-managed Kubernetes cluster (1.22+)
+- Rancher-managed Kubernetes cluster (1.22.9+)
 - Helm 3.x installed
 - kubectl with cluster-admin access
 - `osm` CLI (optional but recommended)
@@ -22,8 +22,11 @@ Open Service Mesh (OSM) is a lightweight, extensible cloud-native service mesh t
 ```bash
 # Install OSM CLI on Linux/macOS
 
-curl -L https://github.com/openservicemesh/osm/releases/latest/download/osm-v1.3.0-linux-amd64.tar.gz | tar -xzf - osm
-chmod +x osm && sudo mv osm /usr/local/bin/
+release=v1.2.4
+system=$(uname -s | tr '[:upper:]' '[:lower:]')
+
+curl -L "https://github.com/openservicemesh/osm/releases/download/${release}/osm-${release}-${system}-amd64.tar.gz" | tar -vxzf -
+sudo mv ./${system}-amd64/osm /usr/local/bin/osm
 
 # Verify installation
 osm version
@@ -42,7 +45,6 @@ helm repo update
 osm:
   # Enable Prometheus metrics
   deployPrometheus: true
-  enablePrometheusScraping: true
 
   # Enable Grafana for dashboards
   deployGrafana: true
@@ -52,8 +54,7 @@ osm:
   tracing:
     enable: true
 
-  # Enable permissive traffic policy (allow all by default)
-  # Set to false for zero-trust policy
+  # Disable permissive traffic policy so SMI access policies are enforced
   enablePermissiveTrafficPolicy: false
 
   # Certificate configuration
@@ -72,11 +73,11 @@ osm:
 helm install osm osm/osm \
   --namespace osm-system \
   --create-namespace \
+  --version 1.2.4 \
   --values osm-values.yaml
 
 # Verify installation
-kubectl get pods -n osm-system
-osm verify connectivity
+kubectl get pods,svc,secrets,meshconfigs,serviceaccount --namespace osm-system
 ```
 
 ## Step 3: Add Namespaces to the Mesh
@@ -85,17 +86,38 @@ osm verify connectivity
 # Add a namespace to OSM mesh monitoring
 osm namespace add production
 
-# Or use label directly
-kubectl label namespace production openservicemesh.io/monitored-by=osm
+# Or label/annotate directly for the default mesh name
+kubectl label namespace production openservicemesh.io/monitored-by=osm --overwrite
+kubectl annotate namespace production openservicemesh.io/sidecar-injection=enabled --overwrite
 
 # List monitored namespaces
-osm namespace list
+osm namespace list --mesh-name=osm
 ```
 
 ## Step 4: Deploy Applications into the Mesh
 
 ```yaml
-# frontend-deployment.yaml - Frontend in OSM mesh
+# production-apps.yaml - Services, service accounts, and deployments in the OSM mesh
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: frontend-sa
+  namespace: production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: production
+spec:
+  selector:
+    app: frontend
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      appProtocol: http
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -111,21 +133,50 @@ spec:
       labels:
         app: frontend
     spec:
+      serviceAccountName: frontend-sa
       containers:
         - name: frontend
           image: registry.example.com/frontend:v1.0
           ports:
             - containerPort: 3000
 ---
-# backend-deployment.yaml - Backend in OSM mesh
+# Backend resources in OSM mesh
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backend-sa
+  namespace: production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: production
+spec:
+  selector:
+    app: backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      appProtocol: http
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: backend
   namespace: production
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
   template:
+    metadata:
+      labels:
+        app: backend
     spec:
+      serviceAccountName: backend-sa
       containers:
         - name: backend
           image: registry.example.com/backend:v1.0
@@ -137,7 +188,7 @@ After adding the namespace, OSM automatically injects Envoy sidecars:
 
 ```bash
 # Restart deployments to inject sidecars
-kubectl rollout restart deployment -n production
+kubectl rollout restart deployments -n production
 
 # Verify sidecars are injected
 kubectl get pods -n production -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .spec.containers[*]}{.name}{" "}{end}{"\n"}{end}'
@@ -187,13 +238,14 @@ spec:
 
 ```yaml
 # traffic-split.yaml - A/B testing with OSM traffic splitting
+# Assumes backend-v1 and backend-v2 Services already exist in the production namespace
 apiVersion: split.smi-spec.io/v1alpha2
 kind: TrafficSplit
 metadata:
   name: backend-split
   namespace: production
 spec:
-  service: backend
+  service: backend.production.svc.cluster.local
   backends:
     # 80% to stable version
     - service: backend-v1
@@ -212,7 +264,7 @@ osm metrics enable --namespace production
 # View metrics via port-forward
 kubectl port-forward -n osm-system \
   $(kubectl get pod -n osm-system -l app=osm-prometheus -o name) \
-  9090:9090
+  7070:7070
 
 # Access Grafana dashboard
 kubectl port-forward -n osm-system \
@@ -221,6 +273,12 @@ kubectl port-forward -n osm-system \
 ```
 
 ## Step 8: Configure Ingress with OSM
+
+When the source kind is `Service`, the source namespace also needs to be monitored by OSM so it can discover the service endpoints:
+
+```bash
+kubectl label namespace ingress-nginx openservicemesh.io/monitored-by=osm --overwrite
+```
 
 ```yaml
 # ingress.yaml - IngressBackend for OSM
@@ -248,12 +306,12 @@ spec:
 kubectl logs -n osm-system deployment/osm-controller --tail=50
 
 # Check Envoy proxy configuration
-osm proxy get config_dump -n production -p <pod-name>
+osm proxy get config_dump <pod-name> -n production
 
 # Verify traffic policies
-osm policy check-pods-in-traffic-target \
-  frontend-to-backend \
-  --namespace production
+osm policy check-pods \
+  production/<frontend-pod> \
+  production/<backend-pod>
 
 # View sidecar logs
 kubectl logs -n production <pod-name> -c envoy --tail=50
@@ -261,4 +319,4 @@ kubectl logs -n production <pod-name> -c envoy --tail=50
 
 ## Conclusion
 
-Open Service Mesh provides a standards-compliant (SMI), lightweight service mesh that integrates well with Rancher-managed clusters. Its SMI compliance ensures portability, while the straightforward installation and CLI tooling make it accessible to teams new to service meshes. OSM is particularly suited for organizations that want a simpler alternative to Istio while still getting the core service mesh features: automatic mTLS, traffic policies, and observability.
+Open Service Mesh provides a standards-compliant (SMI), lightweight service mesh that integrates with Rancher-managed clusters. Because the project is archived, pin deployments to the final v1.2.4 release and evaluate long-term support requirements before adopting it. OSM still offers the core service mesh features: automatic mTLS, traffic policies, and observability.
