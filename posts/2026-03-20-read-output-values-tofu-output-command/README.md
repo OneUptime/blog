@@ -24,7 +24,7 @@ tofu output
 # instance_public_ip = "54.23.45.67"
 # load_balancer_dns = "my-alb-1234567890.us-east-1.elb.amazonaws.com"
 # s3_bucket_name = "my-data-bucket"
-# api_credentials = (sensitive value)
+# api_credentials = <sensitive>
 ```
 
 ---
@@ -44,14 +44,14 @@ tofu output instance_public_ip
 ## Raw Output (No Quotes)
 
 ```bash
-# Get raw value without surrounding quotes - useful in scripts
+# Get raw value without surrounding quotes - useful in scripts for string, number, or boolean outputs
 tofu output -raw instance_public_ip
 # 54.23.45.67
 
 # Use in scripts
 IP=$(tofu output -raw instance_public_ip)
 echo "Instance IP: $IP"
-ssh ubuntu@$IP -i ~/.ssh/id_rsa
+ssh -i ~/.ssh/id_rsa ubuntu@$IP
 ```
 
 ---
@@ -66,7 +66,11 @@ tofu output -json
 # {
 #   "database_endpoint": {"sensitive": false, "type": "string", "value": "db.example.com:5432"},
 #   "instance_public_ip": {"sensitive": false, "type": "string", "value": "54.23.45.67"},
-#   "api_credentials": {"sensitive": true, "type": "object", "value": "sensitive value hidden"}
+#   "api_credentials": {
+#     "sensitive": true,
+#     "type": ["object", {"password": "string", "username": "string"}],
+#     "value": {"password": "secret-password", "username": "appuser"}
+#   }
 # }
 
 # Get a specific output as JSON
@@ -97,11 +101,19 @@ tofu output -json | jq -r '.private_subnet_ids.value[]'
 ## Accessing Sensitive Outputs
 
 ```bash
-# Sensitive outputs show as (sensitive value) by default
-tofu output database_connection_string
-# (sensitive value)
+# Sensitive outputs are redacted when you list all outputs
+tofu output
+# database_connection_string = <sensitive>
 
-# Access the raw value explicitly
+# Reading a named sensitive output prints the actual value
+tofu output database_connection_string
+# "postgresql://admin:password@db.host:5432/app"
+
+# Show sensitive values when listing all outputs
+tofu output -show-sensitive
+# database_connection_string = "postgresql://admin:password@db.host:5432/app"
+
+# Access the raw value explicitly for string, number, or boolean outputs
 tofu output -raw database_connection_string
 # postgresql://admin:password@db.host:5432/app
 
@@ -147,4 +159,4 @@ tofu output -state=path/to/specific.tfstate instance_public_ip
 
 ## Summary
 
-`tofu output` is the key command for extracting infrastructure values after deployment. Use `tofu output -raw <name>` for direct use in scripts (no surrounding quotes), `tofu output -json` for programmatic access with jq, and `tofu output -raw` even for sensitive values when you need the actual value. Always use sensitive marking for outputs containing credentials.
+`tofu output` is the key command for extracting infrastructure values after deployment. Use `tofu output -raw <name>` for direct use in scripts when the output is a string, number, or boolean, `tofu output -json` for programmatic access with jq, and `tofu output -show-sensitive` if you want sensitive values included when listing all outputs. Named sensitive outputs, along with `-json` and `-raw`, reveal the actual value. Always use sensitive marking for outputs containing credentials.
