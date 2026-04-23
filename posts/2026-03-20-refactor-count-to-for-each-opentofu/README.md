@@ -12,16 +12,19 @@ Description: Learn how to safely migrate OpenTofu resources from count-based ind
 
 ```hcl
 # Original: count-based
+locals {
+  public_cidrs = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+}
 
 resource "aws_subnet" "public" {
-  count      = 3
+  count      = length(local.public_cidrs)
   vpc_id     = aws_vpc.main.id
-  cidr_block = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"][count.index]
+  cidr_block = local.public_cidrs[count.index]
 }
 # State: aws_subnet.public[0], aws_subnet.public[1], aws_subnet.public[2]
 ```
 
-If you remove the first CIDR, indexes shift and subnet[1] becomes subnet[0], causing a destroy-and-recreate of the other subnets.
+If you remove the first CIDR from `local.public_cidrs`, indexes shift and subnet[1] becomes subnet[0], causing a destroy-and-recreate of the other subnets.
 
 ## The Solution: for_each
 
