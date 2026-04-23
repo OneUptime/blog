@@ -31,15 +31,15 @@ cat /proc/cpuinfo | grep "model name" | head -1
 
 echo "=== Memory ==="
 free -h
-# Minimum: 2GB RAM for server, 1GB for agent
+# Minimum: 4GB RAM and 2 CPUs; 8GB RAM and 4 CPUs recommended
 
 echo "=== Disk Space ==="
 df -h
-# Need at least 10GB free on / or /var
+# RKE2 stores embedded etcd data and images on disk; SSD is recommended
 
 echo "=== Swap ==="
 swapon --summary
-# Swap must be disabled for Kubernetes
+# Upstream kubelet fails on Linux swap by default unless configured to tolerate it
 
 echo "=== Network ==="
 hostname -I
@@ -71,10 +71,17 @@ sudo journalctl -u rke2-server | grep -iE "error|fail|fatal|panic"
 ### Failure: "address already in use"
 
 ```bash
-# Check if required ports are already in use
-for port in 6443 9345 2379 2380 10250 10257 10259 8472; do
+# Check if common RKE2 TCP ports are already in use
+for port in 6443 9345 2379 2380 2381 10250 10257 10259; do
   if sudo ss -tlnp | grep ":$port"; then
-    echo "PORT $port IS IN USE"
+    echo "TCP PORT $port IS IN USE"
+  fi
+done
+
+# Check common CNI UDP ports when using VXLAN or WireGuard
+for port in 8472 4789 51820 51821 51871; do
+  if sudo ss -ulnp | grep ":$port"; then
+    echo "UDP PORT $port IS IN USE"
   fi
 done
 
@@ -134,15 +141,15 @@ sysctl net.bridge.bridge-nf-call-iptables
 
 ```bash
 # Check if the server URL is correct in agent config
-cat /etc/rancher/rke2/config.yaml
+sudo cat /etc/rancher/rke2/config.yaml
 
 # Verify the server is reachable
 SERVER_IP="<your-server-ip>"
-curl -k https://$SERVER_IP:9345
+curl -vk https://$SERVER_IP:9345/cacerts
 
 # Check if TLS SANs cover all needed addresses
 # On server node:
-openssl x509 -in /var/lib/rancher/rke2/server/tls/serving-kube-apiserver.crt \
+sudo openssl x509 -in /var/lib/rancher/rke2/server/tls/serving-kube-apiserver.crt \
   -noout -ext subjectAltName
 
 # If the IP/hostname is missing, add it to tls-san in config.yaml
@@ -153,11 +160,13 @@ openssl x509 -in /var/lib/rancher/rke2/server/tls/serving-kube-apiserver.crt \
 
 ```bash
 # Check the token on the agent node
-cat /etc/rancher/rke2/config.yaml | grep token
+sudo grep -E "^(server|token|agent-token):" /etc/rancher/rke2/config.yaml
 
 # Verify the token matches the server
 # On server node:
 sudo cat /var/lib/rancher/rke2/server/node-token
+# If a separate agent token is configured, compare against:
+sudo cat /var/lib/rancher/rke2/server/agent-token
 
 # If token mismatch, update the agent config
 sudo vi /etc/rancher/rke2/config.yaml
@@ -172,7 +181,7 @@ sudo systemctl restart rke2-agent
 ```bash
 # Test connectivity between nodes
 SERVER_IP="10.0.0.10"
-AGENT_IP="10.0.0.20"
+SERVER_HOSTNAME="rke2-server.example.com"
 
 # From agent to server ports
 echo "=== Testing server connectivity ==="
@@ -180,7 +189,7 @@ nc -zv $SERVER_IP 9345  # Registration port
 nc -zv $SERVER_IP 6443  # API server port
 
 # Test DNS resolution
-nslookup $SERVER_IP
+nslookup $SERVER_HOSTNAME
 
 # Check firewall rules
 sudo iptables -L -n | head -30
@@ -195,13 +204,15 @@ ip addr show | grep "10.42\|10.43"
 ## Step 5: Diagnose containerd Issues
 
 ```bash
-# Check containerd status
-sudo systemctl status containerd
-sudo journalctl -u containerd -n 30 --no-pager
-
 # RKE2 uses its own embedded containerd
+# Check RKE2 and embedded containerd logs
+sudo journalctl -u rke2-server -n 30 --no-pager
+# or for agent nodes:
+sudo journalctl -u rke2-agent -n 30 --no-pager
+sudo tail -n 30 /var/lib/rancher/rke2/agent/containerd/containerd.log
+
 # Check RKE2's containerd socket
-ls -la /run/k3s/containerd/containerd.sock
+sudo ls -la /run/k3s/containerd/containerd.sock
 
 # Check containerd images
 sudo /var/lib/rancher/rke2/bin/crictl \
@@ -223,7 +234,9 @@ sudo /var/lib/rancher/rke2/bin/crictl \
 
 ```bash
 # Check if etcd is running
-sudo ps aux | grep etcd
+sudo /var/lib/rancher/rke2/bin/crictl \
+  --runtime-endpoint unix:///run/k3s/containerd/containerd.sock \
+  ps -a | grep etcd
 
 # Check etcd health
 ETCD_DIR="/var/lib/rancher/rke2/server/tls/etcd"
@@ -235,10 +248,12 @@ sudo /var/lib/rancher/rke2/bin/etcdctl \
   endpoint health
 
 # Check etcd logs
-sudo journalctl -u rke2-server | grep etcd | tail -20
+sudo /var/lib/rancher/rke2/bin/kubectl \
+  --kubeconfig /etc/rancher/rke2/rke2.yaml \
+  logs -n kube-system -l component=etcd --tail=20
 
 # Check etcd data directory permissions
-ls -la /var/lib/rancher/rke2/server/db/etcd/
+sudo ls -la /var/lib/rancher/rke2/server/db/etcd/
 # Should be owned by root with restricted permissions
 ```
 
@@ -251,9 +266,10 @@ If all else fails, perform a clean reinstall:
 # Only use on a fresh install that failed, not on a running cluster
 
 # Run the RKE2 uninstall script
+# Tarball installs usually use /usr/local/bin; RPM installs use /usr/bin
 sudo /usr/local/bin/rke2-uninstall.sh
-# or for agent nodes:
-sudo /usr/local/bin/rke2-agent-uninstall.sh
+# or:
+sudo /usr/bin/rke2-uninstall.sh
 
 # Remove all RKE2 data
 sudo rm -rf /var/lib/rancher/rke2
@@ -290,10 +306,10 @@ sudo journalctl -u rke2-server -f
 | `bind: address already in use` | Port conflict | Kill conflicting process |
 | `failed to find system:node ClusterRoleBinding` | Bootstrap issue | Clean reinstall |
 | `context deadline exceeded` | Network timeout | Check firewall rules |
-| `x509: certificate signed by unknown authority` | CA cert mismatch | Regenerate certs |
+| `x509: certificate signed by unknown authority` | Wrong server URL, token CA hash, or CA cert mismatch | Verify server URL, token, and CA before rotating certificates |
 | `etcdserver: no leader` | etcd cluster issue | Check etcd quorum |
 | `Failed to load kubelet config file` | Bad config | Check config syntax |
 
 ## Conclusion
 
-Troubleshooting RKE2 installation failures requires a systematic approach starting from basic system requirements and working through to component-specific diagnostics. The most common causes of installation failures are swap not disabled, required ports being in use, kernel modules not loaded, and token mismatches between server and agent nodes. Always check `journalctl -u rke2-server -f` first - the error messages are usually descriptive and point directly to the root cause.
+Troubleshooting RKE2 installation failures requires a systematic approach starting from basic system requirements and working through to component-specific diagnostics. The most common causes of installation failures are required ports being in use, kernel modules or sysctl settings not loaded, network/firewall issues, and token mismatches between server and agent nodes. Always check `journalctl -u rke2-server -f` first - the error messages are usually descriptive and point directly to the root cause.
