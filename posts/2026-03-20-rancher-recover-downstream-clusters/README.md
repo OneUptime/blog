@@ -15,16 +15,18 @@ When Rancher fails, downstream clusters continue running their workloads indepen
 - Existing workloads continue running (pods, services, deployments)
 - Persistent volumes remain attached and functional
 - DNS and load balancers continue working
-- Kubernetes API server is accessible directly via kubeconfig
+- Kubernetes API server remains reachable if you already have direct kubeconfig, an authorized cluster endpoint, or provider-native access
 - Rancher agents lose connection but don't crash workloads
-- Fleet GitOps continues applying changes via local agent cache
+- Fleet-managed workloads stay at their last applied state until Rancher/Fleet reconnects
 
 ## Step 1: Access Clusters Directly During Rancher Downtime
 
 ```bash
-# If you have direct kubeconfig, use it to manage clusters
+# If you have a direct kubeconfig, an authorized cluster endpoint (ACE)
+# context, or provider-native kubeconfig, use it to manage the cluster.
+# A Rancher-proxied kubeconfig will not work while Rancher is unavailable.
 
-export KUBECONFIG=/path/to/cluster-kubeconfig.yaml
+export KUBECONFIG=/path/to/direct-cluster-kubeconfig.yaml
 
 # Verify direct access
 kubectl get nodes
@@ -40,11 +42,10 @@ After restoring Rancher, check cluster reconnection status:
 
 ```bash
 # Check which clusters have reconnected
-kubectl get clusters.management.cattle.io \
-  -o custom-columns='NAME:.metadata.name,STATE:.status.conditions[?(@.type=="Ready")].status'
+kubectl get clusters.management.cattle.io
 
 # Detailed status for a specific cluster
-kubectl describe cluster my-cluster-name
+kubectl describe clusters.management.cattle.io my-cluster-name
 ```
 
 ## Step 3: Force Agent Reconnection
@@ -60,45 +61,36 @@ kubectl rollout restart deployment cattle-cluster-agent \
 kubectl logs -n cattle-system \
   -l app=cattle-cluster-agent \
   --tail=50
-
-# If agent is not running, redeploy using cluster import YAML
-# Get import command from Rancher UI or API:
-curl -s https://rancher.example.com/v3/clusters/c-xxxxx?action=generateKubeconfig \
-  -H "Authorization: Bearer your-api-token" | jq -r '.config'
 ```
 
-## Step 4: Re-Import Clusters That Cannot Auto-Reconnect
+## Step 4: Reapply the Existing Cluster Registration Manifest
 
 For clusters that fail to automatically reconnect:
 
 ```bash
-# 1. Get the cluster import YAML from restored Rancher
-# In Rancher UI: Cluster Management > Import Existing
+# Reapply the existing registration manifest for this cluster ID
+sh -c "$(curl -s \
+  -H "Authorization: Bearer your-api-token" \
+  "https://rancher.example.com/v3/clusterregistrationtokens?clusterId=c-xxxxx" \
+  | jq -r '.data[0].command')"
 
-# 2. Apply to the downstream cluster
-kubectl apply -f https://rancher.example.com/v3/import/cluster-token.yaml
-
-# 3. If SSL verification fails (new Rancher cert):
-curl --insecure -sfL https://rancher.example.com/v3/import/cluster-token.yaml | kubectl apply -f -
+# If Rancher uses a private CA or self-signed certificate, use insecureCommand instead
+sh -c "$(curl -s \
+  -H "Authorization: Bearer your-api-token" \
+  "https://rancher.example.com/v3/clusterregistrationtokens?clusterId=c-xxxxx" \
+  | jq -r '.data[0].insecureCommand')"
 ```
 
-## Step 5: Update Agent Server URL
+## Step 5: Preserve the Rancher Server URL
 
-If Rancher moved to a new IP or hostname:
+If Rancher moved behind a new IP or load balancer, keep the same Rancher Server URL hostname. Rancher does not support changing the server URL after it is set.
 
-```yaml
-# Update cattle-cluster-agent deployment on downstream cluster
-kubectl edit deployment cattle-cluster-agent -n cattle-system
+```bash
+# Update DNS or the load balancer so the original Rancher hostname
+# resolves to the restored Rancher server.
 
-# Or use kubectl patch:
-kubectl patch deployment cattle-cluster-agent \
-  -n cattle-system \
-  --type='json' \
-  -p='[{
-    "op": "replace",
-    "path": "/spec/template/spec/containers/0/env/0/value",
-    "value": "https://new-rancher.example.com"
-  }]'
+# Then restart the downstream cluster agent so it reconnects
+kubectl rollout restart deployment cattle-cluster-agent -n cattle-system
 ```
 
 ## Step 6: Handle Certificate Changes
@@ -106,12 +98,13 @@ kubectl patch deployment cattle-cluster-agent \
 If Rancher's TLS certificate changed after recovery:
 
 ```bash
-# Update the cluster agent's CA cert
-kubectl -n cattle-system \
-  delete secret cattle-credentials-xxx 2>/dev/null || true
+# From the Rancher management cluster, force Rancher to redeploy
+# the agent manifest with the updated certificate settings
+kubectl annotate clusters.management.cattle.io c-xxxxx \
+  io.cattle.agent.force.deploy=true
 
-# Re-register with new certificate
-kubectl apply -f https://rancher.example.com/v3/import/new-cluster-token.yaml
+# If the certificate change left a cluster disconnected, use the
+# registration-manifest reapply flow from Step 4.
 ```
 
 ## Step 7: Verify Full Functionality
@@ -121,26 +114,28 @@ kubectl apply -f https://rancher.example.com/v3/import/new-cluster-token.yaml
 # verify-cluster-reconnection.sh
 
 CLUSTER_NAME="$1"
+MGMT_KUBECONFIG="/path/to/rancher-local-kubeconfig.yaml"
+DIRECT_KUBECONFIG="/path/to/${CLUSTER_NAME}-kubeconfig.yaml"
+
 echo "=== Verifying cluster: $CLUSTER_NAME ==="
 
 # Check cluster status in Rancher
-kubectl get clusters.management.cattle.io "$CLUSTER_NAME" \
-  -o jsonpath='{.status.conditions}' | jq '.'
+kubectl --kubeconfig="$MGMT_KUBECONFIG" \
+  get clusters.management.cattle.io "$CLUSTER_NAME"
+
+kubectl --kubeconfig="$MGMT_KUBECONFIG" \
+  describe clusters.management.cattle.io "$CLUSTER_NAME"
 
 # Check agent pods on downstream cluster
-KUBECONFIG="/path/to/${CLUSTER_NAME}-kubeconfig.yaml"
-kubectl --kubeconfig="$KUBECONFIG" get pods -n cattle-system
-
-# Test Rancher can reach the cluster
-kubectl get clusterconnections.management.cattle.io \
-  -n "$CLUSTER_NAME" 2>/dev/null
+kubectl --kubeconfig="$DIRECT_KUBECONFIG" get pods -n cattle-system
+kubectl --kubeconfig="$DIRECT_KUBECONFIG" get pods -n cattle-fleet-system 2>/dev/null || true
 
 echo "Verification complete"
 ```
 
 ## Step 8: Recover Fleet GitOps State
 
-After Rancher recovery, Fleet should resume GitOps operations:
+After Rancher recovery, Fleet should resume GitOps operations once the fleet-agent reconnects to the upstream controller:
 
 ```bash
 # Check Fleet agent status on downstream cluster
@@ -150,15 +145,13 @@ kubectl get pods -n cattle-fleet-system
 kubectl rollout restart deployment fleet-agent \
   -n cattle-fleet-system
 
-# Check GitRepo sync status
-kubectl get gitrepos.fleet.cattle.io -A
+# Check GitRepo sync status from the Rancher management cluster
+kubectl --kubeconfig=/path/to/rancher-local-kubeconfig.yaml get gitrepos.fleet.cattle.io -A
 
-# Force a reconcile
-kubectl annotate gitrepo my-repo \
-  fleet.cattle.io/force-reconcile="$(date)" \
-  -n fleet-default
+# If a Rancher certificate change prevents the fleet-agent from reconnecting,
+# use Continuous Delivery > Clusters > Force Update in the Rancher UI.
 ```
 
 ## Conclusion
 
-Downstream clusters are resilient to Rancher management server failures-workloads keep running. Recovery focuses on re-establishing the management connection between Rancher and each downstream cluster. Most clusters reconnect automatically after Rancher is restored. For those that don't, re-importing via the cluster import YAML is a reliable fallback.
+Downstream clusters are resilient to Rancher management server failures-workloads keep running. Recovery focuses on re-establishing the management connection between Rancher and each downstream cluster. Most clusters reconnect automatically after Rancher is restored. For those that don't, reapplying the existing cluster registration manifest is a reliable fallback.
