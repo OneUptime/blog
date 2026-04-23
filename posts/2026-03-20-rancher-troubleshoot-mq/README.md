@@ -24,22 +24,24 @@ Message queue issues can cause cascade failures across your entire application s
 # Check if consumers are connected
 
 kubectl exec -n messaging rabbitmq-0 -- \
-  rabbitmqctl list_consumers -p / \
-  vhost queue consumer_tag active prefetch_count
+  rabbitmqctl list_consumers -p /
 
 # Check queue status
 kubectl exec -n messaging rabbitmq-0 -- \
   rabbitmqctl list_queues -p / \
   name messages messages_ready messages_unacknowledged consumers memory state
 
-# Check if consumer is stuck (many unacked messages)
+# Check if channels are backing up with unacked messages
 kubectl exec -n messaging rabbitmq-0 -- \
-  rabbitmqctl list_connections -p / \
-  user vhost peer_host state channel_max
+  rabbitmqctl list_channels connection messages_unacknowledged consumer_count
 
-# Force close a stuck connection
+# List connections so you can identify the connection pid to close
 kubectl exec -n messaging rabbitmq-0 -- \
-  rabbitmqctl close_connection "amqp://guest@127.0.0.1:1" "Consumer stuck"
+  rabbitmqctl list_connections pid user vhost peer_host state channel_max
+
+# Force close a stuck connection (use the pid from list_connections)
+kubectl exec -n messaging rabbitmq-0 -- \
+  rabbitmqctl close_connection "<rabbit@rabbitmq-0.1234.0>" "Consumer stuck"
 ```
 
 ### Problem: Memory Pressure
@@ -70,19 +72,16 @@ kubectl exec -n messaging rabbitmq-0 -- \
   rabbitmqctl cluster_status | grep partitions
 
 # Recover from partition
-# First, identify which node has the most complete data
+# First, choose the partition you trust most
 kubectl exec -n messaging rabbitmq-0 -- \
-  rabbitmqctl eval 'rabbit_mnesia:status().'
+  rabbitmqctl cluster_status
 
-# Reset minority nodes and rejoin
+# Stop nodes in the other partition, then start them again so they resync
 kubectl exec -n messaging rabbitmq-1 -- \
   rabbitmqctl stop_app
 kubectl exec -n messaging rabbitmq-1 -- \
-  rabbitmqctl reset
-kubectl exec -n messaging rabbitmq-1 -- \
-  rabbitmqctl join_cluster rabbit@rabbitmq-0.rabbitmq-headless.messaging.svc.cluster.local
-kubectl exec -n messaging rabbitmq-1 -- \
   rabbitmqctl start_app
+# Finally, restart the trusted partition nodes to clear the partition warning
 ```
 
 ### Problem: Disk Space Running Out
@@ -94,14 +93,13 @@ kubectl exec -n messaging rabbitmq-0 -- \
 
 # Find large queues
 kubectl exec -n messaging rabbitmq-0 -- \
-  rabbitmqctl list_queues name messages memory | sort -k2 -rn | head -10
+  rabbitmqctl list_queues name messages message_bytes | sort -k3 -rn | head -10
 
 # Purge a queue (careful! this deletes messages)
 kubectl exec -n messaging rabbitmq-0 -- \
   rabbitmqctl purge_queue my-large-queue
 
-# Delete messages from a queue via management API
-# (more selective than purging)
+# Purge ready messages from a queue via the management API
 RABBITMQ_URL="http://localhost:15672"
 curl -s -u admin:AdminP@ss \
   -X DELETE \
@@ -117,10 +115,9 @@ curl -s -u admin:AdminP@ss \
 kubectl exec -n kafka kafka-0 -- \
   bin/kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 \
-  --describe --all-groups | \
-  awk 'NR==1 || /LAG/ {print}' | head -30
+  --describe --all-groups | head -30
 
-# Reset consumer group offset to latest (skip lag)
+# Reset consumer group offset to latest (consumer group must be inactive)
 kubectl exec -n kafka kafka-0 -- \
   bin/kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 \
@@ -129,7 +126,7 @@ kubectl exec -n kafka kafka-0 -- \
   --topic orders-topic \
   --execute
 
-# Or reset to specific timestamp
+# Or reset to a specific timestamp
 kubectl exec -n kafka kafka-0 -- \
   bin/kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 \
@@ -178,7 +175,7 @@ kubectl exec -n kafka kafka-0 -- \
   --producer-props bootstrap.servers=localhost:9092 \
   acks=1
 
-# Check broker metrics
+# Check broker API connectivity
 kubectl exec -n kafka kafka-0 -- \
   bin/kafka-broker-api-versions.sh \
   --bootstrap-server localhost:9092
@@ -187,6 +184,7 @@ kubectl exec -n kafka kafka-0 -- \
 kubectl exec -n kafka kafka-0 -- \
   bin/kafka-log-dirs.sh \
   --bootstrap-server localhost:9092 \
+  --describe \
   --topic-list orders-topic | \
   jq '.'
 ```
@@ -197,8 +195,8 @@ kubectl exec -n kafka kafka-0 -- \
 # Check pod events
 kubectl describe pod kafka-0 -n kafka | grep -A 10 "OOM\|Memory\|Killed"
 
-# Check JVM heap settings
-kubectl exec -n kafka kafka-0 -- env | grep KAFKA_HEAP_OPTS
+# Check configured JVM heap settings in the Strimzi resource
+kubectl get kafka kafka-prod -n kafka -o jsonpath='{.spec.kafka.jvmOptions}'
 
 # Update heap via Strimzi
 kubectl patch kafka kafka-prod -n kafka \
@@ -271,7 +269,7 @@ kubectl get pvc -n messaging
 kubectl get pvc -n kafka
 
 echo "=== Recent Events ==="
-kubectl events -n messaging --for=pod --sort-by='.lastTimestamp' | tail -20
+kubectl get events -n messaging --sort-by='.lastTimestamp' | tail -20
 
 echo "=== RabbitMQ Cluster Health ==="
 kubectl exec -n messaging rabbitmq-0 -- \
