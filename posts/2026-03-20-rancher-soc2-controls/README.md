@@ -10,7 +10,7 @@ SOC 2 (System and Organization Controls 2) is an auditing framework developed by
 
 ## Prerequisites
 
-- Rancher v2.6+ managing production Kubernetes clusters
+- Rancher v2.12+ managing production Kubernetes clusters
 - Understanding of SOC 2 Trust Services Criteria
 - Security and compliance team involvement
 - Monitoring infrastructure (Prometheus, Grafana, alerting)
@@ -30,16 +30,14 @@ SOC 2 (System and Organization Controls 2) is an auditing framework developed by
 ### Authentication and Authorization
 
 ```yaml
-# rancher-auth-config.yaml - Configure LDAP/AD authentication for Rancher
+# rancher-global-role.yaml - Example read-only GlobalRole for Rancher
 
-# This is configured in Rancher UI under Global Settings > Authentication
-# Key requirements for SOC 2:
+# Configure external authentication in Rancher UI under
+# Users & Authentication > Auth Provider.
+# MFA is typically enforced by the external identity provider
+# (Okta, Microsoft Entra ID/Azure AD, etc.)
 
-# 1. Multi-Factor Authentication (MFA)
-# Enable in Rancher UI: Global -> Security -> Authentication
-# Rancher supports SAML providers with MFA (Okta, Azure AD, etc.)
-
-# 2. Role-Based Access Control
+# Role-Based Access Control
 # Create least-privilege roles for different teams
 apiVersion: management.cattle.io/v3
 kind: GlobalRole
@@ -48,16 +46,13 @@ metadata:
 rules:
   # Read-only access for auditors
   - apiGroups: ["management.cattle.io"]
-    resources: ["clusters", "nodes"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["cis.cattle.io"]
-    resources: ["clusterscans", "clusterscanreports"]
+    resources: ["clusters", "users", "globalroles", "globalrolebindings"]
     verbs: ["get", "list", "watch"]
 ```
 
 ```bash
 # Audit access: who has access to what
-kubectl get clusterrolebindings -A -o json | \
+kubectl get clusterrolebindings -o json | \
   python3 -c "
 import json, sys
 data = json.load(sys.stdin)
@@ -127,10 +122,17 @@ spec:
 
 ```bash
 # Enable Kubernetes audit logging for change tracking
-# This requires API server configuration (see STIG guide for full config)
+# This requires API server configuration in RKE2.
+# /etc/rancher/rke2/config.yaml additions:
+# kube-apiserver-arg:
+#   - audit-policy-file=/etc/rancher/rke2/audit-policy.yaml
+#   - audit-log-path=/var/lib/rancher/rke2/server/logs/audit.log
+#   - audit-log-maxage=30
+#   - audit-log-maxbackup=10
+#   - audit-log-maxsize=100
 
 # Configure audit policy for SOC 2
-cat > /etc/kubernetes/soc2-audit-policy.yaml << 'EOF'
+cat > /etc/rancher/rke2/audit-policy.yaml << 'EOF'
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
@@ -159,7 +161,7 @@ EOF
 
 ### High Availability Configuration
 
-```yaml
+```bash
 # Check and ensure cluster HA requirements
 # For Rancher-managed RKE2 clusters:
 
@@ -172,10 +174,11 @@ EOF
 # etcd-snapshot-schedule-cron: "0 */6 * * *"
 # etcd-snapshot-retention: 10
 
-# Verify backup configuration
-kubectl exec -n kube-system -l component=etcd \
-  -- etcdctl snapshot status /var/lib/rancher/rke2/server/db/snapshots/ 2>/dev/null || \
-  echo "Check /var/lib/rancher/rke2/server/db/snapshots/ on control plane nodes"
+# Verify scheduled snapshot configuration on a server node
+rke2 etcd-snapshot ls
+
+# Scheduled snapshots are stored under:
+# /var/lib/rancher/rke2/server/db/snapshots
 ```
 
 ## C1: Confidentiality Controls
@@ -183,11 +186,11 @@ kubectl exec -n kube-system -l component=etcd \
 ### Secrets Management
 
 ```bash
-# Ensure secrets are encrypted at rest
-kubectl get secrets -n kube-system -o yaml | grep "type:"
+# Verify RKE2 secrets encryption status on a server node
+rke2 secrets-encrypt status
 
-# Check if encryption provider is configured
-# (See STIG guide for encryption-config.yaml setup)
+# RKE2 stores the generated encryption provider config at:
+# /var/lib/rancher/rke2/server/cred/encryption-config.json
 
 # Use external secrets management for sensitive data
 # Install External Secrets Operator
@@ -197,9 +200,9 @@ helm install external-secrets \
   -n external-secrets-system \
   --create-namespace
 
-# Create a SecretStore pointing to your secrets manager (Vault, AWS SM, etc.)
+# Create a ClusterSecretStore pointing to your secrets manager (Vault, AWS SM, etc.)
 kubectl apply -f - <<EOF
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -213,6 +216,9 @@ spec:
         kubernetes:
           mountPath: "kubernetes"
           role: "rancher-secrets"
+          serviceAccountRef:
+            name: "external-secrets"
+            namespace: "external-secrets-system"
 EOF
 ```
 
@@ -233,15 +239,15 @@ kubectl get roles -A -o yaml > $EVIDENCE_DIR/roles.yaml
 kubectl get rolebindings -A -o yaml > $EVIDENCE_DIR/rolebindings.yaml
 
 # CC7: Monitoring configuration
-kubectl get prometheusrule -A -o yaml > $EVIDENCE_DIR/prometheus-rules.yaml
-kubectl get alertmanagerconfig -A -o yaml > $EVIDENCE_DIR/alertmanager-config.yaml
+kubectl get prometheusrules.monitoring.coreos.com -A -o yaml > $EVIDENCE_DIR/prometheus-rules.yaml
+kubectl get alertmanagerconfigs.monitoring.coreos.com -A -o yaml > $EVIDENCE_DIR/alertmanager-config.yaml
 
 # A1: Availability - node status
 kubectl get nodes -o wide > $EVIDENCE_DIR/node-status.txt
 kubectl get pods -A | grep -v Running > $EVIDENCE_DIR/non-running-pods.txt
 
-# CIS scan results
-kubectl get clusterscanreport -A -o yaml > $EVIDENCE_DIR/cis-scan-reports.yaml
+# Compliance scan results
+kubectl get clusterscanreports.compliance.cattle.io -o yaml > $EVIDENCE_DIR/compliance-scan-reports.yaml
 
 echo "Evidence collected in: $EVIDENCE_DIR"
 tar -czf soc2-evidence-$(date +%Y%m%d).tar.gz $EVIDENCE_DIR
@@ -253,4 +259,4 @@ chmod +x /tmp/collect-soc2-evidence.sh
 
 ## Conclusion
 
-Implementing SOC 2 controls in a Rancher environment involves configuring authentication, access control, audit logging, monitoring, and availability measures across your Kubernetes clusters. The key to SOC 2 compliance is not just implementing technical controls, but also documenting them and being able to demonstrate their effectiveness to auditors. Rancher's built-in features like CIS scanning, RBAC management, and integration with monitoring tools make it well-suited for organizations pursuing SOC 2 certification.
+Implementing SOC 2 controls in a Rancher environment involves configuring authentication, access control, audit logging, monitoring, and availability measures across your Kubernetes clusters. The key to SOC 2 compliance is not just implementing technical controls, but also documenting them and being able to demonstrate their effectiveness to auditors. Rancher's built-in features like Compliance scans, RBAC management, and integration with monitoring tools make it well-suited for organizations pursuing SOC 2 certification.
