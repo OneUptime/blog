@@ -13,7 +13,7 @@ Apache Cassandra is a highly scalable, distributed NoSQL database designed for h
 ## Prerequisites
 
 - Rancher-managed cluster with at least 3 nodes
-- 4GB+ RAM per Cassandra node recommended
+- 8GB+ RAM per Cassandra node recommended for production
 - SSD storage for best performance
 - kubectl with cluster-admin access
 
@@ -29,7 +29,9 @@ dbUser:
 cluster:
   name: "rancher-cassandra"
   seedCount: 2
-  replicaCount: 3
+  datacenter: "dc1"
+  endpointSnitch: "GossipingPropertyFileSnitch"
+  numTokens: 256
 
 replicaCount: 3
 
@@ -46,17 +48,9 @@ persistence:
   storageClass: "standard"
   size: 50Gi
 
-jvmOpts: "-Xms1G -Xmx2G -XX:+UseG1GC -XX:G1RSetUpdatingPauseTimePercent=5 -XX:MaxGCPauseMillis=300"
-
-configuration: |
-  num_tokens: 256
-  hinted_handoff_enabled: true
-  max_hint_window_in_ms: 10800000
-  read_request_timeout_in_ms: 5000
-  write_request_timeout_in_ms: 2000
-  compaction_throughput_mb_per_sec: 64
-  concurrent_reads: 32
-  concurrent_writes: 32
+jvm:
+  maxHeapSize: 2G
+  extraOpts: "-XX:+UseG1GC -XX:G1RSetUpdatingPauseTimePercent=5 -XX:MaxGCPauseMillis=300"
 
 metrics:
   enabled: true
@@ -111,7 +105,7 @@ Inside cqlsh:
 CREATE KEYSPACE IF NOT EXISTS myapp
 WITH REPLICATION = {
   'class': 'NetworkTopologyStrategy',
-  'datacenter1': 3  -- Replication factor of 3
+  'dc1': 3  -- Replication factor of 3
 };
 
 USE myapp;
@@ -148,6 +142,7 @@ helm repo update
 helm install k8ssandra-operator k8ssandra/k8ssandra-operator \
   --namespace k8ssandra-operator \
   --create-namespace \
+  --set global.clusterScoped=true \
   --wait
 ```
 
@@ -194,10 +189,13 @@ spec:
 
   # Reaper for repairs
   reaper:
-    repairSchedules:
+    autoScheduling:
       enabled: true
-      keyspace: myapp
-      scheduleDaysBetween: 7
+```
+
+```bash
+# Deploy the K8ssandra cluster
+kubectl apply -f k8ssandra-cluster.yaml
 ```
 
 ## Step 5: Configure Cassandra for Application Access
@@ -214,10 +212,10 @@ data:
   CASSANDRA_PORT: "9042"
   CASSANDRA_KEYSPACE: "myapp"
   CASSANDRA_CONSISTENCY: "LOCAL_QUORUM"
-  CASSANDRA_DATACENTER: "datacenter1"
+  CASSANDRA_DATACENTER: "dc1"
 ```
 
-## Step 6: Run Scheduled Repairs
+## Step 6: Run Manual Repairs
 
 ```bash
 # Run a manual repair with nodetool
@@ -226,7 +224,7 @@ kubectl exec -n databases cassandra-0 -- \
 
 # Check repair progress
 kubectl exec -n databases cassandra-0 -- \
-  nodetool compactionstats
+  nodetool netstats
 ```
 
 ## Troubleshooting
