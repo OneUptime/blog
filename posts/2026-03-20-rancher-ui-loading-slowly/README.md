@@ -41,22 +41,19 @@ kubectl top node
 kubectl get deployment -n cattle-system rancher -o json \
   | jq '.spec.template.spec.containers[].resources'
 
-# Increase CPU and memory limits if needed
-kubectl patch deployment rancher -n cattle-system --type=json -p='[
-  {"op":"replace","path":"/spec/template/spec/containers/0/resources/requests/cpu","value":"500m"},
-  {"op":"replace","path":"/spec/template/spec/containers/0/resources/limits/cpu","value":"2000m"},
-  {"op":"replace","path":"/spec/template/spec/containers/0/resources/requests/memory","value":"1Gi"},
-  {"op":"replace","path":"/spec/template/spec/containers/0/resources/limits/memory","value":"4Gi"}
-]'
+# Increase CPU and memory requests/limits if needed
+kubectl set resources deployment rancher -n cattle-system \
+  --requests=cpu=500m,memory=1Gi \
+  --limits=cpu=2000m,memory=4Gi
 ```
 
-## Step 3: Check the Rancher Database
+## Step 3: Check the Management Cluster Datastore
 
-For HA Rancher backed by an external MySQL database:
+For Rancher running on a K3s management cluster backed by an external MySQL datastore:
 
 ```bash
 # Check MySQL query performance (run inside MySQL)
-mysql -h <db-host> -u rancher -p<password> rancher << 'EOF'
+mysql -h <db-host> -u <db-user> -p<password> <database-name> << 'EOF'
 -- Check for slow queries
 SHOW PROCESSLIST;
 
@@ -64,12 +61,12 @@ SHOW PROCESSLIST;
 SELECT table_name, ROUND(data_length/1024/1024, 2) AS data_mb,
        ROUND(index_length/1024/1024, 2) AS index_mb
 FROM information_schema.tables
-WHERE table_schema = 'rancher'
+WHERE table_schema = '<database-name>'
 ORDER BY data_mb DESC LIMIT 10;
 EOF
 
-# For embedded SQLite (single-node Rancher), check database size
-ls -lh /var/lib/rancher/k3s/server/db/state.db
+# For single-server K3s (default embedded SQLite), check datastore size
+du -sh /var/lib/rancher/k3s/server/db/
 ```
 
 ## Step 4: Prune Stale Resources
@@ -77,15 +74,15 @@ ls -lh /var/lib/rancher/k3s/server/db/state.db
 Large numbers of stale Kubernetes resources slow down list API calls:
 
 ```bash
-# Count resources per namespace
+# Count events cluster-wide
 kubectl get events -A --no-headers | wc -l
-# Events older than 1 hour are generally useless - K8s auto-prunes them
+# By default, kube-apiserver retains events for 1 hour
 
 # Check the number of ConfigMaps and Secrets (often bloated by Helm releases)
 kubectl get configmap -A --no-headers | wc -l
 kubectl get secret -A --no-headers | wc -l
 
-# Clean up old Helm release secrets (keeps last 5 revisions per release)
+# List Helm release secrets to gauge Helm history bloat (showing first 20)
 kubectl get secrets -A -o json \
   | jq -r '.items[] | select(.type=="helm.sh/release.v1") | "\(.metadata.namespace) \(.metadata.name)"' \
   | head -20
@@ -112,26 +109,44 @@ kubectl get crds | grep cattle.io | wc -l
 ```bash
 # If Rancher is behind a reverse proxy (e.g., nginx), check:
 # 1. WebSocket support is enabled
-# 2. Proxy buffering is disabled for WebSocket connections
+# 2. The proxy passes the Host and X-Forwarded-* headers Rancher expects
 # 3. Timeouts are set high enough
 
 # Example nginx configuration for Rancher
 cat << 'EOF'
 upstream rancher {
-    server rancher-svc.cattle-system.svc.cluster.local:443;
+    server rancher-server:80;
+}
+
+map $http_upgrade $connection_upgrade {
+    default Upgrade;
+    ''      close;
 }
 
 server {
     listen 443 ssl http2;
+    server_name rancher.example.com;
+    ssl_certificate /path/to/fullchain.pem;
+    ssl_certificate_key /path/to/privkey.pem;
 
     location / {
-        proxy_pass         https://rancher;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   X-Forwarded-Port $server_port;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_pass         http://rancher;
         proxy_http_version 1.1;
         proxy_set_header   Upgrade $http_upgrade;   # WebSocket support
-        proxy_set_header   Connection "Upgrade";
+        proxy_set_header   Connection $connection_upgrade;
         proxy_read_timeout 900s;                    # Long timeout for WS
         proxy_buffering    off;                     # Disable buffering for WS
     }
+}
+
+server {
+    listen 80;
+    server_name rancher.example.com;
+    return 301 https://$server_name$request_uri;
 }
 EOF
 ```
@@ -141,10 +156,14 @@ EOF
 Ensure your ingress or load balancer is using HTTP/2, which significantly reduces UI load time by multiplexing requests:
 
 ```yaml
-# nginx Ingress annotation to force HTTP/2
-annotations:
-  nginx.ingress.kubernetes.io/ssl-redirect: "true"
-  nginx.ingress.kubernetes.io/use-http2: "true"
+# ingress-nginx uses a controller ConfigMap setting for HTTP/2
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+data:
+  use-http2: "true"
 ```
 
 ## Conclusion
