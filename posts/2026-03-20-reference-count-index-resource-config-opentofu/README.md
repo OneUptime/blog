@@ -40,8 +40,13 @@ variable "subnet_ids" {
   type = list(string)
 }
 
+data "aws_subnet" "selected" {
+  count = length(var.subnet_ids)
+  id    = var.subnet_ids[count.index]
+}
+
 resource "aws_instance" "app" {
-  count = 6  # 6 instances across however many subnets are available
+  count = 6  # 6 instances distributed across the provided subnets
 
   ami           = data.aws_ami.app.id
   instance_type = "t3.medium"
@@ -109,15 +114,14 @@ variable "base_port" {
   default = 6379  # Redis base port
 }
 
-resource "aws_security_group_rule" "redis_shards" {
+resource "aws_vpc_security_group_ingress_rule" "redis_shards" {
   count = var.shard_count
 
-  type              = "ingress"
+  security_group_id = aws_security_group.redis.id
+  cidr_ipv4         = "10.0.0.0/8"
   from_port         = var.base_port + count.index
   to_port           = var.base_port + count.index
-  protocol          = "tcp"
-  cidr_blocks       = ["10.0.0.0/8"]
-  security_group_id = aws_security_group.redis.id
+  ip_protocol       = "tcp"
   description       = "Redis shard ${count.index} port ${var.base_port + count.index}"
 }
 ```
@@ -139,4 +143,4 @@ output "worker_details" {
 
 ## Conclusion
 
-`count.index` is the mechanism that makes count-based resources individually configurable. Use modulo (`%`) for round-robin distribution across subnets or AZs, list indexing for per-instance configuration from ordered lists, and arithmetic for sequential port numbers or naming offsets. Always add 1 to `count.index` for human-readable 1-based names.
+`count.index` is the mechanism that makes count-based resources individually configurable. Use modulo (`%`) for round-robin distribution across subnets or AZs, list indexing for per-instance configuration from ordered lists, and arithmetic for sequential port numbers or naming offsets. Add 1 to `count.index` when you want human-readable 1-based names.
