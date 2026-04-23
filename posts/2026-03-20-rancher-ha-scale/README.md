@@ -17,23 +17,23 @@ As your Rancher deployment manages more clusters, you may need to scale the mana
 - Cluster admin access
 - Maintenance window scheduled
 
-## Step 1: Add a New Control Plane Node (RKE2)
+## Step 1: Add a New Server Node (RKE2)
 
 ```bash
 # Prepare the new node
 
-# On new-cp-node:
+# On new-server-node:
 mkdir -p /etc/rancher/rke2
 
 cat > /etc/rancher/rke2/config.yaml << EOF
 # Same token as existing cluster
 token: "my-cluster-token"
-# Point to existing cluster
-server: https://rancher.example.com:9345
+# Point to the fixed registration address for the RKE2 cluster
+server: https://rke2-lb.example.com:9345
 tls-san:
-  - rancher.example.com
+  - rke2-lb.example.com
   - 10.0.0.100
-# Same roles as existing control plane nodes
+# Optional: apply the same taint used on existing server nodes
 node-taint:
   - "CriticalAddonsOnly=true:NoExecute"
 EOF
@@ -47,6 +47,8 @@ systemctl start rke2-server
 journalctl -u rke2-server -f &
 
 # From management machine, verify new node joined
+# Keep the total number of etcd-bearing server nodes odd.
+# If you already run 3 servers, add 2 more to increase etcd membership.
 kubectl get nodes -w
 ```
 
@@ -57,27 +59,25 @@ kubectl get nodes -w
 # This requires a fresh cluster or careful migration
 
 # etcd-only node configuration
+# For the first node in a fresh cluster, omit the server: line.
 cat > /etc/rancher/rke2/config.yaml << EOF
 token: "my-cluster-token"
-server: https://existing-cp:9345
+server: https://rke2-lb.example.com:9345
 
 # Dedicated etcd role only
-# Remove: control-plane role
-# This node will only run etcd
-disable-scheduler: true
+disable-apiserver: true
 disable-controller-manager: true
-disable-etcd: false
+disable-scheduler: true
 EOF
 
 # Control-plane only configuration (no etcd)
+# Join this only after at least one etcd-only server is available.
 cat > /etc/rancher/rke2/config.yaml << EOF
 token: "my-cluster-token"
-server: https://existing-cp:9345
+server: https://rke2-lb.example.com:9345
 
 # Control plane role only, no etcd
 disable-etcd: true
-disable-scheduler: false
-disable-controller-manager: false
 EOF
 ```
 
@@ -106,28 +106,10 @@ kubectl get pods -n cattle-system -o wide
 
 ```yaml
 # rancher-affinity.yaml - Ensure Rancher pods spread across nodes
-# Apply as Helm values or direct patch
+# Apply as Helm values
 
-affinity:
-  podAntiAffinity:
-    requiredDuringSchedulingIgnoredDuringExecution:
-      - labelSelector:
-          matchExpressions:
-            - key: app
-              operator: In
-              values:
-                - rancher
-        topologyKey: kubernetes.io/hostname
-    preferredDuringSchedulingIgnoredDuringExecution:
-      - weight: 100
-        podAffinityTerm:
-          labelSelector:
-            matchExpressions:
-              - key: app
-                operator: In
-                values:
-                  - rancher
-          topologyKey: topology.kubernetes.io/zone
+antiAffinity: required
+topologyKey: kubernetes.io/hostname
 ```
 
 ```bash
@@ -135,7 +117,7 @@ affinity:
 helm upgrade rancher rancher-stable/rancher \
   --namespace cattle-system \
   --reuse-values \
-  --set affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution[0].topologyKey=kubernetes.io/hostname
+  -f rancher-affinity.yaml
 ```
 
 ## Step 5: Add Worker Nodes for System Workloads
@@ -151,23 +133,20 @@ kubectl taint nodes rancher-system-01 \
 kubectl label nodes rancher-system-01 \
   rancher-system=true
 
-# Update Rancher deployment to tolerate this taint
-kubectl patch deployment rancher \
-  -n cattle-system \
-  --type=json \
-  -p='[{
-    "op": "add",
-    "path": "/spec/template/spec/tolerations",
-    "value": [{
-      "key": "rancher-system",
-      "operator": "Equal",
-      "value": "true",
-      "effect": "NoSchedule"
-    }]
-  }]'
+# Update Rancher Helm values so pods tolerate the taint and target labeled nodes
+helm upgrade rancher rancher-stable/rancher \
+  --namespace cattle-system \
+  --reuse-values \
+  --set-string 'extraTolerations[0].key=rancher-system' \
+  --set-string 'extraTolerations[0].operator=Equal' \
+  --set-string 'extraTolerations[0].value=true' \
+  --set-string 'extraTolerations[0].effect=NoSchedule' \
+  --set-string 'extraNodeSelectorTerms[0].key=rancher-system' \
+  --set-string 'extraNodeSelectorTerms[0].operator=In' \
+  --set-string 'extraNodeSelectorTerms[0].values[0]=true'
 ```
 
-## Step 6: Scale Fleet Agent for GitOps
+## Step 6: Scale Fleet Controllers for GitOps
 
 ```bash
 # Scale fleet components for large-scale GitOps
@@ -175,22 +154,29 @@ kubectl scale deployment fleet-controller \
   -n cattle-fleet-system \
   --replicas=2
 
-kubectl scale deployment fleet-gitjob \
+kubectl scale deployment gitjob \
   -n cattle-fleet-system \
   --replicas=2
 
 # Increase Fleet controller resources
 kubectl patch deployment fleet-controller \
   -n cattle-fleet-system \
-  --type=json \
-  -p='[{
-    "op": "replace",
-    "path": "/spec/template/spec/containers/0/resources",
-    "value": {
-      "requests": {"cpu": "500m", "memory": "512Mi"},
-      "limits": {"cpu": "2000m", "memory": "2Gi"}
+  --type=strategic \
+  -p='{
+    "spec": {
+      "template": {
+        "spec": {
+          "containers": [{
+            "name": "fleet-controller",
+            "resources": {
+              "requests": {"cpu": "500m", "memory": "512Mi"},
+              "limits": {"cpu": "2000m", "memory": "2Gi"}
+            }
+          }]
+        }
+      }
     }
-  }]'
+  }'
 ```
 
 ## Step 7: Validate Scaling
@@ -220,4 +206,4 @@ time curl -sk https://rancher.example.com/v3/clusters
 
 ## Conclusion
 
-Scaling Rancher HA requires careful planning and execution. Adding control plane nodes provides more API server capacity and etcd resilience, while scaling Rancher replicas distributes UI and API traffic. For deployments managing 50+ clusters, separating etcd and control plane roles onto dedicated nodes prevents resource contention between etcd (I/O intensive) and the Kubernetes API server (CPU/memory intensive). Always verify pod anti-affinity rules ensure replicas are distributed across failure domains.
+Scaling Rancher HA requires careful planning and execution. Adding server nodes provides more API server capacity, but keep the total number of etcd members odd so quorum characteristics remain favorable. Scaling Rancher replicas distributes UI and API traffic. For deployments managing 50+ clusters, separating etcd and control plane roles onto dedicated nodes prevents resource contention between etcd (I/O intensive) and the Kubernetes API server (CPU/memory intensive). Always verify that pod anti-affinity rules are distributing replicas across failure domains.
