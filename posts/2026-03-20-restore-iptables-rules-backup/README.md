@@ -6,7 +6,7 @@ Tags: iptables, Linux, Firewall, Backup, Recovery, Security
 
 Description: Restore iptables rules from backup files using iptables-restore, verify the restoration, and implement a safe pre-change backup workflow.
 
-Restoring iptables rules from backup is your safety net after accidental flushes, misconfigurations, or failed deployments. A solid backup workflow makes iptables changes risk-free.
+Restoring iptables rules from backup is your safety net after accidental flushes, misconfigurations, or failed deployments. A solid backup workflow makes iptables changes much less risky.
 
 ## Create a Backup Before Making Changes
 
@@ -17,7 +17,7 @@ sudo iptables-save > /tmp/iptables-backup-$(date +%Y%m%d-%H%M%S).txt
 
 # Create a versioned backup directory
 sudo mkdir -p /var/backups/iptables
-sudo iptables-save > /var/backups/iptables/rules-$(date +%Y%m%d-%H%M%S).txt
+sudo sh -c 'iptables-save > "/var/backups/iptables/rules-$(date +%Y%m%d-%H%M%S).txt"'
 
 # List available backups
 ls -la /var/backups/iptables/
@@ -30,13 +30,11 @@ ls -la /var/backups/iptables/
 sudo iptables-restore < /tmp/iptables-backup-20260319-101500.txt
 
 # Verify restoration
-sudo iptables -L -n -v
+sudo iptables-save
 
 # For specific tables only:
-# Restore only filter table
-sudo iptables -F    # Flush current
-sudo grep -A 1000 '*filter' /tmp/backup.txt | grep -B 1000 'COMMIT' \
-  | sudo iptables-restore --table=filter
+# Restore only filter table from a full backup
+sudo iptables-restore --table=filter < /tmp/backup.txt
 ```
 
 ## Safe Restore with Pre-Check
@@ -73,18 +71,18 @@ echo "Current rules saved to: $CURRENT_BACKUP"
 sudo iptables-restore < "$BACKUP"
 echo "Restored from: $BACKUP"
 
-# Verify connectivity (test can you still SSH)
+# Verify outbound connectivity
 sleep 2
 if ping -c 1 -W 2 8.8.8.8 > /dev/null 2>&1; then
     echo "Connectivity check: OK"
 else
-    echo "WARNING: Cannot reach internet after restore - check rules"
+    echo "WARNING: Cannot ping 8.8.8.8 after restore - check rules"
 fi
 ```
 
 ## Restore with --noflush (Merge, Don't Replace)
 
-By default, `iptables-restore` flushes chains before restoring. Use `--noflush` to add rules without removing existing ones:
+By default, `iptables-restore` flushes the affected tables before restoring. Use `--noflush` to add rules without removing existing ones:
 
 ```bash
 # Add rules FROM backup WITHOUT flushing current rules
@@ -102,7 +100,7 @@ sudo iptables-restore --noflush < /tmp/additional-rules.txt
 # Validate a backup file without actually applying it
 sudo iptables-restore --test < /tmp/iptables-backup.txt
 
-# Exit code 0 = valid, will restore successfully
+# Exit code 0 = valid for this system; it should restore successfully if state does not change
 # Non-zero = file has errors, won't apply
 
 # Check specific aspects:
@@ -113,8 +111,8 @@ grep -E "^-A|^:INPUT|^:OUTPUT|^:FORWARD|^\*" /tmp/backup.txt
 
 ```bash
 # Daily automatic backup of iptables rules
-echo "0 2 * * * root iptables-save > /var/backups/iptables/rules-\$(date +\%Y\%m\%d).txt && find /var/backups/iptables/ -mtime +30 -delete" \
+echo "0 2 * * * root iptables-save > /var/backups/iptables/rules-\$(date +\%Y\%m\%d).txt && find /var/backups/iptables/ -type f -mtime +30 -delete" \
   | sudo tee /etc/cron.d/iptables-backup
 ```
 
-The `iptables-restore` command restores the exact state of your firewall - both the rules and the chain default policies - making it the most complete recovery method available.
+The `iptables-restore` command restores the saved ruleset, including rules and chain default policies. Use `iptables-save -c` and `iptables-restore -c` as well if you also need packet and byte counters.
