@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Logging, Multi-Cluster, Observability
 
-Description: Configure centralized multi-cluster logging in Rancher using Rancher Logging (Fluentd/Fluentbit) to aggregate logs from all clusters to a central log storage system.
+Description: Configure centralized multi-cluster logging in Rancher using Rancher Logging (Fluentd/Fluent Bit) to aggregate logs from all clusters to a central log storage system.
 
 ## Introduction
 
-Multi-cluster logging centralizes logs from all your Kubernetes clusters into a single searchable location, enabling cross-cluster correlation, auditing, and alerting. Rancher Logging (based on the Banzai Cloud Logging Operator with Fluentd and Fluent Bit) provides a Kubernetes-native approach to configuring log pipelines across all clusters managed by Rancher.
+Multi-cluster logging centralizes logs from all your Kubernetes clusters into a single searchable location, enabling cross-cluster correlation, auditing, and alerting. Rancher Logging (based on the Logging operator with Fluent Bit collectors and Fluentd forwarders) provides a Kubernetes-native approach to configuring log pipelines across all clusters managed by Rancher.
 
 ## Architecture
 
@@ -28,12 +28,17 @@ graph LR
 helm repo add rancher-charts https://charts.rancher.io
 helm repo update
 
-# Install Rancher Logging on a downstream cluster
-helm install rancher-logging rancher-charts/rancher-logging \
+# Install Rancher Logging CRDs first when using Helm CLI
+helm install rancher-logging-crd rancher-charts/rancher-logging-crd \
   -n cattle-logging-system \
   --create-namespace
 
-# Install via Rancher UI: Cluster → Apps → Charts → Logging
+# Install Rancher Logging on a downstream cluster
+helm install rancher-logging rancher-charts/rancher-logging \
+  -n cattle-logging-system \
+  --set logging.enabled=true
+
+# Install via Rancher UI: Cluster → Apps → Logging
 ```
 
 ## Step 2: Create a ClusterFlow and ClusterOutput for OpenSearch
@@ -57,10 +62,9 @@ spec:
         secretKeyRef:
           name: opensearch-credentials
           key: password
-    index_name: "k8s-logs-${record['kubernetes']['cluster_name']}"
-    template_name: rancher-logs
-    template_file: /fluentd/etc/opensearch-template.json
-    type_name: _doc
+    logstash_format: true
+    logstash_prefix: k8s-logs
+    suppress_type_name: true
     # Buffer configuration for reliability
     buffer:
       chunk_limit_size: 8M
@@ -79,13 +83,11 @@ metadata:
 spec:
   # Collect logs from all namespaces (except system noise)
   match:
-    - select:
-        namespaces: []    # Empty = all namespaces
     - exclude:
         namespaces:
           - kube-system
-        labels:
-          app: fluent-bit  # Exclude log forwarder own logs
+          - cattle-logging-system
+    - select: {}    # Empty select = all remaining namespaces
   filters:
     # Add cluster name tag to every log record
     - record_transformer:
@@ -142,9 +144,11 @@ spec:
           key: secret_access_key
     s3_bucket: my-log-archive-bucket
     s3_region: us-east-1
-    path: "k8s-logs/${record['kubernetes']['cluster_name']}/%Y/%m/%d/"
-    s3_object_key_format: "%{path}%{time_slice}_%{index}.%{file_extension}"
-    time_slice_format: "%H%M"
+    path: "k8s-logs/%Y/%m/%d/"
+    buffer:
+      timekey: 1h
+      timekey_wait: 10m
+      timekey_use_utc: true
     store_as: gzip
 ```
 
@@ -169,7 +173,7 @@ spec:
         key_name: log
         reserve_data: true
     - tag_normaliser:
-        format: "${namespace}.${pod_name}.${container_name}"
+        format: "${namespace_name}.${pod_name}.${container_name}"
   localOutputRefs:
     - app-specific-output
 ```
@@ -202,40 +206,53 @@ logging/
 
 ## Step 6: Set Up Log Alerting
 
-```yaml
-# OpenSearch alerting monitor (OpenSearch Alerting plugin)
+```json
 {
   "name": "High Error Rate Alert",
   "type": "monitor",
   "monitor_type": "query_level_monitor",
+  "enabled": true,
+  "schedule": {
+    "period": {
+      "interval": 5,
+      "unit": "MINUTES"
+    }
+  },
   "inputs": [{
     "search": {
       "indices": ["k8s-logs-*"],
       "query": {
+        "size": 0,
         "query": {
           "bool": {
             "filter": [
-              {"range": {"@timestamp": {"from": "now-5m", "to": "now"}}},
-              {"term": {"level": "ERROR"}}
+              {"range": {"@timestamp": {"gte": "{{period_end}}||-5m", "lte": "{{period_end}}", "format": "epoch_millis"}}},
+              {"match_phrase": {"level": "ERROR"}}
             ]
           }
-        },
-        "aggs": {"error_count": {"value_count": {"field": "_id"}}}
+        }
       }
     }
   }],
   "triggers": [{
-    "query_level_trigger": {
-      "name": "ErrorCount > 100",
-      "condition": {
-        "script": {"source": "ctx.results[0].aggregations.error_count.value > 100"}
+    "name": "ErrorCount > 100",
+    "severity": "1",
+    "condition": {
+      "script": {
+        "source": "ctx.results[0].hits.total.value > 100",
+        "lang": "painless"
+      }
+    },
+    "actions": [{
+      "name": "Slack Alert",
+      "destination_id": "<slack-destination-id>",
+      "message_template": {
+        "source": "Monitor {{ctx.monitor.name}} detected {{ctx.results.0.hits.total.value}} ERROR logs in the last 5 minutes."
       },
-      "actions": [{
-        "name": "Slack Alert",
-        "destination_id": "<slack-destination-id>",
-        "message_template": {"source": "Cluster {{ctx.monitor.tags.cluster_name}} has high error rate"}
-      }]
-    }
+      "subject_template": {
+        "source": "High error rate detected"
+      }
+    }]
   }]
 }
 ```
