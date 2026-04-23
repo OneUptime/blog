@@ -103,10 +103,11 @@ resource "aws_api_gateway_method" "options" {
 }
 
 resource "aws_api_gateway_integration" "options" {
-  rest_api_id = aws_api_gateway_rest_api.app.id
-  resource_id = aws_api_gateway_resource.users.id
-  http_method = aws_api_gateway_method.options.http_method
-  type        = "MOCK"
+  rest_api_id          = aws_api_gateway_rest_api.app.id
+  resource_id          = aws_api_gateway_resource.users.id
+  http_method          = aws_api_gateway_method.options.http_method
+  type                 = "MOCK"
+  passthrough_behavior = "NEVER"
 
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
@@ -125,7 +126,24 @@ resource "aws_api_gateway_method_response" "options_200" {
     "method.response.header.Access-Control-Allow-Origin"  = true
   }
 }
+
+resource "aws_api_gateway_integration_response" "options_200" {
+  rest_api_id = aws_api_gateway_rest_api.app.id
+  resource_id = aws_api_gateway_resource.users.id
+  http_method = aws_api_gateway_method.options.http_method
+  status_code = aws_api_gateway_method_response.options_200.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+
+  depends_on = [aws_api_gateway_integration.options]
+}
 ```
+
+With `AWS_PROXY` integrations, the Lambda response also needs to include the appropriate CORS headers for the actual request.
 
 ## Deployment and Stage
 
@@ -138,6 +156,10 @@ resource "aws_api_gateway_deployment" "app" {
       aws_api_gateway_resource.users.id,
       aws_api_gateway_method.get_users.id,
       aws_api_gateway_integration.get_users.id,
+      aws_api_gateway_method.options.id,
+      aws_api_gateway_integration.options.id,
+      aws_api_gateway_method_response.options_200.id,
+      aws_api_gateway_integration_response.options_200.id,
     ]))
   }
 
@@ -153,9 +175,24 @@ resource "aws_api_gateway_stage" "prod" {
 
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_gw.arn
+    format = jsonencode({
+      requestId         = "$context.requestId"
+      extendedRequestId = "$context.extendedRequestId"
+      ip                = "$context.identity.sourceIp"
+      caller            = "$context.identity.caller"
+      user              = "$context.identity.user"
+      requestTime       = "$context.requestTime"
+      httpMethod        = "$context.httpMethod"
+      resourcePath      = "$context.resourcePath"
+      status            = "$context.status"
+      protocol          = "$context.protocol"
+      responseLength    = "$context.responseLength"
+    })
   }
 }
 ```
+
+Make sure the API Gateway account CloudWatch role is configured in the Region before enabling stage logging.
 
 ## Custom Domain
 
@@ -180,7 +217,7 @@ resource "aws_api_gateway_base_path_mapping" "app" {
 
 ```hcl
 output "api_endpoint" {
-  value = "${aws_api_gateway_stage.prod.invoke_url}"
+  value = aws_api_gateway_stage.prod.invoke_url
 }
 
 output "api_id" {
