@@ -15,7 +15,7 @@ Disaster recovery (DR) planning is essential for any production Rancher deployme
 Before building your DR plan, define your recovery objectives:
 
 - **Recovery Time Objective (RTO)**: The maximum acceptable time to restore Rancher services after a disaster. For most production environments, this should be under 4 hours.
-- **Recovery Point Objective (RPO)**: The maximum acceptable data loss measured in time. For Rancher, this typically means how frequently you back up etcd.
+- **Recovery Point Objective (RPO)**: The maximum acceptable data loss measured in time. For Rancher, this typically means how frequently you back up the Rancher application and take etcd snapshots for Rancher-launched clusters.
 
 ## Key Components to Protect
 
@@ -38,37 +38,27 @@ Before building your DR plan, define your recovery objectives:
 ```bash
 # List all managed clusters
 
-rancher cluster ls
+rancher clusters ls
 
-# Export cluster configurations
-for cluster in $(rancher cluster ls --format "{{.ID}}"); do
-  rancher cluster export $cluster > backup-${cluster}.yaml
+# Export cluster kubeconfig files
+for cluster in $(rancher clusters ls --format "{{.Cluster.ID}}"); do
+  rancher clusters kubeconfig $cluster > kubeconfig-${cluster}.yaml
 done
 ```
 
 ### Step 2: Define Backup Schedules
 
 ```yaml
-# recurring-backup-schedule.yaml
-apiVersion: batch/v1
-kind: CronJob
+# recurring-rancher-backup.yaml
+apiVersion: resources.cattle.io/v1
+kind: Backup
 metadata:
-  name: rancher-etcd-backup
-  namespace: cattle-system
+  name: rancher-recurring-backup
 spec:
+  resourceSetName: rancher-resource-set-full
+  encryptionConfigSecretName: backup-encryption-key
   schedule: "0 */6 * * *"  # Every 6 hours
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-          - name: backup
-            image: rancher/backup-restore-operator:latest
-            command:
-            - /bin/sh
-            - -c
-            - "etcdctl snapshot save /backup/etcd-$(date +%Y%m%d-%H%M%S).db"
-          restartPolicy: OnFailure
+  retentionCount: 28
 ```
 
 ### Step 3: Choose Your DR Architecture
@@ -88,16 +78,16 @@ Create runbooks for each failure scenario:
 
 ### Prerequisites
 - Access to backup storage (S3/NFS)
-- New server matching original specs
-- Valid backup files
+- Replacement management cluster or host
+- Valid backup files and, if used, the encryption configuration
 
 ### Steps
-1. Provision new server
-2. Install Docker/Kubernetes
-3. Restore etcd snapshot
-4. Restore Rancher deployment
-5. Verify cluster connectivity
-6. Update DNS records
+1. Provision a replacement management cluster or host
+2. Recreate DNS and load balancer prerequisites
+3. Prepare the restore tooling required for your original installation method
+4. Restore the Rancher backup or snapshot for that installation
+5. Bring Rancher up with the same hostname and compatible version
+6. Verify cluster connectivity
 7. Validate all downstream clusters
 ```
 
@@ -110,6 +100,8 @@ Create runbooks for each failure scenario:
 
 ## Backup Configuration with Rancher Backup Operator
 
+Use the Rancher Backup operator to protect the Rancher application running on the local cluster; plan separate etcd snapshots and workload backups for downstream clusters.
+
 ```yaml
 # backup-resource.yaml
 apiVersion: resources.cattle.io/v1
@@ -119,10 +111,13 @@ metadata:
 spec:
   storageLocation:
     s3:
+      credentialSecretName: s3-creds
+      credentialSecretNamespace: default
       bucketName: rancher-dr-backups
       folder: daily
       region: us-east-1
-      endpoint: s3.amazonaws.com
+      endpoint: s3.us-east-1.amazonaws.com
+  resourceSetName: rancher-resource-set-full
   schedule: "0 2 * * *"   # Daily at 2 AM
   retentionCount: 14       # Keep 14 backups
   encryptionConfigSecretName: backup-encryption-key
@@ -145,24 +140,27 @@ echo "[ ] DNS failover configured"
 
 ## Monitoring and Alerting for DR Readiness
 
+If you enable metrics for the `rancher-backup` Helm chart, you can alert on failed backups with a PrometheusRule:
+
 ```yaml
 # PrometheusRule for backup monitoring
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: rancher-backup-alerts
-  namespace: cattle-system
+  namespace: cattle-resources-system
 spec:
   groups:
   - name: rancher-backup
     rules:
-    - alert: RancherBackupFailed
-      expr: rancher_backup_last_success_timestamp < (time() - 86400)
-      for: 1h
+    - alert: BackupFailed
+      expr: increase(rancher_backups_failed_total[5m]) > 0
+      for: 1m
       labels:
         severity: critical
       annotations:
-        summary: "Rancher backup has not succeeded in 24 hours"
+        summary: "Rancher backup failed"
+        description: "The rancher-backup operator has failed to process at least one backup in the last 5 minutes"
 ```
 
 ## Conclusion
