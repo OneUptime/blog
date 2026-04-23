@@ -22,27 +22,27 @@ helm repo update
 cat << 'EOF' > jenkins-values.yaml
 controller:
   # Set admin password
-  adminUser: admin
-  adminPassword: ChangeMeNow!
+  admin:
+    username: admin
+    password: ChangeMeNow!
 
   # Configure JVM options
   javaOpts: "-Xms512m -Xmx2g"
 
   # Install required plugins
   installPlugins:
-    - kubernetes:latest
-    - workflow-aggregator:latest
-    - git:latest
-    - configuration-as-code:latest
-    - blueocean:latest
-    - kubernetes-credentials:latest
-    - rancher:latest         # Optional: Rancher plugin
+    - kubernetes:4423.vb_59f230b_ce53
+    - workflow-aggregator:608.v67378e9d3db_1
+    - git:5.10.1
+    - configuration-as-code:2074.va_57f83f7a_10b_
+    - blueocean:1.27.25
+    - kubernetes-credentials:207.v492f58828b_ed
+  installLatestPlugins: false
 
-  # Persistent storage
-  persistence:
-    enabled: true
-    size: 50Gi
-    storageClass: "default"
+persistence:
+  enabled: true
+  size: 50Gi
+  storageClass: "default"
 
 agent:
   enabled: true
@@ -82,19 +82,16 @@ pipeline {
         spec:
           containers:
           - name: maven
-            image: maven:3.9-jdk-17
-            command: [sleep]
-            args: [infinity]
+            image: maven:3.9.9-eclipse-temurin-17
+            command:
+            - cat
+            tty: true
             resources:
               requests:
                 cpu: 500m
                 memory: 1Gi
-          - name: docker
-            image: docker:24-dind
-            securityContext:
-              privileged: true
-            command: [dockerd-entrypoint.sh]
       '''
+      retries 2
     }
   }
   stages {
@@ -115,11 +112,14 @@ pipeline {
 # Generate a kubeconfig for the target cluster from Rancher
 # In Rancher UI: Cluster → Download KubeConfig
 
-# Or via API:
-curl -sk -X POST \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "https://<rancher-url>/v3/clusters/<cluster-id>?action=generateKubeconfig" \
-  | jq -r .config > /tmp/target-cluster.kubeconfig
+# Or via the Rancher Kubeconfig API (Rancher v2.12+):
+kubectl create -o jsonpath='{.status.value}' -f - > target-cluster.kubeconfig << 'EOF'
+apiVersion: ext.cattle.io/v1
+kind: Kubeconfig
+spec:
+  clusters: ["<cluster-id>"]
+  description: Jenkins deployment kubeconfig
+EOF
 
 # Store as a Jenkins credential
 # Jenkins UI: Manage Jenkins → Credentials → Global → Add Credential
@@ -131,7 +131,7 @@ curl -sk -X POST \
 ## Step 4: Build a Deploy Pipeline
 
 ```groovy
-// Jenkinsfile - Build, push, and deploy to Rancher cluster
+// Jenkinsfile - Deploy an image to a Rancher-managed cluster
 pipeline {
   agent {
     kubernetes {
@@ -140,46 +140,38 @@ pipeline {
         kind: Pod
         spec:
           containers:
-          - name: maven
-            image: maven:3.9-jdk-17
-            command: [sleep]
-            args: [infinity]
           - name: kubectl
             image: bitnami/kubectl:latest
-            command: [sleep]
-            args: [infinity]
+            command:
+            - cat
+            tty: true
       '''
     }
   }
 
+  parameters {
+    string(name: 'IMAGE_TAG', defaultValue: 'latest', description: 'Container image tag to deploy')
+  }
+
   environment {
     KUBECONFIG = credentials('rancher-prod-kubeconfig')
-    IMAGE_TAG  = "${env.GIT_COMMIT[0..7]}"
   }
 
   stages {
-    stage('Build') {
-      steps {
-        container('maven') {
-          sh 'mvn clean package -DskipTests'
-        }
-      }
-    }
-
     stage('Deploy to Rancher') {
       steps {
         container('kubectl') {
-          sh """
+          sh '''
             # Update the deployment image
             kubectl set image deployment/myapp \
               myapp=registry.example.com/myapp:${IMAGE_TAG} \
-              --kubeconfig=\${KUBECONFIG}
+              --kubeconfig="${KUBECONFIG}"
 
             # Wait for rollout
             kubectl rollout status deployment/myapp \
               --timeout=5m \
-              --kubeconfig=\${KUBECONFIG}
-          """
+              --kubeconfig="${KUBECONFIG}"
+          '''
         }
       }
     }
@@ -189,7 +181,7 @@ pipeline {
     failure {
       // Auto-rollback on failure
       container('kubectl') {
-        sh 'kubectl rollout undo deployment/myapp --kubeconfig=${KUBECONFIG}'
+        sh 'kubectl rollout undo deployment/myapp --kubeconfig="${KUBECONFIG}"'
       }
     }
   }
@@ -199,32 +191,31 @@ pipeline {
 ## Step 5: Use the Rancher API from Jenkins
 
 ```groovy
-// Trigger a Rancher cluster operation via API
-stage('Scale Cluster') {
+// Query Rancher cluster information via API
+stage('Inspect Rancher') {
   steps {
     script {
       withCredentials([string(credentialsId: 'rancher-api-token', variable: 'RANCHER_TOKEN')]) {
-        sh """
-          curl -sk -X POST \
-            -H "Authorization: Bearer \${RANCHER_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d '{"nodeCount": 5}' \
-            "https://rancher.example.com/v3/nodepools/<nodepool-id>?action=scaleNodePool"
-        """
+        sh '''
+          curl -sS \
+            -H "Authorization: Bearer ${RANCHER_TOKEN}" \
+            "https://rancher.example.com/v3/clusters" \
+            | jq '.data[] | {id, name, state}'
+        '''
       }
     }
   }
 }
 ```
 
-## Step 6: Trigger Pipelines on Rancher Events (Webhook)
+## Step 6: Trigger Pipelines on Rancher Alerts (Webhook)
 
 ```bash
 # Create a Jenkins webhook trigger for Rancher alert events
-# In Jenkins: Pipeline → Triggers → Generic Webhook Trigger Plugin
+# In Jenkins: install the Generic Webhook Trigger plugin and enable it for the pipeline
 
-# In Rancher Alertmanager, configure a webhook alert:
-# Monitoring → Alerting → Add Receiver → Webhook
+# In Rancher Monitoring, configure a receiver that posts to Jenkins:
+# Monitoring → Alerting → AlertManagerConfigs → <config> → Add Receiver → Webhook
 # URL: https://jenkins.example.com/generic-webhook-trigger/invoke?token=my-token
 ```
 
