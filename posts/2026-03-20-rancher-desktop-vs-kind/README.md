@@ -8,11 +8,11 @@ Description: A comparison of Rancher Desktop and Kind (Kubernetes in Docker) for
 
 ## Overview
 
-Kind (Kubernetes IN Docker) and Rancher Desktop represent two very different approaches to running Kubernetes locally. Kind uses Docker containers as Kubernetes nodes, making it extremely lightweight and ideal for CI/CD pipelines. Rancher Desktop is a full desktop application providing a graphical Kubernetes environment with container management. This comparison helps you pick the right tool.
+Kind (Kubernetes IN Docker) and Rancher Desktop represent two very different approaches to running Kubernetes locally. Kind uses container nodes and can use Docker, Podman, or nerdctl on the host, making it lightweight and ideal for CI/CD pipelines. Rancher Desktop is a full desktop application providing a graphical Kubernetes environment with container management. This comparison helps you pick the right tool.
 
 ## What Is Kind?
 
-Kind is a tool for running local Kubernetes clusters using Docker containers as nodes. It was originally designed for testing Kubernetes itself and is widely used in CI/CD pipelines due to its speed and minimal resource requirements. Kind is a CLI tool with no graphical interface.
+Kind is a tool for running local Kubernetes clusters using container nodes. It was originally designed for testing Kubernetes itself and can use Docker, Podman, or nerdctl on the host. Kind is a CLI tool with no graphical interface.
 
 ## What Is Rancher Desktop?
 
@@ -23,18 +23,18 @@ Rancher Desktop is a desktop application providing local Kubernetes via K3s and 
 | Feature | Rancher Desktop | Kind |
 |---|---|---|
 | GUI | Yes | No (CLI only) |
-| Container Runtime | containerd or dockerd | Docker (required) |
+| Container Engine / Provider | containerd or dockerd | Docker, Podman, or nerdctl |
 | Multi-node Clusters | No | Yes |
 | CI/CD Suitability | Limited | Excellent |
-| Startup Time | ~60s | ~15-30s |
+| Startup Time | Generally longer | Generally shorter |
 | Resource Usage | Medium | Low |
 | Kubernetes Distribution | K3s | Vanilla Kubernetes |
 | Multiple Clusters | No | Yes |
-| Docker Dependency | No | Yes (requires Docker) |
-| Network Integration | Via K3s | Via Docker networking |
+| Docker Dependency | No | No (supports Docker, Podman, or nerdctl) |
+| Network Integration | Via K3s | Via container runtime networking |
 | Volume Mounts | Yes | Yes |
-| Load Balancer | Yes (K3s default) | Requires MetalLB or cloud-provider-kind |
-| Ingress Controller | Yes (Traefik, default) | Manual setup required |
+| Load Balancer | Yes (K3s ServiceLB) | Requires cloud-provider-kind or MetalLB |
+| Ingress Controller | Yes (Traefik, default) | Requires cloud-provider-kind or another ingress setup |
 
 ## Installation and Setup
 
@@ -104,7 +104,7 @@ jobs:
         run: make test-integration
 ```
 
-Rancher Desktop is not suitable for CI/CD pipelines as it is a desktop application requiring interactive installation.
+Rancher Desktop is generally not used in CI/CD pipelines because it is a desktop application intended for local development.
 
 ## Loading Images into Kind
 
@@ -146,13 +146,13 @@ Rancher Desktop runs a single-node cluster only.
 kind create cluster --image kindest/node:v1.28.0
 kind create cluster --image kindest/node:v1.27.3
 
-# List available Kind node images: https://hub.docker.com/r/kindest/node/tags
+# Check the kind release notes for compatible node images: https://github.com/kubernetes-sigs/kind/releases
 ```
 
 ## When to Choose Rancher Desktop
 
 - You want a GUI for local Kubernetes management
-- You need integrated Docker CLI support for image building
+- You want integrated Docker CLI or nerdctl support for image building
 - You want an all-in-one development environment
 - CI/CD is not a requirement
 
