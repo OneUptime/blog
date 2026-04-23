@@ -18,16 +18,16 @@ RIPng (RFC 2080) is not a direct IPv6 port of RIPv2 - it includes architectural 
 | Protocol | UDP/IPv4 | UDP/IPv6 |
 | Port | 520 | 521 |
 | Multicast address | 224.0.0.9 | ff02::9 (link-local scope) |
-| Broadcast | 255.255.255.255 (old) | Not used |
-| Authentication | Built-in (plain/MD5 in RTE) | IPsec (external) |
+| Broadcast | RIPv1/RIPv2 compatibility broadcast | Not used |
+| Authentication | Built-in auth RTE/trailer | IPsec (external) |
 | Next-hop encoding | In each RTE | Special RTE type |
 | Max hop count | 15 | 15 |
-| Packet size | 512 bytes | Up to IPv6 MTU |
+| Packet size | 25 RTEs per response | MTU-derived |
 | Address size | 32-bit | 128-bit |
 
 ## Authentication: The Key Difference
 
-RIPv2 has a built-in authentication RTE (Route Table Entry) using plain text or MD5. RIPng removes this entirely and relies on IPsec:
+RIPv2 has a built-in authentication RTE (Route Table Entry) for plain text, and cryptographic authentication (commonly MD5, with SHA-family algorithms defined by RFC 4822) reuses that authentication slot plus a trailer. RIPng removes this entirely and relies on IPsec:
 
 ```text
 ! RIPv2 MD5 Authentication (Cisco)
@@ -36,8 +36,8 @@ interface GigabitEthernet0/0
  ip rip authentication key-chain RIP_KEY
 
 ! RIPng Authentication - use IPsec (FRRouting)
-interface eth0
- ipv6 rip RIPNG enable
+router ripng
+ network eth0
 ! IPsec security policy must be configured separately
 ```
 
@@ -62,28 +62,34 @@ RIPng: NextHop RTE (metric=0xFF) + RTEs = [prefix, prefix-len, metric]
 
 ## Packet Size Differences
 
-RIPv2 is limited to 512 bytes per packet (20 bytes IP + 8 bytes UDP + 484 bytes payload = 25 RTEs). RIPng can use the full IPv6 MTU (typically 1500 bytes), allowing more routes per packet.
+RIPv2 response messages can carry at most 25 RTEs without authentication; an authentication entry consumes one RTE slot. That is a 4-byte RIP header plus 25 20-byte RTEs (504 bytes), within RIP's 512-octet message limit, which does not count the IP or UDP headers. RIPng calculates how many 20-byte RTEs fit from the link MTU after IPv6, UDP, and RIPng headers, allowing more routes per packet on typical Ethernet MTUs.
 
 ## Running Both Simultaneously
 
 On dual-stack routers, both RIPv2 and RIPng can run independently:
 
-```bash
+```text
 # FRRouting - both protocols active simultaneously
 # /etc/frr/daemons
 ripd=yes
 ripngd=yes
 
 # In vtysh:
-router rip             ! RIPv2 for IPv4
-router ripng           ! RIPng for IPv6
+! RIPv2 for IPv4
+router rip
+ network eth0
+! RIPng for IPv6
+router ripng
+ network eth0
 ```
 
 ```text
 ! Cisco - both on the same interface
 interface GigabitEthernet0/0
- ip rip send version 2    ! RIPv2
- ipv6 rip RIPNG enable    ! RIPng
+! RIPv2
+ ip rip send version 2
+! RIPng
+ ipv6 rip RIPNG enable
 ```
 
 ## When to Choose RIPng
@@ -100,4 +106,4 @@ Avoid RIPng for:
 
 ## Summary
 
-RIPng adapts RIPv2 for IPv6 with protocol number and address changes, and moves authentication to IPsec. The 15-hop limit is unchanged. RIPng uses UDP port 521 and ff02::9 multicast. On dual-stack networks, RIPv2 and RIPng run as completely independent processes and can coexist on the same interfaces.
+RIPng adapts RIPv2 for IPv6 with UDP port and address changes, and moves authentication to IPsec. The 15-hop limit is unchanged. RIPng uses UDP port 521 and ff02::9 multicast. On dual-stack networks, RIPv2 and RIPng run as completely independent processes and can coexist on the same interfaces.
