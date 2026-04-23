@@ -87,14 +87,15 @@ router ospf
 
 ```bash
 # Check OSPF external routes (type E1/E2)
-vtysh -c "show ip ospf route" | grep "^E"
+vtysh -c "show ip ospf route"
 
-# Check BGP table for OSPF-originated prefixes
-vtysh -c "show ip bgp" | grep "ospf"
+# Check the BGP table for redistributed prefixes
+# Redistributed routes typically show origin "?"
+vtysh -c "show ip bgp"
 
-# Check the Linux routing table for redistributed routes
-ip route show proto ospf
-ip route show proto bgp
+# Check FRR's routing table for routes learned via OSPF or BGP
+vtysh -c "show ip route ospf"
+vtysh -c "show ip route bgp"
 ```
 
 ## Conclusion
