@@ -18,15 +18,16 @@ Aqua Security is a cloud-native security platform that provides:
 ## Architecture Overview
 
 ```text
-Rancher → Kubernetes Cluster → Aqua Server (Enforcer Pods)
-                              ↓
-                    Image Registry → Aqua Scanner
+Rancher → Kubernetes Cluster → Aqua Server (Console/Gateway)
+                              ├→ Aqua Enforcer DaemonSet
+                              ├→ Aqua KubeEnforcer
+                              └→ Image Registry → Aqua Scanner
 ```
 
 ## Prerequisites
 
 - Rancher 2.6+ with a managed Kubernetes cluster
-- Aqua Security platform (SaaS or self-hosted)
+- Aqua Security self-hosted platform or an existing Aqua SaaS tenant
 - `kubectl` access to the cluster
 - Aqua license and credentials
 
@@ -39,31 +40,36 @@ kubectl create namespace aqua
 ## Step 2: Create Aqua Credentials Secret
 
 ```bash
-kubectl create secret docker-registry aqua-registry \
+kubectl create secret docker-registry aqua-registry-secret \
   --docker-server=registry.aquasec.com \
   --docker-username=your-aqua-username \
   --docker-password=your-aqua-password \
   --namespace aqua
 ```
 
-## Step 3: Deploy Aqua Server via Helm
+## Step 3: Deploy Aqua Server via Helm (Self-Hosted Only)
 
-In Rancher, navigate to **Apps → Charts** or use Helm directly:
+If you use Aqua SaaS, skip this step. In Rancher, navigate to **Apps** or use Helm directly:
 
 ```bash
 helm repo add aqua-helm https://helm.aquasec.com
 helm repo update
 
-helm install aqua aqua-helm/server \
+helm upgrade --install aqua aqua-helm/server \
   --namespace aqua \
-  --set imageCredentials.username=your-username \
-  --set imageCredentials.password=your-password \
-  --set db.external.enabled=true \
-  --set db.external.host=your-postgres-host \
-  --set db.external.port=5432 \
-  --set db.external.name=aqua \
-  --set db.external.user=aqua \
-  --set db.external.password=your-db-password
+  --set imageCredentials.create=false \
+  --set global.platform=rancher \
+  --set global.db.external.enabled=true \
+  --set global.db.external.host=your-postgres-host \
+  --set global.db.external.port=5432 \
+  --set global.db.external.name=aqua \
+  --set global.db.external.user=aqua \
+  --set global.db.external.password=your-db-password \
+  --set global.db.external.auditHost=your-postgres-host \
+  --set global.db.external.auditPort=5432 \
+  --set global.db.external.auditName=slk_audit \
+  --set global.db.external.auditUser=aqua \
+  --set global.db.external.auditPassword=your-db-password
 ```
 
 ## Step 4: Deploy Aqua Enforcers
@@ -71,80 +77,67 @@ helm install aqua aqua-helm/server \
 Enforcers run as DaemonSets on every node to provide runtime protection:
 
 ```bash
-helm install aqua-enforcer aqua-helm/enforcer \
+helm upgrade --install aqua-enforcer aqua-helm/enforcer \
   --namespace aqua \
+  --set global.platform=rancher \
   --set enforcerToken=your-enforcer-token \
-  --set gate.host=aqua-gateway.aqua.svc.cluster.local \
-  --set gate.port=8443
+  --set global.gateway.address=aqua-gateway-svc.aqua \
+  --set global.gateway.port=8443
 ```
+
+For Aqua SaaS, add `--set serviceAccount.create=true` and replace the gateway address and port with the SaaS gateway values provided by Aqua.
 
 ## Step 5: Configure Image Assurance Policies
 
-In the Aqua Security console:
+In the Aqua Security console, create or update an Image Assurance policy with rules such as:
 
-1. Navigate to **Policies → Image Assurance**
-2. Create a new policy with rules such as:
-   - Block images with critical CVEs
-   - Block images with no scan
-   - Require specific base images
+1. Block images with critical CVEs
+2. Block images with no scan
+3. Require specific base images
 
-## Step 6: Enable Admission Control
+## Step 6: Deploy Aqua KubeEnforcer for Admission Control
 
-Aqua's Admission Controller webhooks block non-compliant pods at deployment time:
+Aqua KubeEnforcer deploys the admission webhooks that block non-compliant pods at deployment time:
 
-```yaml
-apiVersion: admissionregistration.k8s.io/v1
-kind: ValidatingWebhookConfiguration
-metadata:
-  name: aqua-webhook
-webhooks:
-  - name: imageassurance.aquasec.com
-    clientConfig:
-      service:
-        name: aqua-webhook-service
-        namespace: aqua
-        path: "/validate"
-    rules:
-      - operations: ["CREATE"]
-        resources: ["pods"]
+```bash
+helm upgrade --install kube-enforcer aqua-helm/kube-enforcer \
+  --namespace aqua \
+  --set global.platform=rancher \
+  --set certsSecret.autoGenerate=true \
+  --set aquaSecret.kubeEnforcerToken=your-kube-enforcer-token
 ```
 
-## Viewing Scan Results in Rancher
+For Aqua SaaS, also set `global.gateway.address` to the SaaS gateway host and `global.gateway.port=443`.
 
-After integration, you can view Aqua scan results from the Rancher UI:
+## Viewing Scan Results
 
-1. Go to your cluster → **Workloads**
-2. Look for the Aqua Security annotations on pods
-3. Click the Aqua icon to view image scan details
+After integration, review scan and policy results in the Aqua console and use Rancher to inspect the affected workloads:
+
+1. Open the Aqua console and review the relevant image or workload findings
+2. In Rancher, go to your cluster → **Workloads**
+3. Correlate the affected workload with the Aqua finding or policy action
 
 ## Runtime Policies
 
-Create a runtime policy to block suspicious behavior:
+Create a runtime policy in the Aqua console:
 
-```json
-{
-  "name": "block-shell-access",
-  "description": "Block shell access in production containers",
-  "block_container_exec": true,
-  "block_root_user": true,
-  "enable_fork_guard": true
-}
-```
+1. Go to **Workload Protection → Policies → Runtime Policies**
+2. Add a **Container Runtime Policy**
+3. Enable controls such as **Block Container Exec**, **Drift Prevention**, and **Block Fileless Execution**
 
 ## Monitoring and Alerting
 
 Configure Aqua to send alerts to Slack or email:
 
-1. Aqua Console → **Administration → Integrations**
-2. Add a Slack webhook for security events
-3. Configure alert severity thresholds
+1. Add a Slack or email integration in the Aqua console
+2. Configure alert severity thresholds
 
 ## Best Practices
 
-1. **Scan images before pushing** to the registry using `aquasec scan` in CI/CD
-2. **Enable admission control** to prevent unscanned images from running
-3. **Use least-privilege runtime policies** - block shell access in production
-4. **Integrate with Rancher RBAC** so only authorized users can change security policies
+1. **Scan images before deployment** using Aqua scanners or registry integrations in CI/CD
+2. **Enable admission control** to prevent unscanned or non-compliant images from running
+3. **Use least-privilege runtime policies** - block container exec in production
+4. **Use Rancher RBAC** to limit who can manage the Aqua deployment in the cluster
 5. **Set up alerts** for critical CVEs and policy violations
 
 ## Conclusion
