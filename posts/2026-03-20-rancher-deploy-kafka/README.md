@@ -12,7 +12,7 @@ Apache Kafka is a distributed event streaming platform used by thousands of comp
 
 ## Prerequisites
 
-- Rancher-managed Kubernetes cluster with at least 3 nodes
+- Rancher-managed Kubernetes 1.30+ cluster with at least 3 nodes
 - Helm 3.x installed
 - kubectl with cluster-admin access
 - A StorageClass for persistent volumes
@@ -22,55 +22,119 @@ Apache Kafka is a distributed event streaming platform used by thousands of comp
 ```bash
 # Install Strimzi Kafka Operator via Helm
 
-helm repo add strimzi https://strimzi.io/charts/
-helm repo update
-
-helm install strimzi-operator strimzi/strimzi-kafka-operator \
+helm install strimzi-cluster-operator oci://quay.io/strimzi-helm/strimzi-kafka-operator \
+  --version 0.51.0 \
   --namespace kafka \
   --create-namespace \
-  --set watchNamespaces="{kafka,messaging}" \
   --wait
 
 # Verify the operator is running
-kubectl get pods -n kafka -l name=strimzi-cluster-operator
+kubectl get deployment strimzi-cluster-operator -n kafka
 ```
 
 ## Step 2: Deploy Kafka Cluster
 
 ```yaml
-# kafka-cluster.yaml - Production Kafka cluster with Strimzi
-apiVersion: kafka.strimzi.io/v1beta2
+# kafka-cluster.yaml - Production Kafka cluster with Strimzi in KRaft mode
+#
+# Create the kafka-metrics ConfigMap from Step 7 before applying this resource.
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: controllers
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: kafka-prod
+spec:
+  replicas: 3
+  roles:
+    - controller
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 10Gi
+        class: standard
+        deleteClaim: false
+  resources:
+    requests:
+      memory: 1Gi
+      cpu: 500m
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: brokers
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: kafka-prod
+spec:
+  replicas: 3
+  roles:
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 100Gi
+        class: standard
+        deleteClaim: false
+  resources:
+    requests:
+      memory: 4Gi
+      cpu: "1"
+    limits:
+      memory: 8Gi
+      cpu: "4"
+  jvmOptions:
+    -Xms: 2048m
+    -Xmx: 4096m
+    -XX:
+      UseG1GC: true
+      MaxGCPauseMillis: 20
+      InitiatingHeapOccupancyPercent: 35
+---
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: kafka-prod
   namespace: kafka
+  annotations:
+    strimzi.io/kraft: enabled
+    strimzi.io/node-pools: enabled
 spec:
   kafka:
-    version: 3.7.0
-    replicas: 3
+    version: 4.2.0
 
     listeners:
-      - name: plain
-        port: 9092
-        type: internal
-        tls: false
       - name: tls
         port: 9093
         type: internal
         tls: true
         authentication:
           type: tls
+        configuration:
+          useServiceDnsDomain: true
       # External access via Load Balancer
       - name: external
         port: 9094
         type: loadbalancer
         tls: true
+        authentication:
+          type: tls
+
+    authorization:
+      type: simple
 
     config:
       # Replication factor for internal topics
       offsets.topic.replication.factor: 3
       transaction.state.log.replication.factor: 3
       transaction.state.log.min.isr: 2
+      default.replication.factor: 3
+      min.insync.replicas: 2
       # Log retention
       log.retention.hours: 168  # 7 days
       log.retention.bytes: 10737418240  # 10GB per partition
@@ -82,49 +146,12 @@ spec:
       socket.send.buffer.bytes: 102400
       socket.receive.buffer.bytes: 102400
 
-    storage:
-      type: jbod
-      volumes:
-        - id: 0
-          type: persistent-claim
-          size: 100Gi
-          class: standard
-          deleteClaim: false
-
-    resources:
-      requests:
-        memory: 4Gi
-        cpu: "1"
-      limits:
-        memory: 8Gi
-        cpu: "4"
-
-    jvmOptions:
-      -Xms: 2048m
-      -Xmx: 4096m
-      -XX:
-        UseG1GC: true
-        MaxGCPauseMillis: 20
-        InitiatingHeapOccupancyPercent: 35
-
     metricsConfig:
       type: jmxPrometheusExporter
       valueFrom:
         configMapKeyRef:
           name: kafka-metrics
           key: kafka-metrics-config.yml
-
-  zookeeper:
-    replicas: 3
-    storage:
-      type: persistent-claim
-      size: 10Gi
-      class: standard
-      deleteClaim: false
-    resources:
-      requests:
-        memory: 1Gi
-        cpu: 500m
 
   entityOperator:
     topicOperator:
@@ -147,7 +174,7 @@ spec:
 
 ```yaml
 # kafka-topics.yaml - Declarative topic management
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: orders-topic
@@ -164,7 +191,7 @@ spec:
     cleanup.policy: delete
     min.insync.replicas: "2"    # Ensure at least 2 replicas in sync
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: orders-dlq
@@ -182,8 +209,8 @@ spec:
 ## Step 4: Create Kafka Users with ACLs
 
 ```yaml
-# kafka-user.yaml - Kafka user with specific ACLs
-apiVersion: kafka.strimzi.io/v1beta2
+# kafka-user.yaml - Kafka users with specific ACLs
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaUser
 metadata:
   name: order-producer
@@ -205,51 +232,120 @@ spec:
           - Write
           - Describe
         host: "*"
-      # Allow transactional writes
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: kafka-connect
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: kafka-prod
+spec:
+  authentication:
+    type: tls
+  authorization:
+    type: simple
+    acls:
+      # Access to Kafka Connect internal topics
       - resource:
-          type: transactionalId
-          name: order-producer-txn
+          type: topic
+          name: connect-cluster-offsets
           patternType: literal
         operations:
-          - Write
+          - Create
           - Describe
+          - Read
+          - Write
+        host: "*"
+      - resource:
+          type: topic
+          name: connect-cluster-status
+          patternType: literal
+        operations:
+          - Create
+          - Describe
+          - Read
+          - Write
+        host: "*"
+      - resource:
+          type: topic
+          name: connect-cluster-configs
+          patternType: literal
+        operations:
+          - Create
+          - Describe
+          - Read
+          - Write
+        host: "*"
+      - resource:
+          type: group
+          name: connect-cluster
+          patternType: literal
+        operations:
+          - Read
         host: "*"
 ```
 
 ## Step 5: Connect Applications to Kafka
 
 ```yaml
-# app-deployment.yaml - Application using Kafka
+# app-deployment.yaml - Example application using Kafka with Strimzi-generated PKCS #12 stores
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: order-service
-  namespace: production
+  namespace: kafka
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: order-service
   template:
+    metadata:
+      labels:
+        app: order-service
     spec:
       containers:
         - name: order-service
           image: registry.example.com/order-service:v1.0
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
-              value: "kafka-prod-kafka-bootstrap.kafka.svc.cluster.local:9092"
+              value: "kafka-prod-kafka-bootstrap:9093"
             - name: KAFKA_TOPIC
               value: "orders-topic"
-            - name: KAFKA_GROUP_ID
-              value: "order-processor-group"
             # TLS configuration
             - name: KAFKA_SECURITY_PROTOCOL
               value: "SSL"
             - name: KAFKA_SSL_TRUSTSTORE_LOCATION
-              value: "/opt/kafka/certs/truststore.jks"
+              value: "/opt/kafka/cluster-ca/ca.p12"
+            - name: KAFKA_SSL_TRUSTSTORE_TYPE
+              value: "PKCS12"
+            - name: KAFKA_SSL_TRUSTSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-prod-cluster-ca-cert
+                  key: ca.password
             - name: KAFKA_SSL_KEYSTORE_LOCATION
-              value: "/opt/kafka/certs/keystore.jks"
+              value: "/opt/kafka/user/user.p12"
+            - name: KAFKA_SSL_KEYSTORE_TYPE
+              value: "PKCS12"
+            - name: KAFKA_SSL_KEYSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: order-producer
+                  key: user.password
           volumeMounts:
-            - name: kafka-certs
-              mountPath: /opt/kafka/certs
+            - name: kafka-cluster-ca
+              mountPath: /opt/kafka/cluster-ca
+              readOnly: true
+            - name: kafka-user
+              mountPath: /opt/kafka/user
+              readOnly: true
       volumes:
-        - name: kafka-certs
+        - name: kafka-cluster-ca
+          secret:
+            secretName: kafka-prod-cluster-ca-cert
+        - name: kafka-user
           secret:
             secretName: order-producer  # KafkaUser secret
 ```
@@ -258,7 +354,7 @@ spec:
 
 ```yaml
 # kafka-connect.yaml - Kafka Connect for data integration
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaConnect
 metadata:
   name: kafka-connect
@@ -266,18 +362,24 @@ metadata:
   annotations:
     strimzi.io/use-connector-resources: "true"
 spec:
-  version: 3.7.0
+  version: 4.2.0
   replicas: 2
   bootstrapServers: kafka-prod-kafka-bootstrap:9093
+  groupId: connect-cluster
+  configStorageTopic: connect-cluster-configs
+  offsetStorageTopic: connect-cluster-offsets
+  statusStorageTopic: connect-cluster-status
   tls:
     trustedCertificates:
       - secretName: kafka-prod-cluster-ca-cert
-        certificate: ca.crt
+        pattern: "*.crt"
+  authentication:
+    type: tls
+    certificateAndKey:
+      secretName: kafka-connect
+      certificate: user.crt
+      key: user.key
   config:
-    group.id: connect-cluster
-    offset.storage.topic: connect-cluster-offsets
-    config.storage.topic: connect-cluster-configs
-    status.storage.topic: connect-cluster-status
     config.storage.replication.factor: 3
     offset.storage.replication.factor: 3
     status.storage.replication.factor: 3
@@ -308,24 +410,16 @@ data:
 
 ```bash
 # Check cluster status
-kubectl exec -n kafka kafka-prod-kafka-0 -- \
-  bin/kafka-broker-api-versions.sh \
-  --bootstrap-server kafka-prod-kafka-bootstrap:9092
+kubectl get kafka kafka-prod -n kafka
 
-# List topics
-kubectl exec -n kafka kafka-prod-kafka-0 -- \
-  bin/kafka-topics.sh \
-  --bootstrap-server kafka-prod-kafka-bootstrap:9092 \
-  --list
+# List Strimzi-managed topics
+kubectl get kafkatopic -n kafka
 
-# Check consumer group lag
-kubectl exec -n kafka kafka-prod-kafka-0 -- \
-  bin/kafka-consumer-groups.sh \
-  --bootstrap-server kafka-prod-kafka-bootstrap:9092 \
-  --describe --group order-processor-group
+# Check Kafka Connect status
+kubectl get kafkaconnect kafka-connect -n kafka
 
 # Check logs
-kubectl logs -n kafka kafka-prod-kafka-0 --tail=100
+kubectl logs -n kafka kafka-prod-brokers-0 --tail=100
 ```
 
 ## Conclusion
