@@ -17,11 +17,13 @@ Ingress resources in Rancher-managed clusters can fail to route traffic for seve
 
 kubectl get ingress -n <namespace> <ingress-name> -o yaml
 
-# Look for the ADDRESS field - if empty, the Ingress controller hasn't admitted the resource
+# Look for the ADDRESS field and Events
 kubectl get ingress -n <namespace>
+kubectl describe ingress -n <namespace> <ingress-name>
 # NAME    CLASS   HOSTS                  ADDRESS         PORTS   AGE
 # myapp   nginx   myapp.example.com      10.0.0.100      80,443  5m
-# If ADDRESS is empty, the Ingress controller is not processing it
+# If ADDRESS is empty, the controller may not have published status yet.
+# On NodePort or hostNetwork setups, ADDRESS can stay empty even when routing works.
 ```
 
 ## Step 2: Check the Ingress Controller
@@ -32,16 +34,17 @@ kubectl get pods -n ingress-nginx                             # nginx-ingress
 kubectl get pods -n kube-system -l app.kubernetes.io/name=traefik  # traefik
 
 # Check for controller errors
-kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx --tail=100
+kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller --tail=100
 
 # Verify the IngressClass
 kubectl get ingressclass
 # NAME    CONTROLLER             PARAMETERS   AGE
 # nginx   k8s.io/ingress-nginx   <none>       2d
 
-# If your Ingress spec doesn't specify ingressClassName, set the default
+# If your Ingress omits ingressClassName and this should be the cluster-wide default
+# make this IngressClass the default. Only one default IngressClass should exist.
 kubectl annotate ingressclass nginx \
-  ingressclass.kubernetes.io/is-default-class=true
+  ingressclass.kubernetes.io/is-default-class="true"
 ```
 
 ## Step 3: Verify Backend Service and Endpoints
@@ -50,9 +53,9 @@ kubectl annotate ingressclass nginx \
 # Check that the backend service exists
 kubectl get service -n <namespace> <backend-service>
 
-# Check that the service has healthy endpoints
-kubectl get endpoints -n <namespace> <backend-service>
-# If endpoints list is empty, no Pods match the service selector
+# Check that the service has EndpointSlices / ready backends
+kubectl get endpointslice -n <namespace> -l kubernetes.io/service-name=<backend-service>
+# If no EndpointSlices are listed, no Pods match the service selector
 
 # Verify Pod selector matches
 kubectl get pods -n <namespace> -l <selector-labels>
@@ -66,10 +69,10 @@ kubectl describe service -n <namespace> <backend-service> | grep Selector
 kubectl port-forward -n <namespace> service/<backend-service> 8080:80
 curl http://localhost:8080/
 
-# Test via the Ingress controller's ClusterIP directly
-INGRESS_IP=$(kubectl get service -n ingress-nginx ingress-nginx-controller \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-curl -H "Host: myapp.example.com" http://${INGRESS_IP}/
+# Test via the Ingress controller service's external address (LoadBalancer setups)
+INGRESS_ADDR=$(kubectl get service -n ingress-nginx ingress-nginx-controller \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
+curl -H "Host: myapp.example.com" http://${INGRESS_ADDR}/
 
 # Test via the node's IP with the NodePort
 NODE_PORT=$(kubectl get service -n ingress-nginx ingress-nginx-controller \
@@ -99,29 +102,29 @@ kubectl get secret -n <namespace> <tls-secret-name> -o json \
 ```bash
 # View the nginx configuration generated for your Ingress
 NGINX_POD=$(kubectl get pods -n ingress-nginx \
-  -l app.kubernetes.io/name=ingress-nginx -o jsonpath='{.items[0].metadata.name}')
+  -l app.kubernetes.io/component=controller -o jsonpath='{.items[0].metadata.name}')
 
 # Exec into the nginx pod and check configuration
 kubectl exec -n ingress-nginx ${NGINX_POD} -- nginx -T 2>/dev/null \
   | grep -A 20 "server_name myapp.example.com"
 
-# Check for Ingress admission webhook issues
-kubectl get validatingwebhookconfiguration | grep ingress
-kubectl describe validatingwebhookconfiguration ingress-nginx-admission
+# Check for Ingress admission webhook issues (name varies by release)
+kubectl get validatingwebhookconfiguration | grep ingress-nginx
+kubectl describe validatingwebhookconfiguration <matching-webhook-name>
 ```
 
 ## Step 7: Check LoadBalancer Service
 
 ```bash
-# The Ingress controller needs an external IP from a LoadBalancer service
+# Check how the Ingress controller service is exposed
 kubectl get service -n ingress-nginx ingress-nginx-controller
 
-# If EXTERNAL-IP is <pending>, the LoadBalancer provisioning failed
-# For bare-metal clusters, MetalLB or similar is required
+# If the service type is LoadBalancer and EXTERNAL-IP is <pending>, provisioning is incomplete
+# For bare-metal clusters using a LoadBalancer service, MetalLB or similar is commonly required
 kubectl get pods -n metallb-system
 
-# For cloud providers, check the cloud controller manager logs
-kubectl logs -n kube-system -l component=cloud-controller-manager --tail=50
+# Check events on the Service for provider-specific provisioning errors
+kubectl describe service -n ingress-nginx ingress-nginx-controller
 ```
 
 ## Common Ingress Annotations
@@ -134,8 +137,6 @@ metadata:
   name: myapp
   namespace: production
   annotations:
-    # Specify the IngressClass
-    kubernetes.io/ingress.class: nginx
     # TLS redirect
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     # Increase proxy timeout for slow backends
@@ -143,6 +144,7 @@ metadata:
     # Custom error page
     nginx.ingress.kubernetes.io/custom-http-errors: "404,503"
 spec:
+  # Specify the IngressClass
   ingressClassName: nginx
   tls:
     - hosts:
@@ -163,4 +165,4 @@ spec:
 
 ## Conclusion
 
-Ingress troubleshooting in Rancher follows a clear path: verify the resource is admitted, confirm the Ingress controller is healthy, validate that backend services have endpoints, test the traffic path layer by layer, and finally check TLS configuration. The most common issues are empty endpoints (pod selector mismatch), missing IngressClass, and TLS certificate not matching the hostname.
+Ingress troubleshooting in Rancher follows a clear path: verify the resource is recognized by the controller, confirm the Ingress controller is healthy, validate that backend services have ready backends, test the traffic path layer by layer, and finally check TLS configuration. The most common issues are missing EndpointSlices or pod selector mismatches, missing IngressClass, and TLS certificates that do not match the hostname.
