@@ -8,7 +8,7 @@ Description: Configure hot reloading for Node.js, Python, Go, and Java applicati
 
 ## Introduction
 
-Hot reloading allows your application to reflect code changes instantly without restarting the container or rebuilding the Docker image. This guide covers setting up hot reload for various language runtimes in development containers deployed to Rancher, significantly reducing the time between making a change and seeing it in action.
+Hot reloading allows your application to reflect code changes quickly without rebuilding the Docker image or restarting the Kubernetes Pod. In most setups, the application process is restarted inside the container when watched files change. This guide covers setting up hot reload for various language runtimes in development containers deployed to Rancher, significantly reducing the time between making a change and seeing it in action.
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ Hot reloading allows your application to reflect code changes instantly without 
 ```dockerfile
 # Dockerfile.dev - Node.js development container
 
-FROM node:18-alpine
+FROM node:24-alpine
 WORKDIR /app
 
 # Install nodemon globally
@@ -45,20 +45,20 @@ metadata:
   namespace: development
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: node-app
   template:
+    metadata:
+      labels:
+        app: node-app
     spec:
       containers:
         - name: app
           image: registry.example.com/node-app:dev
-          volumeMounts:
-            - name: source
-              mountPath: /app/src
           env:
             - name: NODE_ENV
               value: development
-      volumes:
-        - name: source
-          emptyDir: {}
 ```
 
 ## Step 2: Python Hot Reload with Uvicorn
@@ -78,7 +78,7 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "
 ```
 
 ```yaml
-# Deployment with source volume for sync
+# Development deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -86,7 +86,13 @@ metadata:
   namespace: development
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: python-api
   template:
+    metadata:
+      labels:
+        app: python-api
     spec:
       containers:
         - name: api
@@ -104,11 +110,11 @@ spec:
 
 ```dockerfile
 # Dockerfile.dev - Go development container with Air
-FROM golang:1.21-alpine
+FROM golang:1.25-alpine
 WORKDIR /app
 
 # Install Air for hot reloading
-RUN go install github.com/cosmtrek/air@latest
+RUN go install github.com/air-verse/air@latest
 
 COPY go.mod go.sum ./
 RUN go mod download
@@ -121,27 +127,23 @@ CMD ["air", "-c", ".air.toml"]
 ```toml
 # .air.toml - Air configuration
 root = "."
-testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
 cmd = "go build -o ./tmp/main ."
-bin = "tmp/main"
-full_bin = "APP_ENV=dev APP_USER=air ./tmp/main"
+entrypoint = ["./tmp/main"]
 include_ext = ["go", "tpl", "tmpl", "html"]
 exclude_dir = ["assets", "tmp", "vendor", "testdata"]
-include_dir = []
-exclude_file = []
-exclude_regex = ["_test.go"]
-exclude_unchanged = false
-follow_symlink = false
+exclude_regex = ["_test\\.go"]
 log = "build-errors.log"
 delay = 0
-stop_on_error = false
+stop_on_error = true
 send_interrupt = false
-kill_delay = "0s"
+kill_delay = 500
 rerun = false
 rerun_delay = 500
+poll = false
+poll_interval = 500
 
 [log]
 time = false
@@ -155,8 +157,6 @@ runner = "green"
 
 [misc]
 clean_on_exit = false
-poll = false
-poll_interval = 0
 ```
 
 ## Step 4: Java Hot Reload with Spring DevTools
@@ -166,14 +166,13 @@ poll_interval = 0
 FROM eclipse-temurin:17-jdk
 WORKDIR /app
 
-# Enable Spring DevTools remote
+# Automatic restart must be explicitly enabled for packaged java -jar deployments
 COPY target/*.jar app.jar
 
-# Spring DevTools enables automatic restart
+# Spring DevTools restart is disabled by default for packaged applications
 CMD ["java", \
      "-Dspring.profiles.active=dev", \
      "-Dspring.devtools.restart.enabled=true", \
-     "-Dspring.devtools.livereload.enabled=true", \
      "-jar", "app.jar"]
 ```
 
@@ -183,32 +182,34 @@ spring:
   devtools:
     restart:
       enabled: true
-      poll-interval: 1000ms
-      quiet-period: 400ms
     livereload:
       enabled: true
+    remote:
+      secret: ${SPRING_DEVTOOLS_REMOTE_SECRET}
   jpa:
     show-sql: true
 ```
+
+When you run a packaged `java -jar` application in a container, Spring DevTools only restarts after classpath resources change. For a remote Rancher workflow, include `spring-boot-devtools` in the repackaged archive, set `spring.devtools.remote.secret`, and run the `RemoteSpringApplication` client from your IDE to push updated classpath resources.
 
 ## Step 5: Sync Files with kubectl
 
 ```bash
 # Sync files directly to the running container
-kubectl cp ./src/ development/$(kubectl get pod -n development -l app=node-app -o jsonpath='{.items[0].metadata.name}'):/app/src/
+kubectl cp ./src/. development/$(kubectl get pod -n development -l app=node-app -o jsonpath='{.items[0].metadata.name}'):/app/src
 
-# Watch and sync with inotifywait (Linux) or fswatch (macOS)
 # macOS
-fswatch -o ./src | xargs -n1 -I{} kubectl cp ./src/ \
-  development/$(kubectl get pod -n development -l app=node-app \
-  -o jsonpath='{.items[0].metadata.name}'):/app/src/
+fswatch -o ./src | while read -r _; do
+  kubectl cp ./src/. development/$(kubectl get pod -n development -l app=node-app \
+  -o jsonpath='{.items[0].metadata.name}'):/app/src
+done
 ```
 
 ## Step 6: Using Skaffold File Sync
 
 ```yaml
 # skaffold.yaml - Configure file sync for hot reload
-apiVersion: skaffold/v4beta11
+apiVersion: skaffold/v4beta13
 kind: Config
 build:
   artifacts:
@@ -218,9 +219,9 @@ build:
       sync:
         manual:
           - src: "src/**/*.js"
-            dest: /app/src
+            dest: /app
           - src: "src/**/*.ts"
-            dest: /app/src
+            dest: /app
 ```
 
 ## Step 7: Configure Resource Requests for Dev
@@ -249,4 +250,4 @@ containers:
 
 ## Conclusion
 
-Hot reloading dramatically speeds up the development feedback loop for Kubernetes applications on Rancher. By choosing the appropriate hot reload solution for each language runtime-Nodemon for Node.js, Uvicorn's reload flag for Python, Air for Go, and Spring DevTools for Java-you can achieve near-instant code updates. Combined with file sync tools like Skaffold or Telepresence, this workflow provides a local development experience while running on the actual Rancher cluster infrastructure.
+Hot reloading dramatically speeds up the development feedback loop for Kubernetes applications on Rancher. By choosing the appropriate hot reload solution for each language runtime-Nodemon for Node.js, Uvicorn's reload flag for Python, Air for Go, and Spring DevTools remote updates for Java-you can achieve near-instant code updates. Combined with file sync tools like Skaffold or Telepresence, this workflow provides a local development experience while running on the actual Rancher cluster infrastructure.
