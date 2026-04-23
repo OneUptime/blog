@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE2, Kubernetes, Configuration, Worker Nodes, Agent, Rancher
 
-Description: A comprehensive reference guide to all available options in the RKE2 agent configuration file for customizing your Kubernetes worker nodes.
+Description: A practical reference guide to common options in the RKE2 agent configuration file for customizing your Kubernetes worker nodes.
 
-The RKE2 agent configuration file (`/etc/rancher/rke2/config.yaml`) on worker nodes controls how the agent connects to the server cluster and how workloads run on the node. This guide provides a comprehensive reference for all agent configuration options.
+The RKE2 agent configuration file (`/etc/rancher/rke2/config.yaml`) on worker nodes controls how the agent connects to the server cluster and how workloads run on the node. This guide provides a practical reference for common agent configuration options.
 
 ## Agent vs Server Configuration
 
 The RKE2 agent configuration file is the same path as the server configuration, but agent nodes only support a subset of options. The key difference is that agent nodes do not run control plane components (etcd, API server, controller manager, scheduler).
 
-## Complete Agent Configuration Reference
+## Common Agent Configuration Reference
 
 ```yaml
-# /etc/rancher/rke2/config.yaml - Complete agent configuration reference
+# /etc/rancher/rke2/config.yaml - Common agent configuration reference
 
 # =====================
 
@@ -52,7 +52,7 @@ node-ip: 192.168.1.20
 # NODE LABELS
 # =====================
 
-# Labels to apply to this node
+# Labels to apply when this node registers
 node-label:
   # Topology labels (important for zone-aware scheduling)
   - "topology.kubernetes.io/zone=us-east-1a"
@@ -70,7 +70,7 @@ node-label:
 # NODE TAINTS
 # =====================
 
-# Taints to apply to this node
+# Taints to apply when this node registers
 # Prevents pods without matching tolerations from scheduling here
 # node-taint:
   # Only schedule GPU workloads
@@ -95,6 +95,10 @@ node-label:
 # Requires SELinux to be enabled on the host OS
 # selinux: false
 
+# Error if kernel tunables differ from kubelet defaults
+# Required for CIS compliance
+protect-kernel-defaults: true
+
 # =====================
 # KUBELET CONFIGURATION
 # =====================
@@ -106,9 +110,6 @@ kubelet-arg:
 
   # Enable Webhook authorization
   - "authorization-mode=Webhook"
-
-  # Protect kernel defaults (required for CIS compliance)
-  - "protect-kernel-defaults=true"
 
   # ---- Resource Management ----
   # Maximum pods per node (default: 110)
@@ -141,7 +142,7 @@ kubelet-arg:
   - "rotate-server-certificates=true"
 
   # ---- Performance ----
-  # Event record QPS (0 = unlimited)
+  # Event record QPS (0 uses the kubelet default)
   - "event-qps=0"
 
   # Streaming connection idle timeout
@@ -156,7 +157,7 @@ kubelet-arg:
 # =====================
 
 kube-proxy-arg:
-  # Proxy mode: iptables (default) or ipvs
+  # Proxy mode on Linux: iptables (default), ipvs, or nftables
   - "proxy-mode=iptables"
 
   # Metrics bind address (restrict to localhost)
@@ -227,7 +228,8 @@ node-taint:
   - "nvidia.com/gpu=present:NoSchedule"
 
 kubelet-arg:
-  - "feature-gates=DevicePlugins=true"
+  # Device plugins are enabled by default in current Kubernetes releases
+  # Install the NVIDIA device plugin separately
   - "max-pods=40"
 ```
 
