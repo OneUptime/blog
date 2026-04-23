@@ -32,27 +32,27 @@ kubectl logs -n istio-system -l app=istiod --tail=100
 # Verify istiod is ready
 kubectl rollout status deployment/istiod -n istio-system
 
-# Run the Istio pre-check for common issues
+# Analyze Istio configuration for common issues
 istioctl analyze --all-namespaces
 ```
 
 ## Step 2: Diagnose Sidecar Injection Issues
 
 ```bash
-# Check if a pod has the sidecar injected (should show 2/2 READY)
+# Check if a pod has the sidecar injected (pods with one app container should show 2/2 READY)
 kubectl get pods -n my-app
 
-# If pod shows 1/1 instead of 2/2, injection failed
+# If a pod is missing the istio-proxy container, injection failed
 # Check namespace labels
 kubectl get namespace my-app --show-labels
 
-# Check if injection is disabled via pod annotation
+# Check if injection is disabled via pod label
 kubectl get pod my-pod -n my-app -o yaml | grep "sidecar.istio.io/inject"
 
-# Check the mutating webhook configuration
-kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o yaml
+# Check whether Istio will inject workloads in this namespace
+istioctl experimental check-inject -n my-app -l app=my-app
 
-# Check if the webhook is reachable from the API server
+# Check Istiod logs for webhook or injection errors
 kubectl logs -n istio-system -l app=istiod | grep "injection"
 ```
 
@@ -62,7 +62,7 @@ kubectl logs -n istio-system -l app=istiod | grep "injection"
 # Test connectivity between two services
 # Run a debug pod in the same namespace
 kubectl run debug-pod --image=nicolaka/netshoot --rm -it \
-  -n my-app -- bash
+  --restart=Never -n my-app -- bash
 
 # Inside the debug pod, test connectivity
 curl -v http://my-service:8080/health
@@ -86,14 +86,14 @@ istioctl proxy-config listeners \
 ## Step 4: Debug mTLS Issues
 
 ```bash
-# Check the mTLS status between two services
-istioctl authn tls-check \
-  $(kubectl get pod -n my-app -l app=my-app -o jsonpath='{.items[0].metadata.name}').my-app \
-  my-service.my-app.svc.cluster.local
+# Check the effective mTLS policy for a workload
+istioctl x describe pod \
+  $(kubectl get pod -n my-app -l app=my-app -o jsonpath='{.items[0].metadata.name}') \
+  -n my-app
 
 # Common output indicating problems:
-# - "CONFLICT" means mTLS modes don't match
-# - "PERMISSIVE" means connection is allowed but not encrypted
+# - "Pilot predicts TLS Conflict" means the client and server TLS settings don't match
+# - "pod enforces mTLS and clients speak mTLS" means strict mTLS is configured correctly
 
 # Check peer authentication policies
 kubectl get peerauthentication -A
@@ -118,10 +118,10 @@ istioctl analyze -n my-app
 # - DestinationRule subset labels don't match any pods
 # - VirtualService host doesn't match any Service
 
-# Check if VirtualService is applied to the correct pods
+# Inspect the VirtualService configuration
 kubectl get virtualservice -n my-app -o yaml
 
-# Verify DestinationRule subsets match actual pods
+# Verify DestinationRule subsets match workload labels
 kubectl get pods -n my-app --show-labels | grep "version="
 
 # Check the effective configuration on a proxy
@@ -134,10 +134,9 @@ istioctl proxy-config all \
 
 ```bash
 # Enable debug logging on the Envoy proxy for a specific pod
-kubectl exec -n my-app \
+istioctl proxy-config log \
   $(kubectl get pod -n my-app -l app=my-app -o jsonpath='{.items[0].metadata.name}') \
-  -c istio-proxy -- \
-  curl -X POST "http://localhost:15000/logging?level=debug"
+  -n my-app --level debug
 
 # View the debug logs
 kubectl logs -n my-app \
@@ -145,10 +144,9 @@ kubectl logs -n my-app \
   -c istio-proxy --tail=100 | grep -E "debug|error|warn"
 
 # Reset logging level after debugging
-kubectl exec -n my-app \
+istioctl proxy-config log \
   $(kubectl get pod -n my-app -l app=my-app -o jsonpath='{.items[0].metadata.name}') \
-  -c istio-proxy -- \
-  curl -X POST "http://localhost:15000/logging?level=warning"
+  -n my-app -r
 ```
 
 ## Step 7: Check Envoy Access Logs
@@ -156,7 +154,7 @@ kubectl exec -n my-app \
 ```bash
 # Enable Envoy access logs for a namespace
 kubectl apply -f - <<EOF
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: enable-access-log
@@ -178,21 +176,22 @@ kubectl logs -n my-app \
 ### Issue: 503 Service Unavailable
 
 ```bash
-# Check if the destination service exists and has healthy endpoints
-kubectl get endpoints my-service -n my-app
+# Check if the destination service has healthy backends
+kubectl get endpointslice -n my-app -l kubernetes.io/service-name=my-service
 
-# Check for circuit breaker tripping
+# Check configured circuit breaker and outlier detection settings
 kubectl describe destinationrule my-service-dr -n my-app
 
 # Look for outlier detection ejections in Envoy stats
-kubectl exec -n my-app my-pod -c istio-proxy -- \
-  curl localhost:15000/stats | grep "outlier"
+kubectl exec -n my-app \
+  $(kubectl get pod -n my-app -l app=my-app -o jsonpath='{.items[0].metadata.name}') \
+  -c istio-proxy -- pilot-agent request GET stats | grep "outlier"
 ```
 
 ### Issue: Connection Refused / Timeout
 
 ```bash
-# Verify the service port configuration matches the container port
+# Verify the Service port/targetPort configuration matches the pod's declared ports
 kubectl get svc my-service -n my-app -o yaml
 kubectl get pod -l app=my-service -n my-app -o yaml | grep -A5 "containerPort"
 
