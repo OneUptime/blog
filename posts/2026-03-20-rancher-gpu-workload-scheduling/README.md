@@ -24,7 +24,7 @@ metadata:
 spec:
   nodeSelector:
     nvidia.com/gpu.present: "true"
-    accelerator: "nvidia-a100"      # Specific GPU type
+    nvidia.com/gpu.product: "NVIDIA-A100-SXM4-80GB"  # Specific GPU type
   containers:
   - name: trainer
     image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
@@ -99,7 +99,6 @@ metadata:
 spec:
   hard:
     requests.nvidia.com/gpu: "8"    # Max 8 GPUs requested
-    limits.nvidia.com/gpu: "8"      # Max 8 GPUs allocated
 ```
 
 ## Priority Classes for GPU Jobs
@@ -132,6 +131,7 @@ spec:
   template:
     spec:
       priorityClassName: gpu-training-high
+      restartPolicy: Never
       containers:
       - name: trainer
         image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
@@ -144,7 +144,7 @@ spec:
 
 ```yaml
 # distributed-training.yaml - MPI Operator required
-apiVersion: kubeflow.org/v1
+apiVersion: kubeflow.org/v2beta1
 kind: MPIJob
 metadata:
   name: distributed-gpu-training
@@ -160,7 +160,7 @@ spec:
           containers:
           - name: mpi-launcher
             image: horovod/horovod:latest
-            command: ["mpirun", "-np", "8", "python", "train.py"]
+            command: ["mpirun", "--allow-run-as-root", "-np", "8", "python", "train.py"]
     Worker:
       replicas: 2              # 2 workers x 4 GPUs = 8 total GPUs
       template:
@@ -183,10 +183,10 @@ spec:
 
 ```bash
 # Check which nodes are running GPU workloads
-kubectl get pods -A -o wide | grep -v Completed |   xargs -I{} kubectl describe pod {} 2>/dev/null |   grep -E "Node:|nvidia.com/gpu"
+kubectl get pods -A -o=jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.spec.nodeName}{"\t"}{.spec.containers[*].resources.limits.nvidia\.com/gpu}{"\n"}{end}' | awk -F'\t' '$4 != ""'
 
-# View GPU utilization per node
-kubectl exec -n gpu-operator   $(kubectl get pods -n gpu-operator -l app=nvidia-dcgm-exporter -o name | head -1)   -- nvidia-smi
+# View GPU utilization from the NVIDIA driver DaemonSet
+kubectl exec -it -n gpu-operator ds/nvidia-driver-daemonset -- nvidia-smi
 ```
 
 ## Conclusion
