@@ -100,8 +100,8 @@ tofu plan
 tofu apply
 
 # Step 4: Verify resource still exists in AWS
-aws s3 ls | grep legacy
-# my-legacy-bucket  2024-01-01
+aws s3 ls | grep company-legacy-data
+# 2024-01-01 12:34:56 company-legacy-data
 
 # Step 5: Remove the removed block from config (cleanup)
 # The resource is no longer in state, so it won't be tracked going forward
@@ -111,9 +111,7 @@ aws s3 ls | grep legacy
 
 ## Difference: removed vs tofu state rm
 
-```bash
-# Both achieve the same result (stop tracking a resource without destroying it)
-
+```text
 # Option 1: removed block (declarative, auditable, good for teams)
 removed {
   from = aws_instance.old
@@ -123,8 +121,11 @@ removed {
 # Option 2: state rm command (imperative, immediate)
 tofu state rm aws_instance.old
 
+# With tofu state rm, also remove or update the matching resource block.
+# Otherwise, the next tofu plan will propose creating the resource again.
+#
 # Use removed block when you want the change tracked in version control
-# Use state rm for quick one-off operations
+# Use state rm for quick one-off state operations
 ```
 
 ---
