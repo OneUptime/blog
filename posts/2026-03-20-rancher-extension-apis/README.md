@@ -8,56 +8,55 @@ Description: Learn how to use Rancher Extension APIs to build custom UI componen
 
 ## Introduction
 
-Rancher's Extension API (`@rancher/shell`) provides a rich set of hooks and utilities that let extension developers register custom pages, panels, actions, and resource detail tabs directly into the Rancher dashboard. This guide covers the most important API surfaces and how to use them effectively.
+Rancher's UI Extensions APIs provide a rich set of hooks and utilities that let extension developers register custom pages, panels, actions, and resource detail tabs directly into the Rancher dashboard. This guide covers the most important API surfaces and how to use them effectively.
 
 ## Prerequisites
 
-- A scaffolded Rancher Extension project (`yarn create @rancher/shell my-ext`)
+- A scaffolded Rancher Extension project (`npm init @rancher/extension@latest my-ext`)
 - Familiarity with Vue 3 and the Composition API
-- Node.js 16+ and Yarn
+- Node.js 20 and Yarn
 
 ## Extension Entry Point
 
-Every extension registers itself through an `index.js` (or `index.ts`) that exports a default function receiving the `$plugin` context:
+Every extension registers itself through an `index.js` (or `index.ts`) that exports a default function receiving the plugin instance:
 
 ```javascript
 // pkg/my-extension/index.js
+import { importTypes } from '@rancher/auto-import';
+import extensionRouting from './routing/extension-routing';
 
 // This function is called when Rancher loads the extension
-export default function(context) {
-  const { $plugin } = context;
+export default function(plugin) {
+  // Auto-import model, detail, and edit views from the extension folders
+  importTypes(plugin);
 
-  // Register a top-level navigation item
-  $plugin.addNavItem({
-    label:   'My Extension',
-    icon:    'icon-extension',
-    route:   { name: 'my-ext-home' },
-  });
+  // Expose extension metadata from package.json
+  plugin.metadata = require('./package.json');
 
-  // Register routes for the extension's pages
-  $plugin.addRoutes([
-    {
-      name:      'my-ext-home',
-      path:      '/my-ext',
-      component: () => import('./pages/Home.vue'),
-    },
-  ]);
+  // Register the extension product and its routes
+  plugin.addProduct(require('./product'));
+  plugin.addRoutes(extensionRouting);
 }
 ```
 
 ## Registering Resource Detail Tabs
 
-Add a custom tab to any resource detail page (e.g., Deployments):
+For newer Rancher releases, add a custom tab to a resource detail page (for example, Deployments):
 
 ```javascript
+import { TabLocation } from '@shell/core/types';
+
 // Add a tab to the Deployment detail view
-$plugin.addTab({
-  name:       'my-metrics-tab',
-  label:      'Custom Metrics',
-  resource:   'apps.deployment',   // <group>.<kind>
-  component:  () => import('./tabs/MetricsTab.vue'),
-  weight:     100,                 // Controls tab order (higher = later)
-});
+plugin.addTab(
+  TabLocation.RESOURCE_DETAIL_PAGE,
+  { resource: ['apps.deployment'] },
+  {
+    name:      'my-metrics-tab',
+    label:     'Custom Metrics',
+    component: () => import('./tabs/MetricsTab.vue'),
+    weight:    100, // Controls tab order (higher = later)
+  }
+);
 ```
 
 ```vue
@@ -77,31 +76,34 @@ defineProps({ resource: Object });
 
 ## Registering Action Buttons
 
-Inject custom action buttons into resource list and detail pages:
+Inject custom action buttons into resource list views or the Rancher header. For example, add a bulk action to the Pod list view:
 
 ```javascript
-// Add a bulk action to the Pod list view
-$plugin.addAction({
-  label:     'Restart Selected',
-  icon:      'icon-refresh',
-  resource:  'v1.pod',
-  multiple:  true,   // Show in bulk-action bar
-  handler(resources) {
-    resources.forEach(pod => {
-      // Call your custom restart logic
-      restartPod(pod);
-    });
-  },
-});
+import { ActionLocation } from '@shell/core/types';
+
+plugin.addAction(
+  ActionLocation.TABLE,
+  { resource: ['pod'] },
+  {
+    label:    'Restart Selected',
+    icon:     'icon-pipeline',
+    multiple: true, // Show as a bulk action
+    invoke(opts, resources) {
+      resources.forEach((pod) => {
+        console.log('Restart pod:', pod.metadata.name);
+      });
+    },
+  }
+);
 ```
 
 ## Using the Store
 
-Extensions have access to Rancher's Vuex store through the `useStore` composable:
+Extensions have access to Rancher's Vuex store through Vuex's `useStore` composable:
 
 ```javascript
-// Fetch all deployments from the management cluster
-import { useStore } from '@shell/composables/store';
+// Fetch all deployments from the current cluster
+import { useStore } from 'vuex';
 
 const store = useStore();
 
@@ -113,49 +115,45 @@ const deployments = await store.dispatch('cluster/findAll', {
 
 ## Making API Requests
 
-Use the built-in HTTP client to interact with the Rancher or Kubernetes API:
+Store modules also expose a low-level `request` action for raw HTTP calls. Prefer `findAll` or `findPage` for resource collections, and use `request` when you need a specific endpoint:
 
 ```javascript
-import { useStore } from '@shell/composables/store';
+import { useStore } from 'vuex';
 
 const store = useStore();
+const clusterId = store.getters['clusterId'];
 
-// GET request to the Rancher v3 API
-const response = await store.dispatch('management/request', {
-  method: 'GET',
-  url:    '/v3/clusters',
-});
-
-// GET request to a specific cluster's Kubernetes API
+// GET request to the current cluster's Kubernetes API
 const pods = await store.dispatch('cluster/request', {
   method: 'GET',
-  url:    `/api/v1/namespaces/default/pods`,
-  clusterId: 'c-xxxxx',
+  url:    `/k8s/clusters/${ clusterId }/api/v1/namespaces/default/pods`,
 });
 ```
 
-## Registering Dashboard Panels
+## Registering Panels
 
-Add a widget to the Rancher home dashboard:
+Add a panel above a resource list or inside a resource detail view:
 
 ```javascript
-$plugin.addPanel({
-  name:      'my-summary-panel',
-  label:     'My Summary',
-  component: () => import('./panels/SummaryPanel.vue'),
-  weight:    50,
-});
+import { PanelLocation } from '@shell/core/types';
+
+plugin.addPanel(
+  PanelLocation.RESOURCE_LIST,
+  { resource: ['catalog.cattle.io.app'] },
+  { component: () => import('./panels/SummaryPanel.vue') }
+);
 ```
 
 ## Listening to Extension Events
 
-Extensions can subscribe to lifecycle events:
+Extensions can subscribe to navigation and lifecycle hooks:
 
 ```javascript
-// Called when the current cluster changes
-$plugin.on('cluster-changed', (clusterId) => {
-  console.log('User switched to cluster:', clusterId);
-  // Refresh your data here
+plugin.addNavHooks({
+  async onEnter(store, { clusterId, product }) {
+    console.log('Entered product', product, 'for cluster', clusterId);
+    // Refresh your data here
+  },
 });
 ```
 
