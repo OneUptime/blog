@@ -15,10 +15,10 @@ HAProxy is a high-performance, battle-tested TCP and HTTP load balancer. For on-
 ```bash
 # Ubuntu/Debian
 
-apt-get install -y haproxy
+apt-get install -y haproxy keepalived
 
 # RHEL/CentOS
-yum install -y haproxy
+yum install -y haproxy keepalived
 
 # Verify version (2.4+ recommended)
 haproxy -v
@@ -41,9 +41,9 @@ defaults
     mode    tcp
     option  tcplog
     option  dontlognull
-    timeout connect 5s
-    timeout client  1m
-    timeout server  1m
+    timeout connect 30s
+    timeout client  1800s
+    timeout server  1800s
 
 # Statistics dashboard
 listen stats
@@ -54,24 +54,44 @@ listen stats
     stats refresh 10s
     stats auth admin:strongpassword
 
+# Rancher HTTP
+frontend rancher_http_frontend
+    bind *:80
+    mode tcp
+    option tcplog
+    default_backend rancher_http_backend
+
+backend rancher_http_backend
+    mode tcp
+    balance leastconn
+    option tcp-check
+
+    server rancher-node-1 10.0.0.11:80 check weight 1 maxconn 1000
+    server rancher-node-2 10.0.0.12:80 check weight 1 maxconn 1000
+    server rancher-node-3 10.0.0.13:80 check weight 1 maxconn 1000
+
 # Rancher HTTPS (SSL Passthrough)
 frontend rancher_https_frontend
     bind *:443
     mode tcp
     option tcplog
-    tcp-request inspect-delay 5s
     default_backend rancher_https_backend
 
 backend rancher_https_backend
     mode tcp
     balance leastconn    # Route to server with fewest active connections
-    option ssl-hello-chk  # Verify SSL is accepting connections
+    option httpchk
+    http-check connect ssl sni rancher.example.com
+    http-check send meth GET uri /healthz ver HTTP/1.1 hdr Host rancher.example.com
+    http-check expect status 200
 
     server rancher-node-1 10.0.0.11:443 check weight 1 maxconn 1000
     server rancher-node-2 10.0.0.12:443 check weight 1 maxconn 1000
     server rancher-node-3 10.0.0.13:443 check weight 1 maxconn 1000
 
-# Kubernetes API Server
+# Optional direct Kubernetes API access
+# If this load balancer is also the RKE2 fixed registration address,
+# add a separate listener for port 9345 as well.
 frontend k8s_api_frontend
     bind *:6443
     mode tcp
@@ -106,8 +126,13 @@ systemctl status haproxy
 
 Run HAProxy on two hosts with Keepalived for HA:
 
-```bash
+```conf
 # /etc/keepalived/keepalived.conf (on HAProxy host 1)
+global_defs {
+    enable_script_security
+    script_user root
+}
+
 vrrp_script check_haproxy {
     script "killall -0 haproxy"
     interval 2
@@ -119,13 +144,22 @@ vrrp_instance VI_1 {
     interface eth0
     virtual_router_id 51
     priority 101
+    advert_int 1
     track_script {
         check_haproxy
     }
     virtual_ipaddress {
-        10.0.0.10    # Floating VIP
+        10.0.0.10/24    # Floating VIP
     }
 }
+
+# On HAProxy host 2, use state BACKUP and a lower priority such as 100.
+```
+
+```bash
+systemctl enable keepalived
+systemctl start keepalived
+systemctl status keepalived
 ```
 
 ## Step 5: Monitor HAProxy Stats
@@ -140,15 +174,17 @@ Access the HAProxy statistics page at `http://haproxy-host:8080/stats` to monito
 
 ```bash
 # Verify load balancing is working
-curl -k https://10.0.0.10/healthz    # Should return "ok"
+curl -k --resolve rancher.example.com:443:10.0.0.10 -o /dev/null -w '%{http_code}\n' https://rancher.example.com/healthz
+# Expected: 200
 
-# Simulate node failure
+# Simulate node failure (example for an RKE2-based Rancher HA cluster)
 ssh 10.0.0.11 "sudo systemctl stop rke2-server"
 
-# Rancher should still respond through remaining nodes
-curl -k https://10.0.0.10/healthz    # Should still return "ok"
+# Rancher should still return HTTP 200 through the remaining nodes
+curl -k --resolve rancher.example.com:443:10.0.0.10 -o /dev/null -w '%{http_code}\n' https://rancher.example.com/healthz
+# Expected: 200
 ```
 
 ## Conclusion
 
-HAProxy is a reliable, lightweight choice for on-premises Rancher HA load balancing. The `ssl-hello-chk` health check option ensures HAProxy only routes to nodes where TLS is properly responding, providing more accurate health detection than a simple TCP connect check.
+HAProxy is a reliable, lightweight choice for on-premises Rancher HA load balancing. HTTPS health checks against `/healthz` verify that Rancher is responding on the configured hostname, providing more accurate health detection than a simple TCP connect check.
