@@ -58,7 +58,7 @@ tofu plan -refresh=false -no-color
 
 ## Combining with -refresh-only
 
-The counterpart of `-refresh=false` is `-refresh-only`, which *only* refreshes and shows drift:
+The counterpart of `-refresh=false` is `-refresh-only`, which creates a refresh-only operation to detect or reconcile drift:
 
 ```bash
 # Detect drift without planning any config changes
@@ -72,33 +72,49 @@ tofu apply -refresh-only
 
 ```yaml
 # .github/workflows/infra.yml
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # Run every 6 hours
+  pull_request:
+  push:
+    branches: [main]
+
 jobs:
   drift-check:
-    schedule:
-      - cron: "0 */6 * * *"   # Run every 6 hours
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
+      - run: tofu init -input=false
       - run: tofu plan -refresh-only -no-color
 
   pr-plan:
-    on: [pull_request]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
+      - run: tofu init -input=false
       # Fast plan for developer feedback - skip refresh
       - run: tofu plan -refresh=false -no-color
 
   production-apply:
-    on:
-      push:
-        branches: [main]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
+      - run: tofu init -input=false
       # Full refresh before applying to production
       - run: tofu apply -auto-approve   # No -refresh=false here
 ```
 
-## Terraform State Refresh Command (Standalone)
+## OpenTofu State Refresh Command (Standalone)
 
 ```bash
-# Refresh state explicitly without planning
-tofu apply -refresh-only -auto-approve
+# Refresh state explicitly, with a chance to review changes first
+tofu apply -refresh-only
 
 # This is the recommended replacement for the deprecated: tofu refresh
 ```
