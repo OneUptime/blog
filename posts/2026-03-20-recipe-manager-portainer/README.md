@@ -8,20 +8,18 @@ Description: Deploy Mealie as a self-hosted recipe manager with meal planning an
 
 ## Introduction
 
-Mealie is a self-hosted recipe manager that lets you store recipes, plan meals for the week, and generate shopping lists. You can import recipes from any website with a single URL, organize them by category, and share with family members. This guide covers deploying Mealie using Portainer.
+Mealie is a self-hosted recipe manager that lets you store recipes, plan meals for the week, and generate shopping lists. You can import recipes from hundreds of supported recipe websites with a single URL, organize them by category, and share with family members. This guide covers deploying Mealie using Portainer.
 
 ## Prerequisites
 
 - Portainer installed and running
-- At least 512MB RAM
+- Enough RAM to allocate about 1GB to the container (recommended)
 - A reverse proxy for external access (optional)
 
 ## Step 1: Deploy Mealie Stack
 
 ```yaml
 # docker-compose.yml - Mealie Recipe Manager
-
-version: "3.8"
 
 networks:
   recipes_network:
@@ -52,7 +50,7 @@ services:
 
   # Mealie application
   mealie:
-    image: ghcr.io/mealie-recipes/mealie:latest
+    image: ghcr.io/mealie-recipes/mealie:v3.16.0
     container_name: mealie
     restart: unless-stopped
     depends_on:
@@ -72,13 +70,12 @@ services:
       # Application settings
       - BASE_URL=https://recipes.yourdomain.com
       - DEFAULT_GROUP=Home
-      - DEFAULT_EMAIL=admin@yourdomain.com
-      - DEFAULT_PASSWORD=change_this_password
+      # First login credentials (change them immediately after signing in)
+      # Username: changeme@example.com
+      # Password: MyPassword
 
       # Security settings
       - TOKEN_TIME=48
-      - MAX_WORKERS=1
-      - WEB_CONCURRENCY=1
       - ALLOW_SIGNUP=false
 
       # SMTP configuration
@@ -110,22 +107,21 @@ For a single-user setup, SQLite is sufficient:
 
 ```yaml
 # docker-compose.yml - Mealie with SQLite (simple)
-version: "3.8"
-
 volumes:
   mealie_data:
 
 services:
   mealie:
-    image: ghcr.io/mealie-recipes/mealie:latest
+    image: ghcr.io/mealie-recipes/mealie:v3.16.0
     container_name: mealie
     restart: unless-stopped
     ports:
       - "9000:9000"
     environment:
       - ALLOW_SIGNUP=false
-      - DEFAULT_EMAIL=admin@yourdomain.com
-      - DEFAULT_PASSWORD=change_this_password
+      # First login credentials (change them immediately after signing in)
+      # Username: changeme@example.com
+      # Password: MyPassword
       - BASE_URL=http://your-server-ip:9000
       - TZ=America/New_York
     volumes:
@@ -139,13 +135,13 @@ services:
 The easiest way to add recipes is by URL:
 
 1. Click **Create Recipe** > **Import from URL**
-2. Paste any recipe website URL (AllRecipes, Food Network, NYT Cooking, etc.)
-3. Mealie automatically extracts the recipe using schema.org markup
+2. Paste a supported recipe URL (AllRecipes, Food Network, NYT Cooking, etc.)
+3. Mealie imports the recipe data when the site is supported
 4. Review and save
 
 ```bash
 # Import via Mealie API
-curl -X POST "https://recipes.yourdomain.com/api/recipes/create-url" \
+curl -X POST "https://recipes.yourdomain.com/api/recipes/create/url" \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"url": "https://www.allrecipes.com/recipe/12345/chicken-tikka-masala/"}'
@@ -153,17 +149,13 @@ curl -X POST "https://recipes.yourdomain.com/api/recipes/create-url" \
 
 ### Import from Other Apps
 
+Mealie supports migrations from several apps, including Nextcloud Cookbooks and Paprika, from the `/group/migrations` page. If you already have a compatible export archive, you can upload it through the API:
+
 ```bash
-# Import from other recipe apps (Nextcloud Cookbook, Paprika, etc.)
-# Mealie accepts JSON-LD, YAML, and ZIP archives
-
-# Export from Nextcloud Cookbook
-docker exec nextcloud-cookbook php occ cookbook:export-all /tmp/recipes.zip
-
 # Import to Mealie via API
-curl -X POST "https://recipes.yourdomain.com/api/recipes/create-from-zip" \
+curl -X POST "https://recipes.yourdomain.com/api/recipes/create/zip" \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
-  -F "archive=@/tmp/recipes.zip"
+  -F "archive=@/path/to/recipes.zip"
 ```
 
 ## Step 4: Set Up Meal Planning
@@ -174,7 +166,7 @@ curl -X POST "https://recipes.yourdomain.com/api/recipes/create-from-zip" \
 # Add recipe to meal plan for next Monday
 MONDAY=$(date -d "next monday" +%Y-%m-%d)
 
-curl -X POST "https://recipes.yourdomain.com/api/groups/mealplans" \
+curl -X POST "https://recipes.yourdomain.com/api/households/mealplans" \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
@@ -189,38 +181,40 @@ curl -X POST "https://recipes.yourdomain.com/api/groups/mealplans" \
 ### Generate Shopping List
 
 ```bash
-# Create a shopping list from the week's meal plan
-curl -X POST "https://recipes.yourdomain.com/api/groups/shopping/lists" \
+# Create a shopping list for the week
+curl -X POST "https://recipes.yourdomain.com/api/households/shopping/lists" \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name": "Weekly Shopping"}'
 
-# Add meal plan items to shopping list
-curl -X POST "https://recipes.yourdomain.com/api/groups/shopping/lists/LIST_ID/recipe" \
+# Add a planned recipe's ingredients to the shopping list
+curl -X POST "https://recipes.yourdomain.com/api/households/shopping/lists/LIST_ID/recipe" \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"recipeIncrements": [{"id": "recipe-uuid", "quantity": 1}]}'
+  -d '[
+    {
+      "recipeId": "recipe-uuid-here",
+      "recipeIncrementQuantity": 1
+    }
+  ]'
 ```
 
-## Step 5: Mobile App Setup
+## Step 5: Mobile PWA Setup
 
-Mealie has an official companion app:
+Mealie includes a Progressive Web App (PWA):
 
-1. Install **Mealie** from App Store or Play Store
-2. Enter your server URL
+1. Open your Mealie URL in a mobile browser over HTTPS
+2. Use the browser's **Install App** or **Add to Home Screen** option
 3. Log in with your credentials
-4. Browse and plan meals on mobile
+4. Browse recipes and shopping lists on mobile
 
-## Step 6: Configure Recipe Scrapers
+## Step 6: Bulk Import Recipe URLs
 
-Mealie can import from hundreds of recipe sites. Enable additional scrapers:
+Mealie can import from hundreds of recipe sites. To submit multiple URLs at once:
 
 ```bash
-# Check which sites are supported
-curl "https://recipes.yourdomain.com/api/app/about" | jq '.recipeScrapers'
-
-# Import with custom scraper
-curl -X POST "https://recipes.yourdomain.com/api/recipes/create-url/bulk" \
+# Import multiple recipe URLs
+curl -X POST "https://recipes.yourdomain.com/api/recipes/create/url/bulk" \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -236,6 +230,8 @@ curl -X POST "https://recipes.yourdomain.com/api/recipes/create-url/bulk" \
 ```bash
 #!/bin/bash
 # backup-mealie.sh
+# PostgreSQL deployment backup example
+# If you're using SQLite, stop the container and back up /app/data instead.
 DATE=$(date +%Y%m%d_%H%M%S)
 BACKUP_DIR="/opt/backups/mealie"
 mkdir -p "$BACKUP_DIR"
@@ -244,7 +240,7 @@ mkdir -p "$BACKUP_DIR"
 docker exec mealie_db pg_dump -U mealie mealie | \
   gzip > "$BACKUP_DIR/mealie_db_$DATE.sql.gz"
 
-# Backup media files (recipe photos)
+# Backup Mealie application data (images, assets, logs)
 tar -czf "$BACKUP_DIR/mealie_data_$DATE.tar.gz" \
   $(docker volume inspect mealie_data -f '{{ .Mountpoint }}')
 
@@ -255,4 +251,4 @@ echo "Mealie backup: $DATE"
 
 ## Conclusion
 
-You now have a beautiful self-hosted recipe manager running in Docker through Portainer. Mealie makes it easy to build and organize your recipe collection by importing from any website, plan your weekly meals, and auto-generate shopping lists. The mobile app keeps your recipe collection accessible in the kitchen. Use Portainer to keep Mealie updated and monitor its resource usage over time.
+You now have a beautiful self-hosted recipe manager running in Docker through Portainer. Mealie makes it easy to build and organize your recipe collection by importing from supported recipe sites, plan your weekly meals, and generate shopping lists. The PWA keeps your recipe collection accessible in the kitchen. Use Portainer to keep Mealie updated and monitor its resource usage over time.
