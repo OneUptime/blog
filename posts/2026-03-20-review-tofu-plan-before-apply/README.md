@@ -28,6 +28,7 @@ tofu show -json tfplan.binary > plan.json
 - destroy     → A resource will be destroyed (review carefully)
 ~ update      → A resource will be modified in-place (check details)
 -/+ replace   → A resource will be destroyed and re-created (HIGH RISK)
++/- replace   → A replacement will be created before the old resource is destroyed (HIGH RISK)
 <= read       → A data source will be read (usually safe)
 ```
 
@@ -50,12 +51,11 @@ tofu show -json tfplan.binary > plan.json
 ```text
 # RED FLAG - database will be replaced (destroy + create)
   -/+ aws_db_instance.main must be replaced
-      ~ identifier       = "prod-postgres"
-      ~ engine_version   = "15.3" -> "15.4"  # This forces replacement
+      ~ availability_zone = "us-east-1a" -> "us-east-1b"  # forces replacement
         # (new value is computed, old value is stored)
 
-# Watch for: changes to immutable attributes like db engine version,
-# subnet group, or availability zone that force replacement of stateful resources
+# Watch for: changes to immutable attributes like database engine,
+# availability zone, KMS key, or storage encryption that force replacement of stateful resources
 ```
 
 ### 3. Large Number of Destroys
@@ -97,11 +97,11 @@ tofu show -json tfplan.binary | \
 
 # Find all resources being destroyed
 tofu show -json tfplan.binary | \
-  jq '[.resource_changes[] | select(.change.actions == ["delete"]) | .address]'
+  jq '[.resource_changes[] | select(.change.actions | index("delete") != null) | .address]'
 
 # Find all forced replacements
 tofu show -json tfplan.binary | \
-  jq '[.resource_changes[] | select(.change.actions == ["delete","create"]) | .address]'
+  jq '[.resource_changes[] | select((.change.actions | index("delete") != null) and (.change.actions | index("create") != null)) | .address]'
 ```
 
 ## Setting a Destruction Threshold in CI
@@ -110,7 +110,7 @@ tofu show -json tfplan.binary | \
 #!/bin/bash
 # ci-plan-check.sh - fail CI if too many resources would be destroyed
 DESTROY_COUNT=$(tofu show -json tfplan.binary | \
-  jq '[.resource_changes[] | select(.change.actions == ["delete"])] | length')
+  jq '[.resource_changes[] | select(.change.actions | index("delete") != null)] | length')
 
 if [ "$DESTROY_COUNT" -gt 5 ]; then
   echo "ERROR: Plan will destroy $DESTROY_COUNT resources. Manual review required."
