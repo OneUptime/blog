@@ -6,15 +6,16 @@ Tags: RKE2, Kubernetes, SLE, SUSE, Installation, Rancher
 
 Description: A comprehensive guide to installing RKE2 on SUSE Linux Enterprise Server (SLES) for enterprise Kubernetes deployments.
 
-SUSE Linux Enterprise Server (SLES) is a popular enterprise Linux distribution in industries requiring certified enterprise software. RKE2 supports SLES 15 SP3 and later, making it an excellent choice for organizations already standardized on SUSE infrastructure. This guide covers RKE2 installation on SLES with proper configuration for enterprise environments.
+SUSE Linux Enterprise Server (SLES) is a popular enterprise Linux distribution in industries requiring certified enterprise software. RKE2 supports the SLES service packs listed in the RKE2 Support Matrix for each RKE2 minor version, making it an excellent choice for organizations already standardized on SUSE infrastructure. This guide covers RKE2 installation on SLES with proper configuration for enterprise environments.
 
 ## Prerequisites
 
-- SLES 15 SP3 or later
+- A SLES 15 service pack validated in the RKE2 Support Matrix for your target RKE2 version
 - SUSE entitlement with access to SUSE Customer Center
 - Minimum 2 vCPUs and 4 GB RAM
 - Root access
 - Network connectivity between nodes
+- Unique hostnames for each node
 
 ## Step 1: Register SLES and Update
 
@@ -23,12 +24,15 @@ SUSE Linux Enterprise Server (SLES) is a popular enterprise Linux distribution i
 
 sudo SUSEConnect -r <REGISTRATION_CODE> -e <EMAIL>
 
-# Add container module (required for container tools)
-sudo SUSEConnect -p sle-module-containers/15.5/x86_64
+# Add container module if you need SUSE container tools
+sudo SUSEConnect -p sle-module-containers/$(. /etc/os-release; echo "${VERSION_ID}")/$(uname -m)
 
 # Update system packages
 sudo zypper refresh
 sudo zypper update -y
+
+# Install AppArmor parser required when the host kernel supports AppArmor
+sudo zypper install -y apparmor-parser
 ```
 
 ## Step 2: Configure System Prerequisites
@@ -55,26 +59,23 @@ cat <<EOF | sudo tee /etc/sysctl.d/99-rke2.conf
 net.bridge.bridge-nf-call-iptables  = 1
 net.bridge.bridge-nf-call-ip6tables = 1
 net.ipv4.ip_forward                 = 1
+net.ipv4.conf.all.forwarding        = 1
 EOF
 
 sudo sysctl --system
 ```
 
-## Step 3: Configure Firewall (SuSEfirewall2 or firewalld)
+## Step 3: Configure Firewall
 
 ```bash
-# SLES 15 uses firewalld
-sudo systemctl enable --now firewalld
+# SLES 15 uses firewalld, but RKE2's default Canal CNI conflicts with firewalld.
+# Disable firewalld on RKE2 nodes when using the default Canal CNI.
+sudo systemctl disable --now firewalld
 
-# Open required ports for RKE2
-sudo firewall-cmd --permanent --add-port=6443/tcp
-sudo firewall-cmd --permanent --add-port=9345/tcp
-sudo firewall-cmd --permanent --add-port=2379-2380/tcp
-sudo firewall-cmd --permanent --add-port=10250/tcp
-sudo firewall-cmd --permanent --add-port=8472/udp
-sudo firewall-cmd --permanent --add-port=51820/udp
-sudo firewall-cmd --permanent --add-masquerade
-sudo firewall-cmd --reload
+# In your external firewall or security group, allow only RKE2 nodes to reach:
+# TCP: 6443, 9345, 10250, 2379-2381, 30000-32767
+# UDP: 8472 and TCP: 9099 for the default Canal VXLAN CNI
+# UDP: 51820 and 51821 only if you enable Canal WireGuard
 ```
 
 ## Step 4: Install RKE2
@@ -106,10 +107,6 @@ write-kubeconfig-mode: "0644"
 tls-san:
   - "$(hostname -f)"
   - "$(hostname -I | awk '{print $1}')"
-
-# SLES-specific: Use nftables backend for kube-proxy
-kube-proxy-arg:
-  - "proxy-mode=nftables"
 EOF
 
 # Enable and start RKE2 server
@@ -144,7 +141,7 @@ kubectl get nodes
 ```bash
 # On worker nodes (also running SLES):
 # Install RKE2 agent
-curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE="agent" sudo sh -
+curl -sfL https://get.rke2.io | sudo env INSTALL_RKE2_TYPE="agent" sh -
 
 # Get the token from the server
 # Run on server: sudo cat /var/lib/rancher/rke2/server/node-token
@@ -172,9 +169,10 @@ sudo systemctl status apparmor
 # The containerd runtime will use AppArmor profiles
 
 # Check available kernel features
-zcat /proc/config.gz | grep -E "CONFIG_CGROUPS|CONFIG_BPF|CONFIG_VXLAN"
+grep -E "CONFIG_CGROUPS|CONFIG_BPF|CONFIG_VXLAN" /boot/config-$(uname -r)
 
-# SLES 15 SP4+ supports all required kernel features out of the box
+# Confirm your SLES service pack is validated for your target RKE2 version
+# in the RKE2 Support Matrix
 ```
 
 ## Conclusion
