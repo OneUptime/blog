@@ -69,7 +69,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
 
 ## Restore Just the Database File
@@ -97,12 +97,13 @@ docker run --rm \
 docker start portainer
 ```
 
-## Restore via Portainer BE API
+## Restore via Portainer API
 
-For Business Edition, restore using the API:
+On a fresh, uninitialized Portainer instance, restore using the API:
 
 ```bash
-# Restore from a BE API backup
+# Restore from a Portainer backup archive
+# Omit the password field if the backup was not encrypted
 curl -X POST \
   https://localhost:9443/api/restore \
   -H "Content-Type: multipart/form-data" \
