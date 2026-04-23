@@ -68,18 +68,19 @@ kubectl apply -f https://rancher.example.com/v3/import/<token>.yaml
 ## Step 3: Organize Clusters with Labels and Annotations
 
 ```bash
+# Use a kubeconfig for Rancher's management cluster when editing Rancher cluster resources
 # Label clusters for organizational grouping
-kubectl label cluster.management.cattle.io c-onprem \
+kubectl label clusters.management.cattle.io c-onprem \
   environment=production \
   cloud=on-premises \
   region=datacenter-east
 
-kubectl label cluster.management.cattle.io c-aws-prod \
+kubectl label clusters.management.cattle.io c-aws-prod \
   environment=production \
   cloud=aws \
   region=us-east-1
 
-kubectl label cluster.management.cattle.io c-gcp-dev \
+kubectl label clusters.management.cattle.io c-gcp-dev \
   environment=development \
   cloud=gcp \
   region=us-central1
@@ -95,18 +96,18 @@ kind: ClusterRoleTemplateBinding
 metadata:
   name: platform-team-prod-access
   namespace: c-onprem
-roleTemplateName: project-member
-subjectName: platform-team
-subjectKind: Group
+clusterName: c-onprem
+roleTemplateName: cluster-member
+groupName: platform-team
 ---
 apiVersion: management.cattle.io/v3
 kind: ClusterRoleTemplateBinding
 metadata:
   name: platform-team-aws-access
   namespace: c-aws-prod
-roleTemplateName: project-member
-subjectName: platform-team
-subjectKind: Group
+clusterName: c-aws-prod
+roleTemplateName: cluster-member
+groupName: platform-team
 ```
 
 ## Step 5: Deploy Applications Across Clouds with Fleet
@@ -133,41 +134,45 @@ spec:
 ## Step 6: Configure Centralized Monitoring
 
 ```bash
+# Add the Rancher chart repository
+helm repo add rancher-charts https://charts.rancher.io
+helm repo update
+
 # Install Rancher Monitoring on the management cluster
 helm install rancher-monitoring \
   rancher-charts/rancher-monitoring \
   -n cattle-monitoring-system \
   --create-namespace
 
-# For downstream clusters, use Prometheus Federation
-# Each cluster runs its own Prometheus that federates to the central one
-# Configure via Rancher Monitoring app installed on each downstream cluster
+# Install rancher-monitoring separately on each downstream cluster you want to scrape
+# If you want a central Prometheus, configure it to scrape the downstream
+# Prometheus /federate endpoints
 ```
 
 ```yaml
-# prometheus-federation.yaml - Federate metrics to central Prometheus
-# Add to the central Prometheus configuration
+# prometheus-federation.yaml - Supply this via rancher-monitoring additional scrape configs
+# on the central Prometheus instance
 scrape_configs:
   - job_name: 'federate-aws-cluster'
     honor_labels: true
     metrics_path: '/federate'
     params:
-      match[]:
-        - '{job!=""}'
+      'match[]':
+        - '{job=~".+"}'
     static_configs:
       - targets:
-          - 'prometheus.aws-cluster.svc:9090'
+          - 'prometheus.aws-cluster.example.internal:9090'
 ```
 
 ## Step 7: Implement Cross-Cloud Policy Enforcement
 
 ```yaml
-# Enforce pod security standards across all clusters via Fleet
+# Enforce Pod Security Standards across all clusters via Fleet
 # gitops/security-policies/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - pod-security-policy.yaml
+  - namespace-pod-security.yaml
   - network-policy-deny-all.yaml
   - resource-quota.yaml
 ```
@@ -189,15 +194,16 @@ spec:
 ## Step 8: Configure Cost Visibility
 
 ```bash
-# Use Rancher's built-in resource management to view usage per cluster
+# Rancher provides per-cluster resource visibility, not native cross-cloud cost analytics
 # Navigate to: Cluster Management → select cluster → Resources
 
-# For cross-cloud cost allocation, export metrics to your cost management tool
-# Example: push cluster resource usage to AWS Cost Explorer custom metrics
+# For cross-cloud cost allocation, export usage data to a dedicated cost tool or
+# billing pipeline
+# Example: publish cluster resource usage to Amazon CloudWatch as a custom metric
 aws cloudwatch put-metric-data \
   --namespace "RancherHybridCloud" \
   --metric-data \
-    "MetricName=PodCount,Dimensions=[{Name=Cluster,Value=on-prem}],Value=$(kubectl get pods -A --no-headers | wc -l),Unit=Count"
+    "MetricName=PodCount,Dimensions=[{Name=Cluster,Value=on-prem}],Value=$(kubectl get pods -A --no-headers | wc -l | tr -d ' '),Unit=Count"
 ```
 
 ## Conclusion
