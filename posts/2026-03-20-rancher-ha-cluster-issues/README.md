@@ -8,17 +8,19 @@ Description: Diagnose and resolve Rancher high-availability cluster issues, incl
 
 ## Introduction
 
-Running Rancher in high-availability mode (3+ replicas backed by an HA Kubernetes cluster) introduces distributed systems challenges: leader election, database consistency, and replica synchronization. When things go wrong in an HA setup, the impact is cluster-wide. This guide provides a systematic approach to troubleshooting Rancher HA issues.
+Running Rancher in high-availability mode (multiple replicas on an HA Kubernetes cluster) introduces distributed systems challenges: leader election, datastore consistency, and replica synchronization. When things go wrong in an HA setup, the impact is cluster-wide. This guide provides a systematic approach to troubleshooting Rancher HA issues.
 
 ## Rancher HA Architecture
 
 ```text
 Load Balancer (L4 or L7)
     ↓
+Management Cluster Nodes / Ingress
+    ↓
 [Rancher Pod 1] [Rancher Pod 2] [Rancher Pod 3]  ← cattle-system namespace
-    ↓                ↓               ↓
-         External MySQL Database (HA)
-              (or embedded etcd)
+    ↓
+Management cluster datastore
+(etcd, or an external datastore for K3s/RKE2)
 ```
 
 ## Step 1: Check All Rancher Replicas
@@ -44,14 +46,14 @@ done
 
 ## Step 2: Check the Underlying HA Kubernetes Cluster
 
-Rancher itself runs on a Kubernetes cluster (often RKE2 or K3s HA):
+Rancher itself runs on a Kubernetes cluster (often RKE2 or K3s in HA mode):
 
 ```bash
 # Check all control plane nodes
-kubectl get nodes -l node-role.kubernetes.io/control-plane=true
+kubectl get nodes -l node-role.kubernetes.io/control-plane
 
-# Check etcd health (for RKE2/K3s HA)
-# On each control-plane node:
+# Check etcd health (example for an RKE2 management cluster using embedded etcd)
+# On each RKE2 server node that runs etcd:
 sudo /var/lib/rancher/rke2/bin/etcdctl \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
@@ -92,7 +94,7 @@ kubectl rollout status deployment/rancher -n cattle-system
 
 ```bash
 # For HA Rancher, traffic flows through a load balancer
-# Check that all 3 Rancher replicas are in the LB target group
+# Check that all management-cluster nodes or ingress targets are healthy in the LB target group
 
 # For AWS ALB/NLB:
 aws elbv2 describe-target-health \
@@ -102,52 +104,49 @@ aws elbv2 describe-target-health \
 # For nginx LB node, check the nginx config
 cat /etc/nginx/nginx.conf | grep -A10 "upstream"
 
-# Test each Rancher pod's health endpoint directly
+# From a node with pod-network access, test each Rancher pod's health endpoint directly
 for pod_ip in $(kubectl get pods -n cattle-system -l app=rancher \
   -o jsonpath='{.items[*].status.podIP}'); do
   echo -n "Pod ${pod_ip}: "
-  curl -sk https://${pod_ip}:443/ping -o /dev/null -w "%{http_code}\n"
+  curl -s http://${pod_ip}:80/ping -o /dev/null -w "%{http_code}\n"
 done
 ```
 
 ## Step 5: Recover from etcd Quorum Loss
 
-If more than half the etcd members are down:
+If you lose etcd quorum on an RKE2 management cluster:
 
 ```bash
-# Check which etcd members are accessible
-# From a healthy node:
-sudo /var/lib/rancher/rke2/bin/etcdctl member list 2>&1
+# Confirm member health first using the etcdctl checks from Step 2
 
-# If quorum is lost, restore from the most recent snapshot
-# On the surviving node:
+# Stop RKE2 on all server nodes
 sudo systemctl stop rke2-server
 
-# Restore from snapshot
-sudo /var/lib/rancher/rke2/bin/etcdctl snapshot restore \
-  /var/lib/rancher/rke2/server/db/snapshots/etcd-snapshot-latest.db \
-  --data-dir /var/lib/rancher/rke2/server/db/etcd-recovered \
-  --force-new-cluster
+# On one server node, restore from a known-good snapshot
+sudo rke2 server \
+  --cluster-reset \
+  --cluster-reset-restore-path=<PATH-TO-SNAPSHOT>
 
-# Move recovered data into place
-sudo mv /var/lib/rancher/rke2/server/db/etcd \
-        /var/lib/rancher/rke2/server/db/etcd-backup-$(date +%Y%m%d)
-sudo mv /var/lib/rancher/rke2/server/db/etcd-recovered \
-        /var/lib/rancher/rke2/server/db/etcd
+# Start the restored server node again
+sudo systemctl start rke2-server
 
+# On each remaining server node, remove the old database and rejoin
+sudo rm -rf /var/lib/rancher/rke2/server/db
 sudo systemctl start rke2-server
 ```
 
-## Step 6: Database HA Checks (External MySQL)
+## Step 6: External Datastore Checks (MySQL/MariaDB)
 
 ```bash
-# For HA Rancher using MySQL Group Replication or Galera
-# Check replication status (run on each MySQL node)
-mysql -u root -p -e "SHOW REPLICA STATUS\G"
-mysql -u root -p -e "SELECT * FROM performance_schema.replication_group_members;"
+# Only use this step if the management cluster is configured with
+# an external MySQL or MariaDB datastore instead of embedded etcd.
 
-# Check Rancher can connect to all DB nodes through the VIP
-nc -zv <mysql-vip> 3306
+# Check the datastore endpoint is reachable through the configured host or VIP
+nc -zv <mysql-host-or-vip> 3306
+
+# K3s does not support multi-master MySQL/MariaDB setups that change
+# auto_increment_increment or auto_increment_offset above 1
+mysql -u root -p -e "SHOW VARIABLES LIKE 'auto_increment_%';"
 ```
 
 ## Step 7: Rolling Restart for Stuck HA State
@@ -167,4 +166,4 @@ kubectl rollout status deployment/rancher -n cattle-system
 
 ## Conclusion
 
-Rancher HA issues require analyzing both the Rancher application layer and the underlying Kubernetes control plane. Key focus areas are etcd quorum health, load balancer target group membership, leader election, and database replication. Proactive monitoring of etcd member count, database replication lag, and Rancher pod readiness will catch most HA issues before they become outages.
+Rancher HA issues require analyzing both the Rancher application layer and the underlying Kubernetes control plane. Key focus areas are etcd quorum health, load balancer target group membership, leader election, and external datastore health when one is in use. Proactive monitoring of etcd member count, datastore health, and Rancher pod readiness will catch most HA issues before they become outages.
