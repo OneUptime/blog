@@ -33,12 +33,11 @@ helm search repo cockroachdb/cockroachdb
 
 ```yaml
 # cockroachdb-values.yaml - Production CockroachDB configuration
+fullnameOverride: cockroachdb
+
 conf:
-  cache: 25%
-  max-sql-memory: 25%
-  cluster-name: "production-cluster"
-  # Enable SQL audit logging
-  audit-log: true
+  cache: "2Gi"
+  max-sql-memory: "2Gi"
 
 statefulset:
   replicas: 3
@@ -66,14 +65,13 @@ tls:
 service:
   public:
     type: ClusterIP
+  ingress:
+    enabled: false
 
 init:
   jobAnnotations: {}
 
 networkPolicy:
-  enabled: false
-
-ingress:
   enabled: false
 ```
 
@@ -86,9 +84,7 @@ kubectl create namespace databases
 # Install CockroachDB
 helm install cockroachdb cockroachdb/cockroachdb \
   --namespace databases \
-  --values cockroachdb-values.yaml \
-  --wait \
-  --timeout 15m
+  --values cockroachdb-values.yaml
 
 # Check pod status
 kubectl get pods -n databases -l app.kubernetes.io/name=cockroachdb
@@ -96,20 +92,18 @@ kubectl get pods -n databases -l app.kubernetes.io/name=cockroachdb
 
 ## Step 4: Initialize the Cluster
 
-After pods are running, initialize the cluster:
+With the Helm chart's default settings, the cluster is initialized by an init job. After installation, verify that it completed successfully:
 
 ```bash
-# Run the init job
-kubectl exec -n databases -it cockroachdb-0 -- \
-  /cockroach/cockroach init \
-  --certs-dir=/cockroach/cockroach-certs \
-  --host=cockroachdb-0.cockroachdb.databases.svc.cluster.local
+# Check pod and init job status
+kubectl get pods -n databases
 
 # Verify cluster is up
 kubectl exec -n databases cockroachdb-0 -- \
   /cockroach/cockroach node status \
   --certs-dir=/cockroach/cockroach-certs \
-  --host=cockroachdb-0.cockroachdb.databases.svc.cluster.local
+  --host=cockroachdb-public.databases.svc.cluster.local \
+  --format=table
 ```
 
 ## Step 5: Create a Database and User
@@ -119,7 +113,7 @@ kubectl exec -n databases cockroachdb-0 -- \
 kubectl exec -n databases -it cockroachdb-0 -- \
   /cockroach/cockroach sql \
   --certs-dir=/cockroach/cockroach-certs \
-  --host=cockroachdb-0.cockroachdb.databases.svc.cluster.local
+  --host=cockroachdb-public.databases.svc.cluster.local
 ```
 
 Inside the SQL shell:
@@ -129,10 +123,11 @@ Inside the SQL shell:
 CREATE DATABASE myapp;
 
 -- Create application user
-CREATE USER appuser WITH PASSWORD 'SecureAppP@ss';
+CREATE USER appuser WITH PASSWORD 'SecureAppPass123';
 
 -- Grant permissions
 GRANT ALL ON DATABASE myapp TO appuser;
+GRANT ALL ON SCHEMA myapp.public TO appuser;
 
 -- Verify
 SHOW DATABASES;
@@ -141,29 +136,21 @@ SHOW DATABASES;
 
 ## Step 6: Configure Multi-Region Deployment
 
-For global deployments:
+For global deployments, set node localities at startup and then configure database regions in SQL. Cockroach Labs recommends the operator for scaling multi-region clusters on Kubernetes.
 
 ```yaml
-# multiregion-cockroachdb.yaml - Multi-region CockroachDB
-# Region: US East
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: cockroachdb-us-east
-  namespace: databases
-spec:
-  template:
-    spec:
-      containers:
-        - name: cockroachdb
-          args:
-            - start
-            - --certs-dir=/cockroach/cockroach-certs
-            - --advertise-addr=$(hostname -f)
-            - --http-addr=0.0.0.0:8080
-            - --join=cockroachdb-0.cockroachdb.us-east.svc.cluster.local:26257,cockroachdb-0.cockroachdb.eu-west.svc.cluster.local:26257
-            # Locality for multi-region replication
-            - --locality=region=us-east,zone=us-east-1a
+# cockroachdb-us-east-values.yaml - Regional locality override
+statefulset:
+  args:
+    - --locality=region=us-east1,zone=us-east1-b
+```
+
+After nodes are running in each region, configure the database regions:
+
+```sql
+ALTER DATABASE myapp PRIMARY REGION "us-east1";
+ALTER DATABASE myapp ADD REGION "eu-west1";
+SHOW REGIONS FROM DATABASE myapp;
 ```
 
 ## Step 7: Connect Application to CockroachDB
@@ -176,22 +163,39 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: my-app
-  namespace: production
+  namespace: databases
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: my-app
           image: registry.example.com/my-app:v1.0
           env:
-            - name: DATABASE_URL
-              # CockroachDB PostgreSQL-compatible connection string
-              value: "postgresql://appuser:$(DB_PASSWORD)@cockroachdb-public.databases.svc.cluster.local:26257/myapp?sslmode=require"
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: cockroachdb-app-secret
                   key: password
+            - name: DATABASE_URL
+              # CockroachDB PostgreSQL-compatible connection string
+              value: "postgresql://appuser:$(DB_PASSWORD)@cockroachdb-public.databases.svc.cluster.local:26257/myapp?sslmode=verify-full&sslrootcert=/cockroach/certs/ca.crt"
+          volumeMounts:
+            - name: cockroachdb-ca
+              mountPath: /cockroach/certs
+              readOnly: true
+      volumes:
+        - name: cockroachdb-ca
+          secret:
+            secretName: cockroachdb-client-secret
+            items:
+              - key: ca.crt
+                path: ca.crt
 ```
 
 ## Step 8: Access CockroachDB Admin UI
@@ -201,8 +205,8 @@ spec:
 kubectl port-forward -n databases \
   service/cockroachdb-public 8080:8080
 
-# Access at http://localhost:8080
-# Default username: root (no password in dev mode)
+# Access at https://localhost:8080
+# Log in with a SQL user that has a password; pages that expose cluster administration require the admin role
 ```
 
 ## Step 9: Configure Backup to Object Storage
@@ -212,7 +216,7 @@ kubectl port-forward -n databases \
 kubectl exec -n databases cockroachdb-0 -- \
   /cockroach/cockroach sql \
   --certs-dir=/cockroach/cockroach-certs \
-  --host=cockroachdb-0.cockroachdb.databases.svc.cluster.local \
+  --host=cockroachdb-public.databases.svc.cluster.local \
   --execute="
     BACKUP INTO 's3://my-cockroach-backups/production?AWS_ACCESS_KEY_ID=<key>&AWS_SECRET_ACCESS_KEY=<secret>'
     AS OF SYSTEM TIME '-10s'
@@ -223,10 +227,10 @@ kubectl exec -n databases cockroachdb-0 -- \
 kubectl exec -n databases cockroachdb-0 -- \
   /cockroach/cockroach sql \
   --certs-dir=/cockroach/cockroach-certs \
-  --host=cockroachdb-0.cockroachdb.databases.svc.cluster.local \
+  --host=cockroachdb-public.databases.svc.cluster.local \
   --execute="
     CREATE SCHEDULE daily_backup
-    FOR BACKUP INTO 's3://my-cockroach-backups/production?...'
+    FOR BACKUP INTO 's3://my-cockroach-backups/production-scheduled?AWS_ACCESS_KEY_ID=<key>&AWS_SECRET_ACCESS_KEY=<secret>'
     RECURRING '@daily'
     FULL BACKUP ALWAYS;
   "
@@ -239,13 +243,14 @@ kubectl exec -n databases cockroachdb-0 -- \
 kubectl exec -n databases cockroachdb-0 -- \
   /cockroach/cockroach node status \
   --certs-dir=/cockroach/cockroach-certs \
-  --host=cockroachdb-0.cockroachdb.databases.svc.cluster.local \
+  --host=cockroachdb-public.databases.svc.cluster.local \
   --format=table
 
-# Check range health
+# Collect a debug bundle
 kubectl exec -n databases cockroachdb-0 -- \
   /cockroach/cockroach debug zip \
   --certs-dir=/cockroach/cockroach-certs \
+  --host=cockroachdb-public.databases.svc.cluster.local \
   /tmp/debug.zip
 
 # Check logs
