@@ -8,7 +8,7 @@ Description: Learn how to migrate from null_resource to the built-in terraform_d
 
 ## Introduction
 
-The `null_resource` from the `hashicorp/null` provider has been the standard way to run provisioners and trigger re-execution in Terraform/OpenTofu for years. OpenTofu 1.4+ introduced `terraform_data` as a built-in equivalent that requires no external provider. This guide provides a migration path with equivalent patterns for all common `null_resource` use cases.
+The `null_resource` from the `hashicorp/null` provider has been the standard way to run provisioners and trigger re-execution in Terraform/OpenTofu for years. Terraform 1.4 introduced `terraform_data`, and OpenTofu includes it as a built-in equivalent that requires no external provider. This guide provides a migration path with equivalent patterns for all common `null_resource` use cases.
 
 ## Provider Requirements Change
 
@@ -59,7 +59,7 @@ resource "terraform_data" "restart_app" {
 resource "null_resource" "deploy" {
   triggers = {
     instance_id = aws_instance.app.id
-    db_endpoint = aws_db_instance.main.endpoint
+    db_host     = aws_db_instance.main.address
     config_hash = filemd5("${path.module}/config.yaml")
   }
 
@@ -67,26 +67,29 @@ resource "null_resource" "deploy" {
     command = "deploy.sh"
     environment = {
       INSTANCE_ID = self.triggers.instance_id
-      DB_HOST     = self.triggers.db_endpoint
+      DB_HOST     = self.triggers.db_host
     }
   }
 }
 
-# NEW: terraform_data with list trigger
+# NEW: terraform_data with triggers_replace and input/output
 resource "terraform_data" "deploy" {
+  input = {
+    instance_id = aws_instance.app.id
+    db_host     = aws_db_instance.main.address
+  }
+
   triggers_replace = [
     aws_instance.app.id,
-    aws_db_instance.main.endpoint,
+    aws_db_instance.main.address,
     filemd5("${path.module}/config.yaml")
   ]
 
   provisioner "local-exec" {
     command = "deploy.sh"
-    # Note: self.triggers_replace is a list, not a map
-    # Pass data via environment variables from the parent resources directly
     environment = {
-      INSTANCE_ID = aws_instance.app.id
-      DB_HOST     = aws_db_instance.main.address
+      INSTANCE_ID = self.output.instance_id
+      DB_HOST     = self.output.db_host
     }
   }
 }
@@ -94,7 +97,7 @@ resource "terraform_data" "deploy" {
 
 ## Accessing Trigger Values
 
-With `null_resource`, triggers were accessible via `self.triggers.<key>`. With `terraform_data`, use the source resource directly:
+With `null_resource`, triggers were accessible via `self.triggers.<key>`. With `terraform_data`, `triggers_replace` controls replacement, while `input`/`output` can store values you want to read back from the resource:
 
 ```hcl
 # OLD: Access via self.triggers
@@ -108,13 +111,14 @@ resource "null_resource" "example" {
   }
 }
 
-# NEW: Access source directly or via self.triggers_replace
+# NEW: Access source directly, or store values in input/output
 resource "terraform_data" "example" {
+  input            = aws_s3_bucket.main.bucket
   triggers_replace = aws_s3_bucket.main.bucket
 
   provisioner "local-exec" {
-    # For single trigger: self.triggers_replace is the value itself
-    command = "echo ${self.triggers_replace}"
+    # Read the stored value back via self.output
+    command = "echo ${self.output}"
 
     # Or reference the source resource directly (clearer)
     environment = {
@@ -165,11 +169,12 @@ resource "null_resource" "cleanup" {
 
 # NEW
 resource "terraform_data" "cleanup" {
+  input            = aws_instance.web.id
   triggers_replace = aws_instance.web.id
 
   provisioner "local-exec" {
     when    = destroy
-    command = "deregister.sh ${self.triggers_replace}"
+    command = "deregister.sh ${self.output}"
   }
 }
 ```
@@ -199,18 +204,21 @@ output "deployment_info" {
 1. Remove `hashicorp/null` from `required_providers` if `null_resource` was the only use
 2. Replace `resource "null_resource"` with `resource "terraform_data"`
 3. Replace `triggers = {}` with `triggers_replace = ...`
-4. Update `self.triggers.<key>` references to use source resources directly
-5. Run `tofu plan` to verify no unexpected changes
+4. Update `self.triggers.<key>` references to use source resources directly, or `input`/`output` when the value must stay on the `terraform_data` resource
+5. If you need to preserve state during the type migration, add a `moved` block on OpenTofu 1.10+
+6. Run `tofu plan` to verify no unexpected changes
 
 ## State Migration
 
-Resources must be moved in state if you want to rename them:
+On OpenTofu 1.10+, use a `moved` block to migrate state from `null_resource` to `terraform_data`:
 
-```bash
-# Move state from null_resource to terraform_data
-tofu state mv null_resource.example terraform_data.example
+```hcl
+moved {
+  from = null_resource.example
+  to   = terraform_data.example
+}
 ```
 
 ## Conclusion
 
-Migrating from `null_resource` to `terraform_data` is straightforward: replace the resource type, change `triggers` to `triggers_replace`, and update `self.triggers.*` references to point directly to source resources. The new `input`/`output` feature is a bonus that enables data storage patterns not possible with `null_resource`. Remove the `hashicorp/null` provider from your configuration once all `null_resource` instances are migrated.
+Migrating from `null_resource` to `terraform_data` is straightforward: replace the resource type, change `triggers` to `triggers_replace`, and update `self.triggers.*` references to use source resources directly or `input`/`output` when you need values on the `terraform_data` instance itself. The new `input`/`output` feature is a bonus that enables data storage patterns not possible with `null_resource`. Remove the `hashicorp/null` provider from your configuration once all `null_resource` instances are migrated.
