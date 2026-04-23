@@ -17,7 +17,7 @@ CAPI has four main component types:
 | Component | Function |
 |-----------|----------|
 | Core Provider | Core CAPI controllers and APIs |
-| Bootstrap Provider | Configures nodes to join clusters (cloud-init, RKE2) |
+| Bootstrap Provider | Generates bootstrap data for nodes (for example, kubeadm or RKE2 configuration) |
 | Control Plane Provider | Manages control plane lifecycle |
 | Infrastructure Provider | Creates cloud infrastructure (AWS, Azure, vSphere) |
 
@@ -28,60 +28,76 @@ Rancher Turtles introduces a `CAPIProvider` CRD for managing providers:
 ```yaml
 # enable-aws-provider.yaml
 
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: capa-system
+---
 apiVersion: turtles-capi.cattle.io/v1alpha1
 kind: CAPIProvider
 metadata:
   name: aws
-  namespace: rancher-turtles-system
+  namespace: capa-system
 spec:
   name: aws
   type: infrastructure
-  version: v2.3.0
   configSecret:
-    name: aws-credentials
+    name: aws-variables
 ```
 
 ```bash
 kubectl apply -f enable-aws-provider.yaml
 
-# Verify provider is installed
-kubectl get capiprovider -n rancher-turtles-system
+# Verify the provider resource exists; it becomes Ready after the config secret is created
+kubectl get capiproviders -n capa-system
 ```
 
-## Installing the CAPI Operator
+## Verifying Rancher Turtles and CAPI
 
-The CAPI Operator manages provider installations:
+On Rancher v2.13 and later, Rancher Turtles is installed as part of Rancher and providers are managed declaratively through `CAPIProvider` resources:
 
 ```bash
-# Install using clusterctl
-clusterctl init \
-  --infrastructure aws \
-  --bootstrap rke2 \
-  --control-plane rke2
+# Verify Rancher Turtles and the core CAPI controller are running
+kubectl get deployment -n cattle-turtles-system rancher-turtles-controller-manager
+kubectl get deployment -n cattle-capi-system capi-controller-manager
 
-# Verify all providers are installed
-clusterctl describe
-
-# Check provider versions
-kubectl get providers -A
+# Verify the CAPIProvider CRD is available
+kubectl get crd capiproviders.turtles-capi.cattle.io
 ```
 
-## Configuring the RKE2 Bootstrap Provider
+## Configuring the RKE2 Providers
+
+RKE2-based clusters require both the bootstrap and control plane providers. The RKE2/Kubernetes version is set on the workload cluster resources, not on the `CAPIProvider` objects.
 
 ```yaml
-# rke2-bootstrap-provider.yaml
+# rke2-providers.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rke2-bootstrap-system
+---
 apiVersion: turtles-capi.cattle.io/v1alpha1
 kind: CAPIProvider
 metadata:
   name: rke2-bootstrap
-  namespace: rancher-turtles-system
+  namespace: rke2-bootstrap-system
 spec:
   name: rke2
   type: bootstrap
-  version: v0.3.0
-  variables:
-    # RKE2 version to use for bootstrapped clusters
-    RKE2_VERSION: "v1.28.0+rke2r1"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rke2-control-plane-system
+---
+apiVersion: turtles-capi.cattle.io/v1alpha1
+kind: CAPIProvider
+metadata:
+  name: rke2-control-plane
+  namespace: rke2-control-plane-system
+spec:
+  name: rke2
+  type: controlPlane
 ```
 
 ## Enabling Auto-Import for CAPI Clusters
@@ -90,37 +106,35 @@ Configure Rancher Turtles to automatically import CAPI clusters into Rancher:
 
 ```bash
 # Label the namespace where CAPI clusters are created
-kubectl label namespace default \
+kubectl label namespace capi-clusters \
   cluster-api.cattle.io/rancher-auto-import=true
 
-# Or enable globally in Turtles configuration
-kubectl patch configmap rancher-turtles-config \
-  -n rancher-turtles-system \
-  --type merge \
-  -p '{"data":{"auto-import":"true"}}'
+# Or label an individual CAPI Cluster
+kubectl label -n capi-clusters clusters.cluster.x-k8s.io cluster1 \
+  cluster-api.cattle.io/rancher-auto-import=true
 ```
 
 ## Verifying Provider Status
 
 ```bash
-# List all installed providers
-kubectl get providers -A -o wide
+# List all installed CAPIProvider resources
+kubectl get capiproviders -A -o wide
 
 # Check provider health
-kubectl describe provider capi-system/cluster-api
+kubectl describe capiprovider -n capa-system aws
 
-# Watch provider bootstrap
-kubectl get providers -A --watch
+# Watch provider reconciliation
+kubectl get capiproviders -A --watch
 
-# Check CAPI controller logs
-kubectl logs -n capi-system \
+# Check controller logs for a provider, for example CAPA
+kubectl logs -n capa-system \
   -l control-plane=controller-manager \
   --follow
 ```
 
 ## Configuring CAPI Variables
 
-Set environment variables required by infrastructure providers:
+Set environment variables required by infrastructure providers. For CAPA, create the secret in the same namespace as the provider and store credentials in the format expected by CAPA. The provider reaches `Ready` after this secret is available:
 
 ```bash
 # For AWS
@@ -128,12 +142,13 @@ export AWS_REGION=us-west-2
 export AWS_ACCESS_KEY_ID=<your-key>
 export AWS_SECRET_ACCESS_KEY=<your-secret>
 
-# Create credentials secret
-kubectl create secret generic aws-credentials \
+# Encode credentials in the format expected by CAPA
+export AWS_B64ENCODED_CREDENTIALS=$(clusterawsadm bootstrap credentials encode-as-profile)
+
+# Create the secret referenced by CAPIProvider.spec.configSecret
+kubectl create secret generic aws-variables \
   --namespace capa-system \
-  --from-literal=AWS_REGION=${AWS_REGION} \
-  --from-literal=AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
-  --from-literal=AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+  --from-literal=AWS_B64ENCODED_CREDENTIALS="${AWS_B64ENCODED_CREDENTIALS}"
 ```
 
 ## Conclusion
