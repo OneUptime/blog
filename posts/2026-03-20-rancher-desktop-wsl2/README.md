@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher Desktop, WSL2, Window, Linux, Development
+Tags: Rancher Desktop, WSL2, Windows, Linux, Development
 
 Description: Optimize Rancher Desktop integration with Windows Subsystem for Linux 2 for seamless Windows development.
 
@@ -12,8 +12,8 @@ Rancher Desktop is an open-source desktop application that provides Kubernetes a
 
 ## Prerequisites
 
-- A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
+- A Windows 11 machine with the latest updates and WSL installed
+- Administrator privileges may be required during installation
 - At least 8 GB of RAM (16 GB recommended)
 - At least 4 CPU cores
 
@@ -23,15 +23,15 @@ Rancher Desktop simplifies local Kubernetes and container development by providi
 
 - A local Kubernetes cluster (k3s-based)
 - Container runtime (containerd or dockerd)
-- Integrated CLI tools (kubectl, helm, nerdctl, docker)
+- Integrated CLI tools (kubectl, helm, and either nerdctl or docker depending on the selected engine)
 - Simple configuration through a GUI
 
 ## Step 1: Initial Setup
 
 ```bash
-# Verify Rancher Desktop is installed and running
+# Verify Rancher Desktop is installed and running from WSL
 
-rdctl version
+rdctl.exe version
 
 # Check Kubernetes cluster status
 kubectl cluster-info
@@ -48,13 +48,12 @@ Open Rancher Desktop Preferences to configure:
 
 - **Kubernetes**: Version and enabled/disabled state
 - **Container Engine**: containerd or moby (dockerd)
-- **Virtual Machine**: CPU, memory, and disk allocation
-- **WSL** (Windows only): WSL2 integration settings
+- **WSL** (Windows only): WSL2 integration settings; CPU and memory allocation are configured globally in WSL
 
 ```bash
-# Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
-rdctl set --container-engine containerd
+# Use rdctl.exe from a WSL shell for command-line configuration
+rdctl.exe set --kubernetes-version 1.34.3
+rdctl.exe set --container-engine containerd
 ```
 
 ## Step 3: Working with Containers
@@ -62,8 +61,6 @@ rdctl set --container-engine containerd
 ```bash
 # Pull an image
 nerdctl pull nginx:latest
-# or with docker compatibility
-docker pull nginx:latest
 
 # Run a container
 nerdctl run -d -p 8080:80 --name my-nginx nginx:latest
@@ -131,31 +128,29 @@ helm uninstall my-release
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
-rdctl factory-reset
+# Delete deployed Kubernetes workloads
+rdctl.exe reset --k8s
 
-# Check Rancher Desktop status
-rdctl status
-
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
+# Show current Rancher Desktop settings
+rdctl.exe list-settings
 
 # Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+rdctl.exe set --kubernetes-version 1.34.3
+
+# Switch container engine via CLI
+rdctl.exe set --container-engine containerd
 ```
 
 ## Troubleshooting
 
 ```bash
-# Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# Open Rancher Desktop and use Troubleshooting > Show Logs
 
 # Reset to factory defaults
-rdctl factory-reset
+rdctl.exe reset --factory
 
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Check WSL distribution status
+wsl.exe -l -v
 ```
 
 ## Conclusion
