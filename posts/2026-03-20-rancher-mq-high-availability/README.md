@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Message Queue, High Availability, RabbitMQ, Kafka
 
-Description: Configure high availability for message queue deployments in Rancher using quorum queues, replication, and pod anti-affinity rules to ensure zero message loss.
+Description: Configure high availability for message queue deployments in Rancher using quorum queues, replication, and pod anti-affinity rules to improve durability and reduce the risk of message loss.
 
 ## Introduction
 
-Message queue high availability ensures that your messaging infrastructure remains operational even when individual nodes fail. Different message queue systems provide different HA mechanisms: RabbitMQ uses Quorum Queues and mirroring, Kafka uses partition replication, and NATS JetStream uses stream replication. This guide covers implementing HA for the most common message queues on Rancher.
+Message queue high availability ensures that your messaging infrastructure remains operational even when individual nodes fail. Different message queue systems provide different HA mechanisms: RabbitMQ uses quorum queues, Kafka uses partition replication, and NATS JetStream uses stream replication. This guide covers implementing HA for the most common message queues on Rancher.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ Message queue high availability ensures that your messaging infrastructure remai
 
 ### Configure Quorum Queues (Recommended)
 
-Quorum queues provide Raft-based consensus for guaranteed delivery:
+Quorum queues provide Raft-based consensus for replicated, durable message storage:
 
 ```yaml
 # rabbitmq-ha-cluster.yaml - High availability RabbitMQ
@@ -36,10 +36,10 @@ spec:
   rabbitmq:
     additionalConfig: |
       # Use quorum queues by default
-      queue.default_queue_type = quorum
+      default_queue_type = quorum
 
       # Quorum queue settings
-      quorum_queue.initial_cluster_size.min = 3
+      quorum_queue.initial_cluster_size = 3
 
       # Prevent minority partitions from accepting writes
       cluster_partition_handling = pause_minority
@@ -69,6 +69,9 @@ spec:
 ### Create Quorum Queue with API
 
 ```bash
+# After port-forwarding the RabbitMQ management service to localhost
+# kubectl port-forward -n messaging service/rabbitmq-ha 15672:15672
+
 # Create quorum queue with proper HA settings
 curl -s -u admin:AdminP@ss \
   -X PUT \
@@ -88,20 +91,32 @@ curl -s -u admin:AdminP@ss \
 
 ### Configure Kafka Replication
 
+Current Strimzi releases use KRaft-based clusters instead of ZooKeeper:
+
 ```yaml
 # kafka-ha-cluster.yaml - Kafka with HA configuration
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: kafka-ha
   namespace: kafka
 spec:
   kafka:
-    version: 3.7.0
-    replicas: 3
+    version: 4.2.0
+    metadataVersion: 4.2
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      - name: tls
+        port: 9093
+        type: internal
+        tls: true
     config:
       # Minimum in-sync replicas for durability
       min.insync.replicas: 2
+      default.replication.factor: 3
       # Replication factors for internal topics
       offsets.topic.replication.factor: 3
       transaction.state.log.replication.factor: 3
@@ -109,7 +124,7 @@ spec:
       # Leader election timeout
       leader.imbalance.check.interval.seconds: 300
       # Unclean leader election (set to false for safety)
-      unclean.leader.election.enable: "false"
+      unclean.leader.election.enable: false
       # Log replication
       log.recovery.threads.per.data.dir: 2
 
@@ -120,37 +135,46 @@ spec:
           podAntiAffinity:
             requiredDuringSchedulingIgnoredDuringExecution:
               - labelSelector:
-                  matchLabels:
-                    strimzi.io/name: kafka-ha-kafka
+                  matchExpressions:
+                    - key: strimzi.io/name
+                      operator: In
+                      values:
+                        - kafka-ha-kafka
                 topologyKey: kubernetes.io/hostname
 
-    storage:
-      type: jbod
-      volumes:
-        - id: 0
-          type: persistent-claim
-          size: 100Gi
-          class: standard
-          deleteClaim: false
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
 
-  zookeeper:
-    replicas: 3
-    template:
-      pod:
-        affinity:
-          podAntiAffinity:
-            requiredDuringSchedulingIgnoredDuringExecution:
-              - labelSelector:
-                  matchLabels:
-                    strimzi.io/name: kafka-ha-zookeeper
-                topologyKey: kubernetes.io/hostname
+  kafkaExporter: {}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: kafka
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: kafka-ha
+spec:
+  replicas: 3
+  roles:
+    - controller
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 100Gi
+        class: standard
+        deleteClaim: false
 ```
 
 ### Create HA Topics
 
 ```yaml
 # kafka-ha-topic.yaml - Highly available Kafka topic
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: orders-ha
@@ -186,30 +210,31 @@ config:
         enabled: true
         size: 20Gi
 
-# Anti-affinity for NATS pods
-podAntiAffinity:
-  required:
-    - topologyKey: kubernetes.io/hostname
+# Spread NATS pods across nodes
+podTemplate:
+  topologySpreadConstraints:
+    kubernetes.io/hostname:
+      maxSkew: 1
+      whenUnsatisfiable: DoNotSchedule
 ```
 
 Configure HA stream:
 
 ```bash
 # Create a stream with replication factor 3
-nats stream create ORDERS \
+nats --server nats://nats.messaging.svc.cluster.local:4222 stream add ORDERS \
   --subjects "orders.*" \
   --storage file \
   --replicas 3 \
   --retention limits \
-  --max-age 7d \
-  --server nats://nats.messaging.svc.cluster.local:4222
+  --max-age 7d
 ```
 
-## Section 4: Cross-Region Message Queue HA
+## Section 4: Cross-Region Message Queue Disaster Recovery
 
 ```yaml
-# cross-region-ha.yaml - Multi-region message queue setup
-# RabbitMQ Federation for cross-cluster HA
+# cross-region-dr.yaml - Multi-region message queue setup
+# RabbitMQ Federation for cross-cluster disaster recovery
 apiVersion: rabbitmq.com/v1beta1
 kind: RabbitmqCluster
 metadata:
@@ -222,8 +247,8 @@ spec:
       - rabbitmq_federation
       - rabbitmq_federation_management
     additionalConfig: |
-      # Configure federation to replicate critical queues
-      # to region B for disaster recovery
+      # Configure federation policies and upstreams to replicate
+      # critical exchanges or queues to region B asynchronously
 ```
 
 ## Section 5: Monitoring Queue Health
@@ -241,20 +266,20 @@ spec:
   groups:
     - name: rabbitmq-ha
       rules:
-        # Alert if quorum is lost
-        - alert: RabbitMQQuorumLost
+        # Requires Prometheus to scrape RabbitMQ /metrics/detailed?family=ra_metrics
+        - alert: RabbitMQRaftReplicationFailures
           expr: |
-            rabbitmq_queue_quorum_votes < 2
-          for: 1m
+            rate(rabbitmq_detailed_raft_aer_replies_fail[5m]) > 0
+          for: 5m
           labels:
-            severity: critical
+            severity: warning
           annotations:
-            summary: "RabbitMQ quorum queue has lost quorum"
+            summary: "RabbitMQ is reporting failed Raft append-entry replies"
 
-        # Alert if a node goes down
+        # Adjust the job label to match your RabbitMQ scrape target
         - alert: RabbitMQNodeDown
           expr: |
-            rabbitmq_identity_info == 0
+            up{job="rabbitmq"} == 0
           for: 1m
           labels:
             severity: warning
@@ -263,31 +288,31 @@ spec:
 
     - name: kafka-ha
       rules:
-        # Alert if under-replicated partitions exist
+        # Requires Kafka Exporter metrics
         - alert: KafkaUnderReplicatedPartitions
           expr: |
-            kafka_server_ReplicaManager_UnderReplicatedPartitions > 0
+            sum(kafka_topic_partition_under_replicated_partition) > 0
           for: 10m
           labels:
             severity: warning
           annotations:
             summary: "Kafka has under-replicated partitions"
 
-        # Alert if offline partitions exist
-        - alert: KafkaOfflinePartitions
+        # Requires Kafka Exporter metrics
+        - alert: KafkaUnderMinISR
           expr: |
-            kafka_controller_KafkaController_OfflinePartitionsCount > 0
-          for: 0s
+            count(kafka_topic_partition_in_sync_replica < 2) > 0
+          for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "Kafka has offline partitions"
+            summary: "Kafka partitions have dropped below the configured minimum ISR"
 ```
 
 ## Section 6: Pod Disruption Budgets
 
 ```yaml
-# pdb-mq.yaml - Ensure minimum availability during maintenance
+# pdb-mq.yaml - If you manage PDBs manually, ensure minimum availability during maintenance
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -300,6 +325,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: rabbitmq-ha
 ---
+# When Strimzi automatic PodDisruptionBudget generation is disabled
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -314,4 +340,4 @@ spec:
 
 ## Conclusion
 
-Message queue high availability on Rancher requires a combination of application-level replication (quorum queues, Kafka replication), Kubernetes scheduling controls (pod anti-affinity), and Pod Disruption Budgets. Always test your HA configuration by simulating node failures before relying on it in production. Monitor queue depths, replication lag, and node health, and set up alerting for conditions like lost quorum or under-replicated partitions that indicate your HA guarantees are at risk.
+Message queue high availability on Rancher requires a combination of application-level replication (quorum queues, Kafka replication), Kubernetes scheduling controls (pod anti-affinity), and Pod Disruption Budgets. Always test your HA configuration by simulating node failures before relying on it in production. Monitor queue depths, replication lag, and node health, and set up alerting for conditions like Raft replication failures, under-replicated partitions, or reduced in-sync replicas that indicate your HA guarantees are at risk.
