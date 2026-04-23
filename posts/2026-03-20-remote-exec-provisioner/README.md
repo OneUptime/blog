@@ -8,7 +8,7 @@ Description: Learn how to use the remote-exec provisioner in OpenTofu to run scr
 
 ## What is the remote-exec Provisioner?
 
-The `remote-exec` provisioner in OpenTofu allows you to run a list of commands on a remote resource immediately after it is created. It connects via SSH (Linux) or WinRM (Windows) and executes the specified commands.
+The `remote-exec` provisioner in OpenTofu allows you to run commands or scripts on a remote resource after it is created. It connects via SSH or WinRM and executes the specified commands.
 
 > **Note:** The OpenTofu documentation recommends using `remote-exec` only as a last resort. Prefer user data, Packer images, or configuration management tools where possible.
 
@@ -48,7 +48,7 @@ resource "aws_instance" "web" {
 connection {
   type        = "ssh"
   user        = "ubuntu"
-  private_key = file("~/.ssh/id_rsa")
+  private_key = file(pathexpand("~/.ssh/id_rsa"))
   host        = self.public_ip
   port        = 22
   timeout     = "5m"
@@ -157,15 +157,13 @@ provisioner "remote-exec" {
 }
 ```
 
-## Null Resource Pattern
+## terraform_data Pattern
 
-Use `null_resource` with `remote-exec` when you need to re-run provisioning without recreating the resource:
+Use `terraform_data` with `remote-exec` when you need to re-run provisioning without recreating the target resource:
 
 ```hcl
-resource "null_resource" "configure" {
-  triggers = {
-    config_hash = filemd5("${path.module}/configs/app.conf")
-  }
+resource "terraform_data" "configure" {
+  triggers_replace = filemd5("${path.module}/configs/app.conf")
 
   provisioner "remote-exec" {
     inline = ["sudo systemctl restart myapp"]
@@ -189,17 +187,17 @@ Error: timeout - last error: dial tcp 1.2.3.4:22: i/o timeout
 Check security group rules and ensure port 22 is accessible.
 
 **Permission denied (publickey):**
-Verify the key pair and username are correct. The instance may not be fully booted yet - add `depends_on` or increase `timeout`.
+Verify the key pair and username are correct. The instance may not be fully booted yet, so increase `timeout` and retry once SSH is available.
 
-**Script failing silently:** Add `set -e` at the top of inline scripts to exit on first error.
+**Script failing silently:** Add `set -o errexit` as the first inline command to exit on the first error.
 
 ## Best Practices
 
-1. **Always add `set -e`** to inline scripts to catch failures
+1. **Always add `set -o errexit`** as the first inline command to catch failures
 2. **Use `on_failure = continue`** for destroy provisioners
 3. **Set a reasonable `timeout`** - default is 5 minutes which may be too short for slow connections
 4. **Prefer user data** for bootstrapping that runs once at instance launch
-5. **Log output to a file** on the remote host for debugging: `command 2>&1 | tee /var/log/provision.log`
+5. **Log output to a file** on the remote host for debugging: `command 2>&1 | sudo tee /var/log/provision.log`
 
 ## Conclusion
 
