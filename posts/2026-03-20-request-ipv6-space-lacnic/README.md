@@ -8,90 +8,90 @@ Description: Request IPv6 address space from LACNIC (Latin America and Caribbean
 
 ## LACNIC Service Region
 
-LACNIC serves Latin America and the Caribbean. IPv6 space is allocated from ranges including `2800::/12`. LACNIC is the smallest RIR by member count but serves a rapidly growing internet market.
+LACNIC serves Latin America and the Caribbean. IANA's IPv6 global unicast registry shows `2800::/12` allocated to LACNIC. Organizations in Brazil and Mexico request number resources through their corresponding NIRs rather than directly from LACNIC.
 
 ## Membership and Fees
 
 ```text
-LACNIC membership categories (2024, USD approximate):
+LACNIC fees are published separately for ISPs and end users and depend on
+the largest IPv4 or IPv6 block assigned to the organization.
 
-Category 1: ~$400/year (small orgs, end-users)
-Category 2: ~$1,500/year (medium ISPs)
-Category 3: ~$3,500/year (large ISPs)
-Category 4: ~$8,000/year (national ISPs)
+Examples from the official IPv6 fee tables:
+  ISP: Small, Medium, Large, X Large, ...
+  End user: /48 up to and including /35, greater than /35 up to and including /32, ...
 
-IPv6 allocation:
-  Initial /32 for ISPs (no justification required)
-  /48 for end users (via sponsoring ISP)
-  Subsequent allocations: show 80% utilization
+Organizations that receive IP addresses directly from LACNIC automatically
+become members. Approved requests also require payment of the applicable fee
+and signature of the Registration Services Agreement.
+
+IPv6 policy:
+  Minimum ISP allocation: /32
+  Minimum direct end-user assignment: /48
+  Larger-than-/32 initial ISP requests require documentation
+  Subsequent allocations use the IPv6 HD-ratio threshold of 0.94
 ```
 
 ## Application Process
 
 ```sql
-1. Register at https://milacnic.lacnic.net/
-   - Create organization account
-   - Provide legal entity details
-   - Specify country in Latin America/Caribbean
+1. Review the requirements at https://www.lacnic.net/1016/2/lacnic/get-ip-addresses_asns
+   - Organizations in Brazil or Mexico request resources from their NIR
+   - Decide whether the request is as an ISP or as an end user
 
-2. Select membership category
-   - Based on existing IP holdings or expected usage
+2. Submit the IPv6 request
+   - Create a new organization or log in to MiLACNIC
+   - Select IPv6 and complete the request form
+   - Include an addressing plan when the policy requires it
 
-3. Request IPv6 resources
-   - Login to milacnic.lacnic.net
-   - Resources → Request → IPv6
-   - Fill justification form
+3. LACNIC review
+   - You receive a confirmation email within minutes
+   - LACNIC analyzes the request within 48 hours and an analyst contacts you
 
-4. LACNIC review
-   - Simple /32 requests: usually auto-approved
-   - Larger requests: staff review (3-7 days)
+4. Approval and membership
+   - Pay the applicable fee
+   - Sign the Registration Services Agreement
+   - Direct recipients of IP resources become LACNIC members
 
 5. Post-approval
-   - Register in LACNIC Whois
-   - Create RPKI ROA
-   - Request reverse DNS delegation
+   - Verify the Whois/RDAP registration data
+   - Create RPKI ROAs
+   - Configure reverse DNS delegation in MiLACNIC
 ```
 
 ## LACNIC Whois Registration
 
 ```text
-# Register IPv6 allocation in LACNIC Whois Database
+# Query LACNIC Whois for an IPv6 allocation
 
-inet6num:       2800:db8::/32
-owner:          Example ISP Brazil
-country:        BR
-owner-c:        ADMIN-LACNIC
-tech-c:         TECH-LACNIC
-inetnum:        2800:db8::/32
-status:         allocated
-nic-hdl-br:     ORG-EXAMPLE
-source:         LACNIC
+whois -h whois.lacnic.net 2001:1200::/32
 
-# Announce route via milacnic portal or LACNIC REST API
+# Typical IPv6 fields returned by LACNIC Whois include:
+# inetnum, status, owner, ownerid, country, owner-c, tech-c, abuse-c,
+# inetrev, and source.
+
+# Direct allocations already appear in LACNIC Whois after approval.
+# BGP announcements are configured on your own routers and with your
+# upstreams, not through Whois.
 
 ```
 
 ## RPKI via LACNIC
 
 ```bash
-# LACNIC provides hosted RPKI for members
+# LACNIC offers both hosted and delegated RPKI service for members.
 
-# Create ROA via milacnic.lacnic.net portal:
-# Resources → RPKI → Manage ROAs → Create
+# Hosted RPKI is managed through MiLACNIC:
+# https://milacnic.lacnic.net/
 
-# Or via LACNIC RPKI API
-curl -X POST "https://rpki.lacnic.net/api/roas/" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{
-    "prefix": "2800:db8::/32",
-    "max_length": 48,
-    "asn": 65001
-  }'
-
-# Validate ROA
-curl "https://rpki.lacnic.net/api/validity/AS65001/2800:db8::/32"
+# For API automation, request OAuth credentials for the
+# LACNIC Registration API. The v3 production documentation is at:
+# https://registro.api.lacnic.net/lacnic/v3/info
+#
+# Relevant ROA endpoints:
+#   /rpki/roas
+#   /rpki/roas/{serialNumber}
 ```
 
 ## Conclusion
 
-LACNIC membership provides IPv6 allocations for Latin American and Caribbean organizations. The initial /32 is available immediately upon membership approval. Register resources in the LACNIC Whois Database and create RPKI ROAs to secure BGP announcements. LACNIC has Spanish and Portuguese language support for all services. Organizations outside the Latin American region cannot receive resources directly from LACNIC - they must contact their regional RIR (ARIN, RIPE NCC, APNIC, or AFRINIC).
+LACNIC provides IPv6 allocations to qualifying organizations in its service region, subject to policy review, applicable fees, and the Registration Services Agreement. The minimum direct allocation for ISPs is /32 and the minimum direct assignment for end users is /48, while larger initial requests require additional documentation and subsequent allocations are evaluated with the IPv6 HD-ratio policy. After approval, verify your Whois data, create ROAs, and configure reverse DNS in MiLACNIC. Organizations outside the region, as well as organizations in Brazil and Mexico, must request resources from their corresponding registry rather than directly from LACNIC.
