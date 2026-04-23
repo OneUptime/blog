@@ -96,6 +96,8 @@ module "compute" {
 }
 ```
 
+After adding or changing module blocks, run `tofu init` before planning so OpenTofu can install or update the child modules.
+
 ## Step 5: Add moved Blocks for All Migrated Resources
 
 This is the critical step - map every resource from its old root address to its new module address:
@@ -123,7 +125,7 @@ moved {
   to   = module.compute.aws_instance.web
 }
 
-# ... one moved block per resource
+# ... one moved block per resource or resource instance whose address changes
 ```
 
 ## Step 6: Verify Incrementally
@@ -132,6 +134,7 @@ Migrate one module at a time to keep changes reviewable:
 
 ```bash
 # Apply networking module first
+tofu init   # Re-run after adding or changing module blocks
 tofu plan   # Should show only "moved" annotations for networking resources
 tofu apply
 
