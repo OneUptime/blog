@@ -30,7 +30,7 @@ Click the container name to open its detail page, then use the action buttons at
 TOKEN=$(curl -s -X POST \
   https://localhost:9443/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' \
+  -d '{"Username":"admin","Password":"yourpassword"}' \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
 # Get container ID by name
@@ -42,7 +42,7 @@ import sys, json
 containers = json.load(sys.stdin)
 for c in containers:
     if '/my-container' in c.get('Names', []):
-        print(c['Id'][:12])
+        print(c['Id'])
 ")
 echo "Container ID: $CONTAINER_ID"
 
@@ -86,13 +86,13 @@ curl -s "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID
 ## Duplicate a Container
 
 ```bash
-# Inspect the existing container to get its configuration
-docker inspect my-container --format '{{json .Config}}' | python3 -m json.tool
+# Inspect the existing container to review its configuration, host settings, and mounts
+docker inspect my-container | python3 -m json.tool
 
-# Create a duplicate with a new name
+# Create a duplicate with a new name.
+# Add the same relevant flags as the original before the image name.
 docker run -d \
   --name my-container-copy \
-  # ... same flags as original ...
   myimage:latest
 ```
 
