@@ -4,54 +4,43 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, RDS, Blue-Green Deployment, Database, Infrastructure as Code
 
-Description: Learn how to create and manage AWS RDS Blue/Green deployments for zero-downtime database schema changes and engine upgrades using OpenTofu.
+Description: Learn how to use OpenTofu to perform low-downtime AWS RDS instance updates with Blue/Green Deployments.
 
 ## Introduction
 
-AWS RDS Blue/Green Deployments allow you to make database changes in a staging (green) environment that mirrors production (blue), test them, and then perform a fast switchover with minimal downtime. OpenTofu manages the blue/green deployment lifecycle.
+AWS RDS Blue/Green Deployments allow you to perform supported database instance updates with minimal downtime by creating a synchronized green environment and switching over when the update is complete. With the AWS provider used by OpenTofu, you enable this behavior on `aws_db_instance` by setting `blue_green_update.enabled = true`.
 
 ## Creating the Blue/Green Deployment
 
 ```hcl
-# First, the production (blue) database must exist
+# First, the production (blue) database must exist.
+# When you later change engine_version, instance_class, or parameter_group_name,
+# OpenTofu can use an RDS Blue/Green deployment for the update.
 
 resource "aws_db_instance" "blue" {
   identifier        = "${var.app_name}-db-${var.environment}"
   engine            = "mysql"
-  engine_version    = "8.0.35"
+  engine_version    = "8.0.45"
   instance_class    = "db.r6g.large"
   username          = var.db_username
   password          = var.db_password
   allocated_storage = 100
   storage_type      = "gp3"
 
-  backup_retention_period    = 7
-  backup_window              = "03:00-04:00"
-  maintenance_window         = "Mon:04:00-Mon:05:00"
+  # Automated backups must be enabled for Blue/Green deployments.
+  backup_retention_period = 7
+  backup_window           = "03:00-04:00"
+  maintenance_window      = "Mon:04:00-Mon:05:00"
 
-  # Blue/Green requires automated backups
-  db_subnet_group_name       = aws_db_subnet_group.main.name
-  vpc_security_group_ids     = [aws_security_group.db.id]
-  multi_az                   = true
+  db_subnet_group_name   = aws_db_subnet_group.main.name
+  vpc_security_group_ids = [aws_security_group.db.id]
+  multi_az               = true
 
-  # Required for Blue/Green
   parameter_group_name = aws_db_parameter_group.mysql80.name
 
-  tags = {
-    Environment = var.environment
-    Role        = "blue"
-    ManagedBy   = "opentofu"
+  blue_green_update {
+    enabled = true
   }
-}
-
-# Create the Blue/Green deployment
-resource "aws_rds_blue_green_deployment" "main" {
-  blue_green_deployment_name = "${var.app_name}-bluegreen"
-  source                     = aws_db_instance.blue.arn
-
-  # Optionally specify a different engine version for the green environment
-  target_engine_version   = "8.0.36"
-  target_db_instance_class = "db.r6g.xlarge"  # optional: test a new instance size
 
   timeouts {
     create = "60m"
@@ -70,64 +59,54 @@ resource "aws_rds_blue_green_deployment" "main" {
 
 ```hcl
 resource "aws_db_parameter_group" "mysql80" {
-  name   = "${var.app_name}-mysql80"
-  family = "mysql8.0"
+  name_prefix = "${var.app_name}-mysql80-"
+  family      = "mysql8.0"
 
   parameter {
-    name  = "binlog_format"
-    value = "ROW"  # required for Blue/Green replication
+    name  = "slow_query_log"
+    value = "1"
   }
 
   parameter {
-    name  = "binlog_row_image"
-    value = "Full"
+    name  = "long_query_time"
+    value = "1"
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 ```
 
 ## Switchover Script
 
-After verifying the green environment, perform the switchover.
+After updating a supported setting in `aws_db_instance.blue`, run OpenTofu. The AWS provider creates the blue/green deployment, performs the switchover, and waits for completion during `tofu apply`.
 
 ```bash
 #!/bin/bash
 # scripts/bluegreen-switchover.sh
 
-DEPLOYMENT_NAME=$(tofu output -raw bluegreen_deployment_name)
-
-echo "Starting switchover for deployment: $DEPLOYMENT_NAME"
-
-aws rds switchover-blue-green-deployment \
-  --blue-green-deployment-identifier "$DEPLOYMENT_NAME" \
-  --switchover-timeout 300 \
-  --region us-east-1
-
-echo "Waiting for switchover to complete..."
-aws rds wait db-instance-available \
-  --db-instance-identifier "${APP_NAME}-db-${ENVIRONMENT}"
-
-echo "Switchover complete!"
+tofu plan -out=tfplan
+tofu apply tfplan
 ```
 
 ## Cleanup After Switchover
 
 ```bash
-# After successful switchover, delete the old blue instance
-aws rds delete-blue-green-deployment \
-  --blue-green-deployment-identifier "$DEPLOYMENT_NAME" \
-  --delete-source
+# No separate cleanup is required when using blue_green_update on aws_db_instance.
+# The AWS provider removes the temporary blue/green deployment during apply.
 ```
 
 ## Outputs
 
 ```hcl
-output "bluegreen_deployment_name" {
-  value = aws_rds_blue_green_deployment.main.blue_green_deployment_name
+output "db_instance_identifier" {
+  value = aws_db_instance.blue.identifier
 }
 
-output "green_db_endpoint" {
-  description = "Endpoint of the green (staging) database"
-  value       = aws_rds_blue_green_deployment.main.id
+output "db_endpoint" {
+  description = "Endpoint of the production database after switchover"
+  value       = aws_db_instance.blue.endpoint
 }
 ```
 
@@ -141,4 +120,4 @@ tofu apply tfplan
 
 ## Summary
 
-RDS Blue/Green Deployments enable safe, low-downtime database changes by maintaining a synchronized green environment. OpenTofu manages deployment creation and the production database configuration - while switchover is performed via the AWS CLI or console when ready.
+RDS Blue/Green Deployments enable safe, low-downtime RDS instance updates. With OpenTofu, enable `blue_green_update` on `aws_db_instance` and apply supported changes such as engine version, instance class, or parameter group updates; the AWS provider handles the temporary blue/green deployment, switchover, and cleanup during `tofu apply`.
