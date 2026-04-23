@@ -8,7 +8,7 @@ Description: Understand Redis protected-mode behavior, when to enable or disable
 
 ## Introduction
 
-Redis `protected-mode` (introduced in 3.2) is a safety net that prevents remote access when Redis has no password and is bound to a non-loopback interface. When enabled, Redis replies to remote connections with an error message rather than allowing unauthenticated access. Understanding when to enable or disable it is essential for secure deployments.
+Redis `protected-mode` (introduced in 3.2) is a safety net that, in current Redis Open Source releases, blocks non-loopback connections when the default user has no password configured. When enabled under those conditions, Redis replies to remote connections with an error message rather than allowing unauthenticated access. Understanding when to enable or disable it is essential for secure deployments.
 
 ## How protected-mode Works
 
@@ -16,21 +16,25 @@ Redis `protected-mode` (introduced in 3.2) is a safety net that prevents remote 
 # protected-mode = yes (default):
 
 # If Redis:
-#   - Is bound to a non-loopback address (i.e., 0.0.0.0 or 10.0.0.5)
+#   - Has protected-mode enabled
 #   AND
-#   - Has no password (requirepass)
-# Then: Remote connections get: "DENIED Redis is running in protected mode"
+#   - The default user has no password
+# Then: Non-loopback connections get: "DENIED Redis is running in protected mode"
+
+# If the default user has a password (for example via requirepass or ACLs):
+# Remote clients can connect, but must authenticate first
 
 # protected-mode = no:
+# If Redis is listening on a non-loopback interface,
 # Redis accepts remote connections regardless of password setting
-# (Dangerous without requirepass and firewall!)
+# (Dangerous without authentication and firewall!)
 ```
 
 ## When to Disable protected-mode
 
 ```bash
 # SAFE to disable when:
-# 1. requirepass is set AND
+# 1. The default user has a password (for example via requirepass) AND
 # 2. Firewall limits which IPs can reach port 6379
 
 # /etc/redis/redis.conf
@@ -38,7 +42,7 @@ Redis `protected-mode` (introduced in 3.2) is a safety net that prevents remote 
 # Bind to specific IP
 bind 127.0.0.1 10.0.0.5
 
-# Set a strong password
+# Set a strong password for the default user
 requirepass "StrongPassword123!"
 
 # Now safe to disable protected mode
@@ -57,26 +61,30 @@ protected-mode no
 protected-mode yes     # Default - keep this for safety
 
 # If you want remote access WITH protected-mode enabled,
-# you must set requirepass:
+# you must set a password for the default user.
+# `requirepass` is one way to do that:
 requirepass "password"
-# Redis will then allow authenticated remote connections even with protected-mode yes
+# Redis will then allow remote connections, but clients must authenticate
 ```
 
 ## Protected Mode Behavior Matrix
 
-| bind | requirepass | protected-mode | Remote access |
+| bind | default user password | protected-mode | Remote access |
 |---|---|---|---|
 | 127.0.0.1 only | any | any | Local only |
 | 0.0.0.0 | not set | yes | BLOCKED |
-| 0.0.0.0 | set | yes | Allowed (authenticated) |
+| 0.0.0.0 | set | yes | Allowed (auth required) |
 | 0.0.0.0 | not set | no | OPEN (dangerous!) |
-| 10.0.0.5 | set | no | Allowed (authenticated) |
+| 10.0.0.5 | set | no | Allowed (auth required) |
 
 ## Checking Current protected-mode Status
 
 ```bash
 # Check configured value
 redis-cli config get protected-mode
+
+# If you use ACLs, inspect the default user as well
+redis-cli acl getuser default
 
 # Check if Redis is currently in protected mode
 redis-cli -h 10.0.0.5 ping
@@ -88,7 +96,8 @@ redis-cli -h 10.0.0.5 ping
 redis-cli config set protected-mode no
 
 # Check current settings
-redis-cli info server | grep -E "protected|bind|requirepass"
+redis-cli config get bind
+redis-cli config get requirepass
 ```
 
 ## Recommended Production Configuration
@@ -99,16 +108,15 @@ redis-cli info server | grep -E "protected|bind|requirepass"
 # Bind to specific IPv4 only
 bind 127.0.0.1 10.0.0.5
 
-# Strong authentication password
+# Strong password for the default user
 requirepass "Use-A-Long-Random-Password-Here!"
 
 # Can disable protected-mode since both above are set
 protected-mode no
 
 # Additional security
-rename-command FLUSHALL ""    # Disable dangerous commands
-rename-command CONFIG  ""
-rename-command DEBUG   ""
+# Prefer ACL rules to restrict administrative commands;
+# `rename-command` is deprecated in current Redis releases
 
 # TCP listen backlog
 tcp-backlog 511
@@ -122,4 +130,4 @@ sudo iptables -A INPUT -p tcp --dport 6379 -j DROP
 
 ## Conclusion
 
-Redis `protected-mode` is a safety guard that prevents unauthenticated remote access. Disable it only when `requirepass` is set AND firewall rules restrict port 6379 to trusted networks. Leave it enabled in development environments or when you're unsure about network exposure. The protected-mode error message is a warning that Redis is accessible from an unexpected location without authentication.
+Redis `protected-mode` is a safety guard that prevents non-loopback access when the default user has no password. Disable it only when the default user is protected with a password (for example via `requirepass`) AND firewall rules restrict port 6379 to trusted networks. Leave it enabled in development environments or when you're unsure about network exposure. The protected-mode error message is a warning that Redis is reachable from a non-local address without a password on the default user.
