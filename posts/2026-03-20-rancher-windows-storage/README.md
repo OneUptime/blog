@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Window, Storage, CSI, PersistentVolume
+Tags: Rancher, Windows, Storage, CSI, PersistentVolume
 
-Description: Configure persistent storage for Windows containers in Rancher using local-path provisioner, iSCSI, and Windows-specific CSI drivers for stateful Windows workloads.
+Description: Configure persistent storage for Windows containers in Rancher using AWS EBS, SMB, and Windows-compatible CSI drivers for stateful Windows workloads.
 
 ## Introduction
 
@@ -13,79 +13,48 @@ Storage for Windows containers in Kubernetes has specific requirements and limit
 ## Prerequisites
 
 - Rancher cluster with Windows worker nodes
-- Storage infrastructure (local disk, NFS, iSCSI, or cloud storage)
+- Storage infrastructure compatible with Windows nodes (SMB shares or cloud block storage)
 - kubectl access with storage admin permissions
+- For AWS EBS, IAM permissions for the EBS CSI driver
 
 ## Step 1: Understand Windows Volume Limitations
 
 ```text
 Windows Container Storage Limitations:
 - Volume mounts use Windows paths (C:\mountpath)
-- No support for file permissions/ownership (chmod/chown)
-- NFS has limited support on Windows Server
+- No support for Linux file permissions/ownership (chmod/chown)
+- NFS based storage/volume support not supported
+- Volume subPath mounts not supported
 - Memory-backed volumes (emptyDir medium: Memory) not supported
-- ReadWriteMany not supported for local storage
-- Some StorageClass features differ from Linux
+- Expanding the mounted volume filesystem (resizefs) not supported
+- ReadWriteMany not supported for node-local storage
 
-Supported volume types:
+Common Windows-compatible volume options:
 - emptyDir (disk-backed)
-- hostPath (SMB/CIFS)
-- Local path provisioner
+- hostPath
+- SMB (via SMB CSI driver)
 - AWS EBS (via Windows CSI driver)
 - Azure Disk (via Windows CSI driver)
-- iSCSI (with Windows initiator)
 ```
 
-## Step 2: Configure Local Path Provisioner for Windows
+## Step 2: Use a Windows-Compatible CSI Driver
 
-```bash
-# Install local path provisioner with Windows support
+```text
+Rancher's local-path-provisioner is documented for Linux-style paths and uses
+Linux helper pods and shell scripts, so it is not a Windows storage solution.
 
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.26/deploy/local-path-storage.yaml
-
-# Create Windows-specific storage class
-cat <<EOF | kubectl apply -f -
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: local-path-windows
-provisioner: rancher.io/local-path
-reclaimPolicy: Delete
-volumeBindingMode: WaitForFirstConsumer
-EOF
-```
-
-```yaml
-# Update local-path-config for Windows paths
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: local-path-config
-  namespace: local-path-storage
-data:
-  config.json: |-
-    {
-      "nodePathMap": [
-        {
-          "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
-          "paths": ["/opt/local-path-provisioner"]
-        },
-        {
-          "node": "win-node-01",
-          "paths": ["C:\\kubernetes\\storage"]
-        },
-        {
-          "node": "win-node-02",
-          "paths": ["C:\\kubernetes\\storage"]
-        }
-      ]
-    }
+For Windows worker nodes, use a CSI driver that provides Windows node support,
+such as:
+- AWS EBS for block storage on AWS
+- SMB CSI driver for shared file storage
+- Azure Disk on Azure
 ```
 
 ## Step 3: Create PVC for Windows Pod
 
 ```yaml
-# windows-pvc.yaml - PVC for Windows workload
+# windows-pvc.yaml - PVC for a Windows workload
+# Uses the StorageClass created in Step 4
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -94,76 +63,53 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: local-path-windows
+  storageClassName: ebs-gp3-windows
   resources:
     requests:
       storage: 20Gi
 ---
-# windows-statefulset.yaml - Use PVC in Windows pod
+# windows-deployment.yaml - Use PVC in a Windows pod
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
-  name: sql-server-express
+  name: windows-server-iis
   namespace: production
 spec:
-  serviceName: sql-server
   replicas: 1
   selector:
     matchLabels:
-      app: sql-server
+      app: windows-server-iis
   template:
     metadata:
       labels:
-        app: sql-server
+        app: windows-server-iis
     spec:
       nodeSelector:
         kubernetes.io/os: windows
-      tolerations:
-        - key: os
-          value: windows
-          effect: NoSchedule
       containers:
-        - name: sql-server
-          image: mcr.microsoft.com/mssql/server:2022-latest
-          env:
-            - name: ACCEPT_EULA
-              value: "Y"
-            - name: MSSQL_SA_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: sql-server-secret
-                  key: sa-password
-            - name: MSSQL_DATA_DIR
-              value: "C:\\sqldata"
+        - name: windows-server-iis
+          image: mcr.microsoft.com/windows/server:ltsc2022
+          command:
+            - powershell.exe
+            - -command
+            - "while ($true) { Start-Sleep -Seconds 3600 }"
           volumeMounts:
-            - name: sqldata
-              mountPath: C:\sqldata
-          resources:
-            requests:
-              cpu: 2000m
-              memory: 4Gi
-            limits:
-              cpu: 4000m
-              memory: 8Gi
-  volumeClaimTemplates:
-    - metadata:
-        name: sqldata
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        storageClassName: local-path-windows
-        resources:
-          requests:
-            storage: 50Gi
+            - name: app-data
+              mountPath: "C:\\data"
+      volumes:
+        - name: app-data
+          persistentVolumeClaim:
+            claimName: windows-app-data
 ```
 
 ## Step 4: Configure AWS EBS for Windows (Windows CSI Driver)
 
 ```bash
-# Install Windows CSI driver for EBS
-kubectl apply -k "github.com/kubernetes-sigs/aws-ebs-csi-driver/deploy/kubernetes/overlays/stable/?ref=release-1.x"
+# Ensure the driver has AWS IAM permissions, and CSI Proxy is available on Windows nodes
+kubectl apply -k "github.com/kubernetes-sigs/aws-ebs-csi-driver/deploy/kubernetes/overlays/stable/?ref=release-1.59"
 
-# Verify Windows node support
-kubectl get pods -n kube-system | grep ebs-csi
+# Verify the driver pods and the Windows node daemonset
+kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-ebs-csi-driver
 kubectl get daemonset ebs-csi-node-windows -n kube-system
 ```
 
@@ -178,28 +124,29 @@ parameters:
   type: gp3
   iops: "3000"
   throughput: "125"
-  # Windows requires NTFS filesystem
-  csi.storage.k8s.io/fstype: ntfs
+  # Format Windows volumes as NTFS
+  fstype: ntfs
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
-allowVolumeExpansion: true
 ```
 
 ## Step 5: Configure SMB/CIFS Volumes
 
-```yaml
+```bash
 # SMB volume for shared Windows storage
 # Requires csi-driver-smb installed
 
 # Install SMB CSI driver
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/csi-driver-smb/master/deploy/install-driver.sh
+curl -skSL https://raw.githubusercontent.com/kubernetes-csi/csi-driver-smb/v1.20.1/deploy/install-driver.sh | bash -s v1.20.1 --
 
 # Create SMB credentials secret
 kubectl create secret generic smb-credentials \
   --from-literal=username=smbuser \
   --from-literal=password=smbpassword \
   -n production
+```
 
+```yaml
 # Create PV for SMB share
 apiVersion: v1
 kind: PersistentVolume
@@ -232,24 +179,35 @@ metadata:
   name: windows-log-agent
   namespace: production
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: windows-log-agent
   template:
+    metadata:
+      labels:
+        app: windows-log-agent
     spec:
       nodeSelector:
         kubernetes.io/os: windows
       containers:
         - name: log-agent
-          image: registry.example.com/windows-log-agent:v1.0
+          image: mcr.microsoft.com/windows/server:ltsc2022
+          command:
+            - powershell.exe
+            - -command
+            - "Get-ChildItem 'C:\\logs'; while ($true) { Start-Sleep -Seconds 3600 }"
           volumeMounts:
             - name: windows-logs
-              mountPath: C:\logs
+              mountPath: "C:\\logs"
               readOnly: true
       volumes:
         - name: windows-logs
           hostPath:
-            path: C:\Windows\System32\winevt\Logs
+            path: "C:\\Windows\\System32\\winevt\\Logs"
             type: Directory
 ```
 
 ## Conclusion
 
-Windows storage in Kubernetes requires careful CSI driver selection and volume path configuration. For simple development workloads, the local path provisioner with Windows-specific paths works well. For production, AWS EBS with the Windows CSI driver provides reliable block storage with NTFS formatting. SMB shares via the SMB CSI driver enable shared storage across multiple Windows pods (ReadWriteMany), which is essential for applications that require shared file system access. Always specify Windows-compatible mount paths using Windows-style paths (`C:\data`) in volume mounts.
+Windows storage in Kubernetes requires careful CSI driver selection and volume path configuration. For Windows workloads, use a CSI driver with Windows node support rather than Rancher's local-path-provisioner. For production, AWS EBS with the Windows CSI driver provides reliable block storage with NTFS formatting. SMB shares via the SMB CSI driver enable shared storage across multiple Windows pods (ReadWriteMany), which is essential for applications that require shared file system access. Always specify Windows-compatible mount paths using Windows-style paths (`C:\data`) in volume mounts.
