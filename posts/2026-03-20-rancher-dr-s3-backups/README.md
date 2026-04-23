@@ -12,10 +12,10 @@ Amazon S3 and S3-compatible storage provide durable, highly-available storage fo
 
 ## Prerequisites
 
-- Rancher v2.6+ with backup-restore-operator
+- Rancher management cluster with a `rancher-backup` chart version compatible with your Rancher release
 - AWS account or S3-compatible storage (MinIO, Ceph, etc.)
-- IAM permissions for S3 operations
-- kubectl access to Rancher management cluster
+- IAM permissions for S3 bucket access and replication
+- `kubectl` and Helm access to the Rancher management cluster
 
 ## Step 1: Create S3 Bucket
 
@@ -36,8 +36,7 @@ aws s3api put-bucket-encryption \
   --server-side-encryption-configuration '{
     "Rules": [{
       "ApplyServerSideEncryptionByDefault": {
-        "SSEAlgorithm": "aws:kms",
-        "KMSMasterKeyID": "arn:aws:kms:us-east-1:123456789:key/your-key-id"
+        "SSEAlgorithm": "AES256"
       }
     }]
   }'
@@ -78,20 +77,71 @@ aws iam create-role \
   --role-name RancherS3ReplicationRole \
   --assume-role-policy-document file:///tmp/replication-role.json
 
-# Configure replication rule
+# Attach the minimum permissions S3 needs to replicate objects
+cat > /tmp/replication-policy.json << 'POLICYEOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetReplicationConfiguration",
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::rancher-production-backups"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObjectVersionForReplication",
+        "s3:GetObjectVersionAcl",
+        "s3:GetObjectVersionTagging"
+      ],
+      "Resource": "arn:aws:s3:::rancher-production-backups/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:ReplicateObject",
+        "s3:ReplicateDelete",
+        "s3:ReplicateTags"
+      ],
+      "Resource": "arn:aws:s3:::rancher-dr-backups-west/*"
+    }
+  ]
+}
+POLICYEOF
+
+aws iam put-role-policy \
+  --role-name RancherS3ReplicationRole \
+  --policy-name RancherS3ReplicationPolicy \
+  --policy-document file:///tmp/replication-policy.json
+
+# Configure replication rule (the caller needs iam:PassRole on RancherS3ReplicationRole)
+cat > /tmp/replication.json << 'REPLEOF'
+{
+  "Role": "arn:aws:iam::123456789:role/RancherS3ReplicationRole",
+  "Rules": [{
+    "ID": "rancher-dr-replication",
+    "Priority": 1,
+    "Status": "Enabled",
+    "DeleteMarkerReplication": {
+      "Status": "Disabled"
+    },
+    "Filter": {
+      "Prefix": ""
+    },
+    "Destination": {
+      "Bucket": "arn:aws:s3:::rancher-dr-backups-west",
+      "StorageClass": "STANDARD_IA"
+    }
+  }]
+}
+REPLEOF
+
 aws s3api put-bucket-replication \
   --bucket rancher-production-backups \
-  --replication-configuration '{
-    "Role": "arn:aws:iam::123456789:role/RancherS3ReplicationRole",
-    "Rules": [{
-      "ID": "rancher-dr-replication",
-      "Status": "Enabled",
-      "Destination": {
-        "Bucket": "arn:aws:s3:::rancher-dr-backups-west",
-        "StorageClass": "STANDARD_IA"
-      }
-    }]
-  }'
+  --replication-configuration file:///tmp/replication.json
 ```
 
 ## Step 3: Create IAM Policy for Backup Operator
@@ -103,21 +153,20 @@ aws s3api put-bucket-replication \
     {
       "Effect": "Allow",
       "Action": [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject",
-        "s3:GetObjectVersion",
-        "s3:ListBucketVersions"
-      ],
-      "Resource": "arn:aws:s3:::rancher-production-backups/*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
         "s3:ListBucket",
         "s3:GetBucketLocation"
       ],
       "Resource": "arn:aws:s3:::rancher-production-backups"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:PutObjectAcl"
+      ],
+      "Resource": "arn:aws:s3:::rancher-production-backups/*"
     }
   ]
 }
@@ -130,13 +179,18 @@ aws s3api put-bucket-replication \
 helm repo add rancher-charts https://charts.rancher.io
 helm repo update
 
-# Install backup-restore-operator
-helm install rancher-backup rancher-charts/rancher-backup \
+# Select a rancher-backup chart version compatible with your Rancher release
+CHART_VERSION=<chart-version>
+
+# Install the CRDs first, then the backup operator
+helm install rancher-backup-crd rancher-charts/rancher-backup-crd \
   --namespace cattle-resources-system \
   --create-namespace \
-  --set image.repository=rancher/backup-restore-operator \
-  --set image.tag=v4.0.0 \
-  --set persistence.enabled=false  # Use S3, not local storage
+  --version $CHART_VERSION
+
+helm install rancher-backup rancher-charts/rancher-backup \
+  --namespace cattle-resources-system \
+  --version $CHART_VERSION
 ```
 
 ## Step 5: Create S3 Credentials Secret
@@ -157,7 +211,6 @@ apiVersion: resources.cattle.io/v1
 kind: Backup
 metadata:
   name: rancher-s3-backup
-  namespace: cattle-resources-system
 spec:
   # Storage location configuration
   storageLocation:
@@ -165,11 +218,14 @@ spec:
       bucketName: rancher-production-backups
       folder: rancher              # Subfolder within bucket
       region: us-east-1
-      endpoint: s3.amazonaws.com   # Use custom endpoint for MinIO/Ceph
-      endpointCA: ""               # CA cert for custom endpoints
+      endpoint: s3.us-east-1.amazonaws.com   # Use a custom endpoint for MinIO/Ceph
+      endpointCA: ""                         # Base64-encoded CA cert for custom endpoints
       insecureTLSSkipVerify: false # Never skip in production
       credentialSecretName: rancher-backup-s3-creds
       credentialSecretNamespace: cattle-resources-system
+
+  # Use the full Rancher resource set for DR backups
+  resourceSetName: rancher-resource-set-full
   
   # Backup schedule (cron format)
   schedule: "0 */2 * * *"          # Every 2 hours
@@ -184,17 +240,31 @@ spec:
 ## Step 7: Configure Encryption
 
 ```bash
-# Generate encryption key
+# Generate an encryption key for the Kubernetes EncryptionConfiguration
 ENCRYPTION_KEY=$(openssl rand -base64 32)
+
+# Create the EncryptionConfiguration file Rancher expects
+cat > encryption-provider-config.yaml << EOF
+apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration
+resources:
+  - resources:
+      - secrets
+    providers:
+      - aescbc:
+          keys:
+            - name: key1
+              secret: ${ENCRYPTION_KEY}
+      - identity: {}
+EOF
 
 # Create encryption config secret
 kubectl create secret generic backup-encryption-key \
   --namespace cattle-resources-system \
-  --from-literal=encryptionConfig="{\"encryptionKey\":\"$ENCRYPTION_KEY\"}"
+  --from-file=./encryption-provider-config.yaml
 
-# Save key to secure location (critical for restore!)
-echo "ENCRYPTION KEY: $ENCRYPTION_KEY"
-echo "Store this key in your password manager immediately!"
+# Save the file contents securely (critical for restore!)
+echo "Store encryption-provider-config.yaml in a secure location immediately!"
 ```
 
 ## Step 8: Configure S3 Lifecycle Policy
@@ -233,14 +303,12 @@ spec:
     s3:
       bucketName: rancher-backups
       folder: prod
-      region: us-east-1           # Required field even for MinIO
       endpoint: minio.internal:9000
-      endpointCA: |               # MinIO's CA cert if using self-signed TLS
-        -----BEGIN CERTIFICATE-----
-        ...
-        -----END CERTIFICATE-----
+      endpointCA: <base64-encoded-cert>  # Base64-encoded CA cert for self-signed TLS
       insecureTLSSkipVerify: false
       credentialSecretName: minio-credentials
+      credentialSecretNamespace: cattle-resources-system
+  resourceSetName: rancher-resource-set-full
   schedule: "0 * * * *"
   retentionCount: 24
 ```
@@ -249,10 +317,10 @@ spec:
 
 ```bash
 # Check backup status
-kubectl get backup -n cattle-resources-system
+kubectl get backups
 
 # View backup details
-kubectl describe backup rancher-s3-backup -n cattle-resources-system
+kubectl describe backup rancher-s3-backup
 
 # Check backup operator logs
 kubectl logs -n cattle-resources-system \
