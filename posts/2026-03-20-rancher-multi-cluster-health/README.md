@@ -28,7 +28,11 @@ The Rancher home dashboard provides an at-a-glance view of all clusters:
 curl -sk \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
   "https://rancher.example.com/v3/clusters?limit=-1" \
-  | jq '.data[] | {name: .name, state: .state, version: .version}'
+  | jq '.data[] | {
+      name: .name,
+      state: .state,
+      version: (.version | if type == "object" then .gitVersion else . end)
+    }'
 ```
 
 ## Step 2: Install Rancher Monitoring on All Clusters
@@ -52,18 +56,13 @@ EOF
 ```
 
 ```yaml
-# monitoring/helmchart.yaml
-apiVersion: helm.cattle.io/v1
-kind: HelmChart
-metadata:
-  name: rancher-monitoring
-  namespace: kube-system
-spec:
+# monitoring/fleet.yaml
+defaultNamespace: cattle-monitoring-system
+helm:
   repo: https://charts.rancher.io
   chart: rancher-monitoring
-  targetNamespace: cattle-monitoring-system
-  createNamespace: true
-  valuesContent: |
+  releaseName: rancher-monitoring
+  values:
     prometheus:
       prometheusSpec:
         retention: 7d
@@ -72,7 +71,7 @@ spec:
             spec:
               resources:
                 requests:
-                  storage: 20Gi
+                  storage: 50Gi
     grafana:
       enabled: true
       adminPassword: ChangeMeNow!
@@ -81,7 +80,7 @@ spec:
 ## Step 3: Configure Centralized Metrics Collection
 
 ```yaml
-# Configure Thanos for cross-cluster metrics (on the management cluster)
+# Configure Prometheus federation for cross-cluster metrics (on the management cluster)
 # prometheus-federation.yaml
 
 # Additional scrape config for the central Prometheus
@@ -89,7 +88,7 @@ spec:
   honor_labels: true
   metrics_path: '/federate'
   params:
-    match[]:
+    'match[]':
       # Essential cluster health metrics only
       - 'up'
       - 'kube_node_status_condition'
@@ -99,20 +98,21 @@ spec:
       - 'kube_deployment_status_replicas_unavailable'
       - 'kube_daemonset_status_number_unavailable'
       - 'etcd_server_has_leader'
-  relabel_configs:
-    - source_labels: [__address__]
-      target_label: cluster
-      regex: '(.+)\.svc\.cluster\.local.*'
-      replacement: '$1'
   static_configs:
+    # Targets must be reachable from the central Prometheus.
     - targets:
-        - 'prometheus.cattle-monitoring-system.cluster-1.svc:9090'
-        - 'prometheus.cattle-monitoring-system.cluster-2.svc:9090'
+        - 'cluster-1-prometheus.example.com:9090'
       labels:
+        cluster: cluster-1
         datacenter: us-east
+    - targets:
+        - 'cluster-2-prometheus.example.com:9090'
+      labels:
+        cluster: cluster-2
+        datacenter: us-west
 ```
 
-## Step 4: Create a Multi-Cluster Health Dashboard
+## Step 4: Define Grafana Panels for a Multi-Cluster Health Dashboard
 
 ```json
 {
@@ -124,7 +124,7 @@ spec:
       "type": "stat",
       "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
       "targets": [{
-        "expr": "count(up{job='kube-state-metrics'}) by (cluster)",
+        "expr": "max(up{job='kube-state-metrics'}) by (cluster)",
         "legendFormat": "{{cluster}}"
       }],
       "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
@@ -152,16 +152,16 @@ spec:
       "type": "timeseries",
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
       "targets": [{
-        "expr": "count(kube_pod_status_phase{phase=~'Failed|Unknown'}) by (cluster, namespace)",
+        "expr": "sum(kube_pod_status_phase{phase=~'Failed|Unknown'}) by (cluster, namespace)",
         "legendFormat": "{{cluster}} / {{namespace}}"
       }]
     },
     {
-      "title": "etcd Health",
+      "title": "etcd Health (self-managed clusters)",
       "type": "stat",
       "gridPos": {"h": 4, "w": 12, "x": 12, "y": 12},
       "targets": [{
-        "expr": "etcd_server_has_leader by (cluster)",
+        "expr": "min(etcd_server_has_leader) by (cluster)",
         "legendFormat": "{{cluster}}"
       }],
       "options": {
@@ -189,7 +189,7 @@ spec:
       rules:
         # Alert if any cluster is down (no metrics from it)
         - alert: ClusterDown
-          expr: absent(up{job="kube-state-metrics"})
+          expr: max by (cluster) (up{job="kube-state-metrics"}) == 0
           for: 2m
           labels:
             severity: critical
@@ -201,7 +201,7 @@ spec:
         # Alert on high percentage of NotReady nodes
         - alert: ClusterNodeAvailabilityLow
           expr: |
-            (count(kube_node_status_condition{condition="Ready",status="true"}) by (cluster)
+            (sum(kube_node_status_condition{condition="Ready",status="true"}) by (cluster)
             / count(kube_node_info) by (cluster)) < 0.8
           for: 5m
           labels:
@@ -209,9 +209,9 @@ spec:
           annotations:
             summary: "Less than 80% of nodes Ready in {{ $labels.cluster }}"
 
-        # Alert if etcd loses leader
+        # Alert if a self-managed cluster's etcd loses leader
         - alert: EtcdHasNoLeader
-          expr: etcd_server_has_leader == 0
+          expr: min by (cluster) (etcd_server_has_leader) == 0
           for: 1m
           labels:
             severity: critical
@@ -233,19 +233,20 @@ spec:
 ```yaml
 # Alertmanager configuration for multi-cluster alerting
 route:
+  receiver: slack-warnings
   group_by: ['cluster', 'alertname']
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 12h
   routes:
     # Critical alerts go to PagerDuty
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: pagerduty-critical
 
     # Warning alerts go to Slack
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: slack-warnings
 
 receivers:
@@ -276,7 +277,7 @@ echo "=== Multi-Cluster Health Report: $(date) ==="
 curl -sk \
   -H "Authorization: Bearer ${TOKEN}" \
   "${RANCHER_URL}/v3/clusters?limit=-1" \
-  | jq -r '.data[] | "\(.name)\t\(.state)\t\(.version)\tNodes: \(.nodeCount)"' \
+  | jq -r '.data[] | "\(.name)\t\(.state)\t\((.version | if type == \"object\" then .gitVersion else . end) // \"unknown\")\tNodes: \(.nodeCount // \"unknown\")"' \
   | column -t
 
 echo ""
