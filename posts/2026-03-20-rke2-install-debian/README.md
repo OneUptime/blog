@@ -6,13 +6,14 @@ Tags: RKE2, Kubernetes, Debian, Installation, Rancher
 
 Description: A step-by-step guide to installing RKE2 on Debian 11 (Bullseye) and Debian 12 (Bookworm) for a production-ready Kubernetes cluster.
 
-Debian is a widely used Linux distribution known for its stability and extensive package repository. RKE2 supports Debian-based systems and works well as a Kubernetes platform for organizations using Debian. This guide covers the complete installation process for both Debian 11 (Bullseye) and Debian 12 (Bookworm).
+Debian is a widely used Linux distribution known for its stability and extensive package repository. RKE2 generally works on Linux distributions that use systemd and iptables or xtables-nft, which includes typical Debian installations. This guide covers the complete installation process for both Debian 11 (Bullseye) and Debian 12 (Bookworm).
 
 ## Prerequisites
 
 - Debian 11 (Bullseye) or Debian 12 (Bookworm)
 - Minimum 2 vCPUs and 4 GB RAM
 - Root or sudo access
+- Unique hostnames for each node
 - Static IP addresses recommended
 
 ## Step 1: Update System and Install Prerequisites
@@ -30,6 +31,9 @@ sudo apt-get install -y \
   ca-certificates \
   gnupg \
   lsb-release \
+  apparmor \
+  iptables \
+  nftables \
   socat \
   conntrack \
   nfs-common
@@ -73,23 +77,29 @@ sysctl net.ipv4.ip_forward
 ## Step 3: Configure Firewall
 
 ```bash
-# Debian uses iptables/nftables or ufw
+# Debian can use nftables directly, iptables-nft, or ufw
 # If using ufw:
 sudo apt-get install -y ufw
 
-# Enable ufw if not already enabled
+# Check ufw status before enabling
 sudo ufw status
 
+# Replace with the subnet that contains your RKE2 server and worker nodes
+RKE2_NODE_SUBNET="192.0.2.0/24"
+
 # Allow required ports
-sudo ufw allow 22/tcp       # SSH - ensure this is first!
-sudo ufw allow 6443/tcp     # Kubernetes API server
-sudo ufw allow 9345/tcp     # RKE2 node registration
-sudo ufw allow 2379/tcp     # etcd client
-sudo ufw allow 2380/tcp     # etcd peer
-sudo ufw allow 10250/tcp    # Kubelet
-sudo ufw allow 8472/udp     # Canal VXLAN
-sudo ufw allow 51820/udp    # Canal WireGuard IPv4
-sudo ufw allow 51821/udp    # Canal WireGuard IPv6
+sudo ufw allow 22/tcp                                                             # SSH - ensure this is first!
+sudo ufw allow from ${RKE2_NODE_SUBNET} to any port 6443 proto tcp                # Kubernetes API server
+sudo ufw allow from ${RKE2_NODE_SUBNET} to any port 9345 proto tcp                # RKE2 supervisor API
+sudo ufw allow from ${RKE2_NODE_SUBNET} to any port 2379 proto tcp                # etcd client
+sudo ufw allow from ${RKE2_NODE_SUBNET} to any port 2380 proto tcp                # etcd peer
+sudo ufw allow from ${RKE2_NODE_SUBNET} to any port 2381 proto tcp                # etcd metrics
+sudo ufw allow from ${RKE2_NODE_SUBNET} to any port 10250 proto tcp               # Kubelet metrics
+sudo ufw allow from ${RKE2_NODE_SUBNET} to any port 30000:32767 proto tcp         # NodePort services
+sudo ufw allow from ${RKE2_NODE_SUBNET} to any port 8472 proto udp                # Canal VXLAN
+sudo ufw allow from ${RKE2_NODE_SUBNET} to any port 9099 proto tcp                # Canal health checks
+sudo ufw allow from ${RKE2_NODE_SUBNET} to any port 51820 proto udp               # Canal WireGuard IPv4, if enabled
+sudo ufw allow from ${RKE2_NODE_SUBNET} to any port 51821 proto udp               # Canal WireGuard IPv6, if enabled
 
 # Enable ufw
 sudo ufw enable
@@ -103,7 +113,7 @@ sudo ufw status verbose
 curl -sfL https://get.rke2.io | sudo sh -
 
 # Optionally install a specific version
-# curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=v1.28.8+rke2r1 sudo sh -
+# curl -sfL https://get.rke2.io | sudo env INSTALL_RKE2_VERSION=v1.34.6+rke2r3 sh -
 
 # Verify the installation binaries are in place
 ls /usr/local/bin/rke2
@@ -157,8 +167,8 @@ source ~/.bashrc
 # Check node status
 kubectl get nodes
 
-# Check all pods are running
-kubectl get pods -A | grep -v Running
+# Check pods; Running and Completed are expected states
+kubectl get pods -A
 ```
 
 ## Step 7: Add Worker Nodes
@@ -171,8 +181,12 @@ echo "Server IP: $SERVER_IP"
 echo "Token: $SERVER_TOKEN"
 
 # On each worker node - Run the following:
+# Set these values from the server output above
+SERVER_IP="<server-ip>"
+SERVER_TOKEN="<token-from-server-node>"
+
 # 1. Install RKE2 agent
-curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE="agent" sudo sh -
+curl -sfL https://get.rke2.io | sudo env INSTALL_RKE2_TYPE="agent" sh -
 
 # 2. Configure agent
 sudo mkdir -p /etc/rancher/rke2/
@@ -193,14 +207,13 @@ kubectl get nodes
 
 ```bash
 # Debian 12 (Bookworm) uses nftables by default
-# RKE2 is compatible with nftables
 # Verify nftables is active
 sudo nft list tables
 
 # Check if iptables is in nftables compatibility mode
 sudo update-alternatives --display iptables
 
-# RKE2 automatically handles both iptables and nftables
+# RKE2's default Canal CNI requires iptables or xtables-nft
 ```
 
 ## Conclusion
