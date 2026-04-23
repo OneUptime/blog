@@ -4,32 +4,32 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher Turtles, CAPI, Kubernetes, Infrastructure, Cloud
 
-Description: Configure Cluster API infrastructure providers including AWS, Azure, vSphere, and Docker for multi-cloud Kubernetes provisioning.
+Description: Configure Cluster API infrastructure providers such as AWS, Azure, vSphere, and Docker with Rancher Turtles `CAPIProvider` resources.
 
 ## Introduction
 
-How to Configure CAPI Infrastructure Providers is an important aspect of managing Kubernetes clusters with Rancher Turtles and Cluster API. This guide provides a comprehensive walkthrough with practical examples and best practices.
+How to Configure CAPI Infrastructure Providers is an important aspect of managing Kubernetes clusters with Rancher Turtles and Cluster API. Rancher Turtles manages infrastructure providers declaratively through the `CAPIProvider` custom resource, while the exact cluster templates and required variables remain provider-specific.
 
 ## Prerequisites
 
 - Rancher Turtles installed and configured
 - kubectl access to the management cluster
 - Appropriate cloud provider credentials (if applicable)
-- Cluster API providers installed
+- Cluster API core components available on the management cluster
 
 ## Overview
 
-Rancher Turtles integrates Cluster API (CAPI) with Rancher to provide a unified, declarative approach to Kubernetes cluster lifecycle management. This guide walks through the specifics of How to Configure CAPI Infrastructure Providers.
+Rancher Turtles integrates Cluster API (CAPI) with Rancher to provide a unified, declarative approach to Kubernetes cluster lifecycle management. This guide walks through configuring infrastructure providers with `CAPIProvider` resources and verifying that the resulting provider controllers are ready to use.
 
 ## Step 1: Prepare Your Environment
 
 ```bash
 # Verify Rancher Turtles is running
 
-kubectl get pods -n rancher-turtles-system
+kubectl get pods -n cattle-turtles-system
 
-# Check installed CAPI providers
-kubectl get providers -A
+# Check configured Rancher Turtles provider objects
+kubectl get capiproviders.turtles-capi.cattle.io -A
 
 # Verify management cluster connectivity
 kubectl cluster-info
@@ -38,94 +38,88 @@ kubectl cluster-info
 ## Step 2: Configure Resources
 
 ```yaml
-# Example CAPI configuration for How to Configure CAPI Infrastructure Providers
-apiVersion: cluster.x-k8s.io/v1beta1
-kind: Cluster
+# Example Rancher Turtles CAPIProvider configuration for AWS.
+# For Azure or vSphere, keep `type: infrastructure` and change the provider name and credentials.
+# For Docker, use `name: docker` and omit cloud-specific credentials.
+apiVersion: turtles-capi.cattle.io/v1alpha1
+kind: CAPIProvider
 metadata:
-  name: example-cluster
-  namespace: default
-  labels:
-    cluster-api.cattle.io/rancher-auto-import: "true"
-    environment: production
+  name: aws
+  namespace: cattle-turtles-system
 spec:
-  clusterNetwork:
-    pods:
-      cidrBlocks:
-        - 10.244.0.0/16
-    services:
-      cidrBlocks:
-        - 10.96.0.0/12
-  infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-    kind: InfraCluster
-    name: example-cluster
-  controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
-    kind: RKE2ControlPlane
-    name: example-cluster-cp
+  name: aws
+  type: infrastructure
+  credentials:
+    rancherCloudCredential: aws-creds
+  configSecret:
+    name: aws-config
 ```
 
 ```bash
 # Apply the configuration
-kubectl apply -f cluster-config.yaml
+kubectl apply -f provider-config.yaml
 
 # Monitor progress
-kubectl get cluster example-cluster --watch
+kubectl get capiproviders.turtles-capi.cattle.io aws -n cattle-turtles-system --watch
 ```
 
 ## Step 3: Verify the Configuration
 
 ```bash
-# Check cluster status
-kubectl get clusters -A
+# Check configured provider objects
+kubectl get capiproviders.turtles-capi.cattle.io -A
 
-# Describe the cluster for detailed status
-kubectl describe cluster example-cluster -n default
+# Describe the provider for detailed status
+kubectl describe capiproviders.turtles-capi.cattle.io aws -n cattle-turtles-system
 
-# View all CAPI resources
-kubectl get clusters,machines,machinedeployments -n default
+# View the generated Cluster API Operator infrastructure provider
+kubectl get infrastructureproviders.operator.cluster.x-k8s.io -A
 
-# Check Rancher import status
-kubectl get cluster.provisioning.cattle.io -n fleet-default
+# Check the provider controller pods
+# Replace `capa-system` for other providers such as `capz-system` or `capv-system`.
+kubectl get pods -n capa-system
 ```
 
 ## Step 4: Validate in Rancher UI
 
 1. Navigate to **Cluster Management** in Rancher
-2. Verify the cluster appears in the list
-3. Check cluster health indicators
-4. Review node status and resource utilization
+2. Open the local management cluster
+3. Verify the Rancher Turtles extension and related workloads are healthy
+4. After provisioning a downstream cluster with this provider, verify the cluster appears in Rancher once it reaches `ControlPlaneAvailable`
 
 ## Common Operations
 
 ```bash
-# Scale worker nodes
-kubectl scale machinedeployment example-cluster-workers --replicas=5
+# Replace <provider-version> with the version you want to pin
+kubectl patch capiproviders.turtles-capi.cattle.io aws -n cattle-turtles-system --type merge -p '{"spec":{"version":"<provider-version>"}}'
 
-# Get cluster kubeconfig
-clusterctl get kubeconfig example-cluster > cluster-kubeconfig.yaml
+# View the provider configuration
+kubectl get capiproviders.turtles-capi.cattle.io aws -n cattle-turtles-system -o yaml
 
-# Test connectivity
-export KUBECONFIG=cluster-kubeconfig.yaml
-kubectl get nodes
+# Check generated infrastructure provider objects
+kubectl get infrastructureproviders.operator.cluster.x-k8s.io -A
 
-# Return to management cluster
-unset KUBECONFIG
+# Remove the provider configuration
+kubectl delete capiproviders.turtles-capi.cattle.io aws -n cattle-turtles-system
 ```
 
 ## Troubleshooting
 
 ```bash
 # Check Turtles controller logs
-kubectl logs -n rancher-turtles-system   -l control-plane=controller-manager   --follow
+kubectl logs -l control-plane=controller-manager -n cattle-turtles-system --follow
 
-# Check CAPI controller logs
-kubectl logs -n capi-system   -l control-plane=controller-manager   --since=30m
+# Check infrastructure provider controller logs
+# Replace `capa-system` for other providers such as `capz-system` or `capv-system`.
+kubectl logs -l control-plane=controller-manager -n capa-system --since=30m
 
-# Get events for a cluster
-kubectl get events -n default   --field-selector involvedObject.name=example-cluster   --sort-by=.lastTimestamp
+# Describe the CAPIProvider for reconciliation errors
+kubectl describe capiproviders.turtles-capi.cattle.io aws -n cattle-turtles-system
+
+# Get events for the provider
+kubectl get events -n cattle-turtles-system --field-selector involvedObject.name=aws --sort-by=.lastTimestamp
 ```
 
 ## Conclusion
 
-How to Configure CAPI Infrastructure Providers with Rancher Turtles enables a declarative, Kubernetes-native approach to infrastructure management. By leveraging the Cluster API ecosystem alongside Rancher's management capabilities, you get a powerful, unified platform for managing Kubernetes clusters at scale across any infrastructure.
+How to Configure CAPI Infrastructure Providers with Rancher Turtles enables a declarative, Kubernetes-native approach to infrastructure management. By defining infrastructure providers with `CAPIProvider` resources and then using provider-specific cluster templates or ClusterClasses, you get a unified platform for managing Kubernetes clusters across different environments.
