@@ -14,7 +14,7 @@ Telepresence allows you to run a single service locally while connecting it to a
 
 - Telepresence CLI installed
 - kubectl configured for your Rancher cluster
-- Cluster admin access (for initial setup)
+- Cluster admin access to install the Traffic Manager, or an existing Telepresence installation in the cluster
 - A local development environment
 
 ## Step 1: Install Telepresence
@@ -22,10 +22,10 @@ Telepresence allows you to run a single service locally while connecting it to a
 ```bash
 # macOS
 
-brew install datawire/blackbird/telepresence
+brew install telepresenceio/homebrew-telepresence/telepresence-oss
 
 # Linux
-sudo curl -fL https://app.getambassador.io/download/tel2/linux/amd64/latest/telepresence \
+sudo curl -fL https://github.com/telepresenceio/telepresence/releases/latest/download/telepresence-linux-amd64 \
   -o /usr/local/bin/telepresence
 sudo chmod +x /usr/local/bin/telepresence
 
@@ -36,8 +36,10 @@ telepresence version
 ## Step 2: Connect to Your Rancher Cluster
 
 ```bash
+# Install the Traffic Manager once per cluster if it is not already installed
+telepresence helm install
+
 # Connect Telepresence to your cluster
-# This installs the Traffic Manager in the cluster
 telepresence connect
 
 # Verify connection
@@ -85,13 +87,16 @@ curl -H "x-developer: alice" http://my-service.production.svc.cluster.local:3000
 
 ## Step 5: Access Cluster Services from Local Machine
 
-Once connected, you can access cluster services directly:
+Once connected, you can access cluster services directly using the right protocol/client:
 
 ```bash
-# Access any service in the cluster from your local machine
-curl http://postgresql.databases.svc.cluster.local:5432
-curl http://redis.databases.svc.cluster.local:6379
-curl http://kafka.kafka.svc.cluster.local:9092
+# HTTP services
+curl http://my-service.production.svc.cluster.local:3000/api/health
+
+# Raw TCP connectivity to databases and brokers
+python -c "import socket; socket.create_connection(('postgresql.databases.svc.cluster.local', 5432), 5); print('PostgreSQL reachable')"
+python -c "import socket; socket.create_connection(('redis.databases.svc.cluster.local', 6379), 5); print('Redis reachable')"
+python -c "import socket; socket.create_connection(('kafka.kafka.svc.cluster.local', 9092), 5); print('Kafka reachable')"
 
 # Use cluster DNS
 nslookup my-service.production.svc.cluster.local
@@ -104,6 +109,7 @@ nslookup my-service.production.svc.cluster.local
 telepresence intercept my-service \
   --namespace production \
   --port 3000 \
+  --env-syntax sh:export \
   --env-file /tmp/my-service.env
 
 # Load the environment and start your service
@@ -127,18 +133,18 @@ telepresence intercept my-service \
   --mount /tmp/cluster-volumes
 
 # Access cluster ConfigMaps and secrets locally
-ls /tmp/cluster-volumes/run/secrets/
-cat /tmp/cluster-volumes/etc/config/app-config.yaml
+ls /tmp/cluster-volumes/var/run/secrets/kubernetes.io/
+find /tmp/cluster-volumes -maxdepth 3 -type f | head
 ```
 
 ## Step 8: Debug with a Remote Shell
 
 ```bash
-# Get a shell in the cluster with Telepresence networking
+# Use your local shell with Telepresence networking
 telepresence connect
-telepresence helm install --namespace production
+curl http://my-service.production:3000/api/health
 
-# Or use a debug pod
+# Or use a debug pod if you want a shell inside the cluster
 kubectl run debug-pod --rm -it \
   --namespace production \
   --image=python:3.11 \
@@ -146,17 +152,17 @@ kubectl run debug-pod --rm -it \
 
 # From inside the debug pod, you can reach all cluster services
 curl http://my-service:3000/api/health
-curl http://postgresql.databases:5432
+python -c "import socket; socket.create_connection(('postgresql.databases', 5432), 5); print('Connected to PostgreSQL')"
 ```
 
 ## Step 9: Disconnect and Cleanup
 
 ```bash
 # Leave the intercept (restore original service)
-telepresence leave my-service-production
+telepresence leave my-service
 
-# Disconnect from the cluster
-telepresence disconnect
+# Disconnect from the cluster and stop local Telepresence daemons
+telepresence quit -s
 
 # Uninstall Traffic Manager from cluster (optional)
 telepresence helm uninstall
@@ -165,20 +171,16 @@ telepresence helm uninstall
 ## Step 10: Configure Telepresence for Team Use
 
 ```yaml
-# telepresence.yaml - Team configuration
-cloud:
-  skipLogin: true
+# config.yml - Team configuration
 
 intercept:
   defaultPort: 8080
 
-# Exclude high-churn namespaces from watching
-# (improves performance in large clusters)
-excludeNamespaces:
-  - kube-system
-  - cattle-system
+cluster:
+  mappedNamespaces:
+    - production
+    - databases
 
-# Configure grpc limits
 grpc:
   maxReceiveSize: 256Mi
 ```
@@ -187,11 +189,11 @@ grpc:
 
 ```bash
 # Check Telepresence Traffic Manager status
-kubectl get pods -n ambassador \
-  -l app=traffic-manager
+# Replace ambassador if your Traffic Manager is installed in another namespace
+kubectl get deployment -n ambassador traffic-manager
 
 # Check Telepresence logs
-telepresence loglevel debug
+telepresence loglevel DEBUG
 kubectl logs -n ambassador deployment/traffic-manager
 
 # Reset stuck connection
@@ -204,4 +206,4 @@ telepresence list -n production
 
 ## Conclusion
 
-Telepresence revolutionizes the Kubernetes development workflow by eliminating the build-push-deploy cycle for iterative development. The ability to run a service locally while fully integrated with the remote Rancher cluster means you get instant code reloading while having realistic access to all cluster services, databases, and configuration. Personal intercepts are particularly valuable for teams, allowing multiple developers to test their changes simultaneously without interfering with each other.
+Telepresence revolutionizes the Kubernetes development workflow by eliminating the build-push-deploy cycle for iterative development. The ability to run a service locally while fully integrated with the remote Rancher cluster means you can use your usual local reload and debugging tools while still having realistic access to cluster services, databases, and configuration. Personal intercepts are particularly valuable for teams, allowing multiple developers to test their changes simultaneously without interfering with each other.
