@@ -8,7 +8,7 @@ Description: Learn how to configure and tune RKE2's built-in embedded etcd clust
 
 ---
 
-RKE2 ships with an embedded etcd that is automatically configured for high availability when you run three or more server nodes. This guide covers how to tune, back up, and maintain the embedded etcd.
+RKE2 ships with an embedded etcd that is automatically configured for high availability when you run at least three server nodes in an odd-sized server set. This guide covers how to tune, back up, and maintain the embedded etcd.
 
 ---
 
@@ -47,16 +47,16 @@ etcd-s3-secret-key: <secret-key>
 
 ## Step 2: Configure etcd Performance Options
 
-For clusters with many resources or high write throughput, tune the etcd heartbeat and election timeouts:
+For clusters with higher network latency or disks under heavy write load, tune the etcd heartbeat and election timeouts:
 
 ```yaml
 # Add to /etc/rancher/rke2/config.yaml
 
-# etcd heartbeat interval in milliseconds (default 100ms)
+# etcd heartbeat interval in milliseconds (RKE2 default 500ms)
 etcd-arg:
-  - "heartbeat-interval=150"
-  # Election timeout - should be 10x heartbeat
-  - "election-timeout=1500"
+  - "heartbeat-interval=1000"
+  # Election timeout - keep at least 10x heartbeat on all members
+  - "election-timeout=10000"
   # Disk quota (8GB for large clusters)
   - "quota-backend-bytes=8589934592"
   # Compact historical data after 1 hour
@@ -108,12 +108,18 @@ If the cluster needs to be restored from a snapshot, stop RKE2 on all server nod
 # On all server nodes
 systemctl stop rke2-server
 
-# On the node where you are restoring
+# On the node where you are restoring a local snapshot
 rke2 server \
   --cluster-reset \
-  --cluster-reset-restore-path=/var/lib/rancher/rke2/server/db/snapshots/my-snapshot.db
+  --etcd-s3=false \
+  --cluster-reset-restore-path=/var/lib/rancher/rke2/server/db/snapshots/manual-snapshot-20260320120000
 
-# Restart on all nodes
+# Start the restored server first
+systemctl start rke2-server
+
+# On the other server nodes, back up and remove the old database before rejoining
+mv /var/lib/rancher/rke2/server/db \
+  /var/lib/rancher/rke2/server/db.bak.$(date +%s)
 systemctl start rke2-server
 ```
 
