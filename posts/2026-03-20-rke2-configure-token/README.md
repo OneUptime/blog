@@ -8,19 +8,20 @@ Description: Learn how to configure, rotate, and manage the RKE2 cluster token u
 
 ## Introduction
 
-The RKE2 cluster token is a shared secret that authenticates new nodes joining the cluster. It acts as a pre-shared key that the server and agent nodes use to verify each other. Properly managing this token is essential for cluster security and smooth node onboarding.
+The RKE2 cluster token is a shared secret that authenticates new nodes joining the cluster. It acts as a pre-shared key that joining nodes use to authenticate to the cluster, and secure-format tokens also let joining nodes verify the server's certificate authority. Properly managing this token is essential for cluster security and smooth node onboarding.
 
 ## Understanding the RKE2 Token
 
-RKE2 uses the token for two purposes:
-1. **Agent authentication**: The agent presents the token to prove it is authorized to join.
-2. **CA bootstrapping**: The token is used to verify the server's certificate authority during the initial connection.
+RKE2 uses tokens for three related purposes:
+1. **Node authentication**: Joining server or agent nodes present the token to prove they are authorized to join.
+2. **CA bootstrapping**: When using a secure-format token, the joining node verifies the server's certificate authority during the initial connection. Short tokens do not provide this CA hash verification.
+3. **Bootstrap data encryption**: The server token is used to encrypt confidential bootstrap data stored in the datastore.
 
-The token is stored at `/var/lib/rancher/rke2/server/node-token` after the first server starts.
+The server token is written to `/var/lib/rancher/rke2/server/token`; RKE2 also creates `/var/lib/rancher/rke2/server/node-token` for registering server or agent nodes after the first server starts.
 
 ## Configuring a Custom Token at Installation
 
-It is a best practice to define a custom token before starting your first server, rather than using the auto-generated one. This makes it easier to add nodes later without having to retrieve the auto-generated value.
+If you want to control the token from the beginning, define a strong custom token before starting your first server, rather than using the auto-generated one. This makes it easier to add nodes later without having to retrieve the auto-generated value.
 
 ### On the Server Node
 
@@ -63,7 +64,7 @@ token: "MySecureClusterToken123!"
 EOF
 
 # Install and start the agent
-curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE="agent" sudo sh -
+curl -sfL https://get.rke2.io | sudo env INSTALL_RKE2_TYPE="agent" sh -
 sudo systemctl enable rke2-agent.service
 sudo systemctl start rke2-agent.service
 ```
@@ -87,39 +88,41 @@ Use this full string as the `token` value in your agent's `config.yaml`.
 
 ## Using Environment Variables
 
-You can also pass the token via environment variable at install time:
+You can also provide the runtime token through RKE2 environment variables, although the config file is usually easier to manage with systemd:
 
 ```bash
-# Install the agent with token passed as an environment variable
-curl -sfL https://get.rke2.io | \
-  INSTALL_RKE2_TYPE="agent" \
-  sudo sh -
+# Install the agent service
+curl -sfL https://get.rke2.io | sudo env INSTALL_RKE2_TYPE="agent" sh -
 
-# Create config with the token
-sudo tee /etc/rancher/rke2/config.yaml > /dev/null <<EOF
-server: https://192.168.1.100:9345
-token: "MySecureClusterToken123!"
+# Provide the server URL and token through the systemd environment file
+sudo tee /etc/default/rke2-agent.service > /dev/null <<EOF
+RKE2_URL="https://192.168.1.100:9345"
+RKE2_TOKEN="MySecureClusterToken123!"
 EOF
+
+sudo systemctl enable rke2-agent.service
+sudo systemctl start rke2-agent.service
 ```
 
 ## Rotating the Cluster Token
 
-RKE2 supports token rotation to improve security. This is useful after a potential token compromise.
+RKE2 supports server token rotation to improve security. This is useful after a potential token compromise. After rotation, update all server and agent configurations that used the old token, then restart them with the new token.
 
-### Step 1: Prepare the New Token
+### Step 1: Rotate the Server Token
 
 ```bash
-# On all existing server nodes, update config.yaml to include both old and new tokens
-sudo tee /etc/rancher/rke2/config.yaml > /dev/null <<EOF
-token: "NewSecureToken456!"
-# The agent-token-file is used for agent authentication during rotation
-agent-token: "TransitionToken789"
-EOF
+# Run this on one server to rotate the original server token
+sudo rke2 token rotate \
+  --token 'MySecureClusterToken123!' \
+  --new-token 'NewSecureToken456!'
 ```
 
 ### Step 2: Restart Servers
 
 ```bash
+# Update each server node's configured token before restarting
+sudo sed -i 's/MySecureClusterToken123!/NewSecureToken456!/' /etc/rancher/rke2/config.yaml
+
 # Restart each server node one at a time
 sudo systemctl restart rke2-server.service
 
