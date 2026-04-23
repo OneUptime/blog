@@ -6,29 +6,30 @@ Tags: Rancher, Kubernetes, Istio, Service Mesh, DevOps
 
 Description: A step-by-step guide to installing Istio service mesh on a Kubernetes cluster managed by Rancher.
 
-Istio is a powerful open-source service mesh that provides traffic management, observability, and security features for microservices running on Kubernetes. Rancher makes it straightforward to deploy and manage Istio through its built-in Apps & Marketplace catalog. This guide walks you through the complete installation process.
+Istio is a powerful open-source service mesh that provides traffic management, observability, and security features for microservices running on Kubernetes. Rancher makes it straightforward to deploy and manage Istio through its built-in Apps catalog. Rancher-Istio is deprecated starting in Rancher v2.12.0, so newer Rancher deployments should use the SUSE Rancher Application Collection build of Istio. This guide walks you through the complete installation process.
 
 ## Prerequisites
 
 Before installing Istio from Rancher, ensure you have the following in place:
 
-- Rancher v2.6 or later installed and accessible
-- A downstream Kubernetes cluster (RKE, RKE2, or managed cloud cluster) with at least 4 vCPUs and 8 GB RAM
+- A Rancher installation with the Istio chart available in **Apps** → **Charts**
+- A downstream Kubernetes cluster whose worker nodes meet Rancher's Istio CPU and memory recommendations
+- If you are installing on RKE2, complete Rancher's additional Istio CNI and overlay configuration first
 - `kubectl` configured to communicate with your cluster
 - Cluster admin privileges in Rancher
 
-## Step 1: Enable the Istio Feature Flag
+## Step 1: Locate the Istio Chart
 
-Rancher ships with Istio support available through the Rancher Apps catalog. First, verify that the Istio feature is available in your Rancher instance.
+Rancher exposes Istio as a chart in the cluster's Apps catalog. First, verify that the chart is available in your Rancher instance.
 
 1. Log in to the Rancher UI
-2. Navigate to **Cluster Management** and select your target cluster
+2. Navigate to **Cluster Management** and open your target cluster with **Explore**
 3. Go to **Apps** → **Charts**
 4. Search for **Istio** in the catalog
 
 ## Step 2: Configure Namespace and Resource Requirements
 
-Istio components will be installed into the `istio-system` namespace. Rancher creates this automatically during installation.
+Istio components are typically installed into the `istio-system` namespace. Rancher can create it during installation if it does not already exist.
 
 Recommended resource allocations for a production setup:
 
@@ -42,44 +43,49 @@ Recommended resource allocations for a production setup:
 
 1. In the Rancher UI, navigate to **Apps** → **Charts** on your target cluster
 2. Locate the **Istio** chart and click **Install**
-3. Select the namespace `istio-system` (create it if it does not exist)
-4. Configure the Helm values as needed
+3. If Rancher prompts you to install `rancher-monitoring`, complete that step before continuing
+4. Select the namespace `istio-system` (create it if it does not exist)
+5. Configure the Helm values as needed
 
 ```yaml
-# Example values.yaml for Istio installation via Rancher
+# Example values.yaml for the Rancher `rancher-istio` chart
 
-global:
-  # Set the Istio control plane profile
-  # Options: default, demo, minimal, remote
-  profile: default
+ingressGateways:
+  enabled: true
+  type: LoadBalancer
 
-pilot:
-  # Resource requests for istiod
-  resources:
-    requests:
-      cpu: 500m
-      memory: 2048Mi
+egressGateways:
+  # Egress is disabled by default; enable it only if you need it
+  enabled: true
 
-gateways:
-  istio-ingressgateway:
-    # Enable the ingress gateway
-    enabled: true
-    type: LoadBalancer
-    resources:
-      requests:
-        cpu: 100m
-        memory: 128Mi
-
-  istio-egressgateway:
-    # Enable the egress gateway
-    enabled: true
-    resources:
-      requests:
-        cpu: 100m
-        memory: 128Mi
+overlayFile: |-
+  apiVersion: install.istio.io/v1alpha1
+  kind: IstioOperator
+  spec:
+    components:
+      pilot:
+        k8s:
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2048Mi
+      ingressGateways:
+      - name: istio-ingressgateway
+        k8s:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+      egressGateways:
+      - name: istio-egressgateway
+        k8s:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
 ```
 
-5. Click **Install** to deploy Istio
+6. Click **Install** to deploy Istio
 
 ## Step 4: Verify the Installation
 
@@ -89,18 +95,19 @@ After the installation completes, verify all Istio pods are running:
 # Check that all Istio components are running
 kubectl get pods -n istio-system
 
-# Expected output:
+# Expected output includes at least:
 # NAME                                   READY   STATUS    RESTARTS   AGE
 # istiod-xxxxxxxxx-xxxxx                 1/1     Running   0          2m
 # istio-ingressgateway-xxxxxxxxx-xxxxx   1/1     Running   0          2m
+# If you enabled the egress gateway, you should also see:
 # istio-egressgateway-xxxxxxxxx-xxxxx    1/1     Running   0          2m
 ```
 
 ```bash
-# Verify the Istio installation using istioctl
+# Verify the Istio services were created
 kubectl get services -n istio-system
 
-# Check the Istio ConfigMap
+# Check the Istio mesh ConfigMap
 kubectl get configmap istio -n istio-system -o yaml
 ```
 
@@ -110,10 +117,10 @@ The `istioctl` CLI provides additional management capabilities:
 
 ```bash
 # Download the latest istioctl binary
-curl -L https://istio.io/downloadIstio | sh -
+curl -sL https://istio.io/downloadIstioctl | sh -
 
-# Move to a directory in your PATH
-sudo mv istio-*/bin/istioctl /usr/local/bin/
+# Add istioctl to your PATH
+export PATH=$HOME/.istioctl/bin:$PATH
 
 # Verify the installation
 istioctl version
@@ -124,11 +131,11 @@ istioctl analyze
 
 ## Step 6: Enable Istio Injection for Namespaces
 
-To have Istio automatically inject sidecar proxies into your application pods, label your namespaces:
+To have Istio automatically inject sidecar proxies into new application pods, label your namespaces:
 
 ```bash
 # Enable automatic sidecar injection for a namespace
-kubectl label namespace default istio-injection=enabled
+kubectl label namespace default istio-injection=enabled --overwrite
 
 # Verify the label was applied
 kubectl get namespace default --show-labels
@@ -139,10 +146,10 @@ kubectl get namespace default --show-labels
 After installing Istio, integrating with a monitoring platform like OneUptime helps you track the health of your service mesh. OneUptime can monitor your Istio ingress gateway endpoints and alert you when services become unavailable.
 
 ```bash
-# Get the external IP of the Istio ingress gateway
+# Get the external IP or hostname of the Istio ingress gateway
 kubectl get svc istio-ingressgateway -n istio-system
 
-# Use this IP to configure monitors in OneUptime
+# Use this endpoint to configure monitors in OneUptime
 ```
 
 ## Conclusion
