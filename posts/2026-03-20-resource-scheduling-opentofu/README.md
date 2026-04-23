@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Cost Optimization, Resource Scheduling, Infrastructure as Code
 
-Description: Learn how to configure resource scheduling with OpenTofu using AWS Instance Scheduler and Lambda-based automation to stop non-production resources outside business hours.
+Description: Learn how to configure resource scheduling with OpenTofu using EventBridge scheduled rules and Lambda-based automation to stop non-production resources outside business hours.
 
-Resource scheduling stops development and staging resources outside business hours, reducing costs by 60-70% for non-production environments. Managing schedules in OpenTofu ensures consistent application across all non-production resources.
+Resource scheduling stops development and staging resources outside business hours, reducing compute costs by roughly 60-70% for non-production environments. Managing schedules in OpenTofu ensures consistent application across all non-production resources.
 
-## Instance Scheduler Tags + Lambda
+## EventBridge Schedule Tags + Lambda
 
 ```hcl
 # Lambda function to start/stop EC2 instances on schedule
@@ -28,15 +28,15 @@ resource "aws_lambda_function" "scheduler" {
       SCHEDULE_TAG_VALUE  = "business-hours"
       START_TIME_HOUR     = "7"   # 7 AM UTC
       STOP_TIME_HOUR      = "19"  # 7 PM UTC
-      TIMEZONE            = "America/New_York"
+      TIMEZONE            = "Etc/UTC"
     }
   }
 }
 
-# Start instances at 7 AM on weekdays
+# Start instances at 7 AM UTC on weekdays
 resource "aws_cloudwatch_event_rule" "start" {
   name                = "start-instances"
-  schedule_expression = "cron(0 12 ? * MON-FRI *)"  # 7 AM ET = 12 PM UTC
+  schedule_expression = "cron(0 7 ? * MON-FRI *)"  # 7 AM UTC
 }
 
 resource "aws_cloudwatch_event_target" "start" {
@@ -47,10 +47,18 @@ resource "aws_cloudwatch_event_target" "start" {
   input = jsonencode({ action = "start" })
 }
 
-# Stop instances at 7 PM on weekdays
+resource "aws_lambda_permission" "allow_start_rule" {
+  statement_id  = "AllowExecutionFromStartRule"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.scheduler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.start.arn
+}
+
+# Stop instances at 7 PM UTC on weekdays
 resource "aws_cloudwatch_event_rule" "stop" {
   name                = "stop-instances"
-  schedule_expression = "cron(0 0 ? * TUE-SAT *)"  # 7 PM ET = midnight UTC (next day)
+  schedule_expression = "cron(0 19 ? * MON-FRI *)"  # 7 PM UTC
 }
 
 resource "aws_cloudwatch_event_target" "stop" {
@@ -59,6 +67,14 @@ resource "aws_cloudwatch_event_target" "stop" {
   arn       = aws_lambda_function.scheduler.arn
 
   input = jsonencode({ action = "stop" })
+}
+
+resource "aws_lambda_permission" "allow_stop_rule" {
+  statement_id  = "AllowExecutionFromStopRule"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.scheduler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.stop.arn
 }
 ```
 
@@ -87,15 +103,21 @@ resource "aws_iam_role_policy" "scheduler" {
       {
         Effect = "Allow"
         Action = [
-          "ec2:StartInstances",
-          "ec2:StopInstances",
           "ec2:DescribeInstances",
-          "rds:StartDBInstance",
-          "rds:StopDBInstance",
           "rds:DescribeDBInstances",
         ]
         Resource = "*"
-        # Restrict to tagged resources via condition
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:StartInstances",
+          "ec2:StopInstances",
+          "rds:StartDBInstance",
+          "rds:StopDBInstance",
+        ]
+        Resource = "*"
+        # Restrict mutating actions to tagged resources via condition
         Condition = {
           StringEquals = {
             "aws:ResourceTag/Environment" = ["development", "staging"]
@@ -149,7 +171,8 @@ resource "aws_autoscaling_schedule" "scale_down" {
   max_size         = 0
   desired_capacity = 0
 
-  recurrence = "0 23 * * MON-FRI"  # 7 PM ET = 11 PM UTC, weekdays
+  recurrence = "0 19 * * 1-5"  # 7 PM UTC, weekdays
+  time_zone  = "Etc/UTC"
 }
 
 resource "aws_autoscaling_schedule" "scale_up" {
@@ -160,10 +183,11 @@ resource "aws_autoscaling_schedule" "scale_up" {
   max_size         = 5
   desired_capacity = 2
 
-  recurrence = "0 12 * * MON-FRI"  # 7 AM ET = 12 PM UTC, weekdays
+  recurrence = "0 7 * * 1-5"  # 7 AM UTC, weekdays
+  time_zone  = "Etc/UTC"
 }
 ```
 
 ## Conclusion
 
-Resource scheduling in OpenTofu reduces non-production costs by stopping instances outside business hours. Use CloudWatch Events with Lambda for EC2 and RDS scheduling, Auto Scaling scheduled actions for ASGs, and consistent Environment and Schedule tags to identify schedulable resources. Schedule dev and staging environments to run only during business hours and save 60-70% on non-production compute costs.
+Resource scheduling in OpenTofu reduces non-production costs by stopping instances outside business hours. Use EventBridge scheduled rules with Lambda for EC2 and RDS scheduling, Auto Scaling scheduled actions for ASGs, and consistent Environment and Schedule tags to identify schedulable resources. Schedule dev and staging environments to run only during business hours and save 60-70% on non-production compute costs.
