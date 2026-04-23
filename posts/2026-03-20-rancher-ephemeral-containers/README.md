@@ -8,7 +8,7 @@ Description: Master ephemeral containers in Rancher Kubernetes clusters to debug
 
 ## Introduction
 
-Ephemeral containers are a special type of container that can be added to a running pod for debugging purposes. Unlike regular containers, they cannot be restarted and are not listed in the pod spec-they're truly temporary. This makes them ideal for debugging minimal or distroless containers that lack debugging tools. This guide covers working with ephemeral containers in Rancher.
+Ephemeral containers are a special type of container that can be added to a running pod for debugging purposes. Unlike regular containers, they cannot be restarted automatically and are added through the pod's `ephemeralcontainers` subresource rather than the original pod manifest. This makes them ideal for debugging minimal or distroless containers that lack debugging tools. This guide covers working with ephemeral containers in Rancher.
 
 ## Prerequisites
 
@@ -21,11 +21,10 @@ Ephemeral containers are a special type of container that can be added to a runn
 
 ```bash
 # Check Kubernetes version
-
-kubectl version --short
+kubectl version
 
 # Verify ephemeral container RBAC
-kubectl auth can-i update pods/ephemeralcontainers -n production
+kubectl auth can-i update pods --subresource=ephemeralcontainers -n production
 
 # List running pods to debug
 kubectl get pods -n production
@@ -40,15 +39,15 @@ kubectl debug -it \
   pod/my-distroless-app-xyz \
   -n production
 
-# Use process namespace sharing to see target container's processes
+# Target the application container's namespaces so you can inspect its processes
 kubectl debug -it \
   --image=busybox \
   --target=my-app \
   pod/my-distroless-app-xyz \
   -n production
 
-# The --target flag shares process namespace, allowing you to
-# inspect the target container's processes
+# The --target flag asks the container runtime to place the ephemeral
+# container in the target container's namespaces
 ps aux
 ls /proc/1/root/  # View target container's filesystem
 ```
@@ -102,49 +101,43 @@ cat /proc/1/net/tcp
 ## Step 5: Configure Ephemeral Container with Security Context
 
 ```bash
-# Add ephemeral container with specific security context
-# Use kubectl with JSON override
+# Use a built-in debug profile when the ephemeral container needs elevated privileges
 kubectl debug -it \
   pod/my-app-pod \
   --image=registry.example.com/debug-tools:latest \
   -n production \
   --target=my-app \
+  --profile=sysadmin \
   -- sh
 
-# For strace/ptrace capabilities, create the ephemeral container via API
-cat <<EOF | kubectl apply -f -
-{
-  "apiVersion": "v1",
-  "kind": "Pod",
-  "metadata": {
-    "name": "my-app-pod"
-  },
-  "spec": {
-    "ephemeralContainers": [{
-      "name": "debugger",
-      "image": "registry.example.com/debug-tools:latest",
-      "targetContainerName": "my-app",
-      "stdin": true,
-      "tty": true,
-      "securityContext": {
-        "capabilities": {
-          "add": ["SYS_PTRACE"]
-        }
-      }
-    }]
-  }
-}
+# On Kubernetes v1.32+, use a custom profile for fine-grained capabilities
+cat <<EOF > custom-profile.yaml
+securityContext:
+  capabilities:
+    add:
+      - SYS_PTRACE
 EOF
+
+kubectl debug -it \
+  pod/my-app-pod \
+  --image=registry.example.com/debug-tools:latest \
+  -n production \
+  --target=my-app \
+  --profile=general \
+  --custom=custom-profile.yaml \
+  -- sh
 ```
 
 ## Step 6: Network Debugging with Ephemeral Containers
 
 ```bash
 # Debug network issues using netshoot
+# Use a privileged debug profile if you need packet capture tools such as tcpdump
 kubectl debug -it \
   pod/my-app-pod \
   --image=nicolaka/netshoot \
   --target=my-app \
+  --profile=sysadmin \
   -n production \
   -- bash
 
@@ -171,15 +164,16 @@ tcpdump -i any port 8080 -w /tmp/debug.pcap
 # Check ephemeral container status in pod
 kubectl describe pod my-app-pod -n production | grep -A 20 "Ephemeral Containers"
 
-# Get pod JSON to see ephemeral container details
+# Get pod JSON to see ephemeral container status details
 kubectl get pod my-app-pod -n production -o json | \
-  jq '.spec.ephemeralContainers'
+  jq '.status.ephemeralContainerStatuses'
 
-# Get logs from ephemeral container
+# Get logs from an ephemeral container
+# Replace debugger with the actual ephemeral container name if you did not set one explicitly
 kubectl logs my-app-pod -c debugger -n production
 
-# Ephemeral containers cannot be removed, they stay as "Completed"
-# until the pod is deleted
+# Ephemeral containers cannot be removed; after they exit, their status
+# remains on the pod until the pod is deleted
 ```
 
 ## Step 8: RBAC Configuration for Ephemeral Containers
@@ -196,7 +190,10 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["pods/ephemeralcontainers"]
-    verbs: ["patch", "get"]
+    verbs: ["update", "get"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
   - apiGroups: [""]
     resources: ["pods/attach"]
     verbs: ["create", "get"]
