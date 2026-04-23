@@ -21,6 +21,9 @@ Calico is a high-performance networking solution that provides both pod networki
 
 cni: calico
 
+# For eBPF mode, also disable kube-proxy before the first start:
+# disable-kube-proxy: true
+
 # Pod network CIDR
 cluster-cidr: 10.42.0.0/16
 service-cidr: 10.43.0.0/16
@@ -39,15 +42,15 @@ sudo systemctl start rke2-server
 
 ```bash
 # Check Calico pods are running
-kubectl get pods -n kube-system | grep calico
+kubectl get pods -n calico-system
 
 # Check Calico DaemonSet
-kubectl get daemonset -n kube-system | grep calico
+kubectl get daemonset -n calico-system calico-node
 
-# Verify Calico node status
-kubectl exec -n kube-system \
-  $(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1) \
-  -- calico-node --bird-ready
+# Verify Calico node readiness
+kubectl exec -n calico-system \
+  $(kubectl get pods -n calico-system -l k8s-app=calico-node -o name | head -1) \
+  -c calico-node -- /bin/calico-node -felix-ready
 
 # Check Calico CRDs
 kubectl get crd | grep projectcalico
@@ -55,11 +58,11 @@ kubectl get crd | grep projectcalico
 
 ## Step 3: Configure Calico IP Pools
 
-Calico uses IP pools to define the CIDR ranges for pod IPs:
+Calico uses IP pools to define the CIDR ranges for pod IPs. If you need a custom `blockSize`, set it before the pool is created:
 
 ```yaml
 # calico-ippool.yaml - Configure IP address allocation
-apiVersion: projectcalico.org/v3
+apiVersion: crd.projectcalico.org/v1
 kind: IPPool
 metadata:
   name: default-ipv4-ippool
@@ -70,11 +73,11 @@ spec:
   # Encapsulation mode
   # ipipMode options: Always, CrossSubnet, Never
   # vxlanMode options: Always, CrossSubnet, Never
-  ipipMode: CrossSubnet  # Use IPIP only for cross-subnet traffic
+  ipipMode: Never  # Use no overlay encapsulation for pure BGP routing
   vxlanMode: Never
 
-  # Disable NAT for outgoing traffic (BGP mode)
-  natOutgoing: true
+  # Do not masquerade pod egress when upstream routers learn pod CIDRs via BGP
+  natOutgoing: false
 
   # Allow scheduling on all nodes
   nodeSelector: all()
@@ -85,11 +88,31 @@ spec:
 
 ## Step 4: Configure BGP Peering
 
-For environments with BGP-capable routers, configure Calico to use BGP:
+For environments with BGP-capable routers, configure RKE2's Calico chart with BGP enabled and encapsulation set to `None`. For new clusters, place this file before starting RKE2 so the initial IP pool is created without overlay encapsulation:
 
 ```yaml
+# /var/lib/rancher/rke2/server/manifests/rke2-calico-config.yaml
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-calico
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    installation:
+      calicoNetwork:
+        bgp: Enabled
+        ipPools:
+        - cidr: 10.42.0.0/16
+          encapsulation: None
+          natOutgoing: Disabled
+          nodeSelector: all()
+          blockSize: 26
+      backend: "None"
+      natOutgoing: "Disabled"
+---
 # bgp-config.yaml - Configure global BGP settings
-apiVersion: projectcalico.org/v3
+apiVersion: crd.projectcalico.org/v1
 kind: BGPConfiguration
 metadata:
   name: default
@@ -105,7 +128,7 @@ spec:
   - cidr: 10.0.100.0/24
 ---
 # bgp-peer.yaml - Configure BGP peer (router/spine switch)
-apiVersion: projectcalico.org/v3
+apiVersion: crd.projectcalico.org/v1
 kind: BGPPeer
 metadata:
   name: spine-router-1
@@ -117,7 +140,7 @@ spec:
   asNumber: 64500
 
   # Optional: Only peer with specific nodes
-  # nodeSelector: "rack == rack1"
+  # nodeSelector: "rack == 'rack1'"
 ```
 
 ## Step 5: Configure Advanced Network Policies
@@ -126,12 +149,15 @@ Calico supports GlobalNetworkPolicy for cluster-wide rules beyond standard Kuber
 
 ```yaml
 # global-deny-all.yaml - Deny all traffic by default
-apiVersion: projectcalico.org/v3
+apiVersion: crd.projectcalico.org/v1
 kind: GlobalNetworkPolicy
 metadata:
   name: default-deny-all
 spec:
-  # Apply to all pods
+  order: 1000
+
+  # Apply to all non-system pods
+  namespaceSelector: projectcalico.org/name != "kube-system"
   selector: all()
   types:
   - Ingress
@@ -142,7 +168,6 @@ spec:
   - action: Allow
     protocol: UDP
     destination:
-      nets: []
       ports: [53]
   - action: Allow
     protocol: TCP
@@ -150,20 +175,21 @@ spec:
       ports: [53]
 ---
 # allow-kube-system.yaml - Allow kube-system communications
-apiVersion: projectcalico.org/v3
+apiVersion: crd.projectcalico.org/v1
 kind: GlobalNetworkPolicy
 metadata:
   name: allow-kube-system
 spec:
+  order: 100
   selector: all()
   ingress:
   - action: Allow
     source:
-      namespaceSelector: kubernetes.io/metadata.name == "kube-system"
+      namespaceSelector: projectcalico.org/name == "kube-system"
   egress:
   - action: Allow
     destination:
-      namespaceSelector: kubernetes.io/metadata.name == "kube-system"
+      namespaceSelector: projectcalico.org/name == "kube-system"
 ```
 
 ## Step 6: Configure Calico for High Performance
@@ -177,35 +203,45 @@ metadata:
   namespace: kube-system
 spec:
   valuesContent: |-
-    calico:
-      # Enable eBPF dataplane for high performance
-      # Requires kernel 5.3+
-      # bpfEnabled: true
+    installation:
+      calicoNetwork:
+        # MTU configuration
+        # Use the underlay MTU with no encapsulation.
+        # For IPIP subtract 20 bytes; for VXLAN subtract 50 bytes.
+        mtu: 1500
 
-      # MTU configuration
-      # Set to network MTU minus 20 bytes for IPIP
-      # or minus 50 for VXLAN
-      mtu: "1480"
+        # Enable eBPF dataplane for high performance.
+        # Requires a supported RKE2 release, a recent supported kernel,
+        # and disable-kube-proxy: true in /etc/rancher/rke2/config.yaml.
+        # kubeProxyManagement: Enabled
+        # linuxDataplane: BPF
 
-      # Felix configuration
-      felixConfiguration:
-        # BPF logging level
-        bpfLogLevel: "Off"
-        # Health check port
-        healthPort: 9099
+    # If linuxDataplane: BPF is enabled with kube-proxy disabled, set:
+    # kubernetesServiceEndpoint:
+    #   host: "localhost"
+    #   port: "6443"
+
+    # Felix configuration
+    felixConfiguration:
+      # BPF logging level
+      bpfLogLevel: "Off"
+      # Health check port
+      healthPort: 9099
 ```
 
 ## Step 7: Monitor Calico Network Health
 
 ```bash
 # Check the health of all Calico nodes
-kubectl get pods -n kube-system -l k8s-app=calico-node -o wide
+kubectl get pods -n calico-system -l k8s-app=calico-node -o wide
 
 # Use calicoctl for detailed status
-# Install calicoctl
-curl -L https://github.com/projectcalico/calico/releases/download/v3.26.0/calicoctl-linux-amd64 \
+# Install the calicoctl version that matches your Calico deployment
+CALICO_VERSION=$(kubectl get installation.operator.tigera.io default \
+  -o jsonpath='{.status.calicoVersion}')
+sudo curl -L "https://github.com/projectcalico/calico/releases/download/${CALICO_VERSION}/calicoctl-linux-amd64" \
   -o /usr/local/bin/calicoctl
-chmod +x /usr/local/bin/calicoctl
+sudo chmod +x /usr/local/bin/calicoctl
 
 export DATASTORE_TYPE=kubernetes
 export KUBECONFIG=~/.kube/config
