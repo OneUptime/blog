@@ -13,7 +13,7 @@ MongoDB is the leading NoSQL document database, widely used for flexible schema 
 ## Prerequisites
 
 - Rancher-managed Kubernetes cluster
-- Helm 3.x installed
+- Helm 3.8+ installed
 - A StorageClass for persistent volumes
 - kubectl access to the databases namespace
 
@@ -22,15 +22,12 @@ MongoDB is the leading NoSQL document database, widely used for flexible schema 
 ```yaml
 # mongodb-values.yaml - Production MongoDB configuration
 
-# Authentication
+# Authentication users (passwords come from auth.existingSecret)
 auth:
   enabled: true
   rootUser: root
-  rootPassword: "M0ng0RootP@ss"
   usernames:
     - appuser
-  passwords:
-    - "AppUserP@ss"
   databases:
     - myapp
 
@@ -43,8 +40,8 @@ replicaSetName: rs0
 
 # Port configuration
 service:
-  type: ClusterIP
-  port: 27017
+  ports:
+    mongodb: 27017
 
 # Persistent storage
 persistence:
@@ -85,7 +82,7 @@ metrics:
     labels:
       release: rancher-monitoring
 
-# Backup
+# Optional built-in chart backups
 backup:
   enabled: true
   cronjob:
@@ -98,21 +95,17 @@ backup:
 ## Step 2: Deploy MongoDB
 
 ```bash
-# Add Bitnami repo
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm repo update
-
 # Create namespace and secrets
 kubectl create namespace databases
 
 kubectl create secret generic mongodb-passwords \
-  --from-literal=mongodb-passwords=AppUserP@ss \
-  --from-literal=mongodb-root-password=M0ng0RootP@ss \
-  --from-literal=mongodb-replica-set-key=$(openssl rand -base64 32) \
+  --from-literal=mongodb-passwords=AppUserPass123 \
+  --from-literal=mongodb-root-password=MongoRootPass123 \
+  --from-literal=mongodb-replica-set-key=$(openssl rand -hex 32) \
   --namespace=databases
 
 # Deploy MongoDB
-helm install mongodb bitnami/mongodb \
+helm install mongodb oci://registry-1.docker.io/bitnamicharts/mongodb \
   --namespace databases \
   --values mongodb-values.yaml \
   --set auth.existingSecret=mongodb-passwords \
@@ -126,37 +119,26 @@ kubectl get pods -n databases -l app.kubernetes.io/name=mongodb
 ## Step 3: Verify Replica Set
 
 ```bash
-# Connect to MongoDB primary
-kubectl exec -n databases -it mongodb-0 -- \
-  mongosh -u root -p ${MONGODB_ROOT_PASSWORD} --authenticationDatabase admin
+# Connect to a MongoDB pod
+kubectl exec -n databases -it mongodb-0 -- bash -lc \
+  'mongosh -u root -p "$MONGODB_ROOT_PASSWORD" --authenticationDatabase admin'
 
 # Inside mongosh, check replica set status
 rs.status()
 rs.conf()
 
-# Check who is primary
-db.adminCommand({ isMaster: 1 })
+# Check whether the connected member is primary
+db.hello()
 ```
 
-## Step 4: Create Application User and Database
+## Step 4: Verify Application User and Database
 
 ```bash
-# Connect and create user
-kubectl exec -n databases mongodb-0 -- \
-  mongosh -u root -p${MONGODB_ROOT_PASSWORD} \
-  --authenticationDatabase admin \
-  --eval '
-    use myapp;
-    db.createUser({
-      user: "appuser",
-      pwd: "AppUserP@ss",
-      roles: [
-        { role: "readWrite", db: "myapp" },
-        { role: "dbAdmin", db: "myapp" }
-      ]
-    });
-    print("User created successfully");
-  '
+# Verify the application user created during chart initialization
+kubectl exec -n databases mongodb-0 -- bash -lc \
+  'mongosh -u root -p "$MONGODB_ROOT_PASSWORD" \
+    --authenticationDatabase admin \
+    --eval "printjson(db.getSiblingDB(\"myapp\").getUser(\"appuser\"))"'
 ```
 
 ## Step 5: Deploy Application
@@ -167,28 +149,49 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: my-app
-  namespace: production
+  namespace: databases
+  labels:
+    app: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: my-app
           image: registry.example.com/my-app:v1.0
           env:
-            - name: MONGODB_URI
-              # Connection string for replica set
-              value: "mongodb://appuser:$(MONGODB_PASSWORD)@mongodb-0.mongodb-headless.databases.svc.cluster.local:27017,mongodb-1.mongodb-headless.databases.svc.cluster.local:27017,mongodb-2.mongodb-headless.databases.svc.cluster.local:27017/myapp?replicaSet=rs0&authSource=myapp"
             - name: MONGODB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: mongodb-passwords
                   key: mongodb-passwords
+            - name: MONGODB_URI
+              # Connection string for replica set
+              value: "mongodb://appuser:$(MONGODB_PASSWORD)@mongodb-0.mongodb-headless.databases.svc.cluster.local:27017,mongodb-1.mongodb-headless.databases.svc.cluster.local:27017,mongodb-2.mongodb-headless.databases.svc.cluster.local:27017/myapp?replicaSet=rs0&authSource=myapp"
 ```
 
-## Step 6: Configure Automated Backups with mongodump
+## Step 6: Alternative Backup CronJob with mongodump
 
 ```yaml
 # mongodb-backup-cronjob.yaml - Automated MongoDB backup
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-backup-pvc
+  namespace: databases
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 50Gi
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -202,15 +205,14 @@ spec:
         spec:
           containers:
             - name: mongodb-backup
-              image: bitnami/mongodb:7.0
+              image: bitnami/mongodb:8.0.13-debian-12-r0
               command:
                 - /bin/bash
                 - -c
                 - |
                   DATE=$(date +%Y%m%d-%H%M%S)
                   mongodump \
-                    --uri="mongodb://root:${MONGODB_ROOT_PASSWORD}@mongodb-0.mongodb-headless:27017/?authSource=admin" \
-                    --replicaSet=rs0 \
+                    --uri="mongodb://root:${MONGODB_ROOT_PASSWORD}@mongodb-0.mongodb-headless.databases.svc.cluster.local:27017/?replicaSet=rs0&authSource=admin" \
                     --gzip \
                     --out=/backup/mongodb-${DATE}
                   echo "Backup complete: /backup/mongodb-${DATE}"
@@ -233,10 +235,12 @@ spec:
 ## Step 7: MongoDB Operator (Alternative Approach)
 
 ```bash
-# Install MongoDB Community Operator
+# Install MongoDB Kubernetes Operator
 helm repo add mongodb https://mongodb.github.io/helm-charts
-helm install community-operator mongodb/community-operator \
-  --namespace mongodb-operator \
+helm repo update
+kubectl apply -f https://raw.githubusercontent.com/mongodb/mongodb-kubernetes/1.8.0/public/crds.yaml
+helm upgrade --install mongodb-kubernetes-operator mongodb/mongodb-kubernetes \
+  --namespace databases \
   --create-namespace
 ```
 
@@ -262,6 +266,7 @@ spec:
       roles:
         - name: readWrite
           db: myapp
+      scramCredentialsSecretName: appuser-scram
   statefulSet:
     spec:
       volumeClaimTemplates:
@@ -273,6 +278,15 @@ spec:
             resources:
               requests:
                 storage: 30Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: user-password
+  namespace: databases
+type: Opaque
+stringData:
+  password: AppUserPass123
 ```
 
 ## Troubleshooting
@@ -282,18 +296,18 @@ spec:
 kubectl logs -n databases mongodb-0 --tail=100
 
 # Check replica set health
-kubectl exec -n databases mongodb-0 -- \
-  mongosh -u root -p${MONGODB_ROOT_PASSWORD} \
-  --authenticationDatabase admin \
-  --eval "rs.status().members.forEach(m => print(m.name, m.stateStr, m.health))"
+kubectl exec -n databases mongodb-0 -- bash -lc \
+  'mongosh -u root -p "$MONGODB_ROOT_PASSWORD" \
+    --authenticationDatabase admin \
+    --eval "rs.status().members.forEach(m => print(m.name, m.stateStr, m.health))"'
 
 # Check oplog size
-kubectl exec -n databases mongodb-0 -- \
-  mongosh -u root -p${MONGODB_ROOT_PASSWORD} \
-  --authenticationDatabase admin \
-  --eval "db.getSiblingDB('local').oplog.rs.stats().maxSize"
+kubectl exec -n databases mongodb-0 -- bash -lc \
+  'mongosh -u root -p "$MONGODB_ROOT_PASSWORD" \
+    --authenticationDatabase admin \
+    --eval "db.getSiblingDB(\"local\").oplog.rs.stats().maxSize"'
 ```
 
 ## Conclusion
 
-MongoDB on Rancher provides a scalable, resilient document database platform. The replica set configuration ensures high availability with automatic primary election. For production deployments, use the MongoDB Community Operator for declarative management of your replica sets, configure automated backups to object storage, and monitor replication lag and oplog window to ensure your replicas stay synchronized.
+MongoDB on Rancher provides a scalable, resilient document database platform. The replica set configuration ensures high availability with automatic primary election. For production deployments, use the MongoDB Kubernetes Operator for declarative management of your replica sets, configure automated backups to object storage, and monitor replication lag and oplog window to ensure your replicas stay synchronized.
