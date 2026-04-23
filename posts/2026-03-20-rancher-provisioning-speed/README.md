@@ -8,7 +8,7 @@ Description: Speed up Kubernetes cluster provisioning in Rancher by optimizing n
 
 ## Introduction
 
-Slow cluster provisioning frustrates operators and slows down development workflows. Rancher cluster provisioning time can range from 5 minutes to 30+ minutes depending on configuration. This guide covers the key optimizations that can cut provisioning time by 50-70%.
+Slow cluster provisioning frustrates operators and slows down development workflows. Rancher cluster provisioning time varies significantly depending on image preparation, registry proximity, and cluster configuration. This guide covers the key optimizations that can materially reduce provisioning time.
 
 ## Prerequisites
 
@@ -19,33 +19,26 @@ Slow cluster provisioning frustrates operators and slows down development workfl
 ## Step 1: Use Pre-Baked Node Images
 
 ```bash
-# Create a base AMI with Kubernetes dependencies pre-installed
+# Create a base AMI with RKE2 artifacts pre-staged
 
-# This eliminates package installation time during provisioning
+# This avoids downloading RKE2 artifacts during provisioning
 
 # On a base EC2 instance, run:
-# Install container runtime
-curl -fsSL https://get.docker.com | sh
-systemctl enable docker
+# Install the exact RKE2 version you plan to run
+curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=v1.33.1+rke2r1 sh -
 
-# Pre-pull RKE2 images
-systemctl enable rke2-server
-rke2-install.sh  # Download installer
+# Stage the matching RKE2 image tarball so nodes import from local disk
+mkdir -p /var/lib/rancher/rke2/agent/images
+curl -L "https://github.com/rancher/rke2/releases/download/v1.33.1%2Brke2r1/rke2-images.linux-amd64.tar.zst" \
+  -o /var/lib/rancher/rke2/agent/images/rke2-images.linux-amd64.tar.zst
 
-# Pre-pull common Kubernetes images
-ctr images pull registry.k8s.io/pause:3.9
-ctr images pull registry.k8s.io/coredns/coredns:v1.10.1
-ctr images pull registry.k8s.io/etcd:3.5.9-0
-ctr images pull registry.k8s.io/kube-apiserver:v1.28.0
-ctr images pull registry.k8s.io/kube-controller-manager:v1.28.0
-ctr images pull registry.k8s.io/kube-scheduler:v1.28.0
-ctr images pull registry.k8s.io/kube-proxy:v1.28.0
+# Do not start rke2-server on the golden image; Rancher will configure and start it during provisioning
 
 # Create AMI from this instance
 aws ec2 create-image \
   --instance-id i-xxxxxxxx \
-  --name "rke2-k8s-1.28-base-$(date +%Y%m%d)" \
-  --description "Pre-baked RKE2 Kubernetes 1.28 node"
+  --name "rke2-base-$(date +%Y%m%d)" \
+  --description "Pre-baked RKE2 node with local image cache"
 ```
 
 ## Step 2: Configure Registry Mirror for Faster Pulls
@@ -81,33 +74,32 @@ metadata:
   name: fast-worker-config
   namespace: fleet-default
 spec:
-  # Use fast instance types with NVMe SSD
+  # Use a current-generation instance type
   instanceType: m6i.xlarge
 
   # Use pre-baked AMI
   ami: ami-xxxxxxxxxxxxxxxxx
 
-  # Use latest generation for faster network
+  # Attach the IAM instance profile needed by the nodes
   iamInstanceProfile: K8sWorkerRole
 
   # Pre-attached security groups
   securityGroup:
     - k8s-workers-sg
 
-  # Use GP3 SSD for root volume
-  rootSize: 50
+  # Use GP3 for the root volume
+  rootSize: "50"
   volumeType: gp3
-  iops: 3000
-  throughput: 125
-
-  # Use placement group for low-latency inter-node communication
-  placementGroup: k8s-cluster-pg
 
   # Userdata - minimal since using pre-baked AMI
   userdata: |
     #!/bin/bash
     # Set hostname
-    hostnamectl set-hostname $(curl -s http://169.254.169.254/latest/meta-data/local-hostname)
+    TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+      -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+    hostnamectl set-hostname "$(curl -s \
+      -H "X-aws-ec2-metadata-token: ${TOKEN}" \
+      http://169.254.169.254/latest/meta-data/local-hostname)"
 ```
 
 ## Step 4: Parallelize Node Provisioning
@@ -121,48 +113,45 @@ metadata:
   namespace: fleet-default
 spec:
   rkeConfig:
-    nodePools:
+    machinePools:
       # Control plane nodes
       - name: control-plane
         quantity: 3
-        roles:
-          - controlplane
-          - etcd
+        controlPlaneRole: true
+        etcdRole: true
         machineConfigRef:
           kind: Amazonec2Config
           name: fast-cp-config
 
-      # Worker nodes - provision all in parallel
+      # Worker nodes
       - name: workers
         quantity: 10
-        roles:
-          - worker
+        workerRole: true
         machineConfigRef:
           kind: Amazonec2Config
           name: fast-worker-config
-        # No drain on upgrade for faster scaling
-        rollingUpdate:
-          maxUnavailable: 2
-          maxSurge: 2
+    upgradeStrategy:
+      controlPlaneConcurrency: "1"
+      workerConcurrency: "2"
 ```
 
 ## Step 5: Pre-stage Rancher Agent Images
 
 ```bash
-# On pre-baked AMI, pull the Rancher agent images
-# This eliminates the agent pull time
+# On a registry seed host, mirror the Rancher agent image
+# This avoids pulling it from the public registry during provisioning
 
-# Check which Rancher agent images are needed
-# (Version-specific, update for your Rancher version)
-docker pull rancher/rancher-agent:v2.8.0
+# Match the tag to your Rancher server version
+RANCHER_VERSION=v2.13.1
+docker pull rancher/rancher-agent:${RANCHER_VERSION}
+docker tag rancher/rancher-agent:${RANCHER_VERSION} \
+  mirror.registry.internal/rancher/rancher-agent:${RANCHER_VERSION}
+docker push mirror.registry.internal/rancher/rancher-agent:${RANCHER_VERSION}
 
-# For RKE2, pre-pull system images
-rke2 images list | while read image; do
-  ctr images pull $image
-done
-
-# Save images as tarball for air-gapped environments
-rke2 images save > /var/lib/rancher/rke2/agent/images/rke2-images.tar
+# On the AMI, use RKE2's supported pre-import file for extra images you always need
+cat > /var/lib/rancher/rke2/agent/images/custom-images.txt << 'EOF'
+ghcr.io/your-org/platform-agent:stable
+EOF
 ```
 
 ## Step 6: Optimize DNS Resolution
@@ -175,14 +164,16 @@ rke2 images save > /var/lib/rancher/rke2/agent/images/rke2-images.tar
 time nslookup rancher.example.com
 
 # Configure faster DNS on nodes
+# If /etc/resolv.conf is managed dynamically, make the equivalent change
+# through systemd-resolved, NetworkManager, or DHCP options instead.
 cat >> /etc/resolv.conf << EOF
 options timeout:1 attempts:3 rotate
 EOF
 
-# For EC2 instances, use Route53 Resolver
+# For EC2 instances, use Amazon Route 53 Resolver
 # Ensure your VPC has DNS hostnames and DNS resolution enabled
-aws ec2 modify-vpc-attribute --vpc-id vpc-xxxxx --enable-dns-hostnames
-aws ec2 modify-vpc-attribute --vpc-id vpc-xxxxx --enable-dns-support
+aws ec2 modify-vpc-attribute --vpc-id vpc-xxxxx --enable-dns-support '{"Value":true}'
+aws ec2 modify-vpc-attribute --vpc-id vpc-xxxxx --enable-dns-hostnames '{"Value":true}'
 ```
 
 ## Step 7: Monitor Provisioning Time
@@ -196,7 +187,7 @@ kubectl get clusters.provisioning.cattle.io \
     {
       name: .metadata.name,
       created: .metadata.creationTimestamp,
-      ready: (.status.conditions[] | select(.type=="Ready") | .lastTransitionTime)
+      ready: ([.status.conditions[]? | select(.type=="Ready") | .lastTransitionTime] | first)
     }'
 
 # Alert on slow provisioning
@@ -205,4 +196,4 @@ kubectl get clusters.provisioning.cattle.io \
 
 ## Conclusion
 
-Cluster provisioning speed in Rancher is primarily determined by three factors: node image preparation time, container image pull speed, and Rancher agent connection latency. By using pre-baked AMIs with Kubernetes binaries and images pre-loaded, combined with internal registry mirrors, you can reduce provisioning time from 20+ minutes to under 5 minutes. For organizations that frequently provision new clusters-such as in CI/CD workflows or auto-scaling scenarios-these optimizations are essential for operational efficiency.
+Cluster provisioning speed in Rancher is primarily determined by three factors: node image preparation time, container image pull speed, and Rancher agent connection latency. By using pre-baked AMIs with RKE2 artifacts and images pre-staged, combined with internal registry mirrors, you can reduce provisioning time significantly. For organizations that frequently provision new clusters-such as in CI/CD workflows or burst scaling scenarios-these optimizations are essential for operational efficiency.
