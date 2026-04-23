@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Network Namespaces, Routing, veth, iproute2, Networking, Virtual Networking
 
-Description: Configure static routes and a bridge or router namespace to forward traffic between multiple Linux network namespaces on different subnets.
+Description: Configure static routes and a router namespace or host router to forward traffic between multiple Linux network namespaces on different subnets.
 
 ## Introduction
 
@@ -15,7 +15,7 @@ When you have multiple network namespaces on different subnets, you need routing
 ```mermaid
 flowchart LR
     ns1["ns1\n10.0.1.2/24"] -- "veth0-veth-r1\n10.0.1.1" --> router["router ns\n(IP forwarding)"]
-    router -- "veth-r2-veth2\n10.0.2.1" --> ns2["ns2\n10.0.2.2/24"]
+    router -- "veth-r2-veth1\n10.0.2.1" --> ns2["ns2\n10.0.2.2/24"]
 ```
 
 ## Step 1: Create the Namespaces
@@ -101,4 +101,4 @@ ip netns exec ns1 ip route show
 
 ## Conclusion
 
-Routing between network namespaces requires a router (either the host or a dedicated namespace) with IP forwarding enabled, veth pairs connecting each namespace to the router, and default routes in each namespace pointing to the router. This topology mirrors how container runtimes implement multi-container networking.
+Routing between network namespaces requires a router (either the host or a dedicated namespace) with IP forwarding enabled, veth pairs connecting each namespace to the router, and default routes in each namespace pointing to the router. This topology uses the same basic building blocks used by many container runtimes and CNI plugins: namespaces, veth pairs, routing, and forwarding.
