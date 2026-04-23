@@ -18,8 +18,9 @@ Teleport is an open-source identity-aware proxy for infrastructure access. It pr
 ## Architecture
 
 ```text
-Developer → Teleport Proxy → Teleport Auth → Kubernetes API (Rancher)
-                                           → SSH to nodes
+Developer → Teleport Proxy → Teleport Kubernetes Service → Kubernetes API (Rancher-managed cluster)
+Developer → Teleport Proxy → Teleport SSH Service → Cluster nodes
+Teleport Auth issues certificates, evaluates RBAC, and stores audit metadata.
 ```
 
 ## Prerequisites
@@ -27,7 +28,10 @@ Developer → Teleport Proxy → Teleport Auth → Kubernetes API (Rancher)
 - Rancher-managed Kubernetes cluster
 - Teleport 14+ installed (Community or Enterprise)
 - `tsh` CLI installed on developer machines
-- Teleport agent access to cluster API
+- `kubectl` installed on developer machines
+- Teleport Kubernetes Service access to the cluster API server
+- Kubernetes RBAC bindings for the users or groups Teleport will impersonate
+- Teleport SSH Service installed on cluster nodes if you also want node-level SSH access
 
 ## Step 1: Install Teleport on the Cluster
 
@@ -37,10 +41,12 @@ Deploy the Teleport Kubernetes agent using Helm:
 helm repo add teleport https://charts.releases.teleport.dev
 helm repo update
 
+# Add --set enterprise=true when connecting to Teleport Enterprise or Teleport Cloud.
 helm install teleport-agent teleport/teleport-kube-agent \
   --namespace teleport-agent \
   --create-namespace \
   --set roles=kube \
+  --set labels.environment=production \
   --set proxyAddr=teleport.example.com:443 \
   --set authToken=your-join-token \
   --set kubeClusterName=rancher-production
@@ -56,11 +62,13 @@ tctl tokens add --type=kube --ttl=1h
 
 ## Step 3: Configure Teleport Role for Kubernetes Access
 
+Make sure the `developers` Kubernetes group is bound to the required permissions in the downstream cluster.
+
 ```yaml
 # rancher-developer-role.yaml
 
 kind: role
-version: v6
+version: v7
 metadata:
   name: rancher-developer
 spec:
@@ -68,7 +76,6 @@ spec:
     kubernetes_labels:
       environment: ["production", "staging"]
     kubernetes_groups: ["developers"]
-    kubernetes_users: ["{{internal.logins}}"]
     kubernetes_resources:
       - kind: pod
         namespace: "*"
@@ -117,12 +124,14 @@ tsh kube login rancher-production
 kubectl get pods --all-namespaces
 
 # Start an interactive kubectl session with recording
-tsh kubectl -- exec -it my-pod -- /bin/bash
+tsh kubectl exec -it my-pod -- /bin/bash
 ```
 
 ## Step 6: SSH Access to Rancher Nodes
 
 For SSH access to underlying nodes:
+
+This requires enrolling the nodes with Teleport's SSH Service separately; the Kubernetes agent only provides Kubernetes API access.
 
 ```bash
 # List nodes
@@ -140,10 +149,12 @@ Session recording is enabled by default. Configure storage:
 
 ```yaml
 # teleport.yaml
+teleport:
+  storage:
+    audit_sessions_uri: "s3://my-teleport-sessions-bucket?region=us-east-1"
+
 auth_service:
   session_recording: node-sync   # or: off, node, proxy, proxy-sync
-  audit_events_uri:
-    - "s3://my-teleport-sessions-bucket"
 ```
 
 ## Reviewing Sessions in Rancher Context
@@ -160,9 +171,9 @@ tsh play <session-id>
 
 Configure Rancher to use the same OIDC provider as Teleport for unified authentication:
 
-1. In Rancher, go to **Global Settings → Authentication → Keycloak (SAML)** or **OpenID Connect**
+1. In Rancher, go to **Users & Authentication → Auth Provider**, then select the provider that matches your IdP, such as **Keycloak (SAML)** or **Generic OIDC / OpenID Connect**
 2. Configure the same identity provider (Okta, Azure AD)
-3. Map groups to Rancher cluster roles matching Teleport role names
+3. Map the same IdP groups in Rancher and Teleport so users receive the appropriate Rancher roles and Teleport roles
 
 ## Best Practices
 
