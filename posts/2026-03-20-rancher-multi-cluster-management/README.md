@@ -17,19 +17,19 @@ Labels are the foundation of multi-cluster organization in Rancher:
 ```bash
 # Label clusters for organizational grouping
 
-kubectl label cluster.management.cattle.io c-onprem-prod \
+kubectl label clusters.management.cattle.io c-onprem-prod \
   environment=production \
   region=us-east \
   cloud=on-premises \
   tier=1
 
-kubectl label cluster.management.cattle.io c-aws-prod-1 \
+kubectl label clusters.management.cattle.io c-aws-prod-1 \
   environment=production \
   region=us-east-1 \
   cloud=aws \
   tier=1
 
-kubectl label cluster.management.cattle.io c-gcp-dev-1 \
+kubectl label clusters.management.cattle.io c-gcp-dev-1 \
   environment=development \
   region=us-central1 \
   cloud=gcp \
@@ -75,43 +75,46 @@ spec:
 
 ```bash
 kubectl apply -f cluster-group-production.yaml
-kubectl get clustergroup -n fleet-default
+kubectl get clustergroups.fleet.cattle.io -n fleet-default
 ```
 
 ## Step 3: Implement Multi-Cluster RBAC
 
-Grant teams access to specific cluster groups:
+Grant cluster-level access by selecting the clusters you want and creating a binding for each one:
 
-```yaml
-# rbac-platform-team.yaml
-# Give the platform team cluster-admin on all production clusters
+```bash
+# Bind a Rancher user to the cluster-owner role on every production cluster.
+# Use userPrincipalName or groupPrincipalName instead when binding external identities.
+for cluster_id in $(kubectl get clusters.management.cattle.io \
+  -l environment=production \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); do
+  cat <<EOF | kubectl apply -f -
 apiVersion: management.cattle.io/v3
-kind: GlobalRoleBinding
+kind: ClusterRoleTemplateBinding
 metadata:
-  name: platform-team-global
-globalRoleName: restricted-admin
-subjectName: platform-team
-subjectKind: Group
+  name: platform-owner-${cluster_id}
+  namespace: ${cluster_id}
+clusterName: ${cluster_id}
+roleTemplateName: cluster-owner
+userName: u-xxxxx
+EOF
+done
 ```
 
 For project-level access across clusters:
 
 ```bash
-# In Rancher UI:
-# Cluster → Project/Namespaces → Create Project
-# → Members → Add project member with cluster selector
-
-# Or programmatically:
-curl -sk -X POST \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "clusterId": "c-aws-prod-1",
-    "projectId": "c-aws-prod-1:p-xxxxx",
-    "userId": "u-xxxxx",
-    "roleTemplateId": "project-member"
-  }' \
-  "https://rancher.example.com/v3/projectroletemplatebindings"
+# Create a ProjectRoleTemplateBinding in the project's namespace
+kubectl create -f - <<EOF
+apiVersion: management.cattle.io/v3
+kind: ProjectRoleTemplateBinding
+metadata:
+  generateName: prtb-
+  namespace: p-xxxxx
+projectName: c-aws-prod-1:p-xxxxx
+roleTemplateName: project-member
+userName: u-xxxxx
+EOF
 ```
 
 ## Step 4: Apply Policies Across All Clusters with Fleet
@@ -150,19 +153,20 @@ spec:
 ## Step 5: Centralized Namespace Management
 
 ```bash
-# Create a project template that auto-creates namespaces
-# with consistent labels across all clusters
+# Create a namespace on the downstream cluster and attach it
+# to a Rancher project with consistent metadata
 
-# Create namespace via Rancher API (respects project quotas)
-curl -sk -X POST \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "team-alpha",
-    "projectId": "c-aws-prod-1:p-xxxxx",
-    "annotations": {"team": "alpha", "costcenter": "engineering"}
-  }' \
-  "https://rancher.example.com/v3/clusters/c-aws-prod-1/namespaces"
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-alpha
+  labels:
+    team: alpha
+    costcenter: engineering
+  annotations:
+    field.cattle.io/projectId: c-aws-prod-1:p-xxxxx
+EOF
 ```
 
 ## Step 6: Bulk Operations Across Clusters
@@ -171,50 +175,52 @@ curl -sk -X POST \
 #!/usr/bin/env bash
 # bulk-kubectl.sh - Run kubectl commands across multiple clusters
 
-# Get all cluster kubeconfigs from Rancher
+# Create a Rancher kubeconfig for a single cluster
 get_kubeconfig() {
   local cluster_id="$1"
-  curl -sk -X POST \
-    -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-    "https://rancher.example.com/v3/clusters/${cluster_id}?action=generateKubeconfig" \
-    | jq -r .config
+
+  kubectl create -o json -f - <<EOF
+apiVersion: ext.cattle.io/v1
+kind: Kubeconfig
+spec:
+  clusters: ["${cluster_id}"]
+  currentContext: "${cluster_id}"
+  description: bulk-operations-${cluster_id}
+EOF
 }
 
 # Get all production cluster IDs
-CLUSTER_IDS=$(curl -sk \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "https://rancher.example.com/v3/clusters?labels.environment=production" \
-  | jq -r '.data[].id')
+CLUSTER_IDS=$(kubectl get clusters.management.cattle.io \
+  -l environment=production \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
 
 # Run a command on all production clusters
 for cluster_id in ${CLUSTER_IDS}; do
   echo "=== Cluster: ${cluster_id} ==="
-  kubeconfig=$(get_kubeconfig "${cluster_id}")
-  echo "${kubeconfig}" > /tmp/kc-${cluster_id}
-  kubectl get nodes --no-headers --kubeconfig=/tmp/kc-${cluster_id} | wc -l
-  rm /tmp/kc-${cluster_id}
+  kubeconfig_json=$(get_kubeconfig "${cluster_id}")
+  kubeconfig_resource=$(echo "${kubeconfig_json}" | jq -r '.metadata.name')
+  kubeconfig_file=$(mktemp)
+
+  echo "${kubeconfig_json}" | jq -r '.status.value' > "${kubeconfig_file}"
+  kubectl --kubeconfig="${kubeconfig_file}" get nodes --no-headers | wc -l
+
+  kubectl delete kubeconfig "${kubeconfig_resource}" >/dev/null 2>&1
+  rm -f "${kubeconfig_file}"
 done
 ```
 
-## Step 7: Monitor All Clusters from One Dashboard
+## Step 7: Monitor Clusters from the Same Rancher UI
 
-```bash
-# Install Rancher Monitoring (Prometheus + Grafana) on the management cluster
-helm repo add rancher-charts https://charts.rancher.io
-helm install rancher-monitoring rancher-charts/rancher-monitoring \
-  -n cattle-monitoring-system \
-  --create-namespace \
-  --set prometheus.prometheusSpec.retention=15d
+Enable Monitoring on each cluster you want to observe:
 
-# Enable cluster-level monitoring on downstream clusters via Rancher UI:
-# Cluster → Monitoring → Enable
-# This deploys a per-cluster Prometheus that federates to the central one
-```
+`Cluster Management` → `<cluster>` → `Explore` → `Cluster Tools` → `Install` by `Monitoring`
 
-## Step 8: Implement Cluster Quota Policies
+When monitoring is enabled on the local (`local`) cluster, Rancher exposes health metrics for Rancher itself. Downstream clusters are monitored by enabling the app on each cluster individually.
+
+## Step 8: Implement Namespace Quota Policies
 
 ```yaml
-# ResourceQuota applied via Fleet to all development clusters
+# ResourceQuota applied via Fleet to the default namespace on all development clusters
 apiVersion: v1
 kind: ResourceQuota
 metadata:
@@ -232,4 +238,4 @@ spec:
 
 ## Conclusion
 
-Managing multiple clusters from a single Rancher instance requires deliberate organization through labels, cluster groups, and RBAC. Fleet-based GitOps ensures consistent configuration across all clusters, while Rancher's monitoring stack provides unified observability. As your cluster count grows, automating cluster registration, labeling, and policy application becomes essential for maintaining operational efficiency at scale.
+Managing multiple clusters from a single Rancher instance requires deliberate organization through labels, cluster groups, and RBAC. Fleet-based GitOps ensures consistent configuration across all clusters, while Rancher's monitoring tooling keeps observability accessible from the same management interface. As your cluster count grows, automating cluster registration, labeling, and policy application becomes essential for maintaining operational efficiency at scale.
