@@ -35,6 +35,7 @@ metadata:
     region: us-east
     tier: critical
 spec:
+  cloudCredentialSecretName: cattle-global-data:cc-aws-production
   kubernetesVersion: v1.28.8+rke2r1
   rkeConfig:
     machinePools:
@@ -44,7 +45,7 @@ spec:
       etcdRole: true
       workerRole: false
       machineConfigRef:
-        kind: AWSNodeTemplate
+        kind: Amazonec2Config
         name: control-plane-m5-xlarge
     - name: workers
       quantity: 5
@@ -52,11 +53,11 @@ spec:
       etcdRole: false
       workerRole: true
       machineConfigRef:
-        kind: AWSNodeTemplate
+        kind: Amazonec2Config
         name: worker-m5-2xlarge
 ```
 
-## Best Practice 2: Namespace Hierarchy
+## Best Practice 2: Namespace Organization
 
 Organize namespaces with consistent naming and labeling:
 
@@ -68,7 +69,10 @@ kubectl create namespace payments-api-staging
 kubectl create namespace data-pipeline-prod
 
 # Apply standard labels
-kubectl label namespace payments-api-prod   team=payments   app=api   env=production   tier=critical   cost-center=payments-team   field.cattle.io/projectId=YOUR_PROJECT_ID
+kubectl label namespace payments-api-prod   team=payments   app=api   env=production   tier=critical   cost-center=payments-team
+
+# Assign the namespace to a Rancher project
+kubectl annotate namespace payments-api-prod   field.cattle.io/projectId=YOUR_CLUSTER_ID:YOUR_PROJECT_ID
 ```
 
 ## Best Practice 3: Resource Quotas and LimitRanges
@@ -116,7 +120,7 @@ spec:
 
 ## Best Practice 4: Network Policies
 
-Implement zero-trust networking:
+Implement zero-trust networking with a CNI that supports NetworkPolicy:
 
 ```yaml
 # default-deny-all.yaml - Start with deny all
@@ -148,10 +152,22 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          app: ingress-nginx
+          kubernetes.io/metadata.name: ingress-nginx
     ports:
     - port: 8080
   egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
   - to:
     - namespaceSelector:
         matchLabels:
@@ -160,12 +176,12 @@ spec:
     - port: 5432
 ```
 
-## Best Practice 5: Pod Security
+## Best Practice 5: Pod Security and Availability
 
-Enforce strict pod security standards:
+Enforce strict pod security standards while protecting application availability:
 
 ```yaml
-# pod-security-policy.yaml - PodDisruptionBudget for availability
+# pod-security-and-availability.yaml - PodDisruptionBudget for availability
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -261,12 +277,12 @@ date
 
 echo ""
 echo "1. Certificate expiry check:"
-kubectl get certificates -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,EXPIRY:.status.notAfter,READY:.status.conditions[-1].status'
+kubectl get certificates.cert-manager.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,EXPIRY:.status.notAfter,READY:.status.conditions[-1].status' 2>/dev/null || echo "cert-manager not installed"
 
 echo ""
 echo "2. Unused resources:"
-kubectl get namespaces | while read ns _; do
-  pod_count=$(kubectl get pods -n $ns --no-headers 2>/dev/null | wc -l)
+kubectl get namespaces -o custom-columns='NAME:.metadata.name' --no-headers | while read -r ns; do
+  pod_count=$(kubectl get pods -n "$ns" --no-headers 2>/dev/null | wc -l)
   [ "$pod_count" -eq 0 ] && echo "Empty namespace: $ns"
 done
 
