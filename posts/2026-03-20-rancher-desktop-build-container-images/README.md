@@ -12,10 +12,11 @@ Rancher Desktop is an open-source desktop application that provides Kubernetes a
 
 ## Prerequisites
 
-- A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
-- At least 8 GB of RAM (16 GB recommended)
-- At least 4 CPU cores
+- A supported macOS, Windows, or Linux system
+- Internet connectivity during installation and first-time setup
+- Virtualization support; on Windows, WSL2 installed; on Linux, read-write access to `/dev/kvm`
+- 8 GB of RAM recommended
+- 4 CPU cores recommended
 
 ## Overview
 
@@ -52,14 +53,27 @@ Open Rancher Desktop Preferences to configure:
 - **WSL** (Windows only): WSL2 integration settings
 
 ```bash
-# Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
-rdctl set --container-engine containerd
+# Inspect the current Rancher Desktop settings
+rdctl list-settings
+
+# Example: switch Rancher Desktop to the containerd engine
+rdctl set --container-engine.name=containerd
+
+# Example: disable Kubernetes if you only need local image builds
+rdctl set --kubernetes-enabled=false
 ```
 
 ## Step 3: Working with Containers
 
 ```bash
+# Build an image from a local Dockerfile
+nerdctl build -t my-image:latest .
+
+# To make a nerdctl-built image available to Kubernetes, use the k8s.io namespace
+nerdctl --namespace k8s.io build -t my-image:latest .
+# or with docker compatibility
+docker build -t my-image:latest .
+
 # Pull an image
 nerdctl pull nginx:latest
 # or with docker compatibility
@@ -131,31 +145,34 @@ helm uninstall my-release
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
-rdctl factory-reset
+# Show Rancher Desktop information
+rdctl info
 
-# Check Rancher Desktop status
-rdctl status
+# List current Rancher Desktop settings
+rdctl list-settings
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
+# Disable Kubernetes if you only need local image builds
+rdctl set --kubernetes-enabled=false
 
-# Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+# Switch to the Moby engine for Docker CLI workflows
+rdctl set --container-engine.name=moby
 ```
 
 ## Troubleshooting
 
 ```bash
-# Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# Open Rancher Desktop log files from the UI
+# Troubleshooting > Show Logs
 
-# Reset to factory defaults
-rdctl factory-reset
+# Reset Kubernetes or perform a factory reset from the UI
+# Troubleshooting > Reset Kubernetes
+# Troubleshooting > Factory Reset
 
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Confirm Rancher Desktop is responding
+rdctl info
+
+# Inspect the current settings
+rdctl list-settings
 ```
 
 ## Conclusion
