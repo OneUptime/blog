@@ -13,29 +13,29 @@ Releasing and renewing a DHCP lease forces the adapter to renegotiate its IP add
 ## Release All DHCP Leases
 
 ```cmd
-:: Release all DHCP-assigned addresses on all adapters
+REM Release all DHCP-assigned addresses on all adapters
 ipconfig /release
 ```
 
-After this command, all DHCP-configured adapters will have no IPv4 address. Connectivity is lost until renewal.
+After this command, all DHCP-configured adapters will have no IPv4 address. IPv4 connectivity is lost until renewal.
 
 ## Renew All DHCP Leases
 
 ```cmd
-:: Request a new DHCP lease on all adapters
+REM Request a new DHCP lease on all adapters
 ipconfig /renew
 ```
 
-If a DHCP server is reachable, each adapter will receive a new IP within a few seconds.
+If a DHCP server is reachable, each adapter will receive a renewed DHCP configuration. This may be the same IPv4 address or a different one.
 
 ## Release and Renew in Sequence
 
 ```cmd
-:: Full release-and-renew cycle
+REM Full release-and-renew cycle
 ipconfig /release
 ipconfig /renew
 
-:: Verify the new address
+REM Verify the new address
 ipconfig
 ```
 
@@ -44,22 +44,22 @@ ipconfig
 When you have multiple adapters and only want to renew one:
 
 ```cmd
-:: Release only the Ethernet adapter
+REM Release only the Ethernet adapter
 ipconfig /release "Ethernet"
 
-:: Renew only the Ethernet adapter
+REM Renew only the Ethernet adapter
 ipconfig /renew "Ethernet"
 ```
 
-Use the exact adapter name as shown in `ipconfig /all`.
+Use the exact adapter name as shown in `ipconfig`.
 
 ## Wildcards in Adapter Names
 
 ```cmd
-:: Release all adapters with "Ethernet" in the name
+REM Release all adapters with "Ethernet" in the name
 ipconfig /release "Ethernet*"
 
-:: Renew all Wi-Fi adapters
+REM Renew all Wi-Fi adapters
 ipconfig /renew "Wi-Fi*"
 ```
 
@@ -80,34 +80,33 @@ sequenceDiagram
 
 ## Troubleshooting: APIPA Address (169.254.x.x)
 
-If `ipconfig /renew` assigns a `169.254.x.x` address, no DHCP server responded:
+If `ipconfig` shows a `169.254.x.x` address after `ipconfig /renew`, Windows assigned an APIPA address because no DHCP lease was obtained:
 
 ```cmd
-:: Check DHCP server is reachable
-ping 192.168.1.1      :: Ping known DHCP server IP
+REM Check DHCP server is reachable
+REM Ping known DHCP server IP
+ping 192.168.1.1
 
-:: Check the DHCP client service is running
+REM Check the DHCP client service is running
 sc query dhcp
-net start dhcp
+net start "DHCP Client"
 ```
 
-## Force a Specific IP from DHCP
+## Get a Reserved IP from DHCP
 
-If you have a DHCP reservation, the server will always give you the same IP. Release/renew to get the reserved IP immediately after the reservation is created.
+If you have a DHCP reservation, the DHCP server will lease the reserved IP to that client. Release/renew to pick up the reservation after it is created.
 
 ## PowerShell Alternative
 
 ```powershell
 # Release and renew using PowerShell
 
-$adapter = Get-NetAdapter -Name "Ethernet"
-Invoke-CimMethod -ClassName Win32_NetworkAdapterConfiguration `
-    -MethodName ReleaseDHCPLease `
-    -Filter "Index=$($adapter.InterfaceIndex)"
+$ifIndex = (Get-NetIPInterface -InterfaceAlias "Ethernet" -AddressFamily IPv4).InterfaceIndex
+$config = Get-CimInstance -ClassName Win32_NetworkAdapterConfiguration `
+    -Filter "InterfaceIndex=$ifIndex AND DHCPEnabled=TRUE"
 
-Invoke-CimMethod -ClassName Win32_NetworkAdapterConfiguration `
-    -MethodName RenewDHCPLease `
-    -Filter "Index=$($adapter.InterfaceIndex)"
+Invoke-CimMethod -InputObject $config -MethodName ReleaseDHCPLease
+Invoke-CimMethod -InputObject $config -MethodName RenewDHCPLease
 ```
 
 ## Conclusion
