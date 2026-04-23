@@ -13,7 +13,7 @@ Monitoring GPU usage is critical for optimizing utilization, diagnosing performa
 ## Key GPU Metrics to Monitor
 
 - **GPU Utilization**: Percentage of time GPU was active
-- **Memory Utilization**: GPU memory used vs available
+- **Framebuffer Memory Usage**: GPU memory used vs available
 - **Temperature**: GPU core and memory temperature
 - **Power Usage**: Watt consumption
 - **Clock Speeds**: GPU and memory clock frequencies
@@ -26,7 +26,6 @@ Monitoring GPU usage is critical for optimizing utilization, diagnosing performa
 
 dcgmExporter:
   enabled: true
-  version: 3.2.5-3.1.8-ubuntu20.04
   
   # Metrics configuration
   config:
@@ -51,7 +50,7 @@ metadata:
   namespace: gpu-operator
 data:
   dcgm-metrics.csv: |
-    # GPU Utilization
+    # Utilization
     DCGM_FI_DEV_GPU_UTIL,     gauge, GPU utilization (%).
     DCGM_FI_DEV_MEM_COPY_UTIL, gauge, Memory utilization (%).
     
@@ -78,7 +77,7 @@ data:
 ## Step 3: Install Prometheus Stack
 
 ```bash
-# Install kube-prometheus-stack via Rancher Apps
+# Install kube-prometheus-stack via Rancher Apps if Rancher Monitoring is not already enabled
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
 
@@ -88,8 +87,8 @@ helm install prometheus prometheus-community/kube-prometheus-stack   --namespace
 ## Step 4: Create GPU Grafana Dashboard
 
 ```bash
-# Import NVIDIA DCGM Exporter Dashboard (Grafana ID: 12239)
-kubectl exec -n cattle-monitoring-system   $(kubectl get pods -n cattle-monitoring-system -l app.kubernetes.io/name=grafana -o name)   -- grafana-cli plugins install grafana-piechart-panel
+# Download the official NVIDIA DCGM Exporter dashboard JSON (Grafana ID: 12239) for import into Grafana
+curl -LfO https://github.com/NVIDIA/dcgm-exporter/raw/main/grafana/dcgm-exporter-dashboard.json
 
 # Or use Grafana provisioning
 cat > /tmp/gpu-dashboard-provisioning.yaml << 'DASHEOF'
@@ -183,14 +182,17 @@ spec:
 ## Step 6: Query GPU Metrics
 
 ```bash
-# Get GPU utilization for all pods
-kubectl exec -n cattle-monitoring-system prometheus-0   -- promtool query instant 'DCGM_FI_DEV_GPU_UTIL'
+# Forward Prometheus locally
+kubectl port-forward -n cattle-monitoring-system svc/prometheus-operated 9090:9090
 
-# Check top GPU consumers
-kubectl exec -n cattle-monitoring-system prometheus-0   -- promtool query instant 'topk(5, DCGM_FI_DEV_FB_USED)'
+# Get GPU utilization for all GPUs
+curl -G http://127.0.0.1:9090/api/v1/query   --data-urlencode 'query=DCGM_FI_DEV_GPU_UTIL'
+
+# Check top framebuffer memory consumers
+curl -G http://127.0.0.1:9090/api/v1/query   --data-urlencode 'query=topk(5, DCGM_FI_DEV_FB_USED)'
 
 # GPU utilization over time
-kubectl exec -n cattle-monitoring-system prometheus-0   -- promtool query range     --start=1h     --end=0m     --step=5m     'avg(DCGM_FI_DEV_GPU_UTIL) by (instance)'
+curl -G http://127.0.0.1:9090/api/v1/query_range   --data-urlencode 'query=avg by (instance) (DCGM_FI_DEV_GPU_UTIL)'   --data-urlencode 'start=2026-03-20T10:00:00Z'   --data-urlencode 'end=2026-03-20T11:00:00Z'   --data-urlencode 'step=5m'
 ```
 
 ## Conclusion
