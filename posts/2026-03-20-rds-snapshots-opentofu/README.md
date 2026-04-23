@@ -14,6 +14,7 @@ Manual RDS snapshots are user-initiated backups retained until explicitly delete
 
 - OpenTofu v1.6+
 - AWS credentials with RDS permissions
+- A stable value for `var.snapshot_suffix` (for example, `20260423`)
 
 ## Step 1: Create a Manual Snapshot
 
@@ -21,8 +22,8 @@ Manual RDS snapshots are user-initiated backups retained until explicitly delete
 # Manual snapshot of an RDS instance
 
 resource "aws_db_snapshot" "pre_migration" {
-  db_instance_identifier = aws_db_instance.main.id
-  db_snapshot_identifier = "${var.project_name}-pre-migration-${formatdate("YYYYMMDD", timestamp())}"
+  db_instance_identifier = aws_db_instance.main.identifier
+  db_snapshot_identifier = "${var.project_name}-pre-migration-${var.snapshot_suffix}"
 
   tags = {
     Name    = "pre-migration-snapshot"
@@ -41,12 +42,13 @@ resource "aws_db_snapshot" "pre_migration" {
 
 ```hcl
 # Copy the snapshot to a DR region for cross-region recovery
+# aws.dr_region is an aliased AWS provider configured for the DR region
 resource "aws_db_snapshot_copy" "dr_copy" {
   provider = aws.dr_region
 
   source_db_snapshot_identifier = aws_db_snapshot.pre_migration.db_snapshot_arn
-  target_db_snapshot_identifier = "${var.project_name}-dr-${formatdate("YYYYMMDD", timestamp())}"
-  source_region                 = var.primary_region
+  target_db_snapshot_identifier = "${var.project_name}-dr-${var.snapshot_suffix}"
+  destination_region            = var.dr_region
 
   # Encrypt the copy with the DR region's KMS key
   kms_key_id = var.dr_kms_key_arn
@@ -61,28 +63,14 @@ resource "aws_db_snapshot_copy" "dr_copy" {
 
 ## Step 3: Share Snapshot with Another Account
 
+For encrypted snapshots, use a customer-managed KMS key; snapshots encrypted with the default AWS managed key can't be shared across accounts.
+
 ```hcl
 # Share a snapshot with a DR or audit account
 resource "aws_db_snapshot" "shared" {
-  db_instance_identifier = aws_db_instance.main.id
-  db_snapshot_identifier = "${var.project_name}-shared-${formatdate("YYYYMMDD", timestamp())}"
-}
-
-# Modify snapshot attributes to share with specific accounts
-resource "null_resource" "share_snapshot" {
-  triggers = {
-    snapshot_id = aws_db_snapshot.shared.id
-  }
-
-  provisioner "local-exec" {
-    command = <<-EOF
-      aws rds modify-db-snapshot-attribute \
-        --db-snapshot-identifier ${aws_db_snapshot.shared.id} \
-        --attribute-name restore \
-        --values-to-add ${var.target_account_id} \
-        --region ${var.region}
-    EOF
-  }
+  db_instance_identifier = aws_db_instance.main.identifier
+  db_snapshot_identifier = "${var.project_name}-shared-${var.snapshot_suffix}"
+  shared_accounts        = [var.target_account_id]
 }
 ```
 
@@ -95,19 +83,19 @@ resource "aws_db_instance" "restored" {
   instance_class = "db.r6g.xlarge"
 
   # Specify the snapshot to restore from
-  snapshot_identifier = aws_db_snapshot.pre_migration.id
+  snapshot_identifier = aws_db_snapshot.pre_migration.db_snapshot_identifier
 
   # Override network settings for the restored instance
   db_subnet_group_name   = var.subnet_group_name
   vpc_security_group_ids = [var.security_group_id]
 
-  # These settings are required even for snapshot restores
+  # Optional: allow future teardown without taking another final snapshot
   skip_final_snapshot = true
 
   tags = {
     Name      = "restored-instance"
     Source    = "snapshot"
-    SourceSnap = aws_db_snapshot.pre_migration.id
+    SourceSnap = aws_db_snapshot.pre_migration.db_snapshot_identifier
   }
 }
 ```
@@ -119,12 +107,12 @@ resource "aws_db_instance" "restored" {
 resource "aws_db_instance" "main" {
   identifier = "${var.project_name}-db"
 
-  # Prevent accidental deletion
-  deletion_protection = true
+  # Leave deletion protection disabled if you plan to destroy this instance with OpenTofu
+  deletion_protection = false
 
   # Create a final snapshot before deletion
   skip_final_snapshot       = false
-  final_snapshot_identifier = "${var.project_name}-final-snapshot"
+  final_snapshot_identifier = "${var.project_name}-final-${var.snapshot_suffix}"
 
   # Other configuration...
   engine         = "postgres"
