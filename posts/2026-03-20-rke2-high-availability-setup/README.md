@@ -8,7 +8,7 @@ Description: Learn how to set up a highly available RKE2 cluster with three serv
 
 ---
 
-An RKE2 HA cluster requires at least three server nodes with embedded etcd to maintain quorum when one node fails. A load balancer in front of the server nodes ensures uninterrupted API access.
+An RKE2 HA cluster requires at least three server nodes with embedded etcd to maintain quorum when one node fails. A highly available load balancer in front of the server nodes helps maintain API access when an individual server node fails.
 
 ---
 
@@ -37,17 +37,27 @@ Configure your load balancer (HAProxy, Nginx, AWS NLB) to forward traffic to all
 
 frontend rke2-api
     bind *:6443
-    default_backend rke2-servers
+    mode tcp
+    default_backend rke2-api-servers
 
 frontend rke2-registration
     bind *:9345
-    default_backend rke2-servers
+    mode tcp
+    default_backend rke2-registration-servers
 
-backend rke2-servers
+backend rke2-api-servers
+    mode tcp
     option tcp-check
     server server1 192.168.1.11:6443 check
     server server2 192.168.1.12:6443 check
     server server3 192.168.1.13:6443 check
+
+backend rke2-registration-servers
+    mode tcp
+    option tcp-check
+    server server1 192.168.1.11:9345 check
+    server server2 192.168.1.12:9345 check
+    server server3 192.168.1.13:9345 check
 ```
 
 ---
@@ -66,9 +76,12 @@ cni: canal
 ```
 
 ```bash
+curl -sfL https://get.rke2.io | sh -
 systemctl enable --now rke2-server.service
 # Wait for the first server to fully initialize
-kubectl get nodes
+/var/lib/rancher/rke2/bin/kubectl \
+  --kubeconfig /etc/rancher/rke2/rke2.yaml \
+  get nodes
 ```
 
 ---
@@ -87,6 +100,7 @@ tls-san:
 ```
 
 ```bash
+curl -sfL https://get.rke2.io | sh -
 systemctl enable --now rke2-server.service
 ```
 
@@ -97,16 +111,21 @@ systemctl enable --now rke2-server.service
 ```bash
 export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
 export PATH=$PATH:/var/lib/rancher/rke2/bin
+export CRI_CONFIG_FILE=/var/lib/rancher/rke2/agent/etc/crictl.yaml
 
 # Check all three server nodes appear
-kubectl get nodes -l node-role.kubernetes.io/control-plane=true
+kubectl get nodes -l node-role.kubernetes.io/control-plane
 
 # Verify etcd member list
-/var/lib/rancher/rke2/bin/etcdctl \
+etcdcontainer=$(/var/lib/rancher/rke2/bin/crictl ps \
+  --label io.kubernetes.container.name=etcd \
+  --quiet)
+
+/var/lib/rancher/rke2/bin/crictl exec "$etcdcontainer" etcdctl \
   --endpoints https://127.0.0.1:2379 \
   --cacert /var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
-  --cert /var/lib/rancher/rke2/server/tls/etcd/client.crt \
-  --key /var/lib/rancher/rke2/server/tls/etcd/client.key \
+  --cert /var/lib/rancher/rke2/server/tls/etcd/server-client.crt \
+  --key /var/lib/rancher/rke2/server/tls/etcd/server-client.key \
   member list
 ```
 
@@ -135,12 +154,12 @@ systemctl enable --now rke2-agent.service
 |---|---|
 | 1 server node down | Cluster continues - etcd quorum maintained |
 | 2 server nodes down | Cluster loses quorum - no API writes possible |
-| Load balancer down | Cluster continues - existing connections unaffected |
+| Load balancer down | Cluster components can continue, but new node registration and clients using the load balancer cannot connect |
 
 ---
 
 ## Best Practices
 
-- Use a health check on the load balancer targeting `/healthz` on port 6443 to automatically remove unhealthy server nodes.
+- Use a health check on the load balancer targeting `/readyz` on port 6443 to automatically remove unhealthy server nodes.
 - Schedule regular etcd snapshots to S3 (`etcd-snapshot-schedule-cron`, `etcd-snapshot-dir`).
 - Do not run user workloads on server nodes - add taints to keep them control-plane-only.
