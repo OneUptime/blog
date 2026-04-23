@@ -8,24 +8,20 @@ Description: Deploy Apache ActiveMQ Artemis on Rancher for JMS-compliant messagi
 
 ## Introduction
 
-Apache ActiveMQ Artemis is the next-generation ActiveMQ broker that supports multiple messaging protocols including JMS, AMQP, STOMP, and MQTT. It's widely used in enterprise Java applications. This guide covers deploying ActiveMQ Artemis on Rancher using the ArtemisCloud operator for Kubernetes-native management.
+Apache ActiveMQ Artemis is the next-generation ActiveMQ broker that supports multiple messaging protocols including JMS, AMQP, STOMP, and MQTT. It's widely used in enterprise Java applications. This guide covers deploying ActiveMQ Artemis on Rancher using the ArkMQ Broker Operator, the current home of the ArtemisCloud operator project, for Kubernetes-native management.
 
 ## Prerequisites
 
 - Rancher-managed Kubernetes cluster
-- Helm 3.x installed
+- Helm 3.8+ installed
 - kubectl access
 - A StorageClass for persistent volumes
 
-## Step 1: Install the ArtemisCloud Operator
+## Step 1: Install the ArkMQ Broker Operator
 
 ```bash
-# Install ArtemisCloud Operator
-
-helm repo add artemiscloud https://artemiscloud.io/helm-charts
-helm repo update
-
-helm install activemq-operator artemiscloud/activemq-artemis-operator \
+# Install ArkMQ Broker Operator
+helm install activemq-operator oci://quay.io/arkmq-org/helm-charts/arkmq-org-broker-operator \
   --namespace activemq-operator \
   --create-namespace \
   --wait
@@ -38,8 +34,8 @@ kubectl get pods -n activemq-operator
 
 ```yaml
 # activemq-cluster.yaml - ActiveMQ Artemis cluster
-apiVersion: broker.amq.io/v1beta1
-kind: ActiveMQArtemis
+apiVersion: broker.arkmq.org/v1beta2
+kind: Broker
 metadata:
   name: activemq-prod
   namespace: messaging
@@ -48,9 +44,10 @@ spec:
     # Number of broker instances
     size: 2
 
-    # Enable high availability
+    # Enable authentication and persistence
     requireLogin: true
     persistenceEnabled: true
+    enableMetricsPlugin: true
 
     # Storage configuration
     storage:
@@ -66,38 +63,33 @@ spec:
         cpu: 500m
         memory: 1Gi
 
+  console:
+    expose: true
+
   # Acceptors (protocols)
   acceptors:
     - name: amqp
       port: 5672
-      protocols: amqp
+      protocols: AMQP
       sslEnabled: false
-    - name: core
-      port: 61616
-      protocols: core
     - name: stomp
       port: 61613
-      protocols: stomp
+      protocols: STOMP
     - name: mqtt
       port: 1883
-      protocols: mqtt
+      protocols: MQTT
 
   # Address settings for queues
-  addressSettings:
-    applyRule: merge_all
-    addressSetting:
-      - match: "#"
-        # Dead letter queue
-        deadLetterAddress: DLQ
-        autoCreateDeadLetterResources: true
-        # Expiry queue
-        expiryAddress: ExpiryQueue
-        autoCreateExpiryResources: true
-        maxDeliveryAttempts: 5
-        redeliveryDelay: 5000
-        maxRedeliveryDelay: 60000
-        redeliveryMultiplier: 2.0
-        messageCounterHistoryDayLimit: 10
+  brokerProperties:
+    - addressSettings."#".deadLetterAddress=DLQ
+    - addressSettings."#".autoCreateDeadLetterResources=true
+    - addressSettings."#".expiryAddress=ExpiryQueue
+    - addressSettings."#".autoCreateExpiryResources=true
+    - addressSettings."#".maxDeliveryAttempts=5
+    - addressSettings."#".redeliveryDelay=5000
+    - addressSettings."#".maxRedeliveryDelay=60000
+    - addressSettings."#".redeliveryMultiplier=2.0
+    - addressSettings."#".messageCounterHistoryDayLimit=10
 
   # Admin user
   adminUser: admin
@@ -110,7 +102,7 @@ kubectl create namespace messaging
 kubectl apply -f activemq-cluster.yaml
 
 # Check status
-kubectl get activemqartemis -n messaging
+kubectl wait Broker activemq-prod --for=condition=Ready --namespace=messaging --timeout=240s
 kubectl get pods -n messaging -l ActiveMQArtemis=activemq-prod
 ```
 
@@ -118,85 +110,110 @@ kubectl get pods -n messaging -l ActiveMQArtemis=activemq-prod
 
 ```yaml
 # activemq-security.yaml - ActiveMQ security configuration
-apiVersion: broker.amq.io/v1beta1
-kind: ActiveMQArtemisSecurity
+apiVersion: v1
+kind: Secret
 metadata:
-  name: activemq-security
+  name: activemq-prod-jaas-config
   namespace: messaging
-spec:
-  loginModules:
-    propertiesLoginModules:
-      - name: prop-module
-        users:
-          - name: admin
-            password: AdminP@ss
-            roles:
-              - admin
-          - name: appuser
-            password: AppUserP@ss
-            roles:
-              - app-role
+type: Opaque
+stringData:
+  login.config: |
+    activemq {
+        org.apache.activemq.artemis.spi.core.security.jaas.PropertiesLoginModule sufficient
+            org.apache.activemq.jaas.properties.user="artemis-users.properties"
+            org.apache.activemq.jaas.properties.role="artemis-roles.properties"
+            baseDir="/home/jboss/amq-broker/etc";
+        org.apache.activemq.artemis.spi.core.security.jaas.PropertiesLoginModule sufficient
+            reload=true
+            org.apache.activemq.jaas.properties.user="users.properties"
+            org.apache.activemq.jaas.properties.role="roles.properties";
+    };
+  users.properties: |
+    appuser=AppUserP@ss
+  roles.properties: |
+    app_role=appuser
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: activemq-prod-security-bp
+  namespace: messaging
+type: Opaque
+stringData:
+  security.properties: |
+    securityRoles."#".admin.createNonDurableQueue=true
+    securityRoles."#".admin.deleteNonDurableQueue=true
+    securityRoles."#".admin.createDurableQueue=true
+    securityRoles."#".admin.deleteDurableQueue=true
+    securityRoles."#".admin.createAddress=true
+    securityRoles."#".admin.deleteAddress=true
+    securityRoles."#".admin.consume=true
+    securityRoles."#".admin.browse=true
+    securityRoles."#".admin.send=true
+    securityRoles."#".admin.manage=true
+    securityRoles."#".app_role.createNonDurableQueue=true
+    securityRoles."#".app_role.consume=true
+    securityRoles."#".app_role.browse=true
+    securityRoles."#".app_role.send=true
+```
 
-  securityDomains:
-    brokerDomain:
-      name: activemq
-      loginModules:
-        - name: prop-module
-          flag: sufficient
+```bash
+kubectl apply -f activemq-security.yaml
 
-  securitySettings:
-    broker:
-      - match: "#"
-        permissions:
-          - operationType: consume
-            roles:
-              - admin
-              - app-role
-          - operationType: send
-            roles:
-              - admin
-              - app-role
-          - operationType: browse
-            roles:
-              - admin
-              - app-role
-          - operationType: createAddress
-            roles:
-              - admin
-          - operationType: createNonDurableQueue
-            roles:
-              - admin
-              - app-role
-          - operationType: createDurableQueue
-            roles:
-              - admin
+kubectl patch broker activemq-prod -n messaging --type merge -p '{
+  "spec": {
+    "deploymentPlan": {
+      "extraMounts": {
+        "secrets": [
+          "activemq-prod-jaas-config",
+          "activemq-prod-security-bp"
+        ]
+      }
+    }
+  }
+}'
+
+kubectl wait Broker activemq-prod --for=condition=Ready --namespace=messaging --timeout=240s
 ```
 
 ## Step 4: Create Queues and Topics
 
 ```yaml
 # activemq-addresses.yaml - Queue/topic definitions
-apiVersion: broker.amq.io/v1beta1
-kind: ActiveMQArtemisAddress
+apiVersion: v1
+kind: Secret
 metadata:
-  name: orders-queue
+  name: activemq-prod-addresses-bp
   namespace: messaging
-spec:
-  addressName: orders
-  queueName: orders.processor
-  routingType: anycast
-  removeFromBrokerOnDelete: false
----
-apiVersion: broker.amq.io/v1beta1
-kind: ActiveMQArtemisAddress
-metadata:
-  name: events-topic
-  namespace: messaging
-spec:
-  addressName: events
-  queueName: events.subscriber
-  routingType: multicast
-  removeFromBrokerOnDelete: false
+type: Opaque
+stringData:
+  addresses.properties: |
+    addressConfigurations.orders.routingTypes=ANYCAST
+    addressConfigurations.orders.queueConfigs."orders.processor".address=orders
+    addressConfigurations.orders.queueConfigs."orders.processor".routingType=ANYCAST
+    addressConfigurations.events.routingTypes=MULTICAST
+    addressConfigurations.events.queueConfigs."events.subscriber".address=events
+    addressConfigurations.events.queueConfigs."events.subscriber".routingType=MULTICAST
+```
+
+```bash
+kubectl apply -f activemq-addresses.yaml
+
+kubectl patch broker activemq-prod -n messaging --type merge -p '{
+  "spec": {
+    "deploymentPlan": {
+      "extraMounts": {
+        "secrets": [
+          "activemq-prod-jaas-config",
+          "activemq-prod-security-bp",
+          "activemq-prod-addresses-bp"
+        ]
+      }
+    }
+  }
+}'
+
+kubectl wait Broker activemq-prod --for=condition=Ready --namespace=messaging --timeout=240s
 ```
 
 ## Step 5: Configure Application Connection
@@ -210,17 +227,17 @@ metadata:
   namespace: production
 data:
   # AMQP connection string
-  ACTIVEMQ_BROKER_URL: "amqp://appuser:AppUserP@ss@activemq-prod-hdls-svc.messaging.svc.cluster.local:5672"
-  # JMS core connection
-  ACTIVEMQ_CORE_URL: "tcp://activemq-prod-hdls-svc.messaging.svc.cluster.local:61616?user=appuser&password=AppUserP@ss"
-  ACTIVEMQ_QUEUE: "orders"
+  ACTIVEMQ_BROKER_URL: "amqp://appuser:AppUserP%40ss@activemq-prod-hdls-svc.messaging.svc.cluster.local:5672"
+  # Artemis Core connection
+  ACTIVEMQ_CORE_URL: "tcp://activemq-prod-hdls-svc.messaging.svc.cluster.local:61616?user=appuser&password=AppUserP%40ss"
+  ACTIVEMQ_QUEUE: "orders.processor"
 ```
 
 ## Step 6: Access Management Console
 
 ```bash
 # Port forward to ActiveMQ management console
-kubectl port-forward -n messaging svc/activemq-prod-wconsj-svc 8161:8161
+kubectl port-forward -n messaging svc/activemq-prod-wconsj-0-svc 8161:8161
 
 # Access at: http://localhost:8161/console
 # Default credentials: admin/AdminP@ss
@@ -243,10 +260,9 @@ spec:
       - messaging
   selector:
     matchLabels:
-      app: activemq-prod
+      application: activemq-prod-app
   endpoints:
-    - port: wconsj
-      path: /metrics/
+    - port: console-jolokia
       interval: 30s
 ```
 
@@ -255,27 +271,27 @@ spec:
 ```bash
 # Check broker status via Artemis CLI
 kubectl exec -n messaging activemq-prod-ss-0 -- \
-  ./bin/artemis queue stat \
+  amq-broker/bin/artemis queue stat \
   --url tcp://activemq-prod-hdls-svc.messaging.svc.cluster.local:61616 \
   --user admin \
   --password AdminP@ss
 
 # Check DLQ
 kubectl exec -n messaging activemq-prod-ss-0 -- \
-  ./bin/artemis browse \
+  amq-broker/bin/artemis browser \
   --url tcp://activemq-prod-hdls-svc.messaging.svc.cluster.local:61616 \
   --user admin \
   --password AdminP@ss \
-  --destination DLQ
+  --destination queue://DLQ
 
 # View logs
 kubectl logs -n messaging activemq-prod-ss-0 --tail=100
 
 # Check journal files
 kubectl exec -n messaging activemq-prod-ss-0 -- \
-  ls /opt/activemq-artemis/data/
+  ls /home/jboss/amq-broker/data/
 ```
 
 ## Conclusion
 
-ActiveMQ Artemis on Rancher provides enterprise-grade messaging with JMS compatibility and multi-protocol support. The ArtemisCloud operator enables declarative Kubernetes management of broker configuration, security, and scaling. For organizations with existing JMS applications or requirements for protocol flexibility (AMQP, STOMP, MQTT), Artemis is an excellent choice that provides a clear migration path from legacy ActiveMQ while offering modern high-availability features.
+ActiveMQ Artemis on Rancher provides enterprise-grade messaging with JMS compatibility and multi-protocol support. The ArkMQ Broker Operator enables declarative Kubernetes management of broker configuration, security, and scaling. For organizations with existing JMS applications or requirements for protocol flexibility (AMQP, STOMP, MQTT), Artemis is an excellent choice that provides a clear migration path from legacy ActiveMQ while offering modern clustering and persistence features.
