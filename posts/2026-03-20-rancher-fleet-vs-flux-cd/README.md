@@ -12,30 +12,29 @@ Flux CD and Rancher Fleet are both popular GitOps tools for Kubernetes, but they
 
 ## What Is Flux CD?
 
-Flux CD is a CNCF-graduated GitOps tool consisting of multiple controllers (Source Controller, Kustomize Controller, Helm Controller, Notification Controller, and Image Automation Controller). Each controller is independent and composable. Flux integrates with Helm, Kustomize, and OCI registries, and is widely used across the Kubernetes ecosystem.
+Flux CD is a CNCF-graduated GitOps tool built from multiple controllers. Common controllers include Source Controller, Kustomize Controller, Helm Controller, and Notification Controller, with optional image-reflector-controller and image-automation-controller components for image automation. Each controller is independent and composable. Flux integrates with Helm, Kustomize, and OCI registries, and is widely used across the Kubernetes ecosystem.
 
 ## What Is Rancher Fleet?
 
-Fleet is SUSE Rancher's GitOps engine, designed specifically for managing applications across large numbers of clusters from a central control plane. It uses a bundle model and integrates natively with Rancher for authentication, RBAC, and cluster targeting.
+Fleet is SUSE Rancher's GitOps engine, designed specifically for managing applications across large numbers of clusters from a central management plane with downstream agents. It uses a bundle model and integrates natively with Rancher for authentication, RBAC, and cluster targeting.
 
 ## Feature Comparison
 
 | Feature | Fleet | Flux CD |
 |---|---|---|
 | CNCF Status | Not a CNCF project | Graduated |
-| Multi-cluster Scale | Thousands of clusters | Hundreds of clusters |
+| Multi-cluster Model | Central manager + downstream agents | Commonly one install per cluster; can also target remote clusters |
 | Helm Support | Yes | Yes (Helm Controller) |
 | Kustomize Support | Yes | Yes (Kustomize Controller) |
 | OCI Registry Support | Yes | Yes |
-| Image Automation | No | Yes (Image Automation Controller) |
-| Notification Support | Limited | Yes (Notification Controller) |
-| UI | Via Rancher | Weave GitOps (separate) |
-| RBAC | Via Rancher | Kubernetes native |
+| Image Automation | Experimental (Image Scan) | Yes (optional image-reflector-controller + image-automation-controller) |
+| Notification / Alerting | No dedicated notification controller | Yes (Notification Controller) |
+| UI | Via Rancher | No built-in UI (ecosystem UIs available) |
+| RBAC | Kubernetes/Rancher | Kubernetes native |
 | Drift Detection | Yes | Yes |
-| Multi-tenancy | Via Rancher | Yes (tenants) |
+| Multi-tenancy | Namespaces/RBAC | Kubernetes RBAC and impersonation |
 | Air-gap Support | Yes | Yes |
 | CLI | fleet CLI | flux CLI |
-| Edge Support | Excellent | Limited |
 
 ## Flux Toolkit Architecture
 
@@ -47,7 +46,7 @@ Fleet is SUSE Rancher's GitOps engine, designed specifically for managing applic
 │  │  Kustomize Controller     │   │ ← Applies Kustomize overlays
 │  │  Helm Controller          │   │ ← Manages Helm releases
 │  │  Notification Controller  │   │ ← Sends alerts
-│  │  Image Automation         │   │ ← Updates image tags in Git
+│  │  Image Controllers        │   │ ← Optional; updates image refs in Git
 │  └──────────────────────────┘   │
 └─────────────────────────────────┘
 ```
@@ -102,7 +101,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: webapp
-  targetNamespace: webapp
+  targetNamespace: webapp # namespace must already exist or be defined in ./staging
 ```
 
 ## Helm Management
@@ -124,7 +123,7 @@ helm:
 ### Flux Helm Controller
 
 ```yaml
-# Flux HelmRelease
+# Flux HelmRelease (assumes a HelmRepository named myorg-charts exists in this namespace)
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -145,11 +144,12 @@ spec:
 
 ## Image Automation
 
-Flux has a unique feature that Fleet lacks: Image Automation. Flux can monitor container registries for new image tags and automatically update Git with the new image references:
+Flux has a more mature image automation story, while Fleet offers an experimental Image Scan feature. Flux can monitor container registries for new image tags and automatically update Git with the new image references:
 
 ```yaml
 # Flux ImagePolicy - select latest semver image
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+# assumes an ImageRepository named webapp-repo exists in flux-system
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: webapp
@@ -164,25 +164,25 @@ spec:
 
 ## Multi-cluster with Flux
 
-Flux multi-cluster management requires bootstrapping Flux on each cluster individually and using a central management repository to configure each cluster's Kustomizations. This works well but requires more planning.
+Flux multi-cluster management commonly uses one Flux installation per cluster and a central management repository, but Flux can also reconcile resources to remote clusters using `.spec.kubeConfig` on resources such as `Kustomization` and `HelmRelease`. This works well but requires more planning.
 
-Fleet's multi-cluster management is centralized by design - a single Fleet controller in Rancher manages all clusters.
+Fleet's multi-cluster management is centralized by design - a Fleet manager runs in the management cluster while each downstream cluster runs a Fleet agent.
 
 ## When to Choose Fleet
 
 - You run Rancher and want tight integration
-- Large-scale edge cluster management (100+ clusters)
+- Large-scale multi-cluster management
 - Centralized cluster targeting with label-based routing
-- Simplified operations with single control plane
+- Simplified centralized operations from a management cluster
 
 ## When to Choose Flux CD
 
 - CNCF-graduation and community support are important factors
-- Image automation (auto-updating image tags in Git) is needed
+- Mature image automation (auto-updating image tags in Git) is needed
 - Modular, composable tooling is preferred
 - You use Weave GitOps or other Flux-compatible UIs
 - Notification to Slack, Teams, or PagerDuty is required
 
 ## Conclusion
 
-Flux CD and Fleet are both mature, capable GitOps tools. Flux wins on modularity, CNCF backing, and ecosystem integrations (especially image automation). Fleet wins on scale, simplicity in Rancher environments, and edge cluster management. Teams using Rancher should default to Fleet for cluster configuration management. Teams looking for a standalone CNCF-backed GitOps solution should evaluate Flux.
+Flux CD and Fleet are both mature, capable GitOps tools. Flux wins on modularity, CNCF backing, and ecosystem integrations, especially its more mature image automation. Fleet wins on centralized operations in Rancher environments and large-scale multi-cluster management. Teams using Rancher should default to Fleet for cluster configuration management. Teams looking for a standalone CNCF-backed GitOps solution should evaluate Flux.
