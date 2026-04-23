@@ -15,23 +15,36 @@ Running containers with a read-only root filesystem is one of the most effective
 ```yaml
 # docker-compose.yml - Read-only root filesystem
 
-version: "3.8"
-
 services:
   api:
     image: myapp/api:latest
     read_only: true  # Root filesystem is immutable
 
     # Applications often need to write to /tmp and /var/run
-    tmpfs:
-      - /tmp:size=100m,mode=1777       # Temporary files
-      - /var/run:size=10m,mode=755      # PID files, sockets
-      - /var/cache:size=50m             # Application cache
-
     volumes:
+      # Writable in-memory mounts for temporary runtime state
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 100m
+          mode: 0o1777
+      - type: tmpfs
+        target: /var/run
+        tmpfs:
+          size: 10m
+          mode: 0o755
+      - type: tmpfs
+        target: /var/cache
+        tmpfs:
+          size: 50m
+
       # Data that must persist across restarts uses volumes
-      - app_data:/app/data
-      - app_logs:/app/logs
+      - type: volume
+        source: app_data
+        target: /app/data
+      - type: volume
+        source: app_logs
+        target: /app/logs
 
 volumes:
   app_data:
@@ -60,33 +73,26 @@ docker exec api touch /tmp/test_file
 
 ## Step 3: Identify Required Write Locations
 
-Before enabling read-only, audit what the application writes:
+Before enabling read-only, audit what the application changes on its filesystem:
 
 ```bash
-# Run normally first and trace filesystem writes
+# Run normally first and exercise the application
 docker run -d --name api_audit myapp/api:latest
 
-# Monitor filesystem activity for 30 seconds
-docker run --rm --pid=container:api_audit \
-  --privileged ubuntu:22.04 \
-  bash -c "apt-get install -y strace && strace -p 1 -e trace=openat,open -f 2>&1 | grep 'O_WRONLY\|O_RDWR'"
+# Inspect changes to the container filesystem
+docker diff api_audit
 
-# Or use inotifywait for simpler monitoring
-docker exec api_audit bash -c "
-  apt-get install -y inotify-tools
-  inotifywait -r -m / --exclude /proc --exclude /sys 2>&1 | grep CREATE
-"
+# Focus on added and changed paths
+docker diff api_audit | grep -E '^(A|C) '
 ```
 
 ## Step 4: Common Application Patterns
 
 ```yaml
 # Node.js application
-version: "3.8"
-
 services:
   nodejs_app:
-    image: node:18-alpine
+    image: node:24-alpine
     read_only: true
     tmpfs:
       - /tmp                    # npm, temp files
@@ -127,16 +133,16 @@ volumes:
 
 ## Step 5: Apply to Existing Portainer Stacks
 
-In Portainer, update your stack's compose YAML to add `read_only: true` and the required `tmpfs` entries, then redeploy. Portainer will recreate the containers with the new security settings.
+In Portainer, update your stack's compose YAML to add `read_only: true` and the required tmpfs mounts, then redeploy. Portainer will recreate the containers with the new security settings.
 
 ```bash
 # Verify the container is running read-only
 docker inspect api --format '{{.HostConfig.ReadonlyRootfs}}'
 # Returns: true
 
-# Check tmpfs mounts
-docker inspect api --format '{{json .HostConfig.Tmpfs}}'
-# Returns: {"/tmp":"size=100m,mode=1777","/var/run":"size=10m"}
+# Check mounts and confirm tmpfs targets are present
+docker inspect api --format '{{json .Mounts}}'
+# Look for entries where "Type":"tmpfs" and "Destination" matches the writable paths you configured
 
 # Confirm the container is still running (didn't crash due to write errors)
 docker ps | grep api
@@ -146,8 +152,6 @@ docker ps | grep api
 
 ```yaml
 # Hardened Portainer deployment
-version: "3.8"
-
 services:
   portainer:
     image: portainer/portainer-ce:latest
@@ -155,7 +159,7 @@ services:
     tmpfs:
       - /tmp
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data  # Portainer needs this for its database
     ports:
       - "9443:9443"
@@ -167,4 +171,4 @@ volumes:
 
 ## Conclusion
 
-Read-only root filesystems are a defense-in-depth security control that limits what an attacker can do after gaining container access. The key to success is identifying which directories genuinely need writes - usually `/tmp`, `/var/run`, and application-specific log/data directories - and handling them with tmpfs or named volumes. Start by testing with `--read-only` manually to identify write failures, then add the appropriate tmpfs mounts. Portainer shows the security configuration of each container in its detail view, making it easy to audit which containers have read-only protection enabled.
+Read-only root filesystems are a defense-in-depth security control that limits what an attacker can do after gaining container access. The key to success is identifying which directories genuinely need writes - usually `/tmp`, `/var/run`, and application-specific log/data directories - and handling them with tmpfs or named volumes. Start by testing with `--read-only` manually to identify write failures, then add the appropriate tmpfs mounts. Portainer lets you inspect a container's configuration from the UI, making it easy to audit whether read-only settings are applied.
