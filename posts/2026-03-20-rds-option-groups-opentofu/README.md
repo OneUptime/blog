@@ -83,22 +83,21 @@ resource "aws_db_option_group" "mysql_audit" {
 }
 ```
 
-## Step 3: Create a Default Option Group
+## Step 3: Create an Empty Custom Option Group
 
 ```hcl
-# For engines that don't need specific options,
-# use the default option group (no options required)
-resource "aws_db_option_group" "postgres_default" {
-  name                     = "${var.project_name}-postgres-default"
-  option_group_description = "Default option group for PostgreSQL"
-  engine_name              = "postgres"
-  major_engine_version     = "16"
+# Amazon RDS creates a default option group automatically.
+# PostgreSQL doesn't use RDS option groups; it uses parameter groups
+# and SQL commands such as CREATE EXTENSION instead.
+# If you want to manage your own option group in code without adding
+# options yet, create an empty custom option group for the same engine family.
+resource "aws_db_option_group" "mysql_empty" {
+  name                     = "${var.project_name}-mysql-empty"
+  option_group_description = "Empty custom option group for MySQL"
+  engine_name              = "mysql"
+  major_engine_version     = "8.0"
 
-  # PostgreSQL doesn't support options the same way MySQL does
-  # Extensions are managed via parameter groups (shared_preload_libraries)
-  # and SQL commands (CREATE EXTENSION)
-
-  tags = { Name = "postgres-default-option-group" }
+  tags = { Name = "mysql-empty-option-group" }
 }
 ```
 
@@ -108,7 +107,7 @@ resource "aws_db_option_group" "postgres_default" {
 resource "aws_db_instance" "mysql_with_options" {
   identifier   = "${var.project_name}-mysql-audited"
   engine       = "mysql"
-  engine_version = "8.0.35"
+  engine_version = "8.0.45"
   instance_class = "db.t3.large"
 
   db_name  = var.database_name
