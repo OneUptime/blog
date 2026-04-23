@@ -28,6 +28,9 @@ volumes:
   redis_master_data:
   redis_replica1_data:
   redis_replica2_data:
+  redis_sentinel1_data:
+  redis_sentinel2_data:
+  redis_sentinel3_data:
 
 services:
   # Redis Master
@@ -122,14 +125,20 @@ services:
         ipv4_address: 172.31.0.20
     ports:
       - "26379:26379"
+    volumes:
+      - redis_sentinel1_data:/data
     command: >
       sh -c "
-        echo 'sentinel monitor mymaster 172.31.0.10 6379 2' > /etc/sentinel.conf &&
-        echo 'sentinel auth-pass mymaster redis_master_password' >> /etc/sentinel.conf &&
-        echo 'sentinel down-after-milliseconds mymaster 5000' >> /etc/sentinel.conf &&
-        echo 'sentinel failover-timeout mymaster 60000' >> /etc/sentinel.conf &&
-        echo 'sentinel parallel-syncs mymaster 1' >> /etc/sentinel.conf &&
-        redis-sentinel /etc/sentinel.conf
+        if [ ! -f /data/sentinel.conf ]; then
+          echo 'port 26379' > /data/sentinel.conf &&
+          echo 'requirepass redis_master_password' >> /data/sentinel.conf &&
+          echo 'sentinel monitor mymaster 172.31.0.10 6379 2' >> /data/sentinel.conf &&
+          echo 'sentinel auth-pass mymaster redis_master_password' >> /data/sentinel.conf &&
+          echo 'sentinel down-after-milliseconds mymaster 5000' >> /data/sentinel.conf &&
+          echo 'sentinel failover-timeout mymaster 60000' >> /data/sentinel.conf &&
+          echo 'sentinel parallel-syncs mymaster 1' >> /data/sentinel.conf;
+        fi &&
+        redis-sentinel /data/sentinel.conf
       "
     depends_on:
       - redis_master
@@ -147,14 +156,20 @@ services:
         ipv4_address: 172.31.0.21
     ports:
       - "26380:26379"
+    volumes:
+      - redis_sentinel2_data:/data
     command: >
       sh -c "
-        echo 'sentinel monitor mymaster 172.31.0.10 6379 2' > /etc/sentinel.conf &&
-        echo 'sentinel auth-pass mymaster redis_master_password' >> /etc/sentinel.conf &&
-        echo 'sentinel down-after-milliseconds mymaster 5000' >> /etc/sentinel.conf &&
-        echo 'sentinel failover-timeout mymaster 60000' >> /etc/sentinel.conf &&
-        echo 'sentinel parallel-syncs mymaster 1' >> /etc/sentinel.conf &&
-        redis-sentinel /etc/sentinel.conf
+        if [ ! -f /data/sentinel.conf ]; then
+          echo 'port 26379' > /data/sentinel.conf &&
+          echo 'requirepass redis_master_password' >> /data/sentinel.conf &&
+          echo 'sentinel monitor mymaster 172.31.0.10 6379 2' >> /data/sentinel.conf &&
+          echo 'sentinel auth-pass mymaster redis_master_password' >> /data/sentinel.conf &&
+          echo 'sentinel down-after-milliseconds mymaster 5000' >> /data/sentinel.conf &&
+          echo 'sentinel failover-timeout mymaster 60000' >> /data/sentinel.conf &&
+          echo 'sentinel parallel-syncs mymaster 1' >> /data/sentinel.conf;
+        fi &&
+        redis-sentinel /data/sentinel.conf
       "
     depends_on:
       - redis_master
@@ -170,14 +185,20 @@ services:
         ipv4_address: 172.31.0.22
     ports:
       - "26381:26379"
+    volumes:
+      - redis_sentinel3_data:/data
     command: >
       sh -c "
-        echo 'sentinel monitor mymaster 172.31.0.10 6379 2' > /etc/sentinel.conf &&
-        echo 'sentinel auth-pass mymaster redis_master_password' >> /etc/sentinel.conf &&
-        echo 'sentinel down-after-milliseconds mymaster 5000' >> /etc/sentinel.conf &&
-        echo 'sentinel failover-timeout mymaster 60000' >> /etc/sentinel.conf &&
-        echo 'sentinel parallel-syncs mymaster 1' >> /etc/sentinel.conf &&
-        redis-sentinel /etc/sentinel.conf
+        if [ ! -f /data/sentinel.conf ]; then
+          echo 'port 26379' > /data/sentinel.conf &&
+          echo 'requirepass redis_master_password' >> /data/sentinel.conf &&
+          echo 'sentinel monitor mymaster 172.31.0.10 6379 2' >> /data/sentinel.conf &&
+          echo 'sentinel auth-pass mymaster redis_master_password' >> /data/sentinel.conf &&
+          echo 'sentinel down-after-milliseconds mymaster 5000' >> /data/sentinel.conf &&
+          echo 'sentinel failover-timeout mymaster 60000' >> /data/sentinel.conf &&
+          echo 'sentinel parallel-syncs mymaster 1' >> /data/sentinel.conf;
+        fi &&
+        redis-sentinel /data/sentinel.conf
       "
     depends_on:
       - redis_master
@@ -207,24 +228,29 @@ docker exec redis_master redis-cli -a redis_master_password INFO replication
 # Check replica status
 docker exec redis_replica1 redis-cli -a redis_master_password INFO replication
 # role:slave
-# master_host:172.31.0.10
+# master_host:redis_master
 
 # Check sentinel status
-docker exec redis_sentinel1 redis-cli -p 26379 INFO sentinel
+docker exec redis_sentinel1 redis-cli -p 26379 -a redis_master_password INFO sentinel
 ```
 
 ## Step 3: Connect Applications via Sentinel
 
 ```python
-# Python with redis-py Sentinel support
+# Python with redis-py Sentinel support from another container on redis_net
 from redis.sentinel import Sentinel
 
 # Connect to Sentinel (NOT directly to Redis master)
-sentinel = Sentinel([
-    ('redis_sentinel1', 26379),
-    ('redis_sentinel2', 26380),
-    ('redis_sentinel3', 26381),
-], socket_timeout=0.1, password='redis_master_password')
+sentinel = Sentinel(
+    [
+        ('redis_sentinel1', 26379),
+        ('redis_sentinel2', 26379),
+        ('redis_sentinel3', 26379),
+    ],
+    socket_timeout=0.1,
+    password='redis_master_password',
+    sentinel_kwargs={'password': 'redis_master_password', 'socket_timeout': 0.1},
+)
 
 # Get master connection (for writes)
 master = sentinel.master_for('mymaster', socket_timeout=0.1)
@@ -234,19 +260,20 @@ replica = sentinel.slave_for('mymaster', socket_timeout=0.1)
 
 # Use as normal Redis connections
 master.set('key', 'value')
+# Replica reads are eventually consistent, so this may lag briefly behind the write
 value = replica.get('key')
 print(value)
 ```
 
 ```javascript
-// Node.js with ioredis Sentinel support
+// Node.js with ioredis Sentinel support from another container on redis_net
 const Redis = require('ioredis');
 
 const redis = new Redis({
   sentinels: [
     { host: 'redis_sentinel1', port: 26379 },
-    { host: 'redis_sentinel2', port: 26380 },
-    { host: 'redis_sentinel3', port: 26381 },
+    { host: 'redis_sentinel2', port: 26379 },
+    { host: 'redis_sentinel3', port: 26379 },
   ],
   name: 'mymaster',
   password: 'redis_master_password',
@@ -267,22 +294,22 @@ docker pause redis_master
 # Watch sentinel logs (in another terminal)
 docker logs -f redis_sentinel1
 
-# After ~5 seconds, sentinel promotes a replica
-# Check new master
-docker exec redis_replica1 redis-cli -a redis_master_password INFO replication
-# Should now show role:master
+# After the failure is detected, Sentinel promotes one of the replicas
+# Check which node Sentinel now considers the master
+docker exec redis_sentinel1 redis-cli -p 26379 -a redis_master_password SENTINEL get-master-addr-by-name mymaster
+# Output should be 172.31.0.11 or 172.31.0.12
 
 # Restore original master (rejoins as replica)
 docker unpause redis_master
 
 # Verify cluster is healthy
-docker exec redis_sentinel1 redis-cli -p 26379 SENTINEL masters
+docker exec redis_sentinel1 redis-cli -p 26379 -a redis_master_password SENTINEL masters
 ```
 
 ## Step 5: Monitor in Portainer
 
 Use Portainer to monitor your Redis Sentinel cluster:
-- View all 6 containers (3 Redis, 3 Sentinel) in Containers view
+- View all 7 containers (3 Redis, 3 Sentinel, and Redis Insight) in Containers view
 - Check container health indicators
 - View logs to see failover events
 
@@ -293,4 +320,4 @@ docker logs redis_sentinel1 | grep "odown\|sdown\|failover"
 
 ## Conclusion
 
-Your Redis Sentinel setup provides automatic failover with at most a few seconds of write unavailability when the master fails. The 3 Sentinel quorum ensures majority agreement before initiating failover, preventing split-brain scenarios. Applications using the Sentinel-aware Redis clients automatically discover the new master. Portainer makes it easy to monitor all six containers and observe failover events in the logs.
+Your Redis Sentinel setup provides automatic failover with a brief period of write unavailability while a replica is promoted. With three Sentinel instances and a quorum of 2, failover only proceeds once enough Sentinels mark the master down and a majority can authorize the failover. Applications using the Sentinel-aware Redis clients automatically discover the new master. Portainer makes it easy to monitor all seven containers and observe failover events in the logs.
