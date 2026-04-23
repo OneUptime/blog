@@ -8,7 +8,7 @@ Description: Learn how to create scheduled and manual etcd backups for RKE2 clus
 
 ---
 
-RKE2 includes built-in etcd snapshot functionality. Regular backups are essential for recovering from etcd data loss, accidental deletions, or cluster-wide failures.
+RKE2 includes built-in snapshot functionality for clusters using embedded etcd. Regular backups are essential for recovering from etcd data loss, accidental deletions, or cluster-wide failures.
 
 ---
 
@@ -38,6 +38,7 @@ systemctl restart rke2-server
 # /etc/rancher/rke2/config.yaml
 etcd-snapshot-schedule-cron: "0 */6 * * *"
 etcd-snapshot-retention: 10
+etcd-s3-retention: 10
 etcd-s3: true
 etcd-s3-bucket: my-rke2-etcd-backups
 etcd-s3-region: us-west-2
@@ -54,7 +55,7 @@ etcd-s3-secret-key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 rke2 etcd-snapshot save \
   --name manual-backup-$(date +%Y%m%d-%H%M%S)
 
-# List all snapshots
+# List snapshots visible from this node
 rke2 etcd-snapshot ls
 
 # List snapshots from S3
@@ -77,7 +78,8 @@ systemctl stop rke2-server
 # Step 2: On the primary server node, restore the snapshot
 rke2 server \
   --cluster-reset \
-  --cluster-reset-restore-path=/var/lib/rancher/rke2/server/db/snapshots/manual-backup-20260320-120000
+  --cluster-reset-restore-path=/var/lib/rancher/rke2/server/db/snapshots/<SNAPSHOT-NAME> \
+  --etcd-s3=false
 
 # Step 3: After restoration completes, start RKE2 on the primary node
 systemctl start rke2-server
@@ -95,8 +97,8 @@ After restoring the primary node, the other server nodes need to rejoin:
 ```bash
 # On each additional server node:
 
-# Remove the old etcd data directory
-rm -rf /var/lib/rancher/rke2/server/db/etcd
+# Remove the old RKE2 server database directory
+rm -rf /var/lib/rancher/rke2/server/db/
 
 # Start RKE2 (it will rejoin the restored cluster)
 systemctl start rke2-server
@@ -113,12 +115,13 @@ kubectl get nodes -w
 # List available S3 snapshots
 rke2 etcd-snapshot ls \
   --etcd-s3 \
-  --etcd-s3-bucket my-rke2-etcd-backups
+  --etcd-s3-bucket my-rke2-etcd-backups \
+  --etcd-s3-region us-west-2
 
 # Restore from S3
 rke2 server \
   --cluster-reset \
-  --cluster-reset-restore-path=s3://my-rke2-etcd-backups/my-snapshot.zip \
+  --cluster-reset-restore-path=<SNAPSHOT-NAME> \
   --etcd-s3 \
   --etcd-s3-bucket my-rke2-etcd-backups \
   --etcd-s3-region us-west-2
@@ -148,4 +151,5 @@ kubectl get pods -A
 
 - Take a manual snapshot before any major cluster change (upgrades, adding nodes, policy changes) in addition to the scheduled snapshots.
 - Always store snapshots off-cluster (S3 or another storage system) - local snapshots are lost if the node fails.
+- Back up `/var/lib/rancher/rke2/server/token` with your snapshots. It is required when restoring to new hosts.
 - Test your restore procedure in a staging environment regularly - a backup is only useful if the restore works.
