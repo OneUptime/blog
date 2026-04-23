@@ -13,14 +13,15 @@ NGINX is a popular choice for load balancing Rancher HA deployments. Its stream 
 ## Prerequisites
 
 - NGINX 1.20+ with stream module
-- Running Rancher HA cluster (3 nodes)
+- Running Rancher HA cluster (3 nodes) configured for external TLS termination (`tls=external`)
+- RKE2 server certificates with the load balancer hostname or IP added to `tls-san`
 - TLS certificate for Rancher hostname
 - Root access to NGINX server
 
 ## Step 1: Install NGINX with Stream Module
 
 ```bash
-# Ubuntu/Debian - nginx-full includes stream module
+# Install NGINX, and ensure the stream module is installed and enabled on your distribution
 
 apt update && apt install -y nginx
 
@@ -39,7 +40,12 @@ nginx -v
 ```nginx
 # /etc/nginx/nginx.conf - NGINX with HTTP and Stream for Rancher
 
-user nginx;
+include /etc/nginx/modules-enabled/*.conf;
+include /usr/share/nginx/modules/*.conf;
+
+# Use the worker user from your NGINX package.
+# Debian/Ubuntu typically use www-data; RHEL/CentOS typically use nginx.
+user www-data;
 worker_processes auto;
 error_log /var/log/nginx/error.log warn;
 pid /var/run/nginx.pid;
@@ -111,9 +117,9 @@ http {
     # Upstream Rancher servers
     upstream rancher_servers {
         least_conn;
-        server 10.0.0.11:443 max_fails=3 fail_timeout=30s;
-        server 10.0.0.12:443 max_fails=3 fail_timeout=30s;
-        server 10.0.0.13:443 max_fails=3 fail_timeout=30s;
+        server 10.0.0.11:80 max_fails=3 fail_timeout=30s;
+        server 10.0.0.12:80 max_fails=3 fail_timeout=30s;
+        server 10.0.0.13:80 max_fails=3 fail_timeout=30s;
 
         keepalive 32;
     }
@@ -161,16 +167,17 @@ server {
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Port $server_port;
 
     # Health check passthrough
-    location /ping {
-        proxy_pass https://rancher_servers;
+    location /healthz {
+        proxy_pass http://rancher_servers;
         access_log off;
     }
 
     # Main proxy location
     location / {
-        proxy_pass https://rancher_servers;
+        proxy_pass http://rancher_servers;
         proxy_buffer_size 128k;
         proxy_buffers 4 256k;
         proxy_busy_buffers_size 256k;
@@ -187,19 +194,18 @@ map $http_upgrade $connection_upgrade {
 ## Step 4: Configure NGINX Health Checks
 
 ```nginx
-# /etc/nginx/conf.d/healthcheck.conf
-# Requires nginx-plus or lua module for active health checks
-# Using passive health checks (built-in)
+# Update the existing upstream rancher_servers block in /etc/nginx/nginx.conf
+# Active health checks require NGINX Plus; NGINX Open Source uses passive checks.
 
 upstream rancher_servers {
     least_conn;
 
-    server 10.0.0.11:443 max_fails=3 fail_timeout=30s;
-    server 10.0.0.12:443 max_fails=3 fail_timeout=30s;
-    server 10.0.0.13:443 max_fails=3 fail_timeout=30s;
+    server 10.0.0.11:80 max_fails=3 fail_timeout=30s;
+    server 10.0.0.12:80 max_fails=3 fail_timeout=30s;
+    server 10.0.0.13:80 max_fails=3 fail_timeout=30s;
 
     # Keep backup server
-    server 10.0.0.14:443 backup;
+    server 10.0.0.14:80 backup;
 
     keepalive 32;
 }
@@ -231,7 +237,7 @@ systemctl enable nginx
 systemctl start nginx
 
 # Test Rancher accessibility
-curl -sk https://rancher.example.com/ping
+curl -sk https://rancher.example.com/healthz
 
 # Check NGINX logs
 tail -f /var/log/nginx/access.log
@@ -253,6 +259,7 @@ cat > /etc/logrotate.d/nginx << 'EOF'
     compress
     delaycompress
     notifempty
+    # Adjust owner/group if your distribution uses a different NGINX account.
     create 0640 www-data adm
     sharedscripts
     postrotate
