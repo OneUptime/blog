@@ -41,11 +41,11 @@ server {
 }
 ```
 
-The `$host$request_uri` variable preserves the hostname and full path in the redirect.
+The `$host` and `$request_uri` variables preserve the hostname and original request URI, including the query string.
 
 ## Nginx: Catch-All HTTP Redirect
 
-To redirect ALL HTTP traffic (not just specific domains):
+To redirect all HTTP requests that reach this server, including unmatched hostnames:
 
 ```nginx
 # Catch-all for any HTTP request
@@ -60,7 +60,7 @@ server {
 
 ## Nginx: Except Let's Encrypt Validation
 
-When using Certbot's webroot method, the `.well-known/acme-challenge` path must be accessible over HTTP for certificate renewal:
+If you want to serve Certbot's webroot challenge directly on port 80, exclude the `.well-known/acme-challenge` path from the redirect:
 
 ```nginx
 server {
@@ -106,7 +106,7 @@ Or using mod_rewrite for more flexibility:
 
     # Redirect all other traffic to HTTPS
     RewriteCond %{HTTPS} off
-    RewriteRule ^(.*)$ https://%{HTTP_HOST}%1 [R=301,L]
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
 </VirtualHost>
 ```
 
@@ -116,12 +116,14 @@ Or using mod_rewrite for more flexibility:
 # HTTP VirtualHost
 <VirtualHost *:80>
     ServerName example.com
+    ServerAlias www.example.com
     Redirect 301 / https://example.com/
 </VirtualHost>
 
 # HTTPS VirtualHost
 <VirtualHost *:443>
     ServerName example.com
+    ServerAlias www.example.com
 
     SSLEngine on
     SSLCertificateFile    /etc/letsencrypt/live/example.com/fullchain.pem
@@ -152,9 +154,9 @@ curl -I http://example.com/about/
 ## Common Mistakes to Avoid
 
 1. **Redirect loop:** Ensure the HTTPS server block doesn't also redirect
-2. **Path not preserved:** Use `$request_uri` in Nginx, `%1` or `%{REQUEST_URI}` in Apache
-3. **Breaking ACME challenge:** Exempt `/.well-known/acme-challenge/` from the redirect
-4. **Missing www:** Handle both `example.com` and `www.example.com` in `server_name`
+2. **Path not preserved:** Use `$request_uri` in Nginx. In Apache, `Redirect` preserves the path automatically, or use `%{REQUEST_URI}` in `mod_rewrite`
+3. **Breaking ACME challenge:** If you use HTTP-01, make sure `/.well-known/acme-challenge/` stays reachable during validation
+4. **Missing www:** Handle both `example.com` and `www.example.com` in `server_name` or `ServerAlias`
 
 ## Add HSTS After Redirect Is Working
 
@@ -171,4 +173,4 @@ server {
 
 ## Conclusion
 
-HTTP to HTTPS redirects use a simple `return 301` in Nginx or `Redirect permanent` in Apache. Always use `$host$request_uri` to preserve the hostname and path in the redirect URL, exempt `/.well-known/acme-challenge/` for Certbot renewals, and add HSTS after confirming the redirect works correctly to enforce HTTPS at the browser level.
+HTTP to HTTPS redirects use a simple `return 301` in Nginx or `Redirect permanent` in Apache. In Nginx, use `$host$request_uri` to preserve the hostname and original request URI; in Apache, `Redirect` preserves the matched path automatically, or use `%{REQUEST_URI}` with `mod_rewrite`. If you use Certbot's HTTP-01 challenge, ensure `/.well-known/acme-challenge/` remains reachable during validation, and add HSTS after confirming the redirect works correctly to enforce HTTPS at the browser level.
