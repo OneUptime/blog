@@ -14,8 +14,10 @@ How to Use CAPI with AWS Provider via Rancher Turtles is an important aspect of 
 
 - Rancher Turtles installed and configured
 - kubectl access to the management cluster
-- Appropriate cloud provider credentials (if applicable)
-- Cluster API providers installed
+- clusterctl installed locally
+- AWS IAM roles and credentials configured for CAPA
+- An AWS EC2 SSH key pair and an AMI built for the RKE2 version you plan to deploy
+- Cluster API providers installed, including CAPA and CAPRKE2
 
 ## Overview
 
@@ -29,7 +31,7 @@ Rancher Turtles integrates Cluster API (CAPI) with Rancher to provide a unified,
 kubectl get pods -n rancher-turtles-system
 
 # Check installed CAPI providers
-kubectl get providers -A
+kubectl get capiproviders -A
 
 # Verify management cluster connectivity
 kubectl cluster-info
@@ -37,40 +39,35 @@ kubectl cluster-info
 
 ## Step 2: Configure Resources
 
-```yaml
-# Example CAPI configuration for How to Use CAPI with AWS Provider via Rancher Turtles
-apiVersion: cluster.x-k8s.io/v1beta1
-kind: Cluster
-metadata:
-  name: example-cluster
-  namespace: default
-  labels:
-    cluster-api.cattle.io/rancher-auto-import: "true"
-    environment: production
-spec:
-  clusterNetwork:
-    pods:
-      cidrBlocks:
-        - 10.244.0.0/16
-    services:
-      cidrBlocks:
-        - 10.96.0.0/12
-  infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-    kind: InfraCluster
-    name: example-cluster
-  controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
-    kind: RKE2ControlPlane
-    name: example-cluster-cp
-```
-
 ```bash
+# Set the values required by the CAPRKE2 AWS template
+export CONTROL_PLANE_MACHINE_COUNT=3
+export WORKER_MACHINE_COUNT=2
+export RKE2_VERSION=v1.34.6+rke2r3
+export AWS_NODE_MACHINE_TYPE=t3a.large
+export AWS_CONTROL_PLANE_MACHINE_TYPE=t3a.large
+export AWS_SSH_KEY_NAME="aws-ssh-key"
+export AWS_REGION="us-east-1"
+export AWS_AMI_ID="ami-xxxxxxxxxxxxxxxxx"
+
+# Render the upstream CAPRKE2 AWS template.
+# The published template is air-gapped by default, so switch it to non-air-gapped
+# mode for a standard internet-connected AWS deployment.
+clusterctl generate cluster \
+  --from https://github.com/rancher/cluster-api-provider-rke2/blob/main/examples/templates/aws/cluster-template.yaml \
+  -n default example-cluster \
+  | sed 's/airGapped: true/airGapped: false/g' \
+  > cluster-config.yaml
+
 # Apply the configuration
 kubectl apply -f cluster-config.yaml
 
+# Mark the cluster for automatic import into Rancher
+kubectl label cluster.cluster.x-k8s.io -n default example-cluster \
+  cluster-api.cattle.io/rancher-auto-import=true --overwrite
+
 # Monitor progress
-kubectl get cluster example-cluster --watch
+kubectl get cluster example-cluster -n default --watch
 ```
 
 ## Step 3: Verify the Configuration
@@ -82,11 +79,11 @@ kubectl get clusters -A
 # Describe the cluster for detailed status
 kubectl describe cluster example-cluster -n default
 
-# View all CAPI resources
+# View core CAPI resources
 kubectl get clusters,machines,machinedeployments -n default
 
 # Check Rancher import status
-kubectl get cluster.provisioning.cattle.io -n fleet-default
+kubectl get clusters.management.cattle.io
 ```
 
 ## Step 4: Validate in Rancher UI
@@ -100,10 +97,10 @@ kubectl get cluster.provisioning.cattle.io -n fleet-default
 
 ```bash
 # Scale worker nodes
-kubectl scale machinedeployment example-cluster-workers --replicas=5
+kubectl scale machinedeployment example-cluster-md-0 --replicas=5
 
 # Get cluster kubeconfig
-clusterctl get kubeconfig example-cluster > cluster-kubeconfig.yaml
+clusterctl get kubeconfig example-cluster --namespace default > cluster-kubeconfig.yaml
 
 # Test connectivity
 export KUBECONFIG=cluster-kubeconfig.yaml
