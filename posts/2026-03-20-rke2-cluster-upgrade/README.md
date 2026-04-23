@@ -12,7 +12,7 @@ Keeping your RKE2 cluster up to date is essential for security patches, bug fixe
 
 - An operational RKE2 cluster
 - Backup of etcd (critical before any upgrade)
-- Understanding of the current and target RKE2 versions
+- Understanding of the current and target RKE2 versions, including Kubernetes version skew rules
 - Maintenance window scheduled (for production)
 
 ## Before Upgrading: Preparation Checklist
@@ -21,7 +21,7 @@ Keeping your RKE2 cluster up to date is essential for security patches, bug fixe
 # 1. Check current RKE2 version
 
 rke2 --version
-kubectl version --short
+kubectl version
 
 # 2. Take an etcd backup before upgrading
 sudo rke2 etcd-snapshot save \
@@ -32,10 +32,11 @@ ls -lh /var/lib/rancher/rke2/server/db/snapshots/
 
 # 3. Check cluster health before upgrade
 kubectl get nodes
-kubectl get pods -A | grep -v Running | grep -v Completed
+kubectl get pods -A --field-selector='status.phase!=Running,status.phase!=Succeeded'
 
 # 4. Review the RKE2 release notes for the target version
 # Check: https://github.com/rancher/rke2/releases
+# Do not skip unsupported intermediate Kubernetes minor versions.
 
 # 5. Check workload pod disruption budgets
 kubectl get pdb -A
@@ -49,7 +50,7 @@ kubectl get pdb -A
 # On each server node (one at a time):
 
 # 1. Download the new RKE2 version
-RKE2_VERSION="v1.28.10+rke2r1"
+RKE2_VERSION="v1.34.6+rke2r3"
 
 # Using the installation script (handles proper upgrade)
 curl -sfL https://get.rke2.io | \
@@ -71,7 +72,7 @@ kubectl wait node/<node-name> --for=condition=Ready --timeout=300s
 ### Upgrade Agent (Worker) Nodes
 
 ```bash
-# On each agent/worker node (can drain first for zero-downtime):
+# On each agent/worker node (drain first to minimize workload disruption):
 
 # 1. Drain the node to move workloads elsewhere
 kubectl drain <worker-node> \
@@ -80,7 +81,7 @@ kubectl drain <worker-node> \
   --timeout=300s
 
 # 2. Download and install the new version
-RKE2_VERSION="v1.28.10+rke2r1"
+RKE2_VERSION="v1.34.6+rke2r3"
 curl -sfL https://get.rke2.io | \
   INSTALL_RKE2_VERSION=$RKE2_VERSION \
   INSTALL_RKE2_TYPE=agent sh -
@@ -95,7 +96,7 @@ kubectl wait node/<worker-node> --for=condition=Ready --timeout=300s
 kubectl uncordon <worker-node>
 
 # 6. Verify workloads are running
-kubectl get pods -o wide | grep <worker-node>
+kubectl get pods -A -o wide --field-selector "spec.nodeName=<worker-node>"
 ```
 
 ## Method 2: Automated Upgrade with system-upgrade-controller
@@ -104,7 +105,10 @@ kubectl get pods -o wide | grep <worker-node>
 
 ```bash
 # Install the system-upgrade-controller
-kubectl apply -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
+kubectl apply -f \
+  https://github.com/rancher/system-upgrade-controller/releases/latest/download/crd.yaml \
+  -f \
+  https://github.com/rancher/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
 
 # Verify the controller is running
 kubectl get pods -n system-upgrade
@@ -121,7 +125,7 @@ metadata:
   namespace: system-upgrade
 spec:
   # The target RKE2 version
-  version: v1.28.10+rke2r1
+  version: v1.34.6+rke2r3
 
   # Number of nodes to upgrade simultaneously
   concurrency: 1
@@ -138,21 +142,14 @@ spec:
   drain:
     force: false
     ignoreDaemonSets: true
-    deleteLocalData: false
+    deleteEmptydirData: false
     timeout: 300s
+
+  serviceAccountName: system-upgrade
 
   upgrade:
     # Use the RKE2 upgrade image
     image: rancher/rke2-upgrade
-
-  prepare:
-    # Health check before upgrade
-    image: rancher/rke2-upgrade
-    command:
-    - sh
-    - -c
-    args:
-    - "echo 'Pre-upgrade check passed'"
 
   tolerations:
   - key: "node-role.kubernetes.io/control-plane"
@@ -168,20 +165,14 @@ metadata:
   name: rke2-agent-upgrade
   namespace: system-upgrade
 spec:
-  version: v1.28.10+rke2r1
+  version: v1.34.6+rke2r3
 
   # Wait for server nodes to finish upgrading first
   prepare:
-    image: rancher/rke2-upgrade:v1.28.10+rke2r1
-    command:
-    - kubectl
+    image: rancher/rke2-upgrade
     args:
-    - wait
-    - "--for=condition=complete"
-    - "--timeout=300s"
-    - plan/rke2-server-upgrade
-    - -n
-    - system-upgrade
+    - prepare
+    - rke2-server-upgrade
 
   # Upgrade 2 worker nodes at a time
   concurrency: 2
@@ -190,13 +181,15 @@ spec:
     matchExpressions:
     # Only upgrade worker/agent nodes
     - key: node-role.kubernetes.io/control-plane
-      operator: NotIn
-      values: ["true"]
+      operator: DoesNotExist
 
   drain:
     force: false
     ignoreDaemonSets: true
+    deleteEmptydirData: true
     timeout: 300s
+
+  serviceAccountName: system-upgrade
 
   upgrade:
     image: rancher/rke2-upgrade
@@ -222,22 +215,25 @@ kubectl get nodes -w
 kubectl get nodes -o custom-columns=NAME:.metadata.name,VERSION:.status.nodeInfo.kubeletVersion
 
 # Check that all pods are running
-kubectl get pods -A | grep -v Running | grep -v Completed
+kubectl get pods -A --field-selector='status.phase!=Running,status.phase!=Succeeded'
 
 # Verify RKE2 version
 rke2 --version
 
 # Run a CIS scan if applicable
+# List available profiles and choose one that matches your RKE2/Kubernetes version
+kubectl get clusterscanprofiles.compliance.cattle.io
+
 kubectl apply -f - <<EOF
-apiVersion: cis.cattle.io/v1
+apiVersion: compliance.cattle.io/v1
 kind: ClusterScan
 metadata:
   name: post-upgrade-scan
 spec:
-  scanProfileName: rke2-cis-1.6-profile-hardened
+  scanProfileName: cis-1.10-profile
 EOF
 ```
 
 ## Conclusion
 
-Upgrading RKE2 clusters requires careful preparation, proper ordering (server nodes first, then agent nodes), and validation at each step. The system-upgrade-controller automates this process while maintaining zero-downtime upgrades through proper drain and uncordon operations. Always take an etcd backup before upgrading and test the upgrade process in a non-production environment first. Rancher provides additional tools for managing cluster upgrades across multiple clusters simultaneously.
+Upgrading RKE2 clusters requires careful preparation, proper ordering (server nodes first, then agent nodes), and validation at each step. The system-upgrade-controller automates this process while helping maintain availability through proper drain and uncordon operations when workloads are replicated and protected by disruption budgets. Always take an etcd backup before upgrading and test the upgrade process in a non-production environment first. Rancher provides additional tools for managing cluster upgrades across multiple clusters simultaneously.
