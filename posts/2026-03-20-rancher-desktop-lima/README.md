@@ -4,16 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher Desktop, Lima, macOS, VM, Configuration
 
-Description: Configure the Lima virtual machine backend in Rancher Desktop on macOS for optimal performance and compatibility.
+Description: Configure Rancher Desktop on macOS, where Rancher Desktop runs workloads inside a Lima-managed virtual machine, for optimal performance and compatibility.
 
 ## Introduction
 
-Rancher Desktop is an open-source desktop application that provides Kubernetes and container management tools for local development. It bundles kubectl, Helm, nerdctl, and either containerd or Moby (dockerd) into a single, easy-to-use application. This guide covers How to Configure Rancher Desktop with Lima in detail.
+Rancher Desktop is an open-source desktop application that provides Kubernetes and container management tools for local development. It bundles kubectl, Helm, nerdctl, and either containerd or Moby (dockerd) into a single, easy-to-use application. On macOS, Rancher Desktop runs workloads inside a Lima-managed virtual machine. This guide covers How to Configure Rancher Desktop with Lima in detail.
 
 ## Prerequisites
 
-- A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
+- macOS 13 (Ventura) or higher
+- Apple Silicon or Intel CPU with virtualization support
+- Persistent internet connection
+- Rancher Desktop command-line tools available on your `PATH` (typically via `~/.rd/bin` on macOS)
 - At least 8 GB of RAM (16 GB recommended)
 - At least 4 CPU cores
 
@@ -24,22 +26,25 @@ Rancher Desktop simplifies local Kubernetes and container development by providi
 - A local Kubernetes cluster (k3s-based)
 - Container runtime (containerd or dockerd)
 - Integrated CLI tools (kubectl, helm, nerdctl, docker)
+- A Lima-managed virtual machine on macOS
 - Simple configuration through a GUI
 
 ## Step 1: Initial Setup
 
 ```bash
 # Verify Rancher Desktop is installed and running
-
 rdctl version
 
-# Check Kubernetes cluster status
+# Review the current Rancher Desktop settings
+rdctl list-settings
+
+# Check Kubernetes cluster status (if Kubernetes is enabled)
 kubectl cluster-info
 
 # Verify container runtime
-nerdctl version
+nerdctl version   # containerd
 # or
-docker version
+docker version    # Moby
 ```
 
 ## Step 2: Configuration
@@ -49,21 +54,24 @@ Open Rancher Desktop Preferences to configure:
 - **Kubernetes**: Version and enabled/disabled state
 - **Container Engine**: containerd or moby (dockerd)
 - **Virtual Machine**: CPU, memory, and disk allocation
-- **WSL** (Windows only): WSL2 integration settings
+- **Emulation (macOS)**: `VZ` or `QEMU` for the Lima-managed VM
 
 ```bash
 # Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
-rdctl set --container-engine containerd
+rdctl start --container-engine.name=containerd \
+  --virtual-machine.type=vz \
+  --virtual-machine.number-cpus=4 \
+  --virtual-machine.memory-in-gb=8
 ```
 
 ## Step 3: Working with Containers
 
 ```bash
+# The commands below use containerd via nerdctl.
+# If you selected Moby instead, use the equivalent docker commands.
+
 # Pull an image
 nerdctl pull nginx:latest
-# or with docker compatibility
-docker pull nginx:latest
 
 # Run a container
 nerdctl run -d -p 8080:80 --name my-nginx nginx:latest
@@ -131,33 +139,35 @@ helm uninstall my-release
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
-rdctl factory-reset
+# Show the current Rancher Desktop settings
+rdctl list-settings
 
-# Check Rancher Desktop status
-rdctl status
+# Switch the macOS VM type used by the Lima-managed VM
+rdctl start --virtual-machine.type=vz
+# or
+rdctl start --virtual-machine.type=qemu
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
-
-# Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+# Adjust VM CPU and memory allocation
+rdctl start --virtual-machine.number-cpus=4 \
+  --virtual-machine.memory-in-gb=8
 ```
 
 ## Troubleshooting
 
 ```bash
-# Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# Review the current Rancher Desktop settings
+rdctl list-settings
 
-# Reset to factory defaults
-rdctl factory-reset
+# Check the VM IP address
+rdctl info --field ip-address
 
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Run a command inside the Rancher Desktop VM
+rdctl shell -- uname -a
+
+# Use Troubleshooting > Show Logs or Troubleshooting > Factory Reset
+# in the Rancher Desktop UI when you need logs or a full reset.
 ```
 
 ## Conclusion
 
-How to Configure Rancher Desktop with Lima with Rancher Desktop provides a powerful, integrated local development experience. Rancher Desktop eliminates the need for multiple separate tools by bundling everything needed for Kubernetes and container development into a single application. Whether you're building microservices, testing Helm charts, or learning Kubernetes, Rancher Desktop provides a production-like environment on your local machine.
+Configuring Rancher Desktop on macOS, where Rancher Desktop uses a Lima-managed virtual machine, provides a powerful, integrated local development experience. Rancher Desktop eliminates the need for multiple separate tools by bundling everything needed for Kubernetes and container development into a single application. Whether you're building microservices, testing Helm charts, or learning Kubernetes, Rancher Desktop provides a production-like environment on your local machine.
