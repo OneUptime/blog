@@ -168,9 +168,7 @@ node-label:
 node-taint:
   - "nvidia.com/gpu=present:NoSchedule"
 
-kubelet-arg:
-  # Register GPU device plugin
-  - "feature-gates=DevicePlugins=true"
+# Install the NVIDIA device plugin in the cluster after the node joins.
 ```
 
 ### High-Memory Database Nodes
@@ -201,7 +199,7 @@ kubelet-arg:
 
 ```bash
 # Install RKE2 agent
-curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE="agent" sudo sh -
+curl -sfL https://get.rke2.io | sudo env INSTALL_RKE2_TYPE="agent" sh -
 
 # Create the configuration
 sudo mkdir -p /etc/rancher/rke2/
