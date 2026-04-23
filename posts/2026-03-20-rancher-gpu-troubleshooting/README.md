@@ -55,20 +55,21 @@ kubectl get pods -n gpu-operator | grep -v Running
 kubectl describe pod nvidia-driver-daemonset-xxx -n gpu-operator
 
 # Check driver pod logs
-kubectl logs -n gpu-operator   nvidia-driver-daemonset-xxx   --previous   # Previous container logs if crashed
+kubectl logs -n gpu-operator   nvidia-driver-daemonset-xxx   -c nvidia-driver-ctr
+kubectl logs -n gpu-operator   nvidia-driver-daemonset-xxx   -c k8s-driver-manager   --previous   # Previous init container logs if it crashed
 ```
 
 ## Step 3: Debug CUDA Container Issues
 
 ```bash
 # Test CUDA access in a debug container
-kubectl run cuda-debug   --image=nvcr.io/nvidia/cuda:12.2.0-base-ubuntu22.04   --rm -it   --restart=Never   --limits=nvidia.com/gpu=1   -- nvidia-smi
+kubectl run cuda-debug   --image=nvcr.io/nvidia/cuda:12.2.0-base-ubuntu22.04   --rm -it   --restart=Never   --override-type='strategic'   --overrides='{"apiVersion":"v1","spec":{"containers":[{"name":"cuda-debug","image":"nvcr.io/nvidia/cuda:12.2.0-base-ubuntu22.04","command":["nvidia-smi"],"resources":{"limits":{"nvidia.com/gpu":1}}}]}}'
 
 # If it fails, check the device plugin
-kubectl logs -n gpu-operator   $(kubectl get pods -n gpu-operator -l app=nvidia-device-plugin-daemonset -o name | head -1)
+kubectl logs -n gpu-operator   "$(kubectl get pods -n gpu-operator -o name | grep nvidia-device-plugin-daemonset | head -1)"
 
 # Test container toolkit
-kubectl run toolkit-test   --image=nvcr.io/nvidia/cuda:12.2.0-base-ubuntu22.04   --rm -it   --restart=Never   --limits=nvidia.com/gpu=1   -- sh -c "ls -la /dev/nvidia*"
+kubectl run toolkit-test   --image=nvcr.io/nvidia/cuda:12.2.0-base-ubuntu22.04   --rm -it   --restart=Never   --override-type='strategic'   --overrides='{"apiVersion":"v1","spec":{"containers":[{"name":"toolkit-test","image":"nvcr.io/nvidia/cuda:12.2.0-base-ubuntu22.04","command":["sh","-c","ls -la /dev/nvidia*"],"resources":{"limits":{"nvidia.com/gpu":1}}}]}}'
 ```
 
 ## Step 4: Diagnose Pod Scheduling Failures
@@ -85,14 +86,21 @@ kubectl describe pod gpu-workload | grep -A20 Events
 #   -> Missing toleration for GPU taint
 
 # Check GPU resource availability
-kubectl get nodes   -o custom-columns='NAME:.metadata.name,GPU:.status.allocatable[nvidia\.com/gpu]'
+kubectl get nodes   -o=jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.allocatable.nvidia\.com/gpu}{"\n"}{end}'
 
 # Check what GPU resources are currently used
 kubectl get pods -A -o json | jq '
-  .items[] | 
-  select(.spec.containers[].resources.limits["nvidia.com/gpu"] != null) |
-  {pod: .metadata.name, namespace: .metadata.namespace, 
-   gpu: .spec.containers[].resources.limits["nvidia.com/gpu"]}'
+  .items[]
+  | {
+      pod: .metadata.name,
+      namespace: .metadata.namespace,
+      gpus: [
+        .spec.containers[]?
+        | {container: .name, gpu: .resources.limits["nvidia.com/gpu"]?}
+        | select(.gpu != null)
+      ]
+    }
+  | select(.gpus | length > 0)'
 ```
 
 ## Step 5: Fix Driver Version Mismatches
@@ -101,14 +109,14 @@ kubectl get pods -A -o json | jq '
 # Check installed driver version
 nvidia-smi --query-gpu=driver_version --format=csv,noheader
 
-# Check CUDA version required by your image
-kubectl exec gpu-workload -- nvcc --version
+# Check the image tag your workload uses
+kubectl get pod gpu-workload -o jsonpath='{.spec.containers[*].image}{"\n"}'
 
-# Check compatibility matrix at:
+# Compare the CUDA version in the image tag against the compatibility matrix:
 # https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/
 
 # Update GPU Operator to use correct driver version
-helm upgrade gpu-operator nvidia/gpu-operator   --namespace gpu-operator   --reuse-values   --set driver.version="535.104.12"   # Pin to specific version
+helm upgrade <release-name> nvidia/gpu-operator   --namespace gpu-operator   --reuse-values   --set driver.version="<supported-driver-version>"   # Pin to a driver version supported by your GPU Operator release
 ```
 
 ## Step 6: Reset Stuck GPU Resources
@@ -130,15 +138,15 @@ kubectl uncordon gpu-node-01
 
 ```bash
 # Check DCGM exporter is running
-kubectl get pods -n gpu-operator -l app=nvidia-dcgm-exporter
+kubectl get pods -n gpu-operator | grep nvidia-dcgm-exporter
 
 # View DCGM metrics directly
-kubectl port-forward -n gpu-operator   $(kubectl get pods -n gpu-operator -l app=nvidia-dcgm-exporter -o name | head -1)   9400:9400 &
+kubectl port-forward -n gpu-operator   service/nvidia-dcgm-exporter   9400:9400 &
 
 curl -s http://localhost:9400/metrics | grep -v "^#" | head -20
 
 # Check for DCGM errors
-kubectl logs -n gpu-operator   $(kubectl get pods -n gpu-operator -l app=nvidia-dcgm-exporter -o name | head -1)   | grep -i error
+kubectl logs -n gpu-operator   "$(kubectl get pods -n gpu-operator -o name | grep nvidia-dcgm-exporter | head -1)"   | grep -i error
 ```
 
 ## Step 8: Collect Diagnostic Information
@@ -160,7 +168,7 @@ kubectl get pods -n gpu-operator -o wide >> /tmp/gpu-diag.txt
 
 echo "" >> /tmp/gpu-diag.txt
 echo "=== GPU Resources ===" >> /tmp/gpu-diag.txt
-kubectl get nodes   -o custom-columns='NAME:.metadata.name,GPU:.status.allocatable[nvidia\.com/gpu]'   >> /tmp/gpu-diag.txt
+kubectl get nodes   -o=jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.allocatable.nvidia\.com/gpu}{"\n"}{end}'   >> /tmp/gpu-diag.txt
 
 echo "Diagnostics saved to /tmp/gpu-diag.txt"
 ```
