@@ -39,10 +39,10 @@ Routinator is a widely used open-source RPKI validator:
 sudo apt-get install routinator
 
 # Or install via Cargo (Rust package manager)
-cargo install routinator
+cargo install --locked routinator
 
-# Initialize Routinator and accept ARIN's RPA
-routinator init --accept-arin-rpa
+# View the default configuration (Routinator 0.12+ no longer requires ARIN RPA initialization)
+routinator config
 ```
 
 ## Step 3: Configure Routinator
@@ -87,7 +87,7 @@ roa6 table rpki6;
 
 protocol rpki routinator {
     # Connect to Routinator over IPv6
-    remote "::1" port 3323;
+    remote ::1 port 3323;
 
     # Update interval in seconds
     refresh keep 300;
@@ -101,10 +101,11 @@ protocol rpki routinator {
 
 ## Step 6: Apply Origin Validation in BGP
 
-```nginx
+```text
 # Apply RPKI validation policy to BGP
 protocol bgp upstream {
-    neighbor 2001:db8:peer::1 as 65001;
+    local as 65000;
+    neighbor 2001:db8:1::1 as 65001;
 
     ipv6 {
         import filter {
