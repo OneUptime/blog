@@ -28,7 +28,7 @@ The most common use of DestinationRules is defining subsets that VirtualServices
 ```yaml
 # subsets-destination-rule.yaml
 
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-destination-rule
@@ -55,7 +55,7 @@ spec:
 
 ```yaml
 # load-balancing-destination-rule.yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-lb
@@ -64,11 +64,11 @@ spec:
   host: my-service
   trafficPolicy:
     loadBalancer:
-      # ROUND_ROBIN: Default, distribute requests evenly
-      # LEAST_CONN: Send to instance with fewest active requests
+      # ROUND_ROBIN: Distribute requests evenly
+      # LEAST_REQUEST: Send to the instance with the fewest outstanding requests
       # RANDOM: Forward to random healthy instance
       # PASSTHROUGH: Forward without load balancing
-      simple: LEAST_CONN
+      simple: LEAST_REQUEST
   subsets:
   - name: v1
     labels:
@@ -93,7 +93,7 @@ Control the volume of connections to a service:
 
 ```yaml
 # connection-pool-destination-rule.yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-conn-pool
@@ -112,13 +112,13 @@ spec:
           time: 7200s
           interval: 75s
       http:
-        # Maximum number of pending requests to a destination
+        # Maximum number of requests waiting for a ready connection
         http1MaxPendingRequests: 100
-        # Maximum number of requests to a backend (HTTP/2)
+        # Maximum number of active requests to a destination
         http2MaxRequests: 1000
         # Maximum number of requests per connection
         maxRequestsPerConnection: 10
-        # Maximum number of retries
+        # Maximum number of retries outstanding to all hosts in the cluster
         maxRetries: 3
         # Connection idle timeout
         idleTimeout: 90s
@@ -130,7 +130,7 @@ Outlier detection automatically ejects unhealthy hosts from the load balancing p
 
 ```yaml
 # outlier-detection-destination-rule.yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-outlier
@@ -149,17 +149,17 @@ spec:
       baseEjectionTime: 30s
       # Maximum percentage of hosts that can be ejected at one time
       maxEjectionPercent: 50
-      # Minimum number of requests in an interval before outlier detection is enabled
+      # Minimum percentage of healthy hosts required to keep outlier detection enabled
       minHealthPercent: 50
 ```
 
-## Step 5: Configure TLS Settings for Downstream Connections
+## Step 5: Configure TLS Settings for Upstream Connections
 
 Control how Istio connects to your services:
 
 ```yaml
 # tls-destination-rule.yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-service-tls
@@ -172,6 +172,9 @@ spec:
       mode: SIMPLE
       # CA certificate to validate the server certificate
       caCertificates: /etc/ssl/certs/ca-certificates.crt
+      # Subject Alternative Name to verify on the server certificate
+      subjectAltNames:
+      - external-database.example.com
       # SNI string to present to the server
       sni: external-database.example.com
 ```
@@ -182,7 +185,7 @@ Apply a DestinationRule as a default policy for all services in a namespace:
 
 ```yaml
 # namespace-wide-policy.yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: default
@@ -192,7 +195,7 @@ spec:
   host: "*.my-app.svc.cluster.local"
   trafficPolicy:
     tls:
-      # Use Istio's automatic mutual TLS for all service communication
+      # Use Istio mutual TLS for all in-mesh service communication
       mode: ISTIO_MUTUAL
     connectionPool:
       http:
@@ -208,17 +211,17 @@ spec:
 
 ```bash
 # List all DestinationRules
-kubectl get destinationrule -A
+kubectl get destinationrules -A
 
 # Describe a specific DestinationRule
 kubectl describe destinationrule reviews-destination-rule -n bookinfo
 
-# Verify the Envoy cluster configuration reflects the DestinationRule
-istioctl proxy-config cluster deploy/productpage-v1 \
-  -n bookinfo | grep reviews
+# Inspect the Envoy cluster configuration for the reviews service
+istioctl proxy-config clusters deployment/productpage-v1 \
+  -n bookinfo --fqdn reviews.bookinfo.svc.cluster.local -o json
 
 # Analyze for configuration issues
-istioctl analyze -n bookinfo
+istioctl analyze --namespace bookinfo
 ```
 
 ## Conclusion
