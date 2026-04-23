@@ -25,34 +25,6 @@ resource "aws_kms_key" "rds" {
   deletion_window_in_days = 30
   enable_key_rotation     = true
 
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "Enable IAM User Permissions"
-        Effect = "Allow"
-        Principal = {
-          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
-        }
-        Action   = "kms:*"
-        Resource = "*"
-      },
-      {
-        Sid    = "Allow RDS to use the key"
-        Effect = "Allow"
-        Principal = { Service = "rds.amazonaws.com" }
-        Action = [
-          "kms:Decrypt",
-          "kms:GenerateDataKey",
-          "kms:CreateGrant",
-          "kms:ListGrants",
-          "kms:RevokeGrant"
-        ]
-        Resource = "*"
-      }
-    ]
-  })
-
   tags = {
     Name    = "rds-encryption-key"
     Purpose = "RDS"
@@ -114,11 +86,17 @@ aws rds create-db-snapshot \
   --db-instance-identifier unencrypted-database \
   --db-snapshot-identifier unencrypted-snapshot
 
+aws rds wait db-snapshot-available \
+  --db-snapshot-identifier unencrypted-snapshot
+
 # Step 2: Copy the snapshot and encrypt it
 aws rds copy-db-snapshot \
   --source-db-snapshot-identifier unencrypted-snapshot \
   --target-db-snapshot-identifier encrypted-snapshot \
   --kms-key-id alias/rds-encryption
+
+aws rds wait db-snapshot-available \
+  --db-snapshot-identifier encrypted-snapshot
 
 # Step 3: Restore from the encrypted snapshot
 aws rds restore-db-instance-from-db-snapshot \
@@ -134,8 +112,7 @@ resource "aws_db_instance" "encrypted_restore" {
   instance_class      = "db.r6g.xlarge"
   snapshot_identifier = var.encrypted_snapshot_id
 
-  storage_encrypted = true
-  kms_key_id        = aws_kms_key.rds.arn
+  # Encryption is inherited from the encrypted snapshot copy
 
   db_subnet_group_name   = var.subnet_group_name
   vpc_security_group_ids = [var.security_group_id]
