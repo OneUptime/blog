@@ -12,65 +12,66 @@ ARIN (American Registry for Internet Numbers) manages IPv6 address allocation fo
 
 ## Types of IPv6 Allocations from ARIN
 
-- **ISP Allocation**: Large blocks (/32) for ISPs to delegate to customers
-- **End-User Assignment**: Direct assignments (/48) for organizations that do not provide services to others
-- **Critical Infrastructure**: Special allocations for DNS root servers, IXPs
+- **ISP Allocation**: Allocations for ISPs/LIRs to reassign to customers; the standard minimum is `/32`, while `/36` or, in limited cases, `/40` can also be requested, and larger nibble-aligned blocks are possible when justified
+- **End-User Assignment**: Direct assignments for organizations that do not provide Internet services to customers; the minimum initial assignment is `/48`
+- **Critical Infrastructure**: IPv6 micro-allocations, no longer than `/48`, for qualifying public exchange points, core DNS service providers, the RIRs, and IANA
 
 ## Prerequisites
 
 Before applying, you need:
-1. An ARIN Online account (create at account.arin.net)
-2. A signed RSA (Registration Services Agreement) with ARIN
-3. Justification documentation
+1. An ARIN Online account linked to an authorized Admin or Tech POC for a valid Org ID
+2. Documentation showing you meet the applicable ARIN policy requirements
+3. To be prepared to sign the RSA (Registration Services Agreement) and pay any applicable fees before ARIN issues the resources
 
 ## Step-by-Step ISP Allocation Request
 
 ### 1. Create an ARIN Online Account
 
-Go to `https://account.arin.net` and register your organization. You will need:
+Go to `https://account.arin.net` and create your ARIN Online account. To submit a request, the account must be linked to a valid Org ID and an authorized Admin or Tech POC. You will need:
 - Organization legal name
 - Physical address
 - Technical and administrative POC contact details
 
-### 2. Sign the RSA
+### 2. Be Ready to Sign the RSA
 
-The RSA is a legal agreement covering IP address usage policies. Sign it electronically through the ARIN portal.
+The RSA is ARIN's legal agreement for registry services. ARIN requires a signed current RSA before it issues resources.
 
 ### 3. Submit a Request for IPv6 Space
 
-For ISPs, navigate to: **ARIN Online → IPv6 → Request IPv6 Address Space**
+For IPv6 requests, navigate to: **ARIN Online → IP Addresses → Request**
 
 Fill in:
-- **Organization**: Your registered organization
-- **Prefix Size**: Typically /32 for ISPs with existing IPv4 allocations
-- **Justification**: Describe your network and customer base
-- **Current IPv6 Use**: Note any existing IPv6 deployments
+- **Organization / Org ID**: Your authorized organization
+- **Request Size**: `/32` minimum for standard ISP allocations; `/36` or, in limited cases, `/40` can also be requested
+- **Qualification Basis**: How you meet NRPM `6.5.2`
+- **Supporting Documentation**: Details about the network and planned customer assignments or reallocations
 
 ### 4. Provide Justification
 
-ARIN requires justification for initial allocations. For ISPs, you typically need to demonstrate:
+ARIN evaluates initial ISP allocations under NRPM `6.5.2`. For ISPs, qualification typically falls into one of these categories:
 
 ```text
-- Number of existing customers (home, business)
-- Planned IPv6 deployment timeline
-- Current infrastructure (ASN, IPv4 allocation size)
-- Network diagram showing IPv6 deployment plan
+- Previously justified IPv4 ISP allocation from ARIN or a predecessor, or qualification for an IPv4 ISP allocation under current policy
+- Immediate IPv6 multihoming with a valid global ASN, with reassignments or reallocations to other organizations
+- Reasonable technical justification describing the intended use, network infrastructure, and planned reassignments/reallocations for one, two, and five years, with at least 50 assignments within five years
 ```
+
+If you request larger than `/32`, ARIN sizes the allocation based on the customer subnet size, the number of serving sites, and the size of the largest serving site.
 
 ### 5. Initial Allocation Sizes
 
-| Organization Type | Minimum | Typical |
-|------------------|---------|---------|
-| ISP with /20 IPv4 | /32 | /32 |
-| Large ISP | /32 | /28 or /24 |
-| End-user org | /48 | /48 |
+| Organization Type | Size | Notes |
+|------------------|------|-------|
+| ISP / LIR | `/32` minimum; `/36` or, in limited cases, `/40` can also be requested | Larger initial allocations are possible when justified under NRPM `6.5.2` |
+| End-user org | `/48` minimum | Larger initial assignments are based on site count and supporting documentation |
+| Critical infrastructure | Up to `/48` | Available as micro-allocations for qualifying IXPs, core DNS providers, the RIRs, and IANA |
 
 ## After Approval
 
-Once approved, ARIN will:
-1. Allocate your prefix in the ARIN database (Whois)
-2. Send confirmation to your technical POC
-3. The allocation is published in the global routing table after you announce it via BGP
+Once ARIN approves the request and receives the signed RSA and applicable fees, it will:
+1. Issue your prefix and register it in the ARIN database (Whois)
+2. Confirm issuance through the request correspondence
+3. Your allocation will only appear in the global routing table after you announce it via BGP and other networks accept the route
 
 ## Register Your Routes (ROA)
 
@@ -78,18 +79,19 @@ After receiving your prefix, immediately create a Route Origin Authorization (RO
 
 ```text
 In ARIN Online:
-1. Go to Routing Security → Route Origin Authorizations
-2. Create New ROA
-3. Set your ASN and prefix
-4. Set max prefix length (typically same as allocated prefix)
+1. Go to Routing Security
+2. Select Manage RPKI for the organization
+3. Choose Create ROA
+4. Enter the origin ASN, prefix, and max length
+5. Review and submit
 ```
 
-This protects against BGP route hijacking.
+Use the narrowest `maxLength` that matches the prefixes you actually announce. This helps protect against route hijacking and accidental invalid announcements.
 
 ## Fees
 
-ARIN charges annual registration fees based on allocation size. Check `arin.net/fees` for current pricing. ISPs pay based on total IPv4 and IPv6 holdings.
+ARIN charges annual Registration Services Plan fees. Check `https://www.arin.net/resources/fees/fee_schedule/` for current pricing. The service category is based on an organization's aggregate IPv4, IPv6, or ASN holdings.
 
 ## Conclusion
 
-Requesting IPv6 space from ARIN involves creating an account, signing the RSA, providing deployment justification, and creating ROAs for route security. The process typically takes 1-5 business days for straightforward ISP requests.
+Requesting IPv6 space from ARIN involves creating an ARIN Online account linked to your Org ID, documenting how you qualify under current policy, and creating ROAs for route security after issuance. ARIN says it typically follows up on requests within two business days, and resources are issued after ARIN receives the signed RSA and applicable fees.
