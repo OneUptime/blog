@@ -15,6 +15,8 @@ Resource limits in Kubernetes prevent any single workload from consuming all clu
 - Rancher-managed Kubernetes cluster
 - Cluster admin access
 - Understanding of CPU and memory units in Kubernetes
+- Metrics Server installed for `kubectl top` and VPA recommendations
+- Vertical Pod Autoscaler installed if you plan to use Step 5
 
 ## Step 1: Configure Container Resource Limits
 
@@ -27,7 +29,13 @@ metadata:
   name: web-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
         - name: web
@@ -40,8 +48,8 @@ spec:
             limits:
               cpu: 1000m      # 1 CPU core maximum
               memory: 512Mi   # 512 MiB maximum
-          # Quality of Service class: Burstable (request < limit)
-          # For Guaranteed QoS: set request == limit
+          # With a single container, this Pod would be Burstable (request < limit)
+          # For Guaranteed QoS: set CPU and memory requests == limits for every container in the Pod
 ```
 
 ## Step 2: Set Default Limits with LimitRange
@@ -69,7 +77,7 @@ spec:
       min:
         cpu: 50m
         memory: 64Mi
-      # Ratio: limit cannot exceed 10x request
+      # Ratios: CPU limit <= 10x request, memory limit <= 4x request
       maxLimitRequestRatio:
         cpu: "10"
         memory: "4"
@@ -124,7 +132,7 @@ spec:
     services.nodeports: "0"     # No NodePort in production
     services.loadbalancers: "5"
 
-    # Extended resources
+    # Workload object counts
     count/deployments.apps: "50"
     count/statefulsets.apps: "10"
 ```
@@ -164,7 +172,8 @@ curl -X PUT \
 ## Step 5: Configure Vertical Pod Autoscaler
 
 ```yaml
-# vpa.yaml - Auto-adjust resource requests based on usage
+# vpa.yaml - Requires VPA to be installed in the cluster
+# Auto-adjust resource sizing based on usage
 apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler
 metadata:
@@ -176,7 +185,7 @@ spec:
     kind: Deployment
     name: web-app
   updatePolicy:
-    updateMode: "Auto"  # Off, Initial, or Auto
+    updateMode: "Recreate"  # Off, Initial, Recreate, or InPlaceOrRecreate; Auto is deprecated
   resourcePolicy:
     containerPolicies:
       - containerName: web
@@ -194,14 +203,14 @@ spec:
 ```bash
 # Find pods without resource requests
 kubectl get pods --all-namespaces -o json | \
-  jq -r '.items[] | select(.spec.containers[].resources.requests == null) |
+  jq -r '.items[] | select(any((.spec.containers[]?, .spec.initContainers[]?); .resources.requests == null)) |
     "\(.metadata.namespace)/\(.metadata.name)"'
 
 # Check namespace quota usage
 kubectl describe resourcequota -n production
 
 # Find top resource consumers
-kubectl top pods --all-namespaces \
+kubectl top pod --all-namespaces \
   --sort-by=memory | head -20
 
 # Check LimitRange in all namespaces
@@ -211,7 +220,8 @@ kubectl get limitrange --all-namespaces
 ## Step 7: Configure Quality of Service Classes
 
 ```yaml
-# Guaranteed QoS - requests == limits (highest priority)
+# Guaranteed QoS - CPU and memory requests == limits for every container
+# Least likely to be evicted under node pressure
 resources:
   requests:
     cpu: 1000m
@@ -220,7 +230,8 @@ resources:
     cpu: 1000m
     memory: 1Gi
 
-# Burstable QoS - requests < limits (medium priority)
+# Burstable QoS - at least one CPU/memory request or limit is set, but the Pod is not Guaranteed
+# Evicted after BestEffort under node pressure
 resources:
   requests:
     cpu: 250m
@@ -229,7 +240,8 @@ resources:
     cpu: 1000m
     memory: 1Gi
 
-# BestEffort QoS - no requests or limits (lowest priority, first to be evicted)
+# BestEffort QoS - no CPU/memory requests or limits
+# First to be evicted under node pressure
 # Don't use in production
 resources: {}
 ```
