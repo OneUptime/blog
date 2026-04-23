@@ -8,14 +8,14 @@ Description: Configure and use the Docker CLI with Rancher Desktop's container r
 
 ## Introduction
 
-Rancher Desktop is an open-source desktop application that provides Kubernetes and container management tools for local development. It bundles kubectl, Helm, nerdctl, and either containerd or Moby (dockerd) into a single, easy-to-use application. This guide covers How to Use docker CLI with Rancher Desktop in detail.
+Rancher Desktop is an open-source desktop application that provides Kubernetes and container management tools for local development. It bundles kubectl, Helm, nerdctl, and either containerd or Moby (dockerd) into a single, easy-to-use application. To use the Docker CLI with Rancher Desktop, you need to select the Moby (dockerd) container engine. This guide covers How to Use docker CLI with Rancher Desktop in detail.
 
 ## Prerequisites
 
 - A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
-- At least 8 GB of RAM (16 GB recommended)
-- At least 4 CPU cores
+- Administrator/sudo privileges may be required for installation or privileged features
+- 8 GB of RAM recommended (more may be needed for heavier workloads)
+- 4 CPU cores recommended
 
 ## Overview
 
@@ -23,22 +23,24 @@ Rancher Desktop simplifies local Kubernetes and container development by providi
 
 - A local Kubernetes cluster (k3s-based)
 - Container runtime (containerd or dockerd)
-- Integrated CLI tools (kubectl, helm, nerdctl, docker)
+- Integrated CLI tools (kubectl, helm, nerdctl, and docker when using Moby)
 - Simple configuration through a GUI
 
 ## Step 1: Initial Setup
 
 ```bash
-# Verify Rancher Desktop is installed and running
+# Verify the Rancher Desktop CLI is installed
 
 rdctl version
 
-# Check Kubernetes cluster status
+# Check Kubernetes cluster status (if Kubernetes is enabled)
 kubectl cluster-info
 
 # Verify container runtime
+# Use nerdctl with the containerd runtime
 nerdctl version
 # or
+# Use docker with the Moby (dockerd) runtime
 docker version
 ```
 
@@ -53,28 +55,40 @@ Open Rancher Desktop Preferences to configure:
 
 ```bash
 # Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
-rdctl set --container-engine containerd
+# To use the Docker CLI, switch Rancher Desktop to Moby (dockerd)
+rdctl set --container-engine.name=moby
+
+# Show the current active settings
+rdctl list-settings
 ```
 
 ## Step 3: Working with Containers
 
 ```bash
 # Pull an image
-nerdctl pull nginx:latest
-# or with docker compatibility
 docker pull nginx:latest
+# or, if Rancher Desktop is using containerd
+nerdctl pull nginx:latest
 
 # Run a container
+docker run -d -p 8080:80 --name my-nginx nginx:latest
+# or, if Rancher Desktop is using containerd
 nerdctl run -d -p 8080:80 --name my-nginx nginx:latest
 
 # List running containers
+docker ps
+# or
 nerdctl ps
 
 # View container logs
+docker logs my-nginx
+# or
 nerdctl logs my-nginx
 
 # Stop and remove
+docker stop my-nginx
+docker rm my-nginx
+# or
 nerdctl stop my-nginx
 nerdctl rm my-nginx
 ```
@@ -97,10 +111,10 @@ kubectl expose deployment hello-world \
 # Check the service
 kubectl get svc hello-world
 
-# Forward local port to the service
-kubectl port-forward svc/hello-world 8080:80 &
+# In a separate terminal, forward a local port to the service
+kubectl port-forward svc/hello-world 8080:80
 
-# Test the application
+# Then test the application from another terminal
 curl http://localhost:8080
 
 # Clean up
@@ -131,31 +145,31 @@ helm uninstall my-release
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
-rdctl factory-reset
+# Show current Rancher Desktop settings
+rdctl list-settings
 
-# Check Rancher Desktop status
-rdctl status
+# Switch to the Moby engine to use the Docker CLI
+rdctl set --container-engine.name=moby
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
-
-# Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+# Disable or enable Kubernetes
+rdctl set --kubernetes-enabled=false
+rdctl set --kubernetes-enabled=true
 ```
 
 ## Troubleshooting
 
 ```bash
-# Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# If docker commands fail, verify the container engine is set to Moby:
+# Preferences > Container Engine > Moby (dockerd)
 
-# Reset to factory defaults
-rdctl factory-reset
+# Open Rancher Desktop logs from the UI:
+# Troubleshooting > Show Logs
 
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Show the current active settings in JSON
+rdctl list-settings
+
+# Gracefully shut down Rancher Desktop
+rdctl shutdown
 ```
 
 ## Conclusion
