@@ -8,9 +8,9 @@ Description: Learn how to configure CPU, memory, and object count quotas on Kube
 
 ## Why Set Resource Quotas?
 
-Without quotas, a single team or workload can consume all cluster CPU and memory, starving other namespaces. Resource quotas enforce fair sharing by limiting:
+Without quotas, a single team or workload can request or limit all cluster CPU and memory, starving other namespaces. Resource quotas enforce fair sharing by limiting:
 
-- Total CPU and memory consumed by all pods in a namespace.
+- Total CPU and memory requested or limited by all pods in a namespace.
 - Number of Kubernetes objects (pods, services, PVCs).
 - Number of LoadBalancer services (which may cost money).
 
@@ -18,7 +18,7 @@ Without quotas, a single team or workload can consume all cluster CPU and memory
 
 In Portainer:
 
-1. Go to **Namespaces > Add namespace**.
+1. Go to **Namespaces** and click **Add with form**.
 2. Enable the **Resource assignment** section.
 3. Set CPU and memory limits.
 4. Click **Create namespace**.
@@ -26,9 +26,9 @@ In Portainer:
 ## Setting Quotas on an Existing Namespace
 
 1. Click on a namespace in Portainer's namespace list.
-2. Scroll to **Resource assignment** or **Quota**.
+2. Scroll to **Resource Quota**.
 3. Update the values.
-4. Click **Update quota**.
+4. Click **Update namespace**.
 
 ## Comprehensive Resource Quota Example
 
@@ -78,12 +78,12 @@ kubectl describe resourcequota production-quota --namespace=production
 kubectl get resourcequota --namespace=production --watch
 ```
 
-## Setting LimitRange for Default Per-Pod Limits
+## Setting LimitRange for Default Per-Container Limits
 
-Quotas work best with LimitRanges that require pods to declare resource requests:
+Quotas work best with LimitRanges that provide default requests and limits for pods that do not declare them:
 
 ```yaml
-# Without this, pods without resource requests bypass quota accounting
+# Without defaults, pods that omit requests or limits can be rejected by compute ResourceQuotas
 apiVersion: v1
 kind: LimitRange
 metadata:
