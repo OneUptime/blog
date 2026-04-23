@@ -15,9 +15,9 @@ Rancher Fleet is built for large-scale GitOps - it can manage thousands of clust
 ```mermaid
 graph LR
     Dev[Developer] -->|git push| Git[Git Repository]
-    Git -->|webhook| Fleet[Rancher Fleet]
+    Git -->|polling/webhook| Fleet[Rancher Fleet]
     Fleet --> Dev_C[Dev Clusters]
-    Fleet -->|after approval| Staging_C[Staging Clusters]
+    Fleet --> Staging_C[Staging Clusters]
     Fleet -->|after approval| Prod_C[Production Clusters]
 ```
 
@@ -42,7 +42,7 @@ my-app-gitops/
 │       ├── fleet.yaml
 │       ├── kustomization.yaml
 │       └── patch-replicas.yaml    # 5 replicas in production
-└── fleet.yaml                      # Root config
+└── fleet.yaml                      # Optional; only used if a GitRepo points at the repo root
 ```
 
 ## Step 2: Create Environment-Specific Fleet Configs
@@ -53,11 +53,7 @@ my-app-gitops/
 defaultNamespace: dev
 kustomize:
   dir: .
-targets:
-  - name: dev-clusters
-    clusterSelector:
-      matchLabels:
-        environment: dev
+# Cluster targeting is configured in the GitRepo resource.
 ```
 
 ```yaml
@@ -65,11 +61,7 @@ targets:
 defaultNamespace: staging
 kustomize:
   dir: .
-targets:
-  - name: staging-clusters
-    clusterSelector:
-      matchLabels:
-        environment: staging
+# Cluster targeting is configured in the GitRepo resource.
 ```
 
 ```yaml
@@ -77,11 +69,7 @@ targets:
 defaultNamespace: production
 kustomize:
   dir: .
-targets:
-  - name: production-clusters
-    clusterSelector:
-      matchLabels:
-        environment: production
+# Cluster targeting is configured in the GitRepo resource.
 ```
 
 ## Step 3: Create GitRepo Resources per Environment
@@ -154,6 +142,9 @@ on:
       environment:
         required: true
         type: string
+    secrets:
+      GITOPS_REPO_TOKEN:
+        required: true
 
 jobs:
   update-tag:
@@ -162,6 +153,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: my-org/my-app-gitops
+          ref: ${{ inputs.environment == 'dev' && 'develop' || 'main' }} # dev uses develop; staging/production use main
           token: ${{ secrets.GITOPS_REPO_TOKEN }}
 
       - name: Update image tag
@@ -202,15 +194,16 @@ kubectl patch gitrepo myapp-production \
 ## Step 6: Manage Secrets with External Secrets Operator
 
 ```yaml
-# Install External Secrets Operator alongside Fleet
+# Install External Secrets Operator in each downstream cluster that will reconcile ExternalSecrets
 helm repo add external-secrets https://charts.external-secrets.io
 helm install external-secrets \
   external-secrets/external-secrets \
   --namespace external-secrets \
   --create-namespace
 
-# In your GitOps repo, reference secrets from AWS Secrets Manager
-apiVersion: external-secrets.io/v1beta1
+# After creating a ClusterSecretStore named aws-secrets-manager,
+# reference secrets from AWS Secrets Manager in your GitOps repo
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-secrets
@@ -238,12 +231,12 @@ kubectl get clustergroup -A
 
 # Check which clusters are out of sync
 kubectl get bundledeployment -A \
-  -o jsonpath='{range .items[?(@.status.state!="Ready")]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.status.state}{"\n"}{end}'
+  -o jsonpath='{range .items[?(@.status.display.state!="Ready")]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.status.display.state}{"\n"}{end}'
 
-# View Fleet metrics in Rancher UI
+# View Fleet status in Rancher UI
 # Continuous Delivery → Git Repos → select a repo → Clusters tab
 ```
 
 ## Conclusion
 
-Rancher Fleet enables enterprise-scale continuous delivery with Git as the single source of truth for all cluster configuration. By combining multi-environment GitRepo resources, automated image tag updates, manual promotion gates, and External Secrets integration, you can build a secure, auditable CD pipeline that scales from a handful of clusters to thousands. Fleet's built-in drift detection ensures that manual changes to clusters are automatically corrected, maintaining configuration consistency across your entire fleet.
+Rancher Fleet enables enterprise-scale continuous delivery with Git as the single source of truth for all cluster configuration. By combining multi-environment GitRepo resources, automated image tag updates, manual promotion gates, and External Secrets integration, you can build a secure, auditable CD pipeline that scales from a handful of clusters to thousands. Fleet's built-in drift detection surfaces manual changes to clusters, and you can enable `correctDrift` when you want Fleet to automatically roll those changes back and maintain configuration consistency across your entire fleet.
