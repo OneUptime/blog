@@ -24,23 +24,16 @@ terraform {
 
 ```hcl
 terraform {
+  # Choose one of the following constraints:
+
   # Allow any version >= 1.9.0
   required_version = ">= 1.9.0"
 
-  # Allow exactly 1.9.0 only
-  required_version = "= 1.9.0"
-
-  # Allow any 1.9.x version (patch-level changes only)
-  required_version = "~> 1.9.0"
-
-  # Allow any 1.x.x version (minor and patch changes)
-  required_version = "~> 1.9"
-
-  # Allow within a range
-  required_version = ">= 1.9.0, < 2.0.0"
-
-  # Allow multiple specific versions
-  required_version = ">= 1.8.0, < 1.10.0"
+  # required_version = "= 1.9.0"                # Allow exactly 1.9.0 only
+  # required_version = "~> 1.9.0"               # Allow any 1.9.x version (patch-level changes only)
+  # required_version = "~> 1.9"                 # Allow any 1.9 or later 1.x version
+  # required_version = ">= 1.9.0, < 2.0.0"      # Allow within a range
+  # required_version = ">= 1.8.0, < 1.10.0"     # Allow a bounded range of versions
 }
 ```
 
@@ -54,7 +47,7 @@ terraform {
 | `>=` | Greater than or equal | `>= 1.9.0` |
 | `<`  | Less than | `< 2.0.0` |
 | `<=` | Less than or equal | `<= 1.9.5` |
-| `~>` | Pessimistic (allows patch/minor) | `~> 1.9.0` |
+| `~>` | Pessimistic constraint (allows only the rightmost specified component to increment) | `~> 1.9.0` |
 
 ## The Pessimistic Constraint Operator
 
@@ -81,7 +74,7 @@ terraform {
 ```hcl
 # versions.tf
 terraform {
-  # Allow 1.9.x and 1.10.x but not 2.x
+  # Allow 1.9.0 and later 1.x versions, but not 2.x
   required_version = ">= 1.9.0, < 2.0.0"
 
   required_providers {
@@ -106,13 +99,12 @@ terraform {
 ## What Happens When Version Doesn't Match
 
 ```bash
-# If you run with an incompatible version, OpenTofu stops immediately:
+# If you run with an incompatible version, OpenTofu stops immediately with an error similar to:
 tofu init
-# Error: OpenTofu v1.8.5 does not satisfy the required version constraint ">= 1.9.0"
-# OpenTofu is at version 1.8.5, but the configuration requires at least version 1.9.0.
+# Error: Unsupported OpenTofu Core version
 
 tofu plan
-# Error: OpenTofu v1.8.5 does not satisfy the required version constraint ">= 1.9.0"
+# Error: Unsupported OpenTofu Core version
 ```
 
 ## Version Constraints in Modules
@@ -160,10 +152,12 @@ terraform {
 tofu version
 # OpenTofu v1.9.0
 
-# Try running with mismatched version (using tofuenv)
+# Switch to a mismatched version (using tofuenv)
 tofuenv use 1.8.5
-tofu validate
-# Error: OpenTofu v1.8.5 does not satisfy the required version constraint
+
+# The next OpenTofu command will fail the version check
+tofu init -backend=false
+# Error: Unsupported OpenTofu Core version
 ```
 
 ## Conclusion
