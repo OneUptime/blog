@@ -29,12 +29,12 @@ kubectl get pods -n cattle-system
 # Check etcd status (if API server is accessible)
 kubectl exec -n kube-system \
   $(kubectl get pod -n kube-system -l component=etcd -o name | head -1) \
-  -- etcdctl endpoint status \
+  -- etcdctl \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
   --cert=/var/lib/rancher/rke2/server/tls/etcd/client.crt \
   --key=/var/lib/rancher/rke2/server/tls/etcd/client.key \
-  -w table
+  endpoint status -w table
 
 # Check RKE2 service status on each node
 for node in rke2-server-01 rke2-server-02 rke2-server-03; do
@@ -66,11 +66,12 @@ kubectl get nodes -w
 # Verify etcd member rejoined
 kubectl exec -n kube-system \
   $(kubectl get pod -n kube-system -l component=etcd -o name | head -1) \
-  -- etcdctl member list \
+  -- etcdctl \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
   --cert=/var/lib/rancher/rke2/server/tls/etcd/client.crt \
-  --key=/var/lib/rancher/rke2/server/tls/etcd/client.key
+  --key=/var/lib/rancher/rke2/server/tls/etcd/client.key \
+  member list
 ```
 
 ## Step 3: Replace Failed Node
@@ -82,29 +83,33 @@ kubectl exec -n kube-system \
 # Get member ID of failed node
 FAILED_MEMBER_ID=$(kubectl exec -n kube-system \
   $(kubectl get pod -n kube-system -l component=etcd -o name | head -1) \
-  -- etcdctl member list \
+  -- etcdctl \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
   --cert=/var/lib/rancher/rke2/server/tls/etcd/client.crt \
   --key=/var/lib/rancher/rke2/server/tls/etcd/client.key \
+  member list \
   | grep "rke2-server-02" | awk -F, '{print $1}')
 
 kubectl exec -n kube-system \
   $(kubectl get pod -n kube-system -l component=etcd -o name | head -1) \
-  -- etcdctl member remove $FAILED_MEMBER_ID \
+  -- etcdctl \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
   --cert=/var/lib/rancher/rke2/server/tls/etcd/client.crt \
-  --key=/var/lib/rancher/rke2/server/tls/etcd/client.key
+  --key=/var/lib/rancher/rke2/server/tls/etcd/client.key \
+  member remove $FAILED_MEMBER_ID
 
 # Step 2: Delete the failed node from Kubernetes
 kubectl delete node rke2-server-02
 
 # Step 3: Provision a new replacement node
-# Install RKE2 on new node with same configuration
+# Install RKE2 on new node with the same critical server configuration
 cat > /etc/rancher/rke2/config.yaml << EOF
 token: "my-cluster-token"
 server: https://rke2-server-01:9345
+# Match any critical values used on the existing servers, such as:
+# cluster-cidr, service-cidr, cluster-domain, disable-kube-proxy, and egress-selector-mode
 tls-san:
   - rancher.example.com
   - 10.0.0.100
@@ -130,19 +135,29 @@ ls /var/lib/rancher/rke2/server/db/snapshots/
 # Or for RKE2
 rke2 etcd-snapshot list
 
-# Stop RKE2 on ALL remaining nodes
+# Stop RKE2 on ALL server nodes
 systemctl stop rke2-server
 
 # Restore from snapshot on the first server
+# If etcd-s3 is configured and you are restoring from a local file, add --etcd-s3=false
 rke2 server \
   --cluster-reset \
   --cluster-reset-restore-path=/var/lib/rancher/rke2/server/db/snapshots/etcd-snapshot-date
 
-# Wait for reset to complete, then start RKE2
+# If restoring onto a replacement first server instead of the original host,
+# also pass the original server token from /var/lib/rancher/rke2/server/token
+# rke2 server \
+#   --cluster-reset \
+#   --cluster-reset-restore-path=/var/lib/rancher/rke2/server/db/snapshots/etcd-snapshot-date \
+#   --token=<BACKED-UP-TOKEN-VALUE>
+
+# Wait for reset to complete, then start RKE2 on the restored node
 systemctl start rke2-server
 
-# After first node is running, join others
-# On other nodes: (they will sync from the restored snapshot)
+# On each other server node, remove the old etcd database before rejoining
+rm -rf /var/lib/rancher/rke2/server/db/
+
+# After first node is running, start RKE2 on the other server nodes
 systemctl start rke2-server
 ```
 
@@ -174,7 +189,7 @@ kubectl get clusters.management.cattle.io
 
 # If a cluster shows disconnected after 10+ minutes
 # Check cattle-cluster-agent in the managed cluster
-kubectl get pods -n cattle-system --context=managed-cluster
+kubectl get pods -n cattle-system -l app=cattle-cluster-agent --context=managed-cluster
 
 # The agent will retry connection automatically
 # You can force reconnection by restarting the agent
@@ -191,12 +206,12 @@ kubectl rollout restart deployment/cattle-cluster-agent \
 # 1. etcd cluster health
 kubectl exec -n kube-system \
   $(kubectl get pod -n kube-system -l component=etcd -o name | head -1) \
-  -- etcdctl endpoint health \
-  --cluster \
+  -- etcdctl \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
   --cert=/var/lib/rancher/rke2/server/tls/etcd/client.crt \
-  --key=/var/lib/rancher/rke2/server/tls/etcd/client.key
+  --key=/var/lib/rancher/rke2/server/tls/etcd/client.key \
+  endpoint health --cluster
 
 # 2. All Rancher pods running
 kubectl get pods -n cattle-system
@@ -217,4 +232,4 @@ rke2 etcd-snapshot save \
 
 ## Conclusion
 
-Rancher HA recovery is straightforward for single-node failures-the cluster recovers automatically. The procedure becomes more involved for hardware replacement, requiring manual etcd member removal and node re-provisioning. The most extreme case-restoring from etcd snapshot-should be well-practiced through regular disaster recovery drills. The key prerequisites for fast recovery are: automated etcd snapshots to S3 or cloud storage, documented cluster token and configuration, and rehearsed procedures that your team can execute under pressure.
+Rancher HA recovery is usually straightforward for single-node failures as long as etcd quorum remains intact. The procedure becomes more involved for hardware replacement, requiring careful etcd member removal and node re-provisioning with matching server configuration. The most extreme case-restoring from etcd snapshot-should be well-practiced through regular disaster recovery drills. The key prerequisites for fast recovery are: automated etcd snapshots to S3 or cloud storage, documented cluster token and configuration, and rehearsed procedures that your team can execute under pressure.
