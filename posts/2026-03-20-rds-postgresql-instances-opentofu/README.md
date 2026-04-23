@@ -43,7 +43,7 @@ resource "aws_security_group" "postgres" {
 ```hcl
 resource "random_password" "postgres" {
   length  = 32
-  special = false  # RDS has restrictions on special characters
+  special = false  # Avoid characters disallowed by RDS master password rules
 }
 
 resource "aws_secretsmanager_secret" "postgres" {
@@ -83,8 +83,9 @@ resource "aws_db_parameter_group" "postgres" {
   }
 
   parameter {
-    name  = "shared_preload_libraries"
-    value = "pg_stat_statements"
+    name         = "shared_preload_libraries"
+    value        = "pg_stat_statements"
+    apply_method = "pending-reboot"
   }
 
   parameter {
@@ -101,13 +102,14 @@ resource "aws_db_parameter_group" "postgres" {
 resource "aws_db_instance" "postgres" {
   identifier     = "${var.project_name}-postgres"
   engine         = "postgres"
-  engine_version = "16.2"
+  engine_version = "16"
+
+  auto_minor_version_upgrade = true
 
   instance_class        = var.instance_class
   storage_type          = "gp3"
   allocated_storage     = 100
   max_allocated_storage = 1000
-  iops                  = 3000  # Only for io1/io2 storage
 
   db_name  = var.database_name
   username = var.master_username
@@ -160,4 +162,4 @@ tofu apply
 
 ## Conclusion
 
-This configuration creates a production-ready PostgreSQL RDS instance with all essential features: Multi-AZ, encryption, Secrets Manager for credentials, Performance Insights for query analysis, and IAM authentication for passwordless connection from AWS services. Enable the `pg_stat_statements` extension via parameter group for detailed query performance analysis through Performance Insights.
+This configuration creates a production-ready PostgreSQL RDS instance with all essential features: Multi-AZ, encryption, Secrets Manager for credentials, Performance Insights for query analysis, and IAM database authentication using temporary auth tokens. Create the `pg_stat_statements` extension in the database for detailed query statistics in Performance Insights.
