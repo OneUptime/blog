@@ -8,21 +8,25 @@ Description: Implement RBAC best practices in Rancher using least-privilege role
 
 ## Introduction
 
-Role-Based Access Control in Rancher operates at two levels: Rancher global RBAC (who can manage which clusters and projects) and Kubernetes RBAC (what can be done within a cluster). Rancher's Projects and Global Roles add a management layer on top of Kubernetes RBAC. Effective RBAC implementation follows least-privilege principles and requires regular review.
+Role-Based Access Control in Rancher uses Rancher global permissions plus cluster and project roles, and Rancher implements these on top of Kubernetes RBAC. Global permissions determine what users can do outside a specific cluster, while cluster and project roles control access within downstream clusters. Effective RBAC implementation follows least-privilege principles and requires regular review.
 
 ## Rancher RBAC Hierarchy
 
 ```text
-Global Roles (Rancher-level)
-  ├── Cluster Roles (per downstream cluster)
-  │   ├── Cluster Owner: full control
-  │   ├── Cluster Member: read-only + limited create
-  │   └── Custom: specific permissions
-  │
-  └── Project Roles (namespace group level)
-      ├── Project Owner: manage namespaces in project
-      ├── Project Member: deploy to project namespaces
-      └── Read-only: view resources
+Rancher Authorization
+  ├── Global Permissions (Rancher-level)
+  │   ├── Administrator: full platform access
+  │   ├── Standard User: create and use their own clusters
+  │   └── Custom: specific global permissions
+  └── Cluster and Project Roles (per downstream cluster)
+      ├── Cluster Roles
+      │   ├── Cluster Owner: full control
+      │   ├── Cluster Member: view most cluster resources + create projects
+      │   └── Custom: specific permissions
+      └── Project Roles
+          ├── Project Owner: full control of project resources
+          ├── Project Member: manage namespaces and workloads
+          └── Read Only: view resources
 ```
 
 ## Step 1: Create Role Templates for Teams
@@ -34,41 +38,37 @@ apiVersion: management.cattle.io/v3
 kind: RoleTemplate
 metadata:
   name: developer
-  namespace: cattle-global-data
-spec:
-  displayName: Developer
-  context: project
-  rules:
-    - apiGroups: ["", "apps", "batch", "networking.k8s.io"]
-      resources:
-        - pods
-        - deployments
-        - replicasets
-        - services
-        - ingresses
-        - jobs
-        - cronjobs
-        - configmaps
-      verbs: ["get", "list", "watch", "create", "update", "patch"]
-    - apiGroups: [""]
-      resources: ["pods/log", "pods/exec", "pods/portforward"]
-      verbs: ["get", "create"]
-    # No delete on production resources
-    # No access to secrets
+displayName: Developer
+context: project
+rules:
+  - apiGroups: ["", "apps", "batch", "networking.k8s.io"]
+    resources:
+      - pods
+      - deployments
+      - replicasets
+      - services
+      - ingresses
+      - jobs
+      - cronjobs
+      - configmaps
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods/log", "pods/exec", "pods/portforward"]
+    verbs: ["get", "create"]
+  # No delete on production resources
+  # No access to secrets
 ---
 # Read-only role for stakeholders
 apiVersion: management.cattle.io/v3
 kind: RoleTemplate
 metadata:
   name: viewer
-  namespace: cattle-global-data
-spec:
-  displayName: Viewer
-  context: project
-  rules:
-    - apiGroups: ["", "apps", "batch"]
-      resources: ["pods", "deployments", "services", "jobs"]
-      verbs: ["get", "list", "watch"]
+displayName: Viewer
+context: project
+rules:
+  - apiGroups: ["", "apps", "batch"]
+    resources: ["pods", "deployments", "services", "jobs"]
+    verbs: ["get", "list", "watch"]
 ```
 
 ## Step 2: Never Use Cluster-Level Admin for Developers
@@ -76,10 +76,11 @@ spec:
 ```bash
 # Assign users to Projects, not Clusters
 # Bad: giving developer cluster-member role
-# Good: giving developer project-member role for specific project
+# Good: giving developer a project-scoped role for a specific project
 
 # In Rancher UI:
-# Cluster > Projects/Namespaces > Project > Members > Add
+# Cluster Management > <cluster> > Explore > Cluster > Projects/Namespaces
+# <project> > Edit Config > Members > Add
 
 # Via kubectl (Rancher CRD)
 kubectl apply -f - <<EOF
@@ -87,11 +88,10 @@ apiVersion: management.cattle.io/v3
 kind: ProjectRoleTemplateBinding
 metadata:
   name: dev-team-binding
-  namespace: <project-id>
-spec:
-  projectName: <cluster-id>:<project-id>
-  roleTemplateName: developer
-  userName: user-id
+  namespace: <project-backing-namespace>
+projectName: <cluster-id>:<project-id>
+roleTemplateName: developer
+userPrincipalName: <user-principal-name>
 EOF
 ```
 
@@ -141,13 +141,13 @@ roleRef:
 
 ## Step 4: Disable Default Service Account Token Automount
 
-```yaml
-# Patch the default service account to disable auto-mount cluster-wide
+```text
+# Patch the default service account to disable auto-mount in this namespace
 kubectl patch serviceaccount default \
   -p '{"automountServiceAccountToken": false}' \
   -n production
 
-# For pods that need the token, explicitly enable:
+# For pods that need the token, explicitly enable it in the Pod spec:
 spec:
   automountServiceAccountToken: true
   serviceAccountName: payment-api
@@ -159,9 +159,9 @@ spec:
 # Audit who has cluster admin access
 kubectl get clusterrolebindings \
   -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.roleRef.name}{"\t"}{range .subjects[*]}{.kind}/{.name}{", "}{end}{"\n"}{end}' \
-  | grep "cluster-admin"
+  | awk -F '\t' '$2 == "cluster-admin"'
 
-# List all users with access to a namespace
+# List namespaced RoleBindings in a namespace
 kubectl get rolebindings -n production \
   -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.roleRef.name}{"\t"}{range .subjects[*]}{.kind}/{.name}{", "}{end}{"\n"}{end}'
 
@@ -171,20 +171,22 @@ kubectl auth can-i --list --as=system:serviceaccount:production:payment-api -n p
 
 ## Step 6: Integrate with SSO/OIDC
 
-```yaml
-# Rancher supports SAML, OIDC, AD/LDAP, GitHub
-# Configure OIDC (Okta, Azure AD, Google) in:
-# Rancher UI > Global Settings > Authentication
+```text
+# Rancher supports external auth providers such as Active Directory,
+# GitHub, SAML providers, and Generic OIDC.
+# Configure authentication in:
+# Rancher UI > Users & Authentication > Auth Provider
 
 # Key settings:
 # - Map groups to Rancher roles (avoid per-user bindings)
-# - Sync group membership on login
+# - Group membership is refreshed on login; use Refresh Group Memberships when needed
 # - Set session timeout for compliance
 
-# Map AD group to Rancher cluster role:
-# Global > Security > Roles > Add Cluster Role Template Binding
+# Example group-to-role mappings:
+# Cluster Management > <cluster> > Explore > Cluster > Cluster Members
 # Group: AD\k8s-cluster-admins → Cluster Owner
-# Group: AD\k8s-developers → Developer (custom role)
+# Cluster Management > <cluster> > Explore > Cluster > Projects/Namespaces > <project> > Edit Config > Members
+# Group: AD\k8s-developers → Developer (custom project role)
 ```
 
 ## RBAC Checklist
@@ -201,4 +203,4 @@ kubectl auth can-i --list --as=system:serviceaccount:production:payment-api -n p
 
 ## Conclusion
 
-Effective RBAC in Rancher requires using the right level of access: Project roles for developers, Cluster roles only for platform engineers, and custom roles that follow least-privilege. Tie access to SSO groups rather than individual users for scalability. Run quarterly access reviews using `kubectl auth can-i` and `get rolebindings` to identify over-privileged accounts before they become security incidents.
+Effective RBAC in Rancher requires using the right level of access: Project roles for developers, Cluster roles only for platform engineers, and custom roles that follow least-privilege. Tie access to SSO groups rather than individual users for scalability. Run quarterly access reviews using `kubectl auth can-i`, `get rolebindings`, and `get clusterrolebindings` to identify over-privileged accounts before they become security incidents.
