@@ -22,16 +22,21 @@ Before configuring the OS, ensure your EC2 security groups allow the required tr
 
 ```text
 Control Plane Security Group:
-- TCP 6443 (Kubernetes API) - from worker nodes and your IP
-- TCP 9345 (RKE2 registration) - from worker nodes
-- TCP 2379-2380 (etcd) - between control plane nodes only
-- TCP 10250 (Kubelet) - from control plane
+- TCP 6443 (Kubernetes API) - from all RKE2 nodes and your IP
+- TCP 9345 (RKE2 supervisor/registration) - from all RKE2 nodes
+- TCP 2379-2381 (etcd client, peer, and metrics) - between control plane nodes only
+- TCP 10250 (Kubelet metrics) - from all RKE2 nodes
+- TCP 30000-32767 (NodePort services) - from nodes or clients that need NodePort access
+- TCP 9099 (Canal health checks) - between all nodes
 - UDP 8472 (Canal VXLAN) - between all nodes
-- UDP 51820 (Canal WireGuard) - between all nodes
+- UDP 51820/51821 (Canal WireGuard IPv4/IPv6, if enabled) - between all nodes
 
 Worker Node Security Group:
-- TCP 10250 (Kubelet) - from control plane
+- TCP 10250 (Kubelet metrics) - from all RKE2 nodes
+- TCP 30000-32767 (NodePort services) - from nodes or clients that need NodePort access
+- TCP 9099 (Canal health checks) - between all nodes
 - UDP 8472 (Canal VXLAN) - between all nodes
+- UDP 51820/51821 (Canal WireGuard IPv4/IPv6, if enabled) - between all nodes
 ```
 
 ## Step 2: Prepare Amazon Linux 2
@@ -46,7 +51,7 @@ sudo yum install -y \
   curl \
   wget \
   git \
-  conntrack \
+  conntrack-tools \
   socat \
   nfs-utils \
   iptables
@@ -86,7 +91,7 @@ sudo dnf update -y
 sudo dnf install -y \
   curl \
   wget \
-  conntrack \
+  conntrack-tools \
   socat \
   nfs-utils \
   iptables \
@@ -121,7 +126,7 @@ sudo sysctl --system
 curl -sfL https://get.rke2.io | sudo sh -
 
 # For a specific version:
-# curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=v1.28.8+rke2r1 sudo sh -
+# curl -sfL https://get.rke2.io | sudo INSTALL_RKE2_VERSION=v1.34.6+rke2r3 sh -
 
 # Verify installation
 rke2 --version
@@ -140,19 +145,24 @@ TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
 PRIVATE_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
   http://169.254.169.254/latest/meta-data/local-ipv4)
 
-PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
-  http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "")
+PUBLIC_IP=$(curl -fs -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || true)
 
-HOSTNAME=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
-  http://169.254.169.254/latest/meta-data/public-hostname 2>/dev/null || echo "")
+PUBLIC_HOSTNAME=$(curl -fs -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/public-hostname 2>/dev/null || true)
 
 # Create the RKE2 config
-cat <<EOF | sudo tee /etc/rancher/rke2/config.yaml
-# TLS SANs for the API server
-tls-san:
-  - "${PRIVATE_IP}"
-  - "${PUBLIC_IP}"
-  - "${HOSTNAME}"
+{
+  echo "# TLS SANs for the API server"
+  echo "tls-san:"
+  echo "  - \"${PRIVATE_IP}\""
+  if [ -n "$PUBLIC_IP" ]; then
+    echo "  - \"${PUBLIC_IP}\""
+  fi
+  if [ -n "$PUBLIC_HOSTNAME" ]; then
+    echo "  - \"${PUBLIC_HOSTNAME}\""
+  fi
+  cat <<EOF
 
 # Node configuration
 node-ip: "${PRIVATE_IP}"
@@ -163,6 +173,7 @@ node-ip: "${PRIVATE_IP}"
 # Kubeconfig permissions
 write-kubeconfig-mode: "0644"
 EOF
+} | sudo tee /etc/rancher/rke2/config.yaml
 
 echo "Config created for IP: $PRIVATE_IP"
 ```
@@ -231,4 +242,4 @@ echo "User data script created for auto-scaling group workers"
 
 ## Conclusion
 
-Installing RKE2 on Amazon Linux provides a great alternative to EKS for organizations wanting full Kubernetes control on AWS infrastructure. Amazon Linux's tight AWS integration, automatic security patches, and optimization for EC2 make it an excellent node OS choice. When combined with Rancher for management, you get a powerful multi-cluster Kubernetes platform. Consider using AWS SSM Parameter Store for storing the RKE2 node token securely when automating node provisioning.
+Installing RKE2 on Amazon Linux provides a great alternative to EKS for organizations wanting full Kubernetes control on AWS infrastructure. Amazon Linux's tight AWS integration, regular security updates, and optimization for EC2 make it an excellent node OS choice. When combined with Rancher for management, you get a powerful multi-cluster Kubernetes platform. Consider using AWS SSM Parameter Store for storing the RKE2 node token securely when automating node provisioning.
