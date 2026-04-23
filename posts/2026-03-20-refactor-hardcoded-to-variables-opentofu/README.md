@@ -30,7 +30,7 @@ Start by moving hardcoded values to `locals` - this is a safe first step that do
 resource "aws_instance" "web" {
   ami           = "ami-0c55b159cbfafe1f0"
   instance_type = "t3.micro"
-  subnet_id     = "subnet-12345"
+  subnet_id     = "subnet-0123456789abcdef0"
   tags = {
     Environment = "production"
     Owner       = "platform-team"
@@ -41,7 +41,7 @@ resource "aws_instance" "web" {
 locals {
   ami_id        = "ami-0c55b159cbfafe1f0"
   instance_type = "t3.micro"
-  subnet_id     = "subnet-12345"
+  subnet_id     = "subnet-0123456789abcdef0"
   environment   = "production"
   owner         = "platform-team"
 }
@@ -87,6 +87,12 @@ variable "environment" {
     error_message = "environment must be dev, staging, or production."
   }
 }
+
+variable "owner" {
+  description = "Owner tag for the EC2 instance"
+  type        = string
+  default     = "platform-team"
+}
 ```
 
 ## Step 3: Update the Resource to Use Variables
@@ -125,7 +131,7 @@ After extracting variables, provide values through `.tfvars` files:
 # dev.tfvars
 ami_id        = "ami-0c55b159cbfafe1f0"
 instance_type = "t3.micro"
-subnet_id     = "subnet-dev-12345"
+subnet_id     = "subnet-0123456789abcdef0"
 environment   = "dev"
 ```
 
@@ -133,7 +139,7 @@ environment   = "dev"
 # production.tfvars
 ami_id        = "ami-0c55b159cbfafe1f0"
 instance_type = "m5.large"
-subnet_id     = "subnet-prod-67890"
+subnet_id     = "subnet-0fedcba9876543210"
 environment   = "production"
 ```
 
@@ -152,8 +158,8 @@ variable "instance_type" {
   description = "EC2 instance type"
 
   validation {
-    condition     = can(regex("^[a-z][0-9]+[a-z]?\\.", var.instance_type))
-    error_message = "Must be a valid EC2 instance type like t3.micro or m5.large."
+    condition     = length(regexall("^[a-z0-9-]+\\.[a-z0-9]+$", var.instance_type)) > 0
+    error_message = "Must look like an EC2 instance type, such as t3.micro or m5.large."
   }
 }
 ```
