@@ -45,9 +45,6 @@ network 10.0.0.0/30
 ! Don't send RIP updates on LAN interface (passive)
 passive-interface eth0
 
-! Disable auto-summary (required for VLSM)
-no auto-summary
-
 exit
 ```
 
@@ -55,13 +52,17 @@ exit
 
 ```text
 interface eth1
- ! Set metric for this interface
- ip rip metric-offset 2
-
  ! Set split horizon (prevents routing loops)
  ip rip split-horizon poisoned-reverse
 
 exit
+
+router rip
+ ! Add 2 to RIP routes learned on eth1
+ offset-list RIP_OFFSET in 2 eth1
+exit
+
+access-list RIP_OFFSET permit any
 ```
 
 ## RIP Authentication (RIPv2 MD5)
@@ -96,13 +97,13 @@ exit
 ## Verifying RIP Operation
 
 ```bash
-# Show RIP status
+# Show RIP routes
 vtysh -c "show ip rip"
 
-# Show RIP database
-vtysh -c "show ip rip database"
+# Show routes installed in zebra
+vtysh -c "show ip route"
 
-# Show RIP neighbors
+# Show RIP status, interfaces, and peers
 vtysh -c "show ip rip status"
 ```
 
@@ -134,7 +135,6 @@ C(i) 192.168.1.0/24  0.0.0.0         1  self              0
 # /etc/frr/frr.conf (saved via vtysh: write memory)
 router rip
  version 2
- no auto-summary
  network 192.168.1.0/24
  network 10.0.0.0/30
  passive-interface eth0
@@ -145,7 +145,7 @@ exit
 ## Key Takeaways
 
 - RIP uses hop count (max 15) and sends full table updates every 30 seconds.
-- Use RIPv2 (`version 2`) for VLSM support and disable auto-summary.
+- Use RIPv2 (`version 2`) for VLSM support.
 - Passive interfaces suppress RIP updates on client-facing interfaces.
 - RIP is suitable only for small/simple networks; prefer OSPF for larger ones.
 
