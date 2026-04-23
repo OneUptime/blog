@@ -13,16 +13,22 @@ The `replace_triggered_by` lifecycle setting causes a resource to be replaced (d
 ## Basic replace_triggered_by
 
 ```hcl
+resource "aws_launch_template" "web" {
+  name_prefix   = "web-"
+  image_id      = var.ami_id
+  instance_type = "t3.micro"
+  user_data     = base64encode(var.user_data)
+}
+
 resource "aws_instance" "web" {
   ami           = var.ami_id
   instance_type = "t3.micro"
-  user_data     = var.user_data
 
   lifecycle {
-    # Replace the instance when the user_data template changes
-    # Even if other attributes would allow in-place update
+    # Replace the instance when the launch template changes,
+    # such as when its user_data changes
     replace_triggered_by = [
-      aws_launch_template.web  # If this changes, replace the instance
+      aws_launch_template.web
     ]
   }
 }
@@ -43,9 +49,9 @@ resource "aws_instance" "web" {
   instance_type = "t3.micro"
 
   lifecycle {
-    # Only replace when the launch template's AMI changes
+    # Only replace when the launch template's image_id changes
     replace_triggered_by = [
-      aws_launch_template.web.image_id  # Specific attribute
+      aws_launch_template.web.image_id
     ]
   }
 }
@@ -54,13 +60,12 @@ resource "aws_instance" "web" {
 ## Practical Use Case: Configuration Updates
 
 ```hcl
-# Config template stored in S3
+# Config stored in S3
 
 resource "aws_s3_object" "app_config" {
-  bucket  = aws_s3_bucket.config.id
+  bucket  = var.config_bucket_name
   key     = "app-config.json"
   content = jsonencode(var.app_configuration)
-  etag    = md5(jsonencode(var.app_configuration))
 }
 
 # EC2 instance that needs config baked in
@@ -95,7 +100,7 @@ resource "aws_launch_template" "node" {
 }
 
 resource "aws_autoscaling_group" "nodes" {
-  name             = "nodes-${aws_launch_template.node.latest_version}"
+  name_prefix      = "nodes-"
   min_size         = 2
   max_size         = 10
   desired_capacity = 3
@@ -106,7 +111,7 @@ resource "aws_autoscaling_group" "nodes" {
   }
 
   lifecycle {
-    # Recreate ASG when launch template version changes
+    # Replace the ASG when the launch template changes
     replace_triggered_by = [aws_launch_template.node]
     create_before_destroy = true
   }
@@ -122,8 +127,12 @@ locals {
   config_hash = sha256(jsonencode({
     ami        = var.ami_id
     user_data  = var.user_data
-    config     = var.app_config
+    config     = var.app_configuration
   }))
+}
+
+resource "terraform_data" "config_hash" {
+  input = local.config_hash
 }
 
 resource "aws_instance" "app" {
@@ -135,8 +144,8 @@ resource "aws_instance" "app" {
   }
 
   lifecycle {
-    # Replace when any tracked configuration changes
-    replace_triggered_by = [aws_instance.app.tags["ConfigHash"]]
+    # replace_triggered_by only accepts managed resource references
+    replace_triggered_by = [terraform_data.config_hash]
   }
 }
 ```
@@ -145,16 +154,27 @@ resource "aws_instance" "app" {
 
 ```hcl
 # ignore_changes: IGNORES attribute changes (don't trigger update)
-resource "aws_instance" "web" {
+resource "aws_instance" "web_ignore_changes" {
+  ami           = var.ami_id
+  instance_type = "t3.micro"
+  user_data     = var.user_data
+
   lifecycle {
     ignore_changes = [user_data]  # Changes to user_data are ignored
   }
 }
 
 # replace_triggered_by: FORCES replacement when referenced resource changes
-resource "aws_instance" "web" {
+resource "terraform_data" "config_change" {
+  input = "config-v1"
+}
+
+resource "aws_instance" "web_replace_on_trigger" {
+  ami           = var.ami_id
+  instance_type = "t3.micro"
+
   lifecycle {
-    replace_triggered_by = [aws_s3_object.config]  # Replacement when config object changes
+    replace_triggered_by = [terraform_data.config_change]  # Replacement when config resource changes
   }
 }
 ```
