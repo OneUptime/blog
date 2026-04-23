@@ -39,7 +39,7 @@ resource "aws_route53_record" "us_east_1" {
   }
 }
 
-# EU West 1 - serves European users
+# EU West 1 - serves users with lowest latency to eu-west-1
 resource "aws_route53_record" "eu_west_1" {
   zone_id        = var.hosted_zone_id
   name           = "api.${var.domain_name}"
@@ -57,7 +57,7 @@ resource "aws_route53_record" "eu_west_1" {
   }
 }
 
-# AP Southeast 1 - serves APAC users
+# AP Southeast 1 - serves users with lowest latency to ap-southeast-1
 resource "aws_route53_record" "ap_southeast_1" {
   zone_id        = var.hosted_zone_id
   name           = "api.${var.domain_name}"
@@ -80,16 +80,33 @@ resource "aws_route53_record" "ap_southeast_1" {
 
 ```hcl
 variable "regional_endpoints" {
-  description = "Map of region to ALB configuration"
+  description = "Map of region to ALB and health check configuration"
   type = map(object({
-    alb_dns    = string
-    alb_zone_id = string
+    alb_dns           = string
+    alb_zone_id       = string
+    health_check_fqdn = string
   }))
   default = {
-    "us-east-1"      = { alb_dns = "...", alb_zone_id = "..." }
-    "eu-west-1"      = { alb_dns = "...", alb_zone_id = "..." }
-    "ap-southeast-1" = { alb_dns = "...", alb_zone_id = "..." }
-    "sa-east-1"      = { alb_dns = "...", alb_zone_id = "..." }
+    "us-east-1" = {
+      alb_dns           = "..."
+      alb_zone_id       = "..."
+      health_check_fqdn = "us-east-1.api.example.com"
+    }
+    "eu-west-1" = {
+      alb_dns           = "..."
+      alb_zone_id       = "..."
+      health_check_fqdn = "eu-west-1.api.example.com"
+    }
+    "ap-southeast-1" = {
+      alb_dns           = "..."
+      alb_zone_id       = "..."
+      health_check_fqdn = "ap-southeast-1.api.example.com"
+    }
+    "sa-east-1" = {
+      alb_dns           = "..."
+      alb_zone_id       = "..."
+      health_check_fqdn = "sa-east-1.api.example.com"
+    }
   }
 }
 
@@ -119,7 +136,8 @@ resource "aws_route53_record" "api" {
 resource "aws_route53_health_check" "regional" {
   for_each = var.regional_endpoints
 
-  fqdn              = "${each.key}.api.${var.domain_name}"
+  # Check a stable, region-specific endpoint, not the latency-routed record name.
+  fqdn              = each.value.health_check_fqdn
   port              = 443
   type              = "HTTPS"
   resource_path     = "/health"
@@ -168,14 +186,14 @@ tofu apply
 dig api.example.com
 nslookup api.example.com 8.8.8.8
 
-# Check which region a specific IP resolves to
+# Check the answer for a client subnet when the resolver supports EDNS0 client subnet
 aws route53 test-dns-answer \
   --hosted-zone-id <zone-id> \
   --record-name api.example.com \
   --record-type A \
-  --resolver-ip <client-ip>
+  --edns0-client-subnet-ip <client-ip>
 ```
 
 ## Conclusion
 
-Latency routing requires resources in at least two AWS regions to be useful. Route 53 measures latency between AWS edge locations and AWS regions, not between your users and your specific resources, so the region selection is based on infrastructure proximity rather than real-time user measurements. Combine latency routing with health checks to automatically remove unhealthy regions from rotation. If all regions become unhealthy, Route 53 returns all records to avoid a complete DNS blackout.
+Latency routing requires resources in at least two AWS regions to be useful. Route 53 bases latency data on traffic between users (or their DNS resolver/client subnet) and AWS data centers, not between your users and your specific resources, so the region selection is based on AWS network latency data rather than real-time measurements to your application. Combine latency routing with health checks to automatically remove unhealthy regions from rotation. If all regions become unhealthy, Route 53 behaves as if all health checks are passing and responds according to the routing policy to avoid a complete DNS blackout.
