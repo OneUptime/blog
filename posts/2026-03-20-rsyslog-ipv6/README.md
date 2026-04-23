@@ -20,7 +20,7 @@ rsyslog is the default syslog daemon on many Linux distributions including RHEL,
 module(load="imudp")
 module(load="imtcp")
 
-# UDP input - listen on all IPv6 interfaces
+# UDP input - listen on IPv6 loopback
 input(type="imudp"
       address="::1"
       port="514"
@@ -60,11 +60,15 @@ input(type="imtcp"
 
 # Forward to Elasticsearch using omelasticsearch
 module(load="omelasticsearch")
+template(name="daily-syslog-index" type="string"
+         string="syslog-%$year%.%$month%.%$day%")
 *.* action(type="omelasticsearch"
            server="[2001:db8::10]"
            serverport="9200"
-           template="plain-syslog"
-           searchIndex="syslog-%$year%.%$month%.%$day%")
+           template="RSYSLOG_StdJSONFmt"
+           searchIndex="daily-syslog-index"
+           dynSearchIndex="on"
+           searchType="")
 ```
 
 ## Step 3: Define Custom Templates
@@ -74,10 +78,10 @@ module(load="omelasticsearch")
 template(name="ipv6-json" type="list") {
     constant(value="{")
     constant(value="\"timestamp\":\"")   property(name="timereported" dateFormat="rfc3339")
-    constant(value="\",\"host\":\"")     property(name="hostname")
-    constant(value="\",\"program\":\"")  property(name="programname")
+    constant(value="\",\"host\":\"")     property(name="hostname" format="json")
+    constant(value="\",\"program\":\"")  property(name="programname" format="json")
     constant(value="\",\"message\":\"")  property(name="msg" format="json")
-    constant(value="\",\"fromhost\":\"") property(name="fromhost-ip")
+    constant(value="\",\"fromhost\":\"") property(name="fromhost-ip" format="json")
     constant(value="\"}\n")
 }
 
@@ -91,13 +95,13 @@ template(name="ipv6-json" type="list") {
 
 ```ini
 # RainerScript: route messages from specific IPv6 subnet
-if ($fromhost-ip startswith "2001:db8:") then {
+if is_in_subnet($fromhost-ip, "2001:db8::/32") then {
     action(type="omfile" file="/var/log/remote/2001-db8.log")
     stop
 }
 
 # Route link-local IPv6 sources
-if ($fromhost-ip startswith "fe80:") then {
+if is_in_subnet($fromhost-ip, "fe80::/10") then {
     action(type="omfile" file="/var/log/remote/link-local.log")
     stop
 }
@@ -117,31 +121,31 @@ if ($fromhost-ip contains ":") then {
 ## Step 5: IPv6 Source with TLS
 
 ```ini
-# Load TLS-capable TCP input module
-module(load="imtcp"
-       StreamDriver.Name="gtls"
-       StreamDriver.Mode="1"
-       StreamDriver.AuthMode="anon")
+# TLS certificate defaults for input and forwarding
+global(
+  DefaultNetstreamDriverCAFile="/etc/ssl/ca.pem"
+  DefaultNetstreamDriverCertFile="/etc/ssl/rsyslog.pem"
+  DefaultNetstreamDriverKeyFile="/etc/ssl/rsyslog.key"
+)
 
 input(type="imtcp"
       port="6514"
       address="::"
-      name="tls-ipv6")
+      name="tls-ipv6"
+      StreamDriver.Name="gtls"
+      StreamDriver.Mode="1"
+      StreamDriver.AuthMode="x509/name"
+      PermittedPeer="client.example.net")
 
 # TLS forwarding to IPv6 server
-global(
-  DefaultNetStreamDriverCAFile="/etc/ssl/ca.pem"
-  DefaultNetStreamDriverCertFile="/etc/ssl/rsyslog.pem"
-  DefaultNetStreamDriverKeyFile="/etc/ssl/rsyslog.key"
-)
-
 *.* action(type="omfwd"
            Target="2001:db8::20"
            Port="6514"
            Protocol="tcp"
            StreamDriver="gtls"
            StreamDriverMode="1"
-           StreamDriverAuthMode="anon")
+           StreamDriverAuthMode="x509/name"
+           StreamDriverPermittedPeers="logs.example.net")
 ```
 
 ## Step 6: Verify and Test
@@ -151,16 +155,16 @@ global(
 rsyslogd -N1
 
 # Send test message to IPv6 UDP listener
-logger --server ::1 --port 5140 --ipv6 "Test IPv6 rsyslog message"
+logger --server ::1 --port 5140 --udp "Test IPv6 rsyslog message"
 
 # Monitor incoming messages
 tail -f /var/log/remote/ipv6-all.log
 
-# Check rsyslog statistics
-kill -USR1 $(pidof rsyslogd)
-# Stats appear in /var/log/syslog or configured stats file
+# Enable periodic rsyslog statistics in rsyslog.conf
+# module(load="impstats" interval="60" severity="7")
+# Stats appear as rsyslogd-pstats messages in syslog or in the configured logFile
 ```
 
 ## Conclusion
 
-rsyslog supports IPv6 through its `imudp` and `imtcp` modules by specifying `address="::"` for all-interface binding, and `omfwd` for forwarding to IPv6 destinations. RainerScript's `$fromhost-ip` property enables subnet-based routing using `startswith` or `contains` operators. For production deployments, combine IPv6 TCP forwarding with TLS using the `gtls` StreamDriver to secure log transport between rsyslog instances.
+rsyslog supports IPv6 through its `imudp` and `imtcp` modules by specifying `address="::"` for IPv6 all-interface binding, and `omfwd` for forwarding to IPv6 destinations. RainerScript's `$fromhost-ip` property enables subnet-based routing using `is_in_subnet()` or simpler IPv6 checks with `contains`. For production deployments, combine IPv6 TCP forwarding with TLS and X.509 peer authentication using the `gtls` StreamDriver to secure log transport between rsyslog instances.
