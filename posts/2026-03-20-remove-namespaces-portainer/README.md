@@ -17,8 +17,6 @@ Deleting a namespace removes **all** resources within it - deployments, pods, se
 3. Check the checkbox next to the namespace(s) to remove.
 4. Click **Remove** and confirm.
 
-Alternatively, click on the namespace and find a **Delete** button in the detail view.
-
 ## Reviewing Namespace Contents Before Deletion
 
 ```bash
@@ -30,7 +28,7 @@ kubectl get all --namespace=my-namespace
 kubectl get pvc --namespace=my-namespace
 
 # Check ConfigMaps and Secrets
-kubectl get configmaps secrets --namespace=my-namespace
+kubectl get configmaps,secrets --namespace=my-namespace
 
 # Check for any finalizers that might block deletion
 kubectl get namespace my-namespace -o json | jq '.spec.finalizers'
@@ -48,13 +46,13 @@ kubectl get namespace my-namespace --watch
 
 ## Stuck Namespace Deletion
 
-Sometimes namespaces get stuck in `Terminating` state due to finalizers:
+Sometimes namespaces get stuck in `Terminating` state. Check the namespace conditions and finalizers first:
 
 ```bash
 # Check what's blocking termination
 kubectl describe namespace my-namespace | grep -A5 Conditions
 
-# Force removal of a stuck namespace by patching out finalizers
+# As a last resort, force removal of a stuck namespace by clearing finalizers
 kubectl get namespace my-namespace -o json | \
   jq '.spec.finalizers = []' | \
   kubectl replace --raw /api/v1/namespaces/my-namespace/finalize -f -
@@ -62,18 +60,18 @@ kubectl get namespace my-namespace -o json | \
 
 ## Preventing Accidental Deletion
 
-Add a Portainer access restriction so only admins can delete namespaces:
+Add labels as a reminder:
 
-```yaml
+```bash
 # Add a "do-not-delete" label as a reminder
 kubectl label namespace production \
   lifecycle=permanent \
   team=platform
 ```
 
-In Portainer, restrict namespace management to environment administrators only.
+In Portainer Business Edition, use environment RBAC so only administrators for that environment can manage namespaces.
 
-## System Namespaces You Should Never Delete
+## Initial Namespaces You Should Not Delete
 
 | Namespace | Purpose |
 |-----------|---------|
