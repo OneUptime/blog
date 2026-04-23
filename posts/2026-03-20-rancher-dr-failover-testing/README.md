@@ -104,7 +104,7 @@ kubectl get clusters.management.cattle.io \
 kubectl get namespaces > "$OUTPUT_DIR/namespaces.txt"
 
 # Capture node count
-kubectl get nodes --all > "$OUTPUT_DIR/nodes.txt" 2>/dev/null || true
+kubectl get nodes > "$OUTPUT_DIR/nodes.txt" 2>/dev/null || true
 
 # Capture Rancher settings
 kubectl get settings.management.cattle.io \
@@ -132,13 +132,13 @@ echo "Phase 1: Simulating primary failure..."
 echo ""
 echo "Phase 2: Initiating restore on DR environment..."
 BACKUP_FILE="rancher-backup-2026-03-20T02-00-00Z.tar.gz"
+RESTORE_NAME="dr-test-restore-$(date +%Y%m%d%H%M%S)"
 
 kubectl --context dr-cluster apply -f - << RESTOREEOF
 apiVersion: resources.cattle.io/v1
 kind: Restore
 metadata:
-  name: dr-test-restore-$(date +%Y%m%d%H%M%S)
-  namespace: cattle-resources-system
+  name: ${RESTORE_NAME}
 spec:
   backupFilename: ${BACKUP_FILE}
   prune: false
@@ -148,6 +148,8 @@ spec:
       folder: prod
       region: us-east-1
       credentialSecretName: aws-creds
+      credentialSecretNamespace: default
+      endpoint: s3.us-east-1.amazonaws.com
 RESTOREEOF
 
 # Phase 3: Monitor restore progress
@@ -155,11 +157,10 @@ echo ""
 echo "Phase 3: Monitoring restore progress..."
 RESTORE_START=$(date +%s)
 while true; do
-  STATUS=$(kubectl --context dr-cluster get restore \
-    --namespace cattle-resources-system \
-    -o jsonpath='{.items[-1].status.conditions[-1].type}' 2>/dev/null)
+  STATUS=$(kubectl --context dr-cluster get restore "$RESTORE_NAME" \
+    -o jsonpath='{.status.conditions[?(@.type=="Ready")].message}' 2>/dev/null || true)
   
-  if [ "$STATUS" = "Ready" ]; then
+  if [ "$STATUS" = "Completed" ]; then
     RESTORE_END=$(date +%s)
     RESTORE_DURATION=$((RESTORE_END - RESTORE_START))
     echo "Restore completed in ${RESTORE_DURATION} seconds"
@@ -177,9 +178,9 @@ echo "Phase 4: Validating DR environment..."
 # Check Rancher pods
 kubectl --context dr-cluster get pods -n cattle-system
 
-# Verify cluster connectivity
-curl -sf https://dr-rancher.example.com/v3/ping && \
-  echo "Rancher API: HEALTHY" || echo "Rancher API: FAILED"
+# Verify Rancher server health
+curl -sf https://dr-rancher.example.com/ping && \
+  echo "Rancher endpoint: HEALTHY" || echo "Rancher endpoint: FAILED"
 
 TEST_END=$(date +%s)
 TOTAL_DURATION=$((TEST_END - TEST_START))
