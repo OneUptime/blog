@@ -8,7 +8,7 @@ Description: Learn how to configure Calico as the CNI plugin in RKE2 for advance
 
 ---
 
-Calico is a high-performance CNI plugin that supports both VXLAN overlay and native BGP routing. It provides the most powerful NetworkPolicy capabilities of any CNI available in RKE2.
+Calico is a high-performance CNI plugin that supports both VXLAN overlay and native BGP routing. It provides Kubernetes NetworkPolicy support plus Calico-specific policy resources such as `GlobalNetworkPolicy`.
 
 ---
 
@@ -46,7 +46,7 @@ spec:
     installation:
       calicoNetwork:
         # Use VXLAN (works in most cloud environments)
-        # Change to "None" for BGP routing
+        # For native BGP routing, set bgp: Enabled and encapsulation: None
         bgp: Disabled
         ipPools:
           - blockSize: 26
@@ -62,7 +62,7 @@ Place this file **before** starting RKE2 so it is applied during cluster initial
 
 ## Step 3: Configure BGP for Native Routing (On-Premises)
 
-For on-premises environments where you want pods to have routable IPs without overlay:
+For on-premises environments where you want pods to have routable IPs without overlay, configure the HelmChartConfig above with `bgp: Enabled` and `encapsulation: None`, then create the BGP resources:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -70,7 +70,7 @@ kind: BGPConfiguration
 metadata:
   name: default
 spec:
-  # Advertise pod CIDRs via BGP to the datacenter fabric
+  # Advertise service CIDRs via BGP to the datacenter fabric
   serviceClusterIPs:
     - cidr: 10.43.0.0/16
   serviceExternalIPs:
@@ -94,7 +94,7 @@ spec:
 
 ## Step 4: Create Calico GlobalNetworkPolicies
 
-Calico extends Kubernetes NetworkPolicy with `GlobalNetworkPolicy` which applies cluster-wide:
+Calico extends Kubernetes NetworkPolicy with `GlobalNetworkPolicy` which applies cluster-wide. Apply Calico `projectcalico.org/v3` resources with `calicoctl`, or enable the Calico API server before using `kubectl` for this API group:
 
 ```yaml
 # Block all traffic to the metadata service (AWS)
@@ -121,21 +121,26 @@ spec:
 
 ```bash
 # Check Calico components
-kubectl get pods -n kube-system -l k8s-app=calico-node
-kubectl get pods -n kube-system -l app=calico-kube-controllers
+kubectl get tigerastatus
+kubectl get pods -n tigera-operator
+kubectl get pods -n calico-system -l k8s-app=calico-node
+kubectl get pods -n calico-system -l k8s-app=calico-kube-controllers
 
-# Install calicoctl for advanced management
-kubectl apply -f https://projectcalico.docs.tigera.io/manifests/calicoctl.yaml
+# Install calicoctl as a kubectl plugin for advanced management
+# Match the version to the Calico version running in your cluster.
+curl -L https://github.com/projectcalico/calico/releases/download/v3.31.5/calicoctl-linux-amd64 -o kubectl-calico
+chmod +x kubectl-calico
+sudo mv kubectl-calico /usr/local/bin/
 
 # Check IP pool allocation
-kubectl exec -n kube-system calicoctl -- calicoctl get ippool -o wide
+kubectl calico get ippool -o wide
 ```
 
 ---
 
 ## Best Practices
 
-- Use VXLAN encapsulation in cloud environments (AWS, Azure, GCP) since BGP is blocked by default.
-- Use BGP routing in bare-metal environments for lower overhead and simpler troubleshooting.
+- Use VXLAN encapsulation in cloud environments (AWS, Azure, GCP) where BGP peering to the underlay is unavailable.
+- Use BGP routing in bare-metal environments where your network fabric can peer with Calico and route pod CIDRs.
 - Apply Calico `GlobalNetworkPolicy` to block the EC2/GCP metadata service from all workloads unless explicitly needed.
-- Monitor Calico with the Tigera operator's built-in Prometheus metrics.
+- Monitor Calico component metrics with Prometheus.
