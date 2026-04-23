@@ -14,9 +14,10 @@ GPU resources are expensive and finite. Without proper limits and quotas, a sing
 
 Kubernetes tracks GPU resources as extended resources:
 - `nvidia.com/gpu`: Physical GPU count
-- `nvidia.com/gpu.memory`: GPU memory (with device plugin config)
-- `nvidia.com/mig-1g.5gb`: MIG slices (A100/H100)
+- `nvidia.com/mig-<slice_count>g.<memory_size>gb`: MIG resources when the NVIDIA device plugin uses the `mixed` MIG strategy
 - `amd.com/gpu`: AMD GPU resources
+
+Labels such as `nvidia.com/gpu.memory` can be added to nodes by NVIDIA GPU Feature Discovery, but they are not standard schedulable extended resources.
 
 ## Setting GPU Limits on Pods
 
@@ -40,8 +41,8 @@ spec:
         nvidia.com/gpu: 1    # Limit to 1 GPU (should equal request)
         memory: "16Gi"
         cpu: "8"
-    # Note: GPU requests and limits must be equal
-    # Kubernetes doesn't support GPU overcommit
+    # Note: Extended resource requests and limits must be equal if both are set
+    # Kubernetes itself does not overcommit extended resources
 ```
 
 ## Namespace-Level GPU Quotas
@@ -57,7 +58,6 @@ spec:
   hard:
     # GPU quotas
     requests.nvidia.com/gpu: "4"
-    limits.nvidia.com/gpu: "4"
     # Companion CPU/memory quotas
     requests.cpu: "32"
     requests.memory: "128Gi"
@@ -68,10 +68,10 @@ spec:
     count/jobs.batch: "10"
 ```
 
-## LimitRange for GPU Defaults
+## LimitRange for GPU Caps and Defaults
 
 ```yaml
-# gpu-limitrange.yaml - Set default GPU limits
+# gpu-limitrange.yaml - Set CPU/memory defaults and cap GPU usage
 apiVersion: v1
 kind: LimitRange
 metadata:
@@ -88,48 +88,34 @@ spec:
       cpu: "1"
       memory: "2Gi"
     max:
-      # Maximum allowed limits
-      nvidia.com/gpu: "4"   # No pod can request more than 4 GPUs
+      # Maximum allowed requests/limits
+      nvidia.com/gpu: "4"   # No container can request more than 4 GPUs
       cpu: "16"
       memory: "64Gi"
 ```
 
 ## Rancher Projects for GPU Quota Management
 
-```yaml
-# Configure GPU quota via Rancher project
-# This maps to namespace resource quotas
-
-# project-gpu-quota.yaml (applied via Rancher API)
-apiVersion: management.cattle.io/v3
-kind: Project
-metadata:
-  name: ml-project
-  namespace: cluster-local
-spec:
-  clusterName: local
-  displayName: ML Project
-  resourceQuota:
-    limit:
-      requestsNvidiaGPU: "8"    # Total GPUs for this project
-      limitsCpu: "64000m"
-      limitsMemory: "512Gi"
-  namespaceDefaultResourceQuota:
-    limit:
-      requestsNvidiaGPU: "4"    # Per-namespace default
+```text
+# In Rancher, add GPU quota to the project as a Custom resource quota.
+# Resource Identifier: requests.nvidia.com/gpu
+# Project Limit: 8
+# Namespace Default Limit: 4
+#
+# Rancher propagates the namespace default quota to namespaces in the project.
 ```
 
 ## Monitoring GPU Quota Usage
 
 ```bash
 # Check GPU quota status per namespace
-kubectl get resourcequota -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,USED:.status.used[requests\.nvidia\.com/gpu],LIMIT:.status.hard[requests\.nvidia\.com/gpu]'
+kubectl get resourcequota -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.status.used.requests\.nvidia\.com/gpu}{"\t"}{.status.hard.requests\.nvidia\.com/gpu}{"\n"}{end}'
 
 # View GPU allocation per node
-kubectl describe nodes | grep -A5 "nvidia.com/gpu"
+kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu
 
 # DCGM metrics for GPU memory usage
-kubectl exec -n gpu-operator   $(kubectl get pods -n gpu-operator -l app=nvidia-dcgm-exporter -o name | head -1)   -- sh -c "curl -s localhost:9400/metrics | grep DCGM_FI_DEV_FB_USED"
+kubectl exec -n gpu-operator "$(kubectl get pods -n gpu-operator -l app=nvidia-dcgm-exporter -o jsonpath='{.items[0].metadata.name}')" -- sh -c 'curl -s localhost:9400/metrics | grep DCGM_FI_DEV_FB_USED'
 ```
 
 ## GPU Autoscaling Considerations
