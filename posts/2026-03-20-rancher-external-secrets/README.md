@@ -41,7 +41,7 @@ kubectl get crd | grep external-secrets.io
 
 ```yaml
 # aws-secretstore.yaml - ClusterSecretStore for AWS Secrets Manager
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secretsmanager
@@ -81,7 +81,7 @@ Create an ExternalSecret to sync it:
 
 ```yaml
 # db-secret.yaml - Sync database credentials from AWS
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -123,11 +123,19 @@ spec:
 # Enable Kubernetes authentication in Vault
 vault auth enable kubernetes
 
-# Configure Kubernetes auth
+# Export the cluster CA certificate from your kubeconfig
+kubectl config view --raw --minify --flatten \
+  -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' | base64 --decode > ca.crt
+
+# Allow the ESO service account to use the TokenReview API
+kubectl create clusterrolebinding external-secrets-sa-tokenreview \
+  --clusterrole=system:auth-delegator \
+  --serviceaccount=external-secrets:external-secrets-sa
+
+# Configure Kubernetes auth (Vault will use the caller's JWT for TokenReview)
 vault write auth/kubernetes/config \
-  kubernetes_host="https://$(kubectl get svc kubernetes -o jsonpath='{.spec.clusterIP}'):443" \
-  kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
-  token_reviewer_jwt="$(kubectl create token external-secrets-sa -n external-secrets)"
+  kubernetes_host="$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.server}')" \
+  kubernetes_ca_cert=@ca.crt
 
 # Create a Vault policy
 vault policy write external-secrets - << 'EOF'
@@ -143,13 +151,14 @@ EOF
 vault write auth/kubernetes/role/external-secrets \
   bound_service_account_names=external-secrets-sa \
   bound_service_account_namespaces=external-secrets \
+  audience=vault \
   policies=external-secrets \
   ttl=1h
 ```
 
 ```yaml
 # vault-secretstore.yaml - ClusterSecretStore for HashiCorp Vault
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -166,6 +175,8 @@ spec:
           serviceAccountRef:
             name: external-secrets-sa
             namespace: external-secrets
+            audiences:
+              - vault
 ```
 
 Create secrets in Vault:
@@ -179,7 +190,7 @@ vault kv put secret/production/api-keys \
 
 ```yaml
 # api-keys-secret.yaml - Sync API keys from Vault
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-keys
@@ -205,9 +216,27 @@ spec:
 
 ## Step 4: Create Namespace-Scoped SecretStore
 
+```bash
+# Create a service account for the production namespace
+kubectl create serviceaccount production-service-account -n production
+
+# Allow the production service account to use the TokenReview API
+kubectl create clusterrolebinding production-service-account-tokenreview \
+  --clusterrole=system:auth-delegator \
+  --serviceaccount=production:production-service-account
+
+# Create a Vault role for the production namespace
+vault write auth/kubernetes/role/production \
+  bound_service_account_names=production-service-account \
+  bound_service_account_namespaces=production \
+  audience=vault \
+  policies=external-secrets \
+  ttl=1h
+```
+
 ```yaml
 # namespace-secretstore.yaml - Namespace-scoped secret store
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: vault-production
@@ -221,17 +250,18 @@ spec:
       auth:
         kubernetes:
           mountPath: "kubernetes"
-          role: "external-secrets"
+          role: "production"
           serviceAccountRef:
             name: production-service-account
-            namespace: production
+            audiences:
+              - vault
 ```
 
 ## Step 5: Sync an Entire Secret Path
 
 ```yaml
 # sync-all-secrets.yaml - Sync all secrets from a Vault path
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: all-production-secrets
@@ -275,7 +305,7 @@ kubectl annotate externalsecret database-credentials \
 
 ```yaml
 # registry-secret.yaml - Registry credentials from Vault
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: registry-credentials
@@ -314,4 +344,4 @@ spec:
 
 ## Conclusion
 
-The External Secrets Operator is essential for secure secret management in Rancher environments. It eliminates the need to store secrets in Git or manually manage Kubernetes secrets, instead keeping them in a centralized, audited secrets management system. The automatic refresh mechanism ensures that rotated secrets are propagated to your pods without manual intervention. For production deployments, use IRSA on EKS or Workload Identity on GKE to avoid long-lived credentials for the ESO itself.
+The External Secrets Operator is essential for secure secret management in Rancher environments. It eliminates the need to store secrets in Git or manually manage Kubernetes secrets, instead keeping them in a centralized, audited secrets management system. The automatic refresh mechanism ensures that rotated secrets are propagated to Kubernetes Secrets without manual intervention. For production deployments, use IRSA on EKS or Workload Identity on GKE to avoid long-lived credentials for the ESO itself.
