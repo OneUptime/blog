@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, High Availability, k3s, Lightweight Kubernetes
 
-Description: Deploy Rancher in a highly available configuration on K3s for resource-constrained environments, using embedded or external etcd for cluster state management.
+Description: Deploy Rancher in a highly available configuration on K3s for resource-constrained environments, using embedded etcd or an external datastore for cluster state management.
 
 ## Introduction
 
@@ -63,14 +63,13 @@ curl -sfL https://get.k3s.io | sh -s - server \
   --token="my-cluster-token" \
   --tls-san=rancher.example.com \
   --tls-san=10.0.0.100 \
-  --disable=traefik \  # We'll use ingress-nginx instead
   --node-name=k3s-server-01
 
 # Wait for K3s to start
 systemctl status k3s
 
-# Get the node token
-cat /var/lib/rancher/k3s/server/node-token
+# Get the server token
+cat /var/lib/rancher/k3s/server/token
 ```
 
 ## Step 3: Join Additional K3s Servers
@@ -78,15 +77,15 @@ cat /var/lib/rancher/k3s/server/node-token
 ```bash
 # On k3s-server-02 and k3s-server-03
 K3S_TOKEN="my-cluster-token"
-K3S_URL="https://k3s-server-01:6443"
+K3S_URL="https://10.0.0.100:6443"
 
 curl -sfL https://get.k3s.io | sh -s - server \
   --server="${K3S_URL}" \
   --token="${K3S_TOKEN}" \
   --tls-san=rancher.example.com \
   --tls-san=10.0.0.100 \
-  --disable=traefik \
-  --node-name=k3s-server-02  # Change for each node
+  --node-name=k3s-server-02
+# Change --node-name for each node
 
 # Verify cluster state
 kubectl get nodes
@@ -106,15 +105,14 @@ curl -sfL https://get.k3s.io | sh -s - server \
   --datastore-endpoint="${K3S_DATASTORE_ENDPOINT}" \
   --token="my-cluster-token" \
   --tls-san=rancher.example.com \
-  --disable=traefik \
-  --cluster-init
+  --tls-san=10.0.0.100
 
 # Server 2 and 3 (same command, just joins the cluster)
 curl -sfL https://get.k3s.io | sh -s - server \
   --datastore-endpoint="${K3S_DATASTORE_ENDPOINT}" \
   --token="my-cluster-token" \
   --tls-san=rancher.example.com \
-  --disable=traefik
+  --tls-san=10.0.0.100
 ```
 
 ## Step 5: Configure kubectl
@@ -140,7 +138,7 @@ helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true
+  --set crds.enabled=true
 
 # Install Rancher
 helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
@@ -163,20 +161,20 @@ kubectl get pods -n cattle-system
 ## Step 7: Configure K3s for Rancher Stability
 
 ```yaml
-# /etc/rancher/k3s/config.yaml - K3s configuration optimizations
-# Ensure these are set before first start
+# /etc/rancher/k3s/config.yaml - optional K3s tuning examples
+# Set these before first start, and validate them against your workload
 
-# Increase etcd performance (embedded etcd)
+# Example embedded etcd tuning
 etcd-arg:
   - "quota-backend-bytes=4294967296"  # 4GB
   - "auto-compaction-mode=periodic"
   - "auto-compaction-retention=1h"
 
-# Rancher needs access to kube-proxy metrics
+# Optional: expose kube-proxy metrics for cluster monitoring
 kube-proxy-arg:
   - "metrics-bind-address=0.0.0.0:10249"
 
-# Increase API server timeout
+# Example API server tuning
 kube-apiserver-arg:
   - "default-watch-cache-size=500"
   - "request-timeout=600s"
@@ -204,4 +202,4 @@ kubectl get nodes -w
 
 ## Conclusion
 
-K3s provides an excellent foundation for Rancher HA in resource-constrained environments. Its embedded etcd eliminates the need for external database dependencies, while the clustered setup provides the quorum needed for high availability. For production environments handling more than 100 managed clusters, consider upgrading to RKE2 which provides better performance and tighter alignment with upstream Kubernetes. For smaller deployments and edge scenarios, K3s offers the right balance of simplicity and reliability.
+K3s provides an excellent foundation for Rancher HA in resource-constrained environments. Its embedded etcd eliminates the need for external database dependencies, while the clustered setup provides the quorum needed for high availability. For larger production environments, consider RKE2, which Rancher positions for datacenter and cloud installations. For smaller deployments and edge scenarios, K3s offers the right balance of simplicity and reliability.
