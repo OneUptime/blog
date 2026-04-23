@@ -71,12 +71,14 @@ infrastructure/
 
 resource "aws_db_instance" "main" {
   identifier        = "prod-postgres"
+  engine            = "postgres"
   instance_class    = "db.r5.large"
   allocated_storage = 500
+  username          = var.db_username
+  password          = var.db_password
 
   lifecycle {
-    prevent_destroy = true   # Fail with an error if anyone tries to destroy
-    ignore_changes  = [snapshot_identifier]  # Don't manage snapshots via OpenTofu
+    prevent_destroy = true   # Fail with an error if a plan would destroy or replace this DB
   }
 }
 ```
@@ -84,26 +86,25 @@ resource "aws_db_instance" "main" {
 ## CI/CD: Separate Pipelines per Segment
 
 ```yaml
-# .github/workflows/opentofu.yml
-jobs:
-  plan-applications:
-    # Runs on every PR - daily change rate
-    paths:
-      - "infrastructure/applications/**"
-
-  plan-data:
-    # Runs only on PRs touching data config
-    # Requires additional approvals from data team
+# Each segment gets its own workflow file with its own path filter.
+# This example shows the data workflow; applications and foundation use the same pattern.
+# .github/workflows/opentofu-data.yml
+on:
+  pull_request:
     paths:
       - "infrastructure/data/**"
-    environment: data-platform   # Requires extra approval step
 
-  plan-foundation:
-    # Runs only on PRs touching foundation
-    # Requires network architect review
-    paths:
-      - "infrastructure/foundation/**"
-    environment: foundation       # Requires architecture team approval
+jobs:
+  plan-data:
+    runs-on: ubuntu-latest
+    environment: data-platform   # Requires configured environment protection rules
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+      - run: tofu init -input=false
+        working-directory: infrastructure/data
+      - run: tofu plan -input=false
+        working-directory: infrastructure/data
 ```
 
 ## Conclusion
