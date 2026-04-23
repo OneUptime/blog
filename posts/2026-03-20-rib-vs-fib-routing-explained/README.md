@@ -8,19 +8,19 @@ Description: Understand the distinction between the Routing Information Base (RI
 
 ## Introduction
 
-The RIB and FIB are two distinct data structures that together handle routing. The RIB is a comprehensive database of all learned routes from all sources (static, OSPF, BGP, connected). The FIB is a distilled, optimized subset installed in the actual forwarding engine. Understanding the difference helps diagnose cases where a route exists in the RIB but packets still fail.
+The RIB and FIB are two distinct data structures that together handle routing. The RIB is a comprehensive database of candidate routes from sources such as static routes, OSPF, BGP, and connected networks. The FIB is a distilled, optimized subset installed in the actual forwarding engine. Understanding the difference helps diagnose cases where a route exists in the RIB but packets still fail.
 
 ## The RIB (Routing Information Base)
 
-The RIB contains all routes from all protocols, including non-best paths. It is the "full picture" of routing knowledge:
+The RIB contains routing candidates from protocols, including entries that are not selected for forwarding. In FRR, zebra receives the best routes from protocol daemons and then selects the best entry across protocols for each prefix:
 
 ```bash
-# FRR's RIB (includes all protocols and non-best paths)
+# FRR's zebra RIB (includes candidates from multiple protocols)
 
 vtysh -c "show ip route"
 
-# Show all routes including non-selected ones
-vtysh -c "show ip route detail"
+# Show detailed route state for one prefix
+vtysh -c "show ip route 10.20.0.0/24"
 
 # The RIB marks best routes with >
 # Example output:
@@ -31,18 +31,21 @@ vtysh -c "show ip route detail"
 
 ## The FIB (Forwarding Information Base)
 
-The FIB contains only the best routes actually used for forwarding. On Linux, this is the kernel routing table:
+The FIB contains routes actually installed for forwarding. On Linux, the kernel routing tables are the FIB; `ip route show` displays the main table by default:
 
 ```bash
-# The Linux kernel routing table IS the FIB
+# Show the main Linux routing table
 ip route show
 
-# This shows only the best routes installed for forwarding
+# Show all kernel routing tables, including local and policy/VRF tables
+ip route show table all
+
+# These show active routes installed for forwarding lookup
 # Non-best paths from the RIB are NOT here
 
-# Compare FRR RIB vs kernel FIB
-vtysh -c "show ip route" | grep "^[OBSC]"  # RIB entries
-ip route show                                # FIB entries
+# Compare FRR RIB vs Linux kernel FIB
+vtysh -c "show ip route"        # FRR RIB entries with > and * markers
+ip route show table main        # Linux main-table FIB entries
 ```
 
 ## Why Routes May Be in RIB but Not FIB
@@ -50,12 +53,14 @@ ip route show                                # FIB entries
 ```bash
 # Check if FRR installed a route in the kernel
 vtysh -c "show ip route 10.20.0.0/24"
-# If marked with * it should be in kernel FIB
+# If marked with * it is installed in the data plane/FIB
+# (the kernel FIB when Linux is the data plane)
 
 # If in FRR RIB but not kernel FIB, check for:
-# 1. A higher-priority route in another protocol blocking installation
-# 2. Kernel table full (rare)
-# 3. Next-hop unresolvable (recursive lookup failure)
+# 1. Another candidate route was selected instead
+# 2. Route-map/filter/policy prevented kernel installation
+# 3. Kernel rejected the route (for example, resource exhaustion)
+# 4. Next-hop unresolvable (recursive lookup failure)
 
 # Check kernel installation errors
 journalctl -u frr | grep -i "install\|kernel\|error"
@@ -63,13 +68,13 @@ journalctl -u frr | grep -i "install\|kernel\|error"
 
 ## Hardware vs Software FIB
 
-On hardware routers, the FIB is stored in specialized TCAM (Ternary Content Addressable Memory) for wire-speed lookups:
+On many hardware routers, the FIB is programmed into ASIC tables such as TCAM (Ternary Content Addressable Memory), hash tables, or LPM resources for wire-speed lookups:
 
 ```text
 RIB (software, full table) --> Best path selection --> FIB (hardware/kernel)
 ```
 
-When the hardware FIB is full (common on low-cost switches with large BGP tables), routes overflow to software forwarding - causing significant performance degradation.
+When hardware forwarding resources are exhausted (for example, on low-cost switches with large BGP tables), behavior is platform-specific: routes may fail to install in hardware, be dropped, or fall back to software forwarding on devices that support an overflow path. In any case, forwarding performance or reachability can degrade significantly.
 
 ## FIB Lookup Process
 
@@ -77,22 +82,25 @@ When the hardware FIB is full (common on low-cost switches with large BGP tables
 graph TD
     P[Incoming Packet] --> FIB[FIB Lookup - Longest Prefix Match]
     FIB -->|Match found| NH[Next-Hop Resolution]
-    FIB -->|No match, default route| DGW[Default Gateway]
-    FIB -->|No match, no default| DROP[Drop + ICMP Unreachable]
+    FIB -->|Default route match| DGW[Default Gateway]
+    FIB -->|No matching route| DROP[Drop + ICMP Unreachable]
     NH --> FWD[Forward out interface]
 ```
 
 ## Monitoring FIB Size on Linux
 
 ```bash
-# Count routes in the kernel FIB
-ip route show | wc -l
+# Count IPv4 routes across all kernel routing tables
+ip route show table all | wc -l
 
-# Show route cache statistics
-ip -s route show cache
+# Count IPv6 routes separately
+ip -6 route show table all | wc -l
 
-# For detailed kernel routing statistics
-cat /proc/net/route   # raw kernel routing table
+# Inspect the route the kernel would use for a destination
+ip route get 8.8.8.8
+
+# For raw IPv4 kernel routing table output
+cat /proc/net/route   # legacy /proc route table view
 
 # Monitor FIB changes in real time
 ip monitor route
@@ -100,4 +108,4 @@ ip monitor route
 
 ## Conclusion
 
-The RIB is the policy database - it stores everything known about routes. The FIB is the operational database - it stores only what's needed for fast packet forwarding. In a healthy network, the best route in the RIB matches what's in the FIB. Discrepancies between the two are important diagnostic signals that point to installation failures, policy conflicts, or resource exhaustion.
+The RIB is the policy database - it stores routing candidates and selection state. The FIB is the operational database - it stores only what's needed for fast packet forwarding. In a healthy network, the best route in the RIB matches what's in the FIB. Discrepancies between the two are important diagnostic signals that point to installation failures, policy conflicts, or resource exhaustion.
