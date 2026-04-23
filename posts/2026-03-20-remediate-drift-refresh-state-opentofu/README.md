@@ -48,11 +48,13 @@ After refreshing state, update your configuration to match the new reality - oth
 ```hcl
 # BEFORE drift: config had the original value
 resource "aws_db_instance" "main" {
+  # ... other required arguments ...
   instance_class = "db.t3.medium"  # Old value
 }
 
 # AFTER accepting drift: update config to match current state
 resource "aws_db_instance" "main" {
+  # ... other required arguments ...
   instance_class = "db.r5.large"   # Updated to match what was manually changed
 }
 ```
@@ -65,19 +67,19 @@ tofu plan
 
 ## Selective Refresh: Only Specific Resources
 
-If drift affected only one resource and you want to be surgical:
+If you need to focus on a specific address in an exceptional case:
 
 ```bash
-# Refresh state for only one resource
+# Focus refresh on one resource address and any dependencies it needs
 tofu apply -refresh-only -target=aws_db_instance.main
 
-# Or refresh a whole module
+# Or focus on a whole module instance
 tofu apply -refresh-only -target=module.databases
 ```
 
 ## The Old Way: tofu refresh (Deprecated)
 
-In older versions of Terraform/OpenTofu, `terraform refresh` was used. It is deprecated and `apply -refresh-only` is the replacement:
+OpenTofu still includes `tofu refresh` for backward compatibility, but it is deprecated and `apply -refresh-only` is the safer replacement because it lets you review the detected changes before confirming:
 
 ```bash
 # Deprecated - avoid
@@ -93,6 +95,7 @@ For drift that is consistently expected (e.g., autoscaling changes desired capac
 
 ```hcl
 resource "aws_autoscaling_group" "web" {
+  # ... other required arguments ...
   min_size         = 2
   max_size         = 10
   desired_capacity = 4
