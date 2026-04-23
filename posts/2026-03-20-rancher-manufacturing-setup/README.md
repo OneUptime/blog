@@ -38,14 +38,16 @@ K3s clusters on production line hardware:
 
 ```bash
 # Install K3s on production line server
+# Disable the bundled Traefik ingress controller in the OT zone
+# Use the OT network interface for flannel traffic
 
-curl -sfL https://get.k3s.io | sh - \
+curl -sfL https://get.k3s.io | sh -s - \
   --node-label="location=factory-floor" \
   --node-label="facility=plant-01" \
   --node-label="line=line-a" \
   --node-label="zone=ot" \
-  --disable=traefik \    # Disable for OT zone security
-  --flannel-iface=eth0   # Specific OT network interface
+  --disable=traefik \
+  --flannel-iface=eth0
 ```
 
 ## Step 2: OPC-UA Gateway Deployment
@@ -61,7 +63,13 @@ metadata:
   namespace: iot-edge
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: opcua-gateway
   template:
+    metadata:
+      labels:
+        app: opcua-gateway
     spec:
       containers:
         - name: opcua-bridge
@@ -94,7 +102,13 @@ metadata:
   namespace: manufacturing-ai
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: quality-inspection
   template:
+    metadata:
+      labels:
+        app: quality-inspection
     spec:
       nodeSelector:
         accelerator: nvidia-gpu
@@ -122,7 +136,7 @@ spec:
 Manufacturing environments require strict OT/IT network separation:
 
 ```yaml
-# NetworkPolicy: OT zone pods cannot reach IT zone
+# NetworkPolicy: default-deny ingress and restrict OT egress
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -131,7 +145,7 @@ metadata:
 spec:
   podSelector: {}
   egress:
-    # OT zone pods can only talk to the data aggregator
+    # Pods in this namespace can only talk to the data aggregator
     - to:
         - namespaceSelector:
             matchLabels:
@@ -146,6 +160,8 @@ spec:
       ports:
         - port: 53
           protocol: UDP
+        - port: 53
+          protocol: TCP
   policyTypes:
     - Egress
     - Ingress
@@ -162,7 +178,13 @@ metadata:
   namespace: manufacturing-ai
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: predictive-maintenance
   template:
+    metadata:
+      labels:
+        app: predictive-maintenance
     spec:
       containers:
         - name: pred-maintenance
@@ -182,7 +204,7 @@ spec:
 ## Step 6: Fleet Management for Factory Updates
 
 ```yaml
-# Fleet: Deploy updates to all production line clusters
+# Fleet: Separate target for line A and a broader factory-floor target
 apiVersion: fleet.cattle.io/v1alpha1
 kind: GitRepo
 metadata:
@@ -192,12 +214,12 @@ spec:
   repo: https://git.factory.internal/production-apps
   branch: production
   targets:
-    # Phase 1: Test on line A first
+    # Dedicated target for line A
     - name: test-line
       clusterSelector:
         matchLabels:
           line: line-a
-    # Phase 2: All other lines after test passes
+    # Broader factory-floor target
     - name: all-production-lines
       clusterSelector:
         matchLabels:
@@ -247,7 +269,7 @@ provisioner: driver.longhorn.io
 parameters:
   numberOfReplicas: "1"      # Single replica on edge (no HA for local cache)
   staleReplicaTimeout: "2880"
-reclaimPolicy: Retain        # Retain data on pod deletion for forensics
+reclaimPolicy: Retain        # Retain the PV and backing volume after PVC deletion for recovery
 ```
 
 ## Conclusion
