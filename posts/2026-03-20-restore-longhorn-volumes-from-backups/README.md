@@ -8,7 +8,7 @@ Description: Learn how to restore Longhorn volumes from backups stored in S3, NF
 
 ## Introduction
 
-Restoring from backups is the most critical operation in any data protection system. Longhorn provides multiple methods to restore volumes from external backups - whether you're recovering from a disaster, migrating to a new cluster, or testing your recovery procedures. This guide covers all restore methods with step-by-step instructions.
+Restoring from backups is the most critical operation in any data protection system. Longhorn provides multiple methods to restore volumes from external backups - whether you're recovering from a disaster, migrating to a new cluster, or testing your recovery procedures. This guide covers common restore methods with step-by-step instructions.
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ Restoring from backups is the most critical operation in any data protection sys
 | Restore Method | Description | When to Use |
 |----------------|-------------|-------------|
 | New volume | Restore to a new Longhorn volume | Data recovery, migration |
-| Existing PVC | Replace PVC data with backup | Rollback after corruption |
+| New PVC | Provision a new PVC from backup | Rollback after corruption |
 | Cross-cluster | Restore to a different cluster | Disaster recovery |
 | Disaster Recovery volume | Long-running restore + failover | DR scenarios |
 
@@ -43,9 +43,6 @@ Restoring from backups is the most critical operation in any data protection sys
 ### Step 3: Configure the Restore
 
 - **Name**: New volume name (e.g., `restored-my-volume`)
-- **Access Mode**: ReadWriteOnce
-- **Number of Replicas**: Choose based on your needs
-- **Storage Class**: Select the appropriate class
 
 ### Step 4: Create a PV/PVC for the Restored Volume
 
@@ -111,9 +108,9 @@ The cleanest way to restore a backup into Kubernetes is using the `fromBackup` S
 ### Step 1: Get the Backup URL
 
 ```bash
-# List backup volumes and find your backup URL
-kubectl get backupvolumes.longhorn.io -n longhorn-system
-kubectl describe backupvolume.longhorn.io <volume-name> -n longhorn-system | grep URL
+# List backups and get the exact backup URL
+kubectl get backups.longhorn.io -n longhorn-system
+kubectl get backup.longhorn.io <backup-name> -n longhorn-system -o jsonpath='{.status.url}'
 ```
 
 Or from the Longhorn UI, click on a backup and find the backup URL in the details.
@@ -154,7 +151,7 @@ spec:
   storageClassName: longhorn-restore
   resources:
     requests:
-      # Must match or exceed original backup size
+      # Use the original backup volume size
       storage: 10Gi
 ```
 
@@ -166,7 +163,13 @@ kubectl get pvc restored-data -w
 kubectl describe pvc restored-data
 ```
 
-## Method 3: Restore via kubectl (Longhorn Backup Custom Resource)
+## Method 3: Restore via kubectl (Longhorn Volume Custom Resource)
+
+Get the volume size from the Backup CR before creating the manifest:
+
+```bash
+kubectl get backup.longhorn.io <backup-name> -n longhorn-system -o jsonpath='{.status.volumeSize}'
+```
 
 ```yaml
 # longhorn-restore.yaml - Restore a Longhorn volume from backup
@@ -176,10 +179,12 @@ metadata:
   name: my-restored-volume
   namespace: longhorn-system
 spec:
-  size: "10737418240"    # 10 GiB in bytes
+  size: "10737418240"    # Must match the Backup CR .status.volumeSize value
   numberOfReplicas: 3
   fromBackup: "s3://my-bucket@us-east-1/?volume=my-volume&backup=backup-20260320"
   accessMode: rwo
+  frontend: blockdev
+  dataEngine: v1
 ```
 
 ```bash
@@ -200,14 +205,14 @@ Ensure the new cluster's Longhorn instance is configured with the same backup ta
 ### Step 2: Scan Backup Target
 
 ```bash
-# In the new cluster, scan the backup target to discover available backups
-kubectl patch settings.longhorn.io backup-target-poll-interval \
+# In the new cluster, request a backup target sync to discover available backups
+kubectl patch backuptarget.longhorn.io default \
   -n longhorn-system \
   --type merge \
-  -p '{"value": "300"}'
+  -p "{\"spec\":{\"syncRequestedAt\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}}"
 ```
 
-Or from the Longhorn UI, navigate to **Backup** - it will automatically discover backups.
+Or from the Longhorn UI, navigate to **Backup** and click **Sync All Backup Volumes**.
 
 ### Step 3: Restore the Backup
 
