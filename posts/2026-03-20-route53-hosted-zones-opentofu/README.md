@@ -102,8 +102,8 @@ resource "aws_route53_record" "database" {
 ## Health Checks
 
 ```hcl
-resource "aws_route53_health_check" "app" {
-  fqdn              = "api.${var.domain_name}"
+resource "aws_route53_health_check" "app_primary" {
+  fqdn              = var.primary_app_dns_name
   port              = 443
   type              = "HTTPS"
   resource_path     = "/health"
@@ -111,28 +111,24 @@ resource "aws_route53_health_check" "app" {
   request_interval  = 30
 
   tags = {
-    Name = "api-health-check"
+    Name = "primary-app-health-check"
   }
 }
 
-# Weighted routing with health checks for active-active
-resource "aws_route53_record" "api_primary" {
+# Weighted routing record with a health check
+resource "aws_route53_record" "app_primary" {
   zone_id        = aws_route53_zone.main.zone_id
-  name           = "api.${var.domain_name}"
-  type           = "A"
+  name           = "app.${var.domain_name}"
+  type           = "CNAME"
+  ttl            = 60
   set_identifier = "primary"
 
   weighted_routing_policy {
     weight = 100
   }
 
-  health_check_id = aws_route53_health_check.app.id
-
-  alias {
-    name                   = aws_lb.primary.dns_name
-    zone_id                = aws_lb.primary.zone_id
-    evaluate_target_health = true
-  }
+  health_check_id = aws_route53_health_check.app_primary.id
+  records         = [var.primary_app_dns_name]
 }
 ```
 
@@ -166,7 +162,7 @@ output "name_servers" {
 ## Best Practices
 
 - After creating a hosted zone, update your domain registrar's NS records to Route 53's name servers - this is done outside OpenTofu.
-- Use `evaluate_target_health = true` on alias records to Route 53 won't return an unhealthy endpoint.
+- Use `evaluate_target_health = true` on alias records where supported, such as Application or Network Load Balancers, so Route 53 can use target health when choosing DNS answers.
 - Use low TTLs (60s) during migrations and increase them (300-3600s) once DNS is stable.
-- Separate public and private hosted zones rather than using split-horizon DNS in a single zone - it's cleaner.
-- Create health checks for critical endpoints and attach them to routing policies to enable automatic failover.
+- Use separate public and private hosted zones when you need split-view DNS - a single hosted zone cannot serve both public and VPC-private answers.
+- Create health checks for critical non-alias endpoints and associate them with records that use routing policies to enable automatic failover; for alias records to load balancers, use target health evaluation instead.
