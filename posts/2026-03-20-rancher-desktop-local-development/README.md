@@ -12,10 +12,10 @@ Rancher Desktop is an open-source desktop application that provides Kubernetes a
 
 ## Prerequisites
 
-- A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
-- At least 8 GB of RAM (16 GB recommended)
-- At least 4 CPU cores
+- A supported macOS, Windows, or Linux system
+- Administrator/sudo privileges may be required during installation, depending on platform and configuration
+- 8 GB of RAM recommended
+- 4 CPU cores recommended
 
 ## Overview
 
@@ -29,9 +29,11 @@ Rancher Desktop simplifies local Kubernetes and container development by providi
 ## Step 1: Initial Setup
 
 ```bash
-# Verify Rancher Desktop is installed and running
-
+# Verify Rancher Desktop is installed
 rdctl version
+
+# Verify Rancher Desktop is running
+rdctl list-settings
 
 # Check Kubernetes cluster status
 kubectl cluster-info
@@ -53,8 +55,8 @@ Open Rancher Desktop Preferences to configure:
 
 ```bash
 # Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
-rdctl set --container-engine containerd
+rdctl set --kubernetes.enabled=true
+rdctl set --container-engine.name containerd
 ```
 
 ## Step 3: Working with Containers
@@ -88,6 +90,9 @@ kubectl get nodes
 # Deploy a test application
 kubectl create deployment hello-world \
   --image=nginx:latest
+
+# Wait for the deployment to become ready
+kubectl rollout status deployment/hello-world
 
 # Expose the deployment
 kubectl expose deployment hello-world \
@@ -131,31 +136,30 @@ helm uninstall my-release
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
-rdctl factory-reset
+# Reset Kubernetes workloads
+rdctl reset --k8s
 
-# Check Rancher Desktop status
-rdctl status
+# Show current Rancher Desktop settings
+rdctl list-settings
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
+# Switch to the Moby container engine
+rdctl set --container-engine.name moby
 
-# Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+# Disable Kubernetes when you only need containers
+rdctl set --kubernetes.enabled=false
 ```
 
 ## Troubleshooting
 
 ```bash
-# Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# Open the log directory from the Rancher Desktop UI
+# Troubleshooting > Show Logs
 
 # Reset to factory defaults
-rdctl factory-reset
+rdctl reset --factory
 
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Review the current virtual machine settings
+rdctl list-settings
 ```
 
 ## Conclusion
