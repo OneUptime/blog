@@ -11,7 +11,7 @@ SELinux (Security-Enhanced Linux) is a mandatory access control (MAC) security m
 ## Prerequisites
 
 - RHEL, CentOS, Rocky Linux, or Fedora with SELinux available
-- RKE2 v1.21+
+- A supported RKE2 release
 - Understanding of SELinux concepts (contexts, policies, booleans)
 
 ## Understanding SELinux with Kubernetes
@@ -40,17 +40,17 @@ getenforce
 ## Step 2: Install RKE2 SELinux Policy
 
 ```bash
-# For RHEL/CentOS/Rocky Linux, install the RKE2 SELinux policy
-# First, enable the container-selinux policy
-sudo dnf install -y container-selinux
+# For RHEL/CentOS/Rocky Linux/Fedora, install the base container
+# SELinux policy and SELinux administration tools
+sudo dnf install -y container-selinux policycoreutils-python-utils
 
 # Install RKE2-specific SELinux policy
-# Option 1: From a repository
-sudo dnf install -y https://rpm.rancher.io/rke2/latest/centos/8/noarch/rke2-selinux-0.17-1.el8.noarch.rpm
+# Option 1: Install RKE2 from RPMs; this installs rke2-selinux by default
+curl -sfL https://get.rke2.io | sudo sh -
 
-# Option 2: Install during RKE2 installation
-curl -sfL https://get.rke2.io | \
-  INSTALL_RKE2_SELINUX=true sudo sh -
+# Option 2: If the Rancher RKE2 RPM repo is already configured,
+# install or update just the SELinux policy package
+sudo dnf install -y rke2-selinux
 
 # Verify the policy is installed
 rpm -q rke2-selinux
@@ -59,11 +59,12 @@ rpm -q rke2-selinux
 ## Step 3: Configure SELinux Mode
 
 ```bash
-# Set SELinux to enforcing mode
-sudo setenforce 1
-
-# Make it permanent
+# Make enforcing mode permanent
 sudo sed -i 's/^SELINUX=.*/SELINUX=enforcing/' /etc/selinux/config
+
+# If SELinux is Disabled, reboot after changing /etc/selinux/config.
+# If SELinux is currently Permissive, switch to Enforcing immediately:
+sudo setenforce 1
 
 # Verify
 cat /etc/selinux/config | grep "^SELINUX="
@@ -73,18 +74,15 @@ cat /etc/selinux/config | grep "^SELINUX="
 
 ```yaml
 # /etc/rancher/rke2/config.yaml - SELinux configuration
-# Enable SELinux in the container runtime
+# Enable SELinux in containerd. RPM installations enable this by default;
+# set it explicitly for tarball installs or when documenting the node config.
 selinux: true
-
-# Additional kubelet args for SELinux
-kubelet-arg:
-  # Enable SELinux context labeling
-  - "seccomp-default=true"
 
 # The selinux: true setting tells containerd to:
 # 1. Apply SELinux labels to containers
-# 2. Use the container_t policy context for containers
-# 3. Respect SELinux labels on volume mounts
+# 2. Use the container SELinux policy for workload containers
+# 3. Use RKE2-specific labels for control-plane static pods
+# 4. Respect SELinux labels on volume mounts
 ```
 
 ## Step 5: Verify SELinux Labels on RKE2 Processes
@@ -96,8 +94,9 @@ sudo systemctl start rke2-server
 # Check SELinux labels on RKE2 processes
 ps -eZ | grep -E "rke2|containerd|kubelet"
 
-# Check SELinux context of container processes
-# Example: etcd, kube-apiserver should have container_t context
+# Check SELinux context of control-plane static pod processes
+# Example: etcd and kube-apiserver can use RKE2-specific contexts such as
+# rke2_service_db_t or rke2_service_t
 ps -eZ | grep -E "etcd|kube-apiserver"
 
 # Check SELinux labels on RKE2 files
@@ -130,25 +129,25 @@ sudo ausearch -m avc -c kubelet --start recent
 
 ## Step 7: Configure SELinux Boolean Settings
 
-Some RKE2 features require specific SELinux booleans:
+Some workloads may require specific SELinux booleans. RKE2 itself does not require these by default; enable only the booleans required by your CNI, storage, or workload:
 
 ```bash
 # Check current SELinux booleans relevant to containers
-getsebool -a | grep -E "container|docker|virt"
+getsebool -a | grep -E "container|virt"
 
-# Enable required booleans for RKE2
-# Allow containers to manage network configuration
+# Optional: allow containers that run systemd to manage cgroups
 sudo setsebool -P container_manage_cgroup on
 
-# Allow containers to use NFS volumes
-sudo setsebool -P container_use_nfs on
+# Optional: allow container domains to use NFS volumes
+sudo setsebool -P virt_use_nfs on
 
-# Allow containers to read/write to /var/lib/kubelet
+# Optional: allow containers to connect to any TCP port
 sudo setsebool -P container_connect_any on
 
 # Verify boolean settings
 getsebool container_manage_cgroup
-getsebool container_use_nfs
+getsebool virt_use_nfs
+getsebool container_connect_any
 ```
 
 ## Step 8: SELinux Contexts for Persistent Volumes
