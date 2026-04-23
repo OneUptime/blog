@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE, Kubernetes, Rancher, Networking, CNI, Canal, Flannel, Calico
 
-Description: A comprehensive guide to configuring CNI network plugins in RKE, including Canal, Flannel, Calico, and Weave.
+Description: A comprehensive guide to configuring CNI network plugins in RKE1, including Canal, Flannel, Calico, and Weave.
 
 ## Introduction
 
-Networking is a foundational aspect of any Kubernetes cluster. RKE supports multiple CNI (Container Network Interface) plugins and provides flexible options for pod and service network CIDRs, MTU settings, and network policies. Choosing the right CNI and configuring it correctly ensures reliable pod-to-pod communication and policy enforcement.
+Networking is a foundational aspect of any Kubernetes cluster. RKE1 reached end of life on July 31, 2025, so use this guide for maintaining existing RKE1 clusters and prefer RKE2 for new deployments. RKE supports multiple CNI (Container Network Interface) plugins and provides flexible options for pod and service network CIDRs, MTU settings, and network policies. Choosing the right CNI and configuring it correctly ensures reliable pod-to-pod communication and policy enforcement.
 
 ## Supported CNI Plugins
 
@@ -17,7 +17,7 @@ Networking is a foundational aspect of any Kubernetes cluster. RKE supports mult
 | Canal | Yes (Calico) | Flannel | Good |
 | Flannel | No | Flannel | Good |
 | Calico | Yes | Calico | Excellent |
-| Weave | Yes | Weave | Good |
+| Weave | Yes (deprecated in Kubernetes v1.27+, removed in v1.30+) | Weave | Good |
 | None | N/A | N/A | Custom |
 
 ## Basic Network Configuration
@@ -42,13 +42,13 @@ network:
     canal_flannel_backend_type: "vxlan"
     # Canal iface - override to target a specific interface
     canal_iface: "eth0"
-    # Allow all traffic by default (can be restricted with NetworkPolicy)
-    canal_default_local_action_allow: "true"
 
 # Configure pod and service CIDRs
 services:
   kube-controller:
     cluster_cidr: 10.42.0.0/16
+    service_cluster_ip_range: 10.43.0.0/16
+  kube-api:
     service_cluster_ip_range: 10.43.0.0/16
 ```
 
@@ -65,8 +65,6 @@ network:
     flannel_backend_type: "vxlan"
     # Override the network interface
     flannel_iface: "eth0"
-    # MTU for VXLAN (leave blank for auto-detection)
-    flannel_backend_vxlan_mtu: "1450"
 ```
 
 ### Using host-gw Backend (Higher Performance)
@@ -88,31 +86,30 @@ Calico provides advanced networking features including BGP routing and robust ne
 # cluster.yml
 network:
   plugin: calico
-  options:
-    # Calico backend: bird (BGP), vxlan, or none
-    calico_backend: "bird"
-    # Cloud provider (for cloud-specific routing)
-    calico_cloud_provider: ""
-    # MTU size
-    calico_mtu: "1440"
+  # MTU size (0 lets RKE use the plugin default)
+  mtu: 1440
 
 services:
   kube-controller:
-    cluster_cidr: 192.168.0.0/16   # Calico default
-    service_cluster_ip_range: 10.96.0.0/12
+    cluster_cidr: 10.42.0.0/16   # RKE default
+    service_cluster_ip_range: 10.43.0.0/16
+  kube-api:
+    service_cluster_ip_range: 10.43.0.0/16
 ```
 
 ### Calico BGP Configuration
 
-For environments with BGP-capable routers:
+RKE's bundled Calico uses the BIRD backend. For environments with BGP-capable routers, create Calico BGP resources after the cluster is deployed:
 
 ```yaml
-network:
-  plugin: calico
-  options:
-    calico_backend: "bird"
-    # Additional Calico configuration via environment variables
-    calico_node_selector: "kubernetes.io/os=linux"
+apiVersion: crd.projectcalico.org/v1
+kind: BGPPeer
+metadata:
+  name: rack1-tor
+spec:
+  peerIP: 192.0.2.1
+  asNumber: 64567
+  nodeSelector: "rack == 'rack-1'"
 ```
 
 ## Custom Pod and Service CIDRs
@@ -126,9 +123,12 @@ services:
     # Service IP range
     service_cluster_ip_range: 10.43.0.0/16
     # Node CIDR mask size (controls how many pod IPs per node)
-    node_cidr_mask_size: 24
+    extra_args:
+      node-cidr-mask-size: "24"
 
   kube-api:
+    # Must match the service_cluster_ip_range in kube-controller
+    service_cluster_ip_range: 10.43.0.0/16
     # Service NodePort range
     service_node_port_range: 30000-32767
 ```
@@ -137,7 +137,7 @@ With a `/16` pod CIDR and `/24` node mask, each node gets 254 pod IPs.
 
 ## Configuring Network Policies
 
-Network policies require Canal or Calico. Here is an example policy:
+Network policies require a plugin that enforces them, such as Canal, Calico, or supported Weave deployments. Here is an example policy:
 
 ```yaml
 # allow-app-traffic.yaml
@@ -189,15 +189,15 @@ In cloud environments, VXLAN encapsulation reduces the effective MTU. Configure 
 # For AWS/Azure/GCP where MTU is typically 1500
 network:
   plugin: canal
+  # VXLAN overhead is about 50 bytes; set to 1450 for 1500 MTU hosts
+  mtu: 1450
   options:
-    # VXLAN overhead is ~50 bytes; set to 1450 for 1500 MTU hosts
     canal_flannel_backend_type: "vxlan"
-    flannel_backend_vxlan_mtu: "1450"
 ```
 
 ## Configuring a Specific Network Interface
 
-If your nodes have multiple network interfaces, specify which one RKE should use for pod networking:
+If your nodes have multiple network interfaces, specify which one RKE should use for pod networking. RKE's Canal and Flannel interface options are set at the network plugin level:
 
 ```yaml
 # cluster.yml
@@ -207,16 +207,14 @@ network:
     canal_iface: "eth1"   # Use the second NIC for pod traffic
 ```
 
-Or configure per-node:
+For node-to-node Kubernetes component traffic on hosts with multiple addresses, configure the per-node internal address:
 
 ```yaml
 nodes:
-  - address: 192.168.1.101
+  - address: 203.0.113.101
+    internal_address: 10.0.1.101
     user: ubuntu
     role: [controlplane, etcd]
-    # Override the pod network interface for this node
-    labels:
-      flannel.alpha.coreos.com/public-ip-overwrite: "10.0.1.101"
 ```
 
 ## Verifying Network Configuration
@@ -228,8 +226,9 @@ export KUBECONFIG=kube_config_cluster.yml
 kubectl get pods -n kube-system | grep -E "canal|flannel|calico|weave"
 
 # Check pod-to-pod connectivity
-kubectl run pod1 --image=busybox --restart=Never -- sleep 3600
-kubectl run pod2 --image=busybox --restart=Never -- sleep 3600
+kubectl run pod1 --image=busybox --restart=Never --command -- sleep 3600
+kubectl run pod2 --image=busybox --restart=Never --command -- sleep 3600
+kubectl wait --for=condition=Ready pod/pod1 pod/pod2 --timeout=60s
 
 # Get pod2's IP
 POD2_IP=$(kubectl get pod pod2 -o jsonpath='{.status.podIP}')
