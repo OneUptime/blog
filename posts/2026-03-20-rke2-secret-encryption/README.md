@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE2, Kubernetes, Secret Encryption, Security, Encryption at Rest, Rancher
 
-Description: Learn how to enable and manage secret encryption at rest in RKE2 to protect sensitive cluster data stored in etcd.
+Description: Learn how to verify and manage secret encryption at rest in RKE2 to protect sensitive cluster data stored in etcd.
 
-Kubernetes secrets are base64-encoded by default, which provides no actual encryption - anyone with etcd access can decode them. Enabling encryption at rest ensures that secrets stored in etcd are encrypted with a strong cipher. RKE2 provides a built-in secret encryption mechanism that can be enabled and rotated. This guide covers the complete lifecycle of secret encryption in RKE2.
+Kubernetes secrets are base64-encoded in API output by default, which provides no actual encryption - anyone with etcd access can recover the data if encryption at rest is not configured. RKE2 enables secret encryption at rest by default and provides a built-in mechanism to verify, configure, and rotate encryption keys. This guide covers the complete lifecycle of secret encryption in RKE2.
 
 ## Prerequisites
 
@@ -16,29 +16,19 @@ Kubernetes secrets are base64-encoded by default, which provides no actual encry
 
 ## Understanding RKE2 Secret Encryption
 
-RKE2 uses the Kubernetes API server's encryption provider framework. When enabled:
+RKE2 uses the Kubernetes API server's encryption provider framework. On RKE2 server nodes:
 
 1. New secrets are encrypted before being stored in etcd
-2. Existing secrets remain unencrypted until re-encrypted
-3. Encryption uses AES-CBC with PKCS#7 padding (or AES-GCM for newer versions)
+2. RKE2 generates and manages the encryption provider configuration
+3. Encryption uses AES-CBC with PKCS#7 padding by default, or `secretbox` on supported newer releases
 4. Encryption keys can be rotated
 
-## Step 1: Enable Secret Encryption
+## Step 1: Check Secret Encryption
 
 RKE2 provides a built-in command to manage secret encryption:
 
 ```bash
-# Enable secret encryption on the cluster
-
-sudo rke2 secrets-encrypt enable
-
-# This command:
-# 1. Generates an encryption key
-# 2. Creates the encryption configuration file
-# 3. Updates the API server to use the encryption configuration
-# 4. Restarts the API server
-
-# Check the status
+# Check the status of RKE2-managed secret encryption
 sudo rke2 secrets-encrypt status
 ```
 
@@ -53,99 +43,73 @@ sudo rke2 secrets-encrypt status
 # Current Rotation Stage: start
 
 # Check the encryption configuration file
-sudo cat /var/lib/rancher/rke2/server/cred/encryption-state.json
+sudo cat /var/lib/rancher/rke2/server/cred/encryption-config.json
 
-# View the API server encryption config
-sudo cat /var/lib/rancher/rke2/server/tls/encryption-config.yaml
+# Verify the API server is using the generated encryption config
+ps -ef | grep '[k]ube-apiserver' | grep -- --encryption-provider-config
 ```
 
-## Step 3: Re-encrypt Existing Secrets
+## Step 3: Rotate and Re-encrypt Secrets
 
-After enabling encryption, existing secrets are still unencrypted. Re-encrypt them:
+For current RKE2 releases, rotate keys and re-encrypt existing secrets with the built-in `rotate-keys` command:
 
 ```bash
-# Prepare for re-encryption (updates API server config)
-sudo rke2 secrets-encrypt prepare
+# Create a snapshot before rotating encryption keys
+sudo rke2 etcd-snapshot save
 
-# Wait for all API server instances to reload
-# For HA clusters, this requires all server nodes to be updated
+# Rotate the encryption keys and re-encrypt secrets
+sudo rke2 secrets-encrypt rotate-keys
 
-# Rotate the re-encryption (actually re-encrypts existing secrets)
-sudo rke2 secrets-encrypt rotate
-
-# Complete the rotation
-sudo rke2 secrets-encrypt reencrypt
-
-# Check the final status
+# Wait for re-encryption to finish
 sudo rke2 secrets-encrypt status
+
+# Expected final stage:
+# Current Rotation Stage: reencrypt_finished
+
+# In HA clusters, restart RKE2 servers one at a time after the rotation finishes
+sudo systemctl restart rke2-server.service
 ```
 
-## Step 4: Manual Encryption Configuration
+## Step 4: Configure the Encryption Provider
 
-For more control, you can manually configure encryption:
+RKE2 manages the encryption configuration automatically. On supported April 2025 and newer releases, you can choose the `secretbox` provider instead of the default `aescbc` provider. For FIPS clusters, keep the default `aescbc` provider.
 
 ```bash
-# Generate a strong AES-256 encryption key
-ENCRYPTION_KEY=$(head -c 32 /dev/urandom | base64)
-echo "New encryption key: $ENCRYPTION_KEY"
-
-# Create the encryption config
-cat <<EOF | sudo tee /etc/rancher/rke2/encryption-config.yaml
-apiVersion: apiserver.config.k8s.io/v1
-kind: EncryptionConfiguration
-resources:
-  - resources:
-    - secrets
-    providers:
-    # AES-GCM is more secure than AES-CBC (available in K8s 1.21+)
-    - aesgcm:
-        keys:
-        - name: key1
-          secret: ${ENCRYPTION_KEY}
-    # Keep identity as fallback for reading existing unencrypted secrets
-    - identity: {}
-  # Also encrypt ConfigMaps with sensitive data
-  - resources:
-    - configmaps
-    providers:
-    - aesgcm:
-        keys:
-        - name: key1
-          secret: ${ENCRYPTION_KEY}
-    - identity: {}
+# Add this on every server node
+sudo mkdir -p /etc/rancher/rke2/config.yaml.d
+cat <<EOF | sudo tee /etc/rancher/rke2/config.yaml.d/10-secrets-encryption-provider.yaml
+secrets-encryption-provider: secretbox
 EOF
 
-# Reference the config in RKE2 configuration
-cat >> /etc/rancher/rke2/config.yaml << EOF
-kube-apiserver-arg:
-  - "encryption-provider-config=/etc/rancher/rke2/encryption-config.yaml"
-EOF
-
-sudo systemctl restart rke2-server
+# Restart servers one at a time, then rotate keys to migrate the provider
+sudo systemctl restart rke2-server.service
+sudo rke2 secrets-encrypt rotate-keys
 ```
 
 ## Step 5: Re-encrypt Existing Secrets After Manual Configuration
 
 ```bash
-# After enabling encryption, re-encrypt all existing secrets
-# This forces all secrets to be written with the new encryption
+# If you manage a custom Kubernetes EncryptionConfiguration outside the RKE2 flow,
+# re-write existing secrets so they are stored with the current provider.
 
-kubectl get secrets -A -o json | kubectl replace -f -
+kubectl get secrets --all-namespaces -o json | kubectl replace -f -
 
 # Verify a specific secret is encrypted
-# The raw etcd value should be encrypted, not base64-readable
+# The raw etcd value should include a k8s:enc:<provider>:v1 prefix
+# and should not expose the secret value in plaintext.
 # Check using etcdctl
 ETCD_CERT_DIR="/var/lib/rancher/rke2/server/tls/etcd"
+ETCDCTL_API=3 \
 /var/lib/rancher/rke2/bin/etcdctl \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=${ETCD_CERT_DIR}/server-ca.crt \
   --cert=${ETCD_CERT_DIR}/client.crt \
   --key=${ETCD_CERT_DIR}/client.key \
   get /registry/secrets/default/my-secret | \
-  strings | head -5
+  hexdump -C | head -10
 
-# The value should be unreadable binary if encrypted correctly
-# If you see readable text, encryption is NOT working
+# Look for k8s:enc:aescbc:v1 or k8s:enc:secretbox:v1 in the output.
+# If the secret value appears in plaintext, encryption is NOT working.
 ```
 
 ## Step 6: Rotate Encryption Keys
@@ -153,51 +117,33 @@ ETCD_CERT_DIR="/var/lib/rancher/rke2/server/tls/etcd"
 Periodically rotate encryption keys for security compliance:
 
 ```bash
-# Step 1: Generate a new encryption key
-NEW_KEY=$(head -c 32 /dev/urandom | base64)
+# Current RKE2 releases
+sudo rke2 etcd-snapshot save
+sudo rke2 secrets-encrypt rotate-keys
+sudo rke2 secrets-encrypt status
 
-# Step 2: Add the new key first, keep the old key for decryption
-cat <<EOF | sudo tee /etc/rancher/rke2/encryption-config.yaml
-apiVersion: apiserver.config.k8s.io/v1
-kind: EncryptionConfiguration
-resources:
-  - resources:
-    - secrets
-    providers:
-    # New key is first (used for encryption)
-    - aesgcm:
-        keys:
-        - name: key2
-          secret: ${NEW_KEY}
-        # Keep old key for decrypting existing secrets
-        - name: key1
-          secret: ${OLD_KEY}
-    - identity: {}
-EOF
+# Expected final stage:
+# Current Rotation Stage: reencrypt_finished
 
-# Step 3: Restart API server to use new config
-sudo systemctl restart rke2-server
+# HA clusters: restart each server one at a time after rotation
+sudo systemctl restart rke2-server.service
+echo "Key rotation complete"
+```
 
-# Step 4: Re-encrypt all secrets with the new key
-kubectl get secrets -A -o json | kubectl replace -f -
+For older RKE2 releases that require the classic rotation flow:
 
-# Step 5: Remove the old key once all secrets are re-encrypted
-cat <<EOF | sudo tee /etc/rancher/rke2/encryption-config.yaml
-apiVersion: apiserver.config.k8s.io/v1
-kind: EncryptionConfiguration
-resources:
-  - resources:
-    - secrets
-    providers:
-    # Only the new key remains
-    - aesgcm:
-        keys:
-        - name: key2
-          secret: ${NEW_KEY}
-    - identity: {}
-EOF
+```bash
+sudo rke2 secrets-encrypt prepare
+sudo systemctl restart rke2-server.service
 
-sudo systemctl restart rke2-server
+sudo rke2 secrets-encrypt rotate
+sudo systemctl restart rke2-server.service
+
+sudo rke2 secrets-encrypt reencrypt
+sudo rke2 secrets-encrypt status
+
+# HA clusters: perform each restart step one server at a time
+sudo systemctl restart rke2-server.service
 echo "Key rotation complete"
 ```
 
@@ -211,6 +157,7 @@ kubectl create secret generic test-encryption \
 
 # Read the encrypted value from etcd
 ETCD_CERT_DIR="/var/lib/rancher/rke2/server/tls/etcd"
+ETCDCTL_API=3 \
 /var/lib/rancher/rke2/bin/etcdctl \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=${ETCD_CERT_DIR}/server-ca.crt \
@@ -218,16 +165,17 @@ ETCD_CERT_DIR="/var/lib/rancher/rke2/server/tls/etcd"
   --key=${ETCD_CERT_DIR}/client.key \
   get /registry/secrets/default/test-encryption | hexdump -C | head -5
 
-# The output should show binary encrypted data, not readable text
+# The output should include k8s:enc:aescbc:v1 or k8s:enc:secretbox:v1
+# and should not show the plaintext password value
 
 # Verify Kubernetes can still read the secret
-kubectl get secret test-encryption -o jsonpath='{.data.password}' | base64 -d
+kubectl get secret test-encryption -n default -o jsonpath='{.data.password}' | base64 -d
 # Should output: supersecret
 
 # Clean up
-kubectl delete secret test-encryption
+kubectl delete secret test-encryption -n default
 ```
 
 ## Conclusion
 
-Enabling secret encryption at rest in RKE2 is an essential security control that protects sensitive credentials and configuration data from unauthorized access to the etcd datastore. The built-in `rke2 secrets-encrypt` command simplifies the process of enabling, verifying, and rotating encryption keys. For compliance frameworks like HIPAA, PCI DSS, and government security standards, encryption at rest is a mandatory requirement. Once enabled, ensure you have a secure backup of your encryption keys - losing them means losing access to all encrypted secrets in your cluster.
+Secret encryption at rest in RKE2 is an essential security control that protects sensitive credentials and configuration data from unauthorized access to the etcd datastore. The built-in `rke2 secrets-encrypt` command simplifies the process of verifying and rotating encryption keys. For compliance frameworks like HIPAA, PCI DSS, and government security standards, encryption at rest is often required or used to satisfy data-protection controls. Ensure you have secure backups of your RKE2 datastore and encryption material - losing the encryption keys means losing access to encrypted secrets in your cluster.
