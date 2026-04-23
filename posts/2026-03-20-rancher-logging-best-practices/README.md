@@ -1,14 +1,14 @@
-# How to Implement Logging Best Practices in Rancher - A Practical Guide
+# How to Implement Operational Best Practices in Rancher - A Practical Guide
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Logging, Fluentd, Elasticsearch, Best-practices
+Tags: Rancher, Kubernetes, RKE2, Fleet, Best-practices
 
-Description: Guide to logging best practices in Rancher for centralized log management and efficient troubleshooting.
+Description: Guide to Rancher operational best practices for declarative configuration, security hardening, monitoring, and audits.
 
 ## Introduction
 
-How to Implement Logging Best Practices in Rancher represents the accumulated knowledge from operating Rancher at enterprise scale. Following these best practices helps avoid common pitfalls and ensures your Rancher environment is reliable, secure, and maintainable.
+These operational best practices represent the accumulated knowledge from operating Rancher at enterprise scale. Following them helps avoid common pitfalls and ensures your Rancher environment is reliable, secure, and maintainable.
 
 ## Core Principles
 
@@ -35,6 +35,7 @@ metadata:
     region: us-east
     tier: critical
 spec:
+  cloudCredentialSecretName: cattle-global-data:cc-aws-production
   kubernetesVersion: v1.28.8+rke2r1
   rkeConfig:
     machinePools:
@@ -44,7 +45,7 @@ spec:
       etcdRole: true
       workerRole: false
       machineConfigRef:
-        kind: AWSNodeTemplate
+        kind: Amazonec2Config
         name: control-plane-m5-xlarge
     - name: workers
       quantity: 5
@@ -52,7 +53,7 @@ spec:
       etcdRole: false
       workerRole: true
       machineConfigRef:
-        kind: AWSNodeTemplate
+        kind: Amazonec2Config
         name: worker-m5-2xlarge
 ```
 
@@ -68,7 +69,10 @@ kubectl create namespace payments-api-staging
 kubectl create namespace data-pipeline-prod
 
 # Apply standard labels
-kubectl label namespace payments-api-prod   team=payments   app=api   env=production   tier=critical   cost-center=payments-team   field.cattle.io/projectId=YOUR_PROJECT_ID
+kubectl label namespace payments-api-prod   team=payments   app=api   env=production   tier=critical   cost-center=payments-team
+
+# If the namespace belongs to an existing Rancher project, use the project annotation
+kubectl annotate namespace payments-api-prod   field.cattle.io/projectId=c-m-abcde:p-vwxyz
 ```
 
 ## Best Practice 3: Resource Quotas and LimitRanges
@@ -148,24 +152,26 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          app: ingress-nginx
+          kubernetes.io/metadata.name: ingress-nginx
     ports:
-    - port: 8080
+    - protocol: TCP
+      port: 8080
   egress:
   - to:
     - namespaceSelector:
         matchLabels:
-          app: database
+          kubernetes.io/metadata.name: database
     ports:
-    - port: 5432
+    - protocol: TCP
+      port: 5432
 ```
 
-## Best Practice 5: Pod Security
+## Best Practice 5: Pod Security and Availability
 
-Enforce strict pod security standards:
+Enforce strict pod security standards while protecting service availability:
 
 ```yaml
-# pod-security-policy.yaml - PodDisruptionBudget for availability
+# pod-availability.yaml - PodDisruptionBudget for availability
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -177,15 +183,18 @@ spec:
     matchLabels:
       app: payments-api
 ---
-# Apply PSS to namespace
+# pod-security.yaml - Apply PSS to namespace
 apiVersion: v1
 kind: Namespace
 metadata:
   name: payments-api-prod
   labels:
     pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.28
     pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.28
     pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.28
 ```
 
 ## Best Practice 6: Monitoring and Alerting
@@ -260,20 +269,25 @@ echo "=== Monthly Rancher Audit ==="
 date
 
 echo ""
-echo "1. Certificate expiry check:"
-kubectl get certificates -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,EXPIRY:.status.notAfter,READY:.status.conditions[-1].status'
+echo "1. Certificate expiry check (cert-manager):"
+kubectl get certificates.cert-manager.io -A \
+  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,EXPIRY:.status.notAfter' \
+  2>/dev/null || echo "cert-manager not installed"
 
 echo ""
 echo "2. Unused resources:"
-kubectl get namespaces | while read ns _; do
-  pod_count=$(kubectl get pods -n $ns --no-headers 2>/dev/null | wc -l)
+kubectl get namespaces -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | while read -r ns; do
+  pod_count=$(kubectl get pods -n "$ns" --no-headers 2>/dev/null | wc -l)
   [ "$pod_count" -eq 0 ] && echo "Empty namespace: $ns"
 done
 
 echo ""
 echo "3. Pod security violations:"
-kubectl get pods --all-namespaces -o json |   jq -r '.items[] | select(.spec.containers[].securityContext.privileged==true) | 
-  .metadata.namespace + "/" + .metadata.name + " [PRIVILEGED]"'
+kubectl get pods --all-namespaces -o json | jq -r '
+  .items[]
+  | select(any((.spec.initContainers // []) + (.spec.containers // []) + (.spec.ephemeralContainers // []); .securityContext?.privileged == true))
+  | .metadata.namespace + "/" + .metadata.name + " [PRIVILEGED]"
+'
 
 echo ""
 echo "4. Nodes at capacity:"
@@ -284,4 +298,4 @@ echo "=== Audit Complete ==="
 
 ## Conclusion
 
-Implementing How to Implement Logging Best Practices in Rancher in Rancher requires discipline and consistency. The configurations and practices in this guide provide a strong foundation for a production-grade Rancher environment. Regular audits, automated compliance checks, and a culture of continuous improvement ensure these best practices remain effective as your environment evolves.
+Implementing operational best practices in Rancher requires discipline and consistency. The configurations and practices in this guide provide a strong foundation for a production-grade Rancher environment. Regular audits, automated compliance checks, and a culture of continuous improvement ensure these best practices remain effective as your environment evolves.
