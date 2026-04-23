@@ -23,7 +23,7 @@ Router# show ipv6 rip database
 Router# show ipv6 route rip
 
 ! Show RIPng on a specific interface
-Router# show ipv6 rip RIPNG_PROCESS interface brief
+Router# show ipv6 rip RIPNG_PROCESS interface GigabitEthernet0/0
 ```
 
 ## Interpreting show ipv6 rip
@@ -31,14 +31,15 @@ Router# show ipv6 rip RIPNG_PROCESS interface brief
 ```text
 Router# show ipv6 rip
 
-RIP process "RIPNG_PROCESS", port 521, multicast-group ff02::9, pid 312
+RIP process "RIPNG_PROCESS", port 521, multicast-group FF02::9, pid 312
       Administrative distance is 120. Maximum paths is 16
-      Updates every 30 seconds, expire after 180, garbage collect after 240 secs
+      Updates every 30 seconds, expire after 180
+      Holddown lasts 0 seconds, garbage collect after 120
       Split horizon is on; poison reverse is off
       Default routes are not generated
       Periodic updates 1543, trigger updates 12
       Interfaces:
-        GigabitEthernet0/0   (passive-interface is not set)
+        GigabitEthernet0/0
         GigabitEthernet0/1
 ```
 
@@ -52,16 +53,16 @@ Key fields to check:
 ```text
 Router# show ipv6 rip database
 
-RIP process "RIPNG_PROCESS"
-2001:DB8:1::/64 via FE80::1 on GigabitEthernet0/0, metric 1, installed
-2001:DB8:2::/64 directly connected, GigabitEthernet0/1
-2001:DB8:3::/64 via FE80::2 on GigabitEthernet0/0, metric 2, installed
-  expires in 00:02:30
-2001:DB8:4::/64 via FE80::2 on GigabitEthernet0/0, metric 3
-  expires in 00:01:45
+RIP process "RIPNG_PROCESS", local RIB
+ 2001:DB8:3::/64, metric 2, installed
+     GigabitEthernet0/0/FE80::2, expires in 150 secs
+ 2001:DB8:4::/64, metric 3, installed
+     GigabitEthernet0/0/FE80::2, expires in 105 secs
+ 2001:DB8:5::/64, metric 4
+     GigabitEthernet0/1/FE80::3, expires in 90 secs
 ```
 
-- **metric 1** = directly reachable via that neighbor
+- **metric 2** = RIPng hop-count metric for the path; lower is preferred
 - **installed** = route was selected for the routing table
 - **expires in** = time remaining before route times out (180s total)
 
@@ -72,7 +73,7 @@ Router# show ipv6 route rip
 
 IPv6 Routing Table - default - 6 entries
 Codes: C - Connected, L - Local, S - Static, U - Per-user Static route
-       R - RIPng
+       R - RIP
 
 R   2001:DB8:3::/64 [120/2]
      via FE80::2, GigabitEthernet0/0
@@ -81,20 +82,17 @@ R   2001:DB8:4::/64 [120/3]
 ```
 
 Format: `R <prefix> [AD/metric] via <next-hop>, <interface>`
-- **R** = RIPng learned route
+- **R** = RIP/RIPng learned route
 - **[120/2]** = Administrative distance 120, metric (hop count) 2
 
 ## Debug Commands
 
 ```text
-! Enable RIPng debugging (caution: verbose)
+! Enable RIPng debugging for all interfaces (caution: verbose)
 Router# debug ipv6 rip
 
-! Debug only RIPng events
-Router# debug ipv6 rip events
-
-! Debug only RIPng packet contents
-Router# debug ipv6 rip database
+! Debug RIPng on one interface
+Router# debug ipv6 rip GigabitEthernet0/0
 
 ! Turn off all RIPng debugging
 Router# no debug ipv6 rip
@@ -106,22 +104,22 @@ Router# no debug ipv6 rip
 Router# show ipv6 rip database
 
 ! A route appearing with metric 16 indicates it is unreachable
-! and is being garbage-collected
-2001:DB8:LOST::/64 via FE80::1 on GigabitEthernet0/0, metric 16
-  garbage collect
+! and is being advertised as expired
+2001:DB8:DEAD::/64, metric 16, expired, [advertise 119/hold 0]
+     GigabitEthernet0/0/FE80::1
 ```
 
 ## Monitoring Route Updates in Real Time
 
 ```text
-! Show RIPng counters (sent/received updates)
-Router# show ipv6 rip RIPNG_PROCESS interface GigabitEthernet0/0
+! Monitor sent and received RIPng updates on one interface
+Router# debug ipv6 rip GigabitEthernet0/0
 
-! Clear RIPng counters to reset statistics
+! Stop monitoring when done
+Router# no debug ipv6 rip GigabitEthernet0/0
+
+! Clear RIPng routes from the RIPng routing table
 Router# clear ipv6 rip RIPNG_PROCESS
-
-! Force an immediate RIPng update
-Router# clear ipv6 route rip
 ```
 
 ## Summary
