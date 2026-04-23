@@ -17,7 +17,7 @@ Using a private container registry is a common requirement for enterprise Kubern
 
 ## Understanding RKE2 Registry Configuration
 
-RKE2 uses `/etc/rancher/rke2/registries.yaml` to configure how containerd interacts with container registries. This file supports:
+RKE2 uses `/etc/rancher/rke2/registries.yaml` on each node that pulls images to configure how containerd interacts with container registries. This file supports:
 
 - **Authentication**: Username/password or token auth
 - **TLS verification**: CA certificates and skip-verify options
@@ -43,9 +43,9 @@ configs:
 # Copy the registry CA certificate to all nodes
 sudo cp registry-ca.crt /etc/ssl/certs/
 
-# Create the registries configuration
+# Create the registries configuration on each RKE2 node that will pull from the registry
 sudo mkdir -p /etc/rancher/rke2/
-sudo cat > /etc/rancher/rke2/registries.yaml << 'EOF'
+sudo tee /etc/rancher/rke2/registries.yaml > /dev/null << 'EOF'
 configs:
   "registry.example.com":
     auth:
@@ -54,6 +54,7 @@ configs:
     tls:
       ca_file: "/etc/ssl/certs/registry-ca.crt"
 EOF
+sudo chmod 600 /etc/rancher/rke2/registries.yaml
 
 # Restart RKE2 to apply configuration
 sudo systemctl restart rke2-server
@@ -121,19 +122,24 @@ configs:
 openssl s_client -showcerts \
   -connect registry.example.com:443 \
   </dev/null 2>/dev/null | \
-  openssl x509 -outform PEM > /etc/ssl/certs/registry-self-signed-ca.crt
+  openssl x509 -outform PEM | \
+  sudo tee /etc/ssl/certs/registry-self-signed-ca.crt > /dev/null
 
 # Verify the certificate
 openssl x509 -in /etc/ssl/certs/registry-self-signed-ca.crt \
   -noout -text | head -20
 
-# Trust the certificate system-wide
+# Trust the certificate system-wide on Debian/Ubuntu
 sudo cp /etc/ssl/certs/registry-self-signed-ca.crt \
   /usr/local/share/ca-certificates/registry.crt
 
-sudo update-ca-certificates  # Debian/Ubuntu
-# or
-sudo update-ca-trust          # RHEL/CentOS
+sudo update-ca-certificates
+
+# Or on RHEL/CentOS
+sudo cp /etc/ssl/certs/registry-self-signed-ca.crt \
+  /etc/pki/ca-trust/source/anchors/registry.crt
+
+sudo update-ca-trust extract
 ```
 
 ```yaml
@@ -154,14 +160,14 @@ configs:
 
 ```bash
 # Create a script to refresh ECR credentials
-cat > /usr/local/bin/refresh-ecr-credentials.sh << 'EOF'
+sudo tee /usr/local/bin/refresh-ecr-credentials.sh > /dev/null << 'EOF'
 #!/bin/bash
 AWS_ACCOUNT_ID="123456789012"
 AWS_REGION="us-east-1"
 ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
 # Get ECR login token
-ECR_TOKEN=$(aws ecr get-login-password --region $AWS_REGION)
+ECR_TOKEN=$(aws ecr get-login-password --region "$AWS_REGION")
 
 # Update registries.yaml with the new token
 cat > /etc/rancher/rke2/registries.yaml << YAML
@@ -173,16 +179,17 @@ configs:
     tls:
       insecure_skip_verify: false
 YAML
+chmod 600 /etc/rancher/rke2/registries.yaml
 
-# Restart containerd to reload credentials
+# Restart RKE2 on the node to regenerate containerd configuration
 # Note: This causes brief disruption to running containers
-systemctl reload rke2-server 2>/dev/null || \
-systemctl reload rke2-agent 2>/dev/null
+systemctl restart rke2-server 2>/dev/null || \
+systemctl restart rke2-agent 2>/dev/null
 
 echo "ECR credentials refreshed at $(date)"
 EOF
 
-chmod +x /usr/local/bin/refresh-ecr-credentials.sh
+sudo chmod +x /usr/local/bin/refresh-ecr-credentials.sh
 
 # Create cron job to refresh every 11 hours (ECR tokens expire in 12h)
 echo "0 */11 * * * root /usr/local/bin/refresh-ecr-credentials.sh >> /var/log/ecr-refresh.log 2>&1" | \
@@ -213,4 +220,4 @@ kubectl get events -A | grep -E "Pulling|Failed|Error" | head -10
 
 ## Conclusion
 
-Configuring a private registry for RKE2 provides control over which container images run in your cluster, supports air-gapped deployments, and can significantly improve image pull performance through caching. The `registries.yaml` file provides a flexible configuration interface that supports multiple registries, various authentication methods, and TLS verification options. For production deployments, always use TLS with a proper CA certificate rather than skipping TLS verification, and store registry credentials securely using Kubernetes secrets or external secret managers.
+Configuring a private registry for RKE2 provides control over which container images run in your cluster, supports air-gapped deployments, and can significantly improve image pull performance through caching. The `registries.yaml` file provides a flexible configuration interface that supports multiple registries, various authentication methods, and TLS verification options. For production deployments, always use TLS with a proper CA certificate rather than skipping TLS verification, restrict access to node-level registry credentials, and use Kubernetes image pull secrets or external secret managers for workload credentials where appropriate.
