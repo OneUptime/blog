@@ -8,7 +8,7 @@ Description: Use Okteto with Rancher to develop applications directly in Kuberne
 
 ## Introduction
 
-Okteto replaces your running container with a development container that has your source code and tools mounted. Changes to your local code are instantly reflected in the remote container without rebuilding images. This guide covers integrating Okteto with Rancher-managed clusters for a seamless remote development experience.
+Okteto replaces your running container with a development container that has your source code synchronized and your development tools available. Changes to your local code are instantly reflected in the remote container without rebuilding images. This guide covers integrating Okteto with Rancher-managed clusters for a seamless remote development experience.
 
 ## Prerequisites
 
@@ -37,11 +37,11 @@ okteto version
 ## Step 2: Configure Okteto Context
 
 ```bash
-# Set Okteto context to use your Rancher cluster
-okteto context use https://rancher.example.com --token <api-token>
+# Use the Kubernetes context from your Rancher-managed cluster
+okteto context use rancher-production --namespace development
 
-# Or use existing kubeconfig
-okteto context use --context rancher-production
+# Or, if you're using self-hosted Okteto Platform in the cluster
+okteto context use https://okteto.example.com --token <api-token> --namespace development
 
 # List available contexts
 okteto context list
@@ -62,6 +62,9 @@ dev:
     # Sync local source to container
     sync:
       - .:/app
+      # Sync local SSH config if you need it for git operations
+      - $HOME/.ssh:/root/.ssh
+    workdir: /app
     # Forward ports
     forward:
       - 8080:8080
@@ -70,9 +73,6 @@ dev:
     environment:
       - DEBUG=true
       - LOG_LEVEL=debug
-    # Mount local SSH keys (for git operations)
-    volumes:
-      - /root/.ssh:/root/.ssh:ro
     # Resource limits for dev container
     resources:
       requests:
@@ -81,9 +81,6 @@ dev:
       limits:
         cpu: "2"
         memory: "2Gi"
-    # Kubernetes context settings
-    context: rancher-development
-    namespace: development
 ```
 
 ## Step 4: Start Development Mode
@@ -107,7 +104,7 @@ python -m uvicorn main:app --reload --host 0.0.0.0 --port 8080
 # okteto.yml - Multi-service configuration
 dev:
   api:
-    image: python:3.11-dev
+    image: registry.example.com/api:dev-tools
     command: ["python", "-m", "uvicorn", "main:app", "--reload"]
     sync:
       - ./api:/app
@@ -119,7 +116,7 @@ dev:
       - REDIS_URL=redis://redis:6379
 
   worker:
-    image: python:3.11-dev
+    image: registry.example.com/worker:dev-tools
     command: ["celery", "-A", "tasks", "worker", "--loglevel=info"]
     sync:
       - ./worker:/app
@@ -128,11 +125,10 @@ dev:
       - BROKER_URL=amqp://guest:guest@rabbitmq:5672//
 
   frontend:
-    image: node:18-alpine
+    image: registry.example.com/frontend:dev-tools
     command: ["npm", "run", "dev"]
     sync:
-      - ./frontend/src:/app/src
-      - ./frontend/public:/app/public
+      - ./frontend:/app
     forward:
       - 3000:3000
     workdir: /app
@@ -141,14 +137,14 @@ dev:
 ## Step 6: Configure Persistent Volumes
 
 ```yaml
-# okteto.yml - Persistent storage for dev dependencies
+# okteto.yml - Persistent storage for Python dev dependencies
 dev:
   backend:
     image: python:3.11
     command: bash
     sync:
       - .:/app
-    # Persist node_modules / pip packages between sessions
+    # Persist Python dependencies and cache between sessions
     volumes:
       - /app/.venv  # Persist virtual environment
       - /root/.cache/pip  # Persist pip cache
@@ -162,16 +158,16 @@ dev:
 kubectl get deployments -n development
 
 # Activate development on existing deployment
-okteto up --name backend --namespace development
+okteto up backend --namespace development
 
 # Activate with a specific manifest
-okteto up -f ./okteto.yml api
+okteto up api --file ./okteto.yml
 
 # Deactivate and restore original deployment
 okteto down
 
-# Deactivate without restoring (keep dev container)
-okteto down --keep-volumes
+# Deactivate and also remove persistent volumes
+okteto down -v
 ```
 
 ## Step 8: Remote Debugging
@@ -180,18 +176,19 @@ okteto down --keep-volumes
 # okteto-debug.yml - Configure for VS Code remote debugging
 dev:
   backend:
-    image: python:3.11
-    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "-m", "uvicorn", "main:app"]
+    image: registry.example.com/backend:dev-tools
+    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
     sync:
       - .:/app
     forward:
+      - 8080:8080
       - 5678:5678  # Attach VS Code debugger here
     environment:
       - PYTHONPATH=/app
     workdir: /app
 ```
 
-```json
+```jsonc
 // .vscode/launch.json - VS Code debug configuration
 {
   "version": "0.2.0",
@@ -221,13 +218,13 @@ dev:
 # Stop development mode and restore original deployment
 okteto down
 
-# Remove dev environment completely
+# If you're using Okteto Platform and a deploy section, remove the development environment completely
 okteto destroy
 
-# View Okteto status
-okteto status
+# View Okteto sync status
+okteto status backend
 
-# View development container logs
+# If you're using Okteto Platform, view development container logs
 okteto logs backend
 ```
 
