@@ -12,7 +12,7 @@ Rancher is capable of managing hundreds of Kubernetes clusters from a single con
 
 ## Prerequisites
 
-- Rancher v2.7+ (latest stable recommended)
+- A currently supported Rancher release (latest stable recommended)
 - Dedicated infrastructure for Rancher's local cluster
 - External monitoring and alerting
 - Network connectivity between Rancher and all managed clusters
@@ -21,10 +21,10 @@ Rancher is capable of managing hundreds of Kubernetes clusters from a single con
 
 ```text
 Large-Scale Rancher Architecture:
-├── Rancher Local Cluster (RKE2, 3-5 control plane nodes)
-│   ├── etcd nodes: 3 dedicated m5.2xlarge nodes (NVMe SSD)
-│   ├── Control plane: 3 dedicated nodes
-│   └── Rancher pods: 3-5 replicas
+├── Rancher Local Cluster (RKE2, dedicated management cluster)
+│   ├── etcd-only server nodes: 3 dedicated nodes (SSD-backed storage)
+│   ├── Control-plane-only server nodes: 3 dedicated nodes
+│   └── Rancher pods: 3 replicas minimum
 │
 ├── Region A Clusters (50+ clusters)
 │   ├── Production clusters
@@ -38,23 +38,23 @@ Large-Scale Rancher Architecture:
 ```
 
 ```bash
-# Rancher supports up to 2000 clusters in a single instance
-
-# (with proper hardware and configuration)
-
-# Recommended hardware for 100+ cluster deployments:
-# - Rancher server: 8 CPU, 16GB RAM per replica
-# - etcd nodes: 4 CPU, 8GB RAM, NVMe SSD
+# Rancher publishes sizing guidance up to 500 managed clusters and 5,000 nodes
+# on a dedicated upstream cluster. Larger environments require custom tuning
+# and evaluation.
+#
+# Published per-node guidance for a large RKE2 upstream cluster:
+# - 16 vCPU and 64 GB RAM on each Rancher local-cluster node
+# - SSD-backed etcd storage and Rancher etcd tuning for large installations
 
 # Check current cluster count
-kubectl get clusters.management.cattle.io --all-namespaces | wc -l
+kubectl get clusters.management.cattle.io --all-namespaces --no-headers | wc -l
 ```
 
 ## Step 2: Configure Rancher Server for Scale
 
 ```yaml
 # rancher-scale-values.yaml - Helm values for large deployments
-replicas: 5
+replicas: 3
 
 resources:
   requests:
@@ -64,75 +64,55 @@ resources:
     cpu: 8000m
     memory: 16Gi
 
-extraEnv:
-  # Increase workers for parallel operations
-  - name: CATTLE_WORKERS
-    value: "50"
+# Larger management clusters may need a longer cache sync timeout
+cacheSyncTimeout: 10m
 
-  # Increase connection pool
-  - name: CATTLE_DB_CATTLE_MAX_POOL_SIZE
-    value: "200"
+# Spread Rancher replicas across nodes
+antiAffinity: required
+topologyKey: kubernetes.io/hostname
 
-  # Reduce reconciliation frequency
-  - name: CATTLE_RESYNC_DEFAULT
-    value: "1800"  # 30 minutes
+# Run Rancher only on dedicated management nodes
+extraNodeSelectorTerms:
+  - key: rancher-role
+    operator: In
+    values:
+      - rancher-server
 
-  # Disable unnecessary features
-  - name: CATTLE_FEATURES
-    value: "fleet=true,continuous-delivery=true,uiextension=true"
-
-  # Increase Golang runtime
-  - name: GOMAXPROCS
-    value: "16"
-  - name: GOGC
-    value: "100"
-
-# Node affinity for dedicated Rancher nodes
-affinity:
-  podAntiAffinity:
-    requiredDuringSchedulingIgnoredDuringExecution:
-      - labelSelector:
-          matchExpressions:
-            - key: app
-              operator: In
-              values:
-                - rancher
-        topologyKey: kubernetes.io/hostname
-  nodeAffinity:
-    requiredDuringSchedulingIgnoredDuringExecution:
-      nodeSelectorTerms:
-        - matchExpressions:
-            - key: rancher-role
-              operator: In
-              values:
-                - rancher-server
+extraTolerations:
+  - key: rancher-role
+    operator: Equal
+    value: rancher-server
+    effect: NoSchedule
 ```
 
 ## Step 3: Scale the Local Cluster etcd
 
 ```yaml
 # rke2-config-scale.yaml - etcd tuning for 100+ managed clusters
-# /etc/rancher/rke2/config.yaml on control plane nodes
+# /etc/rancher/rke2/config.yaml on dedicated etcd-only nodes
+
+disable-apiserver: true
+disable-controller-manager: true
+disable-scheduler: true
 
 etcd-arg:
-  - "quota-backend-bytes=17179869184"  # 16GB quota
-  - "auto-compaction-mode=periodic"
-  - "auto-compaction-retention=1h"
-  - "max-request-bytes=33554432"  # 32MB
-  - "snapshot-count=5000"
+  - "quota-backend-bytes=5368709120"  # 5GB example from Rancher docs
+  - "data-dir=/var/lib/etcd/data"
+  - "wal-dir=/var/lib/etcd/wal"
 
-# Separate etcd nodes from control plane
-# Use node labels and taints
+# /etc/rancher/rke2/config.yaml on dedicated control-plane-only nodes
+---
+server: https://<etcd-node>:9345
+disable-etcd: true
 ```
 
 ```bash
-# Taint etcd nodes for dedicated use
-kubectl taint nodes etcd-node-01 etcd-only=true:NoSchedule
-kubectl label nodes etcd-node-01 node-role.kubernetes.io/etcd=true
+# Optional: taint dedicated nodes so general workloads do not land on them
+kubectl taint nodes etcd-node-01 dedicated=etcd:NoSchedule
+kubectl label nodes etcd-node-01 dedicated=etcd
 
-# Taint control plane nodes
-kubectl taint nodes cp-node-01 control-plane=true:NoSchedule
-kubectl label nodes cp-node-01 node-role.kubernetes.io/master=true
+kubectl taint nodes cp-node-01 dedicated=control-plane:NoSchedule
+kubectl label nodes cp-node-01 dedicated=control-plane
 ```
 
 ## Step 4: Configure Fleet for Scale
@@ -147,8 +127,9 @@ metadata:
 spec:
   repo: https://github.com/company/k8s-configs
   branch: main
-  # Limit parallel updates to avoid overwhelming API server
-  concurrency: 10
+  paths:
+    - clusters/production
+  pollingInterval: 5m0s
   targets:
     - name: all-production
       clusterSelector:
@@ -205,18 +186,17 @@ grafana:
 ## Step 7: Network Considerations
 
 ```bash
-# Each cluster agent maintains a websocket connection to Rancher
-# Ensure your load balancer supports 1000+ concurrent websockets
-# Configure connection timeouts appropriately
+# Each downstream cluster has a cattle-cluster-agent that opens a tunnel to Rancher.
+# Use a load balancer that forwards TCP/80 and TCP/443 to all Rancher nodes,
+# and make sure downstream clusters can reach the Rancher server reliably.
 
-# Check active connections to Rancher
-kubectl exec -n cattle-system deployment/rancher -- \
-  netstat -an | grep ESTABLISHED | wc -l
+# Check Rancher server pods
+kubectl -n cattle-system get pods -l app=rancher
 
-# Each cluster uses approximately 2-5 MB/s for normal operations
-# Plan network capacity accordingly
+# Check the cluster agent on a downstream cluster
+kubectl --context <downstream-cluster-context> -n cattle-system get deployment cattle-cluster-agent
 ```
 
 ## Conclusion
 
-Running Rancher at large scale requires dedicated infrastructure, carefully tuned configuration, and solid operational practices. The most critical factors are properly sized etcd storage on fast SSDs, adequate CPU and memory for Rancher server replicas, and network infrastructure that supports many simultaneous websocket connections. Use Fleet for GitOps-based cluster management at scale, and implement comprehensive monitoring to detect performance degradation early.
+Running Rancher at large scale requires dedicated infrastructure, carefully tuned configuration, and solid operational practices. The most critical factors are properly sized etcd storage on fast SSDs, adequate CPU and memory for the Rancher management cluster, and network infrastructure that keeps downstream cluster agents connected reliably. Use Fleet for GitOps-based cluster management at scale, and implement comprehensive monitoring to detect performance degradation early.
