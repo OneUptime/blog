@@ -8,41 +8,51 @@ Description: Enable TLS encryption on Redis for IPv4 connections by generating c
 
 ## Introduction
 
-Redis supports TLS natively since version 6.0. Enabling TLS ensures that data in transit between Redis clients and the server is encrypted, preventing eavesdropping on your IPv4 network. This guide covers certificate generation, Redis TLS configuration, and connecting clients.
+Redis supports TLS starting with version 6.0 when built with TLS support. Enabling TLS ensures that data in transit between Redis clients and the server is encrypted, preventing eavesdropping on your IPv4 network. This guide covers certificate generation, Redis TLS configuration, and connecting clients.
 
 ## Generating TLS Certificates
 
 ```bash
 # Create a Certificate Authority (CA) and server certificate
 
-# For production: use your organization's CA or Let's Encrypt
+# For production: use your organization's CA, or a public CA such as Let's Encrypt
+# for publicly reachable IPs or DNS names
+
+# Create the TLS directory first
+sudo mkdir -p /etc/redis/tls
 
 # Create CA key and certificate
-openssl genrsa -out /etc/redis/tls/ca.key 4096
-openssl req -new -x509 -days 3650 -key /etc/redis/tls/ca.key \
+sudo openssl genrsa -out /etc/redis/tls/ca.key 4096
+sudo openssl req -new -x509 -days 3650 -key /etc/redis/tls/ca.key \
   -out /etc/redis/tls/ca.crt \
   -subj "/CN=Redis-CA/O=MyOrg"
 
 # Create server key and CSR
-openssl genrsa -out /etc/redis/tls/redis.key 2048
-openssl req -new -key /etc/redis/tls/redis.key \
+sudo openssl genrsa -out /etc/redis/tls/redis.key 2048
+sudo openssl req -new -key /etc/redis/tls/redis.key \
   -out /etc/redis/tls/redis.csr \
   -subj "/CN=10.0.0.5/O=MyOrg"
 
+# Add a subjectAltName for the IPv4 address
+sudo tee /etc/redis/tls/redis.ext > /dev/null <<'EOF'
+[v3_req]
+subjectAltName = IP:10.0.0.5
+EOF
+
 # Sign the server certificate with CA
-openssl x509 -req -days 365 \
+sudo openssl x509 -req -days 365 \
   -in /etc/redis/tls/redis.csr \
   -CA /etc/redis/tls/ca.crt \
   -CAkey /etc/redis/tls/ca.key \
   -CAcreateserial \
-  -out /etc/redis/tls/redis.crt
+  -out /etc/redis/tls/redis.crt \
+  -extfile /etc/redis/tls/redis.ext \
+  -extensions v3_req
 
 # Set correct permissions
 sudo chown redis:redis /etc/redis/tls/*.key /etc/redis/tls/*.crt
 sudo chmod 600 /etc/redis/tls/*.key
 sudo chmod 644 /etc/redis/tls/*.crt
-
-mkdir -p /etc/redis/tls
 ```
 
 ## Redis TLS Configuration
@@ -85,7 +95,7 @@ requirepass your_strong_password
 ```
 
 ```bash
-sudo systemctl restart redis
+sudo systemctl restart redis-server
 ```
 
 ## Verifying TLS Is Active
@@ -96,7 +106,10 @@ ss -tlnp | grep redis
 # Should show: 10.0.0.5:6380
 
 # Test TLS connection with openssl
-openssl s_client -connect 10.0.0.5:6380 -CAfile /etc/redis/tls/ca.crt
+openssl s_client -connect 10.0.0.5:6380 \
+  -CAfile /etc/redis/tls/ca.crt \
+  -verify_return_error \
+  -verify_ip 10.0.0.5
 # Look for: Verify return code: 0 (ok)
 
 # Connect with redis-cli using TLS
