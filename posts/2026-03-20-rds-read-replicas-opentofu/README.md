@@ -28,8 +28,8 @@ resource "aws_db_instance" "primary" {
   username = var.master_username
   password = var.master_password
 
-  multi_az              = true
-  storage_encrypted     = true
+  multi_az                = true
+  storage_encrypted       = true
   backup_retention_period = 7  # Required for read replicas
 
   db_subnet_group_name   = aws_db_subnet_group.main.name
@@ -89,9 +89,8 @@ resource "aws_db_instance" "dr_replica" {
   # Use the ARN of the primary for cross-region replication
   replicate_source_db = aws_db_instance.primary.arn
 
-  # Encrypt the cross-region replica
-  storage_encrypted = true
-  kms_key_id        = var.dr_kms_key_arn
+  # For encrypted cross-region replicas, specify a KMS key in the destination region
+  kms_key_id = var.dr_kms_key_arn
 
   db_subnet_group_name   = var.dr_subnet_group_name
   vpc_security_group_ids = [var.dr_security_group_id]
@@ -106,7 +105,7 @@ resource "aws_db_instance" "dr_replica" {
 ## Step 4: Monitor Replication Lag
 
 ```hcl
-# Alert when replication lag exceeds 5 minutes
+# Alert when replication lag is sustained above 5 minutes
 resource "aws_cloudwatch_metric_alarm" "replication_lag" {
   alarm_name          = "${var.project_name}-replica-lag"
   comparison_operator = "GreaterThanThreshold"
@@ -118,7 +117,7 @@ resource "aws_cloudwatch_metric_alarm" "replication_lag" {
   threshold           = 300  # 5 minutes in seconds
 
   dimensions = {
-    DBInstanceIdentifier = aws_db_instance.read_replica_1.id
+    DBInstanceIdentifier = aws_db_instance.read_replica_1.identifier
   }
 
   alarm_actions = [var.ops_sns_topic_arn]
@@ -146,4 +145,4 @@ tofu apply
 
 ## Conclusion
 
-RDS read replicas scale read throughput by distributing queries across multiple database instances. Monitor `ReplicaLag` in CloudWatch-high lag indicates the replica cannot keep up with write volume on the primary. For promotion to standalone database during DR, use `aws rds promote-read-replica`. Remember that after promotion, the replica is no longer a replica and will not receive replication from the primary.
+RDS read replicas scale read throughput by distributing queries across multiple database instances. Monitor `ReplicaLag` in CloudWatch; for PostgreSQL, idle databases can report up to five minutes of lag because WAL segments switch every five minutes by default. Sustained high lag during write activity indicates the replica cannot keep up with write volume on the primary. For promotion to a standalone database during DR, use `aws rds promote-read-replica --db-instance-identifier <replica-id>`. Remember that after promotion, the replica is no longer a replica and will not receive replication from the primary.
