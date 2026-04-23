@@ -31,14 +31,14 @@ sudo systemctl restart frr
 ## Step 2: Verify Interface Participation
 
 ```bash
-# FRRouting: show which interfaces are enabled for RIPng
-vtysh -c "show ipv6 ripng interface"
+# FRRouting: show RIPng status and configured networks/interfaces
+vtysh -c "show ipv6 ripng status"
 
-# If an interface is missing from the list:
+# If an interface is missing from the configuration:
 vtysh
 configure terminal
 router ripng
- network eth0    ! Add the missing interface
+ network eth0
 end
 write memory
 ```
@@ -61,12 +61,12 @@ RIPng uses UDP port 521 and multicast ff02::9:
 
 ```bash
 # Allow RIPng traffic
-sudo ip6tables -A INPUT  -p udp --sport 521 --dport 521 -j ACCEPT
-sudo ip6tables -A OUTPUT -p udp --sport 521 --dport 521 -j ACCEPT
+sudo ip6tables -A INPUT  -p udp --dport 521 -j ACCEPT
+sudo ip6tables -A OUTPUT -p udp --sport 521 -j ACCEPT
 
 # Allow multicast for RIPng
 sudo ip6tables -A INPUT  -d ff02::9 -p udp --dport 521 -j ACCEPT
-sudo ip6tables -A OUTPUT -d ff02::9 -p udp --sport 521 -j ACCEPT
+sudo ip6tables -A OUTPUT -d ff02::9 -p udp --sport 521 --dport 521 -j ACCEPT
 ```
 
 ## Step 5: Verify Link-Local Address Exists
@@ -86,10 +86,10 @@ sudo ip -6 addr add fe80::1/64 dev eth0 scope link
 
 ```bash
 # Check for routes at metric 14-15 (approaching limit)
-vtysh -c "show ipv6 ripng" | awk 'NR>3 && $3+0 >= 14 {print "HIGH METRIC:", $0}'
+vtysh -c "show ipv6 ripng" | awk 'NR>3 && $5+0 >= 14 {print "HIGH METRIC:", $0}'
 
 # Check for unreachable routes (metric 16)
-vtysh -c "show ipv6 ripng" | grep " 16 "
+vtysh -c "show ipv6 ripng" | awk 'NR>3 && $5+0 == 16 {print "UNREACHABLE:", $0}'
 ```
 
 ## Step 7: Debug RIPng Events
@@ -109,7 +109,8 @@ journalctl -u frr -f | grep ripng
 
 # Disable debugging after diagnosis
 vtysh
-no debug ripng all
+no debug ripng events
+no debug ripng packet
 ```
 
 ## Common Issues and Solutions
@@ -118,9 +119,9 @@ no debug ripng all
 |---------|---------|---------|
 | ripngd not running | `show ipv6 ripng` fails | Enable in daemons file, restart FRR |
 | No routes received | Empty routing table | Check firewall, multicast membership |
-| Slow convergence | Routes take 3-5 minutes to propagate | Expected for RIPng (30s updates) |
+| Slow convergence | Failed routes take several minutes to age out | Expected for RIPng (180s timeout, 120s garbage collection) |
 | Count-to-infinity | Metric keeps increasing | Verify split horizon is enabled |
-| Missing link-local | No adjacency | Add fe80:: address to interface |
+| Missing link-local | Routes not learned | Add fe80:: address to interface |
 | Wrong metric | Routes not preferred | Check metric distribution |
 
 ## Verifying Routes are Installed in Kernel
@@ -129,6 +130,9 @@ no debug ripng all
 # FRRouting routes should appear in kernel table
 ip -6 route show proto ripng
 
+# If your iproute2 protocol aliases do not include ripng:
+ip -6 route show proto 190
+
 # If routes are in vtysh but not in kernel:
 # Check Zebra is running and not having errors
 journalctl -u frr | grep "zebra\|Error"
@@ -136,4 +140,4 @@ journalctl -u frr | grep "zebra\|Error"
 
 ## Summary
 
-RIPng troubleshooting starts with verifying the daemon is running and interfaces are configured. Use tcpdump on port 521 to confirm update exchange. Check firewall rules for UDP 521 and multicast ff02::9. Enable FRRouting debug with `debug ripng events` for detailed diagnostics. Routes should appear in both `show ipv6 ripng` and `ip -6 route show proto ripng`.
+RIPng troubleshooting starts with verifying the daemon is running and interfaces are configured. Use tcpdump on port 521 to confirm update exchange. Check firewall rules for UDP 521 and multicast ff02::9. Enable FRRouting debug with `debug ripng events` for detailed diagnostics. Routes should appear in both `show ipv6 ripng` and `ip -6 route show proto ripng` (or `ip -6 route show proto 190` when the FRR iproute2 protocol alias is not installed).
