@@ -8,11 +8,11 @@ Description: Learn how to use resource overrides in OpenTofu 1.8 tests to custom
 
 ## Introduction
 
-OpenTofu 1.8 complemented provider mocking with resource overrides - a more surgical approach to test customization. Instead of mocking an entire provider, overrides let you selectively replace behavior for specific resource instances while leaving the rest of the configuration untouched.
+OpenTofu 1.8 complemented provider mocking with resource overrides - a more surgical approach to test customization. Instead of mocking an entire provider, overrides let you selectively replace behavior for specific resource or data source addresses while leaving the rest of the configuration untouched.
 
 ## Basic Resource Override
 
-Override a specific resource instance in a test run block.
+Override a specific resource address in a test run block.
 
 ```hcl
 # tests/main.tftest.hcl
@@ -20,7 +20,7 @@ Override a specific resource instance in a test run block.
 run "test_with_overridden_bucket" {
   command = plan
 
-  # Override a specific resource instance
+  # Override a specific resource address
   override_resource {
     target = aws_s3_bucket.logs
     values = {
@@ -63,7 +63,7 @@ run "test_with_mock_account_data" {
 
 ## Override vs Mock Provider
 
-Overrides apply to a single `run` block; mock providers apply to the entire test file.
+Overrides can apply to a single `run` block or to the whole test file. A run-level override takes precedence for the same target, while mock providers are defined at the test-file level.
 
 ```hcl
 # tests/selective.tftest.hcl
@@ -91,7 +91,7 @@ run "uses_default_mock" {
 run "uses_override" {
   command = plan
 
-  # This run overrides the provider mock for this specific resource
+  # This run overrides the provider mock for this resource address
   override_resource {
     target = aws_s3_bucket.primary
     values = {
@@ -109,7 +109,7 @@ run "uses_override" {
 
 ## Overriding Module Resources
 
-Target resources inside modules using their full address.
+Target resources inside modules using their full address, and assert through outputs exposed by the module.
 
 ```hcl
 run "test_module_with_override" {
@@ -126,7 +126,7 @@ run "test_module_with_override" {
   }
 
   assert {
-    condition     = module.database.aws_db_instance.main.port == 5432
+    condition     = module.database.db_port == 5432
     error_message = "Database port should be overridden to 5432"
   }
 }
@@ -148,7 +148,7 @@ run "verify_naming_with_override" {
   override_data {
     target = data.aws_region.current
     values = {
-      name = "ap-southeast-1"
+      region = "ap-southeast-1"
     }
   }
 
@@ -168,10 +168,10 @@ tofu test
 # Run a specific file with override tests
 tofu test -filter=tests/selective.tftest.hcl
 
-# Run with verbose output to see override details
+# Run with verbose output to see each run's plan or state
 tofu test -verbose
 ```
 
 ## Summary
 
-Resource overrides in OpenTofu 1.8 give you fine-grained control in tests by letting you substitute values for individual resource or data source instances within a single `run` block. Combined with provider-level mocks as a baseline, overrides let you test edge cases and specific scenarios without duplicating mock provider configuration across multiple test files.
+Resource overrides in OpenTofu 1.8 give you fine-grained control in tests by letting you substitute values for individual resource or data source addresses within a single `run` block or across a test file. Combined with provider-level mocks as a baseline, overrides let you test edge cases and specific scenarios without duplicating mock provider configuration across multiple test files.
