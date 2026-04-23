@@ -30,6 +30,8 @@ helm install opentelemetry-operator open-telemetry/opentelemetry-operator \
   --namespace observability \
   --create-namespace \
   --set "manager.collectorImage.repository=otel/opentelemetry-collector-contrib" \
+  --set admissionWebhooks.certManager.enabled=false \
+  --set admissionWebhooks.autoGenerateCert.enabled=true \
   --wait
 
 # Verify operator installation
@@ -47,7 +49,7 @@ metadata:
   namespace: observability
 spec:
   mode: deployment  # Or 'daemonset' for node-level collection
-  replicas: 2
+  replicas: 1  # Use a single replica when scraping Prometheus targets or watching Kubernetes events
   resources:
     requests:
       cpu: 200m
@@ -92,6 +94,7 @@ spec:
 
       # Kubernetes events
       k8s_events:
+        auth_type: serviceAccount
         namespaces: []  # Empty = all namespaces
 
     processors:
@@ -111,8 +114,6 @@ spec:
       k8sattributes:
         auth_type: serviceAccount
         passthrough: false
-        filter:
-          node_from_env_var: KUBE_NODE_NAME
         extract:
           metadata:
             - k8s.pod.name
@@ -121,12 +122,8 @@ spec:
             - k8s.namespace.name
             - k8s.node.name
             - k8s.pod.start_time
-        pod_association:
-          - sources:
-              - from: resource_attribute
-                name: k8s.pod.ip
 
-      # Resource processor to add standard attributes
+      # Resource processor to add environment-specific attributes
       resource:
         attributes:
           - key: service.cluster
@@ -143,18 +140,16 @@ spec:
         tls:
           insecure: true
 
-      # Export metrics to Prometheus (remote write)
+      # Export metrics to a Prometheus remote-write endpoint
       prometheusremotewrite:
+        # Prometheus must have the remote-write receiver enabled to accept this traffic.
         endpoint: http://rancher-monitoring-prometheus.cattle-monitoring-system.svc.cluster.local:9090/api/v1/write
         tls:
           insecure_skip_verify: true
 
-      # Export logs to Loki
-      loki:
-        endpoint: http://loki.observability.svc.cluster.local:3100/loki/api/v1/push
-        default_labels_enabled:
-          exporter: false
-          job: true
+      # Export logs to Loki over its native OTLP HTTP endpoint
+      otlphttp/loki:
+        endpoint: http://loki.observability.svc.cluster.local:3100/otlp
 
       # Debug exporter for troubleshooting (disable in production)
       debug:
@@ -164,9 +159,9 @@ spec:
       health_check:
         endpoint: 0.0.0.0:13133
       pprof:
-        endpoint: localhost:1777
+        endpoint: 0.0.0.0:1777
       zpages:
-        endpoint: localhost:55679
+        endpoint: 0.0.0.0:55679
 
     service:
       extensions: [health_check, pprof, zpages]
@@ -182,7 +177,7 @@ spec:
         logs:
           receivers: [otlp, k8s_events]
           processors: [memory_limiter, k8sattributes, batch]
-          exporters: [loki]
+          exporters: [otlphttp/loki]
 ```
 
 ## Step 3: Deploy as DaemonSet for Node-Level Collection
@@ -197,12 +192,27 @@ metadata:
 spec:
   mode: daemonset
   hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+  env:
+    - name: K8S_NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+  volumeMounts:
+    - name: hostfs
+      mountPath: /hostfs
+      readOnly: true
+  volumes:
+    - name: hostfs
+      hostPath:
+        path: /
 
   config:
     receivers:
       # Collect host metrics from each node
       hostmetrics:
         collection_interval: 30s
+        root_path: /hostfs
         scrapers:
           cpu:
           disk:
@@ -217,7 +227,7 @@ spec:
       kubeletstats:
         collection_interval: 30s
         auth_type: serviceAccount
-        endpoint: "${env:KUBE_NODE_NAME}:10250"
+        endpoint: "https://${env:K8S_NODE_NAME}:10250"
         insecure_skip_verify: true
         metric_groups:
           - node
@@ -232,6 +242,7 @@ spec:
 
     exporters:
       prometheusremotewrite:
+        # Prometheus must have the remote-write receiver enabled to accept this traffic.
         endpoint: http://rancher-monitoring-prometheus.cattle-monitoring-system.svc.cluster.local:9090/api/v1/write
 
     service:
@@ -254,17 +265,8 @@ metadata:
   name: java-instrumentation
   namespace: production
 spec:
-  # OTLP endpoint for the instrumented pods
-  endpoint: http://otel-collector.observability.svc.cluster.local:4317
-
-  java:
-    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:latest
-
-  python:
-    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-python:latest
-
-  nodejs:
-    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:latest
+  exporter:
+    endpoint: http://otel-collector.observability.svc.cluster.local:4317
 
   propagators:
     - tracecontext
@@ -286,8 +288,13 @@ metadata:
   name: java-service
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: java-service
   template:
     metadata:
+      labels:
+        app: java-service
       annotations:
         # Enable automatic Java instrumentation
         instrumentation.opentelemetry.io/inject-java: "java-instrumentation"
@@ -300,16 +307,19 @@ spec:
 ## Step 5: Verify Collector is Working
 
 ```bash
+# Find a collector pod
+kubectl get pods -n observability
+
 # Check collector health
-kubectl port-forward -n observability svc/otel-collector 13133:13133 &
-curl http://localhost:13133/health
+kubectl port-forward -n observability pod/<otel-collector-pod-name> 13133:13133 &
+curl http://localhost:13133/
 
 # Check collector metrics (for monitoring the collector itself)
-kubectl port-forward -n observability svc/otel-collector 8888:8888 &
+kubectl port-forward -n observability pod/<otel-collector-pod-name> 8888:8888 &
 curl http://localhost:8888/metrics | grep otelcol
 
 # View zpages for debugging pipelines
-kubectl port-forward -n observability svc/otel-collector 55679:55679 &
+kubectl port-forward -n observability pod/<otel-collector-pod-name> 55679:55679 &
 # Access http://localhost:55679/debug/tracez
 ```
 
