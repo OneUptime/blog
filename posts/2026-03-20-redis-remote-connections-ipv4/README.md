@@ -8,7 +8,7 @@ Description: Enable Redis to accept remote IPv4 connections by configuring bind,
 
 ## Introduction
 
-Enabling Redis remote connections requires three steps: configure `bind` to include the server's IP, set `requirepass` for authentication, and open port 6379 in the firewall for trusted IPs only. Never expose Redis to the public internet without authentication.
+Enabling Redis remote connections requires three steps: configure `bind` to include the server's IP, set `requirepass` for authentication, and open port 6379 in the firewall for trusted IPs only. Never expose Redis to the public internet; if you need remote access, combine authentication with firewall rules and prefer TLS, SSH tunnels, or a VPN over untrusted networks.
 
 ## Configuration Steps
 
@@ -22,9 +22,9 @@ bind 127.0.0.1 10.0.0.5
 # Step 2: Set a strong password
 requirepass "YourStrongPasswordHere!"
 
-# Step 3: Disable protected mode (it blocks remote connections)
-# Only safe after setting requirepass
-protected-mode no
+# Step 3: Keep protected mode enabled
+# With bind set explicitly and authentication configured, remote clients can connect
+protected-mode yes
 
 # Optional: Change default port for obscurity
 # port 6380
@@ -32,8 +32,8 @@ protected-mode no
 
 ```bash
 # Apply changes
-sudo systemctl restart redis
-sudo systemctl status redis
+sudo systemctl restart redis-server
+sudo systemctl status redis-server
 
 # Verify listening
 sudo ss -tlnp | grep redis
@@ -44,9 +44,9 @@ sudo ss -tlnp | grep redis
 
 ```bash
 # Allow Redis only from specific trusted IPs
-sudo ufw allow from 10.0.0.10 to any port 6379    # App server 1
-sudo ufw allow from 10.0.0.11 to any port 6379    # App server 2
-sudo ufw deny 6379                                  # Block all others
+sudo ufw allow proto tcp from 10.0.0.10 to any port 6379    # App server 1
+sudo ufw allow proto tcp from 10.0.0.11 to any port 6379    # App server 2
+sudo ufw deny proto tcp to any port 6379                    # Block all others
 
 # iptables
 sudo iptables -A INPUT -p tcp --dport 6379 -s 10.0.0.10/32 -j ACCEPT
@@ -74,8 +74,8 @@ redis-cli -h 10.0.0.5 ping
 # Expected: NOAUTH Authentication required.
 
 # Run a simple SET/GET
-redis-cli -h 10.0.0.5 -a 'password' SET testkey "hello"
-redis-cli -h 10.0.0.5 -a 'password' GET testkey
+redis-cli -h 10.0.0.5 -p 6379 -a 'YourStrongPasswordHere!' SET testkey "hello"
+redis-cli -h 10.0.0.5 -p 6379 -a 'YourStrongPasswordHere!' GET testkey
 # Expected: "hello"
 ```
 
@@ -96,9 +96,9 @@ const client = new Redis({ host: '10.0.0.5', port: 6379, password: 'YourStrongPa
 
 ```text
 # Redis URL format
-redis://:YourStrongPasswordHere!@10.0.0.5:6379/0
+redis://default:YourStrongPasswordHere!@10.0.0.5:6379/0
 ```
 
 ## Conclusion
 
-Enable Redis remote connections by adding the server IPv4 to `bind`, setting `requirepass`, and disabling `protected-mode`. Use iptables to restrict which client IPs can reach port 6379-Redis has no built-in source IP filtering. Never expose Redis on a public IP without authentication; prefer SSH tunnels or VPN for accessing Redis over untrusted networks.
+Enable Redis remote connections by adding the server IPv4 to `bind`, setting `requirepass`, and keeping `protected-mode` enabled. Use iptables to restrict which client IPs can reach port 6379; Redis has no built-in source IP filtering. Never expose Redis on the public internet; prefer SSH tunnels, VPN, or TLS for accessing Redis over untrusted networks.
