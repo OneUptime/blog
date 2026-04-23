@@ -13,23 +13,24 @@ Healthcare organizations running Kubernetes must comply with HIPAA (Health Insur
 ## Prerequisites
 
 - Rancher v2.7+ installed on a hardened OS (RHEL, Rocky Linux, or Ubuntu 22.04)
-- RKE2 clusters using the CIS hardened profile
+- RKE2 clusters using the CIS hardened profile appropriate for the Kubernetes version
 - A dedicated network segment for healthcare workloads
 - PKI infrastructure for TLS certificates
 - Backup and DR solution
 
 ## Step 1: Use RKE2 with CIS Profile
 
-All healthcare clusters should use RKE2 with the CIS hardening profile:
+All healthcare clusters should use RKE2 with the CIS hardening profile appropriate for the Kubernetes version:
 
 ```yaml
-# /etc/rancher/rke2/config.yaml on each node
+# /etc/rancher/rke2/config.yaml on server nodes
 
-profile: cis-1.23
+# Use cis-1.23 only on older RKE2/Kubernetes releases that require it.
+profile: cis
+# Enable on SELinux-capable hosts after installing the required SELinux packages.
 selinux: true
 secrets-encryption: true
 audit-policy-file: /etc/rancher/rke2/audit-policy.yaml
-pod-security-admission-config-file: /etc/rancher/rke2/psa.yaml
 ```
 
 ## Step 2: Configure Audit Logging
@@ -40,9 +41,11 @@ HIPAA requires audit trails for all access to PHI systems:
 # /etc/rancher/rke2/audit-policy.yaml
 apiVersion: audit.k8s.io/v1
 kind: Policy
+omitStages:
+  - RequestReceived
 rules:
-  # Log all access to Secrets (may contain PHI credentials)
-  - level: RequestResponse
+  # Log all access to Secrets without recording secret contents
+  - level: Metadata
     resources:
       - group: ""
         resources: ["secrets"]
@@ -57,10 +60,8 @@ rules:
     resources:
       - group: ""
         resources: ["pods/exec", "pods/portforward"]
-  # Log all other changes at Metadata level
+  # Log all other requests at Metadata level
   - level: Metadata
-    omitStages:
-      - RequestReceived
 ```
 
 ## Step 3: Configure RBAC for Least Privilege
@@ -119,10 +120,12 @@ spec:
           port: 5432
 ```
 
-## Step 5: Configure etcd Encryption at Rest
+## Step 5: Enable Kubernetes Secret Encryption at Rest
+
+RKE2 supports encrypting Kubernetes Secrets at rest in etcd:
 
 ```yaml
-# /etc/rancher/rke2/config.yaml
+# /etc/rancher/rke2/config.yaml on server nodes
 secrets-encryption: true
 # RKE2 handles key rotation via:
 # rke2 secrets-encrypt rotate-keys
@@ -130,13 +133,14 @@ secrets-encryption: true
 
 ## Step 6: Set Up NeuVector for Runtime Security
 
-Install NeuVector for HIPAA-required runtime monitoring:
+Install NeuVector for runtime security monitoring:
 
 ```bash
+kubectl create namespace neuvector
+kubectl label namespace neuvector pod-security.kubernetes.io/enforce=privileged
 helm repo add neuvector https://neuvector.github.io/neuvector-helm/
 helm install neuvector neuvector/core \
   --namespace neuvector \
-  --create-namespace \
   --set controller.replicas=3 \
   --set manager.env.ssl=true
 ```
@@ -149,23 +153,31 @@ Configure NeuVector to alert on PHI-related anomalies:
 ## Step 7: Configure Longhorn for Encrypted Storage
 
 ```yaml
-# StorageClass with volume encryption for PHI data
+# Create the longhorn-crypto Secret in longhorn-system first.
+# Then use a StorageClass with volume encryption for PHI data.
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: longhorn-encrypted
 provisioner: driver.longhorn.io
+allowVolumeExpansion: true
 parameters:
   numberOfReplicas: "3"
   encrypted: "true"
   # Encryption key stored in a Kubernetes Secret
+  csi.storage.k8s.io/provisioner-secret-name: longhorn-crypto
+  csi.storage.k8s.io/provisioner-secret-namespace: longhorn-system
   csi.storage.k8s.io/node-publish-secret-name: longhorn-crypto
   csi.storage.k8s.io/node-publish-secret-namespace: longhorn-system
+  csi.storage.k8s.io/node-stage-secret-name: longhorn-crypto
+  csi.storage.k8s.io/node-stage-secret-namespace: longhorn-system
+  csi.storage.k8s.io/node-expand-secret-name: longhorn-crypto
+  csi.storage.k8s.io/node-expand-secret-namespace: longhorn-system
 ```
 
 ## Step 8: Backup and Disaster Recovery
 
-HIPAA requires data backup and recovery procedures:
+HIPAA requires data backup and recovery procedures. After configuring Longhorn's S3 backup target and associating the recurring job group with your healthcare volumes:
 
 ```yaml
 # Longhorn recurring backup to S3
@@ -186,11 +198,14 @@ spec:
 ## Step 9: Enable Rancher Audit Logging
 
 ```yaml
-# In Rancher global settings (rancher-config ConfigMap)
-# Enable audit log level 2 (logs user, action, resource)
-audit-level: "2"
-audit-log-path: "/var/log/rancher/audit.log"
-audit-log-maxage: "90"   # 90-day retention for HIPAA
+# values.yaml for the Rancher Helm chart
+auditLog:
+  enabled: true
+  # Level 0 logs request metadata such as user, action, and resource.
+  level: 0
+  destination: hostPath
+  hostPath: /var/log/rancher/audit/
+  maxAge: 90   # 90-day retention for HIPAA
 ```
 
 ## Step 10: Identity Provider Integration
@@ -198,18 +213,20 @@ audit-log-maxage: "90"   # 90-day retention for HIPAA
 Configure Rancher with your hospital's Active Directory or SAML identity provider:
 
 ```text
-Rancher UI → Global Settings → Auth Configuration → Active Directory
-- Server: ldaps://ad.hospital.internal:636
-- Service Account: rancher@hospital.internal
-- Search Base: OU=Staff,DC=hospital,DC=internal
-- Required Group: CN=Kubernetes-Users,OU=Groups,DC=hospital,DC=internal
+Rancher UI → Users & Authentication → Auth Provider → ActiveDirectory
+- Hostname: ad.hospital.internal
+- Port: 636
+- TLS: enabled
+- Service Account Username: rancher@hospital.internal
+- User Search Base: OU=Staff,DC=hospital,DC=internal
+- Group Search Base: OU=Groups,DC=hospital,DC=internal
 ```
 
 ## Compliance Checklist
 
 - [ ] RKE2 CIS hardened profile enabled
 - [ ] Audit logging configured and retained 90+ days
-- [ ] etcd encryption at rest enabled
+- [ ] Kubernetes Secret encryption at rest enabled
 - [ ] Network policies isolating PHI namespaces
 - [ ] Volume encryption for PHI persistent data
 - [ ] RBAC least privilege applied
@@ -220,4 +237,4 @@ Rancher UI → Global Settings → Auth Configuration → Active Directory
 
 ## Conclusion
 
-Setting up Rancher for healthcare environments requires careful attention to HIPAA requirements including audit logging, data encryption, access controls, and backup procedures. RKE2 with CIS hardening, NeuVector runtime security, and Longhorn encrypted storage provide a comprehensive HIPAA-ready stack. Always consult with your compliance team and conduct regular HIPAA risk assessments to maintain compliance as your environment evolves.
+Setting up Rancher for healthcare environments requires careful attention to HIPAA requirements including audit logging, data encryption, access controls, and backup procedures. RKE2 with CIS hardening, NeuVector runtime security, and Longhorn encrypted storage provide a strong technical foundation for HIPAA-aligned deployments. Always consult with your compliance team and conduct regular HIPAA risk assessments to maintain compliance as your environment evolves.
