@@ -33,11 +33,13 @@ journalctl -u rke2-server -n 200 --no-pager
 ## Step 2: Check the RKE2 Log File
 
 ```bash
-# RKE2 writes logs to a file as well
-tail -100 /var/lib/rancher/rke2/agent/logs/rke2.log
+# RKE2 service logs are in journald; component file logs are separate
+tail -n 100 /var/lib/rancher/rke2/agent/containerd/containerd.log
+tail -n 100 /var/lib/rancher/rke2/agent/logs/kubelet.log
 
-# For server nodes, check additional logs
-ls /var/lib/rancher/rke2/server/logs/
+# For server nodes, check control-plane pod logs
+/var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml logs -n kube-system -l component=kube-apiserver --tail=100
+ls /var/log/pods/
 ```
 
 ---
@@ -48,18 +50,23 @@ RKE2 requires specific ports. Check for conflicts:
 
 ```bash
 # Check if required ports are available
-ss -tlnp | grep -E "6443|9345|2379|2380|10250|10251|10252"
+ss -tulnp | grep -E ':(6443|9345|2379|2380|2381|10250|8472)([[:space:]]|$)'
 
 # If a port is in use, identify the process
-ss -tlnp | grep 6443
+ss -tulnp | grep 6443
 # Kill conflicting service or change configuration
 ```
 
 Required ports:
 - 6443: Kubernetes API server
 - 9345: RKE2 supervisor API
-- 2379-2380: etcd
-- 10250: kubelet API
+- 2379-2380: etcd client and peer traffic between server nodes
+- 2381: etcd metrics between server nodes
+- 10250: kubelet metrics
+- 8472/udp: Canal VXLAN traffic when using the default Canal CNI
+- 30000-32767: NodePort services if used
+
+Exact CNI ports depend on the selected CNI plugin.
 
 ---
 
@@ -76,6 +83,8 @@ firewall-cmd --permanent --add-port=6443/tcp
 firewall-cmd --permanent --add-port=9345/tcp
 firewall-cmd --permanent --add-port=10250/tcp
 firewall-cmd --permanent --add-port=2379-2380/tcp
+firewall-cmd --permanent --add-port=2381/tcp
+firewall-cmd --permanent --add-port=8472/udp
 firewall-cmd --reload
 ```
 
@@ -86,14 +95,18 @@ firewall-cmd --reload
 ```bash
 # Check etcd-specific logs
 journalctl -u rke2-server | grep etcd
+/var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml logs -n kube-system -l component=etcd --tail=100
 
 # Check if etcd data directory has corruption
 ls -la /var/lib/rancher/rke2/server/db/etcd/
 
 # If etcd is corrupted, reset and restore from snapshot
 systemctl stop rke2-server
-rm -rf /var/lib/rancher/rke2/server/db/etcd/
-# Then restore from snapshot or reinitialize
+rke2 server --cluster-reset --cluster-reset-restore-path=<PATH-TO-SNAPSHOT>
+systemctl start rke2-server
+
+# To reset cluster membership without restoring a snapshot:
+# rke2 server --cluster-reset
 ```
 
 ---
@@ -142,11 +155,11 @@ kubectl describe node <node-name> | grep -A 5 Conditions
 
 ```bash
 # Check system resources
-free -h        # Memory available
-df -h          # Disk space (needs at least 20GB free)
-nproc          # CPU cores (minimum 2 recommended)
+free -h        # Memory available (minimum 4GB; 8GB recommended)
+df -h          # Disk space (SSD recommended; size depends on workload and etcd data)
+nproc          # CPU cores (minimum 2; 4 recommended)
 
-# Check if swap is disabled (required for Kubernetes)
+# Check swap; Linux kubelet fails on swap by default unless configured to tolerate it
 swapon --show
 # Disable swap if active:
 swapoff -a
@@ -187,6 +200,8 @@ If the installation is in an unrecoverable state:
 ```bash
 # Run the RKE2 uninstall script
 /usr/local/bin/rke2-uninstall.sh
+# or, depending on the install location:
+/opt/rke2/bin/rke2-uninstall.sh
 
 # Clean up remaining files
 rm -rf /var/lib/rancher/rke2/
@@ -202,5 +217,5 @@ curl -sfL https://get.rke2.io | sh -
 ## Best Practices
 
 - Always check port availability and firewall rules before installation - these are the most common causes of failure.
-- Verify system prerequisites (kernel modules, sysctl settings, swap disabled) before starting the installer.
+- Verify system prerequisites (kernel modules, sysctl settings, and swap behavior) before starting the installer.
 - For multi-node clusters, always get the first server node fully healthy before joining additional nodes or agents.
