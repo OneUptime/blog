@@ -10,21 +10,21 @@ Description: Step-by-step guide to installing and configuring RKE2 on ARM64 hard
 
 ARM64 (AArch64) processors are increasingly common in both cloud environments (AWS Graviton, Azure Ampere) and edge hardware (NVIDIA Jetson, Ampere Altra, Raspberry Pi 4). RKE2 provides native ARM64 binaries, making it straightforward to deploy a production-grade Kubernetes cluster on ARM64 hardware.
 
-## Supported ARM64 Platforms
+## Common ARM64 Platforms
 
 - AWS EC2 Graviton (t4g, m6g, c6g, r6g instances)
 - Azure Ampere Altra instances
 - NVIDIA Jetson AGX/NX series
 - Raspberry Pi 4 Model B (8GB recommended for server)
 - Rock Pi, Orange Pi, and other SBCs
-- Apple Silicon (for development only)
+- Apple Silicon running a Linux VM (for development only)
 
 ## Prerequisites
 
-- ARM64 hardware running Ubuntu 20.04+, RHEL 8+, or similar
-- Minimum 2 vCPU and 4GB RAM for server nodes
-- Minimum 1 vCPU and 2GB RAM for agent nodes
-- Open ports: 9345, 6443, 10250
+- ARM64 hardware running Ubuntu 20.04+, RHEL 8+, or another Linux distribution with systemd and iptables
+- Minimum 2 CPU and 4GB RAM for all nodes (8GB RAM recommended for server nodes)
+- Open ports: 6443 and 9345 to server nodes, 10250 between nodes, and the required CNI ports such as UDP 8472 and TCP 9099 for the default Canal VXLAN networking
+- For multi-server clusters, also open etcd ports 2379-2381 between server nodes
 
 ## Step 1: Verify Your Architecture
 
@@ -72,14 +72,15 @@ sudo sysctl --system
 
 ## Step 3: Install RKE2 on ARM64
 
-RKE2's install script automatically detects the architecture and downloads the correct binary.
+RKE2's install script automatically detects the architecture and installs the correct ARM64 artifacts.
 
 ```bash
-# The install script auto-detects ARM64 and downloads the aarch64 binary
+# The install script auto-detects ARM64 and installs the matching artifacts
 curl -sfL https://get.rke2.io | sudo sh -
 
 # Verify the installed binary architecture
-file /usr/local/bin/rke2
+RKE2_BIN=$(command -v rke2)
+file "${RKE2_BIN}"
 # Expected: ELF 64-bit LSB executable, ARM aarch64
 ```
 
@@ -88,26 +89,30 @@ file /usr/local/bin/rke2
 ```bash
 # Install a specific RKE2 version on ARM64
 curl -sfL https://get.rke2.io | \
-    INSTALL_RKE2_VERSION="v1.28.8+rke2r1" \
-    sudo sh -
+    sudo INSTALL_RKE2_VERSION="v1.34.6+rke2r3" \
+    sh -
 ```
 
 ### Air-Gapped ARM64 Installation
 
 ```bash
 # Download ARM64-specific artifacts
-RKE2_VERSION="v1.28.8+rke2r1"
+RKE2_VERSION="v1.34.6+rke2r3"
+mkdir -p rke2-artifacts
+cd rke2-artifacts
 
-# Download the ARM64 binary
+# Download the ARM64 tarball
 wget "https://github.com/rancher/rke2/releases/download/${RKE2_VERSION}/rke2.linux-arm64.tar.gz"
 
 # Download the ARM64 images
 wget "https://github.com/rancher/rke2/releases/download/${RKE2_VERSION}/rke2-images.linux-arm64.tar.zst"
 
-# Install manually
-sudo mkdir -p /var/lib/rancher/rke2/agent/images/
-sudo cp rke2-images.linux-arm64.tar.zst /var/lib/rancher/rke2/agent/images/
-sudo tar -xzf rke2.linux-arm64.tar.gz -C /usr/local/
+# Download checksums and the installer
+wget "https://github.com/rancher/rke2/releases/download/${RKE2_VERSION}/sha256sum-arm64.txt"
+wget -O install.sh https://get.rke2.io
+
+# Transfer this directory to the air-gapped ARM64 node, then run:
+sudo INSTALL_RKE2_ARTIFACT_PATH="$(pwd)" sh install.sh
 ```
 
 ## Step 4: Configure the RKE2 Server
@@ -121,13 +126,24 @@ token: "Arm64ClusterToken"
 tls-san:
   - $(hostname -I | awk '{print $1}')
   - $(hostname)
+EOF
 
+sudo mkdir -p /var/lib/rancher/rke2/agent/etc/kubelet.conf.d
+
+sudo tee /var/lib/rancher/rke2/agent/etc/kubelet.conf.d/10-arm64.conf > /dev/null <<EOF
 # Optimized for ARM64 (adjust based on your hardware)
-kubelet-arg:
-  - "max-pods=100"
-  - "kube-reserved=cpu=200m,memory=512Mi"
-  - "system-reserved=cpu=200m,memory=256Mi"
-  - "eviction-hard=memory.available<200Mi,nodefs.available<10%"
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+maxPods: 100
+kubeReserved:
+  cpu: "200m"
+  memory: "512Mi"
+systemReserved:
+  cpu: "200m"
+  memory: "256Mi"
+evictionHard:
+  memory.available: "200Mi"
+  nodefs.available: "10%"
 EOF
 ```
 
@@ -169,8 +185,11 @@ kubectl get node $(hostname) \
 On additional ARM64 worker nodes:
 
 ```bash
-# Get the server token
-SERVER_TOKEN=$(sudo cat /var/lib/rancher/rke2/server/node-token)
+# On the server node, get the token and copy it to the worker
+sudo cat /var/lib/rancher/rke2/server/node-token
+
+# On each worker node, set the token and server address
+SERVER_TOKEN="<token from server node>"
 SERVER_IP="192.168.1.100"
 
 # Configure the agent
@@ -182,8 +201,8 @@ EOF
 
 # Install as agent
 curl -sfL https://get.rke2.io | \
-    INSTALL_RKE2_TYPE="agent" \
-    sudo sh -
+    sudo INSTALL_RKE2_TYPE="agent" \
+    sh -
 
 sudo systemctl enable rke2-agent.service
 sudo systemctl start rke2-agent.service
@@ -234,11 +253,18 @@ echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governo
 
 ```yaml
 # For nodes with only 4GB RAM, tighten resource reservations
-kubelet-arg:
-  - "max-pods=50"
-  - "kube-reserved=cpu=300m,memory=768Mi"
-  - "system-reserved=cpu=200m,memory=512Mi"
-  - "eviction-hard=memory.available<150Mi,nodefs.available<8%"
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+maxPods: 50
+kubeReserved:
+  cpu: "300m"
+  memory: "768Mi"
+systemReserved:
+  cpu: "200m"
+  memory: "512Mi"
+evictionHard:
+  memory.available: "150Mi"
+  nodefs.available: "8%"
 ```
 
 ## Conclusion
