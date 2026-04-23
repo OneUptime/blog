@@ -22,7 +22,7 @@ A split configuration where IPv4 goes through VPN but IPv6 goes direct exposes:
 
 [Interface]
 Address = 10.0.0.2/32
-Address = fd00:wg::2/128
+Address = fd42:42:42::2/128
 PrivateKey = <private-key>
 DNS = 8.8.8.8, 2001:4860:4860::8888
 
@@ -39,8 +39,8 @@ PersistentKeepalive = 25
 
 ```bash
 # Verify all IPv6 routes through wg0
-ip -6 route show | head -5
-# Expected: default dev wg0 metric 1
+ip -6 route show table all | grep 'default.*wg0'
+# Expected with wg-quick: default dev wg0 table 51820 ...
 ```
 
 ## OpenVPN: Route All IPv6
@@ -50,7 +50,6 @@ ip -6 route show | head -5
 
 client
 dev tun
-tun-ipv6
 
 remote vpn.example.com 1194 udp6
 
@@ -58,17 +57,17 @@ ca ca.crt
 cert client.crt
 key client.key
 
-# Route ALL IPv6 through tunnel
-route-ipv6 ::/0
+# Route IPv6 Internet traffic through tunnel
+redirect-gateway ipv6
 
 pull
 ```
 
-Server must push IPv6 routes:
+Server must provide IPv6 addressing and can push the IPv6 route:
 ```ini
 # Server config:
-push "route-ipv6 ::/0"
-server-ipv6 fd00:vpn::/64
+push "redirect-gateway ipv6"
+server-ipv6 fd42:100:200::/64
 ```
 
 ## IPsec (strongSwan swanctl): Route All IPv6
@@ -80,6 +79,7 @@ connections {
     full-tunnel {
         version = 2
         remote_addrs = vpn.example.com
+        vips = ::
 
         local {
             auth = eap-mschapv2
@@ -93,19 +93,11 @@ connections {
         children {
             all-traffic {
                 # Route all IPv6 through tunnel
-                local_ts = ::/0
+                local_ts = dynamic
                 remote_ts = ::/0
                 mode = tunnel
             }
         }
-
-        pools = vpn-ipv6
-    }
-}
-
-pools {
-    vpn-ipv6 {
-        addrs = fd00:ipsec::/64
     }
 }
 ```
@@ -114,21 +106,21 @@ pools {
 
 ```bash
 # Verify IPv6 default route points to VPN
-ip -6 route show default
+ip -6 route show table all | grep -E 'default|::/0|2000::/4|3000::/4'
 
 # For WireGuard:
-# default dev wg0 metric 51820
+# default dev wg0 table 51820 ...
 
 # For OpenVPN:
-# default dev tun0 metric 100
+# 2000::/4 and 3000::/4 routes via tun0 ... (metric varies by OS/config)
 
-# Test that IPv6 traffic exits at VPN server IP
+# Test that IPv6 traffic exits through the VPN
 curl -6 https://ifconfig.co
-# Should return VPN server's IPv6 address
+# Should return the VPN exit IPv6 address, not your ISP-assigned address
 
 # Confirm no IPv6 leaks
-ping6 -c 2 2001:4860:4860::8888   # Should work (through VPN)
-traceroute6 2001:4860:4860::8888  # Should show VPN server's address first
+ping -6 -c 2 2001:4860:4860::8888   # Should work (through VPN)
+traceroute -6 2001:4860:4860::8888  # Should show the VPN path, not your local ISP path
 ```
 
 ## Kill Switch for IPv6
@@ -137,13 +129,17 @@ If the VPN disconnects, block all IPv6 traffic:
 
 ```bash
 # Create kill switch rules (run before connecting to VPN)
-sudo ip6tables -A OUTPUT -o lo -j ACCEPT
-sudo ip6tables -A OUTPUT -o wg0 -j ACCEPT    # Allow through VPN
-sudo ip6tables -A OUTPUT -j DROP              # Block all other IPv6
+VPN_SERVER_IPV6="<your-vpn-server-ipv6>"
+VPN_IFACE="wg0"       # Use tun0 for OpenVPN
+VPN_PORT="51820"      # Use 1194 for OpenVPN UDP
 
-# Or for OpenVPN:
-sudo ip6tables -A OUTPUT -o tun0 -j ACCEPT
-sudo ip6tables -A OUTPUT -j DROP
+sudo ip6tables -A OUTPUT -o lo -j ACCEPT
+sudo ip6tables -A OUTPUT -p ipv6-icmp --icmpv6-type router-solicitation -j ACCEPT
+sudo ip6tables -A OUTPUT -p ipv6-icmp --icmpv6-type neighbor-solicitation -j ACCEPT
+sudo ip6tables -A OUTPUT -p ipv6-icmp --icmpv6-type neighbor-advertisement -j ACCEPT
+sudo ip6tables -A OUTPUT -d "$VPN_SERVER_IPV6" -p udp --dport "$VPN_PORT" -j ACCEPT
+sudo ip6tables -A OUTPUT -o "$VPN_IFACE" -j ACCEPT    # Allow through VPN
+sudo ip6tables -A OUTPUT -j DROP                       # Block all other IPv6
 ```
 
 ## NetworkManager Configuration
@@ -152,13 +148,15 @@ For GUI-managed VPNs:
 
 ```bash
 # For WireGuard in NetworkManager
+# Ensure the WireGuard peer's AllowedIPs include ::/0
 nmcli connection modify "WireGuard VPN" \
-  ipv6.method auto \
-  ipv6.routes "::/0"
+  ipv6.never-default no \
+  wireguard.peer-routes yes \
+  wireguard.ip6-auto-default-route yes
 
 # For OpenVPN in NetworkManager
 # Enable "Use this connection only for resources on its network" = OFF
-# This ensures all traffic including IPv6 routes through VPN
+# This allows pushed default routes, including IPv6, to be used
 ```
 
 ## Testing Full IPv6 Routing
@@ -167,19 +165,19 @@ nmcli connection modify "WireGuard VPN" \
 #!/bin/bash
 # test-full-ipv6-vpn.sh
 
-VPN_SERVER_IPV6="<your-vpn-server-ipv6>"
+VPN_EXIT_IPV6="<expected-vpn-exit-ipv6>"
 
 echo "Testing IPv6 routing through VPN..."
 
 # Get current exit IPv6
 MY_IPV6=$(curl -s -6 https://ifconfig.co 2>/dev/null)
 
-if [ "$MY_IPV6" = "$VPN_SERVER_IPV6" ]; then
-    echo "PASS: IPv6 exits at VPN server ($MY_IPV6)"
+if [ "$MY_IPV6" = "$VPN_EXIT_IPV6" ]; then
+    echo "PASS: IPv6 exits at VPN exit ($MY_IPV6)"
 elif [ -z "$MY_IPV6" ]; then
     echo "INFO: No IPv6 connectivity (may be blocked)"
 else
-    echo "FAIL: IPv6 exits at $MY_IPV6 (not VPN server)"
+    echo "FAIL: IPv6 exits at $MY_IPV6 (not expected VPN exit)"
 fi
 ```
 
