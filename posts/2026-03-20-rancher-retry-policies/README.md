@@ -20,8 +20,9 @@ Retry policies automatically retry failed requests to improve resilience against
 
 Before configuring retries, understand the types of failures:
 - **Connection failures**: TCP connection refused or timed out
-- **5xx errors**: Server-side errors (502, 503, 504)
-- **Gateway errors**: Upstream connection resets
+- **5xx errors**: Server-side HTTP 5xx responses
+- **Gateway errors**: 502, 503, or 504 responses
+- **Reset errors**: Upstream connection resets or disconnects
 - **Retriable errors**: Idempotent operations that can safely be retried
 
 **Important**: Only configure retries for idempotent operations (GET, PUT, DELETE). Never retry non-idempotent POST requests that create resources, as this can cause duplicate operations.
@@ -31,7 +32,7 @@ Before configuring retries, understand the types of failures:
 ```yaml
 # basic-retry.yaml - Simple retry policy
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service-vs
@@ -59,7 +60,7 @@ spec:
 
 ```yaml
 # advanced-retry.yaml - Per-route retry with different settings
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-gateway-vs
@@ -71,9 +72,8 @@ spec:
     # Read endpoints - safe to retry
     - name: read-operations
       match:
-        - headers:
-            method:
-              exact: GET
+        - method:
+            exact: GET
       route:
         - destination:
             host: api-gateway
@@ -82,7 +82,7 @@ spec:
         perTryTimeout: 3s
         # Comprehensive retry conditions for read operations
         retryOn: "5xx,reset,connect-failure,retriable-4xx,gateway-error"
-        # Retry headers (for tracking retries)
+        # Allow retries to other localities when locality-aware load balancing is configured
         retryRemoteLocalities: true
 
     # Write endpoints - be careful with retries
@@ -101,13 +101,13 @@ spec:
       timeout: 15s
 ```
 
-## Step 3: Retry Policy with Hedging
+## Step 3: Retry Policy for Latency-Sensitive Services
 
-Hedge requests allow parallel retry attempts:
+Short per-try timeouts can reduce tail latency, but this configuration still performs sequential retries rather than parallel hedge requests:
 
 ```yaml
-# hedged-retry.yaml - Hedge requests for latency-sensitive services
-apiVersion: networking.istio.io/v1beta1
+# latency-sensitive-retry.yaml - Short per-try timeout for latency-sensitive services
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: search-service-vs
@@ -116,14 +116,14 @@ spec:
   hosts:
     - search-service
   http:
-    - name: search-with-hedge
+    - name: search-low-latency-retry
       route:
         - destination:
             host: search-service
-      timeout: 500ms  # Short overall timeout
+      timeout: 900ms  # Overall request timeout budget
       retries:
         attempts: 3
-        perTryTimeout: 200ms  # Tight per-try timeout triggers hedge
+        perTryTimeout: 200ms  # Limit how long each individual attempt can run
         retryOn: "5xx,connect-failure,reset"
 ```
 
@@ -131,7 +131,7 @@ spec:
 
 ```yaml
 # retry-with-cb.yaml - Retry policy that respects circuit breaker
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-dr
@@ -141,7 +141,7 @@ spec:
   trafficPolicy:
     # Circuit breaker settings
     outlierDetection:
-      # Eject hosts with 50% error rate
+      # Eject hosts after 5 consecutive 5xx errors
       consecutive5xxErrors: 5
       interval: 10s
       baseEjectionTime: 30s
@@ -152,7 +152,7 @@ spec:
         http1MaxPendingRequests: 100
         h2UpgradePolicy: UPGRADE
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-vs
@@ -172,25 +172,20 @@ spec:
 
 ## Step 5: Test Retry Policies
 
-Deploy a fault injection to test your retry configuration:
+Test against a backend that intermittently returns 503 responses. Do not combine fault injection and retries in the same VirtualService, because Istio does not apply retries in that case:
 
 ```yaml
-# fault-injection-test.yaml - Inject 50% failures to test retries
-apiVersion: networking.istio.io/v1beta1
+# retry-test.yaml - Retry policy for a backend that intermittently returns 503
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: backend-fault-test
+  name: backend-retry-test
   namespace: production
 spec:
   hosts:
     - backend-service
   http:
-    - fault:
-        abort:
-          percentage:
-            value: 50  # Fail 50% of requests
-          httpStatus: 503
-      route:
+    - route:
         - destination:
             host: backend-service
       retries:
@@ -200,16 +195,18 @@ spec:
 ```
 
 ```bash
-# Test the retry policy is working
+# Test the retry policy against a backend that intermittently returns 503
 for i in {1..20}; do
   kubectl exec -n production deployment/frontend -- \
     curl -s -o /dev/null -w "%{http_code}\n" \
     http://backend-service:8080/health
 done
-# Should see mostly 200s despite 50% fault injection
+# Should see fewer visible 503s when retries recover transient failures
 ```
 
 ## Step 6: Monitor Retry Metrics
+
+Istio records only a minimal set of Envoy statistics by default, so enable `proxyStatsMatcher.inclusionRegexps: [".*upstream_rq_retry.*"]` and restart the affected proxies before querying Prometheus:
 
 ```bash
 # Query Prometheus for retry metrics
@@ -226,8 +223,8 @@ kubectl exec -n istio-system deployment/prometheus -- \
 ## Step 7: Configure Retry with Rancher Fleet
 
 ```yaml
-# fleet-values.yaml - Fleet bundle with retry configuration
-apiVersion: networking.istio.io/v1beta1
+# app-vs.yaml - VirtualService manifest deployed by Rancher Fleet
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-vs
@@ -248,13 +245,13 @@ spec:
 
 ```yaml
 # best-practices.yaml - Production-ready retry configuration
-# 1. Set overall timeout <= (attempts * perTryTimeout)
+# 1. Set the overall timeout with room for the initial request plus retries
 # 2. Use exponential backoff (Istio handles this automatically)
 # 3. Monitor retry rates - high retries indicate underlying issues
 # 4. Only retry idempotent operations
 # 5. Combine with circuit breakers for defense in depth
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: production-service-vs
@@ -268,10 +265,10 @@ spec:
             host: production-service
       # Conservative retry configuration
       retries:
-        attempts: 3              # Max 3 attempts
+        attempts: 3              # Up to 3 retries
         perTryTimeout: 3s        # 3s per attempt
         retryOn: "5xx,reset,connect-failure"
-      timeout: 10s               # Total timeout: 10s
+      timeout: 15s               # Total request timeout
 ```
 
 ## Conclusion
