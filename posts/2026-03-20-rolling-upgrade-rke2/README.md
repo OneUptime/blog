@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE2, Rolling Upgrade, Kubernetes, System Upgrade Controller, Zero Downtime, SUSE Rancher
 
-Description: Learn how to perform a zero-downtime rolling upgrade of RKE2 clusters using the System Upgrade Controller to automate node-by-node upgrades with configurable concurrency and drain settings.
+Description: Learn how to perform a controlled rolling upgrade of RKE2 clusters using the System Upgrade Controller to automate node-by-node upgrades with configurable concurrency and drain settings.
 
 ---
 
-The System Upgrade Controller (SUC) automates rolling upgrades in RKE2 clusters by creating upgrade `Plan` resources that upgrade nodes sequentially with configurable concurrency, ensuring workloads remain available throughout the process.
+The System Upgrade Controller (SUC) automates rolling upgrades in self-managed RKE2 clusters by creating upgrade `Plan` resources that upgrade nodes sequentially with configurable concurrency, helping workloads remain available when they are replicated and protected by disruption budgets.
 
 ---
 
@@ -18,6 +18,8 @@ The System Upgrade Controller (SUC) automates rolling upgrades in RKE2 clusters 
 # Install SUC into the cluster
 
 kubectl apply -f \
+  https://github.com/rancher/system-upgrade-controller/releases/latest/download/crd.yaml \
+  -f \
   https://github.com/rancher/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
 
 # Verify the controller pod is running
@@ -39,7 +41,7 @@ metadata:
   namespace: system-upgrade
 spec:
   # Target Kubernetes version
-  version: v1.30.2+rke2r1
+  version: v1.34.6+rke2r3
 
   # Only target nodes labeled as server nodes
   nodeSelector:
@@ -82,7 +84,7 @@ metadata:
   name: rke2-agent
   namespace: system-upgrade
 spec:
-  version: v1.30.2+rke2r1
+  version: v1.34.6+rke2r3
 
   nodeSelector:
     matchExpressions:
@@ -96,7 +98,7 @@ spec:
     force: false
     skipWaitForDeleteTimeout: 60
     ignoreDaemonSets: true
-    deleteLocalData: true
+    deleteEmptydirData: true
 
   serviceAccountName: system-upgrade
 
@@ -145,14 +147,14 @@ kubectl get nodes -w
 
 ## Rollback if Needed
 
-If a node fails to upgrade, delete the upgrade job to stop the rollout:
+If a node fails to upgrade, delete the upgrade plans to stop the rollout:
 
 ```bash
-# Stop the upgrade by deleting the plans
+# Stop additional upgrade jobs by deleting the plans
 kubectl delete plan rke2-server rke2-agent -n system-upgrade
 
-# The node will remain at its current (partially upgraded) state
-# Restore from etcd snapshot if the control plane is broken
+# Deleting the plans does not roll back an upgraded node
+# Restore from an etcd snapshot and roll back the RKE2 binary if the control plane is broken
 ```
 
 ---
@@ -160,6 +162,6 @@ kubectl delete plan rke2-server rke2-agent -n system-upgrade
 ## Best Practices
 
 - Set `concurrency: 1` for server nodes - losing two control plane nodes simultaneously can break etcd quorum.
-- Use `drain.skipWaitForDeleteTimeout: 60` to avoid blocking on pods that take too long to evict.
+- Use `drain.skipWaitForDeleteTimeout: 60` to avoid waiting indefinitely on pods with a `DeletionTimestamp` older than 60 seconds.
 - Apply `PodDisruptionBudgets` to all production deployments before running upgrades.
 - Label a canary worker node and upgrade it first before applying the plan to all workers.
