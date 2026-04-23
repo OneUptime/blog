@@ -6,14 +6,14 @@ Tags: RKE2, Kubernetes, High Availability, etcd, Load Balancer, Rancher
 
 Description: Learn how to set up a highly available RKE2 Kubernetes cluster with multiple control plane nodes and a load balancer for production deployments.
 
-High availability (HA) is critical for production Kubernetes clusters. An HA RKE2 cluster eliminates single points of failure by running multiple control plane nodes with etcd in a cluster configuration. This guide covers setting up a production-grade HA RKE2 cluster with an external load balancer.
+High availability (HA) is critical for production Kubernetes clusters. An HA RKE2 cluster reduces control plane single points of failure by running multiple control plane nodes with etcd in a cluster configuration. This guide covers setting up a production-grade HA RKE2 cluster with an external load balancer.
 
 ## Architecture Overview
 
 A typical HA RKE2 setup consists of:
 
-- 3 or more server (control plane) nodes
-- An external load balancer (HAProxy, nginx, or cloud LB) in front of the API servers
+- An odd number of server (control plane) nodes, with 3 recommended
+- An external load balancer (HAProxy, nginx, or cloud LB) in front of the RKE2 registration and Kubernetes API endpoints
 - Multiple worker (agent) nodes
 - etcd running on each control plane node (embedded)
 
@@ -22,7 +22,7 @@ A typical HA RKE2 setup consists of:
                     │   Load Balancer   │
                     │  (HAProxy/nginx)  │
                     └────────┬─────────┘
-                             │ Port 6443
+                             │ Ports 6443/9345
                ┌─────────────┼─────────────┐
                │             │             │
          ┌─────▼─────┐ ┌─────▼─────┐ ┌────▼──────┐
@@ -39,9 +39,11 @@ A typical HA RKE2 setup consists of:
 
 - 3 Linux nodes for control plane (4+ vCPUs, 8+ GB RAM each)
 - 2+ Linux nodes for workers (2+ vCPUs, 4+ GB RAM each)
-- A load balancer node or service
+- RKE2 installed on all nodes, with the server service on control plane nodes and the agent service on workers
+- A load balancer node or service (make the load balancer itself highly available for production)
 - All nodes on the same network
 - A DNS record or VIP for the cluster endpoint
+- Unique hostnames or configured `node-name` values for every node
 
 ## Step 1: Set Up the Load Balancer
 
@@ -145,6 +147,8 @@ sudo systemctl restart nginx
 
 ```bash
 # On the FIRST control plane node
+sudo mkdir -p /etc/rancher/rke2
+
 cat <<EOF | sudo tee /etc/rancher/rke2/config.yaml
 # Use the load balancer address as the cluster endpoint
 tls-san:
@@ -183,6 +187,8 @@ sudo cat /var/lib/rancher/rke2/server/node-token
 NODE_TOKEN="<TOKEN_FROM_FIRST_SERVER>"
 LOAD_BALANCER_IP="10.0.0.10"
 
+sudo mkdir -p /etc/rancher/rke2
+
 cat <<EOF | sudo tee /etc/rancher/rke2/config.yaml
 # Join the existing cluster through the load balancer
 server: https://${LOAD_BALANCER_IP}:9345
@@ -195,6 +201,9 @@ tls-san:
   - "10.0.0.12"
   - "10.0.0.13"
 
+# Cluster networking must match the first server
+cluster-cidr: 10.42.0.0/16
+service-cidr: 10.43.0.0/16
 write-kubeconfig-mode: "0644"
 EOF
 
@@ -211,6 +220,8 @@ sudo journalctl -u rke2-server -f
 # On each worker node
 NODE_TOKEN="<TOKEN_FROM_FIRST_SERVER>"
 LOAD_BALANCER_IP="10.0.0.10"
+
+sudo mkdir -p /etc/rancher/rke2
 
 cat <<EOF | sudo tee /etc/rancher/rke2/config.yaml
 server: https://${LOAD_BALANCER_IP}:9345
@@ -236,16 +247,16 @@ sed -i 's/127.0.0.1/10.0.0.10/' ~/.kube/config
 # sed -i 's/127.0.0.1/k8s.example.com/' ~/.kube/config
 
 # Verify HA cluster
-kubectl get nodes
+/var/lib/rancher/rke2/bin/kubectl get nodes
 ```
 
 ## Step 6: Verify HA Setup
 
 ```bash
-# Verify all control plane nodes are participating in etcd
-kubectl get nodes | grep control-plane
+# Verify all control plane nodes are registered
+/var/lib/rancher/rke2/bin/kubectl get nodes | grep control-plane
 
-# Check etcd health
+# List etcd members
 sudo ETCDCTL_API=3 \
   ETCDCTL_ENDPOINTS=https://127.0.0.1:2379 \
   ETCDCTL_CACERT=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
@@ -258,4 +269,4 @@ sudo ETCDCTL_API=3 \
 
 ## Conclusion
 
-Setting up RKE2 HA requires careful planning around load balancer configuration, node ordering, and token management. The key to a successful HA deployment is ensuring all TLS SANs are correctly configured before starting the first server, using the load balancer endpoint for agent registration, and verifying that etcd has quorum across all three server nodes. Once established, the HA cluster can survive the loss of one control plane node without any service interruption.
+Setting up RKE2 HA requires careful planning around load balancer configuration, node ordering, and token management. The key to a successful HA deployment is ensuring all TLS SANs are correctly configured before starting the first server, using the load balancer endpoint for agent registration, and verifying that all three server nodes are listed as etcd members. Once established, the HA cluster can survive the loss of one control plane node without losing etcd quorum or Kubernetes API availability through the load balancer.
