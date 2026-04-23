@@ -12,10 +12,11 @@ Rancher Desktop is an open-source desktop application that provides Kubernetes a
 
 ## Prerequisites
 
-- A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
-- At least 8 GB of RAM (16 GB recommended)
-- At least 4 CPU cores
+- A Mac running macOS 13 (Ventura) or higher
+- Apple Silicon (aarch64) or Intel (x86_64) CPU with VT-x
+- A persistent internet connection
+- 8 GB of RAM recommended
+- 4 CPU cores recommended
 
 ## Overview
 
@@ -23,10 +24,14 @@ Rancher Desktop simplifies local Kubernetes and container development by providi
 
 - A local Kubernetes cluster (k3s-based)
 - Container runtime (containerd or dockerd)
-- Integrated CLI tools (kubectl, helm, nerdctl, docker)
+- Integrated CLI tools (kubectl, helm, nerdctl, and Docker CLI when Moby is selected)
 - Simple configuration through a GUI
 
-## Step 1: Initial Setup
+## Step 1: Install Rancher Desktop
+
+1. Download `Rancher.Desktop-X.Y.Z.dmg` from the Rancher Desktop GitHub releases page.
+2. Open the DMG and drag Rancher Desktop to the `Applications` folder.
+3. Launch Rancher Desktop from `Applications` and wait for the initial startup to finish.
 
 ```bash
 # Verify Rancher Desktop is installed and running
@@ -36,9 +41,9 @@ rdctl version
 # Check Kubernetes cluster status
 kubectl cluster-info
 
-# Verify container runtime
+# Verify the selected container runtime
 nerdctl version
-# or
+# or, if using the Moby container engine
 docker version
 ```
 
@@ -53,8 +58,8 @@ Open Rancher Desktop Preferences to configure:
 
 ```bash
 # Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
-rdctl set --container-engine containerd
+rdctl set --kubernetes.version <supported-version>
+rdctl set --container-engine.name containerd
 ```
 
 ## Step 3: Working with Containers
@@ -62,7 +67,7 @@ rdctl set --container-engine containerd
 ```bash
 # Pull an image
 nerdctl pull nginx:latest
-# or with docker compatibility
+# or, when using the Moby container engine
 docker pull nginx:latest
 
 # Run a container
@@ -131,31 +136,30 @@ helm uninstall my-release
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
-rdctl factory-reset
+# Reset Kubernetes workloads
+rdctl reset --k8s
 
-# Check Rancher Desktop status
-rdctl status
+# Check Rancher Desktop information
+rdctl info
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
+# Show current Rancher Desktop settings
+rdctl list-settings
 
 # Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+rdctl set --kubernetes.version <supported-version>
 ```
 
 ## Troubleshooting
 
 ```bash
 # Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# In the Rancher Desktop UI, open Troubleshooting > Show Logs
 
 # Reset to factory defaults
-rdctl factory-reset
+rdctl reset --factory
 
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Show current Rancher Desktop settings, including virtualMachine
+rdctl list-settings
 ```
 
 ## Conclusion
