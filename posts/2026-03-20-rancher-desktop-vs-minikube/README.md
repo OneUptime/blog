@@ -12,27 +12,27 @@ Minikube and Rancher Desktop are both widely used tools for running Kubernetes o
 
 ## What Is Minikube?
 
-Minikube is an official Kubernetes project that runs a single-node Kubernetes cluster locally. It supports multiple hypervisor drivers (VirtualBox, VMware, HyperKit, Hyper-V, Docker, QEMU) and provides add-ons for common Kubernetes components. It is primarily a CLI tool without a graphical UI.
+Minikube is an official Kubernetes project that by default runs a single-node Kubernetes cluster locally, with support for multi-node clusters as well. It supports multiple drivers (such as Docker, QEMU, HyperKit, Hyper-V, VirtualBox, VFkit, and VMware Fusion/Workstation) and provides add-ons for common Kubernetes components. It is primarily a CLI tool.
 
 ## What Is Rancher Desktop?
 
-Rancher Desktop is a desktop application (macOS, Windows, Linux) that provides both local Kubernetes (via K3s) and container management (containerd or dockerd). It includes a graphical UI for managing Kubernetes settings, container images, and port forwarding.
+Rancher Desktop is a desktop application (macOS, Windows, Linux) that provides both local Kubernetes (via K3s) and container management (containerd or Moby/dockerd). It includes a graphical UI for managing Kubernetes settings, container images, and port forwarding.
 
 ## Feature Comparison
 
 | Feature | Rancher Desktop | Minikube |
 |---|---|---|
-| Kubernetes Distribution | K3s | Vanilla Kubernetes |
-| GUI | Yes | No (CLI only) |
-| Container Management | Yes | Limited |
-| Docker CLI Support | Yes (dockerd or nerdctl) | Yes (via Docker driver) |
-| Multiple Clusters | No (single cluster) | Yes (profiles) |
-| Add-ons / Plugins | Limited | Extensive add-on catalog |
-| Driver Options | Lima / WSL2 | VirtualBox, Docker, HyperKit, etc. |
+| Kubernetes Distribution | K3s | Upstream Kubernetes |
+| GUI | Yes | CLI-first |
+| Container Management | Yes | CLI-based |
+| Docker CLI Support | Yes (Docker CLI with Moby/dockerd; nerdctl with containerd) | Yes (via `minikube docker-env` with the Docker runtime) |
+| Multiple Clusters | No (single built-in cluster) | Yes (profiles) |
+| Add-ons / Plugins | No built-in add-on catalog | Extensive add-on catalog |
+| Driver Options | Lima (macOS/Linux) / WSL2 (Windows) | VirtualBox, Docker, HyperKit, etc. |
 | Kubernetes Version Selection | Yes | Yes |
-| Multi-node | No | Yes (with extra nodes) |
+| Multi-node | No built-in multi-node support | Yes (with `--nodes`) |
 | Resource Controls | GUI-based | CLI flags |
-| LoadBalancer Support | Yes (via K3s) | Yes (via tunnel or minikube tunnel) |
+| LoadBalancer Support | Yes (via K3s ServiceLB) | Yes (via `minikube tunnel`) |
 | macOS Apple Silicon | Yes | Yes |
 | Windows | Yes | Yes |
 | Linux | Yes | Yes |
@@ -41,7 +41,7 @@ Rancher Desktop is a desktop application (macOS, Windows, Linux) that provides b
 
 ### Rancher Desktop
 
-Download and install from https://rancherdesktop.io - no command-line setup required. The GUI handles everything.
+Download and install the desktop application from https://rancherdesktop.io or the GitHub releases page. Initial setup is handled through the GUI.
 
 ### Minikube
 
@@ -54,7 +54,7 @@ brew install minikube   # macOS
 minikube start
 
 # Start with specific Kubernetes version
-minikube start --kubernetes-version=v1.28.0
+minikube start --kubernetes-version=v1.34.0
 
 # Start with more resources
 minikube start --cpus=4 --memory=8192
@@ -82,7 +82,7 @@ minikube profile list
 minikube profile dev-cluster
 ```
 
-Rancher Desktop only supports a single cluster at a time, which is a limitation if you need to test across multiple environments.
+Rancher Desktop only supports a single built-in cluster at a time, which is a limitation if you need to test across multiple environments.
 
 ## Add-ons and Extensibility
 
@@ -97,6 +97,7 @@ minikube addons enable metrics-server
 minikube addons enable ingress
 minikube addons enable dashboard
 minikube addons enable registry
+minikube addons enable istio-provisioner
 minikube addons enable istio
 ```
 
@@ -106,10 +107,10 @@ Resource Requirements
 
 | Aspect | Rancher Desktop | Minikube |
 |---|---|---|
-| Default Memory | 2GB | 2GB |
-| Default CPU | 2 | 2 |
-| Disk Space | ~5GB | ~2GB |
-| Startup Time | ~60s | ~60-120s |
+| Recommended Host Memory | 8GB | 2GB free memory |
+| Recommended Host CPU | 4 CPU | 2 CPUs or more |
+| Disk Space Guidance | Additional resources depend on workloads | 20GB free disk space |
+| Resource Allocation | Configurable in the GUI | Configurable with CLI flags |
 
 ## Developer Experience
 
