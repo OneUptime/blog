@@ -8,7 +8,7 @@ Description: Learn how to implement IPv6 connection rate limiting with ip6tables
 
 ## Overview
 
-Rate limiting with ip6tables restricts how many packets or connections can arrive per unit time. For IPv6, this is important for preventing: ICMPv6 floods, SSH brute-force attacks, SYN floods, and NDP exhaustion. ip6tables provides three main rate-limiting mechanisms: the `limit` module (global), `hashlimit` module (per-source), and `recent` module (connection tracking).
+Rate limiting with ip6tables restricts how many packets or connections can arrive per unit time. For IPv6, this is important for preventing: ICMPv6 echo-request floods, SSH brute-force attacks, SYN floods, and some control-plane abuse. ip6tables provides three main rate-limiting mechanisms: the `limit` module (global), `hashlimit` module (per-source), and `recent` module (recent address tracking).
 
 ## Module 1: limit (Global Rate Limiting)
 
@@ -36,7 +36,7 @@ ip6tables -A INPUT -p tcp --syn -j DROP
 ```
 
 **limit parameters:**
-- `--limit N/unit` - Allow N packets per unit (second, minute, hour)
+- `--limit N/unit` - Allow N packets per unit (second, minute, hour, day)
 - `--limit-burst B` - Initial burst allowance (tokens)
 
 ## Module 2: hashlimit (Per-Source Rate Limiting)
@@ -72,30 +72,30 @@ ip6tables -A INPUT -p tcp --dport 80 -m conntrack --ctstate NEW -j DROP
 - `--hashlimit-burst B` - Burst allowance
 - `--hashlimit-mode srcip` - Track per source IP (or srcport, dstip, dstport)
 
-## Module 3: recent (Recent Connection Tracking)
+## Module 3: recent (Recent Address Tracking)
 
-The `recent` module tracks recent connections to implement more complex rules:
+The `recent` module tracks recent source addresses. Pair it with conntrack if you want to count new connection attempts:
 
 ```bash
 # SSH brute-force protection
-# If 4+ connections from same source in 60 seconds → drop
-ip6tables -A INPUT -p tcp --dport 22 \
+# If 4+ new connections from same source in 60 seconds → drop
+ip6tables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW \
   -m recent --name SSH6 --rcheck --seconds 60 --hitcount 4 \
   -j LOG --log-prefix "SSH-BRUTE-FORCE: "
-ip6tables -A INPUT -p tcp --dport 22 \
+ip6tables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW \
   -m recent --name SSH6 --rcheck --seconds 60 --hitcount 4 \
   -j DROP
-ip6tables -A INPUT -p tcp --dport 22 \
+ip6tables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW \
   -m recent --name SSH6 --set \
   -j ACCEPT
 ```
 
-## NDP Exhaustion Protection
+## Neighbor Solicitation Flood Protection
 
-NDP exhaustion is an IPv6-specific attack where an attacker sends neighbor solicitations for thousands of addresses in a /64 subnet, forcing the router to send unreachable messages:
+Classic IPv6 Neighbor Discovery exhaustion on routers is usually caused by scans to many unused destination addresses, which force address-resolution work and neighbor-cache churn. The rule below only rate-limits incoming Neighbor Solicitations on the local link and should be used with care, since aggressive limits can interfere with normal Neighbor Discovery:
 
 ```bash
-# Limit Neighbor Solicitations per source
+# Limit incoming Neighbor Solicitations per source on the local link
 ip6tables -A INPUT -p icmpv6 --icmpv6-type 135 \
   -m hashlimit \
   --hashlimit-name ndp-limit \
@@ -108,33 +108,32 @@ ip6tables -A INPUT -p icmpv6 --icmpv6-type 135 -j DROP
 
 ## ICMPv6 Flood Protection
 
+If you choose to rate-limit ICMPv6, do it narrowly. Blanket ICMPv6 drops break normal IPv6 operation, and even echo-request limiting is an operational tradeoff.
+
 ```bash
-# Rate limit all ICMPv6 (except critical types already accepted)
-ip6tables -A INPUT -p icmpv6 \
+# Narrower scope: if you rate-limit ICMPv6, target echo requests, not all ICMPv6
+ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-request \
   -m limit --limit 20/second --limit-burst 50 \
   -j ACCEPT
-ip6tables -A INPUT -p icmpv6 -j DROP
+ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-request -j DROP
 
-# More granular: per-source ICMPv6 limiting
-ip6tables -A INPUT -p icmpv6 \
+# More granular: per-source echo-request limiting
+ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-request \
   -m hashlimit \
   --hashlimit-name icmpv6-limit \
   --hashlimit-upto 5/second \
   --hashlimit-burst 10 \
   --hashlimit-mode srcip \
   -j ACCEPT
-ip6tables -A INPUT -p icmpv6 -j DROP
+ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-request -j DROP
 ```
 
 ## Log Rate-Limited Drops
 
 ```bash
-# Log rate-limited drops for alerting
+# After the SSH allow rule above, log the remaining over-limit NEW attempts
 ip6tables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW \
-  -m hashlimit \
-  --hashlimit-name ssh-log \
-  --hashlimit-upto 3/minute --hashlimit-burst 5 \
-  --hashlimit-mode srcip \
+  -m limit --limit 5/minute --limit-burst 10 \
   -j LOG --log-prefix "SSH-RATE-LIMIT: "
 
 ip6tables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW -j DROP
@@ -143,15 +142,13 @@ ip6tables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW -j DROP
 ## View hashlimit Tables
 
 ```bash
-# View current hashlimit entries (Linux 5.x+)
-cat /proc/net/ip6_tables_matches | grep hashlimit
-# or
-nft list table ip6 filter 2>/dev/null | grep hashlimit
+# View current IPv6 hashlimit tables created by --hashlimit-name
+ls /proc/net/ip6t_hashlimit 2>/dev/null
 
-# hashlimit entries are in /proc/net/ipt_hashlimit/ (ipv4) or similar
-ls /proc/net/ | grep hashlimit
+# View a specific table
+cat /proc/net/ip6t_hashlimit/ssh-rate-v6 2>/dev/null
 ```
 
 ## Summary
 
-ip6tables rate limiting uses three modules: `limit` for global rates (all sources combined), `hashlimit` for per-source rates (most useful - limits each attacker individually), and `recent` for connection-count-based blocking (SSH brute force). For IPv6, always rate-limit ICMPv6 echo requests, new SSH connections, new HTTP connections, and Neighbor Solicitations (to prevent NDP exhaustion). The `hashlimit` module with `--hashlimit-mode srcip` is the most effective for per-source protection. Log rate-limited drops to detect ongoing attacks.
+ip6tables rate limiting uses three modules: `limit` for global rates (all sources combined), `hashlimit` for per-source rates (most useful - limits each attacker individually), and `recent` for tracking repeated connection attempts from the same address. Many operators choose to rate-limit ICMPv6 echo requests and new service connections such as SSH when appropriate, but do not blanket-drop essential ICMPv6 control traffic. Neighbor Discovery cache-exhaustion on routers is usually mitigated by filtering unused destination space rather than by rate-limiting inbound Neighbor Solicitations alone. The `hashlimit` module with `--hashlimit-mode srcip` is the most effective for per-source protection. Log rate-limited drops to detect ongoing attacks.
