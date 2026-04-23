@@ -8,7 +8,7 @@ Description: Configure Rancher for educational institutions with multi-tenant na
 
 ## Introduction
 
-Educational institutions use Kubernetes for research computing, data science courses, LMS infrastructure, and administrative systems. Rancher's multi-tenancy model-with Projects providing namespace isolation and resource quotas-maps naturally to the departmental structure of universities. FERPA compliance requires data isolation, and SSO integration with campus identity systems (Shibboleth, Azure AD) is essential.
+Educational institutions use Kubernetes for research computing, data science courses, LMS infrastructure, and administrative systems. Rancher's multi-tenancy model-with Projects grouping namespaces and supporting RBAC and resource quotas-maps naturally to the departmental structure of universities. FERPA compliance requires data isolation, and SSO integration with campus identity systems (Shibboleth, Azure AD) is essential.
 
 ## Education Architecture
 
@@ -31,9 +31,9 @@ Rancher Management
 ## Step 1: Configure Multi-Tenant Projects
 
 ```yaml
-# Create department project with resource limits
+# Rancher Projects group namespaces; apply quotas inside the namespaces they contain
 
-# Via Rancher API or UI: Cluster > Projects
+# Via Rancher UI: Cluster > Projects/Namespaces
 
 # Research computing quota per department
 apiVersion: v1
@@ -91,22 +91,33 @@ hub:
     Authenticator:
       admin_users:
         - professor@university.edu
-    # Integrate with campus SSO (Shibboleth/SAML)
+    JupyterHub:
+      authenticator_class: generic-oauth
+    # Integrate with campus SSO via OIDC
     GenericOAuthenticator:
       client_id: jupyterhub
+      client_secret: "<set-in-secret>"
       oauth_callback_url: "https://jupyterhub.cs.university.edu/hub/oauth_callback"
       authorize_url: "https://sso.university.edu/idp/profile/oidc/authorize"
       token_url: "https://sso.university.edu/idp/profile/oidc/token"
+      userdata_url: "https://sso.university.edu/idp/profile/oidc/userinfo"
+      username_claim: email
+      login_service: "Campus SSO"
+      scope:
+        - openid
+        - profile
+        - email
 
 singleuser:
   storage:
     capacity: 5Gi
     dynamic:
       storageClass: longhorn
-  resources:
-    limits:
-      memory: 2Gi
-      cpu: "1"
+  memory:
+    limit: 2Gi
+  cpu:
+    limit: 1
+  cmd: null
   image:
     name: jupyter/datascience-notebook
     tag: latest
@@ -124,15 +135,16 @@ singleuser:
 
 ```bash
 # Configure Rancher with Shibboleth/SAML
-# Rancher UI: Global > Security > Authentication > SAML
+# Rancher UI: Main menu > Users & Authentication > Auth Provider > Shibboleth
 
 # For Azure AD (common in universities):
-# Rancher UI: Global > Security > Authentication > Azure AD
+# Rancher UI: Main menu > Users & Authentication > Auth Provider > AzureAD
 
 # Key configuration:
-# Tenant Domain: university.edu (or tenant ID)
+# Redirect URI: https://<rancher-server>/verify-auth-azure
 # Application ID: from Azure AD app registration
-# Directory ID: from Azure AD
+# Application Secret: from Azure AD client secret
+# Tenant ID: from Azure AD
 
 # Map AD groups to Rancher roles:
 # IT-K8s-Admins → Cluster Owner
@@ -172,6 +184,8 @@ spec:
       ports:
         - port: 53
           protocol: UDP
+        - port: 53
+          protocol: TCP
 ```
 
 ## Step 5: Research GPU Workloads
@@ -215,12 +229,19 @@ spec:
 # Auto-create/delete course namespaces each semester
 # Python script called from CI/CD pipeline
 
-# Create namespace for new semester
-kubectl create namespace cs101-fall-2026
-kubectl label namespace cs101-fall-2026 \
-  course=cs101 \
-  semester=fall-2026 \
-  expires="2027-01-31"
+# Create namespace for new semester in the correct Rancher Project
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cs101-fall-2026
+  annotations:
+    field.cattle.io/projectId: c-m-abcde:p-12345
+  labels:
+    course: cs101
+    semester: fall-2026
+    expires: "2027-01-31"
+EOF
 
 # Apply standard policies
 kubectl apply -f course-network-policies.yaml -n cs101-fall-2026
@@ -232,4 +253,4 @@ kubectl delete namespace cs101-spring-2026
 
 ## Conclusion
 
-Rancher's Project-based multi-tenancy aligns perfectly with university organizational structures-departments and courses map to Projects and namespaces. JupyterHub on Rancher provides self-service data science notebooks for students, while GPU job scheduling supports research computing. SSO integration with campus identity systems (Shibboleth, Azure AD) provides seamless access management, and namespace isolation enforces FERPA data protection. The Rancher Projects' resource quota system prevents any single course or department from monopolizing cluster resources.
+Rancher's Project-based multi-tenancy aligns perfectly with university organizational structures-departments and courses can map cleanly to Projects and their namespaces. JupyterHub on Rancher provides self-service data science notebooks for students, while GPU job scheduling supports research computing. SSO integration with campus identity systems (Shibboleth, Azure AD) provides seamless access management, and namespace isolation enforces FERPA data protection. The Rancher Projects' resource quota system prevents any single course or department from monopolizing cluster resources.
