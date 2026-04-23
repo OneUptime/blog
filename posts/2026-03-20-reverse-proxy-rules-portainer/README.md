@@ -49,8 +49,6 @@ Navigate to **Networks** > **Add Network**:
 ```yaml
 # Define networks in your stack
 
-version: "3.8"
-
 networks:
   # DMZ network - connected to reverse proxy
   dmz:
@@ -69,7 +67,7 @@ networks:
     driver: bridge
     internal: true
   
-  # Database network - fully isolated
+  # Database network - externally isolated
   db-net:
     driver: bridge
     internal: true
@@ -77,11 +75,12 @@ networks:
       config:
         - subnet: 172.21.0.0/24
 
-  # External overlay network (for Swarm)
+  # Swarm overlay network
   swarm-overlay:
     driver: overlay
     attachable: true
-    encrypted: true
+    driver_opts:
+      encrypted: "true"
 ```
 
 ## Step 3: Connect Services to Networks
@@ -102,7 +101,7 @@ services:
       - "80:80"
       - "443:443"
   
-  # API - connected to frontend and backend
+  # API - connected to frontend, backend, and db-net
   api:
     image: my-api:latest
     networks:
@@ -129,20 +128,18 @@ Add network encryption and security settings:
 networks:
   secure-overlay:
     driver: overlay
-    # Encrypt all overlay network traffic
-    encrypted: true
+    # Encrypt overlay network application data
     driver_opts:
-      # Use IPsec for encryption
       encrypted: "true"
 ```
 
 Firewall rules via Portainer host access:
 
 ```bash
-# Configure UFW for container networks
-ufw allow from 172.20.0.0/24 to any port 80
-ufw allow from 172.20.0.0/24 to any port 443
-ufw deny from 172.21.0.0/24 to any  # Isolate DB network
+# Configure Docker firewall rules in the DOCKER-USER chain
+iptables -I DOCKER-USER -s 172.21.0.0/24 -j DROP  # Isolate DB network from routed traffic
+iptables -I DOCKER-USER -i eth0 ! -s 203.0.113.0/24 -j DROP  # Restrict published ports to a trusted subnet
+iptables -I DOCKER-USER -m state --state RELATED,ESTABLISHED -j ACCEPT
 ```
 
 ## Step 5: Troubleshoot Network Issues
@@ -155,7 +152,7 @@ docker exec api-container nslookup postgres
 
 # Test connectivity
 docker exec api-container ping postgres
-docker exec api-container curl -I http://frontend:3000
+docker exec api-container curl -I http://nginx
 
 # Inspect network configuration
 docker network inspect stack-name_backend
@@ -176,14 +173,15 @@ services:
   # Network traffic monitoring
   ntopng:
     image: ntop/ntopng:latest
-    ports:
-      - "3000:3000"
     volumes:
       - ntopng-data:/var/lib/ntopng
     cap_add:
       - NET_ADMIN
       - NET_RAW
     network_mode: host  # Required for traffic inspection
+
+volumes:
+  ntopng-data:
 ```
 
 ## Common Network Patterns
@@ -203,7 +201,7 @@ networks:
 networks:
   presentation: {}   # Web/UI layer
   business: {}       # API/Logic layer
-  data: {}           # DB layer (internal only)
+  data:               # DB layer (internal only)
     internal: true
 ```
 
