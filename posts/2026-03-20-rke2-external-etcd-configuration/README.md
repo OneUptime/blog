@@ -27,9 +27,9 @@ Install and configure etcd on dedicated nodes:
 ```bash
 # Install etcd
 
-ETCD_VERSION="v3.5.13"
+ETCD_VERSION="v3.6.10"
 wget https://github.com/etcd-io/etcd/releases/download/${ETCD_VERSION}/etcd-${ETCD_VERSION}-linux-amd64.tar.gz
-tar xvf etcd-${ETCD_VERSION}-linux-amd64.tar.gz
+tar xzf etcd-${ETCD_VERSION}-linux-amd64.tar.gz
 cp etcd-${ETCD_VERSION}-linux-amd64/etcd* /usr/local/bin/
 ```
 
@@ -109,19 +109,13 @@ token: my-cluster-token
 tls-san:
   - "rke2.example.com"
 
-# Disable embedded etcd
-disable-etcd: true
-
 # External etcd endpoints
-etcd-servers:
-  - https://192.168.1.21:2379
-  - https://192.168.1.22:2379
-  - https://192.168.1.23:2379
+datastore-endpoint: "https://192.168.1.21:2379,https://192.168.1.22:2379,https://192.168.1.23:2379"
 
 # Client certificates for etcd authentication
-etcd-cafile: /etc/rancher/rke2/tls/etcd/ca.crt
-etcd-certfile: /etc/rancher/rke2/tls/etcd/client.crt
-etcd-keyfile: /etc/rancher/rke2/tls/etcd/client.key
+datastore-cafile: /etc/rancher/rke2/tls/etcd/ca.crt
+datastore-certfile: /etc/rancher/rke2/tls/etcd/client.crt
+datastore-keyfile: /etc/rancher/rke2/tls/etcd/client.key
 ```
 
 ---
@@ -136,7 +130,7 @@ journalctl -u rke2-server | grep etcd
 
 # Verify cluster is healthy
 kubectl get nodes
-kubectl get componentstatuses
+kubectl get --raw='/readyz?verbose'
 ```
 
 ---
