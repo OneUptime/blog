@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE2, Kubernetes, Rancher, Monitoring, Observability, Prometheus
 
-Description: Learn how to monitor the health of your RKE2 cluster using built-in tools, Prometheus, Grafana, and OneUptime.
+Description: Learn how to monitor the health of your RKE2 cluster using built-in tools, Prometheus, and Grafana.
 
 ## Introduction
 
@@ -22,14 +22,14 @@ export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
 # Check all node statuses
 kubectl get nodes -o wide
 
-# Check the health of system components
-kubectl get componentstatuses
+# Check the health of API server components
+kubectl get --raw='/readyz?verbose'
 
 # Check all pods across all namespaces
 kubectl get pods --all-namespaces
 
 # Check for any pods that are not running
-kubectl get pods --all-namespaces | grep -v Running | grep -v Completed
+kubectl get pods --all-namespaces --no-headers | grep -v Running | grep -v Completed
 ```
 
 ## Checking API Server Health
@@ -88,20 +88,29 @@ kubectl top pods --all-namespaces --sort-by=memory
 kubectl describe node <NODE_NAME>
 ```
 
-## Deploying the RKE2 Monitoring Stack
+## Deploying the Rancher Monitoring Stack
 
-RKE2 includes a built-in monitoring chart based on kube-prometheus-stack.
+Rancher provides a `rancher-monitoring` chart based on kube-prometheus-stack that works well with RKE2 clusters.
 
 ```bash
-# Install the RKE2 monitoring chart
+# Install the Rancher monitoring chart
 helm repo add rancher-charts https://charts.rancher.io
 helm repo update
 
-# Install kube-prometheus-stack
+# Pick the chart version that matches your Rancher and Kubernetes version.
+MONITORING_CHART_VERSION="109.0.0+up80.9.1-rancher.5"
+
+# Install the CRDs first when installing with Helm directly
+helm install rancher-monitoring-crd rancher-charts/rancher-monitoring-crd \
+    --namespace cattle-monitoring-system \
+    --create-namespace \
+    --version "$MONITORING_CHART_VERSION"
+
+# Install Rancher Monitoring
 helm install rancher-monitoring rancher-charts/rancher-monitoring \
     --namespace cattle-monitoring-system \
     --create-namespace \
-    --version 103.0.0 \
+    --version "$MONITORING_CHART_VERSION" \
     --set prometheus.prometheusSpec.retention=15d \
     --set prometheus.prometheusSpec.retentionSize=10GB \
     --set grafana.adminPassword=admin123
@@ -114,11 +123,11 @@ helm install rancher-monitoring rancher-charts/rancher-monitoring \
 kubectl -n cattle-monitoring-system port-forward \
     svc/rancher-monitoring-grafana 3000:80
 
-# Or get the LoadBalancer IP
+# Or inspect the Grafana Service
 kubectl -n cattle-monitoring-system get svc rancher-monitoring-grafana
 ```
 
-Access Grafana at `http://localhost:3000` with default credentials `admin/admin123`.
+Access Grafana at `http://localhost:3000` with credentials `admin/admin123`.
 
 ## Deploying Prometheus Manually
 
@@ -141,28 +150,33 @@ data:
       # Scrape Kubernetes API server metrics
       - job_name: kubernetes-apiservers
         kubernetes_sd_configs:
-          - role: endpoints
+          - role: endpointslice
         scheme: https
         tls_config:
           ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
         bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
         relabel_configs:
-          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name]
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpointslice_port_name]
             action: keep
-            regex: default;kubernetes
+            regex: default;kubernetes;https
 
-      # Scrape node metrics via node-exporter
+      # Scrape node metrics via a node-exporter Service in the monitoring namespace
       - job_name: node-exporter
         kubernetes_sd_configs:
-          - role: node
+          - role: endpointslice
         relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpointslice_port_name]
+            action: keep
+            regex: monitoring;node-exporter;metrics
+          - source_labels: [__meta_kubernetes_endpointslice_endpoint_node_name]
+            target_label: node
           - action: labelmap
-            regex: __meta_kubernetes_node_label_(.+)
+            regex: __meta_kubernetes_service_label_(.+)
 ```
 
 ## Setting Up Alerts
 
-Create Prometheus alert rules for critical cluster conditions:
+When using Rancher Monitoring or another Prometheus Operator deployment, create Prometheus alert rules for critical cluster conditions:
 
 ```yaml
 # cluster-alerts.yaml
@@ -246,7 +260,7 @@ curl -sk https://localhost:6443/livez && echo " [OK]" || echo " [FAILED]"
 
 echo ""
 echo "=== Failed Pods ==="
-$KUBECTL get pods --all-namespaces | grep -v Running | grep -v Completed | grep -v Pending
+$KUBECTL get pods --all-namespaces --no-headers | grep -v Running | grep -v Completed | grep -v Pending
 ```
 
 ```bash
@@ -256,4 +270,4 @@ sudo ./rke2-health-check.sh
 
 ## Conclusion
 
-Monitoring RKE2 cluster health requires a layered approach: starting with kubectl for immediate visibility, using etcdctl for data store health, and deploying Prometheus with alerting rules for proactive monitoring. The combination of built-in health endpoints, the RKE2 monitoring stack, and custom alert rules gives you comprehensive visibility into your cluster's state. Set up automated alerts so you can respond to issues before they impact workloads.
+Monitoring RKE2 cluster health requires a layered approach: starting with kubectl for immediate visibility, using etcdctl for data store health, and deploying Prometheus with alerting rules for proactive monitoring. The combination of built-in health endpoints, the Rancher Monitoring stack, and custom alert rules gives you comprehensive visibility into your cluster's state. Set up automated alerts so you can respond to issues before they impact workloads.
