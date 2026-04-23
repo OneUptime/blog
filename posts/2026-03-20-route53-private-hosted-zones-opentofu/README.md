@@ -8,7 +8,7 @@ Description: Learn how to configure Route 53 private hosted zones with OpenTofu 
 
 ## Introduction
 
-Route 53 private hosted zones provide DNS resolution that is only visible within associated VPCs. They enable internal service discovery (services resolving each other by name), split-horizon DNS (different answers for internal vs. external queries), and custom DNS names for VPC endpoints. Unlike public hosted zones, private zones are invisible to the public internet and can use any valid DNS namespace including non-routable names like `.internal` or `.local`.
+Route 53 private hosted zones provide DNS resolution that is only visible within associated VPCs. They enable internal service discovery (services resolving each other by name), split-horizon DNS (different answers for internal vs. external queries), and custom DNS names for VPC endpoints. Unlike public hosted zones, private zones are invisible to the public internet and can use internal DNS namespaces like `.internal`; avoid `.local`, which is reserved for multicast DNS.
 
 ## Prerequisites
 
@@ -40,9 +40,11 @@ resource "aws_route53_zone" "internal" {
     Environment = var.environment
   }
 
-  # Prevent destroying the zone if records exist
+  # Allow additional aws_route53_zone_association resources without VPC association diffs
+  # and prevent accidental destruction of the private zone
   lifecycle {
     prevent_destroy = true
+    ignore_changes   = [vpc]
   }
 }
 ```
@@ -117,8 +119,9 @@ resource "aws_route53_vpc_association_authorization" "cross_account" {
 # In the other account, accept the authorization
 # resource "aws_route53_zone_association" "cross_account_accept" {
 #   provider = aws.cross_account
-#   zone_id  = var.internal_zone_id
-#   vpc_id   = var.cross_account_vpc_id
+#   zone_id    = var.internal_zone_id
+#   vpc_id     = var.cross_account_vpc_id
+#   vpc_region = var.cross_account_region
 # }
 ```
 
@@ -177,10 +180,10 @@ dig api.myproject.internal
 nslookup db.myproject.internal
 
 # Check zone associations
-aws route53 list-vpc-association-authorizations \
-  --hosted-zone-id <zone-id>
+aws route53 get-hosted-zone \
+  --id <zone-id>
 ```
 
 ## Conclusion
 
-Private hosted zones use the VPC's DNS resolver (at the VPC CIDR + 2 address, e.g., `10.0.0.2`), so `enableDnsHostnames` and `enableDnsSupport` must be enabled on associated VPCs. For split-horizon DNS, the private zone takes precedence for queries from associated VPCs. When associating VPCs across accounts, the authorization process requires coordination between both accounts-use Terraform's cross-provider configuration to manage this cleanly. Keep TTLs low (30-60 seconds) on service discovery records to enable rapid updates during deployments.
+Private hosted zones use the VPC's DNS resolver (at the VPC CIDR + 2 address, e.g., `10.0.0.2`), so `enableDnsHostnames` and `enableDnsSupport` must be enabled on associated VPCs. For split-horizon DNS, the private zone takes precedence for queries from associated VPCs. When associating VPCs across accounts, the authorization process requires coordination between both accounts-use OpenTofu provider aliases to manage this cleanly. Keep TTLs low (30-60 seconds) on service discovery records to enable rapid updates during deployments.
