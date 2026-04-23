@@ -15,6 +15,8 @@ F5 BIG-IP is a common choice in enterprise environments for load balancing Ranch
 - F5 BIG-IP LTM (version 14.x or later)
 - Access to F5 management interface (TMSH or GUI)
 - Running Rancher HA cluster (3 nodes)
+- Rancher installed for external TLS termination (`--set tls=external`)
+- If Rancher is running on RKE2 with ingress-nginx, `use-forwarded-headers: "true"` enabled
 - TLS certificate imported into F5
 - F5 admin credentials
 
@@ -23,16 +25,13 @@ F5 BIG-IP is a common choice in enterprise environments for load balancing Ranch
 ```tcl
 # TMSH commands for F5 configuration
 
-# Create HTTPS health monitor for Rancher
+# Create HTTP health monitor for Rancher when TLS terminates on F5
 
-tmsh create ltm monitor https rancher_https_monitor {
-    defaults-from https
+tmsh create ltm monitor http rancher_http_monitor {
+    defaults-from http
     interval 10
     timeout 31
-    send "GET /ping HTTP/1.1\r\nHost: rancher.example.com\r\nConnection: Close\r\n\r\n"
-    recv "pong"
-    recv-disable ""
-    ssl-profile /Common/serverssl
+    send "GET /healthz HTTP/1.1\r\nHost: rancher.example.com\r\nConnection: Close\r\n\r\n"
 }
 ```
 
@@ -48,18 +47,18 @@ tmsh create ltm node rancher-03 address 10.0.0.13
 # (Nodes are shared across pools)
 ```
 
-## Step 3: Create Pool for Rancher HTTPS
+## Step 3: Create Pool for Rancher Web Traffic
 
 ```tcl
 # Create pool for Rancher web traffic
-tmsh create ltm pool rancher_https_pool {
+tmsh create ltm pool rancher_http_pool {
     members {
-        rancher-01:443 { address 10.0.0.11 }
-        rancher-02:443 { address 10.0.0.12 }
-        rancher-03:443 { address 10.0.0.13 }
+        rancher-01:80 { address 10.0.0.11 }
+        rancher-02:80 { address 10.0.0.12 }
+        rancher-03:80 { address 10.0.0.13 }
     }
     load-balancing-mode least-connections-member
-    monitor rancher_https_monitor
+    monitor rancher_http_monitor
     service-down-action none
 }
 
@@ -86,19 +85,11 @@ tmsh create ltm pool rke2_register_pool {
 }
 ```
 
-## Step 4: Configure SSL Profile
+## Step 4: Configure SSL and HTTP Profiles
 
 ```tcl
 # Import certificate and key to F5
 # (Use GUI to import, or use TMSH with base64-encoded cert)
-
-# Create server SSL profile for backend connections to Rancher
-tmsh create ltm profile server-ssl rancher_server_ssl {
-    defaults-from serverssl
-    # Disable certificate verification if using self-signed
-    authenticate once
-    peer-cert-mode ignore
-}
 
 # Create client SSL profile for frontend (client to F5)
 tmsh create ltm profile client-ssl rancher_client_ssl {
@@ -114,38 +105,28 @@ tmsh create ltm profile client-ssl rancher_client_ssl {
     options { no-sslv3 no-tlsv1 no-tlsv1.1 }
     ciphers "ECDHE+AES128+AESGCM:ECDHE+AES256+AESGCM"
 }
+
+# Create HTTP profile for Rancher and preserve client IPs in X-Forwarded-For
+tmsh create ltm profile http rancher_http {
+    defaults-from http
+    insert-xforwarded-for enabled
+}
+
+# Enable HTTP/2 for clients that negotiate it on the frontend
+tmsh create ltm profile http2 rancher_http2 {
+    defaults-from http2
+}
 ```
 
-## Step 5: Create iRule for WebSocket Handling
+## Step 5: Create iRule for Forwarded Headers and Long-Lived Connections
 
 ```tcl
-# iRule: handle WebSocket upgrades and long connections
-when HTTP_REQUEST {
-    # Detect WebSocket upgrade
-    if { [HTTP::header "Upgrade"] eq "websocket" } {
-        # Use source affinity for WebSocket connections
-        persist source_addr 3600
-    }
-
-    # Set extended timeout for long-lived connections
-    TCP::idletime 3600
-}
-
-when HTTP_RESPONSE {
-    # Pass through WebSocket upgrade responses
-    if { [HTTP::header "Upgrade"] eq "websocket" } {
-        # WebSocket connection established
-        log local0. "WebSocket connection: [IP::remote_addr]"
-    }
-}
-
-# Create the iRule
-tmsh create ltm rule rancher_websocket_irule {
+# Add the proxy headers Rancher requires for external TLS termination
+tmsh create ltm rule rancher_headers_irule {
     when HTTP_REQUEST {
-        if { [HTTP::header "Upgrade"] eq "websocket" } {
-            persist source_addr 3600
-        }
-        TCP::idletime 3600
+        HTTP::header replace X-Forwarded-Proto "https"
+        HTTP::header replace X-Forwarded-Port "443"
+        TCP::idletime 1800
     }
 }
 ```
@@ -157,16 +138,16 @@ tmsh create ltm rule rancher_websocket_irule {
 tmsh create ltm virtual rancher_https_vs {
     destination 10.0.0.100:443
     ip-protocol tcp
-    pool rancher_https_pool
+    pool rancher_http_pool
     profiles {
         rancher_client_ssl { context clientside }
-        rancher_server_ssl { context serverside }
-        http {}
+        rancher_http {}
+        rancher_http2 { context clientside }
         websocket {}
         tcp {}
     }
     rules {
-        rancher_websocket_irule
+        rancher_headers_irule
     }
     source-address-translation {
         type automap
@@ -214,18 +195,15 @@ tmsh create ltm virtual rke2_register_vs {
 ## Step 7: Enable Connection Persistence
 
 ```tcl
-# Create source address persistence profile for WebSocket
+# Create source address persistence profile for Rancher UI traffic
 tmsh create ltm persistence source-addr rancher_src_persistence {
     defaults-from source_addr
-    timeout 3600
-    match-across-services enabled
+    timeout 1800
 }
 
 # Apply to the virtual server
 tmsh modify ltm virtual rancher_https_vs {
-    persist {
-        rancher_src_persistence { default yes }
-    }
+    persist replace-all-with { rancher_src_persistence }
 }
 ```
 
@@ -236,15 +214,15 @@ tmsh modify ltm virtual rancher_https_vs {
 tmsh save sys config
 
 # Check pool member status
-tmsh show ltm pool rancher_https_pool
+tmsh show ltm pool rancher_http_pool
 
 # Check virtual server statistics
 tmsh show ltm virtual rancher_https_vs
 
 # Test from F5 shell
-curl -sk https://10.0.0.100/ping
+curl -sk -H 'Host: rancher.example.com' https://10.0.0.100/healthz
 ```
 
 ## Conclusion
 
-F5 BIG-IP provides enterprise-grade capabilities for Rancher HA, including advanced health monitoring, iRule scripting for WebSocket handling, and SSL offloading with hardware acceleration. The WebSocket iRule ensures that long-lived cluster agent connections remain stable, and source persistence prevents WebSocket connection interruptions during load balancing decisions. For enterprises already invested in F5 infrastructure, this approach leverages existing tooling and expertise while delivering the reliability expected in mission-critical environments.
+F5 BIG-IP provides enterprise-grade capabilities for Rancher HA, including health monitoring, proxy header insertion for external TLS termination, HTTP/2 and WebSocket support, and source persistence for long-lived connections. When Rancher TLS is terminated on F5, send Rancher UI traffic to backend port 80 with the required forwarded headers, while keeping the RKE2 control-plane ports (`6443` and `9345`) as TCP pass-through services. For enterprises already invested in F5 infrastructure, this approach leverages existing tooling and expertise while delivering the reliability expected in mission-critical environments.
