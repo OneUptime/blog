@@ -64,9 +64,15 @@ resource "aws_instance" "web" {
 }
 
 resource "aws_db_instance" "main" {
-  instance_class = local.is_production ? "db.r5.large" : "db.t3.micro"
-  multi_az       = local.is_production
-  tags           = merge(local.common_tags, { Name = "${local.name_prefix}-db" })
+  allocated_storage   = local.is_production ? 100 : 20
+  engine              = "postgres"
+  instance_class      = local.is_production ? "db.r5.large" : "db.t3.micro"
+  db_name             = "app"
+  username            = var.db_username
+  password            = var.db_password
+  skip_final_snapshot = true
+  multi_az            = local.is_production
+  tags                = merge(local.common_tags, { Name = "${local.name_prefix}-db" })
 }
 ```
 
@@ -86,7 +92,7 @@ locals {
   is_production = local.environment == "prod"
 
   # Built from multiple computed values
-  enable_ha     = local.is_production || var.force_ha
+  enable_ha      = local.is_production || var.force_ha
   instance_count = local.enable_ha ? 3 : 1
 
   # Complex computation using other locals
@@ -99,12 +105,24 @@ locals {
   )
 }
 
-# Use deeply computed local
+resource "aws_launch_template" "web" {
+  name_prefix   = "${local.name_prefix}-"
+  image_id      = var.ami_id
+  instance_type = local.instance_type
+}
+
+# Use deeply computed locals
 resource "aws_autoscaling_group" "web" {
-  min_size         = local.enable_ha ? 2 : 1
-  max_size         = local.is_production ? 10 : 3
-  desired_capacity = local.instance_count
-  name             = "${local.name_prefix}-asg"
+  min_size           = local.enable_ha ? 2 : 1
+  max_size           = local.is_production ? 10 : 3
+  desired_capacity   = local.instance_count
+  name               = "${local.name_prefix}-asg"
+  availability_zones = var.availability_zones
+
+  launch_template {
+    id      = aws_launch_template.web.id
+    version = "$Latest"
+  }
 }
 ```
 
@@ -112,12 +130,18 @@ resource "aws_autoscaling_group" "web" {
 
 ```hcl
 locals {
+  name_prefix = "myapp-prod"
+
   # Define ingress rules as a local
   ingress_rules = [
     { port = 80,  protocol = "tcp", cidr = "0.0.0.0/0" },
     { port = 443, protocol = "tcp", cidr = "0.0.0.0/0" },
     { port = 8080, protocol = "tcp", cidr = "10.0.0.0/8" },
   ]
+}
+
+resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
 }
 
 resource "aws_security_group" "web" {
@@ -149,8 +173,10 @@ resource "aws_security_group" "web" {
 
 ```hcl
 locals {
+  environment = var.environment
+
   common_tags = {
-    Environment = var.environment
+    Environment = local.environment
     ManagedBy   = "OpenTofu"
   }
 
@@ -169,4 +195,4 @@ module "vpc" {
 
 ## Conclusion
 
-Referencing local values with `local.<name>` is straightforward, but the power lies in how locals enable you to define a value once and reference it consistently throughout your configuration. This means a single change to a local - like updating the naming convention or tag standards - propagates automatically to all resources that reference it. Use locals aggressively for any value used more than once or any computed value that benefits from a descriptive name.
+Referencing local values with `local.<name>` is straightforward, but the power lies in how locals enable you to define a value once and reference it consistently throughout your configuration. This means a single change to a local - like updating the naming convention or tag standards - propagates automatically to all resources that reference it. Use locals thoughtfully for values used more than once or any computed value that benefits from a descriptive name.
