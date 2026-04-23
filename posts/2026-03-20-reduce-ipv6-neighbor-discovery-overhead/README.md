@@ -30,16 +30,13 @@ net.ipv6.neigh.default.gc_thresh3 = 8192
 # How long (seconds) before a neighbor entry is considered stale
 net.ipv6.neigh.default.gc_stale_time = 60
 
-# Interval (ms) between GC runs
-net.ipv6.neigh.default.gc_interval = 30000
-
 # How long to keep a confirmed neighbor (base reachability time ms)
 net.ipv6.neigh.default.base_reachable_time_ms = 30000
 
-# Delay (ms) between Neighbor Solicitations
-net.ipv6.neigh.default.delay_first_probe_time = 5000
+# Delay (seconds) before probing a stale neighbor
+net.ipv6.neigh.default.delay_first_probe_time = 5
 
-# Number of NS retransmissions before marking unreachable
+# Maximum unicast and multicast Neighbor Solicitation probes
 net.ipv6.neigh.default.ucast_solicit = 3
 net.ipv6.neigh.default.mcast_solicit = 3
 ```
@@ -56,13 +53,13 @@ On servers with static network configuration, router solicitations are wasteful.
 
 ```bash
 # Disable router solicitations on a specific interface
-sysctl net.ipv6.conf.eth0.router_solicitations=0
+sudo sysctl net.ipv6.conf.eth0.router_solicitations=0
 
 # Accept RA messages only if needed (set to 0 for static config)
-sysctl net.ipv6.conf.eth0.accept_ra=0
+sudo sysctl net.ipv6.conf.eth0.accept_ra=0
 
 # Persist settings
-cat >> /etc/sysctl.d/99-ndp-tuning.conf <<EOF
+sudo tee -a /etc/sysctl.d/99-ndp-tuning.conf > /dev/null <<'EOF'
 net.ipv6.conf.eth0.router_solicitations = 0
 net.ipv6.conf.eth0.accept_ra = 0
 EOF
@@ -75,19 +72,19 @@ DAD sends Neighbor Solicitations before using a new address. On trusted internal
 ```bash
 # Reduce DAD transmissions (default is 1, set to 0 to disable)
 # 0 disables DAD - only appropriate on trusted, isolated networks
-net.ipv6.conf.eth0.dad_transmits = 0
+sudo sysctl net.ipv6.conf.eth0.dad_transmits=0
 
 # Or reduce to a single transmission
-net.ipv6.conf.eth0.dad_transmits = 1
+sudo sysctl net.ipv6.conf.eth0.dad_transmits=1
 ```
 
-## Step 4: Suppress Multicast Listener Reports on Links with No Multicast Routers
+## Step 4: Keep Multicast Forwarding Disabled on Hosts
 
 ```bash
-# Disable MLD (Multicast Listener Discovery) reports on non-multicast links
-sysctl net.ipv6.conf.eth0.mc_forwarding=0
+# Keep multicast routing disabled unless this host is acting as a multicast router
+sudo sysctl net.ipv6.conf.eth0.mc_forwarding=0
 
-# Check current MLD state
+# Check current multicast group memberships
 ip -6 maddr show dev eth0
 ```
 
@@ -99,7 +96,7 @@ sudo tcpdump -i eth0 -n \
   "icmp6 and (ip6[40] == 133 or ip6[40] == 134 or ip6[40] == 135 or ip6[40] == 136)"
 # Types: 133=RS, 134=RA, 135=NS, 136=NA
 
-# Count NDP message rates per second
+# Count NS/NA message rates per second (requires pv)
 sudo tcpdump -i eth0 -n -l \
   "icmp6 and (ip6[40] == 135 or ip6[40] == 136)" 2>/dev/null | \
   pv -l -i 1 > /dev/null
@@ -117,7 +114,7 @@ For gateways and frequently-accessed hosts, static ND entries eliminate solicita
 
 ```bash
 # Add a permanent neighbor entry
-ip -6 neigh add 2001:db8::1 lladdr aa:bb:cc:dd:ee:ff dev eth0
+sudo ip -6 neigh add 2001:db8::1 lladdr aa:bb:cc:dd:ee:ff dev eth0 nud permanent
 
 # Verify
 ip -6 neigh show dev eth0 | grep "PERMANENT"
