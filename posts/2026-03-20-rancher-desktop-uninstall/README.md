@@ -2,162 +2,172 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher Desktop, Uninstall, Cleanup, macOS, Window
+Tags: Rancher Desktop, Uninstall, Cleanup, macOS, Windows
 
-Description: Completely remove Rancher Desktop and all associated data, configurations, and virtual machines from your system.
+Description: Completely remove Rancher Desktop and all associated data, configurations, and platform-specific runtime state from your system.
 
 ## Introduction
 
-Rancher Desktop is an open-source desktop application that provides Kubernetes and container management tools for local development. It bundles kubectl, Helm, nerdctl, and either containerd or Moby (dockerd) into a single, easy-to-use application. This guide covers How to Uninstall Rancher Desktop Completely in detail.
+Rancher Desktop is an open-source desktop application that provides Kubernetes and container management tools for local development. To uninstall it completely, you should remove the application itself, reset the Rancher Desktop cluster and settings, and clean up any remaining host-side data and deployment profiles.
 
 ## Prerequisites
 
 - A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
-- At least 8 GB of RAM (16 GB recommended)
-- At least 4 CPU cores
+- Permissions to shut down and uninstall Rancher Desktop
+- A backup of any images, containers, Kubernetes workloads, or settings you want to keep
 
 ## Overview
 
-Rancher Desktop simplifies local Kubernetes and container development by providing:
+A complete Rancher Desktop uninstall usually includes:
 
-- A local Kubernetes cluster (k3s-based)
-- Container runtime (containerd or dockerd)
-- Integrated CLI tools (kubectl, helm, nerdctl, docker)
-- Simple configuration through a GUI
+- Shutting down Rancher Desktop
+- Running a Factory Reset to remove the cluster and Rancher Desktop settings
+- Uninstalling the application or package
+- Deleting any remaining host-side data directories
+- Removing deployment profiles, which are not removed by a factory reset or uninstall
 
-## Step 1: Initial Setup
+## Step 1: Shut Down Rancher Desktop
 
 ```bash
-# Verify Rancher Desktop is installed and running
-
+# Verify rdctl is installed
 rdctl version
 
-# Check Kubernetes cluster status
-kubectl cluster-info
-
-# Verify container runtime
-nerdctl version
-# or
-docker version
+# Shut down Rancher Desktop cleanly
+rdctl shutdown
 ```
 
-## Step 2: Configuration
+If `rdctl shutdown` fails because Rancher Desktop is not running, quit the app from its window or tray/menu bar icon before continuing.
 
-Open Rancher Desktop Preferences to configure:
+## Step 2: Factory Reset Rancher Desktop
 
-- **Kubernetes**: Version and enabled/disabled state
-- **Container Engine**: containerd or moby (dockerd)
-- **Virtual Machine**: CPU, memory, and disk allocation
-- **WSL** (Windows only): WSL2 integration settings
+Open Rancher Desktop and go to **Troubleshooting**. Click **Factory Reset** and confirm the reset.
+
+According to the official documentation, a Factory Reset removes the cluster and all other Rancher Desktop settings, then closes Rancher Desktop. If you want a clean uninstall, do the reset before removing the application itself.
+
+## Step 3: Uninstall Rancher Desktop
+
+### On macOS
+
+1. Open Finder > Applications.
+2. Find Rancher Desktop.
+3. Select it and choose File > Move to Trash.
+4. Empty Trash.
+
+### On Windows
+
+1. Open Settings > Apps > Apps & features.
+2. Find and select Rancher Desktop.
+3. Click Uninstall and confirm.
+4. Follow the uninstaller prompts and click Finish.
+
+### On Linux
+
+Use the uninstall steps that match how Rancher Desktop was installed.
 
 ```bash
-# Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
-rdctl set --container-engine containerd
+# Debian / Ubuntu (.deb)
+sudo apt remove --autoremove rancher-desktop
+sudo rm /etc/apt/sources.list.d/isv-rancher-stable.list
+sudo rm /usr/share/keyrings/isv-rancher-stable-archive-keyring.gpg
+sudo apt update
+
+# openSUSE (.rpm)
+sudo zypper remove --clean-deps rancher-desktop
+sudo zypper removerepo isv_Rancher_stable
+
+# Fedora (.rpm)
+sudo dnf remove rancher-desktop
+sudo rm '/etc/yum.repos.d/isv:Rancher:stable.repo'
 ```
 
-## Step 3: Working with Containers
+If you installed Rancher Desktop as an AppImage, delete the AppImage file.
+
+## Step 4: Remove Remaining Data and Configuration
+
+After the application is removed, delete any remaining Rancher Desktop data directories if they still exist.
 
 ```bash
-# Pull an image
-nerdctl pull nginx:latest
-# or with docker compatibility
-docker pull nginx:latest
+# macOS
+rm -rf "$HOME/Library/Application Support/rancher-desktop"
 
-# Run a container
-nerdctl run -d -p 8080:80 --name my-nginx nginx:latest
+# Linux
+rm -rf "$HOME/.local/share/rancher-desktop"
 
-# List running containers
-nerdctl ps
-
-# View container logs
-nerdctl logs my-nginx
-
-# Stop and remove
-nerdctl stop my-nginx
-nerdctl rm my-nginx
+# macOS / Linux bundled CLI utilities
+rm -rf "$HOME/.rd/bin"
 ```
 
-## Step 4: Working with Kubernetes
+On Windows, delete `%LOCALAPPDATA%\rancher-desktop` if it still exists.
 
-```bash
-# Check cluster nodes
-kubectl get nodes
+If you configured deployment profiles, remove those as well. Rancher Desktop's official docs note that deployment profiles are not modified or removed by a factory reset or uninstall.
 
-# Deploy a test application
-kubectl create deployment hello-world \
-  --image=nginx:latest
+```powershell
+# Windows user profile
+reg delete "HKCU\Software\Policies\Rancher Desktop" /f
 
-# Expose the deployment
-kubectl expose deployment hello-world \
-  --port=80 \
-  --type=NodePort
-
-# Check the service
-kubectl get svc hello-world
-
-# Forward local port to the service
-kubectl port-forward svc/hello-world 8080:80 &
-
-# Test the application
-curl http://localhost:8080
-
-# Clean up
-kubectl delete deployment hello-world
-kubectl delete svc hello-world
+# Windows machine-wide profile
+reg delete "HKLM\Software\Policies\Rancher Desktop" /f
 ```
 
-## Step 5: Using Helm
-
 ```bash
-# Rancher Desktop includes Helm
-helm version
+# macOS user profiles
+rm -f "$HOME/Library/Preferences/io.rancherdesktop.profile.defaults.plist"
+rm -f "$HOME/Library/Preferences/io.rancherdesktop.profile.locked.plist"
 
-# Add a chart repository
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm repo update
+# macOS system profiles
+sudo rm -f "/Library/Managed Preferences/io.rancherdesktop.profile.defaults.plist"
+sudo rm -f "/Library/Managed Preferences/io.rancherdesktop.profile.locked.plist"
+sudo rm -f "/Library/Preferences/io.rancherdesktop.profile.defaults.plist"
+sudo rm -f "/Library/Preferences/io.rancherdesktop.profile.locked.plist"
 
-# Install a chart
-helm install my-release bitnami/nginx
+# Linux user profiles
+rm -f "$HOME/.config/rancher-desktop.defaults.json"
+rm -f "$HOME/.config/rancher-desktop.locked.json"
 
-# List installed releases
-helm list
-
-# Uninstall
-helm uninstall my-release
+# Linux system profiles
+sudo rm -f /etc/rancher-desktop/defaults.json
+sudo rm -f /etc/rancher-desktop/locked.json
+sudo rm -f /usr/etc/rancher-desktop/defaults.json
+sudo rm -f /usr/etc/rancher-desktop/locked.json
 ```
 
-## Common Configuration Tasks
+## Step 5: Verify Removal
 
 ```bash
-# Reset Kubernetes cluster
-rdctl factory-reset
+# macOS / Linux: rdctl should no longer be available
+command -v rdctl || echo "rdctl removed"
 
-# Check Rancher Desktop status
-rdctl status
+# Linux data directory
+test ! -d "$HOME/.local/share/rancher-desktop" && echo "Linux data removed"
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
+# macOS data directory
+test ! -d "$HOME/Library/Application Support/rancher-desktop" && echo "macOS data removed"
 
-# Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+# macOS / Linux utility directory
+test ! -d "$HOME/.rd/bin" && echo "~/.rd/bin removed"
+```
+
+On Windows, confirm Rancher Desktop no longer appears in Apps & features and that `%LOCALAPPDATA%\rancher-desktop` and any Rancher Desktop policy keys have been removed.
+
+## Common Cleanup Tasks
+
+```bash
+# Show Rancher Desktop settings before you reset or uninstall
+rdctl list-settings
+
+# Check for Rancher Desktop utility links on macOS / Linux
+ls "$HOME/.rd/bin"
+
+# Search common shell startup files for Rancher Desktop PATH entries
+grep -n '\.rd/bin' "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile" 2>/dev/null
 ```
 
 ## Troubleshooting
 
-```bash
-# Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+If a reinstall still picks up old locked settings, deployment profiles were not removed. Rancher Desktop's deployment profile documentation explicitly states that those profiles are not affected by a factory reset or uninstall.
 
-# Reset to factory defaults
-rdctl factory-reset
-
-# Check virtual machine status
-rdctl list-settings | grep -i vm
-```
+If commands such as `docker`, `kubectl`, `nerdctl`, or `helm` still resolve to Rancher Desktop after uninstalling on macOS or Linux, remove any remaining `~/.rd/bin` entry from your shell startup files.
 
 ## Conclusion
 
-How to Uninstall Rancher Desktop Completely with Rancher Desktop provides a powerful, integrated local development experience. Rancher Desktop eliminates the need for multiple separate tools by bundling everything needed for Kubernetes and container development into a single application. Whether you're building microservices, testing Helm charts, or learning Kubernetes, Rancher Desktop provides a production-like environment on your local machine.
+To uninstall Rancher Desktop completely, shut it down, factory-reset it, uninstall the application, and remove any remaining host-side data and deployment profiles. This leaves you with a clean slate for reinstalling Rancher Desktop or switching to another local Kubernetes and container setup.
