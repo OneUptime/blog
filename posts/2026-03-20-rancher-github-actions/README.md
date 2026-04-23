@@ -21,10 +21,10 @@ GitHub Actions is the native CI/CD platform for GitHub repositories. Integrating
 ```bash
 # Generate a kubeconfig for the target cluster
 
-curl -sk -X POST \
+curl -sS -X POST \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
   "https://rancher.example.com/v3/clusters/<cluster-id>?action=generateKubeconfig" \
-  | jq -r .config | base64 -w 0
+  | jq -r .config | base64 | tr -d '\n'
 # → Copy this base64 output
 ```
 
@@ -47,6 +47,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -54,8 +57,12 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
+      image-ref: ${{ steps.meta.outputs.tags }}
+      image-tag: ${{ steps.meta.outputs.version }}
       image-digest: ${{ steps.build-push.outputs.digest }}
 
     steps:
@@ -99,7 +106,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v5
         with:
           version: 'v1.29.0'
 
@@ -110,16 +117,17 @@ jobs:
 
       - name: Deploy to staging
         run: |
-          IMAGE_TAG=$(echo "${{ needs.build.outputs.image-tag }}" | head -1)
           kubectl set image deployment/myapp \
-            myapp="${IMAGE_TAG}" \
+            myapp="${{ needs.build.outputs.image-ref }}" \
             -n staging
           kubectl rollout status deployment/myapp \
             -n staging \
             --timeout=5m
 
   deploy-production:
-    needs: deploy-staging
+    needs:
+      - build
+      - deploy-staging
     runs-on: ubuntu-latest
     environment:
       name: production
@@ -129,7 +137,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v5
         with:
           version: 'v1.29.0'
 
@@ -140,9 +148,8 @@ jobs:
 
       - name: Deploy to production
         run: |
-          IMAGE_TAG=$(echo "${{ needs.build.outputs.image-tag }}" | head -1)
           kubectl set image deployment/myapp \
-            myapp="${IMAGE_TAG}" \
+            myapp="${{ needs.build.outputs.image-ref }}" \
             -n production
           kubectl rollout status deployment/myapp \
             -n production \
@@ -159,20 +166,20 @@ jobs:
       --namespace production \
       --create-namespace \
       --set image.repository=ghcr.io/${{ github.repository }} \
-      --set image.tag=${{ github.sha }} \
-      --atomic \
+      --set image.tag=${{ needs.build.outputs.image-tag }} \
+      --rollback-on-failure \
       --timeout 5m \
       --kubeconfig /tmp/kubeconfig
 ```
 
 ## Step 4: Use OIDC for Keyless Authentication (AWS/GCP/Azure)
 
-For cloud-hosted Rancher clusters, use OIDC federation to avoid storing static credentials:
+For Rancher-managed clusters running on EKS, GKE, or AKS, use your cloud provider's OIDC federation to avoid storing static cloud credentials. In GitHub Actions, make sure the workflow or job has `permissions: id-token: write`.
 
 ```yaml
 # For AWS EKS clusters - uses OIDC to assume an IAM role
 - name: Configure AWS credentials
-  uses: aws-actions/configure-aws-credentials@v4
+  uses: aws-actions/configure-aws-credentials@v6
   with:
     role-to-assume: arn:aws:iam::ACCOUNT:role/GitHubActionsRole
     aws-region: us-east-1
@@ -191,7 +198,7 @@ For cloud-hosted Rancher clusters, use OIDC federation to avoid storing static c
   run: |
     # Deploy a test job
     kubectl create job integration-test-${{ github.run_id }} \
-      --image=ghcr.io/${{ github.repository }}:${{ github.sha }} \
+      --image=${{ needs.build.outputs.image-ref }} \
       -n test \
       -- ./run-tests.sh
 
@@ -213,14 +220,12 @@ For cloud-hosted Rancher clusters, use OIDC federation to avoid storing static c
 ```yaml
 - name: Notify Slack on success
   if: success()
-  uses: slackapi/slack-github-action@v1.26
+  uses: slackapi/slack-github-action@v3
   with:
+    webhook: ${{ secrets.SLACK_WEBHOOK }}
+    webhook-type: incoming-webhook
     payload: |
-      {
-        "text": "✅ Deployed ${{ github.repository }}@${{ github.sha }} to production"
-      }
-  env:
-    SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+      text: "✅ Deployed ${{ github.repository }}@${{ github.sha }} to production"
 ```
 
 ## Conclusion
