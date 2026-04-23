@@ -8,12 +8,12 @@ Description: Deploy a production-ready MySQL database on Rancher-managed Kuberne
 
 ## Introduction
 
-MySQL is one of the world's most popular relational databases. Deploying MySQL on Rancher-managed Kubernetes clusters enables you to benefit from Kubernetes orchestration-automatic restarts, health checks, and scaling-while maintaining your existing MySQL workloads. This guide covers deploying MySQL using the Bitnami Helm chart with persistent storage and high availability.
+MySQL is one of the world's most popular relational databases. Deploying MySQL on Rancher-managed Kubernetes clusters enables you to benefit from Kubernetes orchestration-automatic restarts, health checks, and scaling-while maintaining your existing MySQL workloads. This guide covers deploying MySQL using the Bitnami Helm chart with persistent storage, replication, and monitoring.
 
 ## Prerequisites
 
-- Rancher-managed Kubernetes cluster
-- Helm 3.x installed
+- Rancher-managed Kubernetes 1.23+ cluster
+- Helm 3.8+ installed
 - A StorageClass for persistent volumes
 - kubectl with namespace admin access
 
@@ -33,6 +33,8 @@ helm search repo bitnami/mysql
 
 ```yaml
 # mysql-values.yaml - Production MySQL configuration
+architecture: replication
+
 auth:
   # Root password - use a strong password in production
   rootPassword: "MyStr0ngRootP@ss"
@@ -81,14 +83,6 @@ metrics:
     namespace: cattle-monitoring-system
     labels:
       release: rancher-monitoring
-
-# Backup configuration
-backup:
-  enabled: true
-  cronjob:
-    schedule: "0 2 * * *"  # Daily at 2 AM
-    storage:
-      size: 50Gi
 ```
 
 ## Step 3: Deploy MySQL
@@ -120,25 +114,28 @@ kubectl get pvc -n databases
 ## Step 4: Verify MySQL is Running
 
 ```bash
+# Read the root password from the Kubernetes Secret created earlier
+export MYSQL_ROOT_PASSWORD=$(kubectl get secret -n databases mysql-passwords -o jsonpath="{.data.mysql-root-password}" | base64 --decode)
+
 # Connect to MySQL primary
 kubectl exec -n databases -it $(kubectl get pod -n databases -l app.kubernetes.io/component=primary -o name | head -1) -- \
-  mysql -u root -p
+  mysql -u root -p"${MYSQL_ROOT_PASSWORD}"
 
 # Test query inside the container
 kubectl exec -n databases -it mysql-primary-0 -- \
-  mysql -u root -p${MYSQL_ROOT_PASSWORD} -e "SHOW DATABASES;"
+  mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "SHOW DATABASES;"
 
 # Check replication status
 kubectl exec -n databases mysql-secondary-0 -- \
-  mysql -u root -p${MYSQL_ROOT_PASSWORD} -e "SHOW SLAVE STATUS\G" 2>/dev/null
+  mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "SHOW REPLICA STATUS\G" 2>/dev/null
 ```
 
 ## Step 5: Create a PersistentVolumeClaim
 
-For more control over storage:
+If you want to bind the primary instance to an existing PVC, create it first and reference it from `primary.persistence.existingClaim`:
 
 ```yaml
-# mysql-pvc.yaml - Dedicated PVC for MySQL
+# mysql-pvc.yaml - Dedicated PVC for MySQL primary data
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -151,26 +148,17 @@ spec:
   resources:
     requests:
       storage: 50Gi
+---
+# mysql-values.yaml
+primary:
+  persistence:
+    enabled: true
+    existingClaim: mysql-data
 ```
 
 ## Step 6: Configure MySQL for Application Access
 
-```yaml
-# mysql-service.yaml - Expose MySQL for applications
-apiVersion: v1
-kind: Service
-metadata:
-  name: mysql-primary
-  namespace: databases
-spec:
-  selector:
-    app.kubernetes.io/name: mysql
-    app.kubernetes.io/component: primary
-  ports:
-    - port: 3306
-      targetPort: 3306
-  type: ClusterIP
-```
+The Bitnami chart creates a `mysql-primary` ClusterIP Service automatically when `architecture: replication` is enabled, so applications can use it directly.
 
 Application connection configuration:
 
@@ -182,7 +170,7 @@ metadata:
   name: app-db-config
   namespace: production
 data:
-  DB_HOST: "mysql-primary.databases.svc.cluster.local"
+  DB_HOST: "mysql-primary.databases.svc"
   DB_PORT: "3306"
   DB_NAME: "myapp_db"
   DB_USER: "myapp_user"
@@ -190,7 +178,23 @@ data:
 
 ## Step 7: Set Up Automated Backups
 
+The Bitnami MySQL chart does not create backup jobs, so define a PVC and CronJob separately:
+
 ```yaml
+# mysql-backup-pvc.yaml - Persistent storage for backups
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-backup-pvc
+  namespace: databases
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 50Gi
+---
 # mysql-backup-cronjob.yaml - Scheduled MySQL backup
 apiVersion: batch/v1
 kind: CronJob
@@ -205,7 +209,7 @@ spec:
         spec:
           containers:
             - name: mysql-backup
-              image: bitnami/mysql:8.0
+              image: bitnami/mysql:9.4.0-debian-12-r1 # Match the MySQL image tag used by your release
               command:
                 - /bin/sh
                 - -c
@@ -249,19 +253,21 @@ kubectl port-forward -n cattle-monitoring-system svc/rancher-monitoring-grafana 
 ## Troubleshooting
 
 ```bash
+# Read the root password from the Kubernetes Secret
+export MYSQL_ROOT_PASSWORD=$(kubectl get secret -n databases mysql-passwords -o jsonpath="{.data.mysql-root-password}" | base64 --decode)
+
 # Check MySQL pod logs
 kubectl logs -n databases mysql-primary-0 --tail=100
 
-# Check replication lag
+# Check replication lag (inspect Seconds_Behind_Source)
 kubectl exec -n databases mysql-secondary-0 -- \
-  mysql -u root -p${MYSQL_ROOT_PASSWORD} -e \
-  "SELECT * FROM performance_schema.replication_applier_status\G"
+  mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "SHOW REPLICA STATUS\G" 2>/dev/null
 
 # Check MySQL configuration
 kubectl exec -n databases mysql-primary-0 -- \
-  mysql -u root -p${MYSQL_ROOT_PASSWORD} -e "SHOW VARIABLES LIKE 'innodb_buffer_pool_size';"
+  mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "SHOW VARIABLES LIKE 'innodb_buffer_pool_size';"
 ```
 
 ## Conclusion
 
-Deploying MySQL on Rancher provides enterprise-grade database management with Kubernetes automation. The Bitnami MySQL Helm chart offers a well-tested, configurable deployment with support for replication, backups, and monitoring. For production deployments, always use read replicas to distribute read load, configure automated backups with off-cluster storage, and set up monitoring to detect performance issues early.
+Deploying MySQL on Rancher provides Kubernetes-based automation for stateful database workloads. The Bitnami MySQL Helm chart offers a well-tested, configurable deployment with support for replication and monitoring, while backups can be added separately with a CronJob and durable storage. For production deployments, consider read replicas to distribute read load, configure automated backups with off-cluster storage, and set up monitoring to detect performance issues early.
