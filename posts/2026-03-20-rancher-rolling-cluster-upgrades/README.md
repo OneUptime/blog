@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Upgrade, Operation, RKE2
 
-Description: Perform safe rolling Kubernetes version upgrades on Rancher-managed clusters with zero downtime using RKE2 and Rancher's built-in upgrade management.
+Description: Perform safe rolling Kubernetes version upgrades on Rancher-provisioned RKE2 clusters with minimal downtime using Rancher's built-in upgrade management.
 
 ## Introduction
 
-Keeping Kubernetes clusters up to date is critical for security patches, feature access, and support. Rancher provides guided cluster upgrade workflows for RKE2 and K3s clusters, with the ability to control the upgrade pace (one node at a time) and monitor progress. This guide covers how to plan and execute rolling cluster upgrades safely.
+Keeping Kubernetes clusters up to date is critical for security patches, feature access, and support. Rancher provides guided cluster upgrade workflows for RKE2 and K3s clusters, with the ability to control the upgrade pace (one node at a time) and monitor progress. This guide focuses on Rancher-provisioned RKE2 clusters with embedded etcd and covers how to plan and execute rolling cluster upgrades safely.
 
 ## Pre-Upgrade Checklist
 
@@ -46,15 +46,13 @@ kubectl get deployments -A -o json \
 
 ```bash
 # Create a manual snapshot before the upgrade
-# In Rancher UI: Cluster → Snapshots → Create Snapshot
+# In Rancher UI: Cluster Management → <cluster> → Snapshots → Snapshot Now
 
-# Or via kubectl (for RKE2):
-kubectl create job --from=cronjob/rke2-etcd-snapshot-now \
-  manual-snapshot-pre-upgrade \
-  -n kube-system
+# Or on an RKE2 server / etcd node:
+sudo rke2 etcd-snapshot save --name pre-upgrade-snapshot
 
 # Verify snapshot was created
-kubectl get jobs -n kube-system manual-snapshot-pre-upgrade
+sudo rke2 etcd-snapshot ls | grep pre-upgrade-snapshot
 ```
 
 ## Step 2: Initiate the Upgrade via Rancher UI
@@ -63,73 +61,79 @@ kubectl get jobs -n kube-system manual-snapshot-pre-upgrade
 2. Click **⋮ → Edit Config**.
 3. Under **Kubernetes Version**, select the target version.
 4. Under **Upgrade Strategy**, configure:
-   - **Max Unavailable Workers**: `1` (safest)
+   - **Worker Concurrency**: `1` (safest)
    - **Control Plane Concurrency**: `1`
-   - **Enable Drain Before Upgrade**: Yes
+   - **Drain Nodes (Control Plane)**: Yes
+   - **Drain Nodes (Worker Nodes)**: Yes
 5. Click **Save**.
 
 Rancher will begin the upgrade process automatically.
 
-## Step 3: Initiate the Upgrade via API
+## Step 3: Initiate the Upgrade via Rancher Kubernetes API
 
 ```bash
-# Get the cluster ID
-CLUSTER_ID=$(curl -sk \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "https://rancher.example.com/v3/clusters?name=my-cluster" \
-  | jq -r '.data[0].id')
+# Use a kubeconfig configured for the Rancher Kubernetes API.
+# If needed, discover the namespace first:
+# kubectl get clusters.provisioning.cattle.io -A
 
-# Initiate the upgrade
-curl -sk -X PUT \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"kubernetesVersion\": \"v1.29.0+rke2r1\",
-    \"rkeConfig\": {
-      \"upgradeStrategy\": {
-        \"controlPlaneDrainOptions\": {
-          \"enabled\": true,
-          \"timeout\": 120
-        },
-        \"workerDrainOptions\": {
-          \"enabled\": true,
-          \"timeout\": 120
-        },
-        \"workerConcurrency\": \"1\"
+CLUSTER_NAMESPACE=fleet-default
+CLUSTER_NAME=my-cluster
+
+kubectl patch clusters.provisioning.cattle.io "${CLUSTER_NAME}" \
+  -n "${CLUSTER_NAMESPACE}" \
+  --type merge \
+  -p '{
+    "spec": {
+      "kubernetesVersion": "v1.29.0+rke2r1",
+      "rkeConfig": {
+        "upgradeStrategy": {
+          "controlPlaneConcurrency": "1",
+          "controlPlaneDrainOptions": {
+            "deleteEmptyDirData": true,
+            "enabled": true,
+            "gracePeriod": -1,
+            "ignoreDaemonSets": true,
+            "timeout": 120
+          },
+          "workerConcurrency": "1",
+          "workerDrainOptions": {
+            "deleteEmptyDirData": true,
+            "enabled": true,
+            "gracePeriod": -1,
+            "ignoreDaemonSets": true,
+            "timeout": 120
+          }
+        }
       }
     }
-  }" \
-  "https://rancher.example.com/v3/clusters/${CLUSTER_ID}"
+  }'
 ```
 
 ## Step 4: Monitor the Upgrade Progress
 
 ```bash
 # Watch node versions change during the rolling upgrade
-watch kubectl get nodes -o custom-columns=\
-"NAME:.metadata.name,ROLE:.metadata.labels['node-role.kubernetes.io/control-plane'],\
-STATUS:.status.conditions[-1].type,VERSION:.status.nodeInfo.kubeletVersion"
+watch -n 5 'kubectl get nodes -o custom-columns=NAME:.metadata.name,VERSION:.status.nodeInfo.kubeletVersion'
 
-# Check the upgrade machine plan
-kubectl get rkecontrolplanes -n fleet-default
-kubectl describe rkecontrolplanes -n fleet-default <cluster-name>
+# On the management cluster, inspect Rancher provisioning resources
+kubectl get clusters.provisioning.cattle.io -A
+kubectl get rkecontrolplanes.rke.cattle.io -A
+kubectl describe rkecontrolplanes.rke.cattle.io -n <namespace> <cluster-name>
 
 # Check specific node machine status
-kubectl get machines -n fleet-default
-kubectl describe machine -n fleet-default <machine-name>
+kubectl get machines.cluster.x-k8s.io -A
+kubectl describe machines.cluster.x-k8s.io -n <namespace> <machine-name>
 
-# Watch Rancher server logs for upgrade events
-kubectl logs -n cattle-system -l app=rancher -f --tail=100 \
-  | grep -iE "upgrade|version|machine"
+# Watch recent provisioning events
+kubectl get events -A --sort-by=.metadata.creationTimestamp | tail -n 50
 ```
 
 ## Step 5: Understand the Upgrade Order
 
-For an RKE2 cluster, the upgrade order is:
+For Rancher-provisioned RKE2 clusters, upgrades follow the role-based concurrency you configured:
 
-1. **etcd nodes** are upgraded first (one at a time).
-2. **Control plane nodes** are upgraded next (one at a time).
-3. **Worker nodes** are upgraded last (configurable concurrency).
+1. In the common RKE2 layout, server nodes carry both etcd and control-plane roles, and are upgraded one at a time when **Control Plane Concurrency** is `1`.
+2. **Worker nodes** are upgraded after the server-side nodes, using the configured **Worker Concurrency**.
 
 Each node is:
 1. Cordoned (no new pods scheduled).
@@ -141,21 +145,26 @@ Each node is:
 
 ```bash
 # If a node gets stuck in Upgrading state:
-kubectl get machine -n fleet-default | grep -v Ready
+kubectl get clusters.provisioning.cattle.io -A
+kubectl get machines.cluster.x-k8s.io -A
 
-# Check the machine plan for errors
-kubectl describe machine -n fleet-default <stuck-machine>
+# Check the cluster and machine status for errors
+kubectl describe clusters.provisioning.cattle.io -n <namespace> <cluster-name>
+kubectl describe machines.cluster.x-k8s.io -n <namespace> <stuck-machine>
 
 # Common issues:
-# - PodDisruptionBudget blocking drain → temporarily patch the PDB
+# - PodDisruptionBudget blocking drain → if the PDB uses minAvailable,
+#   temporarily lower it
 kubectl patch pdb <pdb-name> -n <namespace> \
   --type='json' \
   -p='[{"op":"replace","path":"/spec/minAvailable","value":0}]'
 
 # - Node drain timeout → increase the timeout
-# Edit the cluster via Rancher UI: Cluster → Edit → Drain Timeout: 300s
+# Edit the cluster via Rancher UI:
+# Cluster Management → <cluster> → Edit Config → Upgrade Strategy
 
-# - Stale token → force re-registration of the node
+# - Node did not return Ready after restart → inspect node service logs
+sudo journalctl -u rke2-server -u rke2-agent -xe
 ```
 
 ## Step 7: Post-Upgrade Verification
@@ -184,4 +193,4 @@ sudo /var/lib/rancher/rke2/bin/etcdctl \
 
 ## Conclusion
 
-Rolling cluster upgrades in Rancher are designed to minimize downtime and risk. By taking a pre-upgrade snapshot, configuring a conservative upgrade strategy (one node at a time with draining), and monitoring progress through both Rancher UI and kubectl, you can safely keep your clusters current. Always upgrade in the pattern: dev → staging → production, and verify each environment before proceeding to the next.
+Rolling cluster upgrades in Rancher are designed to minimize downtime and risk. By taking a pre-upgrade snapshot, configuring a conservative upgrade strategy (one node at a time with draining), and monitoring progress through both Rancher UI and kubectl, you can safely keep your Rancher-provisioned RKE2 clusters current. Always upgrade in the pattern: dev → staging → production, and verify each environment before proceeding to the next.
