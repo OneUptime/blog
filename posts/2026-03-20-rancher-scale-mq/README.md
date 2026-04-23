@@ -32,21 +32,20 @@ kubectl patch rabbitmqcluster rabbitmq-prod \
 kubectl get pods -n messaging -l app.kubernetes.io/name=rabbitmq-prod -w
 
 # Verify new nodes joined the cluster
-kubectl exec -n messaging rabbitmq-prod-0 -- \
+kubectl exec -n messaging rabbitmq-prod-server-0 -- \
   rabbitmqctl cluster_status
 ```
 
 ### Rebalance Quorum Queues After Scale-Up
 
 ```bash
-# Add new members to all quorum queues
-kubectl exec -n messaging rabbitmq-prod-0 -- \
-  rabbitmqctl list_queues --formatter=json name type | \
-  jq -r '.[] | select(.type == "quorum") | .name' | while read QUEUE; do
-    echo "Growing quorum queue: $QUEUE"
-    kubectl exec -n messaging rabbitmq-prod-0 -- \
-      rabbitmqctl grow_quorum_queue "$QUEUE" all
-done
+# Look up the RabbitMQ node name for the new pod
+NEW_NODE=$(kubectl exec -n messaging rabbitmq-prod-server-4 -- \
+  rabbitmqctl -q eval 'node().' | tr -d "'")
+
+# Add the new node as a replica host for all quorum queues
+kubectl exec -n messaging rabbitmq-prod-server-0 -- \
+  rabbitmq-queues grow "$NEW_NODE" all
 ```
 
 ### Vertical Scaling
@@ -83,42 +82,49 @@ kubectl get pods -n kafka -l strimzi.io/component-type=kafka -w
 
 ### Rebalance Partitions After Scale-Up
 
+```yaml
+# kafka-rebalance-add-brokers.yaml - generate a Cruise Control proposal for the new brokers
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaRebalance
+metadata:
+  name: kafka-scale-up
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: kafka-prod
+spec:
+  mode: add-brokers
+  brokers: [3, 4]
+```
+
 ```bash
-# Generate a rebalance plan
-kubectl exec -n kafka kafka-prod-kafka-0 -- \
-  bin/kafka-reassign-partitions.sh \
-  --bootstrap-server kafka-prod-kafka-bootstrap:9092 \
-  --generate \
-  --topics-to-move-json-file /tmp/topics.json \
-  --broker-list 0,1,2,3,4 > /tmp/reassignment-plan.json
+# Create the rebalance proposal
+kubectl apply -f kafka-rebalance-add-brokers.yaml
 
-# Apply the rebalance plan
-kubectl exec -n kafka kafka-prod-kafka-0 -- \
-  bin/kafka-reassign-partitions.sh \
-  --bootstrap-server kafka-prod-kafka-bootstrap:9092 \
-  --execute \
-  --reassignment-json-file /tmp/reassignment-plan.json \
-  --throttle 50000000  # Limit rebalance bandwidth to 50MB/s
+# Wait for the proposal to become ready
+kubectl get kafkarebalance kafka-scale-up -n kafka -o wide -w
 
-# Monitor progress
-kubectl exec -n kafka kafka-prod-kafka-0 -- \
-  bin/kafka-reassign-partitions.sh \
-  --bootstrap-server kafka-prod-kafka-bootstrap:9092 \
-  --verify \
-  --reassignment-json-file /tmp/reassignment-plan.json
+# Review the proposed movements
+kubectl describe kafkarebalance kafka-scale-up -n kafka
+
+# Approve the rebalance
+kubectl annotate kafkarebalance kafka-scale-up -n kafka \
+  strimzi.io/rebalance=approve --overwrite
+
+# Monitor progress until the status becomes Ready
+kubectl get kafkarebalance kafka-scale-up -n kafka -o wide -w
 ```
 
 ### Use Strimzi KafkaRebalance
 
 ```yaml
-# kafka-rebalance.yaml - Cruise Control for automated rebalancing
-apiVersion: kafka.strimzi.io/v1beta2
+# kafka-rebalance-template.yaml - template for Cruise Control auto-rebalancing
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaRebalance
 metadata:
-  name: kafka-rebalance
+  name: kafka-rebalance-template
   namespace: kafka
-  labels:
-    strimzi.io/cluster: kafka-prod
+  annotations:
+    strimzi.io/rebalance-template: "true"
 spec:
   goals:
     - NetworkInboundCapacityGoal
@@ -134,6 +140,28 @@ spec:
   skipHardGoalCheck: false
 ```
 
+```bash
+# Create the auto-rebalance template
+kubectl apply -f kafka-rebalance-template.yaml
+
+# Configure Kafka to use the template when brokers are added
+kubectl patch kafka kafka-prod \
+  -n kafka \
+  --type merge \
+  -p '{
+    "spec": {
+      "cruiseControl": {
+        "autoRebalance": [
+          {
+            "mode": "add-brokers",
+            "template": {"name": "kafka-rebalance-template"}
+          }
+        ]
+      }
+    }
+  }'
+```
+
 ## Section 3: Scaling NATS
 
 ```bash
@@ -143,10 +171,10 @@ kubectl patch statefulset nats \
   --type merge \
   -p '{"spec": {"replicas": 5}}'
 
-# NATS automatically discovers and joins new nodes
-# Verify cluster membership
-kubectl exec -n messaging nats-0 -- \
-  nats server report cluster --server nats://nats.messaging.svc.cluster.local:4222
+# With clustering routes configured, new nodes join automatically.
+# Verify the servers are reachable from the nats-box utility pod
+kubectl exec -n messaging deployment/nats-box -- \
+  nats --server nats://nats.messaging.svc:4222 server ping
 ```
 
 ## Section 4: Scale Consumers Automatically with HPA
@@ -220,16 +248,17 @@ spec:
   triggers:
     - type: rabbitmq
       metadata:
-        queueName: orders
         host: "amqp://guest:guest@rabbitmq.messaging.svc.cluster.local:5672/"
-        queueLength: "10"  # Target messages per consumer
+        queueName: orders
+        mode: QueueLength
+        value: "10"  # Target messages per consumer
 ```
 
 ## Section 6: Monitor Scaling Events
 
 ```bash
 # Watch scaling events
-kubectl events -n production --for=deployment/order-processor
+kubectl events -n production --for=deployment/order-processor --watch
 
 # Check HPA status
 kubectl get hpa order-consumer-hpa -n production
