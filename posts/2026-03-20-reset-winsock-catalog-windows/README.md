@@ -8,7 +8,7 @@ Description: Reset the Windows Winsock catalog to its default state using netsh 
 
 ## Introduction
 
-The Winsock catalog is a Windows registry database that lists Layered Service Providers (LSPs) - software that intercepts network API calls. Malware, antivirus software, and some VPN clients can corrupt or leave broken LSP entries after uninstallation, causing application-level network failures even when the TCP/IP stack appears healthy.
+The Winsock catalog is a Windows registry database that lists Winsock providers, including Layered Service Providers (LSPs) - software that intercepts network API calls. Malware, antivirus software, and some VPN clients can corrupt or leave broken LSP entries after uninstallation, causing application-level network failures even when the TCP/IP stack appears healthy.
 
 ## Symptoms of Winsock Corruption
 
@@ -32,19 +32,20 @@ Successfully reset the Winsock Catalog.
 You must restart the computer in order to complete the reset.
 ```
 
-## Resetting with a Log File
+## Saving the Current Catalog Before Resetting
 
 ```cmd
-netsh winsock reset C:\winsock-reset.log
-type C:\winsock-reset.log
+netsh winsock show catalog > C:\winsock-catalog-before-reset.txt
+netsh winsock reset
+type C:\winsock-catalog-before-reset.txt
 ```
 
 ## Viewing the Current Winsock Catalog
 
-Before resetting, you can inspect the current LSPs:
+Before resetting, you can inspect the current Winsock catalog:
 
 ```cmd
-:: List all LSPs currently registered
+:: List all Winsock providers currently registered
 netsh winsock show catalog
 ```
 
@@ -69,7 +70,7 @@ echo Releasing DHCP lease...
 ipconfig /release
 
 echo Clearing ARP cache...
-netsh interface ip delete arpcache
+netsh interface ipv4 delete arpcache
 
 echo All resets complete. Rebooting in 10 seconds...
 shutdown /r /t 10
@@ -78,7 +79,7 @@ shutdown /r /t 10
 ## After Reboot
 
 ```cmd
-:: Verify Winsock is clean
+:: Verify the Winsock catalog
 netsh winsock show catalog
 
 :: Test basic connectivity
@@ -98,12 +99,13 @@ netsh winhttp show proxy
 If only specific LSPs are causing issues:
 
 ```cmd
-:: List LSPs with their indices
+:: List Winsock providers with their catalog IDs
 netsh winsock show catalog
 
-:: Remove a specific LSP by name or catalog entry
+:: Remove a specific LSP by catalog ID shown in the catalog output
 :: (Full reset is safer; use targeted removal only if you know the exact LSP)
-netsh winsock reset catalog
+set /p CATALOG_ID=Enter catalog ID to remove:
+netsh winsock remove provider %CATALOG_ID%
 ```
 
 ## Conclusion
