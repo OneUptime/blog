@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Remote State, S3, Team Collaboration, State Management, Infrastructure as Code
 
-Description: Learn how to configure OpenTofu remote state with S3 and DynamoDB to enable safe team collaboration, prevent state file conflicts, and share infrastructure outputs across modules.
+Description: Learn how to configure OpenTofu remote state with S3 and DynamoDB to enable safe team collaboration, prevent state file conflicts, and share infrastructure outputs across separate configurations.
 
 ---
 
-Remote state moves the OpenTofu state file from local disk to shared storage, enabling multiple team members and CI/CD systems to work on the same infrastructure safely. S3 with DynamoDB locking is the standard pattern on AWS.
+Remote state moves the OpenTofu state file from local disk to shared storage, enabling multiple team members and CI/CD systems to work on the same infrastructure safely. On AWS, the S3 backend supports both S3-native locking with `use_lockfile = true` and DynamoDB locking; this guide uses DynamoDB locking.
 
 ## Remote State Architecture
 
@@ -94,6 +94,7 @@ terraform {
 ```bash
 # Use -backend-config to parameterize backends
 tofu init \
+  -reconfigure \
   -backend-config="key=environments/${ENVIRONMENT}/terraform.tfstate" \
   -backend-config="bucket=mycompany-tofu-state-${ACCOUNT_ID}"
 ```
@@ -101,7 +102,7 @@ tofu init \
 ## Referencing Remote State Outputs
 
 ```hcl
-# Read outputs from another module's state
+# Read outputs from another configuration's state
 data "terraform_remote_state" "networking" {
   backend = "s3"
   config = {
@@ -111,16 +112,16 @@ data "terraform_remote_state" "networking" {
   }
 }
 
-# Use the networking module's outputs
-resource "aws_instance" "app" {
-  subnet_id = data.terraform_remote_state.networking.outputs.private_subnet_ids[0]
+# Use the networking configuration's outputs
+locals {
+  app_subnet_id = data.terraform_remote_state.networking.outputs.private_subnet_ids[0]
 }
 ```
 
 ## IAM Policy for State Access
 
 ```hcl
-# Grant specific teams read/write access to their environment's state
+# Grant a team read/write access to its environment's state
 resource "aws_iam_policy" "state_readwrite" {
   name = "tofu-state-readwrite-${var.environment}"
 
@@ -128,18 +129,23 @@ resource "aws_iam_policy" "state_readwrite" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-        Resource = "arn:aws:s3:::mycompany-tofu-state/*/${var.environment}/*"
-      },
-      {
         Effect   = "Allow"
         Action   = ["s3:ListBucket"]
-        Resource = "arn:aws:s3:::mycompany-tofu-state"
+        Resource = "arn:aws:s3:::mycompany-tofu-state-123456789012"
+        Condition = {
+          StringLike = {
+            "s3:prefix" = "environments/${var.environment}/*"
+          }
+        }
+      },
+      {
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = "arn:aws:s3:::mycompany-tofu-state-123456789012/environments/${var.environment}/*"
       },
       {
         Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
+        Action   = ["dynamodb:DescribeTable", "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
         Resource = aws_dynamodb_table.state_lock.arn
       }
     ]
@@ -150,7 +156,7 @@ resource "aws_iam_policy" "state_readwrite" {
 ## Best Practices
 
 - Enable S3 versioning on the state bucket so you can recover from accidental state corruption or deletion.
-- Use separate state file paths (keys) per environment and per module to minimize blast radius of state operations.
+- Use separate state file paths (keys) per environment and per configuration to minimize blast radius of state operations.
 - Never store state locally in CI/CD - always use remote state with locking to prevent concurrent apply races.
-- Restrict S3 state access by IAM path prefix so dev teams can't access production state.
-- Use `terraform_remote_state` data sources sparingly - prefer SSM parameters or other well-defined outputs for cross-module communication.
+- Restrict S3 state access by IAM path prefix so teams can only access their own environment's state.
+- Use `terraform_remote_state` data sources sparingly - prefer SSM parameters or other well-defined outputs for cross-configuration communication.
