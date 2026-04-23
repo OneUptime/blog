@@ -15,7 +15,7 @@ Harbor is an open-source cloud-native container registry that provides security 
 - Rancher v2.6+ with an existing downstream cluster
 - Helm 3.x installed
 - A StorageClass for persistent volumes
-- A domain name or IP for Harbor (with TLS certificate recommended)
+- A DNS name for Harbor (with a TLS certificate recommended for ingress)
 - cert-manager installed (optional, for automatic TLS)
 
 ## Step 1: Add the Harbor Helm Repository
@@ -40,7 +40,7 @@ kubectl create namespace harbor
 Create a custom values file:
 
 ```yaml
-# harbor-values.yaml - Production-grade Harbor configuration
+# harbor-values.yaml - Example Harbor configuration
 expose:
   type: ingress
   tls:
@@ -69,8 +69,9 @@ persistence:
       storageClass: "standard"
       size: 100Gi
     jobservice:
-      storageClass: "standard"
-      size: 10Gi
+      jobLog:
+        storageClass: "standard"
+        size: 10Gi
     database:
       storageClass: "standard"
       size: 10Gi
@@ -87,8 +88,8 @@ harborAdminPassword: "Harbor12345"
 # Enable Trivy for vulnerability scanning
 trivy:
   enabled: true
-  # Auto-update Trivy DB
-  autoUpdate: true
+  # Leave skipUpdate as false to keep the Trivy DB updated
+  skipUpdate: false
 
 # Database configuration
 database:
@@ -100,9 +101,8 @@ database:
 redis:
   type: internal
 
-# Notary for image signing
-notary:
-  enabled: true
+# Harbor supports project-level content trust with Cosign or Notation;
+# no extra Helm value is required here.
 ```
 
 ## Step 3: Deploy Harbor with Helm
@@ -155,9 +155,9 @@ curl -X POST "https://harbor.example.com/api/v2.0/projects" \
   -u admin:Harbor12345 \
   -d '{
     "project_name": "production",
-    "public": false,
     "metadata": {
-      "enable_content_trust": "true",
+      "public": "false",
+      "enable_content_trust_cosign": "true",
       "prevent_vul": "true",
       "severity": "high",
       "auto_scan": "true"
@@ -167,30 +167,40 @@ curl -X POST "https://harbor.example.com/api/v2.0/projects" \
 
 ## Step 6: Integrate Harbor with Rancher
 
-Create registry credentials in Rancher pointing to Harbor:
+Create image pull credentials in your workload namespace:
 
 ```bash
 # Create a secret for Harbor authentication in your workload namespace
+ROBOT_TOKEN='<robot-account-token>'
+
 kubectl create secret docker-registry harbor-credentials \
   --docker-server=harbor.example.com \
-  --docker-username=robot$ci-user \
-  --docker-password=<robot-account-token> \
+  --docker-username='robot$ci-user' \
+  --docker-password="$ROBOT_TOKEN" \
   --namespace=production
 ```
 
-Or configure Harbor as the cluster-level registry in Rancher:
+For workloads created with `kubectl`, reference this secret in `spec.imagePullSecrets` or on the namespace's ServiceAccount.
+
+For RKE2-based clusters, configure Harbor as a private registry on each node:
 
 ```yaml
-# Add to your RKE2 cluster configuration
-registries:
-  configs:
-    harbor.example.com:
-      authConfigSecretName: harbor-credentials
-      caBundle: |
-        -----BEGIN CERTIFICATE-----
-        # Your CA certificate here
-        -----END CERTIFICATE-----
+# /etc/rancher/rke2/registries.yaml
+mirrors:
+  harbor.example.com:
+    endpoint:
+      - "https://harbor.example.com"
+
+configs:
+  "harbor.example.com":
+    auth:
+      username: "robot$ci-user"
+      password: "<robot-account-token>"
+    tls:
+      ca_file: /etc/rancher/rke2/certs/harbor-ca.pem
 ```
+
+Create this file on every node that will pull images from Harbor, then restart RKE2.
 
 ## Step 7: Enable Vulnerability Scanning in CI/CD
 
@@ -203,7 +213,7 @@ curl -X PUT "https://harbor.example.com/api/v2.0/projects/production" \
   -u admin:Harbor12345 \
   -d '{"metadata": {"auto_scan": "true"}}'
 
-# Set policy to prevent deployment of vulnerable images
+# Set policy to prevent pulling images that meet or exceed the configured severity threshold
 curl -X PUT "https://harbor.example.com/api/v2.0/projects/production" \
   -H "Content-Type: application/json" \
   -u admin:Harbor12345 \
@@ -212,10 +222,13 @@ curl -X PUT "https://harbor.example.com/api/v2.0/projects/production" \
 
 ## Step 8: Configure Harbor Replication
 
-Set up replication between Harbor and Docker Hub or other registries:
+Set up replication between Harbor and Docker Hub or other registries.
+
+Create the remote registry endpoint first under **Administration > Registries**, then create the replication policy:
 
 ```bash
 # Create a replication rule via API
+# Replace 1 with the registry endpoint ID you created for Docker Hub.
 curl -X POST "https://harbor.example.com/api/v2.0/replication/policies" \
   -H "Content-Type: application/json" \
   -u admin:Harbor12345 \
@@ -239,7 +252,7 @@ kubectl logs -n harbor -l component=core --tail=100
 kubectl get pods -n harbor -o wide
 
 # Test Harbor connectivity
-curl -I https://harbor.example.com/api/v2.0/ping
+curl -sSf https://harbor.example.com/api/v2.0/ping
 ```
 
 ## Conclusion
