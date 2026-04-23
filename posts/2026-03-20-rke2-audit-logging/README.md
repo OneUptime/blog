@@ -32,7 +32,7 @@ Each audit event can be recorded at one of four levels:
 sudo mkdir -p /etc/rancher/rke2/
 
 # Create a comprehensive audit policy
-sudo cat > /etc/rancher/rke2/audit-policy.yaml << 'EOF'
+sudo tee /etc/rancher/rke2/audit-policy.yaml > /dev/null << 'EOF'
 apiVersion: audit.k8s.io/v1
 kind: Policy
 # Omit the RequestReceived stage to reduce noise
@@ -41,11 +41,11 @@ omitStages:
 
 rules:
   # ---------------------------------------------------------
-  # SECURITY-CRITICAL: Log at RequestResponse level
+  # SECURITY-CRITICAL: Sensitive operations
   # ---------------------------------------------------------
 
-  # Log all secret operations with full content (except GET/LIST/WATCH)
-  - level: RequestResponse
+  # Log secret changes at Metadata level to avoid exposing secret values
+  - level: Metadata
     verbs: ["create", "update", "patch", "delete"]
     resources:
     - group: ""
@@ -68,15 +68,17 @@ rules:
       - "roles"
       - "rolebindings"
 
-  # Log all authentication-related operations
-  - level: RequestResponse
+  # Log authentication and authorization review/token operations without token contents
+  - level: Metadata
     resources:
     - group: "authentication.k8s.io"
-      resources: ["tokenreviews", "tokenrequests"]
+      resources: ["tokenreviews"]
     - group: "authorization.k8s.io"
       resources: ["subjectaccessreviews"]
+    - group: ""
+      resources: ["serviceaccounts/token"]
 
-  # Log all privileged pod operations
+  # Log pod and workload controller operations
   - level: RequestResponse
     verbs: ["create", "update", "patch", "delete"]
     resources:
@@ -101,13 +103,54 @@ rules:
       - "persistentvolumes"
       - "persistentvolumeclaims"
 
-  # Log cluster-wide policy changes
+  # Log admission and network policy changes
   - level: Request
     resources:
-    - group: "policy"
-      resources: ["podsecuritypolicies"]
+    - group: "admissionregistration.k8s.io"
+      resources:
+      - "mutatingwebhookconfigurations"
+      - "validatingadmissionpolicies"
+      - "validatingadmissionpolicybindings"
+      - "validatingwebhookconfigurations"
     - group: "networking.k8s.io"
       resources: ["networkpolicies"]
+
+  # ---------------------------------------------------------
+  # SKIP: Don't log these (too noisy or not security-relevant)
+  # ---------------------------------------------------------
+
+  # Don't log kube-proxy service and endpoint watches
+  - level: None
+    users: ["system:kube-proxy"]
+    verbs: ["watch"]
+    resources:
+    - group: ""
+      resources: ["endpoints", "services", "services/status"]
+
+  # Don't log node status updates
+  - level: None
+    userGroups: ["system:nodes"]
+    verbs: ["update", "patch"]
+    resources:
+    - group: ""
+      resources: ["nodes/status", "pods/status"]
+
+  # Don't log controller manager and scheduler checks
+  - level: None
+    users:
+    - "system:kube-controller-manager"
+    - "system:kube-scheduler"
+    verbs: ["list", "watch"]
+
+  # Don't log common discovery and health non-resource requests
+  - level: None
+    userGroups: ["system:authenticated"]
+    nonResourceURLs:
+    - "/api*"
+    - "/version"
+    - "/healthz"
+    - "/readyz"
+    - "/livez"
 
   # ---------------------------------------------------------
   # AUDIT: Log at Metadata level
@@ -125,43 +168,6 @@ rules:
     - group: ""
       resources: ["services", "endpoints"]
 
-  # ---------------------------------------------------------
-  # SKIP: Don't log these (too noisy or not security-relevant)
-  # ---------------------------------------------------------
-
-  # Don't log health checks
-  - level: None
-    users: ["system:kube-proxy"]
-    verbs: ["watch"]
-    resources:
-    - group: ""
-      resources: ["endpoints", "services", "services/status"]
-
-  # Don't log node status updates
-  - level: None
-    users: ["system:nodes"]
-    verbs: ["update", "patch"]
-    resources:
-    - group: ""
-      resources: ["nodes/status", "pods/status"]
-
-  # Don't log controller manager and scheduler checks
-  - level: None
-    users:
-    - "system:kube-controller-manager"
-    - "system:kube-scheduler"
-    verbs: ["list", "watch"]
-
-  # Don't log CRD controller operations
-  - level: None
-    userGroups: ["system:authenticated"]
-    nonResourceURLs:
-    - "/api*"
-    - "/version"
-    - "/healthz"
-    - "/readyz"
-    - "/livez"
-
   # Default: Log everything else at Metadata level
   - level: Metadata
     omitStages:
@@ -178,7 +184,7 @@ kube-apiserver-arg:
   - "audit-policy-file=/etc/rancher/rke2/audit-policy.yaml"
 
   # Path for audit log output
-  - "audit-log-path=/var/log/kubernetes/audit.log"
+  - "audit-log-path=/var/lib/rancher/rke2/server/logs/audit.log"
 
   # Maximum number of days to retain audit log files
   - "audit-log-maxage=30"
@@ -196,73 +202,82 @@ kube-apiserver-arg:
 
 ```bash
 # Create the log directory
-sudo mkdir -p /var/log/kubernetes
-sudo chmod 755 /var/log/kubernetes
+sudo mkdir -p /var/lib/rancher/rke2/server/logs
+sudo chmod 750 /var/lib/rancher/rke2/server/logs
 
 # Apply the configuration
 sudo systemctl restart rke2-server
 
 # Verify audit logging is active
 sleep 30
-sudo cat /var/log/kubernetes/audit.log | head -5 | python3 -m json.tool
+sudo head -5 /var/lib/rancher/rke2/server/logs/audit.log | \
+  python3 -c 'import json, sys; [print(json.dumps(json.loads(line), indent=2)) for line in sys.stdin if line.strip()]'
 ```
 
 ## Step 3: Forward Audit Logs to a Log Aggregator
 
-### Forward to Loki with Promtail
+### Forward to Loki with Grafana Alloy
 
 ```yaml
-# promtail-config.yaml - Ship audit logs to Loki
+# alloy-config.yaml - Ship audit logs to Loki
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: promtail-audit-config
+  name: alloy-audit-config
   namespace: monitoring
 data:
-  config.yaml: |
-    server:
-      http_listen_port: 9080
+  config.alloy: |
+    loki.source.file "kubernetes_audit" {
+      targets = [
+        {
+          __path__ = "/var/lib/rancher/rke2/server/logs/audit.log",
+          job = "kubernetes-audit",
+          cluster = "production",
+        },
+      ]
 
-    positions:
-      filename: /tmp/positions.yaml
+      forward_to = [loki.process.kubernetes_audit.receiver]
 
-    clients:
-    - url: http://loki:3100/loki/api/v1/push
+      file_match {
+        enabled = true
+      }
+    }
 
-    scrape_configs:
-    - job_name: kubernetes-audit
-      static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: kubernetes-audit
-          # Adds metadata to all log lines
-          cluster: production
-          __path__: /var/log/kubernetes/audit.log
+    loki.process "kubernetes_audit" {
+      forward_to = [loki.write.default.receiver]
 
-      pipeline_stages:
-      # Parse JSON audit logs
-      - json:
-          expressions:
-            level: level
-            user: user.username
-            verb: verb
-            resource: objectRef.resource
-            namespace: objectRef.namespace
+      stage.json {
+        expressions = {
+          level = "level",
+          user = "user.username",
+          verb = "verb",
+          resource = "objectRef.resource",
+          namespace = "objectRef.namespace",
+        }
+      }
 
-      # Add labels for efficient querying
-      - labels:
-          level:
-          user:
-          verb:
-          resource:
+      stage.labels {
+        values = {
+          level = "",
+          user = "",
+          verb = "",
+          resource = "",
+        }
+      }
+    }
+
+    loki.write "default" {
+      endpoint {
+        url = "http://loki:3100/loki/api/v1/push"
+      }
+    }
 ```
 
 ## Step 4: Query Audit Logs
 
 ```bash
 # View recent audit log entries
-sudo tail -f /var/log/kubernetes/audit.log | \
+sudo tail -f /var/lib/rancher/rke2/server/logs/audit.log | \
   python3 -c "
 import json, sys
 for line in sys.stdin:
@@ -278,7 +293,7 @@ for line in sys.stdin:
 "
 
 # Find all DELETE operations
-sudo grep '"verb":"delete"' /var/log/kubernetes/audit.log | \
+sudo grep '"verb":"delete"' /var/lib/rancher/rke2/server/logs/audit.log | \
   python3 -c "
 import json, sys
 for line in sys.stdin:
@@ -288,7 +303,7 @@ for line in sys.stdin:
 " | tail -20
 
 # Find failed requests (4xx and 5xx)
-sudo grep '"code":[45][0-9][0-9]' /var/log/kubernetes/audit.log | \
+sudo grep '"code":[45][0-9][0-9]' /var/lib/rancher/rke2/server/logs/audit.log | \
   python3 -c "
 import json, sys
 for line in sys.stdin:
