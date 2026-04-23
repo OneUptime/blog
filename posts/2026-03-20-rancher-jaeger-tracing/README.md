@@ -8,54 +8,29 @@ Description: Deploy Jaeger distributed tracing on Rancher-managed clusters to vi
 
 ## Introduction
 
-Jaeger is an open-source distributed tracing system that helps developers monitor and troubleshoot microservices. By instrumenting your services with OpenTelemetry or Jaeger client libraries, you get end-to-end visibility into request flows across your Kubernetes workloads. This guide covers deploying Jaeger on Rancher with production-grade storage backends.
+Jaeger is an open-source distributed tracing system that helps developers monitor and troubleshoot microservices. By instrumenting your services with OpenTelemetry, you get end-to-end visibility into request flows across your Kubernetes workloads. This guide covers deploying Jaeger on Rancher with production-grade storage backends.
 
 ## Prerequisites
 
 - Rancher-managed Kubernetes cluster
 - Helm 3.x installed
 - kubectl with cluster-admin access
-- Elasticsearch or Cassandra for production storage
+- Elasticsearch (recommended) or Cassandra for production storage
 
-## Step 1: Install the Jaeger Operator
+## Step 1: Add the Jaeger Helm Repository
 
 ```bash
 # Add Jaeger Helm repository
 
 helm repo add jaegertracing https://jaegertracing.github.io/helm-charts
 helm repo update
-
-# Install the Jaeger Operator
-helm install jaeger-operator jaegertracing/jaeger-operator \
-  --namespace observability \
-  --create-namespace \
-  --set rbac.clusterRole=true \
-  --wait
-
-# Verify operator is running
-kubectl get pods -n observability
 ```
 
 ## Step 2: Deploy Jaeger All-in-One (Development)
 
 ```yaml
-# jaeger-allinone.yaml - Simple all-in-one Jaeger for development
-apiVersion: jaegertracing.io/v1
-kind: Jaeger
-metadata:
-  name: jaeger-dev
-  namespace: observability
-spec:
-  strategy: allInOne
-  allInOne:
-    image: jaegertracing/all-in-one:latest
-    options:
-      log-level: info
-  storage:
-    type: memory  # In-memory storage (development only)
-    options:
-      memory:
-        max-traces: 100000
+# values-dev.yaml - The chart defaults to an all-in-one deployment with in-memory storage
+jaeger:
   ingress:
     enabled: true
     ingressClassName: nginx
@@ -63,64 +38,40 @@ spec:
       - jaeger.dev.example.com
 ```
 
+```bash
+helm install jaeger jaegertracing/jaeger \
+  --namespace observability \
+  --create-namespace \
+  --values values-dev.yaml \
+  --wait
+
+# Verify Jaeger is running
+kubectl get pods -n observability
+```
+
 ## Step 3: Deploy Production Jaeger with Elasticsearch
 
 ```bash
 # First, deploy Elasticsearch (or use existing)
-helm install elasticsearch bitnami/elasticsearch \
+helm install elasticsearch oci://registry-1.docker.io/bitnamicharts/elasticsearch \
   --namespace observability \
+  --create-namespace \
   --set master.replicaCount=3 \
   --set data.replicaCount=3 \
   --wait
 ```
 
 ```yaml
-# jaeger-production.yaml - Production Jaeger with Elasticsearch
-apiVersion: jaegertracing.io/v1
-kind: Jaeger
-metadata:
-  name: jaeger-prod
-  namespace: observability
-spec:
-  strategy: production  # Separate collector and query components
-
-  collector:
-    maxReplicas: 5
-    resources:
-      requests:
-        memory: 256Mi
-        cpu: 100m
-      limits:
-        memory: 512Mi
-    options:
-      # Collector settings
-      collector.num-workers: 50
-      collector.queue-size: 2000
-
-  query:
-    replicas: 2
-    resources:
-      requests:
-        memory: 256Mi
-        cpu: 100m
-    options:
-      query.base-path: /jaeger
-    metricsStorage:
-      type: prometheus
-
-  storage:
-    type: elasticsearch
-    options:
-      es.server-urls: http://elasticsearch.observability.svc.cluster.local:9200
-      es.index-prefix: jaeger
-      es.num-shards: 5
-      es.num-replicas: 1
-      es.create-index-templates: true
-    esIndexCleaner:
-      enabled: true
-      numberOfDays: 30
-      schedule: "55 23 * * *"
-
+# values-production.yaml - Jaeger v2 with Elasticsearch storage
+jaeger:
+  replicas: 3
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 500m
   ingress:
     enabled: true
     ingressClassName: nginx
@@ -130,6 +81,66 @@ spec:
       - secretName: jaeger-tls
         hosts:
           - jaeger.example.com
+
+userconfig:
+  service:
+    extensions: [jaeger_storage, jaeger_query, healthcheckv2]
+    pipelines:
+      traces:
+        receivers: [otlp, jaeger, zipkin]
+        processors: [batch]
+        exporters: [jaeger_storage_exporter]
+  extensions:
+    healthcheckv2:
+      use_v2: true
+      http:
+        endpoint: 0.0.0.0:13133
+    jaeger_query:
+      storage:
+        traces: primary_store
+        traces_archive: archive_store
+    jaeger_storage:
+      backends:
+        primary_store:
+          elasticsearch:
+            server_urls: ["http://elasticsearch.observability.svc.cluster.local:9200"]
+            index_prefix: jaeger
+        archive_store:
+          elasticsearch:
+            server_urls: ["http://elasticsearch.observability.svc.cluster.local:9200"]
+            index_prefix: jaeger-archive
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+    jaeger:
+      protocols:
+        grpc:
+    zipkin:
+  processors:
+    batch:
+  exporters:
+    jaeger_storage_exporter:
+      trace_storage: primary_store
+
+storage:
+  elasticsearch:
+    url: http://elasticsearch.observability.svc.cluster.local:9200
+
+esIndexCleaner:
+  enabled: true
+  numberOfDays: 30
+  schedule: "55 23 * * *"
+```
+
+```bash
+helm upgrade --install jaeger jaegertracing/jaeger \
+  --namespace observability \
+  --values values-production.yaml \
+  --wait
 ```
 
 ## Step 4: Configure Application Instrumentation
@@ -138,21 +149,30 @@ spec:
 
 ```python
 # Python application with OpenTelemetry instrumentation
+from flask import Flask, jsonify, request
 from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+
+app = Flask(__name__)
 
 # Configure tracer
-provider = TracerProvider()
-# Send traces to OpenTelemetry Collector which forwards to Jaeger
+resource = Resource.create({"service.name": "order-service"})
+provider = TracerProvider(resource=resource)
+# Send traces directly to Jaeger's OTLP endpoint
 exporter = OTLPSpanExporter(
-    endpoint="http://otel-collector.observability.svc.cluster.local:4317"
+    endpoint="http://jaeger.observability.svc.cluster.local:4317",
+    insecure=True,
 )
 provider.add_span_processor(BatchSpanProcessor(exporter))
 trace.set_tracer_provider(provider)
 
 tracer = trace.get_tracer(__name__)
+
+def fetch_orders_from_db():
+    return [{"id": "1001", "status": "created"}]
 
 # Instrument an HTTP handler
 @app.route('/api/orders')
@@ -166,77 +186,37 @@ def get_orders():
         return jsonify(orders)
 ```
 
-### Configure Jaeger Agent as DaemonSet
+### Configure Application Environment Variables
 
 ```yaml
-# jaeger-agent-daemonset.yaml - Jaeger agent on every node
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: jaeger-agent
-  namespace: observability
-spec:
-  selector:
-    matchLabels:
-      app: jaeger-agent
-  template:
-    metadata:
-      labels:
-        app: jaeger-agent
-    spec:
-      containers:
-        - name: jaeger-agent
-          image: jaegertracing/jaeger-agent:latest
-          args:
-            - --reporter.grpc.host-port=jaeger-prod-collector.observability.svc.cluster.local:14250
-            - --log-level=info
-          ports:
-            - containerPort: 6831  # UDP for compact Thrift protocol
-              protocol: UDP
-              hostPort: 6831
-            - containerPort: 6832  # UDP for binary Thrift protocol
-              protocol: UDP
-              hostPort: 6832
-            - containerPort: 5778  # HTTP for configs
-              hostPort: 5778
+# deployment-snippet.yaml - Export traces directly to Jaeger via OTLP/gRPC
+env:
+  - name: OTEL_SERVICE_NAME
+    value: order-service
+  - name: OTEL_TRACES_EXPORTER
+    value: otlp
+  - name: OTEL_EXPORTER_OTLP_PROTOCOL
+    value: grpc
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: http://jaeger.observability.svc.cluster.local:4317
 ```
 
 ## Step 5: Configure Sampling Strategy
 
 ```yaml
-# sampling-config.yaml - Adaptive sampling configuration
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: jaeger-sampling-config
-  namespace: observability
-data:
-  sampling: |
-    {
-      "service_strategies": [
-        {
-          "service": "order-service",
-          "type": "probabilistic",
-          "param": 0.1  # Sample 10% of order service traces
-        },
-        {
-          "service": "payment-service",
-          "type": "probabilistic",
-          "param": 1.0  # Sample 100% of payment traces
-        }
-      ],
-      "default_strategy": {
-        "type": "probabilistic",
-        "param": 0.01  # Default: 1% sampling
-      }
-    }
+# deployment-sampling-snippet.yaml - Head-based sampling in the OpenTelemetry SDK
+env:
+  - name: OTEL_TRACES_SAMPLER
+    value: parentbased_traceidratio
+  - name: OTEL_TRACES_SAMPLER_ARG
+    value: "0.1"
 ```
 
 ## Step 6: Access Jaeger UI
 
 ```bash
-# Port forward to Jaeger query UI
-kubectl port-forward -n observability svc/jaeger-prod-query 16686:16686
+# Port forward to Jaeger UI
+kubectl port-forward -n observability svc/jaeger 16686:16686
 
 # Access at: http://localhost:16686
 
@@ -247,6 +227,7 @@ kubectl port-forward -n observability svc/jaeger-prod-query 16686:16686
 ## Step 7: Query Traces via API
 
 ```bash
+# Jaeger's /api/* HTTP endpoints are used by the UI and are not a stable public API
 # Search for traces via API
 curl "http://localhost:16686/api/traces?service=order-service&limit=20&lookback=1h" | jq '.data[0]'
 
@@ -260,11 +241,13 @@ curl "http://localhost:16686/api/services" | jq '.'
 ## Troubleshooting
 
 ```bash
-# Check Jaeger collector logs
-kubectl logs -n observability deployment/jaeger-prod-collector --tail=100
+# Check Jaeger logs
+kubectl logs -n observability deployment/jaeger --tail=100
 
-# Check if traces are being received
-kubectl logs -n observability deployment/jaeger-prod-collector | grep "Span accepted"
+# Check if spans are being received and written to storage
+kubectl port-forward -n observability svc/jaeger 8888:8888
+curl -s http://localhost:8888/metrics | grep otelcol_receiver_accepted_spans
+curl -s http://localhost:8888/metrics | grep otelcol_exporter_sent_spans
 
 # Check Elasticsearch index
 curl http://elasticsearch.observability.svc.cluster.local:9200/_cat/indices/jaeger* | sort
@@ -272,4 +255,4 @@ curl http://elasticsearch.observability.svc.cluster.local:9200/_cat/indices/jaeg
 
 ## Conclusion
 
-Jaeger provides comprehensive distributed tracing for microservices on Rancher. Start with all-in-one deployment for development, then migrate to production mode with Elasticsearch for persistent, queryable trace storage. Instrument your applications with OpenTelemetry for vendor-neutral tracing that can be routed to Jaeger, Zipkin, or other backends. The combination of Jaeger with Rancher's monitoring stack gives you complete observability across your service mesh.
+Jaeger provides comprehensive distributed tracing for microservices on Rancher. Start with the chart defaults for development, then migrate to Elasticsearch-backed storage for persistent, queryable trace data. Instrument your applications with OpenTelemetry for vendor-neutral tracing that can be sent directly to Jaeger or through an OpenTelemetry Collector when you need additional processing. The combination of Jaeger with Rancher's monitoring stack gives you complete observability across your service mesh.
