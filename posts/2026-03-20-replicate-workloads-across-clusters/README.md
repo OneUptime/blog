@@ -8,7 +8,7 @@ Description: Learn how to replicate Kubernetes workloads across multiple Rancher
 
 ---
 
-Replicating workloads across clusters ensures that if one cluster fails, users are automatically served by another. Rancher Fleet makes this declarative and Git-driven.
+Replicating workloads across clusters helps keep an app available if one cluster fails, provided traffic is routed to a healthy cluster. Rancher Fleet makes this declarative and Git-driven.
 
 ---
 
@@ -122,11 +122,10 @@ spec:
 
 ```bash
 # Check that the bundle is deployed to all target clusters
-kubectl get bundle -n fleet-default
+kubectl get bundles.fleet.cattle.io -n fleet-default
 
 # Get per-cluster bundle deployment status
-kubectl get bundledeployment -n fleet-default \
-  -o custom-columns='NAME:.metadata.name,CLUSTER:.spec.stagedOptions.name,READY:.status.ready'
+kubectl get bundledeployments.fleet.cattle.io -A -L fleet.cattle.io/cluster
 ```
 
 ---
@@ -154,5 +153,5 @@ data:
 
 - Use **read replicas** for stateful workloads rather than running primary databases in multiple clusters simultaneously.
 - Set **different PodDisruptionBudgets** per region based on traffic expectations.
-- Test failover by temporarily cordoning all nodes in one cluster and verifying the other cluster handles the full load.
-- Use a global load balancer (AWS Route 53, Cloudflare) to route traffic to the healthiest cluster.
+- Test failover by temporarily draining all worker nodes in one cluster and verifying the other cluster handles the full load.
+- Use a global traffic management layer (for example, AWS Route 53 or Cloudflare Load Balancing) to route traffic to the healthiest cluster.
