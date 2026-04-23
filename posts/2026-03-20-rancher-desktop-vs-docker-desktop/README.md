@@ -16,20 +16,20 @@ Rancher Desktop is a free, open-source application for macOS, Windows, and Linux
 
 ## What Is Docker Desktop?
 
-Docker Desktop is a commercial application from Docker Inc. for macOS, Windows, and Linux that provides a complete local Docker environment. It includes Docker Engine, Docker Compose, Docker BuildKit, and an optional Kubernetes cluster (using kubeadm). It requires a paid subscription for businesses with more than 250 employees or over $10M in revenue.
+Docker Desktop is a commercial application from Docker Inc. for macOS, Windows, and Linux that provides a complete local Docker environment. It includes Docker Engine, Docker Compose, Docker BuildKit, and an optional Kubernetes cluster (using kubeadm or kind). It is free for personal use, education, non-commercial open source projects, and small businesses (fewer than 250 employees AND less than $10M in annual revenue); paid subscriptions are required beyond that free tier.
 
 ## Feature Comparison
 
 | Feature | Rancher Desktop | Docker Desktop |
 |---|---|---|
-| License | Free / Open Source | Free for personal use; paid for business |
-| Kubernetes | Yes (K3s) | Yes (kubeadm-based) |
+| License | Free / Open Source | Free for personal, education, OSS, and qualifying small businesses; paid beyond free tier |
+| Kubernetes | Yes (K3s) | Yes (kubeadm or kind) |
 | Container Runtime | containerd or dockerd | dockerd |
 | Docker CLI Compatibility | Yes (nerdctl or dockerd) | Yes (native Docker CLI) |
 | Docker Compose | Yes | Yes |
 | BuildKit | Yes | Yes |
-| Dev Environments | No | Yes (Dev Environments feature) |
-| Docker Extensions | No | Yes |
+| Dev Environments | No | No (removed in Docker Desktop 4.42+) |
+| Docker Extensions | Yes (supports Docker Desktop Extensions) | Yes |
 | Dashboard UI | Yes | Yes |
 | Resource Management | Yes (CPU/RAM/disk) | Yes |
 | macOS | Yes (Apple Silicon + Intel) | Yes (Apple Silicon + Intel) |
@@ -54,7 +54,7 @@ brew install --cask rancher
 
 ```bash
 # macOS with Homebrew
-brew install --cask docker
+brew install --cask docker-desktop
 
 # Or download from https://www.docker.com/products/docker-desktop
 ```
@@ -84,27 +84,28 @@ Both tools provide a local Kubernetes cluster, but there are differences:
 - Includes Traefik ingress controller by default
 - Kubernetes version is selectable from the UI
 
-### Docker Desktop (kubeadm)
-- Uses a standard Kubernetes setup via kubeadm
-- Takes more time to start
-- Requires more memory (~2GB minimum)
-- Kubernetes version is tied to the Docker Desktop release
+### Docker Desktop (kubeadm or kind)
+- Can provision Kubernetes with either `kubeadm` or `kind`
+- `kubeadm` creates a single-node cluster, while `kind` supports multi-node clusters
+- `kind` provisions faster than `kubeadm`
+- Kubernetes version selection depends on the provisioner: `kubeadm` uses the Docker Desktop-selected version, while `kind` lets you choose the version
 
 ## Licensing and Cost
 
 This is where Rancher Desktop has a clear advantage for businesses. Rancher Desktop is completely free under the Apache 2.0 license, with no usage restrictions.
 
 Docker Desktop requires a paid subscription (Docker Pro, Team, or Business) for:
-- Companies with more than 250 employees
-- Companies with revenue over $10M annually
+- Professional use in larger organizations (for example, companies with 250+ employees or $10M+ annual revenue)
+- Government entities
+- Commercial use beyond the free tier limits
 
 For large engineering teams, Docker Desktop licensing costs can be substantial.
 
 ## Performance
 
-Both tools perform similarly for most development use cases. Rancher Desktop uses Lima on macOS, which has matured significantly and provides good file system performance. Docker Desktop uses its own VM implementation.
+Both tools perform similarly for many development use cases, but results depend on workload, file-sharing patterns, and host OS. Rancher Desktop uses Lima on macOS, while Docker Desktop runs a Linux VM with platform-specific virtualization backends and configurable resource controls.
 
-Apple Silicon (M1/M2/M3) performance is excellent on both platforms.
+Both platforms support Apple Silicon (M1/M2/M3) and Intel Macs.
 
 ## When to Choose Rancher Desktop
 
@@ -115,11 +116,11 @@ Apple Silicon (M1/M2/M3) performance is excellent on both platforms.
 
 ## When to Choose Docker Desktop
 
-- You rely on Docker Extensions ecosystem
-- You use Docker Dev Environments for team collaboration
+- You want tighter integration with Docker Hub, Docker Scout, and Docker Desktop tooling
+- You want Docker Desktop's `kind` option for local multi-node Kubernetes clusters
 - Your team is deeply familiar with Docker-specific workflows
 - You need the full Docker feature set and are within the free tier
 
 ## Conclusion
 
-Both tools are capable local development environments. Rancher Desktop's key advantage is its completely open-source, no-cost model for all organizations. Docker Desktop's key advantages are its richer ecosystem (Docker Extensions, Dev Environments) and wider adoption. For cost-conscious teams or those preferring open source, Rancher Desktop is the clear choice. For teams invested in Docker's broader ecosystem, Docker Desktop remains compelling.
+Both tools are capable local development environments. Rancher Desktop's key advantage is its completely open-source, no-cost model for all organizations. Docker Desktop's key advantages are its broader Docker ecosystem, flexible Kubernetes provisioning options, and wider adoption. For cost-conscious teams or those preferring open source, Rancher Desktop is the clear choice. For teams invested in Docker's broader ecosystem, Docker Desktop remains compelling.
