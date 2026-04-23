@@ -8,11 +8,11 @@ Description: Deploy both .NET Framework and .NET 8 applications on Windows nodes
 
 ## Introduction
 
-Windows nodes in Rancher can run .NET applications across the entire .NET ecosystem: legacy .NET Framework applications requiring full Windows server features, and modern .NET 8 applications optimized for containers. This guide covers deploying both types effectively with appropriate base image selection, configuration management, and operational practices.
+Windows nodes in Rancher can run .NET applications across the entire .NET ecosystem: legacy .NET Framework applications requiring Windows-specific APIs and full .NET Framework support, and modern .NET 8 applications optimized for containers. This guide covers deploying both types effectively with appropriate base image selection, configuration management, and operational practices.
 
 ## Prerequisites
 
-- Rancher cluster with Windows worker nodes
+- Rancher cluster with Windows worker nodes that match the Windows container base image build (for example, LTSC 2022 images on Windows Server 2022 nodes)
 - .NET SDK on build machine
 - Container registry accessible from Windows nodes
 - kubectl access
@@ -95,10 +95,7 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/os: windows
-      tolerations:
-        - key: os
-          value: windows
-          effect: NoSchedule
+        node.kubernetes.io/windows-build: "10.0.20348"
       containers:
         - name: api
           image: registry.example.com/dotnet-api:v1.0
@@ -126,7 +123,7 @@ spec:
               memory: 1Gi
           readinessProbe:
             httpGet:
-              path: /health
+              path: /health/ready
               port: 8080
             initialDelaySeconds: 45
             periodSeconds: 10
@@ -142,26 +139,21 @@ spec:
 
 ```csharp
 // Program.cs - Configure health checks for Kubernetes
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add health checks
 builder.Services.AddHealthChecks()
-    .AddSqlServer(
-        connectionString: builder.Configuration.GetConnectionString("DefaultConnection")!,
-        name: "database",
-        tags: new[] { "ready" })
-    .AddUrlGroup(
-        uri: new Uri("https://api.dependency.com/health"),
-        name: "external-api",
-        tags: new[] { "ready" });
+    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: new[] { "ready" });
 
 var app = builder.Build();
 
 // Map health endpoints
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
-    Predicate = check => check.Tags.Contains("ready"),
-    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+    Predicate = check => check.Tags.Contains("ready")
 });
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions
@@ -189,21 +181,21 @@ spec:
     matchLabels:
       app: legacy-dotnet-app
   template:
+    metadata:
+      labels:
+        app: legacy-dotnet-app
     spec:
       nodeSelector:
         kubernetes.io/os: windows
-      # .NET Framework requires Windows Server Core (larger image)
-      tolerations:
-        - key: os
-          value: windows
-          effect: NoSchedule
+        node.kubernetes.io/windows-build: "10.0.20348"
+      # The official .NET Framework container images use Windows Server Core (larger image)
       containers:
         - name: app
           image: registry.example.com/legacy-app:v2.0
           ports:
             - containerPort: 80
           env:
-            - name: ASPNET_ENV
+            - name: APP_ENVIRONMENT
               value: Production
           resources:
             requests:
@@ -255,13 +247,13 @@ spec:
     matchLabels:
       app: dotnet-worker
   template:
+    metadata:
+      labels:
+        app: dotnet-worker
     spec:
       nodeSelector:
         kubernetes.io/os: windows
-      tolerations:
-        - key: os
-          value: windows
-          effect: NoSchedule
+        node.kubernetes.io/windows-build: "10.0.20348"
       containers:
         - name: worker
           image: registry.example.com/dotnet-worker:v1.0
@@ -278,6 +270,7 @@ spec:
 
 ```yaml
 # dotnet-hpa.yaml - Autoscale .NET application
+# Requires metrics-server or another metrics provider exposing metrics.k8s.io
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -307,4 +300,4 @@ spec:
 
 ## Conclusion
 
-Deploying .NET applications on Windows nodes in Rancher enables both cloud-native .NET 8 workloads and legacy .NET Framework applications to coexist in the same Kubernetes cluster. Modern .NET 8 applications on Nano Server benefit from small image sizes and fast startup times, while .NET Framework applications on Windows Server Core provide the full Windows API surface needed for legacy code. The node selector pattern ensures workloads schedule on the correct OS, and health check configuration with appropriate delays accommodates Windows container startup characteristics.
+Deploying .NET applications on Windows nodes in Rancher enables both cloud-native .NET 8 workloads and legacy .NET Framework applications to coexist in the same Kubernetes cluster. Modern .NET 8 applications on Nano Server benefit from small image sizes and fast startup times, while .NET Framework applications on Windows Server Core provide the wider Windows API surface and full .NET Framework support needed for many legacy codebases. The node selector pattern ensures workloads schedule on the correct OS, and health check configuration with appropriate delays accommodates Windows container startup characteristics.
