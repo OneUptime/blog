@@ -32,7 +32,7 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: require-cost-labels
 spec:
-  module: registry://ghcr.io/kubewarden/policies/require-labels:v0.2.0
+  module: registry://ghcr.io/kubewarden/policies/safe-labels:v1.0.2
   rules:
     - apiGroups: ["apps"]
       apiVersions: ["v1"]
@@ -50,17 +50,21 @@ spec:
 
 ```bash
 # Query OpenCost for current spending
-curl -s "http://opencost.opencost.svc:9090/allocation/compute" \
+curl -s "http://opencost.opencost.svc:9003/allocation/compute" \
   --get \
   --data-urlencode "window=today" \
   --data-urlencode "aggregate=label:cost-center" \
-  | jq '.data[0] | to_entries[] |
-    {
-      costCenter: .key,
-      dailyCost: (.value.totalCost | round),
-      monthlyProjected: ((.value.totalCost * 30) | round)
-    }' \
-  | sort -t: -k3 -rn
+  | jq -r '
+    [.data[0] | to_entries[] |
+      {
+        costCenter: .key,
+        dailyCost: (.value.totalCost | round),
+        monthlyProjected: ((.value.totalCost * 30) | round)
+      }
+    ]
+    | sort_by(-.dailyCost)[]
+    | "  \(.costCenter): $\(.dailyCost)/day, projected monthly: $\(.monthlyProjected)"
+  '
 ```
 
 ### Cross-Cluster Cost Aggregation
@@ -70,20 +74,20 @@ curl -s "http://opencost.opencost.svc:9090/allocation/compute" \
 # aggregate-cluster-costs.py - Aggregate costs across all Rancher clusters
 
 import requests
-import json
 from typing import Dict, List
 
 OPENCOST_ENDPOINTS = {
-    "prod-us-east": "http://prod-us-east-opencost.svc:9090",
-    "prod-eu-west": "http://prod-eu-west-opencost.svc:9090",
-    "staging": "http://staging-opencost.svc:9090"
+    "prod-us-east": "http://prod-us-east-opencost.svc:9003",
+    "prod-eu-west": "http://prod-eu-west-opencost.svc:9003",
+    "staging": "http://staging-opencost.svc:9003"
 }
 
 def get_cluster_costs(cluster_name: str, endpoint: str) -> Dict:
     """Fetch costs from an OpenCost endpoint"""
     resp = requests.get(
         f"{endpoint}/allocation/compute",
-        params={"window": "month", "aggregate": "label:team", "accumulate": "true"}
+        params={"window": "month", "aggregate": "label:team"},
+        timeout=10,
     )
     resp.raise_for_status()
     data = resp.json().get('data', [{}])[0]
@@ -127,20 +131,31 @@ if __name__ == '__main__':
 #!/bin/bash
 # find-oversized-workloads.sh - Find pods with high CPU overprovisioning
 
+cpu_to_millicores() {
+  case "$1" in
+    *m) echo "${1%m}" ;;
+    "") echo 0 ;;
+    *) awk -v cpu="$1" 'BEGIN { printf "%.0f\n", cpu * 1000 }' ;;
+  esac
+}
+
 echo "Workloads with CPU utilization below 20% of requests:"
 echo ""
 
 # Use kubectl and metrics-server to find low-utilization pods
-kubectl top pods -A --sort-by=cpu | while read namespace pod cpu memory; do
+kubectl top pod -A --sort-by=cpu | while read -r namespace pod cpu memory; do
   # Skip header
   [ "$namespace" = "NAMESPACE" ] && continue
 
-  # Get CPU requests
+  # Sum CPU requests across all containers in the pod
   REQUESTS=$(kubectl get pod "$pod" -n "$namespace" \
-    -o jsonpath='{.spec.containers[0].resources.requests.cpu}' 2>/dev/null)
+    -o jsonpath='{range .spec.containers[*]}{.resources.requests.cpu}{"\n"}{end}' 2>/dev/null \
+    | while read -r request; do cpu_to_millicores "$request"; done \
+    | awk '{sum += $1} END {print sum + 0}')
+  USAGE=$(cpu_to_millicores "$cpu")
 
-  if [ -n "$REQUESTS" ]; then
-    echo "Pod: $namespace/$pod - Using: ${cpu}, Requested: ${REQUESTS}"
+  if [ "$REQUESTS" -gt 0 ] && [ $(( USAGE * 100 / REQUESTS )) -lt 20 ]; then
+    echo "Pod: $namespace/$pod - Using: ${cpu}, Requested: ${REQUESTS}m"
   fi
 done
 ```
@@ -177,18 +192,26 @@ spec:
 ### Spot/Preemptible Node Scheduling
 
 ```yaml
-# Toleration for spot instances - schedule batch workloads on cheaper spot nodes
+# Schedule a batch workload onto GKE or AKS spot/preemptible nodes
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: batch-processor
   namespace: batch
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: batch-processor
   template:
+    metadata:
+      labels:
+        app: batch-processor
     spec:
       tolerations:
         - key: "cloud.google.com/gke-spot"
-          operator: Exists
+          operator: Equal
+          value: "true"
           effect: NoSchedule
         - key: "kubernetes.azure.com/scalesetpriority"
           value: spot
@@ -196,18 +219,26 @@ spec:
           effect: NoSchedule
       affinity:
         nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              preference:
-                matchExpressions:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
                   - key: cloud.google.com/gke-spot
-                    operator: Exists
+                    operator: In
+                    values: ["true"]
+              - matchExpressions:
+                  - key: kubernetes.azure.com/scalesetpriority
+                    operator: In
+                    values: ["spot"]
+      containers:
+        - name: worker
+          image: busybox:1.36
+          command: ["sh", "-c", "while true; do echo processing; sleep 30; done"]
 ```
 
-### Scale Down Non-Production Clusters at Night
+### Scale Down Non-Production Workloads at Night
 
 ```yaml
-# CronJob: Scale down dev/staging clusters at 8 PM weekdays
+# CronJob: Scale down dev/staging workloads at 8 PM weekdays
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -219,6 +250,7 @@ spec:
     spec:
       template:
         spec:
+          serviceAccountName: namespace-scaler
           containers:
             - name: scaler
               image: registry.example.com/rancher-scaler:latest
@@ -242,6 +274,7 @@ spec:
 # finops-monthly-review.sh
 
 MONTH=$(date -d "last month" +%Y-%m)
+WINDOW="lastmonth"
 
 echo "=========================================="
 echo "FinOps Monthly Review: ${MONTH}"
@@ -250,11 +283,10 @@ echo "=========================================="
 # 1. Generate team cost report
 echo ""
 echo "1. Cost by Team:"
-curl -s "http://opencost.opencost.svc:9090/allocation/compute" \
+curl -s "http://opencost.opencost.svc:9003/allocation/compute" \
   --get \
-  --data-urlencode "window=${MONTH}" \
+  --data-urlencode "window=${WINDOW}" \
   --data-urlencode "aggregate=label:team" \
-  --data-urlencode "accumulate=true" \
   | jq -r '.data[0] | to_entries[] | "   \(.key): $\(.value.totalCost | round)"'
 
 # 2. Compare to previous month (manual calculation in full implementation)
@@ -264,11 +296,10 @@ echo "2. Month-over-month change: (see cost dashboard)"
 # 3. List top 10 most expensive namespaces
 echo ""
 echo "3. Top 10 Most Expensive Namespaces:"
-curl -s "http://opencost.opencost.svc:9090/allocation/compute" \
+curl -s "http://opencost.opencost.svc:9003/allocation/compute" \
   --get \
-  --data-urlencode "window=${MONTH}" \
+  --data-urlencode "window=${WINDOW}" \
   --data-urlencode "aggregate=namespace" \
-  --data-urlencode "accumulate=true" \
   | jq -r '[.data[0] | to_entries[] | {ns: .key, cost: .value.totalCost}] | sort_by(-.cost) | .[0:10][] | "   \(.ns): $\(.cost | round)"'
 ```
 
@@ -287,11 +318,27 @@ spec:
       rules:
         - alert: UnexpectedCostIncrease
           expr: |
-            # Alert if hourly cost increases by more than 50% vs previous hour
+            # Alert if current workload cost increases by more than 50% vs 1 hour ago
             (
-              sum(opencost_container_cpu_cost_hourly + opencost_container_memory_cost_hourly)
+              sum(
+                (container_cpu_allocation * on (node) group_left() node_cpu_hourly_cost)
+                +
+                (
+                  container_memory_allocation_bytes
+                  * on (node) group_left() node_ram_hourly_cost
+                  / (1024 * 1024 * 1024)
+                )
+              )
               /
-              sum(opencost_container_cpu_cost_hourly + opencost_container_memory_cost_hourly offset 1h)
+              sum(
+                (container_cpu_allocation offset 1h * on (node) group_left() node_cpu_hourly_cost offset 1h)
+                +
+                (
+                  container_memory_allocation_bytes offset 1h
+                  * on (node) group_left() node_ram_hourly_cost offset 1h
+                  / (1024 * 1024 * 1024)
+                )
+              )
             ) > 1.5
           for: 30m
           labels:
@@ -308,19 +355,267 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: finops-dashboard
-  namespace: cattle-monitoring-system
+  namespace: cattle-dashboards
   labels:
     grafana_dashboard: "1"
 data:
   finops-kpis.json: |
     {
-      "title": "FinOps KPIs Dashboard",
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "editable": true,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
       "panels": [
-        {"title": "Monthly Spend", "type": "stat"},
-        {"title": "Cost per Team", "type": "piechart"},
-        {"title": "CPU Utilization vs Requests", "type": "gauge"},
-        {"title": "Cost Trend (90 days)", "type": "timeseries"}
-      ]
+        {
+          "datasource": null,
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "currencyUSD"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "expr": "sum(node_total_hourly_cost) * 730",
+              "legendFormat": "Monthly spend",
+              "refId": "A"
+            }
+          ],
+          "title": "Monthly Spend",
+          "type": "stat"
+        },
+        {
+          "datasource": null,
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "unit": "currencyUSD"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 6,
+            "y": 0
+          },
+          "id": 2,
+          "options": {
+            "displayLabels": [
+              "name",
+              "percent"
+            ],
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "pieType": "donut",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (namespace) ((container_cpu_allocation * on (node) group_left() node_cpu_hourly_cost) + ((container_memory_allocation_bytes * on (node) group_left() node_ram_hourly_cost) / (1024 * 1024 * 1024)))",
+              "legendFormat": "{{namespace}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Cost per Namespace",
+          "type": "piechart"
+        },
+        {
+          "datasource": null,
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "max": 100,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 70
+                  },
+                  {
+                    "color": "red",
+                    "value": 90
+                  }
+                ]
+              },
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 12,
+            "y": 0
+          },
+          "id": 3,
+          "options": {
+            "minVizHeight": 75,
+            "minVizWidth": 75,
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true
+          },
+          "targets": [
+            {
+              "expr": "(sum(rate(container_cpu_usage_seconds_total{container!=\"\",image!=\"\"}[5m])) / sum(kube_pod_resource_request{resource=\"cpu\",unit=\"cores\"})) * 100",
+              "legendFormat": "CPU utilization vs requests",
+              "refId": "A"
+            }
+          ],
+          "title": "CPU Utilization vs Requests",
+          "type": "gauge"
+        },
+        {
+          "datasource": null,
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "unit": "currencyUSD"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 8
+          },
+          "id": 4,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum(node_total_hourly_cost) * 24",
+              "legendFormat": "Daily infrastructure cost",
+              "refId": "A"
+            }
+          ],
+          "title": "Cost Trend (90 days)",
+          "type": "timeseries"
+        }
+      ],
+      "refresh": "5m",
+      "schemaVersion": 39,
+      "tags": [
+        "finops",
+        "opencost",
+        "rancher"
+      ],
+      "templating": {
+        "list": []
+      },
+      "time": {
+        "from": "now-90d",
+        "to": "now"
+      },
+      "timepicker": {
+        "refresh_intervals": [
+          "5m",
+          "15m",
+          "1h",
+          "6h",
+          "1d"
+        ]
+      },
+      "timezone": "browser",
+      "title": "FinOps KPIs Dashboard",
+      "uid": "finops-kpis",
+      "version": 1
     }
 ```
 
