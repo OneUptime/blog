@@ -8,12 +8,12 @@ Description: Learn how OpenTofu discovers remote services - the .well-known/terr
 
 ## Introduction
 
-OpenTofu uses a service discovery protocol to find the API endpoints for registries, remote backends, and authentication services. When you interact with `registry.opentofu.org` or a private registry, OpenTofu first fetches `/.well-known/terraform.json` to discover what services are available and where their APIs live.
+OpenTofu uses a service discovery protocol to find the API endpoints for OpenTofu-native services. When you interact with `registry.opentofu.org`, a private registry, or a TACOS host such as `app.terraform.io`, OpenTofu first fetches `/.well-known/terraform.json` to discover what services are available and where their APIs live.
 
 ## The Service Discovery Protocol
 
 ```bash
-# OpenTofu fetches .well-known/terraform.json from any hostname it interacts with
+# OpenTofu fetches .well-known/terraform.json from OpenTofu-native service hosts
 
 curl -s https://registry.opentofu.org/.well-known/terraform.json | jq .
 ```
@@ -23,14 +23,11 @@ Response:
 ```json
 {
   "modules.v1": "/v1/modules/",
-  "providers.v1": "/v1/providers/",
-  "login.v1": "/oauth2/authorization",
-  "state.v2": "/api/v2/",
-  "tfe.v2.1": "/api/v2/"
+  "providers.v1": "/v1/providers/"
 }
 ```
 
-Each key is a service identifier with version; the value is the base path for that service's API.
+Each key is a service identifier with version. Registry services such as `modules.v1` and `providers.v1` map to base paths, while `login.v1` maps to an object describing the OAuth flow used by `tofu login`.
 
 ## Service Identifiers
 
@@ -38,9 +35,7 @@ Each key is a service identifier with version; the value is the base path for th
 |-------------|---------|
 | `modules.v1` | Module registry API |
 | `providers.v1` | Provider registry API |
-| `login.v1` | OAuth 2.0 authentication |
-| `state.v2` | Remote state storage (Terraform Cloud compatible) |
-| `tfe.v2.1` | Terraform Enterprise API |
+| `login.v1` | OAuth 2.0 client and endpoint configuration for `tofu login` |
 
 ## How tofu init Uses Service Discovery
 
@@ -48,7 +43,7 @@ Each key is a service identifier with version; the value is the base path for th
 # Trace the discovery process
 TF_LOG=DEBUG tofu init 2>&1 | grep "well-known\|discovery\|service"
 
-# Output shows:
+# Output includes lines such as:
 # DEBUG request to https://registry.opentofu.org/.well-known/terraform.json
 # DEBUG discovered modules.v1 endpoint: /v1/modules/
 # DEBUG discovered providers.v1 endpoint: /v1/providers/
@@ -66,11 +61,16 @@ server {
 
     # Service discovery endpoint
     location /.well-known/terraform.json {
-        add_header Content-Type application/json;
+        default_type application/json;
         return 200 '{
             "modules.v1": "/v1/modules/",
             "providers.v1": "/v1/providers/",
-            "login.v1": "/oauth2/authorization"
+            "login.v1": {
+                "client": "tofu-cli",
+                "grant_types": ["authz_code"],
+                "authz": "/oauth2/authorization",
+                "token": "/oauth2/token"
+            }
         }';
     }
 
@@ -91,19 +91,20 @@ server {
 When `login.v1` is present, `tofu login` uses it for OAuth:
 
 ```bash
-# tofu login uses the login.v1 endpoint for OAuth
+# tofu login uses the login.v1 configuration for OAuth
 tofu login registry.mycompany.com
 
 # OpenTofu fetches:
 # https://registry.mycompany.com/.well-known/terraform.json
-# Finds: "login.v1": "/oauth2/authorization"
-# Redirects to: https://registry.mycompany.com/oauth2/authorization?...
+# Finds: "login.v1": {"client":"tofu-cli","authz":"/oauth2/authorization","token":"/oauth2/token",...}
+# Starts the browser flow at: https://registry.mycompany.com/oauth2/authorization?...
+# Exchanges the authorization code at: https://registry.mycompany.com/oauth2/token
 ```
 
 Manual token configuration (bypass OAuth):
 
 ```hcl
-# ~/.terraformrc
+# ~/.tofurc
 credentials "registry.mycompany.com" {
   token = "my-registry-token"
 }
@@ -127,10 +128,7 @@ terraform {
 }
 ```
 
-OpenTofu discovers the `tfe.v2.1` endpoint and uses it for:
-- Uploading configuration
-- Streaming plan/apply logs
-- Storing state
+For example, `https://app.terraform.io/.well-known/terraform.json` currently advertises `state.v2` and several `tfe.v2*` entries. The remote backend uses those host-specific APIs for remote operations and state storage.
 
 ## Custom Service Discovery for Air-Gapped Environments
 
@@ -150,8 +148,8 @@ def discovery():
         # No login.v1 - use static token auth instead
     })
 
-@app.route('/v1/modules/<namespace>/<name>/<provider>/versions')
-def module_versions(namespace, name, provider):
+@app.route('/v1/modules/<namespace>/<name>/<system>/versions')
+def module_versions(namespace, name, system):
     # Return available module versions
     return jsonify({
         "modules": [{
@@ -163,6 +161,7 @@ def module_versions(namespace, name, provider):
     })
 
 if __name__ == '__main__':
+    # For production use, terminate TLS with a certificate trusted by your OpenTofu clients.
     app.run(host='0.0.0.0', port=8080, ssl_context='adhoc')
 ```
 
@@ -180,4 +179,4 @@ curl -s "https://registry.mycompany.com/v1/modules/my-org/vpc/aws/versions" | \
 
 ## Conclusion
 
-OpenTofu's service discovery protocol uses `.well-known/terraform.json` to find API endpoints for any hostname it interacts with. This enables a single hostname to serve multiple services (modules, providers, authentication, remote state) with each service independently discoverable. When setting up a private registry, implement the service discovery endpoint first - it's the entry point that OpenTofu uses to locate all other APIs. For air-gapped environments, a minimal HTTP server serving the discovery JSON and proxying requests to local package stores is sufficient.
+OpenTofu's service discovery protocol uses `.well-known/terraform.json` to find API endpoints for OpenTofu-native services on a given hostname. This enables a single hostname to serve multiple services with each service independently discoverable. When setting up a private registry, implement the service discovery endpoint first - it's the entry point that OpenTofu uses to locate registry and login APIs. For air-gapped environments, a minimal HTTPS service serving the discovery JSON and the required registry endpoints is sufficient.
