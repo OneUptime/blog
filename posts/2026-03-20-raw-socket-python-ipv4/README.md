@@ -8,7 +8,7 @@ Description: Learn how to work with raw IPv4 sockets in Python to craft and send
 
 ## What Are Raw Sockets?
 
-Raw sockets (`SOCK_RAW`) bypass the transport layer and give direct access to IP packets. They require root/administrator privileges on Linux/macOS.
+Raw sockets (`SOCK_RAW`) bypass the transport layer and give direct access to IP packets. They require elevated privileges; on Linux, that typically means root or `CAP_NET_RAW`.
 
 ```text
 Normal Socket:    App ↔ TCP/UDP ↔ IP ↔ Ethernet
@@ -44,7 +44,7 @@ def build_icmp_echo(seq: int = 1) -> bytes:
     return header + payload
 
 def ping(dest_ip: str, count: int = 4, timeout: float = 2.0) -> None:
-    # IPPROTO_ICMP requires root privileges
+    # Creating a raw ICMP socket requires elevated privileges on Linux.
     with socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP) as s:
         s.settimeout(timeout)
         pid = os.getpid() & 0xFFFF
@@ -58,8 +58,9 @@ def ping(dest_ip: str, count: int = 4, timeout: float = 2.0) -> None:
                 while True:
                     data, addr = s.recvfrom(1024)
                     recv_time = time.monotonic()
-                    # Skip IP header (first 20 bytes)
-                    icmp_header = data[20:28]
+                    # IPv4 headers are variable length; IHL is in 32-bit words.
+                    ip_header_len = (data[0] & 0x0F) * 4
+                    icmp_header = data[ip_header_len:ip_header_len + 8]
                     icmp_type, _, _, recv_pid, recv_seq = struct.unpack("!BBHHH", icmp_header)
                     if icmp_type == 0 and recv_pid == pid and recv_seq == seq:
                         rtt = (recv_time - send_time) * 1000
@@ -68,20 +69,19 @@ def ping(dest_ip: str, count: int = 4, timeout: float = 2.0) -> None:
             except socket.timeout:
                 print(f"Request timeout for seq={seq}")
 
-# Must run as root / Administrator
+# Must run with elevated privileges (for example, as root on Linux)
 
 # ping("8.8.8.8")
 ```
 
-## Receive Raw IP Packets (Sniffer)
+## Receive Raw ICMP Packets (Sniffer)
 
 ```python
 import socket
 import struct
-import ipaddress
 
 def parse_ip_header(data: bytes) -> dict:
-    """Parse a 20-byte IPv4 header."""
+    """Parse the fixed 20-byte portion of an IPv4 header."""
     fields = struct.unpack("!BBHHHBBH4s4s", data[:20])
     return {
         "version":  (fields[0] >> 4),
@@ -100,14 +100,12 @@ def parse_ip_header(data: bytes) -> dict:
 
 PROTO_NAMES = {1: "ICMP", 6: "TCP", 17: "UDP"}
 
-# Root required; on Linux only
-with socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IP) as s:
-    # Bind to interface
+# Root or CAP_NET_RAW required; on Linux raw IPv4 sockets receive one protocol at a time
+with socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP) as s:
+    # Bind to all local IPv4 addresses
     s.bind(("0.0.0.0", 0))
-    # Include IP header in received data
-    s.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
 
-    print("Sniffing IP packets (Ctrl+C to stop)")
+    print("Sniffing ICMP packets (Ctrl+C to stop)")
     for _ in range(20):
         data, addr = s.recvfrom(65535)
         hdr = parse_ip_header(data)
@@ -117,4 +115,4 @@ with socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IP) as s:
 
 ## Conclusion
 
-Raw sockets give direct access to IP-layer packets but require elevated privileges. Use them for diagnostic tools (ping, traceroute), network monitors, and custom protocol implementations. For IPv4 sniffing, `socket.IPPROTO_IP` with `IP_HDRINCL` includes the IP header in received data. For production network analysis, prefer libraries like Scapy or PyShark which handle platform differences and provide higher-level packet parsing. Never use raw sockets to forge source IPs for malicious purposes - most ISPs implement ingress filtering (BCP38) that drops spoofed packets.
+Raw sockets give direct access to IP-layer packets but require elevated privileges. Use them for diagnostic tools (ping, traceroute), network monitors, and custom protocol implementations. On Linux, a raw IPv4 socket receives packets for the protocol it was created with, and the IP header is already included in received data. For production network analysis, prefer libraries like Scapy or PyShark which handle platform differences and provide higher-level packet parsing. Never use raw sockets to forge source IPs for malicious purposes - many networks implement ingress filtering (BCP38) that can drop spoofed packets.
