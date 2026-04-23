@@ -10,6 +10,8 @@ Description: Learn how to write and customize the RKE cluster.yml configuration 
 
 The `cluster.yml` file is the heart of every RKE cluster. It defines which nodes participate in the cluster, what roles they play, which CNI plugin to use, and how Kubernetes components are configured. Understanding how to write and tune this file is essential for RKE cluster management.
 
+RKE1 reached end of life on July 31, 2025. Use this guidance for maintaining existing RKE1 clusters; for new clusters, use RKE2 or another supported Kubernetes distribution.
+
 ## Generating a Starter Configuration
 
 ```bash
@@ -94,8 +96,7 @@ nodes:
 network:
   plugin: canal      # Options: canal, flannel, calico, weave, none
   options:
-    flannel_backend_type: "vxlan"
-    # canal_flannel_backend_type: "vxlan"
+    canal_flannel_backend_type: "vxlan"
 
 # Authentication configuration
 authentication:
@@ -112,7 +113,7 @@ authorization:
 services:
   # etcd configuration
   etcd:
-    image: rancher/mirrored-coreos-etcd:v3.5.9
+    image: rancher/mirrored-coreos-etcd:v3.5.10
     extra_args:
       # Tune heartbeat and election timeout for stability
       heartbeat-interval: 500
@@ -123,26 +124,17 @@ services:
       interval_hours: 12
       retention: 6
       safe_timestamp: false
-    # etcd snapshot location
-    snapshot: true
-    creation: 6h
-    retention: 24h
 
   # kube-apiserver configuration
   kube-api:
     image: ""
+    # Enable audit logging with RKE's default policy and rotation settings
+    audit_log:
+      enabled: true
     extra_args:
-      # Enable audit logging
-      audit-log-path: /var/log/audit/audit.log
-      audit-log-maxage: "30"
-      audit-log-maxbackup: "10"
-      audit-log-maxsize: "100"
       # Security settings
       anonymous-auth: "false"
-      enable-admission-plugins: "NodeRestriction,PodSecurityAdmission"
-    # Additional volumes for audit log
-    extra_binds:
-      - "/var/log/audit:/var/log/audit"
+      enable-admission-plugins: "NodeRestriction,PodSecurity"
     # Service NodePort range
     service_node_port_range: 30000-32767
 
@@ -152,7 +144,6 @@ services:
       # Node monitoring settings
       node-monitor-grace-period: 40s
       node-monitor-period: 5s
-      pod-eviction-timeout: 5m0s
 
   # kubelet configuration
   kubelet:
@@ -185,10 +176,10 @@ ingress:
 # DNS configuration
 dns:
   provider: coredns
-  upstream_nameservers:
+  upstreamnameservers:
     - 8.8.8.8
     - 8.8.4.4
-  reverse_cidrs:
+  reversecidrs:
     - 1.0.0.10.in-addr.arpa
 
 # Monitoring configuration
@@ -223,11 +214,11 @@ private_registries:
 ## Validating the Configuration
 
 ```bash
-# Validate the cluster.yml syntax
-rke config --print --name cluster.yml
+# Print a skeleton config to compare supported field names
+rke config --print --empty
 
-# Check that all nodes are accessible before deploying
-rke up --dry-run
+# Deploy with the config; RKE validates configuration and node access during the run
+rke up --config cluster.yml
 ```
 
 ## Common Configuration Patterns
@@ -245,12 +236,12 @@ nodes:
 
 ```yaml
 nodes:
-  - { address: 192.168.1.101, role: [controlplane, etcd] }
-  - { address: 192.168.1.102, role: [controlplane, etcd] }
-  - { address: 192.168.1.103, role: [controlplane, etcd] }
-  - { address: 192.168.1.104, role: [worker] }
-  - { address: 192.168.1.105, role: [worker] }
-  - { address: 192.168.1.106, role: [worker] }
+  - { address: 192.168.1.101, user: ubuntu, role: [controlplane, etcd] }
+  - { address: 192.168.1.102, user: ubuntu, role: [controlplane, etcd] }
+  - { address: 192.168.1.103, user: ubuntu, role: [controlplane, etcd] }
+  - { address: 192.168.1.104, user: ubuntu, role: [worker] }
+  - { address: 192.168.1.105, user: ubuntu, role: [worker] }
+  - { address: 192.168.1.106, user: ubuntu, role: [worker] }
 ```
 
 ## Conclusion
