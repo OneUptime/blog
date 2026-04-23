@@ -2,34 +2,33 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Window, Kubernetes, Worker Nodes, Hybrid Cluster
+Tags: Rancher, Windows, Kubernetes, Worker Nodes, Hybrid Cluster
 
 Description: Add Windows Server worker nodes to Rancher-managed Kubernetes clusters to run Windows containers alongside Linux workloads in a hybrid cluster configuration.
 
 ## Introduction
 
-Rancher supports hybrid Kubernetes clusters with both Linux and Windows worker nodes. Windows nodes can run Windows-specific workloads like .NET Framework applications, IIS, and SQL Server, while Linux nodes handle Linux-native workloads. This guide covers adding Windows Server nodes to a Rancher-managed cluster.
+Rancher supports hybrid Kubernetes clusters with both Linux and Windows worker nodes. Windows nodes can run Windows-specific workloads like .NET Framework applications, IIS, and SQL Server, while Linux nodes handle Linux-native workloads. In Rancher-provisioned RKE2 clusters, the control plane runs on Linux and you should keep at least one Linux worker node for Rancher cluster components such as the cluster agent, DNS, metrics server, and Ingress. This guide covers adding Windows Server nodes to a Rancher-managed cluster.
 
 ## Prerequisites
 
-- RKE2 cluster with Linux control plane nodes
-- Windows Server 2019 or 2022 (Windows 10/11 for dev)
-- Network plugin supporting Windows (Flannel or Calico)
+- Rancher-managed RKE2 custom cluster with Linux control plane nodes and at least one Linux worker node
+- Windows Server 2019 or 2022
+- Cluster created with a Windows-compatible CNI (Flannel or Calico)
 - At minimum Windows version: Windows Server 2019 (1809+)
-- Rancher v2.6+ for RKE2 Windows support
+- Rancher version with RKE2 Windows support
 
 ## Step 1: Prepare the Cluster for Windows Nodes
 
+In Rancher, create the custom cluster with `Calico` or `Flannel` selected in the `Container Network` field. If you use Flannel with Windows, only the `vxlan` backend is supported.
+
 ```bash
-# Ensure cluster uses a Windows-compatible network plugin
+# Verify the active bundled CNI chart in RKE2
+kubectl get helmcharts -n kube-system
+```
 
-# RKE2 with Flannel (host-gw mode) works well for Windows
-
-# Check current network plugin
-kubectl get configmap rke2-cfg -n kube-system -o yaml | grep cni
-
-# For new clusters, specify flannel in config
-# /etc/rancher/rke2/config.yaml on control plane
+```yaml
+# /etc/rancher/rke2/config.yaml on Linux server nodes
 cni: flannel
 ```
 
@@ -38,59 +37,37 @@ cni: flannel
 ```powershell
 # Run on Windows Server node (as Administrator)
 
-# Check Windows version (must be 1809+)
+# Check Windows version
+(Get-ComputerInfo).WindowsProductName
 [System.Environment]::OSVersion.Version
 winver
 
-# Enable required Windows features
-Install-WindowsFeature -Name containers
-Install-WindowsFeature -Name Hyper-V -IncludeManagementTools
+# Enable the required Windows Containers feature
+Enable-WindowsOptionalFeature -Online -FeatureName Containers -All
 
-# Disable Windows Defender real-time monitoring
-# (Can cause issues with container operations)
-Set-MpPreference -DisableRealtimeMonitoring $true
+# Reboot after enabling Containers
+Restart-Computer
 
-# Disable Windows Firewall (configure proper firewall rules instead)
-# or configure necessary ports:
-# 6443 - Kubernetes API
-# 10250 - kubelet
-# 8472 - Flannel VXLAN
-# 30000-32767 - NodePort range
-
-# Set static IP or ensure DHCP is stable
-# (IP changes can break Kubernetes node registration)
+# Configure firewall rules instead of disabling Windows Firewall.
+# Open the ports required for your cluster:
+# 6443/TCP - Kubernetes API
+# 9345/TCP - RKE2 registration/supervisor API
+# 10250/TCP - kubelet metrics
+# 30000-32767/TCP - NodePort range
+# 4789/UDP - Calico or Flannel VXLAN
+# 179/TCP - Calico BGP (only if using Calico BGP)
 ```
 
-## Step 3: Install RKE2 Windows Agent
+## Step 3: Register the Windows Worker Node
 
-```powershell
-# Download RKE2 Windows installer
-$RKE2_VERSION = "v1.28.8+rke2r1"
-Invoke-WebRequest `
-  -Uri "https://github.com/rancher/rke2/releases/download/$RKE2_VERSION/rke2-windows-amd64.zip" `
-  -OutFile "rke2-windows.zip"
+Rancher-managed custom clusters install and manage RKE2 for Windows nodes through the Windows registration command generated in the Rancher UI. Do not manually download the RKE2 Windows zip for this workflow.
 
-Expand-Archive -Path rke2-windows.zip -DestinationPath C:\rke2
+1. In Rancher, go to `Cluster Management` -> your cluster -> `Registration`.
+2. Under `Node Role`, select `Worker`.
+3. Copy the Windows registration command.
+4. Run it in an elevated Command Prompt on the Windows host.
 
-# Create configuration directory
-New-Item -ItemType Directory -Force -Path C:\etc\rancher\rke2
-
-# Create RKE2 agent configuration
-@"
-server: https://rke2-server.example.com:9345
-token: my-cluster-token
-node-label:
-  - "kubernetes.io/os=windows"
-  - "beta.kubernetes.io/os=windows"
-"@ | Out-File -FilePath C:\etc\rancher\rke2\config.yaml -Encoding UTF8
-
-# Install RKE2 as a Windows service
-cd C:\rke2
-.\rke2.exe agent service --add
-
-# Start the service
-Start-Service rke2
-```
+The Windows registration command only appears after the cluster is already running with Linux `etcd`, control plane, and worker nodes.
 
 ## Step 4: Verify Windows Node Registration
 
@@ -113,17 +90,20 @@ kubectl get nodes -l kubernetes.io/os=windows
 ## Step 5: Configure Windows-Specific Node Labels and Taints
 
 ```bash
-# Add labels to Windows nodes for workload scheduling
+# Windows nodes already get the standard OS and Windows build labels from Kubernetes.
+# Add only your own workload labels if needed.
 kubectl label node win-node-01 \
-  kubernetes.io/os=windows \
-  node.kubernetes.io/windows-build=10.0.20348 \
   workload-type=windows
 
 # Optionally taint Windows nodes so only Windows workloads schedule there
 kubectl taint nodes win-node-01 \
   os=windows:NoSchedule
 
+# Use the automatically added node.kubernetes.io/windows-build label
+# in workload nodeSelector rules when you need to match Windows builds.
+
 # Verify labels and taints
+kubectl get node win-node-01 --show-labels
 kubectl describe node win-node-01
 ```
 
@@ -151,16 +131,15 @@ kubectl patch serviceaccount default \
 # Check RKE2 status
 Get-Service rke2
 
-# Check containerd (used by RKE2 on Windows)
-Get-Service containerd
+# List running Kubernetes containers
+& "C:\var\lib\rancher\rke2\bin\crictl.exe" `
+  --config "C:\var\lib\rancher\rke2\agent\etc\crictl.yaml" ps
 
-# List running containers
-& "C:\Program Files\containerd\ctr.exe" containers list
-
-# Check node agent connectivity
-Get-EventLog -LogName Application -Source rke2 -Newest 20
+# Check recent RKE2 events
+Get-WinEvent -LogName Application -MaxEvents 50 |
+  Where-Object { $_.ProviderName -eq "rke2" }
 ```
 
 ## Conclusion
 
-Adding Windows worker nodes to Rancher creates a hybrid cluster capable of running both Linux and Windows containerized workloads from a single management plane. The key requirements are Windows Server 2019+ with containers feature enabled, a Windows-compatible network plugin (Flannel or Calico), and RKE2 Windows agent installation. After node registration, use node selectors and tolerations to direct Windows workloads to Windows nodes and Linux workloads to Linux nodes.
+Adding Windows worker nodes to Rancher creates a hybrid cluster capable of running both Linux and Windows containerized workloads from a single management plane. The key requirements are Linux control plane nodes plus at least one Linux worker node, Windows Server 2019+ with the Containers feature enabled, a Windows-compatible network plugin (Flannel or Calico, with VXLAN for Flannel on Windows), and registering the Windows worker from the Rancher UI. After node registration, use node selectors and tolerations to direct Windows workloads to Windows nodes and Linux workloads to Linux nodes.
