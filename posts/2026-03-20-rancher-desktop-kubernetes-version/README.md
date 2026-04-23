@@ -53,7 +53,7 @@ Open Rancher Desktop Preferences to configure:
 
 ```bash
 # Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
+rdctl set --kubernetes-version <VERSION>
 rdctl set --container-engine containerd
 ```
 
@@ -131,31 +131,32 @@ helm uninstall my-release
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
+# Factory reset Rancher Desktop
 rdctl factory-reset
 
-# Check Rancher Desktop status
-rdctl status
+# Show Rancher Desktop information
+rdctl info
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
+# Show current Rancher Desktop settings
+rdctl list-settings
 
 # Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+rdctl set --kubernetes-version <VERSION>
 ```
 
 ## Troubleshooting
 
 ```bash
 # Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# macOS: ~/Library/Logs/rancher-desktop/
+# Windows: %LOCALAPPDATA%\rancher-desktop\logs\
+# Linux: ~/.local/share/rancher-desktop/logs/
 
 # Reset to factory defaults
 rdctl factory-reset
 
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Check virtual machine settings
+rdctl list-settings | grep -A 5 '"virtualMachine"'
 ```
 
 ## Conclusion
