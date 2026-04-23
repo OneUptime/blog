@@ -62,8 +62,8 @@ resource "aws_db_parameter_group" "postgres_prod" {
 
   # Security
   parameter {
-    name  = "ssl"
-    value = "1"  # Require SSL connections
+    name  = "rds.force_ssl"
+    value = "1"  # Require SSL/TLS connections
   }
 
   tags = {
@@ -148,21 +148,11 @@ resource "aws_db_instance" "main" {
 
 ## Step 4: Handle Pending Reboot Parameters
 
-```hcl
-# CloudWatch alarm to detect when a parameter requires reboot
-resource "aws_cloudwatch_metric_alarm" "pending_reboot" {
-  alarm_name          = "${var.project_name}-rds-pending-reboot"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "DatabaseConnections"
-  namespace           = "AWS/RDS"
-  period              = 300
-  statistic           = "Average"
-  threshold           = 0
+RDS doesn't expose a dedicated CloudWatch metric for DB parameter group `pending-reboot` status. After you confirm the status with the AWS CLI, reboot the instance manually to apply the change:
 
-  # Use this as a reminder to schedule maintenance
-  alarm_description = "Check for pending RDS parameter group changes requiring reboot"
-}
+```bash
+aws rds reboot-db-instance \
+  --db-instance-identifier my-project-db
 ```
 
 ## Step 5: Deploy
@@ -175,9 +165,10 @@ tofu apply
 # Check for parameters pending reboot
 aws rds describe-db-instances \
   --db-instance-identifier my-project-db \
-  --query 'DBInstances[0].DBParameterGroups'
+  --query 'DBInstances[0].DBParameterGroups[*].[DBParameterGroupName,ParameterApplyStatus]' \
+  --output table
 ```
 
 ## Conclusion
 
-Custom parameter groups are essential for production database performance tuning. Parameters with `apply_method = "pending-reboot"` require a database restart to take effect-plan these changes during maintenance windows. Use `{DBInstanceClassMemory}` formula parameters for settings that should scale with instance size, making your parameter group reusable across different instance types.
+Custom parameter groups are essential for production database performance tuning. Parameters with `apply_method = "pending-reboot"` require a manual database reboot to take effect, so plan these changes during maintenance windows. Use `{DBInstanceClassMemory}` formula parameters for settings that should scale with instance size, making your parameter group reusable across different instance types.
