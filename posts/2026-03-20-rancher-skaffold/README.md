@@ -13,7 +13,7 @@ Skaffold is a command-line tool for continuous development on Kubernetes. It wat
 ## Prerequisites
 
 - Skaffold CLI installed
-- Docker or BuildKit configured
+- Docker configured (optionally with BuildKit enabled)
 - kubectl configured for your Rancher cluster
 - A development namespace in Rancher
 
@@ -36,7 +36,7 @@ skaffold version
 
 ```yaml
 # skaffold.yaml - Basic Skaffold configuration
-apiVersion: skaffold/v4beta11
+apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: my-app
@@ -56,7 +56,7 @@ build:
   # Push images to private registry
   local:
     push: true
-    tryImportMissing: true
+    useDockerCLI: true
     useBuildkit: true
 
 deploy:
@@ -65,9 +65,10 @@ deploy:
       - name: my-app
         chartPath: ./chart
         namespace: development
+        setValueTemplates:
+          image.repository: "{{.IMAGE_REPO_registry_example_com_my_app}}"
+          image.tag: "{{.IMAGE_TAG_registry_example_com_my_app}}@{{.IMAGE_DIGEST_registry_example_com_my_app}}"
         setValues:
-          image.repository: registry.example.com/my-app
-          image.tag: "{{.IMAGE_TAG}}"
           replicaCount: "1"
           resources.requests.cpu: "100m"
           resources.requests.memory: "128Mi"
@@ -95,13 +96,13 @@ profiles:
 
   # Staging profile: same as production but smaller scale
   - name: staging
-    deploy:
-      helm:
-        releases:
-          - name: my-app
-            setValues:
-              replicaCount: "2"
-              namespace: staging
+    patches:
+      - op: replace
+        path: /deploy/helm/releases/0/namespace
+        value: staging
+      - op: replace
+        path: /deploy/helm/releases/0/setValues/replicaCount
+        value: "2"
 ```
 
 ## Step 3: Configure a Development Namespace
@@ -118,6 +119,7 @@ kubectl create secret docker-registry dev-registry-secret \
   --docker-server=registry.example.com \
   --docker-username=devuser \
   --docker-password=devpassword \
+  --docker-email=dev@example.com \
   --namespace=development
 
 # Patch service account to use secret
@@ -132,7 +134,6 @@ kubectl patch serviceaccount default \
 # Start Skaffold in continuous development mode
 skaffold dev \
   --namespace development \
-  --default-repo registry.example.com \
   --port-forward
 
 # Or with a specific profile
@@ -143,7 +144,7 @@ skaffold dev \
   --tail
 ```
 
-When you save a file, Skaffold will:
+When you save a file, Skaffold will either sync matching files directly into the running container or, if a rebuild is required:
 1. Rebuild the container image
 2. Push it to the registry
 3. Deploy the new image to Kubernetes
@@ -154,32 +155,27 @@ When you save a file, Skaffold will:
 Build images directly in the cluster to avoid needing Docker locally:
 
 ```yaml
-# skaffold-kaniko.yaml - In-cluster builds with Kaniko
+# Add this to your Skaffold config for in-cluster builds with Kaniko
 build:
   artifacts:
     - image: registry.example.com/my-app
       kaniko:
-        # Build context from the current directory
-        buildContext:
-          localDir: {}
-        # Kaniko image
-        image: gcr.io/kaniko-project/executor:latest
+        dockerfile: Dockerfile
         # Cache layers for faster builds
-        cache:
-          repo: registry.example.com/my-app/cache
+        cache: {}
 
   cluster:
     # Namespace to run Kaniko builds in
     namespace: development
-    # Pull secret for registry access
-    pullSecretName: dev-registry-secret
-    serviceAccountName: kaniko-service-account
+    # Use your Docker config for registry credentials
+    dockerConfig:
+      path: ~/.docker/config.json
 ```
 
 ## Step 6: Optimize Build Caching
 
 ```yaml
-# skaffold-cache.yaml - Optimize builds with caching
+# Add this to your Skaffold config to optimize builds with caching
 build:
   artifacts:
     - image: registry.example.com/my-app
@@ -193,17 +189,16 @@ build:
         buildArgs:
           BUILDKIT_INLINE_CACHE: "1"
 
-  # Cache artifact tags for faster deployments
+  # Use content-based tags so cached images match the current source tree
   tagPolicy:
     gitCommit:
-      variant: AbbreviatedTags
-      ignoreChanges: true  # Use last Git tag even with local changes
+      variant: AbbrevTreeSha
 ```
 
 ## Step 7: Configure File Sync for Faster Iteration
 
 ```yaml
-# skaffold-sync.yaml - Fast iteration with file sync
+# Add this to your Skaffold config for faster iteration with file sync
 build:
   artifacts:
     - image: registry.example.com/my-python-app
@@ -232,17 +227,18 @@ CMD ["python", "src/main.py"]
 ## Step 8: Run Tests with Skaffold
 
 ```yaml
-# skaffold-tests.yaml - Run tests as part of Skaffold
+# Add this to your Skaffold config to run tests as part of Skaffold
 test:
   - image: registry.example.com/my-app
     custom:
       - command: |
           kubectl run test-pod \
-            --image=$IMAGE \
+            --image="$IMAGE" \
             --rm \
+            --attach \
             --restart=Never \
             -n development \
-            -- pytest tests/
+            --command -- pytest tests/
         timeoutSeconds: 120
 ```
 
