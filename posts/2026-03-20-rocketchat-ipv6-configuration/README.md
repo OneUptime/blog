@@ -4,29 +4,29 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rocket.Chat, IPv6, Team Chat, Messaging, Nginx, Node.js, Self-Hosted
 
-Description: Configure Rocket.Chat team messaging platform to serve users connecting from IPv6 networks by updating Node.js server binding and Nginx reverse proxy configuration.
+Description: Configure Rocket.Chat team messaging platform to serve users connecting from IPv6 networks by verifying Rocket.Chat server binding and updating Nginx reverse proxy configuration.
 
 ---
 
-Rocket.Chat is an open-source team messaging platform built on Node.js. Its server binds to all interfaces by default, and enabling IPv6 access primarily involves ensuring the Nginx reverse proxy listens on IPv6 addresses.
+Rocket.Chat is an open-source team messaging platform built on Node.js. When using a reverse proxy, Rocket.Chat can bind to loopback while Nginx handles public IPv4 and IPv6 traffic.
 
 ## Rocket.Chat Server IPv6 Binding
 
 ```bash
-# Rocket.Chat uses Node.js which binds to all interfaces by default
+# Rocket.Chat uses Node.js, and BIND_IP controls the address it binds to
 
 # Check current binding
 ss -tlnp | grep 3000
 
-# The Node.js HTTP server listens on 0.0.0.0:3000 by default
-# This also covers IPv6 via dual-stack socket on most Linux systems
+# If BIND_IP is unset, Node.js listens on :: when IPv6 is available,
+# or 0.0.0.0 otherwise. On many Linux systems, binding to :: also accepts IPv4.
 
-# To explicitly configure, set environment variable
-# /opt/Rocket.Chat/environment
+# To explicitly configure Rocket.Chat behind the local Nginx proxy,
+# set BIND_IP in the Rocket.Chat service/container environment:
 PORT=3000
+BIND_IP=127.0.0.1
 ROOT_URL=https://chat.example.com
-MONGO_URL=mongodb://localhost:27017/rocketchat
-MONGO_OPLOG_URL=mongodb://localhost:27017/local
+MONGO_URL=mongodb://localhost:27017/rocketchat?replicaSet=rs01
 ```
 
 ## Nginx Reverse Proxy for Rocket.Chat IPv6
@@ -50,8 +50,9 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name chat.example.com;
 
     ssl_certificate /etc/ssl/certs/rocketchat.crt;
@@ -87,21 +88,30 @@ ss -6 -tlnp | grep nginx
 
 ## MongoDB over IPv6 for Rocket.Chat
 
-```bash
+```yaml
 # /etc/mongod.conf - Enable MongoDB on IPv6
 net:
   port: 27017
+  ipv6: true
   bindIp: 127.0.0.1,::1  # Both IPv4 and IPv6 loopback
-  # For remote access over IPv6:
-  # bindIp: 0.0.0.0,::
+  # For remote access over IPv6 on trusted networks only:
+  # bindIp: ::,0.0.0.0
 
+replication:
+  replSetName: rs01
+```
+
+```bash
 sudo systemctl restart mongod
+
+# Initialize the replica set once if this is a new single-node deployment
+mongosh --eval "rs.initiate()"
 
 # Verify MongoDB on IPv6
 ss -6 -tlnp | grep 27017
 
 # Rocket.Chat connection string for IPv6 MongoDB
-# MONGO_URL=mongodb://[::1]:27017/rocketchat
+# MONGO_URL=mongodb://[::1]:27017/rocketchat?replicaSet=rs01
 ```
 
 ## Rocket.Chat Admin Configuration
@@ -128,10 +138,11 @@ After accessing Rocket.Chat over IPv6:
 sudo ip6tables -A INPUT -p tcp --dport 443 -j ACCEPT
 sudo ip6tables -A INPUT -p tcp --dport 80 -j ACCEPT
 
-# Allow direct access to Rocket.Chat (if not using proxy)
+# Allow direct access to Rocket.Chat only if not using proxy and BIND_IP is not loopback
 sudo ip6tables -A INPUT -p tcp --dport 3000 -j ACCEPT
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo mkdir -p /etc/ip6tables
+sudo ip6tables-save -f /etc/ip6tables/rules.v6
 ```
 
 ## Testing Rocket.Chat IPv6 Access
@@ -140,20 +151,22 @@ sudo ip6tables-save > /etc/ip6tables/rules.v6
 # Test web interface over IPv6
 curl -6 -I https://chat.example.com/
 
-# Test REST API over IPv6
-curl -6 https://chat.example.com/api/v1/info
-
 # Login via API over IPv6
 curl -6 -X POST \
   https://chat.example.com/api/v1/login \
   -H 'Content-Type: application/json' \
   -d '{"user":"admin","password":"password"}'
 
+# Test an authenticated REST API request over IPv6 using values returned by login
+curl -6 https://chat.example.com/api/v1/me \
+  -H 'X-User-Id: <user-id>' \
+  -H 'X-Auth-Token: <auth-token>'
+
 # Test WebSocket (for real-time messaging)
 # WebSocket uses same HTTPS port
 
 # Check Nginx access log for IPv6 clients
-sudo tail -f /var/log/nginx/access.log | grep "2001:\|::1"
+sudo tail -f /var/log/nginx/access.log | awk '$1 ~ /:/'
 ```
 
 Rocket.Chat's Node.js server combined with Nginx's `listen [::]:443` configuration provides full IPv6 access to team messaging, with WebSocket connections for real-time messaging working over IPv6 through the same reverse proxy configuration as standard HTTP requests.
