@@ -37,7 +37,7 @@ RKE2's embedded etcd provides:
 # This is enabled by default in RKE2
 etcd-snapshot-schedule-cron: "0 */6 * * *"  # Every 6 hours
 
-# Number of snapshots to retain
+# Number of local scheduled snapshots to retain
 etcd-snapshot-retention: 10
 
 # Directory for storing snapshots
@@ -51,6 +51,7 @@ etcd-snapshot-dir: /var/lib/rancher/rke2/server/db/snapshots
 # etcd-s3-secret-key: YOUR_SECRET_KEY
 # etcd-s3-bucket: my-etcd-snapshots
 # etcd-s3-region: us-east-1
+# etcd-s3-retention: 10
 
 # =====================
 # ETCD PERFORMANCE TUNING
@@ -85,6 +86,7 @@ etcd-s3: true
 etcd-s3-endpoint: s3.amazonaws.com
 etcd-s3-region: us-east-1
 etcd-s3-bucket: my-cluster-etcd-snapshots
+etcd-s3-retention: 10
 
 # S3 credentials (prefer IAM role instead of access keys)
 # etcd-s3-access-key: YOUR_ACCESS_KEY
@@ -114,7 +116,7 @@ sudo rke2 etcd-snapshot ls --s3 \
   --s3-bucket my-cluster-etcd-snapshots \
   --s3-region us-east-1
 
-# Verify snapshot integrity
+# Check local snapshot files and sizes
 ls -lh /var/lib/rancher/rke2/server/db/snapshots/
 ```
 
