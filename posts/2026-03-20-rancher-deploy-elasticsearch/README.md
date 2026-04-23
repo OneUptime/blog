@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Elasticsearch, Search, Database
 
-Description: Deploy Elasticsearch on Rancher-managed Kubernetes clusters using the ECK operator or Helm chart for full-text search and log analytics workloads.
+Description: Deploy Elasticsearch on Rancher-managed Kubernetes clusters using the ECK operator for full-text search and log analytics workloads.
 
 ## Introduction
 
@@ -13,8 +13,9 @@ Elasticsearch is a distributed search and analytics engine built on Apache Lucen
 ## Prerequisites
 
 - Rancher-managed Kubernetes cluster with at least 3 nodes
-- 4GB+ RAM per node recommended
+- 8GB+ RAM per node recommended for the example topology
 - kubectl with cluster-admin access
+- Helm 3.2+ to install the ECK operator
 - A StorageClass for persistent volumes
 
 ## Step 1: Install the ECK Operator
@@ -28,12 +29,11 @@ helm repo update
 # Install the ECK operator
 helm install elastic-operator elastic/eck-operator \
   --namespace elastic-system \
-  --create-namespace \
-  --set=installCRDs=true
+  --create-namespace
 
 # Verify operator is running
 kubectl get pods -n elastic-system
-kubectl logs -n elastic-system statefulset.apps/elastic-operator
+kubectl logs -n elastic-system statefulset/elastic-operator
 ```
 
 ## Step 2: Deploy an Elasticsearch Cluster
@@ -46,7 +46,7 @@ metadata:
   name: elasticsearch-prod
   namespace: databases
 spec:
-  version: 8.12.0
+  version: 9.3.3
   nodeSets:
     # Master-eligible nodes
     - name: masters
@@ -121,6 +121,11 @@ spec:
         disabled: false
 ```
 
+```bash
+kubectl create namespace databases --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f elasticsearch-cluster.yaml
+```
+
 ## Step 3: Check Cluster Health
 
 ```bash
@@ -155,7 +160,7 @@ metadata:
   name: kibana-prod
   namespace: databases
 spec:
-  version: 8.12.0
+  version: 9.3.3
   count: 2
   elasticsearchRef:
     name: elasticsearch-prod
@@ -220,7 +225,7 @@ curl -k -u "elastic:${ELASTIC_PASSWORD}" \
   }'
 ```
 
-## Step 6: Ingest Data with Logstash or Filebeat
+## Step 6: Ingest Data with Filebeat
 
 ```yaml
 # filebeat.yaml - Deploy Filebeat as a DaemonSet
@@ -231,12 +236,16 @@ metadata:
   namespace: databases
 spec:
   type: filebeat
-  version: 8.12.0
+  version: 9.3.3
   elasticsearchRef:
     name: elasticsearch-prod
   config:
     filebeat.inputs:
-      - type: container
+      - type: filestream
+        id: container-logs
+        prospector.scanner.symlinks: true
+        parsers:
+          - container: ~
         paths:
           - /var/log/containers/*.log
     processors:
@@ -246,6 +255,8 @@ spec:
     podTemplate:
       spec:
         automountServiceAccountToken: true
+        securityContext:
+          runAsUser: 0
         containers:
           - name: filebeat
             volumeMounts:
@@ -267,37 +278,39 @@ spec:
               path: /var/lib/docker/containers
 ```
 
+```bash
+kubectl apply -f filebeat.yaml
+```
+
 ## Step 7: Monitor Elasticsearch
 
-```yaml
-# elasticsearch-service-monitor.yaml - Prometheus scraping for Elasticsearch
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: elasticsearch-metrics
-  namespace: cattle-monitoring-system
-  labels:
-    release: rancher-monitoring
-spec:
-  namespaceSelector:
-    matchNames:
-      - databases
-  selector:
-    matchLabels:
-      common.k8s.elastic.co/type: elasticsearch
-  endpoints:
-    - port: https
-      scheme: https
-      tlsConfig:
-        insecureSkipVerify: true
-      basicAuth:
-        username:
-          name: elasticsearch-prod-es-elastic-user
-          key: username
-        password:
-          name: elasticsearch-prod-es-elastic-user
-          key: elastic
-      path: /_prometheus/metrics
+```bash
+# Enable ECK stack monitoring (self-monitoring for simplicity)
+kubectl patch elasticsearch elasticsearch-prod -n databases --type=merge -p '{
+  "spec": {
+    "monitoring": {
+      "metrics": {
+        "elasticsearchRefs": [
+          { "name": "elasticsearch-prod" }
+        ]
+      },
+      "logs": {
+        "elasticsearchRefs": [
+          { "name": "elasticsearch-prod" }
+        ]
+      }
+    }
+  }
+}'
+
+# Verify the Metricbeat and Filebeat sidecars were added
+kubectl get pod elasticsearch-prod-es-masters-0 -n databases \
+  -o jsonpath='{.spec.containers[*].name}'
+echo
+
+# Open Kibana and use Stack Monitoring
+kubectl port-forward -n databases \
+  service/kibana-prod-kb-http 5601:5601
 ```
 
 ## Troubleshooting
