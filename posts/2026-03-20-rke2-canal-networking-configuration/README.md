@@ -8,7 +8,7 @@ Description: Learn how to configure Canal as the CNI plugin in RKE2, combining F
 
 ---
 
-Canal is the default CNI for RKE2. It combines Flannel (for pod-to-pod networking via VXLAN) with Calico (for NetworkPolicy enforcement). It is the most compatible option for environments where you need basic network policy without complex BGP routing.
+Canal is the default CNI for RKE2. It combines Flannel (for inter-node pod networking via VXLAN by default) with Calico (for intra-node traffic and NetworkPolicy enforcement). It is the most compatible option for environments where you need basic network policy without complex BGP routing.
 
 ---
 
@@ -51,10 +51,10 @@ kubectl run test-pod --image=busybox --rm -it -- ping -c 3 8.8.8.8
 
 ## Step 3: Configure Flannel Backend
 
-Canal supports multiple Flannel backends. VXLAN is the default and works over standard networking. For direct routing (lower overhead), use `host-gw`:
+Canal supports multiple Flannel backends. VXLAN is the default and works over standard networking. For direct routing (lower overhead), use `host-gw` when all nodes have direct Layer 2 connectivity:
 
 ```yaml
-# rke2-canal-config.yaml (HelmChartConfig)
+# /var/lib/rancher/rke2/server/manifests/rke2-canal-config.yaml
 apiVersion: helm.cattle.io/v1
 kind: HelmChartConfig
 metadata:
@@ -63,13 +63,14 @@ metadata:
 spec:
   valuesContent: |-
     flannel:
-      backend: "vxlan"   # vxlan (default) or host-gw or wireguard
-    calico:
-      # Enable IPIP for cross-subnet routing (alternative to VXLAN)
-      encapsulation: "None"
+      backend: "host-gw"   # vxlan (default), host-gw, or wireguard
 ```
 
-Apply this before or shortly after cluster initialization.
+Apply this before cluster initialization when changing backends. If you update an existing cluster, restart the Canal DaemonSet during a maintenance window:
+
+```bash
+kubectl rollout restart ds rke2-canal -n kube-system
+```
 
 ---
 
@@ -92,18 +93,21 @@ spec:
 
 ```bash
 kubectl create namespace test-ns
+kubectl create deployment my-service --image=nginx -n test-ns
+kubectl expose deployment my-service --port=80 -n test-ns
+kubectl rollout status deployment/my-service -n test-ns
 kubectl apply -f deny-all-ingress.yaml
 
 # Test: this should fail (denied by policy)
-kubectl run client --image=busybox --rm -it -n test-ns \
-  -- wget -qO- http://my-service.test-ns.svc.cluster.local
+kubectl run client --image=busybox:1.36 --restart=Never --rm -it -n test-ns \
+  -- wget -qO- -T 5 http://my-service.test-ns.svc.cluster.local
 ```
 
 ---
 
 ## Step 5: Configure MTU
 
-For environments with jumbo frames or VXLAN overhead, tune the MTU:
+For environments with jumbo frames or VXLAN overhead, tune the MTU used by the Flannel backend and the Calico CNI veth interfaces:
 
 ```yaml
 # In the HelmChartConfig for rke2-canal
@@ -111,6 +115,8 @@ spec:
   valuesContent: |-
     flannel:
       mtu: 1450   # reduce from 1500 to account for VXLAN overhead
+    calico:
+      vethuMTU: 1450
 ```
 
 ---
