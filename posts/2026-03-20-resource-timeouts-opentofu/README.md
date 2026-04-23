@@ -14,10 +14,13 @@ OpenTofu allows you to configure timeouts for resource operations like create, u
 
 ```hcl
 resource "aws_db_instance" "main" {
-  identifier        = "myapp-db"
-  engine            = "postgres"
-  instance_class    = "db.t3.medium"
-  allocated_storage = 20
+  identifier          = "myapp-db"
+  engine              = "postgres"
+  instance_class      = "db.t3.medium"
+  allocated_storage   = 20
+  username            = var.db_username
+  password            = var.db_password
+  skip_final_snapshot = true
 
   timeouts {
     create = "60m"  # Wait up to 60 minutes for creation
@@ -47,13 +50,14 @@ resource "aws_eks_cluster" "main" {
   }
 }
 
-# RDS instance creation and deletion can be slow
+# RDS cluster creation and deletion can be slow
 resource "aws_rds_cluster" "main" {
-  cluster_identifier = "myapp-cluster"
-  engine             = "aurora-postgresql"
-  engine_version     = "15.3"
-  master_username    = var.db_username
-  master_password    = var.db_password
+  cluster_identifier  = "myapp-cluster"
+  engine              = "aurora-postgresql"
+  engine_version      = "15.17"
+  master_username     = var.db_username
+  master_password     = var.db_password
+  skip_final_snapshot = true
 
   timeouts {
     create = "120m"
@@ -158,8 +162,9 @@ resource "kubernetes_persistent_volume_claim" "data" {
 
 ```hcl
 resource "google_container_cluster" "main" {
-  name     = "my-cluster"
-  location = var.region
+  name                = "my-cluster"
+  location            = var.region
+  deletion_protection = false
 
   initial_node_count = 3
 
@@ -171,9 +176,10 @@ resource "google_container_cluster" "main" {
 }
 
 resource "google_sql_database_instance" "main" {
-  name             = "myapp-db"
-  database_version = "POSTGRES_15"
-  region           = var.region
+  name                = "myapp-db"
+  database_version    = "POSTGRES_15"
+  region              = var.region
+  deletion_protection = false
 
   settings {
     tier = "db-f1-micro"
@@ -190,20 +196,23 @@ resource "google_sql_database_instance" "main" {
 ## What Happens When a Timeout Occurs
 
 ```bash
-# When a timeout is exceeded, OpenTofu marks the resource as tainted
+# When a timeout is exceeded, OpenTofu returns an error for the operation
 # Example output:
 # Error: timeout while waiting for state to become 'ACTIVE'
 # (last state: 'CREATING', timeout: 30m0s)
 
-# After a timeout, the resource may still be creating in the background
-# Check the actual state before applying again:
+# After a create timeout, the resource may still be creating in the background
+# Check whether OpenTofu is already tracking it:
 tofu state show aws_db_instance.main
 
-# If the resource completed successfully, refresh state:
+# If the resource is in state and completed successfully, refresh state:
 tofu apply -refresh-only
 
-# If the resource is stuck, you may need to manually clean up
-# then remove from state:
+# If the remote object exists but is not in state, import it:
+tofu import aws_db_instance.main myapp-db
+
+# If the resource is stuck, manually clean it up in the provider.
+# If OpenTofu is tracking an object that should be forgotten, remove it from state:
 tofu state rm aws_db_instance.main
 ```
 
@@ -228,10 +237,13 @@ locals {
 }
 
 resource "aws_db_instance" "main" {
-  identifier        = "myapp-${var.environment}"
-  engine            = "postgres"
-  instance_class    = var.db_instance_class
-  allocated_storage = var.db_storage
+  identifier          = "myapp-${var.environment}"
+  engine              = "postgres"
+  instance_class      = var.db_instance_class
+  allocated_storage   = var.db_storage
+  username            = var.db_username
+  password            = var.db_password
+  skip_final_snapshot = true
 
   timeouts {
     create = local.db_timeouts.create
@@ -248,24 +260,17 @@ resource "aws_db_instance" "main" {
 # Check provider documentation for supported operations
 
 # Some resources only support create:
-resource "aws_ami" "custom" {
-  name                = "my-custom-ami"
-  virtualization_type = "hvm"
-  root_device_name    = "/dev/xvda"
-
-  ebs_block_device {
-    device_name = "/dev/xvda"
-    snapshot_id = var.snapshot_id
-    volume_size = 20
-  }
+resource "aws_db_snapshot" "manual" {
+  db_instance_identifier = aws_db_instance.main.identifier
+  db_snapshot_identifier = "myapp-manual-snapshot"
 
   timeouts {
-    create = "40m"  # AMI creation from snapshot can take time
-    # delete is not supported by this resource
+    create = "40m"  # Manual DB snapshots can take time
+    # update and delete are not supported by this resource
   }
 }
 ```
 
 ## Conclusion
 
-Resource timeouts are an important safeguard against indefinitely blocking deployments. Configure timeouts based on your experience with the actual time each resource type takes to provision in your environment. Longer timeouts are generally safer but may mask real failures. When a timeout occurs, OpenTofu taints the resource, and you should investigate the actual state of the resource in your cloud provider before attempting another apply. Not all resources support all timeout types, so consult provider documentation to see which operations can be configured.
+Resource timeouts are an important safeguard against indefinitely blocking deployments. Configure timeouts based on your experience with the actual time each resource type takes to provision in your environment. Longer timeouts are generally safer but may mask real failures. When a timeout occurs, OpenTofu returns an operation error, and you should investigate the actual state of the resource in your cloud provider before attempting another apply. Not all resources support all timeout types, so consult provider documentation to see which operations can be configured.
