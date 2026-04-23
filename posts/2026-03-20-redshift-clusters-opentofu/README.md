@@ -19,7 +19,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.30"
+      version = "~> 6.0"
     }
   }
 }
@@ -28,7 +28,7 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Subnet group - Redshift must run in a VPC
+# Subnet group for Redshift in a VPC
 resource "aws_redshift_subnet_group" "main" {
   name       = "${var.cluster_name}-subnet-group"
   subnet_ids = var.private_subnet_ids
@@ -82,33 +82,44 @@ resource "aws_redshift_parameter_group" "main" {
   }
 
   parameter {
-    name  = "max_cursor_result_set_size"
-    value = "0"  # Unlimited cursor result set
-  }
-
-  parameter {
     name  = "wlm_json_configuration"
     # Configure workload management - separate queues for ETL and reporting
     value = jsonencode([
       {
-        name            = "ETL Queue"
-        user_group      = ["etl_users"]
-        query_group     = ["etl"]
-        memory_percent  = 40
-        max_execution_time = 3600000  # 1 hour max
-        concurrency_scaling = "auto"
+        name                  = "ETL Queue"
+        user_group            = ["etl_users"]
+        query_group           = ["etl"]
+        queue_type            = "manual"
+        memory_percent_to_use = 40
+        query_concurrency     = 5
+        concurrency_scaling   = "auto"
+        rules = [
+          {
+            rule_name = "etl_query_timeout"
+            predicate = [
+              {
+                metric_name = "query_execution_time"
+                operator    = ">"
+                value       = 3600  # 1 hour max
+              }
+            ]
+            action = "abort"
+          }
+        ]
       },
       {
-        name            = "Reporting Queue"
-        user_group      = ["reporting_users"]
-        query_group     = ["reporting"]
-        memory_percent  = 40
-        concurrency     = 10
+        name                  = "Reporting Queue"
+        user_group            = ["reporting_users"]
+        query_group           = ["reporting"]
+        queue_type            = "manual"
+        memory_percent_to_use = 40
+        query_concurrency     = 10
       },
       {
-        name           = "Default Queue"
-        memory_percent = 20
-        concurrency    = 5
+        name                  = "Default Queue"
+        queue_type            = "manual"
+        memory_percent_to_use = 20
+        query_concurrency     = 5
       }
     ])
   }
@@ -127,7 +138,7 @@ resource "aws_redshift_cluster" "main" {
 
   node_type       = var.node_type        # e.g., ra3.xlplus, ra3.4xlarge
   cluster_type    = "multi-node"
-  number_of_nodes = var.number_of_nodes  # At least 2 for HA
+  number_of_nodes = var.number_of_nodes  # Required for multi-node clusters
 
   # Networking
   cluster_subnet_group_name  = aws_redshift_subnet_group.main.name
@@ -145,20 +156,21 @@ resource "aws_redshift_cluster" "main" {
   automated_snapshot_retention_period = 7
   preferred_maintenance_window        = "sun:05:00-sun:06:00"
 
-  # Enable enhanced VPC routing - data stays in VPC
+  # Enable enhanced VPC routing - COPY and UNLOAD traffic stays in the VPC
   enhanced_vpc_routing = true
 
   # Skip final snapshot for dev; change for production
   skip_final_snapshot = var.environment == "production" ? false : true
   final_snapshot_identifier = var.environment == "production" ? "${var.cluster_name}-final-snapshot" : null
 
-  logging {
-    enable      = true
-    bucket_name = aws_s3_bucket.redshift_logs.bucket
-    s3_key_prefix = "redshift-logs/"
-  }
-
   tags = var.common_tags
+}
+
+resource "aws_redshift_logging" "main" {
+  cluster_identifier   = aws_redshift_cluster.main.cluster_identifier
+  log_destination_type = "s3"
+  bucket_name          = aws_s3_bucket.redshift_logs.bucket
+  s3_key_prefix        = "redshift-logs/"
 }
 
 resource "aws_kms_key" "redshift" {
@@ -170,8 +182,8 @@ resource "aws_kms_key" "redshift" {
 
 ## Best Practices
 
-- Use RA3 node types for new deployments - they separate compute from storage and enable cross-instance restore.
-- Enable `require_ssl=true` in the parameter group to prevent unencrypted connections.
+- Use RA3 node types for new deployments - they let you scale compute independently from managed storage.
+- Keep `require_ssl=true` in the parameter group to prevent unencrypted connections.
 - Set up Workload Management (WLM) queues to separate ETL jobs from interactive reporting queries.
 - Enable `enhanced_vpc_routing` to keep COPY and UNLOAD operations within your VPC.
 - Set `automated_snapshot_retention_period` to at least 7 days and create manual snapshots before major schema changes.
