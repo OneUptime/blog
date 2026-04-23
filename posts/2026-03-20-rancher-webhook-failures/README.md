@@ -8,14 +8,14 @@ Description: Diagnose and fix Rancher webhook failures that block resource creat
 
 ## Introduction
 
-Rancher deploys admission webhooks to enforce policies and manage cluster resources. When these webhooks fail - due to pod crashes, TLS errors, or timeout issues - Kubernetes API calls are rejected, preventing users from creating or modifying resources. This guide explains how to identify and resolve webhook failures quickly.
+Rancher deploys admission webhooks to enforce policies and manage cluster resources. When these webhooks fail - due to pod crashes, TLS errors, or timeout issues - affected Kubernetes API calls may be rejected, preventing users from creating or modifying resources. This guide explains how to identify and resolve webhook failures quickly.
 
 ## Understanding Rancher Webhooks
 
-Rancher installs two key admission webhooks:
+Rancher installs the `rancher-webhook` deployment and service, which manages two admission webhook configurations:
 
-1. **rancher-webhook** - Validates and mutates Rancher resources (clusters, projects, users).
-2. **cattle-webhook** - Enforces PSPs, namespace restrictions, and RBAC policies.
+1. **ValidatingWebhookConfiguration `rancher.cattle.io`** - Validates Rancher-managed resources.
+2. **MutatingWebhookConfiguration `rancher.cattle.io`** - Applies Rancher webhook mutations where required.
 
 ```bash
 # List all webhooks in the cluster
@@ -38,7 +38,6 @@ dial tcp: connect: connection refused
 ```bash
 # Check the webhook deployment status
 kubectl get pods -n cattle-system -l app=rancher-webhook
-kubectl get pods -n cattle-system -l app=cattle-webhook
 
 # If pods are not Running, get details
 kubectl describe pod -n cattle-system -l app=rancher-webhook
@@ -52,7 +51,8 @@ kubectl logs -n cattle-system -l app=rancher-webhook --tail=100
 kubectl get service -n cattle-system rancher-webhook
 kubectl get endpoints -n cattle-system rancher-webhook
 
-# If endpoints are empty, the webhook pod selector doesn't match
+# If endpoints are empty, the webhook pod may be missing, not Ready,
+# or not matching the service selector
 kubectl describe service -n cattle-system rancher-webhook | grep Selector
 kubectl get pods -n cattle-system --show-labels | grep rancher-webhook
 ```
@@ -69,7 +69,7 @@ kubectl get validatingwebhookconfiguration rancher.cattle.io \
 kubectl run webhook-test --rm -it \
   --image=nicolaka/netshoot \
   --restart=Never \
-  -- curl -vk https://rancher-webhook.cattle-system.svc:443/healthz
+  --command -- curl -vk https://rancher-webhook.cattle-system.svc:443/healthz
 ```
 
 ## Step 4: Check Webhook Timeout Configuration
@@ -79,28 +79,20 @@ kubectl run webhook-test --rm -it \
 kubectl get validatingwebhookconfiguration rancher.cattle.io -o json \
   | jq '.webhooks[] | {name: .name, timeoutSeconds: .timeoutSeconds, failurePolicy: .failurePolicy}'
 
-# Default timeout is 10 seconds - if the webhook pod is slow, increase it
-kubectl patch validatingwebhookconfiguration rancher.cattle.io \
-  --type='json' \
-  -p='[{"op":"replace","path":"/webhooks/0/timeoutSeconds","value":30}]'
+# Admission webhooks default to 10 seconds. Rancher manages these objects and
+# overrides manual edits, so investigate pod health and API server connectivity first.
 ```
 
 ## Step 5: Temporarily Bypass Webhooks (Emergency Only)
 
-**Warning**: Only do this in an emergency and restore the webhook immediately after.
+**Warning**: Only do this in an emergency. This bypass disables all Rancher webhook validations and mutations for the impersonated request.
 
 ```bash
-# Check the failurePolicy - if "Ignore", failures won't block API calls
-# If "Fail", API calls are blocked when the webhook is unreachable
-
-# Option 1: Change failurePolicy to Ignore temporarily
-kubectl patch validatingwebhookconfiguration rancher.cattle.io \
-  --type='json' \
-  -p='[{"op":"replace","path":"/webhooks/0/failurePolicy","value":"Ignore"}]'
-
-# Option 2: Delete the webhook configuration entirely (VERY RISKY)
-# Only do this if you need to unblock operations and will re-install immediately
-kubectl delete validatingwebhookconfiguration rancher.cattle.io
+# Rancher's supported bypass impersonates both the sudo service account
+# and the system:masters group for the specific command you need to run
+kubectl apply -f manifest.yaml \
+  --as=system:serviceaccount:cattle-system:rancher-webhook-sudo \
+  --as-group=system:masters
 ```
 
 ## Step 6: Restart and Redeploy the Webhook
@@ -111,23 +103,16 @@ kubectl rollout restart deployment/rancher-webhook -n cattle-system
 
 # Watch rollout status
 kubectl rollout status deployment/rancher-webhook -n cattle-system
-
-# If the webhook was accidentally deleted, re-install it via Rancher
-# The rancher-webhook is managed by Rancher itself and will be re-created
-# Force reconciliation by restarting Rancher
-kubectl rollout restart deployment/rancher -n cattle-system
 ```
 
 ## Step 7: Check for Resource Exhaustion
 
 ```bash
-# Webhook pods may OOMKill under heavy load
+# If Metrics Server is installed, check current CPU/memory usage
 kubectl top pod -n cattle-system -l app=rancher-webhook
 
-# Increase memory limits
-kubectl patch deployment rancher-webhook -n cattle-system --type=json -p='[
-  {"op":"replace","path":"/spec/template/spec/containers/0/resources/limits/memory","value":"512Mi"}
-]'
+# Inspect restart reasons and last container state for OOMKilled events
+kubectl describe pod -n cattle-system -l app=rancher-webhook
 ```
 
 ## Step 8: Verify After Fix
@@ -137,10 +122,10 @@ kubectl patch deployment rancher-webhook -n cattle-system --type=json -p='[
 kubectl create namespace test-webhook-ns
 kubectl delete namespace test-webhook-ns
 
-# Check webhook logs for successful validations
-kubectl logs -n cattle-system -l app=rancher-webhook --tail=50 | grep -i "allowed\|denied"
+# Check webhook logs for remaining errors
+kubectl logs -n cattle-system -l app=rancher-webhook --tail=50
 ```
 
 ## Conclusion
 
-Rancher webhook failures block Kubernetes API operations and can halt your DevOps workflows. The most common causes are crashed webhook pods, TLS certificate mismatches, and timeout issues. By combining pod status checks, service endpoint verification, and timeout adjustments, you can quickly restore webhook functionality. Always monitor webhook pod health as part of your cluster observability strategy.
+Rancher webhook failures can block Kubernetes API operations and halt your DevOps workflows. The most common causes are crashed webhook pods, TLS certificate mismatches, and timeout issues. By combining pod status checks, service endpoint verification, and connectivity troubleshooting, you can quickly restore webhook functionality. Always monitor webhook pod health as part of your cluster observability strategy.
