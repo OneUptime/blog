@@ -19,7 +19,8 @@ An IP conflict happens when two devices are assigned the same IPv4 address:
 **Windows (automatic detection):**
 ```cmd
 REM Windows displays a notification and logs Event ID 4199
-eventvwr.msc → Windows Logs → System → Filter for "Tcpip" or Event ID 4199
+eventvwr.msc
+REM In Event Viewer: Windows Logs > System > filter for source "Tcpip" or Event ID 4199
 
 REM Check current IP assignment
 ipconfig /all
@@ -30,7 +31,7 @@ REM Note the IP and MAC address shown
 ```bash
 # Use arping to find multiple hosts with the same IP
 
-sudo arping -c 5 192.168.1.50 -I eth0
+sudo arping -b -c 5 -I eth0 192.168.1.50
 
 # If two different MAC addresses respond, there's a conflict:
 # Unicast reply from 192.168.1.50 [AA:BB:CC:DD:EE:FF]  <- MAC 1
@@ -40,22 +41,25 @@ sudo arping -c 5 192.168.1.50 -I eth0
 ## Step 2: Identify Both Conflicting Devices
 
 ```bash
-# Get MAC addresses of both conflicting devices
+# Capture the MAC addresses that reply for the target IP
+sudo arping -b -c 5 -I eth0 192.168.1.50 | awk -F'[][]' '/reply from/ {print $2}' | sort -u
+
+# Check the current ARP cache entry for the IP
 arp -n | grep "192.168.1.50"
 
 # Look up manufacturer from MAC OUI prefix
-# AA:BB:CC = OUI → look up at https://macvendors.com/
-# This helps identify what device type it is
+# AA:BB:CC = OUI -> look up at https://macvendors.com/
+# This helps identify the vendor, but not the exact device
 
-# Scan network to find all device information
-nmap -sn 192.168.1.0/24 --open
+# Scan network to find live hosts
+nmap -sn 192.168.1.0/24
 ```
 
 ## Step 3: Resolve the Conflict
 
 **Option A: Release and Renew DHCP**
 ```bash
-# Linux
+# Linux systems using dhclient
 sudo dhclient -r eth0
 sudo dhclient eth0
 
@@ -66,15 +70,15 @@ ipconfig /renew
 
 **Option B: Configure DHCP to Avoid the Conflict**
 ```bash
-# ISC DHCPD: Add DHCP reservation for the static-IP device
-# to prevent DHCP from assigning that IP to another device
+# ISC DHCPD: Use a DHCP reservation for devices that should always use DHCP
+# and keep manually configured static IPs outside the dynamic range
 
-host static_device {
+host reserved_device {
     hardware ethernet AA:BB:CC:DD:EE:FF;
     fixed-address 192.168.1.50;
 }
 
-# Or exclude the static IP from the DHCP pool
+# Keep manually configured static IPs out of the DHCP pool
 # Change: range 192.168.1.100 192.168.1.200;
 # The static IP 192.168.1.50 is below the range, so safe
 ```
@@ -93,28 +97,36 @@ host static_device {
 ping-check true;
 ping-timeout 2;    # Wait 2 seconds for ping reply
 
-# If the IP responds to ping, DHCPD skips it and tries the next IP
-# This prevents assigning an IP to a new device if a static-IP
-# device is already using it
+# If the IP responds to ping, DHCPD abandons that lease and does not offer it
+# This is a best-effort safeguard, because devices that block ICMP may still be missed
 ```
 
 ## Step 5: Monitor for Conflicts
 
 ```bash
-# Cron job to detect conflicts
-cat > /usr/local/bin/check-conflicts.sh << 'EOF'
+# Cron job to detect conflicts on known static or reserved IPs
+sudo tee /usr/local/bin/check-conflicts.sh > /dev/null << 'EOF'
 #!/bin/bash
-# Scan for duplicate MACs in ARP table
-arp -n | awk '{print $1}' | sort | uniq -d | while read ip; do
-    echo "$(date): Potential conflict: $ip" >> /var/log/arp-conflicts.log
+INTERFACE="eth0"
+TARGETS=("192.168.1.50")
+
+for ip in "${TARGETS[@]}"; do
+    mac_count=$(arping -b -c 5 -I "$INTERFACE" "$ip" 2>/dev/null \
+        | awk -F'[][]' '/reply from/ {print $2}' \
+        | sort -u \
+        | wc -l)
+
+    if [ "$mac_count" -gt 1 ]; then
+        echo "$(date): Potential conflict: $ip returned $mac_count MAC addresses" >> /var/log/arp-conflicts.log
+    fi
 done
 EOF
-chmod +x /usr/local/bin/check-conflicts.sh
+sudo chmod +x /usr/local/bin/check-conflicts.sh
 
-# Run every 5 minutes
-echo "*/5 * * * * /usr/local/bin/check-conflicts.sh" | crontab -
+# Run every 5 minutes from root's crontab
+( sudo crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/check-conflicts.sh" ) | sudo crontab -
 ```
 
 ## Conclusion
 
-IP conflicts are detected via Windows Event ID 4199 or `arping` on Linux (two different MACs responding to one IP). Resolve by releasing/renewing DHCP on conflicting devices, adding DHCP reservations for statically-configured devices, or changing one device's IP. Prevent future conflicts with DHCPD's `ping-check true` option and by maintaining DHCP reservations for all devices with static IPs, keeping them outside the DHCP pool range.
+IP conflicts are detected via Windows Event ID 4199 or `arping` on Linux (two different MACs responding to one IP). Resolve by releasing/renewing DHCP on conflicting devices, adding DHCP reservations for devices that should always use DHCP, or changing one device's IP. Reduce future conflicts with DHCPD's `ping-check true` option and by keeping manually configured static IPs outside the DHCP pool range.
