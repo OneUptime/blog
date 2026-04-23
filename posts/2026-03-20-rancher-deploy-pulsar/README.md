@@ -12,9 +12,10 @@ Apache Pulsar is a cloud-native distributed messaging and streaming platform tha
 
 ## Prerequisites
 
-- Rancher-managed cluster with at least 3 nodes
-- Helm 3.x installed
-- kubectl with cluster-admin access
+- Rancher-managed Kubernetes cluster (Kubernetes 1.25+) with at least 3 nodes
+- Helm 3.12+ installed
+- kubectl 1.25+ with cluster-admin access
+- `pulsar-admin` available locally, or access to the Pulsar `toolset` pod
 - At least 8GB RAM per Pulsar node
 - A StorageClass for persistent volumes
 
@@ -135,7 +136,7 @@ kubectl port-forward -n pulsar svc/pulsar-broker 8080:8080 &
 pulsar-admin --admin-url http://localhost:8080 \
   tenants create my-tenant \
   --admin-roles admin \
-  --allowed-clusters standalone
+  --allowed-clusters pulsar
 
 # Create a namespace
 pulsar-admin --admin-url http://localhost:8080 \
@@ -149,7 +150,7 @@ pulsar-admin --admin-url http://localhost:8080 \
 
 # Create a topic
 pulsar-admin --admin-url http://localhost:8080 \
-  topics create persistent://my-tenant/production/orders \
+  topics create-partitioned-topic persistent://my-tenant/production/orders \
   --partitions 12
 ```
 
@@ -161,18 +162,23 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: order-service
-  namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
+    metadata:
+      labels:
+        app: order-service
     spec:
       containers:
         - name: order-service
           image: registry.example.com/order-service:v1.0
           env:
             - name: PULSAR_SERVICE_URL
-              value: "pulsar://pulsar-broker.pulsar.svc.cluster.local:6650"
+              value: "pulsar://pulsar-proxy.pulsar.svc.cluster.local:6650"
             - name: PULSAR_HTTP_URL
-              value: "http://pulsar-broker.pulsar.svc.cluster.local:8080"
+              value: "http://pulsar-proxy.pulsar.svc.cluster.local"
             - name: PULSAR_TENANT
               value: "my-tenant"
             - name: PULSAR_NAMESPACE
@@ -189,29 +195,30 @@ Pulsar can offload old data to object storage:
 # pulsar-tiered-storage-values.yaml - Add to broker config
 broker:
   configData:
-    # Enable AWS S3 offload
+    # Enable AWS S3 offload. Provide credentials separately via IAM/IRSA or
+    # another AWS credential source supported by the default provider chain.
     managedLedgerOffloadDriver: aws-s3
     s3ManagedLedgerOffloadBucket: my-pulsar-offload
     s3ManagedLedgerOffloadRegion: us-east-1
-    s3ManagedLedgerOffloadServiceEndpoint: https://s3.amazonaws.com
-    # Offload after 30 days
-    managedLedgerOffloadAutoTriggerSizeThresholdBytes: "0"
+    s3ManagedLedgerOffloadServiceEndpoint: https://s3.us-east-1.amazonaws.com
+    # Disable size-based offload and offload segments older than 30 days
+    managedLedgerOffloadAutoTriggerSizeThresholdBytes: "-1"
     managedLedgerOffloadThresholdInSeconds: "2592000"
 ```
 
 ## Step 7: Monitor Pulsar
 
 ```bash
-# Check broker stats
+# List brokers in the cluster
 kubectl exec -n pulsar pulsar-broker-0 -- \
-  ./bin/pulsar-admin brokers list standalone
+  ./bin/pulsar-admin brokers list pulsar
 
 # Check topic stats
 kubectl exec -n pulsar pulsar-broker-0 -- \
   ./bin/pulsar-admin topics stats \
   persistent://my-tenant/production/orders
 
-# Check subscription stats
+# Inspect internal topic stats
 kubectl exec -n pulsar pulsar-broker-0 -- \
   ./bin/pulsar-admin topics stats-internal \
   persistent://my-tenant/production/orders
@@ -223,18 +230,18 @@ kubectl port-forward -n pulsar svc/pulsar-pulsar-manager 9527:9527
 ## Troubleshooting
 
 ```bash
-# Check ZooKeeper status
+# Inspect ZooKeeper metadata
 kubectl exec -n pulsar pulsar-zookeeper-0 -- \
   ./bin/pulsar zookeeper-shell ls /
 
-# Check BookKeeper status
+# Run a BookKeeper sanity test
 kubectl exec -n pulsar pulsar-bookie-0 -- \
   ./bin/bookkeeper shell bookiesanity
 
 # Check broker logs
 kubectl logs -n pulsar pulsar-broker-0 --tail=100
 
-# Check for unrecoverable ledgers
+# Run a basic BookKeeper write/read test
 kubectl exec -n pulsar pulsar-bookie-0 -- \
   ./bin/bookkeeper shell simpletest
 ```
