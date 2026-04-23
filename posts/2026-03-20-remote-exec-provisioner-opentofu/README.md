@@ -25,7 +25,7 @@ resource "aws_instance" "web" {
   # SSH connection configuration
   connection {
     type        = "ssh"
-    user        = "ubuntu"
+    user        = "ubuntu" # For Ubuntu AMIs
     private_key = file(var.private_key_path)
     host        = self.public_ip
   }
@@ -112,16 +112,17 @@ resource "aws_instance" "app" {
     destination = "/tmp/app.conf"
   }
 
-  # Then install the application
+  # Then install the runtime and place the config file
   provisioner "remote-exec" {
     inline = [
       # Install Node.js
       "curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -",
       "sudo apt-get install -y nodejs",
-      # Move the config file into place
-      "sudo mv /tmp/app.conf /etc/myapp/app.conf",
-      # Start the application
-      "sudo systemctl start myapp",
+      # Create the config directory and move the file into place
+      "sudo mkdir -p /etc/myapp",
+      "sudo install -m 0644 /tmp/app.conf /etc/myapp/app.conf",
+      # Verify the runtime is available
+      "node --version",
     ]
   }
 }
@@ -129,22 +130,22 @@ resource "aws_instance" "app" {
 
 ## Handling Connection Failures
 
-Add a `depends_on` to ensure security groups are created before attempting SSH:
+Increase `timeout` to give SSH more time to become available, and use `depends_on` only for hidden network dependencies that are not already implied by other arguments:
 
 ```hcl
 resource "aws_instance" "web" {
   # ...
 
   depends_on = [
-    aws_security_group.ssh,
     aws_internet_gateway.main,
   ]
 
   connection {
-    type    = "ssh"
-    user    = "ubuntu"
-    host    = self.public_ip
-    timeout = "10m"  # Give extra time for the instance to boot
+    type        = "ssh"
+    user        = "ubuntu"
+    private_key = file(var.private_key_path)
+    host        = self.public_ip
+    timeout     = "10m"  # Give extra time for the instance to boot
   }
 
   provisioner "remote-exec" {
