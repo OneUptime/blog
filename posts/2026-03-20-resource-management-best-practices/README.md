@@ -21,7 +21,7 @@ Well-managed OpenTofu resources are easier to understand, modify safely, and aud
 - Naming conflicts across environments
 - Untagged resources that are impossible to attribute to teams or projects
 - Accidental deletions due to missing lifecycle protections
-- State corruption from manual changes
+- State drift from manual changes
 
 ## Naming Conventions
 
@@ -38,6 +38,10 @@ resource "aws_vpc" "main" {
   tags = {
     Name = "${local.name_prefix}-vpc"
   }
+}
+
+resource "random_id" "suffix" {
+  byte_length = 4
 }
 
 resource "aws_s3_bucket" "data" {
@@ -88,7 +92,7 @@ provider "aws" {
 }
 ```
 
-This applies tags automatically to all AWS resources without repeating them.
+This applies tags automatically to supported taggable AWS resources without repeating them. Some resources, such as Auto Scaling Groups, need separate tag handling.
 
 ## Lifecycle Rules
 
@@ -96,8 +100,11 @@ This applies tags automatically to all AWS resources without repeating them.
 
 ```hcl
 resource "aws_rds_cluster" "production" {
-  cluster_identifier = "${local.name_prefix}-db"
-  engine             = "aurora-postgresql"
+  cluster_identifier          = "${local.name_prefix}-db"
+  engine                      = "aurora-postgresql"
+  database_name               = "app"
+  master_username             = var.db_master_username
+  manage_master_user_password = true
 
   lifecycle {
     prevent_destroy = true
@@ -122,10 +129,14 @@ resource "aws_instance" "app" {
 
 ```hcl
 resource "aws_lb_target_group" "app" {
-  name     = "${local.name_prefix}-tg"
-  port     = 80
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.main.id
+  name_prefix = "app-"
+  port        = 80
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+
+  tags = {
+    Name = "${local.name_prefix}-tg"
+  }
 
   lifecycle {
     create_before_destroy = true
@@ -157,7 +168,7 @@ tofu apply -target=aws_instance.app
 tofu destroy -target=aws_db_instance.old
 ```
 
-> Warning: Targeting can leave your state inconsistent. Always run a full plan/apply after using targets.
+> Warning: Targeting can leave drift undetected and make state harder to reason about. Always run a full plan/apply after using targets.
 
 ## Module Versioning
 
@@ -219,7 +230,7 @@ output "private_subnet_ids" {
 
 1. **Use consistent naming** with project and environment prefixes
 2. **Tag every resource** with mandatory tags (owner, environment, cost center)
-3. **Use `prevent_destroy`** on production databases and critical state
+3. **Use `prevent_destroy`** on production databases and critical state-storage resources
 4. **Pin module versions** to specific releases
 5. **Use `for_each` over `count`** for resources that may be independently managed
 6. **Use remote state with locking** for all non-local environments
