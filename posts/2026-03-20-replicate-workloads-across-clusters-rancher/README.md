@@ -60,15 +60,15 @@ kubectl apply -f gitrepo-multi-cluster.yaml
 
 ## Step 2: Label Clusters for Targeting
 
-In the Rancher UI or CLI, add labels to each cluster:
+In Rancher, add labels to the Fleet `Cluster` resources in the same workspace namespace as the `GitRepo`:
 
 ```bash
 # Label clusters using kubectl (run against the Rancher management cluster)
-kubectl label cluster.provisioning.cattle.io prod-us \
+kubectl label clusters.fleet.cattle.io prod-us \
   -n fleet-default \
   env=production region=us
 
-kubectl label cluster.provisioning.cattle.io prod-eu \
+kubectl label clusters.fleet.cattle.io prod-eu \
   -n fleet-default \
   env=production region=eu
 ```
@@ -97,12 +97,6 @@ targetCustomizations:
       values:
         replicaCount: 5
         region: us-west-2
-        affinity:
-          podAntiAffinity:
-            preferredDuringSchedulingIgnoredDuringExecution:
-              - weight: 100
-                podAffinityTerm:
-                  topologyKey: kubernetes.io/hostname
 
   - name: eu-override
     clusterSelector:
@@ -119,27 +113,29 @@ targetCustomizations:
 ## Step 4: Verify Replication Status
 
 ```bash
-# Check Fleet Bundle status across all clusters
-kubectl get bundle -n fleet-default
+# Check Fleet Bundle status in the Fleet workspace
+kubectl get bundles.fleet.cattle.io -n fleet-default
 
-# Check specific cluster deployment status
-kubectl get bundledeployment -n fleet-default
+# Check per-cluster BundleDeployment status
+kubectl get bundledeployments.fleet.cattle.io -A
 
 # View detailed status
 kubectl describe gitrepo my-app -n fleet-default
 ```
 
-The output shows per-cluster readiness:
+The status should show the expected ready counts, for example:
 
-```text
-Status:
-  Summary:
-    Ready: 2
-    NotReady: 0
-    DesiredReady: 2
-  Clusters:
-    prod-us: Ready
-    prod-eu: Ready
+```yaml
+status:
+  readyClusters: 2
+  desiredReadyClusters: 2
+  display:
+    readyBundleDeployments: 2/2
+  resourceCounts:
+    desiredReady: 2
+    ready: 2
+    modified: 0
+    notReady: 0
 ```
 
 ---
@@ -183,17 +179,22 @@ targetCustomizations:
 
 ## Step 6: Monitor Replication Drift
 
-If a cluster's deployed state drifts from the Git source, Fleet automatically reconciles:
+If you enable drift correction, Fleet can reconcile external changes back to the desired state:
+
+```yaml
+# fleet.yaml
+correctDrift:
+  enabled: true
+```
 
 ```bash
-# Force a resync on all clusters
+# Force a resync by setting forceSyncGeneration to a new higher number
 kubectl patch gitrepo my-app -n fleet-default \
   --type merge \
   -p '{"spec":{"forceSyncGeneration":1}}'
 
-# Check for drift events
-kubectl get events -n fleet-default \
-  --field-selector reason=DriftCorrected
+# Inspect GitRepo status for Ready or Modified state
+kubectl get gitrepo my-app -n fleet-default -o yaml
 ```
 
 ---
@@ -202,4 +203,4 @@ kubectl get events -n fleet-default \
 
 - Use cluster labels (`region`, `env`, `tier`) rather than hardcoded cluster names in `fleet.yaml` targets - this makes it easy to add new clusters without modifying manifests.
 - Keep base manifests generic and use `targetCustomizations` only for environment-specific differences like replica counts and resource limits.
-- Enable drift detection by leaving Fleet's default reconciliation enabled - it will automatically revert manual changes that bypass GitOps.
+- If you want Fleet to automatically revert manual changes, enable `correctDrift.enabled: true` in `fleet.yaml` or the `GitRepo`; otherwise Fleet reports those resources as `Modified`.
