@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, ip command, iproute2, IPv4, Networking
 
-Description: Remove an IPv4 address from a Linux network interface using ip addr del, including removing specific addresses, all addresses, and managing secondary IPs.
+Description: Remove an IPv4 address from a Linux network interface using ip addr del, including removing specific addresses, all IPv4 addresses, and managing secondary IPs.
 
 ## Introduction
 
-`ip addr del` removes an IPv4 address from a network interface. The exact address and prefix length must match what was assigned. This is immediate but not persistent - use persistent network configuration tools for permanent changes.
+`ip addr del` removes an IPv4 address from a network interface. The exact address and prefix length must match what was assigned. This is immediate but not persistent - use persistent network configuration tools for permanent changes. Run these commands as root or with `sudo`.
 
 ## Remove an IP Address
 
@@ -41,7 +41,7 @@ ip -4 addr show eth0
 ip addr del 192.168.1.101/24 label eth0:1 dev eth0
 ```
 
-## Remove All IPs from an Interface
+## Remove All IPv4 Addresses from an Interface
 
 ```bash
 # Flush all IPv4 addresses from eth0
@@ -65,9 +65,10 @@ ip addr del 10.0.0.1/32 dev lo
 # Check the address is gone
 ip -4 addr show eth0
 
-# Check the connected route was also removed
+# Check whether the connected route was also removed
 ip route show
-# The 192.168.1.0/24 dev eth0 route should be gone
+# If no other address on eth0 still uses 192.168.1.0/24 and the address was not added with noprefixroute,
+# the 192.168.1.0/24 dev eth0 route should be gone
 ```
 
 ## Remove IP Safely (Check Before Deleting)
@@ -99,4 +100,4 @@ nmcli connection up "myconn"
 
 ## Conclusion
 
-`ip addr del <address>/<prefix> dev <interface>` removes an IP immediately. Use `ip addr flush dev <interface>` to remove all IPs at once. Remember that `ip addr del` changes are not persistent - update your network configuration files to prevent the address from returning after a reboot.
+`ip addr del <address>/<prefix> dev <interface>` removes an IP immediately. Use `ip -4 addr flush dev <interface>` to remove all IPv4 addresses at once. Remember that `ip addr del` changes are not persistent - update your network configuration files to prevent the address from returning after a reboot.
