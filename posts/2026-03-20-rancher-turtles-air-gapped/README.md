@@ -8,124 +8,132 @@ Description: Set up Rancher Turtles and CAPI providers in air-gapped environment
 
 ## Introduction
 
-How to Configure Rancher Turtles for Air-Gapped Environments is an important aspect of managing Kubernetes clusters with Rancher Turtles and Cluster API. This guide provides a comprehensive walkthrough with practical examples and best practices.
+Configuring Rancher Turtles for air-gapped environments requires more than applying a generic `Cluster` manifest. Rancher Turtles uses the `CAPIProvider` resource to manage Cluster API providers declaratively, and air-gapped setups must provide provider manifests from an internal source such as a private OCI registry or pre-created `ConfigMap` objects.
 
 ## Prerequisites
 
-- Rancher Turtles installed and configured
-- kubectl access to the management cluster
-- Appropriate cloud provider credentials (if applicable)
-- Cluster API providers installed
+- Rancher Turtles installed on the management cluster
+- `kubectl` access to the management cluster
+- A private OCI registry reachable from the management cluster
+- Rancher's `system-default-registry` configured if you want Rancher Turtles to rewrite provider image registries automatically
+- Mirrored CAPI provider controller images in that registry
+- Mirrored provider manifests available as OCI artifacts or `ConfigMap` objects
 
 ## Overview
 
-Rancher Turtles integrates Cluster API (CAPI) with Rancher to provide a unified, declarative approach to Kubernetes cluster lifecycle management. This guide walks through the specifics of How to Configure Rancher Turtles for Air-Gapped Environments.
+Rancher Turtles integrates Cluster API (CAPI) with Rancher by using the Cluster API Operator and the `CAPIProvider` custom resource. In an air-gapped environment, the core CAPI provider can run from the manifest embedded in the chart, but additional providers must fetch manifests from an internal source and pull controller images from a registry that is reachable inside the isolated environment. When Rancher's `system-default-registry` is configured, Rancher Turtles can automatically rewrite provider image registries to that internal registry as long as the mirrored image paths preserve the upstream namespace and image names.
 
 ## Step 1: Prepare Your Environment
 
+The commands below assume the default namespaces used by Rancher-installed Rancher Turtles.
+
 ```bash
-# Verify Rancher Turtles is running
+# Verify the Rancher Turtles controller is running
+kubectl get pods -n cattle-turtles-system
 
-kubectl get pods -n rancher-turtles-system
+# Review any existing Rancher Turtles provider definitions
+kubectl get capiproviders.turtles-capi.cattle.io -A
 
-# Check installed CAPI providers
-kubectl get providers -A
-
-# Verify management cluster connectivity
-kubectl cluster-info
+# If you want downstream CAPI clusters to be imported into Rancher,
+# label the namespace where those Cluster objects will be created
+kubectl create namespace capi-clusters --dry-run=client -o yaml | kubectl apply -f -
+kubectl label namespace capi-clusters cluster-api.cattle.io/rancher-auto-import=true --overwrite
 ```
 
 ## Step 2: Configure Resources
 
 ```yaml
-# Example CAPI configuration for How to Configure Rancher Turtles for Air-Gapped Environments
-apiVersion: cluster.x-k8s.io/v1beta1
-kind: Cluster
+# Example air-gapped provider configuration using a mirrored OCI artifact.
+# This assumes the provider images have also been mirrored to the registry
+# referenced by Rancher's system-default-registry.
+apiVersion: v1
+kind: Namespace
 metadata:
-  name: example-cluster
-  namespace: default
-  labels:
-    cluster-api.cattle.io/rancher-auto-import: "true"
-    environment: production
+  name: capz-system
+---
+apiVersion: turtles-capi.cattle.io/v1alpha1
+kind: CAPIProvider
+metadata:
+  name: azure
+  namespace: capz-system
 spec:
-  clusterNetwork:
-    pods:
-      cidrBlocks:
-        - 10.244.0.0/16
-    services:
-      cidrBlocks:
-        - 10.96.0.0/12
-  infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-    kind: InfraCluster
-    name: example-cluster
-  controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
-    kind: RKE2ControlPlane
-    name: example-cluster-cp
+  type: infrastructure
+  name: azure
+  version: v1.19.4
+  fetchConfig:
+    oci: registry.example.com/cluster-api-azure-controller-components:v1.19.4
 ```
 
 ```bash
-# Apply the configuration
-kubectl apply -f cluster-config.yaml
+# Push the mirrored provider manifests to your private registry
+oras push registry.example.com/cluster-api-azure-controller-components:v1.19.4 \
+  infrastructure-components.yaml:application/vnd.test.file \
+  metadata.yaml:application/vnd.test.file
 
-# Monitor progress
-kubectl get cluster example-cluster --watch
+# Apply the provider configuration
+kubectl apply -f capz-provider-oci.yaml
+
+# Monitor the provider until it becomes ready
+kubectl get capiproviders.turtles-capi.cattle.io azure -n capz-system --watch
 ```
 
 ## Step 3: Verify the Configuration
 
 ```bash
-# Check cluster status
-kubectl get clusters -A
+# Check provider status
+kubectl get capiproviders.turtles-capi.cattle.io -A
 
-# Describe the cluster for detailed status
-kubectl describe cluster example-cluster -n default
+# Describe the provider for detailed status
+kubectl describe capiproviders.turtles-capi.cattle.io azure -n capz-system
 
-# View all CAPI resources
-kubectl get clusters,machines,machinedeployments -n default
+# Verify the provider controller deployment exists
+kubectl get deployments -n capz-system
 
-# Check Rancher import status
-kubectl get cluster.provisioning.cattle.io -n fleet-default
+# After a downstream CAPI cluster reaches ControlPlaneAvailable,
+# Rancher Turtles creates a Rancher management cluster resource
+kubectl get clusters.management.cattle.io
 ```
 
 ## Step 4: Validate in Rancher UI
 
-1. Navigate to **Cluster Management** in Rancher
-2. Verify the cluster appears in the list
-3. Check cluster health indicators
-4. Review node status and resource utilization
+1. Navigate to **Cluster Management** in Rancher.
+2. Create or apply your downstream CAPI cluster in the namespace you labeled for auto-import.
+3. Wait for the CAPI cluster to reach `ControlPlaneAvailable=True`.
+4. Verify the imported cluster appears in Rancher after the `cattle-cluster-agent` is deployed.
 
 ## Common Operations
 
 ```bash
-# Scale worker nodes
-kubectl scale machinedeployment example-cluster-workers --replicas=5
+# Mirror another version of the provider artifact into the private registry
+oras push registry.example.com/cluster-api-azure-controller-components:v1.19.5 \
+  infrastructure-components.yaml:application/vnd.test.file \
+  metadata.yaml:application/vnd.test.file
 
-# Get cluster kubeconfig
-clusterctl get kubeconfig example-cluster > cluster-kubeconfig.yaml
+# Update the provider version in-place
+kubectl patch capiproviders.turtles-capi.cattle.io azure -n capz-system \
+  --type merge \
+  -p '{"spec":{"version":"v1.19.5","fetchConfig":{"oci":"registry.example.com/cluster-api-azure-controller-components:v1.19.5"}}}'
 
-# Test connectivity
-export KUBECONFIG=cluster-kubeconfig.yaml
-kubectl get nodes
-
-# Return to management cluster
-unset KUBECONFIG
+# Get the kubeconfig for a workload cluster once it has been provisioned
+clusterctl get kubeconfig example-cluster --namespace capi-clusters > cluster-kubeconfig.yaml
 ```
 
 ## Troubleshooting
 
 ```bash
-# Check Turtles controller logs
-kubectl logs -n rancher-turtles-system   -l control-plane=controller-manager   --follow
+# Check Rancher Turtles controller logs
+kubectl logs -n cattle-turtles-system -l control-plane=controller-manager --follow
 
-# Check CAPI controller logs
-kubectl logs -n capi-system   -l control-plane=controller-manager   --since=30m
+# Check core CAPI controller logs
+kubectl logs -n cattle-capi-system -l control-plane=controller-manager --follow
 
-# Get events for a cluster
-kubectl get events -n default   --field-selector involvedObject.name=example-cluster   --sort-by=.lastTimestamp
+# Check provider controller logs
+kubectl logs -n capz-system -l control-plane=controller-manager --follow
+
+# Get recent events for the provider namespace
+kubectl get events -n capz-system --sort-by=.lastTimestamp
 ```
 
 ## Conclusion
 
-How to Configure Rancher Turtles for Air-Gapped Environments with Rancher Turtles enables a declarative, Kubernetes-native approach to infrastructure management. By leveraging the Cluster API ecosystem alongside Rancher's management capabilities, you get a powerful, unified platform for managing Kubernetes clusters at scale across any infrastructure.
+Configuring Rancher Turtles for air-gapped environments centers on mirroring provider manifests and images, then pointing `CAPIProvider` resources at those internal artifacts. Once the provider is installed and the target namespace is labeled for auto-import, downstream CAPI clusters can be registered in Rancher without depending on direct Internet access.
