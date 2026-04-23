@@ -16,6 +16,7 @@ GitLab Container Registry is a built-in feature of GitLab that allows you to sto
 - Rancher managing at least one cluster
 - kubectl access to your cluster
 - GitLab project with Container Registry enabled
+- GitLab Runner configured for Docker-in-Docker if you use the sample GitLab CI job below
 
 ## Step 1: Enable GitLab Container Registry
 
@@ -47,7 +48,7 @@ sudo gitlab-ctl restart registry
 
 ## Step 2: Create a GitLab Deploy Token
 
-Deploy tokens are preferred for CI/CD authentication:
+Deploy tokens are preferred for long-lived registry authentication:
 
 1. Navigate to your GitLab project.
 2. Go to **Settings** > **Repository** > **Deploy tokens**.
@@ -64,15 +65,15 @@ Deploy tokens are preferred for CI/CD authentication:
 # Using deploy token (recommended)
 kubectl create secret docker-registry gitlab-registry-credentials \
   --docker-server=registry.gitlab.example.com \
-  --docker-username=rancher-registry-pull \
+  --docker-username=<deploy-token-username> \
   --docker-password=<deploy-token-value> \
   --namespace=production
 
-# Or using personal access token (for development)
+# Or using a personal access token with read_registry scope (for development)
 kubectl create secret docker-registry gitlab-registry-personal \
   --docker-server=registry.gitlab.com \
   --docker-username=myusername \
-  --docker-password=<personal-access-token> \
+  --docker-password=<personal-access-token-with-read_registry-scope> \
   --namespace=development
 ```
 
@@ -95,7 +96,7 @@ build:
     - docker:24-dind
   before_script:
     # Log in to GitLab registry using CI variables
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
   script:
     - docker build -t $DOCKER_IMAGE .
     - docker push $DOCKER_IMAGE
@@ -108,11 +109,8 @@ deploy:
   image: bitnami/kubectl:latest
   script:
     # Update the deployment image in Rancher cluster
-    - kubectl set image deployment/my-app \
-        my-app=$DOCKER_IMAGE \
-        --namespace=production
-    - kubectl rollout status deployment/my-app \
-        --namespace=production
+    - kubectl set image deployment/my-app my-app=$DOCKER_IMAGE --namespace=production
+    - kubectl rollout status deployment/my-app --namespace=production
 ```
 
 ## Step 5: Deploy Application Using GitLab Registry Image
@@ -139,7 +137,7 @@ spec:
         - name: gitlab-registry-credentials
       containers:
         - name: my-app
-          # GitLab registry image format: registry.gitlab.com/group/project:tag
+          # GitLab registry image format: <registry-host>/<namespace>/<project>:<tag>
           image: registry.gitlab.example.com/mygroup/my-app:latest
           ports:
             - containerPort: 8080
@@ -147,7 +145,7 @@ spec:
 
 ## Step 6: Automate Secret Creation in GitLab CI/CD
 
-Automate Kubernetes secret creation as part of your pipeline:
+Store the deploy token username and token as masked CI/CD variables, for example `GITLAB_REGISTRY_USER` and `GITLAB_REGISTRY_PASSWORD`, then automate Kubernetes secret creation as part of your pipeline:
 
 ```yaml
 # .gitlab-ci.yml - Automate registry secret creation
@@ -159,8 +157,8 @@ setup-k8s-secret:
     - |
       kubectl create secret docker-registry gitlab-registry-credentials \
         --docker-server=$CI_REGISTRY \
-        --docker-username=$CI_DEPLOY_USER \
-        --docker-password=$CI_DEPLOY_PASSWORD \
+        --docker-username=$GITLAB_REGISTRY_USER \
+        --docker-password=$GITLAB_REGISTRY_PASSWORD \
         --namespace=production \
         --dry-run=client -o yaml | kubectl apply -f -
   only:
@@ -179,7 +177,7 @@ For organizations with multiple projects sharing the same cluster:
 # Create group-level registry secret
 kubectl create secret docker-registry gitlab-group-registry \
   --docker-server=registry.gitlab.example.com \
-  --docker-username=group-deploy-token \
+  --docker-username=<group-deploy-token-username> \
   --docker-password=<group-token-value> \
   --namespace=production
 ```
@@ -201,16 +199,17 @@ helm:
 
 ## Step 9: Configure Registry Cleanup in GitLab
 
-```yaml
+```bash
 # GitLab registry cleanup policy via API
-curl -X PUT \
+curl --fail-with-body --request PUT \
   --header 'PRIVATE-TOKEN: <your-token>' \
-  --header 'Content-Type: application/json' \
-  --data '{
-    "container_expiration_policy": {
+  --header 'Content-Type: application/json;charset=UTF-8' \
+  --data-binary '{
+    "container_expiration_policy_attributes": {
       "cadence": "1month",
       "enabled": true,
       "keep_n": 5,
+      "name_regex_delete": ".*",
       "name_regex_keep": ".*release.*",
       "older_than": "90d"
     }
@@ -222,9 +221,9 @@ curl -X PUT \
 
 ```bash
 # Verify registry access
-docker login registry.gitlab.example.com \
-  -u rancher-registry-pull \
-  -p <deploy-token>
+echo "<deploy-token>" | docker login registry.gitlab.example.com \
+  -u <deploy-token-username> \
+  --password-stdin
 
 # Check if secret is properly created
 kubectl get secret gitlab-registry-credentials -n production -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d | jq .
