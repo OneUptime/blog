@@ -34,7 +34,15 @@ echo "=== Backup Verification $(date) ===" | tee "$REPORT_FILE"
 # List all backups
 
 BACKUPS=$(aws s3 ls "s3://${BUCKET}/rancher/" --recursive | sort)
-BACKUP_COUNT=$(echo "$BACKUPS" | wc -l)
+if [ -z "$BACKUPS" ] || [ "$BACKUPS" = "None" ]; then
+  echo "ALERT: No backups found in s3://${BUCKET}/rancher/" | tee -a "$REPORT_FILE"
+  curl -X POST "$SLACK_WEBHOOK_URL" \
+    -H 'Content-type: application/json' \
+    -d "{\"text\":\"⚠️ Rancher backup alert: no backups found in s3://${BUCKET}/rancher/\"}"
+  exit 1
+fi
+
+BACKUP_COUNT=$(printf '%s\n' "$BACKUPS" | wc -l)
 echo "Total backups found: $BACKUP_COUNT" | tee -a "$REPORT_FILE"
 
 # Check latest backup age
@@ -46,10 +54,11 @@ AGE_HOURS=$(( (NOW - LATEST_EPOCH) / 3600 ))
 
 echo "Latest backup: $LATEST_DATE (${AGE_HOURS}h ago)" | tee -a "$REPORT_FILE"
 
-if [ $AGE_HOURS -gt $MAX_AGE_HOURS ]; then
+if [ "$AGE_HOURS" -gt "$MAX_AGE_HOURS" ]; then
   echo "ALERT: Backup is ${AGE_HOURS}h old (threshold: ${MAX_AGE_HOURS}h)" | tee -a "$REPORT_FILE"
   # Send alert
   curl -X POST "$SLACK_WEBHOOK_URL" \
+    -H 'Content-type: application/json' \
     -d "{\"text\":\"⚠️ Rancher backup alert: newest backup is ${AGE_HOURS}h old\"}"
   exit 1
 fi
@@ -59,7 +68,7 @@ echo "PASS: Backup verification successful" | tee -a "$REPORT_FILE"
 
 ## Step 2: Automated Restore Test Pipeline
 
-Create a GitHub Actions workflow for weekly restore tests:
+Create a GitHub Actions workflow for weekly restore tests using Rancher's same-setup restore flow. If you want to restore into a different cluster for DR drills, follow Rancher's migration workflow instead.
 
 ```yaml
 # .github/workflows/dr-test.yml
@@ -67,7 +76,7 @@ name: Rancher DR Restore Test
 
 on:
   schedule:
-    - cron: '0 2 * * 0'  # Every Sunday at 2 AM
+    - cron: '0 2 * * 0'  # Every Sunday at 2 AM UTC
   workflow_dispatch:       # Allow manual trigger
 
 env:
@@ -94,29 +103,34 @@ jobs:
     - name: Get latest backup
       id: backup
       run: |
-        LATEST=$(aws s3 ls s3://rancher-production-backups/rancher/ \
+        LATEST_KEY=$(aws s3 ls s3://rancher-production-backups/rancher/ \
           --recursive | sort | tail -1 | awk '{print $4}')
-        echo "backup_file=$LATEST" >> $GITHUB_OUTPUT
+        if [ -z "$LATEST_KEY" ] || [ "$LATEST_KEY" = "None" ]; then
+          echo "No backups found in s3://rancher-production-backups/rancher/"
+          exit 1
+        fi
+        LATEST="${LATEST_KEY#rancher/}"
+        echo "backup_file=$LATEST" >> "$GITHUB_OUTPUT"
         echo "Latest backup: $LATEST"
     
-    - name: Reset test environment
+    - name: Remove old Restore resources
       run: |
-        # Clean up previous test restore
+        # This assumes the cluster under test has already been cleaned or recreated.
         kubectl --context $TEST_CLUSTER_CONTEXT delete restore \
-          --all --namespace cattle-resources-system 2>/dev/null || true
+          --all 2>/dev/null || true
         sleep 30
     
     - name: Execute restore
       id: restore
       run: |
         RESTORE_START=$(date +%s)
+        RESTORE_NAME="dr-test-$(date +%Y%m%d%H%M%S)"
         
         kubectl --context $TEST_CLUSTER_CONTEXT apply -f - << EOF
         apiVersion: resources.cattle.io/v1
         kind: Restore
         metadata:
-          name: dr-test-$(date +%Y%m%d%H%M%S)
-          namespace: cattle-resources-system
+          name: ${RESTORE_NAME}
         spec:
           backupFilename: "${{ steps.backup.outputs.backup_file }}"
           prune: true
@@ -126,38 +140,46 @@ jobs:
               folder: rancher
               region: us-east-1
               credentialSecretName: aws-backup-creds
+              credentialSecretNamespace: cattle-resources-system
+              endpoint: s3.us-east-1.amazonaws.com
         EOF
         
         # Wait for restore to complete
-        timeout 3600 bash -c '
-          while true; do
-            STATUS=$(kubectl --context '$TEST_CLUSTER_CONTEXT' get restore \
-              --namespace cattle-resources-system \
-              -o jsonpath="{.items[-1].status.conditions[-1].type}" 2>/dev/null)
-            echo "Status: $STATUS"
-            [ "$STATUS" = "Ready" ] && break
-            [ "$STATUS" = "Error" ] && exit 1
-            sleep 15
-          done
-        '
+        export TEST_CLUSTER_CONTEXT RESTORE_NAME
+        timeout 3600 bash <<'EOF'
+        while true; do
+          READY_MESSAGE=$(kubectl --context "$TEST_CLUSTER_CONTEXT" get restore "$RESTORE_NAME" \
+            -o jsonpath='{.status.conditions[?(@.type=="Ready")].message}' 2>/dev/null)
+          RECONCILING_REASON=$(kubectl --context "$TEST_CLUSTER_CONTEXT" get restore "$RESTORE_NAME" \
+            -o jsonpath='{.status.conditions[?(@.type=="Reconciling")].reason}' 2>/dev/null)
+          echo "Status: ${READY_MESSAGE:-$RECONCILING_REASON}"
+          [ "$READY_MESSAGE" = "Completed" ] && break
+          [ "$RECONCILING_REASON" = "Error" ] && exit 1
+          sleep 15
+        done
+        EOF
         
         RESTORE_END=$(date +%s)
         RESTORE_DURATION=$((RESTORE_END - RESTORE_START))
-        echo "restore_duration=$RESTORE_DURATION" >> $GITHUB_OUTPUT
+        echo "restore_duration=$RESTORE_DURATION" >> "$GITHUB_OUTPUT"
     
     - name: Validate restored environment
       id: validate
       run: |
-        # Check Rancher API is accessible
+        # Check Rancher is serving health checks
         DR_URL="${{ vars.DR_RANCHER_URL }}"
+        VALIDATION_RESULT=FAIL
         
         for i in {1..10}; do
-          if curl -sf "${DR_URL}/v3/ping"; then
-            echo "validation_result=PASS" >> $GITHUB_OUTPUT
+          if curl -sf "${DR_URL}/healthz"; then
+            VALIDATION_RESULT=PASS
             break
           fi
           sleep 30
         done
+        
+        echo "validation_result=$VALIDATION_RESULT" >> "$GITHUB_OUTPUT"
+        [ "$VALIDATION_RESULT" = "PASS" ] || exit 1
     
     - name: Calculate RTO
       run: |
@@ -191,6 +213,8 @@ jobs:
 
 ## Step 3: RTO/RPO Dashboard
 
+Before using these queries, enable Rancher backup operator metrics (`monitoring.metrics.enabled: true` and `monitoring.serviceMonitor.enabled: true`) and make sure `rancher-monitoring` is installed. If your workflow also exports custom DR-test metrics to Prometheus, the dashboard can combine those custom metrics with Rancher's built-in backup operator metrics:
+
 ```yaml
 # dr-metrics-configmap.yaml
 apiVersion: v1
@@ -207,21 +231,21 @@ data:
           "title": "Latest RTO (minutes)",
           "type": "stat",
           "targets": [{
-            "expr": "rancher_dr_restore_duration_minutes"
+            "expr": "dr_restore_duration_seconds / 60"
           }]
         },
         {
           "title": "Backup Age (hours)",
           "type": "stat",
           "targets": [{
-            "expr": "(time() - rancher_backup_last_success_timestamp) / 3600"
+            "expr": "(time() - max(rancher_backup_last_processed_timestamp_seconds)) / 3600"
           }]
         },
         {
           "title": "DR Test Pass Rate (30d)",
           "type": "stat",
           "targets": [{
-            "expr": "sum(rancher_dr_test_pass_total) / sum(rancher_dr_test_total) * 100"
+            "expr": "100 * sum(increase(dr_test_pass_total[30d])) / clamp_min(sum(increase(dr_test_total[30d])), 1)"
           }]
         }
       ]
@@ -232,7 +256,7 @@ data:
 
 ```bash
 #!/bin/bash
-# chaos-dr-test.sh - Test DR under adverse conditions
+# chaos-dr-test.sh - Example scaffolding for DR tests under adverse conditions
 
 echo "=== Chaos DR Test ==="
 
@@ -243,9 +267,11 @@ echo "invalid data" > /tmp/corrupted-backup.tar.gz
 
 # Test 2: Restore during high load
 echo "Test 2: Restore under load..."
-# Generate load on test cluster
+# Generate CPU load on the test cluster
+kubectl create namespace dr-test --dry-run=client -o yaml | kubectl apply -f -
 kubectl run load-test --image=busybox \
-  --command -- sh -c "while true; do sleep 0.1; done" \
+  --restart=Never \
+  --command -- sh -c "while true; do :; done" \
   --namespace dr-test
 
 # Simultaneously run restore
@@ -261,6 +287,8 @@ echo "Chaos tests complete"
 
 ## Step 5: Automated Alerting
 
+If you are using custom alert rules, enable `monitoring.prometheusRules.customRules.enabled: true` in the Rancher Backups chart, then apply a `PrometheusRule` like this:
+
 ```yaml
 # dr-prometheus-rules.yaml
 apiVersion: monitoring.coreos.com/v1
@@ -275,22 +303,22 @@ spec:
     rules:
     - alert: BackupTooOld
       expr: |
-        (time() - rancher_backup_last_success_timestamp) > 14400
+        (time() - max(rancher_backup_last_processed_timestamp_seconds)) > 14400
       for: 30m
       labels:
         severity: warning
         team: platform
       annotations:
         summary: "Rancher backup is over 4 hours old"
-        description: "Last successful backup was {{ $value | humanizeDuration }} ago"
+        description: "The most recent backup processed by the Rancher backup operator is older than 4 hours."
     
     - alert: BackupFailed
-      expr: rancher_backup_last_status != 1
-      for: 15m
+      expr: increase(rancher_backups_failed_total[15m]) > 0
+      for: 5m
       labels:
         severity: critical
       annotations:
-        summary: "Rancher backup is failing"
+        summary: "Rancher backup has failed recently"
 ```
 
 ## Conclusion
