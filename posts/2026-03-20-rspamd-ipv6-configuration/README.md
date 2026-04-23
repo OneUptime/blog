@@ -8,25 +8,25 @@ Description: Configure Rspamd spam filtering daemon to work correctly with IPv6 
 
 ## Introduction
 
-Rspamd is a high-performance spam filtering system used with Postfix, Exim, and other MTAs. When your mail server accepts connections from IPv6 clients or uses IPv6 for outbound delivery, Rspamd's configuration needs adjustment to properly handle IPv6 addresses in whitelists, local network definitions, and milter bindings.
+Rspamd is a high-performance spam filtering system used with Postfix, Exim, and other MTAs. When your mail server accepts connections from IPv6 clients or uses IPv6 for outbound delivery, Rspamd's configuration may need adjustment to properly handle IPv6 addresses in whitelists, local network definitions, and milter bindings.
 
 ## Installing Rspamd
 
 ```bash
 # Add Rspamd repository and install on Ubuntu
 
-curl https://rspamd.com/apt-stable/gpg.key | sudo apt-key add -
-echo "deb [arch=amd64] https://rspamd.com/apt-stable/ focal main" | sudo tee /etc/apt/sources.list.d/rspamd.list
-sudo apt update && sudo apt install -y rspamd
+curl -fsSL https://rspamd.com/apt-stable/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/rspamd.gpg
+echo "deb [signed-by=/usr/share/keyrings/rspamd.gpg] https://rspamd.com/apt-stable/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/rspamd.list
+sudo apt update && sudo apt install -y rspamd redis-server
 
-# On RHEL/CentOS
-curl https://rspamd.com/rpm-stable/centos-7/rspamd.repo | sudo tee /etc/yum.repos.d/rspamd.repo
-sudo yum install -y rspamd
+# On RHEL/CentOS/Rocky Linux/AlmaLinux 8+
+curl -sSL https://rspamd.com/rpm-stable/centos-8/rspamd.repo | sudo tee /etc/yum.repos.d/rspamd.repo
+sudo dnf install -y rspamd redis
 ```
 
 ## Configuring Rspamd to Listen on IPv6
 
-By default, Rspamd listens on localhost. For a mail server receiving connections over IPv6, configure the worker to bind to IPv6:
+By default, Rspamd listens on localhost. If Postfix or other clients need to reach Rspamd over IPv6, configure the worker to bind to IPv6:
 
 ```bash
 sudo nano /etc/rspamd/local.d/worker-normal.inc
@@ -67,7 +67,7 @@ sudo systemctl reload postfix
 
 ## Whitelisting IPv6 Internal Networks
 
-Configure Rspamd to trust internal IPv6 networks and not score their messages:
+Configure Rspamd to treat internal IPv6 networks as local networks:
 
 ```bash
 sudo tee /etc/rspamd/local.d/options.inc << 'EOF'
@@ -86,7 +86,7 @@ EOF
 
 ## Configuring IP Whitelist for IPv6
 
-Create a local IP whitelist to bypass spam checks for known IPv6 senders:
+Create a local IP whitelist to reduce the spam score for known IPv6 senders:
 
 ```bash
 sudo tee /etc/rspamd/local.d/ip_whitelist.map << 'EOF'
@@ -118,6 +118,7 @@ rbls {
   spamhaus_xbl {
     symbol = "RBL_SPAMHAUS_XBL";
     rbl = "xbl.spamhaus.org";
+    checks = ["from"];
     ipv6 = true;
     # IPv6 DNSBL uses nibble format automatically
   }
@@ -125,6 +126,7 @@ rbls {
   spamhaus_sbl {
     symbol = "RBL_SPAMHAUS_SBL";
     rbl = "sbl.spamhaus.org";
+    checks = ["from"];
     ipv6 = true;
   }
 }
@@ -138,11 +140,11 @@ EOF
 sudo systemctl restart rspamd
 
 # Check Rspamd is listening on IPv6
-ss -tlnp | grep -E '11332|11333'
-# Should show :::11332 and :::11333
+sudo ss -tlnp | grep -E '11332|11333'
+# Should show listeners on *:11332/*:11333 or [::]:11332/[::]:11333
 
-# Test Rspamd processing via rspamc
-rspamc symbols < /usr/share/doc/rspamd/spam.eml 2>/dev/null | head -20
+# Test Rspamd processing via rspamc with a saved RFC 5322 message
+rspamc symbols < test_message.eml 2>/dev/null | head -20
 
 # Check Rspamd logs for IPv6 connections
 sudo journalctl -u rspamd -f | grep "::"
@@ -164,4 +166,4 @@ sudo systemctl restart rspamd
 
 ## Conclusion
 
-Rspamd IPv6 support requires binding worker sockets to `*` or explicit IPv6 addresses, defining IPv6 subnets in `local_networks`, and configuring IPv6-compatible DNSBL checks. These changes ensure spam filtering works correctly for both IPv4 and IPv6 SMTP connections without false positives for internal IPv6 mail.
+Rspamd services can listen on IPv6 by binding worker sockets to `*` or explicit IPv6 addresses, defining IPv6 subnets in `local_networks`, and configuring IPv6-compatible DNSBL checks. These changes help spam filtering work correctly for both IPv4 and IPv6 SMTP connections without false positives for internal IPv6 mail.
