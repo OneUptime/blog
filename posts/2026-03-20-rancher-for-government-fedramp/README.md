@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Government, FedRAMP, Compliance, Air-Gapped, Security, Kubernetes
 
-Description: Configure Rancher for US government workloads meeting FedRAMP requirements including air-gapped deployments, FIPS 140-2 encryption, STIG compliance, audit logging, and the security controls...
+Description: Configure Rancher for US government workloads meeting FedRAMP requirements including air-gapped deployments, FIPS-validated encryption, STIG compliance, audit logging, and the security controls...
 
 ## Introduction
 
-US government workloads in Kubernetes must comply with FedRAMP (for cloud) or DISA STIGs (for on-premises). Both frameworks require FIPS 140-2 validated cryptography, comprehensive audit logging, strict access controls, and often air-gapped deployments without internet connectivity. RKE2 is FIPS 140-2 compliant when configured correctly, making it the recommended distribution for government Kubernetes.
+US government workloads in Kubernetes commonly align to FedRAMP (for cloud) or DISA STIGs (for DoD environments). These frameworks emphasize FIPS-validated cryptography, comprehensive audit logging, strict access controls, and often air-gapped deployments without internet connectivity. RKE2 documents FIPS 140-2 enablement and CIS hardening features, making it a practical distribution for government-focused Kubernetes deployments.
 
 ## FedRAMP Architecture
 
@@ -34,139 +34,153 @@ Air-Gapped Environment
 ## Step 1: Enable FIPS 140-2 on RKE2
 
 ```bash
-# Install RKE2 with FIPS mode
+# Install the supported RKE2 build
+# For documented FIPS support, use Linux AMD64 nodes and the default Canal CNI
+curl -sfL https://get.rke2.io | sh -
 
-# FIPS mode uses NIST-approved cryptographic algorithms only
+mkdir -p /etc/rancher/rke2/config.yaml.d
 
-# Download FIPS-compliant RKE2 binary
-curl -sfL https://get.rke2.io | INSTALL_RKE2_FIPS=true sh -
-
-# Verify FIPS mode is active
-rke2 --version | grep -i fips
-
-# Configure FIPS-compliant TLS
-cat > /etc/rancher/rke2/config.yaml << 'EOF'
-# FIPS-compliant cipher suites only
+# Configure FIPS-aligned TLS and keep the FIPS-compatible defaults explicit
+cat > /etc/rancher/rke2/config.yaml.d/10-fips.yaml << 'EOF'
+cni: canal
+secrets-encryption-provider: aescbc
 kube-apiserver-arg:
-  - "tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+  - "tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
   - "tls-min-version=VersionTLS12"
 EOF
+
+systemctl enable --now rke2-server
+
+# Verify secrets encryption is enabled with the FIPS-compatible provider
+rke2 secrets-encrypt status
 ```
 
 ## Step 2: Air-Gapped Rancher Installation
 
 ```bash
-# Download all required images for air-gapped install
+# Download all required assets for an air-gapped install
 # On an internet-connected machine:
-helm pull rancher/rancher --version 2.8.0 --untar
+RANCHER_VERSION=<RANCHER_VERSION>
+REGISTRY=harbor.gov.internal
 
-# Download Rancher image list
-curl -sfL https://github.com/rancher/rancher/releases/download/v2.8.0/rancher-images.txt -o rancher-images.txt
+helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+helm repo update
+helm pull rancher-stable/rancher --version "${RANCHER_VERSION}"
 
-# Save images to tarball
-cat rancher-images.txt | xargs docker pull
-docker save $(cat rancher-images.txt | tr '\n' ' ') | gzip > rancher-images.tar.gz
+curl -sfLO "https://github.com/rancher/rancher/releases/download/v${RANCHER_VERSION}/rancher-images.txt"
+curl -sfLO "https://github.com/rancher/rancher/releases/download/v${RANCHER_VERSION}/rancher-save-images.sh"
+curl -sfLO "https://github.com/rancher/rancher/releases/download/v${RANCHER_VERSION}/rancher-load-images.sh"
+chmod +x rancher-save-images.sh rancher-load-images.sh
 
-# Transfer to air-gapped environment and load
-docker load -i rancher-images.tar.gz
+# If you use Rancher-generated certificates, also add the required cert-manager images as documented
+./rancher-save-images.sh --image-list ./rancher-images.txt
 
-# Push to private Harbor registry
-cat rancher-images.txt | while read image; do
-  new_tag="harbor.gov.internal/rancher/${image##*/}"
-  docker tag "$image" "$new_tag"
-  docker push "$new_tag"
-done
+# Transfer the chart, scripts, image list, and rancher-images.tar.gz to the air-gapped workstation
+docker login "${REGISTRY}"
+./rancher-load-images.sh --image-list ./rancher-images.txt --registry "${REGISTRY}"
+
+kubectl create namespace cattle-system
+helm install rancher "./rancher-${RANCHER_VERSION}.tgz" \
+  --namespace cattle-system \
+  --set hostname=rancher.gov.internal \
+  --set rancherImage="${REGISTRY}/rancher/rancher" \
+  --set systemDefaultRegistry="${REGISTRY}" \
+  --set useBundledSystemChart=true
 ```
 
 ## Step 3: Apply DISA STIG Controls
 
 ```bash
-# Enable STIGatrix or apply STIG hardening scripts
-# Key STIG controls for Kubernetes (K8S STIG V1R14):
+# Create an audit policy and apply representative STIG-aligned API server settings
+cat > /etc/rancher/rke2/audit-policy.yaml << 'EOF'
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+  - level: Metadata
+EOF
 
-# V-242376: Enable audit logging
-kube-apiserver-arg:
-  - "audit-log-path=/var/log/kubernetes/audit.log"
-  - "audit-log-maxage=365"
+cat > /etc/rancher/rke2/config.yaml.d/20-stig.yaml << 'EOF'
+# RKE2's cis profile enables hardened defaults such as audit log rotation
+profile: cis
+kube-apiserver-arg+:
+  - "audit-policy-file=/etc/rancher/rke2/audit-policy.yaml"
+  - "audit-log-path=/var/lib/rancher/rke2/server/logs/audit.log"
+  - "audit-log-maxage=30"
+  - "audit-log-maxbackup=10"
   - "audit-log-maxsize=100"
-
-# V-242381: Disable anonymous auth
-kube-apiserver-arg:
   - "anonymous-auth=false"
-
-# V-242384: Enable Node restriction
-kube-apiserver-arg:
+  - "authorization-mode=Node,RBAC"
   - "enable-admission-plugins=NodeRestriction"
-
-# V-242386: Disable profiling
-kube-apiserver-arg:
   - "profiling=false"
+EOF
+
+systemctl restart rke2-server
 ```
 
 ## Step 4: Continuous Compliance Monitoring
 
 ```bash
-# Run OpenSCAP scans for STIG compliance
+# Run OpenSCAP scans for host OS STIG compliance
 # Install on RHEL nodes
-yum install -y scap-security-guide openscap-scanner
+dnf install -y scap-security-guide openscap-scanner
 
-# Run Kubernetes STIG check
+# Example for RHEL 8 nodes
 oscap xccdf eval \
   --profile xccdf_org.ssgproject.content_profile_stig \
-  --results /var/log/oscap-results.xml \
+  --results /var/log/oscap-rhel8-stig-results.xml \
   /usr/share/xml/scap/ssg/content/ssg-rhel8-ds.xml
 
-# Integrate with Rancher CIS Benchmark
-kubectl apply -f - <<EOF
-apiVersion: cis.cattle.io/v1
-kind: ClusterScanBenchmark
-metadata:
-  name: dod-hardened
-spec:
-  clusterProvider: rke2
-  minKubernetesVersion: "1.24.0"
-  customBenchmarkConfigMapName: dod-k8s-stig-benchmark
-EOF
+# Rancher compliance scans can use a custom kube-bench config packaged as a ConfigMap
+kubectl create configmap -n <namespace> dod-k8s-stig-benchmark \
+  --from-file=./dod-k8s-stig-benchmark
+
+# Then in Rancher:
+# Cluster Management > Explore > Compliance > Benchmark Version
+# Select the ConfigMap, then create a Profile and Scan
 ```
 
 ## Step 5: CAC/PIV Authentication
 
 ```bash
-# Configure Rancher to use CAC/PIV via SAML
-# Connect to AD FS or Okta (which supports CAC/PIV)
+# Configure Rancher to use CAC/PIV-backed authentication through AD FS
 
 # In Rancher UI:
-# Global Settings > Authentication > SAML > Microsoft AD FS
+# ☰ > Users & Authentication > Auth Provider > ADFS
 
 # AD FS configuration:
-# Entity ID: https://rancher.gov.internal
-# Assertion Consumer Service URL: https://rancher.gov.internal/v1-saml/adfs/saml/acs
+# SAML 2.0 WebSSO Protocol Service URL: https://rancher.gov.internal/v1-saml/adfs/saml/acs
+# Relying Party Trust identifier URL: https://rancher.gov.internal/v1-saml/adfs/saml/metadata
+# Federation metadata XML: https://adfs.gov.internal/federationmetadata/2007-06/federationmetadata.xml
 
-# Required claims:
-# - Email
-# - Name
-# - UPN (for group mapping)
+# Common claim mappings:
+# - Display Name Field: http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name
+# - User Name Field: http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname
+# - UID Field: http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn
+# - Groups Field: http://schemas.xmlsoap.org/claims/Group
 ```
 
-## Step 6: Immutable Audit Log Forwarding
+## Step 6: Forward Cluster Logs to a SIEM
 
 ```yaml
-# Forward audit logs to SIEM (Splunk, ArcSight)
+# Forward cluster logs to a central SIEM from Rancher Logging
 apiVersion: logging.banzaicloud.io/v1beta1
 kind: ClusterOutput
 metadata:
   name: siem-output
   namespace: cattle-logging-system
 spec:
-  forward:
-    servers:
-      - host: siem.gov.internal
-        port: 514
-        weight: 100
-    transport: tls
-    tls_cert_path: /etc/ssl/certs/gov-ca.crt
-    tls_client_cert_path: /etc/ssl/certs/cluster-client.crt
-    tls_client_private_key_path: /etc/ssl/private/cluster-client.key
+  syslog:
+    host: siem.gov.internal
+    port: 514
+---
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: ClusterFlow
+metadata:
+  name: all-logs
+  namespace: cattle-logging-system
+spec:
+  globalOutputRefs:
+    - siem-output
 ```
 
 ## FedRAMP Control Summary
@@ -176,10 +190,10 @@ spec:
 | AC-2 Account Management | Rancher RBAC + AD/LDAP |
 | AU-2 Audit Events | Kubernetes audit log |
 | IA-2 MFA | CAC/PIV via SAML |
-| SC-28 At-Rest Protection | FIPS etcd encryption |
+| SC-28 At-Rest Protection | Kubernetes secrets encryption at rest (`aescbc`) |
 | SI-3 Malware Protection | Trivy + Falco |
 | CM-6 Configuration Settings | CIS/STIG benchmarks |
 
 ## Conclusion
 
-RKE2 with FIPS mode enabled provides a solid foundation for FedRAMP and DISA STIG compliance. The key requirements are: FIPS 140-2 cryptography throughout, air-gapped deployment with a private registry, CAC/PIV authentication via AD FS SAML integration, comprehensive audit logging forwarded to an approved SIEM, and regular STIG compliance scanning. SUSE offers Rancher Government Solutions (RGS) with pre-validated compliance configurations for federal customers.
+RKE2 provides a solid foundation for FedRAMP and DISA STIG compliance. The key requirements are: FIPS-validated cryptography throughout, air-gapped deployment with a private registry, CAC/PIV-backed authentication via AD FS SAML integration, comprehensive audit logging from `/var/lib/rancher/rke2/server/logs/audit.log`, and regular host and cluster compliance scanning. SUSE offers Rancher Government Solutions (RGS) for federal customers.
