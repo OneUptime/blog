@@ -8,7 +8,7 @@ Description: Use prefix lists to filter specific routes from being advertised or
 
 ## Introduction
 
-Prefix lists are ordered access control lists for IP prefixes. They match routes based on network address and prefix length, and are used to filter routing updates in OSPF, BGP, and other protocols. Prefix lists are preferred over access lists for route filtering because they can match on prefix length ranges - for example, all /24s within a /16.
+Prefix lists are ordered access control lists for IP prefixes. They match routes based on network address and prefix length, and are used to filter routing information in BGP and other protocols. In OSPF, prefix lists are commonly used on ABRs to filter Type-3 summary LSAs between areas. Prefix lists are preferred over access lists for route filtering because they can match on prefix length ranges - for example, all /24s within a /16.
 
 ## Prefix List Syntax
 
@@ -42,24 +42,27 @@ ip prefix-list NO-DEFAULT seq 20 permit 0.0.0.0/0 le 32
 
 ```bash
 # Filter routes redistributed INTO OSPF from static
-router ospf
-  distribute-list prefix EXACT-MATCH out static
+route-map STATIC-TO-OSPF permit 10
+  match ip address prefix-list EXACT-MATCH
 
-# Filter routes received from OSPF neighbors
 router ospf
-  distribute-list prefix NO-DEFAULT in
+  redistribute static route-map STATIC-TO-OSPF
+
+# Filter Type-3 summary LSAs entering an area on an ABR
+router ospf
+  area 0.0.0.1 filter-list prefix NO-DEFAULT in
 ```
 
 ## Applying Prefix Lists to BGP
 
 ```bash
-# Filter outbound BGP advertisements to a neighbor
 router bgp 65001
-  neighbor 10.0.0.2 prefix-list OUTBOUND-FILTER out
+  address-family ipv4 unicast
+    # Filter outbound BGP advertisements to a neighbor
+    neighbor 10.0.0.2 prefix-list OUTBOUND-FILTER out
 
-# Filter inbound BGP routes received from a neighbor
-router bgp 65001
-  neighbor 10.0.0.2 prefix-list INBOUND-FILTER in
+    # Filter inbound BGP routes received from a neighbor
+    neighbor 10.0.0.2 prefix-list INBOUND-FILTER in
 ```
 
 ## Applying Prefix Lists Inside a Route Map
@@ -80,7 +83,8 @@ route-map EXPORT-MAP deny 20
 
 # Apply to BGP neighbor
 router bgp 65001
-  neighbor 10.0.0.2 route-map EXPORT-MAP out
+  address-family ipv4 unicast
+    neighbor 10.0.0.2 route-map EXPORT-MAP out
 ```
 
 ## Verifying Prefix Lists
@@ -93,7 +97,7 @@ vtysh -c "show ip prefix-list"
 vtysh -c "show ip prefix-list EXACT-MATCH"
 
 # Test a prefix against a list
-vtysh -c "show ip prefix-list EXACT-MATCH 10.1.0.0/24"
+vtysh -c "debug prefix-list EXACT-MATCH match 10.1.0.0/24"
 
 # Show match counts for each entry
 vtysh -c "show ip prefix-list detail"
@@ -101,4 +105,4 @@ vtysh -c "show ip prefix-list detail"
 
 ## Conclusion
 
-Prefix lists are the most readable and efficient way to filter routing updates. They support prefix-length range matching with `ge` and `le`, making it easy to block overly specific routes (deaggregated /32s) or permit only aggregates. Always end your prefix lists with an explicit deny or permit for the remaining prefixes to avoid ambiguity.
+Prefix lists are a readable and efficient way to filter routing updates. They support prefix-length range matching with `ge` and `le`, making it easy to block overly specific routes (deaggregated /32s) or permit only aggregates. FRR applies a default deny when a defined prefix list has no match; adding an explicit deny or permit for the remaining prefixes makes that behavior visible in configuration.
