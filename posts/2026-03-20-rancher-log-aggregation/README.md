@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Log Aggregation, Loki, Fluentd, Observability
 
-Description: Build scalable log aggregation pipelines in Rancher using Fluentd, Fluent Bit, or Vector to collect, process, and forward logs to centralized storage.
+Description: Build scalable log aggregation pipelines in Rancher using Fluentd and Fluent Bit to collect, process, and forward logs to centralized storage.
 
 ## Introduction
 
@@ -16,6 +16,7 @@ Log aggregation centralizes logs from all your Kubernetes workloads for searchin
 - Helm 3.x installed
 - Loki, Elasticsearch, or another log storage backend
 - kubectl access
+- jq installed for the validation query in Step 6
 
 ## Step 1: Install the Rancher Logging Operator
 
@@ -23,17 +24,23 @@ Log aggregation centralizes logs from all your Kubernetes workloads for searchin
 # Install from Rancher Apps catalog or via Helm
 
 helm repo add rancher-charts https://charts.rancher.io
+helm repo update
 
-helm install rancher-logging rancher-charts/rancher-logging \
+helm upgrade --install rancher-logging-crd rancher-charts/rancher-logging-crd \
   --namespace cattle-logging-system \
   --create-namespace \
+  --wait
+
+helm upgrade --install rancher-logging rancher-charts/rancher-logging \
+  --namespace cattle-logging-system \
+  --set logging.enabled=true \
   --wait
 ```
 
 ## Step 2: Configure ClusterFlow and ClusterOutput
 
 ```yaml
-# cluster-output-loki.yaml - Send all cluster logs to Loki
+# cluster-output-loki.yaml - Send shared cluster logs to Loki
 apiVersion: logging.banzaicloud.io/v1beta1
 kind: ClusterOutput
 metadata:
@@ -55,22 +62,28 @@ spec:
       cluster: rancher-production
       environment: production
 ---
-# cluster-flow-all.yaml - Route all logs to Loki
+# cluster-flow-all.yaml - Route cluster logs except namespaces with dedicated flows
 apiVersion: logging.banzaicloud.io/v1beta1
 kind: ClusterFlow
 metadata:
-  name: all-logs-to-loki
+  name: shared-logs-to-loki
   namespace: cattle-logging-system
 spec:
   filters:
-    # Parse JSON logs
+    # Parse JSON logs when the container log line is structured
     - parser:
         remove_key_name_field: true
+        reserve_data: true
+        emit_invalid_record_to_error: false
         parse:
           type: json
-    # Add Kubernetes metadata
-    - kubernetes_metadata:
-        skip_labels: true
+    # Normalize tags for consistent routing
+    - tag_normaliser: {}
+  match:
+    - exclude:
+        namespaces:
+          - production
+    - select: {}
   globalOutputRefs:
     - loki-output
 ```
@@ -88,32 +101,47 @@ spec:
   filters:
     # Extract important fields from structured logs
     - parser:
-        key_name: message
-        remove_key_name_field: false
+        key_name: log
+        reserve_data: true
+        remove_key_name_field: true
+        emit_invalid_record_to_error: false
         parse:
           type: json
           time_key: timestamp
-          time_format: "%Y-%m-%dT%H:%M:%S.%N%Z"
+          time_type: string
+          time_format: "%Y-%m-%dT%H:%M:%SZ"
     # Add application labels
     - record_transformer:
         records:
-          app_version: "1.0.0"
-          team: "platform"
+          - app_version: "1.0.0"
+            team: "platform"
     # Drop debug logs in production
     - grep:
         exclude:
           - key: level
             pattern: /^DEBUG$/
-  # Route critical errors to dedicated output
+  # Exclude workloads that are handled by the dedicated critical flow
+  match:
+    - exclude:
+        labels:
+          tier: critical
+    - select: {}
+  globalOutputRefs:
+    - loki-output
+---
+# production-critical-flow.yaml - Route logs from critical-tier workloads
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: Flow
+metadata:
+  name: production-critical-logs
+  namespace: production
+spec:
   match:
     - select:
         labels:
           tier: critical
-      outputRefs:
-        - critical-logs-output
-    - select: {}  # Default: send all other logs to Loki
-      outputRefs:
-        - loki-output
+  localOutputRefs:
+    - critical-logs-output
 ---
 # critical-output.yaml - High-priority log output
 apiVersion: logging.banzaicloud.io/v1beta1
@@ -126,7 +154,7 @@ spec:
     host: elasticsearch.observability.svc.cluster.local
     port: 9200
     index_name: critical-logs
-    type_name: log
+    type_name: _doc
     buffer:
       type: file
       path: /buffers/critical
@@ -153,7 +181,7 @@ config:
         Name              tail
         Tag               kube.*
         Path              /var/log/containers/*.log
-        Parser            cri
+        multiline.parser  docker, cri
         DB                /var/log/flb_kube.db
         Mem_Buf_Limit     50MB
         Skip_Long_Lines   On
@@ -172,14 +200,6 @@ config:
         K8S-Logging.Parser  On
         K8S-Logging.Exclude On
 
-    # Parse JSON log messages
-    [FILTER]
-        Name    parser
-        Match   kube.*
-        Key_Name log
-        Parser  json
-        Reserve_Data On
-
     # Add cluster label
     [FILTER]
         Name    record_modifier
@@ -190,37 +210,22 @@ config:
     # Send to Loki
     [OUTPUT]
         Name             loki
-        Match            *
+        Match            kube.*
         Host             loki.observability.svc.cluster.local
         Port             3100
         Labels           job=fluentbit,cluster=rancher-production
-        Label_Keys       $kubernetes['namespace_name'],$kubernetes['pod_name'],$kubernetes['container_name'],$level
+        Label_Keys       $kubernetes['namespace_name'],$kubernetes['pod_name'],$kubernetes['container_name']
         Line_Format      json
         Retry_Limit      5
 
-    # Send errors to Elasticsearch
+    # Optional secondary output to Elasticsearch
     [OUTPUT]
         Name            es
-        Match           *error*
+        Match           kube.*
         Host            elasticsearch.observability.svc.cluster.local
         Port            9200
         Index           k8s-errors
-        Type            log
         Retry_Limit     False
-
-  customParsers: |
-    [PARSER]
-        Name        json
-        Format      json
-        Time_Key    timestamp
-        Time_Format %Y-%m-%dT%H:%M:%S.%LZ
-
-    [PARSER]
-        Name        cri
-        Format      regex
-        Regex       ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<message>.*)$
-        Time_Key    time
-        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
 ```
 
 ```bash
@@ -236,24 +241,29 @@ helm install fluent-bit fluent/fluent-bit \
 ## Step 5: Configure Log Rotation and Retention
 
 ```yaml
-# log-retention-configmap.yaml - Log retention configuration
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: loki-retention-config
-  namespace: observability
-data:
-  # Set per-namespace retention via Loki tenant configuration
-  retention: |
-    # Production logs: 30 days
-    - selector: '{namespace="production"}'
-      period: 720h
-    # Development logs: 7 days
-    - selector: '{namespace="development"}'
-      period: 168h
+# loki-values.yaml - Enable retention in the Loki Helm chart
+loki:
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem # Use the same backend type configured for Loki storage
+    working_directory: /var/loki/retention
+  limits_config:
     # Default: 14 days
-    - selector: '{}'
-      period: 336h
+    retention_period: 336h
+    retention_stream:
+      # Production logs: 30 days
+      - selector: '{namespace="production"}'
+        priority: 1
+        period: 720h
+      # Development logs: 7 days
+      - selector: '{namespace="development"}'
+        priority: 1
+        period: 168h
+
+compactor:
+  replicas: 1
+  persistence:
+    enabled: true
 ```
 
 ## Step 6: Test the Log Pipeline
@@ -270,7 +280,9 @@ sleep 30
 
 # Query Loki for the test logs
 kubectl port-forward -n observability svc/loki 3100:3100 &
-curl 'http://localhost:3100/loki/api/v1/query?query={namespace="production",pod=~"test-logger.*"}&limit=10' | jq '.data.result[0].values'
+curl -G -s 'http://localhost:3100/loki/api/v1/query' \
+  --data-urlencode 'query={namespace="production",pod="test-logger"}' \
+  --data-urlencode 'limit=10' | jq '.data.result[0].values'
 ```
 
 ## Conclusion
