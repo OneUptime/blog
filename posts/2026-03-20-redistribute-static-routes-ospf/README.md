@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OSPF, Static Routes, Redistribution, Cisco IOS, Routing
 
-Description: Learn how to redistribute static routes into OSPF so that non-dynamic network segments can be reached by OSPF routers throughout your network.
+Description: Learn how to redistribute static routes into OSPF so that non-dynamic network segments can be reached by other OSPF routers.
 
 ## When to Redistribute Static Routes
 
-Static routes handle networks that aren't directly connected or learned via a dynamic routing protocol-such as stub networks, default routes, or networks behind a third-party device. By redistributing them into OSPF, all OSPF routers learn about these destinations.
+Static routes handle networks that aren't directly connected or learned via a dynamic routing protocol-such as stub networks, default routes, or networks behind a third-party device. By redistributing them into OSPF, other OSPF routers learn about these destinations.
 
 ## Types of External OSPF Routes
 
@@ -34,22 +34,22 @@ Router(config)# ip route 0.0.0.0 0.0.0.0 203.0.113.1
 
 ```text
 router ospf 1
- ! Redistribute all static routes into OSPF
+ ! Redistribute static routes into OSPF (except the default route)
  ! 'subnets' is required to redistribute classless (non-classful) routes
  redistribute static subnets
 
  ! Redistribute with a specific metric
- redistribute static subnets metric 100
+ redistribute static metric 100 subnets
 
  ! Redistribute as E1 (better for multi-exit scenarios)
- redistribute static subnets metric 100 metric-type 1
+ redistribute static metric 100 metric-type 1 subnets
 ```
 
-Without `subnets`, OSPF only redistributes classful routes (e.g., /8, /16, /24 exactly).
+Without `subnets`, OSPF only redistributes classful routes (e.g., /8, /16, /24 exactly). A default route still requires `default-information originate`.
 
 ## Step 3: Redistribute the Default Route
 
-The default route requires special handling:
+The default route is not injected by `redistribute static`, so it requires special handling:
 
 ```text
 router ospf 1
@@ -78,7 +78,7 @@ route-map STATICS_TO_OSPF permit 10
 
 ! Redistribute with the filter
 router ospf 1
- redistribute static subnets route-map STATICS_TO_OSPF
+ redistribute static route-map STATICS_TO_OSPF subnets
 ```
 
 This prevents accidentally redistributing management routes, tunnel endpoints, or other infrastructure statics.
@@ -86,7 +86,7 @@ This prevents accidentally redistributing management routes, tunnel endpoints, o
 ## Step 5: Verify Redistributed Routes in OSPF
 
 ```text
-! Check OSPF database for external LSAs
+! Check OSPF database for external LSAs in a normal area
 Router# show ip ospf database external
 
 ! Look for the redistributed static routes:
@@ -102,19 +102,19 @@ Remote# show ip route ospf
 !                              ^^^^^ metric = redistributed metric
 ```
 
-## Step 6: Redistribute Connected Interfaces
+## Step 6: Redistribute Connected Networks
 
 To advertise directly connected networks that aren't covered by the `network` command:
 
 ```text
 router ospf 1
  ! Redistribute connected networks
- redistribute connected subnets metric 10
+ redistribute connected metric 10 subnets
 
  ! Or use route map for selective redistribution
- redistribute connected subnets route-map CONNECTED_FILTER
+ redistribute connected route-map CONNECTED_FILTER subnets
 ```
 
 ## Conclusion
 
-Redistributing static routes into OSPF uses the `redistribute static subnets` command on the ASBR. Always include `subnets` to handle classless routes, use a route map to filter which statics are redistributed, and verify with `show ip ospf database external` that the routes appear as Type-5 LSAs. Use `default-information originate always` to distribute a default route regardless of whether one exists in the local routing table.
+Redistributing static routes into OSPF uses the `redistribute static subnets` command on the ASBR for non-default static routes. Always include `subnets` to handle classless routes, use a route map to filter which statics are redistributed, and verify with `show ip ospf database external` in normal areas that the routes appear as Type-5 LSAs. Use `default-information originate always` to distribute a default route regardless of whether one exists in the local routing table.
