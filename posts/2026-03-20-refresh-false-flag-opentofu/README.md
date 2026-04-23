@@ -28,12 +28,12 @@ tofu apply -refresh=false -auto-approve
 
 For a large configuration with 500 resources:
 
-```hcl
+```bash
 # With refresh (default):
-tofu plan  # Takes 8-10 minutes (500 API calls)
+tofu plan  # Example: can take 8-10 minutes while refreshing many resources
 
 # Without refresh:
-tofu plan -refresh=false  # Takes 30-60 seconds (no API calls)
+tofu plan -refresh=false  # Example: can take 30-60 seconds because it skips the refresh step
 ```
 
 ## When -refresh=false Is Safe
@@ -47,7 +47,7 @@ Use `-refresh=false` when:
 ```bash
 # CI pipeline: safe to skip refresh after just applying
 tofu apply -auto-approve
-tofu plan -refresh=false  # Verify nothing else was affected
+tofu plan -refresh=false  # Verify the just-applied state still matches configuration
 ```
 
 ## When NOT to Use -refresh=false
@@ -76,13 +76,15 @@ tofu apply fast.tfplan
 
 ## Refresh=false in Tests
 
-For `tofu test`, skipping refresh speeds up test runs:
+For `tofu test`, disable refresh with `plan_options` when running in plan mode:
 
 ```hcl
 # test/main.tftest.hcl
 run "validate_config" {
-  command = plan  # Default: runs without applying
-  # No refresh needed in plan-mode tests
+  command = plan
+  plan_options {
+    refresh = false
+  }
 }
 ```
 
@@ -92,10 +94,11 @@ run "validate_config" {
 # Run a refresh-only plan to see if state has drifted
 tofu plan -refresh-only
 
-# If output shows "No changes", safe to use -refresh=false
+# If output shows "No changes" and nothing can change before your next command,
+# using -refresh=false immediately afterward is lower risk
 # If output shows changes, don't skip refresh
 ```
 
 ## Conclusion
 
-`-refresh=false` is a performance optimization that's safe to use in specific, controlled scenarios - particularly in CI/CD pipelines immediately after an apply operation. In production environments where external changes may occur, always use the default refresh behavior to catch drift before applying changes. Never use `-refresh=false` as a permanent setting for production deployments.
+`-refresh=false` is a performance optimization that can be appropriate in specific, controlled scenarios - particularly in CI/CD pipelines immediately after an apply operation. In production environments where external changes may occur, always use the default refresh behavior to catch drift before applying changes. Never use `-refresh=false` as a permanent setting for production deployments.
