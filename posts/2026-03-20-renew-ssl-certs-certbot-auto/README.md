@@ -8,24 +8,18 @@ Description: Learn how to configure automatic SSL certificate renewal with Certb
 
 ## Why Automatic Renewal Is Critical
 
-Let's Encrypt certificates expire after 90 days. Manual renewal is error-prone-it's easy to forget, and an expired certificate causes HTTPS errors for all visitors. Certbot provides automatic renewal that runs twice daily and renews certificates 30 days before expiry.
+Let's Encrypt certificates currently expire after 90 days. Manual renewal is error-prone-it's easy to forget, and an expired certificate causes HTTPS errors for all visitors. Most Certbot installations provide automatic renewal via a scheduled task that runs `certbot renew` periodically. For 90-day certificates, Certbot typically attempts renewal when about 30 days remain.
 
 ## Step 1: Verify Renewal Is Already Set Up
 
-When you install Certbot via snap, it automatically creates a renewal timer:
+Most Certbot installations already include automatic renewal via cron or a systemd timer:
 
 ```bash
-# Check the renewal systemd timer
+# Check for a Certbot systemd timer
+sudo systemctl list-timers --all | grep certbot
 
-sudo systemctl status snap.certbot.renew.timer
-
-# Or if installed via apt
-sudo systemctl status certbot.timer
-
-# Verify the cron job (older installations)
-sudo crontab -l | grep certbot
-# or
-cat /etc/cron.d/certbot
+# Check common cron locations used by older installations
+sudo grep -R "certbot renew" /etc/crontab /etc/cron.*/* /etc/cron.d 2>/dev/null
 ```
 
 ## Step 2: Test Renewal Without Actually Renewing
@@ -45,7 +39,7 @@ If the dry run fails, fix the issue before the actual expiry deadline.
 
 ## Step 3: Manual Renewal
 
-Force renewal regardless of expiry date:
+Run a renewal check manually:
 
 ```bash
 # Renew all certificates due for renewal
@@ -60,13 +54,13 @@ sudo certbot renew --cert-name example.com
 
 ## Step 4: Configure Renewal Hooks
 
-Renewal hooks run before or after renewal to reload services. Certbot automatically reloads Apache/Nginx if configured with `--apache` or `--nginx`, but for custom setups use hooks:
+Renewal hooks run before or after renewal to reload services. Certbot automatically handles Apache/Nginx reloads when it manages those installations, but for custom setups use hooks:
 
 ```bash
 # Create a deploy hook to reload Nginx after renewal
 sudo mkdir -p /etc/letsencrypt/renewal-hooks/deploy
 
-cat > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh << 'EOF'
+sudo tee /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh > /dev/null << 'EOF'
 #!/bin/bash
 # Reload Nginx after certificate renewal
 systemctl reload nginx
@@ -83,26 +77,26 @@ Hook directory types:
 
 ## Step 5: Send Alerts on Renewal Failure
 
-Create a post-hook that sends an alert if renewal fails:
+Create a post-hook that sends an alert if renewal fails by checking Certbot's `FAILED_DOMAINS` environment variable:
 
 ```bash
-cat > /etc/letsencrypt/renewal-hooks/post/alert-on-failure.sh << 'EOF'
+sudo mkdir -p /etc/letsencrypt/renewal-hooks/post
+
+sudo tee /etc/letsencrypt/renewal-hooks/post/alert-on-failure.sh > /dev/null << 'EOF'
 #!/bin/bash
 # Send alert if Certbot renewal failed
-EXIT_CODE=$?
-
-if [ $EXIT_CODE -ne 0 ]; then
-    echo "CRITICAL: Certbot renewal failed at $(date)" | \
+if [ -n "$FAILED_DOMAINS" ]; then
+    echo "CRITICAL: Certbot renewal failed for: $FAILED_DOMAINS at $(date)" | \
         mail -s "SSL Renewal Failure: $(hostname)" admin@example.com
 
     # Or send to Slack webhook
     curl -s -X POST "https://hooks.slack.com/services/xxx/yyy/zzz" \
          -H "Content-Type: application/json" \
-         -d "{\"text\": \"SSL renewal FAILED on $(hostname)! Check /var/log/letsencrypt/letsencrypt.log\"}"
+         -d "{\"text\": \"SSL renewal FAILED for: $FAILED_DOMAINS on $(hostname)! Check /var/log/letsencrypt/letsencrypt.log\"}"
 fi
 EOF
 
-chmod +x /etc/letsencrypt/renewal-hooks/post/alert-on-failure.sh
+sudo chmod +x /etc/letsencrypt/renewal-hooks/post/alert-on-failure.sh
 ```
 
 ## Step 6: Configure Renewal for Multiple Domains
@@ -113,11 +107,11 @@ Each certificate has its own renewal configuration in `/etc/letsencrypt/renewal/
 # List all certificates and their renewal configurations
 sudo certbot certificates
 
-# Edit a specific renewal config
+# View a specific renewal config
 sudo cat /etc/letsencrypt/renewal/example.com.conf
 
 # The [renewalparams] section shows how the cert was originally obtained
-# Modify if you need to change renewal method
+# For changes, prefer certbot reconfigure over editing the file manually
 ```
 
 ## Step 7: Monitor Certificate Expiry
@@ -135,7 +129,7 @@ CRITICAL_DAYS=7
 
 for DOMAIN in "${DOMAINS[@]}"; do
     EXPIRY=$(openssl s_client -connect "${DOMAIN}:443" -servername "${DOMAIN}" \
-              2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | \
+              </dev/null 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | \
               sed 's/notAfter=//')
     EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s)
     NOW_EPOCH=$(date +%s)
@@ -166,4 +160,4 @@ sudo grep -A5 "Renewal" /var/log/letsencrypt/letsencrypt.log | tail -20
 
 ## Conclusion
 
-Certbot's automatic renewal via systemd timer or cron handles most renewal scenarios without manual intervention. Verify the renewal mechanism is active with `systemctl status certbot.timer`, test with `certbot renew --dry-run`, and add deploy hooks to reload your web server after renewal. Implement expiry monitoring as a safety net to catch any renewal failures before they impact production.
+Certbot's automatic renewal via systemd timer or cron handles most renewal scenarios without manual intervention. Verify the renewal mechanism is active with `systemctl list-timers --all | grep certbot`, test with `certbot renew --dry-run`, and add deploy hooks to reload your web server after renewal. Implement expiry monitoring as a safety net to catch any renewal failures before they impact production.
