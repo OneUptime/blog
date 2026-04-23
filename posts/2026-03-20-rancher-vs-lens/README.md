@@ -12,7 +12,7 @@ Lens and Rancher are both popular Kubernetes management tools, but they serve di
 
 ## What Is Lens?
 
-Lens (now Lens Desktop) is an open-source Kubernetes IDE that runs as a desktop application on macOS, Windows, and Linux. It connects to multiple Kubernetes clusters via your kubeconfig file and provides a rich graphical interface for navigating cluster resources, viewing logs, executing shell commands, and monitoring cluster health. It is maintained by Mirantis.
+Lens is a Kubernetes IDE that runs as a desktop application on macOS, Windows, and Linux. It connects to multiple Kubernetes clusters via kubeconfig files and provides a rich graphical interface for navigating cluster resources, viewing logs, opening shells, and monitoring cluster health. It is maintained by Mirantis.
 
 ## What Is Rancher?
 
@@ -24,28 +24,28 @@ Rancher is a server-side Kubernetes management platform by SUSE. It runs as a we
 |---|---|---|
 | Deployment Type | Server-side web app | Desktop application |
 | Multi-cluster Management | Yes | Yes (via kubeconfig) |
-| Cluster Provisioning | Yes | No |
-| RBAC Management | Yes (enterprise-grade) | View only |
+| Cluster Provisioning | Yes | Limited (local dev cluster feature, deprecated) |
+| RBAC Management | Yes (enterprise-grade) | Yes (cluster RBAC objects; Teamwork RBAC in paid plans) |
 | Helm Chart Deployment | Yes | Yes |
 | Built-in Terminal | Yes | Yes |
 | Log Viewing | Yes | Yes |
-| Integrated Monitoring | Yes (Prometheus/Grafana) | Yes (Lens Metrics) |
+| Integrated Monitoring | Yes (Prometheus/Grafana) | Yes (Lens Metrics / Prometheus-based) |
 | GitOps | Yes (Fleet) | No |
-| Team Collaboration | Yes (multi-user server) | No (single user) |
-| SSO / Identity Providers | Yes | No |
-| Air-gap Support | Yes | Yes (offline) |
-| Cost | Free / Rancher Prime | Free (Lens Desktop) / Lens Pro |
+| Team Collaboration | Yes (multi-user server) | Yes (Lens Teamwork, paid) |
+| SSO / Identity Providers | Yes | Yes (Lens Business ID, paid) |
+| Air-gap Support | Yes | Yes (offline capable; paid air-gapped mode available) |
+| Cost | Free / Rancher Prime | Lens Personal (eligible users) / paid subscriptions |
 | Platform | Web browser | Desktop app |
-| Node Access | Via terminal | Via terminal |
+| Cluster Shell / CLI | Yes (kubectl shell in UI) | Yes (embedded terminal / pod shell) |
 
 ## Connecting to Clusters
 
 ### Lens
 
-Lens automatically discovers clusters from your local kubeconfig file. You can add clusters by pointing to any kubeconfig file on your local machine.
+Lens automatically discovers kubeconfig files in the `~/.kube/` directory. You can also add clusters by importing or pasting any kubeconfig file from your local machine.
 
 ```bash
-# Lens picks up clusters from your default kubeconfig
+# Lens automatically detects kubeconfig files in ~/.kube/
 
 # You can merge multiple kubeconfig files:
 export KUBECONFIG=~/.kube/config:~/.kube/cluster2.yaml
@@ -68,9 +68,9 @@ Lens is optimized for individual developer productivity. Features include:
 
 - Context-aware resource navigation with tree view
 - Real-time resource status and event streaming
-- Built-in terminal with kubectl context pre-configured
+- Built-in terminal and pod shell access
 - Port forwarding with a single click
-- Resource diffing and editing
+- Resource editing through the built-in YAML editor
 
 Rancher focuses more on operational management and team collaboration. Developers interact with a web UI that multiple team members can access simultaneously with different permission levels.
 
