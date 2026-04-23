@@ -65,7 +65,7 @@ router ripng
 
 # Cisco
 ipv6 router rip RIPNG_PROCESS
- redistribute bgp metric 8
+ redistribute bgp 65001 metric 8
 ```
 
 ## Using Route Maps for Selective Redistribution
@@ -123,28 +123,33 @@ When redistributing between two protocols (e.g., OSPFv3 ↔ RIPng), ensure route
 # Use route maps to tag and filter routes to prevent loops
 route-map OSPF_TO_RIPNG permit 10
  match ipv6 address prefix-list OSPF_PREFIXES
- set tag 100    ! Tag routes from OSPF
+ ! Tag routes from OSPF
+ set tag 100
 
 router ripng
  redistribute ospf6 route-map OSPF_TO_RIPNG
 
 ! In OSPFv3, deny routes with tag 100 from being re-redistributed
 route-map RIPNG_TO_OSPF deny 5
- match tag 100   ! Block routes that came from OSPF originally
+ ! Block routes that came from OSPF originally
+ match tag 100
 
 route-map RIPNG_TO_OSPF permit 10
+
+router ospf6
+ redistribute ripng route-map RIPNG_TO_OSPF
 ```
 
 ## Verifying Redistribution
 
 ```bash
 # FRRouting: check redistributed routes in RIPng table
-vtysh -c "show ipv6 ripng" | grep -E "S|O|B"
+vtysh -c "show ipv6 ripng"
 
-# Cisco: verify redistributed routes appear in RIPng database
-show ipv6 rip database | grep -v "directly connected"
+# Cisco: verify redistributed routes appear in the named RIPng process database
+show ipv6 rip RIPNG_PROCESS database
 ```
 
 ## Summary
 
-Route redistribution into RIPng is configured with `redistribute <protocol> metric <value>`. Keep metric values between 1 and 15. Use route maps to selectively redistribute specific prefixes and prevent routing loops when redistributing between two protocols bidirectionally. Verify redistributed routes with `show ipv6 ripng`.
+Route redistribution into RIPng is configured with `redistribute <protocol> metric <value>` on FRRouting and `redistribute <protocol> [process-id] metric <value>` where Cisco IOS requires a process ID, such as BGP. Keep metric values between 1 and 15. Use route maps to selectively redistribute specific prefixes and prevent routing loops when redistributing between two protocols bidirectionally. Verify redistributed routes with `show ipv6 ripng` on FRRouting or `show ipv6 rip RIPNG_PROCESS database` on Cisco IOS.
