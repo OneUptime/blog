@@ -30,17 +30,19 @@ sequenceDiagram
 
 ## RARP Packet Format
 
-RARP uses the same 28-byte format as ARP:
+For Ethernet/IPv4, RARP uses the same 28-byte payload format as ARP. A typical RARP request from a client asking for its own address looks like this:
 
 | Field | Value |
 |-------|-------|
 | Hardware type | 1 (Ethernet) |
 | Protocol type | 0x0800 (IPv4) |
+| Hardware address length | 6 (Ethernet MAC) |
+| Protocol address length | 4 (IPv4) |
 | Operation | 3 = RARP Request, 4 = RARP Reply |
 | Sender MAC | Client's MAC address |
-| Sender IP | 0.0.0.0 (unknown) |
+| Sender IP | Undefined in RFC 903 (often shown as 0.0.0.0 for IPv4) |
 | Target MAC | Client's MAC address (same as sender) |
-| Target IP | 0.0.0.0 (asking for this) |
+| Target IP | Undefined in RFC 903 (asking for this; often shown as 0.0.0.0 for IPv4) |
 
 The EtherType for RARP is **0x8035**.
 
@@ -64,7 +66,7 @@ RARP had severe limitations that led to its replacement:
 
 ## Why RARP Is Obsolete
 
-RARP was superseded by BOOTP in the late 1980s, then by DHCP in the 1990s. DHCP provides:
+RARP was superseded by BOOTP (standardized in 1985), then by DHCP in the 1990s. DHCP provides:
 
 - IP address
 - Subnet mask
@@ -74,7 +76,7 @@ RARP was superseded by BOOTP in the late 1980s, then by DHCP in the 1990s. DHCP 
 - Lease duration
 - Dozens of additional options
 
-No modern operating system uses RARP. However, it is still relevant historically and occasionally appears in networking certification exams.
+Modern operating systems generally do not use RARP for host configuration. However, it is still relevant historically and occasionally appears in networking certification exams.
 
 ## Viewing RARP Packets with tcpdump
 
@@ -94,7 +96,7 @@ sudo tcpdump -n -e -i eth0 'ether proto 0x8035'
 - RARP resolves MAC addresses to IP addresses (reverse of ARP).
 - It was used by diskless workstations in the 1980s-1990s to get their IP at boot.
 - RARP uses EtherType 0x8035 and operations 3 (request) and 4 (reply).
-- RARP is now completely obsolete, replaced by BOOTP and then DHCP.
+- RARP is now effectively obsolete, replaced by BOOTP and then DHCP.
 
 **Related Reading:**
 
