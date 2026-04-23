@@ -12,7 +12,7 @@ Windows containers allow you to run Windows-native applications-including legacy
 
 ## Prerequisites
 
-- Rancher cluster with Windows worker nodes
+- Rancher cluster with Linux nodes, at least one Linux worker node, and Windows worker nodes
 - Windows container images in your registry
 - kubectl configured for the cluster
 - Understanding of Windows container base images
@@ -20,10 +20,11 @@ Windows containers allow you to run Windows-native applications-including legacy
 ## Step 1: Choose the Right Windows Base Image
 
 ```dockerfile
-# Windows container image compatibility matrix:
-
-# - Windows Server 2022 nodes: can run Server 2022, LTSC 2019 images (with Hyper-V)
-# - Windows Server 2019 nodes: can run LTSC 2019 images
+# Windows container compatibility in Kubernetes:
+#
+# - Kubernetes supports Windows containers with process isolation only
+# - Match the Windows container image tag to the Windows Server version on the node
+# - If your cluster has multiple Windows versions, add a node selector for node.kubernetes.io/windows-build
 
 # For .NET Framework 4.x applications
 FROM mcr.microsoft.com/dotnet/framework/runtime:4.8-windowsservercore-ltsc2022
@@ -75,13 +76,6 @@ spec:
       nodeSelector:
         kubernetes.io/os: windows
 
-      # Required if Windows nodes are tainted
-      tolerations:
-        - key: os
-          operator: Equal
-          value: windows
-          effect: NoSchedule
-
       containers:
         - name: dotnet-app
           image: registry.example.com/dotnet-app:v1.0
@@ -100,7 +94,7 @@ spec:
             limits:
               cpu: 2000m
               memory: 2Gi
-          # Windows containers use different readiness probe timing
+          # Windows apps often need a longer startup window before readiness checks succeed
           readinessProbe:
             httpGet:
               path: /health
@@ -135,11 +129,11 @@ metadata:
   name: dotnet-app
   namespace: production
   annotations:
-    kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
 spec:
+  ingressClassName: nginx
   rules:
     - host: myapp.example.com
       http:
@@ -163,7 +157,7 @@ metadata:
   name: app-config
   namespace: production
 data:
-  # Windows path separators use backslash in app, but forward slash works too
+  # Use Windows-style paths in app configuration values
   log-path: "C:\\app\\logs"
   config-path: "C:\\app\\config"
 ---
@@ -192,10 +186,6 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/os: windows
-      tolerations:
-        - key: os
-          value: windows
-          effect: NoSchedule
       restartPolicy: Never
       containers:
         - name: migration
@@ -220,6 +210,19 @@ spec:
 
 ```yaml
 # windows-statefulset.yaml - Windows app with persistent storage
+apiVersion: v1
+kind: Service
+metadata:
+  name: legacy-app
+  namespace: production
+spec:
+  clusterIP: None
+  selector:
+    app: legacy-app
+  ports:
+    - name: http
+      port: 80
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -232,13 +235,12 @@ spec:
     matchLabels:
       app: legacy-app
   template:
+    metadata:
+      labels:
+        app: legacy-app
     spec:
       nodeSelector:
         kubernetes.io/os: windows
-      tolerations:
-        - key: os
-          value: windows
-          effect: NoSchedule
       containers:
         - name: app
           image: registry.example.com/legacy-app:v1.0
@@ -250,7 +252,8 @@ spec:
         name: data
       spec:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: local-path
+        # Replace with a StorageClass backed by a CSI driver that supports Windows nodes
+        storageClassName: windows-csi
         resources:
           requests:
             storage: 10Gi
@@ -258,20 +261,17 @@ spec:
 
 ## Step 7: Debugging Windows Containers
 
-```powershell
+```bash
 # Exec into a running Windows container
-kubectl exec -it \
-  $(kubectl get pod -l app=dotnet-app -o name | head -1) \
-  -n production \
-  -- powershell.exe
+kubectl exec -it deploy/dotnet-app -n production -- powershell.exe
 
 # View Windows container logs
-kubectl logs deployment/dotnet-app -n production --tail=100
+kubectl logs deploy/dotnet-app -n production --tail=100
 
 # Describe pod for Windows-specific events
-kubectl describe pod -l app=dotnet-app -n production
+kubectl describe pods -l app=dotnet-app -n production
 ```
 
 ## Conclusion
 
-Deploying Windows containers in Rancher enables hybrid workloads where legacy Windows applications run alongside modern Linux microservices in the same cluster. The key requirements are matching Windows host OS version with container image version, always specifying `nodeSelector: kubernetes.io/os: windows`, and accounting for longer Windows container startup times in readiness probe configuration. The Windows Server Core base image provides maximum compatibility with legacy applications, while Nano Server offers a smaller footprint for modern .NET applications.
+Deploying Windows containers in Rancher enables hybrid workloads where legacy Windows applications run alongside modern Linux microservices in the same cluster. The key requirements are matching the Windows Server version on the node with the container image tag, always specifying `nodeSelector: kubernetes.io/os: windows`, and accounting for longer Windows application startup times in readiness probe configuration. The Windows Server Core base image provides maximum compatibility with legacy applications, while Nano Server offers a smaller footprint for modern .NET applications.
