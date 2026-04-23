@@ -8,32 +8,34 @@ Description: Request IPv6 address space from ARIN (American Registry for Interne
 
 ## ARIN IPv6 Allocation Overview
 
-ARIN serves the United States, Canada, and many Caribbean and North Atlantic territories. IPv6 allocations from ARIN come in two forms:
+ARIN serves the United States, Canada, and many Caribbean and North Atlantic territories. IPv6 space in the ARIN region commonly appears in three forms:
 
 | Type | Who Gets It | Typical Size | Requirement |
 |---|---|---|---|
-| Direct allocation | ISPs, large orgs | /32 | ARIN member, plan to assign to customers |
-| Direct assignment | End users | /48 | Justify need for /48 or larger |
+| Direct allocation | ISPs / LIRs | /32 minimum | Meet NRPM 6.5.2 criteria and plan to assign to customers |
+| Direct assignment | End users | /48 minimum | Meet NRPM 6.5.8 criteria for a /48 or larger |
 | ISP sub-allocation | ISP customers | /48, /56, /64 | From ISP's ARIN allocation |
 
 ## Eligibility Requirements
 
 ```text
 For a /32 Direct Allocation (ISPs):
-  - Be an ARIN member (annual fee)
-  - Have an IPv4 allocation from ARIN, or
-  - Plan to assign IPv6 to at least 200 customers within 5 years
-  - Demonstrate network infrastructure
+  - ARIN membership is not required
+  - Have a previously justified IPv4 ISP allocation from ARIN, or
+  - Be IPv6 multihomed (or immediately become multihomed) with a valid global ASN, or
+  - Provide reasonable technical justification including 1-, 2-, and 5-year assignment plans
+  - If using the technical-justification path, show at least 50 assignments within 5 years
 
 For a /48 Direct Assignment (End Users):
-  - Have existing IPv4 space from ARIN, or
-  - Need multiple /64 subnets
-  - Demonstrate technical justification
+  - Have a previously justified IPv4 end-user assignment from ARIN, or
+  - Be IPv6 multihomed (or immediately become multihomed) with a valid global ASN, or
+  - Show need for 2000 IPv6 addresses, 200 /64s, or 13 active sites within 12 months, or
+  - Demonstrate why provider-assigned IPv6 space is unsuitable
 
-Fees (2024):
-  X-Small: $500/year (orgs with /32)
-  Small:   $1,000/year (ISPs with /28)
-  Medium:  $2,000/year (ISPs with /24)
+Registration Services Plan fees (effective 2026):
+  X-Small: $1,100/year (larger than /36 up to and including /32)
+  Small:   $2,205/year (larger than /32 up to and including /28)
+  Medium:  $4,410/year (larger than /28 up to and including /24)
 ```
 
 ## Application Process
@@ -41,51 +43,47 @@ Fees (2024):
 ```text
 Step 1: Create ARIN Online account
   - Go to https://account.arin.net
-  - Register organization
+  - Create or link your POC and Organization Identifier (Org ID)
 
-Step 2: Become an ARIN member (if ISP)
-  - Submit membership application
-  - Pay annual fee
-
-Step 3: Submit IPv6 request
+Step 2: Submit IPv6 request
   - Login to ARIN Online
-  - Navigate: Requests → IPv6 → Direct Allocation
+  - Navigate: IP Addresses or ASNs → Request
   - Fill in:
     * Organization information
     * Network infrastructure details
-    * Customer projection (for ISPs)
+    * One-, two-, and five-year assignment plan (for LIRs using technical justification)
     * Intended use
 
-Step 4: ARIN staff review
-  - Review typically takes 1-5 business days
+Step 3: ARIN staff review
+  - Analyst review typically begins within 2 business days
   - May request additional documentation
 
+Step 4: Complete agreement and payment
+  - If approved, sign the RSA and pay applicable fees within 60 days
+
 Step 5: Receive allocation
-  - ARIN assigns prefix from 2600::/12 (ARIN's block)
-  - Update ARIN Whois database
-  - Create ROA in RPKI
+  - ARIN issues the IPv6 prefix and updates its registry records
+  - Configure RPKI and reverse DNS
 ```
 
 ## RPKI: Create Route Origin Authorization
 
 ```bash
-# After receiving ARIN allocation, create RPKI ROA
+# After receiving an ARIN-issued prefix, create a ROA
 
-# Login to ARIN Online → RPKI → Create ROA
+# In ARIN Online: Routing Security → Manage RPKI → Create ROA
+# If needed, sign up for Hosted or Delegated RPKI first
 
-# Or use ARIN's API
-# (requires ARIN API key)
+# Or use ARIN's Reg-RWS API
+# (requires your Org Handle and ARIN API key)
 
 # ROA fields:
-# ASN:       65001 (your AS number)
-# Prefix:    2600:db8::/32 (your ARIN allocation)
-# Max length: 48 (allow /48 announcements)
+# Origin ASN: 65001 (the ASN authorized to originate the route)
+# Prefix:     2600:db8::/32 (your ARIN-issued prefix)
+# Max length: 32 (set this to the most specific prefix you actually announce)
 
-# Verify ROA in RPKI
-rpki-validator-cli --prefix 2600:db8::/32 --asn 65001
-
-# Check RPKI validity
-curl -s "https://api.bgpstuff.net/rpki?prefix=2600:db8::/32&asn=65001"
+# List ROAs for your organization
+curl -s "https://reg.arin.net/rest/roa/ORG-HANDLE?apikey=APIKEY"
 ```
 
 ## ARIN Whois Registration
@@ -93,19 +91,20 @@ curl -s "https://api.bgpstuff.net/rpki?prefix=2600:db8::/32&asn=65001"
 ```text
 # After allocation, update ARIN Whois (ARIN Online)
 
-# Network object example:
-# inetnum: 2600:db8::/32
-# netname: COMPANY-IPV6
-# descr:   Example Company IPv6 Space
-# country: US
-# admin-c: ADMIN-ARIN
-# tech-c:  TECH-ARIN
-# status:  ALLOCATED PA
-# source:  ARIN
+# ARIN Whois/RDAP uses ARIN-specific field names, for example:
+# NetRange:    2600:db8:: - 2600:db8:ffff:ffff:ffff:ffff:ffff:ffff
+# CIDR:        2600:db8::/32
+# NetName:     COMPANY-IPV6
+# NetType:     Direct Allocation
+# Organization: Example Company
+# OrgId:       EXAMP-1
+# AdminHandle: ADMIN-ARIN
+# TechHandle:  TECH-ARIN
 
 # DNS Reverse Delegation:
-# ARIN delegates 8.b.d.0.0.0.6.2.ip6.arpa to your nameservers
-# Submit NS records via ARIN Online → Reverse DNS
+# For a /32 such as 2600:db8::/32, ARIN will create the nibble-aligned
+# reverse zone 8.b.d.0.0.0.6.2.ip6.arpa
+# Submit nameserver hostnames via ARIN Online → Manage Reverse DNS
 ```
 
 ## Post-Allocation Checklist
@@ -115,25 +114,26 @@ curl -s "https://api.bgpstuff.net/rpki?prefix=2600:db8::/32&asn=65001"
 # post-arin-checklist.sh - Validate new ARIN allocation
 
 YOUR_PREFIX="2600:db8::/32"
-YOUR_ASN="65001"
+YOUR_ORG_HANDLE="EXAMP-1"
+ARIN_API_KEY="REPLACE_WITH_ARIN_API_KEY"
+REVERSE_ZONE="8.b.d.0.0.0.6.2.ip6.arpa"
 
 echo "=== Post-ARIN Allocation Checklist ==="
 
 # 1. Verify prefix in ARIN Whois
 echo "1. Checking ARIN Whois..."
-whois -h whois.arin.net "${YOUR_PREFIX}" | grep "NetName\|CIDR"
+whois -h whois.arin.net "r = ${YOUR_PREFIX}" | grep -E "NetRange|CIDR|NetName|NetType|Organization|OrgName|OrgId"
 
-# 2. Verify BGP announcement
-echo "2. Checking BGP announcement..."
-curl -s "https://api.bgpstuff.net/announced?prefix=${YOUR_PREFIX}" | python3 -m json.tool
+# 2. Verify RPKI ROA
+echo "2. Checking RPKI..."
+curl -s "https://reg.arin.net/rest/roa/${YOUR_ORG_HANDLE}?apikey=${ARIN_API_KEY}"
 
-# 3. Verify RPKI ROA
-echo "3. Checking RPKI..."
-curl -s "https://api.bgpstuff.net/rpki?prefix=${YOUR_PREFIX}&asn=${YOUR_ASN}"
+# 3. Verify reverse DNS delegation
+echo "3. Checking reverse DNS..."
+dig NS "${REVERSE_ZONE}" +short
 
-# 4. Verify reverse DNS delegation
-echo "4. Checking reverse DNS..."
-dig NS 8.b.d.0.0.0.6.2.ip6.arpa +short
+# 4. Confirm routed visibility separately
+echo "4. Confirm BGP origination with your router, looking glass, or BGP monitoring platform"
 
 echo ""
 echo "Complete: ARIN allocation checklist done"
@@ -141,4 +141,4 @@ echo "Complete: ARIN allocation checklist done"
 
 ## Conclusion
 
-Requesting IPv6 from ARIN requires ARIN membership for ISPs and a technical justification for the requested prefix size. ISPs typically receive /32 allocations (which they sub-allocate as /48s to customers), while end-user organizations receive /48 direct assignments. After approval, complete three critical post-allocation steps: create an RPKI Route Origin Authorization (ROA) to prevent route hijacking, update ARIN Whois with accurate network registration data, and request reverse DNS delegation for your ip6.arpa zone. ARIN's review process typically takes 1-5 business days for straightforward requests.
+Requesting IPv6 from ARIN does not require ARIN membership, but it does require meeting ARIN policy criteria and paying the applicable Registration Services Plan fee if the request is approved. ISPs/LIRs typically receive /32 minimum allocations (with /36 or /40 available on request in some cases), while end-user organizations receive /48 minimum direct assignments and can justify larger blocks when needed. After approval, complete three critical post-allocation steps: create an RPKI Route Origin Authorization (ROA), confirm your ARIN Whois/RDAP registration data is correct, and configure reverse DNS for your ip6.arpa zone. ARIN states analyst review typically begins within two business days for standard resource requests.
