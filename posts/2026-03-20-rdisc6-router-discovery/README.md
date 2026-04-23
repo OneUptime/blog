@@ -17,8 +17,8 @@ Description: Use rdisc6 to send Router Solicitation messages and analyze Router 
 
 sudo apt install -y ndisc6
 
-# RHEL/CentOS
-sudo yum install -y ndisc6
+# Fedora / RHEL-compatible distributions (if available in enabled repos)
+sudo dnf install -y ndisc6
 ```
 
 ## Basic Usage
@@ -27,47 +27,47 @@ sudo yum install -y ndisc6
 # Send Router Solicitation and display received RA
 rdisc6 eth0
 
-# Multiple attempts (useful if first RA is missed)
-rdisc6 -m 3 eth0
+# Increase retry count (useful if the first RA is missed)
+rdisc6 -r 5 eth0
 
 # Wait longer for RA (milliseconds)
 rdisc6 -w 5000 eth0
 
 # Use a specific source IPv6 address
-rdisc6 eth0 fe80::10
+rdisc6 -s fe80::10 eth0
 
-# Verbose output
+# Verbose output (already the default)
 rdisc6 -v eth0
 ```
 
 ## Understanding Router Advertisement Output
 
 ```text
-Soliciting ff02::2 (All-routers on eth0)...
+Soliciting ff02::2 (ff02::2) on eth0...
 
 Hop limit                 :   64 (      0x40)
 Stateful address conf.    :   No
-Other stateful conf.      :   No
+Stateful other conf.      :   No
 Mobile home agent         :   No
 Router preference         :   medium
 Neighbor discovery proxy  :   No
 Router lifetime           : 1800 (0x00000708) seconds
-Reachable time            :    0 (0x00000000) milliseconds
-Retransmit time           :    0 (0x00000000) milliseconds
+Reachable time            : unspecified (0x00000000)
+Retransmit time           : unspecified (0x00000000)
  Prefix                   : 2001:db8:cafe::/64
-  Valid time              : 86400 seconds
-  Pref. time              : 14400 seconds
   On-link                 :  Yes
   Autonomous address conf.:  Yes
+  Valid time              : 86400 seconds
+  Pref. time              : 14400 seconds
  Source link-layer address: 52:54:00:ab:cd:ef
  from fe80::5054:ff:feab:cdef
 ```
 
 Key fields:
-- **Hop limit**: Default TTL/hop limit for this router's network
+- **Hop limit**: Default IPv6 hop limit hosts should use on the link
 - **Stateful address conf.**: `M` flag - if Yes, use DHCPv6 for addresses
-- **Other stateful conf.**: `O` flag - if Yes, use DHCPv6 for other config (DNS, NTP)
-- **Router lifetime**: How long this router is valid as default gateway (0=not a router)
+- **Stateful other conf.**: `O` flag - if Yes, other configuration is available via DHCPv6
+- **Router lifetime**: How long this router is valid as default gateway (0=not a default router)
 - **Prefix**: IPv6 prefix for SLAAC address generation
 - **Autonomous address conf.**: `A` flag - if Yes, generate address via SLAAC
 
@@ -81,7 +81,7 @@ rdisc6 eth0 2>/dev/null | grep "Prefix\|Autonomous\|Stateful"
 # Prefix: 2001:db8::/64
 # Autonomous address conf.: Yes
 
-# If Autonomous = No, SLAAC won't generate addresses
+# If Autonomous = No, that prefix won't be used for SLAAC
 # If no prefix is advertised, hosts can't generate global addresses
 ```
 
@@ -92,10 +92,11 @@ rdisc6 eth0 2>/dev/null | grep "Prefix\|Autonomous\|Stateful"
 rdisc6 eth0 2>/dev/null | grep "Stateful"
 
 # M flag = 1 means use DHCPv6 for addresses
-# O flag = 1 means use DHCPv6 for DNS/other options
+# O flag = 1 means other configuration is available via DHCPv6
+# If M = 1, the O flag is redundant
 # Output:
 # Stateful address conf.    :   Yes  → DHCPv6 needed for addresses
-# Other stateful conf.      :   Yes  → DHCPv6 needed for DNS
+# Stateful other conf.      :   Yes  → DHCPv6 available for other config
 ```
 
 ## Capturing and Analyzing All RAs
@@ -107,8 +108,8 @@ sudo tcpdump -n -i eth0 icmp6 and ip6[40] == 134 -v
 # Decode the RA fields (134 = RA type)
 sudo tcpdump -n -i eth0 icmp6 and ip6[40] == 134 -vvv 2>/dev/null
 
-# With rdisc6, wait and capture multiple RAs
-rdisc6 -m 5 -w 10000 eth0 2>/dev/null
+# With rdisc6, retry up to 5 times and wait longer for replies
+rdisc6 -m -r 5 -w 10000 eth0 2>/dev/null
 ```
 
 ## Diagnosing "No Default Route" Issues
@@ -126,16 +127,16 @@ ip -6 route show default
 # 2. Discover routers via rdisc6
 echo ""
 echo "Discovering IPv6 routers..."
-RA_OUTPUT=$(rdisc6 -m 2 -w 3000 eth0 2>/dev/null)
+RA_OUTPUT=$(rdisc6 -r 2 -w 3000 eth0 2>/dev/null)
 
 if [ -z "$RA_OUTPUT" ]; then
     echo "ERROR: No Router Advertisement received!"
     echo "  - Check if a router is present on the link"
     echo "  - Check if RA guard/filtering is blocking RAs"
-    echo "  - Try: sudo ip6tables -L FORWARD -n (check for RA blocking)"
+    echo "  - Try: sudo ip6tables -L INPUT -n (check for local RA blocking)"
 else
     echo "Router Advertisement received!"
-    echo "$RA_OUTPUT" | grep -E "Prefix|Lifetime|Stateful|from"
+    echo "$RA_OUTPUT" | grep -Ei "Prefix|lifetime|Stateful|from"
 fi
 
 # 3. Check current RA acceptance settings
@@ -160,19 +161,21 @@ done
 sudo ip6tables -L FORWARD -n | grep "ICMPv6\|icmpv6"
 sudo ip6tables -L INPUT -n | grep "ICMPv6\|icmpv6"
 
-# Check for rogue RA prevention (radvd or NetworkManager config)
-grep -r "IgnoreIf\|interface" /etc/radvd.conf 2>/dev/null
+# Check radvd config if this host is expected to advertise RAs
+grep -E "IgnoreIfMissing|interface" /etc/radvd.conf 2>/dev/null
 ```
 
 ## Verifying RA-Assigned Addresses Were Created
 
 ```bash
-# After running rdisc6, check if SLAAC address was created
-PREFIX=$(rdisc6 eth0 2>/dev/null | grep "Prefix" | awk '{print $3}' | head -1)
-echo "Prefix from RA: $PREFIX"
+# Show prefixes advertised in Router Advertisements
+rdisc6 -q eth0 2>/dev/null
 
-# Check if address was auto-configured from the prefix
-ip -6 addr show eth0 | grep "${PREFIX%::*}"
+# Show global IPv6 addresses currently configured on the interface
+ip -6 addr show dev eth0 scope global
+
+# Default routes learned from RA are marked as proto ra
+ip -6 route show default proto ra
 ```
 
 ## Conclusion
