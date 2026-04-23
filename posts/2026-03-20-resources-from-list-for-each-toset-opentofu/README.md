@@ -8,7 +8,7 @@ Description: Learn how to use toset with for_each in OpenTofu to create resource
 
 ## Introduction
 
-`for_each` requires a map or set - not a list. The `toset()` function converts a list to a set of unique strings, enabling `for_each` iteration over lists while giving each resource a stable string identity (the element value itself) rather than a numeric index.
+`for_each` requires a map or set of strings - not a list. The `toset()` function converts a list of strings to a set of unique strings, enabling `for_each` iteration over lists while giving each resource a stable string identity (the element value itself) rather than a numeric index.
 
 ## Basic toset Usage
 
@@ -70,7 +70,7 @@ variable "allowed_ports" {
   default     = [80, 443, 8080]
 }
 
-# toset requires strings; convert numbers to strings first
+# for_each requires a set of strings; convert numbers to strings first
 resource "aws_security_group_rule" "ingress" {
   for_each = toset([for p in var.allowed_ports : tostring(p)])
 
@@ -145,4 +145,4 @@ output "env_bucket_list" {
 
 ## Conclusion
 
-`toset` bridges the gap between lists (which users naturally provide as input) and the set/map that `for_each` requires. The resulting resources use the string element value as their identity, making them stable against list reordering. Remember that sets are unordered and deduplicated - if element order matters, use a map instead.
+`toset` bridges the gap between lists (which users naturally provide as input) and the set/map that `for_each` requires. The resulting resources use the string element value as their identity, making them stable against list reordering. Remember that sets are unordered and deduplicated - if element order matters outside of `for_each`, keep the original list for ordered operations.
