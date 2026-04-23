@@ -23,8 +23,6 @@ Navigate to **Stacks > Add stack** to create a new stack. You can:
 ```yaml
 # Paste this in the Portainer web editor
 
-version: "3.8"
-
 services:
   web:
     image: nginx:latest
@@ -59,23 +57,21 @@ volumes:
 TOKEN=$(curl -s -X POST \
   https://localhost:9443/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' \
+  -d '{"Username":"admin","Password":"yourpassword"}' \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Create a stack with environment variables via API
+# Create a standalone stack with environment variables via API
 curl -X POST \
-  https://localhost:9443/api/stacks \
+  "https://localhost:9443/api/stacks/create/standalone/string?endpointId=1" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "myapp",
-    "stackFileContent": "version: \"3.8\"\nservices:\n  web:\n    image: nginx:latest",
-    "env": [
+    "Name": "myapp",
+    "StackFileContent": "services:\n  web:\n    image: nginx:latest",
+    "Env": [
       {"name": "DB_PASSWORD", "value": "secretpassword"},
       {"name": "APP_ENV", "value": "production"}
-    ],
-    "type": 2,
-    "endpointId": 1
+    ]
   }' \
   --insecure
 ```
@@ -90,21 +86,22 @@ Configure polling interval in the stack settings:
 
 ```bash
 # Trigger stack redeployment via webhook
+# Note: stack webhooks are available in Portainer Business Edition on non-Edge environments
 STACK_WEBHOOK_URL="https://portainer.example.com/api/stacks/webhooks/<uuid>"
 
 curl -X POST "$STACK_WEBHOOK_URL"
-# Portainer redeploys the stack with --pull-always
+# Portainer redeploys the stack using the webhook's configured behavior
 ```
 
 ## Fix stack.env Not Found
 
 ```bash
 # Error: "stack.env: no such file or directory"
-# Cause: Docker Compose expects a .env file in the same directory as compose.yml
+# Cause: The compose file references env_file: - stack.env, which is Portainer's generated env file, not Docker Compose's default .env file
 
-# Fix 1: Upload .env file via Portainer UI (Stack > .env file tab)
-# Fix 2: Remove ${VARIABLE} references and use Portainer env vars instead
-# Fix 3: Create the .env file in the Git repository alongside compose.yml
+# Fix 1: In Portainer, define the variables in the UI or use Load variables from .env file
+# Fix 2: On Docker Standalone or Podman, keep env_file: - stack.env; on Docker Swarm, don't use env_file because docker stack deploy doesn't support it
+# Fix 3: If deploying outside Portainer, replace stack.env with a real env file path or use a standard .env file next to the compose file
 ```
 
 ---
