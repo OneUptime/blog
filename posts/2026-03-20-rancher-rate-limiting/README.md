@@ -13,6 +13,7 @@ Rate limiting protects your services from being overwhelmed by too many requests
 ## Prerequisites
 
 - Rancher with Istio installed
+- The target namespace/workloads are part of the mesh (Istio sidecar injected)
 - kubectl with cluster-admin access
 - Redis deployed (for global rate limiting)
 
@@ -131,27 +132,40 @@ data:
       - key: generic_key
         value: default
         rate_limit:
-          unit: MINUTE
+          unit: minute
           requests_per_unit: 1000
 
-      # Per-user rate limit: 100 requests per minute
+      # Per-user rate limit: 100 requests per minute (based on x-user-id)
       - key: user_id
         rate_limit:
-          unit: MINUTE
+          unit: minute
           requests_per_unit: 100
-
-      # Per-IP rate limit: 50 requests per minute
-      - key: remote_address
-        rate_limit:
-          unit: MINUTE
-          requests_per_unit: 50
 
       # Strict limit for payment endpoint
       - key: path
         value: /api/payment
         rate_limit:
-          unit: MINUTE
+          unit: minute
           requests_per_unit: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ratelimit
+  namespace: production
+spec:
+  selector:
+    app: ratelimit
+  ports:
+    - name: http-port
+      port: 8080
+      targetPort: 8080
+    - name: grpc-port
+      port: 8081
+      targetPort: 8081
+    - name: http-debug
+      port: 6070
+      targetPort: 6070
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -190,6 +204,14 @@ spec:
               value: "false"
             - name: RUNTIME_IGNOREDOTFILES
               value: "true"
+            - name: HOST
+              value: "::"
+            - name: GRPC_HOST
+              value: "::"
+          ports:
+            - containerPort: 8080
+            - containerPort: 8081
+            - containerPort: 6070
           volumeMounts:
             - name: config
               mountPath: /data/ratelimit/config
@@ -231,11 +253,28 @@ spec:
             "@type": type.googleapis.com/envoy.extensions.filters.http.ratelimit.v3.RateLimit
             domain: production-api
             failure_mode_deny: true
+            timeout: 0.25s
             rate_limit_service:
               grpc_service:
                 envoy_grpc:
                   cluster_name: outbound|8081||ratelimit.production.svc.cluster.local
-                timeout: 0.25s
+                  authority: ratelimit.production.svc.cluster.local
+              transport_api_version: V3
+            rate_limits:
+              # Default limit for all requests
+              - actions:
+                  - generic_key:
+                      descriptor_value: default
+              # Per-user limit based on the x-user-id header
+              - actions:
+                  - request_headers:
+                      header_name: x-user-id
+                      descriptor_key: user_id
+              # Path-specific limit for exact matches like /api/payment
+              - actions:
+                  - request_headers:
+                      header_name: ":path"
+                      descriptor_key: path
 ```
 
 ## Method 3: Rate Limiting at Ingress Gateway
@@ -277,6 +316,21 @@ spec:
                 max_tokens: 10000
                 tokens_per_fill: 10000
                 fill_interval: 60s
+              filter_enabled:
+                runtime_key: gateway_local_rate_limit_enabled
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
+              filter_enforced:
+                runtime_key: gateway_local_rate_limit_enforced
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
+              response_headers_to_add:
+                - append: false
+                  header:
+                    key: x-local-rate-limit
+                    value: 'true'
 ```
 
 ## Step 4: Test Rate Limiting
@@ -290,19 +344,20 @@ for i in {1..150}; do
   STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://api.example.com/api/status)
   echo "Request $i: HTTP $STATUS"
 done | grep "429" | wc -l
-# Should show ~50 rejected requests (after 100 limit is hit)
+# Against a single Envoy instance, you should start seeing 429 responses after the 100-request bucket is exhausted.
+# With multiple replicas, the exact number of rejected requests depends on load balancing.
 ```
 
 ## Step 5: Monitor Rate Limiting Metrics
 
 ```bash
-# Check rate limit statistics in Envoy
+# Local rate-limit stats are disabled by default in Istio.
+# Add proxyStatsMatcher.inclusionRegexps: [".*http_local_rate_limit.*"] to the workload before querying these counters.
 kubectl exec -n production -c istio-proxy deployment/api-service -- \
-  curl -s localhost:15000/stats | grep "rate_limit\|ratelimit"
+  curl -s localhost:15000/stats | grep -E "http_local_rate_limit|ratelimit"
 
-# Prometheus query for rate limit rejections
-kubectl exec -n istio-system deployment/prometheus -- \
-  curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(envoy_http_local_rate_limit_rate_limited[5m]))by(app)' | \
+# Prometheus query for 429 responses generated by rate limiting
+curl -s 'http://PROMETHEUS_HOST:9090/api/v1/query?query=sum(rate(istio_requests_total{reporter="destination",destination_service_name="api-service",destination_service_namespace="production",response_code="429"}[5m]))' | \
   jq '.data.result'
 ```
 
