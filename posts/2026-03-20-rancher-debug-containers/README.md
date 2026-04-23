@@ -8,24 +8,25 @@ Description: Use debug containers in Rancher to troubleshoot running pods withou
 
 ## Introduction
 
-Debug containers allow you to troubleshoot running pods by injecting a container with debugging tools into an existing pod, without modifying or rebuilding the production image. Kubernetes 1.23+ introduced stable support for ephemeral containers via `kubectl debug`. This guide covers multiple approaches to debug containers in Rancher-managed clusters.
+Debug containers allow you to troubleshoot running pods by injecting a container with debugging tools into an existing pod, without modifying or rebuilding the production image. Kubernetes 1.23 introduced beta support for ephemeral containers via `kubectl debug`, and Kubernetes 1.25 made the feature stable. This guide covers multiple approaches to debug containers in Rancher-managed clusters.
 
 ## Prerequisites
 
-- Rancher-managed cluster with Kubernetes 1.23+
+- Rancher-managed cluster with Kubernetes 1.25+ or Kubernetes 1.23-1.24 with the `EphemeralContainers` feature enabled
 - kubectl with debug capabilities
 - Appropriate RBAC permissions for ephemeral containers
 
-## Step 1: Enable Ephemeral Containers (Pre-1.25)
+## Step 1: Check Ephemeral Container Support
 
 ```bash
-# Ephemeral containers are enabled by default in Kubernetes 1.25+
+# Ephemeral containers are stable in Kubernetes 1.25+
+# In Kubernetes 1.23-1.24, the feature is beta and enabled by default unless disabled
 
-# For earlier versions, check the feature gate
+# Check the cluster version
 kubectl get --raw /version | jq .gitVersion
 
-# Verify the feature is enabled
-kubectl auth can-i create pods/ephemeralcontainers
+# Verify you can patch the ephemeralcontainers subresource used by kubectl debug
+kubectl auth can-i patch pods --subresource=ephemeralcontainers -n production
 ```
 
 ## Step 2: Debug a Running Pod
@@ -45,15 +46,15 @@ kubectl debug -it \
   --image=nicolaka/netshoot \
   --target=my-app
 
-# The --target flag shares the process namespace with the target container
-# so you can see its processes and filesystem
+# The --target flag targets the process namespace of the target container
+# so you can inspect its processes when the container runtime supports it
 ```
 
 ## Step 3: Create a Debug Image
 
 ```dockerfile
 # Dockerfile.debug - Comprehensive debug image
-FROM alpine:3.18
+FROM alpine:3.23
 
 RUN apk add --no-cache \
     bash \
@@ -98,9 +99,10 @@ kubectl debug -it \
 ## Step 4: Debug a Node
 
 ```bash
-# Debug a node directly
+# Debug a node directly with a privileged debug profile
 kubectl debug node/worker-node-01 \
   -it \
+  --profile=sysadmin \
   --image=registry.example.com/debug-tools:latest
 
 # Access the node filesystem at /host
@@ -117,13 +119,13 @@ chroot /host journalctl -u kubelet -f
 ## Step 5: Copy-and-Debug Pattern
 
 ```bash
-# Create a copy of the pod with a modified image for debugging
-# This creates a new pod with the same spec but an interactive shell
+# Create a copy of the pod and add a debug container
+# This creates a new pod with the same spec plus an interactive debug shell
 kubectl debug \
   -n production \
   pod/my-app-pod \
   --copy-to=my-app-debug \
-  --container=my-app \
+  --container=debugger \
   -it \
   --image=registry.example.com/debug-tools:latest \
   -- bash
@@ -134,6 +136,7 @@ kubectl debug \
   pod/my-app-pod \
   --copy-to=my-app-debug-shell \
   --set-image=my-app=registry.example.com/app:debug \
+  --container=my-app \
   -it \
   -- /bin/sh
 ```
@@ -150,7 +153,13 @@ metadata:
   annotations:
     debug-mode: "false"
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: my-app
@@ -180,7 +189,7 @@ rules:
     resources: ["pods"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
-    resources: ["pods/exec"]
+    resources: ["pods/attach", "pods/exec"]
     verbs: ["create"]
   - apiGroups: [""]
     resources: ["pods/ephemeralcontainers"]
@@ -205,8 +214,9 @@ subjects:
 
 ```bash
 # Use netshoot for network debugging
-kubectl debug -it \
+kubectl debug --profile=sysadmin -it \
   pod/my-app-pod \
+  --container=debugger \
   --image=nicolaka/netshoot \
   -n production \
   -- bash
@@ -222,9 +232,9 @@ curl -v http://other-service:8080/health
 tcpdump -i any -w /tmp/capture.pcap port 8080
 
 # Analyze with Wireshark locally
-kubectl cp production/netshoot-pod:/tmp/capture.pcap ./capture.pcap
+kubectl cp -c debugger production/my-app-pod:/tmp/capture.pcap ./capture.pcap
 ```
 
 ## Conclusion
 
-Debug containers in Rancher provide a powerful way to investigate issues in running applications without modifying production images. The `kubectl debug` command is the recommended approach for Kubernetes 1.23+, offering both ephemeral container injection and pod copy patterns. Combined with a well-equipped debug image and appropriate RBAC policies, debug containers enable efficient production troubleshooting while maintaining security boundaries.
+Debug containers in Rancher provide a powerful way to investigate issues in running applications without modifying production images. The `kubectl debug` command is the recommended approach for Kubernetes 1.25+, with beta ephemeral container support also available in Kubernetes 1.23-1.24, offering both ephemeral container injection and pod copy patterns. Combined with a well-equipped debug image and appropriate RBAC policies, debug containers enable efficient production troubleshooting while maintaining security boundaries.
