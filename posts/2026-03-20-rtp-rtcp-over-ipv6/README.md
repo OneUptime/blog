@@ -38,6 +38,7 @@ Media flow:
 # rtp_ipv6_sender.py - Send RTP over IPv6
 
 import socket
+import secrets
 import struct
 import time
 
@@ -66,9 +67,9 @@ def send_rtp_over_ipv6(dest_ipv6, dest_port, duration_secs=10):
     local_port = sock.getsockname()[1]
     print(f"RTP sender bound to [::]:{local_port}")
 
-    ssrc = 12345678
-    seq = 0
-    timestamp = 0
+    ssrc = secrets.randbits(32)
+    seq = secrets.randbits(16)
+    timestamp = secrets.randbits(32)
     packet_count = 0
     ptime = 20  # 20ms ptime for G.711
 
@@ -125,6 +126,8 @@ bind=[::]:5060
 [ipv6-endpoint]
 type=endpoint
 transport=transport-udp6
+disallow=all
+allow=ulaw
 
 # Allow IPv6 RTP and bind media to an advertised IPv6 address
 rtp_ipv6=yes
@@ -158,7 +161,8 @@ sudo ip6tables -A INPUT -p udp --dport 10000:20000 -j ACCEPT
 # Example only: use this if your media server is configured for 49152-65535.
 sudo ip6tables -A INPUT -p udp --dport 49152:65535 -j ACCEPT
 
-sudo sh -c 'ip6tables-save > /etc/ip6tables/rules.v6'
+# Persist rules on Debian/Ubuntu systems using iptables-persistent/netfilter-persistent
+sudo sh -c 'ip6tables-save > /etc/iptables/rules.v6'
 
 # Verify RTP ports are open
 ss -6 -ulnp | grep -E ':(10000|1[0-9]{4}|20000)\b'
