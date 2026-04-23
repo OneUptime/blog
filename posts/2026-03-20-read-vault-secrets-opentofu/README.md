@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Vault, Secret, Security, Secret Management
 
-Description: Learn how to read HashiCorp Vault secrets in OpenTofu configurations using the Vault provider data sources to inject sensitive values without storing them in state or version control.
+Description: Learn how to read HashiCorp Vault secrets in OpenTofu configurations using the Vault provider data sources to inject sensitive values while keeping them out of `.tfvars` files and version control.
 
 ## Introduction
 
-OpenTofu's Vault provider allows reading secrets directly from HashiCorp Vault during plan and apply. This keeps sensitive values out of `.tfvars` files and version control, while still making them available as inputs to resources.
+OpenTofu can use the Vault provider to read secrets directly from HashiCorp Vault during plan and apply. This keeps sensitive values out of `.tfvars` files and version control, while still making them available as inputs to resources. Values read through Vault data sources are still persisted in state and may appear in plan files or console output if you reference them in resource arguments.
 
 ## Provider Configuration
 
@@ -19,11 +19,11 @@ terraform {
   required_providers {
     vault = {
       source  = "hashicorp/vault"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
 }
@@ -45,15 +45,15 @@ data "vault_kv_secret_v2" "database" {
 }
 
 resource "aws_db_instance" "main" {
-  identifier     = "prod-db"
-  engine         = "postgres"
-  instance_class = "db.r6g.large"
+  identifier          = "prod-db"
+  engine              = "postgres"
+  instance_class      = "db.r6g.large"
+  allocated_storage   = 20
+  skip_final_snapshot = true
 
   username = data.vault_kv_secret_v2.database.data["username"]
   password = data.vault_kv_secret_v2.database.data["password"]
   db_name  = data.vault_kv_secret_v2.database.data["database_name"]
-
-  # ... other configuration
 }
 ```
 
@@ -73,14 +73,14 @@ locals {
 ## Reading Generic Secrets
 
 ```hcl
-# For custom secrets engines
+# For legacy generic backends or other paths that support `vault read`
 data "vault_generic_secret" "tls_cert" {
-  path = "pki/issue/web-server"
+  path = "secret/tls/web"
 }
 
-resource "aws_acm_certificate_import" "web" {
-  certificate_body  = data.vault_generic_secret.tls_cert.data["certificate"]
+resource "aws_acm_certificate" "web" {
   private_key       = data.vault_generic_secret.tls_cert.data["private_key"]
+  certificate_body  = data.vault_generic_secret.tls_cert.data["certificate"]
   certificate_chain = data.vault_generic_secret.tls_cert.data["ca_chain"]
 }
 ```
@@ -116,42 +116,41 @@ resource "aws_ecs_task_definition" "app" {
 }
 ```
 
-## Preventing Secrets from Appearing in Plan Output
+## Reducing Exposure in CLI Output
+
+Marking outputs as `sensitive` reduces accidental exposure in CLI output, but it does not remove the value from state or plan files.
 
 ```hcl
-# Mark outputs as sensitive to prevent them from appearing in logs
+# Mark outputs as sensitive to reduce accidental exposure in CLI output
 output "db_password" {
   value     = data.vault_kv_secret_v2.database.data["password"]
   sensitive = true
 }
-
-# Use the nonsensitive() function carefully - only when you need to pass
-# a sensitive value to a resource that doesn't accept sensitive types
-resource "some_resource" "example" {
-  value = nonsensitive(data.vault_kv_secret_v2.config.data["some_value"])
-}
 ```
 
-## Caching Vault Reads
+## Reusing Vault Reads
+
+Using a local value does not cache Vault beyond the data source read itself, but it does make repeated lookups easier to reuse.
 
 ```hcl
-# Vault data sources are read on every plan/apply
-# Use locals to read once and reference multiple times
+# Read once from Vault and reuse the resulting map in later expressions
 locals {
   db_creds = data.vault_kv_secret_v2.database.data
 }
 
 resource "aws_db_instance" "primary" {
-  username = local.db_creds["username"]
-  password = local.db_creds["password"]
-}
+  identifier          = "prod-db-primary"
+  engine              = "postgres"
+  instance_class      = "db.r6g.large"
+  allocated_storage   = 20
+  skip_final_snapshot = true
 
-resource "aws_db_instance" "replica" {
   username = local.db_creds["username"]
   password = local.db_creds["password"]
+  db_name  = local.db_creds["database_name"]
 }
 ```
 
 ## Conclusion
 
-Reading Vault secrets in OpenTofu configurations keeps sensitive values out of state files and version control when combined with proper state encryption. The `vault_kv_secret_v2` data source is the most common approach, but the `vault_generic_secret` data source works with any Vault secrets engine. Always mark secret outputs as `sensitive = true` to prevent accidental exposure in logs.
+Reading Vault secrets in OpenTofu configurations keeps sensitive values out of `.tfvars` files and version control, but Vault provider data sources still persist those values in state and can surface them in plan files or console output. The `vault_kv_secret_v2` data source is the most common approach for KV v2 mounts, `vault_kv_secret` works with KV v1, and `vault_generic_secret` is appropriate for read-only Vault paths that support `vault read`. Mark secret outputs as `sensitive = true`, and protect your state and plan files accordingly.
