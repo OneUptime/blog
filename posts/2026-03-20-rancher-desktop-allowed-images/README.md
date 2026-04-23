@@ -4,39 +4,41 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher Desktop, Security, Image, Allow List, Policy
 
-Description: Set up image allow lists in Rancher Desktop to restrict which container images can be pulled and run locally.
+Description: Set up image allow lists in Rancher Desktop to restrict which container images can be pulled and pushed locally.
 
 ## Introduction
 
-Rancher Desktop is an open-source desktop application that provides Kubernetes and container management tools for local development. It bundles kubectl, Helm, nerdctl, and either containerd or Moby (dockerd) into a single, easy-to-use application. This guide covers How to Configure Rancher Desktop Allowed Images in detail.
+Rancher Desktop is an open-source desktop application that provides container management and Kubernetes on the desktop. It includes an `Allowed Images` setting that lets you control which registry artifacts can be accessed from your local Rancher Desktop instance. This guide covers how to configure Rancher Desktop Allowed Images in detail.
 
 ## Prerequisites
 
-- A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
-- At least 8 GB of RAM (16 GB recommended)
-- At least 4 CPU cores
+- A supported macOS, Windows, or Linux installation of Rancher Desktop
+- Rancher Desktop installed and running
+- `nerdctl` if you use the `containerd` engine, or `docker` if you use the `moby` engine
+- Administrator/sudo privileges only if your platform requires them for installation or for system-level deployment profiles
+- Enough local resources for your workloads; Rancher Desktop recommends 8 GB of memory and 4 CPU
 
 ## Overview
 
-Rancher Desktop simplifies local Kubernetes and container development by providing:
+Rancher Desktop allowed images lets you:
 
-- A local Kubernetes cluster (k3s-based)
-- Container runtime (containerd or dockerd)
-- Integrated CLI tools (kubectl, helm, nerdctl, docker)
-- Simple configuration through a GUI
+- Restrict image pulls and pushes to names that match an allow list
+- Define patterns with the format `[registry/][:port/][organization/]repository[:tag]`
+- Use Docker Hub defaults when the registry or organization is omitted
+- Lock the setting with deployment profiles for managed environments
+
+Note: Tag filtering is not reliable by itself. Rancher Desktop documents that matching digests (`repository@digest`) also need to be added to the allow list.
 
 ## Step 1: Initial Setup
 
 ```bash
-# Verify Rancher Desktop is installed and running
-
+# Verify the CLI is available
 rdctl version
 
-# Check Kubernetes cluster status
-kubectl cluster-info
+# Rancher Desktop must be running for list-settings
+rdctl list-settings
 
-# Verify container runtime
+# Use the CLI that matches your selected container engine
 nerdctl version
 # or
 docker version
@@ -44,120 +46,113 @@ docker version
 
 ## Step 2: Configuration
 
-Open Rancher Desktop Preferences to configure:
+Open Rancher Desktop Preferences and go to **Container Engine > Allowed Images**.
 
-- **Kubernetes**: Version and enabled/disabled state
-- **Container Engine**: containerd or moby (dockerd)
-- **Virtual Machine**: CPU, memory, and disk allocation
-- **WSL** (Windows only): WSL2 integration settings
+- Check **Enable** to turn the policy on
+- Add one or more allowed image patterns, such as `busybox`, `nginx`, or `registry.internal:5000`
+- Use the `+` and `-` controls to add or remove patterns
 
-```bash
-# Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
-rdctl set --container-engine containerd
+You can also lock the policy with a deployment profile. For example, a user-level locked profile on Linux looks like this:
+
+`~/.config/rancher-desktop.locked.json`
+
+```json
+{
+  "version": 10,
+  "containerEngine": {
+    "allowedImages": {
+      "enabled": true,
+      "patterns": ["busybox", "nginx"]
+    }
+  }
+}
 ```
+
+On macOS, user deployment profiles are stored in `~/Library/Preferences/io.rancherdesktop.profile.locked.plist`. On Windows, user deployment profiles are stored under `HKEY_CURRENT_USER\Software\Policies\Rancher Desktop\Locked`.
 
 ## Step 3: Working with Containers
 
+Use the container CLI that matches your selected runtime. With an allow list that includes `busybox` and `nginx`, the following pulls are allowed:
+
 ```bash
-# Pull an image
-nerdctl pull nginx:latest
-# or with docker compatibility
-docker pull nginx:latest
+# containerd runtime
+nerdctl pull busybox
+nerdctl pull nginx
 
-# Run a container
-nerdctl run -d -p 8080:80 --name my-nginx nginx:latest
+# moby runtime
+docker pull busybox
+docker pull nginx
 
-# List running containers
-nerdctl ps
-
-# View container logs
-nerdctl logs my-nginx
-
-# Stop and remove
-nerdctl stop my-nginx
-nerdctl rm my-nginx
+# If alpine is not on the allow list, this pull is denied
+nerdctl pull alpine
+# or
+docker pull alpine
 ```
 
 ## Step 4: Working with Kubernetes
 
+If Kubernetes is enabled and you are using `containerd`, use the `k8s.io` namespace when you pre-pull an allowed image for workloads:
+
 ```bash
-# Check cluster nodes
-kubectl get nodes
+# Pre-pull an allowed image into the Kubernetes namespace
+nerdctl --namespace k8s.io pull nginx
 
-# Deploy a test application
+# Deploy a workload that uses an allowed image
 kubectl create deployment hello-world \
-  --image=nginx:latest
+  --image=nginx
 
-# Expose the deployment
-kubectl expose deployment hello-world \
-  --port=80 \
-  --type=NodePort
-
-# Check the service
-kubectl get svc hello-world
-
-# Forward local port to the service
-kubectl port-forward svc/hello-world 8080:80 &
-
-# Test the application
-curl http://localhost:8080
+# Check the pods
+kubectl get pods
 
 # Clean up
 kubectl delete deployment hello-world
-kubectl delete svc hello-world
 ```
 
-## Step 5: Using Helm
+## Step 5: Using Deployment Profiles
+
+Deployment profiles are useful when you want the allow list applied automatically or locked for other users. Rancher Desktop can export the current settings so you can use them as a starting point.
 
 ```bash
-# Rancher Desktop includes Helm
-helm version
+# Export current settings to a user deployment profile on Linux
+rdctl list-settings > ~/.config/rancher-desktop.defaults.json
 
-# Add a chart repository
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm repo update
+# Shut Rancher Desktop down after editing deployment profiles
+rdctl shutdown
 
-# Install a chart
-helm install my-release bitnami/nginx
-
-# List installed releases
-helm list
-
-# Uninstall
-helm uninstall my-release
+# Start Rancher Desktop again so it reloads the profile
+rdctl start
 ```
+
+If a deployment profile exists but cannot be parsed correctly, Rancher Desktop will refuse to load the application.
 
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
-rdctl factory-reset
+# View the currently loaded allowed image settings
+rdctl list-settings
 
-# Check Rancher Desktop status
-rdctl status
+# Start Rancher Desktop with a specific container engine
+rdctl start --container-engine.name containerd
+# or
+rdctl start --container-engine.name moby
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
-
-# Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+# Generate a deployment profile in Windows .reg format from current settings
+rdctl create-profile --output reg --hive=hkcu --from-settings
 ```
 
 ## Troubleshooting
 
+If the policy does not behave as expected, verify the exact image name against your patterns. For Docker Hub images, Rancher Desktop defaults the registry to `docker.io` and the organization to `library` when they are omitted. You can also use **Troubleshooting > Show Logs** in the Rancher Desktop UI to open the log directory.
+
 ```bash
-# Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# Confirm the active settings Rancher Desktop is using
+rdctl list-settings
 
-# Reset to factory defaults
-rdctl factory-reset
-
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Restart Rancher Desktop after changing deployment profiles
+rdctl shutdown
+rdctl start
 ```
 
 ## Conclusion
 
-How to Configure Rancher Desktop Allowed Images with Rancher Desktop provides a powerful, integrated local development experience. Rancher Desktop eliminates the need for multiple separate tools by bundling everything needed for Kubernetes and container development into a single application. Whether you're building microservices, testing Helm charts, or learning Kubernetes, Rancher Desktop provides a production-like environment on your local machine.
+How to Configure Rancher Desktop Allowed Images gives you a practical way to limit which container registries and repositories can be used on a local development machine. Configure the policy from the **Allowed Images** tab for individual use, or enforce it with deployment profiles when you need a locked configuration across managed systems.
