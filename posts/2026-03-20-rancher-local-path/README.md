@@ -21,7 +21,7 @@ The Local Path Provisioner, developed by Rancher Labs, provides a simple way to 
 ```bash
 # Install using the official manifest
 
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.26/deploy/local-path-storage.yaml
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.35/deploy/local-path-storage.yaml
 
 # Verify installation
 kubectl get pods -n local-path-storage
@@ -38,7 +38,7 @@ kubectl describe storageclass local-path
 kubectl patch storageclass local-path \
   -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
 
-# If another StorageClass is the default, remove that annotation first
+# If another StorageClass is the default, replace `standard` with that StorageClass name
 kubectl patch storageclass standard \
   -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
 
@@ -87,6 +87,11 @@ data:
     metadata:
       name: helper-pod
     spec:
+      priorityClassName: system-node-critical
+      tolerations:
+      - key: node.kubernetes.io/disk-pressure
+        operator: Exists
+        effect: NoSchedule
       containers:
       - name: helper-pod
         image: busybox
@@ -96,6 +101,12 @@ data:
 ## Step 4: Create PersistentVolumeClaims
 
 ```yaml
+# namespace.yaml - Development namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: development
+---
 # dev-pvc.yaml - PVC for development database
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -128,6 +139,30 @@ spec:
 ## Step 5: Deploy Stateful Application
 
 ```yaml
+# postgres-secret.yaml - Development password secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: development
+type: Opaque
+stringData:
+  password: change-me
+---
+# postgres-service.yaml - Headless service for StatefulSet network identity
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql
+  namespace: development
+spec:
+  clusterIP: None
+  selector:
+    app: postgresql
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
 # postgres-dev.yaml - PostgreSQL with local path storage
 apiVersion: apps/v1
 kind: StatefulSet
@@ -163,15 +198,10 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
-  volumeClaimTemplates:
-    - metadata:
-        name: data
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        storageClassName: local-path
-        resources:
-          requests:
-            storage: 10Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data
 ```
 
 ## Step 6: Inspect Provisioned Volumes
@@ -184,52 +214,43 @@ kubectl get pv
 kubectl describe pv pvc-<uuid>
 
 # Check what's stored on the node
-# SSH into the worker node
+# SSH into the worker node, then inspect the path shown in `kubectl describe pv`
 ssh worker-node-01
-ls /opt/local-path-provisioner/
 
-# List directories created by provisioner
-ls /opt/local-path-provisioner/pvc-*/
+# Find directories created by the provisioner
+find /opt/local-path-provisioner /data -maxdepth 2 -type d -name 'pvc-*' 2>/dev/null
 ```
 
 ## Step 7: Backup and Restore
 
 ```bash
+# Scale the workload down before copying a PostgreSQL data directory
+kubectl scale statefulset postgresql -n development --replicas=0
+
 # Backup using rsync (run on the node)
-rsync -avz /opt/local-path-provisioner/pvc-<uuid>/ \
+# Replace <node-path-from-pv> with the path shown in `kubectl describe pv`
+rsync -avz <node-path-from-pv>/ \
   backup-host:/backups/postgres-$(date +%Y%m%d)/
 
-# Or create a backup pod
-kubectl run backup-job \
-  --image=alpine \
-  --restart=Never \
-  --rm \
-  -it \
-  --overrides='{
-    "spec": {
-      "volumes": [{
-        "name": "data",
-        "persistentVolumeClaim": {"claimName": "postgres-data"}
-      }],
-      "containers": [{
-        "name": "backup",
-        "image": "alpine",
-        "command": ["tar", "czf", "/backup/data.tar.gz", "/data"],
-        "volumeMounts": [{"name": "data", "mountPath": "/data"}]
-      }]
-    }
-  }' \
-  --namespace=development
+# Restore the data back to the same path
+rsync -avz <backup-directory>/ \
+  <node-path-from-pv>/
+
+# Start PostgreSQL again
+kubectl scale statefulset postgresql -n development --replicas=1
 ```
 
 ## Step 8: Reclaim Policy Configuration
 
-```yaml
-# Retain data when PVC is deleted (useful for development)
-kubectl patch storageclass local-path \
-  -p '{"reclaimPolicy": "Retain"}'
+```bash
+# Retain an existing volume when its PVC is deleted
+kubectl patch pv pvc-<uuid> \
+  -p '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}'
+```
 
-# Or create a custom StorageClass with Retain policy
+```yaml
+# Or create a custom StorageClass with Retain policy for future PVCs
+# Use `storageClassName: local-path-retain` in new PVCs
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -241,4 +262,4 @@ volumeBindingMode: WaitForFirstConsumer
 
 ## Conclusion
 
-The Local Path Provisioner provides a zero-dependency storage solution for development environments in Rancher. Its simplicity and tight integration with Rancher makes it the default choice for K3s and development clusters. While not suitable for production multi-node workloads requiring shared storage, it excels for development databases, caches, and stateful services where data locality is acceptable and fast local disk I/O is beneficial.
+The Local Path Provisioner provides a zero-dependency storage solution for development environments in Rancher. Its simplicity and inclusion in K3s make it a common choice for lightweight development clusters. While not suitable for production multi-node workloads requiring shared storage, it excels for development databases, caches, and stateful services where data locality is acceptable and fast local disk I/O is beneficial.
