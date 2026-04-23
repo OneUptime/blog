@@ -4,16 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Google Cloud, GCR, Container Registry, Artifact Registry
 
-Description: Set up Google Container Registry (GCR) or Artifact Registry with Rancher using service accounts and Workload Identity for secure container image management.
+Description: Set up Google Artifact Registry, including migrated `gcr.io` repositories, with Rancher using service accounts and Workload Identity Federation for GKE.
 
 ## Introduction
 
-Google Container Registry (GCR) and its successor Artifact Registry are Google Cloud's managed container image storage services. Integrating them with Rancher requires proper IAM authentication. This guide covers using service account keys, Workload Identity for GKE, and configuring cluster-wide registry access.
+Google Container Registry (GCR) has been shut down, and Google recommends Artifact Registry for container image storage. If you still need legacy `gcr.io` image names, use `gcr.io` repositories hosted on Artifact Registry. Integrating these registries with Rancher requires proper IAM authentication. This guide covers using service account keys, Workload Identity Federation for GKE, and configuring cluster-wide registry access.
 
 ## Prerequisites
 
 - Google Cloud project with billing enabled
-- GCR or Artifact Registry configured
+- Artifact Registry configured, including `gcr.io` repositories if you need legacy `gcr.io` image names
 - `gcloud` CLI installed and authenticated
 - Rancher managing a GKE or other cluster
 - kubectl access to your cluster
@@ -27,15 +27,10 @@ gcloud iam service-accounts create rancher-registry-sa \
   --display-name="Rancher Registry Service Account" \
   --project=my-project-id
 
-# Grant the registry reader role
+# Grant Artifact Registry Reader for pkg.dev repositories or gcr.io repositories hosted on Artifact Registry
 gcloud projects add-iam-policy-binding my-project-id \
   --member="serviceAccount:rancher-registry-sa@my-project-id.iam.gserviceaccount.com" \
   --role="roles/artifactregistry.reader"
-
-# For GCR (legacy), use storage.objectViewer
-gcloud projects add-iam-policy-binding my-project-id \
-  --member="serviceAccount:rancher-registry-sa@my-project-id.iam.gserviceaccount.com" \
-  --role="roles/storage.objectViewer"
 ```
 
 ## Step 2: Create and Download a Service Account Key
@@ -49,12 +44,12 @@ gcloud iam service-accounts keys create gcr-key.json \
 cat gcr-key.json
 ```
 
-## Step 3: Create Kubernetes Secret for GCR
+## Step 3: Create Kubernetes Secret for Registry Access
 
 ```bash
-# Create the registry secret using the service account key
+# For gcr.io repositories hosted on Artifact Registry
 kubectl create secret docker-registry gcr-credentials \
-  --docker-server=gcr.io \
+  --docker-server=https://gcr.io \
   --docker-username=_json_key \
   --docker-password="$(cat gcr-key.json)" \
   --docker-email=admin@example.com \
@@ -62,7 +57,7 @@ kubectl create secret docker-registry gcr-credentials \
 
 # For Artifact Registry in us-central1
 kubectl create secret docker-registry ar-credentials \
-  --docker-server=us-central1-docker.pkg.dev \
+  --docker-server=https://us-central1-docker.pkg.dev \
   --docker-username=_json_key \
   --docker-password="$(cat gcr-key.json)" \
   --docker-email=admin@example.com \
@@ -116,12 +111,12 @@ spec:
             - containerPort: 8080
 ```
 
-## Step 6: Configure Workload Identity on GKE
+## Step 6: Configure Workload Identity Federation for GKE
 
-For GKE clusters managed by Rancher, use Workload Identity to avoid key management:
+For GKE clusters managed by Rancher, use Workload Identity Federation for GKE to avoid key management for workloads that call Google Cloud APIs. Private image pulls from Artifact Registry still use the node's IAM service account or an `imagePullSecret`.
 
 ```bash
-# Enable Workload Identity on GKE cluster
+# Enable Workload Identity Federation for GKE on the cluster
 gcloud container clusters update my-cluster \
   --workload-pool=my-project-id.svc.id.goog \
   --region=us-central1
@@ -130,7 +125,7 @@ gcloud container clusters update my-cluster \
 kubectl create serviceaccount registry-puller \
   --namespace production
 
-# Bind Kubernetes SA to GCP SA
+# Bind Kubernetes SA to IAM service account
 gcloud iam service-accounts add-iam-policy-binding \
   rancher-registry-sa@my-project-id.iam.gserviceaccount.com \
   --role="roles/iam.workloadIdentityUser" \
@@ -143,19 +138,27 @@ kubectl annotate serviceaccount registry-puller \
 ```
 
 ```yaml
-# workload-identity-pod.yaml - Pod using Workload Identity
+# workload-identity-pod.yaml - Deployment using Workload Identity Federation for GKE
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: my-app-wi
   namespace: production
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app-wi
   template:
+    metadata:
+      labels:
+        app: my-app-wi
     spec:
-      # Use the annotated service account
+      # Use the annotated Kubernetes service account for Google Cloud API access
       serviceAccountName: registry-puller
       containers:
         - name: my-app
+          # Image pulls still rely on the node identity or imagePullSecrets
           image: us-central1-docker.pkg.dev/my-project-id/my-containers/my-app:v1.0
 ```
 
@@ -165,13 +168,22 @@ spec:
 # /etc/rancher/rke2/registries.yaml - RKE2 private registry config
 mirrors:
   "gcr.io":
-    endpoints:
+    endpoint:
       - "https://gcr.io"
   "us-central1-docker.pkg.dev":
-    endpoints:
+    endpoint:
       - "https://us-central1-docker.pkg.dev"
 configs:
   "gcr.io":
+    auth:
+      username: "_json_key"
+      password: |
+        {
+          "type": "service_account",
+          "project_id": "my-project-id",
+          ...
+        }
+  "us-central1-docker.pkg.dev":
     auth:
       username: "_json_key"
       password: |
@@ -190,27 +202,31 @@ configs:
 SA_EMAIL="rancher-registry-sa@my-project-id.iam.gserviceaccount.com"
 NAMESPACE="production"
 SECRET_NAME="gcr-credentials"
+REGISTRY_SERVER="https://gcr.io"
 
 # Create new key
 gcloud iam service-accounts keys create new-gcr-key.json \
-  --iam-account=$SA_EMAIL
+  --iam-account="$SA_EMAIL"
 
 # Update Kubernetes secret
-kubectl create secret docker-registry $SECRET_NAME \
-  --docker-server=gcr.io \
+kubectl create secret docker-registry "$SECRET_NAME" \
+  --docker-server="$REGISTRY_SERVER" \
   --docker-username=_json_key \
   --docker-password="$(cat new-gcr-key.json)" \
-  --namespace=$NAMESPACE \
+  --namespace="$NAMESPACE" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # Delete old keys (keep only 2 most recent)
 OLD_KEYS=$(gcloud iam service-accounts keys list \
-  --iam-account=$SA_EMAIL \
+  --iam-account="$SA_EMAIL" \
+  --managed-by=user \
+  --sort-by=~validAfterTime \
   --format="value(name)" | tail -n +3)
 
 for KEY in $OLD_KEYS; do
-  gcloud iam service-accounts keys delete $KEY \
-    --iam-account=$SA_EMAIL --quiet
+  KEY_ID="${KEY##*/}"
+  gcloud iam service-accounts keys delete "$KEY_ID" \
+    --iam-account="$SA_EMAIL" --quiet
 done
 ```
 
@@ -223,7 +239,7 @@ gcloud projects get-iam-policy my-project-id \
   --filter="bindings.members:rancher-registry-sa"
 
 # Test authentication
-docker login -u _json_key -p "$(cat gcr-key.json)" gcr.io
+cat gcr-key.json | docker login -u _json_key --password-stdin https://us-central1-docker.pkg.dev
 
 # Check pod pull errors
 kubectl describe pod <pod-name> -n production | grep -A 5 "Failed to pull"
@@ -231,4 +247,4 @@ kubectl describe pod <pod-name> -n production | grep -A 5 "Failed to pull"
 
 ## Conclusion
 
-Google Container Registry and Artifact Registry integrate well with Rancher-managed clusters. For GKE clusters, Workload Identity provides the most secure approach by eliminating the need for long-lived service account keys. For non-GKE clusters, use service account keys with a rotation strategy. Artifact Registry is recommended over legacy GCR for new deployments as it offers more features and regional storage options.
+Artifact Registry integrates well with Rancher-managed clusters, including migrated `gcr.io` repositories that keep legacy image names working after the Container Registry shutdown. For GKE clusters, Workload Identity Federation for GKE is the most secure approach for workloads that call Google Cloud APIs, while image pulls still rely on the node service account or an `imagePullSecret`. For non-GKE clusters, use service account keys with a rotation strategy. Artifact Registry is recommended for new deployments because it offers more features and regional storage options.
