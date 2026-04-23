@@ -15,7 +15,7 @@ OpenTofu's state file is a snapshot of your infrastructure at a point in time. W
 OpenTofu offers two ways to refresh state:
 
 1. **`tofu apply -refresh-only`** (recommended): Creates a plan showing what state changes would occur, then asks for confirmation before updating
-2. **`tofu refresh`** (legacy): Immediately updates state without confirmation
+2. **`tofu refresh`** (deprecated): Effectively runs `tofu apply -refresh-only -auto-approve`, so it immediately updates state without confirmation
 
 ## Using tofu apply -refresh-only (Recommended)
 
@@ -27,8 +27,10 @@ tofu plan -refresh-only
 # Example output:
 # Note: Objects have changed outside of OpenTofu
 #
-#  ~ aws_instance.web (read during apply)
+#  # aws_instance.web has changed
+#  ~ resource "aws_instance" "web" {
 #      ~ instance_type = "t3.micro" -> "t3.small"
+#    }
 #
 # This is a refresh-only plan, so OpenTofu will not take any actions
 # to undo these. If you were expecting these changes, you can apply this plan.
@@ -39,7 +41,7 @@ tofu apply -refresh-only
 
 This two-step approach lets you review what changed before committing the state update.
 
-## Using tofu refresh (Legacy)
+## Using tofu refresh (Deprecated)
 
 ```bash
 # Immediately refresh state without preview
@@ -49,7 +51,7 @@ tofu refresh
 # No confirmation required
 ```
 
-The `tofu refresh` command is considered legacy and may be deprecated in future versions. Prefer `-refresh-only`.
+The `tofu refresh` command is deprecated. It is effectively an alias for `tofu apply -refresh-only -auto-approve`, so it updates state immediately without a review step. Prefer `tofu apply -refresh-only`.
 
 ## When to Refresh State
 
@@ -82,6 +84,8 @@ tofu apply -refresh-only -target=aws_instance.web
 # Refresh only a module
 tofu apply -refresh-only -target=module.compute
 ```
+
+Use `-target` sparingly; OpenTofu recommends resource targeting only for exceptional circumstances, not routine operations.
 
 ## Refreshing with Variables
 
@@ -137,4 +141,4 @@ tofu plan
 
 ## Conclusion
 
-Regularly refreshing your OpenTofu state ensures it accurately reflects your infrastructure. Use `tofu apply -refresh-only` as the preferred approach - it gives you visibility into state changes before committing them. In pipelines, consider automatic refresh before critical plans to catch drift early. Combined with drift detection, refresh-only operations form a powerful tool for maintaining state accuracy.
+Regularly refreshing your OpenTofu state ensures it accurately reflects your infrastructure. Use `tofu apply -refresh-only` as the preferred approach - it gives you visibility into state changes before committing them. In pipelines, keep refresh enabled on critical plans or use refresh-only plans in drift-detection workflows to catch drift early. Combined with drift detection, refresh-only operations form a powerful tool for maintaining state accuracy.
