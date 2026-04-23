@@ -32,7 +32,7 @@ University Rancher Platform
 Create Rancher Projects to isolate courses and departments:
 
 ```text
-Rancher UI → Cluster → Projects → New Project
+Rancher UI → Cluster Management → [cluster] → Explore → Cluster → Projects/Namespaces → Create Project
 
 Project: cs-101-intro-programming
   - Namespace: cs101-fall2026
@@ -60,13 +60,19 @@ Automate student namespace creation with a script:
 # Creates a namespace for each student in the roster
 
 STUDENTS_FILE="students.txt"
-CLUSTER="student-lab"
 COURSE="cs101"
+PROJECT_ID="c-m-abcde:p-xyz12"   # Rancher project ID for the course
 
 while IFS= read -r student_id; do
-  # Create namespace
-  kubectl create namespace "${COURSE}-${student_id}" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  # Create namespace in the Rancher project so project quotas and membership apply
+  kubectl apply -f - << EOF
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${COURSE}-${student_id}
+  annotations:
+    field.cattle.io/projectId: "${PROJECT_ID}"
+EOF
 
   # Apply resource quota
   kubectl apply -f - << EOF
@@ -110,7 +116,7 @@ done < "$STUDENTS_FILE"
 ## Step 3: Student RBAC
 
 ```yaml
-# RBAC: Grant student full access to their own namespace
+# RBAC: Grant student edit access to their own namespace
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -118,7 +124,7 @@ metadata:
   namespace: cs101-student-001
 subjects:
   - kind: User
-    name: student-001@university.edu   # From LDAP/SSO
+    name: student-001@university.edu   # Must match the username seen by the downstream cluster
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
@@ -128,54 +134,66 @@ roleRef:
 
 ## Step 4: Self-Service Jupyter Environments
 
-Deploy JupyterHub for data science courses:
+Install JupyterHub for data science courses using the official Helm chart:
 
 ```yaml
-# JupyterHub deployment for DS course
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: jupyterhub
-  namespace: ds301-fall2026
-spec:
-  replicas: 1
-  template:
-    spec:
-      containers:
-        - name: hub
-          image: jupyterhub/jupyterhub:latest
-          env:
-            - name: JUPYTERHUB_CRYPT_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: jupyterhub-secret
-                  key: crypt-key
-          ports:
-            - containerPort: 8000
+# config.yaml for the JupyterHub Helm chart
+singleuser:
+  cpu:
+    guarantee: 0.1
+    limit: 2
+  memory:
+    guarantee: 512Mi
+    limit: 2Gi
+  storage:
+    dynamic:
+      storageClass: longhorn
+```
+
+```bash
+helm repo add jupyterhub https://hub.jupyter.org/helm-chart/
+helm repo update
+helm upgrade --cleanup-on-fail \
+  --install ds301-hub jupyterhub/jupyterhub \
+  --namespace ds301-fall2026 \
+  --create-namespace \
+  --values config.yaml
 ```
 
 ## Step 5: Development Environment Templates
 
-Provide course-specific development environments using Rancher's catalog:
+Provide course-specific development environments using Rancher Apps:
 
 ```yaml
-# Helm chart values for course dev environment
-# values.yaml for code-server (VS Code in browser)
-codeServer:
-  image: codercom/code-server:latest
-  password: "${STUDENT_PASSWORD}"
-  extensions:
-    - ms-python.python
-    - ms-toolsai.jupyter
-  persistence:
-    enabled: true
-    size: 5Gi
-    storageClass: longhorn
+# values.yaml for the code-server Helm chart
+# existingSecret must contain a `password` key
+existingSecret: code-server-auth
+
+persistence:
+  enabled: true
+  size: 5Gi
+  storageClass: longhorn
+
+extraInitContainers: |
+  - name: install-extensions
+    image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+    imagePullPolicy: IfNotPresent
+    command:
+      - sh
+      - -c
+      - |
+        code-server --install-extension ms-python.python
+        code-server --install-extension ms-toolsai.jupyter
+    volumeMounts:
+      - name: data
+        mountPath: /home/coder
 ```
 
 ## Step 6: Seasonal Auto-Scaling
 
-Handle exam periods and project deadlines with cluster autoscaling:
+Handle exam periods and project deadlines with horizontal pod autoscaling:
+
+Requires `metrics-server` or another `metrics.k8s.io` provider in the cluster.
 
 ```yaml
 # Horizontal Pod Autoscaler for shared lab services
@@ -203,7 +221,7 @@ spec:
 ## Step 7: LDAP Integration for University SSO
 
 ```text
-Rancher UI → Global Settings → Auth → LDAP
+Rancher UI → Users & Authentication → Auth Provider → OpenLDAP
 - Server: ldaps://ldap.university.edu:636
 - Service Account DN: cn=rancher-svc,ou=service,dc=university,dc=edu
 - User Search Base: ou=people,dc=university,dc=edu
@@ -215,6 +233,8 @@ Rancher UI → Global Settings → Auth → LDAP
 
 ## Step 8: GPU Scheduling for Research
 
+Install the GPU drivers and the vendor device plugin on the research nodes first so `nvidia.com/gpu` is advertised as a schedulable resource.
+
 ```yaml
 # Research namespace with GPU quota
 apiVersion: v1
@@ -225,7 +245,6 @@ metadata:
 spec:
   hard:
     requests.nvidia.com/gpu: "4"
-    limits.nvidia.com/gpu: "4"
 ---
 # Example ML training job
 apiVersion: batch/v1
