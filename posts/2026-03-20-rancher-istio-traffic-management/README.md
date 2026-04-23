@@ -12,12 +12,12 @@ Istio's traffic management capabilities give you fine-grained control over the f
 
 - Istio installed and configured in your Rancher cluster
 - Sidecar injection enabled for your application namespaces
-- A sample application deployed for testing (we'll use a simple bookinfo-style setup)
+- A sample application deployed for testing (we'll use a simple two-version service)
 - `kubectl` access to the cluster
 
 ## Core Traffic Management Concepts
 
-Istio traffic management is built on four core resources:
+This guide focuses on four key traffic management resources:
 
 1. **VirtualService**: Defines routing rules for traffic destined for a service
 2. **DestinationRule**: Defines policies applied to traffic after routing (load balancing, circuit breaking)
@@ -32,7 +32,7 @@ Istio traffic management is built on four core resources:
 kubectl create namespace traffic-demo
 kubectl label namespace traffic-demo istio-injection=enabled
 
-# Deploy v1 of the application
+# Deploy two versions of the application
 kubectl apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
@@ -100,7 +100,7 @@ Split traffic between v1 and v2 using a VirtualService and DestinationRule:
 
 ```yaml
 # destination-rule.yaml - Define subsets for each version
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -120,7 +120,7 @@ spec:
 
 ```yaml
 # virtual-service-canary.yaml - Send 90% to v1, 10% to v2
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -150,19 +150,21 @@ kubectl apply -f virtual-service-canary.yaml
 
 ## Step 3: Configure Load Balancing
 
+Update the existing `DestinationRule` to add a load balancing policy while keeping the subsets defined earlier:
+
 ```yaml
-# destination-rule-lb.yaml - Configure load balancing strategy
-apiVersion: networking.istio.io/v1alpha3
+# destination-rule.yaml - Update the existing DestinationRule with load balancing
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: my-service-lb
+  name: my-service
   namespace: traffic-demo
 spec:
   host: my-service
   trafficPolicy:
     loadBalancer:
-      # Options: ROUND_ROBIN, LEAST_CONN, RANDOM, PASSTHROUGH
-      simple: LEAST_CONN
+      # Common options: ROUND_ROBIN, LEAST_REQUEST, RANDOM, PASSTHROUGH
+      simple: LEAST_REQUEST
   subsets:
   - name: v1
     labels:
@@ -172,22 +174,27 @@ spec:
         # Use consistent hashing for session affinity
         consistentHash:
           httpHeaderName: "x-user-id"
+  - name: v2
+    labels:
+      version: v2
 ```
 
 ## Step 4: Configure Circuit Breaking
 
-Circuit breaking prevents cascading failures by stopping traffic to unhealthy services:
+Update the same `DestinationRule` to add circuit breaking and outlier detection settings:
 
 ```yaml
-# circuit-breaker.yaml
-apiVersion: networking.istio.io/v1alpha3
+# destination-rule.yaml - Update the existing DestinationRule with circuit breaking
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: my-service-circuit-breaker
+  name: my-service
   namespace: traffic-demo
 spec:
   host: my-service
   trafficPolicy:
+    loadBalancer:
+      simple: LEAST_REQUEST
     connectionPool:
       tcp:
         # Maximum number of TCP connections
@@ -206,16 +213,30 @@ spec:
       baseEjectionTime: 30s
       # Maximum percentage of hosts that can be ejected
       maxEjectionPercent: 50
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+    trafficPolicy:
+      loadBalancer:
+        # Use consistent hashing for session affinity
+        consistentHash:
+          httpHeaderName: "x-user-id"
+  - name: v2
+    labels:
+      version: v2
 ```
 
 ## Step 5: Configure Retry Logic
 
+Update the existing `VirtualService` to add retry logic for failed requests:
+
 ```yaml
-# virtual-service-retry.yaml - Add retry logic for failed requests
-apiVersion: networking.istio.io/v1alpha3
+# virtual-service-canary.yaml - Add retry logic to the existing canary route
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: my-service-retry
+  name: my-service
   namespace: traffic-demo
 spec:
   hosts:
@@ -225,13 +246,18 @@ spec:
     - destination:
         host: my-service
         subset: v1
+      weight: 90
+    - destination:
+        host: my-service
+        subset: v2
+      weight: 10
     retries:
       # Number of retry attempts
       attempts: 3
       # Timeout per retry attempt
       perTryTimeout: 2s
-      # Retry on connection failures and 5xx errors
-      retryOn: connect-failure,retriable-4xx,refused-stream,unavailable,cancelled,resource-exhausted,5xx
+      # Retry on gateway errors, connection failures, and refused streams
+      retryOn: gateway-error,connect-failure,refused-stream
     timeout: 10s
 ```
 
