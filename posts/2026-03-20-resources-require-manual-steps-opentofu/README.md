@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, Manual Steps, Null_resource, Provisioner, Infrastructure as Code, Best Practice
+Tags: OpenTofu, Manual Steps, Terraform_data, Provisioner, Infrastructure as Code, Best Practice
 
-Description: Learn how to handle resources that require out-of-band manual steps using null_resource, local-exec provisioners, and preconditions in OpenTofu.
+Description: Learn how to handle resources that require out-of-band manual steps using terraform_data, local-exec provisioners, and preconditions in OpenTofu.
 
 ## Introduction
 
@@ -38,18 +38,18 @@ resource "aws_acm_certificate_validation" "main" {
 }
 ```
 
-## Null Resource for Manual Verification
+## terraform_data for Manual Verification
 
 Pause execution with a `local-exec` prompt.
 
 ```hcl
-resource "null_resource" "verify_manual_step" {
+resource "terraform_data" "verify_manual_step" {
   depends_on = [aws_acm_certificate.main]
 
-  # Only run when certificate is first created
-  triggers = {
-    certificate_arn = aws_acm_certificate.main.arn
-  }
+  # Only run when certificate is first created or replaced
+  triggers_replace = [
+    aws_acm_certificate.main.arn
+  ]
 
   provisioner "local-exec" {
     command = <<-SCRIPT
@@ -58,13 +58,16 @@ resource "null_resource" "verify_manual_step" {
       echo "MANUAL STEP REQUIRED"
       echo "═══════════════════════════════════════════════════════"
       echo ""
-      echo "Add the following DNS validation record to your domain:"
+      echo "Add the following DNS validation record(s) to your domain:"
       echo ""
-      echo "  Name:  ${aws_acm_certificate.main.domain_validation_options[*].resource_record_name}"
-      echo "  Type:  CNAME"
-      echo "  Value: ${aws_acm_certificate.main.domain_validation_options[*].resource_record_value}"
+%{ for option in aws_acm_certificate.main.domain_validation_options ~}
+      echo "  Name:  ${option.resource_record_name}"
+      echo "  Type:  ${option.resource_record_type}"
+      echo "  Value: ${option.resource_record_value}"
       echo ""
-      echo "Press Enter after the DNS record has been added..."
+%{ endfor ~}
+      echo ""
+      echo "Press Enter after the DNS record(s) have been added..."
       read confirmation
     SCRIPT
     interpreter = ["/bin/bash", "-c"]
@@ -78,9 +81,13 @@ resource "null_resource" "verify_manual_step" {
 output "manual_steps_required" {
   description = "Manual actions required before the next apply"
   value = <<-EOT
-    1. Add the following CNAME record to your DNS:
-       Name:  ${aws_acm_certificate.main.domain_validation_options[0].resource_record_name}
-       Value: ${aws_acm_certificate.main.domain_validation_options[0].resource_record_value}
+    1. Add the following DNS validation record(s):
+%{ for option in aws_acm_certificate.main.domain_validation_options ~}
+       Domain: ${option.domain_name}
+       Name:   ${option.resource_record_name}
+       Type:   ${option.resource_record_type}
+       Value:  ${option.resource_record_value}
+%{ endfor ~}
 
     2. After DNS propagates (5-30 minutes), run:
        tofu apply -var="dns_propagated=true"
@@ -102,7 +109,7 @@ variable "skip_manual_verification" {
   default     = false
 }
 
-resource "null_resource" "manual_verification" {
+resource "terraform_data" "manual_verification" {
   count = var.skip_manual_verification ? 0 : 1
 
   provisioner "local-exec" {
@@ -120,7 +127,7 @@ resource "null_resource" "manual_verification" {
 
 ## Phased Apply with -target
 
-For complex deployments with mandatory review between phases, use `-target` to apply in stages.
+For exceptional bootstrapping cases where the full graph cannot proceed until a manual dependency exists, use `-target` to apply a whole resource in stages.
 
 ```bash
 # Phase 1: Create the certificate
@@ -137,4 +144,4 @@ tofu apply -var="dns_propagated=true"
 
 ## Summary
 
-Resources requiring manual steps are handled in OpenTofu through precondition variables that gate progress, null_resource prompts that pause execution, descriptive outputs that guide operators, and phased apply strategies. These patterns make the manual requirements explicit, auditable, and hard to skip accidentally.
+Resources requiring manual steps are handled in OpenTofu through precondition variables that gate progress, terraform_data prompts that pause execution, descriptive outputs that guide operators, and phased apply strategies. These patterns make the manual requirements explicit, auditable, and hard to skip accidentally.
