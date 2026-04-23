@@ -26,16 +26,20 @@ sudo yum install quagga
 ## Enabling ripngd
 
 ```bash
-# Edit Quagga daemons file
+# On Debian/Ubuntu versions that use /etc/quagga/daemons
 sudo nano /etc/quagga/daemons
-# Set: ripngd=yes
+# Set: zebra=yes and ripngd=yes
+sudo systemctl enable quagga
+sudo systemctl start quagga
 
-# Start the ripngd service
-sudo systemctl enable ripngd
+# On packages with per-daemon systemd units
+sudo systemctl enable zebra ripngd
+sudo systemctl start zebra
 sudo systemctl start ripngd
 
 # Verify it's running
 sudo systemctl status ripngd
+# Or, on older Debian/Ubuntu packages: sudo systemctl status quagga
 ```
 
 ## Configuration File Structure
@@ -52,6 +56,7 @@ sudo nano /etc/quagga/ripngd.conf
 !
 hostname ripngd
 password zebra
+enable password zebra
 !
 router ripng
  network eth0
@@ -68,9 +73,11 @@ sudo sysctl -w net.ipv6.conf.all.forwarding=1
 
 ## Connecting to the ripngd Console
 
-```bash
+```text
 # Connect to the ripngd Telnet console (port 2603)
 telnet localhost 2603
+Password: zebra
+ripngd> enable
 Password: zebra
 
 # Or use vtysh (if installed)
@@ -81,6 +88,8 @@ vtysh
 
 ```text
 # In the ripngd console or vtysh
+ripngd> enable
+Password: zebra
 ripngd# configure terminal
 ripngd(config)# router ripng
 ripngd(config-router)# network eth0
@@ -88,33 +97,35 @@ ripngd(config-router)# network eth1
 ripngd(config-router)# redistribute connected
 ripngd(config-router)# exit
 ripngd(config)# exit
-ripngd# write memory
+ripngd# write file
 ```
 
 ## Verification Commands
 
 ```text
 ! Show RIPng routes
-ripngd# show ipv6 ripng
+ripngd# show ip ripng
 
-! Show routing table
-ripngd# show ipv6 route
+! Show routing table (from zebra or vtysh)
+zebra# show ipv6 route
 
 ! Show debug information
 ripngd# debug ripng events
-ripngd# debug ripng packet recv
+ripngd# debug ripng packet
 ```
 
 ## Zebra (Quagga's Route Manager)
 
 Quagga requires the `zebra` daemon to manage the kernel routing table:
 
-```bash
-# /etc/quagga/zebra.conf
+```text
+! /etc/quagga/zebra.conf
 hostname zebra
 password zebra
 enable password zebra
+```
 
+```bash
 # Start zebra first
 sudo systemctl start zebra
 sudo systemctl start ripngd
@@ -122,20 +133,21 @@ sudo systemctl start ripngd
 
 ## Migrating from Quagga to FRRouting
 
-FRRouting is a drop-in replacement for Quagga. Configuration files are mostly compatible:
+FRRouting is the successor to Quagga. Configuration commands are mostly compatible, but current FRR saves configuration in `/etc/frr/frr.conf` rather than updating per-daemon files:
 
 ```bash
 # Install FRR
 sudo apt install frr
 
-# Copy Quagga config files
-sudo cp /etc/quagga/ripngd.conf /etc/frr/ripngd.conf
+# Merge the Quagga RIPng stanza into FRR's integrated config
+sudo nano /etc/frr/frr.conf
 
 # Enable ripngd in FRR
 sudo sed -i 's/^ripngd=no/ripngd=yes/' /etc/frr/daemons
 
 # Start FRR (stop Quagga first)
-sudo systemctl stop quagga
+sudo systemctl stop ripngd zebra
+# On older Debian/Ubuntu packages with a suite service: sudo systemctl stop quagga
 sudo systemctl start frr
 ```
 
