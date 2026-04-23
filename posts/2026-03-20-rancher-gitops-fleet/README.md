@@ -31,16 +31,18 @@ Fleet supports multiple manifest formats in a single repo:
 
 ```text
 my-app-repo/
-├── fleet.yaml                  # Root-level Fleet config (optional)
 ├── deploy/
+│   ├── fleet.yaml              # Raw manifest bundle config
 │   ├── namespace.yaml
 │   ├── deployment.yaml
 │   └── service.yaml
 ├── helm/
-│   ├── fleet.yaml              # Helm chart config
-│   └── values.yaml
+│   ├── Chart.yaml
+│   ├── fleet.yaml              # Helm chart bundle config
+│   ├── values.yaml
+│   └── templates/
 └── kustomize/
-    ├── kustomization.yaml
+    ├── fleet.yaml              # Kustomize bundle config
     ├── base/
     └── overlays/
         ├── dev/
@@ -50,12 +52,12 @@ my-app-repo/
 ## Step 2: Create a Basic fleet.yaml
 
 ```yaml
-# fleet.yaml - configures how Fleet handles this directory
+# deploy/fleet.yaml - configures how Fleet handles this directory
 
 defaultNamespace: production
 
-# Target specific clusters
-targets:
+# Customize the bundle per target cluster
+targetCustomizations:
   - name: production-clusters
     clusterSelector:
       matchLabels:
@@ -65,13 +67,8 @@ targets:
     clusterSelector:
       matchLabels:
         environment: development
-    # Override values for dev clusters
-    helm:
-      values:
-        replicaCount: 1
-        resources:
-          limits:
-            memory: 256Mi
+    # Override the namespace for dev clusters
+    defaultNamespace: development
 ```
 
 ## Step 3: Create a GitRepo Resource
@@ -82,7 +79,7 @@ apiVersion: fleet.cattle.io/v1alpha1
 kind: GitRepo
 metadata:
   name: my-application
-  namespace: fleet-default     # fleet-default = manage all imported clusters
+  namespace: fleet-default     # downstream clusters registered through Rancher
 spec:
   # Git repository URL
   repo: https://github.com/my-org/my-app-repo
@@ -100,15 +97,19 @@ spec:
 
   # Target clusters
   targets:
-    - name: all-production
+    - name: production
       clusterSelector:
         matchLabels:
           environment: production
+    - name: development
+      clusterSelector:
+        matchLabels:
+          environment: development
 ```
 
 ```bash
 kubectl apply -f gitrepo-myapp.yaml
-kubectl get gitrepo -n fleet-default
+kubectl get gitrepos -n fleet-default
 ```
 
 ## Step 4: Use Private Git Repositories
@@ -117,41 +118,42 @@ kubectl get gitrepo -n fleet-default
 # Create credentials for a private GitHub repo (HTTPS)
 kubectl create secret generic github-credentials \
   -n fleet-default \
+  --type=kubernetes.io/basic-auth \
   --from-literal=username=my-github-user \
   --from-literal=password=ghp_xxxxxxxxxxxx   # GitHub Personal Access Token
 
 # For SSH:
+ssh-keyscan -H github.com > known_hosts
+
 kubectl create secret generic github-ssh \
   -n fleet-default \
+  --type=kubernetes.io/ssh-auth \
   --from-file=ssh-privatekey=/path/to/id_ed25519 \
-  --from-literal=known_hosts="github.com ssh-ed25519 AAAAC3..."
+  --from-file=known_hosts=./known_hosts
 ```
 
 ```yaml
 # Reference the secret in the GitRepo
 spec:
-  clientSecretName: github-credentials
+  clientSecretName: github-credentials   # or github-ssh
 ```
 
 ## Step 5: Deploy Helm Charts via Fleet
 
 ```yaml
-# fleet.yaml inside a Helm chart directory
+# helm/fleet.yaml inside a Helm chart directory
 helm:
   chart: ./
   releaseName: my-app
-  version: "1.2.0"
   values:
     image:
       tag: "v1.2.0"
-  valuesFiles:
-    - values.yaml
-  # Per-cluster value overrides
+  # Per-cluster value overrides from downstream cluster Secrets/ConfigMaps
   valuesFrom:
     - secretKeyRef:
         name: cluster-specific-values
         key: values.yaml
-        namespace: fleet-system
+        namespace: production
 ```
 
 ## Step 6: Use Kustomize Overlays for Multi-Environment
@@ -159,15 +161,15 @@ helm:
 ```yaml
 # kustomize/fleet.yaml
 kustomize:
-  dir: overlays/production
+  dir: overlays/prod
 
-targets:
+targetCustomizations:
   - name: prod
     clusterSelector:
       matchLabels:
         environment: production
     kustomize:
-      dir: overlays/production
+      dir: overlays/prod
 
   - name: dev
     clusterSelector:
@@ -181,17 +183,17 @@ targets:
 
 ```bash
 # Check all GitRepos
-kubectl get gitrepo -A
+kubectl get gitrepos -A
 
 # Check Bundle deployment status
-kubectl get bundle -n fleet-default
-kubectl get bundledeployment -A
+kubectl get bundles -n fleet-default
+kubectl get bundledeployments -A
 
 # Watch for errors
 kubectl describe gitrepo -n fleet-default my-application | grep -A10 "Status:"
 
 # Get detailed status per cluster
-kubectl get bundledeployment -A -o wide
+kubectl get bundledeployments -A -o wide
 ```
 
 ```bash
@@ -201,16 +203,43 @@ kubectl get bundledeployment -A -o wide
 
 ## Step 8: Set Up Webhook Triggers for Instant Sync
 
-Instead of polling, trigger Fleet syncs immediately on git push:
+Instead of relying only on polling, expose Fleet's webhook endpoint and trigger syncs immediately on git push:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fleet-webhook
+  namespace: cattle-fleet-system
+spec:
+  rules:
+    - host: fleet-webhooks.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gitjob
+                port:
+                  number: 80
+```
+
+```yaml
+# Optional: disable polling and rely on webhooks only
+spec:
+  disablePolling: true
+```
 
 ```bash
-# Get the Fleet webhook URL for the GitRepo
-kubectl get gitrepo -n fleet-default my-application \
-  -o jsonpath='{.status.webhookURL}'
+# Optional: validate GitHub webhook payloads with a cluster-wide secret
+kubectl create secret generic gitjob-webhook \
+  -n cattle-fleet-system \
+  --from-literal=github=webhooksecretvalue
 
 # Configure this URL as a webhook in GitHub:
 # Repository → Settings → Webhooks → Add Webhook
-# Payload URL: <fleet-webhook-url>
+# Payload URL: https://fleet-webhooks.example.com/
 # Content type: application/json
 # Events: Push events
 ```
