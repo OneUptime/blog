@@ -8,7 +8,7 @@ Description: Learn how to resolve merge conflicts in the OpenTofu .terraform.loc
 
 ---
 
-Lock file conflicts occur when two branches both update provider versions. Because the lock file is auto-generated HCL with complex checksums, standard git conflict resolution doesn't work - attempting to manually merge checksums produces invalid files. The correct approach is to regenerate the lock file after resolving provider version conflicts in `providers.tf`.
+Lock file conflicts occur when two branches both update provider versions. Because the lock file is auto-generated HCL with complex checksums, standard line-by-line git conflict resolution is error-prone - leaving conflict markers or combining a provider version with checksums from another selection produces invalid files. The correct approach is to regenerate the lock file after resolving provider version conflicts in `providers.tf`.
 
 ## Conflict Scenario
 
@@ -17,7 +17,7 @@ graph TD
     A[main branch<br/>AWS provider 5.38] --> B[Branch A<br/>Upgrades to 5.40]
     A --> C[Branch B<br/>Upgrades to 5.42]
     B --> D[Both merged<br/>CONFLICT in lock file]
-    D --> E[Regenerate lock file<br/>with winner's version]
+    D --> E[Regenerate lock file<br/>with resolved constraints]
 ```
 
 ## Understanding the Conflict
@@ -57,23 +57,26 @@ git status
 cat providers.tf
 
 # Step 3: Accept one version of the lock file as the starting point
-# Option A: Use the incoming branch's lock file
+# Choose one of these commands
+# During a merge, --theirs is incoming and --ours is current
+# During a rebase, --ours is the branch being rebased onto and --theirs is your rebased work
+# Option A:
 git checkout --theirs .terraform.lock.hcl
 
-# Option B: Use the current branch's lock file
+# Option B:
 git checkout --ours .terraform.lock.hcl
 
-# Step 4: Regenerate the lock file with correct checksums
-tofu init -upgrade
+# Step 4: Regenerate the lock file for the resolved constraints
+tofu init
 
-# Step 5: Add all platform checksums
+# Step 5: Add the platform checksums your team/CI uses
 tofu providers lock \
-  -platform=linux/amd64 \
-  -platform=linux/arm64 \
-  -platform=darwin/amd64 \
-  -platform=darwin/arm64
+  -platform=linux_amd64 \
+  -platform=linux_arm64 \
+  -platform=darwin_amd64 \
+  -platform=darwin_arm64
 
-# Step 6: Verify the lock file is valid
+# Step 6: Verify the configuration is valid
 tofu validate
 
 # Step 7: Stage the regenerated lock file
@@ -89,9 +92,9 @@ git rebase --continue
 
 ```bash
 # If branch A wants aws ~> 5.40 and branch B wants aws ~> 5.42:
-# Choose the higher version (5.42) for the merge result
+# Choose the desired constraint for the merge result
 
-# 1. Edit providers.tf to use 5.42
+# 1. Edit providers.tf to use the chosen constraint
 vim providers.tf
 
 # 2. Delete the conflicted lock file and regenerate
@@ -102,9 +105,9 @@ tofu init
 
 # 4. Add platform checksums
 tofu providers lock \
-  -platform=linux/amd64 \
-  -platform=darwin/amd64 \
-  -platform=darwin/arm64
+  -platform=linux_amd64 \
+  -platform=darwin_amd64 \
+  -platform=darwin_arm64
 
 # 5. Run plan to verify no breaking changes
 tofu plan
@@ -113,11 +116,11 @@ tofu plan
 ## Git Configuration to Prevent Conflicts
 
 ```bash
-# .gitattributes - mark lock file as requiring special merge handling
-# This tells git not to auto-merge the lock file
-echo '.terraform.lock.hcl merge=ours' >> .gitattributes
+# .gitattributes - mark lock file as requiring manual merge handling
+# This tells git to keep the current branch's file but leave the path conflicted
+echo '.terraform.lock.hcl merge=binary' >> .gitattributes
 
-# Alternative: mark as binary to always require manual resolution
+# Alternative: use the built-in binary macro, which also disables text diffs
 echo '.terraform.lock.hcl binary' >> .gitattributes
 ```
 
@@ -130,13 +133,13 @@ git rebase main  # Get latest lock file from main
 
 # Then perform upgrade
 tofu init -upgrade
-tofu providers lock -platform=linux/amd64 -platform=darwin/amd64 -platform=darwin/arm64
+tofu providers lock -platform=linux_amd64 -platform=darwin_amd64 -platform=darwin_arm64
 
 # Prevention strategy 2: Dedicated "dependency upgrade" branches
 # Only one branch upgrades providers at a time
 git checkout -b deps/upgrade-providers-march-2026
 tofu init -upgrade
-tofu providers lock -platform=linux/amd64 -platform=darwin/amd64 -platform=darwin/arm64
+tofu providers lock -platform=linux_amd64 -platform=darwin_amd64 -platform=darwin_arm64
 git add providers.tf .terraform.lock.hcl
 git commit -m "Upgrade AWS provider to 5.45.0"
 ```
@@ -153,20 +156,20 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Check for lock file conflicts
         run: |
-          if grep -q '<<<<<<' .terraform.lock.hcl; then
+          if grep -q '<<<<<<<' .terraform.lock.hcl; then
             echo "ERROR: .terraform.lock.hcl contains unresolved merge conflicts"
-            echo "Run: tofu init -upgrade && tofu providers lock -platform=linux/amd64 -platform=darwin/amd64"
+            echo "Run: tofu init && tofu providers lock -platform=linux_amd64 -platform=darwin_amd64"
             exit 1
           fi
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
 
       - name: Validate lock file syntax
         run: tofu init
@@ -174,8 +177,8 @@ jobs:
 
 ## Best Practices
 
-- When resolving lock file conflicts, always regenerate the file with `tofu init -upgrade` rather than manually editing checksums - checksums are cryptographic hashes that must match exactly.
+- When resolving lock file conflicts, regenerate the file with `tofu init` (or `tofu init -upgrade` when you intentionally want the newest version allowed by your constraints) rather than manually editing checksums - checksums are cryptographic hashes that must match exactly.
 - Resolve `providers.tf` version constraints before regenerating the lock file - the lock file is derived from the version constraints, not the other way around.
 - Use Renovate or Dependabot to automate provider upgrades through dedicated PRs - this serializes upgrades and prevents simultaneous version changes that cause conflicts.
-- Add `.gitattributes` to mark the lock file as requiring manual merge resolution (`merge=ours`) - this prevents git from attempting an auto-merge that produces invalid HCL.
+- Add `.gitattributes` to mark the lock file as requiring manual merge resolution (`merge=binary` or `binary`) - this prevents git from attempting an auto-merge that produces invalid HCL.
 - In CI, explicitly check for conflict markers (`<<<<<<<`) in the lock file before running `tofu init` - a lock file with conflict markers causes confusing errors that are hard to diagnose.
