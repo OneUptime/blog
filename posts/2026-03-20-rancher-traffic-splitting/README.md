@@ -8,11 +8,13 @@ Description: Implement traffic splitting in Rancher for canary deployments, A/B 
 
 ## Introduction
 
-Traffic splitting allows you to route a percentage of traffic to different versions of a service, enabling canary deployments, A/B testing, and blue-green deployments without taking services offline. This guide covers implementing traffic splitting using Istio (Rancher's built-in service mesh), SMI-compliant meshes, and NGINX Ingress.
+Traffic splitting allows you to route a percentage of traffic to different versions of a service, enabling canary deployments, A/B testing, and blue-green deployments without taking services offline. This guide covers implementing traffic splitting on a Rancher-managed cluster using Istio, SMI-compatible meshes, and the ingress-nginx controller.
 
 ## Prerequisites
 
-- Rancher with Istio or SMI-compliant service mesh installed
+- Rancher-managed Kubernetes cluster
+- Istio or another compatible service mesh installed for Methods 1-3
+- ingress-nginx installed for Method 4
 - kubectl with cluster-admin access
 - Two versions of a service deployed
 
@@ -69,13 +71,27 @@ spec:
           image: registry.example.com/backend:v2.0
           ports:
             - containerPort: 8080
+---
+# backend-service.yaml - Stable service name used by Istio routing
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: production
+spec:
+  selector:
+    app: backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
 ```
 
 ### Create a DestinationRule with Subsets
 
 ```yaml
 # destination-rule.yaml - Define version subsets
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-destination
@@ -85,7 +101,7 @@ spec:
   trafficPolicy:
     # Default load balancing
     loadBalancer:
-      simple: LEAST_CONN
+      simple: LEAST_REQUEST
   subsets:
     # Stable version subset
     - name: v1
@@ -101,7 +117,7 @@ spec:
 
 ```yaml
 # virtual-service-canary.yaml - 90/10 traffic split
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-vs
@@ -148,13 +164,9 @@ for STAGE in "${STAGES[@]}"; do
   echo "Waiting 5 minutes before next stage..."
   sleep 300
 
-  # Check error rate before proceeding
-  ERROR_RATE=$(kubectl exec -n istio-system deployment/prometheus -- \
-    curl -s 'http://localhost:9090/api/v1/query?query=rate(istio_requests_total{destination_app="backend",destination_version="v2",response_code!="200"}[5m])/rate(istio_requests_total{destination_app="backend",destination_version="v2"}[5m])' \
-    | jq -r '.data.result[0].value[1]' 2>/dev/null || echo "0")
-
-  if (( $(echo "$ERROR_RATE > 0.05" | bc -l) )); then
-    echo "Error rate too high ($ERROR_RATE), rolling back!"
+  # Confirm the canary deployment stays healthy before proceeding
+  if ! kubectl rollout status deployment/backend-v2 -n production --timeout=2m; then
+    echo "Canary deployment is unhealthy, rolling back!"
     # Rollback to v1
     kubectl patch virtualservice backend-vs -n production \
       --type='json' \
@@ -173,7 +185,7 @@ Route specific users or testers to the canary version:
 
 ```yaml
 # header-based-routing.yaml - Route beta users to v2
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-vs
@@ -202,9 +214,9 @@ spec:
           weight: 100
 ```
 
-## Method 3: SMI Traffic Split (OSM, Linkerd)
+## Method 3: SMI Traffic Split (OSM, or Linkerd with the SMI extension)
 
-For SMI-compliant service meshes:
+For SMI-compatible controllers. If you're using Linkerd, TrafficSplit requires the Linkerd SMI extension; newer Linkerd setups prefer HTTPRoute for traffic shifting. On meshes that enforce SMI access policies, create the required traffic access resource as well (for example, a `TrafficTarget` in OSM).
 
 ```yaml
 # smi-traffic-split.yaml - SMI-compliant traffic splitting
@@ -215,7 +227,7 @@ metadata:
   namespace: production
 spec:
   # The root service (clients connect to this)
-  service: backend
+  service: backend.production.svc.cluster.local
   backends:
     # Stable version
     - service: backend-v1
@@ -255,12 +267,32 @@ spec:
     - port: 8080
 ```
 
-## Method 4: NGINX Ingress Traffic Splitting
+## Method 4: ingress-nginx Traffic Splitting
 
-For traffic splitting at the ingress level without a service mesh:
+For traffic splitting at the ingress level without a service mesh, create a primary Ingress and a canary Ingress with the same host and path:
 
 ```yaml
-# nginx-canary-ingress.yaml - NGINX canary ingress
+# backend-stable-ingress.yaml - Primary ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: backend-stable
+  namespace: production
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-v1
+                port:
+                  number: 8080
+---
+# backend-canary-ingress.yaml - ingress-nginx canary ingress
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -272,6 +304,7 @@ metadata:
     # Send 10% of traffic to canary
     nginx.ingress.kubernetes.io/canary-weight: "10"
 spec:
+  ingressClassName: nginx
   rules:
     - host: api.example.com
       http:
@@ -288,15 +321,16 @@ spec:
 ## Monitoring Traffic Split
 
 ```bash
-# Monitor request distribution with Istio
-kubectl exec -n istio-system deployment/prometheus -- \
-  curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(istio_requests_total{destination_app="backend"}[5m]))by(destination_version)' \
-  | jq '.data.result[] | {version: .metric.destination_version, rps: .value[1]}'
+# Confirm the current weights in the VirtualService
+kubectl get virtualservice backend-vs -n production -o jsonpath='{range .spec.http[0].route[*]}{.destination.subset}:{.weight}{"\n"}{end}'
 
-# Check error rates per version
-istioctl experimental describe pod $(kubectl get pod -n production -l app=backend,version=v2 -o name | head -1) -n production
+# Open Kiali to inspect request and error rates per version
+istioctl dashboard kiali
+
+# Inspect which Istio resources affect the canary pod
+istioctl experimental describe pod $(kubectl get pod -n production -l app=backend,version=v2 -o jsonpath='{.items[0].metadata.name}') -n production
 ```
 
 ## Conclusion
 
-Traffic splitting is an essential capability for safe production deployments. Istio's VirtualService provides the most flexible and powerful traffic management with weight-based, header-based, and fault injection capabilities. For SMI-compliant meshes, the TrafficSplit resource provides a portable approach. Always implement automated rollback mechanisms triggered by error rate thresholds to ensure canary deployments don't negatively impact production users.
+Traffic splitting is an essential capability for safe production deployments. Istio's VirtualService provides the most flexible and powerful traffic management with weight-based, header-based, and fault injection capabilities. For SMI-compliant meshes, the TrafficSplit resource provides a portable approach. Always implement automated rollback mechanisms triggered by health or error rate thresholds to ensure canary deployments don't negatively impact production users.
