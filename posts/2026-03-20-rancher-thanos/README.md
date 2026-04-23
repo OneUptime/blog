@@ -40,7 +40,7 @@ spec:
         key: thanos.yaml
 
   # Retention for local storage (short-term)
-  retention: 2h
+  retention: 6h
   retentionSize: 4GB
 
   # External labels for cluster identification
@@ -51,6 +51,8 @@ spec:
   # WAL compression
   walCompression: true
 ```
+
+If you installed Rancher Monitoring through Helm, also enable `prometheus.thanosService.enabled: true` so Thanos Query can discover the sidecar through the `rancher-monitoring-thanos-discovery` Service.
 
 ## Step 2: Create Object Store Configuration
 
@@ -81,12 +83,19 @@ EOF
 
 ```yaml
 # thanos-values.yaml - Thanos stack configuration
+existingObjstoreSecret: thanos-object-store-config
+existingObjstoreSecretItems:
+  - key: thanos.yaml
+    path: objstore.yml
+
 query:
   enabled: true
   replicaCount: 2
-  stores:
-    # Include Prometheus Thanos sidecar
-    - rancher-monitoring-prometheus-thanos-sidecar.cattle-monitoring-system.svc.cluster.local:10901
+  dnsDiscovery:
+    enabled: true
+    # Requires prometheus.thanosService.enabled=true in Rancher Monitoring
+    sidecarsService: rancher-monitoring-thanos-discovery
+    sidecarsNamespace: cattle-monitoring-system
   resources:
     requests:
       memory: 256Mi
@@ -100,28 +109,21 @@ queryFrontend:
     type: IN-MEMORY
     config:
       max_size: 512MB
-      max_item_size: 128MB
+      validity: 24h
 
 # Store Gateway (serves data from object store)
-storeGateway:
+storegateway:
   enabled: true
   persistence:
     enabled: true
     size: 10Gi
-  config:
-    type: s3
-    config:
-      bucket: thanos-metrics-storage
-      endpoint: s3.amazonaws.com
-      region: us-east-1
 
-# Compactor (downsamples and removes duplicate data)
+# Compactor (compacts blocks, downsamples, and enforces retention)
 compactor:
   enabled: true
-  retention:
-    resolutionRaw: 30d   # Keep raw data for 30 days
-    resolution5m: 90d    # Keep 5m downsampled for 90 days
-    resolution1h: 365d   # Keep 1h downsampled for 1 year
+  retentionResolutionRaw: 30d   # Keep raw data for 30 days
+  retentionResolution5m: 90d    # Keep 5m downsampled for 90 days
+  retentionResolution1h: 365d   # Keep 1h downsampled for 1 year
   persistence:
     enabled: true
     size: 50Gi
@@ -144,18 +146,7 @@ helm install thanos bitnami/thanos \
 
 ## Step 4: Configure Grafana to Use Thanos
 
-```bash
-# Add Thanos Query as Prometheus data source in Grafana
-kubectl exec -n cattle-monitoring-system \
-  deployment/rancher-monitoring-grafana -- \
-  grafana-cli \
-  admin add-data-source \
-  --name "Thanos" \
-  --type prometheus \
-  --url "http://thanos-query.cattle-monitoring-system.svc.cluster.local:9090"
-```
-
-Or configure via Grafana ConfigMap:
+Configure via Grafana ConfigMap:
 
 ```yaml
 # grafana-datasource-thanos.yaml - Add Thanos as Grafana datasource
@@ -172,7 +163,7 @@ data:
     datasources:
       - name: Thanos
         type: prometheus
-        url: http://thanos-query.cattle-monitoring-system.svc.cluster.local:9090
+        url: http://thanos-query-frontend.cattle-monitoring-system.svc.cluster.local:9090
         access: proxy
         isDefault: false
         jsonData:
@@ -193,18 +184,29 @@ metadata:
   namespace: monitoring
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: thanos-global-query
   template:
+    metadata:
+      labels:
+        app: thanos-global-query
     spec:
       containers:
         - name: thanos-query
           image: quay.io/thanos/thanos:v0.36.0
+          ports:
+            - name: http
+              containerPort: 9090
+            - name: grpc
+              containerPort: 10901
           args:
             - query
             - --http-address=0.0.0.0:9090
             # Connect to store gateways from all clusters
-            - --store=cluster1-thanos-store.cluster1.svc.cluster.local:10901
-            - --store=cluster2-thanos-store.cluster2.svc.cluster.local:10901
-            - --store=cluster3-thanos-store.cluster3.svc.cluster.local:10901
+            - --endpoint=cluster1-thanos-store.cluster1.svc.cluster.local:10901
+            - --endpoint=cluster2-thanos-store.cluster2.svc.cluster.local:10901
+            - --endpoint=cluster3-thanos-store.cluster3.svc.cluster.local:10901
             # Deduplicate metrics from replicated Prometheus
             - --query.replica-label=prometheus_replica
 ```
