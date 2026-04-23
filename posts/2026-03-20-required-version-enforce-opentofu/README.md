@@ -36,7 +36,8 @@ terraform {
   # Minimum version - anything 1.8.0 or newer
   # required_version = ">= 1.8.0"
 
-  # Pessimistic constraint operator - allows patch updates only
+  # Pessimistic constraint operator - allows only the rightmost
+  # specified version component to increment
   # (~> 1.8.0 allows 1.8.x but not 1.9.0)
   # required_version = "~> 1.8.0"
 
@@ -81,12 +82,13 @@ tofu init
 # ╷
 # │ Error: Unsupported OpenTofu Core version
 # │
-# │ This configuration does not support OpenTofu Core version 1.7.0.
-# │ To proceed, either choose another supported OpenTofu Core version
-# │ or update this configuration to allow the version being used.
+# │   on versions.tf line 4, in terraform:
+# │    4:   required_version = ">= 1.8.0"
 # │
-# │ Required version: >= 1.8.0
-# │ Current version: v1.7.0
+# │ This configuration does not support OpenTofu version 1.7.0. To proceed,
+# │ either choose another supported OpenTofu version or update this version
+# │ constraint. Version constraints are normally set for good reason, so
+# │ updating the constraint may lead to other errors or unexpected behavior.
 # ╵
 ```
 
