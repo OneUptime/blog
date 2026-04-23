@@ -4,17 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, High Availability, HAProxy, Load Balancing
 
-Description: Configure HAProxy as the load balancer for Rancher HA deployments with health checks, SSL passthrough, and WebSocket support for reliable cluster management.
+Description: Configure HAProxy as the load balancer for Rancher HA deployments with Rancher's recommended Layer 4 forwarding, optional external TLS termination, and support for long-lived WebSocket connections.
 
 ## Introduction
 
-HAProxy is a high-performance, battle-tested load balancer commonly used in front of Rancher HA deployments. Its fine-grained configuration options make it ideal for handling Rancher's mix of HTTP/HTTPS traffic and long-lived WebSocket connections from cluster agents. This guide covers complete HAProxy configuration for Rancher HA.
+HAProxy is a high-performance, battle-tested load balancer commonly used in front of Rancher HA deployments. Its fine-grained configuration options make it ideal for handling Rancher's mix of TCP traffic on ports 80/443 and long-lived WebSocket connections. This guide covers Rancher's recommended Layer 4 HAProxy configuration for Rancher HA, plus an alternative setup for external TLS termination.
 
 ## Prerequisites
 
-- HAProxy 2.6+ installed on a dedicated node or VM
-- Running Rancher HA cluster (3 nodes)
-- TLS certificate for Rancher hostname
+- HAProxy installed on a dedicated node or VM
+- Running Rancher HA cluster (three nodes are used in the examples below)
+- TLS certificate for Rancher hostname if you plan to terminate TLS at HAProxy
+- Rancher installed with `--set tls=external` if you plan to terminate TLS at HAProxy
 - HAProxy node with connectivity to all Rancher nodes
 
 ## Step 1: Install HAProxy
@@ -28,7 +29,7 @@ apt install -y haproxy
 # RHEL/CentOS
 yum install -y haproxy
 
-# Verify version (2.6+ recommended)
+# Verify version
 haproxy -v
 ```
 
@@ -45,41 +46,27 @@ global
     stats timeout 30s
     user haproxy
     group haproxy
-    daemon
-
-    # TLS settings
-    ssl-default-bind-ciphers ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:RSA+AESGCM:RSA+AES:!aNULL:!MD5:!DSS
-    ssl-default-bind-options no-sslv3
-    tune.ssl.default-dh-param 2048
 
 defaults
     log global
-    mode http
-    option httplog
+    mode tcp
+    option tcplog
     option dontlognull
-    timeout connect 10s
-    timeout client 3600s    # Long timeout for WebSocket connections
-    timeout server 3600s
-    timeout tunnel 3600s    # Critical for WebSocket/tunnel connections
+    timeout connect 30s
+    timeout client 1800s
+    timeout server 1800s
+    timeout tunnel 1800s
 
 #-------------------
-# Rancher HTTPS
+# Rancher UI/API
 #-------------------
-frontend rancher_https
-    bind *:443 ssl crt /etc/haproxy/certs/rancher.pem
-    mode http
-    option forwardfor
-    http-request set-header X-Forwarded-Proto https
-
-    # WebSocket detection
-    acl is_websocket hdr(Upgrade) -i websocket
-    use_backend rancher_ws_backend if is_websocket
-    default_backend rancher_https_backend
-
 frontend rancher_http
     bind *:80
-    mode http
-    redirect scheme https code 301
+    default_backend rancher_http_backend
+
+frontend rancher_https
+    bind *:443
+    default_backend rancher_https_backend
 
 #-------------------
 # RKE2 API Server
@@ -100,32 +87,29 @@ frontend rke2_register
 # Backends
 #-------------------
 backend rancher_https_backend
-    mode http
-    option forwardfor
-    option httpchk GET /ping
-    http-check expect string pong
+    mode tcp
     balance roundrobin
+    option tcp-check
     default-server inter 10s fall 3 rise 2
 
-    server rancher-01 10.0.0.11:443 check ssl verify none
-    server rancher-02 10.0.0.12:443 check ssl verify none
-    server rancher-03 10.0.0.13:443 check ssl verify none
+    server rancher-01 10.0.0.11:443 check
+    server rancher-02 10.0.0.12:443 check
+    server rancher-03 10.0.0.13:443 check
 
-backend rancher_ws_backend
-    mode http
-    option http-server-close
-    option forwardfor
-    balance source  # Sticky sessions for WebSocket
-    timeout tunnel 3600s
+backend rancher_http_backend
+    mode tcp
+    balance roundrobin
+    option tcp-check
+    default-server inter 10s fall 3 rise 2
 
-    server rancher-01 10.0.0.11:443 check ssl verify none
-    server rancher-02 10.0.0.12:443 check ssl verify none
-    server rancher-03 10.0.0.13:443 check ssl verify none
+    server rancher-01 10.0.0.11:80 check
+    server rancher-02 10.0.0.12:80 check
+    server rancher-03 10.0.0.13:80 check
 
 backend rke2_api_backend
     mode tcp
     balance roundrobin
-    option ssl-hello-chk
+    option tcp-check
 
     server cp-01 10.0.0.11:6443 check
     server cp-02 10.0.0.12:6443 check
@@ -145,6 +129,7 @@ backend rke2_register_backend
 frontend stats
     bind *:8404
     mode http
+    option httplog
     stats enable
     stats uri /stats
     stats refresh 10s
@@ -152,10 +137,12 @@ frontend stats
     stats hide-version
 ```
 
-## Step 3: Configure SSL Certificate
+## Step 3: Configure SSL Certificate (External TLS Termination Only)
 
 ```bash
 # Combine certificate and private key for HAProxy
+mkdir -p /etc/haproxy/certs
+
 cat /etc/ssl/certs/rancher.crt \
     /etc/ssl/private/rancher.key \
     > /etc/haproxy/certs/rancher.pem
@@ -163,27 +150,34 @@ cat /etc/ssl/certs/rancher.crt \
 chmod 600 /etc/haproxy/certs/rancher.pem
 ```
 
-## Step 4: Configure SSL Passthrough (Alternative)
+## Step 4: Configure External TLS Termination (Alternative)
 
 ```haproxy
-# For SSL passthrough (Rancher handles TLS termination)
-frontend rancher_ssl_passthrough
-    bind *:443
-    mode tcp
-    option tcplog
-    use_backend rancher_passthrough
+# For external TLS termination (Rancher installed with --set tls=external)
+frontend rancher_https
+    bind *:443 ssl crt /etc/haproxy/certs/rancher.pem alpn h2,http/1.1
+    mode http
+    option forwardfor
+    http-request set-header X-Forwarded-Proto https
+    http-request set-header X-Forwarded-Port 443
+    default_backend rancher_http_backend
 
-backend rancher_passthrough
-    mode tcp
+frontend rancher_http
+    bind *:80
+    mode http
+    redirect scheme https code 301
+
+backend rancher_http_backend
+    mode http
+    option httpchk
+    http-check send meth GET uri /healthz ver HTTP/1.1 hdr Host rancher.example.com
+    http-check expect status 200
     balance roundrobin
-    option ssl-hello-chk
-    # Health check on TCP level
-    option tcp-check
-    tcp-check connect ssl
+    default-server inter 10s fall 3 rise 2
 
-    server rancher-01 10.0.0.11:443 check
-    server rancher-02 10.0.0.12:443 check
-    server rancher-03 10.0.0.13:443 check
+    server rancher-01 10.0.0.11:80 check
+    server rancher-02 10.0.0.12:80 check
+    server rancher-03 10.0.0.13:80 check
 ```
 
 ## Step 5: Enable and Verify HAProxy
@@ -200,19 +194,19 @@ systemctl start haproxy
 systemctl status haproxy
 
 # View stats
-curl http://localhost:8404/stats
+curl -u admin:securepassword http://localhost:8404/stats
 
 # Test Rancher health through HAProxy
-curl -sk https://rancher.example.com/ping
+curl -sk https://rancher.example.com/healthz
 ```
 
 ## Step 6: Configure HAProxy High Availability with Keepalived
 
-```bash
+```conf
 # Run HAProxy on 2+ nodes with keepalived VIP
 # haproxy-primary keepalived.conf
 vrrp_script chk_haproxy {
-    script "killall -0 haproxy"
+    script "pidof haproxy"
     interval 2
     weight 2
 }
@@ -251,4 +245,4 @@ echo "disable server rancher_https_backend/rancher-01" | \
 
 ## Conclusion
 
-HAProxy provides enterprise-grade load balancing for Rancher HA with extensive health checking, WebSocket support, and real-time monitoring. The critical configuration elements are generous timeout settings for WebSocket connections (3600s), SSL certificate handling, and proper health check configuration using Rancher's `/ping` endpoint. For production deployments, run HAProxy in an active-passive pair with keepalived to eliminate the load balancer itself as a single point of failure.
+HAProxy provides enterprise-grade load balancing for Rancher HA with long-lived connection support and real-time monitoring. For Rancher Manager on Kubernetes, the recommended starting point is Layer 4 forwarding on ports 80 and 443. If you terminate TLS at HAProxy instead, configure Rancher with `--set tls=external`, pass the required proxy headers, and use the `/healthz` endpoint for HTTP health checks. For production deployments, run HAProxy in an active-passive pair with keepalived to eliminate the load balancer itself as a single point of failure.
