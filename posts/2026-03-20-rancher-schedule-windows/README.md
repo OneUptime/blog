@@ -8,7 +8,7 @@ Description: Configure Kubernetes scheduling rules to direct Windows workloads t
 
 ## Introduction
 
-Proper workload scheduling in mixed OS clusters ensures that Windows containers always run on Windows nodes and Linux containers on Linux nodes. Incorrect scheduling results in pod failures with "image OS mismatch" errors. This guide covers all scheduling mechanisms for directing workloads to the correct nodes in Rancher.
+Proper workload scheduling in mixed OS clusters ensures that Windows containers always run on Windows nodes and Linux containers on Linux nodes. Windows pods should set `.spec.os.name: windows` and use Kubernetes scheduling rules to land on compatible nodes. Incorrect scheduling results in pod failures with "image OS mismatch" errors. This guide covers all scheduling mechanisms for directing workloads to the correct nodes in Rancher.
 
 ## Prerequisites
 
@@ -21,29 +21,53 @@ Proper workload scheduling in mixed OS clusters ensures that Windows containers 
 ```yaml
 # Simplest approach: nodeSelector
 
-# Every Windows workload MUST have this
+# Recommended baseline for Windows workloads
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: windows-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: windows-app
   template:
+    metadata:
+      labels:
+        app: windows-app
     spec:
-      # This is mandatory for Windows pods
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
       containers:
         - name: app
           image: registry.example.com/windows-app:v1.0
 
+---
 # For Linux workloads, explicitly target Linux nodes
 # (prevents accidental scheduling on Windows if all Linux nodes are full)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: linux-app
+  namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: linux-app
   template:
+    metadata:
+      labels:
+        app: linux-app
     spec:
+      os:
+        name: linux
       nodeSelector:
         kubernetes.io/os: linux
+      containers:
+        - name: app
+          image: registry.example.com/linux-app:v1.0
 ```
 
 ## Step 2: Node Affinity for Advanced Scheduling
@@ -56,8 +80,16 @@ metadata:
   name: dotnet-framework-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: dotnet-framework-app
   template:
+    metadata:
+      labels:
+        app: dotnet-framework-app
     spec:
+      os:
+        name: windows
       affinity:
         nodeAffinity:
           # Required: must run on Windows
@@ -105,9 +137,18 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: windows-app
+  namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: windows-app
   template:
+    metadata:
+      labels:
+        app: windows-app
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
       # Required to schedule on tainted Windows nodes
@@ -124,7 +165,8 @@ spec:
 ## Step 4: Namespace-Level Default Scheduling
 
 ```yaml
-# Use LimitRanger or admission webhook to add nodeSelector to all pods in a namespace
+# Use an admission webhook, or the PodNodeSelector admission controller if it is enabled,
+# to add nodeSelector to all pods in a namespace
 
 # Alternatively, use Kyverno to inject nodeSelector
 apiVersion: kyverno.io/v1
@@ -145,6 +187,8 @@ spec:
       mutate:
         patchStrategicMerge:
           spec:
+            os:
+              name: windows
             nodeSelector:
               kubernetes.io/os: windows
             tolerations:
@@ -170,12 +214,21 @@ metadata:
   namespace: production
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: windows-ha-app
   template:
+    metadata:
+      labels:
+        app: windows-ha-app
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
       tolerations:
         - key: os
+          operator: Equal
           value: windows
           effect: NoSchedule
       affinity:
@@ -205,15 +258,21 @@ metadata:
   namespace: production
 spec:
   replicas: 6
+  selector:
+    matchLabels:
+      app: windows-spread-app
   template:
     metadata:
       labels:
         app: windows-spread-app
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
       tolerations:
         - key: os
+          operator: Equal
           value: windows
           effect: NoSchedule
       topologySpreadConstraints:
@@ -244,7 +303,7 @@ kubectl get nodes -l kubernetes.io/os=windows --show-labels
 # Test scheduling: create a Windows pod and verify it lands on a Windows node
 kubectl run test-windows-pod \
   --image=mcr.microsoft.com/windows/nanoserver:ltsc2022 \
-  --overrides='{"spec":{"nodeSelector":{"kubernetes.io/os":"windows"},"tolerations":[{"key":"os","value":"windows","effect":"NoSchedule"}]}}' \
+  --overrides='{"spec":{"os":{"name":"windows"},"nodeSelector":{"kubernetes.io/os":"windows","node.kubernetes.io/windows-build":"10.0.20348"},"tolerations":[{"key":"os","operator":"Equal","value":"windows","effect":"NoSchedule"}]}}' \
   -- cmd.exe /c "echo hello && timeout /t 30"
 
 kubectl get pod test-windows-pod -o wide
@@ -264,14 +323,35 @@ globalDefault: false
 description: "Critical Windows workloads"
 ---
 # Apply to deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: windows-critical-app
+  namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: windows-critical-app
   template:
+    metadata:
+      labels:
+        app: windows-critical-app
     spec:
+      os:
+        name: windows
       priorityClassName: windows-critical
       nodeSelector:
         kubernetes.io/os: windows
+      tolerations:
+        - key: os
+          operator: Equal
+          value: windows
+          effect: NoSchedule
+      containers:
+        - name: app
+          image: registry.example.com/windows-app:v1.0
 ```
 
 ## Conclusion
 
-Proper workload scheduling is the foundation of reliable mixed OS clusters in Rancher. The minimum requirement is always specifying `kubernetes.io/os: windows` in nodeSelector for Windows pods. Tainting Windows nodes with `os=windows:NoSchedule` provides a safety net against accidental cross-OS scheduling. For high-availability Windows deployments, combine pod anti-affinity or topology spread constraints to ensure pods distribute across multiple Windows nodes. Namespace-level policies via Kyverno can automatically apply Windows scheduling rules, reducing the risk of misconfigured pods reaching Windows nodes.
+Proper workload scheduling is the foundation of reliable mixed OS clusters in Rancher. Windows workloads should set `.spec.os.name: windows` and include a Windows scheduling rule such as `nodeSelector` or required node affinity. Tainting Windows nodes with `os=windows:NoSchedule` provides a safety net against accidental cross-OS scheduling. For high-availability Windows deployments, combine pod anti-affinity or topology spread constraints to ensure pods distribute across multiple Windows nodes. Namespace-level policies via Kyverno can automatically apply Windows scheduling rules, reducing the risk of misconfigured pods reaching Windows nodes.
