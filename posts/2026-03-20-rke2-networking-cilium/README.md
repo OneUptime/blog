@@ -6,13 +6,13 @@ Tags: RKE2, Kubernetes, Cilium, eBPF, CNI, Networking, Rancher
 
 Description: Learn how to configure Cilium as the CNI plugin for RKE2, leveraging eBPF for high-performance, secure Kubernetes networking.
 
-Cilium is a modern CNI plugin that uses Linux eBPF (extended Berkeley Packet Filter) technology to provide high-performance networking, security, and observability for Kubernetes. It replaces iptables with eBPF programs for load balancing and network policy, resulting in significant performance improvements. This guide covers deploying and configuring Cilium as the CNI in RKE2.
+Cilium is a modern CNI plugin that uses Linux eBPF (extended Berkeley Packet Filter) technology to provide high-performance networking, security, and observability for Kubernetes. It can replace kube-proxy's iptables/IPVS service handling with eBPF programs for load balancing, and uses eBPF for network policy enforcement. This guide covers deploying and configuring Cilium as the CNI in RKE2.
 
 ## Prerequisites
 
-- Linux kernel 5.4+ (5.10+ recommended for full eBPF feature set)
-- RKE2 v1.21+
-- Minimum 4 GB RAM per node for Cilium
+- Linux kernel 5.10+ or an equivalent supported distribution kernel
+- RKE2 v1.21+ (check the rke2-cilium chart values bundled with your RKE2 release)
+- Minimum 4 GB RAM per RKE2 node (8 GB recommended)
 - Understanding of eBPF concepts
 
 ## Step 1: Install RKE2 with Cilium
@@ -23,7 +23,8 @@ Cilium is a modern CNI plugin that uses Linux eBPF (extended Berkeley Packet Fil
 cni: cilium
 
 # Since Cilium handles kube-proxy functionality via eBPF,
-# you can optionally disable kube-proxy
+# you can optionally disable kube-proxy. If you do, create the
+# HelmChartConfig in Step 2 before starting RKE2.
 disable-kube-proxy: true
 
 # Pod and service CIDRs
@@ -39,15 +40,17 @@ sudo systemctl enable rke2-server
 sudo systemctl start rke2-server
 
 # Monitor Cilium deployment
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+export PATH=$PATH:/var/lib/rancher/rke2/bin
 kubectl get pods -n kube-system | grep cilium
 ```
 
 ## Step 2: Customize Cilium with HelmChartConfig
 
-RKE2 deploys Cilium via Helm. Customize it using HelmChartConfig:
+RKE2 deploys Cilium via Helm. Customize it using HelmChartConfig; when `disable-kube-proxy` is enabled, place this file before the first RKE2 start:
 
 ```yaml
-# cilium-config.yaml - Advanced Cilium configuration
+# /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml - Advanced Cilium configuration
 apiVersion: helm.cattle.io/v1
 kind: HelmChartConfig
 metadata:
@@ -56,10 +59,10 @@ metadata:
 spec:
   valuesContent: |-
     # Enable kube-proxy replacement via eBPF
-    kubeProxyReplacement: "strict"
+    kubeProxyReplacement: true
 
     # Kubernetes service host for kube-proxy replacement
-    k8sServiceHost: "10.0.0.10"  # Your API server IP/LB
+    k8sServiceHost: "localhost"
     k8sServicePort: "6443"
 
     # Enable Hubble for observability
@@ -70,16 +73,18 @@ spec:
       ui:
         enabled: true
 
-    # Enable native routing (no overlay for same-subnet traffic)
-    nativeRoutingCIDR: "10.0.0.0/8"
+    # Enable native routing (no overlay when the network routes PodCIDRs)
+    routingMode: "native"
+    ipv4NativeRoutingCIDR: "10.0.0.0/8"
 
-    # Auto-direct node routes for intra-cluster routing
+    # Auto-direct node routes for nodes on the same L2 segment
     autoDirectNodeRoutes: true
 
     # Load balancing algorithm
     loadBalancer:
       algorithm: "maglev"  # Options: random, maglev
       mode: "dsr"          # Direct Server Return for better performance
+      dsrDispatch: "opt"   # Use geneve if your network drops IP options
 
     # MTU (auto-detected if not set)
     # mtu: 1500
@@ -101,12 +106,15 @@ Hubble provides deep visibility into network flows:
 
 ```bash
 # Install Hubble CLI
-HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
-curl -L --remote-name-all \
-  https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-amd64.tar.gz
+HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
+HUBBLE_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then HUBBLE_ARCH=arm64; fi
+curl -L --fail --remote-name-all \
+  https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
 
-tar xzvf hubble-linux-amd64.tar.gz
-sudo mv hubble /usr/local/bin/
+sha256sum --check hubble-linux-${HUBBLE_ARCH}.tar.gz.sha256sum
+sudo tar -C /usr/local/bin -xzvf hubble-linux-${HUBBLE_ARCH}.tar.gz
+rm hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
 
 # Verify Hubble installation
 hubble version
@@ -164,30 +172,43 @@ spec:
 Connect multiple Kubernetes clusters with Cilium Cluster Mesh:
 
 ```bash
+# Each cluster must be installed with a unique Cilium cluster.name and cluster.id
+
 # Enable cluster mesh on the first cluster
-cilium clustermesh enable --service-type LoadBalancer
+cilium clustermesh enable \
+  --context cluster1-context \
+  --service-type LoadBalancer
 
 # Enable cluster mesh on the second cluster
-# (run from the second cluster's context)
-cilium clustermesh enable --service-type LoadBalancer
+cilium clustermesh enable \
+  --context cluster2-context \
+  --service-type LoadBalancer
+
+# Wait for the cluster mesh components
+cilium clustermesh status --context cluster1-context --wait
+cilium clustermesh status --context cluster2-context --wait
 
 # Connect the two clusters
 cilium clustermesh connect \
-  --destination-context cluster2-context \
-  --source-context cluster1-context
+  --context cluster1-context \
+  --destination-context cluster2-context
 
 # Verify cluster mesh status
-cilium clustermesh status
+cilium clustermesh status --context cluster1-context --wait
 ```
 
 ## Step 6: Monitor Cilium Health
 
 ```bash
 # Install Cilium CLI
-CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/master/stable.txt)
-curl -LO https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-amd64.tar.gz
-tar xzf cilium-linux-amd64.tar.gz
-sudo mv cilium /usr/local/bin/
+CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+CLI_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
+curl -L --fail --remote-name-all \
+  https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
+sudo tar -C /usr/local/bin -xzvf cilium-linux-${CLI_ARCH}.tar.gz
+rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
 
 # Check overall Cilium status
 cilium status
@@ -200,15 +221,15 @@ kubectl get pods -n kube-system -l k8s-app=cilium -o wide
 
 # Check Cilium configuration
 kubectl exec -n kube-system \
-  $(kubectl get pods -n kube-system -l k8s-app=cilium -o name | head -1) \
-  -- cilium status
+  $(kubectl get pods -n kube-system -l k8s-app=cilium -o name | head -n 1) \
+  -- cilium-dbg status
 
 # View eBPF load balancer entries
 kubectl exec -n kube-system \
-  $(kubectl get pods -n kube-system -l k8s-app=cilium -o name | head -1) \
-  -- cilium service list
+  $(kubectl get pods -n kube-system -l k8s-app=cilium -o name | head -n 1) \
+  -- cilium-dbg service list
 ```
 
 ## Conclusion
 
-Cilium brings eBPF-powered networking to RKE2, delivering superior performance by bypassing the kernel's traditional networking stack. The Hubble observability platform provides deep visibility into network flows that traditional CNI plugins cannot match. For organizations running latency-sensitive workloads or requiring L7 network policies, Cilium's capabilities make it an excellent choice over Canal or Calico. The tradeoff is a higher minimum kernel version requirement and more complex initial configuration.
+Cilium brings eBPF-powered networking to RKE2 and can improve performance by replacing kube-proxy's iptables/IPVS service handling with an eBPF datapath when kube-proxy replacement is enabled. The Hubble observability platform provides deep visibility into network flows that traditional CNI plugins cannot match. For organizations running latency-sensitive workloads or requiring L7 network policies, Cilium's capabilities make it an excellent choice over Canal or Calico. The tradeoff is a higher minimum kernel version requirement and more complex initial configuration.
