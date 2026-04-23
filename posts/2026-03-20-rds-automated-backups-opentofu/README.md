@@ -8,7 +8,7 @@ Description: Learn how to configure RDS automated backups, backup windows, and r
 
 ## Introduction
 
-RDS automated backups enable point-in-time recovery (PITR), allowing you to restore your database to any second within your backup retention window. AWS automatically creates daily snapshots and transaction logs to enable this capability. This is essential for production databases requiring RPO of minutes.
+RDS automated backups enable point-in-time recovery (PITR), allowing you to restore your database to any second within your backup retention window up to the latest restorable time. AWS automatically creates daily snapshots and transaction logs to enable this capability. This is essential for production databases requiring RPO of minutes.
 
 ## Prerequisites
 
@@ -60,34 +60,28 @@ resource "aws_db_instance" "main" {
 }
 ```
 
-## Step 2: Share Automated Backups Across Accounts
+## Step 2: Share a Copy of an Automated Backup Across Accounts
 
 ```hcl
-# Share automated backups (DB cluster snapshots) with another account
+# Share a copy of the latest automated backup with another account
 
-# Note: Automated backups can be shared for cross-account restoration
+# Note: Automated snapshots can't be shared directly across accounts.
+# Copy the automated snapshot first; the copy becomes a manual snapshot.
+# If the snapshot is encrypted, the target account also needs access to the KMS key.
 
 # First, find the latest automated backup
-data "aws_db_snapshot" "latest" {
-  db_instance_identifier = aws_db_instance.main.id
+data "aws_db_snapshot" "latest_automated" {
+  db_instance_identifier = aws_db_instance.main.identifier
   snapshot_type          = "automated"
   most_recent            = true
 }
 
-# Share the snapshot with a DR account
-resource "null_resource" "share_snapshot" {
-  triggers = {
-    snapshot_id = data.aws_db_snapshot.latest.id
-  }
-
-  provisioner "local-exec" {
-    command = <<-EOF
-      aws rds modify-db-snapshot-attribute \
-        --db-snapshot-identifier ${data.aws_db_snapshot.latest.id} \
-        --attribute-name restore \
-        --values-to-add ${var.dr_account_id}
-    EOF
-  }
+# Copy the automated snapshot to a manual snapshot and share it
+resource "aws_db_snapshot_copy" "dr_share" {
+  source_db_snapshot_identifier = data.aws_db_snapshot.latest_automated.db_snapshot_arn
+  target_db_snapshot_identifier = "${var.project_name}-dr-${replace(data.aws_db_snapshot.latest_automated.id, ":", "-")}"
+  copy_tags                     = true
+  shared_accounts               = [var.dr_account_id]
 }
 ```
 
@@ -105,15 +99,15 @@ aws rds restore-db-instance-to-point-in-time \
 # Monitor the restore progress
 aws rds describe-db-instances \
   --db-instance-identifier my-project-db-restored \
-  --query 'DBInstances[0].{Status: DBInstanceStatus, Progress: StatusInfos}'
+  --query 'DBInstances[0].{Status: DBInstanceStatus, Details: StatusInfos}'
 ```
 
-## Step 4: Monitor Backup Status
+## Step 4: Monitor Transaction Log Usage
 
 ```hcl
-# CloudWatch alarm when backup window misses
-resource "aws_cloudwatch_metric_alarm" "backup_storage" {
-  alarm_name          = "${var.project_name}-rds-backup-storage"
+# CloudWatch alarm for PostgreSQL transaction log growth
+resource "aws_cloudwatch_metric_alarm" "transaction_logs" {
+  alarm_name          = "${var.project_name}-rds-transaction-logs"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "TransactionLogsDiskUsage"
@@ -123,7 +117,7 @@ resource "aws_cloudwatch_metric_alarm" "backup_storage" {
   threshold           = 10737418240  # 10 GB - alert if logs grow too large
 
   dimensions = {
-    DBInstanceIdentifier = aws_db_instance.main.id
+    DBInstanceIdentifier = aws_db_instance.main.identifier
   }
 }
 ```
@@ -143,4 +137,4 @@ aws rds describe-db-instances \
 
 ## Conclusion
 
-RDS automated backups with 14-day retention provide PITR capability for recovering from data corruption or accidental deletion down to the minute. Set the backup window to a low-traffic period and ensure the maintenance window starts after the backup window ends to avoid conflicts. For databases with strict RPO requirements, combine automated backups with manual snapshots before major schema changes or deployments.
+RDS automated backups with 14-day retention provide PITR capability for recovering from data corruption or accidental deletion to a specific point in time within the retention window. Set the backup window to a low-traffic period and ensure the maintenance window starts after the backup window ends to avoid conflicts. For databases with strict RPO requirements, combine automated backups with manual snapshots before major schema changes or deployments.
