@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, High Availability, Health Monitoring, Prometheus, Alerting
 
-Description: Monitor the health of your Rancher HA deployment with comprehensive checks for etcd, API server, Rancher pods, and managed cluster connectivity.
+Description: Monitor the health of your Rancher HA deployment with comprehensive checks for etcd, Rancher pods, and managed cluster connectivity.
 
 ## Introduction
 
-Proactive health monitoring of your Rancher HA deployment allows you to detect and address issues before they impact operations. This guide covers health checks at every layer: etcd health, RKE2 API server, Rancher server pods, load balancer, and managed cluster connectivity.
+Proactive health monitoring of your Rancher HA deployment allows you to detect and address issues before they impact operations. This guide covers health checks at every layer: etcd health, Rancher server pods, load balancer, and managed cluster connectivity.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ Proactive health monitoring of your Rancher HA deployment allows you to detect a
 ## Step 1: etcd Health Monitoring
 
 ```bash
-# Continuous etcd health check script
+# etcd health check commands
 
 #!/bin/bash
 ETCDCTL_OPTS="--endpoints=https://127.0.0.1:2379 \
@@ -29,16 +29,16 @@ ETCDCTL_OPTS="--endpoints=https://127.0.0.1:2379 \
   --key=/var/lib/rancher/rke2/server/tls/etcd/client.key"
 
 # Health check
-etcdctl endpoint health $ETCDCTL_OPTS
+etcdctl $ETCDCTL_OPTS endpoint health
 
 # Status (includes DB size, raft index)
-etcdctl endpoint status $ETCDCTL_OPTS -w table
+etcdctl $ETCDCTL_OPTS endpoint status -w table
 
 # Performance check
-etcdctl check perf $ETCDCTL_OPTS
+etcdctl $ETCDCTL_OPTS check perf
 
 # Member list
-etcdctl member list $ETCDCTL_OPTS -w table
+etcdctl $ETCDCTL_OPTS member list -w table
 ```
 
 ## Step 2: Configure etcd Health Alerts
@@ -57,16 +57,21 @@ spec:
     - name: etcd.health
       rules:
         - alert: EtcdMembersDown
-          expr: max without (endpoint) (etcd_server_has_leader) < 1
+          expr: |
+            max without (endpoint) (
+              sum without (instance, pod) (
+                up{job=~".*etcd.*"} == bool 0
+              )
+            ) > 0
           for: 1m
           labels:
             severity: critical
           annotations:
-            summary: "etcd has no leader"
-            description: "etcd cluster has lost quorum"
+            summary: "One or more etcd members are down"
+            description: "etcd has one or more unavailable members"
 
         - alert: EtcdNoLeader
-          expr: etcd_server_has_leader == 0
+          expr: etcd_server_has_leader{job=~".*etcd.*"} == 0
           for: 1m
           labels:
             severity: critical
@@ -74,8 +79,15 @@ spec:
             summary: "etcd member has no leader"
 
         - alert: EtcdHighNumberOfLeaderChanges
-          expr: rate(etcd_server_leader_changes_seen_total[15m]) > 3
-          for: 15m
+          expr: |
+            increase((
+              max without (instance, pod) (
+                etcd_server_leader_changes_seen_total{job=~".*etcd.*"}
+              ) or 0 * absent(
+                etcd_server_leader_changes_seen_total{job=~".*etcd.*"}
+              )
+            )[15m:1m]) >= 4
+          for: 5m
           labels:
             severity: warning
           annotations:
@@ -83,8 +95,12 @@ spec:
 
         - alert: EtcdDatabaseSizeLimitApproaching
           expr: |
-            etcd_mvcc_db_total_size_in_bytes /
-            etcd_server_quota_backend_bytes > 0.8
+            last_over_time(etcd_mvcc_db_total_size_in_bytes{
+              job=~".*etcd.*"
+            }[5m]) /
+            last_over_time(etcd_server_quota_backend_bytes{
+              job=~".*etcd.*"
+            }[5m]) > 0.8
           for: 10m
           labels:
             severity: warning
@@ -94,9 +110,11 @@ spec:
         - alert: EtcdGRPCRequestsSlow
           expr: |
             histogram_quantile(0.99,
-              rate(grpc_server_handling_seconds_bucket{
+              sum without (grpc_type) (rate(grpc_server_handling_seconds_bucket{
+                job=~".*etcd.*",
+                grpc_method!="Defragment",
                 grpc_type="unary"
-              }[5m])
+              }[5m]))
             ) > 0.15
           for: 10m
           labels:
@@ -148,8 +166,14 @@ spec:
         # Rancher OOMKilled
         - alert: RancherOOMKilled
           expr: |
+            increase(kube_pod_container_status_restarts_total{
+              namespace="cattle-system",
+              container="rancher"
+            }[10m]) > 0
+            and on (namespace, pod, container)
             kube_pod_container_status_last_terminated_reason{
               namespace="cattle-system",
+              container="rancher",
               reason="OOMKilled"
             } == 1
           labels:
@@ -160,39 +184,30 @@ spec:
 
 ## Step 4: Monitor Managed Cluster Connectivity
 
-```yaml
-# managed-cluster-alerts.yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: managed-cluster-health
-  namespace: cattle-monitoring-system
-spec:
-  groups:
-    - name: rancher.clusters
-      rules:
-        - alert: ManagedClusterDisconnected
-          expr: rancher_cluster_ready == 0
-          for: 5m
-          labels:
-            severity: critical
-          annotations:
-            summary: "Managed cluster {{ $labels.display_name }} disconnected"
+```bash
+# Check managed cluster connectivity from the Rancher management cluster
 
-        - alert: ManyManagedClustersDisconnected
-          expr: sum(rancher_cluster_ready == 0) > 5
-          for: 5m
-          labels:
-            severity: critical
-          annotations:
-            summary: "{{ $value }} managed clusters disconnected (possible Rancher issue)"
+DISCONNECTED_CLUSTERS=$(kubectl get clusters.management.cattle.io \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .status.conditions[?(@.type=="Connected")]}{.status}{end}{"\n"}{end}' \
+  | awk '$1 != "local" && $2 != "True" {print $1}')
+
+DISCONNECTED_COUNT=$(printf "%s\n" "$DISCONNECTED_CLUSTERS" | sed '/^$/d' | wc -l)
+
+if [ "$DISCONNECTED_COUNT" -gt 0 ]; then
+    echo "CRITICAL: Managed clusters disconnected:"
+    printf "%s\n" "$DISCONNECTED_CLUSTERS"
+fi
+
+if [ "$DISCONNECTED_COUNT" -gt "5" ]; then
+    echo "CRITICAL: $DISCONNECTED_COUNT managed clusters disconnected (possible Rancher issue)"
+fi
 ```
 
 ## Step 5: Health Check Dashboard (Grafana)
 
 ```bash
 # Import Rancher HA health dashboard
-# Dashboard JSON available at: https://grafana.com/grafana/dashboards/
+# Browse dashboard templates at: https://grafana.com/grafana/dashboards/
 
 # Key panels to include:
 # 1. etcd cluster health status
@@ -209,7 +224,7 @@ spec:
 
 ```bash
 # Run external health check from outside the cluster
-# This validates the full stack (LB -> Rancher -> etcd)
+# This validates the external path to Rancher through the load balancer
 
 #!/bin/bash
 RANCHER_URL="https://rancher.example.com"
@@ -246,22 +261,29 @@ check_rancher_health
 # Rancher HA health check and recovery
 
 # Check 1: etcd quorum
-ETCD_HEALTHY=$(kubectl exec -n kube-system \
-  $(kubectl get pod -n kube-system -l component=etcd -o name | head -1) \
-  -- etcdctl endpoint health \
-  --endpoints=https://127.0.0.1:2379 \
+ETCD_POD=$(kubectl get pod -n kube-system -l component=etcd -o name | head -1)
+ETCDCTL_OPTS="--endpoints=https://127.0.0.1:2379 \
   --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
   --cert=/var/lib/rancher/rke2/server/tls/etcd/client.crt \
-  --key=/var/lib/rancher/rke2/server/tls/etcd/client.key 2>&1 | grep "is healthy" | wc -l)
+  --key=/var/lib/rancher/rke2/server/tls/etcd/client.key"
 
-if [ "$ETCD_HEALTHY" -lt "2" ]; then
-    echo "CRITICAL: Less than 2 etcd members healthy"
+ETCD_HEALTHY=$(kubectl exec -n kube-system "$ETCD_POD" -- \
+  etcdctl $ETCDCTL_OPTS --cluster endpoint health 2>&1 | grep -c "is healthy")
+
+ETCD_TOTAL=$(kubectl exec -n kube-system "$ETCD_POD" -- \
+  etcdctl $ETCDCTL_OPTS member list 2>/dev/null | wc -l)
+
+ETCD_QUORUM=$((ETCD_TOTAL / 2 + 1))
+
+if [ "$ETCD_HEALTHY" -lt "$ETCD_QUORUM" ]; then
+    echo "CRITICAL: etcd healthy members ($ETCD_HEALTHY/$ETCD_TOTAL) below quorum ($ETCD_QUORUM)"
     # Page on-call
 fi
 
 # Check 2: Rancher pods
 RANCHER_READY=$(kubectl get deployment rancher -n cattle-system \
   -o jsonpath='{.status.readyReplicas}')
+RANCHER_READY=${RANCHER_READY:-0}
 
 if [ "$RANCHER_READY" -lt "2" ]; then
     echo "WARNING: Only $RANCHER_READY Rancher replicas ready"
@@ -270,4 +292,4 @@ fi
 
 ## Conclusion
 
-Comprehensive Rancher HA health monitoring requires visibility into multiple layers: etcd cluster health, RKE2 API server availability, Rancher pod status, and managed cluster connectivity. Alert on conditions that precede failures (etcd database size approaching quota, leader election frequency) rather than just reacting to outages. The combination of internal Prometheus alerts and external synthetic health checks provides defense-in-depth monitoring that catches issues regardless of whether the monitoring system itself is affected.
+Comprehensive Rancher HA health monitoring requires visibility into multiple layers: etcd cluster health, Rancher pod status, and managed cluster connectivity. Alert on conditions that precede failures (etcd database size approaching quota, leader election frequency) rather than just reacting to outages. The combination of internal Prometheus alerts and external synthetic health checks provides defense-in-depth monitoring that catches issues regardless of whether the monitoring system itself is affected.
