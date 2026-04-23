@@ -8,7 +8,7 @@ Description: Configure Redis bind directive in redis.conf to listen on specific 
 
 ## Introduction
 
-Redis defaults to binding only to `127.0.0.1` since version 3.2. To allow remote connections, you must explicitly add additional IP addresses to the `bind` directive. Redis will listen on all listed IPs, making it critical to list only trusted interfaces.
+In the sample `redis.conf` shipped with Redis, the default bind is loopback-only, commonly `127.0.0.1` (and often `::1`). If no `bind` directive is specified, Redis listens on all available interfaces and relies on protected mode. To allow remote connections when using the sample config, add additional IP addresses to the `bind` directive. Redis will listen on all listed IPs, making it critical to list only trusted interfaces.
 
 ## Basic bind Configuration
 
@@ -22,7 +22,7 @@ bind 127.0.0.1
 # Allow remote connections on specific IP + loopback
 bind 127.0.0.1 10.0.0.5
 
-# Allow on all IPv4 interfaces (use with protected-mode and AUTH)
+# Allow on all IPv4 interfaces (use only with authentication and firewall rules)
 bind 0.0.0.0
 
 # Multiple specific IPs
@@ -33,7 +33,7 @@ bind 127.0.0.1 10.0.0.5 192.168.1.5
 
 ```bash
 # Restart Redis after changes
-sudo systemctl restart redis
+sudo systemctl restart redis-server
 
 # Verify Redis is listening on expected addresses
 sudo ss -tlnp | grep redis
@@ -54,10 +54,10 @@ bind 127.0.0.1 10.0.0.5
 # Require password authentication
 requirepass "YourStrongRedisPassword123!"
 
-# Disable protected mode (only after setting requirepass and bind)
-protected-mode no
+# Keep protected mode enabled
+protected-mode yes
 
-# Rename dangerous commands (optional extra security)
+# Rename dangerous commands (optional extra security; ACLs are preferred in Redis 6+)
 rename-command FLUSHALL "FLUSHALL_DISABLED"
 rename-command CONFIG "CONFIG_DISABLED"
 rename-command DEBUG ""
@@ -66,7 +66,7 @@ rename-command DEBUG ""
 # aclfile /etc/redis/users.acl
 ```
 
-## Redis ACL for IP-Based Access (Redis 6+)
+## Restrict Source IPs with Firewall Rules
 
 ```bash
 # Redis doesn't natively filter by source IP
@@ -84,7 +84,7 @@ sudo iptables -A INPUT -p tcp --dport 6379 -j DROP
 
 ```bash
 # Test local connection
-redis-cli ping
+redis-cli -a 'YourStrongRedisPassword123!' ping
 # Expected: PONG
 
 # Test remote connection (from another host)
@@ -94,13 +94,13 @@ redis-cli -h 10.0.0.5 -p 6379 -a 'YourStrongRedisPassword123!' ping
 # Test that blocked IPs cannot connect
 # From an unauthorized host:
 redis-cli -h 10.0.0.5 -p 6379 ping
-# Expected: Could not connect to Redis at 10.0.0.5:6379: Connection refused
-# (due to iptables DROP)
+# Expected: Could not connect to Redis at 10.0.0.5:6379: Connection timed out
+# (iptables DROP silently discards packets)
 
-# Test info
-redis-cli -h 10.0.0.5 -a 'password' info server | grep -E "redis_version|tcp_port|bind"
+# Test server info
+redis-cli -h 10.0.0.5 -p 6379 -a 'YourStrongRedisPassword123!' info server | grep -E "redis_version|tcp_port"
 ```
 
 ## Conclusion
 
-Redis `bind` specifies which IP addresses Redis creates listening sockets on. Always include `127.0.0.1` for local connections. Add specific IPv4 addresses for remote access rather than `0.0.0.0`. Pair remote binding with `requirepass` and iptables rules to restrict which client IPs can connect, since Redis has no native IP-based access control.
+Redis `bind` specifies which IP addresses Redis creates listening sockets on. Always include `127.0.0.1` for local connections. Add specific IPv4 addresses for remote access rather than `0.0.0.0`. Pair remote binding with authentication (`requirepass` or ACLs) and iptables rules to restrict which client IPs can connect, since Redis has no native IP-based access control.
