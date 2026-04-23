@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-    hostname := "api.example.com"
+    hostname := "example.com"
 
     // LookupIP returns all IP addresses (IPv4 and IPv6)
     ips, err := net.LookupIP(hostname)
@@ -99,7 +99,7 @@ func main() {
         Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
             d := net.Dialer{Timeout: 3 * time.Second}
             // Use Google's DNS server instead of the system default
-            return d.DialContext(ctx, "udp", "8.8.8.8:53")
+            return d.DialContext(ctx, network, "8.8.8.8:53")
         },
     }
 
@@ -156,20 +156,20 @@ func main() {
 package main
 
 import (
+    "context"
     "fmt"
     "log"
     "net"
 )
 
 func main() {
-    // Look up only A records (IPv4) via LookupHost
-    // LookupHost returns strings, not net.IP
-    addrs, err := net.LookupHost("example.com")
+    // Look up only A records (IPv4) via Resolver.LookupIP
+    addrs, err := net.DefaultResolver.LookupIP(context.Background(), "ip4", "example.com")
     if err != nil {
         log.Fatal(err)
     }
-    for _, a := range addrs {
-        fmt.Println(a)
+    for _, ip := range addrs {
+        fmt.Println(ip)
     }
 
     // Look up MX records
@@ -188,4 +188,4 @@ func main() {
 
 ## Conclusion
 
-Go's `net` package provides `LookupIP`, `LookupHost`, and `LookupIPAddr` for DNS resolution. Filter results with `.To4() != nil` to get only IPv4 addresses. Use `net.Resolver` with a custom `Dial` function to target a specific DNS server, and always wrap DNS calls in a context with a timeout for production code.
+Go's `net` package provides `LookupIP`, `LookupHost`, and `net.Resolver.LookupIPAddr` for DNS resolution. Filter results with `.To4() != nil` to get only IPv4 addresses. Use `net.Resolver` with a custom `Dial` function to target a specific DNS server, and always wrap DNS calls in a context with a timeout for production code.
