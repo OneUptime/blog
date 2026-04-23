@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher Desktop, Microservice, Kubernetes, Local Development, Service Mesh
+Tags: Rancher Desktop, Microservice, Kubernetes, Local Development
 
-Description: Build and test microservices architectures locally using Rancher Desktop with service meshes and API gateways.
+Description: Build and test microservices locally using Rancher Desktop with Kubernetes and Helm.
 
 ## Introduction
 
@@ -12,33 +12,37 @@ Rancher Desktop is an open-source desktop application that provides Kubernetes a
 
 ## Prerequisites
 
-- A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
-- At least 8 GB of RAM (16 GB recommended)
-- At least 4 CPU cores
+- A supported version of macOS, Windows, or Linux
+- Virtualization support and a persistent internet connection
+- Administrator/sudo privileges may be required for installation
+- Windows Subsystem for Linux 2 (Windows only)
+- 8 GB of RAM recommended
+- 4 CPU cores recommended
 
 ## Overview
 
 Rancher Desktop simplifies local Kubernetes and container development by providing:
 
-- A local Kubernetes cluster (k3s-based)
+- A local Kubernetes cluster (k3s)
 - Container runtime (containerd or dockerd)
-- Integrated CLI tools (kubectl, helm, nerdctl, docker)
+- Integrated CLI tools (kubectl, helm, nerdctl, and the Docker CLI depending on the selected container engine)
 - Simple configuration through a GUI
 
 ## Step 1: Initial Setup
 
 ```bash
-# Verify Rancher Desktop is installed and running
+# Verify the Rancher Desktop CLI is installed
 
 rdctl version
 
 # Check Kubernetes cluster status
 kubectl cluster-info
 
-# Verify container runtime
+# Verify the container runtime CLI
+# when using containerd
 nerdctl version
 # or
+# when using Moby
 docker version
 ```
 
@@ -47,23 +51,24 @@ docker version
 Open Rancher Desktop Preferences to configure:
 
 - **Kubernetes**: Version and enabled/disabled state
-- **Container Engine**: containerd or moby (dockerd)
-- **Virtual Machine**: CPU, memory, and disk allocation
+- **Container Engine**: containerd or Moby (dockerd)
+- **Virtual Machine** (macOS and Linux): CPU and memory allocation
 - **WSL** (Windows only): WSL2 integration settings
 
 ```bash
 # Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
-rdctl set --container-engine containerd
+# Use a Kubernetes version available in your Rancher Desktop release
+rdctl set --kubernetes.version=1.34.3
+rdctl set --container-engine.name=containerd
 ```
 
 ## Step 3: Working with Containers
 
 ```bash
+# The following examples use nerdctl with the containerd engine
+
 # Pull an image
 nerdctl pull nginx:latest
-# or with docker compatibility
-docker pull nginx:latest
 
 # Run a container
 nerdctl run -d -p 8080:80 --name my-nginx nginx:latest
@@ -131,31 +136,34 @@ helm uninstall my-release
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
-rdctl factory-reset
+# Reset Kubernetes workloads
+rdctl reset --k8s
 
-# Check Rancher Desktop status
-rdctl status
+# Show Rancher Desktop version and VM IP
+rdctl info
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
+# Show current Rancher Desktop settings
+rdctl list-settings
 
 # Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+# Use a Kubernetes version available in your Rancher Desktop release
+rdctl set --kubernetes.version=1.34.3
 ```
 
 ## Troubleshooting
 
 ```bash
 # Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# Rancher Desktop UI: Troubleshooting > Show Logs
+# macOS: ~/Library/Logs/rancher-desktop/
+# Windows: %LOCALAPPDATA%\rancher-desktop\logs\
+# Linux: ~/.local/share/rancher-desktop/logs/
 
 # Reset to factory defaults
-rdctl factory-reset
+rdctl reset --factory
 
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Show Rancher Desktop version and VM IP
+rdctl info
 ```
 
 ## Conclusion
