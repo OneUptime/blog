@@ -44,23 +44,23 @@ Router(config-rtr)# passive-interface GigabitEthernet0/2
 
 ## Configuring a Default Route
 
-Advertise a default route (::/0) to RIPng neighbors:
+Advertise a default route (::/0) in RIPng updates sent from an interface:
 
 ```text
-! Originate a default route into RIPng
-Router(config)# ipv6 router rip RIPNG_PROCESS
-Router(config-rtr)# default-information originate    ! Requires default in routing table
+! Originate a default route into RIPng on an interface
+Router(config)# interface GigabitEthernet0/0
+Router(config-if)# ipv6 rip RIPNG_PROCESS default-information originate
 
-! Always originate (even if no default route exists)
-Router(config-rtr)# default-information originate always
+! Alternative: advertise only the default route on that interface
+Router(config-if)# ipv6 rip RIPNG_PROCESS default-information only
 ```
 
 ## Adjusting Timers
 
 ```text
-! Adjust RIPng timers (update, timeout, holddown - in seconds)
+! Adjust RIPng timers (update, timeout, holddown, garbage collection - in seconds)
 Router(config)# ipv6 router rip RIPNG_PROCESS
-Router(config-rtr)# timers update 30 holddown 120 invalid 180 flush 240
+Router(config-rtr)# timers 30 180 120 240
 ```
 
 ## Configuring Split Horizon
@@ -68,9 +68,9 @@ Router(config-rtr)# timers update 30 holddown 120 invalid 180 flush 240
 Split horizon is enabled by default. Disable it for NBMA networks:
 
 ```text
-! Disable split horizon on an interface (for hub-and-spoke networks)
-Router(config)# interface GigabitEthernet0/0
-Router(config-if)# no ipv6 rip RIPNG_PROCESS split-horizon
+! Disable split horizon for the RIPng process (for hub-and-spoke networks)
+Router(config)# ipv6 router rip RIPNG_PROCESS
+Router(config-rtr)# no split-horizon
 ```
 
 ## Verification Commands
@@ -96,7 +96,8 @@ Router# show ipv6 rip
 
 RIP process "RIPNG_PROCESS", port 521, multicast-group ff02::9, pid 312
       Administrative distance is 120. Maximum paths is 16
-      Updates every 30 seconds, expire after 180, garbage collect after 240 secs
+      Updates every 30 seconds, expire after 180
+      Holddown lasts 120 seconds, garbage collect after 240
       Split horizon is on; poison reverse is off
       Default routes are not generated
       Interfaces:
