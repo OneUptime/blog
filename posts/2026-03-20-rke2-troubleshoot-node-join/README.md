@@ -16,17 +16,18 @@ One of the most frustrating problems when managing an RKE2 cluster is when a wor
 - SSH access to both the server and the joining node
 - Basic familiarity with systemd and Linux networking
 
-## Step 1: Check the RKE2 Agent Service Status
+## Step 1: Check the RKE2 Service Status
 
-Start by checking the service status on the node that is failing to join.
+Start by checking the service status on the node that is failing to join. Use `rke2-agent` for a worker node and `rke2-server` for a server node.
 
 ```bash
-# Check the status of the rke2-agent service
-
+# Check the status of a worker node
 sudo systemctl status rke2-agent
-
-# View recent logs for more detail
 sudo journalctl -u rke2-agent -n 100 --no-pager
+
+# For a joining server node, check the server service instead
+sudo systemctl status rke2-server
+sudo journalctl -u rke2-server -n 100 --no-pager
 ```
 
 Look for error messages such as:
@@ -43,14 +44,14 @@ The most common cause of join failures is a token mismatch. The token on the joi
 # On the SERVER node, retrieve the cluster token
 sudo cat /var/lib/rancher/rke2/server/node-token
 
-# On the AGENT node, check the configured token
+# On the JOINING node, check the configured token
 sudo cat /etc/rancher/rke2/config.yaml
 ```
 
-Your agent `config.yaml` should look like this:
+Your joining node's `config.yaml` should look like this:
 
 ```yaml
-# /etc/rancher/rke2/config.yaml on the agent node
+# /etc/rancher/rke2/config.yaml on the joining node
 server: https://<SERVER_IP>:9345
 token: <TOKEN_FROM_SERVER>
 ```
@@ -58,7 +59,11 @@ token: <TOKEN_FROM_SERVER>
 If the token is wrong, update `config.yaml` and restart the service:
 
 ```bash
+# For a worker node
 sudo systemctl restart rke2-agent
+
+# For a server node
+sudo systemctl restart rke2-server
 ```
 
 ## Step 3: Check Network Connectivity
@@ -77,17 +82,23 @@ sudo iptables -L -n | grep DROP
 sudo firewall-cmd --list-all  # on Fedora/RHEL systems
 ```
 
-Required ports to open on the server node:
+Common inbound ports to check:
 
-| Port | Protocol | Purpose |
-|------|----------|---------|
-| 9345 | TCP | RKE2 supervisor API |
-| 6443 | TCP | Kubernetes API |
-| 10250 | TCP | Kubelet metrics |
-| 4240 | TCP | Cilium health (if used) |
+| Port | Protocol | Destination | Purpose |
+|------|----------|-------------|---------|
+| 9345 | TCP | RKE2 server nodes | RKE2 supervisor API |
+| 6443 | TCP | RKE2 server nodes | Kubernetes API |
+| 10250 | TCP | All RKE2 nodes | Kubelet metrics, if using metrics server |
+| 2379 | TCP | RKE2 server nodes | etcd client traffic between server nodes |
+| 2380 | TCP | RKE2 server nodes | etcd peer traffic between server nodes |
+| 2381 | TCP | RKE2 server nodes | etcd metrics traffic between server nodes |
+| 8472 | UDP | All RKE2 nodes | Canal or Cilium VXLAN traffic, if used |
+| 4789 | UDP | All RKE2 nodes | Flannel or Calico VXLAN traffic, if used |
+| 9099 | TCP | All RKE2 nodes | Canal or Calico health checks, if used |
+| 4240 | TCP | All RKE2 nodes | Cilium TCP health checks, if used |
 
 ```bash
-# Open required ports with firewalld
+# Open the core server join ports with firewalld
 sudo firewall-cmd --permanent --add-port=9345/tcp
 sudo firewall-cmd --permanent --add-port=6443/tcp
 sudo firewall-cmd --reload
@@ -95,7 +106,7 @@ sudo firewall-cmd --reload
 
 ## Step 4: Verify DNS Resolution
 
-The agent node must be able to resolve the server's hostname if you used a DNS name instead of an IP.
+The joining node must be able to resolve the server's hostname if you used a DNS name instead of an IP.
 
 ```bash
 # Test DNS resolution
@@ -112,7 +123,7 @@ If you see certificate errors, the server URL or SAN configuration may be wrong.
 
 ```bash
 # Verify TLS certificate SANs on the server
-sudo openssl s_client -connect <SERVER_IP>:9345 2>/dev/null | openssl x509 -noout -text | grep -A 5 "Subject Alternative"
+echo | openssl s_client -connect <SERVER_IP>:9345 2>/dev/null | openssl x509 -noout -text | grep -A 5 "Subject Alternative"
 ```
 
 If the IP or hostname is not in the certificate SANs, add it to the server's `config.yaml`:
@@ -147,7 +158,7 @@ Ensure the node meets minimum requirements.
 uname -r
 cat /etc/os-release
 
-# Check available memory (minimum 2GB recommended)
+# Check available memory (minimum 4GB, 8GB recommended)
 free -h
 
 # Check available disk space
@@ -162,22 +173,32 @@ This usually means the agent cannot reach the server's supervisor endpoint. Doub
 
 ### Error: "node password rejected"
 
-The node previously registered with a different password. Delete the node password file:
+The node previously registered with a different password, or a stale node password secret exists for that node name. Delete the stale node password secret, then restart the agent:
 
 ```bash
-sudo rm /var/lib/rancher/rke2/agent/node-password.txt
-sudo systemctl restart rke2-agent
+# On the affected agent node
+sudo systemctl stop rke2-agent
+
+# On a server node with access to the cluster kubeconfig
+sudo /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml \
+    get secret -n kube-system | grep node-password.rke2
+sudo /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml \
+    delete secret -n kube-system <NODE_NAME>.node-password.rke2
+
+# On the affected agent node
+sudo systemctl start rke2-agent
 ```
 
 ### Error: "x509: certificate signed by unknown authority"
 
-You may need to pass the CA certificate or disable verification for testing:
+RKE2 normally bootstraps trust from the CA hash in the secure join token. Re-copy the current token from the server and make sure the `server` URL points to the intended cluster:
 
 ```bash
-# On the agent node, copy the server CA
-sudo mkdir -p /var/lib/rancher/rke2/agent/
-sudo scp user@<SERVER_IP>:/var/lib/rancher/rke2/server/tls/server-ca.crt \
-    /var/lib/rancher/rke2/agent/server-ca.crt
+# On the SERVER node, retrieve the current cluster token
+sudo cat /var/lib/rancher/rke2/server/node-token
+
+# On the AGENT node, update /etc/rancher/rke2/config.yaml with this token, then retry
+sudo systemctl restart rke2-agent
 ```
 
 ## Conclusion
