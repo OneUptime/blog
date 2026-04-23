@@ -41,7 +41,10 @@ OT Network (Air-Gapped)
 
 # Often air-gapped, requires private registry
 
-# Install K3s with air-gapped private registry
+# After pushing the required K3s images to the plant registry and copying
+# the K3s binary plus install.sh onto the node:
+mkdir -p /etc/rancher/k3s
+
 cat > /etc/rancher/k3s/registries.yaml << 'EOF'
 mirrors:
   "docker.io":
@@ -52,13 +55,20 @@ mirrors:
       - "https://registry.plant.internal:5000"
 EOF
 
-curl -sfL https://get.k3s.io | sh -
+INSTALL_K3S_SKIP_DOWNLOAD=true \
+  INSTALL_K3S_EXEC="server --disable-default-registry-endpoint" \
+  ./install.sh
 # K3s automatically reads /etc/rancher/k3s/registries.yaml at startup
 ```
 
 ## Step 2: Deploy Industrial IoT Data Collection
 
 ```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: iiot
+---
 # MQTT broker for PLC/sensor data ingestion
 apiVersion: apps/v1
 kind: Deployment
@@ -81,11 +91,24 @@ spec:
           ports:
             - containerPort: 1883    # MQTT
             - containerPort: 8883    # MQTT over TLS
-          volumeMounts:
-            - name: config
-              mountPath: /mosquitto/config
 ---
-# OPC-UA to MQTT adapter
+apiVersion: v1
+kind: Service
+metadata:
+  name: mosquitto-broker
+  namespace: iiot
+spec:
+  selector:
+    app: mosquitto-broker
+  ports:
+    - name: mqtt
+      port: 1883
+      targetPort: 1883
+    - name: mqtts
+      port: 8883
+      targetPort: 8883
+---
+# OPC UA to MQTT adapter
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -103,7 +126,7 @@ spec:
     spec:
       containers:
         - name: adapter
-          image: myregistry/opcua-mqtt-adapter:1.2.0
+          image: registry.plant.internal:5000/opcua-mqtt-adapter:1.2.0
           env:
             - name: OPCUA_ENDPOINT
               value: "opc.tcp://plc-line-1.ot.plant.internal:4840"
@@ -117,13 +140,75 @@ spec:
 
 ```yaml
 # TimescaleDB for time-series machine data
-helm install timescaledb timescale/timescaledb-single \
-  --namespace iiot \
-  --set replicaCount=1 \
-  --set persistence.size=500Gi \
-  --set persistence.storageClass=local-ssd
+apiVersion: v1
+kind: Secret
+metadata:
+  name: timescaledb-auth
+  namespace: iiot
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: change-me
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: timescaledb
+  namespace: iiot
+spec:
+  selector:
+    app: timescaledb
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: timescaledb
+  namespace: iiot
+spec:
+  serviceName: timescaledb
+  replicas: 1
+  selector:
+    matchLabels:
+      app: timescaledb
+  template:
+    metadata:
+      labels:
+        app: timescaledb
+    spec:
+      containers:
+        - name: timescaledb
+          image: timescale/timescaledb:latest-pg17
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: timescaledb-auth
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              value: iiot
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-ssd
+        resources:
+          requests:
+            storage: 500Gi
 
-# Grafana dashboard for factory floor
+---
+# Grafana dashboard for factory floor (Grafana Helm sidecar provisioning)
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -134,11 +219,32 @@ metadata:
 data:
   factory.json: |
     {
+      "uid": "factory-line-1",
       "title": "Factory Line 1 - Real Time",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "5s",
       "panels": [
-        {"type": "stat", "title": "OEE", "targets": [...]},
-        {"type": "timeseries", "title": "Machine Speed (RPM)"},
-        {"type": "alert", "title": "Fault Alarms"}
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "OEE",
+          "gridPos": {"h": 6, "w": 8, "x": 0, "y": 0},
+          "targets": []
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Machine Speed (RPM)",
+          "gridPos": {"h": 8, "w": 16, "x": 8, "y": 0},
+          "targets": []
+        },
+        {
+          "id": 3,
+          "type": "alertlist",
+          "title": "Fault Alarms",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 6}
+        }
       ]
     }
 ```
@@ -164,7 +270,7 @@ spec:
     spec:
       containers:
         - name: inference
-          image: myregistry/pm-model:v1.3.0
+          image: registry.plant.internal:5000/pm-model:v1.3.0
           resources:
             limits:
               memory: "2Gi"
@@ -175,28 +281,33 @@ spec:
             - name: MQTT_SUBSCRIBE
               value: "sensors/vibration/#"
             - name: ALERT_WEBHOOK
-              value: "http://alertmanager.monitoring.svc:9093"
+              value: "http://alertmanager.monitoring.svc:9093/api/v2/alerts"
 ```
 
 ## Step 5: OT/IT Network Segmentation
 
 ```yaml
-# NetworkPolicy to enforce OT/IT boundary
-# Only specific pods can communicate with OT network
+# NetworkPolicy to restrict OT connector egress
+# Connector pods can reach the OT subnet and DNS only
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: ot-access-restricted
   namespace: iiot
 spec:
-  podSelector: {}
+  podSelector:
+    matchLabels:
+      role: ot-connector
   policyTypes: [Egress]
   egress:
-    # Only MQTT adapter can reach OT network
     - to:
-        - podSelector:
-            matchLabels:
-              role: ot-connector
+        - ipBlock:
+            cidr: 10.20.30.0/24
+      ports:
+        - port: 1883
+          protocol: TCP
+        - port: 4840
+          protocol: TCP
     # DNS allowed
     - to:
         - namespaceSelector:
@@ -205,6 +316,8 @@ spec:
       ports:
         - port: 53
           protocol: UDP
+        - port: 53
+          protocol: TCP
 ```
 
 ## Step 6: Resilient Edge Operations
@@ -223,14 +336,14 @@ spec:
       criticality: high
 
 # Local data buffering during connectivity loss
-# MQTT retained messages + local TimescaleDB
-# ensures no sensor data is lost during network outages
+# Use local broker persistence + local TimescaleDB
+# to buffer data during WAN outages
 ```
 
 ## Manufacturing-Specific Considerations
 
 - **Real-time requirements**: Use node affinity to pin latency-sensitive workloads to isolated nodes
-- **24/7 operations**: Use PodDisruptionBudgets to prevent disruption during maintenance windows
+- **24/7 operations**: Use PodDisruptionBudgets to limit voluntary disruption during maintenance windows
 - **Compliance**: IEC 62443 for industrial cybersecurity; integrate with security scanning
 - **Long hardware lifecycles**: K3s runs on older hardware; air-gapped updates via USB
 
