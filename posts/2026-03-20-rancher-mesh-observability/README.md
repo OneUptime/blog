@@ -38,60 +38,24 @@ helm install rancher-monitoring rancher-charts/rancher-monitoring \
 Configure Istio to expose metrics to Prometheus:
 
 ```yaml
-# istio-telemetry.yaml - Enable Istio metrics and tracing
-apiVersion: telemetry.istio.io/v1alpha1
+# istio-telemetry.yaml - Enable Istio metrics
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
-  name: default-telemetry
+  name: mesh-default
   namespace: istio-system
 spec:
   metrics:
     - providers:
         - name: prometheus
-  # Configure distributed tracing
-  tracing:
-    - providers:
-        - name: jaeger
-      # Sample 100% of traces in dev, reduce in production
-      randomSamplingPercentage: 1.0
 ```
 
-## Step 3: Configure ServiceMonitor for Istio
+## Step 3: Configure Prometheus Operator Monitors for Istio
 
 ```yaml
-# istio-service-monitor.yaml - Prometheus scrape config for Istio
+# istio-monitoring.yaml - Prometheus Operator scrape config for Istio
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: istio-component-monitor
-  namespace: istio-system
-  labels:
-    monitoring: istio-components
-    release: rancher-monitoring
-spec:
-  jobLabel: istio
-  targetLabels:
-    - app
-  selector:
-    matchExpressions:
-      - key: istio
-        operator: In
-        values:
-          - mixer
-          - pilot
-          - galley
-          - citadel
-          - sidecar-injector
-  namespaceSelector:
-    matchNames:
-      - istio-system
-  endpoints:
-    - port: http-monitoring
-      interval: 15s
----
-# Service monitor for Envoy sidecars
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: envoy-stats-monitor
   namespace: istio-system
@@ -106,14 +70,60 @@ spec:
   namespaceSelector:
     any: true
   jobLabel: envoy-stats
-  endpoints:
+  podMetricsEndpoints:
     - path: /stats/prometheus
-      targetPort: 15090
       interval: 15s
       relabelings:
-        - sourceLabels: [__meta_kubernetes_pod_container_port_name]
-          action: keep
-          regex: ".*-envoy-prom"
+        - action: keep
+          sourceLabels: [__meta_kubernetes_pod_container_name]
+          regex: "istio-proxy"
+        - action: keep
+          sourceLabels: [__meta_kubernetes_pod_annotationpresent_prometheus_io_scrape]
+        - action: replace
+          regex: (\\d+);(([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4})
+          replacement: '[$2]:$1'
+          sourceLabels:
+            - __meta_kubernetes_pod_annotation_prometheus_io_port
+            - __meta_kubernetes_pod_ip
+          targetLabel: __address__
+        - action: replace
+          regex: (\\d+);((([0-9]+?)(\\.|$)){4})
+          replacement: $2:$1
+          sourceLabels:
+            - __meta_kubernetes_pod_annotation_prometheus_io_port
+            - __meta_kubernetes_pod_ip
+          targetLabel: __address__
+        - action: labeldrop
+          regex: "__meta_kubernetes_pod_label_(.+)"
+        - sourceLabels: [__meta_kubernetes_namespace]
+          action: replace
+          targetLabel: namespace
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          action: replace
+          targetLabel: pod
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: istio-component-monitor
+  namespace: istio-system
+  labels:
+    monitoring: istio-components
+    release: rancher-monitoring
+spec:
+  jobLabel: istio
+  targetLabels: [app]
+  selector:
+    matchExpressions:
+      - key: istio
+        operator: In
+        values:
+          - pilot
+  namespaceSelector:
+    any: true
+  endpoints:
+    - port: http-monitoring
+      interval: 15s
 ```
 
 ## Step 4: Install Kiali for Service Topology
@@ -134,61 +144,36 @@ metadata:
   name: kiali
   namespace: istio-system
 spec:
-  deployment:
-    accessible_namespaces:
-      - "**"  # Monitor all namespaces
   external_services:
     prometheus:
       url: http://rancher-monitoring-prometheus.cattle-monitoring-system.svc.cluster.local:9090
     grafana:
       enabled: true
-      url: http://rancher-monitoring-grafana.cattle-monitoring-system.svc.cluster.local:80
+      internal_url: http://rancher-monitoring-grafana.cattle-monitoring-system.svc.cluster.local:80
     tracing:
       enabled: true
-      in_cluster_url: http://jaeger-query.istio-system.svc.cluster.local:16685
+      provider: jaeger
+      internal_url: http://tracing.istio-system.svc.cluster.local:16685/jaeger
       use_grpc: true
   auth:
-    strategy: anonymous  # Use 'openshift' or 'token' for production
+    strategy: anonymous  # Use 'token' or another non-anonymous strategy in production
 ```
 
 ## Step 5: Install Jaeger for Distributed Tracing
 
 ```bash
-# Install Jaeger Operator
-helm repo add jaegertracing https://jaegertracing.github.io/helm-charts
-helm install jaeger-operator jaegertracing/jaeger-operator \
-  --namespace observability \
-  --create-namespace
+# Install the current Istio Jaeger add-on
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/jaeger.yaml
 ```
 
-```yaml
-# jaeger-instance.yaml - Jaeger AllInOne for development
-apiVersion: jaegertracing.io/v1
-kind: Jaeger
-metadata:
-  name: jaeger
-  namespace: observability
-spec:
-  strategy: production
-  storage:
-    type: elasticsearch
-    options:
-      es:
-        server-urls: http://elasticsearch.observability.svc.cluster.local:9200
-  query:
-    serviceType: ClusterIP
-  collector:
-    maxReplicas: 5
-    resources:
-      limits:
-        cpu: 500m
-        memory: 512Mi
-```
+This sample add-on deploys Jaeger v2 into `istio-system` and is intended for development or testing rather than a hardened production install.
 
 ## Step 6: Configure Istio to Use Jaeger
 
+Update the mesh-wide `Telemetry` resource from Step 2 and configure an extension provider for Jaeger:
+
 ```yaml
-# istio-operator.yaml - Configure Istio tracing
+# istio-tracing.yaml - Configure Istio tracing
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 metadata:
@@ -196,14 +181,30 @@ metadata:
   namespace: istio-system
 spec:
   meshConfig:
-    # Send traces to Jaeger collector
-    defaultConfig:
-      tracing:
-        zipkin:
-          address: jaeger-collector.observability.svc.cluster.local:9411
-    # Sample 1% in production (increase for debugging)
-    accessLogFile: /dev/stdout
+    # Send traces to the Jaeger collector
     enableTracing: true
+    defaultConfig:
+      tracing: {} # Disable legacy MeshConfig tracing options
+    extensionProviders:
+      - name: jaeger
+        opentelemetry:
+          service: jaeger-collector.istio-system.svc.cluster.local
+          port: 4317
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  metrics:
+    - providers:
+        - name: prometheus
+  tracing:
+    - providers:
+        - name: jaeger
+      # Sample 1% of traces by default; increase temporarily when debugging
+      randomSamplingPercentage: 1.0
 ```
 
 ## Step 7: Create Custom Grafana Dashboards
@@ -211,20 +212,24 @@ spec:
 Import Istio dashboards:
 
 ```bash
-# Download and apply Istio Grafana dashboards
+# Download and persist the official Istio Grafana dashboards
 DASHBOARDS=(
   "7630"   # Istio Workload Dashboard
   "7636"   # Istio Service Dashboard
   "7645"   # Istio Control Plane Dashboard
   "7639"   # Istio Mesh Dashboard
+  "11829"  # Istio Performance Dashboard
 )
 
 for ID in "${DASHBOARDS[@]}"; do
   echo "Importing Grafana dashboard $ID"
   curl -s "https://grafana.com/api/dashboards/$ID/revisions/latest/download" | \
     kubectl create configmap "grafana-dashboard-$ID" \
-    --from-file="dashboard-${ID}.json=/dev/stdin" \
-    --namespace=cattle-monitoring-system
+      --from-file="dashboard-${ID}.json=/dev/stdin" \
+      --namespace=cattle-dashboards \
+      --dry-run=client -o yaml | \
+    kubectl label --local -f - grafana_dashboard=1 -o yaml | \
+    kubectl apply -f -
 done
 ```
 
@@ -248,23 +253,25 @@ spec:
           expr: |
             sum(rate(istio_requests_total{
               reporter="destination",
-              response_code!~"5.*"
+              response_code=~"5.*"
             }[5m])) by (destination_service) /
             sum(rate(istio_requests_total{
               reporter="destination"
-            }[5m])) by (destination_service) < 0.95
+            }[5m])) by (destination_service) > 0.05
           for: 5m
           labels:
             severity: warning
           annotations:
             summary: "High error rate for {{ $labels.destination_service }}"
-            description: "Error rate is {{ $value | humanizePercentage }} for {{ $labels.destination_service }}"
+            description: "5xx error rate is {{ $value | humanizePercentage }} for {{ $labels.destination_service }}"
 
         # Alert if P99 latency exceeds 1 second
         - alert: IstioHighLatency
           expr: |
             histogram_quantile(0.99,
-              sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (destination_service, le)
+              sum(rate(istio_request_duration_milliseconds_bucket{
+                reporter="destination"
+              }[5m])) by (destination_service, le)
             ) > 1000
           for: 10m
           labels:
@@ -281,7 +288,7 @@ spec:
 kubectl port-forward -n istio-system svc/kiali 20001:20001
 
 # Port-forward Jaeger
-kubectl port-forward -n observability svc/jaeger-query 16686:16686
+kubectl port-forward -n istio-system svc/tracing 16686:80
 
 # Port-forward Grafana
 kubectl port-forward -n cattle-monitoring-system svc/rancher-monitoring-grafana 3000:80
