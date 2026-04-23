@@ -27,9 +27,8 @@ helm repo update
 ```
 
 ```yaml
-# vault-values.yaml - Production Vault configuration
+# vault-values.yaml - Example HA Vault configuration
 server:
-  replicas: 3
   affinity: |
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -41,6 +40,7 @@ server:
 
   ha:
     enabled: true
+    replicas: 3
     raft:
       enabled: true
       config: |
@@ -90,8 +90,7 @@ injector:
 helm install vault hashicorp/vault \
   --namespace vault \
   --create-namespace \
-  --values vault-values.yaml \
-  --wait
+  --values vault-values.yaml
 
 # Initialize Vault (run only once)
 kubectl exec -n vault vault-0 -- vault operator init \
@@ -99,10 +98,12 @@ kubectl exec -n vault vault-0 -- vault operator init \
   -key-threshold=3 \
   -format=json > vault-init-keys.json
 
-# Unseal Vault (requires 3 of 5 keys)
-for i in 0 1 2; do
-  KEY=$(cat vault-init-keys.json | jq -r ".unseal_keys_b64[$i]")
-  kubectl exec -n vault vault-0 -- vault operator unseal $KEY
+# Unseal all Vault pods (requires 3 of 5 keys per pod)
+for POD in vault-0 vault-1 vault-2; do
+  for i in 0 1 2; do
+    KEY=$(jq -r ".unseal_keys_b64[$i]" vault-init-keys.json)
+    kubectl exec -n vault $POD -- vault operator unseal "$KEY"
+  done
 done
 ```
 
@@ -115,19 +116,17 @@ VAULT_ROOT_TOKEN=$(cat vault-init-keys.json | jq -r '.root_token')
 # Configure Kubernetes auth method
 kubectl exec -n vault vault-0 -- env VAULT_TOKEN=$VAULT_ROOT_TOKEN vault auth enable kubernetes
 
-# Configure the Kubernetes auth backend
-kubectl exec -n vault vault-0 -- env VAULT_TOKEN=$VAULT_ROOT_TOKEN vault write \
-  auth/kubernetes/config \
-  kubernetes_host="https://kubernetes.default.svc" \
-  kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
-  token_reviewer_jwt=@/var/run/secrets/kubernetes.io/serviceaccount/token
+# Configure the Kubernetes auth backend using Vault's in-cluster service account
+kubectl exec -n vault vault-0 -- env VAULT_TOKEN=$VAULT_ROOT_TOKEN sh -c \
+  'vault write auth/kubernetes/config \
+    kubernetes_host="https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT"'
 ```
 
 ## Step 3: Create Policies and Roles
 
 ```bash
 # Create a policy for application secrets
-kubectl exec -n vault vault-0 -- env VAULT_TOKEN=$VAULT_ROOT_TOKEN vault policy write production-app - << 'EOF'
+kubectl exec -i -n vault vault-0 -- env VAULT_TOKEN=$VAULT_ROOT_TOKEN vault policy write production-app - << 'EOF'
 path "secret/data/production/*" {
   capabilities = ["read", "list"]
 }
@@ -144,8 +143,8 @@ kubectl exec -n vault vault-0 -- env VAULT_TOKEN=$VAULT_ROOT_TOKEN vault write \
   auth/kubernetes/role/production-app \
   bound_service_account_names=app-service-account \
   bound_service_account_namespaces=production \
-  policies=production-app \
-  ttl=1h
+  token_policies=production-app \
+  token_ttl=1h
 ```
 
 ## Step 4: Store Application Secrets
@@ -174,8 +173,13 @@ metadata:
   name: my-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
+      labels:
+        app: my-app
       annotations:
         # Enable Vault injection
         vault.hashicorp.com/agent-inject: "true"
@@ -198,7 +202,7 @@ spec:
             - /bin/sh
             - -c
             # Source the injected environment file
-            - "source /vault/secrets/config.env && exec ./app"
+            - ". /vault/secrets/config.env && exec ./app"
 ```
 
 ## Step 6: Configure Dynamic Database Credentials
