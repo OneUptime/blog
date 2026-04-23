@@ -14,7 +14,7 @@ RKE2 supports mixed Linux/Windows clusters, allowing you to run Windows Server c
 
 - RKE2 Linux server nodes (control plane must run on Linux)
 - Windows Server 2019 or 2022 worker nodes
-- Calico CNI (required for Windows support in RKE2)
+- Calico or Flannel CNI (this guide uses Calico)
 - All nodes on the same L2 network or with proper routing
 
 ## Architecture Overview
@@ -22,12 +22,12 @@ RKE2 supports mixed Linux/Windows clusters, allowing you to run Windows Server c
 In a mixed cluster:
 - Control plane nodes run on Linux only
 - Worker nodes can be Linux or Windows
-- The CNI plugin (Calico) provides cross-OS pod networking
-- Windows nodes run `rke2-windows-agent`
+- The CNI plugin (Calico in this guide) provides cross-OS pod networking
+- Windows nodes run the RKE2 Windows agent service (`rke2`)
 
 ## Step 1: Configure the Linux Server for Windows Support
 
-On your Linux server node, configure RKE2 to use Calico CNI (required for Windows):
+On your Linux server node, configure RKE2 to use Calico CNI (one of the supported Windows CNIs):
 
 ```yaml
 # /etc/rancher/rke2/config.yaml on Linux server
@@ -37,13 +37,14 @@ tls-san:
   - 192.168.1.100
   - my-cluster.example.com
 
-# Calico is required for Windows node support
+# Calico or Flannel is required for Windows node support
 cni: calico
 ```
 
 ```bash
 # Install and start RKE2 server
-curl -sfL https://get.rke2.io | sudo sh -
+RKE2_VERSION="v1.34.6+rke2r3"
+curl -sfL https://get.rke2.io | sudo env INSTALL_RKE2_VERSION="$RKE2_VERSION" sh -
 sudo systemctl enable rke2-server.service
 sudo systemctl start rke2-server.service
 ```
@@ -59,10 +60,10 @@ Install-WindowsFeature -Name Containers -Restart
 # After restart, verify Windows version (must be 2019 or 2022)
 Get-ComputerInfo | Select-Object WindowsProductName, WindowsVersion
 
-# Download the RKE2 Windows agent installer
-$RKE2Version = "v1.28.8+rke2r1"
-Invoke-WebRequest -Uri "https://github.com/rancher/rke2/releases/download/$RKE2Version/rke2-windows-amd64.exe" `
-    -OutFile "C:\rke2-windows-amd64.exe"
+# Download the RKE2 Windows install script
+$RKE2Version = "v1.34.6+rke2r3"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rancher/rke2/master/install.ps1" `
+    -OutFile "C:\install.ps1"
 ```
 
 ## Step 3: Install RKE2 on Windows
@@ -78,14 +79,24 @@ token: "SharedClusterToken"
 "@
 Set-Content -Path "C:\etc\rancher\rke2\config.yaml" -Value $config
 
-# Run the RKE2 Windows installer
-C:\rke2-windows-amd64.exe install
+# Configure PATH for RKE2 binaries
+$env:PATH += ";C:\var\lib\rancher\rke2\bin;C:\usr\local\bin"
+[Environment]::SetEnvironmentVariable(
+    "Path",
+    [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::Machine) + ";C:\var\lib\rancher\rke2\bin;C:\usr\local\bin",
+    [EnvironmentVariableTarget]::Machine)
 
-# Start the RKE2 Windows service
-Start-Service rke2
+# Run the RKE2 Windows installer
+& "C:\install.ps1" -Version $RKE2Version
+
+# Register the RKE2 Windows service
+rke2.exe agent service --add
 
 # Enable the service to start on boot
 Set-Service -Name rke2 -StartupType Automatic
+
+# Start the RKE2 Windows service
+Start-Service rke2
 ```
 
 ## Step 4: Verify the Windows Node Joined
@@ -103,11 +114,11 @@ kubectl get node <windows-node-name> -o jsonpath='{.status.nodeInfo.operatingSys
 
 ## Step 5: Label and Taint the Windows Node
 
-Label Windows nodes to allow workload targeting:
+Windows nodes are automatically labeled with `kubernetes.io/os=windows`. Verify the label and optionally add a taint to keep Linux workloads off the node:
 
 ```bash
-# Add a label to identify Windows nodes
-kubectl label node <windows-node-name> kubernetes.io/os=windows
+# Verify the built-in OS label
+kubectl get node <windows-node-name> -L kubernetes.io/os
 
 # Optionally add a taint to prevent Linux workloads from being scheduled here
 kubectl taint node <windows-node-name> os=windows:NoSchedule
@@ -115,7 +126,7 @@ kubectl taint node <windows-node-name> os=windows:NoSchedule
 
 ## Step 6: Deploy a Windows Workload
 
-Windows containers must target Windows nodes using `nodeSelector` and tolerations.
+Windows containers should set `.spec.os.name: windows` and must target Windows nodes using `nodeSelector` and tolerations.
 
 ```yaml
 # windows-deployment.yaml
@@ -134,6 +145,8 @@ spec:
       labels:
         app: windows-iis
     spec:
+      os:
+        name: windows
       # Target Windows nodes only
       nodeSelector:
         kubernetes.io/os: windows
@@ -145,7 +158,8 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: iis
-          # Use Windows Server Core IIS image
+          # Use an IIS image that matches the Windows host version
+          # For Windows Server 2019, use windowsservercore-ltsc2019
           image: mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2022
           ports:
             - containerPort: 80
@@ -162,7 +176,7 @@ spec:
 kubectl apply -f windows-deployment.yaml
 
 # Expose the deployment
-kubectl expose deployment windows-iis --port=80 --type=LoadBalancer
+kubectl expose deployment windows-iis --port=80 --target-port=80 --type=NodePort
 
 # Monitor the pod startup (Windows containers take longer)
 kubectl get pods -w -l app=windows-iis
@@ -183,7 +197,7 @@ Get-EventLog -LogName Application -Source rke2 -Newest 50
 
 ## Considerations and Limitations
 
-1. **Image compatibility**: Windows container images must match the host OS version. An image built for Windows Server 2019 will not run on a 2022 host without `--isolation=hyperv`.
+1. **Image compatibility**: Windows container images must match the host OS version. In Kubernetes, use process-isolated Windows container images that match the node's Windows Server release, such as `windowsservercore-ltsc2019` for Windows Server 2019 or `windowsservercore-ltsc2022` for Windows Server 2022.
 
 2. **No host network**: Windows pods cannot use `hostNetwork: true`.
 
@@ -195,4 +209,4 @@ Get-EventLog -LogName Application -Source rke2 -Newest 50
 
 ## Conclusion
 
-Deploying Windows workloads on RKE2 enables hybrid application deployments that span both Linux and Windows containers within a single cluster. The key requirements are using Calico CNI, running Windows Server 2019 or 2022 on worker nodes, and using `nodeSelector` in your pod specs to target the correct OS. With this setup, organizations can modernize Windows applications incrementally while managing them through a unified Kubernetes control plane.
+Deploying Windows workloads on RKE2 enables hybrid application deployments that span both Linux and Windows containers within a single cluster. The key requirements are using a Windows-supported CNI such as Calico or Flannel, running Windows Server 2019 or 2022 on worker nodes, and using `.spec.os.name` plus `nodeSelector` in your pod specs to target the correct OS. With this setup, organizations can modernize Windows applications incrementally while managing them through a unified Kubernetes control plane.
