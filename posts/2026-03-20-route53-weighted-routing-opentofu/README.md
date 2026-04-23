@@ -105,6 +105,25 @@ resource "aws_route53_record" "blue_with_health" {
     evaluate_target_health = true
   }
 }
+
+resource "aws_route53_record" "green_with_health" {
+  zone_id        = var.hosted_zone_id
+  name           = var.domain_name
+  type           = "A"
+  set_identifier = "green"
+
+  weighted_routing_policy {
+    weight = 20
+  }
+
+  health_check_id = aws_route53_health_check.green.id
+
+  alias {
+    name                   = var.green_alb_dns_name
+    zone_id                = var.green_alb_zone_id
+    evaluate_target_health = true
+  }
+}
 ```
 
 ## Step 3: Multi-Region Weighted Distribution
@@ -204,4 +223,4 @@ aws route53 list-resource-record-sets \
 
 ## Conclusion
 
-Weighted routing is the standard approach for zero-downtime deployments in Route 53. Start canary traffic at 5-10% to validate the new version before increasing. Setting a record's weight to 0 stops Route 53 from routing to it without removing the record-useful for temporarily taking an endpoint out of rotation without losing configuration. Always combine weighted routing with health checks so unhealthy endpoints are automatically excluded even if their weight is non-zero.
+Weighted routing is a common approach for gradual traffic shifts in Route 53. Start canary traffic at 5-10% to validate the new version before increasing. Setting a record's weight to 0 stops Route 53 from routing to it while at least one record with the same name and type has a non-zero weight; if every record in the group has weight 0, Route 53 routes to all of them with equal probability. For production, combine weighted routing with health checks or alias `evaluate_target_health` so unhealthy endpoints are excluded when other healthy records are available.
