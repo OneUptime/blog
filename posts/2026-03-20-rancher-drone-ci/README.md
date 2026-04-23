@@ -64,11 +64,10 @@ env:
   DRONE_DATABASE_DATASOURCE: /data/database.sqlite
 
 # Reference the secrets we created
-envFrom:
-  - secretRef:
-      name: drone-secrets
+extraSecretNamesForEnvFrom:
+  - drone-secrets
 
-persistence:
+persistentVolume:
   enabled: true
   size: 10Gi
   storageClass: default
@@ -97,39 +96,103 @@ helm install drone-server drone/drone \
 The Kubernetes runner executes pipeline steps as Kubernetes pods:
 
 ```bash
-cat << 'EOF' > drone-runner-values.yaml
-image:
-  tag: latest
-
-rbac:
-  buildNamespaces:
-    - drone-builds
-
-env:
-  DRONE_RPC_HOST: drone.example.com
-  DRONE_RPC_PROTO: https
-  DRONE_NAMESPACE_DEFAULT: drone-builds
-  DRONE_RESOURCE_REQUEST_CPU: "100m"
-  DRONE_RESOURCE_REQUEST_MEMORY: "128Mi"
-  DRONE_RESOURCE_LIMIT_CPU: "1"
-  DRONE_RESOURCE_LIMIT_MEMORY: "1Gi"
-
-envFrom:
-  - secretRef:
-      name: drone-secrets
-
-replicaCount: 2
+cat << 'EOF' > drone-runner.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: drone-builds
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: drone-runner
+  namespace: drone
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: drone-runner
+  namespace: drone-builds
+rules:
+  - apiGroups: [""]
+    resources:
+      - secrets
+    verbs:
+      - create
+      - delete
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+    verbs:
+      - get
+      - create
+      - delete
+      - list
+      - watch
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: drone-runner
+  namespace: drone-builds
+subjects:
+  - kind: ServiceAccount
+    name: drone-runner
+    namespace: drone
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: drone-runner
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: drone-runner-kube
+  namespace: drone
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: drone-runner-kube
+  template:
+    metadata:
+      labels:
+        app: drone-runner-kube
+    spec:
+      serviceAccountName: drone-runner
+      containers:
+        - name: runner
+          image: drone/drone-runner-kube:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: DRONE_RPC_HOST
+              value: drone.example.com
+            - name: DRONE_RPC_PROTO
+              value: https
+            - name: DRONE_NAMESPACE_DEFAULT
+              value: drone-builds
+            - name: DRONE_RESOURCE_REQUEST_CPU
+              value: "100"
+            - name: DRONE_RESOURCE_REQUEST_MEMORY
+              value: 128Mi
+            - name: DRONE_RESOURCE_LIMIT_CPU
+              value: "1000"
+            - name: DRONE_RESOURCE_LIMIT_MEMORY
+              value: 1Gi
+          envFrom:
+            - secretRef:
+                name: drone-secrets
 EOF
 
-# Create the build namespace
-kubectl create namespace drone-builds
-
-helm install drone-runner-kube drone/drone-runner-kube \
-  --namespace drone \
-  -f drone-runner-values.yaml
+kubectl apply -f drone-runner.yaml
 ```
 
 ## Step 5: Create a Basic Drone Pipeline
+
+If you use `plugins/docker` with the Kubernetes runner, mark the repository as trusted so Drone can run the privileged build step.
 
 ```yaml
 # .drone.yml - in the root of your application repository
@@ -147,6 +210,7 @@ steps:
   # Step 2: Build and push Docker image
   - name: build-push
     image: plugins/docker
+    privileged: true
     settings:
       repo: ghcr.io/my-org/myapp
       registry: ghcr.io
@@ -160,6 +224,8 @@ steps:
     when:
       branch:
         - main
+      event:
+        - push
 
   # Step 3: Deploy to Rancher cluster
   - name: deploy
@@ -178,6 +244,8 @@ steps:
     when:
       branch:
         - main
+      event:
+        - push
 ```
 
 ## Step 6: Store Drone Secrets for Deployments
@@ -185,7 +253,7 @@ steps:
 ```bash
 # Store the Rancher kubeconfig as a Drone secret
 # First, base64-encode the kubeconfig
-KUBECONFIG_B64=$(cat /path/to/rancher-cluster.kubeconfig | base64 -w 0)
+KUBECONFIG_B64=$(base64 < /path/to/rancher-cluster.kubeconfig | tr -d '\n')
 
 # In Drone UI: Repository → Settings → Secrets → Add Secret
 # Name: rancher_kubeconfig
@@ -205,6 +273,12 @@ drone secret add \
 kind: pipeline
 type: kubernetes
 name: staging
+
+trigger:
+  branch:
+    - main
+  event:
+    - push
 
 steps:
   - name: deploy-staging
@@ -236,7 +310,7 @@ steps:
         from_secret: kubeconfig_prod
     commands:
       - echo "$KUBECONFIG_DATA" | base64 -d > /tmp/kubeconfig
-      - kubectl set image deployment/myapp myapp=ghcr.io/my-org/myapp:${DRONE_BUILD_PARENT_SHA:0:8} -n production --kubeconfig /tmp/kubeconfig
+      - kubectl set image deployment/myapp myapp=ghcr.io/my-org/myapp:${DRONE_COMMIT_SHA:0:8} -n production --kubeconfig /tmp/kubeconfig
 ```
 
 ## Conclusion
