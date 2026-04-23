@@ -14,22 +14,23 @@ How to Configure Auto-Import for CAPI Clusters in Rancher is an important aspect
 
 - Rancher Turtles installed and configured
 - kubectl access to the management cluster
+- clusterctl installed
 - Appropriate cloud provider credentials (if applicable)
 - Cluster API providers installed
 
 ## Overview
 
-Rancher Turtles integrates Cluster API (CAPI) with Rancher to provide a unified, declarative approach to Kubernetes cluster lifecycle management. This guide walks through the specifics of How to Configure Auto-Import for CAPI Clusters in Rancher.
+Rancher Turtles integrates Cluster API (CAPI) with Rancher to provide a unified, declarative approach to Kubernetes cluster lifecycle management. Auto-import is configured by adding the `cluster-api.cattle.io/rancher-auto-import` label to a namespace or an individual CAPI cluster. Rancher Turtles waits until the cluster reports `ControlPlaneAvailable=True`, then creates the Rancher `clusters.management.cattle.io` resource and installs the `cattle-cluster-agent`.
 
 ## Step 1: Prepare Your Environment
 
 ```bash
 # Verify Rancher Turtles is running
 
-kubectl get pods -n rancher-turtles-system
+kubectl get pods -n cattle-turtles-system
 
 # Check installed CAPI providers
-kubectl get providers -A
+kubectl get capiproviders -A
 
 # Verify management cluster connectivity
 kubectl cluster-info
@@ -37,56 +38,31 @@ kubectl cluster-info
 
 ## Step 2: Configure Resources
 
-```yaml
-# Example CAPI configuration for How to Configure Auto-Import for CAPI Clusters in Rancher
-apiVersion: cluster.x-k8s.io/v1beta1
-kind: Cluster
-metadata:
-  name: example-cluster
-  namespace: default
-  labels:
-    cluster-api.cattle.io/rancher-auto-import: "true"
-    environment: production
-spec:
-  clusterNetwork:
-    pods:
-      cidrBlocks:
-        - 10.244.0.0/16
-    services:
-      cidrBlocks:
-        - 10.96.0.0/12
-  infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-    kind: InfraCluster
-    name: example-cluster
-  controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
-    kind: RKE2ControlPlane
-    name: example-cluster-cp
-```
-
 ```bash
-# Apply the configuration
-kubectl apply -f cluster-config.yaml
+# Option 1: Import all CAPI clusters in the namespace
+kubectl label namespace default cluster-api.cattle.io/rancher-auto-import=true
+
+# Option 2: Import a single existing cluster
+kubectl label clusters.cluster.x-k8s.io -n default example-cluster cluster-api.cattle.io/rancher-auto-import=true
 
 # Monitor progress
-kubectl get cluster example-cluster --watch
+kubectl get clusters.cluster.x-k8s.io -n default --watch
 ```
 
 ## Step 3: Verify the Configuration
 
 ```bash
 # Check cluster status
-kubectl get clusters -A
+kubectl get clusters.cluster.x-k8s.io -A
 
 # Describe the cluster for detailed status
-kubectl describe cluster example-cluster -n default
+kubectl describe clusters.cluster.x-k8s.io example-cluster -n default
 
 # View all CAPI resources
-kubectl get clusters,machines,machinedeployments -n default
+kubectl get clusters.cluster.x-k8s.io,machines.cluster.x-k8s.io,machinedeployments.cluster.x-k8s.io -n default
 
 # Check Rancher import status
-kubectl get cluster.provisioning.cattle.io -n fleet-default
+kubectl get clusters.management.cattle.io
 ```
 
 ## Step 4: Validate in Rancher UI
@@ -100,16 +76,16 @@ kubectl get cluster.provisioning.cattle.io -n fleet-default
 
 ```bash
 # Scale worker nodes
-kubectl scale machinedeployment example-cluster-workers --replicas=5
+kubectl scale machinedeployment example-cluster-workers -n default --replicas=5
 
 # Get cluster kubeconfig
-clusterctl get kubeconfig example-cluster > cluster-kubeconfig.yaml
+clusterctl get kubeconfig example-cluster --namespace default > cluster-kubeconfig.yaml
 
 # Test connectivity
 export KUBECONFIG=cluster-kubeconfig.yaml
 kubectl get nodes
 
-# Return to management cluster
+# Return to the default kubeconfig
 unset KUBECONFIG
 ```
 
@@ -117,13 +93,13 @@ unset KUBECONFIG
 
 ```bash
 # Check Turtles controller logs
-kubectl logs -n rancher-turtles-system   -l control-plane=controller-manager   --follow
+kubectl logs -n cattle-turtles-system   -l control-plane=controller-manager   --follow
 
 # Check CAPI controller logs
-kubectl logs -n capi-system   -l control-plane=controller-manager   --since=30m
+kubectl logs -n cattle-capi-system   -l control-plane=controller-manager   --since=30m
 
 # Get events for a cluster
-kubectl get events -n default   --field-selector involvedObject.name=example-cluster   --sort-by=.lastTimestamp
+kubectl get events -n default   --field-selector involvedObject.name=example-cluster   --sort-by=.metadata.creationTimestamp
 ```
 
 ## Conclusion
