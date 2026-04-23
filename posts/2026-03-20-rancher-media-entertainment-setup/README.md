@@ -37,26 +37,23 @@ Configure worker nodes for GPU-accelerated media workloads:
 # Install NVIDIA GPU Operator via Helm
 
 helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+helm repo update
 helm install gpu-operator nvidia/gpu-operator \
   --namespace gpu-operator \
   --create-namespace \
+  --wait \
   --set driver.enabled=true \
   --set toolkit.enabled=true
 
+# Label GPU worker nodes for workload placement
+kubectl label nodes gpu-worker-01 \
+  accelerator=nvidia-gpu \
+  gpu-type=a100 \
+  gpu-count=8 \
+  --overwrite
+
 # Verify GPU nodes are labeled
 kubectl get nodes -l accelerator=nvidia-gpu
-```
-
-```yaml
-# Node label GPU worker nodes
-apiVersion: v1
-kind: Node
-metadata:
-  name: gpu-worker-01
-  labels:
-    accelerator: nvidia-gpu
-    gpu-type: a100           # GPU model label for scheduling
-    gpu-count: "8"
 ```
 
 ## Step 2: Video Transcoding Pipeline
@@ -69,8 +66,8 @@ metadata:
   name: transcode-movie-4k
   namespace: media-processing
 spec:
-  parallelism: 4    # Parallel transcoding jobs
-  completions: 16   # Total segments to transcode
+  parallelism: 1
+  completions: 1
   template:
     spec:
       nodeSelector:
@@ -79,29 +76,57 @@ spec:
         - name: ffmpeg-transcoder
           image: registry.studio.internal/ffmpeg-gpu:v6.0
           env:
-            - name: INPUT_URL
-              value: "s3://raw-footage/movie-4k-raw.mov"
-            - name: OUTPUT_BUCKET
-              value: "s3://transcoded/movie-4k/"
-            - name: PRESET
-              value: "h264_nvenc_4k_hls"   # NVENC hardware encoder preset
+            - name: INPUT_FILE
+              value: "/media/input/movie-4k-raw.mov"
+            - name: OUTPUT_DIR
+              value: "/media/output"
+            - name: NVENC_PRESET
+              value: "slow"
           resources:
             limits:
               nvidia.com/gpu: 1
               memory: "16Gi"
+          volumeMounts:
+            - name: input-media
+              mountPath: /media/input
+              readOnly: true
+            - name: output-media
+              mountPath: /media/output
           command:
             - ffmpeg
+            - -y
             - -hwaccel
             - cuda
             - -i
-            - $(INPUT_URL)
+            - $(INPUT_FILE)
             - -c:v
             - h264_nvenc
             - -preset
-            - slow
-            - -crf
+            - $(NVENC_PRESET)
+            - -rc
+            - vbr
+            - -cq
             - "18"
-            - $(OUTPUT_BUCKET)segment_%03d.ts
+            - -c:a
+            - aac
+            - -b:a
+            - 192k
+            - -f
+            - hls
+            - -hls_time
+            - "4"
+            - -hls_playlist_type
+            - vod
+            - -hls_segment_filename
+            - $(OUTPUT_DIR)/segment_%03d.ts
+            - $(OUTPUT_DIR)/playlist.m3u8
+      volumes:
+        - name: input-media
+          persistentVolumeClaim:
+            claimName: raw-footage-pvc
+        - name: output-media
+          persistentVolumeClaim:
+            claimName: transcoded-output-pvc
       restartPolicy: OnFailure
 ```
 
@@ -153,8 +178,8 @@ provisioner: driver.longhorn.io
 parameters:
   numberOfReplicas: "2"      # 2 replicas for media (balance cost/HA)
   staleReplicaTimeout: "2880"
-  diskSelector: "ssd"        # Use SSD-labeled disks for video I/O
-  nodeSelector: "media-storage"
+  diskSelector: "ssd"        # Use Longhorn disk tags for video I/O
+  nodeSelector: "media-storage"  # Use Longhorn node tags for replica placement
 reclaimPolicy: Retain
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
@@ -172,6 +197,7 @@ metadata:
 spec:
   completions: 250    # 250 frames to render
   parallelism: 25     # 25 concurrent render nodes
+  completionMode: Indexed
   template:
     spec:
       nodeSelector:
@@ -183,10 +209,6 @@ spec:
           env:
             - name: SCENE_FILE
               value: "/render/projects/movie-scene-001.blend"
-            - name: FRAME_START
-              value: "1"
-            - name: FRAME_END
-              value: "250"
           resources:
             requests:
               memory: "32Gi"
@@ -197,8 +219,16 @@ spec:
           volumeMounts:
             - name: render-projects
               mountPath: /render/projects
+              readOnly: true
             - name: render-output
               mountPath: /render/output
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              FRAME=$((JOB_COMPLETION_INDEX + 1))
+              blender -b "$SCENE_FILE" -o /render/output/frame_##### -f "$FRAME"
       volumes:
         - name: render-projects
           persistentVolumeClaim:
@@ -206,7 +236,7 @@ spec:
         - name: render-output
           persistentVolumeClaim:
             claimName: render-output-pvc
-      restartPolicy: OnFailure
+      restartPolicy: Never
 ```
 
 ## Step 6: Content Protection with DRM
@@ -220,7 +250,13 @@ metadata:
   namespace: content-delivery
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: drm-key-server
   template:
+    metadata:
+      labels:
+        app: drm-key-server
     spec:
       containers:
         - name: widevine-keyserver
