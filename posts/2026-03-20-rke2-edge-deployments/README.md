@@ -8,7 +8,7 @@ Description: Learn how to configure and optimize RKE2 for edge deployments with 
 
 ## Introduction
 
-Edge deployments present unique challenges for Kubernetes clusters: limited compute resources, constrained bandwidth, intermittent connectivity, and the need for autonomous operation without constant access to a central control plane. RKE2's security-first design and lightweight footprint make it well-suited for edge environments. This guide covers the key configurations needed to run RKE2 reliably at the edge.
+Edge deployments present unique challenges for Kubernetes clusters: limited compute resources, constrained bandwidth, intermittent connectivity, and the need for autonomous operation without constant access to a central control plane. RKE2's security-first design and configurable packaged components make it well-suited for edge environments. This guide covers the key configurations needed to run RKE2 reliably at the edge.
 
 ## Edge Deployment Challenges
 
@@ -40,14 +40,27 @@ kube-apiserver-arg:
   - "max-requests-inflight=200"
   - "max-mutating-requests-inflight=100"
 
-# Tune kubelet for constrained nodes
-kubelet-arg:
-  - "max-pods=50"
-  - "kube-reserved=cpu=200m,memory=256Mi"
-  - "system-reserved=cpu=200m,memory=256Mi"
-  - "eviction-hard=memory.available<100Mi,nodefs.available<5%"
-  - "image-gc-high-threshold=85"
-  - "image-gc-low-threshold=70"
+# For RKE2 v1.32 and newer, tune kubelet in a config drop-in
+# at /var/lib/rancher/rke2/agent/etc/kubelet.conf.d/10-edge.conf
+```
+
+```yaml
+# /var/lib/rancher/rke2/agent/etc/kubelet.conf.d/10-edge.conf
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+maxPods: 50
+kubeReserved:
+  cpu: "200m"
+  memory: "256Mi"
+systemReserved:
+  cpu: "200m"
+  memory: "256Mi"
+evictionHard:
+  memory.available: "100Mi"
+  nodefs.available: "5%"
+mergeDefaultEvictionSettings: true
+imageGCHighThresholdPercent: 85
+imageGCLowThresholdPercent: 70
 ```
 
 ## Step 2: Configure etcd for Reliability on Edge
@@ -98,7 +111,9 @@ scp my-app-1.0.tar.gz edge-user@edge-node:/tmp/
 
 # On the edge node, import the image into containerd
 sudo /var/lib/rancher/rke2/bin/ctr \
-    -n k8s.io images import /tmp/my-app-1.0.tar.gz
+    --address /run/k3s/containerd/containerd.sock \
+    --namespace k8s.io \
+    images import /tmp/my-app-1.0.tar.gz
 ```
 
 ## Step 5: Configure Private Registry for Edge
@@ -121,9 +136,10 @@ configs:
     auth:
       username: admin
       password: password
-    tls:
-      insecure_skip_verify: true
 EOF
+
+# Restart RKE2 if registries.yaml was changed after startup
+sudo systemctl restart rke2-server
 ```
 
 ## Step 6: Autonomous Operation with Local Storage
@@ -131,7 +147,10 @@ EOF
 Edge clusters should function without cloud storage dependencies. Configure local persistent storage:
 
 ```bash
-# Local path provisioner is enabled by default in RKE2
+# RKE2 does not install a default local storage provisioner.
+# Install Rancher's Local Path Provisioner first.
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.35/deploy/local-path-storage.yaml
+
 # Configure a storage class for edge workloads
 kubectl apply -f - <<EOF
 apiVersion: storage.k8s.io/v1
@@ -182,6 +201,65 @@ Then deploy Traefik or a minimal NGINX:
 
 ```yaml
 # lightweight-ingress.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: traefik-ingress-controller
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: traefik-ingress-controller
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - services
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+      - networking.k8s.io
+    resources:
+      - ingresses
+      - ingressclasses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+      - networking.k8s.io
+    resources:
+      - ingresses/status
+    verbs:
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: traefik-ingress-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik-ingress-controller
+subjects:
+  - kind: ServiceAccount
+    name: traefik-ingress-controller
+    namespace: kube-system
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -196,15 +274,21 @@ spec:
       labels:
         app: traefik
     spec:
+      serviceAccountName: traefik-ingress-controller
       hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
         - key: node-role.kubernetes.io/master
+          operator: Exists
           effect: NoSchedule
       containers:
         - name: traefik
-          image: traefik:v2.10
+          image: traefik:v3.2
           args:
-            - "--providers.kubernetesingress"
+            - "--providers.kubernetesingress=true"
             - "--entrypoints.web.address=:80"
           ports:
             - containerPort: 80
@@ -216,12 +300,24 @@ spec:
 Use OneUptime for lightweight remote monitoring of your edge clusters:
 
 ```bash
-# Deploy the OneUptime monitoring agent
-kubectl apply -f https://oneuptime.com/k8s-agent/install.yaml
+# Create a namespace and token secret for an OpenTelemetry Collector
+kubectl create namespace observability
 
-# Configure with your OneUptime API key
-kubectl -n oneuptime create secret generic oneuptime-secret \
-    --from-literal=apiKey=YOUR_API_KEY
+kubectl -n observability create secret generic oneuptime-otlp \
+    --from-literal=ONEUPTIME_TOKEN=YOUR_ONEUPTIME_TOKEN
+
+# Reference this secret as the ONEUPTIME_TOKEN environment variable
+# in your OpenTelemetry Collector deployment.
+```
+
+Configure your OpenTelemetry Collector OTLP exporter to send telemetry to OneUptime:
+
+```yaml
+exporters:
+  otlp/oneuptime:
+    endpoint: "https://otlp.oneuptime.com"
+    headers:
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 ```
 
 ## Conclusion
