@@ -27,8 +27,9 @@ resource "aws_subnet" "public" {
 }
 
 resource "aws_instance" "web" {
-  ami       = var.ami_id
-  subnet_id = aws_subnet.public.id  # References subnet → depends on subnet
+  ami           = var.ami_id
+  instance_type = "t3.micro"
+  subnet_id     = aws_subnet.public.id  # References subnet → depends on subnet
   # Created after aws_subnet.public (and therefore after aws_vpc.main)
 }
 ```
@@ -102,8 +103,9 @@ resource "aws_subnet" "public" {
 }
 
 resource "aws_instance" "web" {
-  subnet_id = aws_subnet.public.id
-  ami       = var.ami_id
+  subnet_id     = aws_subnet.public.id
+  ami           = var.ami_id
+  instance_type = "t3.micro"
 }
 
 # Destruction order:
@@ -124,7 +126,7 @@ resource "aws_lb_target_group" "app" {
   lifecycle {
     create_before_destroy = true
     # New target group created BEFORE old one is destroyed
-    # Allows zero-downtime updates
+    # Can support zero-downtime replacement when both target groups can coexist
   }
 }
 ```
@@ -134,26 +136,26 @@ resource "aws_lb_target_group" "app" {
 ```hcl
 module "vpc" {
   source = "./modules/vpc"
-  # Created first
+  # Has no dependencies in this example
 }
 
 module "eks" {
   source = "./modules/eks"
-  vpc_id = module.vpc.vpc_id  # Depends on vpc module
-  # Created after vpc module completes
+  vpc_id = module.vpc.vpc_id  # Uses an output from vpc module
+  # Resources that use vpc_id wait for that output
 }
 
 module "app" {
   source          = "./modules/app"
   cluster_name    = module.eks.cluster_name
-  # Created after eks module completes
+  # Resources that use cluster_name wait for that output
 }
 ```
 
 ## Debugging Creation Order
 
 ```bash
-# Run plan to see proposed changes and their order
+# Run plan to see proposed changes
 tofu plan
 
 # Enable detailed logging to see dependency resolution
@@ -198,7 +200,7 @@ resource "aws_subnet" "public" {
 #   }
 # }
 
-# SOLUTION: Create groups first, add rules separately
+# SOLUTION: Create groups first, add ingress rules separately
 resource "aws_security_group" "a" {
   name = "sg-a"
 }
@@ -207,22 +209,20 @@ resource "aws_security_group" "b" {
   name = "sg-b"
 }
 
-resource "aws_security_group_rule" "a_allows_b" {
-  type                     = "ingress"
-  from_port                = 443
-  to_port                  = 443
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.a.id
-  source_security_group_id = aws_security_group.b.id
+resource "aws_vpc_security_group_ingress_rule" "a_allows_b" {
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
+  security_group_id            = aws_security_group.a.id
+  referenced_security_group_id = aws_security_group.b.id
 }
 
-resource "aws_security_group_rule" "b_allows_a" {
-  type                     = "ingress"
-  from_port                = 8080
-  to_port                  = 8080
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.b.id
-  source_security_group_id = aws_security_group.a.id
+resource "aws_vpc_security_group_ingress_rule" "b_allows_a" {
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
+  security_group_id            = aws_security_group.b.id
+  referenced_security_group_id = aws_security_group.a.id
 }
 ```
 
