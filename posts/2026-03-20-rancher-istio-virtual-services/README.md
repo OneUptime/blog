@@ -24,7 +24,7 @@ A VirtualService defines a set of traffic routing rules to apply when a host is 
 ```yaml
 # basic-virtual-service.yaml
 
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-vs
@@ -48,7 +48,7 @@ Route traffic based on HTTP headers, useful for A/B testing or user-specific rou
 
 ```yaml
 # header-based-routing.yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-header-routing
@@ -80,7 +80,7 @@ Route traffic based on the request URI path:
 
 ```yaml
 # uri-routing.yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-api-routing
@@ -118,7 +118,7 @@ Use fault injection to test your application's resilience:
 
 ```yaml
 # fault-injection.yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-fault-injection
@@ -159,7 +159,7 @@ Mirror traffic to a secondary service for testing without affecting production:
 
 ```yaml
 # traffic-mirror.yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-mirror
@@ -187,7 +187,7 @@ spec:
 
 ```yaml
 # timeout-retry.yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-resilience
@@ -205,7 +205,7 @@ spec:
     retries:
       # Retry up to 3 times
       attempts: 3
-      # Each retry attempt has a 2-second timeout
+      # Each attempt has a 2-second timeout
       perTryTimeout: 2s
       # Conditions that trigger a retry
       retryOn: gateway-error,connect-failure,retriable-4xx
@@ -217,7 +217,7 @@ Rewrite request URIs before forwarding to the destination:
 
 ```yaml
 # url-rewrite.yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: legacy-api-rewrite
@@ -248,13 +248,13 @@ kubectl get virtualservice -A
 kubectl describe virtualservice reviews-vs -n bookinfo
 
 # Use istioctl to verify routing rules are applied
-istioctl proxy-config routes deploy/reviews-v1 -n bookinfo
+istioctl proxy-config routes deployment/reviews-v1 -n bookinfo
 
 # Analyze for configuration issues
 istioctl analyze -n bookinfo
 
 # Check the Envoy configuration for a specific pod
-istioctl proxy-config all deploy/reviews-v1 -n bookinfo
+istioctl proxy-config all deployment/reviews-v1 -n bookinfo
 ```
 
 ## Conclusion
