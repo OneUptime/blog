@@ -8,12 +8,11 @@ Description: Learn how to configure the Random provider in OpenTofu to generate 
 
 ## Introduction
 
-This guide covers How to Configure the Random Provider in OpenTofu using OpenTofu with practical examples and production-ready configurations.
+This guide covers how to configure the Random provider in OpenTofu with practical examples and production-ready configurations.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- API credentials for the relevant service
 - Basic understanding of OpenTofu concepts
 
 ## Step 1: Install and Configure the Provider
@@ -22,107 +21,94 @@ This guide covers How to Configure the Random Provider in OpenTofu using OpenTof
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    # Provider configuration depends on the specific service
-    # Replace with the actual provider source and version
-    example = {
-      source  = "hashicorp/example"
-      version = "~> 1.0"
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
     }
   }
 }
 
-# Configure the provider with credentials
-
-provider "example" {
-  # Use environment variables for credentials
-  # EXAMPLE_API_KEY, EXAMPLE_TOKEN, etc.
-  
-  # Or specify directly (not recommended for secrets)
-  # api_key = var.api_key
-}
+# The random provider does not require a provider configuration block.
 ```
 
 ## Step 2: Set Up Authentication
 
 ```bash
-# Use environment variables for authentication
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_TOKEN="your-token"
-export PROVIDER_ORG="your-organization"
+# No authentication is required for the random provider.
+# You do not need to export provider-specific environment variables.
 ```
 
 ```hcl
-variable "api_key" {
-  description = "API key for authentication"
+variable "environment" {
+  description = "Environment name used to control regeneration with keepers"
   type        = string
-  sensitive   = true
+  default     = "dev"
 }
 
-variable "organization" {
-  description = "Organization name or ID"
+variable "allowed_special_characters" {
+  description = "Allowed special characters for generated passwords"
   type        = string
+  default     = "!#$%&*()-_=+[]{}<>:?"
 }
 ```
 
 ## Step 3: Create Basic Resources
 
 ```hcl
-# Example resource creation
-# Replace with actual resource types for the provider
-
-resource "example_project" "main" {
-  name        = "${var.environment}-project"
-  description = "Managed by OpenTofu"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+resource "random_string" "suffix" {
+  length  = 8
+  upper   = false
+  special = false
 }
 
-# Configure access control
-resource "example_team" "developers" {
-  name    = "developers"
-  project = example_project.main.id
-  role    = "contributor"
+resource "random_password" "admin" {
+  length           = 20
+  special          = true
+  override_special = var.allowed_special_characters
 }
 ```
 
 ## Step 4: Configure Advanced Settings
 
 ```hcl
-# Monitoring and alerting configuration
-resource "example_alert" "main" {
-  name      = "critical-alert"
-  project   = example_project.main.id
-  severity  = "critical"
-  threshold = 90
-
-  notification {
-    channel = var.notification_channel
+resource "random_uuid" "request_id" {
+  keepers = {
+    environment = var.environment
   }
 }
 
-# Backup and retention policies
-resource "example_backup_policy" "main" {
-  name              = "daily-backup"
-  project           = example_project.main.id
-  retention_days    = 30
-  schedule          = "0 2 * * *"  # Daily at 2 AM
+resource "random_integer" "priority" {
+  min = 1000
+  max = 9999
+
+  keepers = {
+    environment = var.environment
+  }
 }
 ```
 
 ## Step 5: Define Outputs
 
 ```hcl
-output "project_id" {
-  description = "The ID of the created project"
-  value       = example_project.main.id
+output "random_string" {
+  description = "The generated random string"
+  value       = random_string.suffix.result
 }
 
-output "project_name" {
-  description = "The name of the created project"
-  value       = example_project.main.name
+output "random_password" {
+  description = "The generated random password"
+  value       = random_password.admin.result
+  sensitive   = true
+}
+
+output "random_uuid" {
+  description = "The generated random UUID"
+  value       = random_uuid.request_id.result
+}
+
+output "random_integer" {
+  description = "The generated random integer"
+  value       = random_integer.priority.result
 }
 ```
 
@@ -145,14 +131,14 @@ tofu apply
 ## Common Issues and Solutions
 
 ### Authentication Errors
-Verify API keys are valid and have the required permissions. Check for typos in environment variable names.
+The random provider does not require authentication. If initialization fails, verify the provider source is `hashicorp/random` and run `tofu init` again.
 
 ### Rate Limiting
-Add `depends_on` to serialize resource creation and avoid hitting API rate limits.
+The random provider generates values locally and does not call a remote API, so provider-side rate limiting does not apply.
 
 ### Provider Version Conflicts
-Pin to a specific provider version range to ensure reproducible deployments.
+Pin to a specific provider version range, such as `~> 3.0`, to ensure reproducible deployments.
 
 ## Conclusion
 
-You have successfully configured How to Configure the Random Provider in OpenTofu using OpenTofu. This provider enables you to manage all aspects of the service as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials.
+You have successfully configured the Random provider in OpenTofu to generate random strings, passwords, UUIDs, and integers. These resources keep their generated values in OpenTofu state until they are replaced, which makes them useful for stable identifiers and one-time secret generation. Protect your state carefully, especially when using `random_password`, because the value is still stored in state even though it is treated as sensitive in CLI output.
