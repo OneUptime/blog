@@ -4,17 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Terraform, Infrastructure as Code, Automation
 
-Description: Use Terraform with the Rancher2 provider to manage Rancher clusters, projects, users, and workloads as infrastructure code for reproducible environments.
+Description: Use Terraform with the Rancher2 provider to manage Rancher clusters, projects, users, and applications as infrastructure code for reproducible environments.
 
 ## Introduction
 
-Terraform enables infrastructure-as-code management of Rancher resources, making cluster creation, project management, and configuration reproducible and version-controlled. The official Rancher2 Terraform provider covers the full Rancher API, allowing you to automate everything from cluster provisioning to RBAC configuration.
+Terraform enables infrastructure-as-code management of Rancher resources, making cluster creation, project management, and configuration reproducible and version-controlled. The official Rancher2 Terraform provider supports Rancher v2 resources, allowing you to automate everything from cluster provisioning to RBAC configuration.
 
 ## Prerequisites
 
 - Terraform 1.5+ installed
 - Rancher instance with API access
 - Rancher API token (create in User Settings > API & Keys)
+- Compatible Rancher and Rancher2 provider versions
 - Basic Terraform knowledge
 
 ## Step 1: Configure the Rancher2 Provider
@@ -25,8 +26,8 @@ Terraform enables infrastructure-as-code management of Rancher resources, making
 terraform {
   required_providers {
     rancher2 = {
-      source  = "rancher/rancher2"
-      version = "~> 4.0"
+      source = "rancher/rancher2"
+      # Pin the provider major version that matches your Rancher minor release.
     }
   }
 
@@ -41,7 +42,7 @@ terraform {
 provider "rancher2" {
   api_url   = var.rancher_url
   token_key = var.rancher_token
-  # For self-signed certificates
+  # Set insecure = true only if Rancher uses a self-signed certificate
   insecure  = false
 }
 ```
@@ -66,6 +67,13 @@ variable "environment" {
   type        = string
   default     = "production"
 }
+
+variable "devops_password" {
+  description = "Password for the example DevOps user"
+  type        = string
+  sensitive   = true
+  # Set via TF_VAR_devops_password environment variable
+}
 ```
 
 ## Step 2: Create a Cluster
@@ -74,28 +82,26 @@ variable "environment" {
 # cluster.tf - RKE2 cluster definition
 resource "rancher2_cluster_v2" "production_cluster" {
   name              = "production-${var.environment}"
-  kubernetes_version = "v1.29.4+rke2r1"
+  kubernetes_version = "<rke2-version-supported-by-your-rancher-release>"
 
   rke_config {
     # Machine configuration
-    machine_global_config = jsonencode({
+    machine_global_config = yamlencode({
       cni          = "cilium"
       cluster-cidr = "10.42.0.0/16"
       service-cidr = "10.43.0.0/16"
     })
 
-    # Chart addons
-    chart_values = {
-      "rke2-cilium" = yamlencode({
-        kubeProxyReplacement = "strict"
-      })
-    }
-
     # Upgrade strategy
     upgrade_strategy {
       control_plane_concurrency  = "1"
       worker_concurrency         = "10%"
-      drain_nodes                = true
+      control_plane_drain_options {
+        enabled = true
+      }
+      worker_drain_options {
+        enabled = true
+      }
     }
   }
 
@@ -112,14 +118,24 @@ output "kubeconfig" {
 }
 ```
 
+Because this example omits `machine_pools`, Rancher creates a custom cluster. Register nodes before creating projects, namespaces, or apps against it, or use the node-driver example in Step 3 instead.
+
 ## Step 3: Manage Cloud Provider Node Pools
 
 ```hcl
-# nodepool.tf - AWS node pool using Rancher machine configuration
-resource "rancher2_machine_config_v2" "worker_pool_config" {
+# nodepool.tf - Alternative AWS node-driver cluster example
+resource "rancher2_cloud_credential" "aws" {
+  name = "aws-production"
+  amazonec2_credential_config {
+    access_key = "<AWS_ACCESS_KEY>"
+    secret_key = "<AWS_SECRET_KEY>"
+  }
+}
+
+resource "rancher2_machine_config_v2" "aws_pool_config" {
   generate_name = "worker-"
   amazonec2_config {
-    ami            = "ami-0c02fb55956c7d316"  # Amazon Linux 2
+    ami            = "<AMI_ID>"
     region         = "us-east-1"
     security_group = ["rancher-nodes"]
     subnet_id      = "subnet-12345"
@@ -131,35 +147,38 @@ resource "rancher2_machine_config_v2" "worker_pool_config" {
   }
 }
 
-resource "rancher2_cluster_v2" "production_cluster" {
-  name               = "production"
-  kubernetes_version = "v1.29.4+rke2r1"
+resource "rancher2_cluster_v2" "aws_cluster" {
+  name               = "production-${var.environment}-aws"
+  kubernetes_version = "<rke2-version-supported-by-your-rancher-release>"
 
   rke_config {
     machine_pools {
       name                         = "control-plane"
-      cloud_credential_secret_name = rancher2_cloud_credential.aws.name
+      cloud_credential_secret_name = rancher2_cloud_credential.aws.id
       control_plane_role           = true
+      etcd_role                    = true
       quantity                     = 3
       machine_config {
-        kind = rancher2_machine_config_v2.worker_pool_config.kind
-        name = rancher2_machine_config_v2.worker_pool_config.name
+        kind = rancher2_machine_config_v2.aws_pool_config.kind
+        name = rancher2_machine_config_v2.aws_pool_config.name
       }
     }
 
     machine_pools {
       name                         = "workers"
-      cloud_credential_secret_name = rancher2_cloud_credential.aws.name
+      cloud_credential_secret_name = rancher2_cloud_credential.aws.id
       worker_role                  = true
       quantity                     = 5
       machine_config {
-        kind = rancher2_machine_config_v2.worker_pool_config.kind
-        name = rancher2_machine_config_v2.worker_pool_config.name
+        kind = rancher2_machine_config_v2.aws_pool_config.kind
+        name = rancher2_machine_config_v2.aws_pool_config.name
       }
     }
   }
 }
 ```
+
+If you use this node-driver example instead of the custom cluster in Step 2, update later references from `rancher2_cluster_v2.production_cluster` to `rancher2_cluster_v2.aws_cluster`.
 
 ## Step 4: Manage Projects and Namespaces
 
@@ -168,6 +187,7 @@ resource "rancher2_cluster_v2" "production_cluster" {
 resource "rancher2_project" "production_project" {
   name       = "production"
   cluster_id = rancher2_cluster_v2.production_cluster.cluster_v1_id
+  wait_for_cluster = true
 
   # Resource quota for the project
   resource_quota {
@@ -222,6 +242,12 @@ resource "rancher2_user" "devops_user" {
   enabled  = true
 }
 
+resource "rancher2_global_role_binding" "devops_user_base" {
+  name           = "devops-user-base"
+  global_role_id = "user-base"
+  user_id        = rancher2_user.devops_user.id
+}
+
 resource "rancher2_project_role_template_binding" "devops_binding" {
   name             = "devops-project-member"
   project_id       = rancher2_project.production_project.id
@@ -243,7 +269,7 @@ resource "rancher2_role_template" "readonly_deployer" {
   rules {
     api_groups = ["apps"]
     resources  = ["deployments"]
-    verbs      = ["get", "list", "watch", "update", "patch"]
+    verbs      = ["get", "list", "watch", "create", "update", "patch"]
   }
 }
 ```
@@ -252,20 +278,12 @@ resource "rancher2_role_template" "readonly_deployer" {
 
 ```hcl
 # apps.tf - Deploy Helm apps via Rancher
-resource "rancher2_app_v2" "cert_manager" {
+resource "rancher2_app_v2" "rancher_monitoring_crd" {
   cluster_id    = rancher2_cluster_v2.production_cluster.cluster_v1_id
-  namespace     = "cert-manager"
-  name          = "cert-manager"
+  namespace     = "cattle-monitoring-system"
+  name          = "rancher-monitoring-crd"
   repo_name     = "rancher-charts"
-  chart_name    = "cert-manager"
-  chart_version = "1.14.0"
-
-  values = yamlencode({
-    installCRDs = true
-    prometheus = {
-      enabled = true
-    }
-  })
+  chart_name    = "rancher-monitoring-crd"
 }
 
 resource "rancher2_app_v2" "rancher_monitoring" {
@@ -274,7 +292,6 @@ resource "rancher2_app_v2" "rancher_monitoring" {
   name          = "rancher-monitoring"
   repo_name     = "rancher-charts"
   chart_name    = "rancher-monitoring"
-  chart_version = "103.0.0"
 
   values = yamlencode({
     prometheus = {
@@ -293,8 +310,7 @@ resource "rancher2_app_v2" "rancher_monitoring" {
       }
     }
   })
-
-  depends_on = [rancher2_app_v2.cert_manager]
+  depends_on = [rancher2_app_v2.rancher_monitoring_crd]
 }
 ```
 
@@ -307,16 +323,19 @@ terraform init
 # Plan the changes
 terraform plan \
   -var="rancher_url=https://rancher.example.com" \
-  -var="rancher_token=token-xxxxx:yyyyyyyy"
+  -var="rancher_token=token-xxxxx:yyyyyyyy" \
+  -var="devops_password=ChangeMe1234"
 
 # Apply changes
 terraform apply \
   -var="rancher_url=https://rancher.example.com" \
-  -var="rancher_token=token-xxxxx:yyyyyyyy"
+  -var="rancher_token=token-xxxxx:yyyyyyyy" \
+  -var="devops_password=ChangeMe1234"
 
 # Use environment variables instead of CLI flags
 export TF_VAR_rancher_url="https://rancher.example.com"
 export TF_VAR_rancher_token="token-xxxxx:yyyyyyyy"
+export TF_VAR_devops_password="ChangeMe1234"
 terraform apply
 
 # Destroy (for cleanup)
@@ -325,4 +344,4 @@ terraform destroy
 
 ## Conclusion
 
-Terraform with the Rancher2 provider enables complete infrastructure-as-code management of your Rancher environment. By defining clusters, projects, RBAC, and applications in Terraform, you get version-controlled, reproducible infrastructure that can be deployed consistently across development, staging, and production environments. Store Terraform state in S3 or Terraform Cloud for team collaboration and use workspaces for environment isolation.
+Terraform with the Rancher2 provider enables infrastructure-as-code management of Rancher resources. By defining clusters, projects, RBAC, and applications in Terraform, you get version-controlled, reproducible infrastructure that can be deployed consistently across development, staging, and production environments. Store Terraform state in S3 or Terraform Cloud for team collaboration and use workspaces for environment isolation.
