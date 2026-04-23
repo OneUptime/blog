@@ -15,14 +15,15 @@ RTMP (Real-Time Messaging Protocol) is widely used for live streaming. Configuri
 ```bash
 # Install Nginx with RTMP module
 
+sudo apt update
 sudo apt install nginx libnginx-mod-rtmp -y
 
 # Or build from source with RTMP module
 sudo apt install build-essential libpcre3-dev libssl-dev zlib1g-dev -y
 git clone https://github.com/arut/nginx-rtmp-module.git
-wget http://nginx.org/download/nginx-1.24.0.tar.gz
-tar xf nginx-1.24.0.tar.gz
-cd nginx-1.24.0
+wget https://nginx.org/download/nginx-1.30.0.tar.gz
+tar xf nginx-1.30.0.tar.gz
+cd nginx-1.30.0
 ./configure --add-module=../nginx-rtmp-module --with-http_ssl_module
 make && sudo make install
 ```
@@ -41,10 +42,9 @@ events {
 # RTMP configuration
 rtmp {
     server {
-        # Listen on all interfaces including IPv6
-        # RTMP module listens on all interfaces by default
+        # Listen on IPv4 and IPv6 wildcard addresses
         listen 1935;
-        listen [::]:1935;
+        listen [::]:1935 ipv6only=on;
 
         chunk_size 4096;
 
@@ -52,12 +52,12 @@ rtmp {
             live on;
             record off;
 
-            # Allow publish from any IPv6 address
+            # Allow publish and play from any address
             allow publish all;
             allow play all;
 
             # Relay to another IPv6 RTMP server
-            # push rtmp://[2001:db8::relay]/live;
+            # push rtmp://[2001:db8::20]/live;
         }
 
         application vod {
@@ -69,7 +69,7 @@ rtmp {
 http {
     server {
         listen 80;
-        listen [::]:80;
+        listen [::]:80 ipv6only=on;
         server_name stream.example.com;
 
         # HLS endpoint
@@ -87,6 +87,10 @@ http {
             rtmp_stat all;
             rtmp_stat_stylesheet stat.xsl;
         }
+
+        location /stat.xsl {
+            root /usr/share/doc/libnginx-mod-rtmp/examples;
+        }
     }
 }
 ```
@@ -97,11 +101,13 @@ http {
 # Allow RTMP port over IPv6
 sudo ip6tables -A INPUT -p tcp --dport 1935 -j ACCEPT
 
-# Allow HLS/HTTP over IPv6
+# Allow HLS over HTTP/HTTPS over IPv6
 sudo ip6tables -A INPUT -p tcp --dport 80 -j ACCEPT
 sudo ip6tables -A INPUT -p tcp --dport 443 -j ACCEPT
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+# Persist rules on Debian/Ubuntu with netfilter-persistent
+sudo env DEBIAN_FRONTEND=noninteractive apt install iptables-persistent -y
+sudo netfilter-persistent save
 ```
 
 ## Streaming to IPv6 RTMP Server
@@ -112,17 +118,17 @@ ffmpeg -i /dev/video0 \
   -c:v libx264 \
   -c:a aac \
   -f flv \
-  "rtmp://[2001:db8::streamserver]/live/mystream"
+  "rtmp://[2001:db8::10]/live/mystream"
 
 # Stream from file to IPv6 RTMP
 ffmpeg -re -i input.mp4 \
   -c:v libx264 \
   -c:a aac \
   -f flv \
-  "rtmp://[2001:db8::streamserver]/live/test"
+  "rtmp://[2001:db8::10]/live/test"
 
 # OBS Studio configuration for IPv6 RTMP:
-# Server: rtmp://[2001:db8::streamserver]/live
+# Server: rtmp://[2001:db8::10]/live
 # Stream Key: mystream
 ```
 
@@ -130,10 +136,11 @@ ffmpeg -re -i input.mp4 \
 
 ```bash
 # Pull RTMP stream from IPv6 server with FFplay
-ffplay "rtmp://[2001:db8::streamserver]/live/mystream"
+ffplay "rtmp://[2001:db8::10]/live/mystream"
 
 # Convert RTMP to HLS and serve over IPv6
-ffmpeg -i "rtmp://[2001:db8::streamserver]/live/mystream" \
+sudo install -d -o "$USER" -m 0755 /var/www/html/hls
+ffmpeg -i "rtmp://[2001:db8::10]/live/mystream" \
   -c:v copy \
   -c:a copy \
   -f hls \
