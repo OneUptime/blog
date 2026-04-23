@@ -61,8 +61,10 @@ cat /var/lib/rancher/rke2/server/node-token | wc -c
 # Compare with what is in the agent config.yaml token field
 
 # Check firewall rules on the server
-# Ports required: 6443 (API), 9345 (supervisor), 10250 (kubelet), 8472/UDP (flannel)
-sudo iptables -L INPUT -n -v | grep -E "6443|9345|10250|8472"
+# Common ports: 6443/TCP (API), 9345/TCP (supervisor), 10250/TCP (kubelet metrics),
+# 2379-2381/TCP (etcd between servers), and the VXLAN port for your CNI
+# (8472/UDP for Canal/Cilium VXLAN, 4789/UDP for Flannel/Calico VXLAN)
+sudo iptables -L INPUT -n -v | grep -E "6443|9345|10250|2379|2380|2381|8472|4789"
 ```
 
 ---
@@ -94,8 +96,8 @@ journalctl -u rke2-agent -n 100 | grep -i "error\|failed"
 # Check etcd logs
 journalctl -u rke2-server | grep etcd
 
-# Common issue: stale etcd data from a previous failed install
-# Clean up and retry
+# Common issue during a failed initial bootstrap: stale etcd data
+# Only remove this directory if there is no cluster data to preserve
 systemctl stop rke2-server
 rm -rf /var/lib/rancher/rke2/server/db/etcd
 systemctl start rke2-server
@@ -105,16 +107,17 @@ systemctl start rke2-server
 
 ## Issue 5: Certificate Issues
 
-**Symptoms**: TLS handshake errors, `x509: certificate signed by unknown authority`
+**Symptoms**: TLS handshake errors, especially `x509: certificate is valid for ... not ...` SAN mismatch errors.
 
 ```bash
-# Verify TLS SANs match your cluster endpoint
-openssl x509 -in /var/lib/rancher/rke2/server/tls/server-ca.crt -noout -text | grep -A 5 "Subject Alternative"
+# Verify the API server certificate SANs match your cluster endpoint
+openssl x509 -in /var/lib/rancher/rke2/server/tls/serving-kube-apiserver.crt -noout -text | grep -A 5 "Subject Alternative"
 
-# If the SANs are wrong, update config.yaml and regenerate certs
-# Add the missing SAN, then rotate certificates
-rke2 certificate rotate
-systemctl restart rke2-server
+# If the SANs are wrong, add the missing endpoint to tls-san in /etc/rancher/rke2/config.yaml,
+# then rotate the API server certificate
+systemctl stop rke2-server
+rke2 certificate rotate --service api-server
+systemctl start rke2-server
 ```
 
 ---
@@ -129,8 +132,9 @@ ausearch -m avc -ts recent | audit2why
 setenforce 0
 systemctl start rke2-server
 
-# If it works in permissive, install the RKE2 SELinux policy
-rpm -ivh https://rpm.rancher.io/rke2/stable/common/centos/8/noarch/rke2-selinux-*.rpm
+# If it works in permissive, install the RKE2 SELinux policy packages
+yum install -y rke2-selinux container-selinux
+# For tarball installs, set selinux: true in /etc/rancher/rke2/config.yaml
 setenforce 1
 systemctl restart rke2-server
 ```
@@ -142,7 +146,11 @@ systemctl restart rke2-server
 If all else fails, run the RKE2 uninstall script and start fresh:
 
 ```bash
+# Tarball install
 /usr/local/bin/rke2-uninstall.sh
+
+# RPM install
+/usr/bin/rke2-uninstall.sh
 # This removes the binary, service, and all data
 ```
 
