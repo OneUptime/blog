@@ -21,7 +21,7 @@ RIPng (RIP Next Generation) is the IPv6 version of the Routing Information Proto
 | Metric | Hop count (1-15) |
 | Maximum diameter | 15 hops (16 = unreachable) |
 | Update interval | 30 seconds |
-| Hold-down timer | 120 seconds |
+| Garbage-collection timer | 120 seconds |
 | Route timeout | 180 seconds |
 
 ## RIPng vs RIPv2
@@ -34,7 +34,7 @@ RIPng (RIP Next Generation) is the IPv6 version of the Routing Information Proto
 | Authentication | Built-in | Uses IPsec |
 | Next-hop field | In RTE | Separate RTE entry |
 | VLSM support | Yes | Yes |
-| Maximum routes | 25 per message | 25 per message |
+| Maximum routes | 25 per message | MTU-dependent |
 
 ## How RIPng Operates
 
@@ -42,11 +42,11 @@ RIPng (RIP Next Generation) is the IPv6 version of the Routing Information Proto
 graph LR
     R1[Router 1] -->|RIPng Request| R2[Router 2]
     R2 -->|RIPng Response with routes| R1
-    R1 -->|Broadcasts full table every 30s| MulticastGroup[ff02::9]
+    R1 -->|Multicasts full table every 30s| MulticastGroup[ff02::9]
     R2 --> MulticastGroup
 ```
 
-RIPng uses Split Horizon with Poison Reverse to prevent routing loops. Routes not updated for 180 seconds are removed from the routing table.
+RIPng uses Split Horizon with Poison Reverse to prevent routing loops. Routes not updated for 180 seconds are marked unreachable and removed after the 120-second garbage-collection timer expires.
 
 ## RIPng Message Format
 
@@ -56,7 +56,7 @@ Each RTE (Route Table Entry) contains:
 - Prefix Length (1 byte)
 - Metric (1 byte: 1-15 for reachable, 16 for unreachable)
 
-```yaml
+```text
 RIPng message structure:
 +--------+--------+-------------------------------+
 | Command | Version | Must Be Zero                 |
