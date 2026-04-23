@@ -23,7 +23,7 @@ Good DR documentation is as important as the technical implementation. When a di
 ```text
 dr-documentation/
 ├── README.md                    # Overview and quick-start guide
-├── contacts.md                  # Emergency contacts and escalation
+├── contacts.yaml                # Emergency contacts and escalation
 ├── architecture.md              # System architecture diagrams
 ├── runbooks/
 │   ├── rancher-server-failure.md
@@ -42,7 +42,7 @@ dr-documentation/
 
 ## Sample Runbook: Rancher Server Failure
 
-```markdown
+````markdown
 # Runbook: Rancher Server Failure
 
 **Severity**: Critical
@@ -67,7 +67,7 @@ dr-documentation/
 ```bash
 # Attempt to reach Rancher API
 
-curl -I https://rancher.example.com/v3/ping
+curl -I https://rancher.example.com/healthz
 
 # Check DNS resolution
 nslookup rancher.example.com
@@ -90,12 +90,12 @@ ssh admin@dr-rancher.example.com
 aws s3 ls s3://rancher-dr-backups/prod/ --recursive | sort | tail -10
 
 # Note the latest backup filename
-BACKUP_FILE="rancher-backup-YYYY-MM-DDTHH-MM-SSZ.tar.gz"
+BACKUP_FILE="<backup-filename-from-s3-listing>.tar.gz"
 ```
 
 ### 4. Execute Restore (30-60 minutes)
 ...
-```text
+````
 
 ## Emergency Contacts Template
 
@@ -183,7 +183,8 @@ aws s3 sync ./dr-docs/ s3://company-runbooks/rancher/
 #!/bin/bash
 # doc-review-reminder.sh - Run monthly
 
-LAST_REVIEW=$(cat /tmp/dr-docs-last-review.txt 2>/dev/null || echo "Never")
+STATE_FILE="$HOME/.dr-docs-last-review.txt"
+LAST_REVIEW=$(cat "$STATE_FILE" 2>/dev/null || echo "Never")
 TODAY=$(date +%Y-%m-%d)
 
 echo "DR Documentation Review"
@@ -197,7 +198,7 @@ echo "[ ] Backup credentials are valid"
 echo "[ ] RTO/RPO targets are still appropriate"
 echo "[ ] New infrastructure changes documented"
 
-echo "$TODAY" > /tmp/dr-docs-last-review.txt
+echo "$TODAY" > "$STATE_FILE"
 ```
 
 ## Conclusion
