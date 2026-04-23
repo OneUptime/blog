@@ -13,8 +13,8 @@ Debugging Rancher UI Extensions requires a different approach than traditional w
 ## Prerequisites
 
 - Rancher running (locally via Docker or in a cluster)
-- Extension project scaffolded with `@rancher/shell`
-- Node.js 16+ and Yarn
+- Extension project scaffolded with `@rancher/extension` (older projects may still use `@rancher/shell`)
+- A Node.js version that matches your target Rancher release and Yarn (for example, Node.js 20 for current `v3` extensions and Node.js 16 for legacy `v2` / Rancher v2.9 extensions)
 - Chrome or Firefox DevTools familiarity
 
 ## Step 1: Run in Local Development Mode
@@ -22,15 +22,15 @@ Debugging Rancher UI Extensions requires a different approach than traditional w
 The fastest way to debug is to serve your extension locally against a live Rancher instance:
 
 ```bash
-# Start the local dev server - this proxy your extension into a running Rancher
+# Start the local dev server - this proxies your extension into a running Rancher
 
 API=https://<rancher-url> yarn dev
 
-# The Rancher UI will be available at http://localhost:8005
+# The Rancher UI will be available at https://localhost:8005
 # Your extension code is hot-reloaded on every save
 ```
 
-The `API` environment variable tells the dev server where to proxy API calls. Your browser connects to `localhost:8005` but communicates with the real Rancher backend.
+The `API` environment variable tells the dev server where to proxy API calls. Your browser connects to `https://localhost:8005` but communicates with the real Rancher backend.
 
 ## Step 2: Enable Vue DevTools
 
@@ -41,30 +41,31 @@ Install the [Vue DevTools](https://devtools.vuejs.org/) browser extension. Once 
 3. Inspect component trees, props, and computed values in real time.
 
 ```javascript
-// Temporarily expose the Vue app instance for debugging
+// In a Composition API component
+const store = useStore();
+const route = useRoute();
+
+// Temporarily expose useful debug handles
 // Add this to your component during development ONLY
 onMounted(() => {
-  window.__MY_EXT_DEBUG__ = { store: useStore(), route: useRoute() };
+  window.__MY_EXT_DEBUG__ = { store, route };
   console.log('Debug context available at window.__MY_EXT_DEBUG__');
 });
 ```
 
 ## Step 3: Inspect the Rancher Store
 
-The Rancher Vuex store holds all resource data. You can inspect it from the browser console:
+The Rancher UI uses multiple Vuex stores, including `management`, `cluster`, and `rancher`. Once you've exposed a store reference, you can inspect it from the browser console:
 
 ```javascript
-// Access the global Nuxt/Vue app instance
-const app = window.__vue_app__;
+// Access the debug handle you exposed from a component
+const { store, route } = window.__MY_EXT_DEBUG__;
 
-// Get a reference to the store
-const store = app.config.globalProperties.$store;
-
-// List all loaded clusters
+// List resources already loaded in the management store
 console.log(store.getters['management/all']('provisioning.cattle.io.cluster'));
 
-// Check the current cluster ID
-console.log(store.getters['currentCluster']?.id);
+// Inspect the current route context
+console.log(route.fullPath);
 ```
 
 ## Step 4: Debug API Requests
@@ -98,23 +99,18 @@ async function debugDispatch(store, action, payload) {
 
 ## Step 5: Debug Extension Registration
 
-If your extension routes or tabs aren't appearing, check the registration:
+If your extension routes or tabs aren't appearing, check that the product and its routes are both registered:
 
 ```javascript
+import extensionRouting from './routing/extension-routing';
+
 // In your extension's index.js, log registration steps
-export default function({ $plugin }) {
+export default function(plugin) {
   console.log('[my-extension] Registering routes...');
 
-  $plugin.addRoutes([
-    {
-      name: 'my-ext-home',
-      path: '/my-ext',
-      component: () => {
-        console.log('[my-extension] Loading Home component');
-        return import('./pages/Home.vue');
-      },
-    },
-  ]);
+  plugin.metadata = require('./package.json');
+  plugin.addProduct(require('./product'));
+  plugin.addRoutes(extensionRouting);
 
   console.log('[my-extension] Registration complete');
 }
@@ -125,11 +121,11 @@ export default function({ $plugin }) {
 ### Extension Not Loading
 
 ```bash
-# Check that the extension chart is installed
-kubectl get helmchart -n cattle-system
+# Check extension-related workloads
+kubectl get pods -n cattle-ui-plugin-system
 
-# Check extension pod logs
-kubectl logs -n cattle-system -l app=my-extension --tail=100
+# Check the extension operator logs
+kubectl logs -n cattle-ui-plugin-system deploy/ui-plugin-operator --tail=100
 ```
 
 ### Vue Component Errors
@@ -138,21 +134,23 @@ Look for errors in the browser console. Common causes:
 
 - **`Cannot read properties of undefined`** - A store getter returned `undefined` before data was loaded. Use `computed()` and guard with `?.`.
 - **`[Vue warn]: Missing required prop`** - The parent component isn't passing required props.
-- **`NavigationDuplicated`** - You're navigating to the current route. Guard with `if (route.name !== targetName)`.
+- **Navigation failure when calling `router.push()`** - You're navigating to the current route. Guard with `if (route.name !== targetName)`.
 
 ### CORS Errors in Dev Mode
 
 ```bash
-# If you see CORS errors, ensure your Rancher URL uses HTTPS
-# and that the dev server proxy is configured correctly
+# For Rancher API calls, make sure you're going through the local dev server proxy
 API=https://rancher.example.com yarn dev --open
 ```
 
+If you need to call a third-party API from the browser, use Rancher's `/meta/proxy/<host>/<path>` endpoint instead of calling the remote origin directly.
+
 ## Step 7: Write Unit Tests for Extension Logic
 
+If your extension repo includes a Jest-based test setup, a simple unit test can look like:
+
 ```javascript
-// tests/unit/my-logic.spec.js
-import { describe, it, expect } from 'vitest';
+// __tests__/my-logic.spec.js
 import { formatMetric } from '../utils/metrics';
 
 describe('formatMetric', () => {
@@ -164,8 +162,8 @@ describe('formatMetric', () => {
 ```
 
 ```bash
-# Run unit tests
-yarn test:unit
+# Run unit tests using the script configured in your package.json
+yarn test
 ```
 
 ## Conclusion
