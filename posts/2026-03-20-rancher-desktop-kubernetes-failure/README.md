@@ -13,9 +13,9 @@ Rancher Desktop is an open-source desktop application that provides Kubernetes a
 ## Prerequisites
 
 - A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
-- At least 8 GB of RAM (16 GB recommended)
-- At least 4 CPU cores
+- Administrator/sudo privileges may be required for installation
+- 8 GB of RAM recommended
+- 4 CPU cores recommended
 
 ## Overview
 
@@ -48,12 +48,12 @@ Open Rancher Desktop Preferences to configure:
 
 - **Kubernetes**: Version and enabled/disabled state
 - **Container Engine**: containerd or moby (dockerd)
-- **Virtual Machine**: CPU, memory, and disk allocation
+- **Virtual Machine** (macOS/Linux): CPU, memory, and disk allocation
 - **WSL** (Windows only): WSL2 integration settings
 
 ```bash
 # Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
+rdctl set --kubernetes-version 1.34.3
 rdctl set --container-engine containerd
 ```
 
@@ -132,30 +132,31 @@ helm uninstall my-release
 
 ```bash
 # Reset Kubernetes cluster
-rdctl factory-reset
+rdctl reset --k8s
 
-# Check Rancher Desktop status
-rdctl status
+# Get Rancher Desktop info
+rdctl info
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
+# Show current Rancher Desktop settings
+rdctl list-settings
 
 # Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+rdctl set --kubernetes-version 1.34.3
 ```
 
 ## Troubleshooting
 
 ```bash
 # Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# macOS: ~/Library/Logs/rancher-desktop/
+# Windows: %LOCALAPPDATA%\rancher-desktop\logs\
+# Linux: ~/.local/share/rancher-desktop/logs/
 
 # Reset to factory defaults
-rdctl factory-reset
+rdctl reset --factory
 
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Get Rancher Desktop info
+rdctl info
 ```
 
 ## Conclusion
