@@ -15,7 +15,7 @@ External DNS automatically manages DNS records in external DNS providers (Route5
 - Rancher-managed Kubernetes cluster
 - A domain name managed in Route53, Cloudflare, or another supported provider
 - Helm 3.x installed
-- kubectl access with appropriate cloud IAM permissions
+- kubectl access and appropriate cloud IAM permissions for ExternalDNS
 
 ## Step 1: Configure Route53 Permissions
 
@@ -29,7 +29,9 @@ cat > externaldns-policy.json << 'EOF'
     {
       "Effect": "Allow",
       "Action": [
-        "route53:ChangeResourceRecordSets"
+        "route53:ChangeResourceRecordSets",
+        "route53:ListResourceRecordSets",
+        "route53:ListTagsForResources"
       ],
       "Resource": [
         "arn:aws:route53:::hostedzone/*"
@@ -38,9 +40,7 @@ cat > externaldns-policy.json << 'EOF'
     {
       "Effect": "Allow",
       "Action": [
-        "route53:ListHostedZones",
-        "route53:ListResourceRecordSets",
-        "route53:ListTagsForResource"
+        "route53:ListHostedZones"
       ],
       "Resource": ["*"]
     }
@@ -61,9 +61,9 @@ provider: aws
 
 aws:
   region: us-east-1
-  # Limit to specific hosted zone
+  # Limit to specific hosted zones
   zoneType: "public"
-  zoneTagFilter:
+  zoneTags:
     - "kubernetes=true"
 
 # Source resources to watch
@@ -74,7 +74,6 @@ sources:
 # Domain filter (only manage these domains)
 domainFilters:
   - example.com
-  - internal.example.com
 
 # Annotation filter (only create records for annotated resources)
 annotationFilter: "external-dns.alpha.kubernetes.io/hostname"
@@ -82,7 +81,7 @@ annotationFilter: "external-dns.alpha.kubernetes.io/hostname"
 # Policy: sync (update) or create-only (never delete)
 policy: sync
 
-# Record type to create
+# TXT registry ownership records
 txtOwnerId: "rancher-production"
 txtPrefix: "_externaldns."
 
@@ -96,7 +95,10 @@ logLevel: info
 # RBAC
 rbac:
   create: true
-  serviceAccountAnnotations:
+
+serviceAccount:
+  create: true
+  annotations:
     # For IRSA on EKS
     eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/ExternalDNSRole"
 
@@ -110,11 +112,13 @@ resources:
     memory: 128Mi
 
 # Service monitor for Prometheus
-serviceMonitor:
+metrics:
   enabled: true
-  namespace: cattle-monitoring-system
-  labels:
-    release: rancher-monitoring
+  serviceMonitor:
+    enabled: true
+    namespace: cattle-monitoring-system
+    labels:
+      release: rancher-monitoring
 ```
 
 ```bash
@@ -165,13 +169,14 @@ metadata:
   name: my-app-ingress
   namespace: production
   annotations:
-    # External DNS reads hostnames from spec.rules
-    kubernetes.io/ingress.class: nginx
+    # Set hostnames on the resource so the TTL annotation is applied
+    external-dns.alpha.kubernetes.io/hostname: "app.example.com,api.example.com"
     # Override the TTL
     external-dns.alpha.kubernetes.io/ttl: "120"
 spec:
+  ingressClassName: nginx
   rules:
-    - host: app.example.com      # Creates A record
+    - host: app.example.com      # Creates a DNS record for app.example.com
       http:
         paths:
           - path: /
@@ -181,7 +186,7 @@ spec:
                 name: my-app
                 port:
                   number: 80
-    - host: api.example.com      # Creates another A record
+    - host: api.example.com      # Creates a DNS record for api.example.com
       http:
         paths:
           - path: /
@@ -200,16 +205,8 @@ spec:
 provider: cloudflare
 
 cloudflare:
-  apiToken: ""  # Set via secret
+  secretName: "cloudflare-credentials"
   proxied: false  # Set to true to use Cloudflare proxy
-
-# Use secret for credentials
-env:
-  - name: CF_API_TOKEN
-    valueFrom:
-      secretKeyRef:
-        name: cloudflare-credentials
-        key: api-token
 
 sources:
   - service
@@ -225,11 +222,11 @@ txtOwnerId: rancher-production
 ```bash
 # Create Cloudflare credentials secret
 kubectl create secret generic cloudflare-credentials \
-  --from-literal=api-token=<your-cloudflare-api-token> \
+  --from-literal=cloudflare_api_token=<your-cloudflare-api-token> \
   -n external-dns
 ```
 
-## Step 5: Configure Multiple Providers
+## Step 5: Configure Public and Private Route53 Instances
 
 ```yaml
 # externaldns-multi-provider.yaml - Route public vs private DNS
@@ -240,17 +237,24 @@ metadata:
   name: external-dns-public
   namespace: external-dns
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: external-dns-public
   template:
+    metadata:
+      labels:
+        app: external-dns-public
     spec:
+      serviceAccountName: external-dns
       containers:
         - name: external-dns
-          image: registry.k8s.io/external-dns/external-dns:v0.14.0
+          image: registry.k8s.io/external-dns/external-dns:v0.21.0
           args:
             - --source=ingress
             - --domain-filter=example.com
             - --provider=aws
             - --aws-zone-type=public
-            - --annotation-filter=external-dns.alpha.kubernetes.io/target=public
             - --policy=sync
             - --txt-owner-id=rancher-public
 
@@ -262,18 +266,25 @@ metadata:
   name: external-dns-private
   namespace: external-dns
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: external-dns-private
   template:
+    metadata:
+      labels:
+        app: external-dns-private
     spec:
+      serviceAccountName: external-dns
       containers:
         - name: external-dns
-          image: registry.k8s.io/external-dns/external-dns:v0.14.0
+          image: registry.k8s.io/external-dns/external-dns:v0.21.0
           args:
             - --source=ingress
             - --source=service
             - --domain-filter=internal.example.com
             - --provider=aws
             - --aws-zone-type=private
-            - --annotation-filter=external-dns.alpha.kubernetes.io/target=private
             - --policy=sync
             - --txt-owner-id=rancher-private
 ```
@@ -287,7 +298,7 @@ kubectl logs -n external-dns deployment/external-dns -f | grep -i "record\|dns"
 # Check Route53 records
 aws route53 list-resource-record-sets \
   --hosted-zone-id Z1XXXXXXXXXXXXXX \
-  --query 'ResourceRecordSets[?Type==`A`].[Name,TTL]' \
+  --query 'ResourceRecordSets[?Name==`app.example.com.`].[Name,Type,TTL,AliasTarget.DNSName]' \
   --output table
 
 # DNS resolution test
@@ -305,10 +316,10 @@ dig _externaldns.app.example.com TXT +short
 kubectl get dnsendpoints --all-namespaces 2>/dev/null || \
   echo "Using annotation-based management"
 
-# Exclude specific services from External DNS
+# Stop External DNS from managing a specific service
 kubectl annotate service my-service \
   -n production \
-  "external-dns.alpha.kubernetes.io/exclude=true"
+  external-dns.alpha.kubernetes.io/hostname-
 
 # Force a specific IP for a record
 kubectl annotate service my-service \
