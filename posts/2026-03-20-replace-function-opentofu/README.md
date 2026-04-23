@@ -103,6 +103,16 @@ variable "template" {
   default = "Hello, {name}! Your environment is {env}."
 }
 
+variable "user_name" {
+  type    = string
+  default = "Alice"
+}
+
+variable "environment" {
+  type    = string
+  default = "production"
+}
+
 locals {
   rendered = replace(
     replace(var.template, "{name}", var.user_name),
@@ -122,8 +132,8 @@ resource "aws_iam_role" "app" {
 }
 
 locals {
-  # Create a safe identifier from the ARN by removing special chars
-  role_safe_id = replace(aws_iam_role.app.arn, "/[:\/]/", "-")
+  # Create a safe identifier from the ARN by replacing ":" and "/"
+  role_safe_id = replace(aws_iam_role.app.arn, "/[:/]/", "-")
   # "arn:aws:iam::123:role/app-role" → "arn-aws-iam--123-role-app-role"
 }
 ```
