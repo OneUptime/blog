@@ -8,11 +8,13 @@ Description: Delete Docker volumes in Portainer safely, including handling volum
 
 ---
 
-Docker volumes provide persistent storage for containers. Portainer's Volumes section gives you a complete UI for managing named volumes, bind mounts, and external storage backends.
+Docker volumes provide persistent storage for containers. In Portainer, the Volumes section lets you list, add, browse, and remove Docker volumes, including local, NFS, and CIFS-backed volumes. Bind mounts are configured in container settings rather than in the Volumes page.
+
+The `docker volume create` examples below use the `local` driver with mount options, which Docker documents for Linux hosts and Docker Desktop.
 
 ## Navigate to Volumes in Portainer
 
-Go to **Volumes** in the left sidebar to see all volumes on the connected environment.
+Go to **Volumes** in the left sidebar to see all volumes on the connected environment. To remove a volume, tick its checkbox and click **Remove**. Portainer cannot remove volumes attached to a container, so remove the container first and then delete the volume.
 
 ## Create Named Volumes
 
@@ -92,8 +94,11 @@ docker run --rm \
 # List volumes not used by any container
 docker volume ls -f dangling=true
 
-# Remove all unused volumes (with confirmation prompt)
+# Remove unused anonymous volumes (with confirmation prompt)
 docker volume prune
+
+# Remove all unused named and anonymous volumes
+docker volume prune --all
 
 # Check volume disk usage
 docker system df -v
