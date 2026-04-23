@@ -36,23 +36,29 @@ Individual Store Locations
 Each retail store runs a K3s cluster on minimal hardware:
 
 ```bash
-# Install K3s on store server (single node or 2-node HA)
+# Install K3s on a store server (single-node example;
+# use 3 server nodes for embedded-etcd HA)
 
-curl -sfL https://get.k3s.io | sh - \
+curl -sfL https://get.k3s.io | sh -s - \
   --node-label="location=store" \
   --node-label="store-id=NYC-001" \
   --node-label="region=northeast" \
   --tls-san="store-nyc-001.retail.internal"
 
 # Register store cluster with Rancher HQ
-# Apply the cluster agent manifest from Rancher UI
-kubectl apply -f https://rancher.hq.retail.com/v3/import/store-registration.yaml
+# Copy the cluster-specific kubectl command from the Rancher UI
+kubectl apply -f https://rancher.hq.retail.com/v3/import/<cluster-registration-token>.yaml
+
+# After registration, add Rancher/Fleet cluster labels such as:
+# location=store, store-id=NYC-001, region=northeast
 ```
 
 ## Step 2: Fleet Configuration for Store Deployments
 
 ```yaml
 # Fleet GitRepo for store application deployments
+# Fleet targets labels on the registered cluster resource.
+# Use each app bundle's fleet.yaml targetCustomizations for per-region overrides.
 apiVersion: fleet.cattle.io/v1alpha1
 kind: GitRepo
 metadata:
@@ -62,14 +68,6 @@ spec:
   repo: https://git.retail.internal/store-apps
   branch: production
   targets:
-    # Northeast stores get one POS configuration
-    - name: northeast-stores
-      clusterSelector:
-        matchLabels:
-          location: store
-          region: northeast
-      clusterGroup: northeast-stores
-    # All stores get the base configuration
     - name: all-stores
       clusterSelector:
         matchLabels:
@@ -88,9 +86,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: pos-terminal
-  namespace: retail-apps
+  namespace: retail-pos
 spec:
-  replicas: 2    # Two replicas for store HA
+  replicas: 1    # Use a single replica when backing the workload with a shared local PVC
   selector:
     matchLabels:
       app: pos
@@ -98,6 +96,7 @@ spec:
     metadata:
       labels:
         app: pos
+        store-id: NYC-001
     spec:
       containers:
         - name: pos-app
@@ -144,6 +143,9 @@ spec:
   podSelector:
     matchLabels:
       app: pos
+  policyTypes:
+    - Ingress
+    - Egress
   ingress:
     # Only allow traffic from the payment gateway
     - from:
@@ -159,7 +161,10 @@ spec:
       ports:
         - port: 443
     - to:
-        - podSelector:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: retail-apps
+          podSelector:
             matchLabels:
               app: store-backend
       ports:
@@ -177,7 +182,13 @@ metadata:
   namespace: retail-apps
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: signage
   template:
+    metadata:
+      labels:
+        app: signage
     spec:
       containers:
         - name: signage
@@ -202,7 +213,13 @@ metadata:
   namespace: retail-apps
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: inventory
   template:
+    metadata:
+      labels:
+        app: inventory
     spec:
       containers:
         - name: inventory
@@ -223,7 +240,14 @@ kind: ServiceMonitor
 metadata:
   name: store-apps
   namespace: cattle-monitoring-system
+  labels:
+    release: rancher-monitoring
 spec:
+  jobLabel: app
+  namespaceSelector:
+    matchNames:
+      - retail-apps
+      - retail-pos
   selector:
     matchLabels:
       monitoring: "true"
@@ -240,17 +264,20 @@ apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: store-pos-alerts
+  namespace: cattle-monitoring-system
+  labels:
+    release: rancher-monitoring
 spec:
   groups:
     - name: pos-availability
       rules:
         - alert: POSAppDown
-          expr: up{job="pos-terminal"} == 0
+          expr: up{job="pos", namespace="retail-pos"} == 0
           for: 2m
           labels:
             severity: critical
           annotations:
-            summary: "POS application is down at store {{ $labels.store_id }}"
+            summary: "POS metrics target {{ $labels.instance }} is down"
 ```
 
 ## Step 8: Over-the-Air Updates
@@ -258,26 +285,21 @@ spec:
 Use Fleet to perform rolling updates across all store clusters:
 
 ```yaml
-# Update fleet.yaml to new image version
-# Commit to Git → Fleet automatically rolls out to all stores
-# Using canary deployment: update east region first
+# Update fleet.yaml to the new image version.
+# Fleet processes partitions in order, so put the canary group first.
+# Keep the cluster groups mutually exclusive and make sure they cover all targets.
 
-apiVersion: fleet.cattle.io/v1alpha1
-kind: GitRepo
-metadata:
-  name: store-pos-update
-spec:
-  targets:
-    # Phase 1: 10% of stores (canary)
+rolloutStrategy:
+  maxUnavailablePartitions: 0
+  partitions:
     - name: canary-stores
-      clusterGroup: canary-cluster-group
-    # Phase 2: remaining stores
-    - name: all-remaining-stores
-      clusterSelector:
-        matchLabels:
-          location: store
+      maxUnavailable: 10%
+      clusterGroup: canary-stores
+    - name: remaining-stores
+      maxUnavailable: 10%
+      clusterGroup: remaining-stores
 ```
 
 ## Conclusion
 
-Rancher's combination of K3s for lightweight edge clusters and Fleet for centralized management makes it ideal for retail deployments spanning hundreds of store locations. The ability to deploy, update, and monitor all store applications from a single control plane dramatically reduces operational overhead. PCI DSS compliance requirements for POS systems are addressed through network isolation, etcd encryption, and audit logging. This architecture enables retailers to treat their store infrastructure as a modern cloud-native platform.
+Rancher's combination of K3s for lightweight edge clusters and Fleet for centralized management makes it ideal for retail deployments spanning hundreds of store locations. The ability to deploy, update, and monitor all store applications from a single control plane dramatically reduces operational overhead. PCI DSS compliance requirements for POS systems can be further supported through network isolation, secrets encryption at rest, and audit logging. This architecture enables retailers to treat their store infrastructure as a modern cloud-native platform.
