@@ -21,14 +21,14 @@ Image pull secrets are Kubernetes secrets that contain credentials for authentic
 
 Kubernetes supports two approaches:
 1. **Pod-level**: Specify `imagePullSecrets` directly in the pod spec
-2. **ServiceAccount-level**: Attach secrets to a ServiceAccount so all pods using that SA inherit them
+2. **ServiceAccount-level**: Attach secrets to a ServiceAccount so pods using that SA can inherit them
 
 ## Step 1: Create an Image Pull Secret
 
 ### Method 1: Using kubectl
 
 ```bash
-# Create a generic registry secret
+# Create a registry secret
 
 kubectl create secret docker-registry my-registry-secret \
   --docker-server=registry.example.com \
@@ -43,9 +43,9 @@ kubectl describe secret my-registry-secret -n my-namespace
 
 ### Method 2: Using Rancher UI
 
-1. Navigate to your cluster > Project.
-2. Go to **Secrets** > **Registry Credentials**.
-3. Click **Add Registry** and fill in the registry details.
+1. Navigate to **Cluster Management**, open your cluster, and click **Explore**.
+2. Go to **Storage** > **Secrets** (or **More Resources** > **Core** > **Secrets**).
+3. Click **Create** > **Registry**, choose the namespace, and fill in the registry details.
 
 ### Method 3: Using a YAML Manifest
 
@@ -58,16 +58,14 @@ metadata:
   namespace: my-namespace
 type: kubernetes.io/dockerconfigjson
 data:
-  # Base64-encoded Docker config JSON
-  .dockerconfigjson: |
-    # Generate with: kubectl create secret docker-registry ... --dry-run=client -o jsonpath='{.data.\.dockerconfigjson}'
-    eyJhdXRocyI6eyJyZWdpc3RyeS5leGFtcGxlLmNvbSI6eyJ1c2VybmFtZSI6Im15dXNlciIsInBhc3N3b3JkIjoibXlwYXNzd29yZCIsImVtYWlsIjoiYWRtaW5AZXhhbXBsZS5jb20iLCJhdXRoIjoiYlhsMWMyVnlPbTE1Y0dGemQzOWtifT19fQ==
+  # Generate with: kubectl create secret docker-registry ... --dry-run=client -o jsonpath='{.data.\.dockerconfigjson}'
+  .dockerconfigjson: eyJhdXRocyI6eyJyZWdpc3RyeS5leGFtcGxlLmNvbSI6eyJ1c2VybmFtZSI6Im15dXNlciIsInBhc3N3b3JkIjoibXlwYXNzd29yZCIsImVtYWlsIjoiYWRtaW5AZXhhbXBsZS5jb20iLCJhdXRoIjoiYlhsMWMyVnlPbTE1Y0dGemQzOWtifT19fQ==
 ```
 
 ## Step 2: Reference Pull Secret in Pod Spec
 
 ```yaml
-# deployment.yaml - Pod using image pull secret
+# deployment.yaml - Deployment using image pull secret
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -95,16 +93,15 @@ spec:
 
 ## Step 3: Attach Pull Secret to a ServiceAccount
 
-For automatic injection into all pods using the service account:
+For automatic injection into pods that use the service account and do not define their own `imagePullSecrets`:
 
 ```bash
-# Patch the default service account
+# Set the default service account to use this pull secret
 kubectl patch serviceaccount default \
   -n my-namespace \
-  --type='json' \
-  -p='[{"op":"add","path":"/imagePullSecrets/-","value":{"name":"my-registry-secret"}}]'
+  -p '{"imagePullSecrets":[{"name":"my-registry-secret"}]}'
 
-# Or for a custom service account
+# Or set a custom service account to use it
 kubectl patch serviceaccount my-app-sa \
   -n my-namespace \
   -p '{"imagePullSecrets":[{"name":"my-registry-secret"}]}'
@@ -128,7 +125,13 @@ metadata:
   name: multi-registry-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: multi-registry-app
   template:
+    metadata:
+      labels:
+        app: multi-registry-app
     spec:
       # Multiple image pull secrets
       imagePullSecrets:
@@ -160,8 +163,17 @@ for NS in "${TARGET_NAMESPACES[@]}"; do
   echo "Copying $SECRET_NAME to namespace: $NS"
   kubectl get secret $SECRET_NAME \
     --namespace=$SOURCE_NAMESPACE \
-    -o yaml | \
-    sed "s/namespace: $SOURCE_NAMESPACE/namespace: $NS/" | \
+    -o json | \
+    jq --arg ns "$NS" '
+      del(
+        .metadata.creationTimestamp,
+        .metadata.managedFields,
+        .metadata.resourceVersion,
+        .metadata.uid,
+        .metadata.annotations."kubectl.kubernetes.io/last-applied-configuration"
+      )
+      | .metadata.namespace = $ns
+    ' | \
     kubectl apply -f -
 done
 ```
@@ -178,8 +190,9 @@ metadata:
   annotations:
     # Automatically replicate to matching namespaces
     reflector.v1.k8s.emberstack.com/reflection-allowed: "true"
-    reflector.v1.k8s.emberstack.com/reflection-auto-enabled: "true"
     reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces: "development,staging,production"
+    reflector.v1.k8s.emberstack.com/reflection-auto-enabled: "true"
+    reflector.v1.k8s.emberstack.com/reflection-auto-namespaces: "development,staging,production"
 type: kubernetes.io/dockerconfigjson
 data:
   .dockerconfigjson: <base64-encoded-config>
@@ -191,7 +204,7 @@ For dynamic secret management from Vault or AWS Secrets Manager:
 
 ```yaml
 # external-secret.yaml - External Secrets Operator for registry creds
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: registry-credentials
@@ -204,18 +217,10 @@ spec:
   target:
     name: my-registry-secret
     template:
+      engineVersion: v2
       type: kubernetes.io/dockerconfigjson
       data:
-        .dockerconfigjson: |
-          {
-            "auths": {
-              "registry.example.com": {
-                "username": "{{ .username }}",
-                "password": "{{ .password }}",
-                "auth": "{{ printf "%s:%s" .username .password | b64enc }}"
-              }
-            }
-          }
+        .dockerconfigjson: '{"auths":{"registry.example.com":{"username":"{{ .username }}","password":"{{ .password }}","auth":"{{ printf "%s:%s" .username .password | b64enc }}"}}}'
   data:
     - secretKey: username
       remoteRef:
@@ -257,9 +262,9 @@ kubectl get secret my-registry-secret -n my-namespace \
 # Test credentials manually
 CREDENTIALS=$(kubectl get secret my-registry-secret -n my-namespace \
   -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d)
-echo $CREDENTIALS | jq '.auths'
+echo "$CREDENTIALS" | jq '.auths'
 ```
 
 ## Conclusion
 
-Image pull secrets are a fundamental component of running private container images in Kubernetes. Rancher simplifies their management through its UI and project-scoped secrets. For production environments, consider using the External Secrets Operator or similar tools to manage registry credentials from a centralized secrets manager, enabling automatic rotation and audit trails.
+Image pull secrets are a fundamental component of running private container images in Kubernetes. Rancher simplifies their management through its UI and namespace- or project-scoped registry credentials. For production environments, consider using the External Secrets Operator or similar tools to manage registry credentials from a centralized secrets manager, enabling automatic rotation and audit trails.
