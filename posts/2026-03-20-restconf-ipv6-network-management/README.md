@@ -8,7 +8,7 @@ Description: Use RESTCONF (RFC 8040) with Python to manage IPv6 network configur
 
 ## Introduction
 
-RESTCONF (RFC 8040) exposes YANG-modeled network configuration as a REST API over HTTPS. It is easier to use than NETCONF for developers already familiar with REST APIs. RESTCONF supports the same YANG data models as NETCONF and is available on Cisco IOS-XE 16.3+, IOS-XR 6.1+, and Juniper Junos 17.3+.
+RESTCONF (RFC 8040) exposes YANG-modeled network configuration as a REST API over HTTPS. It is easier to use than NETCONF for developers already familiar with REST APIs. RESTCONF uses YANG data models for configuration and operational state; device support and supported modules are platform and release dependent.
 
 ## Step 1: RESTCONF Client Setup
 
@@ -16,16 +16,17 @@ RESTCONF (RFC 8040) exposes YANG-modeled network configuration as a REST API ove
 # restconf/client.py
 
 import requests
-import json
+import urllib3
+from urllib.parse import quote
 from urllib3.exceptions import InsecureRequestWarning
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+urllib3.disable_warnings(InsecureRequestWarning)
 
 class RESTCONFClient:
     """RESTCONF client for IPv6-capable network devices."""
 
     def __init__(self, host: str, username: str, password: str,
                  port: int = 443):
-        # host can be IPv6 address: 2001:db8::r1
+        # host can be an IPv6 address: 2001:db8::10
         if ":" in host and not host.startswith("["):
             host = f"[{host}]"  # Bracket notation for URL
         self.base_url = f"https://{host}:{port}/restconf"
@@ -34,6 +35,11 @@ class RESTCONFClient:
             "Accept": "application/yang-data+json",
             "Content-Type": "application/yang-data+json",
         }
+
+    @staticmethod
+    def key(value: str) -> str:
+        """Percent-encode a RESTCONF list key value for a URI path segment."""
+        return quote(value, safe="")
 
     def get(self, path: str) -> dict:
         url = f"{self.base_url}/{path}"
@@ -86,7 +92,7 @@ def get_ipv6_interfaces(client: RESTCONFClient) -> list:
 
     return ipv6_addresses
 
-client = RESTCONFClient("2001:db8::r1", "admin", "secret")
+client = RESTCONFClient("2001:db8::10", "admin", "secret")
 addrs = get_ipv6_interfaces(client)
 for a in addrs:
     print(f"{a['interface']}: {a['address']}/{a['prefix_length']}")
@@ -98,26 +104,29 @@ for a in addrs:
 def configure_ipv6_address(client: RESTCONFClient, interface: str,
                              ipv6_addr: str, prefix_len: int):
     """Add an IPv6 address using RESTCONF PATCH."""
-    path = f"data/ietf-interfaces:interfaces/interface={interface}"
+    interface_key = RESTCONFClient.key(interface)
+    path = f"data/ietf-interfaces:interfaces/interface={interface_key}"
 
     payload = {
-        "ietf-interfaces:interface": {
-            "name": interface,
-            "ietf-ip:ipv6": {
-                "enabled": True,
-                "address": [
-                    {
-                        "ip": ipv6_addr,
-                        "prefix-length": prefix_len,
-                    }
-                ]
+        "ietf-interfaces:interface": [
+            {
+                "name": interface,
+                "ietf-ip:ipv6": {
+                    "enabled": True,
+                    "address": [
+                        {
+                            "ip": ipv6_addr,
+                            "prefix-length": prefix_len,
+                        }
+                    ]
+                }
             }
-        }
+        ]
     }
 
     response = client.patch(path, payload)
     print(f"Status: {response.status_code}")
-    return response.status_code == 204  # 204 No Content = success
+    return response.status_code in (200, 204)
 ```
 
 ## Step 4: Delete IPv6 Address
@@ -125,9 +134,11 @@ def configure_ipv6_address(client: RESTCONFClient, interface: str,
 ```python
 def delete_ipv6_address(client: RESTCONFClient, interface: str, ipv6_addr: str):
     """Remove an IPv6 address using RESTCONF DELETE."""
+    interface_key = RESTCONFClient.key(interface)
+    address_key = RESTCONFClient.key(ipv6_addr)
     path = (
-        f"data/ietf-interfaces:interfaces/interface={interface}"
-        f"/ietf-ip:ipv6/address={ipv6_addr}"
+        f"data/ietf-interfaces:interfaces/interface={interface_key}"
+        f"/ietf-ip:ipv6/address={address_key}"
     )
     response = client.delete(path)
     return response.status_code == 204
@@ -138,10 +149,14 @@ def delete_ipv6_address(client: RESTCONFClient, interface: str, ipv6_addr: str):
 ```python
 def get_ipv6_routes(client: RESTCONFClient) -> list:
     """Retrieve IPv6 routing table via RESTCONF."""
-    path = "data/ietf-routing:routing/ribs/rib=ipv6-unicast/routes"
+    path = "data/ietf-routing:routing/ribs"
     try:
         data = client.get(path)
-        return data.get("ietf-routing:routes", {}).get("route", [])
+        routes = []
+        for rib in data.get("ietf-routing:ribs", {}).get("rib", []):
+            if rib.get("address-family") == "ietf-ipv6-unicast-routing:ipv6-unicast":
+                routes.extend(rib.get("routes", {}).get("route", []))
+        return routes
     except Exception as e:
         print(f"Error retrieving IPv6 routes: {e}")
         return []
@@ -153,12 +168,12 @@ def get_ipv6_routes(client: RESTCONFClient) -> list:
 # Test RESTCONF root
 curl -k -u admin:secret \
     -H "Accept: application/yang-data+json" \
-    "https://[2001:db8::r1]:443/restconf/"
+    "https://[2001:db8::10]:443/restconf/"
 
 # Get all interfaces
 curl -k -u admin:secret \
     -H "Accept: application/yang-data+json" \
-    "https://[2001:db8::r1]:443/restconf/data/ietf-interfaces:interfaces" \
+    "https://[2001:db8::10]:443/restconf/data/ietf-interfaces:interfaces" \
     | python3 -m json.tool
 
 # PATCH IPv6 address
@@ -166,10 +181,10 @@ curl -k -u admin:secret \
     -X PATCH \
     -H "Content-Type: application/yang-data+json" \
     -H "Accept: application/yang-data+json" \
-    -d '{"ietf-interfaces:interface":{"name":"GigabitEthernet0/0","ietf-ip:ipv6":{"address":[{"ip":"2001:db8::1","prefix-length":64}]}}}' \
-    "https://[2001:db8::r1]:443/restconf/data/ietf-interfaces:interfaces/interface=GigabitEthernet0/0"
+    -d '{"ietf-interfaces:interface":[{"name":"GigabitEthernet0/0","ietf-ip:ipv6":{"address":[{"ip":"2001:db8:100::1","prefix-length":64}]}}]}' \
+    "https://[2001:db8::10]:443/restconf/data/ietf-interfaces:interfaces/interface=GigabitEthernet0%2F0"
 ```
 
 ## Conclusion
 
-RESTCONF provides a developer-friendly REST API for IPv6 network configuration, backed by YANG data models. Use bracket notation for IPv6 addresses in URLs: `https://[2001:db8::1]:443/restconf/`. PATCH is idempotent and suitable for adding addresses without replacing existing ones. Monitor RESTCONF API health and response times with OneUptime's HTTPS checks on management plane endpoints.
+RESTCONF provides a developer-friendly REST API for IPv6 network configuration, backed by YANG data models. Use bracket notation for IPv6 addresses in URLs: `https://[2001:db8::10]:443/restconf/`. Plain PATCH merges the supplied YANG data with the target resource, so it is suitable for adding addresses without replacing the entire interface configuration. Monitor RESTCONF API health and response times with OneUptime's HTTPS checks on management plane endpoints.
