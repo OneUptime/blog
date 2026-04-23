@@ -19,12 +19,14 @@ Portainer provides rich tooling for managing environments at scale. Following be
 ### Via the Portainer UI
 
 1. Log in to Portainer as an administrator
-2. Navigate to **Environments** (or the relevant section)
-3. Find the target environment or create a new configuration
-4. Apply the required settings
-5. Save your changes
+2. Under **Administration**, navigate to **Environment-related** > **Environments**
+3. Select the checkbox next to the environment you want to remove
+4. Click **Remove**
+5. Confirm the removal
 
 ### Via the API
+
+In the Portainer API, environments are still managed under the `/api/endpoints` routes.
 
 ```bash
 TOKEN=$(curl -s -X POST \
@@ -33,42 +35,35 @@ TOKEN=$(curl -s -X POST \
   -d '{"username":"admin","password":"yourpassword"}' \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# List all environments
+# List all environments and note the ID you want to remove
 
 curl -s https://localhost:9443/api/endpoints \
   -H "Authorization: Bearer $TOKEN" \
   --insecure | python3 -c "
 import sys, json
-envs = json.load(sys.stdin)
-for e in envs:
-    tags = [t['Name'] for t in e.get('Tags', [])]
-    group = e.get('GroupId', 0)
-    print(f'  ID: {e[\"Id\"]}, Name: {e[\"Name\"]}, Group: {group}, Tags: {tags}')
+for e in json.load(sys.stdin):
+    print('{}: {}'.format(e['Id'], e['Name']))
 "
+
+# Remove the environment from Portainer
+ENV_ID=1
+
+curl -s -o /dev/null -w "%{http_code}\n" -X DELETE \
+  "https://localhost:9443/api/endpoints/${ENV_ID}" \
+  -H "Authorization: Bearer $TOKEN" \
+  --insecure
+
+# A successful deletion returns: 204
 ```
 
-## Installing the Portainer Agent (for Cloud K8s)
+## Important Note for Agent-Based Environments
 
-For EKS, AKS, and GKE environments, deploy the agent via Helm:
-
-```bash
-# Add the Portainer Helm repository
-helm repo add portainer https://portainer.github.io/k8s/
-helm repo update
-
-# Install the Portainer Agent
-helm install portainer-agent portainer/portainer-agent \
-  -n portainer \
-  --create-namespace \
-  --set env.serverAddress="wss://portainer.example.com" \
-  --set env.edgeId="<your-edge-id>" \
-  --set env.edgeKey="<your-edge-key>"
-```
+Removing an environment from Portainer removes the environment record from Portainer. It does not uninstall the Portainer Agent or Edge Agent from the target Docker or Kubernetes environment. For Docker environments, existing stacks become orphaned and can be re-associated after you add the environment again.
 
 ## Best Practices
 
 - Use descriptive names for environments (include location and type)
-- Apply consistent tags for filtering (e.g., , )
+- Apply consistent tags for filtering (e.g., `prod`, `staging`)
 - Group related environments together for bulk operations
 - Review environment list quarterly and remove decommissioned environments
 
