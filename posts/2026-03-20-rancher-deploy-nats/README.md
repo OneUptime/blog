@@ -8,7 +8,7 @@ Description: Deploy NATS messaging system on Rancher-managed clusters for lightw
 
 ## Introduction
 
-NATS is a simple, secure, high-performance open-source messaging system designed for cloud-native applications. It supports pub/sub, request-reply, and queue group patterns. NATS JetStream adds persistent messaging, stream replay, and consumer groups. This guide covers deploying a NATS cluster on Rancher with JetStream enabled.
+NATS is a simple, secure, high-performance open-source messaging system designed for cloud-native applications. It supports pub/sub, request-reply, and queue group patterns. NATS JetStream adds persistent messaging, stream replay, and durable consumers. This guide covers deploying a NATS cluster on Rancher with JetStream enabled.
 
 ## Prerequisites
 
@@ -35,7 +35,6 @@ config:
   cluster:
     enabled: true
     replicas: 3
-    name: "rancher-nats"
 
   jetstream:
     enabled: true
@@ -45,21 +44,6 @@ config:
         enabled: true
         storageClassName: standard
         size: 20Gi
-
-  auth:
-    enabled: true
-    resolver:
-      type: full
-      operator: myoperator
-      systemAccount: SYS
-      store:
-        dir: /etc/nats/jwt
-        size: 10Mi
-
-  tls:
-    enabled: true
-    secret:
-      name: nats-server-tls
 
   websocket:
     enabled: true
@@ -74,7 +58,12 @@ container:
       cpu: 500m
       memory: 512Mi
 
-natsbox:
+service:
+  ports:
+    monitor:
+      enabled: true
+
+natsBox:
   enabled: true
 
 reloader:
@@ -85,9 +74,15 @@ promExporter:
   port: 7777
   podMonitor:
     enabled: true
-    namespace: cattle-monitoring-system
-    labels:
-      release: rancher-monitoring
+    merge:
+      metadata:
+        namespace: cattle-monitoring-system
+        labels:
+          release: rancher-monitoring
+      spec:
+        namespaceSelector:
+          matchNames:
+            - messaging
 ```
 
 ```bash
@@ -99,7 +94,8 @@ helm install nats nats/nats \
   --wait
 
 # Verify deployment
-kubectl get pods -n messaging -l app.kubernetes.io/name=nats
+kubectl get pods -n messaging \
+  -l app.kubernetes.io/name=nats,app.kubernetes.io/component=nats
 ```
 
 ## Step 2: Verify NATS Cluster
@@ -121,30 +117,34 @@ nats server info --server nats://nats.messaging.svc.cluster.local:4222
 ```bash
 # Create a stream
 kubectl exec -n messaging deployment/nats-box -- \
-  nats stream create ORDERS \
+  nats stream add ORDERS \
   --server nats://nats.messaging.svc.cluster.local:4222 \
   --subjects "orders.*" \
   --storage file \
   --replicas 3 \
   --retention limits \
-  --max-age 7d \
-  --max-msgs 10000000 \
+  --max-age=7d \
+  --max-msgs=10000000 \
+  --max-bytes=-1 \
+  --max-msg-size=-1 \
+  --dupe-window=2m \
   --discard old \
-  --no-allow-rollup-hdrs
+  --ack
 
 # Create a durable consumer
 kubectl exec -n messaging deployment/nats-box -- \
-  nats consumer create ORDERS order-processor \
+  nats consumer add ORDERS order-processor \
   --server nats://nats.messaging.svc.cluster.local:4222 \
   --filter "orders.new" \
   --pull \
   --deliver all \
   --max-deliver 5 \
-  --ack explicit \
-  --wait 30s
+  --ack explicit
 ```
 
-## Step 4: Create NATS Accounts and Users
+## Step 4: Create NATS Accounts and Users (Optional)
+
+Use this step to prepare NSC-managed accounts and user credentials for a JWT-enabled NATS deployment.
 
 ```bash
 # Install NSC for NATS account management
@@ -154,16 +154,17 @@ curl -L https://raw.githubusercontent.com/nats-io/nsc/main/install.sh | sh
 nsc add operator myoperator
 
 # Create accounts
-nsc add account --name APP
-nsc add account --name SYS
+nsc add account -n APP
+nsc add account -n SYS
+nsc edit operator --system-account SYS
 
 # Create users
-nsc add user --account APP --name appuser
+nsc add user -a APP -n appuser
 
 # Export credentials
-nsc generate creds -n appuser -a APP > appuser.creds
+nsc generate creds -a APP -n appuser > appuser.creds
 
-# Create Kubernetes secret for credentials
+# Create Kubernetes secret for application credentials
 kubectl create secret generic nats-creds \
   --from-file=appuser.creds=appuser.creds \
   --namespace=production
@@ -179,7 +180,14 @@ metadata:
   name: order-service
   namespace: production
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: order-service
   template:
+    metadata:
+      labels:
+        app: order-service
     spec:
       containers:
         - name: order-service
@@ -187,16 +195,17 @@ spec:
           env:
             - name: NATS_URL
               value: "nats://nats.messaging.svc.cluster.local:4222"
-            - name: NATS_CREDS
-              value: "/etc/nats/creds/appuser.creds"
-          volumeMounts:
-            - name: nats-creds
-              mountPath: /etc/nats/creds
-              readOnly: true
-      volumes:
-        - name: nats-creds
-          secret:
-            secretName: nats-creds
+          # If the server is configured for JWT-based auth, also set:
+          # - name: NATS_CREDS
+          #   value: "/etc/nats/creds/appuser.creds"
+          # volumeMounts:
+          #   - name: nats-creds
+          #     mountPath: /etc/nats/creds
+          #     readOnly: true
+      # volumes:
+      #   - name: nats-creds
+      #     secret:
+      #       secretName: nats-creds
 ```
 
 ## Step 6: Publish and Subscribe Test
@@ -215,9 +224,19 @@ kubectl exec -n messaging deployment/nats-box -- \
 
 # Test JetStream publish
 kubectl exec -n messaging deployment/nats-box -- \
-  nats stream add --defaults EVENTS \
+  nats stream add EVENTS \
+  --server nats://nats.messaging.svc.cluster.local:4222 \
   --subjects "events.>" \
-  --server nats://nats.messaging.svc.cluster.local:4222
+  --storage file \
+  --retention limits \
+  --discard old \
+  --max-msgs=-1 \
+  --max-bytes=-1 \
+  --max-age=7d \
+  --max-msg-size=-1 \
+  --dupe-window=2m \
+  --replicas 3 \
+  --ack
 
 kubectl exec -n messaging deployment/nats-box -- \
   nats pub --count 10 "events.test" \
@@ -245,11 +264,30 @@ curl http://localhost:8222/jsz | jq .  # JetStream info
 config:
   leafnodes:
     enabled: true
-    remotes:
-      - url: "nats://nats.messaging.central-cluster.svc.cluster.local:7422"
-        credentials: /etc/nats/leaf.creds
+    merge:
+      remotes:
+        - url: "nats-leaf://nats.central.example.com:7422"
+          credentials: /etc/nats-creds/leaf/leaf.creds
   jetstream:
     enabled: true
+
+podTemplate:
+  patch:
+    - op: add
+      path: /spec/volumes/-
+      value:
+        name: leaf-creds
+        secret:
+          secretName: nats-leaf-creds
+
+container:
+  patch:
+    - op: add
+      path: /volumeMounts/-
+      value:
+        name: leaf-creds
+        mountPath: /etc/nats-creds/leaf
+        readOnly: true
 ```
 
 ## Troubleshooting
@@ -260,7 +298,7 @@ kubectl logs -n messaging nats-0 --tail=100
 
 # Check cluster routes
 kubectl exec -n messaging deployment/nats-box -- \
-  nats server report routes \
+  nats server request routes \
   --server nats://nats.messaging.svc.cluster.local:4222
 
 # Check JetStream info
@@ -276,4 +314,4 @@ kubectl exec -n messaging deployment/nats-box -- \
 
 ## Conclusion
 
-NATS on Rancher provides an extremely lightweight, high-performance messaging solution ideal for cloud-native microservices. NATS Core offers simple pub/sub with minimal overhead, while JetStream adds durable streaming capabilities for scenarios requiring guaranteed delivery and message replay. The NATS server's small footprint and operational simplicity make it an excellent choice for microservice communication in resource-constrained environments.
+NATS on Rancher provides an extremely lightweight, high-performance messaging solution ideal for cloud-native microservices. NATS Core offers simple pub/sub with minimal overhead, while JetStream adds durable streaming capabilities for scenarios requiring message persistence and replay. The NATS server's small footprint and operational simplicity make it an excellent choice for microservice communication in resource-constrained environments.
