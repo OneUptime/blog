@@ -4,7 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCP, Window, Networking, Network Diagnostics, Sysadmin
 
-Description: Renewing a DHCP lease on Windows forces the system to release its current IP address and request a new one from the DHCP server, useful when changing networks or resolving IP conflict issues.
+Description: Renewing a DHCP lease on Windows releases the current DHCP configuration and requests fresh network settings from the DHCP server, useful when changing networks or resolving IP conflict issues.
+
+For command-line methods, open Command Prompt or PowerShell as Administrator.
 
 ## Method 1: ipconfig (Command Prompt)
 
@@ -28,27 +30,28 @@ ipconfig /all
 ## Method 2: PowerShell
 
 ```powershell
-# Release all DHCP leases
-
-Get-NetAdapter | ForEach-Object {
-    if ($_.Status -eq "Up") {
-        ipconfig /release $_.Name
+# Release all connected IPv4 interfaces that use DHCP
+Get-NetIPInterface -AddressFamily IPv4 -Dhcp Enabled -ConnectionState Connected |
+    Select-Object -ExpandProperty InterfaceAlias |
+    Sort-Object -Unique |
+    ForEach-Object {
+        ipconfig /release "$_"
     }
-}
 
-# Renew all DHCP leases
-Get-NetAdapter | ForEach-Object {
-    if ($_.Status -eq "Up") {
-        ipconfig /renew $_.Name
+# Renew all connected IPv4 interfaces that use DHCP
+Get-NetIPInterface -AddressFamily IPv4 -Dhcp Enabled -ConnectionState Connected |
+    Select-Object -ExpandProperty InterfaceAlias |
+    Sort-Object -Unique |
+    ForEach-Object {
+        ipconfig /renew "$_"
     }
-}
 
 # Alternative: release and renew specific adapter
 $adapter = "Ethernet"
-ipconfig /release $adapter
-ipconfig /renew $adapter
+ipconfig /release "$adapter"
+ipconfig /renew "$adapter"
 
-# Verify new IP
+# Verify new IPv4 address
 Get-NetIPAddress -InterfaceAlias $adapter -AddressFamily IPv4
 ```
 
@@ -57,20 +60,20 @@ Get-NetIPAddress -InterfaceAlias $adapter -AddressFamily IPv4
 1. Press `Win + R`, type `ncpa.cpl`, press Enter.
 2. Right-click the adapter → **Disable**.
 3. Wait 5 seconds, then right-click → **Enable**.
-4. The adapter will request a new lease on startup.
+4. If the adapter is configured for DHCP, Windows requests a new lease when it comes back up.
 
 ## Method 4: netsh
 
 ```cmd
-REM Disable and re-enable DHCP on a specific adapter
-netsh interface set interface "Ethernet" admin=disable
+REM Disable and re-enable the adapter, which triggers DHCP again if it uses DHCP
+netsh interface set interface name="Ethernet" admin=DISABLED
 timeout /t 5
-netsh interface set interface "Ethernet" admin=enable
+netsh interface set interface name="Ethernet" admin=ENABLED
 ```
 
 ## Flushing DNS Cache After Renewal
 
-After getting a new IP, flush the DNS cache to avoid stale entries:
+If you're also troubleshooting DNS name resolution, flush the DNS cache to remove stale resolver entries:
 
 ```cmd
 ipconfig /flushdns
@@ -80,15 +83,16 @@ ipconfig /flushdns
 
 ```cmd
 REM Show full DHCP lease info
-ipconfig /all | findstr /i "dhcp\|lease\|gateway\|dns"
+ipconfig /all | findstr /i "dhcp lease gateway dns"
 
-REM Show DHCP event log in PowerShell
-Get-WinEvent -LogName System | Where-Object { $_.Id -in @(1002, 1003, 50036) } | Select-Object -First 10
+REM Show recent DHCP client events in PowerShell
+Get-WinEvent -LogName "Microsoft-Windows-Dhcp-Client/Admin","Microsoft-Windows-Dhcp-Client/Operational" -MaxEvents 10 |
+    Select-Object TimeCreated, LogName, Id, LevelDisplayName, Message
 ```
 
 ## Key Takeaways
 
 - `ipconfig /release` followed by `ipconfig /renew` is the standard Windows lease renewal.
 - Specify the adapter name if the machine has multiple network interfaces.
-- Flush the DNS cache with `ipconfig /flushdns` after renewal to clear stale mappings.
+- Flush the DNS cache with `ipconfig /flushdns` only when you're also troubleshooting DNS name resolution.
 - If renewal fails repeatedly, check DHCP server logs and verify network connectivity.
