@@ -34,6 +34,7 @@ The automotive industry's digital transformation requires Kubernetes for connect
 
 ```yaml
 # GPU cluster for autonomous driving simulations
+# Requires NVIDIA device plugin on GPU nodes
 
 # Using CARLA or similar simulation platform
 
@@ -44,16 +45,22 @@ metadata:
   namespace: adas-testing
 spec:
   replicas: 4    # Parallel simulation runs
+  selector:
+    matchLabels:
+      app: carla-simulator
   template:
+    metadata:
+      labels:
+        app: carla-simulator
     spec:
       containers:
         - name: carla
-          image: carlasimulator/carla:0.9.15
+          image: carlasim/carla:0.9.15
+          command:
+            - /bin/bash
+            - ./CarlaUE4.sh
           args:
-            - "/bin/bash"
-            - CarlaUE4.sh
             - -RenderOffScreen
-            - -carla-server
             - -nosound
           resources:
             limits:
@@ -61,7 +68,26 @@ spec:
               memory: "16Gi"
               cpu: "8"
           ports:
-            - containerPort: 2000    # CARLA server port
+            - name: world
+              containerPort: 2000    # CARLA server port
+            - name: stream
+              containerPort: 2001    # CARLA secondary port
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: carla-simulator
+  namespace: adas-testing
+spec:
+  selector:
+    app: carla-simulator
+  ports:
+    - name: world
+      port: 2000
+      targetPort: 2000
+    - name: stream
+      port: 2001
+      targetPort: 2001
 ---
 # ADAS testing job
 apiVersion: batch/v1
@@ -70,8 +96,12 @@ metadata:
   name: adas-scenario-test
   namespace: adas-testing
 spec:
+  completions: 10
   parallelism: 10    # Run 10 scenarios in parallel
   template:
+    metadata:
+      labels:
+        app: adas-scenario-test
     spec:
       containers:
         - name: scenario-runner
@@ -85,18 +115,21 @@ spec:
             limits:
               memory: "4Gi"
               cpu: "2"
+      restartPolicy: Never
 ```
 
 ## Step 2: Connected Vehicle Data Pipeline
 
-```yaml
+```bash
 # Kafka for high-throughput vehicle telemetry ingestion
-helm install kafka bitnami/kafka \
+helm install kafka oci://registry-1.docker.io/bitnamicharts/kafka \
   --namespace vehicle-data \
-  --set replicaCount=3 \
+  --create-namespace \
   --set controller.replicaCount=3 \
-  --set persistence.size=500Gi
+  --set controller.persistence.size=500Gi
+```
 
+```yaml
 # Vehicle data processor (Flink/Spark)
 apiVersion: apps/v1
 kind: Deployment
@@ -105,7 +138,13 @@ metadata:
   namespace: vehicle-data
 spec:
   replicas: 6
+  selector:
+    matchLabels:
+      app: vehicle-telemetry-processor
   template:
+    metadata:
+      labels:
+        app: vehicle-telemetry-processor
     spec:
       containers:
         - name: processor
@@ -128,13 +167,16 @@ spec:
 
 ## Step 3: OTA Update Management
 
-```yaml
-# Eclipse Hawkbit for OTA update management
+```bash
+# Example: Eclipse hawkBit packaged as an internal Helm chart
 helm install hawkbit myregistry/hawkbit \
   --namespace ota-updates \
+  --create-namespace \
   --set persistence.enabled=true \
   --set rabbitmq.enabled=true
+```
 
+```yaml
 # OTA update delivery job
 apiVersion: batch/v1
 kind: Job
@@ -143,6 +185,9 @@ metadata:
   namespace: ota-updates
 spec:
   template:
+    metadata:
+      labels:
+        app: deliver-sw-update-v3-2-1
     spec:
       containers:
         - name: update-distributor
@@ -154,6 +199,7 @@ spec:
               value: "sw-v3.2.1-fleet-A"
             - name: ROLLOUT_PERCENTAGE
               value: "5"    # 5% canary rollout first
+      restartPolicy: Never
 ```
 
 ## Step 4: Vehicle Edge Computing with K3s
@@ -165,11 +211,12 @@ spec:
 curl -sfL https://get.k3s.io | \
   INSTALL_K3S_CHANNEL=stable \
   INSTALL_K3S_EXEC="
-    --disable traefik
+    server
+    --disable=traefik
     --node-label vehicle.vin=${VIN}
-    --node-label vehicle.model=${MODEL}
-    --private-registry=/etc/rancher/k3s/registries.yaml
-  " sh -
+    --node-label vehicle.model-code=${MODEL_CODE}
+    --private-registry /etc/rancher/k3s/registries.yaml
+  " sh -s -
 
 # Vehicle edge workloads:
 # - Sensor fusion preprocessing
@@ -200,7 +247,13 @@ metadata:
   name: vehicle-watchdog
   namespace: vehicle-edge
 spec:
+  selector:
+    matchLabels:
+      app: vehicle-watchdog
   template:
+    metadata:
+      labels:
+        app: vehicle-watchdog
     spec:
       containers:
         - name: watchdog
@@ -221,6 +274,7 @@ spec:
 
 ```yaml
 # Quality inspection ML inference at factory
+# Requires NVIDIA device plugin on GPU nodes
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -228,7 +282,13 @@ metadata:
   namespace: factory-ai
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: quality-inspection
   template:
+    metadata:
+      labels:
+        app: quality-inspection
     spec:
       containers:
         - name: vision-model
