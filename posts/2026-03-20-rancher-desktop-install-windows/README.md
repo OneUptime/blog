@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher Desktop, Window, Kubernetes, WSL2, Docker
+Tags: Rancher Desktop, Windows, Kubernetes, WSL2, Docker
 
 Description: Set up Rancher Desktop on Windows with WSL2 integration for local Kubernetes and container development.
 
@@ -12,9 +12,11 @@ Rancher Desktop is an open-source desktop application that provides Kubernetes a
 
 ## Prerequisites
 
-- A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
-- At least 8 GB of RAM (16 GB recommended)
+- Windows 11 (including Home) or Windows Server 2025 with the latest updates
+- Windows Subsystem for Linux (WSL) installed
+- Virtualization enabled and a persistent internet connection
+- Administrator privileges may be required during installation, especially for the Rancher Desktop Privileged Service
+- At least 8 GB of RAM
 - At least 4 CPU cores
 
 ## Overview
@@ -22,14 +24,14 @@ Rancher Desktop is an open-source desktop application that provides Kubernetes a
 Rancher Desktop simplifies local Kubernetes and container development by providing:
 
 - A local Kubernetes cluster (k3s-based)
-- Container runtime (containerd or dockerd)
-- Integrated CLI tools (kubectl, helm, nerdctl, docker)
+- Container runtime (containerd or Moby/dockerd)
+- Integrated CLI tools (kubectl, helm, nerdctl, and docker when using Moby/dockerd)
 - Simple configuration through a GUI
 
 ## Step 1: Initial Setup
 
 ```bash
-# Verify Rancher Desktop is installed and running
+# Verify the Rancher Desktop CLI is installed
 
 rdctl version
 
@@ -38,7 +40,7 @@ kubectl cluster-info
 
 # Verify container runtime
 nerdctl version
-# or
+# or, if using Moby (dockerd)
 docker version
 ```
 
@@ -48,13 +50,14 @@ Open Rancher Desktop Preferences to configure:
 
 - **Kubernetes**: Version and enabled/disabled state
 - **Container Engine**: containerd or moby (dockerd)
-- **Virtual Machine**: CPU, memory, and disk allocation
 - **WSL** (Windows only): WSL2 integration settings
+- **Resources**: CPU and memory allocation are managed globally by WSL on Windows
 
 ```bash
 # Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
 rdctl set --container-engine containerd
+# Replace YOUR_SUPPORTED_VERSION with a version shown in Preferences > Kubernetes
+rdctl set --kubernetes-version YOUR_SUPPORTED_VERSION
 ```
 
 ## Step 3: Working with Containers
@@ -131,31 +134,29 @@ helm uninstall my-release
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
-rdctl factory-reset
+# Reset Kubernetes workloads
+rdctl reset --k8s
 
-# Check Rancher Desktop status
-rdctl status
+# Check Rancher Desktop info
+rdctl info
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
+# Show current Rancher Desktop settings
+rdctl list-settings
 
 # Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+rdctl set --kubernetes-version YOUR_SUPPORTED_VERSION
 ```
 
 ## Troubleshooting
 
 ```bash
-# Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# Open Troubleshooting > Show Logs to open the Rancher Desktop log directory
 
 # Reset to factory defaults
-rdctl factory-reset
+rdctl reset --factory
 
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Show current Rancher Desktop settings
+rdctl list-settings
 ```
 
 ## Conclusion
