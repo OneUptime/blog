@@ -25,10 +25,6 @@ port 6379
 # Enable authentication (strongly recommended)
 requirepass "StrongPrimaryPassword123!"
 
-# Allow replicas to authenticate
-# masterauth and requirepass must match on all nodes
-masterauth "StrongPrimaryPassword123!"
-
 # Persist data to disk (RDB snapshots)
 save 900 1
 save 300 10
@@ -61,8 +57,8 @@ requirepass "StrongReplicaPassword!"
 # Make replicas read-only (default: yes)
 replica-read-only yes
 
-# Delay replica's data serving after losing primary connection (seconds)
-# 0 = serve potentially stale data immediately
+# Serve stale data while the replica is syncing or disconnected
+# Set to no to return errors for most data commands instead
 replica-serve-stale-data yes
 ```
 
@@ -73,7 +69,7 @@ replica-serve-stale-data yes
 systemctl restart redis-server
 
 # Verify replication status on the primary
-redis-cli -h 10.0.0.10 -a StrongPrimaryPassword123! INFO replication
+redis-cli -h 10.0.0.10 -a 'StrongPrimaryPassword123!' INFO replication
 ```
 
 Expected output:
@@ -89,34 +85,37 @@ master_repl_offset:1024
 ## Adding a Replica at Runtime
 
 ```bash
+# If the primary requires authentication, set it on the replica first
+redis-cli -h 10.0.0.11 -a 'StrongReplicaPassword!' CONFIG SET masterauth 'StrongPrimaryPassword123!'
+
 # Connect to the replica and set it to replicate from the primary
-redis-cli -h 10.0.0.11 -a StrongReplicaPassword! REPLICAOF 10.0.0.10 6379
+redis-cli -h 10.0.0.11 -a 'StrongReplicaPassword!' REPLICAOF 10.0.0.10 6379
 ```
 
 ## Monitoring Replication Lag
 
 ```bash
-# Check replication offset difference (lag in bytes)
-redis-cli -h 10.0.0.10 -a StrongPrimaryPassword123! INFO replication | grep offset
+# Inspect replication offsets to estimate lag
+redis-cli -h 10.0.0.10 -a 'StrongPrimaryPassword123!' INFO replication | grep offset
 
 # Real-time lag monitoring
-watch -n2 "redis-cli -h 10.0.0.10 -a password INFO replication | grep -E 'role|slaves|offset|lag'"
+watch -n2 "redis-cli -h 10.0.0.10 -a 'StrongPrimaryPassword123!' INFO replication | grep -E 'role|slaves|offset|lag'"
 ```
 
 ## Promoting a Replica (Emergency)
 
 ```bash
 # Manually promote a replica to primary
-redis-cli -h 10.0.0.11 -a StrongReplicaPassword! REPLICAOF NO ONE
+redis-cli -h 10.0.0.11 -a 'StrongReplicaPassword!' REPLICAOF NO ONE
 
 # Verify it's now acting as primary
-redis-cli -h 10.0.0.11 -a StrongReplicaPassword! INFO replication | grep role
+redis-cli -h 10.0.0.11 -a 'StrongReplicaPassword!' INFO replication | grep role
 # role:master
 ```
 
 ## Key Takeaways
 
 - `bind` should specify explicit IPv4 addresses; avoid `bind 0.0.0.0` in production.
-- Always set `requirepass` and `masterauth` with the same password on the primary and replica.
+- `masterauth` on each replica should match the primary's authentication password; a replica's `requirepass` controls client access to that replica.
 - `replica-read-only yes` (default) prevents writes to replicas, avoiding data inconsistency.
-- For automatic failover, add Redis Sentinel on top of replication; for stronger consistency, use Redis Cluster.
+- For automatic failover, add Redis Sentinel on top of replication; for sharding plus automatic failover, use Redis Cluster.
