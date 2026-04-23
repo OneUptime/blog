@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Enterprise Scale, 1000 Clusters, Performance, Architecture, High Availability
 
-Description: Architecture and configuration guide for running Rancher Server at 1000+ cluster scale with external databases, horizontal scaling, and optimized agent configurations.
+Description: Architecture and configuration guide for running Rancher Server at 1000+ cluster scale with high-availability management clusters, horizontal scaling, and load balancer settings for agent connectivity.
 
 ## Introduction
 
@@ -14,55 +14,39 @@ Running Rancher at 1000+ cluster scale requires treating the Rancher Server itse
 
 ```mermaid
 graph TD
-    A[External Load Balancer] --> B[Rancher Server Pod 1]
-    A --> C[Rancher Server Pod 2]
-    A --> D[Rancher Server Pod 3]
-    A --> E[Rancher Server Pod N]
-    B --> F[External PostgreSQL HA]
-    C --> F
-    D --> F
-    E --> F
-    B --> G[Local RKE2 Cluster]
+    A[External Load Balancer] --> G[Dedicated Management Cluster]
+    G --> B[Rancher Server Pod 1]
+    G --> C[Rancher Server Pod 2]
+    G --> D[Rancher Server Pod 3]
+    G --> E[Rancher Server Pod N]
     G --> H[etcd - 3 Dedicated Nodes]
     G --> I[Control Plane - 3 Nodes]
 ```
 
-## Step 1: External PostgreSQL Cluster
+## Step 1: Configure the Management Cluster Datastore
 
-At 1000+ clusters, the embedded database cannot handle the load:
+Rancher on Kubernetes stores its state in the management cluster datastore, not in Rancher-specific database environment variables. For RKE2, embedded etcd is the default HA datastore. If you intentionally use an external PostgreSQL datastore for the RKE2 management cluster, configure it in RKE2 itself:
 
 ```yaml
-# rancher-values.yaml
+# /etc/rancher/rke2/config.yaml
 
-extraEnv:
-  - name: CATTLE_DB_CATTLE_MYSQL_HOST
-    value: "postgres-ha.databases.svc.cluster.local"
-  - name: CATTLE_DB_CATTLE_MYSQL_PORT
-    value: "5432"
-  - name: CATTLE_DB_CATTLE_MYSQL_USER
-    valueFrom:
-      secretKeyRef:
-        name: rancher-db
-        key: username
-  - name: CATTLE_DB_CATTLE_MYSQL_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: rancher-db
-        key: password
-  - name: CATTLE_DB_CATTLE_MYSQL_NAME
-    value: "rancher"
+datastore-endpoint: "postgres://username:password@postgres-ha.example.com:5432/database-name"
+token: "REPLACE_WITH_SHARED_CLUSTER_TOKEN"
 
-# PostgreSQL should have:
-# - At least 16 CPU, 32GB RAM
-# - PgBouncer connection pooling (max 500 connections from Rancher)
-# - Streaming replication with at least 1 standby
+# Optional TLS files for client certificate authentication:
+# datastore-cafile: /etc/rancher/rke2/certs/db-ca.pem
+# datastore-certfile: /etc/rancher/rke2/certs/db-client.crt
+# datastore-keyfile: /etc/rancher/rke2/certs/db-client.key
+
+# RKE2 external datastores require prepared statement support.
+# PgBouncer may need additional configuration.
 ```
 
 ## Step 2: Scale Rancher Server Pods
 
 ```yaml
 # rancher-values.yaml
-replicas: 10    # 10 Rancher server replicas
+replicas: 10    # Example starting point for a large deployment
 
 resources:
   requests:
@@ -71,59 +55,51 @@ resources:
   limits:
     cpu: "8"
     memory: "16Gi"
-
-# Configure HPA for dynamic scaling
-autoscaling:
-  enabled: true
-  minReplicas: 5
-  maxReplicas: 20
-  targetCPUUtilizationPercentage: 60
-  targetMemoryUtilizationPercentage: 70
 ```
+
+The Rancher Helm chart supports `replicas` and `resources`. If you want automatic scaling, create a separate Kubernetes `HorizontalPodAutoscaler`; the Rancher chart does not define an `autoscaling` values block.
 
 ## Step 3: Tune Local Cluster etcd for Large State
 
 ```yaml
-# RKE2 etcd configuration for Rancher's local cluster
-etcd-arg:
-  - "quota-backend-bytes=17179869184"    # 16GB quota
-  - "auto-compaction-retention=2"         # Compact every 2 hours
-  - "max-request-bytes=10485760"
-  - "heartbeat-interval=500"
-  - "election-timeout=5000"
-  - "snapshot-count=5000"               # Lower snapshot frequency
+# /etc/rancher/rke2/config.yaml
+etcd-snapshot-schedule-cron: "0 */6 * * *"
+etcd-snapshot-retention: 28
+etcd-snapshot-compress: true
 ```
+
+Start with RKE2's supported snapshot and backup settings, and only change low-level `etcd-arg` values after measuring RTT and backend growth. etcd recommends sizing heartbeat and election values from network round-trip time, and documents 8 GiB as the suggested backend quota maximum for normal environments.
 
 ## Step 4: Dedicated etcd Infrastructure
 
 For the local cluster:
-- 3 dedicated etcd nodes (no other workloads)
-- NVMe SSD storage
-- 10 Gbps network between etcd nodes
-- Separate availability zones
+- 3 dedicated etcd nodes (no user workloads)
+- Fast SSD-backed storage
+- Low-latency, reliable network between etcd nodes
+- Separate availability zones within the same region
 
 ## Step 5: Optimize Cattle Agent Connections
 
-With 1000+ clusters, the Rancher server manages thousands of WebSocket connections:
+Each downstream cluster has a `cattle-cluster-agent` that opens a tunnel back to Rancher. At 1000+ clusters, make sure the load balancer supports long-lived WebSocket connections and preserves the required proxy headers:
 
-```yaml
-extraEnv:
-  - name: CATTLE_WEBSOCKET_PING_INTERVAL
-    value: "60"      # Ping every 60s (default 10s)
-  - name: CATTLE_AGENT_CLEANUP_INTERVAL
-    value: "300"     # Clean disconnected agents every 5m
-  - name: CATTLE_MAX_WEBSOCKET_SIZE
-    value: "2097152" # 2MB max message size
-```
+- `Host`
+- `X-Forwarded-Proto`
+- `X-Forwarded-Port`
+- `X-Forwarded-For`
+
+Recommended timeout starting points:
+- Read timeout: 1800 seconds
+- Write timeout: 1800 seconds
+- Connect timeout: 30 seconds
 
 ## Step 6: Rancher Prime for Supported Scale
 
 Rancher Prime includes:
-- SUSE-supported SLAs for 1000+ cluster deployments
-- Access to the Rancher engineering team for architecture reviews
-- Enhanced monitoring and diagnostics tooling
-- Priority access to patches and security updates
+- Greater security assurances
+- Extended lifecycles
+- Access to focused architectures and Kubernetes advisories
+- Options for production support
 
 ## Conclusion
 
-Running Rancher at 1000+ cluster scale is an enterprise undertaking that requires careful infrastructure planning, external database dependencies, and horizontal scaling of the Rancher Server itself. The combination of external PostgreSQL, 10+ Rancher Server replicas, dedicated etcd nodes, and tuned agent connection settings enables stable operation at this scale.
+Running Rancher at 1000+ cluster scale is an enterprise undertaking that requires careful infrastructure planning, a dedicated HA management cluster, and horizontal scaling of the Rancher Server itself. The combination of correctly sized Rancher Server replicas, dedicated etcd nodes, and load balancer settings that preserve long-lived agent connections enables stable operation at this scale.
