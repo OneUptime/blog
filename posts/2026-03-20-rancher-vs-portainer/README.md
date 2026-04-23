@@ -25,10 +25,10 @@ Portainer is a lightweight, open-source container management UI. Originally buil
 | Docker Support | No (Kubernetes only) | Yes |
 | Docker Swarm Support | No | Yes |
 | Kubernetes Support | Yes (multi-cluster) | Yes (single/multi) |
-| Multi-cluster Management | Yes, enterprise-grade | Yes (Business Edition) |
-| RBAC | Advanced | Basic (CE) / Advanced (BE) |
-| Built-in Monitoring | Yes (Prometheus/Grafana) | No |
-| Built-in Logging | Yes | No |
+| Multi-cluster Management | Yes, enterprise-grade | Yes |
+| RBAC | Advanced | Basic access control (CE) / RBAC (BE) |
+| Integrated Monitoring | Yes (Rancher Monitoring app) | No |
+| Integrated Logging | Yes (Rancher Logging app) | No |
 | App Catalog (Helm) | Yes | Yes |
 | GitOps (Fleet) | Yes | No |
 | Edge Support | Yes (K3s) | Yes (Edge Agent) |
@@ -43,14 +43,23 @@ Portainer is a lightweight, open-source container management UI. Originally buil
 ### Rancher Installation
 
 ```bash
-# Rancher requires a running Kubernetes cluster first
+# Rancher requires a running Kubernetes cluster and ingress controller first
 
-# Then install via Helm
+# With Rancher's default certificate handling, install cert-manager first
+helm repo add jetstack https://charts.jetstack.io
 helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+helm repo update
+
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --set crds.enabled=true
+
 kubectl create namespace cattle-system
 helm install rancher rancher-stable/rancher \
   --namespace cattle-system \
-  --set hostname=rancher.example.com
+  --set hostname=rancher.example.com \
+  --set bootstrapPassword=admin
 ```
 
 ### Portainer Installation
@@ -65,10 +74,10 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
-The difference in installation complexity is immediately apparent. Portainer can be running in under two minutes; Rancher requires a functioning Kubernetes cluster and Helm.
+The difference in installation complexity is immediately apparent. Portainer can be running in under two minutes; Rancher requires a functioning Kubernetes cluster, an ingress controller, and in the default setup cert-manager in addition to Helm.
 
 ## Use Case Analysis
 
@@ -90,7 +99,7 @@ The difference in installation complexity is immediately apparent. Portainer can
 
 ## Monitoring and Observability
 
-Rancher ships with integrated monitoring through Rancher Monitoring (based on Prometheus Operator and Grafana). You get dashboards, alerting, and metrics collection out of the box.
+Rancher offers integrated monitoring through the Rancher Monitoring app (based on Prometheus, Grafana, Alertmanager, and the Prometheus Operator). You can deploy dashboards, alerting, and metrics collection from the Rancher UI.
 
 Portainer does not include built-in monitoring. You would need to set up Prometheus and Grafana separately, which adds operational overhead.
 
@@ -98,7 +107,7 @@ Portainer does not include built-in monitoring. You would need to set up Prometh
 
 Rancher provides enterprise-grade RBAC with integration for Active Directory, LDAP, SAML, GitHub, and other identity providers. It also integrates with NeuVector for runtime security.
 
-Portainer CE has basic RBAC. Portainer Business Edition adds more granular access control, team-based permissions, and audit logging.
+Portainer CE has basic access control. Portainer Business Edition adds more granular RBAC, team-based permissions, and audit logging.
 
 ## Conclusion
 
