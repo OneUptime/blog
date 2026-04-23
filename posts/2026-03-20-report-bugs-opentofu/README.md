@@ -17,14 +17,14 @@ A well-written bug report dramatically increases the chance of your issue being 
 
 # Search GitHub issues: https://github.com/opentofu/opentofu/issues
 
-# 2. Verify you're on the latest version
+# 2. Check your current version
 tofu version
 
-# 3. Check if the bug exists on the latest release
+# 3. Re-test on the latest release
 # Download from: https://github.com/opentofu/opentofu/releases
 
 # 4. Check the provider version – sometimes bugs are in providers
-cat .terraform.lock.hcl
+if [ -f .terraform.lock.hcl ]; then cat .terraform.lock.hcl; fi
 ```
 
 ## Minimal Reproducible Example
@@ -32,7 +32,7 @@ cat .terraform.lock.hcl
 The most important part of a bug report is a minimal config that reproduces the issue.
 
 ```hcl
-# minimal_repro/main.tf – stripped down to only what's needed to show the bug
+# minimal_repro/main.tf – stripped down to only what's needed to show the issue
 
 terraform {
   required_providers {
@@ -46,69 +46,23 @@ terraform {
 provider "aws" {
   region = "us-east-1"
   # Use mock credentials for bugs that don't require real AWS
-  access_key = "mock_access_key"
-  secret_key = "mock_secret_key"
+  access_key                  = "mock_access_key"
+  secret_key                  = "mock_secret_key"
+  s3_use_path_style           = true
   skip_credentials_validation = true
   skip_metadata_api_check     = true
   skip_requesting_account_id  = true
 
   endpoints {
+    s3  = "http://localhost:4566"
     sts = "http://localhost:4566"  # LocalStack for full isolation
   }
 }
 
-# This is the minimal config that triggers the bug
+# This is the minimal config you would attach to the bug report
 variable "items" {
   default = {
     a = { name = "test", value = null }
-  }
-}
-
-resource "aws_s3_bucket" "test" {
-  for_each = var.items
-  bucket   = each.value.name  # BUG: panics when value contains null
-}
-```
-
-## Collecting Debug Information
-
-```bash
-# Enable debug logging to capture the full error
-TF_LOG=DEBUG tofu plan 2>&1 | tee debug.log
-
-# Show version information
-tofu version > version_info.txt
-
-# Show provider versions
-tofu providers >> version_info.txt
-
-# On macOS/Linux: capture OS info
-uname -a >> version_info.txt
-go version >> version_info.txt 2>/dev/null || true
-```
-
-## Bug Report Template
-
-````markdown
-## Bug Description
-<!-- A clear, concise description of the bug -->
-
-tofu plan panics with a nil pointer dereference when `for_each` is used with
-an object that contains a null attribute value.
-
-## Affected Versions
-- OpenTofu: 1.9.0
-- Provider: hashicorp/aws 5.31.0
-- OS: macOS 14.3 (arm64)
-
-## Steps to Reproduce
-
-1. Create the following configuration:
-
-```hcl
-variable "items" {
-  default = {
-    "a" = { name = "test", value = null }
   }
 }
 
@@ -118,26 +72,59 @@ resource "aws_s3_bucket" "test" {
 }
 ```
 
-2. Run `tofu plan`
-3. Observe the panic
+## Collecting Debug Information
+
+```bash
+# Enable debug logging to capture the full error
+TF_LOG=DEBUG tofu plan 2>&1 | tee debug.log
+
+# Show version information, including installed providers
+tofu version > version_info.txt
+
+# Include selected provider versions from the lock file, if present
+if [ -f .terraform.lock.hcl ]; then cat .terraform.lock.hcl >> version_info.txt; fi
+
+# On macOS/Linux: capture OS info
+uname -a >> version_info.txt
+
+# If you're using a self-built OpenTofu binary, include the Go version
+go version >> version_info.txt 2>/dev/null || true
+```
+
+## Bug Report Template
+
+````markdown
+## Bug Description
+<!-- A clear, concise description of the bug -->
+
+`tofu plan` returns an unexpected error for the attached minimal configuration.
+
+## Affected Versions
+- OpenTofu: 1.9.0
+- Provider: hashicorp/aws 5.31.0
+- OS: macOS 14.3 (arm64)
+
+## Steps to Reproduce
+
+1. Create the minimal configuration shown above in a new directory.
+2. Run `tofu init`
+3. Run `tofu plan`
+4. Observe the error or unexpected behavior
 
 ## Expected Behavior
-OpenTofu should produce a valid plan showing resources to create.
+OpenTofu should behave as documented for the configuration under test.
 
 ## Actual Behavior
 ```text
-panic: runtime error: invalid memory address or nil pointer dereference
-[signal SIGSEGV: segmentation violation code=0x1]
-goroutine 1 [running]:
-github.com/opentofu/opentofu/internal/lang.evaluateForEachExpression(...)
+Paste the exact error message or stack trace here.
 ```
 
 ## Minimal Reproducible Example
-<!-- Attach or paste the minimal config above -->
+<!-- Attach or paste the full minimal config above, including provider configuration -->
 
 ## Additional Context
-- This worked in OpenTofu 1.8.5
-- Does not occur when null values are absent
+- If this is a regression, note the last version where it worked
+- Note any conditions that make the problem appear or disappear
 - Debug log attached: debug.log
 ````
 
