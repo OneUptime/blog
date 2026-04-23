@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, PCI-DSS, Compliance, Payment Security, Security
 
-Description: Learn how to configure Rancher-managed Kubernetes clusters to meet PCI DSS requirements for protecting cardholder data environments.
+Description: Learn how to configure Rancher-managed RKE2 Kubernetes clusters to meet PCI DSS requirements for protecting cardholder data environments.
 
-PCI DSS (Payment Card Industry Data Security Standard) is a mandatory security standard for organizations that handle credit card payments. Running payment processing workloads on Kubernetes managed by Rancher requires careful security configuration to meet the 12 PCI DSS requirements. This guide covers the most relevant technical controls for Kubernetes environments.
+PCI DSS (Payment Card Industry Data Security Standard) is a mandatory security standard for organizations that handle credit card payments. Running payment processing workloads on Rancher-managed RKE2 clusters requires careful security configuration to meet the 12 PCI DSS requirements. This guide covers the most relevant technical controls for Kubernetes environments.
 
 ## Prerequisites
 
-- Rancher v2.6+ managing production Kubernetes clusters
+- Rancher managing production RKE2 Kubernetes clusters
 - Workloads that process, store, or transmit cardholder data (CHD)
-- A Qualified Security Assessor (QSA) for formal PCI DSS certification
+- A Qualified Security Assessor (QSA) or internal assessor, as applicable to your PCI DSS validation path
 - Network segmentation between CDE (Cardholder Data Environment) and non-CDE systems
 
 ## PCI DSS Requirements for Kubernetes
@@ -30,13 +30,13 @@ The most relevant PCI DSS requirements for Kubernetes include:
 
 ## Requirement 1: Network Security Controls
 
-```yaml
+```bash
 # Create a dedicated namespace for CDE workloads
-
 kubectl create namespace cardholder-data-env
 kubectl label namespace cardholder-data-env pci-dss=cde
 
 # Apply strict network policy to isolate CDE
+kubectl apply -f - <<EOF
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -52,7 +52,7 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          name: payment-gateway
+          kubernetes.io/metadata.name: payment-gateway
     ports:
     - port: 8443
       protocol: TCP
@@ -64,64 +64,51 @@ spec:
         cidr: 10.100.0.0/16
     ports:
     - port: 443
+      protocol: TCP
   # Allow DNS
   - to: []
     ports:
     - port: 53
       protocol: UDP
+    - port: 53
+      protocol: TCP
+EOF
 ```
 
 ## Requirement 2: Secure Configurations
 
 ```bash
-# Run CIS hardened profile to verify secure configurations
+# List available compliance scan profiles and choose the one that matches your benchmark target
+kubectl get clusterscanprofiles
+
+# Run a Rancher compliance scan to verify secure configurations
 kubectl apply -f - <<EOF
-apiVersion: cis.cattle.io/v1
+apiVersion: compliance.cattle.io/v1
 kind: ClusterScan
 metadata:
-  name: pci-cis-scan
+  name: pci-compliance-scan
 spec:
-  scanProfileName: rke2-cis-1.6-profile-hardened
+  scanProfileName: cis-1.10-profile
 EOF
 
 # Review and remediate all failures
-kubectl get clusterscan pci-cis-scan -w
+kubectl get clusterscans pci-compliance-scan -w
 ```
 
-```yaml
-# Enforce no privileged containers in CDE namespace
-apiVersion: kyverno.io/v1
-kind: Policy
-metadata:
-  name: no-privileged-in-cde
-  namespace: cardholder-data-env
-spec:
-  validationFailureAction: enforce
-  background: true
-  rules:
-  - name: no-privileged-containers
-    match:
-      any:
-      - resources:
-          kinds: ["Pod"]
-    validate:
-      message: "Privileged containers are not allowed in CDE"
-      pattern:
-        spec:
-          containers:
-          - =(securityContext):
-              =(privileged): "false"
-          =(initContainers):
-          - =(securityContext):
-              =(privileged): "false"
+```bash
+# Enforce the Restricted Pod Security Standard in the CDE namespace
+kubectl label --overwrite namespace cardholder-data-env \
+  pod-security.kubernetes.io/enforce=restricted \
+  pod-security.kubernetes.io/audit=restricted \
+  pod-security.kubernetes.io/warn=restricted
 ```
 
 ## Requirement 4: Encryption in Transit
 
 ```bash
-# Apply mesh-wide strict mTLS for all CDE communications
+# Require strict mTLS for in-mesh CDE communications
 kubectl apply -f - <<EOF
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: cde-mtls-strict
@@ -131,25 +118,32 @@ spec:
     mode: STRICT
 EOF
 
-# Verify all CDE pods use TLS 1.2 or higher
-# Check the Istio ingress gateway TLS configuration
-kubectl get gateway -n cardholder-data-env -o yaml | grep -A5 "tls:"
+# Verify the namespace-level mTLS policy is present
+kubectl get peerauthentication cde-mtls-strict -n cardholder-data-env -o yaml
 ```
 
 ```yaml
-# Require TLS 1.2+ for all external connections to CDE
-apiVersion: networking.istio.io/v1alpha3
-kind: DestinationRule
+# Require TLS 1.2+ for ingress traffic to CDE
+apiVersion: networking.istio.io/v1
+kind: Gateway
 metadata:
-  name: cde-tls-requirements
-  namespace: cardholder-data-env
+  name: cde-ingress
+  namespace: istio-system
 spec:
-  host: "*.cardholder-data-env.svc.cluster.local"
-  trafficPolicy:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    hosts:
+    - "payments.example.com"
     tls:
-      mode: ISTIO_MUTUAL
-      # Only TLS 1.2 and 1.3 allowed (PCI DSS requirement)
+      mode: SIMPLE
+      credentialName: cde-tls-cert
       minProtocolVersion: TLSV1_2
+      maxProtocolVersion: TLSV1_3
 ```
 
 ## Requirement 7 & 8: Access Controls
@@ -167,8 +161,11 @@ rules:
   resources: ["deployments"]
   verbs: ["get", "list", "watch"]
 - apiGroups: [""]
-  resources: ["pods", "pods/log"]
+  resources: ["pods"]
   verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
 # Never allow access to secrets in CDE namespace via RBAC
 # Secrets should be accessed via external secrets manager only
 ---
@@ -190,20 +187,27 @@ subjects:
 ## Requirement 10: Audit Logging
 
 ```bash
-# Configure comprehensive audit logging for PCI DSS
-# All access to CDE resources must be logged
-
-# Create audit policy focused on CDE namespace
-cat > /etc/kubernetes/pci-audit-policy.yaml << 'EOF'
+# Configure comprehensive audit logging for PCI DSS on RKE2
+# RKE2 creates /etc/rancher/rke2/audit-policy.yaml when started with a CIS profile.
+sudo tee /etc/rancher/rke2/audit-policy.yaml > /dev/null << 'EOF'
 apiVersion: audit.k8s.io/v1
 kind: Policy
+omitStages:
+- RequestReceived
 rules:
-  # Log all operations on CDE namespace resources at highest level
+  # Log secret access without recording secret contents
+  - level: Metadata
+    verbs: ["get", "list", "watch"]
+    resources:
+    - group: ""
+      resources: ["secrets"]
+
+  # Log all operations on CDE namespace resources at a detailed level
   - level: RequestResponse
     verbs: ["*"]
     namespaces: ["cardholder-data-env"]
 
-  # Log all authentication events
+  # Log anonymous requests
   - level: Request
     users: ["system:anonymous"]
 
@@ -213,32 +217,28 @@ rules:
     - group: "rbac.authorization.k8s.io"
       resources: ["*"]
 
-  # Log secret access
+  # Default: log metadata for everything else
   - level: Metadata
-    verbs: ["get", "list", "watch"]
-    resources:
-    - group: ""
-      resources: ["secrets"]
-
-  # Default: log at metadata level
-  - level: Metadata
-    omitStages:
-    - RequestReceived
 EOF
+
+sudo systemctl restart rke2-server.service
+
+# Confirm audit events are being written
+sudo tail -f /var/lib/rancher/rke2/server/logs/audit.log
 ```
 
 ## PCI DSS Scoping and Segmentation Verification
 
 ```bash
 # Verify network segmentation is effective
-# Test that non-CDE namespaces cannot reach CDE
+# Test that non-CDE namespaces cannot reach the CDE service on its allowed port
 
 # Run a test pod in a non-CDE namespace
-kubectl run test-connectivity --image=busybox -n default \
-  --rm -it -- wget -O- --timeout=5 \
-  http://payment-service.cardholder-data-env.svc.cluster.local
+kubectl run test-connectivity --image=busybox:1.36 -n default \
+  --restart=Never --rm -it -- \
+  sh -c 'nc -zvw5 payment-service.cardholder-data-env.svc.cluster.local 8443'
 
-# This should fail (timeout) if network policies are correctly configured
+# This should fail if network policies are correctly configured
 
 # Document the segmentation for PCI DSS auditors
 kubectl get networkpolicy -n cardholder-data-env -o yaml > \
@@ -249,4 +249,4 @@ echo "Network segmentation documentation saved to pci-network-policies.yaml"
 
 ## Conclusion
 
-Achieving PCI DSS compliance on Rancher-managed Kubernetes requires implementing network segmentation for the Cardholder Data Environment, securing all communication with strong encryption, implementing least-privilege access controls, and maintaining comprehensive audit logs. Remember that PCI DSS compliance requires formal assessment by a Qualified Security Assessor (QSA) and that this guide provides technical guidance but does not substitute for a formal compliance assessment. Regular penetration testing, vulnerability scanning, and continuous monitoring are also required components of PCI DSS compliance.
+Achieving PCI DSS compliance on Rancher-managed RKE2 clusters requires implementing network segmentation for the Cardholder Data Environment, securing all communication with strong encryption, implementing least-privilege access controls, and maintaining comprehensive audit logs. Remember that PCI DSS compliance requires formal validation and that this guide provides technical guidance but does not substitute for a formal compliance assessment. Regular penetration testing, vulnerability scanning, and continuous monitoring are also required components of PCI DSS compliance.
