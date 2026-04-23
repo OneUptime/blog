@@ -8,17 +8,17 @@ Description: Learn how to configure timeouts, use depends_on, and implement retr
 
 ## Introduction
 
-Some AWS resources like RDS instances, EKS clusters, and Direct Connect attachments can take 15-60 minutes to provision. Without proper timeout and dependency configuration, OpenTofu may give up or apply resources in the wrong order. This guide covers patterns for handling slow resources.
+Some AWS resources like RDS instances, EKS clusters, and Direct Connect attachments can take 15-60 minutes to provision. Without proper timeout and dependency configuration, OpenTofu may give up or miss dependencies it cannot infer from resource references. This guide covers patterns for handling slow resources.
 
 ## Setting Custom Timeouts
 
-Most resources support `timeouts` blocks to override defaults.
+Some resource types support `timeouts` blocks to override defaults.
 
 ```hcl
 resource "aws_db_instance" "main" {
   identifier     = "${var.app_name}-db"
   engine         = "postgres"
-  engine_version = "16.2"
+  engine_version = "16"
   instance_class = "db.r6g.xlarge"
   allocated_storage = 100
 
@@ -27,6 +27,8 @@ resource "aws_db_instance" "main" {
 
   multi_az              = true
   db_subnet_group_name  = aws_db_subnet_group.main.name
+  # Example only; use final_snapshot_identifier for production deletes
+  skip_final_snapshot   = true
 
   # Extend timeouts for large/multi-AZ instances
   timeouts {
@@ -47,26 +49,26 @@ resource "aws_db_instance" "main" {
 resource "aws_eks_cluster" "main" {
   name     = "${var.app_name}-cluster"
   role_arn = aws_iam_role.eks.arn
-  version  = "1.30"
+  version  = "1.35"
 
   vpc_config {
     subnet_ids = var.private_subnet_ids
   }
 
   timeouts {
-    create = "30m"
-    delete = "20m"
-    update = "60m"  # upgrades take longer
+    create = "45m"
+    delete = "30m"
+    update = "90m"  # upgrades take longer
   }
 }
 ```
 
 ## Using depends_on to Sequence Slow Resources
 
-Some resources appear created in state but aren't functionally ready yet. Use `depends_on` to enforce ordering.
+Some dependencies are not visible from resource references. Use `depends_on` to enforce ordering for those hidden dependencies.
 
 ```hcl
-# EKS cluster must be fully ready before the node group
+# EKS node IAM role policies must exist before the node group
 
 resource "aws_eks_node_group" "main" {
   cluster_name    = aws_eks_cluster.main.name
@@ -80,27 +82,29 @@ resource "aws_eks_node_group" "main" {
     min_size     = 1
   }
 
-  # Wait for add-ons that depend on the cluster being fully operational
+  # Wait for IAM permissions that the node group needs during creation and deletion
   depends_on = [
     aws_iam_role_policy_attachment.node_AmazonEKSWorkerNodePolicy,
     aws_iam_role_policy_attachment.node_AmazonEC2ContainerRegistryReadOnly,
   ]
 
   timeouts {
-    create = "30m"
-    update = "30m"
-    delete = "30m"
+    create = "90m"
+    update = "90m"
+    delete = "90m"
   }
 }
 ```
 
-## Polling with null_resource
+## Polling with terraform_data
 
-When a resource doesn't have built-in timeout support, use `null_resource` with a polling loop.
+When you need a readiness check that the provider does not model, use `terraform_data` with a polling loop as a last-resort option.
 
 ```hcl
-resource "null_resource" "wait_for_endpoint" {
-  depends_on = [aws_db_instance.main]
+resource "terraform_data" "wait_for_endpoint" {
+  triggers_replace = [
+    aws_db_instance.main.endpoint,
+  ]
 
   provisioner "local-exec" {
     command = <<-SCRIPT
@@ -121,9 +125,11 @@ resource "null_resource" "wait_for_endpoint" {
   }
 }
 
-# Resources that need the DB to be fully ready wait on this null_resource
-resource "null_resource" "run_migrations" {
-  depends_on = [null_resource.wait_for_endpoint]
+# Resources that need the DB to be fully ready wait on this terraform_data resource
+resource "terraform_data" "run_migrations" {
+  triggers_replace = [
+    terraform_data.wait_for_endpoint.id,
+  ]
 
   provisioner "local-exec" {
     command = "flyway -url=jdbc:postgresql://${aws_db_instance.main.endpoint}/${var.db_name} migrate"
@@ -142,7 +148,7 @@ resource "aws_elasticache_replication_group" "cache" { ... }
 resource "aws_opensearch_domain" "search" { ... }
 
 # This waits for all three
-resource "null_resource" "all_datastores_ready" {
+resource "terraform_data" "all_datastores_ready" {
   depends_on = [
     aws_db_instance.main,
     aws_elasticache_replication_group.cache,
@@ -153,4 +159,4 @@ resource "null_resource" "all_datastores_ready" {
 
 ## Summary
 
-Handling slow resources in OpenTofu requires extending timeout blocks, using `depends_on` for functional ordering, and polling with `null_resource` for resources without built-in readiness checks. Parallel independent resource creation reduces total wait time for complex stacks.
+Handling slow resources in OpenTofu requires extending timeout blocks, using `depends_on` for hidden dependencies, and polling with `terraform_data` for resources without built-in readiness checks. Parallel independent resource creation reduces total wait time for complex stacks.
