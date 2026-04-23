@@ -15,20 +15,25 @@ Well-configured development namespaces in Rancher enable team isolation, resourc
 - Rancher-managed Kubernetes cluster
 - Cluster admin or project owner access in Rancher
 - kubectl access to the cluster
+- A CNI plugin that enforces Kubernetes NetworkPolicy rules
 
 ## Step 1: Create Development Namespace via Rancher UI
 
 ```bash
 # Or create via kubectl
 
-kubectl create namespace dev-team-alpha
-kubectl label namespace dev-team-alpha \
-  env=development \
-  team=alpha \
-  managed-by=rancher
-
-# Assign to Rancher project (if using Rancher CLI)
-rancher namespace move dev-team-alpha project-id
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev-team-alpha
+  annotations:
+    field.cattle.io/projectId: c-m-abcde:p-vwxyz
+  labels:
+    env: development
+    team: alpha
+    managed-by: rancher
+EOF
 ```
 
 ## Step 2: Configure Resource Quotas
@@ -109,7 +114,7 @@ metadata:
   namespace: dev-team-alpha
 rules:
   # Full access to common resources
-  - apiGroups: ["", "apps", "batch", "extensions"]
+  - apiGroups: ["", "apps", "batch"]
     resources:
       - pods
       - pods/log
@@ -201,40 +206,35 @@ resources:
   - rolebinding.yaml
   - registry-secret.yaml
 
-# Override namespace name
+# Override the Namespace object name
 patches:
   - patch: |-
       - op: replace
-        path: /metadata/namespace
+        path: /metadata/name
         value: NAMESPACE_NAME
     target:
-      kind: ResourceQuota
+      kind: Namespace
 ```
 
 ## Step 7: Configure Rancher Project Membership
 
 ```bash
-# Using Rancher API to add namespace to project
-curl -X POST \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "dev-team-alpha",
-    "projectId": "c-xxxxx:p-xxxxx"
-  }' \
-  "https://rancher.example.com/v3/clusters/c-xxxxx/namespaces"
-
 # Grant Rancher project member access
+# Replace the namespace in the URL with the project's backing namespace.
 curl -X POST \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
-    "type": "projectRoleTemplateBinding",
-    "projectId": "c-xxxxx:p-xxxxx",
-    "roleTemplateId": "project-member",
-    "groupName": "team-alpha"
+    "apiVersion": "management.cattle.io/v3",
+    "kind": "ProjectRoleTemplateBinding",
+    "metadata": {
+      "generateName": "prtb-"
+    },
+    "projectName": "c-m-abcde:p-vwxyz",
+    "roleTemplateName": "project-member",
+    "groupPrincipalName": "keycloak_group://team-alpha"
   }' \
-  "https://rancher.example.com/v3/projectroletemplatebindings"
+  "https://rancher.example.com/apis/management.cattle.io/v3/namespaces/c-m-abcde-p-vwxyz/projectroletemplatebindings"
 ```
 
 ## Step 8: Copy Registry Secrets
