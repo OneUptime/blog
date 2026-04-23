@@ -4,119 +4,92 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Large Scale, Enterprise, Performance, Kubernetes, Architecture
 
-Description: Configure Rancher for large-scale deployments with hundreds of clusters by tuning server resources, optimizing etcd, enabling external databases, and implementing proper HA.
+Description: Configure Rancher for large-scale deployments with hundreds of clusters by sizing the management cluster correctly, optimizing etcd, and implementing proper HA.
 
 ## Introduction
 
-Running Rancher at large scale-100+ downstream clusters, thousands of nodes-requires architectural decisions beyond the default installation. This guide covers the critical configurations needed to maintain Rancher Server stability and performance at enterprise scale.
+Running Rancher at large scale-hundreds of downstream clusters, thousands of nodes-requires architectural decisions beyond the default installation. This guide covers the critical configurations needed to maintain Rancher Server stability and performance at enterprise scale.
 
 ## Rancher Scalability Guidelines
 
-| Deployment Scale | Clusters | Nodes | Rancher Server Resources |
+| Deployment Scale | Clusters | Nodes | Per Upstream Node Resources |
 |---|---|---|---|
-| Small | 1-50 | 1-500 | 4 CPU, 8GB RAM |
-| Medium | 50-200 | 500-2000 | 8 CPU, 16GB RAM |
-| Large | 200-1000 | 2000-10000 | 16 CPU, 32GB RAM |
-| Enterprise | 1000+ | 10000+ | 32 CPU, 64GB RAM + External DB |
+| Small | Up to 150 | Up to 1500 | 4 CPU, 16GB RAM |
+| Medium | Up to 300 | Up to 3000 | 8 CPU, 32GB RAM |
+| Large | Up to 500 | Up to 5000 | 16 CPU, 64GB RAM |
+| Larger deployments | Custom evaluation | Custom evaluation | Custom evaluation |
 
-## Step 1: External Database for Large Scale
+## Step 1: Use a Supported HA Datastore for the Management Cluster
 
-At 200+ clusters, migrate from the embedded SQLite to PostgreSQL:
+Rancher stores its data in the local management cluster's datastore. On RKE2, embedded etcd is the default supported HA datastore. If the management cluster is K3s-based, move production or large deployments off embedded SQLite:
 
 ```yaml
-# rancher-values.yaml
-
-extraEnv:
-  - name: CATTLE_DB_CATTLE_MYSQL_HOST
-    value: "postgres.databases.svc.cluster.local"
-  - name: CATTLE_DB_CATTLE_MYSQL_USER
-    valueFrom:
-      secretKeyRef:
-        name: rancher-db-credentials
-        key: username
-  - name: CATTLE_DB_CATTLE_MYSQL_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: rancher-db-credentials
-        key: password
-  - name: CATTLE_DB_CATTLE_MYSQL_NAME
-    value: "rancher"
+# /etc/rancher/k3s/config.yaml
+datastore-endpoint: "postgres://<user>:<password>@postgres.databases.svc.cluster.local:5432/k3s"
 ```
 
 ## Step 2: Tune Rancher Reconciliation Loops
 
-Reduce CPU overhead from frequent reconciliation:
+If Rancher shows CPU spikes during the scheduled 10-hour cache resync, limit full resync handler execution:
 
 ```yaml
 extraEnv:
-  # How often Rancher re-syncs all cluster state
-  - name: CATTLE_RESYNC_DEFAULT
-    value: "60"    # Increase from default 15s to 60s
-  - name: CATTLE_CLUSTER_AGENT_RESYNC
-    value: "300"   # Agent resync every 5 minutes
-  # Limit concurrent processing
-  - name: CATTLE_WORKER_COUNT
-    value: "100"   # Adjust based on CPU capacity
+  - name: CATTLE_SYNC_ONLY_CHANGED_OBJECTS
+    value: "mgmt,user"
 ```
 
 ## Step 3: Scale etcd for Large Object Counts
 
-Large clusters with many Custom Resources can exceed etcd defaults:
+When object counts grow, increase etcd keyspace from the default 2 GB and keep compaction enabled:
 
 ```yaml
-# RKE2 etcd configuration
+# /etc/rancher/rke2/config.yaml
 etcd-arg:
-  - "quota-backend-bytes=12884901888"    # 12GB quota for large deployments
-  - "auto-compaction-retention=4"         # Compact every 4 hours
-  - "max-request-bytes=10485760"          # 10MB max request size
-  - "heartbeat-interval=500"
-  - "election-timeout=5000"
+  - "quota-backend-bytes=8589934592"    # 8GB keyspace
+  - "auto-compaction-retention=4h"
 ```
 
 ## Step 4: Distribute Load with Multiple Rancher Replicas
 
 ```yaml
 # rancher-values.yaml
-replicas: 5    # 5 Rancher server pods
-
-# Configure horizontal pod autoscaling
-autoscaling:
-  enabled: true
-  minReplicas: 3
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 60
+replicas: 3
+antiAffinity: required
+topologyKey: kubernetes.io/hostname
 ```
 
 ## Step 5: Separate Cluster-Level etcd
 
-For the local Rancher cluster, use dedicated etcd nodes:
+For the local Rancher cluster, use dedicated etcd and control-plane nodes when you need separate infrastructure:
 
 ```yaml
-# rke2-config.yaml
-nodes:
-  # Dedicated etcd-only nodes (no workloads)
-  - role: [etcd]
-    address: 10.0.0.10
-    taints:
-      - effect: NoSchedule
-        key: node-role.kubernetes.io/etcd
-  # Control plane nodes (no etcd, no workloads)
-  - role: [controlplane]
-    address: 10.0.0.20
+# /etc/rancher/rke2/config.yaml on etcd-only nodes
+# Add the usual HA server/token settings for non-bootstrap nodes.
+disable-apiserver: true
+disable-controller-manager: true
+disable-scheduler: true
+node-taint:
+  - "CriticalAddonsOnly=true:NoExecute"
+---
+# /etc/rancher/rke2/config.yaml on control-plane-only nodes
+# Add the usual HA server/token settings when joining the cluster.
+disable-etcd: true
+node-taint:
+  - "CriticalAddonsOnly=true:NoExecute"
 ```
 
-## Step 6: Implement Cluster Import Rate Limiting
+## Step 6: Implement Cluster Registration Rate Limiting
 
-When importing many clusters simultaneously, stagger the imports:
+When registering many clusters simultaneously, stagger the Rancher-generated registration manifests:
 
 ```bash
-# Import clusters in batches with delays
-for cluster in cluster-{1..100}; do
-  rancher cluster import $cluster
-  sleep 10    # Allow Rancher to process each import
+# Apply Rancher-generated registration manifests in batches
+for manifest in ./registration-manifests/*.yaml; do
+  kubectl apply -f "$manifest"
+  sleep 10
 done
 ```
 
 ## Conclusion
 
-Large-scale Rancher deployments require an external database, increased server resources, tuned reconciliation frequencies, and dedicated infrastructure for the local cluster's etcd. At 1000+ cluster scale, work with SUSE Rancher Support to review your specific architecture and receive guidance on Rancher Prime features designed for enterprise scale.
+Large-scale Rancher deployments require correct management-cluster sizing, tuned etcd, and a properly sized HA installation. If Rancher runs on K3s, use a supported HA datastore instead of embedded SQLite. For deployments beyond Rancher's published 500-cluster / 5000-node guidance, work with SUSE Rancher Support to review your specific architecture and receive guidance on enterprise-scale deployments.
