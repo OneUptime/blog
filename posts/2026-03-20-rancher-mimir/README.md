@@ -12,19 +12,32 @@ Grafana Mimir is a horizontally scalable, highly available, multi-tenant, long-t
 
 ## Prerequisites
 
-- Rancher-managed Kubernetes cluster
-- Helm 3.x installed
+- Rancher-managed Kubernetes 1.29+ cluster
+- Helm 3.8+ installed
 - Object storage (S3, GCS, or MinIO)
 - Rancher Monitoring (Prometheus) installed
 
 ## Step 1: Deploy Mimir
 
 ```yaml
-# mimir-values.yaml - Mimir monolithic mode for small/medium deployments
+# mimir-values.yaml - Mimir classic architecture for small/medium deployments
+
+kafka:
+  enabled: false
 
 mimir:
-  # Monolithic mode runs all components in a single binary
   structuredConfig:
+    # Classic architecture disables ingest storage and Kafka for the write path.
+    ingest_storage:
+      enabled: false
+      kafka:
+        address: null
+        topic: null
+        auto_create_topic_default_partitions: null
+
+    distributor:
+      remote_timeout: null
+
     common:
       storage:
         backend: s3
@@ -39,8 +52,7 @@ mimir:
       s3:
         bucket_name: mimir-blocks
       tsdb:
-        block_ranges_period: [2h]
-        retention_period: 0  # Unlimited (controlled by compactor)
+        retention_period: 13h
         ship_interval: 1m
 
     # Alertmanager storage
@@ -55,7 +67,7 @@ mimir:
 
     # Limits configuration
     limits:
-      # Maximum retention period (0 = unlimited)
+      # Retention period for blocks in object storage
       compactor_blocks_retention_period: 365d
       # Maximum number of series per tenant
       max_global_series_per_user: 1000000
@@ -65,45 +77,57 @@ mimir:
 
     # Ingester configuration
     ingester:
+      push_grpc_method_enabled: null
       ring:
         replication_factor: 3
-
-    # Ring store
-    ingester_client:
-      grpc_client_config:
-        grpc_compression: snappy
 
     # Multi-tenancy
     multitenancy_enabled: true
 
-  # Persistence for WAL
-  persistence:
+# Persistence for WAL / TSDB
+ingester:
+  replicas: 3
+  persistentVolume:
     enabled: true
-    storageClass: standard
     size: 20Gi
 
-  resources:
-    requests:
-      memory: 1Gi
-      cpu: 500m
-    limits:
-      memory: 4Gi
-      cpu: 2000m
+distributor:
+  replicas: 2
 
-# Enable Nginx as HTTP entry point
-nginx:
+alertmanager:
+  replicas: 2
+  statefulSet:
+    enabled: true
+  persistentVolume:
+    enabled: true
+    size: 2Gi
+
+compactor:
+  persistentVolume:
+    enabled: true
+    size: 20Gi
+
+store_gateway:
+  replicas: 3
+  persistentVolume:
+    enabled: true
+    size: 10Gi
+
+# Enable the gateway as the HTTP entry point
+gateway:
   enabled: true
   replicas: 2
 
-# Enable minio as object storage (for testing)
+# Disable the built-in MinIO deployment
 minio:
-  enabled: false  # We're using external MinIO
+  enabled: false
 
-serviceMonitor:
-  enabled: true
-  namespace: cattle-monitoring-system
-  labels:
-    release: rancher-monitoring
+metaMonitoring:
+  serviceMonitor:
+    enabled: true
+    namespace: cattle-monitoring-system
+    labels:
+      release: rancher-monitoring
 ```
 
 ```bash
@@ -112,11 +136,12 @@ helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 
 # Create MinIO buckets for Mimir
-kubectl exec -n observability deployment/minio -- \
-  sh -c "mc alias set local http://localhost:9000 minioadmin minioadmin && \
-         mc mb local/mimir-blocks && \
-         mc mb local/mimir-alertmanager && \
-         mc mb local/mimir-ruler"
+kubectl run -n observability minio-client --rm -i --restart=Never \
+  --image=minio/mc -- \
+  sh -c "mc alias set local http://minio.observability.svc.cluster.local:9000 minioadmin minioadmin && \
+         mc mb --ignore-existing local/mimir-blocks && \
+         mc mb --ignore-existing local/mimir-alertmanager && \
+         mc mb --ignore-existing local/mimir-ruler"
 
 # Install Mimir
 helm install mimir grafana/mimir-distributed \
@@ -141,7 +166,7 @@ metadata:
 spec:
   # Remote write to Mimir
   remoteWrite:
-    - url: "http://mimir-nginx.observability.svc.cluster.local/api/v1/push"
+    - url: "http://mimir-gateway.observability.svc.cluster.local/api/v1/push"
       headers:
         # Tenant ID for multi-tenancy
         X-Scope-OrgID: rancher-production
@@ -173,13 +198,14 @@ data:
     datasources:
       - name: Mimir
         type: prometheus
-        url: http://mimir-nginx.observability.svc.cluster.local/prometheus
+        url: http://mimir-gateway.observability.svc.cluster.local/prometheus
         access: proxy
         basicAuth: false
         jsonData:
           httpHeaderName1: X-Scope-OrgID
-          httpHeaderValue1: rancher-production
           timeInterval: 30s
+        secureJsonData:
+          httpHeaderValue1: rancher-production
 ```
 
 ## Step 4: Set Up Multi-Tenancy for Multiple Clusters
@@ -190,7 +216,7 @@ data:
 apiVersion: monitoring.coreos.com/v1
 kind: Prometheus
 metadata:
-  name: prometheus
+  name: rancher-monitoring-prometheus
   namespace: cattle-monitoring-system
 spec:
   remoteWrite:
@@ -201,10 +227,16 @@ spec:
 
 ```yaml
 # Cluster 2 (staging)
-remoteWrite:
-  - url: "http://central-mimir.monitoring.svc.cluster.local/api/v1/push"
-    headers:
-      X-Scope-OrgID: staging-cluster
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: rancher-monitoring-prometheus
+  namespace: cattle-monitoring-system
+spec:
+  remoteWrite:
+    - url: "http://central-mimir.monitoring.svc.cluster.local/api/v1/push"
+      headers:
+        X-Scope-OrgID: staging-cluster
 ```
 
 ## Step 5: Configure Alertmanager in Mimir
@@ -212,26 +244,27 @@ remoteWrite:
 ```bash
 # Configure Mimir's built-in Alertmanager via API
 curl -X POST \
-  http://mimir-nginx.observability.svc.cluster.local/api/v1/alerts \
+  http://mimir-gateway.observability.svc.cluster.local/api/v1/alerts \
   -H "X-Scope-OrgID: rancher-production" \
   -H "Content-Type: application/yaml" \
-  -d '
-global:
-  resolve_timeout: 5m
-  slack_api_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
-route:
-  group_by: ["alertname", "cluster"]
-  group_wait: 30s
-  group_interval: 5m
-  repeat_interval: 1h
-  receiver: "slack-notifications"
-receivers:
-  - name: "slack-notifications"
-    slack_configs:
-      - channel: "#alerts"
-        title: "{{ .GroupLabels.alertname }}"
-        text: "{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}"
-'
+  --data-binary @- <<'EOF'
+alertmanager_config: |
+  global:
+    resolve_timeout: 5m
+    slack_api_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+  route:
+    group_by: ["alertname", "cluster"]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 1h
+    receiver: "slack-notifications"
+  receivers:
+    - name: "slack-notifications"
+      slack_configs:
+        - channel: "#alerts"
+          title: "{{ .GroupLabels.alertname }}"
+          text: "{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}"
+EOF
 ```
 
 ## Step 6: Monitor Mimir Itself
@@ -250,8 +283,8 @@ spec:
     - name: mimir
       rules:
         - alert: MimirIngesterUnhealthy
-          expr: min(mimir_ring_members{state="Unhealthy",name="ingester"}) > 0
-          for: 5m
+          expr: min(cortex_ring_members{state="Unhealthy",name="ingester"}) > 0
+          for: 15m
           labels:
             severity: critical
           annotations:
