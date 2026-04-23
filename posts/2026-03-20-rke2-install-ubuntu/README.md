@@ -6,15 +6,18 @@ Tags: RKE2, Kubernetes, Ubuntu, Installation, Rancher
 
 Description: A step-by-step guide to installing RKE2 (Rancher Kubernetes Engine 2) on Ubuntu Linux for a production-ready Kubernetes cluster.
 
-RKE2 is Rancher's next-generation Kubernetes distribution that focuses on security and compliance. It bundles a hardened Kubernetes cluster with all required components, making it an excellent choice for organizations that need a secure, production-ready Kubernetes distribution. This guide covers installing RKE2 on Ubuntu 20.04 and 22.04.
+RKE2 is Rancher's next-generation Kubernetes distribution that focuses on security and compliance. It bundles a hardened Kubernetes cluster with all required components, making it an excellent choice for organizations that need a secure, production-ready Kubernetes distribution. This guide covers installing RKE2 on Ubuntu 20.04 with Ubuntu Pro/ESM enabled and Ubuntu 22.04.
 
 ## Prerequisites
 
-- Ubuntu 20.04 LTS or 22.04 LTS
+- Ubuntu 20.04 LTS with Ubuntu Pro/ESM enabled, or Ubuntu 22.04 LTS
 - Minimum 2 vCPUs and 4 GB RAM per node
 - Root or sudo access
-- Ports 6443, 9345, 2379-2380 open on control plane nodes
-- Port 10250 open on all nodes
+- AppArmor tools available if AppArmor is enabled
+- Ports 6443 and 9345 open from cluster nodes to control plane nodes
+- Ports 2379-2381 open between control plane nodes
+- Port 10250 open between all nodes
+- CNI-specific ports open between nodes (for the default Canal CNI: UDP 8472 and TCP 9099)
 
 ## Step 1: Prepare the System
 
@@ -23,7 +26,7 @@ RKE2 is Rancher's next-generation Kubernetes distribution that focuses on securi
 
 sudo apt-get update && sudo apt-get upgrade -y
 
-# Disable swap (required for Kubernetes)
+# Disable swap unless you have explicitly configured Kubernetes swap support
 sudo swapoff -a
 sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
 
@@ -54,18 +57,26 @@ sudo sysctl --system
 ## Step 2: Configure Firewall
 
 ```bash
-# If using UFW, allow required ports
-sudo ufw allow 22/tcp       # SSH
-sudo ufw allow 6443/tcp     # Kubernetes API server
-sudo ufw allow 9345/tcp     # RKE2 supervisor API
-sudo ufw allow 2379/tcp     # etcd client
-sudo ufw allow 2380/tcp     # etcd peer
-sudo ufw allow 10250/tcp    # Kubelet API
-sudo ufw allow 10257/tcp    # kube-controller-manager
-sudo ufw allow 10259/tcp    # kube-scheduler
-sudo ufw allow 8472/udp     # Canal/Flannel VXLAN
-sudo ufw allow 51820/udp    # Canal/Flannel WireGuard
-sudo ufw allow 4789/udp     # VXLAN
+# If using UFW, allow required ports from your private RKE2 node subnets.
+# Replace these placeholders before running the commands.
+NODE_CIDR="<PRIVATE_NODE_CIDR>"          # Example: 10.0.0.0/24
+SERVER_CIDR="<PRIVATE_SERVER_NODE_CIDR>" # Example: 10.0.0.0/28
+
+sudo ufw allow 22/tcp
+sudo ufw allow from "$NODE_CIDR" to any port 6443 proto tcp        # Kubernetes API server
+sudo ufw allow from "$NODE_CIDR" to any port 9345 proto tcp        # RKE2 supervisor API
+sudo ufw allow from "$SERVER_CIDR" to any port 2379:2381 proto tcp # etcd client, peer, and metrics
+sudo ufw allow from "$NODE_CIDR" to any port 10250 proto tcp       # Kubelet metrics
+
+# Default Canal CNI
+sudo ufw allow from "$NODE_CIDR" to any port 8472 proto udp        # Canal VXLAN
+sudo ufw allow from "$NODE_CIDR" to any port 9099 proto tcp        # Canal health checks
+
+# Optional ports, enable only when used
+sudo ufw allow from "$NODE_CIDR" to any port 4789 proto udp        # Calico/Flannel VXLAN
+sudo ufw allow from "$NODE_CIDR" to any port 51820 proto udp       # Canal WireGuard IPv4
+sudo ufw allow from "$NODE_CIDR" to any port 51821 proto udp       # Canal WireGuard IPv6/dual-stack
+sudo ufw allow from "$NODE_CIDR" to any port 30000:32767 proto tcp # NodePort services
 ```
 
 ## Step 3: Install RKE2 Server (Control Plane)
@@ -121,7 +132,7 @@ Run these commands on each worker node:
 
 ```bash
 # On the worker node: Install RKE2 agent
-curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE="agent" sudo sh -
+curl -sfL https://get.rke2.io | sudo env INSTALL_RKE2_TYPE="agent" sh -
 
 # Create agent configuration
 sudo mkdir -p /etc/rancher/rke2/
@@ -161,9 +172,9 @@ rke2 --version
 # Install a specific RKE2 version (recommended for production)
 # Check available versions at: https://github.com/rancher/rke2/releases
 
-INSTALL_RKE2_VERSION=v1.28.8+rke2r1
+INSTALL_RKE2_VERSION="v1.34.6+rke2r3"
 curl -sfL https://get.rke2.io | \
-  INSTALL_RKE2_VERSION=$INSTALL_RKE2_VERSION sudo sh -
+  sudo env INSTALL_RKE2_VERSION="$INSTALL_RKE2_VERSION" sh -
 ```
 
 ## Conclusion
