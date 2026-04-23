@@ -100,7 +100,7 @@ tofu plan
 tofu apply
 
 # Even with no changes, apply re-writes state with the new encryption key
-# Use a no-op change if needed:
+# Use a refresh-only apply if you need to force a state write without changing resources:
 tofu apply -refresh-only
 ```
 
@@ -138,6 +138,12 @@ terraform {
       enforced = true
       # Fallback removed - old key is no longer used
     }
+
+    plan {
+      method   = method.aes_gcm.new_method
+      enforced = true
+      # Fallback removed - old key is no longer used
+    }
   }
 }
 ```
@@ -159,13 +165,15 @@ For manual rotation with a new KMS key:
 terraform {
   encryption {
     key_provider "aws_kms" "new_key" {
-      kms_key_id = "arn:aws:kms:us-east-1:123:key/new-key-id"
+      kms_key_id = "arn:aws:kms:us-east-1:111122223333:key/11111111-1111-1111-1111-111111111111"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
     key_provider "aws_kms" "old_key" {
-      kms_key_id = "arn:aws:kms:us-east-1:123:key/old-key-id"
+      kms_key_id = "arn:aws:kms:us-east-1:111122223333:key/22222222-2222-2222-2222-222222222222"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
     method "aes_gcm" "new_method" {
