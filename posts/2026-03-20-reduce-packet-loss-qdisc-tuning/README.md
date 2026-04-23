@@ -8,7 +8,7 @@ Description: Learn how to configure Linux traffic control queue disciplines (qdi
 
 ## What Is a Queue Discipline?
 
-Every network interface on Linux has a queue discipline (qdisc) that controls how packets are queued and transmitted. The default qdisc (`pfifo_fast`) uses simple three-band priority queuing with a fixed queue length.
+Every network interface on Linux has a queue discipline (qdisc) that controls how packets are queued and transmitted. The kernel default for new devices is `pfifo_fast`, but distros may override this with `net.core.default_qdisc`, physical multiqueue NICs often use `mq` as the root qdisc, and virtual devices such as `lo` typically use `noqueue`.
 
 Problems with default qdisc:
 - Fixed queue depth can cause bursts of packet loss
@@ -22,13 +22,11 @@ Problems with default qdisc:
 
 tc qdisc show
 
-# Output:
-# qdisc pfifo_fast 0: dev eth0 root refcnt 2 bands 3 priomap  1 2 2 2 1 2 0 0 1 1 1 1 1 1 1 1
-# qdisc pfifo_fast 0: dev lo root refcnt 2 bands 3 priomap  1 2 2 2 1 2 0 0 1 1 1 1 1 1 1 1
+# Output varies by interface and distro; you may see fq_codel, pfifo_fast, mq, or noqueue.
 
 # Check queue statistics (drops, backlog)
 tc -s qdisc show dev eth0
-# Output includes: Sent, Dropped, Overlimits, Backlog
+# Output includes: Sent, dropped, overlimits, backlog
 ```
 
 ## Step 2: Switch to FQ-CoDel (Best General Purpose)
@@ -40,7 +38,7 @@ FQ-CoDel (Fair Queue Controlled Delay) is the recommended qdisc for most systems
 - Is included in Linux kernel 3.5+
 
 ```bash
-# Replace default pfifo_fast with fq_codel
+# Replace the current qdisc with fq_codel
 sudo tc qdisc replace dev eth0 root fq_codel
 
 # Verify
@@ -56,19 +54,23 @@ tc -s qdisc show dev eth0
 CAKE (Common Applications Kept Enhanced) is a newer AQM that also handles shaping:
 
 ```bash
-# Install CAKE (if not already in kernel)
+# Load CAKE if it is built as a module
 # CAKE is included in kernel 4.19+
-modprobe sch_cake
+sudo modprobe sch_cake
 
 # Apply CAKE with bandwidth limiting (replace 100mbit with your uplink speed)
 sudo tc qdisc replace dev eth0 root cake bandwidth 100mbit
 
 # CAKE configuration options:
+# - bandwidth 100mbit: your uplink bandwidth
+# - besteffort: no diffserv classification
+# - ack-filter: filter redundant ACKs
+# - nat: improve fairness between hosts behind NAT
 sudo tc qdisc replace dev eth0 root cake \
-  bandwidth 100mbit \    # Your uplink bandwidth
-  besteffort \           # No classification (use for most cases)
-  ack-filter \           # Filter redundant ACKs
-  nat                    # Handle NAT for RTT estimation
+  bandwidth 100mbit \
+  besteffort \
+  ack-filter \
+  nat
 
 # Verify
 tc qdisc show dev eth0
@@ -76,7 +78,7 @@ tc qdisc show dev eth0
 
 ## Step 4: Increase pfifo_fast Queue Length (Simple Fix)
 
-If you need a quick fix without changing the qdisc type:
+If you need a quick fix without changing the qdisc type and can tolerate more queueing latency:
 
 ```bash
 # Check current queue length
@@ -90,21 +92,21 @@ ip link show eth0 | grep qlen
 # ... qlen 10000 ...
 
 # Make persistent
-echo 'ACTION=="add", SUBSYSTEM=="net", KERNEL=="eth0", ATTR{tx_queue_len}="10000"' \
-  > /etc/udev/rules.d/99-txqueuelen.rules
+echo 'ACTION=="add", SUBSYSTEM=="net", KERNEL=="eth0", ATTR{tx_queue_len}="10000"' | \
+  sudo tee /etc/udev/rules.d/99-txqueuelen.rules > /dev/null
 ```
 
 ## Step 5: Configure Per-Flow Fairness with FQ
 
-The `fq` qdisc provides per-flow fairness without active queue management (used with BBR):
+The `fq` qdisc provides per-flow fairness without active queue management and is commonly paired with BBR because it provides efficient pacing:
 
 ```bash
-# fq is required when using BBR congestion control
+# fq is commonly paired with BBR because it provides pacing efficiently
 sudo sysctl -w net.core.default_qdisc=fq
 sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
 
 # Or apply manually to an interface
-sudo tc qdisc replace dev eth0 root fq maxrate 0 quantum 1500
+sudo tc qdisc replace dev eth0 root fq
 
 # fq automatically creates per-flow queues and provides pacing
 tc qdisc show dev eth0
@@ -131,16 +133,16 @@ ethtool -S eth0 | grep -i drop
 
 ```bash
 # Set default qdisc for all new interfaces
-echo "net.core.default_qdisc = fq_codel" >> /etc/sysctl.d/99-qdisc.conf
-sudo sysctl -p /etc/sysctl.d/99-qdisc.conf
+echo "net.core.default_qdisc = fq_codel" | sudo tee /etc/sysctl.d/99-qdisc.conf > /dev/null
+sudo sysctl --load /etc/sysctl.d/99-qdisc.conf
 
 # Apply fq_codel to all existing interfaces
-for iface in $(ip link show | grep '^[0-9]' | awk -F: '{print $2}' | tr -d ' ' | grep -v lo); do
-  tc qdisc replace dev $iface root fq_codel
+for iface in $(ip -o link show | awk -F': ' '{print $2}' | cut -d@ -f1 | grep -v '^lo$'); do
+  sudo tc qdisc replace dev "$iface" root fq_codel
   echo "Applied fq_codel to $iface"
 done
 ```
 
 ## Conclusion
 
-The Linux qdisc controls packet queuing behavior and is a key factor in packet loss and latency. Replace the default `pfifo_fast` with `fq_codel` for better bufferbloat handling and fair bandwidth distribution, or use `fq` alongside BBR congestion control. Set the system-wide default with `net.core.default_qdisc = fq_codel` in sysctl and monitor drop counts with `tc -s qdisc show`. For bandwidth-limited uplinks, CAKE provides combined shaping and AQM in a single qdisc.
+The Linux qdisc controls packet queuing behavior and is a key factor in packet loss and latency. Use `fq_codel` for better bufferbloat handling and fair bandwidth distribution, or use `fq` alongside BBR when you want efficient pacing. Set the system-wide default for new interfaces with `net.core.default_qdisc = fq_codel` in sysctl and monitor drop counts with `tc -s qdisc show`. For bandwidth-limited uplinks, CAKE provides combined shaping and AQM in a single qdisc.
