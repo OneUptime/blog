@@ -22,12 +22,12 @@ Energy and utility companies manage complex IT/OT convergence challenges: grid m
 
 ```text
 Enterprise IT Zone (Rancher-managed)
+├── Historian Cluster (data aggregation)
 ├── Business Intelligence Platform
 ├── Customer Portal (web-facing)
 └── Analytics & Reporting
 
 Operations Technology (OT) DMZ
-├── Historian Cluster (data aggregation)
 ├── SCADA Gateway
 └── Advanced Metering Infrastructure (AMI)
 
@@ -49,25 +49,19 @@ metadata:
   namespace: ot-dmz
 spec:
   podSelector: {}
-  ingress:
-    # Only accept from IT zone historian
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              zone: it
-        - podSelector:
-            matchLabels:
-              app: historian-client
-      ports:
-        - port: 5432    # PostgreSQL only
+  ingress: []
   egress:
-    # Block all outbound from OT DMZ except historian DB
+    # Allow outbound only to the historian service in the IT zone
     - to:
         - namespaceSelector:
             matchLabels:
               zone: it
+          podSelector:
+            matchLabels:
+              app: historian
       ports:
-        - port: 5432
+        - protocol: TCP
+          port: 5432
   policyTypes:
     - Ingress
     - Egress
@@ -84,7 +78,13 @@ metadata:
   namespace: ot-dmz
 spec:
   replicas: 2    # HA for grid operations
+  selector:
+    matchLabels:
+      app: scada-gateway
   template:
+    metadata:
+      labels:
+        app: scada-gateway
     spec:
       containers:
         - name: protocol-gateway
@@ -122,7 +122,13 @@ metadata:
   namespace: smart-grid
 spec:
   replicas: 20    # Scale for millions of meters
+  selector:
+    matchLabels:
+      app: ami-processor
   template:
+    metadata:
+      labels:
+        app: ami-processor
     spec:
       containers:
         - name: meter-processor
@@ -144,24 +150,29 @@ spec:
 
 ## Step 4: NERC CIP Compliance Configuration
 
-NERC CIP requires strict access control for Bulk Electric System (BES) assets:
+NERC CIP requires strict access control and security event monitoring for Bulk Electric System (BES) assets. Kubernetes audit logging can support evidence collection for those controls, but it does not by itself satisfy the full standard:
 
 ```yaml
 # Strict audit logging for NERC CIP compliance
 apiVersion: audit.k8s.io/v1
 kind: Policy
+omitStages:
+  - "RequestReceived"
 rules:
-  # CIP-007-6 R4: Log all user access
-  - level: RequestResponse
-    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  # Log metadata for access to sensitive core resources without recording secret values
+  - level: Metadata
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
     resources:
       - group: ""
         resources: ["pods", "secrets", "configmaps"]
-  # CIP-007-6: Log all authentication attempts
+  # Log API discovery and health-check access metadata
   - level: Metadata
     nonResourceURLs:
       - /api*
+      - /apis*
       - /healthz
+      - /livez
+      - /readyz
 ```
 
 ```yaml
@@ -179,6 +190,20 @@ rules:
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ot-operator-readonly-binding
+  namespace: ot-dmz
+subjects:
+  - kind: Group
+    name: ot-operators
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ot-operator-readonly
 ```
 
 ## Step 5: Renewable Energy Monitoring
@@ -192,7 +217,13 @@ metadata:
   namespace: renewable-energy
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: wind-farm-monitor
   template:
+    metadata:
+      labels:
+        app: wind-farm-monitor
     spec:
       containers:
         - name: wind-monitor
@@ -217,7 +248,13 @@ metadata:
   namespace: renewable-energy
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: solar-farm-monitor
   template:
+    metadata:
+      labels:
+        app: solar-farm-monitor
     spec:
       containers:
         - name: solar-monitor
@@ -260,16 +297,16 @@ spec:
 
 ## Step 7: Substation Edge Clusters
 
-Deploy K3s at substations for local grid control:
+Deploy K3s at substations for local grid control, then import the clusters into Rancher for centralized management:
 
 ```bash
-# Install K3s at substation (air-gapped)
-# Copy K3s binary and images to substation server
+# Join an additional substation node to the local K3s server (air-gapped)
+# Copy the K3s binary, install script, and air-gap images to the substation server
 # Then install offline:
 INSTALL_K3S_SKIP_DOWNLOAD=true \
-K3S_URL=https://rancher-mgmt.utility.internal:6443 \
+K3S_URL=https://k3s-server.substation.utility.internal:6443 \
 K3S_TOKEN=${SUBSTATION_TOKEN} \
-./install.sh \
+./install.sh agent \
   --node-label="site-type=substation" \
   --node-label="substation-id=SUB-001" \
   --node-label="region=north"
@@ -306,4 +343,4 @@ spec:
 
 ## Conclusion
 
-Rancher provides the foundational infrastructure management capabilities required for energy and utility deployments. The combination of strict network isolation via NetworkPolicies, NERC CIP-compliant audit logging, K3s edge deployments at substations, and centralized Fleet management provides a secure and manageable platform. Always involve your OT security and grid operations teams in any design decisions involving connections between IT and OT zones, and ensure all NERC CIP compliance requirements are validated with your compliance team before deployment.
+Rancher provides the foundational infrastructure management capabilities required for energy and utility deployments. The combination of strict network isolation via NetworkPolicies, Kubernetes audit logging that supports NERC CIP evidence collection, K3s edge deployments at substations, and centralized Fleet management provides a secure and manageable platform. Always involve your OT security and grid operations teams in any design decisions involving connections between IT and OT zones, and ensure all NERC CIP compliance requirements are validated with your compliance team before deployment.
