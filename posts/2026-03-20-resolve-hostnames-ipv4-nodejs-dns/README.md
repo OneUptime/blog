@@ -158,4 +158,4 @@ resolveAll(['google.com', 'github.com', 'invalid.test']).then(results => {
 
 ## Conclusion
 
-Node.js provides two DNS resolution paths: `dns.lookup()` (uses OS resolver, returns one address) and `dns.resolve4()` (queries DNS directly, returns all A records). Use `dns.resolve4()` for authoritative lookups and multiple addresses. The `dns/promises` API with async/await is the modern approach. Use `dns.Resolver` for custom DNS server configuration.
+Node.js provides two DNS resolution paths: `dns.lookup()` (uses OS resolver, returns one address) and `dns.resolve4()` (queries DNS directly, returns all A records). Use `dns.resolve4()` for DNS protocol A-record lookups and multiple addresses. The `dns/promises` API with async/await is the modern approach. Use `dns.Resolver` for custom DNS server configuration.
