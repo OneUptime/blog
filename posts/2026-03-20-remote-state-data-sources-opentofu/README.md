@@ -57,7 +57,9 @@ data "terraform_remote_state" "networking" {
     key     = "environments/prod/networking/tofu.tfstate"
     region  = "us-east-1"
     # Optionally assume a read-only role for state access
-    role_arn = "arn:aws:iam::123456789012:role/state-reader"
+    assume_role = {
+      role_arn = "arn:aws:iam::123456789012:role/state-reader"
+    }
   }
 }
 ```
@@ -109,7 +111,7 @@ output "db_sg_id"      { value = data.terraform_remote_state.security.outputs.db
 ## Caveats
 
 - `terraform_remote_state` requires read access to the state bucket - plan IAM accordingly
-- State files may contain sensitive values - the reader gets access to all outputs
+- State files may contain sensitive values - although `terraform_remote_state` only exposes root outputs in configuration, anyone who can read the remote state can also access the full state snapshot
 - For very sensitive values, use a parameter store (SSM, Vault) instead of state outputs
 
 ## Conclusion
