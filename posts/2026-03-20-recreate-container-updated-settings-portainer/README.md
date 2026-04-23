@@ -8,21 +8,26 @@ Description: Recreate a running container in Portainer with new configuration se
 
 ---
 
-Portainer provides a web-based interface for all common container lifecycle operations. Understanding these operations helps you efficiently manage containers without memorizing Docker CLI commands.
+Portainer provides a web-based interface for common container lifecycle operations. To apply updated settings to an existing container, Portainer recreates the container with the new configuration and replaces the original one.
 
 ## Via the Portainer UI
 
-Navigate to **Containers** in the left sidebar to see the container list. Each container has action buttons for common operations.
+Navigate to **Containers** in the left sidebar, then select the container you want to update.
 
-### Container List Actions
+### Editing a Running Container
 
-From the container list:
-- Select one or more containers using checkboxes
-- Use the bulk action buttons at the top: **Start**, **Stop**, **Restart**, **Kill**, **Remove**
+From the container page:
+- Click **Duplicate/Edit**
+- Make the required changes to the container configuration
+- Click **Deploy the container**
+- When prompted, click **Replace**
 
-### Single Container Actions
+### Duplicating a Running Container
 
-Click the container name to open its detail page, then use the action buttons at the top.
+To create a copy instead of replacing the existing container:
+- Click **Duplicate/Edit**
+- Enter a new container name
+- Click **Deploy the container**
 
 ## Via the API
 
@@ -33,7 +38,7 @@ TOKEN=$(curl -s -X POST \
   -d '{"username":"admin","password":"yourpassword"}' \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Get container ID by name
+# Get the current container ID by name
 
 CONTAINER_ID=$(curl -s "https://localhost:9443/api/endpoints/1/docker/containers/json?all=1" \
   -H "Authorization: Bearer $TOKEN" \
@@ -42,57 +47,50 @@ import sys, json
 containers = json.load(sys.stdin)
 for c in containers:
     if '/my-container' in c.get('Names', []):
-        print(c['Id'][:12])
+        print(c['Id'])
 ")
 echo "Container ID: $CONTAINER_ID"
 
-# Start container
-curl -X POST "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}/start" \
-  -H "Authorization: Bearer $TOKEN" --insecure
+# Inspect the current container so you can reuse its settings in the replacement payload
+curl -s "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}/json" \
+  -H "Authorization: Bearer $TOKEN" --insecure | python3 -m json.tool
 
-# Stop container
+# Stop and remove the original container before recreating it with the same name
 curl -X POST "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}/stop" \
   -H "Authorization: Bearer $TOKEN" --insecure
 
-# Restart container
-curl -X POST "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}/restart" \
-  -H "Authorization: Bearer $TOKEN" --insecure
-
-# Kill container (SIGKILL)
-curl -X POST "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}/kill" \
-  -H "Authorization: Bearer $TOKEN" --insecure
-
-# Remove container (must be stopped first)
 curl -X DELETE "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}" \
   -H "Authorization: Bearer $TOKEN" --insecure
 
-# Remove a running container forcibly (equivalent to --force)
-curl -X DELETE "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}?force=true" \
-  -H "Authorization: Bearer $TOKEN" --insecure
+# Create the replacement container with the updated settings
+# Reuse the relevant values from the inspect output and change only the settings you want to update.
+NEW_CONTAINER_ID=$(curl -s -X POST "https://localhost:9443/api/endpoints/1/docker/containers/create?name=my-container" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  --data '{
+    "Image": "myimage:latest",
+    "Env": ["APP_ENV=production"],
+    "HostConfig": {
+      "RestartPolicy": { "Name": "unless-stopped" }
+    }
+  }' \
+  --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['Id'])")
+echo "Replacement container ID: $NEW_CONTAINER_ID"
 
-# Pause container
-curl -X POST "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}/pause" \
+# Start the replacement container
+curl -X POST "https://localhost:9443/api/endpoints/1/docker/containers/${NEW_CONTAINER_ID}/start" \
   -H "Authorization: Bearer $TOKEN" --insecure
-
-# Unpause container
-curl -X POST "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}/unpause" \
-  -H "Authorization: Bearer $TOKEN" --insecure
-
-# Inspect container JSON
-curl -s "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}/json" \
-  -H "Authorization: Bearer $TOKEN" --insecure | python3 -m json.tool
 ```
 
 ## Duplicate a Container
 
 ```bash
-# Inspect the existing container to get its configuration
-docker inspect my-container --format '{{json .Config}}' | python3 -m json.tool
+# Inspect the existing container to capture its full configuration
+docker inspect my-container | python3 -m json.tool
 
-# Create a duplicate with a new name
+# Create a duplicate with a new name. Reuse the relevant flags from the original container.
 docker run -d \
   --name my-container-copy \
-  # ... same flags as original ...
   myimage:latest
 ```
 
