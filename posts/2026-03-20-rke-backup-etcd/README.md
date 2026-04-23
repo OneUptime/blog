@@ -10,11 +10,13 @@ Description: Learn how to configure automated and manual etcd backups in RKE to 
 
 etcd is the key-value store that holds all of your Kubernetes cluster state - workload definitions, secrets, RBAC policies, and configuration. Losing etcd data means losing your entire cluster state. RKE provides built-in tooling to create and manage etcd snapshots both on-demand and on a schedule. This guide covers how to configure and execute etcd backups effectively.
 
+Note: RKE1 is in its final/end-of-life phase. Use this guide for existing RKE1 clusters, and plan new clusters or migrations on RKE2.
+
 ## Understanding RKE etcd Backup Modes
 
-RKE supports two backup storage modes:
+RKE always saves snapshots locally on the etcd nodes and can also upload them to an S3-compatible object store:
 1. **Local**: Snapshots are saved on the etcd nodes themselves
-2. **S3-compatible**: Snapshots are uploaded to an S3-compatible object store (AWS S3, MinIO, etc.)
+2. **S3-compatible**: Snapshots are saved locally and uploaded to an S3-compatible object store (AWS S3, MinIO, etc.)
 
 ## Configuring Automated etcd Backups in cluster.yml
 
@@ -32,8 +34,6 @@ services:
       interval_hours: 6
       # Number of snapshots to retain
       retention: 8
-      # Add timestamp to snapshot file names
-      safe_timestamp: true
 ```
 
 ### S3-Compatible Backup Configuration
@@ -46,17 +46,20 @@ services:
       enabled: true
       interval_hours: 6
       retention: 8
-      safe_timestamp: true
       # S3 configuration
       s3backupconfig:
         access_key: "AKIAIOSFODNN7EXAMPLE"
         secret_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
         bucket_name: "my-rke-backups"
         region: "us-east-1"
-        endpoint: ""             # Leave blank for AWS S3, set for MinIO
+        endpoint: "s3.amazonaws.com"
         folder: "cluster-name"   # Optional folder prefix
+```
 
-# For MinIO (self-hosted S3)
+For MinIO (self-hosted S3):
+
+```yaml
+# cluster.yml
 services:
   etcd:
     backup_config:
@@ -67,7 +70,7 @@ services:
         access_key: "minio-access-key"
         secret_key: "minio-secret-key"
         bucket_name: "rke-backups"
-        endpoint: "http://minio.example.com:9000"
+        endpoint: "minio.example.com:9000"
         folder: "production"
 ```
 
@@ -87,7 +90,7 @@ rke etcd snapshot-save \
     --name "before-upgrade-$(date +%Y%m%d-%H%M)" \
     --config cluster.yml
 
-# Output will show: Saving etcd snapshot [snapshot-name]
+# Output includes: Finished saving/uploading snapshot [snapshot-name] on all etcd hosts
 ```
 
 For S3 upload:
@@ -108,13 +111,11 @@ rke etcd snapshot-save \
 ## Listing Existing Snapshots
 
 ```bash
-# List all local snapshots
-rke etcd snapshot-list --config cluster.yml
+# RKE does not provide a snapshot-list subcommand; list local snapshots on an etcd node
+ssh ubuntu@192.168.1.101 'sudo ls -lh /opt/rke/etcd-snapshots/'
 
-# Expected output:
-# INFO[0000] Listing local snapshots
-# INFO[0000] Node: 192.168.1.101
-# INFO[0000]   etcd-snapshot-2024-01-15T12:00:00Z.zip (created: 2024-01-15 12:00:00)
+# Example output:
+# -rw------- 1 root root 12M Jan 15 12:00 before-upgrade-20240115-1200.zip
 ```
 
 ## Locating Snapshots on etcd Nodes
@@ -125,24 +126,24 @@ Local snapshots are stored on each etcd node:
 # Connect to an etcd node and list snapshots
 ssh ubuntu@192.168.1.101
 
-# Default snapshot location
-ls -la /opt/rke/etcd-snapshots/
-
-# Or the configured location
-docker exec etcd ls /var/lib/rancher/etcd/
+# Snapshot location
+sudo ls -la /opt/rke/etcd-snapshots/
 ```
 
 ## Verifying Snapshot Integrity
 
 ```bash
-# Copy the snapshot from the etcd node
-scp ubuntu@192.168.1.101:/opt/rke/etcd-snapshots/before-upgrade.zip ./
+SNAPSHOT_NAME="before-upgrade-20260423-1200"
+
+# Copy the snapshot from the etcd node. RKE snapshot archives are usually owned by root.
+ssh ubuntu@192.168.1.101 "sudo cat /opt/rke/etcd-snapshots/${SNAPSHOT_NAME}.zip" > "${SNAPSHOT_NAME}.zip"
 
 # Unzip and inspect
-unzip before-upgrade.zip -d /tmp/etcd-verify/
+rm -rf /tmp/etcd-verify && mkdir -p /tmp/etcd-verify
+unzip "${SNAPSHOT_NAME}.zip" -d /tmp/etcd-verify/
 
 # Use etcdctl to verify (requires etcd installed locally)
-ETCDCTL_API=3 etcdctl snapshot status /tmp/etcd-verify/etcd-backup \
+ETCDCTL_API=3 etcdctl snapshot status "/tmp/etcd-verify/backup/${SNAPSHOT_NAME}" \
     --write-out=table
 ```
 
@@ -156,7 +157,7 @@ Here is a shell script for automated backups with notifications:
 
 CLUSTER_CONFIG="/home/ubuntu/rke/cluster.yml"
 BACKUP_NAME="scheduled-backup-$(date +%Y%m%d-%H%M)"
-LOG_FILE="/var/log/rke-backup.log"
+LOG_FILE="/home/ubuntu/rke/rke-backup.log"
 SLACK_WEBHOOK="https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
 
 log() {
