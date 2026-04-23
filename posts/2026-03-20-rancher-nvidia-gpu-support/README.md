@@ -15,6 +15,7 @@ NVIDIA GPUs dramatically accelerate machine learning, scientific computing, and 
 - Rancher v2.6+
 - Kubernetes cluster with NVIDIA GPU nodes
 - Nodes running Ubuntu 20.04/22.04 or RHEL 8/9
+- Containerd with CDI/NRI support if using `cdi.nriPluginEnabled=true` (v1.7.30+, v2.1.x, or v2.2.x)
 - NVIDIA GPUs: Tesla, A100, H100, RTX series
 
 ## Step 1: Verify GPU Hardware
@@ -34,11 +35,11 @@ nvidia-smi
 ## Step 2: Label GPU Nodes
 
 ```bash
-# Label nodes that have GPUs
-kubectl label nodes gpu-node-01   nvidia.com/gpu.present=true   node-role.kubernetes.io/gpu=true
+# Optional: label GPU nodes so you can target dedicated workloads
+kubectl label nodes gpu-node-01 accelerator=nvidia-gpu
 
-# Verify labels
-kubectl get nodes --show-labels | grep nvidia
+# Verify label
+kubectl get nodes -l accelerator=nvidia-gpu
 ```
 
 ## Step 3: Install NVIDIA GPU Operator via Helm
@@ -49,33 +50,22 @@ helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
 helm repo update
 
 # Install GPU Operator
-helm install gpu-operator nvidia/gpu-operator   --namespace gpu-operator   --create-namespace   --set driver.enabled=true   --set toolkit.enabled=true   --set devicePlugin.enabled=true   --set dcgmExporter.enabled=true   --set gfd.enabled=true   --version v23.9.0
+helm install gpu-operator nvidia/gpu-operator \
+  --namespace gpu-operator \
+  --create-namespace \
+  --wait \
+  --version=v26.3.1 \
+  --set cdi.nriPluginEnabled=true
 ```
 
-## Step 4: Configure Node Feature Discovery
+## Step 4: Verify Node Feature Discovery
 
-```yaml
-# node-feature-discovery.yaml
-apiVersion: nfd.k8s-sigs.io/v1alpha1
-kind: NodeFeatureDiscovery
-metadata:
-  name: nfd-instance
-  namespace: gpu-operator
-spec:
-  operand:
-    image: registry.k8s.io/nfd/node-feature-discovery:v0.14.0
-    imagePullPolicy: IfNotPresent
-  workerConfig:
-    configData: |
-      core:
-        sleepInterval: 60s
-      sources:
-        pci:
-          deviceClassWhitelist:
-            - "0300"
-            - "0302"
-          deviceLabelFields:
-            - vendor
+```bash
+# GPU Operator deploys NFD by default. Verify the NFD pods are running.
+kubectl get pods -n gpu-operator | grep node-feature-discovery
+
+# Verify NVIDIA GPU nodes were discovered by NFD
+kubectl get nodes -l feature.node.kubernetes.io/pci-10de.present=true
 ```
 
 ## Step 5: Verify GPU Operator Installation
@@ -85,11 +75,12 @@ spec:
 kubectl get pods -n gpu-operator
 
 # Expected pods:
-# gpu-operator-xxx                Running
-# nvidia-driver-daemonset-xxx     Running  (on each GPU node)
-# nvidia-container-toolkit-xxx    Running  (on each GPU node)
-# nvidia-device-plugin-xxx        Running  (on each GPU node)
-# nvidia-dcgm-exporter-xxx        Running  (on each GPU node)
+# gpu-operator-xxx                          Running
+# nvidia-driver-daemonset-xxx               Running  (on each GPU node)
+# nvidia-container-toolkit-daemonset-xxx    Running  (on each GPU node)
+# nvidia-device-plugin-daemonset-xxx        Running  (on each GPU node)
+# gpu-feature-discovery-xxx                 Running  (on each GPU node)
+# nvidia-dcgm-exporter-xxx                  Running  (on each GPU node)
 
 # Check GPU is available as a resource
 kubectl get nodes -o json | jq '.items[] | {
@@ -101,43 +92,30 @@ kubectl get nodes -o json | jq '.items[] | {
 ## Step 6: Test GPU Access
 
 ```yaml
-# gpu-test-pod.yaml
+# cuda-vectoradd.yaml
 apiVersion: v1
 kind: Pod
 metadata:
-  name: gpu-test
+  name: cuda-vectoradd
 spec:
-  restartPolicy: Never
+  restartPolicy: OnFailure
   containers:
-  - name: cuda-container
-    image: nvidia/cuda:12.2.0-base-ubuntu22.04
-    command: ["nvidia-smi"]
+  - name: cuda-vectoradd
+    image: nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubuntu20.04
     resources:
       limits:
-        nvidia.com/gpu: 1    # Request 1 GPU
-      requests:
         nvidia.com/gpu: 1
 ```
 
 ```bash
-kubectl apply -f gpu-test-pod.yaml
-kubectl logs gpu-test
-# Should show nvidia-smi output with GPU details
+kubectl apply -f cuda-vectoradd.yaml
+kubectl logs pod/cuda-vectoradd
+# Should show a successful vectorAdd run with `Test PASSED`
 ```
 
-## Step 7: Configure RuntimeClass
+## Step 7: RuntimeClass Considerations
 
-```yaml
-# nvidia-runtime-class.yaml
-apiVersion: node.k8s.io/v1
-kind: RuntimeClass
-metadata:
-  name: nvidia
-handler: nvidia
-scheduling:
-  nodeSelector:
-    nvidia.com/gpu.present: "true"
-```
+Current GPU Operator releases use CDI by default. When you install the operator with `cdi.nriPluginEnabled=true` on Rancher/RKE2, you do not need to create a `RuntimeClass` or set `runtimeClassName: nvidia` in your pod specs.
 
 ## Step 8: Deploy GPU-Accelerated Workload
 
@@ -150,30 +128,35 @@ metadata:
 spec:
   template:
     spec:
-      runtimeClassName: nvidia    # Use NVIDIA runtime
       restartPolicy: Never
       containers:
       - name: trainer
         image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
-        command: ["python", "train.py"]
+        command: ["python", "-c"]
+        args:
+        - |
+          import torch
+          assert torch.cuda.is_available(), "CUDA is not available"
+          device = "cuda"
+          model = torch.nn.Linear(1024, 1024).to(device)
+          x = torch.randn(256, 1024, device=device)
+          y = torch.randn(256, 1024, device=device)
+          optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+          for _ in range(5):
+              optimizer.zero_grad()
+              loss = torch.nn.functional.mse_loss(model(x), y)
+              loss.backward()
+              optimizer.step()
+          print("Training step completed on", torch.cuda.get_device_name(0))
         resources:
           limits:
-            nvidia.com/gpu: 2    # Request 2 GPUs
-            memory: "32Gi"
-            cpu: "8"
-          requests:
-            nvidia.com/gpu: 2
+            nvidia.com/gpu: 1
             memory: "16Gi"
             cpu: "4"
-        env:
-        - name: CUDA_VISIBLE_DEVICES
-          value: "all"
-      nodeSelector:
-        nvidia.com/gpu.present: "true"
-      tolerations:
-      - key: nvidia.com/gpu
-        operator: Exists
-        effect: NoSchedule
+          requests:
+            nvidia.com/gpu: 1
+            memory: "8Gi"
+            cpu: "2"
 ```
 
 ## Monitoring GPU Usage
