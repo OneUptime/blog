@@ -8,7 +8,7 @@ Description: A summary of RFC 9313's comparative analysis of IPv6 transition tec
 
 ## What Is RFC 9313?
 
-RFC 9313, published in October 2022, is an IETF informational document titled "Pros and Cons of IPv6 Transition Technologies for IPv4-as-a-Service (IPv4aaS)." It provides a systematic comparison of IPv6 transition technologies deployed by ISPs to offer IPv4 connectivity over IPv6-only infrastructure.
+RFC 9313, published in October 2022, is an IETF informational document titled "Pros and Cons of IPv6 Transition Technologies for IPv4-as-a-Service (IPv4aaS)." It provides a systematic comparison of IPv6 transition technologies deployed by ISPs to offer IPv4 connectivity over IPv6-only access and/or core infrastructure.
 
 This RFC is essential reading for network architects planning large-scale IPv6 transitions.
 
@@ -20,7 +20,7 @@ RFC 9313 analyzes five main technologies:
 2. **lw4o6** (RFC 7596) - DS-Lite variant with CPE-side NAT
 3. **MAP-E** (RFC 7597) - Stateless encapsulation with algorithmic mapping
 4. **MAP-T** (RFC 7599) - Stateless translation with algorithmic mapping
-5. **464XLAT** (RFC 6877) - CLAT+PLAT for IPv6-only mobile networks
+5. **464XLAT** (RFC 6877) - CLAT+PLAT for IPv6-only networks, especially mobile networks
 
 ## Key Evaluation Dimensions
 
@@ -30,7 +30,7 @@ RFC 9313 evaluates each technology across these dimensions:
 
 All five technologies support IPv4 address sharing (multiple subscribers per IPv4 address). However, the mechanism differs:
 
-- **DS-Lite**: NAT44 at AFTR (dynamic, unrestricted ports)
+- **DS-Lite**: NAPT44 at AFTR (dynamic, centrally managed port allocation)
 - **lw4o6, MAP-E, MAP-T**: Port-set allocation (each subscriber gets a fixed port range)
 
 Port-set allocation is more auditable but reduces flexibility.
@@ -41,22 +41,22 @@ This is the critical scalability dimension:
 
 | Technology | State at Provider Device |
 |---|---|
-| DS-Lite | Full NAT44 session table (millions of entries) |
+| DS-Lite | Full NAPT44 session table (millions of entries) |
 | lw4o6 | Binding table only (one entry per subscriber) |
-| MAP-E | None (pure forwarding) |
-| MAP-T | None (pure translation) |
+| MAP-E | No per-flow state (stateless forwarding) |
+| MAP-T | No per-flow state (stateless translation) |
 | 464XLAT | Full NAT64 session table at PLAT |
 
 RFC 9313 notes that stateless approaches (MAP-E, MAP-T) have significant operational advantages at scale.
 
 ### 3. IPv4 Application Compatibility
 
-- **DS-Lite**: Highest compatibility - full port range, standard NAT behavior
+- **DS-Lite**: Highest compatibility - dynamically allocated ports, standard CGN behavior
 - **lw4o6**: Good - restricted ports but standard NAT on CPE
 - **MAP-E/MAP-T**: Restricted - port-range limitations may break some apps
 - **464XLAT**: Very high - CLAT provides transparent IPv4 to apps including IPv4 literals
 
-RFC 9313 specifically calls out port-range limitations as a potential issue for peer-to-peer applications and some gaming protocols.
+RFC 9313 specifically calls out fixed port-range limitations as a potential issue for applications that consume many simultaneous ports.
 
 ### 4. Operational Considerations
 
@@ -64,17 +64,17 @@ RFC 9313 specifically calls out port-range limitations as a potential issue for 
 - DS-Lite requires timestamp-based NAT log correlation (challenging at scale)
 - MAP-E/MAP-T allow deterministic calculation of subscriber from IPv4 address + port (better for abuse investigation)
 
-**Failover and redundancy**: Stateful technologies (DS-Lite, 464XLAT) require session synchronization between redundant devices. Stateless technologies fail over instantly with ECMP routing.
+**Failover and redundancy**: Stateful technologies (DS-Lite, 464XLAT) may require session synchronization between redundant devices to preserve active sessions. Stateless technologies can use ECMP or anycast routing more flexibly because they do not maintain per-flow state.
 
 ### 5. CPE Complexity
 
 | Technology | CPE Complexity |
 |---|---|
-| DS-Lite | Low - just tunnel to AFTR, AFTR does NAT |
-| 464XLAT | Medium - CLAT + tunnel |
-| lw4o6 | High - CPE does NAT + tunnel + port restriction |
-| MAP-E | High - CPE does NAT + encap + port restriction + rule computation |
-| MAP-T | High - CPE does NAT + SIIT + port restriction + rule computation |
+| DS-Lite | Low - just tunnel to AFTR, AFTR does NAPT |
+| 464XLAT | Medium - CLAT stateless translation |
+| lw4o6 | High - CPE does NAPT + tunnel + port restriction |
+| MAP-E | High - CPE does NAPT + encap + port restriction + rule computation |
+| MAP-T | High - CPE does NAPT + SIIT + port restriction + rule computation |
 
 ## RFC 9313 Recommendations Summary
 
@@ -90,10 +90,10 @@ RFC 9313 is neutral on which technology to deploy, but highlights these key trad
 
 ## What RFC 9313 Does Not Cover
 
-- Pure NAT64+DNS64 (it focuses on ISP "IPv4aaS" scenarios)
-- Dual-stack (it assumes IPv6-only access network)
+- Pure NAT64+DNS64 as a standalone option (it focuses on ISP "IPv4aaS" scenarios)
+- Dual-stack deployment guidance (it focuses on IPv6-only access and/or core networks)
 - In-depth security analysis
-- Performance benchmarks
+- Completed, side-by-side performance benchmark results
 
 ## Practical Takeaway
 
