@@ -26,15 +26,13 @@ Sender                    Receiver
 ```python
 import socket
 import struct
-import threading
-import time
 
 HEADER   = "!BHH"       # type(1) + seq(2) + ack(2) = 5 bytes
 HDR_SIZE = struct.calcsize(HEADER)
 DATA_MSG = 1
 ACK_MSG  = 2
 MAX_SEQ  = 65535
-MAX_SIZE = 1024   # payload bytes per packet
+MAX_SIZE = 512    # payload bytes per packet
 
 def pack(msg_type: int, seq: int, ack: int, payload: bytes = b"") -> bytes:
     return struct.pack(HEADER, msg_type, seq, ack) + payload
@@ -60,13 +58,15 @@ class ReliableUDPSender:
 
         for attempt in range(self.retries):
             self.sock.sendto(pack(DATA_MSG, self.seq, 0, data), self.dest)
-            try:
-                raw, _ = self.sock.recvfrom(65535)
-                mtype, seq, ack, _ = unpack(raw)
-                if mtype == ACK_MSG and ack == self.seq:
-                    return True  # acknowledged
-            except socket.timeout:
-                print(f"Timeout seq={self.seq}, retry {attempt+1}/{self.retries}")
+            while True:
+                try:
+                    raw, addr = self.sock.recvfrom(65535)
+                    mtype, seq, ack, _ = unpack(raw)
+                    if addr == self.dest and mtype == ACK_MSG and ack == self.seq:
+                        return True  # acknowledged
+                except socket.timeout:
+                    print(f"Timeout seq={self.seq}, retry {attempt+1}/{self.retries}")
+                    break
 
         return False
 
@@ -111,23 +111,27 @@ def reliable_send_file(filepath: str, dest_ip: str, dest_port: int) -> None:
     filesize = os.path.getsize(filepath)
     sent     = 0
 
-    with open(filepath, "rb") as f:
-        while True:
-            chunk = f.read(MAX_SIZE)
-            if not chunk:
-                break
-            if not sender.send(chunk):
-                print("Transfer failed - giving up")
-                return
-            sent += len(chunk)
-            print(f"\rProgress: {sent/filesize*100:.1f}%", end="", flush=True)
+    try:
+        with open(filepath, "rb") as f:
+            while True:
+                chunk = f.read(MAX_SIZE)
+                if not chunk:
+                    break
+                if not sender.send(chunk):
+                    print("Transfer failed - giving up")
+                    return
+                sent += len(chunk)
+                print(f"\rProgress: {sent/filesize*100:.1f}%", end="", flush=True)
 
-    # Send empty packet as EOF marker
-    sender.send(b"")
-    print(f"\nSent {filesize} bytes")
-    sender.close()
+        # Send empty packet as EOF marker
+        if not sender.send(b""):
+            print("\nTransfer failed while sending EOF marker")
+            return
+        print(f"\nSent {filesize} bytes")
+    finally:
+        sender.close()
 ```
 
 ## Conclusion
 
-Stop-and-wait ARQ over UDP provides reliable delivery with minimal implementation complexity. Sequence numbers detect duplicates (sender retransmitting after a lost ACK). Always send an ACK even for duplicates to prevent infinite retransmission loops. For higher throughput, implement a sliding window (send multiple packets before waiting for ACKs) or use an established reliable UDP library (KCP, QUIC). Stop-and-wait is appropriate for low-rate control messages; sliding window is needed for bulk data transfer.
+Stop-and-wait ARQ over UDP provides reliable delivery with minimal implementation complexity. Sequence numbers detect duplicates (sender retransmitting after a lost ACK). Always send an ACK even for duplicates to prevent infinite retransmission loops. For higher throughput, implement a sliding window (send multiple packets before waiting for ACKs) or use an established UDP-based transport implementation (for example, KCP or a QUIC library). Stop-and-wait is appropriate for low-rate control messages; sliding window is needed for bulk data transfer.
