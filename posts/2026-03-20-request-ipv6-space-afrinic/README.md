@@ -8,63 +8,72 @@ Description: Request IPv6 address space from AFRINIC (African Network Informatio
 
 ## AFRINIC Service Region
 
-AFRINIC serves the African continent and Indian Ocean region. IPv6 space is allocated from `2c00::/12`. AFRINIC is the newest RIR and actively promotes IPv6 adoption across Africa.
+AFRINIC serves the African continent and Indian Ocean region. At the IANA level, AFRINIC holds `2c00::/12` for IPv6 and issues PA allocations and PI assignments from its AFRINIC-managed IPv6 pools. AFRINIC is the newest RIR and actively promotes IPv6 adoption across Africa.
 
 ## Membership Categories
 
 ```text
-AFRINIC membership (2024, USD approximate):
+AFRINIC IPv6-related fees (current published schedule, USD):
 
-Micro ISP:     ~$100/year (small, <500 customers)
-Small ISP:     ~$500/year
-Medium ISP:    ~$1,500/year
-Large ISP:     ~$3,500/year
-Extra Large:   ~$10,000/year
+Existing AFRINIC members:
+  No additional fee for an IPv6 prefix or ASN
+  IPv6 holdings are not counted toward the billing category
 
-IPv6 allocation:
-  Initial /32 for all ISP members
-  No additional justification for first /32
-  End-users: /48 via sponsoring LIR
+New IPv6-only members:
+  LIR /32 allocation: $2,500 allocation fee + $2,500 annual membership
+  LIR allocation larger than /32: $20,000 allocation fee + $20,000 annual membership
+  End-user /48 PI assignment: $2,500 assignment fee + $100 annual membership
+  First-year membership fee discount: 100%
+  Years 2-4 membership fee discounts: 75%, 50%, 25%
+
+IPv6 policy:
+  Minimum LIR allocation: /32
+  Eligibility requires an IPv6 deployment plan
+  LIRs must show a plan to make /48 assignments within 12 months
+  End-users can receive PI space directly from AFRINIC, minimum /48
 ```
 
 ## Application Process
 
 ```sql
-1. Register at https://my.afrinic.net/
-   - Create account
+1. Register on the New Membership Registration Portal:
+   https://apps.afrinic.net/nmrp/authentication/newRegistrant
    - Submit organization details
-   - Provide proof of legal entity in Africa
+   - Upload incorporation/founding documents
+   - Provide an IPv6 addressing plan for the next 12 months
 
-2. AFRINIC membership activation
-   - Staff verifies eligibility
-   - Usually 1-2 weeks
+2. Compliance checks and evaluation
+   - AFRINIC verifies eligibility and supporting documents
+   - AFRINIC publishes average times of 2 working days for compliance checks and 4 working days for evaluation when documentation is complete
+   - Review and sign the Registration Service Agreement (RSA)
 
-3. Request IPv6 space
-   - Login to MyAFRINIC
-   - Resources → Request IPv6 Address Space
-   - Select allocation size (/32 for ISPs)
+3. Invoicing and payment
+   - Pay the applicable allocation/assignment fee and membership fee
+   - The invoice must be settled before resources are issued
 
-4. Receive allocation
-   - Typically from 2c00::/12 range
-   - AFRINIC may assign from sub-ranges
+4. Receive allocation / assignment
+   - Minimum /32 for LIR IPv6 allocations
+   - Minimum /48 for end-user PI assignments
+   - AFRINIC activates MyAFRINIC for ongoing resource management after registration
 
 5. Post-allocation requirements
-   - Register in AFRINIC Whois Database
-   - Create RPKI ROA (AFRINIC supports hosted RPKI)
+   - Keep the AFRINIC Whois registration accurate
+   - Create ROAs in MyAFRINIC Resource Certification
    - Set up reverse DNS
 ```
 
 ## AFRINIC Whois Registration
 
 ```text
-inet6num:       2c0f:db8::/32
+inet6num:       <your IPv6 allocation>
 netname:        EXAMPLE-ZA-IPV6
 descr:          Example ISP South Africa IPv6
 country:        ZA
 admin-c:        ADMIN-AFRINIC
 tech-c:         TECH-AFRINIC
 mnt-by:         MAINT-EXAMPLE-ZA
-status:         ALLOCATED PA
+status:         ALLOCATED-BY-RIR
+changed:        noc@example.za
 source:         AFRINIC
 ```
 
@@ -72,18 +81,19 @@ source:         AFRINIC
 
 ```bash
 # AFRINIC hosted RPKI via MyAFRINIC portal
+# If required, request and enroll your BPKI certificate first.
 
-# https://my.afrinic.net → Resources → RPKI
+# https://my.afrinic.net/login -> Resources -> Resource Certification -> Issue ROA's
 
 # Create ROA:
-# Prefix: 2c0f:db8::/32
-# Max Length: 48
+# Prefix: your allocated IPv6 prefix
+# Max Length: the most specific prefix you intend to originate
 # ASN: your AS number
 
-# Verify via AFRINIC RPKI Validator
-curl "https://rpki.afrinic.net/api/v1/validity/?asn=AS65001&prefix=2c0f:db8::/32"
+# Verify via AFRINIC Routinator
+curl "https://routinator.afrinic.net/validity?asn=AS65001&prefix=2001:db8::/32"
 ```
 
 ## Conclusion
 
-AFRINIC is actively working to increase IPv6 adoption across Africa with competitive membership fees including a Micro ISP tier at ~$100/year. The initial /32 IPv6 allocation is available to all ISP members. AFRINIC provides training and technical assistance for new members implementing IPv6, including remote support in English and French. Register resources in AFRINIC Whois and create RPKI ROAs to complete the IPv6 deployment process.
+AFRINIC is actively working to increase IPv6 adoption across Africa, but the current fee model follows AFRINIC's published fee schedule rather than a low-cost Micro ISP tier. The minimum IPv6 allocation for LIRs is /32, subject to policy criteria and a 12-month plan for /48 assignments, and end-user organisations can receive PI space directly from AFRINIC with a minimum /48. Keep AFRINIC Whois records accurate, set up reverse DNS, and create ROAs in MyAFRINIC Resource Certification to complete the IPv6 deployment process.
