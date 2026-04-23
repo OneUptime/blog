@@ -8,156 +8,123 @@ Description: Manage PATH integration in Rancher Desktop to ensure CLI tools like
 
 ## Introduction
 
-Rancher Desktop is an open-source desktop application that provides Kubernetes and container management tools for local development. It bundles kubectl, Helm, nerdctl, and either containerd or Moby (dockerd) into a single, easy-to-use application. This guide covers How to Configure Rancher Desktop Path Management in detail.
+Rancher Desktop is an open-source desktop application that provides Kubernetes and container management tools for local development. It bundles CLI tools such as kubectl, Helm, nerdctl, and docker into a single application. On macOS and Linux, these utilities are located in `~/.rd/bin`, and Rancher Desktop can manage your shell `PATH` automatically or let you manage it manually. On Windows, the bundled CLI tools are added to `PATH` during installation. This guide covers How to Configure Rancher Desktop Path Management in detail.
 
 ## Prerequisites
 
-- A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
-- At least 8 GB of RAM (16 GB recommended)
-- At least 4 CPU cores
+- Rancher Desktop installed and running
+- A supported version of macOS, Windows, or Linux
+- WSL2 installed if you are using Rancher Desktop on Windows
+- A shell profile you can edit if you want to manage `PATH` manually on macOS or Linux
 
 ## Overview
 
-Rancher Desktop simplifies local Kubernetes and container development by providing:
+Rancher Desktop simplifies CLI access by providing:
 
-- A local Kubernetes cluster (k3s-based)
-- Container runtime (containerd or dockerd)
-- Integrated CLI tools (kubectl, helm, nerdctl, docker)
-- Simple configuration through a GUI
+- Bundled CLI tools such as `kubectl`, `helm`, `nerdctl`, and `docker`
+- A `~/.rd/bin` directory for Rancher Desktop utilities on macOS and Linux
+- Automatic or manual `PATH` management on macOS and Linux
+- WSL integration on Windows for access to the Rancher Desktop Kubernetes configuration from WSL distributions
 
 ## Step 1: Initial Setup
 
 ```bash
-# Verify Rancher Desktop is installed and running
-
+# Verify Rancher Desktop CLI access
 rdctl version
 
-# Check Kubernetes cluster status
-kubectl cluster-info
+# macOS / Linux: list the bundled utilities
+ls ~/.rd/bin
 
-# Verify container runtime
-nerdctl version
-# or
-docker version
+# macOS / Linux: confirm Rancher Desktop's bin directory is on PATH
+printf '%s\n' "$PATH" | tr ':' '\n' | grep -Fx "$HOME/.rd/bin"
 ```
+
+On Windows, Rancher Desktop adds the bundled CLI tools to `PATH` during installation. Open a new terminal session after installation before verifying the commands.
 
 ## Step 2: Configuration
 
 Open Rancher Desktop Preferences to configure:
 
-- **Kubernetes**: Version and enabled/disabled state
-- **Container Engine**: containerd or moby (dockerd)
-- **Virtual Machine**: CPU, memory, and disk allocation
-- **WSL** (Windows only): WSL2 integration settings
+- **Application > Environment**: `Automatic` or `Manual` `PATH` management on macOS and Linux
+- **Container Engine**: `containerd` or `moby (dockerd)` depending on whether you want to use `nerdctl` or the Docker API
+- **WSL** (Windows only): WSL integration settings for using the Rancher Desktop Kubernetes configuration inside WSL distributions
 
 ```bash
-# Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
-rdctl set --container-engine containerd
+# Enable automatic PATH management on macOS / Linux
+rdctl set --application.path-management-strategy rcfiles
+
+# Or switch to manual PATH management
+rdctl set --application.path-management-strategy manual
 ```
 
-## Step 3: Working with Containers
+## Step 3: Verify Container CLI Paths
 
 ```bash
-# Pull an image
-nerdctl pull nginx:latest
-# or with docker compatibility
-docker pull nginx:latest
+# Verify nerdctl is available on PATH
+command -v nerdctl
 
-# Run a container
-nerdctl run -d -p 8080:80 --name my-nginx nginx:latest
-
-# List running containers
-nerdctl ps
-
-# View container logs
-nerdctl logs my-nginx
-
-# Stop and remove
-nerdctl stop my-nginx
-nerdctl rm my-nginx
+# Verify docker is available on PATH
+command -v docker
 ```
 
-## Step 4: Working with Kubernetes
+`nerdctl` is used with the `containerd` engine. `docker` commands that talk to a Docker daemon require the `moby` container engine to be selected in Rancher Desktop.
+
+## Step 4: Verify Kubernetes CLI Paths
 
 ```bash
-# Check cluster nodes
-kubectl get nodes
+# Verify kubectl is available on PATH
+command -v kubectl
 
-# Deploy a test application
-kubectl create deployment hello-world \
-  --image=nginx:latest
-
-# Expose the deployment
-kubectl expose deployment hello-world \
-  --port=80 \
-  --type=NodePort
-
-# Check the service
-kubectl get svc hello-world
-
-# Forward local port to the service
-kubectl port-forward svc/hello-world 8080:80 &
-
-# Test the application
-curl http://localhost:8080
-
-# Clean up
-kubectl delete deployment hello-world
-kubectl delete svc hello-world
+# Confirm the kubectl client is accessible
+kubectl version --client
 ```
 
-## Step 5: Using Helm
+## Step 5: Verify Helm PATH Integration
 
 ```bash
-# Rancher Desktop includes Helm
+# Verify helm is available on PATH
+command -v helm
+
+# Confirm the Helm client is accessible
 helm version
-
-# Add a chart repository
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm repo update
-
-# Install a chart
-helm install my-release bitnami/nginx
-
-# List installed releases
-helm list
-
-# Uninstall
-helm uninstall my-release
 ```
 
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
-rdctl factory-reset
+# Show the current Rancher Desktop PATH management setting
+rdctl list-settings | grep '"pathManagementStrategy"'
 
-# Check Rancher Desktop status
-rdctl status
+# Add Rancher Desktop utilities to PATH manually for bash
+echo 'export PATH="$HOME/.rd/bin:$PATH"' >> ~/.bashrc
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
-
-# Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+# Add Rancher Desktop utilities to PATH manually for zsh
+echo 'export PATH="$HOME/.rd/bin:$PATH"' >> ~/.zshrc
 ```
+
+After updating your shell profile manually, open a new terminal session so the updated `PATH` is loaded.
 
 ## Troubleshooting
 
 ```bash
-# Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# macOS / Linux: verify Rancher Desktop utilities are present
+ls ~/.rd/bin
 
-# Reset to factory defaults
-rdctl factory-reset
+# Inspect the current PATH
+printf '%s\n' "$PATH" | tr ':' '\n'
 
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Confirm the shell resolves Rancher Desktop CLIs
+command -v kubectl
+command -v helm
+command -v nerdctl
+command -v docker
+
+# Check Rancher Desktop's current PATH management setting
+rdctl list-settings | grep '"pathManagementStrategy"'
 ```
+
+If the commands are still not available, use Rancher Desktop's `Troubleshooting > Show Logs` option and verify whether you need to open a new terminal session after changing `PATH` settings.
 
 ## Conclusion
 
-How to Configure Rancher Desktop Path Management with Rancher Desktop provides a powerful, integrated local development experience. Rancher Desktop eliminates the need for multiple separate tools by bundling everything needed for Kubernetes and container development into a single application. Whether you're building microservices, testing Helm charts, or learning Kubernetes, Rancher Desktop provides a production-like environment on your local machine.
+How to Configure Rancher Desktop Path Management with Rancher Desktop is mainly about making sure the bundled utilities are available in your shell. On macOS and Linux, Rancher Desktop can manage `~/.rd/bin` for you automatically or you can add it yourself in manual mode. On Windows, the installer adds the CLI tools to `PATH`, and WSL integration can make the Rancher Desktop Kubernetes configuration available inside WSL distributions. Once `PATH` is configured correctly, tools like `kubectl`, `helm`, `nerdctl`, and `docker` are ready to use from your terminal.
