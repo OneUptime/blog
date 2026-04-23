@@ -12,10 +12,10 @@ Being able to read IPv4 headers from packet captures is a core network troublesh
 
 ## Reading Headers with tcpdump
 
-The `-v` flag makes tcpdump display the full IPv4 header.
+The `-v` flag makes tcpdump display key IPv4 header fields.
 
 ```bash
-# Capture with verbose output showing all header fields
+# Capture with verbose output showing key IPv4 header fields
 
 tcpdump -n -v -i eth0 'host 192.168.1.10'
 
@@ -26,13 +26,13 @@ tcpdump -n -v -i eth0 'host 192.168.1.10'
 ```
 
 Interpreting each field from the output above:
-- `tos 0x10` - DSCP value; 0x10 = Assured Forwarding class
-- `ttl 64` - standard Linux default; decremented at each hop
+- `tos 0x10` - IPv4 TOS/DS field value; under modern DiffServ/ECN interpretation, DSCP = 4 and ECN = 0
+- `ttl 64` - common Linux default; decremented at each hop
 - `id 22847` - fragment group identifier
 - `offset 0` - this is the first (or only) fragment
 - `flags [DF]` - Don't Fragment bit is set
 - `proto TCP (6)` - payload is TCP
-- `length 1500` - total packet size equals the MTU (fragmentation risk)
+- `length 1500` - total IPv4 packet length is 1500 bytes; that matches a common Ethernet MTU and can matter on smaller-MTU paths
 
 ## Reading Headers with Wireshark
 
@@ -69,7 +69,7 @@ ip.flags.df == 1
 # Find specific protocol
 ip.proto == 17  # UDP
 
-# Find oversized packets (potential MTU issues)
+# Find large DF-set packets (potential MTU issues)
 ip.len > 1400 && ip.flags.df == 1
 ```
 
@@ -94,11 +94,11 @@ def interpret_flags(flags_offset_field):
 def interpret_protocol(proto):
     """Map protocol number to name."""
     protocols = {1: "ICMP", 2: "IGMP", 6: "TCP", 17: "UDP",
-                 41: "IPv6-in-IPv4", 47: "GRE", 89: "OSPF"}
+                 41: "IPv6 encapsulation", 47: "GRE", 89: "OSPF"}
     return protocols.get(proto, f"Unknown({proto})")
 
 def interpret_ipv4_header(raw_bytes):
-    """Full interpretation of an IPv4 header."""
+    """Interpret the fixed IPv4 header fields."""
     ihl = (raw_bytes[0] & 0x0F) * 4
     packed = struct.unpack('!BBHHHBBH4s4s', raw_bytes[:20])
 
@@ -107,7 +107,7 @@ def interpret_ipv4_header(raw_bytes):
 
     print(f"Version:          {packed[0] >> 4}")
     print(f"Header Length:    {ihl} bytes")
-    print(f"DSCP:             {packed[1] >> 2} ({hex(packed[1])})")
+    print(f"DS Field:         {hex(packed[1])} (DSCP {packed[1] >> 2}, ECN {packed[1] & 0x03})")
     print(f"Total Length:     {packed[2]} bytes")
     print(f"ID:               {packed[3]} ({hex(packed[3])})")
     print(f"Don't Fragment:   {flags_info['dont_fragment']}")
@@ -124,27 +124,28 @@ def interpret_ipv4_header(raw_bytes):
 
 | Observation | Likely Problem |
 |---|---|
-| TTL = 1 in received packet | Packet almost expired, routing loop possible |
+| TTL = 1 in received packet | Packet nearly expired; if unexpected, long path or routing loop possible |
 | `flags [DF]` + length near 1500 | MTU mismatch may cause fragmentation failure |
 | `flags [+]` (More Fragments set) | Packet is fragmented; reassembly required |
-| ID increments by 1 per packet | Same host is the sender (predictable ID) |
+| ID increments predictably across packets | Predictable IP ID generation; weak fingerprint only, not proof of host identity |
 | `bad cksum` in tcpdump | Checksum offloading or packet corruption |
 | TTL decreasing differently than expected | Packet taking unexpected routing path |
 
 ## Diagnosing MTU Path Discovery Failures
 
 ```bash
-# Test if ICMP fragmentation-needed messages are being blocked
+# On Linux, test if ICMP fragmentation-needed messages are being blocked
 # This breaks PMTUD (Path MTU Discovery)
-ping -M do -s 1472 192.168.1.1  # 1472 + 28 header = 1500 MTU
+ping -M do -s 1472 192.168.1.1  # 1472 + 28 bytes of IPv4+ICMP header = 1500-byte packet
 
-# If ping fails but smaller size works, ICMP is blocked:
+# If the large ping fails but a smaller size works, the path MTU is smaller
+# somewhere or the ICMP fragmentation-needed messages are not getting back:
 ping -M do -s 1200 192.168.1.1  # success
 
-# Check if router is sending fragmentation-needed ICMP
+# Check whether a router is sending fragmentation-needed ICMP
 tcpdump -n -i eth0 'icmp[icmptype] == icmp-unreach and icmp[icmpcode] == 4'
 ```
 
 ## Summary
 
-Reading IPv4 headers with `tcpdump -v` gives you immediate visibility into TTL, flags, protocol, and length. In Wireshark, use display filters like `ip.flags.df == 1` and `ip.ttl < 5` to isolate specific field values. Programmatically, Python's `struct.unpack('!BBHHHBBH4s4s', ...)` decodes the fixed 20-byte header. Key diagnostic signals: DF flag + large packet size indicates MTU issues; low TTL values indicate routing problems; `bad cksum` in tcpdump is usually checksum offloading (not a real error).
+Reading IPv4 headers with `tcpdump -v` gives you immediate visibility into TTL, flags, protocol, and length. In Wireshark, use display filters like `ip.flags.df == 1` and `ip.ttl < 5` to isolate specific field values. Programmatically, Python's `struct.unpack('!BBHHHBBH4s4s', ...)` decodes the fixed 20-byte base header. Key diagnostic signals: DF flag + large packet size can indicate MTU issues; unexpectedly low TTL values can indicate routing problems; `bad cksum` in tcpdump is usually checksum offloading (not a real error).
