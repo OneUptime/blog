@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE2, Kubernetes, Configuration, Server, Rancher
 
-Description: A comprehensive reference guide to all available options in the RKE2 server configuration file for customizing your Kubernetes control plane.
+Description: A practical reference guide to common options in the RKE2 server configuration file for customizing your Kubernetes control plane.
 
-The RKE2 server configuration file (`/etc/rancher/rke2/config.yaml`) is the primary way to configure all aspects of the RKE2 control plane. Understanding all available options allows you to precisely tune your cluster for your specific requirements. This guide serves as a comprehensive reference for the server configuration file.
+The RKE2 server configuration file (`/etc/rancher/rke2/config.yaml`) is the primary way to configure many aspects of the RKE2 control plane. Understanding the available options allows you to precisely tune your cluster for your specific requirements. This guide serves as a practical reference for the server configuration file.
 
 ## Configuration File Location and Format
 
@@ -25,10 +25,10 @@ The RKE2 server configuration file (`/etc/rancher/rke2/config.yaml`) is the prim
 sudo rke2 server --help | grep -A2 "config"
 ```
 
-## Complete Server Configuration Reference
+## Common Server Configuration Reference
 
 ```yaml
-# /etc/rancher/rke2/config.yaml - Complete reference
+# /etc/rancher/rke2/config.yaml - Common reference
 
 # =====================
 # CLUSTER JOINING
@@ -47,11 +47,10 @@ sudo rke2 server --help | grep -A2 "config"
 # NETWORKING
 # =====================
 
-# IP address to advertise to other nodes
-# Defaults to first IP of the node
+# IPv4/IPv6 addresses to advertise for the node
 # node-ip: 10.0.0.10
 
-# Optional additional IP addresses
+# IPv4/IPv6 external IP addresses to advertise for the node
 # node-external-ip: 203.0.113.10
 
 # Cluster CIDR for pod networking
@@ -79,11 +78,12 @@ tls-san:
 # CNI / NETWORKING
 # =====================
 
-# CNI plugin: canal, calico, cilium, or none
+# CNI plugin: canal, calico, cilium, flannel, or none
+# Multus can be enabled as the first value alongside a primary CNI
 cni: canal
 
-# Flannel backend: vxlan, wireguard-native, host-gw, or none
-# flannel-backend: vxlan
+# Flannel-specific settings are configured with HelmChartConfig
+# The bundled Flannel CNI supports the vxlan backend
 
 # Disable kube-proxy (for CNI plugins that replace it)
 # disable-kube-proxy: false
@@ -101,23 +101,23 @@ cni: canal
 # Private registry for system images
 # system-default-registry: registry.example.com
 
-# SNI for API server TLS
-# api-server-service-cidr: ""
+# Private registry configuration file
+# private-registry: /etc/rancher/rke2/registries.yaml
 
 # =====================
 # ETCD
 # =====================
 
-# Disable embedded etcd (use external)
+# Disable embedded etcd (uses embedded SQLite; not recommended for production)
 # disable-etcd: false
 
-# External datastore endpoint
+# External datastore endpoint (PostgreSQL, MySQL, MariaDB, or etcd)
 # datastore-endpoint: ""
 # datastore-cafile: ""
 # datastore-certfile: ""
 # datastore-keyfile: ""
 
-# Etcd snapshot configuration
+# Etcd snapshot configuration (embedded etcd only)
 etcd-snapshot-schedule-cron: "0 */6 * * *"
 etcd-snapshot-retention: 10
 etcd-snapshot-dir: /var/lib/rancher/rke2/server/db/snapshots
@@ -166,7 +166,7 @@ etcd-arg:
   - "election-timeout=3000"
 
 # Cloud controller manager extra arguments
-# cloud-controller-manager-arg: []
+# kube-cloud-controller-manager-arg: []
 
 # =====================
 # NODE CONFIGURATION
@@ -187,8 +187,8 @@ node-taint:
 # SECURITY
 # =====================
 
-# Security hardening profile: cis-1.23
-# profile: cis-1.23
+# Security hardening profile: cis (cis-1.23 is deprecated)
+# profile: cis
 
 # Pod Security Admission config file
 # pod-security-admission-config-file: /etc/rancher/rke2/psa.yaml
@@ -198,10 +198,10 @@ node-taint:
 # =====================
 
 # Disable specific built-in components
-disable:
-  # - rke2-coredns
-  # - rke2-ingress-nginx
-  # - rke2-metrics-server
+# disable:
+#   - rke2-coredns
+#   - rke2-ingress-nginx
+#   - rke2-metrics-server
 
 # =====================
 # KUBECONFIG
@@ -234,12 +234,12 @@ write-kubeconfig-mode: "0644"
 # IMAGES AND REGISTRY
 # =====================
 
-# Private registry configuration file
-# (configured in /etc/rancher/rke2/registries.yaml)
+# Private registry configuration is configured in:
+# /etc/rancher/rke2/registries.yaml
 
-# Container image prefix for all images
-# image-credential-provider-config: ""
-# image-credential-provider-bin-dir: ""
+# Image credential provider configuration
+# image-credential-provider-config: /var/lib/rancher/credentialprovider/config.yaml
+# image-credential-provider-bin-dir: /var/lib/rancher/credentialprovider/bin
 ```
 
 ## Apply Configuration Changes
@@ -262,4 +262,4 @@ kubectl get pods -n kube-system | grep -v Running
 
 ## Conclusion
 
-The RKE2 server configuration file provides a comprehensive, YAML-based interface to configure every aspect of your Kubernetes control plane. By understanding the available options, you can precisely tune your cluster for security (CIS profile, SELinux), performance (etcd arguments, kubelet settings), and operational requirements (snapshot schedules, registry mirrors). Always test configuration changes in a non-production environment and take an etcd backup before applying changes to production clusters.
+The RKE2 server configuration file provides a YAML-based interface to configure many aspects of your Kubernetes control plane. By understanding the available options, you can precisely tune your cluster for security (CIS profile, SELinux), performance (etcd arguments, kubelet settings), and operational requirements (snapshot schedules, registry mirrors). Always test configuration changes in a non-production environment and take an etcd or external datastore backup before applying changes to production clusters.
