@@ -8,7 +8,7 @@ Description: Learn how to safely roll back OpenTofu state encryption and return 
 
 ## Introduction
 
-There are situations where you need to roll back state encryption: a key is lost, a legacy tool can't read encrypted state, or you're migrating to a different encryption approach. OpenTofu supports this through the reverse migration process - disabling encryption while allowing reads of the currently encrypted state.
+There are situations where you need to roll back state encryption: a legacy tool can't read encrypted state, you're migrating to a different encryption approach, or you need to recover from a key loss by restoring a pre-encryption backup. When the current key is available, OpenTofu supports this through the reverse migration process - configuring an explicit unencrypted method while allowing reads of the currently encrypted state.
 
 ## Warning: Understand the Risks
 
@@ -37,6 +37,8 @@ Set up encryption to read encrypted state but write unencrypted:
 # encryption.tf
 terraform {
   encryption {
+    method "unencrypted" "migrate" {}
+
     key_provider "pbkdf2" "current_key" {
       passphrase = var.current_encryption_passphrase
     }
@@ -46,8 +48,9 @@ terraform {
     }
 
     state {
-      # No method = write unencrypted
-      enforced = false  # Allow reading encrypted state
+      # Write unencrypted through the explicit migration method
+      method   = method.unencrypted.migrate
+      enforced = false  # Allow unencrypted writes during rollback
 
       # The fallback handles reading existing encrypted state
       fallback {
@@ -56,6 +59,7 @@ terraform {
     }
 
     plan {
+      method   = method.unencrypted.migrate
       enforced = false
 
       fallback {
@@ -77,7 +81,7 @@ tofu apply -refresh-only
 
 # OpenTofu will:
 # 1. Read the encrypted state (via fallback method)
-# 2. Write it back WITHOUT encryption (no method set)
+# 2. Write it back with the unencrypted migration method
 ```
 
 ## Step 4: Verify State is Unencrypted
@@ -138,8 +142,13 @@ aws s3api get-object \
 # Verify it's unencrypted JSON
 python3 -m json.tool recovered-state.tfstate
 
-# Push the recovered state
+# Remove the encryption block first so the recovered state is written unencrypted.
+# Then push the recovered state.
 tofu state push recovered-state.tfstate
+
+# If OpenTofu rejects the push because the remote state has a higher serial,
+# re-check that this is the version you want, then force the restore.
+# tofu state push -force recovered-state.tfstate
 ```
 
 If no backup exists, you'll need to rebuild state by re-importing all resources.
@@ -151,6 +160,8 @@ If you want to roll back encryption for state but keep it for plans (or vice ver
 ```hcl
 terraform {
   encryption {
+    method "unencrypted" "migrate" {}
+
     key_provider "pbkdf2" "key" {
       passphrase = var.passphrase
     }
@@ -161,6 +172,7 @@ terraform {
 
     # Keep state unencrypted but encrypt plans
     state {
+      method   = method.unencrypted.migrate
       enforced = false
       fallback {
         method = method.aes_gcm.method
@@ -177,4 +189,4 @@ terraform {
 
 ## Conclusion
 
-Rolling back state encryption is a reversible operation as long as you retain the original encryption key. The fallback mechanism makes this safe - OpenTofu can decrypt existing state while writing new state unencrypted. Always have a plan for key custody before enabling encryption, and ensure backups exist at each stage of the process. After rolling back, implement compensating controls (backend-level encryption, strict access policies) to maintain security.
+Rolling back state encryption is a reversible operation as long as you retain the original encryption key. The unencrypted migration method and fallback mechanism make this safe - OpenTofu can decrypt existing state while writing new state unencrypted. Always have a plan for key custody before enabling encryption, and ensure backups exist at each stage of the process. After rolling back, implement compensating controls (backend-level encryption, strict access policies) to maintain security.
