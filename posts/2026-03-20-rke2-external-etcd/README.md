@@ -120,6 +120,9 @@ ls -la *.pem
 ETCD_NODE_NAME="etcd1"
 ETCD_NODE_IP="10.0.1.1"
 
+sudo mkdir -p /etc/etcd/pki
+sudo cp ca.pem etcd-server.pem etcd-server-key.pem etcd-client.pem etcd-client-key.pem /etc/etcd/pki/
+
 cat <<EOF | sudo tee /etc/etcd/etcd.conf.yaml
 name: "${ETCD_NODE_NAME}"
 data-dir: /var/lib/etcd
@@ -193,9 +196,6 @@ sudo cp etcd-client-key.pem /etc/rancher/rke2/pki/etcd-client.key
 
 # Configure RKE2 to use external etcd
 cat <<EOF | sudo tee /etc/rancher/rke2/config.yaml
-# Disable embedded etcd
-disable-etcd: true
-
 # External etcd configuration
 datastore-endpoint: https://10.0.1.1:2379,https://10.0.1.2:2379,https://10.0.1.3:2379
 datastore-cafile: /etc/rancher/rke2/pki/etcd-ca.crt
