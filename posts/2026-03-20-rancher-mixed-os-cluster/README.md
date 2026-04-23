@@ -12,10 +12,10 @@ Mixed OS clusters allow organizations to consolidate Linux and Windows workloads
 
 ## Prerequisites
 
-- RKE2 cluster with Linux control plane
+- RKE2 cluster with Linux control plane and at least one Linux worker node
 - Windows Server 2019/2022 worker nodes
 - kubectl and Rancher UI access
-- Flannel CNI (recommended for Windows compatibility)
+- Calico or Flannel CNI configured for Windows support
 
 ## Step 1: Cluster Architecture
 
@@ -37,19 +37,20 @@ Mixed OS Cluster Architecture:
 
 Note: Windows nodes CANNOT run:
 - Control plane components (API server, etcd, scheduler)
-- Most CNI plugins (only Flannel/Calico Windows edition)
+- Most CNI plugins (in RKE2, Windows support requires Calico or Flannel)
 - Most system daemonsets
 ```
 
 ## Step 2: Add Windows Nodes to Existing Linux Cluster
 
 ```bash
-# Check existing cluster is Linux-only
+# Check existing cluster nodes and OS labels
 
-kubectl get nodes -o wide
+kubectl get nodes -L kubernetes.io/os
 
-# Verify CNI is Windows-compatible (Flannel)
-kubectl get configmap rke2-cfg -n kube-system -o yaml | grep cni
+# Verify the cluster is using a Windows-compatible CNI
+# In RKE2, look for rke2-flannel or rke2-calico in kube-system
+kubectl get helmcharts.helm.cattle.io -n kube-system
 
 # On new Windows node (as Administrator):
 # Download and run RKE2 Windows agent
@@ -61,6 +62,7 @@ kubectl get configmap rke2-cfg -n kube-system -o yaml | grep cni
 ```yaml
 # Ensure Linux workloads stay on Linux nodes
 # Best practice: add explicit nodeSelector to all workloads
+# In Rancher mixed-OS clusters, Linux workers are typically tainted
 
 # Linux workload - explicit Linux selector
 apiVersion: apps/v1
@@ -69,11 +71,22 @@ metadata:
   name: linux-microservice
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: linux-microservice
   template:
+    metadata:
+      labels:
+        app: linux-microservice
     spec:
       # Explicit Linux node selector
       nodeSelector:
         kubernetes.io/os: linux
+      tolerations:
+        - key: cattle.io/os
+          operator: Equal
+          value: linux
+          effect: NoSchedule
       containers:
         - name: service
           image: registry.example.com/linux-service:v1.0
@@ -85,14 +98,16 @@ metadata:
   name: windows-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: windows-app
   template:
+    metadata:
+      labels:
+        app: windows-app
     spec:
       nodeSelector:
         kubernetes.io/os: windows
-      tolerations:
-        - key: os
-          value: windows
-          effect: NoSchedule
       containers:
         - name: app
           image: registry.example.com/windows-app:v1.0
@@ -102,25 +117,18 @@ spec:
 
 ```yaml
 # System DaemonSets (like node-exporter, Fluent Bit) should target Linux only
-# Add nodeSelector to system DaemonSets
-
-kubectl patch daemonset node-exporter \
-  -n cattle-monitoring-system \
-  --type=json \
-  -p='[{
-    "op": "add",
-    "path": "/spec/template/spec/nodeSelector",
-    "value": {"kubernetes.io/os": "linux"}
-  }]'
-
-kubectl patch daemonset prometheus-node-exporter \
-  -n cattle-monitoring-system \
-  --type=json \
-  -p='[{
-    "op": "add",
-    "path": "/spec/template/spec/nodeSelector",
-    "value": {"kubernetes.io/os": "linux"}
-  }]'
+# For packaged components managed by Rancher or Helm, set the equivalent
+# pod template values in the chart so the change persists across upgrades
+spec:
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+        - key: cattle.io/os
+          operator: Equal
+          value: linux
+          effect: NoSchedule
 ```
 
 ## Step 5: Cross-OS Service Communication
@@ -134,7 +142,13 @@ metadata:
   name: windows-api
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: windows-api
   template:
+    metadata:
+      labels:
+        app: windows-api
     spec:
       nodeSelector:
         kubernetes.io/os: windows
@@ -186,41 +200,31 @@ kubectl label node linux-worker-01 \
 ## Step 7: Mixed OS Monitoring Setup
 
 ```yaml
-# Deploy Windows Exporter only on Windows nodes
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: windows-exporter
-  namespace: cattle-monitoring-system
+# Windows exporter pod template
 spec:
   template:
     spec:
       nodeSelector:
         kubernetes.io/os: windows
-      tolerations:
-        - key: os
-          value: windows
-          effect: NoSchedule
 ---
-# Linux node exporter DaemonSet
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: node-exporter
-  namespace: cattle-monitoring-system
+# Linux node exporter pod template
 spec:
   template:
     spec:
       nodeSelector:
         kubernetes.io/os: linux
-      # No toleration needed - Linux is default
+      tolerations:
+        - key: cattle.io/os
+          operator: Equal
+          value: linux
+          effect: NoSchedule
 ```
 
 ## Step 8: Upgrade Strategy for Mixed OS Clusters
 
-```bash
+```powershell
 # Windows nodes must be upgraded separately from Linux nodes
-# RKE2 supports mixed-version clusters temporarily during upgrade
+# Kubernetes version skew policy applies during upgrade
 
 # Step 1: Upgrade control plane (Linux)
 # Through Rancher UI: Cluster > Edit > Kubernetes Version
@@ -229,20 +233,18 @@ spec:
 # Rancher drains and upgrades each node sequentially
 
 # Step 3: Upgrade Windows worker nodes
-# Windows nodes require manual upgrade - drain first
+# From a workstation with cluster access, drain the node first
 kubectl drain win-node-01 --ignore-daemonsets --delete-emptydir-data
 
-# On Windows node, upgrade RKE2
-# Uninstall old version
-& "C:\rke2\bin\rke2.exe" agent service --delete
-# Install new version
-Invoke-WebRequest -Uri "https://github.com/rancher/rke2/releases/download/v1.29.0+rke2r1/rke2-windows-amd64.zip" -OutFile rke2.zip
-# Follow installation steps
-# ...
+# On the Windows node, re-run the installer with the target RKE2 version
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/rancher/rke2/master/install.ps1 -Outfile install.ps1
+./install.ps1 -Version <target-rke2-version>
+Restart-Service rke2
 
+# From a workstation with cluster access, make the node schedulable again
 kubectl uncordon win-node-01
 ```
 
 ## Conclusion
 
-Mixed OS Kubernetes clusters in Rancher provide a unified management platform for heterogeneous workloads. The fundamental principle is always specifying `kubernetes.io/os` node selectors in all pod specifications-this ensures workloads never accidentally schedule on the wrong OS. Cross-OS service communication works transparently through Kubernetes services, enabling Linux and Windows pods to call each other via standard DNS names. Monitor both Linux and Windows nodes through their respective exporters, and plan separate upgrade windows for Linux and Windows nodes since they require different procedures.
+Mixed OS Kubernetes clusters in Rancher provide a unified management platform for heterogeneous workloads. The fundamental principle is always specifying `kubernetes.io/os` node selectors in pod specifications and, for Linux workloads on Rancher-provisioned mixed clusters, adding the `cattle.io/os=linux:NoSchedule` toleration for tainted Linux workers. Cross-OS service communication works transparently through Kubernetes services, enabling Linux and Windows pods to call each other via standard DNS names. Monitor both Linux and Windows nodes through their respective exporters, and plan separate upgrade windows for Linux and Windows nodes since they require different procedures.
