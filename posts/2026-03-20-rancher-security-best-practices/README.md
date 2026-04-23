@@ -44,7 +44,7 @@ spec:
       etcdRole: true
       workerRole: false
       machineConfigRef:
-        kind: AWSNodeTemplate
+        kind: Amazonec2Config
         name: control-plane-m5-xlarge
     - name: workers
       quantity: 5
@@ -52,7 +52,7 @@ spec:
       etcdRole: false
       workerRole: true
       machineConfigRef:
-        kind: AWSNodeTemplate
+        kind: Amazonec2Config
         name: worker-m5-2xlarge
 ```
 
@@ -68,7 +68,10 @@ kubectl create namespace payments-api-staging
 kubectl create namespace data-pipeline-prod
 
 # Apply standard labels
-kubectl label namespace payments-api-prod   team=payments   app=api   env=production   tier=critical   cost-center=payments-team   field.cattle.io/projectId=YOUR_PROJECT_ID
+kubectl label namespace payments-api-prod   team=payments   app=api   env=production   tier=critical   cost-center=payments-team
+
+# Assign the namespace to a Rancher project
+kubectl annotate namespace payments-api-prod   field.cattle.io/projectId=YOUR_CLUSTER_ID:YOUR_PROJECT_ID
 ```
 
 ## Best Practice 3: Resource Quotas and LimitRanges
@@ -151,6 +154,7 @@ spec:
           app: ingress-nginx
     ports:
     - port: 8080
+      protocol: TCP
   egress:
   - to:
     - namespaceSelector:
@@ -158,6 +162,16 @@ spec:
           app: database
     ports:
     - port: 5432
+      protocol: TCP
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
 ```
 
 ## Best Practice 5: Pod Security
@@ -165,17 +179,34 @@ spec:
 Enforce strict pod security standards:
 
 ```yaml
-# pod-security-policy.yaml - PodDisruptionBudget for availability
-apiVersion: policy/v1
-kind: PodDisruptionBudget
+# deployment-security-context.yaml - Example workload settings for restricted PSS
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: payments-api-pdb
+  name: payments-api
   namespace: payments-api-prod
 spec:
-  minAvailable: 2          # Always keep 2 pods running
+  replicas: 3
   selector:
     matchLabels:
       app: payments-api
+  template:
+    metadata:
+      labels:
+        app: payments-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: payments-api
+        image: ghcr.io/your-org/payments-api:1.0.0
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
 ---
 # Apply PSS to namespace
 apiVersion: v1
@@ -265,13 +296,13 @@ kubectl get certificates -A -o custom-columns='NAMESPACE:.metadata.namespace,NAM
 
 echo ""
 echo "2. Unused resources:"
-kubectl get namespaces | while read ns _; do
-  pod_count=$(kubectl get pods -n $ns --no-headers 2>/dev/null | wc -l)
+kubectl get namespaces --no-headers -o custom-columns=':metadata.name' | while read -r ns; do
+  pod_count=$(kubectl get pods -n "$ns" --no-headers 2>/dev/null | wc -l)
   [ "$pod_count" -eq 0 ] && echo "Empty namespace: $ns"
 done
 
 echo ""
-echo "3. Pod security violations:"
+echo "3. Privileged containers:"
 kubectl get pods --all-namespaces -o json |   jq -r '.items[] | select(.spec.containers[].securityContext.privileged==true) | 
   .metadata.namespace + "/" + .metadata.name + " [PRIVILEGED]"'
 
