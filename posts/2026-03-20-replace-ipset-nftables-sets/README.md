@@ -8,19 +8,19 @@ Description: Migrate from ipset and iptables to nftables native sets, replacing 
 
 ## Introduction
 
-`ipset` was the solution for managing large collections of IPs in iptables rules. With nftables, sets are built into the framework natively - no separate `ipset` package is needed. nftables sets support all ipset types including IP lists, port lists, IP-port combinations, and interval (CIDR) sets.
+`ipset` was the solution for managing large collections of IPs in iptables rules. With nftables, sets are built into the framework natively - no separate `ipset` package is needed. nftables sets cover common ipset use cases including IP lists, port lists, IP-port combinations, and interval (CIDR) sets.
 
 ## ipset vs nftables Sets Comparison
 
 | Feature | ipset + iptables | nftables sets |
 |---|---|---|
-| Installation | Separate package | Built-in |
+| Installation | Separate package | Built into nftables |
 | IP lists | `hash:ip` | `type ipv4_addr` |
 | CIDR ranges | `hash:net` | `type ipv4_addr; flags interval` |
 | Port lists | `hash:port` | `type inet_service` |
 | IP+Port | `hash:ip,port` | Concatenation type |
 | Runtime updates | `ipset add` | `nft add element` |
-| Persistence | `ipset save/restore` | `nft list ruleset` |
+| Persistence | `ipset save/restore` | Ruleset file (`nft list ruleset` / `nft -f`) |
 
 ## Migrating a Simple IP Blocklist
 
@@ -38,6 +38,7 @@ iptables -I INPUT -m set --match-set blocklist src -j DROP
 
 ```bash
 # New way - no ipset needed
+# Assumes the inet filter table and input base chain already exist
 nft add set inet filter blocklist { type ipv4_addr \; }
 nft add element inet filter blocklist { 198.51.100.1 }
 nft add rule inet filter input ip saddr @blocklist drop
@@ -57,6 +58,7 @@ iptables -I INPUT -m set --match-set netblock src -j DROP
 
 ```bash
 # Use 'flags interval' to support CIDR prefixes
+# Assumes the inet filter table and input base chain already exist
 nft add set inet filter netblock { type ipv4_addr \; flags interval \; }
 nft add element inet filter netblock { 198.51.100.0/24 }
 nft add rule inet filter input ip saddr @netblock drop
@@ -76,6 +78,7 @@ iptables -A INPUT -m set --match-set web_allow src,dst -j ACCEPT
 
 ```bash
 # Concatenated set: match source IP and destination port together
+# Assumes the inet filter table and input base chain already exist
 nft add set inet filter web_allow { type ipv4_addr . inet_service \; }
 nft add element inet filter web_allow { 10.0.0.1 . 80 }
 nft add rule inet filter input ip saddr . tcp dport @web_allow accept
@@ -140,4 +143,4 @@ nft list set inet filter blocklist
 
 ## Conclusion
 
-nftables sets are a direct, more integrated replacement for ipset. The syntax is different but capabilities are equivalent or superior. Named sets support runtime updates, CIDR ranges, and concatenated types - all without requiring a separate tool. Migrating to native nftables sets simplifies your stack and reduces dependencies.
+nftables sets are a direct, more integrated replacement for ipset. The syntax is different, but nftables covers the common ipset-style use cases directly. Named sets support runtime updates, CIDR ranges, and concatenated types - all without requiring a separate tool. Migrating to native nftables sets simplifies your stack and reduces dependencies.
