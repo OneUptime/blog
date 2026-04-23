@@ -21,18 +21,19 @@ Docker Hub is the world's largest container image registry, hosting millions of 
 Using an access token is more secure than using your password:
 
 1. Log in to [Docker Hub](https://hub.docker.com).
-2. Go to **Account Settings** > **Security** > **New Access Token**.
-3. Give it a name like `rancher-cluster` and select **Read-only** permissions.
+2. Go to **Account Settings** > **Personal access tokens** > **Generate new token**.
+3. Give it a name like `rancher-cluster`, choose an expiration date, and select **Read-only** permissions.
 4. Copy the token (you won't see it again).
 
 ## Step 2: Add Docker Hub Credentials in Rancher UI
 
-1. In Rancher, navigate to your cluster or project.
-2. Go to **Secrets** > **Registry Credentials**.
-3. Click **Add Registry**.
+1. In Rancher, go to **Cluster Management**, open your cluster, and click **Explore**.
+2. Go to **Storage** > **Secrets** (or **More Resources** > **Core** > **Secrets**).
+3. Click **Create** > **Registry**.
 4. Configure the form:
    - **Name**: `docker-hub-credentials`
-   - **Registry**: Select **DockerHub** (or enter `docker.io`)
+   - **Namespace**: `default` (or the namespace where your workloads run)
+   - **Registry**: Select **Docker Hub**
    - **Username**: Your Docker Hub username
    - **Password**: Your access token
 
@@ -53,7 +54,7 @@ Verify the secret:
 
 ```bash
 # View the secret (base64 encoded)
-kubectl get secret docker-hub-credentials -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d | jq .
+kubectl get secret docker-hub-credentials --namespace=default -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d | jq .
 ```
 
 ## Step 4: Use Docker Hub Credentials in Workloads
@@ -103,20 +104,14 @@ kubectl get serviceaccount default -o yaml
 
 ## Step 6: Configure Docker Hub Mirror to Reduce Rate Limits
 
-For high-volume clusters, configure Docker Hub as a mirror through a pull-through cache:
+For high-volume clusters, point RKE2 at a Docker Hub pull-through cache:
 
 ```yaml
-# registries.yaml - Configure Docker Hub mirror for RKE2 nodes
+# registries.yaml - Configure a Docker Hub mirror for RKE2 nodes
 mirrors:
   docker.io:
-    endpoints:
-      - "https://mirror.gcr.io"       # Google's Docker Hub mirror
-      - "https://registry-1.docker.io" # Fallback to Docker Hub directly
-configs:
-  "registry-1.docker.io":
-    auth:
-      username: myusername
-      password: dckr_pat_xxxxxxxxxxxx
+    endpoint:
+      - "https://registry.example.com:5000" # Your pull-through cache endpoint
 ```
 
 Deploy this configuration to each RKE2 node:
@@ -124,17 +119,19 @@ Deploy this configuration to each RKE2 node:
 ```bash
 # Copy the registries configuration to each node
 sudo cp registries.yaml /etc/rancher/rke2/registries.yaml
-sudo systemctl restart rke2-server
+
+# Restart the appropriate RKE2 service for the node role
+sudo systemctl restart rke2-server  # server nodes
+# or
+sudo systemctl restart rke2-agent   # agent nodes
 ```
 
 ## Step 7: Monitor Docker Hub Pull Rate Usage
 
 ```bash
-# Check current rate limit status (replace with your token)
-TOKEN=$(curl -s -H "Content-Type: application/json" \
-  -X POST \
-  -d '{"username": "myusername", "password": "dckr_pat_xxxx"}' \
-  https://auth.docker.io/token?service=registry.docker.io&scope=repository:ratelimitpreview/test:pull \
+# Check current rate limit status (replace with your username and PAT)
+TOKEN=$(curl -s --user 'myusername:dckr_pat_xxxxxxxxxxxx' \
+  "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ratelimitpreview/test:pull" \
   | jq -r .token)
 
 # Check rate limit headers
@@ -146,10 +143,10 @@ curl -s --head \
 
 ## Step 8: Use Docker Hub with Rancher Fleet
 
-For GitOps deployments with Fleet, reference Docker Hub credentials:
+For GitOps deployments with Fleet, pass the secret name through Helm values if your chart supports `imagePullSecrets`:
 
 ```yaml
-# fleet.yaml - Fleet bundle using Docker Hub
+# fleet.yaml - Fleet bundle passing imagePullSecrets to a Helm chart
 defaultNamespace: production
 helm:
   releaseName: my-app
