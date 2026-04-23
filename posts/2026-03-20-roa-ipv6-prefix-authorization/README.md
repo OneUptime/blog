@@ -12,7 +12,7 @@ A Route Origin Authorization (ROA) is a digitally signed object that states whic
 
 A ROA contains:
 - The prefix (e.g., `2001:db8::/32`)
-- The maximum prefix length
+- The optional maximum prefix length
 - The authorized origin ASN
 
 ## Step 1: Log Into Your RIR Portal
@@ -21,46 +21,46 @@ Each RIR has a portal for managing ROAs:
 
 | RIR | Portal URL |
 |-----|-----------|
-| RIPE NCC | https://my.ripe.net |
+| RIPE NCC | https://dashboard.rpki.ripe.net |
 | ARIN | https://account.arin.net |
-| APNIC | https://myapnic.net |
+| APNIC | https://my.apnic.net |
 | LACNIC | https://milacnic.lacnic.net |
 | AFRINIC | https://my.afrinic.net |
 
 ## Step 2: Navigate to RPKI/ROA Management
 
 In RIPE NCC as an example:
-1. Log in → go to **My Resources**
-2. Select **IPv6** → choose your prefix
-3. Click **RPKI** → **Create ROA**
+1. Log in to the **Resource Certification (RPKI) dashboard**
+2. Select the relevant LIR or resource holder
+3. Open the **ROAs** or **Announcements** tab → **Create ROA**
 
 ## Step 3: Define ROA Parameters
 
-When creating a ROA, specify these fields:
+When creating a hosted ROA configuration, specify these values:
 
 ```text
 Prefix:       2001:db8::/32
-Max Length:   48           (allows announcements up to /48)
+Max Length:   32           (exact aggregate; use 48 only if you announce /48s)
 Origin ASN:   AS64496
-Valid Until:  2027-12-31   (certificate expiry)
+Validity:     Managed by the hosted CA
 ```
 
 **Important notes on max length:**
 - Setting max length equal to prefix length restricts to exact prefix only
 - A larger max length allows sub-prefix announcements
-- Too permissive max lengths can enable route hijacking of sub-prefixes
+- Too permissive max lengths can expand the attack surface for forged-origin sub-prefix hijacks
 
 ## Step 4: Create Multiple ROAs for Redundancy
 
 If you announce from multiple ASNs (e.g., for multihoming), create a ROA for each:
 
-```bash
+```text
 # ROA 1: Primary upstream ASN
 
-Prefix: 2001:db8::/32, Max-Length: 48, Origin: AS64496
+Prefix: 2001:db8::/32, Max-Length: 32, Origin: AS64496
 
 # ROA 2: Secondary upstream ASN
-Prefix: 2001:db8::/32, Max-Length: 48, Origin: AS64497
+Prefix: 2001:db8::/32, Max-Length: 32, Origin: AS64497
 
 # ROA 3: More specific prefix for traffic engineering
 Prefix: 2001:db8:1::/48, Max-Length: 48, Origin: AS64496
@@ -68,12 +68,11 @@ Prefix: 2001:db8:1::/48, Max-Length: 48, Origin: AS64496
 
 ## Step 5: Verify ROA Propagation
 
-After creation, ROAs take up to a few hours to propagate. Verify using public RPKI validators:
+After creation, ROA publication and relying-party refresh can take minutes to hours, depending on the RIR and validator refresh interval. Verify using public RPKI validators:
+
+You can check visually in Cloudflare's RPKI Portal at https://rpki.cloudflare.com/.
 
 ```bash
-# Check ROA validity using Cloudflare's RPKI validator
-curl "https://rpki.cloudflare.com/api/v1/validity/AS64496/2001:db8::/32"
-
 # Check via RIPE's validator
 curl "https://stat.ripe.net/data/rpki-validation/data.json?resource=AS64496&prefix=2001:db8::/32"
 
@@ -86,11 +85,14 @@ routinator validate --asn AS64496 --prefix 2001:db8::/32
 Before creating a ROA, check that no conflicting ROA already exists:
 
 ```bash
-# List existing ROAs for your prefix
-curl "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS64496"
+# List existing VRPs that cover your prefix
+routinator vrps --select-prefix 2001:db8::/32 --more-specifics
 
-# Use Routinator to check coverage
-routinator dump | grep "2001:db8"
+# Check how a planned RIPE NCC ROA would affect known announcements
+curl -H "Content-Type: application/json" \
+  -H "ncc-api-authorization: YOUR_API_KEY" \
+  -d '{"asn":"AS64496","prefix":"2001:db8::/32","maximalLength":48}' \
+  https://my.ripe.net/api/rpki/announcements/affected
 ```
 
 ## Automation with RIPE NCC API
@@ -99,25 +101,20 @@ For large networks, automate ROA creation via the RIPE NCC API:
 
 ```bash
 # Create a ROA via RIPE NCC API
-curl -X POST \
+curl \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
-  https://rest.db.ripe.net/ripe/route6 \
+  -H "ncc-api-authorization: YOUR_API_KEY" \
   -d '{
-    "objects": {
-      "object": [{
-        "type": "route6",
-        "attributes": {
-          "attribute": [
-            {"name": "route6", "value": "2001:db8::/32"},
-            {"name": "descr", "value": "My IPv6 prefix"},
-            {"name": "origin", "value": "AS64496"},
-            {"name": "mnt-by", "value": "MY-MNT"}
-          ]
-        }
-      }]
-    }
-  }'
+    "added": [
+      {
+        "asn": "AS64496",
+        "prefix": "2001:db8::/32",
+        "maximalLength": "48"
+      }
+    ],
+    "deleted": []
+  }' \
+  https://my.ripe.net/api/rpki/roas/publish
 ```
 
 ## Monitoring ROA Health
@@ -126,4 +123,4 @@ Monitor ROA expiry and validity using [OneUptime](https://oneuptime.com). Set up
 
 ## Conclusion
 
-Creating ROAs is the first step to deploying RPKI. Always create ROAs before your peers or upstreams start enforcing RPKI filtering. Use conservative max-length values and remember to renew certificates before expiry.
+Creating ROAs is the first step to deploying RPKI. Always create ROAs before your peers or upstreams start enforcing RPKI filtering. Use conservative max-length values and monitor certificate and ROA validity, especially if you run a delegated CA.
