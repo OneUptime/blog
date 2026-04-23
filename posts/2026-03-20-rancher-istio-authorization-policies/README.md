@@ -6,7 +6,7 @@ Tags: Rancher, Kubernetes, Istio, Authorization, Security, Service Mesh
 
 Description: Learn how to configure Istio AuthorizationPolicies to implement fine-grained access control for services in Rancher-managed Kubernetes clusters.
 
-Istio AuthorizationPolicies provide access control for services in the mesh, implementing a zero-trust security model where access is denied by default and must be explicitly allowed. Unlike Kubernetes RBAC, which controls access to Kubernetes API resources, Istio AuthorizationPolicies control access to services within the mesh based on service identity, HTTP attributes, and other conditions. This guide covers how to implement authorization policies in a Rancher environment.
+Istio AuthorizationPolicies provide access control for workloads in the mesh. A common zero-trust pattern is to start with an allow-nothing policy and then explicitly allow only the traffic your services require. Unlike Kubernetes RBAC, which controls access to Kubernetes API resources, Istio AuthorizationPolicies control traffic within the mesh based on service identity, HTTP attributes, and other conditions. This guide covers how to implement authorization policies in a Rancher environment.
 
 ## Prerequisites
 
@@ -14,44 +14,47 @@ Istio AuthorizationPolicies provide access control for services in the mesh, imp
 - Applications deployed with sidecar injection
 - Basic understanding of Istio service identities (SPIFFE/X.509)
 - `kubectl` access to the cluster
+- `istioctl` installed for proxy-level debugging
 
 ## Understanding Authorization Policy Actions
 
-Istio AuthorizationPolicies support three actions:
+Istio AuthorizationPolicies support four actions:
 
 - **ALLOW**: Explicitly allow matching requests
 - **DENY**: Explicitly deny matching requests
+- **AUDIT**: Mark matching requests for audit logging
 - **CUSTOM**: Delegate to an external authorization system
 
-## Step 1: Enable Deny-All Policy (Zero Trust)
+## Step 1: Enable Default-Deny Policy (Zero Trust)
 
-Start with a default deny-all policy and explicitly allow required traffic:
+Start with an allow-nothing policy and explicitly allow required traffic:
 
 ```yaml
-# deny-all.yaml - Block all traffic in a namespace by default
+# allow-nothing.yaml - Block all traffic in a namespace by default
 
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: deny-all
+  name: allow-nothing
   namespace: my-app
 spec:
-  # Empty spec with no rules means deny all traffic
+  # Empty spec means this ALLOW policy matches nothing,
+  # creating default-deny behavior for the namespace
   {}
 ```
 
 ```bash
-kubectl apply -f deny-all.yaml
+kubectl apply -f allow-nothing.yaml
 
 # Verify traffic is now blocked
-# Try to access a service and confirm you get a 403 Forbidden response
+# Try to access an HTTP service and confirm you get a 403 Forbidden response
 ```
 
 ## Step 2: Allow Traffic from Specific Services
 
 ```yaml
 # allow-frontend-to-backend.yaml - Allow frontend to call backend
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-frontend-to-backend
@@ -59,7 +62,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      # Apply this policy to the backend service
+      # Apply this policy to the backend workload
       app: backend
   action: ALLOW
   rules:
@@ -80,7 +83,7 @@ spec:
 
 ```yaml
 # allow-namespace.yaml - Allow all traffic from a specific namespace
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-from-frontend-namespace
@@ -98,7 +101,7 @@ spec:
 
 ```yaml
 # http-attribute-policy.yaml - Control access based on HTTP attributes
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: http-headers-policy
@@ -128,7 +131,7 @@ Control access using JWT token claims:
 
 ```yaml
 # jwt-policy.yaml - Require valid JWT and check claims
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: jwt-auth
@@ -141,7 +144,7 @@ spec:
   - issuer: "https://auth.example.com"
     jwksUri: "https://auth.example.com/.well-known/jwks.json"
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: jwt-authorization
@@ -168,7 +171,7 @@ Control what external traffic can reach your services:
 
 ```yaml
 # ingress-policy.yaml - Control traffic from the ingress gateway
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-ingress-gateway
@@ -188,27 +191,29 @@ spec:
 
 ## Step 7: Deny Specific Operations
 
+For ingress traffic, when your load balancer or proxy preserves the original client IP, deny admin endpoints for client IPs outside trusted ranges:
+
 ```yaml
-# deny-admin-from-external.yaml - Deny admin endpoints from specific sources
-apiVersion: security.istio.io/v1beta1
+# deny-admin-from-external.yaml - Deny admin endpoints from client IPs outside trusted ranges
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-external-admin-access
-  namespace: my-app
+  namespace: istio-system
 spec:
   selector:
     matchLabels:
-      app: my-api
+      app: istio-ingressgateway
   action: DENY
   rules:
-  - to:
+  - from:
+    - source:
+        # Match the original client IP address
+        notRemoteIpBlocks: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+    to:
     - operation:
-        # Deny access to admin paths from remote IPs
+        # Deny access to admin paths for untrusted client IP ranges
         paths: ["/admin/*"]
-    when:
-    # Only deny when NOT coming from internal network
-    - key: source.ip
-      notValues: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
 ```
 
 ## Step 8: Verify Authorization Policies
@@ -220,15 +225,15 @@ kubectl get authorizationpolicy -A
 # Describe a specific policy
 kubectl describe authorizationpolicy allow-frontend-to-backend -n my-app
 
+# Enable debug logging for authorization
+istioctl proxy-config log \
+  $(kubectl get pod -n my-app -l app=backend -o jsonpath='{.items[0].metadata.name}').my-app \
+  --level "rbac:debug"
+
 # Check Envoy proxy logs for authorization decisions
 kubectl logs -n my-app -c istio-proxy \
   $(kubectl get pod -n my-app -l app=backend -o jsonpath='{.items[0].metadata.name}') \
-  | grep -E "403|RBAC|authz"
-
-# Enable debug logging for authorization
-kubectl exec -n my-app -c istio-proxy \
-  $(kubectl get pod -n my-app -l app=backend -o jsonpath='{.items[0].metadata.name}') \
-  -- curl -X POST localhost:15000/logging?rbac=debug
+  | grep -E "enforced (allowed|denied)|rbac"
 ```
 
 ## Conclusion
