@@ -10,11 +10,13 @@ Description: Learn how to dynamically add worker and control plane nodes to an R
 
 Scaling an RKE cluster by adding or removing nodes is a common operational task. RKE manages all node operations through the `cluster.yml` configuration file - to add or remove a node, you modify the file and re-run `rke up`. This guide covers both operations with safety best practices.
 
+Note: RKE1 reached end of life on July 31, 2025. Use this guide for maintaining existing RKE1 clusters; use RKE2 for new deployments.
+
 ## Adding a New Worker Node
 
 ### Step 1: Prepare the New Node
 
-On the new worker node, install Docker and configure SSH access:
+On the new worker node, install a Docker Engine version supported by your RKE/Kubernetes release and configure SSH access:
 
 ```bash
 # Install Docker on the new node
@@ -24,11 +26,13 @@ sudo usermod -aG docker ubuntu
 sudo systemctl enable docker
 sudo systemctl start docker
 
-# Enable IPv4 forwarding
+# Enable required networking sysctls
+sudo modprobe br_netfilter
+sudo sysctl -w net.bridge.bridge-nf-call-iptables=1
 sudo sysctl -w net.ipv4.ip_forward=1
-echo "net.ipv4.ip_forward = 1" | sudo tee -a /etc/sysctl.d/k8s.conf
+printf "net.bridge.bridge-nf-call-iptables = 1\nnet.ipv4.ip_forward = 1\n" | sudo tee /etc/sysctl.d/90-rke.conf
 
-# Disable swap
+# Disable swap (also remove or comment swap entries in /etc/fstab)
 sudo swapoff -a
 
 # Test SSH from your RKE management node
@@ -109,8 +113,12 @@ nodes:
 # Apply the change
 rke up --config cluster.yml
 
-# Verify etcd membership
-rke etcd snapshot-list --config cluster.yml
+# Verify the new control plane / etcd node joined
+export KUBECONFIG=kube_config_cluster.yml
+kubectl get nodes -o wide
+
+# Verify etcd membership from any etcd node
+ssh ubuntu@192.168.1.103 "sudo docker exec etcd etcdctl member list"
 ```
 
 ## Removing a Worker Node
@@ -157,11 +165,12 @@ nodes:
 rke up --config cluster.yml
 ```
 
-### Step 4: Delete the Node from Kubernetes
+### Step 4: Confirm the Node Object Is Removed
 
 ```bash
-# Remove the node object from Kubernetes
-kubectl delete node worker-03
+# RKE normally removes the node object during reconcile.
+# Remove it manually if it is still present.
+kubectl delete node worker-03 --ignore-not-found
 
 # Confirm it is removed
 kubectl get nodes
@@ -193,14 +202,9 @@ rke etcd snapshot-save --name pre-removal-snapshot --config cluster.yml
 # Run rke up - RKE will remove the etcd member
 rke up --config cluster.yml
 
-# Verify etcd cluster health after removal
+# Verify etcd membership after removal
 # From any remaining etcd node:
-sudo docker exec etcd etcdctl \
-    --endpoints=https://127.0.0.1:2379 \
-    --cert=/etc/kubernetes/ssl/kube-etcd-192-168-1-101.pem \
-    --key=/etc/kubernetes/ssl/kube-etcd-192-168-1-101-key.pem \
-    --cacert=/etc/kubernetes/ssl/kube-ca.pem \
-    member list
+sudo docker exec etcd etcdctl member list
 ```
 
 ## Rolling Node Replacement
@@ -213,8 +217,8 @@ To replace a node with new hardware without downtime:
 # 3. Drain the old node
 kubectl drain <old-node> --ignore-daemonsets --delete-emptydir-data
 # 4. Remove the old node from cluster.yml and run rke up
-# 5. Delete the old node object
-kubectl delete node <old-node>
+# 5. Delete the old node object if it remains
+kubectl delete node <old-node> --ignore-not-found
 ```
 
 ## Troubleshooting Node Addition
