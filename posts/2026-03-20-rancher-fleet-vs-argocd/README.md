@@ -8,7 +8,7 @@ Description: A detailed comparison of Rancher Fleet and ArgoCD for GitOps-based 
 
 ## Overview
 
-GitOps has become the standard approach for managing Kubernetes workloads at scale. Rancher Fleet and ArgoCD are two leading GitOps tools, each with distinct architectures and strengths. Fleet is optimized for managing thousands of clusters from a single Git repository, while ArgoCD excels at application delivery with a rich UI and powerful sync strategies. This guide compares them to help you choose the right tool.
+GitOps has become the standard approach for managing Kubernetes workloads at scale. Rancher Fleet and ArgoCD are two leading GitOps tools, each with distinct architectures and strengths. Fleet is optimized for very large multi-cluster deployments, while ArgoCD excels at application delivery with a rich UI and powerful sync controls. This guide compares them to help you choose the right tool.
 
 ## What Is Rancher Fleet?
 
@@ -22,23 +22,23 @@ ArgoCD is a declarative GitOps continuous delivery tool for Kubernetes. It monit
 
 | Feature | Fleet | ArgoCD |
 |---|---|---|
-| Multi-cluster Scale | Thousands of clusters | Hundreds of clusters |
+| Multi-cluster Scale | Designed for very large fleets | Multi-cluster with controller sharding/scaling |
 | Web UI | Basic | Rich / Advanced |
-| Sync Strategies | Push-based | Push and Pull |
+| Sync Model | Two-stage pull | Controller pulls from Git and applies to clusters |
 | Helm Support | Yes | Yes |
 | Kustomize Support | Yes | Yes |
 | Raw YAML Support | Yes | Yes |
-| SSO Integration | Via Rancher | Yes (Dex built-in) |
+| SSO Integration | Via Rancher | Yes (bundled Dex or external OIDC) |
 | RBAC | Via Rancher | Built-in |
 | Notifications | Limited | Yes (Notifications controller) |
 | Application Health | Basic | Advanced |
 | Sync Waves | No | Yes |
-| Rollback | Yes (git-based) | Yes |
-| App of Apps Pattern | Yes (bundles) | Yes |
-| Edge Support | Excellent | Limited |
+| Rollback | Via Git revert / Helm rollback | Yes |
+| App of Apps Pattern | Partial (multiple bundles per repo) | Yes |
+| Edge Support | Strong (agent-based) | General-purpose |
 | Air-gap Support | Yes | Yes |
 | Drift Detection | Yes | Yes |
-| Progressive Delivery | No (use Flagger) | No (use Argo Rollouts) |
+| Progressive Delivery | Limited (cluster rolloutStrategy) | Limited (hooks / experimental progressive syncs; use Argo Rollouts for canaries) |
 
 ## Architecture
 
@@ -48,7 +48,7 @@ ArgoCD is a declarative GitOps continuous delivery tool for Kubernetes. It monit
 Git Repository
       |
       v
-Fleet Manager (Rancher)
+Fleet Controller
       |
    +--+--+
    |     |
@@ -57,7 +57,7 @@ Agent   Agent
 (Cluster 1)  (Cluster 2..N)
 ```
 
-Fleet uses a bundle system. Each bundle maps to a directory in Git and can target clusters based on labels, cluster groups, or namespaces.
+Fleet uses a bundle system. Each bundle maps to a directory in Git and can target clusters based on labels, cluster groups, or cluster names.
 
 ### ArgoCD Architecture
 
@@ -65,9 +65,10 @@ Fleet uses a bundle system. Each bundle maps to a directory in Git and can targe
 Git Repository
       |
       v
-ArgoCD Application Controller
+ArgoCD Repo Server
       |
-ArgoCD API Server + UI
+      v
+ArgoCD Application Controller
       |
    +--+--+
    |     |
@@ -75,7 +76,7 @@ Cluster  Cluster
 1        2
 ```
 
-ArgoCD manages applications as Kubernetes Custom Resources (Application CRD). Each Application maps a Git source to a destination cluster/namespace.
+ArgoCD manages applications as Kubernetes Custom Resources (Application CRD). Each Application maps a Git source to a destination cluster/namespace. The repo server renders manifests, the application controller reconciles them to clusters, and the API server exposes the UI and API.
 
 ## Defining GitOps Resources
 
@@ -127,9 +128,9 @@ spec:
 
 ## Multi-cluster Scale
 
-Fleet is the clear winner for large-scale multi-cluster deployments. It was designed to manage thousands of edge clusters efficiently, using a push model that scales horizontally. The Fleet agent on each cluster pulls updates from the Fleet controller.
+Fleet is the stronger fit for very large multi-cluster deployments. SUSE Rancher documents Fleet as GitOps at scale and says it is designed to manage up to a million clusters. Its architecture is a two-stage pull model: the Fleet controller pulls from Git, and cluster agents pull from the Fleet controller.
 
-ArgoCD can manage multiple clusters but was not designed for thousands of edge nodes. For very large deployments, Argo CD requires horizontal scaling of the application controller.
+ArgoCD can also manage multiple clusters, but its scaling guidance focuses on tuning and sharding the control plane as footprint grows. For large deployments, Argo CD can shard clusters across multiple application-controller replicas.
 
 ## UI and Observability
 
@@ -152,7 +153,7 @@ Fleet provides ordering through bundle dependencies rather than fine-grained syn
 
 ## When to Choose Fleet
 
-- You are managing dozens to thousands of clusters (especially edge)
+- You are managing dozens to very large fleets of clusters (especially edge)
 - You are already using Rancher
 - Simplicity and tight Rancher integration are priorities
 - Edge and disconnected environments are targets
@@ -162,9 +163,9 @@ Fleet provides ordering through bundle dependencies rather than fine-grained syn
 - You need a rich UI and advanced observability
 - Sync waves, hooks, and fine-grained sync control are important
 - You use ArgoCD Notifications for deployment alerts
-- Your GitOps scope is within a smaller number of clusters
+- You want an application-centric GitOps workflow and can scale the Argo CD control plane for your footprint
 - Your team is not using Rancher
 
 ## Conclusion
 
-Fleet and ArgoCD are both excellent GitOps tools that excel in different scenarios. Fleet's standout strength is scale - managing thousands of clusters from a single control plane, especially in Rancher environments. ArgoCD's standout strength is depth - rich UI, sync waves, health assessment, and a mature application delivery API. Many organizations use ArgoCD for application delivery and Fleet for cluster configuration management, using the two tools complementarily.
+Fleet and ArgoCD are both excellent GitOps tools that excel in different scenarios. Fleet's standout strength is large-scale multi-cluster operation, especially in Rancher environments. ArgoCD's standout strength is depth - rich UI, sync waves, health assessment, and a mature application delivery API. Many organizations use ArgoCD for application delivery and Fleet for cluster configuration management, using the two tools complementarily.
