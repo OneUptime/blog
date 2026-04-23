@@ -12,8 +12,8 @@ Pulumi allows you to define infrastructure using real programming languages (Typ
 
 ## Prerequisites
 
-- Pulumi CLI installed (`npm install -g pulumi`)
-- Node.js 18+ (for TypeScript)
+- Pulumi CLI installed (`curl -fsSL https://get.pulumi.com | sh`)
+- Node.js 20+ (for TypeScript)
 - Rancher API token
 - npm or yarn
 
@@ -30,7 +30,10 @@ npm install @pulumi/rancher2 @pulumi/kubernetes
 
 # Configure Rancher authentication
 pulumi config set rancher2:apiUrl https://rancher.example.com
-pulumi config set --secret rancher2:tokenKey "token-xxxxx:yyyyyyyyyy"
+pulumi config set rancher2:tokenKey "token-xxxxx:yyyyyyyyyy" --secret
+
+# Set a Kubernetes version supported by your Rancher release
+pulumi config set kubernetesVersion "<supported-rke2-or-k3s-version>"
 ```
 
 ## Step 2: Create Clusters with TypeScript
@@ -41,7 +44,8 @@ import * as rancher2 from "@pulumi/rancher2";
 import * as pulumi from "@pulumi/pulumi";
 
 const config = new pulumi.Config();
-const environment = config.get("environment") || "production";
+const environment = pulumi.getStack();
+const kubernetesVersion = config.require("kubernetesVersion");
 
 // Create cloud credential for AWS
 const awsCredential = new rancher2.CloudCredential("aws-credential", {
@@ -68,16 +72,17 @@ const workerMachineConfig = new rancher2.MachineConfigV2("worker-config", {
 });
 
 // Create the cluster
-const cluster = new rancher2.ClusterV2(`cluster-${environment}`, {
-  name: `production-${environment}`,
-  kubernetesVersion: "v1.29.4+rke2r1",
+export const cluster = new rancher2.ClusterV2(`cluster-${environment}`, {
+  name: `cluster-${environment}`,
+  kubernetesVersion: kubernetesVersion,
   rkeConfig: {
     machinePools: [
       {
         name: "control-plane",
-        cloudCredentialSecretName: awsCredential.name,
+        cloudCredentialSecretName: awsCredential.id,
         controlPlaneRole: true,
         etcdRole: true,
+        workerRole: false,
         quantity: 3,
         machineConfig: {
           kind: workerMachineConfig.kind,
@@ -86,7 +91,7 @@ const cluster = new rancher2.ClusterV2(`cluster-${environment}`, {
       },
       {
         name: "workers",
-        cloudCredentialSecretName: awsCredential.name,
+        cloudCredentialSecretName: awsCredential.id,
         workerRole: true,
         quantity: environment === "production" ? 5 : 2,
         machineConfig: {
@@ -107,11 +112,13 @@ export const clusterId = cluster.clusterV1Id;
 export const kubeconfig = cluster.kubeConfig;
 ```
 
-## Step 3: Manage Projects and RBAC
+## Step 3: Manage Projects and Resource Quotas
 
 ```typescript
-// projects.ts - Project and RBAC management
+// projects.ts - Project management
+import * as pulumi from "@pulumi/pulumi";
 import * as rancher2 from "@pulumi/rancher2";
+import { cluster } from "./index";
 
 interface ProjectConfig {
   name: string;
@@ -165,36 +172,31 @@ const projects = teams.map(team =>
 ```typescript
 // apps.ts - Deploy Helm charts via Pulumi
 import * as rancher2 from "@pulumi/rancher2";
+import { cluster } from "./index";
 
-// Install cert-manager
-const certManager = new rancher2.AppV2("cert-manager", {
-  clusterId: cluster.clusterV1Id,
-  namespace: "cert-manager",
-  name: "cert-manager",
-  repoName: "rancher-charts",
-  chartName: "cert-manager",
-  chartVersion: "1.14.0",
-  values: pulumi.interpolate`
-    installCRDs: true
-    prometheus:
-      enabled: true
-  `,
-});
-
-// Install Rancher Monitoring after cert-manager
 const monitoring = new rancher2.AppV2("rancher-monitoring", {
   clusterId: cluster.clusterV1Id,
   namespace: "cattle-monitoring-system",
   name: "rancher-monitoring",
   repoName: "rancher-charts",
   chartName: "rancher-monitoring",
-  chartVersion: "103.0.0",
+  chartVersion: "9.4.200",
   values: `
     prometheus:
       prometheusSpec:
         retention: 30d
   `,
-}, { dependsOn: [certManager] });
+});
+
+// Install Rancher Logging
+const logging = new rancher2.AppV2("rancher-logging", {
+  clusterId: cluster.clusterV1Id,
+  namespace: "cattle-logging-system",
+  name: "rancher-logging",
+  repoName: "rancher-charts",
+  chartName: "rancher-logging",
+  chartVersion: "3.8.201",
+});
 ```
 
 ## Step 5: Dynamic Multi-Environment Configuration
@@ -204,27 +206,33 @@ const monitoring = new rancher2.AppV2("rancher-monitoring", {
 import * as pulumi from "@pulumi/pulumi";
 import * as rancher2 from "@pulumi/rancher2";
 
+const config = new pulumi.Config();
 const stack = pulumi.getStack();
+const kubernetesVersion = config.require("kubernetesVersion");
 
 // Environment-specific settings
-const envConfigs: Record<string, { nodeCount: number; instanceType: string; retention: string }> = {
-  development: { nodeCount: 1, instanceType: "t3.medium", retention: "7d" },
-  staging: { nodeCount: 2, instanceType: "t3.large", retention: "14d" },
-  production: { nodeCount: 5, instanceType: "t3.xlarge", retention: "30d" },
+const envConfigs: Record<string, { retention: string }> = {
+  development: { retention: "7d" },
+  staging: { retention: "14d" },
+  production: { retention: "30d" },
 };
 
 const envConfig = envConfigs[stack] ?? envConfigs.development;
 
-// Create cluster with environment-specific sizing
+// Create a cluster for the current stack
 const cluster = new rancher2.ClusterV2(`cluster-${stack}`, {
   name: `cluster-${stack}`,
-  kubernetesVersion: "v1.29.4+rke2r1",
-  // ... cluster config
+  kubernetesVersion: kubernetesVersion,
 });
 
 // Deploy monitoring with environment-specific retention
 const monitoring = new rancher2.AppV2(`monitoring-${stack}`, {
   clusterId: cluster.clusterV1Id,
+  name: "rancher-monitoring",
+  namespace: "cattle-monitoring-system",
+  repoName: "rancher-charts",
+  chartName: "rancher-monitoring",
+  chartVersion: "9.4.200",
   values: JSON.stringify({
     prometheus: {
       prometheusSpec: {
@@ -245,10 +253,10 @@ pulumi login  # Uses Pulumi Cloud by default
 pulumi login s3://my-pulumi-state-bucket
 
 # Deploy to different environments
-pulumi stack select production
+pulumi stack select --create production
 pulumi up
 
-pulumi stack select staging
+pulumi stack select --create staging
 pulumi up
 
 # Preview changes
@@ -274,7 +282,7 @@ jobs:
         with:
           node-version: '20'
       - run: npm install
-      - uses: pulumi/actions@v4
+      - uses: pulumi/actions@v6
         with:
           command: up
           stack-name: production
