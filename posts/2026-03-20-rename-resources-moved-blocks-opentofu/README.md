@@ -29,13 +29,13 @@ resource "aws_instance" "app_server" {
 }
 ```
 
-Running `tofu plan` shows:
+Running `tofu plan` would show a destroy/create change:
 ```text
 - destroy aws_instance.web
 + create  aws_instance.app_server
 ```
 
-This destroys the running instance and creates a new one - not what you want.
+Applying that plan destroys the running instance and creates a new one - not what you want.
 
 ## The Solution: moved Block
 
@@ -61,7 +61,7 @@ Running `tofu plan` now shows:
 # aws_instance.web has moved to aws_instance.app_server
 ```
 
-No destruction, no recreation - only the state entry is updated.
+No destruction, no recreation - on apply, OpenTofu updates the state entry instead.
 
 ## Multiple Renames in One Apply
 
@@ -89,7 +89,7 @@ moved {
 
 ## Renaming count-Based Resources
 
-For resources managed with `count`, the index is part of the address:
+If both addresses refer to the resource as a whole, OpenTofu applies the move to all instances created by `count`:
 
 ```hcl
 # Old: count-based
@@ -97,18 +97,8 @@ For resources managed with `count`, the index is part of the address:
 
 # New: still count-based but renamed
 moved {
-  from = aws_instance.server[0]
-  to   = aws_instance.app[0]
-}
-
-moved {
-  from = aws_instance.server[1]
-  to   = aws_instance.app[1]
-}
-
-moved {
-  from = aws_instance.server[2]
-  to   = aws_instance.app[2]
+  from = aws_instance.server
+  to   = aws_instance.app
 }
 
 resource "aws_instance" "app" {
@@ -120,7 +110,7 @@ resource "aws_instance" "app" {
 
 ## Where to Put moved Blocks
 
-Put `moved` blocks in any `.tf` file in the configuration directory. A common practice is to use a dedicated `moved.tf` file:
+Put `moved` blocks in any top-level `.tf` or `.tofu` file in the configuration directory. A common practice is to use a dedicated `moved.tf` file:
 
 ```text
 infra/
@@ -132,7 +122,7 @@ infra/
 
 ## Cleaning Up moved Blocks
 
-`moved` blocks are only needed once - after all existing state files have been updated by an apply that included the block, you can remove it. However, leaving old `moved` blocks in place is harmless and serves as documentation of the rename history.
+`moved` blocks are often only needed once for a given state, but removing them later is a breaking change for anyone still upgrading from the old address. If you are certain all existing state files have been updated by an apply that included the block, you can remove it. Otherwise, leaving old `moved` blocks in place is harmless and serves as documentation of the rename history.
 
 ## Conclusion
 
