@@ -12,7 +12,7 @@ The kubelet is the primary node agent in Kubernetes, responsible for managing po
 
 ## How RKE2 Passes Kubelet Arguments
 
-RKE2 uses the `kubelet-arg` key in `/etc/rancher/rke2/config.yaml` to pass arguments directly to the kubelet process. Each argument follows the standard kubelet flag format.
+RKE2 uses the `kubelet-arg` key in `/etc/rancher/rke2/config.yaml` to pass arguments directly to the kubelet process. Each argument follows the standard kubelet flag format. For RKE2 v1.32 and newer, kubelet settings that are `KubeletConfiguration` fields can also be configured with drop-in files under `/var/lib/rancher/rke2/agent/etc/kubelet.conf.d/`.
 
 ## Basic Configuration
 
@@ -93,12 +93,16 @@ kubelet-arg:
 
 Enable graceful node shutdown to allow pods to terminate cleanly:
 
-```yaml
-kubelet-arg:
-  # Total time allowed for graceful shutdown
-  - "shutdown-grace-period=30s"
-  # Time allocated for critical pods during shutdown
-  - "shutdown-grace-period-critical-pods=10s"
+```bash
+sudo mkdir -p /var/lib/rancher/rke2/agent/etc/kubelet.conf.d
+sudo tee /var/lib/rancher/rke2/agent/etc/kubelet.conf.d/99-shutdown.conf > /dev/null <<EOF
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+# Total time allowed for graceful shutdown
+shutdownGracePeriod: 30s
+# Time allocated for critical pods during shutdown
+shutdownGracePeriodCriticalPods: 10s
+EOF
 ```
 
 ### Configuring CPU Management Policy
@@ -153,10 +157,6 @@ kubelet-arg:
   - "image-gc-high-threshold=80"
   - "image-gc-low-threshold=70"
 
-  # Graceful shutdown
-  - "shutdown-grace-period=60s"
-  - "shutdown-grace-period-critical-pods=20s"
-
   # Node status update frequency
   - "node-status-update-frequency=10s"
 ```
@@ -194,6 +194,7 @@ If the kubelet fails to start after adding arguments, check the service logs:
 ```bash
 # View kubelet-related logs
 sudo journalctl -u rke2-server -n 200 --no-pager | grep kubelet
+sudo journalctl -u rke2-agent -n 200 --no-pager | grep kubelet
 
 # Common issue: invalid argument format
 # Make sure arguments use the format "key=value" not "--key=value"
