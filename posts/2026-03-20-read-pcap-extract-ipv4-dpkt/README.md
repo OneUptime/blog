@@ -8,7 +8,7 @@ Description: Learn how to read PCAP capture files and extract IPv4 traffic data 
 
 ## Reading a PCAP File with dpkt
 
-dpkt provides two PCAP readers: `pcap.Reader` for standard PCAP files and `pcapng.Reader` for the newer PCAPNG format.
+dpkt can read standard PCAP files with `pcap.Reader` and PCAPNG files with `pcapng.Reader`.
 
 ```python
 import dpkt
@@ -57,7 +57,7 @@ import dpkt
 import socket
 
 def extract_http_requests(filename: str) -> list[dict]:
-    """Extract HTTP GET/POST requests from a PCAP file."""
+    """Extract HTTP GET/POST requests contained in a single TCP packet."""
     requests = []
 
     with open(filename, "rb") as f:
@@ -74,17 +74,17 @@ def extract_http_requests(filename: str) -> list[dict]:
                 if not tcp.data:
                     continue
 
-                payload = tcp.data
-                # Check for HTTP request methods
-                if payload[:4] in (b"GET ", b"POST", b"PUT ", b"DELT", b"HEAD"):
-                    first_line = payload.split(b"\r\n")[0].decode("utf-8", errors="replace")
-                    requests.append({
-                        "timestamp": ts,
-                        "src": f"{socket.inet_ntoa(ip.src)}:{tcp.sport}",
-                        "dst": f"{socket.inet_ntoa(ip.dst)}:{tcp.dport}",
-                        "request": first_line,
-                    })
-            except (dpkt.dpkt.UnpackError, AttributeError):
+                request = dpkt.http.Request(tcp.data)
+                if request.method not in {"GET", "POST"}:
+                    continue
+
+                requests.append({
+                    "timestamp": ts,
+                    "src": f"{socket.inet_ntoa(ip.src)}:{tcp.sport}",
+                    "dst": f"{socket.inet_ntoa(ip.dst)}:{tcp.dport}",
+                    "request": f"{request.method} {request.uri} HTTP/{request.version}",
+                })
+            except (dpkt.dpkt.NeedData, dpkt.dpkt.UnpackError, AttributeError):
                 continue
 
     return requests
