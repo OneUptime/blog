@@ -8,28 +8,28 @@ Description: A step-by-step guide to installing Rancher Turtles, the Cluster API
 
 ## Introduction
 
-Rancher Turtles is the official Cluster API (CAPI) integration for Rancher. It enables Rancher to manage Kubernetes cluster lifecycle using the Cluster API framework, providing a consistent interface for creating and managing clusters across multiple cloud providers, on-premises, and edge environments.
+Rancher Turtles is the official Cluster API (CAPI) integration for Rancher. It enables Rancher to manage Kubernetes cluster lifecycle using the Cluster API framework, providing a consistent interface for creating and managing clusters across multiple cloud providers, on-premises, and edge environments. Newer Rancher releases may already ship Rancher Turtles as a system chart; this guide covers the manual Helm installation path.
 
 ## Prerequisites
 
-- Rancher v2.9+ installed and accessible
+- A Rancher version compatible with the Rancher Turtles chart version you plan to install. For example, Rancher Turtles `0.26.0` is published for Rancher `v2.14.x`
 - `kubectl` configured for your management cluster
 - `helm` v3.x installed
-- cert-manager installed in the cluster
+- cert-manager available in the cluster if your Rancher environment requires it
 
-## Step 1: Install cert-manager
+## Step 1: Install cert-manager (if needed)
 
 ```bash
 # Add Jetstack Helm repo
-
-helm repo add jetstack https://charts.jetstack.io
+helm repo add jetstack https://charts.jetstack.io --force-update
 helm repo update
 
 # Install cert-manager
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true
+  --version v1.20.2 \
+  --set crds.enabled=true
 
 # Verify installation
 kubectl get pods -n cert-manager
@@ -49,87 +49,100 @@ helm search repo turtles
 ## Step 3: Install Rancher Turtles
 
 ```bash
-# Create the namespace
-kubectl create namespace rancher-turtles-system
-
 # Install Rancher Turtles
 helm install rancher-turtles turtles/rancher-turtles \
-  --namespace rancher-turtles-system \
-  --dependency-update
+  --version 0.26.0 \
+  --namespace cattle-turtles-system \
+  --create-namespace \
+  --wait \
+  --timeout 180s
 ```
 
 ### Install with Custom Values
 
 ```yaml
 # turtles-values.yaml
-# Cluster API operator settings
-cluster-api-operator:
-  enabled: true
-  cluster-api:
-    enabled: true
-    version: v1.6.0
-    core:
-      namespace: capi-system
-    bootstrap:
-      rke2:
-        enabled: true
-        version: v0.3.0
-        namespace: rke2-bootstrap-system
-    controlPlane:
-      rke2:
-        enabled: true
-        version: v0.3.0
-        namespace: rke2-control-plane-system
+namespace: cattle-turtles-system
 
-# Turtles operator settings
-rancher-turtles:
+image:
   imagePullPolicy: IfNotPresent
+
+features:
+  agent-tls-mode:
+    enabled: true
+  no-cert-manager:
+    enabled: true
+  use-rancher-default-registry:
+    enabled: true
+
+cluster-api-operator:
+  cluster-api:
+    core:
+      namespace: cattle-capi-system
+      version: ""
 ```
 
 ```bash
 helm install rancher-turtles turtles/rancher-turtles \
-  --namespace rancher-turtles-system \
+  --version 0.26.0 \
+  --namespace cattle-turtles-system \
   --values turtles-values.yaml \
-  --dependency-update
+  --create-namespace \
+  --wait \
+  --timeout 180s
 ```
 
 ## Step 4: Verify the Installation
 
 ```bash
-# Check all Turtles pods are running
-kubectl get pods -n rancher-turtles-system
+# Check Rancher Turtles pods
+kubectl get pods -n cattle-turtles-system
 
-# Check CAPI pods
-kubectl get pods -n capi-system
-kubectl get pods -n rke2-bootstrap-system
-kubectl get pods -n rke2-control-plane-system
+# Check Cluster API core controller pods
+kubectl get pods -n cattle-capi-system
 
 # Verify CRDs are installed
-kubectl get crd | grep cluster.x-k8s.io
+kubectl get crd | grep -E 'cluster.x-k8s.io|turtles-capi.cattle.io'
 
-# Check that Turtles controller is running
-kubectl rollout status deployment \
-  rancher-turtles-controller-manager \
-  -n rancher-turtles-system
+# Check that the controllers are running
+kubectl rollout status deployment/rancher-turtles-controller-manager -n cattle-turtles-system
+kubectl rollout status deployment/capi-controller-manager -n cattle-capi-system
 ```
 
-## Step 5: Enable CAPI in Rancher UI
+## Step 5: Verify in Rancher UI
 
 1. Log into Rancher
-2. Navigate to **Home** > **Cluster Management**
-3. Check that the CAPI integration appears in the menu
-4. Verify the Cluster API Dashboard is accessible
+2. Open the local cluster dashboard
+3. Navigate to **Apps** > **Installed Apps**
+4. Verify the `rancher-turtles` release is healthy in the `cattle-turtles-system` namespace
 
 ## Step 6: Install Infrastructure Providers
 
-After installing Turtles, install the infrastructure providers you need:
+After installing Turtles, install the infrastructure providers you need declaratively with the `CAPIProvider` resource. For example, to install AWS (CAPA):
+
+```yaml
+# capa-provider.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: capa-system
+---
+apiVersion: turtles-capi.cattle.io/v1alpha1
+kind: CAPIProvider
+metadata:
+  name: aws
+  namespace: capa-system
+spec:
+  type: infrastructure
+  variables:
+    AWS_B64ENCODED_CREDENTIALS: ""
+```
 
 ```bash
-# Install AWS infrastructure provider
-kubectl apply -f https://github.com/kubernetes-sigs/cluster-api-provider-aws/releases/latest/download/infrastructure-components.yaml
+kubectl apply -f capa-provider.yaml
 
-# Or using clusterctl
-clusterctl init --infrastructure aws
+# Verify the provider controllers
+kubectl get pods -n capa-system
 ```
 
 ## Upgrading Rancher Turtles
@@ -140,24 +153,27 @@ helm repo update
 
 # Upgrade Turtles
 helm upgrade rancher-turtles turtles/rancher-turtles \
-  --namespace rancher-turtles-system \
-  --reuse-values
+  --version <new-version> \
+  --namespace cattle-turtles-system \
+  --reuse-values \
+  --wait \
+  --timeout 180s
 ```
 
 ## Uninstalling Rancher Turtles
 
 ```bash
 # Remove the Helm release
-helm uninstall rancher-turtles -n rancher-turtles-system
+helm uninstall rancher-turtles -n cattle-turtles-system --cascade foreground --wait
 
 # Remove the namespace
-kubectl delete namespace rancher-turtles-system
+kubectl delete namespace cattle-turtles-system
 
-# Optionally remove CRDs (warning: deletes all CAPI resources)
-kubectl get crd | grep cluster.x-k8s.io | \
+# Optionally remove CRDs (warning: deletes all CAPI and Rancher Turtles resources)
+kubectl get crd | grep -E 'cluster.x-k8s.io|turtles-capi.cattle.io' | \
   awk '{print $1}' | xargs kubectl delete crd
 ```
 
 ## Conclusion
 
-Rancher Turtles bridges the Cluster API ecosystem with Rancher's management capabilities, giving you a unified interface for managing clusters across any infrastructure. Once installed, you can use CAPI providers to provision clusters on AWS, Azure, vSphere, and more, with all cluster resources visible and manageable through the Rancher UI.
+Rancher Turtles bridges the Cluster API ecosystem with Rancher's management capabilities, giving you a unified interface for managing clusters across infrastructure providers. Once installed, you can add CAPI providers declaratively with `CAPIProvider` resources and manage the resulting clusters through Rancher.
