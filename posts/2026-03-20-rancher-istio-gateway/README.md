@@ -10,8 +10,8 @@ The Istio Gateway resource manages traffic entering and leaving the service mesh
 
 ## Prerequisites
 
-- Istio installed in your Rancher cluster with the ingress gateway enabled
-- A domain name pointing to your Istio ingress gateway's external IP
+- Istio installed in your Rancher cluster with the ingress gateway enabled (and the egress gateway enabled if you plan to use Step 5)
+- A domain name pointing to your Istio ingress gateway's external IP or hostname
 - TLS certificates (we'll cover both self-signed and cert-manager approaches)
 - `kubectl` access to the cluster
 
@@ -23,16 +23,21 @@ The Istio Gateway works differently from a Kubernetes Ingress:
 - **VirtualService**: Binds to a Gateway and configures routing rules
 - This separation allows the same Gateway to be used by multiple teams with their own VirtualServices
 
-## Step 1: Get the Ingress Gateway External IP
+## Step 1: Get the Ingress Gateway External Address
 
 ```bash
-# Get the external IP assigned to the ingress gateway
+# Get the external address assigned to the ingress gateway
 
 kubectl get svc istio-ingressgateway -n istio-system
 
-# Store the IP for use in DNS configuration
+# Store the address for use in DNS configuration
 export INGRESS_HOST=$(kubectl -n istio-system get service istio-ingressgateway \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+if [ -z "$INGRESS_HOST" ]; then
+  export INGRESS_HOST=$(kubectl -n istio-system get service istio-ingressgateway \
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+fi
 
 export INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway \
   -o jsonpath='{.spec.ports[?(@.name=="http2")].port}')
@@ -40,7 +45,7 @@ export INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway \
 export SECURE_INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway \
   -o jsonpath='{.spec.ports[?(@.name=="https")].port}')
 
-echo "Ingress IP: $INGRESS_HOST"
+echo "Ingress address: $INGRESS_HOST"
 echo "HTTP Port: $INGRESS_PORT"
 echo "HTTPS Port: $SECURE_INGRESS_PORT"
 ```
@@ -49,7 +54,7 @@ echo "HTTPS Port: $SECURE_INGRESS_PORT"
 
 ```yaml
 # http-gateway.yaml - Configure a basic HTTP gateway
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-app-gateway
@@ -71,7 +76,7 @@ spec:
 
 ```yaml
 # virtual-service-gateway.yaml - Bind a VirtualService to the Gateway
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -108,7 +113,7 @@ kubectl create -n istio-system secret tls myapp-tls-secret \
 
 ```yaml
 # https-gateway.yaml - Configure HTTPS gateway with TLS termination
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-app-https-gateway
@@ -137,7 +142,7 @@ spec:
     tls:
       # Terminate TLS at the gateway
       mode: SIMPLE
-      # Reference the TLS secret (must be in istio-system namespace)
+      # Reference the TLS secret in the ingress gateway workload's namespace
       credentialName: myapp-tls-secret
 ```
 
@@ -145,9 +150,17 @@ spec:
 
 For applications requiring client certificate authentication:
 
+```bash
+# Create a secret that includes the server certificate, key, and client CA bundle
+kubectl create -n istio-system secret generic myapp-mtls-secret \
+  --from-file=tls.crt=path/to/tls.crt \
+  --from-file=tls.key=path/to/tls.key \
+  --from-file=ca.crt=path/to/ca.crt
+```
+
 ```yaml
 # mtls-gateway.yaml - Configure mTLS at the gateway
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-app-mtls-gateway
@@ -165,9 +178,7 @@ spec:
     tls:
       # Require client certificates
       mode: MUTUAL
-      credentialName: myapp-tls-secret
-      # CA certificate for validating client certs
-      caCertificates: /etc/ssl/certs/ca-certificates.crt
+      credentialName: myapp-mtls-secret
 ```
 
 ## Step 5: Egress Gateway Configuration
@@ -175,8 +186,8 @@ spec:
 Control outbound traffic from the mesh using an egress gateway:
 
 ```yaml
-# egress-gateway.yaml - Route traffic to external services through egress gateway
-apiVersion: networking.istio.io/v1alpha3
+# egress-gateway.yaml - Route TLS traffic to an external service through the egress gateway
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: istio-egressgateway
@@ -187,15 +198,15 @@ spec:
   servers:
   - port:
       number: 443
-      name: https
-      protocol: HTTPS
+      name: tls
+      protocol: TLS
     hosts:
     - external-api.example.com
     tls:
       mode: PASSTHROUGH
 ---
 # ServiceEntry to register the external service
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -205,10 +216,58 @@ spec:
   - external-api.example.com
   ports:
   - number: 443
-    name: https
-    protocol: HTTPS
+    name: tls
+    protocol: TLS
   resolution: DNS
   location: MESH_EXTERNAL
+---
+# DestinationRule for traffic from workloads in my-app to the egress gateway service
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: egressgateway-for-external-api
+  namespace: my-app
+spec:
+  host: istio-egressgateway.istio-system.svc.cluster.local
+  subsets:
+  - name: external-api
+---
+# VirtualService to route traffic from the mesh to the egress gateway and from the egress gateway to the external service
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: route-external-api-through-egress-gateway
+  namespace: my-app
+spec:
+  hosts:
+  - external-api.example.com
+  gateways:
+  - mesh
+  - istio-system/istio-egressgateway
+  tls:
+  - match:
+    - gateways:
+      - mesh
+      port: 443
+      sniHosts:
+      - external-api.example.com
+    route:
+    - destination:
+        host: istio-egressgateway.istio-system.svc.cluster.local
+        subset: external-api
+        port:
+          number: 443
+  - match:
+    - gateways:
+      - istio-system/istio-egressgateway
+      port: 443
+      sniHosts:
+      - external-api.example.com
+    route:
+    - destination:
+        host: external-api.example.com
+        port:
+          number: 443
 ```
 
 ## Step 6: Verify Gateway Configuration
@@ -228,7 +287,7 @@ curl -I https://myapp.example.com
 
 # Use istioctl to check the proxy configuration on the ingress gateway
 istioctl proxy-config listeners -n istio-system \
-  deploy/istio-ingressgateway
+  deployment/istio-ingressgateway
 ```
 
 ## Conclusion
