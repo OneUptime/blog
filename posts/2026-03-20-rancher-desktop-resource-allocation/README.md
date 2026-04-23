@@ -12,8 +12,8 @@ Rancher Desktop is an open-source desktop application that provides Kubernetes a
 
 ## Prerequisites
 
-- A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
+- A supported macOS, Windows, or Linux system
+- Administrative privileges may be required during installation, depending on platform and setup
 - At least 8 GB of RAM (16 GB recommended)
 - At least 4 CPU cores
 
@@ -47,14 +47,19 @@ docker version
 Open Rancher Desktop Preferences to configure:
 
 - **Kubernetes**: Version and enabled/disabled state
-- **Container Engine**: containerd or moby (dockerd)
-- **Virtual Machine**: CPU, memory, and disk allocation
-- **WSL** (Windows only): WSL2 integration settings
+- **Container Engine**: containerd or Moby (dockerd)
+- **Virtual Machine > Hardware** (macOS/Linux): CPU and memory allocation
+- **WSL > Integrations** (Windows only): WSL2 integration settings; CPU and memory allocation is managed globally by WSL
 
 ```bash
-# Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
-rdctl set --container-engine containerd
+# Review the current Rancher Desktop settings
+rdctl list-settings
+
+# macOS/Linux: configure CPU, memory, and disk allocation
+rdctl start \
+  --virtual-machine.memory-in-gb 8 \
+  --virtual-machine.number-cpus 4 \
+  --experimental.virtual-machine.disk-size 100GiB
 ```
 
 ## Step 3: Working with Containers
@@ -131,31 +136,24 @@ helm uninstall my-release
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
-rdctl factory-reset
+# Show the current active settings
+rdctl list-settings
 
-# Check Rancher Desktop status
-rdctl status
-
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
-
-# Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+# Disable Kubernetes for reduced resource consumption
+rdctl set --kubernetes-enabled=false
 ```
 
 ## Troubleshooting
 
 ```bash
-# Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# Open the Rancher Desktop log folder
+# Troubleshooting > Show Logs
 
-# Reset to factory defaults
-rdctl factory-reset
+# Reset Kubernetes and optionally remove container images
+# Troubleshooting > Reset Kubernetes
 
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Reset Rancher Desktop to factory defaults
+# Troubleshooting > Factory Reset
 ```
 
 ## Conclusion
