@@ -23,18 +23,21 @@ kube-apiserver-arg:
 
 ## Enabling Audit Logging
 
-Audit logging is critical for compliance and security monitoring. It records all API requests to the cluster.
+Audit logging is critical for compliance and security monitoring. It records Kubernetes API activity according to the audit policy you configure.
 
 ### Step 1: Create the Audit Policy File
 
 ```bash
-sudo mkdir -p /etc/rancher/rke2/
+sudo mkdir -p /etc/rancher/rke2/ /var/lib/rancher/rke2/server/logs
 
 sudo tee /etc/rancher/rke2/audit-policy.yaml > /dev/null <<EOF
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
-  # Log all requests at the Metadata level
+  # Don't log read-only requests
+  - level: None
+    verbs: ["get", "watch", "list"]
+  # Log secret and configmap changes at the Metadata level
   - level: Metadata
     resources:
       - group: ""
@@ -44,9 +47,6 @@ rules:
     resources:
       - group: ""
         resources: ["pods"]
-  # Don't log read-only requests
-  - level: None
-    verbs: ["get", "watch", "list"]
   # Log everything else at the Request level
   - level: Request
 EOF
@@ -60,7 +60,7 @@ kube-apiserver-arg:
   # Path to the audit policy file (inside the server pod)
   - "audit-policy-file=/etc/rancher/rke2/audit-policy.yaml"
   # Path to write audit logs
-  - "audit-log-path=/var/log/kubernetes/audit.log"
+  - "audit-log-path=/var/lib/rancher/rke2/server/logs/audit.log"
   # Maximum age of audit log files in days
   - "audit-log-maxage=30"
   # Maximum number of rotated log files
@@ -71,12 +71,12 @@ kube-apiserver-arg:
 
 ## Configuring Admission Controllers
 
-Admission controllers intercept API requests to enforce policies.
+Admission controllers intercept create, update, delete, and some custom API requests to enforce policies.
 
 ```yaml
 kube-apiserver-arg:
   # Enable specific admission controllers
-  - "enable-admission-plugins=NodeRestriction,PodSecurityAdmission,ResourceQuota"
+  - "enable-admission-plugins=NodeRestriction,PodSecurity,ResourceQuota"
   # Disable specific admission controllers
   - "disable-admission-plugins=AlwaysPullImages"
 ```
@@ -84,10 +84,11 @@ kube-apiserver-arg:
 ### Enabling Pod Security Admission
 
 ```yaml
+# Set the default Pod Security Admission policy
+pod-security-admission-config-file: /etc/rancher/rke2/admission-config.yaml
+
 kube-apiserver-arg:
-  - "enable-admission-plugins=NodeRestriction,PodSecurityAdmission"
-  # Set the default enforce policy
-  - "admission-control-config-file=/etc/rancher/rke2/admission-config.yaml"
+  - "enable-admission-plugins=NodeRestriction,PodSecurity"
 ```
 
 Create the admission configuration file:
@@ -139,9 +140,7 @@ kube-apiserver-arg:
   - "max-requests-inflight=800"
   # Maximum number of mutating in-flight requests (default 200)
   - "max-mutating-requests-inflight=400"
-  # Default watch cache size
-  - "default-watch-cache-size=200"
-  # Enable watch cache for all resources
+  # Enable watch cache (default true)
   - "watch-cache=true"
 ```
 
@@ -159,9 +158,9 @@ kube-apiserver-arg:
 
 ```yaml
 kube-apiserver-arg:
-  # Maximum lifetime of service account tokens (e.g., 1 hour)
+  # Maximum lifetime of tokens created by the service account token issuer
   - "service-account-max-token-expiration=3600s"
-  # Extend service account tokens automatically
+  # Extend admission-injected projected tokens during the legacy-token transition
   - "service-account-extend-token-expiration=true"
 ```
 
@@ -169,8 +168,8 @@ kube-apiserver-arg:
 
 ```yaml
 kube-apiserver-arg:
-  # Enable specific alpha/beta features
-  - "feature-gates=EphemeralContainers=true,ServerSideApply=true"
+  # Enable feature gates supported by your Kubernetes version
+  - "feature-gates=APIServingWithRoutine=true,WatchList=true"
 ```
 
 ## Complete Production-Ready Configuration
@@ -185,14 +184,14 @@ tls-san:
 kube-apiserver-arg:
   # Audit logging
   - "audit-policy-file=/etc/rancher/rke2/audit-policy.yaml"
-  - "audit-log-path=/var/log/kubernetes/audit.log"
+  - "audit-log-path=/var/lib/rancher/rke2/server/logs/audit.log"
   - "audit-log-maxage=30"
   - "audit-log-maxbackup=10"
   - "audit-log-maxsize=100"
 
   # Security
   - "anonymous-auth=false"
-  - "enable-admission-plugins=NodeRestriction,PodSecurityAdmission,ResourceQuota"
+  - "enable-admission-plugins=NodeRestriction,PodSecurity,ResourceQuota"
 
   # Performance tuning
   - "max-requests-inflight=800"
