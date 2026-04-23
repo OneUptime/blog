@@ -15,6 +15,7 @@ etcd is the backbone of every Kubernetes cluster, storing all cluster state. Poo
 - Access to etcd nodes (SSH or privileged pod access)
 - kubectl with cluster-admin permissions
 - etcdctl installed or accessible via pod
+- jq installed locally for the revision extraction example
 
 ## Step 1: Check etcd Health
 
@@ -25,18 +26,19 @@ kubectl exec -n kube-system \
   $(kubectl get pod -n kube-system -l component=etcd -o name | head -1) \
   -- etcdctl endpoint health \
   --endpoints=https://127.0.0.1:2379 \
-  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-  --cert=/etc/kubernetes/pki/etcd/peer.crt \
-  --key=/etc/kubernetes/pki/etcd/peer.key
+  --cluster \
+  --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
+  --cert=/var/lib/rancher/rke2/server/tls/etcd/client.crt \
+  --key=/var/lib/rancher/rke2/server/tls/etcd/client.key
 
 # Check etcd cluster members
 kubectl exec -n kube-system \
   $(kubectl get pod -n kube-system -l component=etcd -o name | head -1) \
   -- etcdctl member list \
   --endpoints=https://127.0.0.1:2379 \
-  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-  --cert=/etc/kubernetes/pki/etcd/peer.crt \
-  --key=/etc/kubernetes/pki/etcd/peer.key \
+  --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
+  --cert=/var/lib/rancher/rke2/server/tls/etcd/client.crt \
+  --key=/var/lib/rancher/rke2/server/tls/etcd/client.key \
   -w table
 ```
 
@@ -48,9 +50,10 @@ kubectl exec -n kube-system \
   $(kubectl get pod -n kube-system -l component=etcd -o name | head -1) \
   -- etcdctl endpoint status \
   --endpoints=https://127.0.0.1:2379 \
-  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-  --cert=/etc/kubernetes/pki/etcd/peer.crt \
-  --key=/etc/kubernetes/pki/etcd/peer.key \
+  --cluster \
+  --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
+  --cert=/var/lib/rancher/rke2/server/tls/etcd/client.crt \
+  --key=/var/lib/rancher/rke2/server/tls/etcd/client.key \
   -w table
 
 # Large database causes slow queries
@@ -60,36 +63,32 @@ REVISION=$(kubectl exec -n kube-system \
   $(kubectl get pod -n kube-system -l component=etcd -o name | head -1) \
   -- etcdctl endpoint status \
   --endpoints=https://127.0.0.1:2379 \
-  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-  --cert=/etc/kubernetes/pki/etcd/peer.crt \
-  --key=/etc/kubernetes/pki/etcd/peer.key \
-  -w json | jq '.[0].Status.header.revision')
+  --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
+  --cert=/var/lib/rancher/rke2/server/tls/etcd/client.crt \
+  --key=/var/lib/rancher/rke2/server/tls/etcd/client.key \
+  -w json | jq -r '.[0].Status.header.revision')
 
 kubectl exec -n kube-system \
   $(kubectl get pod -n kube-system -l component=etcd -o name | head -1) \
   -- etcdctl compact $REVISION \
   --endpoints=https://127.0.0.1:2379 \
-  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-  --cert=/etc/kubernetes/pki/etcd/peer.crt \
-  --key=/etc/kubernetes/pki/etcd/peer.key
+  --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
+  --cert=/var/lib/rancher/rke2/server/tls/etcd/client.crt \
+  --key=/var/lib/rancher/rke2/server/tls/etcd/client.key
 ```
 
 ## Step 3: Defragment etcd
 
 ```bash
-# Defragment each member (do one at a time in production)
-# Defragment the leader last
-for endpoint in \
-  https://etcd-0:2379 \
-  https://etcd-1:2379 \
-  https://etcd-2:2379; do
+# Defragment each member one at a time in production
+for pod in $(kubectl get pod -n kube-system -l component=etcd -o name); do
 
-  echo "Defragmenting $endpoint..."
-  etcdctl defrag \
-    --endpoints=$endpoint \
-    --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-    --cert=/etc/kubernetes/pki/etcd/peer.crt \
-    --key=/etc/kubernetes/pki/etcd/peer.key
+  echo "Defragmenting $pod..."
+  kubectl exec -n kube-system "$pod" -- etcdctl defrag \
+    --endpoints=https://127.0.0.1:2379 \
+    --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
+    --cert=/var/lib/rancher/rke2/server/tls/etcd/client.crt \
+    --key=/var/lib/rancher/rke2/server/tls/etcd/client.key
 
   echo "Done. Waiting 30 seconds..."
   sleep 30
@@ -110,11 +109,11 @@ etcd-arg:
   # Auto compaction
   - "auto-compaction-mode=periodic"
   - "auto-compaction-retention=1h"
-  # Quota (8GB to prevent space exceeded errors)
+  # Example quota: 8 GiB (the etcd docs suggest 8 GiB as a normal-environment maximum)
   - "quota-backend-bytes=8589934592"
-  # Max request size (10MB)
+  # Only increase if you need larger objects; bigger requests can increase latency
   - "max-request-bytes=10485760"
-  # Snapshot count before compaction trigger
+  # Snapshot tuning is version-sensitive; verify your release default before changing it
   - "snapshot-count=10000"
 ```
 
@@ -122,19 +121,19 @@ etcd-arg:
 
 ```bash
 # etcd is extremely I/O sensitive
-# Benchmark your storage latency
-# etcd needs <10ms write latency
+# Benchmark the filesystem backing RKE2's embedded etcd data directory
+# Lower fsync latency is better; spinning disks are typically around 10ms, SSDs are often below 1ms
 
 # Test disk latency with fio
 fio --rw=write --ioengine=sync \
     --fdatasync=1 \
-    --directory=/var/lib/etcd \
+    --directory=/var/lib/rancher/rke2/server/db/etcd \
     --size=22m \
     --bs=2300 \
     --name=etcd-test
 
 # Check disk latency with dd
-dd if=/dev/zero of=/var/lib/etcd/test bs=512 count=1000 oflag=dsync
+dd if=/dev/zero of=/var/lib/rancher/rke2/server/db/etcd/test bs=512 count=1000 oflag=dsync
 
 # For RKE2, move etcd data directory to SSD
 # Configure in /etc/rancher/rke2/config.yaml
@@ -184,7 +183,7 @@ spec:
 ## Step 7: Schedule Regular Defragmentation
 
 ```yaml
-# etcd-defrag-cronjob.yaml - Automated defragmentation
+# etcd-defrag-cronjob.yaml - Automated defragmentation from an RKE2 server node
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -192,34 +191,56 @@ metadata:
   namespace: kube-system
 spec:
   schedule: "0 2 * * 0"  # Weekly at 2am Sunday
+  concurrencyPolicy: Forbid
   jobTemplate:
     spec:
       template:
         spec:
           hostNetwork: true
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: node-role.kubernetes.io/control-plane
+                        operator: Exists
+                  - matchExpressions:
+                      - key: node-role.kubernetes.io/etcd
+                        operator: Exists
+          tolerations:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+              effect: NoSchedule
+            - key: node-role.kubernetes.io/etcd
+              operator: Exists
+              effect: NoExecute
           containers:
             - name: etcd-defrag
-              image: rancher/hardened-etcd:v3.5.9
+              # Use the hardened-etcd image tag that matches your RKE2 release
+              image: rancher/hardened-etcd:<match-your-rke2-release>
               command:
                 - etcdctl
                 - defrag
+                - --cluster
                 - --endpoints=https://127.0.0.1:2379
               env:
+                - name: ETCDCTL_API
+                  value: "3"
                 - name: ETCDCTL_CACERT
-                  value: /etc/kubernetes/pki/etcd/ca.crt
+                  value: /var/lib/rancher/rke2/server/tls/etcd/server-ca.crt
                 - name: ETCDCTL_CERT
-                  value: /etc/kubernetes/pki/etcd/peer.crt
+                  value: /var/lib/rancher/rke2/server/tls/etcd/client.crt
                 - name: ETCDCTL_KEY
-                  value: /etc/kubernetes/pki/etcd/peer.key
+                  value: /var/lib/rancher/rke2/server/tls/etcd/client.key
               volumeMounts:
                 - name: etcd-certs
-                  mountPath: /etc/kubernetes/pki/etcd
+                  mountPath: /var/lib/rancher/rke2/server/tls/etcd
                   readOnly: true
           restartPolicy: OnFailure
           volumes:
             - name: etcd-certs
               hostPath:
-                path: /etc/kubernetes/pki/etcd
+                path: /var/lib/rancher/rke2/server/tls/etcd
 ```
 
 ## Conclusion
