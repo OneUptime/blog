@@ -8,43 +8,44 @@ Description: Understand the key differences between RFC 4941 and its successor R
 
 ## Introduction
 
-IPv6 privacy extensions have evolved through two major RFCs: RFC 4941 (2007) and its replacement RFC 8981 (2021). Both generate temporary addresses that hide the stable interface identifier, but RFC 8981 addresses several cryptographic and operational weaknesses in the original specification.
+IPv6 privacy extensions have evolved through two major RFCs: RFC 4941 (2007) and its replacement RFC 8981 (2021). Both generate temporary addresses that avoid exposing a stable interface identifier in client connections, but RFC 8981 addresses several cryptographic and operational weaknesses in the original specification.
 
 ## RFC 4941: The Original Privacy Extensions
 
 RFC 4941 introduced temporary addresses generated from a pseudo-random process:
 
-- Uses an MD5-based algorithm seeded by the interface's stable EUI-64 address and a random value
-- Generates a new temporary address whenever the preferred lifetime expires
-- The stable (public) address is still generated alongside the temporary address
+- Uses an MD5-based algorithm that combines the current interface identifier with a 64-bit history value
+- Regenerates temporary addresses periodically, normally before the current temporary address becomes deprecated
+- Assumes a stable (public) address is generated alongside the temporary address
 - Temporary addresses have a default preferred lifetime of 1 day and valid lifetime of 7 days
 
 **Key limitations of RFC 4941:**
 - MD5 is considered cryptographically weak
-- The random seed can potentially be guessed or brute-forced
-- The stable address generated alongside it is still EUI-64 based
-- No protection against address correlation within the same network across sessions
+- The MD5/history-value design is weaker than modern randomness and PRF guidance
+- The stable address generated alongside it was often EUI-64 based
+- It reused the same temporary IID across multiple prefixes configured at the same time
+- Temporary addresses do not stop correlation through a shared prefix, DNS names, cookies, or an on-link observer
 
 ## RFC 8981: Updated Privacy Extensions
 
 RFC 8981 (2021) obsoletes RFC 4941 with these improvements:
 
-- Uses a PRNG based on SHA-256 (cryptographically stronger)
-- The stable address can now use RFC 7217 (opaque IID) instead of EUI-64
-- Improved state machine for address lifecycle management
+- Uses randomized IIDs from a suitable PRNG, or a PRF-based algorithm such as HMAC-SHA-256
+- Allows hosts to use temporary addresses only; if a stable SLAAC address is also configured, RFC 7217 opaque IIDs are preferred over EUI-64
+- Improved address lifecycle management
 - Clearer rules for when to generate new addresses
-- Explicit handling of interface re-enablement and network changes
+- Explicit handling of network changes and per-prefix temporary IID generation
 
 ## Comparison Table
 
 | Feature | RFC 4941 | RFC 8981 |
 |---|---|---|
-| Hash algorithm | MD5 | SHA-256 |
-| Stable address | EUI-64 | RFC 7217 opaque (recommended) |
+| Temporary IID generation | MD5-based history algorithm | Suitable PRNG or PRF; HMAC-SHA-256 is one possible PRF |
+| Stable address | Assumed alongside temporary addresses, often EUI-64 | Optional; RFC 7217 opaque IID recommended when stable SLAAC addresses are used |
 | Default preferred lifetime | 1 day | 1 day (configurable) |
-| Default valid lifetime | 7 days | 7 days (configurable) |
+| Default valid lifetime | 7 days | 2 days (configurable) |
 | Status | Obsolete | Current |
-| OS support | Universal | Linux 5.7+, macOS 12+, Windows 11 |
+| OS support | Broad legacy support | Implementation-specific; check the OS release and configuration |
 
 ## Address Lifecycle Comparison
 
@@ -62,44 +63,45 @@ gantt
 
     section RFC 8981
     Preferred (temp addr 1)   :0, 86400
-    Valid (temp addr 1)       :0, 604800
+    Valid (temp addr 1)       :0, 172800
     Preferred (temp addr 2)   :72000, 158400
-    Valid (temp addr 2)       :72000, 676800
+    Valid (temp addr 2)       :72000, 244800
 ```
 
-The lifecycle timing is similar, but RFC 8981 provides a cleaner state machine for handling transitions.
+The preferred lifetime remains similar, but RFC 8981 reduces the default valid lifetime and provides clearer rules for handling transitions.
 
 ## Checking Which RFC Your System Implements
 
-On Linux, the kernel version determines which RFC is used:
+On Linux, check the sysctls exposed by your kernel and distribution configuration:
 
 ```bash
-# Check kernel version
-
-uname -r
-# Kernel 5.7+ uses RFC 8981-compatible PRNG (SHA-256 based)
-
 # Check the privacy extension mode
 sysctl net.ipv6.conf.eth0.use_tempaddr
 # 0 = disabled
 # 1 = generate but don't prefer
-# 2 = generate and prefer temporary
+# >1 = generate and prefer temporary
+
+# Check temporary address lifetimes
+sysctl net.ipv6.conf.eth0.temp_prefered_lft
+sysctl net.ipv6.conf.eth0.temp_valid_lft
+# RFC 8981 defaults are 86400 seconds (1 day) and 172800 seconds (2 days)
 
 # Check addr_gen_mode for stable address type
 sysctl net.ipv6.conf.eth0.addr_gen_mode
 # 0 = EUI-64 (RFC 4941 style stable)
-# 2 = stable-privacy/RFC 7217 (RFC 8981 recommended)
+# 2 = stable-privacy/RFC 7217 using stable_secret
+# 3 = stable-privacy/RFC 7217 using a random secret if unset
 ```
 
-For a fully RFC 8981 compliant configuration (SHA-256 PRNG + RFC 7217 stable address):
+For RFC 8981 temporary addresses plus RFC 7217 stable privacy addresses on Linux:
 
 ```bash
 # /etc/sysctl.d/60-ipv6-privacy.conf
-# RFC 8981 recommended configuration
+# Temporary addresses plus stable privacy SLAAC addresses
 
-# Use stable-privacy for the stable address (not EUI-64)
-net.ipv6.conf.default.addr_gen_mode = 2
-net.ipv6.conf.all.addr_gen_mode = 2
+# Use stable-privacy for the stable address and create a random secret if unset
+net.ipv6.conf.default.addr_gen_mode = 3
+net.ipv6.conf.all.addr_gen_mode = 3
 
 # Generate and prefer temporary addresses
 net.ipv6.conf.default.use_tempaddr = 2
@@ -114,14 +116,13 @@ sudo sysctl --system
 
 ## Operating System Support Matrix
 
-| OS | RFC 4941 | RFC 8981 Notes |
+| OS | Temporary addresses | Notes |
 |---|---|---|
-| Linux 5.7+ | Yes | SHA-256 PRNG used when addr_gen_mode=2 |
-| Windows 10 | Yes | Partial RFC 8981 behaviors |
-| Windows 11 | Yes | Improved RFC 8981 compliance |
-| macOS 12+ | Yes | Full RFC 8981 support |
-| FreeBSD 13+ | Yes | RFC 8981 aligned |
+| Linux | Yes | Controlled by `use_tempaddr`; current documented defaults align with RFC 8981's 1-day preferred and 2-day valid lifetimes |
+| Windows 10/11 | Yes | Temporary address use and lifetimes are configurable with `Set-NetIPv6Protocol`; verify configured values for RFC 8981 alignment |
+| macOS and other Apple OSes | Yes | Apple documents temporary addresses with a 24-hour preferred lifetime, used by default for new connections |
+| FreeBSD | Yes | Supports temporary addresses; RFC 8981-advised IID generation was committed to FreeBSD main in 2025, so release support should be checked |
 
 ## Conclusion
 
-RFC 8981 supersedes RFC 4941 with stronger cryptography and cleaner address lifecycle management. The practical difference for most deployments is minimal - both RFCs generate rotating temporary addresses that prevent cross-network tracking. However, deploying RFC 7217 stable-privacy addresses alongside RFC 8981 temporary addresses provides the strongest IPv6 privacy posture available today. Update to a modern kernel and OS to benefit from the SHA-256-based PRNG improvements in RFC 8981.
+RFC 8981 supersedes RFC 4941 with stronger temporary IID generation guidance and cleaner address lifecycle management. The practical difference for many deployments is still straightforward: both RFCs generate rotating temporary addresses that reduce address-based tracking, but neither prevents tracking through prefixes, on-link observation, DNS names, cookies, or other identifiers. Deploying RFC 7217 stable-privacy addresses alongside RFC 8981 temporary addresses provides a strong IPv6 privacy posture. Use a modern kernel and OS, and verify the temporary-address lifetime and stable-address settings you want.
