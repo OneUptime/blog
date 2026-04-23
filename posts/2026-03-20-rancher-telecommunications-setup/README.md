@@ -23,10 +23,7 @@ Telecommunications companies are deploying Kubernetes to power 5G core networks,
 Telco workloads require CPU pinning and hugepages:
 
 ```bash
-# Configure hugepages on worker nodes (1GB hugepages for DPDK)
-
-echo 'vm.nr_hugepages = 1024' >> /etc/sysctl.conf
-sysctl -p
+# Configure 1GB hugepages on worker nodes at boot
 
 # Add to kernel boot parameters (GRUB)
 # /etc/default/grub
@@ -42,7 +39,22 @@ Telco workloads often require multiple network interfaces:
 
 ```yaml
 # /etc/rancher/rke2/config.yaml
-cni: multus,calico  # Multus as meta-CNI with Calico as primary
+cni:
+  - multus
+  - calico  # Multus as meta-CNI with Calico as primary
+```
+
+```yaml
+# /var/lib/rancher/rke2/server/manifests/rke2-multus-config.yaml
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-multus
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    rke2-whereabouts:
+      enabled: true
 ```
 
 ```yaml
@@ -53,7 +65,7 @@ metadata:
   name: sriov-net
   namespace: telco-core
   annotations:
-    k8s.v1.cni.cncf.io/resourceName: intel.com/intel_sriov_netdevice
+    k8s.v1.cni.cncf.io/resourceName: openshift.io/intel_sriov_netdevice
 spec:
   config: '{
     "type": "sriov",
@@ -70,13 +82,11 @@ spec:
 
 ```bash
 # Install SR-IOV Network Operator
-helm repo add sriov-network-operator \
-  https://k8snetworkplumbingwg.github.io/sriov-network-operator
-
 helm install sriov-network-operator \
-  sriov-network-operator/sriov-network-operator \
+  oci://ghcr.io/k8snetworkplumbingwg/sriov-network-operator-chart \
   --namespace sriov-network-operator \
-  --create-namespace
+  --create-namespace \
+  --set sriovOperatorConfig.deploy=true
 ```
 
 ```yaml
@@ -123,12 +133,12 @@ spec:
           cpu: "4"                      # 4 dedicated CPUs
           memory: "8Gi"
           hugepages-1Gi: "4Gi"          # 4GB hugepages
-          intel.com/intel_sriov_netdevice: "2"  # SR-IOV interfaces
+          openshift.io/intel_sriov_netdevice: "2"  # SR-IOV interfaces
         limits:
           cpu: "4"
           memory: "8Gi"
           hugepages-1Gi: "4Gi"
-          intel.com/intel_sriov_netdevice: "2"
+          openshift.io/intel_sriov_netdevice: "2"
 ```
 
 ## Step 5: Edge Cluster Management with Fleet
@@ -179,11 +189,17 @@ metadata:
   namespace: 5g-core
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: amf
   template:
+    metadata:
+      labels:
+        app: amf
     spec:
       topologySpreadConstraints:
         - maxSkew: 1
-          topologyKey: kubernetes.io/hostname
+          topologyKey: topology.kubernetes.io/zone
           whenUnsatisfiable: DoNotSchedule
           labelSelector:
             matchLabels:
@@ -195,9 +211,15 @@ spec:
 Deploy Rancher Monitoring with telco-specific dashboards:
 
 ```bash
+helm repo add rancher-charts https://charts.rancher.io
+helm repo update
+
+helm install rancher-monitoring-crd rancher-charts/rancher-monitoring-crd \
+  --namespace cattle-monitoring-system \
+  --create-namespace
+
 helm install rancher-monitoring rancher-charts/rancher-monitoring \
   --namespace cattle-monitoring-system \
-  --create-namespace \
   --set prometheus.prometheusSpec.retention=30d \
   --set prometheus.prometheusSpec.retentionSize=50GB
 ```
@@ -228,10 +250,10 @@ For edge and MEC (Multi-Access Edge Computing) sites with constrained resources:
 
 ```bash
 # Install K3s at edge site
-curl -sfL https://get.k3s.io | sh - \
+curl -sfL https://get.k3s.io | sh -s - \
   --node-label="site-type=edge" \
   --node-label="region=europe" \
-  --no-deploy=traefik    # Disable default ingress for telco use
+  --disable=traefik      # Disable default ingress for telco use
 
 # Register with Rancher for centralized management
 # Apply the Rancher cluster-agent manifest generated from Rancher UI
