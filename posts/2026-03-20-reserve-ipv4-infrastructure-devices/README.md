@@ -27,7 +27,7 @@ Reserved for infrastructure:
   192.168.1.1   = Default gateway (router)
   192.168.1.2   = Secondary router / standby
   192.168.1.3   = Firewall inside interface
-  192.168.1.4   = Layer 3 switch management
+  192.168.1.4   = Switch management SVI
   192.168.1.5-9 = Additional network devices
   192.168.1.10  = Primary DNS server
   192.168.1.11  = Secondary DNS server
@@ -42,7 +42,7 @@ DHCP pool starts at:
 
 For infrastructure devices managed via DHCP:
 
-**ISC DHCPD:**
+**ISC DHCPD (legacy; ISC DHCP is EOL):**
 ```text
 # /etc/dhcp/dhcpd.conf
 
@@ -60,7 +60,7 @@ host access-switch-1 {
 
 host wifi-ap-floor1 {
     hardware ethernet AA:11:BB:22:CC:33;
-    fixed-address 192.168.1.10;
+    fixed-address 192.168.1.6;
     option host-name "ap-floor1";
 }
 ```
@@ -73,14 +73,14 @@ host wifi-ap-floor1 {
 
 dhcp-host=AA:BB:CC:DD:EE:FF,192.168.1.4,core-switch,infinite
 dhcp-host=11:22:33:44:55:66,192.168.1.5,access-sw1,infinite
-dhcp-host=AA:11:BB:22:CC:33,192.168.1.10,ap-floor1,infinite
+dhcp-host=AA:11:BB:22:CC:33,192.168.1.6,ap-floor1,infinite
 ```
 
 ## Step 3: Configure Static IPs on Network Devices
 
 For devices that should use static configuration (more reliable than DHCP):
 
-**Cisco IOS Switch:**
+**Cisco IOS Switch (management SVI, IP routing disabled):**
 ```text
 ! Configure management VLAN IP
 interface vlan 1
@@ -90,11 +90,9 @@ interface vlan 1
 ip default-gateway 192.168.1.1
 ```
 
-**Cisco Wireless AP (capwap/standalone):**
+**Cisco CAPWAP AP (console CLI):**
 ```text
-ip address 192.168.1.10 255.255.255.0
-ip default-gateway 192.168.1.1
-ip name-server 192.168.1.11
+capwap ap ip 192.168.1.6 255.255.255.0 192.168.1.1 192.168.1.10
 ```
 
 ## Step 4: Allocate Loopback Addresses for Routers
@@ -155,7 +153,7 @@ for device in infrastructure_devices:
 Always exclude reserved ranges from DHCP:
 
 ```bash
-# ISC DHCPD: set range to start after reserved block
+# ISC DHCPD (legacy): set range to start after reserved block
 subnet 192.168.1.0 netmask 255.255.255.0 {
     # Infrastructure: .1-.99 are manually assigned
     # DHCP pool starts at .100
