@@ -4,22 +4,32 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Webhook, Automation, Alerting, Integration
 
-Description: A guide to using Rancher alerting webhooks and custom webhook integrations to automate responses to cluster events and alerts.
+Description: A guide to using Rancher Monitoring alert webhooks and custom webhook integrations to automate responses to cluster events and alerts.
 
 ## Overview
 
-Rancher's alerting system can deliver notifications via webhooks, enabling integration with chat systems (Slack, Teams), ticketing systems (Jira, ServiceNow), and custom automation workflows. Webhooks allow you to build automated responses to cluster events - from spinning up replacement nodes to creating incident tickets automatically. This guide covers webhook configuration and integration patterns.
+Rancher Monitoring can deliver notifications via webhooks, enabling integration with chat systems (Slack, Teams), ticketing systems (Jira, ServiceNow), and custom automation workflows. Webhooks allow you to build automated responses to cluster events - from spinning up replacement nodes to creating incident tickets automatically. This guide covers webhook configuration and integration patterns.
 
 ## Configuring Rancher Alert Receivers (Alertmanager)
 
-Rancher Monitoring uses Prometheus Alertmanager for routing and delivering alerts. Configure webhook receivers in Alertmanager:
+Rancher Monitoring uses Prometheus Alertmanager for routing and delivering alerts. Because Prometheus Operator applies namespace scoping to `AlertmanagerConfig` objects by default, configure `rancher-monitoring` so the `AlertmanagerConfig` in `cattle-monitoring-system` can process cluster-wide alerts:
+
+```yaml
+# rancher-monitoring values
+alertmanager:
+  alertmanagerSpec:
+    alertmanagerConfigMatcherStrategy:
+      type: OnNamespaceExceptForAlertmanagerNamespace
+```
+
+Then create the webhook receivers:
 
 ### Alertmanager Configuration
 
 ```yaml
 # AlertmanagerConfig for webhook routing
 
-apiVersion: monitoring.coreos.com/v1alpha1
+apiVersion: monitoring.coreos.com/v1beta1
 kind: AlertmanagerConfig
 metadata:
   name: webhook-config
@@ -31,21 +41,32 @@ spec:
     groupInterval: 5m
     repeatInterval: 12h
     routes:
-      # Critical alerts go to PagerDuty
-      - receiver: pagerduty-critical
+      # Crash-looping pods go to the webhook handler for log capture
+      - receiver: default-webhook
         matchers:
-          - name: severity
-            value: critical
+          - name: alertname
+            value: KubePodCrashLooping
+      # High memory alerts go to the webhook handler for scaling
+      - receiver: default-webhook
+        matchers:
+          - name: alertname
+            value: HighMemoryUsage
       # Warning alerts go to Slack
       - receiver: slack-warnings
         matchers:
           - name: severity
             value: warning
-      # Specific alert types go to custom automation webhook
-      - receiver: automation-webhook
+      # Node alerts go to the webhook handler for incident creation
+      - receiver: default-webhook
         matchers:
           - name: alertname
-            value: NodeNotReady
+            value: KubeNodeNotReady
+        continue: true
+      # Critical alerts go to PagerDuty
+      - receiver: pagerduty-critical
+        matchers:
+          - name: severity
+            value: critical
 
   receivers:
     - name: default-webhook
@@ -53,21 +74,20 @@ spec:
         - url: "http://webhook-handler.automation:8080/rancher/alerts"
           sendResolved: true
 
-    - name: automation-webhook
-      webhookConfigs:
-        - url: "http://automation-service.automation:8080/auto-remediate"
+    - name: pagerduty-critical
+      pagerdutyConfigs:
+        - routingKey:
+            name: pagerduty-routing-key
+            key: key
           sendResolved: true
-          httpConfig:
-            bearerTokenSecret:
-              name: automation-webhook-token
-              key: token
+          severity: critical
+          description: "{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}"
 
     - name: slack-warnings
       slackConfigs:
         - apiURL:
             name: slack-webhook-secret
             key: url
-          channel: "#k8s-alerts"
           title: "Rancher Alert: {{ .GroupLabels.alertname }}"
           text: "{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}"
 ```
@@ -82,8 +102,8 @@ Create a simple webhook handler that receives Rancher alerts and performs automa
 #!/usr/bin/env python3
 # webhook-handler.py
 from flask import Flask, request, jsonify
+import os
 import subprocess
-import json
 import logging
 
 app = Flask(__name__)
@@ -93,7 +113,7 @@ logger = logging.getLogger(__name__)
 @app.route('/rancher/alerts', methods=['POST'])
 def handle_alert():
     """Process incoming Alertmanager webhook notifications"""
-    payload = request.get_json()
+    payload = request.get_json(silent=True)
 
     if not payload:
         return jsonify({'error': 'Invalid payload'}), 400
@@ -109,14 +129,55 @@ def handle_alert():
         logger.info(f"Received alert: {alert_name} ({status}) - {namespace}/{pod}")
 
         # Route to specific handlers based on alert type
-        if alert_name == 'NodeNotReady':
+        if alert_name == 'KubeNodeNotReady':
             handle_node_not_ready(alert)
-        elif alert_name == 'PodCrashLooping':
+        elif alert_name == 'KubePodCrashLooping':
             handle_crash_looping_pod(alert)
         elif alert_name == 'HighMemoryUsage':
             handle_high_memory(alert)
 
     return jsonify({'status': 'processed', 'count': len(alerts)}), 200
+
+
+@app.route('/github/repository-dispatch', methods=['POST'])
+def trigger_github_actions():
+    """Forward Alertmanager webhooks to GitHub repository_dispatch"""
+    payload = request.get_json(silent=True)
+
+    if not payload:
+        return jsonify({'error': 'Invalid payload'}), 400
+
+    alerts = payload.get('alerts', [])
+    first_alert = alerts[0] if alerts else {}
+
+    import requests
+
+    try:
+        response = requests.post(
+            'https://api.github.com/repos/myorg/ops-runbooks/dispatches',
+            headers={
+                'Accept': 'application/vnd.github+json',
+                'Authorization': f"Bearer {os.environ['GITHUB_TOKEN']}",
+                'X-GitHub-Api-Version': '2026-03-10'
+            },
+            json={
+                'event_type': 'rancher-alert',
+                'client_payload': {
+                    'status': payload.get('status'),
+                    'receiver': payload.get('receiver'),
+                    'alertname': first_alert.get('labels', {}).get('alertname'),
+                    'labels': first_alert.get('labels', {}),
+                    'annotations': first_alert.get('annotations', {})
+                }
+            },
+            timeout=10
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        logger.error(f"GitHub dispatch failed: {e}")
+        return jsonify({'error': 'GitHub dispatch failed'}), 502
+
+    return jsonify({'status': 'dispatched'}), 202
 
 
 def handle_node_not_ready(alert: dict):
@@ -137,9 +198,10 @@ def handle_crash_looping_pod(alert: dict):
     """Handle crash-looping pods"""
     namespace = alert.get('labels', {}).get('namespace', '')
     pod = alert.get('labels', {}).get('pod', '')
+    container = alert.get('labels', {}).get('container', '')
 
     if alert.get('status') == 'firing':
-        # Capture logs before auto-restart
+        # Capture logs for triage
         logger.info(f"Capturing logs for crash-looping pod: {namespace}/{pod}")
 
         # Post to Slack with logs
@@ -147,7 +209,7 @@ def handle_crash_looping_pod(alert: dict):
             'text': f':warning: Pod {namespace}/{pod} is crash-looping',
             'attachments': [{
                 'title': 'Recent logs',
-                'text': get_pod_logs(namespace, pod)
+                'text': get_pod_logs(namespace, pod, container)
             }]
         })
 
@@ -163,11 +225,15 @@ def handle_high_memory(alert: dict):
         scale_deployment(namespace, deployment)
 
 
-def get_pod_logs(namespace: str, pod: str) -> str:
+def get_pod_logs(namespace: str, pod: str, container: str = '') -> str:
     """Capture pod logs for debugging"""
     try:
+        command = ['kubectl', 'logs', pod, '-n', namespace, '--tail=50']
+        if container:
+            command.extend(['-c', container])
+
         result = subprocess.run(
-            ['kubectl', 'logs', pod, '-n', namespace, '--tail=50'],
+            command,
             capture_output=True, text=True, timeout=10
         )
         return result.stdout
@@ -207,15 +273,15 @@ def create_incident(data: dict):
             'urgency': '1' if data['severity'] == 'HIGH' else '2',
             'category': 'Kubernetes'
         },
-        headers={'Authorization': 'Bearer ${SERVICENOW_TOKEN}'}
+        headers={'Authorization': f"Bearer {os.environ['SERVICENOW_TOKEN']}"},
+        timeout=10
     )
 
 
 def post_slack_message(data: dict):
     """Post message to Slack"""
     import requests
-    import os
-    requests.post(os.environ['SLACK_WEBHOOK'], json=data)
+    requests.post(os.environ['SLACK_WEBHOOK'], json=data, timeout=10)
 
 
 if __name__ == '__main__':
@@ -241,6 +307,7 @@ spec:
       labels:
         app: webhook-handler
     spec:
+      serviceAccountName: webhook-handler
       containers:
         - name: handler
           image: registry.example.com/webhook-handler:latest
@@ -257,32 +324,83 @@ spec:
                 secretKeyRef:
                   name: itsm-credentials
                   key: token
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: github-token-secret
+                  key: token
           resources:
             requests:
               cpu: "100m"
               memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webhook-handler
+  namespace: automation
+spec:
+  selector:
+    app: webhook-handler
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: webhook-handler
+  namespace: automation
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: webhook-handler
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: webhook-handler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: webhook-handler
+subjects:
+  - kind: ServiceAccount
+    name: webhook-handler
+    namespace: automation
 ```
 
 ## GitHub Actions Integration via Webhook
 
 ```yaml
-# Trigger GitHub Actions workflow on cluster events
-apiVersion: monitoring.coreos.com/v1alpha1
+# Send alerts to the webhook handler, which triggers GitHub repository_dispatch
+apiVersion: monitoring.coreos.com/v1beta1
 kind: AlertmanagerConfig
 metadata:
   name: github-actions-trigger
+  namespace: cattle-monitoring-system
 spec:
+  route:
+    receiver: github-trigger
+    matchers:
+      - name: severity
+        value: critical
   receivers:
     - name: github-trigger
       webhookConfigs:
-        - url: "https://api.github.com/repos/myorg/ops-runbooks/dispatches"
-          httpConfig:
-            bearerTokenSecret:
-              name: github-token-secret
-              key: token
+        - url: "http://webhook-handler.automation:8080/github/repository-dispatch"
           sendResolved: false
+          maxAlerts: 1
 ```
 
 ## Conclusion
 
-Rancher webhooks bridge the gap between cluster events and automated remediation workflows. By combining Alertmanager webhook receivers with a custom webhook handler, you can build sophisticated auto-remediation pipelines: automatically restarting crash-looping pods, scaling services under load, creating incident tickets, and notifying on-call engineers. Keep webhook handlers simple, idempotent, and well-tested. Always implement circuit breakers to prevent automated responses from making situations worse during cascading failures.
+Rancher Monitoring webhooks bridge the gap between cluster events and automated remediation workflows. By combining Alertmanager webhook receivers with a custom webhook handler, you can build sophisticated auto-remediation pipelines: capturing crash-looping pod logs for triage, scaling services under load, creating incident tickets, and notifying on-call engineers. Keep webhook handlers simple, idempotent, and well-tested. Always implement circuit breakers to prevent automated responses from making situations worse during cascading failures.
