@@ -8,7 +8,7 @@ Description: Set up Redis Sentinel on IPv4 for automatic failover monitoring, co
 
 ## Introduction
 
-Redis Sentinel provides high availability through monitoring, notification, and automatic failover. A minimum of 3 Sentinels is required for quorum-based decisions. Sentinels monitor the Redis master and replicas over IPv4 and promote a replica if the master fails.
+Redis Sentinel provides high availability through monitoring, notification, and automatic failover. In production, deploy at least 3 Sentinels so quorum and majority decisions can still succeed if one Sentinel fails. Sentinels monitor the Redis master and replicas over IPv4 and promote a replica if the master fails.
 
 ## Architecture
 
@@ -51,24 +51,23 @@ masterauth "RedisPassword123"
 # /etc/redis/sentinel.conf (same on all 3 sentinel nodes)
 # Adjust bind address per node
 
-# Bind Sentinel to specific IPv4
-bind 127.0.0.1 10.0.0.1    # Node-specific IP
+# Bind Sentinel to specific IPv4 on this node
+bind 127.0.0.1 10.0.0.1
 
 port 26379
 
-# Monitor the master
-sentinel monitor mymaster 10.0.0.1 6379 2    # quorum = 2
+# Monitor the master with quorum = 2
+sentinel monitor mymaster 10.0.0.1 6379 2
 
 # Auth for master (if requirepass is set)
 sentinel auth-pass mymaster RedisPassword123
 
 # Failover timing
-sentinel down-after-milliseconds mymaster 5000    # 5 seconds
-sentinel failover-timeout mymaster 60000          # 1 minute
+# 5 seconds
+sentinel down-after-milliseconds mymaster 5000
+# 1 minute
+sentinel failover-timeout mymaster 60000
 sentinel parallel-syncs mymaster 1
-
-# Protected mode
-protected-mode no
 
 # Sentinel password (optional but recommended)
 # requirepass SentinelPassword
@@ -87,7 +86,7 @@ redis-cli -p 26379 sentinel masters
 # Shows: mymaster, ip, port, status
 
 # Check sentinel info
-redis-cli -p 26379 sentinel info
+redis-cli -p 26379 sentinel master mymaster
 ```
 
 ## Connecting Applications via Sentinel
@@ -118,7 +117,7 @@ const client = new Redis({
 
 ```bash
 # Simulate master failure
-redis-cli -h 10.0.0.1 -p 6379 DEBUG SLEEP 60
+redis-cli -h 10.0.0.1 -p 6379 -a RedisPassword123 DEBUG SLEEP 60
 # or kill the master process
 
 # Watch Sentinel promote a replica
@@ -130,4 +129,4 @@ sudo journalctl -u redis-sentinel -f | grep -i "failover\|promoted\|elected"
 
 ## Conclusion
 
-Redis Sentinel requires at least 3 nodes for quorum (2 votes to agree on failover). Bind each Sentinel to its specific IPv4 with `bind` in `sentinel.conf`. Configure `sentinel monitor` pointing to the master's IPv4 and set `sentinel auth-pass` if Redis requires authentication. Applications connect to Sentinel addresses and discover the current master dynamically.
+For a robust deployment, run at least 3 Sentinel nodes; with 3 Sentinels, a quorum of 2 can detect failure and a majority is still required to authorize failover. Bind each Sentinel to its specific IPv4 with `bind` in `sentinel.conf`. Configure `sentinel monitor` pointing to the master's IPv4 and set `sentinel auth-pass` if Redis requires authentication. Applications connect to Sentinel addresses and discover the current master dynamically.
