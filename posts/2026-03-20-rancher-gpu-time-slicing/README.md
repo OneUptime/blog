@@ -16,9 +16,9 @@ GPU time-slicing enables multiple pods to share a single physical GPU by allocat
 |---------|-------------|-----|
 | Memory isolation | No (shared) | Yes (dedicated) |
 | Compute isolation | No (shared) | Yes (dedicated) |
-| GPU generations | All NVIDIA | A100, H100 only |
+| GPU generations | Older and newer NVIDIA GPUs | Ampere+ MIG-capable GPUs |
 | Oversubscription | Possible | Not possible |
-| Use case | Dev/testing | Production |
+| Use case | Shared workloads with lower isolation | Stronger isolation for production |
 
 ## Step 1: Create Time-Slicing ConfigMap
 
@@ -90,11 +90,16 @@ kubectl label node gpu-node-01   nvidia.com/device-plugin.config=a100-40gb   --o
 kubectl get nodes -l nvidia.com/gpu.present=true   -o name | xargs -I{} kubectl label {}   nvidia.com/device-plugin.config=any   --overwrite
 
 # Verify time-slicing is applied
-kubectl get nodes -l nvidia.com/gpu.present=true   -o custom-columns='NAME:.metadata.name,GPU:.status.allocatable[nvidia\.com/gpu]'
-# With 1 physical GPU and replicas=4, should show 4 virtual GPUs
+kubectl get nodes -l nvidia.com/gpu.present=true   -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.allocatable.nvidia\.com/gpu}{"\n"}{end}'
+# With 1 physical GPU and replicas=4, the node should report 4 allocatable nvidia.com/gpu resources
 ```
 
 ## Step 4: Deploy Multiple Workloads on Same GPU
+
+```bash
+kubectl create namespace dev-team-a
+kubectl create namespace dev-team-b
+```
 
 ```yaml
 # inference-service-1.yaml
@@ -114,13 +119,16 @@ spec:
         app: inference-1
     spec:
       nodeSelector:
-        nvidia.com/gpu.present: "true"
+        kubernetes.io/hostname: gpu-node-01
       containers:
-      - name: inference
-        image: nvcr.io/nvidia/tritonserver:23.09-py3
+      - name: gpu-workload
+        image: nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubuntu20.04
+        command: ["/bin/bash", "-c", "--"]
+        args:
+        - while true; do /cuda-samples/vectorAdd; sleep 5; done
         resources:
           limits:
-            nvidia.com/gpu: "1"   # Gets 1 time-sliced virtual GPU
+            nvidia.com/gpu: 1   # Gets 1 time-sliced virtual GPU on gpu-node-01
 ---
 # inference-service-2.yaml - Shares the same physical GPU
 apiVersion: apps/v1
@@ -139,22 +147,25 @@ spec:
         app: inference-2
     spec:
       nodeSelector:
-        nvidia.com/gpu.present: "true"
+        kubernetes.io/hostname: gpu-node-01
       containers:
-      - name: inference
-        image: nvcr.io/nvidia/tritonserver:23.09-py3
+      - name: gpu-workload
+        image: nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda11.7.1-ubuntu20.04
+        command: ["/bin/bash", "-c", "--"]
+        args:
+        - while true; do /cuda-samples/vectorAdd; sleep 5; done
         resources:
           limits:
-            nvidia.com/gpu: "1"   # Shares physical GPU via time-slicing
+            nvidia.com/gpu: 1   # Consumes another time-sliced GPU allocation on gpu-node-01
 ```
 
 ## Step 5: Validate Time-Slicing
 
 ```bash
-# After deploying multiple pods, verify they all land on the same physical GPU
+# After deploying multiple pods, verify they both land on gpu-node-01
 kubectl get pods -A -o wide | grep -E "inference-1|inference-2"
 
-# Both should be on same node
+# If gpu-node-01 has one physical GPU and replicas=4, both workloads share that GPU
 # Check GPU processes running on the node
 ssh admin@gpu-node-01 "sudo nvidia-smi"
 # Should show multiple processes using the same GPU
@@ -168,12 +179,11 @@ kubectl describe node gpu-node-01 | grep nvidia.com/gpu
 ## Monitoring Time-Sliced GPU Usage
 
 ```bash
-# Since all virtual GPUs map to the same physical GPU,
-# DCGM metrics show aggregate utilization
-kubectl exec -n gpu-operator   $(kubectl get pods -n gpu-operator -l app=nvidia-dcgm-exporter -o name | head -1)   -- nvidia-smi dmon -s u -d 2
+# DCGM Exporter metrics remain aggregate for the physical GPU when time-slicing is enabled
+ssh admin@gpu-node-01 "sudo nvidia-smi dmon -s u -d 2"
 
-# Check which pods are using GPU
-sudo nvidia-smi pmon -d 2
+# Check which processes are using the GPU on the node
+ssh admin@gpu-node-01 "sudo nvidia-smi pmon -d 2"
 ```
 
 ## Conclusion
