@@ -11,17 +11,17 @@ Kiali is the official observability console for the Istio service mesh. It provi
 ## Prerequisites
 
 - Istio installed in your Rancher-managed cluster
-- Prometheus installed for metrics collection (typically bundled with Istio)
+- Prometheus available for metrics collection, such as Rancher Monitoring or the Istio Prometheus add-on
 - `kubectl` access to the cluster
 
 ## Step 1: Install Kiali via Rancher Apps
 
-Kiali can be installed alongside Istio using the Rancher Apps catalog:
+If you installed Istio using Rancher's Istio integration, Kiali is installed by default and available from the Rancher UI:
 
 1. Navigate to your cluster in the Rancher UI
-2. Go to **Apps** → **Charts**
-3. Search for **Kiali**
-4. Click **Install** and configure the Helm values
+2. Go to **Apps & Marketplace** → **Charts**
+3. Install or upgrade **Istio**
+4. Ensure Kiali is enabled in the Istio chart values
 
 Alternatively, install via Helm directly:
 
@@ -33,45 +33,29 @@ helm repo update
 
 # Install Kiali operator
 helm install \
+  --set cr.create=true \
+  --set cr.namespace=istio-system \
+  --set cr.spec.auth.strategy="anonymous" \
   --namespace kiali-operator \
   --create-namespace \
   kiali-operator \
   kiali/kiali-operator
-
-# Create a Kiali custom resource to deploy the Kiali server
-kubectl apply -f - <<EOF
-apiVersion: kiali.io/v1alpha1
-kind: Kiali
-metadata:
-  name: kiali
-  namespace: istio-system
-spec:
-  auth:
-    strategy: anonymous
-  deployment:
-    accessible_namespaces:
-    - "**"
-  external_services:
-    prometheus:
-      url: http://prometheus-server.monitoring.svc.cluster.local
-    grafana:
-      enabled: true
-      url: http://grafana.monitoring.svc.cluster.local
-EOF
 ```
 
 ## Step 2: Access the Kiali Dashboard
+
+In Rancher, you can open **Cluster Management** → **Explore** → **Istio** → **Kiali**. For direct access outside the Rancher UI:
 
 ```bash
 # Port-forward to access Kiali locally
 kubectl port-forward svc/kiali -n istio-system 20001:20001
 
 # Open in your browser
-echo "Access Kiali at: http://localhost:20001/kiali"
+echo "Access Kiali at: https://localhost:20001/"
 
 # Alternatively, expose via Istio Gateway
 kubectl apply -f - <<EOF
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: kiali-gateway
@@ -82,12 +66,12 @@ spec:
   servers:
   - port:
       number: 80
-      name: http
+      name: http-kiali
       protocol: HTTP
     hosts:
     - kiali.example.com
 ---
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: kiali-vs
@@ -103,6 +87,17 @@ spec:
         host: kiali
         port:
           number: 20001
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: kiali
+  namespace: istio-system
+spec:
+  host: kiali
+  trafficPolicy:
+    tls:
+      mode: DISABLE
 EOF
 ```
 
@@ -113,7 +108,7 @@ The **Service Graph** (also called the **Traffic Graph**) is Kiali's most powerf
 - **Nodes**: Services, workloads, and applications
 - **Edges**: Traffic flowing between services with error rates and latency
 - **Lock icons**: mTLS status for each connection
-- **Colored edges**: Green (healthy), Yellow (degraded), Red (errors)
+- **Colored nodes and edges**: Health indicators that highlight degraded or failing traffic
 
 To view the service graph:
 1. Open Kiali and navigate to **Graph** in the left menu
@@ -123,29 +118,22 @@ To view the service graph:
 
 ## Step 4: Configure Prometheus for Metrics
 
-Kiali relies on Prometheus for metrics. Ensure the Istio metrics are being collected:
+Kiali relies on Prometheus for metrics. If you installed Rancher's Istio integration alongside Rancher Monitoring, this is configured automatically. If you installed Kiali separately, point it at the Rancher Monitoring services:
 
-```yaml
-# prometheus-scrape-config.yaml - Ensure Istio metrics are scraped
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: prometheus-config
-  namespace: monitoring
-data:
-  prometheus.yml: |
-    scrape_configs:
-    # Scrape Istio metrics from Envoy proxies
-    - job_name: 'istio-mesh'
-      kubernetes_sd_configs:
-      - role: endpoints
-        namespaces:
-          names:
-          - istio-system
-      relabel_configs:
-      - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
-        action: keep
-        regex: istio-telemetry;prometheus
+```bash
+kubectl patch kiali kiali -n istio-system --type=merge -p '{
+  "spec": {
+    "external_services": {
+      "prometheus": {
+        "url": "http://rancher-monitoring-prometheus.cattle-monitoring-system.svc:9090"
+      },
+      "grafana": {
+        "enabled": true,
+        "internal_url": "http://rancher-monitoring-grafana.cattle-monitoring-system.svc:80"
+      }
+    }
+  }
+}'
 ```
 
 ## Step 5: Validate Istio Configuration with Kiali
@@ -153,10 +141,8 @@ data:
 Kiali can detect and highlight configuration issues:
 
 ```bash
-# Check Kiali's configuration validation via CLI
-kubectl get kiali -n istio-system kiali -o yaml | grep -A10 "validations"
-
-# Or use istioctl which provides similar validation
+# Kiali surfaces validation messages in the UI.
+# From the CLI, use istioctl for complementary analysis:
 istioctl analyze -n my-app
 
 # Check for common issues:
@@ -166,17 +152,17 @@ istioctl analyze -n my-app
 ```
 
 In the Kiali UI:
-1. Go to **Services** or **Workloads**
-2. Look for yellow warning icons or red error icons
-3. Click on the service to see the specific validation messages
+1. Go to **Istio Config**
+2. Look for yellow warning icons or red error icons on resources such as `VirtualService` and `DestinationRule`
+3. Click the resource to see the specific validation messages
 
 ## Step 6: View Distributed Traces with Jaeger Integration
 
 Kiali integrates with Jaeger for distributed tracing:
 
 ```bash
-# Install Jaeger
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.17/samples/addons/jaeger.yaml
+# Install Jaeger (sample add-on for demos)
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/jaeger.yaml
 
 # Update Kiali configuration to point to Jaeger
 kubectl patch kiali kiali -n istio-system --type=merge -p '{
@@ -184,7 +170,8 @@ kubectl patch kiali kiali -n istio-system --type=merge -p '{
     "external_services": {
       "tracing": {
         "enabled": true,
-        "url": "http://tracing.istio-system.svc.cluster.local:16686"
+        "internal_url": "http://tracing.istio-system:16685/jaeger",
+        "use_grpc": true
       }
     }
   }
@@ -196,13 +183,21 @@ kubectl patch kiali kiali -n istio-system --type=merge -p '{
 ```bash
 # Generate test traffic to see in Kiali
 # If using the Bookinfo sample app:
-export GATEWAY_URL=http://$(kubectl -n istio-system get service \
-  istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+export INGRESS_NAME=istio-ingressgateway
+export INGRESS_NS=istio-system
+export INGRESS_HOST=$(kubectl -n "$INGRESS_NS" get service "$INGRESS_NAME" \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+if [ -z "$INGRESS_HOST" ]; then
+  export INGRESS_HOST=$(kubectl -n "$INGRESS_NS" get service "$INGRESS_NAME" \
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+fi
+export INGRESS_PORT=$(kubectl -n "$INGRESS_NS" get service "$INGRESS_NAME" \
+  -o jsonpath='{.spec.ports[?(@.name=="http2")].port}')
+export GATEWAY_URL=http://$INGRESS_HOST:$INGRESS_PORT
 
-# Send traffic every second for 1 minute
-for i in $(seq 1 60); do
+# Send traffic to generate graph data and traces
+for i in $(seq 1 100); do
   curl -s -o /dev/null "$GATEWAY_URL/productpage"
-  sleep 1
 done
 ```
 
