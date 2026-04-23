@@ -8,7 +8,7 @@ Description: Plan and execute safe rollback procedures for IPv6 migration change
 
 ## Introduction
 
-IPv6 migration rollback requires removing IPv6 enablement without disrupting the existing IPv4 service. The key design principle is that all IPv6 changes should be additive (adding AAAA records, adding `::` listeners) rather than replacing IPv4 configurations, so rollback simply removes the additions.
+IPv6 migration rollback requires removing IPv6 enablement without disrupting the existing IPv4 service. The key design principle is that all IPv6 changes should be additive (adding AAAA records, adding IPv6 listeners alongside existing IPv4 listeners) rather than replacing IPv4 configurations, so rollback simply removes the additions.
 
 ## Rollback Planning Principles
 
@@ -19,7 +19,7 @@ IPv6 migration rollback requires removing IPv6 enablement without disrupting the
 
 ## DNS Rollback (Most Common)
 
-DNS is the first thing to roll back - removing AAAA records stops all new IPv6 connections within the TTL window:
+DNS is usually the first thing to roll back - removing AAAA records stops new DNS-based IPv6 connection attempts after cached answers expire:
 
 ```bash
 #!/bin/bash
@@ -41,15 +41,16 @@ HOSTNAMES=(
 )
 
 for hostname in "${HOSTNAMES[@]}"; do
-    # Get current AAAA record
-    CURRENT_AAAA=$(dig AAAA "$hostname" +short)
+    # Get current AAAA records
+    CURRENT_AAAA=$(dig "$hostname" AAAA +short)
     if [ -n "$CURRENT_AAAA" ]; then
-        echo "Removing AAAA for $hostname: $CURRENT_AAAA"
+        echo "Removing AAAA for $hostname:"
+        echo "$CURRENT_AAAA"
         # With nsupdate (for BIND with dynamic DNS)
         nsupdate << EOF
 server ${DNS_SERVER}
 zone ${DNS_ZONE}
-del ${hostname} AAAA ${CURRENT_AAAA}
+update delete ${hostname} AAAA
 send
 EOF
     else
@@ -63,7 +64,7 @@ sleep 60
 
 # Verify AAAA records are gone
 for hostname in "${HOSTNAMES[@]}"; do
-    REMAINING=$(dig AAAA "$hostname" +short)
+    REMAINING=$(dig "$hostname" AAAA +short)
     if [ -z "$REMAINING" ]; then
         echo "[OK] $hostname: AAAA removed"
     else
@@ -74,7 +75,7 @@ done
 
 ## Application Rollback
 
-If an application was updated to bind to `::`, roll back to `0.0.0.0`:
+If an application was updated to bind only to `::`, roll back to `0.0.0.0`:
 
 ```bash
 #!/bin/bash
@@ -87,6 +88,7 @@ echo "Rolling back $APP_NAME to IPv4-only configuration..."
 
 # Docker
 docker stop "$APP_NAME"
+docker rm "$APP_NAME"
 docker run -d --name "$APP_NAME" \
     -e LISTEN_ADDR=0.0.0.0 \
     -e LISTEN_PORT=8080 \
@@ -94,8 +96,8 @@ docker run -d --name "$APP_NAME" \
 
 # Kubernetes
 kubectl rollout undo deployment/"$APP_NAME"
-# Or set specific image:
-kubectl set image deployment/"$APP_NAME" app="$ROLLBACK_IMAGE"
+# Or set a specific image instead:
+# kubectl set image deployment/"$APP_NAME" app="$ROLLBACK_IMAGE"
 kubectl rollout status deployment/"$APP_NAME"
 ```
 
@@ -105,19 +107,16 @@ kubectl rollout status deployment/"$APP_NAME"
 #!/bin/bash
 # rollback_ipv6_firewall.sh
 
-echo "Removing IPv6 firewall rules..."
-
-# Flush all IPv6 rules (allows all IPv6 traffic to pass = neutral)
-ip6tables -F
-ip6tables -X
-ip6tables -P INPUT ACCEPT
-ip6tables -P FORWARD ACCEPT
-ip6tables -P OUTPUT ACCEPT
+IP6TABLES_BACKUP="/etc/ip6tables.backup"
 
 # Restore previous ip6tables rules (if saved)
-if [ -f /etc/ip6tables.backup ]; then
-    ip6tables-restore < /etc/ip6tables.backup
-    echo "Restored ip6tables from backup"
+echo "Restoring previous IPv6 firewall rules..."
+if [ -f "$IP6TABLES_BACKUP" ]; then
+    ip6tables-restore < "$IP6TABLES_BACKUP"
+    echo "Restored ip6tables from $IP6TABLES_BACKUP"
+else
+    echo "[WARN] No $IP6TABLES_BACKUP found"
+    echo "[WARN] Delete only the IPv6 rules added during migration; do not flush all IPv6 firewall rules unless opening IPv6 traffic is intended."
 fi
 
 echo "Firewall rollback complete"
@@ -132,15 +131,17 @@ Always create backups before making changes:
 # pre_change_backup.sh - Run BEFORE any IPv6 change
 
 BACKUP_DIR="/var/backup/ipv6-migration/$(date +%Y%m%d-%H%M%S)"
+IP6TABLES_BACKUP="/etc/ip6tables.backup"
 mkdir -p "$BACKUP_DIR"
 
 # Save current DNS records
-dig AAAA www.example.com +short > "$BACKUP_DIR/dns-aaaa-before.txt"
-dig A    www.example.com +short > "$BACKUP_DIR/dns-a-before.txt"
+dig www.example.com AAAA +short > "$BACKUP_DIR/dns-aaaa-before.txt"
+dig www.example.com A +short > "$BACKUP_DIR/dns-a-before.txt"
 
 # Save firewall rules
 iptables-save  > "$BACKUP_DIR/iptables-before.rules"
 ip6tables-save > "$BACKUP_DIR/ip6tables-before.rules"
+cp "$BACKUP_DIR/ip6tables-before.rules" "$IP6TABLES_BACKUP"
 
 # Save running container config
 docker inspect my-service > "$BACKUP_DIR/container-config-before.json" 2>/dev/null
@@ -167,7 +168,7 @@ Roll back if any of the following occur:
 
 1. **DNS** (2 minutes)
    - Command: `./rollback_dns_ipv6.sh`
-   - Verify: `dig AAAA www.example.com +short` returns empty
+   - Verify: `dig www.example.com AAAA +short` returns empty
 
 2. **Application** (3 minutes, if needed)
    - Command: `kubectl rollout undo deployment/my-service`
@@ -188,4 +189,4 @@ Roll back if any of the following occur:
 
 ## Conclusion
 
-Safe IPv6 rollback relies on additive-only changes (AAAA records added on top of A records, `::` listeners added alongside `0.0.0.0` listeners) and low DNS TTLs during migration. Create backups before every change. The fastest rollback is DNS - removing AAAA records stops new IPv6 connections within 60 seconds when TTL is set low. Design rollback runbooks before starting each migration phase, and practice them in staging to ensure they work correctly under pressure.
+Safe IPv6 rollback relies on additive-only changes (AAAA records added on top of A records, IPv6 listeners added alongside `0.0.0.0` listeners) and low DNS TTLs during migration. Create backups before every change. The fastest rollback is DNS - removing AAAA records stops new DNS-based IPv6 connection attempts after cached AAAA answers expire when TTL is set low. Design rollback runbooks before starting each migration phase, and practice them in staging to ensure they work correctly under pressure.
