@@ -32,14 +32,14 @@ Telecommunications is one of the most demanding use cases for Kubernetes. 5G net
 ```bash
 # Install real-time kernel on telco worker nodes
 
-# RHEL-based systems
+# RHEL-based systems (enable the RT/NFV repositories first on RHEL if needed)
 yum install -y kernel-rt kernel-rt-devel tuned-profiles-realtime
 
 # Enable real-time profile
 tuned-adm profile realtime
 
 # Disable CPU frequency scaling for consistent latency
-echo performance > /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+for governor in /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_governor; do [ -f "$governor" ] && echo performance > "$governor"; done
 
 # Isolate CPUs for DPDK/SR-IOV (reserve CPUs 2-15 from OS)
 # In /etc/default/grub:
@@ -64,8 +64,8 @@ data:
           "resourcePrefix": "intel.com",
           "selectors": {
             "vendors": ["8086"],
-            "devices": ["1583"],       # Intel XL710
-            "drivers": ["vfio-pci"],   # DPDK uses vfio-pci
+            "devices": ["1583"],
+            "drivers": ["vfio-pci"],
             "pfNames": ["ens3f0"]
           }
         },
@@ -75,7 +75,7 @@ data:
           "selectors": {
             "vendors": ["8086"],
             "devices": ["154c"],
-            "drivers": ["i40evf"]      # Kernel driver for non-DPDK
+            "drivers": ["i40evf", "iavf"]
           }
         }
       ]
@@ -91,6 +91,9 @@ kind: Pod
 metadata:
   name: upf-instance-1
   namespace: 5g-core
+  labels:
+    app: upf
+  # Assumes Multus NetworkAttachmentDefinition objects named sriov-n3 and sriov-n6 already exist.
   annotations:
     k8s.v1.cni.cncf.io/networks: |
       [{
@@ -103,7 +106,7 @@ metadata:
         "interface": "n6"
       }]
 spec:
-  runtimeClassName: kata-containers    # Isolation for CNFs
+  runtimeClassName: kata-containers    # Optional: requires a matching RuntimeClass to be installed
   containers:
     - name: upf
       image: myregistry/free5gc-upf:3.3.0
@@ -117,6 +120,8 @@ spec:
           hugepages-1Gi: "4Gi"               # DPDK requires hugepages
         limits:
           intel.com/intel_sriov_dpdk: "2"
+          memory: "4Gi"
+          cpu: "4"
           hugepages-1Gi: "4Gi"
       volumeMounts:
         - name: hugepages
@@ -130,13 +135,12 @@ spec:
 ## Step 4: Configure HugePages
 
 ```bash
-# Enable hugepages on worker nodes (persistent)
+# Enable default-size hugepages on worker nodes (persistent)
 echo "vm.nr_hugepages = 1024" >> /etc/sysctl.d/hugepages.conf
 sysctl -p /etc/sysctl.d/hugepages.conf
 
-# For 1GB hugepages (DPDK requires these):
-# Add to kernel cmdline:
-# hugepagesz=1G hugepages=16 default_hugepagesz=1G
+# Or, if the workload is configured to request 1Gi hugepages, reserve them at boot:
+# hugepagesz=1G hugepages=16
 
 # Verify hugepages
 cat /proc/meminfo | grep HugePages
@@ -146,11 +150,13 @@ cat /proc/meminfo | grep HugePages
 
 ```yaml
 # Configure CPU Manager for guaranteed QoS
-# In RKE2 kubelet config:
+# In /etc/rancher/rke2/config.yaml on agent nodes:
 kubelet-arg:
   - "cpu-manager-policy=static"
   - "topology-manager-policy=single-numa-node"
   - "reserved-cpus=0-1"    # Reserve CPUs 0-1 for OS
+
+---
 
 # Pod requesting guaranteed CPU pinning
 spec:
@@ -158,7 +164,7 @@ spec:
     - name: upf
       resources:
         requests:
-          cpu: "4"          # Integer = guaranteed/pinned
+          cpu: "4"          # Whole CPU request/limit on a Guaranteed pod
           memory: "4Gi"
         limits:
           cpu: "4"
@@ -176,6 +182,8 @@ affinity:
           matchLabels:
             app: upf
         topologyKey: kubernetes.io/hostname
+
+---
 
 # PodDisruptionBudget for CNF availability
 apiVersion: policy/v1
