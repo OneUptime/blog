@@ -12,10 +12,11 @@ How to Use CAPI with vSphere Provider via Rancher Turtles is an important aspect
 
 ## Prerequisites
 
-- Rancher Turtles installed and configured
-- kubectl access to the management cluster
-- Appropriate cloud provider credentials (if applicable)
-- Cluster API providers installed
+- Rancher Manager with Rancher Turtles installed and `kubectl` access to the management cluster
+- CAPV, CAPRKE2, and CAAPF installed via `CAPIProvider`
+- A vSphere credentials `Secret` and `VSphereClusterIdentity`
+- A vSphere VM template prepared for RKE2 nodes
+- vSphere inventory details for the datacenter, datastore, network, folder, resource pool, TLS thumbprint, and control plane VIP
 
 ## Overview
 
@@ -26,10 +27,14 @@ Rancher Turtles integrates Cluster API (CAPI) with Rancher to provide a unified,
 ```bash
 # Verify Rancher Turtles is running
 
-kubectl get pods -n rancher-turtles-system
+kubectl get pods -n cattle-turtles-system
 
-# Check installed CAPI providers
-kubectl get providers -A
+# Check installed Rancher Turtles CAPI providers
+kubectl get capiproviders -A
+
+# Verify the vSphere identity and available ClusterClasses
+kubectl get vsphereclusteridentities.infrastructure.cluster.x-k8s.io
+kubectl get clusterclasses -A
 
 # Verify management cluster connectivity
 kubectl cluster-info
@@ -37,32 +42,128 @@ kubectl cluster-info
 
 ## Step 2: Configure Resources
 
+```bash
+# Apply the official vSphere RKE2 ClusterClass and downstream add-on packages
+kubectl apply -n default -f https://raw.githubusercontent.com/rancher/turtles/refs/tags/v0.26.0/examples/clusterclasses/vsphere/rke2/clusterclass-rke2-example.yaml
+kubectl apply -n default -f https://raw.githubusercontent.com/rancher/turtles/refs/tags/v0.26.0/examples/applications/ccm/vsphere/helm-chart.yaml
+kubectl apply -n default -f https://raw.githubusercontent.com/rancher/turtles/refs/tags/v0.26.0/examples/applications/cni/calico/helm-chart.yaml
+kubectl apply -n default -f https://raw.githubusercontent.com/rancher/turtles/refs/tags/v0.26.0/examples/applications/csi/vsphere/bundle.yaml
+```
+
 ```yaml
 # Example CAPI configuration for How to Use CAPI with vSphere Provider via Rancher Turtles
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: fleet.cattle.io/v1alpha1
+kind: Bundle
+metadata:
+  name: vsphere-csi-config
+  namespace: default
+spec:
+  resources:
+    - content: |-
+        apiVersion: v1
+        kind: Secret
+        type: Opaque
+        metadata:
+          name: vsphere-config-secret
+          namespace: vmware-system-csi
+        stringData:
+          csi-vsphere.conf: |+
+            [Global]
+            thumbprint = "<VSPHERE_THUMBPRINT>"
+
+            [VirtualCenter "<VSPHERE_SERVER>"]
+            user = "<VSPHERE_USER>"
+            password = "<VSPHERE_PASSWORD>"
+            datacenters = "<VSPHERE_DATACENTER>"
+
+            [Network]
+            public-network = "<VSPHERE_NETWORK>"
+
+            [Labels]
+            zone = ""
+            region = ""
+  targets:
+    - clusterSelector:
+        matchLabels:
+          csi: vsphere
+          cluster.x-k8s.io/cluster-name: "example-cluster"
+---
+apiVersion: fleet.cattle.io/v1alpha1
+kind: Bundle
+metadata:
+  name: vsphere-cloud-credentials
+  namespace: default
+spec:
+  resources:
+    - content: |-
+        apiVersion: v1
+        kind: Secret
+        type: Opaque
+        metadata:
+          name: vsphere-cloud-secret
+          namespace: kube-system
+        stringData:
+          <VSPHERE_SERVER>.password: "<VSPHERE_PASSWORD>"
+          <VSPHERE_SERVER>.username: "<VSPHERE_USER>"
+  targets:
+    - clusterSelector:
+        matchLabels:
+          cloud-provider: vsphere
+          cluster.x-k8s.io/cluster-name: "example-cluster"
+---
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
   name: example-cluster
   namespace: default
   labels:
     cluster-api.cattle.io/rancher-auto-import: "true"
-    environment: production
+    cni: calico
+    cloud-provider: vsphere
+    csi: vsphere
 spec:
   clusterNetwork:
     pods:
       cidrBlocks:
-        - 10.244.0.0/16
-    services:
-      cidrBlocks:
-        - 10.96.0.0/12
-  infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-    kind: InfraCluster
-    name: example-cluster
-  controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
-    kind: RKE2ControlPlane
-    name: example-cluster-cp
+        - 192.168.0.0/16
+  topology:
+    classRef:
+      name: vsphere-rke2-example
+    version: v1.35.0+rke2r1
+    controlPlane:
+      replicas: 3
+    workers:
+      machineDeployments:
+        - class: vsphere-rke2-example-worker
+          name: md-0
+          replicas: 2
+    variables:
+      - name: vSphereClusterIdentityName
+        value: cluster-identity
+      - name: vSphereTLSThumbprint
+        value: <VSPHERE_THUMBPRINT>
+      - name: vSphereDataCenter
+        value: <VSPHERE_DATACENTER>
+      - name: vSphereDataStore
+        value: <VSPHERE_DATASTORE>
+      - name: vSphereFolder
+        value: <VSPHERE_FOLDER>
+      - name: vSphereNetwork
+        value: <VSPHERE_NETWORK>
+      - name: vSphereResourcePool
+        value: <VSPHERE_RESOURCE_POOL>
+      - name: vSphereServer
+        value: <VSPHERE_SERVER>
+      - name: vSphereTemplate
+        value: <VSPHERE_TEMPLATE>
+      - name: controlPlaneIpAddr
+        value: <CONTROL_PLANE_IP>
+      - name: controlPlanePort
+        value: 6443
+      - name: sshKey
+        value: <SSH_KEY>
+      - name: kubeVIPInterface
+        value: <KUBE_VIP_INTERFACE>
 ```
 
 ```bash
@@ -70,7 +171,7 @@ spec:
 kubectl apply -f cluster-config.yaml
 
 # Monitor progress
-kubectl get cluster example-cluster --watch
+kubectl get cluster example-cluster -n default --watch
 ```
 
 ## Step 3: Verify the Configuration
@@ -86,7 +187,9 @@ kubectl describe cluster example-cluster -n default
 kubectl get clusters,machines,machinedeployments -n default
 
 # Check Rancher import status
-kubectl get cluster.provisioning.cattle.io -n fleet-default
+kubectl get clusters.management.cattle.io \
+  -l cluster-api.cattle.io/capi-cluster-owner=example-cluster \
+  -l cluster-api.cattle.io/capi-cluster-owner-ns=default
 ```
 
 ## Step 4: Validate in Rancher UI
@@ -99,11 +202,12 @@ kubectl get cluster.provisioning.cattle.io -n fleet-default
 ## Common Operations
 
 ```bash
-# Scale worker nodes
-kubectl scale machinedeployment example-cluster-workers --replicas=5
+# Scale worker nodes in a topology-managed cluster
+kubectl patch cluster example-cluster -n default --type json \
+  --patch '[{"op":"replace","path":"/spec/topology/workers/machineDeployments/0/replicas","value":5}]'
 
 # Get cluster kubeconfig
-clusterctl get kubeconfig example-cluster > cluster-kubeconfig.yaml
+clusterctl get kubeconfig example-cluster --namespace default > cluster-kubeconfig.yaml
 
 # Test connectivity
 export KUBECONFIG=cluster-kubeconfig.yaml
@@ -117,13 +221,16 @@ unset KUBECONFIG
 
 ```bash
 # Check Turtles controller logs
-kubectl logs -n rancher-turtles-system   -l control-plane=controller-manager   --follow
+kubectl logs -n cattle-turtles-system -l control-plane=controller-manager --follow
 
-# Check CAPI controller logs
-kubectl logs -n capi-system   -l control-plane=controller-manager   --since=30m
+# Check CAPI and provider controller logs
+kubectl logs -n cattle-capi-system -l control-plane=controller-manager --since=30m
+kubectl logs -n capv-system -l control-plane=controller-manager --since=30m
+kubectl logs -n rke2-bootstrap-system -l control-plane=controller-manager --since=30m
+kubectl logs -n rke2-control-plane-system -l control-plane=controller-manager --since=30m
 
 # Get events for a cluster
-kubectl get events -n default   --field-selector involvedObject.name=example-cluster   --sort-by=.lastTimestamp
+kubectl get events -n default --field-selector involvedObject.name=example-cluster --sort-by=.lastTimestamp
 ```
 
 ## Conclusion
