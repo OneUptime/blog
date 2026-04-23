@@ -21,22 +21,23 @@ This guide walks you through configuring a private registry in Rancher, setting 
 
 ## Understanding Registry Authentication in Kubernetes
 
-Kubernetes uses `imagePullSecrets` to authenticate with private registries. These secrets contain the registry URL, username, and password encoded in a Docker configuration format. Rancher provides a UI-driven approach to manage these secrets at both the cluster and project level.
+Kubernetes uses `imagePullSecrets` to authenticate with private registries. These secrets contain the registry URL and credentials encoded in a Docker configuration format. Rancher provides a UI-driven approach to create namespace-scoped registry secrets, while workloads created with `kubectl` still need to reference those secrets explicitly.
 
-## Step 1: Add a Private Registry to a Rancher Project
+## Step 1: Add a Private Registry Secret in Rancher
 
 1. Log in to the Rancher UI.
-2. Navigate to your cluster and select a **Project**.
-3. Go to **Secrets** > **Registry Credentials**.
-4. Click **Add Registry**.
+2. Go to **Cluster Management** and open your cluster with **Explore**.
+3. Go to **Storage** > **Secrets** or **More Resources** > **Core** > **Secrets**.
+4. Click **Create** > **Registry**.
 5. Fill in the form:
-   - **Name**: A descriptive name for the registry
-   - **Scope**: Project or Namespace
-   - **Address**: Your registry URL (e.g., `registry.example.com`)
+   - **Name**: A descriptive name for the registry secret
+   - **Namespace**: The namespace that will use the secret
+   - **Registry**: Your registry host or provider (e.g., `registry.example.com`)
    - **Username**: Registry username
    - **Password**: Registry password or token
+6. Click **Save**.
 
-Rancher automatically creates a Kubernetes `Secret` of type `kubernetes.io/dockerconfigjson` in the target namespace.
+In Rancher v2.6 and later, namespace-scoped registries are the default. Project-scoped registries still exist, but require enabling the `legacy` feature flag first. Rancher creates a Kubernetes `Secret` of type `kubernetes.io/dockerconfigjson` in the selected namespace.
 
 ## Step 2: Create a Registry Secret via kubectl
 
@@ -49,7 +50,6 @@ kubectl create secret docker-registry my-private-registry \
   --docker-server=registry.example.com \
   --docker-username=myuser \
   --docker-password=mypassword \
-  --docker-email=admin@example.com \
   --namespace=my-namespace
 ```
 
@@ -93,35 +93,32 @@ spec:
 
 ## Step 4: Set Default Registry in Rancher
 
-For clusters where all images come from a single private registry, you can configure a default registry:
+For Rancher system images in air-gapped environments, you can configure a global default registry that does not require credentials:
 
-1. In Rancher UI, navigate to **Cluster Management** > your cluster > **Edit Config**.
-2. Under **Advanced Options**, find **Private Registry**.
-3. Enter your registry URL and credentials.
+1. In Rancher UI, navigate to **Global Settings**.
+2. Edit the `system-default-registry` setting.
+3. Enter your registry hostname and optional port, without `http://` or `https://`.
 
-Alternatively, configure this in RKE2 cluster configuration:
+If the registry requires credentials for Rancher-provisioned clusters, Rancher documents configuring the cluster-scoped container registry during cluster creation rather than adding it later from **Edit Config**.
+
+On RKE2 nodes, configure authenticated private registry access in `/etc/rancher/rke2/registries.yaml`:
 
 ```yaml
-# rancher-cluster.yaml - RKE2 cluster with private registry
-apiVersion: provisioning.cattle.io/v1
-kind: Cluster
-metadata:
-  name: my-cluster
-  namespace: fleet-default
-spec:
-  rkeConfig:
-    registries:
-      configs:
-        # Configure authentication for the private registry
-        registry.example.com:
-          authConfigSecretName: registry-secret
-          insecureSkipVerify: false
-      mirrors:
-        # Mirror docker.io images through your private registry
-        docker.io:
-          endpoints:
-            - https://registry.example.com
+# /etc/rancher/rke2/registries.yaml - RKE2 private registry configuration
+mirrors:
+  docker.io:
+    endpoint:
+      - "https://registry.example.com:5000"
+configs:
+  "registry.example.com:5000":
+    auth:
+      username: myuser
+      password: mypassword
+    tls:
+      insecure_skip_verify: false
 ```
+
+Create or update this file on every node that needs the registry, then restart RKE2 for the change to take effect.
 
 ## Step 5: Automate Secret Distribution with ServiceAccount
 
@@ -134,7 +131,7 @@ kubectl patch serviceaccount default \
   -p '{"imagePullSecrets": [{"name": "my-private-registry"}]}'
 ```
 
-Any pod using the default ServiceAccount in that namespace will automatically have access to the private registry.
+New pods that use the default ServiceAccount in that namespace will inherit the registry secret automatically unless they define `imagePullSecrets` explicitly in the pod spec.
 
 ## Troubleshooting Common Issues
 
@@ -155,8 +152,9 @@ kubectl get secret my-private-registry -n my-namespace -o jsonpath='{.data.\.doc
 ```bash
 # Test registry authentication from inside the cluster
 kubectl run test-registry --image=registry.example.com/myorg/test-image:latest \
+  -n my-namespace \
   --restart=Never \
-  --overrides='{"spec":{"imagePullSecrets":[{"name":"my-private-registry"}]}}'
+  --overrides='{"apiVersion":"v1","spec":{"imagePullSecrets":[{"name":"my-private-registry"}]}}'
 ```
 
 ## Conclusion
