@@ -33,12 +33,12 @@ docker run -d \
   --restart=always \
   --name registry-mirror \
   -e REGISTRY_PROXY_REMOTEURL=https://registry-1.docker.io \
-  -e REGISTRY_PROXY_USERNAME=myusername \
-  -e REGISTRY_PROXY_PASSWORD=mypassword \
   -v /data/registry-mirror:/var/lib/registry \
   -p 5000:5000 \
-  registry:2
+  registry:3
 ```
+
+If you need to cache private Docker Hub images, add `REGISTRY_PROXY_USERNAME` and `REGISTRY_PROXY_PASSWORD` and secure the mirror accordingly. Docker Distribution supports only one upstream registry per pull-through cache instance, so run a separate mirror instance for each upstream registry you want to cache.
 
 ## Step 3: Configure Mirroring in RKE2
 
@@ -47,40 +47,12 @@ Create the registries configuration on each RKE2 node:
 ```yaml
 # /etc/rancher/rke2/registries.yaml - RKE2 registry mirror config
 mirrors:
-  # Mirror for Docker Hub images
   "docker.io":
-    endpoints:
+    endpoint:
       - "http://registry-mirror.internal:5000"
-      - "https://registry-1.docker.io"  # Fallback to Docker Hub
-
-  # Mirror for quay.io images
-  "quay.io":
-    endpoints:
-      - "http://registry-mirror.internal:5001"
-      - "https://quay.io"  # Fallback
-
-  # Mirror for gcr.io images
-  "gcr.io":
-    endpoints:
-      - "http://registry-mirror.internal:5002"
-      - "https://gcr.io"  # Fallback
-
-  # Mirror for k8s.gcr.io (now registry.k8s.io)
-  "registry.k8s.io":
-    endpoints:
-      - "http://registry-mirror.internal:5003"
-      - "https://registry.k8s.io"  # Fallback
-
-configs:
-  # Credentials for the mirror if authentication is required
-  "registry-mirror.internal:5000":
-    auth:
-      username: mirror-user
-      password: mirror-password
-    tls:
-      # Skip TLS verification for internal mirror (not recommended in production)
-      insecureSkipVerify: true
 ```
+
+RKE2 still tries the registry's default endpoint as a last resort unless you disable default endpoint fallback.
 
 Restart RKE2 to apply changes:
 
@@ -98,32 +70,33 @@ sudo systemctl restart rke2-agent
 # /etc/rancher/k3s/registries.yaml - K3s registry mirror config
 mirrors:
   "docker.io":
-    endpoints:
-      - "https://registry-mirror.internal"
-      - "https://registry-1.docker.io"
-  "ghcr.io":
-    endpoints:
-      - "https://registry-mirror.internal/ghcr"
-      - "https://ghcr.io"
+    endpoint:
+      - "http://registry-mirror.internal:5000"
 ```
 
 ```bash
-# Restart K3s to apply
+# Restart K3s server nodes
 sudo systemctl restart k3s
+
+# Restart K3s agent nodes
+sudo systemctl restart k3s-agent
 ```
 
-## Step 5: Deploy a Harbor Mirror with Rancher Helm
+## Step 5: Deploy a Harbor Mirror with Helm
 
 Deploy Harbor as a comprehensive mirror/registry using Helm:
 
 ```yaml
 # harbor-mirror-values.yaml - Harbor as pull-through cache
 expose:
-  type: clusterIP
+  type: ingress
+  ingress:
+    hosts:
+      core: harbor.internal
 
 externalURL: https://harbor.internal
 
-# Configure proxy cache projects
+# Configure outbound proxy settings if Harbor needs an HTTP/HTTPS proxy
 proxy:
   httpProxy: ""
   httpsProxy: ""
@@ -136,8 +109,11 @@ persistence:
 ```
 
 ```bash
+helm repo add harbor https://helm.goharbor.io
+helm repo update
 helm install harbor harbor/harbor \
   --namespace harbor \
+  --create-namespace \
   --values harbor-mirror-values.yaml
 ```
 
@@ -152,18 +128,25 @@ curl -X POST "https://harbor.internal/api/v2.0/registries" \
     "name": "docker-hub-proxy",
     "type": "docker-hub",
     "url": "https://hub.docker.com",
+    "credential": {
+      "type": "basic",
+      "access_key": "myusername",
+      "access_secret": "mypassword"
+    },
+    "insecure": false,
     "description": "Docker Hub proxy cache"
   }'
 
 # Create a proxy project
+# Replace 1 with the registry ID returned by Harbor for docker-hub-proxy
 curl -X POST "https://harbor.internal/api/v2.0/projects" \
   -H "Content-Type: application/json" \
   -u admin:password \
   -d '{
     "project_name": "dockerhub",
     "registry_id": 1,
-    "public": true,
     "metadata": {
+      "public": "true",
       "auto_scan": "true"
     }
   }'
@@ -175,14 +158,16 @@ Now configure RKE2 to use Harbor as a mirror:
 # /etc/rancher/rke2/registries.yaml - Using Harbor as mirror
 mirrors:
   "docker.io":
-    endpoints:
-      - "https://harbor.internal/dockerhub"
+    endpoint:
+      - "https://harbor.internal"
+    rewrite:
+      "^(.*)$": "dockerhub/$1"
 configs:
   "harbor.internal":
     tls:
       ca_file: /etc/ssl/certs/harbor-ca.crt
     auth:
-      username: robot-puller
+      username: robot$puller
       password: <robot-token>
 ```
 
@@ -190,14 +175,15 @@ configs:
 
 ```bash
 # Pull an image and check if it was served from the mirror
-crictl pull nginx:latest
+export CRI_CONFIG_FILE=/var/lib/rancher/rke2/agent/etc/crictl.yaml
+/var/lib/rancher/rke2/bin/crictl pull docker.io/library/nginx:latest
 
-# Check RKE2 agent logs for mirror usage
-journalctl -u rke2-agent | grep "mirror"
+# Check the containerd log on the node where the pull ran
+grep -i "docker.io\\|harbor.internal\\|registry-mirror.internal" /var/lib/rancher/rke2/agent/containerd/containerd.log
 
-# Check Harbor proxy cache statistics
-curl -s "https://harbor.internal/api/v2.0/projects/dockerhub" \
-  -u admin:password | jq '.metadata'
+# Check which repositories have been cached in the Harbor proxy project
+curl -s "https://harbor.internal/api/v2.0/projects/dockerhub/repositories" \
+  -u admin:password | jq '.[].name'
 ```
 
 ## Step 8: Configure Automated Warming (Pre-caching)
@@ -210,11 +196,11 @@ Pre-populate the mirror with commonly used images:
 
 MIRROR="harbor.internal/dockerhub"
 IMAGES=(
-  "nginx:1.25"
-  "alpine:3.18"
-  "busybox:latest"
-  "redis:7"
-  "postgres:15"
+  "library/nginx:1.25"
+  "library/alpine:3.18"
+  "library/busybox:latest"
+  "library/redis:7"
+  "library/postgres:15"
 )
 
 for IMAGE in "${IMAGES[@]}"; do
@@ -226,16 +212,16 @@ done
 ## Troubleshooting
 
 ```bash
-# Check if containerd is using the mirror
-cat /var/lib/rancher/rke2/agent/etc/containerd/config.toml | grep -A 5 mirrors
+# Check the rendered containerd mirror configuration
+grep -A 10 "registry-mirror.internal" /var/lib/rancher/rke2/agent/etc/containerd/config.toml
 
 # Test mirror connectivity
 curl -I http://registry-mirror.internal:5000/v2/
 
 # Check containerd logs
-journalctl -u rke2-agent -f | grep -i "registry\|mirror\|pull"
+tail -f /var/lib/rancher/rke2/agent/containerd/containerd.log | grep -i "registry\|mirror\|pull"
 ```
 
 ## Conclusion
 
-Registry mirroring significantly improves cluster reliability and performance by reducing dependency on external registries and cutting down image pull times. For production environments, deploy Harbor as a comprehensive mirror solution that provides additional features like vulnerability scanning and access control. Always configure fallback endpoints to ensure workloads can still pull images even if the mirror is unavailable.
+Registry mirroring significantly improves cluster reliability and performance by reducing dependency on external registries and cutting down image pull times. For production environments, deploy Harbor as a comprehensive mirror solution that provides additional features like vulnerability scanning and access control. By default, RKE2 and K3s still try the registry's default endpoint unless that fallback has been disabled, so test how that behavior fits restricted or air-gapped environments.
