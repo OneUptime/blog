@@ -16,28 +16,28 @@ Slow Portainer API responses affect both the UI experience and CI/CD pipelines t
 # Baseline measurement - measure key API endpoints
 
 PORTAINER_URL="https://portainer.example.com"
-TOKEN="your_api_token"
+ACCESS_TOKEN="your_access_token"
 
 # Measure endpoint listing (often the slowest)
 time curl -s \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "X-API-Key: $ACCESS_TOKEN" \
   "$PORTAINER_URL/api/endpoints" > /dev/null
 
 # Measure container listing
 time curl -s \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "X-API-Key: $ACCESS_TOKEN" \
   "$PORTAINER_URL/api/endpoints/1/docker/containers/json" > /dev/null
 
 # Measure stack listing
 time curl -s \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "X-API-Key: $ACCESS_TOKEN" \
   "$PORTAINER_URL/api/stacks" > /dev/null
 
 # Continuous monitoring script
 #!/bin/bash
 while true; do
   START=$(date +%s%N)
-  curl -s -H "Authorization: Bearer $TOKEN" \
+  curl -s -H "X-API-Key: $ACCESS_TOKEN" \
     "$PORTAINER_URL/api/endpoints" > /dev/null
   END=$(date +%s%N)
   MS=$(( (END - START) / 1000000 ))
@@ -48,7 +48,7 @@ done
 
 ## Step 2: Move Portainer Database to SSD
 
-The embedded boltdb database is the primary bottleneck:
+The embedded BoltDB database and its underlying storage are often a bottleneck:
 
 ```bash
 # Check current storage location
@@ -70,8 +70,6 @@ cp -a /path/to/old/data /opt/ssd/portainer/data
 
 ```yaml
 # docker-compose.yml - SSD-backed storage
-version: "3.8"
-
 services:
   portainer:
     image: portainer/portainer-ce:latest
@@ -117,8 +115,12 @@ server {
   location /api/endpoints {
     proxy_pass http://portainer;
     proxy_cache portainer_cache;
+    proxy_cache_key "$scheme$proxy_host$request_uri$http_x_api_key$http_authorization";
     proxy_cache_valid 200 30s;  # Cache for 30 seconds
     proxy_cache_methods GET;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
     add_header X-Cache-Status $upstream_cache_status;
   }
 
@@ -145,14 +147,12 @@ server {
 
 ```yaml
 # docker-compose.yml - Resources tuned for API performance
-version: "3.8"
-
 services:
   portainer:
     image: portainer/portainer-ce:latest
     command:
       # Increase snapshot interval to reduce background load
-      - "--snapshot-interval=300"
+      - "--snapshot-interval=10m"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - portainer_data:/data
@@ -176,8 +176,9 @@ Portainer proxies Docker API calls - if the Docker daemon is slow, Portainer is 
 
 ```bash
 # Check Docker daemon API response time directly
+DOCKER_API_VERSION=$(docker version --format '{{.Server.APIVersion}}')
 time curl -s --unix-socket /var/run/docker.sock \
-  http://localhost/containers/json > /dev/null
+  "http://localhost/v${DOCKER_API_VERSION}/containers/json" > /dev/null
 
 # If Docker API is slow, check daemon health
 docker info
@@ -186,20 +187,18 @@ docker info
 # Check Docker daemon logs for slow queries
 journalctl -u docker --since "1 hour ago" | grep -i "slow\|timeout\|error"
 
-# Monitor Docker daemon goroutines (high count = performance issue)
+# Optional: inspect Docker daemon goroutine count for troubleshooting context
 docker info --format '{{.NGoroutines}}'
-# Normal: < 100. Concerning: > 500
+# Correlate this with logs and resource usage rather than relying on a fixed threshold.
 
-# Restart Docker if goroutine count is excessive
+# Restart Docker only after you've confirmed a daemon-side issue and accounted for workload impact
 sudo systemctl restart docker
 ```
 
 ## Step 6: API Response Time Monitoring
 
 ```yaml
-# Prometheus + Grafana to track API response times over time
-version: "3.8"
-
+# Prometheus + Blackbox Exporter to track API response times over time
 services:
   blackbox:
     image: prom/blackbox-exporter:latest
@@ -221,7 +220,7 @@ scrape_configs:
       module: [http_2xx]
     static_configs:
       - targets:
-          - https://portainer.example.com/api/status
+          - https://portainer.example.com/api/system/status
           - https://portainer.example.com/api/endpoints
           - https://portainer.example.com/api/stacks
     relabel_configs:
@@ -242,7 +241,7 @@ modules:
     http:
       method: GET
       headers:
-        Authorization: "Bearer YOUR_TOKEN"
+        X-API-Key: "YOUR_ACCESS_TOKEN"
 ```
 
 ## Conclusion
