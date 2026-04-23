@@ -8,71 +8,79 @@ Description: Guide to requesting IPv6 address space from APNIC for organizations
 
 ## What is APNIC?
 
-APNIC (Asia-Pacific Network Information Centre) is the RIR responsible for IPv6 address allocation across the Asia-Pacific region, covering 56 economies from Afghanistan to Fiji.
+APNIC (Asia-Pacific Network Information Centre) is the RIR responsible for IPv6 address allocation across the Asia-Pacific region, covering 56 economies across Asia and Oceania.
 
 ## Membership Types
 
-APNIC uses a tiered fee structure based on total IPv4 and IPv6 holdings:
+APNIC does not use simple ISP size tiers for current pricing. New applicants pay a once-off sign-up fee and an annual fee based on total IPv4 or IPv6 holdings:
 
-| Category | IPv4 Holdings | Annual Fee (approx.) |
-|----------|-------------|---------------------|
-| Associate | None | $500 |
-| Small ISP | /22-/20 | $1,500 |
-| Medium ISP | /19-/18 | $4,000 |
-| Large ISP | /17 and above | $8,000+ |
+| Item | Fee |
+|----------|---------------------|
+| Sign-up fee | AUD 500 once-off |
+| Associate membership (no chargeable IP resources) | AUD 500 annual fee |
+| Members with IP holdings | Annual fee calculated from the current APNIC Member Fee Schedule based on address holdings |
 
 ## Becoming an APNIC Member
 
 ### 1. Pre-registration Check
 
-Verify your organization is in the APNIC service region and holds (or intends to obtain) an ASN.
+Verify your organization is legally present in, or operates networks located in, the APNIC service region, and confirm whether your economy is served directly by APNIC or by an NIR.
 
 ### 2. Apply for Membership
 
-Visit `https://www.apnic.net/membership/apply/` and complete the online form:
+Visit `https://www.apnic.net/get-ip/` and complete the New Member and Internet Resource Application Form at `https://membership-application.apnic.net`:
 - Organization name and type
-- Country of operation
-- Technical contact details
+- Country/economy of operation
+- Technical and abuse contact details
 - Existing IP resources (if any)
+- Supporting documents for your organization and network plan
 
 ### 3. Sign the Membership Agreement
 
-Agree to APNIC's membership terms which include the acceptable use policy for IP resources.
+Agree to APNIC's membership agreement, duties, and responsibilities.
 
 ## Requesting IPv6 Address Space
 
 ### For New Members (Initial Allocation)
 
-New members who are ISPs receive a /32 automatically:
+New applicants that qualify as LIRs can request an initial IPv6 allocation during the membership and resource application process:
 
-1. Log into MyAPNIC at `myapnic.net`
-2. Navigate to **Resources → IPv6 → Request IPv6**
-3. Select "Initial allocation for LIR"
-4. The /32 is typically approved within 1-2 business days
+1. Complete the New Member and Internet Resource Application Form at `https://membership-application.apnic.net`
+2. Request IPv6 resources as part of the application
+3. The minimum IPv6 allocation size is /32
+4. APNIC states membership and resource evaluations typically take 2-5 working days, and delegation occurs after payment
+
+Without existing IPv4 space, the applicant must be an LIR, not an end site, and plan within two years to provide IPv6 connectivity to others/end users.
 
 ### For Existing Members (Additional Space)
 
-To request a /31 or /30, demonstrate utilization of your current /32:
-- Provide assignment documentation (at least 50% of sub-assignments made)
-- Submit through MyAPNIC with a utilization report
+Existing APNIC account holders with no IPv6 space can qualify under the matching IPv6 policy:
+- An IPv4 allocation qualifies for a /32 IPv6 block
+- An IPv4 assignment qualifies for a /48 IPv6 block
+
+If you already hold IPv6 and need more space, APNIC evaluates subsequent allocations under the HD-Ratio policy:
+- Meet the HD-Ratio threshold of 0.94, measured in /56 assignments; or
+- Document another valid technical reason under APNIC's IPv6 guidelines
+
+When approved, APNIC generally makes an additional allocation that doubles the existing space (for example, /32 to /31), preferably from adjacent space where possible.
 
 ### End-User Assignments
 
-Non-ISP organizations can receive a PI /48 directly from APNIC:
+Organizations that need provider-independent IPv6 space can receive an initial PI /48 directly from APNIC:
 
 ```text
 Request criteria:
-- Demonstrate the need for globally unique IPv6 addressing
-- Provide a basic network plan
-- Either hold an ASN or plan to obtain one
+- Be eligible for an APNIC account
+- Commit to using and advertising the IPv6 space within 12 months
+- Request more than /48 only with additional justification
 ```
 
 ## Creating Whois Objects in APNIC DB
 
-After allocation, register your network objects:
+APNIC or the relevant NIR creates the top-level `inet6num` object for direct delegations. Members are responsible for registering downstream `inet6num` assignments/sub-allocations and any `route6` objects they need:
 
 ```text
-# inet6num object
+# example inet6num object for a direct allocation
 
 inet6num: 2001:db8::/32
 netname:  YOUR-NET-AP
@@ -80,33 +88,35 @@ descr:    Your ISP Name
 country:  AU
 admin-c:  YO1-AP
 tech-c:   YO1-AP
+mnt-lower: MAINT-YOUR-ORG-AP
+mnt-routes: MAINT-YOUR-ORG-AP
 mnt-by:   MAINT-YOUR-ORG-AP
+mnt-irt:  IRT-YOUR-ORG-AP
 status:   ALLOCATED PORTABLE
+source:   APNIC
 
 # route6 object
 route6: 2001:db8::/32
 descr: YOUR-ORG IPv6 routing
-origin: AS65001
+origin: AS1234
+mnt-routes: MAINT-YOUR-ORG-AP
 mnt-by: MAINT-YOUR-ORG-AP
+source: APNIC
 ```
 
-Submit objects via the APNIC Whois portal at `wq.apnic.net` or via email to `auto-dbm@apnic.net`.
+Create and update objects through MyAPNIC or by sending plain-text email updates to `auto-dbm@apnic.net`.
 
 ## RPKI with APNIC
 
-APNIC provides hosted RPKI. Create ROAs through MyAPNIC:
+APNIC provides hosted RPKI through MyAPNIC. To create ROAs, enable Resource Certification first, then use Route Management:
 
-1. Log into MyAPNIC
-2. Go to **Security → RPKI → Create ROA**
-3. Set prefix, maximum length, and originating ASN
+1. Log into MyAPNIC at `https://my.apnic.net`
+2. If needed, enable **Resources → Resource Certification**
+3. Go to **Resources → Route Management**
+4. Create or edit the route entry with the prefix, origin ASN, and most specific announcement
 
-```bash
-# Verify your ROA is visible
-rpki-client -v -r /var/cache/rpki-client
-# Or use an online RPKI validator
-curl https://rpki-validator.apnic.net/api/v1/validity/AS65001/2001:db8::/32
-```
+ROA creation in MyAPNIC requires the appropriate Resource Certification permission and two-factor authentication. Use a relying-party validator such as `rpki-client` or Routinator to confirm the published ROA/VRP for your prefix and origin ASN.
 
 ## Conclusion
 
-APNIC membership provides ISPs in the Asia-Pacific region with automatic /32 IPv6 allocations. The process through MyAPNIC is streamlined, and RPKI support is built into the portal for immediate route security configuration.
+APNIC Members and new applicants can obtain IPv6 resources under current APNIC policy criteria: a minimum /32 allocation for qualifying LIRs and a /48 PI assignment for eligible end users. Once the account is active, MyAPNIC is used to manage delegated resources, route objects, and hosted RPKI.
