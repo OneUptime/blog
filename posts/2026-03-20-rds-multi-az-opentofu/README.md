@@ -8,7 +8,7 @@ Description: Learn how to deploy RDS instances with Multi-AZ enabled using OpenT
 
 ## Introduction
 
-RDS Multi-AZ deploys a primary database instance and a synchronous standby replica in a different AZ. AWS automatically fails over to the standby during a primary failure, typically within 1-2 minutes. This is the recommended configuration for any production database requiring high availability.
+RDS Multi-AZ deploys a primary database instance and a synchronous standby replica in a different AZ. AWS automatically fails over to the standby during a primary failure, typically within 60-120 seconds. This is the recommended configuration for any production database requiring high availability.
 
 ## Prerequisites
 
@@ -63,27 +63,24 @@ resource "aws_db_instance" "multi_az" {
 }
 ```
 
-## Step 2: Configure CloudWatch Alarms for Failover Events
+## Step 2: Configure RDS Event Notifications and CloudWatch Alarms
 
 ```hcl
-# Alarm that triggers on Multi-AZ failover events
+# RDS failover notifications are delivered through RDS events
+resource "aws_db_event_subscription" "failover" {
+  name      = "${var.project_name}-rds-failover"
+  sns_topic = var.ops_sns_topic_arn
 
-resource "aws_cloudwatch_metric_alarm" "failover" {
-  alarm_name          = "${var.project_name}-rds-failover"
-  alarm_description   = "RDS Multi-AZ failover occurred"
-  comparison_operator = "GreaterThanOrEqualToThreshold"
-  evaluation_periods  = 1
-  metric_name         = "FailedSQLServerAgentJobsCount"  # For SQL Server
-  namespace           = "AWS/RDS"
-  period              = 60
-  statistic           = "Sum"
-  threshold           = 1
+  source_type = "db-instance"
+  source_ids  = [aws_db_instance.multi_az.identifier]
 
-  dimensions = {
-    DBInstanceIdentifier = aws_db_instance.multi_az.id
-  }
-
-  alarm_actions = [var.ops_sns_topic_arn]
+  event_categories = [
+    "availability",
+    "failover",
+    "failure",
+    "maintenance",
+    "notification",
+  ]
 }
 
 # Alarm for freeable memory dropping too low (indicates memory pressure)
@@ -98,7 +95,7 @@ resource "aws_cloudwatch_metric_alarm" "low_memory" {
   threshold           = 268435456  # 256 MB in bytes
 
   dimensions = {
-    DBInstanceIdentifier = aws_db_instance.multi_az.id
+    DBInstanceIdentifier = aws_db_instance.multi_az.identifier
   }
 
   alarm_actions = [var.ops_sns_topic_arn]
@@ -113,10 +110,11 @@ aws rds reboot-db-instance \
   --db-instance-identifier my-project-db-multi-az \
   --force-failover
 
-# Check the instance availability zone
+# Check the current primary and secondary Availability Zones
+# (reported AZs can take several minutes to update after failover)
 aws rds describe-db-instances \
   --db-instance-identifier my-project-db-multi-az \
-  --query 'DBInstances[0].{AZ: AvailabilityZone, Status: DBInstanceStatus}'
+  --query 'DBInstances[0].{PrimaryAZ: AvailabilityZone, SecondaryAZ: SecondaryAvailabilityZone, Status: DBInstanceStatus}'
 ```
 
 ## Step 4: Outputs
@@ -127,8 +125,8 @@ output "db_endpoint" {
   value       = aws_db_instance.multi_az.endpoint
 }
 
-output "db_reader_endpoint" {
-  description = "Standby endpoint (not directly accessible in Multi-AZ)"
+output "db_host" {
+  description = "Database hostname"
   value       = aws_db_instance.multi_az.address
 }
 ```
@@ -143,4 +141,4 @@ tofu apply
 
 ## Conclusion
 
-RDS Multi-AZ provides automatic database failover with typically 1-2 minutes of downtime, during which the DNS endpoint automatically redirects to the standby. Unlike read replicas, the Multi-AZ standby is not accessible for reads-it exists solely for failover. For both high availability AND read scaling, combine Multi-AZ with read replicas. Always test failover in a maintenance window to validate your application's reconnection logic.
+RDS Multi-AZ provides automatic database failover with typically 60-120 seconds of downtime, during which the DNS record for the DB endpoint changes to point to the standby. Unlike read replicas, the Multi-AZ standby is not accessible for reads; it exists solely for failover. For both high availability AND read scaling, combine Multi-AZ with read replicas. Always test failover in a maintenance window to validate your application's reconnection logic.
