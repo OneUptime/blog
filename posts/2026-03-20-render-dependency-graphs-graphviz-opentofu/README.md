@@ -55,7 +55,7 @@ tofu graph | fdp -Tsvg -o graph-fdp.svg
 tofu graph | circo -Tsvg -o graph-circo.svg
 ```
 
-For most OpenTofu graphs, `dot` (hierarchical) is the best choice because it shows the apply order from top to bottom clearly.
+For most OpenTofu graphs, `dot` (hierarchical) is the best choice because it shows dependency direction from top to bottom clearly.
 
 ## Controlling Graph Size and Resolution
 
@@ -65,37 +65,42 @@ For large configurations, the default rendering can be too dense:
 # Increase DPI for high-resolution PNG
 tofu graph | dot -Tpng -Gdpi=150 -o graph-hires.png
 
-# Set a fixed page size for PDF output
+# Set a maximum drawing size for PDF output
 tofu graph | dot -Tpdf -Gsize="20,30" -o graph-large.pdf
 
-# Scale the graph to fit within a size
-tofu graph | dot -Tpng -Gratio=fill -Gsize="24,18\!" -o graph-scaled.png
+# Scale the graph to fill a target size
+tofu graph | dot -Tpng -Gratio=fill -Gsize="24,18" -o graph-scaled.png
 ```
 
 ## Adding Custom Styling
 
-Graphviz allows inline attribute overrides. Create a wrapper script that appends styling:
+Graphviz allows command-line attribute overrides. Create a wrapper script that applies styling:
 
 ```bash
 #!/usr/bin/env bash
 # styled-graph.sh - renders a styled OpenTofu dependency graph
 
-tofu graph | sed 's/digraph {/digraph {\n    graph [bgcolor="white" fontname="Helvetica"]\n    node [fontname="Helvetica" fontsize=10]\n    edge [color="gray50"]/' | \
-  dot -Tsvg -o styled-graph.svg
+tofu graph | dot -Tsvg \
+  -Gbgcolor=white \
+  -Gfontname=Helvetica \
+  -Nfontname=Helvetica \
+  -Nfontsize=10 \
+  -Ecolor=gray50 \
+  -o styled-graph.svg
 
 echo "Rendered: styled-graph.svg"
 ```
 
-## Rendering Subgraphs for Modules
+## Rendering Separate Graphs for Root Modules
 
-For configurations with multiple modules, render each module separately for clarity:
+If your infrastructure is split across multiple standalone root modules, render each directory separately for clarity:
 
 ```bash
-# Render the networking module graph
-cd modules/networking
+# Render the networking root module graph
+cd environments/networking
 tofu graph | dot -Tsvg -o ../../docs/networking-graph.svg
 
-# Render the database module graph
+# Render the database root module graph
 cd ../database
 tofu graph | dot -Tsvg -o ../../docs/database-graph.svg
 ```
@@ -129,7 +134,7 @@ graph:
 	@echo "Graph rendered to docs/graph.svg"
 
 graph-destroy:
-	tofu graph -type=destroy-plan | dot -Tsvg -o docs/destroy-graph.svg
+	tofu graph -type=plan-destroy | dot -Tsvg -o docs/destroy-graph.svg
 	@echo "Destroy graph rendered to docs/destroy-graph.svg"
 ```
 
