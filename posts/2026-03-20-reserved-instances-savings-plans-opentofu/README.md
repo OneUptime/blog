@@ -8,7 +8,7 @@ Description: Learn how to manage AWS Reserved Instances and Savings Plans commit
 
 ---
 
-Reserved Instances and Savings Plans can reduce AWS compute costs by 30-72% compared to on-demand pricing. OpenTofu doesn't provision RIs or Savings Plans directly (they're purchasing commitments, not infrastructure), but it helps you track what you've committed to and manage the resources that benefit from those commitments.
+Reserved Instances and Savings Plans can reduce AWS compute costs by 30-72% compared to on-demand pricing. OpenTofu doesn't provision EC2 Reserved Instances or Savings Plans directly (they're purchasing commitments rather than EC2 infrastructure resources), but it helps you track what you've committed to and manage the resources that benefit from those commitments.
 
 ## Commitment Strategy
 
@@ -25,7 +25,7 @@ graph LR
 # reserved_instances.tf - document RI commitments alongside infrastructure
 
 locals {
-  # Document active reservations for reference
+  # Document active EC2 reservations for reference
   reserved_instances = {
     "m5.large-us-east-1" = {
       instance_type  = "m5.large"
@@ -33,7 +33,7 @@ locals {
       region         = "us-east-1"
       term           = "1-year"
       payment        = "partial-upfront"
-      expires        = "2025-03-15"
+      expires        = "2027-03-15"
       monthly_saving = 45.00  # Savings vs on-demand
     }
   }
@@ -41,26 +41,26 @@ locals {
 
 # Ensure ASG uses the committed instance type
 resource "aws_autoscaling_group" "app" {
-  # Match the reserved instance type
+  vpc_zone_identifier = var.private_subnet_ids
+
+  # Match the instance type you expect the RI discount to cover
   launch_template {
     id      = aws_launch_template.app.id
     version = "$Latest"
   }
 
-  # Maintain at least as many instances as RIs purchased
+  # Keep baseline On-Demand capacity aligned with the RI-covered workload
   min_size         = local.reserved_instances["m5.large-us-east-1"].count
   desired_capacity = local.reserved_instances["m5.large-us-east-1"].count
   max_size         = local.reserved_instances["m5.large-us-east-1"].count * 3
 }
 
 resource "aws_launch_template" "app" {
-  # Must match RI: same instance type, region, and tenancy (default)
-  instance_type = "m5.large"
+  image_id = data.aws_ami.app.id
 
-  # On-demand only in base capacity to maximize RI coverage
-  instance_market_options {
-    # Remove this block - on-demand uses RIs automatically
-  }
+  # Match the RI's platform, tenancy, and scope.
+  # Regional Linux/Unix default-tenancy RIs can be size-flexible within a family.
+  instance_type = "m5.large"
 }
 ```
 
@@ -69,9 +69,12 @@ resource "aws_launch_template" "app" {
 ```hcl
 # Use RIs for baseline, spot for burst
 resource "aws_autoscaling_group" "mixed" {
+  vpc_zone_identifier = var.private_subnet_ids
+
   mixed_instances_policy {
     instances_distribution {
-      on_demand_base_capacity                  = 2  # Always on-demand (covered by RIs)
+      on_demand_base_capacity                  = 2  # Baseline On-Demand capacity intended for RI coverage
+      on_demand_allocation_strategy            = "prioritized"
       on_demand_percentage_above_base_capacity = 0  # All above base is spot
       spot_allocation_strategy                 = "price-capacity-optimized"
     }
@@ -82,9 +85,9 @@ resource "aws_autoscaling_group" "mixed" {
         version            = "$Latest"
       }
 
-      # Override instance types for spot diversification
+      # Put the RI-covered instance type first for On-Demand capacity
       override {
-        instance_type = "m5.large"   # RI type
+        instance_type = "m5.large"   # RI-covered On-Demand type
       }
       override {
         instance_type = "m5a.large"  # Spot alternative
@@ -103,50 +106,71 @@ resource "aws_autoscaling_group" "mixed" {
 ## Compute Savings Plan Coverage Check
 
 ```hcl
-# Use AWS Cost Explorer data to validate coverage
-data "aws_ce_cost_and_usage" "compute" {
-  # This data source requires the aws provider >= 4.0
-  time_period {
-    start = formatdate("YYYY-MM-01", timeadd(timestamp(), "-720h"))
-    end   = formatdate("YYYY-MM-01", timestamp())
+# Use AWS Budgets to alert when Savings Plans coverage drops
+resource "aws_budgets_budget" "savings_plans_coverage" {
+  name         = "compute-savings-plans-coverage"
+  budget_type  = "SAVINGS_PLANS_COVERAGE"
+  limit_amount = "100.0"
+  limit_unit   = "PERCENTAGE"
+  time_unit    = "MONTHLY"
+
+  notification {
+    comparison_operator       = "LESS_THAN"
+    threshold                 = 80
+    threshold_type            = "PERCENTAGE"
+    notification_type         = "ACTUAL"
+    subscriber_sns_topic_arns = [aws_sns_topic.cost_alerts.arn]
   }
-
-  granularity = "MONTHLY"
-
-  filter = jsonencode({
-    Dimensions = {
-      Key    = "SERVICE"
-      Values = ["Amazon Elastic Compute Cloud - Compute"]
-    }
-  })
-
-  metrics = ["UnblendedCost"]
 }
 ```
 
-## RI Expiry Monitoring
+## RI Monitoring
+
+AWS Budgets can alert on RI utilization, while reservation expiration alerts are configured in Cost Explorer for 60, 30, or 7 days before expiry, or on the expiration day.
 
 ```hcl
-# CloudWatch alarm for RI expiry (notify 60 days before expiry)
-resource "aws_cloudwatch_metric_alarm" "ri_expiry" {
-  alarm_name          = "reserved-instance-expiring-soon"
-  comparison_operator = "LessThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "RIUtilization"
-  namespace           = "AWS/Reservations"
-  period              = 86400
-  statistic           = "Average"
-  threshold           = 100
+# Use AWS Budgets for RI utilization alerts
+resource "aws_budgets_budget" "ri_utilization" {
+  name         = "ec2-ri-utilization"
+  budget_type  = "RI_UTILIZATION"
+  limit_amount = "100.0"  # RI utilization budgets use a 100% target
+  limit_unit   = "PERCENTAGE"
+  time_unit    = "MONTHLY"
 
-  alarm_description = "Reserved instance utilization below 100% - check for upcoming expirations"
-  alarm_actions     = [aws_sns_topic.cost_alerts.arn]
+  # RI utilization budgets require a service filter
+  cost_filter {
+    name   = "Service"
+    values = ["Amazon EC2"]
+  }
+
+  # The AWS provider example includes these cost type settings for RI utilization budgets
+  cost_types {
+    include_credit             = false
+    include_discount           = false
+    include_other_subscription = false
+    include_recurring          = false
+    include_refund             = false
+    include_subscription       = true
+    include_support            = false
+    include_tax                = false
+    include_upfront            = false
+    use_blended                = false
+  }
+
+  notification {
+    comparison_operator       = "LESS_THAN"
+    threshold                 = 90
+    threshold_type            = "PERCENTAGE"
+    notification_type         = "ACTUAL"
+    subscriber_sns_topic_arns = [aws_sns_topic.cost_alerts.arn]
+  }
 }
 ```
 
 ## Best Practices
 
 - Analyze 3 months of on-demand usage before purchasing RIs - look for stable baseline workloads that run consistently.
-- Use Compute Savings Plans instead of EC2 RIs for flexibility - they apply across instance families, sizes, and regions.
-- Set ASG `min_size` to match RI count to ensure you're always utilizing your reservations.
-- Alert on RI expiry at 90 days and 30 days before expiration - renewal decisions should be made in advance.
-- For RDS, use Reserved DB Instances tied to the specific instance class defined in your OpenTofu configuration.
+- Use Compute Savings Plans instead of EC2 RIs for flexibility - they apply across instance families, sizes, operating systems, tenancies, and regions.
+- Keep ASG baseline On-Demand capacity aligned with the EC2 RI coverage you expect to use.
+- Use Cost Explorer reservation expiration alerts at 60, 30, or 7 days before expiration, and optionally on the expiration day.
+- For RDS, use Reserved DB Instances that match the DB instance class and engine configuration in your OpenTofu setup.
