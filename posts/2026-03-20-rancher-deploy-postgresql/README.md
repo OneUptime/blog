@@ -16,6 +16,7 @@ PostgreSQL is a powerful, enterprise-grade open-source relational database. This
 - Helm 3.x installed
 - A StorageClass for persistent volumes
 - kubectl with namespace admin access
+- cert-manager installed in the cluster
 
 ## Method 1: Bitnami PostgreSQL Helm Chart
 
@@ -23,6 +24,8 @@ PostgreSQL is a powerful, enterprise-grade open-source relational database. This
 
 ```yaml
 # postgresql-values.yaml - Production PostgreSQL configuration
+
+architecture: replication
 
 auth:
   postgresPassword: "SecureP0stgresP@ss"
@@ -96,14 +99,38 @@ helm install cnpg cnpg/cloudnative-pg \
   --create-namespace \
   --wait
 
-# Verify operator is running
-kubectl get pods -n cnpg-system
+# Install the Barman Cloud Plugin for backups
+kubectl apply -f \
+  https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/v0.12.0/manifest.yaml
+
+# Verify operator and backup plugin are running
+kubectl rollout status deployment -n cnpg-system cnpg-cloudnative-pg
+kubectl rollout status deployment -n cnpg-system barman-cloud
 ```
 
 ### Deploy a PostgreSQL Cluster
 
 ```yaml
-# postgresql-cluster.yaml - CloudNativePG cluster definition
+# postgresql-cluster.yaml - Barman ObjectStore and CloudNativePG cluster definition
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: postgres-prod-backup
+  namespace: databases
+spec:
+  configuration:
+    destinationPath: s3://my-postgres-backups/prod
+    s3Credentials:
+      accessKeyId:
+        name: s3-credentials
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: s3-credentials
+        key: ACCESS_SECRET_KEY
+    wal:
+      compression: gzip
+  retentionPolicy: "30d"
+---
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -143,24 +170,12 @@ spec:
       wal_level: logical
       archive_mode: "on"
 
-  # Monitoring configuration
-  monitoring:
-    enablePodMonitor: true
-
   # Backup configuration
-  backup:
-    barmanObjectStore:
-      destinationPath: s3://my-postgres-backups/prod
-      s3Credentials:
-        accessKeyId:
-          name: s3-credentials
-          key: ACCESS_KEY_ID
-        secretAccessKey:
-          name: s3-credentials
-          key: ACCESS_SECRET_KEY
-      wal:
-        compression: gzip
-    retentionPolicy: "30d"
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: postgres-prod-backup
 
   # Bootstrap with a new cluster
   bootstrap:
@@ -174,6 +189,9 @@ spec:
 ### Create Application Secret
 
 ```bash
+# Create the database namespace
+kubectl create namespace databases --dry-run=client -o yaml | kubectl apply -f -
+
 # Create the application user secret
 kubectl create secret generic app-db-secret \
   --from-literal=username=appuser \
@@ -219,10 +237,13 @@ metadata:
   namespace: databases
 spec:
   # Run at 2 AM daily
-  schedule: "0 2 * * *"
+  schedule: "0 0 2 * * *"
   backupOwnerReference: self
   cluster:
     name: postgres-prod
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
   immediate: true  # Run immediately on creation
 ```
 
@@ -234,7 +255,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: my-app
-  namespace: production
+  namespace: databases
 spec:
   template:
     spec:
@@ -247,7 +268,7 @@ spec:
               value: postgres-prod-rw.databases.svc.cluster.local
             - name: DB_READONLY_HOST
               # Read-only service for SELECT queries
-              value: postgres-prod-r.databases.svc.cluster.local
+              value: postgres-prod-ro.databases.svc.cluster.local
             - name: DB_PORT
               value: "5432"
             - name: DB_NAME
@@ -289,7 +310,7 @@ spec:
 
 ```bash
 # Check CloudNativePG operator logs
-kubectl logs -n cnpg-system deployment/cnpg-controller-manager --tail=100
+kubectl logs -n cnpg-system deployment/cnpg-cloudnative-pg --tail=100
 
 # View cluster events
 kubectl describe cluster postgres-prod -n databases | tail -30
@@ -298,7 +319,7 @@ kubectl describe cluster postgres-prod -n databases | tail -30
 kubectl logs -n databases postgres-prod-1 --tail=50
 
 # Perform a manual failover
-kubectl cnpg promote postgres-prod postgres-prod-2 -n databases
+kubectl cnpg promote -n databases postgres-prod postgres-prod-2
 ```
 
 ## Conclusion
