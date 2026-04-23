@@ -35,19 +35,22 @@ helm repo update
 
 # Install on each downstream cluster
 for cluster_kubeconfig in /tmp/kc-cluster-*.yaml; do
+  cluster_name="$(basename "${cluster_kubeconfig}" .yaml | sed 's/^kc-cluster-//')"
   helm install rancher-monitoring \
     rancher-charts/rancher-monitoring \
     -n cattle-monitoring-system \
     --create-namespace \
     --kubeconfig "${cluster_kubeconfig}" \
+    --set prometheus.prometheusSpec.externalLabels.cluster="${cluster_name}" \
     --set prometheus.prometheusSpec.retention=3d \
-    --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=20Gi
+    --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=20Gi \
+    --set prometheus.thanosServiceExternal.enabled=true
 done
 ```
 
 ## Step 2: Option B - Set Up Prometheus Federation
 
-On the central monitoring cluster, configure federation:
+On the central monitoring cluster, configure federation against downstream Prometheus endpoints that are routable from the central cluster:
 
 ```yaml
 # central-prometheus-additional-scrape.yaml
@@ -61,7 +64,7 @@ On the central monitoring cluster, configure federation:
       - '{__name__=~"up|container_cpu_usage_seconds_total|container_memory_working_set_bytes|kube_pod_status_phase"}'
   static_configs:
     - targets:
-        - 'prometheus-operated.cattle-monitoring-system.svc.cluster-1.local:9090'
+        - 'prometheus-cluster-1.example.com:9090'
       labels:
         cluster: cluster-1
         environment: production
@@ -74,7 +77,7 @@ On the central monitoring cluster, configure federation:
       - '{job!=""}'
   static_configs:
     - targets:
-        - 'prometheus-operated.cattle-monitoring-system.svc.cluster-2.local:9090'
+        - 'prometheus-cluster-2.example.com:9090'
       labels:
         cluster: cluster-2
         environment: staging
@@ -95,25 +98,33 @@ kubectl patch prometheus -n cattle-monitoring-system rancher-monitoring-promethe
 ## Step 3: Option C - Set Up Thanos for Long-Term Storage
 
 ```bash
+# Create the object storage secret on each downstream cluster
+for cluster_kubeconfig in /tmp/kc-cluster-*.yaml; do
+  kubectl --kubeconfig "${cluster_kubeconfig}" create secret generic thanos-objstore-secret \
+    -n cattle-monitoring-system \
+    --from-file=objstore.yml=thanos-objstore.yml
+done
+
 # On each downstream cluster, configure Thanos Sidecar
-kubectl patch prometheus -n cattle-monitoring-system rancher-monitoring-prometheus \
-  --type=merge --patch '{
-    "spec": {
-      "thanos": {
-        "image": "quay.io/thanos/thanos:v0.34.0",
-        "objectStorageConfig": {
-          "secret": {
+for cluster_kubeconfig in /tmp/kc-cluster-*.yaml; do
+  kubectl --kubeconfig "${cluster_kubeconfig}" patch prometheus -n cattle-monitoring-system rancher-monitoring-prometheus \
+    --type=merge --patch '{
+      "spec": {
+        "thanos": {
+          "version": "v0.39.2",
+          "image": "quay.io/thanos/thanos:v0.39.2",
+          "objectStorageConfig": {
             "name": "thanos-objstore-secret",
             "key": "objstore.yml"
           }
         }
       }
-    }
-  }'
+    }'
+done
 ```
 
 ```yaml
-# thanos-objstore-secret - store metrics in S3
+# thanos-objstore.yml - store metrics in S3
 type: S3
 config:
   bucket: my-thanos-metrics
@@ -129,10 +140,11 @@ helm repo add bitnami https://charts.bitnami.com/bitnami
 helm install thanos bitnami/thanos \
   --namespace monitoring \
   --create-namespace \
+  --set-file objstoreConfig=thanos-objstore.yml \
   --set query.enabled=true \
+  --set storegateway.enabled=true \
   --set query.stores[0]=cluster-1-thanos-sidecar.example.com:10901 \
-  --set query.stores[1]=cluster-2-thanos-sidecar.example.com:10901 \
-  --set query.stores[2]=dnssrv+_grpc._tcp.thanos-storegateway.monitoring.svc.cluster.local
+  --set query.stores[1]=cluster-2-thanos-sidecar.example.com:10901
 ```
 
 ## Step 4: Configure Multi-Cluster Grafana Dashboards
