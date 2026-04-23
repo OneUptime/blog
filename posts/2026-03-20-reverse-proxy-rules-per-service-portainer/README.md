@@ -15,15 +15,16 @@ A reverse proxy sits in front of your containerized services and routes incoming
 Traefik reads routing rules from container labels, making each service self-describing:
 
 ```yaml
-version: "3.8"
 services:
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.6
     command:
       - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
       - --certificatesresolvers.le.acme.httpchallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
       - --certificatesresolvers.le.acme.email=admin@example.com
       - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
     ports:
@@ -41,6 +42,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.api.rule=Host(`api.example.com`)
+      - traefik.http.routers.api.entrypoints=websecure
       - traefik.http.routers.api.tls.certresolver=le
       - traefik.http.services.api.loadbalancer.server.port=8080
     networks:
@@ -52,9 +54,11 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.admin.rule=Host(`example.com`) && PathPrefix(`/admin`)
+      - traefik.http.routers.admin.entrypoints=websecure
       - traefik.http.routers.admin.tls.certresolver=le
       - traefik.http.services.admin.loadbalancer.server.port=3000
       # Add authentication middleware
+      - "traefik.http.middlewares.basic-auth.basicauth.users=admin:$$apr1$$H6uskkkW$$IgXLP6ewTrSuBkTrqE8wj/"
       - traefik.http.routers.admin.middlewares=basic-auth
     networks:
       - proxy-net
@@ -65,6 +69,7 @@ services:
     labels:
       - traefik.enable=true
       - "traefik.http.routers.docs.rule=Host(`docs.example.com`) || Host(`wiki.example.com`)"
+      - traefik.http.routers.docs.entrypoints=websecure
       - traefik.http.routers.docs.tls.certresolver=le
       - traefik.http.services.docs.loadbalancer.server.port=8000
     networks:
@@ -99,7 +104,7 @@ labels:
 
 # Basic authentication
 labels:
-  - "traefik.http.middlewares.basic-auth.basicauth.users=admin:$$apr1$$..."
+  - "traefik.http.middlewares.basic-auth.basicauth.users=admin:$$apr1$$H6uskkkW$$IgXLP6ewTrSuBkTrqE8wj/"
   - traefik.http.routers.admin.middlewares=basic-auth
 ```
 
@@ -144,4 +149,4 @@ server {
 
 ## Summary
 
-Traefik's label-based routing is the most maintainable approach for per-service proxy configuration in Portainer - each service's routing rules live in its own stack definition. For complex routing needs or when you prefer configuration files, Nginx with per-service config files is a solid alternative. Both integrate naturally with Let's Encrypt for automatic HTTPS.
+Traefik's label-based routing is the most maintainable approach for per-service proxy configuration in Portainer - each service's routing rules live in its own stack definition. For complex routing needs or when you prefer configuration files, Nginx with per-service config files is a solid alternative. Traefik integrates directly with Let's Encrypt for automatic HTTPS, and Nginx can use Let's Encrypt certificates through its ACME module or an external ACME client such as Certbot.
