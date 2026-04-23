@@ -25,14 +25,15 @@ DevSpace is an open-source developer tool for Kubernetes that provides a streaml
 brew install devspace
 
 # Linux
-curl -s -L "https://github.com/loft-sh/devspace/releases/latest/download/devspace-linux-amd64" \
-  -o /usr/local/bin/devspace
-chmod +x /usr/local/bin/devspace
+curl -L -o devspace "https://github.com/loft-sh/devspace/releases/latest/download/devspace-linux-amd64" && \
+  sudo install -c -m 0755 devspace /usr/local/bin
 
 # Windows (PowerShell)
 md -Force "$Env:APPDATA\devspace"
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]'Tls,Tls11,Tls12'
-Invoke-WebRequest -UseBasicParsing ((Invoke-WebRequest -URI "https://github.com/loft-sh/devspace/releases/latest" -UseBasicParsing).Content -replace "(?ms).*`"([^`"]*devspace-windows-amd64.exe)`".*","https://github.com`$1") -o $Env:APPDATA\devspace\devspace.exe
+Invoke-WebRequest -URI "https://github.com/loft-sh/devspace/releases/latest/download/devspace-windows-amd64.exe" -o $Env:APPDATA\devspace\devspace.exe
+$env:Path += ";" + $Env:APPDATA + "\devspace"
+[Environment]::SetEnvironmentVariable("Path", $env:Path, [System.EnvironmentVariableTarget]::User)
 
 # Verify
 devspace version
@@ -71,6 +72,7 @@ images:
 # Deploy configuration
 deployments:
   app:
+    namespace: development
     helm:
       chart:
         name: ./chart
@@ -84,7 +86,6 @@ deployments:
             repository: registry.example.com/frontend
             tag: ${DEVSPACE_RANDOM}
         replicaCount: 1
-        namespace: development
 
 # Development configuration
 dev:
@@ -132,6 +133,12 @@ pipelines:
       build_images --all
       create_deployments --all
       start_dev --all
+  dev-backend:
+    run: |-
+      run_dependencies --all
+      build_images backend
+      create_deployments --all
+      start_dev backend
 ```
 
 ## Step 4: Configure Namespace and Context
@@ -159,8 +166,8 @@ devspace dev
 # Start with specific profile
 devspace dev --profile local
 
-# Start only specific services
-devspace dev backend
+# Start only the backend dev configuration
+devspace run-pipeline dev-backend
 
 # Build and deploy without dev mode
 devspace deploy
@@ -192,7 +199,7 @@ profiles:
       - op: add
         path: dev.backend.ports
         value:
-          - port: "5678"  # Debugpy port
+          port: "5678"  # Debugpy port
 
   # Staging profile
   - name: staging
@@ -212,55 +219,34 @@ profiles:
 
 ```bash
 # Execute a command in the running container
-devspace run-pipeline exec-backend
+devspace enter --image-selector registry.example.com/backend ls /app
 
 # Enter interactive shell
-devspace enter
+devspace enter --image-selector registry.example.com/backend bash
 
 # Run custom pipeline
-devspace run my-custom-pipeline
+devspace run-pipeline dev-backend
 
-# View logs
-devspace logs backend
+# View logs for the backend container
+devspace logs --image-selector registry.example.com/backend
 
-# View all pod logs
-devspace logs --all
+# Pick a pod/container and view logs
+devspace logs
 ```
 
-## Step 8: Configure Hooks
+## Step 8: Extend Pipelines for Deployment Tasks
 
 ```yaml
-# devspace.yaml - Lifecycle hooks
-hooks:
-  # Before image build
-  - command: sh
-    args:
-      - -c
-      - "echo 'Building images...'"
-    events: ["before:build"]
-
-  # After deployment
-  - command: kubectl
-    args:
-      - wait
-      - "--for=condition=available"
-      - "deployment/backend"
-      - "--namespace=development"
-      - "--timeout=120s"
-    events: ["after:deploy"]
-
-  # Database migrations
-  - command: kubectl
-    args:
-      - exec
-      - -n
-      - development
-      - deployment/backend
-      - --
-      - python
-      - manage.py
-      - migrate
-    events: ["after:deploy:app"]
+# devspace.yaml - Pipelines instead of deprecated hooks
+pipelines:
+  deploy:
+    run: |-
+      run_dependencies --all
+      echo "Building images..."
+      build_images --all
+      create_deployments --all
+      kubectl wait --for=condition=available deployment/backend --namespace=development --timeout=120s
+      kubectl exec -n development deployment/backend -- python manage.py migrate
 ```
 
 ## Step 9: In-Cluster Builds
@@ -274,11 +260,6 @@ images:
       inCluster:
         # Use specific namespace for builds
         namespace: development
-        # Cache layers in registry
-        cache: true
-      args:
-          - --cache-to
-          - type=inline
 ```
 
 ## Conclusion
