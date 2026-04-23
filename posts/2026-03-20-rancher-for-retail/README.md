@@ -34,25 +34,25 @@ POS, Kiosk, Inventory, WiFi
 ```bash
 # Automated K3s provisioning for store nodes
 
-# Use Rancher provisioning API or Fleet for GitOps-managed K3s
+# Install K3s first, then register the running cluster with Rancher
 
-# K3s installation at store edge
-curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="
-  --disable traefik
-  --disable servicelb
-  --node-label location=store
-  --node-label store-id=STORE-1234
-  --cluster-cidr 10.42.0.0/16
-  --service-cidr 10.43.0.0/16
-" sh -
+# Create K3s config before installing the service
+mkdir -p /etc/rancher/k3s
 
-# Register with Rancher
 cat > /etc/rancher/k3s/config.yaml << 'EOF'
-cluster-init: true
-token: <secure-token>
 tls-san:
   - 10.100.1.50
+node-label:
+  - location=store
+  - store-id=STORE-1234
+cluster-cidr: 10.42.0.0/16
+service-cidr: 10.43.0.0/16
 EOF
+
+# K3s installation at store edge
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server --disable traefik --disable servicelb" sh -s -
+
+# After K3s is running, register the cluster in Rancher
 ```
 
 ## Step 2: Manage Store Workloads with Fleet
@@ -67,16 +67,20 @@ metadata:
 spec:
   repo: https://github.com/myretail/store-apps.git
   branch: main
+  paths:
+    - store-apps
   targets:
     - name: all-stores
       clusterSelector:
         matchLabels:
           location: store
-  helm:
-    values:
-      # Per-store customization via cluster labels
-      storeId: "${cluster.labels.store-id}"
-      region: "${cluster.labels.region}"
+---
+# store-apps/fleet.yaml in that repository
+helm:
+  values:
+    # Per-store customization via cluster labels
+    storeId: '${ get .ClusterLabels "store-id" }'
+    region: '${ get .ClusterLabels "region" }'
 ```
 
 ## Step 3: Deploy POS Application
@@ -97,8 +101,9 @@ spec:
     metadata:
       labels:
         app: pos
+        store-id: "STORE-1234"
     spec:
-      # Pin to store-specific node
+      # Schedule onto store edge nodes
       nodeSelector:
         location: store
       containers:
@@ -147,55 +152,57 @@ spec:
         - name: redis
           image: redis:7-alpine
           command: ["redis-server", "--save", "60", "1"]
+          volumeMounts:
+            - name: cache-data
+              mountPath: /data
           resources:
             limits:
               memory: "256Mi"
+      volumes:
+        - name: cache-data
+          persistentVolumeClaim:
+            claimName: local-cache-data
 ```
 
 ## Step 5: Centralized Monitoring for All Stores
 
 ```yaml
-# Prometheus remote_write from store clusters to central
-prometheusSpec:
-  remoteWrite:
-    - url: "https://prometheus.retail-hq.com/api/v1/push"
-      writeRelabelConfigs:
-        # Add store metadata to all metrics
-        - targetLabel: store_id
-          replacement: "${STORE_ID}"
-        - targetLabel: region
-          replacement: "${STORE_REGION}"
+# Prometheus configuration on each store cluster
+global:
+  external_labels:
+    store_id: "${STORE_ID}"
+    region: "${STORE_REGION}"
 
-# Alert on store cluster failures
-- alert: StoreClusterOffline
-  expr: up{job="store-metrics"} == 0
-  for: 10m
-  annotations:
-    summary: "Store cluster {{ $labels.store_id }} offline"
+remote_write:
+  - url: "https://prometheus.retail-hq.com/api/v1/write"
+
+---
+# Central alerting rule example
+groups:
+  - name: retail-stores
+    rules:
+      - alert: StorePrometheusDown
+        expr: up{job="store-prometheus"} == 0
+        for: 10m
+        annotations:
+          summary: "Store Prometheus {{ $labels.store_id }} offline"
 ```
 
 ## Step 6: Automated Store Rollouts
 
 ```yaml
-# Fleet canary rollout across stores
-apiVersion: fleet.cattle.io/v1alpha1
-kind: GitRepo
-metadata:
-  name: pos-update
-spec:
-  repo: https://github.com/myretail/store-apps.git
-  branch: pos-v2.6
-  rolloutStrategy:
-    maxUnavailable: 10%          # Update 10% of stores at a time
-    timeout: 30m                  # Timeout if store update stalls
-    interval: 15m                 # Wait 15 minutes between batches
+# fleet.yaml in the repo watched by Fleet
+rolloutStrategy:
+  autoPartitionSize: 10%       # Partition stores into 10% rollout waves
+  maxUnavailable: 10%          # Pause if more than 10% of a wave is not ready
+  maxUnavailablePartitions: 0  # Wait for the current wave before advancing
 ```
 
 ## Retail-Specific Considerations
 
 - **PCI-DSS**: POS clusters handling card payments need network isolation
 - **Offline mode**: Store applications must function without WAN connectivity
-- **Low-maintenance edge**: K3s auto-updates with `--system-default-registry` pointing to local mirror
+- **Low-maintenance edge**: Mirror images locally with `/etc/rancher/k3s/registries.yaml`; manage upgrades separately via Rancher or K3s upgrade workflows
 - **Fleet for GitOps**: All store app versions managed centrally, deployed via Git
 - **Local backups**: Daily backup of transaction data before sync to HQ
 
