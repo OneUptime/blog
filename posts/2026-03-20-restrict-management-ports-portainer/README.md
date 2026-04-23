@@ -22,13 +22,17 @@ Exposing all these ports to the internet is a significant security risk.
 Always disable the HTTP port and use HTTPS only:
 
 ```bash
-# Remove the -p 9000:9000 mapping - only expose HTTPS
+# Remove the -p 9000:9000 mapping and disable Portainer's HTTP listener
 
 docker run -d \
-  -p 9443:9443 \         # HTTPS only
-  -p 8000:8000 \         # Edge agents only if needed
   --name portainer \
-  portainer/portainer-ce:latest
+  --restart=always \
+  -p 9443:9443 \
+  -p 8000:8000 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:latest \
+  --http-disabled
 ```
 
 ## Using a Reverse Proxy (Port 443 Instead of 9443)
@@ -38,7 +42,8 @@ Route HTTPS traffic through a reverse proxy on standard port 443:
 ```nginx
 # nginx.conf - reverse proxy Portainer on port 443
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name portainer.mycompany.com;
 
     ssl_certificate /etc/ssl/certs/portainer.crt;
@@ -48,6 +53,8 @@ server {
         proxy_pass https://portainer:9443;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 
@@ -61,6 +68,8 @@ server {
 
 ## Firewall Rules with UFW
 
+These UFW rules apply to services listening directly on the host, such as a host-installed Nginx reverse proxy. Docker-published ports can bypass UFW on Linux, so bind raw Portainer ports to localhost or filter Docker traffic in the `DOCKER-USER` chain.
+
 ```bash
 # Only allow Portainer from trusted IPs
 sudo ufw default deny incoming
@@ -71,10 +80,10 @@ sudo ufw allow from 203.0.113.0/24 to any port 443 proto tcp
 # Allow Edge agent port only from Edge agent servers
 sudo ufw allow from 198.51.100.0/28 to any port 8000 proto tcp
 
-# Block the raw Portainer ports externally
-sudo ufw deny 9000
-sudo ufw deny 9443
-sudo ufw deny 9001
+# Block accidental host-level listeners on the raw Portainer ports
+sudo ufw deny 9000/tcp
+sudo ufw deny 9443/tcp
+sudo ufw deny 9001/tcp
 
 sudo ufw enable
 ```
@@ -84,14 +93,14 @@ sudo ufw enable
 The agent port should only accept connections from your Portainer server:
 
 ```bash
-# On the Portainer Agent host, allow port 9001 only from Portainer server
-iptables -A INPUT -p tcp --dport 9001 \
-  -s <portainer-server-ip> -j ACCEPT
-iptables -A INPUT -p tcp --dport 9001 -j DROP
+# On a Docker Portainer Agent host, allow port 9001 only from Portainer server
+sudo iptables -I DOCKER-USER 1 -i <external-interface> -p tcp --dport 9001 \
+  -s <portainer-server-ip> -j RETURN
+sudo iptables -I DOCKER-USER 2 -i <external-interface> -p tcp --dport 9001 -j DROP
 
 # Persist with iptables-persistent
-apt-get install iptables-persistent
-iptables-save > /etc/iptables/rules.v4
+sudo apt-get install iptables-persistent
+sudo sh -c 'iptables-save > /etc/iptables/rules.v4'
 ```
 
 ## Binding to Specific Interfaces
@@ -101,9 +110,13 @@ Run Portainer bound to only specific interfaces:
 ```bash
 # Bind to localhost (access via SSH tunnel only)
 docker run -d \
-  -p 127.0.0.1:9443:9443 \
   --name portainer \
-  portainer/portainer-ce:latest
+  --restart=always \
+  -p 127.0.0.1:9443:9443 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:latest \
+  --http-disabled
 
 # Access via SSH tunnel
 ssh -L 9443:localhost:9443 user@portainer-server
@@ -121,16 +134,16 @@ ssh -L 9443:localhost:9443 user@portainer-server
 ## Docker Compose Example with Restricted Ports
 
 ```yaml
-version: "3.8"
-
 services:
   portainer:
     image: portainer/portainer-ce:latest
     restart: unless-stopped
+    command: --http-disabled
     # Only bind to localhost - let Nginx handle external access
     ports:
       - "127.0.0.1:9443:9443"
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
 
   nginx:
@@ -142,6 +155,9 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/portainer.conf:ro
       - ./certs:/etc/ssl:ro
+
+volumes:
+  portainer_data:
 ```
 
 ## Conclusion
