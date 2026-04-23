@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE2, Kubernetes, CNI, Custom CNI, Networking, Rancher
 
-Description: Learn how to configure RKE2 to use a custom CNI plugin instead of the built-in Canal, Calico, or Cilium options.
+Description: Learn how to configure RKE2 to use a custom CNI plugin instead of the built-in Canal, Calico, Cilium, or Flannel options.
 
-While RKE2 ships with Canal, Calico, and Cilium as built-in CNI options, some organizations may need to use a different CNI plugin like Antrea, Multus, or a custom solution. RKE2 supports deploying with no CNI plugin so you can install your own. This guide covers how to configure RKE2 to work with a custom CNI plugin.
+While RKE2 ships with Canal, Calico, Cilium, and Flannel as built-in primary CNI options, some organizations may need to use a different CNI plugin like Antrea or a custom solution. RKE2 also supports Multus as a secondary CNI plugin alongside a primary CNI. RKE2 supports deploying with no CNI plugin so you can install your own. This guide covers how to configure RKE2 to work with a custom CNI plugin.
 
 ## Prerequisites
 
-- RKE2 v1.21+
+- A supported RKE2 release
 - Understanding of your chosen CNI plugin
 - Helm or kubectl for deploying the CNI plugin
 - Network expertise for your specific CNI
@@ -37,6 +37,10 @@ curl -sfL https://get.rke2.io | sudo sh -
 sudo systemctl enable rke2-server
 sudo systemctl start rke2-server
 
+# Configure kubectl for the RKE2 cluster
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+export PATH=$PATH:/var/lib/rancher/rke2/bin
+
 # Nodes will show as NotReady until CNI is installed
 kubectl get nodes
 # Expected: nodes show NotReady (no CNI yet)
@@ -44,15 +48,16 @@ kubectl get nodes
 
 ## Step 2: Example - Install Antrea CNI
 
-Antrea is an open-source CNI plugin backed by VMware:
+Antrea is an open-source CNI plugin:
 
 ```bash
 # Install Antrea using kubectl
-kubectl apply -f https://github.com/antrea-io/antrea/releases/download/v1.13.0/antrea.yml
+ANTREA_VERSION=v2.6.1
+kubectl apply -f "https://github.com/antrea-io/antrea/releases/download/${ANTREA_VERSION}/antrea.yml"
 
 # Wait for Antrea to be ready
 kubectl wait -n kube-system \
-  --for=condition=ready pod \
+  --for=condition=Ready pod \
   -l app=antrea \
   --timeout=300s
 
@@ -62,22 +67,15 @@ kubectl get pods -n kube-system | grep antrea
 
 ## Step 3: Example - Install Multus CNI
 
-Multus allows pods to have multiple network interfaces:
+Multus allows pods to have multiple network interfaces, but it must be used with a primary/default CNI. Install Multus only after your default CNI, for example Antrea from Step 2, is installed and nodes are Ready:
 
 ```bash
-# Clone the Multus repo
-git clone https://github.com/k8snetworkplumbingwg/multus-cni.git
-cd multus-cni
-
-# Install Multus as a DaemonSet
-# Note: Multus is typically deployed alongside another CNI (called the default CNI)
-
-# Install Multus alongside the existing CNI
-kubectl apply -f deployments/multus-daemonset.yml
+# Install Multus as a DaemonSet alongside the existing default CNI
+kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset-thick.yml
 
 # Wait for Multus to be ready
 kubectl wait -n kube-system \
-  --for=condition=ready pod \
+  --for=condition=Ready pod \
   -l app=multus \
   --timeout=300s
 ```
@@ -98,11 +96,17 @@ spec:
       "mode": "bridge",
       "ipam": {
         "type": "host-local",
-        "subnet": "192.168.1.0/24",
-        "rangeStart": "192.168.1.200",
-        "rangeEnd": "192.168.1.216",
-        "routes": [{"dst": "0.0.0.0/0"}],
-        "gateway": "192.168.1.1"
+        "ranges": [
+          [
+            {
+              "subnet": "192.168.1.0/24",
+              "rangeStart": "192.168.1.200",
+              "rangeEnd": "192.168.1.216",
+              "gateway": "192.168.1.1"
+            }
+          ]
+        ],
+        "routes": [{"dst": "0.0.0.0/0"}]
       }
     }
 ```
@@ -135,6 +139,7 @@ spec:
       - operator: Exists
         effect: NoSchedule
       priorityClassName: system-node-critical
+      # Create the matching ServiceAccount and RBAC for your plugin before applying this DaemonSet
       serviceAccountName: custom-cni
       initContainers:
       - name: install-cni
@@ -188,15 +193,12 @@ When using a custom CNI, ensure RKE2 doesn't overwrite your CNI configuration:
 # /etc/rancher/rke2/config.yaml
 cni: none
 
-# Prevent RKE2 from installing the default CNI
+# Prevent RKE2 from installing a bundled CNI
 # This is already handled by cni: none
 
-# These annotations prevent RKE2 from deploying additional networking
+# Optional: disable the default ingress controller if you plan to install another ingress
 disable:
-  - rke2-canal
-  - rke2-calico
-  - rke2-cilium
-  - rke2-ingress-nginx  # Optional: disable default ingress
+  - rke2-ingress-nginx
 ```
 
 ## Step 6: Verify Custom CNI Installation
@@ -221,7 +223,7 @@ kubectl run cni-test-2 --image=busybox \
 
 # Wait for pods to start
 kubectl wait pod/cni-test-1 pod/cni-test-2 \
-  --for=condition=ready --timeout=60s
+  --for=condition=Ready --timeout=60s
 
 # Test pod-to-pod connectivity
 POD2_IP=$(kubectl get pod cni-test-2 \
@@ -235,4 +237,4 @@ kubectl delete pod cni-test-1 cni-test-2
 
 ## Conclusion
 
-Using a custom CNI plugin with RKE2 provides the flexibility to use specialized networking solutions that may not be included in the default RKE2 distributions. By setting `cni: none`, RKE2 bootstraps the cluster without networking, allowing you to install any CNI plugin that follows the CNI specification. This is particularly useful for environments with specific networking requirements like multiple network interfaces (Multus), hardware acceleration (DPDK), or specialized network policies beyond what Canal, Calico, or Cilium provide.
+Using a custom CNI plugin with RKE2 provides the flexibility to use specialized networking solutions that may not be included in the default RKE2 distributions. By setting `cni: none`, RKE2 bootstraps the cluster without networking, allowing you to install any CNI plugin that follows the CNI specification. This is particularly useful for environments with specific networking requirements like multiple network interfaces (Multus), hardware acceleration (DPDK), or specialized network policies beyond what Canal, Calico, Cilium, or Flannel provide.
