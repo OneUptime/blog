@@ -61,10 +61,30 @@ resource "aws_security_group" "rds" {
 ## Step 3: Create the RDS MySQL Instance
 
 ```hcl
+resource "aws_iam_role" "rds_monitoring" {
+  name = "${var.project_name}-rds-monitoring-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "monitoring.rds.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "rds_monitoring" {
+  role       = aws_iam_role.rds_monitoring.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
+}
+
 resource "aws_db_instance" "mysql" {
   identifier     = "${var.project_name}-mysql"
   engine         = "mysql"
-  engine_version = "8.0.35"
+  engine_version = "8.0"
 
   instance_class = var.instance_class  # e.g., "db.t3.medium"
   storage_type   = "gp3"
@@ -73,12 +93,13 @@ resource "aws_db_instance" "mysql" {
 
   db_name  = var.database_name
   username = var.master_username
-  password = var.master_password  # Use Secrets Manager in production
+  manage_master_user_password = true
 
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
   parameter_group_name   = aws_db_parameter_group.mysql.name
-  option_group_name      = aws_db_option_group.mysql.name
+
+  depends_on = [aws_iam_role_policy_attachment.rds_monitoring]
 
   # High availability
   multi_az = true
@@ -152,4 +173,4 @@ tofu apply
 
 ## Conclusion
 
-This configuration deploys a production-ready MySQL RDS instance with Multi-AZ failover, encryption at rest, automated backups, Enhanced Monitoring, and Performance Insights. Always use Secrets Manager for the master password rather than a variable, enable deletion protection to prevent accidental database loss, and set a maintenance window during low-traffic hours.
+This configuration deploys a production-ready MySQL RDS instance with Multi-AZ failover, encryption at rest, automated backups, Enhanced Monitoring, and Performance Insights. It uses RDS-managed master credentials in Secrets Manager, keeps deletion protection enabled to prevent accidental database loss, and sets a maintenance window during low-traffic hours.
