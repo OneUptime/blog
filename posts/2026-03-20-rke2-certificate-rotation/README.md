@@ -11,23 +11,24 @@ Kubernetes uses TLS certificates extensively for secure communication between co
 ## Prerequisites
 
 - RKE2 cluster running
-- Root access to server nodes
+- Root access to server nodes, and agent nodes if rotating agent certificates
 - Understanding of when your certificates expire
 
 ## Understanding RKE2 Certificate Locations
 
 RKE2 manages certificates for:
-- etcd client and peer certificates
-- API server certificates (client CA, service account key)
-- kubelet client certificates
+- etcd client, server, and peer certificates
+- API server serving/client certificates, cluster CA certificates, and the service account signing key
+- kubelet client and serving certificates
 - kube-proxy certificates
 
-Certificates are stored at: `/var/lib/rancher/rke2/server/tls/`
+Server certificate material is stored at: `/var/lib/rancher/rke2/server/tls/`. Agent certificates are stored under `/var/lib/rancher/rke2/agent/`.
 
 ## Step 1: Check Certificate Expiration
 
 ```bash
-# Check expiration of all RKE2 certificates
+# Check expiration of RKE2-managed certificates
+sudo rke2 certificate check --output table
 
 sudo find /var/lib/rancher/rke2/server/tls -name "*.crt" \
   -exec sh -c 'echo "=== {} ===" && \
@@ -44,10 +45,10 @@ for cert in "${CERTS[@]}"; do
   if [ -f "$cert" ]; then
     echo "=== $(basename $cert) ==="
     openssl x509 -in "$cert" -noout -dates
-    # Check if expiring within 90 days
-    openssl x509 -in "$cert" -noout -checkend 7776000 && \
-      echo "OK: Not expiring in 90 days" || \
-      echo "WARNING: Expiring within 90 days!"
+    # Check if expiring within 120 days
+    openssl x509 -in "$cert" -noout -checkend 10368000 && \
+      echo "OK: Not expiring in 120 days" || \
+      echo "WARNING: Expiring within 120 days!"
     echo ""
   fi
 done
@@ -60,21 +61,24 @@ sudo find /var/lib/rancher/rke2/agent -name "*.crt" \
 
 ## Step 2: Automatic Certificate Rotation
 
-RKE2 supports automatic certificate rotation through the kubelet:
+RKE2 automatically renews client and server certificates on startup when they are expired or within 120 days of expiring. Kubelet certificate rotation can also be enabled for kubelet client and serving certificates:
 
 ```yaml
-# /etc/rancher/rke2/config.yaml - Enable automatic cert rotation
+# /etc/rancher/rke2/config.yaml - Enable kubelet cert rotation
 kubelet-arg:
   # Enable automatic rotation of kubelet client certificates
   - "rotate-certificates=true"
 
-  # Enable automatic rotation of kubelet server certificates
+  # Enable automatic rotation of kubelet serving certificates
   - "rotate-server-certificates=true"
 ```
 
 ```bash
-# Apply the configuration
+# Apply the configuration on server nodes
 sudo systemctl restart rke2-server
+
+# Apply the configuration on agent-only nodes
+sudo systemctl restart rke2-agent
 
 # Verify kubelet certificate rotation is enabled
 sudo ps aux | grep kubelet | tr ' ' '\n' | grep rotate
@@ -82,44 +86,51 @@ sudo ps aux | grep kubelet | tr ' ' '\n' | grep rotate
 
 ## Step 3: Manual Certificate Rotation
 
-For rotating all cluster certificates:
+For rotating all RKE2 client and server certificates:
 
 ```bash
 # RKE2 provides a built-in certificate rotation command
-# This rotates ALL certificates and requires a restart
+# This rotates client/server certificates, but not CA certificates
 
 # First, take an etcd snapshot for backup
 sudo rke2 etcd-snapshot save \
   --name pre-cert-rotation-$(date +%Y%m%d-%H%M%S)
 
-# Rotate all certificates
-# This stops the RKE2 server, rotates certs, and restarts
+# Stop RKE2 before rotating certificates
+sudo systemctl stop rke2-server
+
+# Rotate all client and server certificates
 sudo rke2 certificate rotate
 
-# For HA clusters, run on each server node one at a time
-# The command handles the rotation and restart automatically
+# Start RKE2 again
+sudo systemctl start rke2-server
+
+# For HA clusters, run this sequence on each server node one at a time
 ```
 
 ## Step 4: Rotate Specific Certificates
 
 ```bash
-# Rotate only specific certificate types
-# Check RKE2 documentation for specific rotation options
+# Rotate only specific certificate types with --service
+# Available services include admin, api-server, controller-manager, scheduler,
+# rke2-controller, rke2-server, cloud-controller, etcd, auth-proxy, kubelet, kube-proxy
 
-# For custom rotation, you can:
-# 1. Stop RKE2
+# Stop RKE2 before rotating certificates
 sudo systemctl stop rke2-server
 
-# 2. Remove the certificate files you want to rotate
-# RKE2 will regenerate them on startup
-# WARNING: Be careful about which certs to remove!
-sudo rm /var/lib/rancher/rke2/server/tls/server-ca.crt 2>/dev/null
-sudo rm /var/lib/rancher/rke2/server/tls/server-ca.key 2>/dev/null
+# Rotate one service certificate
+sudo rke2 certificate rotate --service api-server
 
-# 3. Restart RKE2 (it will regenerate the removed certificates)
+# Rotate a comma-separated list of service certificates
+sudo rke2 certificate rotate --service api-server,kubelet
+
+# Start RKE2 again
 sudo systemctl start rke2-server
 
-# 4. Monitor the certificate generation
+# Do not delete CA files from /var/lib/rancher/rke2/server/tls.
+# Use rke2 certificate rotate-ca with staged certificate files for CA rotation.
+
+# Monitor the certificate generation
 sudo journalctl -u rke2-server -f | grep -i cert
 ```
 
@@ -129,7 +140,8 @@ After rotating certificates, kubeconfig files may need updating:
 
 ```bash
 # After certificate rotation, update your kubeconfig
-# The cluster CA may have changed
+# The admin client certificate may have changed if you rotated the admin certificate.
+# The cluster CA changes only if you perform a CA rotation.
 
 # Back up existing kubeconfig
 cp ~/.kube/config ~/.kube/config.backup
@@ -150,7 +162,7 @@ kubectl get nodes 2>&1 | grep -i "certificate\|tls\|x509"
 
 ## Step 6: Update Agent Certificates
 
-After rotating server certificates, agent nodes may need certificate updates:
+After rotating server certificates, agent nodes may need a restart. Agent certificates are renewed when the agent starts:
 
 ```bash
 # On each agent node, check if the agent can still connect
@@ -159,19 +171,11 @@ sudo journalctl -u rke2-agent | tail -20 | grep -E "error|Error|certificate"
 # If agents show certificate errors, restart them
 sudo systemctl restart rke2-agent
 
-# Or if the CA has changed, you may need to remove the agent certs
-# and let them re-register:
-sudo systemctl stop rke2-agent
-
-# Remove old agent certificates
-sudo rm -rf /var/lib/rancher/rke2/agent/client-ca.crt
-sudo rm -rf /var/lib/rancher/rke2/agent/server-ca.crt
-
-# Restart agent to re-register with new certificates
-sudo systemctl start rke2-agent
+# If the CA changed, follow the RKE2 rotate-ca guidance and update any
+# secure-token nodes with the new token value before restarting them.
 
 # Verify the agent reconnected
-sudo journalctl -u rke2-agent -f | grep "node registered"
+sudo journalctl -u rke2-agent -f | grep -Ei "certificate|registered|ready|error"
 ```
 
 ## Step 7: Monitor Certificate Expiration with Prometheus
@@ -191,7 +195,7 @@ spec:
     - alert: KubernetesClientCertificateExpiringSoon
       expr: |
         apiserver_client_certificate_expiration_seconds_count{job="apiserver"} > 0
-        and histogram_quantile(0.01, sum by (job, le) (rate(apiserver_client_certificate_expiration_seconds_bucket{job="apiserver"}[5m])))
+        and on(job) histogram_quantile(0.01, sum by (job, le) (rate(apiserver_client_certificate_expiration_seconds_bucket{job="apiserver"}[5m])))
         < 7776000  # 90 days in seconds
       for: 5m
       labels:
@@ -204,7 +208,7 @@ spec:
     - alert: KubernetesClientCertificateExpiringCritical
       expr: |
         apiserver_client_certificate_expiration_seconds_count{job="apiserver"} > 0
-        and histogram_quantile(0.01, sum by (job, le) (rate(apiserver_client_certificate_expiration_seconds_bucket{job="apiserver"}[5m])))
+        and on(job) histogram_quantile(0.01, sum by (job, le) (rate(apiserver_client_certificate_expiration_seconds_bucket{job="apiserver"}[5m])))
         < 2592000  # 30 days in seconds
       for: 5m
       labels:
