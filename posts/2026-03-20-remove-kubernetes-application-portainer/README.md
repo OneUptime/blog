@@ -4,31 +4,29 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Application Management, Cleanup, DevOps
 
-Description: Learn how to safely remove a Kubernetes application and its associated resources through the Portainer UI.
+Description: Learn how to safely remove a Kubernetes application in Portainer and clean up related Kubernetes resources when needed.
 
 ## Overview
 
-Removing a Kubernetes application in Portainer deletes the Deployment (or other workload type) and optionally its associated resources like Services, ConfigMaps, Secrets, and PVCs.
+Removing a Kubernetes application in Portainer removes the selected application from Portainer. The exact Kubernetes resources deleted depend on how the application was deployed. Deleting a workload such as a Deployment removes its managed dependents, but separate resources like Services, ConfigMaps, Secrets, and PVCs often require separate cleanup.
 
 ## Removing an Application in Portainer
 
 1. Select your Kubernetes environment.
 2. Go to **Applications** in the sidebar.
 3. Find the application to remove.
-4. Either:
-   - Click the checkbox next to the app and click **Remove** in the toolbar.
-   - Or open the application and click the **Delete** button.
+4. Click the checkbox next to the app and click **Remove** in the toolbar.
 5. Confirm the deletion in the dialog.
 
 ## What Gets Deleted
 
 When you remove an application in Portainer:
 
-- The **Deployment**, **StatefulSet**, or **DaemonSet** resource is deleted.
-- All **ReplicaSets** and **Pods** managed by it are terminated.
-- **Services** associated with the deployment are optionally removed.
+- The selected application or workload is removed.
+- If it is a **Deployment**, **StatefulSet**, or **DaemonSet**, Kubernetes also removes controller-managed dependents such as **ReplicaSets** and **Pods**.
+- **Services**, **ConfigMaps**, **Secrets**, **Ingresses**, and **PVCs** are separate resources and are not removed just because the workload was deleted.
 
-**Note**: Persistent Volume Claims (PVCs) and Secrets are **not** automatically deleted to prevent data loss. You must remove them separately.
+**Note**: Deleting a **PVC** may also delete the backing storage if the bound PersistentVolume uses the `Delete` reclaim policy. Delete PVCs separately and intentionally.
 
 ## Removing Associated Resources via CLI
 
@@ -46,20 +44,20 @@ kubectl delete configmap app-config --namespace=production
 # Delete Secrets (carefully!)
 kubectl delete secret app-secrets --namespace=production
 
-# Delete PVC (this destroys persistent data!)
+# Delete PVC (this may also delete the backing storage, depending on the reclaim policy!)
 kubectl delete pvc my-app-data-pvc --namespace=production
 ```
 
-## Removing All Resources for an Application (Using Labels)
+## Removing Multiple Resources for an Application (Using Labels)
 
-If all resources were created with consistent labels, delete them all at once:
+If your resources were created with consistent labels, you can target multiple resource types with label selectors:
 
 ```bash
-# Delete all resources with a specific app label
-kubectl delete all --selector=app=my-app --namespace=production
+# Delete common workload and networking resources with a specific app label
+kubectl delete deployment,statefulset,daemonset,service,ingress --selector=app=my-app --namespace=production
 
-# Also delete PVCs with the same label
-kubectl delete pvc --selector=app=my-app --namespace=production
+# Delete configuration and storage resources with the same label
+kubectl delete configmap,secret,pvc --selector=app=my-app --namespace=production
 ```
 
 ## Removing from a Manifest
@@ -69,20 +67,20 @@ kubectl delete pvc --selector=app=my-app --namespace=production
 kubectl delete -f my-app-deployment.yaml
 
 # Or with a directory of manifests
-kubectl delete -f ./manifests/
+kubectl delete -f ./manifests/ -R
 ```
 
 ## Verifying Removal
 
 ```bash
-# Confirm no pods remain
-kubectl get pods --namespace=production | grep my-app
+# Confirm no labeled pods remain
+kubectl get pods --selector=app=my-app --namespace=production
 
-# Check for any leftover resources
-kubectl get all --selector=app=my-app --namespace=production
+# Check for leftover workload and networking resources
+kubectl get deployment,statefulset,daemonset,service,ingress --selector=app=my-app --namespace=production
 
-# Verify PVCs are also removed if intended
-kubectl get pvc --namespace=production
+# Check for leftover configuration and storage resources
+kubectl get configmap,secret,pvc --selector=app=my-app --namespace=production
 ```
 
 ## Graceful Termination
@@ -100,4 +98,4 @@ kubectl delete pod stuck-pod --namespace=production --grace-period=0 --force
 
 ## Conclusion
 
-Removing applications in Portainer is straightforward, but always verify that associated persistent data (PVCs) is intentionally preserved or deleted. Use label selectors via CLI to clean up all associated resources in one command.
+Removing applications in Portainer is straightforward, but always verify that associated persistent data (PVCs) is intentionally preserved or deleted. Use label selectors via CLI to clean up related resources with targeted delete commands.
