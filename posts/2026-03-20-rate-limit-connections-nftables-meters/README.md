@@ -8,11 +8,11 @@ Description: Use nftables meters to track and rate-limit new connections per sou
 
 ## Introduction
 
-nftables meters are dynamic maps that track state per key (such as source IP). They enable per-IP rate limiting without predefining every IP. This is essential for protecting SSH from brute-force attacks and web servers from connection floods.
+nftables meters attach state to dynamic keys (such as source IP addresses). They enable per-IP rate limiting without predefining every IP. This is essential for protecting SSH from brute-force attacks and web servers from connection floods.
 
 ## Prerequisites
 
-- nftables installed (version 0.9.3+ for meter support)
+- nftables installed
 - Root access
 - Basic nftables table and chain setup
 
@@ -23,28 +23,28 @@ The simplest form of rate limiting applies a global rate to all traffic matching
 ```bash
 # Limit all new SSH connections to 5 per minute globally
 
-nft add rule inet filter input tcp dport 22 ct state new limit rate 5/minute accept
-nft add rule inet filter input tcp dport 22 drop
+nft add rule ip filter input tcp dport 22 ct state new limit rate 5/minute accept
+nft add rule ip filter input tcp dport 22 ct state new drop
 ```
 
 ## Per-IP Rate Limiting with Meters
 
-Meters track individual counters per source IP, enabling true per-IP limits:
+Meters track rate-limit state per source IP, enabling true per-IP limits:
 
 ```bash
 # Rate limit new SSH connections to 3 per minute per source IP
-# IPs exceeding the limit are dropped
-nft add rule inet filter input tcp dport 22 ct state new \
+# Over-limit IPs must be dropped by a later rule or chain policy
+nft add rule ip filter input tcp dport 22 ct state new \
     meter ssh_ratelimit { ip saddr limit rate 3/minute } accept
 ```
 
-Any new connection from an IP that exceeds 3 per minute will not match `accept` and will fall through to the default drop policy.
+Any new connection from an IP that exceeds 3 per minute will not match `accept` and must be handled by a later drop rule or a chain with `policy drop`.
 
 ## Rate Limiting HTTP Connections Per IP
 
 ```bash
 # Limit HTTP new connections to 50 per second per source IP
-nft add rule inet filter input tcp dport 80 ct state new \
+nft add rule ip filter input tcp dport 80 ct state new \
     meter http_ratelimit { ip saddr limit rate 50/second } accept
 ```
 
@@ -55,7 +55,7 @@ nft add rule inet filter input tcp dport 80 ct state new \
 
 flush ruleset
 
-table inet filter {
+table ip filter {
     chain input {
         type filter hook input priority 0; policy drop;
 
@@ -92,9 +92,9 @@ To log which IPs are being rate-limited:
 
 ```bash
 # Log then drop when rate limit is exceeded
-nft add rule inet filter input tcp dport 22 ct state new \
+nft add rule ip filter input tcp dport 22 ct state new \
     meter ssh_limit2 { ip saddr limit rate 3/minute } accept
-nft add rule inet filter input tcp dport 22 ct state new \
+nft add rule ip filter input tcp dport 22 ct state new \
     log prefix "SSH rate limit exceeded: " level warn drop
 ```
 
@@ -102,10 +102,10 @@ nft add rule inet filter input tcp dport 22 ct state new \
 
 ```bash
 # List all meters and their current state
-nft list meters inet filter
+nft list meters
 
 # View a specific meter
-nft list meter inet filter ssh_limit
+nft list meter ip filter ssh_limit
 ```
 
 ## Conclusion
