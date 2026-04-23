@@ -32,7 +32,7 @@ etcd-snapshot-schedule-cron: "0 */6 * * *"   # Every 6 hours
 etcd-snapshot-retention: 10                    # Keep last 10 snapshots
 
 # Custom snapshot directory (optional)
-etcd-snapshot-dir: /mnt/backup/rke2-snapshots
+# etcd-snapshot-dir: /mnt/backup/rke2-snapshots
 
 # S3 configuration (highly recommended for production)
 etcd-s3: true
@@ -92,17 +92,11 @@ sudo rke2 etcd-snapshot list
 sudo rke2 etcd-snapshot ls \
   --s3 \
   --s3-bucket my-cluster-etcd-backups \
+  --s3-folder production-cluster \
   --s3-region us-east-1
 
-# Get snapshot details using etcdctl
-export ETCDCTL_API=3
-export ETCDCTL_CACERT=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt
-export ETCDCTL_CERT=/var/lib/rancher/rke2/server/tls/etcd/client.crt
-export ETCDCTL_KEY=/var/lib/rancher/rke2/server/tls/etcd/client.key
-
-/var/lib/rancher/rke2/bin/etcdctl \
-  --endpoints=https://127.0.0.1:2379 \
-  snapshot status \
+# Get snapshot details using etcdutl (install it if it is not already available)
+sudo etcdutl --write-out=table snapshot status \
   /var/lib/rancher/rke2/server/db/snapshots/etcd-snapshot-xxxxx
 ```
 
@@ -119,12 +113,14 @@ sudo systemctl stop rke2-server
 # Restore from a local snapshot
 sudo rke2 server \
   --cluster-reset \
-  --cluster-reset-restore-path=/var/lib/rancher/rke2/server/db/snapshots/etcd-snapshot-XXXX
+  --cluster-reset-restore-path=/var/lib/rancher/rke2/server/db/snapshots/etcd-snapshot-XXXX \
+  --etcd-s3=false
 
-# Alternative: Restore and start in one command
+# Alternative: Restore from a different snapshot path
 sudo rke2 server \
   --cluster-reset \
-  --cluster-reset-restore-path=/path/to/snapshot
+  --cluster-reset-restore-path=/path/to/snapshot \
+  --etcd-s3=false
 
 # Restart the server
 sudo systemctl start rke2-server
@@ -145,26 +141,29 @@ sudo systemctl stop rke2-server
 # Step 2: On the PRIMARY restore node only:
 sudo rke2 server \
   --cluster-reset \
-  --cluster-reset-restore-path=/var/lib/rancher/rke2/server/db/snapshots/SNAPSHOT_NAME
+  --cluster-reset-restore-path=/var/lib/rancher/rke2/server/db/snapshots/SNAPSHOT_NAME \
+  --etcd-s3=false
 
 # This command will:
 # 1. Restore etcd from the snapshot
-# 2. Start RKE2 in single-member mode
+# 2. Reset etcd membership to the primary node
 
 # Step 3: Start RKE2 normally on the primary node
 sudo systemctl start rke2-server
 
 # Step 4: Wait for the primary node to be ready
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+export PATH=$PATH:/var/lib/rancher/rke2/bin
 kubectl wait node/$(hostname) --for=condition=Ready --timeout=300s
 
-# Step 5: Get the NEW cluster token
-sudo cat /var/lib/rancher/rke2/server/node-token
+# Step 5: Confirm the server token used by peer server nodes
+sudo cat /var/lib/rancher/rke2/server/token
 
-# Step 6: On OTHER server nodes, update config with new token and rejoin
+# Step 6: On OTHER server nodes, ensure config uses that token and rejoin
 # IMPORTANT: Remove the old etcd data before rejoining
 sudo rm -rf /var/lib/rancher/rke2/server/db/
 
-# Update config.yaml with new token if it changed
+# Update config.yaml if the token is explicitly configured
 sudo vi /etc/rancher/rke2/config.yaml
 
 # Restart on other server nodes
@@ -177,9 +176,10 @@ sudo systemctl start rke2-server
 # Restore directly from S3
 sudo rke2 server \
   --cluster-reset \
-  --cluster-reset-restore-path=s3://my-cluster-etcd-backups/my-cluster/snapshot-name \
+  --cluster-reset-restore-path=snapshot-name \
   --etcd-s3 \
   --etcd-s3-bucket=my-cluster-etcd-backups \
+  --etcd-s3-folder=production-cluster \
   --etcd-s3-region=us-east-1
 ```
 
@@ -187,6 +187,8 @@ sudo rke2 server \
 
 ```bash
 # After restart, verify cluster state was restored
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+export PATH=$PATH:/var/lib/rancher/rke2/bin
 kubectl get nodes
 kubectl get pods -A
 
