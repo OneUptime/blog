@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RKE2, Kubernetes, Configuration, Control Plane, Rancher
 
-Description: A comprehensive guide to configuring RKE2 server nodes with all available configuration options for production Kubernetes deployments.
+Description: A comprehensive guide to configuring RKE2 server nodes with important configuration options for production Kubernetes deployments.
 
 RKE2 server nodes run the Kubernetes control plane components including the API server, controller manager, scheduler, and etcd. Properly configuring server nodes is critical for security, performance, and availability. This guide covers all the important configuration options for RKE2 server nodes.
 
@@ -83,26 +83,23 @@ cni: canal
 # Container runtime endpoint
 # container-runtime-endpoint: ""  # Uses embedded containerd
 
-# Default container image registry
+# Default registry for RKE2 system images
 # system-default-registry: registry.example.com
 
 # =====================
 # ETCD CONFIGURATION
 # =====================
 
-# Disable embedded etcd (use external etcd)
+# Disable embedded etcd on a dedicated control-plane server
 # disable-etcd: true
 
-# External etcd endpoints
-# etcd-endpoint:
-#   - https://etcd1:2379
-#   - https://etcd2:2379
-#   - https://etcd3:2379
+# External datastore endpoint (for example, an external etcd cluster)
+# datastore-endpoint: "https://etcd1:2379,https://etcd2:2379,https://etcd3:2379"
 
-# etcd client certificates
-# etcd-cafile: /path/to/etcd-ca.crt
-# etcd-certfile: /path/to/etcd-client.crt
-# etcd-keyfile: /path/to/etcd-client.key
+# External datastore client certificates
+# datastore-cafile: /path/to/etcd-ca.crt
+# datastore-certfile: /path/to/etcd-client.crt
+# datastore-keyfile: /path/to/etcd-client.key
 
 # Embedded etcd snapshot configuration
 etcd-snapshot-schedule-cron: "0 */6 * * *"   # Every 6 hours
@@ -114,7 +111,7 @@ etcd-snapshot-dir: /var/lib/rancher/rke2/server/db/snapshots
 # =====================
 
 # Use CIS hardened profile
-profile: cis-1.23
+profile: cis
 
 # Disable services you don't need
 disable:
@@ -156,8 +153,8 @@ kube-apiserver-arg:
 kube-controller-manager-arg:
   # Set the node monitor grace period
   - "node-monitor-grace-period=40s"
-  # Configure pod eviction timeout
-  - "pod-eviction-timeout=5m"
+  # Configure node eviction rate
+  - "node-eviction-rate=0.1"
   # Bind to specific address
   - "bind-address=127.0.0.1"
 
@@ -208,14 +205,14 @@ sudo systemctl enable rke2-server
 sudo systemctl start rke2-server
 
 # Get the cluster token
-sudo cat /var/lib/rancher/rke2/server/node-token
+sudo cat /var/lib/rancher/rke2/server/token
 ```
 
 ```bash
 # Second and third server nodes
 cat <<EOF | sudo tee /etc/rancher/rke2/config.yaml
 # Join existing cluster as additional server
-server: https://10.0.0.10:9345
+server: https://k8s.example.com:9345
 token: <TOKEN_FROM_FIRST_SERVER>
 
 tls-san:
@@ -241,12 +238,12 @@ sudo /var/lib/rancher/rke2/bin/kubectl \
   get pods -n kube-system
 
 # Check API server arguments
-sudo ps aux | grep kube-apiserver | tr ' ' '\n' | grep -v "^$"
+sudo ps aux | grep '[k]ube-apiserver' | tr ' ' '\n' | grep -v "^$"
 
-# Verify etcd is healthy
+# Verify API server readiness, including etcd
 sudo /var/lib/rancher/rke2/bin/kubectl \
   --kubeconfig /etc/rancher/rke2/rke2.yaml \
-  get endpoints -n kube-system
+  get --raw='/readyz?verbose'
 ```
 
 ## Conclusion
