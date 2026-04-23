@@ -8,7 +8,7 @@ Description: Delete unused Docker networks in Portainer to clean up network conf
 
 ---
 
-Docker networking is fundamental to container communication. Portainer provides a visual interface for creating and managing all Docker network types.
+Docker networking is fundamental to container communication. Portainer provides a visual interface for creating and managing supported Docker network types including bridge, macvlan, ipvlan, and overlay. In Portainer, you must detach all containers from a network before you can remove it.
 
 ## Docker Network Types
 
