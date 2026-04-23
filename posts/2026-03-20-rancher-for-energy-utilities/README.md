@@ -38,7 +38,7 @@ Grid protection      SCADA            SCADA
 
 # Kubernetes deployed in CIP-compliant environments needs:
 
-# 1. Electronic Security Perimeter (ESP) via network policies
+# 1. Network segmentation controls that can support an Electronic Security Perimeter (ESP)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -74,7 +74,13 @@ metadata:
   name: protocol-adapter
   namespace: grid-control
 spec:
+  selector:
+    matchLabels:
+      app: protocol-adapter
   template:
+    metadata:
+      labels:
+        app: protocol-adapter
     spec:
       containers:
         - name: dnp3-adapter
@@ -93,19 +99,94 @@ spec:
           volumeMounts:
             - name: point-map
               mountPath: /config
+      volumes:
+        - name: point-map
+          configMap:
+            name: protocol-adapter-point-map
 ```
 
 ## Step 3: Real-Time Grid Monitoring
 
-```yaml
+```bash
 # TimescaleDB for time-series grid measurements
 # Measurements: voltage, current, frequency, power factor
-helm install timescale timescale/timescaledb-single \
-  --namespace grid-data \
-  --set replicaCount=2 \
-  --set persistence.size=10Ti
+kubectl create namespace grid-data
 
+kubectl -n grid-data create secret generic timescale-secret \
+  --from-literal=password='change-me' \
+  --from-literal=url='postgresql://gridops:change-me@timescaledb.grid-data.svc:5432/grid'
+
+kubectl apply -n grid-data -f - <<'EOF'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: timescaledb-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Ti
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: timescaledb
+spec:
+  serviceName: timescaledb
+  replicas: 1
+  selector:
+    matchLabels:
+      app: timescaledb
+  template:
+    metadata:
+      labels:
+        app: timescaledb
+    spec:
+      containers:
+        - name: timescaledb
+          image: timescale/timescaledb-ha:pg18
+          env:
+            - name: POSTGRES_USER
+              value: gridops
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: timescale-secret
+                  key: password
+            - name: POSTGRES_DB
+              value: grid
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+              name: postgres
+          volumeMounts:
+            - name: timescaledb-storage
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: timescaledb-storage
+          persistentVolumeClaim:
+            claimName: timescaledb-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: timescaledb
+spec:
+  selector:
+    app: timescaledb
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: postgres
+  type: ClusterIP
+EOF
+```
+
+```yaml
 # Grafana dashboard for grid operations
+# Example ConfigMap for clusters that use a Grafana sidecar to import labeled dashboards
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -117,12 +198,15 @@ data:
   grid-ops.json: |
     {
       "title": "Grid Operations Center",
+      "schemaVersion": 17,
+      "version": 1,
       "refresh": "1s",
+      "time": {"from": "now-1h", "to": "now"},
       "panels": [
-        {"title": "Grid Frequency (Hz)", "type": "stat"},
-        {"title": "Substation Voltage Profile", "type": "timeseries"},
-        {"title": "Load Demand (MW)", "type": "gauge"},
-        {"title": "Generation Mix (Renewable %)", "type": "piechart"}
+        {"id": 1, "title": "Grid Frequency (Hz)", "type": "stat", "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}},
+        {"id": 2, "title": "Substation Voltage Profile", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 6, "y": 0}},
+        {"id": 3, "title": "Load Demand (MW)", "type": "gauge", "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}},
+        {"id": 4, "title": "Generation Mix (Renewable %)", "type": "piechart", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}}
       ]
     }
 ```
@@ -131,13 +215,28 @@ data:
 
 ```yaml
 # ML model for next-24h demand forecasting
+apiVersion: v1
+kind: Secret
+metadata:
+  name: timescale-secret
+  namespace: grid-analytics
+type: Opaque
+stringData:
+  url: postgresql://gridops:change-me@timescaledb.grid-data.svc:5432/grid
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: demand-forecaster
   namespace: grid-analytics
 spec:
+  selector:
+    matchLabels:
+      app: demand-forecaster
   template:
+    metadata:
+      labels:
+        app: demand-forecaster
     spec:
       containers:
         - name: forecaster
@@ -166,10 +265,11 @@ spec:
 # Power substation: must operate through network outages
 
 cat > /etc/rancher/k3s/config.yaml << 'EOF'
-# Air-gapped operation
+# Air-gapped image pulls
 private-registry: /etc/rancher/k3s/registries.yaml
+disable-default-registry-endpoint: true
 
-# Enable data buffering for offline operation
+# Initialize a self-contained server with embedded etcd
 cluster-init: true
 
 # Substation metadata
@@ -200,6 +300,9 @@ spec:
     matchLabels:
       app: turbine-monitor
   template:
+    metadata:
+      labels:
+        app: turbine-monitor
     spec:
       containers:
         - name: modbus-collector
@@ -224,11 +327,11 @@ spec:
 
 | Standard | Requirement | Implementation |
 |---|---|---|
-| NERC-CIP | ESP, Access Control | NetworkPolicy, RBAC |
-| IEC 62351 | Encrypted protocol comms | TLS for all SCADA comms |
+| NERC-CIP | ESP, Access Control | Network segmentation, RBAC, audit logging |
+| IEC 62351 | Protocol security controls | Protocol-specific TLS, authentication, and integrity controls where supported |
 | IEC 61850 | Substation automation | Protocol adapters in K8s |
 | SOC 2 | Audit logging | Kubernetes audit + SIEM |
 
 ## Conclusion
 
-Rancher provides the management layer for energy utilities' digital transformation, from central control centers to substation edge K3s deployments. NERC-CIP compliance is achieved through network policies enforcing Electronic Security Perimeters, strict RBAC, and comprehensive audit logging. SCADA integration uses protocol adapters (DNP3, IEC 61850) running as Kubernetes deployments, while ML demand forecasting improves grid efficiency. Edge K3s clusters at substations and renewable assets operate offline-capable for resilient grid operations.
+Rancher provides the management layer for energy utilities' digital transformation, from central control centers to substation edge K3s deployments. NERC-CIP objectives can be supported with network segmentation, strict RBAC, and comprehensive audit logging, but compliance still depends on broader operational and procedural controls. SCADA integration uses protocol adapters (DNP3, IEC 61850) running as Kubernetes deployments, while ML demand forecasting improves grid efficiency. Edge K3s clusters at substations and renewable assets can continue running local workloads through WAN outages, with Rancher management operations resuming when connectivity returns.
