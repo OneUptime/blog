@@ -16,13 +16,13 @@ Remote access (road warrior) IPv6 VPNs allow mobile users to connect to corporat
 sequenceDiagram
     participant Client as Remote Client\n(dynamic IPv6)
     participant Internet
-    participant GW as VPN Gateway\n2001:db8:vpn::1
-    participant Corp as Corporate Network\n2001:db8:corp::/48
+    participant GW as VPN Gateway\n2001:db8:1::1
+    participant Corp as Corporate Network\n2001:db8:100::/48
 
     Client->>GW: IKEv2 INIT (UDP 500)
     GW->>Client: IKEv2 AUTH challenge
     Client->>GW: EAP credentials
-    GW->>Client: Assigns 2001:db8:pool::x/128
+    GW->>Client: Assigns 2001:db8:200::x/128
     Note over Client,GW: ESP Tunnel established
     Client->>GW: Encrypted traffic
     GW->>Corp: Decrypted, forwarded
@@ -36,7 +36,7 @@ sequenceDiagram
 connections {
     remote-access {
         version = 2
-        local_addrs  = 2001:db8:vpn::1
+        local_addrs  = 2001:db8:1::1
         remote_addrs = %any   # Accept from any IPv6 source
 
         local {
@@ -54,16 +54,15 @@ connections {
 
         children {
             road-warrior {
-                local_ts  = 2001:db8:corp::/48
-                remote_ts = ::/0      # Client's tunnel endpoints
+                local_ts  = 2001:db8:100::/48
                 mode = tunnel
-                esp_proposals = aes256gcm128-prfsha256-ecp256
+                esp_proposals = aes256-sha256
                 dpd_action = clear
-                rekey_time = 3600s
+                rekey_time = 0s
             }
         }
 
-        proposals = aes256-sha256-ecp256
+        proposals = aes256-sha256-modp2048
         send_certreq = yes
         dpd_delay = 30s
     }
@@ -71,8 +70,8 @@ connections {
 
 pools {
     ipv6-client-pool {
-        addrs = 2001:db8:vpn-clients::/64
-        dns   = 2001:db8:corp::53
+        addrs = 2001:db8:200::/64
+        dns   = 2001:db8:100::53
     }
 }
 
@@ -102,15 +101,20 @@ pki --self --ca --lifetime 3650 --in /etc/swanctl/private/ca.key.pem \
 # Create gateway certificate
 pki --gen --type rsa --size 2048 --outform pem > /etc/swanctl/private/vpn-gateway.key.pem
 pki --req --in /etc/swanctl/private/vpn-gateway.key.pem --type rsa \
-    --dn "CN=vpn.example.com" --san "vpn.example.com" --san "2001:db8:vpn::1" \
+    --dn "CN=vpn.example.com" --san "vpn.example.com" --san "2001:db8:1::1" \
     --outform pem > /tmp/vpn-gw.csr.pem
 pki --issue --in /tmp/vpn-gw.csr.pem --type pkcs10 \
     --cacert /etc/swanctl/x509ca/ca.cert.pem \
     --cakey /etc/swanctl/private/ca.key.pem \
+    --dn "CN=vpn.example.com" \
+    --san "vpn.example.com" --san "2001:db8:1::1" \
+    --flag serverAuth --flag ikeIntermediate \
     --lifetime 365 --outform pem > /etc/swanctl/x509/vpn-gateway.crt
 
 chmod 600 /etc/swanctl/private/*.pem
 ```
+
+Install the generated `ca.cert.pem` as a trusted CA on each client before connecting.
 
 ## Firewall Rules for Remote Access Gateway
 
@@ -121,10 +125,10 @@ ip6tables -A INPUT -p udp --dport 4500 -j ACCEPT   # IKE NAT-T
 ip6tables -A INPUT -p esp -j ACCEPT                 # ESP
 
 # Allow forwarding for VPN clients to corporate network
-ip6tables -A FORWARD -s 2001:db8:vpn-clients::/64 \
-          -d 2001:db8:corp::/48 -j ACCEPT
-ip6tables -A FORWARD -s 2001:db8:corp::/48 \
-          -d 2001:db8:vpn-clients::/64 -j ACCEPT
+ip6tables -A FORWARD -s 2001:db8:200::/64 \
+          -d 2001:db8:100::/48 -j ACCEPT
+ip6tables -A FORWARD -s 2001:db8:100::/48 \
+          -d 2001:db8:200::/64 -j ACCEPT
 
 # Enable forwarding
 sysctl -w net.ipv6.conf.all.forwarding=1
@@ -133,14 +137,30 @@ sysctl -w net.ipv6.conf.all.forwarding=1
 ## Client Configuration (Windows)
 
 ```powershell
+# Import ca.cert.pem into Local Machine\Trusted Root Certification Authorities first.
 # Windows: Add IKEv2 VPN with IPv6 gateway
 Add-VpnConnection `
     -Name "Corp VPN" `
     -ServerAddress "vpn.example.com" `
-    -TunnelType IKEv2 `
-    -AuthenticationMethod EAP `
-    -EncryptionLevel Required `
+    -TunnelType Ikev2 `
+    -AuthenticationMethod Eap `
+    -EncryptionLevel Maximum `
+    -SplitTunneling `
     -RememberCredential $true
+
+Set-VpnConnectionIPsecConfiguration `
+    -ConnectionName "Corp VPN" `
+    -AuthenticationTransformConstants None `
+    -CipherTransformConstants AES256 `
+    -EncryptionMethod AES256 `
+    -IntegrityCheckMethod SHA256 `
+    -PfsGroup None `
+    -DHGroup Group14 `
+    -Force
+
+Add-VpnConnectionRoute `
+    -ConnectionName "Corp VPN" `
+    -DestinationPrefix "2001:db8:100::/48"
 
 # Connect
 rasdial "Corp VPN" alice "Alice-Strong-Password-123!"
@@ -149,11 +169,13 @@ rasdial "Corp VPN" alice "Alice-Strong-Password-123!"
 ## Client Configuration: Linux with strongSwan
 
 ```text
+# Place ca.cert.pem in /etc/swanctl/x509ca/ca.cert.pem on the client first.
 # /etc/swanctl/conf.d/client.conf
 connections {
     corp-vpn {
         version = 2
         remote_addrs = vpn.example.com
+        vips = ::
 
         local {
             auth = eap
@@ -166,14 +188,14 @@ connections {
 
         children {
             vpn-traffic {
-                remote_ts = 2001:db8:corp::/48
+                remote_ts = 2001:db8:100::/48
                 mode = tunnel
-                esp_proposals = aes256gcm128-prfsha256-ecp256
+                esp_proposals = aes256-sha256
                 start_action = trap
             }
         }
 
-        proposals = aes256-sha256-ecp256
+        proposals = aes256-sha256-modp2048
     }
 }
 
@@ -188,7 +210,7 @@ secrets {
 ```bash
 # Connect
 swanctl --load-all
-swanctl --initiate conn:corp-vpn child:vpn-traffic
+swanctl --initiate --ike corp-vpn --child vpn-traffic
 
 # Check
 swanctl --list-sas
@@ -205,8 +227,8 @@ swanctl --list-sas
 # Sample output per client:
 # remote-access: #5, ESTABLISHED, IKEv2, alice@...
 #   road-warrior: #5, reqid 5, INSTALLED, TUNNEL
-#     local  2001:db8:corp::/48
-#     remote 2001:db8:vpn-clients::5/128
+#     local  2001:db8:100::/48
+#     remote 2001:db8:200::5/128
 
 # Log connected users
 journalctl -u strongswan | grep "ESTABLISHED" | awk '{print $0}' | tail -20
@@ -214,4 +236,4 @@ journalctl -u strongswan | grep "ESTABLISHED" | awk '{print $0}' | tail -20
 
 ## Summary
 
-Remote access IPv6 VPN with strongSwan uses `remote_addrs = %any`, an IP address pool for clients, and EAP-MSCHAPv2 or certificate authentication. Clients receive IPv6 addresses from the configured `pools{}` block. Configure firewall rules to allow UDP 500/4500 and ESP from internet, and to forward client traffic to the corporate network. Clients can connect from Windows (built-in IKEv2), Linux (strongSwan), or iOS/Android (native IKEv2). Monitor connections with `swanctl --list-sas`.
+Remote access IPv6 VPN with strongSwan uses `remote_addrs = %any`, an IP address pool for clients, and EAP-MSCHAPv2 or certificate authentication. Clients receive IPv6 addresses from the configured `pools{}` block, and strongSwan clients should request that address with `vips = ::`. Configure firewall rules to allow UDP 500/4500 and ESP from internet, and to forward client traffic to the corporate network. Windows clients also need matching IPsec settings and an IPv6 route for the corporate prefix. Monitor connections with `swanctl --list-sas`.
