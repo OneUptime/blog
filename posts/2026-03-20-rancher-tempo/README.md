@@ -8,7 +8,7 @@ Description: Deploy Grafana Tempo on Rancher for cost-effective, scalable distri
 
 ## Introduction
 
-Grafana Tempo is a distributed tracing backend that stores traces in object storage (S3, GCS, Azure Blob) at minimal cost. Unlike Jaeger or Zipkin, Tempo doesn't index traces for ad-hoc search-instead, it uses trace IDs from logs and metrics to look up specific traces. This guide covers deploying Tempo on Rancher with the Grafana LGTM stack.
+Grafana Tempo is a distributed tracing backend that stores traces in object storage (S3, GCS, Azure Blob) at minimal cost. Unlike tracing backends that rely on a large secondary index, Tempo keeps storage costs low while still supporting trace lookup by ID and TraceQL-based search in Grafana. This guide covers deploying Tempo on Rancher with the Grafana LGTM stack.
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ Grafana Tempo is a distributed tracing backend that stores traces in object stor
 For on-premises deployments without cloud object storage:
 
 ```bash
-# Deploy MinIO for Tempo backend
+# Deploy MinIO for Tempo backend and create the tempo bucket
 
 helm repo add minio https://charts.min.io/
 helm install minio minio/minio \
@@ -32,85 +32,76 @@ helm install minio minio/minio \
   --set rootPassword=minioadmin \
   --set persistence.size=100Gi \
   --set mode=standalone \
+  --set 'buckets[0].name=tempo' \
   --wait
-
-# Create the tempo bucket
-kubectl exec -n observability deployment/minio -- \
-  mc alias set local http://localhost:9000 minioadmin minioadmin
-
-kubectl exec -n observability deployment/minio -- \
-  mc mb local/tempo
 ```
 
 ## Step 2: Deploy Tempo with Helm
 
 ```yaml
 # tempo-values.yaml - Tempo distributed configuration
-tempo:
-  # Storage configuration
-  storage:
-    trace:
-      backend: s3
-      s3:
-        bucket: tempo
-        endpoint: minio.observability.svc.cluster.local:9000
-        access_key: minioadmin
-        secret_key: minioadmin
-        insecure: true
+storage:
+  trace:
+    backend: s3
+    s3:
+      bucket: tempo
+      endpoint: minio.observability.svc.cluster.local:9000
+      access_key: minioadmin
+      secret_key: minioadmin
+      insecure: true
 
-  # Ingester configuration
-  ingester:
-    lifecycler:
-      ring:
-        replication_factor: 2
+traces:
+  otlp:
+    grpc:
+      enabled: true
+    http:
+      enabled: true
+  jaeger:
+    grpc:
+      enabled: true
+    thriftHttp:
+      enabled: true
+  zipkin:
+    enabled: true
 
-  # Compactor runs hourly
-  compactor:
+ingester:
+  config:
+    replication_factor: 2
+
+compactor:
+  config:
     compaction:
       block_retention: 720h  # 30 days
 
-  # Server configuration
-  server:
-    http_listen_port: 3100
-    grpc_listen_port: 9095
-
-  # Distributor (receives traces)
-  distributor:
-    receivers:
-      otlp:
-        protocols:
-          grpc:
-            endpoint: 0.0.0.0:4317
-          http:
-            endpoint: 0.0.0.0:4318
-      jaeger:
-        protocols:
-          thrift_http:
-            endpoint: 0.0.0.0:14268
-          grpc:
-            endpoint: 0.0.0.0:14250
-      zipkin:
-        endpoint: 0.0.0.0:9411
-
-  # Query configuration
-  querier:
+querier:
+  config:
     max_concurrent_queries: 20
 
-  # Metrics generation (connect traces to metrics)
-  metricsGenerator:
-    enabled: true
+metricsGenerator:
+  enabled: true
+  config:
     storage:
       path: /var/tempo/wal
       remote_write:
         - url: http://rancher-monitoring-prometheus.cattle-monitoring-system.svc.cluster.local:9090/api/v1/write
           send_exemplars: true
 
-serviceMonitor:
-  enabled: true
-  namespace: cattle-monitoring-system
-  labels:
-    release: rancher-monitoring
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
+        - span-metrics
+
+metaMonitoring:
+  serviceMonitor:
+    enabled: true
+    namespace: cattle-monitoring-system
+    labels:
+      release: rancher-monitoring
 ```
+
+If you use Prometheus as the `remote_write` target, make sure its remote write receiver is enabled before deploying Tempo.
 
 ```bash
 # Add Grafana Helm repository
@@ -145,18 +136,21 @@ data:
     datasources:
       - name: Tempo
         type: tempo
-        url: http://tempo-query-frontend.observability.svc.cluster.local:3100
+        uid: tempo
+        url: http://tempo-query-frontend.observability.svc.cluster.local:3200
         access: proxy
         jsonData:
           tracesToLogsV2:
+            # Match the uid of your Loki data source.
             datasourceUid: loki
             spanStartTimeShift: -1h
             spanEndTimeShift: 1h
             filterByTraceID: true
             filterBySpanID: false
             customQuery: true
-            query: '{namespace="${__span.tags.k8s.namespace.name}"}'
+            query: '{namespace="$${__span.tags.k8s.namespace.name}"}'
           tracesToMetrics:
+            # Match the uid of your Prometheus data source.
             datasourceUid: prometheus
             spanStartTimeShift: -1h
             spanEndTimeShift: 1h
@@ -166,8 +160,6 @@ data:
             enabled: true
           search:
             hide: false
-          lokiSearch:
-            datasourceUid: loki
 ```
 
 ## Step 4: Configure OpenTelemetry Collector to Send to Tempo
@@ -175,6 +167,24 @@ data:
 ```yaml
 # otel-tempo-config.yaml - OTel Collector routing to Tempo
 config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+        http:
+    jaeger:
+      protocols:
+        grpc:
+        thrift_http:
+
+  processors:
+    memory_limiter:
+      check_interval: 1s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    k8sattributes: {}
+    batch: {}
+
   exporters:
     otlp/tempo:
       endpoint: tempo-distributor.observability.svc.cluster.local:4317
@@ -192,21 +202,13 @@ config:
 ## Step 5: Enable Trace to Logs Correlation
 
 ```yaml
-# loki-with-trace-id.yaml - Loki config to include trace IDs in logs
-config:
-  distributor:
-    ring:
-      kvstore:
-        store: memberlist
-  schema_config:
-    configs:
-      - from: 2024-01-01
-        store: boltdb-shipper
-        object_store: s3
-        schema: v12
-        index:
-          prefix: index_
-          period: 24h
+# Add this under the jsonData block of your existing Loki data source
+jsonData:
+  derivedFields:
+    - name: TraceID
+      matcherRegex: '"trace_id":"(\w+)"'
+      datasourceUid: tempo
+      url: '$${__value.raw}'
 ```
 
 Configure your applications to include trace IDs in log output:
@@ -218,9 +220,8 @@ from opentelemetry import trace
 
 class TraceIdInjectionFilter(logging.Filter):
     def filter(self, record):
-        span = trace.get_current_span()
-        if span.is_recording():
-            ctx = span.get_span_context()
+        ctx = trace.get_current_span().get_span_context()
+        if ctx.is_valid:
             record.trace_id = format(ctx.trace_id, '032x')
             record.span_id = format(ctx.span_id, '016x')
         else:
@@ -232,16 +233,21 @@ class TraceIdInjectionFilter(logging.Filter):
 logging.basicConfig(
     format='{"timestamp":"%(asctime)s","level":"%(levelname)s","msg":"%(message)s","trace_id":"%(trace_id)s","span_id":"%(span_id)s"}'
 )
-logging.getLogger().addFilter(TraceIdInjectionFilter())
+for handler in logging.getLogger().handlers:
+    handler.addFilter(TraceIdInjectionFilter())
 ```
 
 ## Step 6: Test the Trace Pipeline
 
 ```bash
-# Send a test trace
-kubectl exec -n observability deployment/otel-collector -- \
-  curl -s -X POST \
-  http://tempo-distributor.observability.svc.cluster.local:4318/v1/traces \
+# Forward the collector and query frontend locally
+kubectl port-forward -n observability deployment/otel-collector 4318:4318 &
+kubectl port-forward -n observability svc/tempo-query-frontend 3200:3200 &
+sleep 2
+
+# Send a test trace through the collector
+curl -s -X POST \
+  http://localhost:4318/v1/traces \
   -H "Content-Type: application/json" \
   -d '{
     "resourceSpans": [{
@@ -261,9 +267,10 @@ kubectl exec -n observability deployment/otel-collector -- \
     }]
   }'
 
+sleep 2
+
 # Search for the trace in Tempo
-kubectl port-forward -n observability svc/tempo-query-frontend 3100:3100 &
-curl "http://localhost:3100/api/traces/7bba9f33312b3dbb8b2c2c62bb7abe2d" | jq '.'
+curl "http://localhost:3200/api/v2/traces/7bba9f33312b3dbb8b2c2c62bb7abe2d" | jq '.'
 ```
 
 ## Conclusion
