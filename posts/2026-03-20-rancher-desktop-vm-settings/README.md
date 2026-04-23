@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher Desktop, VM, Virtual Machine, Configuration, Setting
 
-Description: Customize the underlying virtual machine settings in Rancher Desktop including network, storage, and hardware configuration.
+Description: Customize the underlying virtual machine settings in Rancher Desktop including hardware allocation, volume mounts, and platform-specific virtualization options.
 
 ## Introduction
 
@@ -13,9 +13,11 @@ Rancher Desktop is an open-source desktop application that provides Kubernetes a
 ## Prerequisites
 
 - A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
-- At least 8 GB of RAM (16 GB recommended)
-- At least 4 CPU cores
+- Windows users need Windows Subsystem for Linux (WSL) installed
+- Linux users need read-write access to `/dev/kvm`
+- Administrator/sudo privileges may be required for installation, depending on platform and setup
+- 8 GB of RAM recommended
+- 4 CPU cores recommended
 
 ## Overview
 
@@ -23,20 +25,20 @@ Rancher Desktop simplifies local Kubernetes and container development by providi
 
 - A local Kubernetes cluster (k3s-based)
 - Container runtime (containerd or dockerd)
-- Integrated CLI tools (kubectl, helm, nerdctl, docker)
+- Integrated CLI tools (kubectl, helm, nerdctl, and docker when Moby is selected)
 - Simple configuration through a GUI
 
 ## Step 1: Initial Setup
 
 ```bash
-# Verify Rancher Desktop is installed and running
+# Verify Rancher Desktop is installed
 
 rdctl version
 
-# Check Kubernetes cluster status
+# Check Kubernetes cluster status, if Kubernetes is enabled
 kubectl cluster-info
 
-# Verify container runtime
+# Verify the selected container runtime
 nerdctl version
 # or
 docker version
@@ -47,36 +49,34 @@ docker version
 Open Rancher Desktop Preferences to configure:
 
 - **Kubernetes**: Version and enabled/disabled state
-- **Container Engine**: containerd or moby (dockerd)
-- **Virtual Machine**: CPU, memory, and disk allocation
-- **WSL** (Windows only): WSL2 integration settings
+- **Container Engine**: containerd or Moby (dockerd)
+- **Virtual Machine** (macOS and Linux): CPU and memory allocation, mount type, and emulation options on macOS
+- **WSL** (Windows only): WSL2 integration settings; CPU and memory are configured globally by WSL
 
 ```bash
 # Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
-rdctl set --container-engine containerd
+rdctl start --virtual-machine.memory-in-gb 8 --virtual-machine.number-cpus 4
+rdctl start --container-engine.name containerd
 ```
 
 ## Step 3: Working with Containers
 
 ```bash
-# Pull an image
+# Example using the containerd / nerdctl workflow
 nerdctl pull nginx:latest
-# or with docker compatibility
-docker pull nginx:latest
-
-# Run a container
 nerdctl run -d -p 8080:80 --name my-nginx nginx:latest
-
-# List running containers
 nerdctl ps
-
-# View container logs
 nerdctl logs my-nginx
-
-# Stop and remove
 nerdctl stop my-nginx
 nerdctl rm my-nginx
+
+# Equivalent commands when using the Moby engine
+docker pull nginx:latest
+docker run -d -p 8080:80 --name my-nginx nginx:latest
+docker ps
+docker logs my-nginx
+docker stop my-nginx
+docker rm my-nginx
 ```
 
 ## Step 4: Working with Kubernetes
@@ -131,31 +131,29 @@ helm uninstall my-release
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
+# Reset Rancher Desktop to factory defaults
 rdctl factory-reset
 
-# Check Rancher Desktop status
-rdctl status
+# View the current rdctl CLI version
+rdctl version
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
+# Inspect the current Rancher Desktop settings in JSON
+rdctl list-settings
 
-# Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+# Update VM resources on macOS and Linux
+rdctl start --virtual-machine.memory-in-gb 8 --virtual-machine.number-cpus 4
 ```
 
 ## Troubleshooting
 
 ```bash
-# Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# Open Troubleshooting > Show Logs in the Rancher Desktop UI
 
 # Reset to factory defaults
 rdctl factory-reset
 
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Inspect current virtual machine settings
+rdctl list-settings
 ```
 
 ## Conclusion
