@@ -21,17 +21,23 @@ A slow Rancher UI frustrates operators managing many clusters. UI performance de
 ```nginx
 # nginx.conf - Optimized Rancher reverse proxy
 
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
 upstream rancher_servers {
     least_conn;
-    server rancher-01:443;
-    server rancher-02:443;
-    server rancher-03:443;
+    server rancher-01:80;
+    server rancher-02:80;
+    server rancher-03:80;
 
     keepalive 32;  # Persistent connections
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name rancher.example.com;
 
     ssl_certificate     /etc/ssl/certs/rancher.crt;
@@ -57,23 +63,32 @@ server {
 
     # Cache static assets
     location ~* \.(js|css|png|jpg|ico|svg|woff2|woff|ttf)$ {
-        proxy_pass https://rancher_servers;
+        proxy_pass http://rancher_servers;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
         proxy_cache rancher_cache;
         proxy_cache_valid 200 7d;
         proxy_cache_use_stale error timeout updating;
-        add_header Cache-Control "public, max-age=604800, immutable";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        add_header Cache-Control "public, max-age=604800";
         add_header X-Cache-Status $upstream_cache_status;
     }
 
     # Proxy all other requests
     location / {
-        proxy_pass https://rancher_servers;
+        proxy_pass http://rancher_servers;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_read_timeout 900;
+        proxy_buffering off;
     }
 }
 
@@ -91,39 +106,84 @@ proxy_cache_path /var/cache/nginx/rancher
 ```bash
 # For CloudFront distribution in front of Rancher
 
-# Create behavior for static assets
-aws cloudfront create-distribution \
-  --distribution-config '{
-    "Origins": {
-      "Items": [{
+# Create a distribution that leaves dynamic requests uncached
+# and caches only the Rancher UI asset path.
+cat > distribution-config.json <<EOF
+{
+  "CallerReference": "rancher-ui-$(date +%s)",
+  "Comment": "CloudFront for Rancher UI assets",
+  "Origins": {
+    "Quantity": 1,
+    "Items": [
+      {
         "Id": "rancher-origin",
         "DomainName": "rancher.example.com",
+        "CustomHeaders": {
+          "Quantity": 0
+        },
         "CustomOriginConfig": {
+          "HTTPPort": 80,
           "HTTPSPort": 443,
           "OriginProtocolPolicy": "https-only"
         }
-      }]
+      }
+    ]
+  },
+  "DefaultCacheBehavior": {
+    "TargetOriginId": "rancher-origin",
+    "ViewerProtocolPolicy": "redirect-to-https",
+    "AllowedMethods": {
+      "Quantity": 7,
+      "Items": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+      "CachedMethods": {
+        "Quantity": 2,
+        "Items": ["GET", "HEAD"]
+      }
     },
-    "CacheBehaviors": {
-      "Items": [{
-        "PathPattern": "*.js",
+    "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+    "OriginRequestPolicyId": "b689b0a8-53d0-40ab-baf2-68738e2966ac",
+    "Compress": true
+  },
+  "CacheBehaviors": {
+    "Quantity": 1,
+    "Items": [
+      {
+        "PathPattern": "dashboard/assets/*",
         "TargetOriginId": "rancher-origin",
-        "CachePolicyId": "cache-optimized-policy-id",
-        "ViewerProtocolPolicy": "https-only",
+        "ViewerProtocolPolicy": "redirect-to-https",
+        "AllowedMethods": {
+          "Quantity": 2,
+          "Items": ["GET", "HEAD"],
+          "CachedMethods": {
+            "Quantity": 2,
+            "Items": ["GET", "HEAD"]
+          }
+        },
+        "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
         "Compress": true
-      }]
-    }
-  }'
+      }
+    ]
+  },
+  "Enabled": true
+}
+EOF
+
+aws cloudfront create-distribution \
+  --distribution-config file://distribution-config.json
 ```
 
-## Step 3: Enable HTTP/2 Push for Critical Resources
+## Step 3: Use Preload Hints for Critical Resources
 
 ```nginx
-# Push critical Rancher UI assets
-location = / {
-    http2_push /dashboard/assets/index.js;
-    http2_push /dashboard/assets/index.css;
-    proxy_pass https://rancher_servers;
+# Hint critical Rancher UI assets to the browser
+location = /dashboard/ {
+    add_header Link "</dashboard/assets/index.css>; rel=preload; as=style";
+    add_header Link "</dashboard/assets/index.js>; rel=preload; as=script";
+    proxy_pass http://rancher_servers;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Port $server_port;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 }
 ```
 
@@ -131,38 +191,39 @@ location = / {
 
 ```bash
 # Disable unused features to reduce UI complexity
-# In Rancher settings
+# In Rancher feature flags
 
-# Enable only necessary features
+# List available feature flags
+curl -H "Authorization: Bearer ${RANCHER_TOKEN}" \
+  "https://rancher.example.com/v3/features"
+
+# Ensure UI Server-Side Pagination is enabled for large environments
 curl -X PUT \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"value": "istio=false,legacy=false"}' \
-  "https://rancher.example.com/v3/settings/feature-gates"
+  -d '{"value": true}' \
+  "https://rancher.example.com/v3/features/ui-sql-cache"
 
-# Disable legacy UI (Rancher v2.6+)
+# Disable legacy features if you do not need them
 curl -X PUT \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"value": "false"}' \
-  "https://rancher.example.com/v3/settings/ui-legacy"
+  -d '{"value": false}' \
+  "https://rancher.example.com/v3/features/legacy"
 ```
 
 ## Step 5: Optimize API Response Times
 
 ```bash
 # Rancher UI makes many API calls on load
-# Check slow API endpoints
+# Measure a representative API request
+curl -sS -o /dev/null -w 'time_total=%{time_total}\n' \
+  -H "Authorization: Bearer $TOKEN" \
+  "https://rancher.example.com/v3/clusters?limit=100"
 
-kubectl logs -n cattle-system deployment/rancher | \
-  grep "slow request" | \
-  awk '{print $NF}' | \
-  sort | uniq -c | sort -rn | head -20
-
-# Enable API pagination to reduce payload size
-# Rancher uses pagination by default, but check limits
-curl -H "Authorization: Bearer $TOKEN" \
-  "https://rancher.example.com/v3/clusters?limit=100&marker=0"
+# Check pagination metadata and use the next link when needed
+curl -sS -H "Authorization: Bearer $TOKEN" \
+  "https://rancher.example.com/v3/clusters?limit=100" | jq '.pagination'
 ```
 
 ## Step 6: Browser Cache Configuration
@@ -172,14 +233,15 @@ curl -H "Authorization: Bearer $TOKEN" \
 curl -I https://rancher.example.com/dashboard/assets/index.js
 
 # Expected headers:
-# Cache-Control: public, max-age=31536000, immutable
-# Etag: "version-hash"
+# Cache-Control: public, max-age=604800
 # Content-Encoding: gzip
+```
 
+```nginx
 # If cache headers are missing, add them in your reverse proxy
 location ~* \.(js|css)$ {
-    add_header Cache-Control "public, max-age=31536000, immutable";
-    expires 1y;
+    add_header Cache-Control "public, max-age=604800";
+    expires 7d;
 }
 ```
 
@@ -195,9 +257,9 @@ npx lighthouse https://rancher.example.com \
 # Extract key metrics
 cat rancher-perf.json | jq '.categories.performance.score,
   .audits["first-contentful-paint"].displayValue,
-  .audits["time-to-interactive"].displayValue'
+  .audits["interactive"].displayValue'
 ```
 
 ## Conclusion
 
-Rancher UI performance improvement requires a multi-layered approach. NGINX caching with HTTP/2, gzip compression, and proper cache headers for static assets can cut initial load time by 40-60%. For globally distributed teams, a CDN in front of Rancher delivers assets from edge locations near each user. Combined with disabling unused Rancher features and monitoring API response times, these optimizations create a significantly more responsive management experience.
+Rancher UI performance improvement requires a multi-layered approach. NGINX caching with HTTP/2, gzip compression, and proper cache headers for static assets can materially reduce initial load time. For globally distributed teams, a CDN in front of Rancher can deliver static assets from edge locations near each user while leaving dynamic API traffic uncached. Combined with Rancher UI server-side pagination and monitoring API response times, these optimizations create a significantly more responsive management experience.
