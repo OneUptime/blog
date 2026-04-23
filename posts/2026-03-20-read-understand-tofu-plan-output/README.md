@@ -8,7 +8,7 @@ Description: A guide to interpreting OpenTofu plan output to understand infrastr
 
 ## Introduction
 
-Reading and understanding the `tofu plan` output is a critical skill for safely managing infrastructure. The plan output tells you exactly what changes will be made to your infrastructure. This guide explains each part of the plan output in detail.
+Reading and understanding the `tofu plan` output is a critical skill for safely managing infrastructure. The plan output shows what changes OpenTofu plans to make to your infrastructure. This guide explains each part of the plan output in detail.
 
 ## Plan Output Structure
 
@@ -26,7 +26,7 @@ A typical plan output has these sections:
 - Resource will be DESTROYED (removed)
 ~ Resource will be UPDATED IN-PLACE (modified without recreation)
 -/+ Resource will be DESTROYED then RECREATED (replacement)
-<= Data source will be READ
+<= Data source will be READ DURING APPLY
 
 # Specific attribute symbols within a resource block:
 
@@ -151,12 +151,12 @@ resource "aws_security_group" "web" {
   }
 ```
 
-## Using -json Flag for Machine-Readable Plans
+## Using `tofu show -json` for Machine-Readable Plans
 
 ```bash
 # Save plan and convert to JSON
 tofu plan -out=plan.tfplan
-tofu show -json plan.tfplan | jq '.resource_changes[] | {address: .address, action: .change.actions}'
+tofu show -json -plan=plan.tfplan | jq '.resource_changes[] | {address: .address, action: .change.actions}'
 
 # Example output:
 # [{"address": "aws_vpc.main", "action": ["create"]},
@@ -165,4 +165,4 @@ tofu show -json plan.tfplan | jq '.resource_changes[] | {address: .address, acti
 
 ## Conclusion
 
-Mastering plan output reading is essential for safe infrastructure management. Always review plans carefully before applying, paying special attention to destroy and replace actions as these are irreversible. The `-detailed-exitcode` flag is useful in CI/CD to detect when changes are present, and the `-json` output enables automated plan analysis for complex infrastructure changes.
+Mastering plan output reading is essential for safe infrastructure management. Always review plans carefully before applying, paying special attention to destroy and replace actions as these are irreversible. The `-detailed-exitcode` flag is useful in CI/CD to detect when changes are present, and `tofu show -json` enables automated plan analysis for complex infrastructure changes.
