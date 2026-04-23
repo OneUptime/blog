@@ -45,9 +45,8 @@ interface GigabitEthernet0/3
  switchport mode access
  switchport access vlan 30
 
-! Configure trunk uplink to the router (802.1Q)
+! Configure 802.1Q trunk uplink
 interface GigabitEthernet0/24
- switchport trunk encapsulation dot1q
  switchport mode trunk
  switchport trunk allowed vlan 10,20,30
 ```
