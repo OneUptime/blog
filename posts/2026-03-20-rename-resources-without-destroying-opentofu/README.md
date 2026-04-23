@@ -8,7 +8,7 @@ Description: Learn how to rename OpenTofu resources and modules using the moved 
 
 ## Introduction
 
-Renaming a resource in HCL without telling OpenTofu about the rename causes it to plan a destroy of the old resource and create of the new one. The `moved` block (introduced in Terraform 1.1 / OpenTofu) lets you declare the rename declaratively, preserving the existing resource.
+Renaming a resource in HCL without telling OpenTofu about the rename causes it to plan a destroy of the old resource and create of the new one. The `moved` block (introduced in Terraform 1.1 and supported by OpenTofu) lets you declare the rename declaratively, preserving the existing resource.
 
 ## Renaming a Resource
 
@@ -117,7 +117,7 @@ moved {
 
 ## Cleaning Up moved Blocks
 
-`moved` blocks are only needed until all team members and environments have applied the change. They can be safely removed afterward, but keeping them in version history documents the refactoring.
+`moved` blocks are generally best kept in configuration to preserve the upgrade path for later applies. Only remove them when you are certain all private environments have already applied the change, because removing a `moved` block is generally a breaking change.
 
 ```bash
 # Verify plan shows no destroy/create from the moved blocks
