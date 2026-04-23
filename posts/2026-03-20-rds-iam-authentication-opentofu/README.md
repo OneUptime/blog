@@ -13,7 +13,7 @@ RDS IAM Authentication allows EC2 instances, Lambda functions, and IAM users to 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- RDS MySQL 8.0+ or PostgreSQL 10+
+- RDS MySQL 5.7+ or PostgreSQL 10+
 
 ## Step 1: Enable IAM Authentication on RDS Instance
 
@@ -26,7 +26,7 @@ resource "aws_db_instance" "iam_auth" {
 
   db_name  = var.database_name
   username = var.master_username
-  password = var.master_password  # Still needed for the master user
+  password = var.master_password  # Still needed when creating the master user
 
   # Enable IAM database authentication
   iam_database_authentication_enabled = true
@@ -48,7 +48,10 @@ resource "aws_db_instance" "iam_auth" {
 ## Step 2: Create IAM Policy for Database Authentication
 
 ```hcl
-# IAM policy granting permission to generate RDS auth tokens
+# Look up the current AWS account ID for the rds-db ARN
+data "aws_caller_identity" "current" {}
+
+# IAM policy granting permission to connect using IAM authentication
 
 resource "aws_iam_policy" "rds_connect" {
   name        = "RDSIAMConnectPolicy"
@@ -77,12 +80,12 @@ resource "aws_iam_role_policy_attachment" "rds_connect" {
 
 ## Step 3: Create Database User for IAM Authentication
 
-```bash
+```text
 # For PostgreSQL - create user with rds_iam role
 # Run these SQL commands on the RDS instance:
 
 # Connect with master credentials
-psql -h my-db.cluster.us-east-1.rds.amazonaws.com -U masteruser -d mydb
+psql -h my-db.123456789012.us-east-1.rds.amazonaws.com -U masteruser -d mydb
 
 # Create the IAM user
 CREATE USER app_user;
@@ -107,7 +110,7 @@ def get_db_connection():
 
     # Generate an authentication token (valid for 15 minutes)
     token = client.generate_db_auth_token(
-        DBHostname='my-db.cluster.us-east-1.rds.amazonaws.com',
+        DBHostname='my-db.123456789012.us-east-1.rds.amazonaws.com',
         Port=5432,
         DBUsername='app_user',
         Region='us-east-1'
@@ -115,13 +118,13 @@ def get_db_connection():
 
     # Connect using the token as the password
     conn = psycopg2.connect(
-        host='my-db.cluster.us-east-1.rds.amazonaws.com',
+        host='my-db.123456789012.us-east-1.rds.amazonaws.com',
         port=5432,
-        database='mydb',
+        dbname='mydb',
         user='app_user',
         password=token,
-        sslmode='require',  # SSL required for IAM auth
-        sslrootcert='/path/to/rds-ca-bundle.pem'
+        sslmode='verify-full',  # SSL/TLS is required for IAM auth
+        sslrootcert='/path/to/global-bundle.pem'
     )
 
     return conn
@@ -139,4 +142,4 @@ tofu apply
 
 ## Conclusion
 
-RDS IAM Authentication eliminates password management for application database connections-tokens are automatically generated and expire after 15 minutes, limiting exposure. Pair IAM authentication with SSL/TLS (required) and restrict the `rds-db:connect` permission to specific database users and instance IDs for least-privilege access. The master user connection still requires a password, so continue to manage that credential securely via Secrets Manager.
+RDS IAM Authentication eliminates password management for application database connections-tokens are automatically generated and expire after 15 minutes, limiting exposure. Pair IAM authentication with SSL/TLS (required) and restrict the `rds-db:connect` permission to specific database users and DB resource IDs for least-privilege access. The master user is still created with a password, so continue to manage that credential securely via Secrets Manager for administrative access.
