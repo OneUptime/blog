@@ -15,9 +15,9 @@ Description: Learn how to configure CPU and memory requests and limits for Kuber
 
 When deploying an application in Portainer:
 
-1. Scroll to the **Resources** section.
-2. Set **CPU request**, **CPU limit**, **Memory request**, and **Memory limit**.
-3. Portainer accepts standard Kubernetes units: `m` for millicores (CPU), `Mi`/`Gi` for memory.
+1. Scroll to the **Resource reservations** section.
+2. Set **CPU limit** and **Memory limit (MB)**.
+3. Portainer applies these values per application instance as both Kubernetes `requests` and `limits`. If you need different request and limit values, deploy or edit a manifest using standard Kubernetes units such as `m` for millicores and `Mi`/`Gi` for memory.
 
 ## Understanding CPU Units
 
@@ -33,18 +33,20 @@ When deploying an application in Portainer:
 # Resource requests and limits in a Deployment spec
 
 spec:
-  containers:
-    - name: api
-      image: my-api:latest
-      resources:
-        requests:
-          # Minimum guaranteed resources for scheduling
-          cpu: 100m       # 0.1 CPU core
-          memory: 128Mi   # 128 mebibytes
-        limits:
-          # Hard cap - exceeding memory causes OOMKill
-          cpu: 500m       # 0.5 CPU core
-          memory: 512Mi   # 512 mebibytes
+  template:
+    spec:
+      containers:
+        - name: api
+          image: my-api:latest
+          resources:
+            requests:
+              # Minimum guaranteed resources for scheduling
+              cpu: 100m       # 0.1 CPU core
+              memory: 128Mi   # 128 mebibytes
+            limits:
+              # Hard cap - exceeding memory causes OOMKill
+              cpu: 500m       # 0.5 CPU core
+              memory: 512Mi   # 512 mebibytes
 ```
 
 Resource Sizing Guidelines
@@ -60,12 +62,12 @@ Resource Sizing Guidelines
 
 ```bash
 # View actual resource usage per pod
-kubectl top pods --namespace production
+kubectl top pod --namespace production
 
 # View usage per container within pods
-kubectl top pods --namespace production --containers
+kubectl top pod --namespace production --containers
 
-# Check if pods are being throttled or OOMKilled
+# Check for OOMKills or evictions
 kubectl get events --namespace production | grep -E "OOMKill|Evict"
 
 # Describe a pod to see resource limits and recent events
@@ -99,9 +101,9 @@ spec:
 ## Diagnosing OOMKilled Containers
 
 ```bash
-# Find OOMKilled containers in the last hour
+# Find pods whose last container termination reason was OOMKilled
 kubectl get pods --all-namespaces -o json | \
-  jq '.items[] | select(.status.containerStatuses[].lastState.terminated.reason == "OOMKilled") | .metadata.name'
+  jq -r '.items[] as $pod | ($pod.status.containerStatuses // [])[] | select(.lastState.terminated.reason == "OOMKilled") | "\($pod.metadata.namespace)/\($pod.metadata.name) \(.name)"'
 ```
 
 ## Conclusion
