@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCP, macOS, Networking, Network Diagnostics, Sysadmin
 
-Description: Renewing a DHCP lease on macOS can be done through System Settings, the ipconfig command, or by using networksetup to toggle DHCP off and on for the target interface.
+Description: Renewing a DHCP lease on macOS can be done through System Settings, the `scutil` or `ipconfig` command line tools, or by using `networksetup` to set the target network service to DHCP.
 
 ## Method 1: System Settings (GUI)
 
@@ -15,45 +15,41 @@ Description: Renewing a DHCP lease on macOS can be done through System Settings,
 5. Click **Renew DHCP Lease**.
 6. Click **OK**.
 
-## Method 2: ipconfig Command
+## Method 2: Command Line (scutil and ipconfig)
 
 ```bash
 # Show current DHCP lease information
-
 ipconfig getpacket en0
 
-# Release and renew the DHCP lease
+# Renew the current interface configuration
+sudo scutil --renew en0
+
+# Request DHCP configuration on the interface
+# Note: ipconfig is intended for test/debug use and creates a temporary service
 sudo ipconfig set en0 DHCP
 
-# For Wi-Fi (en0) or Ethernet (en1) - check with ifconfig
-ifconfig | grep '^en' | awk '{print $1}'
-
-# Verbose renewal
-sudo ipconfig -v setifaddr en0
+# List network interfaces
+ifconfig -l | tr ' ' '\n' | grep '^en'
 ```
 
 ## Method 3: networksetup (CLI)
 
 ```bash
-# Toggle from DHCP to DHCP to force renewal
+# Set the network service to use DHCP
 sudo networksetup -setdhcp "Wi-Fi"
 
-# Get current IP info for the interface
-networksetup -getinfo "Wi-Fi"
+# List network services
+networksetup -listallnetworkservices
 ```
 
 ## Method 4: Disable and Re-Enable Interface
 
 ```bash
 # Bring down and bring up the interface
+# This resets the link; if the service uses DHCP, macOS may reacquire configuration
 sudo ifconfig en0 down
 sleep 2
 sudo ifconfig en0 up
-
-# Or via networksetup
-sudo networksetup -setnetworkserviceenabled "Wi-Fi" off
-sleep 2
-sudo networksetup -setnetworkserviceenabled "Wi-Fi" on
 ```
 
 ## Viewing Current Lease Details
@@ -62,8 +58,8 @@ sudo networksetup -setnetworkserviceenabled "Wi-Fi" on
 # Detailed DHCP packet info (shows server IP, lease time, all options)
 ipconfig getpacket en0
 
-# Current IP configuration
-networksetup -getinfo "Wi-Fi"
+# Current IP configuration summary
+ipconfig getsummary en0
 
 # Or
 ifconfig en0
@@ -72,6 +68,7 @@ ifconfig en0
 ## Flushing DNS Cache After Renewal
 
 ```bash
+# Optional: flush the local DNS cache if you specifically need to clear cached lookups
 sudo dscacheutil -flushcache
 sudo killall -HUP mDNSResponder
 ```
@@ -89,6 +86,7 @@ ipconfig getpacket en0 | grep server_identifier
 ## Key Takeaways
 
 - The GUI renewal button in System Settings is the simplest method for most users.
-- `sudo ipconfig set en0 DHCP` triggers a new DORA exchange from the command line.
+- `sudo scutil --renew en0` asks macOS to immediately re-evaluate configuration on that interface.
+- `sudo ipconfig set en0 DHCP` can request DHCP on an interface, but Apple documents `ipconfig` as a test/debug tool that creates a temporary service.
 - Use `ipconfig getpacket en0` to see all DHCP options including the server IP and lease time.
-- Flush the DNS cache with `dscacheutil -flushcache` after renewal to clear stale records.
+- Flushing the DNS cache is optional and separate from renewing the DHCP lease.
