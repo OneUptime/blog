@@ -8,7 +8,7 @@ Description: Learn how to configure Route 53 geolocation routing with OpenTofu t
 
 ## Introduction
 
-Route 53 geolocation routing routes traffic based on the geographic location of DNS queries-continent, country, or US state. Unlike latency routing (which optimizes for speed), geolocation routing enforces where traffic goes regardless of performance. This is essential for GDPR data residency requirements, serving localized content, and restricting access to specific regions.
+Route 53 geolocation routing routes traffic based on the geographic location that DNS queries originate from: continent, country, or US state. Unlike latency routing (which optimizes for speed), geolocation routing selects the DNS answer by location rather than performance. This is useful for supporting data residency controls, serving localized content, and restricting access to specific regions.
 
 ## Prerequisites
 
@@ -57,7 +57,7 @@ resource "aws_route53_record" "europe" {
   }
 }
 
-# Default record - catches all other locations (required for geolocation routing)
+# Default record - catches all other locations (recommended for unmatched locations)
 resource "aws_route53_record" "default" {
   zone_id        = var.hosted_zone_id
   name           = var.domain_name
@@ -176,19 +176,21 @@ tofu plan
 tofu apply
 
 # Test geolocation routing for specific client IPs
-aws route53 test-dns-answer \
-  --hosted-zone-id <zone-id> \
-  --record-name api.example.com \
-  --record-type A \
-  --edns0-client-subnet-ip 87.106.0.1  # German IP
+HOSTED_ZONE_ID=Z1234567890ABC
 
 aws route53 test-dns-answer \
-  --hosted-zone-id <zone-id> \
+  --hosted-zone-id "$HOSTED_ZONE_ID" \
   --record-name api.example.com \
   --record-type A \
-  --edns0-client-subnet-ip 1.1.1.1  # Australian IP
+  --edns0-client-subnet-ip 18.192.0.1  # Frankfurt-region IP
+
+aws route53 test-dns-answer \
+  --hosted-zone-id "$HOSTED_ZONE_ID" \
+  --record-name api.example.com \
+  --record-type A \
+  --edns0-client-subnet-ip 13.236.0.1  # Sydney-region IP
 ```
 
 ## Conclusion
 
-Always create a default geolocation record (`country = "*"`) to handle locations that don't match any other record-without it, Route 53 returns no answer for unmatched locations, causing DNS failures. Country records take precedence over continent records, and continent records take precedence over the default. Use geolocation routing for data residency and compliance requirements, but combine with latency routing at a higher level when you also want performance optimization within each geographic constraint.
+Always create a default geolocation record (`country = "*"`) to handle locations that don't match any other record-without it, Route 53 returns no answer for unmatched locations, causing DNS failures. Country records take precedence over continent records, and continent records take precedence over the default. Use geolocation routing to support data residency and compliance designs, but combine it with latency routing by using Traffic Flow or an alias-record hierarchy when you also want performance optimization within each geographic constraint.
