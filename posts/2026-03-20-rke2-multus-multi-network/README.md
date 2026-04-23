@@ -19,9 +19,9 @@ Multus CNI is a meta-plugin that allows Kubernetes pods to be connected to multi
 
 ## Prerequisites
 
-- RKE2 cluster (v1.21+)
+- RKE2 cluster on a currently supported release
 - Multiple network interfaces on your nodes
-- Helm installed for managing charts
+- Sudo access to create RKE2 configuration and manifest files
 
 ## Step 1: Enable Multus in RKE2 Configuration
 
@@ -30,13 +30,13 @@ RKE2 has built-in support for deploying Multus as a secondary CNI. Configure it 
 ```yaml
 # /etc/rancher/rke2/config.yaml
 
-# Primary CNI plugin (Multus wraps this)
+# Multus must be first, followed by the primary/default CNI plugin
 cni:
   - multus
   - canal  # or flannel, calico, cilium
 ```
 
-This tells RKE2 to deploy Multus as the primary CNI entry point, with Canal (or your chosen CNI) as the delegate for the default network.
+This tells RKE2 to deploy Multus as the CNI entry point, with Canal (or your chosen CNI) as the delegate for the default network.
 
 ```bash
 # Apply the configuration and start RKE2
@@ -63,15 +63,17 @@ export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
 kubectl -n kube-system get daemonset rke2-multus
 
 # Verify the Multus pods are ready
-kubectl -n kube-system get pods -l app=multus
+kubectl -n kube-system get pods -l app=rke2-multus
 
 # Check that the Multus CNI binary is installed on nodes
-ls /var/lib/rancher/rke2/data/*/bin/multus
+ls /opt/cni/bin/multus
 ```
 
 ## Step 3: Create a NetworkAttachmentDefinition
 
 A `NetworkAttachmentDefinition` (NAD) defines the additional network you want to attach to pods.
+
+The following examples use `host-local` IPAM, which stores allocations on each node. Use it for single-node clusters, tests, or non-overlapping per-node ranges; use Whereabouts later in this guide for cluster-wide IP allocation.
 
 ### Using macvlan (for connecting to a physical network)
 
@@ -90,10 +92,12 @@ spec:
     "mode": "bridge",
     "ipam": {
       "type": "host-local",
-      "subnet": "192.168.2.0/24",
-      "rangeStart": "192.168.2.200",
-      "rangeEnd": "192.168.2.250",
-      "gateway": "192.168.2.1"
+      "ranges": [[{
+        "subnet": "192.168.2.0/24",
+        "rangeStart": "192.168.2.200",
+        "rangeEnd": "192.168.2.250",
+        "gateway": "192.168.2.1"
+      }]]
     }
   }'
 EOF
@@ -116,7 +120,9 @@ spec:
     "mode": "l2",
     "ipam": {
       "type": "host-local",
-      "subnet": "10.10.0.0/24"
+      "ranges": [[{
+        "subnet": "10.10.0.0/24"
+      }]]
     }
   }'
 EOF
@@ -139,7 +145,9 @@ spec:
     "vlanId": 100,
     "ipam": {
       "type": "host-local",
-      "subnet": "10.100.0.0/24"
+      "ranges": [[{
+        "subnet": "10.100.0.0/24"
+      }]]
     }
   }'
 EOF
@@ -204,8 +212,19 @@ kubectl exec -it multus-demo -- ip addr show
 For dynamic IP assignment across multiple nodes, use the Whereabouts IPAM plugin:
 
 ```bash
-# Install Whereabouts
-kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/master/doc/crds/daemonset-install.yaml
+# Enable the bundled RKE2 Whereabouts dependency for Multus
+sudo mkdir -p /var/lib/rancher/rke2/server/manifests
+sudo tee /var/lib/rancher/rke2/server/manifests/rke2-multus-config.yaml > /dev/null <<EOF
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-multus
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    rke2-whereabouts:
+      enabled: true
+EOF
 
 # Create a NAD using Whereabouts IPAM
 kubectl apply -f - <<EOF
