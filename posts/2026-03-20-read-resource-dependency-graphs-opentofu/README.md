@@ -6,20 +6,20 @@ Tags: OpenTofu, Dependency Graph, Infrastructure as Code, Debugging, HCL
 
 Description: Understand how to interpret OpenTofu dependency graphs to trace resource ordering, identify bottlenecks, and reason about apply behavior.
 
-OpenTofu generates a dependency graph internally for every operation. Learning to read this graph helps you predict apply order, diagnose failures, and optimize configurations for parallel execution.
+OpenTofu builds a dependency graph internally for planning, applying, refreshing state, and other operations. Learning to read this graph helps you predict apply order, diagnose failures, and optimize configurations for parallel execution.
 
 ## Anatomy of a Dependency Graph
 
-A dependency graph in OpenTofu is a Directed Acyclic Graph (DAG). Each node represents a resource, data source, variable, or provider. Each directed edge means "this node must be created before the node it points to."
+A dependency graph in OpenTofu is a Directed Acyclic Graph (DAG). Depending on the graph type, nodes can represent resources, provider configurations, input values, outputs, or internal expansion and closure steps. Each directed edge means "this node depends on the node it points to," so apply order runs in the opposite direction of the arrows.
 
 ```mermaid
 graph TD
-    A[provider.aws] --> B[aws_vpc.main]
-    B --> C[aws_subnet.public]
-    B --> D[aws_security_group.web]
-    C --> E[aws_instance.web]
-    D --> E
-    E --> F[aws_eip.web]
+    F[aws_eip.web] --> E[aws_instance.web]
+    E --> C[aws_subnet.public]
+    E --> D[aws_security_group.web]
+    C --> B[aws_vpc.main]
+    D --> B
+    B --> A[provider.aws]
 ```
 
 In this graph:
@@ -55,16 +55,16 @@ Each `->` arrow means "left node depends on right node." In other words, the rig
 
 ## Identifying Resource Creation Order
 
-Trace the path from root nodes (no incoming edges) to leaf nodes (no outgoing edges):
+Because `tofu graph` adds a synthetic `root` node and draws arrows from a dependent to its dependency, read it a little differently than a workflow diagram:
 
-1. **Root nodes** (no dependencies): providers, data sources, and standalone variables.
-2. **Middle nodes**: resources with both dependents and dependencies.
-3. **Leaf nodes** (nothing depends on them): usually outputs or the final resources in the chain.
+1. Ignore the synthetic `root` node when reasoning about apply order.
+2. Follow a resource's outgoing arrows to find the prerequisites it depends on.
+3. Read execution order opposite the arrow direction: prerequisites first, final dependents later.
 
 When `tofu apply` runs:
-- All root nodes are processed first.
-- Any node whose dependencies are satisfied is immediately eligible for concurrent processing.
-- Leaf nodes are processed last.
+- Any node whose dependencies are satisfied is eligible for concurrent processing.
+- Independent branches can run in parallel, up to the configured parallelism limit.
+- End-of-chain dependents run after the resources they point to.
 
 ## Detecting Critical Paths
 
@@ -75,37 +75,40 @@ The critical path is the longest chain of sequential dependencies - it determine
 
 resource "aws_vpc" "main" { ... }
 resource "aws_subnet" "a" { vpc_id = aws_vpc.main.id }
-resource "aws_subnet" "b" { vpc_id = aws_subnet.a.id }  # Unnecessary! Should depend on VPC
+resource "aws_subnet" "b" {
+  vpc_id     = aws_vpc.main.id
+  depends_on = [aws_subnet.a]  # Unnecessary! Creates a sequential bottleneck
+}
 resource "aws_instance" "web" { subnet_id = aws_subnet.b.id }
 ```
 
-In the graph, this appears as a straight chain with no parallel branches. Fix it by removing the unnecessary `aws_subnet.a` dependency from `aws_subnet.b`.
+In the graph, this appears as a straight chain with no parallel branches. Fix it by removing the unnecessary `depends_on` from `aws_subnet.b`.
 
 ## Graph Nodes by Type
 
-Different node shapes and labels indicate different resource types:
+Different node shapes and labels indicate different node types:
 
 | Label Pattern | Meaning |
 |---|---|
 | `[root] aws_*.name` | Managed resource |
 | `[root] data.aws_*.name` | Data source |
 | `[root] var.name` | Input variable |
-| `[root] local.name` | Local value |
-| `[root] output.name` | Output value |
-| `[root] provider["registry..."]` | Provider configuration |
-| `[root] module.name` | Child module root |
+| `[root] local.name (expand)` | Local value expansion |
+| `[root] output.name (expand)` | Output value expansion |
+| `[root] provider["terraform.io/builtin/terraform"]` or `[root] provider["registry.opentofu.org/..."]` | Provider configuration |
+| `[root] module.name (expand)` or `[root] module.name (close)` | Child module expansion or closure node |
 
 ## Practical Debugging: Tracing Why a Resource Was Not Created
 
-If a resource fails or is skipped, follow its edges upward in the graph to find the failing dependency:
+If a resource fails or is skipped, follow its outgoing edges in the graph to find the failing dependency:
 
 ```bash
-# Generate the graph and search for dependencies of a specific resource
+# Generate the graph and search for lines related to a specific resource
 tofu graph | grep "aws_db_instance.main"
 ```
 
-Look at all nodes pointing to `aws_db_instance.main` - one of those is the resource that failed or is missing.
+Lines where `aws_db_instance.main` appears on the left-hand side show what it depends on. One of those dependencies is often the resource or provider step that failed or is missing.
 
 ## Conclusion
 
-Reading OpenTofu dependency graphs gives you a mental model of apply execution order. By understanding root nodes, parallel branches, and critical paths, you can predict behavior, diagnose failures faster, and write more efficient configurations.
+Reading OpenTofu dependency graphs gives you a mental model of apply execution order. By understanding dependency direction, parallel branches, and critical paths, you can predict behavior, diagnose failures faster, and write more efficient configurations.
