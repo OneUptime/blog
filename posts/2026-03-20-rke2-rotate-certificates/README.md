@@ -8,7 +8,7 @@ Description: Learn how to rotate RKE2 cluster certificates manually and automati
 
 ---
 
-RKE2 certificates expire after one year by default. Certificate rotation is essential for maintaining cluster security and preventing unexpected outages caused by certificate expiry.
+RKE2 client and server certificates expire after 365 days by default. RKE2-generated CA certificates are valid for 10 years and are not automatically renewed. Certificate renewal and rotation are essential for maintaining cluster security and preventing unexpected outages caused by certificate expiry.
 
 ---
 
@@ -17,14 +17,16 @@ RKE2 certificates expire after one year by default. Certificate rotation is esse
 Before rotating, check when your certificates expire:
 
 ```bash
-# Check all RKE2 certificate expiry dates
+# Check all RKE2 certificate expiry dates on this node
+rke2 certificate check --output table
 
+# Inspect certificate files directly
 for cert in /var/lib/rancher/rke2/server/tls/*.crt; do
   echo "=== $cert ==="
   openssl x509 -in "$cert" -noout -dates 2>/dev/null
 done
 
-# Check specific certificates
+# Inspect CA certificates
 openssl x509 -in /var/lib/rancher/rke2/server/tls/server-ca.crt -noout -dates
 openssl x509 -in /var/lib/rancher/rke2/server/tls/client-ca.crt -noout -dates
 
@@ -39,14 +41,14 @@ done
 
 ## Step 2: Automatic Certificate Renewal
 
-RKE2 automatically rotates certificates that expire within 90 days when the server is restarted. This is the safest rotation method:
+RKE2 automatically renews client and server certificates that are expired or expire within 120 days when RKE2 starts. This renewal extends the existing certificates and reuses their keys. Prior to the May 2025 RKE2 releases, the renewal window was 90 days. This is the safest renewal method:
 
 ```bash
-# Restart RKE2 server - certificates expiring within 90 days are renewed
+# Restart RKE2 server - certificates inside the renewal window are renewed
 systemctl restart rke2-server
 
 # Verify certificates were renewed
-openssl x509 -in /var/lib/rancher/rke2/server/tls/server-ca.crt -noout -dates
+rke2 certificate check --output table
 ```
 
 ---
@@ -56,21 +58,17 @@ openssl x509 -in /var/lib/rancher/rke2/server/tls/server-ca.crt -noout -dates
 To force rotation regardless of expiry:
 
 ```bash
-# Stop RKE2 on all server nodes
+# On each server node, stop RKE2
 systemctl stop rke2-server
 
-# Rotate certificates on the primary server node
+# Rotate certificates on that node
 rke2 certificate rotate
 
-# Start RKE2 on the primary server node
+# Start RKE2 on that node
 systemctl start rke2-server
 
-# Wait for the primary to be ready
+# Verify the node is ready before moving to the next server node
 kubectl get nodes
-
-# Start RKE2 on remaining server nodes
-# (on each additional server node)
-systemctl start rke2-server
 ```
 
 ---
@@ -81,7 +79,7 @@ To rotate a specific component's certificate:
 
 ```bash
 # Rotate only the API server certificate
-rke2 certificate rotate --service kube-apiserver
+rke2 certificate rotate --service api-server
 
 # Rotate only the etcd certificates
 rke2 certificate rotate --service etcd
@@ -98,6 +96,7 @@ After certificate rotation, the kubeconfig file is updated automatically, but cl
 
 ```bash
 # Copy the updated kubeconfig
+mkdir -p ~/.kube
 cp /etc/rancher/rke2/rke2.yaml ~/.kube/config
 chmod 600 ~/.kube/config
 
@@ -111,9 +110,9 @@ kubectl get nodes
 
 ---
 
-## Step 6: Rotate Agent Node Certificates
+## Step 6: Renew Agent Node Certificates
 
-Agent nodes also have certificates that need rotation:
+Agent nodes also have certificates that need renewal:
 
 ```bash
 # On each agent node, restart RKE2 agent
@@ -130,10 +129,7 @@ kubectl get nodes
 
 ```bash
 # Confirm new expiry dates
-for cert in /var/lib/rancher/rke2/server/tls/*.crt; do
-  echo "=== $(basename $cert) ==="
-  openssl x509 -in "$cert" -noout -enddate 2>/dev/null
-done
+rke2 certificate check --output table
 
 # Check cluster health
 kubectl get nodes
@@ -150,20 +146,20 @@ kubectl get pods -n kube-system
 
 ---
 
-## Scheduling Certificate Rotation
+## Scheduling Certificate Renewal
 
 ```bash
-# Create a cron job to rotate certificates before expiry
-# /etc/cron.d/rke2-cert-rotation
-0 2 1 */6 * root systemctl restart rke2-server
+# Create a cron job to restart RKE2 so certificates renew once inside the renewal window
+# /etc/cron.d/rke2-cert-renewal
+0 2 1 * * root systemctl restart rke2-server
 
-# Or use a Kubernetes CronJob to trigger rotation via a management script
+# Or use a Kubernetes CronJob to trigger renewal or rotation via a management script
 ```
 
 ---
 
 ## Best Practices
 
-- Rotate certificates every 6 months rather than waiting for the 90-day auto-renewal window - this gives more predictable maintenance windows.
+- Rotate certificates every 6 months rather than waiting for the 120-day auto-renewal window - this gives more predictable maintenance windows.
 - Always take an etcd snapshot before rotating certificates - a failed rotation can leave the cluster in a broken state.
 - Test certificate rotation in a staging cluster first to understand the restart sequence and any application impact.
