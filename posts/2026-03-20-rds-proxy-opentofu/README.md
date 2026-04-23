@@ -4,17 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, RDS, RDS Proxy, Connection Pooling, Lambda, Infrastructure as Code
 
-Description: Learn how to deploy RDS Proxy using OpenTofu to provide connection pooling, improved resilience during failovers, and IAM authentication for database connections from Lambda and ECS.
+Description: Learn how to deploy RDS Proxy using OpenTofu to provide connection pooling, improved resilience during failovers, and IAM authentication for client connections from Lambda and ECS.
 
 ## Introduction
 
-RDS Proxy maintains a pool of database connections, reducing the overhead of opening new connections for each Lambda invocation or microservice request. It also provides faster failover (under 30 seconds) and supports IAM authentication, making it ideal for serverless architectures.
+RDS Proxy maintains a pool of database connections, reducing the overhead of opening new connections for each Lambda invocation or microservice request. It also improves resilience during failovers and supports IAM authentication, making it ideal for serverless architectures.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
 - An existing RDS instance
-- AWS credentials with RDS and IAM permissions
+- A Secrets Manager secret containing the database credentials for the proxy
+- AWS credentials with RDS, IAM, and Secrets Manager permissions
 
 ## Step 1: Create IAM Role for RDS Proxy
 
@@ -70,7 +71,7 @@ resource "aws_db_proxy" "main" {
   auth {
     auth_scheme = "SECRETS"
     description = "RDS database credentials from Secrets Manager"
-    iam_auth    = "REQUIRED"  # Require IAM authentication to the proxy
+    iam_auth    = "REQUIRED"  # Require IAM authentication for client connections to the proxy
     secret_arn  = aws_secretsmanager_secret.db_credentials.arn
   }
 
@@ -97,7 +98,7 @@ resource "aws_db_proxy_default_target_group" "main" {
 }
 
 resource "aws_db_proxy_target" "main" {
-  db_instance_identifier = aws_db_instance.main.id
+  db_instance_identifier = aws_db_instance.main.identifier
   db_proxy_name          = aws_db_proxy.main.name
   target_group_name      = aws_db_proxy_default_target_group.main.name
 }
@@ -149,12 +150,19 @@ tofu init
 tofu plan
 tofu apply
 
-# Test the proxy connection
-psql -h $(tofu output -raw proxy_endpoint) \
-  -U app_user -d mydb \
-  --password  # Will use IAM auth token
+# Test the proxy connection with IAM authentication.
+# The IAM principal running this command must have rds-db:connect permission for app_user on the proxy.
+export AWS_REGION=us-east-1
+export RDS_PROXY_ENDPOINT=$(tofu output -raw proxy_endpoint)
+export PGPASSWORD=$(aws rds generate-db-auth-token \
+  --hostname "$RDS_PROXY_ENDPOINT" \
+  --port 5432 \
+  --region "$AWS_REGION" \
+  --username app_user)
+
+psql "host=$RDS_PROXY_ENDPOINT port=5432 dbname=mydb user=app_user sslmode=require"
 ```
 
 ## Conclusion
 
-RDS Proxy is especially valuable for Lambda functions where each invocation would otherwise open a new database connection. The proxy pools connections, reducing RDS max_connections consumption from hundreds of Lambda invocations to a manageable pool. Combine with IAM authentication for the most secure configuration-applications authenticate to the proxy via IAM tokens without ever knowing the database password.
+RDS Proxy is especially valuable for Lambda functions where each invocation would otherwise open a new database connection. The proxy pools connections, reducing RDS max_connections consumption from hundreds of Lambda invocations to a manageable pool. Combine with IAM authentication for a secure configuration: applications authenticate to the proxy via IAM tokens without ever knowing the database password, while the proxy authenticates to the database using credentials from Secrets Manager.
