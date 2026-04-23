@@ -46,7 +46,7 @@ resource "aws_ecr_repository_policy" "api" {
         Effect = "Allow"
         Principal = {
           AWS = [
-            aws_iam_role.ecs_task.arn,
+            aws_iam_role.ecs_task_execution.arn,
             aws_iam_role.eks_nodes.arn,
           ]
         }
@@ -75,7 +75,9 @@ resource "aws_ecr_repository_policy" "api" {
 }
 ```
 
-## IAM Policy for CI/CD Pull Authentication
+For Amazon ECS task execution roles and EKS node roles, pair repository permissions with an IAM policy that allows `ecr:GetAuthorizationToken` on `*` before they authenticate to ECR.
+
+## IAM Policy for ECR Authentication
 
 ```hcl
 # ECR authorization token is required before any pull/push
@@ -93,7 +95,9 @@ resource "aws_iam_role_policy" "ecr_auth" {
       {
         Effect = "Allow"
         Action = [
+          "ecr:BatchGetImage",
           "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
           "ecr:InitiateLayerUpload",
           "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload",
@@ -115,8 +119,8 @@ resource "aws_iam_role_policy" "ecr_auth" {
 locals {
   acr_roles = {
     # Role : Principal
-    "AcrPull"  = azurerm_kubernetes_cluster.main.kubelet_identity[0].object_id
-    "AcrPush"  = azurerm_user_assigned_identity.cicd.principal_id
+    "Container Registry Repository Reader" = azurerm_kubernetes_cluster.main.kubelet_identity[0].object_id
+    "Container Registry Repository Writer" = azurerm_user_assigned_identity.cicd.principal_id
   }
 }
 
@@ -129,16 +133,22 @@ resource "azurerm_role_assignment" "acr" {
 }
 ```
 
+On registries that still use the legacy `RBAC Registry Permissions` mode, the equivalent roles are `AcrPull` and `AcrPush`.
+
 ## GCP Artifact Registry IAM
 
 ```hcl
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
 locals {
   registry_bindings = {
     reader = {
       role    = "roles/artifactregistry.reader"
       members = [
         "serviceAccount:${google_service_account.gke_nodes.email}",
-        "serviceAccount:${google_service_account.cloud_run.email}",
+        "serviceAccount:service-${data.google_project.current.number}@serverless-robot-prod.iam.gserviceaccount.com",
       ]
     }
     writer = {
@@ -169,4 +179,4 @@ resource "google_artifact_registry_repository_iam_binding" "bindings" {
 
 ## Conclusion
 
-Container registry access policies in OpenTofu enforce least-privilege for image operations. Grant pull-only to compute roles (ECS tasks, EKS nodes, GKE nodes), push to CI/CD service accounts, and admin only to platform teams. Audit registry policies regularly and remove roles when services are decommissioned - OpenTofu makes this visible in the diff.
+Container registry access policies in OpenTofu enforce least-privilege for image operations. Grant pull-only to compute principals (ECS task execution roles, EKS node roles, GKE node service accounts, Cloud Run service agents), push to CI/CD service accounts, and admin only to platform teams. Audit registry policies regularly and remove roles when services are decommissioned - OpenTofu makes this visible in the diff.
