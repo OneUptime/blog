@@ -8,7 +8,7 @@ Description: A guide to referencing resource attributes in OpenTofu to build dep
 
 ## Introduction
 
-In OpenTofu, you can reference attributes of resources, data sources, modules, variables, and locals to build relationships between infrastructure components. These references create implicit dependencies that control the order in which OpenTofu creates, updates, and destroys resources.
+In OpenTofu, you can reference attributes of resources, data sources, modules, variables, and locals to build relationships between infrastructure components. When expressions refer to other objects in the configuration, OpenTofu can infer implicit dependencies that control the order in which resources are created, updated, and destroyed.
 
 ## Referencing Resource Attributes
 
@@ -107,7 +107,7 @@ resource "aws_eks_cluster" "main" {
   }
 }
 
-# Access nested attributes with dot notation
+# Access nested attributes with dot and index notation
 locals {
   cluster_endpoint = aws_eks_cluster.main.endpoint
   # Access nested block attributes
@@ -115,7 +115,7 @@ locals {
 }
 ```
 
-## Self Reference in Lifecycle Blocks
+## Self Reference in Postcondition Blocks
 
 ```hcl
 resource "aws_instance" "web" {
@@ -124,7 +124,7 @@ resource "aws_instance" "web" {
 
   lifecycle {
     postcondition {
-      # Use 'self' to reference the current resource's attributes
+      # Use 'self' to reference the current resource instance's attributes
       condition     = self.public_ip != ""
       error_message = "Instance must have a public IP. Got: ${self.public_ip}"
     }
@@ -214,4 +214,4 @@ resource "aws_security_group_rule" "web_to_db" {
 
 ## Conclusion
 
-Resource attribute references are the primary mechanism for building relationships and passing data between OpenTofu resources. They create implicit dependencies that determine creation order, eliminating the need for most `depends_on` declarations. Use dot notation for simple attribute access, index notation for `count` resources, key notation for `for_each` resources, and nested dot notation for block attributes. The `self` keyword is available in lifecycle blocks for referring to the current resource's own attributes.
+Resource attribute references are the primary mechanism for building relationships and passing data between OpenTofu resources. They create implicit dependencies that determine creation order, eliminating the need for most `depends_on` declarations. Use dot notation for simple attribute access, index notation for `count` resources, key notation for `for_each` resources, and a combination of dot and index notation for nested block attributes. The `self` object is available in `postcondition` blocks for referring to the current resource instance's own attributes.
