@@ -15,7 +15,7 @@ RRDtool (Round-Robin Database tool) provides time-series storage and graphing. B
 ```bash
 # Ubuntu/Debian
 
-sudo apt install rrdtool librrds-perl -y
+sudo apt install rrdtool librrds-perl snmp -y
 
 # Verify installation
 rrdtool --version
@@ -29,20 +29,21 @@ sudo apt install python3-rrdtool -y
 
 ```bash
 # Create RRD for IPv6 interface traffic
-# Store: input/output bytes, with 5-min intervals
-rrdtool create /var/lib/rrd/ipv6_eth0.rrd \
+# Store IPv6 octet/datagram counter rates, with 5-min intervals
+sudo mkdir -p /var/lib/rrd
+sudo rrdtool create /var/lib/rrd/ipv6_eth0.rrd \
   --step 300 \
-  DS:in_bytes:COUNTER:600:0:U \
-  DS:out_bytes:COUNTER:600:0:U \
-  DS:in_packets:COUNTER:600:0:U \
-  DS:out_packets:COUNTER:600:0:U \
+  DS:in_octets:COUNTER:600:0:U \
+  DS:out_octets:COUNTER:600:0:U \
+  DS:in_datagrams:COUNTER:600:0:U \
+  DS:out_datagrams:COUNTER:600:0:U \
   RRA:AVERAGE:0.5:1:576 \
   RRA:AVERAGE:0.5:12:336 \
   RRA:AVERAGE:0.5:288:365 \
   RRA:MAX:0.5:1:576
 
 # Verify RRD creation
-rrdtool info /var/lib/rrd/ipv6_eth0.rrd
+sudo rrdtool info /var/lib/rrd/ipv6_eth0.rrd
 ```
 
 ## Collecting IPv6 Traffic Data via SNMP
@@ -51,37 +52,35 @@ rrdtool info /var/lib/rrd/ipv6_eth0.rrd
 #!/bin/bash
 # /usr/local/bin/collect_ipv6_traffic.sh
 
-DEVICE="2001:db8::router1"
+DEVICE="2001:db8::1"
 COMMUNITY="public"
 RRD="/var/lib/rrd/ipv6_eth0.rrd"
 IF_INDEX=2  # Interface index for eth0
+IP_VERSION=2  # IP-MIB InetVersion value for IPv6
 
-# Get 64-bit counters (ifHCInOctets, ifHCOutOctets)
-IN_BYTES=$(snmpget -v2c -c $COMMUNITY \
-  udp6:[${DEVICE}]:161 \
-  .1.3.6.1.2.1.31.1.1.1.6.${IF_INDEX} 2>/dev/null | \
-  awk '{print $NF}')
+# Get IPv6 64-bit counters from IP-MIB::ipIfStatsTable
+IN_OCTETS=$(snmpget -v2c -Oqv -c "$COMMUNITY" \
+  "udp6:[${DEVICE}]:161" \
+  ".1.3.6.1.2.1.4.31.3.1.6.${IP_VERSION}.${IF_INDEX}" 2>/dev/null)
 
-OUT_BYTES=$(snmpget -v2c -c $COMMUNITY \
-  udp6:[${DEVICE}]:161 \
-  .1.3.6.1.2.1.31.1.1.1.10.${IF_INDEX} 2>/dev/null | \
-  awk '{print $NF}')
+OUT_OCTETS=$(snmpget -v2c -Oqv -c "$COMMUNITY" \
+  "udp6:[${DEVICE}]:161" \
+  ".1.3.6.1.2.1.4.31.3.1.33.${IP_VERSION}.${IF_INDEX}" 2>/dev/null)
 
-IN_PKTS=$(snmpget -v2c -c $COMMUNITY \
-  udp6:[${DEVICE}]:161 \
-  .1.3.6.1.2.1.2.2.1.11.${IF_INDEX} 2>/dev/null | \
-  awk '{print $NF}')
+IN_DATAGRAMS=$(snmpget -v2c -Oqv -c "$COMMUNITY" \
+  "udp6:[${DEVICE}]:161" \
+  ".1.3.6.1.2.1.4.31.3.1.4.${IP_VERSION}.${IF_INDEX}" 2>/dev/null)
 
-OUT_PKTS=$(snmpget -v2c -c $COMMUNITY \
-  udp6:[${DEVICE}]:161 \
-  .1.3.6.1.2.1.2.2.1.17.${IF_INDEX} 2>/dev/null | \
-  awk '{print $NF}')
+OUT_DATAGRAMS=$(snmpget -v2c -Oqv -c "$COMMUNITY" \
+  "udp6:[${DEVICE}]:161" \
+  ".1.3.6.1.2.1.4.31.3.1.31.${IP_VERSION}.${IF_INDEX}" 2>/dev/null)
 
 # Update RRD
-if [ -n "$IN_BYTES" ] && [ -n "$OUT_BYTES" ]; then
-  rrdtool update $RRD \
-    "N:${IN_BYTES}:${OUT_BYTES}:${IN_PKTS}:${OUT_PKTS}"
-  echo "$(date): Updated RRD: in=${IN_BYTES} out=${OUT_BYTES}"
+if [[ "$IN_OCTETS" =~ ^[0-9]+$ && "$OUT_OCTETS" =~ ^[0-9]+$ && \
+      "$IN_DATAGRAMS" =~ ^[0-9]+$ && "$OUT_DATAGRAMS" =~ ^[0-9]+$ ]]; then
+  rrdtool update "$RRD" \
+    "N:${IN_OCTETS}:${OUT_OCTETS}:${IN_DATAGRAMS}:${OUT_DATAGRAMS}"
+  echo "$(date): Updated RRD: in=${IN_OCTETS} out=${OUT_OCTETS}"
 else
   echo "$(date): ERROR - Could not reach ${DEVICE} via SNMP"
 fi
@@ -89,10 +88,11 @@ fi
 
 ```bash
 # Make executable and schedule
-chmod +x /usr/local/bin/collect_ipv6_traffic.sh
+sudo chmod +x /usr/local/bin/collect_ipv6_traffic.sh
 
 # Add to crontab (every 5 minutes)
-echo "*/5 * * * * /usr/local/bin/collect_ipv6_traffic.sh >> /var/log/ipv6_collect.log 2>&1" \
+(sudo crontab -u root -l 2>/dev/null; \
+  echo "*/5 * * * * /usr/local/bin/collect_ipv6_traffic.sh >> /var/log/ipv6_collect.log 2>&1") \
   | sudo crontab -u root -
 ```
 
@@ -104,7 +104,7 @@ echo "*/5 * * * * /usr/local/bin/collect_ipv6_traffic.sh >> /var/log/ipv6_collec
 
 RRD="/var/lib/rrd/ipv6_eth0.rrd"
 GRAPH_DIR="/var/www/html/rrd"
-mkdir -p $GRAPH_DIR
+mkdir -p "$GRAPH_DIR"
 
 # Daily graph
 rrdtool graph "${GRAPH_DIR}/ipv6_daily.png" \
@@ -114,14 +114,16 @@ rrdtool graph "${GRAPH_DIR}/ipv6_daily.png" \
   --vertical-label "bits/s" \
   --width 800 \
   --height 300 \
-  DEF:in_bytes=${RRD}:in_bytes:AVERAGE \
-  DEF:out_bytes=${RRD}:out_bytes:AVERAGE \
-  CDEF:in_bits=in_bytes,8,* \
-  CDEF:out_bits=out_bytes,8,* \
+  DEF:in_octets=${RRD}:in_octets:AVERAGE \
+  DEF:out_octets=${RRD}:out_octets:AVERAGE \
+  CDEF:in_bits=in_octets,8,* \
+  CDEF:out_bits=out_octets,8,* \
+  VDEF:in_last=in_bits,LAST \
+  VDEF:out_last=out_bits,LAST \
   AREA:in_bits#00CF00:"In  " \
   LINE1:out_bits#0000CF:"Out" \
-  GPRINT:in_bits:LAST:" Last\: %6.2lf %sbps\n" \
-  GPRINT:out_bits:LAST:" Last\: %6.2lf %sbps\n"
+  GPRINT:in_last:" Last\: %6.2lf %sbps\n" \
+  GPRINT:out_last:" Last\: %6.2lf %sbps\n"
 
 echo "Graph saved to ${GRAPH_DIR}/ipv6_daily.png"
 ```
@@ -138,22 +140,31 @@ from datetime import datetime
 
 def snmp_get_ipv6(host, community, oid):
     """Get SNMP value from IPv6 device."""
-    cmd = ['snmpget', '-v2c', '-c', community,
+    cmd = ['snmpget', '-v2c', '-Oqv', '-c', community,
            f'udp6:[{host}]:161', oid]
     result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode == 0:
+    if result.returncode == 0 and result.stdout.strip():
         return result.stdout.split()[-1]
     return None
 
 # Collect data
-device = '2001:db8::router1'
-in_bytes = snmp_get_ipv6(device, 'public', '.1.3.6.1.2.1.31.1.1.1.6.2')
-out_bytes = snmp_get_ipv6(device, 'public', '.1.3.6.1.2.1.31.1.1.1.10.2')
+device = '2001:db8::1'
+ip_version = 2
+if_index = 2
+in_octets = snmp_get_ipv6(
+    device, 'public', f'.1.3.6.1.2.1.4.31.3.1.6.{ip_version}.{if_index}')
+out_octets = snmp_get_ipv6(
+    device, 'public', f'.1.3.6.1.2.1.4.31.3.1.33.{ip_version}.{if_index}')
+in_datagrams = snmp_get_ipv6(
+    device, 'public', f'.1.3.6.1.2.1.4.31.3.1.4.{ip_version}.{if_index}')
+out_datagrams = snmp_get_ipv6(
+    device, 'public', f'.1.3.6.1.2.1.4.31.3.1.31.{ip_version}.{if_index}')
 
-if in_bytes and out_bytes:
+if all(value and value.isdigit()
+       for value in (in_octets, out_octets, in_datagrams, out_datagrams)):
     rrdtool.update('/var/lib/rrd/ipv6_eth0.rrd',
-                   f'N:{in_bytes}:{out_bytes}:0:0')
+                   f'N:{in_octets}:{out_octets}:{in_datagrams}:{out_datagrams}')
     print(f"Updated at {datetime.now()}")
 ```
 
-RRDtool with IPv6 SNMP collection requires only specifying the device address in `udp6:[address]:161` format for snmpget commands, while the RRD database structure and graphing commands remain identical to IPv4 deployments.
+RRDtool with IPv6 SNMP collection requires specifying the device address in `udp6:[address]:161` format for snmpget commands and using IP-MIB entries indexed by `ipv6(2)` when you want IPv6-only interface statistics; the RRD database structure and graphing commands are otherwise the same as IPv4 deployments.
