@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Migration, Rollout, Phased Deployment, Change Management
 
-Description: Execute a phased IPv6 rollout using canary deployments, traffic percentage splitting, and monitoring-driven progression to minimize risk during production IPv6 enablement.
+Description: Execute a phased IPv6 rollout using canary deployments, segmented AAAA publication, and monitoring-driven progression to minimize risk during production IPv6 enablement.
 
 ## Introduction
 
@@ -15,8 +15,8 @@ A phased IPv6 rollout gradually increases IPv6 exposure by expanding AAAA record
 ```mermaid
 flowchart TD
     A[Phase 0: Infrastructure Only] --> B[Phase 1: Internal Users Only]
-    B --> C[Phase 2: External - 10% of DNS]
-    C --> D[Phase 3: External - 50% of DNS]
+    B --> C[Phase 2: External - Canary Segment]
+    C --> D[Phase 3: External - Broader Segment]
     D --> E[Phase 4: External - 100% AAAA]
     E --> F[Phase 5: Monitor and Optimize]
 
@@ -34,8 +34,8 @@ Enable IPv6 on infrastructure without affecting users:
 # No user-visible change yet
 
 # Test internal IPv6 reachability
-ping6 2001:db8:internal::1  # Core router
-ping6 2001:db8:internal::10 # Internal DNS
+ping6 2001:db8:100::1  # Core router
+ping6 2001:db8:100::10 # Internal DNS
 
 # Enable IPv6 on monitoring
 # prometheus.yml: add IPv6 targets
@@ -74,23 +74,22 @@ grep -cE '^[0-9a-fA-F:]{3,39} ' /var/log/nginx/internal-access.log
 - Error rate < 0.1% for IPv6 requests
 - No user complaints about connectivity issues
 
-## Phase 2: External DNS Canary (10%)
+## Phase 2: External DNS Canary (~10%)
 
-Use DNS weighted routing to send 10% of external resolvers AAAA answers:
+Publish AAAA records only for a limited external canary segment (for example, a canary hostname, provider-supported policy, or selected resolver view) that represents about 10% of traffic:
 
 ```python
 #!/usr/bin/env python3
-# Simulate DNS weight configuration (Route53/Cloudflare-style)
-# In practice, use your DNS provider's weighted routing feature
+# Simulate an external canary DNS plan.
+# DNS weights are applied within records that share the same name and type;
+# do not use A-vs-AAAA weighting to hide AAAA records from a percentage of clients.
 
-# Route53 weighted record:
-# Weight 1 of 10 = 10% AAAA response
-weighted_dns_config = {
-    "www.example.com": {
-        "AAAA": {
-            "value": "2001:db8::1",
-            "weight": 1,    # 10% of responses include AAAA
-            "total_weight": 10
+external_canary_dns_plan = {
+    "segment": "external-canary",
+    "estimated_traffic_percent": 10,
+    "records": {
+        "www.example.com": {
+            "AAAA": "2001:db8::1"
         }
     }
 }
@@ -105,16 +104,16 @@ curl -s "http://localhost:9090/api/v1/query" \
 ```
 
 **Exit Criteria:**
-- IPv6 error rate < 0.5% (< 5x IPv4 error rate)
+- IPv6 error rate < 0.5% and < 5x IPv4 error rate
 - No IPv6-specific incidents
 - Run for 48+ hours without issues
 
-## Phase 3: External DNS 50%
+## Phase 3: External DNS Expansion (~50%)
 
-Increase AAAA record exposure to 50%:
+Increase AAAA record exposure to a segment representing about 50% of traffic:
 
 ```bash
-# Update DNS weights: 50/50 A vs AAAA responses
+# Expand the canary segment to about 50% of expected traffic
 # Monitor for 24 hours
 
 # Check IPv6 percentage in access logs
@@ -137,7 +136,7 @@ END {
 
 ```bash
 # Enable AAAA for all clients
-# Remove DNS weights - all clients get AAAA
+# Remove canary segmentation - all clients get AAAA
 # Lower DNS TTL to 60s first for fast rollback capability
 
 # Verify from multiple external points
@@ -152,15 +151,15 @@ curl -6 https://www.example.com
 ```bash
 # After full rollout, optimize:
 
-# 1. Verify Happy Eyeballs behavior
-# Most clients should use IPv6 automatically
+# 1. Verify address selection and Happy Eyeballs behavior
+# Modern clients should prefer IPv6 when it is healthy and fall back quickly if it is not
 python3 -c "
 import socket
 addrs = socket.getaddrinfo('www.example.com', 443, proto=socket.IPPROTO_TCP)
 for addr in addrs:
     print(addr[0].name, addr[4])
 "
-# IPv6 addresses should appear first
+# Confirm IPv6 candidates are returned; ordering is OS policy dependent
 
 # 2. Increase DNS TTL back to normal
 # Change from 60 to 300 seconds
@@ -180,4 +179,4 @@ for addr in addrs:
 
 ## Conclusion
 
-A phased IPv6 rollout controls risk by limiting AAAA record publication, monitoring error rates at each phase, and requiring explicit exit criteria before proceeding. Use DNS weighted routing to control what percentage of clients get AAAA responses during phases 2 and 3. The most important monitoring signal is IPv6 error rate - if it exceeds 5x the IPv4 error rate, roll back and investigate before proceeding.
+A phased IPv6 rollout controls risk by limiting AAAA record publication, monitoring error rates at each phase, and requiring explicit exit criteria before proceeding. Use segmented AAAA publication to control which client cohorts receive AAAA responses during phases 2 and 3; use DNS weights only among records with the same name and type. The most important monitoring signal is IPv6 error rate - if it exceeds 5x the IPv4 error rate, roll back and investigate before proceeding.
