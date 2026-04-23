@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, CIDR, Subnet Mask, Subnetting, Networking
 
-Description: CIDR prefix length and dotted-decimal subnet mask are two representations of the same concept - the number of leading 1-bits in a 32-bit mask - and they are directly interconvertible.
+Description: CIDR prefix length and dotted-decimal subnet mask are two representations of the same concept - the number of leading 1-bits in a contiguous 32-bit IPv4 netmask - and they are directly interconvertible.
 
 ## Two Representations, One Concept
 
@@ -21,7 +21,7 @@ Both representations identify the same network boundary.
 
 | CIDR | Dotted-Decimal | Binary (last 2 octets) |
 |------|---------------|----------------------|
-| /16 | 255.255.0.0 | 11111111.00000000 |
+| /16 | 255.255.0.0 | 00000000.00000000 |
 | /20 | 255.255.240.0 | 11110000.00000000 |
 | /24 | 255.255.255.0 | 11111111.00000000 |
 | /25 | 255.255.255.128 | 11111111.10000000 |
@@ -64,21 +64,21 @@ for cidr_str in ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
 | Cisco IOS `interface` | Mask: `192.168.1.1 255.255.255.0` | Historical |
 | Cisco IOS `ip route` | Mask: `network mask` | Standard |
 | ACLs (Cisco) | Wildcard: `0.0.0.255` | ACL filtering |
-| BGP `network` stmt | Mask form | Standard |
-| OSPF `network` stmt | Wildcard | Matching |
+| Cisco IOS BGP `network` stmt | Mask form | Cisco syntax |
+| Cisco IOS OSPF `network` stmt | Wildcard | Interface matching |
 
 ## Historical Note
 
-CIDR notation was introduced in RFC 4632 (1993) to replace classful addressing. Before CIDR, the mask was implied by the address class:
+CIDR was introduced in RFC 1519 (1993) and later updated by RFC 4632 (2006) to replace classful addressing. Before CIDR, the default network boundary was implied by the address class:
 - Class A: /8 implied
 - Class B: /16 implied
 - Class C: /24 implied
 
-CIDR made the mask explicit, enabling arbitrary prefix lengths.
+CIDR made the prefix length explicit and no longer tied it to address classes, enabling arbitrary prefix lengths.
 
 ## Key Takeaways
 
-- CIDR /N and dotted-decimal mask are identical; /N counts the leading 1-bits.
+- CIDR /N and dotted-decimal mask are equivalent for a contiguous IPv4 subnet mask; /N counts the leading 1-bits.
 - Convert prefix to mask: `(0xFFFFFFFF << (32-N)) & 0xFFFFFFFF`, then format as dotted-decimal.
-- Convert mask to prefix: count the 1-bits in the 32-bit integer representation.
+- Convert mask to prefix: for a valid subnet mask, count the 1-bits in the 32-bit integer representation.
 - Different tools expect different formats; use Python's `ipaddress` module to work with either.
