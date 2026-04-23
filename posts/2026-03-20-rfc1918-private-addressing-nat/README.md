@@ -8,7 +8,7 @@ Description: Learn how to implement RFC 1918 private IP addressing with Network 
 
 ## RFC 1918 Private Address Ranges
 
-RFC 1918 defines three ranges for private (non-routable) IPv4 use:
+RFC 1918 defines three ranges for private (not globally routable on the public internet) IPv4 use:
 
 | Range | CIDR | Addresses | Common Use |
 |---|---|---|---|
@@ -23,12 +23,14 @@ NAT translates private source IPs to a public IP on outbound packets:
 ```text
 Internal host: 192.168.1.10 → internet destination 8.8.8.8
 NAT gateway replaces:
-  Source IP: 192.168.1.10 → 203.0.113.1 (public IP)
-  Source port: 45678        → 55001 (new random port)
+  Source IP: 192.168.1.10 → 203.0.113.1 (example public-facing IP)
+  Source port: 45678        → 55001 (allocated translated port)
 
 Return traffic:
   Destination: 203.0.113.1:55001 → reversed to 192.168.1.10:45678
 ```
+
+The 203.0.113.0/24 addresses used below are RFC 5737 documentation examples; replace them with your provider-assigned public address or routed public prefix.
 
 ## Step 2: Configure NAT on Linux (iptables)
 
@@ -50,9 +52,9 @@ iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -o eth1 -j MASQUERADE
 iptables -A FORWARD -i eth0 -o eth1 -j ACCEPT
 
 # Allow established connections back
-iptables -A FORWARD -i eth1 -o eth0 -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables -A FORWARD -i eth1 -o eth0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-# Make persistent
+# Make persistent (Debian/Ubuntu with iptables-persistent)
 iptables-save > /etc/iptables/rules.v4
 ```
 
@@ -114,14 +116,14 @@ ip nat inside source static tcp 192.168.1.22 22 203.0.113.2 2222  ! SSH on custo
 
 ## Step 6: Verify NAT Operation
 
-```bash
+```text
 # Linux: Check NAT conntrack table
 cat /proc/net/nf_conntrack | grep "src=192.168.1" | head -10
 
 # View active connections
 conntrack -L | grep "src=192.168.1"
 
-# Count active NAT sessions
+# Count active conntrack entries
 conntrack -C
 
 # Cisco IOS: View active NAT translations
