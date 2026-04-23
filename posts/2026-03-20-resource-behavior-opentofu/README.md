@@ -28,7 +28,7 @@ resource "aws_instance" "web" {
 #     + ami           = "ami-0c55b159cbfafe1f0"
 #     + instance_type = "t3.micro"
 #   }
-# Plan: 1 to add
+# Plan: 1 to add, 0 to change, 0 to destroy.
 ```
 
 ### Update In-Place
@@ -51,7 +51,7 @@ resource "aws_instance" "web" {
 #         ~ Name = "web-server" -> "web-server-v2"
 #       }
 #   }
-# Plan: 0 to add, 1 to change, 0 to destroy
+# Plan: 0 to add, 1 to change, 0 to destroy.
 ```
 
 ### Replace (Destroy and Recreate)
@@ -59,16 +59,16 @@ resource "aws_instance" "web" {
 ```hcl
 # Some attribute changes require replacing the resource
 resource "aws_instance" "web" {
-  ami           = "ami-0newami456"  # AMI change forces replacement
+  ami           = "ami-0123456789abcdef0"  # AMI change forces replacement
   instance_type = "t3.micro"
 }
 
 # Plan output:
 # -/+ resource "aws_instance" "web" {
 #     ~ id  = "i-0abc123" -> (known after apply)
-#     ~ ami = "ami-0c55b159cbfafe1f0" -> "ami-0newami456" # forces replacement
+#     ~ ami = "ami-0c55b159cbfafe1f0" -> "ami-0123456789abcdef0" # forces replacement
 #   }
-# Plan: 1 to add, 0 to change, 1 to destroy
+# Plan: 1 to add, 0 to change, 1 to destroy.
 ```
 
 ### Destroy
@@ -84,7 +84,7 @@ resource "aws_instance" "web" {
 #     - id            = "i-0abc123" -> null
 #     - instance_type = "t3.micro" -> null
 #   }
-# Plan: 0 to add, 0 to change, 1 to destroy
+# Plan: 0 to add, 0 to change, 1 to destroy.
 ```
 
 ## "Forces Replacement" Attributes
@@ -98,7 +98,7 @@ resource "aws_instance" "web" {
   tags          = { Name = "new-name" }
 
   # These FORCE REPLACEMENT (destroy + create):
-  ami              = "ami-0new"  # New AMI
+  ami              = "ami-0123456789abcdef0"  # New AMI
   availability_zone = "us-east-1b"  # Different AZ
 }
 ```
@@ -117,7 +117,7 @@ resource "aws_instance" "web" {
 }
 
 output "public_ip" {
-  # Must reference after apply when value is known
+  # Value is known after apply
   value = aws_instance.web.public_ip
 }
 ```
@@ -137,8 +137,9 @@ resource "aws_subnet" "public" {
 
 resource "aws_instance" "web" {
   # OpenTofu creates subnet before this instance
-  subnet_id = aws_subnet.public.id
-  ami       = "ami-0c55b159cbfafe1f0"
+  subnet_id     = aws_subnet.public.id
+  ami           = "ami-0c55b159cbfafe1f0"
+  instance_type = "t3.micro"
 }
 
 # Creation order: aws_vpc.main -> aws_subnet.public -> aws_instance.web
