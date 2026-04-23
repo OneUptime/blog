@@ -19,82 +19,59 @@ Monitoring Rancher server resource usage is essential for maintaining reliable c
 ## Step 1: Enable Rancher Server Metrics
 
 ```bash
-# Rancher exposes Prometheus metrics at /metrics
+# Enable Rancher's advanced Prometheus metrics
+kubectl -n cattle-system set env deployment/rancher CATTLE_PROMETHEUS_METRICS=true
 
-# Verify metrics are accessible
-curl -sk \
-  -H "Authorization: Bearer $TOKEN" \
-  "https://rancher.example.com/metrics" | head -50
+# Wait for the rollout to complete
+kubectl rollout status deployment/rancher -n cattle-system
 
-# Check if ServiceMonitor exists
-kubectl get servicemonitor -n cattle-system
+# Verify the env var is present
+kubectl -n cattle-system get deployment rancher \
+  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="CATTLE_PROMETHEUS_METRICS")].value}{"\n"}'
 ```
 
-## Step 2: Create ServiceMonitor for Rancher
+## Step 2: Verify Rancher's ServiceMonitor
 
-```yaml
-# rancher-servicemonitor.yaml - Scrape Rancher metrics
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: rancher-server
-  namespace: cattle-monitoring-system
-  labels:
-    release: rancher-monitoring
-spec:
-  namespaceSelector:
-    matchNames:
-      - cattle-system
-  selector:
-    matchLabels:
-      app: rancher
-  endpoints:
-    - port: https-80
-      path: /metrics
-      scheme: https
-      tlsConfig:
-        insecureSkipVerify: true
-      bearerTokenSecret:
-        name: rancher-monitoring-token
-        key: token
-      interval: 30s
+```bash
+# rancher-monitoring creates the Rancher ServiceMonitor automatically
+# when rancherMonitoring.enabled=true.
+kubectl get servicemonitor rancher -n cattle-system -o yaml
 ```
 
 ## Step 3: Key Metrics to Monitor
 
 ```promql
-# Rancher API request rate by endpoint
-rate(rancher_api_request_total[5m])
+# Total managed clusters
+sum(cluster_manager_cluster_owner)
 
-# API error rate
-sum(rate(rancher_api_request_total{code=~"5.."}[5m])) /
-sum(rate(rancher_api_request_total[5m]))
-
-# API p99 latency
-histogram_quantile(0.99,
-  rate(rancher_api_request_duration_seconds_bucket[5m])
+# Active remotedialer websocket sessions
+sum(
+  session_server_total_add_websocket_session -
+  (session_server_total_remove_websocket_session or (0 * session_server_total_add_websocket_session))
 )
 
-# Active websocket connections (cluster agents)
-rancher_cluster_count
+# Rancher API request rate by response code
+sum by (code) (rate(steve_api_total_requests[5m]))
 
-# Number of healthy clusters
-sum(rancher_cluster_ready == 1)
+# API error rate
+sum(rate(steve_api_total_requests{code=~"5.."}[5m])) /
+sum(rate(steve_api_total_requests[5m]))
 
-# Number of unhealthy clusters
-sum(rancher_cluster_ready == 0)
+# API average request time (subscribe omitted)
+sum(rate(steve_api_request_time_sum{resource!="subscribe"}[5m])) /
+sum(rate(steve_api_request_time_count{resource!="subscribe"}[5m]))
 
 # Rancher pod memory usage
-container_memory_working_set_bytes{
+sum(container_memory_working_set_bytes{
   namespace="cattle-system",
   container="rancher"
-}
+})
 
 # Rancher pod CPU usage
-rate(container_cpu_usage_seconds_total{
+sum(rate(container_cpu_usage_seconds_total{
   namespace="cattle-system",
   container="rancher"
-}[5m])
+}[5m]))
 ```
 
 ## Step 4: Create Grafana Dashboard
@@ -106,27 +83,27 @@ rate(container_cpu_usage_seconds_total{
     {
       "title": "Total Managed Clusters",
       "type": "stat",
-      "targets": [{"expr": "rancher_cluster_count"}]
+      "targets": [{"expr": "sum(cluster_manager_cluster_owner)"}]
     },
     {
-      "title": "Healthy Clusters",
+      "title": "Active Agent Sessions",
       "type": "stat",
-      "targets": [{"expr": "sum(rancher_cluster_ready == 1)"}]
+      "targets": [{"expr": "sum(session_server_total_add_websocket_session - (session_server_total_remove_websocket_session or (0 * session_server_total_add_websocket_session)))"}]
     },
     {
       "title": "API Request Rate",
       "type": "graph",
-      "targets": [{"expr": "sum(rate(rancher_api_request_total[5m])) by (code)"}]
+      "targets": [{"expr": "sum by (code) (rate(steve_api_total_requests[5m]))"}]
     },
     {
-      "title": "API p99 Latency",
+      "title": "API Average Request Time",
       "type": "graph",
-      "targets": [{"expr": "histogram_quantile(0.99, rate(rancher_api_request_duration_seconds_bucket[5m]))"}]
+      "targets": [{"expr": "sum(rate(steve_api_request_time_sum{resource!=\"subscribe\"}[5m])) / sum(rate(steve_api_request_time_count{resource!=\"subscribe\"}[5m]))"}]
     },
     {
       "title": "Rancher Memory Usage",
       "type": "graph",
-      "targets": [{"expr": "container_memory_working_set_bytes{namespace='cattle-system',container='rancher'}"}]
+      "targets": [{"expr": "sum(container_memory_working_set_bytes{namespace=\"cattle-system\",container=\"rancher\"})"}]
     }
   ]
 }
@@ -147,22 +124,26 @@ spec:
   groups:
     - name: rancher-server
       rules:
-        # Cluster agent disconnected
-        - alert: RancherClusterDisconnected
-          expr: rancher_cluster_ready == 0
+        # No active remotedialer sessions
+        - alert: RancherNoActiveDialerSessions
+          expr: |
+            sum(
+              session_server_total_add_websocket_session -
+              (session_server_total_remove_websocket_session or (0 * session_server_total_add_websocket_session))
+            ) < 1
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "Rancher cluster {{ $labels.cluster_id }} is disconnected"
-            description: "Cluster has been unresponsive for 5+ minutes"
+            summary: "Rancher has no active remotedialer sessions"
+            description: "Cluster and node agents are not maintaining websocket sessions with Rancher"
 
         # High memory usage
         - alert: RancherHighMemory
           expr: |
-            container_memory_working_set_bytes{
+            sum(container_memory_working_set_bytes{
               namespace="cattle-system",container="rancher"
-            } / 1024 / 1024 / 1024 > 12
+            }) / 1024 / 1024 / 1024 > 12
           for: 10m
           labels:
             severity: warning
@@ -172,8 +153,8 @@ spec:
         # API error rate high
         - alert: RancherAPIErrors
           expr: |
-            sum(rate(rancher_api_request_total{code=~"5.."}[5m])) /
-            sum(rate(rancher_api_request_total[5m])) > 0.1
+            sum(rate(steve_api_total_requests{code=~"5.."}[5m])) /
+            sum(rate(steve_api_total_requests[5m])) > 0.1
           for: 5m
           labels:
             severity: critical
@@ -196,13 +177,13 @@ spec:
 
 ```promql
 # Fleet bundle deployment success rate
-sum(fleet_bundle_state{state="Ready"}) /
-sum(fleet_bundle_state) * 100
+sum(fleet_bundle_ready) /
+sum(fleet_bundle_desired_ready) * 100
 
 # Fleet bundle errors
-sum(fleet_bundle_state{state="Errored"})
+sum(fleet_bundle_err_applied)
 
-# Clusters out of sync
+# Fleet clusters not ready
 sum(fleet_cluster_state{state="NotReady"})
 ```
 
@@ -222,10 +203,10 @@ spec:
       interval: 5m
       rules:
         - record: rancher:cluster_count:total
-          expr: rancher_cluster_count
+          expr: sum(cluster_manager_cluster_owner)
 
         - record: rancher:api_request_rate:5m
-          expr: sum(rate(rancher_api_request_total[5m]))
+          expr: sum(rate(steve_api_total_requests[5m]))
 
         - record: rancher:memory_usage_bytes
           expr: |
@@ -238,4 +219,4 @@ EOF
 
 ## Conclusion
 
-Comprehensive Rancher server monitoring enables proactive capacity management and rapid incident response. The key metrics to track are cluster connectivity (healthy vs disconnected), API performance (latency and error rates), resource consumption (CPU and memory), and etcd database health. Setting up alerts for cluster disconnection, high memory usage, and etcd quota utilization ensures that capacity issues are addressed before they impact the management plane's reliability.
+Comprehensive Rancher server monitoring enables proactive capacity management and rapid incident response. The key metrics to track are active remotedialer sessions, API performance (request rate, average request time, and error rates), resource consumption (CPU and memory), and etcd database health. Setting up alerts for loss of active agent sessions, high memory usage, and etcd quota utilization ensures that capacity issues are addressed before they impact the management plane's reliability.
