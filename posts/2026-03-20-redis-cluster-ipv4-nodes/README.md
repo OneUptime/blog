@@ -67,7 +67,7 @@ sudo iptables -A INPUT -p tcp --dport 16379 -j DROP
 ```bash
 # Start Redis on all 6 nodes first
 for node in 10.0.0.1 10.0.0.2 10.0.0.3 10.0.0.4 10.0.0.5 10.0.0.6; do
-  ssh $node "sudo systemctl restart redis"
+  ssh $node "sudo systemctl restart redis-server"
 done
 
 # Create cluster with 3 primaries and 3 replicas
@@ -89,7 +89,7 @@ redis-cli -h 10.0.0.1 -a 'ClusterPassword123' cluster info
 # View cluster nodes and slot assignments
 redis-cli -h 10.0.0.1 -a 'ClusterPassword123' cluster nodes
 
-# Check which node owns a specific slot
+# Check which hash slot a specific key maps to
 redis-cli -h 10.0.0.1 -a 'ClusterPassword123' cluster keyslot mykey
 ```
 
@@ -99,11 +99,11 @@ redis-cli -h 10.0.0.1 -a 'ClusterPassword123' cluster keyslot mykey
 # Applications must use a cluster-aware Redis client
 
 # Python (redis-py cluster):
-from redis.cluster import RedisCluster
+from redis.cluster import ClusterNode, RedisCluster
 r = RedisCluster(
     startup_nodes=[
-        {"host": "10.0.0.1", "port": 6379},
-        {"host": "10.0.0.2", "port": 6379},
+        ClusterNode("10.0.0.1", 6379),
+        ClusterNode("10.0.0.2", 6379),
     ],
     password="ClusterPassword123"
 )
