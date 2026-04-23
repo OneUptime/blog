@@ -17,7 +17,7 @@ Registry mirrors allow you to redirect container image pulls from public registr
 
 ## What is a Registry Mirror?
 
-A registry mirror is a copy or proxy of a container registry. Instead of pulling images directly from Docker Hub or other public registries, containerd checks the mirror first. If the image is found in the mirror, it's pulled locally (fast). If not, the mirror fetches it from the upstream registry and caches it.
+A registry mirror is a registry endpoint that stores copies of images or acts as a proxy cache for another registry. Instead of pulling images directly from Docker Hub or other public registries, containerd checks the mirror first. If the image is found in a cache-enabled mirror, it's pulled locally (fast). If a pull-through cache does not already have the image, the cache fetches it from the upstream registry and stores it for future pulls.
 
 ## Step 1: Configure Docker Hub Mirror
 
@@ -28,10 +28,9 @@ mirrors:
   # Mirror Docker Hub pulls
   "docker.io":
     endpoint:
-    # List mirrors in priority order (first available is used)
+    # List mirrors in priority order; containerd also tries docker.io's default endpoint last
     - "https://registry-mirror.example.com"
-    - "https://mirror.gcr.io"          # Google's Docker Hub mirror
-    - "https://registry-1.docker.io"   # Fallback to original
+    - "https://mirror.gcr.io"          # Google's Docker Hub cache for public images
 ```
 
 ## Step 2: Configure Multiple Registry Mirrors
@@ -54,12 +53,12 @@ mirrors:
     endpoint:
     - "https://gcr-mirror.internal.example.com"
 
-  # Kubernetes registry mirror (quay.io)
+  # Quay registry mirror
   "quay.io":
     endpoint:
     - "https://quay-mirror.internal.example.com"
 
-  # k8s.gcr.io / registry.k8s.io mirror
+  # Kubernetes registry mirror
   "registry.k8s.io":
     endpoint:
     - "https://k8s-mirror.internal.example.com"
@@ -104,7 +103,10 @@ Harbor can act as a proxy cache for public registries:
 mirrors:
   "docker.io":
     endpoint:
-    - "https://harbor.example.com/v2/dockerhub"
+    - "https://harbor.example.com"
+    rewrite:
+      # Prefix Docker Hub image names with the Harbor proxy project
+      "^(.*)$": "dockerhub/$1"
 
 configs:
   "harbor.example.com":
@@ -117,7 +119,7 @@ configs:
 
 ## Step 4: Configure Mirrors with Rewrites
 
-Some mirrors require URL path rewrites:
+Some mirrors require image-name rewrites:
 
 ```yaml
 # /etc/rancher/rke2/registries.yaml - Mirror with rewrites
@@ -133,7 +135,7 @@ mirrors:
     endpoint:
     - "https://internal-registry.example.com"
     rewrite:
-      # Rewrite gcr.io/google_containers -> internal-registry.example.com/google_containers
+      # Rewrite gcr.io/google_containers/<image> -> internal-registry.example.com/google/<image>
       "^google_containers/(.*)$": "google/$1"
 ```
 
@@ -154,24 +156,31 @@ kubectl run mirror-test \
   -- sh -c "echo 'Mirror working'"
 
 # Check which images were pulled
-sudo /var/lib/rancher/rke2/bin/crictl images | grep nginx
+export CRI_CONFIG_FILE=/var/lib/rancher/rke2/agent/etc/crictl.yaml
+sudo -E /var/lib/rancher/rke2/bin/crictl images | grep nginx
 
 # Check containerd logs to confirm mirror usage
-sudo journalctl -u rke2-server | grep -i "mirror" | tail -10
+sudo grep -i "mirror" /var/lib/rancher/rke2/agent/containerd/containerd.log | tail -10
 
 # Verify the image was served from the mirror
 # Look for the mirror hostname in the pull logs
-sudo journalctl -u rke2-server | grep -E "pulling|pulled" | tail -5
+sudo grep -E "pulling|pulled|registry-mirror|mirror.gcr.io" \
+  /var/lib/rancher/rke2/agent/containerd/containerd.log | tail -20
 ```
 
 ## Step 6: Configure Mirrors for Air-Gapped Operation
 
-In air-gapped environments, all images must come from the mirror:
+In air-gapped environments, configure mirrors for every registry your images use and disable containerd's default endpoint fallback so pulls only use configured mirror endpoints:
+
+```yaml
+# /etc/rancher/rke2/config.yaml - disable upstream fallback
+disable-default-registry-endpoint: true
+```
 
 ```yaml
 # /etc/rancher/rke2/registries.yaml - Air-gapped mirror configuration
 mirrors:
-  # Route ALL pulls through the internal registry
+  # Route pulls for these upstream registries through the internal registry
   "docker.io":
     endpoint:
     - "https://registry.internal.example.com"
@@ -202,23 +211,23 @@ configs:
       ca_file: "/etc/ssl/certs/internal-ca.crt"
 ```
 
-## Step 7: Monitor Mirror Cache Hit Rate
+## Step 7: Monitor Mirror Usage
 
 ```bash
-# Check Harbor cache statistics (in Harbor UI or API)
-curl -u admin:password \
-  "https://harbor.example.com/api/v2.0/statistics" | \
-  python3 -m json.tool
+# If Harbor metrics are enabled, check pull counters and registry request metrics
+curl -s "https://harbor.example.com:<metrics-port>/<metrics-path>" | \
+  grep -E "harbor_artifact_pulled|registry_http_request"
 
-# Check containerd image pull statistics
-# Using CRI stats
-sudo /var/lib/rancher/rke2/bin/crictl stats 2>/dev/null | head -20
+# Check the node image store
+export CRI_CONFIG_FILE=/var/lib/rancher/rke2/agent/etc/crictl.yaml
+sudo -E /var/lib/rancher/rke2/bin/crictl images | \
+  grep -E "nginx|docker.io|registry.k8s.io"
 
-# Check node events for image pull sources
+# Check recent image pull events; Kubernetes events show image names, not mirror endpoints
 kubectl get events -A | grep -E "Pulling|Pulled" | \
-  awk '{print $7}' | sort | uniq -c
+  tail -20
 ```
 
 ## Conclusion
 
-Registry mirrors dramatically improve image pull performance in Kubernetes clusters, especially for large deployments where many nodes may pull the same images simultaneously. By directing all pulls through a centralized mirror, you also gain visibility into which images are being used across your cluster and can enforce image policies centrally. For production RKE2 deployments, configuring at least one registry mirror for Docker Hub is strongly recommended, as Docker Hub's rate limiting can cause pod scheduling failures on heavily-loaded clusters.
+Registry mirrors dramatically improve image pull performance in Kubernetes clusters, especially for large deployments where many nodes may pull the same images simultaneously. By directing pulls through a centralized mirror and disabling upstream fallback where required, you also gain visibility into which images are being used across your cluster and can enforce image policies centrally. For production RKE2 deployments, configuring at least one registry mirror for Docker Hub is strongly recommended, as Docker Hub's rate limiting can cause pod scheduling failures on heavily-loaded clusters.
