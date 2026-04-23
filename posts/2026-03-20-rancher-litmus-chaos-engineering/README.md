@@ -8,11 +8,11 @@ Description: A guide to setting up LitmusChaos on Rancher-managed Kubernetes clu
 
 ## Overview
 
-Chaos engineering is the practice of deliberately introducing failures into systems to test their resilience and identify weaknesses before they cause incidents. LitmusChaos is a CNCF-graduated chaos engineering platform for Kubernetes. This guide covers installing LitmusChaos on Rancher-managed clusters, running chaos experiments, and integrating chaos into CI/CD pipelines.
+Chaos engineering is the practice of deliberately introducing failures into systems to test their resilience and identify weaknesses before they cause incidents. LitmusChaos is a CNCF-incubating chaos engineering platform for Kubernetes. This guide covers installing LitmusChaos on Rancher-managed clusters, running chaos experiments, and integrating chaos into CI/CD pipelines.
 
 ## What Is LitmusChaos?
 
-LitmusChaos provides a catalog of chaos experiments (ChaosHub) including pod deletion, node drain, CPU stress, network packet loss, disk I/O saturation, and more. It uses Kubernetes CRDs (ChaosEngine, ChaosExperiment, ChaosResult) and provides a web UI (Litmus Portal) for managing experiments.
+LitmusChaos provides a catalog of chaos experiments (ChaosHub) including pod deletion, node drain, CPU stress, network packet loss, disk I/O saturation, and more. It uses Kubernetes CRDs (ChaosEngine, ChaosExperiment, ChaosResult) and provides a web UI (ChaosCenter) for managing experiments.
 
 ## Step 1: Install LitmusChaos
 
@@ -22,23 +22,26 @@ LitmusChaos provides a catalog of chaos experiments (ChaosHub) including pod del
 helm repo add litmuschaos https://litmuschaos.github.io/litmus-helm/
 helm repo update
 
-# Install LitmusChaos (namespace-scoped)
+# Install the Litmus execution plane
 kubectl create namespace litmus
 
+helm install litmus-core litmuschaos/litmus-core \
+  --namespace litmus \
+  --set operatorMode=admin \
+  --set exporter.enabled=true \
+  --set exporter.serviceMonitor.enabled=true \
+  --set exporter.serviceMonitor.additionalLabels.release=rancher-monitoring
+
+# Install ChaosCenter
 helm install chaos litmuschaos/litmus \
   --namespace litmus \
-  --set portal.frontend.service.type=ClusterIP \
-  --set portal.server.graphqlServer.replicaCount=1
+  --set portal.frontend.service.type=LoadBalancer
 
-# For Rancher with LoadBalancer
-kubectl patch svc litmusportal-frontend-service -n litmus \
-  -p '{"spec": {"type": "LoadBalancer"}}'
-
-# Get the Litmus Portal URL
-kubectl get svc litmusportal-frontend-service -n litmus
+# Get the ChaosCenter URL
+kubectl get svc chaos-litmus-frontend-service -n litmus
 ```
 
-## Step 2: Access Litmus Portal
+## Step 2: Access ChaosCenter
 
 ```bash
 # Default credentials
@@ -51,13 +54,10 @@ kubectl get svc litmusportal-frontend-service -n litmus
 ## Step 3: Install Chaos Experiments from ChaosHub
 
 ```bash
-# Install common chaos experiments
-kubectl apply -f https://hub.litmuschaos.io/api/chaos/master?file=charts/generic/experiments.yaml -n litmus
-
-# Or install specific experiments
-kubectl apply -f https://hub.litmuschaos.io/api/chaos/master?file=charts/generic/pod-delete/experiments.yaml
-kubectl apply -f https://hub.litmuschaos.io/api/chaos/master?file=charts/generic/pod-cpu-hog/experiments.yaml
-kubectl apply -f https://hub.litmuschaos.io/api/chaos/master?file=charts/generic/node-drain/experiments.yaml
+# Install the experiments used in the examples below into the same namespace as the ChaosEngine CRs
+kubectl apply -f https://hub.litmuschaos.io/api/chaos/master?file=faults/kubernetes/pod-delete/fault.yaml -n litmus
+kubectl apply -f https://hub.litmuschaos.io/api/chaos/master?file=faults/kubernetes/pod-cpu-hog/fault.yaml -n litmus
+kubectl apply -f https://hub.litmuschaos.io/api/chaos/master?file=faults/kubernetes/node-drain/fault.yaml -n litmus
 ```
 
 ## Step 4: Create a ChaosEngine
@@ -72,15 +72,16 @@ apiVersion: litmuschaos.io/v1alpha1
 kind: ChaosEngine
 metadata:
   name: webapp-pod-delete-chaos
-  namespace: production
+  namespace: litmus
 spec:
+  engineState: active
+  annotationCheck: "false"
   appinfo:
     appns: production
     applabel: "app=webapp"
     appkind: deployment
 
-  # Monitor experiment using Prometheus
-  monitoring: true
+  chaosServiceAccount: litmus-admin
   jobCleanUpPolicy: retain
 
   experiments:
@@ -106,13 +107,16 @@ apiVersion: litmuschaos.io/v1alpha1
 kind: ChaosEngine
 metadata:
   name: api-cpu-stress
-  namespace: production
+  namespace: litmus
 spec:
+  engineState: active
+  annotationCheck: "false"
   appinfo:
     appns: production
     applabel: "app=api-service"
     appkind: deployment
 
+  chaosServiceAccount: litmus-admin
   experiments:
     - name: pod-cpu-hog
       spec:
@@ -130,6 +134,7 @@ spec:
 
 ```yaml
 # Test cluster behavior when a node is drained
+# Cordon the target node before applying this ChaosEngine
 apiVersion: litmuschaos.io/v1alpha1
 kind: ChaosEngine
 metadata:
@@ -164,12 +169,12 @@ spec:
     - name: chaos-experiments
       rules:
         - alert: ChaosExperimentFailed
-          expr: litmuschaos_experiment_verdict{verdict="Fail"} > 0
+          expr: litmuschaos_experiment_verdict{chaosresult_verdict="Fail"} > 0
           for: 0m
           labels:
             severity: warning
           annotations:
-            summary: "Chaos experiment failed: {{ $labels.chaosengine }}"
+            summary: "Chaos experiment failed: {{ $labels.chaosengine_name }}"
 ```
 
 ## Step 6: Integrate Chaos into CI/CD
@@ -190,22 +195,22 @@ jobs:
       - name: Configure kubectl
         run: |
           echo "${{ secrets.STAGING_KUBECONFIG }}" | base64 -d > kubeconfig.yaml
-          export KUBECONFIG=kubeconfig.yaml
+          echo "KUBECONFIG=$PWD/kubeconfig.yaml" >> "$GITHUB_ENV"
 
       - name: Run pod delete chaos
         run: |
           kubectl apply -f chaos/pod-delete-engine.yaml
           kubectl wait --for=jsonpath='{.status.engineStatus}'=completed \
             chaosengine/webapp-pod-delete-chaos \
-            -n production \
+            -n litmus \
             --timeout=300s
 
       - name: Check chaos result
         run: |
           VERDICT=$(kubectl get chaosresult \
             webapp-pod-delete-chaos-pod-delete \
-            -n production \
-            -o jsonpath='{.status.experimentstatus.verdict}')
+            -n litmus \
+            -o jsonpath='{.status.experimentStatus.verdict}')
 
           if [ "${VERDICT}" != "Pass" ]; then
             echo "FAIL: Chaos test failed with verdict: ${VERDICT}"
@@ -215,7 +220,7 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: kubectl delete chaosengine webapp-pod-delete-chaos -n production
+        run: kubectl delete chaosengine webapp-pod-delete-chaos -n litmus
 ```
 
 ## Step 7: Define SLOs for Chaos Tests
@@ -226,8 +231,15 @@ apiVersion: litmuschaos.io/v1alpha1
 kind: ChaosEngine
 metadata:
   name: webapp-with-probes
-  namespace: production
+  namespace: litmus
 spec:
+  engineState: active
+  annotationCheck: "false"
+  appinfo:
+    appns: production
+    applabel: "app=webapp"
+    appkind: deployment
+  chaosServiceAccount: litmus-admin
   experiments:
     - name: pod-delete
       spec:
@@ -245,23 +257,26 @@ spec:
                   responseCode: "200"
             mode: Continuous
             runProperties:
-              probeTimeout: 5s
-              interval: 5s
+              probeTimeout: 5
+              interval: 5
               retry: 3
 
           # Prometheus probe: Verify error rate stays below 1%
           - name: error-rate-probe
             type: promProbe
             promProbe/inputs:
-              endpoint: http://prometheus.cattle-monitoring-system.svc:9090
+              endpoint: http://<your-prometheus-service>.cattle-monitoring-system.svc:9090
               query: |
                 sum(rate(http_requests_total{status=~"5.."}[1m])) /
-                sum(rate(http_requests_total[1m])) < 0.01
+                sum(rate(http_requests_total[1m]))
               comparator:
-                type: float
-                criteria: "=="
-                value: "1"    # Query must return 1 (true)
+                criteria: "<"
+                value: "0.01"    # Error rate must stay below 1%
             mode: Edge
+            runProperties:
+              probeTimeout: 5
+              interval: 5
+              retry: 1
 ```
 
 ## Conclusion
