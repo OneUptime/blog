@@ -11,20 +11,20 @@ Description: Learn how to implement RPKI Route Origin Validation to cryptographi
 Resource Public Key Infrastructure (RPKI) is a cryptographic framework that allows IP address holders to create Route Origin Authorizations (ROAs)-digitally signed records stating which AS is authorized to originate a specific prefix. BGP routers validate incoming routes against the RPKI cache and can reject INVALID routes.
 
 RPKI validation states:
-- **Valid:** The prefix/AS pair matches a ROA
-- **Invalid:** A ROA exists but the AS or prefix length doesn't match
-- **NotFound:** No ROA exists for the prefix (unknown)
+- **Valid:** The route prefix is covered by a ROA whose origin AS matches and whose max-length allows the announced prefix length
+- **Invalid:** At least one ROA covers the prefix, but none match both origin AS and max-length
+- **NotFound:** No ROA covers the prefix (unknown)
 
 ## Architecture
 
 ```mermaid
 graph LR
-    IANA["RIR (ARIN/RIPE/APNIC)"]
+    RIR["RIRs (ARIN/RIPE/APNIC/LACNIC/AFRINIC)"]
     ROA["ROA Repository"]
     Validator["RPKI Validator\n(Routinator/OctoRPKI)"]
     Router["BGP Router"]
 
-    IANA --> ROA
+    RIR --> ROA
     ROA --> Validator
     Validator -- "RTR Protocol" --> Router
 ```
@@ -38,14 +38,13 @@ Install Routinator (an open-source RPKI validator) on a Linux server:
 
 sudo apt-get install routinator
 
-# Initialize the TAL (Trust Anchor Locator) files
-routinator init --accept-arin-rpa
+# Current Routinator releases ship with bundled RIR TALs; no init step is required
 
 # Start the Routinator daemon with RTR server
-routinator server --rtr 127.0.0.1:3323 --http 127.0.0.1:9556
+routinator server --rtr=192.168.1.100:3323 --http=127.0.0.1:9556
 
-# Verify it's fetching ROAs
-routinator validate 203.0.113.0/24 65001
+# Test a validation lookup
+routinator validate --prefix=203.0.113.0/24 --asn=65001
 ```
 
 Routinator downloads ROAs from all five RIRs and serves them to routers via the RTR protocol.
@@ -65,25 +64,20 @@ Verify the connection:
 ```text
 Router# show ip bgp rpki servers
 
-BGP RPKI cache-server 192.168.1.100 port 3323:
-  Refresh time: 600 seconds
-  State: Connected, Serial number: 42
-  Uptime: 00:10:00
-  Prefix entries: 180000
+BGP SOVC neighbor is 192.168.1.100 connected to port 3323
+Flags 0, Refresh time is 600, Serial number is 42
+InQ has 0 messages, OutQ has 0 messages, formatted msg 9
 ```
 
 ## Step 3: Enable Route Origin Validation
 
-Enable validation for the BGP neighbor and configure behavior for each validation state:
+After the RPKI server is configured, Cisco starts assigning validation states. Configure the address family so your route map controls invalid-route handling:
 
 ```text
 router bgp 65001
- ! Enable validation
- bgp bestpath prefix-validate allow-invalid
-
  address-family ipv4 unicast
-  ! Activate BGP route origin validation
-  bgp route-origin-validation enable
+  ! Allow route-map policy to handle invalid routes explicitly
+  bgp bestpath prefix-validate allow-invalid
  exit-address-family
 ```
 
@@ -103,24 +97,37 @@ route-map RPKI_POLICY permit 20
 
 ! Accept NOTFOUND routes (no ROA exists) with default preference
 route-map RPKI_POLICY permit 30
- match rpki notfound
+ match rpki not-found
  set local-preference 100
 
-! Apply to all eBGP neighbors
+! Apply to an eBGP neighbor
 router bgp 65001
  neighbor 203.0.113.1 route-map RPKI_POLICY in
 ```
 
 ## Step 5: Configure RPKI on FRRouting
 
-```bash
+```text
 # In FRR bgpd.conf
 rpki
- rpki cache 192.168.1.100 3323 preference 1
+ rpki cache tcp 192.168.1.100 3323 preference 1
+ exit
+!
+route-map RPKI_POLICY deny 10
+ match rpki invalid
+!
+route-map RPKI_POLICY permit 20
+ match rpki valid
+ set local-preference 200
+!
+route-map RPKI_POLICY permit 30
+ match rpki notfound
+ set local-preference 100
 !
 router bgp 65001
  address-family ipv4 unicast
   neighbor 203.0.113.1 route-map RPKI_POLICY in
+ exit-address-family
 ```
 
 ## Step 6: Create Your Own ROA
@@ -128,10 +135,10 @@ router bgp 65001
 Register a ROA for your prefix with your RIR (ARIN, RIPE, APNIC, etc.):
 
 - Origin AS: Your AS number
-- Prefix: Your allocated prefix (e.g., 198.51.100.0/24)
+- Prefix: Your allocated prefix (for example, the public /24 you announce)
 - Max-length: The maximum prefix length you will announce (typically same as prefix, e.g., /24)
 
-This protects your prefix from being hijacked by unauthorized ASes.
+This helps protect your prefix from unauthorized-origin hijacks when networks perform RPKI route origin validation.
 
 ## Step 7: Monitor Validation Results
 
@@ -141,9 +148,9 @@ Router# show ip bgp 198.51.100.0/24
 
   BGP routing table entry for 198.51.100.0/24
   ...
-  RPKI validation state: valid    <- confirmed by ROA
+  RPKI State valid    <- confirmed by ROA
 ```
 
 ## Conclusion
 
-RPKI Route Origin Validation prevents BGP route hijacking by cryptographically verifying prefix announcements against ROAs. Deploy a local RPKI validator (Routinator), connect it to your routers via RTR, configure route maps to drop INVALID routes, and register ROAs for your own prefixes through your RIR.
+RPKI Route Origin Validation helps prevent unauthorized-origin hijacks by cryptographically verifying prefix announcements against ROAs. Deploy a local RPKI validator (Routinator), connect it to your routers via RTR, configure route maps to drop INVALID routes, and register ROAs for your own prefixes through your RIR.
