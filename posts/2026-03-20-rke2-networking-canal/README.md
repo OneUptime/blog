@@ -18,8 +18,8 @@ Canal is the default CNI (Container Network Interface) plugin in RKE2. It combin
 
 Canal combines two powerful networking solutions:
 
-- **Flannel**: Provides a simple overlay network (VXLAN) for pod-to-pod communication
-- **Calico**: Provides network policy enforcement and optional BGP routing
+- **Flannel**: Provides inter-node pod networking, using VXLAN by default
+- **Calico**: Provides intra-node pod networking and network policy enforcement while Flannel handles routing
 
 ## Step 1: Configure Canal in RKE2
 
@@ -34,26 +34,35 @@ cni: canal
 # Pod network CIDR
 cluster-cidr: 10.42.0.0/16
 
-# Flannel backend options
-# Options: vxlan (default), wireguard-native, host-gw, udp
-# For Canal in RKE2, backend is configured separately
+# Flannel backend options are configured with the rke2-canal HelmChartConfig
 ```
 
 ## Step 2: Configure Flannel Backend
 
 ```yaml
-# /etc/rancher/rke2/config.yaml - Configure Flannel backend
-cni: canal
+# /var/lib/rancher/rke2/server/manifests/rke2-canal-config.yaml
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-canal
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    flannel:
+      # Configure Flannel to use WireGuard for encrypted pod communication
+      # Linux kernels older than 5.6 may require an additional WireGuard module
+      backend: "wireguard"
 
-# Configure Flannel to use WireGuard for encrypted pod communication
-# This requires kernel 5.6+ with WireGuard support
-flannel-backend: wireguard-native
+      # Or use VXLAN (default, works on most kernels)
+      # backend: "vxlan"
 
-# Or use VXLAN (default, works on most kernels)
-# flannel-backend: vxlan
+      # Or use host-gw for non-overlay networking (all nodes must be on same L2)
+      # backend: "host-gw"
+```
 
-# Or use host-gw for non-overlay networking (all nodes must be on same L2)
-# flannel-backend: host-gw
+```bash
+# Restart Canal after changing this HelmChartConfig on an existing cluster
+kubectl rollout restart daemonset/rke2-canal -n kube-system
 ```
 
 ## Step 3: Configure Network Policies with Canal/Calico
@@ -91,7 +100,7 @@ kubectl apply -f network-policy.yaml
 kubectl get networkpolicy -n my-app
 
 # Test connectivity (should be blocked without matching labels)
-kubectl run test-pod --image=busybox -n my-app -- \
+kubectl run test-pod --image=busybox -n my-app --rm -it --restart=Never -- \
   wget -qO- --timeout=5 http://backend-service:8080
 ```
 
@@ -100,13 +109,13 @@ kubectl run test-pod --image=busybox -n my-app -- \
 When using Canal, you can use Calico's GlobalNetworkPolicy for cluster-wide rules:
 
 ```yaml
-# global-network-policy.yaml - Requires Calico CRDs
+# global-network-policy.yaml - Uses the Calico CRDs installed with RKE2 Canal
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
   name: deny-all-except-dns
 spec:
-  # Apply to all pods in the cluster
+  # Apply to all Calico endpoints in the cluster
   selector: all()
   types:
   - Ingress
@@ -115,6 +124,10 @@ spec:
   # Allow DNS
   - action: Allow
     protocol: UDP
+    destination:
+      ports: [53]
+  - action: Allow
+    protocol: TCP
     destination:
       ports: [53]
   # Allow all within the cluster
@@ -131,7 +144,7 @@ spec:
 ## Step 5: Configure Canal with Custom VXLAN Settings
 
 ```yaml
-# HelmChartConfig to customize Canal/Flannel settings
+# /var/lib/rancher/rke2/server/manifests/rke2-canal-config.yaml
 apiVersion: helm.cattle.io/v1
 kind: HelmChartConfig
 metadata:
@@ -140,23 +153,22 @@ metadata:
 spec:
   valuesContent: |-
     flannel:
-      # VXLAN port (default: 8472)
-      # vxlanPort: 8472
+      # VXLAN port (0 uses the default: 8472)
+      backendPort: 0
 
-      # VXLAN ID
-      # vxlanID: 1
+      # VXLAN Network Identifier (Linux default: 1)
+      # vni: 1
+
+      # Use direct routes for same-subnet nodes
+      # directRouting: false
+
+      # MTU for outgoing VXLAN or WireGuard packets
+      # Leave unset to use the external interface MTU
+      # mtu: 1450
 
     calico:
-      # Container interface name prefix
-      containerInterface: "eth"
-
-      # MTU for Canal network interfaces
-      # Leave empty to auto-detect
-      mtu: "0"
-
-      # Enable IPv6 dual-stack
-      # ipv6:
-      #   enabled: false
+      # MTU used by the Calico CNI veth interface
+      vethuMTU: 1450
 ```
 
 ## Step 6: Monitor Canal Network Health
@@ -182,21 +194,22 @@ kubectl logs -n kube-system \
   -c calico-node --tail=50
 
 # Test pod connectivity
-kubectl run ping-test --image=busybox --rm -it -- ping 10.42.0.1
+kubectl run ping-test --image=busybox --rm -it --restart=Never -- \
+  ping -c 3 TARGET_POD_IP
 ```
 
 ## Step 7: Troubleshoot Canal Networking Issues
 
 ```bash
-# Check if VXLAN interfaces are created on nodes
+# Check if Flannel interfaces are created on nodes
 ip link show | grep flannel
 
 # Check the flannel subnet configuration
 cat /run/flannel/subnet.env
 
-# Check Canal's IP address management
-kubectl get ippools -A 2>/dev/null || \
-  echo "Calico IPAM pools (may need Calico CRDs installed separately)"
+# Check the PodCIDRs that Canal uses with host-local IPAM
+kubectl get nodes \
+  -o custom-columns=NAME:.metadata.name,PODCIDR:.spec.podCIDR,PODCIDRS:.spec.podCIDRs
 
 # Check node routing
 ip route show | grep 10.42
