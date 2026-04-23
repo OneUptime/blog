@@ -8,7 +8,7 @@ Description: Learn how to configure Cilium as the CNI plugin in RKE2 to leverage
 
 ---
 
-Cilium uses eBPF to implement Kubernetes networking at the kernel level, delivering higher performance than iptables-based CNIs and enabling L7-aware network policies and deep observability via Hubble.
+Cilium uses eBPF to implement Kubernetes networking at the kernel level, which can reduce iptables-based service handling overhead and enables L7-aware network policies and deep observability via Hubble.
 
 ---
 
@@ -28,7 +28,7 @@ cluster-cidr: 10.42.0.0/16
 service-cidr: 10.43.0.0/16
 
 # Disable kube-proxy - Cilium replaces it with eBPF
-kube-proxy-disabled: true
+disable-kube-proxy: true
 ```
 
 ---
@@ -45,9 +45,9 @@ metadata:
 spec:
   valuesContent: |-
     # Replace kube-proxy with eBPF
-    kubeProxyReplacement: strict
-    k8sServiceHost: "rke2.example.com"
-    k8sServicePort: 6443
+    kubeProxyReplacement: true
+    k8sServiceHost: "localhost"
+    k8sServicePort: "6443"
 
     # Enable Hubble for network observability
     hubble:
@@ -128,15 +128,18 @@ Hubble provides real-time network flow visibility:
 kubectl port-forward -n kube-system svc/hubble-ui 12000:80
 
 # Open in browser
-open http://localhost:12000
+xdg-open http://localhost:12000
 
-# Or use hubble CLI to observe flows
+# Or use the Cilium CLI to open the web UI
 cilium hubble ui   # opens the web UI
 
-# Observe flows from the CLI
+# In another terminal, forward Hubble Relay for local Hubble CLI access
+cilium hubble port-forward &
+
+# Observe dropped flows from the CLI
 hubble observe \
   --namespace my-app \
-  --type drop \
+  --verdict DROPPED \
   --output json
 ```
 
@@ -144,7 +147,7 @@ hubble observe \
 
 ## Best Practices
 
-- Enable `kubeProxyReplacement: strict` for maximum eBPF performance - this removes the kube-proxy DaemonSet entirely.
+- Use `disable-kube-proxy: true` with `kubeProxyReplacement: true` for Cilium's eBPF kube-proxy replacement; RKE2 will not run kube-proxy in this mode.
 - Use **WireGuard encryption** for node-to-node traffic if your infrastructure crosses untrusted networks.
-- Cilium requires Linux kernel 4.9.17+ - check kernel versions before deploying on older nodes.
+- Check kernel support before deploying: Cilium's current documented baseline is Linux kernel 5.10+ or an equivalent distribution kernel, and RKE2 recommends kernel 5.8+ before enabling Cilium kube-proxy replacement.
 - Use Hubble flows as input to your SIEM for real-time network anomaly detection.
