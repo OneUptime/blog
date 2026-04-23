@@ -32,23 +32,21 @@ kubectl describe pod win-pod-xyz -n production | tail -30
 # Windows images: *-windowsservercore-ltsc2022, *-nanoserver-ltsc2022
 # Linux images: *-alpine, *-bullseye, etc.
 
-# Verify image exists and is accessible from Windows node
-kubectl exec -it \
-  $(kubectl get pod -l app=windows-app -o name | head -1) \
-  -n production \
-  -- powershell.exe -Command {
-    ctr images pull registry.example.com/windows-app:v1.0
-  }
+# Identify the Windows node to inspect directly
+kubectl get pod win-pod-xyz -n production -o wide
 ```
 
 ```powershell
 # On Windows node: manually pull image for testing
-& "C:\Program Files\containerd\ctr.exe" images pull `
+& "C:\var\lib\rancher\rke2\bin\crictl.exe" `
+  --runtime-endpoint npipe:////./pipe/containerd-containerd `
+  pull `
   registry.example.com/windows-app:v1.0
 
-# Check image manifest
-& "C:\Program Files\containerd\ctr.exe" images info `
-  registry.example.com/windows-app:v1.0
+# Confirm the image is present on the node
+& "C:\var\lib\rancher\rke2\bin\crictl.exe" `
+  --runtime-endpoint npipe:////./pipe/containerd-containerd `
+  images | Select-String "registry.example.com/windows-app"
 ```
 
 ## Step 2: Diagnose Container Startup Failures
@@ -72,15 +70,17 @@ kubectl get pod win-pod-xyz -n production -o json | \
 ```
 
 ```powershell
-# On Windows node: check containerd logs for startup errors
-Get-EventLog -LogName Application -Source containerd -Newest 20
+# On Windows node: check kubelet logs for startup/runtime errors
+Get-Content -Tail 200 "C:\var\lib\rancher\rke2\agent\logs\kubelet.log"
 
 # Check Windows Event Log for application errors
 Get-EventLog -LogName Application -Newest 50 | `
   Where-Object {$_.EntryType -eq "Error"}
 
 # Check container state
-& "C:\Program Files\containerd\ctr.exe" tasks list
+& "C:\var\lib\rancher\rke2\bin\crictl.exe" `
+  --runtime-endpoint npipe:////./pipe/containerd-containerd `
+  ps -a
 ```
 
 ## Step 3: Troubleshoot Pod Scheduling Issues
@@ -143,7 +143,7 @@ Get-Counter "\Processor(_Total)\% Processor Time" -SampleInterval 2 -MaxSamples 
 
 # Memory
 Get-Counter "\Memory\Available MBytes"
-[math]::Round((Get-WmiObject Win32_OperatingSystem).FreePhysicalMemory / 1MB, 2)
+[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1KB, 2)
 
 # Disk I/O
 Get-Counter "\PhysicalDisk(_Total)\Disk Bytes/sec"
@@ -212,8 +212,10 @@ $report = @{
 
 $report | ConvertTo-Json -Depth 5 | Out-File C:\k8s-diag-$(Get-Date -Format 'yyyyMMdd-HHmmss').json
 
-# Collect RKE2 agent logs
-Get-Content -Tail 500 "C:\var\log\rke2\rke2-agent.log"
+# Collect RKE2 service logs
+Get-WinEvent -LogName Application -MaxEvents 200 | `
+  Where-Object {$_.ProviderName -like "rke2*"} | `
+  Select-Object TimeCreated, Id, LevelDisplayName, Message
 ```
 
 ## Conclusion
