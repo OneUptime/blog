@@ -4,39 +4,40 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher Desktop, Container Registry, Image, Docker Hub, Push
 
-Description: Configure authentication and push locally built container images to Docker Hub, GCR, or private registries.
+Description: Configure authentication and push locally built container images to Docker Hub, Google Artifact Registry, or private registries.
 
 ## Introduction
 
-Rancher Desktop is an open-source desktop application that provides Kubernetes and container management tools for local development. It bundles kubectl, Helm, nerdctl, and either containerd or Moby (dockerd) into a single, easy-to-use application. This guide covers How to Push Images to Registries from Rancher Desktop in detail.
+Rancher Desktop is an open-source desktop application that provides Kubernetes and container management tools for local development. It bundles `rdctl`, `nerdctl`, and the Docker CLI, and supports either containerd or Moby (dockerd) as the active container engine. This guide covers how to authenticate to a registry and push locally built images from Rancher Desktop.
 
 ## Prerequisites
 
-- A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
+- Rancher Desktop installed on macOS, Windows, or Linux
+- A registry account such as Docker Hub, Google Artifact Registry, or a private registry
+- Administrator/sudo privileges if required for installation
 - At least 8 GB of RAM (16 GB recommended)
 - At least 4 CPU cores
+- Google Cloud CLI installed if you plan to push to Google Artifact Registry
 
 ## Overview
 
-Rancher Desktop simplifies local Kubernetes and container development by providing:
+Rancher Desktop can push images using the CLI that matches the active container engine:
 
-- A local Kubernetes cluster (k3s-based)
-- Container runtime (containerd or dockerd)
-- Integrated CLI tools (kubectl, helm, nerdctl, docker)
-- Simple configuration through a GUI
+- `nerdctl` when Rancher Desktop is using `containerd`
+- `docker` when Rancher Desktop is using `moby`
+- `rdctl` for checking and changing Rancher Desktop settings
+- `containerd` namespaces when using `nerdctl`; if you build an image in `k8s.io`, use the same namespace when you tag or push it
 
 ## Step 1: Initial Setup
 
 ```bash
-# Verify Rancher Desktop is installed and running
-
+# Verify Rancher Desktop is installed
 rdctl version
 
-# Check Kubernetes cluster status
-kubectl cluster-info
+# Inspect the current Rancher Desktop settings
+rdctl list-settings
 
-# Verify container runtime
+# Verify the image CLI you plan to use
 nerdctl version
 # or
 docker version
@@ -46,118 +47,103 @@ docker version
 
 Open Rancher Desktop Preferences to configure:
 
-- **Kubernetes**: Version and enabled/disabled state
-- **Container Engine**: containerd or moby (dockerd)
+- **Container Engine**: `containerd` for `nerdctl`, or `moby` for `docker`
 - **Virtual Machine**: CPU, memory, and disk allocation
+- **Kubernetes**: Optional for image pushes, but relevant if you want locally built images available to the cluster
 - **WSL** (Windows only): WSL2 integration settings
 
 ```bash
-# Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
-rdctl set --container-engine containerd
+# Switch to the containerd runtime for nerdctl
+rdctl set --container-engine.name containerd
+
+# Switch to the Moby runtime for docker
+rdctl set --container-engine.name moby
 ```
 
-## Step 3: Working with Containers
+## Step 3: Build and Tag Images
 
 ```bash
-# Pull an image
-nerdctl pull nginx:latest
-# or with docker compatibility
-docker pull nginx:latest
+# Build a local image
+nerdctl build -t my-app:latest .
+# or
+docker build -t my-app:latest .
 
-# Run a container
-nerdctl run -d -p 8080:80 --name my-nginx nginx:latest
+# Tag for Docker Hub
+nerdctl tag my-app:latest DOCKERHUB_USERNAME/my-app:latest
+# or
+docker tag my-app:latest DOCKERHUB_USERNAME/my-app:latest
 
-# List running containers
-nerdctl ps
-
-# View container logs
-nerdctl logs my-nginx
-
-# Stop and remove
-nerdctl stop my-nginx
-nerdctl rm my-nginx
+# Tag for a private registry
+nerdctl tag my-app:latest registry.example.com/team/my-app:latest
+# or
+docker tag my-app:latest registry.example.com/team/my-app:latest
 ```
 
-## Step 4: Working with Kubernetes
+## Step 4: Authenticate to the Registry
 
 ```bash
-# Check cluster nodes
-kubectl get nodes
+# Docker Hub
+echo "$DOCKERHUB_TOKEN" | nerdctl login -u DOCKERHUB_USERNAME --password-stdin
+# or
+echo "$DOCKERHUB_TOKEN" | docker login -u DOCKERHUB_USERNAME --password-stdin
 
-# Deploy a test application
-kubectl create deployment hello-world \
-  --image=nginx:latest
+# Google Artifact Registry
+gcloud auth configure-docker us-west1-docker.pkg.dev
 
-# Expose the deployment
-kubectl expose deployment hello-world \
-  --port=80 \
-  --type=NodePort
-
-# Check the service
-kubectl get svc hello-world
-
-# Forward local port to the service
-kubectl port-forward svc/hello-world 8080:80 &
-
-# Test the application
-curl http://localhost:8080
-
-# Clean up
-kubectl delete deployment hello-world
-kubectl delete svc hello-world
+# Private registry
+echo "$REGISTRY_PASSWORD" | nerdctl login registry.example.com -u USERNAME --password-stdin
+# or
+echo "$REGISTRY_PASSWORD" | docker login registry.example.com -u USERNAME --password-stdin
 ```
 
-## Step 5: Using Helm
+## Step 5: Push the Image
 
 ```bash
-# Rancher Desktop includes Helm
-helm version
+# Push to Docker Hub
+nerdctl push DOCKERHUB_USERNAME/my-app:latest
+# or
+docker push DOCKERHUB_USERNAME/my-app:latest
 
-# Add a chart repository
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm repo update
+# Push to Google Artifact Registry
+docker tag my-app:latest \
+  us-west1-docker.pkg.dev/PROJECT-ID/REPOSITORY/my-app:latest
+docker push \
+  us-west1-docker.pkg.dev/PROJECT-ID/REPOSITORY/my-app:latest
 
-# Install a chart
-helm install my-release bitnami/nginx
-
-# List installed releases
-helm list
-
-# Uninstall
-helm uninstall my-release
+# Push to a private registry
+nerdctl push registry.example.com/team/my-app:latest
+# or
+docker push registry.example.com/team/my-app:latest
 ```
 
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
-rdctl factory-reset
+# Show the current Rancher Desktop settings
+rdctl list-settings
 
-# Check Rancher Desktop status
-rdctl status
+# Gracefully stop Rancher Desktop
+rdctl shutdown
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
-
-# Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+# Start Rancher Desktop with the current settings
+rdctl start
 ```
 
 ## Troubleshooting
 
 ```bash
-# Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# Linux only: initialize pass before using docker login or nerdctl login
+gpg --generate-key
+pass init YOUR_GPG_KEY_ID
 
-# Reset to factory defaults
-rdctl factory-reset
+# If the image was built in the Kubernetes namespace, use the same namespace when pushing
+nerdctl --namespace k8s.io images
+nerdctl --namespace k8s.io push DOCKERHUB_USERNAME/my-app:latest
 
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Reset Rancher Desktop completely
+rdctl reset --factory
 ```
 
 ## Conclusion
 
-How to Push Images to Registries from Rancher Desktop with Rancher Desktop provides a powerful, integrated local development experience. Rancher Desktop eliminates the need for multiple separate tools by bundling everything needed for Kubernetes and container development into a single application. Whether you're building microservices, testing Helm charts, or learning Kubernetes, Rancher Desktop provides a production-like environment on your local machine.
+Rancher Desktop makes it straightforward to build, tag, authenticate, and push container images from a local machine. By choosing the correct container engine and using either `nerdctl` or `docker`, you can push images to Docker Hub, Google Artifact Registry, or private registries without leaving the Rancher Desktop workflow.
