@@ -4,16 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher Desktop, Networking, DNS, Configuration, Local Development
 
-Description: Customize network configuration in Rancher Desktop including DNS, host networking, and service discovery.
+Description: Configure the Rancher Desktop settings that affect local networking, including the Kubernetes API port, port forwarding, Traefik, and platform-specific behavior.
 
 ## Introduction
 
-Rancher Desktop is an open-source desktop application that provides Kubernetes and container management tools for local development. It bundles kubectl, Helm, nerdctl, and either containerd or Moby (dockerd) into a single, easy-to-use application. This guide covers How to Configure Rancher Desktop Network Settings in detail.
+Rancher Desktop is an open-source desktop application that provides Kubernetes and container management tools for local development. It bundles kubectl, Helm, nerdctl, and a choice of container runtime into a single, easy-to-use application. Networking is mostly handled through automatic port forwarding, with a few configurable settings such as the Kubernetes API port, Traefik, WSL integration, and Administrative Access on macOS. This guide covers How to Configure Rancher Desktop Network Settings in detail.
 
 ## Prerequisites
 
-- A computer running macOS, Windows, or Linux
-- Administrator/sudo privileges for installation
+- A supported Rancher Desktop host: macOS 13 or later, Windows 11 or Windows Server 2025 with WSL installed, or a supported Linux distribution with `/dev/kvm` access
+- A persistent internet connection
+- Administrator/sudo privileges may be required during installation or when enabling privileged networking features
 - At least 8 GB of RAM (16 GB recommended)
 - At least 4 CPU cores
 
@@ -22,48 +23,54 @@ Rancher Desktop is an open-source desktop application that provides Kubernetes a
 Rancher Desktop simplifies local Kubernetes and container development by providing:
 
 - A local Kubernetes cluster (k3s-based)
-- Container runtime (containerd or dockerd)
-- Integrated CLI tools (kubectl, helm, nerdctl, docker)
+- Container runtime (containerd or Moby)
+- Integrated CLI tools such as kubectl, helm, nerdctl, and docker
+- Automatic port forwarding and a few platform-specific networking options
 - Simple configuration through a GUI
 
 ## Step 1: Initial Setup
 
 ```bash
-# Verify Rancher Desktop is installed and running
+# Verify the rdctl CLI is installed
 
 rdctl version
 
 # Check Kubernetes cluster status
 kubectl cluster-info
 
-# Verify container runtime
+# Verify the container runtime that matches your selected engine
 nerdctl version
-# or
+# or, if Rancher Desktop is using the Moby runtime
 docker version
 ```
 
 ## Step 2: Configuration
 
-Open Rancher Desktop Preferences to configure:
+Open Rancher Desktop Preferences to configure the network-related settings Rancher Desktop exposes:
 
-- **Kubernetes**: Version and enabled/disabled state
-- **Container Engine**: containerd or moby (dockerd)
-- **Virtual Machine**: CPU, memory, and disk allocation
+- **Kubernetes**: Version, API port, and Traefik
+- **Container Engine**: containerd or Moby
+- **Port Forwarding**: Whether Kubernetes system services appear on the Port Forwarding page
+- **Application > General**: Administrative Access for bridged networking and default Docker socket behavior
 - **WSL** (Windows only): WSL2 integration settings
 
+On macOS, enabling Administrative Access allows Rancher Desktop to use a bridged IP address that is reachable from the host and other machines on the local network, but it also means a containerized DNS server cannot forward port `53` to the host.
+
 ```bash
-# Use rdctl for command-line configuration
-rdctl set --kubernetes-version v1.28.0
-rdctl set --container-engine containerd
+# Start Rancher Desktop or update settings from the CLI
+rdctl start --kubernetes.port=6443
+rdctl start --port-forwarding.include-kubernetes-services=true
+
+# Example: switch to the Moby runtime when you need the Docker API
+rdctl start --container-engine.name=moby
 ```
 
 ## Step 3: Working with Containers
 
 ```bash
-# Pull an image
+# Use nerdctl with the containerd runtime.
+# If Rancher Desktop is using the Moby runtime, replace nerdctl with docker.
 nerdctl pull nginx:latest
-# or with docker compatibility
-docker pull nginx:latest
 
 # Run a container
 nerdctl run -d -p 8080:80 --name my-nginx nginx:latest
@@ -131,33 +138,31 @@ helm uninstall my-release
 ## Common Configuration Tasks
 
 ```bash
-# Reset Kubernetes cluster
-rdctl factory-reset
+# Reset only the Kubernetes cluster
+rdctl reset --k8s
 
-# Check Rancher Desktop status
-rdctl status
+# Check Rancher Desktop version and VM IP
+rdctl info
 
-# List available Kubernetes versions
-rdctl list-settings | grep kubernetesVersion
+# Inspect the current active settings
+rdctl list-settings
 
-# Update Kubernetes version via CLI
-rdctl set --kubernetes-version v1.29.0
+# Update the Kubernetes API port via CLI
+rdctl start --kubernetes.port=6443
 ```
 
 ## Troubleshooting
 
 ```bash
-# Check Rancher Desktop logs
-# macOS: ~/Library/Logs/Rancher Desktop/
-# Windows: %LOCALAPPDATA%\rancher-desktop\logs# Linux: ~/.local/share/rancher-desktop/logs/
+# Open Preferences > Troubleshooting > Show Logs
 
 # Reset to factory defaults
-rdctl factory-reset
+rdctl reset --factory
 
-# Check virtual machine status
-rdctl list-settings | grep -i vm
+# Check the current VM IP address
+rdctl info --field ip-address
 ```
 
 ## Conclusion
 
-How to Configure Rancher Desktop Network Settings with Rancher Desktop provides a powerful, integrated local development experience. Rancher Desktop eliminates the need for multiple separate tools by bundling everything needed for Kubernetes and container development into a single application. Whether you're building microservices, testing Helm charts, or learning Kubernetes, Rancher Desktop provides a production-like environment on your local machine.
+Rancher Desktop provides a powerful, integrated local development experience, but most networking is automatic rather than deeply customizable. In current releases, the main settings to focus on are the Kubernetes API port, Traefik, port forwarding, WSL integration on Windows, and Administrative Access on macOS when you need a bridged IP address or the default Docker socket.
