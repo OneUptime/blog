@@ -10,7 +10,7 @@ Description: Guide to configuring NVIDIA Multi-Instance GPU (MIG) technology on 
 
 NVIDIA Multi-Instance GPU (MIG) technology allows a single A100 or H100 GPU to be partitioned into up to 7 independent GPU instances, each with dedicated memory and compute resources. This guide covers MIG configuration in Rancher.
 
-## MIG Profiles Available on A100 80GB
+## Common MIG Profiles Available on A100 80GB
 
 | Profile | GPU Slices | Memory | Max Instances |
 |---------|-----------|--------|---------------|
@@ -28,12 +28,12 @@ NVIDIA Multi-Instance GPU (MIG) technology allows a single A100 or H100 GPU to b
 ssh admin@gpu-node-01
 
 # Enable MIG mode on the GPU
-sudo nvidia-smi -i 0 --mig-enable
-# Requires reboot on some systems
-sudo reboot
+sudo nvidia-smi -i 0 -mig 1
+# If MIG mode is reported as pending enable, reboot the node
+# sudo reboot
 
 # After reboot, verify MIG is enabled
-nvidia-smi --query-gpu=name,mig.mode.current --format=csv
+nvidia-smi -i 0 --query-gpu=name,mig.mode.current --format=csv
 # Output: NVIDIA A100 80GB PCIe, Enabled
 ```
 
@@ -41,30 +41,26 @@ nvidia-smi --query-gpu=name,mig.mode.current --format=csv
 
 ```bash
 # Create MIG instances (all-1g.10gb = 7 instances)
-sudo nvidia-smi mig -cgi 1g.10gb,1g.10gb,1g.10gb,1g.10gb,1g.10gb,1g.10gb,1g.10gb -C
+sudo nvidia-smi mig -cgi 1g.10gb,1g.10gb,1g.10gb,1g.10gb,1g.10gb,1g.10gb,1g.10gb -i 0 -C
 
 # Mixed configuration example
-sudo nvidia-smi mig -cgi 3g.40gb,2g.20gb,1g.10gb,1g.10gb -C
+sudo nvidia-smi mig -cgi 3g.40gb,2g.20gb,1g.10gb,1g.10gb -i 0 -C
 
 # List created instances
-sudo nvidia-smi mig -lgi
+sudo nvidia-smi mig -lgi -i 0
 ```
 
 ## Step 3: Configure GPU Operator for MIG
 
 ```yaml
 # gpu-operator-mig-values.yaml
+mig:
+  strategy: mixed    # use 'single' when every GPU on a node will use the same profile
+
 migManager:
   enabled: true
   config:
     name: mig-config
-    
-devicePlugin:
-  config:
-    name: mig-device-config
-    default: all-disabled
-    
-migStrategy: mixed    # or 'single' for uniform partitioning
 ```
 
 ## Step 4: MIG ConfigMap
@@ -110,11 +106,15 @@ data:
             3g.40gb: 2
 ```
 
+```bash
+kubectl apply -f mig-config.yaml
+```
+
 ## Step 5: Label Nodes for MIG Profile
 
 ```bash
 # Apply MIG profile to a node using label
-kubectl label node gpu-node-01   nvidia.com/mig.config=all-1g.10gb
+kubectl label node gpu-node-01   nvidia.com/mig.config=all-1g.10gb --overwrite
 
 # The MIG manager will apply this configuration automatically
 kubectl get pods -n gpu-operator -l app=nvidia-mig-manager -w
@@ -140,7 +140,7 @@ spec:
     image: nvcr.io/nvidia/tritonserver:23.09-py3
     resources:
       limits:
-        # Request a specific MIG slice
+        # With mig.strategy=mixed, request a specific MIG slice
         nvidia.com/mig-1g.10gb: 1    # 10GB MIG instance
         # Or larger instances:
         # nvidia.com/mig-3g.40gb: 1
@@ -164,7 +164,7 @@ nvidia-smi mig -lgi
 nvidia-smi mig -lci
 
 # Check GPU operator handles MIG correctly
-kubectl logs -n gpu-operator   $(kubectl get pods -n gpu-operator -l app=nvidia-mig-manager -o name | head -1)
+kubectl logs -n gpu-operator -l app=nvidia-mig-manager -c nvidia-mig-manager
 ```
 
 ## Conclusion
