@@ -12,9 +12,10 @@ Tekton is a Kubernetes-native CI/CD framework that runs pipelines as Kubernetes 
 
 ## Prerequisites
 
-- Rancher with a Kubernetes cluster (RKE2 or imported)
-- `kubectl` and `tkn` (Tekton CLI) installed
+- Rancher-managed Kubernetes cluster (RKE2 or imported) running Kubernetes 1.28 or later
+- `kubectl` installed with cluster-admin access to the target cluster
 - Container registry access
+- Secrets named `docker-registry-credentials` and `target-cluster-kubeconfig` created in the pipeline namespace
 
 ## Step 1: Install Tekton Pipelines
 
@@ -22,7 +23,7 @@ Tekton is a Kubernetes-native CI/CD framework that runs pipelines as Kubernetes 
 # Install Tekton Pipelines (latest stable)
 
 kubectl apply -f \
-  https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
+  https://infra.tekton.dev/tekton-releases/pipeline/latest/release.yaml
 
 # Install Tekton Dashboard for UI
 kubectl apply -f \
@@ -31,15 +32,14 @@ kubectl apply -f \
 # Install Tekton Triggers (for webhook-based triggering)
 kubectl apply -f \
   https://storage.googleapis.com/tekton-releases/triggers/latest/release.yaml
+kubectl apply -f \
+  https://storage.googleapis.com/tekton-releases/triggers/latest/interceptors.yaml
 
-# Wait for Tekton to be ready
-kubectl wait --for=condition=Available \
-  deployment/tekton-pipelines-controller \
-  -n tekton-pipelines \
-  --timeout=120s
+# Monitor Tekton components until they are ready
+kubectl get pods --namespace tekton-pipelines --watch
 
 # Expose the Tekton Dashboard via port-forward
-kubectl port-forward service/tekton-dashboard -n tekton-dashboard 9097:9097 &
+kubectl --namespace tekton-pipelines port-forward svc/tekton-dashboard 9097:9097 &
 ```
 
 ## Step 2: Install the Tekton CLI
@@ -120,12 +120,13 @@ metadata:
   name: kubectl-deploy
 spec:
   params:
-    - name: cluster-url
-      description: Kubernetes API server URL
     - name: image
       description: New image to deploy
     - name: deployment
       description: Deployment name
+    - name: container
+      default: app
+      description: Container name inside the Deployment to update
     - name: namespace
       default: default
   steps:
@@ -138,9 +139,9 @@ spec:
               name: target-cluster-kubeconfig
               key: kubeconfig
       script: |
-        echo "$KUBECONFIG_DATA" | base64 -d > /tmp/kubeconfig
+        printf '%s' "$KUBECONFIG_DATA" > /tmp/kubeconfig
         kubectl set image deployment/$(params.deployment) \
-          app=$(params.image) \
+          $(params.container)=$(params.image) \
           -n $(params.namespace) \
           --kubeconfig /tmp/kubeconfig
         kubectl rollout status deployment/$(params.deployment) \
@@ -249,11 +250,42 @@ tkn pipelinerun logs deploy-myapp-run-1 -f
 
 ```yaml
 # trigger/eventlistener.yaml - Trigger pipeline on GitHub push
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tekton-triggers-sa
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tekton-triggers-eventlistener-binding
+subjects:
+  - kind: ServiceAccount
+    name: tekton-triggers-sa
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tekton-triggers-eventlistener-roles
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tekton-triggers-eventlistener-clusterbinding
+subjects:
+  - kind: ServiceAccount
+    name: tekton-triggers-sa
+    namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tekton-triggers-eventlistener-clusterroles
+---
 apiVersion: triggers.tekton.dev/v1beta1
 kind: EventListener
 metadata:
   name: github-push
 spec:
+  serviceAccountName: tekton-triggers-sa
   triggers:
     - name: github-push-trigger
       interceptors:
@@ -267,9 +299,40 @@ spec:
             - name: eventTypes
               value: ["push"]
       bindings:
-        - ref: github-push-binding
+        - name: gitrepositoryurl
+          value: $(body.repository.clone_url)
+        - name: gitrevision
+          value: $(body.after)
       template:
-        ref: pipeline-run-template
+        spec:
+          params:
+            - name: gitrepositoryurl
+            - name: gitrevision
+          resourcetemplates:
+            - apiVersion: tekton.dev/v1
+              kind: PipelineRun
+              metadata:
+                generateName: deploy-myapp-run-
+              spec:
+                pipelineRef:
+                  name: build-and-deploy
+                params:
+                  - name: repo-url
+                    value: $(tt.params.gitrepositoryurl)
+                  - name: revision
+                    value: $(tt.params.gitrevision)
+                  - name: image
+                    value: ghcr.io/my-org/myapp
+                  - name: deployment-name
+                    value: myapp
+                workspaces:
+                  - name: source-code
+                    volumeClaimTemplate:
+                      spec:
+                        accessModes: [ReadWriteOnce]
+                        resources:
+                          requests:
+                            storage: 1Gi
 ```
 
 ## Conclusion
