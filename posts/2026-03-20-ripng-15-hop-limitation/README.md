@@ -12,16 +12,17 @@ RIPng uses hop count as its sole metric, with a maximum of 15 hops. A route with
 
 ## Why 15 is the Maximum
 
-The hop count field in each RTE is 1 byte, but:
+The metric field in each RTE is 1 byte, but:
 - Values 1-15 represent reachable routes
 - Value **16 = infinity** (unreachable)
-- Values 17-255 are reserved or used for special purposes (e.g., next-hop indicator at 255)
+- Values 17-254 are invalid as route metrics
+- Value 255 (0xFF) is used only for the special next-hop RTE indicator
 
 This design originated in RFC 1058 (RIP) from 1988 as a simple loop-prevention mechanism. The maximum diameter of 15 hops was a deliberate trade-off between loop prevention and convergence speed.
 
 ## Loop Prevention Using Infinity
 
-When a route becomes unreachable, RIPng sets its metric to 16 and advertises it as "poisoned" (Poison Reverse):
+When a route becomes unreachable, RIPng sets its metric to 16 and advertises it as a poisoned route. Poison Reverse is related, but more specific: with split horizon and poisoned reverse, a router advertises routes learned from a neighbor back toward that neighbor with metric 16.
 
 ```mermaid
 graph LR
@@ -40,11 +41,15 @@ graph LR
 vtysh -c "show ipv6 ripng"
 
 # Output:
-# Network                If         Met    Tag  Time
-# R (n) 2001:db8:1::/64  eth0         1    0  02:48  ← 1 hop
-# R (n) 2001:db8:2::/64  eth0         3    0  02:30  ← 3 hops
-# R (n) 2001:db8:far::/64 eth0        14   0  02:00  ← Near limit!
-# R (n) 2001:db8:out::/64 eth0        16   0  --     ← Unreachable
+#    Network      Next Hop                      Via     Metric Tag Time
+# R(n) 2001:db8:1::/64
+#                   fe80::1                     eth0      1    0  02:48  ← 1 hop
+# R(n) 2001:db8:2::/64
+#                   fe80::1                     eth0      3    0  02:30  ← 3 hops
+# R(n) 2001:db8:far::/64
+#                   fe80::1                     eth0     14    0  02:00  ← Near limit!
+# R(n) 2001:db8:out::/64
+#                   fe80::1                     eth0     16    0  00:12  ← Unreachable
 ```
 
 ## Convergence Problems with Count-to-Infinity
@@ -56,10 +61,10 @@ Without Poison Reverse:
 Time 0: Link R1-R2 fails
 Time 30s: R3 tells R2 "I can reach R1 via 2 hops" (R2 updates to 3)
 Time 60s: R2 tells R3 "I can reach R1 via 3 hops" (R3 updates to 4)
-... continues until metric = 16 (12 update cycles = ~6 minutes!)
+... continues until metric = 16 (with 30-second periodic updates, this can take minutes)
 ```
 
-Split Horizon with Poison Reverse prevents this by advertising the failed route back with metric 16.
+Split Horizon with Poison Reverse helps by advertising routes learned from a neighbor back toward that neighbor with metric 16. It prevents simple two-router loops, but larger count-to-infinity cases may still rely on triggered updates and the finite infinity value.
 
 ## When the Limit Matters in Practice
 
@@ -70,21 +75,21 @@ Real-world implications:
 ## Detecting When You've Hit the Limit
 
 ```bash
-# Check if any routes have metric 15 (one step from limit)
-vtysh -c "show ipv6 ripng" | awk '$3 >= 14 {print "WARNING:", $0}'
+# Check if any routes have metric 14 or 15 (near the limit)
+vtysh -c "show ipv6 ripng" | awk '$3 ~ /^[0-9]+$/ && $3 >= 14 && $3 < 16 {print "WARNING:", $0}'
 
 # If you see metric 16 in show ipv6 ripng, those routes are unreachable
-vtysh -c "show ipv6 ripng" | grep " 16 "
+vtysh -c "show ipv6 ripng" | awk '$3 == 16 {print "UNREACHABLE:", $0}'
 ```
 
 ## When to Migrate from RIPng to OSPFv3
 
 Migrate when:
 - Your network exceeds or approaches 10-15 hops across
-- You need sub-second failover (OSPFv3 can converge in <1 second)
+- You need faster failover than RIPng's timer-based behavior; sub-second failover typically requires tuned timers or BFD with OSPFv3
 - You need more sophisticated traffic engineering
 - The network has more than ~50 routers (RIPng becomes slow to converge)
 
 ## Summary
 
-RIPng's 15-hop limit is a fundamental protocol constraint, not a configuration limit. It is encoded into the 1-byte metric field (16 = infinity). For networks that fit within 15 hops, RIPng is simple and effective. For larger networks, use OSPFv3 which has no hop count limit and provides faster convergence through link-state topology knowledge.
+RIPng's 15-hop limit is a fundamental protocol constraint, not a configuration limit. It is encoded into the 1-byte metric field (16 = infinity). For networks that fit within 15 hops, RIPng is simple and effective. For larger networks, use OSPFv3, which is not constrained by RIPng's 15-hop infinity value and provides faster convergence through link-state topology knowledge.
