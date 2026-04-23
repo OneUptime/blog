@@ -8,14 +8,15 @@ Description: Deploy Internet Information Services (IIS) on Windows nodes in Ranc
 
 ## Introduction
 
-Internet Information Services (IIS) is Microsoft's web server for hosting ASP.NET Framework applications, ASPX pages, and classic Windows-based web services. Containerized IIS allows these applications to run in Kubernetes while maintaining full Windows server functionality. This guide covers deploying IIS-based applications on Windows nodes in Rancher.
+Internet Information Services (IIS) is Microsoft's web server for hosting ASP.NET Framework applications, ASPX pages, and classic Windows-based web services. Containerized IIS allows these applications to run in Kubernetes while preserving a Windows-based IIS hosting environment. This guide covers deploying IIS-based applications on Windows nodes in Rancher.
 
 ## Prerequisites
 
-- Rancher cluster with Windows Server 2019 or 2022 worker nodes
+- Rancher cluster with Linux control plane/ingress nodes and Windows worker nodes that match your container base image (the examples below use Windows Server 2022)
 - Windows container images with IIS
 - kubectl access
 - TLS certificates for HTTPS
+- Windows-compatible CSI storage if you want persistent logs or application data
 
 ## Step 1: Create IIS Docker Image
 
@@ -46,7 +47,7 @@ COPY ./src .
 # Configure application pool
 RUN powershell -Command \
     Import-Module WebAdministration; \
-    Set-ItemProperty -Path "IIS:\AppPools\DefaultAppPool" -Name processModel.identityType -Value 0; \
+    Set-ItemProperty -Path "IIS:\AppPools\DefaultAppPool" -Name processModel.identityType -Value 4; \
     Set-ItemProperty -Path "IIS:\AppPools\DefaultAppPool" -Name managedRuntimeVersion -Value 'v4.0'
 
 EXPOSE 80
@@ -83,7 +84,9 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/os: windows
+        node.kubernetes.io/windows-build: "10.0.20348"
 
+      # Include this toleration only if your Windows nodes are tainted with os=windows:NoSchedule
       tolerations:
         - key: os
           operator: Equal
@@ -99,14 +102,15 @@ spec:
           ports:
             - containerPort: 80
               protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: iis-config
           env:
             - name: CONNECTION_STRING
               valueFrom:
                 secretKeyRef:
                   name: app-secrets
                   key: connection-string
-            - name: APP_ENV
-              value: production
           resources:
             requests:
               cpu: 500m
@@ -156,13 +160,13 @@ metadata:
   name: iis-app
   namespace: production
   annotations:
-    kubernetes.io/ingress.class: nginx
     # Increase timeouts for IIS applications
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "120"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - myapp.example.com
@@ -180,58 +184,78 @@ spec:
                   number: 80
 ```
 
-## Step 4: Configure IIS Application Settings
+## Step 4: Configure Application Settings
 
 ```yaml
-# iis-configmap.yaml - IIS configuration via environment variables
+# iis-configmap.yaml - Application settings exposed as environment variables
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: iis-config
   namespace: production
 data:
-  # Web.config overrides via environment
-  ASPNET_MaxConcurrentRequestsPerCPU: "5000"
-  ASPNET_MaxConcurrentThreadsPerCPU: "0"
+  APP_ENV: "production"
 ```
 
 ## Step 5: Configure Persistent Storage for IIS Logs
 
 ```yaml
 # iis-statefulset.yaml - IIS with log persistence
+apiVersion: v1
+kind: Service
+metadata:
+  name: iis-app-stateful
+  namespace: production
+spec:
+  clusterIP: None
+  selector:
+    app: iis-app-stateful
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: iis-app-stateful
   namespace: production
 spec:
-  serviceName: iis-app
+  serviceName: iis-app-stateful
   replicas: 1
   selector:
     matchLabels:
       app: iis-app-stateful
   template:
+    metadata:
+      labels:
+        app: iis-app-stateful
     spec:
       nodeSelector:
         kubernetes.io/os: windows
+        node.kubernetes.io/windows-build: "10.0.20348"
+      # Include this toleration only if your Windows nodes are tainted with os=windows:NoSchedule
       tolerations:
         - key: os
+          operator: Equal
           value: windows
           effect: NoSchedule
       containers:
         - name: iis
           image: registry.example.com/my-iis-app:v1.0
+          ports:
+            - containerPort: 80
           volumeMounts:
             - name: logs
               mountPath: C:\inetpub\logs
             - name: app-data
               mountPath: C:\app\data
   volumeClaimTemplates:
+    # Requires a Windows-compatible default CSI StorageClass in the cluster
     - metadata:
         name: logs
       spec:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: local-path-windows
         resources:
           requests:
             storage: 10Gi
@@ -239,7 +263,6 @@ spec:
         name: app-data
       spec:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: local-path-windows
         resources:
           requests:
             storage: 20Gi
@@ -273,7 +296,7 @@ public partial class healthcheck : System.Web.UI.Page
         catch (Exception ex)
         {
             Response.StatusCode = 503;
-            Response.Write($"{{\"status\":\"unhealthy\",\"error\":\"{ex.Message}\"}}");
+            Response.Write("{\"status\":\"unhealthy\",\"error\":\"" + HttpUtility.JavaScriptStringEncode(ex.Message) + "\"}");
         }
     }
 }
