@@ -6,7 +6,7 @@ Tags: OpenTofu, Dynamic Blocks, Refactoring, HCL, Infrastructure as Code
 
 Description: Learn how to refactor repetitive inline resource blocks in OpenTofu to dynamic blocks for cleaner, more maintainable configurations.
 
-When the same type of nested block appears multiple times within a resource - security group rules, listener rules, environment variables - inline repetition becomes hard to maintain. Dynamic blocks replace repeated inline blocks with a single, loop-driven block that generates them from a variable or local.
+When the same type of nested block appears multiple times within a resource, inline repetition becomes hard to maintain. Dynamic blocks replace repeated inline blocks with a single, loop-driven block that generates them from a variable or local. When the repetition is at the resource level or inside an argument value, use `for_each` or a `for` expression instead.
 
 ## The Problem: Repetitive Inline Blocks
 
@@ -75,9 +75,11 @@ resource "aws_security_group" "web" {
 }
 ```
 
-## Dynamic ECS Container Definitions
+For `aws_security_group` specifically, the AWS provider currently recommends dedicated `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` resources over inline `ingress` and `egress` rules. Treat this example as a demonstration of `dynamic` syntax for repeated nested blocks.
 
-Another common use case - ECS task definition environment variables:
+## ECS Container Definitions with `for` Expressions
+
+Because `container_definitions` is a JSON argument rather than a nested HCL block, use a `for` expression instead of a `dynamic` block:
 
 ```hcl
 variable "env_vars" {
@@ -92,7 +94,7 @@ resource "aws_ecs_task_definition" "app" {
     name  = "app"
     image = var.image_uri
 
-    # Generate environment block for each key-value pair
+    # Generate one environment object for each key-value pair
     environment = [
       for k, v in var.env_vars : { name = k, value = v }
     ]
@@ -100,7 +102,9 @@ resource "aws_ecs_task_definition" "app" {
 }
 ```
 
-## Dynamic ALB Listener Rules
+## ALB Listener Rules with `for_each`
+
+Because each listener rule is a separate resource, use resource-level `for_each` rather than a `dynamic` block:
 
 ```hcl
 variable "path_routing_rules" {
@@ -140,6 +144,7 @@ variable "enable_access_logs" {
 resource "aws_lb" "main" {
   name               = "main-lb"
   load_balancer_type = "application"
+  subnets            = var.subnet_ids
 
   # access_logs block only added when enabled
   dynamic "access_logs" {
@@ -154,4 +159,4 @@ resource "aws_lb" "main" {
 
 ## Conclusion
 
-Dynamic blocks eliminate repetitive inline block definitions, making resources configurable through variables rather than requiring edits to resource blocks. Refactor inline blocks to dynamic blocks whenever a resource has more than two or three instances of the same block type, and move the block data into a typed variable for clean module interfaces.
+Dynamic blocks eliminate repetitive inline block definitions when a resource schema uses repeatable nested blocks. Use `for_each` when you need multiple resource instances, and use `for` expressions when you need to build complex argument values such as JSON-encoded ECS container definitions. For provider-specific edge cases such as `aws_security_group` inline rules, follow the provider's current guidance.
