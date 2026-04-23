@@ -30,7 +30,7 @@ ifconfig eth0
 
 # New
 ip addr show dev eth0
-ip a show eth0
+ip a show dev eth0
 ```
 
 ## Assign an IP Address
@@ -47,7 +47,7 @@ sudo ip addr add 192.168.1.100/24 dev eth0
 
 ```bash
 # Old
-sudo ifconfig eth0:0 down   # Removes alias
+sudo ifconfig eth0 del 192.168.1.100/24
 
 # New
 sudo ip addr del 192.168.1.100/24 dev eth0
@@ -142,7 +142,7 @@ ip -s link show eth0
 |---|---|---|
 | Show all interfaces | `ifconfig -a` | `ip a` |
 | Assign IP | `ifconfig eth0 A.B.C.D netmask M` | `ip addr add A.B.C.D/P dev eth0` |
-| Remove IP | `ifconfig eth0:0 down` | `ip addr del A.B.C.D/P dev eth0` |
+| Remove IP | `ifconfig eth0 del A.B.C.D/P` | `ip addr del A.B.C.D/P dev eth0` |
 | Interface up | `ifconfig eth0 up` | `ip link set eth0 up` |
 | Set MTU | `ifconfig eth0 mtu N` | `ip link set eth0 mtu N` |
 | Show routes | `route -n` | `ip route show` |
