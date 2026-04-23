@@ -23,8 +23,8 @@ Distributed tracing provides visibility into the complete journey of a request a
 
 ```java
 // Java app with OpenTelemetry auto-instrumentation
-// Add to your Dockerfile or use the OTel Operator
-// -javaagent:/opentelemetry-javaagent.jar
+// Add -javaagent:/opentelemetry-javaagent.jar to your Java command
+// or use the OTel Operator
 
 // Manual instrumentation example
 import io.opentelemetry.api.OpenTelemetry;
@@ -34,8 +34,10 @@ import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.context.Scope;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
+import io.opentelemetry.semconv.ServiceAttributes;
 
 // Configure OpenTelemetry
 OtlpGrpcSpanExporter exporter = OtlpGrpcSpanExporter.builder()
@@ -43,6 +45,10 @@ OtlpGrpcSpanExporter exporter = OtlpGrpcSpanExporter.builder()
     .build();
 
 SdkTracerProvider provider = SdkTracerProvider.builder()
+    .setResource(
+        Resource.getDefault().toBuilder()
+            .put(ServiceAttributes.SERVICE_NAME, "order-service")
+            .build())
     .addSpanProcessor(BatchSpanProcessor.builder(exporter).build())
     .build();
 
@@ -50,7 +56,7 @@ OpenTelemetry openTelemetry = OpenTelemetrySdk.builder()
     .setTracerProvider(provider)
     .build();
 
-Tracer tracer = openTelemetry.getTracer("order-service");
+Tracer tracer = openTelemetry.getTracer("order-service-instrumentation");
 
 // Instrument an operation
 public OrderResponse processOrder(OrderRequest request) {
@@ -85,7 +91,12 @@ public OrderResponse processOrder(OrderRequest request) {
 ```python
 # Python app with OpenTelemetry
 
+import requests
+from flask import Flask, jsonify, request
+from sqlalchemy import create_engine
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -93,21 +104,27 @@ from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
+app = Flask(__name__)
+engine = create_engine("postgresql+psycopg2://user:password@postgres/orders")
+
 # Configure tracer
-provider = TracerProvider()
+provider = TracerProvider(
+    resource=Resource.create({"service.name": "order-service"})
+)
 provider.add_span_processor(
     BatchSpanProcessor(
         OTLPSpanExporter(
-            endpoint="http://otel-collector.observability.svc.cluster.local:4317"
+            endpoint="http://otel-collector.observability.svc.cluster.local:4317",
+            insecure=True,
         )
     )
 )
 trace.set_tracer_provider(provider)
 
 # Auto-instrument Flask, HTTP requests, and SQLAlchemy
-FlaskInstrumentor().instrument()
+FlaskInstrumentor().instrument_app(app)
 RequestsInstrumentor().instrument()
-SQLAlchemyInstrumentor().instrument()
+SQLAlchemyInstrumentor().instrument(engine=engine)
 
 # Manual span creation
 tracer = trace.get_tracer(__name__)
@@ -125,7 +142,7 @@ def create_order():
         )
 
         if payment_response.status_code != 200:
-            span.set_status(trace.Status(trace.StatusCode.ERROR))
+            span.set_status(Status(StatusCode.ERROR))
             return jsonify({"error": "Payment failed"}), 500
 
         order_id = save_order(order_data)
@@ -140,14 +157,17 @@ def create_order():
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'payment-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-    'deployment.environment': 'production',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'payment-service',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+    'deployment.environment.name': 'production',
   }),
   traceExporter: new OTLPTraceExporter({
     url: 'http://otel-collector.observability.svc.cluster.local:4317',
@@ -161,24 +181,18 @@ sdk.start();
 ## Step 2: Configure Context Propagation
 
 ```yaml
-# ingress-tracing.yaml - Inject trace context at ingress
+# ingress-tracing.yaml - Trust and propagate W3C trace context at ingress
+# Requires ingress-nginx OpenTelemetry support to be enabled on the controller.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: api-ingress
   namespace: production
   annotations:
-    # Pass trace headers from NGINX
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      # Generate trace ID if not present
-      set $trace_id $http_x_trace_id;
-      if ($trace_id = '') {
-        set $trace_id $request_id;
-      }
-      # Add trace headers to upstream
-      proxy_set_header X-Trace-Id $trace_id;
-      proxy_set_header X-B3-TraceId $trace_id;
+    nginx.ingress.kubernetes.io/enable-opentelemetry: "true"
+    nginx.ingress.kubernetes.io/opentelemetry-trust-incoming-span: "true"
 spec:
+  ingressClassName: nginx
   rules:
     - host: api.example.com
       http:
@@ -210,7 +224,8 @@ spec:
             endpoint: 0.0.0.0:4317
 
     processors:
-      # Tail-based sampling: make sampling decisions after trace is complete
+      # Tail-based sampling: make sampling decisions after trace completion.
+      # All spans for a trace must reach the same collector instance.
       tail_sampling:
         decision_wait: 10s
         num_traces: 100000
@@ -254,11 +269,11 @@ spec:
           exporters: [otlp/tempo]
 ```
 
-## Step 4: Create Grafana Service Map Dashboard
+## Step 4: Create Grafana Service Graph Dashboard
 
 ```bash
-# Import trace-based service map dashboard
-# In Grafana: Explore > Tempo > Service Map
+# Open the built-in service graph
+# In Grafana: Explore > select the Tempo data source > Service Graph
 
 # Create a custom dashboard panel for trace latency
 # Dashboard JSON snippet for P99 latency from Tempo-generated metrics
@@ -266,8 +281,8 @@ cat > /tmp/trace-dashboard.json << 'EOF'
 {
   "targets": [{
     "datasource": {"type": "prometheus"},
-    "expr": "histogram_quantile(0.99, sum(rate(traces_spanmetrics_duration_milliseconds_bucket[5m])) by (service, le))",
-    "legendFormat": "{{service}} P99"
+    "expr": "1000 * histogram_quantile(0.99, sum(rate(traces_spanmetrics_duration_seconds_bucket[5m])) by (service, le))",
+    "legendFormat": "{{service}} P99 (ms)"
   }]
 }
 EOF
@@ -288,21 +303,22 @@ spec:
   groups:
     - name: distributed-tracing
       rules:
-        # Alert if OTel Collector drops spans
-        - alert: TracingPipelineDroppingSpans
+        # Alert if the Collector cannot queue or export spans
+        - alert: TracingExporterFailures
           expr: |
-            sum(rate(otelcol_processor_dropped_spans[5m])) > 100
+            sum(rate(otelcol_exporter_enqueue_failed_spans[5m])) +
+            sum(rate(otelcol_exporter_send_failed_spans[5m])) > 0
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "OpenTelemetry Collector is dropping {{ $value }} spans per second"
+            summary: "OpenTelemetry Collector is failing to queue or send {{ $value }} spans per second"
 
         # Alert on high trace latency
         - alert: ServiceHighTraceLatency
           expr: |
-            histogram_quantile(0.99,
-              sum(rate(traces_spanmetrics_duration_milliseconds_bucket[5m])) by (service, le)
+            1000 * histogram_quantile(0.99,
+              sum(rate(traces_spanmetrics_duration_seconds_bucket[5m])) by (service, le)
             ) > 2000
           for: 10m
           labels:
@@ -313,4 +329,4 @@ spec:
 
 ## Conclusion
 
-Distributed tracing in Rancher provides the missing context needed to debug complex multi-service issues. By instrumenting applications with OpenTelemetry and using tail-based sampling to focus on error and slow traces, you get actionable observability without drowning in trace data. The service map and trace search capabilities in Grafana Tempo enable rapid root cause analysis for latency and error rate spikes across your microservices.
+Distributed tracing in Rancher provides the missing context needed to debug complex multi-service issues. By instrumenting applications with OpenTelemetry and using tail-based sampling to focus on error and slow traces, you get actionable observability without drowning in trace data. The service graph and trace search capabilities in Grafana Tempo enable rapid root cause analysis for latency and error rate spikes across your microservices.
