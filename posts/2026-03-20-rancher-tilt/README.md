@@ -14,7 +14,7 @@ Tilt is a development tool that orchestrates multi-service Kubernetes applicatio
 
 - Tilt CLI installed
 - kubectl configured for your Rancher cluster
-- Docker configured (or Kaniko for in-cluster builds)
+- Docker configured to build images for your cluster
 - A development namespace in Rancher
 
 ## Step 1: Install Tilt
@@ -36,6 +36,8 @@ tilt version
 ```python
 # Tiltfile - Main Tilt configuration (Python-like Starlark)
 
+load('ext://helm_resource', 'helm_resource')
+
 # Allow building against a remote cluster
 allow_k8s_contexts('rancher-development')
 
@@ -48,6 +50,7 @@ docker_build(
     live_update=[
         sync('./frontend/src', '/app/src'),
         sync('./frontend/public', '/app/public'),
+        sync('./frontend/package.json', '/app/package.json'),
         # Run npm install when package.json changes
         run('cd /app && npm install', trigger=['./frontend/package.json']),
     ],
@@ -60,8 +63,6 @@ docker_build(
     dockerfile='./backend/Dockerfile',
     live_update=[
         sync('./backend/src', '/app/src'),
-        # Restart the process when Python files change
-        restart_process_trigger('./backend/src/**/*.py'),
     ],
 )
 
@@ -78,19 +79,14 @@ helm_resource(
         '--set', 'backend.enabled=true',
         '--set', 'replicaCount=1',
     ],
+    port_forwards=[
+        port_forward(3000, 3000, name='Frontend'),
+        port_forward(8080, 8080, name='Backend'),
+    ],
+    links=[
+        link('http://localhost:8080/api/docs', 'API Docs'),
+    ],
 )
-
-# Port forwards
-k8s_resource('my-app', port_forwards=[
-    port_forward(3000, 3000, 'Frontend'),
-    port_forward(8080, 8080, 'Backend'),
-])
-
-# Add links to the Tilt dashboard
-k8s_resource('my-app', links=[
-    link('http://localhost:3000', 'Frontend'),
-    link('http://localhost:8080/api/docs', 'API Docs'),
-])
 ```
 
 ## Step 3: Multi-Service Development
@@ -99,7 +95,7 @@ k8s_resource('my-app', links=[
 # Tiltfile - Multi-service application
 # Load helper extensions
 load('ext://namespace', 'namespace_create')
-load('ext://helm_resource', 'helm_resource', 'helm_repo')
+load('ext://k8s_attach', 'k8s_attach')
 
 # Ensure development namespace exists
 namespace_create('development')
@@ -115,6 +111,7 @@ docker_build('registry.example.com/frontend', './frontend',
 docker_build('registry.example.com/api', './api',
     live_update=[
         sync('./api/src', '/app'),
+        sync('./api/requirements.txt', '/app/requirements.txt'),
         run('pip install -r /app/requirements.txt',
             trigger=['./api/requirements.txt']),
     ],
@@ -139,7 +136,7 @@ k8s_resource('frontend',
 
 k8s_resource('api',
     port_forwards='8080:8080',
-    resource_deps=['redis', 'database'],
+    resource_deps=['redis', 'postgresql'],
     labels=['backend'],
 )
 
@@ -149,9 +146,13 @@ k8s_resource('worker',
 )
 
 # External dependencies (databases, etc.)
-# Watch them but don't manage them
-k8s_resource('redis', labels=['infrastructure'])
-k8s_resource('postgresql', labels=['infrastructure'])
+# Attach them to the UI without managing their lifecycle
+k8s_attach('redis', 'statefulset/redis', namespace='development',
+    labels=['infrastructure'])
+k8s_attach('postgresql', 'statefulset/postgresql', namespace='development',
+    labels=['infrastructure'])
+k8s_attach('kafka', 'statefulset/kafka', namespace='development',
+    labels=['infrastructure'])
 ```
 
 ## Step 4: Configure Live Updates
@@ -160,7 +161,7 @@ k8s_resource('postgresql', labels=['infrastructure'])
 # Tiltfile - Advanced live update configuration
 
 def backend_build(name, path):
-    """Helper function for Python backend builds"""
+    """Helper function for Python backends that reload on SIGHUP"""
     docker_build(
         'registry.example.com/' + name,
         path,
@@ -168,7 +169,7 @@ def backend_build(name, path):
         live_update=[
             # Only sync Python files
             sync(path + '/src', '/app/src'),
-            # Restart uWSGI when source changes
+            # Example: reload a server that handles SIGHUP as PID 1
             run('kill -HUP 1'),  # Send SIGHUP to reload
         ],
         ignore=['**/__pycache__', '**/*.pyc', '**/tests/'],
@@ -212,22 +213,10 @@ local_resource('lint',
 ```python
 # Tiltfile - Development secrets management
 
-# Load secrets from .env files (never commit these!)
-def load_dotenv(path):
-    f = read_file(path, default='')
-    for line in f.split('\n'):
-        line = line.strip()
-        if line and not line.startswith('#') and '=' in line:
-            key, value = line.split('=', 1)
-            os.putenv(key, value)
-
-load_dotenv('.env.development')
-
-# Create Kubernetes secret from environment
+# Create a Kubernetes secret directly from the env file
 k8s_yaml(
     local('kubectl create secret generic dev-secrets \
-        --from-literal=db_password=$DB_PASSWORD \
-        --from-literal=api_key=$API_KEY \
+        --from-env-file=.env.development \
         -n development \
         --dry-run=client -o yaml'),
 )
@@ -240,7 +229,7 @@ k8s_yaml(
 tilt up
 
 # Access the Tilt dashboard
-# Opens automatically at: http://localhost:10350
+# Tilt serves the dashboard at: http://localhost:10350
 
 # View logs for a specific service
 tilt logs api
@@ -249,20 +238,20 @@ tilt logs api
 tilt trigger integration-tests
 
 # Stop Tilt
-tilt down  # Tears down all Tilt-managed resources
+tilt down  # Deletes resources defined in the Tiltfile
 ```
 
 ## Troubleshooting
 
 ```bash
 # Check Tilt logs
-tilt log
+tilt logs
 
 # Verify cluster context
-tilt get cluster
+kubectl config current-context
 
-# Check if Tilt can access the registry
-tilt docker-prune
+# Check registry access using Tilt's Docker environment
+tilt docker -- pull registry.example.com/frontend
 
 # Debug a failing build
 tilt trigger <resource-name>
