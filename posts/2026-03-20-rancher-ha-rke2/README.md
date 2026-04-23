@@ -15,13 +15,13 @@ Running Rancher in High Availability (HA) mode on RKE2 ensures your management p
 - 3 Linux nodes (Ubuntu 22.04 or RHEL 8+) for control plane
 - Load balancer (HAProxy, NGINX, or cloud LB)
 - DNS record pointing to load balancer
-- Wildcard or SAN TLS certificate
+- Optional TLS certificate if you plan to use `ingress.tls.source=secret` or terminate TLS on the load balancer
 - Helm 3.x
 
 ## Step 1: Configure Load Balancer
 
 ```nginx
-# nginx-lb.conf - Load balancer for RKE2 HA
+# nginx-lb.conf - Layer 4 load balancer for RKE2 HA and Rancher
 
 stream {
     upstream rke2_servers_api {
@@ -38,6 +38,20 @@ stream {
         server rke2-server-03:9345;
     }
 
+    upstream rancher_http {
+        least_conn;
+        server rke2-server-01:80;
+        server rke2-server-02:80;
+        server rke2-server-03:80;
+    }
+
+    upstream rancher_https {
+        least_conn;
+        server rke2-server-01:443;
+        server rke2-server-02:443;
+        server rke2-server-03:443;
+    }
+
     server {
         listen 6443;
         proxy_pass rke2_servers_api;
@@ -47,34 +61,15 @@ stream {
         listen 9345;
         proxy_pass rke2_servers_register;
     }
-}
-
-http {
-    upstream rancher {
-        least_conn;
-        server rke2-server-01:443;
-        server rke2-server-02:443;
-        server rke2-server-03:443;
-    }
 
     server {
         listen 80;
-        return 301 https://$host$request_uri;
+        proxy_pass rancher_http;
     }
 
     server {
-        listen 443 ssl;
-        server_name rancher.example.com;
-
-        ssl_certificate /etc/ssl/certs/rancher.crt;
-        ssl_certificate_key /etc/ssl/private/rancher.key;
-
-        location / {
-            proxy_pass https://rancher;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-            proxy_read_timeout 900;
-        }
+        listen 443;
+        proxy_pass rancher_https;
     }
 }
 ```
@@ -125,7 +120,7 @@ cat /var/lib/rancher/rke2/server/node-token
 mkdir -p /etc/rancher/rke2
 cat > /etc/rancher/rke2/config.yaml << EOF
 token: "my-super-secret-token"
-server: https://rke2-server-01:9345  # First server's address
+server: https://rancher.example.com:9345  # Fixed registration address / load balancer
 tls-san:
   - rancher.example.com
   - 10.0.0.100  # Load balancer VIP
@@ -153,6 +148,8 @@ mkdir -p ~/.kube
 cp /etc/rancher/rke2/rke2.yaml ~/.kube/config
 # Update server URL to use load balancer
 sed -i 's/127.0.0.1/rancher.example.com/' ~/.kube/config
+# RKE2 ships kubectl in /var/lib/rancher/rke2/bin
+export PATH=/var/lib/rancher/rke2/bin:$PATH
 
 # Verify cluster health
 kubectl get nodes
@@ -178,7 +175,7 @@ helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true \
+  --set crds.enabled=true \
   --wait
 
 kubectl get pods -n cert-manager
@@ -197,8 +194,7 @@ helm install rancher rancher-stable/rancher \
   --create-namespace \
   --set hostname=rancher.example.com \
   --set replicas=3 \
-  --set bootstrapPassword=admin \
-  --set global.cattle.psp.enabled=false \
+  --set bootstrapPassword='replace-with-a-strong-password' \
   --wait --timeout 10m
 
 # Verify Rancher deployment
@@ -212,9 +208,9 @@ kubectl rollout status deployment/rancher -n cattle-system
 # Check all Rancher pods are running
 kubectl get pods -n cattle-system -o wide
 
-# Test HA by cordoning a node
+# Check node maintenance behavior
 kubectl cordon rke2-server-01
-# Verify Rancher remains accessible
+# Verify Rancher remains accessible and new workloads avoid the cordoned node
 
 # Test etcd resilience
 # Stop one server (not the leader) and verify cluster remains functional
