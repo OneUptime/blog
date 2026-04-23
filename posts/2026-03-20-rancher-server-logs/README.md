@@ -24,13 +24,13 @@ kubectl logs -n cattle-system rancher-7d9f6b8c9-xk2lp -f
 kubectl logs -n cattle-system -l app=rancher --tail=10000 \
   > /tmp/rancher-logs-$(date +%Y%m%d).txt
 
-# Get logs from previous (crashed) pod instance
+# Get logs from the previous container instance after a restart
 kubectl logs -n cattle-system -l app=rancher --previous --tail=500
 ```
 
 ## Understanding the Log Format
 
-Rancher logs use a structured JSON-like format in newer versions:
+Rancher logs commonly use a structured key-value format:
 
 ```text
 time="2026-03-20T10:15:30Z" level=info msg="Rancher startup complete" component=auth
@@ -41,7 +41,7 @@ time="2026-03-20T10:15:32Z" level=error msg="Failed to connect to database" erro
 | Field | Description |
 |---|---|
 | `time` | Timestamp in UTC |
-| `level` | Log level: `debug`, `info`, `warn`, `error` |
+| `level` | Log level: `trace`, `debug`, `info`, `warn`, `error` |
 | `msg` | Human-readable message |
 | `component` | Rancher subsystem (auth, provisioning, etc.) |
 | `cluster` | Cluster ID if cluster-specific |
@@ -56,9 +56,8 @@ time="2026-03-20T10:15:32Z" level=error msg="Failed to connect to database" erro
 kubectl logs -n cattle-system -l app=rancher --tail=500 \
   | grep -E "startup|initialized|listening|ready"
 
-# Healthy startup sequence:
+# Example healthy messages:
 # "Starting Rancher server"
-# "Listening on port 443"
 # "Rancher startup complete"
 ```
 
@@ -91,22 +90,19 @@ kubectl logs -n cattle-system -l app=rancher --tail=1000 \
 For deep debugging, enable debug-level logging:
 
 ```bash
-# Increase log level to debug via Rancher API
-curl -sk -X PUT \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"value": "debug"}' \
-  "https://<rancher-url>/v3/settings/ui-log-level"
+# Increase Rancher server log level to debug for all Rancher pods
+kubectl -n cattle-system get pods -l app=rancher --no-headers \
+  -o custom-columns=name:.metadata.name \
+  | while read rancherpod; do
+      kubectl -n cattle-system exec "$rancherpod" -c rancher -- loglevel --set debug
+    done
 
-# For the Rancher server process itself, set the log level via env var
-kubectl set env deployment/rancher -n cattle-system CATTLE_LOG_LEVEL=debug
-
-# Restart to apply
-kubectl rollout restart deployment/rancher -n cattle-system
-
-# IMPORTANT: Reset to info after debugging to avoid log volume explosion
-kubectl set env deployment/rancher -n cattle-system CATTLE_LOG_LEVEL=info
-kubectl rollout restart deployment/rancher -n cattle-system
+# IMPORTANT: Reset to info after debugging to avoid excessive log volume
+kubectl -n cattle-system get pods -l app=rancher --no-headers \
+  -o custom-columns=name:.metadata.name \
+  | while read rancherpod; do
+      kubectl -n cattle-system exec "$rancherpod" -c rancher -- loglevel --set info
+    done
 ```
 
 ## Filtering Logs Effectively
@@ -117,9 +113,8 @@ kubectl logs -n cattle-system -l app=rancher -f --tail=0 \
   | grep -v "healthcheck\|GET /ping"  # Suppress noise
 
 # Find errors in the last 10 minutes
-kubectl logs -n cattle-system -l app=rancher --tail=5000 \
+kubectl logs -n cattle-system -l app=rancher --since=10m \
   | grep "level=error" \
-  | awk -F'"' '{print $2, $6, $10}' \
   | tail -50
 
 # Extract unique error messages (deduplicate)
@@ -131,14 +126,15 @@ kubectl logs -n cattle-system -l app=rancher --tail=5000 \
 
 ## Log Storage and Retention
 
-By default, Kubernetes stores container logs on each node with a rotation policy. For persistent log storage in production:
+By default, Kubernetes stores container logs on each node, and the kubelet handles rotation. For persistent log storage in production:
 
 ```bash
-# Check current log rotation settings on the node
-cat /etc/logrotate.d/containers
+# Example: check kubelet log rotation settings on nodes using /var/lib/kubelet/config.yaml
+grep -E 'containerLogMax(Size|Files|Workers|MonitorInterval)' /var/lib/kubelet/config.yaml
 
 # Use a log aggregation stack (Rancher Logging via Helm)
 helm repo add rancher-charts https://charts.rancher.io
+helm repo update
 helm install rancher-logging rancher-charts/rancher-logging \
   -n cattle-logging-system \
   --create-namespace
@@ -150,8 +146,8 @@ helm install rancher-logging rancher-charts/rancher-logging \
 
 For quick access without `kubectl`:
 
-1. In Rancher, navigate to **local** cluster.
-2. Go to **Workloads → Pods**.
+1. In Rancher, open the **local** cluster and click **Explore**.
+2. Go to **Workload → Pods**.
 3. Select the `cattle-system` namespace.
 4. Click on a `rancher-*` pod.
 5. Click the **Logs** tab.
