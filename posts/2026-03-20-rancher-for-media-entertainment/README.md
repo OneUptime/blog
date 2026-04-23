@@ -33,6 +33,7 @@ Media and entertainment Kubernetes workloads are characterized by high throughpu
 # NVIDIA GPU operator for transcoding nodes
 
 helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+helm repo update
 helm install gpu-operator nvidia/gpu-operator \
   --namespace gpu-operator \
   --create-namespace
@@ -44,9 +45,10 @@ metadata:
   name: transcode-4k-to-1080p
   namespace: media-processing
 spec:
-  parallelism: 4       # Parallel transcoding
+  parallelism: 1       # Transcode one asset per Job
   template:
     spec:
+      restartPolicy: Never
       containers:
         - name: ffmpeg
           image: linuxserver/ffmpeg:latest
@@ -54,10 +56,12 @@ spec:
             - ffmpeg
             - "-hwaccel"
             - "cuda"
+            - "-hwaccel_output_format"
+            - "cuda"
             - "-i"
             - "/input/source-4k.mov"
             - "-vf"
-            - "scale=1920:1080"
+            - "scale_cuda=1920:1080"
             - "-c:v"
             - "h264_nvenc"
             - "-preset"
@@ -91,18 +95,26 @@ metadata:
   name: hls-packager
   namespace: streaming
 spec:
-  replicas: 4
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hls-packager
   template:
+    metadata:
+      labels:
+        app: hls-packager
     spec:
       containers:
         - name: packager
-          image: shaka/packager:release-v2.6.1
+          image: google/shaka-packager:v3.7.2
           command:
             - packager
-            - "in=rtmp://ingest:1935/live/$STREAM_KEY,stream=video,init_segment=/out/init.mp4,segment_template=/out/$Number$.m4s"
+            - "in=udp://239.0.0.1:5000,stream=audio,init_segment=/out/audio-init.mp4,segment_template=/out/audio-$Number$.m4s,playlist_name=/out/audio.m3u8,hls_group_id=audio,hls_name=ENGLISH"
+            - "in=udp://239.0.0.1:5001,stream=video,init_segment=/out/720p-init.mp4,segment_template=/out/720p-$Number$.m4s,playlist_name=/out/720p.m3u8"
+            - "in=udp://239.0.0.1:5002,stream=video,init_segment=/out/1080p-init.mp4,segment_template=/out/1080p-$Number$.m4s,playlist_name=/out/1080p.m3u8"
             - "--hls_master_playlist_output=/out/master.m3u8"
+            - "--hls_playlist_type=LIVE"
             - "--segment_duration=2"
-            - "--hls_segment_duration=2"
           resources:
             requests:
               cpu: "2"
@@ -110,24 +122,42 @@ spec:
             limits:
               cpu: "4"
               memory: "4Gi"
+          volumeMounts:
+            - name: hls-output
+              mountPath: /out
+      volumes:
+        - name: hls-output
+          persistentVolumeClaim:
+            claimName: hls-output-pvc
 ```
 
 ## Step 3: Object Storage for Media Assets
 
 ```yaml
 # MinIO for media asset storage
+helm repo add minio https://minio.github.io/charts
+helm repo update
 helm install minio minio/minio \
   --namespace media-storage \
+  --create-namespace \
   --set mode=distributed \
   --set replicas=4 \
   --set drivesPerNode=4 \
   --set persistence.size=10Ti \
   --set persistence.storageClass=local-nvme
 
-# Lifecycle policy: move content to archival after 90 days
+# Lifecycle policy: transition older content to a lower-cost tier after 90 days
+mc ilm tier add s3 myminio MEDIAARCHIVE \
+  --endpoint https://s3.amazonaws.com \
+  --access-key "$AWS_ACCESS_KEY_ID" \
+  --secret-key "$AWS_SECRET_ACCESS_KEY" \
+  --bucket media-archive \
+  --storage-class "STANDARD-IA" \
+  --region us-east-1
+
 mc ilm rule add \
   --transition-days "90" \
-  --storage-class "GLACIER" \
+  --transition-tier "MEDIAARCHIVE" \
   myminio/media-assets
 ```
 
@@ -149,7 +179,8 @@ spec:
     - type: rabbitmq
       metadata:
         queueName: transcoding-jobs
-        queueLength: "5"    # 1 worker per 5 jobs in queue
+        mode: QueueLength
+        value: "5"    # 1 worker per 5 jobs in queue
         hostFromEnv: RABBITMQ_URI
 ```
 
@@ -186,21 +217,27 @@ data:
 ## Step 6: Event-Driven Live Streaming
 
 ```yaml
-# RTMP ingest with automatic HLS packaging
+# RTMP ingest endpoint for live contribution feeds
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: rtmp-ingest
   namespace: streaming
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rtmp-ingest
   template:
+    metadata:
+      labels:
+        app: rtmp-ingest
     spec:
       containers:
         - name: nginx-rtmp
           image: tiangolo/nginx-rtmp
           ports:
             - containerPort: 1935    # RTMP
-            - containerPort: 8080    # HLS output
           resources:
             requests:
               cpu: "4"
@@ -211,8 +248,11 @@ apiVersion: v1
 kind: Service
 metadata:
   name: rtmp-ingest-lb
+  namespace: streaming
 spec:
   type: LoadBalancer
+  selector:
+    app: rtmp-ingest
   ports:
     - port: 1935
       targetPort: 1935
