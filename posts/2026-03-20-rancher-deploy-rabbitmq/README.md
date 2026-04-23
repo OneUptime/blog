@@ -13,7 +13,7 @@ RabbitMQ is a widely used open-source message broker supporting AMQP, MQTT, and 
 ## Prerequisites
 
 - Rancher-managed Kubernetes cluster
-- Helm 3.x installed
+- Helm 3.8+ installed (if using the Helm installation option)
 - kubectl with cluster-admin access
 - A StorageClass for persistent volumes
 
@@ -25,8 +25,7 @@ RabbitMQ is a widely used open-source message broker supporting AMQP, MQTT, and 
 kubectl apply -f "https://github.com/rabbitmq/cluster-operator/releases/latest/download/cluster-operator.yml"
 
 # Or via Helm
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm install rabbitmq-operator bitnami/rabbitmq-cluster-operator \
+helm install rabbitmq-operator oci://registry-1.docker.io/bitnamicharts/rabbitmq-cluster-operator \
   --namespace rabbitmq-system \
   --create-namespace
 
@@ -46,7 +45,7 @@ metadata:
 spec:
   # 3 nodes for HA quorum queues
   replicas: 3
-  image: rabbitmq:3.13-management
+  image: rabbitmq:4.2-management
 
   resources:
     requests:
@@ -75,7 +74,6 @@ spec:
 
       # Queue settings
       queue.default_queue_type = quorum
-      default_consumer_prefetch = 100
 
       # Memory alarm threshold (80% of available RAM)
       vm_memory_high_watermark.relative = 0.8
@@ -86,6 +84,13 @@ spec:
       # Logging
       log.console.level = info
       log.file.level = warning
+
+    advancedConfig: |
+      [
+        {rabbit, [
+          {default_consumer_prefetch, {false, 100}}
+        ]}
+      ].
 
   service:
     type: ClusterIP
@@ -140,6 +145,12 @@ curl -s -u "${USERNAME}:${PASSWORD}" \
   -H "Content-Type: application/json" \
   http://localhost:15672/api/permissions/production/appuser \
   -d '{"configure": ".*", "write": ".*", "read": ".*"}'
+
+# Store the application password in a Kubernetes Secret for workloads
+kubectl create secret generic rabbitmq-app-credentials \
+  -n production \
+  --from-literal=password='AppUserP@ss' \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 ## Step 4: Create Quorum Queues
@@ -157,6 +168,8 @@ curl -s -u "${USERNAME}:${PASSWORD}" \
     "arguments": {
       "x-queue-type": "quorum",
       "x-delivery-limit": 5,
+      "x-dead-letter-exchange": "",
+      "x-dead-letter-routing-key": "orders.dlq",
       "x-message-ttl": 86400000
     }
   }'
@@ -179,7 +192,13 @@ metadata:
   name: order-processor
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: order-processor
   template:
+    metadata:
+      labels:
+        app: order-processor
     spec:
       containers:
         - name: order-processor
@@ -253,23 +272,23 @@ curl -s -u "${USERNAME}:${PASSWORD}" \
 
 ```bash
 # Check cluster status
-kubectl exec -n messaging rabbitmq-prod-0 -- \
+kubectl exec -n messaging rabbitmq-prod-server-0 -- \
   rabbitmqctl cluster_status
 
 # Check queue status
-kubectl exec -n messaging rabbitmq-prod-0 -- \
+kubectl exec -n messaging rabbitmq-prod-server-0 -- \
   rabbitmqctl list_queues -p production name messages messages_unacknowledged
 
 # Check consumers
-kubectl exec -n messaging rabbitmq-prod-0 -- \
+kubectl exec -n messaging rabbitmq-prod-server-0 -- \
   rabbitmqctl list_consumers -p production
 
 # Force a node to join the cluster
-kubectl exec -n messaging rabbitmq-prod-1 -- \
+kubectl exec -n messaging rabbitmq-prod-server-1 -- \
   rabbitmqctl stop_app
-kubectl exec -n messaging rabbitmq-prod-1 -- \
-  rabbitmqctl join_cluster rabbit@rabbitmq-prod-0.rabbitmq-prod-nodes.messaging
-kubectl exec -n messaging rabbitmq-prod-1 -- \
+kubectl exec -n messaging rabbitmq-prod-server-1 -- \
+  rabbitmqctl join_cluster rabbit@rabbitmq-prod-server-0.rabbitmq-prod-nodes.messaging
+kubectl exec -n messaging rabbitmq-prod-server-1 -- \
   rabbitmqctl start_app
 ```
 
