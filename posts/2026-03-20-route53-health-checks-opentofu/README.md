@@ -8,7 +8,7 @@ Description: Learn how to configure Route 53 health checks with OpenTofu to moni
 
 ## Introduction
 
-Route 53 health checks monitor the health of your web servers, load balancers, and other endpoints. When an endpoint fails health checks, Route 53 can automatically update DNS records to remove the failing endpoint from routing or failover to a backup endpoint. Health checks can monitor HTTP/HTTPS endpoints, TCP connections, or other CloudWatch alarms.
+Route 53 health checks monitor the health of your web servers, load balancers, and other endpoints. When an endpoint fails health checks, Route 53 can automatically stop returning the failing record in DNS responses or fail over to a backup endpoint. Health checks can monitor HTTP/HTTPS endpoints, TCP connections, or other CloudWatch alarms.
 
 ## Prerequisites
 
@@ -20,7 +20,8 @@ Route 53 health checks monitor the health of your web servers, load balancers, a
 
 ```hcl
 resource "aws_route53_health_check" "primary_api" {
-  fqdn              = "api.example.com"
+  # Use a name that resolves directly to the primary endpoint, not the failover record.
+  fqdn              = "primary-api.example.com"
   port              = 443
   type              = "HTTPS"
   resource_path     = "/health"
@@ -162,4 +163,4 @@ aws route53 get-health-check-status \
 
 ## Conclusion
 
-Route 53 health checks work best with `failure_threshold = 3` and `request_interval = 30` for a balance between fast failover detection (90 seconds) and avoiding false positives from transient failures. For critical services, use calculated health checks combining endpoint checks with CloudWatch alarm-based checks for comprehensive monitoring. Remember that Route 53 health check metrics are always published to `us-east-1` regardless of your resource region.
+A common starting point for Route 53 endpoint health checks is `failure_threshold = 3` and `request_interval = 30` for a balance between detection speed (roughly 90 seconds before DNS TTL and resolver caching effects) and avoiding false positives from transient failures. For critical services, use calculated health checks combining endpoint checks with CloudWatch alarm-based checks for comprehensive monitoring. Remember that Route 53 health check metrics are always published to `us-east-1` regardless of your resource region.
