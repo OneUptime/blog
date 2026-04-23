@@ -102,9 +102,10 @@ data "aws_ami" "amazon_linux" {
 
 ```hcl
 locals {
+  name_prefix = var.project
   environments = {
-    dev  = { instance_type = "t3.micro", count = 1 }
-    prod = { instance_type = "m5.large", count = 3 }
+    dev  = { instance_type = "t3.micro" }
+    prod = { instance_type = "m5.large" }
   }
 }
 
@@ -126,6 +127,15 @@ resource "aws_instance" "servers" {
 ## Referencing Locals in Outputs
 
 ```hcl
+locals {
+  full_domain = var.domain_name
+  common_tags = {
+    Environment = var.environment
+    Project     = var.project
+    ManagedBy   = "opentofu"
+  }
+}
+
 output "api_url" {
   description = "Application API URL"
   value       = "https://${local.full_domain}/api"  # local in output
