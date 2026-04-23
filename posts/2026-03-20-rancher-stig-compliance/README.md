@@ -6,11 +6,11 @@ Tags: Rancher, Kubernetes, STIG, Security, Compliance, DoD
 
 Description: Learn how to configure Rancher-managed Kubernetes clusters to meet DISA STIG (Security Technical Implementation Guide) compliance requirements.
 
-DISA STIGs (Security Technical Implementation Guides) provide prescriptive security configuration guidance for Department of Defense (DoD) systems. For Kubernetes clusters in government or defense environments, STIG compliance is mandatory. This guide covers how to configure Rancher and RKE2 clusters to meet STIG requirements.
+DISA STIGs (Security Technical Implementation Guides) provide prescriptive security configuration guidance for Department of Defense (DoD) systems. For Kubernetes clusters supporting DoD systems, applicable STIG controls are generally mandatory. This guide covers how to configure Rancher and RKE2 clusters to meet STIG requirements.
 
 ## Prerequisites
 
-- Rancher v2.6+ with RKE2 clusters
+- A currently supported Rancher release managing RKE2 clusters
 - Root/admin access to cluster nodes
 - STIG Viewer or similar tool for viewing STIG requirements
 - Understanding of Kubernetes security concepts
@@ -31,25 +31,25 @@ The DISA Kubernetes STIG (STIG ID: K8S) covers:
 ```yaml
 # /etc/rancher/rke2/config.yaml - API server STIG settings
 
+# Use the generic CIS profile on current RKE2 releases. Older releases use cis-1.23 or cis-1.6.
+profile: "cis"
+
 kube-apiserver-arg:
   # STIG V-242390: Disable anonymous authentication
   - "anonymous-auth=false"
 
-  # STIG V-242391: Enable audit logging
-  - "audit-log-path=/var/log/kubernetes/audit.log"
+  # STIG V-242391: Configure audit logging
+  - "audit-policy-file=/etc/rancher/rke2/audit-policy.yaml"
+  - "audit-log-path=/var/lib/rancher/rke2/server/logs/audit.log"
   - "audit-log-maxage=30"
   - "audit-log-maxbackup=10"
   - "audit-log-maxsize=100"
 
-  # STIG V-242400: Require client certificates for the scheduler
+  # Configure the front-proxy CA used for request-header authentication
   - "requestheader-client-ca-file=/var/lib/rancher/rke2/server/tls/request-header-ca.crt"
 
-  # STIG V-242402: Disable AlwaysAdmit admission controller
-  - "enable-admission-plugins=NodeRestriction,PodSecurityAdmission"
-
-  # STIG V-242403: Disable AlwaysPullImages not required as admission plugin handles this
-  # STIG V-242435: Enable encryption at rest
-  - "encryption-provider-config=/etc/kubernetes/encryption-config.yaml"
+  # Enable additional admission hardening; PodSecurity is enabled by default in current Kubernetes releases
+  - "enable-admission-plugins=NodeRestriction"
 
   # STIG V-245541: Set TLS minimum version
   - "tls-min-version=VersionTLS12"
@@ -59,68 +59,42 @@ kube-apiserver-arg:
 ## Step 2: Configure Encryption at Rest
 
 ```yaml
-# /etc/kubernetes/encryption-config.yaml - Encrypt secrets at rest
-apiVersion: apiserver.config.k8s.io/v1
-kind: EncryptionConfiguration
-resources:
-  - resources:
-    - secrets
-    providers:
-    # AES-CBC encryption (STIG requirement)
-    - aescbc:
-        keys:
-        - name: key1
-          # Generate with: head -c 32 /dev/urandom | base64
-          secret: <BASE64_ENCODED_32_BYTE_KEY>
-    # Identity is the fallback (unencrypted) - needed for reading existing secrets
-    - identity: {}
+# /etc/rancher/rke2/config.yaml - optional on current RKE2 releases
+# RKE2 encrypts Kubernetes secrets at rest automatically using AES-CBC by default.
+# If you need to pin the provider explicitly, use:
+secrets-encryption-provider: aescbc
 ```
 
 ```bash
-# Generate an encryption key
-ENCRYPTION_KEY=$(head -c 32 /dev/urandom | base64)
-echo "Encryption key: $ENCRYPTION_KEY"
+# Verify that RKE2 generated the encryption provider config and is using AES-CBC
+sudo grep -n '"aescbc"' /var/lib/rancher/rke2/server/cred/encryption-config.json
+sudo rke2 secrets-encrypt status
 
-# Create the encryption config
-sudo mkdir -p /etc/kubernetes
-sudo cat > /etc/kubernetes/encryption-config.yaml << EOF
-apiVersion: apiserver.config.k8s.io/v1
-kind: EncryptionConfiguration
-resources:
-  - resources:
-    - secrets
-    providers:
-    - aescbc:
-        keys:
-        - name: key1
-          secret: ${ENCRYPTION_KEY}
-    - identity: {}
-EOF
-
-# Verify existing secrets are re-encrypted after enabling
+# Re-encrypt existing secrets after enabling or changing the provider
 kubectl get secrets -A -o json | kubectl replace -f -
 ```
 
 ## Step 3: Configure Audit Logging
 
 ```yaml
-# /etc/kubernetes/audit-policy.yaml - Comprehensive audit policy
+# /etc/rancher/rke2/audit-policy.yaml - Comprehensive audit policy
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
-  # STIG V-242402: Log all privileged operations
+  # Log requests from cluster-admin users
   - level: RequestResponse
     userGroups: ["system:masters"]
 
-  # Log all authentication failures
-  - level: RequestResponse
+  # Log write access to secrets and configmaps without logging their contents
+  - level: Metadata
     verbs: ["create", "update", "patch", "delete"]
     resources:
     - group: ""
       resources: ["secrets", "configmaps"]
 
-  # Log pod security violations
+  # Log pod changes
   - level: RequestResponse
+    verbs: ["create", "update", "patch", "delete"]
     resources:
     - group: ""
       resources: ["pods"]
@@ -135,6 +109,11 @@ rules:
   - level: Metadata
     omitStages:
     - RequestReceived
+```
+
+```bash
+# Restart RKE2 after updating /etc/rancher/rke2/config.yaml or the audit policy
+sudo systemctl restart rke2-server.service
 ```
 
 ## Step 4: Configure Kubelet for STIG Compliance
@@ -157,10 +136,10 @@ kubelet-arg:
   # STIG V-242419: Protect kernel defaults
   - "protect-kernel-defaults=true"
 
-  # STIG V-242420: Disable streaming connection idle timeout
+  # STIG V-242420: Limit streaming connection idle time
   - "streaming-connection-idle-timeout=5m"
 
-  # STIG V-242421: Set event record QPS
+  # STIG V-242421: Explicitly set event creation QPS
   - "event-qps=0"
 
   # Enable certificate rotation
@@ -173,8 +152,9 @@ kubelet-arg:
 ## Step 5: Configure Network Policies for STIG
 
 ```bash
-# Apply default deny network policies to all namespaces
-for ns in $(kubectl get namespaces -o name | cut -d/ -f2); do
+# Apply default deny network policies to application namespaces you manage.
+# Replace app1 app2 with your application namespaces and add allow policies for DNS and required traffic.
+for ns in app1 app2; do
   kubectl apply -f - <<EOF
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -214,22 +194,24 @@ for item in data['items']:
 ## Step 7: Verify STIG Compliance
 
 ```bash
-# Run CIS hardened profile (closest available to STIG checks)
+# Rancher ships CIS scan profiles, not STIG-specific profiles.
+# List the available hardened RKE2 profiles and choose the one that matches your cluster version.
+kubectl get clusterscanprofiles.cis.cattle.io
+
 kubectl apply -f - <<EOF
 apiVersion: cis.cattle.io/v1
 kind: ClusterScan
 metadata:
   name: stig-verification-scan
 spec:
-  scanProfileName: rke2-cis-1.6-profile-hardened
+  scanProfileName: <matching-rke2-cis-hardened-profile>
 EOF
 
 # Check for any remaining failures
 kubectl get clusterscan stig-verification-scan \
   -o jsonpath='{.status.summary}'
 
-# Also check with OpenSCAP if available on nodes
-# oscap-docker kubernetes stig scan
+# Also check the node OS with OpenSCAP using the appropriate SCAP Security Guide content for that OS
 ```
 
 ## Conclusion
