@@ -16,11 +16,11 @@ Metrics are only compared **within the same protocol** - for cross-protocol comp
 
 | Protocol | Metric | Calculation |
 |----------|--------|-------------|
-| Static Routes | Metric (user-assigned) | You choose (default 0 on Cisco, 100+ on Linux) |
+| Static Routes | Metric or administrative distance (platform-specific) | You choose; Cisco static routes default to administrative distance 1, while Linux route metrics are optional and lower values are preferred |
 | RIP | Hop count | Count of router hops (max 15) |
 | OSPF | Cost | Reference bandwidth / interface bandwidth |
-| BGP | Multiple attributes | AS path length, MED, weight, local pref |
-| EIGRP (Cisco) | Composite | Bandwidth, delay, reliability, load |
+| BGP | Multiple attributes | Weight, local preference, AS path length, MED |
+| EIGRP (Cisco) | Composite | Bandwidth, delay, reliability, load, and K values |
 
 ## RIP Metric: Hop Count
 
@@ -46,7 +46,7 @@ Cost = Reference Bandwidth / Interface Bandwidth
 
 Default reference bandwidth: 100 Mbps (100,000 Kbps)
 
-1 Gbps:  100,000 / 1,000,000 = 0.1 → rounded to 1
+1 Gbps:  100,000 / 1,000,000 = 0.1 → minimum cost 1
 100 Mbps: 100,000 / 100,000 = 1
 10 Mbps:  100,000 / 10,000 = 10
 1 Mbps:   100,000 / 1,000 = 100
@@ -64,7 +64,8 @@ exit
 
 ! Change reference bandwidth (recommended for 10Gbps+ networks)
 router ospf
- auto-cost reference-bandwidth 100000  ! 100 Gbps reference
+ ! 100 Gbps reference
+ auto-cost reference-bandwidth 100000
 exit
 ```
 
@@ -77,9 +78,9 @@ On Linux, metrics for static routes are set manually:
 
 ip route add 10.0.0.0/24 via 192.168.1.254 metric 100
 
-# Multiple routes with different metrics (failover)
+# Multiple routes with different metrics (backup route)
 ip route add 10.0.0.0/24 via 192.168.1.1 metric 100  # Primary
-ip route add 10.0.0.0/24 via 192.168.2.1 metric 200  # Secondary (failover)
+ip route add 10.0.0.0/24 via 192.168.2.1 metric 200  # Secondary
 ```
 
 ## BGP Path Selection (Simplified)
@@ -92,10 +93,11 @@ BGP uses multiple attributes in order:
 3. Locally originated routes
 4. Shortest AS path
 5. Lowest Origin type (i < e < ?)
-6. Lowest MED (Multi-Exit Discriminator)
+6. Lowest MED (Multi-Exit Discriminator, usually compared only between paths from the same neighboring AS)
 7. eBGP over iBGP
 8. Lowest IGP metric to next-hop
-9. Lowest router ID
+9. Oldest eBGP path (where applicable)
+10. Lowest router ID
 ```
 
 ## Viewing Metrics in the Routing Table
@@ -136,8 +138,12 @@ ip route replace 10.0.0.0/24 via 192.168.1.254 metric 50
 ### RIP: Offset Metric
 
 ```text
-interface eth1
- ip rip metric-offset 3   ! Add 3 to all routes received on this interface
+! Match routes to offset
+access-list RIP_OFFSET permit any
+
+router rip
+ ! Add 3 to all routes received on eth1
+ offset-list RIP_OFFSET in 3 eth1
 exit
 ```
 
@@ -165,10 +171,10 @@ for iface, bw in interfaces:
 Output:
 ```text
 Interface  BW       Cost
-eth0       1000 Mbps  1
-eth1        100 Mbps  1
-eth2         10 Mbps  10
-eth3          1 Mbps  100
+eth0        1000 Mbps  1
+eth1         100 Mbps  1
+eth2          10 Mbps  10
+eth3           1 Mbps  100
 ```
 
 ## Key Takeaways
