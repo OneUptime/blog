@@ -10,10 +10,9 @@ Description: Pre-configure edge agents with join tokens during device manufactur
 
 Pre-staging edge agents means embedding the Portainer Edge Key and configuration into a device's provisioning image before deployment. When the device powers on and connects to the network, it automatically registers with Portainer without any on-site configuration. This is essential for mass deployments to retail stores, branch offices, or IoT deployments.
 
-## Understanding Edge Keys vs Join Tokens
+## Understanding the Edge Key (Join Token)
 
-- **Edge Key**: Contains the full connection configuration (Portainer URL, device ID, tunnel server address) encoded as a base64 string
-- **Join Token**: A shorter identifier used to associate the edge agent with a specific environment group or profile
+- **Edge Key / Join Token**: In Portainer, the value passed as `EDGE_KEY` is the join token. It is a base64-encoded string containing the Portainer API URL, tunnel server address, tunnel server fingerprint, and environment identifier.
 
 ## Generating an Edge Key
 
@@ -24,23 +23,19 @@ TOKEN=$(curl -s -X POST \
   -d '{"username":"admin","password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# The Edge Key is generated when you create an edge environment in Portainer
-
-# It's displayed in the deployment command
-
-# Via API - create edge environment and get its key
+# The Edge key is generated when you create an edge environment in Portainer.
+# It is shown in the deployment command and returned in the API response.
 EDGE_ENV=$(curl -s -X POST \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
   https://portainer.example.com/api/endpoints \
-  -d '{
-    "name": "Pre-Staged Device Template",
-    "endpointCreationType": 4,
-    "isEdgeDevice": true
-  }')
+  -H "Authorization: Bearer $TOKEN" \
+  -F "Name=Pre-Staged Device Template" \
+  -F "EndpointCreationType=4" \
+  -F "ContainerEngine=docker" \
+  -F "URL=https://portainer.example.com:9443" \
+  -F "EdgeTunnelServerAddress=portainer.example.com:8000")
 
-echo "Environment ID: $(echo $EDGE_ENV | python3 -c 'import sys,json; print(json.load(sys.stdin)["Id"])')"
-echo "Edge Key: $(echo $EDGE_ENV | python3 -c 'import sys,json; print(json.load(sys.stdin).get("EdgeKey",""))')"
+echo "Environment ID: $(echo "$EDGE_ENV" | python3 -c 'import sys,json; print(json.load(sys.stdin)["Id"])')"
+echo "Edge Key: $(echo "$EDGE_ENV" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("EdgeKey",""))')"
 ```
 
 ## Device Provisioning Script
@@ -52,31 +47,35 @@ Create a provisioning script to embed in your device image:
 # /opt/device-provision.sh
 # This script runs on first boot to register the device with Portainer
 
-# Configuration baked into the image
-PORTAINER_URL="https://portainer.example.com"
+# Configuration baked into the image.
+# The Portainer URL and tunnel settings are already embedded in EDGE_KEY.
 EDGE_KEY="xxxxxx-base64-encoded-edge-key-xxxxxx"
+PORTAINER_AGENT_IMAGE="portainer/agent:<matching-portainer-version>"
+EDGE_INSECURE_POLL="0" # Set to 1 only if Portainer uses a self-signed certificate
 
 # Generate device-unique ID from hardware
-SERIAL=$(cat /sys/class/dmi/id/product_serial 2>/dev/null || hostname)
-MAC=$(ip link | grep ether | awk '{print $2}' | head -1 | tr -d ':')
-DEVICE_ID="device-${MAC}"
+SERIAL=$({ cat /sys/class/dmi/id/product_serial 2>/dev/null || hostname; } | tr -cd '[:alnum:]-')
+MAC=$(ip link | awk '/link\\/ether/ {print $2; exit}' | tr -d ':')
+DEVICE_ID="device-${MAC:-$SERIAL}"
 
 echo "Provisioning device: $DEVICE_ID"
 
 # Install Docker if not present
-which docker || curl -fsSL https://get.docker.com | sh
+command -v docker >/dev/null 2>&1 || curl -fsSL https://get.docker.com | sh
 
 # Deploy Portainer Edge Agent
 docker run -d \
   --name portainer_edge_agent \
-  --restart unless-stopped \
+  --restart always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  -v /var/run/portainer:/var/run/portainer \
+  -v /:/host \
+  -v portainer_agent_data:/data \
   -e EDGE=1 \
   -e EDGE_ID="${DEVICE_ID}" \
   -e EDGE_KEY="${EDGE_KEY}" \
-  portainer/agent:latest
+  -e EDGE_INSECURE_POLL="${EDGE_INSECURE_POLL}" \
+  "${PORTAINER_AGENT_IMAGE}"
 
 echo "Device $DEVICE_ID registered with Portainer"
 
@@ -93,10 +92,10 @@ cat > /etc/systemd/system/portainer-provision.service << 'EOF'
 Description=Portainer Edge Agent Provisioning
 After=network-online.target docker.service
 Wants=network-online.target
+ConditionPathExists=!/opt/.portainer-provisioned
 
 [Service]
 Type=oneshot
-ExecStartPre=/bin/bash -c 'test ! -f /opt/.portainer-provisioned'
 ExecStart=/opt/device-provision.sh
 RemainAfterExit=yes
 
@@ -107,25 +106,47 @@ EOF
 systemctl enable portainer-provision.service
 ```
 
-## Using a Generic Edge Key for Multiple Devices
+## Using Auto Onboarding for Multiple Devices
 
-Instead of creating one environment per device in advance, use a shared edge key that enables auto-onboarding:
+In Portainer Business Edition, use the Auto onboarding feature when you want multiple devices to share one onboarding key and appear in the Waiting Room for association:
 
-1. Create one "template" edge environment with auto-onboarding enabled
-2. Use that environment's edge key for all devices
+1. Generate the deployment script and edge key from the Auto onboarding page
+2. Use that shared auto-onboarding edge key for all devices
 3. Each device registers with a unique `EDGE_ID`
-4. Devices appear in the Waiting Room for approval
-5. Approved devices become independent environments
+4. Devices appear in the Waiting Room for association
+5. Associated devices are added to Portainer as separate Edge environments
 
 ```bash
-# All devices use the same EDGE_KEY, but unique EDGE_ID
+# All devices use the same auto-onboarding EDGE_KEY, but unique EDGE_ID
 # Device 1:
-docker run -e EDGE_KEY=shared-key -e EDGE_ID=device-aabbccdd portainer/agent:latest
+docker run -d \
+  --name portainer_edge_agent \
+  --restart always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -v /:/host \
+  -v portainer_agent_data:/data \
+  -e EDGE=1 \
+  -e EDGE_ID=device-aabbccdd \
+  -e EDGE_KEY=shared-auto-onboarding-key \
+  -e EDGE_INSECURE_POLL=0 \
+  portainer/agent:<matching-portainer-version>
 
 # Device 2:
-docker run -e EDGE_KEY=shared-key -e EDGE_ID=device-11223344 portainer/agent:latest
+docker run -d \
+  --name portainer_edge_agent \
+  --restart always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -v /:/host \
+  -v portainer_agent_data:/data \
+  -e EDGE=1 \
+  -e EDGE_ID=device-11223344 \
+  -e EDGE_KEY=shared-auto-onboarding-key \
+  -e EDGE_INSECURE_POLL=0 \
+  portainer/agent:<matching-portainer-version>
 ```
 
 ## Conclusion
 
-Pre-staging edge agents with join tokens/keys enables zero-touch deployment at scale. Bake the edge key and provisioning script into your device image during manufacturing or initial setup, and devices self-register with Portainer on first power-on. Combined with auto-onboarding and API-based bulk approval, this approach scales to thousands of devices with minimal operational overhead.
+Pre-staging edge agents with the Portainer Edge key (the join token passed as `EDGE_KEY`) enables zero-touch deployment at scale. Bake the edge key and provisioning script into your device image during manufacturing or initial setup, and devices self-register with Portainer on first power-on. Combined with Auto onboarding and the Waiting Room in Portainer Business Edition, this approach scales to thousands of devices with minimal operational overhead.
