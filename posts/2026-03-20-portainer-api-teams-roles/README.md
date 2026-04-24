@@ -8,12 +8,12 @@ Description: Learn how to create and manage Portainer teams, assign users to tea
 
 ## Introduction
 
-Portainer's team-based RBAC system allows you to group users and grant them access to environments at different permission levels. The Portainer API provides full control over team and role management, enabling automated provisioning as new projects or teams are onboarded.
+Portainer Business Edition's team-based RBAC system allows you to group users and grant them access to environments at different permission levels. The Portainer API provides full control over team and role management, enabling automated provisioning as new projects or teams are onboarded.
 
 ## Prerequisites
 
-- Portainer CE or BE with admin access
-- Valid admin JWT token or API access token
+- Portainer BE with admin access
+- Valid admin JWT token
 - Users already created in Portainer
 
 ## Understanding Portainer RBAC
@@ -21,17 +21,17 @@ Portainer's team-based RBAC system allows you to group users and grant them acce
 ```text
 Teams → Assigned to Environments with a Role
                 ↓
-Role values:
+Role values used in these examples:
   1 = Environment Administrator
-  2 = Standard User (can deploy)
-  3 = Read-only User (view only)
+  3 = Standard User (can deploy)
+  4 = Read-only User (view only)
 ```
 
 ## Step 1: List All Teams
 
 ```bash
 PORTAINER_URL="https://portainer.example.com"
-TOKEN="your-admin-token"
+TOKEN="your-admin-jwt"
 
 # List all teams
 
@@ -69,23 +69,25 @@ done
 TEAM_ID=2
 USER_ID=5
 
-# Add a user to a team as a regular member (role 2)
+# Add a user to a team as a regular member (team role 2)
 curl -s -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "${PORTAINER_URL}/api/teams/${TEAM_ID}/memberships" \
+  "${PORTAINER_URL}/api/team_memberships" \
   -d "{
     \"userId\": $USER_ID,
+    \"teamId\": $TEAM_ID,
     \"role\": 2
   }" | jq .
 
-# Add a user as team leader (role 1)
+# Add a user as team leader (team role 1)
 curl -s -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "${PORTAINER_URL}/api/teams/${TEAM_ID}/memberships" \
+  "${PORTAINER_URL}/api/team_memberships" \
   -d "{
     \"userId\": $USER_ID,
+    \"teamId\": $TEAM_ID,
     \"role\": 1
   }" | jq .
 ```
@@ -99,7 +101,7 @@ TEAM_ID=2
 curl -s -H "Authorization: Bearer $TOKEN" \
   "${PORTAINER_URL}/api/teams/${TEAM_ID}/memberships" | jq .
 
-# Get membership details with user info
+# Get membership details
 MEMBERSHIPS=$(curl -s -H "Authorization: Bearer $TOKEN" \
   "${PORTAINER_URL}/api/teams/${TEAM_ID}/memberships")
 
@@ -128,14 +130,17 @@ After creating a team, grant it access to specific environments:
 ENDPOINT_ID=1
 TEAM_ID=2
 
-# Grant team access to an environment with role 2 (Standard User)
+# Grant team access to an environment with role 3 (Standard User)
+ACCESS_PAYLOAD=$(curl -s -H "Authorization: Bearer $TOKEN" \
+  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}" | jq \
+  --arg team_id "$TEAM_ID" \
+  '{TeamAccessPolicies: ((.TeamAccessPolicies // {}) + {($team_id): {"RoleId": 3}})}')
+
 curl -s -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/teamaccesspolicies" \
-  -d "{
-    \"$TEAM_ID\": {\"RoleId\": 2}
-  }" | jq .
+  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}" \
+  -d "$ACCESS_PAYLOAD" | jq .
 ```
 
 ## Step 7: Grant User Direct Access to an Environment
@@ -144,14 +149,17 @@ curl -s -X PUT \
 USER_ID=5
 ENDPOINT_ID=1
 
-# Grant individual user access to an environment
+# Grant individual user access to an environment with role 3 (Standard User)
+ACCESS_PAYLOAD=$(curl -s -H "Authorization: Bearer $TOKEN" \
+  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}" | jq \
+  --arg user_id "$USER_ID" \
+  '{UserAccessPolicies: ((.UserAccessPolicies // {}) + {($user_id): {"RoleId": 3}})}')
+
 curl -s -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/useraccesspolicies" \
-  -d "{
-    \"$USER_ID\": {\"RoleId\": 2}
-  }" | jq .
+  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}" \
+  -d "$ACCESS_PAYLOAD" | jq .
 ```
 
 ## Step 8: Full RBAC Setup Script
@@ -169,6 +177,23 @@ TOKEN=$(curl -s -X POST "${PORTAINER_URL}/api/auth" \
 PROD_ENDPOINT_ID=1
 STAGING_ENDPOINT_ID=2
 
+grant_team_access() {
+  local endpoint_id=$1
+  local team_id=$2
+  local role_id=$3
+
+  ACCESS_PAYLOAD=$(curl -s -H "Authorization: Bearer $TOKEN" \
+    "${PORTAINER_URL}/api/endpoints/${endpoint_id}" | jq \
+    --arg team_id "$team_id" \
+    --argjson role_id "$role_id" \
+    '{TeamAccessPolicies: ((.TeamAccessPolicies // {}) + {($team_id): {"RoleId": $role_id}})}')
+
+  curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    "${PORTAINER_URL}/api/endpoints/${endpoint_id}" \
+    -d "$ACCESS_PAYLOAD" > /dev/null
+}
+
 echo "=== Setting up RBAC ==="
 
 # Create teams
@@ -180,20 +205,14 @@ for TEAM_NAME in "devops" "backend" "frontend"; do
   TEAM_ID=$(echo $TEAM | jq -r '.Id')
   echo "Created team '$TEAM_NAME' (ID: $TEAM_ID)"
 
-  # Grant staging access to all teams (role 2 = standard)
-  curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
-    -H "Content-Type: application/json" \
-    "${PORTAINER_URL}/api/endpoints/${STAGING_ENDPOINT_ID}/teamaccesspolicies" \
-    -d "{\"$TEAM_ID\": {\"RoleId\": 2}}" > /dev/null
+  # Grant staging access to all teams (role 3 = standard)
+  grant_team_access "$STAGING_ENDPOINT_ID" "$TEAM_ID" 3
   echo "  Granted staging access to '$TEAM_NAME'"
 
-  # Grant production access only to devops team (role 1 = admin)
+  # Grant production access only to devops team (role 1 = environment administrator)
   if [ "$TEAM_NAME" = "devops" ]; then
-    curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
-      -H "Content-Type: application/json" \
-      "${PORTAINER_URL}/api/endpoints/${PROD_ENDPOINT_ID}/teamaccesspolicies" \
-      -d "{\"$TEAM_ID\": {\"RoleId\": 1}}" > /dev/null
-    echo "  Granted production ADMIN access to 'devops'"
+    grant_team_access "$PROD_ENDPOINT_ID" "$TEAM_ID" 1
+    echo "  Granted production Environment Administrator access to 'devops'"
   fi
 done
 
