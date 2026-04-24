@@ -15,8 +15,6 @@ Blue-green deployment maintains two identical production environments - "blue" (
 Use Traefik labels to route traffic to the active environment:
 
 ```yaml
-version: "3.8"
-
 services:
   traefik:
     image: traefik:v3.0
@@ -39,17 +37,18 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.api.rule=Host(`api.example.com`)"
-      - "traefik.http.routers.api.service=api-blue"   # Point to blue
+      - "traefik.http.routers.api.service=api-blue"   # Point production traffic to blue
       - "traefik.http.services.api-blue.loadbalancer.server.port=3000"
     networks:
       - proxy_net
 
-  # Green environment (new version - deployed but not receiving traffic)
+  # Green environment (new version - reachable on a separate hostname for smoke tests)
   api-green:
     image: myregistry.example.com/my-app:v1.5.0
     labels:
       - "traefik.enable=true"
-      # Green is NOT the active router target yet
+      - "traefik.http.routers.api-green.rule=Host(`green.api.example.com`)"
+      - "traefik.http.routers.api-green.service=api-green"
       - "traefik.http.services.api-green.loadbalancer.server.port=3000"
     networks:
       - proxy_net
@@ -69,13 +68,11 @@ To switch from blue to green, update the router's service label:
 # In Portainer, edit the stack and update this label:
 # "traefik.http.routers.api.service=api-green"
 
-# Or use docker service update (Swarm mode):
-docker service update \
-  --label-add "traefik.http.routers.api.service=api-green" \
-  my-stack_api-blue
 ```
 
-Traefik detects the label change and reroutes traffic within seconds - no downtime.
+This example uses Traefik's Docker provider. If you're running Docker Swarm instead, use Traefik's Swarm provider and define Traefik labels under `deploy.labels`.
+
+After the stack is redeployed, Traefik reroutes `api.example.com` to the green service.
 
 ## Rolling Back
 
@@ -95,7 +92,11 @@ Blue is still running with the previous version, so the rollback is immediate.
 #!/bin/bash
 # blue-green-switch.sh
 
-TRAEFIK_API="http://traefik:8080"
+TRAEFIK_API="http://localhost:8080"
+PORTAINER_URL="https://portainer.example.com:9443"
+STACK_ID=1
+ENDPOINT_ID=1
+
 ACTIVE=$(curl -s "$TRAEFIK_API/api/http/routers/api@docker" | jq -r '.service')
 
 if [[ "$ACTIVE" == *"blue"* ]]; then
@@ -108,27 +109,29 @@ fi
 
 echo "Switching from $OLD to $NEW..."
 
-# Update the stack file and redeploy via Portainer API
-TOKEN=$(curl -s -X POST https://portainer.example.com/api/auth \
-  -d '{"Username":"admin","Password":"pass"}' \
-  -H 'Content-Type: application/json' | jq -r .jwt)
+# Authenticate to Portainer
+TOKEN=$(curl -s -X POST "$PORTAINER_URL/api/auth" \
+  -H 'Content-Type: application/json' \
+  -d '{"Username":"admin","Password":"pass"}' | jq -r '.jwt')
 
-# Update stack (assumes you store the compose content with the new target)
+# Update a file-based stack and redeploy it
+STACK_PAYLOAD=$(jq -Rs '{StackFileContent: ., Env: []}' "docker-compose-$NEW.yml")
+
 curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
-  https://portainer.example.com/api/stacks/1 \
   -H "Content-Type: application/json" \
-  -d "{\"stackFileContent\": \"$(cat docker-compose-$NEW.yml | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')\", \"env\": []}"
+  "$PORTAINER_URL/api/stacks/$STACK_ID?endpointId=$ENDPOINT_ID" \
+  -d "$STACK_PAYLOAD"
 
 echo "Traffic now routing to $NEW"
 ```
 
 ## Smoke Testing the Green Environment
 
-Before switching, test the green deployment directly:
+Before switching, test the green deployment on its smoke-test hostname:
 
 ```bash
-# Access green environment on its direct port (not the main domain)
-curl -H "Host: api-green.internal" http://localhost:3001/health
+# Access green through its smoke-test hostname (not the main production domain)
+curl -H "Host: green.api.example.com" http://localhost/health
 ```
 
 Only switch traffic after confirming green is healthy.
