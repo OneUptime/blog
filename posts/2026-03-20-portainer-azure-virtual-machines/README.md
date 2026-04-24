@@ -63,8 +63,8 @@ az vm create \
 1. Go to your VM's **Networking** settings
 2. Click **Add inbound port rule**
 3. Add rules:
-   - Priority 310: TCP 9000 from your IP
-   - Priority 320: TCP 9443 from your IP
+   - Priority 310: TCP 9443 from your IP
+   - Priority 320: TCP 9000 from your IP (optional, legacy HTTP only)
    - Priority 330: TCP 80 from Internet (if needed)
    - Priority 340: TCP 443 from Internet (if needed)
 
@@ -74,25 +74,25 @@ az vm create \
 # Get your public IP
 MY_IP=$(curl -s https://checkip.amazonaws.com)
 
-# Add Portainer HTTP rule
-az network nsg rule create \
-  --resource-group portainer-rg \
-  --nsg-name portainer-vmNSG \
-  --name AllowPortainer9000 \
-  --protocol tcp \
-  --priority 310 \
-  --destination-port-range 9000 \
-  --source-address-prefixes ${MY_IP}/32 \
-  --access allow
-
 # Add Portainer HTTPS rule
 az network nsg rule create \
   --resource-group portainer-rg \
   --nsg-name portainer-vmNSG \
   --name AllowPortainer9443 \
   --protocol tcp \
-  --priority 320 \
+  --priority 310 \
   --destination-port-range 9443 \
+  --source-address-prefixes ${MY_IP}/32 \
+  --access allow
+
+# Optional: add legacy HTTP access on port 9000 only if you plan to publish it
+az network nsg rule create \
+  --resource-group portainer-rg \
+  --nsg-name portainer-vmNSG \
+  --name AllowPortainer9000 \
+  --protocol tcp \
+  --priority 320 \
+  --destination-port-range 9000 \
   --source-address-prefixes ${MY_IP}/32 \
   --access allow
 ```
@@ -103,15 +103,29 @@ az network nsg rule create \
 # SSH to the VM
 ssh azureuser@<vm-public-ip>
 
-# Update system
-sudo apt update && sudo apt upgrade -y
+# Update packages and install Docker from Docker's apt repository
+sudo apt update
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
 
-# Install Docker
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker azureuser
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+
+# Optional: run Docker without sudo in the current shell
+sudo usermod -aG docker $USER
 newgrp docker
-
-sudo systemctl enable docker
 ```
 
 ## Step 4: Attach a Managed Data Disk
@@ -127,10 +141,15 @@ az vm disk attach \
   --new
 
 # On the VM, format and mount
-sudo fdisk -l  # Find the new disk (usually /dev/sdc)
-sudo mkfs.ext4 /dev/sdc
+sudo lsblk
+# Replace /dev/sdc below if your new data disk uses a different device name
+sudo parted /dev/sdc --script mklabel gpt mkpart primary ext4 0% 100%
+sudo mkfs.ext4 /dev/sdc1
+sudo partprobe /dev/sdc1
 sudo mkdir -p /data
-echo '/dev/sdc /data ext4 defaults,nofail 0 2' | sudo tee -a /etc/fstab
+sudo mount /dev/sdc1 /data
+DATA_UUID=$(sudo blkid -s UUID -o value /dev/sdc1)
+echo "UUID=${DATA_UUID} /data ext4 defaults,nofail 0 2" | sudo tee -a /etc/fstab
 sudo mount -a
 
 # Configure Docker to use data disk
@@ -148,14 +167,14 @@ sudo systemctl restart docker
 ```bash
 docker volume create portainer_data
 
+# Add -p 9000:9000 only if you need legacy HTTP access.
 docker run -d \
   --name portainer \
   --restart=unless-stopped \
-  -p 9000:9000 \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 6: Integrate with Azure Container Registry
@@ -164,21 +183,26 @@ docker run -d \
 # Login to ACR
 az acr login --name yourregistryname
 
-# Get credentials for Portainer
+# If you want to use admin credentials in Portainer, enable the admin user
+az acr update --name yourregistryname --admin-enabled true
+
+# Get the login server and credentials for Portainer
+az acr show --name yourregistryname --query loginServer -o tsv
 az acr credential show --name yourregistryname
 ```
 
 In Portainer, add ACR as a registry:
 1. Navigate to **Registries > Add registry**
 2. Select **Azure**
-3. Enter your ACR URL: `yourregistryname.azurecr.io`
-4. Enter username and password from the credentials output
+3. Enter your ACR login server, for example the value returned by `az acr show --name yourregistryname --query loginServer -o tsv`
+4. Enter the username and password from the credentials output
 
 ## Step 7: Configure Auto-Shutdown (Cost Savings)
 
 For development VMs, configure auto-shutdown:
 
 ```bash
+# Time is in UTC by default.
 az vm auto-shutdown \
   --resource-group portainer-rg \
   --name portainer-vm \
