@@ -23,8 +23,10 @@ The OpenTofu documentation explicitly states that provisioners should be a "last
 ```hcl
 # Problem: Running this twice may fail or produce different results
 
-provisioner "remote-exec" {
-  inline = ["mkdir /app"]   # Fails on second run - directory already exists
+resource "terraform_data" "example" {
+  provisioner "local-exec" {
+    command = "mkdir app"   # Fails if rerun because the directory already exists
+  }
 }
 ```
 
@@ -34,9 +36,9 @@ Provisioners do not appear in `tofu plan` output. You cannot preview what will r
 
 ### 3. They Create Hidden State
 
-Resources are not re-provisioned when the script changes - only when the resource is destroyed and recreated. This leads to configuration drift.
+Creation-time provisioners run only during resource creation, not updates. If the script changes later, OpenTofu will not re-run it unless the resource is replaced. This can lead to configuration drift.
 
-### 4. They Fail Silently or Disruptively
+### 4. They Can Leave Resources in Unknown States
 
 Network failures, SSH issues, or script errors can leave resources in unknown states.
 
@@ -45,7 +47,7 @@ Network failures, SSH issues, or script errors can leave resources in unknown st
 ### For Instance Configuration: Use User Data
 
 ```hcl
-# PREFERRED: Cloud-init runs at launch, is idempotent, and visible
+# PREFERRED: user_data/cloud-init runs during boot and avoids SSH-based provisioning
 resource "aws_instance" "web" {
   ami           = var.ami_id
   instance_type = "t3.micro"
@@ -88,13 +90,11 @@ resource "helm_release" "nginx" {
 Invoke Ansible from `local-exec` only if you truly must:
 
 ```hcl
-resource "null_resource" "configure" {
-  triggers = {
-    always_run = timestamp()
-  }
+resource "terraform_data" "configure" {
+  triggers_replace = [aws_instance.web.id]
 
   provisioner "local-exec" {
-    command = "ansible-playbook -i ${aws_instance.web.public_ip}, playbook.yml"
+    command = "ansible-playbook -i '${aws_instance.web.public_ip},' playbook.yml"
   }
 }
 ```
@@ -119,12 +119,12 @@ resource "aws_instance" "legacy" {
 
   provisioner "remote-exec" {
     inline = [
-      "set -e",                         # Exit on any error
+      "set -o errexit",                 # Exit on any error
       "sudo apt-get update -qq",
       "sudo apt-get install -y nginx",
       "sudo systemctl enable nginx",
       "sudo systemctl start nginx",
-      "curl -f http://localhost/ || exit 1",  # Verify it works
+      "sudo systemctl is-active --quiet nginx",  # Verify the service is running
     ]
 
     on_failure = fail   # Be explicit about failure behavior
@@ -150,4 +150,4 @@ resource "aws_instance" "legacy" {
 
 ## Conclusion
 
-Provisioners are a powerful escape hatch in OpenTofu, but they come with significant tradeoffs: no plan visibility, broken idempotency, and fragile execution. Always exhaust alternatives - user data, Packer, provider resources, and configuration management tools - before reaching for a provisioner. When you do use one, write defensive scripts with `set -e`, explicit error handling, and verification steps.
+Provisioners are a powerful escape hatch in OpenTofu, but they come with significant tradeoffs: no plan visibility, broken idempotency, and fragile execution. Always exhaust alternatives - user data, Packer, provider resources, and configuration management tools - before reaching for a provisioner. When you do use one, write defensive scripts with `set -o errexit`, explicit error handling, and verification steps.
