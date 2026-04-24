@@ -8,7 +8,7 @@ Description: Learn how to configure environment variables for Kubernetes applica
 
 ## Introduction
 
-Environment variables are the primary way to configure containerized applications without rebuilding images. Kubernetes offers three ways to inject environment variables: direct values, ConfigMap references, and Secret references. Portainer exposes all three methods through its UI. This guide covers configuring environment variables for Kubernetes applications.
+Environment variables are the primary way to configure containerized applications without rebuilding images. Kubernetes commonly injects environment variables using direct values, ConfigMap references, Secret references, and the Downward API. Portainer's form interface covers the first three directly, and its YAML editor lets you use the Downward API as well. This guide covers configuring environment variables for Kubernetes applications.
 
 ## Prerequisites
 
@@ -22,8 +22,8 @@ Best for non-sensitive configuration that varies per deployment.
 
 ### Via Portainer Form
 
-1. Open **Add application** or edit existing
-2. Scroll to **Environment** section
+1. Open **Applications → Add with form** or edit an existing application
+2. Scroll to **Environment variables** section
 3. Click **+ Add environment variable**
 4. Enter name and value:
 
@@ -54,12 +54,12 @@ spec:
 
 ## Method 2: Environment Variables from ConfigMaps
 
-Best for configuration shared across multiple pods or frequently changed.
+Best for configuration shared across multiple pods or managed separately from the image.
 
 ### Create a ConfigMap First
 
 Via Portainer:
-1. Go to **ConfigMaps → Add ConfigMap**
+1. Go to **ConfigMaps & Secrets → ConfigMaps → Add with form**
 2. Add key-value pairs:
 
 ```yaml
@@ -78,12 +78,11 @@ data:
 
 ### Reference ConfigMap in Application
 
-In Portainer application form, under **Environment → From ConfigMap**:
+In Portainer application form, under **ConfigMaps**:
 
 ```text
 ConfigMap: app-config
-Key:       NODE_ENV         → env var name: NODE_ENV
-Key:       LOG_LEVEL        → env var name: LOG_LEVEL
+Result:    Valid keys are exposed as environment variables
 ```
 
 ### Reference All Keys from ConfigMap (envFrom)
@@ -95,7 +94,7 @@ spec:
       image: myapp:latest
       envFrom:
         - configMapRef:
-            name: app-config   # Loads ALL keys as environment variables
+            name: app-config   # Loads valid keys as environment variables
 ```
 
 ### Reference Specific Keys
@@ -126,8 +125,8 @@ Best for sensitive data: passwords, API keys, tokens.
 ### Create a Secret First
 
 Via Portainer:
-1. Go to **Secrets → Add Secret**
-2. Add key-value pairs (Portainer base64-encodes values automatically):
+1. Go to **ConfigMaps & Secrets → Secrets → Add with form**
+2. Add key-value pairs:
 
 ```yaml
 apiVersion: v1
@@ -136,7 +135,7 @@ metadata:
   name: db-credentials
   namespace: production
 type: Opaque
-stringData:    # Portainer accepts plain text, auto-encodes
+stringData:    # Plain-text input; Kubernetes stores it in data
   DB_PASSWORD: "MySecurePassword123!"
   DB_USER: appuser
   API_KEY: "sk-xxxxxxxxxxxxxxxxxxxx"
@@ -144,11 +143,11 @@ stringData:    # Portainer accepts plain text, auto-encodes
 
 ### Reference Secret in Application
 
-In Portainer form, under **Environment → From Secret**:
+In Portainer form, under **Secrets**:
 
 ```text
 Secret: db-credentials
-Key:    DB_PASSWORD → env var name: DB_PASSWORD
+Result: Valid keys are exposed as environment variables
 ```
 
 ### Reference in YAML
@@ -178,7 +177,7 @@ spec:
     - name: app
       envFrom:
         - secretRef:
-            name: db-credentials   # All keys become env vars
+            name: db-credentials   # Valid keys become env vars
 ```
 
 ## Method 4: Downward API (Pod/Node Information)
@@ -238,23 +237,23 @@ spec:
 ## Environment Variable Ordering
 
 When using `envFrom` and `env` together:
-1. `envFrom` sources are loaded first (in order listed)
-2. `env` entries are applied next, potentially overriding `envFrom` values
-3. Later `env` entries override earlier ones
+1. If the same key appears in multiple `envFrom` sources, the last source wins
+2. Values defined in `env` override values imported through `envFrom`
+3. If one `env` entry references another, define the referenced variable earlier in the list
 
 ## Verify Environment Variables in Running Pods
 
 ```bash
 # View all env vars in a running pod
 
-kubectl exec -it <pod-name> -n production -- env | sort
+kubectl exec <pod-name> -n production -- env | sort
 
 # Check a specific variable
-kubectl exec -it <pod-name> -n production -- printenv DATABASE_URL
+kubectl exec <pod-name> -n production -- printenv DATABASE_URL
 ```
 
 In Portainer: navigate to the pod and use the **Console** feature to run `env`.
 
 ## Conclusion
 
-Portainer makes it easy to configure all three Kubernetes environment variable patterns - direct values, ConfigMap references, and Secret references - through both the form interface and YAML editor. For best practices, store configuration in ConfigMaps, sensitive data in Secrets, and use direct values only for truly static, non-sensitive settings. This separation makes it easy to update configuration without redeploying applications.
+Portainer makes it easy to configure direct values, ConfigMap references, and Secret references through the form interface, and its YAML editor lets you use those patterns plus downward API fields. For best practices, store configuration in ConfigMaps, sensitive data in Secrets, and use direct values only for truly static, non-sensitive settings. This separation makes configuration easier to manage, but changes to ConfigMaps or Secrets used as environment variables only take effect after the pod is recreated or restarted.
