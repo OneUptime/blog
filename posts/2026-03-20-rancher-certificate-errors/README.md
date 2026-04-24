@@ -22,7 +22,7 @@ Certificate errors are among the most disruptive issues in a Rancher deployment.
 ```bash
 # Check certificate details from the command line
 
-echo | openssl s_client -connect <rancher-hostname>:443 2>/dev/null \
+echo | openssl s_client -connect <rancher-hostname>:443 -servername <rancher-hostname> 2>/dev/null \
   | openssl x509 -noout -text | grep -E "Subject:|Issuer:|Not Before:|Not After:"
 
 # Check the Kubernetes TLS secret directly
@@ -33,7 +33,7 @@ kubectl get secret -n cattle-system tls-rancher-ingress -o json \
 
 ## Step 2: Check cert-manager Status
 
-Most Rancher installations use cert-manager to issue and renew certificates automatically.
+Rancher deployments using Rancher-generated or Let's Encrypt certificates use cert-manager to issue and renew certificates automatically.
 
 ```bash
 # Check cert-manager pods
@@ -50,18 +50,15 @@ kubectl get certificaterequest -n cattle-system
 kubectl describe certificaterequest -n cattle-system <request-name>
 
 # Check cert-manager logs for errors
-kubectl logs -n cert-manager -l app=cert-manager --tail=100
+kubectl logs -n cert-manager -l app.kubernetes.io/instance=cert-manager \
+  --all-containers --tail=100
 ```
 
 ## Step 3: Force Certificate Renewal
 
 ```bash
-# Annotate the certificate to trigger immediate renewal
-kubectl annotate certificate -n cattle-system tls-rancher-ingress \
-  cert-manager.io/issue-temporary-certificate=true
-
-# Or delete the secret to force re-issuance (cert-manager will recreate it)
-kubectl delete secret -n cattle-system tls-rancher-ingress
+# Manually trigger renewal
+cmctl renew -n cattle-system tls-rancher-ingress
 
 # Watch the renewal progress
 kubectl get certificate -n cattle-system -w
@@ -70,26 +67,25 @@ kubectl get certificate -n cattle-system -w
 ## Step 4: Troubleshoot Let's Encrypt Issuance
 
 ```bash
-# Check the ClusterIssuer configuration
-kubectl get clusterissuer letsencrypt-prod -o yaml
+# Check the Rancher Issuer configuration
+kubectl get issuer -n cattle-system
+kubectl describe issuer -n cattle-system <issuer-name>
 
-# Verify ACME account registration
-kubectl describe clusterissuer letsencrypt-prod | grep -A5 "Status:"
+# Check the ACME Order and Challenge resources
+kubectl get orders,challenges -n cattle-system
+kubectl describe challenge -n cattle-system <challenge-name>
 
-# Check the ACME Challenge
-kubectl get challenge -n cattle-system
-
-# The Let's Encrypt DNS-01 or HTTP-01 challenge must succeed
-# HTTP-01 requires port 80 to be accessible from the internet
-curl -v http://<rancher-hostname>/.well-known/acme-challenge/test
+# Rancher's Let's Encrypt integration uses HTTP-01
+# Port 80 must be accessible from the internet
+curl -I http://<rancher-hostname>
 ```
 
 ## Step 5: Troubleshoot Self-Signed or Private CA
 
 ```bash
 # If using a private CA, check the CA secret
-kubectl get secret -n cattle-system tls-rancher-ingress-ca -o json \
-  | jq -r '.data["tls.crt"]' | base64 -d \
+kubectl get secret -n cattle-system tls-ca -o json \
+  | jq -r '.data["cacerts.pem"]' | base64 -d \
   | openssl x509 -noout -subject -issuer -dates
 
 # Verify the CA cert matches the server cert's issuer
@@ -120,7 +116,13 @@ kubectl create secret tls tls-rancher-ingress \
   -n cattle-system \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Restart Rancher to pick up the new certificate
+# If the certificate was signed by a different private CA, update tls-ca too
+kubectl create secret generic tls-ca \
+  --from-file=cacerts.pem \
+  -n cattle-system \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Restart Rancher only when the tls-ca secret changed
 kubectl rollout restart deployment/rancher -n cattle-system
 
 # Watch the rollout
@@ -132,18 +134,17 @@ kubectl rollout status deployment/rancher -n cattle-system
 When the CA certificate changes, agents must be updated with the new checksum:
 
 ```bash
-# Calculate the new CA checksum
-CA_CHECKSUM=$(kubectl get secret -n cattle-system tls-rancher-ingress -o json \
-  | jq -r '.data["tls.crt"]' | base64 -d | sha256sum | awk '{print $1}')
+# Calculate the new CA checksum from Rancher's published CA bundle
+CA_CHECKSUM=$(curl -k -s -fL https://<rancher-hostname>/v3/settings/cacerts \
+  | jq -r .value | sha256sum | awk '{print $1}')
 
-# Update the cattle-cluster-agent with the new checksum
+# Using the kubeconfig for each downstream cluster, update both Rancher agents
 kubectl set env deployment/cattle-cluster-agent -n cattle-system \
   CATTLE_CA_CHECKSUM="${CA_CHECKSUM}"
-
-# Restart the agent
-kubectl rollout restart deployment/cattle-cluster-agent -n cattle-system
+kubectl set env daemonset/cattle-node-agent -n cattle-system \
+  CATTLE_CA_CHECKSUM="${CA_CHECKSUM}"
 ```
 
 ## Conclusion
 
-Certificate errors in Rancher cascade quickly, impacting UI access, agent connectivity, and cluster availability. The key is to quickly determine whether the issue is expiry, trust, or issuance - then target the right solution. Keep cert-manager healthy, monitor certificate expiry proactively (Rancher's monitoring stack can alert on this), and ensure all agents trust your CA to maintain a smooth-running environment.
+Certificate errors in Rancher cascade quickly, impacting UI access, agent connectivity, and cluster availability. The key is to quickly determine whether the issue is expiry, trust, or issuance - then target the right solution. Keep cert-manager healthy, monitor certificate expiry proactively, and ensure all agents trust your CA to maintain a smooth-running environment.
