@@ -39,7 +39,7 @@ curl -X POST https://portainer.example.com/api/auth \
 
 ## Fix 1: Use --trusted-origins Flag (Recommended)
 
-Add the `--trusted-origins` flag to your Portainer startup command:
+Add the `--trusted-origins` flag to your Portainer startup command. This option was added in Portainer 2.27.9 LTS and 2.31.3 STS. Pass hostnames only - do not include `https://`, a path, or a port:
 
 ```bash
 # Docker run
@@ -48,13 +48,13 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
-  --trusted-origins=https://portainer.example.com
+  --trusted-origins=portainer.example.com
 
 # Multiple origins (comma-separated)
 docker run -d \
   --name portainer \
   portainer/portainer-ce:latest \
-  --trusted-origins=https://portainer.example.com,https://portainer.internal.example.com
+  --trusted-origins=portainer.example.com,portainer.internal.example.com
 ```
 
 ### In Docker Compose
@@ -63,7 +63,7 @@ docker run -d \
   portainer:
     image: portainer/portainer-ce:latest
     command:
-      - "--trusted-origins=https://portainer.example.com"
+      - "--trusted-origins=portainer.example.com"
 ```
 
 ### In Docker Swarm Stack
@@ -72,7 +72,7 @@ docker run -d \
   portainer:
     image: portainer/portainer-ce:latest
     command:
-      - "--trusted-origins=https://portainer.example.com"
+      - "--trusted-origins=portainer.example.com"
     deploy:
       placement:
         constraints:
@@ -81,46 +81,41 @@ docker run -d \
 
 ## Fix 2: Ensure X-Forwarded-Proto Is Set Correctly
 
-Portainer also checks that the scheme in the `Origin` matches what it expects. Make sure your reverse proxy sets the correct `X-Forwarded-Proto` header:
+Portainer also checks whether the original browser request was HTTPS. Make sure your reverse proxy sets the correct `X-Forwarded-Proto` header:
 
 ### Nginx
 
 ```nginx
 proxy_set_header X-Forwarded-Proto $scheme;
-proxy_set_header X-Forwarded-Host $host;
 ```
 
 ### Traefik
 
-Traefik sets these headers automatically. Verify with:
-```bash
-docker exec traefik-container wget -q -O- http://portainer:9000/api/system/status
-```
+Traefik typically forwards this header automatically.
 
 ### Apache
 
 ```apache
 RequestHeader set X-Forwarded-Proto "https"
-RequestHeader set X-Forwarded-Host "portainer.example.com"
 ```
 
 ## Fix 3: Check for Double-Encoding or Path Prefix Issues
 
-If Portainer is served on a subpath (e.g., `/portainer/`), the origin may mismatch because of the path. Use `--base-url` alongside `--trusted-origins`:
+If Portainer is served on a subpath (e.g., `/portainer/`), use `--base-url` so Portainer generates the correct paths behind the reverse proxy. This is separate from origin validation, so use it alongside `--trusted-origins`:
 
 ```yaml
     command:
       - "--base-url=/portainer"
-      - "--trusted-origins=https://example.com"
+      - "--trusted-origins=example.com"
 ```
 
-## Fix 4: Wildcard Trusted Origins (Not Recommended for Production)
+## Fix 4: Wildcard Trusted Origins Are Not Supported
 
-For debugging only, you can trust all origins:
+Portainer expects an explicit comma-separated list of trusted hostnames. `*` is not a supported catch-all value, so list each hostname you want to trust:
 
 ```bash
-# WARNING: Disables CSRF protection - only use in isolated dev environments
-docker run portainer/portainer-ce:latest --trusted-origins='*'
+docker run portainer/portainer-ce:latest \
+  --trusted-origins=portainer.example.com,portainer.internal.example.com
 ```
 
 ## Verifying the Fix
@@ -138,4 +133,4 @@ curl -X POST https://portainer.example.com/api/auth \
 
 ## Conclusion
 
-The "Origin invalid" error is a security feature protecting Portainer from CSRF attacks, not a bug. The correct fix is to explicitly configure `--trusted-origins` with the URL your users access Portainer through. Always use the exact URL including scheme and hostname, matching what appears in users' browser address bars.
+The "Origin invalid" error is a security feature protecting Portainer from CSRF attacks, not a bug. The correct fix is to explicitly configure `--trusted-origins` with the hostname your users access Portainer through. If you are serving Portainer from a subpath, pair that with `--base-url`.
