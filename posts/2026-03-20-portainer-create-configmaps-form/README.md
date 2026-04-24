@@ -31,10 +31,9 @@ For sensitive data (passwords, tokens, keys), use Secrets instead.
 ## Step 1: Navigate to ConfigMaps in Portainer
 
 1. Select your Kubernetes environment in Portainer
-2. Select the target **namespace** from the dropdown
-3. In the sidebar, navigate to **ConfigMaps & Secrets**
-4. Click on the **ConfigMaps** tab
-5. Click **+ Add ConfigMap** or **+ Add with form**
+2. In the sidebar, navigate to **ConfigMaps & Secrets**
+3. Click on the **ConfigMaps** tab
+4. Click **Add with form**
 
 ## Step 2: Fill in the ConfigMap Form
 
@@ -42,7 +41,7 @@ The ConfigMap creation form has the following fields:
 
 ```text
 Name:              my-app-config
-Namespace:         production        (auto-filled from namespace selector)
+Namespace:         production        (selected in the form)
 
 Data entries:
   Key: DATABASE_HOST    Value: postgres.production.svc.cluster.local
@@ -57,11 +56,10 @@ Click **+ Add entry** to add more key-value pairs.
 
 ## Step 3: Add Multi-line Values
 
-For configuration files stored in a ConfigMap, use the multi-line value editor:
+For configuration files stored in a ConfigMap, switch the Data section to **Advanced mode** and enter the values as YAML:
 
-```nginx
-Key: nginx.conf
-Value: (multi-line text)
+```yaml
+nginx.conf: |
   server {
       listen 80;
       server_name _;
@@ -73,9 +71,8 @@ Value: (multi-line text)
   }
 ```
 
-```text
-Key: application.properties
-Value:
+```yaml
+application.properties: |
   spring.datasource.url=jdbc:postgresql://postgres:5432/mydb
   spring.datasource.driver-class-name=org.postgresql.Driver
   server.port=8080
@@ -121,7 +118,13 @@ metadata:
   name: my-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: my-app
@@ -153,7 +156,7 @@ To modify an existing ConfigMap in Portainer:
 3. Modify key-value pairs
 4. Click **Update ConfigMap**
 
-Note: Updating a ConfigMap does not automatically restart pods. Pods read ConfigMap values at startup (for `envFrom`) or with a sync delay (for volume mounts). To apply changes immediately:
+Note: Updating a ConfigMap does not automatically restart pods. Pods using ConfigMaps for environment variables (`env` or `envFrom`) do not see updates automatically. Mounted ConfigMaps are updated eventually, except when mounted with `subPath`. To apply changes immediately:
 
 ```bash
 # Restart the deployment to pick up new ConfigMap values
@@ -171,12 +174,13 @@ Before deleting a ConfigMap, ensure no pods reference it:
 # Check which pods use the ConfigMap
 kubectl get pods -n production -o json | \
   jq -r '.items[] | select(
-    .spec.containers[].envFrom[]?.configMapRef.name == "my-app-config"
-    or .spec.volumes[]?.configMap.name == "my-app-config"
+    any((.spec.initContainers // [])[]?; any((.envFrom // [])[]?; .configMapRef.name? == "my-app-config") or any((.env // [])[]?; .valueFrom.configMapKeyRef.name? == "my-app-config"))
+    or any((.spec.containers // [])[]?; any((.envFrom // [])[]?; .configMapRef.name? == "my-app-config") or any((.env // [])[]?; .valueFrom.configMapKeyRef.name? == "my-app-config"))
+    or any((.spec.volumes // [])[]?; .configMap.name? == "my-app-config" or any((.projected.sources // [])[]?; .configMap.name? == "my-app-config"))
   ) | .metadata.name'
 ```
 
-In Portainer: find the ConfigMap, click the delete icon, and confirm.
+In Portainer: select the ConfigMap, click **Remove**, and confirm.
 
 ## Conclusion
 
