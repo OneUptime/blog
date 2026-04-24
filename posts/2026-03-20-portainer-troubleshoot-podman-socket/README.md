@@ -32,35 +32,32 @@ ls -la /run/user/$(id -u)/podman/podman.sock  # rootless
 ```bash
 # Test rootful Podman socket
 curl --unix-socket /run/podman/podman.sock \
-  http://localhost/v1.41/info
+  http://localhost/v1.40/info
 
-# Expected: JSON response with Podman version info
+# Expected: JSON response with Podman system info
 # If error: socket doesn't exist or service not running
 ```
 
 ## Step 3: Fix "Permission Denied" on the Socket
 
-Portainer's container user may not have access to the Podman socket:
+Portainer may not have access to the Podman socket because of file permissions or container security settings:
 
 ```bash
 # Check socket permissions
 ls -la /run/podman/podman.sock
-# Typical: srw-rw---- 1 root podman
+# Typical default mode: srw-rw----
 
-# Option 1: Make socket world-readable (testing only)
+# Option 1: Make socket world-readable (temporary testing only)
 sudo chmod 666 /run/podman/podman.sock
 
-# Option 2: Add the group that has socket access to Portainer
-# Find the GID of the podman group
-getent group podman
-
-# Run Portainer with that supplemental group
-docker run -d \
+# Option 2: If Portainer Server is running on Podman,
+# use the supported Podman deployment pattern
+podman run -d \
   --name portainer \
-  --group-add $(getent group podman | cut -d: -f3) \
+  --privileged \
   -v /run/podman/podman.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 4: Fix "No Such File or Directory" - Enable the Socket Service
@@ -84,28 +81,14 @@ Podman's Docker-compatible API may not implement every endpoint:
 
 ```bash
 # Check Podman's supported API version
-curl --unix-socket /run/podman/podman.sock http://localhost/version | jq .ApiVersion
+curl --unix-socket /run/podman/podman.sock http://localhost/version | jq -r '.ApiVersion // .APIVersion'
 
 # Check what Portainer is requesting
-docker logs portainer 2>&1 | grep -i "api version\|podman\|v1\." | tail -20
+podman logs portainer 2>&1 | grep -i "api version\|podman\|v1\." | tail -20
 ```
 
-If there's a version mismatch, set the API version explicitly:
+Podman documents Docker API compatibility as v1.40, and the server does not reject unsupported version numbers. If Portainer logs show missing or unsupported endpoints, verify that you are using a supported Portainer/Podman combination before troubleshooting further.
 
-```bash
-# Portainer can be configured to use a specific API version
-# Add to Portainer startup: --env DOCKER_API_VERSION=1.41
-```
+## Step 6: Rootless Podman Is Not Officially Supported
 
-## Step 6: Rootless Socket Inside Docker Container
-
-For rootless Podman with Portainer running in Docker:
-
-```bash
-# Map the user-specific socket into the Portainer container
-docker run -d \
-  --name portainer \
-  -v /run/user/$(id -u)/podman/podman.sock:/var/run/docker.sock \
-  -v portainer_data:/data \
-  portainer/portainer-ce:latest
-```
+Portainer documents rootless Podman as not officially supported. Portainer also documents that Podman environments cannot be added via socket when the Portainer Server is running on Docker. For socket-based connections, use a local rootful Podman socket.
