@@ -38,53 +38,58 @@ Error: toomanyrequests: You have reached your pull rate limit
 First, determine which registry is failing:
 
 ```bash
-# Check the image name to identify the registry
-docker pull myorg/myimage:latest          # Docker Hub
-docker pull registry.company.com/...      # Private custom registry
-docker pull 123456.dkr.ecr.*.amazonaws.com/... # AWS ECR
-docker pull myregistry.azurecr.io/...    # Azure ACR
-docker pull gcr.io/... or *.pkg.dev/...  # Google Cloud
-docker pull ghcr.io/...                  # GitHub GHCR
-docker pull registry.gitlab.com/...      # GitLab
+# Check the image reference to identify the registry
+IMAGE=myorg/myimage:latest                                      # Docker Hub
+IMAGE=registry.company.com/project/myimage:latest               # Private custom registry
+IMAGE=123456789012.dkr.ecr.us-east-1.amazonaws.com/myimage:latest # AWS ECR
+IMAGE=myregistry.azurecr.io/myimage:latest                      # Azure ACR
+IMAGE=gcr.io/my-project/myimage:latest                          # Google Container Registry
+IMAGE=us-west1-docker.pkg.dev/my-project/myrepo/myimage:latest  # Google Artifact Registry
+IMAGE=ghcr.io/myorg/myimage:latest                              # GitHub GHCR
+IMAGE=registry.gitlab.com/group/project/myimage:latest          # GitLab
 ```
 
 ## Step 2: Test Registry Connectivity
 
 ```bash
 # Basic connectivity test
-curl -I https://registry.company.com/v2/
+curl -i https://registry.company.com/v2/
 
 # Expected responses:
 # 200 OK: Registry is up and auth is not required
 # 401 Unauthorized: Registry is up, auth is required (normal)
-# 000 or connection refused: Registry is down or wrong URL
-# 403 Forbidden: Auth failed
+# 404 Not Found: Wrong URL or not a v2 registry endpoint
+# 000 or connection refused: Registry is down, blocked, or wrong URL
+# 403 Forbidden: Request reached the endpoint but access is being blocked by a proxy or policy
 ```
 
 ## Step 3: Test Credentials Directly
 
 ```bash
-# Test credentials without Docker
-curl -u "username:password" https://registry.company.com/v2/_catalog
+# Custom Docker Registry-compatible registry with basic auth
+curl -i -u "username:password" https://registry.company.com/v2/
 
-# Docker Hub
-curl -u "username:password" https://hub.docker.com/v2/repositories/
+# Docker Hub - use a personal access token, not your account password
+printf '%s' "$DOCKERHUB_PAT" | docker login --username username --password-stdin
 
-# AWS ECR - first get a token
-TOKEN=$(aws ecr get-login-password --region us-east-1)
-curl -u "AWS:$TOKEN" https://123456.dkr.ecr.us-east-1.amazonaws.com/v2/_catalog
+# AWS ECR HTTP API - use an authorization token
+REPOSITORY=myimage
+TOKEN=$(aws ecr get-authorization-token --output text --query 'authorizationData[].authorizationToken')
+curl -i -H "Authorization: Basic $TOKEN" \
+  https://123456789012.dkr.ecr.us-east-1.amazonaws.com/v2/$REPOSITORY/tags/list
 
-# Azure ACR
-curl -u "username:password" https://myregistry.azurecr.io/v2/_catalog
+# Azure ACR - test the exact username/password with docker login
+printf '%s' "$ACR_PASSWORD" | docker login myregistry.azurecr.io \
+  --username "$ACR_USERNAME" --password-stdin
 ```
 
 ## Step 4: Test with Docker Login
 
 ```bash
 # Test the exact credentials Portainer would use
-docker login registry.company.com \
+printf '%s' 'mypassword' | docker login registry.company.com \
   --username portainer-user \
-  --password mypassword
+  --password-stdin
 
 # If this fails, the issue is in your credentials, not Portainer
 ```
@@ -99,9 +104,9 @@ docker login registry.company.com \
 Common mistakes to check:
 
 - Extra spaces before/after the username or password
-- Password contains special characters that need escaping
-- Wrong username format (e.g., GitLab robot accounts need `robot$` prefix)
-- Token vs password mixed up
+- Token or password copied incompletely, or pasted with hidden whitespace
+- Wrong username format (e.g., Harbor robot accounts use `robot$`; GitLab deploy tokens usually use `gitlab+deploy-token-<n>` unless you set a custom username)
+- Token vs password mixed up (for example, Docker Hub in Portainer expects a personal access token)
 
 ## Step 6: Diagnose SSL/TLS Issues
 
@@ -122,29 +127,32 @@ sudo systemctl restart docker
 
 ## Step 7: Diagnose Token Expiration (ECR/ACR)
 
-ECR tokens expire every 12 hours:
+ECR authorization tokens expire every 12 hours:
 
 ```bash
-# Check if ECR token is still valid
-aws ecr describe-repositories --region us-east-1
+# Get a fresh ECR password and test it immediately
+aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin \
+  123456789012.dkr.ecr.us-east-1.amazonaws.com
 
-# If this works but Docker fails, the stored token is expired
-# Refresh: re-run the ECR token and update Portainer registry credentials
+# If this works but Portainer still fails, check how the registry was added:
+# - AWS ECR registry in Portainer: verify AWS Access Key, Secret Access Key,
+#   region, and IAM permissions
+# - Custom registry pointing at ECR: refresh the temporary ECR password/token
 
-# Azure ACR - check if service principal is valid
-az ad sp show --id <service-principal-id>
-# Check "accountEnabled" and "appOwnerOrganizationId"
+# Azure ACR - check registry connectivity and local auth prerequisites
+az acr check-health -n myregistry -y
+# If you use a service principal, also verify its secret is still valid and it
+# still has pull access to the registry (for example, AcrPull or the equivalent
+# repository reader role)
 ```
 
 ## Step 8: Check DNS Resolution
 
 ```bash
-# Verify DNS resolves correctly
+# Run these on the Docker host or the Portainer Agent node
 nslookup registry.company.com
 dig registry.company.com
-
-# From inside a Portainer container
-docker exec -it portainer nslookup registry.company.com
 ```
 
 If DNS fails from the Docker host, images cannot be pulled.
@@ -205,7 +213,7 @@ registry.company.com//myimage           # Double slash
 
 ```bash
 [ ] Registry URL is correct (no trailing slash, correct port)
-[ ] Username is correct (check for robot$ prefix for Harbor/GitLab)
+[ ] Username is correct (for example, Harbor robot accounts use `robot$`; GitLab deploy tokens use their deploy-token username)
 [ ] Password/token is current (not expired)
 [ ] Network connectivity to registry from Docker host
 [ ] DNS resolves correctly
