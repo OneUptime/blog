@@ -12,10 +12,10 @@ Storing Portainer templates in a Git repository provides version control, collab
 
 ## Prerequisites
 
-- Portainer CE or BE 2.x+
+- Portainer 2.x+ (use Portainer Business Edition if you want custom template variables)
 - A Git repository with Docker Compose files (GitHub, GitLab, Gitea, Bitbucket)
 - Portainer network access to the Git host
-- (For private repos) A personal access token with read access
+- (For private repos) Credentials or a token with repository read access
 
 ## Repository Structure
 
@@ -43,27 +43,27 @@ portainer-templates/
 
 ## Step 1: Prepare Your Compose File in Git
 
-Create a Compose file with Mustache variables where customization is needed:
+Create a Compose file with Mustache variables where customization is needed. Define default values in Portainer when you create the template:
 
 ```yaml
 # stacks/monitoring/docker-compose.yml
 
 services:
   prometheus:
-    image: prom/prometheus:{{ .prometheus_tag | default "latest" }}
+    image: prom/prometheus:latest
     ports:
-      - "{{ .prometheus_port | default "9090" }}:9090"
+      - "{{ prometheus_port }}:9090"
     volumes:
       - prometheus-data:/prometheus
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:{{ .grafana_tag | default "latest" }}
+    image: grafana/grafana:latest
     ports:
-      - "{{ .grafana_port | default "3000" }}:3000"
+      - "{{ grafana_port }}:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD={{ .admin_password }}
-      - GF_SERVER_ROOT_URL=https://{{ .domain }}/grafana
+      - GF_SECURITY_ADMIN_PASSWORD={{ admin_password }}
+      - GF_SERVER_ROOT_URL=https://{{ domain }}/grafana
     volumes:
       - grafana-data:/var/lib/grafana
     depends_on:
@@ -79,8 +79,8 @@ Commit and push this file to your repository.
 
 ## Step 2: Create the Custom Template in Portainer
 
-1. Go to **App Templates > Custom templates**
-2. Click **+ Add custom template**
+1. Go to **Templates > Custom**
+2. Click **Add Custom Template**
 3. Select **Repository** as the build method
 
 ## Step 3: Fill in Repository Details
@@ -89,12 +89,12 @@ Commit and push this file to your repository.
 |-------|-------|
 | Repository URL | `https://github.com/myorg/portainer-templates` |
 | Repository reference | `refs/heads/main` |
-| Compose file path | `stacks/monitoring/docker-compose.yml` |
+| Compose path | `stacks/monitoring/docker-compose.yml` |
 | Authentication | Toggle ON for private repos |
-| Username | Your Git username (if private) |
-| Personal access token | Your PAT (if private) |
+| Username | Your Git username or token username (if private) |
+| Personal access token | Your personal access token or password (if private) |
 
-For GitHub personal access tokens, create one at **Settings → Developer settings → Personal access tokens** with `repo:read` scope.
+For GitHub personal access tokens, create one at **Settings → Developer settings → Personal access tokens** with either the classic `repo` scope or a fine-grained token scoped to the target repository with **Contents: Read-only**.
 
 ## Step 4: Add Template Metadata
 
@@ -102,14 +102,14 @@ For GitHub personal access tokens, create one at **Settings → Developer settin
 Title:       Monitoring Stack (Prometheus + Grafana)
 Description: Production-ready monitoring with alerting
 
-Categories:  monitoring, observability
-Platform:    linux
-Type:        Stack
+Note:        Includes Prometheus and Grafana
+Platform:    Linux
+Type:        Standalone / Podman
 ```
 
 ## Step 5: Configure Template Variables
 
-Add variable definitions matching the Mustache variables in your Compose file:
+Add variable definitions matching the Mustache variables in your Compose file. This feature is available in Portainer Business Edition:
 
 ```text
 Variable 1:
@@ -139,17 +139,17 @@ Variable 4:
 
 ## Step 6: Save the Template
 
-Click **Create custom template**. Portainer fetches the Compose file from the repository to validate it, then saves the template.
+Click **Create custom template**. Portainer clones the repository, verifies that the referenced Compose file exists, and then saves the template.
 
 ## Updating Templates from Git
 
-When you update the Compose file in your repository, users get the latest version next time they deploy the template. Portainer fetches the file fresh from the repository each time a template is deployed.
+If your template points to a moving reference such as `refs/heads/main`, users get the version at that reference the next time they deploy the template. If you point to a tag such as `refs/tags/v2.0.0`, deployments stay pinned to that tag until you change the repository reference.
 
 To update the template configuration itself (variables, metadata):
 
 1. Go to **Custom templates**
 2. Click **Edit** on the template
-3. Update the repository URL, branch, path, or variable definitions
+3. Update the repository URL, reference, path, or variable definitions
 4. Save
 
 ## Using Tags for Stable Template Versions
@@ -172,10 +172,9 @@ refs/heads/staging       # Staging template branch
 ### GitHub Personal Access Token
 
 ```bash
-# Create a fine-grained PAT with:
-
-# Repository: read access to Contents
-# No other permissions needed
+# Create either:
+# - A classic PAT with the repo scope
+# - A fine-grained PAT scoped to the target repository with Contents: Read-only
 ```
 
 ### GitLab Deploy Token
@@ -189,12 +188,12 @@ refs/heads/staging       # Staging template branch
 
 ```bash
 # Create at: User Settings → Applications → Generate Token
-# No special scope needed for public repos
+# Use a token or password with read access to the repository
 ```
 
 ## Multiple Portainer Instances
 
-Git-based templates shine when managing multiple Portainer instances. Since templates are stored centrally in Git, all instances can reference the same repository and always get the latest templates without manual synchronization.
+Git-based templates shine when managing multiple Portainer instances. Since templates are stored centrally in Git, all instances can reference the same repository and deploy the same versioned templates without manual synchronization.
 
 ## Conclusion
 
