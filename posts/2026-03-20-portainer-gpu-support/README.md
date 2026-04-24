@@ -24,13 +24,14 @@ Before configuring in Portainer, the host must have the NVIDIA Container Toolkit
 ```bash
 # Install NVIDIA Container Toolkit (Ubuntu/Debian)
 
-# Add NVIDIA package repositories
-
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | \
-    sudo apt-key add -
-curl -s -L "https://nvidia.github.io/nvidia-docker/${distribution}/nvidia-docker.list" | \
-    sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+# Install prerequisites and add the NVIDIA package repository
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg2
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+    sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+    sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
 # Install the toolkit
 sudo apt-get update
@@ -45,11 +46,11 @@ sudo systemctl restart docker
 
 ```bash
 # For RHEL/CentOS/Fedora:
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-curl -s -L https://nvidia.github.io/nvidia-docker/${distribution}/nvidia-docker.repo | \
-    sudo tee /etc/yum.repos.d/nvidia-docker.repo
+sudo dnf install -y curl
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo | \
+    sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo
 
-sudo yum install -y nvidia-container-toolkit
+sudo dnf install -y nvidia-container-toolkit
 sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
 ```
@@ -58,7 +59,7 @@ sudo systemctl restart docker
 
 ```bash
 # Test GPU access from a container (without Portainer first):
-docker run --rm --gpus all nvidia/cuda:12.3.0-base-ubuntu22.04 nvidia-smi
+docker run --rm --gpus all ubuntu nvidia-smi
 
 # Expected output (example):
 +-----------------------------------------------------------------------------+
@@ -74,12 +75,10 @@ docker run --rm --gpus all nvidia/cuda:12.3.0-base-ubuntu22.04 nvidia-smi
 
 ## Step 3: Enable GPU in Portainer (Docker Compose / Stack)
 
-In Portainer, configure GPU access via the **Deploy resources** section in a stack:
+In Portainer on a Docker Standalone environment, configure GPU access in the stack's Compose file under `deploy.resources`:
 
 ```yaml
 # gpu-workload-stack.yml
-version: "3.8"
-
 services:
   # ML inference service with GPU access
   inference:
@@ -95,7 +94,6 @@ services:
               count: all
               capabilities: [gpu]
     environment:
-      - CUDA_VISIBLE_DEVICES=0
       - MODEL_PATH=/models/my-model
     volumes:
       - model_data:/models
@@ -112,7 +110,7 @@ services:
             # Reserve a specific GPU by index
             - driver: nvidia
               device_ids: ["0"]   # GPU 0 only
-              capabilities: [gpu, compute, utility]
+              capabilities: [gpu]
     command: python train.py --epochs 100 --batch-size 32
 
 volumes:
@@ -121,7 +119,7 @@ volumes:
 
 ## Step 4: Enable GPU for Individual Containers
 
-For a single container (not a stack), Portainer BE allows GPU configuration in the container creation form:
+For a single container (not a stack) on a Docker Standalone environment, Portainer BE allows GPU configuration in the container creation form. If the GPU section is missing, first enable **Show GPU in the UI** and add the GPU under **Environment details > Setup**:
 
 1. Navigate to **Containers > Add container**.
 2. Scroll to **Runtime & Resources**.
@@ -133,7 +131,6 @@ The equivalent Docker CLI:
 ```bash
 # Access all GPUs:
 docker run --gpus all \
-  -e CUDA_VISIBLE_DEVICES=all \
   myorg/ml-app:latest
 
 # Access specific GPU by index:
@@ -199,12 +196,14 @@ services:
   ffmpeg-transcoder:
     image: jrottenberg/ffmpeg:5.1-nvidia
     restart: unless-stopped
+    environment:
+      - NVIDIA_DRIVER_CAPABILITIES=video,utility
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              capabilities: [gpu, video]  # Enable video encode/decode
+              capabilities: [gpu]
 ```
 
 ## Step 6: Monitor GPU Usage
@@ -232,15 +231,16 @@ nvidia-smi dmon -s u   # Utilization monitoring
 ```bash
 # Error: "could not select device driver "nvidia" with capabilities: [[gpu]]"
 # Fix: ensure NVIDIA Container Toolkit is installed and configured
-nvidia-ctk runtime configure --runtime=docker && systemctl restart docker
+sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker
 
 # Error: "Failed to initialize NVML"
 # Fix: check NVIDIA driver installation
 nvidia-smi   # Should work on the host
 
 # Error: GPU not visible inside container
-# Fix: check CUDA_VISIBLE_DEVICES env var
-# Set to "all" or specific GPU index
+# Fix: check the container GPU request and any CUDA_VISIBLE_DEVICES restriction
+# If CUDA_VISIBLE_DEVICES is set, use a comma-separated list like "0" or "0,1",
+# or unset it to expose all GPUs requested by --gpus / Compose
 ```
 
 ## Conclusion
