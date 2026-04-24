@@ -15,7 +15,7 @@ Postfix transport maps let you route outbound email for specific recipient domai
 Transport maps override Postfix's default routing. Each entry maps a recipient domain or address to a delivery mechanism (transport and optional relay host).
 
 ```text
-Format: <pattern>  <transport>:[<nexthop>]
+Format: <pattern>  <transport>:<nexthop>
 ```
 
 Common transports:
@@ -38,8 +38,8 @@ subsidiary.org    smtp:[10.0.1.20]:25
 # Route all mail for a domain through a cloud relay on port 587
 newsletter.com    smtp:[smtp.mailgun.org]:587
 
-# Explicitly route internal domain mail locally (no relay)
-internal.example.com  smtp:[127.0.0.1]:25
+# Do not override routing for internal domain mail
+internal.example.com  :
 
 # Catch-all: route everything else through the primary relay
 *                 smtp:[10.0.0.1]:25
@@ -50,8 +50,8 @@ internal.example.com  smtp:[127.0.0.1]:25
 ## Step 2: Hash the Transport Map
 
 ```bash
-# Convert the text file to a Berkeley DB hash that Postfix can read
-postmap /etc/postfix/transport
+# Build the hash map that matches main.cf
+postmap hash:/etc/postfix/transport
 
 # Verify the DB was created
 ls -la /etc/postfix/transport.db
@@ -69,10 +69,10 @@ transport_maps = hash:/etc/postfix/transport
 inet_protocols = ipv4
 ```
 
-## Step 4: Reload Postfix
+## Step 4: Restart Postfix
 
 ```bash
-postfix check && systemctl reload postfix
+postfix check && systemctl restart postfix
 ```
 
 ## Authentication for Each Relay
@@ -87,7 +87,7 @@ If different relays require different credentials, use `smtp_sasl_password_maps`
 ```
 
 ```bash
-postmap /etc/postfix/sasl_passwd
+postmap hash:/etc/postfix/sasl_passwd
 chmod 600 /etc/postfix/sasl_passwd /etc/postfix/sasl_passwd.db
 ```
 
@@ -95,14 +95,14 @@ chmod 600 /etc/postfix/sasl_passwd /etc/postfix/sasl_passwd.db
 # /etc/postfix/main.cf
 smtp_sasl_auth_enable = yes
 smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
-smtp_sasl_security_options = noanonymous
+smtp_sasl_tls_security_options = noanonymous
 smtp_tls_security_level = encrypt
 ```
 
 ## Testing a Specific Route
 
 ```bash
-# Test routing for a specific domain using the mailq and sendmail command
+# Test routing for a specific domain with sendmail
 echo "Test routing" | sendmail -v test@partner.com
 
 # Watch the mail log to see which relay is used
