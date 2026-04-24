@@ -45,8 +45,9 @@ Or via the Portainer API:
 ```bash
 # Stop container by ID
 
+API_KEY="your_access_token"
 CONTAINER_ID="abc123def456"
-curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+curl -s -X POST -H "X-API-Key: $API_KEY" \
   "https://portainer.example.com/api/endpoints/1/docker/containers/${CONTAINER_ID}/stop"
 ```
 
@@ -56,19 +57,19 @@ Before removing the container, capture its current configuration so you can recr
 
 ```bash
 # Get container inspect to see current config
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -s -H "X-API-Key: $API_KEY" \
   "https://portainer.example.com/api/endpoints/1/docker/containers/${CONTAINER_ID}/json" \
-  | jq '{Image: .Config.Image, Env: .Config.Env, Ports: .HostConfig.PortBindings, Mounts: .Mounts}'
+  | jq '{Image: .Config.Image, Env: .Config.Env, ExposedPorts: .Config.ExposedPorts, PortBindings: .HostConfig.PortBindings, Mounts: .Mounts}'
 ```
 
-Note the volume mounts in the `Mounts` array. You will recreate the container omitting the volume you want to detach.
+Note the volume mounts in the `Mounts` array. You will recreate the container omitting the volume you want to detach while preserving the settings you still need, such as `ExposedPorts`, environment variables, and port bindings.
 
 ## Step 4: Remove the Container
 
 ```bash
 # Remove the stopped container (volume data is preserved)
-curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/endpoints/1/docker/containers/${CONTAINER_ID}?force=false"
+curl -s -X DELETE -H "X-API-Key: $API_KEY" \
+  "https://portainer.example.com/api/endpoints/1/docker/containers/${CONTAINER_ID}?force=false&v=false"
 ```
 
 In the Portainer UI:
@@ -89,33 +90,40 @@ Via the Portainer API:
 
 ```bash
 # Create container without the previously attached volume
-curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+CREATE_RESPONSE=$(curl -s -X POST -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
   "https://portainer.example.com/api/endpoints/1/docker/containers/create?name=myapp" \
   -d '{
     "Image": "myapp:latest",
     "Env": ["APP_ENV=production"],
+    "ExposedPorts": {
+      "3000/tcp": {}
+    },
     "HostConfig": {
       "PortBindings": {
         "3000/tcp": [{"HostPort": "3000"}]
       }
-      # Note: Binds array is omitted to detach the volume
     }
-  }'
+  }')
+
+NEW_CONTAINER_ID=$(printf '%s' "$CREATE_RESPONSE" | jq -r '.Id')
 
 # Start the new container
-curl -s -X POST -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/endpoints/1/docker/containers/myapp/start"
+curl -s -X POST -H "X-API-Key: $API_KEY" \
+  "https://portainer.example.com/api/endpoints/1/docker/containers/${NEW_CONTAINER_ID}/start"
 ```
+
+In this example, the recreated container keeps its published port but omits any `Binds` or `Mounts` entry for the detached volume.
 
 ## Handling Docker Compose Stacks
 
 For stacks deployed via Docker Compose in Portainer:
 
 1. Go to **Stacks** → select your stack.
-2. Click **Editor** to view/edit the compose file.
-3. Remove the volume reference from the service definition.
-4. Click **Update the stack**.
+2. If the stack was deployed using the **Web Editor** or an uploaded compose file, click **Editor** to view/edit the compose file.
+3. If the stack was deployed from Git, edit the compose file in the repository and redeploy the stack.
+4. Remove the volume reference from the service definition.
+5. Click **Update the stack**.
 
 ```yaml
 # Before: service with volume attached
@@ -140,11 +148,11 @@ services:
 After recreating the container:
 
 ```bash
-# Verify no volume is attached to the new container
-curl -s -H "Authorization: Bearer $TOKEN" \
+# Verify the detached volume is no longer attached to the new container
+curl -s -H "X-API-Key: $API_KEY" \
   "https://portainer.example.com/api/endpoints/1/docker/containers/myapp/json" \
-  | jq '.Mounts'
-# Should return an empty array []
+  | jq '.Mounts | map({Name, Source, Destination, Type})'
+# Confirm the detached volume or mount path is no longer listed
 ```
 
 ## Conclusion
