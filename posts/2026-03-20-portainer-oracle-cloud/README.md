@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Oracle Cloud, Free Tier, Docker, ARM
 
-Description: Learn how to deploy Portainer on Oracle Cloud Infrastructure's Always Free tier, including the ARM-based Ampere A1 instances that provide up to 4 vCPUs and 24GB RAM for free.
+Description: Learn how to deploy Portainer on Oracle Cloud Infrastructure's Always Free tier, including the ARM-based Ampere A1 instances that provide up to 4 OCPUs and 24GB RAM for free.
 
 ## Oracle Cloud Free Tier Resources
 
@@ -25,8 +25,8 @@ The A1 Ampere instances are excellent for Portainer - 4 cores and 24GB RAM is mo
 In the OCI Console:
 
 1. **Compute → Instances → Create Instance**
-2. **Image**: Canonical Ubuntu 22.04 (minimal)
-3. **Shape**: Change to Ampere → A1.Flex
+2. **Image**: Canonical Ubuntu 22.04
+3. **Shape**: Change to Ampere → VM.Standard.A1.Flex
    - OCPUs: 4
    - Memory: 24GB
 4. Add your SSH public key
@@ -34,7 +34,7 @@ In the OCI Console:
 
 ## Step 2: Configure Security List
 
-OCI uses Security Lists for firewall rules (VCN-level):
+OCI can use either Security Lists or Network Security Groups (NSGs) for firewall rules. This walkthrough uses the subnet's Security List:
 
 1. **Networking → Virtual Cloud Networks → your-vcn → Security Lists → Default**
 2. Add Ingress Rules:
@@ -48,7 +48,7 @@ Protocol: TCP, Source: 0.0.0.0/0, Port: 443    (HTTPS)
 
 ## Step 3: Configure iptables on the Instance
 
-OCI Ubuntu instances have an additional iptables firewall:
+OCI Ubuntu images use iptables rules on the instance, so open the required ports there as well and avoid changing UFW directly:
 
 ```bash
 # SSH into the instance
@@ -75,9 +75,9 @@ curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker ubuntu
 newgrp docker
 
-# Verify Docker architecture
-docker version --format '{{.Server.Arch}}'
-# Expected: arm64
+# Verify the instance architecture
+uname -m
+# Expected: aarch64
 
 # Install Portainer
 docker volume create portainer_data
@@ -89,15 +89,15 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 5: Attach Block Volume for Persistent Storage
 
-For larger Docker deployments, use a dedicated block volume:
+For larger Docker deployments, use a dedicated block volume. The steps below move Docker data under `/var/lib/docker`; on fresh Docker Engine installs, image and container layers can also use `/var/lib/containerd` unless you reconfigure containerd separately:
 
 1. **Storage → Block Volumes → Create Block Volume** (50GB, free tier)
-2. **Attach** to your instance
+2. **Attach** to your instance and select a device path such as `/dev/oracleoci/oraclevdb`
 3. On the instance:
 
 ```bash
@@ -107,9 +107,10 @@ ls /dev/oracleoci/
 # Format and mount
 sudo mkfs.ext4 /dev/oracleoci/oraclevdb
 sudo mkdir /mnt/docker-data
-sudo mount /dev/oracleoci/oraclevdb /mnt/docker-data
+echo '/dev/oracleoci/oraclevdb /mnt/docker-data ext4 defaults,_netdev,nofail 0 2' | sudo tee -a /etc/fstab
+sudo mount -a
 
-# Move Docker data root
+# Move Docker's /var/lib/docker data root
 sudo systemctl stop docker
 sudo rsync -avz /var/lib/docker/ /mnt/docker-data/
 echo '{"data-root": "/mnt/docker-data"}' | sudo tee /etc/docker/daemon.json
@@ -129,4 +130,4 @@ With 4 ARM cores and 24GB RAM on OCI Free Tier:
 
 ## Conclusion
 
-Oracle Cloud Free Tier's A1 Ampere instances are the most generous free cloud compute available for running Portainer. The ARM architecture is fully supported by Portainer and most Docker images. The main friction point is OCI's two-layer firewall (Security List + iptables) - remember to configure both.
+Oracle Cloud Free Tier's A1 Ampere instances are one of the most generous Always Free compute options for running Portainer. Portainer supports ARM64, and many common Docker images publish ARM64 variants. The main friction point is OCI's two-layer firewall model (VCN security rules plus iptables on the instance) - remember to configure both.
