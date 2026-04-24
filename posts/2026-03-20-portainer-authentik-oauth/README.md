@@ -34,7 +34,7 @@ Protocol Settings:
   Client Secret:       (auto-generated - copy this)
 
 Redirect URIs/Origins:
-  https://portainer.example.com/
+  Strict:              https://portainer.example.com/
 
 Scopes:
   ✓ openid
@@ -46,7 +46,7 @@ Signing Key:           authentik Self-signed Certificate (or your cert)
 Advanced Settings:
   Access Token Validity:   minutes=10
   Refresh Token Validity:  days=30
-  Include Claims in Token: true
+  Include Claims in ID Token: true
   Sub Mode:               Based on the User's UUID
 ```
 
@@ -89,9 +89,9 @@ print('UserInfo:', d['userinfo_endpoint'])
 
 Authentik's endpoints follow this pattern:
 ```text
-Authorization URL: https://authentik.example.com/application/o/portainer/authorize/
-Access Token URL:  https://authentik.example.com/application/o/portainer/token/
-Resource URL:      https://authentik.example.com/application/o/portainer/userinfo/
+Authorization URL: https://authentik.example.com/application/o/authorize/
+Access Token URL:  https://authentik.example.com/application/o/token/
+Resource URL:      https://authentik.example.com/application/o/userinfo/
 ```
 
 ## Step 4: Configure Portainer
@@ -109,12 +109,12 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d '{
     "AuthenticationMethod": 3,
-    "oauthsettings": {
+    "OAuthSettings": {
       "ClientID": "portainer",
       "ClientSecret": "your-authentik-client-secret",
-      "AuthorizationURI": "https://authentik.example.com/application/o/portainer/authorize/",
-      "AccessTokenURI": "https://authentik.example.com/application/o/portainer/token/",
-      "ResourceURI": "https://authentik.example.com/application/o/portainer/userinfo/",
+      "AuthorizationURI": "https://authentik.example.com/application/o/authorize/",
+      "AccessTokenURI": "https://authentik.example.com/application/o/token/",
+      "ResourceURI": "https://authentik.example.com/application/o/userinfo/",
       "RedirectURI": "https://portainer.example.com/",
       "UserIdentifier": "email",
       "Scopes": "openid profile email",
@@ -124,40 +124,40 @@ curl -X PUT \
   }'
 ```
 
-## Step 5: Control Access with Authentik Policies
+## Step 5: Control Access with Authentik Bindings
 
-In Authentik, bind a policy to the Portainer application to control who can access it:
+In Authentik, bind a group to the Portainer application to control who can access it:
 
-1. In the Portainer application, go to **Policy Bindings** tab
-2. Click **Bind existing policy** or **Create and bind policy**
-3. Add a group policy:
+1. In the Portainer application, go to **Policy/Group/User Bindings** tab
+2. Click **Group**
+3. Select the group:
 
 ```text
-Policy:      Group Membership
+Type:        Group
 Group:       portainer-users  (Authentik group)
 ```
 
 Only members of the `portainer-users` Authentik group can access Portainer.
 
-## Step 6: Create Authentik Groups for Portainer Teams
+## Step 6: Create an Authentik Group for Portainer Access
 
 ```bash
-# Create groups in Authentik via API
+# Create a group in Authentik via API
 AUTHENTIK_TOKEN="your-authentik-api-token"
 
 curl -X POST \
-  -H "Authorization: Token $AUTHENTIK_TOKEN" \
+  -H "Authorization: Bearer $AUTHENTIK_TOKEN" \
   -H "Content-Type: application/json" \
   https://authentik.example.com/api/v3/core/groups/ \
   -d '{
-    "name": "portainer-devops",
+    "name": "portainer-users",
     "is_superuser": false,
-    "attributes": {
-      "portainer_role": "standard_user"
-    }
+    "attributes": {}
   }'
 ```
 
+This creates an Authentik group you can bind to the Portainer application. It does not automatically create or map Portainer teams; automatic team membership requires additional claim mapping in Authentik and Portainer Business Edition.
+
 ## Conclusion
 
-Authentik provides a polished admin UI for OAuth configuration that's easier to use than many alternatives. The combination of Authentik's policy engine and Portainer's OAuth integration gives you fine-grained control over who can access Portainer and with what level of authentication (basic, MFA, etc.). The group-based access policies in Authentik complement Portainer's team-based RBAC nicely.
+Authentik provides a polished admin UI for OAuth configuration that's easier to use than many alternatives. The combination of Authentik's policy engine and Portainer's OAuth integration gives you fine-grained control over who can access Portainer and with what level of authentication (basic, MFA, etc.). Group-based access controls in Authentik complement Portainer's team-based RBAC nicely.
