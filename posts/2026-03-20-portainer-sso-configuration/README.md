@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, SSO, Single Sign-On, OAuth, Authentication, Enterprise
 
-Description: Enable SSO in Portainer so users are automatically logged in without the login screen when already authenticated with your identity provider.
+Description: Enable SSO in Portainer so the OAuth provider can reuse an existing identity-provider session instead of forcing users to log in again.
 
 ## Introduction
 
-SSO (Single Sign-On) in Portainer means users who are already authenticated with their identity provider (via Azure AD, Okta, Google, etc.) are automatically logged into Portainer without seeing a login screen. The SSO feature in Portainer works by immediately initiating the OAuth flow when users visit the Portainer URL, skipping the login page entirely.
+SSO (Single Sign-On) in Portainer means users authenticate through their identity provider (via Microsoft Entra ID (Azure AD), Okta, Google, etc.) instead of entering Portainer credentials directly. When SSO is enabled, Portainer does not force the OAuth provider to prompt for credentials again if the user already has an active IdP session.
 
 ## Prerequisites
 
@@ -20,20 +20,20 @@ SSO (Single Sign-On) in Portainer means users who are already authenticated with
 
 | Mode | Behavior |
 |------|---------|
-| OAuth only | User sees Portainer login page with an "OAuth Login" button |
-| SSO enabled | User is automatically redirected to IdP (no login page shown) |
+| OAuth only | User sees Portainer login page with an OAuth login button, and the provider is forced to prompt for credentials |
+| SSO enabled | User still logs in through OAuth, but the provider can reuse an existing session and skip the credential prompt |
 
-SSO is an enhancement on top of OAuth - it's only relevant once OAuth is configured.
+SSO is an enhancement on top of OAuth - it's only relevant once OAuth is configured, and it tells Portainer not to force a fresh provider login prompt.
 
 ## Enabling SSO via UI
 
 1. Go to Settings → Authentication → OAuth
 2. Configure your OAuth provider
-3. Find the **SSO** toggle
+3. Find the **Use SSO** toggle
 4. Enable it
 5. Save settings
 
-Once enabled, visiting `https://portainer.example.com/` will immediately redirect to your IdP if the user isn't logged in.
+Once enabled, clicking the OAuth login button sends users to your IdP without forcing a fresh credential prompt. If the user already has an IdP session, the provider can return them to Portainer without re-authentication.
 
 ## Enabling SSO via API
 
@@ -52,7 +52,7 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d '{
     "AuthenticationMethod": 3,
-    "oauthsettings": {
+    "OAuthSettings": {
       "ClientID": "your-client-id",
       "ClientSecret": "your-client-secret",
       "AuthorizationURI": "https://your-idp.com/oauth/authorize",
@@ -72,14 +72,16 @@ curl -X PUT \
 
 ```text
 1. User visits https://portainer.example.com/
-2. Portainer detects no active session
-3. (SSO enabled) Portainer immediately redirects to:
+2. Portainer shows the login page with the OAuth login option
+3. User starts OAuth login
+4. Portainer redirects to:
    https://idp.example.com/oauth/authorize?client_id=...&redirect_uri=...
-4. IdP checks if user has active session
-   a. If yes: IdP issues tokens and redirects back to Portainer
-   b. If no: IdP shows login page, user authenticates, then redirects back
-5. Portainer validates tokens and creates user session
-6. User sees Portainer dashboard
+5. IdP checks if user has active session
+   a. If SSO is enabled and the session exists: IdP may not prompt again
+   b. If no active session exists: IdP shows login page, user authenticates, then redirects back
+6. IdP redirects back to Portainer with an authorization code
+7. Portainer exchanges the code for tokens, retrieves user details, and creates the user session
+8. User sees Portainer dashboard
 ```
 
 ## Hiding the Internal Login (HideInternalAuth)
@@ -90,12 +92,12 @@ When SSO is enabled, you can hide the internal username/password form:
 "HideInternalAuth": true
 ```
 
-With this enabled, the login page only shows the OAuth/SSO button. To access internal admin account:
+With this enabled, the login page only shows the OAuth/SSO button. To access the initial admin account:
 
-1. Append `?skipSSO=true` to the Portainer URL: `https://portainer.example.com/?skipSSO=true`
-2. This shows the internal login form even with SSO enabled
+1. Open `https://portainer.example.com/#!/internal-auth`
+2. This forces Portainer to use internal authentication even when the internal prompt is hidden
 
-**Important**: Always keep at least one internal admin account with a known password for emergency access in case the IdP is unavailable.
+**Important**: Keep the password for the initial admin account available for emergency access in case the IdP is unavailable.
 
 ## Logout URI Configuration
 
@@ -105,17 +107,17 @@ Configure where users are redirected after logging out of Portainer:
 "LogoutURI": "https://idp.example.com/oauth/logout?redirect_uri=https://portainer.example.com/"
 ```
 
-This ensures the IdP session is also terminated when users log out of Portainer.
+This sends users to your IdP's logout endpoint after they log out of Portainer. The exact behavior depends on your provider's logout URL and parameters.
 
-## SSO with Azure AD
+## SSO with Microsoft Entra ID (Azure AD)
 
-Azure AD supports silent authentication if the user has an active SSO session. When a user has already logged into Office 365, visiting Portainer with SSO enabled:
+Microsoft Entra ID (Azure AD) can reuse an existing session if the user is already signed in. When a user has already logged into Microsoft 365 and starts Microsoft OAuth login in Portainer with SSO enabled:
 
-1. Portainer redirects to Azure AD
-2. Azure AD detects existing session (no re-authentication needed)
-3. Azure AD redirects back to Portainer with tokens
-4. User is logged in automatically
+1. Portainer redirects to Microsoft Entra ID
+2. Microsoft Entra ID detects the existing session and may not prompt again
+3. Microsoft Entra ID redirects back to Portainer with an authorization code
+4. Portainer completes OAuth login and creates the user session
 
 ## Conclusion
 
-SSO in Portainer creates a seamless experience for users who already have an active session with the corporate IdP - they simply visit the Portainer URL and are logged in immediately. Combined with `HideInternalAuth`, the Portainer login page is invisible to regular users. Always maintain an emergency internal admin account accessible via `?skipSSO=true` for operational continuity when the IdP is unavailable.
+SSO in Portainer creates a seamless experience for users who already have an active session with the corporate IdP - they can sign in through OAuth without being prompted again by the provider. Combined with `HideInternalAuth`, the internal login prompt can be hidden from regular users. Always maintain emergency access to the initial admin account through `#!/internal-auth` for operational continuity when the IdP is unavailable.
