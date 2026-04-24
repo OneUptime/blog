@@ -8,11 +8,12 @@ Description: A guide to running Portainer under a URL subpath (e.g., /portainer/
 
 ## Overview
 
-By default, Portainer serves at the root path (`/`). Running Portainer under a subpath like `https://example.com/portainer/` allows you to host multiple applications on the same domain. This requires reverse proxy configuration (Nginx, Traefik, or Caddy) since Portainer itself doesn't natively support base URL subpaths in all versions.
+By default, Portainer serves at the root path (`/`). Running Portainer under a subpath like `https://example.com/portainer/` allows you to host multiple applications on the same domain. In current Portainer versions, this requires starting Portainer with `--base-url /portainer` and configuring a reverse proxy (Nginx, Traefik, or Caddy) to strip the `/portainer` prefix before forwarding requests.
 
 ## Prerequisites
 
 - Portainer CE or Business Edition
+- Portainer started with `--base-url /portainer`
 - Nginx, Traefik, or Caddy reverse proxy
 - Admin access to the reverse proxy configuration
 
@@ -66,16 +67,16 @@ services:
     image: portainer/portainer-ce:latest
     container_name: portainer
     restart: always
+    command: -H unix:///var/run/docker.sock --base-url /portainer --http-enabled
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.portainer.rule=PathPrefix(`/portainer`)"
+      - "traefik.http.routers.portainer.rule=Path(`/portainer`) || PathPrefix(`/portainer/`)"
       - "traefik.http.middlewares.portainer-strip.stripprefix.prefixes=/portainer"
       - "traefik.http.routers.portainer.middlewares=portainer-strip"
-      - "traefik.http.services.portainer.loadbalancer.server.port=9443"
-      - "traefik.http.services.portainer.loadbalancer.server.scheme=https"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
       - "traefik.http.routers.portainer.tls=true"
 
 volumes:
@@ -118,9 +119,8 @@ proxy_read_timeout 86400;
 # Test that Portainer is accessible at the subpath
 curl -k https://example.com/portainer/api/status
 
-# Test WebSocket connectivity (using wscat if available)
-# npm install -g wscat
-wscat -c wss://example.com/portainer/api/websocket/exec?...
+# Then open the Portainer container console or log viewer in the UI
+# and confirm the WebSocket connection stays open.
 ```
 
 ## Common Issues
@@ -130,7 +130,8 @@ wscat -c wss://example.com/portainer/api/websocket/exec?...
 If the Portainer UI loads but appears broken (no styles):
 
 ```nginx
-# The trailing slash in proxy_pass is critical
+# Portainer should be started with --base-url /portainer
+# The trailing slash in proxy_pass is also critical
 # Correct: proxy_pass https://localhost:9443/;  (note trailing slash)
 # Wrong:   proxy_pass https://localhost:9443;   (no trailing slash)
 ```
@@ -141,8 +142,8 @@ If the Portainer UI loads but appears broken (no styles):
 # Ensure X-Forwarded-Proto is set correctly
 proxy_set_header X-Forwarded-Proto https;
 
-# Add to Portainer run command if behind proxy
-# --http-disabled flag ensures no HTTP loopback
+# If you proxy to Portainer's default listener, keep the upstream on HTTPS:
+# proxy_pass https://localhost:9443/;
 ```
 
 ### 404 on API Calls
@@ -151,4 +152,4 @@ Portainer's API calls from the frontend must also go through the proxy path. Ver
 
 ## Conclusion
 
-Running Portainer under a subpath requires careful reverse proxy configuration, particularly the trailing slash in `proxy_pass` and WebSocket headers. Nginx, Traefik, and Caddy all support this pattern with the configurations shown above. Test both the UI and WebSocket functionality (container console) after setup to ensure full functionality.
+Running Portainer under a subpath requires careful reverse proxy configuration, particularly the `--base-url` setting, the trailing slash in `proxy_pass` (for Nginx), and WebSocket headers. Nginx, Traefik, and Caddy all support this pattern with the configurations shown above. Test both the UI and WebSocket functionality (container console) after setup to ensure full functionality.
