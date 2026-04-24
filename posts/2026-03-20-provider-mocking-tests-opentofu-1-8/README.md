@@ -111,17 +111,16 @@ run "cloudfront_points_to_bucket" {
 }
 ```
 
-## Mocking with Dynamic Responses
+## Mocking with Custom Default Values
 
 ```hcl
 mock_provider "aws" {
-  # Different mock responses for different resource instances
+  # Set explicit defaults for computed attributes
   mock_resource "aws_db_instance" {
     defaults = {
-      id       = "mock-db-${var.environment}"
-      address  = "mock-db.${var.environment}.example.com"
-      port     = 5432
-      endpoint = "mock-db.${var.environment}.example.com:5432"
+      id       = "mock-db-test"
+      address  = "mock-db.test.example.com"
+      endpoint = "mock-db.test.example.com:5432"
     }
   }
 }
@@ -139,8 +138,8 @@ tofu test -filter=tests/basic.tftest.hcl
 # Run with verbose output
 tofu test -verbose
 
-# Run only specific test run blocks
-tofu test -run="bucket_name_format"
+# Run multiple specific test files
+tofu test -filter=tests/basic.tftest.hcl -filter=tests/advanced.tftest.hcl
 ```
 
 ## Testing with Real and Mocked Providers Together
