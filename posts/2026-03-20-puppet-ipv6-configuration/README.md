@@ -15,11 +15,10 @@ modules/ipv6/
 ├── manifests/
 │   ├── init.pp          # Main class
 │   ├── sysctl.pp        # IPv6 kernel parameters
-│   ├── firewall.pp      # ip6tables rules
+│   ├── firewall.pp      # IPv6 firewall rules
 │   └── interface.pp     # Network interface config
-├── templates/
-│   └── sysctl.conf.erb  # sysctl template
 └── files/
+    ├── 60-ipv6.conf     # sysctl drop-in
     └── ip6tables.rules  # Firewall rules file
 ```
 
@@ -31,19 +30,12 @@ modules/ipv6/
 class ipv6 (
   Boolean $enable_forwarding = false,
   Boolean $enable_privacy    = true,
-  String  $accept_ra         = '1',
-  Array   $firewall_rules    = [],
+  Enum['0', '1', '2'] $accept_ra = '1',
 ) {
-  include ipv6::sysctl
-
-  if $enable_privacy {
-    include ipv6::privacy
-  }
-
-  if $enable_forwarding {
-    class { 'ipv6::routing':
-      forwarding => true,
-    }
+  class { 'ipv6::sysctl':
+    enable_forwarding => $enable_forwarding,
+    enable_privacy    => $enable_privacy,
+    accept_ra         => $accept_ra,
   }
 }
 ```
@@ -53,7 +45,11 @@ class ipv6 (
 ```puppet
 # modules/ipv6/manifests/sysctl.pp
 
-class ipv6::sysctl {
+class ipv6::sysctl (
+  Boolean              $enable_forwarding = false,
+  Boolean              $enable_privacy    = true,
+  Enum['0', '1', '2']  $accept_ra         = '1',
+) {
   # Enable IPv6
   sysctl { 'net.ipv6.conf.all.disable_ipv6':
     value => '0',
@@ -63,18 +59,66 @@ class ipv6::sysctl {
     value => '0',
   }
 
-  # Accept Router Advertisements
-  sysctl { 'net.ipv6.conf.all.accept_ra':
-    value => '1',
+  # Enable routing when the node should forward IPv6 traffic
+  sysctl { 'net.ipv6.conf.all.forwarding':
+    value => $enable_forwarding ? {
+      true    => '1',
+      default => '0',
+    },
   }
 
-  # Accept autoconfiguration (SLAAC)
+  sysctl { 'net.ipv6.conf.default.forwarding':
+    value => $enable_forwarding ? {
+      true    => '1',
+      default => '0',
+    },
+  }
+
+  # Accept Router Advertisements
+  sysctl { 'net.ipv6.conf.all.accept_ra':
+    value => $accept_ra,
+  }
+
+  sysctl { 'net.ipv6.conf.default.accept_ra':
+    value => $accept_ra,
+  }
+
+  # Accept autoconfiguration (SLAAC) when Router Advertisements are enabled
   sysctl { 'net.ipv6.conf.all.autoconf':
-    value => '1',
+    value => $accept_ra ? {
+      '0'     => '0',
+      default => '1',
+    },
+  }
+
+  sysctl { 'net.ipv6.conf.default.autoconf':
+    value => $accept_ra ? {
+      '0'     => '0',
+      default => '1',
+    },
+  }
+
+  # Privacy extensions use temporary IPv6 addresses
+  sysctl { 'net.ipv6.conf.all.use_tempaddr':
+    value => $enable_privacy ? {
+      true    => '2',
+      default => '0',
+    },
+  }
+
+  sysctl { 'net.ipv6.conf.default.use_tempaddr':
+    value => $enable_privacy ? {
+      true    => '2',
+      default => '0',
+    },
   }
 
   # Enable Duplicate Address Detection
-  sysctl { 'net.ipv6.conf.all.dad_transmits':
+  sysctl { 'net.ipv6.conf.all.accept_dad':
+    value => '1',
+  }
+
+  sysctl { 'net.ipv6.conf.default.accept_dad':
     value => '1',
   }
 }
@@ -82,22 +126,19 @@ class ipv6::sysctl {
 
 ## Using the sysctl Type
 
-If the `herculesteam/augeasproviders_sysctl` module is not available, use augeas or exec:
+If a `sysctl` resource type is not available in your environment, manage a sysctl drop-in with core Puppet resources:
 
 ```puppet
 class ipv6::sysctl {
-  # Using augeas for persistent sysctl settings
-  augeas { 'ipv6_forwarding':
-    context => '/files/etc/sysctl.conf',
-    changes => [
-      'set net.ipv6.conf.all.forwarding 1',
-      'set net.ipv6.conf.default.forwarding 1',
-    ],
+  file { '/etc/sysctl.d/60-ipv6.conf':
+    ensure => file,
+    source => 'puppet:///modules/ipv6/60-ipv6.conf',
     notify => Exec['reload_sysctl'],
   }
 
   exec { 'reload_sysctl':
-    command     => '/sbin/sysctl -p',
+    command     => 'sysctl --system',
+    path        => ['/usr/sbin', '/sbin', '/usr/bin', '/bin'],
     refreshonly => true,
   }
 }
@@ -108,61 +149,63 @@ class ipv6::sysctl {
 ```puppet
 # modules/ipv6/manifests/firewall.pp
 
-# Using puppetlabs/firewall module with ip6tables support
+# Using puppetlabs/firewall module with IPv6 support
 
 class ipv6::firewall {
   # Allow loopback
   firewall { '000 ip6 allow loopback':
-    provider => ip6tables,
+    protocol => 'ip6tables',
     chain    => 'INPUT',
     iniface  => 'lo',
-    action   => 'accept',
+    jump     => 'accept',
   }
 
   # Allow established connections
   firewall { '001 ip6 allow established':
-    provider => ip6tables,
+    protocol => 'ip6tables',
     chain    => 'INPUT',
     state    => ['ESTABLISHED', 'RELATED'],
-    action   => 'accept',
+    jump     => 'accept',
   }
 
   # Allow ICMPv6 (critical for IPv6 operation)
   firewall { '002 ip6 allow icmpv6':
-    provider => ip6tables,
+    protocol => 'ip6tables',
     chain    => 'INPUT',
     proto    => 'ipv6-icmp',
-    action   => 'accept',
+    jump     => 'accept',
   }
 
   # Allow SSH over IPv6
   firewall { '010 ip6 allow ssh':
-    provider => ip6tables,
+    protocol => 'ip6tables',
     chain    => 'INPUT',
     dport    => 22,
     proto    => 'tcp',
-    action   => 'accept',
+    jump     => 'accept',
   }
 
   # Allow HTTP and HTTPS over IPv6
   firewall { '020 ip6 allow http':
-    provider => ip6tables,
+    protocol => 'ip6tables',
     chain    => 'INPUT',
     dport    => [80, 443],
     proto    => 'tcp',
-    action   => 'accept',
+    jump     => 'accept',
   }
 
   # Default deny
   firewall { '999 ip6 default deny':
-    provider => ip6tables,
+    protocol => 'ip6tables',
     chain    => 'INPUT',
-    action   => 'drop',
+    jump     => 'drop',
   }
 }
 ```
 
 ## IPv6 Network Interface Configuration
+
+For Debian or Ubuntu systems using `ifupdown`, manage an interface drop-in like this:
 
 ```puppet
 # modules/ipv6/manifests/interface.pp
@@ -170,17 +213,15 @@ class ipv6::firewall {
 class ipv6::interface (
   String $interface = 'eth0',
   Optional[String] $static_address = undef,
-  Optional[String] $prefix_length  = '64',
+  String $prefix_length            = '64',
 ) {
   if $static_address {
     # Configure static IPv6 address
-    augeas { "ipv6_static_${interface}":
-      context => "/files/etc/network/interfaces",
-      changes => [
-        "set iface[. = '${interface} inet6 static'] ${interface} inet6 static",
-        "set iface[. = '${interface} inet6 static']/address ${static_address}",
-        "set iface[. = '${interface} inet6 static']/netmask ${prefix_length}",
-      ],
+    file { "/etc/network/interfaces.d/${interface}-ipv6.cfg":
+      ensure  => file,
+      content => "iface ${interface} inet6 static\n" +
+                 "    address ${static_address}\n" +
+                 "    netmask ${prefix_length}\n",
     }
   }
 }
