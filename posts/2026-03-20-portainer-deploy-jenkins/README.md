@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Jenkins, CI/CD, DevOps, Self-Hosted
 
-Description: Deploy Jenkins via Portainer with persistent storage, Docker-in-Docker support for building images, and pre-installed plugins for a ready-to-use CI/CD platform.
+Description: Deploy Jenkins via Portainer with persistent storage, Docker socket access for building images, and plugin installation via the setup wizard or CLI for a ready-to-use CI/CD platform.
 
 ## Introduction
 
@@ -13,8 +13,6 @@ Jenkins is the most widely deployed open-source CI/CD server. Deploying it via P
 ## Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   jenkins:
     image: jenkins/jenkins:lts-jdk17
@@ -32,7 +30,7 @@ services:
       - /usr/bin/docker:/usr/bin/docker:ro
     ports:
       - "8080:8080"    # Jenkins web UI
-      - "50000:50000"  # Jenkins agent port
+      - "50000:50000"  # Jenkins inbound agent port (optional)
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -s http://localhost:8080/login | grep -q 'Jenkins'"]
@@ -58,7 +56,7 @@ Navigate to `http://<host>:8080`, enter the password, and install suggested plug
 ## Installing Plugins via CLI
 
 ```bash
-# Install plugins using Jenkins CLI
+# Install plugins using the bundled plugin manager
 docker exec jenkins jenkins-plugin-cli --plugins \
   git \
   docker-workflow \
@@ -67,6 +65,9 @@ docker exec jenkins jenkins-plugin-cli --plugins \
   credentials-binding \
   kubernetes \
   prometheus
+
+docker exec jenkins sh -c 'cp -r -p /usr/share/jenkins/ref/plugins/. /var/jenkins_home/plugins/'
+docker restart jenkins
 ```
 
 ## Example Declarative Pipeline
@@ -75,6 +76,8 @@ Create a Jenkinsfile in your repository:
 
 ```groovy
 // Jenkinsfile - Docker build and push pipeline
+def dockerImage
+
 pipeline {
     agent any
     
@@ -123,14 +126,13 @@ pipeline {
         }
         
         stage('Deploy via Portainer') {
+            environment {
+                PORTAINER_WEBHOOK_URL = credentials('portainer-webhook-url')
+            }
             steps {
                 script {
-                    // Trigger Portainer webhook to update stack
-                    sh """
-                        curl -X POST \
-                          'https://portainer.example.com/api/stacks/webhook/YOUR_WEBHOOK_ID' \
-                          -H 'Content-Type: application/json'
-                    """
+                    // Trigger Portainer stack webhook to redeploy the stack
+                    sh 'curl -fsSL -X POST "$PORTAINER_WEBHOOK_URL"'
                 }
             }
         }
@@ -138,7 +140,7 @@ pipeline {
     
     post {
         always {
-            cleanWs()
+            deleteDir()
         }
         success {
             echo "Pipeline succeeded! Image: ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
@@ -158,18 +160,20 @@ In Jenkins UI:
 2. Add credentials for:
    - Docker registry (username/password)
    - Git repository (SSH key or token)
-   - Portainer API token
+   - Portainer webhook URL (Secret text credential)
 
 ## Jenkins + Portainer Integration
 
 Generate a Portainer webhook for automated deployments:
 
+Stack webhooks require Portainer Business Edition on a non-Edge environment.
+
 1. In Portainer, navigate to **Stacks**
-2. Click on your application stack
-3. Enable **GitOps updates**
+2. Click on your application stack, then open the **Editor** tab
+3. In the **Webhooks** section, enable **Create a stack webhook**
 4. Copy the webhook URL
-5. Use the webhook URL in your Jenkins pipeline to trigger updates
+5. Store the webhook URL in Jenkins as a Secret text credential such as `portainer-webhook-url`
 
 ## Conclusion
 
-Jenkins deployed via Portainer provides a powerful CI/CD platform with Docker build capabilities. The Docker socket mount allows pipelines to build, test, and push images directly. Combined with Portainer's webhook feature, you can build complete GitOps pipelines that automatically update deployments when new images are pushed.
+Jenkins deployed via Portainer provides a powerful CI/CD platform with Docker build capabilities. The Docker socket mount allows pipelines to build, test, and push images directly. Combined with Portainer's stack webhook feature, you can automate redeployments when new images are pushed.
