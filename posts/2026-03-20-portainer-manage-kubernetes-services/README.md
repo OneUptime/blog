@@ -22,16 +22,16 @@ Kubernetes Services provide stable network endpoints for Pods. Portainer offers 
 |------|----------|
 | `ClusterIP` | Internal cluster communication only |
 | `NodePort` | Expose on each node's IP at a static port |
-| `LoadBalancer` | Provision a cloud load balancer |
+| `LoadBalancer` | Request an external load balancer when supported by your cluster |
 | `ExternalName` | Map to an external DNS name |
 
 ## Viewing Services in Portainer
 
 1. Log into Portainer.
 2. Select your **Kubernetes** environment.
-3. Navigate to **Applications** → **Services**.
+3. Navigate to **Networking** → **Services**.
 
-This view shows all services across namespaces (or filtered by namespace). Each entry shows:
+This view lists all services you have access to. Each entry shows:
 - Service name
 - Namespace
 - Type (ClusterIP, NodePort, etc.)
@@ -44,19 +44,20 @@ This view shows all services across namespaces (or filtered by namespace). Each 
 
 When creating a new application in Portainer:
 
-1. Go to **Applications** → **Add application**.
+1. Go to **Applications** → **Add with form**.
 2. Fill in your deployment details (image, replicas, etc.).
-3. In the **Services** section, click **Add port**.
-4. Configure:
-   - **Service type**: `NodePort`, `ClusterIP`, or `LoadBalancer`
-   - **Container port**: e.g., `8080`
+3. In the **Publishing the application** section, select the service type tab and click **Create service**.
+4. Configure the service as needed:
+   - **Service type**: `ClusterIP`, `NodePort`, or `LoadBalancer`
    - **Service port**: e.g., `80`
-   - **Node port** (optional): e.g., `30080`
-5. Deploy. Portainer creates both the Deployment and Service.
+   - **Target/container port**: e.g., `8080`
+   - **Node port** (optional): e.g., `30080` when using `NodePort`
+   - **Annotations** (optional)
+5. Deploy. Portainer deploys the application and creates the Service.
 
-### Applying a Service YAML via KubeShell
+### Applying a Service YAML via Portainer's kubectl shell
 
-For more control, use Portainer's KubeShell:
+For more control, use Portainer's `kubectl shell`:
 
 ```yaml
 # service-clusterip.yaml - Internal service
@@ -90,7 +91,7 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 8080
-      nodePort: 30080   # Must be in range 30000-32767
+      nodePort: 30080   # Must be in the configured NodePort range (30000-32767 by default)
   type: NodePort
 ```
 
@@ -112,26 +113,27 @@ spec:
 ```
 
 ```bash
-# Apply in KubeShell
+# After saving a manifest to a file in the kubectl shell
 kubectl apply -f service-clusterip.yaml
 ```
 
 ## Editing an Existing Service
 
-1. In Portainer, go to **Applications** → **Services**.
-2. Click the service name to open details.
-3. Click **Edit this service** (pencil icon).
-4. Modify the YAML as needed.
-5. Click **Update the service**.
+1. In Portainer, go to **Applications** and select the application that owns the service.
+2. Click **Edit this application**.
+3. If the application was deployed from a form, update the service in the **Publishing the application** section.
+4. If the application was deployed from the Web Editor, update the manifest directly.
+5. Save the changes.
 
 ## Deleting a Service
 
 Via UI:
-1. Select the service with the checkbox.
-2. Click **Remove** in the toolbar.
-3. Confirm deletion.
+1. Go to **Networking** → **Services**.
+2. Select the service with the checkbox.
+3. Click **Remove** in the toolbar.
+4. Confirm deletion.
 
-Via KubeShell:
+Via kubectl shell:
 
 ```bash
 # Delete a specific service
@@ -163,11 +165,11 @@ spec:
 ## Verifying Service Connectivity
 
 ```bash
-# Check service endpoints (confirms Pods are selected)
-kubectl get endpoints myapp-service -n production
+# Check service EndpointSlices (confirms Pods are selected)
+kubectl get endpointslice -l kubernetes.io/service-name=myapp-service -n production
 
 # Test service DNS from inside the cluster
-kubectl run test-pod --image=busybox --rm -it -- nslookup myapp-service.production.svc.cluster.local
+kubectl run test-pod --image=busybox --restart=Never --rm -it -- nslookup myapp-service.production.svc.cluster.local
 
 # Check service details
 kubectl describe service myapp-service -n production
