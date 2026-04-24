@@ -8,14 +8,14 @@ Description: Resolve MAC address collision errors in Docker Compose stacks deplo
 
 ## Introduction
 
-MAC address collisions in Docker occur when multiple containers are assigned the same MAC address on the same network. This can happen when containers are recreated from a compose file that explicitly sets `mac_address` values, or when Docker's automatic MAC assignment generates a duplicate. Portainer stack recreations are a common trigger.
+MAC address collisions in Docker occur when multiple containers are assigned the same MAC address on the same network. This most often happens when containers are recreated from a compose file that explicitly sets `mac_address` values, or when the same static MAC address is reused across multiple deployments. Portainer stack recreations are a common trigger.
 
 ## Understanding MAC Address Collisions
 
-Docker automatically assigns unique MAC addresses to containers. Problems arise when:
-1. A compose file explicitly sets `mac_address` and the container is recreated
-2. The same compose file is deployed multiple times (creating duplicates)
-3. Network bridges have conflicting MAC assignments
+Docker automatically assigns MAC addresses to containers. Problems arise when:
+1. A compose file explicitly sets `mac_address` and the same address is reused on the same network
+2. The same compose file is deployed multiple times with duplicate static MAC addresses
+3. Macvlan deployments or other manually managed network settings introduce duplicate MACs on the same Layer 2 network
 
 ## Step 1: Identify the Error
 
@@ -27,7 +27,7 @@ docker logs portainer 2>&1 | grep -i "mac\|address already\|ARP"
 # Check Docker daemon logs
 journalctl -u docker | grep -i "mac\|duplicate\|conflict" | tail -20
 
-# Check container creation errors
+# Check recent container stop/die events
 docker events --filter event=die --since 1h | head -20
 ```
 
@@ -35,15 +35,15 @@ docker events --filter event=die --since 1h | head -20
 
 ```bash
 # Find compose files with explicit MAC addresses
-grep -r "mac_address" /opt/stacks/ 2>/dev/null
+grep -r "mac_address" /path/to/your/compose-files/ 2>/dev/null
 
-# List all running containers with their MAC addresses
-docker ps -q | xargs docker inspect \
-  --format '{{.Name}}: {{range .NetworkSettings.Networks}}{{.MacAddress}} {{end}}' | sort
+# List all containers with their network names and MAC addresses
+docker ps -aq | xargs -r docker inspect \
+  --format '{{.Name}}: {{range $network, $cfg := .NetworkSettings.Networks}}{{$network}}={{$cfg.MacAddress}} {{end}}' | sort
 
-# Find duplicates
-docker ps -q | xargs docker inspect \
-  --format '{{range .NetworkSettings.Networks}}{{.MacAddress}}{{end}}' | sort | uniq -d
+# Find duplicate MACs on the same network
+docker ps -aq | xargs -r docker inspect \
+  --format '{{range $network, $cfg := .NetworkSettings.Networks}}{{println $network $cfg.MacAddress}}{{end}}' | sort | uniq -d
 ```
 
 ## Step 3: Fix - Remove Explicit MAC Addresses from Compose Files
@@ -52,7 +52,6 @@ The simplest fix is to let Docker assign MAC addresses automatically:
 
 ```yaml
 # BEFORE (problematic - causes collision on recreation)
-version: "3.8"
 services:
   myapp:
     image: myapp:latest
@@ -60,29 +59,33 @@ services:
       mynet:
         mac_address: "02:42:ac:11:00:02"  # Remove this
 
+networks:
+  mynet:
+
 # AFTER (correct - Docker auto-assigns unique MAC)
-version: "3.8"
 services:
   myapp:
     image: myapp:latest
     networks:
       - mynet
+
+networks:
+  mynet:
 ```
 
-In Portainer, edit the stack and remove the `mac_address` entries, then redeploy.
+In Portainer, remove the `mac_address` entries and redeploy. If the stack is Git-backed, make the same change in the repository and redeploy from Git.
 
 ## Step 4: Fix - Assign Unique MAC Addresses
 
 If you need explicit MAC addresses (e.g., for DHCP reservations), ensure uniqueness:
 
 ```yaml
-version: "3.8"
 services:
   app1:
     image: myapp:latest
     networks:
       mynet:
-        # Use Docker's reserved prefix 02:42 with unique last octets
+        # Use a unique, locally administered MAC address
         mac_address: "02:42:ac:11:00:10"
 
   app2:
@@ -96,17 +99,20 @@ services:
     networks:
       mynet:
         mac_address: "02:42:ac:11:00:12"
+
+networks:
+  mynet:
 ```
 
 ## Step 5: Fix - Reset the Network
 
-If MAC collisions have corrupted the network state:
+If MAC collisions have left a stale network behind, remove the stack and recreate it. `docker compose down` already removes Compose-managed networks, so only run `docker network rm` if the network still exists:
 
 ```bash
 # Stop all containers using the network
 docker compose down
 
-# Remove the problematic network
+# If the network still exists, remove it manually
 docker network rm stack-name_network-name
 
 # Recreate by bringing the stack back up
@@ -117,9 +123,10 @@ docker compose up -d
 
 In Portainer:
 1. Go to **Stacks** → select the affected stack
-2. Click **Editor** and remove/fix `mac_address` entries
-3. Click **Update the stack** with **Re-pull image** enabled
-4. Wait for the stack to redeploy
+2. If the stack was deployed with the **Web Editor**, click **Editor** and remove/fix `mac_address` entries
+3. If the stack was deployed from Git, update the Compose file in the repository, then use **Pull and redeploy** (or detach the stack from Git if you need to edit it in Portainer)
+4. Click **Update the stack** for Web Editor stacks, or redeploy the Git-backed stack
+5. Enable **Re-pull image** if you also want Portainer to pull fresh images during the redeploy
 
 ## Step 7: Check for Host Network MAC Conflicts
 
@@ -130,26 +137,15 @@ ip link show
 # Check the Docker bridge interface
 ip link show docker0
 
-# If docker0 has a conflicting MAC with a physical interface
-# (rare but possible on some virtualized environments)
-
-# Reset docker0 MAC
-sudo ip link set docker0 address 02:42:00:00:00:01
-
-# More permanent fix via daemon config
-cat > /etc/docker/daemon.json << 'EOF'
-{
-  "fixed-cidr": "172.17.0.0/16",
-  "bip": "172.17.0.1/16"
-}
-EOF
-
-sudo systemctl restart docker
+# Inspect the default bridge network
+docker network inspect bridge
 ```
+
+Conflicts between `docker0` and a physical interface are rare. If you review `/etc/docker/daemon.json`, remember that `bip` and `fixed-cidr` change bridge IP/subnet allocation, not container MAC assignment, so they are not a standard fix for Compose MAC collisions.
 
 ## Step 8: Handle Macvlan Networks
 
-Macvlan networks, which expose containers directly on the host network, are especially prone to MAC conflicts:
+Macvlan networks expose containers directly on the physical network, so any static MAC addresses must be unique on that Layer 2 segment:
 
 ```yaml
 # When using macvlan, ensure all containers have unique MACs
@@ -181,17 +177,26 @@ services:
 #!/bin/bash
 # check-mac-duplicates.sh
 
-MACS=$(docker ps -q | xargs docker inspect \
-  --format '{{.Name}}: {{range .NetworkSettings.Networks}}{{.MacAddress}} {{end}}' 2>/dev/null)
+CONTAINERS=$(docker ps -aq)
 
-DUPLICATE_MACS=$(echo "$MACS" | awk '{print $2}' | sort | uniq -d)
+if [ -z "$CONTAINERS" ]; then
+  echo "OK: No containers to inspect"
+  exit 0
+fi
+
+MACS=$(docker inspect $CONTAINERS \
+  --format '{{range $network, $cfg := .NetworkSettings.Networks}}{{println $network $cfg.MacAddress $.Name}}{{end}}' 2>/dev/null)
+
+DUPLICATE_MACS=$(echo "$MACS" | awk '{print $1 " " $2}' | sort | uniq -d)
 
 if [ -n "$DUPLICATE_MACS" ]; then
-  echo "WARNING: Duplicate MAC addresses detected:"
+  echo "WARNING: Duplicate MAC addresses detected on the same network:"
   echo "$DUPLICATE_MACS"
   echo ""
-  echo "Containers with these MACs:"
-  echo "$MACS" | grep -E "$(echo $DUPLICATE_MACS | tr ' ' '|')"
+  echo "Containers with these network/MAC pairs:"
+  while IFS= read -r duplicate; do
+    echo "$MACS" | grep -F "$duplicate"
+  done <<< "$DUPLICATE_MACS"
 else
   echo "OK: No duplicate MAC addresses"
 fi
@@ -199,4 +204,4 @@ fi
 
 ## Conclusion
 
-MAC address collisions in Docker Compose stacks deployed via Portainer are almost always caused by explicitly set `mac_address` values in compose files that conflict when containers are recreated. The simplest fix is to remove explicit MAC addresses and let Docker auto-assign them. If MAC assignment is required for DHCP reservations or macvlan networking, ensure each container has a genuinely unique MAC address.
+MAC address collisions in Docker Compose stacks deployed via Portainer are most commonly caused by explicitly set `mac_address` values in compose files that get reused on the same network during redeploys. The simplest fix is to remove explicit MAC addresses and let Docker auto-assign them. If MAC assignment is required for DHCP reservations or macvlan networking, ensure each container has a genuinely unique MAC address.
