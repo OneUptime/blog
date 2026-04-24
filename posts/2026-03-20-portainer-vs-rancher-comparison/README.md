@@ -16,7 +16,7 @@ Portainer and Rancher are both container management platforms, but they target d
 |---------|-----------|---------|
 | Primary target | Docker + K8s users | Kubernetes users |
 | Learning curve | Low | High |
-| Docker support | Full (first-class) | Limited (deprecated in RKE1) |
+| Docker support | Full (first-class) | Limited (not first-class) |
 | Kubernetes support | Good | Excellent |
 | Cluster provisioning | Limited | Extensive |
 | Multi-cluster | Yes | Yes (stronger) |
@@ -29,9 +29,8 @@ Portainer is the clear winner for Docker:
 - Full Docker container, volume, and network management
 - Docker Swarm cluster management
 - Docker Compose stack deployment
-- Docker context management
 
-Rancher's Docker support was part of RKE1 and has been deprecated in newer versions. Rancher 2.x is fundamentally Kubernetes-focused.
+Rancher 2.x is fundamentally Kubernetes-focused. Older RKE1-based workflows depended on Docker, but current Rancher releases do not offer Portainer-style Docker or Swarm management.
 
 ## Kubernetes Feature Depth
 
@@ -39,20 +38,20 @@ Rancher has deeper Kubernetes integration:
 
 ```text
 Portainer Kubernetes:
-- Environment registration (import kubeconfig)
+- Environment registration (URL/IP or kubeconfig import)
 - Basic workload management (deployments, services)
 - Helm chart support
 - Manifest deployment
 - Namespace management with RBAC
 
 Rancher Kubernetes:
-- Full cluster lifecycle management (create/upgrade/delete)
+- Full cluster lifecycle management (create/import/upgrade/delete)
 - RKE2/K3s cluster provisioning
-- Advanced networking (Calico, Cilium, Canal)
-- Cluster federation
-- OPA Gatekeeper integration
+- Hosted cluster integration for EKS, AKS, and GKE
+- Choice of CNI providers for RKE2 clusters (Calico, Canal, Cilium, Flannel)
+- Continuous Delivery with Fleet for multi-cluster GitOps
 - Deep RBAC with project-level namespaces
-- Rancher-specific cluster monitoring stack
+- Integrated monitoring and alerting stack
 ```
 
 ## Cluster Provisioning
@@ -60,21 +59,21 @@ Rancher Kubernetes:
 Rancher excels at provisioning Kubernetes clusters:
 - Provisions RKE2 and K3s clusters on bare metal and VMs
 - Integrates with cloud providers for managed K8s (EKS, AKS, GKE)
-- Manages cluster upgrades with rolling updates
-- Provides a cluster API for infrastructure-as-code
+- Manages cluster upgrades
+- Supports automation through the Rancher2 Terraform provider and Cluster API integration via Rancher Turtles
 
-Portainer's cluster provisioning was limited (the KaaS feature was deprecated in 2.30) and defers to native tools like eksctl or Terraform.
+Portainer does include cluster creation paths, but its Provision KaaS Cluster feature was deprecated in 2.30, so provisioning is less central to the product than it is in Rancher.
 
 ## Edge Computing
 
 Portainer has a clear advantage here:
 - Edge Agent is purpose-built for IoT and remote sites
 - Edge Groups for fleet management
-- Edge Jobs for scripted fleet operations
-- Supports ARM devices (Raspberry Pi, Jetson, etc.)
-- Works over low-bandwidth and intermittent connections
+- Edge Jobs for scripted fleet operations (currently beta and only for Docker Standalone environments using `/etc/cron.d`)
+- Supports ARM64 and ARMv7 devices
+- Edge Agent Async mode is designed for low-data and intermittent-connectivity environments
 
-Rancher's edge story is primarily K3s clusters, which is powerful but requires more resources than Portainer's Edge Agent on constrained hardware.
+Rancher's edge story is primarily K3s- or RKE2-based clusters rather than a Portainer-style edge agent, which is powerful but comes with more Kubernetes operational overhead on constrained hardware.
 
 ## User Interface
 
