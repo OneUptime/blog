@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, PostgreSQL, Database, OpenTofu, Helm, StatefulSet, High Availability
+Tags: Kubernetes, PostgreSQL, Database, OpenTofu, Helm, StatefulSet, Replication
 
-Description: Learn how to deploy PostgreSQL on Kubernetes using OpenTofu and the Bitnami Helm chart with replication, persistent storage, connection pooling with PgBouncer, and automated backups.
+Description: Learn how to deploy PostgreSQL on Kubernetes using OpenTofu and the Bitnami Helm chart with replication, persistent storage, and Prometheus metrics.
 
 ## Overview
 
-PostgreSQL on Kubernetes with the Bitnami Helm chart provides a production-ready setup with primary-replica replication, persistent storage, and optional PgBouncer connection pooling. OpenTofu manages the full deployment declaratively.
+PostgreSQL on Kubernetes with the Bitnami Helm chart provides a production-ready setup with primary-replica replication, persistent storage, and Prometheus metrics. OpenTofu manages the full deployment declaratively.
 
 ## Step 1: Deploy PostgreSQL with Helm
 
@@ -25,15 +25,21 @@ resource "random_password" "postgres_app" {
   special = false
 }
 
+resource "kubernetes_namespace" "postgres" {
+  metadata {
+    name = "postgres"
+  }
+}
+
 resource "kubernetes_secret" "postgres_auth" {
   metadata {
     name      = "postgres-auth"
-    namespace = "postgres"
+    namespace = kubernetes_namespace.postgres.metadata[0].name
   }
 
   data = {
-    postgres-password = random_password.postgres_admin.result
-    password          = random_password.postgres_app.result
+    postgres-password    = random_password.postgres_admin.result
+    password             = random_password.postgres_app.result
     replication-password = random_password.postgres_admin.result
   }
 }
@@ -42,20 +48,22 @@ resource "helm_release" "postgresql" {
   name             = "postgresql"
   repository       = "https://charts.bitnami.com/bitnami"
   chart            = "postgresql"
-  version          = "14.2.0"
-  namespace        = "postgres"
-  create_namespace = true
+  version          = "17.1.0"
+  namespace        = kubernetes_namespace.postgres.metadata[0].name
+  create_namespace = false
 
   values = [yamlencode({
+    architecture = "replication"
+
     auth = {
-      username          = "appuser"
-      database          = "appdb"
-      existingSecret    = kubernetes_secret.postgres_auth.metadata[0].name
+      username       = "appuser"
+      database       = "appdb"
+      existingSecret = kubernetes_secret.postgres_auth.metadata[0].name
     }
 
-    primary = {
-      replicaCount = 1
+    postgresqlSharedPreloadLibraries = "pg_stat_statements"
 
+    primary = {
       persistence = {
         enabled      = true
         size         = "20Gi"
@@ -92,31 +100,26 @@ resource "helm_release" "postgresql" {
       replicaCount = 2
 
       persistence = {
-        enabled = true
-        size    = "20Gi"
+        enabled      = true
+        size         = "20Gi"
+        storageClass = "gp3"
       }
 
       resources = {
         requests = { memory = "256Mi", cpu = "250m" }
         limits   = { memory = "1Gi", cpu = "500m" }
       }
-    }
 
-    # Enable connection pooling with PgBouncer
-    pgbouncer = {
-      enabled = true
-
-      poolMode = "transaction"  # session, transaction, or statement
-
-      maxClientConnections  = 400
-      defaultPoolSize       = 20
-      minPoolSize           = 5
+      pdb = {
+        create = false
+      }
     }
 
     metrics = {
       enabled = true
+
       serviceMonitor = {
-        enabled = true
+        enabled = true # Requires Prometheus Operator CRDs
       }
     }
   })]
@@ -130,7 +133,7 @@ resource "helm_release" "postgresql" {
 resource "kubernetes_pod_disruption_budget_v1" "postgres_replicas" {
   metadata {
     name      = "postgres-replicas-pdb"
-    namespace = "postgres"
+    namespace = kubernetes_namespace.postgres.metadata[0].name
   }
 
   spec {
@@ -149,18 +152,13 @@ resource "kubernetes_pod_disruption_budget_v1" "postgres_replicas" {
 
 ```hcl
 output "postgres_primary_host" {
-  value       = "postgresql.postgres.svc.cluster.local"
+  value       = "postgresql-primary.postgres.svc.cluster.local"
   description = "PostgreSQL primary host for writes"
 }
 
 output "postgres_replica_host" {
   value       = "postgresql-read.postgres.svc.cluster.local"
   description = "PostgreSQL read replica host for reads"
-}
-
-output "pgbouncer_host" {
-  value       = "postgresql-pgbouncer.postgres.svc.cluster.local"
-  description = "PgBouncer connection pooler host"
 }
 
 output "postgres_port" {
@@ -170,4 +168,4 @@ output "postgres_port" {
 
 ## Summary
 
-PostgreSQL deployed with OpenTofu on Kubernetes using Bitnami's Helm chart provides a reliable relational database with streaming replication and optional PgBouncer connection pooling. The read replica endpoint allows applications to distribute read load while writing to the primary. PgBouncer in transaction pooling mode dramatically reduces connection overhead for high-concurrency workloads.
+PostgreSQL deployed with OpenTofu on Kubernetes using Bitnami's Helm chart provides a reliable relational database with streaming replication, persistent storage, and Prometheus metrics. The read replica endpoint allows applications to distribute read load while writing to the primary.
