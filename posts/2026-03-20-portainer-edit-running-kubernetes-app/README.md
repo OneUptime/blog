@@ -8,7 +8,7 @@ Description: Learn how to edit and update a running Kubernetes application in Po
 
 ## Introduction
 
-Updating a running Kubernetes application in Portainer is straightforward - you can edit the application via form or YAML, and Portainer applies the changes using a rolling update strategy. This guide covers editing running applications, understanding the update process, and best practices for zero-downtime updates.
+Updating a running Kubernetes application in Portainer is straightforward, but the edit workflow depends on how the application was deployed. Applications deployed from a form can be edited through the form again, while YAML editing is available through the YAML tab in Portainer Business Edition. For Deployment-backed applications, changes to the pod template roll out according to the Deployment strategy. This guide covers editing running applications, understanding the update process, and best practices for zero-downtime updates.
 
 ## Prerequisites
 
@@ -24,7 +24,9 @@ Updating a running Kubernetes application in Portainer is straightforward - you 
 
 ## Step 2: Edit via Form
 
-1. Click **Edit** (pencil icon)
+If the application was originally deployed from a form:
+
+1. Click **Edit this application**
 2. Make changes to the form fields:
 
 **Common edits:**
@@ -34,38 +36,35 @@ Updating a running Kubernetes application in Portainer is straightforward - you 
 - Change replica count
 - Update volume mounts
 
-3. Click **Update the application**
+3. Click **Update application**
 
 ## Step 3: Edit via YAML
 
-For more complex changes:
+For more complex changes in Portainer Business Edition:
 
 1. Click the **YAML** tab on the application detail page
 2. Directly edit the YAML:
 
 ```yaml
-# Change image version
-
-containers:
-  - name: app
-    image: registry.company.com/myapp:v2.1.0    # Changed from v2.0.0
-
-# Add new environment variable
-    env:
-      - name: NEW_FEATURE
-        value: "enabled"
-
-# Update resource limits
-    resources:
-      limits:
-        memory: 1Gi     # Increased from 512Mi
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          image: registry.company.com/myapp:v2.1.0    # Changed from v2.0.0
+          env:
+            - name: NEW_FEATURE
+              value: "enabled"
+          resources:
+            limits:
+              memory: 1Gi     # Increased from 512Mi
 ```
 
-3. Click **Update**
+3. Click **Apply changes**
 
 ## Step 4: Understanding Rolling Updates
 
-By default, Kubernetes uses RollingUpdate strategy:
+For Deployments, Kubernetes uses `RollingUpdate` strategy by default:
 
 ```yaml
 spec:
@@ -103,7 +102,7 @@ kubectl rollout status deployment/my-app -n production
 kubectl get pods -n production -l app=my-app -w
 ```
 
-In Portainer, the application detail shows pods with their status updating in real time.
+In Portainer, the application detail page lists the pods and their current status.
 
 ## Step 6: Rollback if Something Goes Wrong
 
@@ -118,7 +117,9 @@ kubectl rollout history deployment/my-app -n production
 kubectl rollout undo deployment/my-app --to-revision=3 -n production
 ```
 
-In Portainer: find the previous image tag or configuration and update again.
+These rollback commands apply to Deployment rollout revisions created by changes to the pod template. Scaling the Deployment does not create a new revision.
+
+In Portainer, use the rollback action if it is available for that application. Otherwise, update the application back to the previous known-good image tag or configuration.
 
 ## Step 7: Common Application Updates
 
@@ -165,12 +166,12 @@ kubectl patch deployment my-app -n production \
 # Add an annotation
 kubectl patch deployment my-app -n production \
   --type='merge' \
-  -p='{"metadata":{"annotations":{"deployment.kubernetes.io/description":"v2.1.0 release"}}}'
+  -p='{"metadata":{"annotations":{"kubernetes.io/change-cause":"image updated to v2.1.0"}}}'
 ```
 
 ## Step 9: Best Practices for Zero-Downtime Updates
 
-1. **Always set `maxUnavailable: 0`** - Prevents availability loss during updates
+1. **For zero-downtime goals, set `maxUnavailable: 0` with a non-zero `maxSurge`** - Prevents the rollout from reducing available pods below the desired count
 2. **Configure readiness probes** - New pods don't receive traffic until healthy
 3. **Set `minReadySeconds`** - Add a buffer before Kubernetes considers a pod ready
 
@@ -196,4 +197,4 @@ spec:
 
 ## Conclusion
 
-Editing running Kubernetes applications in Portainer is safe and non-disruptive when the deployment strategy is configured correctly. Use the form UI for simple updates like image tags and replica counts, and the YAML editor for structural changes. Always monitor the rolling update progress and keep rollback procedures ready for when updates don't go as planned.
+Editing running Kubernetes applications in Portainer can be safe and low-disruption when the workload type, readiness checks, and deployment strategy are configured correctly. Use the form UI for simple updates like image tags and replica counts, and the YAML editor for structural changes. Always monitor the rolling update progress and keep rollback procedures ready for when updates don't go as planned.
