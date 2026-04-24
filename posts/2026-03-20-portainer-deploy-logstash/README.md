@@ -17,7 +17,7 @@ version: "3.8"
 
 services:
   logstash:
-    image: docker.elastic.co/logstash/logstash:8.13.0
+    image: docker.elastic.co/logstash/logstash:9.3.3
     container_name: logstash
     environment:
       - LS_JAVA_OPTS=-Xmx512m -Xms512m
@@ -29,11 +29,15 @@ services:
       - ./pipeline:/usr/share/logstash/pipeline:ro
       # Main Logstash settings
       - ./logstash.yml:/usr/share/logstash/config/logstash.yml:ro
-      # Patterns for grok filters
+      # Multiple pipeline definitions
+      - ./pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
+      # Optional custom patterns for grok filters
       - ./patterns:/usr/share/logstash/patterns:ro
     ports:
       - "5044:5044"    # Beats input
-      - "5000:5000"    # Generic TCP/UDP input
+      - "5000:5000/tcp" # Syslog input (TCP)
+      - "5000:5000/udp" # Syslog input (UDP)
+      - "5001:5001"    # JSON application logs
       - "9600:9600"    # Logstash monitoring API
     networks:
       - elastic-network
@@ -60,10 +64,23 @@ Create `logstash.yml`:
 ```yaml
 # logstash.yml
 
-http.host: "0.0.0.0"
+api.http.host: "0.0.0.0"
 xpack.monitoring.enabled: false
 pipeline.workers: 2
 pipeline.batch.size: 125
+```
+
+Create `pipelines.yml` so Logstash runs each `.conf` file as a separate pipeline:
+
+```yaml
+- pipeline.id: beats
+  path.config: "/usr/share/logstash/pipeline/beats.conf"
+
+- pipeline.id: syslog
+  path.config: "/usr/share/logstash/pipeline/syslog.conf"
+
+- pipeline.id: json-logs
+  path.config: "/usr/share/logstash/pipeline/json-logs.conf"
 ```
 
 ## Pipeline Configurations
@@ -77,7 +94,7 @@ Create `pipeline/beats.conf`:
 input {
   beats {
     port => 5044
-    ssl => false
+    ssl_enabled => false
   }
 }
 
@@ -85,6 +102,7 @@ input {
 filter {
   if [fields][log_type] == "nginx_access" {
     grok {
+      patterns_dir => ["/usr/share/logstash/patterns"]
       match => {
         "message" => '%{COMBINEDAPACHELOG}'
       }
@@ -132,21 +150,9 @@ input {
 }
 
 filter {
-  # Parse syslog messages
   if [type] == "syslog" {
-    grok {
-      match => {
-        "message" => "%{SYSLOGTIMESTAMP:syslog_timestamp} %{SYSLOGHOST:syslog_hostname} %{DATA:syslog_program}(?:\[%{POSINT:syslog_pid}\])?: %{GREEDYDATA:syslog_message}"
-      }
-    }
-    
-    date {
-      match => ["syslog_timestamp", "MMM  d HH:mm:ss", "MMM dd HH:mm:ss"]
-    }
-    
     mutate {
       add_field => { "received_at" => "%{@timestamp}" }
-      add_field => { "received_from" => "%{host}" }
     }
   }
 }
@@ -157,6 +163,7 @@ output {
     user => "${ELASTICSEARCH_USER}"
     password => "${ELASTICSEARCH_PASSWORD}"
     index => "syslog-%{+YYYY.MM.dd}"
+    ilm_enabled => false
   }
 }
 ```
@@ -193,6 +200,7 @@ output {
     user => "${ELASTICSEARCH_USER}"
     password => "${ELASTICSEARCH_PASSWORD}"
     index => "%{[@metadata][index_prefix]}-%{+YYYY.MM.dd}"
+    ilm_enabled => false
   }
   
   # Also log to stdout for debugging
