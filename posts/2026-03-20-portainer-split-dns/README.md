@@ -34,17 +34,18 @@ Internal Users → Private DNS → Private IP → Reverse Proxy → Container
 sudo apt-get install -y bind9 bind9utils
 
 # Create internal zone file
-sudo tee /etc/bind/zones/db.internal.example.com << 'EOF'
+sudo mkdir -p /etc/bind/zones
+sudo tee /etc/bind/zones/db.example.com << 'EOF'
 $TTL    3600
-@       IN      SOA     ns1.internal.example.com. admin.example.com. (
-                     2024032001  ; Serial
+@       IN      SOA     ns1.example.com. admin.example.com. (
+                     2026032001  ; Serial
                          3600    ; Refresh
                           900    ; Retry
                         86400    ; Expire
                           300 )  ; Negative Cache TTL
 
 ; Name servers
-@       IN      NS      ns1.internal.example.com.
+@       IN      NS      ns1.example.com.
 ns1     IN      A       192.168.1.10
 
 ; Portainer and services - internal IPs
@@ -59,9 +60,9 @@ EOF
 
 # Configure BIND to serve internal zone
 sudo tee -a /etc/bind/named.conf.local << 'EOF'
-zone "internal.example.com" {
+zone "example.com" {
     type master;
-    file "/etc/bind/zones/db.internal.example.com";
+    file "/etc/bind/zones/db.example.com";
 };
 EOF
 
@@ -72,18 +73,13 @@ sudo systemctl restart bind9
 
 ```bash
 # Add local DNS records in Pi-hole
-# Admin Panel > Local DNS > DNS Records
+# In the Pi-hole web interface, add local DNS records for:
 
-# Add records:
 # portainer.example.com -> 192.168.1.50
 # app.example.com -> 192.168.1.51
 
-# Or add via Pi-hole API
-curl -X POST \
-  "http://pi-hole.local/api/dns/record" \
-  -H "Authorization: Basic $(echo -n 'admin:password' | base64)" \
-  -H "Content-Type: application/json" \
-  -d '{"domain": "portainer.example.com", "ip": "192.168.1.50"}'
+# Or add via the Pi-hole CLI
+sudo pihole-FTL --config dns.hosts '[ "192.168.1.50 portainer.example.com", "192.168.1.51 app.example.com" ]'
 ```
 
 ## Step 2: Configure Public DNS
@@ -103,7 +99,7 @@ curl -X POST \
     "name": "portainer.example.com",
     "content": "PUBLIC_IP",
     "ttl": 300,
-    "proxied": true
+    "proxied": false
   }'
 ```
 
@@ -134,6 +130,9 @@ server {
     listen 443 ssl;
     server_name app.example.com;
 
+    ssl_certificate /etc/ssl/certs/app.crt;
+    ssl_certificate_key /etc/ssl/private/app.key;
+
     location / {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
@@ -147,18 +146,15 @@ server {
 Portainer-managed containers can resolve internal services:
 
 ```yaml
-# docker-compose.yml with custom DNS
-version: '3.8'
+# compose.yaml with custom DNS
 services:
   app:
     image: myapp:latest
     dns:
       - 192.168.1.10   # Internal DNS server
       - 8.8.8.8        # Fallback to public DNS
-    extra_hosts:
-      - "api.internal:192.168.1.52"
     environment:
-      - API_URL=https://api.internal
+      - API_URL=https://api.example.com
 ```
 
 ## Step 5: Configure Docker's Default DNS
@@ -168,7 +164,7 @@ services:
 sudo tee /etc/docker/daemon.json << 'EOF'
 {
   "dns": ["192.168.1.10", "8.8.8.8"],
-  "dns-search": ["internal.example.com"]
+  "dns-search": ["example.com"]
 }
 EOF
 
