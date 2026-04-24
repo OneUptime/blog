@@ -8,7 +8,7 @@ Description: Learn how to view and interpret Kubernetes cluster details, resourc
 
 ## Introduction
 
-Portainer's Kubernetes environment dashboard gives you a comprehensive view of your cluster's health, resources, and deployed workloads. From node counts to namespace summaries, this centralized view is invaluable for cluster operators. This guide covers navigating the cluster detail views in Portainer.
+Portainer's Kubernetes environment dashboard gives you a comprehensive view of your cluster's health, resources, and deployed workloads. From summary tiles to node and namespace views, this centralized view is invaluable for cluster operators. This guide covers navigating the cluster detail views in Portainer.
 
 ## Prerequisites
 
@@ -23,23 +23,24 @@ Portainer's Kubernetes environment dashboard gives you a comprehensive view of y
 
 ## Step 2: Understand the Dashboard Summary
 
-The dashboard displays key metrics:
+The dashboard summary tiles show key metrics:
 
 ```text
-Cluster Overview
+Dashboard Summary
 ──────────────────────────────────────
-Nodes:            5 (4 Ready, 1 Unschedulable)
 Namespaces:       12
 Applications:     47
 Services:         38
+Ingresses:        9
 Volumes:          24
 ConfigMaps:       56
 Secrets:          31
+Policies:         4
 ```
 
 ## Step 3: View Cluster Nodes
 
-Click **Cluster → Nodes** to see detailed node information:
+Click **Cluster → Details** to see detailed node information:
 
 ```text
 NAME        STATUS   ROLES          CPU (Req/Limit)    MEMORY (Req/Limit)
@@ -51,17 +52,17 @@ worker-04   Ready    worker         2.2/4.0 cores      4.3/8.0 GiB
 ```
 
 Click on a node to see:
-- Node conditions (Ready, MemoryPressure, DiskPressure, PIDPressure)
+- Node conditions (Ready, MemoryPressure, DiskPressure, PIDPressure, NetworkUnavailable)
 - Allocated resources
 - Labels and taints
-- Pods running on the node
+- Applications running on the node
 
 ## Step 4: View Cluster Resource Usage
 
 ```bash
-# View resource usage from kubectl
+# View resource usage from kubectl (requires Metrics Server)
 
-kubectl top nodes
+kubectl top node
 
 # NAME          CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
 # worker-01     850m         21%    5120Mi          63%
@@ -69,22 +70,16 @@ kubectl top nodes
 # worker-03     480m         12%    3840Mi          47%
 ```
 
-In Portainer, the Cluster view shows aggregated resource requests/limits.
+In Portainer, cluster and node usage graphs are available when the metrics API is enabled.
 
 ## Step 5: View Kubernetes Version Information
 
-In Portainer cluster details:
-
-```text
-Kubernetes Version:   1.28.4
-Platform:             linux/amd64
-Container Runtime:    containerd://1.7.3
-```
+Portainer node details show version-related information such as the kubelet version for each node. On Portainer-provisioned Omni or MicroK8s clusters, cluster version management is also available.
 
 ```bash
 # CLI equivalent
 kubectl version --short
-kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}'
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.kubeletVersion}{"\n"}{end}'
 ```
 
 ## Step 6: Check Namespace Overview
@@ -104,13 +99,13 @@ kube-system         Active   12          800m          1536Mi
 
 ```bash
 # View all recent events
-kubectl get events --all-namespaces --sort-by='.lastTimestamp' | tail -20
+kubectl events --all-namespaces
 
 # View only warnings
-kubectl get events --all-namespaces --field-selector type=Warning
+kubectl events --all-namespaces --types=Warning
 ```
 
-In Portainer, navigate to specific namespaces to see events for workloads in that namespace.
+In Portainer, open the relevant application or node and use the **Events** tab.
 
 ## Step 8: Check Cluster Certificates
 
@@ -119,10 +114,10 @@ In Portainer, navigate to specific namespaces to see events for workloads in tha
 kubeadm certs check-expiration
 
 # CERTIFICATE                EXPIRES                  RESIDUAL TIME
-# admin.conf                 Dec 15, 2024 10:00 UTC   364d
-# apiserver                  Dec 15, 2024 10:00 UTC   364d
-# apiserver-etcd-client      Dec 15, 2024 10:00 UTC   364d
-# apiserver-kubelet-client   Dec 15, 2024 10:00 UTC   364d
+# admin.conf                 Apr 24, 2027 10:00 UTC   364d
+# apiserver                  Apr 24, 2027 10:00 UTC   364d
+# apiserver-etcd-client      Apr 24, 2027 10:00 UTC   364d
+# apiserver-kubelet-client   Apr 24, 2027 10:00 UTC   364d
 ```
 
 ## Step 9: Inspect Cluster Configuration
@@ -138,20 +133,16 @@ kubectl get storageclasses
 kubectl get pv
 ```
 
-In Portainer: navigate to **Cluster → Storage Classes** or **Volumes** to see this information visually.
+In Portainer: navigate to **Volumes** and switch to the **Storage** tab to see storage classes and related volumes visually.
 
 ## Step 10: Monitor Control Plane Health
 
 ```bash
-# Check control plane component health
-kubectl get componentstatuses
-# (deprecated in newer versions, use endpoint health checks)
+# Check API server readiness
+kubectl get --raw='/readyz?verbose'
 
-# Check API server health
-kubectl get --raw='/healthz'
-
-# Check etcd health
-kubectl get --raw='/healthz/etcd'
+# Check API server liveness
+kubectl get --raw='/livez?verbose'
 ```
 
 ## Setting Up Cluster Monitoring
