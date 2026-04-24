@@ -29,9 +29,9 @@ graph TD
 
 ### 1. Create Dedicated Environments
 
-Each tenant should have their own Docker environment registered in Portainer. This prevents any possibility of a tenant's container accidentally accessing another tenant's container via a shared network.
+For strongest isolation, each tenant should have their own Docker environment registered in Portainer. If each tenant has a separate VM or Docker host, they cannot accidentally share Docker networks across tenants.
 
-For cloud-based isolation, provision a separate VM or Docker host per tenant. For single-host setups, use Docker's built-in network isolation.
+For cloud-based isolation, provision a separate VM or Docker host per tenant. For single-host setups, you must still isolate tenants with separate Docker networks.
 
 ### 2. Create Teams for Each Tenant
 
@@ -65,10 +65,10 @@ USER_A_ID=$(curl -s -X POST "$PORTAINER/api/users" \
   -d '{"Username":"alice","Password":"securepass123","Role":2}' | jq -r .Id)
 
 # Add alice to Team A
-curl -s -X POST "$PORTAINER/api/teams/$TEAM_A_ID/memberships" \
+curl -s -X POST "$PORTAINER/api/team_memberships" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"UserID\": $USER_A_ID}"
+  -d "{\"UserID\": $USER_A_ID, \"TeamID\": $TEAM_A_ID, \"Role\": 2}"
 ```
 
 ### 4. Configure Environment Access per Team
@@ -80,17 +80,21 @@ Grant each team access only to their environment:
 ENV_A_ID=1   # Tenant A's environment
 ENV_B_ID=2   # Tenant B's environment
 
-# Grant Team A access to Environment A (role 2 = Operator)
-curl -s -X PUT "$PORTAINER/api/environments/$ENV_A_ID/teams/$TEAM_A_ID" \
+# Get the role ID you want to assign on the environment
+ROLE_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+  "$PORTAINER/api/roles" | jq -r '.[] | select((.Name | ascii_downcase) == "standard user") | .Id')
+
+# Grant Team A access to Environment A
+curl -s -X PUT "$PORTAINER/api/endpoints/$ENV_A_ID" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"Role": 2}'
+  -d "{\"TeamAccessPolicies\":{\"$TEAM_A_ID\":{\"RoleId\":$ROLE_ID}}}"
 
 # Grant Team B access to Environment B
-curl -s -X PUT "$PORTAINER/api/environments/$ENV_B_ID/teams/$TEAM_B_ID" \
+curl -s -X PUT "$PORTAINER/api/endpoints/$ENV_B_ID" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"Role": 2}'
+  -d "{\"TeamAccessPolicies\":{\"$TEAM_B_ID\":{\"RoleId\":$ROLE_ID}}}"
 
 # Do NOT grant Team A access to Environment B, or vice versa
 ```
@@ -107,7 +111,7 @@ TENANT_A_TOKEN=$(curl -s -X POST "$PORTAINER/api/auth" \
 
 # This should only return Environment A
 curl -s -H "Authorization: Bearer $TENANT_A_TOKEN" \
-  "$PORTAINER/api/environments" | jq '.[].Name'
+  "$PORTAINER/api/endpoints" | jq '.[].Name'
 ```
 
 ## Network-Level Isolation
@@ -115,20 +119,20 @@ curl -s -H "Authorization: Bearer $TENANT_A_TOKEN" \
 Even with environment-level access control, containers on the same host can communicate if they share a network. For strict isolation:
 
 ```yaml
-# Tenant A stack - always use team-specific network names
+# Tenant A stack - use a dedicated user-defined network
 networks:
   tenant_a_net:
     driver: bridge
-    name: tenant_a_net  # Explicit name to avoid accidental overlap
+    internal: true
 ```
 
-Use naming conventions that include the tenant name in all network, volume, and stack names to prevent accidental cross-tenant connections.
+Use separate user-defined networks per tenant, and avoid attaching tenant workloads to shared or external networks unless that connectivity is intentional.
 
 ## Registry Isolation
 
-Prevent tenants from using each other's private registries:
+Prevent tenants from using each other's private registries within a given environment:
 
-1. In Portainer, go to **Registries**.
+1. In Portainer, open the relevant environment and go to **Registries**.
 2. For each registry, click **Manage access**.
 3. Add only the relevant team.
-4. Teams without access cannot use that registry in their stacks.
+4. For that environment, teams without access cannot use that registry in their stacks.
