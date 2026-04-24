@@ -8,35 +8,34 @@ Description: Learn when and how to run privileged Docker containers in Portainer
 
 ## Introduction
 
-A privileged container has all Linux capabilities and access to almost all host resources - it essentially runs without security isolation. While this is sometimes necessary for system-level tools and certain drivers, it's a significant security risk that should be avoided whenever possible. This guide explains how to enable privileged mode in Portainer and presents safer alternatives.
+A privileged container has all Linux capabilities and access to almost all host resources - it removes most of the normal security isolation between the container and the host. While this is sometimes necessary for system-level tools and certain drivers, it's a significant security risk that should be avoided whenever possible. This guide explains how to enable privileged mode in Portainer and presents safer alternatives.
 
 ## Prerequisites
 
 - Portainer installed with a connected Docker environment
-- Admin access to Portainer
+- Permission in Portainer to deploy containers or stacks (privileged mode may be restricted to administrators)
 
 ## What Does Privileged Mode Enable?
 
 Running a container with `--privileged`:
 - Grants all Linux capabilities (CAP_SYS_ADMIN, CAP_NET_ADMIN, etc.)
 - Allows access to all host devices (`/dev`)
-- Disables AppArmor/SELinux security profiles
+- Disables the default seccomp profile and relaxes AppArmor/SELinux confinement
 - Allows mounting filesystems
 - Allows loading kernel modules
-- Gives the container root-level access to the host's resources
+- Gives the container very broad access to the host's resources
 
-This is essentially equivalent to running directly as root on the host.
+In practice, this gives the container nearly the same host access as a process running outside Docker.
 
 ## When Is Privileged Mode Needed?
 
 | Use Case | Alternative |
 |----------|-------------|
-| Docker-in-Docker (DinD) | Mount `/var/run/docker.sock` instead |
+| Docker-in-Docker (DinD) | If you only need the host daemon, mount `/var/run/docker.sock` instead |
 | Kernel module loading | Preload on host; avoid in containers |
 | Mounting filesystems (NFS, FUSE) | Use `--cap-add SYS_ADMIN` + specific devices |
 | Some system monitoring tools | Use specific device mounts |
 | Network tool containers | Use `--cap-add NET_ADMIN` |
-| Kubernetes nodes (kubeadm) | Required for some k8s setup tools |
 
 ## Step 1: Enable Privileged Mode in Portainer
 
@@ -108,46 +107,43 @@ services:
       - SYS_ADMIN             # Only for mounting, if truly needed
 ```
 
-### Alternative 3: Docker Socket Mounting (DinD Alternative)
+### Alternative 3: Docker Socket Mounting (Host Daemon Access)
 
 ```yaml
 services:
   ci-runner:
     image: docker:cli
-    # Mount the Docker socket instead of using privileged DinD
+    # Mount the Docker socket when the container only needs the host Docker daemon
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     # No privileged mode needed!
 ```
 
-Note: Mounting the Docker socket also grants significant host access - it's not truly safe, but it's safer than `--privileged` for most CI use cases.
+Note: Mounting the Docker socket also grants significant host access - it's not truly safe, and it gives the container broad control over the host Docker daemon.
 
-### Alternative 4: User Namespaces
+### Alternative 4: User Namespaces (Defense in Depth)
 
-Enable user namespace remapping in Docker daemon:
+Enable user namespace remapping in the Docker daemon by adding this to `/etc/docker/daemon.json`:
 
 ```json
-// /etc/docker/daemon.json
 {
   "userns-remap": "default"
 }
 ```
 
-This maps the container's root user to an unprivileged host user, limiting the impact of container escapes.
+This does not replace capabilities or device mapping, but it can limit the impact of container escapes by mapping the container's root user to an unprivileged host user.
 
 ## Step 3: Common Privileged Container Use Cases
 
-### Container-Based Kubernetes Setup (kubeadm)
+### Docker-in-Docker Daemon
 
 ```yaml
 services:
-  kubeadm-init:
-    image: k8s-infra/kubeadm:v1.29
-    privileged: true   # Required for kubeadm to configure kernel params
-    network_mode: host
-    volumes:
-      - /etc/kubernetes:/etc/kubernetes
-      - /var/lib/kubelet:/var/lib/kubelet
+  dind:
+    image: docker:dind
+    privileged: true   # Required for docker:dind
+    environment:
+      - DOCKER_TLS_CERTDIR=/certs
 ```
 
 ### System Package Installation (Ansible Target)
@@ -156,7 +152,7 @@ services:
 services:
   ansible-target:
     image: myorg/systemd-container:latest
-    privileged: true   # Needed for systemd in containers
+    privileged: true
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:ro
     tmpfs:
@@ -185,7 +181,7 @@ Regularly audit which containers run in privileged mode:
 
 ```bash
 # List all running privileged containers:
-docker ps -q | xargs docker inspect --format='{{.Name}} {{.HostConfig.Privileged}}' | grep true
+docker ps -q | xargs -r docker inspect --format='{{.Name}} {{.HostConfig.Privileged}}' | grep true
 
 # In Portainer: navigate to Containers
 # Sort or filter for containers with Privileged mode enabled
@@ -203,4 +199,4 @@ Before enabling privileged mode, always ask: **"What specific capability does th
 
 ## Conclusion
 
-Privileged mode in Portainer is easy to enable but should be used sparingly. For most use cases, there are safer alternatives: adding specific Linux capabilities, mapping specific devices, or using Docker socket mounting. Reserve privileged mode for true system-level containers like Docker-in-Docker, and always document why it was needed. The security trade-off is significant, so scrutinize every request to run privileged containers.
+Privileged mode in Portainer is easy to enable but should be used sparingly. For many use cases, there are safer alternatives: adding specific Linux capabilities, mapping specific devices, or mounting the Docker socket when the container only needs the host daemon. Reserve privileged mode for true system-level containers like Docker-in-Docker, and always document why it was needed. The security trade-off is significant, so scrutinize every request to run privileged containers.
