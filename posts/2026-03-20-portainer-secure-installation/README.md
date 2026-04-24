@@ -12,7 +12,7 @@ A default Portainer installation is functional but not hardened for production. 
 
 ## Prerequisites
 
-- Portainer CE or BE installed
+- Portainer CE or BE installed (some access control and logging features below require BE)
 - Admin access to the Portainer instance
 - Access to the host system for network configuration
 - A domain name and TLS certificate for HTTPS
@@ -23,15 +23,16 @@ A default Portainer installation is functional but not hardened for production. 
 - [ ] Use a non-default admin username
 - [ ] Set a strong admin password
 - [ ] Restrict access by IP/VPN
-- [ ] Disable telemetry
+- [ ] Force HTTPS only
 - [ ] Configure session timeout
 - [ ] Restrict Docker socket access
-- [ ] Enable RBAC for all users
+- [ ] Use least-privilege access controls for all users
+- [ ] Restrict registry access
 - [ ] Disable unused features
 
 ## Step 1: Enable HTTPS
 
-Never run Portainer over HTTP in production. Use HTTPS with a valid TLS certificate:
+Do not expose Portainer over HTTP in production. Portainer serves HTTPS on port `9443` by default with a self-signed certificate; in production, replace it with a valid TLS certificate:
 
 ```bash
 # Option A: Use Portainer with TLS certificates directly
@@ -44,7 +45,6 @@ docker run -d \
   -v portainer_data:/data \
   -v /etc/portainer/certs:/certs \
   portainer/portainer-ce:latest \
-  --ssl \
   --sslcert /certs/cert.pem \
   --sslkey /certs/key.pem
 
@@ -54,19 +54,18 @@ docker run -d \
 
 ## Step 2: Use a Non-Default Admin Username
 
-During initial setup, change the admin username from `admin` to something less predictable:
+During initial setup, choose a username other than `admin`:
 
 ```bash
-# During initialization, use a custom username
+# On a fresh install, initialize the first admin account with a custom username
+PASSWORD="$(openssl rand -base64 32)"
+
 curl -s -X POST https://portainer.example.com/api/users/admin/init \
   -H "Content-Type: application/json" \
-  -d '{
-    "username": "portainer-ops",
-    "password": "$(openssl rand -base64 32)"
-  }'
+  -d "{\"Username\":\"portainer-ops\",\"Password\":\"${PASSWORD}\"}"
 ```
 
-Or create a new admin user and remove the default `admin` user after setup.
+This is safer than relying on the default `admin` username.
 
 ## Step 3: Set a Strong Password
 
@@ -76,11 +75,11 @@ openssl rand -base64 32
 # Example output: K8mP2xQzN9vR5tY3wE7jH1cL4uF6nD0a
 
 # Or use Python
-python3 -c "import secrets, string; print(secrets.token_urlsafe(32))"
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-Password requirements for Portainer admin:
-- Minimum 12 characters
+Strong password guidance for the Portainer admin:
+- At least 12 characters
 - Mix of upper/lowercase, numbers, and symbols
 - Stored in a password manager or secrets vault
 - Never shared via email or chat
@@ -88,10 +87,10 @@ Password requirements for Portainer admin:
 ## Step 4: Restrict Network Access
 
 ```bash
-# Bind Portainer to a specific interface (not all interfaces)
+# Bind Portainer to a specific internal IP instead of all interfaces
 docker run -d \
   --name portainer \
-  -p 192.168.1.100:9443:9443 \  # Only accessible from internal IP
+  -p 192.168.1.100:9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest
@@ -111,87 +110,48 @@ iptables -A INPUT -p tcp --dport 9443 -j DROP
 
 ## Step 5: Configure Portainer Security Settings
 
-In Portainer UI → **Settings** → **Security**:
+In Portainer UI:
 
-1. **Session lifetime**: Set to `30m` or `1h` (not indefinite)
-2. **Force HTTPS**: Enable (redirects HTTP to HTTPS)
-3. **Disable telemetry**: Disable usage data collection
-4. **Concurrent sessions**: Enable session limits
-
-```bash
-# Configure via API
-TOKEN="your-admin-token"
-
-curl -s -X PUT https://portainer.example.com/api/settings \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "enableTelemetry": false,
-    "authenticationMethod": 1,
-    "userSessionTimeout": "30m",
-    "enforceEdgeID": true
-  }'
-```
+1. **Settings** → **Authentication**: Set **Session lifetime** to `30m` or `1h` (the default is 8 hours)
+2. **Settings** → **Authentication**: Increase the minimum password length if your policy requires it
+3. **Settings** → **General**: Enable **Force HTTPS only** after confirming HTTPS works correctly end to end
 
 ## Step 6: Enable RBAC for All Users
+
+Role-Based Access Control beyond the standard administrator/user model is a Portainer Business Edition feature. In CE, use environment access and resource access control to keep permissions tight.
 
 Never give users more access than they need:
 
 1. Create teams aligned with job functions
-2. Assign teams to specific environments with minimal required access
-3. Use **Read-only** access for developers who only need to view logs/status
-4. Use **Standard** access for users who deploy applications
-5. Use **Administrator** access only for ops/infra team
-
-```bash
-# Create a read-only user via API
-curl -s -X POST https://portainer.example.com/api/users \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"username": "readonly-dev", "password": "Pass123!", "role": 2}'
-
-# Grant read-only access to production (role 3 = read-only)
-curl -s -X PUT https://portainer.example.com/api/endpoints/1/useraccesspolicies \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"USER_ID": {"RoleId": 3}}'
-```
+2. Assign teams to specific environments or environment groups with the minimum required role
+3. Use **Read-Only User** or **Helpdesk** for users who only need visibility
+4. Use **Operator** or **Standard User** for day-to-day deployment work
+5. Use **Administrator** access only for the ops/infra team
 
 ## Step 7: Restrict Docker Dangerous Settings
 
-In Portainer UI → **Environments** → select environment → **Security**:
+In Portainer UI → **Host/Swarm** → **Setup** → **Docker Security Settings** (or via a Docker security policy in BE):
 
-- **Disable bind mounts** for non-admin users
-- **Disable privileged mode** for non-admin users
-- **Disable host PID/network** access for non-admin users
-- **Disable container capabilities** addition for non-admin users
-- **Enable read-only registry** restriction (require approval for external images)
+- **Hide bind mounts** for non-admin users
+- **Hide privileged mode** for non-admin users
+- **Hide host PID 1** for non-admin users
+- **Hide device mappings** for non-admin users
+- **Hide container capabilities** for non-admin users
+- **Hide sysctl settings** for non-admin users
 
 ## Step 8: Harden the Docker Socket
 
 The Docker socket gives root-equivalent access. Restrict it:
 
-```bash
-# Portainer should be the only service with Docker socket access
-# Use a dedicated Docker group and add only Portainer user
-groupadd docker
-usermod -aG docker portainer-user
+Portainer's direct Docker socket connection is a legacy option, and Portainer recommends the Edge Agent for most use cases. If you use the local socket, mount it only into Portainer and do not expose the Docker API over plain TCP. For remote Docker access, use SSH or TLS.
 
-# Set strict permissions on socket
-chmod 660 /var/run/docker.sock
-chown root:docker /var/run/docker.sock
-```
+## Step 9: Restrict Registry Access
 
-## Step 9: Enable Container Content Trust
+Use approved registries and limit who can deploy from them:
 
-```bash
-# Set environment variable for Portainer container
-docker run -d \
-  --name portainer \
-  -e DOCKER_CONTENT_TRUST=1 \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  portainer/portainer-ce:latest
-```
+- Add only the registries you want Portainer users to access
+- In Docker/Swarm environments, use **Host/Swarm** → **Registries** → **Manage access** to grant registry access to specific users or teams
+- In Portainer BE, use registry policies to apply registry access consistently across environment groups
 
 ## Step 10: Monitor and Audit
 
