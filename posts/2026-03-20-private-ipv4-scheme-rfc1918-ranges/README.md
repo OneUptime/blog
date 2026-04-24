@@ -11,29 +11,29 @@ RFC 1918 defines three private IPv4 ranges reserved for internal use. Planning t
 ## The Three RFC 1918 Ranges
 
 ```bash
-Class A: 10.0.0.0/8
+10.0.0.0/8
   - 16,777,216 addresses
   - Ideal for large enterprises, cloud environments
   - Subnettable from /8 to /32
 
-Class B: 172.16.0.0/12
+172.16.0.0/12
   - 1,048,576 addresses (172.16.0.0 – 172.31.255.255)
   - Good for medium enterprises, VPN ranges
-  - Often used by Docker (172.17.0.0/16) - avoid conflicts
+  - Docker commonly uses 172.17.0.0/16 first - avoid conflicts
 
-Class C: 192.168.0.0/16
+192.168.0.0/16
   - 65,536 addresses
   - Common in home/small office equipment
-  - Avoid for corporate use (constant conflicts with remote workers)
+  - Often avoided for corporate VPN space because it commonly overlaps with home routers
 ```
 
 ## Common Conflicts to Avoid
 
 ```bash
 172.17.0.0/16     - Docker default bridge network
-172.16.0.0/12     - Frequently used by cloud providers (Oracle, AWS VPC)
-192.168.0.0/24    - Home routers (Linksys, ASUS, TP-Link)
-192.168.1.0/24    - Most home routers worldwide
+172.31.0.0/16     - AWS default VPC CIDR block
+192.168.0.0/24    - Common consumer-router default
+192.168.1.0/24    - Another common consumer-router default
 10.0.0.0/24       - Very commonly used in labs/small setups
 ```
 
@@ -70,7 +70,7 @@ Site: 10.1.0.0/16 (e.g., New York)
 
 ## Avoiding VPN Overlap
 
-A critical consideration: remote workers connect from `192.168.x.x` or `10.x.x.x` home networks. If your corporate range overlaps, split tunneling will break:
+A critical consideration: remote workers connect from `192.168.x.x` or `10.x.x.x` home networks. If your corporate range overlaps, split tunneling can break access to internal resources:
 
 ```bash
 # Test overlap before deployment
