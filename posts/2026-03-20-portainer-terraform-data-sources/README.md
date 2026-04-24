@@ -22,8 +22,9 @@ Terraform data sources let you read information about existing resources without
 # Resource - Terraform creates and manages this
 
 resource "portainer_environment" "production" {
-  name = "production"
-  ...
+  name                = "production"
+  environment_address = "tcp://production.example.com:9001"
+  type                = 2
 }
 
 # Data source - Terraform reads this, doesn't manage it
@@ -48,15 +49,19 @@ data "portainer_environment" "staging" {
 
 # Use the data source in resources
 resource "portainer_stack" "myapp_prod" {
-  name        = "myapp"
-  endpoint_id = data.portainer_environment.production.id  # Use the read ID
+  name            = "myapp"
+  deployment_type = "standalone"
+  method          = "string"
+  endpoint_id     = data.portainer_environment.production.id  # Use the read ID
 
   stack_file_content = file("docker-compose.yml")
 }
 
 resource "portainer_stack" "myapp_staging" {
-  name        = "myapp-staging"
-  endpoint_id = data.portainer_environment.staging.id
+  name            = "myapp-staging"
+  deployment_type = "standalone"
+  method          = "string"
+  endpoint_id     = data.portainer_environment.staging.id
 
   stack_file_content = file("docker-compose.yml")
 }
@@ -95,16 +100,18 @@ data "portainer_team" "ops_team" {
 }
 
 # Grant the existing team access to a new environment
-resource "portainer_environment" "new_cluster" {
-  name             = "new-k8s-cluster"
-  environment_url  = "tcp://new-cluster.example.com:2376"
-  environment_type = 6
+data "portainer_role" "environment_admin" {
+  name = "Environment administrator"
 }
 
-resource "portainer_environment_team_access" "ops_new_cluster" {
-  environment_id = portainer_environment.new_cluster.id
-  team_id        = data.portainer_team.ops_team.id
-  access_level   = 1  # Admin
+resource "portainer_environment" "new_cluster" {
+  name                = "new-k8s-cluster"
+  environment_address = "tcp://new-cluster.example.com:9001"
+  type                = 6
+
+  team_access_policies = {
+    (data.portainer_team.ops_team.id) = tonumber(data.portainer_role.environment_admin.id)
+  }
 }
 ```
 
@@ -153,8 +160,10 @@ data "terraform_remote_state" "portainer_base" {
 }
 
 resource "portainer_stack" "myapp" {
-  name        = "myapp"
-  endpoint_id = data.terraform_remote_state.portainer_base.outputs.production_env_id
+  name            = "myapp"
+  deployment_type = "standalone"
+  method          = "string"
+  endpoint_id     = data.terraform_remote_state.portainer_base.outputs.production_env_id
 
   stack_file_content = file("docker-compose.yml")
 }
@@ -163,13 +172,14 @@ resource "portainer_stack" "myapp" {
 ## Step 6: List Data Sources for Discovery
 
 ```hcl
-# Read all environments and their attributes
-data "portainer_environments" "all" {}  # If supported - returns list
+# The provider does not expose a `portainer_environments` data source.
+# For discovery-style lookups, `portainer_role` can return all available roles.
+data "portainer_role" "all" {}
 
-output "all_environment_ids" {
+output "available_role_ids" {
   value = {
-    for env in data.portainer_environments.all.environments :
-    env.name => env.id
+    for role in data.portainer_role.all.roles :
+    role.name => role.id
   }
 }
 ```
@@ -187,11 +197,13 @@ data "portainer_environment" "target" {
 }
 
 resource "portainer_stack" "app" {
-  name        = "myapp"
-  endpoint_id = data.portainer_environment.target.id
+  name            = "myapp"
+  deployment_type = "standalone"
+  method          = "string"
+  endpoint_id     = data.portainer_environment.target.id
 
-  stack_file_content = terraform.workspace == "production" ? \
-    file("docker-compose.prod.yml") : \
+  stack_file_content = terraform.workspace == "production" ?
+    file("docker-compose.prod.yml") :
     file("docker-compose.staging.yml")
 }
 ```
@@ -202,35 +214,36 @@ resource "portainer_stack" "app" {
 # main.tf - Use data sources to deploy into existing infrastructure
 
 # Read infrastructure created by another team
-data "portainer_environment" "prod" { name = "production" }
-data "portainer_team" "devops" { name = "platform-devops" }
-data "portainer_registry" "harbor" { name = "Company Harbor" }
+data "portainer_environment" "prod" {
+  name = "production"
+}
+
+data "portainer_team" "devops" {
+  name = "platform-devops"
+}
+
+data "portainer_registry" "harbor" {
+  name = "Company Harbor"
+}
 
 # Deploy a new stack into the existing environment
 resource "portainer_stack" "new_service" {
-  name        = "new-service"
-  endpoint_id = data.portainer_environment.prod.id
+  name            = "new-service"
+  deployment_type = "standalone"
+  method          = "string"
+  endpoint_id     = data.portainer_environment.prod.id
 
   stack_file_content = templatefile("docker-compose.yml", {
-    registry = data.portainer_registry.harbor.url
+    registry  = data.portainer_registry.harbor.url
     image_tag = var.image_tag
   })
 
-  env = [
-    { name = "SERVICE_NAME", value = "new-service" }
-  ]
-}
+  ownership        = "restricted"
+  authorized_teams = [tonumber(data.portainer_team.devops.id)]
 
-# Grant the devops team access to manage the new stack's environment
-# (if not already granted)
-resource "portainer_environment_team_access" "devops_prod" {
-  environment_id = data.portainer_environment.prod.id
-  team_id        = data.portainer_team.devops.id
-  access_level   = 1
-
-  lifecycle {
-    # Ignore if access already exists
-    ignore_changes = all
+  env {
+    name  = "SERVICE_NAME"
+    value = "new-service"
   }
 }
 ```
