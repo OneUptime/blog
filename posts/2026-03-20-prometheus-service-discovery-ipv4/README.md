@@ -44,7 +44,6 @@ scrape_configs:
 ```
 
 ```json
-// /etc/prometheus/targets/app-servers.json
 [
   {
     "targets": ["10.0.0.20:9100", "10.0.0.21:9100"],
@@ -80,7 +79,7 @@ scrape_configs:
 
 ## HTTP-Based Service Discovery (http_sd)
 
-Poll an HTTP endpoint that returns a JSON list of targets.
+Poll an HTTP endpoint that returns a JSON list of target groups.
 
 ```yaml
 scrape_configs:
