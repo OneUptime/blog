@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Troubleshooting, Networking, Self-Hosted
 
-Description: Identify and resolve port conflicts that prevent Portainer from starting, including changing default ports and handling competing services on ports 9000 and 9443.
+Description: Identify and resolve port conflicts that prevent Portainer from starting, including changing published ports and handling competing services on ports 9000 and 9443.
 
 ## Introduction
 
-Portainer uses ports 9000 (HTTP) and 9443 (HTTPS) by default. If another service is already using these ports, Portainer will fail to start with an "address already in use" error. This guide shows you how to identify what's using those ports and how to run Portainer on different ports.
+Portainer exposes its UI on port 9443 (HTTPS) by default. Port 9000 can also be published for legacy HTTP access. If another service is already using the host ports you want to publish, Portainer will fail to start with an "address already in use" error. This guide shows you how to identify what's using those ports and how to run Portainer on different ports.
 
 ## Step 1: Identify What Is Using the Port
 
@@ -45,7 +45,7 @@ This means a Node.js process is already using port 9000.
 ps -p 1234 -o comm=
 
 # Check if it's a Docker container using the port
-docker ps | grep "9000"
+docker ps --filter "publish=9000"
 
 # Check for common conflicts:
 # - SonarQube uses 9000
@@ -58,9 +58,9 @@ docker ps | grep "9000"
 If you want to keep the conflicting service running, simply remap Portainer to different ports:
 
 ```bash
-# Run Portainer on ports 9001 (HTTP) and 9444 (HTTPS)
+# Run Portainer on ports 9010 (legacy HTTP) and 9444 (HTTPS)
 docker run -d \
-  -p 9001:9000 \
+  -p 9010:9000 \
   -p 9444:9443 \
   --name portainer \
   --restart=unless-stopped \
@@ -68,7 +68,7 @@ docker run -d \
   -v portainer_data:/data \
   portainer/portainer-ce:latest
 
-# Access at http://your-host:9001
+# Access at https://your-host:9444
 ```
 
 Note: The container's internal port stays 9000/9443 - only the host-side mapping changes.
@@ -84,7 +84,7 @@ docker rm portainer
 
 # Re-create with new host ports (data volume is preserved)
 docker run -d \
-  -p 9001:9000 \
+  -p 9010:9000 \
   -p 9444:9443 \
   --name portainer \
   --restart=unless-stopped \
@@ -103,7 +103,7 @@ services:
     image: portainer/portainer-ce:latest
     ports:
       # Format: "host_port:container_port"
-      - "9001:9000"   # Changed from 9000:9000
+      - "9010:9000"   # Changed from 9000:9000
       - "9444:9443"   # Changed from 9443:9443
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -137,14 +137,14 @@ If the conflicting service is no longer needed:
 
 ```bash
 # Stop a Docker container using the port
-docker stop $(docker ps | grep 9000 | awk '{print $1}')
+docker stop $(docker ps --filter "publish=9000" --format '{{.ID}}')
 
 # Stop a system service
 sudo systemctl stop sonarqube
 sudo systemctl disable sonarqube  # Prevent it from starting on boot
 
 # For ad-hoc processes
-kill -9 $(sudo fuser 9000/tcp)
+sudo fuser -k 9000/tcp
 ```
 
 ## Step 8: Validate and Test
@@ -154,23 +154,25 @@ kill -9 $(sudo fuser 9000/tcp)
 docker ps | grep portainer
 
 # Test the new port
-curl -v http://localhost:9001
+curl -vk https://localhost:9444
 
 # If behind a reverse proxy, update the proxy config too
 ```
 
-## Portainer Behind a Reverse Proxy (Avoid Port Conflicts Entirely)
+## Portainer Behind a Reverse Proxy
 
-A better long-term solution is to put Portainer on port 80/443 via a reverse proxy:
+A better long-term solution is to expose Portainer on port 80/443 via a reverse proxy:
 
 ```nginx
 # Nginx reverse proxy for Portainer
 server {
     listen 443 ssl;
     server_name portainer.yourdomain.com;
+    ssl_certificate /path/to/fullchain.pem;
+    ssl_certificate_key /path/to/privkey.pem;
 
     location / {
-        proxy_pass https://localhost:9443;
+        proxy_pass https://127.0.0.1:9443;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -179,8 +181,8 @@ server {
 }
 ```
 
-This way, Portainer can run on any high-numbered port internally while being accessible on the standard HTTPS port.
+This way, clients can use the standard HTTPS port while Portainer continues listening on its backend port.
 
 ## Conclusion
 
-Port conflicts when installing Portainer are easy to diagnose with `ss -tlnp` and easy to fix by remapping the host-side port binding. For a cleaner architecture, consider deploying Portainer behind a reverse proxy so it uses standard ports and you never have to worry about which high-numbered port it occupies.
+Port conflicts when installing Portainer are easy to diagnose with `ss -tlnp` and easy to fix by remapping the host-side port binding. For a cleaner architecture, consider deploying Portainer behind a reverse proxy so clients use standard ports while Portainer keeps its backend port mapping.
