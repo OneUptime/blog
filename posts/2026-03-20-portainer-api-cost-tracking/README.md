@@ -14,7 +14,7 @@ Container workloads can rapidly consume compute resources, but attributing costs
 
 - Portainer CE or BE with API access
 - Containers labeled with team/project identifiers
-- Python 3.8+ with `requests`, `pandas` libraries
+- Python 3.8+ with the `requests` library
 - Cost data for your infrastructure
 
 ## Cost Model
@@ -41,17 +41,19 @@ COST_MODEL = {
 #!/usr/bin/env python3
 # container_cost_tracker.py
 
-import requests
 import json
-import time
-from datetime import datetime, timedelta
-from collections import defaultdict
 import csv
+import os
 import sys
+from collections import defaultdict
+from datetime import datetime, timezone
 
-PORTAINER_URL = "https://portainer.example.com"
-PORTAINER_API_KEY = "your-api-key"
-ENDPOINT_ID = 1
+import requests
+
+PORTAINER_URL = os.getenv("PORTAINER_URL", "https://portainer.example.com")
+PORTAINER_API_KEY = os.getenv("PORTAINER_API_KEY", "your-api-key")
+ENDPOINT_ID = int(os.getenv("ENDPOINT_ID", "1"))
+OUTPUT_DIR = os.getenv("OUTPUT_DIR", ".")
 
 # Cost model (per hour)
 CPU_CORE_HOUR = 0.048
@@ -97,12 +99,16 @@ def get_container_inspect(container_id: str) -> dict:
 
 def calculate_cpu_usage(stats: dict) -> float:
     """Calculate CPU cores used (fractional)."""
-    cpu_delta = (stats['cpu_stats']['cpu_usage']['total_usage'] -
-                 stats['precpu_stats']['cpu_usage']['total_usage'])
-    system_delta = (stats['cpu_stats']['system_cpu_usage'] -
-                    stats['precpu_stats']['system_cpu_usage'])
-    num_cpus = stats['cpu_stats'].get('online_cpus', 1)
-    if system_delta > 0:
+    cpu_stats = stats.get('cpu_stats', {})
+    precpu_stats = stats.get('precpu_stats', {})
+    cpu_usage = cpu_stats.get('cpu_usage', {})
+    precpu_usage = precpu_stats.get('cpu_usage', {})
+
+    cpu_delta = cpu_usage.get('total_usage', 0) - precpu_usage.get('total_usage', 0)
+    system_delta = cpu_stats.get('system_cpu_usage', 0) - precpu_stats.get('system_cpu_usage', 0)
+    num_cpus = cpu_stats.get('online_cpus') or len(cpu_usage.get('percpu_usage') or []) or 1
+
+    if system_delta > 0 and cpu_delta > 0:
         return (cpu_delta / system_delta) * num_cpus
     return 0.0
 
@@ -125,7 +131,7 @@ def collect_usage_data():
         try:
             # Get labels from inspect
             details = get_container_inspect(container_id)
-            labels = details['Config'].get('Labels', {})
+            labels = details.get('Config', {}).get('Labels', {})
 
             # Extract cost allocation labels
             team = labels.get('team', labels.get('com.team', 'unassigned'))
@@ -137,7 +143,7 @@ def collect_usage_data():
             cpu_cores = calculate_cpu_usage(stats)
             memory_gb = calculate_memory_gb(stats)
 
-            # Calculate hourly cost
+            # Calculate hourly cost estimate
             cpu_cost_hour = cpu_cores * CPU_CORE_HOUR
             mem_cost_hour = memory_gb * MEMORY_GB_HOUR
             total_cost_hour = cpu_cost_hour + mem_cost_hour
@@ -162,7 +168,7 @@ def collect_usage_data():
                 'total_cost_hour': round(total_cost_hour, 6),
                 'total_cost_day': round(total_cost_hour * 24, 4),
                 'total_cost_month': round(total_cost_hour * 24 * 30, 2),
-                'collected_at': datetime.utcnow().isoformat()
+                'collected_at': datetime.now(timezone.utc).isoformat()
             })
 
         except Exception as e:
@@ -209,7 +215,7 @@ def print_summary(team_report: dict):
     """Print cost summary to console."""
     print("\n" + "="*60)
     print("CONTAINER COST REPORT")
-    print(f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     print("="*60)
     print(f"{'Team':<20} {'Containers':>10} {'vCPU':>8} {'RAM(GB)':>8} {'$/Day':>10} {'$/Month':>10}")
     print("-"*60)
@@ -239,11 +245,12 @@ if __name__ == '__main__':
     print_summary(team_report)
 
     # Save detailed CSV
-    date_str = datetime.utcnow().strftime('%Y-%m-%d')
-    save_report_csv(usage_data, f"container-costs-{date_str}.csv")
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    date_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    save_report_csv(usage_data, os.path.join(OUTPUT_DIR, f"container-costs-{date_str}.csv"))
 
     # Save JSON
-    with open(f"container-costs-{date_str}.json", 'w') as f:
+    with open(os.path.join(OUTPUT_DIR, f"container-costs-{date_str}.json"), 'w') as f:
         json.dump({'usage': usage_data, 'team_summary': team_report}, f, indent=2)
 ```
 
@@ -275,16 +282,18 @@ services:
 
 ```bash
 # Add to crontab for daily reports
-0 8 * * * cd /opt/cost-tracker && python container_cost_tracker.py >> /var/log/cost-tracker.log 2>&1
+0 8 * * * cd /opt/cost-tracker && python3 container_cost_tracker.py >> /var/log/cost-tracker.log 2>&1
 
 # Or use Docker
 docker run --rm \
   -e PORTAINER_URL=https://portainer.example.com \
   -e PORTAINER_API_KEY=your-key \
-  -v $(pwd)/reports:/reports \
+  -e ENDPOINT_ID=1 \
+  -e OUTPUT_DIR=/reports \
+  -v "$(pwd)/reports:/reports" \
   cost-tracker:latest
 ```
 
 ## Conclusion
 
-A container cost tracking tool built on the Portainer API provides FinOps visibility for your containerized workloads. By labeling containers with team and project metadata, you can generate accurate chargeback and showback reports. Extend this solution by integrating with financial reporting tools or Slack for automated weekly cost summaries to stakeholders.
+A container cost tracking tool built on the Portainer API provides FinOps visibility for your containerized workloads. By labeling containers with team and project metadata, you can generate chargeback and showback estimates based on current resource usage. Extend this solution by integrating with financial reporting tools or Slack for automated weekly cost summaries to stakeholders.
