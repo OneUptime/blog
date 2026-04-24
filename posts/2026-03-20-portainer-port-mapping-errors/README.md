@@ -8,14 +8,14 @@ Description: Resolve port mapping errors that occur when creating or editing con
 
 ## Introduction
 
-Port mapping errors in Portainer occur when the port binding configuration is invalid, the port is already in use, or when editing an existing container results in a recreation failure. This guide covers all common port mapping issues and their fixes.
+Port mapping errors in Portainer occur when the port binding configuration is invalid, the port is already in use, or when editing an existing container requires replacement and the replacement fails. This guide covers all common port mapping issues and their fixes.
 
 ## Common Port Mapping Error Messages
 
 - `"Bind for 0.0.0.0:8080 failed: port is already allocated"`
-- `"Invalid port specification: invalid containerPort"`
+- `"Invalid port specification"`
 - `"Error response from daemon: driver failed programming external connectivity"`
-- `"invalid port binding: cannot bind to a reserved port"`
+- `"Error starting userland proxy: ... cannot expose privileged port 80"`
 
 ## Step 1: Check for Port Conflicts
 
@@ -27,13 +27,13 @@ sudo ss -tlnp | grep :8080
 # Check what Docker containers are using specific ports
 docker ps --format "table {{.Names}}\t{{.Ports}}" | grep 8080
 
-# List all port bindings across all containers
+# List published ports for running containers
 docker ps --format "{{.Names}}: {{.Ports}}" | sort
 ```
 
 ## Step 2: Verify Port Format in Portainer UI
 
-When adding ports in Portainer's container creation form, use the correct format:
+When adding ports in Portainer's container creation form, Portainer asks for separate Host Port, Container Port, Protocol, and optional Host IP values. The equivalent Docker publish syntax is:
 
 | Format | Meaning |
 |--------|---------|
@@ -48,15 +48,15 @@ When adding ports in Portainer's container creation form, use the correct format
 # Host Port: 8080
 # Container Port: 80
 # Protocol: TCP (or UDP)
-# Leave Host IP empty for 0.0.0.0 (all interfaces)
+# Leave Host IP empty to bind on all host interfaces
 # Enter "127.0.0.1" in Host IP to bind localhost only
 ```
 
 ## Step 3: Fix "Port Already Allocated" Error
 
 ```bash
-# Find which container is using the port
-docker ps | grep "0.0.0.0:8080"
+# Find running containers that publish host port 8080
+docker ps --filter publish=8080
 # or
 docker ps --format "{{.Names}}: {{.Ports}}" | grep ":8080->"
 
@@ -69,29 +69,25 @@ docker stop conflicting-container
 # Option C: Check non-Docker processes using the port
 sudo fuser 8080/tcp
 sudo lsof -i :8080
-# Kill the process if appropriate
-sudo kill -9 $(sudo fuser 8080/tcp)
+# Stop the process if appropriate
+sudo fuser -k 8080/tcp
 ```
 
 ## Step 4: Fix "Driver Failed Programming External Connectivity"
 
-This error usually means iptables rules are in a bad state:
+This error means Docker couldn't apply the requested port publishing. Common causes include firewall/NAT rule problems, port conflicts, or privileged ports in rootless Docker:
 
 ```bash
 # Check Docker daemon logs
 journalctl -u docker --since "5 minutes ago"
 
-# Common fix: restart Docker daemon (this resets iptables rules)
-sudo systemctl restart docker
+# Inspect Docker's NAT rules for published ports
+sudo iptables -t nat -L DOCKER -n -v
 
-# If iptables is managed externally and conflicting
-sudo iptables -L DOCKER -n -v
+# If firewall rules are managed externally, inspect user-defined Docker rules too
+sudo iptables -L DOCKER-USER -n -v
 
-# Sometimes the fix is to flush and let Docker rebuild:
-# WARNING: This removes all iptables rules temporarily
-sudo iptables -F DOCKER
-sudo iptables -F DOCKER-ISOLATION-STAGE-1
-sudo iptables -F DOCKER-ISOLATION-STAGE-2
+# Common fix: restart Docker daemon so it can rebuild Docker-managed rules
 sudo systemctl restart docker
 ```
 
@@ -110,30 +106,32 @@ docker ps -a | grep container-name
 docker rm container-name
 
 # Try the Portainer operation again
-# If it still fails, do it manually:
-docker stop container-name
-docker rm container-name
+# If it still fails, remove the old container and recreate it manually:
+docker rm -f container-name
+
+# Recreate it with the new port mapping and any other options it needs
 docker run -d \
-  -p 8080:80 \   # New port mapping
   --name container-name \
-  [other options] \
+  -p 8080:80 \
   image:tag
 ```
 
-## Step 6: Fix Reserved Port Errors
+## Step 6: Fix Reserved Port Errors in Rootless Docker
 
-Ports below 1024 are privileged and require special handling:
+In rootless Docker, published host ports below 1024 require extra configuration:
 
 ```bash
 # Check current net.ipv4.ip_unprivileged_port_start setting
 cat /proc/sys/net/ipv4/ip_unprivileged_port_start
 
-# Allow non-root processes to bind to port 80 and above
-sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80
+# Or use a host port >= 1024 if you don't need a privileged port
+
+# Allow exposing privileged ports (< 1024) in rootless Docker
+sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
 
 # Make permanent
-echo "net.ipv4.ip_unprivileged_port_start=80" | sudo tee -a /etc/sysctl.conf
-sudo sysctl -p
+echo "net.ipv4.ip_unprivileged_port_start=0" | sudo tee -a /etc/sysctl.conf
+sudo sysctl --system
 ```
 
 ## Step 7: Fix UDP Port Mapping Issues
@@ -142,10 +140,10 @@ sudo sysctl -p
 # UDP ports must be explicitly specified - they're not included with TCP bindings
 
 # Wrong: binding TCP but expecting UDP to work
--p 5000:5000  # Only binds TCP
+docker run -d -p 5000:5000 image:tag  # Only binds TCP
 
 # Correct: bind both
--p 5000:5000/tcp -p 5000:5000/udp
+docker run -d -p 5000:5000/tcp -p 5000:5000/udp image:tag
 # or in Portainer: add two port entries, one TCP and one UDP
 
 # Verify UDP is bound
@@ -159,7 +157,7 @@ sudo ss -ulnp | grep 5000
 # Container uses host ports directly
 
 # Check if the container is in host network mode
-docker inspect container-name | jq '.[0].HostConfig.NetworkMode'
+docker inspect --format '{{.HostConfig.NetworkMode}}' container-name
 # If "host", port binding in Portainer won't work
 
 # Change to bridge mode if port mappings are needed
@@ -173,8 +171,8 @@ docker run -d \
 ## Step 9: Add Multiple Port Mappings in Portainer
 
 In the Portainer UI container creation/edit form:
-1. Scroll to the **Network** → **Port mapping** section
-2. Click **map additional port** to add more entries
+1. Scroll to the **Network ports configuration** section
+2. Click **publish a new network port** to add more entries
 3. For each entry, specify:
    - Container port
    - Protocol (TCP/UDP)
@@ -195,4 +193,4 @@ services:
 
 ## Conclusion
 
-Port mapping errors in Portainer are primarily caused by port conflicts with other containers or system services, invalid port format specifications, or iptables state issues after Docker restarts. Use `ss -tlnp` to check for conflicts, ensure you're using the correct host:container format, and restart Docker if iptables rules are in a broken state.
+Port mapping errors in Portainer are primarily caused by port conflicts with other containers or system services, invalid publish syntax, host network mode, or Docker being unable to apply the requested port publishing rules. Use `ss -tlnp` to check for conflicts, enter the host/container/protocol fields correctly in Portainer, and inspect Docker-managed firewall/NAT rules if Docker reports external connectivity errors.
