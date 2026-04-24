@@ -13,20 +13,15 @@ Docker Swarm requires a different approach to Traefik configuration compared to 
 ## Prerequisites
 
 - Docker Swarm initialized (`docker swarm init`)
-- A domain pointing to your manager node
-- Ports 80 and 443 open on all manager nodes
+- A domain pointing to the node or load balancer serving Traefik
+- Ports 80 and 443 open on the nodes where the Traefik service will run
 
-## Step 1: Create Required Secrets and Configs
+## Step 1: Create the Shared Overlay Network
 
-Store sensitive data in Docker Secrets:
+Traefik and Portainer must share an attachable overlay network. Create it once before deploying the stack:
 
 ```bash
-# Create Let's Encrypt account credentials as a secret
-
-echo "admin@example.com" | docker secret create acme_email -
-
-# Create an empty acme.json for certificate storage
-touch acme.json && chmod 600 acme.json
+docker network create --driver overlay --attachable proxy
 ```
 
 ## Step 2: Deploy the Traefik Stack
@@ -40,10 +35,9 @@ services:
   traefik:
     image: traefik:v3.0
     command:
-      - "--providers.docker=true"
-      - "--providers.docker.swarmMode=true"           # Enable Swarm mode
-      - "--providers.docker.exposedByDefault=false"
-      - "--providers.docker.network=proxy"
+      - "--providers.swarm.endpoint=unix:///var/run/docker.sock"  # Use the Swarm provider in Traefik v3
+      - "--providers.swarm.exposedByDefault=false"
+      - "--providers.swarm.network=proxy"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
@@ -74,7 +68,7 @@ services:
     image: portainer/portainer-ce:latest
     command:
       - "--http-enabled"
-      - "--trusted-origins=https://portainer.example.com"
+      - "--trusted-origins=portainer.example.com"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
@@ -96,8 +90,7 @@ services:
 
 networks:
   proxy:
-    driver: overlay
-    attachable: true   # Allow non-Swarm containers to join
+    external: true   # Created ahead of time with docker network create
 
 volumes:
   portainer_data:
@@ -145,7 +138,7 @@ In Swarm mode, container-level labels are ignored by Traefik. Labels **must** be
 
 ### Overlay Network Is Required
 
-Traefik and Portainer must share an overlay network. The `proxy` network must be created with the `overlay` driver, not `bridge`:
+Traefik and Portainer must share an overlay network. In this example, the `proxy` network is created ahead of time with the `overlay` driver and referenced as an external network in the stack:
 
 ```bash
 docker network create --driver overlay --attachable proxy
@@ -153,4 +146,4 @@ docker network create --driver overlay --attachable proxy
 
 ## Conclusion
 
-Running Portainer behind Traefik on Docker Swarm provides a production-grade setup with automatic SSL, Swarm-aware routing, and centralized certificate management. The key differences from standalone mode are the `swarmMode` provider setting, `deploy.labels` placement, and the overlay network requirement.
+Running Portainer behind Traefik on Docker Swarm provides a production-grade setup with automatic SSL, Swarm-aware routing, and centralized certificate management. The key differences from standalone mode are the dedicated Swarm provider setting, `deploy.labels` placement, and the overlay network requirement.
