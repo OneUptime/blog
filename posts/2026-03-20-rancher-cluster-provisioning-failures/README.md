@@ -25,15 +25,22 @@ Click on the cluster name and look at the **Conditions** tab for specific error 
 ```bash
 # Check the Rancher server logs for provisioning errors
 
-kubectl logs -n cattle-system -l app=rancher --tail=300 | grep -i "provision\|error\|fail"
+kubectl logs -n cattle-system -l app=rancher -c rancher --tail=300 | grep -Ei 'provision|error|fail'
 
-# For RKE2/K3s provisioning, check the provisioning controller
+# Find the namespace where the provisioning cluster object lives
+kubectl get clusters.provisioning.cattle.io -A
+
+# For Rancher v2.13 and earlier, check the provisioning controller
 kubectl logs -n cattle-provisioning-capi-system \
   -l control-plane=controller-manager --tail=200
 
-# Check provisioning machine resources
-kubectl get machines -n fleet-default
-kubectl describe machine -n fleet-default <machine-name>
+# For Rancher v2.14+, check Rancher Turtles and CAPI controllers
+kubectl logs -n rancher-turtles-system deploy/rancher-turtles-controller-manager --tail=200
+kubectl logs -n capi-system deploy/capi-controller-manager --tail=200
+
+# Check provisioning machine resources in the cluster namespace (often fleet-default)
+kubectl get machines -n <cluster-namespace>
+kubectl describe machine -n <cluster-namespace> <machine-name>
 ```
 
 ## Step 3: Check Node Bootstrap Logs
@@ -50,9 +57,10 @@ sudo systemctl status rke2-server   # for server nodes
 sudo systemctl status rke2-agent    # for agent nodes
 
 # Stream RKE2 logs
-sudo journalctl -u rke2-server -f --no-pager
+sudo journalctl -u rke2-server -f --no-pager   # for server nodes
+sudo journalctl -u rke2-agent -f --no-pager    # for agent nodes
 
-# Check RKE2 agent registration log
+# Check kubelet logs
 sudo cat /var/lib/rancher/rke2/agent/logs/kubelet.log
 ```
 
@@ -62,7 +70,8 @@ sudo cat /var/lib/rancher/rke2/agent/logs/kubelet.log
 
 ```bash
 # Check node resources before provisioning
-# Minimum for RKE2: 2 vCPU, 4 GB RAM, 20 GB disk
+# Minimum for RKE2: 2 vCPU, 4 GB RAM
+# Use fast disk/SSD for etcd data, and size the disk for your workload and snapshots
 
 # On the node:
 free -h       # Check available memory
@@ -77,7 +86,7 @@ nproc         # Check CPU count
 # Check if the node can reach Rancher:
 curl -k https://<rancher-url>/ping
 
-# Check the registration token on the node
+# On a server node, verify the RKE2 join token if needed
 sudo cat /var/lib/rancher/rke2/server/token
 ```
 
@@ -86,10 +95,10 @@ sudo cat /var/lib/rancher/rke2/server/token
 ```bash
 # RKE2 requires specific ports to be free
 # Check for conflicts on the node
-sudo ss -tlnp | grep -E '6443|9345|10250|2379|2380'
+sudo ss -tulnp | grep -E '6443|9345|10250|2379|2380|8472'
 
-# Common conflict: another Kubernetes installation
-sudo which k3s kubectl   # Should not exist on a fresh node
+# Common conflict: the node was previously used by another Kubernetes installation
+sudo systemctl list-units --type=service | grep -E 'k3s|k3s-agent|kubelet'
 ```
 
 ## Step 5: Cloud Provider Provisioning Issues
@@ -97,21 +106,29 @@ sudo which k3s kubectl   # Should not exist on a fresh node
 ### AWS EC2 Provisioning
 
 ```bash
-# Check Rancher's AWS credentials
-kubectl get secret -n cattle-global-data aws-creds -o json \
+# Check which cloud credential the cluster references
+kubectl get clusters.provisioning.cattle.io -n <cluster-namespace> <cluster-name> \
+  -o jsonpath='{.spec.cloudCredentialSecretName}{"\n"}'
+
+# The value is usually in the form cattle-global-data:cc-xxxx; inspect that secret by name
+kubectl get secret -n cattle-global-data <cloud-credential-secret> -o json \
   | jq '.data | map_values(@base64d)'
 
-# Verify the IAM role has required permissions (EC2, VPC, IAM)
+# Verify the AWS principal can perform the actions required by the node template
 aws iam simulate-principal-policy \
-  --policy-source-arn arn:aws:iam::ACCOUNT:user/rancher \
-  --action-names ec2:RunInstances ec2:DescribeInstances
+  --policy-source-arn <principal-arn> \
+  --action-names ec2:RunInstances ec2:CreateTags ec2:DescribeInstances iam:PassRole
 ```
 
 ### vSphere Provisioning
 
 ```bash
-# Check vSphere credentials secret
-kubectl get secret -n cattle-global-data vsphere-creds -o json \
+# Check which cloud credential the cluster references
+kubectl get clusters.provisioning.cattle.io -n <cluster-namespace> <cluster-name> \
+  -o jsonpath='{.spec.cloudCredentialSecretName}{"\n"}'
+
+# The value is usually in the form cattle-global-data:cc-xxxx; inspect that secret by name
+kubectl get secret -n cattle-global-data <cloud-credential-secret> -o json \
   | jq -r '.data | to_entries[] | "\(.key): \(.value | @base64d)"'
 
 # Common issues:
@@ -125,23 +142,22 @@ kubectl get secret -n cattle-global-data vsphere-creds -o json \
 ```bash
 # Force-delete the stalled cluster resource (USE WITH CAUTION)
 # First, remove the finalizer
-kubectl patch cluster.provisioning.cattle.io -n fleet-default <cluster-name> \
+kubectl patch clusters.provisioning.cattle.io -n <cluster-namespace> <cluster-name> \
   -p '{"metadata":{"finalizers":[]}}' --type=merge
 
 # Then delete
-kubectl delete cluster.provisioning.cattle.io -n fleet-default <cluster-name>
+kubectl delete clusters.provisioning.cattle.io -n <cluster-namespace> <cluster-name>
 ```
 
 ## Step 7: Review Machine Pool Events
 
 ```bash
 # List all CAPI machine resources
-kubectl get machineset,machine,machinedeployment -n fleet-default
+kubectl get machinesets,machines,machinedeployments -n <cluster-namespace>
 
 # Get events for a specific machine
-kubectl get events -n fleet-default \
-  --field-selector reason!=Pulling,reason!=Pulled \
-  | grep <machine-name>
+kubectl get events -n <cluster-namespace> \
+  --field-selector involvedObject.name=<machine-name>,reason!=Pulling,reason!=Pulled
 ```
 
 ## Conclusion
