@@ -8,24 +8,27 @@ Description: Learn how to run Docker containers with a read-only root filesystem
 
 ---
 
-Running containers with a read-only root filesystem prevents any process inside the container from writing to the filesystem layer - including malware, accidental config overwrites, and exploitation payloads. Portainer supports this via the `read_only` flag or the UI.
+Running containers with a read-only root filesystem prevents any process inside the container from writing to the container's writable layer - including malware, accidental config overwrites, and exploitation payloads. Docker Compose supports this with `read_only`, and Portainer stacks let you apply the same setting in the web editor.
 
 ## Enabling Read-Only Root Filesystem in a Stack
 
 Set `read_only: true` in your Compose service definition:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     image: my-api:latest
     read_only: true
-    tmpfs:
-      - /tmp:size=64m,mode=1777    # Writable temp directory in RAM
-      - /run:size=10m              # For PID files and sockets
     volumes:
-      - api_data:/app/data         # Named volume for persistent writes
+      - api_data:/app/data
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 64m
+      - type: tmpfs
+        target: /run
+        tmpfs:
+          size: 10m
     environment:
       NODE_ENV: production
 
@@ -33,59 +36,57 @@ volumes:
   api_data:
 ```
 
-The `tmpfs` mounts provide writable scratch space in memory - essential for applications that need to write temporary files.
+The `tmpfs` mounts provide writable scratch space for temporary files while keeping the image filesystem read-only.
 
 ## Enabling via Portainer UI
 
-For standalone containers:
+For Portainer stacks, use **Stacks > Add stack** and add `read_only: true` to the Compose service definition in the web editor.
 
-1. Go to **Containers > Add container**.
-2. Expand **Runtime & Resources**.
-3. Enable **Read-only root filesystem**.
-4. Add tmpfs mounts under **Volumes > Bind** with type `tmpfs` for `/tmp` and `/run`.
+If you need tmpfs mounts through the Portainer UI, create a tmpfs-backed volume under **Volumes > Add volume** using driver options `type=tmpfs`, `device=tmpfs`, and `o=size=...`, then attach it to the container under **Volumes**.
 
 ## Testing Which Paths Fail
 
-Before enabling read-only mode, identify all paths the application writes to:
+Before enabling read-only mode, identify the paths the container changes in its writable layer:
 
 ```bash
-# Run the container with strace to find all write calls
+# Start the container normally
+docker run -d --name my-api-test my-api:latest
 
-docker run --rm \
-  --security-opt seccomp=unconfined \
-  my-api:latest \
-  strace -f -e trace=write,openat -s 256 node server.js 2>&1 | \
-  grep -v "^strace:" | grep -v ENOENT | head -50
+# Exercise the application, then inspect filesystem changes
+docker container diff my-api-test | head -50
 
-# Or use inotifywait to monitor writes at runtime
-docker exec -it my-api-container \
-  sh -c "apt-get install -y inotify-tools && inotifywait -r -m / 2>/dev/null" &
+# Clean up when finished
+docker rm -f my-api-test
 ```
 
 ## Common Application Requirements
 
-| Application | Required Writable Paths |
+| Application | Common Writable Paths to Check |
 |-------------|-------------------------|
-| Node.js | `/tmp`, `/app/node_modules/.cache` |
-| Python | `/tmp`, `/__pycache__` |
-| Nginx | `/var/cache/nginx`, `/var/run`, `/tmp` |
+| Node.js | `/tmp`, plus framework-specific cache paths such as `/app/node_modules/.cache` |
+| Python | `/tmp`, plus directories where Python writes `__pycache__` files unless bytecode generation is disabled |
+| Nginx | `/var/cache/nginx`, `/var/run` |
 | PHP-FPM | `/var/run`, `/tmp` |
 | Java | `/tmp` |
 
 ## Nginx with Read-Only Filesystem
 
-Nginx requires several writable directories. Configure tmpfs for each:
+The default Nginx configuration requires writable `/var/cache/nginx` and `/var/run`. Configure tmpfs for each:
 
 ```yaml
 services:
   nginx:
     image: nginx:alpine
     read_only: true
-    tmpfs:
-      - /var/cache/nginx:size=64m
-      - /var/run:size=10m
-      - /tmp:size=32m
     volumes:
+      - type: tmpfs
+        target: /var/cache/nginx
+        tmpfs:
+          size: 64m
+      - type: tmpfs
+        target: /var/run
+        tmpfs:
+          size: 10m
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./html:/usr/share/nginx/html:ro
 ```
@@ -106,16 +107,16 @@ docker exec -it $(docker ps -qf name=api) \
 
 ## Read-Only for Portainer Itself
 
-Run Portainer with a read-only root filesystem:
+Portainer stores its state in `/data`, so keep that path writable:
 
 ```bash
 docker run -d \
   --name portainer \
   --read-only \
-  --tmpfs /tmp \
-  --tmpfs /run \
-  -p 9000:9000 \
+  --restart=always \
+  -p 8000:8000 \
+  -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
