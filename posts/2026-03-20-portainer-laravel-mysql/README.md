@@ -51,12 +51,11 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
-# Copy and install dependencies
-COPY composer.json composer.lock ./
-RUN composer install --no-dev --optimize-autoloader --no-interaction
-
 # Copy application
 COPY . .
+
+# Install dependencies
+RUN composer install --no-dev --optimize-autoloader --no-interaction
 
 # Set permissions
 RUN chown -R www-data:www-data storage bootstrap/cache && \
@@ -69,7 +68,9 @@ CMD ["php-fpm"]
 
 ## Step 2: Create the Docker Compose Stack in Portainer
 
-Navigate to **Stacks** → **Add Stack** → **Web Editor** and name it `laravel-app`:
+Navigate to **Stacks** → **Add Stack** and name it `laravel-app`.
+
+If you use the relative `./public` and `./nginx/laravel.conf` bind mounts shown below, deploy the stack from a Git repository with relative path volumes enabled in Portainer Business Edition, or replace them with absolute paths on the Docker host:
 
 ```yaml
 version: "3.8"
@@ -87,11 +88,10 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-laravelpassword}
     volumes:
       - mysql_data:/var/lib/mysql
-    command: --default-authentication-plugin=mysql_native_password
     networks:
       - laravel-net
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -126,7 +126,7 @@ services:
       DB_USERNAME: ${MYSQL_USER:-laraveluser}
       DB_PASSWORD: ${MYSQL_PASSWORD:-laravelpassword}
 
-      CACHE_DRIVER: redis
+      CACHE_STORE: redis
       SESSION_DRIVER: redis
       QUEUE_CONNECTION: redis
 
@@ -152,6 +152,7 @@ services:
     ports:
       - "80:80"
     volumes:
+      - ./public:/var/www/html/public:ro
       - ./nginx/laravel.conf:/etc/nginx/conf.d/default.conf:ro
       - app_storage:/var/www/html/storage:ro
     depends_on:
@@ -170,14 +171,19 @@ services:
       APP_KEY: ${APP_KEY}
       DB_CONNECTION: mysql
       DB_HOST: mysql
+      DB_PORT: "3306"
       DB_DATABASE: ${MYSQL_DB:-laravel}
       DB_USERNAME: ${MYSQL_USER:-laraveluser}
       DB_PASSWORD: ${MYSQL_PASSWORD:-laravelpassword}
+      CACHE_STORE: redis
       QUEUE_CONNECTION: redis
       REDIS_HOST: redis
+      REDIS_PORT: "6379"
     depends_on:
-      - mysql
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - laravel-net
 
@@ -190,14 +196,21 @@ services:
     environment:
       APP_ENV: production
       APP_KEY: ${APP_KEY}
+      DB_CONNECTION: mysql
       DB_HOST: mysql
+      DB_PORT: "3306"
       DB_DATABASE: ${MYSQL_DB:-laravel}
       DB_USERNAME: ${MYSQL_USER:-laraveluser}
       DB_PASSWORD: ${MYSQL_PASSWORD:-laravelpassword}
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
       REDIS_HOST: redis
+      REDIS_PORT: "6379"
     depends_on:
-      - mysql
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - laravel-net
 
@@ -228,6 +241,13 @@ server {
         try_files $uri $uri/ /index.php?$query_string;
     }
 
+    # Serve Laravel public storage files from the shared storage volume
+    location ^~ /storage/ {
+        alias /var/www/html/storage/app/public/;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
     # Deny access to hidden files
     location ~ /\. {
         deny all;
@@ -235,6 +255,7 @@ server {
 
     # PHP-FPM handling
     location ~ \.php$ {
+        try_files $uri =404;
         fastcgi_pass app:9000;
         fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
         include fastcgi_params;
@@ -252,6 +273,8 @@ server {
 
 ## Step 4: Run Artisan Commands via Portainer
 
+Run these from the Docker host, or open the `laravel-app` container console in Portainer and run the `php artisan ...` portion directly:
+
 ```bash
 # Run database migrations (first deployment)
 docker exec laravel-app php artisan migrate --force
@@ -268,11 +291,8 @@ docker exec laravel-app php artisan config:cache
 docker exec laravel-app php artisan route:cache
 docker exec laravel-app php artisan view:cache
 
-# Create storage link for public files
-docker exec laravel-app php artisan storage:link
-
-# Check queue status
-docker exec laravel-app php artisan queue:monitor
+# Restart queue workers after a deploy
+docker exec laravel-app php artisan queue:restart
 
 # Tinker (interactive shell)
 docker exec -it laravel-app php artisan tinker
