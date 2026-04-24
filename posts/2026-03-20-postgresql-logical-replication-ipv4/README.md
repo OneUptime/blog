@@ -47,8 +47,8 @@ GRANT SELECT ON TABLE orders, customers, products TO replicator;
 -- Create a publication for specific tables
 CREATE PUBLICATION my_publication FOR TABLE orders, customers, products;
 
--- Or publish all tables in a schema:
--- CREATE PUBLICATION my_pub FOR ALL TABLES;
+-- Or, as a superuser, publish all tables in a schema:
+-- CREATE PUBLICATION my_pub FOR TABLES IN SCHEMA public;
 ```
 
 ## Subscriber (Destination) Configuration
@@ -72,15 +72,20 @@ CREATE TABLE customers (
     email TEXT
 );
 
--- Grant INSERT/UPDATE/DELETE to the replication apply worker
-ALTER TABLE orders OWNER TO replicator;
-ALTER TABLE customers OWNER TO replicator;
+CREATE TABLE products (
+    id BIGINT PRIMARY KEY,
+    name TEXT,
+    price NUMERIC
+);
+
+-- Create the subscription as a superuser. The subscription owner applies
+-- changes on the subscriber, so it must have the required privileges.
 ```
 
 ### Create the Subscription
 
 ```sql
--- On the subscriber: connect to the publisher and subscribe
+-- On the subscriber, run as a superuser: connect to the publisher and subscribe
 CREATE SUBSCRIPTION my_subscription
 CONNECTION 'host=10.0.0.10 port=5432 dbname=mydb user=replicator password=ReplPass123!'
 PUBLICATION my_publication;
@@ -97,8 +102,9 @@ SELECT slot_name, active, restart_lsn FROM pg_replication_slots;
 -- On the subscriber: check subscription status
 SELECT subname, subenabled, subconninfo FROM pg_subscription;
 
--- Check replication lag on the subscriber
-SELECT now() - pg_last_xact_replay_timestamp() AS lag;
+-- Approximate replication delay on the subscriber
+SELECT subname, latest_end_time, now() - latest_end_time AS replication_delay
+FROM pg_stat_subscription;
 
 -- Detailed stats
 SELECT * FROM pg_stat_subscription;
@@ -110,7 +116,7 @@ SELECT * FROM pg_stat_subscription;
 -- Add a new table to an existing publication
 ALTER PUBLICATION my_publication ADD TABLE invoices;
 
--- On the subscriber: refresh to pick up the new table
+-- On the subscriber: create the matching invoices table first, then refresh
 ALTER SUBSCRIPTION my_subscription REFRESH PUBLICATION;
 
 -- Pause replication
