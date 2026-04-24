@@ -8,7 +8,7 @@ Description: Configure Postfix mynetworks to define trusted IPv4 subnets that ar
 
 ## Introduction
 
-`mynetworks` defines the IPv4 addresses and subnets that Postfix trusts as "local" clients, allowing them to relay mail without authentication. Misconfiguring this to be too broad creates an open relay that spammers will exploit.
+For an IPv4-focused setup, `mynetworks` defines the trusted network addresses that Postfix treats as "local" clients, allowing them to relay mail without authentication. Misconfiguring this to be too broad creates an open relay that spammers will exploit.
 
 ## Setting mynetworks
 
@@ -35,7 +35,7 @@ Alternative to explicit `mynetworks`:
 
 # Let Postfix auto-detect local networks
 mynetworks_style = subnet   # Trust all IPs on same subnet as server
-# mynetworks_style = host     # Trust only 127.0.0.1
+# mynetworks_style = host     # Trust only the local machine
 # mynetworks_style = class    # Trust by IP class (A/B/C) - avoid this
 
 # Or override auto-detection with explicit list:
@@ -60,18 +60,19 @@ RCPT TO:<victim@external-domain.com>
 # ... should be allowed to send
 ```
 
-## mynetworks with Hash File for Large Lists
+## mynetworks with CIDR File for Large Lists
 
 For many trusted IPs:
 
 ```bash
 # /etc/postfix/mynetworks_list
-# One IP/CIDR per line
-127.0.0.0/8
-10.0.0.0/8
-172.16.0.0/12
-192.168.1.0/24
-203.0.113.20    # Trusted partner server
+# One CIDR entry and result per line
+127.0.0.0/8 OK
+10.0.0.0/8 OK
+172.16.0.0/12 OK
+192.168.1.0/24 OK
+# Trusted partner server
+203.0.113.20 OK
 ```
 
 ```bash
@@ -120,4 +121,4 @@ sudo tail -f /var/log/mail.log | grep "relay access\|NOQUEUE"
 
 ## Conclusion
 
-`mynetworks` defines which IPv4 addresses can relay mail through Postfix without authentication. Keep it minimal-`127.0.0.0/8` plus your internal network ranges. Always test from an external IP to confirm relay is rejected, and combine with `permit_sasl_authenticated` for authenticated users who may connect from outside trusted networks. Running an open relay results in blacklisting and mail delivery failures.
+For IPv4-focused configurations, `mynetworks` defines which trusted network addresses can relay mail through Postfix without authentication. Keep it minimal-`127.0.0.0/8` plus your internal network ranges. Always test from an external IP to confirm relay is rejected, and combine with `permit_sasl_authenticated` for authenticated users who may connect from outside trusted networks. Running an open relay results in blacklisting and mail delivery failures.
