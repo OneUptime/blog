@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Linode, Akamai, Cloud, Docker, Self-Hosted, DevOps
 
-Description: Deploy Portainer on a Linode (now Akamai Cloud) instance with firewall configuration, block storage, and optional NodeBalancer for production use.
+Description: Deploy Portainer on a Linode (now Akamai Cloud) instance with firewall configuration, block storage, and backup considerations for production use.
 
 ## Introduction
 
@@ -33,9 +33,8 @@ Linode, now part of Akamai Cloud, offers competitive pricing with excellent netw
 ### Via Linode CLI
 
 ```bash
-# Install and configure CLI
-
-pip3 install linode-cli
+# Install the Linode CLI using the official instructions for your local OS,
+# then authenticate it.
 linode-cli configure
 
 # Create Linode
@@ -55,21 +54,22 @@ linode-cli linodes create \
 linode-cli firewalls create \
   --label portainer-fw \
   --rules.inbound '[
-    {"action":"ACCEPT","protocol":"TCP","ports":"22","addresses":{"ipv4":["YOUR.IP.HERE/32"]},"label":"allow-ssh"},
-    {"action":"ACCEPT","protocol":"TCP","ports":"9000","addresses":{"ipv4":["YOUR.IP.HERE/32"]},"label":"allow-portainer-http"},
-    {"action":"ACCEPT","protocol":"TCP","ports":"9443","addresses":{"ipv4":["YOUR.IP.HERE/32"]},"label":"allow-portainer-https"}
+    {"action":"ACCEPT","protocol":"TCP","ports":"22","addresses":{"ipv4":["YOUR.IP.HERE/32"]}},
+    {"action":"ACCEPT","protocol":"TCP","ports":"9443","addresses":{"ipv4":["YOUR.IP.HERE/32"]}}
   ]' \
   --rules.inbound_policy DROP \
   --rules.outbound_policy ACCEPT
 ```
 
+After creating the firewall, attach it to your Linode or its public interface in Cloud Manager, depending on the network interface type you selected when you created the instance.
+
 ### Via Linode Console
 
 1. Navigate to **Firewalls > Create Firewall**
 2. Label: `portainer-fw`
-3. Add inbound rules for ports 22, 9000, 9443 from your IP
+3. Add inbound rules for ports 22 and 9443 from your IP
 4. Set default inbound policy to **Drop**
-5. Assign to your Linode instance
+5. Assign it to your Linode or its public interface
 
 ## Step 3: Install Docker
 
@@ -80,8 +80,23 @@ ssh root@<linode-ip>
 # Update system
 apt update && apt upgrade -y
 
-# Install Docker
-curl -fsSL https://get.docker.com | sh
+# Install Docker from the official apt repository
+apt install ca-certificates curl -y
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+
+tee /etc/apt/sources.list.d/docker.sources > /dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+apt update
+apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
 
 # Create a non-root user for better security
 adduser portaineradmin
@@ -99,18 +114,20 @@ su - portaineradmin
 # Attach to your Linode instance
 
 # On the Linode, format and mount
-sudo fdisk -l  # Find new volume (usually /dev/disk/by-id/scsi-0Linode_Block_Storage_*)
+sudo fdisk -l  # Find the attached volume path (usually /dev/disk/by-id/scsi-0Linode_Volume_<label>)
+export VOLUME_PATH=/dev/disk/by-id/scsi-0Linode_Volume_<your-volume-label>
 
 # Create filesystem
-sudo mkfs.ext4 /dev/sdc
+sudo mkfs.ext4 "$VOLUME_PATH"
 
 # Mount
 sudo mkdir -p /mnt/block-storage
-echo '/dev/sdc /mnt/block-storage ext4 defaults,noatime,_netdev 0 2' | sudo tee -a /etc/fstab
+echo "$VOLUME_PATH /mnt/block-storage ext4 defaults,noatime,_netdev 0 2" | sudo tee -a /etc/fstab
 sudo mount -a
 
 # Use for Docker data
 sudo mkdir -p /mnt/block-storage/docker
+sudo mkdir -p /etc/docker
 sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
 {
   "data-root": "/mnt/block-storage/docker"
@@ -121,32 +138,33 @@ sudo systemctl restart docker
 
 ## Step 5: Deploy Portainer
 
+Portainer CE exposes HTTPS on port `9443` by default. Port `9000` is only needed for legacy HTTP access.
+
 ```bash
 docker volume create portainer_data
 
 docker run -d \
   --name portainer \
   --restart=unless-stopped \
-  -p 9000:9000 \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 6: Enable Linode Backups
 
 1. Navigate to your Linode > **Backups**
 2. Click **Enable Backups**
-3. Set your preferred backup schedule (daily is recommended)
+3. Choose your preferred backup time window
+
+> Note: Linode Backups protect the Linode's local disks, but they do not back up attached Block Storage volumes. If you store Docker data on Block Storage, back up that volume separately as well.
 
 ## Step 7: Monitor with Linode's Built-in Metrics
 
-Linode provides basic CPU, network, and disk metrics. For more detailed container metrics, deploy Prometheus and Grafana via Portainer:
+Linode provides basic CPU, network, and disk metrics. For more detailed monitoring, you can deploy Prometheus and Grafana via Portainer:
 
 ```yaml
-version: "3.8"
-
 services:
   prometheus:
     image: prom/prometheus:latest
@@ -167,8 +185,13 @@ services:
     restart: unless-stopped
 
   node-exporter:
-    image: prom/node-exporter:latest
+    image: quay.io/prometheus/node-exporter:latest
+    command:
+      - '--path.rootfs=/host'
     network_mode: host
+    pid: host
+    volumes:
+      - '/:/host:ro,rslave'
     restart: unless-stopped
 
 volumes:
@@ -176,6 +199,8 @@ volumes:
   grafana_data:
 ```
 
+Prometheus still needs a scrape configuration for `node-exporter` before host metrics from the Linode will appear in Grafana.
+
 ## Conclusion
 
-Linode/Akamai Cloud provides excellent value for Portainer deployments with reliable infrastructure and straightforward pricing. The Cloud Firewall adds a layer of security without OS-level complexity, and block storage volumes support growing container workloads. Linode's built-in backup service provides peace of mind for production deployments.
+Linode/Akamai Cloud provides excellent value for Portainer deployments with reliable infrastructure and straightforward pricing. The Cloud Firewall adds a layer of security without OS-level complexity, and Block Storage volumes support growing container workloads. Linode's Backups service can protect the instance's local disks, but if you store Docker data on Block Storage, back up that volume separately.
