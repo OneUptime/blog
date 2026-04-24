@@ -17,35 +17,45 @@ Taking a backup before any major change to Portainer gives you a fast rollback p
 # Quick backup before any major change
 
 BACKUP_FILE="/tmp/portainer-pre-change-$(date +%Y%m%d-%H%M%S).tar.gz"
+IMAGE_FILE="/tmp/portainer-pre-change.image.txt"
+docker inspect --format '{{.Config.Image}}' portainer > "$IMAGE_FILE"
 
-# Create backup without stopping Portainer (uses live database)
-# For maximum safety, stop Portainer first
+# Stop Portainer so the BoltDB file is copied consistently
+docker stop portainer
 docker run --rm \
-  -v portainer_data:/data \
+  -v portainer_data:/data:ro \
   alpine \
-  tar czpf - /data > "$BACKUP_FILE"
+  tar -czf - /data > "$BACKUP_FILE"
+docker start portainer
 
 echo "Backup saved to: $BACKUP_FILE"
-echo "Size: $(du -sh $BACKUP_FILE | cut -f1)"
+echo "Current image saved to: $IMAGE_FILE"
+echo "Size: $(du -sh "$BACKUP_FILE" | cut -f1)"
 echo "To restore: see portainer-restore guide"
 ```
 
 ## Before Upgrading Portainer
 
-Always backup before upgrading, as Portainer runs database migrations that cannot always be reversed:
+Always backup before upgrading, as newer Portainer databases cannot be used on older Portainer versions:
 
 ```bash
-# 1. Backup
-docker run --rm -v portainer_data:/data alpine tar czpf - /data > \
-  portainer-pre-upgrade-$(portainer --version 2>/dev/null || echo "unknown").tar.gz
+# 1. Record the current image and create a consistent backup
+IMAGE_FILE="/tmp/portainer-pre-change.image.txt"
+BACKUP_FILE="/tmp/portainer-pre-upgrade-$(date +%Y%m%d-%H%M%S).tar.gz"
+docker inspect --format '{{.Config.Image}}' portainer > "$IMAGE_FILE"
+docker stop portainer
+docker run --rm -v portainer_data:/data:ro alpine tar -czf - /data > \
+  "$BACKUP_FILE"
 
-# 2. Pull new version
-docker pull portainer/portainer-ce:latest
+# 2. Pull the current LTS image
+docker pull portainer/portainer-ce:lts
 
 # 3. Upgrade
-docker stop portainer && docker rm portainer
-docker run -d --name portainer portainer/portainer-ce:latest \
-  -v portainer_data:/data ...
+docker rm portainer
+docker run -d -p 8000:8000 -p 9443:9443 --name=portainer --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:lts
 ```
 
 ## Before Bulk Stack Operations
@@ -54,8 +64,11 @@ When deleting or modifying many stacks at once:
 
 ```bash
 # Backup before bulk delete
-docker run --rm -v portainer_data:/data alpine tar czpf - /data > \
+docker inspect --format '{{.Config.Image}}' portainer > /tmp/portainer-pre-change.image.txt
+docker stop portainer
+docker run --rm -v portainer_data:/data:ro alpine tar -czf - /data > \
   /tmp/portainer-pre-bulkdelete.tar.gz
+docker start portainer
 
 # Proceed with the bulk operation in Portainer UI
 ```
@@ -68,10 +81,10 @@ Always verify the backup is complete and readable before making changes:
 BACKUP_FILE="/tmp/portainer-pre-change-20260320.tar.gz"
 
 # Check the file is not corrupted
-tar tzf "$BACKUP_FILE" > /dev/null && echo "Backup OK" || echo "BACKUP CORRUPTED - do not proceed"
+tar -tzf "$BACKUP_FILE" > /dev/null && echo "Backup OK" || echo "BACKUP CORRUPTED - do not proceed"
 
 # Verify the database file is present
-tar tzf "$BACKUP_FILE" | grep "portainer.db" || echo "WARNING: portainer.db not in backup"
+tar -tzf "$BACKUP_FILE" | grep "portainer.db" || echo "WARNING: portainer.db not in backup"
 
 # Check file size is non-zero
 [ -s "$BACKUP_FILE" ] && echo "Backup has content" || echo "BACKUP IS EMPTY"
@@ -82,6 +95,8 @@ tar tzf "$BACKUP_FILE" | grep "portainer.db" || echo "WARNING: portainer.db not 
 ```bash
 # If the major change caused problems:
 # 1. Stop Portainer
+IMAGE_FILE="/tmp/portainer-pre-change.image.txt"
+PREVIOUS_IMAGE="$(cat "$IMAGE_FILE")"
 docker stop portainer && docker rm portainer
 
 # 2. Remove the (now broken) data volume
@@ -92,8 +107,11 @@ docker volume create portainer_data
 docker run --rm \
   -v portainer_data:/data \
   -v /tmp:/backup \
-  alpine tar xzpf /backup/portainer-pre-change-20260320.tar.gz -C /
+  alpine tar -xzf /backup/portainer-pre-change-20260320.tar.gz -C /
 
-# 4. Start the previous Portainer version
-docker run -d --name portainer -v portainer_data:/data portainer/portainer-ce:previous-tag
+# 4. Start the Portainer image that was running before the change
+docker run -d -p 8000:8000 -p 9443:9443 --name=portainer --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  "$PREVIOUS_IMAGE"
 ```
