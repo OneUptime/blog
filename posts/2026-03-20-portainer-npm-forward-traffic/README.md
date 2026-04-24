@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Nginx Proxy Manager, Proxy, Configuration, Networking
 
-Description: Learn how to configure Nginx Proxy Manager proxy hosts to route traffic to Portainer correctly, including WebSocket support, custom headers, and troubleshooting connection issues.
+Description: Learn how to configure Nginx Proxy Manager proxy hosts to route traffic to Portainer correctly, including WebSocket support, the correct upstream scheme, and troubleshooting connection issues.
 
 ## Introduction
 
-While Nginx Proxy Manager simplifies proxy configuration through its web UI, forwarding traffic to Portainer requires specific settings to handle WebSocket connections (used by Portainer's terminal), the correct scheme, and proper header forwarding. This guide covers the complete NPM configuration for Portainer with all edge cases.
+While Nginx Proxy Manager simplifies proxy configuration through its web UI, forwarding traffic to Portainer requires specific settings to handle WebSocket connections (used by Portainer's terminal), the correct scheme, and, when needed, longer proxy timeouts. This guide covers the NPM configuration for Portainer and common edge cases.
 
 ## Prerequisites
 
@@ -25,12 +25,13 @@ Before configuring NPM, confirm Portainer is reachable from the NPM container:
 
 docker ps | grep nginx-proxy-manager
 
-# Test connectivity from NPM to Portainer
-docker exec nginx-proxy-manager wget -qO- --timeout=5 http://portainer:9000 && echo "OK" || echo "FAILED"
+# Replace <npm-container> and <portainer-container> with the actual container names or IDs
+# Match the scheme/port here to the one you will use in NPM
+docker exec <npm-container> wget -qO- -T 5 http://portainer:9000 >/dev/null && echo "OK" || echo "FAILED"
 
 # If that fails, check shared networks
-docker inspect nginx-proxy-manager | jq '.[].NetworkSettings.Networks | keys'
-docker inspect portainer | jq '.[].NetworkSettings.Networks | keys'
+docker inspect <npm-container> | jq '.[].NetworkSettings.Networks | keys'
+docker inspect <portainer-container> | jq '.[].NetworkSettings.Networks | keys'
 
 # Both must share at least one network
 ```
@@ -42,14 +43,14 @@ In the NPM web interface at `http://YOUR_SERVER:81`:
 **Details Tab:**
 ```bash
 Domain Names:        portainer.example.com
-Scheme:              http           (Portainer CE default port 9000 is HTTP)
-Forward Hostname/IP: portainer      (container name works on shared Docker network)
+Scheme:              http           (use this when Portainer's HTTP listener on port 9000 is enabled)
+Forward Hostname/IP: portainer      (service/container DNS name on the shared Docker network)
 Forward Port:        9000
 Block Common Exploits: ON
 Websockets Support:  ON             (CRITICAL - required for Portainer terminal/console)
 ```
 
-**For Portainer with HTTPS (port 9443):**
+**For Portainer with HTTPS (port 9443) or when HTTP on 9000 is disabled:**
 ```text
 Scheme:              https
 Forward Port:        9443
@@ -69,27 +70,16 @@ Use a DNS Challenge: OFF            (HTTP challenge for publicly accessible serv
                      ON             (DNS challenge for private/internal server)
 ```
 
-## Step 4: Advanced Tab for Custom Headers
+## Step 4: Advanced Tab for Portainer-Specific Tuning
 
-Under the **Advanced** tab, add custom Nginx configuration for Portainer:
+Under the **Advanced** tab, add custom Nginx configuration only if you need longer upstream timeouts:
 
 ```nginx
-# Paste in the "Custom Nginx Configuration" box in the Advanced tab
-proxy_set_header Host $host;
-proxy_set_header X-Real-IP $remote_addr;
-proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-proxy_set_header X-Forwarded-Proto $scheme;
-
+# NPM already sets the standard proxy headers.
+# Use this box for Portainer-specific tuning such as longer timeouts.
 # Increase timeouts for long-running Portainer operations
 proxy_read_timeout 900;
 proxy_send_timeout 900;
-
-# WebSocket support (also ensure "Websockets Support" is ON in Details tab)
-proxy_set_header Upgrade $http_upgrade;
-proxy_set_header Connection "upgrade";
-
-# Prevent upstream from sending gzip (NPM handles it)
-proxy_set_header Accept-Encoding "";
 ```
 
 ## Step 5: Configure Access Lists (Optional Security)
@@ -101,7 +91,7 @@ Restrict Portainer access to specific IPs via NPM Access Lists:
 
 ```text
 Name: Internal Only
-Satisfy Any: OFF        (must match all rules)
+Satisfy Any: OFF        (if you add basic auth below, require both the allowlist and auth)
 Pass Auth to Host: OFF
 
 Access tab:
@@ -127,12 +117,11 @@ curl -I http://portainer.example.com
 curl -I https://portainer.example.com
 # Expected: 200 OK
 
-# Test WebSocket upgrade header (should see Connection: upgrade in request path)
-curl -I -H "Connection: Upgrade" -H "Upgrade: websocket" https://portainer.example.com
-# Portainer will reject (no WS token), but Nginx should not block the upgrade headers
+# Verify WebSocket handling by signing in and opening Portainer's console/exec UI.
+# A plain curl -I request does not perform a WebSocket upgrade handshake.
 
 # Check NPM logs for any proxy errors
-docker logs nginx-proxy-manager 2>&1 | grep -i "error\|portainer"
+docker logs <npm-container> 2>&1 | grep -i "error\|portainer"
 ```
 
 ## Step 7: Troubleshoot NPM to Portainer Forwarding
@@ -141,7 +130,7 @@ docker logs nginx-proxy-manager 2>&1 | grep -i "error\|portainer"
 # 502 Bad Gateway:
 # → NPM can't reach Portainer
 # Fix: Verify same Docker network, check portainer container is running
-docker network connect proxy portainer    # Connect Portainer to NPM's network
+docker network connect <shared-network-name> <portainer-container>    # Use the actual network and container names
 
 # 504 Gateway Timeout:
 # → Connection reached but Portainer didn't respond in time
@@ -151,9 +140,9 @@ docker network connect proxy portainer    # Connect Portainer to NPM's network
 # → WebSocket support not enabled
 # Fix: Enable "Websockets Support" in NPM proxy host Details tab
 
-# Certificate errors:
-# → If using Portainer HTTPS (port 9443), NPM needs to accept self-signed cert
-# Fix: In Advanced tab, add: proxy_ssl_verify off;
+# HTTPS upstream errors when forwarding to Portainer on 9443:
+# → Usually caused by the wrong upstream scheme/port or by HTTP on 9000 being disabled
+# Fix: Set Scheme=https and Forward Port=9443; if you proxy to 9000 instead, make sure Portainer HTTP is enabled
 ```
 
 ## Conclusion
