@@ -8,7 +8,7 @@ Description: Learn how to show or hide Kubernetes system resources in Portainer 
 
 ## Introduction
 
-Kubernetes runs system workloads in namespaces like `kube-system`, `kube-public`, and `portainer`. These system resources are hidden by default in Portainer to keep the interface clean and prevent accidental modification. However, administrators sometimes need to inspect or troubleshoot system components. This guide explains how to toggle system resource visibility in Portainer.
+Kubernetes often runs system or infrastructure workloads in namespaces like `kube-system`, `kube-public`, and `portainer`. These system resources are hidden by default in Portainer to keep the interface clean and prevent accidental modification. However, administrators sometimes need to inspect or troubleshoot system components. This guide explains how to toggle system resource visibility in Portainer.
 
 ## Prerequisites
 
@@ -17,30 +17,26 @@ Kubernetes runs system workloads in namespaces like `kube-system`, `kube-public`
 
 ## Understanding System Namespaces
 
-Kubernetes uses several reserved namespaces for system components:
+Kubernetes starts with several system namespaces, and Portainer can also treat additional infrastructure namespaces as system namespaces:
 
 ```text
-kube-system       - Core Kubernetes components (kube-dns, kube-proxy, metrics-server)
+kube-system       - Core Kubernetes components (coredns, kube-proxy, metrics-server)
 kube-public       - Publicly readable cluster information
 kube-node-lease   - Node heartbeat lease objects
-portainer         - Portainer's own agent and namespace
+portainer         - Portainer's own components, if Portainer is deployed in Kubernetes
 ingress-nginx     - Nginx Ingress Controller (if installed)
 cert-manager      - Certificate manager (if installed)
 monitoring        - Prometheus/Grafana stack (if installed)
 ```
 
-## Step 1: Show System Namespaces in Portainer
+## Step 1: Show System Resources in Portainer
 
-By default, Portainer hides system namespaces from the namespace dropdown. To show them:
+On Kubernetes resource views that support it, Portainer hides system resources by default. To show them:
 
 1. Select your Kubernetes environment
-2. In the namespace dropdown (top of screen), look for a toggle or checkbox
-3. Enable **Show system namespaces**
-4. System namespaces (kube-system, kube-public, kube-node-lease) now appear in the list
-
-Alternatively, access system resources directly:
-1. Click **Namespaces** in the sidebar
-2. Enable **Show system resources** toggle at the top of the namespace list
+2. Open the three-dot menu in the top-right of the resource table
+3. Enable **Show system resources**
+4. Use the page's **Filter** or **Namespace** control to inspect `kube-system`, `kube-public`, or another namespace marked as system
 
 ## Step 2: Access System Resources via kubectl
 
@@ -54,11 +50,11 @@ kubectl get pods -n kube-system
 # Common system components:
 # NAME                                    READY   STATUS    RESTARTS
 # coredns-xxx                             1/1     Running   0
-# etcd-master                             1/1     Running   0
-# kube-apiserver-master                   1/1     Running   0
-# kube-controller-manager-master          1/1     Running   0
+# etcd-<control-plane-node>               1/1     Running   0
+# kube-apiserver-<control-plane-node>     1/1     Running   0
+# kube-controller-manager-<control-plane-node> 1/1 Running 0
 # kube-proxy-xxx                          1/1     Running   0
-# kube-scheduler-master                   1/1     Running   0
+# kube-scheduler-<control-plane-node>     1/1     Running   0
 # metrics-server-xxx                      1/1     Running   0
 
 # View deployments in kube-system
@@ -68,30 +64,28 @@ kubectl get deployments -n kube-system
 kubectl describe configmap coredns -n kube-system
 
 # View system events
-kubectl get events -n kube-system --sort-by='.lastTimestamp'
+kubectl get events -n kube-system --sort-by='.metadata.creationTimestamp'
 ```
 
-## Step 3: Configure Portainer to Always Show System Resources
+## Step 3: Mark Additional Namespaces as System in Portainer
 
-For admin users who regularly need system resource access:
+For infrastructure namespaces that should be treated as system resources in Portainer:
 
-1. Go to **Settings** → **Kubernetes** settings for the environment
-2. Find the **System resource visibility** option
-3. Choose a default visibility setting:
-   - **Hidden** (default) - System namespaces not shown in namespace picker
-   - **Visible** - Always show system namespaces
+1. Go to **Namespaces**
+2. Select the namespace you want to manage
+3. Click **Mark as system**, then **Update namespace**
 
-This setting persists for the environment and applies to all users with admin access.
+This flags the namespace as a system namespace in Portainer.
 
 ## Step 4: View kube-system Workloads in Portainer
 
-Once system namespaces are visible:
+On pages where `kube-system` is available in the namespace selector:
 
-1. Select `kube-system` from the namespace dropdown
-2. Navigate to **Applications** to see system workloads:
+1. Navigate to **Applications**
+2. Select `kube-system` from the namespace dropdown to see system workloads:
 
 ```text
-kube-dns / coredns       - Cluster DNS resolution
+coredns                  - Cluster DNS resolution
 kube-proxy               - Network rules on each node
 metrics-server           - Resource metrics for HPA
 calico / flannel / cilium - CNI network plugin
@@ -113,39 +107,39 @@ kubectl logs -n kube-system -l k8s-app=kube-proxy --tail=50
 # metrics-server logs (HPA issues)
 kubectl logs -n kube-system -l k8s-app=metrics-server --tail=50
 
-# API server logs (on control plane node)
+# API server logs (on self-managed control plane nodes)
 kubectl logs -n kube-system kube-apiserver-<node-name> --tail=100
 
 # View events across all namespaces including system
-kubectl get events -A --sort-by='.lastTimestamp' | tail -20
+kubectl get events -A --sort-by='.metadata.creationTimestamp' | tail -20
 ```
 
 ## Step 6: Hide System Resources for Non-Admin Users
 
-In Portainer BE, you can enforce visibility restrictions per team:
+In Portainer BE, use RBAC and namespace access to limit who can work with system namespaces:
 
-1. When configuring namespace access for a team, do not grant access to `kube-system`
-2. Users in that team will never see system namespaces, regardless of toggle settings
-3. Admins retain full visibility
+1. From **Namespaces**, select **Manage access** on the namespace you want to control
+2. Grant access only to the users or teams that need that namespace
+3. Remember that cluster-wide roles such as **Operator** and **Helpdesk** apply to all non-system namespaces, while admins retain full visibility
 
-This prevents non-admin users from accidentally viewing or attempting to modify critical system components.
+Showing system resources in the UI does not replace RBAC; users still need permission to access the namespace.
 
 ## Step 7: Portainer's Own Namespace
 
-The `portainer` namespace contains the Portainer agent:
+The `portainer` namespace contains Portainer components:
 
 ```bash
 # View Portainer's resources
 kubectl get all -n portainer
 
-# Check agent status
+# Check component status
 kubectl get pods -n portainer
 
 # View agent logs
-kubectl logs -n portainer -l app=portainer-agent
+kubectl logs -n portainer deployment/portainer-agent --tail=100
 
 # View Portainer server (if deployed in Kubernetes)
-kubectl get pods -n portainer -l app=portainer
+kubectl logs -n portainer deployment/portainer --tail=100
 ```
 
 Be careful not to delete resources in the `portainer` namespace as it will disconnect your Portainer instance from the cluster.
@@ -155,20 +149,20 @@ Be careful not to delete resources in the `portainer` namespace as it will disco
 Monitor system namespaces to detect cluster health issues:
 
 ```bash
-# Check all system pods are Running
-kubectl get pods -n kube-system | grep -v Running
-# Should return no results in a healthy cluster
+# Review system pod status
+kubectl get pods -n kube-system --no-headers
+# In a healthy cluster, system pods are typically Running; completed Job pods may show Completed
 
 # Check for any pending or failed system pods
-kubectl get pods -A | grep -E "Pending|Failed|Error|CrashLoop"
+kubectl get pods -A | grep -E "Pending|Failed|Error|CrashLoopBackOff"
 
 # Check node conditions
 kubectl describe nodes | grep -A 5 "Conditions:"
 
 # View recent system events with warnings
-kubectl get events -n kube-system --field-selector type=Warning
+kubectl events -n kube-system --types=Warning
 ```
 
 ## Conclusion
 
-System resource visibility in Portainer is hidden by default to protect critical cluster components and keep the interface clean for application developers. Administrators can toggle visibility when troubleshooting cluster-level issues. Use this feature judiciously - inspect system resources when needed, but avoid making changes to system namespaces unless you understand the full impact. For Portainer BE deployments, access control ensures non-admin users never accidentally interact with system resources.
+System resource visibility in Portainer is hidden by default to protect critical cluster components and keep the interface clean for application developers. Administrators can toggle visibility when troubleshooting cluster-level issues. Use this feature judiciously - inspect system resources when needed, but avoid making changes to system namespaces unless you understand the full impact. For Portainer BE deployments, RBAC and namespace access can limit which non-admin users can access infrastructure namespaces.
