@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, S3, MinIO, Object Storage, Backup
 
-Description: Configure S3-compatible object storage (MinIO, Ceph, or AWS S3) for Portainer-managed applications and use it for container backups and data persistence.
+Description: Configure S3-compatible object storage (MinIO, Ceph, or AWS S3) for Portainer-managed applications and use it for application file storage and backups.
 
 ## Introduction
 
-S3-compatible object storage is the standard for cloud-native data storage. Portainer workloads can leverage S3-compatible storage through MinIO (self-hosted), Ceph RadosGW, or AWS S3 for backups, static assets, and application data. This guide covers deploying MinIO via Portainer and connecting applications to it.
+S3-compatible object storage is a common pattern for cloud-native application data. Portainer workloads can leverage S3-compatible storage through MinIO (self-hosted), Ceph RadosGW, or AWS S3 for backups, static assets, and application data. This guide covers deploying MinIO via Portainer and connecting applications to it.
 
 ## Part 1: Deploy MinIO via Portainer
 
@@ -31,29 +31,33 @@ services:
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin123}"
     volumes:
       - minio-data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
+    networks:
+      - storage-network
 
   minio-createbuckets:
     image: quay.io/minio/mc:latest
     depends_on:
-      minio:
-        condition: service_healthy
+      - minio
     restart: on-failure
+    environment:
+      MC_HOST_myminio: http://${MINIO_ROOT_USER:-minioadmin}:${MINIO_ROOT_PASSWORD:-minioadmin123}@minio:9000
     entrypoint: >
       /bin/sh -c "
-      mc alias set myminio http://minio:9000 minioadmin minioadmin123;
-      mc mb myminio/backups || true;
-      mc mb myminio/app-uploads || true;
-      mc mb myminio/logs || true;
+      mc ready myminio;
+      mc mb --ignore-existing myminio/backups;
+      mc mb --ignore-existing myminio/app-uploads;
+      mc mb --ignore-existing myminio/logs;
       exit 0;
       "
+    networks:
+      - storage-network
 
 volumes:
   minio-data:
+
+networks:
+  storage-network:
+    name: storage-network
 ```
 
 ## Part 2: Configure Applications to Use S3
@@ -69,7 +73,7 @@ services:
     image: myapp:latest
     restart: unless-stopped
     environment:
-      # S3 configuration
+      # Example S3 configuration - actual variable names vary by application
       S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY: "${S3_ACCESS_KEY}"
       S3_SECRET_KEY: "${S3_SECRET_KEY}"
@@ -93,7 +97,7 @@ services:
 networks:
   app-network:
   storage-network:
-    external: true  # Shared with MinIO
+    external: true  # Created by the MinIO stack above
 
 volumes:
   db-data:
@@ -122,43 +126,49 @@ mc mb portainer-minio/portainer-backups
 mc cp /tmp/portainer-backup.tar.gz portainer-minio/portainer-backups/
 
 # Set lifecycle policy (auto-delete after 30 days)
-mc ilm add portainer-minio/portainer-backups \
-  --expiry-days 30
+mc ilm rule add portainer-minio/portainer-backups \
+  --expire-days 30
 ```
 
-## Part 4: Portainer Backup to S3
+## Part 4: Portainer Configuration Backup to S3
 
 ```bash
 #!/bin/bash
 # backup-portainer-to-s3.sh
-# Run this script on a schedule to backup Portainer to S3
+# Run this script on a schedule to back up Portainer's /data volume to S3
+
+set -euo pipefail
 
 S3_BUCKET="portainer-minio/portainer-backups"
+PORTAINER_CONTAINER="portainer"
+PORTAINER_VOLUME="portainer_data" # Adjust if your Portainer data volume uses a different name.
 BACKUP_DATE=$(date +%Y-%m-%d-%H%M%S)
 BACKUP_FILE="portainer-backup-$BACKUP_DATE.tar.gz"
+LOCAL_BACKUP="/tmp/$BACKUP_FILE"
 
 echo "Creating Portainer backup..."
 
-# Stop Portainer briefly for consistent backup
-docker stop portainer
+# Stop Portainer briefly for a consistent backup
+docker stop "$PORTAINER_CONTAINER"
 
-# Create backup
+# Archive the Portainer data volume. This captures Portainer configuration
+# and stack files, not the application data stored in other containers' volumes.
 docker run --rm \
-  -v portainer_data:/data \
+  -v "$PORTAINER_VOLUME":/data \
   -v /tmp:/backup \
-  alpine tar czf /backup/portainer.tar.gz -C /data .
+  alpine tar czf "/backup/$BACKUP_FILE" -C /data .
 
 # Start Portainer again
-docker start portainer
+docker start "$PORTAINER_CONTAINER"
 
 # Upload to MinIO/S3
-mc cp /tmp/portainer.tar.gz "$S3_BUCKET/$BACKUP_FILE"
+mc cp "$LOCAL_BACKUP" "$S3_BUCKET/$BACKUP_FILE"
 
 # Verify upload
 mc stat "$S3_BUCKET/$BACKUP_FILE"
 
 # Clean up local file
-rm /tmp/portainer.tar.gz
+rm "$LOCAL_BACKUP"
 
 echo "Backup uploaded: $BACKUP_FILE"
 ```
@@ -174,9 +184,10 @@ services:
     image: wordpress:latest
     environment:
       WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: "${DB_USER}"
       WORDPRESS_DB_PASSWORD: "${DB_PASSWORD}"
-      # Install WP plugin for S3: "WP Offload Media"
-      # Configure via wp-config.php:
+      WORDPRESS_DB_NAME: "${DB_NAME:-wordpress}"
+      # Install the WP Offload Media plugin and configure supported settings via wp-config.php:
       WORDPRESS_CONFIG_EXTRA: |
         define('AS3CF_SETTINGS', serialize(array(
             'provider' => 'aws',
@@ -184,39 +195,81 @@ services:
             'secret-access-key' => '${S3_SECRET_KEY}',
             'bucket' => 'wordpress-media',
             'region' => 'us-east-1',
-            'endpoint' => 'http://minio:9000',
         )));
 ```
+
+With WP Offload Media, MinIO-compatible endpoints are configured through the plugin's `as3cf_aws_s3_client_args` and related filters (for example in the WP Offload Media Tweaks plugin), not through an `endpoint` key inside `AS3CF_SETTINGS`.
 
 ### Database Backup to S3
 
 ```bash
 # Automated PostgreSQL backup to MinIO
-docker run --rm \
-  --network app-network \
-  -e PGPASSWORD=dbpassword \
-  -e MC_HOST_minio=http://access-key:secret-key@minio:9000 \
-  --entrypoint sh \
-  alpine/postgres:latest -c \
-  "pg_dump -h db -U postgres myapp | gzip | mc pipe minio/db-backups/$(date +%Y%m%d).sql.gz"
+docker exec -e PGPASSWORD=dbpassword your-postgres-container \
+  pg_dump -U postgres myapp | gzip | \
+  mc pipe portainer-minio/db-backups/$(date +%Y%m%d).sql.gz
 ```
 
 ## MinIO High Availability
 
 ```yaml
-# MinIO distributed mode (4 nodes minimum)
+# MinIO distributed mode requires 4 or more drives/directories.
+# Production deployments typically place a load balancer or reverse proxy in front of the cluster.
 services:
   minio1:
     image: quay.io/minio/minio
+    hostname: minio1
     command: server http://minio{1...4}/data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: admin
       MINIO_ROOT_PASSWORD: password123
     volumes:
-      - /data/minio1:/data
-  # Repeat for minio2, minio3, minio4...
+      - minio1-data:/data
+    networks:
+      - minio-ha
+  minio2:
+    image: quay.io/minio/minio
+    hostname: minio2
+    command: server http://minio{1...4}/data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password123
+    volumes:
+      - minio2-data:/data
+    networks:
+      - minio-ha
+  minio3:
+    image: quay.io/minio/minio
+    hostname: minio3
+    command: server http://minio{1...4}/data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password123
+    volumes:
+      - minio3-data:/data
+    networks:
+      - minio-ha
+  minio4:
+    image: quay.io/minio/minio
+    hostname: minio4
+    command: server http://minio{1...4}/data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password123
+    volumes:
+      - minio4-data:/data
+    networks:
+      - minio-ha
+
+volumes:
+  minio1-data:
+  minio2-data:
+  minio3-data:
+  minio4-data:
+
+networks:
+  minio-ha:
 ```
 
 ## Conclusion
 
-S3-compatible storage via MinIO integrated with Portainer provides scalable, cloud-native object storage for self-hosted environments. Applications can store files, images, and backups using the same S3 API they would use with AWS, enabling easy migration between environments. Portainer backups to S3 ensure disaster recovery is always available.
+S3-compatible storage via MinIO integrated with Portainer provides scalable, cloud-native object storage for self-hosted environments. Applications can store files, images, and backups using the same S3 API they would use with AWS, enabling easy migration between environments. Portainer configuration backups to S3 simplify disaster recovery, while application data in volumes or bind mounts still needs its own backup plan.
