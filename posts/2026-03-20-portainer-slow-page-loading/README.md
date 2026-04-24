@@ -8,7 +8,7 @@ Description: Optimize Portainer's performance when managing large numbers of con
 
 ## Introduction
 
-Portainer's UI can become noticeably slow when managing environments with hundreds of containers, dozens of stacks, many volumes, and multiple environments. This happens because Portainer fetches and renders all resource data on page load. This guide explains how to reduce this overhead.
+Portainer's UI can become noticeably slow when managing environments with hundreds of containers, dozens of stacks, many volumes, and multiple environments. This often happens because Portainer has to process and render more resource and snapshot data as the number of managed objects grows. This guide explains how to reduce this overhead.
 
 ## Step 1: Measure Current Performance
 
@@ -25,7 +25,7 @@ docker logs portainer 2>&1 | grep -i "snapshot\|slow\|timeout" | tail -20
 
 ## Step 2: Increase Snapshot Interval
 
-Portainer takes environment snapshots periodically. Reduce frequency for large environments:
+Portainer takes environment snapshots periodically. The default interval is 5 minutes, so for large environments you can increase it further:
 
 ```bash
 docker stop portainer && docker rm portainer
@@ -37,7 +37,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
-  --snapshot-interval=300   # 5 minutes instead of 60 seconds
+  --snapshot-interval=15m   # 15 minutes instead of the default 5 minutes
 ```
 
 ## Step 3: Clean Up Unused Resources
@@ -56,55 +56,56 @@ docker volume prune
 docker network prune
 
 # Full cleanup
-docker system prune -a
+docker system prune -a --volumes
 
 # After cleanup, Portainer pages load faster with fewer items to display
 ```
 
-## Step 4: Archive or Remove Old Stacks
+## Step 4: Remove Old Stacks
 
-Old stacks that are no longer running but have entries in Portainer add to UI load time:
+Stacks you no longer need still appear in Portainer's stack list:
 
 1. Go to **Stacks** in Portainer
 2. Identify stacks with **0 running containers**
-3. Remove the stack entries (this doesn't affect running containers)
+3. Remove the stack if you no longer need it
 
 ## Step 5: Remove Inactive Environments
 
-Each active environment is polled on each Portainer page load:
+Remove environments that are permanently offline or no longer used:
 
 1. Go to **Environments**
 2. Identify environments that are:
    - Permanently offline
    - No longer in use
-3. Remove them or mark them appropriately
+3. Remove them if they are no longer needed
 
-## Step 6: Limit Portainer's Resource Consumption
+## Step 6: Adjust Portainer's Resource Limits
 
 Give Portainer more CPU to process requests faster:
 
 ```bash
 docker stop portainer && docker rm portainer
+# Give Portainer 2 CPU cores and 512 MB of memory
 docker run -d \
   -p 9000:9000 \
   -p 9443:9443 \
   --name portainer \
   --restart=unless-stopped \
-  --cpus="2.0" \       # Give Portainer 2 CPU cores
-  --memory="512m" \    # Sufficient memory for large environments
+  --cpus="2.0" \
+  --memory="512m" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
-  --snapshot-interval=300
+  --snapshot-interval=15m
 ```
 
 ## Step 7: Use Portainer on SSD Storage
 
-BoltDB (Portainer's database) performance degrades on slow storage:
+Portainer stores its configuration in BoltDB on the `/data` volume, so slower storage can increase database access time:
 
 ```bash
 # Check storage type
-lsblk -d -o NAME,ROTA  # ROTA=0 means SSD, ROTA=1 means HDD
+lsblk -d -o NAME,ROTA  # ROTA=0 means non-rotational storage (typically SSD/NVMe), ROTA=1 means HDD
 
 # Move portainer data to SSD if on HDD
 docker stop portainer
@@ -118,6 +119,7 @@ docker run --rm \
 # Recreate with SSD path
 docker run -d \
   -p 9000:9000 \
+  -p 9443:9443 \
   --name portainer \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -127,36 +129,31 @@ docker run -d \
 
 ## Step 8: Compact the Portainer Database
 
-Over time, BoltDB accumulates unused space:
+Portainer can compact its BoltDB database on startup:
 
 ```bash
 # Stop Portainer
 docker stop portainer && docker rm portainer
 
-# Compact the database
-docker run --rm \
-  -v portainer_data:/data \
-  portainer/portainer-ce:latest \
-  --compact-db
-
-# Restart normally
+# Start Portainer with database compaction enabled
 docker run -d \
   -p 9000:9000 \
+  -p 9443:9443 \
   --name portainer \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:latest \
+  --compact-db
 ```
 
 ## Step 9: Filter Resources in the UI
 
-Instead of loading all resources, use Portainer's filtering features:
+Once the list is loaded, use Portainer's filtering features to work with smaller subsets of resources:
 
 1. In the **Containers** list, use the search bar to filter
-2. Use **Stack** filter to show only specific stack containers
-3. Use **Status** filter to show only running containers
-4. In **Images**, filter by registry or image name
+2. Use available filters to focus on running containers or a specific stack
+3. In **Images**, search by image name
 
 ## Step 10: Use the Portainer API for Bulk Operations
 
@@ -176,4 +173,4 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 ## Conclusion
 
-Portainer slowness with many resources is primarily a data volume issue - the more containers, stacks, and environments Portainer manages, the more data it needs to fetch and render. The most impactful fixes are: increasing the snapshot interval, cleaning up unused resources (containers, images, volumes), compacting the BoltDB database, and ensuring Portainer runs on SSD storage. For very large deployments, consider splitting into multiple Portainer instances per cluster.
+Portainer slowness with many resources is primarily a data volume issue - the more containers, stacks, and environments Portainer manages, the more data it needs to process and render. The most impactful fixes are: increasing the snapshot interval beyond the default 5 minutes for large environments, cleaning up unused resources (containers, images, volumes), compacting the BoltDB database, and ensuring Portainer runs on fast storage. For very large deployments, re-measure API response times after each change to confirm which adjustment had the biggest effect.
