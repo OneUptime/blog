@@ -14,11 +14,11 @@ Creating Kubernetes Secrets via YAML manifests enables GitOps workflows and infr
 
 - Portainer with Kubernetes environment
 - Secret values to store (passwords, tokens, certificates)
-- Understanding that Secret values must be base64-encoded in YAML
+- Understanding that values in the `data` field must be base64-encoded, while `stringData` accepts plain text
 
 ## Understanding Base64 Encoding in Kubernetes Secrets
 
-Kubernetes stores secret data as base64-encoded strings in YAML:
+Kubernetes Secret manifests use base64-encoded strings in the `data` field:
 
 ```bash
 # Encode a value
@@ -35,7 +35,7 @@ echo "my-password" | base64     # WRONG - includes newline
 echo -n "my-password" | base64  # CORRECT
 ```
 
-Note: The `stringData` field accepts plain text and avoids manual encoding.
+Note: The `stringData` field accepts plain text and avoids manual encoding, though Kubernetes notes it does not work well with server-side apply.
 
 ## Step 1: Opaque Secret with base64-encoded Data
 
@@ -92,9 +92,9 @@ metadata:
 type: kubernetes.io/tls
 data:
   # Base64-encode certificate files:
-  # cat tls.crt | base64 -w 0
+  # base64 < tls.crt | tr -d '\n'
   tls.crt: LS0tLS1CRUdJTi...  # truncated - paste full base64
-  # cat tls.key | base64 -w 0
+  # base64 < tls.key | tr -d '\n'
   tls.key: LS0tLS1CRUdJTi...  # truncated - paste full base64
 ```
 
@@ -193,9 +193,9 @@ stringData:
 
 ## Step 6: Apply the Secret YAML in Portainer
 
-1. Open the YAML editor in Portainer
-2. Paste the Secret manifest
-3. Click **Deploy** or **Apply**
+1. In Portainer, open **ConfigMaps & Secrets** > **Secrets** and click **Create from manifest**
+2. Paste the Secret manifest into the web editor
+3. Click **Deploy**
 4. Portainer confirms creation
 
 Important: After successful deployment, clear the editor and do not save the YAML with real values to Git.
@@ -206,7 +206,7 @@ For production use, reference secrets from external stores:
 
 ```yaml
 # ExternalSecret CRD (requires External Secrets Operator)
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
