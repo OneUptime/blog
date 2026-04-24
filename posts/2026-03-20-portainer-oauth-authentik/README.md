@@ -27,7 +27,7 @@ Authentik is a popular self-hosted identity provider that many teams use for SSO
    - **Client type**: Confidential
    - **Client ID**: Authentik generates this (copy it)
    - **Client Secret**: Generate (copy it)
-   - **Redirect URIs**: `https://portainer.yourdomain.com` (exact, no trailing slash)
+   - **Redirect URIs**: `https://portainer.yourdomain.com` (must exactly match the Redirect URL you configure in Portainer)
    - **Scopes**: `openid email profile`
 
 5. Create the Application:
@@ -54,7 +54,7 @@ curl https://authentik.yourdomain.com/application/o/portainer/.well-known/openid
 
 ## Step 3: Configure OAuth in Portainer
 
-In Portainer BE (Business Edition):
+In Portainer:
 1. Go to **Settings** → **Authentication**
 2. Select **OAuth** as authentication method
 3. Fill in:
@@ -113,18 +113,18 @@ Without this, Portainer generates `http://` redirect URLs even when accessed via
 # Check Portainer logs for token errors
 docker logs portainer 2>&1 | grep -i "token\|jwt\|invalid\|oauth" | tail -20
 
-# Common issue: clock skew between Portainer and Authentik
-# JWT tokens have 5-minute tolerance - if clocks differ more, tokens are rejected
+# If token or userinfo requests fail immediately after login,
+# verify time is correct on both the Portainer and Authentik hosts.
+# OAuth/OIDC tokens are time-sensitive, so significant clock drift can cause failures.
 
-# Sync time on Portainer host
+# Sync time on the Portainer host (systemd-based hosts)
 sudo timedatectl set-ntp true
-sudo systemctl restart systemd-timesyncd
-timedatectl status | grep NTP
+timedatectl status | grep -E "System clock synchronized|NTP service"
 ```
 
 ## Step 7: Fix User Claim Mapping
 
-Portainer needs specific claims from the userinfo endpoint:
+Portainer needs the claim you configure as the **User identifier**, typically `email` or `preferred_username`:
 
 ```bash
 # Test what Authentik returns for userinfo
@@ -132,30 +132,35 @@ Portainer needs specific claims from the userinfo endpoint:
 curl -H "Authorization: Bearer YOUR_TEST_TOKEN" \
   https://authentik.yourdomain.com/application/o/userinfo/ | jq .
 
-# Expected claims for Portainer:
+# Common useful claims:
 # {
 #   "sub": "user-uuid",
 #   "email": "user@example.com",
 #   "preferred_username": "username",
-#   "name": "Full Name"
+#   "name": "Full Name",
+#   "groups": ["devops", "admins"]
 # }
 ```
 
-If the `email` claim is missing, enable it in Authentik:
-1. OAuth Provider → edit → Scopes → ensure `email` is included
-2. Or add a custom property mapping
+If the claim you want to use is missing, enable the matching scope in Authentik:
+1. OAuth Provider → edit → **Selected Scopes** → ensure `email` is included for the `email` claim
+2. Ensure `profile` is included for claims like `preferred_username`, `name`, and `groups`
+3. If you need a different claim shape, add a custom scope mapping
 
 ## Step 8: Configure Team Mapping
 
-Map Authentik groups to Portainer teams (BE feature):
+Map Authentik groups to Portainer teams:
 
 ```bash
 # In Portainer Settings → Authentication → OAuth
 # Enable "Automatic Team Membership"
-# Configure group claim name: "groups" (or "ak_groups" in Authentik)
+# Configure group claim name: "groups"
 
-# In Authentik, ensure groups are included in the token:
-# Provider → edit → Property Mappings → add "authentik default OAuth Mapping: Groups"
+# In Authentik, ensure the profile scope is selected on the provider:
+# Provider → edit → Advanced protocol settings → Selected Scopes
+# Ensure "authentik default OAuth Mapping: OpenID 'profile'" is selected
+# The default profile scope includes group membership.
+# If you need a different group claim, create a custom scope mapping that returns "groups".
 ```
 
 ## Step 9: Test OAuth Flow Manually
@@ -180,16 +185,23 @@ curl -X POST \
 
 ## Step 10: Fix Authentik Application Slug Mismatch
 
-Authentik uses application slugs in URLs. Ensure the slug matches what you're using:
+Authentik uses the application slug in the discovery, JWKS, and end-session URLs. Ensure the slug matches what you're using:
 
 ```bash
 # Check Authentik application slug
 # In Authentik: Applications → Application → copy the Slug
 
-# The OAuth endpoints use the slug:
-# https://authentik.yourdomain.com/application/o/SLUG/
+# Slug-specific endpoints:
+# https://authentik.yourdomain.com/application/o/SLUG/.well-known/openid-configuration
+# https://authentik.yourdomain.com/application/o/SLUG/end-session/
+# https://authentik.yourdomain.com/application/o/SLUG/jwks/
 
-# If endpoints return 404, the slug is wrong
+# Authorization, token, and userinfo endpoints are global:
+# https://authentik.yourdomain.com/application/o/authorize/
+# https://authentik.yourdomain.com/application/o/token/
+# https://authentik.yourdomain.com/application/o/userinfo/
+
+# If the discovery endpoint returns 404, the slug is wrong
 curl -I https://authentik.yourdomain.com/application/o/portainer/.well-known/openid-configuration
 # Should return 200
 ```
