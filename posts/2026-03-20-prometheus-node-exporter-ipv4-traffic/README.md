@@ -1,25 +1,26 @@
-# How to Monitor IPv4 Network Traffic with Prometheus and Node Exporter
+# How to Monitor Network Traffic with Prometheus and Node Exporter
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Node Exporter, IPv4, Network Monitoring, Bandwidth, Metric, Grafana
+Tags: Prometheus, Node Exporter, Network Monitoring, Bandwidth, Metric, Grafana
 
-Description: Learn how to use Prometheus and Node Exporter to monitor IPv4 network traffic, bandwidth usage, and packet statistics across server interfaces.
+Description: Learn how to use Prometheus and Node Exporter to monitor network traffic, bandwidth usage, and packet statistics across server interfaces.
 
 ---
 
-Node Exporter exposes detailed network interface statistics that Prometheus can scrape and Grafana can visualize. This provides real-time IPv4 traffic monitoring including bytes sent/received, packet rates, and error counts.
+Node Exporter exposes detailed network interface statistics that Prometheus can scrape and Grafana can visualize. This provides real-time network traffic monitoring including bytes sent/received, packet rates, and error counts.
 
 ## Installing Node Exporter
 
 ```bash
 # Download and install Node Exporter
 
-wget https://github.com/prometheus/node_exporter/releases/latest/download/node_exporter-*.linux-amd64.tar.gz
-tar xzf node_exporter-*.linux-amd64.tar.gz
-mv node_exporter-*/node_exporter /usr/local/bin/
+NODE_EXPORTER_VERSION="1.11.1"
+wget "https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz"
+tar xzf "node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz"
+mv "node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64/node_exporter" /usr/local/bin/
 
-# Create systemd service - bind to IPv4 only
+# Create systemd service - bind exporter to an IPv4 address
 cat > /etc/systemd/system/node-exporter.service << 'EOF'
 [Unit]
 Description=Prometheus Node Exporter
@@ -51,7 +52,7 @@ rate(node_network_transmit_bytes_total{device="eth0"}[5m])
 
 # Total bandwidth (receive + transmit) in Mbps
 (rate(node_network_receive_bytes_total{device="eth0"}[5m]) +
- rate(node_network_transmit_bytes_total{device="eth0"}[5m])) * 8 / 1048576
+ rate(node_network_transmit_bytes_total{device="eth0"}[5m])) * 8 / 1000000
 
 # Packet receive rate
 rate(node_network_receive_packets_total{device="eth0"}[5m])
@@ -69,16 +70,16 @@ rate(node_network_receive_drop_total[5m]) + rate(node_network_transmit_drop_tota
 # Top 5 interfaces by receive bandwidth
 topk(5,
   rate(node_network_receive_bytes_total[5m]) * 8
-) by (device, instance)
+)
 ```
 
-## TCP Connection States
+## TCP Metrics
 
-Node Exporter's `netstat` collector tracks TCP connections.
+Node Exporter's `netstat` collector tracks TCP and IP stack statistics.
 
 ```promql
-# Count TCP connections by state
-node_netstat_Tcp_CurrEstab                     # ESTABLISHED connections
+# Current TCP connections in ESTABLISHED or CLOSE-WAIT
+node_netstat_Tcp_CurrEstab
 node_netstat_Tcp_InSegs                        # Incoming segments
 node_netstat_Tcp_RetransSegs                   # Retransmissions (high = network issue)
 
@@ -119,7 +120,7 @@ rate(node_network_receive_errs_total[5m]) + rate(node_network_transmit_errs_tota
 
 ## Key Takeaways
 
-- `node_network_receive_bytes_total` and `node_network_transmit_bytes_total` are the primary network metrics; use `rate()` to get bytes per second.
+- `node_network_receive_bytes_total` and `node_network_transmit_bytes_total` are the primary network interface metrics; use `rate()` to get bytes per second.
 - Multiply by 8 to convert bytes/sec to bits/sec (for standard networking units in Mbps).
 - Use `device!="lo"` to exclude the loopback interface from bandwidth calculations.
 - Monitor `node_network_receive_errs_total` and `node_network_receive_drop_total` for network interface health issues.
