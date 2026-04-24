@@ -12,17 +12,16 @@ Portainer's API serves the frontend UI and external integrations. Slow API respo
 
 ## Measuring API Response Times
 
-Baseline your current response times before tuning:
+Create a Portainer access token first, then baseline your current response times:
 
 ```bash
-TOKEN=$(curl -s -X POST https://portainer.example.com/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"Username":"admin","Password":"adminpassword"}' | jq -r .jwt)
+API_KEY="${PORTAINER_API_KEY:?set PORTAINER_API_KEY}"
+ENVIRONMENT_ID=1
 
 # Measure key API endpoints
 
-for endpoint in /api/endpoints /api/stacks /api/containers/json; do
-  time curl -s -H "Authorization: Bearer $TOKEN" \
+for endpoint in /api/endpoints /api/stacks "/api/endpoints/$ENVIRONMENT_ID/docker/containers/json"; do
+  time curl -s -H "X-API-Key: $API_KEY" \
     "https://portainer.example.com$endpoint" > /dev/null
 done
 ```
@@ -33,43 +32,49 @@ done
 |---------|-------------|
 | `/api/endpoints` slow | Too many environments; large snapshots |
 | `/api/stacks` slow | Large number of stacks |
-| `/api/containers` slow | Large snapshot data; BoltDB I/O |
+| Container listing slow | Large environment inventories; backend Docker API latency |
 | All endpoints slow | Portainer CPU/memory pressure |
 
 ## Fix 1: Move Database to SSD
 
-BoltDB is a file-based database with heavy I/O during snapshots. Running it on SSD dramatically improves read/write times:
+Portainer stores its configuration in a BoltDB database under the `/data` volume. Faster storage improves database read/write latency, especially while snapshots and backups are active:
 
 ```bash
 # Check current disk speed under the data volume
-docker exec portainer sh -c "dd if=/dev/zero of=/data/test bs=1M count=100 oflag=dsync 2>&1 | tail -1"
+docker exec portainer sh -c 'dd if=/dev/zero of=/data/.disk-speed-test bs=1M count=100 conv=fdatasync 2>&1 | tail -1; rm -f /data/.disk-speed-test'
 
-# If throughput is <100 MB/s, consider moving to SSD storage
+# If throughput is much lower than your normal SSD baseline, move portainer_data to faster storage
 ```
 
 ## Fix 2: Increase Snapshot Interval
 
-While a snapshot is being written, API reads from the database may be slower due to BoltDB's writer lock:
+Portainer's `--snapshot-interval` flag expects a duration string such as `30s`, `5m`, or `1h`. Increasing the interval reduces how often environment snapshot jobs run:
 
 ```bash
 docker run -d \
   --name portainer \
-  -p 9000:9000 \
+  -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest \
-  --snapshot-interval 180   # Fewer writes = fewer lock conflicts
+  portainer/portainer-ce:lts \
+  --snapshot-interval 3m
 ```
 
 ## Fix 3: Compact the Database
 
-A large, fragmented BoltDB file increases read times:
+A larger Portainer database can increase disk I/O. Portainer can compact its BoltDB database on startup:
 
 ```bash
 docker stop portainer
-docker run --rm -v portainer_data:/data \
-  portainer/portainer-ce:latest --compact-db
-docker start portainer
+docker rm portainer
+docker run -d \
+  --name portainer \
+  --restart=always \
+  -p 9443:9443 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:lts \
+  --compact-db
 ```
 
 ## Fix 4: Add Nginx Response Caching
@@ -84,45 +89,39 @@ server {
     listen 443 ssl;
     server_name portainer.example.com;
 
-    location /api/endpoints {
+    location = /api/endpoints {
         proxy_cache portainer_api;
+        proxy_cache_methods GET HEAD;
         proxy_cache_valid 200 60s;       # Cache for 60 seconds
-        proxy_cache_key "$uri$is_args$args";
-        proxy_pass http://portainer:9000;
+        proxy_cache_key "$scheme$proxy_host$uri$is_args$args$http_authorization$http_x_api_key";
+        proxy_pass https://portainer:9443;
         add_header X-Cache-Status $upstream_cache_status;
     }
 
     location /api/ {
         # No cache for other API calls (mutations)
         proxy_cache off;
-        proxy_pass http://portainer:9000;
+        proxy_pass https://portainer:9443;
     }
 }
 ```
 
-Only cache read-only endpoints like `/api/endpoints` - never cache authentication or write operations.
+Only cache read-only GET endpoints like `/api/endpoints`, and include the caller's auth header (`Authorization` or `X-API-Key`) in the cache key because Portainer API responses are permission-scoped.
 
 ## Fix 5: Allocate More CPU to Portainer
 
-API response generation is CPU-bound when processing large snapshots. Increase the CPU allocation:
+If the Portainer container is CPU-constrained during API-heavy operations, increase its CPU allocation:
 
 ```yaml
 services:
   portainer:
-    image: portainer/portainer-ce:latest
-    deploy:
-      resources:
-        limits:
-          cpus: "2.0"   # Allow up to 2 CPU cores
+    image: portainer/portainer-ce:lts
+    cpus: 2.0   # Allow up to 2 CPU cores
 ```
 
-## Fix 6: Reduce BoltDB Lock Contention
+## Fix 6: Avoid Deprecated Analytics Flags
 
-Use the `--no-analytics` flag to disable anonymous usage reporting, which makes periodic API calls:
-
-```bash
-portainer/portainer-ce:latest --no-analytics
-```
+The `--no-analytics` flag is deprecated, and starting with Portainer 2.38.0 Portainer no longer collects anonymous usage statistics. It is not a current tuning lever for API latency.
 
 ## Monitoring API Latency Over Time
 
@@ -132,12 +131,11 @@ Track API latency trends using a monitoring script:
 #!/bin/bash
 # monitor-api-latency.sh
 
-TOKEN=$(curl -s -X POST https://portainer.example.com/api/auth \
-  -d '{"Username":"admin","Password":"pass"}' -H 'Content-Type: application/json' | jq -r .jwt)
+API_KEY="${PORTAINER_API_KEY:?set PORTAINER_API_KEY}"
 
 while true; do
   latency=$(curl -s -w "%{time_total}" -o /dev/null \
-    -H "Authorization: Bearer $TOKEN" \
+    -H "X-API-Key: $API_KEY" \
     https://portainer.example.com/api/endpoints)
   echo "$(date +%H:%M:%S) /api/endpoints: ${latency}s"
   sleep 30
