@@ -53,39 +53,40 @@ timeout 3 bash -c "cat < /dev/null > /dev/tcp/agent-host/9001" && echo "Open" ||
 | `No route to host` | Routing issue or host unreachable |
 | `Connection timed out` | Firewall is blocking (silently dropping packets) |
 
-## Layer 3: HTTP Protocol Test (Curl)
+## Layer 3: HTTPS Protocol Test (Curl)
 
-Once TCP connectivity is confirmed, test the HTTP layer:
+Once TCP connectivity is confirmed, test the agent's HTTPS endpoint:
 
 ```bash
-# Test the agent ping endpoint
-curl -v http://agent-host:9001/ping
+# Test the public agent ping endpoint
+curl -vk https://agent-host:9001/ping
 
-# Expected response: some HTTP response (even 404 is OK - it means HTTP works)
+# Expected response: HTTP 204 No Content
 # "Connection refused" = TCP level issue
-# "Empty reply from server" = TCP connects but no HTTP response
+# Certificate warnings are expected unless you use -k / --insecure
 
 # Test with timeout
-curl -v --connect-timeout 5 --max-time 10 http://agent-host:9001/ping
+curl -vk --connect-timeout 5 --max-time 10 https://agent-host:9001/ping
 
-# Test with all headers shown
-curl -sI http://agent-host:9001/ping
+# Test with response headers shown
+curl -skD - https://agent-host:9001/ping -o /dev/null
 ```
 
 ## Layer 4: TLS Verification (OpenSSL)
 
-If the agent uses TLS:
+Standard (non-Edge) Portainer agents use TLS by default:
 
 ```bash
 # Test TLS handshake
-openssl s_client -connect agent-host:9001 -servername agent-host
+openssl s_client -connect agent-host:9001 -servername agent-host </dev/null
 
 # Check certificate details
-openssl s_client -connect agent-host:9001 2>/dev/null | \
-  openssl x509 -noout -text | grep -E "Subject:|Issuer:|Not After"
+openssl s_client -connect agent-host:9001 -servername agent-host </dev/null 2>/dev/null | \
+  sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | \
+  openssl x509 -noout -subject -issuer -enddate
 
 # Test with specific TLS version
-openssl s_client -tls1_2 -connect agent-host:9001
+openssl s_client -tls1_2 -connect agent-host:9001 -servername agent-host </dev/null
 
 # If TLS handshake fails:
 # - Certificate is expired
@@ -96,33 +97,33 @@ openssl s_client -tls1_2 -connect agent-host:9001
 ## Layer 5: Agent API Test
 
 ```bash
-# Test the agent's API endpoint directly (if no auth required)
-curl -v http://agent-host:9001/v1/browse/containers
+# The documented public endpoint is /ping and it should return 204
+curl -sk -o /dev/null -w "HTTP Status: %{http_code}\n" https://agent-host:9001/ping
 
-# If the agent requires a secret, pass it as a header
-curl -v -H "X-PortainerAgent-Signature: your-signature" \
-  http://agent-host:9001/v1/docker/containers/json
+# Most other agent and proxied Docker API endpoints require Portainer-signed headers
+# Plain curl requests without X-PortainerAgent-PublicKey and X-PortainerAgent-Signature return 403
+curl -skD - https://agent-host:9001/agents -o /dev/null
 
-# Check what the agent API exposes
-curl -s http://agent-host:9001 | head -50
+# If you need to inspect the public endpoint in more detail
+curl -skv https://agent-host:9001/ping
 ```
 
 ## Debug from Inside the Portainer Container
 
 ```bash
-# Portainer server debugging - test connectivity from inside the Portainer container
+# If your Portainer image includes a shell and network tools, you can test from inside it
 docker exec -it portainer sh
 
-# Inside the container:
-# Test DNS resolution of agent
+# Inside the container, if the tools are available:
+# Test DNS resolution of the agent
 nslookup agent-host
 
-# Test connectivity
-wget -qO- http://agent-host:9001/ping
+# Test HTTPS connectivity to the public ping endpoint
+wget --spider --server-response --no-check-certificate https://agent-host:9001/ping
 # or
-curl http://agent-host:9001/ping
+curl -sk -o /dev/null -w "HTTP Status: %{http_code}\n" https://agent-host:9001/ping
 
-# Test if agent is reachable from Portainer's network
+# Test if the agent host is reachable from Portainer's network
 ping agent-host
 
 exit
@@ -171,8 +172,9 @@ ping -c 3 "$AGENT_HOST" 2>&1 | tail -3
 echo "=== Layer 2: TCP Connectivity ==="
 nc -zv "$AGENT_HOST" "$AGENT_PORT" 2>&1
 
-echo "=== Layer 3: HTTP Response ==="
-curl -s --connect-timeout 5 "http://$AGENT_HOST:$AGENT_PORT" -o /dev/null -w "HTTP Status: %{http_code}\n"
+echo "=== Layer 3: HTTPS Response ==="
+curl -sk --connect-timeout 5 --max-time 10 "https://$AGENT_HOST:$AGENT_PORT/ping" \
+  -o /dev/null -w "HTTP Status: %{http_code}\n"
 
 echo "=== Agent Container Status (if local) ==="
 docker ps | grep portainer-agent 2>/dev/null || echo "Agent not local"
@@ -188,4 +190,4 @@ chmod +x portainer-agent-debug.sh
 
 ## Conclusion
 
-Debugging Portainer Agent connectivity is a structured process: start at the network layer with ping to verify routing, then confirm the TCP port is open with `nc -zv`, then test the HTTP layer with `curl -v`. If all three work but Portainer still can't connect, the issue is authentication (agent secret mismatch) or TLS configuration. Use `openssl s_client` to debug TLS and check the agent secret in both the agent environment variables and the Portainer environment settings.
+Debugging Portainer Agent connectivity is a structured process: start at the network layer with ping to verify routing, then confirm the TCP port is open with `nc -zv`, then test the agent's HTTPS `/ping` endpoint with `curl -vk`. If all of those work but Portainer still can't connect, the issue is likely agent authentication or association rather than basic network reachability. Use `openssl s_client` to debug TLS and check the `AGENT_SECRET` configuration on both the Portainer Server instance and the Agent if you are using that feature.
