@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Terraform, IaC, DevOps, Testing
 
-Description: Learn how to use lifecycle postconditions on OpenTofu resources to validate outputs and state after a resource is created or modified.
+Description: Learn how to use lifecycle postconditions on OpenTofu resources to validate resource attributes and state after a resource is created or modified.
 
 ## Introduction
 
-Postconditions run after a resource is created or modified. If a postcondition fails, OpenTofu marks the resource as tainted and the operation fails. Use postconditions to verify that a resource was created with the expected properties - catching cases where the cloud provider ignores or overrides your configuration.
+Postconditions run after OpenTofu evaluates a resource. If a postcondition fails, the operation fails. When a condition can only be checked during apply, OpenTofu may already have created or modified the resource and then stop downstream actions that depend on it. Use postconditions to verify that a resource was created with the expected properties - catching cases where the cloud provider ignores or overrides your configuration.
 
 ## Basic Postcondition Syntax
 
@@ -19,14 +19,14 @@ resource "aws_instance" "web" {
 
   lifecycle {
     postcondition {
-      condition     = self.public_ip != ""
+      condition     = self.public_ip != null && self.public_ip != ""
       error_message = "EC2 instance was not assigned a public IP address"
     }
   }
 }
 ```
 
-The `self` object refers to the resource being validated after creation.
+The `self` object refers to the resource instance being validated.
 
 ## Common Postcondition Patterns
 
@@ -35,6 +35,7 @@ The `self` object refers to the resource being validated after creation.
 ```hcl
 resource "aws_db_instance" "main" {
   identifier        = var.db_identifier
+  allocated_storage = 20
   engine            = "postgres"
   engine_version    = "14"
   instance_class    = var.instance_class
@@ -59,8 +60,9 @@ resource "aws_db_instance" "main" {
 
 ```hcl
 resource "aws_instance" "app" {
-  ami       = var.ami_id
-  subnet_id = aws_subnet.private.id
+  ami           = var.ami_id
+  instance_type = var.instance_type
+  subnet_id     = aws_subnet.private.id
 
   lifecycle {
     postcondition {
@@ -143,9 +145,9 @@ resource "aws_iam_role" "app" {
 }
 ```
 
-## Postconditions in Modules
+## Preconditions on Module Outputs
 
-Postconditions on module outputs validate that the module returns valid data:
+Module outputs can use preconditions to validate that the module returns valid data:
 
 ```hcl
 # modules/vpc/outputs.tf
@@ -153,25 +155,25 @@ Postconditions on module outputs validate that the module returns valid data:
 output "vpc_id" {
   value = aws_vpc.main.id
 
-  postcondition {
-    condition     = can(regex("^vpc-", self.value))
-    error_message = "Module returned invalid VPC ID: ${self.value}"
+  precondition {
+    condition     = can(regex("^vpc-", aws_vpc.main.id))
+    error_message = "Module returned invalid VPC ID: ${aws_vpc.main.id}"
   }
 }
 
 output "private_subnet_ids" {
   value = aws_subnet.private[*].id
 
-  postcondition {
-    condition     = length(self.value) >= 2
-    error_message = "Module must create at least 2 private subnets, got: ${length(self.value)}"
+  precondition {
+    condition     = length(aws_subnet.private[*].id) >= 2
+    error_message = "Module must create at least 2 private subnets, got: ${length(aws_subnet.private[*].id)}"
   }
 }
 ```
 
 ## Postcondition Failure Behavior
 
-When a postcondition fails, OpenTofu marks the resource as tainted:
+When a postcondition fails, OpenTofu reports an error and stops downstream actions that depend on the failing resource. If the condition is only known during apply, OpenTofu does not undo the resource action it already performed:
 
 ```bash
 tofu apply
@@ -179,23 +181,20 @@ tofu apply
 # Error: Resource postcondition failed
 #
 #   on main.tf line 15, in resource "aws_db_instance" "main":
-#   15:       condition = self.multi_az == true
+#   15:       condition     = self.multi_az == true
 #
 # RDS instance was not created with Multi-AZ enabled
-#
-# Because of this error, OpenTofu has tainted the resource.
-# Next plan will destroy and recreate it.
 ```
 
 ## Precondition vs Postcondition
 
 | Aspect | Precondition | Postcondition |
 |--------|-------------|---------------|
-| When it runs | Before resource operation | After resource operation |
-| Purpose | Validate inputs | Validate outputs |
-| Self reference | Not available | Available via `self` |
-| On failure | Blocks the plan | Taints the resource |
+| When it runs | Before the object is evaluated | After the object is evaluated |
+| Purpose | Validate assumptions before evaluation | Validate guarantees after evaluation |
+| Self reference | Not available | Available on resource postconditions via `self` |
+| On failure | Prevents work on the associated object | Fails the operation and blocks downstream dependent work |
 
 ## Conclusion
 
-Postconditions are essential for catching cases where cloud providers silently modify or ignore configuration values. Use `self` to reference the resource's actual post-creation attributes and verify they match expectations. Combining preconditions (validate inputs) with postconditions (validate outputs) creates a robust validation layer around your infrastructure resources.
+Postconditions are essential for catching cases where cloud providers silently modify or ignore configuration values. Use `self` to reference the resource's actual post-creation attributes and verify they match expectations. Combining preconditions (validate assumptions before evaluation) with postconditions (validate resource guarantees after evaluation) creates a robust validation layer around your infrastructure resources.
