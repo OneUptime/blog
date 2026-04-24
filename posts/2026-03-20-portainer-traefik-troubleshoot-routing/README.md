@@ -45,9 +45,9 @@ docker logs traefik --follow 2>&1 | grep -E "(error|warn|router|service|provider
 # Access the dashboard API to see what Traefik discovered
 curl -s -u admin:password https://traefik.example.com/api/http/routers | jq '.[] | {name, rule, status}'
 
-# Look for disabled routers (these have errors)
+# Look for routers with warnings or errors
 curl -s -u admin:password https://traefik.example.com/api/http/routers | \
-  jq '.[] | select(.status != "enabled") | {name, status, error: .err}'
+  jq '.[] | select(.status != "enabled") | {name, status, error}'
 
 # Check services health
 curl -s -u admin:password https://traefik.example.com/api/http/services | \
@@ -87,7 +87,7 @@ docker run --rm --network proxy alpine wget -qO- http://mycontainer:8080/health
 ```yaml
 # Fix: Explicitly specify the Traefik network
 labels:
-  - "traefik.docker.network=proxy"    # Must match the network name in traefik.yml
+  - "traefik.docker.network=proxy"    # Must match the Docker network name Traefik should use
   - "traefik.http.services.myapp.loadbalancer.server.port=8080"
 ```
 
@@ -99,25 +99,26 @@ docker logs traefik 2>&1 | grep -i "acme\|certificate\|letsencrypt"
 
 # Verify port 80 is reachable for HTTP challenge
 curl -I http://myapp.example.com/.well-known/acme-challenge/test
-# Should return 404, not connection refused
+# You want an HTTP response here (often 404), not connection refused or timeout
 
 # Check certificate details
 echo | openssl s_client -servername myapp.example.com \
-  -connect myapp.example.com:443 2>/dev/null | openssl x509 -noout -dates -issuer
+  -connect myapp.example.com:443 2>/dev/null | openssl x509 -noout -subject -dates -issuer
 
-# If certificate is self-signed (Traefik's default), ACME hasn't issued yet
-# Issuer should be: O = Let's Encrypt, not: O = TRAEFIK DEFAULT CERT
+# If you see Traefik's generated default certificate, Traefik is not presenting
+# a matching ACME certificate for this hostname yet
+# Subject should not be: CN = TRAEFIK DEFAULT CERT
 ```
 
 ## Step 5: Diagnose Network Issues
 
 ```bash
-# Verify Traefik can reach the container by IP
-docker exec traefik wget -qO- --timeout=5 http://CONTAINER_IP:8080/ || echo "Connection failed"
-
 # Get container IP
 CONTAINER_IP=$(docker inspect mycontainer | jq -r '.[].NetworkSettings.Networks.proxy.IPAddress')
 echo "Container IP on proxy network: $CONTAINER_IP"
+
+# Verify Traefik can reach the container by IP
+docker exec traefik wget -qO- --timeout=5 "http://$CONTAINER_IP:8080/" || echo "Connection failed"
 
 # Check if service port is actually listening inside container
 docker exec mycontainer netstat -tlnp 2>/dev/null || docker exec mycontainer ss -tlnp
@@ -169,7 +170,7 @@ echo "  HTTPS status: $HTTPS_STATUS"
 # WRONG: Service name mismatch between router and service
 labels:
   - "traefik.http.routers.myapp.service=my-app"        # Hyphen
-  - "traefik.http.services.myapp.loadbalancer..."       # No hyphen - MISMATCH
+  - "traefik.http.services.myapp.loadbalancer.server.port=8080"  # No hyphen - MISMATCH
 
 # CORRECT: Names must match exactly
 labels:
