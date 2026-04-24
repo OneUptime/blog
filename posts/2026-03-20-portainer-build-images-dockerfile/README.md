@@ -8,7 +8,7 @@ Description: Learn how to build Docker images directly from a Dockerfile using P
 
 ## Introduction
 
-Portainer allows you to build Docker images directly from its web interface by uploading a Dockerfile or pasting the content. While CI/CD pipelines are better for production image building, Portainer's build feature is useful for quick builds, testing Dockerfiles, or building on a remote host without local Docker access.
+Portainer allows you to build Docker images directly from its web interface by uploading a Dockerfile, providing a Dockerfile URL, or pasting the content. While CI/CD pipelines are better for production image building, Portainer's build feature is useful for quick builds, testing Dockerfiles, or building on a remote host without local Docker access.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ Portainer allows you to build Docker images directly from its web interface by u
 ## Step 1: Access the Build Image Feature
 
 1. Navigate to **Images** in Portainer.
-2. Click **Build image**.
+2. Click **Build a new image**.
 
 You'll see a build form with several options.
 
@@ -42,7 +42,7 @@ Name: myapp-local:latest
 
 **Option A: Web editor (paste Dockerfile content)**
 
-Click **Web editor** and paste your Dockerfile:
+Click **Web editor** and paste your Dockerfile. If it uses `COPY` or `ADD`, click **Select files** to upload the referenced local files into the build context:
 
 ```dockerfile
 # Simple web application Dockerfile
@@ -56,7 +56,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
@@ -76,9 +76,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
 CMD ["node", "server.js"]
 ```
 
-**Option B: Upload (zip/tar of build context)**
+**Option B: Upload a Dockerfile**
 
-Upload a zip or tar file containing the Dockerfile and build context.
+Upload the Dockerfile directly for self-contained builds. If the Dockerfile needs local context files, use the web editor with **Select files**. If the Dockerfile is hosted in a tarball or public GitHub repository, use Portainer's URL option and specify the Dockerfile path.
 
 ## Step 3: Add Build Arguments (--build-arg)
 
@@ -86,6 +86,7 @@ If your Dockerfile uses build arguments:
 
 ```dockerfile
 # Dockerfile with build args
+ARG PYTHON_VERSION=3.12
 FROM python:${PYTHON_VERSION:-3.12}-slim
 
 ARG APP_VERSION
@@ -133,7 +134,7 @@ WORKDIR /app
 
 # Copy only production dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy built application from builder
 COPY --from=builder /build/dist ./dist
