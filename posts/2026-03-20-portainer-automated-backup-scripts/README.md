@@ -23,17 +23,33 @@ RETENTION_DAYS=30
 LOG_FILE="/var/log/portainer-backup.log"
 DATE=$(date +%Y%m%d-%H%M%S)
 BACKUP_FILE="$BACKUP_DIR/portainer-$DATE.tar.gz"
+PORTAINER_STOPPED=0
 
 # Ensure backup directory exists
 
 mkdir -p "$BACKUP_DIR"
+exec >>"$LOG_FILE" 2>&1
 
-log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
+
+restart_portainer() {
+  if [ "$PORTAINER_STOPPED" -eq 1 ]; then
+    if docker start portainer >/dev/null; then
+      log "Portainer restarted"
+    else
+      log "WARNING: Failed to restart Portainer automatically"
+    fi
+  fi
+}
+
+trap restart_portainer EXIT
+trap 'log "ERROR: Backup failed"' ERR
 
 log "Starting Portainer backup..."
 
 # Stop Portainer for a consistent snapshot
-docker stop portainer
+docker stop portainer >/dev/null
+PORTAINER_STOPPED=1
 log "Portainer stopped"
 
 # Create backup
@@ -44,7 +60,8 @@ docker run --rm \
   tar czpf "/backup/portainer-$DATE.tar.gz" -C / data
 
 # Restart Portainer
-docker start portainer
+docker start portainer >/dev/null
+PORTAINER_STOPPED=0
 log "Portainer restarted"
 
 # Verify backup
@@ -73,7 +90,7 @@ sudo chmod +x /usr/local/bin/portainer-backup.sh
 sudo crontab -e
 
 # Add this line:
-30 2 * * * /usr/local/bin/portainer-backup.sh >> /var/log/portainer-backup.log 2>&1
+30 2 * * * /usr/local/bin/portainer-backup.sh
 ```
 
 ## Adding Email Notifications on Failure
@@ -110,5 +127,5 @@ Use Healthchecks.io or OneUptime to monitor that backups run on time:
 
 ```bash
 # Add to the end of the backup script to ping on success
-curl -fsS --retry 3 https://healthchecks.io/ping/your-check-uuid
+curl -fsS --retry 3 https://hc-ping.com/your-check-uuid
 ```
