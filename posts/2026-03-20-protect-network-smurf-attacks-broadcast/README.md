@@ -8,7 +8,7 @@ Description: Protect your network from Smurf amplification DDoS attacks by disab
 
 ## Introduction
 
-A Smurf attack exploits directed broadcast to amplify ICMP traffic: an attacker sends a spoofed ICMP echo to a subnet's broadcast address, and every host replies to the (forged) victim. The amplification factor equals the number of hosts on the target subnet.
+A Smurf attack exploits directed broadcast to amplify ICMP traffic: an attacker sends a spoofed ICMP echo to a subnet's broadcast address, and hosts on that subnet that answer broadcast pings reply to the (forged) victim. The amplification factor is up to the number of hosts on the target subnet.
 
 This guide covers both router-side and host-side protections.
 
@@ -19,7 +19,7 @@ This is the most effective countermeasure. Without directed broadcast forwarding
 On Cisco IOS:
 
 ```text
-! Apply to every interface (including loopbacks)
+! Apply to every routed interface connected to a broadcast-capable subnet
 interface GigabitEthernet0/0
  no ip directed-broadcast
 
@@ -27,7 +27,7 @@ interface GigabitEthernet0/1
  no ip directed-broadcast
 ```
 
-Verify no interfaces are still configured:
+Verify no interfaces are explicitly enabled for directed broadcast:
 
 ```text
 show running-config | include directed-broadcast
@@ -35,13 +35,15 @@ show running-config | include directed-broadcast
 
 ## Step 2: Block ICMP Echo to Broadcast at the Perimeter
 
-Even if attackers route the packets differently, block ICMP echo requests aimed at broadcast addresses at your border router:
+As defense in depth, block ICMP echo requests aimed at the limited broadcast address and your subnet-directed broadcast addresses at your border router:
 
 ```text
 ! Deny ICMP echo requests to broadcast addresses
 ip access-list extended ANTI-SMURF-IN
- deny   icmp any 0.0.0.0 255.255.255.255 echo
- deny   icmp any 255.255.255.255 0.0.0.0 echo
+ deny   icmp any host 255.255.255.255 echo
+ ! Replace these example addresses with each local subnet's directed-broadcast address
+ deny   icmp any host 192.0.2.255 echo
+ deny   icmp any host 198.51.100.255 echo
  permit ip any any
 
 interface GigabitEthernet0/0
@@ -68,11 +70,11 @@ sudo sysctl --system
 
 ## Step 4: Enable Unicast Reverse Path Forwarding (uRPF)
 
-uRPF drops packets with spoofed source addresses, removing the attacker's ability to impersonate a victim:
+uRPF helps drop packets with spoofed source addresses, removing the attacker's ability to impersonate a victim when used on interfaces with symmetric return paths:
 
 On Cisco:
 
-```nginx
+```text
 ! Strict uRPF on the upstream interface
 interface GigabitEthernet0/0
  ip verify unicast source reachable-via rx
@@ -91,10 +93,10 @@ sudo sysctl --system
 
 ## Step 5: Rate-Limit ICMP at the Perimeter
 
-As a secondary defense, rate-limit ICMP echo replies leaving your network to prevent your hosts from amplifying an ongoing attack:
+As a secondary defense, rate-limit ICMP echo replies leaving your network to reduce the reply volume during an ongoing attack:
 
 ```text
-! Cisco - limit ICMP echo-reply to 512 pps
+! Cisco - limit ICMP echo-reply to 512 kbps
 interface GigabitEthernet0/0
  rate-limit output access-group 101 512000 8000 8000 conform-action transmit exceed-action drop
 
@@ -111,4 +113,4 @@ access-list 101 permit icmp any any echo-reply
 
 ## Conclusion
 
-Smurf attacks have been largely mitigated by ISPs and vendors, but any misconfigured network with directed broadcast enabled remains vulnerable. The combination of disabling directed broadcast, ignoring broadcast pings, and enabling uRPF provides comprehensive protection.
+Smurf attacks have been largely mitigated by ISPs and vendors, but any misconfigured network with directed broadcast enabled remains vulnerable. The combination of disabling directed broadcast, ignoring broadcast pings, and enabling uRPF provides layered protection.
