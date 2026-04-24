@@ -8,20 +8,21 @@ Description: Fix issues where Docker healthcheck status doesn't display correctl
 
 ## Introduction
 
-Docker healthchecks provide a way for containers to report their own health status. In Portainer, healthcheck status should appear as a colored indicator next to containers - green for healthy, yellow for starting, red for unhealthy. When this indicator is missing or always shows as "unknown", it usually means the HEALTHCHECK instruction is not defined, the container is too young, or Portainer's snapshot is stale.
+Docker healthchecks provide a way for containers to report their own health status. In Portainer, healthcheck status should appear as a colored indicator next to containers - green for healthy, yellow for starting, red for unhealthy. When this indicator is missing or always shows as "unknown", it usually means the image or container has no Docker healthcheck, the container is still in its start period, or the Portainer view is stale.
 
 ## Step 1: Verify the Image Has a HEALTHCHECK
 
 ```bash
 # Check if the image defines a HEALTHCHECK
 
-docker inspect nginx:latest | jq '.[0].Config.Healthcheck'
+docker image inspect your-image:tag | jq '.[0].Config.Healthcheck'
 
 # Typical output for an image with healthcheck:
 # {
-#   "Test": ["CMD", "curl", "-f", "http://localhost/", "||", "exit", "1"],
+#   "Test": ["CMD-SHELL", "curl -f http://localhost/ || exit 1"],
 #   "Interval": 30000000000,
 #   "Timeout": 10000000000,
+#   "StartPeriod": 30000000000,
 #   "Retries": 3
 # }
 
@@ -46,7 +47,6 @@ EXPOSE 80
 ## Step 3: Add HEALTHCHECK in Docker Compose
 
 ```yaml
-version: "3.8"
 services:
   myapp:
     image: myapp:latest
@@ -63,8 +63,10 @@ services:
 
 ## Step 4: Add HEALTHCHECK in Portainer Container Form
 
+If your Portainer version exposes Healthcheck fields in the container form:
+
 1. In Portainer, go to **Containers** → **Add Container**
-2. Scroll to **Advanced container settings** → **Healthcheck**
+2. Under **Advanced container settings**, look for **Healthcheck**
 3. Configure:
    - **Health command**: `curl -f http://localhost/ || exit 1`
    - **Health interval**: `30s`
@@ -76,25 +78,27 @@ services:
 
 ```bash
 # View container health status
-docker inspect container-name | jq '.[0].State.Health'
+docker container inspect container-name | jq '.[0].State.Health'
 
-# Output shows:
+# Output shows health details when a healthcheck is configured:
 # {
-#   "Status": "healthy",  # or "unhealthy", "starting", "none"
+#   "Status": "healthy",  # or "unhealthy", "starting"
 #   "FailingStreak": 0,
 #   "Log": [...]
 # }
 
+# If no healthcheck is configured, State.Health is absent.
+#
 # Monitor health in real time
-docker inspect --format='{{.State.Health.Status}}' container-name
-watch -n 5 "docker inspect --format='{{.State.Health.Status}}' container-name"
+docker container inspect --format='{{.State.Health.Status}}' container-name
+watch -n 5 "docker container inspect --format='{{.State.Health.Status}}' container-name"
 ```
 
 ## Step 6: Debug Unhealthy Containers
 
 ```bash
 # View health check logs
-docker inspect container-name | jq '.[0].State.Health.Log'
+docker container inspect container-name | jq '.[0].State.Health.Log'
 
 # Output shows last N healthcheck outputs:
 # [
@@ -108,23 +112,26 @@ docker inspect container-name | jq '.[0].State.Health.Log'
 
 # ExitCode 0 = healthy
 # ExitCode 1 = unhealthy
-# ExitCode other = reserved for other meanings
+# ExitCode 2 = reserved
 ```
 
 ## Step 7: Fix Portainer Not Showing Updated Health Status
 
-Portainer updates container status via periodic snapshots:
+If the Portainer environment view looks stale, trigger a fresh environment snapshot:
 
 ```bash
-# The snapshot may be stale - force a refresh
-# Via API:
-TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
+# Replace with your Portainer URL. Current Portainer installs default to HTTPS on 9443.
+PORTAINER_URL=https://localhost:9443
+
+# Authenticate and get a JWT
+TOKEN=$(curl -sk -X POST "$PORTAINER_URL/api/auth" \
   -H "Content-Type: application/json" \
   -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
 
-curl -X POST \
+# Force a fresh snapshot for environment ID 1
+curl -sk -X POST \
   -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/endpoints/1/docker/snapshot
+  "$PORTAINER_URL/api/endpoints/1/snapshot"
 
 # Then refresh the Portainer UI
 ```
@@ -135,7 +142,7 @@ curl -X POST \
 
 ```yaml
 healthcheck:
-  test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+  test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
   interval: 10s
   timeout: 5s
   retries: 5
@@ -209,4 +216,4 @@ healthcheck:
 
 ## Conclusion
 
-Healthchecks not displaying in Portainer are almost always because the image or compose file doesn't define a `HEALTHCHECK` instruction. Add one to your Dockerfile or compose file using the appropriate test command for your service. Use the `start_period` parameter generously for slow-starting applications to avoid false "unhealthy" status during initialization. Portainer will automatically display the health status once the HEALTHCHECK is defined.
+Healthchecks not displaying in Portainer are almost always because the image or compose file doesn't define a `HEALTHCHECK` instruction. Add one to your Dockerfile or compose file using the appropriate test command for your service. Use the `start_period` parameter generously for slow-starting applications to avoid false "unhealthy" status during initialization. Portainer can display the health status once the healthcheck is defined and the view has refreshed.
