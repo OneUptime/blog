@@ -21,7 +21,7 @@ Before starting, ensure you have:
 - Docker Engine 20.10+ installed
 - Portainer CE or BE running and accessible
 - A domain name (optional but recommended for HTTPS access)
-- Traefik v3 configured with a `web` entrypoint (optional, for reverse proxy)
+- Traefik v3 configured with a `websecure` entrypoint and a shared external Docker network such as `traefik-public` (optional, for reverse proxy)
 
 ## Step 1: Create the Docker Compose Stack
 
@@ -32,7 +32,7 @@ version: "3.8"
 
 services:
   uptime-kuma:
-    image: louislam/uptime-kuma:1
+    image: louislam/uptime-kuma:2
     container_name: uptime-kuma
     restart: unless-stopped
     # Mount persistent data volume so monitor configs and history survive container restarts
@@ -41,7 +41,7 @@ services:
       # Mount Docker socket to enable Docker container monitoring (optional)
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
-      # Expose on port 3001 if not using a reverse proxy
+      # Publish port 3001 for direct access; remove this if you only use Traefik
       - "3001:3001"
     environment:
       # Set timezone for accurate timestamps in notifications
@@ -49,6 +49,7 @@ services:
     labels:
       # Traefik v3 labels - remove if not using Traefik
       - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
       - "traefik.http.routers.uptime-kuma.rule=Host(`status.example.com`)"
       - "traefik.http.routers.uptime-kuma.entrypoints=websecure"
       - "traefik.http.routers.uptime-kuma.tls.certresolver=letsencrypt"
@@ -69,11 +70,11 @@ networks:
     external: true
 ```
 
-If you are not using Traefik, remove the `labels` block and the `traefik-public` network reference.
+If you are using Traefik, make sure the external `traefik-public` network already exists and your Traefik container is attached to it. If you are not using Traefik, remove the `labels` block and the `traefik-public` network reference.
 
 ## Step 2: Deploy the Stack
 
-Click **Deploy the stack** in Portainer. The `louislam/uptime-kuma:1` image will be pulled and the container will start within a few seconds.
+Click **Deploy the stack** in Portainer. The `louislam/uptime-kuma:2` image will be pulled and the container will start within a few seconds.
 
 Navigate to `http://your-server-ip:3001` or your configured domain. You will be prompted to create an admin account on the first visit.
 
@@ -130,11 +131,11 @@ After adding monitors, verify the data volume is persisting correctly:
 docker volume inspect uptime-kuma_uptime-kuma-data
 ```
 
-The `Mountpoint` field shows the host path. Your monitor database (`kuma.db`) and SSL certificates are stored here.
+The `Mountpoint` field shows the host path. Your monitor database (`kuma.db`) and other runtime data are stored here.
 
 ## Step 7: Updating Uptime Kuma
 
-To update to the latest patch release, go to **Portainer > Stacks > uptime-kuma** and click **Pull and redeploy**. Portainer will pull the updated `louislam/uptime-kuma:1` tag and recreate the container while preserving the named volume.
+To update to the latest patch release in the v2 series, go to **Portainer > Stacks > uptime-kuma > Editor** and click **Update the stack**. If your Portainer version shows a **Re-pull image** or **Pull latest image** option, enable it so Portainer fetches the newest `louislam/uptime-kuma:2` image before redeploying the container. The named volume is preserved across redeployments.
 
 For major version upgrades, check the Uptime Kuma release notes first as database migrations may be required.
 
