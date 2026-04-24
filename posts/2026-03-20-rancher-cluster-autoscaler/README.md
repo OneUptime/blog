@@ -8,7 +8,7 @@ Description: Configure the Kubernetes Cluster Autoscaler in Rancher to automatic
 
 ## Introduction
 
-The Kubernetes Cluster Autoscaler automatically adjusts the number of worker nodes in your cluster based on pod scheduling demands. When pods can't be scheduled due to insufficient resources, it adds nodes. When nodes are underutilized, it removes them to save costs. This guide covers configuring the Cluster Autoscaler for AWS (EKS/EC2), Azure (AKS), and GKE clusters managed by Rancher.
+The Kubernetes Cluster Autoscaler automatically adjusts the number of worker nodes in your cluster based on pod scheduling demands. When pods can't be scheduled due to insufficient resources, it adds nodes. When nodes are underutilized, it removes them to save costs. This guide covers configuring the Cluster Autoscaler for an AWS (EKS/EC2) cluster managed by Rancher.
 
 ## Prerequisites
 
@@ -94,29 +94,28 @@ autoDiscovery:
 cloudProvider: aws
 awsRegion: us-east-1
 
-# Scale down settings
-scaleDown:
-  enabled: true
+# Cluster Autoscaler flags
+extraArgs:
+  # Scale down settings
   # Delay before removing an unneeded node
-  delayAfterAdd: 10m
+  scale-down-delay-after-add: 10m
   # Delay between scale-down operations
-  delayAfterDelete: 0s
+  scale-down-delay-after-delete: 0s
   # Delay after failed scale-down
-  delayAfterFailure: 3m
+  scale-down-delay-after-failure: 3m
   # Node utilization threshold (below this = unneeded)
-  utilizationThreshold: "0.5"
+  scale-down-utilization-threshold: "0.5"
   # Node must be unneeded for this long before removal
-  unneededTime: 10m
-  # Use pod disruption budgets
-  respectPdbOnScaleDown: true
+  scale-down-unneeded-time: 10m
+  # Cluster Autoscaler respects PodDisruptionBudgets during scale-down
 
-# Scale up settings
-balanceSimilarNodeGroups: true
-skipNodesWithLocalStorage: false
-skipNodesWithSystemPods: true
+  # Scale up settings
+  balance-similar-node-groups: true
+  skip-nodes-with-local-storage: false
+  skip-nodes-with-system-pods: true
 
-# Expander: how to choose which node group to expand
-expander: least-waste  # Options: random, most-pods, least-waste, price, priority
+  # Expander: how to choose which node group to expand
+  expander: least-waste  # Options: random, most-pods, least-waste, least-nodes, priority
 
 # Resource limits
 resources:
@@ -128,15 +127,16 @@ resources:
     memory: 300Mi
 
 # Service account annotation for IRSA
-serviceAccount:
-  annotations:
-    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/ClusterAutoscalerRole"
+rbac:
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/ClusterAutoscalerRole"
 
 # Enable metrics
 serviceMonitor:
   enabled: true
   namespace: cattle-monitoring-system
-  labels:
+  selector:
     release: rancher-monitoring
 ```
 
@@ -159,32 +159,20 @@ kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-cluster-autoscaler
 
 ```yaml
 # cluster-autoscaler-multi-ng.yaml - Multiple node groups for different workload types
-expanders:
-  - priority
-  - least-waste
+autoDiscovery:
+  clusterName: my-cluster
 
-nodeGroupAutoDiscovery:
-  - asg:tag=k8s.io/cluster-autoscaler/enabled=true,k8s.io/cluster-autoscaler/my-cluster=owned
+extraArgs:
+  expander: priority,least-waste
+  balance-similar-node-groups: true
 
-balanceSimilarNodeGroups: true
-
-# Priority expander config
-expanderPriorityConfigMap: cluster-autoscaler-priority-expander
----
-# priority-expander-config.yaml - Priority for node group selection
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cluster-autoscaler-priority-expander
-  namespace: kube-system
-data:
-  priorities: |
-    10:
-      # Prefer spot/preemptible instances
-      - .*spot.*
-    20:
-      # Then on-demand
-      - .*on-demand.*
+expanderPriorities:
+  20:
+    # Prefer spot instances
+    - .*spot.*
+  10:
+    # Then on-demand
+    - .*on-demand.*
 ```
 
 ## Step 4: Configure Workloads for Autoscaling
@@ -198,7 +186,13 @@ metadata:
   namespace: production
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: scalable-app
   template:
+    metadata:
+      labels:
+        app: scalable-app
     spec:
       containers:
         - name: app
@@ -211,7 +205,7 @@ spec:
             limits:
               cpu: 2000m
               memory: 1Gi
-  # Configure disruption budget
+  # Configure rolling updates
   strategy:
     rollingUpdate:
       maxUnavailable: 1
@@ -238,7 +232,13 @@ metadata:
   name: memory-intensive-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: memory-intensive-app
   template:
+    metadata:
+      labels:
+        app: memory-intensive-app
     spec:
       # Ensure pods go to memory-optimized nodes
       nodeSelector:
@@ -246,10 +246,12 @@ spec:
       # Tolerate memory-optimized node taint
       tolerations:
         - key: workload-type
+          operator: Equal
           value: memory-intensive
           effect: NoSchedule
       containers:
         - name: app
+          image: registry.example.com/app:v1.0
           resources:
             requests:
               memory: 4Gi
@@ -260,7 +262,7 @@ spec:
 
 ```bash
 # Watch autoscaler logs
-kubectl logs -n kube-system deployment/cluster-autoscaler \
+kubectl logs -n kube-system -l app.kubernetes.io/name=aws-cluster-autoscaler \
   -f | grep -i "scale\|node"
 
 # Check autoscaler status
@@ -287,15 +289,14 @@ spec:
     - name: cluster-autoscaler
       rules:
         - alert: ClusterAutoscalerScaleUpFailed
-          expr: cluster_autoscaler_failed_scale_ups_total > 0
-          for: 5m
+          expr: increase(cluster_autoscaler_failed_scale_ups_total[5m]) > 0
           labels:
             severity: warning
           annotations:
-            summary: "Cluster Autoscaler failed to scale up"
+            summary: "Cluster Autoscaler failed to scale up in the last 5 minutes"
 
         - alert: ClusterAutoscalerUnschedulablePods
-          expr: cluster_autoscaler_unschedulable_pods_count > 0
+          expr: sum(cluster_autoscaler_unschedulable_pods_count{type="unschedulable"}) > 0
           for: 15m
           labels:
             severity: warning
