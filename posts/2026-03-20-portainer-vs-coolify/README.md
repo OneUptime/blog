@@ -8,7 +8,7 @@ Description: Compare Portainer and Coolify to understand their different approac
 
 ## Introduction
 
-Portainer and Coolify both help you manage containerized applications on your own infrastructure, but they take fundamentally different approaches. Coolify is a self-hosted Platform-as-a-Service (PaaS) that abstracts away Docker/Kubernetes complexity for deploying applications and databases. Portainer is a container management interface that exposes Docker and Kubernetes directly with full control. This guide compares them across key dimensions.
+Portainer and Coolify both help you manage containerized applications on your own infrastructure, but they take fundamentally different approaches. Coolify is a self-hosted Platform-as-a-Service (PaaS) that abstracts away much of the Docker complexity involved in deploying applications and databases. Portainer is a container management interface that exposes Docker and Kubernetes directly with full control. This guide compares them across key dimensions.
 
 ## Core Philosophy Differences
 
@@ -20,21 +20,20 @@ Portainer and Coolify both help you manage containerized applications on your ow
 
 | Feature | Coolify | Portainer CE |
 |---------|---------|-------------|
-| Git-based deployments (push-to-deploy) | Yes | Limited (via webhooks) |
+| Git-based deployments (push-to-deploy) | Yes | Partial (Git-based stacks; image builds are usually handled externally) |
 | Auto SSL (Let's Encrypt) | Yes (built-in) | No (use Traefik/Caddy) |
 | Automatic domain routing | Yes | No |
-| One-click app installs | Yes (200+ templates) | Yes (App Templates) |
+| One-click app installs | Yes (one-click services) | Yes (App Templates) |
 | Database management | Yes (dedicated UI) | Via containers only |
 | Docker Compose stacks | Yes | Yes |
 | Individual container management | Limited | Yes (full) |
-| Docker Swarm support | No | Yes |
+| Docker Swarm support | Experimental | Yes |
 | Kubernetes support | No | Yes |
-| Multi-user RBAC | Yes (basic) | Yes (BE: advanced) |
+| Multi-user access control | Yes (teams and permissions) | Yes (advanced RBAC in BE) |
 | Multi-server management | Yes | Yes |
 | Edge device management | No | Yes |
 | API automation | Yes | Yes (comprehensive) |
 | Container logs/stats | Yes | Yes |
-| Resource usage | High (~500MB+) | Low (~150MB) |
 
 ## Step 1: Installing Coolify
 
@@ -42,15 +41,6 @@ Portainer and Coolify both help you manage containerized applications on your ow
 # Coolify one-line installation
 
 curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
-
-# Or Docker-based installation
-docker run -d \
-  --name coolify \
-  --restart=always \
-  -p 8000:8000 \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v coolify_data:/data \
-  coollabsio/coolify:latest
 
 # Access at http://server-ip:8000
 ```
@@ -80,42 +70,32 @@ docker run -d \
 ## Step 3: Git-Based Deployment (Portainer Approach)
 
 ```bash
-# Portainer: Uses webhooks or Edge Stacks for Git-based deploys
+# Portainer: Deploy a Compose stack from a Git repository
 # More manual setup, more control
 
-# 1. Configure GitHub Actions for CI/CD
-# .github/workflows/deploy.yml
-name: Deploy
-on:
-  push:
-    branches: [main]
+# In Portainer:
+# 1. Stacks > Add stack > Git repository
+# 2. Repository URL: https://github.com/example/myapp-deploy.git
+# 3. Repository reference: refs/heads/main
+# 4. Compose path: docker-compose.yml
+# 5. Deploy the stack
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger Portainer deployment
-        run: |
-          curl -X POST "${{ secrets.PORTAINER_WEBHOOK }}"
-
-# 2. In Portainer, create the webhook:
-# Stacks > [stack] > Webhook > Enable
-# Copy URL to GitHub Secrets
-
-# Result: Same push-to-deploy, but requires more setup
+# Important:
+# - Portainer expects a Compose file in Git.
+# - If your app needs a new image, build and push that image in CI first.
+# - Portainer's Git deployment does not fully implement image builds from files inside the repository.
 ```
 
 ## Step 4: Database Management Comparison
 
 ```bash
 # Coolify: Built-in database management
-# Resources > Databases > Add Database
-# Supports: PostgreSQL, MySQL, MariaDB, MongoDB, Redis
+# Resources > New Resource > select a database
+# Supports: PostgreSQL, MySQL, MariaDB, MongoDB, Redis, DragonFly, KeyDB, ClickHouse
 # Features:
-# - Automatic backups with S3 export
-# - Point-in-time restore
-# - Connection string auto-configured for apps
-# - Admin UI (pgAdmin, phpMyAdmin) one-click install
+# - One-click database provisioning
+# - Backup and restore workflows
+# - S3-compatible backup storage
 
 # Portainer: Databases run as containers
 # No special database management features
@@ -140,20 +120,23 @@ EOF
 # Common approach: Deploy Traefik alongside Portainer
 
 cat > traefik-stack/docker-compose.yml << 'EOF'
-version: '3.8'
 services:
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.5
     command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.myresolver.acme.email=admin@example.com"
-      - "--certificatesresolvers.myresolver.acme.storage=/acme.json"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
     ports:
       - "80:80"
       - "443:443"
     volumes:
+      - ./letsencrypt:/letsencrypt
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik-certs:/acme.json
 EOF
 ```
 
@@ -185,12 +168,12 @@ EOF
 
 ```bash
 # If you outgrow Coolify and need Portainer:
-# 1. Export your docker-compose configurations from Coolify
-# In Coolify: Application > Export compose file
+# 1. Re-create the app in Portainer from its Compose file or a pre-built image
+# In Portainer: Stacks > Add stack > Git repository / Web editor
+# If the app was deployed from source in Coolify, build and push an image first
 
-# 2. Import into Portainer as Stacks
-# In Portainer: Stacks > Add Stack > Web editor
-# Paste the exported compose file
+# 2. Migrate database backups and Docker volumes separately
+# Coolify does not provide a built-in app export/migration flow between hosts
 
 # If you want Coolify's auto-SSL on top of Portainer:
 # Deploy Traefik via Portainer with Let's Encrypt configuration
