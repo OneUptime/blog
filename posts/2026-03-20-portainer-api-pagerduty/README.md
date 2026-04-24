@@ -31,23 +31,24 @@ PagerDuty is a leading incident management platform. By combining the Portainer 
 #!/usr/bin/env python3
 # portainer_pagerduty.py
 
-import requests
-import time
-import json
 import hashlib
 import logging
+import os
+import time
 from datetime import datetime
+
+import requests
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Configuration
 
-PORTAINER_URL = "https://portainer.example.com"
-PORTAINER_API_KEY = "your-portainer-api-key"
-PAGERDUTY_ROUTING_KEY = "your-pagerduty-integration-key"
-ENDPOINT_ID = 1
-CHECK_INTERVAL = 60  # seconds
+PORTAINER_URL = os.getenv("PORTAINER_URL", "https://portainer.example.com")
+PORTAINER_API_KEY = os.getenv("PORTAINER_API_KEY", "your-portainer-api-key")
+PAGERDUTY_ROUTING_KEY = os.getenv("PAGERDUTY_ROUTING_KEY", "your-pagerduty-integration-key")
+ENDPOINT_ID = int(os.getenv("ENDPOINT_ID", "1"))
+CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "60"))  # seconds
 
 # Track active incidents to avoid duplicate alerts
 active_incidents = {}
@@ -58,6 +59,17 @@ def get_containers():
     resp = requests.get(
         f"{PORTAINER_URL}/api/endpoints/{ENDPOINT_ID}/docker/containers/json",
         params={"all": "true"},
+        headers={"X-API-Key": PORTAINER_API_KEY},
+        timeout=10
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_container_details(container_id: str):
+    """Fetch a container's inspection details from Portainer."""
+    resp = requests.get(
+        f"{PORTAINER_URL}/api/endpoints/{ENDPOINT_ID}/docker/containers/{container_id}/json",
         headers={"X-API-Key": PORTAINER_API_KEY},
         timeout=10
     )
@@ -157,31 +169,45 @@ def resolve_incident(container_name: str, issue: str):
     logger.info(f"PagerDuty incident resolved for {container_name}: {issue}")
 
 
+def resolve_container_state_incidents(container_name: str, current_issue: str = None):
+    """Resolve any active state incidents for a container."""
+    state_issues = [
+        incident["issue"]
+        for incident in list(active_incidents.values())
+        if incident["container"] == container_name
+        and incident["issue"].startswith("Container is ")
+        and incident["issue"] != current_issue
+    ]
+
+    for issue in state_issues:
+        resolve_incident(container_name, issue)
+
+
 def check_and_alert():
     """Check container health and send PagerDuty alerts."""
     containers = get_containers()
-    running_names = set()
 
     for container in containers:
-        name = container['Names'][0].replace('/', '')
-        state = container['State']
-        running_names.add(name)
+        container_id = container['Id']
+        name = container['Names'][0].lstrip('/')
+        state = container['State'].lower()
 
         if state != 'running':
+            issue = f"Container is {state}"
+            resolve_container_state_incidents(name, current_issue=issue)
+            resolve_incident(name, "Docker healthcheck failed")
             trigger_incident(
                 container_name=name,
-                issue=f"Container is {state}",
+                issue=issue,
                 severity="critical",
                 details={"state": state, "status": container['Status']}
             )
         else:
-            # Resolve incident if container is back to running
-            dedup_key = create_dedup_key(name, f"Container is exited")
-            if dedup_key in active_incidents:
-                resolve_incident(name, f"Container is exited")
+            resolve_container_state_incidents(name)
 
-            # Check Docker healthcheck
-            health_status = container.get('Health', {}).get('Status', '')
+            # Check Docker healthcheck from container inspection details
+            container_details = get_container_details(container_id)
+            health_status = container_details.get('State', {}).get('Health', {}).get('Status', '').lower()
             if health_status == 'unhealthy':
                 trigger_incident(
                     container_name=name,
@@ -208,7 +234,6 @@ if __name__ == '__main__':
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
 services:
   pagerduty-integration:
     image: python:3.11-slim
@@ -220,8 +245,7 @@ services:
       ENDPOINT_ID: "1"
     volumes:
       - ./portainer_pagerduty.py:/app/monitor.py
-      - ./requirements.txt:/app/requirements.txt
-    command: sh -c "pip install -r /app/requirements.txt -q && python /app/monitor.py"
+    command: sh -c "pip install requests -q && python /app/monitor.py"
 ```
 
 ## Testing the Integration
@@ -231,7 +255,7 @@ services:
 docker stop my-container
 
 # Watch the logs for the alert
-docker logs -f pagerduty-integration
+docker compose logs -f pagerduty-integration
 
 # Start the container to test auto-resolution
 docker start my-container
