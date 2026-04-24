@@ -13,7 +13,7 @@ DuckDNS provides free dynamic DNS subdomains (like `myserver.duckdns.org`). It's
 ## Setting Up DuckDNS
 
 1. Go to https://www.duckdns.org
-2. Log in with Google/GitHub/Reddit account
+2. Log in with Google/GitHub/X account
 3. Create a subdomain: `yourname.duckdns.org`
 4. Copy your token from the dashboard
 
@@ -21,8 +21,6 @@ DuckDNS provides free dynamic DNS subdomains (like `myserver.duckdns.org`). It's
 
 ```yaml
 # duckdns-stack.yml - Deploy as Portainer stack
-
-version: '3.8'
 
 services:
   duckdns:
@@ -61,7 +59,6 @@ certbot certonly \
 
 ```yaml
 # traefik-duckdns-stack.yml
-version: '3.8'
 
 services:
   traefik:
@@ -101,7 +98,6 @@ volumes:
 
 ```yaml
 # portainer-with-duckdns.yml
-version: '3.8'
 
 services:
   portainer:
@@ -112,11 +108,10 @@ services:
       - portainer_data:/data
     labels:
       - traefik.enable=true
-      - traefik.http.routers.portainer.rule=Host(`portainer.yourname.duckdns.org`)
+      - traefik.http.routers.portainer.rule=Host(`yourname.duckdns.org`)
       - traefik.http.routers.portainer.entrypoints=websecure
       - traefik.http.routers.portainer.tls.certresolver=duckdns
       - traefik.http.services.portainer.loadbalancer.server.port=9000
-      - traefik.http.services.portainer.loadbalancer.server.scheme=https
     networks:
       - proxy
 
@@ -156,7 +151,10 @@ fi
 
 ```bash
 # Add to crontab (update every 5 minutes)
-echo "*/5 * * * * /opt/scripts/duckdns-update.sh >> /var/log/duckdns.log 2>&1" | crontab -
+crontab -e
+
+# Add this line:
+*/5 * * * * /opt/scripts/duckdns-update.sh >> /var/log/duckdns.log 2>&1
 
 # Or run as Docker container
 docker run -d \
@@ -175,7 +173,6 @@ For external access, forward ports on your router:
 Router > Port Forwarding:
 - Port 80 (HTTP) → Server-IP:80
 - Port 443 (HTTPS) → Server-IP:443
-- Port 9443 (Portainer direct, optional) → Server-IP:9443
 ```
 
 ## Testing the Setup
@@ -185,13 +182,13 @@ Router > Port Forwarding:
 dig yourname.duckdns.org
 
 # Test HTTP redirect to HTTPS
-curl -I http://portainer.yourname.duckdns.org
+curl -I http://yourname.duckdns.org
 
 # Test HTTPS access
-curl -v https://portainer.yourname.duckdns.org
+curl -v https://yourname.duckdns.org
 
 # Check certificate
-echo | openssl s_client -connect portainer.yourname.duckdns.org:443 2>/dev/null \
+echo | openssl s_client -connect yourname.duckdns.org:443 2>/dev/null \
   | openssl x509 -noout -dates
 ```
 
