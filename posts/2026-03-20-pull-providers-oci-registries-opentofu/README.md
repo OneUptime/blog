@@ -8,18 +8,17 @@ Description: Learn how to configure OpenTofu to pull provider plugins directly f
 
 ## Introduction
 
-OpenTofu 1.8+ can install providers directly from OCI registries using the `oci_mirror` provider installation method. This enables teams to distribute providers through existing container registry infrastructure (ECR, ACR, GCR, GHCR, or any OCI-compliant registry) without running a separate Terraform registry server.
+OpenTofu 1.10+ can install providers from OCI registries using the `oci_mirror` provider installation method. OCI registries are a secondary installation source for providers, so you still declare normal provider source addresses and use CLI configuration to route matching providers to an OCI registry mirror. This enables teams to distribute providers through existing container registry infrastructure (ECR, ACR, GCR, GHCR, or any OCI-compatible registry that supports OCI Distribution v1.1.0) without running a separate provider registry server.
 
 ## Configuring OCI Provider Installation
 
 ```hcl
-# ~/.terraform.rc or set via TF_CLI_CONFIG_FILE
+# ~/.tofurc, ~/.terraformrc (compatibility), or set via TF_CLI_CONFIG_FILE
 
 provider_installation {
-  # Pull providers from OCI registry
+  # Pull matching providers from OCI repositories
   oci_mirror {
-    # OCI registry base URL
-    url = "oci://registry.internal.company.com/opentofu-providers"
+    repository_template = "registry.internal.company.com/opentofu-providers/${namespace}/${type}"
 
     # Which providers to pull from OCI (pattern matching)
     include = [
@@ -41,45 +40,42 @@ provider_installation {
 ## Authentication Configuration
 
 ```hcl
-# ~/.terraform.rc - add credentials for the OCI registry
+# ~/.tofurc - add credentials for the OCI registry
 
-credentials "registry.internal.company.com" {
-  # For registries that use token auth
-  token = "your-registry-token"
+oci_credentials "registry.internal.company.com" {
+  username = "your-registry-username"
+  password = "your-registry-password"
 }
 
-# Or use environment variables recognized by Docker/oras:
+# Or log in with another OCI client and let OpenTofu discover the auth file:
 
-# DOCKER_USERNAME, DOCKER_PASSWORD
-# AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (for ECR)
+# docker login registry.internal.company.com
+# oras login registry.internal.company.com
 ```
 
 ```bash
-# For ECR: configure Docker credential helper
-# Install amazon-ecr-credential-helper
-cat > ~/.docker/config.json << 'EOF'
-{
-  "credHelpers": {
-    "123456789.dkr.ecr.us-east-1.amazonaws.com": "ecr-login"
-  }
-}
-EOF
+# For ECR: authenticate and write Docker-style registry credentials
+REGISTRY="123456789.dkr.ecr.us-east-1.amazonaws.com"
 
-# OpenTofu uses the Docker credential store when pulling from OCI
+aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin "$REGISTRY"
+
+# OpenTofu discovers Docker-style auth files automatically when pulling from OCI
 ```
 
 ## Pulling Providers from GitHub Container Registry
 
 ```hcl
-# ~/.terraform.rc
-credentials "ghcr.io" {
-  token = "ghp_yourGitHubPersonalAccessToken"
+# ~/.tofurc
+oci_credentials "ghcr.io" {
+  username = "YOUR_GITHUB_USERNAME"
+  password = "ghp_yourGitHubPersonalAccessToken"
 }
 
 provider_installation {
   oci_mirror {
-    url     = "oci://ghcr.io/myorg/opentofu-providers"
-    include = ["registry.opentofu.org/mycompany/*"]
+    repository_template = "ghcr.io/myorg/opentofu-providers/${namespace}/${type}"
+    include             = ["registry.opentofu.org/mycompany/*"]
   }
 
   direct {
@@ -89,11 +85,11 @@ provider_installation {
 ```
 
 ```hcl
-# OpenTofu configuration using OCI-backed provider
+# OpenTofu configuration using a mirrored provider
 terraform {
   required_providers {
     myprovider = {
-      source  = "mycompany/myprovider"
+      source  = "registry.opentofu.org/mycompany/myprovider"
       version = "~> 1.0"
     }
   }
@@ -110,7 +106,12 @@ set -euo pipefail
 
 REGISTRY="123456789.dkr.ecr.us-east-1.amazonaws.com"
 MIRROR_PATH="opentofu-providers"
-PROVIDER_MIRROR_DIR="/tmp/provider-mirror"
+TMPDIR="$(mktemp -d)"
+
+cleanup() {
+  rm -rf "$TMPDIR"
+}
+trap cleanup EXIT
 
 # Providers to mirror
 declare -A PROVIDERS=(
@@ -125,39 +126,62 @@ aws ecr get-login-password --region us-east-1 | \
 
 for PROVIDER_PATH in "${!PROVIDERS[@]}"; do
   VERSION="${PROVIDERS[$PROVIDER_PATH]}"
-  NAMESPACE=$(echo "$PROVIDER_PATH" | cut -d'/' -f1)
-  TYPE=$(echo "$PROVIDER_PATH" | cut -d'/' -f2)
+  NAMESPACE="${PROVIDER_PATH%/*}"
+  TYPE="${PROVIDER_PATH#*/}"
+
+  CONFIG_DIR="$TMPDIR/mirror-config"
+  PROVIDER_MIRROR_DIR="$TMPDIR/provider-mirror"
+  OCI_LAYOUT_DIR="$TMPDIR/oci-layout"
+
+  rm -rf "$CONFIG_DIR" "$PROVIDER_MIRROR_DIR" "$OCI_LAYOUT_DIR"
+  mkdir -p "$CONFIG_DIR" "$PROVIDER_MIRROR_DIR" "$OCI_LAYOUT_DIR"
 
   echo "Mirroring $PROVIDER_PATH@$VERSION..."
 
-  # Download from official registry using tofu providers mirror
-  mkdir -p "$PROVIDER_MIRROR_DIR/$PROVIDER_PATH"
-  cat > /tmp/mirror-config/main.tf << EOF
+  # Download from the provider registry into a local filesystem mirror
+  cat > "$CONFIG_DIR/main.tf" << EOF
 terraform {
   required_providers {
-    provider = {
+    ${TYPE} = {
       source  = "$PROVIDER_PATH"
       version = "= $VERSION"
     }
   }
 }
 EOF
-  cd /tmp/mirror-config
-  tofu init -backend=false
-  tofu providers mirror \
+  tofu -chdir="$CONFIG_DIR" init -backend=false
+  tofu -chdir="$CONFIG_DIR" providers mirror \
     -platform=linux_amd64 \
     -platform=linux_arm64 \
-    "$PROVIDER_MIRROR_DIR/"
+    "$PROVIDER_MIRROR_DIR"
 
-  # Push to OCI using oras
-  cd "$PROVIDER_MIRROR_DIR/registry.opentofu.org/$NAMESPACE/$TYPE/"
+  PROVIDER_DIR="$PROVIDER_MIRROR_DIR/registry.opentofu.org/$NAMESPACE/$TYPE"
 
-  oras push "${REGISTRY}/${MIRROR_PATH}/${NAMESPACE}-${TYPE}:${VERSION}" \
-    terraform-provider-${TYPE}_${VERSION}_linux_amd64.zip:application/vnd.opentofu.provider.v1.linux.amd64 \
-    terraform-provider-${TYPE}_${VERSION}_linux_arm64.zip:application/vnd.opentofu.provider.v1.linux.arm64 \
-    terraform-provider-${TYPE}_${VERSION}_SHA256SUMS:application/vnd.opentofu.provider.v1.shasums
+  # Convert each platform package into a provider-target artifact
+  for PLATFORM in linux_amd64 linux_arm64; do
+    FILE="terraform-provider-${TYPE}_${VERSION}_${PLATFORM}.zip"
+    ORAS_PLATFORM="${PLATFORM/_//}"
 
-  echo "  Pushed: ${REGISTRY}/${MIRROR_PATH}/${NAMESPACE}-${TYPE}:${VERSION}"
+    oras push \
+      --artifact-type application/vnd.opentofu.provider-target \
+      --artifact-platform "$ORAS_PLATFORM" \
+      --oci-layout "$OCI_LAYOUT_DIR:${PLATFORM}" \
+      "$PROVIDER_DIR/$FILE:archive/zip"
+  done
+
+  # Create the multi-platform provider index tagged with the version
+  oras manifest index create \
+    --artifact-type application/vnd.opentofu.provider \
+    --oci-layout "$OCI_LAYOUT_DIR:${VERSION}" \
+    linux_amd64 \
+    linux_arm64
+
+  # Copy the completed OCI layout into the target registry repository
+  oras cp \
+    --from-oci-layout "$OCI_LAYOUT_DIR:${VERSION}" \
+    "${REGISTRY}/${MIRROR_PATH}/${NAMESPACE}/${TYPE}:${VERSION}"
+
+  echo "  Pushed: ${REGISTRY}/${MIRROR_PATH}/${NAMESPACE}/${TYPE}:${VERSION}"
 done
 
 echo "All providers mirrored to OCI registry"
@@ -166,25 +190,26 @@ echo "All providers mirrored to OCI registry"
 ## Verifying OCI Provider Pull
 
 ```bash
-# Check that OpenTofu is pulling from OCI
-TF_LOG=DEBUG tofu init 2>&1 | grep -i "oci\|mirror\|pull"
+# Check that the mirrored version exists at the expected repository path
+oras repo tags 123456789.dkr.ecr.us-east-1.amazonaws.com/opentofu-providers/hashicorp/aws
 
-# Expected output shows OCI pull requests
-# [DEBUG] provider install: oci://registry.../hashicorp-aws:5.20.1
+# Fetch the top-level manifest for a specific provider version
+oras manifest fetch 123456789.dkr.ecr.us-east-1.amazonaws.com/opentofu-providers/hashicorp/aws:5.20.1
 
-# Verify locally with oras
-oras manifest fetch 123456789.dkr.ecr.us-east-1.amazonaws.com/opentofu-providers/hashicorp-aws:5.20.1
+# Then run OpenTofu with debug logging and look for the OCI repository path
+TF_LOG=DEBUG tofu init 2>&1 | \
+  grep -F "123456789.dkr.ecr.us-east-1.amazonaws.com/opentofu-providers/hashicorp/aws"
 ```
 
 ## Fully Offline OCI Configuration
 
 ```hcl
-# ~/.terraform.rc - Completely offline, all providers from OCI
+# ~/.tofurc - Completely offline, all providers from OCI
 
 provider_installation {
   oci_mirror {
-    url     = "oci://registry.internal.company.com/opentofu-providers"
-    include = ["registry.opentofu.org/*/*"]
+    repository_template = "registry.internal.company.com/opentofu-providers/${namespace}/${type}"
+    include             = ["registry.opentofu.org/*/*"]
   }
 
   # No direct fallback - fully offline
@@ -193,40 +218,39 @@ provider_installation {
 
 ```bash
 # Test offline init
-export TF_CLI_CONFIG_FILE=/etc/opentofu/terraform.rc
-# Disconnect from internet or block registry.opentofu.org in /etc/hosts
+export TF_CLI_CONFIG_FILE=/etc/opentofu/offline.tfrc
+# Disconnect from the public internet or block direct access to provider registries
 
-tofu init  # Should succeed using OCI registry only
+tofu init  # Should succeed using only the OCI registry for provider installation
 ```
 
 ## CI/CD Integration
 
 ```yaml
 # .github/workflows/deploy.yml
+- name: Log in to GHCR
+  run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
 - name: Configure OpenTofu OCI mirror
   run: |
-    mkdir -p ~/.terraform.d
-    cat > ~/.terraform.rc << 'EOF'
-    credentials "ghcr.io" {
-      token = "${{ secrets.GITHUB_TOKEN }}"
-    }
+    OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+    cat > "$RUNNER_TEMP/opentofu.tfrc" <<EOF
     provider_installation {
       oci_mirror {
-        url     = "oci://ghcr.io/${{ github.repository_owner }}/opentofu-providers"
-        include = ["registry.opentofu.org/hashicorp/*"]
+        repository_template = "ghcr.io/${OWNER_LOWER}/opentofu-providers/\${namespace}/\${type}"
+        include             = ["registry.opentofu.org/hashicorp/*"]
       }
       direct {
         exclude = ["registry.opentofu.org/hashicorp/*"]
       }
     }
     EOF
+    echo "TF_CLI_CONFIG_FILE=$RUNNER_TEMP/opentofu.tfrc" >> "$GITHUB_ENV"
 
 - name: OpenTofu Init
   run: tofu init
-  env:
-    TF_CLI_CONFIG_FILE: ~/.terraform.rc
 ```
 
 ## Conclusion
 
-Pulling providers from OCI registries requires two things: the OCI artifact must be pushed with the correct content-type annotations (using `oras`), and the `oci_mirror` block in `terraform.rc` must point to the registry URL. OpenTofu uses Docker credential helpers for OCI authentication, so any registry that Docker can authenticate with works. This approach is ideal for air-gapped environments already running container registry infrastructure, eliminating the need for a separate provider distribution server.
+Pulling providers from OCI registries requires two things: the `oci_mirror` block in your CLI configuration must map provider source addresses to OCI repositories using `repository_template`, and each repository tag must point to an OCI image index with the artifact types and `archive/zip` layer format OpenTofu expects. OpenTofu can discover OCI credentials from Docker-style auth files or explicit `oci_credentials` blocks, so registries that implement OCI Distribution v1.1.0 can be used for centralized provider distribution. This approach is ideal for air-gapped environments already running container registry infrastructure, eliminating the need for a separate provider mirror server.
