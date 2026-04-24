@@ -4,22 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Swarm, Placement, Constraint, DevOps
 
-Description: Configure Docker Swarm service placement strategies using node labels, affinity rules, and spread strategies via Portainer.
+Description: Configure Docker Swarm service placement using node labels, placement constraints, and spread preferences via Portainer.
 
 ## Introduction
 
-Docker Swarm's placement strategies control which nodes run which services. Portainer exposes these controls through both its UI and stack configurations. Proper placement ensures critical services run on appropriate hardware, databases avoid co-location, and stateful services have storage access.
+Docker Swarm's placement controls determine which nodes run which services. Portainer exposes these controls through both its UI and stack configurations. Proper placement ensures critical services run on appropriate hardware, replicas can be spread across failure domains, and stateful services have storage access.
 
 ## Placement Strategies Overview
 
-Docker Swarm supports three placement strategies:
-- **spread** (default): Distribute tasks evenly across nodes
-- **binpack**: Maximize node utilization before using other nodes
-- **random**: Place tasks randomly (testing only)
+In Swarm mode, service placement is controlled with:
+- **constraints**: Hard requirements that limit tasks to nodes with matching roles, hostnames, platforms, or labels
+- **preferences**: Best-effort rules that influence scheduling. Docker Swarm currently supports only **spread**, which distributes tasks across label values as evenly as possible
 
 ## Adding Node Labels via Portainer
 
-In Portainer: **Swarm > Nodes > Select Node > Labels**
+In Portainer: open the Swarm details page, select a node, then edit labels in **Node Details**
 
 Or via CLI:
 ```bash
@@ -30,7 +29,7 @@ docker node update --label-add storage=hdd worker1
 docker node update --label-add gpu=true worker2
 docker node update --label-add region=us-east worker1
 docker node update --label-add region=us-west worker2
-docker node update --label-add type=database worker3
+docker node update --label-add type=database manager1
 
 # Verify labels
 docker node inspect manager1 --format '{{.Spec.Labels}}'
@@ -75,14 +74,14 @@ services:
         preferences:
           - spread: node.labels.region   # Spread across regions
 
-  # Admin tool: only on managers
+  # Portainer Agent: one task on each Linux node
   portainer-agent:
     image: portainer/agent:latest
     deploy:
       mode: global
       placement:
         constraints:
-          - node.role == manager
+          - node.platform.os == linux
 
   # GPU workload
   ml-inference:
@@ -97,25 +96,27 @@ services:
 ## Placement via Portainer UI
 
 When deploying a service via Portainer:
-1. Go to **Swarm > Services > Add Service**
-2. In **Placement** tab:
-   - Add **Constraints**: `node.labels.type == database`
-   - Add **Preferences**: `spread: node.labels.region`
+1. Go to **Services > Add Service**
+2. In the advanced service options:
+   - Add a placement constraint for `node.labels.type` with value `database`
+   - Add a placement preference to spread tasks across `node.labels.region`
 
 ## Dynamic Placement with Node Updates
 
 ```bash
-# Temporarily move services by updating node labels
-# Before maintenance: remove the database label from a node
+# Change scheduling eligibility by updating node labels
+# Before maintenance: remove the database label from the node
 docker node update --label-rm type manager1
 
-# Services with constraint "type == database" will migrate away
-# Verify migration
+# Inspect task placement. If the service is rescheduled while no matching
+# node exists, tasks remain pending until a matching node is available again.
 docker service ps myapp_postgres
 
 # After maintenance: restore label
 docker node update --label-add type=database manager1
 ```
+
+For planned maintenance where you need to move running tasks off a node immediately, set the node availability to `drain`.
 
 ## Common Placement Patterns
 
