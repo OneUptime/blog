@@ -14,24 +14,24 @@ Deploying stacks on Docker Swarm via Portainer is one of the most powerful ways 
 
 - Portainer installed on Docker Swarm
 - A running Swarm cluster (manager + workers)
-- Understanding of Docker Compose v3 syntax
+- Understanding of the legacy Docker Compose v3 syntax used by `docker stack deploy`
 
 ## Swarm Stack vs Standalone Stack
 
 | Feature | Swarm Stack | Standalone Stack |
 |---------|------------|-----------------|
 | Multi-node | Yes | No |
-| Replicas | Yes | No (single container) |
-| Rolling updates | Yes | Basic restart |
-| Services | Yes | Containers |
-| Secrets/Configs | Yes | Limited |
+| Replicas | Yes | Single-host only |
+| Rolling updates | Yes | Recreate/restart |
+| Services | Swarm services | Compose services / containers |
+| Secrets/Configs | Yes | Limited / runtime-dependent |
 | Load balancing | Built-in (ingress) | Manual |
 
 ## Step 1: Navigate to Stacks
 
 1. Select your Swarm environment in Portainer
 2. Click **Stacks** in the sidebar
-3. Click **+ Add stack**
+3. Click **Add stack**
 
 ## Step 2: Write the Swarm Compose File
 
@@ -54,8 +54,10 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - public-net
     deploy:
-      mode: global           # One Traefik per node
+      mode: global           # One Traefik on each manager node
       placement:
         constraints:
           - node.role == manager
@@ -84,10 +86,11 @@ services:
       placement:
         constraints:
           - node.role == worker
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.frontend.rule=Host(`app.example.com`)"
-      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=my-production-app_public-net" # Stack deployments prefix network names with the stack name
+        - "traefik.http.routers.frontend.rule=Host(`app.example.com`)"
+        - "traefik.http.services.frontend.loadbalancer.server.port=3000"
     networks:
       - public-net
       - internal-net
@@ -187,9 +190,9 @@ secrets:
 ```bash
 # Create secrets before deploying the stack
 
-echo "MySecureDbPassword123!" | docker secret create db-password -
-echo "MyApiSecretKey456!" | docker secret create api-secret-key -
-echo "MyRedisPassword789!" | docker secret create redis-password -
+printf %s "MySecureDbPassword123!" | docker secret create db-password -
+printf %s "MyApiSecretKey456!" | docker secret create api-secret-key -
+printf %s "MyRedisPassword789!" | docker secret create redis-password -
 ```
 
 ## Step 4: Configure Stack Settings in Portainer
@@ -225,7 +228,7 @@ In Portainer, navigate to the stack and check:
 
 - All services show `N/N` replicas (desired/running match)
 - No tasks in `failed` or `pending` state
-- Services are distributed across nodes (check via Visualizer)
+- Services are distributed across nodes (check via Cluster visualizer)
 
 ## Step 7: Update the Stack
 
