@@ -18,8 +18,6 @@ Together they provide a complete self-hosted stack: manage your containers with 
 Create a shared Docker network and compose file:
 
 ```yaml
-version: "3.8"
-
 networks:
   proxy-network:
     name: proxy-network
@@ -36,9 +34,6 @@ services:
     image: portainer/portainer-ce:latest
     container_name: portainer
     restart: unless-stopped
-    ports:
-      - "9443:9443"
-      - "8000:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
@@ -53,9 +48,17 @@ services:
       - "80:80"
       - "443:443"
       - "81:81"   # NPM admin UI
+    environment:
+      DB_MYSQL_HOST: "npm-db"
+      DB_MYSQL_PORT: 3306
+      DB_MYSQL_USER: "npm"
+      DB_MYSQL_PASSWORD: "your-npm-password"
+      DB_MYSQL_NAME: "npm"
     volumes:
       - npm_data:/data
       - npm_letsencrypt:/etc/letsencrypt
+    depends_on:
+      - npm-db
     networks:
       - proxy-network
 
@@ -86,9 +89,9 @@ services:
 2. Default credentials: `admin@example.com` / `changeme` - change immediately
 3. Add a **Proxy Host**:
    - Domain: `portainer.example.com`
-   - Scheme: `https`
+   - Scheme: `http`
    - Forward hostname: `portainer`
-   - Forward port: `9443`
+   - Forward port: `9000`
    - Enable **SSL** → Request Let's Encrypt certificate
 
 ## Accessing Portainer via NPM
@@ -103,7 +106,7 @@ NPM handles TLS termination and renewal automatically.
 
 ## Proxying Other Services
 
-Add more proxy hosts in NPM for other services running in your Docker environment. Since all services are on `proxy-network`, NPM can reach them by container name.
+Add more proxy hosts in NPM for other services running in your Docker environment. Since all services are on `proxy-network`, NPM can reach them by service name.
 
 ```text
 my-app.example.com → http://my-app:3000
@@ -112,9 +115,9 @@ grafana.example.com → http://grafana:3000
 
 ## Security Considerations
 
-1. **Never expose Portainer's port 9443 directly** - let NPM handle external HTTPS
-2. **Use firewall rules** to block direct access to internal ports (9443, 81)
-3. **Enable 2FA** on Portainer admin account
+1. **Do not publish Portainer's UI ports directly** - let NPM handle external HTTPS
+2. **Use firewall rules** to restrict access to the NPM admin UI on port 81
+3. **Use a strong Portainer admin password**
 4. **Set NPM to HTTPS only** and enable HSTS on production proxy hosts
 
 ## Troubleshooting
@@ -126,7 +129,7 @@ docker network inspect proxy-network
 
 **Let's Encrypt fails:** Ensure port 80 is open and your domain points to the server's public IP.
 
-**Portainer behind NPM shows mixed content:** Configure NPM to forward the `X-Forwarded-Proto` header.
+**Portainer console closes unexpectedly behind NPM:** Add `proxy_read_timeout 3600;` in the proxy host's Advanced field.
 
 ## Conclusion
 
