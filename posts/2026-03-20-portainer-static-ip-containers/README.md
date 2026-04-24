@@ -13,7 +13,7 @@ By default, Docker assigns container IP addresses dynamically from a network's s
 ## Prerequisites
 
 - Portainer installed with a connected Docker environment
-- A custom Docker network (not the default bridge)
+- Permission to create a custom Docker network (not the default `bridge`)
 
 ## Why Static IPs Require Custom Networks
 
@@ -28,17 +28,16 @@ docker network create \
   --driver bridge \
   --subnet 172.25.0.0/24 \
   --gateway 172.25.0.1 \
-  --ip-range 172.25.0.0/25 \   # Containers get IPs from .0 to .127
   static-ip-network
 
-# Verify:
-docker network inspect static-ip-network | jq '.[].IPAM'
+# Verify the IPAM config:
+docker network inspect static-ip-network --format '{{json .IPAM.Config}}'
 ```
 
 Via Portainer:
 1. Navigate to **Networks** → **Add network**.
-2. Set Driver to `bridge`.
-3. Set Subnet: `172.25.0.0/24`, Gateway: `172.25.0.1`.
+2. Set Name to `static-ip-network` and Driver to `bridge`.
+3. In **IPv4 Network configuration**, set Subnet: `172.25.0.0/24`, Gateway: `172.25.0.1`.
 4. Click **Create the network**.
 
 ## Step 2: Assign Static IP at Container Creation (CLI)
@@ -48,7 +47,7 @@ Via Portainer:
 docker run -d \
   --name dns-server \
   --network static-ip-network \
-  --ip 172.25.0.10 \          # Fixed IP within the subnet
+  --ip 172.25.0.10 \
   coredns/coredns:latest
 
 # Run another container with a different fixed IP:
@@ -66,17 +65,16 @@ docker inspect dns-server --format '{{.NetworkSettings.Networks.static-ip-networ
 ## Step 3: Assign Static IP via Portainer UI
 
 1. Navigate to **Containers** → **Add container**.
-2. Set the image name.
-3. Under **Network**, select your custom network (`static-ip-network`).
-4. Expand **Advanced network settings**.
+2. Set the container name and image name.
+3. Expand **Advanced container settings** and open the **Network** section.
+4. Select your custom network (`static-ip-network`).
 5. Enter the IP address in the **IPv4 Address** field: `172.25.0.10`.
 6. Click **Deploy the container**.
 
 ## Step 4: Static IPs in Docker Compose
 
 ```yaml
-# docker-compose.yml with static IP assignments
-version: "3.8"
+# compose.yaml with static IP assignments
 
 services:
   # DNS server - always at .10
@@ -118,31 +116,31 @@ networks:
 
 ## Step 5: Reserve IPs to Avoid Conflicts
 
-Divide the subnet to avoid DHCP/static conflicts:
+Divide the subnet to avoid dynamic/static allocation conflicts:
 
-```bash
+```text
 172.25.0.0/24 layout:
   172.25.0.1        → Gateway
   172.25.0.2-9      → Reserved
-  172.25.0.10-49    → Static assignments (reserved for named containers)
-  172.25.0.50-200   → Dynamic pool (Docker assigns from here)
-  172.25.0.201-254  → Reserved for host tools
+  172.25.0.10-63    → Static assignments (reserved for named containers)
+  172.25.0.64/26    → Dynamic pool (Docker auto-assigns from this CIDR block)
+  172.25.0.128-254  → Reserved for future static assignments or host tools
 ```
 
-Configure Docker to use only the dynamic pool for auto-assignment:
+When creating the network, use a CIDR-aligned `--ip-range` for the dynamic pool:
 
 ```bash
 docker network create \
   --driver bridge \
   --subnet 172.25.0.0/24 \
   --gateway 172.25.0.1 \
-  --ip-range 172.25.0.50/27 \   # Auto-assign only from .50 to .81
+  --ip-range 172.25.0.64/26 \
   static-ip-network
 ```
 
 ## Step 6: Verify Static IP After Restart
 
-Static IPs persist through container restarts (stop/start), but are not preserved if the container is removed and recreated with a new name:
+Static IPs are reapplied when a stopped container starts again, as long as the address is still available. They are not preserved if the container is removed and recreated unless you specify the IP again:
 
 ```bash
 # Restart and verify IP is retained:
@@ -151,7 +149,7 @@ docker inspect dns-server --format '{{.NetworkSettings.Networks.static-ip-networ
 # Still: 172.25.0.10
 
 # If the container is removed and recreated without --ip, it gets a dynamic IP:
-docker rm dns-server
+docker rm -f dns-server
 docker run -d --name dns-server --network static-ip-network coredns/coredns:latest
 docker inspect dns-server --format '{{.NetworkSettings.Networks.static-ip-network.IPAddress}}'
 # Dynamic IP now - must specify --ip again
