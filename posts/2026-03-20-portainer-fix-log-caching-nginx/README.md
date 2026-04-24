@@ -17,7 +17,7 @@ When Portainer is deployed behind an Nginx reverse proxy, you may notice that th
 
 ## Understanding the Problem
 
-Portainer's log viewer uses **Server-Sent Events (SSE)** or **chunked streaming** to push log lines to the browser in real time. When Nginx buffers responses:
+Portainer's log viewer relies on a streaming HTTP response from the Docker/Portainer API to push log lines to the browser in real time. When Nginx buffers responses:
 
 1. Browser requests logs from Portainer via Nginx.
 2. Portainer sends log lines incrementally.
@@ -70,8 +70,6 @@ server {
 
         # CRITICAL: Disable proxy buffering for real-time log streaming
         proxy_buffering off;
-        proxy_request_buffering off;
-
         # Increase timeout for long-running log sessions
         proxy_read_timeout 86400s;
         proxy_send_timeout 86400s;
@@ -114,11 +112,7 @@ server {
 
         # Disable buffering for log streaming
         proxy_buffering off;
-        proxy_request_buffering off;
         proxy_read_timeout 86400s;
-
-        # Headers for SSE/streaming
-        proxy_set_header X-Accel-Buffering no;
     }
 
     # WebSocket paths for console
@@ -134,9 +128,9 @@ server {
 }
 ```
 
-## Step 4: Set X-Accel-Buffering Header
+## Step 4: About X-Accel-Buffering
 
-An alternative is to use the `X-Accel-Buffering: no` header, which Nginx honors:
+Nginx can also honor the `X-Accel-Buffering: no` **response** header when the upstream application sends it. `proxy_set_header` only sets **request** headers sent to Portainer, so it does not disable Nginx response buffering. In an Nginx reverse proxy config, use `proxy_buffering off`:
 
 ```nginx
 location /api/ {
@@ -144,12 +138,12 @@ location /api/ {
     proxy_http_version 1.1;
     proxy_set_header Host $host;
 
-    # Tell Nginx (via header) to not buffer this response
-    proxy_set_header X-Accel-Buffering "no";
+    # Disable response buffering in Nginx for streamed log output
+    proxy_buffering off;
 }
 ```
 
-Or Portainer can set this header in its responses - but since we're configuring Nginx, add it at the proxy level.
+If an upstream application emits `X-Accel-Buffering: no` in its response, Nginx will honor it. For Portainer, the most direct fix in Nginx is still `proxy_buffering off`.
 
 ## Step 5: Docker Compose with Nginx Proxy
 
@@ -157,8 +151,6 @@ Complete docker-compose.yml for Portainer + Nginx:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   portainer:
     image: portainer/portainer-ce:latest
@@ -200,7 +192,7 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
     server_name portainer.example.com;
 
     ssl_certificate /etc/ssl/certs/fullchain.pem;
@@ -225,7 +217,6 @@ server {
 
         # Critical: disable buffering for real-time logs
         proxy_buffering off;
-        proxy_request_buffering off;
         proxy_cache off;
 
         # Long timeout for persistent connections (logs, console)
@@ -233,8 +224,6 @@ server {
         proxy_send_timeout 86400;
         keepalive_timeout 86400;
 
-        # Add header to prevent Nginx internal buffering
-        add_header X-Accel-Buffering no;
     }
 }
 ```
@@ -251,8 +240,8 @@ nginx -t
 # Reload (no downtime):
 nginx -s reload
 
-# Or via Docker:
-docker exec nginx nginx -s reload
+# Or via Docker Compose:
+docker compose exec nginx nginx -s reload
 
 # Or restart via Portainer:
 # Navigate to the nginx container → Restart
@@ -267,14 +256,13 @@ After reloading:
 4. The logs should now appear in real time, line by line.
 
 ```bash
-# Test that buffering is disabled:
+# Test that log output is streamed instead of buffered:
 curl -v -N https://portainer.example.com/api/endpoints/1/docker/containers/my-app/logs?stdout=1&follow=1 \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" 2>&1 | head -30
 
-# Look for: "Transfer-Encoding: chunked"
-# And absence of: "Content-Length:" (buffered responses have content-length)
+# New log lines should arrive incrementally instead of in large bursts
 ```
 
 ## Conclusion
 
-Log streaming issues in Portainer behind Nginx are almost always caused by proxy buffering. The fix is to add `proxy_buffering off` and `proxy_request_buffering off` to your Nginx location block, along with a long `proxy_read_timeout` for persistent streaming connections. If you also use Portainer's console feature, ensure WebSocket upgrade headers are configured properly. These two changes together give you a fully functional Portainer experience through an Nginx reverse proxy.
+Log streaming issues in Portainer behind Nginx are almost always caused by proxy buffering. The fix is to add `proxy_buffering off` to your Nginx location block, along with a long `proxy_read_timeout` for persistent streaming connections. If you also use Portainer's console feature, ensure WebSocket upgrade headers are configured properly. These changes together give you a fully functional Portainer experience through an Nginx reverse proxy.
