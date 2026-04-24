@@ -12,34 +12,35 @@ Portainer supports multiple user accounts with different roles and permissions. 
 
 ## User Roles in Portainer
 
-Before creating users, understand the available roles:
+Before creating users, understand the available account roles:
 
 | Role | Description |
 |------|-------------|
 | **Administrator** | Full access to all environments and settings |
 | **Standard User** | Limited access based on team and environment permissions |
-| **Read-Only (Helpdesk)** | Can view but not modify resources |
+
+In Portainer Business Edition, environment-level RBAC roles such as Helpdesk, Operator, Read-Only User, and Environment administrator are assigned separately to users or teams.
 
 ## Creating Users via the Web UI
 
 ### Step 1: Access User Management
 
 1. Log in as an administrator
-2. Navigate to **Settings** → **Users**
+2. Navigate to **User-related** → **Users**
 3. Click **Add user**
 
 ### Step 2: Fill in User Details
 
 ```text
 Username:     john.doe
-Email:        john.doe@example.com (optional)
 Password:     [set a strong password]
-Role:         Standard User (or Administrator)
+Administrator: No (enable only if this user should be an admin)
+Teams:        [optional]
 ```
 
 ### Step 3: Assign to Teams (Optional)
 
-After creating the user, you can assign them to teams which grant access to specific environments.
+After creating the user, you can assign them to teams, and then grant those teams access to specific environments.
 
 ## Creating Users via the API
 
@@ -81,14 +82,14 @@ curl -s \
 ## Updating a User
 
 ```bash
-# Update user (replace 3 with the actual user ID)
+# Promote user ID 3 to administrator
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   https://portainer.example.com/api/users/3 \
   -d '{
-    "role": 1,
-    "password": "NewPassword123!"
+    "username": "john.doe",
+    "role": 1
   }'
 ```
 
@@ -147,7 +148,7 @@ Portainer doesn't have a built-in "force password change" feature, but you can:
 
 1. Set a temporary password when creating the account
 2. Communicate the temporary password to the user
-3. Instruct them to change it immediately via **Account** → **Change password**
+3. Instruct them to change it immediately via their profile menu → **My account**
 
 ### Reset a User's Password (Admin)
 
@@ -156,7 +157,7 @@ Portainer doesn't have a built-in "force password change" feature, but you can:
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/users/3/passwd \
+  https://portainer.example.com/api/users/3 \
   -d '{
     "newPassword": "TemporaryPass123!"
   }'
@@ -166,7 +167,7 @@ curl -X PUT \
 
 - Use service accounts (dedicated non-human users) for API automation
 - Assign users to teams rather than directly to environments for easier management
-- Regularly audit user accounts and disable or remove inactive ones
+- Regularly audit user accounts and remove inactive ones
 - Use descriptive usernames that identify the person (not generic names like `user1`)
 
 ## Conclusion
