@@ -4,19 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, WebSocket, Reverse Proxy, Troubleshooting, Nginx
 
-Description: Configure reverse proxies to properly support WebSocket connections required by Portainer for container terminals, log streaming, and real-time statistics.
+Description: Configure reverse proxies to properly support WebSocket connections required by Portainer for container terminals and Kubernetes shell sessions.
 
 ## Introduction
 
-Portainer uses WebSocket connections for several key features: container console (terminal), real-time log streaming, and live container statistics. Without proper WebSocket support in your reverse proxy, these features fail with connection errors or disconnect after a few seconds.
+Portainer uses WebSocket connections for interactive console features such as the container console and Kubernetes shell. Container logs and container statistics in the UI use regular HTTP requests, but interactive shells depend on successful WebSocket upgrades. Without proper WebSocket support in your reverse proxy, these shell features fail with connection errors or disconnect after a few seconds.
 
 ## Features That Require WebSocket
 
 | Feature | WebSocket Use |
 |---------|--------------|
 | Container Console/Terminal | Interactive shell via WebSocket |
-| Log Streaming | Real-time log updates via WebSocket |
-| Container Stats | Live CPU/RAM updates |
+| Container Attach | Interactive attached session via WebSocket |
 | Kubernetes Shell | `kubectl exec` sessions |
 
 ## Step 1: Diagnose WebSocket Failure
@@ -29,13 +28,8 @@ Portainer uses WebSocket connections for several key features: container console
 # "Error during WebSocket handshake"
 # "Unexpected response code: 400"
 
-# Test WebSocket support directly
-# Install wscat
+# Install wscat (used in Step 6 to test the actual Portainer exec WebSocket)
 npm install -g wscat
-
-wscat -c wss://portainer.yourdomain.com
-# Success: "Connected (press CTRL+C to quit)"
-# Failure: "error: Unexpected server response: 400/502/etc"
 ```
 
 ## Step 2: Nginx - Complete WebSocket Configuration
@@ -52,6 +46,7 @@ server {
         proxy_pass https://localhost:9443;
 
         # --- WebSocket Support --- (CRITICAL)
+        # Required before nginx 1.29.7; safe to keep for compatibility
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -67,11 +62,6 @@ server {
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
         proxy_connect_timeout 60s;
-
-        # --- Disable Buffering ---
-        # Required for log streaming
-        proxy_buffering off;
-        proxy_cache off;
 
         # --- Body Size ---
         # Allow large image uploads
@@ -124,7 +114,6 @@ Traefik supports WebSocket natively, but needs proper configuration:
 
 ```yaml
 # docker-compose.yml with Traefik
-version: "3.8"
 services:
   traefik:
     image: traefik:v3
@@ -139,11 +128,9 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.portainer.rule=Host(`portainer.yourdomain.com`)"
       - "traefik.http.routers.portainer.entrypoints=websecure"
-      - "traefik.http.routers.portainer.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.portainer.tls=true"
       # Backend connection
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
-      # Increase timeout for container terminals
-      - "traefik.http.middlewares.portainer-compress.compress=true"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
@@ -153,12 +140,13 @@ For Traefik static configuration:
 
 ```yaml
 # traefik.yml
-serversTransport:
-  # Increase timeout for WebSocket connections
-  respondingTimeouts:
-    readTimeout: 0    # No timeout for WebSocket
-    writeTimeout: 0   # No timeout for WebSocket
-    idleTimeout: 3600s
+entryPoints:
+  websecure:
+    address: ":443"
+    transport:
+      # Increase idle timeout for long-running shell sessions
+      respondingTimeouts:
+        idleTimeout: 3600s
 ```
 
 ## Step 5: HAProxy - WebSocket Configuration
@@ -190,35 +178,30 @@ backend portainer_ws_backend
 ## Step 6: Test WebSocket After Fix
 
 ```bash
-# Test WebSocket handshake
-curl -i -N \
-  -H "Connection: Upgrade" \
-  -H "Upgrade: websocket" \
-  -H "Sec-WebSocket-Version: 13" \
-  -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-  https://portainer.yourdomain.com/api/websocket/exec?endpointId=1
+# 1. Create an exec session through Portainer's Docker API proxy
+curl -sS -X POST \
+  -H "X-API-Key: YOUR_PORTAINER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"AttachStdin":true,"AttachStdout":true,"AttachStderr":true,"Tty":true,"Cmd":["sh"]}' \
+  https://portainer.yourdomain.com/api/endpoints/1/docker/containers/YOUR_CONTAINER_ID/exec
 
-# Expected: HTTP 101 Switching Protocols
-# Bad: HTTP 400 Bad Request (proxy not upgrading)
-# Bad: HTTP 502 Bad Gateway (backend not responding)
+# Response includes: {"Id":"<EXEC_ID>"}
+
+# 2. Test the actual WebSocket endpoint that Portainer uses for the console
+wscat -H "X-API-Key: YOUR_PORTAINER_API_KEY" \
+  -c "wss://portainer.yourdomain.com/api/websocket/exec?endpointId=1&id=<EXEC_ID>"
+
+# Success: "Connected (press CTRL+C to quit)"
+# Failure: "error: Unexpected server response: 400/401/502/etc"
 ```
 
-## Step 7: Fix Nginx "Connection Reset" During Streaming
+## Step 7: Fix Nginx "Connection Reset" During Long Console Sessions
 
-If log streaming works initially then cuts out:
+If the container console or Kubernetes shell works initially then cuts out:
 
 ```nginx
-# Add these specific timeout settings
-proxy_read_timeout 86400s;  # 24 hours for long-running sessions
-proxy_send_timeout 86400s;
-keepalive_timeout 86400s;
-
-# Prevent Nginx from closing idle WebSocket connections
-# in the upstream keepalive pool
-upstream portainer {
-    server localhost:9443;
-    keepalive 10;
-}
+# Increase the read timeout for long-running interactive sessions
+proxy_read_timeout 86400s;  # 24 hours
 ```
 
 ## Step 8: Verify with Browser Network Tab
@@ -232,10 +215,11 @@ upstream portainer {
 #    - Type: websocket
 # 4. Click the connection to see Messages tab
 
-# If you see 400 or 502: proxy is not upgrading the connection
+# If you see 400 or 502: proxy is not upgrading the connection correctly
+# If you see 401 or 403: authentication/session handling is failing
 # If connection closes immediately: proxy timeout is too short
 ```
 
 ## Conclusion
 
-WebSocket support in Portainer reverse proxy configurations requires three critical settings: `proxy_http_version 1.1`, `proxy_set_header Upgrade $http_upgrade`, and `proxy_set_header Connection "upgrade"`. Without these in Nginx, or the equivalent in Apache/Traefik/HAProxy, container terminals and log streaming will fail. Increase timeouts to 1+ hours to prevent session drops during long-running terminal sessions.
+WebSocket support in Portainer reverse proxy configurations mainly matters for interactive console features such as the container console, attach session, and Kubernetes shell. On Nginx, forwarding the `Upgrade` and `Connection` headers is essential, and `proxy_http_version 1.1` is required on older Nginx releases and remains a safe compatibility setting. Increase proxy timeouts to prevent session drops during long-running terminal sessions.
