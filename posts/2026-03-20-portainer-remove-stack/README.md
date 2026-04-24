@@ -8,7 +8,7 @@ Description: Learn how to safely remove Docker Compose stacks in Portainer, unde
 
 ## Introduction
 
-Removing a stack in Portainer stops and removes all containers, networks, and (optionally) volumes associated with that stack. Understanding exactly what gets removed - and what doesn't - is critical to avoid accidental data loss. Portainer's stack removal is equivalent to running `docker compose down` with configurable options for volume handling.
+Removing a stack in Portainer stops and removes the stack's containers and Compose-managed networks, while leaving named volumes in place. Understanding exactly what gets removed - and what doesn't - is critical to avoid accidental data loss. For Docker Compose stacks, Portainer's delete flow behaves like `docker compose down` without `--volumes`; if you also want named volumes removed, use the CLI or delete the volumes separately.
 
 ## Prerequisites
 
@@ -17,26 +17,25 @@ Removing a stack in Portainer stops and removes all containers, networks, and (o
 
 ## What Gets Removed (and What Doesn't)
 
-| Resource | Removed by default | With --volumes flag |
-|----------|--------------------|---------------------|
+| Resource | Removed by Portainer stack removal | With `docker compose down --volumes` |
+|----------|------------------------------------|--------------------------------------|
 | Containers | Yes | Yes |
-| Stack networks | Yes | Yes |
-| Named volumes (in Compose) | **No** | Yes |
+| Compose-defined networks (non-external) | Yes | Yes |
+| Named volumes declared in Compose (non-external) | **No** | Yes |
 | Bind mounts (host paths) | No (files remain on host) | No |
 | Images | No | No |
-| Portainer stack metadata | Yes | Yes |
+| Portainer stack metadata | Yes | No |
 
-By default, named volumes persist after stack removal to prevent accidental data loss. This is intentional - you must explicitly choose to remove volumes.
+By default, named volumes persist after Portainer stack removal to prevent accidental data loss. External networks and external volumes are not removed.
 
 ## Step 1: Back Up Volumes Before Removal
 
 Before removing a stack, back up any important data:
 
 ```bash
-# Identify volumes used by the stack:
-
-docker compose ps -q | xargs docker inspect \
-  --format '{{.Name}}: {{range .Mounts}}{{.Name}} {{end}}'
+# Identify named volumes used by the stack:
+docker ps -aq --filter "label=com.docker.compose.project=myapp" | xargs docker inspect \
+  --format '{{.Name}}: {{range .Mounts}}{{if .Name}}{{.Name}} {{end}}{{end}}'
 
 # Backup a volume:
 docker run --rm \
@@ -50,29 +49,24 @@ echo "Backup complete: $(ls -lh /backup/)"
 
 ## Step 2: Remove the Stack via Portainer UI
 
-### Remove Without Deleting Volumes (Safe - Default)
+### Remove Without Deleting Volumes (Current Behavior)
 
 1. Navigate to **Stacks** in Portainer.
 2. Check the checkbox next to the stack.
 3. Click **Remove**.
-4. In the confirmation dialog:
-   - Leave **Remove associated volumes** **unchecked** (default).
-5. Click **Remove**.
+4. When the confirmation dialog appears, click **Remove**.
 
-Result: containers and networks are removed, volumes remain for data preservation.
+Result: containers and networks are removed, named volumes remain for data preservation.
 
-### Remove Including Volumes (Destructive)
+### Remove Including Volumes (Use CLI Instead)
 
-1. Navigate to **Stacks** in Portainer.
-2. Check the checkbox next to the stack.
-3. Click **Remove**.
-4. In the confirmation dialog:
-   - Check **Remove associated volumes**.
-5. Click **Remove**.
+Portainer's current stack removal flow does not offer a **Remove associated volumes** checkbox for Docker Compose stacks.
 
-Result: containers, networks, AND volumes are permanently deleted.
+If you also want to delete named volumes, use the CLI commands in Step 3 or remove the volumes explicitly in Step 4.
 
-## Step 3: Remove the Stack via CLI
+## Step 3: Remove Stack Resources via CLI
+
+These commands remove Compose-managed resources on the Docker host. If the stack was created in Portainer, remove it in Portainer or via the Portainer API as well so the Portainer stack record is deleted.
 
 ```bash
 # Remove stack without volumes (preserves data):
@@ -119,12 +113,13 @@ If Portainer shows an error removing a stack:
 docker ps -a --filter "label=com.docker.compose.project=myapp"
 
 # Force remove stuck containers:
-docker rm -f $(docker ps -aq --filter "label=com.docker.compose.project=myapp")
+containers=$(docker ps -aq --filter "label=com.docker.compose.project=myapp")
+[ -z "$containers" ] || docker rm -f $containers
 
 # Then remove the network manually:
 docker network rm myapp_default myapp_frontend myapp_backend
 
-# Remove the stack from Portainer (it will succeed now that containers are gone):
+# Remove the stack from Portainer so its metadata is cleaned up as well:
 # Portainer UI → Stacks → Remove
 ```
 
@@ -141,7 +136,7 @@ docker ps -a --filter "label=com.docker.compose.project=myapp"
 docker network ls | grep myapp
 # Should return nothing
 
-# Check if volumes still exist (expected if you didn't include --volumes):
+# Check if volumes still exist (expected after Portainer removal, or if you didn't include --volumes):
 docker volume ls | grep myapp
 # myapp_postgres_data  ← This volume persists, which is intentional
 ```
@@ -154,18 +149,27 @@ For ephemeral stacks in CI/CD environments:
 #!/bin/bash
 # cleanup-old-stacks.sh - Remove stacks older than N days
 
+ENDPOINT_ID=1
+DAYS=7
+CUTOFF=$(date -u -d "${DAYS} days ago" +%s)
+
 # Via Portainer API:
 curl -s "${PORTAINER_URL}/api/stacks" \
   -H "X-API-Key: ${PORTAINER_TOKEN}" | \
-  jq -r '.[] | select(.Name | startswith("review-")) | .Id' | \
-  while read stack_id; do
+  jq -r --argjson cutoff "$CUTOFF" --argjson endpoint "$ENDPOINT_ID" '
+    .[]
+    | select(.Name | startswith("review-"))
+    | select(.EndpointId == $endpoint)
+    | select(.CreationDate < $cutoff)
+    | .Id
+  ' | while read -r stack_id; do
     echo "Removing stack: ${stack_id}"
     curl -X DELETE \
-      "${PORTAINER_URL}/api/stacks/${stack_id}?endpointId=1" \
+      "${PORTAINER_URL}/api/stacks/${stack_id}?endpointId=${ENDPOINT_ID}" \
       -H "X-API-Key: ${PORTAINER_TOKEN}"
   done
 ```
 
 ## Conclusion
 
-Removing a stack in Portainer is a two-decision process: remove now, and remove volumes or not. The default behavior preserves volumes to prevent accidental data loss - always back up important volumes before removal if you plan to delete them. Use the CLI (`docker compose down --volumes`) for scripted cleanup, and use Portainer's UI confirmation dialog for manual removals where you need to verify the volume decision. After removal, run `docker volume prune` and `docker network prune` to clean up any lingering orphaned resources.
+Removing a stack in Portainer removes the stack record plus its containers and Compose-managed networks, but leaves named volumes in place. Always back up important volumes before removal if you plan to delete them. Use the CLI (`docker compose down --volumes`) when you also want Compose-managed volumes removed, and use the Portainer UI or Portainer API when you want the Portainer stack record removed. After removal, run `docker volume prune` and `docker network prune` to clean up any lingering orphaned resources.
