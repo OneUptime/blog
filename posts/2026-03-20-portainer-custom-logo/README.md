@@ -8,22 +8,22 @@ Description: A guide to replacing the default Portainer logo with a custom logo 
 
 ## Overview
 
-Portainer Business Edition supports custom logo branding to replace the default Portainer logo with your organization's logo. This is useful for managed service providers, enterprises deploying Portainer as an internal tool, or any organization wanting consistent branding. The CE version does not support logo customization via the UI but can be achieved through other methods.
+Portainer supports custom logo branding to replace the default Portainer logo with your organization's logo. This is useful for managed service providers, enterprises deploying Portainer as an internal tool, or any organization wanting consistent branding. You can configure the logo from the Settings UI or by using the `--logo` startup flag.
 
 ## Prerequisites
 
-- Portainer Business Edition (for UI-based logo customization)
-- A logo image (PNG or SVG recommended, max 800x150px recommended)
+- Portainer
+- A logo image (PNG or SVG recommended, 155x55px recommended)
 - Admin access to Portainer
 
-## Method 1: Custom Logo via Portainer BE UI
+## Method 1: Custom Logo via Portainer UI
 
 1. Log in to Portainer as admin
-2. Navigate to **Settings** → **Appearance**
-3. In the **Custom branding** section, toggle **Use custom logo**
+2. Navigate to **Settings**
+3. Under **Application settings**, toggle **Use custom logo**
 4. Enter the URL of your logo image:
    - The logo must be accessible from the user's browser (not just from the server)
-   - Use a CDN, web server, or public URL
+   - Use a CDN, web server, or another browser-accessible URL
 5. Click **Save**
 
 ```text
@@ -87,9 +87,9 @@ server {
 |---|---|
 | Format | PNG or SVG |
 | Background | Transparent (PNG) |
-| Width | 155px or less |
-| Height | 55px or less |
-| Max file size | 100KB |
+| Width | 155px recommended |
+| Height | 55px recommended |
+| File size | Keep it small for faster loading |
 | Color mode | RGB |
 
 ## Step: Configure in Portainer Settings
@@ -97,13 +97,13 @@ server {
 ```bash
 # Verify logo is accessible before configuring
 curl -I https://cdn.example.com/logos/company-logo.png
-# Expected: HTTP/2 200
+# Expected: HTTP 200 OK
 
-# Set via API (BE)
-TOKEN="your-admin-token"
+# Set via API
+API_KEY="your-access-token"
 curl -X PUT \
   "https://portainer.example.com:9443/api/settings" \
-  -H "Authorization: Bearer ${TOKEN}" \
+  -H "X-API-Key: ${API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"LogoURL": "https://cdn.example.com/logos/company-logo.png"}'
 ```
@@ -111,12 +111,12 @@ curl -X PUT \
 ## Reverting to Default Portainer Logo
 
 ```bash
-# Via UI: Settings → Appearance → Disable "Use custom logo"
+# Via UI: Settings → Toggle off "Use custom logo"
 
 # Via API
 curl -X PUT \
   "https://portainer.example.com:9443/api/settings" \
-  -H "Authorization: Bearer ${TOKEN}" \
+  -H "X-API-Key: ${API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"LogoURL": ""}'
 ```
@@ -125,17 +125,16 @@ curl -X PUT \
 
 ```bash
 # If logo doesn't appear:
-# 1. Verify URL is publicly accessible
+# 1. Verify the URL is accessible from the user's browser
 curl -I "https://your-logo-url.com/logo.png"
 
-# 2. Check CORS headers (logo must allow cross-origin)
-curl -I -H "Origin: https://portainer.example.com" \
-  "https://your-logo-url.com/logo.png"
+# 2. If Portainer is served over HTTPS, use an HTTPS logo URL too
+# Browsers will block mixed-content requests such as http:// logos on an https:// Portainer page
 
-# 3. Check browser console for errors
-# Open DevTools → Console → Look for CORS or 404 errors
+# 3. Check browser console and network tab for errors
+# Open DevTools → Console/Network → Look for 404 or mixed-content errors
 ```
 
 ## Conclusion
 
-Custom logo branding in Portainer Business Edition provides a professional, consistent experience for end users. The key requirement is that the logo URL is accessible from user browsers (not just the server). Use a CDN or co-located web server for best performance. For CE users, custom branding requires maintaining a fork or using browser extensions, making BE the practical choice for white-labeling.
+Custom logo branding in Portainer provides a professional, consistent experience for end users. The key requirement is that the logo URL is accessible from user browsers (not just the server). Use a CDN or co-located web server for best performance, and use either the Settings UI or the `--logo` startup flag depending on how you manage your Portainer deployment.
