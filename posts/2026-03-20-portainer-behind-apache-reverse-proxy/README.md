@@ -13,26 +13,27 @@ Apache HTTP Server is widely deployed and often already present on Linux servers
 ## Prerequisites
 
 - Apache 2.4+ installed
-- `mod_proxy`, `mod_proxy_http`, `mod_proxy_wstunnel`, `mod_ssl`, `mod_rewrite` enabled
+- `mod_proxy`, `mod_proxy_http`, `mod_proxy_wstunnel`, `mod_ssl`, `mod_rewrite`, `mod_headers` enabled
 - SSL certificate files available
 - Portainer running in Docker
 
 ## Step 1: Start Portainer
 
-Run Portainer with HTTP enabled (simplifies Apache proxying):
+Run Portainer with HTTP enabled and published only on localhost (simplifies Apache proxying):
 
 ```bash
 docker run -d \
   --name portainer \
   --restart always \
+  -p 127.0.0.1:9000:9000 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
   --http-enabled \
-  --trusted-origins=https://portainer.example.com
+  --trusted-origins portainer.example.com
 ```
 
-Portainer will now listen on port 9000 (HTTP) internally, which Apache will proxy.
+Portainer will now be reachable on `127.0.0.1:9000` over HTTP, which Apache will proxy.
 
 ## Step 2: Enable Required Apache Modules
 
@@ -68,9 +69,8 @@ Create `/etc/apache2/sites-available/portainer.conf`:
 
     # SSL Configuration
     SSLEngine on
-    SSLCertificateFile /etc/ssl/certs/portainer.crt
+    SSLCertificateFile /etc/ssl/certs/portainer-fullchain.crt
     SSLCertificateKeyFile /etc/ssl/private/portainer.key
-    SSLCertificateChainFile /etc/ssl/certs/chain.pem
 
     # Recommended SSL settings
     SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1
@@ -118,7 +118,7 @@ sudo systemctl reload apache2
 ## Step 5: Configure Firewall
 
 ```bash
-# Allow HTTPS traffic
+# Allow HTTP and HTTPS traffic
 sudo ufw allow 443/tcp
 sudo ufw allow 80/tcp
 
@@ -130,12 +130,12 @@ ss -tlnp | grep 9000
 
 **WebSocket errors**: Ensure `mod_proxy_wstunnel` is enabled. Without it, Portainer's container terminal will not work.
 
-**"Origin Invalid" error**: Confirm `--trusted-origins` is set to your full HTTPS domain URL.
+**"Origin Invalid" error**: Confirm `--trusted-origins` is set to the domain used to access Portainer, for example `portainer.example.com`.
 
 **502 errors**: Check that Portainer container is running and listening on the expected port:
 ```bash
 docker ps | grep portainer
-docker exec portainer netstat -tlnp
+docker port portainer 9000
 ```
 
 **SSL handshake failures**: If proxying to Portainer's HTTPS port, add `SSLProxyEngine On` and `SSLProxyVerify none` to disable verification of Portainer's self-signed cert.
