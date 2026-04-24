@@ -24,7 +24,7 @@ Different secret types serve different purposes:
 Opaque                     - Arbitrary key-value data (most common)
 kubernetes.io/tls          - TLS certificate and private key
 kubernetes.io/dockerconfigjson - Container registry credentials
-kubernetes.io/service-account-token - Service account tokens
+kubernetes.io/service-account-token - Service account tokens (legacy)
 kubernetes.io/ssh-auth     - SSH private keys
 kubernetes.io/basic-auth   - Username and password pairs
 ```
@@ -35,7 +35,7 @@ kubernetes.io/basic-auth   - Username and password pairs
 2. Select the target namespace from the dropdown
 3. Navigate to **ConfigMaps & Secrets** in the sidebar
 4. Click on the **Secrets** tab
-5. Click **+ Add Secret**
+5. Click **Add with form**
 
 ## Step 2: Fill in the Secret Form
 
@@ -53,7 +53,7 @@ Secret entries:
   Key: REDIS_PASSWORD       Value: redis-secret-password
 ```
 
-Portainer automatically base64-encodes the values when storing them.
+Portainer handles the encoding Kubernetes requires when storing the Secret values.
 
 ## Step 3: Create a Docker Registry Secret
 
@@ -67,16 +67,15 @@ Type:              kubernetes.io/dockerconfigjson
 Registry server:   docker.io  (or registry.company.com)
 Username:          your-username
 Password:          your-password-or-token
-Email:             ops@company.com
+Email:             ops@company.com  (optional)
 ```
 
 Or via kubectl for reference:
 
 ```bash
-# Docker Hub or generic registry
+# Docker Hub
 
 kubectl create secret docker-registry registry-credentials \
-  --docker-server=docker.io \
   --docker-username=myusername \
   --docker-password=mytoken \
   --docker-email=ops@company.com \
@@ -86,7 +85,7 @@ kubectl create secret docker-registry registry-credentials \
 kubectl create secret docker-registry ecr-credentials \
   --docker-server=123456789.dkr.ecr.us-east-1.amazonaws.com \
   --docker-username=AWS \
-  --docker-password=$(aws ecr get-login-password) \
+  --docker-password=$(aws ecr get-login-password --region us-east-1) \
   -n production
 ```
 
@@ -117,7 +116,8 @@ openssl req -x509 -nodes -days 365 \
   -newkey rsa:2048 \
   -keyout /tmp/tls.key \
   -out /tmp/tls.crt \
-  -subj "/CN=example.com/O=My Company"
+  -subj "/CN=example.com/O=My Company" \
+  -addext "subjectAltName = DNS:example.com"
 
 kubectl create secret tls my-tls-secret \
   --cert=/tmp/tls.crt \
@@ -142,8 +142,7 @@ kubectl get secret my-app-secrets -n production \
 
 # View all keys (not values) in a secret
 kubectl get secret my-app-secrets -n production \
-  -o jsonpath='{.data}' | python3 -m json.tool | \
-  python3 -c "import sys, json; [print(k) for k in json.load(sys.stdin).keys()]"
+  -o go-template='{{range $k, $v := .data}}{{printf "%s\n" $k}}{{end}}'
 ```
 
 ## Step 6: Use the Secret in a Deployment
@@ -156,8 +155,16 @@ kind: Deployment
 metadata:
   name: my-app
   namespace: production
+  labels:
+    app: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: my-app
@@ -169,7 +176,7 @@ spec:
                 secretKeyRef:
                   name: my-app-secrets
                   key: DATABASE_PASSWORD
-            # All keys from Secret as environment variables
+          # All keys from Secret as environment variables
           envFrom:
             - secretRef:
                 name: my-app-secrets
@@ -177,7 +184,7 @@ spec:
 
 ## Step 7: Rotate a Secret
 
-To update a Secret without downtime:
+To update a Secret and roll workloads to the new values:
 
 1. In Portainer, find the Secret and click **Edit**
 2. Update the value(s)
@@ -188,8 +195,8 @@ To update a Secret without downtime:
 # Restart deployment to use new secret values
 kubectl rollout restart deployment/my-app -n production
 
-# For secrets mounted as volumes, changes propagate automatically
-# (within kubelet sync period, typically 1 minute)
+# For Secrets mounted as volumes, changes propagate automatically
+# after the kubelet detects the update (except for subPath mounts)
 ```
 
 ## Step 8: Security Best Practices
@@ -210,10 +217,12 @@ rules:
 EOF
 
 # Enable secret encryption at rest (on cluster, not Portainer)
-# Edit kube-apiserver --encryption-provider-config flag
+# Configure kube-apiserver with --encryption-provider-config
 
-# Audit secret access
-kubectl get events -n production | grep Secret
+# Configure Kubernetes audit logging to record Secret access
+# Example kube-apiserver flags:
+# --audit-policy-file=/etc/kubernetes/audit-policy.yaml
+# --audit-log-path=/var/log/kubernetes/audit/audit.log
 ```
 
 ## Conclusion
