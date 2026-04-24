@@ -8,7 +8,7 @@ Description: Learn how to secure your Portainer installation by placing it behin
 
 ## Introduction
 
-Placing Portainer behind a VPN is one of the most effective security controls you can apply. Instead of exposing Portainer directly to the internet, access is restricted to VPN-connected users only. This eliminates the attack surface for external threats entirely.
+Placing Portainer behind a VPN is one of the most effective security controls you can apply. Instead of exposing Portainer directly to the internet, access is restricted to VPN-connected users only. This removes Portainer's direct internet-facing attack surface.
 
 ## Prerequisites
 
@@ -42,12 +42,10 @@ WireGuard is the recommended VPN for modern setups - fast, simple, and secure.
 sudo apt update && sudo apt install wireguard -y
 
 # Generate server keys
-wg genkey | tee /etc/wireguard/server-private.key | wg pubkey > /etc/wireguard/server-public.key
+sudo sh -c 'umask 077; wg genkey | tee /etc/wireguard/server-private.key | wg pubkey > /etc/wireguard/server-public.key'
 
-chmod 600 /etc/wireguard/server-private.key
-
-SERVER_PRIVATE=$(cat /etc/wireguard/server-private.key)
-SERVER_PUBLIC=$(cat /etc/wireguard/server-public.key)
+SERVER_PRIVATE=$(sudo cat /etc/wireguard/server-private.key)
+SERVER_PUBLIC=$(sudo cat /etc/wireguard/server-public.key)
 echo "Server public key: $SERVER_PUBLIC"
 ```
 
@@ -59,8 +57,9 @@ echo "Server public key: $SERVER_PUBLIC"
 Address = 10.10.0.1/24
 PrivateKey = SERVER_PRIVATE_KEY_HERE
 ListenPort = 51820
-PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+# Replace YOUR_PUBLIC_INTERFACE with the server's outbound interface if you need forwarding/NAT
+PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o YOUR_PUBLIC_INTERFACE -j MASQUERADE
+PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o YOUR_PUBLIC_INTERFACE -j MASQUERADE
 
 [Peer]
 # Admin user 1
@@ -88,11 +87,21 @@ sudo wg show
 # Allow WireGuard from anywhere
 sudo ufw allow 51820/udp
 
-# Allow Portainer ONLY from WireGuard VPN network
-sudo ufw allow from 10.10.0.0/24 to any port 9443 comment "Portainer - VPN only"
+# If Portainer is published with Docker, do not rely on UFW alone.
+# Bind it to the WireGuard IP instead of 0.0.0.0, for example by recreating it with:
+# docker run -d \
+#   --name portainer \
+#   --restart=always \
+#   -p 10.10.0.1:9443:9443 \
+#   -v /var/run/docker.sock:/var/run/docker.sock \
+#   -v portainer_data:/data \
+#   portainer/portainer-ce:sts
+#
+# UFW rules below apply to services listening on the host itself.
+sudo ufw allow from 10.10.0.0/24 to any port 9443 proto tcp comment "Portainer - VPN only"
 
 # Deny Portainer from all other sources
-sudo ufw deny 9443
+sudo ufw deny 9443/tcp
 
 # Apply rules
 sudo ufw enable
@@ -106,11 +115,12 @@ sudo ufw status verbose | grep 9443
 
 ```bash
 # Generate client keys
+umask 077
 wg genkey | tee client-private.key | wg pubkey > client-public.key
 
 CLIENT_PRIVATE=$(cat client-private.key)
 CLIENT_PUBLIC=$(cat client-public.key)
-SERVER_PUBLIC=$(cat /etc/wireguard/server-public.key)
+SERVER_PUBLIC=$(sudo cat /etc/wireguard/server-public.key)
 SERVER_IP="203.0.113.100"  # Your server's public IP
 
 # Client config file
@@ -123,7 +133,7 @@ DNS = 1.1.1.1
 [Peer]
 PublicKey = $SERVER_PUBLIC
 Endpoint = $SERVER_IP:51820
-AllowedIPs = 10.10.0.0/24    # Only route VPN traffic through tunnel
+AllowedIPs = 10.10.0.0/24
 PersistentKeepalive = 25
 EOF
 
@@ -144,6 +154,7 @@ Tailscale is an easier-to-manage VPN built on WireGuard:
 ```bash
 # Install Tailscale on the Portainer server
 curl -fsSL https://tailscale.com/install.sh | sh
+# Requires tag ownership for tag:portainer in your tailnet policy
 sudo tailscale up --advertise-tags=tag:portainer
 
 # Get the Tailscale IP of the server
@@ -157,11 +168,11 @@ Configure Portainer to bind to the Tailscale interface:
 # Bind Portainer to Tailscale IP only
 docker run -d \
   --name portainer \
-  --restart=unless-stopped \
-  -p ${TAILSCALE_IP}:9443:9443 \  # Only listen on Tailscale interface
+  --restart=always \
+  -p ${TAILSCALE_IP}:9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 
 # Users access via: https://100.x.x.x:9443 (Tailscale IP)
 ```
@@ -176,11 +187,6 @@ Using Tailscale ACLs:
       "action": "accept",
       "src": ["tag:portainer-admins"],
       "dst": ["tag:portainer:9443"]
-    },
-    {
-      "action": "deny",
-      "src": ["*"],
-      "dst": ["tag:portainer:9443"]
     }
   ]
 }
@@ -194,16 +200,20 @@ For enterprise environments with centralized VPN management:
 # Install OpenVPN Access Server (Docker)
 docker run -d \
   --name=openvpn-as \
+  --device /dev/net/tun \
+  --cap-add=MKNOD \
   --cap-add=NET_ADMIN \
   -p 943:943 \
   -p 443:443/tcp \
   -p 1194:1194/udp \
-  -v openvpn_data:/config \
-  ghcr.io/linuxserver/openvpn-as:latest
+  -v /path/to/openvpn-data:/openvpn \
+  --restart=unless-stopped \
+  openvpn/openvpn-as
 
-# Configure routing to reach Portainer's private IP
-# In OpenVPN AS dashboard: Configure → VPN Settings → Routing
-# Add: 10.0.0.0/24 via server's internal IP
+# Configure routing to reach Portainer's private subnet
+# In OpenVPN AS dashboard: Configuration -> VPN Settings -> Routing
+# Set "Should VPN clients have access to private subnets?" to Yes, using NAT
+# Set "Specify the subnets to which all clients should be given access" to the Portainer subnet, for example 10.0.0.0/24
 ```
 
 ## Step: Verify VPN-Only Access
@@ -215,9 +225,9 @@ curl -k https://portainer.example.com:9443/api/system/status
 
 # Test with VPN connected (should work)
 curl -k https://10.10.0.1:9443/api/system/status
-# Expected: {"Status":"..."}
+# Expected: JSON response with fields such as Version and InstanceID
 ```
 
 ## Conclusion
 
-Running Portainer behind a VPN eliminates internet-facing exposure entirely, making brute force attacks, credential stuffing, and CVE exploitation against the Portainer service virtually impossible for external attackers. WireGuard provides a modern, performant option for self-managed VPN, while Tailscale offers the easiest setup for teams who prefer a managed service. Either approach dramatically improves your security posture compared to direct internet exposure.
+Running Portainer behind a VPN removes its direct internet-facing exposure, which blocks opportunistic brute force attacks, credential stuffing, and direct exploitation from the public internet. WireGuard provides a modern, performant option for self-managed VPN, while Tailscale offers the easiest setup for teams who prefer a managed service. Either approach dramatically improves your security posture compared to direct internet exposure.
