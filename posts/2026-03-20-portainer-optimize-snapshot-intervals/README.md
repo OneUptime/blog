@@ -8,36 +8,37 @@ Description: Learn how to tune the Portainer Docker snapshot interval to balance
 
 ---
 
-The snapshot interval controls how often Portainer polls each Docker environment to refresh its internal state. The right interval depends on your deployment size, how critical real-time accuracy is, and your server's resources.
+The snapshot interval controls how often Portainer refreshes snapshot data for directly connected Docker environments. The right interval depends on your deployment size, how critical current summary data is, and your server's resources.
 
 ## What Snapshots Contain
 
-Each snapshot captures the full state of a Docker environment:
+Each snapshot captures summary data for a Docker environment, including:
 
 - All running and stopped containers
 - All images, volumes, and networks
-- Container resource stats (CPU, memory, network)
-- Stack states and service replica counts
+- Summary counts for containers, images, volumes, services, stacks, and nodes
+- Engine information such as Docker version, CPU count, and total memory
 
-Portainer stores these snapshots in its BoltDB database and serves them to the UI. The UI does not call Docker directly - it reads from the snapshot.
+Portainer stores this snapshot data in its BoltDB database. Portainer uses it for Home/dashboard summary information, while detailed operations still go through the Portainer server, which proxies requests to the underlying Docker or Kubernetes API.
 
 ## Default and Recommended Intervals
 
-```bash
-# Default: 60 seconds
+```text
+# Default: 5 minutes
 
 portainer/portainer-ce:latest
 # Equivalent to:
-portainer/portainer-ce:latest --snapshot-interval 60
+portainer/portainer-ce:latest --snapshot-interval 5m
 ```
 
 | Deployment Size | Recommended Interval | Rationale |
 |-----------------|---------------------|-----------|
 | 1–10 containers | 30–60s | Fine; minimal overhead |
-| 10–50 containers | 60–120s | Default is acceptable |
+| 10–50 containers | 60–120s | Shorter intervals are still practical |
 | 50–200 containers | 120–300s | Reduces database write pressure |
 | 200+ containers | 300–600s | Significant resource savings |
-| Edge environments | 600–1800s | Low-bandwidth, infrequent check-in |
+
+Edge Agent Async environments use separate poll and snapshot interval settings.
 
 ## Setting the Snapshot Interval
 
@@ -46,11 +47,11 @@ Pass the flag when starting Portainer:
 ```bash
 docker run -d \
   --name portainer \
-  -p 9000:9000 \
+  -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
-  --snapshot-interval 300
+  --snapshot-interval 3m
 ```
 
 In a Docker Compose or Portainer stack:
@@ -60,38 +61,43 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     command:
-      - --snapshot-interval=180
-      - --log-level=warn
+      - --snapshot-interval=3m
+      - --log-level=WARN
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
     ports:
-      - "9000:9000"
+      - "9443:9443"
 ```
 
 ## Measuring Snapshot Overhead
 
-Check how much time snapshots take on your system:
+Check the resource cost of snapshots on your system:
 
 ```bash
-# Enable debug logging temporarily to see snapshot timing
+# Enable debug logging temporarily while testing intervals
 docker stop portainer
+docker rm portainer
 docker run -d --name portainer \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  -p 9000:9000 \
+  -p 9443:9443 \
   portainer/portainer-ce:latest \
-  --log-level debug
+  --log-level DEBUG \
+  --log-mode NOCOLOR
 
 # Watch for snapshot-related log lines
 docker logs -f portainer 2>&1 | grep -i snapshot
+
+# Check Portainer's own resource usage
+docker stats --no-stream portainer
 ```
 
-Each snapshot log line shows the environment name and time taken. If snapshots take >10 seconds, increase the interval significantly.
+Use `docker stats` to compare Portainer's CPU and memory usage while testing different intervals. Debug logs are useful for spotting snapshot-related errors, but Portainer does not document a fixed per-snapshot timing log format.
 
 ## Impact on UI Freshness
 
-With longer snapshot intervals, the Portainer UI may show stale data:
+With longer snapshot intervals, the Home dashboard and other snapshot-backed summary data may show stale information:
 
 | Interval | Data Age at Worst Case |
 |----------|----------------------|
@@ -99,25 +105,30 @@ With longer snapshot intervals, the Portainer UI may show stale data:
 | 120s | Up to 2 minutes stale |
 | 300s | Up to 5 minutes stale |
 
-For most operational uses (checking status, reviewing logs), 2–5 minute staleness is acceptable. For active deployments, check containers directly via the CLI if you need real-time status.
+For most overview use cases, 2–5 minute staleness is acceptable. For actions that need live state, use a detailed Portainer view or check the Docker CLI.
 
 ## Per-Environment Snapshot Control
 
-Portainer Business Edition allows disabling snapshots for specific environments that are rarely accessed:
+Portainer's main snapshot interval is a global setting, not a per-environment toggle. In Portainer Business Edition, Edge Agent Async environments have separate per-environment snapshot settings:
 
-1. Go to **Environments > [environment name]**.
-2. Under **Snapshot** settings, disable automatic polling.
-3. Click **Snapshot now** manually when you need fresh data.
+1. Go to **Environments > Add environment**.
+2. Choose **Docker Standalone > Edge Agent Async**, then expand **More settings**.
+3. Adjust the **Snapshot** interval for that environment before creating it.
 
 ## Combining with Low Log Level
 
 Reduce I/O overhead by combining a longer interval with a lower log level:
 
 ```bash
-portainer/portainer-ce:latest \
-  --snapshot-interval 180 \
-  --log-level warn \
-  --log-mode file
+docker run -d \
+  --name portainer \
+  -p 9443:9443 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:latest \
+  --snapshot-interval 3m \
+  --log-level WARN \
+  --log-mode NOCOLOR
 ```
 
-`--log-mode file` writes logs to disk instead of stdout, which reduces the load on Docker's log driver.
+`--log-level WARN` reduces log verbosity. `--log-mode` only changes log formatting (`PRETTY`, `NOCOLOR`, or `JSON`) - it does not redirect logs away from stdout.
