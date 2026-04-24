@@ -4,90 +4,107 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Rock Pi, Rockchip, ARM64, Docker, Self-Hosted, Home Lab
 
-Description: Install Docker and Portainer on Rock Pi single-board computers powered by Rockchip processors for a capable and affordable home lab platform.
+Description: Install Docker and Portainer on Rock Pi and ROCK single-board computers powered by Rockchip processors for a capable and affordable home lab platform.
 
 ## Introduction
 
-Rock Pi boards from Radxa are powerful ARM64 single-board computers featuring Rockchip RK3399, RK3568, or RK3588 processors. The RK3588 in particular rivals desktop CPUs for single-board performance. This guide covers installing Docker and Portainer on Rock Pi boards running Ubuntu or Debian.
+The Rockchip-based Rock Pi and ROCK boards from Radxa are capable ARM64 single-board computers built around processors such as the RK3399 and RK3588 series. The RK3588 in particular rivals desktop CPUs for single-board performance. This guide covers installing Docker and Portainer on Rockchip-based Radxa boards running Ubuntu or Debian.
 
 ## Supported Models
 
-- Rock Pi 4 (RK3399) - 4 TOPS NPU, 4GB LPDDR4
-- Rock Pi X (Intel Atom) - x86_64 architecture
+- Rock Pi 4 (RK3399) - up to 4GB LPDDR4
 - Rock 4 SE (RK3399-T)
 - Rock 5B (RK3588) - 6 TOPS NPU, up to 16GB RAM
 - Rock 5A (RK3588S)
 
 ## Prerequisites
 
-- Rock Pi board with Ubuntu 22.04 or Debian 11
+- Radxa Rock Pi or ROCK board with Ubuntu 22.04 or Debian 11
 - eMMC module or MicroSD (eMMC strongly recommended)
 - SSH access
 
 ## Step 1: Flash and Configure the OS
 
-Download the official Ubuntu image for your Rock Pi from Radxa's wiki. Flash using BalenaEtcher.
+Download the official Debian-based image for your board from Radxa's documentation. Flash using BalenaEtcher.
 
 ```bash
-# SSH in with default credentials
+# SSH in with the default Radxa OS credentials
 
-ssh rock@<rock-pi-ip>  # or ssh radxa@<ip>
+ssh radxa@<rock-pi-ip>
 
 # Update system
 sudo apt update && sudo apt full-upgrade -y
 
-# Enable eMMC boot (if using eMMC)
-# Follow Radxa's specific instructions for your model
+# If you want to move the system to eMMC or NVMe,
+# follow Radxa's model-specific boot media instructions
 ```
 
 ## Step 2: Install Docker
 
 ```bash
 # Install prerequisites
+sudo apt update
 sudo apt install -y \
     ca-certificates \
-    curl \
-    gnupg
+    curl
 
-# Add Docker GPG key
+# Add Docker GPG key and repository for Ubuntu or Debian
 sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-    sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
-# Add Docker repo
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+. /etc/os-release
+if [ "$ID" = "ubuntu" ]; then
+  DISTRO=ubuntu
+  CODENAME="${UBUNTU_CODENAME:-$VERSION_CODENAME}"
+elif [ "$ID" = "debian" ]; then
+  DISTRO=debian
+  CODENAME="$VERSION_CODENAME"
+else
+  echo "This guide expects Ubuntu or Debian." >&2
+  exit 1
+fi
+
+sudo curl -fsSL https://download.docker.com/linux/$DISTRO/gpg \
+  -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/$DISTRO
+Suites: $CODENAME
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 # Install Docker
 sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 # Add user to docker group
 sudo usermod -aG docker $USER
-newgrp docker
 
 sudo systemctl enable --now docker
+
+# Log out and back in before using Docker without sudo,
+# or run: newgrp docker
 ```
 
 ## Step 3: Fix Rockchip cgroup Issues
 
-Older Rockchip kernels may have incomplete cgroup support:
+Older Rockchip kernels may have incomplete cgroup support, especially for the memory controller:
 
 ```bash
-# Check cgroup support
-cat /sys/fs/cgroup/cgroup.controllers
+# On cgroup v2 systems, list available controllers
+cat /sys/fs/cgroup/cgroup.controllers 2>/dev/null
 
-# If missing cpu or memory controllers, add kernel parameters
-sudo nano /boot/firmware/cmdline.txt
-# Add: cgroup_enable=memory cgroup_memory=1 cgroup_enable=cpuset
+# If memory is missing on an older kernel, add kernel parameters.
+# On Radxa OS, edit:
+sudo nano /etc/kernel/cmdline
+# Add: cgroup_enable=memory cgroup_memory=1
 
-# For Rock Pi 5 with mainline kernel
-sudo nano /boot/extlinux/extlinux.conf
-# Add to APPEND line: cgroup_enable=memory cgroup_memory=1
+sudo u-boot-update
+# Verify the generated boot entry:
+cat /boot/extlinux/extlinux.conf
 
 sudo reboot
 ```
@@ -95,6 +112,7 @@ sudo reboot
 ## Step 4: Configure Docker for Rockchip
 
 ```bash
+sudo mkdir -p /etc/docker
 sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
 {
   "storage-driver": "overlay2",
@@ -102,9 +120,6 @@ sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
   "log-opts": {
     "max-size": "10m",
     "max-file": "3"
-  },
-  "features": {
-    "buildkit": true
   }
 }
 EOF
@@ -119,19 +134,19 @@ docker volume create portainer_data
 
 docker run -d \
   --name portainer \
-  --restart=unless-stopped \
-  -p 9000:9000 \
+  --restart=always \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
 
 ## Step 6: Configure Firewall
 
+Docker-published ports bypass normal UFW rules on Debian and Ubuntu. Keep SSH open, then restrict access to Portainer with upstream firewalling or Docker's `DOCKER-USER` chain if you need tighter network controls.
+
 ```bash
-sudo ufw allow 9000/tcp comment 'Portainer HTTP'
-sudo ufw allow 9443/tcp comment 'Portainer HTTPS'
+sudo apt install -y ufw
 sudo ufw allow ssh
 sudo ufw enable
 ```
@@ -141,8 +156,6 @@ sudo ufw enable
 The Rock 5B with RK3588 supports running much heavier workloads. Example high-performance stack:
 
 ```yaml
-version: "3.8"
-
 services:
   # Database server - takes advantage of RK3588's performance
   postgresql:
@@ -152,7 +165,7 @@ services:
       POSTGRES_DB: production
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    # Tune for RK3588 performance
+    # Example tuning for an 8GB+ RK3588 board
     command: >
       postgres
       -c max_connections=200
@@ -177,19 +190,18 @@ volumes:
 
 ## NPU Acceleration (Rock Pi 5 / RK3588)
 
-The RK3588's 6 TOPS NPU can be accessed in containers:
+NPU-accelerated workloads on the RK3588 require the Rockchip RKNPU2 userspace stack on the host:
 
 ```bash
-# Check NPU device
-ls /dev/rknpu*
+# Check the installed RKNPU driver
+sudo cat /sys/kernel/debug/rknpu/version
 
-# Docker run with NPU access
-docker run -d \
-  --device /dev/rknpu0:/dev/rknpu0 \
-  --name rknn-app \
-  your-rknn-image:latest
+# If needed on Radxa OS
+sudo apt update
+sudo apt install -y rknpu2-rk3588
+sudo reboot
 ```
 
 ## Conclusion
 
-Rock Pi boards with Portainer offer excellent home lab capabilities, especially the Rock 5B with RK3588 which provides near-desktop performance at low power consumption. The ARM64 architecture ensures compatibility with all major Docker images. For demanding workloads, the RK3588's combination of A76 performance cores and a capable NPU makes it stand out among SBCs.
+Rock Pi boards with Portainer offer excellent home lab capabilities, especially the Rock 5B with RK3588 which provides near-desktop performance at low power consumption. Many major Docker images publish ARM64 variants, making these boards practical for self-hosting. For demanding workloads, the RK3588's combination of A76 performance cores and a capable NPU makes it stand out among SBCs.
