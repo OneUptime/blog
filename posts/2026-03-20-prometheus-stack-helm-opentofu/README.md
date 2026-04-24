@@ -20,23 +20,11 @@ resource "random_password" "grafana_admin" {
   special = false
 }
 
-resource "kubernetes_secret" "grafana_admin" {
-  metadata {
-    name      = "grafana-admin-credentials"
-    namespace = "monitoring"
-  }
-
-  data = {
-    admin-user     = "admin"
-    admin-password = random_password.grafana_admin.result
-  }
-}
-
 resource "helm_release" "prometheus_stack" {
   name             = "kube-prometheus-stack"
   repository       = "https://prometheus-community.github.io/helm-charts"
   chart            = "kube-prometheus-stack"
-  version          = "56.6.2"
+  version          = "83.6.0"
   namespace        = "monitoring"
   create_namespace = true
 
@@ -106,7 +94,7 @@ resource "helm_release" "prometheus_stack" {
           receiver        = "default"
 
           routes = [{
-            match = { severity = "critical" }
+            matchers = ["severity = \"critical\""]
             receiver = "pagerduty"
           }]
         }
@@ -125,7 +113,7 @@ resource "helm_release" "prometheus_stack" {
             name = "pagerduty"
             pagerduty_configs = [{
               routing_key = var.pagerduty_key
-              severity    = "{{ .Labels.severity }}"
+              severity    = "{{ .CommonLabels.severity }}"
             }]
           }
         ]
@@ -137,9 +125,9 @@ resource "helm_release" "prometheus_stack" {
       adminPassword = random_password.grafana_admin.result
 
       persistence = {
-        enabled      = true
-        size         = "10Gi"
-        storageClass = "gp3"
+        enabled          = true
+        size             = "10Gi"
+        storageClassName = "gp3"
       }
 
       ingress = {
@@ -176,11 +164,11 @@ resource "helm_release" "prometheus_stack" {
 
 ## Step 2: Create Custom PrometheusRule
 
-```hcl
-# Custom alerting rule
-resource "kubernetes_manifest" "custom_alert_rule" {
-  depends_on = [helm_release.prometheus_stack]
+Apply Step 1 first so the Prometheus Operator CRDs already exist in the cluster. Then add the following resource and run `tofu apply` again. The `kubernetes_manifest` resource validates CRD schemas during planning, so it cannot create a `PrometheusRule` in the same initial apply that installs `kube-prometheus-stack`.
 
+```hcl
+# rules.tf - apply after the initial kube-prometheus-stack deployment
+resource "kubernetes_manifest" "custom_alert_rule" {
   manifest = {
     apiVersion = "monitoring.coreos.com/v1"
     kind       = "PrometheusRule"
