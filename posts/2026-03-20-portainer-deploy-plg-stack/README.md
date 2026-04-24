@@ -8,19 +8,19 @@ Description: Learn how to deploy the PLG logging stack (Promtail, Loki, Grafana)
 
 ---
 
-The PLG stack (Promtail, Loki, Grafana) is a lightweight alternative to the EFK stack. Loki indexes only log metadata (labels) rather than full text, making it far more storage-efficient. Grafana provides the query UI using LogQL.
+The PLG stack (Promtail, Loki, Grafana) is a lightweight alternative to the EFK stack. Loki indexes only log metadata (labels) rather than full text, making it far more storage-efficient. Grafana provides the query UI using LogQL. Promtail reached end-of-life on March 2, 2026, so for new deployments Grafana recommends Grafana Alloy; the configuration below is for existing Promtail-based setups.
 
 ## Stack Definition
 
-```yaml
-version: "3.8"
+In Portainer, save `loki.yaml`, `promtail.yaml`, and `grafana-datasources.yaml` on the Docker host under `/opt/plg`, then create a stack named `plg`:
 
+```yaml
 services:
   loki:
     image: grafana/loki:2.9.4
     command: -config.file=/etc/loki/loki.yaml
     volumes:
-      - ./loki.yaml:/etc/loki/loki.yaml:ro
+      - /opt/plg/loki.yaml:/etc/loki/loki.yaml:ro
       - loki_data:/loki
     ports:
       - "3100:3100"
@@ -36,9 +36,8 @@ services:
     image: grafana/promtail:2.9.4
     command: -config.file=/etc/promtail/promtail.yaml
     volumes:
-      - ./promtail.yaml:/etc/promtail/promtail.yaml:ro
+      - /opt/plg/promtail.yaml:/etc/promtail/promtail.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
     networks:
       - plg_net
     depends_on:
@@ -54,7 +53,7 @@ services:
       - "3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/loki.yaml:ro
+      - /opt/plg/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/loki.yaml:ro
     networks:
       - plg_net
     depends_on:
@@ -71,7 +70,7 @@ networks:
 
 ## Loki Configuration
 
-Create `loki.yaml`:
+Create `/opt/plg/loki.yaml`:
 
 ```yaml
 auth_enabled: false
@@ -120,7 +119,7 @@ compactor:
 
 ## Promtail Configuration
 
-Create `promtail.yaml` for Docker log discovery:
+Create `/opt/plg/promtail.yaml` for Docker log discovery:
 
 ```yaml
 server:
@@ -143,12 +142,6 @@ scrape_configs:
             values: ["running"]
     pipeline_stages:
       - docker: {}
-      - json:
-          expressions:
-            log: log
-            stream: stream
-      - labels:
-          stream:
     relabel_configs:
       - source_labels: ['__meta_docker_container_name']
         regex: '/(.*)'
@@ -163,7 +156,7 @@ scrape_configs:
 
 ## Grafana Auto-Provisioned Loki Datasource
 
-Create `grafana-datasources.yaml` to pre-configure the Loki data source:
+Create `/opt/plg/grafana-datasources.yaml` to pre-configure the Loki data source:
 
 ```yaml
 apiVersion: 1
@@ -195,6 +188,6 @@ In Grafana's Explore view with the Loki data source:
 # Rate of errors per service over 5 minutes
 sum by (service) (rate({stack="my-app"} |= "error" [5m]))
 
-# Top 10 slowest requests
+# Requests slower than 500 ms
 {service="api"} | json | response_ms > 500 | line_format "{{.response_ms}}ms {{.path}}"
 ```
