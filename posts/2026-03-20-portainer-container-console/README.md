@@ -19,12 +19,8 @@ Portainer's container console (Exec) gives you an interactive shell inside a run
 ## Step 1: Open the Container Console
 
 1. Navigate to **Containers** in Portainer.
-2. Find your running container.
-3. Click the **Console** icon (terminal icon) in the container row.
-
-Or:
-1. Click on the container name.
-2. Click the **Console** button on the container details page.
+2. Click on your running container.
+3. Click the **Console** button on the container details page.
 
 ## Step 2: Configure the Console Session
 
@@ -34,14 +30,14 @@ A dialog appears before the console opens:
 
 Select the shell available in the container:
 
-| Shell | Path | Availability |
+| Command | Description | Availability |
 |-------|------|-------------|
 | `/bin/bash` | Full-featured bash | Ubuntu, Debian, CentOS, most full distros |
-| `/bin/sh` | POSIX shell | Alpine, minimal images, universal |
+| `/bin/sh` | POSIX shell | Many Linux and minimal images |
 | `/bin/ash` | BusyBox shell | Alpine Linux |
 | `/bin/zsh` | Z shell | Images with zsh installed |
 
-For Alpine-based images, always use `/bin/sh` - bash is not included.
+For Alpine-based images, select `/bin/ash` in Portainer - bash is not included by default.
 
 ### Choose a User
 
@@ -177,7 +173,7 @@ ls -la /app/data
 fuser /app/data/database.db
 
 # View the last 50 lines of a log file:
-tail -50 /var/log/app.log
+tail -n 50 /var/log/app.log
 ```
 
 ## Step 5: Non-Interactive Commands via Exec
@@ -195,7 +191,7 @@ docker exec --user root my-container cat /etc/shadow
 docker exec -u 1000 my-container whoami
 ```
 
-In Portainer, use the console with a command like `/bin/sh -c "your command here"` for single commands.
+In Portainer, toggle **Use custom command** and enter a command like `/bin/sh -c "your command here"` for single commands.
 
 ## Step 6: Console Not Available - Troubleshooting
 
@@ -204,18 +200,14 @@ In Portainer, use the console with a command like `/bin/sh -c "your command here
 Possible causes:
 - **No shell in image**: Distroless images don't have a shell. Use a debug image.
 - **Container is stopped**: Console only works on running containers.
+- **Interactive & TTY not enabled**: If Portainer reports that the interactive flag and TTY flag are not set, edit the container and enable **Interactive & TTY** in the advanced container settings.
 - **Portainer permissions**: Your Portainer role may not allow console access.
 
 ### Distroless Image Debug
 
 ```bash
-# Docker CLI: use --privileged debug container to exec into a distroless container
-docker run -it --rm \
-  --pid=container:my-distroless-app \
-  --network=container:my-distroless-app \
-  --volumes-from my-distroless-app \
-  ubuntu:22.04 \
-  bash
+# Docker CLI: use Docker Debug when the image has no shell
+docker debug my-distroless-app
 ```
 
 ## Conclusion
