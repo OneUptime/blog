@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Postfix, Rate Limiting, IPv4, Anti-Spam, SMTP, Security
 
-Description: Implement per-IPv4 SMTP rate limiting in Postfix using anvil service, smtpd restrictions, and policyd to prevent abuse and reduce spam delivery attempts.
+Description: Implement per-IPv4 SMTP rate limiting in Postfix using the anvil service, smtpd limits, and a policy daemon such as postfwd to prevent abuse and reduce spam delivery attempts.
 
 ## Introduction
 
@@ -16,11 +16,12 @@ Rate limiting prevents a single IPv4 address from flooding your mail server with
 # /etc/postfix/main.cf
 
 # Connection rate limits (anvil service)
+anvil_rate_time_unit = 60s                 # Time window for anvil rate limits
 
-smtpd_client_connection_rate_limit = 30    # Max 30 connections per minute per IP
+smtpd_client_connection_rate_limit = 30    # Max 30 connections per 60s per IP
 smtpd_client_connection_count_limit = 10   # Max 10 concurrent connections per IP
-smtpd_client_message_rate_limit = 30       # Max 30 messages per minute per IP
-smtpd_client_recipient_rate_limit = 100    # Max 100 recipients per minute per IP
+smtpd_client_message_rate_limit = 30       # Max 30 messages per 60s per IP
+smtpd_client_recipient_rate_limit = 100    # Max 100 recipients per 60s per IP
 
 # Exempt trusted networks from rate limiting
 smtpd_client_event_limit_exceptions = $mynetworks
@@ -33,50 +34,51 @@ smtpd_client_event_limit_exceptions = $mynetworks
 
 # Limit concurrent SMTP connections per IP
 smtpd_client_connection_count_limit = 5
-
-# Apply to specific restrictions
-smtpd_client_restrictions =
-    permit_mynetworks
-    check_client_access cidr:/etc/postfix/client_rate
-    permit
 ```
 
-## Using Policyd-SPF or Postscreen for Rate Limiting
+## Using Postscreen or a Policy Daemon
 
-Postscreen provides advanced rate limiting at the connection level:
+Postscreen adds connection-level screening before `smtpd`; use a policy daemon when you need custom per-client rate rules:
 
 ```bash
-# /etc/postfix/main.cf
+# /etc/postfix/master.cf
 
-# Enable postscreen (runs before smtpd)
-postscreen_access_list = permit_mynetworks cidr:/etc/postfix/postscreen_access.cidr
-postscreen_blacklist_action = drop
+smtp      inet  n       -       n       -       1       postscreen
+smtpd     pass  -       -       n       -       -       smtpd
+dnsblog   unix  -       -       n       -       0       dnsblog
+tlsproxy  unix  -       -       n       -       0       tlsproxy
+
+# /etc/postfix/main.cf
+postscreen_access_list = permit_mynetworks, cidr:/etc/postfix/postscreen_access.cidr
+postscreen_denylist_action = drop
 postscreen_greet_action = enforce
 postscreen_dnsbl_action = enforce
 postscreen_dnsbl_sites = zen.spamhaus.org*3
 
-# Rate limits via postscreen
+# Enable postscreen protocol tests
+postscreen_non_smtp_command_enable = yes
 postscreen_non_smtp_command_action = drop
+postscreen_pipelining_enable = yes
 postscreen_pipelining_action = enforce
 ```
 
-## External Policy Daemon with policyd
+## External Policy Daemon with postfwd
 
 For advanced per-IP rate limiting:
 
 ```bash
-# Install policyd (or postfwd)
-sudo apt install postfix-policyd-spf-python  # Example
+# Install postfwd (example policy daemon with rate-limit support)
+sudo apt install postfwd
+
+# /etc/postfix/postfwd.cf
+id=RATE001 ; action=rate(client_address/30/60/450 4.7.1 rate limit exceeded)
 
 # /etc/postfix/main.cf
-smtpd_recipient_restrictions =
-    permit_mynetworks
-    permit_sasl_authenticated
-    reject_unauth_destination
-    check_policy_service inet:127.0.0.1:10031  # policyd
+smtpd_end_of_data_restrictions =
+    check_policy_service inet:127.0.0.1:10040  # postfwd default port
 
-# Start policyd service
-sudo systemctl start policyd
+# Start postfwd in daemon mode
+sudo postfwd --daemon -f /etc/postfix/postfwd.cf
 ```
 
 ## Monitoring Rate Limit Events
@@ -85,9 +87,8 @@ sudo systemctl start policyd
 # Watch for rate limit rejections in mail log
 sudo tail -f /var/log/mail.log | grep -E "rate limit|too many|NOQUEUE"
 
-# Common rate limit messages:
-# NOQUEUE: reject: RCPT from ...: 450 4.7.1 <client>: Client host rejected: too many connections
-# NOQUEUE: reject: RCPT from ...: 450 4.7.1 ...: too many messages
+# Rejections typically include "NOQUEUE" plus text such as
+# "too many connections" or "too many messages"
 
 # Count rejections per IP
 grep "too many" /var/log/mail.log | \
@@ -97,22 +98,22 @@ grep "too many" /var/log/mail.log | \
 sudo tail -f /var/log/mail.log | grep anvil
 ```
 
-## Whitelisting High-Volume Trusted Senders
+## Whitelisting High-Volume Trusted Clients
 
 ```bash
-# /etc/postfix/client_rate (CIDR format)
-# Trusted IPs: unlimited connections
-10.0.0.0/8        OK
-192.168.0.0/16    OK
-# Default: rate limiting applies
+# /etc/postfix/client_event_exceptions
+# Trusted client networks: exempt from smtpd_client_*_count/rate_limit settings
+10.0.0.0/8
+192.168.0.0/16
 ```
 
 ```bash
 # /etc/postfix/main.cf
-smtpd_client_event_limit_exceptions = $mynetworks
-# mynetworks hosts are exempt from all connection rate limits
+smtpd_client_event_limit_exceptions =
+    $mynetworks, /etc/postfix/client_event_exceptions
+# These clients are exempt from all smtpd_client_*_count/rate_limit settings
 ```
 
 ## Conclusion
 
-Postfix anvil rate limiting (`smtpd_client_connection_rate_limit`, `smtpd_client_message_rate_limit`, etc.) provides built-in per-IPv4 throttling without external dependencies. Set reasonable limits based on your expected legitimate traffic volume, use `smtpd_client_event_limit_exceptions` to whitelist internal networks, and monitor mail logs for rate limit events to tune thresholds. For advanced rate limiting, use postscreen or an external policy daemon.
+Postfix anvil rate limiting (`smtpd_client_connection_rate_limit`, `smtpd_client_message_rate_limit`, etc.) provides built-in per-IPv4 throttling without external dependencies. Set reasonable limits based on your expected legitimate traffic volume, use `smtpd_client_event_limit_exceptions` to whitelist internal networks, and monitor mail logs for rate limit events to tune thresholds. For advanced screening, use postscreen; for custom rate policies, use an external policy daemon.
