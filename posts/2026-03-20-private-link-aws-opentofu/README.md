@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, PrivateLink, AWS, VPC Endpoints, Networking, Infrastructure as Code
 
-Description: Learn how to configure AWS PrivateLink using OpenTofu - creating interface VPC endpoints for AWS services and custom services, and gateway endpoints for S3 and DynamoDB.
+Description: Learn how to configure AWS PrivateLink and VPC endpoints using OpenTofu - creating interface endpoints for AWS services and custom services, and gateway endpoints for S3 and DynamoDB.
 
 ## Introduction
 
-AWS PrivateLink enables private connectivity to AWS services and custom services without traffic leaving the AWS network. There are three types: Interface Endpoints (ENI-based, for most services), Gateway Endpoints (route-table based, for S3 and DynamoDB), and Gateway Load Balancer Endpoints.
+AWS PrivateLink enables private connectivity to supported AWS services and custom services without traffic leaving the AWS network. In this guide, the PrivateLink pieces are interface endpoints (ENI-based, for most supported services and custom endpoint services). Gateway endpoints are a separate VPC endpoint type that is route-table based and used for S3 and DynamoDB. AWS also supports Gateway Load Balancer endpoints for virtual appliances.
 
 ## Interface Endpoints for AWS Services
 
@@ -62,10 +62,10 @@ resource "aws_vpc_endpoint" "s3" {
       Effect    = "Allow"
       Principal = "*"
       Action    = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
-      Resource  = [
-        "arn:aws:s3:::${var.allowed_buckets[*]}",
-        "arn:aws:s3:::${var.allowed_buckets[*]}/*"
-      ]
+      Resource = concat(
+        [for bucket in var.allowed_buckets : "arn:aws:s3:::${bucket}"],
+        [for bucket in var.allowed_buckets : "arn:aws:s3:::${bucket}/*"]
+      )
     }]
   })
 
@@ -105,7 +105,7 @@ resource "aws_security_group" "vpc_endpoints" {
 ## Custom PrivateLink Service (Expose Your Own Service)
 
 ```hcl
-# Your service behind NLB
+# Internal NLB fronting your service
 resource "aws_lb" "service" {
   name               = "${var.environment}-private-nlb"
   internal           = true
@@ -127,11 +127,44 @@ resource "aws_vpc_endpoint_service" "main" {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_policy_document" "endpoint_notifications" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["vpce.amazonaws.com"]
+    }
+
+    actions   = ["SNS:Publish"]
+    resources = [aws_sns_topic.endpoint_notifications.arn]
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = [aws_vpc_endpoint_service.main.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+  }
+}
+
+resource "aws_sns_topic" "endpoint_notifications" {
+  name   = "${var.environment}-endpoint-notifications"
+  policy = data.aws_iam_policy_document.endpoint_notifications.json
+}
+
 # Notify when connection request comes in
-resource "aws_vpc_endpoint_service_notification" "main" {
-  vpc_endpoint_service_id = aws_vpc_endpoint_service.main.id
+resource "aws_vpc_endpoint_connection_notification" "main" {
+  vpc_endpoint_service_id     = aws_vpc_endpoint_service.main.id
   connection_notification_arn = aws_sns_topic.endpoint_notifications.arn
-  connection_events           = ["Accept", "Reject", "Delete"]
+  connection_events           = ["Accept", "Connect", "Delete", "Reject"]
 }
 ```
 
@@ -145,7 +178,7 @@ resource "aws_vpc_endpoint" "custom_service" {
   vpc_endpoint_type   = "Interface"
   subnet_ids          = var.consumer_subnet_ids
   security_group_ids  = [aws_security_group.consumer_endpoint.id]
-  private_dns_enabled = false  # Custom DNS required for custom services
+  private_dns_enabled = false  # Use endpoint-specific DNS unless the provider has configured verified private DNS
 
   tags = { Name = "custom-service-endpoint" }
 }
@@ -170,4 +203,4 @@ output "endpoint_service_name" {
 
 ## Conclusion
 
-AWS PrivateLink with OpenTofu enables private connectivity to AWS services (interface and gateway endpoints) and custom services. Gateway endpoints for S3 and DynamoDB are free - always use them in private subnets to avoid NAT Gateway costs and improve performance. Interface endpoints for SSM, Secrets Manager, ECR, and KMS are essential for private instances that need AWS API access without internet connectivity. For custom services, create an endpoint service backed by an NLB and require acceptance for controlled access.
+AWS PrivateLink with OpenTofu enables private connectivity to AWS services through interface endpoints and to custom services through endpoint services. Gateway endpoints for S3 and DynamoDB are separate VPC endpoints that complement PrivateLink, are free, and are useful on private-subnet route tables to avoid NAT Gateway costs. Interface endpoints for SSM, Secrets Manager, ECR, and KMS are essential for private instances that need AWS API access without internet connectivity. For custom services, create an endpoint service backed by an NLB and require acceptance for controlled access.
