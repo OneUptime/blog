@@ -65,6 +65,7 @@ metadata:
 spec:
   completions: 10     # Must complete 10 times
   parallelism: 3      # Run 3 in parallel
+  completionMode: Indexed  # Required for per-pod completion indexes
   backoffLimit: 6
   template:
     spec:
@@ -157,9 +158,9 @@ spec:
 
 ## Managing Jobs in Portainer
 
-Via Portainer: **Kubernetes > Applications** (select "Jobs" filter)
+Via Portainer: **Kubernetes > More Resources > Cron Jobs & Jobs** (select the "Jobs" or "Cron Jobs" tab)
 
-Or via the YAML manifest editor.
+Or via the **Create from file** option.
 
 ```bash
 # Monitor job progress via Portainer API
@@ -176,7 +177,7 @@ print(f'Failed: {status.get(\"failed\", 0)}')
 "
 
 # Trigger a CronJob manually (create a one-off Job from the CronJob template)
-kubectl create job --from=cronjob/database-backup manual-backup-$(date +%Y%m%d)
+kubectl create job manual-backup-$(date +%Y%m%d) --from=cronjob/database-backup -n production
 ```
 
 ## Conclusion
