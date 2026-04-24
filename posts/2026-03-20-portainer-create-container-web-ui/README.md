@@ -45,7 +45,7 @@ If using a private registry, click the **Registry** dropdown and select the conf
 
 ## Step 3: Configure Port Mappings
 
-Under the **Network** or **Ports** section, add port bindings:
+Under the **Network ports** section, add port bindings:
 
 | Host Port | Container Port | Protocol |
 |-----------|---------------|----------|
@@ -54,11 +54,11 @@ Under the **Network** or **Ports** section, add port bindings:
 
 - **Host port**: Port on the Docker host that accepts connections.
 - **Container port**: Port inside the container.
-- Leave the host port blank to let Docker assign a random available port.
+- To have Portainer assign random host ports for exposed ports, enable **Publish all exposed network ports to random host ports**.
 
 ## Step 4: Configure Volumes (Optional)
 
-Under the **Volumes** tab:
+Under **Advanced container settings** > **Volumes**:
 
 - Click **+ map additional volume**.
 - Set the **Container path** (e.g., `/var/www/html`).
@@ -79,7 +79,7 @@ Mode:            Read/Write
 
 ## Step 5: Set Environment Variables
 
-Under the **Env** tab, add environment variables:
+Under **Advanced container settings** > **Environment Variables**, add environment variables:
 
 ```text
 # Key-value pairs
@@ -93,9 +93,9 @@ You can also click **Load variables from .env file** to upload a file.
 
 ## Step 6: Configure Restart Policy
 
-Under the **Restart policy** dropdown, select:
+Under **Advanced container settings** > **Restart policy**, select:
 
-- **No** - Container does not restart automatically.
+- **Never** - Container does not restart automatically.
 - **Always** - Always restart the container.
 - **On failure** - Restart only if the container exits with a non-zero code.
 - **Unless stopped** - Always restart unless explicitly stopped.
@@ -104,11 +104,11 @@ For production services, select **Always** or **Unless stopped**.
 
 ## Step 7: Set Resource Limits (Optional)
 
-Under the **Resources** tab:
+Under **Advanced container settings** > **Runtime & Resources** > **Resources**:
 
 - **Memory reservation**: Soft limit (e.g., 256 MB)
-- **Memory limit**: Hard limit (e.g., 512 MB) - container is killed if exceeded
-- **CPU limit**: Maximum CPU usage (e.g., `0.5` = half a core)
+- **Memory limit**: Hard limit (e.g., 512 MB)
+- **Maximum CPU usage**: CPU limit (e.g., `0.5` = roughly half a CPU)
 
 ## Step 8: Deploy the Container
 
@@ -138,4 +138,4 @@ After deployment:
 
 ## Conclusion
 
-Creating containers through Portainer's web UI is a straightforward process that covers all the same options available via the `docker run` command, just presented in a user-friendly form. This makes it ideal for operators who prefer a visual interface, or for quickly deploying containers without remembering command-line syntax.
+Creating containers through Portainer's web UI is a straightforward process that covers many of the same options available via the `docker run` command, just presented in a user-friendly form. This makes it ideal for operators who prefer a visual interface, or for quickly deploying containers without remembering command-line syntax.
