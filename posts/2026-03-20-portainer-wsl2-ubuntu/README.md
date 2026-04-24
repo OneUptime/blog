@@ -22,13 +22,14 @@ WSL2 (Windows Subsystem for Linux 2) lets you run a full Linux environment insid
 # In PowerShell (Admin), install WSL2 with Ubuntu
 
 wsl --install -d Ubuntu-22.04
+# Restart Windows if prompted
 
 # Set WSL2 as default version
 wsl --set-default-version 2
 
 # Verify Ubuntu is using WSL2
 wsl -l -v
-# Should show:  Ubuntu-22.04  Running  2
+# Should show Ubuntu-22.04 with VERSION 2
 ```
 
 ## Step 2: Configure WSL2 Resources
@@ -44,12 +45,11 @@ processors=4
 # Swap file size
 swap=2GB
 # Enable localhost forwarding
-localhostforwarding=true
+localhostForwarding=true
 
 [experimental]
 # Automatically free memory when WSL2 is idle
-autoMemoryReclaim=dropcache
-networkingMode=mirrored
+autoMemoryReclaim=dropCache
 ```
 
 Apply changes:
@@ -75,25 +75,22 @@ sudo apt install -y \
     iptables
 ```
 
-## Step 4: Configure iptables for Docker
+## Step 4: Verify Firewall Compatibility
 
-WSL2 Ubuntu uses iptables-nft by default, but Docker works better with iptables-legacy:
+Docker is compatible with both `iptables-nft` and `iptables-legacy` on Ubuntu, so you do not need to switch to `iptables-legacy` just for Docker:
 
 ```bash
-# Switch to iptables-legacy
-sudo update-alternatives --set iptables /usr/sbin/iptables-legacy
-sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-
 # Verify
 sudo iptables --version
-# Should show: iptables v1.8.x (legacy)
+# On current Ubuntu releases this commonly shows: iptables v1.8.x (nf_tables)
 ```
 
 ## Step 5: Install Docker Engine
 
 ```bash
-# Install Docker Engine (not Docker Desktop)
-curl -fsSL https://get.docker.com | sh
+# Install Docker Engine (official convenience script for development environments)
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
 
 sudo usermod -aG docker $USER
 newgrp docker
@@ -101,25 +98,10 @@ newgrp docker
 
 ## Step 6: Start Docker in WSL2
 
-Docker daemon doesn't start automatically in WSL2. Add startup to `.bashrc` or `.profile`:
+Docker doesn't persist across WSL restarts unless you start it again or enable systemd. The supported approach on current WSL releases is to enable systemd:
 
 ```bash
-# Add to ~/.bashrc
-cat >> ~/.bashrc << 'EOF'
-
-# Start Docker daemon if not running
-if ! service docker status > /dev/null 2>&1; then
-    sudo service docker start
-fi
-EOF
-
-source ~/.bashrc
-```
-
-Or use systemd (WSL2 with Ubuntu 22.04+):
-
-```bash
-# Enable systemd in WSL2 (Ubuntu 22.04+)
+# Enable systemd in WSL2
 sudo tee /etc/wsl.conf > /dev/null << 'EOF'
 [boot]
 systemd=true
@@ -127,7 +109,14 @@ EOF
 
 # Restart WSL (from PowerShell)
 # wsl --shutdown
-# Then reopen Ubuntu - Docker will start automatically
+# Then reopen Ubuntu and enable Docker
+sudo systemctl enable --now docker
+```
+
+If your WSL build does not support systemd yet, start Docker manually when you open Ubuntu:
+
+```bash
+sudo service docker start
 ```
 
 ## Step 7: Deploy Portainer
@@ -138,11 +127,10 @@ docker volume create portainer_data
 docker run -d \
   --name portainer \
   --restart=unless-stopped \
-  -p 9000:9000 \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
 
 ## Step 8: Access Portainer from Windows
@@ -150,38 +138,37 @@ docker run -d \
 With WSL2's localhost forwarding, access directly from Windows browser:
 
 ```text
-http://localhost:9000
+https://localhost:9443
 ```
 
-No additional configuration needed - WSL2 automatically forwards ports to Windows.
+Portainer uses HTTPS by default on port 9443, so your browser will show a self-signed certificate warning on first access. No additional configuration is needed - WSL2 forwards localhost ports to Windows by default.
 
 ## Step 9: Windows Terminal Integration
 
-Add a WSL2 profile to Windows Terminal for easy access:
+Windows Terminal automatically creates WSL profiles. If you want a custom entry, add a profile like this:
 
 ```json
 {
   "name": "Ubuntu-Docker",
-  "commandline": "wsl -d Ubuntu-22.04 -- bash -c 'cd ~ && bash'",
-  "icon": "https://assets.ubuntu.com/v1/49a1a858-favicon-32x32.png"
+  "commandline": "wsl.exe -d Ubuntu-22.04"
 }
 ```
 
-## Persistent Docker Startup with Task Scheduler
+## Start WSL at Windows Logon with Task Scheduler
 
-To start WSL2 and Docker automatically at Windows logon:
+If you enabled systemd in the previous step, you can launch the Ubuntu distro at Windows logon and let Docker start as part of distro startup:
 
 ```powershell
 # Create a VBScript to start WSL silently
-Set-Content -Path "$env:APPDATA\StartWSLDocker.vbs" -Value @'
+Set-Content -Path "$env:APPDATA\StartWSL.vbs" -Value @'
 Set objShell = CreateObject("WScript.Shell")
-objShell.Run "wsl -d Ubuntu-22.04 -- bash -c 'sudo service docker start'", 0, False
+objShell.Run "wsl.exe -d Ubuntu-22.04", 0, False
 '@
 
 # Register as Task Scheduler task at logon
-$action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "$env:APPDATA\StartWSLDocker.vbs"
+$action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "$env:APPDATA\StartWSL.vbs"
 $trigger = New-ScheduledTaskTrigger -AtLogon
-Register-ScheduledTask -TaskName "Start WSL Docker" -Action $action -Trigger $trigger
+Register-ScheduledTask -TaskName "Start WSL Docker" -User "$env:USERDOMAIN\$env:USERNAME" -Action $action -Trigger $trigger
 ```
 
 ## Conclusion
