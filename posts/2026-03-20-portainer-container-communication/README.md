@@ -8,15 +8,13 @@ Description: Learn how to configure container-to-container communication in Port
 
 ---
 
-Containers communicate with each other by being on the same Docker network and using service names as hostnames. Portainer stacks automatically create shared networks, but cross-stack communication requires explicit network configuration.
+In Portainer-managed Compose stacks, containers communicate by sharing a Docker network and using service names as hostnames. Portainer stacks automatically create a default shared network, but cross-stack communication requires explicit network configuration.
 
 ## Same-Stack Communication
 
 Containers in the same Compose stack share a default network and can reach each other by service name:
 
 ```yaml
-version: "3.8"
-
 services:
   frontend:
     image: nginx:alpine
@@ -33,11 +31,11 @@ services:
     image: redis:7-alpine
 ```
 
-All four services are automatically placed on a network named `{stack-name}_default`. Docker DNS resolves `postgres` to the PostgreSQL container's IP, `redis` to the Redis container's IP, and so on.
+All four services are automatically placed on the stack's default network, typically named `{stack-name}_default`. Docker's embedded DNS resolves `postgres` to the PostgreSQL service, `redis` to the Redis service, and so on.
 
 ## Cross-Stack Communication
 
-When services are in separate stacks, use an external named network:
+When services are in separate stacks, use a shared named network. One stack can create it with a fixed name, and another stack can reference it as external:
 
 ```yaml
 # Stack 1: database stack
@@ -74,13 +72,13 @@ Deploy the database stack first (it creates the network), then deploy the applic
 | Scenario | Solution |
 |----------|----------|
 | Same stack, direct | Use service name: `http://api:3000` |
-| Same stack, different compose files | External named network |
+| Different stacks / different Compose projects | External named network |
 | Cross-host (Swarm) | Overlay network |
 | External access | Port mapping to host |
 
 ## Verifying Container Connectivity
 
-Test DNS resolution and port reachability from inside a container:
+Test DNS resolution and port reachability from inside a container. These examples assume the image includes `nslookup`, `nc`, and `curl`:
 
 ```bash
 # DNS resolution test
