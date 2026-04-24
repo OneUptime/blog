@@ -72,15 +72,17 @@ sudo sysctl -w net.ipv4.ip_forward=1
 echo "net.ipv4.ip_forward = 1" | sudo tee -a /etc/sysctl.conf
 ```
 
-For the host itself to reach L3 containers, add a direct route:
+On hosts using Docker's iptables firewall backend, you may also need to allow forwarded traffic because Docker can set the `FORWARD` policy to `DROP` when it enables IP forwarding.
+
+For the host itself, the Docker host should already have a route to the L3 subnet. Verify it instead of adding a duplicate route:
 
 ```bash
-sudo ip route add 172.16.100.0/24 dev eth0
+ip route show | grep 172.16.100
 ```
 
 ## Multiple L3 Subnets
 
-Create multiple isolated L3 networks on the same interface for tenant isolation:
+Create multiple L3 networks on the same interface when you need separate routed subnets:
 
 ```bash
 # Tenant A network
@@ -96,7 +98,7 @@ docker network create \
   tenant_b_net
 ```
 
-Containers on different subnets cannot communicate by default, providing natural tenant isolation without iptables rules.
+Containers on different L3 subnets that share the same parent interface can communicate by default. For tenant isolation, use separate parent interfaces or VLANs, or apply host firewall policies.
 
 ## Verifying L3 Routing
 
@@ -104,9 +106,9 @@ Containers on different subnets cannot communicate by default, providing natural
 # Check the container's routing table
 docker exec -it $(docker ps -qf name=api) ip route
 
-# Expected output:
-# default via 0.0.0.0 dev eth0   (no gateway - host routes)
-# 172.16.100.0/24 dev eth0 proto kernel scope link
+# Expected output will look similar to:
+# default dev eth0
+# 172.16.100.0/24 dev eth0 src 172.16.100.10
 
 # Verify host sees the route
 ip route show | grep 172.16.100
@@ -119,6 +121,6 @@ IPvlan L3 is suitable when:
 - You need containers in custom subnets that don't overlap with the LAN.
 - You have many containers and want to eliminate ARP broadcast storm issues.
 - You control the upstream router and can add static routes.
-- You need isolated multi-tenant networking.
+- You need routed multi-tenant networking and will enforce isolation with separate parent interfaces, VLANs, or firewall policies.
 
 For most home lab and small production setups, IPvlan L2 or macvlan is simpler and doesn't require upstream router configuration.
