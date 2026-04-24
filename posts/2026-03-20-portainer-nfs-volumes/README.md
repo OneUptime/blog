@@ -51,13 +51,14 @@ showmount -e localhost
 sudo apt-get install -y nfs-common
 
 # CentOS/RHEL:
-sudo yum install -y nfs-utils
+sudo dnf install -y nfs-utils
 
 # Test NFS connectivity:
 showmount -e nfs-server.example.com
 # /exports/docker-data 192.168.1.0/24
 
 # Manual test mount:
+sudo mkdir -p /mnt/test
 sudo mount -t nfs nfs-server.example.com:/exports/docker-data /mnt/test
 ls /mnt/test
 sudo umount /mnt/test
@@ -70,16 +71,18 @@ sudo umount /mnt/test
 3. Configure:
 
 ```text
-Name:    nfs-shared-data
-Driver:  local
+Name:            nfs-shared-data
+Driver:          local
+Use NFS volume:  On
 ```
 
-4. Under **Driver options**, add:
+4. Under **NFS Settings**, add:
 
 ```text
-Key: type     Value: nfs
-Key: o        Value: addr=nfs-server.example.com,rw,nfsvers=4
-Key: device   Value: :/exports/docker-data
+Address:      nfs-server.example.com
+NFS Version:  4
+Mount point:  /exports/docker-data
+Options:      rw
 ```
 
 5. Click **Create the volume**.
@@ -103,8 +106,6 @@ docker volume inspect nfs-shared-data
 
 ```yaml
 # docker-compose.yml with NFS volumes
-version: "3.8"
-
 services:
   web:
     image: nginx:alpine
@@ -148,17 +149,15 @@ nfsvers=4     Use NFS version 4 (recommended)
 rw            Read/write access
 ro            Read-only access
 hard          Retry requests indefinitely on failure
-soft          Fail requests after timeout (riskier)
+soft          Return an error after timeout/retries (riskier)
 timeo=600     Timeout in tenths of a second (60s = 600)
-retrans=3     Number of retries before giving up
-bg            Mount in background (don't block startup)
-intr          Allow interruption of NFS operations
-noatime       Don't update access time (performance)
+retrans=3     Retransmissions before further recovery action
+bg            Retry the mount in the background if the server is unavailable
 ```
 
-For high availability:
+For more resilient client behavior:
 ```text
-o: "addr=nfs-server,rw,nfsvers=4,hard,timeo=600,retrans=5,intr"
+o: "addr=nfs-server,rw,nfsvers=4,hard,timeo=600,retrans=5"
 ```
 
 ## Step 7: NFS v3 (For Older Systems)
@@ -199,6 +198,7 @@ volumes:
 
 ```bash
 # Test NFS mount manually first:
+sudo mkdir -p /mnt/test
 sudo mount -t nfs4 nfs-server:/exports/data /mnt/test
 
 # Common errors:
@@ -207,16 +207,16 @@ sudo mount -t nfs4 nfs-server:/exports/data /mnt/test
 # → Verify the Docker host IP is in the allowed range
 
 # "mount.nfs: Connection timed out"
-# → Check firewall (NFS uses ports 111, 2049)
+# → Check firewall (NFSv4 typically uses port 2049; showmount and NFSv3 may also require rpcbind/mountd ports)
 # → Verify NFS server is running: systemctl status nfs-kernel-server
 
 # "Permission denied" writing to NFS:
 # → Check NFS server export options (no_root_squash vs root_squash)
 # → Check directory permissions on NFS server
 
-# Open NFS ports in firewall:
-sudo ufw allow from 192.168.1.0/24 to any port 111
+# Open the common NFSv4 port in the firewall:
 sudo ufw allow from 192.168.1.0/24 to any port 2049
+# If you use showmount or NFSv3, also allow the rpcbind/mountd ports configured on your server.
 ```
 
 ## Performance Considerations
@@ -228,7 +228,7 @@ volumes:
     driver: local
     driver_opts:
       type: nfs
-      o: "addr=nfs-server,rw,nfsvers=4,async,noatime,rsize=1048576,wsize=1048576"
+      o: "addr=nfs-server,rw,nfsvers=4,async,rsize=1048576,wsize=1048576"
       device: ":/exports/data"
 ```
 
@@ -236,7 +236,6 @@ volumes:
 rsize=1048576  → Read block size (1MB)
 wsize=1048576  → Write block size (1MB)
 async          → Async writes (faster but less safe)
-noatime        → Don't update access timestamps
 ```
 
 ## Conclusion
