@@ -19,7 +19,8 @@ When Portainer is deployed on Docker Swarm, certificate management takes advanta
 ## Step 1: Generate SSL Certificates
 
 ```bash
-# Generate certificates (same as standalone approach)
+# Generate a self-signed certificate in PEM format
+# If you use a CA-signed certificate, use the full certificate chain in portainer.crt
 
 mkdir -p /opt/portainer/certs
 
@@ -35,8 +36,8 @@ openssl req -newkey rsa:2048 -nodes \
 
 ```bash
 # Create secrets from certificate files
-docker secret create portainer-ssl-cert /opt/portainer/certs/portainer.crt
-docker secret create portainer-ssl-key /opt/portainer/certs/portainer.key
+docker secret create portainer.tlscert /opt/portainer/certs/portainer.crt
+docker secret create portainer.tlskey /opt/portainer/certs/portainer.key
 
 # Verify secrets
 docker secret ls
@@ -49,15 +50,17 @@ docker secret ls
 version: "3.8"
 services:
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:sts
     command:
-      - --ssl
-      - --sslcert=/run/secrets/portainer-ssl-cert
-      - --sslkey=/run/secrets/portainer-ssl-key
+      - -H
+      - tcp://tasks.agent:9001
+      - --tlsskipverify
+      - --tlscert=/run/secrets/portainer.tlscert
+      - --tlskey=/run/secrets/portainer.tlskey
       - --http-disabled
     secrets:
-      - portainer-ssl-cert
-      - portainer-ssl-key
+      - portainer.tlscert
+      - portainer.tlskey
     ports:
       - target: 9443
         published: 9443
@@ -68,7 +71,6 @@ services:
         protocol: tcp
         mode: host
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
     networks:
       - agent_network
@@ -80,7 +82,7 @@ services:
           - node.role == manager
 
   agent:
-    image: portainer/agent:latest
+    image: portainer/agent:sts
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
@@ -93,9 +95,9 @@ services:
           - node.platform.os == linux
 
 secrets:
-  portainer-ssl-cert:
+  portainer.tlscert:
     external: true
-  portainer-ssl-key:
+  portainer.tlskey:
     external: true
 
 volumes:
@@ -126,15 +128,15 @@ echo | openssl s_client -connect localhost:9443 2>/dev/null \
 
 ```bash
 # Create new secret version
-docker secret create portainer-ssl-cert-v2 /opt/portainer/certs/new-portainer.crt
-docker secret create portainer-ssl-key-v2 /opt/portainer/certs/new-portainer.key
+docker secret create portainer.tlscert-v2 /opt/portainer/certs/new-portainer.crt
+docker secret create portainer.tlskey-v2 /opt/portainer/certs/new-portainer.key
 
-# Update service to use new secrets
+# Update service to use new secrets (this redeploys the Portainer task)
 docker service update \
-  --secret-rm portainer-ssl-cert \
-  --secret-rm portainer-ssl-key \
-  --secret-add source=portainer-ssl-cert-v2,target=portainer-ssl-cert \
-  --secret-add source=portainer-ssl-key-v2,target=portainer-ssl-key \
+  --secret-rm portainer.tlscert \
+  --secret-rm portainer.tlskey \
+  --secret-add source=portainer.tlscert-v2,target=portainer.tlscert \
+  --secret-add source=portainer.tlskey-v2,target=portainer.tlskey \
   portainer_portainer
 
 # Verify
@@ -155,8 +157,8 @@ services:
       - source: nginx-config
         target: /etc/nginx/conf.d/default.conf
     secrets:
-      - portainer-ssl-cert
-      - portainer-ssl-key
+      - portainer.tlscert
+      - portainer.tlskey
     networks:
       - agent_network
     deploy:
@@ -171,4 +173,4 @@ configs:
 
 ## Conclusion
 
-Using Docker Secrets for certificate management in Swarm provides encrypted storage and seamless rotation without container restarts. The `--secret-add` / `--secret-rm` workflow allows zero-downtime certificate rotation. For production Swarm deployments, consider automating certificate renewal with cert-manager or Certbot and scripting the secret rotation process.
+Using Docker Secrets for certificate management in Swarm provides encrypted storage and controlled certificate rotation through service updates. The `--secret-add` / `--secret-rm` workflow redeploys the Portainer task, so a single-replica deployment will see a brief restart during certificate rotation. For production Swarm deployments, consider automating certificate renewal with Certbot or another ACME client and scripting the secret rotation process.
