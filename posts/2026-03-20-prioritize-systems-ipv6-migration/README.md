@@ -38,7 +38,7 @@ class System:
     upstream_dependency: int  # 1-5 (5 = many systems depend on it)
     ease_of_migration: int    # 1-5 (5 = easiest)
     risk_if_delayed: int      # 1-5
-    external_facing: int      # 1 or 5
+    external_facing: int      # 1-5
 
     @property
     def priority_score(self) -> float:
@@ -64,23 +64,22 @@ systems = [
     System("Legacy billing system",1, 1, 1, 1, 1),
 ]
 
-print(f"{'System':<35} {'Score':>6} {'Priority'}")
+print(f"{'System':<35} {'Score':>6} {'Rank':>5}")
 print("-" * 60)
 sorted_systems = sorted(systems, key=lambda s: s.priority_score, reverse=True)
-for i, s in enumerate(sorted_systems):
-    tier = "Wave 1" if i < 3 else "Wave 2" if i < 7 else "Wave 3"
-    print(f"{s.name:<35} {s.priority_score:>6.2f}  {tier}")
+for rank, s in enumerate(sorted_systems, start=1):
+    print(f"{s.name:<35} {s.priority_score:>6.2f}  {rank:>5}")
 ```
 
 ## Migration Wave Framework
 
 ### Wave 1: Foundation (High Impact, Lower Risk)
 
-These systems must be migrated first as they enable everything else:
+These systems are common early priorities because they enable or de-risk everything else:
 
 | System | Reason |
 |--------|--------|
-| DNS resolvers | AAAA record resolution - without this, nothing else works |
+| DNS resolvers | DNS is a main IPv6 anchor; end hosts rely on AAAA responses to use IPv6 |
 | Core routers | Carry IPv6 traffic between all other systems |
 | Internet firewall | Must allow IPv6 before any external-facing service goes live |
 | Network monitoring | Visibility before rollout; catch issues early |
@@ -91,10 +90,10 @@ Visible to external IPv6 users and generate business value:
 
 | System | Migration Action |
 |--------|-----------------|
-| Web servers / CDN | Add AAAA to DNS; configure load balancer IPv6 VIPs |
+| Web servers / CDN | Publish AAAA in DNS once the service is IPv6-ready; configure load balancer IPv6 VIPs |
 | API gateways | Enable IPv6 listener; update TLS certificates if needed |
-| Mail servers | Add AAAA to MX/SPF; configure IPv6 SMTP |
-| VPN endpoints | Enable IKEv2 with IPv6 for remote users |
+| Mail servers | Publish AAAA for the hosts referenced by MX; add SPF `ip6` mechanisms if needed; configure IPv6 SMTP |
+| VPN endpoints | Enable IPv6 transport and client addressing for remote users |
 
 ### Wave 3: Internal Services
 
@@ -113,7 +112,7 @@ Complex or high-risk changes; tackle after team has practice:
 
 | System | Strategy |
 |--------|---------|
-| Legacy billing/ERP | NAT64 proxy if vendor can't update |
+| Legacy billing/ERP | Use NAT64/DNS64 or an application proxy only for specific client-initiated access patterns if the vendor can't update |
 | Hardware-based systems | Contact vendor for IPv6 roadmap |
 | Outsourced/SaaS | Vendor dependency - engage early |
 
@@ -135,4 +134,4 @@ Wave 3              |              Wave 4
 
 ## Conclusion
 
-Prioritize IPv6 migration by starting with systems that unblock everything else (DNS, core routers, firewalls), then move to external-facing services that deliver business value, followed by internal services, and finally legacy or complex systems. Use the priority score formula to rank within each wave when resources are constrained. A phased wave approach limits blast radius - an issue in Wave 2 does not affect the foundation infrastructure enabled in Wave 1.
+Prioritize IPv6 migration by starting with the systems that most reduce downstream risk and unblock later work (often DNS, core routers, and firewalls), then move to external-facing services that deliver business value, followed by internal services, and finally legacy or complex systems. Use the priority score formula to rank systems within each wave when resources are constrained. A phased wave approach limits blast radius by separating foundation work from later service rollouts.
