@@ -13,8 +13,6 @@ Sonarr is a PVR for Usenet and BitTorrent users that automatically downloads TV 
 ## Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   sonarr:
     image: lscr.io/linuxserver/sonarr:latest
@@ -43,8 +41,6 @@ volumes:
 Deploy as part of the full *arr stack:
 
 ```yaml
-version: "3.8"
-
 services:
   sonarr:
     image: lscr.io/linuxserver/sonarr:latest
@@ -97,6 +93,7 @@ services:
       - PGID=1000
       - TZ=America/New_York
       - WEBUI_PORT=8080
+      - TORRENTING_PORT=6881
     volumes:
       - qbittorrent_config:/config
       - /mnt/media/downloads:/downloads
@@ -119,7 +116,7 @@ volumes:
 
 1. Navigate to **Settings > Download Clients > Add**
 2. Select **qBittorrent**
-3. Host: `qbittorrent` (container name), Port: `8080`
+3. Host: `qbittorrent` (service name), Port: `8080`
 4. Category: `sonarr`
 
 ### Add Indexers via Prowlarr
