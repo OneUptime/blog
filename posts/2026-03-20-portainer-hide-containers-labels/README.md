@@ -8,7 +8,7 @@ Description: A guide to hiding containers from the Portainer UI using Docker lab
 
 ## Overview
 
-Portainer supports hiding containers from its UI by applying specific Docker labels. This is useful for hiding infrastructure containers (Portainer Agent, Traefik, monitoring agents) from the Portainer view, reducing noise in the UI, or restricting what non-admin users can see. This guide covers all methods for hiding containers using labels.
+Portainer can hide containers from its UI when they match a configured Docker label filter. This is useful for hiding infrastructure containers (Portainer Agent, Traefik, monitoring agents) from the Portainer view and reducing noise in the UI. This guide covers the common workflow for hiding containers using labels.
 
 ## Prerequisites
 
@@ -17,18 +17,14 @@ Portainer supports hiding containers from its UI by applying specific Docker lab
 
 ## Understanding Portainer's Hide Label
 
-Portainer respects the label `portainer.agent.secret` for authentication, but for hiding containers, it uses:
+Portainer does not use a built-in hide label for containers. Instead, you configure the label name and value that Portainer should hide, either in **Settings** → **Hidden containers** or by starting Portainer with the `--hide-label` (`-l`) option.
 
-```text
-com.docker.compose.project=portainer  # Hides Portainer's own stack
-```
+For example, if Portainer is configured to hide `hide=true`, any container with that label will be hidden from the Portainer UI.
 
-More specifically, Portainer has a configurable "hide label" feature.
-
-## Method 1: Hide Containers with portainer.hide Label
+## Method 1: Hide Containers with a Custom Label
 
 ```bash
-# Label to hide a container from Portainer UI
+# Example label; Portainer must be configured to hide hide=true
 
 docker run -d \
   --name my-monitoring-agent \
@@ -39,12 +35,12 @@ docker run -d \
 
 ## Method 2: Configure Portainer to Respect Hide Labels
 
-In Portainer settings, you can configure which label value marks containers as hidden:
+In Portainer settings, you can configure which label name and value mark containers as hidden:
 
-1. Navigate to **Settings** → **App Settings**  
+1. Navigate to **Settings**
 2. Find **Hidden containers**
-3. Enter the label filter (e.g., `hide=true`)
-4. Click **Save**
+3. Enter the label filter (for example, `hide=true`)
+4. Click **Add filter**
 
 Any container with this label will be hidden from the Portainer UI.
 
@@ -52,7 +48,6 @@ Any container with this label will be hidden from the Portainer UI.
 
 ```yaml
 # docker-compose.yml - hide infrastructure services from Portainer
-version: "3.8"
 services:
   traefik:
     image: traefik:v3.0
@@ -78,7 +73,7 @@ services:
 
 ## Method 4: Apply Labels to Running Containers
 
-Docker labels cannot be changed on running containers without recreation. Use `docker-compose` or recreate:
+Docker labels cannot be changed on running containers without recreation. Use Docker Compose or recreate:
 
 ```bash
 # Add label when recreating a container
@@ -103,7 +98,7 @@ docker run -d \
   my-infra-image:latest
 ```
 
-Configure Portainer to filter on `infrastructure=true` if you prefer.
+Configure Portainer to hide whichever label filters you want to match, such as `hide=true` or `infrastructure=true`.
 
 ## Listing Hidden Containers
 
@@ -125,11 +120,11 @@ docker run -d --name my-container my-image:latest  # No --label "hide=true"
 Portainer Business Edition offers more granular visibility controls:
 
 ```bash
-# Restrict endpoint access to specific teams
-# Settings → Teams → Assign endpoint access
+# Assign users or teams to environments
+# Environment-related → Environments → Manage access
 
-# Users only see containers in their allowed environments
-# No label needed - access control at environment level
+# Resource ownership still applies inside each environment
+# Non-admin users only see resources they own or resources marked public
 ```
 
 ## Use Cases
@@ -144,4 +139,4 @@ Portainer Business Edition offers more granular visibility controls:
 
 ## Conclusion
 
-Hiding containers with labels is a practical way to reduce noise in the Portainer UI and prevent users from accidentally modifying infrastructure services. The `hide=true` label convention (configured in Portainer settings) provides a simple, declarative approach. For multi-team environments with security requirements, combine label-based hiding with Portainer BE's role-based access controls.
+Hiding containers with labels is a practical way to reduce noise in the Portainer UI and prevent users from accidentally modifying infrastructure services. A configured label such as `hide=true` provides a simple, declarative approach. For multi-team environments with security requirements, combine label-based hiding with Portainer BE's environment and resource access controls.
