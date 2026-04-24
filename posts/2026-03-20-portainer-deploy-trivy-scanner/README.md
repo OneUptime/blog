@@ -4,19 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Trivy, Security Scanning, Vulnerability Scanner, Docker, Container Security
 
-Description: Learn how to deploy Trivy as a persistent scanning service with Portainer, providing on-demand image vulnerability scanning via a REST API.
+Description: Learn how to deploy Trivy as a persistent scanning service with Portainer, providing on-demand image vulnerability scanning via Trivy client/server mode.
 
 ---
 
-Trivy can run as a server with a REST API, enabling other services and scripts to submit images for scanning without pulling the full Trivy image each time. This guide deploys Trivy as a Portainer stack with a persistent vulnerability database.
+Trivy can run as a server, enabling other Trivy clients and scripts to submit images for scanning without downloading the vulnerability database each time. This guide deploys Trivy as a Portainer stack with a persistent vulnerability database cache.
 
 ## Stack Definition
 
 Deploy Trivy in server mode:
 
 ```yaml
-version: "3.8"
-
 services:
   trivy:
     image: aquasec/trivy:latest
@@ -25,7 +23,6 @@ services:
       - "4954:4954"
     volumes:
       - trivy_cache:/root/.cache/trivy
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       TRIVY_CACHE_DIR: /root/.cache/trivy
       TRIVY_NO_PROGRESS: "true"
@@ -42,33 +39,29 @@ networks:
 
 ## Initial Database Download
 
-On first run, Trivy downloads its vulnerability database (~30 MB). Pre-warm it:
+On first run, Trivy downloads its vulnerability database automatically and refreshes it in the background. If you want to pre-warm the cache before the first scan:
 
 ```bash
 # Trigger database download
 
 docker exec -it $(docker ps -qf name=trivy) \
-  trivy image --download-db-only
+  trivy server --download-db-only
 
-# Verify the database is current
-docker exec -it $(docker ps -qf name=trivy) \
-  trivy --version
+# Verify the server and database metadata
+curl -s http://localhost:4954/version | jq .
 ```
 
-## Scanning Images via the Trivy API
+## Scanning Images via Trivy Client/Server Mode
 
-Use the Trivy server API to scan images:
+Use a Trivy client to scan images through the server:
 
 ```bash
-# Scan an image via the API
-curl -s http://localhost:4954/scan \
-  -H "Content-Type: application/json" \
-  -d '{"image": "nginx:latest"}' | jq .
+# Scan an image through the server
+trivy image --server http://localhost:4954 --scanners vuln --format json nginx:latest | jq .
 
 # Scan with severity filter
-curl -s "http://localhost:4954/scan?severity=CRITICAL,HIGH" \
-  -H "Content-Type: application/json" \
-  -d '{"image": "python:3.11-alpine"}' | jq '.Results[].Vulnerabilities | length'
+trivy image --server http://localhost:4954 --scanners vuln --severity CRITICAL,HIGH --format json python:3.11-alpine | \
+  jq '[.Results[]?.Vulnerabilities[]?] | length'
 ```
 
 ## Automated Scanning Script
@@ -84,9 +77,7 @@ TRIVY_URL="${TRIVY_URL:-http://localhost:4954}"
 
 echo "Scanning: $IMAGE"
 
-RESULT=$(curl -s "$TRIVY_URL/scan" \
-  -H "Content-Type: application/json" \
-  -d "{\"image\": \"$IMAGE\"}")
+RESULT=$(trivy image --server "$TRIVY_URL" --scanners vuln --format json "$IMAGE")
 
 CRITICAL_COUNT=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length')
 HIGH_COUNT=$(echo "$RESULT" | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length')
@@ -119,9 +110,7 @@ DATE=$(date +%Y%m%d)
 docker ps --format '{{.Image}}' | sort -u | while read image; do
   safe_name="${image//\//-}"
   echo "Scanning: $image"
-  curl -s "$TRIVY_URL/scan" \
-    -H "Content-Type: application/json" \
-    -d "{\"image\": \"$image\"}" \
+  trivy image --server "$TRIVY_URL" --scanners vuln --format json "$image" \
     > "$REPORT_DIR/$safe_name-$DATE.json"
 done
 
@@ -140,7 +129,7 @@ fi
 For Kubernetes environments managed via Portainer, deploy the Trivy Operator for continuous background scanning:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/aquasecurity/trivy-operator/main/deploy/static/trivy-operator.yaml
+kubectl apply -f https://raw.githubusercontent.com/aquasecurity/trivy-operator/v0.30.1/deploy/static/trivy-operator.yaml
 ```
 
-Trivy Operator automatically scans new pods and populates `VulnerabilityReport` custom resources, viewable in Portainer's Kubernetes resource browser.
+Trivy Operator automatically scans new Pods and populates `VulnerabilityReport` custom resources, which Portainer Business Edition admins can inspect under the Custom Resource view.
