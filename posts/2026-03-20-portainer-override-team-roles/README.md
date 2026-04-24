@@ -10,16 +10,19 @@ Description: Override a team's default role for individual users to grant except
 
 Sometimes you need to give one team member a different role than the rest of their team. For example, a tech lead might need Standard User access while their team has Helpdesk-only access. Or a contractor might need more restrictive access than their team. Portainer supports per-user access policies that override team-level policies.
 
+This guide applies to **Portainer Business Edition**, where RBAC roles such as Helpdesk and Standard User are available.
+
 ## How Role Overrides Work
 
 Portainer resolves a user's effective role using this priority order:
-1. **Direct user access policy** (highest priority) - overrides team role
-2. **Team access policy** - applies to all team members
-3. **Group access policy** - inherited by environments in the group
+1. **Direct user access policy on the environment** (highest priority)
+2. **User access policy inherited from the environment group**
+3. **Team access policy on the environment**
+4. **Team access policy inherited from the environment group**
 
-When both a user policy and team policy exist for the same environment, the **more permissive** role takes effect.
+When both a user policy and team policy exist for the same environment, the **direct user policy** takes effect. If a user inherits access from multiple teams at the same precedence level, Portainer resolves that using role priority.
 
-**Important**: You can only grant a higher role via direct user policy - you cannot restrict a user to less than what their team has. If you need to restrict a user, consider removing them from the team.
+**Important**: A direct user policy can grant either a higher or lower role than the user's team access because the user-level policy takes precedence for that environment.
 
 ## Granting Elevated Access to One User
 
@@ -32,6 +35,8 @@ TOKEN=$(curl -s -X POST \
   -d '{"username":"admin","password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
+# Built-in role IDs for these examples: Helpdesk=2, Standard user=3
+
 # Team 3 (QA team) has Helpdesk access to environment 1
 
 # Add direct Standard User access for user 7 (QA lead) in environment 1
@@ -39,9 +44,11 @@ TOKEN=$(curl -s -X POST \
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/endpoints/1/useraccesspolicies \
+  https://portainer.example.com/api/endpoints/1 \
   -d '{
-    "7": {"RoleId": 2}
+    "UserAccessPolicies": {
+      "7": {"RoleId": 3}
+    }
   }'
 # User 7 now has Standard User access even though their team only has Helpdesk
 ```
@@ -72,15 +79,17 @@ for user_id, policy in (e.get('UserAccessPolicies') or {}).items():
 ## Adding Multiple User Overrides
 
 ```bash
-# Give multiple users elevated access in one API call
+# Give multiple users direct access in one API call
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/endpoints/1/useraccesspolicies \
+  https://portainer.example.com/api/endpoints/1 \
   -d '{
-    "7": {"RoleId": 2},
-    "9": {"RoleId": 2},
-    "11": {"RoleId": 1}
+    "UserAccessPolicies": {
+      "7": {"RoleId": 3},
+      "9": {"RoleId": 3},
+      "11": {"RoleId": 2}
+    }
   }'
 ```
 
@@ -101,29 +110,29 @@ e = json.load(sys.stdin)
 policies = e.get('UserAccessPolicies', {})
 # Remove user 7
 policies.pop('7', None)
-print(json.dumps(policies))
+print(json.dumps({'UserAccessPolicies': policies}))
 ")
 
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/endpoints/1/useraccesspolicies \
+  https://portainer.example.com/api/endpoints/1 \
   -d "$CURRENT"
 ```
 
 ## Verifying Effective Access
 
-To understand what access a user actually has:
+Portainer's Effective access viewer in the UI is the easiest way to confirm the resolved role for a user. Via the API, you can at least confirm which environments the user can access:
 
 ```bash
-# Login as the user and check what they see
+# Login as the user and confirm which environments they can access
 USER_TOKEN=$(curl -s -X POST \
   https://portainer.example.com/api/auth \
   -H "Content-Type: application/json" \
   -d '{"username":"qa-lead","password":"password"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Check accessible environments and roles
+# Check accessible environments
 curl -s \
   -H "Authorization: Bearer $USER_TOKEN" \
   https://portainer.example.com/api/endpoints \
@@ -131,9 +140,11 @@ curl -s \
 import sys, json
 envs = json.load(sys.stdin)
 for env in envs:
-    print(f'Environment: {env[\"Name\"]} - UserRole: {env.get(\"UserAccessPolicies\", {}).get(\"me\", \"team-inherited\")}')
+    print(f'Environment: {env[\"Name\"]} (ID={env[\"Id\"]})')
 "
 ```
+
+To confirm the exact resolved role, use **User-related → Roles → Effective access viewer** in the Portainer UI.
 
 ## Alternative: Team Subsets
 
@@ -150,4 +161,4 @@ This avoids per-user exceptions and keeps the access model team-based.
 
 ## Conclusion
 
-User-level access overrides in Portainer provide flexibility for exception cases without restructuring your team setup. The key rule is that direct user policies can only elevate access above what a team provides - to restrict a user below their team's level, you must restructure team membership. For many exceptions, consider whether creating more granular teams would be cleaner than maintaining individual overrides.
+User-level access overrides in Portainer provide flexibility for exception cases without restructuring your team setup. The key rule is that a direct user policy on an environment takes precedence over team or inherited group access for that environment, so it can grant either a higher or lower role than the team would otherwise provide. For many exceptions, consider whether creating more granular teams would be cleaner than maintaining individual overrides.
