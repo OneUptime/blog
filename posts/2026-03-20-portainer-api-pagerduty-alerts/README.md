@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, PagerDuty, Alerting, API, DevOps, Monitoring
 
-Description: Use the Portainer REST API to monitor container and service health, then trigger PagerDuty incidents when failures are detected across your Docker and Kubernetes environments.
+Description: Use the Portainer REST API to monitor Docker Swarm service health, then trigger PagerDuty incidents when failures are detected in your Portainer-managed Docker environment.
 
 ---
 
-Portainer's REST API exposes container status, service health, and environment connectivity - all queryable from external monitoring scripts. By polling the Portainer API and sending events to PagerDuty, you build an alerting pipeline that pages on-call engineers when services degrade.
+For Docker Swarm endpoints, Portainer can proxy service status from the underlying Docker API to external monitoring scripts. By polling the Portainer API and sending events to PagerDuty, you build an alerting pipeline that pages on-call engineers when services degrade.
 
 ## Architecture
 
@@ -41,7 +41,6 @@ Monitor Portainer service health and alert PagerDuty on degradation.
 Run every 60 seconds via cron or a monitoring loop.
 """
 import requests
-import json
 import os
 
 PORTAINER_URL = os.environ["PORTAINER_URL"]
@@ -53,7 +52,8 @@ def get_swarm_services():
     """Fetch all Swarm service statuses from Portainer API."""
     resp = requests.get(
         f"{PORTAINER_URL}/api/endpoints/{ENDPOINT_ID}/docker/services",
-        headers={"Authorization": f"Bearer {PORTAINER_TOKEN}"},
+        headers={"X-API-Key": PORTAINER_TOKEN},
+        params={"status": "true"},
         verify=True
     )
     resp.raise_for_status()
@@ -108,20 +108,19 @@ if __name__ == "__main__":
 ## Step 4: Deploy the Monitor as a Docker Container
 
 ```yaml
-# monitor-stack.yml
+# monitor-compose.yml
 
-version: "3.8"
 services:
   portainer-monitor:
     image: python:3.12-slim
     entrypoint: ["/bin/sh", "-c"]
     command: >
-      "pip install requests -q &&
-       while true; do python /monitor/health_check.py; sleep 60; done"
+      pip install requests -q &&
+      while true; do python /monitor/health_check.py; sleep 60; done
     environment:
-      - PORTAINER_URL=https://portainer:9443
+      - PORTAINER_URL=https://your-portainer-host:9443
       - PORTAINER_TOKEN=${PORTAINER_TOKEN}
-      - PAGERDUTY_ROUTING_KEY=${PAGERDUTY_KEY}
+      - PAGERDUTY_ROUTING_KEY=${PAGERDUTY_ROUTING_KEY}
     volumes:
       - ./health_check.py:/monitor/health_check.py:ro
     restart: unless-stopped
@@ -129,4 +128,4 @@ services:
 
 ## Summary
 
-The Portainer REST API provides all the health data needed to build effective alerting integrations. The PagerDuty Events API v2 accepts both trigger and resolve calls, enabling auto-resolution when services recover. This pattern extends to any incident management platform that accepts webhook events.
+Portainer's API gateway for Docker Swarm environments provides the health data needed to build effective alerting integrations. The PagerDuty Events API v2 accepts both trigger and resolve calls, enabling auto-resolution when services recover. This pattern extends to any incident management platform that accepts webhook events.
