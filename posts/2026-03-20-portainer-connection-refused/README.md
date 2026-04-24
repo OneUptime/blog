@@ -14,8 +14,8 @@ Description: Systematically diagnose and fix 'Connection Refused' errors in Port
 
 ### Symptoms
 
-- Browser shows "ERR_CONNECTION_REFUSED"
-- `curl http://your-host:9000` returns "Connection refused"
+- Browser shows "ERR_CONNECTION_REFUSED" when opening `https://your-host:9443` (or `http://your-host:9000` on legacy installs)
+- `curl -k https://your-host:9443` returns "Connection refused"
 
 ### Diagnostics
 
@@ -25,10 +25,10 @@ Description: Systematically diagnose and fix 'Connection Refused' errors in Port
 docker ps | grep portainer
 
 # 2. Check the port binding
-docker inspect portainer | grep -A 5 '"PortBindings"'
+docker inspect portainer --format='{{json .HostConfig.PortBindings}}'
 
 # 3. Check if anything is listening
-ss -tlnp | grep 9000
+ss -tlnp | grep -E "9000|9443"
 ```
 
 ### Fixes
@@ -41,16 +41,19 @@ docker start portainer
 docker logs portainer --tail 50
 docker start portainer
 
+# Fresh install timed out before the first admin user was created - restart it
+docker restart portainer
+
 # Port is not exposed - recreate with correct port mapping
 docker stop portainer && docker rm portainer
 docker run -d \
-  -p 9000:9000 \
   -p 9443:9443 \
+  -p 9000:9000 \
   --name portainer \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Scenario 2: Portainer Cannot Connect to Docker Socket
@@ -69,8 +72,9 @@ systemctl status docker
 # Check the socket exists
 ls -la /var/run/docker.sock
 
-# Test the socket directly
-curl --unix-socket /var/run/docker.sock http://localhost/v1.44/version
+# Test the socket directly using the daemon's negotiated API version
+API_VERSION=$(docker version --format '{{.Server.APIVersion}}' 2>/dev/null) && \
+curl --unix-socket /var/run/docker.sock "http://localhost/v${API_VERSION}/version"
 ```
 
 ### Fixes
@@ -85,11 +89,12 @@ docker restart portainer
 
 # If the socket path is different (e.g., rootless Docker)
 docker run -d \
+  -p 9443:9443 \
   -p 9000:9000 \
   --name portainer \
-  -v /run/user/1000/docker.sock:/var/run/docker.sock \
+  -v /run/user/$(id -u)/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Scenario 3: Portainer Cannot Connect to an Agent
@@ -132,7 +137,7 @@ docker run -d \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  portainer/agent:latest
+  portainer/agent:lts
 
 # Open the firewall port
 sudo ufw allow 9001/tcp
@@ -150,12 +155,11 @@ ss -tlnp | grep 9443
 # Test HTTPS connectivity (ignore cert errors for self-signed)
 curl -k https://localhost:9443
 
-# If HTTPS is not listening, Portainer may have been started with --http-disabled
-# but without a valid TLS certificate
+# If HTTPS is not listening, check for missing port mappings or TLS startup errors
 docker logs portainer | grep -i "tls\|cert\|ssl"
 ```
 
-Fix for self-signed certificate issues:
+Fix if Portainer was started without the HTTPS port mapping or with a broken custom TLS configuration:
 
 ```bash
 # Stop and remove
@@ -163,13 +167,13 @@ docker stop portainer && docker rm portainer
 
 # Run with auto-generated self-signed cert (default)
 docker run -d \
-  -p 9000:9000 \
   -p 9443:9443 \
+  -p 9000:9000 \
   --name portainer \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Quick Diagnostic Checklist
@@ -196,4 +200,4 @@ docker logs portainer --tail 20 2>/dev/null
 
 ## Conclusion
 
-"Connection refused" in Portainer always has a specific cause: the Portainer container isn't running, the port isn't exposed, Docker isn't running, or network/firewall rules are blocking the connection. Work through each scenario systematically - checking the container state, port bindings, Docker daemon health, and firewall rules - and you'll find the root cause quickly.
+"Connection refused" in Portainer always has a specific cause: Portainer isn't listening on the expected port, the Portainer container isn't running, the Docker daemon isn't reachable, the initial setup listener timed out, or network/firewall rules are blocking the connection. Work through each scenario systematically - checking the container state, port bindings, Docker daemon health, TLS logs, and firewall rules - and you'll find the root cause quickly.
