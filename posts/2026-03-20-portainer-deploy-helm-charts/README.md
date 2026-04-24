@@ -8,59 +8,60 @@ Description: Learn how to browse, configure, and deploy Helm charts to Kubernete
 
 ## Introduction
 
-Portainer integrates with Helm to provide a graphical interface for deploying Helm charts to Kubernetes clusters. Instead of running `helm install` commands with complex value flags, you can browse chart repositories, configure values in a form, and deploy with a click. This guide covers the complete Helm deployment workflow in Portainer.
+Portainer integrates with Helm to provide a graphical interface for deploying Helm charts to Kubernetes clusters. Instead of running `helm install` commands with complex value flags, you can browse chart repositories, edit Helm values in Portainer, and deploy with a click. This guide covers the complete Helm deployment workflow in Portainer.
 
 ## Prerequisites
 
 - Portainer CE or BE with Kubernetes environment connected
 - Cluster accessible from Portainer
-- Helm chart repositories configured (or using built-in ones)
+- Helm chart sources configured in Portainer (Bitnami is available by default; add others as needed)
 
 ## Step 1: Navigate to Helm in Portainer
 
 1. Select your Kubernetes environment
-2. Click **Applications → Helm charts**
-3. The Helm chart catalog appears
+2. Click **Applications → Create from code**
+3. Choose **Helm chart**
 
 ## Step 2: Add Helm Repositories
 
-Portainer comes with some built-in Helm repositories. Add more:
+Portainer ships with the Bitnami Helm chart repository already configured. To add another repository for your user:
 
-1. Go to **Settings → Helm repositories** (or within the Kubernetes environment)
-2. Click **Add repository**
-3. Enter repository details:
+1. Click your username and open **My account**
+2. Scroll to **Helm repositories**
+3. Click **Add Helm repository**
+4. Enter the repository URL and save it:
 
 ```text
-Name:   bitnami
-URL:    https://charts.bitnami.com/bitnami
+Repository URL: https://kubernetes.github.io/ingress-nginx
 ```
+
+Administrators can also configure a shared Helm repository in **Settings**.
 
 Popular repositories to add:
 
 ```bash
 # Add common Helm repositories
 
-helm repo add stable https://charts.helm.sh/stable
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-helm repo add cert-manager https://charts.jetstack.io
+helm repo add jetstack https://charts.jetstack.io
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo add grafana https://grafana.github.io/helm-charts
 ```
 
 ## Step 3: Search for a Chart
 
-In the Portainer Helm catalog:
+In the Portainer Helm view:
 
-1. Use the search bar to find charts
-2. Filter by repository
-3. Click on a chart to see description and available versions
+1. Select a chart source from the dropdown
+2. Use the search bar to find charts
+3. Click on a chart to see its description and available versions
 
 Example: Search for "nginx-ingress":
 
 ```text
-nginx-ingress-controller    bitnami     4.8.0    NGINX Ingress Controller
-ingress-nginx               ingress-nginx  4.8.4  Ingress controller for Kubernetes
+nginx-ingress-controller    bitnami         NGINX Ingress Controller
+ingress-nginx               ingress-nginx   Ingress controller for Kubernetes
 ```
 
 ## Step 4: Deploy a Helm Chart
@@ -68,10 +69,10 @@ ingress-nginx               ingress-nginx  4.8.4  Ingress controller for Kuberne
 Click on a chart, then click **Install**:
 
 ```text
-Chart:       nginx-ingress-controller
-Version:     4.8.0
-Repository:  bitnami
-Namespace:   ingress-nginx    (create if needed: [x])
+Chart:        nginx-ingress-controller
+Chart source: bitnami
+Version:      <selected version>
+Namespace:    ingress-nginx
 Release name: nginx-ingress
 ```
 
@@ -79,19 +80,18 @@ Release name: nginx-ingress
 
 The **Values** section shows customizable options:
 
-### Method A: Form-Based Values
+### Method A: Reference Values
 
-Some charts show a form with labeled fields. Fill in the values:
+Portainer loads the chart's default `values.yaml` in a read-only reference pane.
 
 ```text
-Replica count:         2
-Service type:          LoadBalancer
-Enable HTTPS:          [x]
+Reference values:   right pane (read-only)
+Custom values:      left pane (editable)
 ```
 
 ### Method B: YAML Values Editor
 
-For full control, click **Custom values (YAML)**:
+For full control, edit the values in the left-hand pane:
 
 ```yaml
 # Custom values.yaml
@@ -102,38 +102,41 @@ service:
   annotations:
     service.beta.kubernetes.io/aws-load-balancer-type: nlb
 
-controller:
-  config:
-    proxy-body-size: "50m"
-    proxy-read-timeout: "3600"
-    proxy-send-timeout: "3600"
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 1000m
-      memory: 512Mi
-  autoscaling:
-    enabled: true
-    minReplicas: 2
-    maxReplicas: 10
-    targetCPUUtilizationPercentage: 80
+config:
+  proxy-body-size: "50m"
+  proxy-read-timeout: "3600"
+  proxy-send-timeout: "3600"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPU: 80
 ```
 
 ## Step 6: Preview the Manifest (Optional)
 
-Before deploying, preview what Helm will create:
+Before deploying, click **Manifest preview** in Portainer to inspect what Helm will create, or use the CLI equivalents:
 
 ```bash
 # CLI equivalent: dry run
 helm install nginx-ingress bitnami/nginx-ingress-controller \
   --namespace ingress-nginx \
+  --create-namespace \
   --values custom-values.yaml \
   --dry-run
 
 # Template rendering
 helm template nginx-ingress bitnami/nginx-ingress-controller \
+  --namespace ingress-nginx \
   --values custom-values.yaml
 ```
 
@@ -141,48 +144,43 @@ helm template nginx-ingress bitnami/nginx-ingress-controller \
 
 1. Review settings
 2. Click **Install**
-3. Watch the deployment output
+3. Portainer opens the application details page
 
-Portainer shows the resources being created:
+Portainer then shows the Helm application details and related resources:
 
 ```text
-NAME: nginx-ingress
-LAST DEPLOYED: Tue Jan 15 2024 10:00:00
-NAMESPACE: ingress-nginx
-STATUS: deployed
-REVISION: 1
-
-Resources created:
-  Deployment/nginx-ingress-nginx-ingress-controller
-  Service/nginx-ingress-nginx-ingress-controller
-  ServiceAccount/nginx-ingress-nginx-ingress-controller
-  ClusterRole/nginx-ingress-nginx-ingress-controller
-  ClusterRoleBinding/nginx-ingress-nginx-ingress-controller
+Name:          nginx-ingress
+Namespace:     ingress-nginx
+Chart:         nginx-ingress-controller
+Chart source:  bitnami
+Chart version: <selected version>
+Revision:      1
+Status:        deployed
 ```
 
-## Step 8: View Deployed Helm Releases
+## Step 8: View Deployed Helm Applications
 
-Go to **Applications → Helm releases** (or check the Helm section):
+Helm deployments appear in the main **Applications** list. Select the Helm application to inspect its resources, values, manifest, revisions, and events:
 
 ```text
-RELEASE NAME     NAMESPACE      CHART                          VERSION   STATUS
-nginx-ingress    ingress-nginx  nginx-ingress-controller       4.8.0     deployed
-cert-manager     cert-manager   cert-manager                   v1.13.2   deployed
-prometheus       monitoring     kube-prometheus-stack           54.2.2    deployed
+Applications:
+  nginx-ingress   ingress-nginx
+  cert-manager    cert-manager
+  prometheus      monitoring
 ```
 
 ## Step 9: Upgrade a Helm Release
 
-1. Click on the Helm release
-2. Click **Upgrade**
+1. Open the Helm application
+2. Click **Edit/Upgrade**
 3. Change the chart version and/or values
-4. Click **Upgrade**
+4. Click **Edit/Upgrade**
 
 ```bash
 # CLI equivalent
 helm upgrade nginx-ingress bitnami/nginx-ingress-controller \
   --namespace ingress-nginx \
-  --version 4.9.0 \
+  --version <chart-version> \
   --values custom-values.yaml
 ```
 
@@ -198,12 +196,12 @@ helm rollback nginx-ingress --namespace ingress-nginx
 helm rollback nginx-ingress 1 --namespace ingress-nginx
 ```
 
-In Portainer: click on the Helm release and use the **Rollback** option.
+In Portainer: open the Helm application, select a revision if needed, and click **Rollback**.
 
 ## Step 11: Uninstall a Helm Release
 
-1. Click on the Helm release in Portainer
-2. Click **Uninstall** or **Remove**
+1. Open the Helm application in Portainer
+2. Click **Uninstall**
 3. Confirm
 
 ```bash
@@ -213,4 +211,4 @@ helm uninstall nginx-ingress --namespace ingress-nginx
 
 ## Conclusion
 
-Portainer's Helm integration brings the power of the Kubernetes package ecosystem to a graphical interface. Browse repositories, configure values visually, and deploy charts without remembering complex CLI syntax. For teams adopting Kubernetes, Helm through Portainer provides an excellent on-ramp that removes the command-line barrier while delivering all the benefits of the Helm ecosystem.
+Portainer's Helm integration brings the power of the Kubernetes package ecosystem to a graphical interface. Browse repositories, review and edit chart values, and deploy charts without remembering complex CLI syntax. For teams adopting Kubernetes, Helm through Portainer provides an excellent on-ramp that removes the command-line barrier while delivering all the benefits of the Helm ecosystem.
