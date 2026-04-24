@@ -58,10 +58,11 @@ PAYMENT_FAILURES = Counter(
 @app.route('/orders', methods=['POST'])
 def create_order():
     start_time = time.time()
-    category = request.json.get('category', 'unknown')
+    payload = request.get_json(silent=True) or {}
+    category = payload.get('category', 'unknown')
 
     try:
-        order = process_order(request.json)
+        order = process_order(payload)
 
         # Record successful order
         ORDER_COUNTER.labels(status='success', product_category=category).inc()
@@ -99,16 +100,16 @@ var (
             Name: "orders_processed_total",
             Help: "Total orders processed",
         },
-        []string{"status", "category"},
+        []string{"status", "product_category"},
     )
 
     orderDuration = promauto.NewHistogramVec(
         prometheus.HistogramOpts{
-            Name:    "order_duration_seconds",
-            Help:    "Order processing duration",
+            Name:    "order_processing_seconds",
+            Help:    "Time spent processing orders",
             Buckets: prometheus.DefBuckets,
         },
-        []string{"category"},
+        []string{"product_category"},
     )
 
     activeConnections = promauto.NewGauge(prometheus.GaugeOpts{
@@ -135,9 +136,6 @@ kind: ServiceMonitor
 metadata:
   name: order-service-metrics
   namespace: cattle-monitoring-system
-  labels:
-    # Must match Prometheus' serviceMonitorSelector
-    release: rancher-monitoring
 spec:
   namespaceSelector:
     matchNames:
@@ -160,7 +158,7 @@ spec:
 Ensure your Service has matching labels:
 
 ```yaml
-# order-service.yaml - Service with metrics annotations
+# order-service.yaml - Service with matching labels
 apiVersion: v1
 kind: Service
 metadata:
@@ -186,8 +184,6 @@ kind: PodMonitor
 metadata:
   name: batch-processor-metrics
   namespace: cattle-monitoring-system
-  labels:
-    release: rancher-monitoring
 spec:
   namespaceSelector:
     matchNames:
@@ -201,26 +197,11 @@ spec:
       interval: 30s
 ```
 
-### Using Annotations (Simple Approach)
+Current Rancher Monitoring chart defaults select all `ServiceMonitor`, `PodMonitor`, and `PrometheusRule` resources. If you have customized `serviceMonitorSelector`, `podMonitorSelector`, or `ruleSelector`, add matching labels to these resources.
 
-For pods where you can't modify the ServiceMonitor:
+### Rancher Note
 
-```yaml
-# annotated-pod.yaml - Pod with Prometheus scrape annotations
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: legacy-service
-  namespace: production
-spec:
-  template:
-    metadata:
-      annotations:
-        # These annotations are used by Prometheus automatic discovery
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
-        prometheus.io/path: "/metrics"
-```
+Rancher Monitoring configures custom scrape targets with `ServiceMonitor` and `PodMonitor` resources. If your target can't be expressed there, provide an `additionalScrapeConfigSecret` when installing or upgrading `rancher-monitoring`.
 
 ## Step 3: Deploy Custom Exporters
 
@@ -234,15 +215,22 @@ metadata:
   name: custom-json-exporter
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: custom-json-exporter
   template:
+    metadata:
+      labels:
+        app: custom-json-exporter
     spec:
       containers:
         - name: json-exporter
-          image: prometheuscommunity/json-exporter:v0.6.0
+          image: quay.io/prometheuscommunity/json-exporter:v0.7.0
           args:
             - --config.file=/etc/json-exporter/config.yml
           ports:
-            - containerPort: 7979
+            - name: http
+              containerPort: 7979
           volumeMounts:
             - name: config
               mountPath: /etc/json-exporter
@@ -260,20 +248,37 @@ data:
   config.yml: |
     modules:
       default:
-        metrics:
-          - name: orders_pending
-            type: value
-            path: '{.pending_orders}'
-            help: Number of pending orders
-          - name: revenue_today
-            type: value
-            path: '{.revenue.today}'
-            help: Revenue generated today in USD
-        body:
-          content: ""
         headers:
           Authorization: "Bearer your-api-token"
-        http_method: GET
+        metrics:
+          - name: orders_pending
+            path: '{ .pending_orders }'
+            help: Number of pending orders
+          - name: revenue_today_usd
+            path: '{ .revenue.today }'
+            help: Revenue generated today in USD
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: custom-json-exporter
+  namespace: cattle-monitoring-system
+spec:
+  namespaceSelector:
+    matchNames:
+      - production
+  selector:
+    matchLabels:
+      app: custom-json-exporter
+  podMetricsEndpoints:
+    - port: http
+      path: /probe
+      interval: 30s
+      params:
+        module:
+          - default
+        target:
+          - http://legacy-service.production.svc.cluster.local:8080/metrics.json
 ```
 
 ## Step 4: Create Prometheus Recording Rules
@@ -285,8 +290,6 @@ kind: PrometheusRule
 metadata:
   name: business-metrics-rules
   namespace: cattle-monitoring-system
-  labels:
-    release: rancher-monitoring
 spec:
   groups:
     - name: business-metrics
@@ -299,48 +302,35 @@ spec:
             /
             sum(rate(orders_processed_total[5m]))
 
-        # Revenue per minute
-        - record: revenue:per_minute:1m
+        # Failed orders per minute
+        - record: orders:failed_per_minute:1m
           expr: |
-            sum(increase(order_revenue_total[1m]))
+            sum(increase(orders_processed_total{status="failed"}[1m]))
 
-        # P99 order latency by category
+        # P99 order latency by product category
         - record: orders:latency_p99:5m
           expr: |
             histogram_quantile(0.99,
-              sum(rate(order_processing_seconds_bucket[5m])) by (category, le)
+              sum(rate(order_processing_seconds_bucket[5m])) by (product_category, le)
             )
 ```
 
 ## Step 5: Create Grafana Dashboards for Business Metrics
 
-```bash
-# Import custom dashboard via Grafana API
-curl -X POST \
-  http://admin:admin@localhost:3000/api/dashboards/db \
-  -H "Content-Type: application/json" \
-  -d '{
-    "dashboard": {
-      "title": "Business Metrics",
-      "panels": [
-        {
-          "title": "Orders Per Minute",
-          "type": "stat",
-          "targets": [{
-            "expr": "sum(rate(orders_processed_total[1m])) * 60"
-          }]
-        },
-        {
-          "title": "Order Success Rate",
-          "type": "gauge",
-          "targets": [{
-            "expr": "orders:success_rate:5m * 100"
-          }]
-        }
-      ]
-    },
-    "overwrite": true
-  }'
+After creating the dashboard in Grafana, persist it in Rancher with a labeled ConfigMap:
+
+```yaml
+# business-metrics-dashboard.yaml - Persist a Grafana dashboard in Rancher
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: business-metrics-dashboard
+  namespace: cattle-dashboards
+  labels:
+    grafana_dashboard: "1"
+data:
+  business-metrics.json: |-
+    <exported-dashboard-json>
 ```
 
 ## Step 6: Set Up Alerting on Custom Metrics
@@ -352,8 +342,6 @@ kind: PrometheusRule
 metadata:
   name: business-alerts
   namespace: cattle-monitoring-system
-  labels:
-    release: rancher-monitoring
 spec:
   groups:
     - name: business-critical-alerts
@@ -367,7 +355,7 @@ spec:
             summary: "Order success rate dropped to {{ $value | humanizePercentage }}"
 
         - alert: HighPaymentFailureRate
-          expr: rate(payment_failures_total[5m]) > 0.5
+          expr: sum(rate(payment_failures_total[5m])) > 0.5
           for: 2m
           labels:
             severity: critical
