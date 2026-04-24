@@ -12,12 +12,10 @@ OpenLDAP is the most widely deployed open-source LDAP server. Unlike Active Dire
 
 ## Step 1: Deploy OpenLDAP with Docker (Test Environment)
 
-For a test setup, run OpenLDAP in Docker:
+For a test setup, run OpenLDAP in Docker. The `osixia/openldap:1.5.0` example below is suitable for a quick lab, but its v1 branch is deprecated and no longer receives updates, so use a maintained image for production:
 
 ```yaml
 # openldap-stack.yml
-
-version: "3.8"
 
 services:
   openldap:
@@ -41,12 +39,12 @@ services:
       - openldap_config:/etc/ldap/slapd.d
 
   phpldapadmin:
-    image: osixia/phpldapadmin:latest
+    image: osixia/phpldapadmin:0.9.0
     container_name: phpldapadmin
     environment:
       PHPLDAPADMIN_LDAP_HOSTS: openldap
     ports:
-      - "8080:80"
+      - "6443:443"
 
 volumes:
   openldap_data:
@@ -105,14 +103,10 @@ member: uid=bob,ou=users,dc=example,dc=com
 ```
 
 ```bash
-# Import the LDIF
-docker exec openldap ldapadd \
-  -x -D "cn=admin,dc=example,dc=com" \
-  -w adminpassword \
-  -f /tmp/users.ldif
+# Copy LDIF into the container first
+docker cp users.ldif openldap:/tmp/users.ldif
 
-# Copy LDIF into container first
-docker cp users.ldif openldap:/tmp/
+# Import the LDIF
 docker exec openldap ldapadd \
   -x -D "cn=admin,dc=example,dc=com" \
   -w adminpassword \
@@ -124,23 +118,19 @@ docker exec openldap ldapadd \
 In Portainer Settings → Authentication → LDAP:
 
 ```text
+Automatic user provisioning: On
 Server:                ldap.example.com:389
 Anonymous Bind:        Off
-Reader DN:             cn=readonly,dc=example,dc=com
+Reader DN:             cn=portainer-bind,dc=example,dc=com
 Reader Password:       bindpassword
 
-User Base DN:          ou=users,dc=example,dc=com
+BaseDN:                ou=users,dc=example,dc=com
 Username Attribute:    uid
-User Filter:           (objectClass=inetOrgPerson)
+Filter:                (objectClass=inetOrgPerson)
 
 Group Base DN:         ou=groups,dc=example,dc=com
-Group Attribute:       member
+Group Membership Attribute: member
 Group Filter:          (objectClass=groupOfNames)
-```
-
-For the osixia/openldap image with readonly user:
-```text
-Reader DN: cn=portainer-bind,dc=example,dc=com
 ```
 
 ## Step 4: Verify Connectivity
@@ -174,7 +164,7 @@ ldapsearch \
 | Username Attribute | `uid` | Login username |
 | Filter | `(objectClass=inetOrgPerson)` | All users |
 | Group Filter | `(objectClass=groupOfNames)` | Groups |
-| Group Member Attribute | `member` | DN of members |
+| Group Membership Attribute | `member` | DN of members |
 
 ## Troubleshooting OpenLDAP Issues
 
@@ -197,4 +187,4 @@ ldapsearch -x -H ldap://localhost:389 \
 
 ## Conclusion
 
-OpenLDAP integration with Portainer follows the standard LDAP pattern: a service account for binding, a search base for users, and optional group search. Once connected, users authenticate with their LDAP credentials, and Portainer creates local accounts automatically. The key OpenLDAP-specific details are using `uid` as the username attribute and `inetOrgPerson` as the user object class.
+OpenLDAP integration with Portainer follows the standard LDAP pattern: a service account for binding, a search base for users, and optional group search. Once connected, users authenticate with their LDAP credentials, and Portainer can create local accounts automatically when automatic user provisioning is enabled. The key OpenLDAP-specific details are using `uid` as the username attribute and `inetOrgPerson` as the user object class.
