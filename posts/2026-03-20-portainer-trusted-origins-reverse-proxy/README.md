@@ -8,17 +8,17 @@ Description: Learn how to properly configure the --trusted-origins flag in Porta
 
 ## Introduction
 
-Portainer's `--trusted-origins` configuration is a security mechanism that controls which HTTP origins are allowed to make requests to the Portainer API. When deploying behind a reverse proxy, configuring this correctly is essential for both security and functionality.
+Portainer's `--trusted-origins` configuration is a security mechanism that controls which cross-origin browser origins are allowed to make unsafe requests to the Portainer API. When deploying behind a reverse proxy, configuring this correctly is essential for both security and functionality.
 
 ## Understanding Trusted Origins
 
 The trusted origins check operates as follows:
 
-1. The browser sends an `Origin` header with every cross-origin request
-2. Portainer compares this header against its list of trusted origins
-3. If the origin is not in the list, the request is rejected with "access denied"
+1. For unsafe cross-origin browser requests, the browser sends headers such as `Origin`, and modern browsers also send `Sec-Fetch-Site`
+2. Portainer allows same-origin requests automatically and compares configured trusted origins against the browser's `Origin` value
+3. If the origin is not trusted, the request is rejected with HTTP `403 Forbidden`
 
-The default trusted origin is derived from the URL Portainer is accessed on directly. Once behind a proxy with a different hostname, you must explicitly add the proxy URL.
+Portainer does not build a separate default trusted origins list for same-origin access. Same-origin browser requests are allowed automatically. Once the browser origin differs because of a reverse proxy, custom domain, or separate frontend, you must explicitly add that origin.
 
 ## Basic Configuration
 
@@ -27,15 +27,27 @@ The default trusted origin is derived from the URL Portainer is accessed on dire
 ```bash
 # Single origin
 
-docker run -d portainer/portainer-ce:latest \
+docker run -d -p 8000:8000 -p 9443:9443 \
+  --name portainer --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:lts \
   --trusted-origins=https://portainer.example.com
 
 # Multiple origins (comma-separated, no spaces)
-docker run -d portainer/portainer-ce:latest \
+docker run -d -p 8000:8000 -p 9443:9443 \
+  --name portainer --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:lts \
   --trusted-origins=https://portainer.example.com,https://portainer.internal.com
 
 # Include port if non-standard
-docker run -d portainer/portainer-ce:latest \
+docker run -d -p 8000:8000 -p 9443:9443 \
+  --name portainer --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:lts \
   --trusted-origins=https://portainer.example.com:8443
 ```
 
@@ -46,17 +58,20 @@ version: "3.8"
 
 services:
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:lts
     container_name: portainer
     restart: always
+    ports:
+      - "9443:9443"
+      - "8000:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
     command:
-      # List each origin on its own line for readability
       - "--trusted-origins=https://portainer.example.com,https://portainer.backup.example.com"
-    volumes:
-      portainer_data:
+
+volumes:
+  portainer_data:
 ```
 
 ### Via Environment Variable
@@ -65,20 +80,24 @@ In some deployment scenarios, you can use environment variables to pass configur
 
 ```yaml
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:lts
     environment:
       # Use the environment variable form
-      - PORTAINER_TRUSTED_ORIGINS=https://portainer.example.com
+      - TRUSTED_ORIGINS=https://portainer.example.com
 ```
 
-Note: Not all versions support environment variable configuration. CLI flags are the most reliable approach.
+Note: The `--trusted-origins` flag and `TRUSTED_ORIGINS` environment variable were added in Portainer `2.27.9` LTS and `2.31.3` STS. Older releases do not support them.
 
 ## Multi-Environment Scenarios
 
 ### Development + Production
 
 ```bash
-docker run -d portainer/portainer-ce:latest \
+docker run -d -p 8000:8000 -p 9443:9443 \
+  --name portainer --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:lts \
   --trusted-origins=https://portainer.example.com,http://localhost:9000,http://dev.example.internal:9000
 ```
 
@@ -86,7 +105,11 @@ docker run -d portainer/portainer-ce:latest \
 
 ```bash
 # Each subdomain must be listed explicitly - wildcards in origins are not supported
-docker run -d portainer/portainer-ce:latest \
+docker run -d -p 8000:8000 -p 9443:9443 \
+  --name portainer --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:lts \
   --trusted-origins=https://portainer.us.example.com,https://portainer.eu.example.com,https://portainer.ap.example.com
 ```
 
@@ -96,7 +119,11 @@ When Portainer is served at a subpath (e.g., `https://example.com/portainer/`), 
 
 ```bash
 # For https://example.com/portainer/, the origin is https://example.com
-docker run -d portainer/portainer-ce:latest \
+docker run -d -p 8000:8000 -p 9443:9443 \
+  --name portainer --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:lts \
   --base-url=/portainer \
   --trusted-origins=https://example.com
 ```
@@ -113,20 +140,21 @@ docker inspect portainer | python3 -c "import sys,json; c=json.load(sys.stdin); 
 ### Test Origin Validation
 
 ```bash
-# Simulate what the browser sends
-curl -v -X OPTIONS \
+# Use -k if Portainer is still using its default self-signed certificate
+curl -k -i -X POST \
   -H "Origin: https://portainer.example.com" \
-  -H "Access-Control-Request-Method: POST" \
+  -H "Content-Type: application/json" \
+  --data '{"username":"invalid","password":"invalid"}' \
   https://portainer.example.com/api/auth
 
-# Look for "Access-Control-Allow-Origin" in response headers
+# HTTP 403 means the origin was rejected before the auth handler ran
 ```
 
 ### Monitor Portainer Logs
 
 ```bash
 # Watch for origin rejection messages
-docker logs portainer -f 2>&1 | grep -i "origin\|access denied\|trusted"
+docker logs portainer -f 2>&1 | grep -i "csrf check failed\|origin\|trusted"
 ```
 
 ## Common Mistakes
@@ -140,11 +168,11 @@ docker logs portainer -f 2>&1 | grep -i "origin\|access denied\|trusted"
 
 ## Security Considerations
 
-- Never use `--trusted-origins='*'` in production - it disables CSRF protection
+- Portainer requires explicit origins; `*` is not a valid value for `--trusted-origins`
 - List only origins your users actually access Portainer from
 - Review and update the trusted origins list when changing DNS or proxy configurations
 - Treat this list as part of your security configuration
 
 ## Conclusion
 
-Properly configured trusted origins are the bridge between Portainer's CSRF protection and your reverse proxy setup. By explicitly listing every URL that users access Portainer through, you maintain security while enabling seamless proxy access. Always use the full URL with scheme and hostname, matching exactly what appears in users' browser address bars.
+Properly configured trusted origins are the bridge between Portainer's CSRF protection and your reverse proxy setup. By explicitly listing every origin that users access Portainer through, you maintain security while enabling seamless proxy access. Always use the full origin with scheme and hostname, and include the port when it is non-standard, matching exactly what appears in users' browser address bars.
