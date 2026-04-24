@@ -8,7 +8,7 @@ Description: Deploy Portainer on Google Cloud Compute Engine with firewall rules
 
 ## Introduction
 
-Google Cloud Compute Engine offers competitive pricing and excellent network performance for running Portainer. The free tier's e2-micro instance can even run a basic Portainer setup at no cost. This guide covers deploying Portainer on GCP with proper firewall configuration and optional persistent disk setup.
+Google Cloud Compute Engine offers competitive pricing and excellent network performance for running Portainer. Google Cloud's always-free `e2-micro` instance can run a basic Portainer setup at no cost when you stay within the monthly free tier limits in `us-west1`, `us-central1`, or `us-east1` and use free-tier-eligible resources. This guide covers deploying Portainer on GCP with proper firewall configuration and optional persistent disk setup.
 
 ## Prerequisites
 
@@ -23,9 +23,9 @@ Google Cloud Compute Engine offers competitive pricing and excellent network per
 1. Navigate to **Compute Engine > VM Instances > Create Instance**
 2. Configure:
    - **Name**: `portainer-vm`
-   - **Region/Zone**: Choose closest
-   - **Machine type**: `e2-medium` (2 vCPU, 4GB RAM) for production, or `e2-micro` (free tier) for testing
-   - **Boot disk**: Ubuntu 24.04 LTS, 20GB SSD
+   - **Region/Zone**: Choose closest, or use `us-central1`, `us-east1`, or `us-west1` for always-free-eligible `e2-micro` usage
+   - **Machine type**: `e2-medium` (2 vCPU, 4GB RAM) for production, or `e2-micro` (always-free eligible in supported US regions) for testing
+   - **Boot disk**: Ubuntu 24.04 LTS, 20GB standard persistent disk for always-free-eligible testing, or SSD for production
 3. Under **Firewall**: Check both **Allow HTTP** and **Allow HTTPS** if needed
 4. Under **Networking**, note the External IP
 5. Click **Create**
@@ -38,10 +38,11 @@ Google Cloud Compute Engine offers competitive pricing and excellent network per
 gcloud config set project YOUR_PROJECT_ID
 
 # Create instance
+# Use pd-standard instead of pd-ssd for always-free-eligible testing
 gcloud compute instances create portainer-vm \
   --zone=us-central1-a \
   --machine-type=e2-medium \
-  --image-family=ubuntu-2404-lts \
+  --image-family=ubuntu-2404-lts-amd64 \
   --image-project=ubuntu-os-cloud \
   --boot-disk-size=20GB \
   --boot-disk-type=pd-ssd \
@@ -87,14 +88,29 @@ gcloud compute firewall-rules create allow-portainer \
 # SSH via gcloud (no key management needed)
 gcloud compute ssh portainer-vm --zone=us-central1-a
 
-# Or with OS Login
+# Or with an OpenSSH client after adding your SSH key to the VM
 ssh -i ~/.ssh/id_rsa username@<external-ip>
 
 # Update system
 sudo apt update && sudo apt upgrade -y
 
 # Install Docker
-curl -fsSL https://get.docker.com | sh
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 sudo usermod -aG docker $USER
 newgrp docker
 sudo systemctl enable docker
@@ -146,16 +162,16 @@ docker run -d \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 6: Integrate with Google Artifact Registry
 
 ```bash
-# Configure Docker to authenticate with Artifact Registry
+# Optional: configure the VM's Docker CLI to authenticate with Artifact Registry
 gcloud auth configure-docker us-central1-docker.pkg.dev
 
-# Add service account credentials for Portainer
+# Create service account credentials that Portainer can use
 gcloud iam service-accounts create portainer-sa \
   --display-name="Portainer Service Account"
 
@@ -184,4 +200,4 @@ sudo bash add-google-cloud-ops-agent-repo.sh --also-install
 
 ## Conclusion
 
-Portainer on Google Cloud Compute Engine benefits from GCP's reliable infrastructure, competitive pricing, and easy integration with Google Artifact Registry. The persistent disk approach ensures data survives VM restarts and enables snapshots for backup. For cost-conscious deployments, the free tier e2-micro instance can run a basic Portainer setup indefinitely.
+Portainer on Google Cloud Compute Engine benefits from GCP's reliable infrastructure, competitive pricing, and easy integration with Google Artifact Registry. The persistent disk approach ensures data survives VM restarts and enables snapshots for backup. For cost-conscious deployments, the always-free `e2-micro` instance can run a basic Portainer setup when you stay within the monthly free tier limits in supported US regions and use free-tier-eligible resources.
