@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, Azure, Private Endpoint, API Gateway, OpenTofu, Security, PrivateLink
 
-Description: Learn how to configure private API endpoints on AWS and Azure using OpenTofu to restrict API access to within VPCs, eliminating public internet exposure.
+Description: Learn how to configure private API endpoints on AWS and Azure using OpenTofu so API traffic stays on private network paths instead of traversing the public internet.
 
 ## Overview
 
-Private API endpoints expose APIs only within a VPC, preventing any public internet access. AWS PrivateLink and Azure Private Link enable this pattern for both managed services and custom APIs. OpenTofu configures the VPC endpoints, DNS resolution, and security.
+Private API endpoints expose APIs over private network paths inside environments such as VPCs and VNets instead of the public internet. AWS PrivateLink and Azure Private Link enable this pattern for both managed services and custom APIs. OpenTofu configures the required endpoints, DNS resolution, and security.
 
 ## Step 1: AWS API Gateway Private Endpoint
 
@@ -97,7 +97,7 @@ resource "aws_vpc_endpoint" "consumer" {
   vpc_endpoint_type   = "Interface"
   security_group_ids  = [var.consumer_security_group_id]
   subnet_ids          = var.consumer_subnet_ids
-  private_dns_enabled = true
+  private_dns_enabled = false  # Set to true only if the service has a verified private DNS name
 }
 ```
 
@@ -124,9 +124,9 @@ resource "azurerm_private_endpoint" "apim" {
   }
 }
 
-# Private DNS zone for APIM
+# Private DNS zone for APIM private endpoint
 resource "azurerm_private_dns_zone" "apim" {
-  name                = "azure-api.net"
+  name                = "privatelink.azure-api.net"
   resource_group_name = azurerm_resource_group.rg.name
 }
 
@@ -137,6 +137,8 @@ resource "azurerm_private_dns_zone_virtual_network_link" "apim" {
   virtual_network_id    = azurerm_virtual_network.vnet.id
 }
 ```
+
+To make APIM private-only, disable public network access on the API Management instance after the private endpoint is created.
 
 ## Step 4: Security Group for VPC Endpoint
 
@@ -158,4 +160,4 @@ resource "aws_security_group" "apigw_endpoint" {
 
 ## Summary
 
-Private API endpoints configured with OpenTofu ensure APIs are only accessible within private networks. AWS PrivateLink creates a dedicated private network path from consumer VPCs to the service without any traffic traversing the internet. Azure Private Link follows the same pattern for APIM and custom services. Private DNS zones ensure name resolution works automatically without modifying application connection strings.
+Private API endpoints configured with OpenTofu route traffic over private network paths instead of the public internet. AWS PrivateLink creates a dedicated private network path from consumer VPCs to the service without any traffic traversing the internet. Azure Private Link follows the same pattern for APIM and custom services, but APIM must also have public network access disabled to be private-only. When configured, private DNS can keep name resolution working without modifying application connection strings.
