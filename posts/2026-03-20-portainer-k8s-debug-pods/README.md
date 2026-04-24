@@ -14,33 +14,32 @@ Pod failures in Kubernetes can stem from image pull errors, resource exhaustion,
 
 Navigate to: **Kubernetes > Applications**
 
-Look for pods in states:
+Look for pods with statuses or container reasons such as:
 - **Error**: Container exited with non-zero code
 - **CrashLoopBackOff**: Container repeatedly crashing
-- **OOMKilled**: Out of memory
+- **OOMKilled**: Container was terminated after exceeding its memory limit
 - **ImagePullBackOff**: Can't pull container image
-- **Pending**: Can't be scheduled
+- **Pending**: Pod can't be scheduled or started yet
 
 ## Step 2: View Pod Events
 
-In Portainer: **Kubernetes > Applications > Pod > Events**
+In Portainer: **Kubernetes > Applications > select your application > Events**
 
 Or via kubectl:
 ```bash
 # View events for a specific pod
-
-kubectl describe pod failing-pod-xxx -n production
+kubectl events --for pod/failing-pod-xxx -n production
 
 # View events for all pods in a namespace
-kubectl get events -n production --sort-by='.lastTimestamp'
+kubectl events -n production
 
 # Watch events in real-time
-kubectl get events -n production -w
+kubectl events -n production --watch
 ```
 
 ## Step 3: Check Pod Logs
 
-In Portainer: **Kubernetes > Applications > Pod > Logs**
+In Portainer: **Kubernetes > Applications > select your application > Application containers > Logs**
 
 ```bash
 # Current logs
@@ -58,14 +57,14 @@ kubectl logs failing-pod-xxx -n production --timestamps --tail=100
 
 ## Step 4: Interactive Debugging
 
-Portainer provides a web console: **Kubernetes > Applications > Pod > Console**
+Portainer provides a web console from the application details page: **Kubernetes > Applications > select your application > Application containers > Console**
 
 ```bash
 # Or via kubectl
 kubectl exec -it failing-pod-xxx -n production -- /bin/sh
 
 # For pods that have crashed and can't exec, use a debug container
-kubectl debug -it failing-pod-xxx \
+kubectl debug failing-pod-xxx -it \
   --image=busybox \
   --copy-to=debug-pod \
   -n production
@@ -76,12 +75,14 @@ kubectl debug node/worker1 -it --image=ubuntu
 
 ## Step 5: Check Resource Usage
 
+These commands require the Kubernetes Metrics Server (or another compatible metrics API provider).
+
 ```bash
 # Check pod resource consumption
 kubectl top pod failing-pod-xxx -n production
 
 # Check node resources
-kubectl top nodes
+kubectl top node
 
 # Get detailed pod resource requests/limits
 kubectl get pod failing-pod-xxx -n production -o json \
@@ -121,9 +122,9 @@ kubectl describe pod image-err-pod | grep "Failed to pull image"
 ## Using Portainer's YAML Editor for Fixes
 
 1. Go to **Kubernetes > Applications > Your Deployment**
-2. Click **Edit** or the YAML button
+2. Click **Edit this application**, or open the **YAML** tab in Portainer Business Edition
 3. Make changes (update image, increase resources, fix env vars)
-4. Click **Update the application**
+4. Click **Update application** or **Apply changes**
 
 ## Creating Temporary Debug Deployments
 
@@ -147,7 +148,8 @@ spec:
       containers:
       - name: debug
         image: nicolaka/netshoot:latest  # Network debugging tools
-        command: ["sleep", "infinity"]
+        command: ["/bin/bash"]
+        args: ["-c", "while true; do sleep 3600; done"]
         env:
         - name: DATABASE_URL
           valueFrom:
