@@ -8,13 +8,13 @@ Description: Configure Kubernetes node taints and pod tolerations to dedicate no
 
 ## Introduction
 
-Taints repel pods from nodes unless the pod has a matching toleration. They're the inverse of node affinity-instead of attracting pods, taints repel them. This enables node dedication (GPU nodes only for GPU workloads) and contamination (marking maintenance nodes so pods migrate away).
+Taints repel pods from nodes unless the pod has a matching toleration. They're the inverse of node affinity-instead of attracting pods, taints repel them. This enables node dedication (GPU nodes only for GPU workloads) and maintenance workflows (marking maintenance nodes so new pods stay away and existing pods can be evicted when needed).
 
 ## Taint Effects
 
 - **NoSchedule**: New pods without toleration are not scheduled on this node
 - **PreferNoSchedule**: Soft version-tries to avoid scheduling without toleration
-- **NoExecute**: Evicts existing pods that don't tolerate the taint
+- **NoExecute**: Evicts existing pods that don't tolerate the taint and blocks new pods without toleration
 
 ## Adding Taints to Nodes
 
@@ -22,9 +22,11 @@ Taints repel pods from nodes unless the pod has a matching toleration. They're t
 # Taint a node for GPU-only workloads
 
 kubectl taint nodes gpu-node-1 hardware=gpu:NoSchedule
+kubectl label nodes gpu-node-1 hardware=gpu
 
 # Mark a node as dedicated for database workloads
 kubectl taint nodes db-node-1 workload=database:NoSchedule
+kubectl label nodes db-node-1 workload=database
 
 # Mark a node for maintenance (evicts non-tolerating pods)
 kubectl taint nodes worker3 maintenance=true:NoExecute
@@ -34,17 +36,9 @@ kubectl describe node gpu-node-1 | grep Taints
 
 # Remove a taint
 kubectl taint nodes worker3 maintenance=true:NoExecute-
-
-# Via Portainer API
-curl -X POST \
-  -H "X-API-Key: your-api-key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "Taints": [{"Key": "hardware", "Value": "gpu", "Effect": "NoSchedule"}],
-    "Version": {"Index": 30}
-  }' \
-  "https://portainer.example.com/api/endpoints/1/kubernetes/api/v1/nodes/gpu-node-1"
 ```
+
+In Portainer, go to `Cluster` -> `Details`, select the node, then use the `Labels` and `Taints` sections to add or remove the matching labels and taints. In Portainer Business Edition, you can also edit the node YAML and apply the change as a patch.
 
 ## Pod Tolerations in Portainer YAML
 
@@ -71,7 +65,7 @@ spec:
         operator: "Equal"
         value: "gpu"
         effect: "NoSchedule"
-      # Also use node affinity to prefer GPU nodes
+      # Also require the matching GPU node label
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -94,21 +88,29 @@ kind: Deployment
 metadata:
   name: postgres
 spec:
+  selector:
+    matchLabels:
+      app: postgres
   template:
+    metadata:
+      labels:
+        app: postgres
     spec:
       tolerations:
       - key: "workload"
         operator: "Equal"
         value: "database"
         effect: "NoSchedule"
+      nodeSelector:
+        workload: database
       containers:
       - name: postgres
         image: postgres:15
 ```
 
-## System Pods That Tolerate Everything
+## DaemonSets That Tolerate Everything
 
-Kubernetes system pods like kube-proxy tolerate all taints:
+If you intentionally want a DaemonSet to tolerate any taint, use:
 
 ```yaml
 # DaemonSet that runs on all nodes including tainted ones
