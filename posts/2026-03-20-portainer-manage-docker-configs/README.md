@@ -15,6 +15,7 @@ Docker Configs provide a way to store non-sensitive configuration data (like Ngi
 - Portainer on Docker Swarm
 - Admin access to Portainer
 - Running Swarm cluster
+- Access to a Swarm manager node for CLI commands
 
 ## What Are Docker Configs
 
@@ -30,8 +31,7 @@ For sensitive data (passwords, private keys), use Docker Secrets instead.
 ## Step 1: View Existing Configs
 
 1. In Portainer, select your Swarm environment
-2. Click **Swarm** in the sidebar
-3. Click **Configs**
+2. Click **Configs** in the sidebar
 
 You see a table of all configs with:
 - Config name
@@ -74,8 +74,8 @@ server {
 # Create from a file
 docker config create nginx-config ./nginx.conf
 
-# Create from stdin
-cat nginx.conf | docker config create nginx-config -
+# Or create from stdin
+cat nginx.conf | docker config create nginx-config-stdin -
 
 # List all configs
 docker config ls
@@ -105,7 +105,7 @@ Target path:  /etc/nginx/conf.d/default.conf
 
 6. Optionally set:
    - **UID/GID** - File ownership
-   - **Mode** - File permissions (e.g., `0644`)
+   - **Mode** - File permissions (e.g., `0444`)
 
 ### Via Stack Compose File
 
@@ -127,7 +127,7 @@ configs:
     external: true    # Already exists in the Swarm cluster
 ```
 
-Or define the config inline (creates it when deploying the stack):
+Or define the config from a local file (creates it when deploying the stack):
 
 ```yaml
 configs:
@@ -172,21 +172,22 @@ Use scripts to manage config lifecycle:
 ```bash
 #!/bin/bash
 # update-config.sh
-CONFIG_NAME="nginx-config"
+CURRENT_CONFIG_NAME="nginx-config-v1"   # Currently attached to the service
+BASE_CONFIG_NAME="nginx-config"
 NEW_CONFIG_FILE="./nginx.conf"
 TIMESTAMP=$(date +%Y%m%d%H%M)
-NEW_CONFIG_NAME="${CONFIG_NAME}-${TIMESTAMP}"
+NEW_CONFIG_NAME="${BASE_CONFIG_NAME}-${TIMESTAMP}"
 
 # Create new config version
-docker config create $NEW_CONFIG_NAME $NEW_CONFIG_FILE
+docker config create "$NEW_CONFIG_NAME" "$NEW_CONFIG_FILE"
 
 # Update service to use new config
 docker service update \
-  --config-rm $CONFIG_NAME \
-  --config-add source=$NEW_CONFIG_NAME,target=/etc/nginx/conf.d/default.conf \
+  --config-rm "$CURRENT_CONFIG_NAME" \
+  --config-add source="$NEW_CONFIG_NAME",target=/etc/nginx/conf.d/default.conf \
   nginx-service
 
-echo "Updated to config: $NEW_CONFIG_NAME"
+echo "Updated from $CURRENT_CONFIG_NAME to config: $NEW_CONFIG_NAME"
 ```
 
 ## Step 7: Remove Old Configs
@@ -194,7 +195,7 @@ echo "Updated to config: $NEW_CONFIG_NAME"
 Clean up unused configs:
 
 ```bash
-# List configs not used by any service
+# List all configs
 docker config ls --format '{{.Name}}'
 
 # Remove a specific config
