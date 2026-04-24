@@ -8,7 +8,7 @@ Description: Learn how to configure persistent storage for Kubernetes applicatio
 
 ## Introduction
 
-Containers are ephemeral - when a pod restarts, any data written to the container's filesystem is lost. PersistentVolumeClaims (PVCs) provide durable storage that persists across pod restarts and rescheduling. Portainer makes it easy to create PVCs and attach them to applications. This guide covers persistent storage configuration in Portainer.
+Containers are ephemeral - when a pod restarts, any data written to the container's filesystem is lost. PersistentVolumeClaims (PVCs) let applications request durable storage that persists across pod restarts and rescheduling. Portainer makes it easy to create PVCs and attach them to applications. This guide covers persistent storage configuration in Portainer.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ Containers are ephemeral - when a pod restarts, any data written to the containe
 
 Before creating PVCs, check what StorageClasses are available:
 
-1. In Portainer, navigate to **Cluster → Storage**
+1. In Portainer, navigate to **Volumes**, then open the **Storage** tab
 2. Or via CLI:
 
 ```bash
@@ -30,7 +30,7 @@ kubectl get storageclasses
 
 # NAME                 PROVISIONER            RECLAIMPOLICY   VOLUMEBINDINGMODE
 # standard (default)   rancher.io/local-path  Delete          WaitForFirstConsumer
-# fast-ssd             kubernetes.io/aws-ebs  Delete          WaitForFirstConsumer
+# fast-ssd             ebs.csi.aws.com        Delete          WaitForFirstConsumer
 # nfs                  nfs.csi.k8s.io         Retain          Immediate
 ```
 
@@ -38,7 +38,7 @@ kubectl get storageclasses
 
 ### Via Portainer Form (during application creation)
 
-In the **Volumes** section:
+In the **Persisted folders** section:
 
 ```text
 Volume type:          Persistent (PVC)
@@ -53,7 +53,7 @@ Create new PVC:       [x]
 ### Via the Volumes/Storage UI
 
 1. Navigate to **Volumes** in the Kubernetes environment
-2. Click **+ Add volume**
+2. Click **Create from manifest**
 3. Configure:
 
 ```yaml
@@ -75,16 +75,16 @@ spec:
 
 | Mode | Abbreviation | Description |
 |------|-------------|-------------|
-| ReadWriteOnce | RWO | Single node, read-write (most common) |
-| ReadOnlyMany | ROX | Multiple nodes, read-only |
-| ReadWriteMany | RWX | Multiple nodes, read-write (requires NFS/EFS) |
-| ReadWriteOncePod | RWOP | Single pod only (Kubernetes 1.22+) |
+| ReadWriteOnce | RWO | Read-write on a single node (most common) |
+| ReadOnlyMany | ROX | Read-only on many nodes |
+| ReadWriteMany | RWX | Read-write on many nodes (requires a backend that supports RWX, such as NFS/EFS) |
+| ReadWriteOncePod | RWOP | Single pod only (CSI volumes; available in Kubernetes 1.22+, stable in 1.29) |
 
 ## Step 4: Attach PVC to an Application
 
 ### Via Portainer Form
 
-In the application editor under **Volumes**:
+In the application editor under **Persisted folders**:
 
 ```sql
 Volume type:     Persistent (existing PVC)
@@ -118,7 +118,7 @@ spec:
 
 ## Step 5: Use Storage for a Database
 
-Complete example for PostgreSQL with persistent storage:
+Example for PostgreSQL with persistent storage:
 
 ```yaml
 apiVersion: v1
@@ -141,11 +141,15 @@ metadata:
   name: postgres
   namespace: production
 spec:
+  serviceName: postgres
   replicas: 1
   selector:
     matchLabels:
       app: postgres
   template:
+    metadata:
+      labels:
+        app: postgres
     spec:
       containers:
         - name: postgres
@@ -161,7 +165,6 @@ spec:
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
-              subPath: data            # Prevent permission issues with subPath
       volumes:
         - name: postgres-storage
           persistentVolumeClaim:
@@ -178,7 +181,22 @@ kind: StatefulSet
 metadata:
   name: redis-cluster
 spec:
+  serviceName: redis-cluster
   replicas: 3
+  selector:
+    matchLabels:
+      app: redis-cluster
+  template:
+    metadata:
+      labels:
+        app: redis-cluster
+    spec:
+      containers:
+        - name: redis
+          image: redis:7
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
   volumeClaimTemplates:
     - metadata:
         name: redis-data
@@ -189,14 +207,6 @@ spec:
           requests:
             storage: 5Gi
         storageClassName: standard
-  template:
-    spec:
-      containers:
-        - name: redis
-          image: redis:7
-          volumeMounts:
-            - name: redis-data
-              mountPath: /data
 ```
 
 This creates `redis-data-redis-cluster-0`, `redis-data-redis-cluster-1`, etc.
@@ -221,14 +231,14 @@ kubectl describe pvc my-app-data -n production
 If you need more storage:
 
 ```bash
-# Edit the PVC (storageClass must support expansion)
+# Edit the PVC (the StorageClass must set allowVolumeExpansion: true)
 kubectl patch pvc my-app-data \
   -n production \
   -p '{"spec":{"resources":{"requests":{"storage":"20Gi"}}}}'
 
 # Verify expansion
 kubectl get pvc my-app-data -n production
-# STATUS: Bound (ResizeStarted until complete)
+# STATUS remains Bound while the requested capacity is being expanded
 ```
 
 ## Conclusion
