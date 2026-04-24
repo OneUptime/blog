@@ -13,7 +13,7 @@ Banana Pi boards offer competitive ARM hardware, with models like the Banana Pi 
 ## Recommended Models
 
 - **BPi-M5**: Amlogic S905X3, 4GB RAM - good for light home lab use
-- **BPi-M7**: Rockchip RK3588, up to 16GB RAM - capable of heavy workloads
+- **BPi-M7**: Rockchip RK3588, up to 32GB RAM - capable of heavy workloads
 - **BPi-R3**: MediaTek MT7986, designed for networking - great for router/firewall
 - **BPi-W3**: RK3588, PCIe support - best for server use cases
 
@@ -25,7 +25,7 @@ Banana Pi boards offer competitive ARM hardware, with models like the Banana Pi 
 
 ## Step 1: Flash and Boot
 
-Download the official Armbian image for your Banana Pi model from armbian.com or the official Banana Pi wiki. Armbian has the best kernel support for Banana Pi boards.
+Download the official Armbian image for your Banana Pi model from armbian.com or the official Banana Pi wiki. Armbian generally provides strong kernel support for Banana Pi boards.
 
 ```bash
 # SSH in (Armbian default: user=root, pass=1234)
@@ -43,7 +43,7 @@ reboot
 ## Step 2: Configure Armbian for Docker
 
 ```bash
-# Install required kernel modules
+# Load common kernel modules used by Docker networking
 modprobe overlay
 modprobe br_netfilter
 
@@ -69,8 +69,8 @@ sysctl --system
 # Use Docker's convenience script (works on Armbian)
 curl -fsSL https://get.docker.com | sh
 
-# Add your user to docker group
-usermod -aG docker $USER
+# Add your regular user to the docker group
+usermod -aG docker <your-user>
 
 # Start and enable Docker
 systemctl enable --now docker
@@ -79,21 +79,23 @@ systemctl enable --now docker
 docker info
 ```
 
+Log out and back in as your regular user after this step if you want to run Docker without `sudo`.
+
 ## Step 4: Install Portainer
 
 ```bash
 # Create data volume
 docker volume create portainer_data
 
-# Deploy Portainer
+# Deploy Portainer (9443 is the default HTTPS UI; add -p 9000:9000 only if you need legacy HTTP access)
 docker run -d \
   --name portainer \
-  --restart=unless-stopped \
-  -p 9000:9000 \
+  --restart=always \
+  -p 8000:8000 \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 
 # Verify
 docker ps
@@ -104,20 +106,22 @@ docker ps
 ### Use eMMC for Better I/O
 
 ```bash
-# Check if eMMC is available
+# List MMC storage devices
 lsblk | grep mmcblk
 
-# Move Docker storage to eMMC if using SD card
+# Set Docker's data directory to a path on your mounted eMMC
 # In /etc/docker/daemon.json:
 {
   "data-root": "/mnt/emmc/docker"
 }
 ```
 
+On fresh Docker Engine 29+ installs, image and snapshot data may also be stored under `/var/lib/containerd`, so changing only `data-root` does not move all Docker-managed data.
+
 ### Configure Armbian CPU Governor
 
 ```bash
-# Install armbian-config
+# Launch armbian-config
 armbian-config
 
 # Or set manually
@@ -129,8 +133,6 @@ echo 'performance' | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
 The BPi-R3 is excellent for network services:
 
 ```yaml
-version: "3.8"
-
 services:
   # AdGuard Home for DNS filtering
   adguard:
