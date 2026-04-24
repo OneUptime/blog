@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Node.js, MongoDB, Express, Docker Compose, REST API
 
-Description: Deploy a production-ready Node.js API server with MongoDB using Docker Compose through Portainer, covering connection retry logic, Mongoose ODM, replica sets, and Mongo Express administration.
+Description: Deploy a Node.js API server with MongoDB using Docker Compose through Portainer, covering connection retry logic, Mongoose ODM, and Mongo Express administration.
 
 ## Introduction
 
-Node.js and MongoDB form a natural pairing due to their shared JSON-based data model. Deploying this stack via Portainer with Docker Compose ensures consistent configuration across environments, proper dependency ordering, and easy container management. This guide covers a production-grade setup with connection resilience, Mongoose ODM, and a web-based MongoDB admin interface.
+Node.js and MongoDB form a natural pairing due to their shared JSON-based data model. Deploying this stack via Portainer with Docker Compose ensures consistent configuration across environments, proper dependency ordering, and easy container management. This guide covers a practical setup with connection resilience, Mongoose ODM, and a web-based MongoDB admin interface.
 
 ## Prerequisites
 
-- Portainer CE or BE with Docker Engine 20.10+
+- Portainer CE or BE with a supported Docker Engine release
 - Node.js application (or start fresh with the provided example)
 - Basic understanding of Node.js and MongoDB
 
@@ -30,7 +30,7 @@ WORKDIR /app
 
 # Install dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application source
 COPY src/ ./src/
@@ -48,13 +48,13 @@ CMD ["node", "src/index.js"]
 
 ## Step 2: Create the Docker Compose Stack in Portainer
 
-Navigate to **Stacks** → **Add Stack** → **Web Editor** and name it `node-mongo-app`:
+Navigate to **Stacks** → **Add Stack** → **Web Editor** and name it `node-mongo-app`. This example assumes you save the initialization script from Step 3 as `/opt/node-mongo-app/mongo/init.js` on the Docker host:
 
 ```yaml
 version: "3.8"
 
 services:
-  # MongoDB with replica set for transactions support
+  # MongoDB database service
   mongodb:
     image: mongo:7.0
     container_name: node-mongodb
@@ -66,11 +66,11 @@ services:
     volumes:
       - mongo_data:/data/db
       - mongo_config:/data/configdb
-      - ./mongo/init.js:/docker-entrypoint-initdb.d/init.js:ro
+      - /opt/node-mongo-app/mongo/init.js:/docker-entrypoint-initdb.d/init.js:ro
     networks:
       - node-net
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping').ok", "--quiet"]
+      test: ["CMD", "mongosh", "--quiet", "--host", "localhost", "-u", "${MONGO_ROOT_USER:-admin}", "-p", "${MONGO_ROOT_PASSWORD:-adminpassword}", "--authenticationDatabase", "admin", "--eval", "db.adminCommand({ ping: 1 }).ok"]
       interval: 15s
       timeout: 10s
       retries: 5
@@ -84,7 +84,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3000"
-      MONGODB_URI: mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD:-adminpassword}@mongodb:27017/nodeapp?authSource=admin
+      MONGODB_URI: mongodb://nodeuser:nodepassword@mongodb:27017/nodeapp?authSource=nodeapp
       JWT_SECRET: ${JWT_SECRET:-change-this-in-production}
       LOG_LEVEL: info
     ports:
@@ -108,9 +108,9 @@ services:
     ports:
       - "8081:8081"
     environment:
-      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_ROOT_USER:-admin}
-      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_ROOT_PASSWORD:-adminpassword}
-      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD:-adminpassword}@mongodb:27017/
+      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD:-adminpassword}@mongodb:27017/admin?authSource=admin
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: "true"
+      ME_CONFIG_BASICAUTH_ENABLED: "true"
       ME_CONFIG_BASICAUTH_USERNAME: ${ME_USERNAME:-admin}
       ME_CONFIG_BASICAUTH_PASSWORD: ${ME_PASSWORD:-adminpassword}
     depends_on:
@@ -129,6 +129,8 @@ networks:
 ```
 
 ## Step 3: MongoDB Initialization
+
+Save the following as `/opt/node-mongo-app/mongo/init.js` on the Docker host. It runs once on first startup:
 
 ```javascript
 // mongo/init.js - runs once on first startup
@@ -198,11 +200,10 @@ const userSchema = new mongoose.Schema({
 });
 
 // Hash password before save
-userSchema.pre('save', async function(next) {
+userSchema.pre('save', async function() {
   if (this.isModified('password')) {
     this.password = await bcrypt.hash(this.password, 12);
   }
-  next();
 });
 
 userSchema.methods.comparePassword = function(candidate) {
@@ -234,9 +235,11 @@ const userRouter = require('./routes/users');
 app.use('/api/users', userRouter);
 
 // Start server after DB connects
+const port = process.env.PORT || 3000;
+
 connectWithRetry().then(() => {
-  app.listen(process.env.PORT || 3000, () => {
-    console.log(`API server running on port ${process.env.PORT}`);
+  app.listen(port, () => {
+    console.log(`API server running on port ${port}`);
   });
 }).catch(err => {
   console.error('Startup failed:', err.message);
@@ -265,7 +268,8 @@ docker logs node-api -f
 
 # Check MongoDB directly
 docker exec -it node-mongodb mongosh -u admin -p adminpassword \
-  --eval "use nodeapp; db.users.find({}, {name:1, email:1})"
+  --authenticationDatabase admin \
+  --eval "db.getSiblingDB('nodeapp').users.find({}, { name: 1, email: 1, _id: 0 }).toArray()"
 ```
 
 ## Step 6: Environment Variables for Portainer
@@ -281,4 +285,4 @@ Add these in the Stack **Environment Variables** section:
 
 ## Conclusion
 
-Deploying Node.js with MongoDB via Portainer provides a production-ready API stack with proper connection retry logic, Mongoose ODM for schema validation and business logic, and Mongo Express for database administration. The health check on MongoDB ensures Node.js only connects after the database is accepting connections. For production deployments, restrict Mongo Express access to an internal network or remove it entirely, enable MongoDB authentication with a dedicated application user, and consider enabling MongoDB replica sets for transaction support and high availability.
+Deploying Node.js with MongoDB via Portainer provides a solid API stack with proper connection retry logic, Mongoose ODM for schema validation and business logic, and Mongo Express for database administration. The health check on MongoDB ensures Node.js only connects after the database is accepting connections. For production deployments, restrict Mongo Express access to an internal network or remove it entirely, replace the example credentials with strong secrets, and consider enabling MongoDB replica sets for transaction support and high availability.
