@@ -4,39 +4,36 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Template, Mustache, DevOps
 
-Description: Learn how to use Mustache syntax to create dynamic, configurable template variables in Portainer custom templates.
+Description: Learn how to use Mustache-style variables to create dynamic, configurable template variables in Portainer custom templates.
 
 ## Introduction
 
-Portainer's custom templates support Mustache-style variable syntax, enabling you to create parameterized templates that prompt users for configuration at deploy time. This guide covers the Mustache syntax supported by Portainer, best practices for template variables, and real-world examples.
+Portainer's custom templates support Mustache-style variable placeholders, enabling you to create parameterized templates that prompt users for configuration at deploy time. This guide covers the variable syntax Portainer supports, best practices for template variables, and real-world examples.
 
 ## Prerequisites
 
-- Portainer CE or BE with custom templates access
+- Portainer BE with custom templates access (template variables are a Business Edition feature)
 - Basic understanding of YAML and Docker Compose
 - A template to parameterize
 
 ## Mustache Syntax Basics
 
-Portainer uses a subset of Mustache/Go template syntax for variables:
+Portainer uses Mustache-style variables in custom templates:
 
 ```yaml
 # Basic variable substitution
 
-{{ .variable_name }}
-
-# Variable with a default value
-{{ .variable_name | default "fallback_value" }}
+{{ variable_name }}
 
 # Variable used inline in a string
-  - APP_URL=https://{{ .domain }}/api
+  - APP_URL=https://{{ domain }}/api
 ```
 
 **Key rules:**
-- Variable names must start with a dot: `.variable_name`
+- Use `{{ variable_name }}` to reference a template variable
 - Variable names are case-sensitive
-- Names can only contain letters, numbers, and underscores
-- Default values use the pipe `|` and `default` filter
+- Use simple names such as `db_password`, `wordpress_port`, or `image_tag`
+- Configure default values in Portainer's **Variables** section, not inline in the template
 
 ## Basic Variable Examples
 
@@ -45,8 +42,8 @@ Portainer uses a subset of Mustache/Go template syntax for variables:
 ```yaml
 services:
   app:
-    image: myapp:{{ .version }}
-    # User must provide: version (e.g., "1.2.3" or "latest")
+    image: myapp:{{ version }}
+    # User provides: version (for example, "1.2.3" or "latest")
 ```
 
 ### Variable with Default
@@ -55,8 +52,8 @@ services:
 services:
   web:
     ports:
-      - "{{ .port | default "8080" }}:80"
-    # Defaults to port 8080 if user doesn't provide a value
+      - "{{ port }}:80"
+    # Set the defaultValue for `port` to "8080" in Portainer's Variables section
 ```
 
 ### Multiple Variables in One Line
@@ -64,8 +61,8 @@ services:
 ```yaml
 services:
   db:
-    image: postgres:{{ .postgres_version | default "15" }}-{{ .postgres_variant | default "alpine" }}
-    # Produces: postgres:15-alpine if defaults are used
+    image: postgres:{{ postgres_version }}-{{ postgres_variant }}
+    # You can set defaultValue entries for these variables in Portainer's Variables section
 ```
 
 ## Common Variable Patterns
@@ -76,12 +73,12 @@ services:
 services:
   frontend:
     ports:
-      - "{{ .frontend_port | default "80" }}:80"
-      - "{{ .frontend_ssl_port | default "443" }}:443"
+      - "{{ frontend_port }}:80"
+      - "{{ frontend_ssl_port }}:443"
 
   api:
     ports:
-      - "{{ .api_port | default "3000" }}:3000"
+      - "{{ api_port }}:3000"
 ```
 
 ### Environment Variables
@@ -91,12 +88,12 @@ services:
   app:
     environment:
       # Required (no default)
-      - DB_PASSWORD={{ .db_password }}
-      - SECRET_KEY={{ .secret_key }}
-      # Optional with defaults
-      - LOG_LEVEL={{ .log_level | default "info" }}
-      - MAX_CONNECTIONS={{ .max_connections | default "100" }}
-      - DEBUG={{ .debug | default "false" }}
+      - DB_PASSWORD={{ db_password }}
+      - SECRET_KEY={{ secret_key }}
+      # Optional values can have defaults configured in the Variables section
+      - LOG_LEVEL={{ log_level }}
+      - MAX_CONNECTIONS={{ max_connections }}
+      - DEBUG={{ debug }}
 ```
 
 ### Image Configuration
@@ -104,7 +101,7 @@ services:
 ```yaml
 services:
   app:
-    image: {{ .registry | default "docker.io" }}/{{ .image_name }}:{{ .image_tag | default "latest" }}
+    image: {{ registry }}/{{ image_name }}:{{ image_tag }}
 ```
 
 ### Volume Paths
@@ -113,8 +110,8 @@ services:
 services:
   app:
     volumes:
-      - {{ .data_dir | default "/var/lib/myapp" }}:/data
-      - {{ .config_dir | default "/etc/myapp" }}:/config
+      - "{{ data_dir }}:/data"
+      - "{{ config_dir }}:/config"
 ```
 
 Resource Limits
@@ -125,28 +122,28 @@ services:
     deploy:
       resources:
         limits:
-          memory: {{ .memory_limit | default "512m" }}
-          cpus: "{{ .cpu_limit | default "0.5" }}"
+          memory: "{{ memory_limit }}"
+          cpus: "{{ cpu_limit }}"
 ```
 
 ## Complete Example Template
 
-Here is a fully parameterized WordPress stack template:
+Here is a fully parameterized WordPress stack template. Configure default values for optional variables such as `wordpress_version`, `wordpress_port`, `db_user`, and `db_name` in Portainer's **Variables** section:
 
 ```yaml
 version: "3.8"
 
 services:
   wordpress:
-    image: wordpress:{{ .wordpress_version | default "latest" }}
+    image: wordpress:{{ wordpress_version }}
     ports:
-      - "{{ .wordpress_port | default "80" }}:80"
+      - "{{ wordpress_port }}:80"
     environment:
       WORDPRESS_DB_HOST: database
-      WORDPRESS_DB_USER: {{ .db_user | default "wordpress" }}
-      WORDPRESS_DB_PASSWORD: {{ .db_password }}
-      WORDPRESS_DB_NAME: {{ .db_name | default "wordpress" }}
-      WORDPRESS_TABLE_PREFIX: {{ .table_prefix | default "wp_" }}
+      WORDPRESS_DB_USER: {{ db_user }}
+      WORDPRESS_DB_PASSWORD: {{ db_password }}
+      WORDPRESS_DB_NAME: {{ db_name }}
+      WORDPRESS_TABLE_PREFIX: {{ table_prefix }}
     volumes:
       - wordpress-data:/var/www/html
     depends_on:
@@ -154,12 +151,12 @@ services:
     restart: unless-stopped
 
   database:
-    image: mysql:{{ .mysql_version | default "8.0" }}
+    image: mysql:{{ mysql_version }}
     environment:
-      MYSQL_DATABASE: {{ .db_name | default "wordpress" }}
-      MYSQL_USER: {{ .db_user | default "wordpress" }}
-      MYSQL_PASSWORD: {{ .db_password }}
-      MYSQL_ROOT_PASSWORD: {{ .db_root_password }}
+      MYSQL_DATABASE: {{ db_name }}
+      MYSQL_USER: {{ db_user }}
+      MYSQL_PASSWORD: {{ db_password }}
+      MYSQL_ROOT_PASSWORD: {{ db_root_password }}
     volumes:
       - mysql-data:/var/lib/mysql
     restart: unless-stopped
@@ -171,7 +168,7 @@ volumes:
 
 ## Defining Variables in Portainer
 
-For each Mustache variable, add a corresponding entry in the **Variables** section when creating the template:
+For each template variable, add a corresponding entry in the **Variables** section when creating the template:
 
 ```json
 [
@@ -189,40 +186,39 @@ For each Mustache variable, add a corresponding entry in the **Variables** secti
     "name": "wordpress_port",
     "label": "WordPress port",
     "description": "Host port for WordPress",
-    "default": "80"
+    "defaultValue": "80"
   },
   {
     "name": "db_name",
     "label": "Database name",
     "description": "Name of the WordPress database",
-    "default": "wordpress"
+    "defaultValue": "wordpress"
   }
 ]
 ```
 
 ## Variable Validation Behavior
 
-- Variables without a `default` value are treated as **required** in the Portainer UI
+- Variables without a `defaultValue` are treated as **required** in the Portainer UI
 - The deploy button may be disabled until required variables are filled in
-- Variables with defaults show the default as a placeholder in the input field
+- Variables with defaults are pre-populated with their default values in the input field
 
 ## Tips and Best Practices
 
 1. **Always use defaults for optional settings** to make templates more user-friendly
 2. **Never set defaults for passwords** - force users to provide their own
 3. **Use descriptive labels** - "MySQL root password" is clearer than "root_pw"
-4. **Avoid complex logic** - Portainer's Mustache support is limited; keep variables simple
+4. **Avoid complex logic** - Portainer's custom template variable UI is designed around simple value substitution; keep variables simple
 5. **Test substitution** - mentally substitute test values to verify YAML remains valid
 
 ## Known Limitations
 
-- No conditional blocks (`{{#if}}`) in Portainer's implementation
-- No loops or iterations
-- No arithmetic operations
-- Complex Go template syntax may not be supported
+- Portainer's custom template documentation covers variable substitution with `{{ variable_name }}`
+- Default values are configured in Portainer's **Variables** section, not inline in the template
+- Keep template variables simple and verify the rendered Compose output before deploying
 
-Stick to `{{ .variable }}` and `{{ .variable | default "value" }}` for reliable results.
+Stick to `{{ variable_name }}` and configure defaults in the **Variables** section for reliable results.
 
 ## Conclusion
 
-Mustache variables are the key to creating flexible, reusable Portainer templates. By parameterizing ports, passwords, image versions, and configuration values, you create templates that work across environments without modification. Keep your variables simple, always provide defaults for optional settings, and clearly label required fields for the best user experience.
+Template variables are the key to creating flexible, reusable Portainer templates. By parameterizing ports, passwords, image versions, and configuration values, you create templates that work across environments without modification. Keep your variables simple, provide defaults for optional settings in the **Variables** section, and clearly label required fields for the best user experience.
