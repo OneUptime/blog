@@ -8,7 +8,7 @@ Description: Configure Postfix TLS encryption for both inbound SMTP connections 
 
 ## Introduction
 
-Postfix supports TLS for both inbound (smtpd) and outbound (smtp) connections. Opportunistic TLS encrypts connections when both sides support it; enforced TLS requires encryption for specific destinations.
+Postfix supports TLS for both inbound (smtpd) and outbound (smtp) connections. Opportunistic TLS encrypts connections when both sides support it; enforced TLS can require encryption globally or for specific destinations.
 
 ## Generating TLS Certificates
 
@@ -37,9 +37,10 @@ smtpd_tls_key_file  = /etc/letsencrypt/live/mail.example.com/privkey.pem
 smtpd_tls_security_level = may   # Opportunistic: use TLS if client supports it
 # smtpd_tls_security_level = encrypt  # Require TLS from all clients
 
-# TLS session cache for performance
-smtpd_tls_session_cache_database = btree:${data_directory}/smtpd_scache
-smtpd_tls_session_cache_timeout = 3600s
+# Optional TLS session cache for older Postfix setups
+# Postfix >= 2.11 generally prefers TLS session tickets instead
+# smtpd_tls_session_cache_database = btree:${data_directory}/smtpd_scache
+# smtpd_tls_session_cache_timeout = 3600s
 
 # Log TLS connections
 smtpd_tls_loglevel = 1
@@ -56,7 +57,7 @@ smtpd_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
 
 # Outbound TLS security level
 smtp_tls_security_level = may   # Try TLS, fall back to plaintext
-# smtp_tls_security_level = encrypt  # Require TLS (will bounce if remote doesn't support)
+# smtp_tls_security_level = encrypt  # Require TLS (delivery is deferred if remote doesn't support it)
 
 # CA bundle for verifying remote certificates
 smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
@@ -67,8 +68,10 @@ smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
 # Log TLS connections
 smtp_tls_loglevel = 1
 
-# Force IPv4 outbound
+# Use IPv4 only
 inet_protocols = ipv4
+
+# Optional: bind outbound SMTP to a specific local IPv4 address
 smtp_bind_address = 203.0.113.10
 ```
 
@@ -103,8 +106,8 @@ swaks --to user@example.com \
   --server 203.0.113.10 --port 587 \
   --tls --auth --auth-user user@example.com
 
-# Check TLS policy for specific domains
-postconf -M submission/inet
+# Inspect the submission service configuration
+postconf -Mf submission/inet
 ```
 
 ## Conclusion
