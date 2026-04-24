@@ -13,87 +13,68 @@ Learn how to configure pre-commit hooks for automatic OpenTofu formatting, valid
 ## Prerequisites
 
 - OpenTofu v1.6+ installed
+- pre-commit installed
 - Basic knowledge of OpenTofu concepts
-- Relevant cloud credentials configured
 
 ## Step 1: Set Up the Environment
 
 ```bash
 # Verify OpenTofu installation
-
 tofu version
 
-# Set up required environment variables
-export TF_LOG=INFO  # Enable logging
-export TF_INPUT=false  # Disable interactive input
-
-# Configure cloud credentials
-# AWS
-export AWS_PROFILE=your-profile
-# Azure
-export ARM_SUBSCRIPTION_ID=your-subscription-id
-# GCP
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+# Install and verify pre-commit
+pip install pre-commit
+pre-commit --version
 ```
 
 ## Step 2: Configure Your OpenTofu Project
 
-```hcl
-# main.tf
-terraform {
-  required_version = ">= 1.6.0"
+```yaml
+# .pre-commit-config.yaml
+minimum_pre_commit_version: "4.4.0"
 
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
+repos:
+  - repo: local
+    hooks:
+      - id: tofu_fmt
+        name: tofu fmt
+        entry: tofu fmt -recursive
+        language: unsupported
+        files: '\.(tf|tofu|tfvars)(\.json)?$'
+        pass_filenames: false
 
-  # Remote state backend for team collaboration
-  backend "s3" {
-    bucket         = "my-opentofu-state"
-    key            = "production/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
-  }
-}
+      - id: tofu_validate
+        name: tofu validate
+        entry: tofu validate -no-color
+        language: unsupported
+        files: '\.(tf|tofu)(\.json)?$'
+        pass_filenames: false
 
-provider "aws" {
-  region = var.aws_region
-
-  default_tags {
-    tags = {
-      ManagedBy   = "OpenTofu"
-      Environment = var.environment
-      Repository  = var.repository_url
-    }
-  }
-}
+  - repo: https://github.com/terraform-docs/terraform-docs
+    rev: v0.22.0
+    hooks:
+      - id: terraform-docs-go
+        args: ["markdown", "table", "--output-file", "README.md", "--output-mode", "inject", "."]
 ```
 
 ## Step 3: Implement the Core Feature
 
 ```bash
-# Initialize the project
-tofu init -backend-config=backend.tfvars
+# Initialize the working directory for validation without connecting to a backend
+tofu init -backend=false -input=false
 
-# Create a plan and save it
-tofu plan -out=tfplan -var-file=production.tfvars
+# Install the Git hook and hook environments
+pre-commit install --install-hooks
 
-# Review the plan
-tofu show tfplan
-
-# Apply the saved plan
-tofu apply tfplan
+# Run all hooks once across the repository
+pre-commit run --all-files
 ```
 
 ## Step 4: Set Up Automation
 
 ```yaml
 # .github/workflows/infrastructure.yml
-name: Infrastructure Deployment
+name: OpenTofu Pre-Commit
 
 on:
   push:
@@ -102,121 +83,72 @@ on:
     branches: [main]
 
 permissions:
-  id-token: write
   contents: read
-  pull-requests: write
 
 jobs:
-  plan:
+  pre-commit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+      - uses: actions/setup-python@v6
         with:
-          tofu_version: "1.7.0"
+          python-version: "3.13"
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: opentofu/setup-opentofu@v2
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
+          tofu_wrapper: false
 
-      - name: OpenTofu Init
-        run: tofu init
+      - name: Install pre-commit
+        run: pip install pre-commit
 
-      - name: OpenTofu Plan
-        run: tofu plan -no-color -out=tfplan
+      - name: Initialize OpenTofu
+        run: tofu init -backend=false -input=false
 
-      - name: Upload Plan
-        uses: actions/upload-artifact@v3
-        with:
-          name: tfplan
-          path: tfplan
-
-  apply:
-    needs: plan
-    runs-on: ubuntu-latest
-    environment: production
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.7.0"
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: Download Plan
-        uses: actions/download-artifact@v3
-        with:
-          name: tfplan
-
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Apply
-        run: tofu apply -auto-approve tfplan
+      - name: Run pre-commit hooks
+        run: pre-commit run --all-files --show-diff-on-failure
 ```
 
 ## Step 5: Monitor and Verify
 
 ```bash
-# Check current state
-tofu show
+# Validate the pre-commit configuration itself
+pre-commit validate-config
 
-# List all managed resources
-tofu state list
+# Run a single hook on demand
+pre-commit run tofu_validate --all-files
 
-# Verify resource configuration
-tofu state show aws_instance.main
+# Regenerate module documentation on demand
+pre-commit run terraform-docs-go --all-files
 
-# Check for drift
-tofu plan -refresh-only
+# Confirm generated changes before committing
+git diff
 ```
 
 ## Step 6: Implement Best Practices
 
-```hcl
-# Use locals for computed values
-locals {
-  name_prefix = "${var.project}-${var.environment}"
-  common_tags = {
-    Project     = var.project
-    Environment = var.environment
-    ManagedBy   = "OpenTofu"
-    Owner       = var.team_email
-  }
-}
+```yaml
+# .terraform-docs.yml
+formatter: markdown table
 
-# Use validation for variables
-variable "environment" {
-  description = "Deployment environment"
-  type        = string
-
-  validation {
-    condition     = contains(["dev", "staging", "production"], var.environment)
-    error_message = "Environment must be dev, staging, or production."
-  }
-}
+output:
+  file: README.md
+  mode: inject
+  template: |-
+    <!-- BEGIN_TF_DOCS -->
+    {{ .Content }}
+    <!-- END_TF_DOCS -->
 ```
 
 ## Troubleshooting
 
 If you encounter issues:
 
-1. Enable debug logging: `export TF_LOG=DEBUG`
-2. Check provider credentials: Verify environment variables
-3. Review state consistency: Run `tofu refresh` then `tofu plan`
-4. Consult provider documentation for service-specific errors
+1. Upgrade pre-commit if `language: unsupported` is not recognized: `pip install --upgrade pre-commit`
+2. Initialize the project before validation: Run `tofu init -backend=false -input=false`
+3. Add `<!-- BEGIN_TF_DOCS -->` and `<!-- END_TF_DOCS -->` to `README.md` if you want generated docs inserted in a specific location
+4. Update pinned hook revisions: Run `pre-commit autoupdate` then `pre-commit run --all-files`
 
 ## Conclusion
 
-You have successfully implemented How to Use Pre-Commit Hooks for OpenTofu. This approach provides a repeatable, auditable, and collaborative infrastructure management workflow. Combine with code review processes, automated testing, and proper access controls for a production-ready setup.
+You have successfully implemented pre-commit hooks for OpenTofu. This approach gives you automatic formatting, local validation, and up-to-date module documentation before changes are committed. Combine it with CI enforcement and code review for a more reliable infrastructure workflow.
