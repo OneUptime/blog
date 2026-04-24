@@ -88,8 +88,10 @@ remote_write:
     basic_auth:
       username: prometheus
       password: secret123
-    # Or use a bearer token
-    # bearer_token: "eyJhbGci..."
+    # Or use an authorization header with a bearer token
+    # authorization:
+    #   type: Bearer
+    #   credentials: "eyJhbGci..."
     # Or TLS client certificate
     # tls_config:
     #   cert_file: /etc/prometheus/client.crt
@@ -113,22 +115,22 @@ docker run -d \
 ```yaml
 # Key metrics to watch in Prometheus itself:
 # prometheus_remote_storage_samples_total - Total samples sent
-# prometheus_remote_storage_failed_samples_total - Failed samples
-# prometheus_remote_storage_pending_samples - Backlog of unsent samples
-# prometheus_remote_storage_queue_highest_sent_timestamp_seconds - Latest timestamp sent
+# prometheus_remote_storage_samples_failed_total - Non-recoverable failed samples
+# prometheus_remote_storage_samples_pending - Backlog of unsent samples
+# prometheus_remote_storage_queue_highest_sent_timestamp_seconds - Latest timestamp successfully sent
 ```
 
 ```promql
 # Query: Remote write failure rate
-rate(prometheus_remote_storage_failed_samples_total[5m])
+rate(prometheus_remote_storage_samples_failed_total[5m])
 
-# Query: Remote write latency (queue depth)
-prometheus_remote_storage_pending_samples
+# Query: Remote write queue backlog
+prometheus_remote_storage_samples_pending
 ```
 
 ## Key Takeaways
 
-- `remote_write.url` accepts an IPv4:port endpoint for your storage backend.
-- `queue_config.max_shards` controls parallelism - increase for high-throughput environments.
+- `remote_write.url` accepts a full HTTP or HTTPS URL, including an IPv4 host if needed.
+- `queue_config.max_shards` controls parallelism and should be tuned carefully - default values are often sufficient.
 - Use `write_relabel_configs` to filter which metrics are forwarded to each remote endpoint.
-- Monitor `prometheus_remote_storage_pending_samples` to detect backlog buildup.
+- Monitor `prometheus_remote_storage_samples_pending` to detect backlog buildup.
