@@ -14,9 +14,9 @@ Router Advertisement timing parameters control how often RA messages are sent an
 
 | Parameter | RFC Name | Default | Range | Purpose |
 |---|---|---|---|---|
-| MaxRtrAdvInterval | MaxRtrAdvInterval | 200s | 4–1800s | Maximum time between unsolicited RAs |
-| MinRtrAdvInterval | MinRtrAdvInterval | 0.33 * Max | 3–1350s | Minimum time between unsolicited RAs |
-| Router Lifetime | AdvDefaultLifetime | 3 * Max | 0–65535s | How long the router is a valid default gateway |
+| MaxRtrAdvInterval | MaxRtrAdvInterval | 600s | 4–1800s | Maximum time between unsolicited RAs |
+| MinRtrAdvInterval | MinRtrAdvInterval | 0.33 * Max | 3–0.75 * Max | Minimum time between unsolicited RAs |
+| Router Lifetime | AdvDefaultLifetime | 3 * Max | 0 or Max–9000s | How long the router is a valid default gateway |
 | Reachable Time | AdvReachableTime | 0 (unspecified) | 0–3600000ms | How long a neighbor is considered reachable |
 | Retrans Timer | AdvRetransTimer | 0 (unspecified) | 0–4294967295ms | Retransmission time for NS messages |
 
@@ -24,8 +24,8 @@ Router Advertisement timing parameters control how often RA messages are sent an
 
 RFC 4861 defines critical constraints:
 - `MinRtrAdvInterval` must be >= 3 seconds and <= 0.75 * `MaxRtrAdvInterval`
-- `AdvDefaultLifetime` (router lifetime) must be >= `MaxRtrAdvInterval`
-- For a router lifetime of 0, the router is not a default gateway (useful for route injection only)
+- `AdvDefaultLifetime` (router lifetime) must be 0 or between `MaxRtrAdvInterval` and 9000 seconds
+- For a router lifetime of 0, the router is not a default gateway, but it can still advertise other RA information
 
 ## radvd Configuration Examples
 
@@ -36,15 +36,15 @@ RFC 4861 defines critical constraints:
 
 interface eth1 {
     AdvSendAdvert on;
-    MinRtrAdvInterval 33;    # ~1/3 of MaxRtrAdvInterval
-    MaxRtrAdvInterval 100;   # Send RA at least every 100 seconds
-    AdvDefaultLifetime 300;  # Router valid for 300s (3x MaxRtrAdvInterval)
+    MinRtrAdvInterval 198;     # 0.33 * MaxRtrAdvInterval
+    MaxRtrAdvInterval 600;     # Maximum time between unsolicited RAs
+    AdvDefaultLifetime 1800;   # Router valid for 1800s (3x MaxRtrAdvInterval)
 
     prefix 2001:db8:1:1::/64 {
         AdvOnLink on;
         AdvAutonomous on;
-        AdvValidLifetime 86400;
-        AdvPreferredLifetime 14400;
+        AdvValidLifetime 2592000;
+        AdvPreferredLifetime 604800;
     };
 };
 ```
@@ -83,7 +83,7 @@ interface wlan0 {
     # Router lifetime must be >= MaxRtrAdvInterval
     AdvDefaultLifetime 1800; # Router valid for 30 minutes
 
-    prefix 2001:db8:iot:1::/64 {
+    prefix 2001:db8:10:1::/64 {
         AdvOnLink on;
         AdvAutonomous on;
         AdvValidLifetime 86400;
@@ -100,10 +100,10 @@ sequenceDiagram
     participant Router
 
     Client->>Router: Router Solicitation (RS)
-    Router-->>Client: Router Advertisement (RA) [immediate response]
+    Router-->>Client: Router Advertisement (RA) [after a short random delay]
     Note over Client: Sets default gateway, configures SLAAC address
 
-    loop Every MaxRtrAdvInterval (±randomization)
+    loop Every random interval between MinRtrAdvInterval and MaxRtrAdvInterval
         Router-->>Client: Unsolicited RA
         Note over Client: Refreshes gateway lifetime
     end
@@ -111,7 +111,6 @@ sequenceDiagram
     Note over Router: Router goes offline
     Note over Client: No RAs received for AdvDefaultLifetime
     Client->>Client: Default gateway expires
-    Client->>Router: Router Solicitation (RS) [retry]
 ```
 
 ## Impact of Router Lifetime = 0
@@ -125,7 +124,7 @@ interface eth1 {
     AdvDefaultLifetime 0;
 
     # But still advertise route information via route option
-    route 2001:db8:specific::/48 {
+    route 2001:db8:100::/48 {
         AdvRouteLifetime 1800;
         AdvRoutePreference high;
     };
@@ -137,11 +136,11 @@ interface eth1 {
 ```bash
 # On a Linux client, check when the default route expires
 ip -6 route show default
-# The 'expires' field shows the remaining router lifetime
+# For RA-learned default routes, the 'expires' field shows the remaining lifetime
 
 # Watch RA reception in real time
-sudo tcpdump -i eth0 -v "icmp6 and ip6[40] == 134" 2>/dev/null | \
-    grep -E "(Router Advertisement|lifetime)"
+sudo tcpdump -i eth0 -vv 'icmp6 and ip6[40] == 134' 2>/dev/null | \
+    grep -Ei "(router advertisement|router lifetime)"
 ```
 
 ## Conclusion
