@@ -12,9 +12,9 @@ Lazydocker is a terminal UI (TUI) for Docker and Docker Compose, built with Go a
 
 ## Key Difference
 
-**Lazydocker** is a terminal application - you run it on the host (or via SSH) and get a keyboard-navigable TUI. No server to maintain, no browser required, no data stored.
+**Lazydocker** is a terminal application - you run it on the host (or via SSH) and get a keyboard-navigable TUI. No separate server to maintain, no browser required, and no server-side state to manage.
 
-**Portainer** is a server application - it runs as a container, stores state in a volume, and is accessed via a browser from anywhere.
+**Portainer** is a server application - it runs as a container, stores state in a volume, and is accessed via a browser over the network.
 
 ## Feature Comparison
 
@@ -27,8 +27,8 @@ Lazydocker is a terminal UI (TUI) for Docker and Docker Compose, built with Go a
 | Kubernetes | No | Yes |
 | Multi-user | No | Yes |
 | Image management | Basic | Full |
-| Persistent state | No | Yes |
-| Resource overhead | Zero | ~100MB RAM |
+| Persistent state | Config only | Yes |
+| Resource overhead | Minimal extra overhead | Lightweight container service |
 | Learning curve | Low (for CLI users) | Low (for GUI users) |
 
 ## Lazydocker Workflow
@@ -51,10 +51,10 @@ In the TUI:
 - `Enter` - select and focus
 - `d` - remove a container
 - `r` - restart a container
-- `l` - view logs
-- `e` - view environment variables
+- `m` - view logs
+- `e` - hide/show stopped containers
 - `[` / `]` - cycle through tabs
-- `?` - help panel
+- `?` - options/help menu
 
 ## Portainer Workflow
 
@@ -78,7 +78,7 @@ From the browser:
 
 - You're already SSH'd into a server and want quick container inspection
 - You prefer terminal workflows
-- You want zero overhead (no additional container running)
+- You want minimal extra overhead (no additional server container running)
 - You don't need multi-user access
 
 ## When Portainer Wins
@@ -87,7 +87,7 @@ From the browser:
 - You're deploying Docker Compose stacks regularly
 - Multiple people need container access
 - You manage multiple Docker hosts
-- You want persistent state, templates, and webhooks
+- You want persistent state and a web-based control plane
 
 ## Combined Workflow
 
