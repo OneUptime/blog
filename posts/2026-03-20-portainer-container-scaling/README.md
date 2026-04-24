@@ -13,7 +13,7 @@ While Kubernetes has built-in horizontal pod autoscaling, Docker Swarm requires 
 ## Prerequisites
 
 - Docker Swarm cluster managed by Portainer
-- Prometheus for metrics collection
+- Prometheus for metrics collection (optional if you use the Docker stats path shown below)
 - Python 3.8+ on the automation host
 
 ## The Auto-Scaler
@@ -22,18 +22,21 @@ While Kubernetes has built-in horizontal pod autoscaling, Docker Swarm requires 
 #!/usr/bin/env python3
 # autoscaler.py
 
+import json
+import logging
+import os
 import requests
 import time
-import logging
 from dataclasses import dataclass
 from typing import Optional
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
 
-PORTAINER_URL = "https://portainer.example.com"
-API_KEY = "your-api-key"
-ENDPOINT_ID = 1  # Swarm endpoint
+PORTAINER_URL = os.environ.get("PORTAINER_URL", "https://portainer.example.com")
+API_KEY = os.environ.get("PORTAINER_API_KEY", "your-api-key")
+ENDPOINT_ID = int(os.environ.get("PORTAINER_ENDPOINT_ID", "1"))  # Swarm endpoint
+PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://prometheus:9090")
 
 headers = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
 
@@ -78,6 +81,7 @@ def get_service_replicas(service_id: str) -> int:
         f"{PORTAINER_URL}/api/endpoints/{ENDPOINT_ID}/docker/services/{service_id}",
         headers=headers
     )
+    resp.raise_for_status()
     service = resp.json()
     return service['Spec']['Mode']['Replicated']['Replicas']
 
@@ -89,6 +93,7 @@ def scale_service(service_id: str, service_name: str, new_replicas: int) -> bool
         f"{PORTAINER_URL}/api/endpoints/{ENDPOINT_ID}/docker/services/{service_id}",
         headers=headers
     )
+    resp.raise_for_status()
     service = resp.json()
     
     current_replicas = service['Spec']['Mode']['Replicated']['Replicas']
@@ -116,15 +121,15 @@ def scale_service(service_id: str, service_name: str, new_replicas: int) -> bool
 
 def get_cpu_usage_from_prometheus(service_name: str) -> Optional[float]:
     """Query Prometheus for service CPU usage."""
-    PROMETHEUS_URL = "http://prometheus:9090"
-    
-    # Query average CPU usage for the service's containers
+    # Example query for cAdvisor-style metrics; adjust the selector to match
+    # the labels exposed by your container metrics exporter.
     query = f'avg(rate(container_cpu_usage_seconds_total{{name=~"{service_name}.*"}}[5m])) * 100'
     
     resp = requests.get(
         f"{PROMETHEUS_URL}/api/v1/query",
         params={"query": query}
     )
+    resp.raise_for_status()
     
     data = resp.json()
     results = data.get('data', {}).get('result', [])
@@ -134,14 +139,15 @@ def get_cpu_usage_from_prometheus(service_name: str) -> Optional[float]:
     return None
 
 
-def get_cpu_usage_from_docker(service_id: str, service_name: str) -> Optional[float]:
+def get_cpu_usage_from_docker(service_name: str) -> Optional[float]:
     """Get average CPU usage from Docker stats for all tasks in the service."""
     # Get tasks for the service
     resp = requests.get(
         f"{PORTAINER_URL}/api/endpoints/{ENDPOINT_ID}/docker/tasks",
-        params={"filters": f'{{"service":["{service_id}"]}}'},
+        params={"filters": json.dumps({"service": [service_name]})},
         headers=headers
     )
+    resp.raise_for_status()
     tasks = [t for t in resp.json() if t['Status']['State'] == 'running']
     
     if not tasks:
@@ -162,6 +168,7 @@ def get_cpu_usage_from_docker(service_id: str, service_name: str) -> Optional[fl
                 headers=headers,
                 timeout=10
             )
+            stats_resp.raise_for_status()
             stats = stats_resp.json()
             
             cpu_delta = (stats['cpu_stats']['cpu_usage']['total_usage'] -
@@ -202,7 +209,7 @@ def auto_scale():
         current_replicas = service['Spec']['Mode'].get('Replicated', {}).get('Replicas', 1)
         
         # Get CPU usage
-        cpu_usage = get_cpu_usage_from_docker(service_id, service_name)
+        cpu_usage = get_cpu_usage_from_docker(service_name)
         
         if cpu_usage is None:
             logger.debug(f"No CPU data for {service_name}")
@@ -245,19 +252,26 @@ version: '3.8'
 services:
   autoscaler:
     image: python:3.11-slim
-    restart: always
     command: >
       sh -c "pip install requests -q && python /app/autoscaler.py"
-    volumes:
-      - ./autoscaler.py:/app/autoscaler.py:ro
+    configs:
+      - source: autoscaler_py
+        target: /app/autoscaler.py
     environment:
       PORTAINER_URL: https://portainer.example.com
       PORTAINER_API_KEY: ${PORTAINER_API_KEY}
+      PORTAINER_ENDPOINT_ID: 1
+      PROMETHEUS_URL: http://prometheus:9090
     deploy:
       replicas: 1
+      restart_policy:
+        condition: any
       placement:
         constraints:
-          - node.role == manager  # Run only on manager nodes
+          - node.role==manager  # Run only on manager nodes
+configs:
+  autoscaler_py:
+    file: ./autoscaler.py
 ```
 
 ## Conclusion
