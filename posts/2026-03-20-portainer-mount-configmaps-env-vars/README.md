@@ -1,4 +1,4 @@
-# How to Mount ConfigMaps as Environment Variables in Portainer (2)
+# How to Use ConfigMaps as Environment Variables in Portainer (2)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Learn how to inject ConfigMap data as environment variables into Ku
 
 ## Introduction
 
-Injecting ConfigMap data as environment variables is one of the most common ways to configure containerized applications in Kubernetes. This pattern decouples configuration from code, allowing the same image to run across environments with different settings. Portainer supports configuring environment variable injection from ConfigMaps through its application form and YAML editor. This guide covers both approaches.
+Injecting ConfigMap data as environment variables is one of the most common ways to configure containerized applications in Kubernetes. This pattern decouples configuration from code, allowing the same image to run across environments with different settings. Portainer supports configuring environment variable injection from ConfigMaps through its application form and manifest editor. This guide covers both approaches.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ Injecting ConfigMap data as environment variables is one of the most common ways
 
 ## Step 1: Create a ConfigMap First
 
-Before mounting, ensure the ConfigMap exists:
+Before using it, ensure the ConfigMap exists:
 
 ```bash
 # Verify the ConfigMap exists
@@ -45,25 +45,19 @@ data:
   API_BASE_URL: "https://api.production.company.com"
 ```
 
-## Step 2: Mount ConfigMap in Portainer Form
+## Step 2: Use ConfigMap in Portainer Form
 
 When creating or editing an application in Portainer:
 
-1. Navigate to **Applications** → **+ Add application** (or edit existing)
-2. Find the **Environment variables** section
-3. Click **+ Add environment variable**
-4. Choose **ConfigMap** as the source:
-   ```text
-   Environment variable name: DATABASE_HOST
-   Source: ConfigMap
-   ConfigMap name: my-app-config
-   Key: DATABASE_HOST
-   ```
-5. Repeat for each variable you need
+1. Navigate to **Applications** → **Add with form** (or edit existing)
+2. Find the **ConfigMaps** section
+3. Select `my-app-config`
+4. Portainer exposes all keys from the selected ConfigMap as environment variables by default
+5. If you need only specific keys or custom environment variable names, use a manifest with `env` / `configMapKeyRef` as shown below
 
-For all keys at once, use the **Load from ConfigMap** option if available in your Portainer version.
+Use the **Override** option only if you want to change a key from an environment variable to a filesystem mount.
 
-## Step 3: Mount All ConfigMap Keys at Once (envFrom)
+## Step 3: Inject All ConfigMap Keys at Once (envFrom)
 
 To inject all keys from a ConfigMap as environment variables:
 
@@ -94,7 +88,7 @@ spec:
 
 With `envFrom`, every key in `my-app-config` becomes an environment variable. If `my-app-config` has `DATABASE_HOST`, the container gets `DATABASE_HOST` set automatically.
 
-## Step 4: Mount Specific Keys with Custom Names
+## Step 4: Inject Specific Keys with Custom Names
 
 Map specific ConfigMap keys to environment variables with different names:
 
@@ -225,7 +219,7 @@ kubectl exec <pod-name> -n production -- \
 
 ## Step 9: Update ConfigMap and Restart
 
-After updating a ConfigMap, pods with `envFrom` must restart to get new values:
+After updating a ConfigMap, pods that use ConfigMap-backed environment variables must restart to get new values:
 
 ```bash
 # Update ConfigMap value
@@ -242,4 +236,4 @@ kubectl rollout status deployment/my-app -n production
 
 ## Conclusion
 
-Mounting ConfigMaps as environment variables is the simplest way to inject configuration into Kubernetes applications. Use `envFrom` for bulk injection of all ConfigMap keys, and `env.valueFrom.configMapKeyRef` for selective key mapping with custom names. Combine multiple ConfigMaps and use prefixes to organize configuration from different sources. Always restart affected pods after ConfigMap updates when using environment variable injection, as environment variables are set at container startup and do not update dynamically.
+Using ConfigMaps as environment variables is one of the simplest ways to inject configuration into Kubernetes applications. Use `envFrom` for bulk injection of all ConfigMap keys, and `env.valueFrom.configMapKeyRef` for selective key mapping with custom names. Combine multiple ConfigMaps and use prefixes to organize configuration from different sources. Always restart affected pods after ConfigMap updates when using environment variable injection, as environment variables are set at container startup and do not update dynamically.
