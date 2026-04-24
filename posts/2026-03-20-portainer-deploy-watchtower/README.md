@@ -41,13 +41,13 @@ services:
       # Clean up old images after update
       WATCHTOWER_CLEANUP: "true"
 
-      # Rolling restart (stop then start, no downtime for single containers)
+      # Rolling restart disabled; updated containers restart together
       WATCHTOWER_ROLLING_RESTART: "false"
 
       # Log level
       WATCHTOWER_LOG_LEVEL: "info"
 
-      # Timezone for schedule expressions
+      # Timezone for logs and schedule expressions
       TZ: "UTC"
 ```
 
@@ -100,7 +100,7 @@ For containers from private registries, Watchtower needs Docker credentials:
 ```bash
 # On the Docker host, authenticate to your private registry
 
-docker login registry.example.com -u username -p password
+printf '%s' 'password' | docker login registry.example.com --username username --password-stdin
 
 # This creates/updates ~/.docker/config.json
 ```
@@ -111,9 +111,7 @@ services:
     image: containrrr/watchtower:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /root/.docker/config.json:/root/.docker/config.json:ro    # Mount Docker credentials
-    environment:
-      DOCKER_CONFIG: "/root/.docker"    # Tell Watchtower where credentials are
+      - <PATH_TO_HOME_DIR>/.docker/config.json:/config.json:ro    # Mount Docker credentials
 ```
 
 ## Step 5: Protect Portainer from Auto-Updates
@@ -122,18 +120,18 @@ You typically don't want Watchtower to update Portainer itself while you're usin
 
 ```bash
 # Add this label to your Portainer container to exclude it
-# Either update the running container or add to docker-compose:
+# Either recreate the container with the label or add it to docker-compose:
 
-# Re-run Portainer with the exclusion label
+# Recreate Portainer with the exclusion label, reusing the same image, tag, and other options you already run
 docker stop portainer
 docker rm portainer
 docker run -d \
   --name portainer \
-  --label "com.centurylinklabs.watchtower.enable=false" \    # Exclude from Watchtower
+  --label "com.centurylinklabs.watchtower.enable=false" \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  <your-portainer-image>:<your-current-tag>
 ```
 
 Or in a Portainer stack:
@@ -177,8 +175,10 @@ docker run --rm \
   nginx    # Specific container name, or omit for all
 
 # Or trigger the running Watchtower daemon via HTTP API
+# Requires Watchtower to be started with --http-api-update, WATCHTOWER_HTTP_API_TOKEN, and port 8080 published
+# Add --http-api-periodic-polls if you also want scheduled/interval checks to continue
 curl http://localhost:8080/v1/update \
-  -H "Authorization: Bearer $(echo -n 'mytoken' | base64)"
+  -H "Authorization: Bearer mytoken"
 ```
 
 ## Conclusion
