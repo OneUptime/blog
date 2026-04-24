@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Container, Networking, DNS
 
-Description: Learn how to configure custom DNS servers, search domains, and DNS options for Docker containers in Portainer.
+Description: Learn how to configure custom DNS servers in Portainer, plus search domains and DNS options with Compose or Docker daemon defaults.
 
 ## Introduction
 
-By default, Docker containers inherit DNS settings from the host or use Docker's embedded DNS resolver. However, in enterprise environments, you may need containers to use specific DNS servers, custom search domains, or special DNS options. Portainer lets you configure all of these when creating a container.
+By default, Docker containers on the default `bridge` network inherit DNS settings from the host, while containers on user-defined networks use Docker's embedded DNS resolver. However, in enterprise environments, you may need containers to use specific DNS servers, custom search domains, or special DNS options. Portainer's **Add container** form lets you set DNS servers, and Portainer stacks let you apply Compose settings such as `dns_search` and `dns_opt`.
 
 ## Prerequisites
 
@@ -19,19 +19,18 @@ By default, Docker containers inherit DNS settings from the host or use Docker's
 
 Docker's DNS resolution for containers:
 
-1. **Bridge network**: Docker provides an embedded DNS resolver at `127.0.0.11` for service discovery (container name resolution).
-2. **Host network**: Containers use the host's `/etc/resolv.conf` directly.
-3. **Custom DNS**: You can override with specific DNS servers.
+1. **Default `bridge` network**: Containers receive a copy of the host's `/etc/resolv.conf`.
+2. **User-defined networks**: Docker uses an embedded DNS server for container name resolution and external lookups.
+3. **Host network**: Containers share the host's networking stack and resolver configuration.
+4. **Custom DNS**: You can override DNS servers, search domains, and resolver options.
 
 ## Step 1: Configure DNS in Portainer
 
 1. Navigate to **Containers > Add container**.
-2. Scroll to the **Network** tab.
-3. Look for the **DNS** section.
-4. Configure:
-   - **DNS server**: Custom DNS server IPs
-   - **DNS search**: Search domain suffixes
-   - **DNS options**: Additional resolver options
+2. Scroll to **Advanced container settings > Network**.
+3. Configure:
+   - **Primary DNS Server**: The first DNS server IP
+   - **Secondary DNS Server**: The fallback DNS server IP
 
 ## Step 2: Set Custom DNS Servers
 
@@ -56,15 +55,17 @@ services:
 
 In Portainer:
 ```text
-DNS server: 8.8.8.8
-DNS server: 8.8.4.4
+Primary DNS Server: 8.8.8.8
+Secondary DNS Server: 8.8.4.4
 ```
 
-Click **+ add DNS server** for each server.
+Portainer's **Add container** form exposes primary and secondary DNS server fields. If you need more than two DNS servers, deploy the workload as a stack and define `dns` in the Compose file.
 
 ## Step 3: Set DNS Search Domains
 
 Search domains allow you to use short hostnames instead of FQDNs:
+
+Portainer's **Add container** form does not document a field for DNS search domains. To set `dns_search` in Portainer, deploy the container as a stack and add it to the Compose file:
 
 ```yaml
 services:
@@ -78,15 +79,11 @@ services:
 
 With `dns_search: internal.example.com`, the container can resolve `database` as `database.internal.example.com`.
 
-In Portainer:
-```text
-DNS search: internal.example.com
-DNS search: corp.mycompany.com
-```
-
 ## Step 4: Set DNS Options
 
 DNS options configure resolver behavior:
+
+Portainer's **Add container** form does not document a field for DNS options. To set `dns_opt` in Portainer, deploy the container as a stack and add it to the Compose file:
 
 ```yaml
 services:
@@ -97,13 +94,6 @@ services:
       - timeout:2        # Query timeout in seconds
       - attempts:3       # Retry attempts
       - rotate           # Rotate DNS servers (load balance)
-```
-
-In Portainer, add under **DNS options**:
-```text
-ndots: 5
-timeout: 2
-attempts: 3
 ```
 
 ## Step 5: Common DNS Configuration Scenarios
@@ -124,11 +114,12 @@ services:
       - ad.mycompany.com
 ```
 
-### Kubernetes-Style DNS (for containers that connect to K8s services)
+### Kubernetes-Style DNS (only when the container can reach the cluster network)
 
 ```yaml
 services:
   app:
+    image: myapp:latest
     dns:
       - 10.96.0.10       # Kubernetes CoreDNS
     dns_search:
@@ -146,6 +137,7 @@ services:
 ```yaml
 services:
   high-perf-app:
+    image: myapp:latest
     dns:
       - 1.1.1.1           # Cloudflare (fast)
       - 1.0.0.1           # Cloudflare secondary
@@ -160,6 +152,7 @@ services:
 ```yaml
 services:
   airgapped-app:
+    image: myapp:latest
     dns:
       - 192.168.1.53     # Local DNS only
     # No public DNS servers - all resolution stays internal
@@ -169,8 +162,9 @@ services:
 
 Instead of per-container DNS, configure defaults in the Docker daemon:
 
+Edit `/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json
 {
   "dns": ["10.0.0.10", "10.0.0.11", "8.8.8.8"],
   "dns-search": ["internal.example.com"],
@@ -180,7 +174,7 @@ Instead of per-container DNS, configure defaults in the Docker daemon:
 
 ```bash
 # Apply and restart Docker:
-systemctl restart docker
+sudo systemctl restart docker
 ```
 
 All new containers inherit these DNS settings unless overridden.
@@ -197,7 +191,7 @@ cat /etc/resolv.conf
 # search internal.example.com corp.mycompany.com
 # options ndots:5
 
-# Test DNS resolution:
+# Test DNS resolution (if the image includes these tools):
 nslookup google.com
 dig internal-service.internal.example.com
 
@@ -208,7 +202,7 @@ nslookup google.com 8.8.8.8
 ## Troubleshooting DNS Issues
 
 ```bash
-# Check if DNS is resolving inside the container:
+# Check if DNS is resolving inside the container (if nslookup is installed):
 docker exec my-container nslookup example.com
 
 # Common issues:
@@ -218,9 +212,10 @@ docker exec my-container nslookup example.com
 
 # Check Docker's embedded DNS:
 docker exec my-container cat /etc/resolv.conf
-# Should show: nameserver 127.0.0.11 (embedded DNS) on bridge networks
+# On a user-defined network without a custom DNS override, this often shows:
+# nameserver 127.0.0.11
 ```
 
 ## Conclusion
 
-DNS configuration in Portainer allows you to customize how containers resolve hostnames - critical for enterprise environments with internal DNS servers, private search domains, or specific DNS requirements. By configuring DNS per-container or via Docker daemon defaults, you ensure containers can reach the services they need without relying on public DNS that may be blocked or unavailable.
+DNS configuration in Portainer allows you to customize how containers resolve hostnames - critical for enterprise environments with internal DNS servers, private search domains, or specific DNS requirements. In Portainer's container form you can set DNS servers directly, and for search domains or resolver options you can use a Portainer stack or Docker daemon defaults. This ensures containers can reach the services they need without relying on public DNS that may be blocked or unavailable.
