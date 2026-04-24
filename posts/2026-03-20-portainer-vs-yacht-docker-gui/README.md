@@ -14,14 +14,14 @@ Yacht is a lightweight Docker management web UI that positions itself as a simpl
 
 | Feature | Portainer | Yacht |
 |---------|-----------|-------|
-| Active development | Very active | Moderate |
-| Docker Compose/Stacks | Full | Limited |
+| Active development | Very active | Slower; rewrite in progress |
+| Docker Compose/Stacks | Full | Compose projects |
 | Kubernetes support | Yes | No |
 | Swarm support | Yes | No |
 | Multi-host | Yes | No |
-| User management | Full RBAC | Basic |
-| Template library | Rich | Limited |
-| Resource usage | ~100MB RAM | ~50MB RAM |
+| User management | Basic in CE; RBAC in BE | Single-user auth |
+| Template library | Built-in + custom | Community template URLs |
+| Resource usage | Not officially specified | Not officially specified |
 | Community size | Large | Small |
 
 ## Yacht's Appeal
@@ -30,17 +30,15 @@ Yacht targets home lab users who find Portainer overwhelming:
 
 - **Simpler UI** - fewer menu options, focused on container basics
 - **App templates** - a library of one-click self-hosted app templates
-- **Lower resource usage** - runs on resource-constrained hardware
+- **Smaller scope** - fewer platform and orchestration features than Portainer
 - **Easy setup** - straightforward Docker Compose deployment
 
 ```yaml
 # yacht-stack.yml
 
-version: "3.8"
-
 services:
   yacht:
-    image: selfhostedpro/yacht:latest
+    image: selfhostedpro/yacht
     volumes:
       - yacht-config:/config
       - /var/run/docker.sock:/var/run/docker.sock
@@ -56,11 +54,11 @@ volumes:
 
 For anything beyond basic container management:
 
-- **Stacks management** - full Docker Compose support with variable substitution
-- **Kubernetes** - manage K8s clusters from the same UI
+- **Stacks management** - full Docker Compose support with environment-variable substitution
+- **Kubernetes** - manage existing K8s clusters from the same UI
 - **Multi-environment** - manage containers on multiple Docker hosts
-- **Advanced RBAC** - team-level access control
-- **Webhooks** - trigger stack redeployments via webhooks (useful for CI/CD)
+- **Access control** - basic users/groups in CE, with advanced RBAC in Business Edition
+- **Webhooks** - trigger stack redeployments via webhooks in Business Edition (useful for CI/CD)
 - **API** - comprehensive REST API for automation
 
 ## When Yacht Is a Better Fit
@@ -75,7 +73,7 @@ For anything beyond basic container management:
 - You're deploying Docker Compose stacks with multiple services
 - Multiple people need access (family members, small team)
 - You plan to add Kubernetes later
-- You need automation via webhooks or the REST API
+- You need automation via the REST API, or via webhooks in Business Edition
 - You want the security of a maintained, widely-used project
 
 ## Migration: Yacht to Portainer
