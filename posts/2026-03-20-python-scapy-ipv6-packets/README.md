@@ -20,7 +20,7 @@ from scapy.layers.inet6 import *
 
 # Basic IPv6 packet
 
-pkt = IPv6(dst="2001:db8::1") / ICMPv6EchoRequest()
+pkt = IPv6(dst="::1") / ICMPv6EchoRequest()
 pkt.show()
 
 # Send and receive
@@ -65,7 +65,7 @@ ra = IPv6(src="fe80::1", dst="ff02::1", hlim=255) / \
          L=1, A=1,
          validlifetime=86400,
          preferredlifetime=14400,
-         prefix="2001:db8:home::"
+         prefix="2001:db8:1::"
      ) / \
      ICMPv6NDOptRDNSS(lifetime=300, dns=["2606:4700:4700::1111"])
 
@@ -80,18 +80,20 @@ from scapy.all import *
 from scapy.layers.inet6 import *
 
 # TCP SYN over IPv6
-syn = IPv6(dst="2001:db8::80") / TCP(dport=80, flags="S", sport=RandShort())
+target = "::1"  # Replace with a reachable IPv6 host running TCP/80 if needed.
+syn = IPv6(dst=target) / TCP(dport=80, flags="S", sport=RandShort(), seq=RandInt())
 resp = sr1(syn, timeout=2, verbose=False)
 if resp and resp.haslayer(TCP):
     print(f"TCP flags: {resp[TCP].flags}")
     if resp[TCP].flags == "SA":
         print("Port 80 is open")
-        # Send RST to clean up
-        rst = IPv6(dst="2001:db8::80") / TCP(dport=80, sport=resp[TCP].dport, flags="R")
+        # Send RST to clean up the half-open connection
+        rst = IPv6(dst=target) / TCP(dport=80, sport=syn[TCP].sport, flags="R", seq=resp[TCP].ack)
         send(rst, verbose=False)
 
 # UDP packet over IPv6
-udp_pkt = IPv6(dst="2001:db8::53") / UDP(dport=53) / DNS(rd=1, qd=DNSQR(qname="google.com", qtype="AAAA"))
+resolver = "2606:4700:4700::1111"
+udp_pkt = IPv6(dst=resolver) / UDP(sport=RandShort(), dport=53) / DNS(rd=1, qd=DNSQR(qname="google.com", qtype="AAAA"))
 dns_resp = sr1(udp_pkt, timeout=2, verbose=False)
 if dns_resp and dns_resp.haslayer(DNS):
     for rr in dns_resp[DNS].an:
@@ -153,7 +155,8 @@ def analyze_ipv6_capture(interface="eth0", count=100, timeout=30):
 from scapy.all import *
 from scapy.layers.inet6 import *
 
-# IPv6 with Fragment header (simulate fragmentation)
+# IPv6 packet carrying a Fragment header
+# (this does not split the payload into multiple packets by itself)
 frag_pkt = IPv6(dst="2001:db8::1") / \
            IPv6ExtHdrFragment(id=0x1234, offset=0, m=1) / \
            UDP(dport=9999) / \
@@ -180,4 +183,4 @@ parsed.show()
 
 ## Conclusion
 
-Scapy provides a Python API for crafting and parsing all IPv6 packet types: use `IPv6()` as the base layer, `ICMPv6EchoRequest()` for ping6, `ICMPv6ND_NS/NA/RA()` for Neighbor Discovery Protocol, and `TCP()`/`UDP()` for transport layer packets. Layer packets with `/` operator and send with `send()` (layer 3) or `sendp()` (layer 2 with Ethernet). Capture live traffic with `sniff(filter="ip6")` and use `pkt.haslayer()` to detect protocol layers. Always run as root or with `CAP_NET_RAW`/`CAP_NET_ADMIN` capabilities for raw packet operations. Use Scapy for testing NDP implementations, firewall rules, and protocol analyzers - not in production traffic flows.
+Scapy provides a Python API for crafting and parsing common IPv6 packet types: use `IPv6()` as the base layer, `ICMPv6EchoRequest()` for ping6, `ICMPv6ND_NS/NA/RA()` for Neighbor Discovery Protocol, and `TCP()`/`UDP()` for transport layer packets. Layer packets with `/` operator and send with `send()` (layer 3) or `sendp()` (layer 2 with Ethernet). Capture live traffic with `sniff(filter="ip6")` and use `pkt.haslayer()` to detect protocol layers. Live packet injection and sniffing usually require root or the needed capabilities (for example, `CAP_NET_RAW` and sometimes `CAP_NET_ADMIN`). Use Scapy for testing NDP implementations, firewall rules, and protocol analyzers - not in production traffic flows.
