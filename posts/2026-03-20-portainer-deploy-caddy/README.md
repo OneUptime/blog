@@ -25,14 +25,20 @@ services:
       - "443:443/udp"   # HTTP/3 (QUIC)
     volumes:
       # Caddyfile configuration
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /opt/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       # Site files (for static hosting)
-      - ./site:/srv:ro
+      - /opt/caddy/site:/srv:ro
       # Caddy data (certificates, cache)
       - caddy_data:/data
       # Caddy config
       - caddy_config:/config
+    networks:
+      - caddy-network
     restart: unless-stopped
+
+networks:
+  caddy-network:
+    external: true
 
 volumes:
   caddy_data:
@@ -41,7 +47,7 @@ volumes:
 
 ## Caddyfile Configuration
 
-Create `Caddyfile` in your stack directory:
+Create `Caddyfile` on the Docker host at `/opt/caddy/Caddyfile`, and ensure the containers you proxy are attached to the same `caddy-network` Docker network:
 
 ```caddyfile
 # Caddyfile - Caddy web server configuration
@@ -75,26 +81,28 @@ app.example.com {
     }
 }
 
+# Redirect example.com to www
+example.com {
+    redir https://www.example.com{uri} permanent
+}
+
 # Static website hosting
 www.example.com {
     root * /srv
     file_server
-    
-    # Redirect example.com to www
-    redir example.com{uri} https://www.example.com{uri}
 }
 
-# API endpoint with rate limiting
+# API endpoint
 api.example.com {
     reverse_proxy api-service:8080
     
-    # Rate limiting via Caddy plugin (if installed)
-    rate_limit {remote_host} 100r/m
+    # Rate limiting requires a custom Caddy build with the rate_limit module.
+    # rate_limit {remote_host} 100r/m
 }
 
 # PHPMyAdmin behind authentication
 db.example.com {
-    basicauth /* {
+    basic_auth /* {
         admin $2a$14$hashedpassword
     }
     reverse_proxy phpmyadmin:80
@@ -169,8 +177,8 @@ docker exec caddy caddy reload --config /etc/caddy/Caddyfile
 # Validate configuration before reloading
 docker exec caddy caddy validate --config /etc/caddy/Caddyfile
 
-# Format/lint the Caddyfile
-docker exec caddy caddy fmt --overwrite /etc/caddy/Caddyfile
+# Print the formatted Caddyfile
+docker exec caddy caddy fmt /etc/caddy/Caddyfile
 ```
 
 ## Conclusion
