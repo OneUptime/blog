@@ -15,7 +15,7 @@ Industrial IoT (IIoT) environments present unique challenges: constrained hardwa
 - Portainer Business Edition (BE) installed on a central server
 - Linux-based edge devices (e.g., industrial PCs, Raspberry Pi 4, NVIDIA Jetson, or x86 gateways)
 - Docker Engine installed on edge devices
-- Network connectivity (even intermittent) between edge devices and Portainer server
+- Network connectivity (even intermittent) from edge devices to the Portainer server on ports `9443` and `8000`
 
 ## IIoT Edge Architecture Overview
 
@@ -45,23 +45,28 @@ apt-get update
 # Install prerequisites
 apt-get install -y \
     ca-certificates \
-    curl \
-    gnupg \
-    lsb-release
+    curl
+
+# Create the keyring directory
+install -m 0755 -d /etc/apt/keyrings
 
 # Add Docker's official GPG key
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-    gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
 
 # Add Docker repository
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] \
-  https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
-  tee /etc/apt/sources.list.d/docker.list > /dev/null
+cat <<EOF > /etc/apt/sources.list.d/docker.sources
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 # Install Docker
 apt-get update
-apt-get install -y docker-ce docker-ce-cli containerd.io
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 # Enable and start Docker
 systemctl enable docker
@@ -70,33 +75,28 @@ systemctl start docker
 
 ## Step 2: Deploy the Portainer Edge Agent
 
-In Portainer, create a new Edge endpoint and copy the generated Edge Key. Then on each device:
+In Portainer, create a new Edge environment and copy the generated Edge ID and Edge Key. If your Portainer server uses a self-signed certificate, also add `-e EDGE_INSECURE_POLL=1` to the command below. Then on each device:
 
 ```bash
 #!/bin/bash
 # Deploy Portainer Edge Agent on IIoT gateway
 # Designed for intermittent connectivity environments
 
+EDGE_ID="your-edge-id-from-portainer"
 EDGE_KEY="your-edge-key-from-portainer"
-DEVICE_NAME="factory-gateway-berlin-01"
-SITE="berlin-factory"
-ROLE="gateway"
+PORTAINER_AGENT_IMAGE="portainer/agent:lts"  # Match this to your Portainer Server release
 
 docker run -d \
   --name portainer_edge_agent \
   --restart always \
-  # Mount Docker socket for container management
   -v /var/run/docker.sock:/var/run/docker.sock \
-  # Mount Docker volumes for volume browsing
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  # Mount host root for node inspection
   -v /:/host \
+  -v portainer_agent_data:/data \
+  -e EDGE=1 \
+  -e EDGE_ID="${EDGE_ID}" \
   -e EDGE_KEY="${EDGE_KEY}" \
-  # Increase poll frequency for bandwidth-constrained links
-  -e EDGE_POLL_FREQUENCY=60 \
-  # Tags for dynamic group assignment
-  -e EDGE_TAGS="site=${SITE},role=${ROLE},device=${DEVICE_NAME}" \
-  portainer/agent:latest
+  "${PORTAINER_AGENT_IMAGE}"
 ```
 
 ## Step 3: Deploy a Standard IIoT Edge Stack
@@ -106,7 +106,6 @@ Create this as an Edge Stack in Portainer and deploy it to your `IIoT-Gateways` 
 ```yaml
 # iiot-gateway-stack.yml
 # Standard stack for industrial IoT edge gateways
-version: "3.8"
 
 services:
   # MQTT broker for device communication
@@ -121,10 +120,11 @@ services:
       - mosquitto_logs:/mosquitto/log
       - /etc/edge-configs/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 
-  # OPC-UA server for PLC integration
-  opcua-server:
+  # Azure OPC Publisher for OPC-UA data collection
+  opcua-publisher:
     image: mcr.microsoft.com/iotedge/opc-publisher:latest
     restart: always
+    command: ["--pf=/appdata/pn.json"]
     environment:
       - PCS_IOTHUB_CONNSTRING=${IOT_HUB_CONNECTION_STRING}
     volumes:
@@ -144,6 +144,7 @@ services:
       - DOCKER_INFLUXDB_INIT_BUCKET=sensors
     volumes:
       - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
 
   # Visualization dashboard
   grafana:
@@ -163,6 +164,7 @@ volumes:
   mosquitto_data:
   mosquitto_logs:
   influxdb_data:
+  influxdb_config:
   grafana_data:
 ```
 
@@ -180,10 +182,6 @@ services:
     devices:
       - /dev/ttyS0:/dev/ttyS0   # RS-232 serial port
       - /dev/ttyUSB0:/dev/ttyUSB0  # USB-serial adapter
-    # Required for accessing /dev devices
-    privileged: false
-    cap_add:
-      - SYS_RAWIO
     group_add:
       - dialout  # Add container user to dialout group for serial access
 ```
