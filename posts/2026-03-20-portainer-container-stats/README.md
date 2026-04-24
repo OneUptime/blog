@@ -18,12 +18,8 @@ Portainer includes a real-time container statistics view powered by Docker's sta
 ## Step 1: Access Container Stats
 
 1. Navigate to **Containers** in Portainer.
-2. In the container list, look for the **Stats** icon (chart/graph icon) next to each running container.
-3. Click the stats icon to open the stats view.
-
-Alternatively:
-1. Click on a container name.
-2. Click the **Stats** button at the top of the container details page.
+2. Click on a container name.
+3. Click the **Stats** button at the top of the container details page.
 
 ## Step 2: Understand the Stats Display
 
@@ -35,10 +31,10 @@ The stats view shows real-time metrics refreshing every few seconds:
 CPU Usage: 12.4%
 
 # This represents the container's CPU usage as a percentage
-
-# of the total available CPU on the host (across all cores)
-# For a 4-core host: 100% CPU = using all 4 cores fully
-# For a 2-core limit: 100% CPU = using both allocated cores
+# of the host's CPU capacity
+# On multi-core hosts, this can exceed 100%
+# For a 4-core host: 400% CPU = using all 4 cores fully
+# For a 2-CPU limit: 200% CPU = using both allocated CPUs fully
 ```
 
 ### Memory Usage
@@ -101,7 +97,7 @@ redis         0.3%    45MiB / 256MiB      5.2MB / 3.1MB  0B / 0B
 
 ### High CPU Usage
 
-If CPU usage is consistently above 80%:
+If CPU usage is consistently high relative to the number of CPUs available to the container:
 
 1. Check if the container has a CPU limit - it may be throttled.
 2. Look for infinite loops or high-load queries.
@@ -113,13 +109,10 @@ If CPU usage is consistently above 80%:
 services:
   app:
     image: myorg/app:latest
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'    # Limit to 2 CPU cores
+    cpus: 2.0    # Limit to 2 CPU cores
 ```
 
-### Memory Growing Over Time (Memory Leak)
+### Memory Growing Over Time (Possible Memory Leak)
 
 ```bash
 # Monitor memory over time:
@@ -128,11 +121,11 @@ while true; do
   sleep 30
 done
 
-# If memory grows continuously, the app has a memory leak
+# If memory grows continuously under a similar workload, the app may have a memory leak
 ```
 
 Actions:
-1. Set a memory limit so the container is killed (and restarted) when it leaks too much.
+1. Set a memory limit so the container can be killed if it exceeds the limit, and add a restart policy if you want it to restart automatically.
 2. File a bug with the application team.
 3. Schedule periodic restarts as a workaround.
 
@@ -152,15 +145,13 @@ Excessive disk I/O may indicate:
 
 ## Step 5: Setting Up Persistent Monitoring
 
-For historical data and alerting, deploy Prometheus + Grafana via Portainer:
+For historical data and alerting, deploy Prometheus + Grafana alongside cAdvisor:
 
 ```yaml
 # monitoring-stack.yml
-version: "3.8"
-
 services:
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.47.0
+    image: ghcr.io/google/cadvisor:v0.55.1
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -169,10 +160,13 @@ services:
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
     privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
 
   prometheus:
-    image: prom/prometheus:v2.51.0
+    image: prom/prometheus:v3.11.2
     restart: unless-stopped
     ports:
       - "9090:9090"
@@ -181,7 +175,7 @@ services:
       - prometheus_data:/prometheus
 
   grafana:
-    image: grafana/grafana:10.3.0
+    image: grafana/grafana:13.0.1
     restart: unless-stopped
     ports:
       - "3000:3000"
