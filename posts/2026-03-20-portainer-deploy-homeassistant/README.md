@@ -13,23 +13,21 @@ Home Assistant is the leading open-source home automation platform, supporting 3
 ## Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     container_name: homeassistant
-    # Host network is required for:
+    # Host network is recommended for:
     # - mDNS/Zeroconf device discovery
-    # - Local device communication
-    # - UPnP/DLNA
+    # - SSDP/UPnP discovery
+    # - Other local network integrations
     network_mode: host
     environment:
       - TZ=America/New_York
     volumes:
       # Home Assistant configuration
       - homeassistant_config:/config
-      # Required for time synchronization
+      # Keep the container's local time aligned with the host
       - /etc/localtime:/etc/localtime:ro
     # Uncomment if using USB devices (Zigbee/Z-Wave dongles)
     # devices:
@@ -37,12 +35,6 @@ services:
     #   - /dev/ttyACM0:/dev/ttyACM0
     privileged: true   # Required for some USB device access
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:8123/api/ -H 'Authorization: Bearer TOKEN' | grep -q 'message'"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
 
 volumes:
   homeassistant_config:
@@ -65,18 +57,18 @@ volumes:
 
 ## Example Automation
 
-In **Settings > Automations > Create automation**:
+In **Settings > Automations & Scenes > Create automation**:
 
 ```yaml
-# automation.yaml - Turn on lights at sunset
+# automations.yaml - Turn on lights at sunset
 
 alias: "Turn on lights at sunset"
 description: ""
-trigger:
-  - platform: sun
+triggers:
+  - trigger: sun
     event: sunset
     offset: "-00:30:00"
-condition:
+conditions:
   - condition: time
     weekday:
       - mon
@@ -84,13 +76,13 @@ condition:
       - wed
       - thu
       - fri
-action:
-  - service: light.turn_on
+actions:
+  - action: light.turn_on
     target:
       area_id: living_room
     data:
       brightness_pct: 70
-      color_temp: 400
+      color_temp_kelvin: 2500
 mode: single
 ```
 
@@ -105,48 +97,60 @@ services:
       - /dev/ttyUSB0:/dev/ttyUSB0
     privileged: true
 
-  # ZHA alternative: Zigbee2MQTT
+  # Alternative to ZHA: Zigbee2MQTT
   zigbee2mqtt:
-    image: koenkk/zigbee2mqtt:latest
+    image: ghcr.io/koenkk/zigbee2mqtt:latest
     container_name: zigbee2mqtt
     volumes:
       - zigbee2mqtt_data:/app/data
       - /run/udev:/run/udev:ro
     devices:
       - /dev/ttyUSB0:/dev/ttyUSB0
+    ports:
+      - "8080:8080"
     environment:
       TZ: America/New_York
-    network_mode: host
     restart: unless-stopped
+
+volumes:
+  zigbee2mqtt_data:
 ```
 
 ## MQTT Broker for Home Assistant
 
-Many devices communicate via MQTT. Add Mosquitto to your stack:
+Many devices communicate via MQTT. Add Mosquitto to your stack, and make sure your `mosquitto.conf` defines a listener:
+
+```conf
+listener 1883
+allow_anonymous true
+persistence true
+persistence_location /mosquitto/data/
+log_dest file /mosquitto/log/mosquitto.log
+```
 
 ```yaml
+services:
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: mosquitto
     ports:
       - "1883:1883"
     volumes:
-      - mosquitto_config:/mosquitto/config
-      - mosquitto_data:/mosquitto/data
+      - /PATH_TO_YOUR_MOSQUITTO_CONFIG:/mosquitto/config
+      - /PATH_TO_YOUR_MOSQUITTO_DATA:/mosquitto/data
+      - /PATH_TO_YOUR_MOSQUITTO_LOG:/mosquitto/log
     restart: unless-stopped
 ```
 
 ## Backing Up Home Assistant
 
 ```bash
-# Create a backup via Home Assistant CLI
-docker exec homeassistant ha backups new --name "manual-backup"
-
-# Copy backup from container
-docker cp homeassistant:/config/backups ./ha-backups/
+# After creating a manual backup in Settings > System > Backups,
+# copy the local backup files from the container
+docker cp homeassistant:/backup ./ha-backups
 ```
 
-Or in the UI: **Settings > System > Backups > Create backup**
+Or in the UI: **Settings > System > Backups > Backup now > Manual backup**
 
 ## Conclusion
 
