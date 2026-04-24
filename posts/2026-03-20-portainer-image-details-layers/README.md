@@ -8,7 +8,7 @@ Description: Learn how to inspect Docker image details, layers, and metadata in 
 
 ## Introduction
 
-Docker images are composed of stacked layers, each representing a filesystem change from a Dockerfile instruction. Understanding an image's layers helps optimize image size, debug build issues, and verify that images contain what you expect. Portainer provides image detail views, and this guide also covers CLI tools for deep layer inspection.
+Docker images are composed of stacked layers. Filesystem-changing Dockerfile instructions create new layers, while some instructions only modify image metadata. Understanding an image's layers helps optimize image size, debug build issues, and verify that images contain what you expect. Portainer provides image detail views, and this guide also covers CLI tools for deep layer inspection.
 
 ## Prerequisites
 
@@ -18,15 +18,14 @@ Docker images are composed of stacked layers, each representing a filesystem cha
 ## Step 1: View Image Details in Portainer
 
 1. Navigate to **Images** in Portainer.
-2. Click on an image ID or name.
+2. Select the image you want to inspect.
 3. View the image details page showing:
    - **Image ID**: Unique SHA256 identifier
    - **Tags**: All tags pointing to this image
-   - **Size**: Total uncompressed size
+   - **Size**: Image size reported by Docker
    - **Creation date**: When the image was built
-   - **Architecture**: `amd64`, `arm64`, etc.
-   - **OS**: Operating system
-   - **Labels**: Key-value metadata
+
+Portainer versions and environments can differ, but image detail views commonly expose additional fields such as architecture, OS, and labels.
 
 ## Step 2: Inspect Image via Docker CLI
 
@@ -58,7 +57,7 @@ docker image inspect nginx:alpine --format '{{.Size}}'
 
 ## Step 3: View Image Layers
 
-Each Docker image layer corresponds to a Dockerfile instruction:
+Image history entries often map to Dockerfile instructions, but only instructions that change the filesystem create actual layers:
 
 ```bash
 # View image history (layers):
@@ -85,14 +84,14 @@ docker history --human nginx:alpine
 ### What Each Layer Represents
 
 ```dockerfile
-# Dockerfile layers → docker history output:
+# Dockerfile instructions -> filesystem layers and metadata history:
 
 FROM alpine:3.19            # Layer 1: Base OS (7 MB)
 RUN apk add nginx           # Layer 2: Install nginx (15 MB)
 COPY nginx.conf /etc/nginx/ # Layer 3: Config file (tiny)
 RUN mkdir -p /var/log/nginx # Layer 4: Create dirs (tiny)
 EXPOSE 80                   # No layer (metadata only)
-CMD ["nginx", "-g", ...]   # No layer (metadata only)
+CMD ["nginx", "-g", "daemon off;"] # No layer (metadata only)
 ```
 
 ## Step 4: Analyze Image Layers with Dive
@@ -100,7 +99,7 @@ CMD ["nginx", "-g", ...]   # No layer (metadata only)
 For detailed layer analysis, use the `dive` tool:
 
 ```bash
-# Install dive:
+# Run dive without installing it locally:
 docker run --rm -it \
   -v /var/run/docker.sock:/var/run/docker.sock \
   wagoodman/dive:latest nginx:alpine
@@ -136,7 +135,7 @@ docker inspect nginx:alpine --format '{{json .Config.Labels}}' | jq .
 }
 ```
 
-Labels follow the OCI (Open Container Initiative) spec. Well-labeled images include build date, source, revision, and version.
+Many images use OCI annotation keys as labels. Well-labeled images often include build date, source, revision, and version.
 
 ## Step 6: Check Image Environment and Entry Points
 
@@ -144,14 +143,14 @@ Labels follow the OCI (Open Container Initiative) spec. Well-labeled images incl
 # Environment variables baked into the image:
 docker inspect nginx:alpine --format '{{range .Config.Env}}{{.}}{{"\n"}}{{end}}'
 
-# Entry point and command:
+# Entry point and default command:
 docker inspect nginx:alpine --format 'ENTRYPOINT: {{.Config.Entrypoint}}'
 docker inspect nginx:alpine --format 'CMD: {{.Config.Cmd}}'
 
-# User the container runs as:
+# Default user configured in the image:
 docker inspect nginx:alpine --format 'USER: {{.Config.User}}'
 
-# Working directory:
+# Default working directory:
 docker inspect nginx:alpine --format 'WORKDIR: {{.Config.WorkingDir}}'
 
 # Exposed ports:
@@ -162,8 +161,8 @@ docker inspect nginx:alpine --format '{{range $port, $v := .Config.ExposedPorts}
 
 ```bash
 # Compare layer counts:
-echo "v1 layers: $(docker history myapp:v1 -q | wc -l)"
-echo "v2 layers: $(docker history myapp:v2 -q | wc -l)"
+echo "v1 layers: $(docker image inspect myapp:v1 --format '{{len .RootFS.Layers}}')"
+echo "v2 layers: $(docker image inspect myapp:v2 --format '{{len .RootFS.Layers}}')"
 
 # Compare sizes:
 docker images myapp --format "{{.Tag}}: {{.Size}}"
@@ -176,20 +175,20 @@ diff \
 
 ## Step 8: Identify Image Issues
 
-Common issues revealed by layer inspection:
+Common issues you can spot during image inspection:
 
 ```bash
-# Large image? Find the big layers:
-docker history --human myapp:latest | sort -h | tail -5
+# Large image? Find the biggest history entries by size:
+docker image history --human --format '{{.Size}}\t{{.CreatedBy}}' myapp:latest | sort -h | tail -5
 
-# Secrets in layers? Check env vars:
+# Potential secrets baked into image config? Check env vars:
 docker inspect myapp:latest --format '{{.Config.Env}}' | grep -i "password\|secret\|key"
 
 # Running as root? (Security issue)
 USER=$(docker inspect myapp:latest --format '{{.Config.User}}')
 [ -z "$USER" ] && echo "WARNING: Running as root (no USER set)"
 
-# Check for unnecessary packages:
+# Check for unnecessary packages (Alpine/Debian-based images):
 docker run --rm myapp:latest sh -c "apk list 2>/dev/null || dpkg -l 2>/dev/null" | wc -l
 ```
 
