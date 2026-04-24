@@ -65,8 +65,6 @@ Decimals: 1
 **Panel: CPU Usage by Mode (Time Series)**
 
 ```promql
-# Stacked areas showing time spent in each CPU mode
-
 avg by (mode) (rate(node_cpu_seconds_total{mode!="idle"}[5m])) * 100
 ```
 
@@ -105,7 +103,7 @@ Query C: Available
   Legend: Available
 
 Query D: Buffer/Cache
-  Expression: node_memory_Buffers_bytes + node_memory_Cached_bytes
+  Expression: node_memory_Buffers_bytes + node_memory_Cached_bytes + node_memory_SReclaimable_bytes
   Legend: Buffer/Cache
 
 Unit: bytes (IEC)
@@ -114,7 +112,8 @@ Unit: bytes (IEC)
 **Panel: Swap Usage**
 
 ```promql
-(node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes) / node_memory_SwapTotal_bytes * 100
+((node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes) / node_memory_SwapTotal_bytes) * 100
+and node_memory_SwapTotal_bytes > 0
 ```
 
 High swap usage alongside memory pressure indicates the host needs more RAM.
@@ -149,7 +148,7 @@ Query B (Writes):
   Legend: Write {{device}}
 
 Unit: bytes/sec (IEC)
-Series override for writes: Negative Y (shows below axis)
+Field override for writes: Transform → Negative Y (shows below axis)
 ```
 
 ## Step 5: Network Traffic Panel
@@ -185,63 +184,55 @@ Variable settings:
 
 Update queries to use the variable:
 ```promql
-# Filter by selected instance
 avg by (instance) (rate(node_cpu_seconds_total{mode="idle", instance=~"$instance"}[5m]))
 ```
 
 ## Step 7: Add Dashboard Annotations for Alerting
 
-When Grafana fires alerts based on Node Exporter data, add annotations to mark alert state on time series:
+When Grafana-managed alerts are linked to a panel, Grafana can show alert state history as annotations on time series:
 
-1. Go to **Dashboard settings** → **Annotations** → **Add annotation query**
+1. Go to **Dashboard settings** → **Annotations**
 
 ```text
-Name: Alerts
-Data source: Prometheus
-Expr: changes(ALERTS{alertstate="firing"}[5m]) > 0
-Step: 60s
-Tags: Portainer, Grafana, Node Exporter, Dashboard, Host Metrics
+Name: Annotations & Alerts (Built-in query)
+Data source: -- Grafana --
+Enabled: ON
+
+When creating the alert rule:
+  - Use "Link dashboard and panel"
+  - Select the dashboard and the target time series panel
 ```
 
 ## Step 8: Import the Node Exporter Full Dashboard
 
 Instead of building from scratch, import the community dashboard:
 
-```bash
-# Import via Grafana API
-curl -s -X POST -u "admin:password" \
-  -H "Content-Type: application/json" \
-  "http://localhost:3000/api/dashboards/import" \
-  -d '{
-    "id": 1860,
-    "overwrite": true,
-    "inputs": [
-      {
-        "name": "DS_PROMETHEUS",
-        "type": "datasource",
-        "pluginId": "prometheus",
-        "value": "Prometheus"
-      }
-    ]
-  }'
+```text
+Import via Grafana UI:
+1. Go to Dashboards → New → Import
+2. Paste Grafana.com dashboard ID: 1860
+3. Select the Prometheus data source
+4. Click Import
 
-# Dashboard 1860 provides:
-# - CPU, memory, disk panels
-# - System information table (kernel, OS version)
-# - Network statistics
-# - systemd service status (if systemd collector enabled)
+Dashboard 1860 provides:
+- CPU, memory, disk panels
+- System information table (kernel, OS version)
+- Network statistics
+- systemd collector panels (if the systemd collector is enabled)
 ```
 
 ## Step 9: Set Up Grafana Alerts on Node Metrics
 
 ```text
 Create alert in Grafana:
-1. Edit the "Disk Usage" panel
-2. Go to "Alert" tab → "Create alert rule"
+1. Open a time series panel that uses your Disk Usage query
+2. Go to the "Alert" tab → "Create alert rule"
 3. Configure:
    Name: Disk Space Critical
-   Condition: WHEN avg() of query IS ABOVE 90
-   Evaluate every: 1m For: 5m
+   Condition: Reduce the query with last() and trigger when the value is above 90
+   Evaluate every: 1m
+   Pending period: 5m
+4. Use "Link dashboard and panel" so the alert state also appears on the panel
 
 Notification channels:
   - Add Slack/email contact point in Alerting → Contact points
