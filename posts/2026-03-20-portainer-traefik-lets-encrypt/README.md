@@ -25,7 +25,7 @@ Let's Encrypt verifies domain ownership using challenges:
 HTTP Challenge (httpChallenge):
   - Let's Encrypt sends GET /.well-known/acme-challenge/{token} to your server on port 80
   - Requires port 80 open to the internet
-  - Works for single domains only (no wildcards)
+  - Works for non-wildcard certificates (including multi-domain certs)
   - Simplest to set up
 
 DNS Challenge (dnsChallenge):
@@ -43,7 +43,7 @@ Define both staging and production resolvers to avoid rate limits during testing
 # traefik.yml
 
 certificatesResolvers:
-  # Staging resolver for testing (no rate limits, certs not trusted)
+  # Staging resolver for testing (much higher rate limits, certs not trusted)
   letsencrypt-staging:
     acme:
       email: admin@example.com
@@ -52,7 +52,7 @@ certificatesResolvers:
       httpChallenge:
         entryPoint: web
 
-  # Production resolver (rate limited: 50 certs per domain per week)
+  # Production resolver (subject to Let's Encrypt production rate limits)
   letsencrypt:
     acme:
       email: admin@example.com
@@ -75,7 +75,7 @@ certificatesResolvers:
 
 ## Step 3: DNS Challenge Provider Configuration
 
-Set environment variables for your DNS provider. Traefik supports 100+ providers:
+Set environment variables for your DNS provider. Traefik supports many DNS providers:
 
 ```yaml
 # docker-compose.yml - Cloudflare DNS provider
@@ -98,7 +98,9 @@ services:
 ```
 
 ```bash
-# Create minimal Cloudflare API Token with just DNS:Edit permission
+# Create minimal Cloudflare API Token with:
+#   - Zone / Zone / Read
+#   - Zone / DNS / Edit
 # Go to: cloudflare.com → My Profile → API Tokens → Create Token
 # Template: Edit zone DNS
 # Zone Resources: Include → Specific zone → your-domain.com
@@ -156,13 +158,14 @@ echo | openssl s_client -servername portainer.example.com \
   openssl x509 -noout -dates
 
 # Expected: notAfter is 90 days from issuance (Let's Encrypt cert lifetime)
-# Traefik renews at 60 days remaining
+# Traefik renews at 30 days remaining
 
-# Force renewal (for testing - use staging)
+# Force re-issuance (for testing - use staging)
 # Stop Traefik, delete the cert entry from acme.json, restart Traefik
 docker stop traefik
 # Edit acme.json and remove the certificate entry for your domain
 docker start traefik
+# Traefik will request it again if the router still needs it
 ```
 
 ## Step 7: Troubleshoot ACME Issues
@@ -184,7 +187,7 @@ docker logs traefik 2>&1 | grep -i "acme\|certificate\|challenge\|error"
 
 # Test HTTP challenge manually
 curl http://portainer.example.com/.well-known/acme-challenge/test
-# Should return 404 (not connection refused)
+# Should return a Traefik HTTP response such as 404 or a redirect, not connection refused
 ```
 
 ## Conclusion
