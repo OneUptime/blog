@@ -21,7 +21,7 @@ Removing a Kubernetes namespace in Portainer deletes ALL resources contained wit
 Before deleting, list all resources to understand what will be lost:
 
 ```bash
-# Comprehensive resource list
+# Common workload resources
 
 kubectl get all -n old-namespace
 
@@ -42,8 +42,8 @@ kubectl api-resources --verbs=list --namespaced -o name | \
 ## Step 2: Back Up Important Data
 
 ```bash
-# Export all resources as YAML backup
-kubectl get all -n old-namespace -o yaml > old-namespace-backup.yaml
+# Export common resources as YAML backup
+kubectl get all,configmap,ingress,pvc -n old-namespace -o yaml > old-namespace-backup.yaml
 
 # Backup secrets (sensitive data)
 kubectl get secrets -n old-namespace -o yaml > old-namespace-secrets.yaml
@@ -52,16 +52,19 @@ kubectl get secrets -n old-namespace -o yaml > old-namespace-secrets.yaml
 kubectl run backup \
   --image=alpine \
   --namespace=old-namespace \
-  --overrides='{"spec":{"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"my-data-pvc"}}],"containers":[{"name":"backup","image":"alpine","command":["tar","czf","/backup/data.tar.gz","/data"],"volumeMounts":[{"name":"data","mountPath":"/data"}]}]}}' \
+  --overrides='{"spec":{"restartPolicy":"Never","volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"my-data-pvc"}}],"containers":[{"name":"backup","image":"alpine","command":["sleep","3600"],"volumeMounts":[{"name":"data","mountPath":"/data"}]}]}}' \
   --restart=Never
+kubectl wait --for=condition=Ready pod/backup -n old-namespace --timeout=120s
+kubectl exec -n old-namespace backup -- tar czf - -C /data . > my-data-pvc-backup.tar.gz
+kubectl delete pod backup -n old-namespace
 ```
 
 ## Step 3: Remove the Namespace via Portainer
 
 1. Select your Kubernetes environment
 2. Click **Namespaces** in the sidebar
-3. Find the namespace you want to remove
-4. Click the **Remove** button (trash icon)
+3. Tick the checkbox next to the namespace you want to remove
+4. Click the **Remove** button
 5. Confirm in the dialog
 
 **Warning:** This deletes ALL resources including PersistentVolumeClaims (and potentially the underlying data, depending on the reclaim policy).
@@ -104,7 +107,7 @@ PROXY_PID=$!
 kubectl get namespace old-namespace -o json > /tmp/ns.json
 
 # Remove finalizers
-cat /tmp/ns.json | jq '.spec.finalizers = []' > /tmp/ns-clean.json
+jq '.spec.finalizers = null' /tmp/ns.json > /tmp/ns-clean.json
 
 # Apply via the proxy
 curl -X PUT http://localhost:8001/api/v1/namespaces/old-namespace/finalize \
@@ -115,22 +118,25 @@ kill $PROXY_PID
 ```
 
 ```bash
-# Method 2: Direct patch (safer)
-kubectl patch namespace old-namespace \
-  --type=json \
-  -p='[{"op": "remove", "path": "/spec/finalizers"}]'
+# Method 2: Update the finalize endpoint directly with kubectl
+kubectl get namespace old-namespace -o json > /tmp/ns.json
+jq '.spec.finalizers = null' /tmp/ns.json > /tmp/ns-clean.json
+kubectl replace --raw "/api/v1/namespaces/old-namespace/finalize" -f /tmp/ns-clean.json
 ```
 
 ### Find Resources with Finalizers
 
 ```bash
 # Find all resources with finalizers in the namespace
-kubectl get all -n old-namespace -o json | \
-  jq -r '.items[] | select(.metadata.finalizers != null) |
-  "\(.kind)/\(.metadata.name): \(.metadata.finalizers)"'
+kubectl api-resources --verbs=list --namespaced -o name | \
+  while read -r resource; do
+    kubectl get "$resource" -n old-namespace --ignore-not-found -o json 2>/dev/null | \
+      jq -r '.items[]? | select(.metadata.finalizers != null) |
+      "\(.apiVersion) \(.kind)/\(.metadata.name): \(.metadata.finalizers)"'
+  done
 
 # Remove finalizer from a specific resource
-kubectl patch customresource my-resource -n old-namespace \
+kubectl patch <resource-type> <resource-name> -n old-namespace \
   --type=json \
   -p='[{"op": "remove", "path": "/metadata/finalizers"}]'
 ```
@@ -143,12 +149,15 @@ Some resources associated with the namespace are cluster-scoped and persist:
 # PersistentVolumes (if reclaim policy is Retain)
 kubectl get pv | grep old-namespace
 
-# ClusterRoles and ClusterRoleBindings created for the namespace
-kubectl get clusterrolebinding | grep old-namespace
-kubectl delete clusterrolebinding portainer-rw-old-namespace
+# ClusterRoleBindings that reference service accounts from the namespace
+kubectl get clusterrolebinding -o json | \
+  jq -r '.items[] |
+  select([.subjects[]? | select(.namespace == "old-namespace")] | length > 0) |
+  .metadata.name'
+kubectl delete clusterrolebinding <binding-name>
 
 # External DNS entries (if using external-dns)
-# These should auto-delete, but verify
+# Verify your DNS automation removed any records for the namespace
 ```
 
 ## Step 7: Verify Complete Deletion
@@ -156,14 +165,20 @@ kubectl delete clusterrolebinding portainer-rw-old-namespace
 ```bash
 # Confirm namespace is gone
 kubectl get namespace old-namespace
-# Error: namespace "old-namespace" not found
+# Error from server (NotFound): namespaces "old-namespace" not found
 
-# Verify no PVs remain with Released status
+# Verify no PVs remain that were bound to the namespace
 kubectl get pv | grep old-namespace
 
-# Check for remaining cluster-scoped resources
-kubectl get clusterrolebinding | grep old-namespace
-kubectl get rolebinding -A | grep old-namespace
+# Check for remaining RBAC references to the namespace
+kubectl get clusterrolebinding -o json | \
+  jq -r '.items[] |
+  select([.subjects[]? | select(.namespace == "old-namespace")] | length > 0) |
+  .metadata.name'
+kubectl get rolebinding -A -o json | \
+  jq -r '.items[] |
+  select([.subjects[]? | select(.namespace == "old-namespace")] | length > 0) |
+  "\(.metadata.namespace)/\(.metadata.name)"'
 ```
 
 ## Safely Removing Shared Namespaces (Production)
@@ -172,9 +187,7 @@ For production namespaces, follow this process:
 
 ```bash
 # 1. Announce planned removal with advance notice
-# 2. Set the namespace to block new deployments
-kubectl annotate namespace production \
-  scheduler.alpha.kubernetes.io/node-selector="environment=decommissioned"
+# 2. Put a temporary change freeze or admission policy in place for the namespace
 
 # 3. Scale down all deployments gradually
 kubectl get deployments -n production -o name | \
