@@ -8,20 +8,27 @@ Description: Configure Kubernetes native RBAC policies alongside Portainer's acc
 
 ## Introduction
 
-Portainer Business Edition provides team-based access control at the namespace level. However, for production environments, layering Portainer's RBAC with Kubernetes native RBAC provides defense-in-depth-ensuring that even if Portainer access is compromised, Kubernetes RBAC limits what can be done.
+Portainer Business Edition provides team-based and namespace-scoped access for Kubernetes environments, but Kubernetes RBAC must be enabled and working for that access control to function. For production environments, it is important to understand both Portainer's role assignments and the Kubernetes permissions they map to, and to remember that some Portainer restrictions apply only in the UI.
 
 ## How Portainer and Kubernetes RBAC Interact
 
 When Portainer manages a Kubernetes cluster:
-1. Portainer uses a service account with cluster-admin permissions
-2. Portainer's team/namespace access controls what users can see in the UI
-3. Kubernetes native RBAC controls what the Portainer service account can do
+1. Portainer installation creates a service account and ClusterRoleBinding so Portainer can access the cluster
+2. Kubernetes RBAC must be enabled and working for Portainer access control
+3. Portainer maps its roles to Kubernetes cluster and namespace roles, while some security settings remain UI-only
 
 ## Creating Kubernetes RBAC for Portainer Access
 
 ```yaml
 # portainer-rbac.yml - deploy via Portainer
 
+# Service account for developers
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: developer-sa
+  namespace: development
+---
 # Create a namespace-scoped role for developers
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -38,7 +45,7 @@ rules:
 - apiGroups: [""]
   resources: ["pods/log", "pods/exec"]
   verbs: ["get", "create"]
-# Explicitly deny: no secrets access, no RBAC changes
+# No secrets or RBAC rules are granted because they are omitted
 ---
 # Bind the role to a service account
 apiVersion: rbac.authorization.k8s.io/v1
@@ -55,31 +62,57 @@ roleRef:
   name: developer-role
   apiGroup: rbac.authorization.k8s.io
 ---
-# Read-only role for QA/Audit
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+# Service account for QA/Audit
+apiVersion: v1
+kind: ServiceAccount
 metadata:
-  name: qa-readonly
-rules:
-- apiGroups: ["*"]
-  resources: ["*"]
-  verbs: ["get", "list", "watch"]
-- apiGroups: [""]
-  resources: ["secrets"]
-  verbs: []  # Explicitly no access to secrets
+  name: qa-sa
+  namespace: default
 ---
-# Platform team: full cluster access except RBAC changes
+# Bind QA to the built-in read-only view role.
+# The built-in view ClusterRole does not allow reading Secrets.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: qa-readonly-binding
+subjects:
+- kind: ServiceAccount
+  name: qa-sa
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: view
+  apiGroup: rbac.authorization.k8s.io
+---
+# Service account for the platform team
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: platform-sa
+  namespace: default
+---
+# Platform team: broad workload access without RBAC permissions
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: platform-team
 rules:
-- apiGroups: ["*"]
+- apiGroups: ["", "apps", "autoscaling", "batch", "networking.k8s.io", "policy", "storage.k8s.io"]
   resources: ["*"]
   verbs: ["*"]
-- apiGroups: ["rbac.authorization.k8s.io"]
-  resources: ["*"]
-  verbs: ["get", "list", "watch"]  # Can view but not modify RBAC
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: platform-team-binding
+subjects:
+- kind: ServiceAccount
+  name: platform-sa
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: platform-team
+  apiGroup: rbac.authorization.k8s.io
 ```
 
 ## Portainer Team to Kubernetes RBAC Mapping
@@ -87,44 +120,34 @@ rules:
 ```bash
 # In Portainer:
 # 1. Create Teams: developer-team, qa-team, platform-team
-# 2. Assign namespaces: developer-team → development namespace
-# 3. Set Portainer role: Standard User
+# 2. Assign namespace access after Kubernetes RBAC is enabled
+# 3. Use a namespace-scoped role such as Namespace Operator when you want access limited to specific namespaces
 
 # In Kubernetes:
-# Create corresponding RBAC for each team's service account
+# Apply the service accounts, roles, and bindings from the manifest above
+kubectl apply -f portainer-rbac.yml
 
-# Get Portainer's service account used for kubectl access
+# Portainer itself runs in the portainer namespace and installs its own service account
 kubectl get serviceaccount -n portainer
 
-# Create namespace-specific service accounts
-kubectl create serviceaccount developer-sa -n development
-kubectl create serviceaccount qa-sa -n default
+# Verify the example service accounts
+kubectl get serviceaccount -n development
+kubectl get serviceaccount -n default
 
-# Generate kubeconfigs for teams (Portainer integrates these)
+# If a team also needs direct kubectl or API access outside Portainer,
+# generate a short-lived token for that service account
 kubectl create token developer-sa -n development --duration=8h
 ```
 
-## Restricting Portainer's Own Service Account
+## Reviewing Portainer's Own Service Account
 
-```yaml
-# Limit what Portainer can do via its service account
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: portainer-restricted
-rules:
-# Allow all common operations
-- apiGroups: ["", "apps", "batch", "extensions"]
-  resources: ["*"]
-  verbs: ["*"]
-# Restrict cluster-level changes
-- apiGroups: ["rbac.authorization.k8s.io"]
-  resources: ["clusterroles", "clusterrolebindings"]
-  verbs: ["get", "list", "watch"]
-# No access to security policies
-- apiGroups: ["policy"]
-  resources: ["podsecuritypolicies"]
-  verbs: ["get", "list", "watch"]
+```bash
+# Portainer installation creates the ServiceAccount and ClusterRoleBinding
+# it needs to access the cluster. Review those objects before changing them,
+# because reducing permissions may limit Portainer functionality.
+kubectl get serviceaccount -n portainer
+kubectl get clusterrolebinding -o wide
+kubectl get clusterrole -o wide
 ```
 
 ## Audit RBAC Configurations
@@ -144,4 +167,4 @@ kubectl get rolebindings -n development -o wide
 
 ## Conclusion
 
-Layering Portainer's team-based access control with Kubernetes native RBAC provides comprehensive security. Portainer handles the UI-level access and team management, while Kubernetes RBAC enforces permissions at the API level. This defense-in-depth approach ensures consistent security enforcement regardless of how users interact with the cluster.
+Using Portainer with Kubernetes RBAC provides clearer and safer access control for cluster resources. Portainer manages users, teams, and namespace access in the UI, while Kubernetes RBAC remains the authoritative control at the API layer. This works best when you keep Kubernetes roles narrowly scoped, use built-in roles such as `view` where appropriate, and remember that UI-only restrictions do not replace Kubernetes RBAC.
