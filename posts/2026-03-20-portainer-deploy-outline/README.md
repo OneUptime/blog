@@ -8,12 +8,13 @@ Description: Deploy Outline Wiki via Portainer as a Notion-like team knowledge b
 
 ## Introduction
 
-Outline is a modern, Notion-like team wiki with real-time collaboration, nested document structures, and excellent search. It requires an OIDC-compatible identity provider (Keycloak, Authentik, Google, etc.) for authentication. Deploy via Portainer for a polished team knowledge management platform.
+Outline is a modern, Notion-like team wiki with real-time collaboration, nested document structures, and excellent search. Self-hosted Outline requires a compatible authentication provider; this guide uses OIDC (Keycloak, Authentik, Google via OIDC, etc.) with MinIO-backed S3 storage. Deploy via Portainer for a polished team knowledge management platform.
 
 ## Prerequisites
 
-- OIDC identity provider (Keycloak, Authentik, Google OAuth, etc.)
-- S3-compatible storage (MinIO or AWS S3) for file uploads
+- Compatible authentication provider (this guide uses OIDC with Keycloak, Authentik, Google via OIDC, etc.)
+- Public HTTPS endpoints for Outline and MinIO uploads (for example `https://wiki.example.com` and `https://s3.example.com`)
+- S3-compatible storage (MinIO or AWS S3) for this setup
 - Portainer installed
 
 ## Deploy as a Stack
@@ -44,7 +45,7 @@ services:
       AWS_ACCESS_KEY_ID: minio_access_key
       AWS_SECRET_ACCESS_KEY: minio_secret_key
       AWS_REGION: us-east-1
-      AWS_S3_UPLOAD_BUCKET_URL: http://minio:9000
+      AWS_S3_UPLOAD_BUCKET_URL: https://s3.example.com
       AWS_S3_UPLOAD_BUCKET_NAME: outline-uploads
       AWS_S3_FORCE_PATH_STYLE: "true"
       AWS_S3_ACL: private
@@ -55,6 +56,7 @@ services:
       OIDC_AUTH_URI: https://auth.example.com/realms/company/protocol/openid-connect/auth
       OIDC_TOKEN_URI: https://auth.example.com/realms/company/protocol/openid-connect/token
       OIDC_USERINFO_URI: https://auth.example.com/realms/company/protocol/openid-connect/userinfo
+      OIDC_LOGOUT_URI: https://auth.example.com/realms/company/protocol/openid-connect/logout
       OIDC_SCOPES: openid profile email
       OIDC_USERNAME_CLAIM: email
       
@@ -106,23 +108,40 @@ volumes:
 
 ## MinIO Bucket Setup
 
-After deploying, create the required MinIO bucket:
+After deploying, ensure `s3.example.com` points to MinIO's API on port `9000`, then create the required bucket and apply CORS so browser uploads from Outline work:
 
 ```bash
-docker exec minio mc alias set local http://localhost:9000 minio_access_key minio_secret_key
-docker exec minio mc mb local/outline-uploads
-docker exec minio mc anonymous set download local/outline-uploads
+docker run --rm --network container:minio \
+  -e MC_HOST_local=http://minio_access_key:minio_secret_key@127.0.0.1:9000 \
+  minio/mc mb local/outline-uploads
+
+cat <<'EOF' | docker run --rm -i --network container:minio \
+  -e MC_HOST_local=http://minio_access_key:minio_secret_key@127.0.0.1:9000 \
+  minio/mc cors set local/outline-uploads -
+<CORSConfiguration>
+  <CORSRule>
+    <AllowedOrigin>https://wiki.example.com</AllowedOrigin>
+    <AllowedMethod>PUT</AllowedMethod>
+    <AllowedMethod>POST</AllowedMethod>
+    <AllowedHeader>*</AllowedHeader>
+  </CORSRule>
+  <CORSRule>
+    <AllowedOrigin>*</AllowedOrigin>
+    <AllowedMethod>GET</AllowedMethod>
+  </CORSRule>
+</CORSConfiguration>
+EOF
 ```
 
 ## Initial Setup
 
-1. Access `https://wiki.example.com`
+1. Access `https://wiki.example.com` through your reverse proxy
 2. Sign in via your OIDC provider
 3. Complete workspace setup
 
 ## Workspace Organization
 
-Outline uses **Collections** (similar to Workspaces) to organize documents:
+Outline uses **Collections** to organize documents within a workspace:
 
 - **Engineering** - Technical docs, runbooks
 - **Product** - Specs, roadmaps
@@ -141,4 +160,4 @@ Engineering
 
 ## Conclusion
 
-Outline deployed via Portainer provides a polished, collaborative team knowledge base. The OIDC authentication requirement means you need an identity provider, but this also ensures proper access control and single sign-on across your team tools. Real-time collaboration and excellent search make it comparable to Notion or Confluence for team documentation needs.
+Outline deployed via Portainer provides a polished, collaborative team knowledge base. Self-hosted Outline needs a compatible authentication provider; this guide uses OIDC, which also ensures proper access control and single sign-on across your team tools. Real-time collaboration and excellent search make it comparable to Notion or Confluence for team documentation needs.
