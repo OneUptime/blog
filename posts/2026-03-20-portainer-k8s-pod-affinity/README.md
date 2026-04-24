@@ -8,7 +8,7 @@ Description: Configure Kubernetes pod affinity and anti-affinity rules to contro
 
 ## Introduction
 
-Pod affinity and anti-affinity rules control which nodes pods can be scheduled on based on labels of other pods already running on those nodes. Affinity brings related pods together (reducing latency), while anti-affinity spreads pods apart (improving availability). Portainer's YAML editor supports these scheduling rules.
+Pod affinity and anti-affinity rules control which nodes pods can be scheduled on based on labels of other pods already running in the relevant topology domain. Affinity brings related pods together (reducing latency), while anti-affinity spreads pods apart (improving availability). Portainer's YAML editor supports these scheduling rules.
 
 ## Affinity Types
 
@@ -72,7 +72,13 @@ kind: Deployment
 metadata:
   name: app
 spec:
+  selector:
+    matchLabels:
+      app: app
   template:
+    metadata:
+      labels:
+        app: app
     spec:
       affinity:
         podAffinity:
@@ -100,7 +106,13 @@ metadata:
   name: web-frontend
 spec:
   replicas: 6
+  selector:
+    matchLabels:
+      app: web-frontend
   template:
+    metadata:
+      labels:
+        app: web-frontend
     spec:
       topologySpreadConstraints:
       # Spread evenly across zones
@@ -117,18 +129,38 @@ spec:
         labelSelector:
           matchLabels:
             app: web-frontend
+      containers:
+      - name: frontend
+        image: myapp:latest
 ```
 
 ## Database Pods: Strict Anti-Affinity
 
 ```yaml
 # Database replicas must be on different nodes
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+spec:
+  clusterIP: None
+  selector:
+    app: mongodb
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: mongodb
 spec:
+  replicas: 3
+  serviceName: mongodb
+  selector:
+    matchLabels:
+      app: mongodb
   template:
+    metadata:
+      labels:
+        app: mongodb
     spec:
       affinity:
         podAntiAffinity:
@@ -141,6 +173,9 @@ spec:
               matchLabels:
                 app: mongodb
             topologyKey: topology.kubernetes.io/zone  # Also different zones
+      containers:
+      - name: mongodb
+        image: mongo:latest
 ```
 
 ## Conclusion
