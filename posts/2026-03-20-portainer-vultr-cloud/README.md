@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Vultr, Cloud, Docker, Self-Hosted, DevOps
 
-Description: Deploy Portainer on Vultr cloud with firewall groups, block storage, and optional server snapshots for a reliable self-hosted container management platform.
+Description: Deploy Portainer on Vultr cloud with firewall groups, block storage, and backup options for a reliable self-hosted container management platform.
 
 ## Introduction
 
@@ -24,7 +24,7 @@ Vultr offers 32 global locations, competitive pricing, and simple deployment opt
 2. Choose **Cloud Compute - Optimized Cloud** or **Cloud Compute - Regular**
 3. Select location closest to you
 4. Under **Server Image**: Choose **Ubuntu 24.04 LTS**
-5. Select plan: at least 2GB RAM (VC2-2C-2GB)
+5. Select plan: at least 2GB RAM (VC2-1C-2GB or larger)
 6. Under **Additional Features**: Add your SSH key
 7. Set **Server Hostname**: `portainer-server`
 8. Click **Deploy Now**
@@ -32,17 +32,15 @@ Vultr offers 32 global locations, competitive pricing, and simple deployment opt
 ### Via Vultr CLI
 
 ```bash
-# Install CLI
-
-pip install vultr-cli  # or download from GitHub
-
 # Create instance
+# Ubuntu 24.04 LTS x64 OS ID was 2284 at the time of writing
 vultr-cli instance create \
   --region ewr \
-  --plan vc2-2c-2gb \
-  --os 2136 \  # Ubuntu 24.04 LTS ID
+  --plan vc2-1c-2gb \
+  --os 2284 \
   --label portainer-server \
-  --ssh-key YOUR_KEY_ID
+  --host portainer-server \
+  --ssh-keys YOUR_KEY_ID
 ```
 
 ## Step 2: Configure Firewall Group
@@ -55,7 +53,6 @@ vultr-cli instance create \
 ```text
 Protocol  Port   Source
 TCP       22     Your IP/32
-TCP       9000   Your IP/32
 TCP       9443   Your IP/32
 ```
 
@@ -67,8 +64,9 @@ TCP       9443   Your IP/32
 ssh root@<vultr-ip>
 
 apt update && apt upgrade -y
+apt install -y curl
 curl -fsSL https://get.docker.com | sh
-systemctl enable docker
+systemctl enable --now docker
 ```
 
 ## Step 4: Attach Block Storage
@@ -112,20 +110,21 @@ docker volume create portainer_data
 docker run -d \
   --name portainer \
   --restart=unless-stopped \
-  -p 9000:9000 \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
 
-## Step 6: Configure Automatic Snapshots
+## Step 6: Configure Automatic Backups
 
-Vultr supports server snapshots for backup:
+Vultr supports automatic backups for Cloud Compute instances:
 
-1. Navigate to your instance > **Snapshots**
-2. Enable automatic snapshots
-3. Set retention to 3-7 snapshots
+1. Navigate to your instance > **Backups**
+2. Enable automatic backups
+3. Choose a backup schedule that fits your recovery needs
+
+If you store Portainer data on attached block storage, create block storage snapshots separately because Vultr automatic backups do not include attached block storage volumes.
 
 For application-level backup via cron:
 
@@ -152,4 +151,4 @@ echo '0 3 * * * root /usr/local/bin/backup-portainer.sh' > /etc/cron.d/portainer
 
 ## Conclusion
 
-Vultr's 32 global locations and straightforward pricing make it a versatile choice for Portainer deployments. Firewall groups provide network-level protection, and the snapshot feature gives you point-in-time recovery options. Block storage volumes that persist independently of the instance are particularly valuable for maintaining data across server replacements or migrations.
+Vultr's 32 global locations and straightforward pricing make it a versatile choice for Portainer deployments. Firewall groups provide network-level protection, and automatic backups plus block storage snapshots give you point-in-time recovery options. Block storage volumes that persist independently of the instance are particularly valuable for maintaining data across server replacements or migrations.
