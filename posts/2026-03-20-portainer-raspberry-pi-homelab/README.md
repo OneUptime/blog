@@ -46,19 +46,22 @@ sudo apt update && sudo apt upgrade -y
 sudo apt install -y curl git vim
 
 # Set static IP (optional but recommended)
-sudo nano /etc/dhcpcd.conf
-# Add:
-# interface eth0
-# static ip_address=192.168.1.100/24
-# static routers=192.168.1.1
-# static domain_name_servers=192.168.1.1
+# Raspberry Pi OS Bookworm and newer use NetworkManager by default
+nmcli connection show
+sudo nmcli connection modify "<your-ethernet-connection-name>" \
+  ipv4.method manual \
+  ipv4.addresses 192.168.1.100/24 \
+  ipv4.gateway 192.168.1.1 \
+  ipv4.dns "192.168.1.1"
+sudo nmcli connection up "<your-ethernet-connection-name>"
 ```
 
 ## Step 3: Install Docker
 
 ```bash
 # Install Docker
-curl -fsSL https://get.docker.com | sh
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
 
 # Add user to docker group
 sudo usermod -aG docker $USER
@@ -82,7 +85,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 Access: `https://192.168.1.100:9443`
@@ -90,10 +93,9 @@ Access: `https://192.168.1.100:9443`
 ## Step 5: Deploy Home Lab Services
 
 In Portainer: **Stacks → Add Stack → homelab**
+Set `PIHOLE_PASSWORD` in the stack environment variables before deploying.
 
 ```yaml
-version: "3.8"
-
 services:
   pihole:
     image: pihole/pihole:latest
@@ -103,31 +105,36 @@ services:
       - "53:53/udp"
       - "8053:80/tcp"
     environment:
-      - WEBPASSWORD=${PIHOLE_PASSWORD}
-      - TZ=America/New_York
+      FTLCONF_webserver_api_password: ${PIHOLE_PASSWORD}
+      FTLCONF_dns_listeningMode: 'ALL'
+      TZ: America/New_York
     volumes:
       - pihole_data:/etc/pihole
-      - dnsmasq_data:/etc/dnsmasq.d
     cap_add:
       - NET_ADMIN
 
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     restart: unless-stopped
-    network_mode: host    # Required for mDNS/Bluetooth discovery
+    network_mode: host    # Required for discovery protocols
+    privileged: true
     environment:
-      - TZ=America/New_York
+      TZ: America/New_York
     volumes:
       - ha_config:/config
       - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
 
 volumes:
   pihole_data:
-  dnsmasq_data:
+    name: pihole_data
   ha_config:
+    name: ha_config
 ```
 
 ## Step 6: Set Up Automatic Backups
+
+Deploy this as a separate `backup` stack:
 
 ```yaml
 services:
@@ -135,15 +142,23 @@ services:
     image: offen/docker-volume-backup:latest
     restart: unless-stopped
     environment:
-      - BACKUP_CRON_EXPRESSION=0 3 * * *    # Daily 3 AM
-      - BACKUP_FILENAME=homelab-backup-%Y%m%d.tar.gz
-      - BACKUP_RETENTION_DAYS=7
+      BACKUP_CRON_EXPRESSION: "0 3 * * *"
+      BACKUP_FILENAME: "homelab-backup-%Y%m%d.tar.gz"
+      BACKUP_RETENTION_DAYS: "7"
     volumes:
       - portainer_data:/backup/portainer_data:ro
       - pihole_data:/backup/pihole_data:ro
       - ha_config:/backup/ha_config:ro
       - /mnt/usb/backups:/archive
       - /var/run/docker.sock:/var/run/docker.sock:ro
+
+volumes:
+  portainer_data:
+    external: true
+  pihole_data:
+    external: true
+  ha_config:
+    external: true
 ```
 
 ## Useful Home Lab Services
