@@ -12,14 +12,14 @@ CrashLoopBackOff means a container is crashing repeatedly. Kubernetes backs off 
 
 ## Identifying CrashLoopBackOff in Portainer
 
-1. **Kubernetes > Applications**: Pod status shows "CrashLoopBackOff"
-2. **Pod > Events**: Shows restart count and container exit codes
-3. **Pod > Logs**: Shows why the container crashed (previous instance)
+1. **Applications**: Application and pod status show "CrashLoopBackOff"
+2. **Application details > Events**: Shows application-related events that can hint at the failure
+3. **Application containers > Logs**: Shows container output for the selected pod
 
 ## Step 1: Get the Exit Code
 
 ```bash
-# Exit code tells you WHY the container crashed
+# Exit code and termination reason are strong clues
 
 kubectl get pod crashing-pod -n production -o json \
   | python3 -c "
@@ -37,14 +37,16 @@ for cs in pod['status'].get('containerStatuses', []):
 
 ## Common Exit Codes
 
+These are common Linux process exit codes. In Kubernetes, always check the termination `reason` alongside the numeric exit code.
+
 | Exit Code | Meaning | Common Cause |
 |-----------|---------|--------------|
-| 0 | Success | Wrong init command (loops) |
+| 0 | Success | Process exits immediately in a long-running workload |
 | 1 | General error | Application error |
-| 2 | Misuse of command | Missing argument |
-| 137 | SIGKILL (OOMKilled) | Out of memory |
-| 139 | Segfault | Application bug |
-| 143 | SIGTERM | Graceful shutdown (unexpected) |
+| 2 | Incorrect usage | Missing argument or invalid option |
+| 137 | SIGKILL | Often OOMKilled in Kubernetes |
+| 139 | Segmentation fault | Application bug |
+| 143 | SIGTERM | Graceful shutdown (often during rollout or termination) |
 
 ## Step 2: Check Previous Container Logs
 
@@ -52,7 +54,7 @@ for cs in pod['status'].get('containerStatuses', []):
 # Get logs from the PREVIOUS (crashed) container instance
 kubectl logs crashing-pod -n production --previous
 
-# In Portainer: Pod > Logs > Toggle "Previous"
+# In Portainer: open the pod logs from the Application containers section
 ```
 
 ## Diagnosing Specific Cases
@@ -86,7 +88,7 @@ kubectl patch deployment myapp -n production -p '{
 
 ### Case 3: Missing Configuration
 
-```yaml
+```bash
 # Check if ConfigMap/Secret exists
 kubectl get configmap app-config -n production
 kubectl get secret app-secrets -n production
@@ -113,7 +115,7 @@ containers:
 
 ```yaml
 # Temporarily override command to keep container running for debugging
-# Deploy via Portainer YAML editor
+# Deploy via Portainer YAML editor (Business Edition)
 containers:
 - name: app
   image: myapp:latest
@@ -132,14 +134,13 @@ cat /app/config.yaml
 env | grep DATABASE
 ```
 
-## Automatic Fix Script
+## Automatic Detection Script
 
 ```python
 #!/usr/bin/env python3
 # analyze_crashloop.py
 
 import requests
-import json
 
 PORTAINER_URL = "https://portainer.example.com"
 API_KEY = "your-api-key"
@@ -148,8 +149,10 @@ ENDPOINT_ID = 1
 def find_crashlooping_pods(namespace="default"):
     resp = requests.get(
         f"{PORTAINER_URL}/api/endpoints/{ENDPOINT_ID}/kubernetes/api/v1/namespaces/{namespace}/pods",
-        headers={"X-API-Key": API_KEY}
+        headers={"X-API-Key": API_KEY},
+        timeout=30,
     )
+    resp.raise_for_status()
     pods = resp.json().get('items', [])
     
     crashlooping = []
@@ -175,4 +178,4 @@ for p in pods:
 
 ## Conclusion
 
-CrashLoopBackOff diagnosis follows a systematic pattern: get the exit code, check previous container logs, identify the root cause (OOM, app error, config missing), and apply the fix. Portainer's log viewer and previous-instance log access are your primary tools. For complex issues, temporarily overriding the container command to keep it running enables interactive debugging.
+CrashLoopBackOff diagnosis follows a systematic pattern: get the exit code, check previous container logs, identify the root cause (OOM, app error, config missing), and apply the fix. Portainer's Applications and pod log views help you spot failures quickly, while `kubectl logs --previous` gives you the last crashed container output. For complex issues, temporarily overriding the container command to keep it running enables interactive debugging.
