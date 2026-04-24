@@ -33,63 +33,68 @@ docker logs -f portainer
 ls -la /var/run/docker.sock
 # Should show: srw-rw---- 1 root docker ...
 
-# Check if Portainer's user is in the docker group
-# Portainer runs as root inside the container, so this usually isn't the issue
-
-# Fix: explicitly mount the socket
+# Make sure Portainer is mounting the same socket Docker is actually using
 docker stop portainer && docker rm portainer
 docker run -d \
   -p 9000:9000 \
   -p 9443:9443 \
   --name portainer \
   --restart=unless-stopped \
-  --user root \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ### Error: "Error response from daemon: client version X is too new"
 
-After a Docker downgrade or when Portainer uses a newer API version than Docker:
+This usually indicates a Portainer/Docker compatibility mismatch after upgrading or downgrading Docker:
 
 ```bash
-# Check Docker daemon version
+# Check Docker daemon version and API range
 docker version
 
 # Portainer logs will show something like:
 # Error response from daemon: client version 1.45 is too new.
 # Maximum supported API version is 1.44
 
-# Set the Docker API version explicitly
+# Update Portainer to a release that supports your Docker version
+docker pull portainer/portainer-ce:lts
+
+docker stop portainer
+docker rm portainer
+
 docker run -d \
   -p 9000:9000 \
   -p 9443:9443 \
   --name portainer \
   --restart=unless-stopped \
-  -e DOCKER_API_VERSION=1.44 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ### Error: "no such file or directory: /var/run/docker.sock"
 
-The Docker socket path may have changed or Docker is not running:
+The Docker socket path may be different from `/var/run/docker.sock`, or Docker is not running:
 
 ```bash
 # Check if Docker is running
 systemctl status docker
 
+# If using rootless Docker, check the user service instead
+systemctl --user status docker
+
 # Check the socket path
 ls -la /var/run/docker.sock
 
-# On some systems, the socket may be at a different path
 # Check Docker context
 docker context ls
 
-# If using rootless Docker, socket is at user level
+# If using rootless Docker, the socket is usually at:
 ls -la /run/user/$(id -u)/docker.sock
+
+# Docker Desktop for Linux uses a per-user socket
+ls -la ~/.docker/desktop/docker.sock
 ```
 
 ## Step 2: Update Portainer to Match Docker Version
@@ -98,14 +103,14 @@ ls -la /run/user/$(id -u)/docker.sock
 # Check your Docker version
 docker version --format '{{.Server.Version}}'
 
-# Pull the latest Portainer image
-docker pull portainer/portainer-ce:latest
+# Pull the current Portainer LTS image
+docker pull portainer/portainer-ce:lts
 
 # Stop and remove old container
 docker stop portainer
 docker rm portainer
 
-# Start with latest image (data volume preserved)
+# Start with the updated LTS image (data volume preserved)
 docker run -d \
   -p 9000:9000 \
   -p 9443:9443 \
@@ -113,7 +118,7 @@ docker run -d \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 3: Check for Docker Daemon Configuration Changes
@@ -122,7 +127,7 @@ docker run -d \
 # View current Docker daemon config
 cat /etc/docker/daemon.json
 
-# Common issue: live-restore was disabled, causing socket issues
+# Review daemon settings that can affect how Docker restarts or exposes the socket/API
 # Check if Docker restarted cleanly after the update
 journalctl -u docker --since "1 hour ago" | tail -30
 
@@ -130,7 +135,7 @@ journalctl -u docker --since "1 hour ago" | tail -30
 sudo systemctl restart docker
 
 # Then restart Portainer
-docker start portainer
+docker restart portainer
 ```
 
 ## Step 4: Check SELinux / AppArmor Policies
@@ -139,16 +144,19 @@ docker start portainer
 # Check if SELinux is enforcing
 getenforce  # Should output: Enforcing, Permissive, or Disabled
 
-# If Enforcing, check for denials
-ausearch -c 'portainer' --raw | audit2allow -M mypol
+# If Enforcing, check for recent denials
+sudo ausearch -m AVC,USER_AVC -ts recent
 
-# Quick fix: add :z label to socket mount (relabels the socket for SELinux)
+# Portainer's install docs require --privileged when deploying with SELinux enabled
 docker run -d \
   -p 9000:9000 \
+  -p 9443:9443 \
   --name portainer \
-  -v /var/run/docker.sock:/var/run/docker.sock:z \
+  --restart=unless-stopped \
+  --privileged \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 5: Verify the Data Volume Is Intact
@@ -171,14 +179,16 @@ docker run --rm \
 If Portainer was working before the update and the above steps don't resolve the issue:
 
 ```bash
-# Check available Docker versions
-apt-cache showpkg docker-ce
+# List available Docker Engine versions
+apt list --all-versions docker-ce
 
-# Pin Docker to the previous version (Ubuntu/Debian)
-sudo apt-get install docker-ce=5:24.0.7-1~ubuntu.22.04~jammy
+# Install a specific earlier version (Ubuntu/Debian)
+# Replace VERSION_STRING with a version from the list above
+VERSION_STRING='<version from the list above>'
+sudo apt install docker-ce=$VERSION_STRING docker-ce-cli=$VERSION_STRING containerd.io docker-buildx-plugin docker-compose-plugin
 
 # Prevent auto-update
-sudo apt-mark hold docker-ce docker-ce-cli containerd.io
+sudo apt-mark hold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
 ## Step 7: Check Docker Compose Version Compatibility
@@ -186,14 +196,13 @@ sudo apt-mark hold docker-ce docker-ce-cli containerd.io
 If Portainer was deployed via Docker Compose:
 
 ```bash
-# Check compose file version
-cat /path/to/docker-compose.yml | grep "^version:"
+# Check whether the obsolete top-level version field is present
+grep "^version:" /path/to/docker-compose.yml
 
-# Newer Docker versions deprecated some compose file fields
-# Run validation
+# Validate the Compose file against the current Compose specification
 docker compose config
 ```
 
 ## Conclusion
 
-After a Docker Engine update, Portainer failures are almost always caused by either socket permission changes, API version mismatches, or the need to update Portainer itself. Start with checking the logs, then confirm Docker is running cleanly, and update Portainer to the latest version to take advantage of compatibility improvements.
+After a Docker Engine update, Portainer failures are almost always caused by either socket permission changes, API version mismatches, or the need to update Portainer itself. Start with checking the logs, then confirm Docker is running cleanly, and update Portainer to a current supported release to take advantage of compatibility improvements.
