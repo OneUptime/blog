@@ -8,7 +8,7 @@ Description: Learn how to use Docker labels to control Watchtower's update behav
 
 ## Introduction
 
-Watchtower supports Docker labels that override global settings on a per-container basis. This allows you to opt specific containers in or out of automatic updates, set custom update schedules, or specify particular image tags to follow. When managing containers through Portainer, you add these labels in the compose file or container configuration. This guide covers all available Watchtower labels.
+Watchtower supports Docker labels that override some global settings on a per-container basis. This allows you to opt specific containers in or out of automatic updates, or switch individual containers to monitor-only mode. When managing containers through Portainer, you add these labels in the compose file or container configuration. This guide covers the Watchtower labels most relevant to per-container update behavior.
 
 ## Prerequisites
 
@@ -47,25 +47,23 @@ services:
       WATCHTOWER_POLL_INTERVAL: "86400"
 ```
 
-## Step 2: Override Target Image Tag
+## Step 2: Change the Image Tag the Container Uses
 
-By default, Watchtower updates to the same tag. Override to track a different tag:
+Watchtower updates whatever tag the container is already running. There is no per-container label to override that tag. To follow a different tag, change the image reference in your stack and redeploy the container:
 
 ```yaml
 services:
   myapp:
-    image: myapp:stable    # Currently on :stable tag
-
+    image: myapp:latest    # Change this from :stable to :latest, then redeploy
     labels:
-      # Update to :latest tag instead of :stable
-      - "com.centurylinklabs.watchtower.monitor-only=false"
-      # Note: tag override requires Watchtower to be configured with this behavior
-      # Standard: Watchtower tracks whatever tag the container is currently using
+      - "com.centurylinklabs.watchtower.enable=true"
 ```
 
 ## Step 3: Use Lifecycle Hooks for Pre/Post Update Scripts
 
 Run scripts before and after container updates:
+
+Lifecycle hooks are disabled by default. Enable them on the Watchtower container with `WATCHTOWER_LIFECYCLE_HOOKS=true` (or `--enable-lifecycle-hooks`).
 
 ```yaml
 services:
@@ -78,11 +76,11 @@ services:
       # Run health check after updating
       - "com.centurylinklabs.watchtower.lifecycle.post-update=/bin/healthcheck.sh"
 
-      # Run notification after successful update
-      - "com.centurylinklabs.watchtower.lifecycle.post-update-timeout=120"
+      # Allow up to 2 minutes for the post-update script
+      - "com.centurylinklabs.watchtower.lifecycle.post-update-timeout=2"
 ```
 
-The scripts run inside the container, so they must exist in the image.
+These commands run inside the container through `sh`, so the image must include the scripts and a `sh` executable.
 
 ## Step 4: Monitor-Only for Specific Containers
 
@@ -140,6 +138,7 @@ services:
     networks:
       - backend
     labels:
+      - "com.centurylinklabs.watchtower.enable=true"
       - "com.centurylinklabs.watchtower.monitor-only=true"    # Alert only
 
   # Redis cache: auto-update (ephemeral data)
@@ -166,7 +165,9 @@ volumes:
   db_data:
 ```
 
-## Step 6: Watchtower Labels Reference
+## Step 6: Relevant Watchtower Labels Reference
+
+Lifecycle hooks require `WATCHTOWER_LIFECYCLE_HOOKS=true` or `--enable-lifecycle-hooks` on the Watchtower container.
 
 ```text
 com.centurylinklabs.watchtower.enable
@@ -175,20 +176,26 @@ com.centurylinklabs.watchtower.enable
   (when WATCHTOWER_LABEL_ENABLE=true, unlabeled containers are excluded)
 
 com.centurylinklabs.watchtower.monitor-only
-  true   - Check for updates but don't apply them (send notifications)
+  true   - Check for updates but don't apply them
   false  - Apply updates (default behavior)
 
 com.centurylinklabs.watchtower.lifecycle.pre-check
-  Script path inside container - runs before checking for updates
+  Shell command inside container - runs before each update cycle
 
 com.centurylinklabs.watchtower.lifecycle.pre-update
-  Script path inside container - runs before stopping/recreating container
+  Shell command inside container - runs before stopping/recreating the container
 
 com.centurylinklabs.watchtower.lifecycle.post-update
-  Script path inside container - runs after new container starts
+  Shell command inside container - runs after the updated container restarts
+
+com.centurylinklabs.watchtower.lifecycle.post-check
+  Shell command inside container - runs after each update cycle
+
+com.centurylinklabs.watchtower.lifecycle.pre-update-timeout
+  Override pre-update timeout in minutes (default lifecycle command timeout: 60 seconds; 0 disables it)
 
 com.centurylinklabs.watchtower.lifecycle.post-update-timeout
-  Seconds to wait for post-update script (default: 10)
+  Override post-update timeout in minutes (default lifecycle command timeout: 60 seconds; 0 disables it)
 ```
 
 ## Step 7: Verify Label Configuration
