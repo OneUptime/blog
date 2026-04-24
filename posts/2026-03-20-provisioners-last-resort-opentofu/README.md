@@ -8,16 +8,16 @@ Description: Understand when and why to use provisioners in OpenTofu only as a l
 
 ## Introduction
 
-Provisioners in OpenTofu execute scripts or commands during resource creation or destruction. The OpenTofu documentation explicitly labels them a "last resort" because they introduce complexity, can fail silently, and break the declarative model. This guide explains why they're problematic, when they're acceptable, and what alternatives to use instead.
+Provisioners in OpenTofu execute scripts or commands during resource creation or destruction. The OpenTofu documentation explicitly labels them a "last resort" because they introduce complexity, can leave resources in semi-configured states, and break the declarative model. This guide explains why they're problematic, when they're acceptable, and what alternatives to use instead.
 
 ## Why Provisioners Are a Last Resort
 
 Provisioners break OpenTofu's declarative model in several ways:
 
-1. **No idempotency**: Running `tofu apply` multiple times may produce different results
+1. **Not inherently idempotent**: Provisioner scripts may produce different results across runs
 2. **No drift detection**: OpenTofu doesn't track what the provisioner did
-3. **Can leave resources in unknown states**: If a provisioner fails mid-execution
-4. **No preview**: `tofu plan` doesn't show what provisioners will do
+3. **Can leave resources in semi-configured states**: If a provisioner fails mid-execution
+4. **No preview**: `tofu plan` can't model what provisioners will do
 5. **Tight coupling**: Embeds imperative logic into declarative config
 
 ```hcl
@@ -27,9 +27,19 @@ resource "aws_instance" "web" {
   ami           = var.ami_id
   instance_type = "t3.micro"
 
+  connection {
+    type        = "ssh"
+    user        = var.ssh_user
+    private_key = file(var.private_key_path)
+    host        = self.public_ip
+  }
+
   # ❌ Don't install software with provisioners
   provisioner "remote-exec" {
-    inline = ["sudo apt-get install -y nginx"]
+    inline = [
+      "sudo apt-get update",
+      "sudo apt-get install -y nginx",
+    ]
   }
 }
 ```
@@ -44,14 +54,13 @@ resource "aws_instance" "web" {
   ami           = var.ami_id
   instance_type = "t3.micro"
 
-  user_data = base64encode(<<-EOF
+  user_data = <<-EOF
     #!/bin/bash
     apt-get update
     apt-get install -y nginx
     systemctl start nginx
     systemctl enable nginx
   EOF
-  )
 }
 ```
 
@@ -75,13 +84,14 @@ resource "aws_instance" "web" {
 }
 ```
 
-### Use AWS Systems Manager Run Command
+### Use AWS Systems Manager State Manager
 
 ```hcl
-# ✅ Better: Use SSM documents for remote execution
+# ✅ Better: Use State Manager to apply commands to managed instances
 resource "aws_ssm_document" "run_script" {
   name          = "RunInitScript"
   document_type = "Command"
+  target_type   = "/AWS::EC2::Instance"
 
   content = jsonencode({
     schemaVersion = "2.2"
@@ -94,6 +104,15 @@ resource "aws_ssm_document" "run_script" {
       }
     }]
   })
+}
+
+resource "aws_ssm_association" "run_script" {
+  name = aws_ssm_document.run_script.name
+
+  targets {
+    key    = "InstanceIds"
+    values = [aws_instance.web.id]
+  }
 }
 ```
 
