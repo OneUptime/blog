@@ -8,7 +8,7 @@ Description: Learn how to configure the RabbitMQ Shovel plugin to move messages 
 
 ---
 
-The RabbitMQ Shovel plugin consumes messages from a source queue and republishes them to a destination exchange on the same or a different broker. Unlike federation (which is topology-based), a shovel moves specific messages from point A to point B, making it ideal for message migration, aggregation, or routing between datacenters.
+The RabbitMQ Shovel plugin consumes messages from a source queue and republishes them to a destination exchange on the same or a different broker. Unlike federation (which is configured with upstreams and policies on exchanges or queues), a shovel moves messages between explicitly configured endpoints, making it ideal for message migration, aggregation, or routing between datacenters.
 
 ## Use Cases for Shovel
 
@@ -23,24 +23,34 @@ rabbitmq-plugins enable rabbitmq_shovel rabbitmq_shovel_management
 systemctl restart rabbitmq-server
 ```
 
-## Static Shovel via rabbitmq.conf
+## Static Shovel via advanced.config
 
-```ini
-# /etc/rabbitmq/rabbitmq.conf
+Static shovels are loaded on node boot, so restart RabbitMQ after saving `advanced.config`.
 
-# Define a static shovel (configured at startup)
+```erlang
+%% /etc/rabbitmq/advanced.config
 
-shovel.my_shovel.source.protocol = amqp091
-shovel.my_shovel.source.uris.1   = amqp://admin:password@127.0.0.1:5672
-shovel.my_shovel.source.queue    = source-queue
-
-shovel.my_shovel.dest.protocol = amqp091
-shovel.my_shovel.dest.uris.1   = amqp://shoveler:shovelerpass@10.0.0.20:5672
-shovel.my_shovel.dest.exchange  = target-exchange
-shovel.my_shovel.dest.exchange_key = shovel.forwarded
-
-# Delete source messages after successful delivery
-shovel.my_shovel.ack_mode = on-confirm
+[
+  {rabbitmq_shovel,
+   [{shovels,
+     [{my_shovel,
+       [{source,
+         [{protocol, amqp091},
+          {uris, ["amqp://admin:password@127.0.0.1:5672"]},
+          {queue, <<"source-queue">>}]},
+        {destination,
+         [{protocol, amqp091},
+          {uris, ["amqp://shoveler:shovelerpass@10.0.0.20:5672"]},
+          {declarations, [{'exchange.declare',
+                           [{exchange, <<"target-exchange">>},
+                            {type, <<"direct">>},
+                            durable]}]},
+          {publish_fields, [{exchange, <<"target-exchange">>},
+                            {routing_key, <<"shovel.forwarded">>}]}]},
+        {ack_mode, on_confirm},
+        {reconnect_delay, 5}
+       ]}]}]}
+].
 ```
 
 ## Dynamic Shovel via CLI
@@ -48,7 +58,8 @@ shovel.my_shovel.ack_mode = on-confirm
 Dynamic shovels are stored in the RabbitMQ database and can be created/deleted at runtime.
 
 ```bash
-# Create a dynamic shovel on the local broker
+# Create a dynamic shovel on the local broker.
+# The destination exchange must already exist on the remote broker.
 rabbitmqctl set_parameter shovel my-dynamic-shovel \
 '{
   "src-protocol": "amqp091",
@@ -68,7 +79,7 @@ rabbitmqctl set_parameter shovel my-dynamic-shovel \
 ```bash
 # On the remote broker (10.0.0.20):
 rabbitmqctl add_user shoveler shovelerpass
-rabbitmqctl set_permissions shoveler "/" ".*" ".*" ".*"
+rabbitmqctl set_permissions -p "/" shoveler ".*" ".*" ".*"
 ```
 
 ## Checking Shovel Status
@@ -93,15 +104,15 @@ rabbitmqctl clear_parameter shovel my-dynamic-shovel
 
 | Feature | Shovel | Federation |
 |---------|--------|------------|
-| Level | Queue-based | Exchange or queue |
-| Direction | Source → Dest (one-way) | Bidirectional (with policies) |
-| Messages | Moves (consumes from source) | Copies (source retains) |
-| Configuration | Per-queue | Topology-level policies |
-| Best for | Migration, aggregation | Geo-distribution |
+| Scope | Explicit source/destination endpoints | Policies on exchanges or queues |
+| Direction | Usually one-way | One-way, bidirectional, or N-directional |
+| Messages | Moves messages unconditionally from the source | Exchange federation replays/copies; queue federation moves on demand |
+| Configuration | Static definitions or dynamic runtime parameters | Upstreams plus policies |
+| Best for | Migration, aggregation | Geo-distribution, distributed topologies |
 
 ## Key Takeaways
 
-- Shovels move messages (consuming from source) while federation copies them.
+- Shovels move messages unconditionally from a configured source; exchange federation replays message streams, while queue federation moves messages on demand.
 - Dynamic shovels (via `set_parameter`) can be created and removed without restart.
 - Set `reconnect-delay` to auto-reconnect if the destination IPv4 broker becomes temporarily unavailable.
-- Use `ack-mode: on-confirm` for reliable delivery; the message is only deleted from the source after the destination confirms receipt.
+- Use `ack-mode: on-confirm` for reliable delivery; the source message is only acknowledged after the destination broker confirms the publish.
