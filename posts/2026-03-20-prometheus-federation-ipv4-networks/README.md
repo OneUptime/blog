@@ -8,7 +8,7 @@ Description: Learn how to configure Prometheus federation to aggregate metrics f
 
 ---
 
-Prometheus federation allows a central "global" Prometheus to scrape aggregated metrics from multiple regional Prometheus instances. Each regional Prometheus monitors its own IPv4 network; the global Prometheus pulls a subset of metrics for cross-datacenter views.
+Prometheus federation allows a central "global" Prometheus to scrape selected metrics from multiple regional Prometheus instances. Each regional Prometheus monitors its own IPv4 network; the global Prometheus pulls a subset of metrics for cross-datacenter views.
 
 ## Architecture
 
@@ -28,7 +28,7 @@ Each regional Prometheus scrapes its local targets normally.
 
 global:
   scrape_interval: 15s
-  # Attach a label identifying the datacenter to all metrics
+  # Add labels for federation and other external integrations
   external_labels:
     datacenter: dc-a
     region: us-east-1
@@ -57,7 +57,7 @@ scrape_configs:
     honor_labels: true      # Preserve original labels (datacenter, region)
     metrics_path: '/federate'
     params:
-      # Select which metrics to pull (use PromQL match[] selectors)
+      # Select which metrics to pull (use PromQL instant-vector selectors)
       match[]:
         - '{job=~"node_exporter|kafka|postgres"}'   # Scrape these jobs
         - 'up'                                       # Always scrape 'up' for availability
@@ -86,7 +86,7 @@ scrape_configs:
 
 ## Selecting Metrics with match[]
 
-The `match[]` parameter accepts PromQL selectors. Be selective to avoid pulling every metric:
+The `match[]` parameter accepts PromQL instant-vector selectors. Be selective to avoid pulling every metric:
 
 ```yaml
 params:
@@ -104,15 +104,15 @@ params:
 ```bash
 # Check the /federate endpoint on a regional Prometheus
 
-curl "http://10.0.0.5:9090/federate?match[]={job='node_exporter'}" | head -20
+curl -g 'http://10.0.0.5:9090/federate?match[]={job="node_exporter"}' | head -20
 
-# On the global Prometheus: verify all regional targets are UP
-curl -s "http://10.2.0.5:9090/api/v1/targets" | python3 -m json.tool | grep '"health"'
+# On the global Prometheus: inspect the health of the active federation targets
+curl -s 'http://10.2.0.5:9090/api/v1/targets?state=active' | python3 -m json.tool | grep '"health"'
 ```
 
 ## Key Takeaways
 
 - `honor_labels: true` preserves the original `instance` and `job` labels from regional Prometheus instances.
 - Use `match[]` selectors carefully - pulling all metrics via federation negates the benefit and creates load.
-- Set `external_labels` on each regional Prometheus to identify the datacenter/region in all metrics.
+- Set `external_labels` on each regional Prometheus to identify the datacenter/region on federated data and other external integrations.
 - Federation is pull-based; for push-based global aggregation, use remote write to a central storage like Thanos or VictoriaMetrics.
