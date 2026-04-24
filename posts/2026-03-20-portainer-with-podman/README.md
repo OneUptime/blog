@@ -4,22 +4,23 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Podman, Docker, Container, Linux
 
-Description: Learn how to set up Portainer to manage containers running on Podman as a daemonless, rootless Docker alternative.
+Description: Learn how to set up Portainer to manage containers running on Podman as a daemonless Docker alternative.
 
 ## Introduction
 
-Podman is a daemonless container engine developed by Red Hat that offers a Docker-compatible CLI while providing enhanced security through rootless containers. Portainer can connect to Podman by exposing a Docker-compatible socket, giving you a full GUI for managing Podman containers.
+Podman is a daemonless container engine developed by Red Hat that offers a Docker-compatible CLI. Portainer can connect to Podman through its Docker-compatible socket, giving you a full GUI for managing Podman containers. Per current Portainer documentation, the supported configuration is Podman 5 running in rootful mode.
 
 ## Prerequisites
 
-- A Linux host (RHEL, Fedora, Ubuntu, or Debian)
-- Podman installed (version 3.0+)
+- A Linux host (Portainer currently validates Podman support on CentOS Stream 9; other Linux distributions may work but are not officially supported)
+- Podman installed (version 5.x)
 - Portainer CE or Business Edition
+- sudo or root access
 
 ## Installing Podman
 
 ```bash
-# Install Podman on RHEL/Fedora
+# Install Podman on CentOS Stream/Fedora
 
 sudo dnf install -y podman
 
@@ -32,7 +33,7 @@ podman --version
 
 ## Enabling the Podman Socket
 
-Podman includes a systemd socket that exposes a Docker-compatible REST API. This is the key to integrating with Portainer.
+Podman includes systemd sockets that expose a Docker-compatible REST API. Portainer's documented setup uses the system-level rootful socket, but the rootless user socket is shown below for reference.
 
 ```bash
 # Enable and start the Podman socket for the current user (rootless)
@@ -46,7 +47,9 @@ echo $XDG_RUNTIME_DIR/podman/podman.sock
 # Typically: /run/user/1000/podman/podman.sock
 ```
 
-For system-wide (root) socket:
+Note: Portainer with rootless Podman may work, but it is not currently officially supported.
+
+For the supported rootful socket:
 
 ```bash
 # Enable the system-level Podman socket
@@ -61,36 +64,37 @@ sudo systemctl status podman.socket
 
 ```bash
 # Create a volume for Portainer data
-podman volume create portainer_data
+sudo podman volume create portainer_data
 
 # Run Portainer container using the Podman socket
-podman run -d \
+sudo podman run -d \
   --name portainer \
   --restart=always \
+  --privileged \
   -p 8000:8000 \
   -p 9443:9443 \
-  -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:Z \
+  -v /run/podman/podman.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 
 # Check that Portainer is running
-podman ps
+sudo podman ps
 ```
 
-Note: The `:Z` label sets the SELinux context correctly for Podman volumes.
+Note: This matches Portainer's current Podman installation guidance, which uses the rootful Podman socket and the `--privileged` flag.
 
 ## Configuring Portainer to Use the Podman Socket
 
-Once Portainer is running, navigate to `https://localhost:9443` and complete setup.
+Once Portainer is running, navigate to `https://localhost:9443` and complete setup. Portainer automatically detects the local environment during initial setup.
 
-When adding an environment, select **Docker Standalone** and point it to the Podman socket:
+If you add another Podman environment later, select **Podman**, choose **Socket**, and if you override the default path, use the appropriate Podman socket path:
 
 ```bash
-# Unix socket path for local Podman
-unix:///run/user/1000/podman/podman.sock
-
-# Or for system socket
+# Supported rootful Podman socket
 unix:///run/podman/podman.sock
+
+# Rootless Podman socket (may work, but is not officially supported by Portainer)
+unix:///run/user/1000/podman/podman.sock
 ```
 
 ## Creating a Podman Systemd Service for Portainer
@@ -98,20 +102,39 @@ unix:///run/podman/podman.sock
 For production deployments, create a systemd service:
 
 ```bash
-# Generate systemd unit from running container
-podman generate systemd --new --name portainer > ~/.config/systemd/user/portainer.service
+# Create a Quadlet definition for Portainer
+sudo mkdir -p /etc/containers/systemd
+sudo tee /etc/containers/systemd/portainer.container >/dev/null <<'EOF'
+[Unit]
+Description=Portainer Server
+
+[Container]
+ContainerName=portainer
+Image=portainer/portainer-ce:lts
+PodmanArgs=--privileged
+PublishPort=8000:8000
+PublishPort=9443:9443
+Volume=/run/podman/podman.sock:/var/run/docker.sock
+Volume=portainer_data:/data
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
 
 # Reload systemd and enable the service
-systemctl --user daemon-reload
-systemctl --user enable --now portainer.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now portainer.service
 
 # Check the service status
-systemctl --user status portainer.service
+sudo systemctl status portainer.service
 ```
 
 ## Handling SELinux with Podman
 
-Podman runs SELinux enforcing by default on RHEL/Fedora. Use the `:Z` or `:z` volume labels:
+On SELinux-enabled hosts such as RHEL and Fedora, use the `:Z` or `:z` volume labels for bind mounts:
 
 ```bash
 # :Z creates a private label (only this container)
@@ -139,11 +162,11 @@ podman ps -a
 | Feature | Docker | Podman |
 |---------|--------|--------|
 | Daemon | Required | Daemonless |
-| Root | Optional | Optional (rootless by default) |
-| Compose | docker-compose | podman-compose or docker-compose |
+| Root | Optional | Can run rootful or rootless |
+| Compose | docker compose | podman compose |
 | Pods | No | Yes (like Kubernetes pods) |
-| Socket | /var/run/docker.sock | /run/user/UID/podman/podman.sock |
+| Socket | /var/run/docker.sock | /run/podman/podman.sock (rootful) or /run/user/UID/podman/podman.sock (rootless) |
 
 ## Conclusion
 
-Portainer provides a convenient web interface for managing Podman containers. By exposing the Podman socket, you get the full Portainer experience-stacks, volumes, networks, and more-without requiring the Docker daemon. This setup is ideal for security-focused environments where rootless containers and SELinux integration are requirements.
+Portainer provides a convenient web interface for managing Podman containers. By exposing the Podman socket, you can manage Podman containers from Portainer without requiring the Docker daemon. For the most predictable results, follow Portainer's current guidance and use Podman 5 in rootful mode.
