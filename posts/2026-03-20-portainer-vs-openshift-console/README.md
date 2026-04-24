@@ -18,20 +18,20 @@ Red Hat OpenShift is an enterprise Kubernetes platform with a comprehensive web 
 | Setup complexity | Very low | Very high |
 | License cost | CE free / BE paid | Significant (Red Hat subscription) |
 | Kubernetes depth | Moderate | Very deep |
-| Security hardening | Configurable | Opinionated (SCC, restricted) |
-| CI/CD built-in | No | Yes (Pipelines/Tekton) |
-| Developer portal | No | Yes (Developer perspective) |
-| Multi-cloud | Yes | Yes (ROSA, ARO, RHOCP) |
+| Security hardening | Configurable | Opinionated (SCC, restricted defaults) |
+| CI/CD built-in | No | Builds built-in; Pipelines via Operators |
+| Developer portal | No | Yes (developer workflows) |
+| Multi-cloud | Yes | Yes (self-managed, ROSA, ARO) |
 
 ## OpenShift's Enterprise Strengths
 
 OpenShift is a complete Kubernetes-based container platform:
 
-- **Security-first** - Security Context Constraints (SCC), restricted SCCs by default, no root containers
-- **Integrated CI/CD** - OpenShift Pipelines (Tekton), OpenShift GitOps (ArgoCD)
-- **Developer portal** - Source-to-Image (S2I) builds, Developer Perspective UI
-- **Operator Hub** - Kubernetes Operator catalog for enterprise software
-- **Compliance** - FIPS, Common Criteria, FedRAMP certifications
+- **Security-first** - Security Context Constraints (SCC), restricted-v2/restricted-v3 defaults depending on version, non-root defaults for most workloads
+- **Integrated CI/CD** - OpenShift Builds are part of the platform; OpenShift Pipelines (Tekton) and OpenShift GitOps (Argo CD) are available as Operators
+- **Developer portal** - Source-to-Image (S2I) builds, developer-focused console workflows
+- **OperatorHub** - Kubernetes Operator catalog for enterprise software
+- **Compliance** - FIPS support and compliance tooling; specific certifications depend on the OpenShift product or managed offering
 - **Supported** - Red Hat enterprise support contract
 
 ## Portainer's Advantages
@@ -42,15 +42,15 @@ Portainer provides practical advantages in many enterprise scenarios:
 - **Lightweight** - deploy in minutes, not days
 - **Cost** - no per-node subscription for CE; BE is significantly cheaper than OpenShift
 - **Learning curve** - team adoption is faster
-- **Edge computing** - superior edge device management
+- **Edge computing** - dedicated edge device management
 - **Mixed environments** - works with existing Docker infrastructure
 
 ## Security Model Comparison
 
 ```yaml
-# OpenShift - containers run as non-root by default
+# OpenShift - a pod spec commonly aligned with the default restricted SCC
 
-# This SecurityContext is typical in OpenShift
+# Example securityContext compatible with OpenShift defaults
 spec:
   securityContext:
     runAsNonRoot: true
@@ -63,14 +63,14 @@ spec:
           drop: ["ALL"]
 ```
 
-OpenShift enforces this automatically. Portainer doesn't enforce security policies by default but supports setting security contexts in container deployments.
+On current OpenShift releases, the default restricted SCCs for authenticated users apply comparable constraints such as `RuntimeDefault` seccomp, dropped capabilities, and no privilege escalation. Portainer relies on the underlying orchestrator for policy enforcement, though you can still deploy manifests that set Kubernetes `securityContext` fields.
 
 ## When OpenShift Is Right
 
 - Large enterprise with existing Red Hat infrastructure
-- Regulatory compliance requirements (FedRAMP, HIPAA, PCI-DSS)
+- Security/compliance-sensitive Kubernetes environments
 - Multi-cloud managed Kubernetes (ROSA on AWS, ARO on Azure)
-- Need for integrated CI/CD and developer self-service portal
+- Need for Operator-based CI/CD and developer self-service tooling
 - Existing investment in Red Hat ecosystem (RHEL, Ansible, ACM)
 
 ## When Portainer Is Right
