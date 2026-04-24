@@ -12,27 +12,27 @@ Choosing the right container management tool can significantly impact your team'
 
 ## Overview
 
-**Portainer** is a universal container management platform supporting Docker, Docker Swarm, and Kubernetes. It provides a web-based GUI, API, and CLI for managing containerized workloads.
+**Portainer** is a container management platform supporting Docker, Docker Swarm, and Kubernetes. It provides a web-based GUI and HTTP API for managing containerized workloads.
 
-**Yacht** is designed with different priorities and use cases. Understanding these differences is key to choosing the right tool.
+**Yacht** is a container management UI focused on templates and one-click deployments for Docker workloads. It also includes Docker Compose project support and a built-in editor.
 
 ## Feature Comparison
 
 | Feature | Portainer | Yacht |
 |---------|-----------|--------|
-| Docker management | Yes | Varies |
-| Kubernetes support | Yes | Varies |
-| Web UI | Yes | Varies |
-| Multi-environment | Yes | Varies |
-| User management | Yes | Varies |
-| Stack management | Yes | Varies |
-| Open source | CE: Yes | Varies |
+| Docker management | Yes | Yes |
+| Kubernetes support | Yes | No |
+| Web UI | Yes | Yes |
+| Multi-environment | Yes | Single host |
+| User management | Yes | Limited |
+| Stack management | Yes | Yes (Compose projects) |
+| Open source | CE: Yes | Yes |
 | Self-hosted | Yes | Yes |
-| Enterprise features | BE edition | Varies |
+| Enterprise features | Business Edition | No commercial edition |
 
 ## Portainer Strengths
 
-- Supports multiple container runtimes (Docker, Swarm, Kubernetes)
+- Supports multiple environments including Docker, Swarm, and Kubernetes
 - Comprehensive web UI accessible from any browser
 - Stack management with Docker Compose support
 - Active development and community
@@ -42,11 +42,11 @@ Choosing the right container management tool can significantly impact your team'
 
 ## Yacht Strengths
 
-- Specialized for its primary use case
-- Often simpler for its target audience
-- May have better integration with specific ecosystems
-- Different performance characteristics
-- Unique features not found in Portainer
+- Focuses on template-based, one-click deployments
+- Simpler web UI for basic Docker container management
+- Built-in Docker Compose project editor
+- Compatible with Portainer v1 templates
+- Lightweight self-hosted deployment for a single Docker host
 
 ## When to Choose Portainer
 
@@ -61,9 +61,9 @@ Choose Portainer when you need:
 ## When to Choose Yacht
 
 Choose Yacht when you need:
-- Its specific specialized features
-- Its particular workflow or integration
-- Its lightweight approach for specific use cases
+- Template-driven, one-click Docker app deployments
+- Managing Docker Compose projects from a simple web UI
+- A lightweight single-host Docker setup without Kubernetes requirements
 - When your team already uses it and is familiar with it
 
 ## Deployment Comparison
@@ -72,37 +72,47 @@ Choose Yacht when you need:
 ```bash
 # Deploy Portainer CE
 
+docker volume create portainer_data
+
 docker run -d \
-  -p 9000:9000 \
+  -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
-  --restart always \
+  --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
 
 **Yacht deployment:**
 ```bash
-# Typical Yacht deployment
-# Check official documentation for current install instructions
-curl -fsSL https://get-tool.example.com | sh
+# Deploy Yacht
+# Use a different host port if Portainer is already using 8000.
+docker volume create yacht
+
+docker run -d \
+  -p 8001:8000 \
+  --restart unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v yacht:/config \
+  --name yacht \
+  selfhostedpro/yacht
 ```
 
 ## Migration Considerations
 
 Moving from Yacht to Portainer:
-1. Export your current configurations
+1. Export your Yacht templates and Docker Compose project files
 2. Deploy Portainer alongside existing setup
-3. Recreate stacks as Portainer stacks
-4. Migrate users and access control
+3. Recreate containers or Compose applications as Portainer stacks
+4. Set up users and access control in Portainer
 5. Verify all services are running correctly
 
 Moving from Portainer to Yacht:
-1. Export Portainer stack configurations
-2. Document current environment setup
-3. Install and configure Yacht
-4. Recreate deployments in new platform
+1. Export Portainer Docker Compose stack files
+2. Document current environment setup and note any Kubernetes- or RBAC-dependent features
+3. Install and configure Yacht on the target Docker host
+4. Recreate applications as Yacht templates or Compose projects
 5. Test thoroughly before cutover
 
 ## Community and Support
