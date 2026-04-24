@@ -8,7 +8,7 @@ Description: Configure Prometheus to listen on a specific IPv4 address using the
 
 ## Introduction
 
-Prometheus defaults to listening on all interfaces (0.0.0.0:9090). On multi-homed servers, binding to a specific IPv4 address restricts the metrics endpoint and admin API to a single interface, reducing exposure while maintaining monitoring functionality.
+Prometheus defaults to listening on all interfaces (0.0.0.0:9090). On multi-homed servers, binding to a specific IPv4 address restricts the UI, API, and metrics endpoints to a single interface, reducing exposure while maintaining monitoring functionality.
 
 ## Configuration
 
@@ -32,7 +32,8 @@ prometheus \
 # /etc/systemd/system/prometheus.service
 [Unit]
 Description=Prometheus
-After=network.target
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 User=prometheus
@@ -80,7 +81,7 @@ alerting:
 scrape_configs:
   - job_name: 'prometheus'
     static_configs:
-      - targets: ['localhost:9090']
+      - targets: ['10.0.0.5:9090']
 
   - job_name: 'node'
     static_configs:
@@ -90,13 +91,14 @@ scrape_configs:
 ## Firewall Rules
 
 ```bash
-# Allow Prometheus from Grafana server only
+# Allow Prometheus only from approved monitoring clients
 sudo ufw allow from 10.0.0.10 to any port 9090    # Grafana
 sudo ufw allow from 10.0.0.11 to any port 9090    # Another monitoring tool
 sudo ufw deny 9090
 
 # iptables
 sudo iptables -A INPUT -p tcp --dport 9090 -s 10.0.0.10/32 -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 9090 -s 10.0.0.11/32 -j ACCEPT
 sudo iptables -A INPUT -p tcp --dport 9090 -j DROP
 ```
 
@@ -116,4 +118,4 @@ curl -s "http://10.0.0.5:9090/api/v1/query?query=up" | python3 -m json.tool
 
 ## Conclusion
 
-Set Prometheus's listen address with `--web.listen-address=ip:port`. Use a specific IPv4 address to limit exposure, or `127.0.0.1:9090` for maximum security with access through SSH tunnels or a reverse proxy. Always pair binding with firewall rules - Prometheus has no built-in authentication, so network-level access control is critical.
+Set Prometheus's listen address with `--web.listen-address=ip:port`. Use a specific IPv4 address to limit exposure, or `127.0.0.1:9090` for maximum security with access through SSH tunnels or a reverse proxy. Always pair binding with firewall rules - Prometheus does not enable authentication by default, so network-level access control is critical.
