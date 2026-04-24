@@ -13,6 +13,7 @@ Service rollback in Docker Swarm allows you to revert to the previous service co
 ## Prerequisites
 
 - Portainer on Docker Swarm
+- Access to a Swarm manager node for CLI commands
 - A service with at least one previous deployment (rollback requires a previous state)
 - Understanding of service update configuration
 
@@ -21,7 +22,7 @@ Service rollback in Docker Swarm allows you to revert to the previous service co
 Docker Swarm keeps track of the previous service specification. When you update a service:
 
 1. Swarm updates tasks according to the update config (parallelism, delay)
-2. If the update fails (tasks don't start or health checks fail), the automatic rollback triggers
+2. If enough updated tasks fail to start or stop running within the monitor period, and `failure_action` is set to `rollback`, the automatic rollback triggers
 3. Swarm reverts to the previous configuration
 
 You can also manually trigger a rollback at any time.
@@ -141,7 +142,7 @@ In Portainer, the service detail shows the current image and all running tasks.
 ## Understanding Rollback Limitations
 
 - Rollback reverts to the **immediately previous** specification only (not arbitrary versions)
-- After a rollback, you cannot "undo the rollback" via rollback - it would revert to the same broken spec
+- Automatic rollback depends on the configured monitor window and failure threshold to detect a failed update
 - Volume data and external state are NOT affected by rollback
 - Swarm does not version application data
 
@@ -174,8 +175,8 @@ services:
 
 With this configuration:
 1. Swarm starts the new version one replica at a time
-2. Waits for health checks to pass for 60s
-3. If any replica fails health checks, automatic rollback begins
+2. Monitors each updated replica for 60s after it starts
+3. If an updated replica fails to start or stops running during that monitor window, automatic rollback begins
 4. Rollback restores all tasks to the previous version simultaneously
 
 ## Conclusion
