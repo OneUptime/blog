@@ -13,8 +13,6 @@ Running your Python development environment in Docker via Portainer ensures all 
 ## Dev Environment Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   python-dev:
     image: python:3.12-slim
@@ -26,7 +24,9 @@ services:
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
     volumes:
-      # Mount your source code for hot-reload
+      # Mount your source code for hot-reload. In Portainer, replace ./src
+      # with an absolute path on the Docker host unless the stack is deployed
+      # from Git with Relative path volumes enabled.
       - ./src:/app
       - pip_cache:/root/.cache/pip    # Cache pip downloads
     working_dir: /app
@@ -55,7 +55,7 @@ pytest-asyncio
 
 ## Hot-Reload Development
 
-The `--reload` flag in uvicorn watches for file changes. When you edit code in `./src`, the development server automatically restarts:
+The `--reload` flag in uvicorn watches for file changes. When you edit code in the bind-mounted source directory, the development server automatically restarts:
 
 ```python
 # src/main.py
@@ -78,13 +78,11 @@ Attach VS Code to the running container's debugpy listener:
 {
   "configurations": [
     {
-      "name": "Python: Remote Attach",
-      "type": "python",
+      "name": "Python Debugger: Remote Attach",
+      "type": "debugpy",
       "request": "attach",
-      "connect": {
-        "host": "localhost",
-        "port": 5678
-      },
+      "host": "localhost",
+      "port": 5678,
       "pathMappings": [
         {
           "localRoot": "${workspaceFolder}/src",
@@ -99,7 +97,7 @@ Attach VS Code to the running container's debugpy listener:
 ## Running Tests in the Container
 
 ```bash
-# Via Portainer Exec console or docker exec:
+# Via Portainer Exec console or an interactive shell in the container:
 cd /app && pytest tests/ -v
 
 # Or run a specific test file
