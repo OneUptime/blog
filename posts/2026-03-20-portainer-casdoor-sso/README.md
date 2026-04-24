@@ -20,53 +20,21 @@ Casdoor is an open-source centralized authentication/authorization platform with
 
 Quick deployment with Docker:
 
-```yaml
-# casdoor-stack.yml
-
-version: "3.8"
-
-services:
-  casdoor:
-    image: casbin/casdoor:latest
-    container_name: casdoor
-    environment:
-      RUNNING_IN_DOCKER: "true"
-    ports:
-      - "8000:8000"
-    volumes:
-      - casdoor_data:/casdoor/conf
-    depends_on:
-      - casdoor-db
-
-  casdoor-db:
-    image: mysql:8.0
-    container_name: casdoor-db
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: casdoor
-    volumes:
-      - casdoor_db_data:/var/lib/mysql
-
-volumes:
-  casdoor_data:
-  casdoor_db_data:
-```
-
 ```bash
-docker compose -f casdoor-stack.yml up -d
-# Access at http://localhost:8000 (admin/123)
+docker run -p 8000:8000 casbin/casdoor-all-in-one
+# Access at http://localhost:8000 (built-in/admin / 123)
 ```
 
 ## Step 2: Create an Application in Casdoor
 
-1. Log in to Casdoor admin UI (`http://localhost:8000`)
+1. Log in to Casdoor admin UI (`http://localhost:8000`) with `built-in/admin` / `123`
 2. Go to **Applications** → **Add**
 
 Fill in:
 ```sql
 Name:          portainer
 DisplayName:   Portainer
-Organization:  built-in
+Organization:  your-org
 Logo:          https://portainer.io/images/logos/portainer-icon.png
 
 Redirect URLs:
@@ -76,8 +44,14 @@ Grant Types:
   ✓ Authorization Code
 
 Providers:
-  (select your configured providers - local, LDAP, etc.)
+  (select any upstream providers you want Casdoor to offer)
+
+Sign-in Methods:
+  ✓ Password
+  ✓ LDAP (optional)
 ```
+
+Use a regular organization such as `your-org` for Portainer users instead of `built-in`.
 
 3. Save and note the **Client ID** and **Client Secret**
 
@@ -114,14 +88,14 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d "{
     \"AuthenticationMethod\": 3,
-    \"oauthsettings\": {
+    \"OAuthSettings\": {
       \"ClientID\": \"${CLIENT_ID}\",
       \"ClientSecret\": \"${CLIENT_SECRET}\",
       \"AuthorizationURI\": \"${CASDOOR_URL}/login/oauth/authorize\",
       \"AccessTokenURI\": \"${CASDOOR_URL}/api/login/oauth/access_token\",
       \"ResourceURI\": \"${CASDOOR_URL}/api/userinfo\",
       \"RedirectURI\": \"https://portainer.example.com/\",
-      \"UserIdentifier\": \"name\",
+      \"UserIdentifier\": \"preferred_username\",
       \"Scopes\": \"openid profile email\",
       \"OAuthAutoCreateUsers\": true,
       \"SSO\": true
@@ -129,36 +103,21 @@ curl -X PUT \
   }"
 ```
 
-Note: Casdoor uses `name` as the username identifier in userinfo responses.
+Note: Casdoor's OIDC userinfo response exposes the username as `preferred_username`.
 
 ## Step 5: Add Users to Casdoor
 
 1. In Casdoor admin → **Users** → **Add**
-2. Or sync from LDAP/AD via Casdoor's user provider
-
-```bash
-# Casdoor API - Create a user
-curl -X POST \
-  -H "Content-Type: application/json" \
-  "${CASDOOR_URL}/api/add-user" \
-  -d '{
-    "owner": "built-in",
-    "name": "alice",
-    "displayName": "Alice Smith",
-    "email": "alice@example.com",
-    "password": "AlicePassword123",
-    "type": "normal-user"
-  }'
-```
+2. Create the user in the same regular Casdoor organization as the Portainer application (for example, `your-org`)
 
 ## Step 6: Configure Casdoor with LDAP (Optional)
 
 Connect Casdoor to LDAP for corporate SSO:
 
-1. In Casdoor → **Providers** → **Add**
-2. Choose **LDAP** as provider type
-3. Configure LDAP settings
-4. Link the LDAP provider to the Portainer application
+1. In Casdoor, open your organization and add an LDAP server under **LDAPs**
+2. Configure the LDAP connection settings
+3. In the Portainer application, enable the **LDAP** sign-in method
+4. Sync or import users from LDAP/AD if needed
 
 This allows users to log in to Casdoor (and thus Portainer) with LDAP credentials.
 
