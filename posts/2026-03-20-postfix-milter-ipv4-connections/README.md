@@ -8,14 +8,14 @@ Description: Learn how to configure Postfix milter integration over IPv4 TCP soc
 
 ---
 
-Milters (mail filters) integrate with Postfix to process messages in real time - signing with DKIM, checking SPF, filtering spam, or running virus scans. Milters communicate via Unix sockets or TCP sockets; using a TCP socket on an IPv4 address allows milters to run on remote servers.
+Milters (mail filters) integrate with Postfix to process messages in real time - signing with DKIM, checking SPF, filtering spam, or running virus scans. Milters communicate via Unix sockets or TCP sockets; with Postfix, TCP milters are referenced as `inet:host:port`, while many milter daemons themselves listen with `inet:port@host` syntax.
 
 ## Milter Connection Types
 
 ```text
-Unix socket:  unix:/run/opendkim/opendkim.sock
-TCP socket:   inet:12301@127.0.0.1     (local IPv4)
-TCP socket:   inet:12301@10.0.0.5      (remote IPv4)
+Postfix Unix socket: unix:/run/opendkim/opendkim.sock
+Postfix TCP socket:  inet:127.0.0.1:12301   (local IPv4)
+Postfix TCP socket:  inet:10.0.0.5:12301    (remote IPv4)
 ```
 
 ## Configuring OpenDKIM as a Milter over TCP
@@ -27,7 +27,7 @@ TCP socket:   inet:12301@10.0.0.5      (remote IPv4)
 
 # Listen on a TCP socket on the loopback IPv4 address
 
-Socket inet:12301@127.0.0.1
+Socket inet:12301@[127.0.0.1]
 
 # Signing mode
 Mode sv
@@ -56,7 +56,7 @@ inet_protocols = ipv4
 milter_default_action = accept         # Accept mail if milter is unavailable
 milter_protocol = 6                    # Milter protocol version
 
-# Specify the milter socket (inet:port@ip format)
+# Specify the milter socket (inet:host:port format)
 smtpd_milters = inet:127.0.0.1:12301  # For incoming mail (SMTP)
 non_smtpd_milters = inet:127.0.0.1:12301  # For locally submitted mail
 
@@ -73,15 +73,17 @@ milter_content_timeout = 300s
 apt install spamass-milter -y
 
 # /etc/default/spamass-milter
-OPTIONS="-u spamass-milter -i 127.0.0.1 -- -u spamd -d localhost"
-SOCKET="inet:783@127.0.0.1"
+OPTIONS="-u spamass-milter -i 127.0.0.1 -- -d 127.0.0.1 -p 783"
+SOCKET="inet:12302@127.0.0.1"
+SOCKETMODE=""
+SOCKETOWNER=""
 ```
 
 ```ini
 # /etc/postfix/main.cf
 
 # Chain multiple milters separated by spaces
-smtpd_milters = inet:127.0.0.1:12301 inet:127.0.0.1:783
+smtpd_milters = inet:127.0.0.1:12301 inet:127.0.0.1:12302
 non_smtpd_milters = inet:127.0.0.1:12301
 ```
 
@@ -112,7 +114,7 @@ tail -f /var/log/mail.log | grep milter
 
 ## Key Takeaways
 
-- Use `inet:port@ip` format to connect to milters over IPv4 TCP instead of Unix sockets.
+- Use `inet:host:port` in Postfix; many milter daemons themselves listen with `inet:port@host`.
 - `milter_default_action = accept` prevents mail from being rejected if the milter crashes.
 - Multiple milters can be chained with space-separated entries in `smtpd_milters`.
 - Remote milters on other IPv4 servers require firewall rules to allow the connection from the Postfix host.
