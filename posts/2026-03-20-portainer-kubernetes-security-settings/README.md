@@ -21,73 +21,69 @@ Securing a Kubernetes cluster managed by Portainer involves configuring proper R
 In Portainer, navigate to your Kubernetes environment:
 
 1. Click on the environment
-2. Go to **Settings → Cluster** (or **Environment Settings**)
+2. Expand **Cluster**
+3. Go to **Setup**
 
-Available security settings:
+Available security-related settings:
 
 ```text
-Cluster settings:
-  [x] Enable resource over-commit   - Allow workloads to request more than available
-  [ ] Restrict default namespace   - Prevent deploying to default namespace
-  [x] Use private registries       - Require registry credentials for image pulls
-  [x] Allow web editor             - Let users edit YAML directly
-  [ ] Note: Disabling web editor enforces form-based deployments only
+Cluster → Setup
+Security:
+  [ ] Restrict access to the default namespace
+  [ ] Restrict secret contents access for non-admins (UI only)
+
+Deployment Options (if per-environment overrides are enabled):
+  [ ] Enforce code-based deployment
+  [x] Allow web editor and custom template use
+  [x] Allow specifying of a manifest via a URL
 ```
+
+`Allow web editor and custom template use` and `Allow specifying of a manifest via a URL` are only available when code-based deployment is enforced for the environment.
 
 ## Step 2: Configure Namespace Access Control
 
-In Portainer BE, assign namespaces to teams:
+In Portainer BE, grant teams access to specific namespaces after assigning them a role on the environment or environment group:
 
 1. Go to **Namespaces** in the Kubernetes environment
-2. Click on a namespace
-3. Under **Access control**, assign to teams:
+2. Click **Manage access** for the namespace
+3. Select the users or teams that should have access, then click **Create access**
 
 ```text
 Namespace: production
-Access control:
-  Team: backend-team    → Read/Write
-  Team: frontend-team   → Read only
-  Team: devops-team     → Admin
+Access granted to:
+  Team: backend-team
+  Team: frontend-team
+  Team: devops-team
+
+Effective permissions come from the team's Portainer role
+on the environment or environment group, such as:
+  backend-team   → Standard User
+  frontend-team  → Read-Only User
+  devops-team    → Namespace Operator
 ```
 
-This prevents teams from accessing each other's namespaces.
+This restricts namespace access within Portainer. Kubernetes RBAC must be enabled for namespace access control to work.
 
 ## Step 3: Apply RBAC with Portainer
 
-Portainer creates Kubernetes RBAC resources when you configure team access. The resulting RBAC:
+Portainer uses predefined Kubernetes RBAC roles and bindings for its built-in roles rather than creating arbitrary roles such as `portainer-rw` for Portainer team names. For example:
 
-```yaml
-# Portainer creates these resources automatically
-
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: portainer-rw
-  namespace: production
-rules:
-  - apiGroups: ["", "apps", "batch", "extensions"]
-    resources: ["*"]
-    verbs: ["get", "list", "create", "update", "delete", "watch"]
-
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: portainer-rw-backend-team
-  namespace: production
-subjects:
-  - kind: Group
-    name: backend-team
-    apiGroup: rbac.authorization.k8s.io
-roleRef:
-  kind: Role
-  name: portainer-rw
-  apiGroup: rbac.authorization.k8s.io
+```text
+Portainer role mappings for Kubernetes:
+  Environment Administrator → cluster-admin
+  Operator                  → portainer-operator, portainer-helpdesk,
+                              and portainer-view on all non-system namespaces
+  Standard User             → portainer-basic plus portainer-edit/portainer-view
+                              on assigned namespaces
+  Read-Only User            → portainer-basic plus portainer-view
+                              on assigned namespaces
 ```
+
+Use Portainer's role assignments and namespace access management instead of creating manual `Role` or `RoleBinding` objects for Portainer teams.
 
 ## Step 4: Implement Network Policies
 
-Apply network policies to restrict inter-namespace communication:
+Apply network policies to default-deny ingress in the namespace and then allow only the traffic you need:
 
 ```yaml
 # deny-all-ingress.yaml - Default deny all ingress
@@ -119,13 +115,13 @@ spec:
     - from:
         - podSelector:
             matchLabels:
-              app: frontend   # Only allow from frontend pods
+              app: frontend   # Only allow from frontend pods in the same namespace
       ports:
         - protocol: TCP
           port: 8080
 ```
 
-Deploy via Portainer's YAML editor under **Applications → Add application → From YAML**.
+Deploy via Portainer under **Applications → Create from code → Manifest → Web editor**.
 
 ## Step 5: Configure Pod Security
 
@@ -146,6 +142,9 @@ For specific pod restrictions:
 
 ```yaml
 spec:
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
   containers:
     - name: app
       image: myapp:latest
@@ -161,9 +160,9 @@ spec:
 
 ## Step 6: Audit Portainer Actions
 
-Portainer logs all user actions. View audit logs:
+Portainer Business Edition records activity performed through Portainer. View activity logs:
 
-1. Go to **Settings → Audit logs** (BE feature)
+1. Go to **Logs → Activity** (BE feature)
 2. Filter by user, action, or time range
 
 ```text
@@ -193,25 +192,20 @@ spec:
   serviceAccountName: myapp
 ```
 
-## Step 8: Configure RBAC for Portainer Service Account
+## Step 8: Review Portainer Service Account Permissions
 
-Limit what the Portainer service account can do:
+Portainer's Kubernetes installation creates the ServiceAccount and ClusterRoleBinding it needs. Use Portainer roles and namespace access to limit what users can do; if you reduce Portainer's own service-account permissions, features that create or update cluster resources can stop working.
 
-```yaml
-# Limited RBAC for read-only Portainer access
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: portainer-read-only
-rules:
-  - apiGroups: [""]
-    resources: ["pods", "services", "endpoints", "namespaces", "nodes", "configmaps"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["apps"]
-    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
-    verbs: ["get", "list", "watch"]
+```text
+Use the official Portainer Helm chart or install manifest to create the
+Portainer ServiceAccount and ClusterRoleBinding.
+
+Limit end-user actions with:
+  - Portainer environment roles
+  - Namespace access management
+  - Kubernetes NetworkPolicy and Pod Security controls
 ```
 
 ## Conclusion
 
-Kubernetes security in Portainer operates on two levels: Portainer-native access control (team-based namespace access) and Kubernetes-native security (RBAC, NetworkPolicy, Pod Security). Use Portainer's team access features to control who can deploy to which namespaces, and implement Kubernetes RBAC and NetworkPolicy for fine-grained resource access control. Regular audit log reviews help detect unauthorized or accidental changes.
+Kubernetes security in Portainer operates on two levels: Portainer-native access control (environment roles and namespace access) and Kubernetes-native security (RBAC, NetworkPolicy, Pod Security). Use Portainer's environment roles and namespace access features to control who can work in which namespaces within Portainer, and implement Kubernetes RBAC and NetworkPolicy for fine-grained resource access control. Regular audit log reviews help detect unauthorized or accidental changes.
