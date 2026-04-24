@@ -8,7 +8,7 @@ Description: Learn how to enable and use debug logging in Portainer to diagnose 
 
 ---
 
-Debug logging in Portainer produces verbose output including API calls, internal state transitions, and detailed error messages. It is invaluable for diagnosing issues that INFO-level logs don't explain.
+Debug logging in Portainer produces verbose output including API calls, internal state transitions, and detailed error messages. Exact fields and messages can vary by Portainer version and `--log-mode`. It is invaluable for diagnosing issues that INFO-level logs don't explain.
 
 ## Enabling Debug Logging
 
@@ -23,10 +23,11 @@ docker stop portainer && docker rm portainer
 docker run -d \
   --name portainer \
   --restart=always \
-  -p 9000:9000 \
+  -p 8000:8000 \
+  -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest \
+  portainer/portainer-ce:sts \
   --log-level DEBUG
 ```
 
@@ -34,38 +35,28 @@ docker run -d \
 
 ```bash
 # Follow debug logs in real-time
-docker logs -f portainer 2>&1
+docker logs -f portainer
 
 # Save to a file for analysis
-docker logs portainer 2>&1 > portainer-debug.log
+docker logs portainer > portainer-debug.log 2>&1
 
 # Filter for specific issues
-docker logs portainer 2>&1 | grep -i "error\|failed\|timeout"
+docker logs portainer | grep -Ei 'error|failed|timeout'
 
 # Watch for agent-specific debug messages
-docker logs -f portainer 2>&1 | grep -i "agent\|tunnel\|edge"
+docker logs -f portainer | grep -Ei 'agent|tunnel|edge'
 ```
 
 ## What Debug Logs Show
 
-Debug mode reveals:
+Debug mode reveals more detail such as:
 
 ```bash
-# Example debug log entries:
-# HTTP API request details
-level=debug msg="HTTP request" endpoint="/api/containers/json" method=GET status=200 duration=42ms
-
-# Docker API calls
-level=debug msg="Calling Docker API" url="/v1.41/containers/json" endpoint=1
-
-# Authentication events
-level=debug msg="JWT token validated" user=admin userId=1
-
-# Snapshot operations
-level=debug msg="Creating environment snapshot" environmentId=1 name=local
-
-# Agent communication
-level=debug msg="Sending data to agent" agentAddress=192.168.1.100:9001
+# Example debug log messages (exact fields vary by release and --log-mode):
+# slow request | method=GET | url=/api/... | elapsed_ms=125.4
+# starting proxy server | host=127.0.0.1:49231
+# environment tunnel monitoring | endpoint_id=1 | last_activity_seconds=12.5
+# starting to fetch container information | container_id=3d2f1c...
 ```
 
 ## Temporary Debug Session
@@ -75,14 +66,29 @@ For production systems, enable debug logging temporarily, capture what you need,
 ```bash
 # 1. Enable debug logging
 docker stop portainer && docker rm portainer
-docker run -d ... portainer/portainer-ce:latest --log-level DEBUG
+docker run -d \
+  --name portainer \
+  --restart=always \
+  -p 8000:8000 \
+  -p 9443:9443 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:sts \
+  --log-level DEBUG
 
 # 2. Reproduce the issue and capture logs
-docker logs portainer 2>&1 | tail -200 > debug-capture.log
+docker logs --tail 200 portainer > debug-capture.log 2>&1
 
-# 3. Restore normal logging
+# 3. Restore normal logging (no --log-level flag; defaults to INFO)
 docker stop portainer && docker rm portainer
-docker run -d ... portainer/portainer-ce:latest  # No --log-level flag (defaults to INFO)
+docker run -d \
+  --name portainer \
+  --restart=always \
+  -p 8000:8000 \
+  -p 9443:9443 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:sts
 ```
 
 ## JSON Debug Logs
@@ -90,12 +96,20 @@ docker run -d ... portainer/portainer-ce:latest  # No --log-level flag (defaults
 Combine debug level with JSON format for structured analysis:
 
 ```bash
-docker run -d ... portainer/portainer-ce:latest \
+docker stop portainer && docker rm portainer
+docker run -d \
+  --name portainer \
+  --restart=always \
+  -p 8000:8000 \
+  -p 9443:9443 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:sts \
   --log-level DEBUG \
   --log-mode JSON
 
 # Parse with jq to find slow operations
-docker logs portainer 2>&1 | \
-  jq -r 'select(.level == "debug" and .duration != null) | "\(.duration) \(.msg)"' | \
+docker logs portainer | \
+  jq -r 'select(.level == "debug" and .elapsed_ms != null) | "\(.elapsed_ms) \(.message)"' | \
   sort -n | tail -20
 ```
