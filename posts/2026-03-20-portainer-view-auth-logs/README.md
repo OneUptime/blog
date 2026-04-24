@@ -8,63 +8,64 @@ Description: Learn how to view and analyze authentication logs in Portainer Busi
 
 ## Introduction
 
-Authentication logs in Portainer Business Edition record every login attempt, session creation, and authentication failure. Monitoring these logs helps detect brute force attacks, unauthorized access attempts, and anomalous login behavior. This guide covers accessing, analyzing, and automating alerts from Portainer's authentication logs.
+Authentication logs in Portainer Business Edition record authentication actions such as successful logins, failed logins, and logouts. Monitoring these logs helps detect brute force attacks, unauthorized access attempts, and anomalous login behavior. This guide covers accessing, analyzing, and exporting Portainer's authentication logs.
 
 ## Prerequisites
 
 - Portainer Business Edition (BE)
 - Admin access to Portainer
-- The authentication logging feature is enabled (enabled by default in BE)
+- An API access token if you want to use the API examples
 
 ## Step 1: Access Authentication Logs in the UI
 
 1. Log into Portainer BE as an administrator.
-2. Go to **Settings** in the left sidebar.
-3. Click **Authentication logs**.
+2. Expand **Logs** in the left sidebar.
+3. Click **Authentication**.
 
 The logs display:
-- **Timestamp**: Exact date and time of the event
-- **Username**: Which account was used (or attempted)
-- **Origin IP**: Source IP address of the request
-- **Event type**: Success, failure, or session expiry
-- **User Agent**: Browser/client type (helps identify automated attacks)
+- **Time**: Exact date and time of the event
+- **Origin**: Source IP address of the request
+- **Context**: Authentication source (`Internal`, `LDAP`, or `OAuth`)
+- **User**: Which account was used
+- **Result**: Authentication success, authentication failure, or logout
 
 ## Step 2: Authentication Log Types
 
 ```text
-LOGIN_SUCCESS     - Successful authentication
-LOGIN_FAILURE     - Failed login attempt (wrong password)
-LOGIN_UNKNOWN     - Login attempt with unknown username
-LOGOUT            - User explicitly logged out
-SESSION_EXPIRED   - Session timed out
-API_KEY_ACCESS    - Access via API key (not password)
+type: 1 - Authentication success
+type: 2 - Authentication failure
+type: 3 - Logout
+
+context: 1 - Internal authentication
+context: 2 - LDAP authentication
+context: 3 - OAuth authentication
 ```
 
 ## Step 3: View Logs via the API
 
 ```bash
 PORTAINER_URL="https://portainer.example.com"
-TOKEN="your-admin-token"
+API_KEY="your-api-key"
 
 # Get authentication logs
 
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/auth/logs" | jq .
+curl -sS -H "X-API-Key: $API_KEY" \
+  "${PORTAINER_URL}/api/useractivity/authlogs" | jq .
 
-# Get last 100 authentication events
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/auth/logs?limit=100" | jq .
+# Get up to 100 authentication events
+curl -sS -H "X-API-Key: $API_KEY" \
+  "${PORTAINER_URL}/api/useractivity/authlogs?limit=100" | jq .
 
-# Filter for failures only
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/auth/logs" | \
-  jq '[.[] | select(.Type == "failure")]'
+# Filter for failures only (type 2)
+curl -sS -H "X-API-Key: $API_KEY" \
+  "${PORTAINER_URL}/api/useractivity/authlogs" | \
+  jq '[.[] | select(.type == 2)]'
 
 # Get failures from a specific IP
 SUSPICIOUS_IP="203.0.113.42"
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/auth/logs" | \
-  jq --arg ip "$SUSPICIOUS_IP" '[.[] | select(.IP == $ip)]'
+curl -sS -H "X-API-Key: $API_KEY" \
+  "${PORTAINER_URL}/api/useractivity/authlogs" | \
+  jq --arg ip "$SUSPICIOUS_IP" '[.[] | select(.origin == $ip and .type == 2)]'
 ```
 
 ## Step 4: Detect Brute Force Attempts
@@ -74,17 +75,17 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 # detect-brute-force.sh
 
 PORTAINER_URL="https://portainer.example.com"
-TOKEN="your-admin-token"
+API_KEY="your-api-key"
 THRESHOLD=5  # Alert after 5 failures in 10 minutes
+AFTER=$(date -u -d '10 minutes ago' +%s)
 
-RECENT_FAILURES=$(curl -s -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/auth/logs" | \
-  jq --argjson window 600 '[.[] | select(.Type == "failure") |
-    select(.Timestamp > (now - $window))]')
+RECENT_FAILURES=$(curl -sS -H "X-API-Key: $API_KEY" \
+  "${PORTAINER_URL}/api/useractivity/authlogs?after=${AFTER}&limit=1000" | \
+  jq '[.[] | select(.type == 2)]')
 
 # Count failures per IP
-echo $RECENT_FAILURES | jq -r '.[].IP' | sort | uniq -c | sort -rn | \
-  while read COUNT IP; do
+echo "$RECENT_FAILURES" | jq -r '.[].origin' | sort | uniq -c | sort -rn | \
+  while read -r COUNT IP; do
     if [ "$COUNT" -ge "$THRESHOLD" ]; then
       echo "BRUTE FORCE ALERT: IP $IP had $COUNT failed logins in the last 10 minutes"
 
@@ -101,32 +102,32 @@ echo $RECENT_FAILURES | jq -r '.[].IP' | sort | uniq -c | sort -rn | \
 # analyze-auth-patterns.sh
 
 PORTAINER_URL="https://portainer.example.com"
-TOKEN="your-admin-token"
+API_KEY="your-api-key"
 
-LOGS=$(curl -s -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/auth/logs?limit=1000")
+LOGS=$(curl -sS -H "X-API-Key: $API_KEY" \
+  "${PORTAINER_URL}/api/useractivity/authlogs?limit=1000")
 
 echo "=== Authentication Analysis ==="
 echo ""
 
 # Unique IPs accessing Portainer
 echo "Unique source IPs:"
-echo $LOGS | jq -r '.[].IP' | sort -u | while read IP; do
-  COUNT=$(echo $LOGS | jq --arg ip "$IP" '[.[] | select(.IP == $ip)] | length')
+echo "$LOGS" | jq -r '.[].origin' | sort -u | while read -r IP; do
+  COUNT=$(echo "$LOGS" | jq --arg ip "$IP" '[.[] | select(.origin == $ip)] | length')
   echo "  $IP: $COUNT requests"
 done
 
 echo ""
 echo "Recent failures:"
-echo $LOGS | jq -r '.[] | select(.Type == "failure") |
-  "  \(.Timestamp | strftime("%Y-%m-%d %H:%M:%S")) | User: \(.Username) | IP: \(.IP)"'
+echo "$LOGS" | jq -r '.[] | select(.type == 2) |
+  "  \(.timestamp | strftime("%Y-%m-%d %H:%M:%S")) UTC | User: \(.username) | IP: \(.origin)"'
 
 echo ""
 echo "After-hours logins (outside 09:00-18:00 UTC):"
-echo $LOGS | jq -r '.[] | select(.Type == "success") |
-  select((.Timestamp | strftime("%H") | tonumber) < 9 or
-         (.Timestamp | strftime("%H") | tonumber) > 18) |
-  "  \(.Timestamp | strftime("%Y-%m-%d %H:%M:%S")) | User: \(.Username) | IP: \(.IP)"'
+echo "$LOGS" | jq -r '.[] | select(.type == 1) |
+  select((.timestamp | strftime("%H") | tonumber) < 9 or
+         (.timestamp | strftime("%H") | tonumber) >= 18) |
+  "  \(.timestamp | strftime("%Y-%m-%d %H:%M:%S")) UTC | User: \(.username) | IP: \(.origin)"'
 ```
 
 ## Step 6: Export Authentication Logs for Compliance
@@ -136,44 +137,58 @@ echo $LOGS | jq -r '.[] | select(.Type == "success") |
 # export-auth-logs-monthly.sh - For compliance reporting
 
 PORTAINER_URL="https://portainer.example.com"
-TOKEN="your-admin-token"
-YEAR=$(date +%Y)
-MONTH=$(date +%m)
+API_KEY="your-api-key"
+CURRENT_MONTH_START=$(date -u +%Y-%m-01)
+PERIOD=$(date -u -d "$CURRENT_MONTH_START -1 month" +%Y-%m)
 
-# Calculate start and end of last month
-START=$(date -d "$YEAR-$MONTH-01 00:00:00" +%s 2>/dev/null || \
-        date -j -f "%Y-%m-%d %H:%M:%S" "$YEAR-$MONTH-01 00:00:00" +%s)
-END=$(date -d "$YEAR-$MONTH-01 00:00:00 +1 month -1 second" +%s 2>/dev/null || \
-      date -j -f "%Y-%m-%d %H:%M:%S" "$YEAR-$MONTH-01 00:00:00" +%s)
+# Calculate start and end of last month (UTC)
+START=$(date -u -d "$CURRENT_MONTH_START -1 month" +%s)
+END=$(date -u -d "$CURRENT_MONTH_START -1 second" +%s)
 
-REPORT_FILE="auth-logs-${YEAR}-${MONTH}.json"
+REPORT_FILE="auth-logs-${PERIOD}.json"
+LIMIT=500
+OFFSET=0
+TMP_FILE=$(mktemp)
 
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/auth/logs?after=${START}&before=${END}" > "$REPORT_FILE"
+printf '[]\n' > "$TMP_FILE"
 
-TOTAL=$(cat "$REPORT_FILE" | jq 'length')
-FAILURES=$(cat "$REPORT_FILE" | jq '[.[] | select(.Type == "failure")] | length')
-SUCCESSES=$(cat "$REPORT_FILE" | jq '[.[] | select(.Type == "success")] | length')
+while :; do
+  BATCH=$(curl -sS -H "X-API-Key: $API_KEY" \
+    "${PORTAINER_URL}/api/useractivity/authlogs?after=${START}&before=${END}&limit=${LIMIT}&offset=${OFFSET}")
 
-echo "Authentication Report: ${YEAR}-${MONTH}"
+  COUNT=$(echo "$BATCH" | jq 'length')
+  jq -s '.[0] + .[1]' "$TMP_FILE" <(echo "$BATCH") > "${TMP_FILE}.next"
+  mv "${TMP_FILE}.next" "$TMP_FILE"
+
+  if [ "$COUNT" -lt "$LIMIT" ]; then
+    break
+  fi
+
+  OFFSET=$((OFFSET + LIMIT))
+done
+
+mv "$TMP_FILE" "$REPORT_FILE"
+
+TOTAL=$(jq 'length' "$REPORT_FILE")
+FAILURES=$(jq '[.[] | select(.type == 2)] | length' "$REPORT_FILE")
+SUCCESSES=$(jq '[.[] | select(.type == 1)] | length' "$REPORT_FILE")
+
+echo "Authentication Report: ${PERIOD}"
 echo "  Total events:  $TOTAL"
 echo "  Successes:     $SUCCESSES"
 echo "  Failures:      $FAILURES"
 echo "  Report saved:  $REPORT_FILE"
 ```
 
-## Step 7: Configure Log Retention
+## Step 7: Plan for Long-Term Retention
 
-In Portainer BE:
-1. Go to **Settings** → **Authentication logs**.
-2. Configure **Log retention period** (e.g., 90 days).
-3. Enable **Purge logs older than** to automatically remove old logs.
+Portainer user authentication logs have a maximum retention of 7 days.
 
-For longer retention, export regularly to external storage:
+For longer retention, export regularly to external storage or stream authentication and activity logs to an external SIEM provider in Syslog format:
 
 ```bash
-# Run weekly export to S3
-aws s3 cp auth-logs-$(date +%Y-%m).json s3://your-compliance-bucket/portainer/auth-logs/
+# After generating the monthly report file
+aws s3 cp "$REPORT_FILE" s3://your-compliance-bucket/portainer/auth-logs/
 ```
 
 ## Conclusion
