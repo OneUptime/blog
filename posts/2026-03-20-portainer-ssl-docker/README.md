@@ -14,9 +14,9 @@ Portainer generates a self-signed certificate by default, which causes browser w
 
 - Portainer running on Docker
 - OpenSSL installed
-- A domain name (for CA-signed certs) or just a hostname (for self-signed)
+- A domain name (for public CA certificates) or a hostname/IP (for an internal CA-signed certificate)
 
-## Option 1: Generate a Self-Signed Certificate
+## Option 1: Generate a Certificate Signed by Your Own CA
 
 ```bash
 # Create directory for certificates
@@ -81,10 +81,10 @@ openssl verify -CAfile /opt/portainer/certs/ca.crt \
 ## Option 2: Use a Certificate from Let's Encrypt
 
 ```bash
-# Install Certbot
+# Install Certbot (Debian/Ubuntu example)
 sudo apt-get install certbot
 
-# Obtain certificate (requires domain pointing to this server)
+# Obtain certificate (requires the domain to resolve to this server and port 80 to be reachable)
 sudo certbot certonly --standalone \
   -d portainer.example.com \
   --non-interactive \
@@ -94,12 +94,14 @@ sudo certbot certonly --standalone \
 # Certificates are at:
 # /etc/letsencrypt/live/portainer.example.com/fullchain.pem
 # /etc/letsencrypt/live/portainer.example.com/privkey.pem
+# When using these with Portainer, mount both the live and archive directories
+# because Certbot stores these files as symlinks.
 ```
 
-## Step: Install Certificates in Portainer Data Volume
+## Step: Install Self-Signed or Internal CA Certificates in Portainer Data Volume
 
 ```bash
-# Copy certificates into the portainer_data volume
+# Copy self-signed/internal CA certificates into the portainer_data volume
 docker run --rm \
   -v portainer_data:/data \
   -v /opt/portainer/certs:/certs \
@@ -122,13 +124,12 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
-  --ssl \
   --sslcert /data/certs/cert.pem \
   --sslkey /data/certs/key.pem \
   --http-disabled
 ```
 
-## Alternative: Mount Certificates Directly
+## Alternative: Mount Let's Encrypt Certificates Directly
 
 ```bash
 docker run -d \
@@ -138,11 +139,11 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  -v /opt/portainer/certs:/certs:ro \
+  -v /etc/letsencrypt/live/portainer.example.com:/certs/live/portainer.example.com:ro \
+  -v /etc/letsencrypt/archive/portainer.example.com:/certs/archive/portainer.example.com:ro \
   portainer/portainer-ce:latest \
-  --ssl \
-  --sslcert /certs/portainer.crt \
-  --sslkey /certs/portainer.key \
+  --sslcert /certs/live/portainer.example.com/fullchain.pem \
+  --sslkey /certs/live/portainer.example.com/privkey.pem \
   --http-disabled
 ```
 
@@ -159,7 +160,9 @@ echo | openssl s_client -connect localhost:9443 2>/dev/null \
 
 # Test HTTPS access
 curl -k https://localhost:9443/api/status
-# Use the CA cert to verify properly:
+# Public CA certificates should verify with the system trust store:
+curl https://portainer.example.com:9443/api/status
+# For certificates signed by your internal CA, use the CA cert to verify properly:
 curl --cacert /opt/portainer/certs/ca.crt \
   https://portainer.example.com:9443/api/status
 ```
@@ -167,14 +170,12 @@ curl --cacert /opt/portainer/certs/ca.crt \
 ## Docker Compose with Custom SSL
 
 ```yaml
-version: "3.8"
 services:
   portainer:
     image: portainer/portainer-ce:latest
     container_name: portainer
     restart: always
     command:
-      - --ssl
       - --sslcert=/certs/portainer.crt
       - --sslkey=/certs/portainer.key
       - --http-disabled
