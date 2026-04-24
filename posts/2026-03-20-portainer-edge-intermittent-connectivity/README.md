@@ -29,6 +29,8 @@ This means devices can operate for days or weeks without connectivity and still 
 
 ## Step 1: Configure the Edge Agent for Async Mode
 
+Create the async Edge environment in Portainer, then run the Portainer-generated deployment command on the device. A Docker Standalone deployment looks like this:
+
 ```bash
 #!/bin/bash
 # Deploy Portainer Edge Agent in async mode for intermittent connectivity
@@ -38,14 +40,15 @@ docker run -d \
   --restart always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -v /:/host \
+  -v portainer_agent_data:/data \
+  -e EDGE=1 \
+  -e EDGE_ID="${EDGE_ID}" \
   -e EDGE_KEY="${EDGE_KEY}" \
-  # Async polling interval: check every 5 minutes (300 seconds)
-  # Increase this for very bandwidth-constrained or expensive connections
-  -e EDGE_POLL_FREQUENCY=300 \
-  # Retry on connection failure
-  -e EDGE_INSECURE_POLL=0 \
-  portainer/agent:latest
+  portainer/agent:lts
 ```
+
+Use the exact command Portainer generates so the agent tag matches your Portainer Server version. Set the async Ping, Snapshot, and Command intervals in Portainer when you create the environment, and only add `-e EDGE_INSECURE_POLL=1` if your Portainer server uses a self-signed HTTPS certificate.
 
 ## Step 2: Design Offline-First Application Stacks
 
@@ -55,8 +58,6 @@ Your application containers must work without network access:
 # offline-first-app.yml
 
 # All services designed to run without internet connectivity
-version: "3.8"
-
 services:
   # Local application - reads from local DB only
   app:
@@ -111,6 +112,7 @@ services:
 volumes:
   postgres_data:
   mosquitto_data:
+  mosquitto_logs:
   forward_buffer:
 ```
 
@@ -127,7 +129,6 @@ images=(
   "postgres:15-alpine"
   "eclipse-mosquitto:2.0"
   "myorg/store-forward:1.0"
-  "prom/node-exporter:v1.7.0"
 )
 
 for image in "${images[@]}"; do
@@ -161,7 +162,8 @@ Also ensure Docker itself starts on boot:
 
 ```bash
 # Enable Docker to start on system boot
-systemctl enable docker
+systemctl enable docker.service
+systemctl enable containerd.service
 
 # Optionally configure Docker daemon for offline resilience
 cat > /etc/docker/daemon.json << 'EOF'
@@ -175,20 +177,19 @@ cat > /etc/docker/daemon.json << 'EOF'
 }
 EOF
 
-systemctl restart docker
+systemctl reload docker
 ```
 
-The `live-restore: true` option keeps containers running even when the Docker daemon is restarted.
+The `live-restore: true` option helps keep standalone containers running even when the Docker daemon is reloaded or restarted.
 
 ## Step 5: Handle Data Buffering During Outages
 
 Implement a store-and-forward pattern for data generated during outages:
 
 ```python
-# Example: store-forward service logic (pseudo-code)
+# Example: store-forward service logic (pseudo-code; production buffers should be persisted)
 import time
 import queue
-import threading
 
 local_buffer = queue.Queue(maxsize=10000)
 
@@ -196,7 +197,7 @@ def collect_data():
     """Continuously collect sensor data into local buffer"""
     while True:
         data = read_sensor()
-        local_buffer.put(data)  # Never drops if buffer not full
+        local_buffer.put(data)  # Blocks if the buffer is full
         time.sleep(1)
 
 def forward_data():
