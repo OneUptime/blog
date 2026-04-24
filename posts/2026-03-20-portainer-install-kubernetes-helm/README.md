@@ -12,11 +12,12 @@ Installing Portainer on Kubernetes via Helm is the recommended approach for prod
 
 ## Prerequisites
 
-- Kubernetes cluster (1.20+) running and accessible
+- Kubernetes cluster running a Portainer-supported version and accessible
 - Helm 3.x installed locally
 - `kubectl` configured with cluster access
 - A StorageClass configured for persistent volumes
-- Admin access to the cluster
+- Cluster-admin access to the cluster
+- A Portainer BE license key if you plan to install Business Edition
 
 ## Step 1: Add the Portainer Helm Repository
 
@@ -34,7 +35,7 @@ helm repo list
 # portainer  https://portainer.github.io/k8s/
 
 # List available Portainer chart versions
-helm search repo portainer/portainer
+helm search repo portainer/portainer --versions
 ```
 
 ## Step 2: Create a Namespace for Portainer
@@ -52,10 +53,9 @@ kubectl get namespace portainer
 For a quick installation with defaults:
 
 ```bash
-# Install with NodePort (port 30777 for HTTP, 30779 for HTTPS)
+# Install with the default NodePort service (port 30777 for HTTP, 30779 for HTTPS)
 helm install portainer portainer/portainer \
-  --namespace portainer \
-  --set service.type=NodePort
+  --namespace portainer
 ```
 
 ## Step 4: Install Portainer with Custom Values
@@ -67,7 +67,7 @@ For production installations, create a values file:
 
 # Service configuration
 service:
-  type: LoadBalancer    # Or NodePort or ClusterIP
+  type: ClusterIP    # Use ClusterIP when exposing Portainer through Ingress
 
 # Ingress configuration (optional)
 ingress:
@@ -81,7 +81,6 @@ ingress:
     - host: portainer.example.com
       paths:
         - path: /
-          pathType: Prefix
   tls:
     - secretName: portainer-tls
       hosts:
@@ -107,7 +106,8 @@ resources:
     memory: 256Mi
 
 # Admin configuration
-adminPassword: ""    # Set in next step using secret
+adminPassword:
+  existingSecret: ""    # Set in next step using a Kubernetes secret
 ```
 
 ```bash
@@ -120,8 +120,8 @@ helm install portainer portainer/portainer \
 ## Step 5: Set the Admin Password via Secret
 
 ```bash
-# Create admin password secret (before or after install)
-kubectl create secret generic portainer-admin \
+# Create the admin password secret before the first install
+kubectl create secret generic portainer-admin-password \
   --from-literal=password="MySecureAdminPassword!" \
   --namespace portainer
 ```
@@ -130,8 +130,8 @@ Or include in the Helm values:
 
 ```yaml
 # portainer-values.yaml
-secretName: portainer-admin
-adminPassword: "MySecureAdminPassword!"
+adminPassword:
+  existingSecret: portainer-admin-password
 ```
 
 ## Step 6: Monitor the Installation
@@ -156,7 +156,7 @@ kubectl get pvc -n portainer
 ```bash
 # Get the NodePort (if using NodePort service type)
 kubectl get svc portainer -n portainer
-# PORT(S): 9000:30777/TCP,9443:30779/TCP
+# Look for 30777/TCP (HTTP) and 30779/TCP (HTTPS) in the PORT(S) column
 
 # Access at:
 # HTTP:  http://<node-ip>:30777
@@ -181,29 +181,20 @@ For Ingress:
 ## Step 8: Complete Initial Setup
 
 1. Open the Portainer URL
-2. Create the initial admin user (or it auto-configures from the secret)
+2. Create the initial admin user, or if you set `adminPassword.existingSecret`, log in with the automatically created `admin` user
 3. Select **Get Started** to connect to the local Kubernetes cluster
 
 Portainer automatically detects the Kubernetes environment it's running in.
 
 ## Step 9: Install Portainer BE
 
-For Business Edition:
+For Business Edition, use the same chart and enable Enterprise Edition:
 
 ```bash
 helm install portainer portainer/portainer \
   --namespace portainer \
   --set enterpriseEdition.enabled=true \
-  --set enterpriseEdition.image.tag=latest \
-  --values portainer-values.yaml
-```
-
-Or use the BE chart:
-
-```bash
-helm install portainer portainer/portainer \
-  --namespace portainer \
-  --set image.repository=portainer/portainer-ee \
+  --set enterpriseEdition.image.tag=lts \
   --values portainer-values.yaml
 ```
 
@@ -218,21 +209,21 @@ helm upgrade portainer portainer/portainer \
   --namespace portainer \
   --values portainer-values.yaml
 
-# Upgrade to specific version
+# Upgrade to a specific chart version
 helm upgrade portainer portainer/portainer \
   --namespace portainer \
-  --version 1.0.50 \
+  --version <chart-version> \
   --values portainer-values.yaml
 ```
 
 ## Uninstalling Portainer
 
 ```bash
-# Uninstall (preserves PVC and namespace)
+# Uninstall the release
 helm uninstall portainer --namespace portainer
 
-# Also delete PVC (removes data!)
-kubectl delete pvc portainer -n portainer
+# If you used persistence.existingClaim, delete that PVC separately to remove data
+kubectl delete pvc <existing-pvc-name> -n portainer
 
 # Delete namespace
 kubectl delete namespace portainer
