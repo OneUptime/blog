@@ -43,7 +43,7 @@ Create a security group named `portainer-sg`:
 | Type | Protocol | Port | Source |
 |------|---------|------|--------|
 | SSH | TCP | 22 | Your IP |
-| Custom TCP | TCP | 9000 | Your IP (or VPN range) |
+| Custom TCP | TCP | 9000 | Your IP (or VPN range) - optional for legacy HTTP only |
 | Custom TCP | TCP | 9443 | Your IP (or VPN range) |
 | HTTP | TCP | 80 | 0.0.0.0/0 (if running public services) |
 | HTTPS | TCP | 443 | 0.0.0.0/0 (if running public services) |
@@ -63,18 +63,19 @@ aws ec2 create-security-group \
 # Get your public IP
 MY_IP=$(curl -s https://checkip.amazonaws.com)
 
-# Allow Portainer ports from your IP only
+# Allow SSH and Portainer HTTPS from your IP only
 aws ec2 authorize-security-group-ingress \
     --group-id sg-xxxxxxxx \
     --protocol tcp --port 22 --cidr ${MY_IP}/32
 
 aws ec2 authorize-security-group-ingress \
     --group-id sg-xxxxxxxx \
-    --protocol tcp --port 9000 --cidr ${MY_IP}/32
-
-aws ec2 authorize-security-group-ingress \
-    --group-id sg-xxxxxxxx \
     --protocol tcp --port 9443 --cidr ${MY_IP}/32
+
+# Optional: allow Portainer HTTP on 9000 only if you need legacy access
+# aws ec2 authorize-security-group-ingress \
+#     --group-id sg-xxxxxxxx \
+#     --protocol tcp --port 9000 --cidr ${MY_IP}/32
 ```
 
 ## Step 3: Connect and Install Docker
@@ -86,29 +87,50 @@ ssh -i ~/.ssh/your-key.pem ubuntu@<ec2-public-ip>
 # Update system
 sudo apt update && sudo apt upgrade -y
 
-# Install Docker
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker ubuntu
-newgrp docker
+# Install Docker from Docker's official apt repository
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
 
-sudo systemctl enable docker
+sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+
+# Optional: allow the ubuntu user to run Docker without sudo
+sudo usermod -aG docker ubuntu
 ```
+
+Log out and back in (or run `newgrp docker`) before using `docker` without `sudo`.
 
 ## Step 4: Attach and Mount Data Volume (Optional)
 
 For production, use a separate EBS volume for Docker data:
 
 ```bash
-# Check available block devices
-lsblk
+# Check available block devices and identify the actual EBS device path
+lsblk -o NAME,SERIAL,SIZE,FSTYPE,MOUNTPOINT
 
-# Format the data volume (e.g., /dev/xvdf)
-sudo mkfs.ext4 /dev/xvdf
+# On Nitro-based instances, attached EBS volumes usually appear as /dev/nvme*n1
+# Replace /dev/nvme1n1 with the correct device from the lsblk output
+sudo mkfs.ext4 /dev/nvme1n1
 
 # Mount it
 sudo mkdir -p /data
-echo '/dev/xvdf /data ext4 defaults,nofail 0 2' | sudo tee -a /etc/fstab
-sudo mount -a
+sudo mount /dev/nvme1n1 /data
+
+# Persist the mount using the filesystem UUID
+UUID=$(sudo blkid -s UUID -o value /dev/nvme1n1)
+echo "UUID=${UUID} /data ext4 defaults,nofail 0 2" | sudo tee -a /etc/fstab
 
 # Point Docker to the new volume
 sudo mkdir -p /data/docker
@@ -134,22 +156,24 @@ docker volume create portainer_data
 # Deploy Portainer
 docker run -d \
   --name portainer \
-  --restart=unless-stopped \
-  -p 9000:9000 \
+  --restart=always \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
-## Step 6: Configure EC2 Instance Connect or Systems Manager
+Add `-p 9000:9000` only if you need legacy HTTP access.
 
-For more secure access without open SSH port:
+## Step 6: Configure Systems Manager
+
+For more secure access without keeping SSH open to the internet:
 
 ```bash
-# Install SSM agent (usually pre-installed on Ubuntu AMIs)
-sudo snap install amazon-ssm-agent --classic
-sudo systemctl enable --now snap.amazon-ssm-agent.amazon-ssm-agent
+# In most cases, AWS-provided Ubuntu AMIs already include SSM Agent
+sudo snap list amazon-ssm-agent >/dev/null 2>&1 || sudo snap install amazon-ssm-agent --classic
+sudo snap start amazon-ssm-agent
+sudo snap services amazon-ssm-agent
 
 # Attach IAM role with AmazonSSMManagedInstanceCore policy to EC2
 ```
@@ -159,20 +183,14 @@ sudo systemctl enable --now snap.amazon-ssm-agent.amazon-ssm-agent
 In Portainer, add your ECR registry:
 
 1. Navigate to **Registries > Add registry**
-2. Select **Custom registry**
+2. Select **AWS ECR**
 3. URL: `<account-id>.dkr.ecr.<region>.amazonaws.com`
-4. For authentication, use the ECR token:
-
-```bash
-# Get ECR login token (valid for 12 hours)
-aws ecr get-login-password --region us-east-1 | \
-    docker login --username AWS --password-stdin \
-    <account-id>.dkr.ecr.us-east-1.amazonaws.com
-```
+4. Enter the AWS region plus an access key ID and secret access key for an IAM user that can access the registry
+5. For full registry management in Portainer, the recommended AWS policy is `AmazonEC2ContainerRegistryFullAccess`
 
 ## Step 8: Assign an Elastic IP
 
-For production, assign an Elastic IP so the address doesn't change on restart:
+For production, assign an Elastic IP so the public address does not change after a stop/start cycle:
 
 ```bash
 # Allocate Elastic IP
