@@ -8,11 +8,11 @@ Description: Deploy a FastAPI REST API with PostgreSQL using Docker Compose thro
 
 ## Introduction
 
-FastAPI is a modern, high-performance Python web framework with automatic OpenAPI documentation and async support. Paired with PostgreSQL and deployed through Portainer, you get a production-ready API stack with connection pooling, database migrations, and interactive API docs accessible from the browser. This guide covers the complete deployment using Portainer Stacks.
+FastAPI is a modern, high-performance Python web framework with automatic OpenAPI documentation and async support. Paired with PostgreSQL and deployed through Portainer, you get a containerized API stack with connection pooling, database migrations, and interactive API docs accessible from the browser. This guide covers the complete deployment using Portainer Stacks.
 
 ## Prerequisites
 
-- Portainer CE or BE with Docker Engine 20.10+
+- Portainer CE or BE connected to a Docker Standalone environment with Docker Engine 20.10+
 - Basic knowledge of Python and FastAPI
 - At least 512 MB of available RAM
 
@@ -40,7 +40,7 @@ COPY . .
 EXPOSE 8000
 
 # Start with uvicorn
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
 ```text
@@ -58,13 +58,18 @@ passlib[bcrypt]==1.7.4
 python-multipart==0.0.9
 ```
 
+```bash
+# Build the image outside Portainer before deploying the stack
+docker build -t fastapi-app:latest .
+```
+
+If Portainer manages a remote Docker host, push this image to a registry or load it onto that host and set `FASTAPI_IMAGE` accordingly.
+
 ## Step 2: Create the Docker Compose Stack in Portainer
 
 Navigate to **Stacks** → **Add Stack** → **Web Editor** and name it `fastapi-app`:
 
 ```yaml
-version: "3.8"
-
 services:
   # PostgreSQL database
   db:
@@ -133,6 +138,7 @@ networks:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from app import models  # Ensure models are registered before create_all
 from app.database import engine, Base
 from app.routers import users, items
 
@@ -147,7 +153,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="FastAPI + PostgreSQL Demo",
-    description="Production-ready FastAPI with PostgreSQL via Portainer",
+    description="FastAPI with PostgreSQL via Portainer",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -226,13 +232,16 @@ class Item(Base):
 ## Step 4: Alembic Migration Setup
 
 ```bash
-# Initialize Alembic (run once in development)
-docker exec fastapi-api alembic init alembic
+# Initialize Alembic in your project directory before building the image
+alembic init alembic
+
+# Configure alembic.ini or env.py to use your PostgreSQL URL
+# Update alembic/env.py to import Base and set target_metadata = Base.metadata
 
 # Create a migration
-docker exec fastapi-api alembic revision --autogenerate -m "Initial tables"
+alembic revision --autogenerate -m "Initial tables"
 
-# Apply migrations
+# Rebuild and redeploy the API image, then apply migrations
 docker exec fastapi-api alembic upgrade head
 
 # Check migration status
@@ -245,14 +254,12 @@ docker exec fastapi-api alembic current
 FastAPI automatically generates interactive documentation:
 
 ```bash
-# Swagger UI (interactive)
-open http://localhost:8000/docs
-
-# ReDoc (read-only documentation)
-open http://localhost:8000/redoc
+# Open these URLs in your browser:
+# http://localhost:8000/docs
+# http://localhost:8000/redoc
 
 # OpenAPI JSON schema
-curl http://localhost:8000/openapi.json | jq .
+curl http://localhost:8000/openapi.json
 ```
 
 ## Step 6: Verify the Deployment
