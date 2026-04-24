@@ -17,7 +17,7 @@ terraform {
   required_providers {
     docker = {
       source  = "kreuzwerker/docker"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -30,7 +30,8 @@ provider "docker" {
 Resource Configuration
 
 ```hcl
-# Pull the image
+# Pull the image. For mutable tags such as `latest`, use the
+# docker_registry_image data source with pull_triggers to detect upstream updates.
 
 resource "docker_image" "app" {
   name         = "${var.image_name}:${var.image_tag}"
