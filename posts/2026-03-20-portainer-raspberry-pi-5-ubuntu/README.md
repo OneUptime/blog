@@ -32,7 +32,7 @@ Use Raspberry Pi Imager to flash Ubuntu Server 24.04 LTS (64-bit) to your storag
 ```bash
 # SSH into the Pi
 
-ssh ubuntu@<pi-ip>
+ssh <your-username>@<pi-ip>
 
 # Update all packages
 sudo apt update && sudo apt full-upgrade -y
@@ -48,6 +48,8 @@ sudo reboot
 
 If using the Pi 5 with M.2 HAT:
 
+On fresh Docker Engine 29 installs, image and container snapshot data lives under `/var/lib/containerd`, so move both Docker's data root and containerd's root if you want Docker storage on NVMe.
+
 ```bash
 # Check NVMe is detected
 lsblk | grep nvme
@@ -58,31 +60,56 @@ sudo mkdir -p /data
 echo '/dev/nvme0n1 /data ext4 defaults,noatime 0 2' | sudo tee -a /etc/fstab
 sudo mount -a
 
-# Move Docker data directory to NVMe
-sudo mkdir -p /data/docker
+# Prepare Docker and containerd data directories on NVMe
+sudo mkdir -p /data/docker /data/containerd
 ```
 
 ## Step 4: Install Docker
 
 ```bash
-# Install Docker using official script
-curl -fsSL https://get.docker.com | sh
+# Install Docker from Docker's official apt repository
+sudo apt update
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 # Add current user to docker group
 sudo usermod -aG docker $USER
 newgrp docker
 
 # Configure Docker to use NVMe storage (if applicable)
-sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
-{
-  "data-root": "/data/docker",
-  "log-driver": "json-file",
-  "log-opts": {
-    "max-size": "10m",
-    "max-file": "3"
+if [ -d /data/docker ] && [ -d /data/containerd ]; then
+  sudo mkdir -p /etc/docker
+  sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
+  {
+    "data-root": "/data/docker",
+    "log-driver": "json-file",
+    "log-opts": {
+      "max-size": "10m",
+      "max-file": "3"
+    }
   }
-}
 EOF
+
+  sudo mkdir -p /etc/containerd
+  containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
+  sudo sed -i 's#^root = "/var/lib/containerd"#root = "/data/containerd"#' /etc/containerd/config.toml
+
+  sudo systemctl restart containerd
+fi
 
 sudo systemctl restart docker
 sudo systemctl enable docker
@@ -98,20 +125,20 @@ docker volume create portainer_data
 docker run -d \
   --name portainer \
   --restart=unless-stopped \
-  -p 9000:9000 \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 6: Configure Ubuntu Firewall (UFW)
 
 ```bash
-# Allow Portainer ports
-sudo ufw allow 9000/tcp comment 'Portainer HTTP'
-sudo ufw allow 9443/tcp comment 'Portainer HTTPS'
-sudo ufw allow ssh
+# Allow SSH before enabling UFW
+sudo ufw allow OpenSSH
+
+# Note: Docker-published ports such as 9443 bypass UFW rules by default.
+# Portainer access is controlled by the ports you publish with docker run.
 
 # Enable UFW
 sudo ufw enable
@@ -147,11 +174,11 @@ sudo netplan apply
 
 ## Pi 5 Performance Tuning
 
-### Enable Hardware Acceleration for Pi 5
+### Install Raspberry Pi Utilities
 
 ```bash
-# Install Pi 5 performance tools
-sudo apt install -y rpi-utils
+# Install Raspberry Pi utilities
+sudo apt install -y libraspberrypi-bin
 
 # Check CPU temperature
 vcgencmd measure_temp
