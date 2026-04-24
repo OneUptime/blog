@@ -8,7 +8,7 @@ Description: Learn how to view, search, and manage Kubernetes Secrets in Portain
 
 ## Introduction
 
-Managing Kubernetes Secrets requires balancing operational visibility with security. You need to find the right secret quickly, verify it has the right keys, and understand which workloads depend on it - all without accidentally exposing sensitive values. Portainer provides a Secrets management interface with appropriate value masking, while kubectl offers CLI tools for scripting and automation. This guide covers viewing and filtering Secrets safely in Portainer.
+Managing Kubernetes Secrets requires balancing operational visibility with security. You need to find the right secret quickly, verify it has the right keys, and understand which workloads depend on it - all without accidentally exposing sensitive values. Portainer provides a Secrets management interface, while kubectl offers CLI tools for scripting and automation. Because authorized users can view Kubernetes secret contents in the Portainer UI unless access is restricted, this guide covers viewing and filtering Secrets carefully in Portainer.
 
 ## Prerequisites
 
@@ -19,9 +19,8 @@ Managing Kubernetes Secrets requires balancing operational visibility with secur
 ## Step 1: Navigate to Secrets in Portainer
 
 1. Select your Kubernetes environment in Portainer
-2. Select a namespace from the namespace dropdown
-3. Click **ConfigMaps & Secrets** in the sidebar
-4. Select the **Secrets** tab
+2. Click **ConfigMaps & Secrets** in the sidebar
+3. Select the **Secrets** tab
 
 The list displays:
 ```text
@@ -36,29 +35,29 @@ app-api-keys           production   Opaque                      8       1 week a
 
 In the Secrets list:
 
-1. Use the **search bar** to filter by name:
+1. Use the list controls to narrow results by name, if available in your Portainer version:
    - Type `tls` to find TLS-related secrets
    - Type `registry` to find registry credential secrets
    - Type `database` to find database credential secrets
 
-2. Use the **namespace filter** to narrow results:
-   - Select `production` to see only production secrets
-   - Select `All namespaces` for cluster-wide view
+2. Use the **Filter** control to narrow results by namespace:
+   - Check `production` to see only production secrets
+   - Check additional namespaces as needed
 
-3. Filter by **Type** if available:
+3. Review the **Type** column to distinguish common secret types:
    - `Opaque` - general purpose secrets
    - `kubernetes.io/tls` - TLS certificates
    - `kubernetes.io/dockerconfigjson` - registry credentials
 
-## Step 3: View Secret Details (Keys Only, Not Values)
+## Step 3: View Secret Details Carefully
 
 Click on a Secret to see its details. Portainer shows:
 - Secret name, namespace, type
 - Creation timestamp and labels
-- **Keys** listed without revealing values
-- Values are masked by default (shown as `****` or hidden)
+- Secret data keys
+- Depending on your permissions and cluster policy, secret contents may also be viewable or editable in the UI
 
-Some Portainer versions allow revealing values via a toggle - use this with caution in shared environments or screen sharing sessions.
+Portainer administrators can enable **Restrict secret contents access for non-admins (UI only)** to prevent non-admin users from viewing or editing secret contents in the Portainer UI. Even when access is allowed, use caution in shared environments or screen sharing sessions.
 
 ## Step 4: View Secret Metadata via kubectl
 
@@ -105,7 +104,7 @@ kubectl get secret database-credentials -n production \
   -o jsonpath='{.data.DATABASE_PASSWORD}' | base64 --decode
 echo   # Add newline
 
-# Decode all values in a secret (sensitive output!)
+# Decode all text values in a secret (sensitive output!)
 kubectl get secret database-credentials -n production \
   -o json | jq -r '.data | to_entries[] |
   "\(.key): \(.value | @base64d)"'
@@ -116,8 +115,8 @@ kubectl get secret database-credentials -n production -o json | \
 
 # Check if a specific key exists
 kubectl get secret database-credentials -n production \
-  -o jsonpath='{.data.DATABASE_PASSWORD}' | \
-  xargs -I{} sh -c '[ -n "{}" ] && echo "Key exists" || echo "Key missing"'
+  -o json | jq -e '.data | has("DATABASE_PASSWORD")' >/dev/null && \
+  echo "Key exists" || echo "Key missing"
 ```
 
 ## Step 6: Find Secrets Referenced by Workloads
@@ -146,16 +145,17 @@ kubectl get pods -n production -o json | \
   ) | .metadata.name'
 ```
 
-## Step 7: Audit Secret Access
+## Step 7: Review Secret Events and Audit Logs
 
-Track who accessed secrets and when:
+To track who accessed secrets, use Kubernetes audit logs from the API server or your managed Kubernetes provider. Namespace events can help with recent Secret-related activity, but they do not show read access.
 
 ```bash
-# Check audit logs for secret access (requires audit logging configured)
-# View events related to secrets in a namespace
-kubectl get events -n production | grep Secret
+# View recent events for a specific Secret object
+# This helps with object activity, but not read-access auditing
+kubectl get events -n production \
+  --field-selector involvedObject.kind=Secret,involvedObject.name=database-credentials
 
-# List secrets with their last-modified time
+# List secrets with their creation time
 kubectl get secrets -n production \
   -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.creationTimestamp}{"\n"}{end}'
 
@@ -190,22 +190,29 @@ Find secrets that no workload references:
 NAMESPACE=production
 
 echo "All secrets:"
-kubectl get secrets -n $NAMESPACE -o name | \
-  grep -v "default-token\|service-account-token" | \
-  sed 's/secret\///' | sort > /tmp/all-secrets.txt
+kubectl get secrets -n "$NAMESPACE" -o json | \
+  jq -r '.items[]
+    | select(.type != "kubernetes.io/service-account-token")
+    | .metadata.name' | sort > /tmp/all-secrets.txt
 
 echo "Referenced secrets:"
-kubectl get pods,deployments,statefulsets -n $NAMESPACE -o json | \
-  jq -r '[
-    .items[].spec | (
-      .template.spec // . |
+kubectl get pods,deployments,statefulsets,daemonsets,jobs,cronjobs -n "$NAMESPACE" -o json | \
+  jq -r '
+    def podspec:
+      .spec.template.spec? //
+      .spec.jobTemplate.spec.template.spec? //
+      .spec;
+    [
+      .items[] | podspec as $ps |
       (
-        (.containers[].env[]?.valueFrom.secretKeyRef.name // empty),
-        (.containers[].envFrom[]?.secretRef.name // empty),
-        (.volumes[]?.secret.secretName // empty)
-      )
-    )
-  ] | unique | .[]' | sort > /tmp/referenced-secrets.txt
+        $ps.containers[]?.env[]?.valueFrom.secretKeyRef.name,
+        $ps.initContainers[]?.env[]?.valueFrom.secretKeyRef.name,
+        $ps.containers[]?.envFrom[]?.secretRef.name,
+        $ps.initContainers[]?.envFrom[]?.secretRef.name,
+        $ps.volumes[]?.secret.secretName,
+        $ps.imagePullSecrets[]?.name
+      ) // empty
+    ] | unique | .[]' | sort > /tmp/referenced-secrets.txt
 
 echo "Potentially unused secrets:"
 comm -23 /tmp/all-secrets.txt /tmp/referenced-secrets.txt
@@ -213,4 +220,4 @@ comm -23 /tmp/all-secrets.txt /tmp/referenced-secrets.txt
 
 ## Conclusion
 
-Viewing and filtering Secrets in Portainer provides operational visibility without accidentally exposing sensitive values. The default masked view keeps values hidden during normal operations; reveal values only when necessary and never in screen shares or logs. Use kubectl's `describe` command (which shows key names and byte counts without values) for safe auditing. Regularly audit secret usage to identify unused secrets for cleanup and check TLS certificate expiry to prevent unexpected outages.
+Viewing and filtering Secrets in Portainer provides operational visibility without accidentally exposing sensitive values. In Portainer, authorized users can view Kubernetes secret contents in the UI unless administrators restrict that capability, so only open or edit secret values when necessary and never in screen shares or logs. Use kubectl's `describe` command (which shows key names and byte counts without values) for safe auditing. Regularly audit secret usage to identify potentially unused secrets for cleanup and check TLS certificate expiry to prevent unexpected outages.
