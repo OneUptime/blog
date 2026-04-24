@@ -8,13 +8,13 @@ Description: Connect Portainer to a Podman socket to manage Podman containers fr
 
 ## Introduction
 
-Podman provides a Docker-compatible REST API that allows Portainer to manage Podman containers as if they were Docker containers. This guide covers how to enable the Podman socket and connect it to Portainer for a familiar management experience without Docker.
+Podman provides an API service with a Docker-compatible REST API layer that allows Portainer to manage Podman containers from the Portainer UI. This guide covers how to enable the Podman socket and connect it to Portainer for a familiar management experience without Docker.
 
 ## Prerequisites
 
-- Podman 4.0+ installed
+- Podman 5.x installed
 - Portainer CE or BE installed
-- Linux system (rootful or rootless Podman supported)
+- Linux system. Portainer currently documents support for rootful Podman 5 on CentOS Stream 9; rootless Podman may work but is not officially supported.
 
 ## Step 1: Enable the Podman Socket (Rootful)
 
@@ -28,13 +28,15 @@ sudo systemctl status podman.socket
 
 # Check the socket path
 ls -la /run/podman/podman.sock
-# Should show: srw-rw---- root root /run/podman/podman.sock
+# Should show a socket file at /run/podman/podman.sock
 ```
 
 ## Step 2: Enable the Podman Socket (Rootless)
 
 ```bash
 # For rootless Podman (user-level socket)
+# Portainer documents rootful Podman as the supported setup.
+# Rootless Podman may work, but it is not officially supported.
 systemctl --user enable --now podman.socket
 
 # Verify
@@ -51,122 +53,83 @@ sudo loginctl enable-linger $(whoami)
 
 ```bash
 # Test with rootful socket
-curl --unix-socket /run/podman/podman.sock http://d/v5.0/libpod/info | jq .
-
-# Test with Docker-compatible API
-curl --unix-socket /run/podman/podman.sock http://d/v1.44/version | jq .
+# For rootless, replace the socket path with /run/user/$(id -u)/podman/podman.sock
+curl --unix-socket /run/podman/podman.sock http://d/v1.40/version | jq '.Version // .Server.Version'
 
 # List containers via Docker-compatible API
 curl --unix-socket /run/podman/podman.sock \
-  http://d/v1.44/containers/json | jq '.[].Names'
+  http://d/v1.40/containers/json | jq '.[].Names'
 ```
 
 ## Step 4: Connect Portainer to Podman Socket (Direct)
 
-If Portainer is running on the SAME host as Podman:
+If Portainer Server is running on Podman on the SAME host:
 
 ```bash
-# Mount the Podman socket instead of Docker socket
-docker run -d \
-  -p 9000:9000 \
+# Create a persistent volume for Portainer data
+podman volume create portainer_data
+
+# Run Portainer Server on Podman and mount the Podman socket
+podman run -d \
+  -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
-  --restart=unless-stopped \
-  -v /run/podman/podman.sock:/var/run/docker.sock \  # Map Podman socket to Docker socket path
+  --restart=always \
+  --privileged \
+  -v /run/podman/podman.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 
-# For rootless Podman:
-docker run -d \
-  -p 9000:9000 \
-  --name portainer \
-  -v /run/user/1000/podman/podman.sock:/var/run/docker.sock \
-  -v portainer_data:/data \
-  portainer/portainer-ce:latest
+# If you still need the legacy HTTP port, add:
+# -p 9000:9000
 ```
 
 ## Step 5: Connect Portainer to Remote Podman
 
 For managing Podman on a remote host:
 
-```bash
-# Enable the Podman TCP socket on the remote host
-# Edit /etc/sysconfig/podman-docker or create systemd override
-
-# Enable via tcp socket
-podman system service --time=0 tcp:0.0.0.0:2375 &
-
-# Or create a systemd service
-cat > /etc/systemd/system/podman-tcp.socket << 'EOF'
-[Unit]
-Description=Podman API Socket (TCP)
-After=network.target
-
-[Socket]
-ListenStream=2375
-BindIPv6Only=default
-
-[Install]
-WantedBy=sockets.target
-EOF
-
-systemctl enable --now podman-tcp.socket
-```
-
-In Portainer:
-1. Go to **Environments** → **Add Environment**
-2. Select **Docker Standalone**
-3. Enter URL: `tcp://podman-host:2375`
+Portainer's detailed Podman documentation focuses on the Portainer Agent, Edge Agent, or a local socket connection. Direct socket access is local-only, and Podman's own documentation strongly recommends against exposing the API on a network TCP socket without mutual TLS.
 
 ## Step 6: Use SSH Tunneling for Secure Remote Podman
 
-```bash
-# Create SSH tunnel for Podman socket
-# On Portainer host:
-ssh -L 2375:/run/podman/podman.sock user@podman-host -N &
-
-# Test the tunnel
-curl http://localhost:2375/v1.44/version | jq .
-
-# In Portainer, add environment:
-# URL: tcp://localhost:2375
-```
+Podman recommends SSH forwarding if remote socket access is required, but for Portainer the documented remote-host options are the Agent or Edge Agent rather than relying on an ad hoc tunneled socket.
 
 ## Step 7: Configure Portainer Agent for Podman
 
 You can run Portainer Agent against Podman:
 
 ```bash
-# On the Podman host, run the agent with Podman socket
+# On the Podman host, run the agent against the Podman socket
 podman run -d \
-  --name portainer-agent \
+  --name portainer_agent \
   --restart=always \
+  --privileged \
   -p 9001:9001 \
   -v /run/podman/podman.sock:/var/run/docker.sock \
-  -v /var/lib/containers/storage:/var/lib/docker \
-  docker.io/portainer/agent:latest
+  -v /var/lib/containers/storage/volumes:/var/lib/docker/volumes \
+  portainer/agent:lts
 
-# In Portainer server, add Docker Agent environment:
-# URL: podman-host:9001
+# If Portainer Server uses AGENT_SECRET, add:
+# -e AGENT_SECRET=yoursecret
+
+# In Portainer Server, add a Podman Agent environment:
+# Address: podman-host:9001
 ```
 
 ## Step 8: Handle Podman-Specific API Differences
 
-Podman's Docker-compatible API has some differences:
+Podman's Docker-compatible API targets Docker API v1.40, and some behavior differs from a Docker engine:
 
 ```bash
-# Check Podman version
+# Check the Podman engine version through the Docker-compatible API
 curl --unix-socket /run/podman/podman.sock \
-  http://d/v1.44/version | jq '.Components[0].Version'
+  http://d/v1.40/version | jq '.Version // .Server.Version'
 
-# If you see errors related to Podman-specific endpoints:
-# These are expected - Portainer uses Docker-compatible endpoints only
-
-# Check what works and what doesn't
+# Check common container and image endpoints
 curl --unix-socket /run/podman/podman.sock \
-  http://d/v1.44/containers/json  # Should work
+  http://d/v1.40/containers/json  # Should work
 curl --unix-socket /run/podman/podman.sock \
-  http://d/v1.44/images/json     # Should work
+  http://d/v1.40/images/json      # Should work
 ```
 
 ## Step 9: Verify Portainer Shows Podman Containers
@@ -189,4 +152,4 @@ podman run -d --name test-nginx -p 8080:80 nginx:alpine
 
 ## Conclusion
 
-Connecting Portainer to Podman is done by mapping the Podman socket to the path Portainer expects for the Docker socket. Portainer uses the Docker-compatible REST API that Podman provides, which means most features work transparently. The key differences to be aware of are rootful vs rootless Podman socket paths and some API endpoints that are Docker-specific and won't work with Podman.
+Connecting Portainer to Podman can be done through the local Podman socket or through the Portainer Agent. When Portainer Server itself runs on Podman, mount the Podman socket to `/var/run/docker.sock` as Portainer expects. For remote hosts, use the Agent or Edge Agent rather than exposing the Podman API over TCP, and keep Portainer's current support matrix in mind: rootful Podman 5 on CentOS Stream 9 is the documented supported configuration.
