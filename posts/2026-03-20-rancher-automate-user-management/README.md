@@ -8,9 +8,9 @@ Description: A guide to automating user provisioning, role assignments, and acce
 
 ## Overview
 
-Managing users manually in Rancher becomes unsustainable as organizations grow. Automating user provisioning, role assignments, and project access through the Rancher API and Terraform ensures consistency, reduces human error, and integrates with your existing identity management workflows. This guide covers the key approaches to automating user management in Rancher.
+Managing users manually in Rancher becomes unsustainable as organizations grow. Automating user provisioning, role assignments, and project access through Rancher's previous v3 API and Terraform ensures consistency, reduces human error, and integrates with your existing identity management workflows. This guide covers the key approaches to automating user management in Rancher.
 
-## User Management via Rancher API
+## User Management via Rancher v3 API
 
 ### List Users
 
@@ -18,7 +18,7 @@ Managing users manually in Rancher becomes unsustainable as organizations grow. 
 export RANCHER_URL="https://rancher.example.com"
 export RANCHER_TOKEN="token-xxxxx:your-secret-key"
 
-# List all local users
+# List all Rancher users
 
 curl -s -k \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
@@ -47,7 +47,7 @@ curl -s -k \
 
 ```bash
 # Assign a global role to a user
-# Get the user's principal ID first
+# Get the user's ID first
 USER_ID=$(curl -s -k \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
   "${RANCHER_URL}/v3/users?username=jane.doe" \
@@ -88,13 +88,13 @@ curl -s -k \
 ```bash
 #!/bin/bash
 # provision-users.sh - Bulk user provisioning from CSV
-# CSV format: username,full_name,email,cluster_id,role
+# CSV format: username,full_name,email,cluster_id,role_template_id
 
 USERS_CSV="users.csv"
 RANCHER_URL="${RANCHER_URL}"
 RANCHER_TOKEN="${RANCHER_TOKEN}"
 
-while IFS=',' read -r username full_name email cluster_id role; do
+while IFS=',' read -r username full_name email cluster_id role_template_id; do
   # Skip header
   [ "$username" = "username" ] && continue
 
@@ -115,6 +115,12 @@ while IFS=',' read -r username full_name email cluster_id role; do
 
   USER_ID=$(echo "${USER_RESPONSE}" | jq -r '.id')
 
+  if [ -z "${USER_ID}" ] || [ "${USER_ID}" = "null" ]; then
+    echo "  Failed to create user ${username}"
+    echo "${USER_RESPONSE}" | jq .
+    continue
+  fi
+
   # Assign standard user global role
   curl -s -k \
     -X POST \
@@ -133,7 +139,7 @@ while IFS=',' read -r username full_name email cluster_id role; do
     -d "{
       \"clusterId\": \"${cluster_id}\",
       \"userId\": \"${USER_ID}\",
-      \"roleTemplateId\": \"${role}\"
+      \"roleTemplateId\": \"${role_template_id}\"
     }" \
     > /dev/null
 
@@ -171,7 +177,7 @@ resource "rancher2_cluster_role_template_binding" "jane_cluster" {
 # Grant project access
 resource "rancher2_project_role_template_binding" "jane_project" {
   name             = "jane-project-member"
-  project_id       = rancher2_project.team_project.id
+  project_id       = var.project_id
   role_template_id = "project-member"
   user_id          = rancher2_user.jane_doe.id
 }
@@ -179,10 +185,10 @@ resource "rancher2_project_role_template_binding" "jane_project" {
 
 ## LDAP/AD Group Sync Automation
 
-Configure Rancher to automatically sync groups from Active Directory:
+Configure Rancher to use Active Directory groups for role assignments:
 
 ```text
-Rancher UI → Global Settings → Authentication → Active Directory
+Rancher UI → Users & Authentication → Auth Provider → Active Directory
 
 Key settings:
 - Server: ldaps://ad.example.com:636
@@ -199,6 +205,7 @@ Bind AD groups to Rancher roles:
 # Bind an AD group to a cluster role
 # First, get the AD group's principal ID by searching in Rancher:
 PRINCIPAL_ID="activedirectory_group://CN=kubernetes-admins,OU=Groups,DC=example,DC=com"
+CLUSTER_ID="c-xxxxx"
 
 curl -s -k \
   -X POST \
@@ -225,7 +232,7 @@ USER_ID=$(curl -s -k \
   "${RANCHER_URL}/v3/users?username=${USERNAME}" \
   | jq -r '.data[0].id')
 
-if [ -z "${USER_ID}" ]; then
+if [ -z "${USER_ID}" ] || [ "${USER_ID}" = "null" ]; then
   echo "User not found: ${USERNAME}"
   exit 1
 fi
@@ -268,4 +275,4 @@ curl -s -k \
 
 ## Conclusion
 
-Automating user management in Rancher through the REST API or Terraform ensures consistent, auditable access provisioning. For organizations using Active Directory or LDAP, group-based role bindings eliminate the need to manage individual users - roles are inherited automatically from group membership. Combine bulk provisioning scripts with your HR system's offboarding workflows to ensure access is revoked promptly when employees leave. Always store Rancher API tokens in a secrets manager (Vault, AWS Secrets Manager) and rotate them regularly.
+Automating user management in Rancher through the REST API or Terraform ensures consistent, auditable access provisioning. For organizations using Active Directory or LDAP, group-based role bindings eliminate the need to manage individual users, and Rancher applies group-based access when users sign in or after an administrator refreshes group memberships. Combine bulk provisioning scripts with your HR system's offboarding workflows to ensure access is revoked promptly when employees leave. Always store Rancher API tokens in a secrets manager (Vault, AWS Secrets Manager) and rotate them regularly.
