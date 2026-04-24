@@ -28,7 +28,7 @@ Proxmox VE is a popular open-source virtualization platform for home labs and sm
 # On Proxmox host via SSH
 
 wget -P /var/lib/vz/template/iso/ \
-  https://releases.ubuntu.com/24.04/ubuntu-24.04.1-live-server-amd64.iso
+  https://releases.ubuntu.com/24.04/ubuntu-24.04.4-live-server-amd64.iso
 ```
 
 ## Step 2: Create the VM
@@ -38,14 +38,14 @@ wget -P /var/lib/vz/template/iso/ \
 1. Click **Create VM**
 2. **General**: Node: your node, VM ID: 200, Name: `portainer-vm`
 3. **OS**: Select uploaded Ubuntu ISO, Type: Linux, Version: 6.x
-4. **System**: Leave defaults (OVMF BIOS optional, SeaBIOS works fine)
+4. **System**: Leave defaults (SeaBIOS works fine) and enable **QEMU Guest Agent**
 5. **Disks**: Add disk, Storage: local-lvm (or your preferred storage), Size: 32GB
 6. **CPU**: Sockets: 1, Cores: 2
 7. **Memory**: 4096 MB (4GB)
 8. **Network**: Bridge: vmbr0, Model: VirtIO
 9. Click **Finish**
 
-### Via Proxmox CLI (pvesh)
+### Via Proxmox CLI (qm)
 
 ```bash
 # SSH into Proxmox host
@@ -57,10 +57,10 @@ qm create 200 \
   --memory 4096 \
   --cores 2 \
   --net0 virtio,bridge=vmbr0 \
-  --ide2 local:iso/ubuntu-24.04-live-server-amd64.iso,media=cdrom \
+  --ide2 local:iso/ubuntu-24.04.4-live-server-amd64.iso,media=cdrom \
   --scsi0 local-lvm:32 \
   --scsihw virtio-scsi-pci \
-  --boot c --bootdisk scsi0 \
+  --boot 'order=ide2;scsi0' \
   --agent enabled=1 \
   --ostype l26
 
@@ -78,9 +78,9 @@ Connect via Proxmox console (VNC) or:
 ```
 
 Install Ubuntu with:
-- Minimal installation
+- Default Ubuntu Server install
 - OpenSSH server: Yes
-- No LVM/RAID needed inside VM (Proxmox handles this)
+- A standard partition layout is fine unless you specifically want LVM/RAID inside the guest
 
 After installation:
 
@@ -100,9 +100,9 @@ sudo systemctl enable --now qemu-guest-agent
 
 ```bash
 curl -fsSL https://get.docker.com | sh
+sudo systemctl enable --now docker
 sudo usermod -aG docker ubuntu
 newgrp docker
-sudo systemctl enable docker
 ```
 
 ## Step 5: Deploy Portainer
@@ -112,17 +112,17 @@ docker volume create portainer_data
 
 docker run -d \
   --name portainer \
-  --restart=unless-stopped \
-  -p 9000:9000 \
+  --restart=always \
+  -p 8000:8000 \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 6: Configure Proxmox Snapshots
 
-Back up your VM with Proxmox's built-in snapshot feature:
+Take a VM snapshot with Proxmox's built-in snapshot feature:
 
 ```bash
 # Take a snapshot via Proxmox CLI
@@ -148,27 +148,40 @@ Or configure automated backups:
 qm set 200 --scsi1 local-lvm:50
 
 # In the VM, format and mount
-sudo fdisk -l  # Find /dev/sdb
-sudo mkfs.ext4 /dev/sdb
+sudo fdisk -l  # Find the new disk, for example /dev/sdb
+sudo mkfs.ext4 /dev/<new-disk>
 sudo mkdir -p /data
 
 # Get UUID for fstab
-sudo blkid /dev/sdb
+sudo blkid /dev/<new-disk>
 
 echo 'UUID=<your-uuid> /data ext4 defaults,nofail 0 2' | sudo tee -a /etc/fstab
 sudo mount -a
 
 # Reconfigure Docker
+sudo apt install -y rsync
+sudo systemctl stop docker
+sudo systemctl stop containerd
+sudo mkdir -p /etc/docker /etc/containerd /data/docker /data/containerd
+
+sudo rsync -aP /var/lib/docker/ /data/docker/
+sudo rsync -aP /var/lib/containerd/ /data/containerd/
+
 sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
 {
   "data-root": "/data/docker"
 }
 EOF
-sudo systemctl stop docker
-sudo rsync -aP /var/lib/docker/ /data/docker/
+
+sudo tee /etc/containerd/config.toml > /dev/null << 'EOF'
+version = 2
+root = "/data/containerd"
+EOF
+
+sudo systemctl start containerd
 sudo systemctl start docker
 ```
 
 ## Conclusion
 
-Running Portainer in a Proxmox VM combines the best of both worlds: Proxmox's enterprise-grade snapshot, backup, and migration capabilities with Docker's container flexibility. The VM approach provides clean isolation from the Proxmox host OS and makes it easy to clone the environment or migrate it to another Proxmox node. Qemu guest agent integration ensures Proxmox has accurate VM state information.
+Running Portainer in a Proxmox VM combines the best of both worlds: Proxmox's enterprise-grade snapshot, backup, and migration capabilities with Docker's container flexibility. The VM approach provides clean isolation from the Proxmox host OS and makes it easy to clone the environment or migrate it to another Proxmox node. QEMU Guest Agent integration ensures Proxmox has accurate VM state information.
