@@ -15,37 +15,34 @@ Portainer can act as a kubectl proxy, issuing Kubeconfig files scoped to individ
 - Portainer BE (Business Edition) with a Kubernetes environment
 - Admin access to Portainer
 - kubectl installed on developer machines
-- Users already created in Portainer
+- Users already created in Portainer and granted access to the Kubernetes environment
 
 ## Step 1: Enable kubectl Access in Portainer
 
 1. Log into Portainer as admin.
-2. Select your **Kubernetes** environment.
-3. Click the **gear icon** (environment settings) next to the environment name.
-4. Scroll to the **Security** section.
-5. Enable **Allow users to use kubectl** by toggling it on.
-6. Optionally set a **kubeconfig expiry** (e.g., 24h for short-lived credentials).
-7. Click **Save environment settings**.
+2. Select **Settings** from the menu.
+3. Scroll to the **Kubernetes settings** section.
+4. Under **Kubeconfig**, set the desired **kubeconfig expiry** for exported kubeconfig files.
+5. If needed, disable kubeconfig download for non-admin users.
+6. Click **Apply Changes**.
 
 ## Step 2: Configure User Access Scopes
 
 Each Portainer user can have their kubectl access scoped to specific namespaces:
 
 1. Go to **Namespaces** within the Kubernetes environment.
-2. Click on a namespace.
-3. Assign it to a **team** or specific **users**.
-4. Users will only see and interact with namespaces they have been granted access to.
+2. On the namespace row, click **Manage access**.
+3. Assign the namespace to a **team** or specific **users**.
+4. Users with non-cluster-wide roles will only see and interact with namespaces they have been granted access to.
 
 ## Step 3: Users Download Their Kubeconfig
 
-Users with kubectl access enabled can download their personal kubeconfig:
+Users with kubeconfig download enabled can download their personal kubeconfig. Portainer must be accessed over HTTPS for the kubeconfig button to appear:
 
-1. The user logs into Portainer.
-2. Clicks their **username** in the top-right corner.
-3. Selects **My account**.
-4. Scrolls to the **Kubeconfig** section.
-5. Selects the environment they want access to.
-6. Clicks **Download kubeconfig**.
+1. The user logs into Portainer and returns to the **Home** page.
+2. Clicks the **kubeconfig** button.
+3. Selects the environment they want access to.
+4. Clicks **Download File**.
 
 The downloaded file is pre-configured with:
 - The Portainer API endpoint as the Kubernetes API server URL
@@ -69,8 +66,8 @@ mv ~/.kube/merged-config ~/.kube/config
 # Verify access
 kubectl config get-contexts
 
-# Switch to the Portainer context
-kubectl config use-context portainer-production
+# Switch to the Portainer context shown above
+kubectl config use-context portainer-ctx-kubernetes
 
 # Test connectivity
 kubectl get namespaces
@@ -98,17 +95,17 @@ kubectl cluster-info
 
 For security, configure token expiry to force periodic re-authentication:
 
-1. In environment settings, find the **Kubeconfig expiry** option.
-2. Set a duration: `4h`, `8h`, `24h`, or `7d`.
-3. When tokens expire, users must re-download their kubeconfig from Portainer.
+1. In **Settings**, find the **Kubeconfig** option under **Kubernetes settings**.
+2. Set the desired expiry from the dropdown and click **Apply Changes**.
+3. The new expiry only applies to newly generated kubeconfig files. Users must re-download their kubeconfig when it expires, and after any Portainer restart.
 
 ## Using the KubeShell Alternative
 
-For users who don't need local kubectl access, Portainer provides a browser-based KubeShell:
+For users who don't need local kubectl access, Portainer provides a browser-based kubectl shell:
 
-1. In the Kubernetes environment, click **KubeShell** in the sidebar.
-2. A terminal opens with kubectl pre-authenticated to the cluster.
-3. Access is automatically scoped to the user's namespace permissions.
+1. In the Kubernetes environment, click **kubectl shell** in the menu.
+2. A terminal opens with `kubectl` and `helm` pre-authenticated to the cluster.
+3. Access is automatically scoped to the user's Portainer permissions.
 
 ```bash
 # KubeShell example - already authenticated
@@ -123,10 +120,10 @@ kubectl rollout status deployment/myapp -n my-namespace
 # If kubectl reports unauthorized
 kubectl config view  # Check token and server URL
 
-# Test direct API connectivity
-curl -k https://portainer.example.com/api/endpoints/1/kubernetes/version
+# Test API connectivity through the current kubeconfig
+kubectl version
 
-# Regenerate kubeconfig by re-downloading from Portainer
+# Re-download the kubeconfig if the token expired or Portainer restarted
 ```
 
 ## Conclusion
