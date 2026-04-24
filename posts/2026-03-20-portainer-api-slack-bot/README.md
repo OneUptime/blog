@@ -15,18 +15,18 @@ ChatOps brings deployment commands into team chat, providing visibility and conv
 - Portainer CE or BE with API access
 - Slack workspace with bot creation permissions
 - Node.js 18+ or Python 3.8+
-- A server to host the bot (or use Vercel/Railway)
+- A publicly reachable HTTPS endpoint for Slack requests
 
 ## Creating the Slack App
 
 1. Go to https://api.slack.com/apps and click "Create New App"
 2. Choose "From scratch"
-3. Configure Slash Commands:
-   - `/deploy <stack> <env>` - Deploy a stack
-   - `/containers <env>` - List containers
-   - `/restart <container> <env>` - Restart a container
-4. Enable "Incoming Webhooks" for notifications
-5. Set OAuth scopes: `chat:write`, `commands`
+3. Configure Slash Commands and set each command's Request URL to `https://your-domain/slack/events`:
+   - `/deploy <stack> [env]` - Deploy a stack
+   - `/containers [env]` - List containers
+   - `/restart <container> [env]` - Restart a container
+4. Set OAuth scopes: `chat:write`, `commands`
+5. Install the app to your workspace and copy the bot token and signing secret
 
 ## Building the Bot (Node.js)
 
@@ -107,28 +107,32 @@ app.command('/containers', async ({ command, ack, respond }) => {
             }))
         ];
 
-        await respond({ blocks });
+        await respond({
+            text: `Containers in ${env} (${containers.length} running)`,
+            blocks
+        });
     } catch (err) {
         await respond(`Error: ${err.message}`);
     }
 });
 
 // /deploy command - Deploy a stack
-app.command('/deploy', async ({ command, ack, respond, client }) => {
+app.command('/deploy', async ({ command, ack, respond }) => {
     await ack();
 
-    const [stackName, env] = command.text.trim().split(' ');
-    const endpointId = ENVIRONMENTS[env || 'dev'];
+    const [stackName, inputEnv] = command.text.trim().split(/\s+/);
+    const env = inputEnv || 'dev';
+    const endpointId = ENVIRONMENTS[env];
     const userId = command.user_id;
-    const channel = command.channel_id;
 
     if (!stackName || !endpointId) {
-        await respond('Usage: /deploy <stack-name> <environment>');
+        await respond('Usage: /deploy <stack-name> [environment]');
         return;
     }
 
     // Post confirmation message first
     await respond({
+        response_type: 'ephemeral',
         text: `Deploying *${stackName}* to *${env}*...`,
         blocks: [
             {
@@ -142,28 +146,43 @@ app.command('/deploy', async ({ command, ack, respond, client }) => {
     });
 
     try {
-        // Find existing stack
-        const stacks = await portainer.get(`/stacks?endpointId=${endpointId}`);
+        // Find existing stack in the selected environment
+        const filters = encodeURIComponent(JSON.stringify({ EndpointID: endpointId }));
+        const stacks = await portainer.get(`/stacks?filters=${filters}`);
         const stack = stacks.data.find(s => s.Name === stackName);
 
-        if (stack) {
-            // Trigger re-deployment via webhook or update
+        if (!stack) {
+            await respond(`Stack '${stackName}' not found in ${env}`);
+            return;
+        }
+
+        if (stack.GitConfig) {
+            // Git-based stacks use the dedicated redeploy endpoint.
+            await portainer.put(
+                `/stacks/${stack.Id}/git/redeploy?endpointId=${endpointId}`,
+                { RepullImageAndRedeploy: true }
+            );
+        } else {
+            // File-based stacks need their current compose file sent back on update.
+            const stackFile = await portainer.get(`/stacks/${stack.Id}/file`);
+
             await portainer.put(
                 `/stacks/${stack.Id}?endpointId=${endpointId}`,
-                { StackFileContent: stack.Content, Prune: true }
+                {
+                    StackFileContent: stackFile.data.StackFileContent,
+                    Prune: true,
+                    RepullImageAndRedeploy: true
+                }
             );
-
-            // Notify the channel
-            await client.chat.postMessage({
-                channel,
-                text: `:white_check_mark: Stack *${stackName}* deployed to *${env}* by <@${userId}>`
-            });
-        } else {
-            await respond(`Stack '${stackName}' not found in ${env}`);
         }
+
+        await respond({
+            response_type: 'in_channel',
+            text: `:white_check_mark: Stack *${stackName}* deployed to *${env}* by <@${userId}>`
+        });
     } catch (err) {
-        await client.chat.postMessage({
-            channel,
+        await respond({
+            response_type: 'ephemeral',
             text: `:x: Failed to deploy *${stackName}* to *${env}*: ${err.message}`
         });
     }
@@ -173,8 +192,14 @@ app.command('/deploy', async ({ command, ack, respond, client }) => {
 app.command('/restart', async ({ command, ack, respond }) => {
     await ack();
 
-    const [containerName, env] = command.text.trim().split(' ');
-    const endpointId = ENVIRONMENTS[env || 'dev'];
+    const [containerName, inputEnv] = command.text.trim().split(/\s+/);
+    const env = inputEnv || 'dev';
+    const endpointId = ENVIRONMENTS[env];
+
+    if (!containerName || !endpointId) {
+        await respond('Usage: /restart <container-name> [environment]');
+        return;
+    }
 
     try {
         // Find container by name
@@ -232,6 +257,8 @@ CMD ["node", "app.js"]
 ```
 
 ```bash
+docker build -t portainer-slack-bot:latest .
+
 docker run -d \
   --name portainer-slack-bot \
   --restart=always \
