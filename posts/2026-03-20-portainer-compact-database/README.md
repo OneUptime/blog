@@ -8,11 +8,11 @@ Description: A guide to compacting the Portainer BoltDB database to reclaim disk
 
 ## Overview
 
-Portainer uses BoltDB as its embedded database to store configuration, activity logs, and metadata. Over time, as records are added and deleted, the database file can grow with unused space (fragmentation). Compacting the database reclaims this space. Portainer 2.17+ includes a built-in database compaction feature accessible via the command line.
+Portainer uses BoltDB as its embedded database to store configuration and metadata. Over time, as records are added and deleted, the database file can grow with unused space (fragmentation). Compacting the database reclaims this space. Current Portainer releases include a built-in database compaction feature accessible via the command line.
 
 ## Prerequisites
 
-- Portainer CE or Business Edition 2.17+
+- Portainer CE or Business Edition with `--compact-db` support (for example, 2.35.0+ STS or 2.33.7+ LTS)
 - Docker CLI access
 - Admin access to the Docker host
 
@@ -21,7 +21,6 @@ Portainer uses BoltDB as its embedded database to store configuration, activity 
 BoltDB uses a B-tree structure that does not automatically reclaim pages after deletions. Common causes of database bloat:
 
 - Deleting many containers or stacks
-- High activity logs accumulation
 - Portainer upgrades that migrate data
 - Long-running Portainer instances
 
@@ -39,6 +38,7 @@ docker run --rm \
 ```bash
 # Always back up before maintenance
 docker stop portainer
+docker rm portainer
 
 docker run --rm \
   -v portainer_data:/data \
@@ -52,25 +52,31 @@ ls -lh portainer.db.bak-*
 ## Step 2: Run Database Compaction
 
 ```bash
-# Portainer 2.17+ supports --db-compact flag
-docker run --rm \
+# Start Portainer with the same image tag and options you normally use,
+# adding the --compact-db startup flag.
+docker run -d \
+  -p 8000:8000 \
+  -p 9443:9443 \
+  --name portainer \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest \
-  --db-compact
+  portainer/portainer-ce:<your-current-tag> \
+  --compact-db
 
 # For Business Edition
-docker run --rm \
+docker run -d \
+  -p 8000:8000 \
+  -p 9443:9443 \
+  --name portainer \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ee:latest \
-  --db-compact
+  portainer/portainer-ee:<your-current-tag> \
+  --compact-db
 ```
 
-Expected output:
-```text
-2026/03/20 10:00:00 Starting Portainer 2.19.0
-2026/03/20 10:00:01 Compacting database...
-2026/03/20 10:00:03 Database compacted successfully. Old size: 45MB, New size: 12MB
-```
+If your Portainer database is encrypted, include the same secret mount you already use when starting Portainer.
 
 ## Step 3: Verify Compaction Results
 
@@ -82,19 +88,17 @@ docker run --rm \
   sh -c "du -sh /data/portainer.db && ls -lh /data/"
 ```
 
-## Step 4: Restart Portainer
+## Step 4: Verify Portainer Is Running
 
 ```bash
-docker start portainer
-
 # Verify Portainer is running correctly
+docker ps --filter name=portainer
 docker logs portainer --tail 20
-curl -k https://localhost:9443/api/status
 ```
 
 ## Alternative: Manual Compaction with bbolt
 
-For older Portainer versions without `--db-compact`:
+For older Portainer versions without `--compact-db`:
 
 ```bash
 # Install bbolt CLI tool
@@ -122,10 +126,12 @@ docker start portainer
 
 ```bash
 # Add to crontab for monthly compaction
+# Include the same image tag, mounts, and extra flags you normally use for Portainer.
 # crontab -e
-0 3 1 * * docker stop portainer && \
-  docker run --rm -v portainer_data:/data portainer/portainer-ce:latest --db-compact && \
-  docker start portainer
+0 3 1 * * docker stop portainer && docker rm portainer && \
+  docker run -d -p 8000:8000 -p 9443:9443 --name portainer --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data \
+  portainer/portainer-ce:<your-current-tag> --compact-db
 ```
 
 ## Monitoring Database Size
@@ -144,4 +150,4 @@ fi
 
 ## Conclusion
 
-Regular database compaction keeps Portainer running efficiently and prevents unnecessary disk consumption. Portainer 2.17+ makes this straightforward with the `--db-compact` flag. Run compaction during maintenance windows, always back up first, and consider scheduling monthly compaction for long-running Portainer instances with high activity.
+Regular database compaction keeps Portainer running efficiently and prevents unnecessary disk consumption. Current Portainer releases make this straightforward with the `--compact-db` flag. Run compaction during maintenance windows, always back up first, and consider scheduling monthly compaction for long-running Portainer instances.
