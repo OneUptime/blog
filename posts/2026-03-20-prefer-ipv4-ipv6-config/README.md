@@ -2,21 +2,21 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, IPv4, Dual-Stack, Address Selection, Linux, Window, Configuration
+Tags: IPv6, IPv4, Dual-Stack, Address Selection, Linux, Windows, Configuration
 
-Description: Configure whether a dual-stack system prefers IPv6 or IPv4 for outgoing connections on Linux, Windows, and macOS, with per-application and per-interface controls.
+Description: Configure whether a dual-stack system prefers IPv6 or IPv4 for outgoing connections on Linux, Windows, and macOS, with per-application controls everywhere and per-interface controls where supported.
 
 ## Default Behavior: IPv6 Preferred
 
-On a properly configured dual-stack system following RFC 6724, IPv6 is preferred by default. The policy table assigns:
+On stacks using the RFC 6724 default policy table, IPv6 is preferred by default. The policy table assigns:
 - Global IPv6 (`::/0`): precedence 40
 - IPv4-mapped (`::ffff:0:0/96`): precedence 35
 
-Since 40 > 35, IPv6 destinations are tried first when both AAAA and A records exist.
+Since 40 > 35, `getaddrinfo()` sorts IPv6 destinations ahead of IPv4-mapped ones when both AAAA and A records exist.
 
 ## Prefer IPv4: Linux Methods
 
-### Method 1: Modify /etc/gai.conf (Recommended)
+### Method 1: Modify /etc/gai.conf on glibc-based systems (Recommended)
 
 ```bash
 # /etc/gai.conf - raise IPv4 precedence above IPv6
@@ -25,22 +25,28 @@ cat > /etc/gai.conf << 'EOF'
 # Labels (unchanged)
 label ::1/128        0
 label ::/0           1
-label ::ffff:0:0/96  4
 label 2002::/16      2
+label ::/96          3
+label ::ffff:0:0/96  4
 label 2001::/32      5
+label fec0::/10      11
+label 3ffe::/16      12
 label fc00::/7       13
 
 # Precedence - IPv4-mapped higher than IPv6 global
 precedence ::1/128       50
-precedence ::ffff:0:0/96 100   # IPv4: was 35, now highest
 precedence ::/0           40   # IPv6 global
+precedence ::ffff:0:0/96 100   # IPv4: was 35, now highest
 precedence 2002::/16      30
 precedence 2001::/32       5
 precedence fc00::/7        3
+precedence ::/96           1
+precedence fec0::/10       1
+precedence 3ffe::/16       1
 EOF
 
-# Takes effect immediately for new getaddrinfo() calls
-# No restart required
+# New processes pick this up automatically.
+# Long-running processes may need a restart because gai.conf reload is off by default.
 ```
 
 ### Method 2: Disable IPv6 per Interface
@@ -61,16 +67,14 @@ EOF
 sysctl --system
 ```
 
-### Method 3: Kernel addrlabel Table
+### Method 3: Kernel addrlabel Table (Source Selection Only)
 
 ```bash
-# Give IPv4-mapped prefix a higher label match score
-# This affects kernel-level source selection
-ip addrlabel flush
-ip addrlabel add prefix ::ffff:0:0/96 label 1  # same label as ::/0
+# Inspect the kernel label table
+ip addrlabel list
 
-# Now IPv4-mapped and global IPv6 have same label
-# But gai.conf precedence still controls destination order
+# addrlabel affects source-address label matching only.
+# It does not change destination precedence; use /etc/gai.conf for that.
 ```
 
 ## Prefer IPv4: Windows Methods
@@ -80,42 +84,21 @@ ip addrlabel add prefix ::ffff:0:0/96 label 1  # same label as ::/0
 netsh interface ipv6 add prefixpolicy ::ffff:0:0/96 precedence=100 label=4
 
 # Method 2: Registry key (requires reboot)
-Set-ItemProperty `
+New-ItemProperty `
     -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" `
     -Name DisabledComponents `
+    -PropertyType DWord `
     -Value 0x20 `
-    -Type DWord
+    -Force
 # 0x20 = prefer IPv4 in prefix policies
 
 # Method 3: Disable IPv6 on specific NIC
-Set-NetAdapterBinding -Name "Ethernet" -ComponentID ms_tcpip6 -Enabled $false
+Disable-NetAdapterBinding -Name "Ethernet" -ComponentID ms_tcpip6
 ```
 
 ## Prefer IPv4: macOS Methods
 
-```bash
-# macOS uses /etc/gai.conf (same format as Linux)
-sudo cat > /etc/gai.conf << 'EOF'
-label ::1/128        0
-label ::/0           1
-label ::ffff:0:0/96  4
-label 2002::/16      2
-label 2001::/32      5
-label fc00::/7       13
-
-precedence ::1/128       50
-precedence ::ffff:0:0/96 100   # prefer IPv4
-precedence ::/0           40
-EOF
-
-# Verify
-python3 -c "
-import socket
-results = socket.getaddrinfo('example.com', 80, type=socket.SOCK_STREAM)
-for r in results[:3]:
-    print(r[0].name, r[4][0])
-"
-```
+Apple does not document a Linux-style `/etc/gai.conf` mechanism for macOS. On macOS, use per-application controls such as `curl -4` / `curl -6`, or change IPv6 availability for a network service in **System Settings > Network > [service] > Details > TCP/IP**, where Apple documents `Automatically`, `Manually`, and `Link-local only` modes.
 
 ## Restore IPv6 Preference
 
@@ -128,9 +111,12 @@ rm /etc/gai.conf
 cat > /etc/gai.conf << 'EOF'
 label ::1/128        0
 label ::/0           1
-label ::ffff:0:0/96  4
 label 2002::/16      2
+label ::/96          3
+label ::ffff:0:0/96  4
 label 2001::/32      5
+label fec0::/10      11
+label 3ffe::/16      12
 label fc00::/7       13
 precedence ::1/128        50
 precedence ::/0           40
@@ -138,10 +124,16 @@ precedence ::ffff:0:0/96  35
 precedence 2002::/16      30
 precedence 2001::/32       5
 precedence fc00::/7        3
+precedence ::/96          1
+precedence fec0::/10      1
+precedence 3ffe::/16      1
 EOF
 
 # Windows: remove custom entry
 netsh interface ipv6 delete prefixpolicy ::ffff:0:0/96
+
+# Windows: restore DisabledComponents default (requires reboot)
+reg add "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" /v DisabledComponents /t REG_DWORD /d 0 /f
 ```
 
 ## Per-Application Configuration
@@ -150,11 +142,10 @@ netsh interface ipv6 delete prefixpolicy ::ffff:0:0/96
 # Applications can explicitly request IPv4 or IPv6
 
 # Python: force IPv4
-import socket
-socket.getaddrinfo('example.com', 80, family=socket.AF_INET)
+python3 -c "import socket; print(socket.getaddrinfo('example.com', 80, family=socket.AF_INET))"
 
 # Python: force IPv6
-socket.getaddrinfo('example.com', 80, family=socket.AF_INET6)
+python3 -c "import socket; print(socket.getaddrinfo('example.com', 80, family=socket.AF_INET6))"
 
 # curl: force IPv4
 curl -4 https://example.com
@@ -181,11 +172,8 @@ ssh -6 user@example.com
 # Force Java applications to use IPv4
 java -Djava.net.preferIPv4Stack=true -jar app.jar
 
-# Force Java to prefer IPv6 DNS results
+# Force Java to prefer IPv6 addresses
 java -Djava.net.preferIPv6Addresses=true -jar app.jar
-
-# In application.properties (Spring Boot)
-# (sets the system property at startup)
 ```
 
 ## Testing the Configuration
@@ -223,4 +211,4 @@ for family in [socket.AF_INET6, socket.AF_INET]:
 
 ## Conclusion
 
-IPv4/IPv6 preference on dual-stack systems is controlled by the RFC 6724 policy table. On Linux and macOS, edit `/etc/gai.conf` to change precedence values - raise `::ffff:0:0/96` precedence above 40 to prefer IPv4, or keep it at 35 (default) to prefer IPv6. On Windows, use `netsh interface ipv6 add prefixpolicy` for the same effect. Individual applications can override with address family hints in `getaddrinfo()` calls, or command-line flags like `curl -4` / `curl -6`. Never disable IPv6 at the kernel level unless absolutely necessary - prefer policy table adjustments that keep IPv6 functional.
+IPv4/IPv6 preference on dual-stack systems is controlled by the address selection policy table. On glibc-based Linux systems, edit `/etc/gai.conf` to change precedence values - raise `::ffff:0:0/96` precedence above 40 to prefer IPv4, or keep it at 35 (default) to prefer IPv6. On Windows, use `netsh interface ipv6 add prefixpolicy` or `DisabledComponents=0x20` for the same effect. On macOS, Apple documents per-service IPv6 settings in Network settings rather than a Linux-style `/etc/gai.conf`. Individual applications can override with address family hints in `getaddrinfo()` calls, or command-line flags like `curl -4` / `curl -6`. Never disable IPv6 at the kernel level unless absolutely necessary - prefer policy table adjustments that keep IPv6 functional where the platform supports them.
