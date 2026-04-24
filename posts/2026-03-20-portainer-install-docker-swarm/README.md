@@ -13,9 +13,10 @@ Installing Portainer on Docker Swarm is different from a standalone Docker insta
 ## Prerequisites
 
 - A Docker Swarm cluster with at least one manager node
-- Docker 20.10+ on all nodes
+- A current Docker Engine installation on all nodes
 - SSH access to the Swarm manager
-- Ports 9000, 9443, 8000 available on the manager node
+- Ports 9443, 9000, and 8000 available on the manager node if you use the default Portainer stack file
+- Port 9001 reachable between the manager and worker nodes
 
 ## Architecture
 
@@ -48,7 +49,7 @@ docker swarm join \
   --token SWMTKN-1-xxxxx-xxxxx \
   <manager-ip>:2377
 
-# Verify all nodes are joined
+# Back on a manager node, verify all nodes are joined
 docker node ls
 ```
 
@@ -58,7 +59,7 @@ Create the agent deployment file:
 
 ```bash
 # Download the Portainer agent stack file
-curl -L https://downloads.portainer.io/ce2-21/portainer-agent-stack.yml -o portainer-agent-stack.yml
+curl -L https://downloads.portainer.io/ce-lts/portainer-agent-stack.yml -o portainer-agent-stack.yml
 ```
 
 Or create it manually:
@@ -69,7 +70,7 @@ version: "3.2"
 
 services:
   agent:
-    image: portainer/agent:latest
+    image: portainer/agent:lts
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
@@ -82,7 +83,7 @@ services:
           - node.platform.os == linux
 
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:lts
     command: -H tcp://tasks.agent:9001 --tlsskipverify
     ports:
       - "9443:9443"
@@ -122,8 +123,8 @@ Expected output:
 
 ```text
 ID             NAME                MODE       REPLICAS   IMAGE
-abc123         portainer_agent     global     3/3        portainer/agent:latest
-def456         portainer_portainer replicated 1/1        portainer/portainer-ce:latest
+abc123         portainer_agent     global     3/3        portainer/agent:lts
+def456         portainer_portainer replicated 1/1        portainer/portainer-ce:lts
 ```
 
 ## Step 5: Access Portainer
@@ -136,7 +137,7 @@ def456         portainer_portainer replicated 1/1        portainer/portainer-ce:
 
 After first login:
 
-1. Go to **Settings → Environments**
+1. Go to **Environments**
 2. The Swarm environment should already be registered
 3. Click on the environment to configure it further
 
@@ -151,18 +152,27 @@ Navigate to the Swarm environment and check:
 ## Upgrading Portainer on Swarm
 
 ```bash
-# Update the Portainer service to a new version
+# Keep the Portainer Server and Agent on matching LTS versions
+docker pull portainer/portainer-ce:lts
 docker service update \
-  --image portainer/portainer-ce:latest \
+  --image portainer/portainer-ce:lts \
+  --force \
   portainer_portainer
 
-# Or redeploy the entire stack
+docker pull portainer/agent:lts
+docker service update \
+  --image portainer/agent:lts \
+  --force \
+  portainer_agent
+
+# Or refresh the stack file and redeploy the entire stack
+curl -L https://downloads.portainer.io/ce-lts/portainer-agent-stack.yml -o portainer-agent-stack.yml
 docker stack deploy -c portainer-agent-stack.yml portainer
 ```
 
 ## Persistent Storage for Portainer Data
 
-Portainer stores its database in the `portainer_data` volume. Since Portainer runs on the manager node, this volume is on the manager. For high availability, consider using a shared storage solution:
+Portainer stores its database in the `portainer_data` volume. Since Portainer runs on a manager node, this volume is stored on whichever manager hosts the Portainer service. On swarms with multiple manager nodes, pin the Portainer service to the manager that owns the volume or use shared storage. For high availability, consider using a shared storage solution:
 
 ```yaml
 volumes:
@@ -180,7 +190,7 @@ volumes:
 # Check Portainer service logs
 docker service logs portainer_portainer
 
-# Check agent logs on a specific node
+# Check agent service logs across the swarm
 docker service logs portainer_agent
 
 # Verify agent is running on all nodes
