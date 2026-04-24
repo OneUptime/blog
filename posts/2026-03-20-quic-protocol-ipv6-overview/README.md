@@ -18,14 +18,14 @@ graph TD
     B --> C[UDP]
     C --> D[IPv6]
     D --> E[Large Address Space]
-    D --> F[No NAT Traversal Issues]
-    D --> G[Native Extension Headers]
+    D --> F[Less NAT Rebinding]
+    D --> G[Flow Labels]
 ```
 
 IPv6 and QUIC work well together because:
-- IPv6's large address space eliminates many NAT issues that complicate QUIC's connection ID handling
-- IPv6 flow labels can assist with QUIC connection routing
-- QUIC's connection migration works better in IPv6 environments without NAT
+- IPv6 reduces reliance on NAT, which can otherwise introduce address and port changes that QUIC needs to tolerate
+- IPv6 flow labels can assist per-flow load distribution, but they are not a replacement for QUIC connection IDs
+- QUIC's connection migration can be simpler to operate in IPv6 environments with less address translation
 
 ## QUIC Connection Establishment
 
@@ -33,48 +33,47 @@ QUIC dramatically reduces connection setup time:
 
 ```text
 TCP + TLS 1.3:
-  1. SYN → SYN-ACK → ACK (1.5 RTT)
-  2. TLS ClientHello → ServerHello → Finished (1 RTT)
-  Total: 2+ RTTs before data
+  1. TCP handshake (1 RTT)
+  2. TLS 1.3 handshake (1 RTT)
+  Total: 2 RTTs before protected application data
 
-QUIC (0-RTT for new connections):
-  1. Initial packet with crypto data (1 RTT)
-  Total: 1 RTT
+QUIC (new connections):
+  1. Transport and TLS handshake are combined
+  Total: 1 RTT before protected application data
 
 QUIC (0-RTT for resumed connections):
-  1. Resumes with cached session ticket - data sent immediately
-  Total: 0 RTT
+  1. Resumes with a cached session ticket - early data can be sent immediately
+  Total: 0 RTT for early data
 ```
 
 ## Testing QUIC/HTTP3 with IPv6
 
 ```bash
-# Install curl with HTTP/3 support (Ubuntu 22.04+)
+# Check whether your curl build includes HTTP/3 support
+curl -V
 
-sudo apt-get install curl
+# Test HTTP/3 over IPv6 (requires curl built with HTTP/3 support)
+curl -6 --http3-only -I https://nghttp2.org:4433 -v
 
-# Test HTTP/3 over IPv6
-curl -6 --http3 https://www.example.com -v 2>&1 | grep -E "QUIC|HTTP/3|IPv6"
+# Check if a server advertises HTTP/3
+curl -6 -I https://nghttp2.org | grep -i alt-svc
 
-# Check if a server supports HTTP/3
-curl -6 -I https://www.example.com | grep -i alt-svc
+# Use quiche's client app (from the quiche source tree)
+cargo run --bin quiche-client -- https://cloudflare-quic.com/
 
-# Use quiche-client (Cloudflare's QUIC implementation)
-quiche-client --no-verify https://[2001:db8::1]/
-
-# ngtcp2 test client
-ngtcp2client --disable-early-data [2001:db8::1] 443 https://example.com/
+# ngtcp2 example client (after building ngtcp2)
+examples/wsslclient nghttp2.org 4433 https://nghttp2.org:4433/
 ```
 
 ## QUIC Packet Structure for IPv6
 
-A QUIC packet over IPv6 looks like:
+A QUIC long-header packet over IPv6 looks like:
 
 ```text
 IPv6 Header (40 bytes)
   ├── Version: 6
   ├── Traffic Class: DSCP/ECN
-  ├── Flow Label: (can identify QUIC connection)
+  ├── Flow Label: 20-bit per-flow label
   ├── Payload Length
   ├── Next Header: 17 (UDP)
   ├── Hop Limit
@@ -86,46 +85,40 @@ UDP Header (8 bytes)
   ├── Destination Port: 443
   └── Length + Checksum
 
-QUIC Packet
-  ├── Header Form + Version
-  ├── Connection ID (up to 20 bytes)
+QUIC Long Header Packet
+  ├── Header Form + Packet Type
+  ├── Version
+  ├── Destination Connection ID (0-20 bytes)
+  ├── Source Connection ID (0-20 bytes)
   ├── Packet Number
-  └── Protected Payload (TLS-encrypted frames)
+  └── Protected Payload (QUIC frames encrypted with TLS-derived keys)
 ```
 
 ## IPv6 Flow Labels and QUIC
 
-IPv6 flow labels can help routers and load balancers route QUIC packets belonging to the same connection:
+IPv6 flow labels can help routers and load balancers keep packets from the same flow together, but they are not a substitute for QUIC connection IDs:
 
 ```python
 import socket
-import struct
 
-# Set IPv6 flow label for QUIC traffic
-# Flow labels help identify connection streams at the network layer
+# AF_INET6 addresses use (host, port, flowinfo, scope_id).
+# Whether a non-zero flow label is honored is OS-dependent.
 sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
 
-# Flow label is embedded in the IPv6 header - set via IPV6_FLOWINFO socket option
-# Value is (traffic class << 20) | flow_label
 flow_label = 0x12345  # 20-bit value
-traffic_class = 0b00000000  # Default
-flowinfo = (traffic_class << 20) | flow_label
-
-sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_FLOWINFO_SEND, 1)
-# Connect with flow label
-sock.connect(("2001:db8::1", 443, flowinfo, 0))
+sock.connect(("nghttp2.org", 443, flow_label, 0))
 ```
 
 ## Key QUIC Features for IPv6 Networks
 
-1. **Connection Migration**: QUIC connections survive IP address changes - useful for mobile IPv6
-2. **Multiplexing**: Multiple streams over one connection without head-of-line blocking
-3. **0-RTT Resumption**: Reconnect without new handshake using IPv6 QUIC tokens
-4. **ECN Support**: Explicit Congestion Notification works natively with IPv6
+1. **Connection Migration**: QUIC connections can survive validated IP address changes - useful for mobile IPv6
+2. **Multiplexing**: Multiple streams share one connection without TCP's cross-stream head-of-line blocking
+3. **0-RTT Resumption**: Resumed connections can send early data immediately using TLS 1.3 session resumption
+4. **ECN Support**: QUIC can use ECN bits carried in the IPv6 traffic class field
 
 ## Monitoring QUIC over IPv6
 
-Use [OneUptime](https://oneuptime.com) to monitor HTTP/3 endpoint availability over IPv6. Configure monitors that specifically test QUIC connectivity and alert when servers fall back to HTTP/2 or HTTP/1.1.
+Use [OneUptime](https://oneuptime.com) to monitor IPv6 website or IP availability. Website monitors can check response headers such as `Alt-Svc` so you can detect when HTTP/3 advertisement disappears.
 
 ## Conclusion
 
