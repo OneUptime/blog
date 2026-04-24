@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Terraform, Environment, Infrastructure, DevOps
 
-Description: Learn how to create, configure, and manage Portainer environments using Terraform, including Docker, Kubernetes, and Edge environments with full IaC lifecycle management.
+Description: Learn how to create, configure, and manage Portainer environments using Terraform, including Docker, Swarm, and Kubernetes environments with full IaC lifecycle management.
 
 ## Introduction
 
-Portainer environments represent managed infrastructure. Using Terraform to manage them ensures new environments are provisioned consistently, old ones are cleanly decommissioned, and configuration drift is detected automatically. This guide covers managing all types of Portainer environments with Terraform.
+Portainer environments represent managed infrastructure. Using Terraform to manage them ensures new environments are provisioned consistently, old ones are cleanly decommissioned, and configuration drift is detected automatically. This guide covers managing Docker, Swarm, and Kubernetes environments with Terraform.
 
 ## Prerequisites
 
@@ -25,32 +25,32 @@ Portainer environments represent managed infrastructure. Using Terraform to mana
 # Local Docker (Unix socket)
 
 resource "portainer_environment" "local_docker" {
-  name             = "local"
-  environment_url  = "unix:///var/run/docker.sock"
-  environment_type = 1  # Docker standalone
+  name                = "local"
+  environment_address = "unix:///var/run/docker.sock"
+  type                = 1  # Docker standalone
 }
 
 # Remote Docker over TLS
 resource "portainer_environment" "production_docker" {
-  name             = "production"
-  environment_url  = "tcp://192.168.1.100:2376"
-  environment_type = 1
+  name                = "production"
+  environment_address = "tcp://192.168.1.100:2376"
+  type                = 1
 
-  tls             = true
+  tls_enabled     = true
   tls_skip_verify = false
   tls_ca_cert     = file("${path.module}/certs/ca.pem")
   tls_cert        = file("${path.module}/certs/cert.pem")
   tls_key         = file("${path.module}/certs/key.pem")
 
-  tag_ids    = [portainer_tag.environment_prod.id]
-  group_id   = portainer_endpoint_group.production.id
+  tag_ids  = [portainer_tag.environment_prod.id]
+  group_id = portainer_endpoint_group.production.id
 }
 
 # Remote Docker over TCP (no TLS - dev only)
 resource "portainer_environment" "dev_docker" {
-  name             = "development"
-  environment_url  = "tcp://10.0.0.50:2375"
-  environment_type = 1
+  name                = "development"
+  environment_address = "tcp://10.0.0.50:2375"
+  type                = 1
 
   tag_ids = [portainer_tag.environment_dev.id]
 }
@@ -61,40 +61,35 @@ resource "portainer_environment" "dev_docker" {
 ```hcl
 # Swarm manager node
 resource "portainer_environment" "production_swarm" {
-  name             = "production-swarm"
-  environment_url  = "tcp://swarm-manager.example.com:2376"
-  environment_type = 1  # Same type, Portainer detects Swarm automatically
+  name                = "production-swarm"
+  environment_address = "tcp://swarm-manager.example.com:2376"
+  type                = 1  # Same type, Portainer detects Swarm automatically
 
-  tls             = true
+  tls_enabled     = true
   tls_skip_verify = false
-  tls_ca_cert     = file("certs/swarm-ca.pem")
-  tls_cert        = file("certs/swarm-cert.pem")
-  tls_key         = file("certs/swarm-key.pem")
+  tls_ca_cert     = file("${path.module}/certs/swarm-ca.pem")
+  tls_cert        = file("${path.module}/certs/swarm-cert.pem")
+  tls_key         = file("${path.module}/certs/swarm-key.pem")
 }
 ```
 
 ## Step 3: Kubernetes Environment
 
 ```hcl
-# Kubernetes environment via kubeconfig
+# Kubernetes environment via Agent (load balancer)
 resource "portainer_environment" "k8s_production" {
-  name             = "k8s-production"
-  environment_type = 5  # Kubernetes via kubeconfig
+  name                = "k8s-production"
+  environment_address = "tcp://k8s-production.example.com:9001"
+  type                = 6  # Kubernetes via Agent
 
-  # Read kubeconfig file
-  kubernetes_configuration = {
-    use_load_balancer     = true
-    use_server_metrics    = true
-    enable_resource_over_commit = false
-    restrict_default_namespace  = true
-  }
+  tag_ids = [portainer_tag.environment_prod.id]
 }
 
-# Kubernetes environment via Agent
+# Kubernetes environment via Agent (node port)
 resource "portainer_environment" "k8s_staging" {
-  name             = "k8s-staging"
-  environment_url  = "https://k8s-staging.example.com:9001"
-  environment_type = 6  # Kubernetes Agent
+  name                = "k8s-staging"
+  environment_address = "tcp://10.0.20.15:30778"
+  type                = 6  # Kubernetes via Agent
 
   tag_ids = [portainer_tag.environment_staging.id]
 }
@@ -158,11 +153,11 @@ variable "environments" {
 resource "portainer_environment" "managed" {
   for_each = var.environments
 
-  name             = each.key
-  environment_url  = each.value.url
-  environment_type = 1
+  name                = each.key
+  environment_address = each.value.url
+  type                = 1
 
-  tls             = true
+  tls_enabled     = true
   tls_skip_verify = false
   tls_ca_cert     = each.value.ca_cert
   tls_cert        = each.value.cert
@@ -200,17 +195,36 @@ environments = {
 ## Step 6: Access Policies
 
 ```hcl
-# Grant team access to environments
-resource "portainer_environment_team_access" "devops_production" {
-  environment_id = portainer_environment.production_docker.id
-  team_id        = portainer_team.devops.id
-  access_level   = 1  # Environment admin
+# Update the existing environments to grant team access
+resource "portainer_environment" "production_docker" {
+  name                = "production"
+  environment_address = "tcp://192.168.1.100:2376"
+  type                = 1
+
+  tls_enabled     = true
+  tls_skip_verify = false
+  tls_ca_cert     = file("${path.module}/certs/ca.pem")
+  tls_cert        = file("${path.module}/certs/cert.pem")
+  tls_key         = file("${path.module}/certs/key.pem")
+
+  tag_ids  = [portainer_tag.environment_prod.id]
+  group_id = portainer_endpoint_group.production.id
+
+  team_access_policies = {
+    (portainer_team.devops.id) = 1  # Environment administrator
+  }
 }
 
-resource "portainer_environment_team_access" "backend_staging" {
-  environment_id = portainer_environment.staging.id
-  team_id        = portainer_team.backend.id
-  access_level   = 2  # Standard access
+resource "portainer_environment" "k8s_staging" {
+  name                = "k8s-staging"
+  environment_address = "tcp://10.0.20.15:30778"
+  type                = 6
+
+  tag_ids = [portainer_tag.environment_staging.id]
+
+  team_access_policies = {
+    (portainer_team.backend.id) = 3  # Standard User
+  }
 }
 ```
 
@@ -223,7 +237,7 @@ output "environment_ids" {
   description = "Map of environment names to IDs"
   value = {
     production = portainer_environment.production_docker.id
-    staging    = portainer_environment.staging.id
+    staging    = portainer_environment.k8s_staging.id
     local      = portainer_environment.local_docker.id
   }
 }
@@ -244,10 +258,10 @@ output "endpoint_group_ids" {
 terraform init
 
 # Plan - see what will be created
-terraform plan -var-file="prod.tfvars"
+terraform plan
 
 # Apply
-terraform apply -var-file="prod.tfvars"
+terraform apply
 
 # Verify environments were created
 curl -s -H "X-API-Key: $PORTAINER_API_KEY" \
@@ -257,4 +271,4 @@ curl -s -H "X-API-Key: $PORTAINER_API_KEY" \
 
 ## Conclusion
 
-Managing Portainer environments with Terraform makes your infrastructure registration reproducible and auditable. New servers are added to Portainer by modifying a Terraform configuration file and running `apply`, not by logging into the UI. Tags, groups, and access policies are all declared alongside the environment, ensuring complete configuration is captured in code from day one.
+Managing Portainer environments with Terraform makes your infrastructure registration reproducible and auditable. New servers are added to Portainer by modifying a Terraform configuration file and running `apply`, not by logging into the UI. Tags, groups, and access policies can all live in the same Terraform configuration, ensuring complete environment metadata and access settings are captured in code from day one.
