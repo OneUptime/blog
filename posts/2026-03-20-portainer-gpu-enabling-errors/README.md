@@ -25,17 +25,17 @@ nvidia-smi
 
 # Expected output shows GPU info and driver version
 # If command not found:
-sudo ubuntu-drivers autoinstall
-sudo reboot
-
-# Or install manually
-sudo apt-get install -y nvidia-driver-535
+sudo ubuntu-drivers install
 sudo reboot
 ```
 
 ## Step 2: Install NVIDIA Container Toolkit
 
 ```bash
+# Install prerequisites for the NVIDIA repository setup
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg2
+
 # Add NVIDIA Container Toolkit repository
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
   sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
@@ -56,7 +56,7 @@ sudo systemctl restart docker
 
 ```bash
 # Verify NVIDIA runtime is configured
-cat /etc/docker/daemon.json
+sudo cat /etc/docker/daemon.json
 # Should contain:
 # {
 #   "runtimes": {
@@ -68,18 +68,7 @@ cat /etc/docker/daemon.json
 # }
 
 # Set NVIDIA as default runtime (optional but simplifies setup)
-cat > /etc/docker/daemon.json << 'EOF'
-{
-  "default-runtime": "nvidia",
-  "runtimes": {
-    "nvidia": {
-      "args": [],
-      "path": "nvidia-container-runtime"
-    }
-  }
-}
-EOF
-
+sudo nvidia-ctk runtime configure --runtime=docker --set-as-default
 sudo systemctl restart docker
 ```
 
@@ -87,7 +76,7 @@ sudo systemctl restart docker
 
 ```bash
 # Test GPU access in a container
-docker run --rm --gpus all nvidia/cuda:12.0-base-ubuntu22.04 nvidia-smi
+docker run --rm --gpus all ubuntu nvidia-smi
 
 # Expected: shows GPU information inside the container
 # If this fails, the toolkit is not configured correctly
@@ -99,7 +88,7 @@ In Portainer:
 1. Go to **Containers** → **Add Container**
 2. Under **Runtime & Resources** → **GPU** section
 3. Toggle **Enable GPU** to on
-4. Optionally specify which GPUs (leave empty for all)
+4. Select specific GPUs or choose **Use All GPUs**
 5. Click **Deploy the container**
 
 ## Step 6: Fix "GPU Devices Not Found" Error
@@ -120,29 +109,31 @@ which nvidia-container-runtime
 sudo nvidia-ctk runtime configure --runtime=docker --dry-run
 ```
 
-## Step 7: Fix "Failed to Run OCI" Error
+## Step 7: Fix "OCI runtime create failed" Error
 
 ```bash
-# This error indicates the NVIDIA driver and toolkit version mismatch
-nvidia-smi --query-gpu=driver_version --format=csv,noheader
+# This error usually means the NVIDIA runtime hook failed during container startup
+# Verify the NVIDIA driver works on the host first
+nvidia-smi
+
+# Check the toolkit installation
 nvidia-ctk --version
 
-# Reinstall toolkit matching driver version
-sudo apt-get remove --purge nvidia-container-toolkit
-sudo apt-get install nvidia-container-toolkit
+# Re-apply Docker runtime configuration
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
 
-# Or upgrade NVIDIA drivers
-sudo apt-get install nvidia-driver-535  # Match to current stable
-sudo reboot
+# If the error persists and mentions nvidia-container-cli,
+# uncomment the debug=... line in /etc/nvidia-container-runtime/config.toml
+# and retry the container start to collect NVIDIA runtime logs
 ```
 
 ## Step 8: Configure GPU Access in Docker Compose Stacks
 
 ```yaml
-version: "3.8"
 services:
   ml-app:
-    image: nvidia/cuda:12.0-runtime-ubuntu22.04
+    image: nvidia/cuda:12.9.0-base-ubuntu22.04
     restart: unless-stopped
     deploy:
       resources:
@@ -154,7 +145,7 @@ services:
     command: nvidia-smi
 ```
 
-> **Note**: The `deploy.resources.reservations.devices` syntax requires Docker Compose v3.8+ and the NVIDIA Container Toolkit.
+> **Note**: With current Docker Compose, the `version` key is not required. The `capabilities` field is required, and `count` and `device_ids` are mutually exclusive. The NVIDIA Container Toolkit must also be installed on the host.
 
 ## Step 9: Fix GPU Resource Limits in Portainer UI
 
@@ -203,14 +194,15 @@ nvidia-smi -L
 # device_ids: ['GPU-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx']
 ```
 
-## Step 11: Fix Portainer on Portainer Business (GPU Feature Gate)
+## Step 11: Fix Missing GPU Controls in Portainer
 
-In Portainer Business Edition, GPU management may be behind a feature flag:
+If the GPU section does not appear in Portainer on a Docker Standalone environment:
 
-1. Go to **Settings** → **Experimental Features**
-2. Enable **GPU Management**
-3. This unlocks additional GPU configuration options in the container form
+1. Go to **Host** → **Setup**
+2. Under **Other**, enable **Show GPU in the UI**
+3. Click **Add GPU** and register the GPU by name plus index or UUID
+4. Return to the container form and enable GPU access there
 
 ## Conclusion
 
-GPU enabling errors in Portainer are almost always caused by missing or misconfigured NVIDIA Container Toolkit rather than Portainer itself. The fix is systematic: verify `nvidia-smi` works, install the Container Toolkit, configure the Docker NVIDIA runtime, verify with a direct `docker run --gpus all` command, and then use Portainer to manage GPU containers. Once the toolkit is correctly installed, Portainer's GPU toggle will work without any additional configuration.
+GPU enabling errors in Portainer are usually caused by missing or misconfigured NVIDIA Container Toolkit rather than Portainer itself. The fix is systematic: verify `nvidia-smi` works, install the Container Toolkit, configure the Docker NVIDIA runtime, verify with a direct `docker run --gpus all` command, and then use Portainer to manage GPU containers. Once the toolkit is correctly installed and GPU visibility is enabled for the environment in Portainer, the GPU controls will work without any extra Docker-side changes.
