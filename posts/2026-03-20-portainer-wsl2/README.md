@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, WSL2, Window, Ubuntu, Docker
+Tags: Portainer, WSL2, Windows, Ubuntu, Docker
 
 Description: Learn how to install Portainer inside WSL2 with Ubuntu to manage Docker containers on your Windows development machine without installing Docker Desktop.
 
@@ -36,10 +36,11 @@ wsl --list --verbose
 # Inside WSL2 Ubuntu terminal
 
 # Remove any old Docker installations
-sudo apt remove docker docker-engine docker.io containerd runc
+sudo apt remove $(dpkg --get-selections docker.io docker-compose docker-compose-v2 docker-doc podman-docker containerd runc | cut -f1)
 
 # Install Docker Engine
-curl -fsSL https://get.docker.com | sh
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
 
 # Add user to docker group
 sudo usermod -aG docker $USER
@@ -48,7 +49,7 @@ newgrp docker
 # Start Docker (WSL2 doesn't use systemd by default on older versions)
 sudo service docker start
 
-# Enable systemd in WSL2 (Ubuntu 22.04+)
+# Enable systemd in WSL2 if it is not already enabled (WSL 0.67.6+)
 # Add to /etc/wsl.conf:
 sudo tee -a /etc/wsl.conf << 'EOF'
 [boot]
@@ -67,8 +68,14 @@ EOF
 sudo systemctl enable docker
 sudo systemctl start docker
 
-# Without systemd (older setup), add to ~/.bashrc:
-echo 'if ! service docker status > /dev/null 2>&1; then sudo service docker start; fi' >> ~/.bashrc
+# Without systemd (older setup), use /etc/wsl.conf instead of ~/.bashrc:
+sudo tee /etc/wsl.conf << 'EOF'
+[boot]
+command=service docker start
+EOF
+
+# Then restart WSL from PowerShell:
+# wsl --shutdown
 ```
 
 ## Step 4: Install Portainer
@@ -85,7 +92,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 
 echo "Portainer available at https://localhost:9443"
 ```
@@ -96,40 +103,32 @@ WSL2 network is accessible from Windows via `localhost`:
 
 Open `https://localhost:9443` in your Windows browser.
 
+Portainer uses a self-signed certificate by default, so your browser will show a certificate warning on first load.
+
 ## Step 6: Configure WSL2 Auto-Start
 
-For Portainer to be available when Windows starts:
+WSL distributions start on demand rather than as permanent background services, and systemd services do not keep a WSL instance alive by themselves. With systemd enabled and `--restart=always`, Docker and Portainer will start automatically the next time the Ubuntu-22.04 distro starts.
 
-1. Create a startup script in `%USERPROFILE%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\`
-
-```powershell
-# wsl-docker-start.ps1 (add to Windows startup)
-wsl -d Ubuntu -- sudo service docker start
-wsl -d Ubuntu -- docker start portainer
-```
-
-Or use Task Scheduler:
+From Windows, launching Ubuntu or running this command is enough to start the environment:
 
 ```powershell
-$action = New-ScheduledTaskAction -Execute "wsl" -Argument "-d Ubuntu -- bash -c 'sudo service docker start && docker start portainer'"
-$trigger = New-ScheduledTaskTrigger -AtLogOn
-Register-ScheduledTask -Action $action -Trigger $trigger -TaskName "WSL2-Portainer" -RunLevel Highest
+wsl -d Ubuntu-22.04
 ```
 
 ## WSL2 Networking Notes
 
 | Access | Address |
 |--------|---------|
-| From Windows browser | `http://localhost:9000` or `https://localhost:9443` |
-| From WSL2 terminal | `http://localhost:9000` |
-| From other Windows apps | `http://localhost:9000` |
-| From external network | Requires port forwarding setup |
+| From Windows browser | `https://localhost:9443` |
+| From WSL2 terminal | `https://localhost:9443` |
+| From other Windows apps | `https://localhost:9443` |
+| From external network | Requires port forwarding in the default NAT mode |
 
 ## Port Forwarding to External Network (Optional)
 
 ```powershell
 # In PowerShell as Administrator - forward WSL2 port to Windows host
-$wslIP = (wsl hostname -I).trim().split(" ")[0]
+$wslIP = (wsl -d Ubuntu-22.04 hostname -I).trim().split(" ")[0]
 netsh interface portproxy add v4tov4 listenport=9443 listenaddress=0.0.0.0 connectport=9443 connectaddress=$wslIP
 ```
 
