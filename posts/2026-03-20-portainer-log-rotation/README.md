@@ -12,7 +12,7 @@ Docker's default `json-file` log driver writes container logs to the host disk w
 
 ## Default Behavior
 
-Without configuration, Docker writes logs to:
+On a default Linux Docker Engine host, Docker writes `json-file` logs to:
 
 ```text
 /var/lib/docker/containers/{container-id}/{container-id}-json.log
@@ -29,8 +29,6 @@ du -sh /var/lib/docker/containers/*/*.log | sort -rh | head -10
 Configure rotation in your Portainer stack's `logging` section:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     image: my-api:latest
@@ -60,7 +58,7 @@ services:
 
 ## Global Log Rotation for All Containers
 
-Set defaults for all containers on a Docker host in `/etc/docker/daemon.json`:
+Set defaults for all containers on a Linux Docker host in `/etc/docker/daemon.json`:
 
 ```json
 {
@@ -73,7 +71,7 @@ Set defaults for all containers on a Docker host in `/etc/docker/daemon.json`:
 }
 ```
 
-Restart Docker to apply: `sudo systemctl restart docker`
+On systemd-based hosts, restart Docker to apply: `sudo systemctl restart docker`
 
 This applies to all new containers. Existing containers are unaffected - they must be recreated to pick up the new settings.
 
@@ -89,7 +87,13 @@ Existing containers keep their original log settings. Recreate them to apply new
 # For individual containers, stop and recreate:
 docker stop my-container
 docker rm my-container
-docker run ... --log-opt max-size=50m --log-opt max-file=5 my-container
+docker run \
+  --name my-container \
+  --log-driver json-file \
+  --log-opt max-size=50m \
+  --log-opt max-file=5 \
+  --log-opt compress=true \
+  my-image:tag
 ```
 
 ## Checking Effective Log Settings
@@ -105,7 +109,8 @@ docker inspect $(docker ps -qf name=api) | \
 #   "Type": "json-file",
 #   "Config": {
 #     "max-file": "5",
-#     "max-size": "50m"
+#     "max-size": "50m",
+#     "compress": "true"
 #   }
 # }
 ```
