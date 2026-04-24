@@ -58,12 +58,13 @@ sudo rabbitmq-diagnostics listeners
 # or
 sudo ss -tlnp | grep 5672
 
-# If listening on 0.0.0.0 but should be specific IP:
+# If listening on 0.0.0.0 but should be specific IP for AMQP:
 # /etc/rabbitmq/rabbitmq.conf
 # listeners.tcp.1 = 10.0.0.5:5672
+# distribution.listener.interface = 10.0.0.5  # for inter-node / CLI traffic on 25672
 
 # If listening on wrong IP:
-sudo grep "listeners\|tcp" /etc/rabbitmq/rabbitmq.conf
+sudo grep -E "listeners\.tcp|distribution\.listener\.interface" /etc/rabbitmq/rabbitmq.conf
 
 sudo systemctl restart rabbitmq-server
 ```
@@ -73,10 +74,10 @@ sudo systemctl restart rabbitmq-server
 ```bash
 # Check what's using port 5672
 sudo lsof -i :5672
-sudo fuser 5672/tcp
+sudo fuser -v 5672/tcp
 
 # Kill conflicting process (if it's safe to do so)
-sudo kill $(sudo fuser 5672/tcp)
+sudo fuser -k -TERM 5672/tcp
 
 # Start RabbitMQ
 sudo systemctl start rabbitmq-server
@@ -102,29 +103,29 @@ sudo ufw allow from 10.0.0.0/24 to any port 5672
 # Full status report
 sudo rabbitmq-diagnostics status
 
-# Network information
-sudo rabbitmq-diagnostics network_info
+# Check expected AMQP listener
+sudo rabbitmq-diagnostics check_port_listener 5672
 
 # Log level (increase for debugging)
 sudo rabbitmqctl set_log_level debug
 
 # Watch logs in real-time
-sudo tail -f /var/log/rabbitmq/rabbit@*.log
+sudo rabbitmq-diagnostics log_tail_stream
 
-# Check if AMQP is responding
+# Check whether listener ports accept new TCP connections
 sudo rabbitmq-diagnostics check_port_connectivity
 
-# Verify management plugin
+# Verify management plugin (if enabled locally)
 curl -s -u guest:guest http://127.0.0.1:15672/api/overview | python3 -m json.tool
 ```
 
 ## Reset and Reinitialize
 
 ```bash
-# If configuration is corrupted - reset to defaults
-sudo systemctl stop rabbitmq-server
+# If you intentionally need to reset the node state (this does not reset rabbitmq.conf)
+sudo rabbitmqctl stop_app
 sudo rabbitmqctl reset
-sudo systemctl start rabbitmq-server
+sudo rabbitmqctl start_app
 
 # Check after reset
 sudo rabbitmq-diagnostics listeners
