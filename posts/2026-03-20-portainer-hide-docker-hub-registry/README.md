@@ -8,7 +8,7 @@ Description: Learn how to hide the Docker Hub option from Portainer's registry d
 
 ## Introduction
 
-By default, Portainer shows Docker Hub as an option in the registry dropdown when deploying containers or stacks. For organizations that require all images to come from private registries, or for air-gapped environments where Docker Hub is not accessible, hiding Docker Hub reduces confusion and prevents accidental pulls from public registries. This guide covers the configuration.
+By default, Portainer shows **Docker Hub (anonymous)** as an option in the registry dropdown when deploying containers or stacks. For organizations that require all images to come from private registries, or for air-gapped environments where Docker Hub is not accessible, hiding Docker Hub reduces confusion and prevents accidental pulls from public registries. This guide covers the configuration.
 
 ## Prerequisites
 
@@ -28,66 +28,49 @@ Common reasons to hide Docker Hub:
 ## Step 1: Access Registry Settings
 
 1. Log in to Portainer as admin
-2. Click **Settings** in the sidebar
-3. Scroll to the **Registry settings** section
+2. Click **Registries** in the sidebar
+3. Find the built-in **Docker Hub (anonymous)** entry
 
 Or navigate to:
 
-1. **Registries** → Find Docker Hub entry → Edit
+1. **Registries** → **Docker Hub (anonymous)**
 
 ## Step 2: Hide Docker Hub
 
-In Portainer BE:
+In Portainer:
 
 1. Go to **Registries**
-2. Find the **Docker Hub** entry
-3. Click **Edit**
-4. Disable or restrict Docker Hub visibility
+2. Find the **Docker Hub (anonymous)** entry
+3. Click **Hide for all users**
+4. Verify the entry is hidden from the registry dropdown for users who have other registries available
 
-In some Portainer versions, you can completely remove Docker Hub from the list by not adding credentials and configuring it to be hidden.
+This only hides **Docker Hub (anonymous)** from the Portainer UI dropdown. It does not fully disable Docker Hub access, and if no other registries are available to a user, Portainer will still show **Docker Hub (anonymous)**.
 
 ## Alternative: Configure via Portainer API
 
-```bash
-# Get the admin JWT token
+Portainer documents hiding **Docker Hub (anonymous)** in the UI. Because this is built-in anonymous access rather than a registry you added yourself, check the version-specific Portainer API documentation for your release before attempting to automate it.
 
-TOKEN=$(curl -s -X POST http://portainer:9000/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' | jq -r .jwt)
+## Step 3: Manage Access to Approved Registries
 
-# List registries to find Docker Hub ID
-curl -H "Authorization: Bearer $TOKEN" \
-  http://portainer:9000/api/registries
+Use Portainer's registry access controls on the registries you want users to use:
 
-# Update Docker Hub registry to be restricted
-curl -X PUT \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"Name":"Docker Hub","URL":"https://index.docker.io","TeamAccessPolicies":{}}' \
-  http://portainer:9000/api/registries/1
-```
+1. Go to the environment's **Host** or **Swarm** view, then open **Registries**
+2. On your private registry, click **Manage access**
+3. Grant access to the users or teams that should use your private registry
+4. Remember registry access is environment-specific, not global
 
-## Step 3: Restrict Docker Hub via Team Access (BE)
+## Step 4: Configure Docker Daemon to Use a Registry Mirror
 
-In Portainer Business Edition, use team-based registry access to restrict Docker Hub:
-
-1. Go to **Registries → Docker Hub**
-2. Click **Manage access**
-3. Remove all team access or set to "No access"
-4. Only admins will see Docker Hub in the dropdown
-
-## Step 4: Configure Docker Daemon to Block Docker Hub
-
-For a more robust block (regardless of Portainer UI), configure the Docker daemon:
+For a more robust setup, configure the Docker daemon to prefer your internal mirror for Docker Hub pulls:
 
 ```json
-// /etc/docker/daemon.json - Block Docker Hub entirely
+// /etc/docker/daemon.json
 {
-  "registry-mirrors": ["https://your-internal-mirror.company.com"],
-  "insecure-registries": [],
-  "live-restore": true
+  "registry-mirrors": ["https://your-internal-mirror.company.com"]
 }
 ```
+
+This does not fully block direct Docker Hub access by itself. If you need a hard block, enforce it at the network or proxy layer as well.
 
 Block Docker Hub at the network level using a firewall rule:
 
@@ -110,7 +93,8 @@ Instead of just hiding Docker Hub, replace it with an internal mirror:
 In Portainer:
 
 1. Add your internal mirror as a Custom registry
-2. Hide Docker Hub (it won't be needed since the mirror serves Docker Hub images)
+2. Grant users access to that registry in the environment where they deploy workloads
+3. Hide **Docker Hub (anonymous)** if you do not want it shown in the Portainer UI
 
 ## Step 6: Policy Documentation
 
@@ -123,7 +107,7 @@ All container images must be pulled from the internal registry:
 - Internal registry: registry.company.com
 - All external images are mirrored here after security scanning
 - To add a new external image: submit request to ops@company.com
-- Docker Hub is disabled in Portainer to enforce this policy
+- Docker Hub (anonymous) is hidden in the Portainer UI to reinforce this policy
 ```
 
 ## Step 7: Test the Configuration
@@ -131,17 +115,19 @@ All container images must be pulled from the internal registry:
 After hiding Docker Hub:
 
 1. Log in as a non-admin user
-2. Go to **Containers → Add container**
-3. Click the registry dropdown
-4. Docker Hub should not appear (only your private registry should show)
-5. Test that pulling an image from your private registry works
+2. Make sure the user has access to at least one approved private registry
+3. Go to **Containers → Add container**
+4. Click the registry dropdown
+5. **Docker Hub (anonymous)** should not appear if another accessible registry is available
+6. If the user has no other registries available, Portainer will still show **Docker Hub (anonymous)**
+7. Test that pulling an image from your private registry works
 
 ## Considering the Trade-offs
 
 | Aspect | Hiding Docker Hub | Blocking at Network Level |
 |--------|------------------|--------------------------|
 | Ease of implementation | Simple | Requires firewall config |
-| Effectiveness | UI-only (CLI still works) | Blocks all pulls |
+| Effectiveness | UI-only; does not fully disable Docker Hub | Blocks all pulls |
 | User experience | Cleaner UI | Fails with error |
 | Maintenance | Low | Medium |
 
