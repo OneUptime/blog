@@ -8,7 +8,7 @@ Description: Learn how to use Portainer to start, stop, inspect, and manage Podm
 
 ---
 
-Once Portainer is connected to a Podman socket, you can manage Podman containers through the familiar Portainer UI. Most container operations work identically to Docker, with a few differences to be aware of.
+Once Portainer is connected to a supported Podman environment, you can manage Podman containers through the familiar Portainer UI. Most container operations work similarly to Docker through Podman's Docker-compatible API, with a few differences to be aware of.
 
 ## Container Operations via Portainer
 
@@ -39,23 +39,23 @@ Portainer sends a Docker-compatible API call to Podman, which creates and starts
 
 podman logs <container-name>
 
-# Portainer provides real-time log streaming via the API
-# which Podman's socket supports natively
+# Portainer retrieves logs through Podman's Docker-compatible API.
+# Enable auto refresh in Portainer to keep the log view updated.
 ```
 
 ## Exec into a Container
 
-In Portainer go to **Containers > [container] > Console** and click **Connect**.
+In Portainer go to **Containers > [container] > Console**, select the command and user, then click **Connect**.
 
-Portainer opens a WebSocket terminal that calls Podman's exec API - identical to `podman exec -it <container> /bin/sh`.
+Portainer opens an interactive console session for the container. In practice this is similar to `podman exec -it <container> /bin/sh` when `/bin/sh` is available; Alpine-based images typically need `/bin/ash`.
 
 ## Known Differences from Docker
 
-**Rootless containers:** Podman running rootless may show different user IDs in Portainer's stats view. The stats API is supported but some metrics (like network stats) may be unavailable without root or extra capabilities.
+**Rootless containers:** Portainer with rootless Podman may work, but it is not officially supported.
 
-**Pods:** Podman's pod concept (grouping containers) is not visible in Portainer. Each container in a pod appears as a separate item.
+**Pods:** Because Portainer uses Podman's Docker-compatible container API, Podman pods are not exposed as a first-class object in Portainer. Each container in a pod appears as a separate item.
 
-**cgroups v2:** Some Portainer stats features require cgroups v2, which Podman fully supports on modern Linux systems.
+**cgroups v2:** Podman stats rely on cgroup information. In rootless environments, stats do not work on cgroups v1, and on cgroups v2 network usage is still unavailable.
 
 ## Updating Containers
 
