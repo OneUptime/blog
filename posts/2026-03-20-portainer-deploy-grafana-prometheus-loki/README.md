@@ -12,7 +12,7 @@ Grafana, Prometheus, and Loki form the modern open-source observability stack: P
 
 ## Deploy the Complete Stack
 
-In Portainer, create a stack named `observability`:
+Save the files shown below under `/opt/observability` on the Docker host, then in Portainer create a stack named `observability`:
 
 ```yaml
 version: "3.8"
@@ -27,11 +27,13 @@ services:
       - '--storage.tsdb.retention.time=15d'
       - '--web.enable-lifecycle'
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - /opt/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /opt/observability/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - observability
     restart: unless-stopped
@@ -42,7 +44,7 @@ services:
     container_name: loki
     command: -config.file=/etc/loki/config.yaml
     volumes:
-      - ./loki-config.yaml:/etc/loki/config.yaml:ro
+      - /opt/observability/loki-config.yaml:/etc/loki/config.yaml:ro
       - loki_data:/loki
     ports:
       - "3100:3100"
@@ -57,11 +59,11 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin_password
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-piechart-panel
+      - GF_PLUGINS_PREINSTALL=grafana-clock-panel,grafana-piechart-panel
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - /opt/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - /opt/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "3000:3000"
     depends_on:
@@ -73,25 +75,24 @@ services:
 
   # Node Exporter - host metrics
   node-exporter:
-    image: prom/node-exporter:latest
+    image: quay.io/prometheus/node-exporter:latest
     container_name: node-exporter
     command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/host'
     volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
+      - /:/host:ro,rslave
     network_mode: host
+    pid: host
     restart: unless-stopped
 
   # cAdvisor - container metrics
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: ghcr.io/google/cadvisor:latest
     container_name: cadvisor
     privileged: true
     volumes:
       - /:/rootfs:ro
-      - /var/run:/var/run:ro
+      - /var/run:/var/run:rw
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
     ports:
@@ -100,16 +101,20 @@ services:
       - observability
     restart: unless-stopped
 
-  # Promtail - log shipper
-  promtail:
-    image: grafana/promtail:latest
-    container_name: promtail
-    command: -config.file=/etc/promtail/config.yaml
+  # Grafana Alloy - log shipper
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy
+    command:
+      - 'run'
+      - '--storage.path=/var/lib/alloy/data'
+      - '/etc/alloy/config.alloy'
     volumes:
-      - ./promtail-config.yaml:/etc/promtail/config.yaml:ro
-      - /var/log:/var/log:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/observability/alloy-config.alloy:/etc/alloy/config.alloy:ro
+      - alloy_data:/var/lib/alloy/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
     networks:
       - observability
     restart: unless-stopped
@@ -121,7 +126,7 @@ services:
     command:
       - '--config.file=/etc/alertmanager/config.yml'
     volumes:
-      - ./alertmanager.yml:/etc/alertmanager/config.yml:ro
+      - /opt/observability/alertmanager.yml:/etc/alertmanager/config.yml:ro
     ports:
       - "9093:9093"
     networks:
@@ -136,11 +141,12 @@ volumes:
   prometheus_data:
   loki_data:
   grafana_data:
+  alloy_data:
 ```
 
 ## Grafana Provisioning
 
-Create `grafana/provisioning/datasources/all.yaml`:
+Create `/opt/observability/grafana/provisioning/datasources/all.yaml`:
 
 ```yaml
 apiVersion: 1
@@ -158,7 +164,7 @@ datasources:
     access: proxy
 ```
 
-Create `grafana/provisioning/dashboards/dashboards.yaml`:
+Create `/opt/observability/grafana/provisioning/dashboards/dashboards.yaml`:
 
 ```yaml
 apiVersion: 1
@@ -173,11 +179,12 @@ providers:
 
 ## Prometheus Configuration
 
-Create `prometheus.yml`:
+Create `/opt/observability/prometheus.yml`:
 
 ```yaml
 global:
   scrape_interval: 15s
+  evaluation_interval: 15s
 
 alerting:
   alertmanagers:
@@ -194,11 +201,104 @@ scrape_configs:
 
   - job_name: 'node'
     static_configs:
-      - targets: ['localhost:9100']
+      - targets: ['host.docker.internal:9100']
 
   - job_name: 'cadvisor'
     static_configs:
       - targets: ['cadvisor:8080']
+```
+
+Create `/opt/observability/loki-config.yaml`:
+
+```yaml
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /loki
+
+schema_config:
+  configs:
+    - from: 2020-05-15
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  filesystem:
+    directory: /loki/chunks
+```
+
+Create `/opt/observability/alloy-config.alloy`:
+
+```alloy
+discovery.docker "linux" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "docker_logs" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+}
+
+loki.source.docker "default" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.linux.targets
+  labels        = {"job" = "docker"}
+  relabel_rules = discovery.relabel.docker_logs.rules
+  forward_to    = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+```
+
+Create `/opt/observability/alertmanager.yml`:
+
+```yaml
+route:
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: default
+
+receivers:
+  - name: default
+```
+
+Create `/opt/observability/alert-rules.yml`:
+
+```yaml
+groups:
+  - name: observability
+    rules:
+      - alert: InstanceDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Instance {{ $labels.instance }} down"
+          description: "{{ $labels.job }} on {{ $labels.instance }} has been unreachable for more than 5 minutes."
 ```
 
 ## Accessing the Stack
@@ -212,8 +312,8 @@ After deployment:
 | Alertmanager | `http://<host>:9093` |
 | cAdvisor | `http://<host>:8080` |
 
-Log in to Grafana with `admin/admin_password`, then import dashboard ID **1860** for Node Exporter metrics and explore your container logs from the Explore tab using Loki.
+Log in to Grafana with `admin/admin_password`, then import dashboard ID **1860** for Node Exporter metrics and explore your container logs from the Explore tab using Loki. Before relying on notifications, replace the placeholder `default` receiver in `alertmanager.yml` with your email, Slack, or webhook integration.
 
 ## Conclusion
 
-The Grafana-Prometheus-Loki observability stack deployed via Portainer provides unified metrics and log monitoring in a single coherent deployment. Auto-provisioned data sources mean Grafana is connected to both Prometheus and Loki immediately after startup. This stack gives you the complete observability picture: metrics, logs, and alerting in one place.
+The Grafana-Prometheus-Loki observability stack deployed via Portainer provides unified metrics and log monitoring in a single coherent deployment. Auto-provisioned data sources mean Grafana is connected to both Prometheus and Loki immediately after startup. This stack gives you metrics, logs, and working alert evaluation in one place, and you can wire Alertmanager to your preferred notification channel by updating `alertmanager.yml`.
