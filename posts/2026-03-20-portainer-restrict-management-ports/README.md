@@ -8,15 +8,15 @@ Description: Learn how to restrict access to Portainer's management ports and Do
 
 ## Introduction
 
-Portainer and Docker expose several management ports that, if left unrestricted, create significant security risks. This guide covers which ports to protect, how to restrict them using firewall rules, and how to configure Portainer to bind only to specific network interfaces.
+Portainer and Docker can expose several management ports that, if left unrestricted, create significant security risks. This guide covers which ports to protect, how to restrict them using firewall rules, and how to configure Portainer to bind only to specific network interfaces.
 
 ## Management Ports Overview
 
 | Port | Service | Risk Level |
 |------|---------|------------|
 | `9443` | Portainer HTTPS | High - full container management |
-| `9000` | Portainer HTTP | Critical - unencrypted management |
-| `8000` | Portainer Edge Agent | Medium - for edge environments |
+| `9000` | Portainer HTTP (legacy) | Critical - unencrypted management if enabled |
+| `8000` | Portainer Edge Agent tunnel | Medium - for edge environments |
 | `2375` | Docker API (no TLS) | Critical - root-equivalent access |
 | `2376` | Docker API (TLS) | High - root-equivalent with auth |
 | `2377` | Docker Swarm manager | High - Swarm cluster management |
@@ -36,30 +36,32 @@ nmap -p 9000,9443,2375,2376 your-server-ip
 
 ## Step 2: Firewall Rules with UFW
 
+On Docker hosts, UFW is useful for host-level services like SSH, but Docker-published container ports can bypass plain UFW rules. Use the specific IP binding in Step 4 or the Docker-aware iptables rules in Step 3 as well.
+
 ```bash
 # Default: deny all incoming
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 
 # Allow SSH from your IP only
-sudo ufw allow from YOUR_ADMIN_IP to any port 22
+sudo ufw allow proto tcp from YOUR_ADMIN_IP to any port 22
 
 # Allow Portainer HTTPS ONLY from VPN/office IP range
-sudo ufw allow from 10.0.0.0/8 to any port 9443 comment "Portainer HTTPS - internal only"
+sudo ufw allow proto tcp from 10.0.0.0/8 to any port 9443 comment "Portainer HTTPS - internal only"
 
 # NEVER allow these without IP restriction:
-# sudo ufw allow 9000   # Plain HTTP - dangerous!
-# sudo ufw allow 2375   # Docker API without TLS - extremely dangerous!
+# sudo ufw allow proto tcp from any to any port 9000   # Plain HTTP - dangerous!
+# sudo ufw allow proto tcp from any to any port 2375   # Docker API without TLS - extremely dangerous!
 
 # Allow Docker TLS only if needed from specific IPs
-sudo ufw allow from 10.0.1.0/24 to any port 2376 comment "Docker TLS - CI/CD subnet only"
+sudo ufw allow proto tcp from 10.0.1.0/24 to any port 2376 comment "Docker TLS - CI/CD subnet only"
 
 # Allow Portainer Edge Agent if using edge environments
-sudo ufw allow from 0.0.0.0/0 to any port 8000 comment "Edge Agent tunnel"
+sudo ufw allow proto tcp from 0.0.0.0/0 to any port 8000 comment "Edge Agent tunnel"
 
 # Deny all other management ports explicitly
-sudo ufw deny 9000  comment "Block plain HTTP Portainer"
-sudo ufw deny 2375  comment "Block Docker API without TLS"
+sudo ufw deny proto tcp to any port 9000 comment "Block plain HTTP Portainer"
+sudo ufw deny proto tcp to any port 2375 comment "Block Docker API without TLS"
 
 # Enable firewall
 sudo ufw enable
@@ -72,24 +74,30 @@ sudo ufw status verbose
 ## Step 3: iptables Rules (Alternative)
 
 ```bash
+# Docker-published ports are filtered in DOCKER-USER, not INPUT
+EXT_IF="eth0"  # Replace with your external interface
+
 # Create a new chain for Portainer rules
-iptables -N PORTAINER_ACCESS
+sudo iptables -N PORTAINER_ACCESS
+sudo iptables -I DOCKER-USER 1 -i ${EXT_IF} -j PORTAINER_ACCESS
 
-# Allow from specific IP range
-iptables -A PORTAINER_ACCESS -s 10.0.0.0/8 -j ACCEPT     # Internal network
-iptables -A PORTAINER_ACCESS -s 172.16.0.0/12 -j ACCEPT   # Private network
-iptables -A PORTAINER_ACCESS -j DROP                        # Drop all others
+# Allow established connections
+sudo iptables -A PORTAINER_ACCESS -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 
-# Apply to Portainer HTTPS port
-iptables -A INPUT -p tcp --dport 9443 -j PORTAINER_ACCESS
+# Allow Portainer HTTPS only from internal network
+sudo iptables -A PORTAINER_ACCESS -p tcp -m conntrack --ctorigdstport 9443 -s 10.0.0.0/8 -j ACCEPT
+sudo iptables -A PORTAINER_ACCESS -p tcp -m conntrack --ctorigdstport 9443 -j DROP
 
-# Block plain HTTP completely
-iptables -A INPUT -p tcp --dport 9000 -j DROP
+# Allow Docker TLS only if needed from specific IPs
+sudo iptables -A PORTAINER_ACCESS -p tcp -m conntrack --ctorigdstport 2376 -s 10.0.1.0/24 -j ACCEPT
+sudo iptables -A PORTAINER_ACCESS -p tcp -m conntrack --ctorigdstport 2376 -j DROP
 
-# Block unauthenticated Docker API
-iptables -A INPUT -p tcp --dport 2375 -j DROP
+# Block plain HTTP Portainer and unauthenticated Docker API completely
+sudo iptables -A PORTAINER_ACCESS -p tcp -m conntrack --ctorigdstport 9000 -j DROP
+sudo iptables -A PORTAINER_ACCESS -p tcp -m conntrack --ctorigdstport 2375 -j DROP
 
-# Save rules
+# Persist rules using your distro's standard method.
+# Example on Debian/Ubuntu with iptables-persistent installed:
 sudo iptables-save > /etc/iptables/rules.v4
 ```
 
@@ -101,25 +109,25 @@ Prevent Portainer from listening on all interfaces:
 # Bind to internal/VPN IP only
 INTERNAL_IP="10.0.0.100"
 
+# Add -p ${INTERNAL_IP}:8000:8000 as well if you use Edge Agent
 docker run -d \
   --name portainer \
   --restart=unless-stopped \
-  -p ${INTERNAL_IP}:9443:9443 \  # Only listen on internal IP
+  -p ${INTERNAL_IP}:9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 
-# This means portainer is NOT accessible via public IP at all
+# This means Portainer is only published on ${INTERNAL_IP}, not on the host's other IP addresses
 ```
 
 For Docker Compose:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:sts
     restart: unless-stopped
     ports:
       - "10.0.0.100:9443:9443"  # Bind to specific IP
@@ -140,17 +148,21 @@ If you're not using the Docker TCP API (using socket instead), disable it:
 # Check if Docker is listening on TCP
 ss -tlnp | grep docker
 
-# Ensure Docker daemon config does NOT have tcp listener
-cat /etc/docker/daemon.json
+# Check both daemon.json and any systemd overrides for tcp:// listeners
+sudo test -f /etc/docker/daemon.json && sudo cat /etc/docker/daemon.json
+sudo systemctl cat docker.service
 
-# If present, remove "tcp://0.0.0.0:2375" from the hosts configuration
+# If present, remove the tcp:// listener from whichever config source defines it.
+# Do not define "hosts" in both daemon.json and systemd unit overrides.
 sudo nano /etc/docker/daemon.json
+# If Docker was configured through systemd instead, edit the override:
+# sudo systemctl edit docker.service
 
-# After removing:
+# For daemon.json-based setups, it should look like:
 # {
+#   "hosts": ["unix:///var/run/docker.sock"],
 #   "log-driver": "json-file",
 #   "log-opts": {"max-size": "10m", "max-file": "3"}
-#   # NO tcp host
 # }
 
 sudo systemctl restart docker
@@ -162,38 +174,47 @@ If multiple services need Docker access, use a socket proxy instead of exposing 
 
 ```yaml
 # docker-compose.yml with socket proxy
-version: "3.8"
 services:
   docker-proxy:
-    image: tecnativa/docker-socket-proxy:latest
+    image: ghcr.io/tecnativa/docker-socket-proxy:latest
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       CONTAINERS: 1
       IMAGES: 1
       NETWORKS: 1
       VOLUMES: 1
       INFO: 1
-      POST: 0      # Disable write operations for read-only access
+      SYSTEM: 1
+      POST: 1      # Required for Portainer management actions
     networks:
       - proxy-net
     restart: unless-stopped
 
   portainer:
-    image: portainer/portainer-ce:latest
-    environment:
-      - DOCKER_HOST=tcp://docker-proxy:2375  # Use the proxy
+    image: portainer/portainer-ce:sts
+    command:
+      - -H
+      - tcp://docker-proxy:2375
     depends_on:
       - docker-proxy
     networks:
       - proxy-net
     ports:
       - "10.0.0.100:9443:9443"
+    volumes:
+      - portainer_data:/data
+    restart: unless-stopped
+
+volumes:
+  portainer_data:
 
 networks:
   proxy-net:
     internal: true  # No external access
 ```
+
+If you only want read-only Docker access, set `POST: 0`; Portainer management actions require `POST: 1` and the relevant API sections enabled.
 
 ## Step 7: Port Scan Verification
 
@@ -203,17 +224,17 @@ After applying restrictions, verify from an external machine:
 # From outside your network (or use nmap online scanner)
 nmap -p 9000,9443,2375,2376,2377 your-public-ip
 
-# Expected results:
-# 9000/tcp  closed  portainer-http   # Good: closed
-# 9443/tcp  filtered portainer-https # Good: filtered (dropped, not rejected)
-# 2375/tcp  closed  docker-api-plain # Good: closed
-# 2376/tcp  filtered docker-api-tls  # Good: filtered if not needed
+# Expected results from the public Internet:
+# - 9000/tcp should be closed or filtered
+# - 9443/tcp should be closed or filtered unless you intentionally expose it publicly
+# - 2375/tcp should be closed or filtered
+# - 2376/tcp should be closed or filtered unless you explicitly allow it
 
 # From inside your VPN/internal network:
 nmap -p 9443 10.0.0.100
 
 # Expected:
-# 9443/tcp open   https    # Good: accessible from internal network
+# 9443/tcp open   # Good: accessible from internal network
 ```
 
 ## Conclusion
