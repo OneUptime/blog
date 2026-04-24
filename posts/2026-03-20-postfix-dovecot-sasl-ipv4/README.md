@@ -54,8 +54,9 @@ smtpd_sasl_auth_enable = yes
 # Don't allow anonymous authentication
 smtpd_sasl_security_options = noanonymous
 
-# TLS required for authentication (prevents credential exposure)
+# Offer TLS and require it before advertising AUTH
 smtpd_tls_security_level = may
+smtpd_tls_auth_only = yes
 smtpd_tls_cert_file = /etc/letsencrypt/live/mail.example.com/fullchain.pem
 smtpd_tls_key_file  = /etc/letsencrypt/live/mail.example.com/privkey.pem
 
@@ -86,6 +87,12 @@ submission inet n - y - - smtpd
     -o milter_macro_daemon_name=ORIGINATING
 ```
 
+Restart Postfix:
+
+```bash
+sudo systemctl restart postfix
+```
+
 ## Testing SASL Authentication
 
 ```bash
@@ -101,7 +108,7 @@ swaks --to user@external.com \
 
 # Check mail log for auth events
 sudo tail -f /var/log/mail.log | grep "SASL\|auth"
-# Expected: SASL LOGIN authentication, LOGIN
+# Look for SASL authentication success/failure entries
 
 # Test from command line
 echo -ne '\0user@example.com\0password' | base64
@@ -120,8 +127,8 @@ echo -ne '\0user@example.com\0password' | base64
 # → Auth socket doesn't exist or wrong permissions
 ls -la /var/spool/postfix/private/auth
 
-# Fix permissions
-sudo chown postfix:postfix /var/spool/postfix/private/auth
+# Fix the Dovecot unix_listener user/group/mode in 10-master.conf, then restart Dovecot
+sudo systemctl restart dovecot
 
 # Check Dovecot auth log
 sudo journalctl -u dovecot | grep auth
