@@ -20,8 +20,8 @@ Portainer Edge Stacks allow you to define a Docker Compose application and deplo
 
 When you deploy an Edge Stack:
 1. The Portainer server stores the stack definition.
-2. Each edge agent polls the server (or receives a push) and downloads the stack.
-3. Docker Compose runs the stack locally on the edge device.
+2. Each edge agent polls the server for pending jobs and downloads the stack when instructed.
+3. Portainer deploys the stack to the local Docker environment on the edge device.
 4. Status is reported back to Portainer.
 
 This model works even for devices with intermittent connectivity.
@@ -34,8 +34,6 @@ Create a `docker-compose.yml` for the application you want to deploy. Use enviro
 # docker-compose.yml for edge deployment
 
 # Uses environment variables for per-device customization
-version: "3.8"
-
 services:
   app:
     image: myorg/myapp:${APP_VERSION:-latest}
@@ -68,10 +66,11 @@ volumes:
    - **Web editor** - paste your compose YAML directly.
    - **Upload** - upload a compose file from your machine.
    - **Repository** - pull from a Git repo (recommended for CI/CD).
+   - **Template** - start from an Edge Stack template for Compose deployments.
 
 ## Step 3: Select Target Edge Groups
 
-```sql
+```text
 # In the Portainer UI, after entering the stack name and content:
 # - Select one or more Edge Groups under "Edge groups"
 # - Example: select "US-Retail-Stores" and "EU-Retail-Stores"
@@ -83,30 +82,26 @@ volumes:
 
 ## Step 4: Configure Per-Environment Variables
 
-If you use different variable values per environment, you can set **Environment variables** at the edge group or endpoint level:
+If you use different values between deployments, define them in the Edge Stack's **Environment variables** section or upload a `.env` file. For device- or group-specific configuration, use **Edge Configurations** or **GitOps Edge configurations** and reference `PORTAINER_EDGE_ID` or `PORTAINER_EDGE_GROUP` in the stack.
 
-```bash
-# Example: set per-device env vars when deploying the edge agent
-docker run -d \
-  --name portainer_edge_agent \
-  -e EDGE_KEY="device_edge_key" \
-  -e DEVICE_ID="store-berlin-001" \
-  -e SITE_NAME="Berlin Main Store" \
-  -e APP_VERSION="2.4.1" \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  portainer/agent:latest
+```dotenv
+APP_VERSION=2.4.1
+DEVICE_ID=store-berlin-001
+SITE_NAME=Berlin_Main_Store
+LOG_LEVEL=info
 ```
 
-In Portainer, you can also override stack-level environment variables per endpoint.
+Portainer keeps these variables separate from the compose file, so you can update them without editing the stack definition in the repository.
 
 ## Step 5: Monitor Deployment Status
 
 After creating the stack:
 1. Go to **Edge Compute > Edge Stacks**.
 2. Click your stack name.
-3. View the deployment status per endpoint:
-   - **OK** - Stack is running.
-   - **Deploying** - In progress.
+3. Review the deployment indicators on the stack and its **Environments** tab:
+   - **Acknowledged**
+   - **Images pre-pulled**
+   - **Deployments received**
    - **Failed** - Check the edge device logs.
 
 ## Step 6: Update the Stack Across All Environments
@@ -117,7 +112,7 @@ To roll out a new version:
 3. Portainer propagates the update to all assigned edge groups.
 
 ```yaml
-# Updated stack - bump APP_VERSION for a rolling update
+# Updated stack - bump the image tag for a new rollout
 services:
   app:
     image: myorg/myapp:2.5.0  # Updated from 2.4.1
