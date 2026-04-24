@@ -27,17 +27,18 @@ ENDPOINT_ID=1
 
 curl -s \
   -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/stacks?filters={\"EndpointID\":${ENDPOINT_ID}}" \
+  -G \
+  --data-urlencode "filters={\"EndpointID\":${ENDPOINT_ID}}" \
+  "https://portainer.example.com/api/stacks" \
   | python3 -c "import sys,json; [print(s['Name']) for s in json.load(sys.stdin)]"
 ```
 
 ## Remove via Web UI
 
 1. Go to **Environments**
-2. Find the environment to remove
-3. Click on it to open settings
-4. Scroll to bottom and click **Remove this environment**
-5. Confirm the removal
+2. Check the box next to the environment to remove
+3. Click **Remove**
+4. Confirm the removal
 
 ## Remove via API
 
@@ -56,17 +57,15 @@ After removing the environment from Portainer, clean up the agent on the target 
 # Stop and remove the Portainer agent container
 docker stop portainer_agent
 docker rm portainer_agent
-docker volume rm portainer_agent_data
 
 # Or for Swarm:
-docker service rm portainer_agent_portainer_agent
+docker service rm portainer-agent_agent
 ```
 
 ## Cleanup Kubernetes Agent
 
 ```bash
 # Remove Portainer Agent from Kubernetes
-helm uninstall portainer-agent -n portainer
 kubectl delete namespace portainer
 ```
 
@@ -74,9 +73,9 @@ kubectl delete namespace portainer
 
 - Containers and services on the removed environment continue running
 - Portainer no longer shows or manages them
-- Stack definitions in Portainer are also removed (not the running services)
+- Stack definitions associated with the removed environment become orphaned in Portainer and need re-association to be fully recovered
 - Access policies for the environment are deleted from Portainer
 
 ## Conclusion
 
-Removing environments from Portainer is safe and reversible - the actual workloads keep running. Clean up the agent components from the target host to remove all traces of Portainer from the decommissioned environment.
+Removing environments from Portainer does not stop the actual workloads, but the removal itself cannot be reversed. Clean up the agent components from the target host if you also want to remove Portainer from the decommissioned environment.
