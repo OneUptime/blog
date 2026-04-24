@@ -13,7 +13,7 @@ RFC 8106 defines two Router Advertisement options that allow routers to deliver 
 - **RDNSS** (Recursive DNS Server): Provides the IPv6 addresses of DNS resolvers
 - **DNSSL** (DNS Search List): Provides the DNS domain search suffixes
 
-These options are supported by all modern operating systems and are essential for SLAAC-only deployments.
+These options are useful for SLAAC-only deployments on clients that implement RFC 8106.
 
 ## Configuring RDNSS in radvd
 
@@ -39,7 +39,7 @@ interface eth1 {
     # Advertise primary and secondary DNS servers
     # Lifetime: how long the DNS server remains valid (seconds)
     RDNSS 2001:db8:1:1::53 2001:4860:4860::8888 {
-        AdvRDNSSLifetime 600;   # 10 minutes
+        AdvRDNSSLifetime 1800;   # 30 minutes
     };
 };
 ```
@@ -63,12 +63,12 @@ interface eth1 {
 
     # Advertise RDNSS - internal resolver
     RDNSS 2001:db8:1:1::53 {
-        AdvRDNSSLifetime 600;
+        AdvRDNSSLifetime 1800;
     };
 
     # Advertise DNS search list - multiple domains
     DNSSL example.com internal.example.com dev.example.com {
-        AdvDNSSLLifetime 600;   # 10 minutes
+        AdvDNSSLLifetime 1800;   # 30 minutes
     };
 };
 ```
@@ -93,15 +93,14 @@ interface eth1 {
     prefix 2001:db8:1:1::/64 {
         AdvOnLink on;
         AdvAutonomous on;
-        AdvRouterAddr on;
         AdvValidLifetime 86400;
         AdvPreferredLifetime 14400;
     };
 
     # Primary and secondary DNS resolvers
     RDNSS 2001:db8:1:1::53 2001:db8:1:1::54 {
-        # Lifetime should be 2-3x MaxRtrAdvInterval so DNS info doesn't expire
-        # between RAs. With MaxRtrAdvInterval=100, use 200-300 seconds minimum.
+        # Lifetime should be at least 3x MaxRtrAdvInterval so DNS info stays
+        # valid across missed RAs. With MaxRtrAdvInterval=100, use 300 seconds minimum.
         AdvRDNSSLifetime 600;
     };
 
@@ -117,35 +116,34 @@ interface eth1 {
 After radvd is running, verify that clients received the DNS configuration:
 
 ```bash
-# On a Linux client, check the resolv.conf (if using resolvd or NetworkManager)
+# On a Linux client, /etc/resolv.conf may not list the upstream RDNSS servers
+# directly if the host uses a local stub resolver such as systemd-resolved
 cat /etc/resolv.conf
 
-# Or check the systemd-resolved state
-systemd-resolve --status | grep -A5 "DNS Servers\|DNS Domain"
+# If using systemd-resolved, inspect the active resolver state directly
+resolvectl status | grep -A5 "DNS Servers\|DNS Domain"
 
-# Use rdisc6 to see the raw RA content including RDNSS/DNSSL
+# Use rdisc6 to inspect received Router Advertisements, including RDNSS/DNSSL
 rdisc6 eth0
 # Look for "Recursive DNS server" and "DNS search list" sections
 ```
 
-On macOS, the DNS from RDNSS/DNSSL appears in:
+On macOS, inspect the active DNS configuration with:
 
 ```bash
-# macOS: Check network service DNS settings
-networksetup -getdnsservers "Wi-Fi"
-scutil --dns | grep nameserver
+scutil --dns | grep -E 'nameserver\[[0-9]+\]|search domain\[[0-9]+\]'
 ```
 
 ## RDNSS Lifetime Guidance
 
-Set the RDNSS/DNSSL lifetime to at least 2x the MaxRtrAdvInterval so that clients do not lose DNS configuration between RAs:
+Set the RDNSS/DNSSL lifetime to at least 3x the MaxRtrAdvInterval so that clients do not lose DNS configuration between RAs:
 
 ```bash
 # Verify MaxRtrAdvInterval in your radvd.conf
 grep MaxRtrAdvInterval /etc/radvd.conf
-# If MaxRtrAdvInterval = 100s, set RDNSS lifetime >= 200s (600s is safe)
+# If MaxRtrAdvInterval = 100s, set RDNSS lifetime >= 300s (600s is safe)
 ```
 
 ## Conclusion
 
-RDNSS and DNSSL options in radvd enable fully stateless IPv6 network configuration - clients get their prefix via SLAAC and their DNS settings via RA, with no DHCPv6 server required. This simplifies network architecture and reduces dependencies. Ensure the RDNSS/DNSSL lifetime is set appropriately relative to the RA interval to prevent DNS configuration from expiring between advertisements.
+RDNSS and DNSSL options in radvd enable fully stateless IPv6 network configuration on clients that implement RFC 8106 - clients get their prefix via SLAAC and their DNS settings via RA, with no DHCPv6 server required. This simplifies network architecture and reduces dependencies. Ensure the RDNSS/DNSSL lifetime is set appropriately relative to the RA interval to prevent DNS configuration from expiring between advertisements.
