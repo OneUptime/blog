@@ -22,60 +22,68 @@ The redirect URI in Portainer doesn't match what's registered with the IdP.
 TOKEN=$(curl -s -X POST \
   https://portainer.example.com/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"adminpassword"}' \
+  -d '{"Username":"admin","Password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
 curl -s -H "Authorization: Bearer $TOKEN" \
   https://portainer.example.com/api/settings \
-  | python3 -c "import sys,json; s=json.load(sys.stdin); o=s.get('oauthsettings',{}); print('Redirect URI:', o.get('RedirectURI',''))"
+  | python3 -c "import sys,json; s=json.load(sys.stdin); o=s.get('OAuthSettings',{}); print('Redirect URI:', o.get('RedirectURI',''))"
 
-# Fix: Ensure exact match including trailing slash
-# Portainer: https://portainer.example.com/
-# IdP:       https://portainer.example.com/ (must be identical)
+# Fix: Ensure the registered Redirect URL matches the Portainer instance URL exactly
+# Match scheme, host, port, and any subpath used by your reverse proxy
+# Example: https://portainer.example.com
 ```
 
 ### "invalid_client"
 
-Client ID or secret is wrong.
+Client authentication at the token endpoint is failing.
 
 ```bash
-# Verify client credentials with IdP directly
+# Verify client authentication with the IdP token endpoint
+# Example: if Auth Style is set to send client credentials in the request body
 curl -X POST \
   "https://your-idp.com/oauth/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "client_id=your-client-id&client_secret=your-client-secret&grant_type=client_credentials"
 
-# If this fails, your client ID or secret is wrong
+# If Auth Style is set to send client credentials in the header, use HTTP Basic auth instead
+# curl -u "your-client-id:your-client-secret" -X POST \
+#   "https://your-idp.com/oauth/token" \
+#   -H "Content-Type: application/x-www-form-urlencoded" \
+#   -d "grant_type=client_credentials"
+#
+# If the response is invalid_client, the client authentication failed
+# Common causes: wrong client ID, wrong client secret, or wrong auth style
 ```
 
-### "Origin is not trusted" (after OAuth redirect)
+### "Origin invalid" or "Origin is not trusted" (after OAuth redirect)
 
-Portainer CSRF protection rejects the OAuth callback.
+Portainer rejects the request origin when it is accessed through a reverse proxy.
 
 ```bash
-# Fix: Add trusted origins
-docker exec portainer grep -i "trusted" /proc/1/cmdline || \
-docker inspect portainer | python3 -c "import sys,json; c=json.load(sys.stdin); print(c[0]['Config']['Cmd'])"
+# Fix: Check the Portainer startup arguments
+docker inspect portainer | python3 -c "import sys,json; c=json.load(sys.stdin)[0]['Config']; print('Entrypoint:', c.get('Entrypoint')); print('Cmd:', c.get('Cmd'))"
 
-# Add --trusted-origins flag if missing
-# This must include the HTTPS URL users access Portainer through
+# Add --trusted-origins flag (or TRUSTED_ORIGINS) if missing
+# This must list the external URL(s) users use to access Portainer
 ```
 
 ### "Token parsing failed" or blank page after redirect
 
-The ID token or userinfo response doesn't contain the expected user identifier claim.
+The resource response doesn't contain the expected user identifier claim.
 
 ```bash
 # Debug: Check what claims are in the token
 # Method 1: Check Portainer logs
 docker logs portainer 2>&1 | grep -i "oauth\|token\|claim" | tail -20
 
-# Method 2: Manually call the userinfo endpoint
+# Method 2: Manually call the Resource URL configured in Portainer
 OAUTH_TOKEN="access-token-from-idp"
+RESOURCE_URL="https://your-idp.com/oauth/userinfo"
 curl -H "Authorization: Bearer $OAUTH_TOKEN" \
-  "https://your-idp.com/oauth/userinfo" | python3 -m json.tool
+  "$RESOURCE_URL" | python3 -m json.tool
 
-# Verify the configured "User Identifier" claim exists in the response
+# Verify the configured "User Identifier" claim exists in the Resource URL response
 # Common values: sub, email, preferred_username, login
 ```
 
@@ -88,7 +96,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   | python3 -c "
 import sys, json
 s = json.load(sys.stdin)
-o = s.get('oauthsettings', {})
+o = s.get('OAuthSettings', {})
 print('Auth Method:', s.get('AuthenticationMethod'))  # Should be 3
 print('Client ID:', o.get('ClientID', 'NOT SET'))
 print('Auth URI:', o.get('AuthorizationURI', 'NOT SET'))
@@ -103,17 +111,14 @@ print('Scopes:', o.get('Scopes', 'NOT SET'))
 ## Network-Level Debugging
 
 ```bash
-# Check if Portainer can reach the IdP endpoints
-docker exec portainer wget -q --spider \
-  "https://your-idp.com/.well-known/openid-configuration" 2>&1
-
-# Or use curl if wget not available
+# If your provider supports OpenID Connect, check the discovery document
 docker run --rm --network container:portainer \
   alpine/curl -sv \
   "https://your-idp.com/.well-known/openid-configuration" 2>&1 | head -30
 
-# Check DNS resolution for IdP
-docker exec portainer nslookup your-idp.com
+# Check DNS resolution for the IdP from the same network namespace
+docker run --rm --network container:portainer \
+  alpine:3.22 nslookup your-idp.com
 ```
 
 ## Browser-Level Debugging
@@ -135,7 +140,8 @@ error_description=...
 ## Portainer Log Analysis
 
 ```bash
-# Enable verbose logging to see OAuth flow
+# Tail Portainer logs while reproducing the OAuth flow
+# For more detail, start Portainer with --log-level DEBUG or enable debug logging in Settings
 docker logs portainer -f 2>&1 | grep -i "oauth\|auth\|token\|error"
 
 # Save recent logs for analysis
@@ -150,11 +156,12 @@ Test the complete OAuth flow without Portainer:
 ```bash
 # Step 1: Get authorization URL
 CLIENT_ID="your-client-id"
-REDIRECT_URI="https://portainer.example.com/"
+REDIRECT_URI="https://portainer.example.com"
 SCOPE="openid profile email"
 STATE=$(openssl rand -hex 16)
 
-AUTH_URL="https://your-idp.com/oauth/authorize?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=code&scope=${SCOPE}&state=${STATE}"
+AUTH_URL=$(CLIENT_ID="$CLIENT_ID" REDIRECT_URI="$REDIRECT_URI" SCOPE="$SCOPE" STATE="$STATE" \
+  python3 -c 'import os, urllib.parse; print("https://your-idp.com/oauth/authorize?" + urllib.parse.urlencode({"client_id": os.environ["CLIENT_ID"], "redirect_uri": os.environ["REDIRECT_URI"], "response_type": "code", "scope": os.environ["SCOPE"], "state": os.environ["STATE"]}))')
 echo "Test URL: $AUTH_URL"
 # Visit this URL in a browser and note the code parameter in the callback URL
 
@@ -166,8 +173,9 @@ curl -X POST "https://your-idp.com/oauth/token" \
 
 # Step 3: Get user info
 ACCESS_TOKEN="access-token-from-step2"
+RESOURCE_URL="https://your-idp.com/oauth/userinfo"  # Use the Resource URL configured in Portainer
 curl -H "Authorization: Bearer $ACCESS_TOKEN" \
-  "https://your-idp.com/oauth/userinfo"
+  "$RESOURCE_URL"
 ```
 
 ## Conclusion
