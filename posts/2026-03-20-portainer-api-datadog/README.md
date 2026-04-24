@@ -13,13 +13,13 @@ Datadog is a comprehensive monitoring platform. By querying the Portainer API fo
 ## Prerequisites
 
 - Portainer CE or BE with API access
-- Datadog account with an API key
-- Python 3.8+ with `datadog-api-client` and `requests`
+- Datadog account with an API key and application key
+- Python 3.8+ with `datadog` and `requests`
 
 ## Installing Dependencies
 
 ```bash
-pip install datadog-api-client requests datadog
+pip install datadog requests
 ```
 
 ## Collecting Container Metrics
@@ -31,23 +31,28 @@ pip install datadog-api-client requests datadog
 import requests
 import time
 import logging
-from datadog import initialize, statsd, api
-from datetime import datetime
+import os
+from datadog import initialize, api
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Configuration
 
-PORTAINER_URL = "https://portainer.example.com"
-PORTAINER_API_KEY = "your-portainer-api-key"
-DATADOG_API_KEY = "your-datadog-api-key"
-DATADOG_APP_KEY = "your-datadog-app-key"
-ENDPOINT_ID = 1
-COLLECT_INTERVAL = 60
+PORTAINER_URL = os.getenv("PORTAINER_URL", "https://portainer.example.com")
+PORTAINER_API_KEY = os.getenv("PORTAINER_API_KEY", "your-portainer-api-key")
+DATADOG_API_KEY = os.getenv("DATADOG_API_KEY", os.getenv("DD_API_KEY", "your-datadog-api-key"))
+DATADOG_APP_KEY = os.getenv("DATADOG_APP_KEY", os.getenv("DD_APP_KEY", "your-datadog-app-key"))
+DATADOG_SITE = os.getenv("DATADOG_SITE", os.getenv("DD_SITE", "datadoghq.com"))
+ENDPOINT_ID = int(os.getenv("PORTAINER_ENDPOINT_ID", "1"))
+COLLECT_INTERVAL = int(os.getenv("COLLECT_INTERVAL", "60"))
 
 # Initialize Datadog
-initialize(api_key=DATADOG_API_KEY, app_key=DATADOG_APP_KEY)
+initialize(
+    api_key=DATADOG_API_KEY,
+    app_key=DATADOG_APP_KEY,
+    api_host=f"https://api.{DATADOG_SITE}/"
+)
 
 portainer_headers = {"X-API-Key": PORTAINER_API_KEY}
 
@@ -78,12 +83,16 @@ def get_container_stats(container_id: str) -> dict:
 
 def calculate_cpu_percent(stats: dict) -> float:
     """Calculate CPU percentage from Docker stats."""
-    cpu_delta = (stats['cpu_stats']['cpu_usage']['total_usage'] -
-                 stats['precpu_stats']['cpu_usage']['total_usage'])
-    system_delta = (stats['cpu_stats']['system_cpu_usage'] -
-                    stats['precpu_stats']['system_cpu_usage'])
-    num_cpus = stats['cpu_stats'].get('online_cpus', 1)
-    if system_delta > 0:
+    cpu_stats = stats.get('cpu_stats', {})
+    precpu_stats = stats.get('precpu_stats', {})
+    cpu_usage = cpu_stats.get('cpu_usage', {})
+    precpu_usage = precpu_stats.get('cpu_usage', {})
+
+    cpu_delta = cpu_usage.get('total_usage', 0) - precpu_usage.get('total_usage', 0)
+    system_delta = cpu_stats.get('system_cpu_usage', 0) - precpu_stats.get('system_cpu_usage', 0)
+    num_cpus = cpu_stats.get('online_cpus') or len(cpu_usage.get('percpu_usage', []) or []) or 1
+
+    if system_delta > 0 and cpu_delta > 0:
         return (cpu_delta / system_delta) * num_cpus * 100.0
     return 0.0
 
@@ -220,7 +229,7 @@ curl -X POST "https://api.datadoghq.com/api/v1/monitor" \
   -H "DD-APPLICATION-KEY: your-app-key" \
   -d '{
     "name": "Container Down Alert",
-    "type": "metric alert",
+    "type": "query alert",
     "query": "avg(last_5m):avg:portainer.container.running{*} by {container_name} < 1",
     "message": "Container {{container_name.name}} is down! @pagerduty",
     "tags": ["portainer", "container"],
@@ -245,8 +254,11 @@ services:
     environment:
       PORTAINER_URL: https://portainer.example.com
       PORTAINER_API_KEY: ${PORTAINER_API_KEY}
+      PORTAINER_ENDPOINT_ID: "1"
       DATADOG_API_KEY: ${DATADOG_API_KEY}
       DATADOG_APP_KEY: ${DATADOG_APP_KEY}
+      DATADOG_SITE: datadoghq.com
+      COLLECT_INTERVAL: "60"
     command: >
       sh -c "pip install datadog requests -q &&
              python /app/collector.py"
