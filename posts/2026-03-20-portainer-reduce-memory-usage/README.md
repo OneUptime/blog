@@ -17,22 +17,22 @@ Check current Portainer memory consumption:
 ```bash
 # Real-time memory stats
 
-docker stats portainer --no-stream --format "{{.MemUsage}}"
+docker stats portainer --no-stream --format '{{.MemUsage}}'
 
 # Detailed memory breakdown
-docker exec -it portainer cat /proc/1/status | grep -E "VmRSS|VmSwap|VmPeak"
+docker exec portainer grep -E 'VmRSS|VmSwap|VmPeak' /proc/1/status
 ```
 
 The main memory consumers in Portainer are:
 
-1. **DockerSnapshotRaw** - raw Docker API responses cached in BoltDB
-2. **Go runtime** - garbage collector heap
+1. **Snapshot data** - `DockerSnapshotRaw` includes container, image, network, volume, and engine data stored in Portainer's database
+2. **Go runtime** - garbage-collected heap and other runtime-managed memory
 3. **Active HTTP connections** - WebSocket sessions for logs/console
 4. **BoltDB mmap** - memory-mapped database file
 
 ## Step 1: Increase Snapshot Interval
 
-Each snapshot stores the full state of an environment in memory. Reducing snapshot frequency directly reduces memory pressure:
+Each snapshot job gathers environment state and stores a snapshot in Portainer's database. Reducing snapshot frequency can reduce snapshot work and database growth:
 
 ```bash
 docker run -d \
@@ -41,7 +41,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
-  --snapshot-interval 300    # 5 minutes instead of 60 seconds
+  --snapshot-interval 15m    # 15 minutes instead of the 5-minute default
 ```
 
 ## Step 2: Tune Go Garbage Collector
@@ -51,46 +51,54 @@ The Go runtime's garbage collector can be tuned to trade CPU for lower memory:
 ```bash
 docker run -d \
   --name portainer \
-  -e GOGC=50 \           # Run GC more aggressively (default 100)
-  -e GOMEMLIMIT=400MiB \ # Hard memory limit (Go 1.19+)
+  -e GOGC=50 \
+  -e GOMEMLIMIT=400MiB \
   -p 9000:9000 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest
 ```
 
-`GOGC=50` triggers garbage collection when heap grows to 50% above the last collection (default is 100%), reducing peak memory at the cost of slightly more CPU.
+`GOGC=50` triggers garbage collection when heap grows to 50% above the last collection (default is 100%), reducing peak memory at the cost of slightly more CPU. `GOMEMLIMIT=400MiB` sets a soft memory limit for the Go runtime (Go 1.19+).
 
 ## Step 3: Compact the BoltDB Database
 
-A large database file increases the memory footprint due to mmap:
+A larger database can increase Portainer's mapped address space because BoltDB uses a memory-mapped database file:
 
 ```bash
 # Check current database size
-docker exec -it portainer du -sh /data/portainer.db
+docker exec portainer du -sh /data/portainer.db
 
-# Stop and compact
+# Recreate Portainer once with startup compaction enabled
 docker stop portainer
-docker run --rm -v portainer_data:/data \
-  portainer/portainer-ce:latest --compact-db
-docker start portainer
+docker rm portainer
+docker run -d \
+  --name portainer \
+  -p 9000:9000 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:latest \
+  --compact-db
 
 # Compare size after compaction
-docker exec -it portainer du -sh /data/portainer.db
+docker exec portainer du -sh /data/portainer.db
 ```
 
 ## Step 4: Reduce Log Level
 
-Lower log levels reduce string allocation overhead:
+Using a higher minimum log level reduces log volume. Portainer supports `DEBUG`, `INFO`, `WARN`, and `ERROR`:
 
 ```bash
 docker run -d \
   --name portainer \
+  -p 9000:9000 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
   portainer/portainer-ce:latest \
-  --log-level warn   # Only log warnings and errors
+  --log-level WARN   # Only log warnings and errors
 ```
 
-## Step 5: Set Memory Limit to Prevent OOM Kill
+## Step 5: Set a Memory Limit to Cap Usage
 
 Set a memory limit to prevent Portainer from consuming all available RAM:
 
@@ -98,28 +106,30 @@ Set a memory limit to prevent Portainer from consuming all available RAM:
 services:
   portainer:
     image: portainer/portainer-ce:latest
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
     mem_limit: 512m
     memswap_limit: 512m   # Disable swap extension
+
+volumes:
+  portainer_data:
 ```
 
 If Portainer is OOM-killed at 512 MB, increase to 768 MB or 1 GB for large deployments.
 
 ## Step 6: Remove Unused Environments
 
-Each connected environment (endpoint) consumes memory for its snapshot. Disconnect unused or decommissioned environments:
+Each connected environment consumes resources for snapshot collection and storage. Remove unused or decommissioned environments:
 
 1. In Portainer, go to **Environments**.
-2. Click the trash icon next to unused environments.
-3. Or disable auto-snapshot for low-priority environments.
+2. Select unused environments and click **Remove**.
 
 ## Memory Usage by Scale
 
-| Environments | Containers | Expected Memory |
-|--------------|------------|-----------------|
-| 1–5          | <50        | 64–128 MB       |
-| 5–15         | 50–200     | 128–256 MB      |
-| 15–30        | 200–500    | 256–512 MB      |
-| 30+          | 500+       | 512 MB – 1 GB   |
+Actual memory usage varies by Portainer version, snapshot interval, and the size of each environment. Measure your own baseline with `docker stats` after each change.
 
 ## Monitoring Memory Trends
 
@@ -128,7 +138,7 @@ Track memory over time to catch gradual leaks:
 ```bash
 # Log memory every 5 minutes
 while true; do
-  echo "$(date +%H:%M) $(docker stats portainer --no-stream --format "{{.MemUsage}}")"
+  echo "$(date +%H:%M) $(docker stats portainer --no-stream --format '{{.MemUsage}}')"
   sleep 300
 done >> /var/log/portainer-memory.log
 ```
