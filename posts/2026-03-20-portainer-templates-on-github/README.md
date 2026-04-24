@@ -20,7 +20,7 @@ GitHub is the most convenient place to host custom Portainer templates. By stori
 
 1. Go to [github.com](https://github.com) and click **New repository**
 2. Name it `portainer-templates` (or similar)
-3. Set visibility to **Public** (for a free raw URL) or **Private** (requires PAT)
+3. Set visibility to **Public** so Portainer can fetch the template catalog and stack repository without authentication
 4. Initialize with a README
 5. Click **Create repository**
 
@@ -29,6 +29,8 @@ GitHub is the most convenient place to host custom Portainer templates. By stori
 ```text
 portainer-templates/
 ├── README.md                     # Documentation
+├── logos/
+│   └── nginx.png
 ├── templates.json                # Main template definitions file
 └── stacks/
     ├── wordpress/
@@ -47,9 +49,10 @@ Create `templates.json` at the repository root:
 
 ```json
 {
-  "version": "2",
+  "version": "3",
   "templates": [
     {
+      "id": 1,
       "type": 1,
       "title": "Nginx Web Server",
       "description": "High-performance web server and reverse proxy",
@@ -73,7 +76,8 @@ Create `templates.json` at the repository root:
       "restart_policy": "unless-stopped"
     },
     {
-      "type": 2,
+      "id": 2,
+      "type": 3,
       "title": "WordPress + MySQL",
       "description": "WordPress CMS with MySQL 8 database",
       "categories": ["CMS", "blog"],
@@ -100,7 +104,8 @@ Create `templates.json` at the repository root:
       ]
     },
     {
-      "type": 2,
+      "id": 3,
+      "type": 3,
       "title": "Monitoring Stack",
       "description": "Prometheus + Grafana monitoring",
       "categories": ["monitoring", "observability"],
@@ -131,7 +136,7 @@ Create `templates.json` at the repository root:
 Create `stacks/wordpress/docker-compose.yml`:
 
 ```yaml
-version: "3.8"
+version: "2"
 
 services:
   wordpress:
@@ -139,7 +144,7 @@ services:
     ports:
       - "${WORDPRESS_PORT:-80}:80"
     environment:
-      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_HOST: db:3306
       WORDPRESS_DB_USER: wordpress
       WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD}
       WORDPRESS_DB_NAME: wordpress
@@ -214,7 +219,7 @@ https://raw.githubusercontent.com/myorg/portainer-templates/main/templates.json
 
 ## Step 8: Keep Templates Updated
 
-Since Portainer fetches the raw file on every access, any changes pushed to your repository are immediately reflected in Portainer - no configuration changes needed.
+Portainer fetches the template catalog URL when loading the **App Templates** list, so after you push changes, refresh **App Templates** in Portainer to load the latest version.
 
 ```bash
 # Update a Compose file
@@ -227,18 +232,14 @@ vim templates.json
 git add .
 git commit -m "Update monitoring stack, add Alertmanager"
 git push origin main
-# Portainer will use the updated version immediately
+# Refresh App Templates in Portainer to load the updated version
 ```
 
 ## Private Repository Access
 
-For private repositories, use a GitHub Personal Access Token:
+For GitHub-hosted app templates, use a public repository.
 
-1. Create a PAT at **GitHub Settings → Developer settings → Personal access tokens**
-2. Grant `repo` (or `contents: read` for fine-grained tokens) access
-3. Use the raw URL with the token embedded (only for Portainer, not shared publicly):
-
-In Portainer settings, some versions support providing credentials. Alternatively, use GitHub Pages to expose a private repo's templates publicly.
+Portainer's app template format expects `repository.url` to point to a public Git repository, and the **App Templates URL** setting only accepts a URL. If you need private Git access, use a different publishing method that exposes the files over unauthenticated HTTPS, or deploy stacks from Git directly in Portainer instead of through app templates.
 
 ## Versioning Your Templates
 
@@ -257,4 +258,4 @@ https://raw.githubusercontent.com/myorg/portainer-templates/v1.0.0/templates.jso
 
 ## Conclusion
 
-GitHub is an excellent platform for hosting Portainer templates. The free raw content CDN, version control, and pull request workflow make it easy to maintain and share template catalogs. Set up your repository, create a well-structured `templates.json`, and configure Portainer to point to it for an instantly updateable template catalog.
+GitHub is an excellent platform for hosting Portainer templates. The free raw content CDN, version control, and pull request workflow make it easy to maintain and share template catalogs. Set up your repository, create a well-structured `templates.json`, and configure Portainer to point to it for an easily updated template catalog.
