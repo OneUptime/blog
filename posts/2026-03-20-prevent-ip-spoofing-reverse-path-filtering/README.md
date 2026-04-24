@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Security, IP Spoofing, Reverse Path Filtering, Sysctl, Networking
 
-Description: Enable reverse path filtering (rp_filter) on Linux to automatically drop packets with spoofed source IP addresses at the kernel level.
+Description: Enable reverse path filtering (rp_filter) on Linux to validate IPv4 source addresses and drop packets that fail the reverse-path check at the kernel level.
 
-IP spoofing - sending packets with a forged source IP - is used in amplification DDoS attacks and to bypass IP-based access controls. Reverse path filtering (RPF) defeats spoofed packets by verifying that the route back to the packet's claimed source actually goes through the interface it arrived on.
+IP spoofing - sending packets with a forged source IP - is used in amplification DDoS attacks and to bypass IP-based access controls. Reverse path filtering (RPF) checks whether the kernel has a route back to the packet's claimed source. In strict mode, that route must go through the interface the packet arrived on.
 
 ## How Reverse Path Filtering Works
 
@@ -51,10 +51,10 @@ done
 
 ## Enable Loose Reverse Path Filtering
 
-Mode 2 (loose): drops packet only if no route exists to the source at all - useful for multi-homed servers:
+Mode 2 (loose): drops packet only if no route exists to the source at all - useful when asymmetric routing is unavoidable:
 
 ```bash
-# Loose mode - less strict, still catches spoofed private/bogon IPs
+# Loose mode - less strict, checks only that the source is reachable
 sudo sysctl -w net.ipv4.conf.all.rp_filter=2
 ```
 
@@ -101,20 +101,19 @@ sudo iptables -A INPUT -i eth0 -s 224.0.0.0/4 -j DROP
 sysctl net.ipv4.conf.all.rp_filter
 # net.ipv4.conf.all.rp_filter = 1
 
-# Verify with iptables LOG (packets dropped by RPF don't hit iptables)
-# RPF drops happen in the kernel before iptables; monitor with:
-sudo ip -s route show
-# Or check /proc/net/snmp for RPF drops:
-grep "InAddrErrors" /proc/net/snmp
+# Check the kernel counter for reverse-path filter drops
+nstat -az TcpExtIPReversePathFilter
 ```
 
 ## Caveats
 
-RPF mode 1 can break asymmetric routing. If your server uses policy routing or has packets arriving via a different interface than the return route, use mode 2 or disable RPF for specific interfaces:
+RPF mode 1 can break asymmetric routing. If your server uses policy routing or has packets arriving via a different interface than the return route, use mode 2. If you need to disable RPF for only one interface, do not leave `net.ipv4.conf.all.rp_filter` set to `1` or `2`, because Linux uses the maximum of `conf/all/rp_filter` and `conf/<iface>/rp_filter`:
 
 ```bash
-# Disable RPF for a specific interface that uses asymmetric routing
+# Disable the global floor, then enable strict RPF only where you want it
+sudo sysctl -w net.ipv4.conf.all.rp_filter=0
+sudo sysctl -w net.ipv4.conf.eth0.rp_filter=1
 sudo sysctl -w net.ipv4.conf.eth1.rp_filter=0
 ```
 
-Reverse path filtering is a lightweight, kernel-level defense that blocks spoofed-source attacks before they consume firewall or application resources.
+Reverse path filtering is a lightweight, kernel-level source-validation defense that can block spoofed-source traffic before it consumes firewall or application resources.
