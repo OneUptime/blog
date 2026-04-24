@@ -8,7 +8,7 @@ Description: Configure a RabbitMQ cluster across multiple IPv4 nodes, set up the
 
 ## Introduction
 
-A RabbitMQ cluster distributes queues, exchanges, and bindings across nodes. All cluster nodes must be able to communicate over the Erlang distribution protocol (default port 25672, also called the cluster bus port). Nodes discover each other by hostname or IP.
+A RabbitMQ cluster shares queue definitions, exchanges, bindings, users, and other metadata across nodes. Queue contents are not replicated by clustering alone. All cluster nodes must be able to communicate over the Erlang distribution protocol (default port 25672, also called the cluster bus port). Nodes identify each other by node name, so the hostname part of each node name must resolve correctly on every node.
 
 ## Architecture
 
@@ -25,7 +25,7 @@ Node 3: 10.0.0.3 (rabbit@node3)
 ```bash
 # The Erlang cookie must be identical on all nodes
 
-# Generate on node 1:
+# Read the existing cookie on node 1:
 sudo cat /var/lib/rabbitmq/.erlang.cookie
 # Example: ABCDEFGHIJKLMNOP
 
@@ -57,14 +57,13 @@ done
 # /etc/rabbitmq/rabbitmq.conf (on all nodes)
 
 # Cluster formation
-cluster_formation.peer_discovery_backend = rabbit_peer_discovery_classic_config
+cluster_formation.peer_discovery_backend = classic_config
 cluster_formation.classic_config.nodes.1 = rabbit@node1
 cluster_formation.classic_config.nodes.2 = rabbit@node2
 cluster_formation.classic_config.nodes.3 = rabbit@node3
 
 # Listeners
-listeners.tcp.1 = 10.0.0.1:5672    # Node-specific binding
-listeners.tcp.2 = 127.0.0.1:5672
+listeners.tcp.default = 5672
 
 # Cluster communication
 cluster_partition_handling = pause_minority
@@ -94,31 +93,32 @@ sudo rabbitmqctl cluster_status
 ```bash
 # Ports needed between cluster nodes:
 # 4369  - epmd (Erlang Port Mapper Daemon)
-# 5672  - AMQP
-# 15672 - Management (optional, per node)
 # 25672 - Erlang distribution / cluster bus
+# 35672-35682 - CLI tool distribution client ports (if CLI tools are used remotely)
+# 5672  - AMQP client traffic (open to client networks as needed)
+# 15672 - Management UI / HTTP API (optional, open to admin networks as needed)
 
 CLUSTER_NODES="10.0.0.1 10.0.0.2 10.0.0.3"
 
 for node in $CLUSTER_NODES; do
-  sudo ufw allow from $node to any port 4369
-  sudo ufw allow from $node to any port 25672
-  sudo ufw allow from $node to any port 5672
+  sudo ufw allow from $node to any port 4369 proto tcp
+  sudo ufw allow from $node to any port 25672 proto tcp
 done
 ```
 
 ## High Availability Policies
 
 ```bash
-# Mirrored queues: replicate queue data across all nodes
-sudo rabbitmqctl set_policy ha-all ".*" \
-  '{"ha-mode":"all","ha-sync-mode":"automatic"}' \
-  --apply-to queues
+# Classic mirrored queue policies were removed in RabbitMQ 4.x.
+# For high availability, declare quorum queues instead by setting
+# x-queue-type = quorum when the queue is declared. Queue type cannot
+# be changed later using a policy.
 
-# Or mirror to 2 nodes (quorum):
-sudo rabbitmqctl set_policy ha-two ".*" \
-  '{"ha-mode":"exactly","ha-params":2,"ha-sync-mode":"automatic"}' \
-  --apply-to queues
+# Quorum queues still support policies for settings such as delivery limits.
+sudo rabbitmqctl set_policy qq-overrides "^qq\." \
+  '{"delivery-limit":50}' \
+  --priority 1 \
+  --apply-to "quorum_queues"
 
 # View policies
 sudo rabbitmqctl list_policies
@@ -126,4 +126,4 @@ sudo rabbitmqctl list_policies
 
 ## Conclusion
 
-RabbitMQ clustering requires the same Erlang cookie on all nodes, matching hostnames in `/etc/hosts`, and open ports 4369 and 25672 between cluster members. Use `join_cluster` or peer discovery in `rabbitmq.conf` to form the cluster. Apply queue mirroring policies for high availability - a queue without a policy only exists on its host node and is lost if that node fails.
+RabbitMQ clustering requires the same Erlang cookie on all nodes, matching hostnames in `/etc/hosts`, and open ports 4369 and 25672 between cluster members. Use `join_cluster` or peer discovery in `rabbitmq.conf` to form the cluster. Clustering shares metadata across nodes, but queue contents are replicated only when you use a replicated queue type such as quorum queues; a non-replicated classic queue's messages remain on its leader node and can be lost if that node fails permanently.
