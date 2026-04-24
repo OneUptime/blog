@@ -38,8 +38,6 @@ graph TB
 ```yaml
 # retail-edge-stack.yml
 
-version: "3.8"
-
 services:
   # Point-of-sale application
   pos-app:
@@ -74,7 +72,7 @@ services:
   inventory-service:
     image: myregistry/inventory-service:3.0.1
     environment:
-      - DATABASE_URL=postgres://inventory:password@postgres:5432/inventory
+      - DATABASE_URL=postgres://inventory:inventory_pw@postgres:5432/inventory
       - SYNC_INTERVAL=300    # Sync with central inventory every 5 minutes
     depends_on:
       - postgres
@@ -107,12 +105,12 @@ networks:
 
 ## Step 3: Configure Store-Specific Variables
 
-Each store has a unique `STORE_ID`. Use Portainer Edge environment variables to set store-specific configuration:
+Each store has a unique `STORE_ID`. If you're deploying an Edge Stack in Portainer Business Edition, use the stack's **Environment variables** section to set store-specific configuration at deployment time:
 
-1. Go to **Environments > [Store Environment] > Environment Variables**
-2. Set: `STORE_ID=store-us-ca-001`, `TERMINAL_ID=pos-01`
+1. Go to **Edge Stacks > Add stack** (or edit an existing Edge Stack)
+2. In **Environment variables**, set `STORE_ID=store-us-ca-001` and `TERMINAL_ID=pos-01`
 
-These variables are injected into the stack at deployment time.
+Portainer injects these values into the stack at deployment time while leaving the `${STORE_ID}` and `${TERMINAL_ID}` references in the Compose file.
 
 ## Step 4: Push Promotions via Edge Jobs
 
@@ -123,17 +121,35 @@ Run promotional content updates across all stores simultaneously:
 # promotion-update.sh - runs via Portainer Edge Job
 # Pulls the latest promotional content for the signage player
 
-# Pull new promotions from the content server
-curl -o /var/signage/promotions.json \
-  https://promotions.example.com/current/${STORE_ID}
+SIGNAGE_CONTAINER=$(docker ps -q --filter "label=com.docker.compose.service=signage-player" | head -n1)
 
-# Signal the signage container to reload
-docker exec signage-player /usr/bin/reload-content.sh
+if [ -z "$SIGNAGE_CONTAINER" ]; then
+  echo "signage-player container not found" >&2
+  exit 1
+fi
+
+STORE_ID=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$SIGNAGE_CONTAINER" | sed -n 's/^STORE_ID=//p')
+
+if [ -z "$STORE_ID" ]; then
+  echo "STORE_ID not set in signage-player container" >&2
+  exit 1
+fi
+
+TMP_FILE=$(mktemp)
+trap 'rm -f "$TMP_FILE"' EXIT
+
+# Pull new promotions from the content server to a temporary file on the host
+curl -fsSL -o "$TMP_FILE" \
+  "https://promotions.example.com/current/${STORE_ID}"
+
+# Copy the content into the running container, then reload the player
+docker cp "$TMP_FILE" "${SIGNAGE_CONTAINER}:/var/signage/cache/promotions.json"
+docker exec "$SIGNAGE_CONTAINER" /usr/bin/reload-content.sh
 
 echo "Promotion update completed for store ${STORE_ID}"
 ```
 
-Schedule this job via **Edge Jobs > Add Edge Job** with target Edge Group `all-stores`.
+If your edge environments are Docker Standalone hosts that use `/etc/cron.d`, schedule this via **Edge Jobs > Add Edge Job** with target Edge Group `all-stores`.
 
 ## Step 5: Handle Store Offline Scenarios
 
@@ -145,7 +161,7 @@ Configure the inventory service to operate without central connectivity:
 
 ## Security Hardening
 
-For retail PCI-DSS compliance:
+For retail PCI-DSS hardening:
 
 ```yaml
 services:
@@ -166,4 +182,4 @@ services:
 
 ## Summary
 
-Portainer gives retail operations teams a single pane of glass to manage hundreds of store locations. Centralized deployment, per-store environment variables, and Edge Jobs for scripted updates make it a practical choice for retail edge infrastructure.
+Portainer gives retail operations teams a single pane of glass to manage hundreds of store locations. Centralized deployment, Edge Stack environment variables in Portainer Business Edition, and Edge Jobs for scripted updates make it a practical choice for retail edge infrastructure.
