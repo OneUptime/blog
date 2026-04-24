@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Swarm, Global Service, Infrastructure, Monitoring
 
-Description: Deploy Docker Swarm global services that run one instance per node, equivalent to Kubernetes DaemonSets, using Portainer.
+Description: Deploy Docker Swarm global services that run one task per eligible node, equivalent to Kubernetes DaemonSets, using Portainer.
 
 ## Introduction
 
-Global services in Docker Swarm run exactly one task on every node in the cluster-or on nodes matching placement constraints. This is equivalent to Kubernetes DaemonSets. Common use cases include monitoring agents, log collectors, security scanners, and storage drivers.
+Global services in Docker Swarm run one task on every available node in the cluster, or on every available node matching placement constraints. This is the Docker Swarm equivalent of Kubernetes DaemonSets. Common use cases include monitoring agents, log collectors, security scanners, and storage drivers.
 
 ## Global Service Use Cases
 
 - **Monitoring**: Run a metrics exporter on every node
-- **Logging**: Run a log shipper (Filebeat, Promtail) on every node
+- **Logging**: Run a log shipper on every node
 - **Security**: Run a security scanner on every node
 - **Storage**: Run a storage provisioner on every node
-- **Networking**: Run network agents (Calico, Weave) on every node
+- **Networking**: Run network or SDN agents on every node
 
 ## Global Service Configuration
 
@@ -28,7 +28,7 @@ version: '3.8'
 services:
   # Node exporter: metrics from every node
   node-exporter:
-    image: prom/node-exporter:latest
+    image: quay.io/prometheus/node-exporter:latest
     deploy:
       mode: global              # Run on ALL nodes
     volumes:
@@ -38,25 +38,16 @@ services:
     command:
       - --path.procfs=/host/proc
       - --path.sysfs=/host/sys
-      - --collector.filesystem.ignored-mount-points='^/(sys|proc|dev|host|etc)($$|/)'
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+)($$|/)
     networks:
       - monitoring
 
-  # Promtail: log collection from every node
-  promtail:
-    image: grafana/promtail:latest
-    deploy:
-      mode: global
-    volumes:
-      - /var/log:/var/log:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - promtail-config:/etc/promtail
-    networks:
-      - monitoring
-
-  # Portainer agent: management on every node
+  # Portainer agent (legacy option): management on every node
   portainer-agent:
     image: portainer/agent:latest
+    environment:
+      AGENT_CLUSTER_ADDR: tasks.portainer-agent:9001
     deploy:
       mode: global
       placement:
@@ -65,12 +56,16 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
+    ports:
+      - published: 9001
+        target: 9001
+        mode: host
     networks:
       - portainer-agent-net
 
   # CAdvisor: container metrics from every node
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: ghcr.io/google/cadvisor:latest
     deploy:
       mode: global
     volumes:
@@ -81,22 +76,7 @@ services:
     ports:
       - published: 8080
         target: 8080
-        mode: host    # Use host mode to avoid port conflicts
-
-  # Falco: security monitoring (workers only)
-  falco:
-    image: falcosecurity/falco:latest
-    deploy:
-      mode: global
-      placement:
-        constraints:
-          - node.role == worker    # Security monitoring on workers
-    privileged: true
-    volumes:
-      - /dev:/host/dev
-      - /proc:/host/proc:ro
-      - /boot:/host/boot:ro
-      - /lib/modules:/host/lib/modules:ro
+        mode: host    # Publish on each node directly
 
 networks:
   monitoring:
@@ -105,15 +85,11 @@ networks:
   portainer-agent-net:
     driver: overlay
     attachable: true
-
-volumes:
-  promtail-config:
-    external: true
 ```
 
 ## Deploying via Portainer
 
-In Portainer: **Stacks > Add Stack**
+In Portainer: **Stacks > Add stack**
 
 1. Name: `global-monitoring`
 2. Paste the compose content
@@ -164,14 +140,13 @@ docker service ps global-monitoring_node-exporter
 # Check global service task distribution
 docker service ps global-monitoring_node-exporter
 
-# Restart a failed global task on a specific node
-NODE=$(docker node ls --filter name=worker2 -q)
-docker service update \
-  --force \
-  --constraint-add node.id==$NODE \
-  global-monitoring_node-exporter
+# Check the task on a specific node
+docker service ps --filter node=worker2 global-monitoring_node-exporter
+
+# Restart the global service with a rolling update
+docker service update --force global-monitoring_node-exporter
 ```
 
 ## Conclusion
 
-Global services in Docker Swarm via Portainer provide the DaemonSet equivalent for ensuring infrastructure agents run on every cluster node. Portainer's stack management makes deploying and monitoring global services straightforward, with per-node task visibility in the Services view. As nodes join or leave the cluster, global services automatically adjust, maintaining consistent observability and security coverage.
+Global services in Docker Swarm via Portainer provide the DaemonSet equivalent for ensuring infrastructure agents run on every eligible cluster node. Portainer's stack management makes deploying and monitoring global services straightforward, with per-node task visibility in the Services view. As nodes join or leave the cluster, global services automatically adjust, maintaining consistent observability and security coverage.
