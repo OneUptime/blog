@@ -8,7 +8,7 @@ Description: A guide to restoring Portainer from a backup after data loss, corru
 
 ## Overview
 
-Being able to restore Portainer from a backup is just as important as creating the backup. This guide covers how to restore Portainer CE and Business Edition from various backup types including volume tar archives, database file copies, and Portainer BE's native backup format.
+Being able to restore Portainer from a backup is just as important as creating the backup. This guide covers how to restore Portainer CE and Business Edition from various backup types including volume tar archives, database file copies, and Portainer's native backup format.
 
 ## Restore from Docker Volume Backup (tar archive)
 
@@ -44,45 +44,42 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 
 echo "Portainer restored successfully"
 ```
 
 ## Restore from BoltDB File Copy
 
+This restores the Portainer database file only. It does not restore the rest of `/data` such as stack files, certificates, or other Portainer-managed files.
+
 ```bash
 # Stop Portainer
 docker stop portainer
 
 # Replace the database file
+# Use portainer.edb instead of portainer.db if database encryption is enabled
 docker run --rm \
   -v portainer_data:/data \
   -v $(pwd):/backup \
-  alpine cp /backup/portainer-20260319.db /data/portainer.db
+  alpine sh -c 'cp /backup/portainer-20260319.db /data/portainer.db'
 
 # Start Portainer
 docker start portainer
 ```
 
-## Restore Portainer BE from Native Backup
+## Restore Portainer from Native Backup
 
 ```bash
-# Via the Portainer UI (after logging in as admin)
-# Settings → Backup → Restore from backup → Upload ZIP file
-# Note: Restoring via UI requires Portainer to be running
+# Via the Portainer UI on a fresh instance
+# Initial setup screen → Restore Portainer from backup → Select backup file
+# Note: Restore is only available before the instance is initialized and the data volume must be empty
 
-# Via API
-TOKEN=$(curl -s -k \
-  -X POST https://portainer:9443/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"currentPassword"}' \
-  | jq -r '.jwt')
-
+# Via API on a fresh, uninitialized instance
+# Omit the password field if the backup is not encrypted
 curl -s -k \
   -X POST https://portainer:9443/api/restore \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -F "file=@portainer-backup-20260319.zip" \
+  -F "file=@portainer-backup-20260319.tar.gz.encrypted" \
   -F "password=encryption-password"
 ```
 
@@ -92,48 +89,45 @@ curl -s -k \
 # Scale down Portainer deployment first
 kubectl scale deployment portainer --replicas=0 -n portainer
 
-# Wait for pod to terminate
-kubectl wait --for=delete pod -l app=portainer -n portainer --timeout=60s
+# Wait for the Portainer pod to terminate
+kubectl wait --for=delete pod \
+  -l app.kubernetes.io/name=portainer,app.kubernetes.io/instance=portainer \
+  -n portainer \
+  --timeout=60s
 
-# Restore data to PVC using a Job
+# Start a temporary restore pod that mounts the Portainer PVC
 kubectl apply -f - << 'EOF'
-apiVersion: batch/v1
-kind: Job
+apiVersion: v1
+kind: Pod
 metadata:
   name: portainer-restore
   namespace: portainer
 spec:
-  template:
-    spec:
-      initContainers:
-        - name: restore
-          image: alpine
-          command:
-            - sh
-            - -c
-            - |
-              cd /data && tar xzf /backup/portainer-backup.tar.gz
-              echo "Restore complete"
-          volumeMounts:
-            - name: portainer-data
-              mountPath: /data
-            - name: backup
-              mountPath: /backup
-      containers:
-        - name: done
-          image: alpine
-          command: ["echo", "Restore job complete"]
-      volumes:
+  restartPolicy: Never
+  containers:
+    - name: restore
+      image: alpine
+      command: ["sh", "-c", "sleep infinity"]
+      volumeMounts:
         - name: portainer-data
-          persistentVolumeClaim:
-            claimName: portainer
+          mountPath: /data
         - name: backup
-          configMap:
-            name: portainer-backup   # Pre-load backup into ConfigMap
-      restartPolicy: Never
+          mountPath: /backup
+  volumes:
+    - name: portainer-data
+      persistentVolumeClaim:
+        claimName: portainer
+    - name: backup
+      emptyDir: {}
 EOF
 
-# Scale Portainer back up
+# Wait for the restore pod, copy the backup archive into it, then extract
+kubectl wait --for=condition=Ready pod/portainer-restore -n portainer --timeout=60s
+kubectl cp ./portainer-backup.tar.gz portainer/portainer-restore:/backup/portainer-backup.tar.gz
+kubectl exec -n portainer portainer-restore -- sh -c 'cd /data && tar xzf /backup/portainer-backup.tar.gz'
+
+# Clean up the restore pod and scale Portainer back up
+kubectl delete pod portainer-restore -n portainer
 kubectl scale deployment portainer --replicas=1 -n portainer
 ```
 
@@ -157,14 +151,17 @@ docker logs portainer --tail=20
 
 ### Database Version Mismatch
 
-If you restore to an older Portainer version's backup on a newer version:
+If you are rolling back to an older Portainer version, start Portainer with the version that matches the database backup:
 
 ```bash
-# Start Portainer with -no-analytics flag to ensure clean startup
 docker run -d \
-  ...
-  portainer/portainer-ce:2.19.0 \   # Use the version matching your backup
-  --no-analytics
+  -p 8000:8000 \
+  -p 9443:9443 \
+  --name portainer \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:2.33.7
 ```
 
 ### Corrupted Backup
@@ -178,4 +175,4 @@ tar tzf portainer-backup.tar.gz | head
 
 ## Conclusion
 
-Restoring Portainer from a backup is straightforward when you follow the correct steps. The key is to stop Portainer before restoring data to avoid corruption, restore to a fresh volume, and verify the restoration by logging in and checking your configuration. Always test your restore procedure before a real incident - restore to a test environment periodically to confirm backups are working correctly.
+Restoring Portainer from a backup is straightforward when you follow the correct steps. The key is to stop Portainer before restoring data to avoid corruption, restore to a fresh volume, or deploy a fresh instance with an empty data volume when using Portainer's built-in restore, and verify the restoration by logging in and checking your configuration. Always test your restore procedure before a real incident - restore to a test environment periodically to confirm backups are working correctly.
