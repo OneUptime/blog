@@ -8,15 +8,15 @@ Description: Learn how to configure Postfix to offer an authenticated SMTP submi
 
 ---
 
-Port 587 (SMTP Submission) is the standard port for mail clients to submit outbound email. Unlike port 25 (which is for server-to-server relay), port 587 requires authentication, preventing unauthorized relaying.
+Port 587 (SMTP Submission) is the standard port for mail clients to submit outbound email. Unlike port 25 (which is primarily for server-to-server relay), port 587 normally requires authentication or other authorization, preventing unauthorized relaying.
 
 ## Understanding the Ports
 
-| Port | Protocol | Purpose |
+| Port | Service | Purpose |
 |------|----------|---------|
-| 25 | SMTP | Server-to-server relay; no auth required |
-| 465 | SMTPS | SMTP over SSL (legacy) |
-| 587 | Submission | Client-to-server; STARTTLS + auth required |
+| 25 | SMTP | Server-to-server relay; auth not normally required |
+| 465 | Submissions | Client-to-server submission over implicit TLS |
+| 587 | Submission | Client-to-server; STARTTLS + auth/authorization |
 
 ## Enabling Port 587 in master.cf
 
@@ -27,15 +27,20 @@ Postfix's `master.cf` controls which services run. Uncomment or add the submissi
 
 # Uncomment the submission line (port 587)
 
-submission inet n       -       y       -       -       smtpd
+submission inet n       -       n       -       -       smtpd
   -o syslog_name=postfix/submission
-  -o smtpd_tls_security_level=encrypt     # Require STARTTLS
-  -o smtpd_sasl_auth_enable=yes           # Require SASL authentication
-  -o smtpd_sasl_type=dovecot              # Use Dovecot SASL
+  # Require STARTTLS
+  -o smtpd_tls_security_level=encrypt
+  # Enable SASL authentication via Dovecot
+  -o smtpd_sasl_auth_enable=yes
+  -o smtpd_sasl_type=dovecot
   -o smtpd_sasl_path=private/auth
-  -o smtpd_recipient_restrictions=permit_sasl_authenticated,reject
+  # Allow only authenticated clients on the submission service
+  -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
   -o milter_macro_daemon_name=ORIGINATING
 ```
+
+If you use Dovecot for SASL, make sure it exposes the auth socket at `/var/spool/postfix/private/auth`; `private/auth` is relative to Postfix's queue directory.
 
 ## Configuring TLS in main.cf
 
@@ -82,7 +87,7 @@ firewall-cmd --add-port=587/tcp --permanent && firewall-cmd --reload
 ## Testing the Submission Service
 
 ```bash
-# Test SMTP submission with STARTTLS using openssl
+# Verify the STARTTLS handshake on the submission service using openssl
 openssl s_client -starttls smtp -connect mail.example.com:587
 
 # Or use swaks (Swiss Army Knife for SMTP)
@@ -99,13 +104,13 @@ swaks --to recipient@example.com \
 ## Verifying Port 587 is Listening
 
 ```bash
-# Check Postfix is listening on port 587 (IPv4)
-ss -tlnp | grep :587
+# Check Postfix is listening on port 587 over IPv4
+ss -4 -tlnp | grep :587
 ```
 
 ## Key Takeaways
 
 - Enable the `submission` service in `master.cf` and set `smtpd_tls_security_level=encrypt` to require STARTTLS.
-- Use `smtpd_recipient_restrictions=permit_sasl_authenticated,reject` to allow only authenticated users to relay.
+- Use `smtpd_relay_restrictions=permit_sasl_authenticated,reject` on the `submission` service to allow only authenticated clients to submit mail.
 - Set `inet_protocols = ipv4` in `main.cf` to prevent Postfix from binding to IPv6.
-- Test with `swaks` or `openssl s_client -starttls smtp` to verify TLS and authentication work correctly.
+- Test with `openssl s_client -starttls smtp` to verify TLS, and with `swaks` to verify TLS plus authentication.
