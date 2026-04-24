@@ -8,7 +8,7 @@ Description: Learn how to use Python's asyncio library to build high-concurrency
 
 ## Why asyncio for Socket Programming?
 
-`asyncio` provides cooperative multitasking using coroutines. Unlike threads, coroutines switch at explicit `await` points, avoiding race conditions and the overhead of thread creation. A single asyncio event loop can handle thousands of concurrent TCP connections.
+`asyncio` provides cooperative multitasking using coroutines. Unlike threads, coroutines switch at explicit `await` points, making suspension points easier to reason about while avoiding the overhead of thread creation. A single asyncio event loop can handle thousands of concurrent TCP connections.
 
 ## Async TCP Echo Server
 
@@ -34,10 +34,10 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
 
             # Send the data back (echo)
             writer.write(data)
-            # Ensure data is flushed to the OS send buffer
+            # Wait for flow control if the write buffer is full
             await writer.drain()
 
-    except (asyncio.IncompleteReadError, ConnectionResetError):
+    except ConnectionResetError:
         pass
     finally:
         print(f"Disconnected: {addr}")
@@ -141,7 +141,7 @@ async def client_with_timeout():
         print(data.decode())
         writer.close()
         await writer.wait_closed()
-    except asyncio.TimeoutError:
+    except TimeoutError:
         print("Connection or response timed out")
 
 asyncio.run(client_with_timeout())
@@ -149,4 +149,4 @@ asyncio.run(client_with_timeout())
 
 ## Conclusion
 
-Python's `asyncio` makes it easy to build high-concurrency IPv4 TCP servers and clients with `asyncio.start_server` and `asyncio.open_connection`. By awaiting I/O operations, a single event loop thread can serve thousands of clients simultaneously-far more efficiently than one thread per connection.
+Python's `asyncio` makes it easy to build high-concurrency IPv4 TCP servers and clients with `asyncio.start_server` and `asyncio.open_connection`. By awaiting I/O operations, a single event loop thread can serve thousands of clients concurrently, far more efficiently than one thread per connection.
