@@ -20,8 +20,8 @@ ConfigMaps allow you to decouple configuration from container images, making app
 ### Via Form
 
 1. Select your Kubernetes environment
-2. Navigate to **ConfigMaps** in the sidebar
-3. Click **+ Add ConfigMap**
+2. Navigate to **ConfigMaps & Secrets** in the sidebar, then select the **ConfigMaps** tab
+3. Click **Add with form**
 4. Fill in:
 
 ```text
@@ -41,7 +41,7 @@ Key: CACHE_ENABLED     Value: "true"
 
 6. Click **Create ConfigMap**
 
-### Via YAML
+### Via Manifest
 
 ```yaml
 apiVersion: v1
@@ -88,18 +88,11 @@ data:
 
 When creating/editing an application:
 
-1. Go to the **Environment** section
-2. Click **+ From ConfigMap**
-3. Select:
+1. Go to the **ConfigMaps** section
+2. Select `app-config`
+3. Portainer exposes all keys from the selected ConfigMap as environment variables by default
 
-```sql
-ConfigMap: app-config
-  [x] Import all keys as environment variables
-
-  Or select individual keys:
-  Key: NODE_ENV    → Environment variable name: NODE_ENV
-  Key: LOG_LEVEL   → Environment variable name: LOG_LEVEL
-```
+If you need to import only specific keys or rename environment variables, use a manifest.
 
 ### Via YAML
 
@@ -128,13 +121,11 @@ This is ideal for configuration files that need to be present on the filesystem.
 
 ### Via Portainer Form
 
-In the application editor under **Volumes**:
+In the application editor under **ConfigMaps**:
 
-```text
-Volume type:    ConfigMap
-ConfigMap:      nginx-config
-Mount path:     /etc/nginx/conf.d
-```
+1. Select `nginx-config`
+2. Click **Override** for the key you want to mount as a file
+3. Set the target path inside the container, for example `/etc/nginx/conf.d/nginx.conf` or `/app/config/settings.json`
 
 ### Via YAML
 
@@ -149,7 +140,7 @@ spec:
           readOnly: true
         - name: app-settings
           mountPath: /app/config/settings.json  # Mount specific key as file
-          subPath: app-settings.json           # Which key to mount
+          subPath: settings.json               # Path inside the ConfigMap volume
           readOnly: true
 
   volumes:
@@ -163,7 +154,7 @@ spec:
         name: nginx-config
         items:
           - key: app-settings.json    # Mount only this key
-            path: settings.json       # As this filename
+            path: settings.json       # Expose it with this filename inside the volume
 ```
 
 ## Step 4: Verify ConfigMap Attachment
@@ -177,8 +168,8 @@ kubectl get configmap app-config -n production
 kubectl describe configmap app-config -n production
 
 # Verify inside a running pod
-kubectl exec -it <pod-name> -n production -- env | grep NODE_ENV
-kubectl exec -it <pod-name> -n production -- cat /etc/nginx/conf.d/nginx.conf
+kubectl exec <pod-name> -n production -- env | grep NODE_ENV
+kubectl exec <pod-name> -n production -- cat /etc/nginx/conf.d/nginx.conf
 ```
 
 ## Step 5: Update a ConfigMap
@@ -190,14 +181,14 @@ kubectl edit configmap app-config -n production
 # Apply updated YAML
 kubectl apply -f app-config.yaml
 
-# Or in Portainer: navigate to ConfigMaps, click Edit, save
+# Or in Portainer: navigate to ConfigMaps & Secrets, open the ConfigMap, edit it, and save
 ```
 
-**Important:** Updating a ConfigMap does NOT automatically restart pods. Pods see the changes in mounted volumes after a short delay (~1-2 minutes), but environment variables from ConfigMaps require a pod restart.
+**Important:** Updating a ConfigMap does NOT automatically restart pods. ConfigMaps mounted as volumes are updated eventually, subject to the kubelet sync period and cache propagation delay, but environment variables from ConfigMaps require a pod restart. If you mount a ConfigMap key using `subPath`, that container does not receive ConfigMap updates.
 
 ```bash
 # Restart pods to pick up env var changes
-kubectl rollout restart deployment myapp -n production
+kubectl rollout restart deployment/myapp -n production
 ```
 
 ## Step 6: ConfigMap Best Practices
