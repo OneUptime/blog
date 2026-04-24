@@ -19,8 +19,8 @@ PPTP uses:
 - PPP for authentication and address assignment
 
 IPv6 over PPTP:
-- Possible via PPP's +ipv6 option (assigns IPv6 link-local addresses)
-- No standardized IPv6 address assignment
+- Possible via PPP's +ipv6 option (enables IPv6CP for IPv6 link-local addressing)
+- IPv6CP only negotiates interface identifiers; global IPv6 addresses need normal IPv6 autoconfiguration/routing
 - Transport itself is IPv4 only
 ```
 
@@ -30,23 +30,22 @@ IPv6 over PPTP:
 
 | Vulnerability | Impact |
 |---|---|
-| MS-CHAPv2 weakness | Authentication can be cracked within hours with GPU |
-| RC4 encryption | 40-128 bit, broken and deprecated |
-| MPPE (encryption) | Known design flaws |
-| No perfect forward secrecy | Past sessions decryptable |
-| Bit-flipping attacks | Traffic can be manipulated |
+| MS-CHAPv2 weakness | Captured handshakes can be reduced to a single DES key and cracked practically |
+| RC4 encryption | MPPE uses obsolete RC4 with 40/56/128-bit options |
+| MPPE (encryption) | Negotiation is not integrity-protected |
+| No perfect forward secrecy | Session keys are derived from credentials |
+| No authenticated encryption | Traffic integrity is not protected |
 
 ```bash
 # PPTP MS-CHAPv2 has been cracked:
 
-# The CloudCracker service showed in 2012 that MS-CHAPv2
-# provides zero effective security
-# Bruce Schneier: "PPTP must no longer be used"
+# The 2012 ChapCrack/CloudCracker work showed that MS-CHAPv2
+# can be reduced to a single DES key
 ```
 
-### NSA Capability
+### Publicly Documented Risk
 
-PPTP is widely believed to be within NSA decryption capability, having been compromised through both the MS-CHAPv2 flaw and RC4 weaknesses documented in the Snowden disclosures.
+Regardless of intelligence-agency reporting, the public record is already enough: MS-CHAPv2 can be reduced to a single DES key, and PPTP's MPPE layer is RC4-based.
 
 ## If You Absolutely Must Configure PPTP with IPv6
 
@@ -70,7 +69,7 @@ ms-dns 8.8.8.8
 ```
 
 ```bash
-# Start pptpd (Debian/Ubuntu)
+# Install and start pptpd (Debian; current Ubuntu releases no longer ship this server package)
 sudo apt-get install pptpd
 sudo systemctl start pptpd
 ```
@@ -97,8 +96,8 @@ sudo ip6tables -A FORWARD -i ppp+ -j ACCEPT
 
 ```bash
 # 1. Deploy WireGuard server (10 minute setup)
-apt install wireguard
-wg genkey | tee /etc/wireguard/private.key | wg pubkey > /etc/wireguard/public.key
+sudo apt install wireguard
+sudo sh -c 'umask 077; wg genkey | tee /etc/wireguard/private.key | wg pubkey > /etc/wireguard/public.key'
 
 # 2. Configure WireGuard with IPv6 (see WireGuard IPv6 guides)
 # 3. Test new WireGuard connection
