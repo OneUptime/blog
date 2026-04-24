@@ -23,6 +23,15 @@ StatefulSets are Kubernetes workload objects for managing stateful applications.
 # postgres-statefulset.yml - deploy via Portainer
 
 apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: production
+type: Opaque
+stringData:
+  password: replace-with-a-strong-password
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: postgres-headless
@@ -115,16 +124,30 @@ spec:
       name: postgres-data
     spec:
       accessModes: ["ReadWriteOnce"]
-      storageClassName: standard
       resources:
         requests:
           storage: 20Gi
 ```
 
-## Redis Cluster StatefulSet
+## Redis StatefulSet
 
 ```yaml
 # redis-statefulset.yml
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-headless
+  namespace: production
+  labels:
+    app: redis
+spec:
+  ports:
+  - port: 6379
+    name: redis
+  clusterIP: None
+  selector:
+    app: redis
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -132,7 +155,7 @@ metadata:
   namespace: production
 spec:
   serviceName: redis-headless
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: redis
@@ -141,21 +164,13 @@ spec:
       labels:
         app: redis
     spec:
-      initContainers:
-      - name: init-redis
-        image: redis:7-alpine
-        command:
-        - sh
-        - -c
-        - |
-          REDIS_NODES=$(nslookup redis-headless.production.svc.cluster.local | grep "Address:" | awk '{print $2}' | tr '\n' ',')
-          echo "Cluster nodes: $REDIS_NODES"
       containers:
       - name: redis
         image: redis:7-alpine
         command: ["redis-server", "--appendonly", "yes"]
         ports:
         - containerPort: 6379
+          name: redis
         volumeMounts:
         - name: redis-data
           mountPath: /data
@@ -178,18 +193,18 @@ spec:
 
 Via Portainer UI: **Kubernetes > Applications**
 
-- View StatefulSet pods with their ordinal indices (pod-0, pod-1, pod-2)
-- Scale via the slider (ordered scale-up, reverse-ordered scale-down)
-- View persistent volumes attached to each pod
+- View StatefulSet pods with their ordinal suffixes (for example, `postgres-0`, `postgres-1`)
+- Scale by editing the application manifest or patching `.spec.replicas` (ordered scale-up, reverse-ordered scale-down)
+- View persistent storage details for the application
 - Access pod console for database administration
 
 ```bash
-# Scale via Portainer API
-curl -X PUT \
+# Scale via Portainer API by patching the StatefulSet
+curl -X PATCH \
   -H "X-API-Key: your-api-key" \
-  -H "Content-Type: application/json" \
-  -d '{"spec":{"replicas":3}}' \
-  "https://portainer.example.com/api/endpoints/1/kubernetes/apis/apps/v1/namespaces/production/statefulsets/postgres/scale"
+  -H "Content-Type: application/json-patch+json" \
+  -d '[{"op":"replace","path":"/spec/replicas","value":3}]' \
+  "https://portainer.example.com/api/endpoints/1/kubernetes/apis/apps/v1/namespaces/production/statefulsets/postgres"
 ```
 
 ## Rolling Updates for StatefulSets
@@ -199,11 +214,13 @@ spec:
   updateStrategy:
     type: RollingUpdate     # Default
     rollingUpdate:
-      partition: 0          # Update all pods (set higher to do canary)
-  
-  # Or OnDelete: only update when pod is manually deleted
+      partition: 0          # Update all pods (set higher to stage updates)
+```
+
+```yaml
+spec:
   updateStrategy:
-    type: OnDelete
+    type: OnDelete          # Only update when a pod is manually deleted
 ```
 
 ## Conclusion
