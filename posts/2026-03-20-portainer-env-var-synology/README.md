@@ -8,22 +8,22 @@ Description: Resolve environment variable handling problems when running Portain
 
 ## Introduction
 
-Synology NAS devices run Docker through DSM (DiskStation Manager), which uses an older Docker version and has some non-standard behaviors. When running Portainer on Synology, environment variable issues are common - values containing special characters get corrupted, `.env` files don't parse correctly, or variables passed to containers via Portainer's UI behave differently than expected.
+Synology NAS devices run containers through DSM (DiskStation Manager) using Synology's Docker package or Container Manager. Depending on your DSM version, the bundled Docker Engine can lag upstream releases. When running Portainer on Synology, environment variable issues are common - dollar signs can be interpolated unexpectedly, `.env` files with CRLF line endings can cause parsing problems, or variables passed to containers via Portainer's UI can behave differently than expected.
 
 ## Understanding the Synology Docker Environment
 
 Synology DSM Docker:
-- Runs Docker in a compatibility layer
-- May use an older Docker Engine version
-- Has file permission restrictions in some directories
-- DSM's built-in Docker UI and Portainer can conflict
+- Uses Synology's Docker package or Container Manager to manage containers
+- May use an older Docker Engine version than current upstream releases
+- Shared-folder permissions can affect what containers can read or write
+- Common bind mounts use shared-folder paths such as `/volume1/...`
 
 ## Step 1: Verify Portainer Is Running Correctly on Synology
 
 ```bash
 # SSH into your Synology NAS
 
-ssh admin@synology-ip
+ssh your-admin-user@synology-ip
 
 # Check Docker version
 docker version
@@ -37,14 +37,15 @@ docker logs portainer --tail 50
 
 ## Step 2: Fix Special Characters in Environment Variables
 
-On Synology, environment variables with special characters often get mangled:
+In Portainer stack definitions, dollar signs in values can be interpreted as Compose variables unless you escape them or quote them correctly in an env file:
 
 ```bash
-# PROBLEMATIC: Variables with special chars in Portainer UI
-# PASSWORD=my$ecret  ← $ gets interpreted as variable
-# SECRET=abc"def"ghi ← quotes get stripped
+# PROBLEMATIC: $ can be treated as variable interpolation
+# PASSWORD=my$ecret
+# MY_VAR="value_with_$dollar"
 
-# FIX: Use .env files instead of inline values in the Portainer UI
+# FIX: Use .env files instead of inline values in the Portainer UI,
+# and single-quote values that contain $
 ```
 
 Create an `.env` file on the Synology:
@@ -57,37 +58,35 @@ chmod 600 /volume1/docker/myapp/.env
 
 # Write the env file
 cat > /volume1/docker/myapp/.env << 'EOF'
-DB_PASSWORD=my$ecret!with@special#chars
-SECRET_KEY=abc"def"ghi
-API_KEY=Bearer eyJhbGciOiJSUzI1NiIsImtp
+DB_PASSWORD='my$ecret!with@special#chars'
+SECRET_KEY='abc"def"ghi'
+API_KEY='Bearer eyJhbGciOiJSUzI1NiIsImtp'
 EOF
 ```
 
 ## Step 3: Use .env Files in Portainer Stacks
 
-When creating a stack in Portainer on Synology:
+When creating a Docker Standalone stack in Portainer on Synology:
 
 ```yaml
-version: "3.8"
 services:
   myapp:
     image: myapp:latest
     env_file:
-      # Use absolute path on Synology
+      # Absolute host paths work, but Compose warns they are not portable
       - /volume1/docker/myapp/.env
     # Do NOT inline sensitive values here
 ```
 
-Or reference specific variables:
+Do not expect `env_file` to make variables available for `${...}` substitution in the Compose file itself. If you want Portainer to substitute specific values before deployment, define them in Portainer's stack environment variables and reference them like this:
 
 ```yaml
 services:
   myapp:
     image: myapp:latest
     environment:
-      # Reference from .env file loaded via env_file
-      DB_PASSWORD: "${DB_PASSWORD}"
-      SECRET_KEY: "${SECRET_KEY}"
+      DB_PASSWORD: "${STACK_DB_PASSWORD}"
+      SECRET_KEY: "${STACK_SECRET_KEY}"
 ```
 
 ## Step 4: Fix Variable Escaping in Portainer Stack Editor
@@ -109,25 +108,27 @@ services:
 
 When using Portainer's "Environment variables" feature for stacks:
 
-```bash
-# Portainer supports substitution variables at the stack level
-# Go to: Stacks → Create Stack → scroll down to "Environment variables"
-# Add variables there instead of hardcoding in the compose file
+```yaml
+services:
+  myapp:
+    image: myapp:latest
+    environment:
+      DB_PASSWORD: ${STACK_DB_PASSWORD}
 
-# In compose file, reference like:
-environment:
-  DB_PASSWORD: ${STACK_DB_PASSWORD}
+    # Or, on Docker Standalone, expose all stack variables:
+    env_file:
+      - stack.env
 ```
 
 ## Step 6: Fix Synology Volume Path Issues
 
-On Synology, Docker volume paths differ from standard Linux:
+On Synology, bind mounts commonly use shared-folder paths under `/volume1`, `/volume2`, and so on:
 
 ```bash
 # Standard Linux path
 -v /home/user/data:/data
 
-# Synology path (volumes are on /volume1, /volume2, etc.)
+# Synology shared-folder path
 -v /volume1/docker/myapp/data:/data
 
 # Verify the path exists
@@ -139,19 +140,20 @@ mkdir -p /volume1/docker/myapp/data
 
 ## Step 7: Fix newline Characters in Variables
 
-Synology's Docker may handle newlines in env values differently:
+CRLF line endings in `.env` files can leave a trailing `\r` in variable values:
 
 ```bash
 # Check for hidden characters
-cat -A /volume1/docker/myapp/.env | grep -v "^$"
-# ^ symbols at end of lines indicate Windows-style CRLF line endings
+cat -A /volume1/docker/myapp/.env
+# ^M$ at the end of a line indicates Windows-style CRLF line endings
 
 # Fix line endings
-sed -i 's/\r//' /volume1/docker/myapp/.env
+sed -i 's/\r$//' /volume1/docker/myapp/.env
 
 # Or use tr
 tr -d '\r' < /volume1/docker/myapp/.env > /volume1/docker/myapp/.env.fixed
 mv /volume1/docker/myapp/.env.fixed /volume1/docker/myapp/.env
+chmod 600 /volume1/docker/myapp/.env
 ```
 
 ## Step 8: Verify Environment Variables Inside Container
@@ -164,49 +166,40 @@ docker exec -it myapp-container sh
 env | sort
 
 # Check for specific variable
-echo $DB_PASSWORD
+printf '%s\n' "$DB_PASSWORD"
 
 # Verify no truncation
-echo "${SECRET_KEY}" | wc -c  # Count characters
+printf '%s' "${SECRET_KEY}" | wc -c  # Count characters exactly
 
 exit
 ```
 
 ## Step 9: Fix DSM Docker Compatibility Issues
 
-On Synology DSM, there can be version conflicts between DSM's built-in Docker and Portainer:
+On Synology DSM, Portainer compatibility depends on the Docker Engine version provided by DSM:
 
 ```bash
 # Check DSM Docker version
 docker version
 
-# If DSM uses Docker 20.x or older with Portainer 2.20+
-# There may be API compatibility issues
+# Compare your Docker Engine version with Portainer's documented requirements:
+# https://docs.portainer.io/start/requirements-and-prerequisites
 
-# Solution: Use a specific Portainer version compatible with your DSM Docker
-# Check Portainer release notes for compatibility
-
-# Example: Use an older Portainer version
-docker run -d \
-  -p 9000:9000 \
-  -p 9443:9443 \
-  --name portainer \
-  --restart=unless-stopped \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v portainer_data:/data \
-  portainer/portainer-ce:2.19.5  # Specific version for older Docker
+# Do not assume an older DSM Docker package is compatible with a newer Portainer tag.
+# For example, Portainer 2.19.5 was validated on Docker 23.x/24.x, while older
+# 2.18.x releases were the ones validated on Docker 20.10.x.
 ```
 
 ## Step 10: Use Docker Compose Validation Before Deploying
 
 ```bash
 # Validate your compose file locally before uploading to Portainer
-docker compose config -f /volume1/docker/myapp/docker-compose.yml
+docker compose -f /volume1/docker/myapp/docker-compose.yml config
 
 # Test environment variable substitution
-docker compose config --env-file /volume1/docker/myapp/.env
+docker compose --env-file /volume1/docker/myapp/.env -f /volume1/docker/myapp/docker-compose.yml config
 ```
 
 ## Conclusion
 
-Environment variable issues on Synology with Portainer are primarily caused by special character handling in the Portainer web editor and CRLF line endings in `.env` files. The most reliable approach is to store sensitive environment variables in a `.env` file on a Synology volume and reference it via `env_file` in your compose stack - avoiding the need to type special characters in the Portainer UI altogether.
+Environment variable issues on Synology with Portainer are primarily caused by special character handling in the Portainer web editor and CRLF line endings in `.env` files. The most reliable approach is to store environment variables in an `.env` file on a Synology volume, single-quote values containing `$` so Compose does not interpolate them, and reference the file via `env_file` in your compose stack - avoiding the need to type special characters in the Portainer UI altogether. For truly sensitive data, Docker recommends using secrets instead of environment variables.
