@@ -8,7 +8,7 @@ Description: Prevent broadcast amplification attacks including Smurf and fraggle
 
 ## Introduction
 
-Broadcast amplification attacks exploit the property that a single packet sent to a broadcast address generates replies from every host on the segment. The most famous are the **Smurf attack** (ICMP) and **Fraggle attack** (UDP), both of which use a spoofed victim IP as the source. Modern networks are largely protected, but misconfigurations still create vulnerability.
+Broadcast amplification attacks exploit the property that a single packet sent to a broadcast address can trigger replies from every host on the segment that responds to the targeted protocol or service. The most famous are the **Smurf attack** (ICMP) and **Fraggle attack** (UDP), both of which use a spoofed victim IP as the source. Modern networks are largely protected, but misconfigurations still create vulnerability.
 
 ## Attack Mechanism
 
@@ -23,7 +23,7 @@ graph LR
     HN --> V
 ```
 
-The amplification factor = number of hosts on target subnet.
+The amplification factor is roughly the number of replying hosts on the target subnet.
 
 ## Layer 1: Disable Directed Broadcasts at the Router
 
@@ -63,23 +63,24 @@ sudo iptables -A INPUT -m addrtype --dst-type MULTICAST -p icmp --icmp-type echo
 
 ## Layer 4: Block UDP Echo (Fraggle Attack Prevention)
 
-The Fraggle attack uses UDP echo (port 7) and discard (port 9):
+The Fraggle attack abuses UDP echo (port 7); CHARGEN (port 19) is another legacy UDP diagnostic service worth blocking:
 
 ```bash
 # Block UDP port 7 (echo) to broadcast
 sudo iptables -A INPUT -p udp --dport 7 -d 255.255.255.255 -j DROP
 sudo iptables -A INPUT -p udp --dport 7 -m addrtype --dst-type BROADCAST -j DROP
 
-# Block UDP port 9 (discard) - note this conflicts with WoL; adjust if needed
-sudo iptables -A INPUT -p udp --dport 9 -d 255.255.255.255 -j DROP
+# Block UDP port 19 (chargen) to broadcast
+sudo iptables -A INPUT -p udp --dport 19 -d 255.255.255.255 -j DROP
+sudo iptables -A INPUT -p udp --dport 19 -m addrtype --dst-type BROADCAST -j DROP
 ```
 
 ## Layer 5: Enable Reverse Path Filtering (Anti-Spoofing)
 
-uRPF prevents attackers from spoofing source IPs:
+Reverse path filtering helps drop packets with spoofed or unroutable source IPs. Strict mode can break asymmetric routing; use loose mode (`2`) if needed:
 
 ```bash
-# Enable strict RP filtering on all interfaces
+# Enable strict RP filtering when routing is symmetric
 echo 1 | sudo tee /proc/sys/net/ipv4/conf/all/rp_filter
 echo 1 | sudo tee /proc/sys/net/ipv4/conf/default/rp_filter
 
@@ -91,16 +92,16 @@ EOF
 sudo sysctl --system
 ```
 
-## Layer 6: Rate-Limit ICMP Echo Replies at the Perimeter
+## Layer 6: Rate-Limit ICMP Echo Replies at a Linux Perimeter
 
-Even if one misconfigured host generates replies, limit their impact:
+Even if one misconfigured host generates replies, limit their impact on a Linux router/firewall:
 
 ```bash
-# Limit ICMP echo-reply rate leaving your network to 100/second
-sudo iptables -A OUTPUT -p icmp --icmp-type echo-reply \
+# On a Linux router/firewall, limit forwarded ICMP echo-replies to 100/second
+sudo iptables -A FORWARD -p icmp --icmp-type echo-reply \
   -m limit --limit 100/sec --limit-burst 200 \
   -j ACCEPT
-sudo iptables -A OUTPUT -p icmp --icmp-type echo-reply -j DROP
+sudo iptables -A FORWARD -p icmp --icmp-type echo-reply -j DROP
 ```
 
 ## Verification
@@ -113,4 +114,4 @@ ping -b 192.168.1.255 -c 3
 
 ## Conclusion
 
-Combining disabled directed broadcasts (router), ignored broadcast pings (kernel), iptables DROP rules (host), and uRPF anti-spoofing (all devices) provides defense-in-depth against broadcast amplification attacks. Any one layer alone is insufficient; all four together make the attack economically unfeasible.
+Combining disabled directed broadcasts (router), ignored broadcast pings (kernel), iptables DROP rules (host/perimeter), and source address validation (where supported) provides defense-in-depth against broadcast amplification attacks. Any one layer alone is insufficient; all of these layers together make the attack economically unfeasible.
