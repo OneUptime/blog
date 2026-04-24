@@ -12,7 +12,7 @@ Grafana is the leading open-source platform for monitoring and observability vis
 
 ## Deploy as a Stack
 
-In Portainer, create a stack named `grafana`:
+On the Docker host, create the files below under `/opt/grafana`, then in Portainer create a stack named `grafana`:
 
 ```yaml
 version: "3.8"
@@ -34,22 +34,22 @@ services:
       - GF_SMTP_ENABLED=true
       - GF_SMTP_HOST=smtp.example.com:587
       - GF_SMTP_FROM_ADDRESS=grafana@example.com
-      # Plugin installation
-      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-piechart-panel,grafana-worldmap-panel
+      # Optional plugin installation
+      - GF_PLUGINS_PREINSTALL=grafana-clock-panel
     volumes:
       # Persistent Grafana data
       - grafana_data:/var/lib/grafana
       # Provisioned data sources
-      - ./provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - /opt/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
       # Provisioned dashboards
-      - ./provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - /opt/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
       # Dashboard JSON files
-      - ./dashboards:/var/lib/grafana/dashboards:ro
+      - /opt/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "3000:3000"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:3000/api/health | grep -q 'ok'"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/health >/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -60,7 +60,7 @@ volumes:
 
 ## Provisioned Data Sources
 
-Create `provisioning/datasources/datasources.yaml`:
+Create `/opt/grafana/provisioning/datasources/datasources.yaml`:
 
 ```yaml
 apiVersion: 1
@@ -97,7 +97,7 @@ datasources:
 
 ## Provisioned Dashboard Config
 
-Create `provisioning/dashboards/dashboards.yaml`:
+Create `/opt/grafana/provisioning/dashboards/dashboards.yaml`:
 
 ```yaml
 apiVersion: 1
@@ -108,14 +108,14 @@ providers:
     type: file
     disableDeletion: false
     updateIntervalSeconds: 30
-    allowUiUpdates: true
+    allowUiUpdates: false
     options:
       path: /var/lib/grafana/dashboards
 ```
 
 ## Example Dashboard JSON
 
-Create `dashboards/system-overview.json` (abbreviated):
+Create `/opt/grafana/dashboards/system-overview.json` using Grafana's exported dashboard JSON (abbreviated below):
 
 ```json
 {
@@ -160,10 +160,10 @@ Popular dashboard IDs to import via Grafana UI (Dashboards > Import):
 | ID | Name | Use Case |
 |----|------|---------|
 | 1860 | Node Exporter Full | Linux host metrics |
-| 893 | Docker Swarm & Container Overview | Docker monitoring |
-| 3662 | Prometheus 2.0 Stats | Prometheus self-monitoring |
-| 13659 | Blackbox Exporter | Website monitoring |
-| 7362 | PostgreSQL Stats | Database monitoring |
+| 893 | Docker and system monitoring | Docker monitoring |
+| 3662 | Prometheus 2.0 Overview | Prometheus self-monitoring |
+| 13659 | Blackbox Exporter (HTTP prober) | Website monitoring |
+| 10315 | PostgreSQL Stats | Database monitoring |
 
 ## Grafana Alerting
 
@@ -172,7 +172,7 @@ Configure alert rules in Grafana UI:
 1. Navigate to **Alerting > Alert rules > New alert rule**
 2. Define query and condition
 3. Set evaluation interval
-4. Configure notification channel (email, Slack, PagerDuty)
+4. Configure a contact point (email, Slack, PagerDuty)
 
 ## Conclusion
 
