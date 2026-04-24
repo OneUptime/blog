@@ -129,7 +129,7 @@ docker inspect <container-id> --format '{{.State.OOMKilled}}'
 docker service ps my-service --no-trunc | grep -i "oom\|killed"
 ```
 
-In Portainer, OOM-killed containers show with exit code `137`.
+In Portainer, an OOM-killed container often shows with exit code `137`, but `137` only means the container received `SIGKILL` and is not exclusive to OOM conditions. Use `.State.OOMKilled` to confirm the cause.
 
 To prevent OOM kills, increase the memory limit or optimize the application's memory usage.
 
@@ -141,7 +141,7 @@ Determine appropriate limits by monitoring actual usage:
 # Monitor real-time stats for a service's containers
 docker stats $(docker ps -q --filter label=com.docker.swarm.service.name=my-service)
 
-# Get average stats over time
+# Get a one-time snapshot
 docker stats --no-stream --format "{{.Container}}: CPU={{.CPUPerc}}, Mem={{.MemUsage}}"
 ```
 
@@ -152,14 +152,14 @@ docker stats --no-stream --format "{{.Container}}: CPU={{.CPUPerc}}, Mem={{.MemU
 ```text
 Example: API service normally uses 200MB, peaks at 350MB
   Memory limit:       512M    (50% above peak)
-  Memory reservation: 128M    (slightly above average)
+  Memory reservation: 128M    (~64% of normal usage)
 ```
 
 ## Step 5: Monitor Resource Usage in Portainer
 
 1. Navigate to **Services**
 2. Click on a service
-3. Click on a running task
+3. Click on a running task to open its container details
 4. Click **Stats**
 
 The stats view shows:
@@ -179,12 +179,12 @@ Node worker-01: 4 CPU, 8GB RAM
 
 Attempting to schedule:
   New task reservation: 3 CPU, 2GB RAM
-  Result: FITS (3 CPU < 4 available, 2GB < 4GB available) → Scheduled
+  Result: DOES NOT FIT (3 CPU > 2 available, 2GB < 4GB available) → Pending
 ```
 
 If no node has enough resources to satisfy reservations, tasks stay in `pending` state.
 
-## Step 7: Adjust Limits Without Redeployment
+## Step 7: Adjust Limits on a Running Service
 
 ```bash
 # Update resource limits for a running service
@@ -196,7 +196,7 @@ docker service update \
   my-api-service
 ```
 
-Portainer applies the update without full service restart (tasks are updated gradually per the update policy).
+Portainer applies the change as a rolling service update, replacing tasks gradually according to the update policy.
 
 ## Conclusion
 
