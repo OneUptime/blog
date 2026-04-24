@@ -13,13 +13,13 @@ pip install netaddr
 ```
 
 ```python
-from netaddr import IPAddress, IPNetwork, IPRange, IPSet, cidr_merge, cidr_exclude
+from netaddr import IPAddress, IPNetwork, IPRange, IPSet, cidr_merge, cidr_exclude, ipv6_verbose
 
 # Parse IPv6 address
 
 addr = IPAddress("2001:db8::1")
 print(addr.version)           # 6
-print(addr.is_global())       # True (for routable space)
+print(addr.is_global())       # False for the documentation prefix
 print(addr.is_link_local())   # False
 print(int(addr))              # integer representation
 print(addr.words)             # tuple of 8 groups
@@ -27,7 +27,7 @@ print(addr.format())          # '2001:db8::1'
 
 # Different output formats
 print(addr.format(dialect=None))           # compressed
-print(addr.ipv6())                         # full expansion
+print(addr.format(ipv6_verbose))           # full expansion
 ```
 
 ## IPv6 Network Operations
@@ -75,11 +75,11 @@ all_space = IPSet([IPNetwork("2001:db8::/32")])
 
 # Find unallocated space
 free = all_space - allocated
-print(f"Allocated prefixes: {len(list(allocated.iter_cidrs()))}")
+print(f"Allocated CIDR blocks: {len(list(allocated.iter_cidrs()))}")
 
 # Check for overlap
 new_prefix = IPNetwork("2001:db8::/48")
-if new_prefix in allocated:
+if IPSet([new_prefix]) & allocated:
     print("Overlap detected!")
 
 # Add to set
@@ -121,7 +121,7 @@ class IPv6PrefixAllocator:
         return (used_size / pool_size) * 100
 
 # Usage
-allocator = IPv6PrefixAllocator("2001:db8:home::/40")
+allocator = IPv6PrefixAllocator("2001:db8:100::/40")
 
 # Allocate /56 prefixes for subscribers
 for i in range(5):
@@ -131,7 +131,7 @@ for i in range(5):
 print(f"Pool utilization: {allocator.utilization():.4f}%")
 
 # Release a prefix
-allocator.release("2001:db8:home::/56")
+allocator.release("2001:db8:100::/56")
 print("After release:")
 new_prefix = allocator.allocate(56)
 print(f"Next allocation: {new_prefix}")   # Should reuse released prefix
@@ -167,7 +167,7 @@ print(f"\nAfter excluding {exclude}, {len(remaining)} prefixes remain")
 ```python
 from netaddr import IPRange, cidr_merge
 
-# Work with ranges (e.g., from legacy ARIN allocations)
+# Work with ranges (e.g., from imported allocation data)
 addr_range = IPRange("2001:db8::", "2001:db8::ffff:ffff")
 print(f"Range size: {addr_range.size}")
 
