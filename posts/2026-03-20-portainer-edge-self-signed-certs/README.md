@@ -10,22 +10,22 @@ Description: Configure the Portainer Edge Agent to trust self-signed certificate
 
 When Portainer is deployed with a self-signed TLS certificate, Edge Agents cannot connect because they cannot verify the certificate. This guide covers configuring the Edge Agent to trust your self-signed certificate or skip certificate verification for development environments.
 
-## Option 1: Provide the CA Certificate (Recommended)
+## Option 1: Provide the CA or Self-Signed Certificate (Recommended)
 
-Trust the certificate explicitly by providing the CA certificate to the edge agent:
+Trust the certificate explicitly by providing a PEM certificate file to the edge agent. If you are using Portainer's default self-signed certificate, export the server certificate itself:
 
 ```bash
-# Export your self-signed CA certificate
-
-# If using the default Portainer self-signed cert:
-openssl s_client -connect portainer.example.com:9443 < /dev/null 2>/dev/null \
-  | openssl x509 > portainer-ca.pem
+# Export the certificate presented by Portainer
+openssl s_client -connect portainer.example.com:9443 -servername portainer.example.com < /dev/null 2>/dev/null \
+  | openssl x509 > portainer-cert.pem
 
 # Verify the certificate
-openssl x509 -in portainer-ca.pem -text -noout | grep -E "Subject:|Not After:"
+openssl x509 -in portainer-cert.pem -text -noout | grep -E "Subject:|Not After:"
 ```
 
-Mount the CA certificate and configure the agent:
+If Portainer uses an internal CA-signed certificate instead of the default self-signed certificate, use your CA certificate or CA bundle here instead of exporting the leaf certificate from the server.
+
+Mount the certificate and configure the agent. Match the agent tag to your Portainer Server version:
 
 ```bash
 docker run -d \
@@ -33,13 +33,14 @@ docker run -d \
   --restart always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  -v /var/run/portainer:/var/run/portainer \
-  -v /path/to/portainer-ca.pem:/certs/ca.pem:ro \
+  -v /:/host \
+  -v portainer_agent_data:/data \
+  -v /path/to/portainer-cert.pem:/certs/portainer-cert.pem:ro \
   -e EDGE=1 \
   -e EDGE_ID=device-id \
   -e EDGE_KEY=edge-key \
-  -e CA_CERT=/certs/ca.pem \
-  portainer/agent:latest
+  -e SSL_CERT_FILE=/certs/portainer-cert.pem \
+  portainer/agent:${PORTAINER_VERSION:-2.39.0}
 ```
 
 ## Option 2: Skip Certificate Verification (Development Only)
@@ -47,47 +48,53 @@ docker run -d \
 ```bash
 docker run -d \
   --name portainer_edge_agent \
+  --restart always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -v /:/host \
+  -v portainer_agent_data:/data \
   -e EDGE=1 \
   -e EDGE_ID=device-id \
   -e EDGE_KEY=edge-key \
-  -e EDGE_INSECURE_POLL=1 \    # Skip TLS verification
-  portainer/agent:latest
+  -e EDGE_INSECURE_POLL=1 \
+  portainer/agent:${PORTAINER_VERSION:-2.39.0}
 ```
 
 **WARNING**: `EDGE_INSECURE_POLL=1` disables TLS certificate validation. Only use in isolated development environments.
 
-## Option 3: Trust System CA Store
+## Option 3: Bake the Certificate into the Container Image
 
-If your CA certificate is in the system's trust store:
+If you prefer not to mount the certificate at runtime, bake it into a custom image:
 
-```bash
-# Add CA to system trust store (Ubuntu/Debian)
-sudo cp portainer-ca.pem /usr/local/share/ca-certificates/portainer.crt
-sudo update-ca-certificates
-
-# The Docker daemon and containers will use the updated trust store
+```dockerfile
+ARG PORTAINER_VERSION=2.39.0
+FROM portainer/agent:${PORTAINER_VERSION}
+COPY portainer-cert.pem /certs/portainer-cert.pem
+ENV SSL_CERT_FILE=/certs/portainer-cert.pem
 ```
 
-## Docker Compose with CA Certificate
+## Docker Compose with Certificate File
 
 ```yaml
-version: "3.8"
-
 services:
   edge-agent:
-    image: portainer/agent:latest
+    image: "portainer/agent:${PORTAINER_VERSION:-2.39.0}"
     container_name: portainer_edge_agent
     restart: always
     environment:
       EDGE: "1"
       EDGE_ID: "remote-device"
       EDGE_KEY: "your-edge-key"
-      CA_CERT: "/certs/ca.pem"
+      SSL_CERT_FILE: "/certs/portainer-cert.pem"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
-      - /var/run/portainer:/var/run/portainer
-      - ./portainer-ca.pem:/certs/ca.pem:ro
+      - /:/host
+      - portainer_agent_data:/data
+      - ./portainer-cert.pem:/certs/portainer-cert.pem:ro
+
+volumes:
+  portainer_agent_data:
 ```
 
 ## Verifying Certificate Trust
@@ -97,7 +104,7 @@ services:
 docker logs portainer_edge_agent | grep -E "TLS|cert|connect|error"
 
 # Manual test
-curl --cacert portainer-ca.pem https://portainer.example.com/api/system/version
+curl --cacert portainer-cert.pem --fail -I https://portainer.example.com:9443
 ```
 
 ## Using Let's Encrypt Instead
@@ -107,9 +114,9 @@ The cleanest long-term solution is to use a publicly trusted certificate:
 ```bash
 # Use Traefik with Let's Encrypt
 # Edge agents trust Let's Encrypt certs without any extra configuration
-# No EDGE_INSECURE_POLL or CA_CERT needed
+# No EDGE_INSECURE_POLL or SSL_CERT_FILE needed
 ```
 
 ## Conclusion
 
-Self-signed certificates require explicit trust configuration in edge agents. The CA certificate mounting approach maintains security by validating the certificate chain. For production, strongly consider using a properly issued certificate (Let's Encrypt, internal CA, commercial) to eliminate the self-signed certificate complexity across all edge devices.
+Self-signed certificates require explicit trust configuration in edge agents. Providing a trusted certificate file maintains security by validating the certificate chain. For production, strongly consider using a properly issued certificate (Let's Encrypt, internal CA, commercial) to eliminate the self-signed certificate complexity across all edge devices.
