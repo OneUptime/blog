@@ -21,7 +21,7 @@ Attack Flow:
 
 DAI is a Cisco switch security feature that:
 1. Intercepts all ARP packets on untrusted ports
-2. Validates ARP packets against a DHCP snooping binding table
+2. Validates ARP packets against a DHCP snooping binding table or ARP ACLs for static hosts
 3. Drops ARP packets with invalid IP-to-MAC mappings
 
 ## How DAI Works
@@ -30,14 +30,14 @@ DAI is a Cisco switch security feature that:
 flowchart TD
     A[ARP Packet Arrives] --> B{Is Port Trusted?}
     B -->|Yes| C[Forward Packet]
-    B -->|No| D{Is IP-MAC in Binding Table?}
+    B -->|No| D{Is IP-MAC valid via binding table/ARP ACL?}
     D -->|Yes| E[Forward Packet]
     D -->|No| F[Drop Packet + Log]
 ```
 
 ## Configuring DAI on Cisco Switches
 
-### Step 1: Enable DHCP Snooping (DAI depends on it)
+### Step 1: Enable DHCP Snooping (Required for DHCP-assigned hosts)
 
 ```cisco
 ! Enable DHCP snooping globally
@@ -50,7 +50,7 @@ ip dhcp snooping vlan 10
 interface GigabitEthernet0/1
  ip dhcp snooping trust
 
-! Do not insert Option 82
+! Optional: disable Option 82 insertion only if your DHCP infrastructure requires it
 no ip dhcp snooping information option
 ```
 
@@ -66,7 +66,7 @@ show ip arp inspection vlan 10
 
 ### Step 3: Configure Trusted Ports
 
-Ports connected to routers, switches, or servers should be trusted:
+Ports connected to routers or other switches should be trusted. Host-facing ports, including static-IP servers, should remain untrusted and use ARP ACLs if needed:
 
 ```cisco
 interface GigabitEthernet0/1
@@ -80,8 +80,8 @@ For devices with static IPs (not in DHCP binding table):
 ```cisco
 ! Define ARP ACL for static host
 arp access-list STATIC_HOSTS
- permit ip host 192.168.1.10 mac host aa:bb:cc:dd:ee:01
- permit ip host 192.168.1.20 mac host 00:11:22:33:44:55
+ permit ip host 192.168.1.10 mac host aabb.ccdd.ee01
+ permit ip host 192.168.1.20 mac host 0011.2233.4455
 
 ! Apply the ARP ACL to VLAN
 ip arp inspection filter STATIC_HOSTS vlan 10
@@ -98,8 +98,8 @@ interface GigabitEthernet0/2
 ## Verification Commands
 
 ```cisco
-! Check DAI statistics
-show ip arp inspection statistics
+! Check DAI statistics for VLAN 10
+show ip arp inspection statistics vlan 10
 
 ! Show ARP inspection VLANs
 show ip arp inspection vlan 10
@@ -122,24 +122,28 @@ Vlan    Forwarded  Dropped  DHCP Drops  ACL Drops
 ## DAI Validation Options
 
 ```cisco
-! Enable additional validations
+! Enable only source-MAC validation
 ip arp inspection validate src-mac
+
+! Enable only destination-MAC validation
 ip arp inspection validate dst-mac
+
+! Enable only IP validation
 ip arp inspection validate ip
 
-! Enable all three
+! Enable all three in one command
 ip arp inspection validate src-mac dst-mac ip
 ```
 
 | Validation | What It Checks |
 |------------|----------------|
 | `src-mac` | Ethernet source MAC matches ARP sender MAC |
-| `dst-mac` | Ethernet destination MAC matches ARP target MAC |
-| `ip` | Sender IP is not 0.0.0.0, broadcast, or multicast |
+| `dst-mac` | For ARP replies, Ethernet destination MAC matches ARP target MAC |
+| `ip` | Checks sender IPs in requests/replies and target IPs in replies for invalid values |
 
 ## Key Takeaways
 
-- DAI validates ARP packets against the DHCP snooping binding table.
+- DAI validates ARP packets against DHCP snooping bindings and can use ARP ACLs for static hosts.
 - Untrusted ports have all ARP packets inspected; trusted ports are bypassed.
 - Use ARP ACLs for static IP devices that won't be in the DHCP binding table.
 - Rate limiting on ports prevents ARP flood-based DoS attacks.
