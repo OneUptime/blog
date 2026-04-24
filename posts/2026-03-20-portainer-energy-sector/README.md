@@ -26,33 +26,36 @@ Energy OT networks are typically air-gapped or have strict internet restrictions
 ```bash
 # On internet-connected build system
 
-# Pull all required images
+# Pull the base images used in this example
+mkdir -p images
+
 IMAGES=(
   "portainer/portainer-ee:2.19.0"
   "portainer/agent:2.19.0"
   "prom/prometheus:v2.45.0"
   "grafana/grafana:10.1.0"
   "influxdb:2.7-alpine"
+  "telegraf:1.27-alpine"
 )
 
 for image in "${IMAGES[@]}"; do
   echo "Pulling: $image"
-  docker pull $image
-  filename=$(echo $image | tr '/: ' '---')
-  docker save $image | gzip > "images/$filename.tar.gz"
+  docker pull "$image"
+  filename=$(echo "$image" | tr '/: ' '---')
+  docker save "$image" | gzip > "images/$filename.tar.gz"
 done
 
 # Transfer images to OT network via approved media
 # On OT system:
 for tarfile in images/*.tar.gz; do
-  docker load < $tarfile
+  docker load < "$tarfile"
   echo "Loaded: $tarfile"
 done
 ```
 
-## Step 2: NERC CIP Compliant Configuration
+## Step 2: NERC CIP-Aligned Configuration
 
-NERC CIP (North American Electric Reliability Corporation Critical Infrastructure Protection) requires strict access controls and logging:
+NERC CIP (North American Electric Reliability Corporation Critical Infrastructure Protection) requires strict access controls, logging, and documented operational processes. These Docker daemon settings help support a hardened baseline:
 
 ```bash
 # Docker daemon.json with NERC CIP hardening
@@ -79,7 +82,7 @@ sudo systemctl restart docker
 
 ```yaml
 # historian-stack/docker-compose.yml
-version: '3.8'
+# Set INFLUX_TOKEN in Portainer or a local .env file before deployment
 services:
   influxdb:
     image: influxdb:2.7-alpine
@@ -90,6 +93,7 @@ services:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: historian
       DOCKER_INFLUXDB_INIT_PASSWORD_FILE: /run/secrets/influx_password
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN}
       DOCKER_INFLUXDB_INIT_ORG: energy-co
       DOCKER_INFLUXDB_INIT_BUCKET: scada-data
       DOCKER_INFLUXDB_INIT_RETENTION: 8760h  # 1 year retention
@@ -104,6 +108,8 @@ services:
   telegraf:
     image: telegraf:1.27-alpine
     restart: always
+    environment:
+      INFLUX_TOKEN: ${INFLUX_TOKEN}
     volumes:
       - ./telegraf.conf:/etc/telegraf/telegraf.conf:ro
     networks:
@@ -116,7 +122,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      GF_SECURITY_ADMIN_PASSWORD_FILE: /run/secrets/grafana_password
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_password
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"  # No internet
@@ -135,6 +141,7 @@ secrets:
 
 networks:
   ot-network:
+    name: ot-network
     driver: bridge
     internal: true
   scada-dmz:
@@ -166,14 +173,14 @@ volumes:
     namespace = "2"
     identifier_type = "s"
     identifier = "Turbine1.Speed"
-    tags = {unit="rpm", turbine="T1"}
+    default_tags = {unit="rpm", turbine="T1"}
 
   [[inputs.opcua.nodes]]
     name = "power_output"
     namespace = "2"
     identifier_type = "s"
     identifier = "Turbine1.PowerOutput"
-    tags = {unit="kW", turbine="T1"}
+    default_tags = {unit="kW", turbine="T1"}
 
 # Output to InfluxDB
 [[outputs.influxdb_v2]]
@@ -187,7 +194,6 @@ volumes:
 
 ```yaml
 # predictive-maintenance/docker-compose.yml
-version: '3.8'
 services:
   ml-inference:
     image: energy-co/predictive-maintenance:v1.4.2
@@ -215,6 +221,14 @@ services:
       - SENSITIVITY=medium
     networks:
       - ot-network
+
+networks:
+  ot-network:
+    external: true
+    name: ot-network
+
+volumes:
+  ml-logs:
 ```
 
 ## Step 6: OT/IT Network Segmentation
@@ -241,23 +255,27 @@ docker network create --driver bridge \
   dmz-network
 ```
 
-## Step 7: High-Availability for Critical Applications
+## Step 7: High-Availability for Critical Stateless Applications
 
 ```bash
-# For critical OT applications, use Docker Swarm for HA
+# For critical stateless OT applications, use Docker Swarm for HA
 docker swarm init --advertise-addr <PRIMARY-NODE-IP>
+docker network create --driver overlay --attachable zone3-supervisory-ha
 
-# Deploy historian as a replicated service
+# Deploy anomaly detection as a replicated service
 docker service create \
-  --name historian \
+  --name anomaly-detector \
   --replicas 2 \
   --constraint 'node.labels.zone==supervisory' \
   --restart-condition on-failure \
   --restart-delay 5s \
   --restart-max-attempts 3 \
-  influxdb:2.7-alpine
+  --network zone3-supervisory-ha \
+  energy-co/anomaly-detector:v2.1
 ```
+
+For stateful historians, keep InfluxDB OSS on a single node with resilient storage or use a clustered InfluxDB offering; simply setting `--replicas 2` does not create a shared high-availability historian.
 
 ## Conclusion
 
-Energy sector OT environments require air-gapped deployment capability, NERC CIP compliant access controls, network segmentation aligned with the Purdue Model, and extremely high reliability. Portainer's air-gapped installation, Edge agent architecture, and team-based access control provide the management platform needed for these environments. Combined with industrial data collection tools like Telegraf and OPC-UA clients, containerized applications can run safely alongside legacy SCADA systems, enabling the data historian and analytics capabilities that drive modern energy operations.
+Energy sector OT environments require air-gapped deployment capability, NERC CIP-aligned access controls, network segmentation aligned with the Purdue Model, and extremely high reliability. Portainer's air-gapped installation, Edge agent architecture, and team-based access control provide the management platform needed for these environments. Combined with industrial data collection tools like Telegraf and OPC-UA clients, containerized applications can run safely alongside legacy SCADA systems, enabling the data historian and analytics capabilities that drive modern energy operations.
