@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, WSL2, Window, Docker-desktop, Installation
+Tags: Portainer, WSL2, Windows, Docker-desktop, Installation
 
 Description: A guide to installing and running Portainer CE on Windows using WSL2 and Docker Desktop for local container development and management.
 
@@ -12,22 +12,25 @@ WSL2 (Windows Subsystem for Linux 2) with Docker Desktop provides a Linux-native
 
 ## Prerequisites
 
-- Windows 10 (version 2004+) or Windows 11
-- WSL2 enabled
+- A Windows 10 or Windows 11 release currently supported by Docker Desktop
+- WSL version 2.1.5 or later enabled
 - Docker Desktop with WSL2 backend installed
-- 4GB+ RAM recommended
+- 8GB system RAM
 
 ## Step 1: Enable WSL2
 
 ```powershell
 # In PowerShell (as Administrator)
 
-wsl --install
-wsl --set-default-version 2
 wsl --install -d Ubuntu
+wsl --update
 
-# Verify WSL2 version
+# Verify WSL and distro version
+wsl --version
 wsl --list --verbose
+
+# If Ubuntu shows VERSION 1, upgrade it to WSL 2
+wsl --set-version Ubuntu 2
 ```
 
 ## Step 2: Install Docker Desktop
@@ -60,7 +63,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 
 # Verify
 docker ps | grep portainer
@@ -88,7 +91,8 @@ New-NetFirewallRule -DisplayName "Portainer HTTPS" `
   -LocalPort 9443 `
   -Action Allow
 
-New-NetFirewallRule -DisplayName "Portainer Agent" `
+# Optional: only needed if you use Portainer's tunnel / Edge features
+New-NetFirewallRule -DisplayName "Portainer Tunnel" `
   -Direction Inbound `
   -Protocol TCP `
   -LocalPort 8000 `
@@ -100,7 +104,7 @@ New-NetFirewallRule -DisplayName "Portainer Agent" `
 ```powershell
 # PowerShell: Create shortcut to Portainer
 $WshShell = New-Object -comObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\Portainer.lnk")
+$Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\Portainer.url")
 $Shortcut.TargetPath = "https://localhost:9443"
 $Shortcut.Save()
 ```
@@ -159,7 +163,14 @@ netstat -an | findstr "9443"   # In PowerShell
 
 # Change Portainer port if needed
 docker stop portainer && docker rm portainer
-docker run -d -p 9444:9443 ... portainer/portainer-ce:latest
+docker run -d \
+  -p 8000:8000 \
+  -p 9444:9443 \
+  --name portainer \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:lts
 ```
 
 ## Conclusion
