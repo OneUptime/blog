@@ -24,8 +24,6 @@ This is the simplest method. Traefik answers Let's Encrypt's HTTP challenge on p
 ### Docker Compose with HTTP-01
 
 ```yaml
-version: "3.8"
-
 services:
   traefik:
     image: traefik:v3.0
@@ -52,8 +50,8 @@ services:
       - "80:80"
       - "443:443"
     volumes:
+      - ./letsencrypt:/letsencrypt
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik_certs:/letsencrypt
     networks:
       - proxy
 
@@ -83,7 +81,6 @@ networks:
 
 volumes:
   portainer_data:
-  traefik_certs:
 ```
 
 ## Method 2: DNS-01 Challenge (Private Servers & Wildcards)
@@ -96,7 +93,7 @@ Use DNS-01 when your server is not publicly accessible, or when you want wildcar
   traefik:
     image: traefik:v3.0
     environment:
-      # Cloudflare API token with DNS edit permissions
+      # Cloudflare API token with Zone:Read and DNS:Edit permissions
       - CF_DNS_API_TOKEN=your_cloudflare_token_here
     command:
       - "--providers.docker=true"
@@ -141,11 +138,11 @@ curl -sv https://portainer.example.com 2>&1 | grep -A5 "Server certificate"
 
 ## Troubleshooting
 
-**Rate limit errors**: Use the staging CA server first. Let's Encrypt rate limits are 5 failed attempts per hour per domain.
+**Rate limit errors**: Use the staging CA server first. Let's Encrypt allows up to 5 authorization failures per identifier, per account, every hour.
 
-**Permission errors on acme.json**: The file must be mode 600, owned by the user running Traefik.
+**Permission errors on acme.json**: The file must be mode 600 and writable by Traefik.
 
-**DNS-01 propagation delay**: Add `dnsChallenge.delayBeforeCheck=30` to wait for DNS propagation.
+**DNS-01 propagation delay**: Add `--certificatesresolvers.cloudflare.acme.dnsChallenge.delayBeforeCheck=30` to wait for DNS propagation.
 
 ## Conclusion
 
