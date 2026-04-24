@@ -8,7 +8,7 @@ Description: Learn how to configure connection blocks in OpenTofu for remote-exe
 
 ## Introduction
 
-The `connection` block tells OpenTofu how to connect to a remote resource when using `remote-exec` and `file` provisioners. Without a connection block, these provisioners cannot execute. Connection blocks support SSH (Linux/Mac) and WinRM (Windows), with options for authentication, timeouts, and bastion hosts.
+The `connection` block tells OpenTofu how to connect to a remote resource when using `remote-exec` and `file` provisioners. Without a connection block, these provisioners cannot execute. Connection blocks support SSH and WinRM, with options for authentication, timeouts, and bastion hosts.
 
 ## Basic SSH Connection
 
@@ -22,7 +22,7 @@ resource "aws_instance" "web" {
   connection {
     type        = "ssh"
     user        = "ubuntu"           # AMI-specific: ubuntu, ec2-user, admin, centos
-    private_key = file("~/.ssh/id_rsa")
+    private_key = file(pathexpand("~/.ssh/id_rsa"))
     host        = self.public_ip
   }
 
@@ -51,7 +51,7 @@ resource "aws_instance" "app" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = var.ssh_private_key  # Store in variables, not files
+    private_key = var.ssh_private_key  # Keep the key in a sensitive variable or secret manager
     host        = self.public_ip
 
     # Timeout for connection (default is 5m)
@@ -78,13 +78,13 @@ resource "aws_instance" "private_app" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = file(var.private_key_path)
+    private_key = file(pathexpand(var.private_key_path))
     host        = self.private_ip  # Use private IP
 
     # Bastion host configuration
     bastion_host        = aws_instance.bastion.public_ip
     bastion_user        = "ubuntu"
-    bastion_private_key = file(var.bastion_private_key_path)
+    bastion_private_key = file(pathexpand(var.bastion_private_key_path))
   }
 
   provisioner "remote-exec" {
@@ -93,7 +93,7 @@ resource "aws_instance" "private_app" {
 }
 ```
 
-## SSH with Agent Forwarding
+## SSH with SSH Agent Authentication
 
 ```hcl
 resource "aws_instance" "web" {
@@ -105,7 +105,7 @@ resource "aws_instance" "web" {
     user  = "ubuntu"
     host  = self.public_ip
 
-    # Use SSH agent instead of key file
+    # Use SSH agent authentication
     agent = true
   }
 
@@ -121,6 +121,13 @@ resource "aws_instance" "web" {
 resource "aws_instance" "windows" {
   ami           = var.windows_ami_id
   instance_type = "t3.medium"
+  key_name      = var.key_name
+
+  # Retrieve the generated Administrator password from the launch key pair
+  get_password_data = true
+
+  # Ensure the instance gets a public IP
+  associate_public_ip_address = true
 
   # Windows AMIs need WinRM configured via user_data
   user_data = <<-EOF
@@ -137,19 +144,18 @@ resource "aws_instance" "windows" {
   connection {
     type     = "winrm"
     user     = "Administrator"
-    password = var.admin_password
+    password = rsadecrypt(self.password_data, file(pathexpand(var.private_key_path)))
     host     = self.public_ip
 
     # WinRM settings
-    port     = 5985
-    https    = false
-    insecure = true  # Only for non-HTTPS
-    timeout  = "10m"
+    port    = 5985
+    https   = false
+    timeout = "15m"
   }
 
   provisioner "remote-exec" {
     inline = [
-      "powershell Get-WindowsFeature | Where-Object {$_.Installed}"
+      "powershell -Command \"Get-WindowsFeature | Where-Object { $_.Installed }\""
     ]
   }
 }
@@ -168,7 +174,7 @@ resource "aws_instance" "app" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = file(var.key_path)
+    private_key = file(pathexpand(var.key_path))
     host        = self.public_ip
   }
 
@@ -181,7 +187,7 @@ resource "aws_instance" "app" {
     connection {
       type        = "ssh"
       user        = "app-user"
-      private_key = file(var.app_key_path)
+      private_key = file(pathexpand(var.app_key_path))
       host        = self.public_ip
     }
 
@@ -196,7 +202,7 @@ resource "aws_instance" "app" {
 connection {
   type        = "ssh"
   user        = "ubuntu"
-  private_key = file(var.key_path)
+  private_key = file(pathexpand(var.key_path))
   host        = self.public_ip
 
   # Wait up to 5 minutes for SSH to become available
@@ -207,4 +213,4 @@ connection {
 
 ## Conclusion
 
-Connection blocks are required for `remote-exec` and `file` provisioners. Use SSH for Linux instances with key-based authentication, WinRM for Windows, and the `bastion_host` parameters when instances are in private subnets. Always use variables or secrets management for private keys - never hardcode them. Set appropriate timeouts for instances that take time to boot. Where possible, prefer user_data or AWS Systems Manager over connection-based provisioners.
+Connection blocks are required for `remote-exec` and `file` provisioners. Use SSH for key-based authentication, WinRM for Windows, and the `bastion_host` parameters when instances are in private subnets. Avoid hardcoding private keys in configuration, and use sensitive variables, key files, or a secrets manager instead. Set appropriate timeouts for instances that take time to boot. Where possible, prefer user_data or AWS Systems Manager over connection-based provisioners.
