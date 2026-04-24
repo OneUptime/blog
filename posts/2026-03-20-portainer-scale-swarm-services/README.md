@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Swarm, Scaling, Service, DevOps
 
-Description: Learn how to scale Docker Swarm services up and down using Portainer's UI for handling variable workloads.
+Description: Learn how to scale replicated Docker Swarm services up and down using Portainer's UI for handling variable workloads.
 
 ## Introduction
 
-One of Docker Swarm's core strengths is the ability to scale services horizontally - adding or removing replicas to match demand. Portainer makes this process visual and immediate. This guide covers scaling services from the Portainer UI, understanding the scaling process, and best practices for production scaling.
+One of Docker Swarm's core strengths is the ability to scale replicated services horizontally - adding or removing replicas to match demand. Portainer makes this process visual and immediate. This guide covers scaling services from the Portainer UI, understanding the scaling process, and best practices for production scaling.
 
 ## Prerequisites
 
 - Portainer installed on Docker Swarm
-- At least one service running on the cluster
-- Admin or operator access
+- At least one replicated service running on the cluster
+- Admin access, or Operator access in Portainer BE
 
 ## Method 1: Scale from the Services List
 
@@ -22,31 +22,29 @@ The fastest way to scale is directly from the services list:
 
 1. In Portainer, navigate to **Services**
 2. Find the service you want to scale
-3. In the **Scheduling** column, you will see the current replica count
-4. Click the **Scale** icon (up/down arrows) next to the replica count
+3. In the **Scheduling Mode** column, you will see the current replica count
+4. Click **Scale** next to the replica count
 5. Enter the new number of replicas
-6. Click **Apply**
+6. Click the tick icon to apply
 
-Portainer immediately sends the scale command to the Swarm manager.
+Portainer immediately sends the replica update to the Swarm manager.
 
 ## Method 2: Scale from the Service Detail View
 
 For more context when scaling:
 
 1. Click on the service name to open details
-2. In the service detail view, find the **Replicas** field
-3. Click **Edit this service**
-4. Update the replica count under **Scaling**
-5. Click **Update the service**
+2. In the **Service details** section, find the replica count
+3. Update the number of replicas
+4. Click **Update the service**
 
-## Method 3: Scale Multiple Services at Once
+## Method 3: Scale Multiple Services from the CLI
 
-From the services list:
+If you need to scale multiple replicated services in one operation, use the Docker CLI on a Swarm manager:
 
-1. Check the checkboxes next to multiple services
-2. Click **Scale** in the actions toolbar
-3. Enter the desired replica count for each selected service
-4. Confirm
+```bash
+docker service scale backend=3 frontend=5
+```
 
 ## Understanding the Scale Process
 
@@ -67,7 +65,7 @@ After scaling:
   web.5 → worker-02 (Running)  ← New
 ```
 
-The Swarm scheduler distributes new tasks across nodes based on current load and placement constraints.
+The Swarm scheduler places new tasks on nodes that satisfy resource availability requirements as well as any placement constraints and preferences.
 
 ## Verifying the Scale Operation
 
@@ -102,60 +100,13 @@ From Portainer, set replicas to `0` using the scale field.
 
 ## Auto-Scaling Strategies
 
-Docker Swarm does not have built-in auto-scaling, but you can implement it with external tools:
+Docker Swarm does not have built-in auto-scaling. Any auto-scaling solution needs external monitoring and automation to decide when to run `docker service scale` or `docker service update --replicas` on a Swarm manager.
 
-### Option 1: Shell Script Auto-Scaler
+When evaluating external tooling, verify how it gathers metrics across nodes. `docker stats` reports container statistics for the Docker daemon you query, not Swarm task IDs across the cluster.
 
-```bash
-#!/bin/bash
-# simple-autoscaler.sh
-SERVICE="web-frontend"
-MIN_REPLICAS=2
-MAX_REPLICAS=10
-SCALE_UP_THRESHOLD=80    # CPU percentage
-SCALE_DOWN_THRESHOLD=30  # CPU percentage
+## Update Parallelism for Service Updates
 
-while true; do
-    # Get current CPU usage (simplified)
-    CPU=$(docker stats --no-stream --format "{{.CPUPerc}}" \
-        $(docker service ps $SERVICE -q --filter desired-state=running) | \
-        awk -F% '{sum += $1; count++} END {print sum/count}')
-
-    CURRENT=$(docker service ls --filter name=$SERVICE --format "{{.Replicas}}" | cut -d/ -f1)
-
-    if (( $(echo "$CPU > $SCALE_UP_THRESHOLD" | bc -l) )) && [ "$CURRENT" -lt "$MAX_REPLICAS" ]; then
-        NEW=$((CURRENT + 1))
-        docker service scale $SERVICE=$NEW
-        echo "Scaled up to $NEW replicas (CPU: $CPU%)"
-    elif (( $(echo "$CPU < $SCALE_DOWN_THRESHOLD" | bc -l) )) && [ "$CURRENT" -gt "$MIN_REPLICAS" ]; then
-        NEW=$((CURRENT - 1))
-        docker service scale $SERVICE=$NEW
-        echo "Scaled down to $NEW replicas (CPU: $CPU%)"
-    fi
-
-    sleep 30
-done
-```
-
-### Option 2: Using Docker Swarm Autoscaler
-
-Deploy the `stefanprodan/swarm-cronjob` or Docker Swarm autoscaler tools:
-
-```yaml
-services:
-  autoscaler:
-    image: stefanprodan/swarm-cronjob
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    deploy:
-      placement:
-        constraints:
-          - node.role == manager
-```
-
-## Scaling with Update Parallelism
-
-When scaling up with rolling updates configured, you control how many new replicas start simultaneously:
+`--update-parallelism` does not control how quickly additional replicas are added during a scale operation. It controls how many existing tasks are replaced at once during a service update or a forced rolling restart:
 
 ```bash
 # Update service to set parallelism for future updates
@@ -169,10 +120,10 @@ docker service update \
 
 1. **Set resource limits before scaling** - Prevent one service from starving others
 2. **Monitor node capacity** - Ensure nodes can handle the additional tasks
-3. **Use placement constraints** - Prevent over-loading specific nodes
-4. **Configure health checks** - Swarm waits for health checks before marking tasks healthy
+3. **Use placement constraints and preferences deliberately** - Control eligible nodes and spread replicas where appropriate
+4. **Configure health checks** - Failed health checks cause Swarm to replace unhealthy tasks
 5. **Test scale-down** - Verify graceful shutdown handles in-flight requests
 
 ## Conclusion
 
-Scaling services in Portainer on Docker Swarm is a straightforward operation that the Swarm orchestrator handles automatically. Whether you scale from the services list, the service detail view, or via CLI, the Swarm manager ensures the desired number of replicas are running across your cluster. For production workloads, complement manual scaling with monitoring and potentially an auto-scaling solution.
+Scaling replicated services in Portainer on Docker Swarm is a straightforward operation that the Swarm orchestrator handles automatically. Whether you scale from the services list, the service detail view, or via CLI, the Swarm manager ensures the desired number of replicas are running across your cluster. For production workloads, complement manual scaling with monitoring and potentially an external auto-scaling solution.
