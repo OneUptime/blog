@@ -40,18 +40,13 @@ spec:
 ```
 
 ```yaml
-# gatekeeper/helmchart.yaml
-apiVersion: helm.cattle.io/v1
-kind: HelmChart
-metadata:
-  name: gatekeeper
-  namespace: kube-system
-spec:
+# gatekeeper/fleet.yaml
+defaultNamespace: gatekeeper-system
+helm:
   repo: https://open-policy-agent.github.io/gatekeeper/charts
   chart: gatekeeper
-  targetNamespace: gatekeeper-system
-  createNamespace: true
-  valuesContent: |
+  releaseName: gatekeeper
+  values:
     replicas: 3
     auditInterval: 60
     validatingWebhookFailurePolicy: Ignore
@@ -72,12 +67,13 @@ spec:
       names:
         kind: RequireDeploymentLabels
       validation:
-        type: object
-        properties:
-          requiredLabels:
-            type: array
-            items:
-              type: string
+        openAPIV3Schema:
+          type: object
+          properties:
+            requiredLabels:
+              type: array
+              items:
+                type: string
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -91,6 +87,12 @@ spec:
           count(missing) > 0
           msg := sprintf("Missing required labels: %v", [missing])
         }
+```
+
+```bash
+# Install the Gatekeeper Library templates used by the built-in constraints below
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper-library/master/library/pod-security-policy/privileged-containers/template.yaml
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper-library/master/library/general/allowedrepos/template.yaml
 ```
 
 ## Step 3: Create Constraints
@@ -146,22 +148,29 @@ metadata:
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
     pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
 ```
 
 ```bash
 # Apply the restricted profile to all non-system namespaces
 kubectl get namespaces --no-headers -o name \
-  | grep -v "kube-system\|cattle-\|cert-manager" \
-  | xargs -I {} kubectl label {} \
+  | grep -Ev '^namespace/(kube-system|kube-public|kube-node-lease|cattle-.*|fleet-.*|cert-manager|gatekeeper-system)$' \
+  | xargs -I {} kubectl label --overwrite {} \
     pod-security.kubernetes.io/enforce=restricted \
-    pod-security.kubernetes.io/warn=restricted
+    pod-security.kubernetes.io/enforce-version=latest \
+    pod-security.kubernetes.io/warn=restricted \
+    pod-security.kubernetes.io/warn-version=latest \
+    pod-security.kubernetes.io/audit=restricted \
+    pod-security.kubernetes.io/audit-version=latest
 ```
 
 ## Step 5: Configure Network Policies
 
 ```yaml
 # network-policies/default-deny.yaml - Applied via Fleet to all clusters
+# Requires a CNI plugin that enforces NetworkPolicy.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -200,8 +209,12 @@ spec:
   podSelector: {}
   policyTypes:
     - Ingress
+    - Egress
   ingress:
     - from:
+        - podSelector: {}
+  egress:
+    - to:
         - podSelector: {}
 ```
 
@@ -271,12 +284,12 @@ spec:
 
 ```bash
 # List all Gatekeeper constraint violations
-kubectl get constraints -A
-kubectl describe constraint no-privileged-containers | grep -A20 "Status:"
+kubectl get constraints
+kubectl describe k8spspprivilegedcontainer no-privileged-containers | grep -A20 '^Status:'
 
 # Check violations in Gatekeeper audit
-kubectl get constrainttemplate -o json \
-  | jq '.items[].status.byPod[].totalViolations'
+kubectl get constraints -o json \
+  | jq '.items[] | {name: .metadata.name, totalViolations: (.status.totalViolations // 0)}'
 
 # View specific violations
 kubectl get k8sallowedrepos approved-registries \
