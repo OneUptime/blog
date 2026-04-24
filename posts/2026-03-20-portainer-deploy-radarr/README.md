@@ -25,8 +25,7 @@ services:
       - TZ=America/New_York
     volumes:
       - radarr_config:/config
-      - /mnt/media/movies:/movies
-      - /mnt/media/downloads:/downloads
+      - /mnt/media:/data
     ports:
       - "7878:7878"
     restart: unless-stopped
@@ -49,19 +48,19 @@ Navigate to **Settings > Profiles** to configure quality tiers:
 
 1. Navigate to **Settings > Download Clients > Add**
 2. Select qBittorrent or your preferred client
-3. Configure host, port, and credentials
+3. Configure host, port, credentials, and ensure the client uses `/data/downloads` inside its container
 4. Set category: `radarr`
 
 ### Adding Movies
 
 1. Click **Add New** and search for a movie
 2. Select the movie from results
-3. Set root folder: `/movies`
+3. Set root folder: `/data/movies`
 4. Set quality profile
 5. Click **Add Movie**
 
 For movies already in your library:
-1. **Add New > Browse existing movies in library**
+1. **Add New > Import Existing Movies**
 
 ## Movie List Integration
 
@@ -79,13 +78,13 @@ In **Settings > Media Management > Movie Naming**:
 {Movie Title} ({Release Year}) [IMDB-{ImdbId}] {Edition Tags} {Quality Full}
 ```
 
-## Quality Cutoff and Upgrades
+## Quality Upgrades
 
 Configure Radarr to upgrade quality automatically:
 
-1. In your quality profile, set the **Cutoff** (e.g., Blu-ray 1080p)
-2. Enable **Upgrade Until** quality
-3. Radarr will download better versions until the cutoff is met
+1. In your quality profile, enable **Upgrades Allowed**
+2. Set **Upgrade Until** to your target quality (e.g., Bluray-1080p)
+3. Radarr will download better versions until that quality is reached
 
 ## Radarr API Integration
 
@@ -103,7 +102,7 @@ curl -X POST "http://localhost:7878/api/v3/movie" \
     "title": "The Dark Knight",
     "tmdbId": 155,
     "qualityProfileId": 1,
-    "rootFolderPath": "/movies",
+    "rootFolderPath": "/data/movies",
     "monitored": true,
     "addOptions": {"searchForMovie": true}
   }'
