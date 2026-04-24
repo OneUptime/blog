@@ -8,7 +8,7 @@ Description: Configure automatic and manual rollback policies for Docker Swarm s
 
 ## Introduction
 
-Rollbacks are critical for maintaining service availability when deployments fail. Docker Swarm supports both automatic rollback (triggered by failed health checks) and manual rollback (via CLI or API). Portainer provides UI controls for managing rollbacks.
+Rollbacks are critical for maintaining service availability when deployments fail. Docker Swarm supports both automatic rollback (triggered when an update fails during the monitor period) and manual rollback (via CLI or API). Portainer provides UI controls for managing rollbacks.
 
 ## Automatic Rollback Configuration
 
@@ -25,7 +25,7 @@ services:
       update_config:
         parallelism: 1
         delay: 15s
-        failure_action: rollback     # Auto-rollback on failure
+        failure_action: rollback     # Auto-rollback when an update fails
         monitor: 30s                 # Time to monitor after each task update
         max_failure_ratio: 0.2       # 20% failure rate triggers rollback
         order: start-first
@@ -46,9 +46,9 @@ services:
 
 ## Manual Rollback via Portainer UI
 
-1. Go to **Swarm > Services > Your Service**
-2. If an update is in progress: click **Rollback**
-3. For completed (but broken) updates: select the previous image version
+1. Go to **Services** and select your service
+2. Click **Rollback the service**
+3. Confirm the rollback
 
 ## Manual Rollback via Docker CLI
 
@@ -67,15 +67,20 @@ watch -n 2 "docker service ps myapp_api | head -10"
 
 ```bash
 # Get service ID
-SERVICE_ID=$(docker service ls --filter name=myapp_api -q)
+SERVICE_ID=$(docker service inspect myapp_api --format '{{.ID}}')
 
 # Get current version
-VERSION=$(docker service inspect $SERVICE_ID --format '{{.Version.Index}}')
+VERSION=$(docker service inspect "$SERVICE_ID" --format '{{.Version.Index}}')
+
+# Get current service spec
+SERVICE_SPEC=$(docker service inspect "$SERVICE_ID" --format '{{json .Spec}}')
 
 # Trigger rollback
 curl -X POST \
   -H "X-API-Key: your-api-key" \
-  "https://portainer.example.com/api/endpoints/1/docker/services/$SERVICE_ID/rollback?version=$VERSION"
+  -H "Content-Type: application/json" \
+  --data "$SERVICE_SPEC" \
+  "https://portainer.example.com/api/endpoints/1/docker/services/$SERVICE_ID/update?version=$VERSION&rollback=previous"
 ```
 
 ## Deployment History Tracking
@@ -164,4 +169,4 @@ docker service ps myapp_api
 
 ## Conclusion
 
-Rollback policies in Docker Swarm provide a safety net for deployments. Automatic rollbacks triggered by failed health checks minimize downtime, while manual rollback commands give operators control in complex situations. Portainer's service management UI makes triggering rollbacks accessible without Docker CLI knowledge, and the Portainer API enables programmatic rollback in CI/CD pipelines.
+Rollback policies in Docker Swarm provide a safety net for deployments. Automatic rollbacks triggered by failed updates during the monitor window minimize downtime, while manual rollback commands give operators control in complex situations. Portainer's service management UI makes triggering rollbacks accessible without Docker CLI knowledge, and the Portainer API enables programmatic rollback in CI/CD pipelines.
