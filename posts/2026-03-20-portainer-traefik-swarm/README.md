@@ -14,14 +14,17 @@ Running Traefik as a reverse proxy on Docker Swarm gives you automatic certifica
 
 ```text
 Internet → Traefik (port 80/443) → Portainer (port 9000)
+Portainer → Agent (port 9001) → Swarm nodes
                                  → Your other Swarm services
 ```
 
 ## Prerequisites
 
 - Docker Swarm initialized (`docker swarm init`)
-- Portainer deployed on the Swarm
-- A domain name pointing to your Swarm manager IP
+- Access to a Swarm manager node
+- Port `9001` open between Swarm nodes for the Portainer Agent
+- A domain name pointing to a Swarm node that can reach the Traefik service
+- This example assumes a single-manager Swarm
 
 ## Step 1: Create an Overlay Network
 
@@ -33,7 +36,7 @@ docker network create --driver=overlay --attachable proxy
 
 ## Step 2: Create the Swarm Stack
 
-Create this stack file in Portainer under **Stacks > Add Stack**:
+Create this stack file on a Swarm manager:
 
 ```yaml
 # traefik-portainer-swarm.yml
@@ -59,17 +62,16 @@ services:
     ports:
       - target: 80
         published: 80
-        mode: host
       - target: 443
         published: 443
-        mode: host
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_data:/data
     networks:
       - proxy
     deploy:
-      mode: global              # Run on every manager node
+      mode: replicated          # Single instance for local ACME storage
+      replicas: 1
       placement:
         constraints:
           - node.role == manager
@@ -80,16 +82,31 @@ services:
         - "traefik.http.routers.traefik.tls=true"
         - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"
         - "traefik.http.routers.traefik.service=api@internal"
-        - "traefik.http.services.traefik-svc.loadbalancer.server.port=8080"
+        - "traefik.http.services.dummy-svc.loadbalancer.server.port=9999"
+
+  agent:
+    image: portainer/agent:lts
+    environment:
+      AGENT_CLUSTER_ADDR: tasks.agent
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/volumes:/var/lib/docker/volumes
+    networks:
+      - agent_network
+    deploy:
+      mode: global
+      placement:
+        constraints:
+          - node.platform.os == linux
 
   portainer:
-    image: portainer/portainer-ce:latest
-    command: -H unix:///var/run/docker.sock
+    image: portainer/portainer-ce:lts
+    command: -H tcp://tasks.agent:9001 --tlsskipverify
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - portainer_data:/data
     networks:
       - proxy
+      - agent_network
     deploy:
       mode: replicated
       replicas: 1
@@ -107,6 +124,8 @@ services:
 networks:
   proxy:
     external: true
+  agent_network:
+    driver: overlay
 
 volumes:
   traefik_data:
@@ -118,8 +137,6 @@ volumes:
 ```bash
 # Deploy from CLI
 docker stack deploy -c traefik-portainer-swarm.yml traefik-stack
-
-# Or deploy via Portainer UI: Stacks > Add Stack > paste the YAML
 ```
 
 ## Step 4: Verify Services
