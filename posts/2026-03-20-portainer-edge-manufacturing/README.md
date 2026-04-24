@@ -12,9 +12,9 @@ Manufacturing environments require edge compute for real-time data acquisition, 
 
 ## Prerequisites
 
-- Portainer Business Edition on a central server
-- Linux-based edge devices with Docker (x86 or ARM)
-- Network access between Portainer server and factory floor devices
+- Portainer Business Edition on a central server with Edge Compute enabled
+- Linux-based edge devices with Docker and the Portainer Edge Agent (x86 or ARM)
+- Outbound network access from factory floor devices to the Portainer server
 - Understanding of industrial protocols (OPC-UA, Modbus, MQTT)
 
 ## Manufacturing Edge Reference Architecture
@@ -23,7 +23,7 @@ A typical manufacturing edge deployment includes:
 
 - **Level 0-1** (Field Devices): PLCs, sensors, actuators (not containerized)
 - **Level 2** (Control Layer): SCADA/HMI systems
-- **Level 3** (Edge Layer): Edge gateways running Docker + Portainer agent
+- **Level 3** (Edge Layer): Edge gateways running Docker + Portainer Edge Agent
 - **Level 4** (Enterprise Layer): Portainer server, data lake, analytics
 
 ## Step 1: Configure Edge Devices for Factory Use
@@ -36,16 +36,18 @@ Industrial gateways often need specific OS-level configuration:
 
 # Prepare an industrial Linux device for edge computing
 
-# Disable swap (Docker recommendation for consistent performance)
+# Disable swap for deterministic latency on these hosts
 swapoff -a
 sed -i '/swap/d' /etc/fstab
 
 # Set CPU governor to performance mode
 for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+    [ -f "${cpu}" ] || continue
     echo performance > "${cpu}"
 done
 
 # Configure Docker daemon for industrial use
+mkdir -p /etc/docker
 cat > /etc/docker/daemon.json << 'EOF'
 {
   "log-driver": "json-file",
@@ -73,7 +75,6 @@ Create this as an Edge Stack in Portainer targeting your `Manufacturing` edge gr
 
 ```yaml
 # manufacturing-edge-stack.yml
-version: "3.8"
 
 services:
   # OPC-UA client: reads data from PLCs
@@ -82,7 +83,7 @@ services:
     restart: always
     environment:
       - OPCUA_SERVER_URL=opc.tcp://192.168.10.5:4840  # PLC address
-      - MQTT_HOST=mqtt
+      - MQTT_HOST=mosquitto
       - POLL_INTERVAL_MS=500  # Read PLC data every 500ms
     networks:
       - factory-net
@@ -104,7 +105,7 @@ services:
     image: myorg/edge-analytics:2.0
     restart: always
     environment:
-      - MQTT_HOST=mqtt
+      - MQTT_HOST=mosquitto
       - ANOMALY_THRESHOLD=${ANOMALY_THRESHOLD:-3.0}
       - UPSTREAM_INFLUX=${INFLUX_UPSTREAM_URL}
     networks:
@@ -126,6 +127,7 @@ services:
       - DOCKER_INFLUXDB_INIT_MODE=setup
       - DOCKER_INFLUXDB_INIT_USERNAME=admin
       - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_PASSWORD}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_ADMIN_TOKEN}
       - DOCKER_INFLUXDB_INIT_ORG=factory
       - DOCKER_INFLUXDB_INIT_BUCKET=production
     volumes:
@@ -170,7 +172,7 @@ Many factory devices use Modbus TCP/RTU. Deploy a Modbus-to-MQTT bridge:
     environment:
       - MODBUS_HOST=192.168.10.10  # Modbus device IP
       - MODBUS_PORT=502
-      - MQTT_HOST=mqtt
+      - MQTT_HOST=mosquitto
       - MODBUS_REGISTERS=40001,40002,40003  # Holding registers to read
       - POLL_INTERVAL=1000  # ms
     devices:
@@ -219,16 +221,23 @@ Use Edge Jobs to trigger tasks on shift changes:
 ```bash
 #!/bin/sh
 # shift-change-job.sh
-# Runs at shift change to flush and archive data
+# Runs at shift change to record a shift-change event
 
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+set -eu
 
-# Trigger data archive in InfluxDB
-curl -s -X POST http://influxdb:8086/api/v2/write \
-  -H "Authorization: Token ${INFLUX_TOKEN}" \
-  --data-raw "shift_event,device=${DEVICE_ID} type=\"shift_change\" ${TIMESTAMP}"
+: "${DEVICE_ID:?Set DEVICE_ID before running this job}"
+: "${INFLUXDB_ADMIN_TOKEN:?Set INFLUXDB_ADMIN_TOKEN before running this job}"
 
-echo "Shift change recorded: ${DEVICE_ID} at ${TIMESTAMP}"
+EVENT_TIME_UNIX=$(date +%s)
+EVENT_TIME_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+# Edge Jobs run on the host, so use the published InfluxDB port
+curl -fsS --request POST "http://localhost:8086/api/v2/write?org=factory&bucket=production&precision=s" \
+  -H "Authorization: Token ${INFLUXDB_ADMIN_TOKEN}" \
+  -H "Content-Type: text/plain; charset=utf-8" \
+  --data-raw "shift_event,device=${DEVICE_ID} type=\"shift_change\" ${EVENT_TIME_UNIX}"
+
+echo "Shift change recorded: ${DEVICE_ID} at ${EVENT_TIME_UTC}"
 ```
 
 ## Best Practices
