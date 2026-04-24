@@ -13,17 +13,17 @@ Portainer's Custom Templates feature lets you build your own catalog of reusable
 ## Prerequisites
 
 - Portainer CE or BE installed
-- Admin or team-level access to manage templates
+- Permissions to create and manage templates in your Portainer environment
 - Basic understanding of Docker Compose
 
 ## Custom Template Types
 
-Portainer supports two custom template types:
+For Docker environments, Portainer custom templates use two stack types:
 
 | Type | Description | Use Case |
 |------|-------------|----------|
-| **Container** | Single-container deployment | Simple services, utilities |
-| **Stack** | Multi-service Docker Compose | Full applications |
+| **Standalone / Podman** | Compose deployment to a standalone Docker or Podman environment | Single-service or multi-service apps |
+| **Swarm** | Docker Swarm stack deployment | Swarm services and multi-node apps |
 
 ## Creation Methods Overview
 
@@ -36,26 +36,22 @@ Portainer provides three ways to create custom templates:
 ## Step 1: Navigate to Custom Templates
 
 1. Select your environment in Portainer
-2. Click **App Templates** in the sidebar
-3. Click the **Custom templates** tab
-4. Click **+ Add custom template**
+2. Click **Templates** in the sidebar
+3. Click **Custom**
+4. Click **Add Custom Template**
 
 ## Step 2: Fill in Template Metadata
 
-Regardless of creation method, all templates require:
+Regardless of creation method, templates use the same core metadata:
 
 ```text
 Title:       My Application Stack     # Display name in catalog
 Description: Deploys my app with...   # Short description
+Note:        Internal staging stack   # Optional extra context
 
-Platform:    Linux                    # linux or windows
-Type:        Stack                    # Container or Stack
-Logo URL:    https://...              # Optional logo image URL
-```
-
-**Categories** (optional) help organize your template catalog:
-```text
-Categories: webserver, monitoring, database
+Platform:    Linux                    # Linux or Windows
+Type:        Standalone / Podman      # Standalone / Podman or Swarm
+Logo:        https://...              # Optional logo image URL
 ```
 
 ## Step 3: Choose a Creation Method
@@ -66,40 +62,40 @@ Write your Compose file directly in the browser. Best for quick templates or tes
 
 - Paste an existing Compose file
 - Use the built-in YAML editor with syntax highlighting
-- Add Mustache variables for user inputs: `{{ .variable_name }}`
+- In Portainer BE, add Mustache variables for user inputs: `{{ variable_name }}`
 
 ### Method 2: Git Repository
 
 Link to a Compose file in a Git repository. Best for version-controlled templates.
 
 - Enter the repository URL
-- Set the branch (e.g., `main`)
-- Specify the path to the Compose file within the repo
+- Set the repository reference (for example, `main`)
+- Specify the Compose path within the repo
 - Add credentials if the repo is private
 
 ### Method 3: File Upload
 
 Upload a Compose file from your local machine. Best for one-time imports.
 
-- Click **Upload**
-- Select your `docker-compose.yml` file
+- Choose the **Upload** build method and click **Select file**
+- Select your Compose file
 - The file contents load into the editor for review
 
 ## Step 4: Add Template Variables
 
-Variables let template users customize deployments. Use Mustache syntax:
+In Portainer Business Edition, variables let template users customize deployments. Use Mustache syntax:
 
 ```yaml
 # In the Compose file, use variables like:
 
 services:
   app:
-    image: {{ .image_name }}:{{ .image_tag }}
+    image: "{{ image_name }}:{{ image_tag }}"
     ports:
-      - "{{ .app_port }}:8080"
+      - "{{ app_port }}:8080"
     environment:
-      - DB_PASSWORD={{ .db_password }}
-      - APP_SECRET={{ .app_secret }}
+      - DB_PASSWORD={{ db_password }}
+      - APP_SECRET={{ app_secret }}
 ```
 
 For each variable, define it in the **Variables** section:
@@ -109,7 +105,7 @@ For each variable, define it in the **Variables** section:
   "name": "app_port",
   "label": "Application port",
   "description": "Host port to expose the application on",
-  "default": "8080"
+  "defaultValue": "8080"
 }
 ```
 
@@ -121,50 +117,43 @@ For each variable, define it in the **Variables** section:
 
 ## Step 6: Use the Template
 
-1. Go to **App Templates > Custom templates**
+1. Go to **Templates > Custom**
 2. Find your template
 3. Click it to expand the configuration panel
 4. Fill in variable values
-5. Click **Deploy**
+5. Click **Deploy the stack**
 
 ## Managing Custom Templates
 
 ### Edit a Template
 
-1. Click the pencil icon on the template card
+1. Click **Edit** on the template card
 2. Modify the Compose file or metadata
-3. Save changes
+3. Click **Update custom template**
 
 Note: Editing a template does not affect already-deployed stacks.
 
-### Duplicate a Template
-
-Use the duplicate option to create variants (e.g., dev vs. production versions of the same template).
-
 ### Delete a Template
 
-Click the trash icon on the template card. Deployed stacks are not affected.
+Click **Delete** on the template card. Deployed stacks are not affected.
 
 ## Template Best Practices
 
 ```yaml
 # Good template: parameterize changeable values
+# Set defaults for optional variables in Portainer's Variables definition UI
 services:
   web:
-    image: {{ .image }}:{{ .tag | default "latest" }}
+    image: "{{ image }}:{{ tag }}"
     ports:
-      - "{{ .port | default "80" }}:80"
+      - "{{ port }}:80"
     environment:
-      - DB_HOST={{ .db_host | default "database" }}
-      - DB_PASSWORD={{ .db_password }}   # Required, no default
+      - DB_HOST={{ db_host }}
+      - DB_PASSWORD={{ db_password }}   # Required, no default
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: {{ .memory_limit | default "512m" }}
 ```
 
-- Always provide sensible defaults for optional variables
+- Set sensible defaults for optional variables in the Variables definition UI
 - Make passwords and secrets required (no default)
 - Document variables with clear labels and descriptions
 
