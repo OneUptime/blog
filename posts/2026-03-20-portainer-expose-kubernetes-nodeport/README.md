@@ -12,7 +12,8 @@ NodePort is the simplest way to expose Portainer on Kubernetes - it opens a port
 
 ## Prerequisites
 
-- Kubernetes cluster with Portainer installed
+- Kubernetes cluster
+- Helm 3 installed if you want to install Portainer in this guide
 - Network access to cluster nodes
 - `kubectl` configured with cluster access
 
@@ -29,12 +30,17 @@ NodePort ports must be in the range 30000-32767 by default.
 ## Step 1: Install Portainer with NodePort
 
 ```bash
-# Install Portainer with NodePort service
+# Add the Portainer Helm repository
+helm repo add portainer https://portainer.github.io/k8s/
+helm repo update
 
-helm install portainer portainer/portainer \
+# Install Portainer with NodePort service
+helm upgrade --install portainer portainer/portainer \
   --namespace portainer \
+  --create-namespace \
   --set service.type=NodePort \
-  --set service.nodePort=30777 \
+  --set service.httpNodePort=30777 \
+  --set service.edgeNodePort=30776 \
   --set service.httpsNodePort=30779
 
 # Or specify in values.yaml:
@@ -44,7 +50,7 @@ helm install portainer portainer/portainer \
 # portainer-nodeport-values.yaml
 service:
   type: NodePort
-  nodePort: 30777        # HTTP port
+  httpNodePort: 30777    # HTTP port
   httpsNodePort: 30779   # HTTPS port
   edgeNodePort: 30776    # Edge agent port
 ```
@@ -56,8 +62,8 @@ service:
 kubectl get svc portainer -n portainer
 
 # Expected output:
-# NAME        TYPE       CLUSTER-IP     EXTERNAL-IP   PORT(S)                          AGE
-# portainer   NodePort   10.96.1.100    <none>        9000:30777/TCP,9443:30779/TCP    5m
+# NAME        TYPE       CLUSTER-IP     EXTERNAL-IP   PORT(S)                                               AGE
+# portainer   NodePort   10.96.1.100    <none>        9000:30777/TCP,9443:30779/TCP,30776:30776/TCP        5m
 ```
 
 ## Step 3: Find Node IPs
@@ -67,16 +73,16 @@ kubectl get svc portainer -n portainer
 kubectl get nodes -o wide
 
 # Output:
-# NAME       STATUS   ROLES    AGE   VERSION   INTERNAL-IP   EXTERNAL-IP
-# master     Ready    master   10d   v1.28     10.0.1.10     203.0.113.10
-# worker-1   Ready    <none>   10d   v1.28     10.0.1.11     203.0.113.11
-# worker-2   Ready    <none>   10d   v1.28     10.0.1.12     203.0.113.12
+# NAME            STATUS   ROLES           AGE   VERSION   INTERNAL-IP   EXTERNAL-IP
+# control-plane   Ready    control-plane   10d   v1.28     10.0.1.10     203.0.113.10
+# worker-1        Ready    <none>          10d   v1.28     10.0.1.11     203.0.113.11
+# worker-2        Ready    <none>          10d   v1.28     10.0.1.12     203.0.113.12
 ```
 
 ## Step 4: Access Portainer via NodePort
 
 ```bash
-# Access using any node IP (both worker and master)
+# Access using any node IP (worker or control-plane)
 http://203.0.113.10:30777    # HTTP
 https://203.0.113.10:30779   # HTTPS
 
@@ -84,7 +90,7 @@ http://203.0.113.11:30777    # Same on worker-1
 http://203.0.113.12:30777    # Same on worker-2
 ```
 
-All node IPs work because Kubernetes routes traffic to the Portainer pod regardless of which node receives the request.
+By default, all node IPs work because Kubernetes routes traffic to the Portainer pod regardless of which node receives the request.
 
 ## Step 5: Configure a Specific NodePort (Optional)
 
@@ -96,7 +102,8 @@ kubectl patch svc portainer -n portainer \
   --type='json' \
   -p='[
     {"op": "replace", "path": "/spec/ports/0/nodePort", "value": 30777},
-    {"op": "replace", "path": "/spec/ports/1/nodePort", "value": 30779}
+    {"op": "replace", "path": "/spec/ports/1/nodePort", "value": 30779},
+    {"op": "replace", "path": "/spec/ports/2/nodePort", "value": 30776}
   ]'
 ```
 
@@ -118,7 +125,7 @@ ufw allow from 203.0.113.0/32 to any port 30779
 
 ## Step 7: Create a NodePort Service Manually
 
-If Portainer is already running without a NodePort service:
+If Portainer is already running without a NodePort service, match the selector labels and target ports to your existing Portainer deployment:
 
 ```yaml
 # portainer-nodeport-svc.yaml
@@ -130,7 +137,8 @@ metadata:
 spec:
   type: NodePort
   selector:
-    app: portainer
+    app.kubernetes.io/name: portainer
+    app.kubernetes.io/instance: portainer
   ports:
     - name: http
       port: 9000
@@ -141,8 +149,8 @@ spec:
       targetPort: 9443
       nodePort: 30779
     - name: edge
-      port: 8000
-      targetPort: 8000
+      port: 30776
+      targetPort: 30776
       nodePort: 30776
 ```
 
@@ -160,7 +168,7 @@ Client → HAProxy/Nginx → Node 1:30779
                        → Node 3:30779
 ```
 
-```nginx
+```haproxy
 # HAProxy configuration
 frontend portainer
     bind *:443 ssl crt /etc/ssl/portainer.pem
@@ -181,8 +189,8 @@ backend portainer_backend
 # Verify the pod is running
 kubectl get pods -n portainer
 
-# Check the service endpoints
-kubectl get endpoints portainer -n portainer
+# Check the service EndpointSlices
+kubectl get endpointslices -n portainer -l kubernetes.io/service-name=portainer
 
 # Test from inside the cluster
 kubectl run test-curl \
@@ -193,14 +201,14 @@ kubectl run test-curl \
 
 ### NodePort Not Opening
 
-Ensure the kube-proxy is running and the firewall allows the port:
+Ensure the cluster's Service proxy is healthy and the firewall allows the port. If your cluster uses kube-proxy:
 
 ```bash
 # Check kube-proxy
-kubectl get pods -n kube-system -l k8s-app=kube-proxy
+kubectl get daemonset -n kube-system kube-proxy
 
-# Test the port from the node itself
-curl -k https://localhost:30779
+# Test the port from the node itself using a real node IP
+curl -k https://<node-ip>:30779
 ```
 
 ## Conclusion
