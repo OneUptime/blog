@@ -18,7 +18,7 @@ Container templates in Portainer provide a fast path to deploying single-contain
 
 ## What Makes a Container Template
 
-A container template in Portainer defines:
+A container template element in Portainer can define:
 
 ```json
 {
@@ -38,30 +38,29 @@ A container template in Portainer defines:
 }
 ```
 
-Type `1` is a container template (type `2` is a stack template).
+Type `1` is a container template, type `2` is a Swarm stack template, and type `3` is a Compose stack template.
 
-## Step 1: Open App Templates
+## Step 1: Open Application Templates
 
 1. In Portainer, select your Docker environment
-2. Click **App Templates** in the left navigation
-3. The template catalog loads showing all available templates
+2. In the left navigation, expand **Templates** and click **Application**
+3. The application templates page loads showing the available templates
 
 ## Step 2: Filter to Container Templates
 
-By default, both container and stack templates are shown. To see only container templates:
+To see only container templates:
 
-- Look for the **Type** filter or use the search to find your desired app
-- Container templates typically show a single container icon
+- Use the **Type** dropdown to display only container templates
+- Use the search to find your desired app
 
 ## Step 3: Select Your Template
 
-Click on the template you want to deploy. A configuration panel expands below the template card.
+Click on the template you want to deploy. Portainer opens the deployment form for that template.
 
 For this example, we will deploy **MySQL**:
 
 ```text
 Template: MySQL
-Image:    mysql:8
 ```
 
 ## Step 4: Configure the Container
@@ -82,26 +81,23 @@ Name:     my-mysql          # Unique container name on this host
 
 ### Environment Variables
 
-The template pre-populates common MySQL variables:
+The exact environment variables depend on the template source. Portainer's official MySQL template prompts for:
 
 ```text
 MYSQL_ROOT_PASSWORD:  [enter-secure-password]
-MYSQL_DATABASE:       mydb
-MYSQL_USER:           myuser
-MYSQL_PASSWORD:       [enter-secure-password]
 ```
 
 ### Volume Configuration
 
 ```text
-/var/lib/mysql → /data/mysql    # Persist data to host path
+/data/mysql → /var/lib/mysql    # Bind-mount host storage into the container
 ```
 
-Or use a named volume by leaving the host path blank - Portainer creates a named volume automatically.
+You can also map a named volume instead of a bind mount.
 
 ### Network
 
-```sql
+```text
 Network: bridge    # Default; or select a custom network
 ```
 
@@ -113,7 +109,7 @@ Restart policy: Unless stopped    # Restart unless manually stopped
 
 ## Step 5: Advanced Options (Optional)
 
-Expand the **Advanced options** section for:
+Expand the **Show advanced options** section for:
 
 - **Labels** - Add Docker labels for organization or proxy routing
 - **CPU limit** - Constrain CPU usage
@@ -130,7 +126,7 @@ CPU limit:    0.5
 1. Review all settings
 2. Click **Deploy the container**
 3. Portainer pulls the image (if not already cached) and creates the container
-4. You are redirected to the **Containers** list
+4. The new container appears in the **Containers** list
 
 ## Step 7: Verify the Deployment
 
@@ -146,11 +142,11 @@ CPU limit:    0.5
 4. Test connectivity:
 
 ```bash
-# Connect to MySQL from another container
+# Open a MySQL client inside the container
 
 docker exec -it my-mysql mysql -u root -p
 
-# Or test the port from the host
+# Or test the published port from the host
 mysql -h 127.0.0.1 -P 3306 -u root -p
 ```
 
@@ -164,12 +160,12 @@ Container templates create a standard Docker container. You can:
 
 ## Creating Your Own Container Template
 
-You can save any container configuration as a custom template for reuse:
+You can create your own app template source for reuse:
 
-1. Go to **App Templates > Custom Templates**
-2. Click **+ Add custom template**
-3. Choose **Container** type
-4. Fill in the template JSON definition
+1. Create a JSON file that contains your template definitions
+2. Host the JSON file somewhere the Portainer Server instance can access over HTTP
+3. In Portainer, go to **Settings** and set the **App Templates** URL, or start Portainer with the `--templates` flag
+4. Refresh **Templates > Application** and deploy from the new template
 
 ## Conclusion
 
