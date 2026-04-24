@@ -8,7 +8,7 @@ Description: A guide to querying existing infrastructure using data sources in O
 
 ## Introduction
 
-Data sources allow OpenTofu to fetch information about infrastructure that exists outside your current configuration - whether created manually, by another team, or managed by a different Terraform/OpenTofu workspace. This enables you to reference existing resources without importing them into your state.
+Data sources allow OpenTofu to fetch information about infrastructure that exists outside your current configuration - whether created manually, by another team, or managed by a different Terraform/OpenTofu workspace. This enables you to reference existing resources without importing them as managed resources into your state.
 
 ## Querying an Existing VPC
 
@@ -77,6 +77,14 @@ data "aws_security_group" "database" {
   vpc_id = data.aws_vpc.production.id
 }
 
+data "aws_subnet" "app" {
+  vpc_id = data.aws_vpc.production.id
+
+  tags = {
+    Name = "app-subnet"
+  }
+}
+
 # Use both in a new resource
 resource "aws_instance" "app" {
   ami           = data.aws_ami.ubuntu_latest.id
@@ -103,14 +111,14 @@ data "aws_partition" "current" {}
 # Build ARNs from fetched data
 locals {
   account_id = data.aws_caller_identity.current.account_id
-  region     = data.aws_region.current.name
+  region     = data.aws_region.current.region
   partition  = data.aws_partition.current.partition
 
   log_bucket_arn = "arn:${local.partition}:s3:::${var.log_bucket_name}"
 }
 
 resource "aws_iam_role_policy" "s3_access" {
-  role = aws_iam_role.app.id
+  role = var.app_role_name
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -164,12 +172,14 @@ locals {
   )
 }
 
-resource "aws_db_instance" "replica" {
-  identifier        = "myapp-replica"
-  engine            = "postgres"
-  instance_class    = "db.t3.micro"
-  username          = local.db_credentials.username
-  password          = local.db_credentials.password
+resource "aws_db_instance" "app" {
+  allocated_storage   = 20
+  identifier          = "myapp-db"
+  engine              = "postgres"
+  instance_class      = "db.t3.micro"
+  username            = local.db_credentials.username
+  password            = local.db_credentials.password
+  skip_final_snapshot = true
 }
 ```
 
@@ -191,10 +201,17 @@ data "aws_vpc" "shared" {
   id       = var.shared_vpc_id
 }
 
-# Use shared VPC endpoints in the current account
-resource "aws_vpc_endpoint" "s3" {
-  vpc_id       = aws_vpc.local.id
-  service_name = "com.amazonaws.us-east-1.s3"
+# Use data from the shared VPC in current-account resources
+resource "aws_security_group" "allow_shared_https" {
+  name   = "allow-shared-https"
+  vpc_id = var.local_vpc_id
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [data.aws_vpc.shared.cidr_block]
+  }
 }
 ```
 
@@ -218,4 +235,4 @@ provider "kubernetes" {
 
 ## Conclusion
 
-Data sources are fundamental to OpenTofu's ability to work with mixed infrastructure - some managed by your configuration, some existing independently. Use data sources to look up shared networking resources, find the latest AMIs, retrieve secrets, and reference infrastructure owned by other teams. Unlike managed resources, data sources are read-only and never modify infrastructure. They are evaluated during the plan phase and their values are available for use in resource configurations throughout your module.
+Data sources are fundamental to OpenTofu's ability to work with mixed infrastructure - some managed by your configuration, some existing independently. Use data sources to look up shared networking resources, find the latest AMIs, retrieve secrets, and reference infrastructure owned by other teams. Unlike managed resources, data sources are read-only and never modify infrastructure. OpenTofu reads them during the plan phase when possible, but can defer reading them until the apply phase if they depend on values that are not yet known.
