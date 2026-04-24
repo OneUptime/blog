@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, OCI Registry, Module Source, Container, Infrastructure
 
-Description: Learn how to configure OpenTofu to pull modules directly from OCI-compatible registries using the oci:: source prefix for version-controlled module distribution.
+Description: Learn how to configure OpenTofu to pull modules directly from OCI-compatible registries using the `oci://` source address for version-controlled module distribution.
 
 ## Introduction
 
-OpenTofu 1.8+ supports the `oci::` source prefix for modules, allowing modules to be pulled directly from OCI registries. This enables teams to distribute modules through existing container registry infrastructure without running a separate module registry server. Authentication reuses Docker credential helpers, making it easy to integrate with private registries.
+OpenTofu 1.10+ supports the `oci://` source address for modules, allowing modules to be pulled directly from OCI registries. This enables teams to distribute modules through existing container registry infrastructure without running a separate module registry server. Authentication can reuse Docker-style auth configuration, making it easy to integrate with private registries.
 
 ## Basic OCI Module Source
 
@@ -16,7 +16,7 @@ OpenTofu 1.8+ supports the `oci::` source prefix for modules, allowing modules t
 # Reference a module stored in an OCI registry
 
 module "vpc" {
-  source  = "oci://registry.internal.company.com/mycompany/module-vpc:1.2.0"
+  source  = "oci://registry.internal.company.com/mycompany/module-vpc?tag=1.2.0"
 
   name            = "production"
   cidr            = "10.0.0.0/16"
@@ -30,7 +30,7 @@ module "vpc" {
 
 ```bash
 # For GitHub Container Registry (GHCR)
-echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_USER" --password-stdin
 
 # For AWS ECR
 aws ecr get-login-password --region us-east-1 | \
@@ -40,14 +40,15 @@ aws ecr get-login-password --region us-east-1 | \
 # For Azure Container Registry
 az acr login --name mycompanyregistry
 
-# OpenTofu uses Docker's credential store for OCI authentication
-# Configure ~/.docker/config.json or credential helpers
+# OpenTofu can read Docker-style auth files such as ~/.docker/config.json
+# If your Docker config uses a credential helper, configure it explicitly
 ```
 
 ```hcl
-# ~/.terraform.rc - explicit credentials for OCI registry
-credentials "registry.internal.company.com" {
-  token = "your-registry-token"
+# ~/.tofurc (or ~/.terraformrc) - explicit credentials for an OCI registry
+oci_credentials "registry.internal.company.com" {
+  username = "your-username"
+  password = "your-password"
 }
 ```
 
@@ -56,7 +57,7 @@ credentials "registry.internal.company.com" {
 ```hcl
 # Pin to exact version (recommended for production)
 module "database" {
-  source = "oci://ghcr.io/myorg/module-rds:3.1.2"
+  source = "oci://ghcr.io/myorg/module-rds?tag=3.1.2"
 
   identifier     = "production-db"
   engine         = "postgres"
@@ -65,7 +66,7 @@ module "database" {
 
 # Use a major version tag (set up by your push workflow)
 module "security_groups" {
-  source = "oci://ghcr.io/myorg/module-security-groups:2"
+  source = "oci://ghcr.io/myorg/module-security-groups?tag=2"
 
   vpc_id = module.vpc.vpc_id
 }
@@ -74,14 +75,14 @@ module "security_groups" {
 # You must reference a specific tag or digest
 ```
 
-## Using Image Digests for Immutable References
+## Using Digests for Immutable References
 
 ```hcl
 # Reference by digest for fully immutable module references
 # (immune to tag mutation)
 
 module "vpc" {
-  source = "oci://registry.internal.company.com/mycompany/module-vpc@sha256:abc123def456..."
+  source = "oci://registry.internal.company.com/mycompany/module-vpc?digest=sha256:abc123def456..."
 
   name = "production"
   cidr = "10.0.0.0/16"
@@ -101,23 +102,23 @@ oras manifest fetch --descriptor \
 ```hcl
 # Public modules from GHCR (no authentication needed)
 module "vpc" {
-  source = "oci://ghcr.io/myorg/module-vpc:1.0.0"
+  source = "oci://ghcr.io/myorg/module-vpc?tag=1.0.0"
 
   name = "production"
   cidr = "10.0.0.0/16"
 }
 
-# Private modules from GHCR (requires GITHUB_TOKEN)
+# Private modules from GHCR (requires authentication)
 module "internal_baseline" {
-  source = "oci://ghcr.io/mycompany/module-account-baseline:2.1.0"
+  source = "oci://ghcr.io/mycompany/module-account-baseline?tag=2.1.0"
 }
 ```
 
 ```bash
-# Set GITHUB_TOKEN for private GHCR access
-export GITHUB_TOKEN="ghp_yourPersonalAccessToken"
-# Docker credential helper picks this up automatically
-echo "$GITHUB_TOKEN" | docker login ghcr.io -u myuser --password-stdin
+# For local use, authenticate to GHCR with a personal access token (classic)
+# that has at least read:packages
+export GHCR_TOKEN="ghp_yourPersonalAccessToken"
+echo "$GHCR_TOKEN" | docker login ghcr.io -u myuser --password-stdin
 ```
 
 ## Module Version Discovery
@@ -140,7 +141,7 @@ oras repo tags registry.internal.company.com/mycompany/module-vpc
 mkdir -p /tmp/module-preview
 oras pull registry.internal.company.com/mycompany/module-vpc:1.2.0 \
   --output /tmp/module-preview/
-tar -tzf /tmp/module-preview/*.tgz
+unzip -l /tmp/module-preview/*.zip
 ```
 
 ## CI/CD Pipeline Usage
@@ -151,6 +152,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       packages: read
 
     steps:
@@ -161,7 +163,7 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
 
       - name: Tofu Init (pulls OCI modules)
         run: tofu init
@@ -172,7 +174,7 @@ jobs:
 
 ## Caching OCI Modules in CI
 
-```bash
+```yaml
 # Cache pulled modules to avoid repeated OCI pulls
 # OpenTofu caches modules in .terraform/modules/ after init
 
@@ -197,7 +199,7 @@ jobs:
 # Mix OCI modules with registry and local modules
 module "vpc" {
   # Internal module from OCI
-  source = "oci://registry.internal.company.com/mycompany/module-vpc:2.0.0"
+  source = "oci://registry.internal.company.com/mycompany/module-vpc?tag=2.0.0"
   name   = "production"
   cidr   = "10.0.0.0/16"
 }
@@ -217,4 +219,4 @@ module "custom_app" {
 
 ## Conclusion
 
-Pulling modules from OCI registries uses the `oci://` source prefix with a registry URL, repository path, and tag or digest. Authentication reuses Docker's credential helpers, so any registry you can `docker login` to works with OpenTofu. Cache the `.terraform/modules/` directory in CI pipelines to avoid repeated OCI pulls. Use image digests instead of tags for production deployments where immutability matters - a digest always refers to the exact same artifact, even if the tag is later updated.
+Pulling modules from OCI registries uses the `oci://` source address with a registry hostname, repository path, and optional `tag` or `digest` query argument. Authentication can reuse Docker-style auth configuration, and Docker credential helpers are supported when configured explicitly. Cache the `.terraform/modules/` directory in CI pipelines to avoid repeated OCI pulls. Use digests instead of tags for production deployments where immutability matters - a digest always refers to the exact same artifact, even if the tag is later updated.
