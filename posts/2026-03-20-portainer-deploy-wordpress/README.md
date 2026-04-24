@@ -13,11 +13,9 @@ WordPress powers over 40% of the web. Deploying it via Portainer with MySQL and 
 ## Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   wordpress:
-    image: wordpress:6.5-php8.3-apache
+    image: wordpress:6.9.4-php8.3-apache
     container_name: wordpress
     environment:
       WORDPRESS_DB_HOST: wordpress-db
@@ -35,7 +33,7 @@ services:
         define('DISALLOW_FILE_EDIT', true);
     volumes:
       - wordpress_data:/var/www/html
-      - ./uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
+      - /opt/wordpress/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
     ports:
       - "8080:80"
     depends_on:
@@ -68,12 +66,14 @@ services:
 
 volumes:
   wordpress_data:
+    name: wordpress_data
   wordpress_db:
+    name: wordpress_db
 ```
 
 ## PHP Configuration
 
-Create `uploads.ini`:
+Create `/opt/wordpress/uploads.ini` on the Docker host:
 
 ```ini
 ; PHP configuration for WordPress
@@ -96,20 +96,19 @@ max_input_vars = 5000
 
 ## WordPress Security Hardening
 
-Add to your `WORDPRESS_CONFIG_EXTRA`:
+Add to your `WORDPRESS_CONFIG_EXTRA` (use `$$` for `$` because Compose interpolates environment values):
 
 ```php
-// Limit login attempts
+// Enable automatic core updates.
 define('WP_AUTO_UPDATE_CORE', true);
 
-// Disable XML-RPC
-add_filter('xmlrpc_enabled', '__return_false');
-
-// Hide WordPress version
-remove_action('wp_head', 'wp_generator');
-
-// Enforce HTTPS for admin
+// Enforce HTTPS for admin and login screens.
 define('FORCE_SSL_ADMIN', true);
+
+// If WordPress is behind Traefik or another reverse proxy, trust the forwarded HTTPS header.
+if ( isset( $$_SERVER['HTTP_X_FORWARDED_PROTO'] ) && strpos( $$_SERVER['HTTP_X_FORWARDED_PROTO'], 'https' ) !== false ) {
+    $$_SERVER['HTTPS'] = 'on';
+}
 ```
 
 ## Adding Behind Traefik
@@ -119,6 +118,7 @@ services:
   wordpress:
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
       - "traefik.http.routers.wordpress.rule=Host(`blog.example.com`)"
       - "traefik.http.routers.wordpress.entrypoints=websecure"
       - "traefik.http.routers.wordpress.tls.certresolver=letsencrypt"
@@ -126,6 +126,10 @@ services:
     networks:
       - traefik-public
       - default
+
+networks:
+  traefik-public:
+    external: true
 ```
 
 ## Backups
