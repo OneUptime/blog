@@ -14,6 +14,7 @@ DaemonSets ensure that a pod runs on every node (or a subset of nodes) in a Kube
 
 - Portainer with Kubernetes environment
 - Admin access to the cluster
+- Existing namespaces for the examples (`monitoring` and `logging`), or update the manifests to use namespaces that already exist in your cluster
 - Understanding of when to use DaemonSets
 
 ## Use Cases for DaemonSets
@@ -23,13 +24,13 @@ DaemonSets ensure that a pod runs on every node (or a subset of nodes) in a Kube
 - **Storage**: Longhorn storage daemon, GlusterFS
 - **Networking**: Calico, Flannel, Cilium network agents
 - **Security**: Falco, Wazuh agents
-- **GPU drivers**: NVIDIA device plugin
+- **GPU device plugins**: NVIDIA device plugin
 
 ## Step 1: Deploy a DaemonSet via Portainer YAML
 
 1. Select your Kubernetes environment in Portainer
-2. Navigate to **Applications → Add application**
-3. Select **YAML** editor
+2. Navigate to **Applications → Create from code**
+3. Select **Manifest**, then use the **Web editor**
 4. Enter the DaemonSet manifest:
 
 ```yaml
@@ -60,8 +61,10 @@ spec:
       # Allow running on control-plane nodes too
       tolerations:
         - key: node-role.kubernetes.io/control-plane
+          operator: Exists
           effect: NoSchedule
         - key: node-role.kubernetes.io/master
+          operator: Exists
           effect: NoSchedule
 
       # Run as host network for node-level metrics
@@ -70,7 +73,7 @@ spec:
 
       containers:
         - name: node-exporter
-          image: prom/node-exporter:v1.7.0
+          image: quay.io/prometheus/node-exporter:v1.11.0
           args:
             - "--path.procfs=/host/proc"
             - "--path.sysfs=/host/sys"
@@ -98,8 +101,6 @@ spec:
               mountPath: /host/root
               mountPropagation: HostToContainer
               readOnly: true
-          securityContext:
-            runAsUser: 0    # Needs root for node metrics
 
       volumes:
         - name: proc
@@ -117,7 +118,7 @@ spec:
 
 ## Step 2: Deploy a Log Collector DaemonSet
 
-Fluentd for log aggregation on all nodes:
+Fluentd for log aggregation on all nodes. If your cluster uses containerd or CRI-O, configure Fluentd to use a CRI log parser via ConfigMap:
 
 ```yaml
 apiVersion: apps/v1
@@ -136,11 +137,14 @@ spec:
     spec:
       tolerations:
         - key: node-role.kubernetes.io/control-plane
+          operator: Exists
           effect: NoSchedule
       containers:
         - name: fluentd
           image: fluent/fluentd-kubernetes-daemonset:v1-debian-elasticsearch
           env:
+            - name: FLUENT_UID
+              value: "0"
             - name: FLUENT_ELASTICSEARCH_HOST
               value: elasticsearch.logging.svc.cluster.local
             - name: FLUENT_ELASTICSEARCH_PORT
@@ -155,32 +159,26 @@ spec:
           volumeMounts:
             - name: varlog
               mountPath: /var/log
-            - name: containers
-              mountPath: /var/lib/docker/containers
-              readOnly: true
       terminationGracePeriodSeconds: 30
       volumes:
         - name: varlog
           hostPath:
             path: /var/log
-        - name: containers
-          hostPath:
-            path: /var/lib/docker/containers
 ```
 
 ## Step 3: Deploy DaemonSet to Subset of Nodes
 
-Use node selector or affinity to run only on specific nodes:
+Use a node selector and/or affinity to run only on specific nodes:
 
 ```yaml
 spec:
   template:
     spec:
-      # Only run on nodes labeled with "gpu=true"
+      # Example node selector
       nodeSelector:
         accelerator: nvidia-gpu
 
-      # Or use node affinity for more complex rules
+      # Example node affinity. If you set both, nodes must satisfy both rules.
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -229,14 +227,14 @@ kubectl get pods -n monitoring -l app=node-exporter -o wide
 
 To update a DaemonSet (e.g., new image version):
 
-1. Edit the DaemonSet in Portainer YAML
+1. Edit the DaemonSet manifest in Portainer
 2. Update the image tag
 3. Apply the update
 
 ```yaml
 containers:
   - name: node-exporter
-    image: prom/node-exporter:v1.8.0    # Updated version
+    image: quay.io/prometheus/node-exporter:v1.11.1    # Updated version
 ```
 
 With `RollingUpdate` strategy, Portainer/Kubernetes updates one node at a time.
