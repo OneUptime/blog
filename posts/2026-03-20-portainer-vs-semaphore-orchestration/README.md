@@ -8,11 +8,11 @@ Description: Compare Portainer and Ansible Semaphore for container and infrastru
 
 ---
 
-Portainer and Semaphore (an open-source Ansible UI) address related but different problems. Portainer manages containerized workloads; Semaphore manages Ansible playbooks and CI/CD-style task automation. Understanding their overlap and differences helps you build the right automation stack.
+Portainer and Semaphore (an open-source automation UI commonly used with Ansible) address related but different problems. Portainer manages containerized workloads; Semaphore manages Ansible playbooks and related task automation. Understanding their overlap and differences helps you build the right automation stack.
 
 ## What Is Semaphore?
 
-Semaphore is a web UI for Ansible, not a container management tool. It provides:
+Semaphore is a web UI/API for Ansible and related automation tasks, not a container management tool. It provides:
 
 - A web interface for running Ansible playbooks
 - Job scheduling and cron-based task execution
@@ -25,18 +25,21 @@ Deploy Semaphore:
 ```yaml
 # semaphore-stack.yml
 
-version: "3.8"
 services:
   semaphore:
-    image: semaphoreui/semaphore:v2.10.22
+    image: semaphoreui/semaphore:latest
     environment:
       - SEMAPHORE_DB_USER=semaphore
       - SEMAPHORE_DB_PASS=semaphore_pw
       - SEMAPHORE_DB_HOST=mysql
-      - SEMAPHORE_DB_NAME=semaphore
+      - SEMAPHORE_DB_PORT=3306
+      - SEMAPHORE_DB_DIALECT=mysql
+      - SEMAPHORE_DB=semaphore
       - SEMAPHORE_ADMIN_PASSWORD=admin_password
+      - SEMAPHORE_ADMIN_NAME=admin
       - SEMAPHORE_ADMIN_EMAIL=admin@example.com
       - SEMAPHORE_ADMIN=admin
+      - SEMAPHORE_ACCESS_KEY_ENCRYPTION=gs72mPntFATGJs9qK0pQ0rKtfidlexiMjYCH9gWKhTU=
     ports:
       - "3000:3000"
     depends_on:
@@ -51,6 +54,9 @@ services:
       - MYSQL_ROOT_PASSWORD=root_pw
     volumes:
       - mysql-data:/var/lib/mysql
+
+volumes:
+  mysql-data:
 ```
 
 ## How They Differ
@@ -78,7 +84,7 @@ Semaphore and Portainer complement each other well:
 - Deploying and managing containerized applications
 - Container lifecycle management after provisioning
 
-An Ansible playbook that uses Portainer's API:
+An Ansible playbook that updates a file-based Portainer stack via the API:
 
 ```yaml
 # deploy-to-portainer.yml
@@ -86,18 +92,20 @@ An Ansible playbook that uses Portainer's API:
   hosts: localhost
   vars:
     portainer_url: "https://portainer.example.com"
-    portainer_token: "{{ lookup('env', 'PORTAINER_TOKEN') }}"
+    portainer_api_key: "{{ lookup('env', 'PORTAINER_API_KEY') }}"
+    portainer_endpoint_id: 1
+    portainer_stack_id: 1
 
   tasks:
-    - name: Deploy a new stack version
+    - name: Update a file-based stack
       uri:
-        url: "{{ portainer_url }}/api/stacks/1/file"
+        url: "{{ portainer_url }}/api/stacks/{{ portainer_stack_id }}?endpointId={{ portainer_endpoint_id }}"
         method: PUT
         headers:
-          Authorization: "Bearer {{ portainer_token }}"
-        body_format: form-multipart
+          X-API-Key: "{{ portainer_api_key }}"
+        body_format: json
         body:
-          stackFileContent: "{{ lookup('file', 'docker-compose.yml') }}"
+          StackFileContent: "{{ lookup('file', 'docker-compose.yml') }}"
       register: deploy_result
 
     - name: Print deployment result
