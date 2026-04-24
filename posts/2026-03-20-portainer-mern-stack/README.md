@@ -23,8 +23,6 @@ Go to **Stacks** → **Add Stack** → **Web Editor**. Name the stack `mern-app`
 ## Step 2: Write the Docker Compose File
 
 ```yaml
-version: "3.8"
-
 services:
   # MongoDB - document database
   mongodb:
@@ -40,7 +38,7 @@ services:
     networks:
       - mern-net
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD-SHELL", "mongosh --quiet \"mongodb://$$MONGO_INITDB_ROOT_USERNAME:$$MONGO_INITDB_ROOT_PASSWORD@localhost:27017/admin?authSource=admin\" --eval \"db.adminCommand('ping').ok\" | grep 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -52,7 +50,7 @@ services:
     restart: unless-stopped
     working_dir: /app
     volumes:
-      - ./backend:/app
+      - /opt/mern/backend:/app
       - /app/node_modules
     command: sh -c "npm install && npm run dev"
     environment:
@@ -60,7 +58,7 @@ services:
       PORT: 5000
       MONGO_URI: mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD:-adminpassword}@mongodb:27017/mernapp?authSource=admin
       JWT_SECRET: ${JWT_SECRET:-change-this-secret}
-      CLIENT_URL: http://localhost:3000
+      CLIENT_URL: ${CLIENT_URL:-http://127.0.0.1:3000}
     ports:
       - "5000:5000"
     depends_on:
@@ -76,11 +74,11 @@ services:
     restart: unless-stopped
     working_dir: /app
     volumes:
-      - ./frontend:/app
+      - /opt/mern/frontend:/app
       - /app/node_modules
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000 --strictPort"
     environment:
-      VITE_API_URL: http://localhost:5000/api
+      VITE_API_URL: ${VITE_API_URL:-http://127.0.0.1:5000/api}
     ports:
       - "3000:3000"
     depends_on:
@@ -99,13 +97,17 @@ networks:
 
 ## Step 3: Add Environment Variables in Portainer
 
-In the Stack editor under **Environment Variables**, add:
+The bind mounts above use absolute host paths because the Web Editor does not provide repository-relative bind mounts. Make sure your application source already exists on the Docker host under `/opt/mern/backend` and `/opt/mern/frontend`. If you want to use `./backend` and `./frontend`, deploy the stack from a Git repository in Portainer BE with relative path support enabled.
+
+In the Stack editor under **Environment Variables**, add values that match where users will reach the app:
 
 | Key | Value |
 |-----|-------|
 | `MONGO_ROOT_USER` | `admin` |
 | `MONGO_ROOT_PASSWORD` | `your-secure-password` |
 | `JWT_SECRET` | `your-jwt-secret-64-chars` |
+| `CLIENT_URL` | `http://YOUR_SERVER_IP:3000` |
+| `VITE_API_URL` | `http://YOUR_SERVER_IP:5000/api` |
 
 ## Step 4: Express Backend Setup
 
@@ -124,7 +126,9 @@ app.use(express.json());
 // MongoDB connection with retry
 const connectDB = async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI);
+    await mongoose.connect(process.env.MONGO_URI, {
+      serverSelectionTimeoutMS: 5000
+    });
     console.log('MongoDB connected');
   } catch (err) {
     console.error('MongoDB connection failed:', err.message);
@@ -165,8 +169,10 @@ app.delete('/api/tasks/:id', async (req, res) => {
   res.status(204).end();
 });
 
-app.listen(process.env.PORT || 5000, () => {
-  console.log(`Backend listening on port ${process.env.PORT}`);
+const port = process.env.PORT || 5000;
+
+app.listen(port, () => {
+  console.log(`Backend listening on port ${port}`);
 });
 ```
 
@@ -176,7 +182,7 @@ app.listen(process.env.PORT || 5000, () => {
 // frontend/src/App.jsx
 import { useState, useEffect } from 'react';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000/api';
 
 function App() {
   const [tasks, setTasks] = useState([]);
@@ -214,24 +220,66 @@ function App() {
 export default App;
 ```
 
-## Step 6: Production Compose Override
+## Step 6: Production Compose File
 
 ```yaml
-# docker-compose.prod.yml - override for production
-
-version: "3.8"
+# docker-compose.prod.yml - standalone production compose file
 
 services:
+  mongodb:
+    image: mongo:7.0
+    container_name: mern-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: mernapp
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - mern-net
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet \"mongodb://$$MONGO_INITDB_ROOT_USERNAME:$$MONGO_INITDB_ROOT_PASSWORD@localhost:27017/admin?authSource=admin\" --eval \"db.adminCommand('ping').ok\" | grep 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   backend:
     image: your-registry/mern-backend:latest
-    command: node src/index.js
+    container_name: mern-backend
+    restart: unless-stopped
     environment:
       NODE_ENV: production
+      PORT: 5000
+      MONGO_URI: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb:27017/mernapp?authSource=admin
+      JWT_SECRET: ${JWT_SECRET}
+      CLIENT_URL: ${CLIENT_URL}   # Example: http://YOUR_SERVER_IP
+    ports:
+      - "5000:5000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - mern-net
 
   frontend:
     image: your-registry/mern-frontend:latest
+    container_name: mern-frontend
+    restart: unless-stopped
     ports:
-      - "80:80"    # Served by Nginx in production build
+      - "80:80"    # Built frontend served by Nginx
+    depends_on:
+      - backend
+    networks:
+      - mern-net
+
+volumes:
+  mongo_data:
+    driver: local
+
+networks:
+  mern-net:
+    driver: bridge
 ```
 
 ## Step 7: Verify and Manage
@@ -249,7 +297,8 @@ curl -X POST http://localhost:5000/api/tasks \
   -d '{"title":"Test task from curl"}'
 
 # View MongoDB data
-docker exec -it mern-mongodb mongosh -u admin -p adminpassword \
+docker exec -it mern-mongodb mongosh -u admin -p your-secure-password \
+  --authenticationDatabase admin \
   --eval "use mernapp; db.tasks.find()"
 
 # Watch logs across all services in Portainer:
@@ -258,4 +307,4 @@ docker exec -it mern-mongodb mongosh -u admin -p adminpassword \
 
 ## Conclusion
 
-Deploying the MERN stack via Portainer encapsulates all four components in isolated containers while sharing a private Docker network. The MongoDB health check ensures the backend only starts after the database is ready, preventing startup race conditions. For production deployments, replace the `node:20-alpine` development images with properly built Docker images containing only production dependencies, and store all secrets in Portainer's environment variable store. The React frontend's Vite dev server should be replaced with an Nginx container serving the production build.
+Deploying the MERN stack via Portainer encapsulates all four components in isolated containers while sharing a private Docker network. The MongoDB health check ensures the backend only starts after the database is ready, preventing startup race conditions. For production deployments, replace the `node:20-alpine` development images with properly built Docker images containing only production dependencies, and store all secrets in Portainer's environment variable store. The React frontend's Vite dev server should be replaced with an Nginx container serving the production build, and the frontend image should be built with the correct `VITE_API_URL` because Vite injects `VITE_*` variables at build time.
