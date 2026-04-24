@@ -28,23 +28,22 @@ AllowVolumeExpansion - Whether PVCs can be resized after creation
 ## Step 1: View StorageClasses in Portainer
 
 1. Select your Kubernetes environment in Portainer
-2. In the sidebar, click **Cluster** → **Storage Classes**
-   or navigate to **Storage** → **StorageClasses**
+2. In the sidebar, click **Volumes**, then open the **Storage** tab
 
 The list shows:
 ```text
 Name                     Provisioner                     ReclaimPolicy    Default
-standard                 kubernetes.io/no-provisioner    Delete           No
-gp3                      ebs.csi.aws.com                 Delete           Yes
-gp2                      kubernetes.io/aws-ebs           Delete           No
-io1-high-iops            ebs.csi.aws.com                 Delete           No
-nfs-client               cluster.local/nfs-provisioner   Delete           No
-local-path               rancher.io/local-path           Delete           No
+standard                 kubernetes.io/no-provisioner               Delete           No
+gp3                      ebs.csi.aws.com                            Delete           Yes
+gp2                      ebs.csi.aws.com                            Delete           No
+io1-high-iops            ebs.csi.aws.com                            Delete           No
+nfs-client               k8s-sigs.io/nfs-subdir-external-provisioner Delete           No
+local-path               rancher.io/local-path                      Delete           No
 ```
 
 ## Step 2: View StorageClass Details
 
-Click on a StorageClass in Portainer to see full configuration:
+Portainer's **Storage** tab lets you browse the available classes and expand them to see the volumes using each one. For the full StorageClass configuration, use `kubectl`:
 
 ```text
 Name:            gp3
@@ -57,7 +56,7 @@ Parameters:
   type: gp3
   encrypted: "true"
   throughput: "125"
-  iopsPerGB: "3000"
+  iops: "3000"
 ```
 
 ## Step 3: View StorageClasses via kubectl
@@ -97,7 +96,7 @@ allowVolumeExpansion: true
 parameters:
   type: gp3
   encrypted: "true"
-  throughput: "125"      # MB/s
+  throughput: "125"      # MiB/s
   iops: "3000"
 ```
 
@@ -138,14 +137,10 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: nfs-client
-provisioner: cluster.local/nfs-subdir-external-provisioner
+provisioner: k8s-sigs.io/nfs-subdir-external-provisioner
 parameters:
-  server: 192.168.1.100
-  path: /exports/kubernetes
-  readOnly: "false"
   archiveOnDelete: "false"
 reclaimPolicy: Delete
-allowVolumeExpansion: true
 ```
 
 ### Local Path (Rancher/k3s)
@@ -183,7 +178,7 @@ spec:
 
 Kubernetes automatically creates a PV from the StorageClass provisioner.
 
-To use the default StorageClass (omit `storageClassName`):
+To use the default StorageClass (omit `storageClassName` if your cluster has one):
 
 ```yaml
 spec:
@@ -192,7 +187,7 @@ spec:
   resources:
     requests:
       storage: 50Gi
-  # No storageClassName - uses cluster default
+  # No storageClassName - uses cluster default if one exists
 ```
 
 ## Step 6: Set a Default StorageClass
@@ -207,7 +202,7 @@ kubectl patch storageclass standard \
   -p '{"metadata": {"annotations": {"storageclass.kubernetes.io/is-default-class": "false"}}}'
 ```
 
-Only one StorageClass should be the default. Having multiple defaults causes PVC binding failures.
+Only one StorageClass should be the default to avoid ambiguity. Kubernetes allows multiple defaults; if that happens, a PVC without an explicit `storageClassName` uses the most recently created default StorageClass.
 
 ## Step 7: Check StorageClass Usage
 
@@ -220,17 +215,23 @@ kubectl get pvc --all-namespaces \
 
 # Count PVCs by StorageClass
 kubectl get pvc --all-namespaces -o json | \
-  jq -r '.items[].spec.storageClassName' | \
+  jq -r '.items[] | (.spec.storageClassName // "<unset>")' | \
   sort | uniq -c | sort -rn
 
-# Find PVCs using the default StorageClass (empty storageClassName)
+# Find PVCs using the current default StorageClass
+DEFAULT_SC=$(kubectl get storageclass -o json | \
+  jq -r '[.items[]
+    | select(.metadata.annotations["storageclass.kubernetes.io/is-default-class"] == "true")
+    | {name: .metadata.name, created: .metadata.creationTimestamp}]
+    | sort_by(.created) | last | .name // empty')
+
 kubectl get pvc --all-namespaces -o json | \
-  jq -r '.items[] | select(.spec.storageClassName == "" or .spec.storageClassName == null) | "\(.metadata.namespace)/\(.metadata.name)"'
+  jq -r --arg sc "$DEFAULT_SC" '.items[] | select(.spec.storageClassName == $sc) | "\(.metadata.namespace)/\(.metadata.name)"'
 ```
 
 ## Step 8: Migrate PVCs Between StorageClasses
 
-To move data from one StorageClass to another (e.g., from gp2 to gp3):
+To move data from one StorageClass to another (for example, from gp2 to gp3), stop the workload or otherwise quiesce writes first:
 
 ```bash
 # 1. Create a new PVC with the target StorageClass
@@ -266,4 +267,4 @@ kubectl logs -f data-migrator -n production
 
 ## Conclusion
 
-StorageClasses are the foundation of dynamic storage provisioning in Kubernetes. Browsing StorageClasses in Portainer gives you visibility into available storage options and their configurations. Choose the right StorageClass for each workload's requirements - high IOPS for databases, bulk storage for file shares, local-path for development. Set `WaitForFirstConsumer` binding mode to avoid binding volumes in wrong availability zones, enable `allowVolumeExpansion` for flexibility, and keep a default StorageClass configured for workloads that don't specify one explicitly.
+StorageClasses are the foundation of dynamic storage provisioning in Kubernetes. Browsing StorageClasses in Portainer gives you visibility into available storage options and their configurations. Choose the right StorageClass for each workload's requirements - high IOPS for databases, bulk storage for file shares, local-path for development. For topology-constrained backends, set `WaitForFirstConsumer` to avoid binding volumes in the wrong availability zone, enable `allowVolumeExpansion` where the driver supports it, and keep a default StorageClass configured for workloads that don't specify one explicitly.
