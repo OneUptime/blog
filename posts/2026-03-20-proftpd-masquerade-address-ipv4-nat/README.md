@@ -48,7 +48,7 @@ DefaultServer on
 
 # --- Listening address ---
 
-# Bind to all IPv4 interfaces (internal address)
+# Listen on the FTP control port
 Port          21
 
 # --- NAT / Masquerade configuration ---
@@ -68,12 +68,12 @@ DefaultRoot   ~             # Chroot users to their home directories
 AllowOverwrite yes
 ```
 
-## Dynamic MasqueradeAddress (DNS Name)
+## MasqueradeAddress with a DNS Name
 
-If your public IP changes (dynamic DNS), use a hostname:
+If your public IP changes and your DNS name is updated accordingly, you can use a hostname. ProFTPD resolves configuration DNS names at startup, so restart ProFTPD after the public IP changes:
 
 ```apache
-# ProFTPD will resolve this hostname to get the current public IP
+# ProFTPD resolves this hostname when it parses the config
 MasqueradeAddress myserver.dyndns.org
 ```
 
@@ -108,5 +108,5 @@ ftp 203.0.113.10
 
 - `MasqueradeAddress` replaces the internal IP in PASV responses with the public IPv4.
 - `PassivePorts` limits which port range is used for passive data connections - forward this range through NAT.
-- You can use a DNS hostname for `MasqueradeAddress` when the public IP is dynamic.
+- You can use a DNS hostname for `MasqueradeAddress`, but ProFTPD resolves it at startup, so restart ProFTPD after the public IP changes.
 - FTP passive mode requires both the control port (21) and the passive port range to be forwarded through NAT.
