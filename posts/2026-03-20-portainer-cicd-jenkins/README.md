@@ -13,7 +13,7 @@ Jenkins is one of the most widely used CI/CD platforms. Integrating it with Port
 ## Prerequisites
 
 - Jenkins server with Docker access
-- Portainer CE or BE with a Docker environment
+- Portainer CE or BE with a Docker environment (Step 3 uses Portainer BE stack webhooks)
 - Jenkins plugins: Docker Pipeline, Credentials Binding
 - Container registry (Docker Hub, private registry)
 
@@ -30,11 +30,11 @@ In Jenkins → **Manage Jenkins** → **Credentials** → **Global** → **Add C
 
 | ID | Type | Value |
 |----|------|-------|
-| `portainer-webhook-url` | Secret text | Your Portainer webhook URL |
+| `portainer-webhook-url` | Secret text | Your Portainer BE stack webhook URL |
 | `portainer-api-key` | Secret text | Portainer API access token |
 | `registry-credentials` | Username/Password | Registry username & token |
 
-## Step 3: Basic Jenkinsfile (Webhook Deploy)
+## Step 3: Basic Jenkinsfile (Webhook Deploy, Portainer BE)
 
 ```groovy
 // Jenkinsfile - Basic CI/CD with Portainer webhook
@@ -71,7 +71,7 @@ pipeline {
                         docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
                         docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
 
-                        docker login ${REGISTRY} -u ${REGISTRY_USER} -p ${REGISTRY_PASS}
+                        echo "${REGISTRY_PASS}" | docker login ${REGISTRY} -u ${REGISTRY_USER} --password-stdin
                         docker push ${IMAGE_NAME}:${IMAGE_TAG}
                         docker push ${IMAGE_NAME}:latest
                     """
@@ -90,7 +90,7 @@ pipeline {
                 )]) {
                     sh """
                         echo "Triggering Portainer deployment..."
-                        HTTP_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -X POST \${PORTAINER_WEBHOOK_URL})
+                        HTTP_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -X POST "\${PORTAINER_WEBHOOK_URL}")
 
                         if [ "\${HTTP_STATUS}" = "200" ] || [ "\${HTTP_STATUS}" = "204" ]; then
                             echo "Deployment triggered successfully!"
@@ -118,10 +118,10 @@ pipeline {
 }
 ```
 
-## Step 4: Advanced Jenkinsfile (API-Based Deploy)
+## Step 4: Advanced Jenkinsfile (API-Based Deploy for File-Based Stacks)
 
 ```groovy
-// Jenkinsfile - Advanced deployment using Portainer API
+// Jenkinsfile - Advanced deployment using Portainer API for a file-based stack
 pipeline {
     agent {
         docker {
@@ -134,13 +134,15 @@ pipeline {
         PORTAINER_URL = "https://portainer.example.com"
         ENDPOINT_ID = "1"
         STACK_NAME = "my-app"
-        IMAGE_TAG = "${GIT_COMMIT.take(8)}"
     }
 
     stages {
         stage('Setup') {
             steps {
                 sh 'apk add --no-cache curl jq docker-cli'
+                script {
+                    env.IMAGE_TAG = env.GIT_COMMIT.take(8)
+                }
             }
         }
 
@@ -152,7 +154,7 @@ pipeline {
                     passwordVariable: 'REG_PASS'
                 )]) {
                     sh """
-                        docker login registry.example.com -u ${REG_USER} -p ${REG_PASS}
+                        echo "${REG_PASS}" | docker login registry.example.com -u ${REG_USER} --password-stdin
                         docker build -t registry.example.com/myapp:${IMAGE_TAG} .
                         docker push registry.example.com/myapp:${IMAGE_TAG}
                     """
@@ -173,6 +175,11 @@ pipeline {
                             "${PORTAINER_URL}/api/stacks" | \
                             jq -r --arg n "${STACK_NAME}" '.[] | select(.Name == \$n) | .Id')
 
+                        if [ -z "\${STACK_ID}" ] || [ "\${STACK_ID}" = "null" ]; then
+                            echo "Stack not found: ${STACK_NAME}"
+                            exit 1
+                        fi
+
                         echo "Deploying stack \${STACK_ID} with tag ${IMAGE_TAG}"
 
                         # Get current stack file
@@ -181,14 +188,14 @@ pipeline {
                             jq -r '.StackFileContent')
 
                         # Update the stack
-                        curl -s -X PUT \
+                        curl -sf -X PUT \
                             -H "X-API-Key: ${PORTAINER_API_KEY}" \
                             -H "Content-Type: application/json" \
                             "${PORTAINER_URL}/api/stacks/\${STACK_ID}?endpointId=${ENDPOINT_ID}" \
                             -d "{
-                                \\"stackFileContent\\": \$(echo "\$COMPOSE" | jq -Rs .),
-                                \\"env\\": [{\\"name\\": \\"IMAGE_TAG\\", \\"value\\": \\"${IMAGE_TAG}\\"}],
-                                \\"pullImage\\": true
+                                \\"StackFileContent\\": \$(echo "\$COMPOSE" | jq -Rs .),
+                                \\"Env\\": [{\\"name\\": \\"IMAGE_TAG\\", \\"value\\": \\"${IMAGE_TAG}\\"}],
+                                \\"RepullImageAndRedeploy\\": true
                             }"
 
                         echo "Deployment complete: ${IMAGE_TAG}"
@@ -224,7 +231,7 @@ pipeline {
 
 ## Step 5: Using Jenkins Shared Libraries
 
-Create a reusable shared library for Portainer deployments:
+Create a reusable shared library for Portainer file-based stack deployments:
 
 ```groovy
 // vars/portainerDeploy.groovy (shared library)
@@ -242,14 +249,19 @@ def call(Map config = [:]) {
                 "${portainerUrl}/api/stacks" | \
                 jq -r --arg n "${stackName}" '.[] | select(.Name == \$n) | .Id')
 
+            if [ -z "\${STACK_ID}" ] || [ "\${STACK_ID}" = "null" ]; then
+                echo "Stack not found: ${stackName}"
+                exit 1
+            fi
+
             COMPOSE=\$(curl -sf -H "X-API-Key: ${API_KEY}" \
                 "${portainerUrl}/api/stacks/\${STACK_ID}/file" | \
                 jq -r '.StackFileContent')
 
-            curl -s -X PUT -H "X-API-Key: ${API_KEY}" \
+            curl -sf -X PUT -H "X-API-Key: ${API_KEY}" \
                 -H "Content-Type: application/json" \
                 "${portainerUrl}/api/stacks/\${STACK_ID}?endpointId=${endpointId}" \
-                -d "{\\"stackFileContent\\": \$(echo "\$COMPOSE" | jq -Rs .), \\"env\\": [{\\"name\\": \\"IMAGE_TAG\\", \\"value\\": \\"${imageTag}\\"}], \\"pullImage\\": true}"
+                -d "{\\"StackFileContent\\": \$(echo "\$COMPOSE" | jq -Rs .), \\"Env\\": [{\\"name\\": \\"IMAGE_TAG\\", \\"value\\": \\"${imageTag}\\"}], \\"RepullImageAndRedeploy\\": true}"
 
             echo "Deployed ${stackName} with tag ${imageTag}"
         """
@@ -263,15 +275,17 @@ Usage in Jenkinsfile:
 @Library('my-shared-library') _
 
 stage('Deploy') {
-    portainerDeploy(
-        portainerUrl: 'https://portainer.example.com',
-        stackName: 'my-app',
-        endpointId: '1',
-        imageTag: env.IMAGE_TAG
-    )
+    steps {
+        portainerDeploy(
+            portainerUrl: 'https://portainer.example.com',
+            stackName: 'my-app',
+            endpointId: '1',
+            imageTag: env.IMAGE_TAG
+        )
+    }
 }
 ```
 
 ## Conclusion
 
-Integrating Jenkins with Portainer provides a mature, flexible CI/CD pipeline for teams already invested in Jenkins. The webhook approach offers the simplest setup, while the API-based approach enables dynamic image tag injection for immutable deployments. Use Jenkins Shared Libraries to standardize your Portainer deployment logic across multiple projects and pipelines.
+Integrating Jenkins with Portainer provides a mature, flexible CI/CD pipeline for teams already invested in Jenkins. The webhook approach offers the simplest setup when Portainer BE stack webhooks are available, while the API-based approach enables dynamic image tag injection for immutable deployments on file-based stacks. Use Jenkins Shared Libraries to standardize your Portainer deployment logic across multiple projects and pipelines.
