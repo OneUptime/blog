@@ -50,11 +50,9 @@ openssl passwd -apr1 your-secure-password
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.6
     container_name: traefik
     restart: unless-stopped
     security_opt:
@@ -90,7 +88,7 @@ services:
 networks:
   proxy:
     name: proxy
-    external: false
+    external: true
 ```
 
 ## Step 4: Add IP Allowlist for Additional Security
@@ -129,7 +127,7 @@ The Traefik dashboard shows:
 
 ```bash
 HTTP Section:
-  Routers    - All configured routing rules with their status (enabled/disabled/error)
+  Routers    - All configured routing rules with their status (enabled/warning/disabled)
   Services   - Backend services and their load balancer configuration
   Middlewares - Auth, rate limiting, header manipulation, etc.
 
@@ -142,7 +140,7 @@ UDP Section:
 
 Providers:
   Docker    - Containers discovered via Docker socket
-  File      - Services from static config files
+  File      - Dynamic configuration from the file provider
   Kubernetes - K8s Ingress/CRD resources (if applicable)
 ```
 
@@ -155,16 +153,16 @@ AUTH="admin:your-secure-password"
 # List all HTTP routers
 curl -s -u "$AUTH" "${TRAEFIK_URL}/api/http/routers" | jq '.[] | {name: .name, rule: .rule, status: .status}'
 
-# Find routers with errors
-curl -s -u "$AUTH" "${TRAEFIK_URL}/api/http/routers" | jq '.[] | select(.status == "disabled")'
+# Find routers with warnings or errors
+curl -s -u "$AUTH" "${TRAEFIK_URL}/api/http/routers" | jq '.[] | select(.status != "enabled") | {name: .name, status: .status, error: .error}'
 
 # List all services
 curl -s -u "$AUTH" "${TRAEFIK_URL}/api/http/services" | jq '.[].name'
 
-# Check provider status
-curl -s -u "$AUTH" "${TRAEFIK_URL}/api/providers" | jq 'keys'
+# Check enabled providers
+curl -s -u "$AUTH" "${TRAEFIK_URL}/api/overview" | jq '.providers'
 ```
 
 ## Conclusion
 
-The Traefik dashboard is a critical observability tool when running Traefik alongside Portainer. Secure it with basic auth at minimum, add IP allowlisting for additional protection, and always serve it over HTTPS. The dashboard API is also useful for automated monitoring - you can script alerts when routers show errors or when expected services are missing from the routing table.
+The Traefik dashboard is a critical observability tool when running Traefik alongside Portainer. Secure it with basic auth at minimum, add IP allowlisting for additional protection, and always serve it over HTTPS. The dashboard API is also useful for automated monitoring - you can script alerts when routers leave the enabled state or when expected services are missing from the routing table.
