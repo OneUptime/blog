@@ -21,7 +21,7 @@ services:
     container_name: nodered
     environment:
       - TZ=America/New_York
-      # Disable editor for production (set to false to enable)
+      # Enable the Projects feature if you want built-in Git support
       # - NODE_RED_ENABLE_PROJECTS=true
     volumes:
       # Node-RED data directory (flows, settings, credentials)
@@ -29,11 +29,6 @@ services:
     ports:
       - "1880:1880"
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:1880/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
 volumes:
   nodered_data:
@@ -44,12 +39,8 @@ volumes:
 Enable authentication in `settings.js`:
 
 ```bash
-# Access Node-RED container
-
-docker exec -it nodered bash
-
 # Generate a password hash
-node -e "console.log(require('bcryptjs').hashSync('your_password', 8))"
+docker exec -it nodered npx node-red admin hash-pw
 ```
 
 Add to `/data/settings.js`:
@@ -65,6 +56,12 @@ adminAuth: {
 },
 ```
 
+Then restart Node-RED:
+
+```bash
+docker restart nodered
+```
+
 ## Installing Additional Nodes
 
 Via the Node-RED UI:
@@ -74,16 +71,16 @@ Via the Node-RED UI:
 3. Search for and install nodes
 
 Popular packages:
-- `node-red-contrib-mqtt` - MQTT support
+- `MQTT In` / `MQTT Out` - MQTT support is built into Node-RED
 - `node-red-contrib-influxdb` - InfluxDB integration
 - `node-red-contrib-home-assistant-websocket` - Home Assistant
-- `node-red-node-postgresql` - PostgreSQL
-- `node-red-dashboard` - Dashboard UI
+- `node-red-contrib-postgresql` - PostgreSQL
+- `node-red-dashboard` - Dashboard UI (deprecated)
 
 Or via command line:
 
 ```bash
-docker exec nodered npm install node-red-dashboard
+docker exec -w /data nodered npm install node-red-contrib-influxdb
 docker restart nodered
 ```
 
@@ -94,29 +91,110 @@ docker restart nodered
 ```json
 [
   {
+    "id": "mqtt-influx-flow",
+    "type": "tab",
+    "label": "MQTT to InfluxDB",
+    "disabled": false,
+    "info": "",
+    "env": []
+  },
+  {
     "id": "mqtt-in",
     "type": "mqtt in",
+    "z": "mqtt-influx-flow",
+    "name": "Sensor Data",
     "topic": "sensors/#",
-    "broker": "mosquitto",
-    "name": "Sensor Data"
+    "qos": "2",
+    "datatype": "auto",
+    "broker": "mosquitto-broker",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 160,
+    "y": 120,
+    "wires": [["json-parse"]]
   },
   {
     "id": "json-parse",
     "type": "json",
-    "name": "Parse JSON"
+    "z": "mqtt-influx-flow",
+    "name": "Parse JSON",
+    "property": "payload",
+    "action": "",
+    "pretty": false,
+    "x": 360,
+    "y": 120,
+    "wires": [["influx-out"]]
   },
   {
     "id": "influx-out",
     "type": "influxdb out",
+    "z": "mqtt-influx-flow",
+    "influxdb": "influx-config",
+    "name": "Store in InfluxDB",
+    "measurement": "sensors",
+    "precision": "",
+    "retentionPolicy": "",
+    "database": "",
+    "precisionV18FluxV20": "ms",
+    "retentionPolicyV18Flux": "",
+    "org": "",
+    "bucket": "",
+    "x": 600,
+    "y": 120,
+    "wires": []
+  },
+  {
+    "id": "mosquitto-broker",
+    "type": "mqtt-broker",
+    "name": "Mosquitto",
+    "broker": "mosquitto",
+    "port": "1883",
+    "clientid": "",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthRetain": "false",
+    "birthPayload": "",
+    "birthMsg": {},
+    "closeTopic": "",
+    "closeQos": "0",
+    "closeRetain": "false",
+    "closePayload": "",
+    "closeMsg": {},
+    "willTopic": "",
+    "willQos": "0",
+    "willRetain": "false",
+    "willPayload": "",
+    "willMsg": {},
+    "userProps": "",
+    "sessionExpiry": ""
+  },
+  {
+    "id": "influx-config",
+    "type": "influxdb",
+    "hostname": "influxdb",
+    "port": "8086",
+    "protocol": "http",
     "database": "sensors",
-    "name": "Store in InfluxDB"
+    "name": "InfluxDB",
+    "usetls": false,
+    "tls": "",
+    "influxdbVersion": "1.x",
+    "url": "http://influxdb:8086",
+    "rejectUnauthorized": true
   }
 ]
 ```
 
 ### HTTP Webhook to Slack
 
-```javascript
+```text
 HTTP In → Function → HTTP Request (Slack webhook) → HTTP Response
 ```
 
@@ -129,8 +207,6 @@ msg.payload = {
 msg.headers = {
     "Content-Type": "application/json"
 };
-msg.url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL";
-msg.method = "POST";
 return msg;
 ```
 
@@ -144,14 +220,15 @@ services:
     image: nodered/node-red:latest
     volumes:
       - nodered_data:/data
-    # Need to be in the same network as Home Assistant
+    # Use host networking only if your Home Assistant instance also uses it
     network_mode: host
-    ports:
-      - "1880:1880"
     restart: unless-stopped
+
+volumes:
+  nodered_data:
 ```
 
-Install `node-red-contrib-home-assistant-websocket` to connect to your HA instance.
+Install `node-red-contrib-home-assistant-websocket` and configure the server node with your Home Assistant Base URL.
 
 ## Conclusion
 
