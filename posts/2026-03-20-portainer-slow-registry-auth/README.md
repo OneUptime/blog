@@ -31,7 +31,7 @@ time docker pull myregistry.com/myimage:v1.0
 time nslookup myregistry.com
 
 # Check from inside Docker (may use different DNS)
-docker run --rm busybox time nslookup myregistry.com
+docker run --rm busybox sh -c 'time nslookup myregistry.com'
 
 # If DNS is slow, configure a faster resolver
 cat /etc/resolv.conf
@@ -56,14 +56,16 @@ Authentication happens at pull time. Pre-authentication caches credentials:
 docker login
 
 # Pre-authenticate to custom registry
-docker login myregistry.com -u username -p password
+printf '%s\n' 'password' | docker login myregistry.com \
+  --username username --password-stdin
 
 # Pre-authenticate to ECR
 aws ecr get-login-password --region us-east-1 | \
   docker login --username AWS --password-stdin \
   123456789.dkr.ecr.us-east-1.amazonaws.com
 
-# Docker caches credentials in ~/.docker/config.json
+# Docker stores login configuration in ~/.docker/config.json
+# and may use an external credential store if configured
 cat ~/.docker/config.json
 ```
 
@@ -72,36 +74,40 @@ cat ~/.docker/config.json
 Ensure Portainer has valid, non-expired credentials:
 
 1. Go to **Registries** in Portainer
-2. Edit each registry and re-enter credentials
-3. For ECR: update the password (token) as they expire every 12 hours
+2. Edit each registry and confirm the stored credentials are still valid
+3. For ECR: use the **AWS ECR** registry type with IAM credentials and region; Portainer refreshes the temporary ECR auth token automatically
 
 ```bash
-# Automate ECR credential refresh
 #!/bin/bash
-# refresh-portainer-ecr.sh
+# Update an existing AWS ECR registry entry in Portainer
+# update-portainer-ecr.sh
 
-PORTAINER_URL="http://localhost:9000"
+PORTAINER_URL="https://portainer.example.com:9443"
+PORTAINER_API_KEY="your-portainer-api-key"
+REGISTRY_NAME="AWS ECR Production"
 ECR_REGISTRY="123456789.dkr.ecr.us-east-1.amazonaws.com"
-
-# Get Portainer auth token
-TOKEN=$(curl -s -X POST "$PORTAINER_URL/api/auth" \
-  -H "Content-Type: application/json" \
-  -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
-
-# Get fresh ECR token
-ECR_TOKEN=$(aws ecr get-login-password --region us-east-1)
+AWS_ACCESS_KEY_ID="AKIA..."
+AWS_SECRET_ACCESS_KEY="your-secret-access-key"
+AWS_REGION="us-east-1"
 
 # Find the ECR registry ID in Portainer
-REGISTRY_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+REGISTRY_ID=$(curl -s -H "X-API-Key: $PORTAINER_API_KEY" \
   "$PORTAINER_URL/api/registries" | \
-  jq -r ".[] | select(.URL | contains(\"$ECR_REGISTRY\")) | .Id")
+  jq -r ".[] | select(.URL == \"$ECR_REGISTRY\" and .Type == 7) | .Id")
 
-# Update the registry password
-curl -X PUT \
-  -H "Authorization: Bearer $TOKEN" \
+# Update the registry with IAM credentials.
+# Portainer retrieves and refreshes the short-lived ECR auth token as needed.
+curl -s -X PUT \
+  -H "X-API-Key: $PORTAINER_API_KEY" \
   -H "Content-Type: application/json" \
   "$PORTAINER_URL/api/registries/$REGISTRY_ID" \
-  -d "{\"Password\": \"$ECR_TOKEN\", \"Username\": \"AWS\"}"
+  -d "$(jq -n \
+    --arg name "$REGISTRY_NAME" \
+    --arg url "$ECR_REGISTRY" \
+    --arg user "$AWS_ACCESS_KEY_ID" \
+    --arg pass "$AWS_SECRET_ACCESS_KEY" \
+    --arg region "$AWS_REGION" \
+    '{Name:$name, URL:$url, Authentication:true, Username:$user, Password:$pass, Ecr:{Region:$region}}')"
 ```
 
 ## Step 5: Enable Local Image Cache
@@ -133,7 +139,7 @@ docker run -d \
   --restart always \
   -e REGISTRY_PROXY_REMOTEURL=https://registry-1.docker.io \
   -v registry_mirror_data:/var/lib/registry \
-  registry:2
+  registry:3
 
 # Configure Docker to use the mirror
 cat > /etc/docker/daemon.json << 'EOF'
@@ -150,12 +156,12 @@ docker pull nginx:latest  # Uses local mirror cache
 
 ## Step 7: Optimize Stack Deploy for Multi-Image Stacks
 
-For stacks with many services, pulls happen sequentially by default:
+For stacks with many services, you can increase Compose's parallelism when pre-pulling images outside Portainer:
 
 ```bash
-# Use docker compose pull --parallel for faster multi-image pulls
+# Increase Compose parallelism for faster multi-image pulls
 cd /opt/stacks/mystack
-docker compose pull --parallel
+docker compose --parallel 8 pull
 
 # After pre-pulling, deploy in Portainer with Re-pull disabled
 ```
@@ -163,7 +169,7 @@ docker compose pull --parallel
 ## Step 8: Configure Image Pull Parallelism in Docker
 
 ```bash
-# Docker daemon can pull multiple images simultaneously
+# Docker daemon defaults to 3 concurrent layer downloads per pull
 cat > /etc/docker/daemon.json << 'EOF'
 {
   "max-concurrent-downloads": 10,
@@ -176,13 +182,13 @@ sudo systemctl restart docker
 
 ## Step 9: Use Image Digest Pinning
 
-Pinned digests avoid the registry manifest lookup overhead:
+Pinned digests make deployments deterministic and avoid surprises from mutable tags:
 
 ```yaml
-# Instead of tag-based references (require manifest lookup)
+# Instead of mutable tag-based references
 image: nginx:latest
 
-# Use digest references (deterministic, faster auth)
+# Use digest references for deterministic pulls
 image: nginx@sha256:abc123...definite_hash_here
 ```
 
@@ -205,4 +211,4 @@ time docker compose -f /opt/stacks/mystack/docker-compose.yml up -d
 
 ## Conclusion
 
-Slow stack deployments due to registry authentication are most commonly caused by DNS resolution delays and expired or missing authentication tokens. The fastest fixes are configuring fast DNS resolvers in the Docker daemon, pre-pulling images to warm the local cache, and setting up a local registry mirror for frequently used base images. For private registries, ensure credentials are current and non-expired, especially for time-limited tokens like AWS ECR.
+Slow stack deployments due to registry authentication are most commonly caused by DNS resolution delays and expired or missing authentication tokens. The fastest fixes are configuring fast DNS resolvers in the Docker daemon, pre-pulling images to warm the local cache, and setting up a local registry mirror for frequently used base images. For private registries, ensure Portainer's stored credentials are current. For AWS ECR, configure the registry with IAM credentials so Portainer can refresh the temporary token automatically.
