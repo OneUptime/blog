@@ -16,16 +16,16 @@ After a user authenticates with the identity provider, the IdP redirects them ba
 
 ## Portainer's Redirect URI
 
-Portainer's redirect URI is always:
+Portainer sends the Redirect URL you configure in Settings → Authentication → OAuth. In the common case where Portainer is served at the root, that looks like:
 
 ```text
 https://your-portainer-domain.com/
 ```
 
 Key points:
-- Uses the same scheme and port as your Portainer URL
-- Points to the root of Portainer (no path)
-- **Must include a trailing slash** (this is the most common mistake)
+- Uses the same scheme and port as your public Portainer URL
+- If Portainer is served from a subpath, include that full subpath
+- Register the exact value Portainer is configured to send, including whether you use a trailing slash
 
 ## What Must Match Exactly
 
@@ -34,10 +34,10 @@ Key points:
 | Scheme | `https://` | Yes |
 | Hostname | `portainer.example.com` | Yes |
 | Port | `:443` (implicit for HTTPS) | Yes |
-| Path | `/` | Yes |
-| Trailing slash | `https://portainer.example.com/` | Yes |
+| Path | `/` or `/portainer/` | Yes |
+| Trailing slash | final `/` in `https://portainer.example.com/` | Yes |
 
-Even a missing trailing slash causes failure with most IdPs.
+A trailing slash mismatch is a common cause of login failures.
 
 ## Configuring in Portainer
 
@@ -48,6 +48,8 @@ Redirect URL: https://portainer.example.com/
 ```
 
 Or via API:
+
+Send the full `OAuthSettings` object - Portainer replaces that struct rather than merging a single field.
 
 ```bash
 TOKEN=$(curl -s -X POST \
@@ -62,16 +64,27 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d '{
     "AuthenticationMethod": 3,
-    "oauthsettings": {
+    "OAuthSettings": {
+      "ClientID": "your-client-id",
+      "ClientSecret": "your-client-secret",
+      "AccessTokenURI": "https://provider.example.com/oauth/token",
+      "AuthorizationURI": "https://provider.example.com/oauth/authorize",
+      "ResourceURI": "https://provider.example.com/oauth/userinfo",
       "RedirectURI": "https://portainer.example.com/",
-      ...other settings...
+      "UserIdentifier": "email",
+      "Scopes": "openid,email,profile",
+      "OAuthAutoCreateUsers": false,
+      "DefaultTeamID": 0,
+      "SSO": false,
+      "LogoutURI": "",
+      "AuthStyle": 0
     }
   }'
 ```
 
 ## Registering in Each IdP
 
-### Azure AD
+### Microsoft Entra ID (Azure AD)
 
 1. App Registration → **Authentication** → **Redirect URIs**
 2. Add: `https://portainer.example.com/`
@@ -91,7 +104,6 @@ curl -X PUT \
 
 1. Client settings → **Valid redirect URIs**
 2. Add: `https://portainer.example.com/`
-3. Also add to **Web origins**: `https://portainer.example.com`
 
 ### Authentik
 
@@ -103,7 +115,7 @@ curl -X PUT \
 ### Missing Trailing Slash
 
 ```text
-Wrong:   https://portainer.example.com
+Wrong:   https://portainer.example.com   (if Portainer is configured to send `https://portainer.example.com/`)
 Correct: https://portainer.example.com/
 ```
 
@@ -144,7 +156,7 @@ When you get a "redirect_uri_mismatch" error:
 
 curl -s -H "Authorization: Bearer $TOKEN" \
   https://portainer.example.com/api/settings \
-  | python3 -c "import sys,json; s=json.load(sys.stdin); print(s.get('oauthsettings',{}).get('RedirectURI','not set'))"
+  | python3 -c "import sys,json; s=json.load(sys.stdin); print(s.get('OAuthSettings',{}).get('RedirectURI','not set'))"
 ```
 
 ## Subpath Deployment
@@ -155,8 +167,8 @@ If Portainer runs at a subpath (`https://example.com/portainer/`), the redirect 
 Redirect URL: https://example.com/portainer/
 ```
 
-Also ensure `--base-url=/portainer` is set in Portainer's startup command.
+Also ensure `--base-url /portainer` is set in Portainer's startup command.
 
 ## Conclusion
 
-Redirect URI configuration is a precision exercise - every character matters. The rule is simple: the URI configured in Portainer's OAuth settings must be character-for-character identical to what's registered with your identity provider. Use the HTTPS URL that users see in their browser, always include the trailing slash, and for non-standard ports, include the port number.
+Redirect URI configuration is a precision exercise - every character matters. The rule is simple: use the exact public URL Portainer is configured to send, including any subpath, port, and trailing slash, and register that same value with your identity provider.
