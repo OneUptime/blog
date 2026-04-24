@@ -17,7 +17,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 5.20.0"  # provider functions require recent provider versions
+      version = ">= 5.44.0"  # includes arn_parse, arn_build, and trim_iam_role_path
     }
   }
 }
@@ -81,16 +81,15 @@ resource "aws_s3_bucket" "app" {
 }
 ```
 
-## Trimming ARN Suffixes
+## Trimming IAM Role Paths
 
 ```hcl
-# Some resources return ARNs with suffixes that need to be stripped
+# Some services require IAM role ARNs without a path prefix
 locals {
-  role_arn = "arn:aws:iam::123456789012:role/MyRole/path"
+  role_arn = "arn:aws:iam::123456789012:role/team/MyRole"
 
-  # Trim to just the role ARN without path
-  parsed = provider::aws::arn_parse(local.role_arn)
-  base_arn = "arn:${local.parsed.partition}:iam::${local.parsed.account_id}:role/${split("/", local.parsed.resource)[1]}"
+  # trim_iam_role_path() removes the path and keeps the role name
+  base_arn = provider::aws::trim_iam_role_path(local.role_arn)
 }
 ```
 
@@ -102,32 +101,67 @@ If you're writing a custom provider, you can define functions using the Plugin F
 // In your provider implementation (Go)
 func (p *ExampleProvider) Functions(_ context.Context) []func() function.Function {
     return []func() function.Function{
-        NewParseResourceIdFunction,
+        NewParseResourceIDFunction,
     }
 }
 
-func NewParseResourceIdFunction() function.Function {
-    return function.NewFunction(
-        function.WithSummary("Parse a compound resource ID"),
-        function.WithParameter(function.StringParameter{
-            Name: "id",
-        }),
-        function.WithReturn(function.ObjectReturn{
+type parseResourceIDFunction struct{}
+
+func NewParseResourceIDFunction() function.Function {
+    return &parseResourceIDFunction{}
+}
+
+func (f *parseResourceIDFunction) Metadata(_ context.Context, _ function.MetadataRequest, resp *function.MetadataResponse) {
+    resp.Name = "parse_resource_id"
+}
+
+func (f *parseResourceIDFunction) Definition(_ context.Context, _ function.DefinitionRequest, resp *function.DefinitionResponse) {
+    resp.Definition = function.Definition{
+        Summary: "Parse a compound resource ID",
+        Parameters: []function.Parameter{
+            function.StringParameter{
+                Name: "id",
+            },
+        },
+        Return: function.ObjectReturn{
             AttributeTypes: map[string]attr.Type{
                 "org":  types.StringType,
                 "name": types.StringType,
             },
-        }),
-        function.WithRunFunction(func(ctx context.Context, req function.RunRequest, resp *function.RunResponse) {
-            var id string
-            req.Arguments.Get(ctx, &id)
-            parts := strings.SplitN(id, "/", 2)
-            resp.Result.Set(ctx, map[string]string{
-                "org":  parts[0],
-                "name": parts[1],
-            })
-        }),
+        },
+    }
+}
+
+func (f *parseResourceIDFunction) Run(ctx context.Context, req function.RunRequest, resp *function.RunResponse) {
+    var id string
+
+    resp.Error = function.ConcatFuncErrors(req.Arguments.Get(ctx, &id))
+    if resp.Error != nil {
+        return
+    }
+
+    parts := strings.SplitN(id, "/", 2)
+    if len(parts) != 2 {
+        resp.Error = function.ConcatFuncErrors(resp.Error, function.NewFuncError("expected ID in the form org/name"))
+        return
+    }
+
+    result, diags := types.ObjectValue(
+        map[string]attr.Type{
+            "org":  types.StringType,
+            "name": types.StringType,
+        },
+        map[string]attr.Value{
+            "org":  types.StringValue(parts[0]),
+            "name": types.StringValue(parts[1]),
+        },
     )
+    if diags.HasError() {
+        resp.Error = function.ConcatFuncErrors(resp.Error, function.FuncErrorFromDiags(ctx, diags))
+        return
+    }
+
+    resp.Error = function.ConcatFuncErrors(resp.Result.Set(ctx, result))
 }
 ```
 
@@ -137,7 +171,7 @@ func NewParseResourceIdFunction() function.Function {
 # After init, provider functions are documented in the provider's registry page
 # Or check via the provider's source code
 
-# You can also test functions using the console
+# You can also test functions using the console from a module where the provider is initialized
 echo 'provider::aws::arn_parse("arn:aws:s3:::my-bucket")' | tofu console
 ```
 
