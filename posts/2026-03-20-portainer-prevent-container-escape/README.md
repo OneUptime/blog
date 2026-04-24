@@ -8,7 +8,7 @@ Description: Learn how to configure Portainer and Docker to prevent container es
 
 ---
 
-Container escape attacks exploit misconfigurations to break out of the container and gain access to the host. Most container escapes require either a privileged container, dangerous capabilities, or mounted host resources. Portainer lets you configure protections against all of these.
+Container escape attacks exploit misconfigurations to break out of the container and gain access to the host. Most container escapes require either a privileged container, dangerous capabilities, or mounted host resources. Portainer and Docker let you configure protections against all of these.
 
 ## Primary Container Escape Vectors
 
@@ -16,7 +16,7 @@ Container escape attacks exploit misconfigurations to break out of the container
 graph TD
     Attacker -->|1. Privileged container| HostEscape1[Mount host filesystem]
     Attacker -->|2. Docker socket mounted| HostEscape2[Create privileged container]
-    Attacker -->|3. SYS_ADMIN capability| HostEscape3[Load kernel module]
+    Attacker -->|3. SYS_ADMIN capability| HostEscape3[Mount filesystems]
     Attacker -->|4. Kernel exploit + CVE| HostEscape4[Namespace escape]
     HostEscape1 --> Host[Host Compromise]
     HostEscape2 --> Host
@@ -46,28 +46,27 @@ Mounting `/var/run/docker.sock` into a container gives it the ability to create 
 services:
   api:
     image: my-api:latest
-    volumes:
-      # NEVER add this to production containers:
-      # - /var/run/docker.sock:/var/run/docker.sock
-
-      # If a container truly needs Docker access, use a proxy like Tecnativa Docker Socket Proxy:
-      - docker-socket-proxy:2375
+    # NEVER add this to production containers:
+    # volumes:
+    #   - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      # If the container uses the Docker CLI or SDK, point it at a proxy instead.
+      DOCKER_HOST: tcp://socket-proxy:2375
 ```
 
 Use the Docker Socket Proxy (Tecnativa) to limit which API calls are allowed:
 
 ```yaml
+services:
   socket-proxy:
-    image: tecnativa/docker-socket-proxy:latest
+    image: ghcr.io/tecnativa/docker-socket-proxy:latest
     environment:
-      CONTAINERS: 1    # Allow read-only container listing
+      CONTAINERS: 1    # Allow container-related GET endpoints
       SERVICES: 0      # Block service management
-      EXEC: 0          # Block exec
+      EXEC: 0          # Block exec endpoints
       POST: 0          # Block all POST requests
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - socket_proxy_net
 ```
 
 ## 3. Drop Dangerous Capabilities
@@ -89,7 +88,7 @@ Specifically, these capabilities are used in known escape techniques:
 
 | Capability | Escape Technique |
 |------------|-----------------|
-| `SYS_ADMIN` | Mount filesystems, load kernel modules |
+| `SYS_ADMIN` | Mount filesystems, perform namespace-related admin operations |
 | `SYS_MODULE` | Load malicious kernel module |
 | `SYS_PTRACE` | Process memory injection |
 | `NET_ADMIN` | Modify routing, intercept traffic |
@@ -145,12 +144,19 @@ docker ps -q | xargs docker inspect \
 docker ps -q | xargs docker inspect \
   --format '{{.Name}}: {{.HostConfig.CapAdd}}' | grep SYS_ADMIN
 
+# Build docker-bench-security locally first; the old docker/docker-bench-security image is out-of-date
+git clone https://github.com/docker/docker-bench-security.git
+cd docker-bench-security
+docker build --no-cache -t docker-bench-security .
+
 # Use docker-bench-security for a comprehensive check
 docker run --rm --net host --pid host --userns host --cap-add audit_control \
+  -e DOCKER_CONTENT_TRUST=$DOCKER_CONTENT_TRUST \
   -v /etc:/etc:ro -v /usr/bin/containerd:/usr/bin/containerd:ro \
   -v /usr/bin/runc:/usr/bin/runc:ro \
   -v /usr/lib/systemd:/usr/lib/systemd:ro \
   -v /var/lib:/var/lib:ro \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  docker/docker-bench-security
+  --label docker_bench_security \
+  docker-bench-security
 ```
