@@ -8,7 +8,7 @@ Description: A step-by-step guide to installing Portainer CE on Fedora Linux wit
 
 ## Prerequisites
 
-- Fedora 38 or later
+- Fedora 42, 43, or 44
 - Root or sudo access
 - Internet connectivity
 
@@ -20,18 +20,16 @@ sudo dnf update -y
 
 ## Step 2: Install Docker
 
-Fedora ships with Podman by default. To install Docker Engine:
+Fedora ships with Podman by default. To install Docker Engine from Docker's RPM repository:
 
 ```bash
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
+sudo dnf config-manager addrepo --from-repofile https://download.docker.com/linux/fedora/docker-ce.repo
+sudo dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
 
 sudo usermod -aG docker $USER
 newgrp docker
-sudo systemctl enable --now docker
 ```
-
-> **Note:** If Podman conflicts with Docker, you may need to remove Podman first: `sudo dnf remove podman`
 
 Verify:
 
@@ -54,9 +52,10 @@ docker run -d \
   -p 9443:9443 \
   --name portainer \
   --restart=always \
+  --privileged \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 5: Open Firewall Ports
@@ -73,15 +72,16 @@ Navigate to `https://<server-ip>:9443` and set up your admin account.
 
 ## Troubleshooting
 
-**SELinux blocking Docker socket access:**
+**SELinux on Fedora:**
 ```bash
-sudo setsebool -P container_manage_cgroup 1
-sudo chcon -t container_file_t /var/run/docker.sock
+docker stop portainer && docker rm portainer
+# Re-run the deploy command with --privileged
 ```
 
 **Docker socket permission:**
 ```bash
-sudo chmod 666 /var/run/docker.sock
+sudo usermod -aG docker $USER
+newgrp docker
 ```
 
 **Check logs:**
@@ -93,11 +93,11 @@ docker logs portainer
 
 ```bash
 docker stop portainer && docker rm portainer
-docker pull portainer/portainer-ce:latest
+docker pull portainer/portainer-ce:lts
 # Re-run the deploy command
 
 ```
 
 ## Conclusion
 
-Portainer CE on Fedora gives you a modern web UI for Docker container management. Note the Podman compatibility consideration on Fedora - once Docker is properly configured, Portainer runs reliably with the `--restart=always` policy.
+Portainer CE on Fedora gives you a modern web UI for Docker container management. Note the SELinux consideration on Fedora - once Docker is properly configured and Portainer is deployed with `--privileged`, it runs reliably with the `--restart=always` policy.
