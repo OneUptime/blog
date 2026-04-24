@@ -12,11 +12,9 @@ PostgreSQL is the world's most advanced open-source relational database, known f
 
 ## Deploy as a Stack
 
-In Portainer, create a stack named `postgresql`:
+On your Docker host, save `postgresql.conf` and the `init` directory under `/opt/postgresql`, then in Portainer create a stack named `postgresql`:
 
 ```yaml
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -30,10 +28,10 @@ services:
     volumes:
       # Persistent database storage
       - postgres_data:/var/lib/postgresql/data
-      # Custom PostgreSQL configuration
-      - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
-      # Initialization scripts
-      - ./init:/docker-entrypoint-initdb.d:ro
+      # Custom PostgreSQL configuration on the Docker host
+      - /opt/postgresql/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      # Initialization scripts on the Docker host
+      - /opt/postgresql/init:/docker-entrypoint-initdb.d:ro
     ports:
       - "5432:5432"
     command: postgres -c config_file=/etc/postgresql/postgresql.conf
@@ -67,7 +65,7 @@ volumes:
 
 ## PostgreSQL Configuration
 
-Create `postgresql.conf`:
+Create `/opt/postgresql/postgresql.conf`:
 
 ```ini
 # postgresql.conf - custom configuration
@@ -109,7 +107,7 @@ timezone = 'UTC'
 
 ## Initialization Scripts
 
-Create `init/01-extensions.sql`:
+Create `/opt/postgresql/init/01-extensions.sql`:
 
 ```sql
 -- Create useful extensions
@@ -125,13 +123,30 @@ CREATE SCHEMA IF NOT EXISTS audit;
 GRANT USAGE ON SCHEMA api TO myapp_user;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA api TO myapp_user;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA api TO myapp_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA api GRANT ALL PRIVILEGES ON TABLES TO myapp_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA api GRANT ALL PRIVILEGES ON SEQUENCES TO myapp_user;
+
+-- Audit log table used by the trigger function
+CREATE TABLE IF NOT EXISTS audit.changes (
+    id BIGSERIAL PRIMARY KEY,
+    table_name text NOT NULL,
+    operation text NOT NULL,
+    old_data jsonb,
+    new_data jsonb,
+    changed_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 -- Create audit function for tracking changes
 CREATE OR REPLACE FUNCTION audit.log_changes()
 RETURNS TRIGGER AS $$
 BEGIN
     INSERT INTO audit.changes (table_name, operation, old_data, new_data, changed_at)
-    VALUES (TG_TABLE_NAME, TG_OP, row_to_json(OLD), row_to_json(NEW), now());
+    VALUES (TG_TABLE_NAME, TG_OP, to_jsonb(OLD), to_jsonb(NEW), CURRENT_TIMESTAMP);
+
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -149,6 +164,7 @@ docker exec postgres pg_dump \
   -f /tmp/myapp-backup.dump
 
 # Copy backup from container
+mkdir -p ./backups
 docker cp postgres:/tmp/myapp-backup.dump ./backups/
 
 # Restore from backup
