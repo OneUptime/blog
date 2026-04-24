@@ -28,14 +28,14 @@ multi-cloud/
 provider "aws" {
   region = var.aws_region
 
-  # Option 1: Environment variables (recommended for CI)
-  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+  # Option 1: Environment variables or shared config
+  # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN
 
   # Option 2: Assume Role (recommended for cross-account)
-  assume_role {
-    role_arn     = var.aws_role_arn
-    session_name = "opentofu-session"
-  }
+  # assume_role {
+  #   role_arn     = var.aws_role_arn
+  #   session_name = "opentofu-session"
+  # }
 
   default_tags {
     tags = {
@@ -58,15 +58,15 @@ export AWS_DEFAULT_REGION=us-east-1
 ```hcl
 provider "azurerm" {
   features {}
-  subscription_id = var.azure_subscription_id
 
-  # Option 1: Service Principal
-  client_id       = var.azure_client_id
-  client_secret   = var.azure_client_secret
-  tenant_id       = var.azure_tenant_id
+  # Option 1: Service Principal credentials in the provider block
+  # subscription_id = var.azure_subscription_id
+  # client_id       = var.azure_client_id
+  # client_secret   = var.azure_client_secret
+  # tenant_id       = var.azure_tenant_id
 
   # Option 2: Use Azure CLI (for local development)
-  # use_cli = true
+  use_cli = true
 }
 ```
 
@@ -75,7 +75,7 @@ provider "azurerm" {
 az login
 az account set --subscription "your-subscription-id"
 
-# Service Principal (CI/CD)
+# Service Principal via environment variables (CI/CD)
 export ARM_CLIENT_ID=your-client-id
 export ARM_CLIENT_SECRET=your-client-secret
 export ARM_TENANT_ID=your-tenant-id
@@ -90,7 +90,7 @@ provider "google" {
   region  = var.gcp_region
 
   # Option 1: Service Account Key File
-  credentials = file(var.gcp_credentials_file)
+  # credentials = file(var.gcp_credentials_file)
 
   # Option 2: Application Default Credentials
   # (uses GOOGLE_APPLICATION_CREDENTIALS env var or gcloud auth)
@@ -101,7 +101,7 @@ provider "google" {
 # Application Default Credentials (local development)
 gcloud auth application-default login
 
-# Service Account (CI/CD)
+# Service account via Application Default Credentials (CI/CD)
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 ```
 
@@ -110,7 +110,7 @@ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 ```hcl
 # main.tf
 resource "aws_s3_bucket" "backup" {
-  bucket = "my-backup-bucket-${var.environment}"
+  bucket_prefix = "my-backup-bucket-${var.environment}-"
 }
 
 resource "azurerm_resource_group" "main" {
@@ -147,27 +147,43 @@ variable "gcp_credentials_file" {
 
 ```yaml
 # .github/workflows/deploy.yml
-- name: Configure AWS
-  uses: aws-actions/configure-aws-credentials@v4
-  with:
-    role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole
-    aws-region: us-east-1
+name: Deploy
+on:
+  workflow_dispatch:
 
-- name: Configure Azure
-  uses: azure/login@v1
-  with:
-    creds: ${{ secrets.AZURE_CREDENTIALS }}
+permissions:
+  contents: read
+  id-token: write
 
-- name: Configure GCP
-  uses: google-github-actions/auth@v2
-  with:
-    workload_identity_provider: projects/123/locations/global/workloadIdentityPools/pool/providers/github
-    service_account: opentofu@my-project.iam.gserviceaccount.com
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
 
-- name: Run OpenTofu
-  run: |
-    tofu init
-    tofu apply -auto-approve
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole
+          aws-region: us-east-1
+
+      - name: Configure Azure
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Configure GCP
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: projects/123/locations/global/workloadIdentityPools/pool/providers/github
+          service_account: opentofu@my-project.iam.gserviceaccount.com
+
+      - name: Run OpenTofu
+        run: |
+          tofu init
+          tofu apply -auto-approve
 ```
 
 ## Best Practices
@@ -176,7 +192,7 @@ variable "gcp_credentials_file" {
 2. **Never commit credentials** to version control - use environment variables or secret managers
 3. **Use separate service accounts** with minimum required permissions per cloud
 4. **Rotate credentials regularly** and audit access logs
-5. **Use `sensitive = true`** on all credential variables to prevent them appearing in logs
+5. **Use `sensitive = true`** on credential variables to reduce exposure in plan and apply output, and secure state separately
 
 ## Conclusion
 
