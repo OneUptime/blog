@@ -4,34 +4,34 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, API, Webhook, CI/CD, Automation
 
-Description: Learn how to create and trigger Portainer webhooks to automate container and service redeployments when new container images are pushed to a registry.
+Description: Learn how to create and trigger Portainer webhooks to automate container, service, and stack redeployments when new container images are pushed to a registry.
 
 ## Introduction
 
-Portainer webhooks provide a simple HTTP endpoint that, when called, triggers a service or stack update - typically pulling the latest image and restarting the container. This is the simplest way to integrate Portainer with CI/CD pipelines, registry push events, and other automation triggers.
+Portainer webhooks provide a simple HTTP endpoint that, when called, triggers a redeploy or update for a supported resource. For service and container webhooks, this typically means pulling the latest image and restarting the workload. This is the simplest way to integrate Portainer with CI/CD pipelines, registry push events, and other automation triggers.
 
 ## Prerequisites
 
-- Portainer CE or BE
-- A running container or stack deployed in Portainer
+- Portainer CE or BE managing a non-Edge environment
+- A running service, container, or stack deployed in Portainer
+- Portainer Business Edition if you want container or stack webhooks
 - Network access from your CI/CD system to Portainer
 
 ## How Portainer Webhooks Work
 
-1. You create a webhook in Portainer for a container or service
+1. You create a webhook in Portainer for a supported resource such as a service, container, or stack
 2. Portainer generates a unique URL
-3. When that URL receives a POST request, Portainer:
-   - Pulls the latest image for the container/service
-   - Restarts the container/service with the new image
-4. No authentication is required to trigger the webhook (the URL itself is the secret)
+3. When that URL receives a POST request, Portainer triggers the configured redeploy or update action
+4. For service and container webhooks, Portainer redeploys using the latest image for the current tag unless you pass a different `tag` query parameter
+5. No authentication is required to trigger the webhook (the URL itself is the secret)
 
-## Step 1: Create a Webhook for a Container
+## Step 1: Create a Webhook for a Container (Portainer BE)
 
 ### Via Portainer UI
 
 1. Go to **Containers**.
 2. Click on the container name.
-3. Scroll to the **Container webhook** section.
+3. In the container details screen, toggle **Container webhook** on.
 4. Click **Copy link** - this is your webhook URL.
 
 The webhook URL format:
@@ -43,23 +43,23 @@ https://portainer.example.com/api/webhooks/{token}
 
 ```bash
 PORTAINER_URL="https://portainer.example.com"
-TOKEN="your-auth-token"
+API_KEY="your-api-access-token"
 ENDPOINT_ID=1
 CONTAINER_ID="abc123def456"
 
-# Create a webhook for a container
+# Create a webhook for a container (Portainer BE)
 
 WEBHOOK=$(curl -s -X POST \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/webhooks" \
   -d "{
-    \"resourceId\": \"$CONTAINER_ID\",
-    \"endpointId\": $ENDPOINT_ID,
-    \"webhookType\": 1
+    \"ResourceID\": \"$CONTAINER_ID\",
+    \"EndpointID\": $ENDPOINT_ID,
+    \"WebhookType\": 2
   }")
 
-WEBHOOK_TOKEN=$(echo $WEBHOOK | jq -r '.token')
+WEBHOOK_TOKEN=$(echo "$WEBHOOK" | jq -r '.Token')
 echo "Webhook created!"
 echo "Webhook URL: ${PORTAINER_URL}/api/webhooks/${WEBHOOK_TOKEN}"
 ```
@@ -71,16 +71,16 @@ SERVICE_ID="your-swarm-service-id"
 
 # Create a webhook for a Docker Swarm service
 WEBHOOK=$(curl -s -X POST \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/webhooks" \
   -d "{
-    \"resourceId\": \"$SERVICE_ID\",
-    \"endpointId\": $ENDPOINT_ID,
-    \"webhookType\": 2
+    \"ResourceID\": \"$SERVICE_ID\",
+    \"EndpointID\": $ENDPOINT_ID,
+    \"WebhookType\": 1
   }")
 
-WEBHOOK_TOKEN=$(echo $WEBHOOK | jq -r '.token')
+WEBHOOK_TOKEN=$(echo "$WEBHOOK" | jq -r '.Token')
 echo "Service webhook URL: ${PORTAINER_URL}/api/webhooks/${WEBHOOK_TOKEN}"
 ```
 
@@ -89,35 +89,36 @@ echo "Service webhook URL: ${PORTAINER_URL}/api/webhooks/${WEBHOOK_TOKEN}"
 ```bash
 WEBHOOK_TOKEN="your-webhook-token"
 
-# Trigger the webhook (POST to the webhook URL)
-curl -s -X POST \
-  "${PORTAINER_URL}/api/webhooks/${WEBHOOK_TOKEN}"
+# Trigger a service/container webhook (POST to the webhook URL)
+HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+  "${PORTAINER_URL}/api/webhooks/${WEBHOOK_TOKEN}")
 
-# Expected response: 204 No Content on success
-echo "Webhook triggered. Container redeployment initiated."
+# Expected response: 202 Accepted on success
+echo "Webhook returned HTTP ${HTTP_STATUS}"
 ```
 
-## Step 4: List All Webhooks
+## Step 4: List Service and Container Webhooks
 
 ```bash
-# List all webhooks
-curl -s -H "Authorization: Bearer $TOKEN" \
+# List service/container webhooks
+curl -s -H "X-API-Key: $API_KEY" \
   "${PORTAINER_URL}/api/webhooks" | jq '.[] | {
     id: .Id,
     token: .Token,
-    resourceId: .ResourceID,
-    type: .WebhookType
+    endpointId: .EndpointId,
+    resourceId: .ResourceId,
+    type: .Type
   }'
 ```
 
-## Step 5: Delete a Webhook
+## Step 5: Delete a Service or Container Webhook
 
 ```bash
 WEBHOOK_ID=3
 
-# Delete a webhook
+# Delete a service/container webhook
 curl -s -X DELETE \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "X-API-Key: $API_KEY" \
   "${PORTAINER_URL}/api/webhooks/${WEBHOOK_ID}"
 
 echo "Webhook deleted."
@@ -140,6 +141,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Log in to container registry
+        uses: docker/login-action@v4
+        with:
+          registry: myregistry.io
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
       - name: Build and push Docker image
         run: |
           docker build -t myregistry.io/myapp:latest .
@@ -147,11 +155,11 @@ jobs:
 
       - name: Trigger Portainer redeployment
         run: |
-          # Trigger the Portainer webhook to pull new image and restart
+          # Service/container webhooks return 202; stack webhooks return 200
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
             "${{ secrets.PORTAINER_WEBHOOK_URL }}")
 
-          if [ "$HTTP_STATUS" = "204" ]; then
+          if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "202" ]; then
             echo "Deployment triggered successfully!"
           else
             echo "Webhook trigger failed with status: $HTTP_STATUS"
@@ -166,33 +174,39 @@ Configure Docker Hub to automatically trigger Portainer redeployment after a pus
 1. Log into Docker Hub.
 2. Navigate to your repository → **Webhooks**.
 3. Click **Create a Webhook**.
-4. Enter your Portainer webhook URL:
+4. Enter a name and your Portainer webhook URL:
    ```text
    https://portainer.example.com/api/webhooks/{your-token}
    ```
-5. Click **Create Webhook**.
+5. Click **Create**.
 
-Now every `docker push` to your Docker Hub repository will automatically trigger Portainer to pull the new image and restart the container.
+If you're using a stack webhook instead, the URL format is:
+```text
+https://portainer.example.com/api/stacks/webhooks/{your-token}
+```
 
-## Step 8: Trigger Webhook with Stack Update
+Now every `docker push` to your Docker Hub repository will automatically trigger Portainer to redeploy the target workload.
 
-For stacks, use the stack's webhook or trigger a stack update programmatically:
+## Step 8: Trigger a Stack Webhook (Portainer BE)
+
+Stack webhooks use a different endpoint from service/container webhooks. If the stack already has a webhook configured, inspect the stack and trigger it like this:
 
 ```bash
 STACK_ID=3
 
-# Get the stack webhook URL
-STACK=$(curl -s -H "Authorization: Bearer $TOKEN" \
+# Get the stack webhook token
+STACK=$(curl -s -H "X-API-Key: $API_KEY" \
   "${PORTAINER_URL}/api/stacks/${STACK_ID}")
 
-WEBHOOK_ID=$(echo $STACK | jq -r '.AutoUpdate.Webhook // empty')
+WEBHOOK_TOKEN=$(echo "$STACK" | jq -r '.Webhook // .AutoUpdate.Webhook // empty')
 
-if [ -n "$WEBHOOK_ID" ]; then
-  echo "Stack webhook: ${PORTAINER_URL}/api/webhooks/${WEBHOOK_ID}"
+if [ -n "$WEBHOOK_TOKEN" ]; then
+  HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+    "${PORTAINER_URL}/api/stacks/webhooks/${WEBHOOK_TOKEN}")
+  echo "Stack webhook returned HTTP ${HTTP_STATUS}"
 else
-  # Create a webhook for the stack via git-connected stacks
-  echo "This stack doesn't have an auto-update webhook configured."
-  echo "Configure Git-based stack with webhook option in Portainer."
+  echo "This stack doesn't have a webhook configured."
+  echo "Enable the stack webhook in Portainer or configure GitOps auto-updates with a webhook."
 fi
 ```
 
@@ -207,4 +221,4 @@ Webhook URLs are essentially bearer tokens. Protect them by:
 
 ## Conclusion
 
-Portainer webhooks provide a dead-simple integration point for automated redeployments. Create a webhook for your container or service, store the URL securely in your CI/CD system, and call it after every successful image push. This pattern enables continuous deployment without complex pipeline integrations - a simple HTTP POST is all it takes to trigger a rolling update.
+Portainer webhooks provide a dead-simple integration point for automated redeployments. Create a webhook for your service, container, or stack, store the URL securely in your CI/CD system, and call it after every successful image push. This pattern enables continuous deployment without complex pipeline integrations - a simple HTTP POST is all it takes to trigger the configured update.
