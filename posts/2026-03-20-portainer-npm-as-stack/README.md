@@ -13,6 +13,7 @@ Deploying Nginx Proxy Manager as a Portainer stack brings NPM under Portainer's 
 ## Prerequisites
 
 - Portainer CE or BE running
+- A Docker Standalone environment in Portainer (these Compose examples are not for Docker Swarm stacks)
 - Admin access to Portainer
 - Domain names pointing to your server (for NPM SSL provisioning)
 
@@ -42,7 +43,7 @@ services:
     networks:
       - proxy
     healthcheck:
-      test: ["CMD", "/bin/check-health"]
+      test: ["CMD", "/usr/bin/check-health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -102,6 +103,7 @@ services:
       MYSQL_DATABASE: "npm"
       MYSQL_USER: "${DB_USER}"
       MYSQL_PASSWORD: "${DB_PASSWORD}"
+      MARIADB_AUTO_UPGRADE: "1"
     volumes:
       - npm_db_data:/var/lib/mysql
     networks:
@@ -153,19 +155,19 @@ networks:
 
 ## Step 4: Stack Management via Portainer
 
-After deploying, Portainer shows the NPM stack in the Stacks list with:
+After deploying, Portainer shows the NPM stack in the Stacks list. In a Docker Standalone environment, you'll see:
 
 ```text
 Stack: nginx-proxy-manager
-Services: npm (running), npm-db (running)
+Containers: nginx-proxy-manager (running), npm-mariadb (running if using MariaDB)
 Status: Running
 
 Actions available:
   Start/Stop - Bring NPM down for maintenance
-  Update - Pull new image version
+  Update - Redeploy the stack with updated settings or image tags
   Edit - Modify compose file inline
-  Logs - View NPM and MariaDB logs
-  Console - Access container shell for debugging
+  Logs - View NPM and MariaDB container logs
+  Console - Access a container shell for debugging
 ```
 
 ## Step 5: Update NPM Through Portainer
@@ -173,41 +175,50 @@ Actions available:
 ```bash
 # Method 1: Through Portainer UI
 # Go to Stacks → nginx-proxy-manager → Edit
-# Change: jc21/nginx-proxy-manager:latest → jc21/nginx-proxy-manager:2.11.3
+# Change: jc21/nginx-proxy-manager:latest → jc21/nginx-proxy-manager:2.14.0
 # Click Update the stack
-# Enable "Re-pull image" checkbox
+# Optionally enable "Pull latest image" before updating
 
-# Method 2: Via Portainer API
+# Method 2: Via Portainer API for a stack created in the Web Editor
 PORTAINER_URL="https://portainer.example.com"
-TOKEN="your-admin-token"
+API_KEY="your-access-token"
 
-# Get stack ID
-STACK_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+# Get stack and environment identifiers
+STACK_JSON=$(curl -s -H "X-API-Key: $API_KEY" \
   "${PORTAINER_URL}/api/stacks" | \
-  jq -r '.[] | select(.Name == "nginx-proxy-manager") | .Id')
+  jq '.[] | select(.Name == "nginx-proxy-manager")')
 
-# Trigger stack redeploy with image pull
-curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
+STACK_ID=$(jq -r '.Id' <<<"$STACK_JSON")
+ENDPOINT_ID=$(jq -r '.EndpointId' <<<"$STACK_JSON")
+
+# Fetch the current stack file, update the image tag, then redeploy
+UPDATED_STACK_FILE=$(
+  curl -s -H "X-API-Key: $API_KEY" \
+    "${PORTAINER_URL}/api/stacks/${STACK_ID}/file" | \
+  jq -r '.StackFileContent' | \
+  sed 's#jc21/nginx-proxy-manager:latest#jc21/nginx-proxy-manager:2.14.0#'
+)
+
+jq -n \
+  --arg stackFileContent "$UPDATED_STACK_FILE" \
+  '{StackFileContent: $stackFileContent, RepullImageAndRedeploy: true}' | \
+curl -s -X PUT -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
-  "${PORTAINER_URL}/api/stacks/${STACK_ID}/git/redeploy" \
-  -d '{"pullImage": true}'
+  "${PORTAINER_URL}/api/stacks/${STACK_ID}?endpointId=${ENDPOINT_ID}" \
+  --data @-
 ```
 
 ## Step 6: Backup NPM Configuration via Portainer
 
 ```bash
-# Access NPM container console through Portainer
-# Portainer → Containers → nginx-proxy-manager → Console
-
-# Inside the container, export configuration
-sqlite3 /data/database.sqlite .dump > /data/npm-backup-$(date +%Y%m%d).sql
-
-# Or from the host using Portainer's exec API
-curl -s -X POST -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/endpoints/1/docker/containers/nginx-proxy-manager/exec" \
-  -d '{"Cmd": ["sqlite3", "/data/database.sqlite", ".dump"], "AttachStdout": true}'
+# For SQLite, stop the stack in Portainer first so the database file is copied consistently.
+# Then back up the mounted NPM volumes:
+#   - npm_data (contains /data/database.sqlite and application state)
+#   - npm_letsencrypt (contains certificates)
+#
+# For MariaDB, back up the npm-db database volume/container instead of /data/database.sqlite.
 ```
 
 ## Conclusion
 
-Deploying Nginx Proxy Manager as a Portainer stack brings all lifecycle management under a single interface. The SQLite backend is appropriate for single-host deployments while the MariaDB option provides better reliability for production. Use Portainer's environment variables to keep database credentials out of the compose file, and create a shared `proxy` network as an external resource so all managed stacks can be reached by NPM without being part of the NPM stack definition.
+Deploying Nginx Proxy Manager as a Portainer stack brings all lifecycle management under a single interface. The SQLite backend is appropriate for single-host deployments while the MariaDB option provides better reliability for production. Use Portainer's environment variables to keep database credentials out of the compose file, and use a shared `proxy` network with a fixed name so other managed stacks can be reached by NPM.
