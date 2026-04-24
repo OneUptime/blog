@@ -13,34 +13,36 @@ Rancher's white-labeling capabilities allow enterprises and MSPs to fully replac
 ## Prerequisites
 
 - Rancher v2.6+
-- Admin access
-- Prepared assets: logo (SVG/PNG), favicon (ICO/PNG 32×32), and brand color hex codes
+- At least cluster member permissions
+- Prepared assets: logo (JPEG/PNG/SVG), favicon (PNG/SVG), and brand color hex codes
 
 ## Branding Settings Reference
 
-All branding settings live under `Global Settings → Branding` and are also available through the Rancher v3 API at `/v3/settings/`.
+Core branding settings live under `Global Settings → Branding`. In recent Rancher versions, default external links are managed under `Global Settings → Home Links`. For automation, these settings are also available through the legacy Rancher v3 API at `/v3/settings/`.
 
 | Setting Key | Default | Description |
 |---|---|---|
-| `ui-logo-light` | Rancher logo | Logo on dark backgrounds |
-| `ui-logo-dark` | Rancher logo | Logo on light backgrounds |
-| `ui-favicon` | Rancher favicon | Browser tab icon |
-| `ui-primary-color` | `#3D98D3` | Buttons, links, highlights |
-| `ui-pl` | `Rancher` | Product name in title bar |
-| `ui-community-links` | `true` | Show community/forums links |
-| `ui-issues` | `true` | Show "File an Issue" links |
+| `ui-logo-light` | `unset` | Logo shown in the light theme |
+| `ui-logo-dark` | `unset` | Logo shown in the dark theme |
+| `ui-favicon` | `unset` | Browser tab icon |
+| `ui-primary-color` | `unset` | Primary color used throughout the UI |
+| `ui-link-color` | `unset` | Link text color used throughout the UI |
+| `ui-pl` | `rancher` | Private-label product name |
+| `ui-community-links` | `true` | Show the default Home links/community support links |
+| `ui-issues` | `unset` | Custom URL for "File an Issue" reports |
 
 ## Step 1: Prepare Your Assets
 
 ```bash
-# Recommended image specifications:
+# Recommended image specifications from Rancher Dashboard:
 
-# Logo: 200x40 px, transparent background, PNG or SVG
-# Favicon: 32x32 px, ICO or PNG
+# Logo: 21 px tall, max 200 px wide, JPEG/PNG/SVG, max 20 KB
+# Favicon: keep it small, PNG or SVG, max 20 KB
+# Example below assumes PNG files.
 
-# Convert your logo to base64 for API usage
-BASE64_LOGO=$(base64 -w 0 logo.png)
-BASE64_FAVICON=$(base64 -w 0 favicon.png)
+# Convert assets to base64 for API usage
+BASE64_LOGO=$(base64 < logo.png | tr -d '\n')
+BASE64_FAVICON=$(base64 < favicon.png | tr -d '\n')
 ```
 
 ## Step 2: Apply Branding via the UI
@@ -49,8 +51,8 @@ BASE64_FAVICON=$(base64 -w 0 favicon.png)
 2. Upload logos for both light and dark modes.
 3. Upload the favicon.
 4. Use the color picker to set the primary color.
-5. Enter your product name in the **Company Name / Product** field.
-6. Toggle off **Community Links** and **Issue Reporting** for private environments.
+5. Enter your product name in the **Private Label** field.
+6. In recent Rancher versions, manage default external links separately under **Home Links** if you need to hide documentation or community shortcuts.
 7. Click **Apply**.
 
 ## Step 3: Apply Branding via API Script
@@ -59,34 +61,46 @@ Create a reusable script to apply branding across multiple Rancher instances:
 
 ```bash
 #!/usr/bin/env bash
+set -euo pipefail
+
 # apply-branding.sh - Apply custom branding to a Rancher instance
 
-RANCHER_URL="${1:?Usage: apply-branding.sh <rancher-url> <token>}"
+RANCHER_URL="${1:?Usage: apply-branding.sh <rancher-url> <api-key>}"
 RANCHER_TOKEN="${2:?}"
+
+data_url() {
+  local file="$1"
+  local mime
+
+  case "${file##*.}" in
+    png|PNG) mime="image/png" ;;
+    svg|SVG) mime="image/svg+xml" ;;
+    jpg|JPG|jpeg|JPEG) mime="image/jpeg" ;;
+    *) echo "Unsupported image format: ${file}" >&2; return 1 ;;
+  esac
+
+  printf 'data:%s;base64,%s' "${mime}" "$(base64 < "${file}" | tr -d '\n')"
+}
 
 apply_setting() {
   local key="$1"
   local value="$2"
-  curl -sk -X PUT \
-    -H "Authorization: Bearer ${RANCHER_TOKEN}" \
+  curl -fsSk -u "${RANCHER_TOKEN}" -X PUT \
     -H "Content-Type: application/json" \
     -d "{\"value\": \"${value}\"}" \
-    "${RANCHER_URL}/v3/settings/${key}"
+    "${RANCHER_URL}/v3/settings/${key}" >/dev/null
   echo "  Set ${key}"
 }
 
-# Upload logos
-LOGO_LIGHT=$(base64 -w 0 logo-light.png)
-LOGO_DARK=$(base64 -w 0 logo-dark.png)
-FAVICON=$(base64 -w 0 favicon.png)
-
-apply_setting "ui-logo-light"    "data:image/png;base64,${LOGO_LIGHT}"
-apply_setting "ui-logo-dark"     "data:image/png;base64,${LOGO_DARK}"
-apply_setting "ui-favicon"       "data:image/png;base64,${FAVICON}"
+# Upload logos and favicon
+apply_setting "ui-logo-light"    "$(data_url logo-light.png)"
+apply_setting "ui-logo-dark"     "$(data_url logo-dark.png)"
+apply_setting "ui-favicon"       "$(data_url favicon.png)"
 apply_setting "ui-primary-color" "#1a73e8"
+apply_setting "ui-link-color"    "#1a73e8"
 apply_setting "ui-pl"            "Acme Kubernetes Platform"
 apply_setting "ui-community-links" "false"
-apply_setting "ui-issues"        "false"
+apply_setting "ui-issues"        "https://support.example.com/rancher"
 
 echo "Branding applied successfully."
 ```
@@ -98,7 +112,7 @@ chmod +x apply-branding.sh
 
 ## Step 4: Persist Branding Through Upgrades
 
-Branding settings are stored in the Rancher database and survive upgrades. However, if you re-initialize the database, settings will be lost. To ensure they are re-applied after disaster recovery:
+Branding settings are stored in the Rancher database and survive upgrades. However, if you re-initialize or restore the database without those settings, you will need to re-apply them. To make that easy after disaster recovery, store the script in version control or in a Kubernetes Secret used by your automation:
 
 ```yaml
 # Store branding as a Kubernetes Secret for GitOps pipelines
@@ -113,23 +127,23 @@ stringData:
     # (paste script contents here)
 ```
 
+The Secret only stores the script. Your recovery workflow still needs to run it.
+
 ## Step 5: Hide Community and Documentation Links
 
-For air-gapped or compliance environments where external links must be removed:
+For air-gapped or compliance environments where external Home links must be removed or redirected:
 
 ```bash
-# Disable "Community" menu item
-curl -sk -X PUT \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
+# Hide the default Home links (docs, forums, Slack, etc.)
+curl -fsSk -u "$RANCHER_TOKEN" -X PUT \
   -H "Content-Type: application/json" \
   -d '{"value": "false"}' \
   "https://<rancher-url>/v3/settings/ui-community-links"
 
-# Disable "File an Issue" link
-curl -sk -X PUT \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
+# Optional: send "File an Issue" to an internal support URL
+curl -fsSk -u "$RANCHER_TOKEN" -X PUT \
   -H "Content-Type: application/json" \
-  -d '{"value": "false"}' \
+  -d '{"value": "https://support.example.com/rancher"}' \
   "https://<rancher-url>/v3/settings/ui-issues"
 ```
 
@@ -140,8 +154,9 @@ After applying, perform a hard refresh (`Ctrl+Shift+R`) in your browser and chec
 - Logo appears in the top-left corner.
 - Favicon appears in the browser tab.
 - Buttons and links use the custom primary color.
+- Link text uses the custom link color (if set).
 - The page title shows your product name.
-- Community links are hidden (if disabled).
+- Default external Home links are hidden or redirected (if configured).
 
 ## Conclusion
 
