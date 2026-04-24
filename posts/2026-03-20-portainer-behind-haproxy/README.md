@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, HAProxy, Reverse Proxy, Load Balancing
 
-Description: Configure HAProxy as a TCP and HTTP reverse proxy for Portainer with SSL termination and WebSocket support.
+Description: Configure HAProxy as an HTTP reverse proxy for Portainer with SSL termination and WebSocket support.
 
 ## Introduction
 
@@ -27,7 +27,7 @@ docker run -d \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
   --http-enabled \
-  --trusted-origins=https://portainer.example.com
+  --trusted-origins=portainer.example.com
 ```
 
 ## Step 2: Prepare the SSL Certificate
@@ -89,9 +89,6 @@ frontend portainer_frontend
     # Redirect HTTP to HTTPS
     http-request redirect scheme https unless { ssl_fc }
 
-    # ACL for WebSocket upgrade detection
-    acl is_websocket hdr(Upgrade) -i websocket
-
     # Route to backend
     default_backend portainer_backend
 
@@ -131,6 +128,8 @@ services:
     image: haproxy:2.8-alpine
     container_name: haproxy
     restart: always
+    sysctls:
+      - net.ipv4.ip_unprivileged_port_start=0
     ports:
       - "80:80"
       - "443:443"
@@ -149,7 +148,7 @@ services:
       - portainer_data:/data
     command:
       - "--http-enabled"
-      - "--trusted-origins=https://portainer.example.com"
+      - "--trusted-origins=portainer.example.com"
     networks:
       - proxy
 
