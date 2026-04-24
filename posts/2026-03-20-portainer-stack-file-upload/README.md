@@ -8,7 +8,7 @@ Description: Learn how to deploy Docker Compose stacks by uploading a file to Po
 
 ## Introduction
 
-Portainer's file upload method lets you deploy a Docker Compose stack by uploading a `.yml` file directly from your local machine. This approach is useful in air-gapped environments without Git access, for one-off deployments where a repository would be overkill, or when sharing a stack configuration as a file. Unlike the web editor, the uploaded file is read once at deploy time - there is no ongoing sync with the source file.
+Portainer's file upload method lets you deploy a Docker Compose stack by uploading a `.yml` file directly from your local machine. This approach is useful in air-gapped environments without Git access, for one-off deployments where a repository would be overkill, or when sharing a stack configuration as a file. Unlike the Git repository method, there is no ongoing sync with the original source file after deployment.
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ Portainer's file upload method lets you deploy a Docker Compose stack by uploadi
 |--------|---------|
 | Web editor | Quick tests, learning, ad-hoc stacks |
 | File upload | Air-gapped environments, one-off deploys, sharing configs |
-| Git repository | Production, version-controlled, auto-update |
+| Git repository | Production, version-controlled, optional GitOps auto-update |
 | Custom template | Reusable patterns, team self-service |
 
 ## Step 1: Prepare Your Compose File
@@ -30,8 +30,6 @@ Create or save a complete Docker Compose file locally:
 
 ```yaml
 # wordpress-stack.yml - WordPress with MySQL
-
-version: "3.8"
 
 services:
   # WordPress web application
@@ -63,7 +61,6 @@ services:
       - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
     volumes:
       - mysql_data:/var/lib/mysql
-    command: ["--default-authentication-plugin=mysql_native_password"]
 
 networks:
   wp-net:
@@ -98,7 +95,7 @@ DB_ROOT_PASSWORD  rootpassword456
 ## Step 4: Deploy the Stack
 
 1. Click **Deploy the stack**.
-2. Portainer reads the uploaded file, creates networks and volumes, pulls images, and starts containers.
+2. Portainer reads the uploaded file, creates networks and volumes, pulls images if needed, and starts the stack.
 3. The stack appears in the Stacks list.
 
 ## Step 5: Limitations of File Upload Method
@@ -106,11 +103,11 @@ DB_ROOT_PASSWORD  rootpassword456
 Understand what file upload does NOT do:
 
 ```text
-1. No version tracking - the uploaded file is not stored long-term
+1. No source tracking - Portainer does not stay linked to the original local file
 2. No auto-update - changes to the local file won't propagate
-3. To update: must re-upload or switch to web editor / Git method
+3. To apply local file changes: re-upload the file or edit the stack in Portainer
 
-After upload, the stack content is visible in the web editor.
+After upload, the stack content remains visible in Portainer.
 You can edit it there without re-uploading.
 ```
 
@@ -148,8 +145,8 @@ Once a stack is deployed from a file, you can switch it to Git tracking:
 4. Remove the current stack.
 5. Redeploy using the Git repository method.
 
-This migration adds version control and auto-update capabilities.
+This migration adds version control and can add GitOps-based auto-update capabilities if you enable them.
 
 ## Conclusion
 
-File upload is the most direct deployment path for situations where Git repositories are unavailable or unnecessary - particularly air-gapped environments, quick demos, or configuration sharing between teams. Prepare a complete Compose file with environment variable placeholders, upload it to Portainer, fill in the variable values, and deploy. For long-running production services, consider migrating to Git-based deployment to gain version history, rollback, and automatic updates.
+File upload is the most direct deployment path for situations where Git repositories are unavailable or unnecessary - particularly air-gapped environments, quick demos, or configuration sharing between teams. Prepare a complete Compose file with environment variable placeholders, upload it to Portainer, fill in the variable values, and deploy. For long-running production services, consider migrating to Git-based deployment to gain version history and, if configured, GitOps-based automatic updates.
