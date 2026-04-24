@@ -8,7 +8,7 @@ Description: Recover missing stacks and configuration after Portainer's BoltDB d
 
 ## Introduction
 
-Portainer uses BoltDB (an embedded key-value database) to store all configuration, including stack definitions, user accounts, environment settings, and access control rules. If this database becomes corrupted - typically due to an unclean shutdown, full disk, or storage failure - stacks and other configuration disappear. This guide explains recovery options.
+Portainer uses BoltDB (an embedded key-value database) to store all configuration, including stack definitions, user accounts, environment settings, and access control rules. If this database becomes corrupted - for example due to a truncated file, full disk, or storage/filesystem failure - stacks and other configuration disappear. This guide explains recovery options.
 
 ## Step 1: Identify Database Corruption
 
@@ -19,8 +19,6 @@ docker logs portainer 2>&1 | grep -iE "corrupt|bolt|database|invalid|panic" | he
 
 # Common corruption indicators:
 # "invalid database"
-# "panic: runtime error: invalid memory address"
-# "bolt: timeout"
 # "unexpected page type"
 # "page 0: can't read page: unexpected EOF"
 ```
@@ -33,10 +31,10 @@ docker run --rm \
   -v portainer_data:/data \
   alpine stat /data/portainer.db
 
-# A zero-byte or very small portainer.db indicates corruption or truncation
+# A zero-byte or very small portainer.db can indicate corruption or truncation
 # Normal size: a few MB (varies with number of stacks/users/etc)
 
-# Check file integrity
+# Record a checksum before attempting recovery
 docker run --rm \
   -v portainer_data:/data \
   alpine sh -c "ls -lh /data/ && md5sum /data/portainer.db"
@@ -64,13 +62,12 @@ echo "Backup saved to /tmp/portainer.db.corrupt.*"
 
 ## Step 5: Attempt BoltDB Repair
 
-BoltDB has built-in consistency checking. Use the `bbolt` tool:
+BoltDB has built-in consistency checking. Use the `bbolt` tool to verify the file and, if it opens cleanly, compact it into a new file:
 
 ```bash
 # Install bbolt (bbolt is the successor to bolt)
-# Or use the bolt tool included in some Go distributions
 
-# Option A: Use a pre-built binary
+# Option A: Use a temporary container to install and run bbolt
 docker run --rm \
   -v portainer_data:/data \
   alpine sh -c "
@@ -79,58 +76,54 @@ docker run --rm \
     /root/go/bin/bbolt check /data/portainer.db
   "
 
-# Option B: Use bolt CLI tools
-# Download from: https://github.com/etcd-io/bbolt/releases
+# Option B: Download a release binary from:
+# https://github.com/etcd-io/bbolt/releases
 # Run: bbolt check portainer.db
-# If check passes, the database is intact
-# If it reports errors, try: bbolt compact portainer.db repaired.db
+# If check passes, the database opens cleanly
+# If you want to rewrite it into a new file, use:
+# bbolt compact -o repaired.db portainer.db
 ```
 
 ## Step 6: Restore from Backup
 
-The best recovery is from a backup:
+The best recovery is from a known-good backup:
 
 ```bash
 # Stop Portainer
 docker stop portainer
 
-# Remove the corrupt database
+# If you have a raw portainer.db backup, restore it in place
 docker run --rm \
   -v portainer_data:/data \
-  alpine rm /data/portainer.db
-
-# Restore from backup
-docker run --rm \
-  -v portainer_data:/data \
-  -v /opt/backups/portainer:/backup \
   alpine sh -c "
-    # Find the most recent backup
-    LATEST=$(ls -t /backup/*.tar.gz | head -1)
-    echo 'Restoring from: '$LATEST
-    tar xzf \$LATEST -C /data
+    cp /data/portainer.db /data/portainer.db.corrupt.$(date +%Y%m%d%H%M%S) 2>/dev/null || true
+    cp /data/backups/portainer.db.bak /data/portainer.db
   "
 
 # Start Portainer
 docker start portainer
+
+# If you have a Portainer-generated tar.gz configuration backup instead,
+# restore it on a fresh Portainer instance during the initial setup screen.
+# Do not extract the tar.gz manually into /data.
 ```
 
 ## Step 7: Recreate Stacks from Running Containers
 
-If no backup exists but containers are still running:
+If no backup exists but Docker workloads are still running:
 
 ```bash
-# Find all running containers with Compose labels
-docker ps --format "json" | jq -r '.Labels' 2>/dev/null
+# Docker Standalone / Compose-based stacks
+docker compose ls --all --format json
 
-# List unique stack (project) names
-docker ps -q | xargs docker inspect \
-  --format '{{index .Config.Labels "com.docker.compose.project"}}' \
-  | sort -u | grep -v "^$"
+docker ps \
+  --filter "label=com.docker.compose.project" \
+  --format '{{.Names}}: {{.Label "com.docker.compose.project"}} / {{.Label "com.docker.compose.service"}}' \
+  | sort
 
-# For each stack, collect service names
-docker ps -q | xargs docker inspect \
-  --format '{{index .Config.Labels "com.docker.compose.project"}}: {{index .Config.Labels "com.docker.compose.service"}}' \
-  | grep -v ": $" | sort
+# Docker Swarm stacks (run on a manager node)
+docker stack ls
+docker stack services STACK_NAME
 ```
 
 ## Step 8: Reset Portainer and Re-Add Everything
@@ -167,7 +160,7 @@ git checkout HEAD -- .
 docker compose -f mystack.yml up -d
 ```
 
-If not in Git, use docker-inspect to reconstruct:
+If not in Git, use `docker inspect` to reconstruct:
 
 ```bash
 # For each container in the stack
@@ -186,25 +179,24 @@ done
 ## Step 10: Prevent Future Corruption
 
 ```bash
-# 1. Enable live-restore in Docker to prevent unclean shutdowns
-cat > /etc/docker/daemon.json << 'EOF'
-{
-  "live-restore": true
-}
-EOF
+# 1. Enable live-restore so standalone containers stay running if the Docker daemon restarts
+# Add "live-restore": true to /etc/docker/daemon.json, preserving any existing settings
+sudoedit /etc/docker/daemon.json
+# Minimal file if it does not already exist:
+# {
+#   "live-restore": true
+# }
 
-# 2. Use UPS or graceful shutdown scripts
-# Add to systemd service override
-sudo systemctl edit docker
-# Add:
-# [Service]
-# ExecStop=/bin/bash -c 'docker stop portainer && sleep 2'
+sudo systemctl reload docker
+
+# 2. Use UPS or host-level graceful shutdown procedures
+# live-restore does not protect against power loss, and it does not apply to Swarm services
 
 # 3. Set up automated backups (see backup posts in this series)
 
-# 4. Use a volume on reliable storage (SSD, not NFS with poor write ordering)
+# 4. Use a volume on reliable storage
 ```
 
 ## Conclusion
 
-Portainer database corruption is serious but recoverable if you have backups. Without backups, the containers continue running independently of Portainer's database, so your workloads are safe - only the Portainer management metadata is lost. Prevent future corruption by setting up automated backups of the `portainer_data` volume and using `live-restore` in Docker to enable graceful handling of Docker daemon restarts.
+Portainer database corruption is serious but recoverable if you have backups. Without backups, the containers continue running independently of Portainer's database, so your workloads are safe - only the Portainer management metadata is lost. Prevent future issues by setting up automated backups of the `portainer_data` volume and using reliable storage. If you're running Portainer as a standalone container, `live-restore` can also reduce disruption during Docker daemon restarts, but it is not a substitute for backups.
