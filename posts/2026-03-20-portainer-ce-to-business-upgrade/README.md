@@ -8,7 +8,7 @@ Description: A step-by-step guide to upgrading from Portainer Community Edition 
 
 ## Overview
 
-Upgrading from Portainer CE to Business Edition is straightforward because both editions share the same data format. The upgrade involves switching the Docker image from `portainer-ce` to `portainer-ee` and entering your license key. All your environments, stacks, users, and settings are preserved during the upgrade.
+Upgrading from Portainer CE to Business Edition is straightforward because Portainer supports switching from the CE image to the BE image without losing your existing data. The upgrade involves switching the Docker image from `portainer-ce` to `portainer-ee` and entering your license key. Your existing environments, stacks, accounts, and most settings remain in place after the upgrade.
 
 ## Prerequisites
 
@@ -35,7 +35,7 @@ ls -lh portainer-backup-*.tar.gz
 ## Step 2: Note Your Current Configuration
 
 ```bash
-# Document your current Portainer docker run command
+# Document your current Portainer container settings
 docker inspect portainer --format='{{.Config.Cmd}}'
 docker inspect portainer --format='{{json .HostConfig.PortBindings}}'
 docker inspect portainer --format='{{json .HostConfig.Binds}}'
@@ -69,15 +69,16 @@ docker rm portainer
 
 ```bash
 # Start Portainer BE using the SAME volume (portainer_data)
-# This is what preserves all your settings
+# This is what preserves your Portainer data
+# and switches the image from portainer-ce to portainer-ee
 docker run -d \
   -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v portainer_data:/data \     # Same volume as before
-  portainer/portainer-ee:latest  # Changed from portainer-ce to portainer-ee
+  -v portainer_data:/data \
+  portainer/portainer-ee:latest
 ```
 
 ## Step 6: Activate Your License
@@ -99,8 +100,8 @@ docker ps | grep portainer
 # Check logs for any errors
 docker logs portainer
 
-# Verify license is active
-# Portainer UI → About → Verify "Business Edition" appears
+# Verify the edition in the UI
+# Portainer UI → verify "Business Edition" appears in the bottom-left corner
 ```
 
 ## What's Preserved During Upgrade
@@ -120,15 +121,22 @@ All of the following is preserved:
 
 - New BE features become available in the UI
 - License-locked features (RBAC, LDAP, audit logging) can now be configured
-- The Portainer version badge shows "Business Edition"
+- Existing users with the Standard User role are changed to the Read-Only User role during the upgrade
+- "Business Edition" appears in the bottom-left corner of the UI
 
 ## Rollback to CE (if needed)
 
-If you need to roll back:
+If you need to roll back, and this instance was originally upgraded from CE to BE, back up your data, stop BE, roll back the Portainer database, then start CE again:
 
 ```bash
-# Stop BE container
-docker stop portainer && docker rm portainer
+# Stop and remove BE container
+docker stop portainer
+docker rm portainer
+
+# Roll the database back to the CE format
+docker run -it --name portainer-database-rollback \
+  -v portainer_data:/data \
+  portainer/portainer-ee:latest --rollback-to-ce
 
 # Start CE container (data is still in the volume)
 docker run -d \
@@ -138,7 +146,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest   # Back to CE image
+  portainer/portainer-ce:latest
 ```
 
 ## Upgrade via Docker Compose
@@ -160,4 +168,4 @@ docker compose up -d
 
 ## Conclusion
 
-Upgrading from Portainer CE to Business Edition is a low-risk process since the data volume is shared between editions. The key steps are: backup your data, stop the CE container, start the BE container using the same volume, and activate your license. All your existing configuration is immediately available in Portainer BE, with new enterprise features unlocked according to your license tier.
+Upgrading from Portainer CE to Business Edition is a low-risk process because Portainer reuses your existing data volume during the upgrade. The key steps are: backup your data, stop the CE container, start the BE container using the same volume, and activate your license. Your existing configuration is available in Portainer BE, with new enterprise features unlocked according to your license tier.
