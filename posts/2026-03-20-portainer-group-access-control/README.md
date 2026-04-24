@@ -18,8 +18,8 @@ Environment Groups are organizational units that contain multiple environments. 
 
 ## Creating Environment Groups via UI
 
-1. Go to **Environments** in the left sidebar
-2. Click **Groups** tab
+1. Expand **Environment-related** in the left sidebar
+2. Click **Groups**
 3. Click **Add group**
 4. Name the group (e.g., "Production", "Staging", "Development")
 5. Add environments to the group
@@ -30,7 +30,7 @@ Environment Groups are organizational units that contain multiple environments. 
 TOKEN=$(curl -s -X POST \
   https://portainer.example.com/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"adminpassword"}' \
+  -d '{"Username":"admin","Password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
 # Create a group
@@ -40,15 +40,17 @@ curl -X POST \
   -H "Content-Type: application/json" \
   https://portainer.example.com/api/endpoint_groups \
   -d '{
-    "name": "Production",
-    "description": "All production environments",
-    "associatedEndpoints": [1, 2, 3]
+    "Name": "Production",
+    "Description": "All production environments",
+    "AssociatedEndpoints": [1, 2, 3]
   }'
 
 # Response: {"Id": 1, "Name": "Production", ...}
 ```
 
 ## Assigning Team Access to Groups
+
+Examples that use roles such as `Standard User` and `Helpdesk` require Portainer Business Edition. In Portainer's built-in roles, `Standard User` is `RoleId` `3` and `Helpdesk` is `RoleId` `2`.
 
 ```bash
 GROUP_ID=1
@@ -59,14 +61,14 @@ curl -X PUT \
   -H "Content-Type: application/json" \
   "https://portainer.example.com/api/endpoint_groups/${GROUP_ID}" \
   -d '{
-    "name": "Production",
-    "description": "All production environments",
+    "Name": "Production",
+    "Description": "All production environments",
     "TeamAccessPolicies": {
-      "2": {"RoleId": 2},
-      "4": {"RoleId": 1}
+      "2": {"RoleId": 3},
+      "4": {"RoleId": 2}
     },
     "UserAccessPolicies": {
-      "5": {"RoleId": 2}
+      "5": {"RoleId": 3}
     }
   }'
 ```
@@ -75,8 +77,8 @@ curl -X PUT \
 
 When an environment belongs to a group:
 - The environment inherits the group's access policies
-- Individual environment access policies can add to (not replace) the group's policies
-- The most permissive role wins when there are overlapping assignments
+- A direct environment assignment for the same user or team takes precedence over the inherited group assignment
+- In the UI, inherited access is labeled `inherited` and a direct assignment that replaces it is labeled `override`
 
 ```text
 Group "Production" → DevOps team (Standard User)
@@ -140,13 +142,11 @@ curl -s \
   "https://portainer.example.com/api/endpoint_groups/${GROUP_ID}" \
   | python3 -c "import sys,json; g=json.load(sys.stdin); [print(e) for e in g.get('AssociatedEndpoints',[])]"
 
-# Move an environment to a group
+# Associate an environment with a group
 ENDPOINT_ID=4
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  "https://portainer.example.com/api/endpoints/${ENDPOINT_ID}/associateresources" \
-  -d "{\"group\": ${GROUP_ID}}"
+  "https://portainer.example.com/api/endpoint_groups/${GROUP_ID}/endpoints/${ENDPOINT_ID}"
 ```
 
 ## Automating Group-Based Access
@@ -166,7 +166,7 @@ create_group() {
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     "${PORTAINER_URL}/api/endpoint_groups" \
-    -d "{\"name\":\"${name}\",\"description\":\"${description}\"}" \
+    -d "{\"Name\":\"${name}\",\"Description\":\"${description}\"}" \
     | python3 -c "import sys,json; print(json.load(sys.stdin)['Id'])"
 }
 
@@ -188,7 +188,7 @@ assign_group_access() {
 }
 
 # Production: DevOps = Standard User, Support = Helpdesk
-assign_group_access $PROD_GROUP '{"name":"Production","TeamAccessPolicies":{"2":{"RoleId":2},"4":{"RoleId":1}}}'
+assign_group_access $PROD_GROUP '{"Name":"Production","TeamAccessPolicies":{"2":{"RoleId":3},"4":{"RoleId":2}}}'
 ```
 
 ## Conclusion
