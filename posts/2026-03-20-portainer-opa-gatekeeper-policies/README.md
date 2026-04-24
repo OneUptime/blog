@@ -13,21 +13,21 @@ OPA (Open Policy Agent) Gatekeeper is a Kubernetes admission controller that enf
 ## Prerequisites
 
 - Portainer CE or BE with a Kubernetes environment
-- kubectl access via Portainer KubeShell or downloaded kubeconfig
+- kubectl access via Portainer kubectl shell or downloaded kubeconfig
 - Cluster admin access
 - Helm installed (for Gatekeeper installation)
 
 ## Step 1: Install OPA Gatekeeper
 
-Use the Portainer Helm integration to install Gatekeeper:
+Use Portainer's Helm application flow to install Gatekeeper:
 
-1. Go to your Kubernetes environment → **Helm**.
-2. Search for `gatekeeper`.
-3. Add the Gatekeeper Helm repository:
+1. Go to your Kubernetes environment → **Applications**.
+2. Create a new application from a Helm chart and choose **Helm repository** as the deployment method.
+3. Select a chart source that exposes the Gatekeeper Helm repository:
    - URL: `https://open-policy-agent.github.io/gatekeeper/charts`
-4. Install the `gatekeeper` chart.
+4. Install the `gatekeeper` chart in the `gatekeeper-system` namespace.
 
-Or use the KubeShell:
+Or use the kubectl shell:
 
 ```bash
 # Add Gatekeeper Helm repo
@@ -85,7 +85,7 @@ spec:
 ```
 
 ```bash
-# Apply via KubeShell
+# Apply via kubectl shell
 kubectl apply -f require-labels-template.yaml
 ```
 
@@ -140,15 +140,39 @@ spec:
         package k8srequireresourcelimits
 
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          container := input_containers[_]
           not container.resources.limits.memory
           msg := sprintf("Container '%v' must have memory limits", [container.name])
         }
 
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          container := input_containers[_]
           not container.resources.limits.cpu
           msg := sprintf("Container '%v' must have CPU limits", [container.name])
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.containers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.initContainers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.template.spec.containers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.template.spec.initContainers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.jobTemplate.spec.template.spec.containers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.jobTemplate.spec.template.spec.initContainers[_]
         }
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
@@ -184,9 +208,37 @@ spec:
         package k8snoprivilegedcontainer
 
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          container := input_containers[_]
           container.securityContext.privileged == true
           msg := sprintf("Container '%v' cannot run in privileged mode", [container.name])
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.containers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.initContainers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.ephemeralContainers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.template.spec.containers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.template.spec.initContainers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.jobTemplate.spec.template.spec.containers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.jobTemplate.spec.template.spec.initContainers[_]
         }
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
@@ -218,6 +270,7 @@ spec:
         kind: K8sAllowedRegistries
       validation:
         openAPIV3Schema:
+          type: object
           properties:
             registries:
               type: array
@@ -229,10 +282,38 @@ spec:
         package k8sallowedregistries
 
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          container := input_containers[_]
           image := container.image
           not starts_with_allowed(image)
           msg := sprintf("Image '%v' is not from an approved registry", [image])
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.containers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.initContainers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.ephemeralContainers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.template.spec.containers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.template.spec.initContainers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.jobTemplate.spec.template.spec.containers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.jobTemplate.spec.template.spec.initContainers[_]
         }
 
         starts_with_allowed(image) {
@@ -259,14 +340,14 @@ spec:
 
 ```bash
 # Test a policy violation
-kubectl run test-pod --image=docker.io/nginx -n backend
+kubectl run test-pod-disallowed --image=docker.io/nginx -n default
 # Expected error: Image 'docker.io/nginx' is not from an approved registry
 
 # Test compliance
-kubectl run test-pod --image=registry.company.com/nginx:latest -n backend
-# Expected: pod/test-pod created
+kubectl run test-pod-allowed --image=registry.company.com/nginx:latest -n default
+# Expected: pod/test-pod-allowed created
 
-# View constraint violations (audit mode)
+# View constraint violations from audit
 kubectl describe k8sallowedregistries allowed-registries
 kubectl get k8sallowedregistries -o yaml | grep -A 20 "violations:"
 ```
@@ -274,12 +355,12 @@ kubectl get k8sallowedregistries -o yaml | grep -A 20 "violations:"
 ## Step 6: Monitor Gatekeeper in Portainer
 
 ```bash
-# Check Gatekeeper pod health via KubeShell
+# Check Gatekeeper pod health via kubectl shell
 kubectl get pods -n gatekeeper-system
-kubectl logs -n gatekeeper-system -l control-plane=controller-manager --tail=50
+kubectl logs -n gatekeeper-system deploy/gatekeeper-controller-manager --tail=50
 
 # Check audit results
-kubectl get constraints --all-namespaces -o wide
+kubectl get constraints
 ```
 
 ## Conclusion
