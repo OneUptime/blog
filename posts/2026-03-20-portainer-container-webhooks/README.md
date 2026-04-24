@@ -12,17 +12,17 @@ Portainer container webhooks allow external systems - CI/CD pipelines, GitHub Ac
 
 ## Prerequisites
 
-- Portainer Business Edition (webhooks require BE) or Community Edition 2.x+
-- A running container or stack to create a webhook for
+- Portainer Business Edition on a non-Edge environment (container webhooks are only available in BE and are not supported on Edge Agent environments)
+- A running container to create a webhook for
 - External system that can make HTTP POST requests
 
 ## How Portainer Webhooks Work
 
 When a webhook is triggered:
 1. Portainer receives the HTTP POST request.
-2. It pulls the latest version of the container's image.
-3. It stops and removes the old container.
-4. It creates and starts a new container with the same configuration.
+2. It pulls the latest image for the container's configured tag.
+3. It stops the existing container and recreates it.
+4. It starts the replacement container with the same configuration.
 
 This effectively gives you a "pull latest and redeploy" operation via a single HTTP call.
 
@@ -31,7 +31,7 @@ This effectively gives you a "pull latest and redeploy" operation via a single H
 1. Navigate to **Containers** in Portainer.
 2. Click on the container you want to add a webhook to.
 3. Scroll down to the **Webhooks** section.
-4. Enable **Create container webhook**.
+4. Enable **Container webhook**.
 5. Portainer generates a unique webhook URL.
 6. Copy the URL - you'll need it in your CI/CD pipeline.
 
@@ -47,7 +47,7 @@ Test that the webhook works by triggering it manually:
 ```bash
 # Test with curl:
 
-curl -X POST "https://portainer.example.com/api/webhooks/abc123def456your-token"
+curl -X POST "https://portainer.example.com/api/webhooks/your-token"
 
 # Expected response: HTTP 204 No Content
 # This means the redeploy was triggered successfully
@@ -61,21 +61,21 @@ curl -v -X POST "https://portainer.example.com/api/webhooks/your-token" 2>&1 | g
 
 The sequence when a webhook fires:
 
-```bash
+```text
 1. POST request received
-2. Portainer authenticates the token from the URL
-3. Pulls the image: docker pull <image>:<tag>
-4. Stops the container: docker stop <container>
-5. Removes the container: docker rm <container>
-6. Creates new container with same config: docker create ...
-7. Starts new container: docker start <container>
+2. Portainer validates the token from the URL
+3. Pulls the image for the configured tag (or the `tag` override, if provided)
+4. Stops the existing container
+5. Recreates the container with the saved configuration
+6. Starts the replacement container
+7. Removes the old container after the new one starts
 ```
 
-The container name, volumes, ports, and all other settings remain the same. Only the image is re-pulled.
+The container name, volumes, ports, and all other settings remain the same. The container ID changes because Portainer creates a replacement container.
 
 ## Step 4: Webhook Configuration for Different Image Tags
 
-By default, webhooks pull the image tag configured in the container. To use a different tag, use the `SERVICE_TAG` environment variable:
+By default, webhooks pull the image tag configured in the container. To use a different tag, pass the `tag` query parameter:
 
 ```bash
 # Deploy a specific version:
@@ -100,8 +100,7 @@ Webhook URLs contain a secret token. Handle them securely:
 # DON'T do this:
 # git commit -m "add deployment" webhook_url.txt
 
-# DO this: use secret management
-export PORTAINER_WEBHOOK_URL="${{ secrets.PORTAINER_WEBHOOK_URL }}"
+# DO this: use secret management and let your CI/CD platform inject the secret
 curl -X POST "${PORTAINER_WEBHOOK_URL}"
 ```
 
@@ -150,11 +149,12 @@ WEBHOOK_URL="${PORTAINER_WEBHOOK_URL}"
 
 # Check if image exists in registry
 if curl -sf \
+  -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
   -H "Authorization: Basic $(echo -n "${REGISTRY_USER}:${REGISTRY_PASS}" | base64)" \
   "https://${REGISTRY}/v2/${IMAGE}/manifests/${TAG}" > /dev/null; then
 
     echo "Image verified: ${IMAGE}:${TAG}"
-    curl -X POST "${WEBHOOK_URL}"
+    curl -X POST "${WEBHOOK_URL}?tag=${TAG}"
     echo "Deployment triggered"
 else
     echo "Image not found: ${IMAGE}:${TAG}"
@@ -174,6 +174,7 @@ After triggering a webhook, monitor the deployment:
 CONTAINER_NAME="my-app"
 PORTAINER_URL="${PORTAINER_URL}"
 API_KEY="${PORTAINER_API_KEY}"
+WEBHOOK_URL="${PORTAINER_WEBHOOK_URL}"
 ENDPOINT_ID=1
 TIMEOUT=120
 INTERVAL=5
@@ -205,4 +206,4 @@ exit 1
 
 ## Conclusion
 
-Container webhooks in Portainer provide a simple, token-based mechanism for triggering automated redeployments from CI/CD pipelines and other external systems. With a single HTTP POST, you can pull the latest image and restart your container - making it easy to integrate Portainer into any deployment workflow without complex API authentication.
+Container webhooks in Portainer provide a simple, token-based mechanism for triggering automated redeployments from CI/CD pipelines and other external systems. With a single HTTP POST, you can pull the latest image and recreate your container - making it easy to integrate Portainer into any deployment workflow without complex API authentication.
