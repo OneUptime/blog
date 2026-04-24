@@ -8,7 +8,7 @@ Description: Learn how to add and manage tags for Docker images in Portainer to 
 
 ## Introduction
 
-Docker image tags are labels that identify specific versions of an image. Proper tagging is fundamental to container lifecycle management - it distinguishes `v2.0.0` from `v2.1.0`, marks images as `latest`, `stable`, or `edge`, and enables rollbacks. Portainer allows you to tag images through its image management interface.
+Docker image tags are labels that identify specific versions of an image. Proper tagging is fundamental to container lifecycle management - it distinguishes `v2.0.0` from `v2.1.0`, marks images as `latest`, `stable`, or `edge`, and enables rollbacks. Portainer also lets you add and remove tags through its image management interface.
 
 ## Prerequisites
 
@@ -20,14 +20,14 @@ Docker image tags are labels that identify specific versions of an image. Proper
 ```bash
 # Full image reference format:
 
-registry/repository:tag
+[HOST[:PORT]/]NAMESPACE/REPOSITORY[:TAG]
 
 # Examples:
-nginx:latest          # Docker Hub, latest tag
-nginx:1.25-alpine     # Docker Hub, specific version
-myorg/myapp:v2.1.0    # Docker Hub private, semantic version
-ghcr.io/myorg/myapp:latest  # GitHub Container Registry
-registry.example.com/myapp:prod  # Private registry, environment tag
+nginx:latest                 # Equivalent to docker.io/library/nginx:latest
+nginx:1.25-alpine            # Docker Hub official image, specific tag
+myorg/myapp:v2.1.0           # Docker Hub namespace, semantic version
+ghcr.io/myorg/myapp:latest   # GitHub Container Registry
+registry.example.com/myorg/myapp:prod  # Private registry, environment tag
 ```
 
 A single image can have multiple tags - they all point to the same image ID.
@@ -35,10 +35,10 @@ A single image can have multiple tags - they all point to the same image ID.
 ## Step 1: Tag an Image in Portainer
 
 1. Navigate to **Images** in Portainer.
-2. Click on an image (by its ID or existing tag).
-3. Look for a **Tag** button or form.
-4. Enter the new tag in the format `name:tag`.
-5. Click **Tag**.
+2. Click the image you want to tag to open its details.
+3. Use the image tagging action in the details view.
+4. Enter the target image reference, such as `myorg/myapp:stable`.
+5. Save the new tag.
 
 ## Step 2: Tag Images via Docker CLI
 
@@ -83,6 +83,7 @@ docker tag "${IMAGE}:${VERSION}" "${IMAGE}:latest"         # Latest stable
 
 ```bash
 # Use Git information for tags:
+BUILD_NUMBER="${BUILD_NUMBER:-42}"
 GIT_COMMIT=$(git rev-parse --short HEAD)
 GIT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "")
 
@@ -124,7 +125,7 @@ VERSION="v2.1.0"
 IMAGE_NAME="myapp"
 
 declare -a REGISTRIES=(
-    "registry.hub.docker.com/myorg"
+    "docker.io/myorg"
     "ghcr.io/myorg"
     "registry.example.com/myorg"
 )
@@ -190,7 +191,7 @@ To remove a tag from a local image:
 docker rmi myapp:old-tag
 
 # In Portainer:
-# Navigate to Images > click the image > Remove tag
+# Navigate to Images > open the image details view > Remove tag
 ```
 
 ## Conclusion
