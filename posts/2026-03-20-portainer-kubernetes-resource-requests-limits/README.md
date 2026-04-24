@@ -46,7 +46,7 @@ Examples:
 
 When creating/editing an application in Portainer:
 
-1. Scroll to the **Resources** section
+1. Scroll to the **Resource reservations** section
 2. Set values:
 
 ```text
@@ -60,6 +60,8 @@ Resource limits:
 ```
 
 ## Step 2: Configure via YAML
+
+In a Pod spec, set resources on each container:
 
 ```yaml
 spec:
@@ -82,7 +84,7 @@ Use actual metrics to determine appropriate values:
 ```bash
 # View current resource usage
 
-kubectl top pods -n production
+kubectl top pod --namespace=production
 
 # Output:
 # NAME                    CPU(cores)   MEMORY(bytes)
@@ -90,9 +92,9 @@ kubectl top pods -n production
 # api-xxx                 250m         320Mi
 # postgres-xxx            120m         850Mi
 
-# Recommendation:
-# Request: ~150% of average usage
-# Limit:   ~150% of peak usage (or 2x average)
+# Starting point:
+# Request: close to typical steady-state usage
+# Limit:   above observed peaks if the workload needs burst headroom
 ```
 
 For `web-app` (using 45m CPU, 180Mi memory):
@@ -107,17 +109,19 @@ limits.memory:   384Mi   (~2x average)
 
 ### Memory (OOM Kill)
 
-When a container exceeds its memory limit, it is **immediately killed** (OOM kill):
+When a container uses more memory than its limit, the kernel can terminate it with an **OOM kill**:
 
 ```text
-Container memory usage > limits.memory → Container killed with exit code 137
+Container memory usage > limits.memory → Container may be OOM-killed (often exit code 137)
 ```
+
+Memory limits are enforced reactively, so the kill happens when the kernel detects memory pressure, not necessarily the instant the limit is crossed.
 
 Watch for OOM kills:
 
 ```bash
-kubectl get events -n production | grep OOMKilled
-kubectl describe pod <pod-name> | grep -A5 "OOMKilled"
+kubectl describe pod <pod-name> -n production
+kubectl get pod <pod-name> -n production -o yaml
 ```
 
 ### CPU (Throttling)
@@ -131,11 +135,11 @@ Container CPU usage > limits.cpu → Container CPU throttled (runs slower)
 Check CPU throttling:
 
 ```bash
-# Via metrics
-kubectl top pods --containers -n production
+# View current CPU usage (usage, not direct throttling data)
+kubectl top pod <pod-name> --containers -n production
 ```
 
-CPU throttling can cause latency issues but won't crash your application.
+Direct throttling data typically comes from your monitoring stack rather than `kubectl top`. CPU throttling can cause latency issues but won't crash your application.
 
 ## Step 5: Common Resource Profiles
 
@@ -205,9 +209,9 @@ Kubernetes assigns QoS classes based on resource settings:
 
 | Class | Condition | Eviction Priority |
 |-------|-----------|------------------|
-| **Guaranteed** | requests == limits for all resources | Last to be evicted |
-| **Burstable** | requests != limits (most common) | Middle priority |
-| **BestEffort** | No requests or limits set | First to be evicted |
+| **Guaranteed** | Every container has CPU and memory requests and limits set, and each request equals its limit | Last to be evicted |
+| **Burstable** | Pod is not Guaranteed, but at least one container has a CPU or memory request or limit | Middle priority |
+| **BestEffort** | No CPU or memory requests or limits set | First to be evicted |
 
 ```yaml
 # Guaranteed QoS (set requests == limits)
@@ -250,8 +254,8 @@ spec:
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 
 # Monitor in real-time
-kubectl top pods -n production
-kubectl top nodes
+kubectl top pod -n production
+kubectl top node
 
 # Historical usage (requires Prometheus)
 # Use Portainer's Grafana integration or deploy your own monitoring
