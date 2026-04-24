@@ -8,21 +8,21 @@ Description: Configure iSCSI block storage for Docker containers managed by Port
 
 ## Introduction
 
-iSCSI presents block storage devices over a network, allowing containers to access dedicated storage volumes as if they were local disks. This provides higher performance than NFS for I/O-intensive workloads like databases. Portainer manages the containers while iSCSI handles the underlying block storage.
+iSCSI presents block storage devices over a network, allowing containers on a Docker host to access dedicated storage volumes as if they were local disks. This can be a better fit than NFS for some I/O-intensive workloads like databases, depending on the storage and network. Portainer manages the containers while iSCSI handles the underlying block storage.
 
 ## Prerequisites
 
 - iSCSI target (TrueNAS, Synology NAS, or software target like targetcli)
-- Docker hosts with open-iscsi installed
+- Docker host with open-iscsi installed (use a separate LUN per host if multiple Docker hosts need storage)
 - Network connectivity on dedicated storage VLAN (recommended)
 
 ## Step 1: Set Up iSCSI Target
 
 ### Using TrueNAS (GUI)
 
-1. Storage > Pools > Create pool for iSCSI
-2. Sharing > Block Shares (iSCSI) > Configure
-3. Create Portal, Initiator Group, Extents, Targets, LUNs
+1. Storage > Pools > Create a pool or zvol for iSCSI
+2. Shares > Block (iSCSI) Shares > use the Wizard or manual tabs
+3. Create Portals, Initiators, Extents, Targets, and associate the target with the extent
 
 ### Using targetcli (Software Target)
 
@@ -38,12 +38,12 @@ sudo targetcli
 /> backstores/block create name=disk0 dev=/dev/sdb
 /> iscsi/ create iqn.2024-01.com.example:storage
 /> iscsi/iqn.2024-01.com.example:storage/tpg1/luns create /backstores/block/disk0
-/> iscsi/iqn.2024-01.com.example:storage/tpg1/portals create 0.0.0.0 3260
 
-# Allow all initiators (or specify IQNs for security)
-/> iscsi/iqn.2024-01.com.example:storage/tpg1/acls create iqn.2024-01.com.initiator:host1
+# Allow the initiator IQN from the Docker host
+/> iscsi/iqn.2024-01.com.example:storage/tpg1/acls create iqn.2024-01.com.example:docker-host1
+/> iscsi/iqn.2024-01.com.example:storage/tpg1/acls/iqn.2024-01.com.example:docker-host1 create 0 0
 
-# Set attribute
+# Disable CHAP authentication for this example
 /> iscsi/iqn.2024-01.com.example:storage/tpg1 set attribute authentication=0
 
 /> saveconfig
@@ -53,28 +53,27 @@ sudo targetcli
 sudo systemctl enable --now rtslib-fb-targetctl
 ```
 
-## Step 2: Configure iSCSI Initiator on Docker Hosts
+## Step 2: Configure iSCSI Initiator on the Docker Host
 
 ```bash
-# Install open-iscsi on all Docker hosts
+# Install open-iscsi on the Docker host
 sudo apt-get install -y open-iscsi
 
-# Configure initiator name (unique per host)
-sudo tee /etc/iscsi/initiatorname.iscsi << 'EOF'
-InitiatorName=iqn.2024-01.com.initiator:$(hostname)
-EOF
+# Configure initiator name (replace docker-host1 with a unique value for this host)
+printf 'InitiatorName=iqn.2024-01.com.example:%s\n' "docker-host1" \
+  | sudo tee /etc/iscsi/initiatorname.iscsi
 
-# Configure iSCSI timeouts for Docker
-sudo tee /etc/iscsi/iscsid.conf << 'EOF'
-node.startup = automatic
-node.session.timeo.replacement_timeout = 120
-node.conn[0].timeo.login_timeout = 30
-node.conn[0].timeo.logout_timeout = 15
-node.conn[0].timeo.noop_out_interval = 5
-node.conn[0].timeo.noop_out_timeout = 5
-EOF
+# Update iSCSI timeouts
+sudo sed -i \
+  -e 's/^node.startup = .*/node.startup = automatic/' \
+  -e 's/^node.session.timeo.replacement_timeout = .*/node.session.timeo.replacement_timeout = 120/' \
+  -e 's/^node.conn\[0\].timeo.login_timeout = .*/node.conn[0].timeo.login_timeout = 30/' \
+  -e 's/^node.conn\[0\].timeo.logout_timeout = .*/node.conn[0].timeo.logout_timeout = 15/' \
+  -e 's/^node.conn\[0\].timeo.noop_out_interval = .*/node.conn[0].timeo.noop_out_interval = 5/' \
+  -e 's/^node.conn\[0\].timeo.noop_out_timeout = .*/node.conn[0].timeo.noop_out_timeout = 5/' \
+  /etc/iscsi/iscsid.conf
 
-sudo systemctl enable --now iscsid open-iscsi
+sudo systemctl restart iscsid
 ```
 
 ## Step 3: Discover and Connect to iSCSI Target
@@ -104,8 +103,8 @@ sudo iscsiadm -m node \
 
 ```bash
 # Format the iSCSI disk (assuming it appeared as /dev/sdb)
-sudo parted /dev/sdb mklabel gpt
-sudo parted -a optimal /dev/sdb mkpart primary ext4 0% 100%
+sudo parted -s /dev/sdb mklabel gpt
+sudo parted -s -a optimal /dev/sdb mkpart primary ext4 0% 100%
 sudo mkfs.ext4 /dev/sdb1
 
 # Get the UUID for stable identification
@@ -124,6 +123,10 @@ df -h /mnt/iscsi-storage
 ## Step 5: Create Docker Volume on iSCSI Storage
 
 ```bash
+# Create the directory on the iSCSI mount on the Docker host that will run PostgreSQL
+sudo mkdir -p /mnt/iscsi-storage/db-data
+sudo chown 999:999 /mnt/iscsi-storage/db-data  # postgres user
+
 # Create a Docker volume backed by iSCSI storage
 docker volume create \
   --driver local \
@@ -131,18 +134,12 @@ docker volume create \
   --opt device=/mnt/iscsi-storage/db-data \
   --opt o=bind \
   iscsi-db-data
-
-# Create the directory on the iSCSI mount
-sudo mkdir -p /mnt/iscsi-storage/db-data
-sudo chown 999:999 /mnt/iscsi-storage/db-data  # postgres user
 ```
 
 ## Step 6: Deploy Database via Portainer Using iSCSI Volume
 
 ```yaml
 # postgres-iscsi-stack.yml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
@@ -168,10 +165,10 @@ volumes:
 docker run --rm \
   -v iscsi-db-data:/test \
   ubuntu:latest \
-  bash -c "dd if=/dev/zero of=/test/testfile bs=1M count=1000 && sync"
+  bash -c "dd if=/dev/zero of=/test/testfile bs=1M count=1000 conv=fdatasync"
 
-# Compare with local disk
-dd if=/dev/zero of=/tmp/testfile bs=1M count=1000
+# Compare with a known local-disk path on the host
+dd if=/dev/zero of=/var/tmp/testfile bs=1M count=1000 conv=fdatasync
 
 # Use fio for more detailed testing
 docker run --rm \
@@ -182,4 +179,4 @@ docker run --rm \
 
 ## Conclusion
 
-iSCSI storage with Portainer provides high-performance block storage for I/O-intensive container workloads like databases. The key advantage over NFS is true block-level access, eliminating file system overhead and enabling better performance for transactional workloads. Configure multipath iSCSI for redundancy in production environments.
+iSCSI storage with Portainer provides network-attached block storage for I/O-intensive container workloads like databases. Compared with NFS, the Docker host gets a block device that it formats and mounts locally, which can be a better fit for some transactional workloads. Configure multipath iSCSI for redundancy in production environments, and avoid mounting the same ext4-formatted LUN read/write on multiple hosts unless you are using a cluster-aware filesystem.
