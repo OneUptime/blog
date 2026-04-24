@@ -58,13 +58,18 @@ python-dotenv==1.0.1
 requests==2.31.0
 ```
 
+Before deploying the stack in Portainer, build this image and push it to a registry that the Portainer host can pull from, then set `FLASK_IMAGE` to that published tag:
+
+```bash
+docker build -t ghcr.io/your-user/flask-app:latest .
+docker push ghcr.io/your-user/flask-app:latest
+```
+
 ## Step 2: Create the Docker Compose Stack in Portainer
 
-Navigate to **Stacks** → **Add Stack** → **Web Editor** and name it `flask-celery-app`:
+Navigate to **Stacks** → **Add Stack** → **Web Editor** and name it `flask-celery-app`, then set `FLASK_IMAGE` to the image tag you built in Step 1:
 
 ```yaml
-version: "3.8"
-
 services:
   # Redis - message broker and result backend
   redis:
@@ -106,9 +111,8 @@ services:
     image: ${FLASK_IMAGE:-flask-app:latest}
     container_name: flask-web
     restart: unless-stopped
-    command: gunicorn app:create_app() --bind 0.0.0.0:5000 --workers 2 --threads 2
+    command: gunicorn app:app --bind 0.0.0.0:5000 --workers 2 --threads 2
     environment:
-      FLASK_ENV: production
       SECRET_KEY: ${SECRET_KEY:-change-this-secret}
       DATABASE_URL: postgresql://${POSTGRES_USER:-flaskuser}:${POSTGRES_PASSWORD:-flaskpassword}@db:5432/${POSTGRES_DB:-flaskdb}
       CELERY_BROKER_URL: redis://redis:6379/0
@@ -133,16 +137,17 @@ services:
     image: ${FLASK_IMAGE:-flask-app:latest}
     container_name: flask-worker
     restart: unless-stopped
-    command: celery -A app.celery worker --loglevel=info --concurrency=4 --queues=default,email,reports
+    command: celery -A app:celery worker --loglevel=info --concurrency=4 --queues=celery,email,reports
     environment:
-      FLASK_ENV: production
       SECRET_KEY: ${SECRET_KEY:-change-this-secret}
       DATABASE_URL: postgresql://${POSTGRES_USER:-flaskuser}:${POSTGRES_PASSWORD:-flaskpassword}@db:5432/${POSTGRES_DB:-flaskdb}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
     depends_on:
-      - redis
-      - db
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
     networks:
       - flask-net
 
@@ -151,7 +156,7 @@ services:
     image: ${FLASK_IMAGE:-flask-app:latest}
     container_name: flask-beat
     restart: unless-stopped
-    command: celery -A app.celery beat --loglevel=info --scheduler celery.beat:PersistentScheduler
+    command: celery -A app:celery beat --loglevel=info --scheduler celery.beat:PersistentScheduler --schedule /app/celerybeat-schedule/celerybeat-schedule
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
@@ -159,7 +164,10 @@ services:
     volumes:
       - celery_beat_schedule:/app/celerybeat-schedule
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
     networks:
       - flask-net
 
@@ -168,11 +176,14 @@ services:
     image: mher/flower:2.0
     container_name: flask-flower
     restart: unless-stopped
-    command: celery flower --broker=redis://redis:6379/0 --port=5555 --basic-auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-flowerpassword}
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      FLOWER_BASIC_AUTH: ${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-flowerpassword}
     ports:
       - "5555:5555"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     networks:
       - flask-net
 
@@ -213,7 +224,8 @@ def make_celery(app=None):
     celery = Celery(
         app.import_name,
         broker=app.config['CELERY_BROKER_URL'],
-        backend=app.config['CELERY_RESULT_BACKEND']
+        backend=app.config['CELERY_RESULT_BACKEND'],
+        include=['app.tasks']
     )
     celery.conf.update(app.config)
 
@@ -262,7 +274,6 @@ def generate_report_task(report_id):
 ```python
 # app/routes/__init__.py - Flask API routes
 from flask import Blueprint, jsonify, request
-from app.tasks import send_email_task, generate_report_task
 
 main = Blueprint('main', __name__)
 
@@ -272,7 +283,9 @@ def health():
 
 @main.route('/api/send-email', methods=['POST'])
 def send_email():
-    data = request.json
+    from app.tasks import send_email_task
+
+    data = request.get_json()
     task = send_email_task.apply_async(
         args=[data['recipient'], data['subject'], data['body']],
         queue='email'
@@ -281,7 +294,9 @@ def send_email():
 
 @main.route('/api/tasks/<task_id>', methods=['GET'])
 def get_task_status(task_id):
-    task = send_email_task.AsyncResult(task_id)
+    from app import celery
+
+    task = celery.AsyncResult(task_id)
     return jsonify({
         'task_id': task_id,
         'status': task.state,
@@ -296,16 +311,16 @@ def get_task_status(task_id):
 # Login: admin / flowerpassword (from FLOWER_USER/FLOWER_PASSWORD env vars)
 
 # Via CLI - check active tasks
-docker exec flask-worker celery -A app.celery inspect active
+docker exec flask-worker celery -A app:celery inspect active
 
 # Check registered tasks
-docker exec flask-worker celery -A app.celery inspect registered
+docker exec flask-worker celery -A app:celery inspect registered
 
 # Check queue lengths
 docker exec flask-redis redis-cli llen celery  # default queue
 
 # Purge a queue (clear pending tasks)
-docker exec flask-worker celery -A app.celery purge -Q email
+docker exec flask-worker celery -A app:celery purge -Q email
 ```
 
 ## Step 5: Verify the Stack
@@ -329,9 +344,9 @@ curl http://localhost:5000/api/tasks/TASK-ID-HERE
 docker logs flask-worker -f
 
 # View Flower dashboard for visual task monitoring
-open http://localhost:5555
+# Open http://localhost:5555 in your browser
 ```
 
 ## Conclusion
 
-Deploying Flask with Redis and Celery via Portainer provides a complete asynchronous task processing stack with Flower for real-time monitoring of task queues, workers, and execution history. Named queues (`default`, `email`, `reports`) allow task routing to dedicated workers for better isolation and priority control. Celery Beat handles scheduled tasks within the same infrastructure. For production, set strong passwords for both Flower and the Flask secret key, configure Celery's task soft and hard time limits to prevent runaway tasks, and monitor queue depths with Redis metrics to scale worker replicas as needed.
+Deploying Flask with Redis and Celery via Portainer provides a complete asynchronous task processing stack with Flower for real-time monitoring of task queues, workers, and execution history. Separate queues (`celery`, `email`, `reports`) allow task routing and make it easier to split work across specialized workers for better isolation and priority control. Celery Beat handles scheduled tasks within the same infrastructure. For production, set strong passwords for both Flower and the Flask secret key, configure Celery's task soft and hard time limits to prevent runaway tasks, and monitor queue depths with Redis metrics to tune worker concurrency or add more worker services as needed.
