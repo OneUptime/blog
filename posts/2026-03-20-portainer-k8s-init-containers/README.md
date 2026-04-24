@@ -8,7 +8,7 @@ Description: Use Kubernetes init containers to perform setup tasks before main a
 
 ## Introduction
 
-Init containers are specialized containers that run to completion before app containers start. They perform one-time setup tasks like database migrations, configuration generation, dependency checks, and secret fetching. Portainer's YAML editor supports deploying Deployments with init containers.
+Init containers are specialized containers that run to completion before app containers start. They perform one-time setup tasks like database migrations, configuration generation, dependency checks, and secret fetching. Portainer's web editor supports deploying manifests with init containers.
 
 ## Common Init Container Use Cases
 
@@ -34,6 +34,9 @@ spec:
     matchLabels:
       app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       initContainers:
       # Init 1: Wait for database to be ready
@@ -126,13 +129,36 @@ initContainers:
 
 ```yaml
 initContainers:
-- name: wait-for-dependencies
-  image: groundnuty/k8s-wait-for:v1.6
-  args:
-  - "service"
-  - "postgres"
-  - "redis"
-  - "kafka"
+- name: wait-for-postgres
+  image: busybox:1.36
+  command:
+  - sh
+  - -c
+  - |
+    until nc -z postgres 5432; do
+      echo "Waiting for postgres...";
+      sleep 2;
+    done;
+- name: wait-for-redis
+  image: busybox:1.36
+  command:
+  - sh
+  - -c
+  - |
+    until nc -z redis 6379; do
+      echo "Waiting for redis...";
+      sleep 2;
+    done;
+- name: wait-for-kafka
+  image: busybox:1.36
+  command:
+  - sh
+  - -c
+  - |
+    until nc -z kafka 9092; do
+      echo "Waiting for kafka...";
+      sleep 2;
+    done;
 ```
 
 ## Init Containers with Vault Secrets
@@ -145,7 +171,7 @@ initContainers:
   - sh
   - -c
   - |
-    vault agent -config=/vault/config/agent.hcl
+    vault agent -config=/vault/config/agent.hcl -exit-after-auth
     cp /vault/secrets/* /app-secrets/
   volumeMounts:
   - name: vault-config
@@ -156,7 +182,7 @@ initContainers:
 
 ## Monitoring Init Containers in Portainer
 
-In Portainer: **Kubernetes > Applications > Your Deployment > Pod > Logs**
+In Portainer: open **Applications**, select your deployment, then use the pod logs from the **Application containers** section.
 
 Select the init container from the container dropdown to view its logs.
 
