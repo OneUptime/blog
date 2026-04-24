@@ -33,11 +33,11 @@ scrape_configs:
         replacement: '$1'
 ```
 
-Result: each scraped time series gets a label `ipv4_address="10.0.0.10"`.
+Result: time series scraped from `10.0.0.10:9100` get `ipv4_address="10.0.0.10"`, and time series scraped from `10.0.0.11:9100` get `ipv4_address="10.0.0.11"`.
 
 ## Relabeling with Consul Service Discovery
 
-When using Consul, the target address includes service metadata. Extract the IP:
+When using Consul and the relevant address is published in `__meta_consul_service_address`, copy it into labels and use it for scraping:
 
 ```yaml
 scrape_configs:
@@ -45,15 +45,15 @@ scrape_configs:
     consul_sd_configs:
       - server: '10.0.0.100:8500'
     relabel_configs:
-      # Use the Consul node address as the scrape target
+      # Copy the Consul node name into a regular label
       - source_labels: [__meta_consul_node]
         target_label: node
 
-      # Extract the IPv4 from the service address metadata
+      # Copy the service address into a regular label
       - source_labels: [__meta_consul_service_address]
         target_label: ipv4_address
 
-      # Compose the scrape address from service IP and port
+      # Compose the scrape address from the service address and port
       - source_labels: [__meta_consul_service_address, __meta_consul_service_port]
         separator: ':'
         target_label: __address__
