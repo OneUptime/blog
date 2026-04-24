@@ -13,7 +13,7 @@ Let's Encrypt provides free, trusted SSL/TLS certificates via the ACME protocol.
 ## Prerequisites
 
 - A domain name pointing to your server's public IP
-- Ports 80 and 443 accessible from the internet (for HTTP-01 challenge)
+- Port 80 accessible from the internet (for HTTP-01 challenge)
 - Portainer installed on Docker
 - Certbot installed
 
@@ -43,8 +43,7 @@ docker run --rm \
 ## Step 2: Obtain Let's Encrypt Certificate
 
 ```bash
-# Stop Portainer temporarily (frees port 443/80 if needed)
-docker stop portainer
+# If another service is using port 80, stop it temporarily before running Certbot
 
 # Obtain certificate using standalone mode
 sudo certbot certonly --standalone \
@@ -84,7 +83,6 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
-  --ssl \
   --sslcert /data/certs/cert.pem \
   --sslkey /data/certs/key.pem \
   --http-disabled
@@ -116,12 +114,12 @@ EOF
 
 sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/portainer-reload.sh
 
-# Configure cron for renewal (certbot installs a systemd timer or cron by default)
-# Verify the timer exists:
-systemctl status certbot.timer
+# Most Certbot installations come with automatic renewal preconfigured
+# Verify an automatic renewal timer exists:
+systemctl list-timers | grep certbot
 
 # Or manual cron entry
-echo "0 0 * * * root certbot renew --quiet" | sudo tee /etc/cron.d/certbot
+SLEEPTIME=$(awk 'BEGIN{srand(); print int(rand()*(3600+1))}'); echo "0 0,12 * * * root sleep $SLEEPTIME && certbot renew -q" | sudo tee -a /etc/crontab > /dev/null
 ```
 
 ## Using Nginx for Let's Encrypt with Portainer
@@ -158,13 +156,13 @@ sudo certbot --nginx -d portainer.example.com --non-interactive --agree-tos -m a
 
 ```bash
 # Check certificate issuer and expiry
-echo | openssl s_client -connect portainer.example.com:9443 2>/dev/null \
-  | openssl x509 -noout -text | grep -E "Issuer:|Not After:"
+echo | openssl s_client -connect portainer.example.com:9443 -servername portainer.example.com 2>/dev/null \
+  | openssl x509 -noout -issuer -enddate
 
-# Should show: Issuer: CN = R10, O = Let's Encrypt, C = US
+# issuer should be Let's Encrypt, and notAfter should show the certificate expiry date
 
 # Test with curl (no -k needed for valid cert)
-curl https://portainer.example.com:9443/api/status
+curl -I https://portainer.example.com:9443
 ```
 
 ## Conclusion
