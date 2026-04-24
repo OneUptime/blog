@@ -32,7 +32,7 @@ sudo systemctl enable --now docker
 Verify:
 
 ```bash
-docker --version
+docker run hello-world
 ```
 
 ## Step 3: Create a Portainer Data Volume
@@ -51,16 +51,12 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
 
-## Step 5: Configure UFW Firewall
+## Step 5: Review Firewall Rules
 
-```bash
-sudo ufw allow 9443/tcp
-sudo ufw allow 8000/tcp
-sudo ufw reload
-```
+Portainer uses `9443` for the web UI. Port `8000` is only required if you plan to use Edge agents. If you use UFW on Debian, note that published Docker ports bypass UFW rules, so restrict access with Docker's `DOCKER-USER` chain or upstream network controls if needed.
 
 ## Step 6: Access Portainer
 
@@ -70,7 +66,8 @@ Open a browser and go to `https://<server-ip>:9443`. Create your admin account o
 
 **Socket permission denied:**
 ```bash
-sudo chmod 666 /var/run/docker.sock
+sudo usermod -aG docker $USER
+newgrp docker
 ```
 
 **View container logs:**
@@ -88,7 +85,7 @@ docker inspect portainer
 
 ```bash
 docker stop portainer && docker rm portainer
-docker pull portainer/portainer-ce:latest
+docker pull portainer/portainer-ce:sts
 # Re-run the deploy command from Step 4
 
 ```
