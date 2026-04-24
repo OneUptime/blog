@@ -12,11 +12,9 @@ Automated testing with Portainer involves running test containers against your d
 
 ## Running Tests in an Ephemeral Container
 
-Use a `test` service in your stack that runs and exits - Docker won't keep it running:
+In a Docker Standalone environment, use a `test` service in your stack that runs and exits - Docker leaves the container stopped unless you configure a restart policy:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     image: myregistry.example.com/my-app:latest
@@ -106,7 +104,7 @@ Run integration tests in CI after deploying to staging:
 #!/bin/bash
 set -euo pipefail
 
-# Deploy to staging
+# Deploy to staging using a Portainer stack webhook (Business Edition, non-Edge environments)
 
 curl -fsS -X POST "$PORTAINER_STAGING_WEBHOOK"
 
@@ -119,7 +117,6 @@ sleep 30
 
 # Run integration tests in a Docker container
 docker run --rm \
-  --network host \
   -e BASE_URL=https://staging.example.com \
   myregistry.example.com/integration-tests:latest
 
@@ -132,46 +129,69 @@ Test that database migrations apply cleanly in an ephemeral environment:
 
 ```bash
 # Run migration tests in isolation
-docker run --rm \
-  --network my-app_app_net \
-  -e DATABASE_URL=postgresql://appuser:apppassword@postgres:5432/appdb \
-  myregistry.example.com/my-app:latest \
+docker compose run --rm \
+  -e DATABASE_URL=postgresql://testuser:testpassword@db:5432/testdb \
+  api \
   sh -c "npm run migrate && npm run migrate:verify"
 ```
 
 ## Portainer API-Based Health Verification
 
-Use the Portainer API to verify all services in a stack are healthy before proceeding:
+Use the Portainer API and its Docker API gateway to verify all containers in a Docker Standalone stack are ready before proceeding:
 
 ```bash
 #!/bin/bash
+set -euo pipefail
+
 PORTAINER_URL="https://portainer.example.com"
 STACK_NAME="my-app-staging"
+PORTAINER_API_KEY="your_portainer_api_key"
 
-TOKEN=$(curl -s -X POST "$PORTAINER_URL/api/auth" \
-  -H "Content-Type: application/json" \
-  -d '{"Username":"admin","Password":"adminpassword"}' | jq -r .jwt)
-
-STACK_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+STACK_JSON=$(curl -fsS -H "X-API-Key: $PORTAINER_API_KEY" \
   "$PORTAINER_URL/api/stacks" | \
-  jq -r --arg name "$STACK_NAME" '.[] | select(.Name==$name) | .Id')
+  jq -er --arg name "$STACK_NAME" '.[] | select(.Name==$name)')
 
-# Wait up to 120 seconds for all containers to be healthy
+ENDPOINT_ID=$(jq -r '.EndpointId' <<<"$STACK_JSON")
+
+# Wait up to 120 seconds for all containers to become ready
+UNREADY=1
 for i in $(seq 1 24); do
-  UNHEALTHY=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "$PORTAINER_URL/api/stacks/$STACK_ID/file" | \
-    # Check via Docker directly
-    docker ps --filter "label=com.docker.compose.project=$STACK_NAME" \
-              --filter "health=unhealthy" -q | wc -l)
+  CONTAINER_IDS=$(curl -fsS -H "X-API-Key: $PORTAINER_API_KEY" \
+    "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/containers/json?all=1" | \
+    jq -r --arg stack "$STACK_NAME" \
+      '.[] | select(.Labels["com.docker.compose.project"]==$stack) | .Id')
 
-  if [ "$UNHEALTHY" = "0" ]; then
-    echo "All containers healthy"
+  if [ -z "$CONTAINER_IDS" ]; then
+    echo "Waiting for stack containers to appear ($i/24)..."
+    sleep 5
+    continue
+  fi
+
+  UNREADY=0
+
+  for CONTAINER_ID in $CONTAINER_IDS; do
+    READY=$(curl -fsS -H "X-API-Key: $PORTAINER_API_KEY" \
+      "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/containers/$CONTAINER_ID/json" | \
+      jq -r 'if .State.Health then .State.Health.Status == "healthy" else .State.Status == "running" end')
+
+    if [ "$READY" != "true" ]; then
+      UNREADY=$((UNREADY + 1))
+    fi
+  done
+
+  if [ "$UNREADY" = "0" ]; then
+    echo "All containers are ready"
     break
   fi
 
-  echo "Waiting for containers to become healthy ($i/24)..."
+  echo "Waiting for containers to become ready ($i/24)..."
   sleep 5
 done
+
+[ "$UNREADY" = "0" ] || {
+  echo "Timed out waiting for stack containers to become ready"
+  exit 1
+}
 ```
 
 ## Test Result Reporting
@@ -182,7 +202,9 @@ Publish test results as JUnit XML for CI systems to parse:
 # Jest with JUnit reporter
 docker run --rm \
   -e CI=true \
+  -e JEST_JUNIT_OUTPUT_DIR=/app/test-results \
+  -e JEST_JUNIT_OUTPUT_NAME=results.xml \
   -v "$(pwd)/test-results:/app/test-results" \
   myregistry.example.com/my-app-tests:latest \
-  npx jest --reporters=jest-junit --outputFile=test-results/results.xml
+  npx jest --reporters=default --reporters=jest-junit
 ```
