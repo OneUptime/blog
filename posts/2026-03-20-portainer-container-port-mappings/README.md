@@ -8,7 +8,7 @@ Description: Learn how to configure port mappings for Docker containers in Porta
 
 ## Introduction
 
-Port mappings are how Docker containers expose services to the outside world. Without a port mapping, a service running inside a container is inaccessible from the host network. Portainer provides a clean interface for configuring port bindings during container creation or when re-creating a container.
+Port mappings are how Docker containers expose services to the outside world. Without a port mapping, a service running inside a container is generally inaccessible from outside the Docker host. Portainer provides a clean interface for configuring port bindings during container creation or when re-creating a container.
 
 ## Prerequisites
 
@@ -35,9 +35,9 @@ Host IP:Host Port → Container Port/Protocol
 2. Select your Docker environment.
 3. Navigate to **Containers > Add container**.
 
-## Step 2: Configure Port Mappings in the Network Tab
+## Step 2: Configure Port Mappings in the Network Ports Section
 
-In the container creation form, find the **Network** section or **Ports** section:
+In the container creation form, find the **Network ports** configuration section:
 
 1. Click **+ publish a new network port**.
 2. Fill in the fields:
@@ -70,12 +70,10 @@ Protocol: TCP
 
 ### Random Host Port
 
-Leave the host port field empty and Docker assigns an available random port:
+In Portainer, use the **Publish all exposed network ports to random host ports** option to have Docker assign available random host ports for the image's exposed ports:
 
 ```text
-Host Port: (empty)
-Container Port: 8080
-Protocol: TCP
+Publish all exposed network ports to random host ports: enabled
 ```
 
 This is useful in development when multiple containers serve on the same port.
@@ -131,7 +129,7 @@ Docker does not allow changing port mappings on a running container without re-c
 
 ## Security Considerations
 
-```bash
+```text
 # Bad: Exposing a database to all interfaces
 Host Port: 3306 (binds to 0.0.0.0 - accessible from anywhere)
 
@@ -143,7 +141,7 @@ Host Port: 3306
 # No port mapping needed - containers communicate via Docker network DNS
 ```
 
-For internal services that only need to talk to other containers (same host), avoid host port mappings entirely. Use Docker networks and container names for communication.
+For internal services that only need to talk to other containers (same host), avoid host port mappings entirely. Use user-defined Docker networks and container names for communication.
 
 ## Port Mapping Across Different Network Modes
 
@@ -165,7 +163,7 @@ network_mode: host
 
 ## Troubleshooting Port Mapping Issues
 
-- **Port already in use**: Another process or container is using that host port. Use `ss -tlnp | grep :8080` to find the conflicting process.
+- **Port already in use**: Another process or container is using that host port. Use `ss -ltnp | grep :8080` for TCP ports or `ss -lunp | grep :53` for UDP ports to find the conflicting process.
 - **Connection refused**: The container might not be listening on that port, or a firewall is blocking it.
 - **Binding to 127.0.0.1 but need external access**: Change the host IP to `0.0.0.0` or leave it blank.
 
