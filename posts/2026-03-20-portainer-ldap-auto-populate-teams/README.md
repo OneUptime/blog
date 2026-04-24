@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, LDAP, Team, Automation, Business Edition, RBAC
 
-Description: Configure Portainer Business Edition to automatically create and populate teams based on LDAP group membership at user login.
+Description: Configure Portainer Business Edition to automatically synchronize users into existing Portainer teams based on LDAP group membership at user login.
 
 ## Introduction
 
-Manually creating Portainer teams and mapping them to LDAP groups works but doesn't scale. Portainer Business Edition provides automatic team population from LDAP groups - when enabled, Portainer creates teams for LDAP groups and adds users to those teams automatically at login. This eliminates all manual team management.
+Manually creating Portainer teams and mapping them to LDAP groups works but doesn't scale. Portainer Business Edition can synchronize LDAP group membership with Portainer teams. When group search is configured, Portainer adds users to existing identically named teams automatically at login. This reduces manual team membership management.
 
 ## Prerequisites
 
@@ -19,35 +19,34 @@ Manually creating Portainer teams and mapping them to LDAP groups works but does
 
 ## How Auto-Population Works
 
-With auto-population enabled:
+With LDAP group search configured:
 
 1. User logs in with LDAP credentials
 2. Portainer authenticates the user
 3. Portainer queries LDAP for the user's group memberships
 4. For each LDAP group:
    - If a matching Portainer team exists: user is added to it
-   - If no matching team exists: Portainer creates the team and adds the user
-5. User is removed from teams whose corresponding LDAP groups they no longer belong to
+   - If no matching team exists: no team membership is created automatically
 
-This provides full lifecycle management: teams are created, populated, and cleaned up automatically.
+This provides automatic team membership synchronization, but the Portainer teams still need to exist in Portainer.
 
 ## Step 1: Enable Group Search
 
 First, ensure group search is configured:
 
 ```text
-Group Base DN:     ou=groups,dc=example,dc=com
-Group Attribute:   member
-Group Filter:      (objectClass=groupOfNames)
+Group Base DN:              ou=groups,dc=example,dc=com
+Group Membership Attribute: member
+Group Filter:               (objectClass=groupOfNames)
 ```
 
-## Step 2: Enable Automatic Team Population
+## Step 2: Match Portainer Teams to LDAP Groups
 
 In Settings → Authentication → LDAP:
 
-1. Scroll to the **Teams** section
-2. Enable **Automatic team membership synchronization**
-3. Save settings
+1. Configure and save the LDAP group search settings
+2. Create the Portainer teams you want to sync
+3. Make sure the Portainer team names exactly match the LDAP group names
 
 ## Step 3: Configure via API
 
@@ -64,19 +63,23 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d '{
     "AuthenticationMethod": 2,
-    "ldapsettings": {
-      "Servers": [
-        {
-          "Host": "ldap.example.com",
-          "Port": 389,
-          "ReaderDN": "cn=portainer-bind,dc=example,dc=com",
-          "Password": "bindpassword"
-        }
+    "LDAPSettings": {
+      "URLs": [
+        "ldap.example.com:389"
       ],
+      "ServerType": 1,
+      "AnonymousMode": false,
+      "ReaderDN": "cn=portainer-bind,dc=example,dc=com",
+      "Password": "bindpassword",
+      "TLSConfig": {
+        "TLS": false,
+        "TLSSkipVerify": false
+      },
+      "StartTLS": false,
       "SearchSettings": [
         {
           "BaseDN": "ou=users,dc=example,dc=com",
-          "Username": "uid",
+          "UserNameAttribute": "uid",
           "Filter": "(objectClass=inetOrgPerson)"
         }
       ],
@@ -118,13 +121,12 @@ member: uid=admin-user,ou=users,dc=example,dc=com
 ```
 
 After configuration, when Alice logs in, Portainer:
-1. Creates team `devops` (if it doesn't exist)
-2. Adds Alice to `devops` team
-3. Grants Alice access to environments assigned to `devops`
+1. Adds Alice to the existing `devops` team
+2. Grants Alice access to environments assigned to `devops`
 
-## Assigning Environment Access to Auto-Created Teams
+## Assigning Environment Access to LDAP-Synchronized Teams
 
-Auto-created teams don't have environment access by default. You must assign it:
+Matching teams don't have environment access by default. You must assign it:
 
 1. Go to **Environments** → click the environment
 2. Click **Manage access**
@@ -133,32 +135,41 @@ Auto-created teams don't have environment access by default. You must assign it:
 Or via API:
 ```bash
 ENDPOINT_ID=1
-TEAM_ID=2   # The auto-created team's ID
+TEAM_NAME=devops
+
+TEAM_ID=$(curl -s \
+  -H "Authorization: Bearer $TOKEN" \
+  https://portainer.example.com/api/teams \
+  | python3 -c "import sys,json; teams=json.load(sys.stdin); name='${TEAM_NAME}'.lower(); print(next(t['Id'] for t in teams if t['Name'].lower()==name))")
+
+ROLE_ID=$(curl -s \
+  -H "Authorization: Bearer $TOKEN" \
+  https://portainer.example.com/api/roles \
+  | python3 -c "import sys,json; roles=json.load(sys.stdin); print(next(r['Id'] for r in roles if r['Name'].lower()=='standard user'))")
+
+PAYLOAD=$(curl -s \
+  -H "Authorization: Bearer $TOKEN" \
+  "https://portainer.example.com/api/endpoints/${ENDPOINT_ID}" \
+  | python3 -c "import sys,json; data=json.load(sys.stdin); policies=data.get('TeamAccessPolicies') or {}; policies['${TEAM_ID}']={'RoleId': ${ROLE_ID}}; print(json.dumps({'TeamAccessPolicies': policies}))")
 
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "https://portainer.example.com/api/endpoints/${ENDPOINT_ID}/teamaccesspolicies" \
-  -d '{
-    "2": {
-      "RoleId": 2
-    }
-  }'
+  "https://portainer.example.com/api/endpoints/${ENDPOINT_ID}" \
+  -d "$PAYLOAD"
 ```
 
 ## Auto-Admin Assignment from LDAP
 
 To automatically make members of a specific LDAP group Portainer administrators:
 
-1. Create an LDAP group called `portainer-admins`
-2. In Portainer LDAP settings, configure the admin group:
+1. Create or choose an LDAP group for Portainer administrators, for example `portainer-admins`
+2. In Portainer LDAP settings, configure the admin group search
+3. Click **Fetch Admin Group(s)** and select the group
+4. Enable **Assign admin rights to group(s)**
 
-```text
-Admin Group:  portainer-admins
-```
-
-Members of this group get admin privileges automatically at login.
+Members of the selected group get admin privileges automatically at login.
 
 ## Conclusion
 
-Automatic team population from LDAP groups is a powerful feature of Portainer Business Edition that eliminates all manual team management. Users' Portainer access automatically reflects their directory group membership, and changes in the directory are reflected immediately at the user's next login. The remaining manual step is assigning environment access to the auto-created teams.
+Automatic team population from LDAP groups is a useful feature of Portainer Business Edition that reduces manual membership management. Users' Portainer team membership can reflect their directory group membership at login for matching existing teams. The remaining manual steps are creating the Portainer teams and assigning environment access to them.
