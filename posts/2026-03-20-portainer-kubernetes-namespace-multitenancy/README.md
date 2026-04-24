@@ -8,7 +8,7 @@ Description: Learn how to implement namespace-based multi-tenancy in Portainer f
 
 ---
 
-Kubernetes namespaces provide natural isolation boundaries for multi-tenant deployments. Portainer exposes namespace-level access control so each team sees only their namespace, with appropriate RBAC enforced at the cluster level.
+Kubernetes namespaces provide natural isolation boundaries for multi-tenant deployments. In Portainer Business Edition, you can layer namespace-level access control on top of Kubernetes RBAC so each team sees only its assigned namespace, with enforcement handled at the cluster level.
 
 ## Namespace Isolation Architecture
 
@@ -34,7 +34,7 @@ kubectl create namespace team-a
 kubectl create namespace team-b
 kubectl create namespace shared-infra
 
-# Add labels for Portainer and policy tools
+# Add labels for tenancy metadata and policy tools
 kubectl label namespace team-a tenant=team-a environment=production
 kubectl label namespace team-b tenant=team-b environment=production
 ```
@@ -51,13 +51,24 @@ metadata:
   name: team-a-role
   namespace: team-a
 rules:
-  - apiGroups: ["", "apps", "batch", "extensions"]
-    resources: ["pods", "deployments", "services", "configmaps",
-                "persistentvolumeclaims", "jobs", "cronjobs", "ingresses"]
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [""]
-    resources: ["pods/log", "pods/exec"]
-    verbs: ["get", "list", "create"]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["get", "create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -80,11 +91,11 @@ kubectl apply -f team-a-rbac.yaml
 
 ## Step 3: Configure Portainer Namespace Access
 
-In Portainer, configure which teams can see which namespaces:
+In Portainer Business Edition, and with Kubernetes RBAC enabled, configure which teams can see which namespaces:
 
-1. Go to **Environments > [K8s environment] > Namespaces**.
-2. Click the namespace name.
-3. Under **Access management**, enable **Restrict access to namespace** and add Team A.
+1. Open the Kubernetes environment and go to **Namespaces**.
+2. On the `team-a` row, click **Manage access**.
+3. Add Team A and click **Create access**.
 
 This ensures Team A users only see the `team-a` namespace in the Portainer UI - all other namespaces are hidden.
 
@@ -113,7 +124,7 @@ spec:
 
 ## Step 5: Apply NetworkPolicies for Traffic Isolation
 
-Prevent pods in team-a from communicating with pods in team-b:
+If your CNI implements NetworkPolicy, use a policy like the following to enforce strict namespace isolation for `team-a` (add separate DNS or external egress rules only if the workloads need them):
 
 ```yaml
 # deny-cross-namespace.yaml
@@ -129,18 +140,10 @@ spec:
     - Egress
   ingress:
     - from:
-        - namespaceSelector:
-            matchLabels:
-              tenant: team-a   # Only allow traffic from same namespace
+        - podSelector: {}   # Only allow traffic from pods in team-a
   egress:
     - to:
-        - namespaceSelector:
-            matchLabels:
-              tenant: team-a
-    - to:  {}  # Allow external traffic (internet)
-      ports:
-        - port: 443
-        - port: 80
+        - podSelector: {}   # Only allow traffic to pods in team-a
 ```
 
 ## Verifying Namespace Isolation
