@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, CIS, Security, Compliance, Benchmark
 
-Description: Learn how to run CIS (Center for Internet Security) benchmark scans on your Kubernetes clusters using Rancher's built-in CIS scanning tool.
+Description: Learn how to run CIS (Center for Internet Security) benchmark scans on your Kubernetes clusters using Rancher's CIS Benchmark app on Rancher v2.11 and earlier.
 
-The Center for Internet Security (CIS) provides Kubernetes benchmarks that define security best practices for Kubernetes cluster configuration. Rancher integrates CIS scanning directly into its UI and CLI, making it easy to assess your cluster's security posture against these benchmarks. This guide walks you through running CIS scans in a Rancher environment.
+The Center for Internet Security (CIS) provides Kubernetes benchmarks that define security best practices for Kubernetes cluster configuration. On Rancher v2.11 and earlier, Rancher exposes CIS scanning through the CIS Benchmark app and related Kubernetes CRDs, making it easy to assess your cluster's security posture against these benchmarks. Rancher v2.12 and later use the Compliance app instead. This guide walks you through running CIS scans in a Rancher environment.
 
 ## Prerequisites
 
-- Rancher v2.4 or later
-- A downstream Kubernetes cluster managed by Rancher (RKE, RKE2, or K3s)
-- Cluster Owner or Cluster Admin permissions in Rancher
+- Rancher v2.11 or earlier
+- A Kubernetes cluster managed by Rancher
+- Cluster Owner or Global Administrator permissions in Rancher (or equivalent `cis-admin` access)
 - The CIS Benchmark app installed from Rancher Apps
 
 ## Understanding CIS Kubernetes Benchmarks
@@ -25,37 +25,39 @@ The CIS Kubernetes Benchmark provides prescriptive guidance for:
 - **Worker Node Components**: Kubelet configuration
 - **Kubernetes Policies**: RBAC, Pod Security, Network Policies
 
-## Step 1: Install the CIS Benchmarks App
+## Step 1: Install the CIS Benchmark App
 
 ```bash
-# The CIS Benchmarks app is available in Rancher's Apps catalog
+# The CIS Benchmark app is available in Rancher's Apps catalog
 
 # Navigate to: Apps -> Charts -> CIS Benchmark
-# Or install via kubectl with the Rancher chart
 
 # Verify the CIS Benchmark CRDs are installed
 kubectl get crd | grep cis
 
 # Expected output:
-# clusterscans.cis.cattle.io
+# clusterscanbenchmarks.cis.cattle.io
 # clusterscanprofiles.cis.cattle.io
 # clusterscanreports.cis.cattle.io
+# clusterscans.cis.cattle.io
 ```
 
 ## Step 2: Run a CIS Scan via Rancher UI
 
 1. Navigate to your cluster in the Rancher UI
-2. Go to **CIS Benchmark** in the left sidebar (under Compliance)
-3. Click **Scan** to start a new scan
+2. Go to **CIS Benchmark > Scan** in the left sidebar
+3. Click **Create** to start a new scan
 4. Select the appropriate benchmark profile:
-   - **rke-cis-1.6**: For RKE1 clusters
-   - **rke2-cis-1.6**: For RKE2 clusters
-   - **k3s-cis-1.6**: For K3s clusters
+   - **Default**: Rancher chooses a compatible profile for the cluster type and Kubernetes version
+   - Or select a built-in **ClusterScanProfile** that matches your cluster type and Kubernetes version
 5. Click **Create** to start the scan
 
 ## Step 3: Run a CIS Scan via kubectl
 
 ```bash
+# List the available built-in scan profiles on this cluster
+kubectl get clusterscanprofile
+
 # Create a ClusterScan to run the CIS benchmark
 kubectl apply -f - <<EOF
 apiVersion: cis.cattle.io/v1
@@ -63,7 +65,8 @@ kind: ClusterScan
 metadata:
   name: my-cis-scan
 spec:
-  scanProfileName: rke2-cis-1.6-profile-hardened
+  # Replace this with a profile from 'kubectl get clusterscanprofile'
+  scanProfileName: "<clusterscanprofile-name>"
   # Scheduled scan (optional)
   # scheduledScanConfig:
   #   cronSchedule: "0 0 * * *"
@@ -81,14 +84,14 @@ kubectl describe clusterscan my-cis-scan
 
 ```bash
 # List all cluster scans
-kubectl get clusterscan -A
+kubectl get clusterscan
 
-# Get the scan report
-kubectl get clusterscans.cis.cattle.io my-cis-scan \
+# Get the scan profile used for the last run
+kubectl get clusterscan my-cis-scan \
   -o jsonpath='{.status.lastRunScanProfileName}'
 
-# View the full scan report
-kubectl get clusterscanreport -A
+# List the generated scan reports
+kubectl get clusterscanreport
 
 # Get detailed report
 kubectl describe clusterscanreport <report-name>
@@ -100,12 +103,13 @@ The scan report categorizes findings as:
 
 - **Pass**: The check passed (configuration meets the benchmark)
 - **Fail**: The check failed (configuration does not meet the benchmark)
-- **Skip**: The check was skipped (not applicable or manually excluded)
-- **Not Applicable**: The check doesn't apply to this cluster type
-- **Warning**: The check has a warning (manual verification required)
+- **Skip**: The check was skipped by the selected scan profile
+- **Warn**: The check requires manual verification
+- **Not Applicable**: The check doesn't apply to this cluster type or profile
+- **Mixed**: The check did not produce the same result on every node
 
 ```bash
-# Get a summary of pass/fail counts
+# Get a summary of pass/fail/skip/warn counts
 kubectl get clusterscan my-cis-scan \
   -o jsonpath='{.status.summary}'
 
@@ -157,7 +161,8 @@ kind: ClusterScan
 metadata:
   name: daily-cis-scan
 spec:
-  scanProfileName: rke2-cis-1.6-profile-hardened
+  # Replace this with a profile from 'kubectl get clusterscanprofile'
+  scanProfileName: "<clusterscanprofile-name>"
   scheduledScanConfig:
     # Run scan at midnight every day
     cronSchedule: "0 0 * * *"
