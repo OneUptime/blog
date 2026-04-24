@@ -14,8 +14,8 @@ A production Rancher architecture must address high availability, scalability, s
 
 ```text
                     ┌─────────────────────────────┐
-                    │    Global Load Balancer      │
-                    │    (AWS ALB / F5 / NGINX)    │
+                    │   Layer 4 Load Balancer     │
+                    │  (AWS NLB / F5 / HAProxy)   │
                     └──────────────┬──────────────┘
                                    │
               ┌────────────────────┼────────────────────┐
@@ -40,18 +40,20 @@ A production Rancher architecture must address high availability, scalability, s
 Use a dedicated RKE2 cluster (not a downstream workload cluster) for Rancher:
 
 ```yaml
-# rke2-rancher-management.yaml
+# Use a fixed registration address that resolves to a layer 4 load balancer.
 
-nodes:
-  - address: rancher-1.internal.com
-    user: rke2
-    roles: [controlplane, etcd]
-  - address: rancher-2.internal.com
-    user: rke2
-    roles: [controlplane, etcd]
-  - address: rancher-3.internal.com
-    user: rke2
-    roles: [controlplane, etcd]
+# /etc/rancher/rke2/config.yaml on the first server
+token: my-shared-secret
+tls-san:
+  - rancher.internal.com
+
+---
+
+# /etc/rancher/rke2/config.yaml on rancher-2 and rancher-3
+server: https://rancher.internal.com:9345
+token: my-shared-secret
+tls-san:
+  - rancher.internal.com
 
 # Sizing guidelines for management cluster:
 # Up to 150 clusters / 1500 nodes: 4 vCPU, 16 GB RAM per node
@@ -63,14 +65,19 @@ nodes:
 
 ```bash
 # Dedicated etcd nodes for high cluster counts
-# etcd should have dedicated SSDs for low latency
+# etcd should have dedicated SSD-backed storage for low latency
 
-# Recommended etcd disk performance
-# - 99th percentile commit latency < 10ms
-# - Use NVMe SSDs in production
+# Recommended etcd storage performance
+# - wal_fsync_duration_seconds p99 < 10ms
+# - Use dedicated SSDs in production; NVMe is preferred when available
 
-# Verify etcd latency
-etcdctl check perf --endpoints=https://etcd-1:2379
+# Verify etcd health from an RKE2 server node
+ETCDCTL_API=3 \
+/var/lib/rancher/rke2/bin/etcdctl \
+  --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
+  --cert=/var/lib/rancher/rke2/server/tls/etcd/server-client.crt \
+  --key=/var/lib/rancher/rke2/server/tls/etcd/server-client.key \
+  --endpoints=https://127.0.0.1:2379 endpoint health
 ```
 
 ## Decision 3: Network Architecture
@@ -79,27 +86,34 @@ etcdctl check perf --endpoints=https://etcd-1:2379
 # Separate networks for security and performance
 networks:
   management:     10.0.0.0/24    # Rancher management plane
-  pod:            10.244.0.0/16  # Pod network (per cluster)
-  service:        10.96.0.0/12   # Service CIDR (per cluster)
+  pod:            10.42.0.0/16   # Pod network (example RKE2 default)
+  service:        10.43.0.0/16   # Service CIDR (example RKE2 default)
   storage:        10.0.1.0/24    # Storage replication traffic
 
 # CNI selection:
-# - Calico: BGP mode for high performance, no encapsulation overhead
-# - Flannel: Simpler, VXLAN mode for cross-subnet
-# - Cilium: eBPF-based, best for observability and security policies
+# - Canal: RKE2 default; combines Flannel overlay networking with Calico network policy
+# - Calico: Supports network policy and optional eBPF dataplane
+# - Flannel: Simplest option, but it does not provide network policies
+# - Cilium: eBPF-based with strong observability and security policy features
 ```
 
 ## Decision 4: Storage Strategy
 
-```yaml
+```bash
 # Longhorn for Rancher-native distributed storage
+helm repo add longhorn https://charts.longhorn.io
+helm repo update
 helm install longhorn longhorn/longhorn \
   --namespace longhorn-system \
+  --create-namespace \
   --set defaultSettings.defaultReplicaCount=3 \
   --set defaultSettings.storageMinimalAvailablePercentage=15 \
   --set defaultSettings.storageReservedPercentageForDefaultDisk=25
+```
 
-# For databases: dedicated storage class with local SSDs
+```yaml
+# For databases: dedicated storage class backed by local PVs on SSDs
+# Requires manually created local PersistentVolume objects on the database nodes.
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -133,22 +147,39 @@ spec:
 
 ```bash
 # Rancher backup (management plane)
+helm repo add rancher-charts https://charts.rancher.io
+helm repo update
+# Choose a CHART_VERSION compatible with your Rancher release.
+CHART_VERSION=<rancher-backup-chart-version>
+
+helm install rancher-backup-crd rancher-charts/rancher-backup-crd \
+  --namespace cattle-resources-system \
+  --create-namespace \
+  --version ${CHART_VERSION}
+
 helm install rancher-backup rancher-charts/rancher-backup \
   --namespace cattle-resources-system \
+  --version ${CHART_VERSION} \
   --set persistence.enabled=true \
   --set persistence.storageClass=longhorn
 
 # Create recurring backup
+# Pre-create the s3-creds Secret with accessKey and secretKey in cattle-resources-system.
 kubectl apply -f - <<EOF
 apiVersion: resources.cattle.io/v1
 kind: Backup
 metadata:
   name: rancher-daily-backup
 spec:
+  resourceSetName: rancher-resource-set-full
   storageLocation:
     s3:
+      credentialSecretName: s3-creds
+      credentialSecretNamespace: cattle-resources-system
       bucketName: rancher-backups
+      folder: rancher-management
       region: us-east-1
+      endpoint: s3.us-east-1.amazonaws.com
   schedule: "0 2 * * *"       # Daily at 2 AM
   retentionCount: 14           # Keep 14 backups
 EOF
