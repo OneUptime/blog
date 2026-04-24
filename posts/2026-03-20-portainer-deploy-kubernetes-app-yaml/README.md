@@ -8,26 +8,24 @@ Description: Learn how to deploy Kubernetes applications by writing and applying
 
 ## Introduction
 
-While Portainer's form-based deployment is great for getting started, deploying via YAML manifests gives you full control over all Kubernetes configuration options. Portainer's YAML editor with syntax highlighting makes it easy to write and apply manifests without leaving the browser. This guide covers YAML-based deployments in Portainer.
+While Portainer's form-based deployment is great for getting started, deploying via YAML manifests gives you full control over all Kubernetes configuration options. Portainer's web editor makes it easy to write and apply manifests without leaving the browser. This guide covers YAML-based deployments in Portainer.
 
 ## Prerequisites
 
 - Portainer with a Kubernetes environment
 - Basic understanding of Kubernetes YAML manifests
-- Target namespace exists
+- Target namespace exists, and any referenced Secret, ConfigMap, PVC, or image pull secret is already created unless you apply them in the same manifest
 
 ## Step 1: Navigate to YAML Deployment
 
 1. Select your Kubernetes environment
-2. Click **Applications → Add application**
-3. Select **YAML** as the deployment method
-
-Or go to the YAML editor directly:
-1. Click **Advanced deployment** → **Deploy from YAML**
+2. Click **Applications → Create from code**
+3. Select **Manifest**
+4. In **Deploy to**, select the target namespace, or enable **Use namespace(s) specified from manifest** if your YAML already sets `metadata.namespace`
 
 ## Step 2: Write a Deployment Manifest
 
-Enter your YAML in the web editor:
+In **Deploy from**, select **Web editor** and enter your YAML:
 
 ```yaml
 apiVersion: apps/v1
@@ -48,7 +46,7 @@ spec:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
-      maxUnavailable: 0    # Zero-downtime deployments
+      maxUnavailable: 0    # Keeps desired replicas available during rollout
   template:
     metadata:
       labels:
@@ -170,12 +168,12 @@ spec:
     - name: http
       port: 80
       targetPort: 8080
-  type: LoadBalancer
+  type: LoadBalancer  # Requires a supported cloud/provider or load balancer integration
 ```
 
 ## Step 4: Apply the YAML
 
-1. Review the YAML for syntax errors (Portainer highlights issues)
+1. Review the YAML for syntax errors in the web editor
 2. Click **Deploy**
 3. Portainer applies the manifest to the cluster
 
@@ -190,9 +188,11 @@ kubectl apply -f my-api.yaml -n production
 To update the deployment:
 
 1. Navigate to the application in Portainer
-2. Click the **Edit** button or **YAML** tab
+2. Click **Edit this application**
 3. Modify the manifest (e.g., update image tag)
-4. Click **Update the application**
+4. Click **Update application**
+
+In Portainer Business Edition, you can also edit the application's YAML from the **YAML** tab.
 
 ```yaml
 # Change:
@@ -215,6 +215,8 @@ metadata:
 data:
   NODE_ENV: production
   LOG_LEVEL: info
+  config.json: |
+    {"logLevel":"info","featureFlags":{"beta":false}}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -256,13 +258,13 @@ kubectl rollout undo deployment/my-api -n production
 kubectl rollout undo deployment/my-api --to-revision=3 -n production
 ```
 
-## Step 8: Apply from a Git URL in Portainer
+## Step 8: Apply from a URL in Portainer
 
-Instead of pasting YAML, load from a URL:
+Instead of pasting YAML into the Web editor, choose **URL** in the **Deploy from** section:
 
-1. In the YAML editor, click **Load from URL** (if available)
-2. Enter a raw GitHub URL or internal file URL
-3. The YAML loads into the editor
+1. Select **URL**
+2. Enter a raw GitHub URL or another direct URL to the manifest file
+3. Click **Deploy**
 
 ## Conclusion
 
