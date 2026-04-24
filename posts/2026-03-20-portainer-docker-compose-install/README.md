@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker-compose, Installation, Docker, Infrastructure-as-Code
 
-Description: A guide to installing Portainer CE and Portainer Business Edition using Docker Compose for a reproducible, version-controlled deployment.
+Description: A guide to installing Portainer CE using Docker Compose for a reproducible, version-controlled deployment.
 
 ## Overview
 
-Using Docker Compose to deploy Portainer provides a reproducible, version-controlled deployment that can be easily shared and managed as code. This guide covers Docker Compose configurations for Portainer CE, including HTTPS with custom certificates and environment-specific customizations.
+Using Docker Compose to deploy Portainer provides a reproducible, version-controlled deployment that can be easily shared and managed as code. This guide covers Docker Compose configurations for Portainer CE, including custom TLS certificates, reverse proxy deployments, and environment-specific customizations.
 
 ## Prerequisites
 
@@ -21,15 +21,13 @@ Using Docker Compose to deploy Portainer provides a reproducible, version-contro
 ```yaml
 # docker-compose.yml
 
-version: '3.8'
-
 services:
   portainer:
     image: portainer/portainer-ce:latest
     container_name: portainer
     restart: always
     ports:
-      - "8000:8000"     # Portainer agent port
+      - "8000:8000"     # Optional Edge tunnel port
       - "9443:9443"     # HTTPS UI
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -55,7 +53,6 @@ docker compose ps
 
 ```yaml
 # docker-compose.yml - with HTTP enabled
-version: '3.8'
 
 services:
   portainer:
@@ -80,7 +77,6 @@ volumes:
 
 ```yaml
 # docker-compose.yml - with custom certificates
-version: '3.8'
 
 services:
   portainer:
@@ -110,7 +106,7 @@ openssl req -x509 -newkey rsa:4096 \
   -keyout ./certs/portainer.key \
   -out ./certs/portainer.crt \
   -days 365 \
-  -nodes \
+  -noenc \
   -subj "/CN=portainer.example.com" \
   -addext "subjectAltName=DNS:portainer.example.com,IP:192.168.1.100"
 
@@ -122,8 +118,6 @@ docker compose up -d
 
 ```yaml
 # docker-compose.yml - Portainer behind Nginx
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
@@ -142,10 +136,12 @@ services:
     image: portainer/portainer-ce:latest
     container_name: portainer
     restart: always
+    command:
+      - --http-enabled
     expose:
-      - "9443"     # Not exposed publicly - accessed via Nginx
+      - "9000"     # Internal HTTP UI for Nginx
     ports:
-      - "8000:8000"   # Agent port still needs to be direct
+      - "8000:8000"   # Optional Edge tunnel port
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
@@ -167,10 +163,11 @@ http {
         ssl_protocols TLSv1.2 TLSv1.3;
 
         location / {
-            proxy_pass https://portainer:9443;
-            proxy_ssl_verify off;    # Trust self-signed cert from Portainer
+            proxy_pass http://portainer:9000;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
         }
     }
     server {
@@ -184,8 +181,6 @@ http {
 
 ```yaml
 # docker-compose.yml with environment variables
-version: '3.8'
-
 services:
   portainer:
     image: portainer/portainer-ce:${PORTAINER_VERSION:-latest}
@@ -193,7 +188,7 @@ services:
     restart: always
     ports:
       - "${PORTAINER_HTTPS_PORT:-9443}:9443"
-      - "${PORTAINER_AGENT_PORT:-8000}:8000"
+      - "${PORTAINER_TUNNEL_PORT:-8000}:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
@@ -204,9 +199,9 @@ volumes:
 
 ```bash
 # .env file
-PORTAINER_VERSION=2.20.2
+PORTAINER_VERSION=2.39.0
 PORTAINER_HTTPS_PORT=9443
-PORTAINER_AGENT_PORT=8000
+PORTAINER_TUNNEL_PORT=8000
 ```
 
 ## Managing the Deployment
@@ -231,4 +226,4 @@ docker compose restart portainer
 
 ## Conclusion
 
-Using Docker Compose for Portainer deployments provides reproducibility, version control, and easy management. You can commit your docker-compose.yml to Git to track configuration changes. The compose file format is readable and can be shared across team members for consistent deployments. For production environments, store sensitive configuration like certificate paths in environment variables and use `.env` files that are excluded from version control.
+Using Docker Compose for Portainer deployments provides reproducibility, version control, and easy management. You can commit your docker-compose.yml to Git to track configuration changes. The compose file format is readable and can be shared across team members for consistent deployments. For production environments, keep sensitive values out of the compose file and use `.env` files that are excluded from version control.
