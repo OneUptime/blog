@@ -8,23 +8,26 @@ Description: Learn how to create Kubernetes ConfigMaps using YAML manifests in P
 
 ## Introduction
 
-While Portainer's form UI is convenient for simple ConfigMaps, YAML manifests offer more control, support for complex configurations, and enable GitOps workflows where configuration is stored and versioned in Git. Portainer's built-in YAML editor supports creating and updating ConfigMaps directly from manifest files. This guide covers creating ConfigMaps via YAML in Portainer.
+While Portainer's form UI is convenient for simple ConfigMaps, YAML manifests offer more control, support for complex configurations, and enable GitOps workflows where configuration is stored and versioned in Git. Portainer's manifest deployment flow supports creating ConfigMaps directly from YAML, and Git-backed manifest deployments fit naturally into GitOps workflows. This guide covers creating ConfigMaps via YAML in Portainer.
 
 ## Prerequisites
 
 - Portainer with Kubernetes environment
+- An existing target namespace (for example, `production`) if your manifest sets `metadata.namespace`
 - Familiarity with basic YAML syntax
 
-## Step 1: Open the YAML Editor in Portainer
+## Step 1: Open the Manifest Deployment Flow in Portainer
 
 1. Select your Kubernetes environment
 2. Navigate to **ConfigMaps & Secrets** → **ConfigMaps**
-3. Click **+ Add with manifest** or use the **YAML editor**
-4. The YAML editor opens with a blank template
+3. Click **Create from manifest**
+4. Portainer opens the manifest deployment flow. If your YAML sets `metadata.namespace`, leave Namespace set to `default` and enable **Use namespace(s) specified from manifest**
+5. Choose **Manifest** and use the **Web editor**
 
-Alternatively, navigate directly to the YAML manifest editor:
-1. Click the **+** button in any resource section
-2. Select **Advanced deployment** or **Use manifest**
+Alternatively, navigate directly to the manifest deployment flow:
+1. Go to **Applications**
+2. Click **Create from code**
+3. Choose **Manifest**, then use the **Web editor**
 
 ## Step 2: Basic ConfigMap YAML Structure
 
@@ -127,9 +130,10 @@ data:
         hikari:
           maximum-pool-size: 10
           connection-timeout: 30000
-      redis:
-        host: redis
-        port: 6379
+      data:
+        redis:
+          host: redis
+          port: 6379
 
     management:
       endpoints:
@@ -193,13 +197,13 @@ data:
   FEATURE_ANALYTICS: "true"
 ```
 
-Paste this entire multi-document YAML into Portainer's editor to create all three ConfigMaps at once.
+Paste this entire multi-document YAML into Portainer's Web editor to create all three ConfigMaps at once.
 
 ## Step 6: Apply the YAML in Portainer
 
-1. Paste the YAML manifest into Portainer's editor
-2. Click **Deploy** or **Apply**
-3. Portainer confirms the resources created:
+1. Paste the YAML manifest into Portainer's Web editor
+2. Click **Deploy**
+3. On a first-time deployment, Portainer shows a deployment summary similar to:
    ```text
    ConfigMap "app-config" created
    ConfigMap "db-config" created
@@ -224,7 +228,7 @@ data:
 ```
 
 Benefits of immutable ConfigMaps:
-- Kubernetes API server does not watch for changes (reduced load)
+- Reduces load on kube-apiserver by closing watches for immutable ConfigMaps
 - Prevents accidental modification of critical configuration
 - Pods must be recreated to use a new version (use versioned names: `app-config-v2`, `app-config-v3`)
 
