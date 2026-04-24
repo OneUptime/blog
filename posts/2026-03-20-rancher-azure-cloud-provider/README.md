@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Azure, Cloud Provider
 
-Description: Configure the Azure cloud provider in Rancher-managed clusters to enable Azure Load Balancers, Azure Disks, and Azure Files integration.
+Description: Configure the out-of-tree Azure cloud provider in Rancher-managed clusters to enable Azure Load Balancers and Azure Managed Disks.
 
 ## Introduction
 
-The Azure cloud provider integration lets your Rancher-managed Kubernetes clusters provision Azure Load Balancers for Services, use Azure Managed Disks for PersistentVolumes, and mount Azure Files shares. This guide covers configuring the Azure cloud provider for RKE2 clusters deployed on Azure VMs.
+The out-of-tree Azure cloud provider lets your Rancher-managed Kubernetes clusters provision Azure Load Balancers for Services. To use Azure Managed Disks or Azure Files for PersistentVolumes, install the corresponding Azure CSI driver. This guide covers configuring the out-of-tree Azure cloud provider and Azure Disk CSI driver for RKE2 clusters deployed on Azure VMs. On Kubernetes 1.30 and later, Azure must be configured as an out-of-tree cloud provider.
 
 ## Prerequisites
 
@@ -51,60 +51,88 @@ az ad sp create-for-rbac \
   "location": "eastus",
   "subnetName": "<subnet-name>",
   "securityGroupName": "<nsg-name>",
+  "securityGroupResourceGroup": "<nsg-resource-group>",
   "vnetName": "<vnet-name>",
   "vnetResourceGroup": "<vnet-resource-group>",
   "primaryAvailabilitySetName": "<availability-set-name>",
+  "routeTableResourceGroup": "<route-table-resource-group>",
   "cloudProviderBackoff": true,
   "cloudProviderBackoffRetries": 6,
   "cloudProviderBackoffDuration": 5,
-  "cloudProviderRatelimit": true,
+  "cloudProviderRateLimit": true,
   "cloudProviderRateLimitQPS": 6,
   "cloudProviderRateLimitBucket": 20,
   "useManagedIdentityExtension": false,
+  "useInstanceMetadata": true,
   "loadBalancerSku": "standard"
 }
 ```
 
-Save this as `/etc/rancher/rke2/azure-cloud-config.json` on each node.
+If your nodes run in a VMSS, use `primaryScaleSetName` instead of `primaryAvailabilitySetName`. Save this locally as `azure-cloud-config.json`; you'll use it to create a Kubernetes Secret in Step 5.
 
 ## Step 3: Configure RKE2 Nodes
 
 ```yaml
-# /etc/rancher/rke2/config.yaml (both server and agent nodes)
-cloud-provider-name: azure
-cloud-provider-config: /etc/rancher/rke2/azure-cloud-config.json
+# /etc/rancher/rke2/config.yaml (if you are configuring RKE2 directly)
+cloud-provider-name: external
 ```
+
+For Rancher-managed clusters, selecting `External` in Rancher applies the equivalent setting.
 
 ## Step 4: Configure via Rancher UI
 
 1. Navigate to **Cluster Management** → select the cluster → **⋮ → Edit Config**.
-2. Under **Cloud Provider**, select **Azure**.
-3. Fill in the fields:
-   - **Tenant ID**: Azure AD Tenant ID
-   - **Subscription ID**: Azure Subscription ID
-   - **Client ID**: Service Principal App ID
-   - **Client Secret**: Service Principal Password
-   - **Resource Group**: Azure Resource Group
-   - **Location**: Azure Region (e.g., `eastus`)
-4. Click **Save**.
+2. Under **Cloud Provider**, select **External**.
+3. Under **Advanced**, add `--configure-cloud-routes=false` under **Additional Controller Manager Args**.
+4. Click **Save**. The Azure cloud configuration itself is supplied to the cloud controller manager as a Kubernetes Secret in the next step.
 
 ## Step 5: Install the Azure Cloud Controller Manager
 
 ```bash
 # Add the Azure CCM Helm chart repo
-helm repo add azure-ccm \
+helm repo add azure-cloud-controller-manager \
   https://raw.githubusercontent.com/kubernetes-sigs/cloud-provider-azure/master/helm/repo
 helm repo update
 
 # Create the cloud-config secret
 kubectl create secret generic azure-cloud-config \
-  --from-file=cloud-config=/etc/rancher/rke2/azure-cloud-config.json \
+  --from-file=cloud-config=azure-cloud-config.json \
   -n kube-system
+```
 
+```yaml
+# values.yaml
+infra:
+  clusterName: "<cluster-name>"
+cloudControllerManager:
+  cloudConfigSecretName: azure-cloud-config
+  cloudConfig: null
+  clusterCIDR: null
+  enableDynamicReloading: 'true'
+  configureCloudRoutes: 'false'
+  allocateNodeCidrs: 'false'
+  caCertDir: /etc/ssl
+  enabled: true
+  replicas: 1
+  nodeSelector:
+    node-role.kubernetes.io/control-plane: 'true'
+  tolerations:
+    - effect: NoSchedule
+      key: node-role.kubernetes.io/master
+    - effect: NoSchedule
+      key: node-role.kubernetes.io/control-plane
+      value: 'true'
+    - effect: NoSchedule
+      key: node.cloudprovider.kubernetes.io/uninitialized
+      value: 'true'
+```
+
+```bash
 # Install Azure CCM
-helm install azure-cloud-controller-manager azure-ccm/cloud-controller-manager \
+helm upgrade --install cloud-provider-azure \
+  azure-cloud-controller-manager/cloud-provider-azure \
   --namespace kube-system \
-  --set cloudConfig.secretName=azure-cloud-config
+  --values values.yaml
 ```
 
 ## Step 6: Install the Azure Disk CSI Driver
@@ -113,12 +141,15 @@ helm install azure-cloud-controller-manager azure-ccm/cloud-controller-manager \
 # Install Azure Disk CSI Driver
 helm repo add azuredisk-csi-driver \
   https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
-helm repo update
+helm repo update azuredisk-csi-driver
 
 helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver \
   --namespace kube-system \
   --set controller.cloudConfigSecretName=azure-cloud-config \
-  --set node.cloudConfigSecretName=azure-cloud-config
+  --set controller.cloudConfigSecretNamespace=kube-system \
+  --set controller.runOnControlPlane=true \
+  --set node.cloudConfigSecretName=azure-cloud-config \
+  --set node.cloudConfigSecretNamespace=kube-system
 ```
 
 ## Step 7: Create Azure StorageClasses
@@ -176,10 +207,10 @@ kubectl get pvc azure-disk-test -w
 
 | Issue | Resolution |
 |---|---|
-| `EXTERNAL-IP` stays `<pending>` | Check Service Principal permissions and subnet configuration |
-| `PVC stuck in Pending` | Verify the StorageClass name and CSI driver is running |
+| `EXTERNAL-IP` stays `<pending>` | Check that the cluster is using the external cloud provider, the `azure-cloud-config` Secret exists, and the Azure CCM deployment is running |
+| `PVC stuck in Pending` | Verify the StorageClass uses `disk.csi.azure.com` and that the Azure Disk CSI driver is running |
 | `AuthorizationFailed` | Service Principal lacks Contributor role on the resource group |
 
 ## Conclusion
 
-Configuring the Azure cloud provider in Rancher enables Kubernetes-native Azure resource management. With the Azure CCM and Disk CSI Driver installed, your clusters can dynamically provision Azure Load Balancers and Managed Disks without manual Azure portal intervention. Keep your Service Principal credentials secure by storing them in a Kubernetes Secret rather than embedding them in ConfigMaps.
+Configuring the out-of-tree Azure cloud provider in Rancher enables Kubernetes-native Azure resource management. With the Azure CCM and Disk CSI Driver installed, your clusters can dynamically provision Azure Load Balancers and Managed Disks without manual Azure portal intervention. Keep your Service Principal credentials secure by storing them in a Kubernetes Secret rather than embedding them in ConfigMaps.
