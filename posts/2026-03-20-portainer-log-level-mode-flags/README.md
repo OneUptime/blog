@@ -66,8 +66,8 @@ docker run -d \
   --log-mode=JSON
 
 # JSON log example:
-# {"level":"info","time":"2024-01-01T00:00:00Z","msg":"Starting Portainer","version":"2.x.x"}
-# {"level":"warn","time":"2024-01-01T00:00:01Z","msg":"No snapshot found","endpoint_id":1}
+# {"level":"info","version":"2.x.x","time":1711929600,"message":"starting Portainer"}
+# {"level":"warn","error":"context deadline exceeded","time":1711929601,"message":"unable to snapshot engine information"}
 ```
 
 ## Step 3: Send JSON Logs to Graylog
@@ -92,7 +92,6 @@ docker run -d \
 ## Step 4: Configure with Docker Compose
 
 ```yaml
-version: "3.8"
 services:
   portainer:
     image: portainer/portainer-ce:latest
@@ -159,11 +158,11 @@ docker logs portainer 2>&1 | jq 'select(.level=="error")'
 docker logs portainer 2>&1 | jq 'select(.level == "warn" or .level == "error")'
 
 # Extract specific fields
-docker logs portainer 2>&1 | jq '{time: .time, level: .level, msg: .msg}'
+docker logs portainer 2>&1 | jq '{time: .time, level: .level, message: .message}'
 
 # Count errors per hour
 docker logs portainer --since 1h 2>&1 | \
-  jq 'select(.level=="error") | .time[0:13]' | \
+  jq -r 'select(.level=="error") | (.time | todateiso8601)[0:13]' | \
   sort | uniq -c
 ```
 
@@ -171,7 +170,7 @@ docker logs portainer --since 1h 2>&1 | \
 
 ```yaml
 # docker-compose.yml with Loki logging
-version: "3.8"
+# Requires the Grafana Loki Docker logging driver plugin on the Docker host
 services:
   portainer:
     image: portainer/portainer-ce:latest
@@ -187,12 +186,15 @@ services:
         loki-url: "http://loki:3100/loki/api/v1/push"
         loki-labels: "service=portainer,environment=production"
         loki-batch-size: "400"
+
+volumes:
+  portainer_data:
 ```
 
 ## Step 8: Production Recommended Configuration
 
 ```bash
-# Production: INFO level, JSON format for aggregation
+# Production: WARN level, JSON format for aggregation
 docker run -d \
   -p 9000:9000 \
   -p 9443:9443 \
@@ -202,16 +204,16 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
-  --log-level=WARN \          # Only warnings and errors in production
-  --log-mode=JSON \            # Structured for log aggregation
-  --snapshot-interval=300      # Reduce snapshot frequency
+  --log-level=WARN \
+  --log-mode=JSON \
+  --snapshot-interval=5m
 ```
 
 ## Step 9: Rotate Log Files
 
 ```bash
 # Configure Docker log rotation for Portainer
-cat > /etc/docker/daemon.json << 'EOF'
+sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
 {
   "log-driver": "json-file",
   "log-opts": {
@@ -230,7 +232,10 @@ docker run -d \
   --log-opt max-file=5 \
   --name portainer \
   -p 9000:9000 \
-  [rest of options] \
+  -p 9443:9443 \
+  --restart=unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
   portainer/portainer-ce:latest \
   --log-level=INFO \
   --log-mode=JSON
@@ -240,16 +245,12 @@ docker run -d \
 
 ```bash
 # Check log size
-docker inspect portainer | jq '.[0].LogPath' | xargs ls -lh
+docker inspect portainer | jq -r '.[0].LogPath' | xargs ls -lh
 
 # If logs are growing fast, increase log level threshold
 # DEBUG produces many more logs than INFO
 
-# Example log volume by level:
-# DEBUG: ~1-5 MB/hour (heavy usage)
-# INFO: ~100-500 KB/hour (normal)
-# WARN: ~1-10 KB/hour
-# ERROR: ~0 KB/hour (hopefully)
+# In general, DEBUG produces the most logs, followed by INFO, WARN, and ERROR
 ```
 
 ## Conclusion
