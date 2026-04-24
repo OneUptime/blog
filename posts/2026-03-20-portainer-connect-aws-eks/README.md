@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, AWS, EKS, Kubernetes, Cloud
 
-Description: Connect Portainer to an Amazon EKS cluster for visual Kubernetes management using kubeconfig or the Portainer Agent.
+Description: Connect Portainer to an Amazon EKS cluster for visual Kubernetes management using the legacy kubeconfig import workflow or the Portainer Agent.
 
 ## Introduction
 
-Amazon EKS (Elastic Kubernetes Service) is AWS's managed Kubernetes service. Connecting it to Portainer provides a visual interface for managing EKS workloads without requiring team members to learn `kubectl` and AWS IAM. This guide covers both the kubeconfig and agent methods.
+Amazon EKS (Elastic Kubernetes Service) is AWS's managed Kubernetes service. Connecting it to Portainer provides a visual interface for managing EKS workloads without requiring team members to learn `kubectl` and AWS IAM. This guide covers the legacy kubeconfig import workflow and the manual agent method.
 
 ## Prerequisites
 
@@ -16,6 +16,8 @@ Amazon EKS (Elastic Kubernetes Service) is AWS's managed Kubernetes service. Con
 - An existing EKS cluster
 - `kubectl` installed
 - Portainer running and accessible
+- Portainer Business Edition if you plan to use kubeconfig import
+- An EKS cluster that can provision `LoadBalancer` services if you plan to use kubeconfig import
 
 ## Step 1: Get EKS Kubeconfig
 
@@ -66,7 +68,7 @@ EOF
 
 # Create a token for the service account
 kubectl --kubeconfig=eks-portainer.kubeconfig \
-  create token portainer-sa -n portainer --duration=8760h
+  create token portainer-sa -n portainer
 ```
 
 ## Step 3: Build Service Account Kubeconfig
@@ -86,9 +88,9 @@ CLUSTER_CA=$(aws eks describe-cluster \
   --query "cluster.certificateAuthority.data" \
   --output text)
 
-# Get service account token
+# Get a fresh service account token
 SA_TOKEN=$(kubectl --kubeconfig=eks-portainer.kubeconfig \
-  create token portainer-sa -n portainer --duration=8760h)
+  create token portainer-sa -n portainer)
 
 # Create kubeconfig for Portainer
 cat > portainer-eks.kubeconfig << EOF
@@ -117,62 +119,42 @@ kubectl --kubeconfig=portainer-eks.kubeconfig get namespaces
 
 ## Step 4: Import EKS into Portainer
 
+This import workflow is a legacy Portainer Business Edition feature. Portainer uses the kubeconfig to connect to the cluster, then deploy and configure the Portainer Agent on the cluster.
+
 ### Via UI
 
-1. Go to **Environments** → **Add environment** → **Kubernetes**
-2. Select **Import**
-3. Paste the content of `portainer-eks.kubeconfig`
+1. Go to **Environments** → **Add environment** → **Kubernetes** → **Start Wizard**
+2. Under **More options**, select **Import**
+3. Click **Select a file** and upload `portainer-eks.kubeconfig`
 4. Name: "EKS US-East Production"
 5. Click **Connect**
 
 ### Via API
 
-```bash
-TOKEN=$(curl -s -X POST \
-  https://portainer.example.com/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"adminpassword"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
-
-KUBECONFIG_B64=$(base64 -w 0 portainer-eks.kubeconfig)
-
-curl -X POST \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  https://portainer.example.com/api/endpoints/import \
-  -d "{
-    \"Name\": \"EKS US-East Production\",
-    \"KubeConfig\": \"${KUBECONFIG_B64}\"
-  }"
-```
+Portainer's current official API documentation does not document a supported API workflow for importing a Kubernetes environment from a kubeconfig file. For EKS kubeconfig import, use the UI flow above.
 
 ## Method 2: Deploy Portainer Agent in EKS
 
-For better Portainer integration:
+For better Portainer integration, Portainer's current documentation uses a generated YAML manifest for this workflow rather than an agent-only Helm chart:
 
 ```bash
-# Install via Helm
-helm repo add portainer https://portainer.github.io/k8s/
-helm repo update
-
-helm install portainer-agent \
-  --create-namespace \
-  --namespace portainer \
-  portainer/portainer-agent \
-  --set ingress.enabled=false \
-  --kubeconfig=eks-portainer.kubeconfig
-
-# Get the agent service address
-kubectl get svc -n portainer --kubeconfig=eks-portainer.kubeconfig
-
-# Note the ClusterIP or create a LoadBalancer service for external access
+# In Portainer: Environments -> Add environment -> Kubernetes -> Start Wizard
+# Under More options, select Agent and choose either:
+# - Kubernetes via load balancer
+# - Kubernetes via node port
+#
+# Copy the generated kubectl apply command from Portainer and run it
+# against your EKS cluster, then verify the agent resources:
+kubectl get svc,pods -n portainer --kubeconfig=eks-portainer.kubeconfig
 ```
+
+Use the load balancer address on port `9001` or a node address on port `30778` when completing the environment in Portainer. Do not include a protocol prefix.
 
 ## EKS-Specific Considerations
 
 ### IAM Authentication
 
-EKS uses AWS IAM for authentication, but Portainer needs a plain kubeconfig with a static token (service account token). The `aws-iam-authenticator` method in the standard kubeconfig won't work with Portainer - always use a Kubernetes service account token.
+EKS uses AWS IAM for the kubeconfig that `aws eks update-kubeconfig` generates, but Portainer import requires a self-contained kubeconfig with embedded credentials. The standard EKS kubeconfig uses an `exec` authentication plugin (`aws eks get-token`), so generate a service-account-based kubeconfig instead. On EKS, these service account tokens are time-bound, so create the kubeconfig right before importing it into Portainer.
 
 ### Private Cluster Access
 
@@ -180,10 +162,10 @@ If your EKS cluster is private (API endpoint not publicly accessible):
 
 ```bash
 # Option 1: Run Portainer in the same VPC
-# Option 2: Use Portainer Agent (inside cluster, no API access needed)
+# Option 2: Use Portainer Agent (inside cluster, no direct API server access needed from Portainer)
 # Option 3: Use AWS VPN or Direct Connect to access the private endpoint
 ```
 
 ## Conclusion
 
-Connecting EKS to Portainer provides a visual layer over Amazon's Kubernetes management. The key EKS-specific consideration is using service account tokens rather than IAM-based authentication. For private EKS clusters, the Portainer Agent method (installed inside the cluster) is the recommended approach since it doesn't require API server access from outside the VPC.
+Connecting EKS to Portainer provides a visual layer over Amazon's Kubernetes management. The key EKS-specific considerations are that kubeconfig import needs a self-contained kubeconfig with cluster-admin credentials and that EKS service account tokens are time-bound. For private EKS clusters, the Portainer Agent method is the recommended approach since Portainer doesn't need direct access to the Kubernetes API server from outside the VPC.
