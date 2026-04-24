@@ -29,7 +29,7 @@ Check which environment is failing:
 # For local Docker environment, check Docker socket
 
 ls -la /var/run/docker.sock
-docker ps  # If this works on the host, the socket is fine
+docker ps  # If this works on the host, Docker is responding; if Portainer still fails, verify the socket is mounted into Portainer
 
 # Check Portainer logs for environment-specific errors
 docker logs portainer 2>&1 | grep -i "environment\|endpoint\|error" | tail -30
@@ -59,7 +59,7 @@ nc -zv agent-host 9001
 
 # If connection fails, check the agent
 ssh agent-host "docker ps | grep portainer-agent"
-ssh agent-host "docker logs portainer-agent --tail 20"
+ssh agent-host "docker logs --tail 20 portainer-agent"
 
 # Restart the agent if needed
 ssh agent-host "docker restart portainer-agent"
@@ -78,9 +78,9 @@ If the environment configuration is stale or corrupt:
 ```bash
 # Portainer may be timing out connecting to a slow agent
 # Check if the agent is slow to respond
-time curl http://agent-host:9001/ping
+time curl -k https://agent-host:9001/ping
 
-# If response > 5 seconds, the agent host may be overloaded
+# If the response is slow or times out, the agent host or network path may be overloaded
 # Check agent host resources
 ssh agent-host "docker stats --no-stream"
 ssh agent-host "free -h"
@@ -92,14 +92,14 @@ ssh agent-host "free -h"
 # Check if the Kubernetes API is accessible
 kubectl cluster-info
 
-# Test the API endpoint Portainer is using
-curl -k https://kubernetes-api-host:6443/api/v1/nodes
+# Test cluster access with the current kubeconfig/context
+kubectl get nodes
 
-# If using a Portainer-managed Kubernetes environment
+# If using the Portainer Agent on Kubernetes
 # Check that the Portainer service account exists
-kubectl get serviceaccount portainer -n portainer
+kubectl get serviceaccount portainer-sa-clusteradmin -n portainer
 
-# If missing, recreate the Portainer Kubernetes deployment
+# If missing, reapply the Portainer Agent manifest
 ```
 
 ## Step 8: Check Environment Credentials
@@ -140,21 +140,22 @@ docker run --rm \
 
 ```bash
 # Use the Portainer API to trigger an environment snapshot
+# This works for environments that support direct snapshots (not Edge or Azure)
 # First, get an auth token
-TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
+TOKEN=$(curl -sk -X POST https://localhost:9443/api/auth \
   -H "Content-Type: application/json" \
   -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
 
 # List environments (endpoints)
-curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/endpoints
+curl -k -H "Authorization: Bearer $TOKEN" \
+  https://localhost:9443/api/endpoints
 
 # Trigger a snapshot for a specific endpoint (replace 1 with endpoint ID)
-curl -X POST \
+curl -k -X POST \
   -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/endpoints/1/docker/snapshot
+  https://localhost:9443/api/endpoints/1/snapshot
 ```
 
 ## Conclusion
 
-"Failed Loading Environment" is Portainer's way of saying it can reach its own database and authenticate your account, but cannot reach the underlying infrastructure. The fix depends on the environment type: restart Docker for local environments, check network connectivity for remote agents, and verify credentials and API accessibility for Kubernetes. The API snapshot trigger is a useful tool for forcing a refresh without restarting anything.
+"Failed Loading Environment" usually means Portainer can authenticate your account but cannot reach or refresh the selected environment cleanly. The fix depends on the environment type: restart Docker for local environments, check network connectivity for remote agents, and verify credentials and API accessibility for Kubernetes. The API snapshot trigger is a useful tool for forcing a refresh without restarting anything on environments that support direct snapshots.
