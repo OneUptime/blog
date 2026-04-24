@@ -38,20 +38,23 @@ terraform {
 ## Reviewing the Changelog Before Upgrading
 
 ```bash
-# Check what changed between versions using the GitHub releases page
-# or provider changelog
+# Check what changed between versions using the provider upgrade guide,
+# GitHub releases page, or provider changelog
+
+# AWS provider v5 upgrade guide:
+# https://registry.terraform.io/providers/hashicorp/aws/latest/docs/guides/version-5-upgrade
 
 # AWS provider changelog:
 # https://github.com/hashicorp/terraform-provider-aws/blob/main/CHANGELOG.md
 
 # Example: AWS provider 4.x -> 5.x breaking changes
-# - aws_s3_bucket split into separate resources
-# - aws_db_instance skip_final_snapshot default changed
-# - aws_security_group default egress rule removed
+# - deprecated inline aws_s3_bucket settings must move to aws_s3_bucket_* resources
+# - aws_db_instance.id no longer represents the DB identifier
+# - non-VPC aws_security_group resources are no longer supported
 
-# Search changelog for breaking changes
-curl -s https://raw.githubusercontent.com/hashicorp/terraform-provider-aws/main/CHANGELOG.md \
-  | grep -A 5 "BREAKING CHANGE\|v5.0"
+# Search the official upgrade guide for affected resources
+curl -s https://raw.githubusercontent.com/hashicorp/terraform-provider-aws/main/website/docs/guides/version-5-upgrade.html.markdown \
+  | grep -nE "Version 5\\.0\\.0|resource/aws_db_instance|resource/aws_security_group"
 ```
 
 ## Safe Upgrade Process
@@ -61,7 +64,7 @@ curl -s https://raw.githubusercontent.com/hashicorp/terraform-provider-aws/main/
 cat .terraform.lock.hcl
 
 # Step 2: Update version constraint to allow new version
-# versions.tf: version = "~> 5.0" -> "~> 5.31.0"
+# versions.tf: version = "~> 4.65" -> "~> 5.0"
 
 # Step 3: Update providers without applying
 tofu init -upgrade
@@ -79,17 +82,17 @@ ENVIRONMENT=dev tofu apply upgrade_plan.tfplan
 ## Handling AWS Provider 4.x to 5.x S3 Changes
 
 ```hcl
-# Old (provider 4.x): all S3 config in one resource
+# Older configuration style: inline S3 settings on aws_s3_bucket
 resource "aws_s3_bucket" "old" {
   bucket        = "my-bucket"
-  acl           = "private"              # removed in 5.x
+  acl           = "private"              # deprecated in v4, removed in v5
   force_destroy = true
 
-  versioning {                           # removed in 5.x
+  versioning {                           # deprecated in v4, removed in v5
     enabled = true
   }
 
-  server_side_encryption_configuration { # removed in 5.x
+  server_side_encryption_configuration { # deprecated in v4, removed in v5
     rule {
       apply_server_side_encryption_by_default {
         sse_algorithm = "AES256"
@@ -98,10 +101,23 @@ resource "aws_s3_bucket" "old" {
   }
 }
 
-# New (provider 5.x): separate resources for each setting
+# Refactored configuration: separate resources for each setting
 resource "aws_s3_bucket" "new" {
   bucket        = "my-bucket"
   force_destroy = true
+}
+
+resource "aws_s3_bucket_ownership_controls" "new" {
+  bucket = aws_s3_bucket.new.id
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+}
+
+resource "aws_s3_bucket_acl" "new" {
+  depends_on = [aws_s3_bucket_ownership_controls.new]
+  bucket     = aws_s3_bucket.new.id
+  acl        = "private"
 }
 
 resource "aws_s3_bucket_versioning" "new" {
@@ -122,10 +138,10 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "new" {
 ## Using moved Blocks for Renamed Resources
 
 ```hcl
-# If a provider renames a resource type, use moved to preserve state
+# If you rename a resource in configuration, use moved to preserve state
 moved {
-  from = aws_s3_bucket_acl.old_name
-  to   = aws_s3_bucket_ownership_controls.new_name
+  from = aws_s3_bucket.old_name
+  to   = aws_s3_bucket.new_name
 }
 ```
 

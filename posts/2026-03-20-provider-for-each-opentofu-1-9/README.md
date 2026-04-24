@@ -8,7 +8,7 @@ Description: Learn how to use provider for_each introduced in OpenTofu 1.9 to dy
 
 ## Introduction
 
-OpenTofu 1.9 introduced `for_each` on provider blocks, allowing you to create multiple provider instances dynamically. Previously, managing resources across many AWS regions or accounts required manually duplicating provider blocks. With provider `for_each`, you can drive provider instantiation from a variable or local.
+OpenTofu 1.9 introduced `for_each` on aliased provider blocks, allowing you to create multiple provider instances dynamically. Previously, managing resources across many AWS regions or accounts required manually duplicating provider blocks. With provider `for_each`, you can drive provider instantiation from a variable or local and reference each instance as `aws.<alias>[<key>]`.
 
 ## Basic Provider for_each
 
@@ -22,22 +22,31 @@ variable "regions" {
   default = ["us-east-1", "us-west-2", "eu-west-1"]
 }
 
+variable "disabled_regions" {
+  type    = set(string)
+  default = []
+}
+
+locals {
+  deploy_regions = setsubtract(var.regions, var.disabled_regions)
+}
+
 # providers.tf
 provider "aws" {
+  alias    = "by_region"
   for_each = var.regions
-  alias    = each.key
   region   = each.value
 }
 ```
 
 ## Using Dynamic Providers in Resources
 
-Reference a specific provider instance using `provider = aws[each.key]`.
+Reference a specific provider instance using `provider = aws.by_region[each.key]`. Use a separate collection for the resources so provider instances remain available long enough to destroy removed resources cleanly.
 
 ```hcl
 resource "aws_s3_bucket" "regional" {
-  for_each = var.regions
-  provider = aws[each.key]
+  for_each = local.deploy_regions
+  provider = aws.by_region[each.key]
 
   bucket = "my-app-${each.key}-backup"
 
@@ -77,9 +86,21 @@ variable "aws_accounts" {
   }
 }
 
+variable "disabled_accounts" {
+  type    = set(string)
+  default = []
+}
+
+locals {
+  deploy_accounts = {
+    for account, config in var.aws_accounts : account => config
+    if !contains(var.disabled_accounts, account)
+  }
+}
+
 provider "aws" {
+  alias    = "by_account"
   for_each = var.aws_accounts
-  alias    = each.key
   region   = each.value.region
 
   assume_role {
@@ -90,12 +111,12 @@ provider "aws" {
 
 ## Deploying Resources Across All Accounts
 
-Create an S3 bucket in every account from a single resource block.
+Create an S3 bucket in every active account from a single resource block.
 
 ```hcl
 resource "aws_s3_bucket" "audit_logs" {
-  for_each = var.aws_accounts
-  provider = aws[each.key]
+  for_each = local.deploy_accounts
+  provider = aws.by_account[each.key]
 
   bucket = "audit-logs-${each.value.account_id}"
 
@@ -113,15 +134,15 @@ Pass a provider instance to a module using provider aliases.
 
 ```hcl
 module "networking" {
-  for_each = var.regions
+  for_each = local.deploy_regions
   source   = "./modules/networking"
 
   providers = {
-    aws = aws[each.key]
+    aws = aws.by_region[each.key]
   }
 
   region      = each.key
-  vpc_cidr    = "10.${index(tolist(var.regions), each.key)}.0.0/16"
+  vpc_cidr    = "10.${index(sort(tolist(var.regions)), each.key)}.0.0/16"
 }
 ```
 
@@ -131,12 +152,12 @@ Use an expression to conditionally include regions.
 
 ```hcl
 locals {
-  active_regions = var.multi_region_enabled ? var.regions : toset(["us-east-1"])
+  selected_regions = var.multi_region_enabled ? var.regions : toset(["us-east-1"])
 }
 
 provider "aws" {
-  for_each = local.active_regions
-  alias    = each.key
+  alias    = "by_region"
+  for_each = local.selected_regions
   region   = each.value
 }
 ```
@@ -144,16 +165,16 @@ provider "aws" {
 ## Running Plans with Dynamic Providers
 
 ```bash
-# Init picks up all provider instances
+# Init installs the provider and prepares the working directory
 tofu init
 
-# Plan shows resources for all provider instances
+# Plan shows resources for all active provider instances
 tofu plan
 
-# Target a specific provider's resources
+# Target a specific resource instance in exceptional situations
 tofu plan -target='aws_s3_bucket.regional["us-east-1"]'
 ```
 
 ## Summary
 
-Provider `for_each` in OpenTofu 1.9 eliminates the need to manually duplicate provider blocks for multi-region and multi-account configurations. By driving providers from variables or locals, you can add or remove regions and accounts by changing a single variable, making your infrastructure code dramatically more maintainable for large-scale deployments.
+Provider `for_each` in OpenTofu 1.9 eliminates the need to manually duplicate provider blocks for multi-region and multi-account configurations. By driving aliased provider configurations from variables or locals, and by keeping provider iteration broader than the resources or modules it manages, you can add or remove regions and accounts without repeating configuration blocks.
