@@ -1,21 +1,21 @@
-# How to Use Portainer with Containerd (Without Docker)
+# How to Use Portainer with Containerd via Kubernetes (Without Docker)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Containerd, Kubernetes, CRI, Container
 
-Description: Deploy and configure Portainer to manage containers running directly on containerd without requiring the Docker daemon.
+Description: Deploy and configure Portainer to manage Kubernetes environments that use containerd without requiring the Docker daemon.
 
 ## Introduction
 
-Containerd is a high-performance container runtime originally extracted from Docker and now a graduated CNCF project. Many Kubernetes distributions (k3s, RKE2, EKS) use containerd directly. Portainer can manage containerd-based environments via its Kubernetes integration or via an agent.
+Containerd is a high-performance container runtime originally extracted from Docker and now a graduated CNCF project. Many Kubernetes distributions (K3s, RKE2, EKS) use containerd directly. Portainer does not support containerd directly, but it can manage containerd-based environments through its Kubernetes integration.
 
 ## Understanding the Architecture
 
-When Docker is absent, Portainer connects to containerd via:
-1. **Kubernetes API** (recommended) - Portainer manages pods/deployments via the K8s API
-2. **Portainer Agent** - Deploy the agent as a containerd task
-3. **nerdctl** compatibility - nerdctl provides Docker-compatible CLI for containerd
+When Docker is absent, Portainer does not connect to containerd directly. The supported approaches are:
+1. **Kubernetes environment** (recommended) - Portainer manages workloads through the Kubernetes API on a cluster that uses containerd
+2. **Portainer Agent or Edge Agent on Kubernetes** - Portainer deploys its agent components into the Kubernetes cluster
+3. **nerdctl / crictl for host-side debugging** - useful for troubleshooting containerd on the node, but not a Portainer integration layer
 
 ## Method 1: Managing Containerd via Kubernetes (Recommended)
 
@@ -23,120 +23,68 @@ Most containerd deployments run inside Kubernetes. Use Portainer's Kubernetes en
 
 ```bash
 # Install k3s (uses containerd by default)
-
 curl -sfL https://get.k3s.io | sh -
 
 # Verify containerd is the runtime
 sudo k3s crictl info | grep runtimeType
 
-# Get the kubeconfig
-sudo cat /etc/rancher/k3s/k3s.yaml
+# Generate a self-contained kubeconfig for Portainer BE import
+sudo k3s kubectl config view --flatten=true --minify=true > k3s-portainer-kubeconfig.yaml
 ```
 
 Add to Portainer:
 - Environment type: **Kubernetes**
-- URL: `https://your-k3s-host:6443`
-- Import the kubeconfig file
+- Use the **Agent** or **Edge Agent** workflow to connect the cluster
+- If you're using **Portainer Business Edition**, you can also import the generated kubeconfig file on clusters with a load balancer configured
+- If Portainer is running off-cluster, make sure the kubeconfig `server:` value points to the K3s server's reachable IP or DNS name
 
-## Method 2: Using the Portainer Agent with Containerd
+## Method 2: Using the Portainer Agent on Kubernetes
+
+Portainer does not support deploying its standalone agent directly as a raw containerd task. For containerd-based hosts, deploy the Portainer Agent or Edge Agent into the Kubernetes cluster from the **Kubernetes** environment wizard instead.
+
+## Setting Up Portainer on Kubernetes
 
 ```bash
-# Install nerdctl (Docker-compatible CLI for containerd)
-NERDCTL_VERSION=1.7.0
-wget https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/nerdctl-${NERDCTL_VERSION}-linux-amd64.tar.gz
-sudo tar xzf nerdctl-${NERDCTL_VERSION}-linux-amd64.tar.gz -C /usr/local/bin/
+# Check for a default StorageClass
+sudo k3s kubectl get sc
 
-# Install CNI plugins for networking
-sudo mkdir -p /opt/cni/bin
-wget https://github.com/containernetworking/plugins/releases/download/v1.4.0/cni-plugins-linux-amd64-v1.4.0.tgz
-sudo tar xzf cni-plugins-linux-amd64-v1.4.0.tgz -C /opt/cni/bin/
-
-# Verify nerdctl works with containerd
-sudo nerdctl ps
-sudo nerdctl info
+# If needed, mark a StorageClass as default
+sudo k3s kubectl patch storageclass <storage-class-name> -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
 ```
 
-## Setting Up containerd
+## Running Portainer Agent via Kubernetes
+
+Use the Kubernetes-based Agent or Edge Agent workflow instead of `nerdctl run` on a raw containerd host. After deploying the manifest from the Portainer wizard, verify that the agent is running:
 
 ```bash
-# Install containerd
-sudo apt-get update && sudo apt-get install -y containerd
-
-# Generate default configuration
-sudo mkdir -p /etc/containerd
-containerd config default | sudo tee /etc/containerd/config.toml
-
-# Enable and start containerd
-sudo systemctl enable --now containerd
-
-# Verify
-sudo ctr version
-```
-
-## Running Portainer Agent via nerdctl
-
-```bash
-# Create the Portainer agent network
-sudo nerdctl network create portainer_agent_network
-
-# Run Portainer agent
-sudo nerdctl run -d \
-  --name portainer_agent \
-  --network portainer_agent_network \
-  -p 9001:9001 \
-  --restart=always \
-  -v /run/containerd/containerd.sock:/var/run/docker.sock \
-  -v /var/lib/containerd:/var/lib/docker \
-  -v /:/host \
-  portainer/agent:latest
-
-# Check agent is running
-sudo nerdctl ps
+sudo k3s kubectl get pods --namespace=portainer
 ```
 
 ## Deploying Portainer Server
 
-If running Portainer server on the same host:
-
 ```bash
-# Create volume for Portainer data
-sudo nerdctl volume create portainer_data
+# Install Portainer CE on Kubernetes with Helm
+helm repo add portainer https://portainer.github.io/k8s/
+helm repo update
 
-# Run Portainer
-sudo nerdctl run -d \
-  --name portainer \
-  --restart=always \
-  -p 8000:8000 \
-  -p 9443:9443 \
-  -v /run/containerd/containerd.sock:/var/run/docker.sock \
-  -v portainer_data:/data \
-  portainer/portainer-ce:latest
+helm upgrade --install --create-namespace -n portainer portainer portainer/portainer \
+  --set tls.force=true \
+  --set image.tag=lts
 ```
+
+By default, this exposes Portainer over HTTPS on NodePort `30779`.
 
 ## Using crictl for Debugging
 
 crictl is a CLI tool for container runtimes implementing the CRI spec:
 
 ```bash
-# Install crictl
-VERSION="v1.29.0"
-wget https://github.com/kubernetes-sigs/cri-tools/releases/download/$VERSION/crictl-$VERSION-linux-amd64.tar.gz
-sudo tar zxvf crictl-$VERSION-linux-amd64.tar.gz -C /usr/local/bin/
-
-# Configure crictl to use containerd
-sudo tee /etc/crictl.yaml << 'EOF'
-runtime-endpoint: unix:///run/containerd/containerd.sock
-image-endpoint: unix:///run/containerd/containerd.sock
-timeout: 10
-debug: false
-EOF
-
 # List running pods/containers
-sudo crictl pods
-sudo crictl ps
+sudo k3s crictl pods
+sudo k3s crictl ps
 
 # Inspect a container
-sudo crictl inspect <container-id>
+sudo k3s crictl inspect <container-id>
 ```
 
 ## Containerd Namespaces
@@ -144,16 +92,16 @@ sudo crictl inspect <container-id>
 Containerd uses namespaces to isolate resources:
 
 ```bash
-# List all namespaces
-sudo ctr namespaces list
+# List all namespaces on a K3s node
+sudo k3s ctr namespaces list
 
 # Kubernetes uses the 'k8s.io' namespace
-sudo ctr -n k8s.io containers list
+sudo k3s ctr -n k8s.io containers list
 
-# Default namespace for nerdctl
-sudo ctr -n default containers list
+# If you use nerdctl for host-side debugging, target the same namespace
+sudo nerdctl --namespace k8s.io ps -a
 ```
 
 ## Conclusion
 
-Portainer integrates well with containerd-based environments, primarily through the Kubernetes API or the Portainer agent. For direct containerd management, nerdctl provides Docker API compatibility. This setup is particularly relevant for Kubernetes distributions like k3s, RKE2, and managed Kubernetes services that use containerd as their container runtime.
+Portainer works with containerd-based environments through Kubernetes integration, not as a direct containerd client. For host-side troubleshooting, `nerdctl` and `crictl` are useful companion tools, but Portainer itself should be deployed or connected through Kubernetes when Docker is not present.
