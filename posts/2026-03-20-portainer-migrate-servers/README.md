@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Migration, Backup, Infrastructure
 
-Description: Migrate Portainer configuration and data between servers with minimal downtime, including environment re-registration and agent reconnection procedures.
+Description: Migrate Portainer configuration and data between servers with minimal downtime, including environment connectivity checks and Edge Agent redeployment when needed.
 
 ## Introduction
 
-Migrating Portainer to a new server involves transferring the data volume (containing all configuration), updating environment URLs if the server address changes, and reconnecting agents to the new server. This guide provides a complete migration procedure.
+Migrating Portainer to a new server involves transferring the data volume (containing all configuration), verifying environment connectivity from the new server, and redeploying Edge Agents if the Portainer URL changes. This guide provides a complete migration procedure.
 
 ## Migration Checklist
 
@@ -30,7 +30,7 @@ docker stop portainer
 docker run --rm \
   -v portainer_data:/data \
   -v /tmp:/backup \
-  alpine tar czf /tmp/portainer-migration.tar.gz -C /data .
+  alpine tar czf /backup/portainer-migration.tar.gz -C /data .
 
 # Start Portainer again (minimize downtime)
 docker start portainer
@@ -43,20 +43,21 @@ ls -lh /tmp/portainer-migration.tar.gz
 
 ```bash
 # Export all stack compose files as a safety net
-TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
+PORTAINER_URL="https://localhost:9443"
+TOKEN=$(curl -k -s -X POST "$PORTAINER_URL/api/auth" \
   -H "Content-Type: application/json" \
   -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
 
 mkdir -p /tmp/portainer-stacks-export
 
-for STACK_ID in $(curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/stacks | jq -r '.[].Id'); do
+for STACK_ID in $(curl -k -s -H "Authorization: Bearer $TOKEN" \
+  "$PORTAINER_URL/api/stacks" | jq -r '.[].Id'); do
 
-  STACK_NAME=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "http://localhost:9000/api/stacks/$STACK_ID" | jq -r '.Name')
+  STACK_NAME=$(curl -k -s -H "Authorization: Bearer $TOKEN" \
+    "$PORTAINER_URL/api/stacks/$STACK_ID" | jq -r '.Name')
 
-  curl -s -H "Authorization: Bearer $TOKEN" \
-    "http://localhost:9000/api/stacks/$STACK_ID/file" | \
+  curl -k -s -H "Authorization: Bearer $TOKEN" \
+    "$PORTAINER_URL/api/stacks/$STACK_ID/file" | \
     jq -r '.StackFileContent' > "/tmp/portainer-stacks-export/$STACK_NAME.yml"
 
   echo "Exported: $STACK_NAME"
@@ -94,19 +95,20 @@ docker run --rm \
   alpine ls -la /data/
 
 # Start Portainer
+# Use the same Portainer image tag/version as the source server
 docker run -d \
-  -p 9000:9000 \
-  -p 9443:9443 \
   -p 8000:8000 \
+  -p 9443:9443 \
+  -p 9000:9000 \
   --name portainer \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 
 # Test access
 sleep 10
-curl http://localhost:9000/api/status | jq .
+curl -k https://localhost:9443/api/status | jq .
 ```
 
 ## Step 5: Update DNS or IP
@@ -126,50 +128,52 @@ dig portainer.yourdomain.com
 ## Step 6: Update Environment URLs
 
 After migration, environment URLs may need updating if:
-- The Portainer server has a new IP or hostname
-- Agent endpoints reference the old server address
+- The managed environment itself has a new IP or hostname
+- The new Portainer server must reach the environment through a different address or DNS name
 
 ```bash
 # Log in to the new Portainer instance
 # Go to: Environments → Edit each environment
-# Update the URL to the new server address if needed
+# Update the URL only if the environment itself moved or
+# the new Portainer server must reach it at a different address
 
 # Via API
-NEW_SERVER_IP="192.168.1.200"
-TOKEN=$(curl -s -X POST http://$NEW_SERVER_IP:9000/api/auth \
+NEW_SERVER_URL="https://192.168.1.200:9443"
+TOKEN=$(curl -k -s -X POST "$NEW_SERVER_URL/api/auth" \
   -H "Content-Type: application/json" \
   -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
 
 # List all endpoints
-curl -s -H "Authorization: Bearer $TOKEN" \
-  http://$NEW_SERVER_IP:9000/api/endpoints | \
+curl -k -s -H "Authorization: Bearer $TOKEN" \
+  "$NEW_SERVER_URL/api/endpoints" | \
   jq '.[] | {id: .Id, name: .Name, url: .URL}'
 ```
 
 ## Step 7: Reconnect Agents
 
-Remote agents store the Portainer server address. After migration, agents need to reconnect:
+Standard Portainer agents do not store the Portainer server URL. After restoring the same Portainer data, they usually come back online as long as the new server can still reach them on port 9001 and any `AGENT_SECRET` setting matches.
 
 ```bash
-# Option A: Agents auto-reconnect if they can reach the new server
-# (Works if the server kept the same IP/hostname)
-
-# Option B: Update agent configuration if server address changed
 # SSH to each agent host:
 ssh agent-host
 
-# Restart agent with new server URL
-docker stop portainer-agent && docker rm portainer-agent
+# Verify the agent container is still running
+docker ps --filter "name=portainer_agent" --filter "name=portainer-agent"
+
+# Redeploy only if you need to change the agent version/configuration
+docker stop portainer_agent && docker rm portainer_agent
+docker pull portainer/agent:lts
 docker run -d \
   -p 9001:9001 \
-  --name portainer-agent \
-  --restart=unless-stopped \
+  --name portainer_agent \
+  --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  portainer/agent:latest
+  portainer/agent:lts
+# Add -e AGENT_SECRET=yoursecret if your Portainer server uses AGENT_SECRET
 
-# In Portainer (new server), the environment will show online
-# once the agent starts and is reachable
+# In Portainer, the environment will show online
+# once the agent is reachable from the new server
 ```
 
 ## Step 8: Update Edge Agent Keys
@@ -177,11 +181,12 @@ docker run -d \
 Edge agents have the server URL encoded in their key. After migration:
 
 ```bash
-# In new Portainer server, edge environments will show as offline
+# If the Portainer URL changed, edge environments will show as offline
 # You need to:
-# 1. Go to Environments → select the edge environment
-# 2. Get the new deployment command (which has the new server URL)
-# 3. Redeploy the edge agent on each edge device
+# 1. Remove the existing Edge environment in Portainer
+# 2. Recreate it to generate a new deployment command
+# 3. Stop and remove the old portainer_edge_agent container on each edge device
+# 4. Run the new deployment command on each edge device
 
 # Alternatively, if the server URL hasn't changed, just wait
 # Edge agents will reconnect when they next check in
@@ -210,27 +215,27 @@ docker rm portainer
 
 ```bash
 # Comprehensive post-migration check
-NEW_SERVER="http://new-server-ip:9000"
+NEW_SERVER="https://new-server-ip:9443"
 
-TOKEN=$(curl -s -X POST "$NEW_SERVER/api/auth" \
+TOKEN=$(curl -k -s -X POST "$NEW_SERVER/api/auth" \
   -H "Content-Type: application/json" \
   -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
 
 echo "=== Post-Migration Check ==="
 
 echo "Version:"
-curl -s "$NEW_SERVER/api/status" | jq '.Version'
+curl -k -s "$NEW_SERVER/api/status" | jq '.Version'
 
 echo "Environments:"
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -k -s -H "Authorization: Bearer $TOKEN" \
   "$NEW_SERVER/api/endpoints" | jq '.[].Name'
 
 echo "Stacks:"
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -k -s -H "Authorization: Bearer $TOKEN" \
   "$NEW_SERVER/api/stacks" | jq '.[].Name'
 
 echo "Users:"
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -k -s -H "Authorization: Bearer $TOKEN" \
   "$NEW_SERVER/api/users" | jq '.[].Username'
 
 echo "Migration check complete"
@@ -238,4 +243,4 @@ echo "Migration check complete"
 
 ## Conclusion
 
-Portainer migration between servers follows a simple pattern: backup the data volume on the source, transfer to the destination, restore and start Portainer. The main post-migration tasks are updating environment URLs if the server address changed and reconnecting agents. Edge agents require special attention as the server URL is encoded in their deployment key and they may need to be redeployed with the new server address.
+Portainer migration between servers follows a simple pattern: backup the data volume on the source, transfer it to the destination, restore it, and start Portainer with the same image version/channel. The main post-migration tasks are verifying connectivity to existing environments from the new server and redeploying Edge Agents if the Portainer URL changed. Standard Portainer agents normally continue working as long as the new server can still reach them.
