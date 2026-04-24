@@ -8,7 +8,7 @@ Description: Deploy a 3-broker Kafka cluster with KRaft consensus via Portainer 
 
 ## Introduction
 
-A Kafka cluster with multiple brokers provides fault tolerance, parallel processing, and higher throughput than a single-broker setup. This guide deploys a 3-broker Kafka cluster using KRaft mode (no ZooKeeper), providing automatic leader election and partition replication.
+A Kafka cluster with multiple brokers provides fault tolerance, parallel processing, and higher throughput than a single-broker setup. This guide deploys a 3-node Kafka cluster using KRaft mode (no ZooKeeper), with each node acting as both controller and broker to provide automatic leader election and partition replication.
 
 ## Deploy the Kafka Cluster
 
@@ -36,8 +36,6 @@ services:
       - KAFKA_CFG_MIN_INSYNC_REPLICAS=2           # Require 2 in-sync replicas
     volumes:
       - kafka1_data:/bitnami/kafka
-    ports:
-      - "9092:9092"
     networks:
       - kafka-network
     restart: unless-stopped
@@ -60,8 +58,6 @@ services:
       - KAFKA_CFG_MIN_INSYNC_REPLICAS=2
     volumes:
       - kafka2_data:/bitnami/kafka
-    ports:
-      - "9093:9092"
     networks:
       - kafka-network
     restart: unless-stopped
@@ -84,8 +80,6 @@ services:
       - KAFKA_CFG_MIN_INSYNC_REPLICAS=2
     volumes:
       - kafka3_data:/bitnami/kafka
-    ports:
-      - "9094:9092"
     networks:
       - kafka-network
     restart: unless-stopped
@@ -145,7 +139,7 @@ docker exec kafka-1 kafka-topics.sh \
 docker stop kafka-3
 
 # Produce messages (should still work with 2/3 brokers)
-docker exec kafka-1 kafka-console-producer.sh \
+docker exec -it kafka-1 kafka-console-producer.sh \
   --bootstrap-server kafka-1:9092,kafka-2:9092 \
   --topic events
 
@@ -157,7 +151,7 @@ docker exec kafka-1 kafka-topics.sh \
 # Restart broker
 docker start kafka-3
 
-# Verify broker rejoins and partitions rebalance
+# Verify broker rejoins and replicas return to the ISR
 docker exec kafka-1 kafka-topics.sh \
   --bootstrap-server kafka-1:9092 \
   --describe --topic events
@@ -169,7 +163,7 @@ For higher throughput:
 
 ```yaml
 environment:
-  # Producer tuning
+  # Broker message size limit
   - KAFKA_CFG_MESSAGE_MAX_BYTES=10485760      # 10MB max message
   
   # Log retention
@@ -187,4 +181,4 @@ environment:
 
 ## Conclusion
 
-A 3-broker Kafka cluster via Portainer provides genuine high availability with automatic partition leader election and replica failover. The KRaft mode eliminates ZooKeeper complexity while maintaining the clustering guarantees. With min.insync.replicas set to 2, the cluster requires at least 2 of 3 brokers to acknowledge writes, ensuring durability even if one broker fails.
+A 3-node Kafka cluster via Portainer provides high availability for small self-hosted deployments with automatic partition leader election and replica failover. The KRaft mode eliminates ZooKeeper complexity while maintaining the clustering guarantees. With min.insync.replicas set to 2, producers using acks=all require at least 2 in-sync replicas for a write to succeed, ensuring durability even if one broker fails.
