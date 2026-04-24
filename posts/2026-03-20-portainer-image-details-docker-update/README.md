@@ -8,7 +8,7 @@ Description: Resolve 'Unable to Retrieve Image Details' errors in Portainer that
 
 ## Introduction
 
-After updating Docker Engine, Portainer may show "Unable to Retrieve Image Details" for some or all images. This is typically caused by Docker API version changes that affect how image metadata is formatted and returned. This guide explains the fixes.
+After updating Docker Engine, Portainer may show "Unable to Retrieve Image Details" for some or all images. This is often a compatibility issue between the Portainer version in use and the image metadata returned by the Docker Engine API. This guide explains the fixes.
 
 ## Step 1: Check the Specific Error in Logs
 
@@ -24,103 +24,107 @@ journalctl -u docker --since "30 minutes ago" | grep -i "image\|manifest\|digest
 ## Step 2: Test Image Inspection from CLI
 
 ```bash
-# If CLI works but Portainer doesn't, it's a Portainer version issue
+# If CLI works but Portainer doesn't, suspect a Portainer compatibility or snapshot issue
 docker image inspect nginx:latest
 
-# Test the Docker API directly
+# Discover the daemon API version, then query that version directly
+API_VERSION=$(curl --silent --unix-socket /var/run/docker.sock \
+  http://localhost/version | jq -r '.ApiVersion')
+
 curl --unix-socket /var/run/docker.sock \
-  http://localhost/v1.45/images/nginx:latest/json | jq '.'
+  "http://localhost/v${API_VERSION}/images/nginx:latest/json" | jq '.'
 
 # Check if the API returns valid data
-# If this fails, it's a Docker API issue
+# If this succeeds, Portainer is likely the layer that needs attention
 ```
 
 ## Step 3: Update Portainer to Latest Version
 
 ```bash
-# Check current Portainer version
-docker exec portainer /app/portainer --version
+# Check the image currently deployed for Portainer
+docker inspect portainer | jq -r '.[0].Config.Image'
 
-# Pull the latest version
-docker pull portainer/portainer-ce:latest
+# Pull the latest LTS release
+docker pull portainer/portainer-ce:lts
 
 # Update (data volume is preserved)
 docker stop portainer && docker rm portainer
 docker run -d \
-  -p 9000:9000 \
+  -p 8000:8000 \
   -p 9443:9443 \
-  --name portainer \
-  --restart=unless-stopped \
+  --name=portainer \
+  --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 4: Fix OCI Image Format Issues
 
-Docker Engine 29+ uses OCI image format by default. Some older images may not have complete OCI metadata:
+Registries can return either Docker or OCI media types for an image. Check what the registry is returning:
 
 ```bash
-# Check image manifest format
-docker manifest inspect nginx:latest 2>/dev/null | jq '.mediaType'
+# Check image manifest format in the registry
+docker buildx imagetools inspect nginx:latest --format '{{json .Manifest}}' | jq '.mediaType'
 
-# If image was built locally with old Docker:
+# If the image was built locally or imported a long time ago:
 # Rebuild the image
 docker build -t myimage:latest .
 
-# Or pull a fresh copy from Docker Hub
-docker pull myimage:latest --platform linux/amd64
+# Or, if the image comes from a registry, pull a fresh copy
+docker pull --platform linux/amd64 nginx:latest
 ```
 
 ## Step 5: Fix Multi-Platform Image Issues
 
-After Docker updates, multi-platform image handling changed:
+Multi-platform images can also trigger image-selection or inspect issues:
 
 ```bash
 # Check if the image is multi-platform
-docker manifest inspect nginx:latest 2>/dev/null | jq '.manifests[].platform'
+docker buildx imagetools inspect nginx:latest --format '{{json .Manifest}}' | jq '.manifests[].platform'
 
 # If Portainer shows image details error for multi-platform images:
 # Pull the specific platform variant
 docker pull --platform linux/amd64 nginx:latest
 
 # Verify
-docker inspect nginx:latest | jq '.[0].Architecture'
+docker image inspect nginx:latest | jq '.[0].Architecture'
 ```
 
 ## Step 6: Clear Local Image Cache
 
 ```bash
 # Remove and re-pull problematic images
-docker rmi nginx:latest
+docker image rm nginx:latest
 docker pull nginx:latest
 
 # Check if image details work after fresh pull
-docker inspect nginx:latest | jq '.[0] | {Id, RepoTags, Architecture, Os}'
+docker image inspect nginx:latest | jq '.[0] | {Id, RepoTags, Architecture, Os}'
 ```
 
 ## Step 7: Fix BuildKit Image Metadata Issues
 
-Docker Engine 29+ uses BuildKit by default, which creates images with different metadata structure:
+BuildKit has been the default Linux image builder since Docker Engine 23.0, and images built with it can omit legacy inspect fields that older tooling expected:
 
 ```bash
 # Check image history (should work regardless of BuildKit)
 docker history myimage:latest
 
-# If history shows missing layers from BuildKit build:
-# This is expected - BuildKit uses a different layer structure
+# Some legacy fields such as ContainerConfig, Parent, and DockerVersion
+# may be absent for BuildKit-built images on current Docker releases
 
 # For Portainer to display details correctly:
-# Ensure Portainer 2.20+ is installed (it supports BuildKit image format)
+# Use a Portainer release that supports your Docker Engine version
+# (Docker v29 support was added in Portainer 2.33.5 LTS / 2.36.0 STS and later)
 ```
 
 ## Step 8: Fix for Images Built with Docker Compose
 
 ```bash
-# Images built by docker compose may have incomplete metadata
+# Rebuild compose-managed images after updating Docker
 docker compose build
 
-# Add labels to improve metadata
+# Add labels if you want more metadata on the resulting image
 # In docker-compose.yml:
 services:
   myapp:
@@ -134,15 +138,14 @@ services:
 ## Step 9: Rebuild the Portainer Snapshot
 
 ```bash
-# Force Portainer to rebuild its image cache
-TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
+# Create an access token in Portainer, then use it here
+PORTAINER_URL=https://localhost:9443
+PORTAINER_API_KEY=your_access_token
 
 # Trigger a fresh snapshot
-curl -X POST \
-  -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/endpoints/1/docker/snapshot
+curl -k -X POST \
+  -H "X-API-Key: $PORTAINER_API_KEY" \
+  "$PORTAINER_URL/api/endpoints/1/snapshot"
 
 # Wait a moment, then refresh Portainer UI
 sleep 10
@@ -151,36 +154,38 @@ sleep 10
 ## Step 10: Fix Permission Issues for Image Inspection
 
 ```bash
-# Verify Portainer has access to the Docker images directory
-# This is accessed via the Docker socket - not directly
+# Verify Portainer can reach the Docker API through the socket
 
 # Test Docker socket works
+API_VERSION=$(curl --silent --unix-socket /var/run/docker.sock \
+  http://localhost/version | jq -r '.ApiVersion')
+
 curl --unix-socket /var/run/docker.sock \
-  http://localhost/v1.45/images/json | jq '.[0].RepoTags'
+  "http://localhost/v${API_VERSION}/images/json" | jq '.[0].RepoTags'
 
-# If socket permissions are wrong:
+# Check socket ownership and mode
 ls -la /var/run/docker.sock
-# Should be: srw-rw---- 1 root docker
+# Typically owned by root:docker with group read/write access
 
-# Ensure Portainer container user has socket access
+# Ensure the Docker socket is mounted into the Portainer container
 docker inspect portainer | jq '.[0].HostConfig.Binds'
-# Should show: /var/run/docker.sock:/var/run/docker.sock
+# Should include: /var/run/docker.sock:/var/run/docker.sock
 ```
 
 ## Step 11: Check for Corrupted Image Layers
 
 ```bash
-# Verify image integrity
-docker save nginx:latest | docker load
+# Export and re-import the image to rule out local image-store issues
+docker image save nginx:latest | docker image load
 
-# Or use docker scan to check for issues
+# Or use Docker Scout to inspect the image
 docker scout cves nginx:latest 2>/dev/null | head -10
 
 # Remove and re-pull corrupted images
-docker rmi --force nginx:latest
+docker image rm --force nginx:latest
 docker pull nginx:latest
 ```
 
 ## Conclusion
 
-"Unable to Retrieve Image Details" after a Docker update is most commonly resolved by updating Portainer to the latest version that supports the new Docker API format. Secondary causes are multi-platform image handling changes (fixed by pulling with explicit `--platform`), OCI format differences (fixed by rebuilding or re-pulling images), and BuildKit metadata changes. Always update Portainer whenever you update Docker Engine to maintain compatibility.
+"Unable to Retrieve Image Details" after a Docker update is most commonly resolved by updating Portainer to a release that supports your Docker Engine version. Newer Docker releases can change the image-inspect response returned by the daemon, and older Portainer releases may not handle that correctly. Secondary causes include multi-platform image selection, stale local image data, and older images that should be rebuilt or re-pulled.
