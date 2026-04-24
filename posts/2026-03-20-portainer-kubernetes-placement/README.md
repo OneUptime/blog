@@ -8,7 +8,7 @@ Description: Learn how to configure Kubernetes node affinity, pod affinity, tain
 
 ## Introduction
 
-Kubernetes offers powerful mechanisms for controlling where pods are scheduled: node selectors, node affinity, pod affinity/anti-affinity, and taints/tolerations. Portainer exposes node selector and basic affinity settings through its application form. This guide covers configuring placement for Kubernetes workloads.
+Kubernetes offers powerful mechanisms for controlling where pods are scheduled: node selectors, node affinity, pod affinity/anti-affinity, and taints/tolerations. Portainer exposes node-label placement rules through its application form. This guide covers configuring placement for Kubernetes workloads.
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ Before using placement rules, ensure nodes have appropriate labels:
 
 kubectl label node worker-01 environment=production
 kubectl label node worker-01 disktype=ssd
-kubectl label node worker-01 zone=us-east-1a
+kubectl label node worker-01 topology.kubernetes.io/zone=us-east-1a --overwrite
 kubectl label node gpu-node-01 accelerator=nvidia
 
 # Verify
@@ -38,12 +38,13 @@ The simplest way to constrain pods to specific nodes:
 
 ### Via Portainer Form
 
-In the application form under **Placement**:
+In the application form under **Placement preferences and constraints**:
 
 ```text
-Node selector:
+Placement rules:
   Key:   disktype    Value: ssd
   Key:   environment Value: production
+  Policy: Mandatory
 ```
 
 ### Via YAML
@@ -83,7 +84,7 @@ spec:
         - weight: 100    # Higher weight = stronger preference
           preference:
             matchExpressions:
-              - key: zone
+              - key: topology.kubernetes.io/zone
                 operator: In
                 values:
                   - us-east-1a
@@ -151,7 +152,7 @@ spec:
 
 ## Step 6: Topology Spread Constraints (Modern Approach)
 
-Kubernetes 1.19+ provides TopologySpreadConstraints for even distribution:
+In Kubernetes 1.19 and later, topology spread constraints are generally available for even distribution:
 
 ```yaml
 spec:
@@ -181,7 +182,7 @@ Taints repel pods; tolerations allow pods to schedule despite taints:
 # Taint a node to dedicate it to GPU workloads
 kubectl taint nodes gpu-node-01 dedicated=gpu:NoSchedule
 
-# Only pods with this toleration can schedule on gpu-node-01
+# Pods need a matching toleration to schedule on gpu-node-01
 ```
 
 ```yaml
@@ -197,15 +198,16 @@ Combined with node affinity:
 
 ```yaml
 spec:
-  # Must run on GPU node
-  nodeAffinity:
-    requiredDuringSchedulingIgnoredDuringExecution:
-      nodeSelectorTerms:
-        - matchExpressions:
-            - key: accelerator
-              operator: In
-              values:
-                - nvidia
+  affinity:
+    # Must run on GPU node
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: accelerator
+                operator: In
+                values:
+                  - nvidia
 
   # Tolerate the GPU taint
   tolerations:
@@ -217,11 +219,11 @@ spec:
 
 ## Step 8: Portainer Placement Configuration
 
-In Portainer's application form:
+In Portainer:
 
-1. Scroll to **Placement** or **Scheduling**
-2. Add **Node selectors** for simple label matching
-3. For advanced affinity rules, switch to YAML mode and add the affinity spec
+1. In the application form, scroll to **Placement preferences and constraints**
+2. Add rules based on node labels and choose **Mandatory** or **Preferred**
+3. For advanced affinity, anti-affinity, or topology spread rules, deploy with **Create from code** or edit the application's **YAML** tab in Portainer Business Edition
 
 ## Verify Placement
 
@@ -238,4 +240,4 @@ kubectl describe pod <pod-name> -n production | grep -A20 "Events:"
 
 ## Conclusion
 
-Kubernetes placement controls - from simple node selectors to complex affinity rules - give you precise control over workload distribution. Use node selectors for straightforward requirements, node affinity for complex conditions, pod anti-affinity to spread replicas across failure domains, and topology spread constraints for even distribution. Portainer exposes basic placement through the form UI; for advanced affinity rules, use the YAML editor for full control.
+Kubernetes placement controls - from simple node selectors to complex affinity rules - give you precise control over workload distribution. Use node selectors for straightforward requirements, node affinity for complex conditions, pod anti-affinity to spread replicas across failure domains, and topology spread constraints for even distribution. Portainer exposes basic node-label placement through the form UI; for advanced affinity rules, use a manifest or the YAML editor for full control.
