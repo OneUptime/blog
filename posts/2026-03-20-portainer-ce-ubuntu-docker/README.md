@@ -52,13 +52,14 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
-## Step 5: Configure UFW Firewall
+## Step 5: Configure UFW Firewall (If Enabled)
 
 ```bash
 sudo ufw allow 9443/tcp comment 'Portainer HTTPS'
+# Only needed if you plan to use Edge Agents
 sudo ufw allow 8000/tcp comment 'Portainer Edge Agent'
 sudo ufw reload
 sudo ufw status
@@ -78,7 +79,7 @@ Accept the self-signed TLS certificate warning and set up your admin account. Th
 
 ```bash
 docker ps | grep portainer
-curl -sk https://localhost:9443/api/status
+curl -sk https://localhost:9443/api/system/status
 ```
 
 ## Troubleshooting
@@ -86,7 +87,8 @@ curl -sk https://localhost:9443/api/status
 **Cannot connect to Docker socket:**
 ```bash
 ls -la /var/run/docker.sock
-sudo chmod 666 /var/run/docker.sock
+sudo usermod -aG docker $USER
+newgrp docker
 ```
 
 **Container not reachable from browser:** Check the firewall and port binding:
@@ -104,7 +106,7 @@ docker restart portainer
 ```bash
 docker stop portainer
 docker rm portainer
-docker pull portainer/portainer-ce:latest
+docker pull portainer/portainer-ce:lts
 docker run -d \
   -p 8000:8000 \
   -p 9443:9443 \
@@ -112,7 +114,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 The `portainer_data` volume preserves your settings across updates.
