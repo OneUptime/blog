@@ -61,7 +61,7 @@ echo "--- Connectivity ---"
 
 IPV6_TARGETS=("2001:4860:4860::8888" "2001:4860:4860::8844")
 for target in "${IPV6_TARGETS[@]}"; do
-    if ping6 -c 2 -W 3 "$target" &>/dev/null; then
+    if ping -6 -c 2 -W 3 "$target" &>/dev/null; then
         ok "IPv6 reachability to $target"
     else
         fail "Cannot reach $target via IPv6"
@@ -85,13 +85,19 @@ done
 echo ""
 echo "--- Local Service Bindings ---"
 
-for port in 80 443 22 25 53; do
-    if ss -tlnp | grep -q "\\[::.*\\]:${port}\\|\\*:${port}"; then
-        ok "Port $port listening on IPv6"
+for port in 80 443 22 25; do
+    if ss -H -ltn6 "sport = :${port}" | grep -q .; then
+        ok "TCP port $port listening on IPv6"
     else
-        warn "Port $port: no IPv6 listener found"
+        warn "TCP port $port: no IPv6 listener found"
     fi
 done
+
+if ss -H -ltn6 'sport = :53' | grep -q . || ss -H -lun6 'sport = :53' | grep -q .; then
+    ok "Port 53 listening on IPv6"
+else
+    warn "Port 53: no IPv6 listener found"
+fi
 
 # Section 5: IPv6 traffic in logs
 echo ""
@@ -142,19 +148,47 @@ fi
 #!/usr/bin/env python3
 # post_migration_functional_test.py
 
-import pytest
+import http.client
 import socket
-import urllib.request
+import ssl
 import dns.resolver
 
 DOMAIN = "example.com"
 
 def resolve_aaaa(hostname: str) -> str | None:
     try:
-        answers = dns.resolver.resolve(hostname, 'AAAA')
-        return str(answers[0])
-    except:
+        answers = dns.resolver.resolve(hostname, "AAAA")
+        return answers[0].to_text()
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.resolver.LifetimeTimeout):
         return None
+
+def resolve_a(hostname: str) -> str | None:
+    try:
+        answers = dns.resolver.resolve(hostname, "A")
+        return answers[0].to_text()
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.resolver.LifetimeTimeout):
+        return None
+
+def https_get(hostname: str, ip_address: str, family: int, path: str = "/") -> tuple[int, str]:
+    context = ssl.create_default_context()
+    address = (ip_address, 443, 0, 0) if family == socket.AF_INET6 else (ip_address, 443)
+
+    with socket.socket(family, socket.SOCK_STREAM) as sock:
+        sock.settimeout(15)
+        sock.connect(address)
+
+        with context.wrap_socket(sock, server_hostname=hostname) as tls_sock:
+            request = (
+                f"GET {path} HTTP/1.1\r\n"
+                f"Host: {hostname}\r\n"
+                "Connection: close\r\n\r\n"
+            )
+            tls_sock.sendall(request.encode("ascii"))
+
+            response = http.client.HTTPResponse(tls_sock)
+            response.begin()
+            body = response.read().decode("utf-8", errors="replace")
+            return response.status, body
 
 class TestDNS:
     def test_www_has_aaaa(self):
@@ -167,10 +201,8 @@ class TestConnectivity:
     def test_http_over_ipv6(self):
         ipv6 = resolve_aaaa(f"www.{DOMAIN}")
         assert ipv6, "No AAAA record"
-        url = f"https://www.{DOMAIN}/"
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            assert resp.status == 200
+        status, _ = https_get(f"www.{DOMAIN}", ipv6, socket.AF_INET6)
+        assert status == 200
 
     def test_ipv6_socket_connects(self):
         ipv6 = resolve_aaaa(f"api.{DOMAIN}")
@@ -178,26 +210,23 @@ class TestConnectivity:
         sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
         sock.settimeout(10)
         try:
-            sock.connect((ipv6, 443))
+            sock.connect((ipv6, 443, 0, 0))
         finally:
             sock.close()
 
 class TestApplicationBehavior:
     def test_api_returns_ipv6_client_ip_in_response(self):
         ipv6 = resolve_aaaa(f"api.{DOMAIN}")
-        url = f"http://[{ipv6}]/api/v1/client-ip"
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            body = resp.read().decode()
-            # Response should contain the IPv6 client address
-            assert ":" in body, f"Response does not contain IPv6 address: {body}"
+        assert ipv6, "No AAAA record"
+        _, body = https_get(f"api.{DOMAIN}", ipv6, socket.AF_INET6, "/api/v1/client-ip")
+        assert ":" in body, f"Response does not contain IPv6 address: {body}"
 
     def test_ipv4_still_works(self):
         """Verify IPv4 was not broken by migration."""
-        url = f"https://www.{DOMAIN}/"
-        req = urllib.request.Request(url)
-        req.add_header("Host", f"www.{DOMAIN}")
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            assert resp.status == 200
+        ipv4 = resolve_a(f"www.{DOMAIN}")
+        assert ipv4, "No A record"
+        status, _ = https_get(f"www.{DOMAIN}", ipv4, socket.AF_INET)
+        assert status == 200
 ```
 
 ## Post-Migration Report Template
