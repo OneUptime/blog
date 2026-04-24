@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Nextcloud, Cloud Storage, Self-Hosted, Privacy
 
-Description: Deploy Nextcloud via Portainer with PostgreSQL, Redis, and an Nginx frontend for a complete self-hosted Google Drive and Docs alternative.
+Description: Deploy Nextcloud via Portainer with PostgreSQL and Redis for a complete self-hosted cloud storage and collaboration platform.
 
 ## Introduction
 
@@ -17,7 +17,7 @@ version: "3.8"
 
 services:
   nextcloud:
-    image: nextcloud:29-apache
+    image: nextcloud:33-apache
     container_name: nextcloud
     environment:
       POSTGRES_HOST: nextcloud-db
@@ -28,6 +28,7 @@ services:
       NEXTCLOUD_ADMIN_PASSWORD: admin_password
       NEXTCLOUD_TRUSTED_DOMAINS: cloud.example.com 192.168.1.100
       REDIS_HOST: nextcloud-redis
+      REDIS_HOST_PASSWORD: redis_password
       NEXTCLOUD_UPDATE: 1
     volumes:
       # Nextcloud application files
@@ -67,7 +68,7 @@ services:
 
   # Nextcloud cron job for background tasks
   nextcloud-cron:
-    image: nextcloud:29-apache
+    image: nextcloud:33-apache
     container_name: nextcloud-cron
     volumes:
       - nextcloud_app:/var/www/html
@@ -111,13 +112,8 @@ docker exec -u www-data nextcloud php occ db:add-missing-indices
 # Scan user files
 docker exec -u www-data nextcloud php occ files:scan --all
 
-# Enable Redis for file locking
-docker exec -u www-data nextcloud php occ config:system:set \
-  redis host --value="nextcloud-redis"
-docker exec -u www-data nextcloud php occ config:system:set \
-  filelocking.enabled --value=true --type=boolean
-docker exec -u www-data nextcloud php occ config:system:set \
-  memcache.locking --value='\OC\Memcache\Redis'
+# View the merged runtime config
+docker exec -u www-data nextcloud php occ config:list system
 ```
 
 ## Essential Apps to Install
@@ -141,10 +137,12 @@ services:
       - "traefik.http.routers.nextcloud.rule=Host(`cloud.example.com`)"
       - "traefik.http.routers.nextcloud.entrypoints=websecure"
       - "traefik.http.routers.nextcloud.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.nextcloud.middlewares=nextcloud-redirect@docker"
       - "traefik.http.middlewares.nextcloud-redirect.redirectregex.regex=https://(.*)/.well-known/(card|cal)dav"
       - "traefik.http.middlewares.nextcloud-redirect.redirectregex.replacement=https://$${1}/remote.php/dav/"
+      - "traefik.http.middlewares.nextcloud-redirect.redirectregex.permanent=true"
 ```
 
 ## Conclusion
 
-Nextcloud deployed via Portainer with PostgreSQL and Redis provides a complete Google Workspace alternative that you control. The background cron container ensures Nextcloud's housekeeping tasks run reliably. With the OnlyOffice or Collabora Office app, you get real-time collaborative document editing - all self-hosted.
+Nextcloud deployed via Portainer with PostgreSQL and Redis provides a self-hosted collaboration platform that you control. The background cron container ensures Nextcloud's housekeeping tasks run reliably. With the OnlyOffice or Collabora Office app plus a compatible document server, you get real-time collaborative document editing - all self-hosted.
