@@ -25,7 +25,7 @@ Prometheus passes the target device IP as a parameter to the SNMP exporter, whic
 ```bash
 # Download snmp_exporter
 
-SNMP_VERSION="0.24.1"
+SNMP_VERSION="0.30.1"
 wget https://github.com/prometheus/snmp_exporter/releases/download/v${SNMP_VERSION}/snmp_exporter-${SNMP_VERSION}.linux-amd64.tar.gz
 tar xzf snmp_exporter-*.tar.gz
 sudo cp snmp_exporter-*/snmp_exporter /usr/local/bin/
@@ -33,52 +33,70 @@ sudo cp snmp_exporter-*/snmp_exporter /usr/local/bin/
 
 ## snmp.yml Configuration
 
-The `snmp.yml` file defines SNMP modules (which OIDs to collect) and authentication. You can generate it from MIBs using the snmp_exporter generator, or use the default bundled config.
+The exporter reads a generated `snmp.yml` file that defines SNMP modules and authentication. If you need custom modules, edit `generator.yml` and generate `snmp.yml`; otherwise you can use the default bundled config.
 
 ```yaml
 # /etc/snmp_exporter/snmp.yml
 
-# Default module using SNMPv2c public community
-if_mib:
-  walk:
-    - interfaces
-    - ifXTable
-  metrics:
-    - name: ifOperStatus
-      oid: 1.3.6.1.2.1.2.2.1.8
-      type: gauge
-      help: Operational status of interface
-      indexes:
-        - labelname: ifIndex
-          type: gauge
-      lookups:
-        - labels:
-            - ifIndex
-          labelname: ifDescr
-          oid: 1.3.6.1.2.1.2.2.1.2
-          type: DisplayString
-    - name: ifHCInOctets
-      oid: 1.3.6.1.2.1.31.1.1.1.6
-      type: counter
-      help: Bytes received on interface
-      indexes:
-        - labelname: ifIndex
-          type: gauge
-
-  auth:
+auths:
+  public_v2:
     community: public
+    version: 2
 
-# SNMPv3 module
-snmpv3_module:
-  walk:
-    - interfaces
-  auth:
+  prometheus_v3:
+    version: 3
     security_level: authPriv
     username: prometheus
     password: auth_password_here
     auth_protocol: SHA
     priv_protocol: AES
     priv_password: priv_password_here
+
+modules:
+  if_mib:
+    walk:
+      - 1.3.6.1.2.1.2
+      - 1.3.6.1.2.1.31.1.1
+    metrics:
+      - name: ifOperStatus
+        oid: 1.3.6.1.2.1.2.2.1.8
+        type: gauge
+        help: The current operational state of the interface
+        indexes:
+          - labelname: ifIndex
+            type: gauge
+        lookups:
+          - labels:
+              - ifIndex
+            labelname: ifDescr
+            oid: 1.3.6.1.2.1.2.2.1.2
+            type: DisplayString
+      - name: ifHCInOctets
+        oid: 1.3.6.1.2.1.31.1.1.1.6
+        type: counter
+        help: Bytes received on interface
+        indexes:
+          - labelname: ifIndex
+            type: gauge
+        lookups:
+          - labels:
+              - ifIndex
+            labelname: ifDescr
+            oid: 1.3.6.1.2.1.2.2.1.2
+            type: DisplayString
+      - name: ifHCOutOctets
+        oid: 1.3.6.1.2.1.31.1.1.1.10
+        type: counter
+        help: Bytes transmitted on interface
+        indexes:
+          - labelname: ifIndex
+            type: gauge
+        lookups:
+          - labels:
+              - ifIndex
+            labelname: ifDescr
+            oid: 1.3.6.1.2.1.2.2.1.2
+            type: DisplayString
 ```
 
 ## Systemd Service
@@ -87,7 +105,7 @@ snmpv3_module:
 # /etc/systemd/system/snmp_exporter.service
 [Unit]
 Description=Prometheus SNMP Exporter
-After=network.target
+After=network-online.target
 
 [Service]
 Type=simple
@@ -124,6 +142,7 @@ scrape_configs:
           - 10.0.0.3   # UPS
     metrics_path: /snmp
     params:
+      auth: [public_v2]
       module: [if_mib]   # Module from snmp.yml
     relabel_configs:
       # Pass target IP as SNMP target parameter
@@ -136,14 +155,15 @@ scrape_configs:
       - source_labels: [__param_target]
         target_label: instance
 
-  # Per-device module selection
+  # Per-device auth selection
   - job_name: 'snmp_v3'
     static_configs:
       - targets:
           - 10.0.0.10  # managed switch with SNMPv3
     metrics_path: /snmp
     params:
-      module: [snmpv3_module]
+      auth: [prometheus_v3]
+      module: [if_mib]
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -157,7 +177,7 @@ scrape_configs:
 
 ```bash
 # Manual test - scrape metrics for a specific device
-curl "http://10.0.0.5:9116/snmp?target=10.0.0.1&module=if_mib"
+curl "http://10.0.0.5:9116/snmp?target=10.0.0.1&auth=public_v2&module=if_mib"
 
 # Should return Prometheus-format metrics like:
 # ifOperStatus{ifDescr="GigabitEthernet0/0",ifIndex="1"} 1
@@ -170,7 +190,7 @@ curl http://10.0.0.5:9116/metrics | grep snmp_
 ## Key PromQL Queries
 
 ```promql
-# Interface operational status (1=up, 2=down)
+# Interface operational status (common values: 1=up, 2=down, 7=lowerLayerDown)
 ifOperStatus{job="snmp"}
 
 # Interface receive throughput (bits/sec)
@@ -201,13 +221,13 @@ groups:
         annotations:
           summary: "Interface {{ $labels.ifDescr }} on {{ $labels.instance }} is down"
 
-      - alert: HighInterfaceUtilization
+      - alert: HighInboundTraffic
         expr: rate(ifHCInOctets{job="snmp"}[5m]) * 8 / 1000000 > 800
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High traffic on {{ $labels.ifDescr }}: {{ $value | humanize }}Mbps"
+          summary: "High inbound traffic on {{ $labels.ifDescr }}: {{ $value | humanize }}Mbps"
 ```
 
 ## Firewall Rules
@@ -216,13 +236,12 @@ groups:
 # Allow Prometheus to reach snmp_exporter
 sudo iptables -A INPUT -s 10.0.0.100 -p tcp --dport 9116 -j ACCEPT
 
-# Allow snmp_exporter to reach network devices via SNMP
+# Allow snmp_exporter to poll network devices via SNMP
 sudo iptables -A OUTPUT -p udp --dport 161 -j ACCEPT
 
-# If devices send SNMP traps back (optional)
-sudo iptables -A INPUT -p udp --dport 162 -j ACCEPT
+# SNMP traps use UDP/162, but snmp_exporter polls devices and does not receive traps
 ```
 
 ## Conclusion
 
-The Prometheus SNMP exporter runs centrally and scrapes multiple IPv4 devices by IP at Prometheus scrape time. The key is the `relabel_configs` in `prometheus.yml` that rewrites `__address__` to point at the exporter while passing the original device IP as `__param_target`. Use `if_mib` module for standard interface metrics (ifOperStatus, ifHCInOctets, ifHCOutOctets), and build Grafana panels from `rate(ifHCInOctets[5m]) * 8` for bandwidth visualization. For SNMPv3, configure `auth_protocol: SHA` and `priv_protocol: AES` in the module auth section.
+The Prometheus SNMP exporter runs centrally and scrapes multiple IPv4 devices by IP at Prometheus scrape time. The key is the `relabel_configs` in `prometheus.yml` that rewrites `__address__` to point at the exporter while passing the original device IP as `__param_target`. Use `if_mib` module for standard interface metrics (ifOperStatus, ifHCInOctets, ifHCOutOctets), and build Grafana panels from `rate(ifHCInOctets[5m]) * 8` for bandwidth visualization. For SNMPv3, define `auth_protocol: SHA` and `priv_protocol: AES` in the `auths` section and select that auth with `params.auth`.
