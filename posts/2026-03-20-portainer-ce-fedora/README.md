@@ -8,11 +8,11 @@ Description: A guide to installing Portainer Community Edition on Fedora Linux w
 
 ## Overview
 
-Fedora uses DNF and ships with Podman as the default container runtime. Installing Docker CE on Fedora requires some additional steps to avoid conflicts with Podman. This guide covers installing Docker and Portainer CE on Fedora 38, 39, and 40.
+Fedora uses DNF and includes Podman tooling by default. Installing Docker CE on Fedora may require removing `podman-docker` to avoid Docker CLI conflicts. This guide covers installing Docker and Portainer CE on Fedora 42, 43, and 44.
 
 ## Prerequisites
 
-- Fedora 38, 39, or 40
+- Fedora 42, 43, or 44
 - Minimum: 2GB RAM, 20GB disk
 - Sudo access
 
@@ -22,17 +22,15 @@ Fedora uses DNF and ships with Podman as the default container runtime. Installi
 sudo dnf update -y
 ```
 
-## Step 2: Remove Podman Conflicts (Optional)
+## Step 2: Remove podman-docker Conflicts (Optional)
 
-Fedora ships with Podman which can conflict with Docker's socket:
+`podman-docker` can conflict with Docker CE because it provides a `docker` command backed by Podman:
 
 ```bash
-# Option 1: Remove podman (if you don't need it)
+# Remove podman-docker if installed
+sudo dnf remove -y podman-docker
 
-sudo dnf remove -y podman podman-docker
-
-# Option 2: Keep podman and install Docker alongside
-# (Docker will use a different socket path)
+# Podman itself can remain installed alongside Docker
 ```
 
 ## Step 3: Install Docker CE
@@ -42,7 +40,7 @@ sudo dnf remove -y podman podman-docker
 sudo dnf install -y dnf-plugins-core
 
 # Add Docker repository
-sudo dnf config-manager --add-repo \
+sudo dnf config-manager addrepo --from-repofile \
   https://download.docker.com/linux/fedora/docker-ce.repo
 
 # Install Docker
@@ -76,8 +74,7 @@ sudo firewall-cmd --reload
 # Check SELinux status
 getenforce
 
-# If Enforcing, use :z volume label
-# This will be added to the docker run command below
+# If SELinux is enabled, Portainer requires --privileged on Docker
 ```
 
 ## Step 6: Deploy Portainer CE
@@ -86,13 +83,14 @@ getenforce
 # Create data volume
 docker volume create portainer_data
 
-# Deploy Portainer CE with SELinux label
+# Deploy Portainer CE
 docker run -d \
+  --privileged \
   -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
   --restart=always \
-  -v /var/run/docker.sock:/var/run/docker.sock:z \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest
 ```
@@ -122,15 +120,14 @@ mount | grep cgroup
 docker --version
 ```
 
-### Podman Socket Conflict
+### podman-docker CLI Conflict
 
 ```bash
-# If podman-docker package is installed, it creates a symlink
-# that conflicts with Docker's socket
-ls -la /var/run/docker.sock
+# Check whether podman-docker is installed
+rpm -q podman-docker
 
 # Remove podman-docker if present
-sudo dnf remove podman-docker
+sudo dnf remove -y podman-docker
 
 # Restart Docker
 sudo systemctl restart docker
@@ -138,4 +135,4 @@ sudo systemctl restart docker
 
 ## Conclusion
 
-Fedora's default Podman installation requires extra steps when installing Docker, but once set up, Portainer CE runs seamlessly. Fedora's rapid release cycle means you should verify Docker CE compatibility when upgrading Fedora versions. For server workloads where stability is paramount, consider using CentOS Stream or Rocky Linux instead of Fedora.
+Fedora's Podman tooling may require extra steps when installing Docker, especially if `podman-docker` is installed, but once set up, Portainer CE runs seamlessly. Fedora's rapid release cycle means you should verify Docker CE compatibility when upgrading Fedora versions. For server workloads where stability is paramount, consider using CentOS Stream or Rocky Linux instead of Fedora.
