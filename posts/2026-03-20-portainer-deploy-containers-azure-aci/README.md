@@ -36,8 +36,8 @@ With Azure ACI configured as an environment in Portainer, you can deploy contain
 Resource Configuration
 
 ```text
-CPU:    0.5 vCPU  (minimum: 0.1)
-Memory: 1.5 GB    (minimum: 0.1)
+CPU:    1.0 vCPU  (minimum container group allocation: 1 vCPU)
+Memory: 1.5 GB    (minimum container group allocation: 1 GB)
 ```
 
 ### Port Configuration
@@ -66,10 +66,13 @@ ACI containers can have:
 - **Public IP**: Expose a public IP address directly
 - **Private networking**: Deploy into an Azure Virtual Network
 
-For a public-facing container:
-1. Enable **Public IP address**
-2. Set a **DNS name label**: e.g., `myapp-prod` (results in `myapp-prod.eastus.azurecontainer.io`)
-3. Map the ports you exposed above
+For a public-facing container in Portainer:
+1. Leave **Private Network** disabled
+2. Map the ports you exposed above
+
+For private networking in Portainer:
+1. Enable **Private Network**
+2. Select the **Virtual Network** and **Subnet**
 
 ## Step 5: Deploy via the Portainer API
 
@@ -89,86 +92,110 @@ ACI_ENDPOINT=$(curl -s -H "Authorization: Bearer $TOKEN" \
 
 echo "ACI Endpoint ID: $ACI_ENDPOINT"
 
-# Deploy a container to ACI
-curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+# Get an Azure subscription ID available through this ACI environment
+SUBSCRIPTION_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://portainer.example.com/api/endpoints/${ACI_ENDPOINT}/azure/subscriptions?api-version=2016-06-01" | \
+  jq -r '.value[0].subscriptionId')
+
+# Deploy a container group to ACI through Portainer's Azure proxy
+curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "https://portainer.example.com/api/endpoints/${ACI_ENDPOINT}/azure/aci" \
+  "https://portainer.example.com/api/endpoints/${ACI_ENDPOINT}/azure/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/portainer-aci-rg/providers/Microsoft.ContainerInstance/containerGroups/my-web-app?api-version=2018-04-01" \
   -d '{
     "location": "eastus",
-    "name": "my-web-app",
-    "resourceGroup": "portainer-aci-rg",
-    "containers": [
-      {
-        "name": "nginx",
-        "image": "nginx:1.25",
-        "resources": {
-          "requests": {
-            "cpu": 0.5,
-            "memoryInGB": 1.0
+    "properties": {
+      "osType": "Linux",
+      "containers": [
+        {
+          "name": "my-web-app",
+          "properties": {
+            "image": "nginx:1.25",
+            "ports": [
+              {
+                "port": 80
+              }
+            ],
+            "environmentVariables": [
+              {
+                "name": "APP_ENV",
+                "value": "production"
+              }
+            ],
+            "resources": {
+              "requests": {
+                "cpu": 1.0,
+                "memoryInGB": 1.5
+              }
+            }
           }
-        },
+        }
+      ],
+      "ipAddress": {
+        "type": "Public",
         "ports": [
           {
             "port": 80,
             "protocol": "TCP"
           }
-        ],
-        "environmentVariables": [
-          {
-            "name": "APP_ENV",
-            "value": "production"
-          }
         ]
       }
-    ],
-    "osType": "Linux",
-    "ipAddress": {
-      "type": "Public",
-      "ports": [
-        {
-          "port": 80,
-          "protocol": "TCP"
-        }
-      ],
-      "dnsNameLabel": "myapp-prod"
     }
   }'
 ```
 
 ## Step 6: Deploy a Multi-Container Group
 
-ACI supports running multiple containers in the same container group (similar to a Kubernetes pod):
+ACI supports running multiple Linux containers in the same container group (similar to a Kubernetes pod):
 
 ```bash
 # Multi-container ACI deployment (app + sidecar)
-curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "https://portainer.example.com/api/endpoints/${ACI_ENDPOINT}/azure/aci" \
+  "https://portainer.example.com/api/endpoints/${ACI_ENDPOINT}/azure/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/portainer-aci-rg/providers/Microsoft.ContainerInstance/containerGroups/app-with-sidecar?api-version=2018-04-01" \
   -d '{
     "location": "eastus",
-    "name": "app-with-sidecar",
-    "resourceGroup": "portainer-aci-rg",
-    "containers": [
-      {
-        "name": "app",
-        "image": "myapp:latest",
-        "resources": {
-          "requests": {"cpu": 1.0, "memoryInGB": 2.0}
+    "properties": {
+      "osType": "Linux",
+      "containers": [
+        {
+          "name": "app",
+          "properties": {
+            "image": "myapp:latest",
+            "ports": [
+              {
+                "port": 8080
+              }
+            ],
+            "resources": {
+              "requests": {
+                "cpu": 1.0,
+                "memoryInGB": 2.0
+              }
+            }
+          }
         },
-        "ports": [{"port": 8080, "protocol": "TCP"}]
-      },
-      {
-        "name": "log-collector",
-        "image": "fluent/fluent-bit:latest",
-        "resources": {
-          "requests": {"cpu": 0.1, "memoryInGB": 0.2}
+        {
+          "name": "log-collector",
+          "properties": {
+            "image": "fluent/fluent-bit:latest",
+            "resources": {
+              "requests": {
+                "cpu": 0.1,
+                "memoryInGB": 0.2
+              }
+            }
+          }
         }
+      ],
+      "ipAddress": {
+        "type": "Public",
+        "ports": [
+          {
+            "port": 8080,
+            "protocol": "TCP"
+          }
+        ]
       }
-    ],
-    "osType": "Linux",
-    "ipAddress": {
-      "type": "Public",
-      "ports": [{"port": 8080, "protocol": "TCP"}]
     }
   }'
 ```
@@ -178,9 +205,9 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
 In Portainer's ACI view:
 
 1. Click on a container group name to see details.
-2. View **Status**: Running, Stopped, Failed
-3. Click **Logs** to see container output.
-4. View resource usage (CPU, memory).
+2. Review the **Container** tab for image, ports, environment variables, and resource settings.
+3. Use the **Events** tab to inspect lifecycle events.
+4. Use the **Actions** section to start, stop, restart, or remove the container.
 
 Via Azure CLI:
 
@@ -212,4 +239,4 @@ az container delete --resource-group portainer-aci-rg --name my-web-app --yes
 
 ## Conclusion
 
-Deploying containers to Azure ACI via Portainer combines the simplicity of Azure's serverless container platform with Portainer's familiar management interface. Use ACI for workloads that benefit from automatic scaling to zero, and leverage Portainer's API for CI/CD pipeline integration. Monitor resource usage carefully as ACI charges per second of CPU and memory consumption.
+Deploying containers to Azure ACI via Portainer combines the simplicity of Azure's serverless container platform with Portainer's familiar management interface. Use ACI for on-demand, stateless, or run-to-completion workloads, and leverage Portainer's API for CI/CD pipeline integration. Monitor resource usage carefully as ACI charges per second of CPU and memory consumption.
