@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Loki, Log Forwarding, Docker, Grafana, Centralized Logging
 
-Description: Learn how to forward Docker container logs to Loki via Portainer using the Docker Loki log driver or Promtail for label-rich log ingestion.
+Description: Learn how to forward Docker container logs to Loki via Portainer using the Docker Loki log driver, or how existing Promtail deployments can send logs with richer relabeling.
 
 ---
 
-Grafana Loki stores logs indexed by labels rather than full text, making it highly storage-efficient. This guide covers two methods for forwarding container logs to Loki: the native Docker Loki log driver and Promtail.
+Grafana Loki stores logs indexed by labels rather than full text, making it highly storage-efficient. This guide covers the native Docker Loki log driver and, for existing deployments, Promtail.
 
 ## Method 1: Docker Loki Log Driver
 
@@ -19,10 +19,11 @@ The official Loki Docker driver plugin sends logs directly from Docker to Loki w
 Run on each Docker host:
 
 ```bash
-docker plugin install grafana/loki-docker-driver:latest \
+docker plugin install grafana/loki-docker-driver:3.7.0-amd64 \
   --alias loki \
   --grant-all-permissions
 
+# Use grafana/loki-docker-driver:3.7.0-arm64 on ARM64 hosts.
 # Verify it's installed
 
 docker plugin ls
@@ -30,7 +31,7 @@ docker plugin ls
 
 ### Configure Containers to Use the Loki Driver
 
-In your Portainer stack:
+In your Portainer stack, point `loki-url` to a Loki endpoint reachable from the Docker host:
 
 ```yaml
 version: "3.8"
@@ -41,7 +42,7 @@ services:
     logging:
       driver: loki
       options:
-        loki-url: "http://loki:3100/loki/api/v1/push"
+        loki-url: "http://<loki-host>:3100/loki/api/v1/push"
         loki-batch-size: "400"
         loki-external-labels: "job=my-app,service=api,environment=production"
         loki-retries: "5"
@@ -53,7 +54,7 @@ services:
     logging:
       driver: loki
       options:
-        loki-url: "http://loki:3100/loki/api/v1/push"
+        loki-url: "http://<loki-host>:3100/loki/api/v1/push"
         loki-external-labels: "job=my-app,service=worker,environment=production"
 ```
 
@@ -65,16 +66,18 @@ Apply to all containers on the host via `/etc/docker/daemon.json`:
 {
   "log-driver": "loki",
   "log-opts": {
-    "loki-url": "http://loki-host:3100/loki/api/v1/push",
+    "loki-url": "http://<loki-host>:3100/loki/api/v1/push",
     "loki-external-labels": "host=my-server,environment=production",
     "loki-batch-size": "400"
   }
 }
 ```
 
+After changing `daemon.json`, restart Docker. The new default applies to newly created containers, so existing containers must be recreated to pick up the Loki driver.
+
 ## Method 2: Promtail (Agent-Based)
 
-Promtail reads Docker container log files and enriches them with labels before sending to Loki. This is the recommended approach for auto-discovery of all containers.
+Promtail reached end of life on March 2, 2026. If you already run Promtail, it can still discover Docker containers through the Docker daemon and enrich logs with labels before sending them to Loki, but Grafana Alloy is the supported choice for new deployments.
 
 ### Deploy Promtail as a Stack
 
@@ -83,7 +86,7 @@ version: "3.8"
 
 services:
   promtail:
-    image: grafana/promtail:2.9.4
+    image: grafana/promtail:3.6.0
     command: -config.file=/etc/promtail/config.yml
     volumes:
       - ./promtail.yaml:/etc/promtail/config.yml:ro
@@ -128,35 +131,23 @@ scrape_configs:
         refresh_interval: 5s
     pipeline_stages:
       - docker: {}
-      - json:
-          expressions:
-            output: log
-            stream: stream
-      - labels:
-          stream:
-      - output:
-          source: output
     relabel_configs:
       - source_labels: ['__meta_docker_container_name']
         regex: '/(.*)'
         target_label: container
-      - source_labels: ['__meta_docker_container_image']
-        target_label: image
-      - source_labels: ['__meta_docker_compose_service']
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
         target_label: service
-      - source_labels: ['__meta_docker_compose_project']
-        target_label: stack
       - source_labels: ['__meta_docker_container_label_com_docker_compose_project']
         target_label: stack
 ```
 
 ## Querying in Grafana
 
-After forwarding logs to Loki, query them with LogQL in Grafana's Explore:
+Depending on the labels you forward to Loki, query them with LogQL in Grafana's Explore:
 
 ```logql
 # All logs from a specific stack
-{stack="my-app"} | json
+{stack="my-app"}
 
 # Error-level logs across all services
 {environment="production"} |= "level=error"
@@ -166,8 +157,8 @@ sum by (service) (
   rate({stack="my-app"} |= "error" [5m])
 )
 
-# Last 100 log lines for a container
-{container="my-app_api_1"} | line_format "{{.msg}}"
+# Logs for a specific container
+{container="my-app_api_1"}
 ```
 
 ## Comparing the Two Methods
@@ -175,7 +166,7 @@ sum by (service) (
 | Feature | Loki Driver | Promtail |
 |---------|-------------|----------|
 | Setup | Plugin install required | Just deploy a container |
-| Auto-discovery | Manual labeling | Automatic via Docker SD |
-| Label richness | Manual `loki-external-labels` | Full Docker metadata |
+| Auto-discovery | Compose/Swarm labels auto-detected | Automatic via Docker SD |
+| Label richness | Built-in Compose/Swarm labels plus optional `loki-external-labels` | Docker metadata and container labels via relabeling |
 | Failure handling | Plugin handles | Configurable with retries |
-| Recommended for | Simple, static setups | Production, multi-service |
+| Recommended for | Local Docker / Docker Compose setups | Existing Promtail deployments only |
