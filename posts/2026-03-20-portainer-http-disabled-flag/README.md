@@ -8,13 +8,13 @@ Description: Configure Portainer to run in HTTPS-only mode using the --http-disa
 
 ## Introduction
 
-By default, Portainer exposes both HTTP (port 9000) and HTTPS (port 9443). For production environments, you should disable HTTP entirely and require HTTPS for all access. The `--http-disabled` flag does exactly this, refusing connections on port 9000 and serving only on port 9443.
+Current Portainer releases enable HTTPS on port 9443 by default, and HTTP on port 9000 remains available if you publish it. For production environments, you should disable HTTP entirely and require HTTPS for all access. The `--http-disabled` flag does exactly this, disabling the HTTP listener on port 9000 and serving Portainer only on port 9443.
 
 ## Prerequisites
 
 - SSL/TLS certificate and key files
-- Or Let's Encrypt (managed via a reverse proxy)
-- Portainer v2.0+
+- Or Let's Encrypt certificates
+- Portainer CE 2.9+ (or BE 2.10+)
 
 ## Step 1: Generate or Obtain Certificates
 
@@ -25,7 +25,8 @@ mkdir -p /opt/portainer/certs
 openssl req -x509 -nodes -days 365 -newkey rsa:4096 \
   -keyout /opt/portainer/certs/portainer.key \
   -out /opt/portainer/certs/portainer.crt \
-  -subj "/CN=portainer.yourdomain.com"
+  -subj "/CN=portainer.yourdomain.com" \
+  -addext "subjectAltName = DNS:portainer.yourdomain.com"
 
 # Option B: Let's Encrypt certificate
 # (obtained via certbot or ACME - run certbot first)
@@ -34,8 +35,8 @@ openssl req -x509 -nodes -days 365 -newkey rsa:4096 \
 # /etc/letsencrypt/live/portainer.yourdomain.com/privkey.pem
 
 # Option C: Copy existing certificate
-cp /etc/ssl/certs/yourdomain.crt /opt/portainer/certs/
-cp /etc/ssl/private/yourdomain.key /opt/portainer/certs/
+cp /etc/ssl/certs/yourdomain.crt /opt/portainer/certs/portainer.crt
+cp /etc/ssl/private/yourdomain.key /opt/portainer/certs/portainer.key
 ```
 
 ## Step 2: Start Portainer with HTTPS-Only
@@ -50,10 +51,9 @@ docker run -d \
   -v portainer_data:/data \
   -v /opt/portainer/certs:/certs:ro \
   portainer/portainer-ce:latest \
-  --http-disabled \              # Disable HTTP port 9000
-  --ssl \                        # Enable SSL
-  --sslcert /certs/portainer.crt \  # Certificate file
-  --sslkey /certs/portainer.key     # Key file
+  --http-disabled \
+  --sslcert /certs/portainer.crt \
+  --sslkey /certs/portainer.key
 
 # Note: Do NOT expose port 9000 when using --http-disabled
 # Only port 9443 is needed
@@ -70,8 +70,9 @@ curl http://localhost:9000/api/status
 curl -k https://localhost:9443/api/status
 # Expected: {"Version":"2.x.x",...}
 
-# Check Portainer logs
-docker logs portainer | grep -i "ssl\|http\|https\|disabled"
+# Confirm the container was started with the flag
+docker inspect portainer --format '{{json .Args}}'
+# Expected to include "--http-disabled"
 ```
 
 ## Step 4: Use Let's Encrypt Certificate
@@ -84,12 +85,12 @@ docker run -d \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  -v /etc/letsencrypt/live/portainer.yourdomain.com:/certs:ro \
+  -v /etc/letsencrypt/live/portainer.yourdomain.com:/certs/live/portainer.yourdomain.com:ro \
+  -v /etc/letsencrypt/archive/portainer.yourdomain.com:/certs/archive/portainer.yourdomain.com:ro \
   portainer/portainer-ce:latest \
   --http-disabled \
-  --ssl \
-  --sslcert /certs/fullchain.pem \
-  --sslkey /certs/privkey.pem
+  --sslcert /certs/live/portainer.yourdomain.com/fullchain.pem \
+  --sslkey /certs/live/portainer.yourdomain.com/privkey.pem
 
 # Access at: https://portainer.yourdomain.com
 ```
@@ -105,7 +106,6 @@ services:
     restart: unless-stopped
     command: >
       --http-disabled
-      --ssl
       --sslcert /certs/portainer.crt
       --sslkey /certs/portainer.key
     ports:
@@ -158,7 +158,7 @@ server {
 }
 ```
 
-In this setup, Portainer runs with HTTP only (no `--http-disabled`), but all external access goes through the HTTPS proxy.
+In this setup, leave Portainer's HTTP listener enabled so the reverse proxy can reach port 9000, but route all external access through the HTTPS proxy.
 
 ## Step 7: Certificate Auto-Renewal
 
@@ -181,11 +181,11 @@ echo "Portainer restarted with renewed certificates"
 
 ```bash
 # Check certificate expiry
-openssl s_client -connect portainer.yourdomain.com:9443 -showcerts 2>/dev/null | \
+openssl s_client -connect portainer.yourdomain.com:9443 -servername portainer.yourdomain.com -showcerts </dev/null 2>/dev/null | \
   openssl x509 -noout -dates
 
-# Check certificate validity
-openssl verify -CAfile /opt/portainer/certs/ca.crt /opt/portainer/certs/portainer.crt
+# For a private CA or self-signed setup, verify against your CA certificate
+openssl verify -CAfile /path/to/ca.crt /opt/portainer/certs/portainer.crt
 
 # Test with browser
 # Navigate to https://portainer.yourdomain.com
@@ -199,18 +199,17 @@ When using `--http-disabled`, the Edge Agent tunnel (port 8000) is separate from
 ```bash
 docker run -d \
   -p 9443:9443 \
-  -p 8000:8000 \   # Still needed for Edge Agents
+  -p 8000:8000 \
   --name portainer \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   -v /opt/portainer/certs:/certs:ro \
   portainer/portainer-ce:latest \
   --http-disabled \
-  --ssl \
   --sslcert /certs/portainer.crt \
   --sslkey /certs/portainer.key
 ```
 
 ## Conclusion
 
-Using `--http-disabled` with `--ssl`, `--sslcert`, and `--sslkey` ensures all Portainer UI access uses encrypted HTTPS connections. For production deployments, this is a mandatory security configuration. If managing certificates is complex, use a reverse proxy to handle TLS termination and run Portainer on HTTP internally - this is equally secure while simplifying certificate management and renewal.
+Using `--http-disabled` with Portainer's HTTPS listener and your certificate options ensures all Portainer UI access uses encrypted HTTPS connections. For production deployments, this is a recommended security configuration. If managing certificates is complex, use a reverse proxy to handle TLS termination and keep Portainer's HTTP listener available only to the proxy on the same host or a trusted private network.
