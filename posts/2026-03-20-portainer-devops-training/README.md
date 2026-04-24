@@ -30,22 +30,22 @@ The program covers five key areas over four weeks:
 # Automated provisioning script
 cat > setup-trainee-vm.sh << 'EOF'
 #!/bin/bash
-TRAINEE=$1
+TRAINEE=${1:-${SUDO_USER:-$USER}}
 
 # Install Docker
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker "$TRAINEE"
 
 # Install Portainer
-docker volume create portainer_data
-docker run -d \
+sudo docker volume create portainer_data
+sudo docker run -d \
   --name portainer \
   --restart=always \
   -p 8000:8000 \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 
 echo "Training environment ready for: $TRAINEE"
 echo "Access Portainer at: https://$(hostname -I | awk '{print $1}'):9443"
@@ -84,7 +84,6 @@ docker stop my-nginx && docker rm my-nginx
 
 ```yaml
 # training-app/docker-compose.yml
-version: '3.8'
 services:
   frontend:
     image: nginx:1.25-alpine
@@ -96,7 +95,7 @@ services:
       - api
 
   api:
-    image: node:18-alpine
+    image: node:24-alpine
     working_dir: /app
     command: node server.js
     environment:
@@ -138,7 +137,7 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
 
       - name: Build Docker image
         run: |
@@ -153,10 +152,10 @@ jobs:
 
       - name: Deploy to Portainer
         run: |
-          curl -X POST "${{ secrets.PORTAINER_URL }}/api/webhooks/${{ secrets.PORTAINER_WEBHOOK_TOKEN }}"
+          curl -kfsSL -X POST "${{ secrets.PORTAINER_URL }}/api/stacks/webhooks/${{ secrets.PORTAINER_WEBHOOK_TOKEN }}"
 ```
 
-Trainees configure the GitHub Actions workflow and observe the automatic deployment in Portainer.
+Trainees configure the GitHub Actions workflow and observe the automatic deployment in Portainer. Webhook-triggered redeployments require Portainer Business Edition; in Portainer CE, use Git-based auto-updates instead.
 
 ## Module 4: Container Orchestration
 
@@ -199,7 +198,6 @@ docker service rollback training-web
 
 ```yaml
 # monitoring-stack/docker-compose.yml
-version: '3.8'
 services:
   prometheus:
     image: prom/prometheus:latest
@@ -219,14 +217,18 @@ services:
       - grafana_data:/var/lib/grafana
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: ghcr.io/google/cadvisor:v0.55.1
+    privileged: true
     ports:
       - "8080:8080"
+    devices:
+      - /dev/kmsg:/dev/kmsg
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
 
 volumes:
   prom_data:
@@ -237,11 +239,12 @@ volumes:
 
 ```bash
 # Instructor creates a broken deployment
+# Deliberately too low to trigger an OOM kill
 docker run -d \
   --name broken-app \
-  --memory="64m" \    # Deliberately too low
+  --memory="64m" \
   --restart=always \
-  node:18-alpine \
+  node:24-alpine \
   node -e "
     // Memory leak simulation
     const leak = [];
@@ -266,7 +269,7 @@ check_trainee_completion() {
   echo "Checking $TRAINEE_HOST..."
   
   # Check if Portainer is running
-  curl -sf "https://$TRAINEE_HOST:9443/api/status" > /dev/null && \
+  curl -ksf "https://$TRAINEE_HOST:9443/api/status" > /dev/null && \
     echo "  [PASS] Portainer running" || echo "  [FAIL] Portainer not accessible"
   
   # Check if application stack is deployed
