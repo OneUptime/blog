@@ -13,8 +13,6 @@ Vaultwarden is an unofficial, lightweight implementation of the Bitwarden server
 ## Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   vaultwarden:
     image: vaultwarden/server:latest
@@ -54,7 +52,7 @@ volumes:
 
 ## HTTPS Requirement
 
-Vaultwarden **requires HTTPS** for the browser extensions to work. Use Traefik or Caddy as a reverse proxy:
+Vaultwarden should be served over **HTTPS** for proper client and web vault operation. The recommended way is to use Traefik or Caddy as a reverse proxy:
 
 ### With Traefik
 
@@ -93,29 +91,28 @@ vault.example.com {
 
 ### Browser Extension
 
-1. Click the **Bitwarden** extension
-2. Click **Settings** (gear icon)
-3. Set **Server URL**: `https://vault.example.com`
-4. Log in with your account
+1. Open the Bitwarden extension on the login or registration screen
+2. Select **Logging in on** and choose **Self-hosted**
+3. Enter `https://vault.example.com` as the **Server URL**
+4. Click **Save** and log in with your account
 
 ### Desktop App (Windows/Mac/Linux)
 
-1. Open Bitwarden
-2. Click the region selector at the top-left
-3. Set **Self-hosted** and enter `https://vault.example.com`
-4. Log in
+1. Open Bitwarden on the login or registration screen
+2. Select **Logging in on** and choose **Self-hosted**
+3. Enter `https://vault.example.com` as the **Server URL**
+4. Click **Save** and log in
 
 ### Mobile App (iOS/Android)
 
-1. Open Bitwarden
-2. Tap the region selector on the login screen
-3. Select **Self-hosted**
-4. Enter `https://vault.example.com`
-5. Log in
+1. Open Bitwarden on the login or registration screen
+2. Tap **Logging in on** and select **Self-hosted**
+3. Enter `https://vault.example.com` as the **Server URL**
+4. Tap **Save** and log in
 
 ## Enabling 2FA
 
-1. In Vaultwarden, go to **Account Settings > Security > Two-step Login**
+1. In the web vault, go to **Settings > Security > Two-step login**
 2. Enable TOTP authenticator
 3. Scan QR code with your authenticator app
 
@@ -127,13 +124,13 @@ vault.example.com {
 docker stop vaultwarden
 
 docker run --rm \
-  -v vaultwarden_data:/source \
+  --volumes-from vaultwarden \
   -v /backups:/backup \
-  alpine tar czf /backup/vaultwarden-$(date +%Y%m%d).tar.gz /source
+  alpine tar czf /backup/vaultwarden-$(date +%Y%m%d).tar.gz /data
 
 docker start vaultwarden
 ```
 
 ## Conclusion
 
-Vaultwarden deployed via Portainer gives you a private, self-hosted password manager that's fully compatible with all official Bitwarden clients. HTTPS is required for browser extension functionality, making a Traefik or Caddy reverse proxy essential. Once set up, it provides the same experience as Bitwarden cloud at zero subscription cost, with complete control over your password data.
+Vaultwarden deployed via Portainer gives you a private, self-hosted password manager that's compatible with official Bitwarden clients. HTTPS is effectively required for proper client and web vault operation, and a reverse proxy like Traefik or Caddy is the recommended way to provide it. Once set up, it provides a Bitwarden-compatible experience with complete control over your password data.
