@@ -40,7 +40,7 @@ With this configuration, every service that uses the `web` entrypoint automatica
 
 ## Step 2: Per-Service HTTP to HTTPS Redirect (Selective)
 
-For fine-grained control, create a redirect middleware and apply it per router:
+For fine-grained control, create a redirect middleware and apply it to the HTTP router:
 
 ```yaml
 # traefik-dynamic.yml - Reusable redirect middleware
@@ -58,7 +58,20 @@ http:
         - web
       middlewares:
         - https-redirect
-      service: portainer    # Redirect will happen before reaching the service
+      service: portainer
+
+    portainer-https:
+      rule: "Host(`portainer.example.com`)"
+      entryPoints:
+        - websecure
+      tls: {}
+      service: portainer
+
+  services:
+    portainer:
+      loadBalancer:
+        servers:
+          - url: "http://portainer:9000"
 ```
 
 ## Step 3: Container Labels for Per-Service Redirect
@@ -110,7 +123,7 @@ curl -IL http://portainer.example.com    # -L follows redirects
 
 ## Step 5: Handle Special Cases
 
-Some services need HTTP access (e.g., health check endpoints, internal services):
+Some services need HTTP access (e.g., health check endpoints, internal services). This pattern only works when you are using router-level redirects for that host. If you enable a global entrypoint redirect on `web`, Traefik will redirect `/health` before the router is evaluated:
 
 ```yaml
 services:
@@ -119,20 +132,32 @@ services:
     labels:
       - "traefik.enable=true"
 
-      # Only expose on HTTP (no redirect for internal health endpoint)
+      # Allow only /health on plain HTTP
       - "traefik.http.routers.health.rule=Host(`internal.example.com`) && Path(`/health`)"
-      - "traefik.http.routers.health.entrypoints=web"    # HTTP only
-      # No TLS labels - stays HTTP
+      - "traefik.http.routers.health.entrypoints=web"
+      - "traefik.http.routers.health.service=internal-health"
 
-      # Separate HTTPS router for the rest of the app
+      # Redirect all other HTTP requests for this host to HTTPS
+      - "traefik.http.routers.app-http.rule=Host(`internal.example.com`)"
+      - "traefik.http.routers.app-http.entrypoints=web"
+      - "traefik.http.routers.app-http.middlewares=https-redirect"
+      - "traefik.http.routers.app-http.service=internal-health"
+
+      # Serve the app on HTTPS
       - "traefik.http.routers.app.rule=Host(`internal.example.com`)"
       - "traefik.http.routers.app.entrypoints=websecure"
       - "traefik.http.routers.app.tls=true"
+      - "traefik.http.routers.app.service=internal-health"
+
+      # Backend service and redirect middleware
+      - "traefik.http.services.internal-health.loadbalancer.server.port=8080"
+      - "traefik.http.middlewares.https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.https-redirect.redirectscheme.permanent=true"
 ```
 
 ## Step 6: Add HSTS Header After Redirect
 
-HSTS (HTTP Strict Transport Security) tells browsers to always use HTTPS, even before the first redirect:
+HSTS (HTTP Strict Transport Security) tells browsers to use HTTPS on subsequent visits after they receive the header over HTTPS. The `preload` directive only takes effect if the domain is accepted into browser preload lists:
 
 ```yaml
 # Add HSTS via middleware
@@ -150,7 +175,6 @@ services:
       - "traefik.http.middlewares.hsts-header.headers.stsSeconds=31536000"
       - "traefik.http.middlewares.hsts-header.headers.stsIncludeSubdomains=true"
       - "traefik.http.middlewares.hsts-header.headers.stsPreload=true"
-      - "traefik.http.middlewares.hsts-header.headers.forceSTSHeader=true"
 ```
 
 ## Conclusion
