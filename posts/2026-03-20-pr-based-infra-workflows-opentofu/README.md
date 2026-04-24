@@ -15,7 +15,7 @@ A PR-based infrastructure workflow makes every change visible, reviewed, and aud
 ```mermaid
 graph TD
     A[Create PR] --> B[Auto-assign reviewers]
-    B --> C[CI: fmt + validate + lint]
+    B --> C[CI: fmt + security scan]
     C --> D[CI: tofu plan → PR comment]
     D --> E[CI: Infracost → cost comment]
     E --> F[Team review]
@@ -25,7 +25,7 @@ graph TD
     I --> J[Slack notification]
 ```
 
-## Complete PR Workflow
+## Example PR Workflow
 
 ```yaml
 # .github/workflows/infra-pr.yml
@@ -55,7 +55,7 @@ jobs:
           soft_fail: false
 
       - name: Checkov
-        uses: bridgecrewio/checkov-action@master
+        uses: bridgecrewio/checkov-action@v12
         with:
           framework: terraform
           soft_fail: false
@@ -74,7 +74,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets[format('AWS_PLAN_ROLE_{0}', matrix.environment)] }}
           aws-region: us-east-1
@@ -96,17 +96,23 @@ jobs:
         continue-on-error: true
 
       - name: Comment plan on PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
+        env:
+          ENVIRONMENT: ${{ matrix.environment }}
+          PLAN_EXITCODE: ${{ steps.plan.outputs.exitcode }}
+          PLAN_PATH: environments/${{ matrix.environment }}/plan_output.txt
         with:
           script: |
             const fs = require('fs');
-            const plan = fs.readFileSync('environments/${{ matrix.environment }}/plan_output.txt', 'utf8');
-            const icon = '${{ steps.plan.outputs.exitcode }}' === '2' ? '⚠️' : '✅';
-            github.rest.issues.createComment({
+            const plan = fs.readFileSync(process.env.PLAN_PATH, 'utf8');
+            const icons = { '0': '✅', '1': '❌', '2': '⚠️' };
+            const icon = icons[process.env.PLAN_EXITCODE] || '❌';
+
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## ${icon} Plan: ${{ matrix.environment }}\n```\n${plan.substring(0, 60000)}\n````
+              body: `## ${icon} Plan: ${process.env.ENVIRONMENT}\n~~~\n${plan.substring(0, 60000)}\n~~~`
             });
 
       - name: Fail if plan errors
@@ -121,7 +127,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: infracost/actions/setup@v2
+      - uses: infracost/actions/setup@v3
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
       - run: infracost breakdown --path environments/production --format json --out-file cost.json
