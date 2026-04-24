@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Upgrade, Docker-standalone, Update
 
-Description: A step-by-step guide to upgrading Portainer CE on a Docker standalone host, ensuring zero data loss and minimal downtime.
+Description: A step-by-step guide to upgrading Portainer CE on a Docker standalone host while helping preserve configuration data and minimize downtime.
 
 ## Overview
 
@@ -23,12 +23,14 @@ Always back up before upgrading:
 ```bash
 # Backup Portainer data volume
 
+BACKUP_FILE="portainer-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+
 docker run --rm \
   -v portainer_data:/data \
-  -v $(pwd):/backup \
-  alpine tar czf /backup/portainer-backup-$(date +%Y%m%d-%H%M%S).tar.gz -C /data .
+  -v "$(pwd)":/backup \
+  alpine tar czf "/backup/${BACKUP_FILE}" -C /data .
 
-echo "Backup created: portainer-backup-$(date +%Y%m%d).tar.gz"
+echo "Backup created: ${BACKUP_FILE}"
 ```
 
 ## Step 2: Check Current Version
@@ -36,18 +38,18 @@ echo "Backup created: portainer-backup-$(date +%Y%m%d).tar.gz"
 ```bash
 # Check current Portainer version
 docker exec portainer /portainer --version
-# or
-docker image inspect portainer | grep -i version
+# or inspect the image currently used by the container
+docker inspect --format '{{.Config.Image}}' portainer
 ```
 
 ## Step 3: Pull New Image
 
 ```bash
-# Pull the latest Portainer CE image
-docker pull portainer/portainer-ce:latest
+# Pull the latest Portainer CE LTS image
+docker pull portainer/portainer-ce:lts
 
 # Or pull a specific version
-docker pull portainer/portainer-ce:2.20.2
+docker pull portainer/portainer-ce:2.39.1
 ```
 
 ## Step 4: Stop and Remove Old Container
@@ -71,7 +73,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 6: Verify Upgrade
@@ -90,11 +92,11 @@ docker logs portainer
 ## Step 7: Clean Up Old Images
 
 ```bash
-# Remove old Portainer images to free disk space
+# Remove dangling images to free disk space
 docker image prune -f
 
-# Or remove specific old version
-docker rmi portainer/portainer-ce:2.19.0
+# Or remove a specific old Portainer version
+docker image rm portainer/portainer-ce:2.33.5
 ```
 
 ## Automated Upgrade Script
@@ -108,19 +110,16 @@ set -e
 echo "Starting Portainer upgrade..."
 
 # Backup
+BACKUP_FILE="portainer-pre-upgrade-$(date +%Y%m%d-%H%M%S).tar.gz"
 docker run --rm \
   -v portainer_data:/data \
-  -v $(pwd):/backup \
-  alpine tar czf /backup/portainer-pre-upgrade-$(date +%Y%m%d-%H%M%S).tar.gz -C /data .
-echo "Backup created"
+  -v "$(pwd)":/backup \
+  alpine tar czf "/backup/${BACKUP_FILE}" -C /data .
+echo "Backup created: ${BACKUP_FILE}"
 
 # Pull new image
-docker pull portainer/portainer-ce:latest
+docker pull portainer/portainer-ce:lts
 echo "New image pulled"
-
-# Get current container configuration
-PORTS=$(docker inspect portainer --format '{{range $p, $conf := .HostConfig.PortBindings}}{{(index $conf 0).HostPort}}:{{$p}} {{end}}' 2>/dev/null || echo "8000:8000 9443:9443")
-MOUNTS=$(docker inspect portainer --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}' 2>/dev/null)
 
 # Stop and remove old container
 docker stop portainer
@@ -135,7 +134,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 
 echo "Portainer upgraded successfully!"
 docker ps | grep portainer
@@ -145,7 +144,7 @@ docker ps | grep portainer
 
 The upgrade process involves a brief period (seconds) where Portainer is unavailable while the old container is stopped and the new one starts. This is typically acceptable for maintenance windows.
 
-For zero-downtime upgrades in team environments, consider:
+For lower-disruption upgrades in team environments, consider:
 1. Upgrading during off-hours
 2. Notifying users before the maintenance window
 3. Having the upgrade script ready to execute quickly
