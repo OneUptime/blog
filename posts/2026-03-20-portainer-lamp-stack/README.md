@@ -12,17 +12,17 @@ The LAMP stack (Linux, Apache, MySQL, PHP) is one of the most widely deployed we
 
 ## Prerequisites
 
-- Portainer CE or BE installed and running
+- Portainer BE installed and running
 - Docker Engine 20.10+
 - At least 1 GB of available RAM
 
 ## Step 1: Open Stacks in Portainer
 
-Navigate to your Portainer environment and go to **Stacks** → **Add Stack** → **Web Editor**. Name the stack `lamp`.
+Navigate to your Portainer environment and go to **Stacks** → **Add Stack** → **Git Repository**. Name the stack `lamp`, point Portainer at the repository that contains your compose file and supporting `www`, `apache`, `mysql/init`, and `docker/php` directories, and enable **Relative path volumes**.
 
 ## Step 2: Write the Docker Compose File
 
-Paste the following compose file into the Web Editor:
+Store the following compose file in your repository and point Portainer at it:
 
 ```yaml
 version: "3.8"
@@ -39,7 +39,10 @@ services:
       - ./www:/var/www/html          # Application files
       - ./apache/vhost.conf:/etc/apache2/sites-available/000-default.conf
     environment:
-      APACHE_DOCUMENT_ROOT: /var/www/html
+      MYSQL_HOST: db
+      MYSQL_DATABASE: lampapp
+      MYSQL_USER: lampuser
+      MYSQL_PASSWORD: lamppassword
     depends_on:
       - db
     networks:
@@ -52,6 +55,7 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_ROOT_HOST: "%"
       MYSQL_DATABASE: lampapp
       MYSQL_USER: lampuser
       MYSQL_PASSWORD: lamppassword
@@ -89,10 +93,10 @@ networks:
 
 ## Step 3: Configure PHP Extensions
 
-The base `php:8.2-apache` image lacks common extensions. Create a custom Dockerfile or use a pre-built image with extensions:
+The base `php:8.2-apache` image does not include `pdo_mysql`, which the test app below needs. Update the `web` service to use a custom Dockerfile or another image that already includes the required extensions. If Portainer is connected to a remote Docker environment, build this image outside Portainer and replace the `build:` block with an `image:` reference, because Portainer does not execute Compose `build:` steps for remote environments:
 
 ```yaml
-# Alternative: use a Dockerfile for the web service
+# Update the web service from Step 2
 
   web:
     build:
@@ -106,13 +110,13 @@ The base `php:8.2-apache` image lacks common extensions. Create a custom Dockerf
 FROM php:8.2-apache
 
 # Install common PHP extensions
-RUN docker-php-ext-install pdo pdo_mysql mysqli
+RUN docker-php-ext-install pdo_mysql mysqli
 
 # Install additional extensions via pecl
-RUN pecl install redis && docker-php-ext-enable redis
+RUN pecl install redis-6.3.0 && docker-php-ext-enable redis
 
-# Enable Apache modules
-RUN a2enmod rewrite headers
+# Enable Apache modules and the default SSL site
+RUN a2enmod rewrite headers ssl && a2ensite default-ssl
 
 # Install Composer
 RUN curl -sS https://getcomposer.org/installer | php -- \
@@ -192,7 +196,7 @@ docker exec -it lamp-db mysql -u lampuser -plamppassword lampapp
 
 ## Step 7: Set Environment Variables via Portainer UI
 
-Instead of hardcoding credentials, use Portainer's environment variable feature:
+Instead of hardcoding credentials, use Portainer's environment variable feature before the first deployment:
 
 1. In the Stack editor, add **Environment Variables**:
    - `MYSQL_ROOT_PASSWORD` → `your-root-password`
@@ -201,14 +205,27 @@ Instead of hardcoding credentials, use Portainer's environment variable feature:
 2. Reference them in the compose file:
 
 ```yaml
+  web:
+    environment:
+      MYSQL_HOST: db
+      MYSQL_DATABASE: lampapp
+      MYSQL_USER: lampuser
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+
+  db:
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_ROOT_HOST: "%"
       MYSQL_DATABASE: lampapp
       MYSQL_USER: lampuser
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
 ```
 
+These variables are only used when the MySQL data directory is initialized. If `db_data` already contains a database, changing them later in Portainer will not rotate existing MySQL credentials.
+
 ## Step 8: Enable HTTPS with a Self-Signed Certificate
+
+If you're using the custom image from Step 3, you can add HTTPS with a self-signed certificate:
 
 ```yaml
   # Add to the web service
