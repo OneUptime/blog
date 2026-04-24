@@ -13,12 +13,13 @@ Portainer environment snapshots capture the current state of an environment (con
 ## What Snapshots Contain
 
 A snapshot captures:
-- List of running and stopped containers
-- Container status, image, ports, and resource usage
+- Lists of running and stopped containers
+- Container status, image, and ports
+- Images available on the environment
 - Volumes and their mount points
 - Networks and their configurations
-- Service configurations (Swarm)
-- Node information (Swarm/Kubernetes)
+- Summary counts for containers, images, volumes, services, stacks, and nodes
+- Basic version and node information (Swarm/Kubernetes)
 
 ## Configuring Snapshot Interval
 
@@ -57,7 +58,7 @@ curl -X PUT \
 # Trigger snapshot for all environments
 curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
-  https://portainer.example.com/api/snapshots
+  https://portainer.example.com/api/endpoints/snapshot
 
 # Trigger snapshot for specific environment
 curl -X POST \
@@ -67,16 +68,21 @@ curl -X POST \
 
 ## Edge Agent Snapshot Configuration
 
-For async edge environments:
+For async edge environments in Portainer Business Edition:
 
 ```bash
-docker run portainer/agent:latest \
+docker run -d \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -v /:/host \
+  -v portainer_agent_data:/data \
+  --restart always \
   -e EDGE=1 \
   -e EDGE_ID=unique-id \
   -e EDGE_KEY=portainer-edge-key \
   -e EDGE_ASYNC=1 \
-  -e EDGE_PING_INTERVAL=30 \
-  -e EDGE_SNAPSHOT_INTERVAL=300
+  --name portainer_edge_agent \
+  portainer/agent:lts
 ```
 
 ## Conclusion
