@@ -13,12 +13,12 @@ Cloud Pub/Sub is a scalable, asynchronous messaging service. Subscriptions can b
 ## Step 1: Create a Pub/Sub Topic
 
 ```hcl
-# main.tf - Pub/Sub topic with dead-letter support
+# main.tf - Pub/Sub topic with schema validation
 
 resource "google_pubsub_topic" "orders_topic" {
   name = "order-events"
 
-  # Message retention duration (1 hour to 31 days)
+  # Message retention duration (10 minutes to 31 days)
   message_retention_duration = "86400s"  # 24 hours
 
   # Schema enforcement for message validation
@@ -52,10 +52,10 @@ resource "google_pubsub_subscription" "order_processor_pull" {
   # Retain unacknowledged messages for up to 7 days
   message_retention_duration = "604800s"
 
-  # Dead letter policy - move undeliverable messages
+  # Dead letter policy - forward undeliverable messages
   dead_letter_policy {
     dead_letter_topic     = google_pubsub_topic.dead_letter_topic.id
-    max_delivery_attempts = 5  # Retry 5 times before dead-lettering
+    max_delivery_attempts = 5  # Approximate delivery attempts before dead-lettering
   }
 
   # Retry policy for failed deliveries
@@ -98,6 +98,8 @@ resource "google_pubsub_subscription" "order_webhook_push" {
     dead_letter_topic     = google_pubsub_topic.dead_letter_topic.id
     max_delivery_attempts = 5
   }
+
+  depends_on = [google_service_account_iam_member.pubsub_push_token_creator]
 }
 ```
 
@@ -109,17 +111,22 @@ resource "google_pubsub_subscription" "bq_subscription" {
   name  = "orders-to-bigquery"
   topic = google_pubsub_topic.orders_topic.name
 
+  # The destination table must include the required data and metadata columns.
   bigquery_config {
-    table                 = "${var.project_id}.${google_bigquery_dataset.events.dataset_id}.${google_bigquery_table.orders.table_id}"
-    write_metadata        = true
-    drop_unknown_fields   = false
+    table               = "${data.google_project.project.project_id}.${google_bigquery_dataset.events.dataset_id}.${google_bigquery_table.orders.table_id}"
+    write_metadata      = true
+    drop_unknown_fields = false
   }
+
+  depends_on = [google_project_iam_member.pubsub_bigquery_writer]
 }
 ```
 
 ## Step 5: IAM
 
 ```hcl
+data "google_project" "project" {}
+
 resource "google_pubsub_topic_iam_member" "publisher" {
   topic  = google_pubsub_topic.orders_topic.name
   role   = "roles/pubsub.publisher"
@@ -131,8 +138,41 @@ resource "google_pubsub_subscription_iam_member" "subscriber" {
   role         = "roles/pubsub.subscriber"
   member       = "serviceAccount:${google_service_account.processor_sa.email}"
 }
+
+# Required for dead-letter forwarding
+resource "google_pubsub_topic_iam_member" "dead_letter_publisher" {
+  topic  = google_pubsub_topic.dead_letter_topic.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
+resource "google_pubsub_subscription_iam_member" "dead_letter_pull_subscriber" {
+  subscription = google_pubsub_subscription.order_processor_pull.name
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
+resource "google_pubsub_subscription_iam_member" "dead_letter_push_subscriber" {
+  subscription = google_pubsub_subscription.order_webhook_push.name
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
+# Required for OIDC-authenticated push delivery
+resource "google_service_account_iam_member" "pubsub_push_token_creator" {
+  service_account_id = google_service_account.pubsub_sa.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
+# Required for BigQuery subscriptions that use the default Pub/Sub service agent
+resource "google_project_iam_member" "pubsub_bigquery_writer" {
+  project = data.google_project.project.project_id
+  role    = "roles/bigquery.dataEditor"
+  member  = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
 ```
 
 ## Summary
 
-Cloud Pub/Sub subscriptions with OpenTofu support multiple delivery patterns. Pull subscriptions let consumers control the rate, push subscriptions deliver to HTTPS endpoints, and BigQuery subscriptions write directly to tables. Dead-letter topics and retry policies ensure reliable message delivery even when consumers experience failures.
+Cloud Pub/Sub subscriptions with OpenTofu support multiple delivery patterns. Pull subscriptions let consumers control the rate, push subscriptions deliver to HTTPS endpoints, and BigQuery subscriptions write directly to tables. Dead-letter topics and retry policies help manage failed deliveries when consumers experience failures.
