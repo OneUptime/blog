@@ -18,17 +18,16 @@ Once a stack is deployed in Portainer, you will inevitably need to modify it - a
 ## How Stack Updates Work
 
 When you update a stack in Portainer:
-1. Docker Compose compares the new definition to the running state.
-2. Only changed services are recreated (services with no changes are left running).
-3. Networks and volumes are created if new, but existing ones are not removed automatically.
-4. The update is applied container by container within each service.
+1. Portainer passes the updated definition to the underlying Docker deployment mechanism.
+2. For Docker Compose-based updates, services whose configuration or image changed are recreated, while unchanged services are left running.
+3. Networks and volumes are created if new, but existing named volumes are not removed automatically.
 
 ## Step 1: Open the Stack Editor
 
 1. Navigate to **Stacks** in Portainer.
 2. Click the stack name you want to edit.
-3. The stack detail page shows the current Compose content.
-4. Click **Editor** tab to view and edit the Compose YAML.
+3. If the stack was deployed with the **Web editor**, click the **Editor** tab to view and edit the Compose YAML.
+4. If the stack was deployed from **Git**, edit the Compose file in the repository, then use **Pull and redeploy** in Portainer. If needed, you can **Detach from Git** to make the stack editable in Portainer, but it can no longer be updated from Git afterward.
 
 ## Step 2: Add a New Service
 
@@ -70,15 +69,16 @@ To upgrade nginx from `alpine` to a specific version:
 
 After clicking **Update the stack**, only the `nginx` container is recreated with the new image.
 
-To always pull the latest tag:
-1. Check **Re-pull image** before clicking Update.
-2. This forces a fresh `docker pull` even if the tag hasn't changed.
+To always re-pull a tag that hasn't changed in the Compose file for a Git-based stack:
+1. Click **Pull and redeploy**.
+2. Enable **Re-pull image**.
+3. Redeploy the stack.
 
 ## Step 4: Modify Environment Variables
 
 Environment variables can be updated two ways:
 
-**Method 1: In the Compose YAML** (for non-sensitive values):
+**Method 1: In the Compose YAML** (for direct values in the service definition):
 ```yaml
 services:
   api:
@@ -87,14 +87,22 @@ services:
       - WORKERS=4            # Added new variable
 ```
 
-**Method 2: In the Environment Variables section** (for secrets):
-1. In the stack detail page, scroll below the editor.
+**Method 2: In the Environment Variables section** (for values referenced as `${VAR}` in the Compose file):
+```yaml
+services:
+  api:
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL}
+      WORKERS: ${WORKERS}
+```
+
+1. In the stack detail page, expand the Environment variables section.
 2. Add, edit, or remove environment variables.
 3. Click **Update the stack**.
 
 ## Step 5: Change Resource Limits
 
-Add or update resource constraints:
+For Docker Swarm, add or update resource constraints:
 
 ```yaml
 # Before (no limits):
@@ -113,7 +121,7 @@ Add or update resource constraints:
           memory: 256M
 ```
 
-For standalone Docker (not Swarm), use:
+For Docker Standalone (not Swarm), use:
 ```yaml
   api:
     image: myorg/api:latest
@@ -135,14 +143,18 @@ Renaming a service effectively creates a new container - Docker Compose tracks s
     image: myorg/app:latest
 ```
 
-After updating: Docker Compose creates `api` container and removes `app` container. Data in named volumes is preserved.
+After updating: Portainer creates the new `api` container. On Docker Compose-based stacks, the old `app` container can remain as an orphan unless you remove it; on Docker Swarm, use **Prune services** when updating if you removed services from the stack. Data in named volumes is preserved.
 
 ## Step 7: Roll Back to Previous Configuration
 
-Portainer does not natively maintain a stack version history. To enable rollback:
+For stacks deployed with the Web editor, Portainer can keep previous versions of the stack file. To roll back:
+
+1. Open the stack's **Editor** tab.
+2. Use the **Version** dropdown to select a previous stack file version.
+3. Click **Update the stack**.
 
 ```bash
-# Keep a backup before editing:
+# Keep a backup before editing if you want a local copy:
 # In Portainer, copy the current Compose YAML before making changes
 # Paste it into a file:
 cat > stack-backup-$(date +%Y%m%d).yml << 'EOF'
@@ -152,9 +164,9 @@ EOF
 
 For Git-based stacks:
 - Changes to the repo are tracked by commit history.
-- To rollback, point the stack to a previous commit SHA.
-- In Portainer: **Stacks** → click stack → set **Repository ref** to the previous commit.
+- To roll back, revert the repository to the desired state, or select an earlier branch or tag as the **Repository reference**.
+- In Portainer: **Stacks** → click stack → use **Pull and redeploy** after updating the repository or changing the **Repository reference**.
 
 ## Conclusion
 
-Editing stacks in Portainer is straightforward - open the editor, modify the Compose YAML, and click Update. Docker Compose intelligently applies only the changes: new services are created, changed services are recreated, and unchanged services continue running without interruption. For production stacks, use Git-based deployment so every edit is a commit, enabling rollback to any previous state. Before making significant changes, copy the current Compose YAML as a backup or ensure your Git history is up to date.
+Editing stacks in Portainer is straightforward - use the editor for Web editor stacks, or update the Git repo and redeploy for Git-based stacks. Portainer applies only the relevant changes: new services are created, changed services are recreated or updated, and unchanged services are typically left running. For production stacks, use Git-based deployment so every edit is a commit, enabling rollback to any previous state. Before making significant changes, copy the current Compose YAML as a backup or ensure your Git history is up to date.
