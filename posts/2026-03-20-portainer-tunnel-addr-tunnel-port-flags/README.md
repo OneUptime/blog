@@ -27,12 +27,12 @@ docker run -d \
   --restart=always \
   -p 9000:9000 \
   -p 9443:9443 \
-  -p 8001:8001 \            # Map the new tunnel port
+  -p 8001:8001 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
   --edge-compute \
-  --tunnel-port 8001         # Tell Portainer to listen on 8001
+  --tunnel-port 8001
 ```
 
 Update the Edge Agent deployment commands to reference the new port when creating Edge environments.
@@ -49,7 +49,7 @@ docker run -d \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
   --edge-compute \
-  --tunnel-addr 10.0.0.5 \    # Only accept Edge connections on this IP
+  --tunnel-addr 10.0.0.5 \
   --tunnel-port 8000
 ```
 
@@ -57,26 +57,26 @@ docker run -d \
 
 ```mermaid
 graph LR
-    A[Edge Agent<br/>Remote Site] -->|Outbound TCP 8000| B[Portainer Server<br/>tunnel-addr:tunnel-port]
-    B -->|Management traffic| A
+    A[Edge Agent<br/>Remote Site] -->|Polls API over 9443| B[Portainer Server]
+    A -->|Opens tunnel on 8000| B
+    B -->|Management traffic over tunnel| A
 ```
 
-The Edge Agent dials out - no inbound firewall rules needed at the remote site. Only the Portainer server needs port `8000` (or your custom port) publicly accessible.
+The Edge Agent dials out - no inbound firewall rules needed at the remote site. The Portainer server must be reachable from the Edge environment on port `9443` for API polling and on port `8000` (or your custom tunnel port) for the reverse tunnel.
 
 ## Configuring Edge Agent to Use Custom Tunnel Port
 
-When creating an Edge environment in Portainer, the generated deployment command includes the tunnel address and port from your settings. If you change the tunnel port after creating Edge environments, you must regenerate and redeploy Edge Agents.
+When creating an Edge environment in Portainer, the generated deployment command includes the tunnel address and port configured for that environment. If you change the tunnel port after creating Edge environments, redeploy the Edge Agents with an updated deployment command so they receive a new `EDGE_KEY`.
 
 ```bash
-# The edge key encodes the tunnel endpoint
+# EDGE_KEY includes the Portainer API URL and reverse tunnel server address
 
-# If tunnel-port changes, generate a new Edge environment and redeploy agents
+# If tunnel-port changes, redeploy agents with an updated EDGE_KEY
 ```
 
 ## Docker Compose Example
 
 ```yaml
-version: "3.8"
 services:
   portainer:
     image: portainer/portainer-ce:latest
@@ -86,7 +86,7 @@ services:
       - --tunnel-port=8000
       - --tunnel-addr=0.0.0.0
     ports:
-      - "9000:9000"
+      - "9443:9443"
       - "8000:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
