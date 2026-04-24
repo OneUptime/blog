@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, DNS, Wildcard, Traefik, SSL
 
-Description: Configure wildcard DNS records and wildcard SSL certificates to automatically cover all subdomains for Portainer-managed services.
+Description: Configure wildcard DNS records and a wildcard SSL certificate to automatically cover service subdomains for Portainer-managed services.
 
 ## Introduction
 
-Wildcard DNS allows a single DNS record (`*.example.com`) to match any subdomain. Combined with wildcard SSL certificates, this eliminates the need to create individual DNS records and certificates for each new service you deploy via Portainer. New services get automatic HTTPS access just by adding Traefik labels.
+Wildcard DNS allows a single DNS record (`*.example.com`) to match subdomains. Combined with a wildcard SSL certificate for `*.services.example.com`, this eliminates the need to create individual DNS records and certificates for each new service you deploy via Portainer. New services get automatic HTTPS access just by adding Traefik labels.
 
 ## How Wildcard DNS Works
 
@@ -40,7 +40,7 @@ curl -X POST \
     \"proxied\": false
   }"
 
-# Also add the root record if needed
+# Also add the root record because the wildcard does not cover services.example.com
 curl -X POST \
   "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records" \
   -H "Authorization: Bearer $CF_API_TOKEN" \
@@ -55,32 +55,16 @@ curl -X POST \
 
 ## Step 2: Obtain Wildcard SSL Certificate
 
-Let's Encrypt supports wildcard certificates via DNS-01 challenge:
+Let's Encrypt supports wildcard certificates via DNS-01 challenge. If Traefik is going to manage the certificate for you, create its ACME storage file first:
 
 ```bash
-# Install certbot with Cloudflare plugin
-sudo apt-get install -y python3-certbot-dns-cloudflare
-
-# Create Cloudflare credentials file
-mkdir -p ~/.secrets
-tee ~/.secrets/cloudflare.ini << 'EOF'
-dns_cloudflare_api_token = your-cloudflare-api-token
-EOF
-chmod 600 ~/.secrets/cloudflare.ini
-
-# Request wildcard certificate
-sudo certbot certonly \
-  --dns-cloudflare \
-  --dns-cloudflare-credentials ~/.secrets/cloudflare.ini \
-  -d "services.example.com" \
-  -d "*.services.example.com" \
-  --non-interactive \
-  --agree-tos \
-  -m admin@example.com
-
-# Verify certificate
-sudo certbot certificates
+# Prepare persistent ACME storage for Traefik
+mkdir -p letsencrypt
+touch letsencrypt/acme.json
+chmod 600 letsencrypt/acme.json
 ```
+
+Traefik requests the certificate automatically once the ACME resolver and `websecure` entry point below are configured.
 
 ## Step 3: Configure Traefik with Wildcard Certificates
 
@@ -95,16 +79,13 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      CF_API_TOKEN: "${CF_API_TOKEN}"
+      CF_DNS_API_TOKEN: "${CF_DNS_API_TOKEN}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik-certs:/letsencrypt
+      - ./letsencrypt:/letsencrypt
       - ./traefik.yml:/etc/traefik/traefik.yml:ro
     networks:
       - proxy
-
-volumes:
-  traefik-certs:
 
 networks:
   proxy:
@@ -130,6 +111,13 @@ entryPoints:
           to: websecure
   websecure:
     address: ":443"
+    http:
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: services.example.com
+            sans:
+              - "*.services.example.com"
 
 certificatesResolvers:
   cloudflare:
@@ -155,12 +143,9 @@ services:
     image: my-service:latest
     labels:
       - traefik.enable=true
-      # Automatically uses wildcard cert
+      # Uses the wildcard cert configured on the websecure entry point
       - traefik.http.routers.my-service.rule=Host(`my-new-service.services.example.com`)
       - traefik.http.routers.my-service.entrypoints=websecure
-      - traefik.http.routers.my-service.tls=true
-      # Use the wildcard certificate resolver
-      - traefik.http.routers.my-service.tls.certresolver=cloudflare
       - traefik.http.services.my-service.loadbalancer.server.port=3000
     networks:
       - proxy
@@ -172,19 +157,7 @@ networks:
 
 ## Step 5: Automatic Certificate Renewal
 
-```bash
-# Set up automatic renewal
-sudo tee /etc/cron.d/certbot-renewal << 'EOF'
-0 0 * * * root certbot renew --quiet --deploy-hook "docker exec traefik kill -s HUP 1"
-EOF
-
-# Or use a systemd timer
-sudo systemctl enable certbot.timer
-sudo systemctl start certbot.timer
-
-# Test renewal
-sudo certbot renew --dry-run
-```
+Traefik renews ACME certificates automatically. No separate `certbot` cron job or `systemd` timer is required when Traefik is handling certificate issuance and renewal.
 
 ## Testing Wildcard DNS
 
@@ -197,8 +170,9 @@ nslookup another-service.services.example.com
 curl -v https://new-service.services.example.com
 
 # Verify certificate covers wildcard
-echo | openssl s_client -connect new-service.services.example.com:443 2>/dev/null \
-  | openssl x509 -noout -subject -issuer
+echo | openssl s_client -servername new-service.services.example.com \
+  -connect new-service.services.example.com:443 2>/dev/null \
+  | openssl x509 -noout -subject -issuer -ext subjectAltName
 ```
 
 ## Conclusion
