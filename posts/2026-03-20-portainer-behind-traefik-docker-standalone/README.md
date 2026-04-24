@@ -42,7 +42,7 @@ certificatesResolvers:
   letsencrypt:
     acme:
       email: admin@example.com
-      storage: /letsencrypt/acme.json
+      storage: /acme.json
       tlsChallenge: {}
 
 providers:
@@ -66,8 +66,8 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik/traefik.yml:/traefik.yml:ro
-      - traefik_certs:/letsencrypt
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/acme.json:/acme.json
     networks:
       - proxy
     labels:
@@ -75,6 +75,7 @@ services:
       # Traefik dashboard route (optional, protect in production)
       - "traefik.http.routers.dashboard.rule=Host(`traefik.example.com`)"
       - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls=true"
       - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
       - "traefik.http.routers.dashboard.service=api@internal"
 
@@ -92,13 +93,14 @@ services:
       # Router: match requests to portainer.example.com
       - "traefik.http.routers.portainer.rule=Host(`portainer.example.com`)"
       - "traefik.http.routers.portainer.entrypoints=websecure"
+      - "traefik.http.routers.portainer.tls=true"
       - "traefik.http.routers.portainer.tls.certresolver=letsencrypt"
-      # Service: tell Traefik which port Portainer listens on (HTTPS)
-      - "traefik.http.services.portainer.loadbalancer.server.port=9443"
-      - "traefik.http.services.portainer.loadbalancer.server.scheme=https"
-      # Tell Portainer to trust the proxy headers
+      # Service: tell Traefik which internal Portainer HTTP port to use
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+      - "traefik.http.services.portainer.loadbalancer.server.scheme=http"
     command:
-      - "--trusted-origins=https://portainer.example.com"
+      - "--http-enabled"
+      - "--trusted-origins=portainer.example.com"
 
 networks:
   proxy:
@@ -106,7 +108,6 @@ networks:
 
 volumes:
   portainer_data:
-  traefik_certs:
 ```
 
 ## Step 3: Create the External Network and Deploy
@@ -130,33 +131,44 @@ docker logs traefik -f
 ## Step 4: Verify Routes
 
 ```bash
-# Check Traefik detects both services
-docker exec traefik traefik version
+# Check Traefik detects both routers
+curl -s https://traefik.example.com/api/http/routers | grep -E 'dashboard@docker|portainer@docker'
 
-# Verify HTTPS certificate
-curl -v https://portainer.example.com 2>&1 | grep "SSL certificate"
+# Verify Portainer responds over HTTPS
+curl -I https://portainer.example.com
+
+# Inspect the certificate Traefik is presenting
+openssl s_client -connect portainer.example.com:443 -servername portainer.example.com </dev/null 2>/dev/null | openssl x509 -noout -issuer -subject -dates
 ```
 
 ## Handling Portainer's Internal HTTPS
 
-Portainer listens on HTTPS by default (port 9443). Traefik needs to know to use HTTPS when proxying:
-
-```yaml
-# Add these labels to the portainer service
-- "traefik.http.services.portainer.loadbalancer.server.scheme=https"
-# Skip certificate verification for Portainer's self-signed cert
-- "traefik.http.services.portainer.loadbalancer.passhostheader=true"
-```
-
-Alternatively, run Portainer with `--http-enabled` to expose port 9000 over HTTP internally, then set the scheme to `http`:
+Portainer listens on HTTPS by default (port 9443). This guide enables Portainer's internal HTTP listener with `--http-enabled`, so Traefik can proxy to port 9000 without needing to trust Portainer's self-signed certificate:
 
 ```yaml
     command:
       - "--http-enabled"
-      - "--trusted-origins=https://portainer.example.com"
+      - "--trusted-origins=portainer.example.com"
     labels:
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
       - "traefik.http.services.portainer.loadbalancer.server.scheme=http"
+```
+
+If you want Traefik to proxy to Portainer's default HTTPS listener on `9443` instead, `server.scheme=https` alone is not enough. Because Portainer uses a self-signed certificate by default, Traefik must either trust that certificate or use a `ServersTransport` resource with `insecureSkipVerify: true`. That requires enabling Traefik's file provider and defining the transport in a dynamic configuration file. `passHostHeader` does not disable certificate verification.
+
+```yaml
+# Define this in a dynamic configuration file loaded by Traefik's file provider
+http:
+  serversTransports:
+    portainer-insecure:
+      insecureSkipVerify: true
+```
+
+```yaml
+# Add these labels to the portainer service
+- "traefik.http.services.portainer.loadbalancer.server.port=9443"
+- "traefik.http.services.portainer.loadbalancer.server.scheme=https"
+- "traefik.http.services.portainer.loadbalancer.serverstransport=portainer-insecure@file"
 ```
 
 ## Conclusion
