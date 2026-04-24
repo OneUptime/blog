@@ -6,108 +6,86 @@ Tags: Rancher, Kubernetes, CIS, Security, Compliance, Scan Profiles
 
 Description: Learn how to create and customize CIS scan profiles in Rancher to tailor security benchmark scans to your organization's specific requirements.
 
-Rancher's CIS scanning feature supports custom scan profiles that allow you to enable or disable specific benchmark checks based on your environment's requirements. This is essential when certain checks don't apply to your infrastructure or when you need to focus on specific compliance areas. This guide covers how to configure and manage CIS scan profiles.
+In Rancher v2.12 and later, Rancher's Compliance feature supports custom CIS scan profiles that allow you to enable or disable specific benchmark checks based on your environment's requirements. This is essential when certain checks don't apply to your infrastructure or when you need to focus on specific compliance areas. This guide covers how to configure and manage CIS scan profiles.
 
 ## Prerequisites
 
-- Rancher with CIS Benchmark app installed
-- Cluster Owner or Cluster Admin permissions
+- Rancher v2.12 or later with the Rancher Compliance app installed
+- Cluster Owner or Rancher global administrator permissions
 - Understanding of CIS Kubernetes Benchmark checks
 - `kubectl` access to the cluster
 
 ## Understanding CIS Scan Profiles
 
-Rancher ships with several built-in scan profiles:
+Rancher Compliance installs built-in `ClusterScanProfile` resources such as:
 
 | Profile Name | Description |
 |---|---|
-| rke-cis-1.6 | Standard RKE1 benchmark |
-| rke-cis-1.6-hardened | Hardened RKE1 benchmark |
-| rke2-cis-1.6 | Standard RKE2 benchmark |
-| rke2-cis-1.6-hardened | Hardened RKE2 benchmark |
-| k3s-cis-1.6 | Standard K3s benchmark |
-| k3s-cis-1.6-hardened | Hardened K3s benchmark |
+| cis-1.10-profile | Generic CIS 1.10 benchmark |
+| rke2-cis-1.10-profile | RKE2 CIS 1.10 benchmark |
+| k3s-cis-1.10-profile | K3s CIS 1.10 benchmark |
+| aks-profile-1.7 | AKS benchmark |
+| eks-profile-1.5.0 | EKS benchmark |
+| gke-profile-1.6.0 | GKE benchmark |
 
 ## Step 1: View Existing Scan Profiles
 
 ```bash
 # List all available scan profiles
-
-kubectl get clusterscanprofile -A
+kubectl get clusterscanprofiles.compliance.cattle.io
 
 # View details of a specific profile
-kubectl describe clusterscanprofile rke2-cis-1.6 -n cattle-cis-system
+kubectl describe clusterscanprofile rke2-cis-1.10-profile
 
 # Get the profile YAML for review
-kubectl get clusterscanprofile rke2-cis-1.6 \
-  -n cattle-cis-system -o yaml
+kubectl get clusterscanprofile rke2-cis-1.10-profile -o yaml
 ```
 
 ## Step 2: Create a Custom Scan Profile
 
-Create a custom profile based on an existing one:
+Create a custom profile for an existing benchmark version:
 
 ```yaml
 # custom-cis-profile.yaml - Custom profile with specific checks skipped
-apiVersion: cis.cattle.io/v1
+apiVersion: compliance.cattle.io/v1
 kind: ClusterScanProfile
 metadata:
   name: my-custom-profile
-  namespace: cattle-cis-system
 spec:
-  # Base the custom profile on the hardened RKE2 profile
-  benchmarkVersion: rke2-cis-1.6
+  # Use the RKE2 CIS 1.10 benchmark
+  benchmarkVersion: rke2-cis-1.10
   skipTests:
-  # Skip checks that don't apply to your environment
-  # Format: <section>.<check-number>
-
-  # Skip this check if you're using a managed etcd service
+  # Skip checks that don't apply to your environment.
+  # Test IDs must match the selected benchmark version.
   - "2.1"
   - "2.2"
-
-  # Skip if your organization uses a different admission controller
-  - "1.2.10"
-
-  # Skip if using a cloud provider's IAM instead of RBAC
-  - "3.1.1"
-
-  # Skip checks requiring manual verification in your environment
-  - "4.1.1"
-  - "4.1.2"
+  - "5.1.1"
+  - "5.1.2"
 ```
 
 ```bash
 kubectl apply -f custom-cis-profile.yaml
 
 # Verify the profile was created
-kubectl get clusterscanprofile my-custom-profile -n cattle-cis-system
+kubectl get clusterscanprofile my-custom-profile
 ```
 
 ## Step 3: Create a Profile for PCI DSS Compliance
 
-Focus scanning on checks relevant to PCI DSS:
+If your security team has already mapped specific CIS controls to a PCI DSS exception list, encode only those approved skips in a dedicated profile:
 
 ```yaml
-# pci-dss-profile.yaml - Profile focused on PCI DSS relevant checks
-apiVersion: cis.cattle.io/v1
+# pci-dss-profile.yaml - Profile containing approved PCI DSS exception IDs
+apiVersion: compliance.cattle.io/v1
 kind: ClusterScanProfile
 metadata:
   name: pci-dss-focused
-  namespace: cattle-cis-system
 spec:
-  benchmarkVersion: rke2-cis-1.6
+  benchmarkVersion: rke2-cis-1.10
   skipTests:
-  # Only run checks relevant to PCI DSS:
-  # Keep network policy checks (required for PCI DSS segmentation)
-  # Keep authentication checks (PCI DSS requires strong authentication)
-  # Keep encryption checks (PCI DSS requires data encryption)
-  # Skip checks that are PCI DSS irrelevant for your setup
-
-  # Skip container image validation (managed separately)
+  # Example only: use the exact control IDs approved by your assessor or security team.
   - "5.1.1"
   - "5.1.2"
-
-  # Skip pod security policy checks (using pod security admission instead)
   - "5.2.1"
   - "5.2.2"
   - "5.2.3"
@@ -115,26 +93,25 @@ spec:
 
 ## Step 4: Create a Minimal Profile for Development
 
-For development clusters where strict compliance is less critical:
+For development clusters where strict compliance is less critical, you can create a more permissive profile, but the IDs still need to match the selected benchmark version:
 
 ```yaml
 # dev-profile.yaml - Minimal profile for development environments
-apiVersion: cis.cattle.io/v1
+apiVersion: compliance.cattle.io/v1
 kind: ClusterScanProfile
 metadata:
   name: development-minimal
-  namespace: cattle-cis-system
 spec:
-  benchmarkVersion: rke2-cis-1.6
+  benchmarkVersion: rke2-cis-1.10
   skipTests:
   # Skip checks not applicable to development
-  - "1.1.1"   # Master node config permissions (managed node)
-  - "1.1.2"   # Master node config ownership (managed node)
-  - "2.1"     # etcd configuration (embedded etcd)
-  - "2.2"     # etcd ownership (embedded etcd)
-  - "3.1.1"   # Client cert auth (not used in dev)
-  - "4.1.1"   # Kubelet service file permissions (managed)
-  - "4.1.2"   # Kubelet service file ownership (managed)
+  - "1.1.1"   # API server pod specification file permissions
+  - "1.1.2"   # API server pod specification file ownership
+  - "2.1"     # etcd cert-file and key-file settings
+  - "2.2"     # etcd client certificate authentication
+  - "3.1.1"   # Client certificate authentication for users
+  - "4.1.1"   # Kubelet service file permissions
+  - "4.1.2"   # Kubelet service file ownership
 ```
 
 ## Step 5: Use Custom Profile in a Scan
@@ -142,7 +119,7 @@ spec:
 ```bash
 # Run a scan using the custom profile
 kubectl apply -f - <<EOF
-apiVersion: cis.cattle.io/v1
+apiVersion: compliance.cattle.io/v1
 kind: ClusterScan
 metadata:
   name: custom-profile-scan
@@ -161,8 +138,7 @@ After reviewing scan results, update your profile to exclude new false positives
 
 ```bash
 # Get the current profile configuration
-kubectl get clusterscanprofile my-custom-profile \
-  -n cattle-cis-system -o yaml > my-custom-profile.yaml
+kubectl get clusterscanprofile my-custom-profile -o yaml > my-custom-profile.yaml
 
 # Edit the profile to add additional skips
 # Then apply the update
@@ -174,8 +150,7 @@ kubectl apply -f my-custom-profile.yaml
 ```bash
 # Document profile changes by adding annotations
 kubectl annotate clusterscanprofile my-custom-profile \
-  -n cattle-cis-system \
-  "compliance.example.com/reason"="Skip 2.1-2.2: Using managed etcd via cloud provider" \
+  "compliance.example.com/reason"="Approved exception list for this cluster profile" \
   "compliance.example.com/reviewer"="security-team" \
   "compliance.example.com/review-date"="2026-03-20"
 
