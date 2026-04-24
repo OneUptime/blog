@@ -8,7 +8,7 @@ Description: Learn how to select the correct shell when opening a container cons
 
 ## Introduction
 
-When opening a container console in Portainer, you must specify which shell to use. Choosing the wrong shell results in a "no such file or directory" error. The right shell depends on the base image - Alpine uses `/bin/sh`, Ubuntu/Debian have `/bin/bash`, and some minimal images have no shell at all.
+When opening a container console in Portainer, you must specify which shell to use. Choosing the wrong shell results in a "no such file or directory" error. The right shell depends on the base image - Alpine uses BusyBox `ash` (select `/bin/ash` in Portainer), Ubuntu/Debian typically have `/bin/bash`, and some minimal images have no shell at all.
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ Before choosing a shell, determine which shells are available in the container:
 ```bash
 # From Docker CLI (on the host), check available shells:
 
-docker exec my-container ls -la /bin/sh /bin/bash /bin/ash /bin/zsh 2>/dev/null
+docker exec my-container ls -la /bin/ash /bin/sh /bin/bash /bin/dash /bin/zsh 2>/dev/null
 
 # Or check /etc/shells:
 docker exec my-container cat /etc/shells 2>/dev/null || echo "/etc/shells not found"
@@ -33,15 +33,15 @@ docker exec my-container cat /etc/shells 2>/dev/null || echo "/etc/shells not fo
 ### Alpine Linux (`alpine:*`, `node:*-alpine`, `python:*-alpine`, etc.)
 
 ```text
-Available:   /bin/sh (BusyBox ash)
+Available:   /bin/ash, /bin/sh (BusyBox ash)
 NOT available: /bin/bash
 ```
 
-Use `/bin/sh` - not bash:
+Use `/bin/ash` in Portainer's console dialog:
 
 ```bash
 # In Portainer console dialog:
-Shell: /bin/sh
+Shell: /bin/ash
 
 # Common Alpine-based images:
 # alpine:3.18
@@ -52,7 +52,7 @@ Shell: /bin/sh
 # golang:1.22-alpine
 ```
 
-Alpine's shell is actually BusyBox `ash`, a minimal POSIX shell. Most bash scripts work, but advanced bash features won't.
+Alpine's shell is actually BusyBox `ash`, a minimal POSIX shell. Most POSIX shell scripts work, but bash-specific features won't.
 
 ### Ubuntu/Debian (`ubuntu:*`, `debian:*`, most full images)
 
@@ -68,9 +68,9 @@ Shell: /bin/bash
 # Common Debian/Ubuntu-based images:
 # ubuntu:22.04
 # debian:12
-# python:3.12  (Debian slim)
-# node:20  (Debian slim)
-# postgres:15  (Debian)
+# python:3.12  (Debian/Trixie)
+# node:20  (Debian/Bookworm)
+# postgres:15  (Debian/Trixie)
 ```
 
 ### Distroless Images
@@ -79,10 +79,10 @@ Shell: /bin/bash
 Available:   NONE (no shell at all)
 
 # Images:
-# gcr.io/distroless/java
-# gcr.io/distroless/base
-# gcr.io/distroless/python3
-# chainguard/node
+# gcr.io/distroless/base-debian12
+# gcr.io/distroless/python3-debian12
+# gcr.io/distroless/java17-debian13
+# cgr.dev/chainguard/node
 ```
 
 You cannot open a console in distroless containers. See the workaround section below.
@@ -91,17 +91,17 @@ You cannot open a console in distroless containers. See the workaround section b
 
 ```bash
 # Nginx (Alpine):
-nginx:alpine → /bin/sh
+nginx:alpine → /bin/ash
 
 # Nginx (Debian):
 nginx:latest → /bin/bash
 
 # Redis:
-redis:7-alpine → /bin/sh
+redis:7-alpine → /bin/ash
 redis:7 → /bin/bash
 
 # PostgreSQL:
-postgres:15-alpine → /bin/sh
+postgres:15-alpine → /bin/ash
 postgres:15 → /bin/bash
 ```
 
@@ -122,8 +122,8 @@ Check from outside the container:
 
 ```bash
 # Test which shells are available:
-for shell in /bin/bash /bin/sh /bin/ash /bin/zsh /bin/dash; do
-    if docker exec my-container test -f "$shell" 2>/dev/null; then
+for shell in /bin/ash /bin/sh /bin/bash /bin/dash /bin/zsh; do
+    if docker exec my-container test -x "$shell" 2>/dev/null; then
         echo "✓ ${shell} is available"
     else
         echo "✗ ${shell} not found"
@@ -137,24 +137,24 @@ done
 
 ```bash
 # Error: you specified /bin/bash but the image uses Alpine
-# Fix: use /bin/sh instead
+# Fix: use /bin/ash in Portainer instead
 
 # In Portainer console dialog:
 # Change from: /bin/bash
-# Change to:   /bin/sh
+# Change to:   /bin/ash
 ```
 
 ### "exec: 'bash': executable file not found in $PATH"
 
-Same issue - the image doesn't have bash. Switch to `/bin/sh`.
+Same issue - the image doesn't have bash. Switch to `/bin/ash` in Portainer, or `/bin/sh` if you're using a custom command.
 
 ### "rpc error: code = 2 desc = cannot find executable"
 
-The container might be distroless or the path is wrong. Try:
+The container might be distroless or the path is wrong. If the image includes `find`, try:
 
 ```bash
 # Find any available shell:
-docker exec my-container find / -name "sh" -o -name "bash" 2>/dev/null | head -5
+docker exec my-container find / \( -name "ash" -o -name "sh" -o -name "bash" -o -name "dash" -o -name "zsh" \) 2>/dev/null | head -5
 ```
 
 ## Step 5: Working with Minimal Shells
@@ -166,36 +166,35 @@ Alpine's `/bin/sh` (ash) supports most common commands but has limitations:
 ls -la
 cat file.txt
 grep "pattern" file
-ps aux
+ps
 env
 ping -c 4 host
 wget -O- http://url
 netstat -tlnp
 
 # Does NOT work in ash (bash-specific features):
-source /etc/profile.d/myscript.sh  # Use: . /etc/profile.d/myscript.sh
-[[ -z "$VAR" ]]                    # Use: [ -z "$VAR" ]
 echo {1..10}                       # Brace expansion not available
 declare -A myarray                 # Associative arrays not available
+diff <(ls /tmp) <(ls /var)         # Process substitution not available
 ```
 
 ## Step 6: Workaround for Distroless Images
 
 When a container has no shell, use a debug sidecar or override approach:
 
-### Method 1: Docker Debug (Docker Desktop feature)
+### Method 1: Docker Debug (Docker CLI command)
 
 ```bash
-# Docker Desktop: attach a debug shell to any container
+# Attach a debug shell to a container or image
 docker debug my-distroless-app
 ```
 
-### Method 2: Ephemeral Debug Container (Kubernetes approach)
+### Method 2: Temporary Debug Container (standalone Docker workaround)
 
 In Kubernetes, use ephemeral containers. For standalone Docker, use:
 
 ```bash
-# Run a shell in the same namespace as the target container
+# Run a shell with the target container's PID and network namespaces, and mount its volumes
 docker run -it --rm \
   --pid=container:my-distroless-app \
   --network=container:my-distroless-app \
@@ -210,24 +209,24 @@ Many projects provide debug image variants:
 
 ```dockerfile
 # Production:
-FROM gcr.io/distroless/java:17
+FROM gcr.io/distroless/java17-debian13
 
 # Debug variant (includes a shell):
-FROM gcr.io/distroless/java:17-debug
+FROM gcr.io/distroless/java17-debian13:debug
 ```
 
 ## Step 7: Quick Reference
 
 | Image Type | Shell to Use |
 |-----------|-------------|
-| Alpine (`*-alpine`) | `/bin/sh` |
+| Alpine (`*-alpine`) | `/bin/ash` |
 | Ubuntu/Debian | `/bin/bash` |
 | CentOS/RHEL | `/bin/bash` |
 | BusyBox | `/bin/sh` |
 | Distroless | Not available |
 | Scratch | Not available |
-| Most official images (non-alpine) | `/bin/bash` |
+| Many Debian/Ubuntu-based app images | `/bin/bash` |
 
 ## Conclusion
 
-Choosing the right shell in Portainer's console dialog is a matter of knowing your base image. Alpine and minimal images use `/bin/sh`, while full distro images (Ubuntu, Debian, CentOS) offer `/bin/bash`. For distroless images, use Docker debug containers or alternate debugging strategies. When in doubt, try `/bin/sh` first - it's more universally available than `/bin/bash`.
+Choosing the right shell in Portainer's console dialog is a matter of knowing your base image. Alpine and other BusyBox-based images generally use `/bin/ash` in Portainer, while full distro images (Ubuntu, Debian, CentOS) often offer `/bin/bash`. For distroless images, use Docker Debug or alternate debugging strategies. When in doubt, try `/bin/ash` or `/bin/sh` before `/bin/bash`.
