@@ -25,7 +25,7 @@ Named volumes differ from other storage types:
 | tmpfs | Memory | None | Secrets, cache |
 | Anonymous volume | Docker | Low | Temporary data |
 
-Named volumes are stored in Docker's volume directory:
+Named volumes are stored in Docker's volume directory by default:
 - Linux: `/var/lib/docker/volumes/<volume-name>/_data`
 
 ## Step 1: Create a Named Volume via Portainer
@@ -51,10 +51,10 @@ Driver: local
 Options:
   type: none
   o:    bind
-  device: /host/path/to/data
+  device: /absolute/host/path/to/data
 ```
 
-This creates a local driver volume that maps to a specific host path (similar to a named bind mount).
+This uses the `local` driver to bind an existing host path into a named volume. Because it depends on a specific host path, it behaves more like a bind mount and is less portable than a regular named volume.
 
 ## Step 3: Using Named Volumes in Containers
 
@@ -78,8 +78,6 @@ The most common way to use named volumes:
 
 ```yaml
 # docker-compose.yml with named volumes
-
-version: "3.8"
 
 services:
   postgres:
@@ -211,10 +209,11 @@ In Portainer (with Swarm or Agent), you can browse volumes directly via the UI.
 # docker-compose.yml best practices for volumes
 
 volumes:
-  # 1. Give volumes meaningful names with the stack prefix
-  myapp_postgres_data:
-  myapp_redis_data:
-  myapp_uploads:
+  # 1. Give volumes meaningful names
+  # Compose prefixes the actual volume name with the project name by default
+  postgres_data:
+  redis_data:
+  app_uploads:
 
   # 2. Use external volumes for data shared between stacks
   shared_config:
@@ -233,7 +232,7 @@ volumes:
 docker volume create shared_config
 
 # Pre-populate it:
-docker run --rm -v shared_config:/config alpine sh -c "cp /templates/* /config/"
+docker run --rm -v shared_config:/config alpine sh -c "printf 'app.name=myapp\n' > /config/app.conf"
 ```
 
 ## Step 9: Verify Volume Creation
