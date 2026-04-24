@@ -8,11 +8,11 @@ Description: Learn how to monitor CPU, memory, and container health on remote ed
 
 ## Introduction
 
-Visibility into edge device performance is critical for maintaining reliable operations. Portainer provides built-in container and host statistics, but for long-term trending and alerting, you'll want to complement it with external monitoring. This guide covers both approaches.
+Visibility into edge device performance is critical for maintaining reliable operations. Portainer provides built-in container statistics and host details, but for long-term trending and alerting, you'll want to complement it with external monitoring. This guide covers both approaches.
 
 ## Prerequisites
 
-- Portainer with edge endpoints connected
+- Portainer with edge environments connected
 - Basic understanding of Docker container metrics
 - Optional: Prometheus and Grafana for long-term monitoring
 
@@ -20,10 +20,10 @@ Visibility into edge device performance is critical for maintaining reliable ope
 
 ### Viewing Container Stats on an Edge Device
 
-1. In Portainer, navigate to **Edge Compute > Environments** (or **Endpoints**).
-2. Click on a connected edge endpoint.
+1. In Portainer, navigate to **Environments** (called **Endpoints** in older releases).
+2. Click on a connected edge environment.
 3. Navigate to **Containers**.
-4. Click the **Stats** icon next to any running container.
+4. Click a running container, then select **Stats**.
 
 This shows real-time:
 - CPU usage percentage
@@ -31,11 +31,11 @@ This shows real-time:
 - Network I/O (bytes in/out)
 - Block I/O (disk reads/writes)
 
-### Viewing Host-Level Stats
+### Viewing Host-Level Details
 
-On connected (non-async) edge endpoints:
-1. Go to **Environments > [Endpoint Name] > Host**.
-2. View CPU, memory, and disk usage of the underlying host.
+On Docker Standalone edge environments:
+1. Go to **Host > Details**.
+2. View host details such as CPU count, total memory, engine details, and physical disks for the underlying host.
 
 ## Setting Up Prometheus + Grafana on Edge Devices
 
@@ -86,9 +86,14 @@ services:
     restart: always
     ports:
       - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal=host-gateway"
+    environment:
+      - PORTAINER_EDGE_ID=${PORTAINER_EDGE_ID}
+      - SITE=${SITE:-unknown}
     volumes:
       - prometheus_data:/prometheus
-      - /etc/edge-configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /etc/edge-configs:/etc/prometheus:ro
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -113,35 +118,35 @@ volumes:
 
 ## Prometheus Configuration for Edge
 
-Distribute this as an Edge Configuration to `/etc/edge-configs/prometheus.yml`:
+Place this at `/etc/edge-configs/prometheus.yml` on the edge device. In Portainer Business Edition, you can distribute it with Edge Configurations:
 
 ```yaml
 # prometheus.yml - scrape config for edge device monitoring
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  external_labels:
+    device_id: '${PORTAINER_EDGE_ID}'
+    site: '${SITE}'
+
+rule_files:
+  - /etc/prometheus/alert-rules.yml
 
 scrape_configs:
   # Scrape host metrics from node exporter
   - job_name: 'node'
     static_configs:
-      - targets: ['localhost:9100']
-        labels:
-          device_id: '${DEVICE_ID}'
-          site: '${SITE}'
+      - targets: ['host.docker.internal:9100']
 
   # Scrape container metrics from cAdvisor
   - job_name: 'cadvisor'
     static_configs:
       - targets: ['cadvisor:8080']
-        labels:
-          device_id: '${DEVICE_ID}'
-          site: '${SITE}'
 ```
 
 ## Alerting on Edge Performance Issues
 
-Add alerting rules to Prometheus:
+Place alerting rules at `/etc/edge-configs/alert-rules.yml`:
 
 ```yaml
 # alert-rules.yml - deploy as an edge configuration
@@ -178,7 +183,7 @@ groups:
 
 ## Aggregating Metrics Centrally
 
-For fleet-wide dashboards, configure each edge Prometheus to remote-write to a central Prometheus or Grafana Cloud:
+For fleet-wide dashboards, configure each edge Prometheus to remote-write to Grafana Cloud or another Prometheus-compatible remote write endpoint. If you use another Prometheus server as the receiver, start it with `--web.enable-remote-write-receiver`:
 
 ```yaml
 # Add to prometheus.yml on edge devices
@@ -186,12 +191,8 @@ remote_write:
   - url: "https://prometheus.internal.mycompany.com/api/v1/write"
     basic_auth:
       username: edge_writer
-      password: ${PROMETHEUS_WRITE_PASSWORD}
-    # Add device metadata as labels
-    write_relabel_configs:
-      - source_labels: [__name__]
-        target_label: site
-        replacement: "${SITE}"
+      password: "replace-with-write-password"
+    # Samples sent here include the external_labels defined above.
 ```
 
 ## Best Practices
