@@ -4,63 +4,41 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Performance, Troubleshooting, Notification
 
-Description: Resolve Portainer performance issues where slow notification loading blocks or delays bulk container operations, stack deployments, and UI interactions.
+Description: Resolve Portainer performance issues by clearing notification history, reviewing activity logs, and using CLI or API workarounds when the UI is slow.
 
 ## Introduction
 
-Portainer's notification system can become a bottleneck in environments with high activity - when you have thousands of events queued up, the notification bell can cause the entire UI to become sluggish. Bulk operations like stopping multiple containers or deploying large stacks can be affected. This guide explains how to manage and optimize notifications.
+Portainer can feel sluggish during bulk operations when the UI is busy rendering a large notification history or when other logging and storage issues are present. In current Portainer releases, UI notifications are separate from Business Edition activity logs, so it is important to troubleshoot the right subsystem. This guide explains the supported ways to clear notification history, inspect activity logs, and rule out broader Portainer performance issues.
 
 ## Step 1: Check Notification Count
 
-```bash
-# Check how many notifications are accumulated
+Open **Settings** -> **Notifications** and review how large the notification history has become. Portainer also shows the 50 most recent notifications from the bell icon in the top-right corner of the UI.
 
-TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
-
-curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/useractivity | \
-  jq 'length'
-```
-
-If you have thousands of notifications, this is likely causing the slowdown.
+If you have a very large notification history, clear it from the UI before investigating deeper performance issues.
 
 ## Step 2: Clear All Notifications
 
-```bash
-# Clear all notifications via Portainer API
-curl -X DELETE \
-  -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/notifications
+Use the Portainer UI to clear notifications:
 
-# Or clear via the UI:
-# Click the bell icon → "Mark all as read" → "Clear all"
-```
+1. Click the bell icon and use **Clear all** to remove the current notification history
+2. Go to **Settings** -> **Notifications** to remove specific notification records from the full list
+
+Portainer does not document a server-side `/api/notifications` endpoint for this.
 
 ## Step 3: Prevent Notification Accumulation
 
-Configure Portainer to limit notification retention:
+Current Portainer docs do not expose a notification retention period or maximum-count setting. Prevent buildup by periodically clearing old notifications from the bell menu or from **Settings** -> **Notifications**.
 
-1. Go to **Settings** → **App Settings**
-2. Find **Notification** settings
-3. Set a retention period or maximum count
+If the notification UI still feels stale after cleanup, clear the Portainer site's browser storage and sign in again.
 
-## Step 4: Fix Slow Notification Loading in BoltDB
+## Step 4: Compact the Portainer Database Separately
 
-The notifications are stored in BoltDB. A large number creates slow reads:
+Portainer supports `--compact-db` to reclaim space in the main datastore on startup, but this does not clear browser-side notifications. Use it as a general maintenance step if the `/data` volume has grown or overall Portainer storage performance has degraded:
 
 ```bash
-# Stop Portainer and compact the database
+# Stop Portainer and redeploy it with database compaction enabled on startup
 docker stop portainer && docker rm portainer
 
-# Run database compaction
-docker run --rm \
-  -v portainer_data:/data \
-  portainer/portainer-ce:latest \
-  --compact-db
-
-# Restart
 docker run -d \
   -p 9000:9000 \
   -p 9443:9443 \
@@ -68,22 +46,15 @@ docker run -d \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts \
+  --compact-db
 ```
 
 ## Step 5: Check User Activity Logs
 
-In Portainer Business Edition, activity logs are stored separately and can also accumulate:
+In Portainer Business Edition, activity logs are separate from UI notifications and are read-only. Open **Logs** -> **Activity** to review them. You can filter the logs by date range, user, and environment, and export the filtered results as CSV.
 
-```bash
-# Check activity log size via API
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:9000/api/useractivity?limit=1" | \
-  jq '.totalCount'
-
-# Clear old activity logs
-# Go to: Settings → Authentication → User Activity → Configure retention
-```
+Current Portainer releases retain user activity logs for at most 7 days.
 
 ## Step 6: Identify Which Operations Are Slow
 
@@ -92,21 +63,22 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 docker stop portainer && docker rm portainer
 docker run -d \
   -p 9000:9000 \
+  -p 9443:9443 \
   --name portainer \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest \
-  --log-level=DEBUG
+  portainer/portainer-ce:sts \
+  --log-level DEBUG
 
 # Perform the slow operation
 # Then check logs for timing info
-docker logs portainer 2>&1 | grep -i "notification\|activity\|slow\|ms" | tail -30
+docker logs portainer 2>&1 | grep -Ei "activity|database|slow|ms|error" | tail -30
 ```
 
 ## Step 7: Workaround - Perform Bulk Operations via CLI
 
-When Portainer UI is slow due to notifications, use CLI for bulk operations:
+When Portainer UI is slow, use CLI for bulk operations:
 
 ```bash
 # Stop multiple containers from CLI (faster than Portainer UI)
@@ -123,79 +95,59 @@ docker compose pull && docker compose up -d
 ## Step 8: Use the Portainer API Instead of UI for Bulk Operations
 
 ```bash
-# Bulk stop containers via API (doesn't wait for UI to load)
-TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
+# Bulk stop containers via the Portainer API gateway
+API_KEY="your_api_key_here"
+PORTAINER_URL="https://localhost:9443"
 
 # Get all running container IDs
-CONTAINERS=$(curl -s -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:9000/api/endpoints/1/docker/containers/json?filters=%7B%22status%22%3A%5B%22running%22%5D%7D" | \
+CONTAINERS=$(curl -sk -H "X-API-Key: $API_KEY" \
+  --get \
+  --data-urlencode 'filters={"status":["running"]}' \
+  "$PORTAINER_URL/api/endpoints/1/docker/containers/json" | \
   jq -r '.[].Id')
 
 # Stop each container
 for ID in $CONTAINERS; do
-  curl -X POST \
-    -H "Authorization: Bearer $TOKEN" \
-    "http://localhost:9000/api/endpoints/1/docker/containers/$ID/stop"
+  curl -sk -X POST \
+    -H "X-API-Key: $API_KEY" \
+    "$PORTAINER_URL/api/endpoints/1/docker/containers/$ID/stop"
   echo "Stopped: $ID"
 done
 ```
 
 ## Step 9: Tune the Portainer Database for Performance
 
+Slow storage can still affect Portainer's main datastore and Business Edition activity logs even though UI notifications themselves are browser-side.
+
 ```bash
-# Move Portainer data to faster storage
-# Check current iops
+# Check current I/O performance
 iostat -x 1 3
 
-# If storage is the bottleneck
-# Move to an SSD-backed volume
+# If storage is the bottleneck, copy the existing Portainer data first
 docker stop portainer && docker rm portainer
 
-# Create volume on SSD-backed path
-docker volume create --driver local \
-  --opt type=none \
-  --opt device=/ssd/portainer-data \
-  --opt o=bind \
-  portainer_ssd_data
+docker run --rm \
+  -v portainer_data:/from \
+  -v /ssd/portainer-data:/to \
+  alpine sh -c 'cd /from && cp -a . /to/'
 
-# Start with new volume
+# Start Portainer from the faster path
 docker run -d \
   -p 9000:9000 \
+  -p 9443:9443 \
   --name portainer \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v portainer_ssd_data:/data \
-  portainer/portainer-ce:latest
+  -v /ssd/portainer-data:/data \
+  portainer/portainer-ce:sts
 ```
 
-## Step 10: Schedule Notification Cleanup
+## Step 10: Schedule Supported Maintenance Instead
 
-```bash
-#!/bin/bash
-# cleanup-portainer-notifications.sh
-# Schedule with: 0 3 * * * /opt/scripts/cleanup-portainer-notifications.sh
+Portainer UI notifications are stored in the browser, so there is no documented server-side API you can safely call from cron to purge them on a schedule.
 
-PORTAINER_URL="http://localhost:9000"
-ADMIN_USER="admin"
-ADMIN_PASS="yourpassword"
-
-# Get auth token
-TOKEN=$(curl -s -X POST "$PORTAINER_URL/api/auth" \
-  -H "Content-Type: application/json" \
-  -d "{\"Username\":\"$ADMIN_USER\",\"Password\":\"$ADMIN_PASS\"}" | \
-  jq -r .jwt)
-
-# Clear notifications
-RESULT=$(curl -s -o /dev/null -w "%{http_code}" \
-  -X DELETE \
-  -H "Authorization: Bearer $TOKEN" \
-  "$PORTAINER_URL/api/notifications")
-
-echo "$(date): Notifications cleared. Status: $RESULT"
-```
+If you need routine maintenance, automate supported tasks such as backups, monitoring the `/data` volume, or starting Portainer with `--compact-db`. Clear notification history from the UI when needed.
 
 ## Conclusion
 
-Notification accumulation is a common but easily overlooked cause of Portainer UI slowness. The immediate fix is to clear all notifications and compact the database. For the long term, schedule nightly cleanup of old notifications, configure retention limits in Portainer settings, and use the API for bulk operations when the UI is sluggish - the API bypasses the notification loading entirely.
+A large notification history is a UI cleanup task, not a Portainer API or BoltDB cleanup task. The immediate fix is to remove old notifications from the bell menu or the Notifications page. Database compaction is a separate maintenance task for the Portainer datastore, and Business Edition activity logs are a separate feature with their own behavior and retention window. If the UI is still sluggish after notification cleanup, use debug logging and fall back to the CLI or Portainer API for bulk operations while you investigate.
