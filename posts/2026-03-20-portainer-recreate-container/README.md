@@ -8,7 +8,7 @@ Description: Learn how to recreate a Docker container in Portainer to apply conf
 
 ## Introduction
 
-When you need to change a container's configuration - environment variables, port mappings, volume mounts, or image version - Docker requires creating a new container. Portainer's **Duplicate/Edit** and **Recreate** workflows make this straightforward. This guide explains how to safely recreate containers with updated settings.
+When you need to change a container's configuration - environment variables, port mappings, volume mounts, labels, or image version - Docker generally requires creating a new container. Portainer's **Duplicate/Edit** workflow makes this straightforward. This guide explains how to safely recreate containers with updated settings.
 
 ## Prerequisites
 
@@ -17,19 +17,19 @@ When you need to change a container's configuration - environment variables, por
 
 ## Why Recreate Is Needed
 
-Unlike virtual machines, you cannot modify most Docker container settings while it's running. To apply changes:
+Unlike virtual machines, you cannot modify many Docker container settings after the container is created. To apply changes such as:
 
 - Environment variables → Recreate
 - Port mappings → Recreate
 - Volume mounts → Recreate
-- Resource limits → Recreate
 - Image version → Recreate
-- Restart policy → Recreate
 - Labels → Recreate
 
-The only things you can change without recreation:
+Some things can be changed without recreation:
+- Restart policy via `docker update`
+- Certain resource limits via `docker update`
 - Run exec commands inside the container
-- Modify files inside the container (non-persistent)
+- Modify files in the container's writable layer (non-persistent)
 
 ## Method 1: Edit and Recreate (Portainer's Built-in Flow)
 
@@ -58,12 +58,9 @@ Updated port:    8080 → 80 (unchanged)
 
 Scroll to the bottom and click **Deploy the container**.
 
-Important: This creates a NEW container, but with the same name. Docker will fail if the old container is still running with that name:
+Important: Editing a container creates a NEW container with the updated settings. When Portainer prompts you, click **Replace** to swap it in for the existing container.
 
-1. First stop the old container.
-2. Then deploy the new one.
-
-Or use the **Replace** option if Portainer prompts you to replace the existing container.
+If you want to keep both containers instead of replacing the old one, give the new container a different name before deploying. Docker cannot keep two containers with the same name.
 
 ## Method 2: Pull New Image and Recreate (Image Update)
 
@@ -75,13 +72,14 @@ For image version updates:
 4. Click the container name.
 5. Click **Duplicate/Edit**.
 6. Update the image tag.
-7. Stop the old container.
-8. Deploy the new container.
+7. Click **Deploy the container**.
+8. Click **Replace** when prompted.
 
-Or use Portainer's image update indicator:
+Or use Portainer's image update indicator to check whether a newer image is available:
 
-1. In the container list, look for an **update available** badge.
-2. Click it to trigger an automatic pull + recreate.
+1. In the container list, look for the image update indicator.
+2. Click it to recheck that container's image status if needed.
+3. If an update is available, pull the image and redeploy the container with **Duplicate/Edit** and **Replace**.
 
 ## Method 3: Blue-Green Deployment (Zero Downtime)
 
@@ -98,7 +96,7 @@ API_KEY="${PORTAINER_API_KEY}"
 ENDPOINT_ID="${PORTAINER_ENDPOINT_ID:-1}"
 
 # Create new "green" container with updated image
-curl -X POST \
+GREEN_ID=$(curl -fsS -X POST \
   -H "X-API-Key: ${API_KEY}" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/create?name=web-app-green" \
@@ -109,10 +107,14 @@ curl -X POST \
       "PortBindings": {"8080/tcp": [{"HostPort": "8081"}]},
       "RestartPolicy": {"Name": "unless-stopped"}
     }
-  }' | jq .
+  }' | jq -r '.Id')
 
 # Start green container
-# (test it on port 8081)
+curl -fsS -X POST \
+  -H "X-API-Key: ${API_KEY}" \
+  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${GREEN_ID}/start"
+
+# Test it on port 8081
 # Switch load balancer to green
 # Stop blue container (old version on port 8080)
 # Remove blue container
@@ -120,13 +122,15 @@ curl -X POST \
 
 ## Method 4: Docker Compose Stack Redeploy
 
-For containers managed as Portainer stacks, updating is simpler:
+For containers managed as Portainer stacks, updating is simpler. If the stack was deployed from the Web editor, you can edit it directly in Portainer:
 
 1. Navigate to **Stacks**.
 2. Click the stack name.
 3. Click **Editor** to view/edit the compose file.
 4. Update the image tag or configuration.
 5. Click **Update the stack**.
+
+If the stack was deployed from a Git repository, update the compose file in the repository and then pull/redeploy the stack from Portainer instead of editing it directly in the UI.
 
 ```yaml
 # Updated stack - change the image version
@@ -140,7 +144,7 @@ services:
       - "8080:80"
 ```
 
-Portainer will stop the old containers and start new ones with the updated config.
+Portainer will redeploy the stack and recreate containers whose configuration changed, preserving mounted volumes.
 
 ## Step 5: Handling Named Volumes During Recreation
 
@@ -186,7 +190,7 @@ curl http://localhost:8080/health
 - **Keep volume names the same** when recreating - data persists automatically.
 - **Use Portainer stacks** for multi-container applications - stack updates handle recreation automatically.
 - **Document configuration changes** - add comments in compose files.
-- **Automate recreations** via Portainer webhooks for CI/CD pipelines.
+- **Automate recreations** via Portainer webhooks for CI/CD pipelines when using Portainer Business Edition.
 
 ## Conclusion
 
