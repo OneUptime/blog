@@ -8,22 +8,28 @@ Description: Connect Portainer to an Azure Kubernetes Service (AKS) cluster for 
 
 ## Introduction
 
-Azure Kubernetes Service (AKS) is Microsoft's managed Kubernetes service. Connecting AKS to Portainer gives teams a visual interface for deploying and managing applications without requiring Azure portal or kubectl knowledge. This guide covers connecting AKS via kubeconfig and the Portainer Agent.
+Azure Kubernetes Service (AKS) is Microsoft's managed Kubernetes service. Connecting AKS to Portainer gives teams a visual interface for deploying and managing applications without requiring Azure portal or kubectl knowledge. This guide covers connecting AKS via kubeconfig import and the Portainer Agent. In current Portainer releases, kubeconfig import is a legacy feature in Portainer Business Edition, and the classic Portainer Agent is also considered legacy.
 
 ## Prerequisites
 
 - Azure CLI installed and authenticated (`az login`)
 - An existing AKS cluster
 - Portainer running and accessible
+- Portainer Business Edition if you plan to use kubeconfig import
+- AKS local accounts enabled if you plan to use `az aks get-credentials --admin`
+- Load balancer support available in the cluster if you plan to use kubeconfig import
 
 ## Step 1: Get AKS Credentials
 
 ```bash
-# Get the kubeconfig for your AKS cluster
+# Get an admin kubeconfig for your AKS cluster.
+# Portainer import requires cluster-admin credentials in a self-contained kubeconfig.
+# On Microsoft Entra-integrated clusters, clusterUser kubeconfigs commonly use exec/kubelogin.
 
 az aks get-credentials \
   --resource-group my-resource-group \
   --name my-aks-cluster \
+  --admin \
   --file aks-portainer.kubeconfig
 
 # Verify connectivity
@@ -31,158 +37,65 @@ kubectl --kubeconfig=aks-portainer.kubeconfig cluster-info
 kubectl --kubeconfig=aks-portainer.kubeconfig get nodes
 ```
 
-## Step 2: Create a Service Account for Portainer
+## Step 2: Build a Self-Contained Kubeconfig
 
 ```bash
-# Create namespace and service account
-kubectl --kubeconfig=aks-portainer.kubeconfig apply -f - << 'EOF'
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: portainer
-
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: portainer-sa
-  namespace: portainer
-
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: portainer-crb
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: cluster-admin
-subjects:
-  - kind: ServiceAccount
-    name: portainer-sa
-    namespace: portainer
-EOF
+# Flatten the kubeconfig so Portainer can import a single self-contained file
+kubectl config view \
+  --kubeconfig=aks-portainer.kubeconfig \
+  --raw \
+  --flatten \
+  --minify > portainer-aks.kubeconfig
 ```
 
-## Step 3: Build a Static Kubeconfig
+## Step 3: Import AKS into Portainer
 
+Test the kubeconfig first:
 ```bash
-# Get cluster server address
-CLUSTER_SERVER=$(kubectl --kubeconfig=aks-portainer.kubeconfig \
-  config view --raw --minify -o jsonpath='{.clusters[0].cluster.server}')
-
-# Get cluster CA certificate
-CLUSTER_CA=$(kubectl --kubeconfig=aks-portainer.kubeconfig \
-  config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
-
-# Create a service account token
-SA_TOKEN=$(kubectl --kubeconfig=aks-portainer.kubeconfig \
-  create token portainer-sa -n portainer --duration=8760h)
-
-# Build the kubeconfig
-cat > portainer-aks.kubeconfig << EOF
-apiVersion: v1
-kind: Config
-clusters:
-- name: aks-cluster
-  cluster:
-    server: $CLUSTER_SERVER
-    certificate-authority-data: $CLUSTER_CA
-users:
-- name: portainer-sa
-  user:
-    token: $SA_TOKEN
-contexts:
-- name: portainer-aks
-  context:
-    cluster: aks-cluster
-    user: portainer-sa
-current-context: portainer-aks
-EOF
-
-# Test the kubeconfig
 kubectl --kubeconfig=portainer-aks.kubeconfig get nodes
 ```
 
-## Step 4: Import AKS into Portainer
-
-```bash
-TOKEN=$(curl -s -X POST \
-  https://portainer.example.com/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"adminpassword"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
-
-KUBECONFIG_B64=$(base64 -w 0 portainer-aks.kubeconfig)
-
-curl -X POST \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  https://portainer.example.com/api/endpoints/import \
-  -d "{
-    \"Name\": \"AKS West Europe Production\",
-    \"KubeConfig\": \"${KUBECONFIG_B64}\"
-  }"
-```
+Then in Portainer, go to **Environments** -> **Add environment** -> **Kubernetes** -> **Import**, select `portainer-aks.kubeconfig`, and click **Connect**. This import workflow is only available in Portainer Business Edition.
 
 ## Method 2: Deploy Portainer Agent in AKS
 
+A Portainer agent-only Helm chart is not currently documented for Kubernetes agent deployments. Portainer documents this workflow with Portainer-provided YAML manifests instead, and the classic Agent is considered a legacy option.
+
 ```bash
-# Install Portainer Agent via Helm
-helm repo add portainer https://portainer.github.io/k8s/
-helm repo update
+# In Portainer, go to Environments -> Add environment -> Kubernetes -> Agent.
+# Choose either "Kubernetes via load balancer" or "Kubernetes via node port",
+# copy the generated manifest command, and run it against your AKS cluster.
 
-helm install portainer-agent \
-  --create-namespace \
-  -n portainer \
-  portainer/portainer-agent \
-  --kubeconfig=aks-portainer.kubeconfig
-
-# Get the agent service endpoint
-kubectl get svc -n portainer --kubeconfig=aks-portainer.kubeconfig
+# Verify the agent deployment
+kubectl --kubeconfig=aks-portainer.kubeconfig get pods -n portainer
+kubectl --kubeconfig=aks-portainer.kubeconfig get svc -n portainer
 ```
 
-For AKS with Azure Load Balancer, create a LoadBalancer service:
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: portainer-agent-lb
-  namespace: portainer
-  annotations:
-    service.beta.kubernetes.io/azure-load-balancer-internal: "true"  # Internal LB
-spec:
-  type: LoadBalancer
-  selector:
-    app: portainer-agent
-  ports:
-    - port: 9001
-      targetPort: 9001
-```
+When adding the environment in Portainer, use the agent endpoint without a protocol: port `9001` for a LoadBalancer deployment or port `30778` for a NodePort deployment.
 
 ## AKS-Specific Considerations
 
-### Azure AD Integration
+### Microsoft Entra ID Integration
 
-AKS supports Azure AD for authentication. Standard kubeconfig from `az aks get-credentials` uses Azure AD tokens which expire. For Portainer, always use a static service account token.
+AKS supports Microsoft Entra ID for authentication. On Kubernetes 1.24+ Entra-integrated clusters, `az aks get-credentials` returns `clusterUser` kubeconfigs in `exec` format that rely on `kubelogin`. For Portainer kubeconfig import, use a self-contained kubeconfig. `az aks get-credentials --admin` returns a certificate-based kubeconfig, but it requires AKS local accounts to be enabled.
 
 ### Private AKS Clusters
 
 For private AKS (API server not public):
 ```bash
-# Use Azure Private Link or deploy Portainer inside AKS
-# Portainer Agent inside AKS doesn't need API server access
+# Kubeconfig import requires Portainer to reach the AKS API server.
+# The classic Portainer Agent still requires Portainer Server -> Agent connectivity.
 
-# Or use Portainer Edge Agent for async management
+# If the cluster must initiate connectivity outbound to Portainer, use the Edge Agent.
 ```
 
 ### AKS Node Pools
 
 Portainer can view nodes across multiple node pools. Check node labels to understand pool membership:
 ```bash
-kubectl get nodes --show-labels --kubeconfig=aks-portainer.kubeconfig | grep agentpool
+kubectl get nodes --show-labels --kubeconfig=aks-portainer.kubeconfig | grep kubernetes.azure.com/agentpool
 ```
 
 ## Conclusion
 
-AKS clusters integrate seamlessly with Portainer via kubeconfig import. The key is using a static service account token rather than Azure AD token-based authentication. For private AKS clusters or environments where Portainer runs in a different network, the Portainer Agent deployed inside AKS is the recommended approach - it communicates outbound from the cluster to Portainer, eliminating the need for inbound network access to the API server.
+AKS clusters can be connected to Portainer via kubeconfig import or agent-based methods. For kubeconfig import, use a self-contained cluster-admin kubeconfig; on Microsoft Entra-integrated clusters that usually means `az aks get-credentials --admin`, which requires local accounts to be enabled. For remote or private deployments, prefer the Edge Agent. The classic Portainer Agent is a legacy option and still requires Portainer Server to reach the agent endpoint.
