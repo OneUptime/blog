@@ -4,83 +4,54 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Troubleshooting, Authentication, Login
 
-Description: Resolve login failures and authentication issues introduced in Portainer v2.30.0, including password validation changes, session handling updates, and migration issues.
+Description: Resolve documented login failures in Portainer v2.30.0, especially reverse-proxy "Origin invalid" errors, post-update browser-session issues, and admin password reset problems.
 
 ## Introduction
 
-Portainer v2.30.0 introduced changes to the authentication flow, password validation rules, and session management. Users upgrading from older versions may find they cannot log in with their existing credentials, or that the login form rejects passwords that previously worked. This guide covers all known login issues for this version.
+Portainer v2.30.0 has a documented known issue for some reverse-proxy deployments that can cause "Origin invalid" login failures. Portainer also documents post-update authentication failures caused by stale browser cache or local storage after security-related changes. If your instance enforces a higher minimum password length, users with older shorter passwords are prompted to update them on their next login. This guide covers the supported troubleshooting steps for this version.
 
 ## Step 1: Check the Exact Error Message
 
 Different error messages indicate different causes:
 
 ```bash
-# Test login via API for detailed error messages
-
-curl -v -X POST http://localhost:9000/api/auth \
+# Portainer serves HTTPS on 9443 by default.
+# Use http://localhost:9000 only if you explicitly enabled legacy HTTP.
+curl -k -v -X POST https://localhost:9443/api/auth \
   -H "Content-Type: application/json" \
   -d '{"Username":"admin","Password":"yourpassword"}' 2>&1
 
-# Common responses:
-# 200 OK with token = success
-# 422 Unprocessable Entity = invalid request format
-# 401 Unauthorized = wrong credentials
-# 500 Internal Server Error = server-side issue
+# Success returns JSON with a jwt field.
+# If this works but the browser UI still fails, clear browser data
+# or check for reverse-proxy "Origin invalid" issues.
 ```
 
 ## Step 2: Reset Admin Password
 
-If credentials are not working after upgrade:
+If credentials are not working after upgrade, use Portainer's password reset helper. The `--admin-password` flag only works when the admin user is first created.
 
 ```bash
 # Stop Portainer
-docker stop portainer && docker rm portainer
-
-# Generate a new bcrypt password hash
-HASH=$(docker run --rm httpd:2.4-alpine \
-  htpasswd -nbB admin newpassword | cut -d ':' -f 2)
-
-echo "New hash: $HASH"
-
-# Start Portainer with the new admin password
-docker run -d \
-  -p 9000:9000 \
-  -p 9443:9443 \
-  --name portainer \
-  --restart=unless-stopped \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v portainer_data:/data \
-  portainer/portainer-ce:latest \
-  --admin-password="$HASH"
-```
-
-## Step 3: Fix Database Migration Issues
-
-Portainer v2.30.0 may have run a migration that corrupted user credentials:
-
-```bash
-# Check migration status in logs
-docker logs portainer 2>&1 | grep -i "migrat\|upgrade\|version" | head -20
-
-# If migration errors are visible:
-# 1. Stop Portainer
 docker stop portainer
 
-# 2. Backup the current database
-docker run --rm \
-  -v portainer_data:/data \
-  -v /tmp:/backup \
-  alpine cp /data/portainer.db /backup/portainer.db.v2.30.bak
+# Reset the default admin account password
+docker pull portainer/helper-reset-password
+docker run --rm -v portainer_data:/data \
+  portainer/helper-reset-password --password "MyNewP@ssw0rd!"
 
-# 3. Try rolling back to previous version
-docker stop portainer && docker rm portainer
-docker run -d \
-  -p 9000:9000 \
-  --name portainer \
-  --restart=unless-stopped \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v portainer_data:/data \
-  portainer/portainer-ce:2.29.2  # Previous version
+# Start Portainer again
+docker start portainer
+```
+
+## Step 3: Fix Post-Update Browser Session Issues
+
+Portainer documents post-update login failures caused by stale authentication data stored in the browser:
+
+```bash
+# If browser login fails with a 403 on /api/auth after an upgrade:
+# 1. Clear browser cache and site data for the Portainer URL
+# 2. Try an incognito/private browsing window
+# 3. Retry the login after the old browser state has been removed
 ```
 
 ## Step 4: Fix LDAP/OAuth Login Issues
@@ -88,96 +59,73 @@ docker run -d \
 If you use LDAP or OAuth and login stopped working:
 
 ```bash
-# Check LDAP connectivity
-docker exec portainer sh -c "nc -zv your-ldap-host 389" 2>&1
-
-# Check Portainer logs for LDAP errors
+# Check Portainer logs for authentication-provider errors
 docker logs portainer 2>&1 | grep -iE "ldap|oauth|saml|auth" | tail -20
 ```
 
+Only the initial admin account can use internal authentication when an external provider is enabled.
+
+In Portainer UI:
+1. If external authentication is enabled and you're locked out, browse to `https://<your-portainer>:9443/#!/internal-auth`
+2. Sign in with the initial admin account
+3. Go to **Settings** → **Authentication**
+4. For LDAP/AD, update the configured service account credentials and run the connectivity check
+5. For OAuth, verify that the redirect/callback URL still matches your Portainer URL
+
+## Step 5: Check Password Policy Requirements
+
+Portainer lets administrators enforce a minimum password length. The default is 12 characters, and users whose passwords do not meet the current requirement are prompted to update them on their next login.
+
 In Portainer UI:
 1. Go to **Settings** → **Authentication**
-2. Test the LDAP/OAuth connection
-3. Update any changed LDAP server URLs or OAuth callback URLs
+2. Review the minimum password length configured for internal authentication
+3. If the user's password no longer meets the policy, reset it to a compliant value
 
-## Step 5: Fix CSRF Token Issues
+## Step 6: Fix Reverse-Proxy "Origin invalid" Issues
 
-v2.30.0 introduced stricter CSRF protection:
-
-```bash
-# Check if CSRF is causing the issue
-# Look for "CSRF" in browser console errors (DevTools → Console)
-
-# If CSRF errors appear:
-# 1. Clear browser cookies for Portainer domain
-# 2. Hard reload: Ctrl+Shift+R
-# 3. Clear localStorage
-
-# In browser console:
-localStorage.clear();
-document.cookie.split(";").forEach(c => {
-  document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-});
-location.reload();
-```
-
-## Step 6: Fix HTTPS/HTTP Mismatch
-
-v2.30.0 is stricter about secure cookies when behind HTTPS:
+Portainer documents "Origin invalid" as a known issue for some reverse-proxy deployments on v2.30.0 and recommends updating to 2.31.3, which added the supported workaround:
 
 ```bash
-# If Portainer is behind HTTPS proxy but running HTTP internally,
-# ensure the proxy sets correct headers
-
-# Nginx example
-location / {
-    proxy_pass http://localhost:9000;
-    proxy_set_header X-Forwarded-Proto https;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header Host $host;
-}
-
-# Without X-Forwarded-Proto, Portainer may set secure-only cookies
-# on what it thinks is an HTTP connection, preventing login
-```
-
-## Step 7: Fix Two-Factor Authentication Issues
-
-If 2FA was enabled and you've lost the TOTP key:
-
-```bash
-# Disable 2FA via Portainer database modification
-# WARNING: This requires stopping Portainer and direct db manipulation
-
-# First, create a backup
-docker run --rm \
+# Upgrade to a release with the reverse-proxy workaround
+docker stop portainer && docker rm portainer
+docker run -d \
+  -p 8000:8000 \
+  -p 9443:9443 \
+  --name portainer \
+  --restart=unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  -v /tmp:/backup \
-  alpine cp /data/portainer.db /backup/portainer.db.2fa.bak
-
-# Contact Portainer support for the official 2FA recovery procedure
-# Or reset the entire user in the database
+  portainer/portainer-ce:2.31.3 \
+  --trusted-origins portainer.example.com
 ```
 
-## Step 8: Fix Team/RBAC Login Issues
+Replace `portainer.example.com` with the domain you use to access Portainer through the proxy.
 
-In Portainer BE, RBAC changes in v2.30.0 may prevent access:
+## Step 7: Switch Back to Internal Authentication
 
-1. Log in with the `admin` account (full access)
-2. Go to **Users** → check user roles
-3. Verify team assignments match expected access levels
-4. Reset user permissions if needed
+If an external authentication or SSO configuration is preventing logins, Portainer provides a break-glass internal login path for the initial admin account:
+
+```text
+https://localhost:9443/#!/internal-auth
+```
+
+Replace `https://localhost:9443` with your Portainer URL, then sign in as the initial admin user. If you no longer know that password, use the password reset helper from Step 2.
+
+## Step 8: Fix Team/RBAC Access Issues
+
+In Portainer BE, user, team, and role configuration can cause access-denied errors after login even when authentication itself succeeds:
+
+1. Log in with the initial admin account
+2. Go to **Users** and review the user's role
+3. Verify the user's team membership and environment access
+4. Correct the permissions, then have the user log in again
 
 ## Step 9: Verify API Version Compatibility
 
-```bash
-# Check if your API clients need updating for v2.30.0
-curl http://localhost:9000/api/system/info 2>/dev/null | jq '.Version'
+Portainer 2.30.0 changed several API endpoints, and the release notes specifically list `GET /system/info` as deleted. Review automation or API clients that still depend on older endpoints and update them against the official Portainer release notes and API documentation.
 
-# Some API endpoints changed in v2.30.0
-# Check the Portainer changelog:
-# https://github.com/portainer/portainer/releases/tag/2.30.0
-```
+- Release notes: https://docs.portainer.io/release-notes
+- API docs: https://docs.portainer.io/api/docs
 
 ## Step 10: Roll Back to Stable Version
 
@@ -187,15 +135,15 @@ If v2.30.0 login issues cannot be resolved:
 # Stop and remove the 2.30.0 container
 docker stop portainer && docker rm portainer
 
-# Restore the pre-upgrade database backup
+# Restore the database backup you took before upgrading to 2.30.0
 docker run --rm \
   -v portainer_data:/data \
   -v /tmp:/backup \
-  alpine cp /backup/portainer.db.v2.29.bak /data/portainer.db
+  alpine cp /backup/portainer.db.pre-2.30.0.bak /data/portainer.db
 
 # Start with the previous stable version
 docker run -d \
-  -p 9000:9000 \
+  -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
   --restart=unless-stopped \
@@ -208,4 +156,4 @@ docker run -d \
 
 ## Conclusion
 
-Login failures in Portainer v2.30.0 are typically caused by migration issues, stricter CSRF protection, or HTTPS cookie settings changes. The fastest fix is the `--admin-password` flag to reset admin credentials. For team/RBAC issues in Business Edition, use the admin account to verify and reset permissions. Always maintain pre-upgrade database backups so you can roll back if needed.
+Login failures in Portainer v2.30.0 are most commonly tied to the documented reverse-proxy "Origin invalid" issue or stale browser authentication data after an upgrade. The supported password recovery method is the `portainer/helper-reset-password` helper, not the `--admin-password` startup flag on an existing installation. If you rely on external authentication, use the `/#!/internal-auth` path with the initial admin account to recover access. Always maintain a pre-upgrade backup of `portainer_data` so you can roll back safely if needed.
