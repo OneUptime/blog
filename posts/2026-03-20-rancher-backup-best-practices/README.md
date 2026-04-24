@@ -44,7 +44,7 @@ spec:
       etcdRole: true
       workerRole: false
       machineConfigRef:
-        kind: AWSNodeTemplate
+        kind: Amazonec2Config
         name: control-plane-m5-xlarge
     - name: workers
       quantity: 5
@@ -52,7 +52,7 @@ spec:
       etcdRole: false
       workerRole: true
       machineConfigRef:
-        kind: AWSNodeTemplate
+        kind: Amazonec2Config
         name: worker-m5-2xlarge
 ```
 
@@ -68,7 +68,10 @@ kubectl create namespace payments-api-staging
 kubectl create namespace data-pipeline-prod
 
 # Apply standard labels
-kubectl label namespace payments-api-prod   team=payments   app=api   env=production   tier=critical   cost-center=payments-team   field.cattle.io/projectId=YOUR_PROJECT_ID
+kubectl label namespace payments-api-prod   team=payments   app=api   env=production   tier=critical   cost-center=payments-team
+
+# Assign the namespace to a Rancher project
+kubectl annotate namespace payments-api-prod   field.cattle.io/projectId=YOUR_CLUSTER_ID:YOUR_PROJECT_ID
 ```
 
 ## Best Practice 3: Resource Quotas and LimitRanges
@@ -160,12 +163,12 @@ spec:
     - port: 5432
 ```
 
-## Best Practice 5: Pod Security
+## Best Practice 5: Pod Security and Availability
 
-Enforce strict pod security standards:
+Enforce strict pod security standards while protecting availability:
 
 ```yaml
-# pod-security-policy.yaml - PodDisruptionBudget for availability
+# pod-security-and-availability.yaml - PodDisruptionBudget for availability
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -261,19 +264,28 @@ date
 
 echo ""
 echo "1. Certificate expiry check:"
-kubectl get certificates -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,EXPIRY:.status.notAfter,READY:.status.conditions[-1].status'
+kubectl get certificates -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,EXPIRY:.status.notAfter,READY:.status.conditions[-1].status' 2>/dev/null || echo "cert-manager certificates not found"
 
 echo ""
 echo "2. Unused resources:"
-kubectl get namespaces | while read ns _; do
-  pod_count=$(kubectl get pods -n $ns --no-headers 2>/dev/null | wc -l)
+kubectl get namespaces -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | while read -r ns; do
+  pod_count=$(kubectl get pods -n "$ns" --no-headers 2>/dev/null | wc -l)
   [ "$pod_count" -eq 0 ] && echo "Empty namespace: $ns"
 done
 
 echo ""
 echo "3. Pod security violations:"
-kubectl get pods --all-namespaces -o json |   jq -r '.items[] | select(.spec.containers[].securityContext.privileged==true) | 
-  .metadata.namespace + "/" + .metadata.name + " [PRIVILEGED]"'
+kubectl get pods --all-namespaces -o json | jq -r '
+  .items[]
+  | select(
+      [
+        .spec.containers[]?.securityContext.privileged,
+        .spec.initContainers[]?.securityContext.privileged,
+        .spec.ephemeralContainers[]?.securityContext.privileged
+      ] | any(. == true)
+    )
+  | .metadata.namespace + "/" + .metadata.name + " [PRIVILEGED]"
+'
 
 echo ""
 echo "4. Nodes at capacity:"
@@ -284,4 +296,4 @@ echo "=== Audit Complete ==="
 
 ## Conclusion
 
-Implementing How to Implement Backup Best Practices in Rancher in Rancher requires discipline and consistency. The configurations and practices in this guide provide a strong foundation for a production-grade Rancher environment. Regular audits, automated compliance checks, and a culture of continuous improvement ensure these best practices remain effective as your environment evolves.
+Implementing these best practices in Rancher requires discipline and consistency. The configurations and practices in this guide provide a strong foundation for a production-grade Rancher environment. Regular audits, automated compliance checks, and a culture of continuous improvement ensure these best practices remain effective as your environment evolves.
