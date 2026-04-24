@@ -22,7 +22,7 @@ services:
     environment:
       TZ: America/New_York
     volumes:
-      - ./authelia:/config
+      - /opt/authelia:/config
     ports:
       - "9091:9091"
     labels:
@@ -32,7 +32,7 @@ services:
       - "traefik.http.routers.authelia.tls.certresolver=letsencrypt"
       - "traefik.http.services.authelia.loadbalancer.server.port=9091"
       # Middleware definition
-      - "traefik.http.middlewares.authelia.forwardAuth.address=http://authelia:9091/api/verify?rd=https://auth.example.com"
+      - "traefik.http.middlewares.authelia.forwardAuth.address=http://authelia:9091/api/authz/forward-auth"
       - "traefik.http.middlewares.authelia.forwardAuth.trustForwardHeader=true"
       - "traefik.http.middlewares.authelia.forwardAuth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Email,Remote-Name"
     networks:
@@ -54,23 +54,22 @@ networks:
 
 ## Authelia Configuration
 
-Create `authelia/configuration.yml`:
+Create `/opt/authelia/configuration.yml`:
 
 ```yaml
 # configuration.yml
 
 server:
-  host: 0.0.0.0
-  port: 9091
+  address: 'tcp://0.0.0.0:9091/'
 
 log:
   level: warn
 
 theme: dark
 
-jwt_secret: your_jwt_secret_here_change_this
-
-default_redirection_url: https://home.example.com
+identity_validation:
+  reset_password:
+    jwt_secret: your_jwt_secret_here_change_this
 
 authentication_backend:
   file:
@@ -81,7 +80,10 @@ session:
   secret: session_secret_here_change_this
   expiration: 12h
   inactivity: 5m
-  domain: example.com
+  cookies:
+    - domain: example.com
+      authelia_url: https://auth.example.com
+      default_redirection_url: https://home.example.com
   redis:
     host: authelia-redis
     port: 6379
@@ -92,13 +94,13 @@ regulation:
   ban_time: 12h
 
 storage:
+  encryption_key: storage_encryption_key_here_change_this
   local:
     path: /config/db.sqlite3
 
 notifier:
   smtp:
-    host: smtp.example.com
-    port: 587
+    address: 'submission://smtp.example.com:587'
     username: authelia@example.com
     password: smtp_password
     sender: authelia@example.com
@@ -125,14 +127,14 @@ access_control:
 
 ## Create Users File
 
-Create `authelia/users_database.yml`:
+Create `/opt/authelia/users_database.yml`:
 
 ```yaml
 users:
   john:
     disabled: false
     displayname: John Doe
-    password: "$argon2id$v=19$m=65536,t=3,p=4$..."  # Use authelia hash-password command
+    password: "$argon2id$v=19$m=65536,t=3,p=4$..."  # Use authelia crypto hash generate argon2
     email: john@example.com
     groups:
       - admins
@@ -142,7 +144,7 @@ users:
 Generate a password hash:
 
 ```bash
-docker exec authelia authelia hash-password 'your_password'
+docker exec authelia authelia crypto hash generate argon2 --password 'your_password'
 ```
 
 ## Protecting Services with Authelia
