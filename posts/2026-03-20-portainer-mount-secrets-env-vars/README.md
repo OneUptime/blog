@@ -8,7 +8,7 @@ Description: Learn how to inject Kubernetes Secret data as environment variables
 
 ## Introduction
 
-Injecting Secrets as environment variables is a common way to provide sensitive data - database passwords, API tokens, encryption keys - to applications without hardcoding them in source code or container images. Kubernetes Secrets are base64-encoded and access-controlled via RBAC, making them a better choice than ConfigMaps for sensitive data. Portainer supports Secret-backed environment variables through its form UI and YAML editor.
+Injecting Secrets as environment variables is a common way to provide sensitive data - database passwords, API tokens, encryption keys - to applications without hardcoding them in source code or container images. Kubernetes Secrets are intended for sensitive data and can be access-controlled via RBAC; if you need them protected in etcd, enable encryption at rest. Portainer supports Secret-backed environment variables through its form UI and by deploying Kubernetes YAML manifests through Portainer.
 
 ## Prerequisites
 
@@ -49,16 +49,10 @@ stringData:
 
 When creating or editing an application in Portainer:
 
-1. Go to the **Environment variables** section
-2. Click **+ Add environment variable**
-3. Choose **Secret** as the source:
-   ```text
-   Environment variable name: DB_PASSWORD
-   Source: Secret
-   Secret name: my-app-secrets
-   Key: DATABASE_PASSWORD
-   ```
-4. Repeat for each sensitive environment variable
+1. Go to the **Secrets** section
+2. Select the existing Secret, such as `my-app-secrets`
+3. Portainer exposes the Secret keys as environment variables by default
+4. Use **Override** only if you want a given key mounted as a file instead
 5. Deploy or update the application
 
 ## Step 3: Mount Specific Secret Keys (YAML)
@@ -72,7 +66,13 @@ metadata:
   name: my-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: my-app
@@ -117,7 +117,7 @@ spec:
             name: my-app-secrets
 ```
 
-All keys in `my-app-secrets` become environment variables in the container.
+All keys in `my-app-secrets` that are valid environment variable names become environment variables in the container.
 
 ## Step 5: Combine Secrets and ConfigMaps
 
@@ -139,7 +139,7 @@ spec:
         # Additional static or override values
         - name: APP_VERSION
           value: "2.0.0"
-        # Override specific secret key with custom name
+        # Expose a specific secret key under a custom env var name
         - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:
@@ -166,8 +166,8 @@ Useful for optional integrations that may not be configured in every environment
 ```bash
 # Check if env vars are set in the pod (WITHOUT revealing values)
 kubectl exec <pod-name> -n production -- \
-  printenv | grep -E "DB_PASSWORD|JWT_SECRET" | wc -l
-# Should output: 2 (confirming both are set)
+  printenv | grep -Ec '^(DB_PASSWORD|JWT_SECRET)='
+# Should output: 2 (confirming both variables are present)
 
 # Verify a variable is set (shows it exists, not the value)
 kubectl exec <pod-name> -n production -- \
@@ -186,15 +186,15 @@ Environment variables have security limitations compared to mounted files:
 # 1. Process inspection on the node: /proc/<pid>/environ
 # 2. Container exec: kubectl exec ... -- printenv
 # 3. Application crashes dumping environment
-# 4. Docker inspect: docker inspect <container>
+# 4. Node-level container runtime inspection (runtime-specific tooling)
 
 # Mitigations:
-# 1. Use RBAC to restrict kubectl exec access
-kubectl create role no-exec \
+# 1. Grant a narrower pod read role that does not include pods/exec, pods/attach, or pods/portforward
+kubectl create role pod-read-only \
   --verb=get,list,watch \
   --resource=pods \
   -n production
-# (no exec, portforward, or attach verbs)
+# Bind this narrower Role instead of broader roles that include pod subresources
 
 # 2. Use Secret volumes instead for highly sensitive data
 # (covered in the mount-secrets-files guide)
@@ -208,6 +208,7 @@ kubectl create role secret-reader \
   --resource=secrets \
   --resource-name=my-app-secrets \
   -n production
+# Bind this Role only to the service account or user that needs access
 ```
 
 ## Step 9: Rotate Secrets and Restart Pods
@@ -230,4 +231,4 @@ kubectl exec <new-pod-name> -n production -- \
 
 ## Conclusion
 
-Injecting Secrets as environment variables provides a straightforward way to supply sensitive credentials to containerized applications. Use `secretKeyRef` for selective injection with custom names, `envFrom.secretRef` for bulk injection of all keys, and combine with ConfigMap refs for non-sensitive config. Be aware that environment variables have inherent security trade-offs compared to volume mounts; for the most sensitive credentials, consider mounting secrets as files with restricted filesystem permissions instead.
+Injecting Secrets as environment variables provides a straightforward way to supply sensitive credentials to containerized applications. Use `secretKeyRef` for selective injection with custom names, `envFrom.secretRef` for bulk injection when the Secret keys already match the environment variable names you want, and combine with ConfigMap refs for non-sensitive config. Be aware that environment variables have inherent security trade-offs compared to volume mounts; for the most sensitive credentials, consider mounting secrets as files with restricted filesystem permissions instead.
