@@ -27,7 +27,7 @@ TOKEN="your-jwt-or-api-key"
 curl -s -H "Authorization: Bearer $TOKEN" \
   "${PORTAINER_URL}/api/endpoints" | jq .
 
-# List all endpoints (using API access key)
+# List all endpoints (using API access token)
 curl -s -H "X-API-Key: $TOKEN" \
   "${PORTAINER_URL}/api/endpoints" | jq .
 ```
@@ -51,13 +51,13 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 Endpoint types:
-- `1` - Docker Standalone
-- `2` - Docker Agent
-- `3` - Azure ACI
-- `4` - Edge Agent (Docker)
-- `5` - Kubernetes via kubeconfig
-- `6` - Kubernetes Agent
-- `7` - Kubernetes via kubeconfig (cloud)
+- `1` - Docker environment
+- `2` - Agent on Docker environment
+- `3` - Azure environment
+- `4` - Edge Agent on Docker environment
+- `5` - Local Kubernetes environment
+- `6` - Agent on Kubernetes environment
+- `7` - Edge Agent on Kubernetes environment
 
 ## Step 3: Filter by Environment Type
 
@@ -103,7 +103,7 @@ ENDPOINT=$(curl -s -H "Authorization: Bearer $TOKEN" \
   "${PORTAINER_URL}/api/endpoints" | \
   jq --arg name "$ENDPOINT_NAME" '.[] | select(.Name == $name)')
 
-ENDPOINT_ID=$(echo $ENDPOINT | jq -r '.Id')
+ENDPOINT_ID=$(printf '%s\n' "$ENDPOINT" | jq -r '.Id')
 echo "Found endpoint '${ENDPOINT_NAME}' with ID: $ENDPOINT_ID"
 ```
 
@@ -142,28 +142,33 @@ echo "=== Portainer Environments ==="
 ENDPOINTS=$(curl -s -H "Authorization: Bearer $TOKEN" \
   "${PORTAINER_URL}/api/endpoints")
 
-TOTAL=$(echo $ENDPOINTS | jq 'length')
+TOTAL=$(printf '%s\n' "$ENDPOINTS" | jq 'length')
 echo "Total environments: $TOTAL"
 echo ""
 
 # Iterate and display details
-echo $ENDPOINTS | jq -c '.[]' | while read -r ENDPOINT; do
-  ID=$(echo $ENDPOINT | jq -r '.Id')
-  NAME=$(echo $ENDPOINT | jq -r '.Name')
-  TYPE=$(echo $ENDPOINT | jq -r '.Type')
-  STATUS=$(echo $ENDPOINT | jq -r '.Status')
+printf '%s\n' "$ENDPOINTS" | jq -c '.[]' | while read -r ENDPOINT; do
+  ID=$(printf '%s\n' "$ENDPOINT" | jq -r '.Id')
+  NAME=$(printf '%s\n' "$ENDPOINT" | jq -r '.Name')
+  TYPE=$(printf '%s\n' "$ENDPOINT" | jq -r '.Type')
+  STATUS=$(printf '%s\n' "$ENDPOINT" | jq -r '.Status')
 
   TYPE_NAME="Unknown"
   case $TYPE in
-    1) TYPE_NAME="Docker Standalone" ;;
-    2) TYPE_NAME="Docker Agent" ;;
-    3) TYPE_NAME="Azure ACI" ;;
-    4) TYPE_NAME="Edge Agent" ;;
-    5) TYPE_NAME="Kubernetes" ;;
-    6) TYPE_NAME="Kubernetes Agent" ;;
+    1) TYPE_NAME="Docker environment" ;;
+    2) TYPE_NAME="Agent on Docker environment" ;;
+    3) TYPE_NAME="Azure environment" ;;
+    4) TYPE_NAME="Edge Agent on Docker environment" ;;
+    5) TYPE_NAME="Local Kubernetes environment" ;;
+    6) TYPE_NAME="Agent on Kubernetes environment" ;;
+    7) TYPE_NAME="Edge Agent on Kubernetes environment" ;;
   esac
 
-  STATUS_NAME=$( [ "$STATUS" -eq 1 ] && echo "Up" || echo "Down" )
+  STATUS_NAME="Unknown"
+  case $STATUS in
+    1) STATUS_NAME="Up" ;;
+    2) STATUS_NAME="Down" ;;
+  esac
 
   echo "  [$ID] $NAME - Type: $TYPE_NAME - Status: $STATUS_NAME"
 
