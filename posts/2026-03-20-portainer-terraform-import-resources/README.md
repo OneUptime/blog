@@ -8,7 +8,7 @@ Description: Learn how to import existing Portainer resources - environments, us
 
 ## Introduction
 
-When you start using Terraform with an existing Portainer installation, you need to import your current resources into Terraform state. Without importing, Terraform will try to recreate resources that already exist, causing conflicts. This guide covers how to discover and import all types of Portainer resources.
+When you start using Terraform with an existing Portainer installation, importing resources into Terraform state is the most direct way to bring them under management. Without state, Terraform can't track those existing objects, and while the current Portainer provider can detect some pre-existing resources by name, importing keeps state and configuration aligned from the start. This guide covers how to discover and import common Portainer resources.
 
 ## Prerequisites
 
@@ -27,7 +27,7 @@ The `terraform import` command associates an existing resource with a Terraform 
 terraform import <resource_type>.<resource_name> <resource_id>
 ```
 
-After importing, Terraform knows about the resource and will manage it going forward. You still need to write the matching Terraform configuration.
+After importing, Terraform knows about the resource and will manage it going forward. You still need to write the matching Terraform configuration. Most Portainer resources use a numeric import ID, but `portainer_stack` uses a composite import ID.
 
 ## Step 1: Discover Existing Resource IDs
 
@@ -77,16 +77,20 @@ Before importing, write the Terraform config that matches your existing resource
 ```hcl
 # environments.tf - Match your existing environment
 resource "portainer_environment" "production" {
-  name             = "production"         # Must match actual name
-  environment_url  = "unix:///var/run/docker.sock"
-  environment_type = 1
+  name                = "production"  # Must match actual name
+  environment_address = "unix:///var/run/docker.sock"
+  type                = 1
 }
 
 # users.tf - Match your existing users
 resource "portainer_user" "admin_user" {
   username = "john.doe"
-  password = "placeholder"  # Required by provider but won't be changed on import
+  password = "IMPORTED-DO-NOT-CHANGE"
   role     = 2
+
+  lifecycle {
+    ignore_changes = [password]
+  }
 }
 
 # teams.tf - Match your existing teams
@@ -97,16 +101,22 @@ resource "portainer_team" "devops" {
 # registries.tf - Match existing registry
 resource "portainer_registry" "harbor" {
   name           = "Company Harbor"
-  registry_type  = 6
+  type           = 3
   url            = "registry.company.com"
   authentication = true
   username       = "portainer-svc"
-  password       = "placeholder"  # Will not overwrite on import
+  password       = "IMPORTED-DO-NOT-CHANGE"
+
+  lifecycle {
+    ignore_changes = [password]
+  }
 }
 
 # stacks.tf - Match existing stack
 resource "portainer_stack" "myapp" {
   name               = "my-app"
+  deployment_type    = "standalone"
+  method             = "string"
   endpoint_id        = 1
   stack_file_content = file("stacks/myapp/docker-compose.yml")
 }
@@ -128,7 +138,8 @@ terraform import portainer_team.devops 2
 terraform import portainer_registry.harbor 4
 
 # Import a stack
-terraform import portainer_stack.myapp 5
+# Format: <endpoint_id>-<stack_id>-<deployment_type>-<method>
+terraform import portainer_stack.myapp 1-5-standalone-string
 ```
 
 ## Step 4: Verify the Import
@@ -148,11 +159,11 @@ If `terraform plan` shows many changes, your Terraform config doesn't match the 
 
 ## Step 5: Bulk Import Script
 
-For many resources, use a script:
+For many resources, you can script the repetitive imports. This assumes your Terraform resource labels match the sanitized names used below:
 
 ```bash
 #!/bin/bash
-# bulk-import.sh - Import all Portainer resources
+# bulk-import.sh - Import environments, users, and teams
 
 PORTAINER_URL="https://portainer.example.com"
 TOKEN="your-api-key"
@@ -181,12 +192,15 @@ curl -s -H "X-API-Key: $TOKEN" "$PORTAINER_URL/api/teams" | \
     eval "$CMD" || echo "  FAILED"
   done
 
+# Stacks need a composite import ID:
+# <endpoint_id>-<stack_id>-<deployment_type>-<method>
+
 echo "Import complete. Run 'terraform plan' to check for drift."
 ```
 
 ## Step 6: Using terraform import blocks (Terraform 1.5+)
 
-Terraform 1.5+ supports `import` blocks in configuration:
+As an alternative to Steps 2 and 3, Terraform 1.5+ supports `import` blocks in configuration:
 
 ```hcl
 # imports.tf - Terraform 1.5+ import blocks
@@ -207,14 +221,14 @@ import {
 
 import {
   to = portainer_stack.myapp
-  id = "5"
+  id = "1-5-standalone-string"
 }
 ```
 
 Then run:
 
 ```bash
-# Generate config from import (Terraform 1.5+)
+# Generate config from import blocks that do not already have resource blocks
 terraform plan -generate-config-out=generated.tf
 
 # Review generated.tf and clean it up
@@ -249,4 +263,4 @@ resource "portainer_user" "imported" {
 
 ## Conclusion
 
-Importing existing Portainer resources into Terraform state is the essential first step when adopting infrastructure-as-code for an established Portainer installation. Discover your resource IDs via the API, write matching Terraform configuration, run `terraform import` for each resource, and verify with `terraform plan` that the desired state matches reality. This process gives you full Terraform control without disrupting existing deployments.
+Importing existing Portainer resources into Terraform state is the most explicit way to adopt infrastructure-as-code for an established Portainer installation. Discover your resource IDs via the API, write matching Terraform configuration, run `terraform import` for each resource, and verify with `terraform plan` that the desired state matches reality. This process gives you full Terraform control without disrupting existing deployments.
