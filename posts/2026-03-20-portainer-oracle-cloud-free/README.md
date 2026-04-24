@@ -15,7 +15,7 @@ Oracle Cloud Infrastructure (OCI) offers the most generous free tier of any majo
 - **Ampere A1 Compute**: 4 OCPUs and 24GB RAM total (can be split across instances)
 - **Block Volume**: 200GB total free
 - **Virtual Cloud Network**: Free
-- **Flexible Load Balancer**: 1 instance, 10Mbps free
+- **Flexible Load Balancer**: 1 instance with 10Mbps minimum/maximum bandwidth free
 
 ## Step 1: Create an OCI Account
 
@@ -54,21 +54,19 @@ OCI uses Security Lists and Network Security Groups. Add ingress rules:
 2. Click **Add Ingress Rules**
 3. Add:
    - Source: Your IP/32, Protocol: TCP, Port: 22
-   - Source: Your IP/32, Protocol: TCP, Port: 9000
    - Source: Your IP/32, Protocol: TCP, Port: 9443
 
-**Also configure the OS-level firewall** (Oracle Linux's iptables):
+**Also configure the OS-level firewall** (OCI Ubuntu images use iptables rules too):
 
 ```bash
 # OCI instances often have additional iptables rules
 
-# Open these ports at the OS level too
-sudo iptables -I INPUT 1 -p tcp --dport 9000 -j ACCEPT
+# On OCI Ubuntu images, modify iptables directly instead of using UFW
 sudo iptables -I INPUT 1 -p tcp --dport 9443 -j ACCEPT
 
-# Save rules (Ubuntu)
-sudo apt install -y iptables-persistent
-sudo netfilter-persistent save
+# Save rules so they persist across reboots
+sudo DEBIAN_FRONTEND=noninteractive apt install -y iptables-persistent
+sudo sh -c 'iptables-save > /etc/iptables/rules.v4'
 ```
 
 ## Step 5: Install Docker on ARM64
@@ -80,16 +78,30 @@ ssh ubuntu@<oci-instance-ip>
 # Update system
 sudo apt update && sudo apt upgrade -y
 
-# Install Docker (ARM64 is fully supported)
-curl -fsSL https://get.docker.com | sh
+# Install Docker from Docker's official apt repository
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
 sudo usermod -aG docker ubuntu
 newgrp docker
 
-sudo systemctl enable docker
-
 # Verify ARM64
 docker info | grep Architecture
-# Should show: aarch64
+# Should show an ARM64 architecture such as: aarch64
 ```
 
 ## Step 6: Deploy Portainer
@@ -100,11 +112,10 @@ docker volume create portainer_data
 docker run -d \
   --name portainer \
   --restart=unless-stopped \
-  -p 9000:9000 \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
 
 ## Step 7: Maximize Free Tier Usage
@@ -159,12 +170,12 @@ volumes:
 
 ```bash
 # In OCI console, create a 100GB block volume (free tier includes 200GB)
-# Attach to instance
+# Attach it to the instance using a consistent device path such as /dev/oracleoci/oraclevdb
 # On the instance:
-sudo fdisk -l  # Find attached volume (usually /dev/sdb or /dev/oracleoci/oraclevdb)
-sudo mkfs.ext4 /dev/sdb
+sudo fdisk -l  # Verify the attached volume path
+sudo mkfs.ext4 /dev/oracleoci/oraclevdb
 sudo mkdir -p /data
-echo '/dev/sdb /data ext4 defaults,_netdev,nofail 0 2' | sudo tee -a /etc/fstab
+echo '/dev/oracleoci/oraclevdb /data ext4 defaults,_netdev,nofail 0 2' | sudo tee -a /etc/fstab
 sudo mount -a
 ```
 
