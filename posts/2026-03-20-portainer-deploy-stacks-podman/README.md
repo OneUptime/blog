@@ -8,30 +8,27 @@ Description: Learn how to deploy Docker Compose stacks to a Podman backend via P
 
 ---
 
-Portainer can deploy Compose stacks to Podman environments just as it does for Docker. Podman 3.x+ includes a `podman-compose`-compatible API that handles most Docker Compose files without modification.
+Portainer can deploy Compose stacks to supported Podman environments. Podman exposes a Docker-compatible API through `podman system service`, which is how tools such as Portainer connect to a Podman socket.
 
 ## Prerequisites
 
-- Portainer connected to a Podman socket (see the connection guide)
-- Podman 4.x or later (for best Compose API compatibility)
-- `podman-compose` or the native Podman Compose support
+- Portainer connected to a Podman environment
+- Podman 5 on CentOS Stream 9 for Portainer's officially supported setup
+- Rootful Podman (Portainer notes that rootless Podman may work, but is not officially supported)
 
 ## Deploying a Stack via Portainer
 
-1. In Portainer go to **Stacks > Add Stack**.
-2. Select the Podman environment.
-3. Paste your Compose YAML or import from Git.
-4. Click **Deploy the stack**.
+1. Select your Podman environment in Portainer, then go to **Stacks > Add Stack**.
+2. Paste your Compose YAML or import from Git.
+3. Click **Deploy the stack**.
 
-Portainer translates the Compose spec into API calls to Podman.
+Portainer deploys the Compose-defined services to the connected Podman environment through the Podman API/socket.
 
 ## Example Stack Compatible with Podman
 
 Most Docker Compose stacks work with Podman without changes:
 
 ```yaml
-version: "3.8"
-
 services:
   webapp:
     image: nginx:alpine
@@ -57,7 +54,7 @@ volumes:
 
 ## Known Compatibility Issues
 
-**Network mode `host`:** Works on Podman rootful, but may fail on rootless Podman due to network namespace restrictions.
+**Network mode `host`:** Portainer with rootless Podman is not officially supported. When using rootless Podman, prefer explicit port mappings instead of relying on host networking.
 
 ```yaml
 # Workaround for rootless: use port mapping instead of host networking
@@ -69,28 +66,20 @@ services:
     # network_mode: host  # Avoid this for rootless Podman
 ```
 
-**Privileged containers:** Rootless Podman restricts privileged mode. You may need to add capabilities explicitly:
+**Privileged containers:** Rootless containers cannot have more privileges than the account that launched them. If a workload only needs a small subset of privileges, add the specific capabilities it requires instead:
 
 ```yaml
 services:
   app:
     cap_add:
       - NET_ADMIN
-    security_opt:
-      - no-new-privileges:false
 ```
 
-**Volume ownership:** Rootless Podman uses user namespace mapping. Files inside volumes may show different UIDs. Set `PUID`/`PGID` environment variables if the image supports them.
+**Volume ownership:** User namespace mapping can make container UIDs and GIDs appear differently on the host. If you need Podman to adjust ownership on a mounted path, Podman documents the `:U` volume option for that purpose.
 
 ## Using Podman Pods in Stacks
 
-Podman can group Compose services into a pod for shared networking:
-
-```yaml
-# Portainer doesn't expose Podman pods natively
-# But you can use podman-compose directly for pod-aware deployments:
-podman-compose --pod-args "--hostname=mypod" up -d
-```
+Podman has a native pod concept for shared networking and namespaces, but Portainer's stack workflow is Compose-based. If you need Podman pod-specific behavior, manage it with Podman tooling outside the Portainer stack flow.
 
 ## Monitoring Stack Health
 
