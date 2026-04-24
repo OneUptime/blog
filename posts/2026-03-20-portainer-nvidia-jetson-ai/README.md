@@ -8,72 +8,54 @@ Description: Deploy Portainer on NVIDIA Jetson devices to manage GPU-accelerated
 
 ## Introduction
 
-NVIDIA Jetson devices (Nano, Xavier NX, AGX Xavier, AGX Orin) are purpose-built for AI inference at the edge. With CUDA support, TensorRT, and NVIDIA's container runtime, Jetson devices can run GPU-accelerated containers. Portainer provides a management interface for deploying and managing these AI workloads.
+NVIDIA Jetson devices supported by JetPack 5.x or 6.x, such as Jetson Xavier NX, Jetson AGX Xavier, and the Jetson Orin family, are purpose-built for AI inference at the edge. With CUDA support, TensorRT, and NVIDIA's container runtime, Jetson devices can run GPU-accelerated containers. Portainer provides a management interface for deploying and managing these AI workloads.
 
 ## Prerequisites
 
-- NVIDIA Jetson device with JetPack 5.x or 6.x installed
+- NVIDIA Jetson device supported by JetPack 5.x or 6.x
 - At least 8GB storage (NVMe SSD recommended)
 - SSH access enabled
-- Docker (included with JetPack)
+- Docker installed and working
 
 ## Step 1: Verify JetPack Installation
 
 ```bash
-# Check JetPack version
+# Check Jetson Linux / L4T version
 
 cat /etc/nv_tegra_release
 
-# Verify CUDA is available
+# If the CUDA toolkit is installed, verify it
 nvcc --version
 
-# Check available GPU memory
+# Watch live CPU/GPU/memory statistics
 sudo tegrastats
 ```
 
 ## Step 2: Configure NVIDIA Container Runtime
 
-JetPack includes the NVIDIA container runtime, but verify Docker is configured to use it:
+JetPack includes the NVIDIA container runtime with Docker integration, but verify Docker is configured to use it:
 
 ```bash
 # Verify NVIDIA runtime is registered
 docker info | grep Runtimes
 
-# Should show: nvidia runc
+# Should include: nvidia
 
-# If not, configure it
-sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
-{
-  "default-runtime": "nvidia",
-  "runtimes": {
-    "nvidia": {
-      "path": "nvidia-container-runtime",
-      "runtimeArgs": []
-    }
-  },
-  "log-driver": "json-file",
-  "log-opts": {
-    "max-size": "10m",
-    "max-file": "3"
-  }
-}
-EOF
-
+# If not, register it with Docker
+sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
 ```
 
-## Step 3: Test GPU Access in Containers
+## Step 3: Test NVIDIA Runtime Access in Containers
 
 ```bash
-# Test that containers can access the GPU
+# Replace r36.4.0 with the L4T tag that matches your device
 docker run --rm --runtime=nvidia \
-  nvcr.io/nvidia/l4t-base:r32.7.1 \
-  nvidia-smi
+  nvcr.io/nvidia/l4t-jetpack:r36.4.0 \
+  bash -lc 'ls /usr/local/cuda && echo "NVIDIA container runtime is working"'
 
-# Or use the newer l4t-jetpack image
-docker run --rm --runtime=nvidia \
-  nvcr.io/nvidia/l4t-jetpack:r36.2.0 \
-  python3 -c "import torch; print(torch.cuda.is_available())"
+# Jetson devices do not support nvidia-smi; use tegrastats on the host
+sudo tegrastats
 ```
 
 ## Step 4: Install Portainer
@@ -83,19 +65,20 @@ docker run --rm --runtime=nvidia \
 docker volume create portainer_data
 
 # Deploy Portainer (ARM64 compatible)
+# Add -p 9000:9000 only if you need legacy HTTP access
 docker run -d \
   --name portainer \
-  --restart=unless-stopped \
-  -p 9000:9000 \
+  --restart=always \
+  -p 8000:8000 \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 5: Deploy AI Containers via Portainer
 
-### Example: TensorRT Inference Container
+### Example: TensorRT Inference Container (JetPack 6.x)
 
 In Portainer, create a new stack named `ai-inference`:
 
@@ -103,9 +86,9 @@ In Portainer, create a new stack named `ai-inference`:
 version: "3.8"
 
 services:
-  # TensorRT inference server
+  # Triton on Jetson requires an iGPU image tag
   triton:
-    image: nvcr.io/nvidia/tritonserver:23.10-py3
+    image: nvcr.io/nvidia/tritonserver:23.12-py3-igpu
     runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
@@ -122,13 +105,6 @@ services:
       --model-repository=/models
       --allow-metrics=true
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
 ```
 
 ### Example: Object Detection Container
@@ -139,7 +115,7 @@ version: "3.8"
 services:
   # YOLOv8 detection service
   yolo-service:
-    image: ultralytics/ultralytics:latest-jetson-jetpack5
+    image: ultralytics/ultralytics:latest-jetson-jetpack5  # Use :latest-jetson-jetpack6 on JetPack 6.x
     runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
@@ -147,7 +123,6 @@ services:
       - "5000:5000"
     volumes:
       - /data/yolo-models:/models
-      - /dev/video0:/dev/video0  # Camera access
     devices:
       - /dev/video0:/dev/video0
     restart: unless-stopped
@@ -155,29 +130,19 @@ services:
 
 ## Step 6: Monitor GPU Usage
 
-Deploy a GPU monitoring container via Portainer:
-
-```yaml
-version: "3.8"
-
-services:
-  # Jetson stats exporter for Prometheus
-  jetson-stats:
-    image: ajeetraina/jetson-stats-exporter:latest
-    runtime: nvidia
-    privileged: true
-    ports:
-      - "9545:9545"
-    volumes:
-      - /run/jtop.sock:/run/jtop.sock
-    restart: unless-stopped
-```
-
-Install jtop on the host:
+For Jetson devices, use the host-side monitoring tools NVIDIA documents for runtime visibility:
 
 ```bash
+# Install Jetson monitoring tools
+sudo apt update
+sudo apt install python3-pip python3-setuptools -y
 sudo pip3 install -U jetson-stats
-sudo systemctl restart jtop
+
+# Interactive Jetson monitor
+jtop
+
+# Built-in NVIDIA telemetry
+sudo tegrastats
 ```
 
 ## Jetson-Specific Portainer Tips
@@ -187,7 +152,7 @@ sudo systemctl restart jtop
 Set the optimal power mode for your workload:
 
 ```bash
-# List power modes
+# Show current power mode
 sudo nvpmodel -q
 
 # Set to MAX performance (mode 0)
