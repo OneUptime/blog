@@ -49,10 +49,10 @@ ingress:
     originRequest:
       # Don't verify self-signed cert
       noTLSVerify: true
-      # Keep connections alive for WebSocket
+      # Keep idle connections available to the origin
       keepAliveConnections: 10
       keepAliveTimeout: 90s
-      # Increase timeout for long operations
+      # Set connection timeout explicitly
       connectTimeout: 30s
       # Set proper headers
       httpHostHeader: portainer.yourdomain.com
@@ -66,7 +66,7 @@ Deploy with:
 ```bash
 cloudflared tunnel run your-tunnel-name
 # or as a service:
-sudo cloudflared service install
+sudo cloudflared --config ~/.cloudflared/config.yml service install
 sudo systemctl start cloudflared
 ```
 
@@ -74,13 +74,13 @@ sudo systemctl start cloudflared
 
 If using the Cloudflare Zero Trust (ZTNA) dashboard instead of config file:
 
-1. Go to **Zero Trust** → **Access** → **Tunnels**
-2. Click your tunnel → **Configure** → **Public Hostname**
-3. Add a hostname entry:
+1. Go to **Zero Trust** → **Networks** → **Connectors** → **Cloudflare Tunnels**
+2. Click your tunnel → **Edit**
+3. Under **Published application routes**, add or edit a route:
    - **Subdomain**: portainer
    - **Domain**: yourdomain.com
    - **Service type**: HTTPS
-   - **URL**: localhost:9443
+   - **URL**: localhost:9443 (or `portainer:9443` if `cloudflared` runs in a separate Docker container)
 4. Under **Additional application settings** → **TLS Settings**:
    - Enable **No TLS Verify** (for self-signed Portainer cert)
 5. Under **Additional application settings** → **HTTP Settings**:
@@ -89,21 +89,20 @@ If using the Cloudflare Zero Trust (ZTNA) dashboard instead of config file:
 ## Step 4: Fix WebSocket Proxy Configuration
 
 ```bash
-# Test if WebSocket connections are working
-# Install wscat for WebSocket testing
+# Install wscat if you want a minimal WebSocket client
 npm install -g wscat
 
-# Test WebSocket connection to Portainer
-wscat -c wss://portainer.yourdomain.com
-# If connection succeeds: WebSocket is working
-# If "Error: Unexpected server response: 400": WebSocket upgrade not configured
+# Portainer's console uses authenticated WebSocket endpoints,
+# so testing the bare root URL is not a reliable check.
+# Instead, open your browser dev tools, start a Portainer console session,
+# and confirm the WebSocket request gets HTTP 101 Switching Protocols.
 ```
 
 ## Step 5: Fix Cloudflare Cache Interference
 
 ```bash
-# Cloudflare caching can interfere with API responses
-# Create a Page Rule or Cache Rule to bypass cache for Portainer:
+# If you already have Cache Rules or Page Rules affecting this hostname,
+# bypass cache for Portainer:
 
 # In Cloudflare Dashboard → Rules → Cache Rules
 # Create rule:
@@ -111,11 +110,9 @@ wscat -c wss://portainer.yourdomain.com
 # Action: Bypass cache
 ```
 
-Or add the `Cache-Control: no-store` header configuration in the tunnel config.
-
 ## Step 6: Fix Origin Validation Errors
 
-Portainer v2.30+ has stricter origin checking. Configure the tunnel to send correct origin:
+Portainer can return "Origin invalid" errors behind a reverse proxy. Configure the tunnel to send the correct host header:
 
 ```yaml
 # cloudflared config.yml
@@ -128,7 +125,7 @@ ingress:
       httpHostHeader: portainer.yourdomain.com
 ```
 
-Or use Portainer's flag to disable origin checking (less secure):
+Or configure Portainer to trust the public hostname:
 
 ```bash
 docker run -d \
@@ -138,9 +135,7 @@ docker run -d \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
   --http-disabled \
-  --ssl \
-  --sslcert /certs/cert.pem \
-  --sslkey /certs/key.pem
+  --trusted-origins portainer.yourdomain.com
 ```
 
 ## Step 7: Fix Timeout for Long Operations
@@ -154,20 +149,20 @@ ingress:
     service: https://localhost:9443
     originRequest:
       noTLSVerify: true
-      # Increase for long stack deployments
+      # Allow more time to establish the connection to Portainer
       connectTimeout: 60s
-      # 0 = no timeout (for streaming/WebSocket)
+      # Keep the TCP connection alive between Cloudflare and Portainer
       tcpKeepAlive: 30s
 ```
 
-Cloudflare itself has a maximum timeout of 100 seconds for non-WebSocket connections. For operations that take longer, use the Portainer API with polling rather than waiting for a single long request.
+Cloudflare's default proxy read timeout for standard HTTP requests is 120 seconds. For operations that take longer, use the Portainer API with polling rather than waiting for a single long request.
 
 ## Step 8: Configure Cloudflare Access Policies (Optional)
 
 Add authentication to your Portainer tunnel:
 
 ```bash
-# In Cloudflare Zero Trust → Access → Applications → Add Application
+# In Cloudflare Zero Trust → Access controls → Applications → Add an application
 # Type: Self-hosted
 # Application domain: portainer.yourdomain.com
 # Configure policy (e.g., only your email can access)
@@ -179,7 +174,6 @@ Add authentication to your Portainer tunnel:
 ## Step 9: Fix Docker Compose Deployment for Tunnel
 
 ```yaml
-version: "3.8"
 services:
   portainer:
     image: portainer/portainer-ce:latest
@@ -188,6 +182,7 @@ services:
     expose:
       - "9443"
     # No public port binding needed with Cloudflare Tunnel
+    # From the cloudflared container, reach Portainer at https://portainer:9443
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
@@ -208,21 +203,24 @@ volumes:
 ## Step 10: Verify the Full Flow
 
 ```bash
+# If you enabled Cloudflare Access, authenticate through Access first
+# or run these checks from the origin side of the tunnel.
+
 # Test 1: Basic connectivity
-curl https://portainer.yourdomain.com/api/status
+curl -I https://portainer.yourdomain.com
 
 # Test 2: Login
 curl -X POST https://portainer.yourdomain.com/api/auth \
   -H "Content-Type: application/json" \
   -d '{"Username":"admin","Password":"yourpassword"}'
 
-# Test 3: WebSocket (requires wscat)
-wscat -c wss://portainer.yourdomain.com
+# Test 3: In browser DevTools → Network, start a container console session
+# and confirm the WebSocket request gets HTTP 101 Switching Protocols.
 
-# If Test 3 fails but 1 and 2 succeed:
-# WebSockets are not enabled in Cloudflare Network settings
+# If Test 2 works but the console still fails:
+# Re-check WebSockets and reverse-proxy timeout settings
 ```
 
 ## Conclusion
 
-The most critical requirements for Portainer behind a Cloudflare Tunnel are: WebSocket support enabled in Cloudflare Network settings, `noTLSVerify: true` in the tunnel configuration (for self-signed Portainer certs), and the correct `httpHostHeader` to pass the correct hostname. Container terminal and log streaming will not work without WebSocket support.
+The most critical requirements for Portainer behind a Cloudflare Tunnel are: WebSocket support enabled in Cloudflare Network settings, `noTLSVerify: true` when Portainer is serving a self-signed HTTPS certificate on `9443`, and the correct `httpHostHeader` to pass the right hostname. If Portainer returns "Origin invalid" errors, configure `--trusted-origins` with the public hostname. Container terminal and log streaming still depend on WebSocket support and sane proxy timeout settings.
