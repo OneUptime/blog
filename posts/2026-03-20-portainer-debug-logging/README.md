@@ -8,21 +8,21 @@ Description: A guide to enabling and using debug logging in Portainer for troubl
 
 ## Overview
 
-Portainer's default log level is INFO, which records significant events but omits detailed request/response information. When troubleshooting connectivity issues, authentication problems, or unexpected behavior, enabling debug logging provides much more detailed output. This guide covers enabling debug logs, collecting them, and using them to diagnose common issues.
+Portainer's default log level is INFO, which records significant events but omits more verbose troubleshooting details. When troubleshooting connectivity issues, authentication problems, or unexpected behavior, enabling debug logging provides much more detailed output. This guide covers enabling debug logs, collecting them, and using them to diagnose common issues.
 
 ## Prerequisites
 
 - Running Portainer installation
 - Docker CLI access to the Portainer host
-- Admin access (for log level changes via API)
+- Admin access (for Portainer BE runtime log level changes via API)
 
 ## Default Log Levels
 
 | Level | Description |
 |---|---|
-| DEBUG | Verbose: all requests, responses, internal operations |
-| INFO | Standard: startup, connections, significant events |
-| WARN | Warnings that need attention |
+| DEBUG | Verbose troubleshooting output |
+| INFO | Standard operational events |
+| WARN | Warning conditions |
 | ERROR | Errors and failures |
 
 ## Method 1: Enable Debug Logging at Startup
@@ -48,34 +48,34 @@ docker run -d \
 docker logs -f portainer
 ```
 
-## Method 2: Change Log Level at Runtime (via API)
+## Method 2: Change Log Level at Runtime (Portainer BE via API)
 
-Portainer 2.x supports changing the log level without restart:
+Portainer Business Edition supports changing the debug log setting without restarting the container:
 
 ```bash
 PORTAINER_URL="https://portainer.example.com:9443"
-TOKEN="your-admin-token"
+JWT="your-admin-jwt"
 
 # Enable debug logging
 curl -X PUT \
-  "${PORTAINER_URL}/api/settings" \
-  -H "Authorization: Bearer ${TOKEN}" \
+  "${PORTAINER_URL}/api/support/debug_log" \
+  -H "Authorization: Bearer ${JWT}" \
   -H "Content-Type: application/json" \
-  -d '{"LogLevel": "DEBUG"}'
+  -d '{"debugLogEnabled": true}'
 
 # Disable debug logging (back to INFO)
 curl -X PUT \
-  "${PORTAINER_URL}/api/settings" \
-  -H "Authorization: Bearer ${TOKEN}" \
+  "${PORTAINER_URL}/api/support/debug_log" \
+  -H "Authorization: Bearer ${JWT}" \
   -H "Content-Type: application/json" \
-  -d '{"LogLevel": "INFO"}'
+  -d '{"debugLogEnabled": false}'
 ```
 
 ## Reading Debug Logs
 
 ```bash
 # View recent logs
-docker logs portainer --tail 100
+docker logs --tail 100 portainer
 
 # Follow logs in real time
 docker logs -f portainer
@@ -83,8 +83,8 @@ docker logs -f portainer
 # Filter for specific patterns
 docker logs portainer 2>&1 | grep -i "error\|fail\|auth"
 
-# Filter for API requests
-docker logs portainer 2>&1 | grep "HTTP"
+# Filter for HTTP-related messages
+docker logs portainer 2>&1 | grep -i "http"
 
 # Save logs to file for analysis
 docker logs portainer > portainer-debug-$(date +%Y%m%d-%H%M%S).log 2>&1
@@ -99,11 +99,7 @@ docker logs portainer > portainer-debug-$(date +%Y%m%d-%H%M%S).log 2>&1
 docker logs portainer 2>&1 | grep -i "auth\|login\|token\|jwt"
 ```
 
-Expected debug output:
-```text
-level=debug msg="User authentication successful" username=admin
-level=debug msg="JWT token created" userID=1
-```
+Expected debug output format varies by Portainer version and log mode, so focus on authentication-related entries, 4xx/5xx responses, and LDAP/OAuth errors rather than exact message text.
 
 ### Docker Endpoint Connectivity
 
@@ -122,7 +118,6 @@ docker logs portainer 2>&1 | grep -i "kubernetes\|k8s\|kubeconfig"
 ## Docker Compose with Debug Logging
 
 ```yaml
-version: "3.8"
 services:
   portainer:
     image: portainer/portainer-ce:latest
@@ -156,6 +151,7 @@ docker run -d \
   --log-opt max-size=50m \
   --log-opt max-file=5 \
   -p 9443:9443 \
+  -p 8000:8000 \
   --name portainer \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -167,13 +163,13 @@ docker run -d \
 ## Restoring Normal Logging
 
 ```bash
-# Always restore INFO logging after troubleshooting
-curl -X PUT "${PORTAINER_URL}/api/settings" \
-  -H "Authorization: Bearer ${TOKEN}" \
+# Portainer BE: always disable debug logging after troubleshooting
+curl -X PUT "${PORTAINER_URL}/api/support/debug_log" \
+  -H "Authorization: Bearer ${JWT}" \
   -H "Content-Type: application/json" \
-  -d '{"LogLevel": "INFO"}'
+  -d '{"debugLogEnabled": false}'
 ```
 
 ## Conclusion
 
-Debug logging is an invaluable tool for diagnosing Portainer issues but should be disabled in production after troubleshooting due to the volume of output and potential exposure of sensitive information in logs. The runtime log level change (via API) is the preferred approach as it avoids a container restart. Always configure log rotation when running in debug mode to prevent disk exhaustion.
+Debug logging is an invaluable tool for diagnosing Portainer issues but should be disabled in production after troubleshooting due to the volume of output and potential exposure of sensitive information in logs. On Portainer Business Edition, the runtime log level change via the support API or UI avoids a container restart. On Portainer Community Edition, enabling debug logging at startup remains the documented option. Always configure log rotation when running in debug mode to prevent disk exhaustion.
