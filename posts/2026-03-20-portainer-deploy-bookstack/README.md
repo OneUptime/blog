@@ -13,8 +13,6 @@ Bookstack is an opinionated, self-hosted wiki platform organized around books, c
 ## Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   bookstack:
     image: lscr.io/linuxserver/bookstack:latest
@@ -23,7 +21,8 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=America/New_York
-      - APP_URL=https://wiki.example.com
+      - APP_URL=http://<host>:8080
+      - APP_KEY=base64:your_generated_app_key
       - DB_HOST=bookstack-db
       - DB_PORT=3306
       - DB_DATABASE=bookstack
@@ -61,6 +60,8 @@ volumes:
   bookstack_data:
   bookstack_db:
 ```
+
+Generate `APP_KEY` with `docker run -it --rm --entrypoint /bin/bash lscr.io/linuxserver/bookstack:latest appkey` and paste the returned value into `APP_KEY`.
 
 ## Initial Access
 
@@ -100,7 +101,7 @@ Example structure for a company wiki:
       📄 Benefits Overview
 ```
 
-## Configuring SSO (SAML/OIDC)
+## Configuring SSO (OIDC)
 
 ```yaml
 environment:
