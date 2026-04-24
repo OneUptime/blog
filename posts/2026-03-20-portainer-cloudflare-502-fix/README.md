@@ -42,9 +42,9 @@ docker logs cloudflared 2>&1 | grep -E "(registered|disconnected|error|ERR)"
 
 ```bash
 # Check in Cloudflare Dashboard
-# Zero Trust → Networks → Tunnels
+# Cloudflare One → Networks → Connectors → Cloudflare Tunnels
 # Your tunnel should show: Status = HEALTHY
-# If INACTIVE: cloudflared container is not running or not reaching Cloudflare
+# If INACTIVE: the connector has not established a tunnel connection yet
 ```
 
 ## Step 2: Verify the Service URL in Tunnel Config
@@ -55,84 +55,89 @@ The service URL in your tunnel configuration must point to the correct container
 ```yaml
 # /opt/cloudflared/config.yml
 
+# WRONG: HTTPS to Portainer's legacy HTTP port
+---
 ingress:
   - hostname: portainer.example.com
-    # WRONG: trying to reach portainer on HTTPS but it's using HTTP
-    service: https://portainer:9000    # Port 9000 is HTTP by default
+    service: https://portainer:9000
 
-    # CORRECT for Portainer CE on port 9000 (HTTP)
-    service: http://portainer:9000
-
-    # CORRECT for Portainer with HTTPS enabled (port 9443)
+# CORRECT for current Portainer defaults (HTTPS on 9443)
+---
+ingress:
+  - hostname: portainer.example.com
     service: https://portainer:9443
     originRequest:
-      noTLSVerify: true    # Required: Portainer uses self-signed cert
+      noTLSVerify: true    # Required if Portainer uses its default self-signed cert
+
+# CORRECT only if you explicitly exposed Portainer's legacy HTTP port 9000
+---
+ingress:
+  - hostname: portainer.example.com
+    service: http://portainer:9000
 ```
 
 **In Cloudflare Dashboard (for token-mode tunnels):**
 ```text
-Public Hostname → Edit service configuration:
-  Type: HTTP
-  URL: portainer:9000
-
-If using HTTPS:
+Published application route → Edit:
   Type: HTTPS
   URL: portainer:9443
-  No TLS Verify: checked
+  No TLS Verify: checked    # If Portainer uses its default self-signed cert
+
+If using Portainer's legacy HTTP port instead:
+  Type: HTTP
+  URL: portainer:9000
 ```
 
-## Step 3: Test Connectivity from Cloudflared Container
+## Step 3: Test Connectivity on the Shared Docker Network
 
 ```bash
-# Confirm cloudflared can reach Portainer
-docker exec cloudflared wget -qO- --timeout=10 http://portainer:9000 && echo "OK" || echo "FAILED"
+# Check which Docker networks each container is using
+docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{printf "%s\n" $k}}{{end}}' cloudflared
+docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{printf "%s\n" $k}}{{end}}' portainer
 
-# If FAILED: check they're on the same Docker network
-docker inspect cloudflared | jq '.[].NetworkSettings.Networks | keys'
-docker inspect portainer | jq '.[].NetworkSettings.Networks | keys'
-
-# They must share a network - connect if not
+# They must share a user-defined network - connect if not
+# Replace proxy with the actual shared network name
 docker network connect proxy cloudflared
 docker network connect proxy portainer
 
-# Retry connectivity test
-docker exec cloudflared wget -qO- --timeout=10 http://portainer:9000 && echo "OK"
+# Test the exact Portainer URL from that shared network
+docker run --rm --network proxy curlimages/curl -sS -o /dev/null -w "HTTPS %{http_code}\n" -kI https://portainer:9443
+
+# If you explicitly enabled Portainer's legacy HTTP port instead:
+docker run --rm --network proxy curlimages/curl -sS -o /dev/null -w "HTTP %{http_code}\n" -I http://portainer:9000
+
+# Expect an HTTP response such as 200, 302, or 401.
+# A timeout or connection refused error means cloudflared will fail too.
 ```
 
 ## Step 4: Handle Timeout Issues
 
-Cloudflare Tunnel has default timeouts that may be too short for Portainer operations:
+Cloudflare Tunnel timeouts are configurable if slow handshakes or long-lived Portainer operations are causing failures:
 
 ```yaml
 # config.yml - Increase timeout settings
 ingress:
   - hostname: portainer.example.com
-    service: http://portainer:9000
+    service: https://portainer:9443
     originRequest:
-      connectTimeout: 30s         # Time to establish connection (default: 30s)
-      tlsTimeout: 10s             # TLS handshake timeout
+      noTLSVerify: true         # if Portainer uses its default self-signed cert
+      connectTimeout: 60s         # default: 30s
+      tlsTimeout: 20s             # default: 10s (HTTPS origins only)
       tcpKeepAlive: 30s           # TCP keepalive interval
-      keepAliveConnections: 100   # Max keepalive connections
-      keepAliveTimeout: 90s       # Idle connection timeout
-      httpHostHeader: portainer.example.com
-      originServerName: portainer.example.com
+      keepAliveTimeout: 2m        # default: 1m30s
 ```
 
 ## Step 5: Fix WebSocket Issues
 
-Portainer's terminal and console use WebSockets. If the connection establishes but console doesn't work:
+If the main Portainer UI loads but the console does not:
 
-```yaml
+```text
 # Ensure WebSockets are enabled in Cloudflare
-# Cloudflare Dashboard → your-domain.com → Network → WebSockets → ON
+# Cloudflare Dashboard → Network → WebSockets → ON
 
-# In tunnel config, WebSocket upgrade is handled automatically by cloudflared
-# If issues persist, check timeout:
-ingress:
-  - hostname: portainer.example.com
-    service: http://portainer:9000
-    originRequest:
-      disableChunkedEncoding: false    # Keep chunked for WebSocket
+# cloudflared handles WebSocket upgrades automatically
+# There is no separate WebSocket option required in the tunnel config
+# If console sessions still drop, review timeout and keepalive settings on the origin and client
 ```
 
 ## Step 6: Check Portainer Error Logs
@@ -146,17 +151,21 @@ docker logs portainer --tail=100
 # Look for relevant errors
 docker logs portainer 2>&1 | grep -i "error\|warn\|fail"
 
-# Verify Portainer is listening
-docker exec portainer netstat -tlnp 2>/dev/null | grep -E "9000|9443"
-# Expected: 0.0.0.0:9000 (HTTP) or 0.0.0.0:9443 (HTTPS)
+# Probe the exact origin URL configured in the tunnel
+# Replace proxy with the actual shared network name
+docker run --rm --network proxy curlimages/curl -sS -o /dev/null -w "HTTPS %{http_code}\n" -kI https://portainer:9443
+
+# If using legacy HTTP on 9000 instead:
+docker run --rm --network proxy curlimages/curl -sS -o /dev/null -w "HTTP %{http_code}\n" -I http://portainer:9000
 ```
 
 ## Step 7: Use Cloudflare Tunnel Logs for Diagnosis
 
 ```bash
 # Enable verbose cloudflared logging
-# In docker-compose.yml, change command to:
-command: tunnel --no-autoupdate --loglevel debug run
+# In docker-compose.yml, add --loglevel debug to your existing command.
+# Example for token-mode tunnels:
+# command: tunnel --no-autoupdate --loglevel debug run --token ${TUNNEL_TOKEN}
 
 # Filter for origin connection issues
 docker logs cloudflared 2>&1 | grep -i "origin\|ERR\|upstream"
@@ -185,17 +194,23 @@ echo "2. Portainer container running?"
 docker ps --filter "name=portainer" --format "  {{.Names}}: {{.Status}}"
 
 echo "3. Shared Docker network?"
-CF_NETS=$(docker inspect cloudflared 2>/dev/null | jq -r '.[].NetworkSettings.Networks | keys[]')
-PORT_NETS=$(docker inspect portainer 2>/dev/null | jq -r '.[].NetworkSettings.Networks | keys[]')
+CF_NETS=$(docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{printf "%s\n" $k}}{{end}}' cloudflared 2>/dev/null)
+PORT_NETS=$(docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{printf "%s\n" $k}}{{end}}' portainer 2>/dev/null)
+SHARED_NET=$(comm -12 <(printf "%s\n" "$CF_NETS" | sort) <(printf "%s\n" "$PORT_NETS" | sort) | head -n1)
 echo "  Cloudflared networks: $CF_NETS"
 echo "  Portainer networks: $PORT_NETS"
+echo "  Shared network: ${SHARED_NET:-none}"
 
 echo "4. Connectivity test:"
-docker exec cloudflared wget -qO- --timeout=5 http://portainer:9000 > /dev/null 2>&1 && \
-  echo "  SUCCESS: cloudflared can reach portainer" || \
-  echo "  FAILED: cloudflared cannot reach portainer"
+if [ -n "$SHARED_NET" ]; then
+  docker run --rm --network "$SHARED_NET" curlimages/curl -sS -o /dev/null -w "  HTTPS %{http_code}\n" -kI https://portainer:9443 || \
+    echo "  FAILED: could not reach https://portainer:9443"
+  echo "  If you use Portainer's legacy HTTP port instead, test http://portainer:9000"
+else
+  echo "  FAILED: no shared Docker network between cloudflared and portainer"
+fi
 ```
 
 ## Conclusion
 
-502 errors with Cloudflare Tunnel and Portainer are almost always caused by cloudflared being unable to reach the Portainer container. Verify they share the same Docker network, confirm the service URL scheme and port are correct (HTTP port 9000 vs HTTPS port 9443), and add `noTLSVerify: true` if Portainer uses a self-signed certificate. Increase timeout settings for environments with slow startup times or heavy operations.
+502 errors with Cloudflare Tunnel and Portainer are commonly caused by cloudflared being unable to reach the Portainer container or by a mismatch between the configured origin protocol and Portainer's actual port. Verify they share the same Docker network, confirm the service URL is correct (Portainer defaults to HTTPS on 9443, while 9000 is legacy HTTP), and add `noTLSVerify: true` if Portainer uses its default self-signed certificate. Increase timeout settings only after connectivity and protocol mismatches are ruled out.
