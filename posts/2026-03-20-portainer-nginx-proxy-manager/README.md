@@ -14,14 +14,12 @@ Nginx Proxy Manager (NPM) provides a web interface for managing Nginx reverse pr
 
 - Docker and Docker Compose installed
 - A domain name pointing to your server
-- Ports 80, 443, and 81 (NPM admin) accessible
+- Ports 80 and 443 accessible, plus administrative access to port 81 for initial NPM setup
 
 ## Step 1: Create the Docker Compose File
 
 ```yaml
 # /opt/proxy-manager/docker-compose.yml
-
-version: "3.8"
 
 services:
   npm:
@@ -160,7 +158,7 @@ curl -I https://portainer.example.com
 echo | openssl s_client -servername portainer.example.com \
   -connect portainer.example.com:443 2>/dev/null | \
   openssl x509 -noout -issuer
-# Expected: issuer=CN = R10, O = Let's Encrypt, ...
+# Expected: issuer is a Let's Encrypt intermediate certificate (the CN can vary)
 ```
 
 ## Step 7: Secure NPM Admin Interface
@@ -177,9 +175,10 @@ ports:
 ssh -L 8181:127.0.0.1:81 user@your-server
 # Then access http://localhost:8181 in your browser
 
-# Option 2: Add NPM itself as a proxy host in NPM with auth
-# Create a proxy host for npm.example.com pointing to 127.0.0.1:81
-# Add an access list with password protection
+# Option 2: Add NPM itself as a proxy host in NPM
+# Create a proxy host for npm.example.com pointing to npm:81
+# Do not add an NPM access list here; it can break NPM's own login
+# Restrict access with firewall rules or a VPN instead
 ```
 
 ## Conclusion
