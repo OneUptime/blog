@@ -8,22 +8,22 @@ Description: Learn how Docker bridge networking works in Portainer, how to creat
 
 ---
 
-Bridge networking is Docker's default network mode. Each bridge network creates a virtual switch on the host, and containers on the same bridge can communicate by name. Portainer provides a visual interface for managing these networks.
+The default `bridge` network is Docker's default network for standalone containers on Linux. Each user-defined bridge network creates a software bridge on the host, and containers on the same user-defined bridge can communicate by name. Portainer provides a visual interface for managing these networks.
 
 ## How Bridge Networks Work
 
 ```mermaid
 graph TD
-    Host[Docker Host] --> Bridge0[docker0 default bridge]
+    Host[Docker Host] --> Bridge0[Default bridge network (docker0 on Linux)]
     Host --> Bridge1[Custom Bridge: my-app_net]
-    Bridge0 --> C1[Container A]
-    Bridge0 --> C2[Container B - no DNS]
+    Bridge0 --> C1[Container A - IP only]
+    Bridge0 --> C2[Container B - IP only]
     Bridge1 --> C3[Service api]
     Bridge1 --> C4[Service postgres]
     C3 -- "postgres:5432" --> C4
 ```
 
-The default `docker0` bridge does not support DNS-based container name resolution. Custom bridges created by Docker Compose or manually do support it - containers resolve each other by service name.
+The default `bridge` network (`docker0` on Linux) does not support DNS-based container name resolution. User-defined bridges created by Docker Compose or manually do support it - containers resolve each other by service name or alias.
 
 ## Creating a Network in Portainer
 
@@ -37,11 +37,9 @@ In Portainer, go to **Networks > Add network**:
 
 ## Custom Bridge Network in a Stack
 
-Define isolated networks per stack to prevent cross-stack container communication:
+Define isolated networks per stack to keep services isolated unless they share a network:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     image: my-api:latest
@@ -70,7 +68,7 @@ networks:
     driver: bridge
   backend:
     driver: bridge
-    internal: true   # No external internet access for the database network
+    internal: true   # Creates an externally isolated backend network
 ```
 
 ## Inspecting Networks via Portainer
@@ -100,15 +98,15 @@ docker network connect my-app_frontend my-container-name
 docker network disconnect my-app_backend my-container-name
 ```
 
-In Portainer, go to **Containers > [container] > Connected Networks** to connect or disconnect networks.
+In Portainer, open the container details page to connect or disconnect networks. For networks created in Portainer, enable manual container attachment when you create the network.
 
 ## Network Isolation Best Practices
 
 | Practice | Benefit |
 |----------|---------|
-| Use `internal: true` for database networks | Prevents external access to databases |
-| Create per-stack networks | Containers can't talk to other stacks by default |
-| Avoid the default `docker0` bridge | No DNS support |
+| Use `internal: true` for database networks | Creates an externally isolated network for containers on that network |
+| Create per-stack networks | Containers on separate user-defined networks are isolated by default |
+| Avoid the default `bridge` network | No automatic DNS-based container name resolution |
 | Limit ports exposed to host | Reduces attack surface |
 | Use separate frontend and backend networks | Defense in depth |
 
@@ -117,7 +115,7 @@ In Portainer, go to **Containers > [container] > Connected Networks** to connect
 Test connectivity between containers on the same bridge:
 
 ```bash
-# From inside the api container, test database connectivity
+# From inside the api container, test database connectivity (if `nc` is installed in the image)
 docker exec -it $(docker ps -qf name=api) sh -c "nc -zv postgres 5432 && echo OK"
 
 # Check which networks a container is on
