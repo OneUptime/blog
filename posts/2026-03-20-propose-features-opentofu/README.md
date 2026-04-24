@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Feature Proposals, Open Source, RFC, Community, GitHub
 
-Description: Learn how to propose new features for OpenTofu through GitHub discussions, RFCs, and the community process to maximize the chance of your proposal being accepted.
+Description: Learn how to propose new features for OpenTofu through GitHub issues, RFCs, and the community process to maximize the chance of your proposal being accepted.
 
 ## Introduction
 
@@ -18,106 +18,116 @@ OpenTofu is community-driven and welcomes feature proposals. However, a well-str
 # https://github.com/opentofu/opentofu/issues
 # https://github.com/opentofu/opentofu/discussions
 
-# 2. Check if the feature is in the roadmap
-# https://github.com/opentofu/opentofu/blob/main/ROADMAP.md
+# 2. Check open milestones and related issue labels
+# https://github.com/opentofu/opentofu/milestones
+# https://github.com/opentofu/opentofu/labels
 
-# 3. Understand the RFC process for significant changes
+# 3. Review the feature request template and RFC process
+# https://github.com/opentofu/opentofu/blob/main/.github/ISSUE_TEMPLATE/feature_request.yml
 # https://github.com/opentofu/opentofu/blob/main/rfc/README.md
 ```
 
 ## Types of Feature Proposals
 
-Small enhancements → GitHub Issue
-Medium features → GitHub Discussion → Issue
-Large architectural changes → RFC (Request for Comments)
+Small and medium features → GitHub Issue using the feature request template
+Complex features that need deeper design review → RFC (Request for Comments), usually after maintainers add the `needs-rfc` label
+GitHub Discussions → Optional for early feedback or clarifying questions
 
 ## Writing a GitHub Issue Feature Request
 
-```markdown
-## Feature Request: Support for `for_each` on provider blocks
+````markdown
+## Feature Request: Allow provider `for_each` to refer to data sources or child module outputs
 
-### Problem Statement
-When managing resources across multiple AWS accounts, users must define
-separate `provider` blocks for each account and manually assign them to
-resources using `provider` meta-argument. With 20+ accounts, this becomes
-unmaintainable.
+### OpenTofu Version
+```text
+paste output of `tofu version`
+```
 
-### Proposed Solution
-Allow `for_each` on `provider` blocks, similar to how it works on resources
-and modules:
+### The problem in your OpenTofu project
+I'm attempting to fetch a list of AWS account IDs from remote state and
+dynamically generate one provider instance per account. OpenTofu supports
+`for_each` on aliased `provider` blocks, but the `for_each` value must be
+available in the static context used to configure providers.
+
+### Attempted Solutions
 
 ```hcl
-provider "aws" {
-  for_each = var.accounts
-  alias    = each.key
-  assume_role {
-    role_arn = each.value.role_arn
+data "terraform_remote_state" "org" {
+  backend = "s3"
+  config = {
+    bucket = var.s3_bucket_name
+    key    = "terraform-aws-org/terraform.tfstate"
+    region = var.aws_region
   }
 }
 
-resource "aws_s3_bucket" "per_account" {
-  for_each = var.accounts
-  provider = aws[each.key]
-  bucket   = "my-bucket-${each.key}"
+locals {
+  account_ids = values(data.terraform_remote_state.org.outputs.member_account_ids)
+}
+
+provider "aws" {
+  alias    = "child"
+  for_each = toset(local.account_ids)
+
+  region = var.aws_region
+  assume_role {
+    role_arn     = "arn:aws:iam::${each.key}:role/OrganizationAccountAccessRole"
+    session_name = "TerraformSession-${each.key}"
+  }
 }
 ```
 
-### Motivation
-- **Scalability**: Managing 50+ provider blocks is error-prone
-- **DRY**: Eliminates copy-paste provider configuration
-- **GitOps**: New accounts can be added by updating a variable file
+### Proposal
+Allow provider `for_each` to accept collections derived from data sources
+or child module outputs when that information is available during planning.
 
-### Current Workaround
-Using a module with a hardcoded provider assignment per account,
-requiring a module instance per account.
+### Workarounds and Alternatives
+- Declare provider instances statically
+- Split account discovery and account-specific infrastructure into separate configurations
+- Generate provider blocks outside OpenTofu before running `tofu plan`
 
-### Considered Alternatives
-1. **Provider-level loops**: Accepted this would require significant internal changes
-2. **Dynamic blocks for providers**: Rejected – dynamic blocks don't work for provider arguments
-3. **Separate configurations per account**: Doesn't scale, loses cross-account visibility
-
-### Impact Assessment
-- Affects: Provider meta-argument handling, plan/apply graph construction
-- Breaking changes: None (additive feature)
-- Documentation: Provider documentation would need examples
-
-### Community Interest
-This is tracked in the OpenTofu community forum with 47 upvotes:
-[link to forum post]
-```text
+### References
+- Link related issues, discussions, and prior art
+````
 
 ## Writing an RFC for Large Features
 
-For features requiring design review, use the RFC process.
+For features requiring design review, use the RFC process after maintainers
+identify that an issue needs one.
 
 ```markdown
-# RFC-0042: Provider for_each
+# Allow provider `for_each` to refer to data sources or child module outputs
 
-## Summary
-Add `for_each` support to provider configurations to enable dynamic
-provider instances based on input variables.
+Issue: https://github.com/opentofu/opentofu/issues/2155
 
-## Motivation
-[Detailed problem statement with user stories]
+A short description of the problem that is trying to be solved, with links
+to existing documentation, issue discussion, and code examples.
 
-## Detailed Design
-[Technical design with examples, pseudocode, and edge cases]
+Background on the issue and any related prior art.
 
-## Drawbacks
-[Honest assessment of downsides and complexity]
+## Proposed Solution
 
-## Alternatives
-[Other approaches considered and why they were rejected]
+### User Documentation
+[Describe the user-facing behavior, configuration examples, and docs changes]
 
-## Unresolved Questions
-[Open questions that need community or maintainer input]
+### Technical Approach
+[Describe the design, implementation approach, limitations, and impacts]
+
+### Open Questions
+[List questions that still need community or maintainer input]
+
+### Future Considerations
+[Describe follow-up work or related features to keep in mind]
+
+## Potential Alternatives
+[Compare other approaches and explain tradeoffs]
 ```
 
 File the RFC at:
 ```bash
-# Fork the repo and add your RFC
-cp rfc/TEMPLATE.md rfc/0042-provider-for-each.md
-# Edit the file, then open a PR
+# After the issue gets a `needs-rfc` label, fork the repo and add your RFC
+cp rfc/yyyymmdd-template.md rfc/20260424-provider-for-each-static-context.md
+# Edit the file, then open a draft PR
 ```
 
 ## Following Up on Your Proposal
@@ -133,4 +143,4 @@ cp rfc/TEMPLATE.md rfc/0042-provider-for-each.md
 
 ## Summary
 
-Effective OpenTofu feature proposals clearly state the problem being solved, provide concrete examples of the proposed syntax or behavior, assess impact and alternatives, and demonstrate community interest. Starting with a well-documented GitHub Discussion or Issue and graduating to an RFC for complex features follows the contribution process that gives proposals the best chance of acceptance.
+Effective OpenTofu feature proposals clearly state the problem being solved, show the current limitation with concrete examples, document workarounds and alternatives, and link related issues or prior art. In the current OpenTofu process, most feature ideas start as a GitHub issue using the feature request template, and more complex design work moves to an RFC when maintainers ask for one.
