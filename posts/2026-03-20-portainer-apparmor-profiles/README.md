@@ -8,17 +8,17 @@ Description: Learn how to apply AppArmor profiles to Docker containers via Porta
 
 ---
 
-AppArmor (Application Armor) is a Linux Security Module that restricts program capabilities using per-program profiles. Docker applies a default AppArmor profile to all containers; custom profiles provide finer-grained control. AppArmor is available on Ubuntu, Debian, and openSUSE systems.
+AppArmor (Application Armor) is a Linux Security Module that restricts program capabilities using per-program profiles. On AppArmor-enabled hosts, Docker applies a default AppArmor profile to containers; custom profiles provide finer-grained control. AppArmor is available on Ubuntu, Debian, and openSUSE systems.
 
 ## Checking AppArmor Status
 
 ```bash
 # Check if AppArmor is enabled and docker-default profile is loaded
 
-sudo apparmor_status | grep docker
+sudo apparmor_status | grep docker-default
 
-# Expected output:
-# docker-default (enforce)
+# Output should include:
+# docker-default
 ```
 
 ## Docker's Default AppArmor Profile
@@ -80,8 +80,6 @@ sudo apparmor_status | grep my-api
 Reference the loaded profile in your Compose file:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     image: my-api:latest
@@ -91,17 +89,17 @@ services:
 
 ## Applying via Portainer UI
 
-For standalone containers:
+For standalone containers, Portainer added `-security-opt` support in version 2.40.0. In supported versions:
 
 1. Go to **Containers > Add container**.
-2. Expand **Runtime & Resources > Security/Host**.
-3. In **Security options**, add: `apparmor:docker-my-api`
+2. Open **Advanced container settings**.
+3. Add `apparmor:docker-my-api` as a security option.
 
 The profile must be loaded on the Docker host before starting the container.
 
 ## AppArmor Complain Mode for Testing
 
-Use complain mode to log violations without blocking - useful for discovering what a profile would block:
+Use complain mode to log most violations without blocking - useful for discovering what a profile would block. Explicit `deny` rules still apply and are not logged unless you audit them:
 
 ```text
 # Set complain mode during development:
@@ -113,18 +111,18 @@ profile docker-my-api flags=(attach_disconnected,mediate_deleted,complain) {
 Monitor violations:
 
 ```bash
-# Watch AppArmor logs in real time
-sudo tail -f /var/log/syslog | grep apparmor
+# Watch AppArmor kernel messages in real time
+sudo dmesg --follow | grep apparmor
 
-# Or use auditd if installed
-sudo ausearch -m AVC | grep docker-my-api | tail -20
+# Or inspect recent kernel log entries on systemd hosts
+sudo journalctl -k | grep apparmor | tail -20
 ```
 
-Convert log violations into allow rules using `aa-genprof`:
+Review logged violations and update the profile using `aa-logprof`:
 
 ```bash
-sudo aa-genprof docker-my-api
-# Then run your container workload, then press 'S' to scan
+sudo aa-logprof
+# Review the logged events and update /etc/apparmor.d/docker-my-api when prompted
 ```
 
 ## Disabling AppArmor for a Container
