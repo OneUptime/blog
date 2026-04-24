@@ -8,7 +8,7 @@ Description: Learn how to quickly deploy Portainer on a DigitalOcean Droplet usi
 
 ## Why DigitalOcean for Portainer?
 
-DigitalOcean Droplets are simple, affordable Linux VMs with a clean API and good Docker support. The $6/month basic Droplet is sufficient for a personal Portainer instance.
+DigitalOcean Droplets are simple, affordable Linux VMs with a clean API and good Docker support. A basic Droplet is sufficient for a personal Portainer instance.
 
 ## Option 1: Automated Deployment with User Data
 
@@ -24,7 +24,6 @@ packages:
 runcmd:
   # Install Docker
   - curl -fsSL https://get.docker.com | sh
-  - usermod -aG docker ubuntu
   # Install Portainer
   - docker volume create portainer_data
   - docker run -d -p 8000:8000 -p 9443:9443
@@ -39,10 +38,10 @@ runcmd:
 ```bash
 # Install doctl and authenticate
 
-snap install doctl
+sudo snap install doctl
 doctl auth init
 
-# Create a Droplet with Docker pre-configured
+# Create a Droplet using the cloud-init file
 doctl compute droplet create portainer-droplet \
   --image ubuntu-22-04-x64 \
   --size s-2vcpu-4gb \
@@ -60,7 +59,7 @@ doctl compute droplet get portainer-droplet --format PublicIPv4
 DigitalOcean has a Docker 1-click image:
 
 1. **Create Droplet → Marketplace → Docker**
-2. Select size (minimum: 2GB RAM / 1 vCPU)
+2. Select size
 3. After creation, SSH and run:
 
 ```bash
@@ -82,7 +81,7 @@ docker run -d \
 # Create a firewall
 doctl compute firewall create \
   --name portainer-fw \
-  --inbound-rules "protocol:tcp,ports:22,address:0.0.0.0/0 protocol:tcp,ports:9443,address:0.0.0.0/0 protocol:tcp,ports:80,address:0.0.0.0/0 protocol:tcp,ports:443,address:0.0.0.0/0" \
+  --inbound-rules "protocol:tcp,ports:22,address:0.0.0.0/0 protocol:tcp,ports:9443,address:0.0.0.0/0" \
   --outbound-rules "protocol:tcp,ports:all,address:0.0.0.0/0 protocol:udp,ports:all,address:0.0.0.0/0"
 
 # Apply to the Droplet
@@ -93,7 +92,7 @@ doctl compute firewall add-droplets <FIREWALL_ID> \
 ## Add a DigitalOcean Domain
 
 ```bash
-# Create domain record
+# Create the domain
 doctl compute domain create yourdomain.com
 
 doctl compute domain records create yourdomain.com \
@@ -107,7 +106,11 @@ doctl compute domain records create yourdomain.com \
 
 ```bash
 # Enable weekly backups (20% of Droplet cost)
-doctl compute droplet-action enable-backups portainer-droplet
+doctl compute droplet-action enable-backups \
+  $(doctl compute droplet get portainer-droplet --format ID --no-header) \
+  --backup-policy-plan weekly \
+  --backup-policy-weekday SUN \
+  --backup-policy-hour 4
 ```
 
 ## Recommended Droplet Sizes
