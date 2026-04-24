@@ -28,7 +28,7 @@ def get_ip_interfaces(device_info):
         conn.enable()
         output = conn.send_command('show ip interface brief')
         detailed = conn.send_command('show running-config | section interface')
-        hostname = conn.send_command('show hostname').strip()
+        hostname = conn.find_prompt().rstrip('#>')
 
     return {
         'hostname': hostname,
@@ -81,7 +81,7 @@ def get_structured_ips(device_info):
         ipv4_addrs = intf_data.get('ipv4', {})
         if ipv4_addrs:
             result['interfaces'][intf_name] = {
-                ip: f"/{data['prefix_length']}"
+                ip: data['prefix_length']
                 for ip, data in ipv4_addrs.items()
             }
 
@@ -91,6 +91,7 @@ def get_structured_ips(device_info):
 
 devices = [
     {'driver': 'ios', 'host': '192.168.1.1', 'username': 'admin', 'password': 'pass', 'optional_args': {'secret': 'ep'}},
+    {'driver': 'ios', 'host': '192.168.1.2', 'username': 'admin', 'password': 'pass', 'optional_args': {'secret': 'ep'}},
 ]
 
 all_ips = [get_structured_ips(d) for d in devices]
@@ -160,7 +161,7 @@ def compare_with_ipam(all_device_ips, ipam_csv):
     """Compare discovered IPs against documented IPs in an IPAM CSV."""
     # Load documented IPs
     documented = {}
-    with open(ipam_csv) as f:
+    with open(ipam_csv, newline='') as f:
         reader = csv.DictReader(f)
         for row in reader:
             documented[row['ip_address']] = row
