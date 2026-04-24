@@ -40,7 +40,7 @@ For multiple departments:
 ou=employees,dc=example,dc=com
 ```
 
-And a filter that excludes disabled accounts:
+And, in OpenLDAP deployments using password policy lockout, a filter that excludes locked accounts:
 ```text
 User Filter: (&(objectClass=inetOrgPerson)(!(pwdAccountLockedTime=*)))
 ```
@@ -66,7 +66,7 @@ Portainer supports multiple user search settings, allowing you to search multipl
 TOKEN=$(curl -s -X POST \
   https://portainer.example.com/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"adminpassword"}' \
+  -d '{"Username":"admin","Password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
 curl -X PUT \
@@ -75,22 +75,24 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d '{
     "AuthenticationMethod": 2,
-    "ldapsettings": {
-      "Servers": [{"Host": "ldap.example.com", "Port": 389}],
+    "LDAPSettings": {
+      "URL": "ldap.example.com:389",
+      "ReaderDN": "cn=portainer-bind,dc=example,dc=com",
+      "Password": "bindpassword",
       "SearchSettings": [
         {
           "BaseDN": "ou=admins,dc=example,dc=com",
-          "Username": "uid",
+          "UserNameAttribute": "uid",
           "Filter": "(objectClass=inetOrgPerson)"
         },
         {
           "BaseDN": "ou=developers,dc=example,dc=com",
-          "Username": "uid",
+          "UserNameAttribute": "uid",
           "Filter": "(objectClass=inetOrgPerson)"
         },
         {
           "BaseDN": "ou=contractors,dc=example,dc=com",
-          "Username": "uid",
+          "UserNameAttribute": "uid",
           "Filter": "(&(objectClass=inetOrgPerson)(departmentNumber=IT))"
         }
       ]
@@ -149,7 +151,7 @@ ldapsearch -x \
 (&(objectClass=user)(objectCategory=person)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))
 ```
 
-### Restrict to specific group members
+### Restrict to specific group members (when your directory populates `memberOf`)
 ```text
 (&(objectClass=inetOrgPerson)(memberOf=cn=portainer-users,ou=groups,dc=example,dc=com))
 ```
@@ -161,11 +163,11 @@ ldapsearch -x \
 
 ## Performance Considerations
 
-| Base DN Scope | User Count | Search Time |
-|---------------|-----------|-------------|
-| Entire directory | 50,000+ | Slow |
-| Department OU | 500-5,000 | Acceptable |
-| Specific OU | <500 | Fast |
+| Base DN Scope | Typical Result Set | Relative Search Cost |
+|---------------|--------------------|----------------------|
+| Entire directory | Largest | Highest |
+| Department OU | Smaller | Lower |
+| Specific OU | Smallest practical | Lowest |
 
 Use the most specific Base DN that still includes all users who need access.
 
