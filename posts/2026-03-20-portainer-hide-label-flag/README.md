@@ -41,9 +41,10 @@ Add the hide label when creating containers:
 
 ```bash
 # Hide a container using the label
+# This container will be hidden
 docker run -d \
   --name watchtower \
-  --label "com.portainer.hide=true" \  # This container will be hidden
+  --label "com.portainer.hide=true" \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   containrrr/watchtower
@@ -60,7 +61,6 @@ docker run -d \
 ## Step 3: Use in Docker Compose
 
 ```yaml
-version: "3.8"
 services:
   # Application container - visible in Portainer
   myapp:
@@ -105,14 +105,16 @@ docker run -d \
   --hide-label "environment=infrastructure"
 
 # Then label containers to hide:
+# Hidden
 docker run -d \
   --name monitoring-agent \
-  --label "environment=infrastructure" \  # Hidden
+  --label "environment=infrastructure" \
   monitoring-image:latest
 
+# Visible
 docker run -d \
   --name myapp \
-  --label "environment=production" \      # Visible
+  --label "environment=production" \
   myapp:latest
 ```
 
@@ -156,30 +158,23 @@ docker compose up -d my-service
 # Hidden containers are still visible via Docker CLI
 docker ps | grep watchtower  # Still shown in CLI
 
-# Only hidden from Portainer UI
-# They continue running normally
+# Inspect the label directly on the container
+docker inspect --format '{{json .Config.Labels}}' watchtower | jq
 
-# Verify via Portainer API (admin can see all)
-TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
-
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:9000/api/endpoints/1/docker/containers/json?all=1" | \
-  jq '.[].Names[]'
-# Hidden containers appear in API but not in UI
+# They continue running normally and are only hidden from the Portainer UI
 ```
 
 ## Step 8: Use in Docker Compose for Portainer Itself
 
 ```yaml
-version: "3.8"
 services:
   portainer:
     image: portainer/portainer-ce:latest
     container_name: portainer
     restart: unless-stopped
-    command: --hide-label "com.portainer.hide=true"
+    command:
+      - --hide-label
+      - com.portainer.hide=true
     ports:
       - "9000:9000"
       - "9443:9443"
