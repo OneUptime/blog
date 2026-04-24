@@ -4,26 +4,26 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Scaling, Microservice, Docker Swarm, Load Balancing, Docker Compose
 
-Description: Learn how to scale individual microservice containers in Portainer using Docker Compose replica settings and Docker Swarm service scaling.
+Description: Learn how to scale individual microservices in Portainer using Docker Swarm service scaling and Swarm stack replica settings.
 
 ---
 
-Portainer provides UI-based scaling for services in Docker Swarm mode and Compose stacks. This guide covers both approaches for scaling individual microservices independently.
+Portainer provides UI-based scaling for services in Docker Swarm mode. For stacks deployed to Swarm, you can also scale individual services by updating the stack's Compose file and redeploying it.
 
 ## Scaling in Docker Swarm via Portainer
 
 For Swarm services, Portainer provides a direct scaling UI:
 
-1. Go to **Swarm > Services**.
-2. Click the service you want to scale.
-3. Change the **Replicas** number.
-4. Click **Update**.
+1. Go to **Services**.
+2. Click **scale** next to the service you want to scale.
+3. Change the replica count.
+4. Click the tick icon to apply the change.
 
-Swarm automatically distributes the new replicas across nodes.
+Swarm schedules the new replicas onto available nodes.
 
 ## Scaling via Stack Compose File
 
-Update the `deploy.replicas` count in the stack YAML:
+For stacks deployed to Docker Swarm, update the `deploy.replicas` count in the stack YAML and redeploy the stack:
 
 ```yaml
 version: "3.8"
@@ -55,6 +55,8 @@ services:
 
 ## Scaling via Docker CLI
 
+Run the command on a Swarm manager node:
+
 ```bash
 # Scale a Swarm service from the command line
 
@@ -66,7 +68,7 @@ docker service ps mystack_user-service
 
 ## Horizontal Scaling with Load Balancing
 
-Docker Swarm automatically load-balances requests across replicas using the virtual IP (VIP) routing mesh. No additional load balancer configuration is needed for internal service-to-service calls:
+Docker Swarm uses internal service discovery and load-balances requests across replicas with a virtual IP (VIP) by default. For published ports, Swarm's routing mesh also balances external traffic across nodes. No additional load balancer configuration is needed for internal service-to-service calls on the same overlay network:
 
 ```javascript
 // This request is automatically load-balanced to one of the user-service replicas
@@ -75,21 +77,16 @@ const response = await fetch('http://user-service:3001/users');
 
 ## Auto-Scaling Scripts
 
-Docker Swarm does not have built-in auto-scaling, but you can implement it with a script:
+Docker Swarm does not have built-in auto-scaling. To automate scaling, use an external monitoring system or controller that decides when to scale and then runs a command like this on a Swarm manager node:
 
 ```bash
 #!/bin/bash
-# scale-by-cpu.sh - Scale up if average CPU > 80%
+# scale-up.sh - Run after your monitoring system decides this service should scale up
 
-CPU=$(docker stats --no-stream --format "{{.CPUPerc}}" $(docker service ps mystack_user-service -q --no-trunc | head -1 | awk '{print $1}') 2>/dev/null | tr -d '%')
-
-if (( $(echo "$CPU > 80" | bc -l) )); then
-  CURRENT=$(docker service inspect mystack_user-service --format '{{.Spec.Mode.Replicated.Replicas}}')
-  docker service scale mystack_user-service=$((CURRENT + 1))
-  echo "Scaled up to $((CURRENT + 1)) replicas (CPU was ${CPU}%)"
-fi
+CURRENT=$(docker service inspect mystack_user-service --format '{{.Spec.Mode.Replicated.Replicas}}')
+docker service scale mystack_user-service=$((CURRENT + 1))
 ```
 
 ## Monitoring Replicas
 
-In Portainer, the **Services** view shows the current and desired replica count. OneUptime can monitor the service endpoint and alert if all replicas are unhealthy.
+In Portainer, the **Services** view lets you verify that service tasks are running after a scaling change. OneUptime can monitor the service endpoint and alert if the service becomes unavailable.
