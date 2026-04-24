@@ -14,13 +14,11 @@ WireGuard is a modern, fast, and secure VPN protocol that's significantly simple
 
 - A public IP address or dynamic DNS hostname
 - UDP port 51820 forwarded to your server
-- Linux kernel 5.6+ (WireGuard is built into the kernel)
+- A Linux host with WireGuard kernel support enabled (WireGuard is built into Linux 5.6+)
 
 ## Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   wireguard:
     image: lscr.io/linuxserver/wireguard:latest
@@ -43,7 +41,8 @@ services:
       # Internal VPN subnet
       - INTERNAL_SUBNET=10.13.13.0
       # Allowed IPs (what traffic goes through VPN)
-      # Use 0.0.0.0/0 for full tunnel (all traffic)
+      # Use 0.0.0.0/0 for an IPv4 full tunnel
+      # Add ::/0 as well for a dual-stack full tunnel
       # Use specific subnets for split tunnel
       - ALLOWEDIPS=0.0.0.0/0
     volumes:
@@ -64,14 +63,14 @@ volumes:
 After deployment, peer configurations are stored in the volume. View them:
 
 ```bash
-# List all peer configurations
+# List all peer configuration directories
 
-docker exec wireguard ls /config/peer_*/
+docker exec wireguard sh -c 'ls -d /config/peer*'
 
-# Show QR code for mobile setup (peer 1)
-docker exec wireguard cat /config/peer_1/peer_1.png
+# Show generated files for peer 1
+docker exec wireguard ls /config/peer1
 # Or view QR code in terminal:
-docker exec wireguard /app/show-peer 1
+docker exec -it wireguard /app/show-peer 1
 ```
 
 Portainer Console: Navigate to the container > **Console** > run `/app/show-peer 1`
@@ -83,7 +82,7 @@ Portainer Console: Navigate to the container > **Console** > run `/app/show-peer
 1. Install WireGuard from wireguard.com
 2. Copy the `.conf` file from the container:
    ```bash
-   docker cp wireguard:/config/peer_1/peer_1.conf ~/wireguard-client.conf
+   docker cp wireguard:/config/peer1/peer1.conf ~/wireguard-client.conf
    ```
 3. Import the config file into WireGuard client
 
@@ -106,7 +105,7 @@ DNS = 1.1.1.1, 8.8.8.8
 PublicKey = <server-public-key>
 PresharedKey = <preshared-key>
 Endpoint = vpn.example.com:51820
-AllowedIPs = 0.0.0.0/0  # All traffic through VPN
+AllowedIPs = 0.0.0.0/0  # All IPv4 traffic through VPN
 ```
 
 ## Adding More Peers
@@ -126,8 +125,8 @@ For accessing only specific networks via VPN (home network access):
 
 ```yaml
 environment:
-  # Only route traffic for local subnets through VPN
-  - ALLOWEDIPS=192.168.1.0/24,10.0.0.0/8
+  # Route only the WireGuard server IP and local subnets through VPN
+  - ALLOWEDIPS=10.13.13.1/32,192.168.1.0/24,10.0.0.0/8
 ```
 
 ## Security Considerations
