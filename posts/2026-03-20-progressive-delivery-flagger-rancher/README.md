@@ -18,6 +18,7 @@ Progressive delivery extends continuous delivery by automatically controlling ho
 helm repo add flagger https://flagger.app
 helm repo update
 
+# Assumes Prometheus is already reachable at prometheus.monitoring.svc:9090
 helm install flagger flagger/flagger \
   --namespace flagger-system \
   --create-namespace \
@@ -33,29 +34,31 @@ helm install flagger-loadtester flagger/loadtester \
 
 ```yaml
 # Canary resource for automatic progressive rollout
+# Assumes an existing Ingress named api-server routes api.company.com to this service
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
   name: api-server
   namespace: production
 spec:
+  provider: nginx
   targetRef:
     apiVersion: apps/v1
     kind: Deployment
+    name: api-server
+  ingressRef:
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
     name: api-server
 
   # Service configuration
   service:
     port: 80
     targetPort: 8080
-    gateways:
-      - public
-    hosts:
-      - api.company.com
 
   # Progressive rollout configuration
   progressDeadlineSeconds: 600
-  canaryAnalysis:
+  analysis:
     # Time between traffic weight increments
     interval: 1m
 
@@ -93,10 +96,11 @@ spec:
           cmd: "curl -sf http://api-server-canary.production/health"
 
       - name: load-test
+        type: rollout
         url: http://flagger-loadtester.flagger-system/
         timeout: 5s
         metadata:
-          cmd: "hey -z 1m -q 10 -c 2 http://api-server-canary.production/"
+          cmd: "hey -z 1m -q 10 -c 2 http://api.company.com/"
 ```
 
 ## Step 3: Monitor Canary Progress
@@ -110,16 +114,13 @@ kubectl describe canary api-server -n production
 #   Canary Weight: 30         ← Currently sending 30% traffic to canary
 #   Failed Checks: 0
 #   Phase: Progressing
-#   Conditions:
-#   - Status: True
-#     Type: Promoted
 
 # Watch events
 kubectl get events -n production \
-  --field-selector involvedObject.name=api-server \
-  --sort-by=.lastTimestamp -w
+  --field-selector involvedObject.kind=Canary,involvedObject.name=api-server \
+  --sort-by=.metadata.creationTimestamp -w
 
-# Check metrics
+# Check current canary status
 kubectl get canary api-server -n production \
   -o jsonpath='{.status}'
 ```
@@ -127,13 +128,14 @@ kubectl get canary api-server -n production \
 ## Step 4: Blue-Green Deployment
 
 ```yaml
-# Blue-green with instant traffic switch (vs. incremental canary)
+# Blue-green validates the new version, then switches traffic on promotion
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
   name: api-server-bg
   namespace: production
 spec:
+  provider: kubernetes
   targetRef:
     apiVersion: apps/v1
     kind: Deployment
@@ -141,12 +143,14 @@ spec:
 
   service:
     port: 80
+    targetPort: 8080
 
-  canaryAnalysis:
-    # Blue-green: one big test then promote or rollback
-    stepWeight: 100         # Send 100% traffic to new version immediately
+  analysis:
+    # Blue-green uses iterations instead of stepWeight/maxWeight
+    # and switches traffic only after the analysis succeeds
     threshold: 5
     interval: 30s
+    iterations: 10
 
     metrics:
       - name: request-success-rate
@@ -154,8 +158,7 @@ spec:
           min: 99.5
         interval: 30s
 
-    # Keep old (blue) version for quick rollback
-    # Flagger keeps the old deployment until promotion confirmed
+    # Flagger keeps the stable deployment in place until promotion completes
 ```
 
 ## Step 5: Custom Metric Templates
@@ -191,22 +194,30 @@ spec:
 ## Step 6: Rollback Scenarios
 
 ```bash
-# Manual rollback if needed
-kubectl annotate canary api-server \
-  flagger.app/rollback="true" \
-  -n production
+# To allow operator-triggered rollback during analysis, add this webhook:
+# analysis:
+#   webhooks:
+#     - name: rollback
+#       type: rollback
+#       url: http://flagger-loadtester.flagger-system/rollback/check
+
+# Then trigger the rollback gate from the load tester pod
+kubectl -n flagger-system exec deploy/flagger-loadtester -- \
+  curl -d '{"name":"api-server","namespace":"production"}' \
+  http://localhost:8080/rollback/open
 
 # Automatic rollback triggers:
 # - Success rate drops below 99%
 # - P99 latency exceeds 500ms
 # - 5 consecutive metric check failures
 
-# View rollback event
+# Watch rollout and rollback events
 kubectl get events -n production \
-  --field-selector reason=Rolled_Back
+  --field-selector involvedObject.kind=Canary,involvedObject.name=api-server \
+  --sort-by=.metadata.creationTimestamp -w
 
-# After rollback, the deployment returns to original version
-# Canary is destroyed, primary (stable) remains
+# After rollback, traffic stays on the primary version
+# and the canary is scaled down
 ```
 
 ## Step 7: Notifications
@@ -220,7 +231,7 @@ metadata:
   namespace: flagger-system
 spec:
   type: slack
-  channel: "#deployments"
+  channel: deployments
   username: Flagger
   secretRef:
     name: slack-alert-provider
@@ -228,7 +239,7 @@ spec:
 # Attach alert provider to canary
 # Add to Canary spec:
 spec:
-  canaryAnalysis:
+  analysis:
     alerts:
       - name: "Platform team alerts"
         severity: warn
