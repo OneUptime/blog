@@ -38,9 +38,9 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/users" \
   -d '{
-    "username": "john.doe",
-    "password": "SecureP@ss123!",
-    "role": 2
+    "Username": "john.doe",
+    "Password": "SecureP@ss123!",
+    "Role": 2
   }' | jq .
 
 # Create an admin user
@@ -48,9 +48,9 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/users" \
   -d '{
-    "username": "jane.admin",
-    "password": "SecureP@ss123!",
-    "role": 1
+    "Username": "jane.admin",
+    "Password": "SecureP@ss123!",
+    "Role": 1
   }' | jq .
 ```
 
@@ -68,7 +68,7 @@ USERNAME="john.doe"
 USER=$(curl -s -H "Authorization: Bearer $TOKEN" \
   "${PORTAINER_URL}/api/users" | \
   jq --arg u "$USERNAME" '.[] | select(.Username == $u)')
-echo $USER | jq .
+echo "$USER" | jq .
 ```
 
 ## Step 4: Update a User
@@ -81,7 +81,7 @@ curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/users/${USER_ID}" \
   -d '{
-    "password": "NewSecureP@ss456!"
+    "NewPassword": "NewSecureP@ss456!"
   }'
 
 # Promote user to admin
@@ -89,7 +89,7 @@ curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/users/${USER_ID}" \
   -d '{
-    "role": 1
+    "Role": 1
   }'
 
 # Demote admin to standard user
@@ -97,7 +97,7 @@ curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/users/${USER_ID}" \
   -d '{
-    "role": 2
+    "Role": 2
   }'
 ```
 
@@ -120,7 +120,7 @@ echo "User $USER_ID deleted."
 TEAM_ID=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/teams" \
-  -d '{"name": "backend-team"}' | jq -r '.Id')
+  -d '{"Name": "backend-team"}' | jq -r '.Id')
 
 echo "Team created with ID: $TEAM_ID"
 
@@ -128,10 +128,11 @@ echo "Team created with ID: $TEAM_ID"
 USER_ID=3
 curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "${PORTAINER_URL}/api/teams/${TEAM_ID}/memberships" \
+  "${PORTAINER_URL}/api/team_memberships" \
   -d "{
-    \"userId\": $USER_ID,
-    \"role\": 2
+    \"UserID\": $USER_ID,
+    \"TeamID\": $TEAM_ID,
+    \"Role\": 2
   }"
 # role: 1 = Team Leader, 2 = Regular member
 
@@ -158,7 +159,7 @@ curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
 PORTAINER_URL="https://portainer.example.com"
 TOKEN=$(curl -s -X POST "${PORTAINER_URL}/api/auth" \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' | jq -r '.jwt')
+  -d '{"Username":"admin","Password":"yourpassword"}' | jq -r '.jwt')
 
 while IFS=',' read -r USERNAME PASSWORD ROLE; do
   # Skip header line
@@ -169,9 +170,9 @@ while IFS=',' read -r USERNAME PASSWORD ROLE; do
   RESPONSE=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     "${PORTAINER_URL}/api/users" \
-    -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\",\"role\":$ROLE}")
+    -d "{\"Username\":\"$USERNAME\",\"Password\":\"$PASSWORD\",\"Role\":$ROLE}")
 
-  USER_ID=$(echo $RESPONSE | jq -r '.Id // empty')
+  USER_ID=$(echo "$RESPONSE" | jq -r '.Id // empty')
 
   if [ -n "$USER_ID" ]; then
     echo "  Created user '$USERNAME' with ID $USER_ID"
@@ -190,7 +191,6 @@ echo "User provisioning complete."
 # sync-users.py - Sync Portainer users from an external list
 
 import requests
-import json
 
 PORTAINER_URL = "https://portainer.example.com"
 API_KEY = "ptr_your_api_key"
@@ -206,7 +206,14 @@ def get_existing_users():
 def create_user(username, password, role=2):
     """Create a new Portainer user."""
     resp = requests.post(f"{PORTAINER_URL}/api/users", headers=headers,
-        json={"username": username, "password": password, "role": role})
+        json={"Username": username, "Password": password, "Role": role})
+    resp.raise_for_status()
+    return resp.json()
+
+def update_user_role(user_id, role):
+    """Update an existing user's role."""
+    resp = requests.put(f"{PORTAINER_URL}/api/users/{user_id}", headers=headers,
+        json={"Role": role})
     resp.raise_for_status()
     return resp.json()
 
@@ -230,10 +237,19 @@ for user in desired_users:
     if user["username"] not in existing:
         created = create_user(user["username"], user["password"], user["role"])
         print(f"Created user: {user['username']} (ID: {created['Id']})")
+    elif existing[user["username"]]["Role"] != user["role"]:
+        updated = update_user_role(existing[user["username"]]["Id"], user["role"])
+        print(f"Updated role for user: {user['username']} (role: {updated['Role']})")
+
+# Delete users no longer present in the external source
+for username, user in existing.items():
+    if username not in desired_usernames and username != "admin":
+        delete_user(user["Id"])
+        print(f"Deleted user: {username} (ID: {user['Id']})")
 
 print("Sync complete.")
 ```
 
 ## Conclusion
 
-Managing Portainer users via the API enables scalable, automated user lifecycle management. Create users with appropriate roles during onboarding, manage team memberships for namespace-level access, and script bulk provisioning to keep Portainer in sync with your organization's user directory. For enterprise setups, consider integrating with LDAP/SAML for automated authentication alongside API-based role management.
+Managing Portainer users via the API enables scalable, automated user lifecycle management. Create users with appropriate roles during onboarding, manage team memberships as part of your access-control model, and script bulk provisioning to keep Portainer in sync with your organization's user directory. For enterprise setups, consider integrating with LDAP/SAML for automated authentication alongside API-based access management.
