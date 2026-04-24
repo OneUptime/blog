@@ -8,7 +8,7 @@ Description: Enable and configure ProFTPD passive mode with MasqueradeAddress an
 
 ## Introduction
 
-ProFTPD passive mode uses `MasqueradeAddress` (equivalent to vsftpd's `pasv_address`) to tell clients the public IP to connect to for data transfers. Without this setting, clients behind NAT cannot complete directory listings or file transfers.
+ProFTPD passive mode uses `MasqueradeAddress` (equivalent to vsftpd's `pasv_address`) to tell clients the public IP to connect to for data transfers. Without this setting on a server behind NAT, clients often cannot complete directory listings or file transfers.
 
 ## Passive Mode Configuration
 
@@ -18,7 +18,7 @@ ProFTPD passive mode uses `MasqueradeAddress` (equivalent to vsftpd's `pasv_addr
 ServerName    "FTP Server"
 ServerType    standalone
 UseIPv6       off
-ServerAddress 203.0.113.10
+DefaultAddress 10.0.0.5
 Port          21
 
 # Passive mode: public IP clients connect to for data
@@ -39,7 +39,7 @@ AuthOrder     mod_auth_pam.c mod_auth_unix.c
 # /etc/proftpd/proftpd.conf
 
 # Resolve hostname for MasqueradeAddress (useful for dynamic IPs)
-# ProFTPD resolves at startup - use a script to update if IP changes
+# ProFTPD resolves this at startup, so update DNS and restart ProFTPD if the IP changes
 
 # Option: Use a dynamic DNS hostname
 MasqueradeAddress ftp.example.com
@@ -57,7 +57,9 @@ sudo ufw reload
 sudo iptables -A INPUT -p tcp --dport 21 -j ACCEPT
 sudo iptables -A INPUT -p tcp --dport 30000:31000 -j ACCEPT
 
-# For the NAT gateway, forward passive range:
+# For the NAT gateway, forward FTP control port and passive range:
+sudo iptables -t nat -A PREROUTING -d 203.0.113.10 -p tcp \
+  --dport 21 -j DNAT --to-destination 10.0.0.5
 sudo iptables -t nat -A PREROUTING -d 203.0.113.10 -p tcp \
   --dport 30000:31000 -j DNAT --to-destination 10.0.0.5
 ```
@@ -65,8 +67,8 @@ sudo iptables -t nat -A PREROUTING -d 203.0.113.10 -p tcp \
 ## Connection Tracking for FTP
 
 ```bash
-# Load the FTP connection tracking module (needed for active mode,
-# but also helps with firewall state tracking for FTPS)
+# Load the FTP connection tracking module only if your firewall relies on
+# RELATED FTP data connections (common with active mode)
 sudo modprobe nf_conntrack_ftp
 
 # Make it persistent
@@ -107,12 +109,12 @@ sudo iptables -L INPUT -n | grep 30000
 # Fix: Set MasqueradeAddress to public/external IP
 grep MasqueradeAddress /etc/proftpd/proftpd.conf
 
-# Issue: Permission denied on data connection
-# Check: Does the user have access to the directory?
+# Issue: Config error or unsupported directive
+# Check: Validate the ProFTPD configuration
 sudo proftpd --configtest
 
-# View active connections and their state
-sudo cat /var/run/proftpd/*.pid | xargs -I{} cat /proc/{}/net/tcp6
+# View active IPv4 control/data connections and their state
+sudo ss -4 -tanp '( sport = :21 or ( sport >= :30000 and sport <= :31000 ) )'
 ```
 
 ## Conclusion
