@@ -21,29 +21,32 @@ version: "3.8"
 
 services:
   portainer_edge_agent:
-    image: portainer/agent:latest
+    image: portainer/agent:lts  # Match the tag to your Portainer Server version
     container_name: portainer_edge_agent
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
+      - portainer_agent_data:/data
     environment:
       # Edge mode: connects out to Portainer server
       - EDGE=1
-      # Portainer server URL
-      - EDGE_SERVER_HOST=portainer.example.com
-      - EDGE_SERVER_PORT=8000
-      # Edge key from Portainer server (Settings > Edge Compute)
+      # Unique Edge identifier and join token from Portainer
+      - EDGE_ID=your_edge_id_here
       - EDGE_KEY=your_edge_key_here
-      # Poll interval (seconds) - increase for low-bandwidth
-      - EDGE_INACTIVITY_TIMEOUT=300   # Disconnect after 5m idle
-      - EDGE_INSECURE_POLL=0          # Use TLS
-      # Log level - reduce for bandwidth savings
+      # Close idle tunnels after 5 minutes
+      - EDGE_INACTIVITY_TIMEOUT=5m
+      # Only set this when Portainer uses a self-signed certificate
+      # - EDGE_INSECURE_POLL=1
+      # Reduce log noise on constrained devices
       - LOG_LEVEL=ERROR
     deploy:
       resources:
         limits:
           memory: 64M  # Lightweight on edge hardware
+
+volumes:
+  portainer_agent_data:
 ```
 
 ## Step 2: Configure Polling Intervals for Bandwidth Conservation
@@ -52,19 +55,18 @@ services:
 # Default Edge Agent poll interval: 5 seconds
 # For low-bandwidth environments, use longer intervals
 
-# Via environment variable when deploying agent:
-EDGE_POLL_FREQUENCY=60    # Poll every 60 seconds (12x less bandwidth)
-
-# For very constrained environments:
-EDGE_POLL_FREQUENCY=300   # Poll every 5 minutes
+# Configure this in Portainer, not as an agent environment variable:
+# - Per environment: More settings when creating the Edge environment
+# - Global default: Settings > General > Edge agent default poll frequency
 
 # Calculate bandwidth savings:
 # Default (5s): ~720 polls/hour
-# 60s: ~60 polls/hour (12x reduction)
-# 300s: ~12 polls/hour (60x reduction)
+# 60s: ~60 polls/hour (12x fewer polls)
+# 300s: ~12 polls/hour (60x fewer polls)
 
-# Update edge agent polling via Portainer UI:
-# Settings > Edge Compute > Edge Agent Checkin Interval
+# Example intervals for constrained links:
+# 60 seconds for moderate WAN/cellular links
+# 300 seconds for very constrained or metered links
 ```
 
 ## Step 3: Use Pre-Built Images to Avoid Large Pulls
@@ -119,17 +121,15 @@ server {
   listen 443 ssl;
   server_name portainer.example.com;
 
-  # Enable compression (reduces bandwidth for JSON APIs by 70-80%)
+  # Enable gzip compression for client responses
   gzip on;
   gzip_comp_level 6;
-  gzip_types application/json text/plain application/javascript;
   gzip_min_length 1000;
+  gzip_vary on;
+  gzip_types application/json text/plain application/javascript text/css;
 
   location / {
     proxy_pass https://portainer:9443;
-
-    # Compress upstream responses
-    proxy_set_header Accept-Encoding "gzip";
   }
 }
 ```
@@ -138,8 +138,8 @@ server {
 
 ```bash
 # Deploy stacks to edge devices via Portainer Edge Stacks feature
-# This sends only the compose file (small) rather than triggering
-# a full API connection
+# Portainer stores the stack definition, and the edge agent applies it
+# on the next check-in instead of requiring an always-on management session
 
 # Via Portainer API: create edge stack
 curl -s -X POST \
@@ -148,7 +148,7 @@ curl -s -X POST \
   "https://portainer.example.com/api/edge_stacks/create/string" \
   -d '{
     "Name": "edge-app",
-    "StackFileContent": "version: '\''3.8'\''\nservices:\n  app:\n    image: localhost:5000/myapp:latest",
+    "StackFileContent": "version: '\''3.8'\''\nservices:\n  app:\n    image: localhost:5000/myapp/api:latest",
     "EdgeGroups": [1],
     "DeploymentType": 0
   }'
@@ -161,8 +161,8 @@ curl -s -X POST \
 
 ```bash
 # Monitor edge agent network traffic
-# Install vnstat for bandwidth tracking
-apt-get install -y vnstat
+# Install vnstat and nethogs for bandwidth tracking
+apt-get update && apt-get install -y vnstat nethogs
 
 # Monitor per-interface traffic
 vnstat -i eth0 -h   # Hourly stats
@@ -172,18 +172,15 @@ vnstat -i eth0 -m   # Monthly stats
 # Real-time monitoring
 nethogs eth0
 
-# Measure Portainer agent traffic specifically
-# Use tc for per-container traffic accounting
-tc qdisc add dev eth0 root handle 1: htb
-# Track traffic by container cgroup
-
-# Calculate daily data usage at different poll intervals:
-# Each poll: ~2-5KB (heartbeat + status)
-# 5s interval: 2KB × 17280 polls/day = ~34MB/day
-# 60s interval: 2KB × 1440 polls/day = ~2.8MB/day
-# 300s interval: 2KB × 288 polls/day = ~0.56MB/day
+# Check-in counts at different poll intervals:
+# 5s interval: ~17,280 check-ins/day
+# 60s interval: ~1,440 check-ins/day
+# 300s interval: ~288 check-ins/day
+#
+# Actual bandwidth varies with snapshots, stack deployments,
+# image pulls, and interactive management sessions
 ```
 
 ## Conclusion
 
-Edge environments require careful bandwidth budgeting. Portainer's Edge Agent was designed specifically for this scenario - outbound-only connections, tunable polling intervals, and stack deployment via configuration payloads rather than real-time API calls. Increase `EDGE_POLL_FREQUENCY` to 60-300 seconds for cellular connections, pre-stage images in local registries during maintenance windows, and use gzip compression on the Portainer server side. These changes can reduce edge agent bandwidth from 30+ MB/day to under 1 MB/day while maintaining full remote management capabilities.
+Edge environments require careful bandwidth budgeting. Portainer's Edge Agent was designed specifically for this scenario - outbound-only connections, tunable polling intervals, and stack deployment via configuration payloads rather than real-time API calls. Increase the Edge Agent check-in interval in Portainer to 60-300 seconds for cellular connections, pre-stage images in local registries during maintenance windows, and use gzip compression on the Portainer server side. These changes can substantially reduce idle management traffic and make updates more predictable on links with tight data caps.
