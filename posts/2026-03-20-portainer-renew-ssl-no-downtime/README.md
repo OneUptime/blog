@@ -8,117 +8,89 @@ Description: A guide to renewing SSL/TLS certificates for Portainer with minimal
 
 ## Overview
 
-Certificate expiry causes immediate service disruption - browsers refuse connections and automation breaks. Portainer does not perform hot-reloading of certificates, so a container restart is required after renewal. However, with proper preparation and scripting, renewal can be completed in seconds with minimal user impact. This guide covers renewal strategies for all Portainer deployment types.
+Certificate expiry causes immediate service disruption - browsers refuse connections and automation breaks. When Portainer is configured with custom certificates via `--sslcert` and `--sslkey`, restart the container after renewal so it starts using the updated certificate. However, with proper preparation and scripting, renewal can be completed in seconds with minimal user impact. This guide covers common Docker Standalone and reverse-proxy renewal strategies.
 
 ## Prerequisites
 
-- Running Portainer with SSL configured
+- Running Portainer on Docker Standalone, either with custom SSL or behind an Nginx reverse proxy
 - Access to current certificate files
 - Docker CLI access
 
 ## Understanding Portainer's Certificate Loading
 
-Portainer loads SSL certificates only at startup. To apply a new certificate, you must restart the Portainer container. A restart typically takes 10-30 seconds, during which the UI is briefly unavailable.
+Portainer reads the certificate paths configured with `--sslcert` and `--sslkey` when the container starts. To apply a renewed certificate, update those files and restart the Portainer container. The UI is briefly unavailable during the restart.
 
 ## Strategy 1: Certificate Pre-Staging (Minimal Downtime)
 
-Pre-stage the new certificate before restarting:
+If Portainer was started with a bind-mounted certificate directory such as `-v /opt/portainer-certs:/certs --sslcert /certs/portainer.crt --sslkey /certs/portainer.key`, use a Certbot deploy hook so Portainer restarts only after a successful renewal:
 
 ```bash
 #!/bin/bash
 # renew-portainer-cert.sh
 
-set -e
+set -eu
 
 DOMAIN="portainer.example.com"
-CERT_PATH="/etc/letsencrypt/live/${DOMAIN}"
+PORTAINER_CERT_DIR="/opt/portainer-certs"
 BACKUP_DIR="/opt/portainer-cert-backups/$(date +%Y%m%d-%H%M%S)"
+CERT_PATH="${RENEWED_LINEAGE:-/etc/letsencrypt/live/${DOMAIN}}"
 
 echo "=== Portainer Certificate Renewal ==="
-echo "1. Backing up current certificates..."
+echo "1. Backing up current Portainer certificates..."
 mkdir -p "${BACKUP_DIR}"
-docker run --rm \
-  -v portainer_data:/data \
-  -v "${BACKUP_DIR}:/backup" \
-  alpine \
-  sh -c "cp /data/certs/cert.pem /backup/ && cp /data/certs/key.pem /backup/ 2>/dev/null; echo 'Backup complete'"
+cp "${PORTAINER_CERT_DIR}/portainer.crt" "${BACKUP_DIR}/portainer.crt"
+cp "${PORTAINER_CERT_DIR}/portainer.key" "${BACKUP_DIR}/portainer.key"
 
-echo "2. Renewing certificate via Certbot..."
-certbot renew --cert-name "${DOMAIN}" --quiet
+echo "2. Copying renewed certificate into the bind-mounted certificate directory..."
+install -d -m 755 "${PORTAINER_CERT_DIR}"
+install -m 644 "${CERT_PATH}/fullchain.pem" "${PORTAINER_CERT_DIR}/portainer.crt"
+install -m 600 "${CERT_PATH}/privkey.pem" "${PORTAINER_CERT_DIR}/portainer.key"
 
-echo "3. Staging new certificate into volume..."
-docker run --rm \
-  -v portainer_data:/data \
-  -v "${CERT_PATH}:/certs:ro" \
-  alpine \
-  sh -c "mkdir -p /data/certs && \
-    cp /certs/fullchain.pem /data/certs/cert.pem && \
-    cp /certs/privkey.pem /data/certs/key.pem && \
-    chmod 644 /data/certs/cert.pem && \
-    chmod 600 /data/certs/key.pem"
+echo "3. Restarting Portainer..."
+docker restart portainer >/dev/null
 
-echo "4. Restarting Portainer..."
-docker restart portainer
-
-echo "5. Waiting for Portainer to be ready..."
+echo "4. Waiting for Portainer to be ready..."
 for i in $(seq 1 30); do
-  if curl -sk https://localhost:9443/api/status | grep -q "Version"; then
+  if curl -skf https://localhost:9443/ >/dev/null; then
     echo "Portainer is ready!"
     break
   fi
   sleep 1
   echo "  Waiting... (${i}/30)"
+  if [ "${i}" -eq 30 ]; then
+    echo "Portainer did not become ready in time" >&2
+    exit 1
+  fi
 done
 
-echo "6. Verifying new certificate..."
-NEW_EXPIRY=$(echo | openssl s_client -connect localhost:9443 2>/dev/null \
+echo "5. Verifying new certificate..."
+NEW_EXPIRY=$(echo | openssl s_client -connect localhost:9443 -servername "${DOMAIN}" 2>/dev/null \
   | openssl x509 -noout -enddate | cut -d= -f2)
 echo "New certificate expiry: ${NEW_EXPIRY}"
 echo "=== Renewal complete ==="
 ```
 
-## Strategy 2: Rolling Update with Nginx (Zero Downtime)
+## Strategy 2: TLS Termination at Nginx (Zero Downtime)
 
-If Portainer is behind Nginx, swap the proxy target during renewal:
+If Nginx terminates TLS in front of Portainer, renew the Nginx certificate and reload Nginx. Portainer can continue running behind the proxy on port `9000` during the reload:
 
 ```bash
 #!/bin/bash
 # zero-downtime-renew.sh
 
-# 1. Start second Portainer instance on different port with new cert
-docker run -d \
-  -p 9444:9443 \
-  --name portainer-new \
-  --restart=no \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v portainer_data:/data \
-  -v /etc/letsencrypt/live/portainer.example.com/fullchain.pem:/new-certs/cert.pem:ro \
-  -v /etc/letsencrypt/live/portainer.example.com/privkey.pem:/new-certs/key.pem:ro \
-  portainer/portainer-ce:latest \
-  --ssl \
-  --sslcert /new-certs/cert.pem \
-  --sslkey /new-certs/key.pem
+set -eu
 
-# 2. Wait for new instance to be ready
-sleep 15
-curl -sk https://localhost:9444/api/status
+DOMAIN="portainer.example.com"
 
-# 3. Swap Nginx to point to new instance
-sed -i 's/proxy_pass https:\/\/localhost:9443/proxy_pass https:\/\/localhost:9444/' \
-  /etc/nginx/conf.d/portainer.conf
+# Assumes Nginx is serving the public certificate and proxying to Portainer on port 9000.
+certbot renew --cert-name "${DOMAIN}" --quiet
+
+nginx -t
 nginx -s reload
 
-# 4. Stop old Portainer
-docker stop portainer
-docker rm portainer
-
-# 5. Rename new to old
-docker rename portainer-new portainer
-
-# 6. Restore Nginx config to standard port
-sed -i 's/proxy_pass https:\/\/localhost:9444/proxy_pass https:\/\/localhost:9443/' \
-  /etc/nginx/conf.d/portainer.conf
-nginx -s reload
+NEW_EXPIRY=$(echo | openssl s_client -connect localhost:443 -servername "${DOMAIN}" 2>/dev/null \
+  | openssl x509 -noout -enddate | cut -d= -f2)
+echo "New certificate expiry: ${NEW_EXPIRY}"
 ```
 
 ## Strategy 3: Scheduled Maintenance Window
@@ -126,8 +98,8 @@ nginx -s reload
 For simplest operations, schedule during low-traffic hours:
 
 ```bash
-# Add to crontab: renew at 3 AM on the 1st of each month
-0 3 1 * * /usr/local/bin/renew-portainer-cert.sh >> /var/log/portainer-cert-renewal.log 2>&1
+# Add to crontab: check daily at 3 AM and restart Portainer only after a successful renewal
+0 3 * * * certbot renew --cert-name "portainer.example.com" --quiet --deploy-hook /usr/local/bin/renew-portainer-cert.sh >> /var/log/portainer-cert-renewal.log 2>&1
 ```
 
 ## Monitoring Certificate Expiry
@@ -135,7 +107,8 @@ For simplest operations, schedule during low-traffic hours:
 ```bash
 #!/bin/bash
 # check-cert-expiry.sh
-EXPIRY=$(echo | openssl s_client -connect localhost:9443 2>/dev/null \
+DOMAIN="portainer.example.com"
+EXPIRY=$(echo | openssl s_client -connect localhost:9443 -servername "${DOMAIN}" 2>/dev/null \
   | openssl x509 -noout -enddate | cut -d= -f2)
 EXPIRY_TS=$(date -d "${EXPIRY}" +%s)
 NOW_TS=$(date +%s)
@@ -157,13 +130,12 @@ echo "Certificate expires in ${DAYS_LEFT} days (${EXPIRY})"
 
 ```bash
 # If renewal fails, restore from backup
+PORTAINER_CERT_DIR="/opt/portainer-certs"
+
 docker stop portainer
 
-docker run --rm \
-  -v portainer_data:/data \
-  -v "${BACKUP_DIR}:/backup" \
-  alpine \
-  sh -c "cp /backup/cert.pem /data/certs/ && cp /backup/key.pem /data/certs/"
+install -m 644 "${BACKUP_DIR}/portainer.crt" "${PORTAINER_CERT_DIR}/portainer.crt"
+install -m 600 "${BACKUP_DIR}/portainer.key" "${PORTAINER_CERT_DIR}/portainer.key"
 
 docker start portainer
 echo "Rolled back to previous certificate"
@@ -171,4 +143,4 @@ echo "Rolled back to previous certificate"
 
 ## Conclusion
 
-Portainer certificate renewal requires a container restart, but with proper scripting this takes under 30 seconds. The pre-staging approach (copy new cert, then restart) minimizes downtime. For truly zero-downtime renewals, use a Nginx reverse proxy and the rolling update approach. Always maintain certificate backups before renewal and test the renewal process before certificates actually expire.
+Portainer certificate renewal requires updating the configured certificate files and restarting the container, but with proper scripting this can be kept brief. The pre-staging approach (copy the renewed certificate into the bind-mounted certificate directory, then restart) minimizes downtime. For truly zero-downtime renewals, terminate TLS at Nginx and reload Nginx after renewal. Always maintain certificate backups before renewal and test the renewal process before certificates actually expire.
