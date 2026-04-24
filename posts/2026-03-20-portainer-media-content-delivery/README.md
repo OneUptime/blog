@@ -28,23 +28,28 @@ Use Portainer to deploy an FFmpeg-based transcoding pipeline:
 ```yaml
 # media-transcode-stack.yml
 
-version: "3.8"
-
 services:
   transcode-worker:
-    image: jrottenberg/ffmpeg:4.4-alpine
+    image: jrottenberg/ffmpeg:7.1-alpine320
     entrypoint: ["/bin/sh", "-c"]
     command: >
-      "while true; do
-        if [ -f /input/pending.mp4 ]; then
-          ffmpeg -i /input/pending.mp4
+      while true; do
+        mkdir -p /input/processing /input/processed /input/failed;
+        for input_file in /input/*.mp4; do
+          [ -e "$input_file" ] || break;
+          filename="$(basename "$input_file")";
+          mv "$input_file" "/input/processing/$filename" || continue;
+          if ffmpeg -y -i "/input/processing/$filename"
             -c:v libx264 -preset fast -crf 22
             -c:a aac -b:a 128k
-            /output/output_720p.mp4 &&
-          mv /input/pending.mp4 /input/processed/;
-        fi;
+            "/output/${filename%.*}_720p.mp4"; then
+            mv "/input/processing/$filename" /input/processed/;
+          else
+            mv "/input/processing/$filename" /input/failed/;
+          fi;
+        done;
         sleep 5;
-      done"
+      done
     volumes:
       - media-input:/input
       - media-output:/output
@@ -59,7 +64,7 @@ services:
     image: nginx:alpine
     volumes:
       - media-output:/usr/share/nginx/html/media:ro
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/media-stack/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
       - "8080:80"
     restart: unless-stopped
@@ -71,7 +76,7 @@ volumes:
 
 ## Step 2: Configure Origin Server
 
-Create an Nginx configuration optimized for media serving:
+Create an Nginx configuration optimized for media serving and save it as `/opt/media-stack/nginx.conf` on the Docker host:
 
 ```nginx
 # nginx.conf for media origin
@@ -90,25 +95,54 @@ server {
         add_header Cache-Control "public, max-age=86400";
         add_header Access-Control-Allow-Origin "*";
         
-        # Range request support for video seeking
+        # Expose byte-range capability for media clients
         add_header Accept-Ranges bytes;
-    }
-    
-    location /hls/ {
-        root /usr/share/nginx/html;
-        # HLS segment-specific headers
-        add_header Cache-Control "no-cache";
-        types {
-            application/vnd.apple.mpegurl m3u8;
-            video/mp2t ts;
-        }
     }
 }
 ```
 
 ## Step 3: Deploy HLS Streaming with Portainer
 
-For live streaming using nginx-rtmp:
+For live streaming using nginx-rtmp, save the following `rtmp.conf` as `/opt/media-stack/rtmp.conf` on the Docker host:
+
+```nginx
+worker_processes auto;
+rtmp_auto_push on;
+
+events {}
+
+rtmp {
+    server {
+        listen 1935;
+
+        application live {
+            live on;
+            record off;
+            hls on;
+            hls_path /tmp/hls;
+            hls_fragment 5s;
+        }
+    }
+}
+
+http {
+    server {
+        listen 80;
+
+        location /hls {
+            types {
+                application/vnd.apple.mpegurl m3u8;
+                video/mp2t ts;
+            }
+            root /tmp;
+            add_header Cache-Control no-cache;
+            add_header Access-Control-Allow-Origin *;
+        }
+    }
+}
+```
+
+Then deploy the streaming container:
 
 ```yaml
 services:
@@ -118,7 +152,7 @@ services:
       - "1935:1935"   # RTMP ingest
       - "8081:80"     # HLS output
     volumes:
-      - ./rtmp.conf:/etc/nginx/nginx.conf:ro
+      - /opt/media-stack/rtmp.conf:/etc/nginx/nginx.conf:ro
       - hls-segments:/tmp/hls
     restart: unless-stopped
 
@@ -128,27 +162,29 @@ volumes:
 
 ## Step 4: Scale Transcoding Workers
 
-Portainer makes it easy to scale transcoding capacity for peak demand:
+On Docker Swarm endpoints, Portainer makes it easy to scale transcoding capacity for peak demand:
 
-1. Open the `transcode-worker` service in Portainer
-2. Click **Duplicate/Edit**
-3. Change the container name to `transcode-worker-2`
-4. Deploy with the same volume mounts
+1. Open **Services** in Portainer
+2. Select the scale control next to `transcode-worker`
+3. Set the desired replica count and apply the change
 
 For Swarm-based scaling, use replicated services with Docker Swarm:
 
 ```yaml
 deploy:
+  mode: replicated
   replicas: 3
   update_config:
     parallelism: 1
     delay: 10s
 ```
 
+When you scale across multiple Swarm nodes, replace the default local volumes with shared storage or object storage that every replica can access.
+
 ## Step 5: Monitor Transcoding Queue
 
-Use Portainer's container stats view to monitor CPU utilization on transcoding workers. Set alerts when average CPU drops to 0% (idle, no work) or spikes to 100% (overloaded queue).
+Use Portainer's container stats view to monitor CPU, memory, network, and I/O on transcoding workers. If you need automated alerting, configure it separately through Portainer Business Edition observability or an external monitoring system.
 
 ## Summary
 
-Portainer simplifies media infrastructure management by providing a single control plane for ingest, transcoding, origin serving, and streaming containers. The visual interface makes it easy to scale workers for live events, monitor processing queues, and manage media storage volumes without complex orchestration tooling.
+Portainer simplifies media infrastructure management by providing a single control plane for ingest, transcoding, origin serving, and streaming containers. The visual interface makes it easier to scale Swarm services for live events, inspect processing workloads, and manage media storage volumes without complex orchestration tooling.
