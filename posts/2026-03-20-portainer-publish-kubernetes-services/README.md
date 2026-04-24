@@ -8,7 +8,7 @@ Description: Learn how to create and configure ClusterIP, NodePort, and LoadBala
 
 ## Introduction
 
-Kubernetes Services provide stable network access to pods. Portainer supports creating all service types through its application deployment form and YAML editor. Understanding which service type to use and how to configure it is essential for making your applications accessible. This guide covers all service types.
+Kubernetes Services provide stable network access to pods. Portainer supports creating common service types through its application deployment form, and you can use manifests for more advanced service definitions. Understanding which service type to use and how to configure it is essential for making your applications accessible. This guide covers the most common service types and related patterns.
 
 ## Prerequisites
 
@@ -21,8 +21,8 @@ Kubernetes Services provide stable network access to pods. Portainer supports cr
 |------|--------|---------|
 | **ClusterIP** | Within cluster only | Internal services, APIs |
 | **NodePort** | Via node IP:port | External access without load balancer |
-| **LoadBalancer** | Via cloud LB external IP | Production external services |
-| **ExternalName** | DNS alias | External service proxy |
+| **LoadBalancer** | Via external LB IP/hostname | Production external services |
+| **ExternalName** | DNS alias | DNS alias to an external service |
 
 ## Step 1: Create a ClusterIP Service
 
@@ -57,7 +57,7 @@ spec:
       protocol: TCP
 ```
 
-DNS name within cluster: `my-api.production.svc.cluster.local`
+Default DNS name within cluster (with the default cluster domain): `my-api.production.svc.cluster.local`
 
 ## Step 2: Create a NodePort Service
 
@@ -68,7 +68,7 @@ NodePort exposes the service on a port on every node.
 ```text
 Service type:       NodePort
 Container port:     8080
-NodePort:           30080   (30000-32767 range)
+NodePort:           30080   (default 30000-32767 range)
 ```
 
 ### Via YAML
@@ -95,7 +95,7 @@ Access: `http://{any-node-ip}:30080`
 
 ## Step 3: Create a LoadBalancer Service
 
-LoadBalancer provisions an external load balancer from the cloud provider.
+LoadBalancer provisions an external load balancer from your cloud provider or installed load balancer implementation.
 
 ### Via Portainer Form
 
@@ -114,13 +114,9 @@ metadata:
   name: my-api-lb
   namespace: production
   annotations:
-    # AWS NLB
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-    # Azure
-    # service.beta.kubernetes.io/azure-dns-label-name: "myapi"
-    # GCP - restrict to specific CIDR
-    # cloud.google.com/load-balancer-type: "External"
+    # Optional provider-specific annotations go here.
+    # Check your cloud provider or load balancer controller documentation
+    # before adding them.
 spec:
   type: LoadBalancer
   selector:
@@ -197,7 +193,7 @@ DNS query for headless service returns all pod IPs - useful for Redis Cluster, P
 
 ## Step 6: Expose Services via Ingress
 
-For HTTP/HTTPS services, use an Ingress instead of LoadBalancer:
+For HTTP/HTTPS services, an Ingress is often a better fit than exposing each app with its own LoadBalancer:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -227,15 +223,15 @@ spec:
                   number: 80
 ```
 
+An Ingress resource only works if an Ingress controller is installed in the cluster.
+
 ## Step 7: Create Services in Portainer
 
-In Portainer, create services independently:
+In Portainer, you can view services under **Networking → Services**.
 
-1. Navigate to **Networking → Services**
-2. Click **+ Add service** (or use YAML)
-3. Configure the service type and ports
+To create a service independently, use **Applications → Create from code** and deploy a Service manifest.
 
-Or create via the application form which automatically creates the service.
+Or create via the application form, which automatically creates the service.
 
 ## Step 8: Check Service Status
 
@@ -243,13 +239,13 @@ Or create via the application form which automatically creates the service.
 # List all services
 kubectl get svc -n production
 
-# Check service endpoints (must have at least one for traffic to flow)
-kubectl get endpoints my-api -n production
+# Check service EndpointSlices (must have at least one ready endpoint for traffic to flow)
+kubectl get endpointslice -n production -l kubernetes.io/service-name=my-api
 
-# If endpoints are empty, check selector matches pod labels
+# If no EndpointSlices appear, check selector matches pod labels
 kubectl get pods -n production -l app=my-api
 ```
 
 ## Conclusion
 
-Choosing the right Kubernetes service type depends on your use case: ClusterIP for internal services, NodePort for direct node access, LoadBalancer for cloud-native external access, and Ingress for HTTP/HTTPS traffic with virtual hosting and TLS termination. Portainer makes creating all service types straightforward through both the form UI and YAML editor.
+Choosing the right Kubernetes service type depends on your use case: ClusterIP for internal services, NodePort for direct node access, LoadBalancer for cloud-native external access, and Ingress for HTTP/HTTPS traffic with virtual hosting and TLS termination. Portainer makes creating common service types straightforward through the form UI, and you can use manifests for advanced service definitions.
