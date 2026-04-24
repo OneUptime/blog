@@ -8,23 +8,23 @@ Description: Configure Portainer to use StartTLS encryption when connecting to y
 
 ## Introduction
 
-StartTLS upgrades a plain LDAP connection (port 389) to an encrypted TLS connection after the initial handshake. It's a middle ground between unencrypted LDAP and full LDAPS (port 636) - you use the standard LDAP port but get encryption. This guide configures Portainer to use StartTLS with your LDAP server.
+StartTLS upgrades a plain LDAP connection (port 389) to an encrypted TLS connection before authentication and directory operations. It's an alternative to LDAPS (port 636) - you use the standard LDAP port but still get encryption. This guide configures Portainer to use StartTLS with your LDAP server.
 
 ## StartTLS vs LDAPS
 
 | Feature | LDAP (plain) | StartTLS | LDAPS |
 |---------|-------------|----------|-------|
 | Port | 389 | 389 | 636 |
-| Encryption | None | Upgraded TLS | Full TLS |
+| Encryption | None | TLS after StartTLS | TLS from connection start |
 | Certificate | Not required | Required | Required |
-| Compatibility | All servers | Modern servers | All servers |
+| Compatibility | Any LDAP listener | Servers with StartTLS support | Servers with an LDAPS listener |
 
-StartTLS is preferred when your environment uses port 389 exclusively (firewall rules) but you need encryption.
+StartTLS is useful when your environment uses port 389 exclusively (firewall rules) but you need encryption.
 
 ## Prerequisites
 
 - LDAP server configured to support StartTLS
-- CA certificate (or self-signed cert) for the LDAP server's TLS certificate
+- CA certificate, or the self-signed server certificate if the LDAP server uses a self-signed cert
 - Portainer running
 
 ## Step 1: Verify Your LDAP Server Supports StartTLS
@@ -40,28 +40,28 @@ ldapsearch -x \
   -b "dc=example,dc=com" \
   "(objectClass=*)" dn
 
-# The -Z flag forces StartTLS
-# -ZZ would require StartTLS and fail if not available
+# The -Z flag requests StartTLS
+# -ZZ requires StartTLS and fails if it is not available
 ldapsearch -x -H ldap://ldap.example.com:389 -ZZ \
   -D "cn=portainer-bind,dc=example,dc=com" \
   -w bindpassword \
-  -b "dc=example,dc=com" \
+  -b "" \
   -s base "(objectClass=*)" supportedExtension
 ```
 
-## Step 2: Obtain the LDAP Server's CA Certificate
+## Step 2: Obtain the CA Certificate (or Self-Signed Server Certificate)
 
 ```bash
-# Method 1: Retrieve from the LDAP server
-openssl s_client -connect ldap.example.com:389 -starttls ldap < /dev/null 2>/dev/null \
-  | openssl x509 -noout -text
+# Method 1: Inspect the certificate presented by the LDAP server
+openssl s_client -connect ldap.example.com:389 -starttls ldap -showcerts < /dev/null 2>/dev/null
 
-# Save the certificate
+# If the LDAP server uses a self-signed certificate, save the presented certificate
 openssl s_client -connect ldap.example.com:389 -starttls ldap < /dev/null 2>/dev/null \
-  | openssl x509 > ldap-ca.pem
+  | openssl x509 -outform PEM > ldap-ca.pem
 
 # Method 2: Get from your certificate authority
-# Download the CA certificate from your internal PKI
+# If the LDAP server uses a CA-issued certificate, export the issuing CA certificate
+# from your internal PKI instead of saving the server's leaf certificate
 
 # Verify the certificate
 openssl x509 -in ldap-ca.pem -text -noout | grep -E "Subject:|Issuer:|Not After:"
@@ -72,13 +72,13 @@ openssl x509 -in ldap-ca.pem -text -noout | grep -E "Subject:|Issuer:|Not After:
 In Settings → Authentication → LDAP:
 
 ```text
-Server:              ldap.example.com:389
-StartTLS:            Enabled (toggle ON)
-Skip TLS Verify:     Off (for production - verify the certificate)
-TLS CA Certificate:  [paste the PEM certificate content]
+Server:                               ldap.example.com:389
+Use StartTLS:                         Enabled (toggle ON)
+Skip verification of server certificate: Off (for production - verify the certificate)
+TLS CA certificate:                   [upload ldap-ca.pem]
 ```
 
-**PEM Format Example:**
+**PEM File Example:**
 ```text
 -----BEGIN CERTIFICATE-----
 MIIDXTCCAkWgAwIBAgIJAJC1HiIAZAiIMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
@@ -89,44 +89,45 @@ MIIDXTCCAkWgAwIBAgIJAJC1HiIAZAiIMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
 ## Step 4: Configure via API
 
 ```bash
-# Read the CA certificate
-CA_CERT=$(cat ldap-ca.pem)
-
 TOKEN=$(curl -s -X POST \
   https://portainer.example.com/api/auth \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
+# Upload the CA certificate file first
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@ldap-ca.pem" \
+  "https://portainer.example.com/api/upload/tls/ca?folder=ldap"
+
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   https://portainer.example.com/api/settings \
-  -d "{
-    \"AuthenticationMethod\": 2,
-    \"ldapsettings\": {
-      \"Servers\": [
+  -d '{
+    "AuthenticationMethod": 2,
+    "LDAPSettings": {
+      "URL": "ldap.example.com:389",
+      "TLSConfig": {
+        "TLS": false,
+        "TLSSkipVerify": false
+      },
+      "StartTLS": true,
+      "AnonymousMode": false,
+      "ReaderDN": "cn=portainer-bind,dc=example,dc=com",
+      "Password": "bindpassword",
+      "SearchSettings": [
         {
-          \"Host\": \"ldap.example.com\",
-          \"Port\": 389,
-          \"UseTLS\": false,
-          \"StartTLS\": true,
-          \"SkipVerify\": false,
-          \"TLSCACert\": $(python3 -c \"import sys; print(__import__('json').dumps(open('ldap-ca.pem').read()))\"),
-          \"Anonymous\": false,
-          \"ReaderDN\": \"cn=portainer-bind,dc=example,dc=com\",
-          \"Password\": \"bindpassword\"
+          "BaseDN": "ou=users,dc=example,dc=com",
+          "UserNameAttribute": "uid",
+          "Filter": "(objectClass=inetOrgPerson)"
         }
       ],
-      \"SearchSettings\": [
-        {
-          \"BaseDN\": \"ou=users,dc=example,dc=com\",
-          \"Username\": \"uid\",
-          \"Filter\": \"(objectClass=inetOrgPerson)\"
-        }
-      ]
+      "GroupSearchSettings": [],
+      "AutoCreateUsers": true
     }
-  }"
+  }'
 ```
 
 ## Step 5: Testing the StartTLS Connection
@@ -144,7 +145,8 @@ ldapsearch -x \
   "(uid=testuser)" uid cn
 
 # Expected: returns user entry if successful
-# Error: "ldap_start_tls: Connect error (-11)" means StartTLS not supported
+# Errors mentioning ldap_start_tls indicate the StartTLS negotiation failed
+# Check server support and certificate trust
 ```
 
 ## Troubleshooting
