@@ -8,7 +8,7 @@ Description: Deploy a Django web application with PostgreSQL database using Dock
 
 ## Introduction
 
-Django is Python's most popular web framework, and PostgreSQL is its preferred database backend. Deploying them together via Portainer gives you a production-ready environment with automated database migrations, static file management, and optional Celery task queue support. This guide covers a complete Django + PostgreSQL deployment using Portainer Stacks.
+Django is Python's most popular web framework, and PostgreSQL is its preferred database backend. Deploying them together via Portainer gives you a production-ready environment with automated database migrations, static file management, and Celery task queue support. This guide covers a complete Django + PostgreSQL deployment using Portainer Stacks.
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ FROM python:3.12-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    libpq-dev gcc curl && \
+    libpq-dev gcc postgresql-client && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -37,9 +37,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Collect static files at build time
-RUN python manage.py collectstatic --noinput || true
-
 EXPOSE 8000
 
 # Start Gunicorn for production
@@ -48,13 +45,12 @@ CMD ["gunicorn", "myproject.wsgi:application", "--bind", "0.0.0.0:8000", "--work
 
 ```text
 # requirements.txt
-Django==5.0
+Django==5.2.13
 gunicorn==21.2.0
 psycopg2-binary==2.9.9
-django-environ==0.11.2
+django-environ==0.13.0
 celery==5.3.6
 redis==5.0.1
-whitenoise==6.6.0
 ```
 
 ## Step 2: Create the Docker Compose File in Portainer
@@ -99,6 +95,7 @@ services:
     restart: unless-stopped
     command: >
       sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
              gunicorn myproject.wsgi:application --bind 0.0.0.0:8000 --workers 3"
     environment:
       DEBUG: "False"
@@ -127,12 +124,15 @@ services:
     restart: unless-stopped
     command: celery -A myproject worker -l info
     environment:
+      SECRET_KEY: ${DJANGO_SECRET_KEY}
       DATABASE_URL: postgres://${POSTGRES_USER:-djangouser}:${POSTGRES_PASSWORD:-djangopassword}@db:5432/${POSTGRES_DB:-djangodb}
       REDIS_URL: redis://redis:6379/0
       DJANGO_SETTINGS_MODULE: myproject.settings
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - django-net
 
@@ -146,7 +146,7 @@ services:
     volumes:
       - static_files:/app/staticfiles:ro
       - media_files:/app/media:ro
-      - ./nginx/django.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/portainer/django/nginx/django.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - web
     networks:
@@ -164,8 +164,10 @@ networks:
 
 ## Step 3: Nginx Configuration for Django
 
+Create the following file on the Docker host at `/opt/portainer/django/nginx/django.conf`:
+
 ```nginx
-# nginx/django.conf
+# /opt/portainer/django/nginx/django.conf
 upstream django {
     server web:8000;
 }
@@ -209,20 +211,20 @@ env = environ.Env()
 # Read .env file if present
 environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
+SECRET_KEY = env('SECRET_KEY')
+DEBUG = env.bool('DEBUG', default=False)
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1'])
+
 # Database - uses DATABASE_URL env var
 DATABASES = {
     'default': env.db('DATABASE_URL', default='sqlite:///db.sqlite3')
 }
 
-# Static files
+# Static and media files
+STATIC_URL = '/static/'
 STATIC_ROOT = '/app/staticfiles'
+MEDIA_URL = '/media/'
 MEDIA_ROOT = '/app/media'
-
-# Whitenoise for serving static files
-MIDDLEWARE = [
-    'whitenoise.middleware.WhiteNoiseMiddleware',
-    # ... other middleware
-]
 
 # Celery configuration
 CELERY_BROKER_URL = env('REDIS_URL', default='redis://localhost:6379/0')
@@ -248,7 +250,7 @@ docker exec django-web python manage.py collectstatic --noinput
 docker exec -it django-web python manage.py shell
 
 # Check for database issues
-docker exec django-web python manage.py dbshell
+docker exec -it django-web python manage.py dbshell
 ```
 
 ## Step 6: Set Environment Variables in Portainer
@@ -264,4 +266,4 @@ In the Stack editor, add **Environment Variables**:
 
 ## Conclusion
 
-Deploying Django with PostgreSQL via Portainer provides a complete web application stack with automated database migrations on startup, static file serving via Nginx, and optional Celery workers for background task processing. The health check on the PostgreSQL service ensures Django only starts after the database is ready. For production, ensure `DEBUG=False`, use a strong `SECRET_KEY`, and serve the application behind an SSL-terminating reverse proxy or Portainer's built-in HTTPS endpoint.
+Deploying Django with PostgreSQL via Portainer provides a complete web application stack with automated database migrations and static file collection on startup, static file serving via Nginx, and Celery workers for background task processing. The health check on the PostgreSQL service ensures Django only starts after the database is ready. For production, ensure `DEBUG=False`, use a strong `SECRET_KEY`, and serve the application behind an SSL-terminating reverse proxy.
