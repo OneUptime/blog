@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Password, Security, Setup, Automation
 
-Description: A guide to setting a custom admin password for Portainer on first launch using multiple methods including the UI, CLI flags, and environment variables.
+Description: A guide to setting a custom admin password for Portainer on first launch using multiple methods including the UI, CLI flags, files, and the Portainer API.
 
 ## Overview
 
-When Portainer is first installed, you have a brief window to set the admin password before the initialization timeout expires (5 minutes by default). This guide covers multiple methods to set the admin password: through the web UI during first launch, via the `--admin-password` CLI flag, and using the Portainer API for automated deployments.
+When Portainer is first installed, you have a brief window to set the admin password before the initialization timeout expires (5 minutes by default). This guide covers multiple methods to set the admin password: through the web UI during first launch, via the `--admin-password` CLI flag, using `--admin-password-file`, and through the Portainer API for automated first-run initialization.
 
 ## Method 1: Via the Web UI (Standard Method)
 
@@ -21,7 +21,7 @@ After deploying Portainer, navigate to `https://your-server:9443` within 5 minut
 
 **Password Requirements:**
 - Minimum 12 characters
-- Portainer recommends using a mix of uppercase, lowercase, numbers, and symbols
+- Administrators can increase the minimum password length later in authentication settings
 
 ## Method 2: Pre-configure Password via CLI Flag
 
@@ -64,8 +64,8 @@ docker run -d \
 For security, avoid passing passwords as command-line arguments. Use a file instead:
 
 ```bash
-# Step 1: Create password file with bcrypt hash
-echo '$2y$10$your-bcrypt-hash-here' > /tmp/portainer_admin_password
+# Step 1: Create password file with the plaintext password
+echo -n 'YourStrongPassword123!' > /tmp/portainer_admin_password
 chmod 600 /tmp/portainer_admin_password
 
 # Step 2: Mount the file and reference it
@@ -81,28 +81,22 @@ docker run -d \
   --admin-password-file=/tmp/admin_pass
 ```
 
-## Method 4: Via Portainer API (After First Launch)
+## Method 4: Via Portainer API (First Launch Automation)
 
-If the admin account is already created, change the password via API:
+If you're automating a brand-new Portainer deployment, initialize the admin account via API:
 
 ```bash
-# Get auth token
-TOKEN=$(curl -s -k \
-  -X POST https://portainer.example.com:9443/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "currentPassword"}' \
-  | jq -r '.jwt')
-
-# Change password
+# Initialize the admin account
 curl -s -k \
-  -X PUT https://portainer.example.com:9443/api/users/1 \
-  -H "Authorization: Bearer ${TOKEN}" \
+  -X POST https://portainer.example.com:9443/api/users/admin/init \
   -H "Content-Type: application/json" \
   -d '{
-    "Password": "newStrongPassword123!",
-    "newPassword": "newStrongPassword123!"
+    "Username": "admin",
+    "Password": "newStrongPassword123!"
   }'
 ```
+
+This endpoint only works before any administrator account exists. After initialization, change the password through the UI or the user update API endpoints.
 
 ## Method 5: Reset Password if Forgotten
 
@@ -112,15 +106,16 @@ If you've lost access to Portainer:
 # Stop Portainer
 docker stop portainer
 
-# Use Portainer's built-in reset tool
+# Use Portainer's reset helper to set a new password
+docker pull portainer/helper-reset-password
 docker run --rm \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest \
-  --reset-password
+  portainer/helper-reset-password \
+  --password 'YourNewStrongPassword123!'
 
 # Restart Portainer
 docker start portainer
-# Navigate to UI and set a new password
+# Log in with the new password
 ```
 
 ## Automated Deployment with Pre-configured Password
@@ -155,12 +150,12 @@ echo "Portainer deployed with pre-configured admin password"
 
 ## Security Best Practices
 
-1. **Never use default passwords** - always set a strong, unique password
+1. **Use a strong, unique password** - avoid password reuse across services
 2. **Use a password manager** - store Portainer admin credentials securely
-3. **Enable 2FA** - Portainer BE supports TOTP-based two-factor authentication
+3. **Use a password file or Docker secrets for automation** - avoid passing passwords as command-line arguments
 4. **Rotate passwords regularly** - change admin passwords quarterly
-5. **Use LDAP/AD** - for team environments, use LDAP instead of local accounts
+5. **Use LDAP/AD or OAuth** - for team environments, prefer external authentication over local accounts
 
 ## Conclusion
 
-Setting a strong admin password on first launch is a critical security step for Portainer deployments. For automated deployments, use the `--admin-password` flag with a bcrypt hash to ensure consistent, secure configuration without manual intervention. For production environments, consider using Portainer Business Edition with LDAP/AD integration to eliminate local password management entirely.
+Setting a strong admin password on first launch is a critical security step for Portainer deployments. For automated deployments, use the `--admin-password` flag with a bcrypt hash, `--admin-password-file` with a secret file, or the first-run API endpoint to ensure consistent, secure configuration without manual intervention. For production environments, consider using Portainer Business Edition with LDAP/AD or OAuth integration to reduce reliance on local password management.
