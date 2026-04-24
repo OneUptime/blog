@@ -29,16 +29,37 @@ OEM Cloud Platform (Rancher-managed)
 ## Step 1: Vehicle Data Ingestion Platform
 
 ```yaml
-# Kafka cluster for vehicle telemetry data
-
-apiVersion: kafka.strimzi.io/v1beta2
+# KRaft-based Kafka cluster for vehicle telemetry data
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: vehicle-telemetry
+  namespace: connected-vehicle
+  labels:
+    strimzi.io/cluster: vehicle-telemetry
+spec:
+  replicas: 3
+  roles:
+    - controller
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 500Gi
+        class: longhorn-fast
+        kraftMetadata: shared
+---
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: vehicle-telemetry
   namespace: connected-vehicle
 spec:
   kafka:
-    replicas: 3
+    version: 4.2.0
+    metadataVersion: 4.2-IV1
     listeners:
       - name: tls
         port: 9093
@@ -48,16 +69,13 @@ spec:
           type: tls
     config:
       offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
       default.replication.factor: 3
-    storage:
-      type: persistent-claim
-      size: 500Gi
-      class: longhorn-fast
-  zookeeper:
-    replicas: 3
-    storage:
-      type: persistent-claim
-      size: 10Gi
+      min.insync.replicas: 2
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
 ```
 
 ## Step 2: Connected Vehicle Data Processing
@@ -71,7 +89,13 @@ metadata:
   namespace: connected-vehicle
 spec:
   replicas: 10    # Scale for millions of vehicles
+  selector:
+    matchLabels:
+      app: telemetry-processor
   template:
+    metadata:
+      labels:
+        app: telemetry-processor
     spec:
       containers:
         - name: processor
@@ -105,7 +129,13 @@ metadata:
   namespace: ota-management
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: ota-update-server
   template:
+    metadata:
+      labels:
+        app: ota-update-server
     spec:
       containers:
         - name: ota-server
@@ -142,6 +172,12 @@ spec:
       containers:
         - name: ota-packager
           image: registry.oem.internal/ota-tools:latest
+          env:
+            - name: SIGNING_KEY_ARN
+              valueFrom:
+                secretKeyRef:
+                  name: ota-credentials
+                  key: signing-key-arn
           command:
             - /bin/sh
             - -c
@@ -149,7 +185,7 @@ spec:
               # Sign and package the firmware update
               ota-sign \
                 --firmware /updates/firmware-4.2.1.bin \
-                --key ${SIGNING_KEY} \
+                --key ${SIGNING_KEY_ARN} \
                 --output /packages/firmware-4.2.1-signed.bin
 
               # Upload to distribution CDN
@@ -159,6 +195,7 @@ spec:
                 --vehicle-models "EV-2025,EV-2026" \
                 --rollout-strategy canary \
                 --canary-percentage 5
+      restartPolicy: OnFailure
 ```
 
 ## Step 4: Fleet Management for Dealer Network
@@ -195,7 +232,13 @@ metadata:
   namespace: manufacturing-qa
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: paint-defect-inspector
   template:
+    metadata:
+      labels:
+        app: paint-defect-inspector
     spec:
       nodeSelector:
         accelerator: nvidia-gpu
@@ -230,7 +273,13 @@ metadata:
   namespace: connected-vehicle
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: fleet-tracker
   template:
+    metadata:
+      labels:
+        app: fleet-tracker
     spec:
       containers:
         - name: tracker
@@ -259,7 +308,13 @@ metadata:
   namespace: connected-vehicle
 spec:
   replicas: 8
+  selector:
+    matchLabels:
+      app: canbus-decoder
   template:
+    metadata:
+      labels:
+        app: canbus-decoder
     spec:
       containers:
         - name: decoder
