@@ -47,9 +47,9 @@ terraform init
 ```hcl
 # provider.tf
 provider "portainer" {
-  endpoint       = "https://portainer.example.com"
-  api_key        = var.portainer_api_key   # Use variable, not hardcode
-  skip_tls_verify = false                  # Set true only for self-signed certs in dev
+  endpoint        = var.portainer_endpoint
+  api_key         = var.portainer_api_key  # Use variable, not hardcode
+  skip_ssl_verify = false                  # Set true only for self-signed certs in dev
 }
 ```
 
@@ -74,7 +74,7 @@ Create `terraform.tfvars` (add to `.gitignore`):
 
 ```hcl
 # terraform.tfvars - DO NOT commit to version control
-portainer_api_key = "ptr_YOUR_API_KEY"
+portainer_api_key = "YOUR_PORTAINER_API_KEY"
 ```
 
 ## Step 3: Create Your First Resource
@@ -87,6 +87,12 @@ resource "portainer_user" "developer" {
   username = "john.doe"
   password = var.initial_user_password
   role     = 2  # 1 = admin, 2 = standard user
+}
+
+variable "initial_user_password" {
+  description = "Initial password for the new Portainer user"
+  type        = string
+  sensitive   = true
 }
 
 output "developer_id" {
@@ -114,14 +120,14 @@ resource "portainer_team_membership" "john_backend" {
 ```hcl
 # environments.tf
 resource "portainer_environment" "production" {
-  name                   = "production"
-  environment_url        = "tcp://192.168.1.100:2376"
-  environment_type       = 1  # Docker standalone
-  tls                    = true
-  tls_skip_verify        = false
-  tls_ca_cert            = file("certs/ca.pem")
-  tls_cert               = file("certs/cert.pem")
-  tls_key                = file("certs/key.pem")
+  name                = "production"
+  environment_address = "tcp://192.168.1.100:2376"
+  type                = 1  # Docker standalone
+  tls_enabled         = true
+  tls_skip_verify     = false
+  tls_ca_cert         = file("certs/ca.pem")
+  tls_cert            = file("certs/cert.pem")
+  tls_key             = file("certs/key.pem")
 
   tag_ids = [
     portainer_tag.production.id
@@ -138,20 +144,21 @@ resource "portainer_tag" "production" {
 ```hcl
 # stacks.tf
 resource "portainer_stack" "myapp" {
-  name         = "my-app"
-  endpoint_id  = portainer_environment.production.id
+  name               = "my-app"
+  deployment_type    = "standalone"
+  method             = "string"
+  endpoint_id        = portainer_environment.production.id
   stack_file_content = file("stacks/myapp/docker-compose.yml")
 
-  env = [
-    {
-      name  = "IMAGE_TAG"
-      value = var.app_image_tag
-    },
-    {
-      name  = "APP_ENV"
-      value = "production"
-    }
-  ]
+  env {
+    name  = "IMAGE_TAG"
+    value = var.app_image_tag
+  }
+
+  env {
+    name  = "APP_ENV"
+    value = "production"
+  }
 }
 
 variable "app_image_tag" {
@@ -167,7 +174,7 @@ variable "app_image_tag" {
 # registries.tf
 resource "portainer_registry" "company_harbor" {
   name           = "Company Harbor"
-  registry_type  = 6  # Custom registry
+  type           = 3  # Custom registry
   url            = "registry.company.com"
   authentication = true
   username       = var.registry_username
@@ -193,9 +200,9 @@ variable "registry_password" {
 
 # ===== Environment =====
 resource "portainer_environment" "production" {
-  name             = "production-docker"
-  environment_url  = "unix:///var/run/docker.sock"
-  environment_type = 1
+  name                = "production-docker"
+  environment_address = "unix:///var/run/docker.sock"
+  type                = 1
 }
 
 # ===== Tags =====
@@ -215,22 +222,26 @@ resource "portainer_team" "backend" {
 # ===== Registry =====
 resource "portainer_registry" "ghcr" {
   name           = "GitHub Container Registry"
-  registry_type  = 7  # GHCR
+  type           = 3  # Custom registry
   url            = "ghcr.io"
   authentication = true
-  username       = var.github_username
-  password       = var.github_token
+  username       = var.registry_username
+  password       = var.registry_password
 }
 
 # ===== Stacks =====
 resource "portainer_stack" "monitoring" {
   name               = "monitoring"
+  deployment_type    = "standalone"
+  method             = "string"
   endpoint_id        = portainer_environment.production.id
   stack_file_content = file("stacks/monitoring/docker-compose.yml")
 }
 
 resource "portainer_stack" "application" {
   name               = "my-app"
+  deployment_type    = "standalone"
+  method             = "string"
   endpoint_id        = portainer_environment.production.id
   stack_file_content = templatefile("stacks/myapp/docker-compose.yml", {
     image_tag = var.app_image_tag
@@ -250,7 +261,7 @@ terraform plan
 # Apply changes
 terraform apply
 
-# Destroy resources (removes from Portainer, not from Docker)
+# Destroy resources managed by this configuration
 terraform destroy
 
 # Check state
