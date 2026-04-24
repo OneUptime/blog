@@ -8,7 +8,7 @@ Description: A guide to installing Portainer Community Edition on Red Hat Enterp
 
 ## Overview
 
-Red Hat Enterprise Linux (RHEL) is one of the most widely used enterprise Linux distributions. While RHEL ships with Podman as its default container runtime, Docker CE can be installed alongside it. This guide covers installing Docker CE and Portainer CE on RHEL 8 and RHEL 9, including SELinux and subscription considerations.
+Red Hat Enterprise Linux (RHEL) is one of the most widely used enterprise Linux distributions. While RHEL ships with Podman as its default container engine, Docker CE can also be installed on RHEL after removing conflicting packages. This guide covers installing Docker CE and Portainer CE on RHEL 8 and RHEL 9, including SELinux and support considerations.
 
 ## Prerequisites
 
@@ -25,31 +25,40 @@ sudo dnf update -y
 
 ## Step 2: Remove Conflicting Packages
 
-RHEL ships with Podman, which conflicts with Docker:
+Docker's official RHEL installation instructions require removing conflicting packages first:
 
 ```bash
 # Check for conflicting packages
+rpm -qa | grep -E 'docker|podman|runc'
 
-rpm -qa | grep -E 'docker|podman|containerd'
-
-# Remove podman and related tools (optional)
-sudo dnf remove -y podman podman-docker buildah skopeo 2>/dev/null
+# Remove packages that conflict with Docker CE
+sudo dnf remove -y \
+  docker \
+  docker-client \
+  docker-client-latest \
+  docker-common \
+  docker-latest \
+  docker-latest-logrotate \
+  docker-logrotate \
+  docker-engine \
+  podman \
+  runc
 
 # Verify removal
-rpm -qa | grep podman
+rpm -qa | grep -E 'docker|podman|runc'
 ```
 
 ## Step 3: Install Docker CE
 
-Docker provides a CentOS-compatible repository that works on RHEL:
+Docker provides an official RHEL repository:
 
 ```bash
 # Install prerequisites
 sudo dnf install -y dnf-plugins-core
 
-# Add Docker CE repository (uses CentOS repo, compatible with RHEL)
+# Add Docker CE repository for RHEL
 sudo dnf config-manager --add-repo \
-  https://download.docker.com/linux/centos/docker-ce.repo
+  https://download.docker.com/linux/rhel/docker-ce.repo
 
 # Install Docker CE
 sudo dnf install -y \
@@ -76,19 +85,17 @@ RHEL enforces SELinux by default:
 getenforce
 # Output: Enforcing
 
-# Docker's SELinux policy is installed automatically
-# Verify docker SELinux policy
-rpm -qa | grep container-selinux
-
-# For Portainer, use the :z volume mount label
-# This relabels the socket for container access
+# Portainer's official Docker installation instructions assume SELinux is disabled
+# On SELinux-enforcing hosts, run Portainer with --privileged
 ```
 
 ## Step 5: Configure firewalld
 
 ```bash
-# Add Portainer ports to firewalld
+# Add the Portainer UI port to firewalld
 sudo firewall-cmd --permanent --add-port=9443/tcp
+
+# Optional: open port 8000 if you plan to use Edge agents
 sudo firewall-cmd --permanent --add-port=8000/tcp
 sudo firewall-cmd --reload
 
@@ -102,15 +109,16 @@ sudo firewall-cmd --list-ports
 # Create data volume
 docker volume create portainer_data
 
-# Deploy Portainer CE with SELinux :z label
+# Deploy Portainer CE (use --privileged on SELinux-enforcing RHEL hosts)
 docker run -d \
   -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
   --restart=always \
-  -v /var/run/docker.sock:/var/run/docker.sock:z \
+  --privileged \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 
 # Verify
 docker ps | grep portainer
@@ -129,13 +137,13 @@ Navigate to the URL, accept the self-signed certificate warning, and create your
 
 ## RHEL Subscription and Docker CE
 
-Docker CE is not officially supported on RHEL with an active Red Hat subscription. Alternatives:
+Red Hat supports Podman as the native container engine on RHEL. Common options include:
 
 | Option | Notes |
 |---|---|
-| Docker CE (CentOS repo) | Works technically, not RH-supported |
-| Podman + podman-docker | RH-supported, Docker API compatible |
-| RHEL with Docker BE | Docker Inc. has an enterprise agreement |
+| Docker CE (Docker RHEL repo) | Uses Docker's upstream RHEL packages |
+| Podman + podman-docker | RH-supported, Docker CLI and socket compatibility with some limitations |
+| Portainer CE with Podman | Official Portainer alternative if you prefer the RHEL-native container engine |
 
 For production RHEL environments requiring support contracts, consider Podman:
 
@@ -152,9 +160,9 @@ docker ps  # Actually runs podman
 ```bash
 docker --version
 docker info
-curl -k https://localhost:9443/api/status
+curl -k https://localhost:9443
 ```
 
 ## Conclusion
 
-Docker CE runs reliably on RHEL 8 and 9 despite not being officially supported by Red Hat. The SELinux `:z` volume label is critical for allowing Portainer to access the Docker socket. For organizations requiring full RHEL support, consider using Podman with the podman-docker compatibility layer as an alternative to Docker CE.
+Docker CE runs on RHEL 8 and 9 using Docker's official RHEL packages. On SELinux-enforcing RHEL hosts, Portainer's official Docker installation guidance requires running the container with `--privileged`. For organizations that want the Red Hat-supported container stack, consider using Podman with the `podman-docker` compatibility layer as an alternative to Docker CE.
