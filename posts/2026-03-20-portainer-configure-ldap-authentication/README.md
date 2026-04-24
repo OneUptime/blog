@@ -8,7 +8,7 @@ Description: Configure LDAP authentication in Portainer to allow users to log in
 
 ## Introduction
 
-LDAP (Lightweight Directory Access Protocol) integration allows Portainer to authenticate users against your existing corporate directory (Active Directory, OpenLDAP, FreeIPA, etc.). Users log in with their existing credentials, and Portainer creates local accounts on first successful authentication. This guide covers the full LDAP configuration in Portainer.
+LDAP (Lightweight Directory Access Protocol) integration allows Portainer to authenticate users against your existing corporate directory (Active Directory, OpenLDAP, FreeIPA, etc.). Users log in with their existing credentials, and if automatic user provisioning is enabled, Portainer creates local accounts on first successful authentication. This guide covers the full LDAP configuration in Portainer.
 
 ## Prerequisites
 
@@ -38,9 +38,9 @@ Service Account Password: [service account password]
 
 ```sql
 LDAP Server: ldap.example.com:636
-Enable TLS: On (select "LDAPS")
-Skip TLS Verification: Off (verify cert, or On if using self-signed)
-TLS CA Certificate: [paste CA certificate PEM]
+Use TLS: On
+Skip verification of server certificate: Off (recommended; turn On only if you intentionally skip verification)
+TLS CA Certificate: [upload CA certificate]
 ```
 
 ## Step 3: Configure User Search Settings
@@ -62,7 +62,7 @@ User Filter: (objectClass=person)
 
 ```text
 Group Base DN: ou=groups,dc=example,dc=com
-Group Membership Attribute: memberOf
+Group Membership Attribute: member
 Group Filter: (objectClass=groupOfNames)
 ```
 
@@ -86,30 +86,29 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d '{
     "AuthenticationMethod": 2,
-    "ldapsettings": {
-      "Servers": [
-        {
-          "Host": "ldap.example.com",
-          "Port": 389,
-          "UseTLS": false,
-          "StartTLS": false,
-          "SkipVerify": false,
-          "Anonymous": false,
-          "ReaderDN": "cn=portainer-bind,ou=service-accounts,dc=example,dc=com",
-          "Password": "serviceaccountpassword"
-        }
+    "LDAPSettings": {
+      "URLs": [
+        "ldap.example.com:389"
       ],
+      "AnonymousMode": false,
+      "ReaderDN": "cn=portainer-bind,ou=service-accounts,dc=example,dc=com",
+      "Password": "serviceaccountpassword",
+      "StartTLS": false,
+      "TLSConfig": {
+        "TLS": false,
+        "TLSSkipVerify": false
+      },
       "SearchSettings": [
         {
           "BaseDN": "ou=users,dc=example,dc=com",
-          "Username": "uid",
+          "UserNameAttribute": "uid",
           "Filter": "(objectClass=inetOrgPerson)"
         }
       ],
       "GroupSearchSettings": [
         {
           "GroupBaseDN": "ou=groups,dc=example,dc=com",
-          "GroupAttribute": "memberOf",
+          "GroupAttribute": "member",
           "GroupFilter": "(objectClass=groupOfNames)"
         }
       ],
@@ -120,28 +119,40 @@ curl -X PUT \
 
 ## Step 6: Test the LDAP Configuration
 
-After saving, use the built-in test feature:
+After saving, use the built-in test features:
 
-1. In the LDAP settings page, find **Test LDAP connectivity**
-2. Enter a test username and password
-3. Click **Test** - Portainer will attempt to bind and search
+1. Click **Test connectivity** to validate the LDAP server connection
+2. In the **Test login** section, enter a test username and password
+3. Click **Test** - Portainer will attempt to authenticate the supplied user
 
 Via API:
 
 ```bash
-# Test LDAP with credentials
+# Test LDAP login
 curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/auth/ldap/check \
+  https://portainer.example.com/api/ldap/test \
   -d '{
-    "username": "testuser",
-    "password": "testpassword",
-    "ldapsettings": {
-      "Servers": [
+    "Username": "testuser",
+    "Password": "testpassword",
+    "LDAPSettings": {
+      "URLs": [
+        "ldap.example.com:389"
+      ],
+      "AnonymousMode": false,
+      "ReaderDN": "cn=portainer-bind,ou=service-accounts,dc=example,dc=com",
+      "Password": "serviceaccountpassword",
+      "StartTLS": false,
+      "TLSConfig": {
+        "TLS": false,
+        "TLSSkipVerify": false
+      },
+      "SearchSettings": [
         {
-          "Host": "ldap.example.com",
-          "Port": 389
+          "BaseDN": "ou=users,dc=example,dc=com",
+          "UserNameAttribute": "uid",
+          "Filter": "(objectClass=inetOrgPerson)"
         }
       ]
     }
@@ -155,13 +166,12 @@ Enable automatic user creation on first LDAP login:
 In the LDAP settings:
 ```sql
 Automatic user provisioning: Enabled
-Default Team: [select team for new LDAP users]
 ```
 
 When a user logs in for the first time via LDAP:
 1. Portainer verifies credentials against LDAP
 2. Creates a local user account in Portainer's database
-3. Assigns them to the default team (if configured)
+3. If group search is configured and LDAP group names match Portainer team names, assigns them to those teams
 4. Logs them in
 
 ## Directory Structure Example
@@ -189,4 +199,4 @@ mail: john.doe@example.com
 
 ## Conclusion
 
-LDAP integration brings Portainer into your existing identity management infrastructure. Users get single sign-on with their corporate credentials, and you manage access centrally in your directory. Combined with group-based team mapping (covered in the companion guide), LDAP provides a fully automated user lifecycle for Portainer access.
+LDAP integration brings Portainer into your existing identity management infrastructure. Users sign in with their corporate directory credentials, and you manage access centrally in your directory. Combined with group-based team mapping (covered in the companion guide), LDAP provides a more automated user lifecycle for Portainer access.
