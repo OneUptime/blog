@@ -35,6 +35,7 @@ for ep in json.load(sys.stdin):
 #!/usr/bin/env python3
 # promote.py
 
+import os
 import requests
 import sys
 import json
@@ -45,8 +46,8 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-PORTAINER_URL = "https://portainer.example.com"
-API_KEY = "your-api-key"
+PORTAINER_URL = os.getenv("PORTAINER_URL", "https://portainer.example.com")
+API_KEY = os.getenv("PORTAINER_API_KEY", "your-api-key")
 
 # Environment configuration
 ENVIRONMENTS = {
@@ -88,7 +89,7 @@ def get_stack(endpoint_id: int, stack_name: str) -> dict:
     """Get a stack by name from an endpoint."""
     resp = requests.get(
         f"{PORTAINER_URL}/api/stacks",
-        params={"endpointId": endpoint_id},
+        params={"filters": json.dumps({"EndpointID": str(endpoint_id)})},
         headers=headers
     )
     resp.raise_for_status()
@@ -135,8 +136,7 @@ def deploy_stack(endpoint_id: int, stack_name: str, compose_content: str,
             headers=headers,
             json={
                 "StackFileContent": updated_compose,
-                "Env": env_vars,
-                "Prune": True
+                "Env": env_vars
             }
         )
     else:
@@ -155,14 +155,14 @@ def deploy_stack(endpoint_id: int, stack_name: str, compose_content: str,
     return resp.json()
 
 
-def verify_deployment(endpoint_id: int, stack_name: str, timeout: int = 120) -> bool:
-    """Verify a deployment is healthy within timeout."""
+def verify_stack_active(endpoint_id: int, stack_name: str, timeout: int = 120) -> bool:
+    """Verify Portainer reports the stack as active within timeout."""
     start = time.time()
     
     while time.time() - start < timeout:
         stack = get_stack(endpoint_id, stack_name)
         if stack and stack.get('Status') == 1:
-            logger.info(f"Stack {stack_name} is running")
+            logger.info(f"Stack {stack_name} is active")
             return True
         time.sleep(10)
     
@@ -188,7 +188,7 @@ def promote(stack_name: str, from_env: str, to_env: str, image_tag: str):
     compose_content = get_stack_file(source_stack['Id'])
     
     # Deploy to target environment with target env vars
-    result = deploy_stack(
+    deploy_stack(
         endpoint_id=to_config['endpoint_id'],
         stack_name=stack_name,
         compose_content=compose_content,
@@ -196,14 +196,14 @@ def promote(stack_name: str, from_env: str, to_env: str, image_tag: str):
         image_tag=image_tag
     )
     
-    logger.info(f"Stack deployed to {to_env}, verifying...")
+    logger.info(f"Stack deployed to {to_env}, verifying stack status...")
     
-    # Verify deployment
-    if verify_deployment(to_config['endpoint_id'], stack_name):
+    # Verify the stack is active in Portainer
+    if verify_stack_active(to_config['endpoint_id'], stack_name):
         logger.info(f"Promotion to {to_env} successful!")
         return True
     else:
-        logger.error(f"Promotion to {to_env} failed - deployment not healthy")
+        logger.error(f"Promotion to {to_env} failed - stack did not become active")
         return False
 
 
@@ -229,29 +229,50 @@ on:
   push:
     branches: [main, staging, develop]
 
+env:
+  PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+  PORTAINER_API_KEY: ${{ secrets.PORTAINER_API_KEY }}
+
 jobs:
   deploy-dev:
     if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - name: Install dependencies
+        run: python3 -m pip install requests
       - name: Deploy to Development
-        run: python promote.py my-app development development ${{ github.sha }}
+        run: python3 promote.py my-app development development --image-tag ${{ github.sha }}
 
   promote-staging:
     if: github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - name: Install dependencies
+        run: python3 -m pip install requests
       - name: Promote to Staging
-        run: python promote.py my-app development staging ${{ github.sha }}
+        run: python3 promote.py my-app development staging --image-tag ${{ github.sha }}
 
   promote-production:
     if: github.ref == 'refs/heads/main'
-    needs: [promote-staging]
     runs-on: ubuntu-latest
-    environment: production  # Requires manual approval
+    environment: production  # Protection rules can require manual approval
     steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - name: Install dependencies
+        run: python3 -m pip install requests
       - name: Promote to Production
-        run: python promote.py my-app staging production ${{ github.sha }}
+        run: python3 promote.py my-app staging production --image-tag ${{ github.sha }}
 ```
 
 ## Conclusion
