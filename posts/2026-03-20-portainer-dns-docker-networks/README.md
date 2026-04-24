@@ -31,10 +31,10 @@ The default bridge network does NOT provide this DNS service - only custom netwo
 
 docker run -d \
   --name my-app \
-  --dns 1.1.1.1 \             # Primary DNS server
-  --dns 8.8.8.8 \             # Secondary DNS server
-  --dns-search example.com \  # DNS search domain
-  --dns-opt ndots:5 \         # DNS option
+  --dns 1.1.1.1 \
+  --dns 8.8.8.8 \
+  --dns-search example.com \
+  --dns-opt ndots:5 \
   nginx:alpine
 
 # Verify DNS configuration inside the container:
@@ -49,9 +49,8 @@ docker exec my-app cat /etc/resolv.conf
 
 1. Navigate to **Containers** → **Add container**.
 2. Scroll to **Advanced container settings**.
-3. Find the **DNS** section.
-4. Add DNS servers, search domains, and options.
-5. Click **Deploy the container**.
+3. In the **Network** section, set the **Primary DNS Server** and **Secondary DNS Server**.
+4. Click **Deploy the container**.
 
 ## Step 3: Set Default DNS in Docker Daemon
 
@@ -79,7 +78,13 @@ On custom bridge networks, use container names directly:
 docker network create app-network
 
 # Start a database:
-docker run -d --name postgres --network app-network postgres:15-alpine
+docker run -d \
+  --name postgres \
+  --network app-network \
+  -e POSTGRES_USER=user \
+  -e POSTGRES_PASSWORD=pass \
+  -e POSTGRES_DB=mydb \
+  postgres:15-alpine
 
 # Start an app that connects by name - Docker DNS resolves "postgres":
 docker run -d \
@@ -88,12 +93,11 @@ docker run -d \
   --env DATABASE_URL=postgresql://user:pass@postgres:5432/mydb \
   myorg/api:latest
 
-# Test DNS resolution from inside the container:
-docker exec api nslookup postgres
-# Server:     127.0.0.11
-# Address:    127.0.0.11:53
-# Name:   postgres
-# Address: 172.20.0.2
+# Test DNS resolution from a debugging container on the same network:
+docker run --rm --network app-network nicolaka/netshoot dig postgres
+# ;; SERVER: 127.0.0.11#53(127.0.0.11)
+# ;; ANSWER SECTION:
+# postgres.      600     IN      A       172.20.0.2
 ```
 
 ## Step 5: Container DNS Aliases
@@ -102,11 +106,11 @@ Aliases allow a container to be reachable by multiple names on a network:
 
 ```yaml
 # docker-compose.yml - DNS aliases
-version: "3.8"
-
 services:
   postgres:
     image: postgres:15-alpine
+    environment:
+      POSTGRES_PASSWORD: secret
     networks:
       backend:
         aliases:
@@ -131,8 +135,6 @@ For a self-hosted DNS resolver:
 
 ```yaml
 # docker-compose.yml - Pi-hole as network DNS
-version: "3.8"
-
 services:
   pihole:
     image: pihole/pihole:latest
@@ -145,7 +147,7 @@ services:
       - "53:53/udp"
       - "8080:80"
     environment:
-      - WEBPASSWORD=${PIHOLE_PASSWORD}
+      - FTLCONF_webserver_api_password=${PIHOLE_PASSWORD}
     volumes:
       - pihole_data:/etc/pihole
 
@@ -175,17 +177,16 @@ volumes:
 # Check what DNS a container is using:
 docker exec my-container cat /etc/resolv.conf
 
-# Test DNS resolution:
-docker exec my-container nslookup google.com
-docker exec my-container dig @127.0.0.11 postgres
+# Test DNS resolution from the same network using a debugging container:
+docker run --rm --network my-network nicolaka/netshoot dig google.com
 
 # Check if Docker's internal DNS is responding:
-docker exec my-container nslookup postgres 127.0.0.11
+docker run --rm --network my-network nicolaka/netshoot dig @127.0.0.11 postgres
 
 # DNS not resolving service names:
 # → Ensure both containers are on the same custom network (not default bridge)
 # → Check both containers are running:
-docker network inspect my-network | jq '.[].Containers | keys'
+docker network inspect my-network --format '{{range $id, $c := .Containers}}{{printf "%s\n" $c.Name}}{{end}}'
 ```
 
 ## Conclusion
