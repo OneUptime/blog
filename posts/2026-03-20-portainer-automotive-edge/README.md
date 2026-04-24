@@ -43,27 +43,9 @@ cat > /etc/docker/daemon.json << 'EOF'
 }
 EOF
 
-# Enable automatic recovery
+# Apply the Docker daemon configuration
 systemctl enable docker
-systemctl start docker
-
-# Configure system watchdog for container recovery
-cat > /etc/systemd/system/docker-watchdog.service << 'EOF'
-[Unit]
-Description=Docker watchdog
-After=docker.service
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/docker events --filter event=die --format "{{.Actor.Attributes.name}}" | while read name; do docker start $name; done
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl enable docker-watchdog
+systemctl restart docker
 ```
 
 ## Step 2: Register Automotive Edge Nodes
@@ -72,27 +54,27 @@ systemctl enable docker-watchdog
 #!/bin/bash
 # register-edge-node.sh
 NODE_TYPE=$1        # rsu, charging-station, dealership
-NODE_ID=$2          # Unique identifier
-LOCATION=$3         # GPS coordinates or address
+NODE_ID=$2          # Unique edge identifier (use the Portainer-generated Edge ID if enforced)
+LOCATION=$3         # Human-readable deployment location
 
-PORTAINER_EDGE_KEY="your-portainer-edge-key"
+PORTAINER_EDGE_KEY="your-portainer-edge-key"   # Generated in Portainer
 
-# Add location metadata via Docker labels
+# Create the environment in Portainer first so the key is already associated
+# with the correct Edge Groups and tags for this node type.
 docker run -d \
-  --name portainer-agent \
+  --name portainer_edge_agent \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v agent_data:/data \
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -v /:/host \
+  -v portainer_agent_data:/data \
   -e EDGE=1 \
-  -e EDGE_ID="${NODE_TYPE}-${NODE_ID}" \
+  -e EDGE_ID="$NODE_ID" \
   -e EDGE_KEY="$PORTAINER_EDGE_KEY" \
-  -e EDGE_SERVER_HOST="https://portainer.automotive.com:9443" \
-  -l "automotive.node.type=$NODE_TYPE" \
-  -l "automotive.node.id=$NODE_ID" \
-  -l "automotive.location=$LOCATION" \
-  portainer/agent:latest
+  portainer/agent:lts   # Match the agent tag to your Portainer Server release
+# Add -e EDGE_INSECURE_POLL=1 if Portainer uses a self-signed certificate.
 
-echo "Registered: $NODE_TYPE-$NODE_ID at $LOCATION"
+echo "Registered $NODE_TYPE node $NODE_ID at $LOCATION"
 ```
 
 ## Step 3: V2X Roadside Unit Stack
@@ -107,13 +89,14 @@ services:
     network_mode: host   # Direct access to V2X radio hardware
     privileged: true     # Hardware access for DSRC/CV2X interface
     environment:
-      - RSU_ID=${NODE_ID}
+      - RSU_ID=${PORTAINER_EDGE_ID}
       - GEOGRAPHIC_REGION=US
       - SECURITY_CREDENTIALS_PATH=/certs
       - MAP_DATA_URL=https://maps.transportation.gov/v2x
       - SPAT_CONTROLLER_IP=192.168.1.100
-    volumes:
+    devices:
       - /dev/dsrc:/dev/dsrc   # V2X radio device
+    volumes:
       - rsu-certs:/certs
       - rsu-data:/data
     labels:
@@ -123,7 +106,7 @@ services:
     image: automotive/traffic-analytics:v1.9
     restart: always
     environment:
-      - RSU_ID=${NODE_ID}
+      - RSU_ID=${PORTAINER_EDGE_ID}
       - CENTRAL_URL=https://traffic-ops.automotive.com
       - REPORTING_INTERVAL=60
       - VEHICLE_COUNT_ENABLED=true
@@ -158,7 +141,7 @@ services:
     ports:
       - "8080:8080"   # OCPP WebSocket
     environment:
-      - STATION_ID=${NODE_ID}
+      - STATION_ID=${PORTAINER_EDGE_ID}
       - CENTRAL_SYSTEM_URL=wss://csms.automotive.com/ocpp
       - MAX_CHARGING_POWER_KW=150
       - CONNECTOR_COUNT=4
@@ -212,10 +195,7 @@ services:
     volumes:
       - ota-packages:/data/packages
       - ota-cache:/data/cache
-    deploy:
-      resources:
-        limits:
-          memory: 2g
+    mem_limit: 2g
 
   vehicle-auth:
     image: automotive/vehicle-auth:v2.3
@@ -225,42 +205,82 @@ services:
       - VIN_VALIDATION=enabled
     volumes:
       - auth-data:/data
+
+volumes:
+  ota-packages:
+  ota-cache:
+  auth-data:
 ```
 
 ## Step 6: Fleet-Wide Deployment Management
 
 ```bash
 #!/bin/bash
-# deploy-to-fleet.sh - Update across all nodes by type
-NODE_TYPE=$1   # rsu, charging-station, dealership
-NEW_VERSION=$2
-PORTAINER_URL="https://portainer.automotive.com"
+# deploy-to-fleet.sh - Update an Edge Stack across all nodes in an Edge Group
+NODE_TYPE=$1    # rsu, charging-station, dealership
+STACK_NAME=$2   # Existing Portainer Edge Stack name
+STACK_FILE=$3   # Path to the updated compose file
+PORTAINER_URL="https://portainer.automotive.com:9443"
 API_KEY="fleet-ops-api-key"
 
-echo "Deploying $NEW_VERSION to all $NODE_TYPE nodes..."
+echo "Deploying $STACK_FILE to Edge Stack $STACK_NAME for $NODE_TYPE nodes..."
 
 # Get edge group for this node type
-EDGE_GROUP_ID=$(curl -s \
+EDGE_GROUP_ID=$(curl -fsS \
   -H "X-API-Key: $API_KEY" \
   "$PORTAINER_URL/api/edge_groups" | \
-  python3 -c "
+  NODE_TYPE="$NODE_TYPE" python3 -c "
+import os
 import sys, json
 groups = json.load(sys.stdin)
 for g in groups:
-    if g['Name'] == '$NODE_TYPE':
+    if g['Name'] == os.environ['NODE_TYPE']:
         print(g['Id'])
         break
 ")
 
-# Deploy update to edge group
-curl -s -X PUT \
+EDGE_STACK_ID=$(curl -fsS \
+  -H "X-API-Key: $API_KEY" \
+  "$PORTAINER_URL/api/edge_stacks" | \
+  STACK_NAME="$STACK_NAME" python3 -c "
+import os
+import sys, json
+stacks = json.load(sys.stdin)
+for s in stacks:
+    if s['Name'] == os.environ['STACK_NAME']:
+        print(s['Id'])
+        break
+")
+
+if [ -z "$EDGE_GROUP_ID" ] || [ -z "$EDGE_STACK_ID" ]; then
+  echo "Unable to find the Edge Group ($NODE_TYPE) or Edge Stack ($STACK_NAME)" >&2
+  exit 1
+fi
+
+PAYLOAD_FILE=$(mktemp)
+trap 'rm -f "$PAYLOAD_FILE"' EXIT
+
+python3 - "$STACK_FILE" "$EDGE_GROUP_ID" > "$PAYLOAD_FILE" <<'PY'
+import json, pathlib, sys
+
+stack_file = pathlib.Path(sys.argv[1])
+edge_group_id = int(sys.argv[2])
+
+payload = {
+    "StackFileContent": stack_file.read_text(),
+    "EdgeGroups": [edge_group_id],
+    "DeploymentType": 0,
+    "UpdateVersion": True,
+}
+
+print(json.dumps(payload))
+PY
+
+curl -fsS -X PUT \
   -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
-  -d "{
-    \"StackFileContent\": \"$(cat ${NODE_TYPE}/docker-compose.yml | python3 -c 'import sys; import json; content = sys.stdin.read().replace(\"v[0-9.]*\", \"$NEW_VERSION\"); print(json.dumps(content))')\",
-    \"EdgeGroups\": [$EDGE_GROUP_ID]
-  }" \
-  "$PORTAINER_URL/api/edge_stacks/1"
+  --data @"$PAYLOAD_FILE" \
+  "$PORTAINER_URL/api/edge_stacks/$EDGE_STACK_ID"
 
 echo "Deployment initiated for $NODE_TYPE fleet"
 ```
@@ -269,36 +289,35 @@ echo "Deployment initiated for $NODE_TYPE fleet"
 
 ```bash
 #!/bin/bash
-# fleet-health.sh - Monitor automotive edge fleet health
-PORTAINER_URL="https://portainer.automotive.com"
+# fleet-health.sh - Monitor automotive edge fleet health by Edge Group
+PORTAINER_URL="https://portainer.automotive.com:9443"
 API_KEY="monitoring-api-key"
 
 echo "=== Automotive Edge Fleet Health ==="
 echo "$(date)"
 
-# Get all edge environments grouped by type
-curl -s \
-  -H "X-API-Key: $API_KEY" \
-  "$PORTAINER_URL/api/endpoints?types=4" | \
-  python3 -c "
-import sys, json
-envs = json.load(sys.stdin)
-types = {}
-for e in envs:
-    name = e['Name']
-    node_type = name.split('-')[0] if '-' in name else 'unknown'
-    if node_type not in types:
-        types[node_type] = {'online': 0, 'offline': 0}
-    if e.get('Status') == 1:
-        types[node_type]['online'] += 1
-    else:
-        types[node_type]['offline'] += 1
+PORTAINER_URL="$PORTAINER_URL" API_KEY="$API_KEY" python3 <<'PY'
+import json
+import os
+import urllib.request
 
-for t, counts in sorted(types.items()):
-    total = counts['online'] + counts['offline']
-    pct = (counts['online'] / total * 100) if total > 0 else 0
-    print(f'{t}: {counts[\"online\"]}/{total} online ({pct:.1f}%)')
-"
+base = os.environ["PORTAINER_URL"].rstrip("/")
+headers = {"X-API-Key": os.environ["API_KEY"]}
+
+def get_json(path):
+    request = urllib.request.Request(f"{base}{path}", headers=headers)
+    with urllib.request.urlopen(request) as response:
+        return json.load(response)
+
+groups = get_json("/api/edge_groups")
+
+for group in sorted(groups, key=lambda item: item["Name"]):
+    envs = get_json(f"/api/endpoints?types=4&edgeGroupIds={group['Id']}")
+    online = sum(1 for env in envs if env.get("Status") == 1)
+    total = len(envs)
+    pct = (online / total * 100) if total > 0 else 0
+    print(f"{group['Name']}: {online}/{total} online ({pct:.1f}%)")
+PY
 ```
 
 ## Conclusion
