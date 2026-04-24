@@ -15,9 +15,9 @@ Pods get stuck in Pending state when their PVCs cannot bind to PersistentVolumes
 Navigate to: **Kubernetes > Volumes**
 
 PVC States:
-- **Bound**: Successfully attached to a PV
+- **Bound**: Successfully bound to a PV
 - **Pending**: Waiting for a PV to bind
-- **Released**: Was bound but the pod using it was deleted
+- **Lost**: Was bound, but the underlying PV is no longer available
 
 ## Step 2: Diagnose Pending PVCs
 
@@ -33,7 +33,7 @@ kubectl describe pvc db-data -n production | grep -A20 "Events:"
 # Common messages:
 # "no persistent volumes available for this claim"
 # "waiting for first consumer to be created"
-# "storageclass.storage.k8s.io "fast-ssd" not found"
+# 'storageclass.storage.k8s.io "fast-ssd" not found'
 ```
 
 ## Common Causes
@@ -46,8 +46,10 @@ kubectl get storageclass
 # NAME       PROVISIONER         ...
 
 # If "fast-ssd" isn't listed:
-# Option A: Change PVC to use an existing storage class
-kubectl patch pvc db-data -n production -p '{"spec":{"storageClassName":"standard"}}'
+# Option A: Update the PVC manifest to use an existing storage class,
+# then recreate the Pending claim
+kubectl delete pvc db-data -n production
+# Re-apply the manifest after setting spec.storageClassName: standard
 
 # Option B: Create the missing storage class
 cat << 'EOF' | kubectl apply -f -
@@ -55,7 +57,8 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: fast-ssd
-provisioner: kubernetes.io/aws-ebs  # Adjust for your provider
+provisioner: ebs.csi.aws.com  # Adjust for your provider
+volumeBindingMode: WaitForFirstConsumer
 parameters:
   type: gp3
   encrypted: "true"
@@ -94,7 +97,7 @@ EOF
 # PVC requested ReadWriteMany but PV only supports ReadWriteOnce
 # Common with cloud block storage (EBS, GCE PD)
 
-# Check available access modes per storage class:
+# Check supported access modes for your storage backend/driver:
 # ReadWriteOnce (RWO): One node at a time (block storage)
 # ReadWriteMany (RWX): Multiple nodes (NFS, EFS)
 # ReadOnlyMany (ROX): Multiple nodes, read-only
@@ -110,11 +113,11 @@ spec:
 
 ```bash
 # Some storage classes use volumeBindingMode: WaitForFirstConsumer
-# PVC stays Pending until a pod requests it
+# PVC can stay Pending until a Pod that uses it is created
 kubectl describe storageclass fast-ssd | grep VolumeBindingMode
 # VolumeBindingMode: WaitForFirstConsumer
 
-# This is normal behavior - PVC binds when pod is scheduled
+# This is normal behavior - binding starts after a Pod using the PVC is created and scheduled
 # Deploy the pod that uses the PVC and it should bind
 ```
 
