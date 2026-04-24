@@ -38,28 +38,23 @@ kubectl get crds | grep crossplane.io | head -10
 
 ## Step 2: Install Cloud Providers
 
-### AWS Provider
+### AWS Providers
 
 ```yaml
-# aws-provider.yaml - Install AWS Crossplane provider
+# aws-provider.yaml - Install the AWS S3 and RDS providers
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
-  name: provider-aws
+  name: provider-aws-s3
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-s3:v1.0.0
-  controllerConfigRef:
-    name: provider-aws-controller-config
+  package: xpkg.upbound.io/upbound/provider-aws-s3:v2.5.2
 ---
-apiVersion: pkg.crossplane.io/v1alpha1
-kind: ControllerConfig
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
 metadata:
-  name: provider-aws-controller-config
+  name: provider-aws-rds
 spec:
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
+  package: xpkg.upbound.io/upbound/provider-aws-rds:v2.5.3
 ```
 
 ```bash
@@ -72,18 +67,23 @@ kubectl get providers
 ### Configure AWS Credentials
 
 ```bash
+# Create AWS credentials file
+cat > aws-credentials.ini <<'EOF'
+[default]
+aws_access_key_id = AKIAIOSFODNN7EXAMPLE
+aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+EOF
+
 # Create AWS credentials secret
 kubectl create secret generic aws-credentials \
-  --from-literal=credentials="[default]
-aws_access_key_id = AKIAIOSFODNN7EXAMPLE
-aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" \
-  -n crossplane-system
+  --namespace crossplane-system \
+  --from-file=creds=./aws-credentials.ini
 ```
 
 ```yaml
 # aws-provider-config.yaml - Provider configuration
-apiVersion: aws.upbound.io/v1beta1
-kind: ProviderConfig
+apiVersion: aws.m.upbound.io/v1beta1
+kind: ClusterProviderConfig
 metadata:
   name: default
 spec:
@@ -92,20 +92,24 @@ spec:
     secretRef:
       namespace: crossplane-system
       name: aws-credentials
-      key: credentials
+      key: creds
 ```
 
 ## Step 3: Provision AWS Resources
 
 ### Create an S3 Bucket
 
+S3 bucket names must be globally unique, so this example uses `generateName` and a label selector for the versioning resource.
+
 ```yaml
 # s3-bucket.yaml - Provision S3 bucket via Crossplane
-apiVersion: s3.aws.upbound.io/v1beta1
+apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: Bucket
 metadata:
-  name: my-app-storage
   namespace: production
+  generateName: my-app-storage-
+  labels:
+    app.kubernetes.io/name: my-app-storage
 spec:
   forProvider:
     region: us-east-1
@@ -114,29 +118,32 @@ spec:
       managed-by: crossplane
   providerConfigRef:
     name: default
-  writeConnectionSecretToRef:
-    namespace: production
-    name: s3-connection-details
+    kind: ClusterProviderConfig
 ---
 # BucketVersioning
-apiVersion: s3.aws.upbound.io/v1beta1
+apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: BucketVersioning
 metadata:
+  namespace: production
   name: my-app-storage-versioning
 spec:
   forProvider:
-    bucketRef:
-      name: my-app-storage
+    bucketSelector:
+      matchLabels:
+        app.kubernetes.io/name: my-app-storage
     region: us-east-1
     versioningConfiguration:
-      - status: Enabled
+      status: Enabled
+  providerConfigRef:
+    name: default
+    kind: ClusterProviderConfig
 ```
 
 ### Create an RDS Database
 
 ```yaml
 # rds-instance.yaml - Provision RDS PostgreSQL via Crossplane
-apiVersion: rds.aws.upbound.io/v1beta1
+apiVersion: rds.aws.m.upbound.io/v1beta1
 kind: Instance
 metadata:
   name: production-db
@@ -144,43 +151,54 @@ metadata:
 spec:
   forProvider:
     region: us-east-1
-    dbInstanceClass: db.t3.medium
+    instanceClass: db.t3.medium
     engine: postgres
-    engineVersion: "16.1"
     allocatedStorage: 20
-    maxAllocatedStorage: 100
     storageType: gp3
-    multiAz: true
     username: dbadmin
+    autoGeneratePassword: true
+    passwordSecretRef:
+      name: production-db-password
+      key: password
     autoMinorVersionUpgrade: true
     backupRetentionPeriod: 7
-    skipFinalSnapshot: false
-    finalSnapshotIdentifier: production-db-final
+    publiclyAccessible: false
+    skipFinalSnapshot: true
     tags:
       environment: production
+      managed-by: crossplane
   writeConnectionSecretToRef:
-    namespace: production
     name: rds-connection
   providerConfigRef:
     name: default
+    kind: ClusterProviderConfig
 ```
+
+For non-default VPCs, also set `dbSubnetGroupName` and the relevant VPC security groups explicitly.
 
 ## Step 4: Create Composite Resources (XRDs)
 
 Crossplane's power comes from composites that bundle multiple resources:
 
 ```yaml
-# xrd-database.yaml - Composite Resource Definition
-apiVersion: apiextensions.crossplane.io/v1
+# xrd-database.yaml - Install the function, XRD, and Composition
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-patch-and-transform
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform:v0.8.2
+---
+apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: xpostgresqlinstances.database.example.com
+  name: postgresqlinstances.database.example.com
 spec:
+  scope: Namespaced
+  defaultCompositionRef:
+    name: postgresqlinstances.aws.database.example.com
   group: database.example.com
   names:
-    kind: XPostgreSQLInstance
-    plural: xpostgresqlinstances
-  claimNames:
     kind: PostgreSQLInstance
     plural: postgresqlinstances
   versions:
@@ -203,51 +221,112 @@ spec:
                     tier:
                       type: string
                       enum: [small, medium, large]
-                  required:
-                    - storageGB
-                    - tier
+                  required: [storageGB, tier]
+                writeConnectionSecretToRef:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+              required: [parameters]
 ---
 # composition.yaml - Composition (implementation)
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
-  name: xpostgresqlinstances.aws.database.example.com
+  name: postgresqlinstances.aws.database.example.com
   labels:
     provider: aws
 spec:
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
-    kind: XPostgreSQLInstance
-  resources:
-    - name: rdsInstance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-east-1
-            engine: postgres
-            engineVersion: "16.1"
-            multiAz: true
-            backupRetentionPeriod: 7
-      patches:
-        # Map tier to instance class
-        - type: CombineFromComposite
-          combine:
-            variables:
-              - fromFieldPath: spec.parameters.tier
-          toFieldPath: spec.forProvider.dbInstanceClass
-          policy:
-            fromFieldPath: Required
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.storageGB
-          toFieldPath: spec.forProvider.allocatedStorage
+    kind: PostgreSQLInstance
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        writeConnectionSecretToRef:
+          patches:
+            - type: FromCompositeFieldPath
+              fromFieldPath: spec.writeConnectionSecretToRef.name
+              toFieldPath: name
+        resources:
+          - name: rdsInstance
+            base:
+              apiVersion: rds.aws.m.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-east-1
+                  engine: postgres
+                  storageType: gp3
+                  username: dbadmin
+                  autoGeneratePassword: true
+                  passwordSecretRef:
+                    name: placeholder
+                    key: password
+                  backupRetentionPeriod: 7
+                  publiclyAccessible: false
+                  skipFinalSnapshot: true
+                providerConfigRef:
+                  name: default
+                  kind: ClusterProviderConfig
+                writeConnectionSecretToRef:
+                  name: placeholder
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.storageGB
+                toFieldPath: spec.forProvider.allocatedStorage
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.tier
+                toFieldPath: spec.forProvider.instanceClass
+                transforms:
+                  - type: map
+                    map:
+                      small: db.t3.small
+                      medium: db.t3.medium
+                      large: db.t3.large
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.passwordSecretRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-db-password"
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.writeConnectionSecretToRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-rds-details"
+            connectionDetails:
+              - name: username
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: username
+              - name: password
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: password
+              - name: endpoint
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: endpoint
+              - name: port
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: port
 ```
 
-## Step 5: Claim Composite Resources
+## Step 5: Provision Through the Composite API
 
 ```yaml
-# postgres-claim.yaml - Claim a PostgreSQL instance
+# postgres-instance.yaml - Request a PostgreSQL instance through the composite API
 apiVersion: database.example.com/v1alpha1
 kind: PostgreSQLInstance
 metadata:
@@ -257,32 +336,31 @@ spec:
   parameters:
     storageGB: 20
     tier: medium
-  compositionSelector:
-    matchLabels:
-      provider: aws
   writeConnectionSecretToRef:
     name: my-app-db-connection
 ```
 
 ## Step 6: Use Crossplane with Rancher Fleet
 
+Fleet deploys raw YAML manifests from Git repositories, so you typically commit the composite resource manifest alongside an optional `fleet.yaml` file.
+
 ```yaml
-# fleet-crossplane.yaml - Manage Crossplane resources with Fleet
-apiVersion: v1
-kind: ConfigMap
+# fleet.yaml - Bundle settings for Crossplane resources managed by Fleet
+defaultNamespace: production
+```
+
+```yaml
+# postgresqlinstance.yaml - Fleet applies this raw manifest from the same Git repo path
+apiVersion: database.example.com/v1alpha1
+kind: PostgreSQLInstance
 metadata:
-  name: database-claims
-  namespace: production
-data:
-  claim.yaml: |
-    apiVersion: database.example.com/v1alpha1
-    kind: PostgreSQLInstance
-    metadata:
-      name: team-db
-    spec:
-      parameters:
-        storageGB: 20
-        tier: small
+  name: team-db
+spec:
+  parameters:
+    storageGB: 20
+    tier: small
+  writeConnectionSecretToRef:
+    name: team-db-connection
 ```
 
 ## Conclusion
