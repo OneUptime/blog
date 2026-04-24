@@ -23,6 +23,9 @@ on: [push, pull_request]
 jobs:
   image-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -30,7 +33,7 @@ jobs:
         run: docker build -t myapp:${{ github.sha }} .
 
       - name: Run Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           image-ref: 'myapp:${{ github.sha }}'
           format: 'sarif'
@@ -39,7 +42,7 @@ jobs:
           exit-code: '1'    # Fail build on critical/high CVEs
 
       - name: Upload Trivy scan results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
@@ -49,58 +52,79 @@ jobs:
 
 ```bash
 #!/bin/bash
-# neuvector-scan.sh - Scan image with NeuVector
-NEUVECTOR_URL="${NEUVECTOR_URL}"
-IMAGE="$1"
-TAG="$2"
+# neuvector-scan.sh - Scan an image with the NeuVector controller REST API
+set -euo pipefail
 
-# Get auth token
+CONTROLLER="${NEUVECTOR_URL:?Set NEUVECTOR_URL to https://<controller>:10443}"
+USERNAME="${NEUVECTOR_USER:-admin}"
+PASSWORD="${NEUVECTOR_PASS:?Set NEUVECTOR_PASS}"
+IMAGE="${1:?Usage: $0 <repository> <tag> [registry] }"
+TAG="${2:?Usage: $0 <repository> <tag> [registry] }"
+REGISTRY="${3:-https://registry.example.com/}"
+REGISTRY_USERNAME="${REGISTRY_USERNAME:-}"
+REGISTRY_PASSWORD="${REGISTRY_PASSWORD:-}"
+BASE_IMAGE="${BASE_IMAGE:-}"
+
+AUTH_PAYLOAD=$(jq -n \
+  --arg user "${USERNAME}" \
+  --arg pass "${PASSWORD}" \
+  '{password: {username: $user, password: $pass}}')
+
 TOKEN=$(curl -s -k \
-  -X POST "${NEUVECTOR_URL}/auth" \
   -H "Content-Type: application/json" \
-  -d '{"password": {"username": "admin", "password": "${NEUVECTOR_PASS}"}}' \
-  | jq -r '.token.token')
+  -d "${AUTH_PAYLOAD}" \
+  "${CONTROLLER}/v1/auth" | jq -r '.token.token')
 
-# Submit scan request
-SCAN_ID=$(curl -s -k \
-  -X POST "${NEUVECTOR_URL}/v1/scan/image" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"request\": {
-      \"registry\": \"https://registry.example.com\",
-      \"repository\": \"${IMAGE}\",
-      \"tag\": \"${TAG}\"
+trap 'if [ -n "${TOKEN:-}" ]; then curl -s -k -X DELETE -H "X-Auth-Token: ${TOKEN}" "${CONTROLLER}/v1/auth" >/dev/null; fi' EXIT
+
+SCAN_PAYLOAD=$(jq -n \
+  --arg source "github" \
+  --arg user "${GITHUB_ACTOR:-ci}" \
+  --arg job "${GITHUB_JOB:-image-scan}" \
+  --arg workspace "${GITHUB_WORKSPACE:-$(pwd)}" \
+  --arg function "image-scan" \
+  --arg region "global" \
+  --arg registry "${REGISTRY}" \
+  --arg registryUser "${REGISTRY_USERNAME}" \
+  --arg registryPassword "${REGISTRY_PASSWORD}" \
+  --arg repository "${IMAGE}" \
+  --arg tag "${TAG}" \
+  --arg baseImage "${BASE_IMAGE}" \
+  '{
+    request: {
+      metadata: {
+        source: $source,
+        user: $user,
+        job: $job,
+        workspace: $workspace,
+        function: $function,
+        region: $region
+      },
+      registry: $registry,
+      username: $registryUser,
+      password: $registryPassword,
+      repository: $repository,
+      tag: $tag,
+      scan_layers: false,
+      base_image: $baseImage
     }
-  }" | jq -r '.token')
+  }')
 
-# Poll for results
-for i in $(seq 1 30); do
-  RESULT=$(curl -s -k \
-    -H "Authorization: Bearer ${TOKEN}" \
-    "${NEUVECTOR_URL}/v1/scan/image/${SCAN_ID}")
+RESULT=$(curl -s -k \
+  -H "Content-Type: application/json" \
+  -H "X-Auth-Token: ${TOKEN}" \
+  -d "${SCAN_PAYLOAD}" \
+  "${CONTROLLER}/v1/scan/repository")
 
-  STATUS=$(echo "${RESULT}" | jq -r '.report.status')
+CRITICAL=$(echo "${RESULT}" | jq '[.report.vulnerabilities[]? | select(.severity == "Critical")] | length')
+HIGH=$(echo "${RESULT}" | jq '[.report.vulnerabilities[]? | select(.severity == "High")] | length')
 
-  if [ "${STATUS}" = "finished" ]; then
-    # Count critical and high CVEs
-    CRITICAL=$(echo "${RESULT}" | jq '[.report.vuls[] | select(.severity == "Critical")] | length')
-    HIGH=$(echo "${RESULT}" | jq '[.report.vuls[] | select(.severity == "High")] | length')
+echo "Scan complete: Critical=${CRITICAL}, High=${HIGH}"
 
-    echo "Scan complete: Critical=${CRITICAL}, High=${HIGH}"
-
-    if [ "${CRITICAL}" -gt 0 ] || [ "${HIGH}" -gt 5 ]; then
-      echo "FAIL: Too many vulnerabilities (Critical: ${CRITICAL}, High: ${HIGH})"
-      exit 1
-    fi
-    exit 0
-  fi
-
-  sleep 10
-done
-
-echo "FAIL: Scan timed out"
-exit 1
+if [ "${CRITICAL}" -gt 0 ] || [ "${HIGH}" -gt 5 ]; then
+  echo "FAIL: Too many vulnerabilities (Critical: ${CRITICAL}, High: ${HIGH})"
+  exit 1
+fi
 ```
 
 ## Level 2: CIS Benchmark Scanning
@@ -108,49 +132,50 @@ exit 1
 ### Automated CIS Scans with Rancher
 
 ```yaml
-# Schedule weekly CIS benchmark scans
-apiVersion: cis.cattle.io/v1
-kind: ClusterScanBenchmark
+# Schedule a weekly CIS benchmark scan
+apiVersion: compliance.cattle.io/v1
+kind: ClusterScan
 metadata:
-  name: rke2-cis-hardened
-  namespace: cis-operator-system
+  name: weekly-compliance-scan
 spec:
-  clusterProvider: rke2
-  minKubernetesVersion: "1.24"
-  customBenchmarkConfigMapName: rke2-cis-1.23
----
-# Run scan weekly
-apiVersion: cis.cattle.io/v1
-kind: ScheduledClusterScan
-metadata:
-  name: weekly-cis-scan
-  namespace: cis-operator-system
-spec:
-  enabled: true
-  cronSchedule: "0 2 * * 0"   # Sunday 2 AM
-  scanConfig:
-    scanProfileName: rke2-cis-1.23-hardened
-  retentionCount: 12           # Keep 12 weeks of scans
+  scanProfileName: cis-1.10-profile
+  scheduledScanConfig:
+    cronSchedule: "0 2 * * 0"   # Sunday 2 AM
+    retentionCount: 12          # Keep 12 weeks of reports
 ```
 
 ### Export CIS Scan Results
 
 ```bash
 #!/bin/bash
-# export-cis-report.sh - Export and send CIS scan results
+# export-compliance-report.sh - Export and send Rancher compliance scan results
+set -euo pipefail
 
-CLUSTER_ID="$1"
+SCAN_NAME=$(
+  kubectl get clusterscans.compliance.cattle.io \
+    --sort-by=.status.lastRunTimestamp \
+    -o name | tail -n 1 | cut -d/ -f2
+)
 
-# Get the latest scan report
-SCAN_REPORT=$(kubectl get clusterscans -n cis-operator-system \
-  -o jsonpath='{.items[-1:].status.summary}')
+if [ -z "${SCAN_NAME}" ]; then
+  echo "FAIL: No compliance scans found"
+  exit 1
+fi
 
-PASS=$(echo "${SCAN_REPORT}" | jq -r '.pass')
-FAIL=$(echo "${SCAN_REPORT}" | jq -r '.fail')
-WARN=$(echo "${SCAN_REPORT}" | jq -r '.warn')
-TOTAL=$(echo "${SCAN_REPORT}" | jq -r '.total')
+SCAN_JSON=$(kubectl get clusterscans.compliance.cattle.io "${SCAN_NAME}" -o json)
+LAST_RUN_TIMESTAMP=$(echo "${SCAN_JSON}" | jq -r '.status.lastRunTimestamp')
 
-echo "CIS Scan Results: Pass=${PASS}, Fail=${FAIL}, Warn=${WARN}, Total=${TOTAL}"
+PASS=$(echo "${SCAN_JSON}" | jq -r '.status.summary.pass')
+FAIL=$(echo "${SCAN_JSON}" | jq -r '.status.summary.fail')
+WARN=$(echo "${SCAN_JSON}" | jq -r '.status.summary.warn')
+TOTAL=$(echo "${SCAN_JSON}" | jq -r '.status.summary.total')
+
+echo "Compliance Scan Results for ${SCAN_NAME}: Pass=${PASS}, Fail=${FAIL}, Warn=${WARN}, Total=${TOTAL}"
+
+if [ "${TOTAL}" -eq 0 ]; then
+  echo "FAIL: The latest compliance scan did not produce any results"
+  exit 1
+fi
 
 # Calculate pass percentage
 PASS_PCT=$(echo "scale=1; ${PASS} * 100 / ${TOTAL}" | bc)
@@ -158,107 +183,110 @@ PASS_PCT=$(echo "scale=1; ${PASS} * 100 / ${TOTAL}" | bc)
 # Alert if pass rate is below 90%
 if (( $(echo "${PASS_PCT} < 90" | bc -l) )); then
   curl -X POST "${SLACK_WEBHOOK}" \
-    -d "{\"text\": \":warning: CIS Scan: ${PASS_PCT}% pass rate (${FAIL} failures)\"}"
+    -H "Content-Type: application/json" \
+    -d "{\"text\":\":warning: Compliance scan ${SCAN_NAME}: ${PASS_PCT}% pass rate (${FAIL} failures)\"}"
 fi
 
-# Export full report as PDF (via Rancher UI API)
-curl -s -k \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "${RANCHER_URL}/v3/clusterscans/${SCAN_NAME}?action=download" \
-  -o "cis-report-$(date +%Y%m%d).pdf"
+REPORT_NAME=$(
+  kubectl get clusterscanreports.compliance.cattle.io -o json \
+    | jq -r --arg ts "${LAST_RUN_TIMESTAMP}" '.items[] | select(.spec.lastRunTimestamp == $ts) | .metadata.name' \
+    | tail -n 1
+)
+
+if [ -z "${REPORT_NAME}" ]; then
+  echo "FAIL: No ClusterScanReport matched the latest scan timestamp"
+  exit 1
+fi
+
+# Export the verbose report JSON from the latest ClusterScanReport
+kubectl get clusterscanreports.compliance.cattle.io "${REPORT_NAME}" -o json \
+  | jq -r '.spec.reportJSON | fromjson | .actual_value_map_data' \
+  | base64 -d | gunzip > "compliance-report-$(date +%Y%m%d).json"
 ```
 
 ## Level 3: Runtime Security with NeuVector
 
 ### Automated Policy Learning and Enforcement
 
-```bash
-#!/bin/bash
-# neuvector-enforce-mode.sh
-# Move groups from Learning to Monitor mode after 7 days
+NeuVector already supports automatic mode promotion for learned groups, so configure it through the init ConfigMap instead of patching groups with a custom script.
 
-NEUVECTOR_URL="${NEUVECTOR_URL}"
-DAYS_THRESHOLD=7
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: neuvector-init
+  namespace: neuvector   # Use the namespace where NeuVector is installed
+data:
+  sysinitcfg.yaml: |
+    always_reload: true
 
-TOKEN=$(curl -s -k \
-  -X POST "${NEUVECTOR_URL}/auth" \
-  -d '{"password": {"username": "admin", "password": "admin"}}' \
-  | jq -r '.token.token')
+    # Promote learned groups from Discover to Monitor after 7 days
+    Mode_Auto_D2M: true
+    Mode_Auto_D2M_Duration: 604800
 
-# Get all groups in Learning mode
-GROUPS=$(curl -s -k \
-  -H "Authorization: Bearer ${TOKEN}" \
-  "${NEUVECTOR_URL}/v1/group" \
-  | jq -r '.groups[] | select(.profile_mode == "discover") | .name')
-
-NOW=$(date +%s)
-
-for GROUP in ${GROUPS}; do
-  # Get group creation time
-  CREATED=$(curl -s -k \
-    -H "Authorization: Bearer ${TOKEN}" \
-    "${NEUVECTOR_URL}/v1/group/${GROUP}" \
-    | jq -r '.group.created_timestamp')
-
-  DAYS_OLD=$(( (NOW - CREATED) / 86400 ))
-
-  if [ "${DAYS_OLD}" -ge "${DAYS_THRESHOLD}" ]; then
-    echo "Moving ${GROUP} from discover to monitor mode (${DAYS_OLD} days old)"
-
-    # Switch to monitor mode
-    curl -s -k \
-      -X PATCH "${NEUVECTOR_URL}/v1/group/${GROUP}" \
-      -H "Authorization: Bearer ${TOKEN}" \
-      -H "Content-Type: application/json" \
-      -d '{"config": {"profile_mode": "monitor"}}' \
-      > /dev/null
-  fi
-done
+    # Promote quiet groups from Monitor to Protect after 14 days
+    Mode_Auto_M2P: true
+    Mode_Auto_M2P_Duration: 1209600
 ```
 
 ## Level 4: Kubernetes Audit Log Analysis
 
 ```yaml
-# Deploy Falco for audit log anomaly detection
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: falco
-  namespace: falco-system
-spec:
-  selector:
-    matchLabels:
-      app: falco
-  template:
-    spec:
-      hostPID: true
-      hostNetwork: true
-      containers:
-        - name: falco
-          image: falcosecurity/falco-no-driver:latest
-          securityContext:
-            privileged: true
-          args:
-            - /usr/bin/falco
-            - --cri
-            - /run/containerd/containerd.sock
-            - -K
-            - /var/run/secrets/kubernetes.io/serviceaccount/token
-            - -k
-            - https://$(KUBERNETES_SERVICE_HOST)
-            - --k8s-api-cert
-            - /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-          volumeMounts:
-            - mountPath: /host/var/run/docker.sock
-              name: docker-socket
-            - mountPath: /run/containerd/containerd.sock
-              name: containerd-socket
+# values-k8saudit.yaml for Helm-based Falco deployment
+driver:
+  enabled: false
+
+collectors:
+  enabled: false
+
+controller:
+  kind: deployment
+  deployment:
+    replicas: 1
+
+falcoctl:
+  artifact:
+    install:
+      enabled: true
+    follow:
+      enabled: true
+  config:
+    artifact:
+      install:
+        resolveDeps: true
+        refs: [k8saudit-rules:0.5]
+      follow:
+        refs: [k8saudit-rules:0.5]
+
+services:
+  - name: k8saudit-webhook
+    type: NodePort
+    ports:
+      - port: 9765
+        nodePort: 30007
+        protocol: TCP
+
+falco:
+  rules_files:
+    - /etc/falco/k8s_audit_rules.yaml
+    - /etc/falco/rules.d
+  plugins:
+    - name: k8saudit
+      library_path: libk8saudit.so
+      init_config: ""
+      open_params: "http://:9765/k8s-audit"
+    - name: json
+      library_path: libjson.so
+      init_config: ""
+  load_plugins: [k8saudit, json]
 ```
 
 ## Aggregated Security Dashboard
 
+For Rancher compliance scans, enable Rancher's built-in scan alerting for scheduled runs. The PrometheusRule below covers NeuVector exporter metrics.
+
 ```yaml
-# PrometheusRule to track security scan metrics
+# PrometheusRule for NeuVector exporter metrics
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -268,20 +296,20 @@ spec:
   groups:
     - name: security-scanning
       rules:
-        - alert: CriticalCVEFound
-          expr: neuvector_image_critical_vulnerabilities > 0
+        - alert: NeuVectorHighImageVulnerability
+          expr: sum(nv_image_vulnerabilityHigh) > 0
           for: 5m
-          labels:
-            severity: critical
-          annotations:
-            summary: "Critical CVE found in running container image"
-        - alert: CISScoreDropped
-          expr: cis_benchmark_pass_percentage < 90
-          for: 1h
           labels:
             severity: warning
           annotations:
-            summary: "CIS benchmark score dropped below 90%"
+            summary: "High-severity vulnerability found in scanned image"
+        - alert: NeuVectorHighRunningContainerVulnerability
+          expr: sum(nv_container_vulnerabilityHigh) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High-severity vulnerability found in running container"
 ```
 
 ## Conclusion
