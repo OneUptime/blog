@@ -14,7 +14,7 @@ Manually creating environments in Portainer is fine for small teams, but at scal
 
 - Portainer CE or BE with API access
 - `curl` and `jq` installed on your automation host
-- Docker hosts ready to be added as environments
+- Docker hosts running the Portainer Agent and reachable from the Portainer Server
 
 ## Step 1: Authenticate and Get a Token
 
@@ -44,22 +44,21 @@ register_environment() {
 
     RESPONSE=$(curl -s -X POST \
         -H "Authorization: Bearer $TOKEN" \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"Name\": \"$NAME\",
-            \"EndpointCreationType\": 2,
-            \"URL\": \"$AGENT_URL\",
-            \"PublicURL\": \"$AGENT_URL\"
-        }" \
+        --form "Name=$NAME" \
+        --form "EndpointCreationType=2" \
+        --form "URL=$AGENT_URL" \
+        --form "TLS=true" \
+        --form "TLSSkipVerify=true" \
+        --form "TLSSkipClientVerify=true" \
         "$PORTAINER_URL/api/endpoints")
 
-    ENDPOINT_ID=$(echo $RESPONSE | jq -r '.Id')
-    echo "Created environment: $NAME (ID: $ENDPOINT_ID)"
-    echo $ENDPOINT_ID
+    ENDPOINT_ID=$(jq -r '.Id' <<< "$RESPONSE")
+    echo "Created environment: $NAME (ID: $ENDPOINT_ID)" >&2
+    echo "$ENDPOINT_ID"
 }
 
 # Register a new environment
-ENV_ID=$(register_environment "production-web" "tcp://192.168.1.100:9001")
+ENV_ID=$(register_environment "production-web" "192.168.1.100:9001")
 ```
 
 ## Step 3: Create Docker Networks
@@ -69,7 +68,7 @@ ENV_ID=$(register_environment "production-web" "tcp://192.168.1.100:9001")
 create_network() {
     local ENDPOINT_ID=$1
     local NETWORK_NAME=$2
-    local DRIVER=${3:-"overlay"}
+    local DRIVER=${3:-"bridge"}
 
     curl -s -X POST \
         -H "Authorization: Bearer $TOKEN" \
@@ -77,7 +76,6 @@ create_network() {
         -d "{
             \"Name\": \"$NETWORK_NAME\",
             \"Driver\": \"$DRIVER\",
-            \"Attachable\": true,
             \"IPAM\": {
                 \"Driver\": \"default\"
             }
@@ -125,14 +123,13 @@ deploy_stack() {
     local STACK_NAME=$2
     local COMPOSE_FILE=$3
 
-    COMPOSE_CONTENT=$(cat $COMPOSE_FILE | python3 -c "import sys, json; print(json.dumps(sys.stdin.read()))")
+    COMPOSE_CONTENT=$(jq -Rs . < "$COMPOSE_FILE")
 
     curl -s -X POST \
         -H "Authorization: Bearer $TOKEN" \
         -H "Content-Type: application/json" \
         -d "{
             \"Name\": \"$STACK_NAME\",
-            \"SwarmID\": \"\",
             \"StackFileContent\": $COMPOSE_CONTENT,
             \"Env\": []
         }" \
@@ -194,21 +191,21 @@ create_team() {
 assign_team_to_env() {
     local ENDPOINT_ID=$1
     local TEAM_ID=$2
-    local ACCESS_LEVEL=${3:-2}  # 1=ReadOnly, 2=ReadWrite
+    local ROLE_ID=${3:-3}  # 1=Environment admin, 2=Helpdesk, 3=Standard user, 4=Read-only user
 
     curl -s -X PUT \
         -H "Authorization: Bearer $TOKEN" \
         -H "Content-Type: application/json" \
         -d "{
             \"TeamAccessPolicies\": {
-                \"$TEAM_ID\": {\"RoleId\": $ACCESS_LEVEL}
+                \"$TEAM_ID\": {\"RoleId\": $ROLE_ID}
             }
         }" \
         "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID"
 }
 
 TEAM_ID=$(create_team "devops-team")
-assign_team_to_env $ENV_ID $TEAM_ID 2
+assign_team_to_env $ENV_ID $TEAM_ID 3
 echo "Team assigned to environment"
 ```
 
@@ -221,7 +218,7 @@ set -euo pipefail
 
 PORTAINER_URL="https://portainer.example.com"
 ENV_NAME="${1:-new-environment}"
-AGENT_URL="${2:-tcp://192.168.1.200:9001}"
+AGENT_URL="${2:-192.168.1.200:9001}"
 
 # Authenticate
 TOKEN=$(curl -s -X POST \
