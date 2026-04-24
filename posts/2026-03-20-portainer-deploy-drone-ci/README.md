@@ -19,10 +19,11 @@ Drone CI is a container-native CI/CD platform where every pipeline step runs in 
 ## Step 1: Create OAuth Application
 
 For Gitea:
-1. Go to Gitea **Settings > Applications**
+1. Go to Gitea **User Settings > Applications**
 2. Create an OAuth2 application
-3. Authorization callback URL: `http://drone.example.com/login`
-4. Note the **Client ID** and **Client Secret**
+3. Authorization callback URL: `http://drone.example.com/login` (use the exact scheme and host configured for Drone)
+4. Enable **Confidential Client**
+5. Note the **Client ID** and **Client Secret**
 
 ## Deploy as a Stack
 
@@ -36,7 +37,7 @@ services:
     container_name: drone-server
     environment:
       # Gitea integration
-      - DRONE_GITEA_SERVER=http://gitea:3000
+      - DRONE_GITEA_SERVER=https://gitea.example.com
       - DRONE_GITEA_CLIENT_ID=your_gitea_client_id
       - DRONE_GITEA_CLIENT_SECRET=your_gitea_client_secret
       
@@ -141,24 +142,44 @@ steps:
         - push
 ```
 
-## Matrix Pipeline (Multiple Environments)
+## Multiple Pipelines (Multiple Environments)
 
 ```yaml
+---
 kind: pipeline
 type: docker
-name: test-matrix
+name: node-18
 
 steps:
   - name: test
-    image: node:${NODE_VERSION}-alpine
+    image: node:18-alpine
     commands:
+      - npm ci
       - npm test
 
-matrix:
-  NODE_VERSION:
-    - "18"
-    - "20"
-    - "22"
+---
+kind: pipeline
+type: docker
+name: node-20
+
+steps:
+  - name: test
+    image: node:20-alpine
+    commands:
+      - npm ci
+      - npm test
+
+---
+kind: pipeline
+type: docker
+name: node-22
+
+steps:
+  - name: test
+    image: node:22-alpine
+    commands:
+      - npm ci
+      - npm test
 ```
 
 ## Adding Secrets
