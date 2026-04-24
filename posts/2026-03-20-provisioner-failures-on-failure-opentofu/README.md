@@ -56,7 +56,7 @@ resource "aws_instance" "app" {
 
 ## Destroy-Time Provisioners and `on_failure`
 
-For destroy-time provisioners, `on_failure = fail` prevents the resource from being destroyed if the provisioner fails. Use `continue` to ensure cleanup always proceeds:
+For destroy-time provisioners, `on_failure = fail` prevents the resource from being destroyed if the provisioner fails. Use `continue` to let destruction proceed even if the provisioner fails:
 
 ```hcl
 resource "aws_instance" "app" {
@@ -119,11 +119,14 @@ After a failed apply, check for tainted resources:
 
 ```bash
 # List tainted resources in state
-
-tofu state list | xargs -I{} tofu state show {} | grep -A 5 "tainted"
-
-# Alternatively, use the newer show command
-tofu show -json | jq '.values.root_module.resources[] | select(.tainted == true)'
+tofu show -state -json | jq -r '
+  def resources(m):
+    (m.resources[]?),
+    (m.child_modules[]? | resources(.));
+  resources(.values.root_module)
+  | select(.tainted == true)
+  | .address
+'
 
 # Remove taint if you've fixed the issue externally
 tofu untaint aws_instance.web
