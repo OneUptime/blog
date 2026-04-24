@@ -22,7 +22,7 @@ Grafana (visualization)
 
 ## Prerequisites
 
-- Raspberry Pi 4 with 4GB RAM minimum
+- Raspberry Pi 4 with 4GB RAM minimum and a 64-bit OS
 - Docker installed
 - Portainer installed (see portainer-raspberry-pi-homelab)
 
@@ -31,16 +31,12 @@ Grafana (visualization)
 In Portainer: **Stacks → Add Stack → iot-stack**
 
 ```yaml
-version: "3.8"
-
 services:
   mosquitto:
     image: eclipse-mosquitto:latest
     restart: unless-stopped
     ports:
       - "1883:1883"     # MQTT
-      - "8883:8883"     # MQTT over TLS
-      - "9001:9001"     # WebSocket MQTT
     volumes:
       - mosquitto_data:/mosquitto/data
       - mosquitto_config:/mosquitto/config
@@ -113,11 +109,13 @@ mosquitto_passwd -c /mosquitto/config/passwd iot-user
 # Enter password when prompted
 ```
 
+Then restart the mosquitto container (or the full stack) in Portainer so the broker loads the new configuration file.
+
 ## Node-RED IoT Flow Example
 
-In Node-RED (`http://pi:1880`), create this flow:
+In Node-RED (`http://pi:1880`), install `node-red-contrib-influxdb` from **Menu → Manage palette → Install**, then create this flow:
 
-```javascript
+```text
 MQTT In (topic: sensors/temperature)
     ↓
 JSON Parse
@@ -127,12 +125,7 @@ Function (transform data)
 InfluxDB Out (bucket: iot, measurement: temperature)
 ```
 
-Or use Node-RED's built-in flow import:
-
-```json
-[{"id":"mqtt-in","type":"mqtt in","topic":"sensors/#","broker":"mosquitto","port":"1883"},
- {"id":"influxdb-out","type":"influxdb out","measurement":"sensor_data","database":"iot"}]
-```
+Node-RED flow imports are complete JSON exports rather than short two-node snippets. After you configure the MQTT broker and InfluxDB server nodes in the editor, use **Menu → Export** to save the full flow JSON and **Menu → Import** to reuse it. For InfluxDB 2.x, configure the InfluxDB node with the server URL (`http://influxdb:8086` inside the stack), organization (`homelab`), bucket (`iot`), and an API token from InfluxDB.
 
 ## Enabling GPIO Access for Pi
 
