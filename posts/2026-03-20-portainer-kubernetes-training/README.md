@@ -18,13 +18,13 @@ Kubernetes has a steep learning curve, with dozens of resource types, YAML manif
 # Use k3s for lightweight training clusters (one per trainee)
 
 # On each training VM:
-curl -sfL https://get.k3s.io | sh -
+curl -sfL https://get.k3s.io | K3S_KUBECONFIG_MODE="644" sh -
 
-# Get the kubeconfig
-sudo cat /etc/rancher/k3s/k3s.yaml
+# Use the cluster kubeconfig
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
 # Deploy Portainer
-kubectl apply -n portainer -f https://downloads.portainer.io/ce2-19/portainer.yaml
+kubectl apply -n portainer -f https://downloads.portainer.io/ce-lts/portainer.yaml
 kubectl get svc -n portainer portainer
 ```
 
@@ -50,10 +50,10 @@ done
 
 ### Exercise 1.1: Deploy Your First Pod
 
-In Portainer: **Kubernetes > Workloads > Add** (Application)
+In Portainer: **Kubernetes > Applications > Add with form**
 
 ```yaml
-# Or deploy via manifest (Portainer: Kubernetes > Manifests)
+# Or deploy via manifest (Portainer: Kubernetes > Applications > Create from code > Manifest)
 apiVersion: v1
 kind: Pod
 metadata:
@@ -130,7 +130,7 @@ spec:
 
 Exercise steps in Portainer:
 1. Deploy the manifest
-2. View the 3 pods in **Kubernetes > Workloads**
+2. View the application in **Kubernetes > Applications**, then inspect it to see the 3 pods
 3. Delete one pod manually - watch it recreate
 4. Scale to 5 replicas - observe new pods starting
 
@@ -140,7 +140,7 @@ Exercise steps in Portainer:
 # Trigger a rolling update
 kubectl set image deployment/web-deployment web=nginx:1.26-alpine -n training-alice
 
-# Watch in Portainer > Kubernetes > Workloads > web-deployment
+# Watch in Portainer > Kubernetes > Applications > web-deployment
 # Shows old pods terminating, new pods starting
 
 # Check rollout history
@@ -183,7 +183,7 @@ stringData:
 spec:
   containers:
   - name: app
-    image: myapp:latest
+    image: nginx:alpine
     envFrom:
     - configMapRef:
         name: app-config
@@ -191,7 +191,7 @@ spec:
         name: app-secrets
 ```
 
-In Portainer: **Kubernetes > Configuration > ConfigMaps/Secrets** - show that secret values are masked.
+In Portainer: **Kubernetes > ConfigMaps & Secrets** - show that secret values are masked.
 
 ## Module 4: Persistent Storage
 
@@ -279,19 +279,19 @@ NAMESPACE=$1
 echo "=== Training Progress for $NAMESPACE ==="
 
 echo "Deployments:"
-kubectl get deployments -n "$NAMESPACE" --no-headers | wc -l
+kubectl get deployments -n "$NAMESPACE" -o name | wc -l
 
 echo "Services:"
-kubectl get services -n "$NAMESPACE" --no-headers | grep -v kubernetes | wc -l
+kubectl get services -n "$NAMESPACE" -o name | grep -v '^service/kubernetes$' | wc -l
 
 echo "ConfigMaps:"
-kubectl get configmaps -n "$NAMESPACE" --no-headers | grep -v kube-root | wc -l
+kubectl get configmaps -n "$NAMESPACE" -o name | grep -v '^configmap/kube-root-ca\.crt$' | wc -l
 
 echo "Healthy pods:"
-kubectl get pods -n "$NAMESPACE" --field-selector status.phase=Running --no-headers | wc -l
+kubectl get pods -n "$NAMESPACE" --field-selector status.phase=Running -o name | wc -l
 
 echo "PVCs:"
-kubectl get pvc -n "$NAMESPACE" --no-headers | wc -l
+kubectl get pvc -n "$NAMESPACE" -o name | wc -l
 ```
 
 ## Conclusion
