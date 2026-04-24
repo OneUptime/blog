@@ -18,13 +18,13 @@ After deploying Helm charts in Portainer, you need visibility into what was depl
 ## Step 1: View Helm Release List
 
 1. Select your Kubernetes environment in Portainer
-2. Navigate to **Applications → Helm** or look for Helm releases in the Applications section
+2. Navigate to **Applications** and select the Helm application you want to inspect
 
 The release list shows:
 
 ```text
 RELEASE         NAMESPACE     CHART                    VERSION   STATUS     AGE
-nginx-ingress   ingress-nginx nginx-ingress-controller  4.8.0    deployed   3d
+nginx-ingress   ingress-nginx ingress-nginx            4.8.0    deployed   3d
 prometheus      monitoring    kube-prometheus-stack     54.0.0   deployed   7d
 cert-manager    cert-manager  cert-manager              v1.13.2  deployed   30d
 my-app          production    my-app-chart              1.2.0    deployed   1d
@@ -37,7 +37,7 @@ Click on a release name to see detailed information:
 ```text
 Release: nginx-ingress
 ──────────────────────────────────────────────────
-Chart:          nginx-ingress-controller-4.8.0
+Chart:          ingress-nginx-4.8.0
 Status:         deployed
 Revision:       3
 Last deployed:  2024-01-15 10:00:00
@@ -47,25 +47,20 @@ App version:    1.9.4
 
 ## Step 3: View Release Notes
 
-Helm chart notes appear after deployment and provide important post-install instructions:
+Helm chart notes appear after deployment and provide important post-install instructions.
+
+In Portainer, open the **Notes** tab for the release:
 
 ```bash
-NOTES:
-The nginx-ingress-controller has been installed.
-
-Get the application URL by running these commands:
-  export SERVICE_IP=$(kubectl get svc nginx-ingress-nginx-ingress-controller \
-    -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-  echo "Visit http://$SERVICE_IP to access your application"
-
-WARNING: Kubernetes v1.18+ uses `networking.k8s.io/v1` for Ingress resources.
+# CLI equivalent
+helm get notes nginx-ingress --namespace ingress-nginx
 ```
 
 ## Step 4: View Current Values
 
 See the values used to deploy the chart:
 
-In Portainer, click **Values** or **User supplied values** tab:
+In Portainer, open the **Values** tab. Use **User defined only** if you want to limit the view to explicitly supplied values:
 
 ```yaml
 replicaCount: 2
@@ -89,21 +84,15 @@ helm get values nginx-ingress --namespace ingress-nginx --all
 
 ## Step 5: View Chart Default Values
 
-See all configurable values with their defaults:
+Portainer's inspect view focuses on deployed values. To inspect the chart's default values, use the Helm CLI:
 
 ```bash
-# Show all chart values (not release-specific)
-helm show values bitnami/nginx-ingress-controller
+# Add the chart repository locally if you have not already
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
 
-# Output excerpt:
-# ## @section Global parameters
-# global:
-#   imageRegistry: ""
-#   imagePullSecrets: []
-#   storageClass: ""
-#
-# replicaCount: 1
-# ...
+# Show all chart values (not release-specific)
+helm show values ingress-nginx/ingress-nginx
 ```
 
 ## Step 6: View Generated Manifests
@@ -117,7 +106,7 @@ helm get manifest nginx-ingress --namespace ingress-nginx
 # Output: all the YAML that was applied to the cluster
 ```
 
-In Portainer, click on individual resources from the release detail to see their YAML.
+In Portainer, open the **Manifest** tab to see the rendered manifest for the release. The **Resources** tab lets you drill into supported resource types.
 
 ## Step 7: View Release History
 
@@ -127,10 +116,10 @@ See all revisions of the release:
 helm history nginx-ingress --namespace ingress-nginx
 
 # Output:
-# REVISION  UPDATED                  STATUS     CHART                      DESCRIPTION
-# 1         2024-01-10 09:00:00      superseded nginx-ingress-c-4.7.0      Install complete
-# 2         2024-01-12 14:00:00      superseded nginx-ingress-c-4.7.0      Upgrade complete
-# 3         2024-01-15 10:00:00      deployed   nginx-ingress-c-4.8.0      Upgrade complete
+# REVISION  UPDATED                  STATUS       CHART               DESCRIPTION
+# 1         2024-01-10 09:00:00      superseded   ingress-nginx-4.7.0 Install complete
+# 2         2024-01-12 14:00:00      superseded   ingress-nginx-4.7.0 Upgrade complete
+# 3         2024-01-15 10:00:00      deployed     ingress-nginx-4.8.0 Upgrade complete
 ```
 
 ## Step 8: Compare Values Between Revisions
@@ -139,39 +128,36 @@ helm history nginx-ingress --namespace ingress-nginx
 # Get values from a specific revision
 helm get values nginx-ingress --revision 2 --namespace ingress-nginx
 
-# Diff between revisions (use helm diff plugin)
+# Diff between revisions (requires the separately installed helm-diff plugin)
 helm diff revision nginx-ingress 2 3 --namespace ingress-nginx
 ```
 
 ## Step 9: View Kubernetes Resources Created by the Chart
 
-In Portainer, navigate to the namespace and filter by Helm release labels:
+In Portainer, open the **Resources** tab to see the resources that currently make up the Helm deployment:
 
 ```bash
-# CLI: See all resources in a release
-helm get manifest nginx-ingress -n ingress-nginx | grep "^kind:"
+# CLI: Inspect the rendered resources in the release manifest
+helm get manifest nginx-ingress -n ingress-nginx
 
-# Or use kubectl with Helm labels
-kubectl get all -n ingress-nginx \
+# Many charts also apply recommended Kubernetes app labels, which can help
+# you query live namespaced objects for a release
+kubectl get deploy,svc,pod,cm,secret,ingress -n ingress-nginx \
   -l "app.kubernetes.io/instance=nginx-ingress"
 ```
 
-## Step 10: Inspect Chart README and Schema
+## Step 10: Inspect Chart README and Metadata
 
 ```bash
 # View chart README
-helm show readme bitnami/nginx-ingress-controller
+helm show readme ingress-nginx/ingress-nginx
 
-# View chart values schema (if provided)
-helm show chart bitnami/nginx-ingress-controller
+# View chart metadata from Chart.yaml
+helm show chart ingress-nginx/ingress-nginx
 
-# Get chart metadata
-helm inspect chart bitnami/nginx-ingress-controller
-# Output:
-# apiVersion: v2
-# appVersion: 1.9.4
-# description: NGINX Ingress Controller...
-# version: 4.8.0
+# If the chart ships a values.schema.json file, pull the chart and inspect it directly
+helm pull ingress-nginx/ingress-nginx --untar
+if [ -f ingress-nginx/values.schema.json ]; then cat ingress-nginx/values.schema.json; fi
 ```
 
 ## Step 11: Check for Chart Updates
@@ -181,15 +167,15 @@ helm inspect chart bitnami/nginx-ingress-controller
 helm repo update
 
 # Search for newer versions
-helm search repo bitnami/nginx-ingress-controller --versions | head -5
+helm search repo ingress-nginx/ingress-nginx --versions | head -5
 
 # Check if installed chart has updates available
 helm list --namespace ingress-nginx | grep nginx-ingress
 # Compare CHART column with latest from search
 ```
 
-In Portainer, check the chart version in the release details and compare with the latest in the repository.
+In Portainer, the release details show the current chart version, and the **Edit/Upgrade** screen can refresh the list of available versions from the chart source.
 
 ## Conclusion
 
-Portainer provides accessible views of Helm release details that would otherwise require multiple kubectl and helm commands. Use the release detail view to understand what's deployed, check values to understand configuration, and monitor release history for audit purposes. For complex chart inspection needs (schema, README, value schema), the Helm CLI remains the most comprehensive tool.
+Portainer provides accessible views of Helm release details that would otherwise require multiple kubectl and helm commands. Use the release detail view to understand what's deployed, check values to understand configuration, and monitor release history for audit purposes. For complex chart inspection needs such as chart metadata, README content, or raw chart files like `values.schema.json`, the Helm CLI remains the most comprehensive tool.
