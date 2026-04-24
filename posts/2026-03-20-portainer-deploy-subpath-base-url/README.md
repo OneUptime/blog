@@ -23,22 +23,21 @@ By default, Portainer expects to be served at the root (`/`) of a domain. In env
 
 docker run -d \
   --name portainer \
+  --network proxy \
   --restart always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
   --http-enabled \
   --base-url=/portainer \
-  --trusted-origins=https://example.com
+  --trusted-origins=example.com
 ```
 
-Note: The `--trusted-origins` value is `https://example.com` (just the origin, not `https://example.com/portainer`).
+Note: The `--trusted-origins` value is `example.com` (just the domain, not `https://example.com` or `https://example.com/portainer`). This example assumes your reverse proxy shares a Docker network named `proxy` with the Portainer container.
 
 ### Docker Compose
 
 ```yaml
-version: "3.8"
-
 services:
   portainer:
     image: portainer/portainer-ce:latest
@@ -50,7 +49,7 @@ services:
     command:
       - "--http-enabled"
       - "--base-url=/portainer"
-      - "--trusted-origins=https://example.com"
+      - "--trusted-origins=example.com"
     networks:
       - proxy
 
@@ -64,19 +63,20 @@ networks:
 
 ## Step 2: Configure Nginx Path Proxying
 
-When using a subpath, Nginx must proxy requests **without stripping** the `/portainer` prefix, since Portainer now expects it:
+When using a subpath, Nginx must proxy requests **while stripping** the `/portainer` prefix before forwarding them to Portainer:
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate /etc/nginx/certs/fullchain.pem;
     ssl_certificate_key /etc/nginx/certs/privkey.pem;
 
-    # Proxy /portainer/* to Portainer (preserve the /portainer prefix)
+    # Proxy /portainer/* to Portainer (strip the /portainer prefix)
     location /portainer/ {
-        proxy_pass http://portainer:9000/portainer/;
+        proxy_pass http://portainer:9000/;
 
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -93,7 +93,7 @@ server {
 
 ## Step 3: Configure Traefik Path Routing
 
-With Traefik, use a PathPrefix rule and ensure the path is NOT stripped (since Portainer expects the prefix):
+With Traefik, use a PathPrefix rule and StripPrefix middleware so requests reach Portainer without the `/portainer` prefix:
 
 ```yaml
   portainer:
@@ -101,15 +101,16 @@ With Traefik, use a PathPrefix rule and ensure the path is NOT stripped (since P
     command:
       - "--http-enabled"
       - "--base-url=/portainer"
-      - "--trusted-origins=https://example.com"
+      - "--trusted-origins=example.com"
     labels:
       - "traefik.enable=true"
       # Match requests that start with /portainer
       - "traefik.http.routers.portainer.rule=Host(`example.com`) && PathPrefix(`/portainer`)"
       - "traefik.http.routers.portainer.entrypoints=websecure"
       - "traefik.http.routers.portainer.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.portainer.middlewares=portainer-strip"
+      - "traefik.http.middlewares.portainer-strip.stripprefix.prefixes=/portainer"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
-      # Do NOT use StripPrefix middleware - Portainer needs the /portainer prefix
 ```
 
 ## Verifying the Setup
@@ -133,12 +134,12 @@ If the page loads but CSS/JS is missing, the browser is requesting assets from t
 
 ### Redirect Loop
 
-If Portainer redirects to `/portainer/portainer/`, the path prefix is being doubled. Check that neither Nginx nor Traefik is stripping the prefix before forwarding.
+If Portainer redirects to `/portainer/portainer/`, the path prefix is being doubled. Check that your proxy is stripping the prefix exactly once before forwarding.
 
 ### Login Page Redirects to Wrong URL
 
-Ensure `--trusted-origins` is set to the origin (`https://example.com`) and not the full path.
+Ensure `--trusted-origins` is set to the domain (`example.com`) and not a full URL or path.
 
 ## Conclusion
 
-The `--base-url` flag makes Portainer fully subpath-aware, allowing it to coexist with other services on the same domain. The key is to ensure your reverse proxy forwards the full path including the subpath prefix, and that `--trusted-origins` is set to the origin (domain) rather than the full URL.
+The `--base-url` flag makes Portainer subpath-aware, allowing it to coexist with other services on the same domain. The key is to ensure your reverse proxy strips the subpath before forwarding requests to Portainer, and that `--trusted-origins` is set to the domain rather than the full URL.
