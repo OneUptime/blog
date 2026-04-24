@@ -8,7 +8,7 @@ Description: Learn how to manage environment variables for Docker Compose stacks
 
 ## Introduction
 
-Environment variables are the standard mechanism for configuring Docker applications without hardcoding values in images or Compose files. In Portainer, stack environment variables serve a dual purpose: they substitute `${VARIABLE}` placeholders in your Compose YAML (configuring the stack structure itself), and they are passed directly to containers as runtime environment. Managing these correctly is critical for security - secrets should never be committed to Git.
+Environment variables are the standard mechanism for configuring Docker applications without hardcoding values in images or Compose files. In Portainer, stack environment variables are primarily used to substitute `${VARIABLE}` placeholders in your Compose YAML. Containers receive those values only when you reference them in a service's `environment:` section or, on Docker Standalone and Podman, through `env_file: - stack.env`. Managing these correctly is critical for security - secrets should never be committed to Git.
 
 ## Prerequisites
 
@@ -17,11 +17,11 @@ Environment variables are the standard mechanism for configuring Docker applicat
 
 ## How Stack Variables Work in Portainer
 
-Portainer stack environment variables are used for two levels of substitution:
+Portainer stack environment variables can affect your stack in two ways, depending on how you reference them:
 
 1. **Compose-level substitution**: `${DB_PORT}` in the Compose YAML becomes the actual value before Docker processes it. Used for image tags, port numbers, network names.
 
-2. **Container-level injection**: Variables in the `environment:` section of a service are passed directly to the container process.
+2. **Container-level injection**: If you reference a variable in the `environment:` section of a service, the resulting value is passed to the container process. On Docker Standalone and Podman, you can also use `env_file: - stack.env`, but Docker Swarm does not support `env_file` with `docker stack deploy`.
 
 ```yaml
 # Both substitution types in one Compose file:
@@ -48,8 +48,6 @@ services:
 ## Step 2: Variable Reference in Compose Files
 
 ```yaml
-version: "3.8"
-
 services:
   # Image tag controlled by variable
   web:
@@ -98,12 +96,12 @@ Stack: myapp-staging
   NGINX_VERSION=alpine
 ```
 
-## Step 4: Use Advanced Mode (Paste env Format)
+## Step 4: Load Variables from a `.env` File
 
-Instead of adding variables one by one, use Advanced mode to paste them all:
+Instead of adding variables one by one, use **Load variables from .env file** to upload them all:
 
-1. Click **Advanced mode** in the Environment variables section.
-2. Paste in `KEY=VALUE` format:
+1. Click **Load variables from .env file** in the Environment variables section.
+2. Upload a file in `KEY=VALUE` format:
 
 ```text
 IMAGE_TAG=v1.2.3
@@ -118,7 +116,7 @@ REDIS_HOST=redis
 LOG_LEVEL=info
 ```
 
-3. Click **Simple mode** to verify each variable was parsed correctly.
+3. Review the imported variables, then deploy or update the stack.
 
 ## Step 5: Update Variables on an Existing Stack
 
@@ -128,7 +126,7 @@ To update environment variables without changing the Compose content:
 2. Scroll to the **Environment variables** section.
 3. Modify, add, or remove variables.
 4. Click **Update the stack**.
-5. All services restart with the new variable values.
+5. Services that use those values are recreated or redeployed with the new variable values.
 
 ## Step 6: Reference Variables in Stack Names and Labels
 
@@ -158,10 +156,11 @@ Never hardcode secrets in Compose files. Best practices:
 # 1. In Compose file: use a placeholder
 #    - DB_PASSWORD=${DB_PASSWORD}
 
-# 2. In Portainer: set the actual value in the stack variables
+# 2. If the application only supports environment variables,
+#    set the actual value in Portainer stack variables
 #    DB_PASSWORD = <actual secret>
 
-# 3. For Swarm: use Docker secrets instead:
+# 3. Where supported, prefer Docker secrets instead:
 secrets:
   db_password:
     external: true
@@ -176,4 +175,4 @@ services:
 
 ## Conclusion
 
-Environment variables in Portainer stacks provide a clean separation between configuration structure (in the Compose file, safely committed to Git) and configuration values (set in Portainer, where secrets stay out of version control). Use `${VARIABLE:-default}` syntax for optional settings with sensible defaults, and always set passwords, API keys, and tokens via Portainer's environment variable UI rather than hardcoding them. The Advanced mode paste interface makes it efficient to manage many variables at once.
+Environment variables in Portainer stacks provide a clean separation between configuration structure (in the Compose file, safely committed to Git) and configuration values (set in Portainer, where secrets stay out of version control). Use `${VARIABLE:-default}` syntax for optional settings with sensible defaults, and prefer Docker secrets for passwords, API keys, and tokens when your images support them. If you must use environment variables for sensitive values, set them in Portainer rather than hardcoding them. Uploading a `.env` file makes it efficient to manage many variables at once.
