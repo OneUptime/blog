@@ -8,26 +8,24 @@ Description: A guide to automating compliance reporting in Rancher for CIS bench
 
 ## Overview
 
-Compliance reporting is a critical requirement for organizations in regulated industries. Manually generating compliance reports is time-consuming and error-prone. Rancher provides built-in CIS scanning capabilities, and combined with NeuVector's compliance features and custom reporting scripts, you can automate the generation, aggregation, and distribution of compliance reports. This guide covers building an automated compliance reporting pipeline.
+Compliance reporting is a critical requirement for organizations in regulated industries. Manually generating compliance reports is time-consuming and error-prone. Rancher provides compliance scanning capabilities through the `rancher-compliance` app, and combined with NeuVector's compliance features and custom reporting scripts, you can automate the generation, aggregation, and distribution of compliance reports. This guide covers building an automated compliance reporting pipeline.
 
 ## Automated CIS Benchmark Reports
 
 ### Schedule Recurring CIS Scans
 
 ```yaml
-# Schedule CIS scans for all clusters
+# Schedule recurring compliance scans for an RKE2 cluster
 
-apiVersion: cis.cattle.io/v1
-kind: ScheduledClusterScan
+apiVersion: compliance.cattle.io/v1
+kind: ClusterScan
 metadata:
   name: monthly-compliance-scan
-  namespace: cis-operator-system
 spec:
-  enabled: true
-  cronSchedule: "0 1 1 * *"   # Monthly on the 1st
-  scanConfig:
-    scanProfileName: rke2-cis-1.23-hardened
-  retentionCount: 13    # 13 months for annual comparison
+  scanProfileName: rke2-cis-1.11-profile   # Example built-in profile for RKE2 1.29+
+  scheduledScanConfig:
+    cronSchedule: "0 1 1 * *"   # Monthly on the 1st
+    retentionCount: 13          # 13 months for annual comparison
 ```
 
 ### Collect and Aggregate CIS Results
@@ -41,9 +39,9 @@ import datetime
 from typing import List, Dict
 
 def get_scan_results() -> List[Dict]:
-    """Get CIS scan results from all clusters"""
+    """Get compliance scan results from the current cluster"""
     result = subprocess.run(
-        ['kubectl', 'get', 'clusterscans', '-A',
+        ['kubectl', 'get', 'clusterscans',
          '-o', 'json'],
         capture_output=True, text=True, check=True
     )
@@ -62,11 +60,11 @@ Generated: {today}
 
 """
     total_pass = 0
-    total_fail = 0
-    cluster_results = []
+    total_tests = 0
+    scan_results = []
 
     for scan in scans:
-        cluster_name = scan.get('metadata', {}).get('namespace', 'unknown')
+        scan_name = scan.get('metadata', {}).get('name', 'unknown')
         summary = scan.get('status', {}).get('summary', {})
 
         if summary:
@@ -78,12 +76,12 @@ Generated: {today}
             pass_pct = (pass_count / total * 100) if total > 0 else 0
 
             total_pass += pass_count
-            total_fail += fail_count
+            total_tests += total
 
             status_emoji = "✅" if pass_pct >= 90 else "⚠️" if pass_pct >= 80 else "❌"
 
-            cluster_results.append({
-                'name': cluster_name,
+            scan_results.append({
+                'name': scan_name,
                 'pass': pass_count,
                 'fail': fail_count,
                 'warn': warn_count,
@@ -93,25 +91,36 @@ Generated: {today}
             })
 
     # Summary table
-    report += "| Cluster | Pass | Fail | Warn | Pass % | Status |\n"
-    report += "|---------|------|------|------|--------|--------|\n"
+    report += "| Scan | Pass | Fail | Warn | Pass % | Status |\n"
+    report += "|------|------|------|------|--------|--------|\n"
 
-    for cr in cluster_results:
-        report += f"| {cr['name']} | {cr['pass']} | {cr['fail']} | {cr['warn']} | {cr['pass_pct']:.1f}% | {cr['status']} |\n"
+    for sr in scan_results:
+        report += f"| {sr['name']} | {sr['pass']} | {sr['fail']} | {sr['warn']} | {sr['pass_pct']:.1f}% | {sr['status']} |\n"
 
-    overall_total = total_pass + total_fail
-    overall_pct = (total_pass / overall_total * 100) if overall_total > 0 else 0
+    overall_pct = (total_pass / total_tests * 100) if total_tests > 0 else 0
 
     report += f"\n**Overall Pass Rate: {overall_pct:.1f}%**\n"
 
     return report
 
 
-def get_failed_controls(scan) -> List[str]:
-    """Extract list of failed CIS controls"""
+def get_failed_controls(report: Dict) -> List[str]:
+    """Extract failed CIS controls from a ClusterScanReport"""
     failed = []
-    results = scan.get('status', {}).get('lastRunScanStats', {})
-    # Add logic to extract specific failed checks
+    report_json = report.get('spec', {}).get('reportJSON', '')
+    if not report_json:
+        return failed
+
+    try:
+        parsed = json.loads(report_json)
+    except json.JSONDecodeError:
+        return failed
+
+    for group in parsed.get('results', []):
+        for check in group.get('checks', []):
+            if check.get('state') == 'fail':
+                failed.append(check.get('id', 'unknown'))
+
     return failed
 
 
@@ -132,44 +141,60 @@ if __name__ == '__main__':
 
 ### Schedule NeuVector Compliance Scans
 
+You can run the following script from cron or a Kubernetes CronJob to trigger recurring NeuVector platform scans and archive the JSON report.
+
 ```bash
 #!/bin/bash
 # run-neuvector-compliance.sh
+set -euo pipefail
 
-NEUVECTOR_URL="${NEUVECTOR_URL}"
+NEUVECTOR_URL="${NEUVECTOR_URL%/}"
+NEUVECTOR_USER="${NEUVECTOR_USER:-admin}"
 
 # Authenticate
 TOKEN=$(curl -s -k \
-  -X POST "${NEUVECTOR_URL}/auth" \
-  -d '{"password": {"username": "admin", "password": "${NEUVECTOR_PASS}"}}' \
+  -H "Content-Type: application/json" \
+  -d "{\"password\": {\"username\": \"${NEUVECTOR_USER}\", \"password\": \"${NEUVECTOR_PASS}\"}}" \
+  "${NEUVECTOR_URL}/v1/auth" \
   | jq -r '.token.token')
 
-# Trigger compliance scan
+if [ -z "${TOKEN}" ] || [ "${TOKEN}" = "null" ]; then
+  echo "Failed to authenticate to NeuVector" >&2
+  exit 1
+fi
+
+# Trigger a platform scan
 curl -s -k \
-  -X POST "${NEUVECTOR_URL}/v1/compliance/run" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -d '{"request": {"type": "container", "filters": []}}'
+  -X POST \
+  -H "X-Auth-Token: ${TOKEN}" \
+  "${NEUVECTOR_URL}/v1/scan/platform/platform" >/dev/null
 
-# Wait for scan to complete (poll)
+# Wait for the scan to complete (poll global scan status)
 for i in $(seq 1 20); do
-  STATUS=$(curl -s -k \
-    -H "Authorization: Bearer ${TOKEN}" \
-    "${NEUVECTOR_URL}/v1/compliance/last" \
-    | jq -r '.report.status')
+  SCANNING=$(curl -s -k \
+    -H "X-Auth-Token: ${TOKEN}" \
+    "${NEUVECTOR_URL}/v1/scan/status" \
+    | jq -r '.status.scanning')
 
-  if [ "${STATUS}" = "done" ]; then
+  if [ "${SCANNING}" = "0" ]; then
     break
   fi
   sleep 15
 done
 
-# Download report
+# Download the platform scan report
 curl -s -k \
-  -H "Authorization: Bearer ${TOKEN}" \
-  "${NEUVECTOR_URL}/v1/compliance/report" \
-  -o "neuvector-compliance-$(date +%Y%m%d).json"
+  -H "X-Auth-Token: ${TOKEN}" \
+  "${NEUVECTOR_URL}/v1/scan/platform/platform" \
+  -o "neuvector-platform-scan-$(date +%Y%m%d).json"
 
-echo "NeuVector compliance report saved"
+# End the authenticated session
+curl -s -k \
+  -X DELETE \
+  -H "X-Auth-Token: ${TOKEN}" \
+  "${NEUVECTOR_URL}/v1/auth" >/dev/null
+
+echo "NeuVector platform scan report saved"
 ```
 
 ## Kubernetes Audit Report Generator
@@ -181,12 +206,12 @@ echo "NeuVector compliance report saved"
 import json
 import sys
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def analyze_audit_logs(log_file: str, days: int = 30) -> dict:
     """Analyze Kubernetes audit logs for compliance evidence"""
 
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     stats = {
         'total_events': 0,
         'users': defaultdict(int),
@@ -204,10 +229,16 @@ def analyze_audit_logs(log_file: str, days: int = 30) -> dict:
                 continue
 
             # Parse timestamp
-            ts = datetime.fromisoformat(
-                event.get('requestReceivedTimestamp', '').replace('Z', '+00:00')
-            )
-            if ts.replace(tzinfo=None) < cutoff:
+            timestamp = event.get('requestReceivedTimestamp')
+            if not timestamp:
+                continue
+
+            try:
+                ts = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            except ValueError:
+                continue
+
+            if ts < cutoff:
                 continue
 
             stats['total_events'] += 1
@@ -240,7 +271,7 @@ def analyze_audit_logs(log_file: str, days: int = 30) -> dict:
 
 
 if __name__ == '__main__':
-    log_file = sys.argv[1] if len(sys.argv) > 1 else '/var/log/kubernetes/audit.log'
+    log_file = sys.argv[1] if len(sys.argv) > 1 else '/var/log/kubernetes/audit/audit.log'
     stats = analyze_audit_logs(log_file)
 
     print(f"Total events (30 days): {stats['total_events']}")
@@ -269,13 +300,6 @@ spec:
             - name: reporter
               image: registry.example.com/compliance-tools:latest
               env:
-                - name: RANCHER_URL
-                  value: "https://rancher.example.com"
-                - name: RANCHER_TOKEN
-                  valueFrom:
-                    secretKeyRef:
-                      name: rancher-token
-                      key: token
                 - name: EMAIL_TO
                   value: "ciso@example.com,compliance@example.com"
                 - name: S3_BUCKET
@@ -284,16 +308,20 @@ spec:
                 - /bin/sh
                 - -c
                 - |
+                  set -e
+                  REPORT_FILE="compliance-report-$(date +%F).md"
                   python3 /scripts/generate-compliance-report.py
-                  aws s3 cp compliance-report-*.md s3://${S3_BUCKET}/
-                  python3 /scripts/send-email.py compliance-report-*.md
+                  aws s3 cp "${REPORT_FILE}" "s3://${S3_BUCKET}/"
+                  python3 /scripts/send-email.py "${REPORT_FILE}"
           restartPolicy: OnFailure
 ```
 
 ## Compliance Dashboard in Grafana
 
+Grafana can visualize the aggregated results if your reporting pipeline publishes custom Prometheus metrics alongside NeuVector's exporter metrics.
+
 ```yaml
-# ConfigMap with Grafana dashboard for compliance metrics
+# ConfigMap with Grafana dashboard for custom compliance metrics and NeuVector exporter data
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -307,14 +335,14 @@ data:
       "title": "Kubernetes Compliance Dashboard",
       "panels": [
         {
-          "title": "CIS Benchmark Pass Rate",
+          "title": "Aggregated Compliance Pass Rate",
           "type": "stat",
-          "targets": [{"expr": "cis_benchmark_pass_percentage"}]
+          "targets": [{"expr": "compliance_report_pass_percentage"}]
         },
         {
-          "title": "Critical CVEs in Production",
+          "title": "High Vulnerabilities Across Services",
           "type": "stat",
-          "targets": [{"expr": "neuvector_critical_cves_production"}]
+          "targets": [{"expr": "sum(nv_container_vulnerabilityHigh)"}]
         }
       ]
     }
