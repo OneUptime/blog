@@ -8,7 +8,7 @@ Description: Configure Pi-hole or AdGuard Home as a local DNS resolver to give P
 
 ## Introduction
 
-Running Pi-hole or AdGuard Home alongside Portainer lets you access all your services via memorable domain names instead of IP:port combinations. For example, accessing `portainer.home` instead of `192.168.1.50:9443`. This guide shows how to deploy these DNS tools via Portainer and configure local DNS records.
+Running Pi-hole or AdGuard Home alongside Portainer lets you access all your services via memorable hostnames instead of raw IP addresses. For example, accessing `portainer.home.arpa:9443` instead of `192.168.1.50:9443`. This guide shows how to deploy these DNS tools via Portainer and configure local DNS records.
 
 ## Deploying Pi-hole via Portainer
 
@@ -20,18 +20,18 @@ services:
   pihole:
     image: pihole/pihole:latest
     container_name: pihole
-    network_mode: host  # Required for DNS on port 53
+    network_mode: host  # Optional alternative to explicit port mappings
     environment:
       TZ: 'America/New_York'
-      WEBPASSWORD: 'your-admin-password'
-      PIHOLE_DNS_: '1.1.1.1;8.8.8.8'
-      DNSMASQ_LISTENING: 'all'
+      FTLCONF_webserver_api_password: 'your-admin-password'
+      FTLCONF_dns_upstreams: '1.1.1.1;8.8.8.8'
+      FTLCONF_dns_listeningMode: 'all'
     volumes:
       - pihole-config:/etc/pihole
       - pihole-dnsmasq:/etc/dnsmasq.d
     restart: unless-stopped
     cap_add:
-      - NET_ADMIN  # Required for network operations
+      - NET_ADMIN  # Recommended if you also plan to use Pi-hole for DHCP
 
 volumes:
   pihole-config:
@@ -68,43 +68,39 @@ volumes:
 
 | Domain | IP |
 |--------|----|
-| portainer.home | 192.168.1.50 |
-| app.home | 192.168.1.51 |
-| db.home | 192.168.1.52 |
-| grafana.home | 192.168.1.53 |
+| portainer.home.arpa | 192.168.1.50 |
+| app.home.arpa | 192.168.1.51 |
+| db.home.arpa | 192.168.1.52 |
+| grafana.home.arpa | 192.168.1.53 |
 
 ### Via Pi-hole CLI
 
 ```bash
-# SSH into the Pi-hole container
-docker exec -it pihole bash
+# Open a shell in the Pi-hole container
+docker exec -it pihole sh
 
-# Add custom DNS records
-echo "address=/portainer.home/192.168.1.50" >> /etc/dnsmasq.d/custom-dns.conf
-echo "address=/app.home/192.168.1.51" >> /etc/dnsmasq.d/custom-dns.conf
-echo "address=/*.home/192.168.1.50" >> /etc/dnsmasq.d/custom-wildcard.conf
-
-# Restart dnsmasq
-pihole restartdns
+# Add custom DNS records through Pi-hole FTL's config CLI
+pihole-FTL --config misc.dnsmasq_lines \
+  '["address=/portainer.home.arpa/192.168.1.50","address=/app.home.arpa/192.168.1.51","address=/db.home.arpa/192.168.1.52","address=/grafana.home.arpa/192.168.1.53","address=/home.arpa/192.168.1.50"]'
 ```
 
 ### Via AdGuard Home
 
 ```bash
 # AdGuard Home stores DNS rewrites in its config
-# Access API to add rewrites
+# Replace http://adguard-host with your configured AdGuard Home admin URL
 curl -X POST \
-  http://adguard-host:3000/control/rewrite/add \
-  -H "Authorization: Basic $(echo -n 'admin:password' | base64)" \
+  http://adguard-host/control/rewrite/add \
+  -H "Authorization: Basic $(printf 'admin:password' | base64)" \
   -H "Content-Type: application/json" \
-  -d '{"domain": "portainer.home", "answer": "192.168.1.50"}'
+  -d '{"domain": "portainer.home.arpa", "answer": "192.168.1.50"}'
 
-# Add wildcard for all .home domains
+# Add wildcard for all .home.arpa domains
 curl -X POST \
-  http://adguard-host:3000/control/rewrite/add \
-  -H "Authorization: Basic $(echo -n 'admin:password' | base64)" \
+  http://adguard-host/control/rewrite/add \
+  -H "Authorization: Basic $(printf 'admin:password' | base64)" \
   -H "Content-Type: application/json" \
-  -d '{"domain": "*.home", "answer": "192.168.1.50"}'
+  -d '{"domain": "*.home.arpa", "answer": "192.168.1.50"}'
 ```
 
 ## Configure Devices to Use Local DNS
@@ -114,7 +110,7 @@ curl -X POST \
 # Router settings: DHCP > DNS Server: 192.168.1.53
 
 # Option 2: Static DNS on individual devices
-# Linux: /etc/resolv.conf
+# Linux (temporary test): /etc/resolv.conf
 echo "nameserver 192.168.1.53" | sudo tee /etc/resolv.conf
 
 # Or via systemd-resolved
@@ -122,7 +118,7 @@ sudo tee /etc/systemd/resolved.conf << 'EOF'
 [Resolve]
 DNS=192.168.1.53
 FallbackDNS=1.1.1.1
-Domains=home
+Domains=~home.arpa
 EOF
 sudo systemctl restart systemd-resolved
 
@@ -130,7 +126,7 @@ sudo systemctl restart systemd-resolved
 sudo tee /etc/docker/daemon.json << 'EOF'
 {
   "dns": ["192.168.1.53"],
-  "dns-search": ["home"]
+  "dns-search": ["home.arpa"]
 }
 EOF
 sudo systemctl restart docker
@@ -150,30 +146,30 @@ openssl req -x509 -new -nodes -key local-ca.key -sha256 -days 3650 \
 # macOS: sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain local-ca.crt
 # Linux: sudo cp local-ca.crt /usr/local/share/ca-certificates/ && sudo update-ca-certificates
 
-# Generate cert for portainer.home
+# Generate cert for portainer.home.arpa
 openssl req -new -newkey rsa:2048 -nodes \
-  -keyout portainer.home.key \
-  -out portainer.home.csr \
-  -subj "/CN=portainer.home"
+  -keyout portainer.home.arpa.key \
+  -out portainer.home.arpa.csr \
+  -subj "/CN=portainer.home.arpa"
 
-openssl x509 -req -in portainer.home.csr \
+openssl x509 -req -in portainer.home.arpa.csr \
   -CA local-ca.crt -CAkey local-ca.key -CAcreateserial \
-  -out portainer.home.crt -days 365 \
-  -extfile <(echo "subjectAltName=DNS:portainer.home,DNS:*.home")
+  -out portainer.home.arpa.crt -days 365 \
+  -extfile <(echo "subjectAltName=DNS:portainer.home.arpa,DNS:*.home.arpa")
 ```
 
 ## Verifying DNS Resolution
 
 ```bash
 # Test from your machine
-nslookup portainer.home 192.168.1.53
-dig portainer.home @192.168.1.53
+nslookup portainer.home.arpa 192.168.1.53
+dig portainer.home.arpa @192.168.1.53
 
 # Test from inside a Docker container
-docker run --rm --dns 192.168.1.53 alpine nslookup portainer.home
+docker run --rm --dns 192.168.1.53 alpine nslookup portainer.home.arpa
 
 # Check Pi-hole query log
-docker exec pihole pihole -t | grep portainer.home
+docker exec pihole grep portainer.home.arpa /var/log/pihole/pihole.log
 ```
 
 ## Conclusion
