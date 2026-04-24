@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Prometheus, IPv4, Scrape Targets, Configuration, Monitoring, Metric
 
-Description: Configure Prometheus scrape targets using explicit IPv4 addresses in static_configs, use relabeling to add metadata, and organize targets by job and network segment.
+Description: Configure Prometheus scrape targets using explicit IPv4 addresses in static_configs, add metadata labels to targets, and organize targets by job and network segment.
 
 ## Introduction
 
@@ -109,8 +109,9 @@ scrape_configs:
         refresh_interval: 30s
 ```
 
+`/etc/prometheus/targets/nodes.json`:
+
 ```json
-// /etc/prometheus/targets/nodes.json
 [
   {
     "targets": ["10.0.0.1:9100", "10.0.0.2:9100"],
@@ -135,8 +136,8 @@ for t in data['data']['activeTargets']:
     print(t['scrapeUrl'], t['health'], t.get('lastError',''))
 "
 
-# Check specific job
-curl -s "http://10.0.0.5:9090/api/v1/targets?state=unhealthy" | python3 -m json.tool
+# Check a specific scrape pool (job)
+curl -s "http://10.0.0.5:9090/api/v1/targets?scrapePool=node_exporter" | python3 -m json.tool
 ```
 
 ## Conclusion
