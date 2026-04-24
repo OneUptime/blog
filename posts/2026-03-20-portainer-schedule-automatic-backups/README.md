@@ -12,7 +12,7 @@ Portainer Business Edition includes a built-in automatic backup scheduler that c
 
 ## Prerequisites
 
-- Portainer Business Edition 2.x or newer
+- A Portainer Business Edition release with S3 backup support
 - Valid Portainer Business license
 - S3-compatible storage (AWS S3, MinIO, Wasabi, etc.)
 - Admin access to Portainer
@@ -23,8 +23,8 @@ Portainer Business Edition provides:
 
 - **Scheduled backups**: Cron-based scheduling
 - **S3 upload**: Direct upload to S3-compatible storage
-- **Password protection**: AES-encrypted backup archives
-- **Retention management**: Automatic cleanup of old backups
+- **Password protection**: Password-protected encrypted backup archives
+- **Retention management**: Use S3 lifecycle rules to clean up old backups
 
 ## Step 1: Prepare S3 Storage
 
@@ -85,20 +85,20 @@ docker run --rm \
 ## Step 2: Configure Automatic Backups in Portainer UI
 
 1. Navigate to **Settings** → **Backup Portainer**
-2. Toggle **Enable scheduled backups**
+2. Toggle **Schedule automatic backups**
 3. Configure the schedule:
 
 | Field | Example | Description |
 |---|---|---|
-| Schedule | `0 2 * * *` | Daily at 2 AM UTC |
+| Cron rule | `0 2 * * *` | Daily at 2 AM |
 | Password | `SecureBackupPass123` | Encryption password |
-| S3 compatible host | `s3.amazonaws.com` | S3 endpoint |
+| S3 compatible host | `(leave blank)` | Leave blank for AWS S3 |
 | Access key ID | `AKIAIOSFODNN7EXAMPLE` | AWS access key |
 | Secret access key | `wJalrXUtnFEMI/K7MDENG` | AWS secret key |
 | Region | `us-east-1` | S3 region |
 | Bucket name | `portainer-backups` | Target bucket |
 
-4. Click **Save backup schedule**
+4. Save the backup settings
 
 ## Step 3: Common Cron Schedules
 
@@ -120,14 +120,14 @@ docker run --rm \
 
 ```bash
 PORTAINER_URL="https://portainer.example.com:9443"
-TOKEN="your-api-token"
+API_KEY="your-access-token"
 
 # Trigger immediate backup
 curl -X POST \
   "${PORTAINER_URL}/api/backup" \
-  -H "Authorization: Bearer ${TOKEN}" \
+  -H "X-API-Key: ${API_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"password": "BackupPassword123"}' \
+  -d '{"Password": "BackupPassword123"}' \
   --output portainer-backup-$(date +%Y%m%d-%H%M%S).tar.gz
 ```
 
@@ -140,13 +140,23 @@ aws s3 ls s3://portainer-backups/ --recursive
 # Download and verify a backup
 aws s3 cp s3://portainer-backups/portainer-backup-20260320.tar.gz ./
 
-# Check backup integrity (Portainer uses AES encryption)
+# Check backup file type
 file portainer-backup-20260320.tar.gz
-# Should show: gzip compressed data
+# For an unencrypted backup, this should show: gzip compressed data
 
-# If password-protected, test restore in a staging environment
-docker run --rm -v portainer_test:/data portainer/portainer-ee:latest \
-  --restore-path /data/portainer-backup-20260320.tar.gz
+# Test restore in a staging environment using a fresh Portainer instance
+docker volume create portainer_staging_data
+docker run -d \
+  -p 8001:8000 \
+  -p 9444:9443 \
+  --name portainer-staging \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_staging_data:/data \
+  portainer/portainer-ee:lts
+
+# Open https://<portainer-host>:9444 and use "Restore Portainer from backup"
+# during the initial setup flow.
 ```
 
 ## Step 6: Backup Retention with S3 Lifecycle Rules
@@ -171,13 +181,16 @@ aws s3api put-bucket-lifecycle-configuration \
 # Check Portainer logs for backup activity
 docker logs portainer 2>&1 | grep -i backup
 
-# Set up CloudWatch alarm for missing backups (AWS)
+# Basic CloudWatch sanity check for an empty backup bucket (AWS)
+# This does not confirm that the latest scheduled backup completed.
 aws cloudwatch put-metric-alarm \
-  --alarm-name "PortainerBackupMissing" \
+  --alarm-name "PortainerBackupBucketEmpty" \
   --metric-name "NumberOfObjects" \
   --namespace "AWS/S3" \
-  --statistic "Maximum" \
+  --statistic "Average" \
+  --dimensions Name=BucketName,Value=portainer-backups Name=StorageType,Value=AllStorageTypes \
   --period 86400 \
+  --evaluation-periods 1 \
   --threshold 1 \
   --comparison-operator "LessThanThreshold"
 ```
