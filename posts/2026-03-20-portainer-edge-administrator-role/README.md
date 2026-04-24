@@ -8,7 +8,7 @@ Description: Configure the Edge Administrator role in Portainer Business Edition
 
 ## Introduction
 
-The Edge Administrator role in Portainer Business Edition allows designated users to manage edge environments (remote sites, IoT devices, branch offices) without having full global administrator access. This enables distributed teams to manage their own edge deployments while the central platform team retains control over core environments.
+The Edge Administrator role in Portainer Business Edition allows designated users to manage all edge environments (remote sites, IoT devices, branch offices) without having full global administrator access. This enables a dedicated edge operations team to manage edge deployments while the central platform team retains control over core environments and Portainer-wide settings.
 
 ## Prerequisites
 
@@ -21,19 +21,16 @@ The Edge Administrator role in Portainer Business Edition allows designated user
 An Edge Administrator can:
 
 - View and manage all edge environments
-- Assign and revoke edge environments from edge groups
-- Deploy stacks and services to edge environments
+- Deploy stacks and manage resources in edge environments
 - View edge agent status and connectivity
 - Create and manage edge groups
-- Use the edge jobs feature (run jobs across edge devices)
-- Configure async vs. standard edge agents
+- Use Edge Stacks, Edge Jobs, and Edge Configurations
 
 An Edge Administrator **cannot**:
 - Manage standard (non-edge) environments
 - Create or manage users or teams
 - Configure global authentication settings
 - Access Portainer's global settings
-- Manage non-edge registries or templates
 
 ## Assigning the Edge Administrator Role
 
@@ -41,10 +38,9 @@ The Edge Administrator is a global role (not environment-specific):
 
 ### Via Web UI
 
-1. Go to **Settings** → **Users**
-2. Click on the user
-3. Set role to **Edge Administrator**
-4. Save
+1. Go to **Settings** → **Edge Compute**
+2. In **Edge Compute access**, select the user in **Select user(s)**
+3. Click **Create access**
 
 ### Via API
 
@@ -55,26 +51,27 @@ TOKEN=$(curl -s -X POST \
   -d '{"username":"admin","password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Create a new Edge Administrator
-
-curl -X POST \
+# Create a regular user, then promote that user to Edge Administrator
+USER_ID=$(curl -s -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   https://portainer.example.com/api/users \
   -d '{
-    "username": "edge-ops-1",
-    "password": "SecureEdgeP@ssword123",
-    "role": 4
-  }'
-# role: 4 = Edge Administrator
+    "Username": "edge-ops-1",
+    "Password": "SecureEdgeP@ssword123",
+    "Role": 2
+  }' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['Id'])")
 
-# Promote existing user (ID: 5) to Edge Administrator
+# Role: 2 = regular user, 3 = Edge Administrator
+# Edge Compute features must be enabled before assigning role 3.
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/users/5 \
+  https://portainer.example.com/api/users/$USER_ID \
   -d '{
-    "role": 4
+    "Username": "edge-ops-1",
+    "Role": 3
   }'
 ```
 
@@ -83,16 +80,14 @@ curl -X PUT \
 ```text
 Org Structure:
   Central IT Team → Global Administrators
-  US Branch IT   → Edge Administrator (manages US edge environments)
-  EU Branch IT   → Edge Administrator (manages EU edge environments)
-  APAC Branch IT → Edge Administrator (manages APAC edge environments)
+  Edge Ops Team   → Edge Administrator (manages all edge environments)
 ```
 
-The branch IT teams can fully manage their edge deployments without needing to involve Central IT for every operation.
+The Edge Administrator role is best for a dedicated edge operations function that needs control across all Edge environments without full Portainer administrator access.
 
-## Edge Groups for Access Delegation
+## Edge Groups for Organization and Targeting
 
-Edge Administrators work best combined with Edge Groups:
+Edge Administrators can use Edge Groups to organize Edge environments and target Edge Stacks, Jobs, and Configurations:
 
 ```bash
 # Create an edge group
@@ -101,9 +96,9 @@ curl -X POST \
   -H "Content-Type: application/json" \
   https://portainer.example.com/api/edge_groups \
   -d '{
-    "name": "US-Branch-Offices",
-    "dynamic": false,
-    "endpoints": [10, 11, 12, 13]
+    "Name": "US-Branch-Offices",
+    "Dynamic": false,
+    "Endpoints": [10, 11, 12, 13]
   }'
 
 # Dynamic edge groups (based on tags)
@@ -112,13 +107,14 @@ curl -X POST \
   -H "Content-Type: application/json" \
   https://portainer.example.com/api/edge_groups \
   -d '{
-    "name": "US-East-Sites",
-    "dynamic": true,
-    "tagIds": [5, 6]
+    "Name": "US-East-Sites",
+    "Dynamic": true,
+    "TagIDs": [5, 6],
+    "PartialMatch": true
   }'
 ```
 
-Edge Administrators can then manage environments within groups they have access to.
+Edge Groups organize Edge environments for bulk actions and deployments; they do not scope the Edge Administrator role itself.
 
 ## Edge Administrator vs. Global Administrator
 
@@ -145,23 +141,25 @@ EDGE_ADMIN_TOKEN=$(curl -s -X POST \
 # List accessible edge environments
 curl -s \
   -H "Authorization: Bearer $EDGE_ADMIN_TOKEN" \
-  https://portainer.example.com/api/endpoints \
+  'https://portainer.example.com/api/endpoints?types=4,7' \
   | python3 -c "
 import sys, json
 envs = json.load(sys.stdin)
-edge_envs = [e for e in envs if e.get('Type') in [4, 7, 8]]
-print(f'Edge environments accessible: {len(edge_envs)}')
-for env in edge_envs:
-    print(f'  - {env[\"Name\"]} (ID: {env[\"Id\"]})')
+print(f'Edge environments accessible: {len(envs)}')
+for env in envs:
+    print(f'  - {env[\"Name\"]} (ID: {env[\"Id\"]}, Type: {env[\"Type\"]})')
 "
+# Type 4 = Edge Agent on Docker, Type 7 = Edge Agent on Kubernetes
 
-# Try to access standard environments (should be empty or restricted)
+# Try to access a global settings endpoint (should be denied)
 curl -s \
+  -o /dev/null \
+  -w "%{http_code}\n" \
   -H "Authorization: Bearer $EDGE_ADMIN_TOKEN" \
-  https://portainer.example.com/api/users \
-  | python3 -m json.tool  # Should return 403 Forbidden
+  https://portainer.example.com/api/settings
+# Should print 403
 ```
 
 ## Conclusion
 
-The Edge Administrator role is the right tool for organizations with distributed edge deployments managed by separate teams. It provides full edge management capabilities while maintaining separation from central infrastructure. This role is especially valuable in OT/IoT environments, retail chains, or any organization with remote sites that have their own IT staff.
+The Edge Administrator role is the right tool for organizations with distributed edge deployments managed by a dedicated edge operations team. It provides full edge management capabilities while maintaining separation from central infrastructure and Portainer-wide administration. This role is especially valuable in OT/IoT environments, retail chains, or any organization with remote sites that need centralized Edge management without granting full administrator access.
