@@ -6,40 +6,40 @@ Tags: Rancher, Kubernetes, CIS, Security, Compliance, Automation
 
 Description: Learn how to configure recurring CIS benchmark scans in Rancher to continuously monitor your Kubernetes cluster security posture on a schedule.
 
-Continuous compliance monitoring requires running CIS scans regularly, not just on-demand. Rancher supports scheduled CIS scans using cron expressions, enabling automated security compliance checks that run daily, weekly, or on any custom schedule. This guide covers how to set up and manage recurring CIS scans.
+Continuous compliance monitoring requires running CIS scans regularly, not just on-demand. Rancher Compliance supports scheduled scans using cron expressions, enabling automated security compliance checks that run daily, weekly, or on any custom schedule. This guide covers how to set up and manage recurring CIS scans.
 
 ## Prerequisites
 
-- Rancher with CIS Benchmark app installed
-- Cluster Owner or Cluster Admin permissions
+- Rancher with Compliance installed
+- Cluster Owner or global administrator permissions in Rancher
 - Understanding of cron expressions
-- Notification channels configured in Rancher (optional, for alerts)
+- `rancher-monitoring` installed with receivers and routes configured (optional, for alerts)
 
 ## Step 1: Configure a Scheduled Scan via Rancher UI
 
 1. Navigate to your cluster in the Rancher UI
-2. Go to **CIS Benchmark** → **Scans**
-3. Click **Scan** to create a new scan
-4. Toggle on **Scheduled Scan**
-5. Configure the cron schedule:
+2. Go to **Compliance** → **Scan**
+3. Click **Create**
+4. Choose a cluster scan profile
+5. Turn on **Run scan on a schedule**
+6. Configure the cron schedule:
    - **Daily at midnight**: `0 0 * * *`
    - **Weekly on Monday at 2 AM**: `0 2 * * 1`
    - **Every 6 hours**: `0 */6 * * *`
-6. Set the **Retention Count** (how many reports to keep)
-7. Click **Create**
+7. Set the **Retention Count** (how many reports to keep)
+8. Click **Create**
 
 ## Step 2: Configure a Scheduled Scan via kubectl
 
 ```yaml
-# daily-cis-scan.yaml - Run CIS scan daily at midnight
+# daily-compliance-scan.yaml - Run a compliance scan daily at midnight
 
-apiVersion: cis.cattle.io/v1
+apiVersion: compliance.cattle.io/v1
 kind: ClusterScan
 metadata:
-  name: daily-cis-scan
-  namespace: default
+  name: daily-compliance-scan
 spec:
-  scanProfileName: rke2-cis-1.6-profile-hardened
+  scanProfileName: cis-1.12-profile
   scheduledScanConfig:
     # Run at midnight every day
     cronSchedule: "0 0 * * *"
@@ -48,36 +48,36 @@ spec:
 ```
 
 ```bash
-kubectl apply -f daily-cis-scan.yaml
+kubectl apply -f daily-compliance-scan.yaml
 
 # Verify the scheduled scan was created
-kubectl describe clusterscan daily-cis-scan
+kubectl describe clusterscans.compliance.cattle.io daily-compliance-scan
 ```
 
 ## Step 3: Configure Multiple Scan Schedules
 
-Run different scans at different frequencies:
+Run different scans at different frequencies. Rancher runs only one compliance scan at a time per cluster, so overlapping scans queue until the active scan finishes:
 
 ```yaml
-# hourly-quick-scan.yaml - Frequent scan for critical namespaces
-apiVersion: cis.cattle.io/v1
+# hourly-compliance-scan.yaml - Frequent recurring cluster-wide scan
+apiVersion: compliance.cattle.io/v1
 kind: ClusterScan
 metadata:
-  name: hourly-critical-scan
+  name: hourly-compliance-scan
 spec:
-  scanProfileName: rke2-cis-1.6-profile-hardened
+  scanProfileName: cis-1.12-profile
   scheduledScanConfig:
     # Run every hour
     cronSchedule: "0 * * * *"
     retentionCount: 24
 ---
-# weekly-full-scan.yaml - Comprehensive weekly scan
-apiVersion: cis.cattle.io/v1
+# weekly-compliance-scan.yaml - Comprehensive weekly scan
+apiVersion: compliance.cattle.io/v1
 kind: ClusterScan
 metadata:
-  name: weekly-comprehensive-scan
+  name: weekly-compliance-scan
 spec:
-  scanProfileName: rke2-cis-1.6-profile-hardened
+  scanProfileName: cis-1.12-profile
   scheduledScanConfig:
     # Run every Sunday at 1 AM
     cronSchedule: "0 1 * * 0"
@@ -88,59 +88,45 @@ spec:
 
 ```bash
 # List all cluster scans and their last run time
-kubectl get clusterscan -A
+kubectl get clusterscans.compliance.cattle.io
 
 # Check the next scheduled run time
-kubectl get clusterscan daily-cis-scan \
-  -o jsonpath='{.status.nextScanAt}'
+kubectl get clusterscans.compliance.cattle.io daily-compliance-scan \
+  -o jsonpath='{.status.NextScanAt}'
 
 # View the last scan run time
-kubectl get clusterscan daily-cis-scan \
-  -o jsonpath='{.status.lastRunAt}'
+kubectl get clusterscans.compliance.cattle.io daily-compliance-scan \
+  -o jsonpath='{.status.lastRunTimestamp}'
 
 # Check scan history
-kubectl get clusterscanreport -A --sort-by='.metadata.creationTimestamp'
+kubectl get clusterscanreports.compliance.cattle.io --sort-by='.metadata.creationTimestamp'
 ```
 
-## Step 5: Set Up Alerts for Scan Failures
+## Step 5: Set Up Alerts for Scheduled Scans
 
-Configure notifications when scans fail or find new issues:
+Configure notifications when scheduled scans complete or fail:
 
 ```bash
-# First, configure a Rancher notifier (Slack, PagerDuty, etc.)
-# Navigate to: Cluster -> Monitoring -> Notifiers -> Add Notifier
+# First, enable alerts in the rancher-compliance chart:
+# alerts:
+#   enabled: true
+#
+# Then configure receivers and routes in rancher-monitoring.
 
-# Create an alert rule for CIS scan failures
+# Enable alerting on the scheduled scan
 kubectl apply -f - <<EOF
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
+apiVersion: compliance.cattle.io/v1
+kind: ClusterScan
 metadata:
-  name: cis-scan-alerts
-  namespace: cattle-monitoring-system
+  name: daily-compliance-scan
 spec:
-  groups:
-  - name: cis-scan
-    interval: 1m
-    rules:
-    # Alert when CIS scan failure count increases
-    - alert: CISScanFailuresIncreased
-      expr: |
-        increase(cis_scan_failures_total[1h]) > 5
-      for: 0m
-      labels:
-        severity: warning
-      annotations:
-        summary: "CIS scan failures increased"
-        description: "More than 5 new CIS scan failures in the last hour"
-    # Alert when scan hasn't run successfully
-    - alert: CISScanNotRunning
-      expr: |
-        time() - cis_scan_last_success_timestamp > 86400
-      for: 5m
-      labels:
-        severity: critical
-      annotations:
-        summary: "CIS scan has not run successfully in 24 hours"
+  scanProfileName: cis-1.12-profile
+  scheduledScanConfig:
+    cronSchedule: "0 0 * * *"
+    retentionCount: 7
+    scanAlertRule:
+      alertOnComplete: true
+      alertOnFailure: true
 EOF
 ```
 
@@ -160,29 +146,29 @@ echo "Previous: $REPORT1"
 echo "Current: $REPORT2"
 echo ""
 
-# Get failed checks from each report
-FAILS1=$(kubectl get clusterscanreport $REPORT1 \
-  -o jsonpath='{.spec.reportJSON}' | \
+# Get non-passing checks from each report
+FAILS1=$(kubectl get clusterscanreports.compliance.cattle.io "$REPORT1" -o json | \
   python3 -c "
 import json,sys
-r=json.load(sys.stdin)
+outer=json.load(sys.stdin)
+r=json.loads(outer['spec']['reportJSON'])
 fails=set()
 for result in r.get('results',[]):
     for check in result.get('checks',[]):
-        if check['state']=='fail':
+        if check.get('state') in {'fail','mixed','warn'}:
             fails.add(check['id'])
 print('\n'.join(sorted(fails)))
 ")
 
-FAILS2=$(kubectl get clusterscanreport $REPORT2 \
-  -o jsonpath='{.spec.reportJSON}' | \
+FAILS2=$(kubectl get clusterscanreports.compliance.cattle.io "$REPORT2" -o json | \
   python3 -c "
 import json,sys
-r=json.load(sys.stdin)
+outer=json.load(sys.stdin)
+r=json.loads(outer['spec']['reportJSON'])
 fails=set()
 for result in r.get('results',[]):
     for check in result.get('checks',[]):
-        if check['state']=='fail':
+        if check.get('state') in {'fail','mixed','warn'}:
             fails.add(check['id'])
 print('\n'.join(sorted(fails)))
 ")
@@ -215,17 +201,19 @@ jobs:
   cis-scan:
     runs-on: ubuntu-latest
     steps:
-    - name: Trigger CIS Scan
+    - name: Trigger Compliance Scan
       run: |
-        # Trigger a new scan via Rancher API
+        # Trigger a new scan through Rancher's downstream cluster Kubernetes API proxy
         curl -X POST \
           -H "Authorization: Bearer ${{ secrets.RANCHER_TOKEN }}" \
           -H "Content-Type: application/json" \
-          "${{ secrets.RANCHER_URL }}/v1/cis.cattle.io.clusterscans" \
+          "${{ secrets.RANCHER_URL }}/k8s/clusters/${{ secrets.RANCHER_CLUSTER_ID }}/apis/compliance.cattle.io/v1/clusterscans" \
           -d '{
-            "metadata": {"name": "ci-scan"},
+            "apiVersion": "compliance.cattle.io/v1",
+            "kind": "ClusterScan",
+            "metadata": {"generateName": "ci-scan-"},
             "spec": {
-              "scanProfileName": "rke2-cis-1.6-profile-hardened"
+              "scanProfileName": "cis-1.12-profile"
             }
           }'
 ```
