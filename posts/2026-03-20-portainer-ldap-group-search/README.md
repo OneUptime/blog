@@ -8,19 +8,19 @@ Description: Configure LDAP group search in Portainer to automatically map direc
 
 ## Introduction
 
-LDAP group search is what enables Portainer to automatically populate its teams based on LDAP/AD group membership. When configured, users logging in via LDAP are automatically added to corresponding Portainer teams, eliminating manual team management. This guide covers configuring group search for both OpenLDAP and Active Directory.
+LDAP group search enables Portainer to automatically place users into existing teams based on LDAP/AD group membership. When configured, users logging in via LDAP are automatically added to corresponding Portainer teams, eliminating manual team membership management. This guide covers configuring group search for both OpenLDAP and Active Directory.
 
 ## How Group Search Works
 
 1. User logs in with LDAP credentials
 2. Portainer authenticates the user against the LDAP server
-3. Portainer searches for groups containing the user
-4. Portainer matches found groups to Portainer team names
+3. Portainer searches for groups containing the user DN
+4. Portainer matches found group `cn` values to existing Portainer team names
 5. User is added to matching teams automatically
 
 ## Configuring Group Search via UI
 
-In Portainer → Settings → Authentication → LDAP:
+In Portainer → Settings → Authentication → LDAP for OpenLDAP, or Portainer → Settings → Authentication → Microsoft Active Directory for AD:
 
 ### For OpenLDAP (groupOfNames)
 
@@ -38,21 +38,18 @@ Group Membership Attr:    memberUid
 Group Filter:             (objectClass=posixGroup)
 ```
 
-Note: `memberUid` contains plain usernames, while `member` contains full DNs. Portainer handles both.
+Note: `memberUid` contains plain usernames, while `member` contains full DNs. Portainer can display matches for `posixGroup`/`memberUid`, but automatic Portainer team assignment requires DN-based membership. Use `groupOfNames` with `member` if you want users to be added to teams automatically.
 
 ### For Active Directory
 
 ```text
+Group Search Path:        ou=groups
 Group Base DN:            ou=groups,dc=corp,dc=example,dc=com
-Group Membership Attr:    memberOf
-Group Filter:             (objectClass=group)
+Groups:                   Folder Name = devops
+Group Filter:             (&(objectClass=group)(|(cn=devops)))
 ```
 
-For AD, the `memberOf` attribute is on the user object (not the group), so Portainer looks it up differently. Use:
-
-```text
-Group Attribute:          memberOf (AD user attribute)
-```
+For AD, `memberOf` is useful for checking a user's memberships, but Portainer team sync searches group objects and matches by group `cn`. Do not use `memberOf` as the group membership attribute for team sync.
 
 ## Configuring Group Search via API
 
@@ -60,7 +57,7 @@ Group Attribute:          memberOf (AD user attribute)
 TOKEN=$(curl -s -X POST \
   https://portainer.example.com/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"adminpassword"}' \
+  -d '{"Username":"admin","Password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
 curl -X PUT \
@@ -69,20 +66,20 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d '{
     "AuthenticationMethod": 2,
-    "ldapsettings": {
-      "Servers": [
-        {
-          "Host": "ldap.example.com",
-          "Port": 389,
-          "Anonymous": false,
-          "ReaderDN": "cn=portainer-bind,dc=example,dc=com",
-          "Password": "bindpassword"
-        }
-      ],
+    "LDAPSettings": {
+      "AnonymousMode": false,
+      "ReaderDN": "cn=portainer-bind,dc=example,dc=com",
+      "Password": "bindpassword",
+      "URL": "ldap.example.com:389",
+      "TLSConfig": {
+        "TLS": false,
+        "TLSSkipVerify": false
+      },
+      "StartTLS": false,
       "SearchSettings": [
         {
           "BaseDN": "ou=users,dc=example,dc=com",
-          "Username": "uid",
+          "UserNameAttribute": "uid",
           "Filter": "(objectClass=inetOrgPerson)"
         }
       ],
@@ -97,6 +94,8 @@ curl -X PUT \
     }
   }'
 ```
+
+For Active Directory, set `UserNameAttribute` to `sAMAccountName`, keep `GroupAttribute` as `member`, and use `(objectClass=group)` as the group filter.
 
 ## Mapping LDAP Groups to Portainer Teams
 
@@ -113,7 +112,7 @@ When Alice (member of `devops` group) logs in, Portainer adds her to the `devops
 
 ### Case Sensitivity
 
-Group names in Portainer must **exactly match** the LDAP group's `cn` attribute, including case. Check your LDAP group CNs:
+Portainer matches team names against the LDAP group's `cn` value case-insensitively. The text should still match, but `DevOps` and `devops` are treated the same. Check your LDAP group CNs:
 
 ```bash
 ldapsearch -x \
@@ -146,12 +145,10 @@ ldapsearch -x \
   "(sAMAccountName=alice)" memberOf
 ```
 
-## Auto-Populate Teams Feature (Portainer BE)
+## Automatic Team Membership
 
-Portainer Business Edition supports automatic team creation from LDAP groups. Enable it in Settings → Authentication → LDAP → **Automatically populate teams from LDAP groups**.
-
-With this enabled, Portainer creates teams for every LDAP group it finds, without requiring manual team creation.
+Portainer synchronizes users into matching existing teams based on LDAP group membership. It does not automatically create Portainer teams from LDAP groups, so create the teams in Portainer first and then let group search place users into them at login.
 
 ## Conclusion
 
-LDAP group search is the feature that makes group-based access control in Portainer automatic and scalable. Once configured, user-to-team assignments happen at login without any manual intervention. The key is naming your Portainer teams to exactly match your LDAP group CNs, and ensuring the bind account has read access to both user and group entries.
+LDAP group search is the feature that makes group-based access control in Portainer automatic and scalable. Once configured, user-to-team assignments happen at login without any manual intervention. The key is naming your Portainer teams to match the LDAP group's `cn` value, using DN-based group membership for team sync, and ensuring the bind account has read access to both user and group entries.
