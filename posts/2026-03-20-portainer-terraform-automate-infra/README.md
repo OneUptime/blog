@@ -4,33 +4,43 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Terraform, Automation, Infrastructure, DevOps
 
-Description: Learn how to fully automate Portainer infrastructure provisioning using Terraform, integrating it with cloud infrastructure provisioning for end-to-end automated deployments.
+Description: Learn how to automate Portainer infrastructure provisioning using Terraform, integrating it with cloud infrastructure provisioning for end-to-end automated deployments.
 
 ## Introduction
 
-The ultimate goal of using Terraform with Portainer is full automation: provision a server, install Portainer, configure it, and deploy applications - all in a single `terraform apply`. This guide shows how to integrate Portainer Terraform with cloud infrastructure providers for end-to-end automated deployments.
+The ultimate goal of using Terraform with Portainer is full automation: provision a server, install Portainer, configure it, and deploy applications with repeatable Terraform workflows. In practice, Portainer provider settings must be known before apply, so this is typically split into an infrastructure stage and a Portainer stage. This guide shows how to integrate Portainer Terraform with cloud infrastructure providers for end-to-end automated deployments.
 
 ## Prerequisites
 
 - Terraform v1.0+
 - Cloud provider account (AWS/GCP/Azure) or on-premises servers
-- Portainer Terraform provider
-- Docker installed on target servers
+- Portainer Terraform provider (`portainer/portainer`)
+- Ability to install Docker on target servers
 
 ## Step 1: Full Stack Architecture
 
-```bash
-Terraform Apply:
-  1. Cloud provider: Provision EC2/VM
-  2. cloud-init: Install Docker + Portainer
-  3. Portainer provider: Configure Portainer
-  4. Portainer provider: Deploy application stacks
+```text
+Terraform Workflow:
+  1. Infra stage: Provision EC2/VM
+  2. Infra stage: cloud-init installs Docker + Portainer
+  3. Portainer stage: Configure Portainer
+  4. Portainer stage: Deploy application stacks
 ```
 
 ## Step 2: Provision a Server with Docker and Portainer
 
 ```hcl
-# server.tf - Provision EC2 with Docker and Portainer
+# infra/server.tf - Provision EC2 with Docker and Portainer
+
+terraform {
+  required_version = ">= 1.0.0"
+
+  required_providers {
+    aws = {
+      source = "hashicorp/aws"
+    }
+  }
+}
 
 provider "aws" {
   region = "us-east-1"
@@ -137,12 +147,14 @@ docker run -d \
   portainer/portainer-ce:${portainer_version}
 
 # Wait for Portainer to start
-sleep 30
+until curl -skf https://localhost:9443/api/system/status >/dev/null; do
+  sleep 5
+done
 
 # Initialize admin user
-curl -s -X POST http://localhost:9000/api/users/admin/init \
+curl -sk -X POST https://localhost:9443/api/users/admin/init \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"${portainer_admin_pass}"}'
+  -d '{"Username":"admin","Password":"${portainer_admin_pass}"}'
 
 echo "Portainer initialized!"
 ```
@@ -150,65 +162,75 @@ echo "Portainer initialized!"
 ## Step 4: Configure Portainer After Server Provisioning
 
 ```hcl
-# portainer_config.tf - Configure Portainer on newly provisioned server
+# portainer/portainer_config.tf - Run in a separate Terraform root module after the server is provisioned
 
-# Wait for server to be ready
-resource "time_sleep" "wait_for_portainer" {
-  depends_on      = [aws_instance.portainer_server]
-  create_duration = "120s"  # Wait 2 minutes for cloud-init to complete
+terraform {
+  required_version = ">= 1.0.0"
+
+  required_providers {
+    portainer = {
+      source = "portainer/portainer"
+    }
+  }
 }
 
-# Configure Portainer provider using the new server's IP
+# Configure Portainer provider using the server URL from the infra stage
 provider "portainer" {
-  endpoint        = "https://${aws_instance.portainer_server.public_ip}:9443"
-  api_key         = var.portainer_api_key  # Generated via cloud-init
-  skip_tls_verify = true  # Self-signed cert initially
-
-  depends_on = [time_sleep.wait_for_portainer]
+  endpoint        = var.portainer_endpoint
+  api_user        = "admin"
+  api_password    = var.portainer_admin_pass
+  skip_ssl_verify = true  # Self-signed cert initially
 }
 
 # Register the local Docker environment
 resource "portainer_environment" "local" {
-  depends_on = [time_sleep.wait_for_portainer]
-
-  name             = "production-local"
-  environment_url  = "unix:///var/run/docker.sock"
-  environment_type = 1
+  name                = "production-local"
+  environment_address = "unix:///var/run/docker.sock"
+  type                = 1
 }
 
 # Deploy monitoring stack immediately
 resource "portainer_stack" "monitoring" {
   depends_on = [portainer_environment.local]
 
-  name        = "monitoring"
-  endpoint_id = portainer_environment.local.id
+  name            = "monitoring"
+  deployment_type = "standalone"
+  method          = "string"
+  endpoint_id     = portainer_environment.local.id
 
-  stack_file_content = file("stacks/monitoring/docker-compose.yml")
+  stack_file_content = file("${path.module}/stacks/monitoring/docker-compose.yml")
 }
 
 # Deploy application stack
 resource "portainer_stack" "application" {
   depends_on = [portainer_stack.monitoring]
 
-  name        = "myapp"
-  endpoint_id = portainer_environment.local.id
+  name            = "myapp"
+  deployment_type = "standalone"
+  method          = "string"
+  endpoint_id     = portainer_environment.local.id
 
-  stack_file_content = templatefile("stacks/myapp/docker-compose.yml", {
+  stack_file_content = templatefile("${path.module}/stacks/myapp/docker-compose.yml", {
     image_tag = var.app_image_tag
     domain    = var.app_domain
   })
 
-  env = [
-    { name = "DATABASE_URL", value = var.database_url },
-    { name = "APP_SECRET",   value = var.app_secret }
-  ]
+  env {
+    name  = "DATABASE_URL"
+    value = var.database_url
+  }
+
+  env {
+    name  = "APP_SECRET"
+    value = var.app_secret
+  }
 }
 ```
 
 ## Step 5: Outputs
 
 ```hcl
-# outputs.tf
+# infra/outputs.tf
 
 output "portainer_url" {
   description = "Portainer management URL"
@@ -229,24 +251,38 @@ output "ssh_command" {
 ## Step 6: Apply the Full Stack
 
 ```bash
-# Initialize
-terraform init
+# Stage 1 - infra root module
+terraform -chdir=infra init
 
-# Set variables
+# Set required infra variables
 export TF_VAR_portainer_admin_pass="SecureAdminPass123!"
+export TF_VAR_portainer_version="lts"
+export TF_VAR_vpc_id="vpc-..."
+export TF_VAR_subnet_id="subnet-..."
+export TF_VAR_ssh_key_name="my-key"
+export TF_VAR_admin_cidr="203.0.113.10/32"
+
+# Apply - provision server and bootstrap Portainer
+terraform -chdir=infra apply
+
+# Stage 2 - Portainer root module
+export TF_VAR_portainer_endpoint="$(terraform -chdir=infra output -raw portainer_url)"
 export TF_VAR_app_image_tag="v1.2.3"
+export TF_VAR_app_domain="app.example.com"
 export TF_VAR_database_url="postgresql://..."
+export TF_VAR_app_secret="replace-me"
 
-# Plan - see everything that will be created
-terraform plan
+until curl -skf "${TF_VAR_portainer_endpoint}/api/system/status" >/dev/null; do
+  sleep 5
+done
 
-# Apply - provision server + configure Portainer + deploy apps
-terraform apply
+terraform -chdir=portainer init
+terraform -chdir=portainer apply
 
 # Get Portainer URL
-terraform output portainer_url
+echo "${TF_VAR_portainer_endpoint}"
 ```
 
 ## Conclusion
 
-Fully automated Portainer infrastructure with Terraform creates a repeatable path from "empty cloud account" to "running application" in a single command. Cloud provider resources provision the server, cloud-init bootstraps Docker and Portainer, and the Portainer Terraform provider handles configuration and application deployment. This end-to-end automation is the foundation for disaster recovery, multi-region deployments, and consistent environment provisioning across development, staging, and production.
+Fully automated Portainer infrastructure with Terraform creates a repeatable path from "empty cloud account" to "running application" in a small number of Terraform stages. Cloud provider resources provision the server, cloud-init bootstraps Docker and Portainer, and a second Terraform stage using the Portainer provider handles configuration and application deployment. This end-to-end automation is the foundation for disaster recovery, multi-region deployments, and consistent environment provisioning across development, staging, and production.
