@@ -19,18 +19,18 @@ provider "aws" {
   # Increase retry attempts (default: 25)
   max_retries = 30
 
-  # Use environment variables for credentials to avoid extra API calls
+  # Credentials can also be supplied via environment variables
   # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_PROFILE
 }
 ```
 
-Common AWS rate-limited services:
-- **IAM**: 10 req/sec for write operations
-- **EC2**: 100 req/sec for most describe operations
-- **CloudWatch**: 10 req/sec for PutMetricAlarm
+Common AWS rate-limited APIs vary by service and operation. Examples:
+- **STS**: 600 req/sec per account per Region for credential APIs such as `AssumeRole` and `GetCallerIdentity`
+- **EC2**: non-mutating APIs are throttled per API; for example, `DescribeHosts` has a bucket size of 100 and a refill rate of 20 req/sec
+- **CloudWatch**: `PutMetricAlarm` is 3 req/sec per Region by default
 
 ```bash
-# For IAM-heavy applies, reduce parallelism
+# For rate-limit-prone applies, reduce parallelism
 
 tofu apply -parallelism=3 -var-file=production.tfvars
 ```
@@ -42,23 +42,21 @@ provider "github" {
   token = var.github_token
   owner = var.github_org
 
-  # GitHub API rate limit: 5,000 req/hour for authenticated calls
-  # For large org configurations (many repos/teams), use a GitHub App token
-  # which has higher limits
+  # Personal access tokens are typically limited to 5,000 req/hour
+  # GitHub App installation tokens start at 5,000 req/hour and can scale
+  # higher depending on org size or GitHub Enterprise Cloud
 }
 ```
 
 For organizations with many repositories:
 
 ```hcl
-# Instead of creating all repos in one apply, use targeted applies
-# or batch them by team
+# Split large repository sets by team into separate configurations
+# or separate runs
 module "team_alpha_repos" {
   source = "./modules/github-repos"
   repos  = var.team_alpha_repos
 }
-
-# Apply separately: tofu apply -target=module.team_alpha_repos
 ```
 
 ## Datadog Provider Rate Limits
@@ -68,11 +66,12 @@ provider "datadog" {
   api_key = var.datadog_api_key
   app_key = var.datadog_app_key
 
-  # Datadog has ~3,000 API requests/hour
-  # For large monitor configurations, batch applies
+  # Datadog API rate limits vary by endpoint and are exposed in
+  # X-RateLimit-* response headers
+  # For large monitor configurations, split changes into smaller applies
 }
 
-# Create monitors in batches using for_each with deliberate ordering
+# Create monitors in smaller groups when you need to reduce API pressure
 resource "datadog_monitor" "service_monitors" {
   for_each = var.service_monitors
   # ...
@@ -98,7 +97,7 @@ resource "aws_iam_role_policy" "inline" {
   role   = aws_iam_role.app.id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [for arn in var.policy_statements : arn]
+    Statement = [for statement in var.policy_statements : statement]
   })
 }
 ```
@@ -107,18 +106,18 @@ resource "aws_iam_role_policy" "inline" {
 
 ```bash
 # Schedule large applies during low-traffic hours
-# Use at command (Linux/macOS)
-echo "tofu apply -auto-approve production.tfplan" | at 02:00
+# Use at where available
+echo "tofu apply production.tfplan" | at 02:00
 ```
 
 ### 3. Caching with Data Sources
 
-Avoid repeated API calls for the same data.
+Define shared lookups once and reuse them.
 
 ```hcl
-# Cache AMI lookups using locals
+# Reuse a shared AMI lookup
 locals {
-  # This data source is only called once and cached
+  # Reference the looked-up AMI ID through a local
   ubuntu_ami_id = data.aws_ami.ubuntu.id
 }
 
@@ -134,7 +133,7 @@ data "aws_ami" "ubuntu" {
 # All instances use the cached value
 resource "aws_instance" "servers" {
   count = 20
-  ami   = local.ubuntu_ami_id  # single API call, cached for all 20 instances
+  ami   = local.ubuntu_ami_id
   # ...
 }
 ```
@@ -148,4 +147,4 @@ TF_LOG=DEBUG tofu apply 2>&1 | grep -i "throttl\|rate limit\|429\|RequestThrottl
 
 ## Summary
 
-Provider rate limits require a combination of reduced parallelism, increased retry counts, request batching, and off-peak scheduling for large applies. Understanding each provider's specific limits and using cached data sources reduces unnecessary API calls - making large applies more reliable.
+Provider rate limits require a combination of reduced parallelism, increased retry counts, request batching, and off-peak scheduling for large applies. Understanding each provider's specific limits and reusing shared data lookups reduces unnecessary API calls - making large applies more reliable.
