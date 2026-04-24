@@ -13,17 +13,15 @@ Emby is a media server that sits between Plex and Jellyfin in terms of open-sour
 ## Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   emby:
     image: emby/embyserver:latest
     container_name: emby
-    network_mode: host   # Required for DLNA and network discovery
+    network_mode: host   # Easiest way to enable DLNA and network discovery
     environment:
-      UID: 1000
-      GID: 1000
-      GIDLIST: 44    # video group for GPU access
+      UID: "<your_uid>"
+      GID: "<your_gid>"
+      GIDLIST: "<gid1>,<gid2>"    # Replace with any additional host group IDs Emby needs
     volumes:
       # Emby configuration and database
       - emby_config:/config
@@ -40,6 +38,8 @@ volumes:
   emby_config:
 ```
 
+Replace `UID`, `GID`, and `GIDLIST` with the IDs from your host system.
+
 ## Access and Setup
 
 Navigate to `http://<host>:8096` and complete the setup wizard.
@@ -54,10 +54,10 @@ services:
     devices:
       - /dev/dri:/dev/dri
     environment:
-      GIDLIST: 44,109   # video and render groups
+      GIDLIST: "<video_gid>,<render_gid>"   # Replace with your actual host group IDs
 ```
 
-Enable in Emby: **Settings > Transcoding > Hardware acceleration > Intel QuickSync Video**
+Enable in Emby from the server dashboard under **Transcoding**, then select **Intel QuickSync Video**.
 
 ### NVIDIA
 
@@ -66,37 +66,39 @@ services:
   emby:
     runtime: nvidia
     environment:
-      NVIDIA_VISIBLE_DEVICES=all
-      NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
 ```
+
+This requires the NVIDIA Container Toolkit (or the legacy NVIDIA Docker runtime) on the host.
 
 ## Emby Premiere Features
 
 With Emby Premiere subscription:
-- Hardware transcoding on all platforms
-- Mobile sync (offline downloads)
-- Cover art provider
-- Premium themes
+- Hardware accelerated transcoding
+- Offline media (downloads & sync)
+- Cover Art plugin
+- Themes for supported clients
 
-Configure at **Settings > Emby Premiere**
+Configure at **Emby Premiere** in the server dashboard.
 
 ## Live TV with HDHomeRun
 
 ```yaml
 services:
   emby:
-    # HDHomeRun tuner is accessed over network, no special config needed
+    # HDHomeRun is usually discovered automatically on the local network
     network_mode: host
 ```
 
-In Emby: **Settings > Live TV > Add tuner device > HDHomeRun**
+In Emby (with an Emby Premiere subscription): **Live TV > Add TV Source > HDHomeRun**
 
 ## Emby with Traefik
 
 ```yaml
 services:
   emby:
-    network_mode: bridge  # Can't use host mode with Traefik
+    network_mode: bridge  # Simpler if Traefik is discovering Docker containers by labels
     ports:
       - "8096:8096"
     labels:
@@ -107,8 +109,10 @@ services:
       - "traefik.http.services.emby.loadbalancer.server.port=8096"
 ```
 
-Note: Using bridge mode instead of host mode disables DLNA discovery.
+Make sure Emby is attached to a Docker network that Traefik can reach.
+
+Note: Bridge mode can require extra configuration for DLNA discovery. Host mode remains the easiest option for DLNA and Wake-on-LAN.
 
 ## Conclusion
 
-Emby deployed via Portainer provides a polished media streaming experience with a user-friendly interface. Its Live TV integration and Premiere features appeal to users who want a more managed experience than Jellyfin provides. The linuxserver.io image offers good container management with proper UID/GID handling for file permissions.
+Emby deployed via Portainer provides a polished media streaming experience with a user-friendly interface. Its Live TV integration and Premiere features appeal to users who want a more managed experience than Jellyfin provides. The official Emby image offers UID, GID, and GIDLIST controls for file permissions and device access.
