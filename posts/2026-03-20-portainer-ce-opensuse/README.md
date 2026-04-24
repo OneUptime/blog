@@ -8,11 +8,11 @@ Description: A guide to installing Portainer Community Edition on openSUSE Leap 
 
 ## Overview
 
-openSUSE is a community distribution maintained by SUSE that underpins SUSE Linux Enterprise. It uses the `zypper` package manager and has AppArmor enabled by default. This guide covers installing Portainer CE on openSUSE Leap 15.5 and openSUSE Tumbleweed.
+openSUSE is a community Linux distribution sponsored by SUSE. It uses the `zypper` package manager, and openSUSE Leap has AppArmor enabled by default. This guide covers installing Portainer CE on openSUSE Leap 15.6 and openSUSE Tumbleweed.
 
 ## Prerequisites
 
-- openSUSE Leap 15.5 or Tumbleweed
+- openSUSE Leap 15.6 or Tumbleweed
 - Minimum: 2GB RAM, 20GB disk
 - Root or sudo access
 
@@ -28,11 +28,14 @@ sudo zypper update -y
 ## Step 2: Install Docker
 
 ```bash
-# Install Docker from the official Docker repository
-# Add Docker repository
-sudo zypper addrepo https://download.docker.com/linux/sles/docker-ce.repo
+# Add the repository that matches your openSUSE release
+# For openSUSE Tumbleweed:
+sudo zypper addrepo https://download.opensuse.org/repositories/Virtualization:containers/openSUSE_Tumbleweed/Virtualization:containers.repo
 
-# Or use the openSUSE community package
+# For openSUSE Leap 15.6:
+sudo zypper addrepo https://download.opensuse.org/repositories/Virtualization:containers/15.6/Virtualization:containers.repo
+
+sudo zypper refresh
 sudo zypper install -y docker
 
 # Enable and start Docker
@@ -43,23 +46,19 @@ sudo usermod -aG docker $USER
 newgrp docker
 ```
 
-## Step 3: Configure AppArmor for Docker
+## Step 3: Verify AppArmor for Docker
 
-openSUSE uses AppArmor which may need configuration for Docker:
+openSUSE uses AppArmor. Docker loads the `docker-default` profile for containers automatically, so no manual AppArmor profile import is normally required:
 
 ```bash
 # Check AppArmor status
 sudo aa-status
 
-# Docker installs its own AppArmor profile
-# Verify Docker AppArmor profile is loaded
-sudo aa-status | grep docker
-
-# If not loaded:
-sudo apparmor_parser -r /etc/apparmor.d/docker
+# Verify Docker's default AppArmor profile is loaded
+sudo aa-status | grep docker-default
 ```
 
-## Step 4: Configure Firewall (SuSEfirewall2 or firewalld)
+## Step 4: Configure Firewall (firewalld)
 
 ```bash
 # For openSUSE using firewalld
@@ -85,7 +84,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 
 # Verify
 docker ps | grep portainer
@@ -118,25 +117,25 @@ groups $USER
 # Check for AppArmor denials
 sudo journalctl -k | grep apparmor | grep DENIED
 
-# Temporarily put AppArmor in complain mode for testing
-sudo aa-complain /usr/sbin/docker
+# Check that Docker's default AppArmor profile is present
+sudo aa-status | grep docker-default
 ```
 
-## Using Docker CE from Official Docker Repository
+## Using Docker from the openSUSE Virtualization:containers Repository
 
-For the latest Docker CE on openSUSE:
+The commands in Step 2 use the openSUSE `Virtualization:containers` repository. If you need to add it separately later, use the repository that matches your release:
 
 ```bash
-# Import Docker GPG key
-sudo rpm --import https://download.docker.com/linux/sles/gpg
-
-# Add repository (uses SLES packages which are compatible)
+# For openSUSE Tumbleweed
 sudo zypper addrepo \
-  https://download.docker.com/linux/sles/15/x86_64/stable/ \
-  docker-ce-stable
+  https://download.opensuse.org/repositories/Virtualization:containers/openSUSE_Tumbleweed/Virtualization:containers.repo
+
+# For openSUSE Leap 15.6
+sudo zypper addrepo \
+  https://download.opensuse.org/repositories/Virtualization:containers/15.6/Virtualization:containers.repo
 
 sudo zypper refresh
-sudo zypper install -y docker-ce docker-ce-cli containerd.io
+sudo zypper install -y docker
 ```
 
 ## Conclusion
