@@ -64,9 +64,9 @@ if __name__ == "__main__":
     run_server()
 ```
 
-## Using a Thread Pool to Limit Concurrency
+## Using a Thread Pool to Limit Handler Threads
 
-Spawning unlimited threads is dangerous under high load. Use `ThreadPoolExecutor` to cap concurrency:
+Spawning unlimited threads is dangerous under high load. Use `ThreadPoolExecutor` to cap the number of client handlers running at once:
 
 ```python
 import socket
@@ -111,6 +111,7 @@ if __name__ == "__main__":
 If multiple threads need to share state (e.g., a list of connected clients), use a lock:
 
 ```python
+import socket
 import threading
 
 # Shared registry of active connections
@@ -139,10 +140,10 @@ def broadcast(message: bytes, sender_addr: tuple) -> None:
 
 ## Limitations of Threading
 
-- Each thread consumes ~8MB of stack by default
+- Each thread has memory overhead, including stack space, and the default stack size is platform-dependent
 - Python's GIL limits true CPU parallelism (but not I/O parallelism)
 - For thousands of concurrent connections, prefer `asyncio` (covered in a separate post)
 
 ## Conclusion
 
-Threading enables a Python TCP server to handle multiple simultaneous clients by delegating each accepted connection to a separate thread. Use `ThreadPoolExecutor` to bound resource usage, and protect any shared state with `threading.Lock`. For very high concurrency, consider `asyncio` instead.
+Threading enables a Python TCP server to handle multiple simultaneous clients by delegating each accepted connection to a separate thread. Use `ThreadPoolExecutor` to bound the number of handler threads, and protect any shared state with `threading.Lock`. For very high concurrency, consider `asyncio` instead.
