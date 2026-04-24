@@ -8,7 +8,7 @@ Description: Learn how to deploy multi-service applications from stack templates
 
 ## Introduction
 
-Stack templates in Portainer combine the power of Docker Compose with the convenience of a template system. Instead of writing Compose files from scratch, you select a stack template, configure a few variables, and deploy a complete multi-service application. This guide shows you how.
+Stack templates in Portainer combine the power of Docker Compose or Swarm stack files with the convenience of a template system. Instead of writing stack files from scratch, you select a stack template, configure a few variables, and deploy a complete multi-service application. This guide shows you how.
 
 ## Prerequisites
 
@@ -18,13 +18,13 @@ Stack templates in Portainer combine the power of Docker Compose with the conven
 
 ## What Is a Stack Template
 
-A stack template in Portainer (type `2`) contains:
+A stack template in Portainer can be a Swarm stack (`type: 2`) or a Compose stack (`type: 3`). For example, a Compose stack template for WordPress contains:
 
 ```json
 {
-  "type": 2,
+  "type": 3,
   "title": "WordPress",
-  "description": "WordPress with MySQL database",
+  "description": "WordPress setup with a MySQL database",
   "categories": ["CMS"],
   "platform": "linux",
   "logo": "https://portainer-io-assets.sfo2.digitaloceanspaces.com/logos/wordpress.png",
@@ -34,34 +34,30 @@ A stack template in Portainer (type `2`) contains:
   },
   "env": [
     {
-      "name": "WORDPRESS_PORT",
-      "label": "WordPress port",
-      "default": "80"
-    },
-    {
-      "name": "MYSQL_ROOT_PASSWORD",
-      "label": "MySQL root password"
+      "name": "MYSQL_DATABASE_PASSWORD",
+      "label": "Database root password",
+      "description": "Password used by the MySQL root user."
     }
   ]
 }
 ```
 
-## Step 1: Navigate to App Templates
+## Step 1: Navigate to Templates
 
 1. Select your Docker environment in Portainer
-2. Click **App Templates** in the sidebar
-3. Browse or search for stack templates (look for the stack icon)
+2. Expand **Templates** in the sidebar
+3. Click **Application** and browse or search for stack templates
 
 ## Step 2: Find a Stack Template
 
-Popular stack templates include:
+Examples from Portainer's official templates include:
 
 - **WordPress** - WordPress + MySQL
-- **Ghost** - Ghost CMS + MySQL
-- **Nextcloud** - File sharing platform
-- **Gitea** - Self-hosted Git service
-- **MEAN** - MongoDB + Express + Angular + Node
-- **Prometheus + Grafana** - Monitoring stack
+- **Swarm monitoring** - Prometheus + Grafana for Swarm
+- **Redis Cluster** - Redis in cluster mode
+- **OpenAMT** - OpenAMT Cloud Toolkit
+- **Dokku** - PaaS-style application platform
+- **LiveSwitch** - Gateway, cache, database, and media server stack
 
 ## Step 3: Click the Stack Template
 
@@ -69,79 +65,59 @@ Click on your chosen template. The configuration panel expands showing:
 
 - Template description
 - Variable fields to fill in
-- Optionally a preview of the Compose file
+- An option to enable or disable access control
 
 ## Step 4: Configure Template Variables
 
-For the **Ghost** stack template example:
+For the **Dokku** stack template example:
 
 ```text
-Stack name:        my-ghost-blog
+Stack name:        my-dokku
 
-Ghost port:        2368
-Ghost URL:         https://myblog.example.com
-Ghost mail service: mailgun
-Ghost mail user:   postmaster@myblog.example.com
-Ghost mail password: [your-mailgun-password]
-
-MySQL root password: [secure-root-password]
-MySQL database:     ghost
-MySQL user:         ghostuser
-MySQL password:     [secure-ghost-password]
+Dokku version:     latest
+Dokku hostname:    dokku.example.com
+Dokku volume path: /var/lib/dokku
+Dokku host root:   /var/lib/dokku/home/dokku
+SSH port:          22
+HTTP port:         80
+HTTPS port:        443
 ```
 
-**Important:** Stack name must be unique and use only lowercase letters, numbers, and hyphens.
+**Important:** Use a unique stack name.
 
 ## Step 5: Review the Compose File (Optional)
 
-Some template configurations show a preview of the resolved Compose file. Review it to understand what will be deployed:
+Some templates are backed by Compose files stored in a Git repository. Reviewing the file helps you understand what will be deployed:
 
 ```yaml
-version: "3"
+# version: '3.2'
 services:
-  ghost:
-    image: ghost:5-alpine
+  agent:
+    image: dokku/dokku:${VERSION}
+    environment:
+      DOKKU_HOSTNAME: ${DOKKU_HOSTNAME}
+      DOKKU_HOST_ROOT: ${DOKKU_HOST_ROOT}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${VOLUME_PATH:-/var/lib/dokku}:/mnt/dokku
     ports:
-      - "2368:2368"
-    environment:
-      database__client: mysql
-      database__connection__host: db
-      database__connection__user: ghostuser
-      database__connection__password: "[your-password]"
-      database__connection__database: ghost
-      url: https://myblog.example.com
-    volumes:
-      - ghost-content:/var/lib/ghost/content
-    depends_on:
-      - db
-
-  db:
-    image: mysql:8
-    environment:
-      MYSQL_ROOT_PASSWORD: "[root-password]"
-      MYSQL_DATABASE: ghost
-      MYSQL_USER: ghostuser
-      MYSQL_PASSWORD: "[ghost-password]"
-    volumes:
-      - ghost-db:/var/lib/mysql
-
-volumes:
-  ghost-content:
-  ghost-db:
+      - "${SSH_PORT:-22}:22"
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
 ```
 
 ## Step 6: Deploy the Stack
 
 1. Click **Deploy the stack**
-2. Portainer creates all services, volumes, and networks
+2. Portainer creates the stack resources defined by the template, including containers or services, volumes, and networks
 3. Watch the deployment output for errors
 
 ## Step 7: Verify the Stack
 
 1. Go to **Stacks** in the sidebar
-2. Find your new stack (named `my-ghost-blog`)
-3. Click it to see all containers
-4. Verify all containers show **Running** status
+2. Find your new stack (named `my-dokku`)
+3. Click it to see its containers or services
+4. Verify everything shows **Running** status
 
 Visit the application URL in your browser to confirm it works.
 
@@ -149,17 +125,17 @@ Visit the application URL in your browser to confirm it works.
 
 From the stack detail view:
 
-- **Edit** - Modify the Compose file or environment variables
-- **Stop** - Stop all services
+- **Editor** - Modify the Compose file when the stack is editable in Portainer
+- **Stop** - Stop the stack
 - **Remove** - Delete the stack (optionally delete volumes)
-- **Logs** - View per-container logs
+- **Logs** - View logs for the stack's containers or services
 
 ## Updating a Stack from a Template
 
 Stack templates create a standard Portainer stack. To update it:
 
 1. Navigate to the stack in **Stacks**
-2. Click **Editor** tab to modify the Compose file
+2. If the **Editor** tab is available, modify the Compose file or environment variables
 3. Update image tags or configuration
 4. Click **Update the stack**
 
@@ -167,11 +143,11 @@ Stack templates create a standard Portainer stack. To update it:
 
 Save any working Compose file as a reusable template:
 
-1. Go to **App Templates > Custom Templates**
-2. Click **+ Add custom template**
-3. Choose **Stack** type
-4. Paste your Compose file
-5. Define variables using Mustache syntax: `{{ variable_name }}`
+1. Go to **Templates > Custom**
+2. Click **Add Custom Template**
+3. Choose the template type that matches your environment (**Standalone / Podman** or **Swarm**)
+4. Paste your Compose file or point Portainer at a Git repository
+5. In Portainer BE, you can define variables using `{{ variable_name }}`
 
 ## Conclusion
 
