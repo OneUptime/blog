@@ -50,61 +50,70 @@ If deployment fails, error messages appear inline with a descriptive explanation
 
 1. Go to **Stacks** in the sidebar
 2. Click on your stack name
-3. You see all containers listed with their status
-4. Click the **Logs** icon (document icon) next to any container
+3. On Docker Standalone and Podman, you see the stack containers listed with their status. On Docker Swarm, you see the stack services and their tasks.
+4. Open the log view for the container or service you want to inspect
 
 ### Method 2: From the Containers List
 
 1. Go to **Containers** in the sidebar
-2. Find the container (stack containers are prefixed with the stack name)
+2. Find the container (stack containers are typically prefixed with the stack or project name)
 3. Click the container name to open details
 4. Click the **Logs** tab
 
 ### Method 3: Direct Container Log View
 
-1. From the stack detail, click on a container row
-2. In the container detail page, click **Logs** in the top tab bar
+1. From the stack detail, click on a container row, or on a service task row in Docker Swarm
+2. In the details page, open the log view
 
 ## Log Viewer Options
 
 Portainer's log viewer offers several options:
 
 ```text
-[x] Auto-refresh logs       - Continuously poll for new log entries
+Date picker                 - Select the time period to retrieve
+Lines: [1000]               - Limit the number of lines per log file
+[ ] Line numbers            - Show line numbers for each log line
+[ ] Timestamp               - Prepend each line with a timestamp
 [x] Wrap lines              - Wrap long log lines in the viewer
-[ ] Show timestamps         - Prepend each line with ISO timestamp
-Lines to display: [100 ▼]  - Set number of lines to fetch
+[x] Auto refresh            - Continuously refresh the log view
 ```
 
 ### Fetching More Log Lines
 
-By default, Portainer shows the last 100 lines. To see more:
+By default, Portainer limits the view to 1000 lines per log file. To see more:
 
-1. Change the **Lines to display** dropdown to 500, 1000, or **All**
-2. Click the refresh button to reload with the new setting
+1. Increase the **Lines** setting or adjust the date range
+2. If **Auto refresh** is off, click the refresh button to reload the view
 
 ### Searching Logs
 
-Use your browser's built-in search (`Ctrl+F` / `Cmd+F`) to search within the displayed log output. For production log analysis, consider forwarding logs to a centralized logging system.
+Use Portainer's built-in **Search** box to find entries, and enable **Filter search results** if you only want matching log lines displayed. Your browser's built-in search (`Ctrl+F` / `Cmd+F`) can still help for text currently rendered on screen. For production log analysis, consider forwarding logs to a centralized logging system.
 
 ## Viewing Logs via Docker CLI
 
-If you have CLI access to the Docker host, you can also view logs directly:
+If you have CLI access to the Docker host, you can also view logs directly. The commands differ depending on whether the stack is running on Docker Standalone or Docker Swarm:
 
 ```bash
-# View logs for all containers in a stack (stack name: myapp)
+# Docker Standalone stacks
+# Run this from the directory that contains your Compose file, or pass -f explicitly.
+docker compose -f /path/to/compose.yaml -p myapp logs
 
-docker compose -p myapp logs
-
-# Follow logs in real time
-docker compose -p myapp logs -f
+docker compose -f /path/to/compose.yaml -p myapp logs -f
 
 # View logs for a specific service
-docker compose -p myapp logs api
+docker compose -f /path/to/compose.yaml -p myapp logs api
 
 # Show last 50 lines with timestamps
-docker compose -p myapp logs --tail=50 --timestamps
+docker compose -f /path/to/compose.yaml -p myapp logs --tail=50 --timestamps
+
+# Docker Swarm stacks
+# Services are prefixed with the stack name, for example myapp_api.
+docker service logs myapp_api
+docker service logs -f myapp_api
+docker service logs --tail 50 --timestamps myapp_api
 ```
+
+For Docker Swarm, run `docker service logs` on a manager node. Docker documents `docker service logs` for services using the `json-file` or `journald` logging drivers.
 
 ## Setting Up Log Drivers
 
@@ -131,7 +140,7 @@ services:
 
 ## Aggregating Logs with a Logging Stack
 
-For production environments, deploy a centralized logging stack alongside your application:
+For production environments, deploy a centralized logging stack alongside your application. If you use the `loki` logging driver, install the Loki Docker driver on each Docker host first:
 
 ```yaml
 services:
@@ -159,7 +168,7 @@ services:
 ## Troubleshooting Log Access Issues
 
 - **No logs visible** - the container may have exited immediately; check its status
-- **Logs cut off** - increase the lines limit or use `All` option
+- **Logs cut off** - increase the **Lines** setting, widen the date range, or refresh the view
 - **Log driver errors** - ensure the log driver is installed on the Docker host
 - **Permission denied** - verify your Portainer user has access to the environment and stack
 
