@@ -4,32 +4,34 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Raspberry Pi, Docker Swarm, Cluster, Self-Hosted, Home Lab
 
-Description: Set up a Raspberry Pi cluster running Docker Swarm and deploy Portainer to manage multi-node container workloads with high availability.
+Description: Set up a Raspberry Pi cluster running Docker Swarm and deploy Portainer to manage multi-node container workloads from a single web UI.
 
 ## Introduction
 
-A cluster of Raspberry Pis running Docker Swarm gives you a highly available container platform at low cost. With Portainer managing the Swarm, you get a visual interface for deploying services, monitoring nodes, and managing the cluster state. This guide covers setting up a 3-node Raspberry Pi Swarm with Portainer.
+A cluster of Raspberry Pis running Docker Swarm gives you a low-cost multi-node container platform. With Portainer managing the Swarm, you get a visual interface for deploying services, monitoring nodes, and managing the cluster state. This guide covers setting up a 3-node Raspberry Pi Swarm with Portainer using 1 manager and 2 workers.
 
 ## Prerequisites
 
 - 3 or more Raspberry Pi 4 (4GB or 8GB) with Raspberry Pi OS 64-bit
 - Gigabit switch and Ethernet cables
-- Static IPs assigned to each Pi
+- DHCP reservations or static IPs assigned to each Pi
 - SSH access to all nodes
 
 ## Step 1: Assign Static IPs
 
-On each Pi, configure a static IP:
+On current Raspberry Pi OS, NetworkManager (`nmcli`) is the supported way to set a static IP on the device. On each Pi, configure a static IP:
 
 ```bash
-# Example for Pi 1 (manager) at 192.168.1.10
+# List connection profiles and identify the one bound to eth0
+nmcli connection show
 
-sudo tee /etc/dhcpcd.conf >> /dev/null << 'EOF'
-interface eth0
-static ip_address=192.168.1.10/24
-static routers=192.168.1.1
-static domain_name_servers=8.8.8.8 1.1.1.1
-EOF
+# Example for Pi 1 (manager) at 192.168.1.10
+# Replace "Wired connection 1" with your eth0 connection profile name
+sudo nmcli connection modify "Wired connection 1" ipv4.method manual
+sudo nmcli connection modify "Wired connection 1" ipv4.addresses 192.168.1.10/24
+sudo nmcli connection modify "Wired connection 1" ipv4.gateway 192.168.1.1
+sudo nmcli connection modify "Wired connection 1" ipv4.dns "8.8.8.8 1.1.1.1"
+sudo nmcli connection up "Wired connection 1"
 ```
 
 Assign:
@@ -44,8 +46,10 @@ Run on each Pi:
 ```bash
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
-sudo systemctl enable docker
+sudo systemctl enable --now docker
 ```
+
+Log out and back in, or run `newgrp docker`, before continuing so the remaining `docker` commands work without `sudo`.
 
 ## Step 3: Initialize Docker Swarm
 
@@ -81,7 +85,7 @@ docker node ls
 On the Swarm Manager, deploy Portainer as a Swarm stack:
 
 ```bash
-curl -L https://downloads.portainer.io/ce2-19/portainer-agent-stack.yml \
+curl -L https://downloads.portainer.io/ce-lts/portainer-agent-stack.yml \
   -o portainer-agent-stack.yml
 
 docker stack deploy -c portainer-agent-stack.yml portainer
@@ -95,7 +99,7 @@ version: '3.2'
 
 services:
   agent:
-    image: portainer/agent:latest
+    image: portainer/agent:lts
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
@@ -107,7 +111,7 @@ services:
         constraints: [node.platform.os == linux]
 
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:lts
     command: -H tcp://tasks.agent:9001 --tlsskipverify
     ports:
       - "9000:9000"
@@ -136,7 +140,7 @@ docker stack deploy -c portainer-stack.yml portainer
 
 ## Step 6: Access Portainer
 
-Navigate to `http://192.168.1.10:9000` and create your admin account.
+Navigate to `https://192.168.1.10:9443` and create your admin account.
 
 In Portainer you'll see:
 - **Swarm** cluster overview
@@ -156,7 +160,7 @@ services:
     ports:
       - "8080:80"
     deploy:
-      replicas: 3      # One replica per Pi
+      replicas: 3      # Three replicas across the cluster
       update_config:
         parallelism: 1   # Update one replica at a time
         delay: 10s
@@ -164,7 +168,7 @@ services:
         condition: on-failure
 ```
 
-Portainer will distribute replicas across all 3 Pis automatically.
+Swarm will schedule the replicas across the available nodes in the cluster.
 
 ## Cluster Management with Portainer
 
@@ -173,7 +177,7 @@ Portainer will distribute replicas across all 3 Pis automatically.
 1. In Portainer, navigate to **Swarm > Nodes**
 2. Click on the node to maintenance
 3. Set **Availability** to **Drain**
-4. Portainer will migrate containers to other nodes
+4. Portainer will reschedule eligible Swarm service tasks onto other active nodes
 
 ### Scaling Services
 
@@ -183,4 +187,4 @@ Portainer will distribute replicas across all 3 Pis automatically.
 
 ## Conclusion
 
-A Raspberry Pi cluster running Docker Swarm with Portainer gives you a genuine highly available container platform for under $200. Portainer's Swarm support includes service deployment, node management, and rolling updates - all through a web interface. This setup is perfect for learning container orchestration before moving to production Kubernetes.
+A Raspberry Pi cluster running Docker Swarm with Portainer gives you a practical multi-node container platform for under $200. Portainer's Swarm support includes service deployment, node management, and rolling updates - all through a web interface. This setup is perfect for learning container orchestration before moving to production Kubernetes.
