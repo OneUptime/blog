@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Autoscaling, Cluster-autoscaler, Kubernetes, Automation
 
-Description: A guide to automating cluster scaling in Rancher using the Cluster Autoscaler, node pool scaling via the API, and HPA for workload scaling.
+Description: A guide to automating cluster scaling in Rancher using the Cluster Autoscaler, machine pool scaling through the Rancher Kubernetes API, and HPA for workload scaling.
 
 ## Overview
 
-Kubernetes provides multiple layers of autoscaling: Horizontal Pod Autoscaler (HPA) scales workloads, and Cluster Autoscaler scales the underlying node infrastructure. Rancher integrates with both cloud-provider Cluster Autoscalers and supports manual/API-based node pool scaling for on-premises environments. This guide covers setting up automated cluster scaling for Rancher-managed clusters.
+Kubernetes provides multiple layers of autoscaling: Horizontal Pod Autoscaler (HPA) scales workloads, and Cluster Autoscaler scales the underlying node infrastructure. Rancher integrates with cloud-provider Cluster Autoscalers, and Rancher-provisioned RKE2/K3s clusters that use machine pools backed by an infrastructure provider can also be scaled through the Rancher Kubernetes API. Imported/custom node clusters must be scaled outside Rancher. This guide covers setting up automated cluster scaling for Rancher-managed clusters.
 
 ## Horizontal Pod Autoscaling
 
-HPA scales application pods based on CPU, memory, or custom metrics:
+HPA scales application pods based on CPU, memory, or custom metrics. CPU and memory scaling requires Metrics Server, while custom metrics require a custom or external metrics API adapter such as Prometheus Adapter:
 
 ### Basic CPU-based HPA
 
@@ -49,7 +49,7 @@ spec:
 ### HPA with Custom Metrics
 
 ```yaml
-# HPA using custom Prometheus metric (requests per second)
+# HPA using a Pods metric exposed through the custom metrics API
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -87,6 +87,8 @@ spec:
 
 ## Cluster Autoscaler for AWS (EKS on Rancher)
 
+Match the Cluster Autoscaler image tag to your cluster's Kubernetes major/minor version; the example below shows a 1.34.x release. Ensure the `cluster-autoscaler` ServiceAccount and RBAC are already installed.
+
 ```yaml
 # Cluster Autoscaler deployment for EKS clusters managed by Rancher
 apiVersion: apps/v1
@@ -102,11 +104,14 @@ spec:
     matchLabels:
       app: cluster-autoscaler
   template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
     spec:
       serviceAccountName: cluster-autoscaler
       containers:
         - name: cluster-autoscaler
-          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.28.0
+          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.34.2
           command:
             - ./cluster-autoscaler
             - --cloud-provider=aws
@@ -126,55 +131,41 @@ spec:
               memory: 300Mi
 ```
 
-## Scaling Rancher Node Pools via API
+## Scaling Rancher Machine Pools via API
 
-For on-premises or custom infrastructure, scale node pools through the Rancher API:
+For Rancher-provisioned RKE2/K3s clusters that use machine pools backed by an infrastructure provider, scale the machine pool by updating `.spec.rkeConfig.machinePools[].quantity` through the Rancher Kubernetes API:
 
 ```bash
 #!/bin/bash
-# scale-nodepool.sh - Scale a Rancher node pool
+# scale-machinepool.sh - Scale a Rancher machine pool through the Rancher Kubernetes API
+set -euo pipefail
 
-RANCHER_URL="${RANCHER_URL}"
-RANCHER_TOKEN="${RANCHER_TOKEN}"
-CLUSTER_ID="$1"
-NODEPOOL_ID="$2"
-TARGET_QUANTITY="$3"
+: "${KUBECONFIG:?Set KUBECONFIG to a Rancher RK-API kubeconfig}"
+: "${CLUSTER_NAMESPACE:?Set CLUSTER_NAMESPACE}"
+: "${CLUSTER_NAME:?Set CLUSTER_NAME}"
+: "${MACHINE_POOL_NAME:?Set MACHINE_POOL_NAME}"
+: "${TARGET_QUANTITY:?Set TARGET_QUANTITY}"
 
-echo "Scaling node pool ${NODEPOOL_ID} to ${TARGET_QUANTITY} nodes..."
+echo "Scaling machine pool ${MACHINE_POOL_NAME} to ${TARGET_QUANTITY} nodes..."
 
-# Get current node pool configuration
-NODEPOOL=$(curl -s -k \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "${RANCHER_URL}/v3/nodepools/${NODEPOOL_ID}")
+MACHINE_POOL_INDEX=$(
+  kubectl get clusters.provisioning.cattle.io "${CLUSTER_NAME}" \
+    -n "${CLUSTER_NAMESPACE}" \
+    -o json \
+    | jq -er --arg pool "${MACHINE_POOL_NAME}" '
+        .spec.rkeConfig.machinePools
+        | to_entries[]
+        | select(.value.name == $pool)
+        | .key
+      '
+)
 
-CURRENT_QUANTITY=$(echo "${NODEPOOL}" | jq -r '.quantity')
-echo "Current quantity: ${CURRENT_QUANTITY}"
+kubectl patch clusters.provisioning.cattle.io "${CLUSTER_NAME}" \
+  -n "${CLUSTER_NAMESPACE}" \
+  --type='json' \
+  -p="[{\"op\":\"replace\",\"path\":\"/spec/rkeConfig/machinePools/${MACHINE_POOL_INDEX}/quantity\",\"value\":${TARGET_QUANTITY}}]"
 
-# Scale the node pool
-curl -s -k \
-  -X PUT \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  -H "Content-Type: application/json" \
-  "${RANCHER_URL}/v3/nodepools/${NODEPOOL_ID}" \
-  -d "{\"quantity\": ${TARGET_QUANTITY}}"
-
-echo "Scaling initiated. Waiting for nodes to be ready..."
-
-# Wait for nodes to reach desired count
-while true; do
-  ACTIVE_NODES=$(curl -s -k \
-    -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-    "${RANCHER_URL}/v3/nodes?nodePoolId=${NODEPOOL_ID}&state=active" \
-    | jq '.data | length')
-
-  echo "Active nodes: ${ACTIVE_NODES}/${TARGET_QUANTITY}"
-
-  if [ "${ACTIVE_NODES}" -eq "${TARGET_QUANTITY}" ]; then
-    echo "Node pool scaled successfully!"
-    break
-  fi
-  sleep 30
-done
+echo "Scaling request submitted."
 ```
 
 ## Scheduled Scaling with CronJobs
@@ -199,18 +190,25 @@ spec:
             - name: scaler
               image: registry.example.com/rancher-scaler:latest
               env:
-                - name: RANCHER_URL
-                  value: "https://rancher.example.com"
-                - name: RANCHER_TOKEN
-                  valueFrom:
-                    secretKeyRef:
-                      name: rancher-token
-                      key: token
-                - name: NODEPOOL_ID
-                  value: "np-xxxxx"
+                - name: KUBECONFIG
+                  value: /kubeconfig/config
+                - name: CLUSTER_NAMESPACE
+                  value: "fleet-default"
+                - name: CLUSTER_NAME
+                  value: "production-cluster"
+                - name: MACHINE_POOL_NAME
+                  value: "worker-pool"
                 - name: TARGET_QUANTITY
                   value: "10"
-              command: ["/scripts/scale-nodepool.sh"]
+              volumeMounts:
+                - name: rancher-rkapi-kubeconfig
+                  mountPath: /kubeconfig
+                  readOnly: true
+              command: ["/scripts/scale-machinepool.sh"]
+          volumes:
+            - name: rancher-rkapi-kubeconfig
+              secret:
+                secretName: rancher-rkapi-kubeconfig
           restartPolicy: OnFailure
 ---
 # CronJob: Scale down Friday evening
@@ -230,9 +228,25 @@ spec:
             - name: scaler
               image: registry.example.com/rancher-scaler:latest
               env:
+                - name: KUBECONFIG
+                  value: /kubeconfig/config
+                - name: CLUSTER_NAMESPACE
+                  value: "fleet-default"
+                - name: CLUSTER_NAME
+                  value: "production-cluster"
+                - name: MACHINE_POOL_NAME
+                  value: "worker-pool"
                 - name: TARGET_QUANTITY
                   value: "3"    # Weekend minimum
-              command: ["/scripts/scale-nodepool.sh"]
+              volumeMounts:
+                - name: rancher-rkapi-kubeconfig
+                  mountPath: /kubeconfig
+                  readOnly: true
+              command: ["/scripts/scale-machinepool.sh"]
+          volumes:
+            - name: rancher-rkapi-kubeconfig
+              secret:
+                secretName: rancher-rkapi-kubeconfig
           restartPolicy: OnFailure
 ```
 
@@ -241,8 +255,10 @@ spec:
 VPA adjusts resource requests/limits automatically:
 
 ```yaml
-# Install VPA (if not already installed)
-# kubectl apply -f https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler
+# Install VPA (if not already installed):
+# git clone https://github.com/kubernetes/autoscaler.git
+# cd autoscaler/vertical-pod-autoscaler
+# ./hack/vpa-up.sh
 
 # VPA for database workload - auto-tune resource requests
 apiVersion: autoscaling.k8s.io/v1
@@ -256,7 +272,7 @@ spec:
     kind: StatefulSet
     name: postgresql
   updatePolicy:
-    updateMode: Auto    # Automatically update pods
+    updateMode: Recreate    # Use an explicit mode; Auto is deprecated
   resourcePolicy:
     containerPolicies:
       - containerName: postgresql
@@ -295,4 +311,4 @@ spec:
 
 ## Conclusion
 
-Automating cluster scaling in Rancher requires multiple complementary mechanisms: HPA for workload scaling, Cluster Autoscaler for node-level scaling in cloud environments, Rancher API scripts for on-premises scaling, and CronJobs for predictable schedule-based scaling. VPA provides intelligent resource tuning. Combine these with Prometheus alerting to ensure your clusters scale before performance degradation occurs, and scale down to save costs during low-traffic periods.
+Automating cluster scaling in Rancher requires multiple complementary mechanisms: HPA for workload scaling, Cluster Autoscaler for node-level scaling in cloud environments, Rancher Kubernetes API automation for machine-pool scaling in Rancher-provisioned clusters, and CronJobs for predictable schedule-based scaling. VPA provides intelligent resource tuning. Combine these with Prometheus alerting to ensure your clusters scale before performance degradation occurs, and scale down to save costs during low-traffic periods.
