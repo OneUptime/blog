@@ -12,7 +12,7 @@ Programmable Logic Controllers (PLCs) and industrial gateways are the backbone o
 
 ## Prerequisites
 
-- Portainer Business Edition with Edge Compute
+- Portainer Business Edition with Edge Compute features enabled
 - Linux-based edge gateway (x86 or ARM) with Docker
 - PLCs or industrial devices accessible on the local network
 - Familiarity with industrial protocols (OPC-UA, Modbus, MQTT)
@@ -28,12 +28,10 @@ When managing PLCs with Portainer Edge, containers typically fulfill these roles
 
 ## Step 1: Deploy a Protocol Converter Container
 
-The most common pattern is OPC-UA → MQTT conversion:
+The most common pattern is OPC-UA → MQTT conversion. The example below shows the surrounding stack layout; replace the protocol-bridge images and environment variables with the ones documented by your chosen connector:
 
 ```yaml
 # plc-integration-stack.yml
-
-version: "3.8"
 
 services:
   # OPC-UA to MQTT bridge
@@ -94,15 +92,18 @@ services:
       - DOCKER_INFLUXDB_INIT_ORG=plant
       - DOCKER_INFLUXDB_INIT_BUCKET=plc_data
       - DOCKER_INFLUXDB_INIT_RETENTION=30d
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_TOKEN}
     volumes:
       - influxdb_data:/var/lib/influxdb2
     networks:
       - plc-net
 
   # MQTT to InfluxDB writer
-  telegraph:
+  telegraf:
     image: telegraf:1.30-alpine
     restart: always
+    environment:
+      - INFLUX_TOKEN=${INFLUX_TOKEN}
     volumes:
       - /etc/edge-configs/telegraf.conf:/etc/telegraf/telegraf.conf:ro
     networks:
@@ -113,6 +114,7 @@ services:
 
 networks:
   plc-net:
+    name: plc-net
     driver: bridge
 
 volumes:
@@ -122,7 +124,7 @@ volumes:
 
 ## Step 2: Configure Telegraf for PLC Data Collection
 
-Distribute this as a Portainer Edge Configuration:
+Bundle this file in a ZIP package and distribute it as a Portainer Edge Configuration:
 
 ```toml
 # telegraf.conf
@@ -154,7 +156,7 @@ Distribute this as a Portainer Edge Configuration:
 
 ## Step 3: Manage Multiple PLC Types via One Gateway
 
-A single gateway can manage different PLCs:
+A single gateway can manage different PLCs by attaching protocol-specific connector containers to the same shared network as the broker:
 
 ```yaml
 # multi-plc-stack.yml
@@ -170,6 +172,8 @@ services:
       - PLC_SLOT=1
       - MQTT_HOST=mosquitto
       - TOPIC=plc/siemens/s7-300
+    networks:
+      - plc-net
 
   # Allen-Bradley PLC connector (EtherNet/IP)
   ab-connector:
@@ -179,6 +183,8 @@ services:
       - PLC_IP=192.168.1.20
       - MQTT_HOST=mosquitto
       - TOPIC=plc/allen-bradley/controllogix
+    networks:
+      - plc-net
 
   # Generic Modbus TCP device
   modbus-device-1:
@@ -188,6 +194,13 @@ services:
       - MODBUS_HOST=192.168.1.30
       - MQTT_HOST=mosquitto
       - TOPIC=sensors/temperature
+    networks:
+      - plc-net
+
+networks:
+  plc-net:
+    external: true
+    name: plc-net
 ```
 
 ## Step 4: Secure PLC Network Access
@@ -200,10 +213,11 @@ docker network create \
   --driver macvlan \
   --subnet=192.168.1.0/24 \
   --gateway=192.168.1.1 \
-  --opt parent=eth1 \
+  -o parent=eth1 \
   plc-macvlan
 
 # Only PLC-facing containers should be on this network
+# Containers on a macvlan network cannot communicate with the host directly
 ```
 
 Or in compose:
@@ -233,7 +247,7 @@ Portainer rolls out the update to all gateways in the group without any SSH acce
 
 ## Best Practices
 
-- **Never expose PLC ports directly** - always route through a container bridge.
+- **Never publish PLC-facing ports on untrusted networks** - keep PLC protocols on dedicated OT networks and expose only the northbound interfaces that need remote access.
 - **Use dedicated network interfaces** for PLC communication (separate from management).
 - **Log all PLC communication** for audit and troubleshooting purposes.
 - **Test connector updates on a single gateway** before fleet-wide deployment.
