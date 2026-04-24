@@ -15,6 +15,7 @@ The Horizontal Pod Autoscaler (HPA) automatically scales the number of pods in a
 - Kubernetes cluster with Metrics Server installed
 - Portainer managing the cluster
 - Deployments with resource requests defined
+- Prometheus Adapter or another custom/external metrics adapter if using custom metrics
 
 ## Installing Metrics Server
 
@@ -79,7 +80,7 @@ spec:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 70  # Scale when avg CPU > 70%
+        averageUtilization: 70  # Target avg CPU utilization of 70%
 ```
 
 ## Multi-Metric HPA (CPU + Memory)
@@ -106,13 +107,13 @@ spec:
       target:
         type: Utilization
         averageUtilization: 70
-  # Scale on memory utilization
+  # Scale on average memory usage
   - type: Resource
     resource:
       name: memory
       target:
         type: AverageValue
-        averageValue: "400Mi"  # Scale when avg memory > 400Mi per pod
+        averageValue: "400Mi"  # Target avg memory usage of 400Mi per pod
   behavior:
     scaleUp:
       stabilizationWindowSeconds: 60
@@ -121,7 +122,7 @@ spec:
         value: 100          # Double pods in one step
         periodSeconds: 60
     scaleDown:
-      stabilizationWindowSeconds: 300  # 5-minute cooldown
+      stabilizationWindowSeconds: 300  # 5-minute stabilization window
       policies:
       - type: Percent
         value: 25           # Remove 25% per 5 minutes
@@ -152,7 +153,7 @@ spec:
         name: queue_depth_per_pod
       target:
         type: AverageValue
-        averageValue: "100"  # Scale when queue > 100 items per pod
+        averageValue: "100"  # Target 100 queued items per pod
   # External metric (from external system)
   - type: External
     external:
@@ -171,8 +172,8 @@ spec:
 ```bash
 # View HPA status via kubectl
 kubectl get hpa -n production
-# NAME          REFERENCE           TARGETS    MINPODS   MAXPODS   REPLICAS   AGE
-# web-api-hpa   Deployment/web-api  68%/70%    2         20        4          1h
+# NAME          REFERENCE                 TARGETS     MINPODS   MAXPODS   REPLICAS   AGE
+# web-api-hpa   Deployment/web-api/scale  68% / 70%  2         20        4          1h
 
 # Detailed HPA status
 kubectl describe hpa web-api-hpa -n production
@@ -199,7 +200,7 @@ for h in hpas['items']:
 ```yaml
 # Well-configured HPA with all best practices
 spec:
-  minReplicas: 2          # Never scale to 0 (always available)
+  minReplicas: 2          # Keep baseline capacity for availability
   maxReplicas: 50         # Prevent runaway scaling
   metrics:
   - type: Resource
