@@ -19,25 +19,25 @@ A `ClusterGroup` is a Fleet resource that dynamically selects clusters based on 
 Labels are the foundation for all ClusterGroup selectors:
 
 ```bash
-# Apply consistent labels to all clusters as you register them
+# Apply consistent labels to Fleet cluster resources as you register them
 
 # Production clusters in AWS
 
-kubectl label cluster.management.cattle.io c-aws-prod-1 \
+kubectl label -n fleet-default clusters.fleet.cattle.io c-aws-prod-1 \
   environment=production cloud=aws region=us-east-1 tier=1
 
-kubectl label cluster.management.cattle.io c-aws-prod-2 \
+kubectl label -n fleet-default clusters.fleet.cattle.io c-aws-prod-2 \
   environment=production cloud=aws region=eu-west-1 tier=1
 
 # Development clusters
-kubectl label cluster.management.cattle.io c-gcp-dev-1 \
+kubectl label -n fleet-default clusters.fleet.cattle.io c-gcp-dev-1 \
   environment=development cloud=gcp region=us-central1 tier=3
 
 # Edge clusters
-kubectl label cluster.management.cattle.io c-edge-retail-1 \
+kubectl label -n fleet-default clusters.fleet.cattle.io c-edge-retail-1 \
   environment=production cloud=on-premises type=edge location=store-001
 
-kubectl label cluster.management.cattle.io c-edge-retail-2 \
+kubectl label -n fleet-default clusters.fleet.cattle.io c-edge-retail-2 \
   environment=production cloud=on-premises type=edge location=store-002
 ```
 
@@ -98,12 +98,12 @@ spec:
 
 ```bash
 kubectl apply -f cluster-groups.yaml
-kubectl get clustergroup -n fleet-default
+kubectl get clustergroups.fleet.cattle.io -n fleet-default
 ```
 
 ## Step 3: Deploy to Cluster Groups
 
-Target GitRepo deployments at a ClusterGroup:
+Target GitRepo deployments at a ClusterGroup. Use `fleet.yaml` inside the repo for per-target Helm values:
 
 ```yaml
 # gitrepo-security-policies.yaml
@@ -119,14 +119,6 @@ spec:
     # Apply base policies to ALL clusters
     - name: all-clusters
       clusterSelector: {}
-
-    # Apply stricter policies to production clusters
-    - name: production-hardening
-      clusterGroup: production          # ← Reference ClusterGroup by name
-      helm:
-        values:
-          strictMode: true
-          auditLevel: RequestResponse
 ---
 # gitrepo-monitoring.yaml
 apiVersion: fleet.cattle.io/v1alpha1
@@ -140,68 +132,75 @@ spec:
   targets:
     - name: production-monitoring
       clusterGroup: tier1-critical
-      helm:
-        values:
-          retention: 30d
-          storage: 100Gi
 
     - name: edge-monitoring
       clusterGroup: edge-clusters
-      helm:
-        values:
-          retention: 3d
-          storage: 10Gi    # Smaller storage for edge nodes
+```
+
+```yaml
+# security-policies/fleet.yaml
+targetCustomizations:
+  - name: production-hardening
+    clusterGroup: production
+    helm:
+      values:
+        strictMode: true
+        auditLevel: RequestResponse
+```
+
+```yaml
+# monitoring/fleet.yaml
+targetCustomizations:
+  - name: production-monitoring
+    clusterGroup: tier1-critical
+    helm:
+      values:
+        retention: 30d
+        storage: 100Gi
+
+  - name: edge-monitoring
+    clusterGroup: edge-clusters
+    helm:
+      values:
+        retention: 3d
+        storage: 10Gi    # Smaller storage for edge nodes
 ```
 
 ## Step 4: Check ClusterGroup Status
 
 ```bash
 # View group membership
-kubectl get clustergroup -n fleet-default -o json \
+kubectl get clustergroups.fleet.cattle.io -n fleet-default -o json \
   | jq '.items[] | {name: .metadata.name, clusterCount: .status.clusterCount}'
 
 # Detailed group status
-kubectl describe clustergroup -n fleet-default production
+kubectl describe clustergroups.fleet.cattle.io -n fleet-default production
 
-# List which clusters are in a group
-kubectl get cluster -n fleet-default \
+# List which clusters match the production group's selector
+kubectl get clusters.fleet.cattle.io -n fleet-default \
   -l environment=production \
   -o custom-columns="NAME:.metadata.name,REGION:.metadata.labels.region,CLOUD:.metadata.labels.cloud"
 ```
 
-## Step 5: Apply RBAC at the Cluster Group Level
+## Step 5: Apply RBAC for Clusters Matched by a Group
 
-```bash
-# Grant a team read-only access to all production clusters
-# using Rancher's ClusterRoleTemplateBinding
+Cluster Groups help Fleet target deployments, but Rancher permissions are still assigned per cluster or project rather than on the `ClusterGroup` object itself.
 
-# In Rancher UI: Global → Users & Authentication → Roles
-# Create a GlobalRole and assign it to a group
+In Rancher UI: `Cluster Management` → `<cluster>` → `⋮` → `Edit Config` → `Member Roles`
 
-# Via API:
-curl -sk -X POST \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "globalRoleName": "read-only",
-    "userId": null,
-    "groupPrincipalId": "keycloak_group://prod-readonly-team"
-  }' \
-  "https://rancher.example.com/v3/globalrolebindings"
-```
+Assign the same external group or user to each cluster that matches the ClusterGroup. If you automate this, use Rancher's `ClusterRoleTemplateBinding` API for each target cluster. Do not use `GlobalRoleBinding` for cluster-scoped access, because it grants permissions across Rancher.
 
 ## Step 6: Monitor Cluster Group Health
 
 ```bash
-# Check BundleDeployment status for the production ClusterGroup
-kubectl get bundledeployment -A \
-  | grep production \
-  | awk '{print $1, $2, $4, $5}'
+# Check aggregated status for the production ClusterGroup
+kubectl get clustergroups.fleet.cattle.io -n fleet-default production -o json \
+  | jq '{name: .metadata.name, clusterCount: .status.clusterCount, nonReadyClusterCount: .status.nonReadyClusterCount, readyClusters: (.status.display.readyClusters // "0/0"), state: (.status.display.state // "Ready")}'
 
 # Get a summary of ready vs not-ready clusters per group
-kubectl get clustergroup -n fleet-default -o json | jq -r '
+kubectl get clustergroups.fleet.cattle.io -n fleet-default -o json | jq -r '
   .items[] |
-  "\(.metadata.name): \(.status.readyClusters // 0)/\(.status.clusterCount // 0) clusters ready"
+  "\(.metadata.name): \(.status.display.readyClusters // \"0/0\") clusters ready"
 '
 ```
 
@@ -209,23 +208,45 @@ kubectl get clustergroup -n fleet-default -o json | jq -r '
 
 ```bash
 #!/usr/bin/env bash
-# drain-group.sh - Cordon all nodes in a cluster group for maintenance
+# drain-group.sh - Cordon all nodes in every cluster matched by a Fleet ClusterGroup
+# Assumes you already have kubeconfig files at ./kubeconfigs/<cluster-name>.yaml
+
+set -euo pipefail
 
 GROUP_NAME="${1:?Usage: drain-group.sh <group-name>}"
+KUBECONFIG_DIR="${KUBECONFIG_DIR:-./kubeconfigs}"
+
+# Convert the ClusterGroup selector to a standard Kubernetes label selector string
+SELECTOR=$(kubectl get clustergroups.fleet.cattle.io -n fleet-default "${GROUP_NAME}" -o json | jq -r '
+  [
+    (.spec.selector.matchLabels // {} | to_entries[] | "\(.key)=\(.value)"),
+    (.spec.selector.matchExpressions // [] | .[] |
+      if .operator == "In" then "\(.key) in (\(.values | join(",")))"
+      elif .operator == "NotIn" then "\(.key) notin (\(.values | join(",")))"
+      elif .operator == "Exists" then .key
+      elif .operator == "DoesNotExist" then "!\(.key)"
+      else empty
+      end)
+  ] | join(",")
+')
 
 # Get all clusters in the group
-CLUSTERS=$(kubectl get cluster -n fleet-default \
-  -l "$(kubectl get clustergroup -n fleet-default ${GROUP_NAME} \
-    -o jsonpath='{.spec.selector.matchLabels}' | jq -r 'to_entries|map("\(.key)=\(.value)")|join(",")')" \
+CLUSTERS=$(kubectl get clusters.fleet.cattle.io -n fleet-default \
+  -l "${SELECTOR}" \
   -o jsonpath='{.items[*].metadata.name}')
 
 for cluster in ${CLUSTERS}; do
   echo "Processing cluster: ${cluster}"
-  kubeconfig=$(get_cluster_kubeconfig "${cluster}")
+  kubeconfig="${KUBECONFIG_DIR}/${cluster}.yaml"
+
+  if [[ ! -f "${kubeconfig}" ]]; then
+    echo "Skipping ${cluster}: kubeconfig not found at ${kubeconfig}" >&2
+    continue
+  fi
 
   # Cordon all nodes
-  kubectl --kubeconfig="${kubeconfig}" \
-    cordon $(kubectl --kubeconfig="${kubeconfig}" get nodes -o name)
+  kubectl --kubeconfig="${kubeconfig}" get nodes -o name \
+    | xargs -r -n1 kubectl --kubeconfig="${kubeconfig}" cordon
 
   echo "All nodes in ${cluster} cordoned"
 done
