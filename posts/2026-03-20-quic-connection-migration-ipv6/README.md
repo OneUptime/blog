@@ -11,8 +11,8 @@ Description: Understand QUIC connection migration - how connections survive IP a
 QUIC connection migration (RFC 9000 §9) allows an active QUIC connection to survive changes in the client's IP address or port without interrupting the application stream. This is particularly valuable for:
 
 - Mobile devices switching between WiFi and cellular networks
-- IPv6 privacy address rotation (RFC 4941)
-- Load balancer failover without session interruption
+- IPv6 privacy address rotation (RFC 8981)
+- QUIC-aware load balancing that preserves routing across client address changes
 
 ## How Connection IDs Enable Migration
 
@@ -20,24 +20,23 @@ Unlike TCP (which uses a 4-tuple: src IP, src port, dst IP, dst port), QUIC iden
 
 ```mermaid
 graph TD
-    A[Client: 2001:db8:1::phone] -->|CID: abc123| B[Server]
+    A[Client: 2001:db8:1::phone] -->|CID: cid-1| B[Server]
     A -->|IP changes| C[Client: 2001:db8:2::phone-new]
-    C -->|Same CID: abc123| B
-    B -->|Connection continues| C
+    C -->|New CID: cid-2| B
+    B -->|Same connection| C
 ```
 
-The server identifies the connection by CID, not by IP. When the client's IP changes, it sends a PATH_CHALLENGE frame to verify the new path, then migrates the connection.
+QUIC packets carry Connection IDs so the server can associate packets with an existing connection even when the 4-tuple changes. When the client's IP changes, endpoints validate the new path with PATH_CHALLENGE / PATH_RESPONSE, and packets sent from the new local address use a fresh CID instead of reusing one from the old path.
 
 ## IPv6 Privacy Addresses Challenge
 
-IPv6 hosts with privacy extensions (RFC 4941) regularly rotate their source addresses. Without connection migration, every address change would break connections:
+IPv6 hosts with privacy extensions (RFC 8981, which obsoletes RFC 4941) regularly create new temporary addresses. If an active flow moves to a new IPv6 address mid-connection, transports that key connections to the 4-tuple can break:
 
 ```bash
 # See current IPv6 privacy addresses on Linux
 
 ip -6 addr show | grep "temporary"
-# inet6 2001:db8::abc1 scope global temporary dynamic
-# inet6 2001:db8::def2 scope global temporary dynamic (expired)
+# inet6 2001:db8::abc1/64 scope global temporary dynamic
 
 # Configure privacy address rotation timer
 sysctl net.ipv6.conf.eth0.temp_prefered_lft    # How long temporary address is preferred
@@ -47,47 +46,48 @@ sysctl net.ipv6.conf.eth0.temp_valid_lft       # How long temporary address is v
 ## Enabling Connection Migration on Nginx
 
 ```nginx
+quic_bpf on;  # main context, Linux 5.7+
+
 server {
-    listen [::]:443 quic;
+    listen [::]:443 quic reuseport;
 
-    # Ensure connection ID is used for routing (not IP)
-    # This is important for load balancers routing QUIC
+    # Optional: validate client addresses during the handshake
     quic_retry on;
-
-    # Connection migration is enabled by default in Nginx QUIC
-    # Ensure your load balancer uses connection IDs, not IP:port hashing
 }
 ```
 
 ## Load Balancer Configuration for Migration
 
-For connection migration to work through load balancers, backends must share connection state or the load balancer must route by CID:
+For connection migration to work through load balancers, the edge needs a QUIC-aware routing design. HAProxy can terminate HTTP/3 / QUIC frontend connections, but its documentation currently says QUIC connection migration is not supported:
 
 ```text
-# HAProxy - route QUIC by connection ID (consistent hashing)
-# HAProxy 2.7+ supports QUIC CID-based routing
-backend quic_backends
-    balance first  # Or use CID-based consistent routing
-
-# Alternative: Use QUIC's server retry mechanism to encode
-# routing information in the connection ID (ODCID)
+# HAProxy can accept HTTP/3 / QUIC frontend connections,
+# but official HAProxy documentation says QUIC connection
+# migration is not currently supported.
+#
+# If migration through a load balancer is required, use a
+# QUIC-aware design that routes using server-generated
+# connection IDs instead of source IP:port affinity.
 ```
 
 ## Testing Connection Migration
 
 ```python
 #!/usr/bin/env python3
-"""Simulate QUIC connection migration by changing source address."""
+"""Keep a QUIC connection open while you move the client to a new IPv6 path."""
 # This requires a QUIC client library like aioquic
 
 import asyncio
-import aioquic
+import ssl
 from aioquic.asyncio import connect
 from aioquic.quic.configuration import QuicConfiguration
 
 async def test_migration():
-    config = QuicConfiguration(is_client=True, alpn_protocols=["h3"])
-    config.verify_mode = False  # For testing only
+    config = QuicConfiguration(
+        is_client=True,
+        alpn_protocols=["h3"],
+        verify_mode=ssl.CERT_NONE,  # For testing only
+    )
 
     async with connect(
         "2001:db8::1",
@@ -95,14 +95,15 @@ async def test_migration():
         configuration=config,
         local_port=0  # OS assigns port
     ) as client:
-        # Make initial request
-        print(f"Connected from: {client._quic._network_paths[0].addr}")
+        await client.ping()
+        print("Initial path is working. Change the client's network now.")
+        await asyncio.sleep(10)
 
-        # Trigger migration (simulate by changing local address)
-        # In practice, this happens automatically when network changes
-        await client.send_ping(client._quic.host_cid)
+        # Use a fresh connection ID before sending on the new path.
+        client.change_connection_id()
+        await client.ping()
 
-        print("Connection migrated successfully")
+        print("Second ping succeeded. If the client moved to a new IPv6 path during the pause, the connection survived migration.")
 
 asyncio.run(test_migration())
 ```
@@ -112,38 +113,38 @@ asyncio.run(test_migration())
 ```text
 Client (old IP)     Server
      |                |
-     |-- Initial ---->|   Connection established with CID=abc123
+     |-- Initial ---->|   Connection established
      |                |
      | [IP changes]   |
      |                |
 Client (new IP)     Server
      |                |
-     |-- PATH_CHALLENGE (new path) -->|
-     |<-- PATH_RESPONSE --------------|
+     |-- PATH_CHALLENGE (probe, new CID) -->|
+     |<-- PATH_RESPONSE --------------------|
      |                |
-     | [Path verified - migration complete]
+     | [New path validated]
      |                |
-     |-- QUIC frames with CID=abc123 -->|   Same connection!
+     |-- QUIC frames on new path ------>|   Same connection, new CID
 ```
 
 ## Monitoring Migration Events
 
 ```bash
-# In nginx access logs, connection migrations appear as new source IPs
-# with the same QUIC connection ID in extended logs
+# Nginx can log the client IP and whether HTTP/3 was negotiated.
+# It does not document a $quic_connection_id access-log variable.
 
 # Enable QUIC-specific logging in Nginx
-log_format quic_log '$remote_addr - $http3 $status - CID: $quic_connection_id';
+log_format quic_log '$remote_addr - $http3 $status';
 access_log /var/log/nginx/quic_access.log quic_log;
 
-# Filter for migration events (multiple IPs, same CID)
-awk '{print $NF}' /var/log/nginx/quic_access.log | sort | uniq -d
+# Confirm that requests are arriving over HTTP/3
+grep ' h3 ' /var/log/nginx/quic_access.log
 ```
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to monitor the real-world impact of QUIC connection migration. Set up monitors from mobile network vantage points and compare connection continuity with HTTP/2 over the same network transitions.
+Use [OneUptime](https://oneuptime.com) to monitor the real-world impact of your QUIC rollout. Set up monitors from multiple locations and compare latency and availability with HTTP/2 during rollout.
 
 ## Conclusion
 
-QUIC connection migration leverages Connection IDs to survive IP address changes, making it invaluable for IPv6 environments where privacy extensions rotate addresses frequently. Ensure your load balancers support CID-based routing and monitor migration events to validate the feature works in production.
+QUIC connection migration leverages Connection IDs to survive IP address changes, making it valuable for IPv6 environments where client addresses can change over time. Ensure your edge stack actually supports migration and validate it in production with tooling that can observe QUIC behavior accurately.
