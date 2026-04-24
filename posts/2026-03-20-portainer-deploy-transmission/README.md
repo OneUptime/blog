@@ -4,17 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Transmission, BitTorrent, Downloading, Self-Hosted
 
-Description: Deploy Transmission via Portainer as a lightweight BitTorrent client with a clean web interface and RSS-based auto-downloading capabilities.
+Description: Deploy Transmission via Portainer as a lightweight BitTorrent client with a clean web interface and easy integration into self-hosted media workflows.
 
 ## Introduction
 
-Transmission is a lightweight, easy-to-use BitTorrent client known for its minimal resource usage. It's ideal for lower-power devices like NAS boxes and Raspberry Pis where qBittorrent might be too heavy. Deploying via Portainer gives you remote management through its simple web UI.
+Transmission is a lightweight, easy-to-use BitTorrent client known for its minimal resource usage. It's ideal for lower-power devices like NAS boxes and Raspberry Pis where a lighter client is preferable. Deploying via Portainer gives you remote management through its simple web UI.
 
 ## Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   transmission:
     image: lscr.io/linuxserver/transmission:latest
@@ -23,8 +21,6 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=America/New_York
-      # Web UI credentials
-      - TRANSMISSION_WEB_HOME=/config/transmissionic  # Optional: modern UI
       - USER=admin
       - PASS=change_this_password
     volumes:
@@ -44,35 +40,31 @@ volumes:
 
 ## Access and Configuration
 
-Navigate to `http://<host>:9091` with credentials admin/your_password.
+Navigate to `http://<host>:9091` with the credentials you set in `USER`/`PASS`, for example `admin` / `change_this_password`.
 
 ## Custom Settings
 
-The main settings file is `settings.json` in the config volume. Key settings:
+The main settings file is `settings.json` in the config volume. Stop the container before editing it, and keep web UI credentials in the `USER`/`PASS` environment variables for the LinuxServer image. Key settings:
 
 ```json
 {
-    "download-dir": "/downloads",
-    "incomplete-dir": "/incomplete",
-    "incomplete-dir-enabled": true,
-    "peer-port": 51413,
-    "rpc-authentication-required": true,
-    "rpc-username": "admin",
-    "rpc-password": "your_password",
-    "rpc-whitelist": "127.0.0.1,192.168.*.*",
-    "speed-limit-down-enabled": false,
-    "speed-limit-up": 100,
-    "speed-limit-up-enabled": true,
-    "ratio-limit": 1.0,
-    "ratio-limit-enabled": true
+    "download_dir": "/downloads",
+    "incomplete_dir": "/incomplete",
+    "incomplete_dir_enabled": true,
+    "peer_port": 51413,
+    "rpc_whitelist": "127.0.0.1,192.168.*.*",
+    "rpc_whitelist_enabled": true,
+    "speed_limit_down_enabled": false,
+    "speed_limit_up": 100,
+    "speed_limit_up_enabled": true,
+    "ratio_limit": 1.0,
+    "ratio_limit_enabled": true
 }
 ```
 
 ## Transmission with OpenVPN
 
 ```yaml
-version: "3.8"
-
 services:
   transmission-openvpn:
     image: haugene/transmission-openvpn:latest
@@ -81,7 +73,7 @@ services:
       - NET_ADMIN
     environment:
       - OPENVPN_PROVIDER=PIA
-      - OPENVPN_CONFIG=netherlands
+      - OPENVPN_CONFIG=france
       - OPENVPN_USERNAME=your_vpn_username
       - OPENVPN_PASSWORD=your_vpn_password
       - LOCAL_NETWORK=192.168.1.0/24
@@ -90,11 +82,14 @@ services:
       - PGID=1000
       - TZ=America/New_York
     volumes:
-      - transmission_config:/data
-      - /mnt/media/downloads:/data/completed
+      - transmission_config:/config
+      - /mnt/media/downloads:/data
     ports:
       - "9091:9091"
     restart: unless-stopped
+
+volumes:
+  transmission_config:
 ```
 
 ## Adding Transmission to *arr Stack
@@ -103,19 +98,19 @@ Configure in Sonarr/Radarr:
 
 1. **Settings > Download Clients > Add**
 2. Select **Transmission**
-3. Host: `transmission`, Port: `9091`
+3. Host: `transmission` if the apps share a Docker network, otherwise use the Docker host/IP; Port: `9091`
 4. Username/password from your config
-5. Category: `sonarr` or `radarr`
+5. Optional category: `sonarr` or `radarr`
 
 Resource Usage Comparison
 
 | Feature | Transmission | qBittorrent |
 |---------|-------------|-------------|
-| Idle RAM | ~30MB | ~100MB |
+| Resource footprint | Lightweight | More feature-rich, typically heavier |
 | UI Complexity | Simple | Feature-rich |
-| Web UI | Built-in (basic) | Built-in (advanced) |
-| Plugin ecosystem | Minimal | None |
-| ARM support | Excellent | Good |
+| Web UI | Built-in | Built-in |
+| RSS support | Via external tools/plugins | Built-in |
+| Search extensions | No built-in plugin system | Built-in search engine plugins |
 
 ## Conclusion
 
