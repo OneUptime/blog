@@ -34,7 +34,7 @@ Portainer will only let you remove volumes that are not currently in use by any 
 
 ### Step 2: Identify Unused Volumes
 
-Volumes with no containers listed under them are safe candidates for removal. Look at the **Containers** column to verify.
+Volumes with no containers listed under them are candidates for removal. Use the **Containers** column as an initial check, then verify that no containers or external workloads still depend on the volume.
 
 ### Step 3: Remove the Volume
 
@@ -65,7 +65,7 @@ TOKEN=$(curl -s -X POST https://portainer.example.com/api/auth \
 
 # Step 2: List all volumes for endpoint ID 1
 curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/endpoints/1/docker/volumes" | jq '.Volumes[] | {Name: .Name, Driver: .Driver}'
+  "https://portainer.example.com/api/endpoints/1/docker/volumes" | jq '.Volumes[]? | {Name: .Name, Driver: .Driver}'
 
 # Step 3: Delete a specific volume by name
 VOLUME_NAME="myapp_old_data"
@@ -73,16 +73,20 @@ curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
   "https://portainer.example.com/api/endpoints/1/docker/volumes/${VOLUME_NAME}"
 ```
 
-## Pruning All Unused Volumes
+## Pruning Unused Volumes
 
-Docker provides a prune operation to remove all volumes not in use by any container. You can trigger this through the Portainer API:
+Docker provides a prune operation to remove unused volumes. On current Docker Engine API versions, `POST /volumes/prune` removes unused anonymous volumes by default. To prune unused named volumes as well, add `all=true`. You can trigger this through the Portainer API:
 
 ```bash
-# Prune all unused volumes on endpoint 1
+# Prune unused anonymous volumes on endpoint 1
 curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   "https://portainer.example.com/api/endpoints/1/docker/volumes/prune"
 
-# Response will show space reclaimed:
+# To prune unused named volumes as well, add all=true
+curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+  "https://portainer.example.com/api/endpoints/1/docker/volumes/prune?all=true"
+
+# Response can show deleted volumes and space reclaimed:
 # {"VolumesDeleted":["vol1","vol2"],"SpaceReclaimed":1073741824}
 ```
 
@@ -93,16 +97,16 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
 # cleanup-unused-volumes.sh
 
 PORTAINER_URL="https://portainer.example.com"
-TOKEN="your-jwt-token"
+PORTAINER_API_KEY="your-access-token"
 ENDPOINT_ID=1
 
 echo "Pruning unused Docker volumes..."
-RESULT=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+RESULT=$(curl -s -X POST -H "X-API-Key: $PORTAINER_API_KEY" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/volumes/prune")
 
-DELETED=$(echo "$RESULT" | jq -r '.VolumesDeleted // [] | length')
+DELETED=$(echo "$RESULT" | jq -r '(.VolumesDeleted // []) | length')
 SPACE=$(echo "$RESULT" | jq -r '.SpaceReclaimed // 0')
-SPACE_MB=$(echo "scale=2; $SPACE / 1048576" | bc)
+SPACE_MB=$(awk -v space="$SPACE" 'BEGIN { printf "%.2f", space / 1048576 }')
 
 echo "Deleted ${DELETED} volume(s), reclaimed ${SPACE_MB} MB"
 ```
@@ -118,4 +122,4 @@ Before deleting any volume, verify:
 
 ## Conclusion
 
-Removing persistent volumes in Portainer is a straightforward process through the UI or API. Always check volume attachment status before deletion, use the bulk prune feature for routine cleanup, and ensure critical data is backed up before any removal operation. Regular volume hygiene helps prevent storage exhaustion and keeps your Docker host performing optimally.
+Removing persistent volumes in Portainer is a straightforward process through the UI or API. Always check volume attachment status before deletion, use the prune operation for routine cleanup, and ensure critical data is backed up before any removal operation. Regular volume hygiene helps prevent storage exhaustion and keeps your Docker host performing optimally.
