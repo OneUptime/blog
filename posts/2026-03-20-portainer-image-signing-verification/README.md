@@ -4,31 +4,31 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Image Signing, Docker Content Trust, Cosign, Container Security, Supply Chain
 
-Description: Learn how to sign Docker images and verify signatures before deployment via Portainer using Docker Content Trust and Cosign.
+Description: Learn how to sign Docker images and verify signatures before deployment in Portainer workflows using Docker Content Trust and Cosign.
 
 ---
 
-Image signing ensures that only images from trusted sources are deployed. Without signing, anyone with registry access could push malicious images that get deployed automatically. This guide covers Docker Content Trust (DCT) and Cosign for modern supply chain security.
+Image signing ensures that only images from trusted sources are deployed. Without signing, anyone with registry access could push malicious images that get deployed automatically. This guide covers Docker Content Trust (DCT) for legacy Notary v1 workflows and Cosign for modern supply chain security.
 
 ## Option 1: Docker Content Trust (DCT)
 
-Docker Content Trust uses Notary to sign images at push time and verify them at pull time.
+Docker Content Trust uses Notary v1 to sign images at push time and verify them at pull time in the Docker CLI. It requires a registry with a Notary server attached.
 
-### Enabling DCT on the Docker Host
+### Enabling DCT in the Docker CLI
 
 ```bash
-# Enable Content Trust globally
+# Enable Content Trust for this shell
 
 export DOCKER_CONTENT_TRUST=1
 
-# Or make it permanent
-echo 'export DOCKER_CONTENT_TRUST=1' >> /etc/environment
+# Or persist it in your shell profile
+echo 'export DOCKER_CONTENT_TRUST=1' >> ~/.profile
 ```
 
 With DCT enabled:
 - `docker pull` verifies the signature before allowing the image
 - `docker push` signs the image during the push
-- Portainer inherits this setting from the Docker daemon environment
+- This is enforced by the Docker CLI; Portainer does not inherit this client-side setting from the Docker daemon
 
 ### Signing an Image
 
@@ -56,10 +56,11 @@ Cosign is a modern, keyless signing tool using OIDC identity providers (GitHub A
 ```bash
 # Download Cosign
 curl -O -L "https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64"
-sudo install cosign-linux-amd64 /usr/local/bin/cosign
+sudo mv cosign-linux-amd64 /usr/local/bin/cosign
+sudo chmod +x /usr/local/bin/cosign
 
 # Or via Docker
-alias cosign='docker run --rm -v "$HOME/.config/cosign:/root/.config/cosign" gcr.io/projectsigstore/cosign:latest'
+alias cosign='docker run --rm -it -v "$HOME/.config/cosign:/root/.config/cosign" -v "$PWD:/work" -w /work ghcr.io/sigstore/cosign/cosign:v3.0.6'
 ```
 
 ### Signing with a Key Pair
@@ -78,14 +79,15 @@ cosign verify --key cosign.pub myregistry.example.com/my-app:v1.5.0
 ### Keyless Signing in GitHub Actions
 
 ```yaml
+# Requires job permissions: id-token: write, packages: write
+
 - name: Sign image with Cosign
-  uses: sigstore/cosign-installer@v3
+  uses: sigstore/cosign-installer@v4.1.1
   with:
-    cosign-release: 'v2.2.0'
+    cosign-release: 'v3.0.6'
 
 - name: Sign the container image
-  env:
-    COSIGN_EXPERIMENTAL: "true"   # Use keyless (OIDC) signing
+  # Assumes the image has already been pushed to GHCR in an earlier step
   run: |
     cosign sign --yes ghcr.io/${{ github.repository }}:${{ github.sha }}
 ```
@@ -119,10 +121,11 @@ Deploy Connaisseur as a Kubernetes admission webhook to block unsigned images:
 ```bash
 helm repo add connaisseur https://sse-secure-systems.github.io/connaisseur/charts
 helm install connaisseur connaisseur/connaisseur \
-  --set validators[0].name=myvalidator \
-  --set validators[0].type=cosign \
-  --set validators[0].trust_roots[0].name=default \
-  --set validators[0].trust_roots[0].key="$(cat cosign.pub)"
+  --atomic --create-namespace --namespace connaisseur \
+  --set application.validators[0].name=default \
+  --set application.validators[0].type=cosign \
+  --set application.validators[0].trustRoots[0].name=default \
+  --set-file application.validators[0].trustRoots[0].key=cosign.pub
 ```
 
 Once deployed, Kubernetes rejects any pod using an unsigned image - enforced at the cluster level, visible in Portainer's Kubernetes view.
@@ -131,7 +134,7 @@ Once deployed, Kubernetes rejects any pod using an unsigned image - enforced at 
 
 | Approach | Best For | Complexity |
 |----------|----------|------------|
-| Docker Content Trust | Simple Docker deployments | Medium |
+| Docker Content Trust | Legacy Docker/Notary v1 deployments | Medium |
 | Cosign with key pair | Teams with controlled key distribution | Medium |
 | Cosign keyless | CI/CD with GitHub/GitLab identity | Low |
 | Connaisseur (K8s) | Cluster-wide enforcement | High |
