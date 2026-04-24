@@ -12,7 +12,7 @@ MySQL is the world's most popular open-source relational database. Deploying it 
 
 ## Deploy as a Stack
 
-In Portainer, create a stack named `mysql`:
+In Portainer, create a stack named `mysql`. If you're deploying from a Git repository in Portainer Business Edition, enable relative path volumes so `./my.cnf` and `./init` resolve correctly:
 
 ```yaml
 version: "3.8"
@@ -39,7 +39,7 @@ services:
       - "3306:3306"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      test: ["CMD-SHELL", "mysql -u root -p$$MYSQL_ROOT_PASSWORD -e 'SELECT 1' > /dev/null 2>&1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -52,8 +52,6 @@ services:
     environment:
       PMA_HOST: mysql
       PMA_PORT: 3306
-      PMA_USER: root
-      PMA_PASSWORD: change_this_root_password
     ports:
       - "8080:80"
     depends_on:
@@ -90,7 +88,7 @@ long_query_time = 2
 # Binary logging for replication
 log_bin = /var/lib/mysql/mysql-bin
 binlog_format = ROW
-expire_logs_days = 7
+binlog_expire_logs_seconds = 604800
 
 # Security
 sql_mode = STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
@@ -127,7 +125,7 @@ services:
   webapp:
     image: myapp:latest
     environment:
-      # Use MySQL container name as host
+      # Use MySQL service name as host
       DB_HOST: mysql
       DB_PORT: 3306
       DB_NAME: myapp
@@ -140,37 +138,29 @@ services:
 
 ## Backup and Restore
 
-### Backup via Portainer Console
+### Backup from the Docker host
 
 ```bash
-# Access MySQL container console in Portainer
-# Or via docker exec:
-docker exec mysql mysqldump \
-  -u root -p"change_this_root_password" \
-  --all-databases \
-  --single-transaction \
-  --flush-logs \
+# Run this on the Docker host:
+docker exec mysql sh -c 'exec mysqldump --all-databases -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --flush-logs' \
   > /tmp/mysql-backup-$(date +%Y%m%d).sql
 ```
 
 ### Restore from Backup
 
 ```bash
-docker exec -i mysql mysql \
-  -u root -p"change_this_root_password" \
+docker exec -i mysql sh -c 'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD"' \
   < mysql-backup.sql
 ```
 
 ## Security Hardening
 
-After initial setup, remove test databases:
+If you imported data from an older or less secure installation, remove anonymous users and any remote root account:
 
 ```sql
 -- Run in PHPMyAdmin or MySQL console
-DELETE FROM mysql.user WHERE User='';
-DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
+DROP USER IF EXISTS ''@'localhost', ''@'%', 'root'@'%';
 DROP DATABASE IF EXISTS test;
-FLUSH PRIVILEGES;
 ```
 
 ## Conclusion
