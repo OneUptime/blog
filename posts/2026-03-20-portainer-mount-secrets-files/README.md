@@ -8,7 +8,7 @@ Description: Learn how to mount Kubernetes Secrets as files inside containers us
 
 ## Introduction
 
-Mounting Secrets as files in containers is more secure than environment variable injection for highly sensitive data. Files are stored in `tmpfs` (in-memory) on the node - they never touch disk. Applications read credentials directly from the filesystem, which is a well-established pattern for credentials files, TLS certificates, and SSH keys. Portainer supports Secret volume mounts through its application form and YAML editor.
+Mounting Secrets as files in containers is often safer than environment variable injection for highly sensitive data. For mounted Secret volumes, the kubelet stores the data in `tmpfs` (in-memory) on the node rather than durable storage. Applications read credentials directly from the filesystem, which is a well-established pattern for credentials files, TLS certificates, and SSH keys. Portainer supports Secret filesystem mounts through its application form and YAML editor.
 
 ## Prerequisites
 
@@ -21,14 +21,14 @@ Mounting Secrets as files in containers is more secure than environment variable
 Secret files stored in tmpfs offer security advantages:
 
 ```text
-In-memory (tmpfs)     - Files never written to node disk
-Auto-updated          - Volume mounts sync when Secret changes (after ~60s)
+In-memory (tmpfs)     - Mounted Secret data is not written to durable node storage
+Auto-updated          - Regular Secret volume mounts refresh when Secret data changes
 Process isolation     - Files not visible via /proc/<pid>/environ
-Access control        - File permissions (chmod) restrict access within container
+Access control        - Volume file modes can restrict access within a container
 Structured data       - Better for certificates, keys, credential files
 ```
 
-Environment variables are visible via process inspection; files are more restricted.
+Environment variables are visible via process inspection; mounted files are usually more restricted.
 
 ## Step 1: Create the Secret
 
@@ -63,16 +63,15 @@ stringData:
 
 When creating or editing an application:
 
-1. Go to the **Volumes** section
-2. Click **+ Add volume**
-3. Configure:
+1. Go to the **Secrets** section
+2. Select the `app-credentials` Secret
+3. Click **Override** and switch each key from environment variable exposure to a filesystem mount
+4. Configure the file paths:
    ```text
-   Type: Secret
-   Secret name: app-credentials
-   Mount path: /run/secrets
-   Read-only: Yes
+   database.conf  -> /run/secrets/database.conf
+   api-keys.json  -> /run/secrets/api-keys.json
    ```
-4. Deploy the application
+5. Deploy the application
 
 Files appear at the mount path:
 - `/run/secrets/database.conf`
@@ -87,7 +86,13 @@ metadata:
   name: my-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: my-app
@@ -105,7 +110,7 @@ spec:
 
 ## Step 4: Mount TLS Certificate Files
 
-For HTTPS clients that need to verify TLS certificates:
+For applications that need TLS certificate and private key files:
 
 ```yaml
 # TLS Secret
@@ -167,24 +172,32 @@ stringData:
   known_hosts: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GkZD"
 ```
 
-Mount with proper permissions:
+Mount with explicit file modes:
 
 ```yaml
 volumeMounts:
   - name: ssh-keys
-    mountPath: /home/app/.ssh
+    mountPath: /run/secrets/ssh
     readOnly: true
 
 volumes:
   - name: ssh-keys
     secret:
       secretName: git-ssh-key
-      defaultMode: 0400   # SSH requires strict permissions
+      items:
+        - key: id_rsa
+          path: id_rsa
+          mode: 0400
+        - key: known_hosts
+          path: known_hosts
+          mode: 0444
 ```
+
+If your container runs as a non-root user, align the Pod `securityContext` and file modes so that the process can read these files.
 
 ## Step 6: Mount Single Secret Key as Named File
 
-Use `subPath` to mount a single key without affecting other files in a directory:
+Use `subPath` to mount a single key without affecting other files in a directory, but note that `subPath` mounts do not receive automatic Secret updates:
 
 ```yaml
 volumeMounts:
@@ -234,7 +247,7 @@ const stripeKey = apiKeys.stripe;
 
 ## Step 8: Auto-Update Behavior
 
-Secret volume mounts auto-update when the Secret changes:
+Regular Secret volume mounts auto-update when the Secret changes. `subPath` mounts are the exception:
 
 ```bash
 # Update secret value
@@ -242,8 +255,9 @@ kubectl edit secret app-credentials -n production
 # or
 kubectl apply -f updated-secret.yaml
 
-# Files in the pod update automatically (within ~60 seconds)
-# kubelet sync period controls the delay
+# Regular Secret volume mounts update automatically
+# propagation is eventually consistent and depends on kubelet sync and cache behavior
+# `subPath` mounts do not update automatically
 
 # Verify the file updated
 kubectl exec <pod-name> -n production -- \
@@ -257,4 +271,4 @@ kubectl rollout restart deployment/my-app -n production
 
 ## Conclusion
 
-Mounting Secrets as files is the most secure way to inject sensitive credentials into Kubernetes pods. Files reside in `tmpfs` (never on disk), support strict file permissions, and auto-update when Secrets change. Use this pattern for TLS certificates, SSH keys, credential files, and any data that structured file formats handle better than individual environment variables. Combine with proper `defaultMode` settings and `readOnly: true` mounts to enforce least-privilege access within containers.
+Mounting Secrets as files is a secure and common way to inject sensitive credentials into Kubernetes pods. Mounted Secret data resides in `tmpfs`, supports strict file permissions, and regular Secret volume mounts can auto-update when Secrets change. Use this pattern for TLS certificates, SSH keys, credential files, and any data that structured file formats handle better than individual environment variables. Combine with proper `defaultMode` settings and `readOnly: true` mounts to enforce least-privilege access within containers.
