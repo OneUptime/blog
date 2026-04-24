@@ -4,139 +4,102 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Helm, Security, DevOps
 
-Description: Learn how to remove the default Bitnami Helm repository from Portainer to simplify your chart catalog or enforce organizational policies on approved repositories.
+Description: Learn how to remove the default Bitnami Helm repository from Portainer to simplify your chart catalog or replace the global default with an approved internal repository.
 
 ## Introduction
 
-Portainer ships with the Bitnami Helm repository pre-configured. While Bitnami provides high-quality charts, some organizations prefer to curate their own approved repository list, reduce the chart catalog to only internal sources, or remove external dependencies for air-gapped deployments. This guide shows how to remove the default Bitnami repository from Portainer.
+Portainer ships with the Bitnami Helm repository pre-configured. While Bitnami provides high-quality charts, some organizations prefer to replace the global default with an internal repository, reduce the chart catalog exposed by default, or remove external dependencies for air-gapped deployments. This guide shows how to remove the default Bitnami repository from Portainer.
 
 ## Prerequisites
 
-- Portainer CE or BE with a Kubernetes environment
+- Portainer CE or BE
 - Admin access to Portainer
-- Understanding that removing the repo removes it from the Helm charts UI (existing releases are unaffected)
+- If you plan to replace Bitnami, a reachable Helm chart repository URL
+- Understanding that removing or replacing the global repo changes the default Helm source shown in Portainer (existing deployed applications are unaffected)
 
 ## Why Remove the Bitnami Repository?
 
 Common reasons include:
 
-- **Security hardening**: Limit chart sources to internally vetted repositories
+- **Security hardening**: Remove the preconfigured public repository from Portainer's global defaults
 - **Air-gapped environments**: No external internet access for chart index fetching
-- **Organizational policy**: Only allow charts from approved private repositories
+- **Organizational policy**: Replace the global default repository with an approved internal source
 - **Reduce noise**: Simplify the chart catalog for developers to only show relevant charts
 - **Performance**: Fewer repos to index means faster Helm chart page loading
 
 ## Step 1: Navigate to Helm Repository Settings
 
 1. Log into Portainer as an administrator.
-2. Select your **Kubernetes** environment.
-3. Click the **gear icon** to open environment settings.
-4. Scroll down to the **Helm repository** section.
+2. From the left-hand menu, click **Settings**.
+3. Open the **General** settings page.
+4. Scroll down to the **Kubernetes settings** section, then find **Helm repository**.
 
-You will see the default Bitnami repository listed:
-- Name: `bitnami`
+By default, the Helm repository URL is set to:
 - URL: `https://charts.bitnami.com/bitnami`
 
 ## Step 2: Remove the Bitnami Repository
 
-1. Click the **trash can** icon next to the Bitnami repository entry.
-2. Confirm the removal when prompted.
-3. Click **Save environment settings**.
+1. Clear the **Helm repository** URL field so it is empty.
+2. Click **Save Kubernetes settings**.
 
-After removal, Bitnami charts will no longer appear in the Helm charts list for this environment.
+After removal, Bitnami charts will no longer appear as the global Helm repository option when deploying Helm charts.
 
-> **Note**: Removing the repository does **not** affect existing Helm releases deployed from Bitnami charts. Running applications will continue to work normally. It only prevents new deployments from that repository going forward.
+> **Note**: Removing the repository does **not** uninstall existing applications deployed from Bitnami charts. Running applications will continue to work normally. It changes the global Helm repository used for future installs and upgrades through Portainer.
 
 ## Step 3: Remove via the Portainer API
 
-For scripted or automated removal across multiple environments:
+For scripted removal, update Portainer's global settings. This requires admin access:
 
 ```bash
-# Authenticate
+PORTAINER_URL="https://portainer.example.com"
+API_KEY="your-portainer-api-key"
 
-TOKEN=$(curl -s -X POST https://portainer.example.com/api/auth \
+# Show the current global Helm repository
+curl -s -H "X-API-Key: $API_KEY" \
+  "${PORTAINER_URL}/api/settings" | jq -r '.HelmRepositoryURL'
+
+# Clear the global Helm repository
+curl -s -X PUT -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' | jq -r '.jwt')
+  "${PORTAINER_URL}/api/settings" \
+  -d '{
+    "HelmRepositoryURL": ""
+  }' | jq -r '.HelmRepositoryURL'
 
-# List current Helm repositories for endpoint 1
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/endpoints/1/kubernetes/helm/repositories" | jq .
-
-# Find the Bitnami repo ID from the response
-REPO_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/endpoints/1/kubernetes/helm/repositories" | \
-  jq -r '.[] | select(.url | contains("bitnami")) | .id')
-
-echo "Bitnami repo ID: $REPO_ID"
-
-# Delete the Bitnami repository
-curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/endpoints/1/kubernetes/helm/repositories/${REPO_ID}"
-
-echo "Bitnami repository removed."
+echo "Global Bitnami repository removed."
 ```
 
-## Step 4: Bulk Remove from Multiple Environments
+## Step 4: Understand the Scope of the Change
 
 If you manage multiple Kubernetes environments:
 
-```bash
-#!/bin/bash
-# remove-bitnami-from-all-envs.sh
+You do **not** need to loop over environments for this change. The Helm repository configured under **Settings** is a global Portainer setting, so clearing `HelmRepositoryURL` once removes the default Bitnami repository for all users and Kubernetes environments managed by that Portainer instance.
 
-PORTAINER_URL="https://portainer.example.com"
-TOKEN="your-jwt-token"
+Users can still add their own Helm repositories under **My account** > **Helm repositories**, so removing the global Bitnami repository changes the default global source rather than disabling user-specific repositories.
 
-# Get all endpoint IDs
-ENDPOINTS=$(curl -s -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/endpoints" | jq -r '.[] | select(.Type == 7) | .Id')
+## Step 5: Replace with an Approved Internal Repository
 
-for ENDPOINT_ID in $ENDPOINTS; do
-  echo "Processing endpoint $ENDPOINT_ID..."
-
-  # Find Bitnami repo ID
-  REPO_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/kubernetes/helm/repositories" | \
-    jq -r '.[] | select(.url | contains("bitnami")) | .id // empty')
-
-  if [ -n "$REPO_ID" ]; then
-    # Delete it
-    curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
-      "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/kubernetes/helm/repositories/${REPO_ID}"
-    echo "  Removed Bitnami repo (ID: $REPO_ID) from endpoint $ENDPOINT_ID"
-  else
-    echo "  No Bitnami repo found on endpoint $ENDPOINT_ID"
-  fi
-done
-
-echo "Done."
-```
-
-## Step 5: Replace with Approved Internal Repositories
-
-After removing Bitnami, add only your approved repositories:
+Portainer's global Helm setting accepts a single repository URL. After removing Bitnami, point it at your approved internal chart repository. The URL must be reachable by Portainer and serve a valid Helm repository `index.yaml`:
 
 ```bash
-# Add your internal Helm repository
-curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+# Replace the global Helm repository with your internal repository
+curl -s -X PUT -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
-  "https://portainer.example.com/api/endpoints/1/kubernetes/helm/repositories" \
+  "${PORTAINER_URL}/api/settings" \
   -d '{
-    "url": "https://charts.internal.company.com",
-    "name": "company-approved"
-  }'
+    "HelmRepositoryURL": "https://charts.internal.company.com"
+  }' | jq -r '.HelmRepositoryURL'
 ```
 
 ## Verifying the Removal
 
 ```bash
-# Confirm Bitnami no longer appears in the repository list
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/endpoints/1/kubernetes/helm/repositories" | \
-  jq '.[] | .url'
-# Should not include https://charts.bitnami.com/bitnami
+# Confirm the global Helm repository is empty
+curl -s -H "X-API-Key: $API_KEY" \
+  "${PORTAINER_URL}/api/settings" | jq -r '.HelmRepositoryURL'
+# Should return an empty string if Bitnami was removed
 ```
 
 ## Conclusion
 
-Removing the default Bitnami Helm repository from Portainer is a simple but important step when enforcing an approved-repositories-only policy. Existing deployments are unaffected by this change. After removal, add only your vetted and approved chart repositories to maintain control over which applications can be deployed in your Kubernetes environments.
+Removing the default Bitnami Helm repository from Portainer is a simple but important step when standardizing the global Helm source available in Portainer. Existing deployments are unaffected by this change. After removal, you can leave the global setting empty or point it at your vetted internal Helm repository.
