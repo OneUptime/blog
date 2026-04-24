@@ -47,7 +47,7 @@ volumes:
 
 ## Post-Setup Configuration
 
-Access Admin UI at `http://<host>:80`.
+Access Admin UI at `http://<host>` if you kept port 80, or `http://<host>:<admin-port>` if you chose a different admin port.
 
 ### Configure Upstream DNS
 
@@ -76,9 +76,8 @@ https://dns.google/dns-query
 
 Navigate to **Filters > DNS blocklists > Add blocklist**:
 
-- AdGuard Base filter (built-in)
+- AdGuard DNS filter (built-in)
 - `https://adaway.org/hosts.txt`
-- `https://raw.githubusercontent.com/nicehash/spam-blocklists/main/nicehash.txt`
 
 ## Configure DNS-over-HTTPS
 
@@ -108,7 +107,7 @@ Navigate to **Filters > DNS rewrites**:
 
 Set AdGuard Home as DNS server in your router's DHCP settings:
 - Primary DNS: `192.168.1.100` (AdGuard Home IP)
-- Secondary DNS: `1.1.1.1` (fallback)
+- Secondary DNS: leave blank if your router allows it, or use a second AdGuard Home instance for redundancy (using a public resolver here can bypass filtering)
 
 ## AdGuard Home vs Pi-hole
 
@@ -117,10 +116,10 @@ Set AdGuard Home as DNS server in your router's DHCP settings:
 | DNS-over-HTTPS | Built-in | Requires external setup |
 | DNS-over-TLS | Built-in | Requires external setup |
 | Parental Controls | Built-in | Limited |
-| DNSSEC | Built-in | Via dnsmasq config |
+| DNSSEC | Built-in | Built-in |
 | Interface | Modern | Functional |
-| Resources | ~50MB RAM | ~50MB RAM |
+| Resources | Varies by lists and traffic | Varies by lists and traffic |
 
 ## Conclusion
 
-AdGuard Home deployed via Portainer offers more security features out-of-the-box than Pi-hole, particularly DoH and DoT support, which prevents ISP monitoring of your DNS queries. The modern web interface simplifies configuration, and built-in parental controls make it family-friendly. For networks where encrypted DNS is important, AdGuard Home is the better choice.
+AdGuard Home deployed via Portainer offers more security features out-of-the-box than Pi-hole, particularly native DoH and DoT support, which can encrypt upstream DNS traffic and reduce direct ISP visibility into those lookups. The modern web interface simplifies configuration, and built-in parental controls make it family-friendly. For networks where encrypted DNS is important, AdGuard Home is a strong choice.
