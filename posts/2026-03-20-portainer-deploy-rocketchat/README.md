@@ -17,48 +17,52 @@ version: "3.8"
 
 services:
   rocketchat:
-    image: rocketchat/rocket.chat:latest
+    image: registry.rocket.chat/rocketchat/rocket.chat:8.3.2
     container_name: rocketchat
-    command: >
-      bash -c
-        "for i in `seq 1 30`; do
-          node main.js &&
-          s=$$? && break || s=$$?;
-          echo \"Tried $$i times. Waiting 5 secs...\";
-          sleep 5;
-        done; (exit $$s)"
+    command:
+      - sh
+      - -c
+      - |
+        for i in $$(seq 1 30); do
+          node main.js && exit 0
+          echo "Tried $$i times. Waiting 5 secs..."
+          sleep 5
+        done
+        exit 1
     environment:
-      MONGO_URL: mongodb://rocketchat-db:27017/rocketchat?replicaSet=rs0&directConnection=true
-      MONGO_OPLOG_URL: mongodb://rocketchat-db:27017/local?replicaSet=rs0&directConnection=true
-      ROOT_URL: https://chat.example.com
+      MONGO_URL: mongodb://rocketchat-db:27017/rocketchat?replicaSet=rs0
+      ROOT_URL: "http://<your-domain-or-server-ip>:3000"
       PORT: 3000
-      DEPLOY_PLATFORM: docker-compose
-      OVERWRITE_SETTING_Show_Setup_Wizard: completed
+      DEPLOY_PLATFORM: compose
     volumes:
       - rocketchat_data:/app/uploads
     ports:
       - "3000:3000"
     depends_on:
       - rocketchat-db
+      - mongo-init-replica
     restart: unless-stopped
 
   # MongoDB with Replica Set (required for Rocket.Chat)
   rocketchat-db:
-    image: mongo:6.0
+    image: mongodb/mongodb-community-server:8.0-ubi8
     container_name: rocketchat-db
-    command: mongod --replSet rs0 --oplogSize 128
+    command: mongod --replSet rs0 --bind_ip_all --oplogSize 128
     volumes:
       - rocketchat_db:/data/db
     restart: unless-stopped
 
   # Initialize MongoDB replica set
   mongo-init-replica:
-    image: mongo:6.0
-    command: >
-      bash -c "
-        sleep 10 &&
-        mongosh rocketchat-db/rocketchat --eval 'rs.initiate({_id: \"rs0\", members: [{_id: 0, host: \"rocketchat-db:27017\"}]})'
-      "
+    image: mongodb/mongodb-community-server:8.0-ubi8
+    command:
+      - sh
+      - -c
+      - |
+        until mongosh 'mongodb://rocketchat-db:27017/?directConnection=true' --eval 'db.adminCommand("ping")' >/dev/null 2>&1; do
+          sleep 2
+        done
+        mongosh 'mongodb://rocketchat-db:27017/?directConnection=true' --eval 'try { rs.status() } catch (e) { rs.initiate({_id: "rs0", members: [{ _id: 0, host: "rocketchat-db:27017" }]}) }'
     depends_on:
       - rocketchat-db
 
@@ -69,7 +73,7 @@ volumes:
 
 ## Initial Setup
 
-1. Access `http://<host>:3000`
+1. Access the URL you configured in `ROOT_URL` (for example, `http://<host>:3000`)
 2. Complete the setup wizard:
    - Organization information
    - Admin account
@@ -80,11 +84,13 @@ volumes:
 
 ### Omnichannel (Customer Service)
 
-1. Navigate to **Administration > Omnichannel**
+1. Navigate to **Workspace > Settings > Omnichannel**
 2. Enable omnichannel
-3. Add channels: Live Chat widget, Email, WhatsApp, SMS
+3. Add channels such as the Live Chat widget, WhatsApp, SMS, or Telegram apps
 
 ### Live Chat Widget
+
+Before embedding the widget, add your website domain to **Workspace > Settings > Omnichannel > Livechat > Livechat Allowed Domains**.
 
 ```html
 <!-- Add to your website -->
@@ -95,22 +101,17 @@ volumes:
   w.RocketChat.url = u;
   var h = d.getElementsByTagName(s)[0], j = d.createElement(s);
   j.async = true;
-  j.src = u + '/livechat/rocketchat-livechat.min.js?_=201903270000';
+  j.src = u + '/rocketchat-livechat.min.js?_=201903270000';
   h.parentNode.insertBefore(j, h);
-})(window, document, 'script', 'https://chat.example.com');
+})(window, document, 'script', 'http://<your-domain-or-server-ip>:3000/livechat');
 </script>
 ```
 
 ### Video Calling with Jitsi
 
-```yaml
-services:
-  rocketchat:
-    environment:
-      OVERWRITE_SETTING_Jitsi_Enabled: "true"
-      OVERWRITE_SETTING_Jitsi_Domain: meet.jit.si
-      OVERWRITE_SETTING_Jitsi_URL_Room_Prefix: chat_
-```
+1. Install the **Jitsi** app from **Marketplace > Explore**
+2. Configure the Jitsi domain in the app settings, for example `meet.jit.si`
+3. Go to **Workspace > Settings > Conference Call** and select **Jitsi** as the default provider
 
 ## Conclusion
 
