@@ -8,11 +8,11 @@ Description: Configure the Postfix mynetworks parameter to include IPv6 addresse
 
 ## Introduction
 
-The `mynetworks` parameter in Postfix defines trusted networks whose hosts are permitted to relay email without SASL authentication. When your infrastructure includes IPv6 clients, you must explicitly include IPv6 CIDR ranges in `mynetworks` to allow them to relay mail.
+The `mynetworks` parameter in Postfix defines trusted networks whose hosts are permitted to relay email without SASL authentication. If you set `mynetworks` explicitly and your infrastructure includes IPv6 clients, you must include IPv6 CIDR ranges in `mynetworks` to allow them to relay mail.
 
 ## Understanding mynetworks
 
-`mynetworks` defaults to the networks directly connected to the mail server. If your servers communicate over IPv6, those addresses must be included, or mail relay will be rejected with a "Relay access denied" error.
+`mynetworks` is generated automatically unless you set it by hand. The generated value depends on `mynetworks_style`; on current Postfix releases the default is typically to trust only the local machine, while older Postfix releases defaulted to trusting directly connected subnets. If you set `mynetworks` explicitly and your servers communicate over IPv6, those addresses must be included, or mail relay will be rejected with a "Relay access denied" error.
 
 ## Viewing Current mynetworks
 
@@ -21,7 +21,7 @@ The `mynetworks` parameter in Postfix defines trusted networks whose hosts are p
 
 postconf mynetworks
 
-# Example default output:
+# Example output on a current Postfix install:
 # mynetworks = 127.0.0.0/8 [::1]/128
 ```
 
@@ -33,7 +33,7 @@ Edit `/etc/postfix/main.cf` with specific IPv6 networks:
 
 ```bash
 # Add IPv6 loopback, a specific host, and a subnet
-sudo postconf -e 'mynetworks = 127.0.0.0/8 [::1]/128 [2001:db8::10]/128 [2001:db8::/48]'
+sudo postconf -e 'mynetworks = 127.0.0.0/8 [::1]/128 [2001:db8::10]/128 [2001:db8::]/48'
 
 # Reload Postfix to apply
 sudo systemctl reload postfix
@@ -57,10 +57,10 @@ mynetworks = 127.0.0.0/8 [::1]/128
 mynetworks = 127.0.0.0/8 [::1]/128 [2001:db8::100]/128
 
 # Allow an entire /64 subnet (e.g., internal office network)
-mynetworks = 127.0.0.0/8 [::1]/128 [2001:db8:cafe::/64]
+mynetworks = 127.0.0.0/8 [::1]/128 [2001:db8:cafe::]/64
 
 # Allow multiple IPv6 subnets
-mynetworks = 127.0.0.0/8 [::1]/128 [2001:db8:1::/48] [2001:db8:2::/48]
+mynetworks = 127.0.0.0/8 [::1]/128 [2001:db8:1::]/48 [2001:db8:2::]/48
 ```
 
 ## Using a mynetworks File
@@ -80,8 +80,8 @@ sudo tee /etc/postfix/mynetworks << 'EOF'
 
 # IPv6 trusted networks
 [::1]/128
-[2001:db8:10::/48]
-[fd00::/8]
+[2001:db8:10::]/48
+[fd00::]/8
 EOF
 
 sudo systemctl reload postfix
@@ -115,18 +115,18 @@ sudo grep "relay" /var/log/mail.log | tail -20
 
 ## Security Considerations
 
-Be conservative with `mynetworks`. Including large IPv6 blocks like `::/0` turns your server into an open relay. Best practices:
+Be conservative with `mynetworks`. Including large IPv6 blocks like `::/0` can turn your server into an open relay for IPv6 clients. Best practices:
 
-- Use the narrowest possible CIDR prefix for IPv6 networks
+- Use the most specific IPv6 CIDR ranges possible
 - Require SASL authentication for clients outside your data center
 - Monitor logs regularly for unexpected relay attempts
 
 ```bash
 # Monitor for relay attempts from unexpected sources
-sudo grep "NOQUEUE: reject" /var/log/mail.log | grep "Relay access denied" | \
-    awk '{print $7}' | sort | uniq -c | sort -rn | head -20
+sudo grep "NOQUEUE: reject: RCPT from" /var/log/mail.log | grep "Relay access denied" | \
+    sed -E 's/.*RCPT from (.*): [45][0-9][0-9] .*/\1/' | sort | uniq -c | sort -rn | head -20
 ```
 
 ## Conclusion
 
-Properly configuring `mynetworks` with IPv6 CIDR notation ensures your IPv6-connected applications and internal hosts can relay email through Postfix while keeping the server secure from unauthorized use. Always use the minimum required prefix length.
+Properly configuring `mynetworks` with IPv6 CIDR notation ensures your IPv6-connected applications and internal hosts can relay email through Postfix while keeping the server secure from unauthorized use. Always use the most specific prefix length you need.
