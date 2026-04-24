@@ -14,6 +14,7 @@ Docker Secrets provide a secure mechanism for distributing sensitive data - pass
 
 - Portainer on Docker Swarm
 - Admin access to Portainer
+- For CLI commands, shell access to a Swarm manager node
 - Sensitive data you need to distribute to services
 
 ## Understanding Docker Secrets Security Model
@@ -21,25 +22,25 @@ Docker Secrets provide a secure mechanism for distributing sensitive data - pass
 - Secrets are **encrypted at rest** in the Swarm raft log
 - Only distributed to services that **explicitly request** them
 - Mounted as files under `/run/secrets/<secret-name>` in the container
-- **In-memory only** on worker nodes - not written to disk
+- For Linux containers, decrypted secrets are mounted in memory and flushed from node memory when the task stops
 - Secrets are **immutable** after creation
 
 ## Step 1: View Existing Secrets
 
 1. Select your Swarm environment in Portainer
-2. Click **Swarm → Secrets**
+2. Click **Secrets**
 
 The list shows secret names and creation dates (but NOT the secret values - they are never shown after creation).
 
 ## Step 2: Create a New Secret
 
-1. Click **+ Add secret**
+1. Click **Add secret**
 2. Enter a **Secret name** (e.g., `db-password`)
-3. Enter the secret **Value**:
+3. Enter the secret in the **Secret** field:
 
 ```text
 Secret name:  db-password
-Value:        MyStr0ng!P@ssw0rd#2024
+Secret:       MyStr0ng!P@ssw0rd#2024
 ```
 
 4. Click **Create secret**
@@ -48,15 +49,15 @@ Value:        MyStr0ng!P@ssw0rd#2024
 
 ## Step 3: Create Secrets via CLI
 
+Run these commands on a Swarm manager node:
+
 ```bash
 # Create from string (visible in shell history - avoid in production)
 
-echo "MyStr0ng!P@ssw0rd" | docker secret create db-password -
+printf "%s" "MyStr0ng!P@ssw0rd" | docker secret create db-password -
 
-# Create from file (preferred - avoids shell history exposure)
-printf "MyStr0ng!P@ssw0rd" > /tmp/db-password.txt
-docker secret create db-password /tmp/db-password.txt
-rm /tmp/db-password.txt  # Clean up immediately
+# Create from file (useful when the secret already exists in a secure file)
+docker secret create db-password /path/to/secure/db-password.txt
 
 # Create from environment variable
 printf "%s" "$DB_PASSWORD" | docker secret create db-password -
@@ -122,7 +123,7 @@ secrets:
 
 ## Step 5: Read Secrets in Your Application
 
-Applications must be coded to read secrets from files, not environment variables:
+Applications should read secret data from files in `/run/secrets`. Many images also support `_FILE` environment variables that point to those files:
 
 ### Shell Script
 
@@ -176,7 +177,7 @@ Like configs, secrets are immutable. To update:
 
 ```bash
 # Create new secret version
-printf "NewStr0ng!P@ssw0rd" | docker secret create db-password-v2 -
+printf "%s" "NewStr0ng!P@ssw0rd" | docker secret create db-password-v2 -
 
 # Update service to use new secret
 docker service update \
@@ -185,32 +186,39 @@ docker service update \
   my-api-service
 ```
 
+Some credentials also require an application-specific rotation step before you remove the old secret. For example, database passwords often need to be changed inside the database itself.
+
 ## Step 7: Secret Rotation Strategy
 
 ```bash
 #!/bin/bash
 # rotate-secret.sh
-SECRET_BASE_NAME="db-password"
-NEW_VALUE="$1"  # Pass new value as argument
+SECRET_TARGET_NAME="db-password"
 
-if [ -z "$NEW_VALUE" ]; then
-    echo "Usage: $0 <new-secret-value>"
+if [ -t 0 ]; then
+    echo "Usage: printf '%s' 'new-secret-value' | $0"
     exit 1
 fi
 
 TIMESTAMP=$(date +%Y%m%d%H%M)
-NEW_SECRET_NAME="${SECRET_BASE_NAME}-${TIMESTAMP}"
+NEW_SECRET_NAME="${SECRET_TARGET_NAME}-${TIMESTAMP}"
 
-# Create new secret
-printf "%s" "$NEW_VALUE" | docker secret create "$NEW_SECRET_NAME" -
+# Create new secret from stdin
+docker secret create "$NEW_SECRET_NAME" -
 
-# Update all services using this secret
+# Update all services mounting this secret target
 for svc in $(docker service ls -q); do
-    if docker service inspect $svc --format '{{.Spec.TaskTemplate.ContainerSpec.Secrets}}' | grep -q "$SECRET_BASE_NAME"; then
+    CURRENT_SOURCE=$(
+        docker service inspect \
+          --format '{{range .Spec.TaskTemplate.ContainerSpec.Secrets}}{{println .SecretName .File.Name}}{{end}}' \
+          "$svc" | awk -v target="$SECRET_TARGET_NAME" '$2 == target {print $1; exit}'
+    )
+
+    if [ -n "$CURRENT_SOURCE" ]; then
         docker service update \
-          --secret-rm "$SECRET_BASE_NAME" \
-          --secret-add "source=${NEW_SECRET_NAME},target=${SECRET_BASE_NAME}" \
-          $svc
+          --secret-rm "$CURRENT_SOURCE" \
+          --secret-add "source=${NEW_SECRET_NAME},target=${SECRET_TARGET_NAME}" \
+          "$svc"
         echo "Updated service $svc"
     fi
 done
@@ -220,9 +228,9 @@ done
 
 ```bash
 # Remove a secret (must not be in use by any service)
-docker secret rm db-password-v1
+docker secret rm db-password
 
-# In Portainer: select and delete from the Secrets list
+# In Portainer: select the secret in the Secrets list and click Remove
 ```
 
 ## Conclusion
