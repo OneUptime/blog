@@ -12,27 +12,27 @@ Choosing the right container management tool can significantly impact your team'
 
 ## Overview
 
-**Portainer** is a universal container management platform supporting Docker, Docker Swarm, and Kubernetes. It provides a web-based GUI, API, and CLI for managing containerized workloads.
+**Portainer** is a universal container management platform supporting Docker, Docker Swarm, and Kubernetes. It provides a web-based GUI and HTTP API for managing containerized workloads.
 
-**Lazydocker** is designed with different priorities and use cases. Understanding these differences is key to choosing the right tool.
+**Lazydocker** is a terminal UI for managing Docker and Docker Compose workloads. Understanding these differences is key to choosing the right tool.
 
 ## Feature Comparison
 
 | Feature | Portainer | Lazydocker |
 |---------|-----------|--------|
-| Docker management | Yes | Varies |
-| Kubernetes support | Yes | Varies |
-| Web UI | Yes | Varies |
-| Multi-environment | Yes | Varies |
-| User management | Yes | Varies |
-| Stack management | Yes | Varies |
-| Open source | CE: Yes | Varies |
-| Self-hosted | Yes | Yes |
-| Enterprise features | BE edition | Varies |
+| Docker management | Yes | Yes |
+| Kubernetes support | Yes | No |
+| Web UI | Yes | No |
+| Multi-environment | Yes | Limited (current Docker context) |
+| User management | Basic in CE; RBAC in BE | No |
+| Stack management | Yes | Compose workflows only |
+| Open source | CE: Yes | Yes (MIT) |
+| Self-hosted | Yes | Local install |
+| Enterprise features | BE edition | No |
 
 ## Portainer Strengths
 
-- Supports multiple container runtimes (Docker, Swarm, Kubernetes)
+- Supports multiple container environments (Docker, Swarm, Kubernetes)
 - Comprehensive web UI accessible from any browser
 - Stack management with Docker Compose support
 - Active development and community
@@ -42,11 +42,11 @@ Choosing the right container management tool can significantly impact your team'
 
 ## Lazydocker Strengths
 
-- Specialized for its primary use case
-- Often simpler for its target audience
-- May have better integration with specific ecosystems
-- Different performance characteristics
-- Unique features not found in Portainer
+- Terminal-first workflow for day-to-day Docker operations
+- Quick visibility into container and Docker Compose service state
+- Built-in log viewing and container metrics graphs
+- One-keypress actions for attaching, restarting, removing, and rebuilding
+- Lightweight local install with minimal setup
 
 ## When to Choose Portainer
 
@@ -54,66 +54,68 @@ Choose Portainer when you need:
 - A general-purpose container management platform
 - Support for multiple environments (dev, staging, prod)
 - Team-based access control
-- Integration with CI/CD pipelines
+- Git-based stack deployment or API-driven automation
 - Edge device management
 - Both Docker and Kubernetes support
 
 ## When to Choose Lazydocker
 
 Choose Lazydocker when you need:
-- Its specific specialized features
-- Its particular workflow or integration
-- Its lightweight approach for specific use cases
-- When your team already uses it and is familiar with it
+- A terminal-first workflow for local or remote Docker contexts
+- Fast inspection of container state, logs, and metrics
+- Quick Docker Compose troubleshooting from one terminal window
+- A lightweight tool for individual operators or small teams
 
 ## Deployment Comparison
 
 **Portainer deployment:**
 ```bash
-# Deploy Portainer CE
+# Create persistent storage and deploy Portainer CE
+
+docker volume create portainer_data
 
 docker run -d \
-  -p 9000:9000 \
+  -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
-  --restart always \
+  --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
-**Lazydocker deployment:**
+**Lazydocker installation:**
 ```bash
-# Typical Lazydocker deployment
-# Check official documentation for current install instructions
-curl -fsSL https://get-tool.example.com | sh
+# Install Lazydocker on Linux from the official repository script
+# Review the script before piping it to bash
+curl https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh | bash
 ```
 
 ## Migration Considerations
 
 Moving from Lazydocker to Portainer:
-1. Export your current configurations
-2. Deploy Portainer alongside existing setup
-3. Recreate stacks as Portainer stacks
-4. Migrate users and access control
-5. Verify all services are running correctly
+1. Inventory the Docker hosts or contexts you currently manage with Lazydocker
+2. Deploy Portainer alongside the existing Docker environment
+3. Recreate or import Compose-based applications as Portainer stacks where applicable
+4. Configure Portainer users, teams, and access control as needed
+5. Verify containers and services are visible and manageable from the Portainer UI
 
 Moving from Portainer to Lazydocker:
-1. Export Portainer stack configurations
-2. Document current environment setup
-3. Install and configure Lazydocker
-4. Recreate deployments in new platform
-5. Test thoroughly before cutover
+1. Document the Docker hosts or contexts currently managed through Portainer
+2. Export or save the Compose files used for Portainer stacks where applicable
+3. Install Lazydocker on each operator workstation
+4. Connect to the target Docker context and manage containers or services directly
+5. Test routine workflows, noting that user management and RBAC are not provided by Lazydocker
 
 ## Community and Support
 
 | Aspect | Portainer | Lazydocker |
 |--------|-----------|--------|
-| Community size | Large | Varies |
-| Documentation | Comprehensive | Varies |
-| Commercial support | Available (BE) | Varies |
-| GitHub activity | Very active | Varies |
+| Community size | Large | Large open-source community |
+| Documentation | Comprehensive | GitHub README and config docs |
+| Commercial support | Available (BE) | No official commercial support |
+| GitHub activity | Very active | Active |
 
 ## Conclusion
 
-Both Portainer and Lazydocker are valuable tools in the container management ecosystem. Portainer excels as a universal, scalable management platform that grows with your organization from a single developer to large enterprise teams. Lazydocker may be preferable for specific scenarios where its specialized features provide clear advantages. Consider your team size, technical requirements, budget, and long-term scalability when making your decision - and remember that many teams successfully use multiple tools for different purposes.
+Both Portainer and Lazydocker are valuable tools in the container management ecosystem. Portainer excels as a universal, scalable management platform that grows with your organization from a single developer to large enterprise teams. Lazydocker is better suited to developers and operators who want a lightweight terminal UI for direct Docker and Docker Compose management. Consider your team size, technical requirements, budget, and long-term scalability when making your decision - and remember that many teams successfully use multiple tools for different purposes.
