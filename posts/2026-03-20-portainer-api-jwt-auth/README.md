@@ -8,7 +8,7 @@ Description: Learn how to authenticate with the Portainer REST API using JSON We
 
 ## Introduction
 
-The Portainer API uses JWT (JSON Web Token) based authentication as its primary authentication method. Every API request (except the initial login) must include a valid JWT in the `Authorization` header. This guide covers how to obtain a JWT, use it in requests, handle expiry, and follow security best practices.
+The Portainer API supports JWT (JSON Web Token) based authentication through the `/api/auth` endpoint. In this flow, every authenticated API request after login must include a valid JWT in the `Authorization` header. This guide covers how to obtain a JWT, use it in requests, handle expiry, and follow security best practices.
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ The Portainer API uses JWT (JSON Web Token) based authentication as its primary 
 Send a POST request to the `/api/auth` endpoint with your credentials:
 
 ```bash
-# Basic authentication - get JWT token
+# Authenticate with username/password and get a JWT token
 
 RESPONSE=$(curl -s -X POST https://portainer.example.com/api/auth \
   -H "Content-Type: application/json" \
@@ -33,7 +33,7 @@ RESPONSE=$(curl -s -X POST https://portainer.example.com/api/auth \
 echo "Full response: $RESPONSE"
 
 # Extract just the JWT token
-TOKEN=$(echo $RESPONSE | jq -r '.jwt')
+TOKEN=$(printf '%s' "$RESPONSE" | jq -r '.jwt')
 echo "JWT Token: $TOKEN"
 ```
 
@@ -57,33 +57,60 @@ TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 curl -s -H "Authorization: Bearer $TOKEN" \
   https://portainer.example.com/api/endpoints | jq .
 
-# List users
+# Get the current user profile
 curl -s -H "Authorization: Bearer $TOKEN" \
-  https://portainer.example.com/api/users | jq .
+  https://portainer.example.com/api/users/me | jq .
 
-# Get system status
+# Get system version info
 curl -s -H "Authorization: Bearer $TOKEN" \
-  https://portainer.example.com/api/system/status | jq .
+  https://portainer.example.com/api/system/version | jq .
 ```
 
 ## Step 3: Inspect the JWT Token
 
-A JWT contains three base64-encoded parts: header, payload, and signature:
+A JWT contains three base64url-encoded parts: header, payload, and signature:
 
 ```bash
 # Decode the JWT payload to see its contents
-decode_jwt() {
-  local TOKEN=$1
-  # Extract the payload (second segment)
-  echo "$TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
+base64_decode() {
+  if [ "$(uname)" = "Darwin" ]; then
+    base64 -D
+  else
+    base64 -d
+  fi
 }
 
-decode_jwt $TOKEN
+jwt_base64url_decode() {
+  local INPUT="$1"
+  local REMAINDER=$(( ${#INPUT} % 4 ))
+
+  if [ "$REMAINDER" -eq 2 ]; then
+    INPUT="${INPUT}=="
+  elif [ "$REMAINDER" -eq 3 ]; then
+    INPUT="${INPUT}="
+  elif [ "$REMAINDER" -ne 0 ]; then
+    echo "Invalid JWT payload" >&2
+    return 1
+  fi
+
+  printf '%s' "$INPUT" | tr '_-' '/+' | base64_decode 2>/dev/null
+}
+
+decode_jwt() {
+  local TOKEN="$1"
+  local PAYLOAD
+
+  PAYLOAD=$(printf '%s' "$TOKEN" | cut -d'.' -f2)
+  jwt_base64url_decode "$PAYLOAD" | jq .
+}
+
+decode_jwt "$TOKEN"
 
 # Example decoded payload:
 # {
+#   "id": 1,
 #   "username": "admin",
-#   "role": 1,           # 1 = admin, 2 = standard user
+#   "role": 1,           # 1 = administrator, 2 = standard user
 #   "iat": 1711646000,   # Issued at timestamp
 #   "exp": 1711649600    # Expiry timestamp
 # }
@@ -92,10 +119,37 @@ decode_jwt $TOKEN
 ## Step 4: Check Token Expiry
 
 ```bash
+base64_decode() {
+  if [ "$(uname)" = "Darwin" ]; then
+    base64 -D
+  else
+    base64 -d
+  fi
+}
+
+jwt_base64url_decode() {
+  local INPUT="$1"
+  local REMAINDER=$(( ${#INPUT} % 4 ))
+
+  if [ "$REMAINDER" -eq 2 ]; then
+    INPUT="${INPUT}=="
+  elif [ "$REMAINDER" -eq 3 ]; then
+    INPUT="${INPUT}="
+  elif [ "$REMAINDER" -ne 0 ]; then
+    echo "Invalid JWT payload" >&2
+    return 1
+  fi
+
+  printf '%s' "$INPUT" | tr '_-' '/+' | base64_decode 2>/dev/null
+}
+
 # Check when your token expires
 check_token_expiry() {
-  local TOKEN=$1
-  EXP=$(echo "$TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq -r '.exp')
+  local TOKEN="$1"
+  local PAYLOAD EXP NOW REMAINING
+
+  PAYLOAD=$(printf '%s' "$TOKEN" | cut -d'.' -f2)
+  EXP=$(jwt_base64url_decode "$PAYLOAD" | jq -r '.exp')
   NOW=$(date +%s)
   REMAINING=$((EXP - NOW))
 
@@ -106,44 +160,82 @@ check_token_expiry() {
   fi
 }
 
-check_token_expiry $TOKEN
+check_token_expiry "$TOKEN"
 ```
 
 ## Step 5: Handle Token Expiry in Scripts
 
-JWT tokens from Portainer expire after a configurable period (default: 8 hours). Build token refresh logic into your scripts:
+JWT tokens from Portainer expire after the configured session lifetime (default: 8 hours). Build token refresh logic into your scripts:
 
 ```bash
 #!/bin/bash
+set -euo pipefail
+
 # portainer-helper.sh - Reusable authentication with auto-refresh
+
+umask 077
 
 PORTAINER_URL="https://portainer.example.com"
 PORTAINER_USER="${PORTAINER_USER:-admin}"
 PORTAINER_PASS="${PORTAINER_PASS:-password}"
 TOKEN_FILE="/tmp/portainer-token.json"
 
+base64_decode() {
+  if [ "$(uname)" = "Darwin" ]; then
+    base64 -D
+  else
+    base64 -d
+  fi
+}
+
+jwt_base64url_decode() {
+  local INPUT="$1"
+  local REMAINDER=$(( ${#INPUT} % 4 ))
+
+  if [ "$REMAINDER" -eq 2 ]; then
+    INPUT="${INPUT}=="
+  elif [ "$REMAINDER" -eq 3 ]; then
+    INPUT="${INPUT}="
+  elif [ "$REMAINDER" -ne 0 ]; then
+    echo "Invalid JWT payload" >&2
+    return 1
+  fi
+
+  printf '%s' "$INPUT" | tr '_-' '/+' | base64_decode 2>/dev/null
+}
+
 get_token() {
+  local RESPONSE TOKEN PAYLOAD EXP
+
   RESPONSE=$(curl -s -X POST "${PORTAINER_URL}/api/auth" \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"${PORTAINER_USER}\",\"password\":\"${PORTAINER_PASS}\"}")
 
-  TOKEN=$(echo $RESPONSE | jq -r '.jwt')
-  EXP=$(echo "$TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq -r '.exp')
+  TOKEN=$(printf '%s' "$RESPONSE" | jq -r '.jwt')
+  if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+    echo "Authentication failed: $RESPONSE" >&2
+    return 1
+  fi
 
-  echo "{\"token\": \"$TOKEN\", \"exp\": $EXP}" > "$TOKEN_FILE"
-  echo $TOKEN
+  PAYLOAD=$(printf '%s' "$TOKEN" | cut -d'.' -f2)
+  EXP=$(jwt_base64url_decode "$PAYLOAD" | jq -r '.exp')
+
+  printf '{"token":"%s","exp":%s}\n' "$TOKEN" "$EXP" > "$TOKEN_FILE"
+  printf '%s\n' "$TOKEN"
 }
 
 get_valid_token() {
+  local TOKEN EXP NOW BUFFER
+
   # Check if we have a cached, non-expired token
   if [ -f "$TOKEN_FILE" ]; then
-    TOKEN=$(cat "$TOKEN_FILE" | jq -r '.token')
-    EXP=$(cat "$TOKEN_FILE" | jq -r '.exp')
+    TOKEN=$(jq -r '.token' "$TOKEN_FILE")
+    EXP=$(jq -r '.exp' "$TOKEN_FILE")
     NOW=$(date +%s)
     BUFFER=300  # Refresh 5 minutes before expiry
 
     if [ $((EXP - NOW)) -gt $BUFFER ]; then
-      echo $TOKEN
+      printf '%s\n' "$TOKEN"
       return
     fi
   fi
@@ -224,7 +316,7 @@ async function getPortainerToken(url, username, password) {
 1. **Never hardcode credentials** in scripts - use environment variables or a secrets manager
 2. **Use HTTPS** for all API calls - never send credentials over HTTP
 3. **Store tokens securely** - in memory or temp files with restricted permissions
-4. **Set short token expiry** in Portainer admin settings for sensitive environments
+4. **Set a short session lifetime** in Portainer admin settings for sensitive environments
 5. **Use API access tokens** for CI/CD pipelines instead of username/password JWT auth
 
 ```bash
@@ -239,4 +331,4 @@ TOKEN=$(curl -s -X POST https://portainer.example.com/api/auth \
 
 ## Conclusion
 
-JWT authentication is the standard way to interact with the Portainer API. Obtain a token via the `/api/auth` endpoint, include it in every request's `Authorization: Bearer` header, and implement auto-refresh logic for long-running scripts. For automated pipelines, consider using Portainer's API access tokens which don't expire automatically and don't require credential storage.
+JWT authentication is a supported way to interact with the Portainer API when you're authenticating with a username and password. Obtain a token via the `/api/auth` endpoint, include it in authenticated requests using the `Authorization: Bearer` header, and implement auto-refresh logic for long-running scripts. For automated pipelines, consider using Portainer's API access tokens, which are sent in the `X-API-Key` header and don't expire automatically.
