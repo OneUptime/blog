@@ -18,7 +18,7 @@ Docker Swarm secrets provide encrypted storage for sensitive data like passwords
 
 ## Creating Secrets via Portainer UI
 
-Navigate to: **Swarm > Secrets > Add Secret**
+Navigate to: **Secrets > Add secret**
 
 Fill in:
 - Name: `db_password`
@@ -30,13 +30,14 @@ Fill in:
 ```bash
 # Create a secret from a string
 
-echo "MySecurePassword123!" | docker secret create db_password -
+printf '%s' "MySecurePassword123!" | docker secret create db_password -
 
 # Create a secret from a file
 docker secret create ssl_certificate /path/to/certificate.crt
+docker secret create ssl_private_key /path/to/private.key
 
 # Create a secret from a generated value
-openssl rand -base64 32 | docker secret create app_secret_key -
+printf '%s' "$(openssl rand -base64 32)" | docker secret create app_secret_key -
 
 # List all secrets (values are NOT shown)
 docker secret ls
@@ -134,18 +135,20 @@ secret_key = read_secret('app_secret_key')
 ```bash
 # Shell script reading secrets
 #!/bin/bash
-DB_PASSWORD=$(cat /run/secrets/db_password)
-export DB_PASSWORD
+PGPASSFILE=$(mktemp)
+trap 'rm -f "$PGPASSFILE"' EXIT
+chmod 600 "$PGPASSFILE"
+printf 'db:5432:mydb:user:%s\n' "$(cat /run/secrets/db_password)" > "$PGPASSFILE"
 
-# Use in connection string
-psql "postgresql://user:$DB_PASSWORD@db:5432/mydb"
+# Use a temporary password file instead of exposing the password in argv
+PGPASSFILE="$PGPASSFILE" psql -h db -U user -d mydb
 ```
 
 ## Rotating Secrets
 
 ```bash
 # Create a new version of the secret
-echo "NewPassword456!" | docker secret create db_password_v2 -
+printf '%s' "NewPassword456!" | docker secret create db_password_v2 -
 
 # Update service to use new secret (causes rolling update)
 docker service update \
