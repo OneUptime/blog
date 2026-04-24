@@ -61,13 +61,15 @@ Mode:              Ingress  (or Host)
 
 **Host mode** - Publishes the port directly on the node where the container runs; no routing mesh.
 
+If you use **Host** mode with a fixed published port, only one task for that service can bind that port on a given node.
+
 ## Step 4: Configure Placement Constraints
 
 Restrict where the service runs:
 
 ```text
-Constraint:  node.role == worker         # Only on worker nodes
-Constraint:  node.labels.zone == us-east # Only in us-east zone
+Constraint:  node.role==worker         # Only on worker nodes
+Constraint:  node.labels.zone==us-east # Only in us-east zone
 ```
 
 Add constraints from the **Placement** section.
@@ -101,6 +103,8 @@ Source:         /data/www
 Target:         /usr/share/nginx/html
 Access:         Read/Write
 ```
+
+With the default `local` volume driver, named volumes are node-local in Swarm rather than automatically shared across replicas. For bind mounts, ensure the source path exists on every node that can run the service.
 
 ## Step 7: Configure Environment Variables
 
@@ -143,43 +147,57 @@ traefik.http.routers.web.rule=Host(`example.com`)
 After creation:
 
 1. The Services list shows the new service
-2. Click the service name to see:
+2. Click the down-arrow to the left of the service to see:
    - **Tasks** - Individual container instances and their node placement
-   - **Logs** - Aggregated logs across all replicas
+3. Click the service name to access:
+   - **Service logs** - Docker logs for the service
    - **Update** - Modify the service configuration
 
 ```bash
-# Verify from CLI
+# Verify from a swarm manager node
 
 docker service ls
 docker service ps web-frontend
 ```
 
-Expected output:
+Example `docker service ls` output:
 
 ```text
-ID            NAME              IMAGE         NODE      DESIRED STATE  CURRENT STATE
-abc123       web-frontend.1    nginx:alpine  worker-01  Running       Running 2 min
-def456       web-frontend.2    nginx:alpine  worker-02  Running       Running 2 min
-ghi789       web-frontend.3    nginx:alpine  worker-03  Running       Running 2 min
+ID            NAME           MODE         REPLICAS  IMAGE
+abc123def456  web-frontend   replicated   3/3       nginx:alpine
+```
+
+Example `docker service ps web-frontend` output:
+
+```text
+ID            NAME              IMAGE         NODE       DESIRED STATE  CURRENT STATE         ERROR  PORTS
+qihejybwf1x5  web-frontend.1    nginx:alpine  worker-01  Running        Running 2 minutes ago
+r8yt076polmc  web-frontend.2    nginx:alpine  worker-02  Running        Running 2 minutes ago
+8eaxrb2fqpbn  web-frontend.3    nginx:alpine  worker-03  Running        Running 2 minutes ago
 ```
 
 ## Creating a Service via Docker CLI
 
-For reference, the equivalent CLI command:
+For reference, a comparable CLI command for the core settings above:
 
 ```bash
+# Run on a swarm manager node
 docker service create \
   --name web-frontend \
   --replicas 3 \
-  --publish published=80,target=80 \
+  --publish published=80,target=80,mode=ingress \
   --mount type=volume,source=nginx-data,target=/usr/share/nginx/html \
   --constraint node.role==worker \
+  --network my-overlay-network \
+  --limit-cpu 0.5 \
+  --reserve-cpu 0.25 \
   --limit-memory 256m \
   --reserve-memory 128m \
+  --env APP_ENV=production \
+  --label com.example.service=frontend \
   nginx:alpine
 ```
 
 ## Conclusion
 
-Creating Swarm services in Portainer is straightforward and covers all the options you would configure via the Docker CLI. By using the Portainer UI, you get immediate visual feedback on service placement, task status, and resource usage. For production services, always configure resource limits, placement constraints, and update policies to ensure reliable deployments.
+Creating Swarm services in Portainer is straightforward and covers the main options you would configure via the Docker CLI. By using the Portainer UI, you get immediate visual feedback on service placement, task status, and resource usage. For production services, always configure resource limits, placement constraints, and update policies to ensure reliable deployments.
