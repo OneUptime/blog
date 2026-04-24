@@ -8,14 +8,14 @@ Description: Configure Portainer and Docker storage on SSDs to achieve optimal d
 
 ## Introduction
 
-Portainer's embedded boltdb database performs significantly better on SSDs than spinning disks. Docker's overlay2 storage driver also benefits from SSD I/O for layer operations during builds and container startups. This guide covers identifying storage bottlenecks, moving Portainer and Docker storage to SSD, and benchmarking the improvement.
+Portainer's embedded BoltDB database performs significantly better on SSDs than spinning disks. Docker's image and container storage also benefits from SSD I/O for layer operations during builds and container startups. This guide covers identifying storage bottlenecks, moving Portainer and Docker storage to SSD, and benchmarking the improvement.
 
 ## Step 1: Identify Current Storage Configuration
 
 ```bash
 # Check what storage device Portainer data is on
 
-docker inspect portainer --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{end}}'
+docker inspect portainer --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}} -> {{.Destination}}{{end}}{{end}}'
 # Output: /var/lib/docker/volumes/portainer_data/_data -> /data
 
 # Find which disk that path is on
@@ -28,14 +28,14 @@ lsblk -o NAME,ROTA,SIZE,TYPE,MOUNTPOINT
 
 # Check I/O scheduler (important for performance)
 cat /sys/block/sda/queue/scheduler
-# SSD optimal: [none] or [mq-deadline]
-# HDD optimal: [mq-deadline] or [bfq]
+# Common SSD choices: [none] or [mq-deadline]
+# Common HDD choices: [mq-deadline] or [bfq]
 
 # Benchmark current I/O performance
-dd if=/dev/zero of=/var/lib/docker/volumes/portainer_data/_data/test \
+sudo dd if=/dev/zero of=/var/lib/docker/volumes/portainer_data/_data/test \
   bs=1M count=1000 oflag=direct 2>&1 | tail -1
 # Remove the test file after
-rm /var/lib/docker/volumes/portainer_data/_data/test
+sudo rm /var/lib/docker/volumes/portainer_data/_data/test
 ```
 
 ## Step 2: Mount SSD for Portainer Data
@@ -51,10 +51,10 @@ sudo mkfs.ext4 -E lazy_itable_init=0,lazy_journal_init=0 /dev/sdb
 sudo mkdir -p /opt/ssd
 
 # Mount with performance-optimized options
-sudo mount -o noatime,nodiratime,data=writeback /dev/sdb /opt/ssd
+sudo mount -o noatime,nodiratime /dev/sdb /opt/ssd
 
 # Make persistent across reboots
-echo "/dev/sdb /opt/ssd ext4 noatime,nodiratime,data=writeback 0 2" | \
+echo "/dev/sdb /opt/ssd ext4 noatime,nodiratime 0 2" | \
   sudo tee -a /etc/fstab
 
 # Create Portainer directory on SSD
@@ -70,36 +70,33 @@ version: "3.8"
 
 services:
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:lts
     container_name: portainer
     restart: unless-stopped
     command:
-      - "--snapshot-interval=300"
+      - "--snapshot-interval=5m"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # Bind mount to SSD directory (not named volume)
       - /opt/ssd/portainer/data:/data
     ports:
       - "9443:9443"
-    # Prevent writes from being buffered (ensures durability)
-    environment:
-      - PORTAINER_DATA=/data
 ```
 
 ## Step 4: Move Docker's Storage Root to SSD
 
+`/etc/docker/daemon.json`
+
 ```json
-// /etc/docker/daemon.json - Move Docker storage to SSD
 {
-  "data-root": "/opt/ssd/docker",
-  "storage-driver": "overlay2",
-  "storage-opts": [
-    "overlay2.override_kernel_check=true"
-  ]
+  "data-root": "/opt/ssd/docker"
 }
 ```
 
 ```bash
+# Note: On fresh Docker Engine 29+ installs using the containerd image store,
+# image and snapshot data are configured separately in /etc/containerd/config.toml.
+
 # Move existing Docker data to SSD
 sudo systemctl stop docker
 
@@ -118,14 +115,14 @@ docker info | grep "Docker Root Dir"
 
 ```bash
 # Set I/O scheduler for optimal SSD performance
-# Option 1: none (best for NVMe SSDs)
+# Option 1: none (common for NVMe SSDs)
 echo "none" | sudo tee /sys/block/nvme0n1/queue/scheduler
 
-# Option 2: mq-deadline (good for SATA SSDs)
+# Option 2: mq-deadline (common for SATA SSDs)
 echo "mq-deadline" | sudo tee /sys/block/sda/queue/scheduler
 
 # Make persistent across reboots
-cat > /etc/udev/rules.d/60-ioscheduler.rules << 'EOF'
+sudo tee /etc/udev/rules.d/60-ioscheduler.rules > /dev/null << 'EOF'
 # NVMe SSDs - use none scheduler
 ACTION=="add|change", KERNEL=="nvme[0-9]*", ATTR{queue/scheduler}="none"
 # SATA SSDs (rotational=0) - use mq-deadline
@@ -133,23 +130,22 @@ ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="0", ATTR{queue
 # HDDs (rotational=1) - use bfq
 ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="bfq"
 EOF
-
-# Disable read-ahead for SSDs (not needed)
-sudo blockdev --setra 0 /dev/sda
 ```
 
 ## Step 6: Benchmark Before and After
 
 ```bash
 # Benchmark Portainer database operations
-# Before SSD: measure boltdb write performance
+# Before SSD: measure BoltDB write performance
 
 # Install fio for proper I/O benchmarking
-apt-get install -y fio
+sudo apt-get install -y fio
 
 # Sequential read test (simulates snapshot reads)
 fio --name=seq-read \
   --directory=/opt/ssd/portainer/data \
+  --ioengine=libaio \
+  --direct=1 \
   --rw=read \
   --bs=4k \
   --size=1G \
@@ -158,9 +154,11 @@ fio --name=seq-read \
   --runtime=30 \
   --output-format=normal
 
-# Random write test (simulates boltdb writes)
+# Random write test (simulates BoltDB writes)
 fio --name=rand-write \
   --directory=/opt/ssd/portainer/data \
+  --ioengine=libaio \
+  --direct=1 \
   --rw=randwrite \
   --bs=4k \
   --size=1G \
@@ -179,4 +177,4 @@ done
 
 ## Conclusion
 
-SSD storage for Portainer's database is one of the most impactful infrastructure changes you can make. boltdb is write-heavy - every snapshot creates database transactions - and spinning disk latency makes these writes the bottleneck. Moving to SSD typically reduces API response times by 50-80% in environments with many containers. For Docker's overlay2 storage, SSD dramatically speeds up container startups and image builds. The NVMe `none` I/O scheduler eliminates kernel-level scheduling overhead for drives that have their own intelligent queuing. Benchmark before and after to quantify the improvement for your specific workload.
+SSD storage for Portainer's database is one of the most impactful infrastructure changes you can make. BoltDB is sensitive to storage latency, and spinning disk latency can become the bottleneck when Portainer is taking regular snapshots and updating its state. Moving to SSD can reduce API response times noticeably in environments with many containers. For Docker's image and container storage, SSD can speed up container startups and image builds. The NVMe `none` I/O scheduler is commonly used on devices that already provide their own queuing. Benchmark before and after to quantify the improvement for your specific workload.
