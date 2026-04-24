@@ -15,13 +15,14 @@ Blackbox Exporter probes endpoints from the outside-testing whether HTTP(S), TCP
 ```bash
 # Install Blackbox Exporter
 
-BLACKBOX_VERSION="0.24.0"
+BLACKBOX_VERSION="0.28.0"
 wget https://github.com/prometheus/blackbox_exporter/releases/download/v${BLACKBOX_VERSION}/blackbox_exporter-${BLACKBOX_VERSION}.linux-amd64.tar.gz
 tar xzf blackbox_exporter-*.tar.gz
 sudo cp blackbox_exporter-*/blackbox_exporter /usr/local/bin/
+sudo mkdir -p /etc/blackbox_exporter
 
 # systemd service
-cat > /etc/systemd/system/blackbox_exporter.service << 'EOF'
+sudo tee /etc/systemd/system/blackbox_exporter.service > /dev/null << 'EOF'
 [Unit]
 Description=Prometheus Blackbox Exporter
 After=network.target
@@ -38,7 +39,8 @@ WantedBy=multi-user.target
 EOF
 
 sudo useradd -rs /bin/false blackbox_exporter
-sudo systemctl enable --now blackbox_exporter
+sudo systemctl daemon-reload
+sudo systemctl enable blackbox_exporter
 ```
 
 ## Blackbox Exporter Configuration
@@ -55,7 +57,8 @@ modules:
       valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
       valid_status_codes: []    # Default: 2xx
       method: GET
-      preferred_ip_protocol: "ip4"    # Force IPv4
+      preferred_ip_protocol: "ip4"
+      ip_protocol_fallback: false
 
   # HTTPS with SSL certificate check
   https_2xx:
@@ -64,6 +67,7 @@ modules:
     http:
       method: GET
       preferred_ip_protocol: "ip4"
+      ip_protocol_fallback: false
       fail_if_ssl: false
       fail_if_not_ssl: true
       tls_config:
@@ -75,6 +79,7 @@ modules:
     timeout: 5s
     tcp:
       preferred_ip_protocol: "ip4"
+      ip_protocol_fallback: false
 
   # ICMP ping (requires root or cap_net_raw)
   icmp:
@@ -82,6 +87,11 @@ modules:
     timeout: 5s
     icmp:
       preferred_ip_protocol: "ip4"
+      ip_protocol_fallback: false
+```
+
+```bash
+sudo systemctl start blackbox_exporter
 ```
 
 ## Prometheus Scrape Configuration
@@ -98,7 +108,6 @@ scrape_configs:
       - targets:
           - 'http://10.0.0.1:80'
           - 'http://10.0.0.2:80'
-          - 'https://10.0.0.3:443'
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -106,6 +115,21 @@ scrape_configs:
         target_label: instance
       - target_label: __address__
         replacement: 10.0.0.5:9115   # Blackbox Exporter address
+
+  - job_name: 'blackbox_https'
+    metrics_path: /probe
+    params:
+      module: [https_2xx]
+    static_configs:
+      - targets:
+          - 'https://example.com:443'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 10.0.0.5:9115
 
   - job_name: 'blackbox_tcp'
     metrics_path: /probe
@@ -116,6 +140,22 @@ scrape_configs:
           - '10.0.0.10:3306'    # MySQL
           - '10.0.0.11:5432'    # PostgreSQL
           - '10.0.0.12:6379'    # Redis
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 10.0.0.5:9115
+
+  - job_name: 'blackbox_icmp'
+    metrics_path: /probe
+    params:
+      module: [icmp]
+    static_configs:
+      - targets:
+          - '10.0.0.20'
+          - '10.0.0.21'
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -152,4 +192,4 @@ groups:
 
 ## Conclusion
 
-Blackbox Exporter probes IPv4 endpoints externally, measuring availability, response time, and SSL certificate validity. The relabeling configuration routes the target URL through the exporter. Use `preferred_ip_protocol: "ip4"` in module config to force IPv4 probes. Create alerts on `probe_success == 0` for downtime detection and `probe_ssl_earliest_cert_expiry` for certificate monitoring.
+Blackbox Exporter probes IPv4 endpoints externally, measuring availability, response time, and SSL certificate validity. The relabeling configuration routes the target URL or address through the exporter. Use `preferred_ip_protocol: "ip4"` together with `ip_protocol_fallback: false` in module config to force IPv4 probes. Create alerts on `probe_success == 0` for downtime detection and `probe_ssl_earliest_cert_expiry` for certificate monitoring.
