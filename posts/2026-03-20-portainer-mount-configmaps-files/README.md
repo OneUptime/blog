@@ -27,22 +27,6 @@ metadata:
   name: nginx-config
   namespace: production
 data:
-  nginx.conf: |
-    user nginx;
-    worker_processes auto;
-
-    events {
-        worker_connections 1024;
-    }
-
-    http {
-        include /etc/nginx/mime.types;
-        default_type application/octet-stream;
-        sendfile on;
-        keepalive_timeout 65;
-        include /etc/nginx/conf.d/*.conf;
-    }
-
   default.conf: |
     server {
         listen 80;
@@ -65,17 +49,12 @@ data:
 
 When creating or editing a Portainer application:
 
-1. Find the **Volumes** section
-2. Click **+ Add volume**
-3. Configure the volume mount:
-   ```text
-   Type: ConfigMap
-   ConfigMap name: nginx-config
-   Mount path: /etc/nginx/conf.d
-   ```
+1. Find the **ConfigMaps** section
+2. Select `nginx-config`
+3. Click **Override** for the `default.conf` key and set a filesystem mount path such as `/etc/nginx/conf.d/default.conf`
 4. Save or deploy the application
 
-Each key in the ConfigMap becomes a file at the mount path:
+With the override in place, Portainer mounts the key as a file:
 - `default.conf` → `/etc/nginx/conf.d/default.conf`
 
 ## Step 3: Mount ConfigMap via YAML
@@ -153,7 +132,7 @@ volumes:
       name: nginx-extra-config
 ```
 
-Using `subPath` lets you inject a single file into a directory without overwriting other files. This is essential when you want to add a config file to a directory that already has content.
+Using `subPath` lets you inject a single file into a directory without overwriting other files. This is essential when you want to add a config file to a directory that already has content. Note: a container using a ConfigMap as a `subPath` volume mount does not receive live ConfigMap updates; restart the pod or roll out the workload after changing the ConfigMap.
 
 ## Step 6: Set File Permissions
 
@@ -208,7 +187,7 @@ kubectl exec <pod-name> -n production -- \
 
 ## Step 8: Dynamic Updates - ConfigMap Volume Auto-Sync
 
-Unlike environment variables, ConfigMap volume mounts auto-update when the ConfigMap changes (within the kubelet sync period, typically 60 seconds):
+Unlike environment variables, standard ConfigMap volume mounts (not `subPath` mounts) eventually reflect ConfigMap changes. The delay can be as long as the kubelet sync period (1 minute by default) plus the ConfigMap cache TTL (1 minute by default):
 
 ```bash
 # Update ConfigMap
@@ -216,7 +195,7 @@ kubectl edit configmap nginx-config -n production
 # or
 kubectl apply -f updated-nginx-config.yaml
 
-# Wait ~60 seconds, then verify the file updated
+# Wait up to ~2 minutes, then verify the file updated
 kubectl exec <pod-name> -n production -- \
   cat /etc/nginx/conf.d/default.conf
 
@@ -226,6 +205,7 @@ kubectl exec <pod-name> -n production -- \
   nginx -s reload
 
 # Or restart the deployment
+# Required if you mounted the file with subPath in Step 5
 kubectl rollout restart deployment/nginx -n production
 ```
 
@@ -246,4 +226,4 @@ Redis              - redis.conf
 
 ## Conclusion
 
-Mounting ConfigMaps as files provides a clean way to inject configuration files into containers without embedding them in images. Use `subPath` to inject individual files without overwriting directories, set `defaultMode` for script permissions, and rely on auto-sync for applications that can reload configuration at runtime. This pattern is particularly valuable for applications like Nginx, Prometheus, and Fluentd that have rich file-based configuration systems.
+Mounting ConfigMaps as files provides a clean way to inject configuration files into containers without embedding them in images. Use `subPath` to inject individual files without overwriting directories, set `defaultMode` for script permissions, and rely on auto-sync for full ConfigMap volume mounts when applications can reload configuration at runtime. For `subPath` mounts, restart the pod or workload to pick up ConfigMap changes. This pattern is particularly valuable for applications like Nginx, Prometheus, and Fluentd that have rich file-based configuration systems.
