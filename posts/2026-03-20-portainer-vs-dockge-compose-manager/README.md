@@ -12,14 +12,13 @@ Dockge is a relatively new self-hosted Docker Compose stack manager that gained 
 
 ## What Is Dockge?
 
-Dockge is built specifically around Docker Compose stacks. Unlike Portainer's comprehensive feature set, Dockge is laser-focused on managing `docker-compose.yml` files with a clean, modern interface.
+Dockge is built specifically around Docker Compose stacks. Unlike Portainer's comprehensive feature set, Dockge is laser-focused on managing Compose files with a clean, modern interface.
 
 Deploy Dockge:
 
 ```yaml
 # dockge-stack.yml
 
-version: "3.8"
 services:
   dockge:
     image: louislam/dockge:1
@@ -28,6 +27,8 @@ services:
       - dockge-data:/app/data
       # Dockge manages stacks from this directory on the host
       - /opt/stacks:/opt/stacks
+    environment:
+      - DOCKGE_STACKS_DIR=/opt/stacks
     ports:
       - "5001:5001"
     restart: unless-stopped
@@ -44,16 +45,15 @@ volumes:
 | File-based stacks | Optional | Core feature |
 | Kubernetes | Yes | No |
 | Docker Swarm | Yes | No |
-| Multi-host | Yes | No |
-| User management | Full RBAC | Basic |
+| Multi-host | Yes | Yes (agents) |
+| User management | Full RBAC (BE) | Basic |
 | Container management | Full | Limited |
 | Template library | Rich | No |
-| External stack files | No | Yes |
-| Resource overhead | ~100MB | ~30MB |
+| Host filesystem stack storage | No | Yes |
 
 ## Dockge's File-Based Approach
 
-Dockge's key differentiator is that stacks are stored as actual `docker-compose.yml` files on the host:
+Dockge's key differentiator is that stacks are stored as actual Compose files on the host:
 
 ```text
 /opt/stacks/
@@ -72,13 +72,13 @@ This means:
 - They can be edited with any text editor
 - They survive Dockge reinstallation
 
-Portainer stores stack definitions in its internal database, which requires export for version control.
+Portainer can store stack definitions created in the web editor or by upload inside Portainer, and it also supports Git-based stack deployments when you want the repository to remain the source of truth.
 
 ## Portainer's Broader Scope
 
 Portainer manages the full container ecosystem:
 
-```bash
+```text
 Portainer capabilities beyond Compose stacks:
 - Individual container management
 - Volume management
@@ -88,7 +88,7 @@ Portainer capabilities beyond Compose stacks:
 - Docker Swarm
 - Edge device management
 - Multi-server management
-- Webhooks for CI/CD integration
+- Stack webhooks for CI/CD integration (Business Edition)
 - REST API for automation
 ```
 
@@ -103,22 +103,28 @@ Portainer capabilities beyond Compose stacks:
 
 - You need to manage individual containers alongside stacks
 - Multiple environments or hosts are involved
-- Team access with different permission levels is needed
+- Team access with different permission levels is needed (Business Edition RBAC)
 - You use Kubernetes or Swarm
-- You want CI/CD webhook integration
+- You want built-in stack webhook integration (Business Edition)
 
 ## Portainer's Stack Backup Approach
 
 If file-based storage is important to you and you use Portainer, export stacks via the API:
 
 ```bash
-# Export all stack definitions from Portainer via API
-PORTAINER_URL=http://localhost:9000
-JWT_TOKEN="your-jwt-token"
+# Export all stack definitions from Portainer via the API
+PORTAINER_URL=https://localhost:9443
+API_KEY="your-api-key"
 
-# List all stacks
-curl -H "Authorization: Bearer $JWT_TOKEN" \
-  "$PORTAINER_URL/api/stacks" | jq -r '.[].Name'
+# Fetch each stack's stored Compose file
+curl -s -H "X-API-Key: $API_KEY" \
+  "$PORTAINER_URL/api/stacks" |
+jq -r '.[].Id' |
+while read -r STACK_ID; do
+  curl -s -H "X-API-Key: $API_KEY" \
+    "$PORTAINER_URL/api/stacks/$STACK_ID/file" |
+  jq -r '.StackFileContent' > "stack-${STACK_ID}.yaml"
+done
 ```
 
 ## Summary
