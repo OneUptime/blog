@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Secret, Environment Variable, Security, Docker
 
-Description: Best practices for managing sensitive configuration through Portainer's environment variable system, including stack-level and environment-level secrets.
+Description: Best practices for managing sensitive configuration through Portainer's stack environment variable features, including stack-level variables and uploaded env files.
 
 ## Introduction
 
-While Docker Swarm secrets and external secret managers are ideal for production, Portainer's built-in environment variable management provides a practical way to handle secrets for smaller deployments. This guide covers secure patterns for using environment variables in Portainer stacks and environments.
+While Docker Swarm secrets and external secret managers are ideal for production, Portainer's built-in stack environment variable management provides a practical way to handle secrets for smaller deployments. This guide covers secure patterns for using environment variables in Portainer stacks.
 
 ## Portainer's Environment Variable Options
 
-Portainer provides three ways to inject environment variables into stacks:
+Portainer provides three ways to work with environment variables in stacks:
 
 1. **Stack-level env vars** - Defined per stack in the UI
-2. **Stack environment file** - Uploaded `.env` file per stack
-3. **Portainer environment variables** - Host-level variables available to all stacks
+2. **Stack environment file** - Upload a `.env` file per stack
+3. **`stack.env` with `env_file`** - Use Portainer-managed variables as a container env file on Docker Standalone and Podman
 
 ## Method 1: Stack-Level Environment Variables
 
@@ -25,7 +25,6 @@ In Portainer UI: **Stacks > Your Stack > Environment Variables**
 ```yaml
 # compose.yml - reference env vars without defining values
 
-version: '3.8'
 services:
   app:
     image: myapp:latest
@@ -36,7 +35,7 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD}
 ```
 
-Then in Portainer's stack editor, set the values under **Environment Variables** before deploying. The values are stored encrypted in Portainer's database.
+Then in Portainer's stack editor, set the values under **Environment Variables** before deploying. Portainer stores the values with the stack in its database. If you need encryption at rest for that data, enable Portainer database encryption.
 
 ## Method 2: Stack Environment File
 
@@ -57,41 +56,36 @@ Upload via Portainer:
 1. Go to **Stacks > Add Stack**
 2. Under **Environment Variables**, click "Load variables from .env file"
 3. Upload your `.env` file
-4. The values are extracted and stored in Portainer (not the file)
+4. Portainer imports the variables into the stack configuration
 
-## Method 3: Portainer Environment Variables (Host Level)
+## Method 3: `stack.env` with `env_file`
 
-Set variables that apply to the entire Portainer environment:
+On Docker Standalone and Podman environments, you can expose the variables you defined in Portainer through `stack.env`:
 
-```bash
-# Via Portainer API
-curl -X PUT \
-  -H "X-API-Key: your-api-key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "Env": [
-      {"name": "REGISTRY_URL", "value": "registry.example.com"},
-      {"name": "LOG_AGGREGATOR", "value": "http://loki:3100"},
-      {"name": "METRICS_ENDPOINT", "value": "http://prometheus:9090"}
-    ]
-  }' \
-  "https://portainer.example.com/api/endpoints/1"
+```yaml
+services:
+  app:
+    image: myapp:latest
+    env_file:
+      - stack.env
 ```
+
+Portainer populates `stack.env` from the variables you define in the UI or upload from a `.env` file. This does not work on Docker Swarm because `docker stack deploy` does not support `env_file`; on Swarm, define each environment variable manually in Portainer.
 
 ## Securing Environment Variables
 
-### Masking Variables in Portainer
+### Defining Variables Through the Portainer API
 
-Mark variables as secret to hide them in the UI:
+You can also create a stack and pass its environment variables in the API request:
 
 ```bash
-# Via Portainer API: Create a secret variable
+# Via Portainer API: create a stack with environment variables
 curl -X POST \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
     "Name": "my-app",
-    "StackFileContent": "...",
+    "StackFileContent": "services:\n  app:\n    image: nginx:latest\n    environment:\n      DB_PASSWORD: ${DB_PASSWORD}\n",
     "Env": [
       {
         "name": "DB_PASSWORD",
@@ -106,7 +100,6 @@ curl -X POST \
 
 ```yaml
 # docker-compose.yml with defaults and required variables
-version: '3.8'
 services:
   app:
     image: myapp:latest
@@ -128,7 +121,6 @@ Store non-sensitive defaults in the compose file and sensitive values in Portain
 
 ```yaml
 # App template for multiple environments
-version: '3.8'
 
 x-common-env: &common-env
   environment:
@@ -166,7 +158,7 @@ services:
 
 ### Preventing Secret Leakage
 
-```bash
+```text
 # Never put secrets directly in Compose files committed to git
 # WRONG:
 environment:
@@ -199,11 +191,11 @@ curl -s \
 import sys, json
 stacks = json.load(sys.stdin)
 for s in stacks:
-    for env in s.get('Env', []):
+    for env in (s.get('Env') or []):
         print(f'{s[\"Name\"]}: {env[\"name\"]}')
 "
 ```
 
 ## Conclusion
 
-Portainer's environment variable management provides a practical secrets solution for teams not ready for dedicated secrets managers. By keeping values in Portainer's encrypted storage rather than compose files, you maintain security without additional infrastructure. For production workloads, combine this with Docker Swarm secrets or HashiCorp Vault for defense in depth.
+Portainer's environment variable management provides a practical way to keep sensitive values out of Compose files for teams not ready for dedicated secrets managers. By keeping values in Portainer's database rather than in version-controlled Compose files, you reduce accidental exposure in source control. For stronger protection at rest, enable Portainer database encryption. For production workloads, combine this with Docker Swarm secrets or an external secrets manager for defense in depth.
