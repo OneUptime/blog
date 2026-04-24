@@ -35,15 +35,15 @@ CMD ["--port", "8080"]
 ## Step 1: Access Command Settings in Portainer
 
 1. Navigate to **Containers > Add container**.
-2. Scroll to the **Command & logging** tab (or similar section depending on Portainer version).
+2. Scroll to the **Advanced container settings** section, then the **Command & logging** area.
 
 You'll find two fields:
-- **Command**: Override the Docker image's `CMD`.
+- **Command**: Override the Docker image's `CMD` or supply new arguments to its `ENTRYPOINT`.
 - **Entrypoint**: Override the Docker image's `ENTRYPOINT`.
 
 ## Step 2: Override the Command
 
-The command overrides the image's default `CMD`. Common uses:
+The command overrides the image's default `CMD`. If the image also defines an `ENTRYPOINT`, the command is passed to that entrypoint as arguments unless you override the entrypoint too. Common uses:
 
 ### Running a Different Subcommand
 
@@ -76,7 +76,8 @@ Command: node scripts/seed-database.js
 
 ```text
 # Run multiple commands via shell
-Command: /bin/sh -c "sleep 5 && node server.js"
+Entrypoint: /bin/sh
+Command: -c "sleep 5 && node server.js"
 ```
 
 ## Step 3: Override the Entrypoint
@@ -86,10 +87,10 @@ Overriding the entrypoint replaces the main executable. This is more disruptive 
 ### Open a Shell Instead of Starting the App
 
 ```text
-# Override entrypoint to get a shell in any container
+# Override entrypoint to use a shell as PID 1
 Entrypoint: /bin/sh
-# Then leave Command empty to get interactive shell
-# (Note: for interactive shell, you also need -it flags)
+Command: -c "sleep infinity"
+# Then use Portainer's Console feature to open a shell
 ```
 
 ### Run as a Script Wrapper
@@ -137,14 +138,12 @@ services:
 ### Debugging a Crashing Container
 
 ```bash
-# Container crashes on start - override entrypoint to get a shell
+# Container crashes on start - keep the container running with a shell entrypoint
 Entrypoint: /bin/sh
-Command: (leave empty)
-
-# Add -it in Docker CLI flags (in Portainer, use the Console feature instead)
+Command: -c "sleep infinity"
 ```
 
-In Portainer, the better approach for debugging is:
+In Portainer, a practical debugging flow is:
 1. Set the entrypoint to `/bin/sh` and command to `-c "sleep infinity"`.
 2. Start the container.
 3. Use **Exec/Console** to attach a shell.
@@ -177,19 +176,20 @@ After creating the container:
 }
 ```
 
-## JSON Array Format for Commands
+## Command Format in Portainer
 
-When entering commands in Portainer, you can use either shell format or JSON array format:
+In Portainer, the **Command** and **Entrypoint** fields are entered as strings. Portainer splits the value into arguments, keeping quoted sections together:
 
 ```text
-# Shell format (interpreted by /bin/sh -c):
-Command: echo hello && sleep 10
+# Simple command
+Command: python app.py --port 8080
 
-# JSON array format (no shell interpretation):
-Command: ["python", "app.py", "--port", "8080"]
+# If you need shell features like &&, explicitly invoke a shell
+Entrypoint: /bin/sh
+Command: -c "echo hello && sleep 10"
 ```
 
-JSON array format is preferred for production - it avoids shell injection and ensures exact argument parsing.
+JSON array syntax such as `["python", "app.py", "--port", "8080"]` is used in Dockerfiles and Compose files, not in Portainer's container form.
 
 ## Conclusion
 
