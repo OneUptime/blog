@@ -23,15 +23,17 @@ python3 -c "import paramiko; print(paramiko.__version__)"
 
 ## Step 2: Basic SSH Connection and Command Execution
 
+If the remote SSH server supports exec requests, you can use `exec_command()` to run a single command. Many network devices require an interactive shell instead, which is covered in Step 3.
+
 ```python
 import paramiko
-import time
 
 # Create SSH client
 
 client = paramiko.SSHClient()
 
-# Trust the host key automatically (not for production - verify in prod)
+# Trust the host key automatically for this demo
+# (in production, verify host keys with load_system_host_keys() and RejectPolicy)
 client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
 # Connect to device
@@ -61,40 +63,56 @@ client.close()
 
 ## Step 3: Interactive Shell (for Cisco IOS Enable Mode)
 
-For Cisco IOS, commands run in interactive mode and require entering enable mode:
+Many Cisco IOS automation tasks work better in interactive mode, and privileged EXEC commands require entering enable mode:
 
 ```python
 import paramiko
 import time
+
+def read_until_idle(shell, idle_timeout=0.5, overall_timeout=5):
+    """Read from the channel until no new data arrives for idle_timeout seconds."""
+    output = []
+    start_time = time.time()
+    last_data_time = start_time
+
+    while time.time() - start_time < overall_timeout:
+        if shell.recv_ready():
+            output.append(shell.recv(65535).decode('utf-8', errors='replace'))
+            last_data_time = time.time()
+        elif output and time.time() - last_data_time >= idle_timeout:
+            break
+        else:
+            time.sleep(0.1)
+
+    return ''.join(output)
+
+def send_command(shell, command, overall_timeout=5):
+    shell.send(command + '\n')
+    return read_until_idle(shell, overall_timeout=overall_timeout)
 
 def cisco_ios_command(hostname, username, password, enable_password, commands):
     """Run commands on Cisco IOS using interactive shell."""
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     client.connect(hostname, username=username, password=password,
-                   look_for_keys=False, allow_agent=False)
+                   timeout=10, look_for_keys=False, allow_agent=False)
 
     # Open interactive shell
     shell = client.invoke_shell()
     time.sleep(1)
+    read_until_idle(shell)   # Clear login banner and initial prompt
 
     # Enter enable mode
-    shell.send('enable\n')
-    time.sleep(0.5)
-    shell.send(enable_password + '\n')
-    time.sleep(0.5)
+    send_command(shell, 'enable')
+    send_command(shell, enable_password)
 
     # Disable paging (prevent --More-- prompts)
-    shell.send('terminal length 0\n')
-    time.sleep(0.5)
+    send_command(shell, 'terminal length 0')
 
     # Execute each command
     outputs = {}
     for cmd in commands:
-        shell.send(cmd + '\n')
-        time.sleep(1)    # Wait for output
-        output = shell.recv(65535).decode('utf-8', errors='replace')
-        outputs[cmd] = output
+        outputs[cmd] = send_command(shell, cmd, overall_timeout=10)
 
     client.close()
     return outputs
@@ -140,21 +158,21 @@ print(config)
 
 ## Step 5: SSH Key Authentication
 
+Authentication method is separate from how you open the SSH channel. This example uses `exec_command()` for brevity; if your device requires an interactive shell, connect with the same key-based method and then use `invoke_shell()` as shown in Step 3.
+
 ```python
 import paramiko
 
-def connect_with_key(hostname, username, key_path):
+def connect_with_key(hostname, username, key_path, passphrase=None):
     """Connect using SSH private key (more secure than password)."""
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-    # Load private key
-    private_key = paramiko.RSAKey.from_private_key_file(key_path)
-
     client.connect(
         hostname=hostname,
         username=username,
-        pkey=private_key,
+        key_filename=key_path,
+        passphrase=passphrase,
         look_for_keys=False,
         allow_agent=False,
     )
@@ -175,6 +193,27 @@ import paramiko
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+def read_until_idle(shell, idle_timeout=0.5, overall_timeout=5):
+    """Read from the channel until no new data arrives for idle_timeout seconds."""
+    output = []
+    start_time = time.time()
+    last_data_time = start_time
+
+    while time.time() - start_time < overall_timeout:
+        if shell.recv_ready():
+            output.append(shell.recv(65535).decode('utf-8', errors='replace'))
+            last_data_time = time.time()
+        elif output and time.time() - last_data_time >= idle_timeout:
+            break
+        else:
+            time.sleep(0.1)
+
+    return ''.join(output)
+
+def send_command(shell, command, overall_timeout=5):
+    shell.send(command + '\n')
+    return read_until_idle(shell, overall_timeout=overall_timeout)
+
 def run_command_on_device(device):
     """Run commands on a device with proper error handling."""
     client = paramiko.SSHClient()
@@ -187,21 +226,21 @@ def run_command_on_device(device):
             password=device['password'],
             timeout=10,
             look_for_keys=False,
+            allow_agent=False,
         )
 
         shell = client.invoke_shell()
-        time.sleep(0.5)
+        time.sleep(1)
+        read_until_idle(shell)
 
         if device.get('enable_password'):
-            shell.send(f"enable\n{device['enable_password']}\nterminal length 0\n")
-            time.sleep(1)
+            send_command(shell, 'enable')
+            send_command(shell, device['enable_password'])
+            send_command(shell, 'terminal length 0')
 
         results = {}
         for cmd in device.get('commands', []):
-            shell.send(cmd + '\n')
-            time.sleep(0.5)
-            output = shell.recv(32768).decode('utf-8', errors='replace')
-            results[cmd] = output
+            results[cmd] = send_command(shell, cmd, overall_timeout=10)
 
         return {'host': device['host'], 'results': results}
 
@@ -231,4 +270,4 @@ for result in results:
 
 ## Conclusion
 
-Paramiko provides raw SSH access to network devices. For Cisco IOS, use `invoke_shell()` with `terminal length 0` to disable paging. Handle enable mode by sending the enable command followed by the enable password. While Paramiko works for any SSH device, consider Netmiko for Cisco-specific automation as it handles paging, enable mode, and configuration mode automatically. Use Paramiko directly when you need SFTP, SSH tunneling, or support for non-standard devices.
+Paramiko provides raw SSH access to network devices. If the device supports SSH exec requests, you can use `exec_command()` for one-off commands; for many Cisco IOS automation tasks, use `invoke_shell()` with `terminal length 0` to disable paging. Handle enable mode by sending the enable command followed by the enable password. While Paramiko works for any SSH device, consider Netmiko for Cisco-specific automation as it handles paging, enable mode, and configuration mode automatically. Use Paramiko directly when you need SFTP, SSH tunneling, or support for non-standard devices.
