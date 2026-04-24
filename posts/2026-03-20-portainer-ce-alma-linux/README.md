@@ -8,7 +8,7 @@ Description: A guide to installing Portainer Community Edition on AlmaLinux 8 an
 
 ## Overview
 
-AlmaLinux is a community-owned, RHEL-compatible Linux distribution created in response to CentOS's transition to CentOS Stream. It provides long-term stability and full binary compatibility with RHEL. This guide covers installing Docker CE and Portainer CE on AlmaLinux 8 and AlmaLinux 9.
+AlmaLinux is a community-owned, RHEL-compatible Linux distribution created in response to CentOS's transition to CentOS Stream. It provides long-term stability and compatibility with RHEL. This guide covers installing Docker CE and Portainer CE on AlmaLinux 8 and AlmaLinux 9.
 
 ## Prerequisites
 
@@ -25,10 +25,18 @@ sudo dnf update -y
 ## Step 2: Remove Conflicting Packages
 
 ```bash
-# Remove any existing docker/podman packages
-
-sudo dnf remove -y docker docker-common docker-selinux \
-  docker-engine podman runc 2>/dev/null
+# Remove any existing Docker-related packages
+sudo dnf remove -y \
+  docker \
+  docker-client \
+  docker-client-latest \
+  docker-common \
+  docker-latest \
+  docker-latest-logrotate \
+  docker-logrotate \
+  docker-engine \
+  podman \
+  runc
 
 # Clean up
 sudo dnf autoremove -y
@@ -36,15 +44,15 @@ sudo dnf autoremove -y
 
 ## Step 3: Install Docker CE
 
-Docker provides a CentOS-compatible repository that works on AlmaLinux:
+Because AlmaLinux is RHEL-compatible, this guide uses Docker's RHEL repository:
 
 ```bash
 # Install dnf plugins
 sudo dnf install -y dnf-plugins-core
 
-# Add Docker repository (CentOS repo is compatible with AlmaLinux)
+# Add Docker repository
 sudo dnf config-manager --add-repo \
-  https://download.docker.com/linux/centos/docker-ce.repo
+  https://download.docker.com/linux/rhel/docker-ce.repo
 
 # Install Docker CE packages
 sudo dnf install -y \
@@ -79,14 +87,15 @@ AlmaLinux uses SELinux Enforcing mode by default:
 getenforce
 # Output: Enforcing
 
-# Portainer needs the :z SELinux label for socket access
+# If SELinux is Enforcing, Portainer requires --privileged
 # This is handled in the docker run command below
 ```
 
 ## Step 6: Configure Firewall
 
 ```bash
-# Open required ports
+# Open the Portainer UI port and optional Edge tunnel port
+# Port 8000 is only needed if you plan to use Edge agents
 sudo firewall-cmd --permanent --add-port=9443/tcp
 sudo firewall-cmd --permanent --add-port=8000/tcp
 sudo firewall-cmd --reload
@@ -101,15 +110,17 @@ sudo firewall-cmd --list-ports
 # Create Portainer data volume
 docker volume create portainer_data
 
-# Deploy Portainer CE with SELinux :z label
+# Deploy Portainer CE with SELinux support
+# Port 8000 is only needed if you plan to use Edge agents
 docker run -d \
+  --privileged \
   -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
   --restart=always \
-  -v /var/run/docker.sock:/var/run/docker.sock:z \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 
 # Check container status
 docker ps | grep portainer
@@ -151,12 +162,13 @@ stat -fc %T /sys/fs/cgroup/
 sudo dnf install -y dnf-automatic
 
 # Configure for security updates only
-sudo sed -i 's/upgrade_type = default/upgrade_type = security/' \
+sudo sed -i 's/^upgrade_type = .*/upgrade_type = security/' \
   /etc/dnf/automatic.conf
 
-sudo systemctl enable --now dnf-automatic.timer
+# Install updates automatically
+sudo systemctl enable --now dnf-automatic-install.timer
 ```
 
 ## Conclusion
 
-AlmaLinux is an excellent enterprise-grade platform for Portainer CE deployments. Its full RHEL binary compatibility ensures that enterprise Docker tooling works without modification. The SELinux `:z` volume label and firewalld configuration are standard requirements for all RHEL-compatible distributions. AlmaLinux's 10-year support lifecycle makes it a stable foundation for production Portainer deployments.
+AlmaLinux is an excellent enterprise-grade platform for Portainer CE deployments. Its RHEL compatibility means the standard Docker installation workflow maps closely to AlmaLinux. When SELinux is Enforcing, Portainer should be started with `--privileged`, and firewalld should allow the ports you plan to use. AlmaLinux's 10-year support lifecycle makes it a stable foundation for production Portainer deployments.
