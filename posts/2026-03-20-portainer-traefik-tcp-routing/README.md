@@ -12,7 +12,7 @@ Traefik can route TCP traffic in addition to HTTP, making it useful for exposing
 
 ## Prerequisites
 
-- Traefik deployed with port 443 and custom TCP ports published
+- Traefik deployed with ports 80/443 and any custom TCP ports published
 - Portainer managing services on the proxy network
 - Understanding of TLS passthrough vs termination
 
@@ -46,6 +46,14 @@ providers:
   docker:
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: admin@example.com
+      storage: /data/acme.json
+      httpChallenge:
+        entryPoint: web
 ```
 
 ## Step 2: Expose TCP Ports in Docker Compose
@@ -59,6 +67,7 @@ services:
       - "80:80"
       - "443:443"
       - "5432:5432"    # PostgreSQL
+      - "3306:3306"    # MySQL
       - "6379:6379"    # Redis
       - "1883:1883"    # MQTT
     volumes:
@@ -88,7 +97,7 @@ services:
       # TCP routing labels (different from HTTP labels)
       - "traefik.enable=true"
 
-      # TCP router - HostSNI matches on any host (no TLS SNI on raw TCP)
+      # TCP router - special catch-all rule for non-TLS TCP on this entrypoint
       - "traefik.tcp.routers.postgres.rule=HostSNI(`*`)"
       - "traefik.tcp.routers.postgres.entrypoints=postgres"
       - "traefik.tcp.routers.postgres.service=postgres"
@@ -107,13 +116,23 @@ networks:
 
 ## Step 4: SNI-Based TCP Routing on Port 443
 
-Route multiple TCP services on port 443 using TLS SNI (requires TLS passthrough or termination):
+Route multiple TLS-capable TCP services on port 443 using TLS SNI (requires TLS passthrough or termination). For PostgreSQL, Traefik handles the Postgres STARTTLS negotiation, so clients should connect with `sslmode=require` or stricter:
 
 ```yaml
 # TLS Passthrough - backend handles TLS itself
 services:
   postgres-tls:
     image: postgres:15-alpine
+    command:
+      - "postgres"
+      - "-c"
+      - "ssl=on"
+      - "-c"
+      - "ssl_cert_file=/certs/server.crt"
+      - "-c"
+      - "ssl_key_file=/certs/server.key"
+    volumes:
+      - /opt/postgres/certs:/certs:ro
     networks:
       - proxy
     labels:
@@ -151,7 +170,7 @@ services:
 # Connect to PostgreSQL via Traefik
 psql -h your-server-ip -p 5432 -U dbuser -d mydb
 
-# With TLS via SNI routing
+# With TLS via SNI routing (PostgreSQL STARTTLS)
 psql "host=db.example.com port=443 sslmode=require user=dbuser dbname=mydb"
 
 # Connect to Redis via Traefik
@@ -189,4 +208,4 @@ services:
 
 ## Conclusion
 
-Traefik TCP routing extends Portainer's infrastructure management to non-HTTP services like databases, caches, and message brokers. Use dedicated entrypoints with `HostSNI("*")` for simple port-based routing, or SNI-based routing on port 443 for TLS-capable services. TLS termination at Traefik lets backend services stay in plaintext while external clients connect securely, eliminating the need for TLS configuration in each database service.
+Traefik TCP routing extends Portainer's infrastructure management to non-HTTP services like databases, caches, and message brokers. Use dedicated entrypoints with ``HostSNI(`*`)`` for simple port-based routing, or SNI-based routing on port 443 for TLS-capable services. TLS termination at Traefik lets backend services stay in plaintext while external clients connect securely, eliminating the need for TLS configuration in each database service.
