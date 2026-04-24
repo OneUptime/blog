@@ -8,12 +8,12 @@ Description: Learn how to configure the PostgreSQL provider in OpenTofu to manag
 
 ## Introduction
 
-This guide covers How to Configure the PostgreSQL Provider in OpenTofu using OpenTofu with practical examples and production-ready configurations.
+This guide covers how to configure the PostgreSQL provider in OpenTofu with practical examples for managing databases, roles, and schemas.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- API credentials for the relevant service
+- Access to a PostgreSQL server and credentials with permission to create roles, databases, and schemas
 - Basic understanding of OpenTofu concepts
 
 ## Step 1: Install and Configure the Provider
@@ -22,114 +22,162 @@ This guide covers How to Configure the PostgreSQL Provider in OpenTofu using Ope
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    # Provider configuration depends on the specific service
-    # Replace with the actual provider source and version
-    example = {
-      source  = "hashicorp/example"
-      version = "~> 1.0"
+    postgresql = {
+      source  = "cyrilgdn/postgresql"
+      version = "~> 1.26.0"
     }
   }
 }
 
-# Configure the provider with credentials
-
-provider "example" {
-  # Use environment variables for credentials
-  # EXAMPLE_API_KEY, EXAMPLE_TOKEN, etc.
-  
-  # Or specify directly (not recommended for secrets)
-  # api_key = var.api_key
+provider "postgresql" {
+  host            = var.host
+  port            = var.port
+  database        = var.maintenance_database
+  username        = var.username
+  password        = var.password
+  sslmode         = var.sslmode
+  connect_timeout = 15
 }
 ```
 
 ## Step 2: Set Up Authentication
 
 ```bash
-# Use environment variables for authentication
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_TOKEN="your-token"
-export PROVIDER_ORG="your-organization"
+# Use environment variables for OpenTofu input variables
+export TF_VAR_host="db.example.com"
+export TF_VAR_port=5432
+export TF_VAR_maintenance_database="postgres"
+export TF_VAR_username="postgres"
+export TF_VAR_password="your-admin-password"
+export TF_VAR_sslmode="require"
+export TF_VAR_database_name="app"
+export TF_VAR_app_username="app_user"
+export TF_VAR_app_password="your-app-password"
 ```
 
 ```hcl
-variable "api_key" {
-  description = "API key for authentication"
+variable "host" {
+  description = "PostgreSQL server hostname"
+  type        = string
+}
+
+variable "port" {
+  description = "PostgreSQL server port"
+  type        = number
+  default     = 5432
+}
+
+variable "maintenance_database" {
+  description = "Existing database used for the initial connection"
+  type        = string
+  default     = "postgres"
+}
+
+variable "username" {
+  description = "Username for the PostgreSQL connection"
+  type        = string
+}
+
+variable "password" {
+  description = "Password for the PostgreSQL connection"
   type        = string
   sensitive   = true
 }
 
-variable "organization" {
-  description = "Organization name or ID"
+variable "sslmode" {
+  description = "SSL mode for the PostgreSQL connection"
   type        = string
+  default     = "require"
+}
+
+variable "database_name" {
+  description = "Name of the application database"
+  type        = string
+}
+
+variable "app_username" {
+  description = "Name of the application role"
+  type        = string
+}
+
+variable "app_password" {
+  description = "Password for the application role"
+  type        = string
+  sensitive   = true
 }
 ```
 
 ## Step 3: Create Basic Resources
 
 ```hcl
-# Example resource creation
-# Replace with actual resource types for the provider
-
-resource "example_project" "main" {
-  name        = "${var.environment}-project"
-  description = "Managed by OpenTofu"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+resource "postgresql_role" "app" {
+  name     = var.app_username
+  login    = true
+  password = var.app_password
 }
 
-# Configure access control
-resource "example_team" "developers" {
-  name    = "developers"
-  project = example_project.main.id
-  role    = "contributor"
+resource "postgresql_database" "app" {
+  name  = var.database_name
+  owner = postgresql_role.app.name
 }
 ```
 
 ## Step 4: Configure Advanced Settings
 
 ```hcl
-# Monitoring and alerting configuration
-resource "example_alert" "main" {
-  name      = "critical-alert"
-  project   = example_project.main.id
-  severity  = "critical"
-  threshold = 90
-
-  notification {
-    channel = var.notification_channel
-  }
+# Create a dedicated schema for application objects
+resource "postgresql_schema" "app" {
+  database = postgresql_database.app.name
+  name     = "app"
+  owner    = postgresql_role.app.name
 }
 
-# Backup and retention policies
-resource "example_backup_policy" "main" {
-  name              = "daily-backup"
-  project           = example_project.main.id
-  retention_days    = 30
-  schedule          = "0 2 * * *"  # Daily at 2 AM
+# Create a group role for shared read-only access
+resource "postgresql_role" "readonly" {
+  name = "${var.app_username}_readonly"
+}
+
+# Allow the read-only role to connect to the database
+resource "postgresql_grant" "readonly_database" {
+  database    = postgresql_database.app.name
+  role        = postgresql_role.readonly.name
+  object_type = "database"
+  privileges  = ["CONNECT"]
+}
+
+# Allow the read-only role to use the application schema
+resource "postgresql_grant" "readonly_schema" {
+  database    = postgresql_database.app.name
+  role        = postgresql_role.readonly.name
+  schema      = postgresql_schema.app.name
+  object_type = "schema"
+  privileges  = ["USAGE"]
 }
 ```
 
 ## Step 5: Define Outputs
 
 ```hcl
-output "project_id" {
-  description = "The ID of the created project"
-  value       = example_project.main.id
+output "database_name" {
+  description = "The name of the created database"
+  value       = postgresql_database.app.name
 }
 
-output "project_name" {
-  description = "The name of the created project"
-  value       = example_project.main.name
+output "app_role" {
+  description = "The name of the application role"
+  value       = postgresql_role.app.name
+}
+
+output "schema_name" {
+  description = "The name of the created schema"
+  value       = postgresql_schema.app.name
 }
 ```
 
 ## Step 6: Deploy
 
 ```bash
-# Initialize OpenTofu and download provider
+# Initialize OpenTofu and download the provider
 tofu init
 
 # Validate configuration syntax
@@ -145,14 +193,14 @@ tofu apply
 ## Common Issues and Solutions
 
 ### Authentication Errors
-Verify API keys are valid and have the required permissions. Check for typos in environment variable names.
+Verify the `host`, `port`, `username`, `password`, and `sslmode` values. Managed PostgreSQL services often require `sslmode = "require"` and network rules that allow your client to connect.
 
-### Rate Limiting
-Add `depends_on` to serialize resource creation and avoid hitting API rate limits.
+### Permission Errors
+The PostgreSQL user used by the provider must be able to create roles and databases, or be a superuser or member of the target owner role when assigning ownership.
 
 ### Provider Version Conflicts
-Pin to a specific provider version range to ensure reproducible deployments.
+Pin the `cyrilgdn/postgresql` provider to a tested version range and commit the `.terraform.lock.hcl` file generated by `tofu init` for reproducible deployments.
 
 ## Conclusion
 
-You have successfully configured How to Configure the PostgreSQL Provider in OpenTofu using OpenTofu. This provider enables you to manage all aspects of the service as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials.
+You have successfully configured the PostgreSQL provider in OpenTofu to manage roles, databases, and schemas. This provider enables you to manage PostgreSQL configuration as code, ensuring consistency and enabling GitOps workflows. Because `postgresql_role.password` is stored in state when you use it, protect your state backend and handle credentials carefully.
