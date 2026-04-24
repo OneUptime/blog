@@ -8,7 +8,7 @@ Description: Learn how to configure the shared memory (shm_size) for Docker cont
 
 ## Introduction
 
-Docker containers have a default `/dev/shm` (shared memory) size of 64 MB. Many applications - web browsers running in headless mode, PostgreSQL, certain machine learning frameworks, and video processing tools - require significantly more shared memory to function correctly. Portainer lets you configure this limit when creating a container.
+Docker containers have a default `/dev/shm` (shared memory) size of 64 MB. Many applications - web browsers running in headless mode, PostgreSQL, certain machine learning frameworks, and other IPC-heavy workloads - require significantly more shared memory to function correctly. Portainer lets you configure this limit when creating a container.
 
 ## Prerequisites
 
@@ -21,13 +21,13 @@ Shared memory (`/dev/shm`) is a tmpfs filesystem used for inter-process communic
 - Chromium/Chrome headless crashes with "No space left on device"
 - PostgreSQL may fail to create shared memory segments
 - PyTorch DataLoader workers crash when using multiprocessing
-- Some video encoding tools fail
+- Other applications that explicitly use `/dev/shm` or POSIX shared memory can also fail
 
 ## Step 1: Set Shared Memory in Portainer
 
 1. Navigate to **Containers > Add container**.
-2. Scroll to the **Runtime & Resources** section.
-3. Find the **Shared memory size** field.
+2. Expand the advanced container settings.
+3. In the **Runtime** section, find the **Shared memory size** field.
 4. Enter the size in MB.
 
 ```text
@@ -49,18 +49,20 @@ services:
   chrome:
     image: selenium/standalone-chrome:latest
     shm_size: '2g'   # 2 GB shared memory for Chrome
-    # Without this, Chrome crashes with "--disable-dev-shm-usage workaround"
 ```
 
 Or with the workaround flag (avoids the need for increased shm):
 
-```yaml
-services:
-  puppeteer:
-    image: node:20-alpine
-    command: node puppeteer-script.js
-    environment:
-      - PUPPETEER_ARGS=--no-sandbox,--disable-dev-shm-usage
+```javascript
+import puppeteer from 'puppeteer';
+
+(async () => {
+  const browser = await puppeteer.launch({
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  });
+
+  await browser.close();
+})();
 ```
 
 The `--disable-dev-shm-usage` flag makes Chrome write to `/tmp` instead, avoiding the shm limit but potentially being slower.
@@ -72,12 +74,12 @@ services:
   postgres:
     image: postgres:15-alpine
     shm_size: '256m'   # Increase from 64 MB default
+    command: ["postgres", "-c", "shared_buffers=128MB"]
     environment:
       - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_SHARED_BUFFERS=128MB  # Should be <= shm_size
 ```
 
-PostgreSQL uses shared memory for its shared buffer pool. The `shm_size` must be at least as large as `shared_buffers`.
+PostgreSQL uses shared memory for its shared buffer pool and other IPC structures. If you increase `shared_buffers`, make sure `/dev/shm` is large enough for PostgreSQL's shared memory needs.
 
 ### PyTorch / ML Workloads
 
@@ -99,26 +101,6 @@ services:
 
 PyTorch DataLoader with `num_workers > 0` uses shared memory to pass data between workers and the main process.
 
-### Apache Spark
-
-```yaml
-services:
-  spark-worker:
-    image: apache/spark:3.5.0
-    shm_size: '4g'
-    environment:
-      - SPARK_WORKER_MEMORY=4g
-```
-
-### Video Processing (FFmpeg, GStreamer)
-
-```yaml
-services:
-  video-processor:
-    image: jrottenberg/ffmpeg:5.1-alpine
-    shm_size: '512m'   # For video frame buffering
-```
-
 ## Step 3: Using tmpfs as an Alternative
 
 Instead of setting shm_size globally, you can also use a `tmpfs` mount for `/dev/shm`:
@@ -127,12 +109,15 @@ Instead of setting shm_size globally, you can also use a `tmpfs` mount for `/dev
 services:
   app:
     image: myapp:latest
-    tmpfs:
-      # Mount /dev/shm as tmpfs with 512 MB limit
-      - /dev/shm:size=536870912,mode=1777  # 512 MB in bytes
+    volumes:
+      - type: tmpfs
+        target: /dev/shm
+        tmpfs:
+          size: 536870912  # 512 MB in bytes
+          mode: 0o1777
 ```
 
-This provides more control over permissions and is equivalent to `shm_size`.
+This provides explicit control over the `/dev/shm` tmpfs mount and is an alternative to `shm_size`.
 
 ## Step 4: Docker CLI Equivalent
 
@@ -160,8 +145,9 @@ df -h /dev/shm
 # Filesystem      Size  Used Avail Use% Mounted on
 # shm             2.0G     0  2.0G   0% /dev/shm
 
-# Check the size in bytes:
-cat /proc/meminfo | grep Shmem
+# Check mount options, including the configured size:
+grep '/dev/shm' /proc/mounts
+# tmpfs /dev/shm tmpfs rw,nosuid,nodev,noexec,relatime,size=2097152k,...
 
 # For PostgreSQL, check configured shared_buffers:
 psql -U postgres -c "SHOW shared_buffers;"
@@ -170,17 +156,17 @@ psql -U postgres -c "SHOW shared_buffers;"
 ## Monitoring Shared Memory Usage
 
 ```bash
-# On the host, check actual shared memory usage per container:
-docker stats --format "table {{.Name}}\t{{.MemUsage}}" my-container
+# Check current /dev/shm usage inside the container:
+docker exec my-container df -h /dev/shm
 
-# Inside container, see what's using /dev/shm:
-ls -la /dev/shm/
+# See files currently using /dev/shm:
+docker exec my-container ls -la /dev/shm/
 ```
 
 ## Best Practices
 
 - **Set shm_size explicitly** for Chrome/Selenium, ML workloads, and PostgreSQL.
-- **Don't over-allocate** - shm_size counts against the container's memory limit.
+- **Don't set it arbitrarily high** - `shm_size` is a limit, not a reservation, but data written to `/dev/shm` still consumes RAM.
 - **Use `--disable-dev-shm-usage`** for Chrome if you can't increase shm_size.
 - **Monitor actual usage** - set `shm_size` to match actual requirements, not arbitrary large values.
 
