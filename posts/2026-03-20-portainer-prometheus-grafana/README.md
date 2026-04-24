@@ -13,8 +13,9 @@ Prometheus collects time-series metrics from your containers and host, while Gra
 ## Prerequisites
 
 - Portainer CE or BE running
+- A Linux Docker host for the Node Exporter host-metrics setup shown below
 - At least 1GB free RAM for the monitoring stack
-- A domain name (optional, for external access via Traefik)
+- A domain name (optional, if you later expose Grafana behind a reverse proxy)
 
 ## Step 1: Create the Monitoring Stack in Portainer
 
@@ -23,8 +24,6 @@ Navigate to **Stacks** → **Add Stack**.
 Name: `monitoring`
 
 ```yaml
-version: "3.8"
-
 services:
   prometheus:
     image: prom/prometheus:latest
@@ -32,12 +31,14 @@ services:
     restart: unless-stopped
     volumes:
       - prometheus_data:/prometheus
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro    # Mount config
+      - /opt/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
       - "--storage.tsdb.retention.time=30d"    # Keep 30 days of metrics
       - "--web.enable-lifecycle"               # Allow config reload via HTTP
+    extra_hosts:
+      - "host.docker.internal=host-gateway"
     networks:
       - monitoring
     ports:
@@ -53,18 +54,18 @@ services:
       GF_SECURITY_ADMIN_USER: "${GRAFANA_USER:-admin}"
       GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_PASSWORD}"
       GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_SERVER_ROOT_URL: "https://grafana.example.com"
     networks:
       - monitoring
-      - proxy    # Connect to proxy network for Traefik routing
     ports:
       - "3000:3000"    # Optional: direct access
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: ghcr.io/google/cadvisor:v0.55.1
     container_name: cadvisor
     restart: unless-stopped
     privileged: true
+    devices:
+      - /dev/kmsg
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -75,22 +76,19 @@ services:
       - monitoring
 
   node-exporter:
-    image: prom/node-exporter:latest
+    image: quay.io/prometheus/node-exporter:latest
     container_name: node-exporter
     restart: unless-stopped
     command:
       - "--path.rootfs=/host"
+    network_mode: host
+    pid: host
     volumes:
       - /:/host:ro,rslave
-    networks:
-      - monitoring
 
 networks:
   monitoring:
     driver: bridge
-  proxy:
-    external: true
-    name: proxy
 
 volumes:
   prometheus_data:
@@ -99,7 +97,7 @@ volumes:
 
 ## Step 2: Create Prometheus Configuration
 
-Create the prometheus.yml file before deploying (bind-mounted into the container):
+Create the `/opt/monitoring/prometheus.yml` file on the host before deploying:
 
 ```bash
 # On the host, create config file
@@ -122,22 +120,10 @@ scrape_configs:
       - targets: ["cadvisor:8080"]
 
   # Host metrics via node-exporter
-  - job_name: "node-exporter"
+  - job_name: "node"
     static_configs:
-      - targets: ["node-exporter:9100"]
-
-  # Portainer itself (if using Portainer with metrics enabled)
-  - job_name: "portainer"
-    static_configs:
-      - targets: ["portainer:9000"]
-    metrics_path: /api/status    # Portainer status endpoint
+      - targets: ["host.docker.internal:9100"]
 EOF
-```
-
-Update the stack to use an absolute path:
-```yaml
-volumes:
-  - /opt/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 ```
 
 ## Step 3: Deploy the Stack
@@ -160,48 +146,28 @@ Click **Deploy the stack**.
 curl http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {job: .labels.job, health: .health}'
 
 # Expected: all targets with health: "up"
-# If any show "down", check the target is reachable on the monitoring network
+# If any show "down", check the target is reachable from the Prometheus container
 
 # Check Grafana is running
-curl -I http://localhost:3000
-# Expected: 200 OK
+curl http://localhost:3000/api/health
+# Expected: {"database":"ok", ...}
 ```
 
 ## Step 5: Add Prometheus as Grafana Data Source
 
 1. Open Grafana at `http://YOUR_SERVER:3000`
 2. Login with admin credentials
-3. Go to **Configuration** → **Data Sources** → **Add data source**
+3. Go to **Connections** → **Data sources** → **Add new data source**
 4. Select **Prometheus**
 5. Configure:
    ```text
-   URL: http://prometheus:9090    (container name - they're on the same network)
-   Access: Server (default)
+   Prometheus server URL: http://prometheus:9090
    ```
 6. Click **Save & Test** - should show "Data source is working"
 
 ## Step 6: Import Pre-Built Dashboards
 
-```bash
-# Import via Grafana API (after login)
-GRAFANA_URL="http://localhost:3000"
-AUTH="admin:your-password"
-
-# Import container metrics dashboard (cAdvisor - Grafana dashboard ID 14282)
-curl -s -X POST -u "$AUTH" \
-  -H "Content-Type: application/json" \
-  "${GRAFANA_URL}/api/dashboards/import" \
-  -d '{"id": 14282, "uid": null, "overwrite": true, "folderId": 0}'
-
-# Import Node Exporter dashboard (ID 1860)
-curl -s -X POST -u "$AUTH" \
-  -H "Content-Type: application/json" \
-  "${GRAFANA_URL}/api/dashboards/import" \
-  -d '{"id": 1860, "uid": null, "overwrite": true, "folderId": 0}'
-```
-
-Or manually through Grafana UI:
-1. Go to **Dashboards** → **Import**
+1. Go to **Dashboards** → **New** → **Import**
 2. Enter dashboard ID `14282` (containers) or `1860` (node metrics)
 3. Select Prometheus data source
 4. Click **Import**
