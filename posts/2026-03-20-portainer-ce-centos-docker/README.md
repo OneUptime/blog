@@ -8,7 +8,7 @@ Description: A step-by-step guide to installing Portainer CE on CentOS Linux wit
 
 ## Prerequisites
 
-- CentOS Linux (CentOS Stream 8 or 9)
+- CentOS Stream 9 or 10
 - Root or sudo access
 - Internet connectivity
 
@@ -21,12 +21,13 @@ sudo dnf update -y
 ## Step 2: Install Docker
 
 ```bash
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
+sudo dnf -y install dnf-plugins-core
+sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
 
 sudo usermod -aG docker $USER
 newgrp docker
-sudo systemctl enable --now docker
 ```
 
 Verify:
@@ -45,7 +46,9 @@ docker volume create portainer_data
 ## Step 4: Deploy Portainer CE
 
 ```bash
+# On CentOS hosts with SELinux enabled, Portainer requires --privileged.
 docker run -d \
+  --privileged \
   -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
@@ -59,6 +62,7 @@ docker run -d \
 
 ```bash
 sudo firewall-cmd --permanent --add-port=9443/tcp
+# Optional: only needed if you plan to use Edge Agents.
 sudo firewall-cmd --permanent --add-port=8000/tcp
 sudo firewall-cmd --reload
 ```
@@ -69,9 +73,10 @@ Navigate to `https://<server-ip>:9443` in your browser. Accept the self-signed c
 
 ## Troubleshooting
 
-**Permission denied on socket:**
+**Permission denied running Docker commands:**
 ```bash
-sudo chmod 666 /var/run/docker.sock
+sudo usermod -aG docker $USER
+newgrp docker
 ```
 
 **Check logs:**
@@ -79,10 +84,7 @@ sudo chmod 666 /var/run/docker.sock
 docker logs portainer
 ```
 
-**SELinux issues:**
-```bash
-sudo setsebool -P container_manage_cgroup 1
-```
+**SELinux issues:** On SELinux-enabled CentOS hosts, make sure the Portainer container was started with the `--privileged` flag.
 
 ## Updating Portainer
 
