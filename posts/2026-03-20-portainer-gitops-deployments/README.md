@@ -33,7 +33,7 @@ Structure your repository for Portainer GitOps:
 my-app-infra/
 ├── production/
 │   ├── docker-compose.yml      # Production stack definition
-│   └── .env.portainer          # Non-secret environment variables
+│   └── .env                    # Non-secret environment variables
 ├── staging/
 │   └── docker-compose.yml      # Staging stack definition
 └── README.md
@@ -43,8 +43,6 @@ Example `docker-compose.yml` for GitOps:
 
 ```yaml
 # production/docker-compose.yml
-
-version: "3.8"
 
 services:
   web:
@@ -85,21 +83,21 @@ volumes:
 7. If private repo, enable **Authentication** and add credentials.
 8. Click **Deploy the stack**.
 
-## Step 3: Enable Automatic Polling
+## Step 3: Use Polling for Automatic Updates
 
 To have Portainer automatically detect changes:
 
 1. After deploying the stack, click on it.
 2. Find the **GitOps updates** section.
-3. Enable **Polling** (checks for changes at intervals).
+3. Choose **Polling** as the update **Mechanism**.
 4. Set the polling interval (e.g., `5m` for every 5 minutes).
 5. Optionally enable **Force redeployment** to always redeploy even if no changes detected.
 
-## Step 4: Enable Webhook Auto-Updates
+## Step 4: Or Use Webhook Auto-Updates
 
-For instant updates on push (faster than polling):
+For instant updates on push instead of polling:
 
-1. In the stack settings, enable **Webhook**.
+1. In the stack settings, choose **Webhook** as the update **Mechanism**.
 2. Copy the generated webhook URL.
 3. Add this URL to your Git repository's webhook settings.
 
@@ -117,15 +115,16 @@ For instant updates on push (faster than polling):
 Store non-sensitive environment variables in your repo:
 
 ```bash
-# .env.portainer (committed to repo - no secrets!)
+# .env (committed to repo - no secrets!)
 APP_NAME=myapp
 APP_ENV=production
 LOG_LEVEL=info
 MAX_CONNECTIONS=100
 ```
 
+For Git-based stacks, keep this file named `.env` alongside your Compose file so Portainer can process it during deployment if you have not already defined environment variables in Portainer.
+
 In Portainer stack settings:
-- Point to this file in the **Env file** section
 - Add sensitive variables (passwords, API keys) directly in Portainer's **Environment variables** section - these won't be stored in Git
 
 ## Step 6: GitOps via the Portainer API
@@ -148,7 +147,7 @@ curl -s -X POST \
     "name": "my-app-production",
     "repositoryURL": "https://github.com/your-org/my-app-infra",
     "repositoryReferenceName": "refs/heads/main",
-    "filePathInRepository": "production/docker-compose.yml",
+    "composeFile": "production/docker-compose.yml",
     "autoUpdate": {
       "interval": "5m"
     },
@@ -163,10 +162,8 @@ curl -s -X POST \
 If a deployment causes issues:
 
 1. In Portainer, go to the stack.
-2. Click **Git** → View the current commit hash.
-3. To roll back, either:
-   - Revert the commit in Git and push (Portainer will detect and redeploy)
-   - Or manually edit the stack's Compose content to the previous state
+2. Review the current commit hash in the **Managed by Git** section.
+3. To roll back, revert the commit in Git and push it to the tracked branch (Portainer will detect and redeploy).
 
 ```bash
 # Revert and push in Git
@@ -177,4 +174,4 @@ git push origin main
 
 ## Conclusion
 
-GitOps with Portainer connects your infrastructure configuration directly to Git, making deployments declarative, auditable, and reversible. Start with polling-based updates for simplicity, then add webhook-based triggers for near-instant deployments. Store non-secret configuration in your Git repository and manage secrets through Portainer's environment variable injection to maintain the benefits of GitOps without compromising security.
+GitOps with Portainer connects your infrastructure configuration directly to Git, making deployments declarative, auditable, and reversible. Start with polling-based updates for simplicity, or use webhook-based triggers for near-instant deployments. Store non-secret configuration in a `.env` file in your Git repository and manage secrets through Portainer's environment variable injection to maintain the benefits of GitOps without compromising security.
