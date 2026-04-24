@@ -18,40 +18,33 @@ Kubernetes node management involves monitoring node health, performing maintenan
 ## Step 1: View All Nodes
 
 1. Select your Kubernetes environment in Portainer
-2. Click **Cluster → Nodes**
+2. Click **Cluster → Details**
 
 The nodes list shows:
 
 | Column | Description |
 |--------|-------------|
 | Name | Node hostname |
-| Status | Ready/NotReady |
+| Status | Current node status |
 | Role | control-plane/worker |
-| CPU | CPU requests vs capacity |
-| Memory | Memory requests vs capacity |
+| Conditions | Active conditions such as DiskPressure or MemoryPressure |
 | Version | Kubelet version |
+
+To view node usage stats, use the stats icon. Node stats are only available when the metrics API is enabled in Portainer.
 
 ## Step 2: Inspect a Node
 
-Click on a node name to see:
+Click on a node name to inspect details such as:
 
 ```text
 Node: worker-01
 ─────────────────────────────────────
-Status:       Ready
-Roles:        worker
-Created:      2024-01-01T00:00:00Z
-Version:      v1.28.4
-OS:           Ubuntu 22.04.3 LTS
-Architecture: amd64
-CPU:          4 vCPU
-Memory:       16 GiB
-
-Conditions:
-  Ready:          True
-  MemoryPressure: False
-  DiskPressure:   False
-  PIDPressure:    False
+Status:             Ready
+Availability:       Active
+Role:               worker
+Created:            2024-01-01T00:00:00Z
+Kubelet version:    v1.28.4
+Kubernetes API:     https://10.0.0.10:6443
 
 Labels:
   kubernetes.io/hostname: worker-01
@@ -60,7 +53,7 @@ Labels:
 
 Taints: (none)
 
-Pods on this node: 12
+Applications running on this node: 12
 ```
 
 ## Step 3: Add Labels to a Node
@@ -69,8 +62,7 @@ Labels are used by node selectors and affinity rules:
 
 In Portainer:
 1. Click on a node
-2. Click **Edit**
-3. Add key-value pairs in the **Labels** section
+2. Add or edit key-value pairs in the **Labels** section
 
 Or via CLI:
 
@@ -132,7 +124,7 @@ kubectl get node worker-01
 kubectl uncordon worker-01
 ```
 
-In Portainer: click on a node and use the **Cordon** button in the actions section.
+In Portainer: open the node details page and set **Availability** to **Pause**. Set it back to **Active** when maintenance is done.
 
 ## Step 6: Drain a Node
 
@@ -141,9 +133,13 @@ Draining safely migrates all pods off a node before maintenance:
 ```bash
 # Drain a node (evicts all pods, cordons the node)
 kubectl drain worker-01 \
-  --ignore-daemonsets \      # Don't evict DaemonSet pods
-  --delete-emptydir-data \   # OK to delete pods using emptyDir volumes
-  --force                    # Force eviction of unmanaged pods
+  --ignore-daemonsets \
+  --delete-emptydir-data \
+  --force
+
+# --ignore-daemonsets: Don't evict DaemonSet pods
+# --delete-emptydir-data: OK to delete pods using emptyDir volumes
+# --force: Required if the node has unmanaged pods
 
 # Monitor eviction
 kubectl get pods -o wide --all-namespaces | grep worker-01
@@ -152,6 +148,8 @@ kubectl get pods -o wide --all-namespaces | grep worker-01
 # Then uncordon
 kubectl uncordon worker-01
 ```
+
+In Portainer: open the node details page and set **Availability** to **Drain**.
 
 ## Step 7: Perform a Node OS Update
 
@@ -168,44 +166,45 @@ ssh user@worker-01
 sudo apt update && sudo apt upgrade -y
 sudo apt autoremove -y
 
-# 4. Optionally update kubelet
-sudo apt-mark unhold kubelet kubeadm
-sudo apt-get install -y kubeadm=1.28.5-1.1 kubelet=1.28.5-1.1
-sudo apt-mark hold kubelet kubeadm
-sudo systemctl daemon-reload
-sudo systemctl restart kubelet
+# 4. If you are also upgrading Kubernetes components,
+# follow your distribution's documented upgrade procedure
+# before bringing the node back into service
 
 # 5. Reboot if needed
 sudo reboot
 
-# 6. Back on the management machine, uncordon the node
+# 6. Back on the management machine, verify the node is Ready again
+kubectl get node worker-01
+
+# 7. Uncordon the node
 kubectl uncordon worker-01
 
-# 7. Verify node is Ready again
+# 8. Verify node is schedulable again
 kubectl get node worker-01
 ```
 
 ## Step 8: Remove a Node from the Cluster
 
 ```bash
-# 1. Drain and cordon
-kubectl drain worker-01 --ignore-daemonsets --delete-emptydir-data
+# 1. Drain the node
+kubectl drain worker-01 --ignore-daemonsets --delete-emptydir-data --force
 
-# 2. Delete the node from the cluster
-kubectl delete node worker-01
-
-# 3. On the node being removed (optional cleanup)
-# Run kubeadm reset to clean up kubeadm components
+# 2. On the node being removed, if it was joined with kubeadm
+# run kubeadm reset to clean up kubeadm components
 sudo kubeadm reset
+
+# 3. Back on the management machine, delete the node from the cluster
+kubectl delete node worker-01
 ```
 
 ## Step 9: View Pod Distribution Across Nodes
 
 ```bash
 # See which pods are on each node
-kubectl get pods --all-namespaces -o wide \
-  --sort-by='{.spec.nodeName}' | \
-  awk 'NR>1 {print $8}' | sort | uniq -c | sort -rn
+kubectl get pods --all-namespaces \
+  -o custom-columns=NODE:.spec.nodeName --no-headers | \
+  awk 'NF' | \
+  sort | uniq -c | sort -rn
 
 # Output:
 # 12 worker-01
@@ -214,8 +213,8 @@ kubectl get pods --all-namespaces -o wide \
 # 9  worker-04
 ```
 
-In Portainer, navigate to the **Nodes** list to see pod counts per node.
+In Portainer, open **Cluster → Details**, then click a node to see the applications running on it.
 
 ## Conclusion
 
-Portainer provides a clear view of Kubernetes node health and simplifies common operations like adding labels and monitoring resource utilization. For maintenance operations like draining and cordoning, use the Portainer interface or kubectl - both achieve the same result. Establish a regular maintenance routine that includes draining nodes before any OS updates or hardware changes to ensure zero-downtime operations.
+Portainer provides a clear view of Kubernetes node health and simplifies common operations like adding labels and monitoring resource utilization. For maintenance operations like draining and cordoning, use the Portainer interface or kubectl - both achieve the same result. Establish a regular maintenance routine that includes draining nodes before any OS updates or hardware changes to help minimize disruption during maintenance.
