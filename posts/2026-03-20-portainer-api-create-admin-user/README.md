@@ -8,7 +8,7 @@ Description: Learn how to create the initial Portainer administrator user via th
 
 ## Introduction
 
-When deploying Portainer in automated environments (CI/CD, infrastructure-as-code, scripts), you need to initialize the admin user without browser interaction. Portainer provides an API endpoint specifically for this purpose, allowing you to fully automate the initial setup. This endpoint is only available during the initial setup window before any admin is created.
+When deploying Portainer in automated environments (CI/CD, infrastructure-as-code, scripts), you need to initialize the admin user without browser interaction. Portainer provides an API endpoint specifically for this purpose, allowing you to fully automate the initial setup. This endpoint is only available before an administrator is created and before the initial setup window expires.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ When deploying Portainer in automated environments (CI/CD, infrastructure-as-cod
 
 ## Understanding the Initialization Window
 
-After installing Portainer, there is a time window (typically 5 minutes by default) during which an admin user can be created without authentication. After this window closes, you must already be authenticated to create users.
+After installing Portainer, there is a time window (5 minutes by default) during which an admin user can be created without authentication. If no admin user is created before that window closes, Portainer times out for security purposes and you must restart the Portainer container before retrying the initial setup.
 
 When you access Portainer for the first time, it shows the "Create initial admin user" screen - the API replicates this behavior.
 
@@ -27,36 +27,41 @@ When you access Portainer for the first time, it shows the "Create initial admin
 ```bash
 PORTAINER_URL="https://portainer.example.com"
 
-# Check initialization status
+# Check whether an administrator already exists
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+  "${PORTAINER_URL}/api/users/admin/check")
 
-STATUS=$(curl -s "${PORTAINER_URL}/api/system/status")
-echo $STATUS | jq .
-
-# If "isAdmin" is false or "status" indicates setup is needed, proceed
-IS_INITIALIZED=$(echo $STATUS | jq -r '.isAdmin')
-echo "Is admin created: $IS_INITIALIZED"
+if [ "$HTTP_CODE" = "204" ]; then
+  echo "Portainer is already initialized."
+elif [ "$HTTP_CODE" = "404" ]; then
+  echo "Portainer still needs initial admin setup."
+elif [ "$HTTP_CODE" = "303" ]; then
+  echo "Initialization window expired. Restart Portainer and try again."
+else
+  echo "Unexpected response while checking initialization status: HTTP $HTTP_CODE"
+fi
 ```
 
 ## Step 2: Create the Initial Admin User
 
 ```bash
 PORTAINER_URL="https://portainer.example.com"
-ADMIN_PASSWORD="StrongP@ssw0rd123!"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:?Set ADMIN_PASSWORD to a strong password}"
 
 # Create the initial admin user
 RESPONSE=$(curl -s -X POST "${PORTAINER_URL}/api/users/admin/init" \
   -H "Content-Type: application/json" \
   -d "{
-    \"username\": \"admin\",
-    \"password\": \"${ADMIN_PASSWORD}\"
+    \"Username\": \"admin\",
+    \"Password\": \"${ADMIN_PASSWORD}\"
   }")
 
-echo "Response: $RESPONSE"
-
 # Check for success
-if echo "$RESPONSE" | jq -e '.Id' > /dev/null 2>&1; then
+USER_ID=$(echo "$RESPONSE" | jq -r '.Id // empty' 2>/dev/null)
+
+if [ -n "$USER_ID" ]; then
   echo "Admin user created successfully!"
-  echo "User ID: $(echo $RESPONSE | jq -r '.Id')"
+  echo "User ID: $USER_ID"
 else
   echo "Error creating admin user: $RESPONSE"
 fi
@@ -67,12 +72,15 @@ fi
 After creation, verify you can authenticate:
 
 ```bash
+PORTAINER_URL="https://portainer.example.com"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:?Set ADMIN_PASSWORD to the password you used for initialization}"
+
 # Try to authenticate with the new admin credentials
 TOKEN=$(curl -s -X POST "${PORTAINER_URL}/api/auth" \
   -H "Content-Type: application/json" \
   -d "{
-    \"username\": \"admin\",
-    \"password\": \"${ADMIN_PASSWORD}\"
+    \"Username\": \"admin\",
+    \"Password\": \"${ADMIN_PASSWORD}\"
   }" | jq -r '.jwt')
 
 if [ "$TOKEN" != "null" ] && [ -n "$TOKEN" ]; then
@@ -95,7 +103,7 @@ set -euo pipefail
 
 PORTAINER_URL="${PORTAINER_URL:-https://portainer.example.com}"
 ADMIN_USER="${ADMIN_USER:-admin}"
-ADMIN_PASS="${ADMIN_PASS:-ChangeMe123!}"
+ADMIN_PASS="${ADMIN_PASS:?Set ADMIN_PASS to a strong password}"
 MAX_WAIT_SECONDS=120  # Wait up to 2 minutes for Portainer to start
 SLEEP_INTERVAL=5
 
@@ -117,22 +125,29 @@ done
 echo "Portainer is ready!"
 
 # Step 2: Check if already initialized
-STATUS=$(curl -s "${PORTAINER_URL}/api/system/status")
-IS_ADMIN=$(echo "$STATUS" | jq -r '.isAdmin // false')
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${PORTAINER_URL}/api/users/admin/check")
 
-if [ "$IS_ADMIN" = "true" ]; then
+if [ "$HTTP_CODE" = "204" ]; then
   echo "Portainer is already initialized. Skipping admin creation."
   exit 0
+elif [ "$HTTP_CODE" = "303" ]; then
+  echo "Portainer initialization window has expired. Restart Portainer and try again." >&2
+  exit 1
+elif [ "$HTTP_CODE" != "404" ]; then
+  echo "Unexpected status while checking admin existence: HTTP $HTTP_CODE" >&2
+  exit 1
 fi
 
 # Step 3: Create initial admin user
 echo "Creating initial admin user..."
 RESPONSE=$(curl -s -X POST "${PORTAINER_URL}/api/users/admin/init" \
   -H "Content-Type: application/json" \
-  -d "{\"username\":\"${ADMIN_USER}\",\"password\":\"${ADMIN_PASS}\"}")
+  -d "{\"Username\":\"${ADMIN_USER}\",\"Password\":\"${ADMIN_PASS}\"}")
 
-if echo "$RESPONSE" | jq -e '.Id' > /dev/null 2>&1; then
-  echo "Admin user '${ADMIN_USER}' created successfully (ID: $(echo $RESPONSE | jq -r '.Id'))"
+USER_ID=$(echo "$RESPONSE" | jq -r '.Id // empty' 2>/dev/null || true)
+
+if [ -n "$USER_ID" ]; then
+  echo "Admin user '${ADMIN_USER}' created successfully (ID: $USER_ID)"
 else
   echo "ERROR creating admin: $RESPONSE" >&2
   exit 1
@@ -142,16 +157,21 @@ fi
 echo "Authenticating..."
 TOKEN=$(curl -s -X POST "${PORTAINER_URL}/api/auth" \
   -H "Content-Type: application/json" \
-  -d "{\"username\":\"${ADMIN_USER}\",\"password\":\"${ADMIN_PASS}\"}" | jq -r '.jwt')
+  -d "{\"Username\":\"${ADMIN_USER}\",\"Password\":\"${ADMIN_PASS}\"}" | jq -r '.jwt // empty' 2>/dev/null || true)
+
+if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
+  echo "ERROR authenticating with the new admin credentials" >&2
+  exit 1
+fi
 
 echo "Authentication successful."
 
 # Step 5: Additional setup tasks (optional)
-# Disable telemetry
+# Example: set the user session timeout
 curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/settings" \
-  -d '{"enableTelemetry": false}' > /dev/null
+  -d '{"UserSessionTimeout":"8h"}' > /dev/null
 
 echo "=== Portainer initialization complete ==="
 echo "URL:      $PORTAINER_URL"
@@ -160,12 +180,10 @@ echo "Username: $ADMIN_USER"
 
 ## Step 5: Docker Compose with Auto-Init
 
-Use the script in a Docker Compose setup with a health check:
+Use the script in a Docker Compose setup with a wait loop:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   portainer:
     image: portainer/portainer-ce:latest
@@ -175,27 +193,31 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
     ports:
-      - "9000:9000"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/api/system/status"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      - "9443:9443"
 
   portainer-init:
     image: curlimages/curl:latest
     depends_on:
-      portainer:
-        condition: service_healthy
+      - portainer
     environment:
-      PORTAINER_URL: http://portainer:9000
-      ADMIN_PASS: ${PORTAINER_ADMIN_PASS:-ChangeMe123!}
+      PORTAINER_URL: https://portainer:9443
+      ADMIN_PASS: ${PORTAINER_ADMIN_PASS:?set PORTAINER_ADMIN_PASS}
     command: >
-      sh -c "
-        curl -s -X POST $${PORTAINER_URL}/api/users/admin/init
-          -H 'Content-Type: application/json'
-          -d '{\"username\":\"admin\",\"password\":\"'$${ADMIN_PASS}'\"}' &&
+      sh -ec "
+        until curl -skf \"$${PORTAINER_URL}/api/system/status\" > /dev/null; do
+          sleep 5
+        done
+        STATUS_CODE=$$(curl -sk -o /dev/null -w '%{http_code}' \"$${PORTAINER_URL}/api/users/admin/check\")
+        if [ \"$$STATUS_CODE\" = '204' ]; then
+          echo 'Portainer already initialized'
+          exit 0
+        elif [ \"$$STATUS_CODE\" != '404' ]; then
+          echo \"Unexpected admin check status: $$STATUS_CODE\" >&2
+          exit 1
+        fi
+        curl -skf -X POST \"$${PORTAINER_URL}/api/users/admin/init\" \
+          -H 'Content-Type: application/json' \
+          -d \"{\\\"Username\\\":\\\"admin\\\",\\\"Password\\\":\\\"$${ADMIN_PASS}\\\"}\" &&
         echo 'Admin initialized'
       "
     restart: "no"
@@ -206,4 +228,4 @@ volumes:
 
 ## Conclusion
 
-Creating the initial Portainer admin user via the API is essential for fully automated, reproducible deployments. Use the `/api/users/admin/init` endpoint during the initialization window, combine it with health checks to ensure Portainer is ready, and run it as part of your infrastructure provisioning scripts. Never store the admin password in the script file itself - always use environment variables or a secrets manager.
+Creating the initial Portainer admin user via the API is essential for fully automated, reproducible deployments. Use the `/api/users/admin/init` endpoint during the initial 5-minute setup window, pair it with readiness checks against `/api/system/status` and initialization checks against `/api/users/admin/check`, and run it as part of your infrastructure provisioning scripts. If the setup window expires before an admin is created, restart Portainer and try again. Never store the admin password in the script file itself - always use environment variables or a secrets manager.
