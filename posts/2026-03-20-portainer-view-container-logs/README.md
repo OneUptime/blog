@@ -13,7 +13,7 @@ Container logs are your primary debugging tool for containerized applications. P
 ## Prerequisites
 
 - Portainer installed with a connected Docker environment
-- A container using the `json-file` or `journald` logging driver (Portainer's log viewer only supports these)
+- A container with logs available through Docker (for example `local`, `json-file`, or `journald`; remote logging drivers depend on Docker's dual logging/cache settings)
 
 ## Step 1: Access Container Logs
 
@@ -59,17 +59,17 @@ INFO: Database connected
 
 Control how many lines of log history to display:
 
-- **10, 25, 50, 100, 500, 1000** or **All**
+- Portainer lets you limit how many lines are shown. The default is **1000**.
 - For troubleshooting, start with the last 100 lines.
-- Use **All** carefully - very large logs may be slow to load.
+- Large log windows may be slower to load and navigate.
 
-### Auto-Scroll
+### Auto Refresh
 
-Enable auto-scroll to automatically follow new log output.
+Enable auto refresh to keep the log view updated with new output. If it's disabled, you can refresh manually.
 
 ### Search/Filter
 
-Use the search box to filter log lines by keyword.
+Use the search box to find matching log lines. If you want to show only matching lines, enable the filter option.
 
 ## Step 4: Reading Structured Logs
 
@@ -80,7 +80,7 @@ Modern applications often output structured JSON logs:
 {"timestamp":"2026-03-20T10:00:01Z","level":"ERROR","message":"Database timeout","query":"SELECT * FROM users","duration_ms":5000}
 ```
 
-In Portainer's log viewer, these appear as raw JSON lines. To parse them in the browser console:
+In Portainer's log viewer, these appear as raw JSON lines. On the host, you can pretty-print or filter them with `jq`:
 
 ```bash
 # On the host, view logs with jq parsing:
@@ -103,21 +103,21 @@ docker compose logs -f
 docker compose logs -f web api
 
 # Since a specific time:
-docker compose logs --since="2026-03-20T09:00:00"
+docker compose logs --since="2026-03-20T09:00:00Z"
 ```
 
 Or use a centralized logging stack (Loki + Grafana) to aggregate logs from all containers.
 
 ## Step 6: Log Timestamps and Timezones
 
-By default, Docker log timestamps are in UTC. If your application outputs local time logs:
+By default, Docker log timestamps are in UTC. If your application outputs local time logs and your image honors `TZ`:
 
-```bash
+```yaml
 # Set the container timezone:
 environment:
   - TZ=America/New_York
 
-# Logs will show local time, but Docker's internal timestamp is still UTC
+# Your application logs may show local time, but Docker's timestamp is still UTC
 ```
 
 When comparing logs across containers, always use UTC timestamps.
@@ -131,12 +131,12 @@ Design your application to output logs in a format that's easy to view in Portai
 import logging
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 class JSONFormatter(logging.Formatter):
     def format(self, record):
         log_data = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "level": record.levelname,
             "message": record.getMessage(),
             "logger": record.name,
@@ -162,8 +162,10 @@ const log = (level, message, extra = {}) => {
   }));
 };
 
+const error = new Error('Database connection failed');
+
 log('INFO', 'Server started', { port: 8080 });
-log('ERROR', 'Database error', { error: err.message });
+log('ERROR', 'Database error', { error: error.message });
 ```
 
 ## Step 7: Log Retention and Rotation
@@ -185,7 +187,7 @@ services:
 
 ## Troubleshooting: Logs Not Showing
 
-1. **Wrong logging driver**: Portainer only shows logs from `json-file` and `journald` drivers.
+1. **Logging driver/configuration**: Portainer shows the logs Docker can read. Drivers such as `local`, `json-file`, and `journald` support local log reading directly; remote drivers may require Docker's dual logging cache.
 2. **Application not writing to stdout/stderr**: Ensure logs go to stdout, not to a file inside the container.
 3. **Container just started**: Give the container a few seconds to produce output.
 4. **Log limit**: Portainer limits the amount of logs shown; increase the line count setting.
@@ -193,7 +195,7 @@ services:
 ```bash
 # Verify the logging driver:
 docker inspect my-container | jq '.[].HostConfig.LogConfig'
-# Should show: {"Type": "json-file", ...}
+# Check the "Type" field; remote drivers may rely on Docker's dual logging cache
 
 # Check if the container is producing output:
 docker logs my-container --tail 5
