@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Blue-Green, Deployment, CI/CD
 
-Description: Implement zero-downtime blue-green deployments in Rancher-managed Kubernetes clusters using service switching and GitOps automation.
+Description: Implement zero-downtime blue-green deployments in Rancher-managed Kubernetes clusters using service switching and CI/CD automation.
 
 ## Introduction
 
@@ -96,7 +96,7 @@ spec:
 
 ## Step 2: Create the Active Service
 
-The service points to one slot at a time via the `slot` label selector:
+The active service points to one slot at a time via the `slot` label selector, while slot-specific services let you test the inactive deployment before switching:
 
 ```yaml
 # service.yaml
@@ -109,6 +109,36 @@ spec:
   selector:
     app: myapp
     slot: blue   # ← Change this to switch traffic
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP
+---
+# blue-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-blue
+  namespace: production
+spec:
+  selector:
+    app: myapp
+    slot: blue
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP
+---
+# green-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-green
+  namespace: production
+spec:
+  selector:
+    app: myapp
+    slot: green
   ports:
     - port: 80
       targetPort: 8080
@@ -225,12 +255,12 @@ jobs:
       - name: Run smoke tests
         run: |
           # Test the inactive slot directly via its service
-          kubectl run smoke-test --rm -it \
+          kubectl run smoke-test \
+            --attach --rm --restart=Never \
             --image=curlimages/curl \
-            --restart=Never \
             -n production \
             --kubeconfig /tmp/kubeconfig \
-            -- curl -f http://myapp-${{ steps.slot.outputs.target }}:80/healthz
+            --command -- curl -fsS http://myapp-${{ steps.slot.outputs.target }}:80/healthz
 
       - name: Switch traffic
         run: |
