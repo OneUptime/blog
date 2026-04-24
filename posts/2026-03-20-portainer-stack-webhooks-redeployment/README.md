@@ -8,27 +8,28 @@ Description: Learn how to configure Portainer stack webhooks for triggering remo
 
 ## Introduction
 
-Portainer stack webhooks allow external systems to trigger a stack redeployment via a simple HTTP POST request. Unlike the Git polling or Git webhook auto-update methods (which redeploy based on Git changes), a stack redeployment webhook simply tells Portainer to redeploy the stack using its current configuration and image settings. This is useful for triggering deployments from CI/CD pipelines after pushing a new image, from monitoring systems, or from any automation that needs to refresh a running stack.
+Portainer stack webhooks allow external systems to trigger a stack redeployment via a simple HTTP POST request. Unlike the Git polling or Git webhook auto-update methods (which redeploy based on Git changes), a stack redeployment webhook tells Portainer to redeploy the stack using its current stack definition, pulling the latest image for the existing tag by default. This is useful for triggering deployments from CI/CD pipelines after pushing a new image, from monitoring systems, or from any automation that needs to refresh a running stack.
 
 ## Prerequisites
 
 - Portainer BE (Business Edition) - stack webhooks are a BE feature
-- An existing deployed stack in Portainer
+- An existing deployed stack in a non-Edge Portainer environment
 - CI/CD pipeline or automation system to call the webhook
 
 ## Step 1: Enable Stack Webhook
 
 1. Navigate to **Stacks** → click the stack name.
-2. Scroll to the **Stack webhook** section.
-3. Toggle **Enable stack webhook**.
-4. Portainer generates a unique URL:
+2. Open the **Editor** tab.
+3. Scroll to the **Stack webhook** section.
+4. Toggle **Create a stack webhook**.
+5. Portainer generates a unique URL:
 
 ```text
 https://your-portainer.example.com/api/stacks/webhooks/a1b2c3d4e5f6...
 ```
 
-5. Click the copy icon to copy the URL.
-6. Save the settings.
+6. Click the copy icon to copy the URL.
+7. Save the settings.
 
 ## Step 2: Trigger a Redeployment via curl
 
@@ -40,13 +41,12 @@ Test the webhook manually:
 curl -X POST \
   "https://your-portainer.example.com/api/stacks/webhooks/a1b2c3d4e5f6..."
 
-# Expected response: HTTP 200 OK (no body)
+# Expected response: HTTP 204 No Content
 
-# To force pull latest images during redeployment:
+# By default, Portainer pulls the latest image for the current tag.
+# To redeploy without pulling images first:
 curl -X POST \
-  "https://your-portainer.example.com/api/stacks/webhooks/a1b2c3d4e5f6..." \
-  -H "Content-Type: application/json" \
-  -d '{"pullImage": true}'
+  "https://your-portainer.example.com/api/stacks/webhooks/a1b2c3d4e5f6...?pullimage=false"
 ```
 
 ## Step 3: Integrate with GitHub Actions
@@ -91,7 +91,7 @@ jobs:
             -X POST \
             "${{ secrets.PORTAINER_WEBHOOK_URL }}")
 
-          if [ "$HTTP_STATUS" -ne 200 ] && [ "$HTTP_STATUS" -ne 204 ]; then
+          if [ "$HTTP_STATUS" -ne 204 ]; then
             echo "Deployment failed with HTTP status: $HTTP_STATUS"
             exit 1
           fi
@@ -112,7 +112,7 @@ build-image:
   services:
     - docker:24-dind
   script:
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
     - docker build -t "$CI_REGISTRY_IMAGE:latest" -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" .
     - docker push "$CI_REGISTRY_IMAGE:latest"
     - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
@@ -120,13 +120,18 @@ build-image:
 deploy-production:
   stage: deploy
   image: curlimages/curl:latest
-  only:
-    - main
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
   script:
     - |
-      curl -s -o /dev/null -w "%{http_code}" \
+      HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
         -X POST \
-        "$PORTAINER_WEBHOOK_URL"
+        "$PORTAINER_WEBHOOK_URL")
+
+      if [ "$HTTP_STATUS" -ne 204 ]; then
+        echo "Deployment failed with HTTP status: $HTTP_STATUS"
+        exit 1
+      fi
   environment:
     name: production
     url: https://app.example.com
@@ -155,7 +160,7 @@ deploy_stack() {
     HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
         -X POST "${webhook_url}")
 
-    if [ "${HTTP_STATUS}" -eq 200 ] || [ "${HTTP_STATUS}" -eq 204 ]; then
+    if [ "${HTTP_STATUS}" -eq 204 ]; then
         echo "  ✓ ${name} deployed successfully"
     else
         echo "  ✗ ${name} deployment failed (HTTP ${HTTP_STATUS})"
@@ -186,10 +191,10 @@ Protect webhook URLs from unauthorized access:
 # In Portainer: Stacks → Stack name → Stack webhook → Regenerate
 
 # Restrict network access:
-# Allow only CI/CD provider IPs to reach Portainer on webhook port
+# Allow only CI/CD provider IPs to reach Portainer's HTTPS port
 # GitHub IP ranges: curl https://api.github.com/meta | jq '.actions'
 ```
 
 ## Conclusion
 
-Stack redeployment webhooks in Portainer provide a simple, secure HTTP trigger for integrating with any CI/CD system. After building and pushing a new container image, a single `curl -X POST` to the webhook URL is enough to trigger a full stack redeployment in Portainer. This is simpler to set up than the Portainer API and more flexible than Git-based auto-updates when you need precise control over when deployments occur - for example, only after tests pass. Store webhook URLs as CI/CD secrets and rotate them periodically for security.
+Stack redeployment webhooks in Portainer provide a simple, secure HTTP trigger for integrating with any CI/CD system. After building and pushing a new container image, a single `curl -X POST` to the webhook URL is enough to trigger a stack redeployment in Portainer, pulling the latest image for the current tag by default. This is simpler to set up than the Portainer API and more flexible than Git-based auto-updates when you need precise control over when deployments occur - for example, only after tests pass. Store webhook URLs as CI/CD secrets and rotate them periodically for security.
