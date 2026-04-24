@@ -8,7 +8,7 @@ Description: Run Portainer inside a Proxmox LXC container for a lightweight alte
 
 ## Introduction
 
-Proxmox LXC containers use significantly less RAM than full VMs (typically 50-100MB less overhead per container). Running Docker and Portainer inside a privileged LXC container is a popular home lab approach for running many services on a single Proxmox host. This guide covers creating an LXC container with Docker support.
+Proxmox LXC containers use significantly less RAM than full VMs. Running Docker and Portainer inside a privileged LXC container is a popular home lab approach for running many services on a single Proxmox host. This guide covers creating an LXC container with Docker support.
 
 ## Prerequisites
 
@@ -60,7 +60,7 @@ pct create 300 local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst \
   --start 1
 ```
 
-**Important**: `--unprivileged 0` makes it privileged (required for Docker), and `--features nesting=1` enables Docker nesting.
+**Important**: `--unprivileged 0` creates a privileged container. Docker can also run in an unprivileged container with the right LXC settings, but this guide uses a privileged container for simplicity. `--features nesting=1,keyctl=1` enables the LXC features Docker commonly needs.
 
 ## Step 3: Configure LXC for Docker
 
@@ -85,6 +85,7 @@ cat >> /etc/pve/lxc/300.conf << 'EOF'
 lxc.apparmor.profile: unconfined
 lxc.cgroup2.devices.allow: a
 lxc.cap.drop:
+lxc.mount.auto: proc:rw sys:rw
 EOF
 
 # Start container
@@ -99,6 +100,7 @@ pct enter 300
 
 # Update
 apt update && apt upgrade -y
+apt install -y ca-certificates curl
 
 # Install Docker
 curl -fsSL https://get.docker.com | sh
@@ -112,7 +114,7 @@ docker run hello-world
 
 ### overlay2 Storage Driver
 
-If overlay2 fails, use a different storage driver:
+Docker prefers `overlay2` and usually selects it automatically. If you need to set it explicitly, use:
 
 ```bash
 tee /etc/docker/daemon.json > /dev/null << 'EOF'
@@ -126,20 +128,12 @@ tee /etc/docker/daemon.json > /dev/null << 'EOF'
 }
 EOF
 systemctl restart docker
+
+# Verify the active storage driver
+docker info | grep -i "Storage Driver"
 ```
 
-If overlay2 still fails (older kernels), try `fuse-overlayfs`:
-
-```bash
-apt install -y fuse-overlayfs
-
-tee /etc/docker/daemon.json > /dev/null << 'EOF'
-{
-  "storage-driver": "fuse-overlayfs"
-}
-EOF
-systemctl restart docker
-```
+If `overlay2` still fails inside your LXC, revisit the container and kernel configuration rather than forcing `fuse-overlayfs`; Docker documents `fuse-overlayfs` for rootless mode.
 
 ## Step 6: Deploy Portainer
 
@@ -150,12 +144,13 @@ docker volume create portainer_data
 docker run -d \
   --name portainer \
   --restart=unless-stopped \
-  -p 9000:9000 \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
+
+Portainer's current Docker install docs use port `9443` for the UI. Add `-p 8000:8000` if you plan to use the tunnel server / Edge Agents, and `-p 9000:9000` only if you need the legacy HTTP endpoint.
 
 ## Step 7: Proxmox Backup for LXC
 
@@ -175,8 +170,8 @@ Resource Comparison: LXC vs VM
 | RAM overhead | ~50MB | ~300MB |
 | Boot time | 2-3 seconds | 20-30 seconds |
 | Snapshot support | Yes | Yes |
-| Live migration | Limited | Full support |
-| Docker compatibility | Good (privileged) | Full |
+| Live migration | Restart migration only | Full support |
+| Docker compatibility | Good (with LXC tuning) | Full |
 | Security isolation | Lower | Higher |
 
 ## Conclusion
