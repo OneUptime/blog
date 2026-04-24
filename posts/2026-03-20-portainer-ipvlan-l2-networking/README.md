@@ -15,10 +15,10 @@ IPvlan is an alternative to macvlan that lets containers share the parent interf
 | Feature | IPvlan L2 | Macvlan |
 |---------|-----------|---------|
 | MAC address | Shared (host MAC) | Unique per container |
-| Promiscuous mode needed | No | Yes (on VMs) |
+| Promiscuous mode needed | No | Yes |
 | Switches | No extra MAC entries | One MAC per container |
 | Host-to-container | Same limitation | Same limitation |
-| Use case | VM environments, managed switches | Physical hosts |
+| Use case | VM environments, one-MAC-per-port policies | Legacy apps needing unique MACs on the LAN |
 
 ## Creating an IPvlan L2 Network
 
@@ -30,7 +30,7 @@ docker network create \
   --opt ipvlan_mode=l2 \
   --subnet 192.168.1.0/24 \
   --gateway 192.168.1.1 \
-  --ip-range 192.168.1.210/29 \
+  --ip-range 192.168.1.208/29 \
   --opt parent=eth0 \
   ipvlan_l2_net
 ```
@@ -38,8 +38,7 @@ docker network create \
 Or create via Portainer **Networks > Add network**:
 
 - **Driver**: `ipvlan`
-- **Options**: `ipvlan_mode=l2`
-- **Parent**: `eth0`
+- **Driver options**: `ipvlan_mode=l2`, `parent=eth0`
 - **Subnet/Gateway**: Your LAN values
 
 ## Using IPvlan L2 in a Stack
@@ -60,7 +59,7 @@ services:
         ipv4_address: 192.168.1.210
     environment:
       TZ: America/New_York
-      WEBPASSWORD: adminpassword
+      FTLCONF_webserver_api_password: adminpassword
     volumes:
       - pihole_data:/etc/pihole
 
@@ -74,7 +73,7 @@ networks:
 
 ## VLAN-Tagged IPvlan
 
-For VLAN-aware setups, create the VLAN parent interface first:
+For VLAN-aware setups, you can create the VLAN parent interface first:
 
 ```bash
 # Create VLAN 50 interface
@@ -101,7 +100,7 @@ Like macvlan, the host cannot directly communicate with containers on IPvlan L2 
 sudo ip link add ipvlan0 link eth0 type ipvlan mode l2
 sudo ip addr add 192.168.1.215/32 dev ipvlan0
 sudo ip link set ipvlan0 up
-sudo ip route add 192.168.1.210/29 dev ipvlan0
+sudo ip route add 192.168.1.208/29 dev ipvlan0
 ```
 
 ## Verifying Container LAN Visibility
