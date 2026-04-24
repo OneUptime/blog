@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Swarm, High Availability, Infrastructure, Clustering
 
-Description: Configure a highly available Docker Swarm cluster with multiple manager nodes and deploy Portainer to manage it with HA.
+Description: Configure a highly available Docker Swarm cluster with multiple manager nodes and deploy Portainer to manage it.
 
 ## Introduction
 
-Docker Swarm achieves high availability through redundant manager nodes using the Raft consensus algorithm. With 3 or 5 manager nodes, the Swarm cluster tolerates manager failures while Portainer continues to manage it. This guide covers setting up a production-ready HA Swarm cluster.
+Docker Swarm achieves high availability through redundant manager nodes using the Raft consensus algorithm. With 3 or 5 manager nodes, the Swarm control plane tolerates manager failures. This guide covers setting up a production-ready HA Swarm cluster and deploying Portainer to manage it.
 
 ## HA Architecture
 
 - **3 manager nodes**: Tolerates 1 manager failure (quorum = 2)
 - **5 manager nodes**: Tolerates 2 manager failures (quorum = 3)
-- **N worker nodes**: No limit, used only for running workloads
+- **Worker nodes**: Add as needed for running workloads
 
 ## Step 1: Initialize the First Manager
 
@@ -67,23 +67,21 @@ docker node ls
 # zzz     manager3    Ready     Active      Reachable
 # aaa     worker1     Ready     Active
 
-# Check Raft consensus status
-docker node inspect manager1 --format '{{.ManagerStatus}}'
+# Check manager reachability in the Raft cluster
+docker node inspect manager1 --format '{{ .ManagerStatus.Reachability }}'
 ```
 
-## Step 4: Deploy Portainer in HA Mode
+## Step 4: Deploy Portainer on the Swarm
 
-For HA Portainer, use the Portainer agent + Swarm service:
+Portainer's standard Swarm deployment uses the Portainer agent plus a single Portainer Server service. On a multi-manager Swarm, pin the Portainer service to the manager that stores the Portainer data volume:
 
 ```yaml
 # portainer-swarm-stack.yml
-version: '3.8'
+version: '3.2'
 
 services:
   agent:
-    image: portainer/agent:latest
-    environment:
-      AGENT_CLUSTER_ADDR: tasks.agent
+    image: portainer/agent:lts
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
@@ -95,9 +93,10 @@ services:
         constraints: [node.platform.os == linux]
 
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:lts
     command: -H tcp://tasks.agent:9001 --tlsskipverify
     ports:
+      - "9443:9443"
       - "9000:9000"
       - "8000:8000"
     volumes:
@@ -108,7 +107,7 @@ services:
       mode: replicated
       replicas: 1
       placement:
-        constraints: [node.role == manager]
+        constraints: [node.hostname == manager1]
       restart_policy:
         condition: on-failure
         delay: 5s
@@ -129,7 +128,9 @@ volumes:
 docker stack deploy -c portainer-swarm-stack.yml portainer
 ```
 
-## Step 5: Configure a Load Balancer for Managers
+## Step 5: Configure a Load Balancer for Portainer Access
+
+This provides a stable endpoint for Portainer's published port, but it does not make the Portainer Server itself highly available.
 
 ```nginx
 # /etc/nginx/conf.d/swarm-lb.conf
@@ -149,37 +150,37 @@ server {
 }
 ```
 
-## Step 6: Prevent Workloads on Manager Nodes
+## Step 6: Use Dedicated Managers Carefully
 
 ```bash
-# Drain managers so they only run Swarm management tasks
-docker node update --availability drain manager1
+# Leave manager1 active because Portainer is pinned there
+# Drain the other managers so they don't receive regular service tasks
 docker node update --availability drain manager2
 docker node update --availability drain manager3
 
 # Verify
 docker node ls
-# Managers should show AVAILABILITY = Drain
+# manager2 and manager3 should show AVAILABILITY = Drain
 ```
 
 ## Step 7: Test HA Failover
 
 ```bash
-# Simulate a manager failure
-# On manager1: stop Docker
+# Simulate a manager failure on a manager that is not hosting Portainer
+# On manager2: stop Docker
 sudo systemctl stop docker
 
-# From manager2: verify cluster is still operational
-docker node ls  # Should show manager1 as "Down"
+# From manager1: verify cluster is still operational
+docker node ls  # Should show manager2 as "Down"
 docker service ls  # Services should still be running
 
-# Restart manager1
+# Restart manager2
 sudo systemctl start docker
 
 # Verify it rejoins
-docker node ls  # manager1 should return as "Ready"
+docker node ls  # manager2 should return as "Ready"
 ```
 
 ## Conclusion
 
-A 3-manager Docker Swarm cluster with Portainer deployed as a Swarm service provides true high availability. The Raft consensus algorithm ensures the cluster remains operational even if one manager fails. Portainer's agent mode allows it to connect to the Swarm via the distributed agent network rather than a single Docker socket, enabling resilient management.
+A 3-manager Docker Swarm cluster provides high availability for the Swarm control plane. The Raft consensus algorithm ensures the cluster remains operational even if one manager fails. Portainer's agent mode lets a single Portainer Server manage the Swarm through the distributed agent network rather than a single Docker socket. In a multi-manager Swarm, keep the Portainer Server pinned to the manager that stores its data volume unless you provide shared storage designed for failover.
