@@ -8,39 +8,42 @@ Description: Configure Portainer with multiple LDAP servers for high availabilit
 
 ## Introduction
 
-A single LDAP server is a single point of failure for authentication. If it goes down, no one can log in to Portainer. Configuring multiple LDAP servers provides failover - Portainer tries each server in order until one responds. This is especially important for production environments with uptime requirements.
+A single LDAP server is a single point of failure for LDAP-backed authentication. If it goes down, LDAP users cannot log in to Portainer, so keep the initial admin account available as a break-glass login. Portainer's web UI documents support for additional LDAP servers for authentication fallback, which is especially important for production environments with uptime requirements.
 
 ## How LDAP Failover Works in Portainer
 
-Portainer's LDAP failover:
-1. Attempts to connect to the first configured server
-2. If connection fails or times out, tries the next server
-3. Continues until a server responds or all servers fail
-4. Authentication fails only if all servers are unreachable
+Portainer's current documentation describes multiple LDAP servers as authentication fallback:
+1. Configure the primary LDAP server in Settings → Authentication → LDAP
+2. Use **Add additional server** in the web UI to enter fallback servers
+3. Keep the bind account, TLS mode, and search settings consistent across those servers
+4. Keep the initial admin account available for break-glass access if external authentication is unavailable
 
 ## Prerequisites
 
+- Portainer Business Edition (LDAP and Active Directory external authentication are gated as BE features in the current Portainer UI)
 - Multiple LDAP servers (primary + one or more replicas)
 - Read-only service account with identical credentials on all servers (or different accounts per server)
 
 ## Configuration via the Web UI
 
-In Settings → Authentication → LDAP, you can add multiple servers:
+In Settings → Authentication → LDAP, you can add multiple servers in Portainer Business Edition:
 
 1. Configure the first (primary) server
-2. Click **Add server** to add additional servers
+2. Click **Add additional server** to add fallback servers
 3. Each server entry has its own host, port, and optional credentials
 
 ## Configuration via API
+
+Portainer's current public API schema documents a single `LDAPSettings.URL` field rather than a `Servers` array, so the web UI is the documented path for configuring multiple fallback servers. The example below shows the documented single-server LDAP payload shape:
 
 ```bash
 TOKEN=$(curl -s -X POST \
   https://portainer.example.com/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"adminpassword"}' \
+  -d '{"Username":"admin","Password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Configure two LDAP servers
+# Configure LDAP using the documented API schema
 
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
@@ -48,40 +51,20 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d '{
     "AuthenticationMethod": 2,
-    "ldapsettings": {
-      "Servers": [
-        {
-          "Host": "ldap-primary.example.com",
-          "Port": 636,
-          "UseTLS": true,
-          "SkipVerify": false,
-          "Anonymous": false,
-          "ReaderDN": "cn=portainer-bind,dc=example,dc=com",
-          "Password": "bindpassword"
-        },
-        {
-          "Host": "ldap-secondary.example.com",
-          "Port": 636,
-          "UseTLS": true,
-          "SkipVerify": false,
-          "Anonymous": false,
-          "ReaderDN": "cn=portainer-bind,dc=example,dc=com",
-          "Password": "bindpassword"
-        },
-        {
-          "Host": "ldap-tertiary.example.com",
-          "Port": 389,
-          "UseTLS": false,
-          "StartTLS": true,
-          "Anonymous": false,
-          "ReaderDN": "cn=portainer-bind,dc=example,dc=com",
-          "Password": "bindpassword"
-        }
-      ],
+    "LDAPSettings": {
+      "URL": "ldap-primary.example.com:636",
+      "AnonymousMode": false,
+      "ReaderDN": "cn=portainer-bind,dc=example,dc=com",
+      "Password": "bindpassword",
+      "TLSConfig": {
+        "TLS": true,
+        "TLSSkipVerify": false
+      },
+      "StartTLS": false,
       "SearchSettings": [
         {
           "BaseDN": "ou=users,dc=example,dc=com",
-          "Username": "uid",
+          "UserNameAttribute": "uid",
           "Filter": "(objectClass=inetOrgPerson)"
         }
       ]
@@ -91,36 +74,22 @@ curl -X PUT \
 
 ## Active Directory Multi-DC Configuration
 
-For AD environments with multiple domain controllers:
+For AD environments with multiple domain controllers, add each controller in the web UI with the same bind account and TLS mode:
 
-```json
-{
-  "Servers": [
-    {
-      "Host": "dc01.corp.example.com",
-      "Port": 636,
-      "UseTLS": true,
-      "ReaderDN": "CN=portainer-svc,OU=Service Accounts,DC=corp,DC=example,DC=com",
-      "Password": "servicepassword"
-    },
-    {
-      "Host": "dc02.corp.example.com",
-      "Port": 636,
-      "UseTLS": true,
-      "ReaderDN": "CN=portainer-svc,OU=Service Accounts,DC=corp,DC=example,DC=com",
-      "Password": "servicepassword"
-    }
-  ]
-}
+```text
+AD Controller 1: dc01.corp.example.com:636
+AD Controller 2: dc02.corp.example.com:636
+Service Account: portainer-svc@corp.example.com
+Use TLS: enabled
 ```
 
-**Pro tip**: Active Directory environments can also use the domain's DNS name which resolves to multiple DCs:
+**Pro tip**: Active Directory environments can also use a stable DNS name or load balancer in front of the domain controllers:
 ```text
-Host: corp.example.com
+Host: ldap.corp.example.com
 Port: 636
 ```
 
-This lets Windows DNS SRV records handle failover transparently.
+This works when that hostname resolves to reachable controllers or a load-balanced VIP. Portainer connects to the configured host and port directly; it does not query DNS SRV records itself.
 
 ## Monitoring LDAP Server Health
 
@@ -159,7 +128,7 @@ done
 
 ## Connection Timeout Configuration
 
-Portainer uses a default connection timeout when trying each LDAP server. If servers are slow to respond, users may experience delays. Ensure your LDAP servers are in the same datacenter or have low latency.
+Portainer does not expose a separate LDAP connection-timeout setting in the current UI or public API. If an LDAP endpoint is slow or unreachable, login delays are governed by the underlying network and TCP timeouts, so keep LDAP servers close to Portainer or place them behind a fast local load balancer.
 
 ## Testing Failover
 
@@ -168,7 +137,7 @@ Portainer uses a default connection timeout when trying each LDAP server. If ser
 # Block ldap-primary traffic temporarily
 sudo iptables -A OUTPUT -d ldap-primary.example.com -j DROP
 
-# Try to log in to Portainer - should succeed via secondary
+# Try to log in to Portainer - it should fall back to the next configured server
 
 # Restore connectivity
 sudo iptables -D OUTPUT -d ldap-primary.example.com -j DROP
@@ -176,4 +145,4 @@ sudo iptables -D OUTPUT -d ldap-primary.example.com -j DROP
 
 ## Conclusion
 
-Multiple LDAP server configuration in Portainer is straightforward - add each server to the `Servers` array in order of preference. Portainer handles failover automatically, trying each server until one responds. For production environments, at least two LDAP servers should be configured, ideally in separate availability zones or data centers.
+Multiple LDAP server configuration in Portainer is done in the web UI by adding additional servers, while the current public API schema documents only a single `LDAPSettings.URL`. For production environments, keep fallback servers aligned on bind, TLS, and search settings, and keep the initial admin account available for break-glass access.
