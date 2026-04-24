@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, HashiCorp Vault, Secret, Security, DevOps
 
-Description: Integrate HashiCorp Vault with Portainer to provide dynamic secrets and centralized secrets management for containerized workloads.
+Description: Integrate HashiCorp Vault with Portainer to provide centralized secrets management for containerized workloads.
 
 ## Introduction
 
-HashiCorp Vault is an enterprise-grade secrets management platform that provides dynamic secrets, secret versioning, and fine-grained access control. Integrating Vault with Portainer allows containers to receive short-lived, automatically-rotated secrets instead of static credentials.
+HashiCorp Vault is an enterprise-grade secrets management platform that provides dynamic secrets, secret versioning, and fine-grained access control. Integrating Vault with Portainer allows containers to retrieve centrally managed secrets through Vault Agent instead of baking credentials into images or stack files.
 
 ## Prerequisites
 
@@ -31,11 +31,10 @@ services:
     ports:
       - "8200:8200"
     environment:
-      VAULT_ADDR: http://0.0.0.0:8200
-      VAULT_API_ADDR: http://vault:8200
+      VAULT_ADDR: http://127.0.0.1:8200
     volumes:
       - vault-data:/vault/data
-      - vault-config:/vault/config
+      - /opt/vault/config.hcl:/vault/config/config.hcl:ro
       - vault-logs:/vault/logs
     command: vault server -config=/vault/config/config.hcl
     cap_add:
@@ -43,12 +42,11 @@ services:
 
 volumes:
   vault-data:
-  vault-config:
   vault-logs:
 ```
 
 ```hcl
-# vault-config.hcl - mount into vault-config volume
+# vault-config.hcl - store this on the Docker host, for example at /opt/vault/config.hcl
 storage "file" {
   path = "/vault/data"
 }
@@ -58,8 +56,6 @@ listener "tcp" {
   tls_disable = 1  # Enable TLS in production!
 }
 
-api_addr = "http://vault:8200"
-cluster_addr = "http://vault:8201"
 ui = true
 ```
 
@@ -70,12 +66,12 @@ ui = true
 docker exec -e VAULT_ADDR=http://localhost:8200 vault \
   vault operator init -key-shares=5 -key-threshold=3
 
-# Save the unseal keys and root token securely!
+# Save the unseal keys and initial root token securely!
 # Output:
 # Unseal Key 1: xxx
 # Unseal Key 2: xxx
 # ...
-# Root Token: hvs.xxx
+# Initial Root Token: hvs.xxx
 
 # Unseal Vault (repeat 3 times with different keys)
 docker exec -e VAULT_ADDR=http://localhost:8200 vault \
@@ -143,12 +139,8 @@ services:
   vault-agent:
     image: hashicorp/vault:1.15
     restart: unless-stopped
-    environment:
-      VAULT_ADDR: http://vault:8200
-      ROLE_ID: "${ROLE_ID}"
-      SECRET_ID: "${SECRET_ID}"
     volumes:
-      - vault-agent-config:/vault/config
+      - /opt/vault-agent:/vault/config:ro  # agent.hcl, role_id, and secret_id live here
       - app-secrets:/vault/secrets  # Shared with app container
     command: vault agent -config=/vault/config/agent.hcl
     
@@ -164,14 +156,13 @@ services:
       API_KEY_FILE: /run/secrets/api_key
 
 volumes:
-  vault-agent-config:
   app-secrets:
 ```
 
 ```hcl
 # vault-agent config (agent.hcl)
 vault {
-  address = "http://vault:8200"
+  address = "http://vault-host:8200"
 }
 
 auto_auth {
@@ -179,6 +170,7 @@ auto_auth {
     config = {
       role_id_file_path   = "/vault/config/role_id"
       secret_id_file_path = "/vault/config/secret_id"
+      remove_secret_id_file_after_reading = false
     }
   }
   sink "file" {
@@ -189,13 +181,13 @@ auto_auth {
 }
 
 template {
-  source      = "/vault/config/db_password.tpl"
+  contents    = "{{- with secret \"portainer/data/myapp\" -}}{{ .Data.data.db_password }}{{- end }}"
   destination = "/vault/secrets/db_password"
   perms       = 0640
 }
 
 template {
-  source      = "/vault/config/api_key.tpl"
+  contents    = "{{- with secret \"portainer/data/myapp\" -}}{{ .Data.data.api_key }}{{- end }}"
   destination = "/vault/secrets/api_key"
   perms       = 0640
 }
@@ -204,26 +196,67 @@ template {
 ## Part 5: Kubernetes Integration (Vault Injector)
 
 ```bash
-# Install Vault Helm chart on Kubernetes
+# Install Vault Helm chart on Kubernetes and enable the injector
 helm repo add hashicorp https://helm.releases.hashicorp.com
 helm install vault hashicorp/vault \
   --namespace vault \
-  --create-namespace
+  --create-namespace \
+  --set "injector.enabled=true"
+
+# Initialize and unseal the in-cluster Vault instance
+kubectl exec -n vault vault-0 -- vault operator init -key-shares=5 -key-threshold=3
+kubectl exec -n vault vault-0 -- vault operator unseal <UNSEAL_KEY_1>
+kubectl exec -n vault vault-0 -- vault operator unseal <UNSEAL_KEY_2>
+kubectl exec -n vault vault-0 -- vault operator unseal <UNSEAL_KEY_3>
 
 # Enable Kubernetes auth
-vault auth enable kubernetes
+kubectl exec -n vault vault-0 -- sh -c \
+  'export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=hvs.YOUR_ROOT_TOKEN && vault auth enable kubernetes'
 
-# Configure Kubernetes auth
-vault write auth/kubernetes/config \
-  kubernetes_host="https://$(kubectl get svc kubernetes -o jsonpath='{.spec.clusterIP}')"
+# Repeat Part 3 against this Vault instance, then configure Kubernetes auth
+kubectl exec -n vault vault-0 -- sh -c \
+  'export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=hvs.YOUR_ROOT_TOKEN && vault write auth/kubernetes/config kubernetes_host="https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT"'
 
-# Annotate pods to inject secrets
-kubectl annotate pod mypod \
-  vault.hashicorp.com/agent-inject=true \
-  vault.hashicorp.com/role=myapp \
-  vault.hashicorp.com/agent-inject-secret-config=portainer/myapp
+# Create a Vault role bound to the workload service account
+kubectl exec -n vault vault-0 -- sh -c \
+  'export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=hvs.YOUR_ROOT_TOKEN && vault write auth/kubernetes/role/myapp bound_service_account_names=myapp bound_service_account_namespaces=default policies=myapp-policy ttl=1h'
+```
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: myapp
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "myapp"
+        vault.hashicorp.com/agent-inject-secret-config.txt: "portainer/data/myapp"
+        vault.hashicorp.com/agent-inject-template-config.txt: |
+          {{- with secret "portainer/data/myapp" -}}
+          db_password={{ .Data.data.db_password }}
+          api_key={{ .Data.data.api_key }}
+          {{- end }}
+    spec:
+      serviceAccountName: myapp
+      containers:
+        - name: app
+          image: myapp:latest
 ```
 
 ## Conclusion
 
-HashiCorp Vault integration with Portainer provides enterprise-grade secrets management with dynamic credentials, automatic rotation, and fine-grained access control. Vault Agent handles secret lifecycle automatically, ensuring containers always have fresh credentials without redeployment. For Kubernetes deployments, the Vault Injector provides seamless secret injection via pod annotations.
+HashiCorp Vault integration with Portainer provides centralized secrets management, secret versioning, and fine-grained access control. Vault Agent handles authentication and secret rendering automatically, and it can refresh rendered files when the underlying secrets change. For Kubernetes deployments, the Vault Injector adds Vault Agent to pod specs through annotations on the workload template.
