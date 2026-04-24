@@ -154,21 +154,18 @@ run "cross_account_role_assumption" {
 
 ## Passing Aliased Providers to Modules in Tests
 
-When the module under test is a child module called from a root, you may need to pass provider aliases explicitly:
+When the aliased module itself is the module under test, define test providers with the same alias names the module declares. If you wrap that module in a separate harness root, pass aliases there with the normal `providers` argument:
 
 ```hcl
 # tests/child_module_aliased.tftest.hcl
 
-mock_provider "aws" { alias = "us_east" }
-mock_provider "aws" { alias = "eu_west" }
+mock_provider "aws" { alias = "primary" }
+mock_provider "aws" { alias = "secondary" }
 
 run "module_receives_provider_aliases" {
   module {
     source = "./modules/replication"
   }
-
-  # OpenTofu automatically maps test file providers to module requirements
-  # when alias names match
 
   assert {
     condition     = output.replication_enabled == true
