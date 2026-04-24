@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Template, Multi-Instance, DevOps
 
-Description: Learn strategies for sharing and synchronizing custom templates across multiple Portainer instances in your infrastructure.
+Description: Learn strategies for sharing and synchronizing app templates and custom templates across multiple Portainer instances in your infrastructure.
 
 ## Introduction
 
@@ -12,7 +12,7 @@ As organizations scale their Docker infrastructure, they often run multiple Port
 
 ## Prerequisites
 
-- Two or more Portainer CE or BE instances
+- Two or more Portainer CE or BE instances (Portainer BE is required for custom templates)
 - A centralized location for template storage (Git, web server, or S3)
 - Admin access to all Portainer instances
 
@@ -32,11 +32,11 @@ The simplest approach: configure all Portainer instances to point to the same te
 2. Configure each Portainer instance to use the same URL:
 
 **Via Portainer UI (per instance):**
-1. Settings → App Templates URL
+1. Settings → General → App Templates
 2. Enter: `https://templates.company.com/templates.json`
-3. Save
+3. Save application settings
 
-**Via Docker environment variable (at Portainer startup):**
+**Via Portainer CLI flag (at Portainer startup):**
 
 ```bash
 # Set the template URL when starting Portainer
@@ -46,7 +46,7 @@ docker run -d \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest \
+  portainer/portainer-ce:sts \
   --templates https://templates.company.com/templates.json
 ```
 
@@ -56,7 +56,7 @@ Or in Docker Compose:
 # docker-compose.yml for Portainer with custom templates
 services:
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:sts
     command: --templates https://templates.company.com/templates.json
     ports:
       - "9443:9443"
@@ -73,12 +73,12 @@ volumes:
 ### Advantages
 
 - Zero per-instance configuration after initial setup
-- Template updates propagate to all instances immediately
+- All instances read from the same template source
 - Single source of truth
 
 ## Strategy 2: Git Repository with Webhooks
 
-Store templates in Git and trigger Portainer stack updates when the repository changes.
+Store templates in Git and publish updates to your shared template URL when the repository changes.
 
 ```bash
 # Repository structure for centralized templates
@@ -94,13 +94,14 @@ portainer-templates/
 # Makefile for template distribution
 TEMPLATE_SERVER = templates.company.com
 PORTAINER_INSTANCES = portainer1.company.com portainer2.company.com portainer3.company.com
-PORTAINER_TOKEN ?= $(error Set PORTAINER_TOKEN)
+PORTAINER_USERNAME ?= admin
+PORTAINER_PASSWORD ?= $(error Set PORTAINER_PASSWORD)
 
 .PHONY: validate deploy
 
 validate:
 	python3 -m json.tool templates.json > /dev/null && echo "JSON valid"
-	@echo "Template count: $$(python3 -c "import json; d=json.load(open('templates.json')); print(len(d['templates']))")"
+	@python3 -c 'import json; d=json.load(open("templates.json")); print("Template count:", len(d["templates"]))'
 
 deploy: validate
 	# Upload to template server
@@ -109,21 +110,29 @@ deploy: validate
 	# Verify each Portainer instance can fetch the templates
 	@for host in $(PORTAINER_INSTANCES); do \
 	    echo "Checking $$host..."; \
-	    curl -sk https://$$host:9443/api/templates \
-	        -H "Authorization: Bearer $(PORTAINER_TOKEN)" | \
-	        python3 -c "import json,sys; d=json.load(sys.stdin); print(f'  Templates: {len(d)}')" || \
-	        echo "  WARNING: Could not verify $$host"; \
+	    TOKEN=$$(curl -sk https://$$host:9443/api/auth \
+	        -H "Content-Type: application/json" \
+	        -d '{"Username":"$(PORTAINER_USERNAME)","Password":"$(PORTAINER_PASSWORD)"}' | \
+	        python3 -c 'import json,sys; print(json.load(sys.stdin)["jwt"])' 2>/dev/null); \
+	    if [ -n "$$TOKEN" ]; then \
+	        curl -sk https://$$host:9443/api/templates \
+	            -H "Authorization: Bearer $$TOKEN" | \
+	            python3 -c 'import json,sys; d=json.load(sys.stdin); print("  Templates:", len(d["templates"]))' || \
+	            echo "  WARNING: Could not verify $$host"; \
+	    else \
+	        echo "  WARNING: Could not authenticate to $$host"; \
+	    fi; \
 	done
 ```
 
 ## Strategy 3: Portainer API Automation
 
-Use the Portainer API to programmatically sync custom templates:
+Use the Portainer API to programmatically sync Git-backed custom templates in Portainer Business Edition:
 
 ```bash
 #!/bin/bash
 # sync-custom-templates.sh
-# Sync custom templates to multiple Portainer instances
+# Sync Git-backed custom templates to multiple Portainer instances
 
 INSTANCES=(
   "https://portainer1.company.com:9443"
@@ -131,14 +140,15 @@ INSTANCES=(
   "https://portainer3.company.com:9443"
 )
 
-TEMPLATE_FILE="custom-templates.json"
+TEMPLATE_FILE="custom-templates-api.json"
+PORTAINER_USERNAME="${PORTAINER_USERNAME:-admin}"
 
 # Function to get auth token
 get_token() {
     local base_url="$1"
     curl -sk "$base_url/api/auth" \
         -H "Content-Type: application/json" \
-        -d '{"username":"admin","password":"'$PORTAINER_ADMIN_PASSWORD'"}' | \
+        -d '{"Username":"'"$PORTAINER_USERNAME"'","Password":"'"$PORTAINER_ADMIN_PASSWORD"'"}' | \
         python3 -c "import json,sys; print(json.load(sys.stdin)['jwt'])"
 }
 
@@ -152,13 +162,30 @@ for instance in "${INSTANCES[@]}"; do
         continue
     fi
 
-    # Upload template file
-    # Note: Portainer API creates custom templates one at a time
+    # Each object in $TEMPLATE_FILE should match the
+    # POST /api/custom_templates/create/repository payload.
+    EXISTING_TEMPLATES=$(curl -sk "$instance/api/custom_templates" \
+        -H "Authorization: Bearer $TOKEN")
+
     while IFS= read -r template; do
-        curl -sk -X POST "$instance/api/custom_templates/1" \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "$template"
+        TITLE=$(printf '%s' "$template" | \
+            python3 -c "import json,sys; print(json.load(sys.stdin)['Title'])")
+        EXISTING_ID=$(TITLE="$TITLE" printf '%s' "$EXISTING_TEMPLATES" | \
+            python3 -c 'import json,os,sys; title=os.environ["TITLE"]; data=json.load(sys.stdin); print(next((str(t["Id"]) for t in data if t["Title"] == title), ""))')
+
+        if [ -n "$EXISTING_ID" ]; then
+            curl -sk -X PUT "$instance/api/custom_templates/$EXISTING_ID" \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "$template" > /dev/null
+            echo "  Updated: $TITLE"
+        else
+            curl -sk -X POST "$instance/api/custom_templates/create/repository" \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "$template" > /dev/null
+            echo "  Created: $TITLE"
+        fi
     done < <(python3 -c "
 import json
 with open('$TEMPLATE_FILE') as f:
@@ -167,19 +194,18 @@ for t in data['templates']:
     print(json.dumps(t))
 ")
 
-    echo "  Done."
 done
 ```
 
 ## Strategy 4: Portainer Business Edition (RBAC + Multi-Cluster)
 
-In Portainer BE, custom templates can be scoped to teams or environments, providing more granular sharing:
+In Portainer BE, custom templates use Portainer's access controls and RBAC for more granular sharing:
 
-- Templates created at the **administrator level** are visible to all environments
-- Templates created at the **team level** are shared within the team
-- Templates created at the **user level** are private
+- Administrators can restrict a custom template to specific users or teams
+- Custom template access follows the resource control assigned to the template
+- Portainer BE still does not natively sync custom templates across separate Portainer instances
 
-For multi-instance sharing, Portainer BE does not natively sync custom templates across instances - use the shared URL approach for centralized management.
+For multi-instance sharing, use the shared URL approach for app templates and API automation if you need to duplicate BE custom templates between instances.
 
 ## Keeping Templates in Sync
 
@@ -209,7 +235,7 @@ for i, t in enumerate(data['templates']):
     if t.get('type') == 1 and not t.get('image'):
         print(f"ERROR [{name}]: container template missing image")
         errors += 1
-    if t.get('type') == 2 and not t.get('repository'):
+    if t.get('type') in (2, 3) and not t.get('repository'):
         print(f"ERROR [{name}]: stack template missing repository")
         errors += 1
 
@@ -245,4 +271,4 @@ jobs:
 
 ## Conclusion
 
-Sharing templates across multiple Portainer instances is best achieved by hosting templates at a shared URL and configuring each Portainer instance to use that URL. This approach requires minimal maintenance, updates are immediate, and it scales to any number of instances. Combine it with CI/CD validation to ensure your shared template catalog remains correct and up-to-date.
+Sharing templates across multiple Portainer instances is best achieved by hosting templates at a shared URL and configuring each Portainer instance to use that URL. This approach requires minimal maintenance, centralizes updates, and scales to any number of instances. Combine it with CI/CD validation to ensure your shared template catalog remains correct and up-to-date.
