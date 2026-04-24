@@ -8,17 +8,19 @@ Description: Learn how to diagnose and fix cattle-node-agent errors in Rancher, 
 
 ## Introduction
 
-The `cattle-node-agent` runs as a DaemonSet on every node in a Rancher-managed cluster. It handles node-level operations such as node provisioning, OS-level configuration, and maintaining the connection back to the cluster agent. When node agents fail, affected nodes may show as "Not Ready" or unavailable for workloads.
+The `cattle-node-agent` runs as a DaemonSet on the Linux nodes in a Rancher-launched RKE cluster. It handles node-level cluster operations such as Kubernetes upgrades and etcd snapshot workflows, and it can act as a fallback path back to Rancher when the `cattle-cluster-agent` is unavailable. When node agents fail, affected nodes may show as "Not Ready" or unavailable for workloads.
+
+If you are troubleshooting a Rancher-provisioned RKE2 or K3s cluster, the equivalent component is `rancher-system-agent`, not `cattle-node-agent`.
 
 ## Architecture
 
 ```text
-cattle-cluster-agent (one per cluster, in cattle-system)
-       ↓ manages
-cattle-node-agent (DaemonSet, one pod per node)
+Rancher server / cluster controller
+       ↓ primary connection
+cattle-cluster-agent (Deployment, in cattle-system)
+       ↘ fallback for node operations and cluster connectivity
+cattle-node-agent (DaemonSet, one pod per Linux node in a Rancher-launched RKE cluster)
 ```
-
-The node agent runs with `hostNetwork: true` and `privileged: true` to access host resources.
 
 ## Step 1: Check Node Agent Status
 
@@ -46,56 +48,59 @@ kubectl logs -n cattle-system ${NODE_AGENT} --tail=200
 # If the node agent pod shows ImagePullBackOff
 kubectl describe pod -n cattle-system ${NODE_AGENT} | grep -A5 "Events:"
 
-# For air-gapped clusters, mirror the agent image
-# On a node with internet access:
-docker pull rancher/rancher-agent:v2.9.0
-docker save rancher/rancher-agent:v2.9.0 | gzip > rancher-agent.tar.gz
+# Inspect the exact image the DaemonSet is trying to run
+AGENT_IMAGE=$(kubectl get daemonset -n cattle-system cattle-node-agent \
+  -o jsonpath='{.spec.template.spec.containers[0].image}')
+echo "${AGENT_IMAGE}"
 
-# Transfer to the air-gapped node and load
+# For air-gapped clusters, mirror that exact image
+# On a machine with access to the image registry:
+docker pull "${AGENT_IMAGE}"
+docker save "${AGENT_IMAGE}" | gzip > rancher-agent.tar.gz
+
+# Transfer to the air-gapped node and load it into Docker
 scp rancher-agent.tar.gz user@<node-ip>:~
-ssh user@<node-ip> 'sudo ctr images import rancher-agent.tar.gz'
-
-# For containerd (used by RKE2/K3s):
-ssh user@<node-ip> 'sudo /var/lib/rancher/rke2/bin/ctr \
-  --address /run/k3s/containerd/containerd.sock \
-  images import rancher-agent.tar.gz'
+ssh user@<node-ip> 'sudo docker load -i rancher-agent.tar.gz'
 ```
 
 ## Step 3: Debug Volume Mount Issues
 
-The node agent mounts host paths for container runtime sockets:
+The node agent mounts host paths that must match the container runtime available on the node:
 
 ```bash
 # Check what volumes the node agent mounts
 kubectl get daemonset -n cattle-system cattle-node-agent -o json \
   | jq '.spec.template.spec.volumes[]'
 
-# Common required paths:
-# /var/run/docker.sock   - Docker (older clusters)
-# /run/containerd/containerd.sock - Containerd
-# /run/k3s/containerd/containerd.sock - K3s/RKE2
+# Common required path on RKE nodes:
+# /var/run/docker.sock - Docker
 
 # On the node, verify the socket exists
-ls -la /run/containerd/containerd.sock
-ls -la /run/k3s/containerd/containerd.sock
+ssh user@<node-ip> 'ls -la /var/run/docker.sock'
 
-# If the wrong socket path is configured, update the DaemonSet
-kubectl edit daemonset -n cattle-system cattle-node-agent
+# If the mounted host paths do not match the node, compare the DaemonSet spec
+# with the node's actual runtime configuration before making changes.
+kubectl describe daemonset -n cattle-system cattle-node-agent
 ```
 
-## Step 4: Check Host Network Issues
+## Step 4: Check Connectivity to Rancher
 
-The node agent uses `hostNetwork: true` and binds to the node's IP:
+The node agent must be able to reach the Rancher `server-url`, and any load balancer in front of Rancher must support websocket traffic:
 
 ```bash
-# Verify the node's IP is accessible
-kubectl get node <node-name> -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}'
+# Verify the Rancher server URL configured for the agent
+kubectl get daemonset -n cattle-system cattle-node-agent -o yaml \
+  | grep -A1 'name: CATTLE_SERVER'
 
-# Check if another process is using the agent's port
-ssh user@<node-ip> 'sudo ss -tlnp | grep 10250'
+# From the node, verify Rancher is reachable over HTTPS
+ssh user@<node-ip> 'curl -vk https://<rancher-server>/healthz'
 
-# Check for iptables rules that might block the agent
-ssh user@<node-ip> 'sudo iptables -L INPUT -n -v | grep DROP'
+# Look for websocket or certificate errors in the agent logs
+kubectl logs -n cattle-system ${NODE_AGENT} --tail=200 \
+  | grep -E "Failed to connect to proxy|websocket|x509|certificate"
+
+# If Rancher is behind a load balancer or proxy, verify it supports long-lived
+# websocket connections and forwards the required headers.
 ```
 
 ## Step 5: Check Disk Pressure and System Resources
@@ -111,8 +116,6 @@ ssh user@<node-ip> 'df -h'
 ssh user@<node-ip> 'df -i'
 
 # Free up disk space by removing unused container images
-ssh user@<node-ip> 'sudo crictl rmi --prune'
-# OR for Docker nodes:
 ssh user@<node-ip> 'sudo docker image prune -af'
 ```
 
@@ -121,15 +124,12 @@ ssh user@<node-ip> 'sudo docker image prune -af'
 When a node is stuck in `NotReady` due to agent issues:
 
 ```bash
-# Check kubelet status on the node
-ssh user@<node-ip> 'sudo systemctl status kubelet'
-ssh user@<node-ip> 'sudo journalctl -u kubelet -n 100 --no-pager'
+# Check kubelet and kube-proxy containers on the node
+ssh user@<node-ip> "sudo docker ps -a -f=name='kubelet|kube-proxy'"
+ssh user@<node-ip> 'sudo docker logs --tail=100 kubelet'
 
-# Restart the kubelet
-ssh user@<node-ip> 'sudo systemctl restart kubelet'
-
-# For RKE2:
-ssh user@<node-ip> 'sudo systemctl restart rke2-agent'
+# Restart the kubelet container
+ssh user@<node-ip> 'sudo docker restart kubelet'
 
 # Force the DaemonSet to recreate the pod on the node
 kubectl delete pod -n cattle-system ${NODE_AGENT}
@@ -150,4 +150,4 @@ kubectl describe node <node-name> | grep -E "Conditions:|Ready:"
 
 ## Conclusion
 
-`cattle-node-agent` failures are usually caused by image pull issues in air-gapped environments, missing container runtime sockets, disk pressure on nodes, or network connectivity problems. Monitoring the DaemonSet rollout status and individual pod health across all nodes is essential for maintaining cluster stability. Proactive node maintenance - clearing disk space and keeping container images up to date - prevents most node agent failures.
+`cattle-node-agent` failures in Rancher-launched RKE clusters are usually caused by image pull issues in air-gapped environments, missing Docker socket access, disk pressure on nodes, or connectivity problems between the node agent and Rancher. Monitoring the DaemonSet rollout status and individual pod health across all nodes is essential for maintaining cluster stability. Proactive node maintenance - clearing disk space and ensuring the required agent image is available on the nodes - prevents many node agent failures.
