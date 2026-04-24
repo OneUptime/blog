@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Container, Hardware, IoT
 
-Description: Learn how to map host devices like serial ports, USB devices, and GPUs to Docker containers using Portainer's device mapping configuration.
+Description: Learn how to map host devices like serial ports, USB devices, webcams, and sound devices to Docker containers using Portainer's device mapping configuration.
 
 ## Introduction
 
-Some containerized applications need direct access to hardware devices - serial ports for IoT/industrial equipment, USB devices for data acquisition, GPUs for inference, or specialized hardware accelerators. Docker's device mapping feature lets you expose these host devices inside containers, and Portainer makes this configuration accessible through the web UI.
+Some containerized applications need direct access to hardware devices - serial ports for IoT/industrial equipment, USB devices for data acquisition, webcams for capture, or specialized hardware accelerators. Docker's device mapping feature lets you expose many host devices inside containers, and Portainer makes this configuration accessible through the web UI. For NVIDIA GPUs, Portainer exposes separate GPU settings under **Runtime & Resources**.
 
 ## Prerequisites
 
@@ -56,14 +56,13 @@ udevadm info -n /dev/ttyUSB0 | grep DEVNAME
 ## Step 2: Map Devices in Portainer
 
 1. Navigate to **Containers > Add container**.
-2. Scroll to the **Runtime & Resources** or **Devices** section.
-3. Click **+ add device**.
+2. Open **Advanced container settings**, then go to **Runtime & Resources**.
+3. Under **Devices**, click **add device**.
 4. Fill in the fields:
 
 ```text
 Host device path:       /dev/ttyS0
 Container device path:  /dev/ttyS0
-Permissions:            rwm
 ```
 
 Or:
@@ -71,7 +70,6 @@ Or:
 ```text
 Host device path:       /dev/video0
 Container device path:  /dev/video0
-Permissions:            r
 ```
 
 ## Step 3: Common Device Mapping Examples
@@ -89,7 +87,7 @@ devices:
 
 # Also may need group permissions:
 group_add:
-  - dialout   # Add container user to dialout group (UID 20 on most systems)
+  - dialout   # Group name inside the container, if present
 ```
 
 ### USB Device
@@ -97,8 +95,11 @@ group_add:
 ```yaml
 devices:
   - /dev/bus/usb/001/003:/dev/bus/usb/001/003  # Specific USB device
+```
 
-# Or for USB device classes:
+Or for HID devices:
+
+```yaml
 devices:
   - /dev/hidraw0:/dev/hidraw0  # HID device (USB barcode scanner, etc.)
 ```
@@ -109,8 +110,11 @@ devices:
 devices:
   - /dev/video0:/dev/video0   # Default webcam
   - /dev/video1:/dev/video1   # Second camera
+```
 
-# May also need access to V4L2 devices:
+For some V4L2 workloads, you may also need:
+
+```yaml
 devices:
   - /dev/video0:/dev/video0
   - /dev/vbi0:/dev/vbi0
@@ -129,8 +133,12 @@ devices:
 ```yaml
 devices:
   - /dev/snd:/dev/snd  # Entire sound subsystem
+```
 
-# Or specific ALSA devices:
+Or map specific ALSA devices:
+
+```yaml
+devices:
   - /dev/snd/controlC0:/dev/snd/controlC0
   - /dev/snd/pcmC0D0p:/dev/snd/pcmC0D0p
 ```
@@ -164,19 +172,27 @@ services:
 
 ## Step 5: Using cgroup Rules for Dynamic Devices
 
-For devices that may appear after container start (e.g., USB devices that are hot-plugged), use cgroup device rules instead:
+For devices that may appear after container start (e.g., hardware that is hot-plugged), `device_cgroup_rules` can widen the device allowlist. First, inspect the device on the host to get its major number:
+
+```bash
+stat -c 'major=%Hr minor=%Lr %n' /dev/bus/usb/001/003
+```
+
+Then use that major number in your compose file:
 
 ```yaml
 services:
   device-manager:
     image: myorg/device-manager:latest
-    # Allow access to USB subsystem devices
+    # Devices present when the container starts should still be listed here
+    devices:
+      - /dev/bus/usb/001/003:/dev/bus/usb/001/003
+    # Replace MAJOR with the character-device major from stat on the host
     device_cgroup_rules:
-      - 'c 189:* rmw'  # USB devices (major 189)
-    volumes:
-      - /dev:/dev      # Mount entire /dev (requires careful security consideration)
-    privileged: false
+      - 'c MAJOR:* rmw'
 ```
+
+Docker documents that `device_cgroup_rules` only widens the cgroup allowlist. Devices present at container start should still be listed under `devices`, and hot-plugged device nodes usually need to be created or passed into the container separately.
 
 ## Step 6: Verify Device Access Inside Container
 
