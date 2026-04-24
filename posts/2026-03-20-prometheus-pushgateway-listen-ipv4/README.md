@@ -15,9 +15,10 @@ Prometheus normally pulls metrics from long-running services. For short-lived ba
 ```bash
 # Download Pushgateway binary
 
-wget https://github.com/prometheus/pushgateway/releases/latest/download/pushgateway-*.linux-amd64.tar.gz
-tar xzf pushgateway-*.linux-amd64.tar.gz
-mv pushgateway-*/pushgateway /usr/local/bin/
+VERSION=1.11.2
+wget https://github.com/prometheus/pushgateway/releases/download/v${VERSION}/pushgateway-${VERSION}.linux-amd64.tar.gz
+tar xzf pushgateway-${VERSION}.linux-amd64.tar.gz
+mv pushgateway-${VERSION}.linux-amd64/pushgateway /usr/local/bin/
 
 # Create a systemd service
 cat > /etc/systemd/system/pushgateway.service << 'EOF'
@@ -65,11 +66,16 @@ DURATION=$((END - START))
 
 # Push metrics to Pushgateway
 # Format: metric_name metric_value
-cat <<EOF | curl --data-binary @- http://10.0.0.5:9091/metrics/job/backup_job/instance/server-01
+{
+  if [ "$STATUS" -eq 0 ]; then
+    cat <<EOF
 # HELP backup_last_success_timestamp Unix timestamp of the last successful backup
 # TYPE backup_last_success_timestamp gauge
 backup_last_success_timestamp $(date +%s)
+EOF
+  fi
 
+  cat <<EOF
 # HELP backup_duration_seconds Duration of the last backup in seconds
 # TYPE backup_duration_seconds gauge
 backup_duration_seconds $DURATION
@@ -78,6 +84,7 @@ backup_duration_seconds $DURATION
 # TYPE backup_exit_code gauge
 backup_exit_code $STATUS
 EOF
+} | curl --data-binary @- http://10.0.0.5:9091/metrics/job/backup_job/instance/server-01
 ```
 
 ## Configuring Prometheus to Scrape Pushgateway
@@ -88,17 +95,17 @@ scrape_configs:
   - job_name: 'pushgateway'
     static_configs:
       - targets: ['10.0.0.5:9091']
-    honor_labels: true    # Use the job/instance labels set by the pusher
+    honor_labels: true    # Preserve labels pushed to the Pushgateway
 ```
 
 ## Viewing Pushed Metrics
 
 ```bash
-# List all metric groups (job+instance combinations)
+# List pushed metric groups in JSON format
 curl -s http://10.0.0.5:9091/api/v1/metrics | python3 -m json.tool
 
 # View the web UI
-open http://10.0.0.5:9091
+# Open http://10.0.0.5:9091 in your browser
 ```
 
 ## Deleting Pushed Metrics
@@ -107,13 +114,13 @@ open http://10.0.0.5:9091
 # Delete metrics for a specific job + instance combination
 curl -X DELETE http://10.0.0.5:9091/metrics/job/backup_job/instance/server-01
 
-# Delete all metrics for a job
+# Delete metrics for the job-only group (does not delete groups with additional labels such as instance)
 curl -X DELETE http://10.0.0.5:9091/metrics/job/backup_job
 ```
 
 ## Key Takeaways
 
 - Use `--web.listen-address=ip:port` to bind Pushgateway to a specific IPv4 address.
-- Set `honor_labels: true` in the Prometheus scrape config so the job/instance labels pushed by the client are preserved.
-- Delete pushed metrics after the job completes to avoid stale data polluting dashboards.
-- Pushgateway is NOT a replacement for Prometheus scraping long-lived services - use it only for batch jobs and ephemeral processes.
+- Set `honor_labels: true` in the Prometheus scrape config so labels pushed by the client are preserved.
+- Manage metric lifecycle explicitly because Pushgateway retains pushed metrics until you delete or overwrite them.
+- Pushgateway is NOT a replacement for Prometheus scraping long-lived services - use it primarily for service-level batch jobs. For machine-level cron jobs, prefer the Node Exporter's textfile collector.
