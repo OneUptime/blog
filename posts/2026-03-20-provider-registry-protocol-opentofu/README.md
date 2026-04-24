@@ -18,7 +18,7 @@ When you run `tofu init`, OpenTofu uses the provider registry protocol to discov
 Examples:
   hashicorp/aws                              # Short form (resolved to registry.opentofu.org)
   registry.opentofu.org/hashicorp/aws        # Explicit registry
-  registry.terraform.io/hashicorp/aws        # Terraform registry fallback
+  registry.terraform.io/hashicorp/aws        # Explicit third-party registry
   my-registry.example.com/my-org/custom-provider  # Private registry
 ```
 
@@ -32,22 +32,21 @@ curl -s https://registry.opentofu.org/.well-known/terraform.json | jq .
 # Response:
 {
   "modules.v1": "/v1/modules/",
-  "providers.v1": "/v1/providers/",
-  "login.v1": "/oauth2/..."
+  "providers.v1": "/v1/providers/"
 }
 ```
 
 ## Provider Versions API
 
 ```bash
-# List all available versions for a provider
-curl -s "https://registry.opentofu.org/v1/providers/hashicorp/aws/versions" | jq '.versions[-3:]'
+# Show a few available versions for a provider
+curl -s "https://registry.opentofu.org/v1/providers/hashicorp/aws/versions" | jq '.versions[:3]'
 
-# Response:
+# Sample response:
 [
-  {"version": "5.29.0", "protocols": ["6.0"], "platforms": [...]},
-  {"version": "5.30.0", "protocols": ["6.0"], "platforms": [...]},
-  {"version": "5.31.0", "protocols": ["6.0"], "platforms": [...]}
+  {"version": "6.42.0", "protocols": ["5.0"], "platforms": [...]},
+  {"version": "6.41.0", "protocols": ["5.0"], "platforms": [...]},
+  {"version": "6.40.0", "protocols": ["5.0"], "platforms": [...]}
 ]
 ```
 
@@ -57,16 +56,16 @@ curl -s "https://registry.opentofu.org/v1/providers/hashicorp/aws/versions" | jq
 # Get download URL for a specific version and platform
 curl -s "https://registry.opentofu.org/v1/providers/hashicorp/aws/5.31.0/download/linux/amd64" | jq .
 
-# Response:
+# Sample response:
 {
-  "protocols": ["6.0"],
+  "protocols": ["5.0"],
   "os": "linux",
   "arch": "amd64",
   "filename": "terraform-provider-aws_5.31.0_linux_amd64.zip",
-  "download_url": "https://releases.hashicorp.com/terraform-provider-aws/5.31.0/terraform-provider-aws_5.31.0_linux_amd64.zip",
-  "shasums_url": "https://releases.hashicorp.com/terraform-provider-aws/5.31.0/terraform-provider-aws_5.31.0_SHA256SUMS",
-  "shasums_signature_url": "https://releases.hashicorp.com/terraform-provider-aws/5.31.0/terraform-provider-aws_5.31.0_SHA256SUMS.sig",
-  "shasum": "abc123...",
+  "download_url": "https://github.com/opentofu/terraform-provider-aws/releases/download/v5.31.0/terraform-provider-aws_5.31.0_linux_amd64.zip",
+  "shasums_url": "https://github.com/opentofu/terraform-provider-aws/releases/download/v5.31.0/terraform-provider-aws_5.31.0_SHA256SUMS",
+  "shasums_signature_url": "https://github.com/opentofu/terraform-provider-aws/releases/download/v5.31.0/terraform-provider-aws_5.31.0_SHA256SUMS.sig",
+  "shasum": "849ab0cc98401f25d700abe64b1e42046b3b73e88fda8331beb2ec6a6f00015a",
   "signing_keys": {
     "gpg_public_keys": [...]
   }
@@ -76,7 +75,7 @@ curl -s "https://registry.opentofu.org/v1/providers/hashicorp/aws/5.31.0/downloa
 ## Provider Installation Directory
 
 ```bash
-# Providers are cached in .terraform/providers/
+# Providers are stored in .terraform/providers/
 ls .terraform/providers/registry.opentofu.org/hashicorp/aws/5.31.0/linux_amd64/
 # terraform-provider-aws_v5.31.0_x5
 
@@ -90,7 +89,7 @@ ls $TF_PLUGIN_CACHE_DIR/registry.opentofu.org/hashicorp/aws/
 For air-gapped or accelerated environments:
 
 ```hcl
-# ~/.terraformrc
+# ~/.tofurc
 provider_installation {
   network_mirror {
     url     = "https://my-internal-mirror.example.com/providers/"
@@ -103,12 +102,12 @@ provider_installation {
 }
 ```
 
-The network mirror must implement the provider mirror protocol:
+The network mirror must implement the provider network mirror protocol:
 
 ```bash
-# Mirror URL structure:
-# /providers/{hostname}/{namespace}/{type}/index.json  - list versions
-# /providers/{hostname}/{namespace}/{type}/{version}.json - platform downloads
+# Relative to the configured base URL:
+# {hostname}/{namespace}/{type}/index.json  - list versions
+# {hostname}/{namespace}/{type}/{version}.json - platform downloads
 
 # index.json
 {
@@ -132,7 +131,7 @@ The network mirror must implement the provider mirror protocol:
 ## Setting Up a Filesystem Mirror
 
 ```bash
-# Download providers to a local directory for air-gapped environments
+# Download providers required by the current configuration to a local directory
 tofu providers mirror /opt/tofu-provider-mirror
 
 # Directory structure:
@@ -146,7 +145,7 @@ tofu providers mirror /opt/tofu-provider-mirror
 ```
 
 ```hcl
-# ~/.terraformrc - use filesystem mirror
+# ~/.tofurc - use filesystem mirror
 provider_installation {
   filesystem_mirror {
     path    = "/opt/tofu-provider-mirror"
@@ -176,7 +175,7 @@ provider "registry.opentofu.org/hashicorp/aws" {
 ```
 
 ```bash
-# Verify the lock file hasn't been tampered with
+# Refuse lock file changes and verify packages against recorded checksums
 tofu init -lockfile=readonly
 
 # Lock providers for multiple platforms
