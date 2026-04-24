@@ -10,7 +10,7 @@ Description: Step-by-step guide to configuring Traefik's ACME integration with L
 
 - Docker and Docker Compose installed
 - A domain name with DNS pointing to your server
-- Port 80 accessible from the internet (for HTTP challenge)
+- Ports 80 and 443 accessible from the internet (port 80 is required for HTTP challenge)
 
 ## Step 1: Prepare Certificate Storage
 
@@ -69,8 +69,6 @@ log:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   traefik:
     image: traefik:v3.0
@@ -121,6 +119,11 @@ volumes:
 
 Before using the production Let's Encrypt server, test with the staging server to avoid rate limit issues:
 
+```bash
+touch /opt/traefik/data/acme-staging.json
+chmod 600 /opt/traefik/data/acme-staging.json
+```
+
 ```yaml
 certificatesResolvers:
   letsencrypt-staging:
@@ -140,16 +143,11 @@ Then replace `letsencrypt` with `letsencrypt-staging` in your container labels w
 cd /opt/traefik
 docker compose up -d
 
-# Watch for certificate issuance (takes ~30 seconds)
+# Watch for certificate issuance
 docker logs traefik --follow 2>&1 | grep -E "acme|cert|error"
 ```
 
-Successful issuance looks like:
-
-```text
-level=debug msg="Obtaining certificate for domains \"portainer.yourdomain.com\""
-level=info msg="Certificate obtained successfully"
-```
+You should see ACME-related log entries and no errors.
 
 ## Verifying the Certificate
 
@@ -160,19 +158,19 @@ echo | openssl s_client -servername portainer.yourdomain.com \
   openssl x509 -noout -subject -issuer -dates
 
 # Output should show:
-# issuer=C=US, O=Let's Encrypt, CN=R11
+# issuer with O=Let's Encrypt (the exact intermediate CN can vary)
 ```
 
 ## Let's Encrypt Rate Limits
 
 | Limit | Value |
 |-------|-------|
-| Certificates per registered domain | 50 per week |
-| Duplicate certificates | 5 per week |
+| New certificates per registered domain | 50 per 7 days |
+| New certificates per exact set of identifiers | 5 per 7 days |
 | Failed validations | 5 per account per hostname per hour |
 
 Always test with staging to avoid hitting production rate limits.
 
 ## Conclusion
 
-Traefik's Let's Encrypt integration makes HTTPS effortless - once configured, any container running behind Traefik via Portainer gets a valid certificate automatically, with no manual renewal process or CA cost.
+Traefik's Let's Encrypt integration makes HTTPS effortless - once configured, services you expose through Traefik can get a valid certificate automatically, with no manual renewal process or CA cost.
