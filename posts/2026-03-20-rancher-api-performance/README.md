@@ -26,37 +26,43 @@ time curl -sk \
   "https://rancher.example.com/v3/clusters" \
   | jq '.data | length'
 
-# Check API server audit logs for slow requests
-kubectl logs -n cattle-system deployment/rancher \
-  | grep -E '"latency":[0-9]{4,}' \
-  | jq '{uri: .requestURI, latency: .latency}' \
-  | sort -t: -k2 -rn | head -20
+# If Rancher API audit logging is enabled, inspect slow requests from the
+# rancher-audit-log sidecar using the logged request/response timestamps
+kubectl logs -n cattle-system deployment/rancher --all-pods=true \
+  -c rancher-audit-log --since=10m \
+  | jq -r 'select(.requestTimestamp and .responseTimestamp) |
+      [.requestTimestamp, .responseTimestamp, .responseCode, .requestURI] | @tsv' \
+  | python3 -c 'import sys; from datetime import datetime
+for line in sys.stdin:
+    start, end, code, uri = line.rstrip("\n").split("\t", 3)
+    start_ts = datetime.fromisoformat(start.replace("Z", "+00:00"))
+    end_ts = datetime.fromisoformat(end.replace("Z", "+00:00"))
+    print(f"{int((end_ts - start_ts).total_seconds() * 1000)}\t{code}\t{uri}")' \
+  | sort -rn | head -20
 
-# Check active websocket connections
+# Check established TCP connections to a Rancher pod
 kubectl exec -n cattle-system \
-  $(kubectl get pod -n cattle-system -l app=rancher -o name | head -1) \
-  -- netstat -an | grep ESTABLISHED | wc -l
+  $(kubectl get pod -n cattle-system -l app=rancher -o name | head -n 1) \
+  -- sh -c 'ss -Htan state established | wc -l'
 ```
 
 ## Step 2: Enable Rancher API Caching
 
 ```bash
-# Rancher caches some resources in memory
-# Increase Norman cache size via environment variables
+# Rancher can use SQLite-backed caching for Server-Side Pagination.
+# In Rancher v2.12+ this is enabled by default and controlled by the
+# ui-sql-cache feature flag.
 
 # Edit Rancher deployment
 kubectl edit deployment rancher -n cattle-system
 
-# Add these environment variables to increase cache sizes
+# Add these environment variables to set the default feature value explicitly
 env:
-  - name: CATTLE_SERVER_URL
-    value: "https://rancher.example.com"
-  # Increase Steve (API v3) cache
-  - name: CATTLE_STEVE_CACHE_SIZE
-    value: "500"
-  # Increase Norman cache
-  - name: CATTLE_NORMAN_CACHE_SIZE
-    value: "500"
+  - name: CATTLE_FEATURES
+    value: "ui-sql-cache=true"
+  # Optional: encrypt cached objects written to disk
+  - name: CATTLE_ENCRYPT_CACHE_ALL
+    value: "true"
 ```
 
 ## Step 3: Use API Pagination Effectively
@@ -69,40 +75,38 @@ env:
 curl -H "Authorization: Bearer $TOKEN" \
   "https://rancher.example.com/v3/pods"
 
-# Good: use pagination
+# Good: follow the pagination.next link Rancher returns
 PAGE_SIZE=100
-MARKER=""
+NEXT_URL="https://rancher.example.com/v3/pods?limit=$PAGE_SIZE"
 
-while true; do
+while [ -n "$NEXT_URL" ]; do
   RESPONSE=$(curl -s \
     -H "Authorization: Bearer $TOKEN" \
-    "https://rancher.example.com/v3/pods?limit=$PAGE_SIZE&marker=$MARKER")
+    "$NEXT_URL")
 
-  echo $RESPONSE | jq '.data[].metadata.name'
+  echo "$RESPONSE" | jq '.data | length'
 
-  MARKER=$(echo $RESPONSE | jq -r '.pagination.next // empty' | grep -oP 'marker=\K[^&]+')
-  [ -z "$MARKER" ] && break
+  NEXT_URL=$(echo "$RESPONSE" | jq -r '.pagination.next // empty')
 done
 ```
 
 ## Step 4: Filter API Requests
 
 ```bash
-# Use label selectors and field selectors to reduce response size
+# Use server-side filters to reduce response size
 
-# Filter by namespace
+# Filter with Steve's server-side filter syntax
 curl -H "Authorization: Bearer $TOKEN" \
-  "https://rancher.example.com/v3/namespaces?projectId=c-xxxxx:p-xxxxx"
+  "https://rancher.example.com/v1/pods?filter=metadata.namespace=production"
 
-# Filter by labels
+# Exact match on pod name
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://rancher.example.com/v1/pods?filter=metadata.name='myapp-abc123'"
+
+# Filter through the Kubernetes proxy with label and field selectors
 curl -H "Authorization: Bearer $TOKEN" \
   "https://rancher.example.com/k8s/clusters/c-xxxxx/api/v1/pods?\
 labelSelector=app=myapp&fieldSelector=status.phase=Running"
-
-# Use sparse fieldsets to reduce payload
-curl -H "Authorization: Bearer $TOKEN" \
-  "https://rancher.example.com/v3/clusters" | \
-  jq '[.data[] | {id, name, state: .state}]'
 ```
 
 ## Step 5: Configure Connection Keep-Alive
@@ -111,6 +115,8 @@ curl -H "Authorization: Bearer $TOKEN" \
 # Python client with connection pooling
 import requests
 from requests.adapters import HTTPAdapter
+
+token = "your-api-token"
 
 session = requests.Session()
 adapter = HTTPAdapter(
@@ -123,7 +129,9 @@ session.headers.update({'Authorization': f'Bearer {token}'})
 
 # Reuse the session for multiple requests
 # This avoids TLS handshake overhead
-clusters = session.get('https://rancher.example.com/v3/clusters').json()
+response = session.get('https://rancher.example.com/v3/clusters', timeout=30)
+response.raise_for_status()
+clusters = response.json()['data']
 ```
 
 ## Step 6: Use Watch for Real-Time Updates
@@ -132,12 +140,11 @@ clusters = session.get('https://rancher.example.com/v3/clusters').json()
 # Instead of polling, use watch for real-time updates
 # This reduces API load significantly
 
-# Watch cluster state changes
+# Watch pod changes through Rancher's Kubernetes proxy
 curl -N -H "Authorization: Bearer $TOKEN" \
-  "https://rancher.example.com/v3/clusters?watch=true" | \
-  while read line; do
-    echo $line | jq -r 'select(.type == "changed") | "\(.data.name): \(.data.state)"'
-  done
+  "https://rancher.example.com/k8s/clusters/c-xxxxx/api/v1/namespaces/production/pods?watch=true&labelSelector=app=myapp" | \
+  jq -r 'select(.type == "ADDED" or .type == "MODIFIED") |
+    "\(.type) \(.object.metadata.name): \(.object.status.phase)"'
 
 # Use kubectl watch for managed clusters
 kubectl get pods -n production -w --context=rancher-production
@@ -148,7 +155,6 @@ kubectl get pods -n production -w --context=rancher-production
 ```python
 # Cache API responses locally with TTL
 import time
-from functools import lru_cache
 import requests
 
 CACHE_TTL = 60  # 60 seconds
@@ -169,7 +175,8 @@ class RancherClient:
            now - self._cache_time.get(cache_key, 0) < CACHE_TTL:
             return self._cluster_cache[cache_key]
 
-        response = self.session.get(f'{self.url}/v3/clusters')
+        response = self.session.get(f'{self.url}/v3/clusters', timeout=30)
+        response.raise_for_status()
         self._cluster_cache[cache_key] = response.json()['data']
         self._cache_time[cache_key] = now
         return self._cluster_cache[cache_key]
@@ -190,19 +197,21 @@ spec:
       rules:
         - alert: RancherAPIHighLatency
           expr: |
-            histogram_quantile(0.99,
-              rate(rancher_api_request_duration_seconds_bucket[5m])
-            ) > 2
+            (
+              sum(rate(steve_api_request_time_sum{resource!="subscribe"}[5m]))
+              /
+              sum(rate(steve_api_request_time_count{resource!="subscribe"}[5m]))
+            ) > 2000
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "Rancher API p99 latency > 2 seconds"
+            summary: "Rancher API average request time > 2 seconds"
 
         - alert: RancherAPIHighErrorRate
           expr: |
-            rate(rancher_api_request_total{code=~"5.."}[5m]) /
-            rate(rancher_api_request_total[5m]) > 0.05
+            sum(rate(steve_api_total_requests{code=~"5.."}[5m])) /
+            clamp_min(sum(rate(steve_api_total_requests[5m])), 1) > 0.05
           for: 5m
           labels:
             severity: critical
@@ -212,4 +221,4 @@ spec:
 
 ## Conclusion
 
-Rancher API performance optimization is an iterative process. Start by identifying slow endpoints through audit log analysis, then apply targeted fixes: increase cache sizes, use proper pagination and filtering, implement connection pooling in clients, and leverage watch instead of polling for real-time monitoring. For automation and Terraform workflows, adding local client-side caching for rarely-changing resources like cluster metadata can significantly reduce API load and improve overall management performance.
+Rancher API performance optimization is an iterative process. Start by identifying slow endpoints through audit log analysis, then apply targeted fixes: verify SQLite-backed caching is enabled, use proper pagination and filtering, implement connection pooling in clients, and leverage watch instead of polling for real-time monitoring. For automation and Terraform workflows, adding local client-side caching for rarely-changing resources like cluster metadata can significantly reduce API load and improve overall management performance.
