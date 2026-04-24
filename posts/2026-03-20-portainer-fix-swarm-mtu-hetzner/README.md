@@ -8,13 +8,13 @@ Description: Learn how to diagnose and fix MTU-related networking issues in Dock
 
 ## Introduction
 
-Hetzner Cloud uses a network infrastructure where the default MTU for overlay networks can cause packet fragmentation, resulting in intermittent connectivity issues between Swarm services. Symptoms include services that can ping each other but fail on larger payloads, or services that work fine initially but fail under load. This guide explains the root cause and how to fix it.
+Hetzner Cloud private networking uses an MTU of 1450 bytes. If your Swarm nodes communicate over that private network and your overlay networks are still using Docker Swarm's default MTU of 1500, you can run into intermittent connectivity issues between services. Symptoms include services that can ping each other but fail on larger payloads, or services that work fine initially but fail under load. This guide explains the root cause and how to fix it.
 
 ## The Problem
 
-Hetzner Cloud's network interface has an MTU of 1450 bytes. Docker's default overlay network MTU is 1500 bytes. This mismatch means:
+Hetzner Cloud private network interfaces have an MTU of 1450 bytes, while Docker Swarm overlay networks use an MTU of 1500 by default. This mismatch means:
 
-1. Packets larger than 1450 bytes get fragmented at the Hetzner network level
+1. Packets larger than 1450 bytes can be dropped or fragmented on the path between Swarm nodes
 2. Many protocols and applications don't handle fragmentation well
 3. This causes intermittent failures for larger HTTP requests, database queries, or API calls
 
@@ -22,59 +22,45 @@ Hetzner Cloud's network interface has an MTU of 1450 bytes. Docker's default ove
 
 - Services can reach each other intermittently
 - Small requests succeed, large requests fail
-- Kubernetes pods or Swarm services timeout randomly
+- Containers or Swarm services timeout randomly
 - `ping` works but `curl` fails with large responses
 - gRPC connections drop unexpectedly
 
 ## Diagnosis
 
 ```bash
-# Check current MTU on the network interface
-
-ip link show eth0
-# Look for: mtu 1450
+# Check current MTU on the interface used for Swarm traffic
+ip addr
+# Look for the private interface (for example ens10) and note mtu 1450
 
 # Check overlay network MTU
-docker network inspect ingress --format '{{.Options}}'
+docker network inspect ingress --format '{{json .Options}}'
 
 # Test with PMTU discovery
-ping -M do -s 1472 <remote-host>   # 1472 + 28 byte IP/ICMP header = 1500
-ping -M do -s 1422 <remote-host>   # 1422 + 28 = 1450 (Hetzner limit)
+ping -c 1 -M do -s 1422 <remote-private-ip>   # 1422 + 28 byte IP/ICMP header = 1450
+ping -c 1 -M do -s 1423 <remote-private-ip>   # 1423 + 28 = 1451, above Hetzner's private-network MTU
 
-# If the 1472 ping fails and 1422 succeeds, you have an MTU issue
+# If 1422 succeeds and 1423 fails, you have confirmed the 1450-byte path MTU
 ```
 
-## Step 1: Configure Docker Daemon MTU
+## Step 1: Know What the Docker Daemon MTU Setting Changes
 
-Set the MTU in the Docker daemon configuration on **ALL** Swarm nodes:
-
-```bash
-# On each node, edit or create /etc/docker/daemon.json
-sudo tee /etc/docker/daemon.json << 'EOF'
-{
-  "mtu": 1400
-}
-EOF
-
-# Restart Docker daemon
-sudo systemctl restart docker
-
-# Verify
-docker info | grep -i mtu
-```
-
-Setting to 1400 gives headroom below Hetzner's 1450 limit (50 bytes for overhead).
+The `mtu` setting in `/etc/docker/daemon.json` applies to Docker's default `bridge` network for standalone containers. It does **not** retroactively change existing Swarm overlay networks. For Swarm, the important fix is to recreate the ingress and user-defined overlay networks with the correct MTU in the next steps.
 
 ## Step 2: Recreate the Overlay Networks
 
 Existing overlay networks keep their old MTU. You must recreate them:
 
 ```bash
+# Run these commands on a swarm manager
+
 # List all overlay networks
 docker network ls --filter driver=overlay
 
 # Remove services using the networks first, then remove and recreate
 # WARNING: This is disruptive; schedule maintenance
+# Docker also recommends ensuring all nodes run the same Docker Engine version
+# before removing and recreating the ingress network
 
 # Remove the default ingress network
 docker network rm ingress
@@ -83,14 +69,14 @@ docker network rm ingress
 docker network create \
   --driver overlay \
   --ingress \
-  --opt com.docker.network.driver.mtu=1400 \
+  --opt com.docker.network.driver.mtu=1450 \
   ingress
 
 # Recreate custom overlay networks
 docker network rm my-overlay-net
 docker network create \
   --driver overlay \
-  --opt com.docker.network.driver.mtu=1400 \
+  --opt com.docker.network.driver.mtu=1450 \
   my-overlay-net
 ```
 
@@ -116,12 +102,12 @@ networks:
   app-net:
     driver: overlay
     driver_opts:
-      com.docker.network.driver.mtu: "1400"    # Set MTU for this network
+      com.docker.network.driver.mtu: "1450"    # Match Hetzner private-network MTU
 ```
 
 ## Step 4: Configure MTU for New Swarm Stacks in Portainer
 
-When deploying stacks via Portainer, include the MTU setting in your Compose file networks section. Portainer passes these options to the Docker Engine when creating networks.
+When deploying stacks via Portainer on Docker Swarm, set the MTU in the Compose file's `networks` section. Portainer deploys Swarm stacks using `docker stack deploy`, so the network definition in the stack file is where you set the MTU for new overlay networks.
 
 1. Open your stack in Portainer
 2. Edit the Compose file to add MTU driver options to each overlay network
@@ -129,31 +115,33 @@ When deploying stacks via Portainer, include the MTU setting in your Compose fil
 
 ## Step 5: Configure Docker Bridge Network MTU
 
-Also fix the bridge network for standalone containers:
+If you also run standalone containers on Docker's default `bridge` network, align that network separately:
 
-```json
-// /etc/docker/daemon.json
+```bash
+sudo tee /etc/docker/daemon.json << 'EOF'
 {
-  "mtu": 1400,
-  "bip": "172.17.0.1/16"
+  "mtu": 1450
 }
+EOF
+
+sudo systemctl restart docker
 ```
 
 ## Step 6: Verify the Fix
 
 ```bash
 # Check new MTU on overlay network
-docker network inspect ingress --format '{{.Options}}'
-# Should show: map[com.docker.network.driver.mtu:1400]
+docker network inspect ingress --format '{{json .Options}}'
+# Should show: {"com.docker.network.driver.mtu":"1450"}
 
 # Test connectivity with large packets between services
 # From inside a container:
-ping -M do -s 1372 other-service    # 1372 + 28 = 1400
+ping -c 1 -M do -s 1422 other-service    # 1422 + 28 = 1450
 ```
 
 ## Step 7: Automate MTU Configuration with Cloud Init
 
-For new Hetzner servers that will join the Swarm, configure MTU automatically:
+For new Hetzner servers that will join the Swarm, you can preconfigure the default bridge MTU automatically. Swarm overlay networks still need `com.docker.network.driver.mtu: 1450` when you create them:
 
 ```yaml
 # cloud-init.yml for new Hetzner VMs
@@ -162,7 +150,7 @@ write_files:
   - path: /etc/docker/daemon.json
     content: |
       {
-        "mtu": 1400,
+        "mtu": 1450,
         "log-driver": "json-file",
         "log-opts": {
           "max-size": "10m",
@@ -176,31 +164,19 @@ runcmd:
 
 ## Other Cloud Providers with MTU Issues
 
-Similar issues occur on other providers:
-
-| Provider | Network MTU | Recommended Docker MTU |
-|----------|------------|----------------------|
-| Hetzner Cloud | 1450 | 1400 |
-| DigitalOcean VPC | 1500 | 1400 |
-| AWS VPC | 9001 (jumbo) | 1500 |
-| Vultr | 1500 | 1400 |
-| Linode | 1500 | 1400 |
-
-For AWS, the default 1500 usually works unless using VPN tunnels.
+Similar issues can occur on any provider when the path MTU between Swarm nodes is lower than the MTU configured on the overlay networks. Check the actual interface MTU on the nodes you use for Swarm traffic instead of assuming one provider-wide value.
 
 ## Alternative: Use a Private Network
 
-Hetzner supports private networks with configurable MTU. Create a private network with MTU 1450 and connect your VMs to it:
+Hetzner private networks are a good option for Swarm node-to-node communication. Attach all nodes to the same private network and use private IPs for Swarm traffic. Hetzner private interfaces use MTU 1450, so set your Swarm overlay networks to 1450 as shown above:
 
 ```bash
-# In the Hetzner Cloud Console:
-# 1. Create a Network with custom MTU
-# 2. Attach all Swarm nodes to the private network
-# 3. Use private IPs for Swarm communication
-docker swarm init --advertise-addr <private-ip>
-docker swarm join --token ... <manager-private-ip>:2377
+# After attaching each node to the same Hetzner private network,
+# use private IPs for Swarm control and data traffic
+docker swarm init --advertise-addr <private-ip> --data-path-addr <private-ip>
+docker swarm join --token ... --advertise-addr <private-ip> --data-path-addr <private-ip> <manager-private-ip>:2377
 ```
 
 ## Conclusion
 
-MTU mismatches are a common but easily overlooked cause of intermittent networking issues in Docker Swarm on Hetzner. The fix requires setting the Docker daemon MTU to a safe value (1400) on all nodes and recreating overlay networks with the correct MTU. Once configured, your Swarm services will have reliable networking for all payload sizes.
+MTU mismatches are a common but easily overlooked cause of intermittent networking issues in Docker Swarm on Hetzner. If your swarm uses Hetzner private networking, the core fix is to recreate the ingress and user-defined overlay networks with MTU `1450` and to keep that value in your stack definitions going forward. If you also run standalone containers on Docker's default bridge network, align the daemon MTU there as well. Once configured, your Swarm services will have reliable networking for all payload sizes.
