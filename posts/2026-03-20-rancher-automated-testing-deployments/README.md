@@ -76,18 +76,17 @@ run_test() {
 
 # Test 1: Nodes are ready
 run_test "All nodes ready" \
-  "kubectl --kubeconfig=${KUBECONFIG} get nodes | grep -v NotReady | grep Ready"
+  "kubectl --kubeconfig=${KUBECONFIG} wait --for=condition=Ready nodes --all --timeout=120s"
 
 # Test 2: Core DNS is working
 run_test "CoreDNS resolves kubernetes.default" \
-  "kubectl --kubeconfig=${KUBECONFIG} run dns-test --image=busybox --restart=Never --rm -it -- nslookup kubernetes.default"
+  "kubectl --kubeconfig=${KUBECONFIG} run dns-test --image=busybox --restart=Never --rm -i --command -- nslookup kubernetes.default"
 
 # Test 3: Can create and delete a pod
 kubectl --kubeconfig=${KUBECONFIG} run test-pod \
   --image=nginx:latest --restart=Never > /dev/null 2>&1
-sleep 10
 run_test "Pod scheduling works" \
-  "kubectl --kubeconfig=${KUBECONFIG} get pod test-pod -o jsonpath='{.status.phase}' | grep Running"
+  "kubectl --kubeconfig=${KUBECONFIG} wait --for=condition=Ready pod/test-pod --timeout=120s"
 kubectl --kubeconfig=${KUBECONFIG} delete pod test-pod > /dev/null 2>&1
 
 # Test 4: Storage provisioner works
@@ -103,12 +102,11 @@ spec:
       storage: 1Gi
 EOF
 
-sleep 15
 run_test "Storage provisioner works" \
-  "kubectl --kubeconfig=${KUBECONFIG} get pvc smoke-test-pvc -o jsonpath='{.status.phase}' | grep Bound"
+  "kubectl --kubeconfig=${KUBECONFIG} wait --for=jsonpath='{.status.phase}'=Bound pvc/smoke-test-pvc --timeout=120s"
 kubectl --kubeconfig=${KUBECONFIG} delete pvc smoke-test-pvc > /dev/null 2>&1
 
-# Test 5: Load balancer service creation
+# Test 5: ClusterIP service creation
 run_test "Service creation works" \
   "kubectl --kubeconfig=${KUBECONFIG} create service clusterip test-svc --tcp=80:80 --dry-run=server"
 
@@ -144,7 +142,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Create Kind cluster
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.14.0
         with:
           cluster_name: test-cluster
           config: .kind/cluster-config.yaml
@@ -152,11 +150,11 @@ jobs:
       - name: Install dependencies
         run: |
           # Install cert-manager
-          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
-          kubectl wait --for=condition=ready pod -l app=cert-manager -n cert-manager --timeout=120s
+          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
+          kubectl wait --for=condition=Available deployment --all -n cert-manager --timeout=120s
 
-          # Install Longhorn (or use local-path for testing)
-          kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+          # Install local-path provisioner for dynamic PVCs in Kind
+          kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.35/deploy/local-path-storage.yaml
 
       - name: Deploy application
         run: |
@@ -218,6 +216,11 @@ def validate_deployment(namespace: str, deployment_name: str, timeout: int = 300
 
 def run_post_deploy_tests(namespace: str):
     """Run a test job after deployment"""
+    subprocess.run(
+        ['kubectl', 'delete', 'job', 'post-deploy-test', '-n', namespace, '--ignore-not-found'],
+        check=True
+    )
+
     test_job = f"""
 apiVersion: batch/v1
 kind: Job
@@ -270,22 +273,25 @@ if __name__ == '__main__':
 Test Fleet bundles before applying to production clusters:
 
 ```yaml
-# fleet.yaml - Add test targets for validation
+# fleet.yaml - Configure staged validation rollouts
 defaultNamespace: testing
 
-targets:
-  # Test on a canary cluster first
-  - name: canary
-    clusterSelector:
-      matchLabels:
-        fleet-role: canary
-  # Then all production clusters
-  - name: production
-    clusterSelector:
-      matchLabels:
-        env: production
+rolloutStrategy:
+  maxUnavailable: 0
+  maxUnavailablePartitions: 0
+  partitions:
+    # Test on a canary cluster first
+    - name: canary
+      clusterSelector:
+        matchLabels:
+          fleet-role: canary
+    # Then all production clusters
+    - name: production
+      clusterSelector:
+        matchLabels:
+          env: production
 ```
 
 ## Conclusion
 
-Automated testing for Rancher deployments should cover multiple layers: Helm chart tests validate chart correctness, smoke tests verify cluster health after provisioning, integration tests validate application behavior in real clusters, and deployment validation confirms rollouts succeed. Kind provides fast, ephemeral test environments for CI/CD pipelines, while Rancher Fleet canary deployments provide staged rollouts with validation gates. Invest in building this testing infrastructure early - the time saved debugging production issues will far outweigh the implementation cost.
+Automated testing for Rancher deployments should cover multiple layers: Helm chart tests validate chart correctness, smoke tests verify cluster health after provisioning, integration tests validate application behavior in real clusters, and deployment validation confirms rollouts succeed. Kind provides fast, ephemeral test environments for CI/CD pipelines, while Rancher Fleet rollout partitions provide staged rollouts gated by BundleDeployment readiness. Invest in building this testing infrastructure early - the time saved debugging production issues will far outweigh the implementation cost.
