@@ -1,50 +1,54 @@
-# Portainer vs Caprover: PaaS Comparison - Paas
+# Portainer vs CapRover: PaaS Comparison - Paas
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Caprover, PaaS, Docker, Self-Hosted, Comparison, Deployment
+Tags: Portainer, CapRover, PaaS, Docker, Self-Hosted, Comparison, Deployment
 
-Description: Compare Portainer and Caprover for self-hosted application deployment, examining their feature sets for both simple app hosting and complex container infrastructure management.
+Description: Compare Portainer and CapRover for self-hosted application deployment, examining their feature sets for both simple app hosting and complex container infrastructure management.
 
 ---
 
-Caprover is a self-hosted PaaS that provides one-click app deployment, automatic HTTPS, Docker Swarm clustering, and a CLI. Portainer is a container management platform with deeper infrastructure control. Here's how they compare for typical deployment scenarios.
+CapRover is a self-hosted PaaS that provides one-click app deployment, automatic HTTPS, Docker Swarm clustering, and a CLI. Portainer is a container management platform with deeper infrastructure control. Here's how they compare for typical deployment scenarios.
 
 ## Overview
 
-| Feature | Portainer | Caprover |
+| Feature | Portainer | CapRover |
 |---------|-----------|----------|
-| One-click app templates | Basic | Rich one-click apps |
-| Automatic HTTPS | No | Yes (Let's Encrypt) |
-| Git source deployment | Via webhooks | Yes (Captain Definition) |
-| Docker Swarm | Full management | Managed via PaaS layer |
-| Custom domains | No | Yes |
-| CLI support | Via API | Yes (caprover CLI) |
+| App templates | Built-in and custom templates | Built-in one-click apps |
+| App HTTPS automation | Manual | Yes (Let's Encrypt) |
+| Git source deployment | Partial (Git repository deployment) | Yes (CLI/CI with `captain-definition`) |
+| Docker Swarm | Full management | Uses Swarm under the hood |
+| App custom domains | Manual | Yes |
+| CLI support | No first-party CLI | Yes (`caprover` CLI) |
 | Kubernetes | Yes | No |
-| Multi-host | Yes | Via Swarm workers |
+| Multi-host | Yes | Yes (via Swarm cluster) |
 
-## Caprover's Developer Experience
+## CapRover's Developer Experience
 
-Caprover wraps Docker Swarm in a developer-friendly PaaS:
+CapRover wraps Docker Swarm in a developer-friendly PaaS:
 
 ```bash
-# Install Caprover CLI
+# Install the CapRover server
+docker run -p 80:80 -p 443:443 -p 3000:3000 \
+  -e ACCEPTED_TERMS=true \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /captain:/captain \
+  caprover/caprover
 
+# Install CapRover CLI
 npm install -g caprover
 
-# Login to your Caprover server
+# First-time server setup
+caprover serversetup
+
+# Log in to an existing CapRover server
 caprover login
 
 # Deploy an app from a directory with captain-definition
 caprover deploy -a myapp
-
-# One-line server setup
-docker run -p 80:80 -p 443:443 -p 3000:3000 \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  caprover/caprover
 ```
 
-The `captain-definition` file tells Caprover how to build:
+The `captain-definition` file tells CapRover how to build:
 
 ```json
 {
@@ -61,7 +65,7 @@ The `captain-definition` file tells Caprover how to build:
 
 ## Portainer's Infrastructure Control
 
-Portainer provides the underlying Docker Swarm primitives that Caprover abstracts:
+Portainer exposes more of the underlying Docker Swarm primitives that CapRover abstracts:
 
 ```yaml
 # Full Swarm service definition accessible in Portainer
@@ -81,9 +85,9 @@ services:
           - node.role == worker
 ```
 
-## When Caprover Is Better
+## When CapRover Is Better
 
-- Developers want git-push or one-click deployments
+- Developers want CLI- or one-click deployments
 - Automatic HTTPS and custom domains are required
 - You want a Heroku-like experience on your infrastructure
 - Teams without Docker expertise need to deploy apps
@@ -98,8 +102,8 @@ services:
 
 ## Can They Coexist?
 
-Some organizations use Caprover for simple web app deployments and Portainer to manage the underlying Docker Swarm infrastructure. Portainer's Swarm management can complement Caprover's app deployment layer.
+Some organizations use CapRover for simple web app deployments and Portainer to manage the underlying Docker Swarm infrastructure. Portainer's Swarm management can complement CapRover's app deployment layer.
 
 ## Summary
 
-Caprover is an excellent self-hosted PaaS for teams who want developer-friendly deployments with automatic HTTPS and app templates. Portainer is better when you need full infrastructure control, Kubernetes support, or multi-environment management. The choice depends on whether your primary user is a developer (Caprover) or an infrastructure operator (Portainer).
+CapRover is an excellent self-hosted PaaS for teams who want developer-friendly deployments with automatic HTTPS and app templates. Portainer is better when you need full infrastructure control, Kubernetes support, or multi-environment management. The choice depends on whether your primary user is a developer (CapRover) or an infrastructure operator (Portainer).
