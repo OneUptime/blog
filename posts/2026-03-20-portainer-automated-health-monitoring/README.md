@@ -15,13 +15,11 @@ Portainer provides visibility into container health, but proactive monitoring re
 ```yaml
 # docker-compose.yml with health checks
 
-version: '3.8'
-
 services:
   web:
     image: nginx:latest
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: ["CMD", "nginx", "-t"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -30,7 +28,7 @@ services:
   api:
     image: myapp-api:latest
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health | grep -q 'ok'"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -39,7 +37,7 @@ services:
   db:
     image: postgres:15
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d mydb"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -87,6 +85,7 @@ def health():
     except Exception as e:
         status["components"]["redis"] = f"unhealthy: {str(e)}"
         status["status"] = "degraded"
+        http_status = 503
 
     return jsonify(status), http_status
 ```
@@ -99,16 +98,16 @@ def health():
 
 import requests
 import time
-import json
 import logging
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-PORTAINER_URL = "https://portainer.example.com"
-API_KEY = "your-api-key"
-ENDPOINT_ID = 1
-SLACK_WEBHOOK = "https://hooks.slack.com/services/xxx"
+PORTAINER_URL = os.environ.get("PORTAINER_URL", "https://portainer.example.com").rstrip("/")
+API_KEY = os.environ.get("PORTAINER_API_KEY", "your-api-key")
+ENDPOINT_ID = os.environ.get("PORTAINER_ENDPOINT_ID", "1")
+SLACK_WEBHOOK = os.environ.get("SLACK_WEBHOOK", "https://hooks.slack.com/services/xxx")
 
 headers = {"X-API-Key": API_KEY}
 
@@ -118,8 +117,21 @@ def get_container_health():
     resp = requests.get(
         f"{PORTAINER_URL}/api/endpoints/{ENDPOINT_ID}/docker/containers/json",
         params={"all": "true"},
-        headers=headers
+        headers=headers,
+        timeout=10
     )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_container_details(container_id: str):
+    """Get detailed container state, including health status."""
+    resp = requests.get(
+        f"{PORTAINER_URL}/api/endpoints/{ENDPOINT_ID}/docker/containers/{container_id}/json",
+        headers=headers,
+        timeout=10
+    )
+    resp.raise_for_status()
     return resp.json()
 
 
@@ -129,9 +141,13 @@ def check_health():
     issues = []
 
     for c in containers:
-        name = c['Names'][0].replace('/', '')
-        state = c['State']
-        health = c.get('Health', {}).get('Status', 'none')
+        name = c['Names'][0].lstrip('/')
+        state = c['State'].lower()
+        health = 'none'
+
+        if state == 'running':
+            details = get_container_details(c['Id'])
+            health = details.get('State', {}).get('Health', {}).get('Status', 'none')
 
         if state == 'running' and health == 'unhealthy':
             issues.append({
@@ -161,7 +177,8 @@ def send_slack_alert(issues: list):
         emoji = ":red_circle:" if issue['severity'] == 'CRITICAL' else ":warning:"
         text += f"{emoji} `{issue['container']}`: {issue['state']} / {issue['health']}\n"
 
-    requests.post(SLACK_WEBHOOK, json={"text": text})
+    resp = requests.post(SLACK_WEBHOOK, json={"text": text}, timeout=10)
+    resp.raise_for_status()
     logger.warning(f"Alert sent for {len(issues)} issues")
 
 
@@ -179,8 +196,6 @@ if __name__ == '__main__':
 
 ```yaml
 # monitoring-stack.yml
-version: '3.8'
-
 services:
   health-monitor:
     image: python:3.11-slim
@@ -188,6 +203,7 @@ services:
     environment:
       PORTAINER_URL: https://portainer.example.com
       PORTAINER_API_KEY: ${PORTAINER_API_KEY}
+      PORTAINER_ENDPOINT_ID: ${PORTAINER_ENDPOINT_ID}
       SLACK_WEBHOOK: ${SLACK_WEBHOOK}
     command: >
       sh -c "pip install requests -q && python /app/health_monitor.py"
@@ -199,11 +215,9 @@ services:
 
 ```yaml
 # uptime-kuma-stack.yml - deploy alongside Portainer
-version: '3.8'
-
 services:
   uptime-kuma:
-    image: louislam/uptime-kuma:latest
+    image: louislam/uptime-kuma:2
     restart: unless-stopped
     ports:
       - "3001:3001"
