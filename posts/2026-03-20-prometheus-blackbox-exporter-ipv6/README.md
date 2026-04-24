@@ -13,14 +13,18 @@ The Prometheus Blackbox Exporter performs active probing of endpoints and export
 ```bash
 # Download and install
 
-wget https://github.com/prometheus/blackbox_exporter/releases/latest/download/blackbox_exporter-*.linux-amd64.tar.gz
-tar xzf blackbox_exporter-*.linux-amd64.tar.gz
-sudo mv blackbox_exporter /usr/local/bin/
+VERSION="0.28.0"
+wget "https://github.com/prometheus/blackbox_exporter/releases/download/v${VERSION}/blackbox_exporter-${VERSION}.linux-amd64.tar.gz"
+tar xzf "blackbox_exporter-${VERSION}.linux-amd64.tar.gz"
+sudo install -m 0755 "blackbox_exporter-${VERSION}.linux-amd64/blackbox_exporter" /usr/local/bin/blackbox_exporter
+sudo mkdir -p /etc/blackbox_exporter
 
-# Start with config file
+# Start after creating the config file in Step 2
 blackbox_exporter --config.file=/etc/blackbox_exporter/config.yml \
   --web.listen-address="[::]:9115"
 ```
+
+On Linux, ICMP probing also requires `CAP_NET_RAW`, an allowed `net.ipv4.ping_group_range`, or running the exporter as root.
 
 ## Step 2: Configure IPv6 Probing Modules
 
@@ -28,13 +32,13 @@ blackbox_exporter --config.file=/etc/blackbox_exporter/config.yml \
 # /etc/blackbox_exporter/config.yml - Blackbox Exporter with IPv6 modules
 modules:
 
-  # HTTP probe that prefers IPv6 (falls back to IPv4 if unavailable)
+  # HTTP probe that prefers IPv6 and can use IPv4 if no IPv6 address is available
   http_ipv6:
     prober: http
     timeout: 10s
     http:
       preferred_ip_protocol: "ip6"   # Prefer IPv6
-      ip_protocol_fallback: true     # Fall back to IPv4 if IPv6 fails
+      ip_protocol_fallback: true     # Use IPv4 if no IPv6 address is available
       valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
       valid_status_codes: [200]
       follow_redirects: true
@@ -64,17 +68,17 @@ modules:
       preferred_ip_protocol: "ip6"
       ip_protocol_fallback: false
 
-  # DNS AAAA record lookup (checks if a domain has AAAA records)
+  # DNS AAAA record lookup over IPv6 transport
   dns_aaaa:
     prober: dns
     timeout: 5s
     dns:
       transport_protocol: "tcp"
       preferred_ip_protocol: "ip6"
-      query_name: "{{ target }}"
+      query_name: "example.com"      # Domain to resolve; the probe target is the DNS resolver
       query_type: "AAAA"
       validate_answer_rrs:
-        fail_if_not_matches_regexp:
+        fail_if_none_matches_regexp:
           - ".*AAAA.*"
 ```
 
@@ -129,7 +133,7 @@ probe_success{job="blackbox-http-ipv6"}
 # HTTP response time for IPv6 targets
 probe_duration_seconds{job="blackbox-http-ipv6"}
 
-# Whether the probe used IPv6 (ip_proto=6)
+# IP protocol used by the probe (6 means IPv6)
 probe_ip_protocol{job="blackbox-http-ipv6"}
 
 # TLS certificate expiry for HTTPS IPv6 sites
