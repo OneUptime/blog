@@ -8,7 +8,7 @@ Description: Install and configure radvd on Linux to send IPv6 Router Advertisem
 
 ## Introduction
 
-`radvd` (Router Advertisement Daemon) is the standard tool on Linux for sending IPv6 Router Advertisement (RA) messages as defined in RFC 4861. These messages allow IPv6 clients on the local network to automatically configure their addresses without requiring a DHCPv6 server.
+`radvd` (Router Advertisement Daemon) is a common tool on Linux for sending IPv6 Router Advertisement (RA) messages as defined in RFC 4861. These messages allow IPv6 clients on the local network to automatically configure their addresses without requiring a DHCPv6 server. `radvd` only sends the advertisements; IPv6 forwarding and routing still need to be configured separately on the router.
 
 ## Installing radvd
 
@@ -36,24 +36,24 @@ interface eth1 {
     # Enable sending Router Advertisements
     AdvSendAdvert on;
 
-    # M flag: 0 = SLAAC only, 1 = use DHCPv6 for addresses
+    # M flag: advertise DHCPv6-managed address configuration
     AdvManagedFlag off;
 
-    # O flag: 0 = no other DHCPv6 config, 1 = use DHCPv6 for DNS etc.
+    # O flag: advertise other non-address DHCPv6 configuration such as DNS
     AdvOtherConfigFlag off;
 
-    # RA interval in seconds (send RA every 100s, minimum every 30s)
+    # RA interval bounds in seconds (between 30s and 100s)
     MinRtrAdvInterval 30;
     MaxRtrAdvInterval 100;
 
-    # Router lifetime: how long this router is valid (in seconds)
+    # Router lifetime: how long this router remains a default router (in seconds)
     AdvDefaultLifetime 1800;
 
     # Prefix to advertise for SLAAC
     prefix 2001:db8:1:1::/64 {
         AdvOnLink on;         # Prefix is directly reachable on this link
         AdvAutonomous on;     # Clients may form their own address from this prefix
-        AdvRouterAddr on;     # Include the router's own address in the RA
+        AdvRouterAddr off;    # Mobile IPv6 option; leave off for standard SLAAC
         AdvValidLifetime 86400;
         AdvPreferredLifetime 14400;
     };
@@ -95,20 +95,20 @@ ip -6 route show default
 
 ## Testing with rdisc6
 
-The `rdisc6` tool sends a Router Solicitation and captures the RA response:
+On a client on the same segment, the `rdisc6` tool sends a Router Solicitation and captures the RA response:
 
 ```bash
 # Install rdisc6 (part of ndisc6 package)
 sudo apt-get install ndisc6
 
-# Send a Router Solicitation on eth1 and display the RA response
-rdisc6 eth1
+# Send a Router Solicitation on the client interface and display the RA response
+sudo rdisc6 eth0
 ```
 
 Example output:
 
 ```text
-Soliciting ff02::2 (ff02::2) on eth1...
+Soliciting ff02::2 (ff02::2) on eth0...
 
 Hop limit                 :           64 (      0x40)
 Stateful address conf.    :           No
@@ -127,13 +127,13 @@ Retransmit time           :  unspecified (0x00000000)
 ## Reloading radvd After Configuration Changes
 
 ```bash
-# Send SIGHUP to radvd to reload its configuration without restarting
-sudo kill -HUP $(cat /var/run/radvd/radvd.pid)
-
-# Or use systemctl
+# Reload the configuration
 sudo systemctl reload radvd
+
+# Or send SIGHUP directly if using the default upstream PID file
+sudo kill -HUP "$(cat /var/run/radvd.pid)"
 ```
 
 ## Conclusion
 
-radvd is the essential daemon for IPv6 Router Advertisements on Linux. A basic configuration with one prefix block is sufficient for most single-subnet deployments. The M and O flags control whether clients should also use DHCPv6, and the prefix lifetime values control how long autoconfigured addresses remain valid. Once running, verify operation with `tcpdump` or `rdisc6` to confirm clients are receiving and acting on the advertisements.
+`radvd` is a common daemon for IPv6 Router Advertisements on Linux. A basic configuration with one prefix block is sufficient to advertise a single `/64` on a subnet, but `radvd` does not configure IPv6 forwarding or routing for you. The M and O flags control whether clients should also use DHCPv6, and the prefix lifetime values control how long SLAAC-derived addresses remain preferred or valid. Once running, verify operation with `tcpdump` or `rdisc6` to confirm clients are receiving and acting on the advertisements.
