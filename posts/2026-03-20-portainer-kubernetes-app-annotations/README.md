@@ -20,7 +20,7 @@ Kubernetes annotations are key-value metadata attached to resources for tooling 
 | Feature | Labels | Annotations |
 |---------|--------|-------------|
 | Selection/filtering | Yes | No |
-| Max value size | 63 chars | Unlimited |
+| Max value size | 63 chars | Can be large |
 | Use case | Grouping, selector | Metadata, tooling |
 | Example | `app: myapp` | `description: "..."` |
 
@@ -57,7 +57,6 @@ metadata:
     documentation: "https://wiki.company.com/api-docs"
 
     # Deployment metadata
-    deployment.kubernetes.io/revision: "5"
     kubernetes.io/change-cause: "Deploy v2.0.0: Add payment processing"
 
     # CI/CD metadata
@@ -71,11 +70,11 @@ spec:
     metadata:
       annotations:
         # Pod-level annotations (different from deployment annotations)
-        prometheus.io/scrape: "true"      # Tell Prometheus to scrape this pod
+        prometheus.io/scrape: "true"      # Common Prometheus scrape convention
         prometheus.io/port: "9090"
         prometheus.io/path: "/metrics"
 
-        # Sidecar injection (e.g., Istio, Linkerd)
+        # Sidecar injection (for example, Istio)
         sidecar.istio.io/inject: "true"
 
         # Vault secrets injection
@@ -93,7 +92,7 @@ spec:
 
 metadata:
   annotations:
-    prometheus.io/scrape: "true"    # Enable scraping
+    prometheus.io/scrape: "true"    # Common convention used by Prometheus relabeling
     prometheus.io/path: "/metrics"  # Metrics endpoint path
     prometheus.io/port: "8080"      # Metrics port
     prometheus.io/scheme: "http"    # HTTP or HTTPS
@@ -110,8 +109,9 @@ metadata:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-    nginx.ingress.kubernetes.io/rate-limit: "100"
-    nginx.ingress.kubernetes.io/rate-limit-burst-multiplier: "5"
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
     nginx.ingress.kubernetes.io/cors-allow-origin: "https://app.example.com"
     cert-manager.io/cluster-issuer: letsencrypt-prod
 ```
@@ -119,28 +119,30 @@ metadata:
 ### Cluster Autoscaler
 
 ```yaml
-metadata:
-  annotations:
-    # Safe to evict (for node scale-down)
-    cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+spec:
+  template:
+    metadata:
+      annotations:
+        # Safe to evict during node scale-down
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
 ```
 
-### Horizontal Pod Autoscaler
+### Custom Tooling Metadata
 
 ```yaml
 metadata:
   annotations:
-    # Custom metrics for HPA
-    hpa.autoscaling.io/custom-metric: "http_requests_per_second"
+    example.com/runbook: "https://wiki.company.com/runbooks/my-api"
+    example.com/team: "platform"
 ```
 
-### Fluentd/Logging Configuration
+### Logging Pipeline Metadata
 
 ```yaml
 metadata:
   annotations:
-    fluentd.io/parser: "json"          # Parse logs as JSON
-    fluentd.io/tag: "production.api"   # Custom log tag
+    logging.example.com/parser: "json"
+    logging.example.com/tag: "production.api"
 ```
 
 ### Linkerd Service Mesh
@@ -150,8 +152,8 @@ spec:
   template:
     metadata:
       annotations:
-        linkerd.io/inject: enabled
-        config.linkerd.io/proxy-cpu-request: "0.1"
+        linkerd.io/inject: "enabled"
+        config.linkerd.io/proxy-cpu-request: "100m"
         config.linkerd.io/proxy-memory-request: "20Mi"
 ```
 
@@ -161,12 +163,12 @@ Use annotations to track deployment history:
 
 ```bash
 # Set a change cause annotation
-kubectl annotate deployment my-api \
+kubectl annotate deployment my-api -n production \
   kubernetes.io/change-cause="Deploy v2.0.0: Add payment processing" \
   --overwrite
 
 # View rollout history with causes
-kubectl rollout history deployment/my-api
+kubectl rollout history deployment/my-api -n production
 # REVISION  CHANGE-CAUSE
 # 1         Deploy v1.0.0: Initial release
 # 2         Deploy v1.1.0: Add caching
@@ -185,19 +187,19 @@ kubectl get deployment my-api -n production \
 
 # Get all annotations as JSON
 kubectl get deployment my-api -n production \
-  -o jsonpath='{.metadata.annotations}' | python3 -m json.tool
+  -o jsonpath-as-json='{.metadata.annotations}' | python3 -m json.tool
 ```
 
 ## Step 6: Update Annotations
 
 ```bash
 # Add or update an annotation
-kubectl annotate deployment my-api \
+kubectl annotate deployment my-api -n production \
   version="v2.1.0" \
   --overwrite
 
 # Remove an annotation (add trailing dash)
-kubectl annotate deployment my-api \
+kubectl annotate deployment my-api -n production \
   description-
 ```
 
@@ -217,13 +219,12 @@ metadata:
     external-dns.alpha.kubernetes.io/hostname: api.example.com
     external-dns.alpha.kubernetes.io/ttl: "60"
 
-# PVC annotations
+# Pod annotations for Velero file-system backup
 apiVersion: v1
-kind: PersistentVolumeClaim
+kind: Pod
 metadata:
   annotations:
-    volume.beta.kubernetes.io/storage-provisioner: kubernetes.io/aws-ebs
-    backup.velero.io/backup-volumes: "data"   # Tell Velero to backup this volume
+    backup.velero.io/backup-volumes: "data"
 ```
 
 ## Conclusion
