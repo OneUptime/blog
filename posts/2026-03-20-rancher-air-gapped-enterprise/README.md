@@ -87,7 +87,7 @@ docker login ${REGISTRY_SERVER} \
 # Load and push images to Harbor
 ./rancher-load-images.sh \
   --image-list rancher-images.txt \
-  --registry ${REGISTRY_SERVER}/${REGISTRY_PROJECT} \
+  --registry ${REGISTRY_SERVER} \
   --images ${IMAGES_TAR}
 
 echo "All Rancher images loaded into ${REGISTRY_SERVER}/${REGISTRY_PROJECT}"
@@ -96,36 +96,43 @@ echo "All Rancher images loaded into ${REGISTRY_SERVER}/${REGISTRY_PROJECT}"
 ## Step 4: Set Up Internal Helm Repository
 
 ```bash
-# Download Rancher Helm charts on internet-connected machine
+# Download Rancher Helm chart on internet-connected machine
 helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+helm repo update
 helm pull rancher-stable/rancher --version 2.8.3
-helm pull rancher-stable/rancher-backup --version 102.0.0
 
-# Transfer chart tarballs to air-gapped environment
+# Transfer chart tarball to air-gapped environment
 # Then host with a simple HTTP server or use Nexus/Harbor
 
 # On air-gapped: Host Helm charts using Harbor OCI or Nexus
+helm registry login harbor.internal.company.com \
+  --username admin \
+  --password "${HARBOR_PASSWORD}"
+
 helm push rancher-2.8.3.tgz oci://harbor.internal.company.com/helm-charts/
-helm push rancher-backup-102.0.0.tgz oci://harbor.internal.company.com/helm-charts/
 ```
 
 ## Step 5: Install RKE2 Air-Gapped
 
 ```bash
 # Download RKE2 air-gap bundle on internet machine
+mkdir -p /root/rke2-artifacts
+cd /root/rke2-artifacts
+
 curl -O https://github.com/rancher/rke2/releases/download/v1.28.6%2Brke2r1/rke2-images.linux-amd64.tar.zst
 curl -O https://github.com/rancher/rke2/releases/download/v1.28.6%2Brke2r1/rke2.linux-amd64.tar.gz
 curl -O https://github.com/rancher/rke2/releases/download/v1.28.6%2Brke2r1/sha256sum-amd64.txt
+curl -sfL https://get.rke2.io --output install.sh
 
 # Transfer to air-gapped nodes, then install:
 # On each air-gapped node:
-mkdir -p /var/lib/rancher/rke2/agent/images/
-cp rke2-images.linux-amd64.tar.zst /var/lib/rancher/rke2/agent/images/
+mkdir -p /root/rke2-artifacts
+cp install.sh rke2-images.linux-amd64.tar.zst \
+  rke2.linux-amd64.tar.gz sha256sum-amd64.txt /root/rke2-artifacts/
 
-# Install RKE2 without downloading
-INSTALL_RKE2_ARTIFACT_PATH=/path/to/rke2-artifacts \
-INSTALL_RKE2_SKIP_DOWNLOAD=true \
-./install.sh
+# Install RKE2 using the pre-downloaded local artifacts
+INSTALL_RKE2_ARTIFACT_PATH=/root/rke2-artifacts \
+sh /root/rke2-artifacts/install.sh
 ```
 
 ## Step 6: Configure Private Registry for RKE2
@@ -153,15 +160,19 @@ configs:
   "harbor.internal.company.com":
     auth:
       username: robot-rke2
-      password: "${HARBOR_ROBOT_TOKEN}"
+      password: "<HARBOR_ROBOT_TOKEN>"
     tls:
-      caFile: /etc/rancher/rke2/harbor-ca.crt
+      ca_file: /etc/rancher/rke2/harbor-ca.crt
 ```
 
 ## Step 7: Install Rancher from Internal Registry
 
 ```bash
 # Install Rancher using images from private registry
+helm registry login harbor.internal.company.com \
+  --username admin \
+  --password "${HARBOR_PASSWORD}"
+
 helm install rancher oci://harbor.internal.company.com/helm-charts/rancher \
   --version 2.8.3 \
   --namespace cattle-system \
@@ -186,7 +197,7 @@ spec:
   repo: https://gitea.internal.company.com/infra/k8s-configs
   branch: main
   # CA certificate for internal Git server TLS
-  caBundle: "${INTERNAL_CA_BUNDLE_BASE64}"
+  caBundle: "<BASE64_ENCODED_CA_PEM>"
   clientSecretName: gitea-credentials
   targets:
     - name: all-clusters
@@ -216,10 +227,14 @@ curl -O https://github.com/rancher/rancher/releases/download/${NEW_VERSION}/ranc
 # Step 3: Load new images into Harbor
 ./rancher-load-images.sh \
   --image-list rancher-images.txt \
-  --registry harbor.internal.company.com/rancher \
+  --registry harbor.internal.company.com \
   --images rancher-${NEW_VERSION}.tar.gz
 
 # Step 4: Update Rancher
+helm registry login harbor.internal.company.com \
+  --username admin \
+  --password "${HARBOR_PASSWORD}"
+
 helm upgrade rancher oci://harbor.internal.company.com/helm-charts/rancher \
   --version ${NEW_VERSION#v} \
   --namespace cattle-system \
@@ -237,15 +252,16 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: require-internal-registry
 spec:
-  module: registry://harbor.internal.company.com/kubewarden/allowed-image-repositories:v0.1.0
+  module: registry://harbor.internal.company.com/kubewarden/trusted-repos-policy:v2.0.4
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
       resources: ["pods"]
       operations: ["CREATE"]
   settings:
-    allowedRegistries:
-      - "harbor.internal.company.com"
+    registries:
+      allow:
+        - "harbor.internal.company.com"
 ```
 
 ## Conclusion
