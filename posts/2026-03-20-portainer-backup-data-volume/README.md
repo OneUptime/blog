@@ -34,7 +34,7 @@ mkdir -p /opt/backups/portainer
 docker run --rm \
   -v portainer_data:/data \
   -v /opt/backups/portainer:/backup \
-  alpine tar czf "/backup/portainer-$(date +%Y%m%d-%H%M%S).tar.gz" -C /data .
+  alpine tar czf "/backup/$(basename "$BACKUP_FILE")" -C /data .
 
 # Start Portainer again
 docker start portainer
@@ -45,11 +45,11 @@ ls -lh /opt/backups/portainer/
 
 ## Step 2: Online Backup (Without Stopping)
 
-For minimal downtime, backup with Portainer running (slight risk of inconsistency):
+For minimal downtime, you can copy the volume with Portainer running, but treat this as a best-effort filesystem copy rather than a guaranteed application-consistent backup. For a consistent live backup, prefer Step 4:
 
 ```bash
-# Online backup - acceptable for most use cases
-# BoltDB uses MVCC, so reads during writes are generally safe
+# Best-effort online copy - Portainer stays running
+mkdir -p /opt/backups/portainer
 
 docker run --rm \
   -v portainer_data:/data:ro \
@@ -65,7 +65,9 @@ ls -lh /opt/backups/portainer/
 Also export stack definitions separately as individual compose files:
 
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
+PORTAINER_URL="https://localhost:9443"
+
+TOKEN=$(curl -k -s -X POST "$PORTAINER_URL/api/auth" \
   -H "Content-Type: application/json" \
   -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
 
@@ -73,8 +75,8 @@ mkdir -p /opt/backups/portainer-stacks
 mkdir -p /opt/backups/portainer-stacks/$(date +%Y%m%d)
 
 # Get all stacks
-STACKS=$(curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/stacks)
+STACKS=$(curl -k -s -H "Authorization: Bearer $TOKEN" \
+  "$PORTAINER_URL/api/stacks")
 
 # Export each stack
 echo "$STACKS" | jq -c '.[]' | while read -r stack; do
@@ -82,11 +84,11 @@ echo "$STACKS" | jq -c '.[]' | while read -r stack; do
   STACK_NAME=$(echo "$stack" | jq -r '.Name')
 
   # Get compose file content
-  CONTENT=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "http://localhost:9000/api/stacks/$STACK_ID/file" | jq -r '.StackFileContent')
+  CONTENT=$(curl -k -s -H "Authorization: Bearer $TOKEN" \
+    "$PORTAINER_URL/api/stacks/$STACK_ID/file" | jq -r '.StackFileContent')
 
   if [ "$CONTENT" != "null" ] && [ -n "$CONTENT" ]; then
-    echo "$CONTENT" > "/opt/backups/portainer-stacks/$(date +%Y%m%d)/$STACK_NAME.yml"
+    printf '%s\n' "$CONTENT" > "/opt/backups/portainer-stacks/$(date +%Y%m%d)/$STACK_NAME.yml"
     echo "Exported: $STACK_NAME"
   fi
 done
@@ -98,16 +100,19 @@ ls -la /opt/backups/portainer-stacks/$(date +%Y%m%d)/
 ## Step 4: Use Portainer's Built-in Backup API
 
 ```bash
-# Portainer Business Edition has a built-in backup endpoint
-TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
+# Portainer exposes a built-in backup endpoint in both CE and BE
+mkdir -p /opt/backups/portainer
+PORTAINER_URL="https://localhost:9443"
+
+TOKEN=$(curl -k -s -X POST "$PORTAINER_URL/api/auth" \
   -H "Content-Type: application/json" \
   -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
 
 # Download backup file via API
-curl -X POST \
+curl -k -sS -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  http://localhost:9000/api/backup \
+  "$PORTAINER_URL/api/backup" \
   -d '{"Password": "backup-encryption-password"}' \
   --output "/opt/backups/portainer/portainer-api-backup-$(date +%Y%m%d).tar.gz"
 
@@ -130,6 +135,15 @@ log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
+cleanup() {
+  if docker inspect -f '{{.State.Running}}' portainer 2>/dev/null | grep -qx 'false'; then
+    log "Starting Portainer..."
+    docker start portainer >/dev/null
+  fi
+}
+
+trap cleanup EXIT
+
 BACKUP_FILE="$BACKUP_DIR/portainer-$(date +%Y%m%d-%H%M%S).tar.gz"
 
 # Create backup directory
@@ -146,7 +160,7 @@ log "Creating backup: $BACKUP_FILE"
 docker run --rm \
   -v portainer_data:/data \
   -v "$BACKUP_DIR:/backup" \
-  alpine tar czf "/backup/$(basename $BACKUP_FILE)" -C /data .
+  alpine tar czf "/backup/$(basename "$BACKUP_FILE")" -C /data .
 
 # Start Portainer
 log "Starting Portainer..."
