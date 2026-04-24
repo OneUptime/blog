@@ -42,20 +42,16 @@ inet_protocols = ipv4
 
 # --- TLS: use Let's Encrypt certificate ---
 # For incoming connections (clients connecting to your server)
-smtpd_tls_cert_file = /etc/letsencrypt/live/mail.example.com/fullchain.pem
-smtpd_tls_key_file  = /etc/letsencrypt/live/mail.example.com/privkey.pem
-smtpd_tls_CAfile    = /etc/letsencrypt/live/mail.example.com/chain.pem
-smtpd_use_tls = yes
+smtpd_tls_cert_file = /etc/postfix/ssl/fullchain.pem
+smtpd_tls_key_file  = /etc/postfix/ssl/privkey.pem
 smtpd_tls_security_level = may       # Offer TLS; don't require it for port 25
-smtpd_tls_protocols = !SSLv2,!SSLv3,!TLSv1,!TLSv1.1
+smtpd_tls_protocols = >=TLSv1.2, <=TLSv1.3
 smtpd_tls_loglevel = 1
 
 # --- TLS: for outgoing connections (Postfix → other mail servers) ---
-smtp_tls_cert_file = /etc/letsencrypt/live/mail.example.com/fullchain.pem
-smtp_tls_key_file  = /etc/letsencrypt/live/mail.example.com/privkey.pem
 smtp_tls_CAfile    = /etc/ssl/certs/ca-certificates.crt
 smtp_tls_security_level = may        # Use TLS when available
-smtp_tls_protocols = !SSLv2,!SSLv3,!TLSv1,!TLSv1.1
+smtp_tls_protocols = >=TLSv1.2, <=TLSv1.3
 smtp_tls_loglevel = 1
 
 # TLS session cache (improves performance)
@@ -65,22 +61,23 @@ smtp_tls_session_cache_database  = btree:${data_directory}/smtp_scache
 
 ## Granting Postfix Access to Let's Encrypt Files
 
-Let's Encrypt private keys are in `/etc/letsencrypt/live/`, which is only readable by root. Add Postfix to the group or adjust permissions.
+Let's Encrypt private keys should remain readable only by root. A deploy hook can copy the current certificate and key into a fixed path for Postfix after issuance or renewal.
 
 ```bash
-# Add the postfix user to the ssl-cert group (if it exists)
-usermod -aG ssl-cert postfix
+# Create a fixed location for Postfix TLS files
+install -d -m 755 /etc/postfix/ssl
 
-# Or use a deploy hook to copy certs to a Postfix-readable location
+# Use a deploy hook to copy certs into place after issuance/renewal
 cat > /etc/letsencrypt/renewal-hooks/deploy/postfix.sh << 'EOF'
 #!/bin/bash
-cp /etc/letsencrypt/live/mail.example.com/fullchain.pem /etc/postfix/ssl/
-cp /etc/letsencrypt/live/mail.example.com/privkey.pem   /etc/postfix/ssl/
-chown root:postfix /etc/postfix/ssl/*.pem
-chmod 640 /etc/postfix/ssl/*.pem
+install -m 644 -o root -g root /etc/letsencrypt/live/mail.example.com/fullchain.pem /etc/postfix/ssl/fullchain.pem
+install -m 600 -o root -g root /etc/letsencrypt/live/mail.example.com/privkey.pem   /etc/postfix/ssl/privkey.pem
 systemctl reload postfix
 EOF
 chmod +x /etc/letsencrypt/renewal-hooks/deploy/postfix.sh
+
+# Copy the current certificate and key into place now
+/etc/letsencrypt/renewal-hooks/deploy/postfix.sh
 ```
 
 ## Testing TLS
@@ -89,14 +86,14 @@ chmod +x /etc/letsencrypt/renewal-hooks/deploy/postfix.sh
 # Check Postfix config
 postfix check
 
-# Reload Postfix
-systemctl reload postfix
+# Restart Postfix (required after changing inet_protocols)
+systemctl restart postfix
 
 # Test TLS handshake on port 25
-openssl s_client -starttls smtp -connect mail.example.com:25
+openssl s_client -starttls smtp -connect mail.example.com:25 -servername mail.example.com
 
 # Verify certificate details
-openssl s_client -starttls smtp -connect mail.example.com:25 2>&1 | grep -E "subject|issuer|CN"
+openssl s_client -starttls smtp -connect mail.example.com:25 -servername mail.example.com 2>&1 | grep -E "subject|issuer|CN"
 ```
 
 ## Automatic Certificate Renewal
@@ -105,12 +102,16 @@ openssl s_client -starttls smtp -connect mail.example.com:25 2>&1 | grep -E "sub
 # Test renewal
 certbot renew --dry-run
 
-# The deploy hook will automatically reload Postfix after renewal
+# If you want to test the deploy hook too:
+# certbot renew --dry-run --run-deploy-hooks
+
+# The deploy hook will automatically reload Postfix after a successful renewal
 ```
 
 ## Key Takeaways
 
-- Use `smtpd_tls_cert_file` and `smtp_tls_cert_file` to configure TLS for both incoming and outgoing connections.
+- Use `smtpd_tls_cert_file` and `smtpd_tls_key_file` to configure the certificate Postfix presents for incoming SMTP TLS.
+- Use `smtp_tls_security_level = may` to enable opportunistic TLS for outgoing delivery; `smtp_tls_cert_file` and `smtp_tls_key_file` are only needed if a remote server requires a client certificate.
 - Use a deploy hook to copy certificates to a Postfix-readable location after renewal.
 - `smtpd_tls_security_level = may` offers TLS on port 25 without requiring it (interoperability).
-- Set `smtpd_tls_security_level = encrypt` on the submission port (587) to require TLS for client submissions.
+- Set `smtpd_tls_security_level = encrypt` on the submission service (port 587) to require TLS for client submissions.
