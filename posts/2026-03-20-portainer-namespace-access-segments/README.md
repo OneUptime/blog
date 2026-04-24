@@ -22,16 +22,16 @@ Namespace-based segmentation is the primary method for multi-tenancy in Kubernet
 ```text
 Portainer Team: backend-engineers
     → Kubernetes Namespace: backend
-    → Access level: Standard (can deploy)
+    → Portainer role: Standard User
     → Cannot see: frontend, operations, monitoring namespaces
 
 Portainer Team: frontend-engineers
     → Kubernetes Namespace: frontend
-    → Access level: Standard
+    → Portainer role: Standard User
 
 Portainer Team: platform-devops
     → All namespaces
-    → Access level: Environment Admin
+    → Portainer role: Environment Administrator
 ```
 
 ## Step 1: Create Namespaces
@@ -53,8 +53,8 @@ kubectl label namespace staging env=staging
 
 Or via Portainer UI:
 1. Select your Kubernetes environment.
-2. Go to **Namespaces** → **Add namespace**.
-3. Enter the namespace name and labels.
+2. Go to **Namespaces** → **Add with form**.
+3. Enter the namespace name.
 4. Configure resource quotas if desired.
 
 ## Step 2: Assign Namespaces to Teams in Portainer
@@ -62,48 +62,50 @@ Or via Portainer UI:
 ### Via Portainer UI
 
 1. Go to **Namespaces** in your Kubernetes environment.
-2. Click on a namespace (e.g., `backend`).
-3. Scroll to **Access control**.
-4. Click **Add access**.
-5. Select the team: `backend-engineers`
-6. Select the role: **Standard User**
-7. Click **Apply changes**.
+2. Click **Manage access** on the `backend` namespace row.
+3. Select the team: `backend-engineers`
+4. Click **Create access**.
 
 Repeat for each namespace-team pair.
+
+The team must already have access to the environment with an appropriate Portainer role, such as **Standard User**, **Read-Only User**, or **Namespace Operator**.
 
 ### Via Portainer API
 
 ```bash
 PORTAINER_URL="https://portainer.example.com"
-TOKEN="your-admin-token"
+API_KEY="your-admin-api-key"
 ENDPOINT_ID=1
 
-# Grant backend team access to backend namespace
-# First, find the team ID
-BACKEND_TEAM_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+# Grant backend team access to the backend namespace.
+# The team must already have environment access.
+BACKEND_TEAM_ID=$(curl -s -H "X-API-Key: $API_KEY" \
   "${PORTAINER_URL}/api/teams" | \
   jq -r '.[] | select(.Name == "backend-engineers") | .Id')
 
-# Set namespace access for the team
-curl -s -X PUT \
-  -H "Authorization: Bearer $TOKEN" \
+BACKEND_NAMESPACE_ID=$(curl -s -H "X-API-Key: $API_KEY" \
+  "${PORTAINER_URL}/api/kubernetes/${ENDPOINT_ID}/namespaces?withResourceQuota=false&withUnhealthyEvents=false" | \
+  jq -r '.[] | select(.Name == "backend") | .Id')
+
+curl -s -o /dev/null -w "%{http_code}\n" -X PUT \
+  -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
-  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/namespaces/backend/access" \
+  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/pools/${BACKEND_NAMESPACE_ID}/access" \
   -d "{
-    \"teamAccessPolicies\": {
-      \"${BACKEND_TEAM_ID}\": {\"RoleId\": 2}
-    }
-  }" | jq .
+    \"TeamsToAdd\": [${BACKEND_TEAM_ID}],
+    \"TeamsToRemove\": [],
+    \"UsersToAdd\": [],
+    \"UsersToRemove\": []
+  }"
 ```
 
 ## Step 3: Enable Namespace Isolation
 
-Portainer BE can enforce that users can only see namespaces they have access to:
+Portainer enforces namespace visibility once Kubernetes RBAC is enabled and namespace access has been assigned. To stop standard users from also seeing the `default` namespace:
 
-1. Go to environment **Settings**.
-2. Enable **Restrict default namespace**.
-3. Enable **Namespace-based access control**.
-4. Save.
+1. Go to **Cluster** → **Setup**.
+2. Under **Security**, enable **Restrict access to the default namespace**.
+3. Save.
 
 After this:
 - Backend team users see only the `backend` namespace
@@ -112,7 +114,7 @@ After this:
 
 ## Step 4: Kubernetes Network Policies for Hard Isolation
 
-Add Kubernetes NetworkPolicies to prevent cross-namespace communication:
+If your CNI plugin supports NetworkPolicy enforcement, add Kubernetes NetworkPolicies to prevent cross-namespace communication:
 
 ```yaml
 # network-policy-isolate.yaml - Deny all cross-namespace traffic
@@ -139,6 +141,8 @@ spec:
       ports:
         - protocol: UDP
           port: 53
+        - protocol: TCP
+          port: 53
 ```
 
 ```bash
@@ -152,7 +156,7 @@ done
 
 ## Step 5: RBAC at the Kubernetes Level
 
-Portainer's access control maps to Kubernetes RBAC. For additional control, create Kubernetes Roles:
+Portainer works alongside Kubernetes RBAC. If you also need native Kubernetes RBAC outside Portainer, create namespace-scoped Roles and bind them to the relevant Kubernetes users, groups, or service accounts:
 
 ```yaml
 # role-developer.yaml - Developer role for a namespace
@@ -161,19 +165,26 @@ kind: Role
 metadata:
   name: developer
   namespace: backend
+# Namespace-scoped Role; does not grant cluster-scoped access such as nodes.
 rules:
-  - apiGroups: ["", "apps", "batch"]
-    resources: ["pods", "deployments", "replicasets", "services", "configmaps"]
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: [""]
-    resources: ["pods/log", "pods/exec"]
-    verbs: ["get", "list", "create"]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "list"]  # Can read but not create/delete secrets
-  - apiGroups: [""]
-    resources: ["nodes", "namespaces"]
-    verbs: []  # No access to cluster-level resources
 ```
 
 ## Step 6: View Access Configuration
@@ -187,10 +198,14 @@ kubectl auth can-i list pods -n backend         # Should be true for backend tea
 kubectl get rolebindings -n backend
 kubectl describe rolebinding -n backend
 
-# Check namespace access from Portainer
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/namespaces" | \
-  jq '.[] | {name: .Name, accessControl: .ResourceControl}'
+# Check namespace visibility from Portainer using the user's own API key
+PORTAINER_URL="https://portainer.example.com"
+ENDPOINT_ID=1
+USER_API_KEY="api-key-for-a-backend-team-user"
+
+curl -s -H "X-API-Key: $USER_API_KEY" \
+  "${PORTAINER_URL}/api/kubernetes/${ENDPOINT_ID}/namespaces?withResourceQuota=false&withUnhealthyEvents=false" | \
+  jq '.[].Name'
 ```
 
 ## Step 7: Namespace Provisioning Script
@@ -199,13 +214,21 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 #!/bin/bash
 # provision-team-namespace.sh
 
-TEAM_NAME=$1
+set -euo pipefail
+
+TEAM_NAME=${1:-}
+NAMESPACE_NAME=${2:-$TEAM_NAME}
 PORTAINER_URL="https://portainer.example.com"
-TOKEN="your-admin-token"
+API_KEY="your-admin-api-key"
 ENDPOINT_ID=1
 
+if [ -z "$TEAM_NAME" ]; then
+  echo "Usage: $0 <team-name> [namespace-name]"
+  exit 1
+fi
+
 # Create namespace
-kubectl create namespace "$TEAM_NAME" --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace "$NAMESPACE_NAME" --dry-run=client -o yaml | kubectl apply -f -
 
 # Apply resource quota (4 CPU, 8GB memory for standard team)
 cat << EOF | kubectl apply -f -
@@ -213,7 +236,7 @@ apiVersion: v1
 kind: ResourceQuota
 metadata:
   name: team-quota
-  namespace: $TEAM_NAME
+  namespace: $NAMESPACE_NAME
 spec:
   hard:
     requests.cpu: "4"
@@ -224,19 +247,28 @@ spec:
 EOF
 
 # Find Portainer team ID
-TEAM_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+TEAM_ID=$(curl -s -H "X-API-Key: $API_KEY" \
   "${PORTAINER_URL}/api/teams" | \
   jq -r --arg n "$TEAM_NAME" '.[] | select(.Name == $n) | .Id')
 
-# Grant namespace access
-curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/namespaces/${TEAM_NAME}/access" \
-  -d "{\"teamAccessPolicies\": {\"${TEAM_ID}\": {\"RoleId\": 2}}}" > /dev/null
+NAMESPACE_ID=$(curl -s -H "X-API-Key: $API_KEY" \
+  "${PORTAINER_URL}/api/kubernetes/${ENDPOINT_ID}/namespaces?withResourceQuota=false&withUnhealthyEvents=false" | \
+  jq -r --arg n "$NAMESPACE_NAME" '.[] | select(.Name == $n) | .Id')
 
-echo "Namespace $TEAM_NAME provisioned for team $TEAM_NAME"
+if [ "$TEAM_ID" = "null" ] || [ "$NAMESPACE_ID" = "null" ]; then
+  echo "Unable to find team $TEAM_NAME or namespace $NAMESPACE_NAME in Portainer"
+  exit 1
+fi
+
+# Grant namespace access
+curl -s -o /dev/null -X PUT -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/pools/${NAMESPACE_ID}/access" \
+  -d "{\"TeamsToAdd\": [${TEAM_ID}], \"TeamsToRemove\": [], \"UsersToAdd\": [], \"UsersToRemove\": []}"
+
+echo "Namespace $NAMESPACE_NAME provisioned for team $TEAM_NAME"
 ```
 
 ## Conclusion
 
-Namespace-based segmentation in Portainer creates clear boundaries between teams, preventing accidental cross-team interference and enforcing the principle of least privilege. Map Portainer teams to Kubernetes namespaces, enable namespace isolation in Portainer settings, add Kubernetes NetworkPolicies for hard network isolation, and script namespace provisioning to ensure consistent configuration for every new team.
+Namespace-based segmentation in Portainer creates clear boundaries between teams, preventing accidental cross-team interference and enforcing the principle of least privilege. Map Portainer teams to Kubernetes namespaces, grant namespace access in Portainer, restrict access to the default namespace when needed, add Kubernetes NetworkPolicies for hard network isolation, and script namespace provisioning to ensure consistent configuration for every new team.
