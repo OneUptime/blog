@@ -1,44 +1,45 @@
-# How to Update Edge Agents with Automatic Rollback
+# How to Update Edge Agents with Scheduled Rollback
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Edge Agent, Update, Rollback, Business Edition
 
-Description: Use Portainer Business Edition's edge update schedules with automatic rollback to safely update edge agents across remote environments.
+Description: Use Portainer Business Edition's Update & Rollback schedules to safely update edge agents across remote Docker Standalone environments.
 
 ## Introduction
 
-Updating edge agents across dozens or hundreds of remote devices requires a safe, automated process. Portainer Business Edition provides edge update schedules with automatic rollback - if an update fails, the agent automatically reverts to the previous working version.
+Updating edge agents across dozens or hundreds of remote devices requires a safe, automated process. Portainer Business Edition provides Update & Rollback schedules for Edge Agents, letting you schedule agent updates and, if needed, schedule a rollback to a previous version.
+
+This feature is currently in beta and is only available for Edge Agents running on Docker Standalone environments.
 
 ## Prerequisites
 
 - Portainer Business Edition
+- Edge Agent deployments running on Docker Standalone environments
 - Edge environments configured and connected
-- Sufficient disk space on edge devices for rollback image
+- Portainer snapshots available for the environments you plan to update or roll back
+- A current backup of your Portainer configuration
 
 ## Creating an Update Schedule
 
 ### Via Web UI
 
-1. Go to **Edge Compute** → **Edge Update Schedules**
-2. Click **Add schedule**
+1. Go to **Environment-related** → **Update & Rollback**
+2. Click **Schedule update or rollback**
 3. Configure:
 
 ```text
-Name:          Quarterly Agent Update
-Update type:   Portainer agent
-Version:       2.21.0 (or latest)
-Schedule:      Specific date/time or immediate
-
-Target:
-  ● All edge environments
-  ○ Selected environments
-  ○ Edge groups
-
-Rollback:
-  ✓ Automatically rollback on failure
-  Failure detection: 5 minutes (timeout)
+Name:                Quarterly Agent Update
+Tab:                 Update
+Edge Groups:         Branch Offices
+Version:             Match your Portainer Server version (for example, 2.39.1)
+Schedule date/time:  2026-05-15 02:00 UTC
+Registry:            Docker Hub (or your custom registry)
+Agent Image:         portainer/agent:2.39.1
+Updater Image:       portainer/portainer-updater:2.39.1
 ```
+
+To schedule a rollback instead, select the **Rollback** tab and choose a previously available version.
 
 ### Via API
 
@@ -49,76 +50,85 @@ TOKEN=$(curl -s -X POST \
   -d '{"username":"admin","password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Create update schedule
+CURRENT_VERSION=2.39.1
 
+# Create update schedule
 curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/edge/update_schedules \
-  -d '{
-    "name": "Q1-2026-Agent-Update",
-    "type": 1,
-    "version": "2.21.0",
-    "scheduledTime": "2026-01-15T02:00:00Z",
-    "environments": [],
-    "groupIds": [1, 2],
-    "rollback": true,
-    "rollbackTimeout": 300
-  }'
+  https://portainer.example.com/api/edge_update_schedules \
+  -d "{
+    \"Name\": \"Q2-2026-Agent-Update\",
+    \"Type\": 1,
+    \"ScheduledTime\": \"2026-05-15T02:00:00Z\",
+    \"GroupIDs\": [1, 2],
+    \"AgentImage\": \"portainer/agent:${CURRENT_VERSION}\",
+    \"UpdaterImage\": \"portainer/portainer-updater:${CURRENT_VERSION}\"
+  }"
 ```
+
+Use `Type: 2` to create a rollback schedule instead.
 
 ## Monitoring Update Progress
 
 ```bash
-# Get update schedule status
+# List all schedules and their current status
+curl -s \
+  -H "Authorization: Bearer $TOKEN" \
+  https://portainer.example.com/api/edge_update_schedules \
+  | python3 -c "
+import sys, json
+status_map = {0: 'pending', 1: 'error', 2: 'success', 3: 'sent', 4: 'in progress'}
+type_map = {1: 'update', 2: 'rollback'}
+
+for s in json.load(sys.stdin):
+    print(f\"{s['id']}: {s['name']} [{type_map.get(s.get('type'), s.get('type'))}] status={status_map.get(s.get('status'), s.get('status'))}\")
+    if s.get('statusMessage'):
+        print(f\"   message={s['statusMessage']}\")
+"
+
+# Inspect one schedule
 SCHEDULE_ID=1
 
 curl -s \
   -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/edge/update_schedules/${SCHEDULE_ID}" \
-  | python3 -c "
-import sys, json
-s = json.load(sys.stdin)
-print(f'Schedule: {s[\"Name\"]}')
-print(f'Status: {s.get(\"Status\")}')
-print(f'Progress: {s.get(\"SuccessCount\",0)} succeeded, {s.get(\"FailedCount\",0)} failed')
-"
-
-# List all schedules
-curl -s \
-  -H "Authorization: Bearer $TOKEN" \
-  https://portainer.example.com/api/edge/update_schedules \
+  "https://portainer.example.com/api/edge_update_schedules/${SCHEDULE_ID}" \
   | python3 -m json.tool
 ```
 
 ## How Rollback Works
 
-1. Before update, current agent version is snapshotted
-2. New agent version is deployed
-3. Agent checks in with Portainer within the timeout window
-4. If check-in succeeds → update marked successful
-5. If check-in fails within timeout → rollback triggered
-6. Old agent version is restored from snapshot
+1. Before you can schedule an update or rollback, Portainer must have a snapshot of the target environments
+2. Create an update schedule for the Edge Group or groups you want to update
+3. At the scheduled time, Portainer deploys the specified `portainer/agent` and `portainer/portainer-updater` images
+4. Monitor the schedule status in **Update & Rollback** or via the `edge_update_schedules` API
+5. If you need to revert, create a separate rollback schedule from the **Rollback** tab or by using API `Type: 2`
+6. Portainer applies the rollback schedule to the selected Edge Groups
 
 ## Staged Rollout
 
-For large fleets, deploy updates in stages:
+For large fleets, deploy updates in stages by using separate Edge Groups:
 
 ```bash
-# Stage 1: Update 10% of devices (canary)
+CURRENT_VERSION=2.39.1
+
+# Stage 1: Update a canary Edge Group
 curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/edge/update_schedules \
-  -d '{
-    "name": "Canary-Update",
-    "environments": [1, 2, 3],
-    "rollback": true
-  }'
+  https://portainer.example.com/api/edge_update_schedules \
+  -d "{
+    \"Name\": \"Canary-Update\",
+    \"Type\": 1,
+    \"ScheduledTime\": \"2026-05-15T02:00:00Z\",
+    \"GroupIDs\": [1],
+    \"AgentImage\": \"portainer/agent:${CURRENT_VERSION}\",
+    \"UpdaterImage\": \"portainer/portainer-updater:${CURRENT_VERSION}\"
+  }"
 
-# Wait 24 hours, then Stage 2: Update all remaining
+# After validating the canary group, create a second schedule for the remaining Edge Groups
 ```
 
 ## Conclusion
 
-Edge update schedules with automatic rollback eliminate the risk of bricking remote devices during updates. The health-check based rollback ensures devices revert to a working state if the update causes issues. For large fleets, use staged rollouts to validate updates on a small set before full deployment.
+Update & Rollback schedules reduce the risk of large-scale agent updates on remote Docker Standalone environments. Because rollback is a separate scheduled action, you should monitor the update results and keep previous versions available if you need to revert. For large fleets, staged rollouts let you validate updates on a small set before full deployment.
