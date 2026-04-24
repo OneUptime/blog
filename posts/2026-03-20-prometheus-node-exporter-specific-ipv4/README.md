@@ -8,14 +8,14 @@ Description: Configure Prometheus Node Exporter to bind to a specific IPv4 addre
 
 ## Introduction
 
-Node Exporter defaults to listening on all interfaces (0.0.0.0:9100). On servers with multiple network interfaces, binding to the monitoring network's IPv4 address prevents the metrics endpoint from being accessible on public-facing interfaces.
+Node Exporter defaults to listening on all network interfaces on port 9100 (`:9100`). On servers with multiple network interfaces, binding to the monitoring network's IPv4 address prevents the metrics endpoint from being accessible on public-facing interfaces.
 
 ## Installation
 
 ```bash
 # Install Node Exporter
 
-NODEEXPORTER_VERSION="1.7.0"
+NODEEXPORTER_VERSION="1.11.1"
 wget https://github.com/prometheus/node_exporter/releases/download/v${NODEEXPORTER_VERSION}/node_exporter-${NODEEXPORTER_VERSION}.linux-amd64.tar.gz
 tar xzf node_exporter-*.tar.gz
 sudo cp node_exporter-*/node_exporter /usr/local/bin/
@@ -39,7 +39,8 @@ node_exporter --web.listen-address="10.0.0.5:9100"
 
 [Unit]
 Description=Prometheus Node Exporter
-After=network.target
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 User=node_exporter
@@ -80,8 +81,8 @@ sudo ss -tlnp | grep 9100
 
 ```bash
 # Allow Node Exporter only from Prometheus server
-sudo ufw allow from 10.0.0.30 to any port 9100    # Prometheus server IP
-sudo ufw deny 9100
+sudo ufw allow proto tcp from 10.0.0.30 to any port 9100    # Prometheus server IP
+sudo ufw deny proto tcp to any port 9100
 
 # iptables
 sudo iptables -A INPUT -p tcp --dport 9100 -s 10.0.0.30/32 -j ACCEPT
@@ -97,7 +98,7 @@ scrape_configs:
   - job_name: 'node_exporter'
     static_configs:
       - targets:
-          - '10.0.0.1:9100'
+          - '10.0.0.5:9100'
           - '10.0.0.2:9100'
           - '10.0.0.3:9100'
     relabel_configs:
@@ -116,7 +117,8 @@ curl -s "http://10.0.0.5:9100/metrics" | grep node_cpu_seconds_total | head -5
 curl -s "http://10.0.0.5:9100/metrics" | grep node_memory_MemAvailable_bytes
 
 # Verify from Prometheus
-curl -s "http://10.0.0.30:9090/api/v1/query?query=node_uname_info{instance='10.0.0.5:9100'}"
+curl -sG "http://10.0.0.30:9090/api/v1/query" \
+  --data-urlencode 'query=node_uname_info{instance="10.0.0.5:9100"}'
 ```
 
 ## Conclusion
