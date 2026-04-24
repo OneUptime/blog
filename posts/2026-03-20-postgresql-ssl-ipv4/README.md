@@ -8,23 +8,25 @@ Description: Enable and configure SSL/TLS in PostgreSQL to encrypt connections f
 
 ## Introduction
 
-PostgreSQL SSL encrypts client-server communication to prevent eavesdropping on IPv4 networks. PostgreSQL 14+ ships with SSL enabled by default if certificates are present. You need a certificate and key, and optionally a CA for mutual TLS.
+PostgreSQL SSL encrypts client-server communication to prevent eavesdropping on IPv4 networks. PostgreSQL supports SSL/TLS natively, but you must enable `ssl = on` and provide a certificate and key. You can optionally configure a CA for mutual TLS.
 
 ## Certificate Setup
 
 ```bash
-# PostgreSQL looks for ssl-cert and ssl-key in the data directory by default
+# PostgreSQL looks for server.crt and server.key in the data directory by default.
+# This example stores them in /etc/postgresql/16/main and uses absolute paths below.
 
 # Generate self-signed certificate:
 sudo -u postgres openssl req -new -x509 -days 3650 -nodes \
   -keyout /etc/postgresql/16/main/server.key \
   -out /etc/postgresql/16/main/server.crt \
-  -subj "/CN=postgresql-server"
+  -subj "/CN=db.example.com"
 
 sudo chmod 600 /etc/postgresql/16/main/server.key
 sudo chown postgres:postgres /etc/postgresql/16/main/server.{key,crt}
 
 # Or use Let's Encrypt:
+# Requires db.example.com to resolve publicly and accept inbound HTTP on port 80.
 sudo certbot certonly --standalone -d db.example.com
 sudo cp /etc/letsencrypt/live/db.example.com/fullchain.pem \
   /etc/postgresql/16/main/server.crt
@@ -39,17 +41,18 @@ sudo chmod 600 /etc/postgresql/16/main/server.key
 ```bash
 # /etc/postgresql/16/main/postgresql.conf
 
+listen_addresses = '10.0.0.5'  # Required for remote IPv4 clients
 ssl = on
-ssl_cert_file = 'server.crt'    # Relative to data_directory
-ssl_key_file  = 'server.key'
+ssl_cert_file = '/etc/postgresql/16/main/server.crt'
+ssl_key_file  = '/etc/postgresql/16/main/server.key'
 
 # Optional: CA for client certificate verification
-# ssl_ca_file = 'root.crt'
+# ssl_ca_file = '/etc/postgresql/16/main/root.crt'
 
 # Minimum TLS version
 ssl_min_protocol_version = 'TLSv1.2'
 
-# Strong ciphers only
+# Cipher list for TLS 1.2 and lower
 ssl_ciphers = 'HIGH:MEDIUM:+3DES:!aNULL'
 ```
 
@@ -80,7 +83,7 @@ sudo systemctl restart postgresql
 sudo -u postgres psql -c "SHOW ssl;"
 # Expected: on
 
-# Verify certificate
+# Show configured certificate file
 sudo -u postgres psql -c "SHOW ssl_cert_file;"
 ```
 
@@ -88,21 +91,21 @@ sudo -u postgres psql -c "SHOW ssl_cert_file;"
 
 ```bash
 # psql with SSL
-psql "host=10.0.0.5 dbname=appdb user=appuser sslmode=require"
+psql "host=10.0.0.5 dbname=appdb user=appuser sslmode=require gssencmode=disable"
 
 # Check SSL in use
-psql -h 10.0.0.5 -U appuser -d appdb \
+psql "host=10.0.0.5 dbname=appdb user=appuser sslmode=require gssencmode=disable" \
   -c "SELECT ssl, cipher, bits, client_dn FROM pg_stat_ssl WHERE pid = pg_backend_pid();"
 
 # sslmode options:
 # disable      - never SSL
 # allow        - try without SSL, fallback to SSL
 # prefer       - try SSL, fallback to plain (default)
-# require      - require SSL, skip cert verification
+# require      - require SSL; if a root CA file exists, also verify the CA
 # verify-ca    - require SSL, verify CA
 # verify-full  - require SSL, verify CA + hostname
 ```
 
 ## Conclusion
 
-Enable PostgreSQL SSL by setting `ssl = on` and providing certificate/key paths in `postgresql.conf`. Use `hostssl` in `pg_hba.conf` to require SSL for remote connections and `hostnossl` + `reject` to block non-SSL remote access. Set `ssl_min_protocol_version = 'TLSv1.2'` to disable older protocols. Clients should use `sslmode=require` or `verify-full` for proper security.
+Enable PostgreSQL SSL by setting `listen_addresses` for remote IPv4 clients, setting `ssl = on`, and providing certificate/key paths in `postgresql.conf`. Use `hostssl` in `pg_hba.conf` to require SSL for remote connections and `hostnossl` + `reject` to block non-SSL remote access. Set `ssl_min_protocol_version = 'TLSv1.2'` to disable older protocols. Clients should prefer `sslmode=verify-full` when the certificate matches the hostname or IP they connect to; `sslmode=require` guarantees encryption but not hostname verification, and only verifies the CA implicitly if a root CA file is already present.
