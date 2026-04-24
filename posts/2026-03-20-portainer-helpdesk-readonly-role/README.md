@@ -8,7 +8,7 @@ Description: Configure the Helpdesk read-only role in Portainer for support team
 
 ## Introduction
 
-The Helpdesk role (also called Read-Only in some documentation) provides visibility into Portainer environments without the ability to make changes. Support teams, auditors, and junior staff can use this role to troubleshoot issues and gather information without the risk of accidentally modifying production environments.
+The Helpdesk role in Portainer Business Edition provides visibility into Portainer environments without the ability to make changes. It is distinct from the Read-Only User role, which only provides read-only access to resources the user or team is entitled to see. Support teams, auditors, and junior staff can use the Helpdesk role to troubleshoot issues and gather information without the risk of accidentally modifying production environments.
 
 ## Helpdesk Role Capabilities
 
@@ -27,14 +27,14 @@ The Helpdesk role (also called Read-Only in some documentation) provides visibil
 - Deploy new containers or stacks
 - Execute commands in containers (no terminal access)
 - Modify any configuration
-- Create or delete resources of any kind
+- Create or delete containers, stacks, services, volumes, networks, configs, or secrets
 
 ## Assigning the Helpdesk Role
 
 ### Via Web UI
 
-1. Navigate to **Environments** → select the environment
-2. Click **Manage access**
+1. Navigate to **Environments**
+2. Locate the environment and click **Manage access**
 3. Add the team or user
 4. Set role to **Helpdesk**
 
@@ -47,25 +47,36 @@ TOKEN=$(curl -s -X POST \
   -d '{"username":"admin","password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Assign team 4 (support team) to environment 1 with Helpdesk role
+# Assign team 4 (support team) to environment 1 with Helpdesk role.
+# Portainer updates environment access by replacing the current TeamAccessPolicies map,
+# so fetch the current policies first and merge the new entry.
+
+TEAM_ACCESS_PAYLOAD=$(curl -s \
+  -H "Authorization: Bearer $TOKEN" \
+  https://portainer.example.com/api/endpoints/1 \
+  | python3 -c 'import sys,json; endpoint=json.load(sys.stdin); policies=endpoint.get("TeamAccessPolicies", {}); policies["4"]={"RoleId": 2}; print(json.dumps({"TeamAccessPolicies": policies}))')
 
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/endpoints/1/teamaccesspolicies \
-  -d '{
-    "4": {"RoleId": 3}
-  }'
-# RoleId 3 = Helpdesk (Read-Only)
+  https://portainer.example.com/api/endpoints/1 \
+  -d "$TEAM_ACCESS_PAYLOAD"
+# RoleId 2 = Helpdesk
 
-# Assign individual user (ID: 8) to environment 1 with Helpdesk role
+# Assign individual user (ID: 8) to environment 1 with Helpdesk role.
+# Portainer updates environment access by replacing the current UserAccessPolicies map,
+# so fetch the current policies first and merge the new entry.
+
+USER_ACCESS_PAYLOAD=$(curl -s \
+  -H "Authorization: Bearer $TOKEN" \
+  https://portainer.example.com/api/endpoints/1 \
+  | python3 -c 'import sys,json; endpoint=json.load(sys.stdin); policies=endpoint.get("UserAccessPolicies", {}); policies["8"]={"RoleId": 2}; print(json.dumps({"UserAccessPolicies": policies}))')
+
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/endpoints/1/useraccesspolicies \
-  -d '{
-    "8": {"RoleId": 3}
-  }'
+  https://portainer.example.com/api/endpoints/1 \
+  -d "$USER_ACCESS_PAYLOAD"
 ```
 
 ## Creating a Helpdesk Team and Assigning to Multiple Environments
@@ -76,17 +87,17 @@ TEAM_RESPONSE=$(curl -s -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   https://portainer.example.com/api/teams \
-  -d '{"name": "support-team"}')
+  -d '{"Name": "support-team"}')
 
-TEAM_ID=$(echo $TEAM_RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['Id'])")
+TEAM_ID=$(printf '%s' "$TEAM_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['Id'])")
 echo "Support team ID: $TEAM_ID"
 
 # Step 2: Add users to the support team
 curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/teams/${TEAM_ID}/memberships \
-  -d "{\"userID\": 8, \"teamID\": ${TEAM_ID}, \"role\": 2}"
+  https://portainer.example.com/api/team_memberships \
+  -d "{\"UserID\": 8, \"TeamID\": ${TEAM_ID}, \"Role\": 2}"
 
 # Step 3: Grant Helpdesk access to all environments
 ENDPOINTS=$(curl -s -H "Authorization: Bearer $TOKEN" \
@@ -95,11 +106,17 @@ ENDPOINTS=$(curl -s -H "Authorization: Bearer $TOKEN" \
 
 for endpoint_id in $ENDPOINTS; do
   echo "Assigning helpdesk access to environment $endpoint_id"
+
+  TEAM_ACCESS_PAYLOAD=$(curl -s \
+    -H "Authorization: Bearer $TOKEN" \
+    "https://portainer.example.com/api/endpoints/${endpoint_id}" \
+    | TEAM_ID="$TEAM_ID" python3 -c 'import os,sys,json; endpoint=json.load(sys.stdin); policies=endpoint.get("TeamAccessPolicies", {}); policies[str(os.environ["TEAM_ID"])]={"RoleId": 2}; print(json.dumps({"TeamAccessPolicies": policies}))')
+
   curl -s -X PUT \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
-    "https://portainer.example.com/api/endpoints/${endpoint_id}/teamaccesspolicies" \
-    -d "{\"${TEAM_ID}\": {\"RoleId\": 3}}"
+    "https://portainer.example.com/api/endpoints/${endpoint_id}" \
+    -d "$TEAM_ACCESS_PAYLOAD"
 done
 ```
 
@@ -139,4 +156,4 @@ curl -s \
 
 ## Conclusion
 
-The Helpdesk role provides the minimum access needed for support teams to do their job effectively - they can see everything but change nothing. Grant this role broadly to support staff and read-only stakeholders, then assign the minimum necessary write access only to those who need it. Combined with good logging and monitoring, helpdesk users can resolve most Level 1 issues without escalation.
+The Helpdesk role provides the minimum access needed for support teams to do their job effectively - they can inspect deployed resources without changing them. Grant this role to support staff and read-only stakeholders who need environment-wide visibility, then assign the minimum necessary write access only to those who need it. Combined with good logging and monitoring, helpdesk users can triage most Level 1 issues before escalation.
