@@ -8,7 +8,7 @@ Description: Resolve blank screen, infinite loading spinner, and frozen UI issue
 
 ## Introduction
 
-A blank or perpetually loading Portainer screen can be caused by browser cache issues, a failed backend initialization, JavaScript errors from CDN loading failures, or a database corruption. This guide walks through each cause systematically.
+A blank or perpetually loading Portainer screen can be caused by browser cache issues, a failed backend initialization, JavaScript loading failures, or database corruption. This guide walks through each cause systematically.
 
 ## Step 1: Try a Different Browser / Incognito Mode
 
@@ -16,7 +16,7 @@ Before anything else, test in a fresh browser context:
 
 ```text
 1. Open an incognito/private window
-2. Navigate to http://your-host:9000
+2. Navigate to https://your-host:9443
 3. If it loads - the issue is your browser cache
 ```
 
@@ -34,7 +34,7 @@ If incognito works, clear your browser cache:
 4. Look for red errors
 ```
 
-Common console errors and their meanings:
+Common console errors and possible causes:
 
 | Error | Cause |
 |-------|-------|
@@ -45,7 +45,7 @@ Common console errors and their meanings:
 
 ## Step 3: Clear Portainer Local Storage
 
-Portainer stores session data in the browser's local storage. Corrupted data causes blank screens:
+Portainer stores session data in the browser's local storage. Corrupted data can cause blank screens:
 
 ```javascript
 // In the browser console, run:
@@ -58,7 +58,7 @@ location.reload();
 
 Or manually via browser settings:
 1. DevTools → Application → Local Storage
-2. Find `http://your-host:9000`
+2. Find `https://your-host:9443`
 3. Right-click → Clear
 
 ## Step 4: Check Portainer Backend Health
@@ -72,10 +72,10 @@ docker ps | grep portainer
 docker logs portainer --tail 100
 
 # Test the API endpoint directly
-curl -v http://your-host:9000/api/status
+curl -vk https://your-host:9443/api/status
 
 # Expected response:
-# {"Version":"2.x.x","InstanceID":"...","EdgeAgents":0}
+# JSON with Portainer version and instance details
 ```
 
 If the API returns an error or is unreachable, the issue is backend-side.
@@ -83,13 +83,10 @@ If the API returns an error or is unreachable, the issue is backend-side.
 ## Step 5: Check for Database Corruption
 
 ```bash
-# A corrupt portainer.db causes blank screens or empty UI
+# A corrupt portainer.db can prevent Portainer from starting correctly
 docker logs portainer 2>&1 | grep -i "corrupt\|error\|panic\|bolt"
 
-# Common message indicating corruption:
-# "invalid database" or "unexpected page type"
-
-# Check database file integrity
+# Confirm the database file exists
 docker run --rm \
   -v portainer_data:/data \
   alpine ls -la /data/portainer.db
@@ -98,7 +95,8 @@ docker run --rm \
 If corruption is confirmed:
 
 ```bash
-# Backup and replace the database
+# Preferred: restore from a known-good Portainer backup if you have one.
+# Backup and replace the database (this resets Portainer configuration)
 docker stop portainer
 
 # Backup the corrupt db
@@ -117,67 +115,57 @@ docker start portainer
 
 ## Step 6: Verify Static Assets Are Loading
 
-Portainer's frontend assets are bundled in the container - no CDN calls are made. But if the container filesystem is corrupt:
+Portainer's frontend assets are bundled in the container - no CDN calls are required. But if the container image or filesystem is damaged:
 
 ```bash
 # Verify the container image is intact
 docker inspect portainer --format='{{.Image}}'
 
 # Pull a fresh copy of the image
-docker pull portainer/portainer-ce:latest
+docker pull portainer/portainer-ce:lts
 
 # Recreate the container with the fresh image
 docker stop portainer && docker rm portainer
 docker run -d \
-  -p 9000:9000 \
   -p 9443:9443 \
   --name portainer \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 7: Check Content Security Policy (CSP) Headers
 
-If Portainer is behind a reverse proxy, overly strict CSP headers can block JavaScript execution:
+If Portainer is behind a reverse proxy, confirm the public URL is configured correctly. If you are trying to load Portainer inside an iframe, Portainer's default CSP will block it:
 
 ```bash
 # Check response headers
-curl -I http://your-host:9000
+curl -kI https://your-host:9443 | grep -i content-security-policy
 
-# If you see Content-Security-Policy headers that are too restrictive
-# Remove them from your reverse proxy configuration
+# If Portainer is behind a reverse proxy and you see "Origin invalid",
+# start Portainer with:
+# --trusted-origins https://your-host
 ```
 
-For Nginx, ensure you're not adding extra security headers that break Portainer:
+If iframe embedding is required, start Portainer with the `--no-csp` flag. If Portainer is served from a subpath such as `/portainer`, use `--base-url /portainer` and ensure the reverse proxy strips that prefix.
 
-```nginx
-# Remove these if they're blocking Portainer
-# add_header Content-Security-Policy "default-src 'self'";
-# add_header X-Frame-Options "DENY";
-
-# Use Portainer-safe headers instead
-add_header X-Frame-Options "SAMEORIGIN";
-```
-
-## Step 8: Force Portainer to Rebuild Its Cache
+## Step 8: Redeploy Portainer with a Fresh Container
 
 ```bash
 # Restart Portainer with a fresh container
 docker stop portainer && docker rm portainer
 docker run -d \
-  -p 9000:9000 \
   -p 9443:9443 \
   --name portainer \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 
-# Wait 30 seconds then access the UI
+# Wait 30 seconds then verify the API
 sleep 30
-curl http://your-host:9000/api/status
+curl -k https://your-host:9443/api/status
 ```
 
 ## Step 9: Check Available Disk Space
@@ -192,9 +180,9 @@ df -h /var/lib/docker
 du -sh /var/lib/docker/volumes/portainer_data/
 
 # If disk is full, free up space
-docker system prune -a --volumes  # CAUTION: removes unused resources
+docker system prune -a --volumes  # CAUTION: removes unused images, containers, networks, and anonymous volumes
 ```
 
 ## Conclusion
 
-Blank screen or loading issues in Portainer are most commonly caused by stale browser cache (try incognito first), a corrupt `portainer.db` file (fix by removing and restarting), or a backend that isn't running. Start with the browser test, then check the API health endpoint, and escalate to database recovery only if needed.
+Blank screen or loading issues in Portainer are most commonly caused by stale browser state (try incognito first), a backend or reverse proxy issue, or a damaged `portainer.db` file. Start with the browser test, then check the API health endpoint on `https://your-host:9443`, and use database recovery or reset only as a last resort because it removes Portainer's saved configuration.
