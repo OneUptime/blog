@@ -8,25 +8,30 @@ Description: A comprehensive guide to exporting and importing Portainer configur
 
 ## Overview
 
-Portainer stores all configuration - endpoints, users, stacks, registries, and settings - in a BoltDB database. Exporting this configuration allows you to back up your setup, migrate to a new server, or clone environments. This guide covers all methods for exporting and importing Portainer configuration.
+Portainer stores its configuration in the `/data` volume, centered around a BoltDB database (`portainer.db`, or `portainer.edb` when database encryption is enabled) along with stack files, certificates, and related assets. Exporting this configuration allows you to back up your setup, migrate to a new server, or clone environments. This guide covers all methods for exporting and importing Portainer configuration.
 
 ## Prerequisites
 
 - Portainer CE or Business Edition
 - Docker access to the Portainer container
 - Admin credentials
+- `curl` and `jq` installed for API-based exports and imports
 
 ## Understanding Portainer's Data Storage
 
 ```text
-portainer_data volume contains:
-├── portainer.db          # BoltDB database (main config)
-├── certs/                # TLS certificates
+portainer_data volume commonly contains:
+├── portainer.db or portainer.edb  # BoltDB database
+├── compose/                       # Stack files managed by Portainer
+├── certs/                         # Portainer SSL certificates
 │   ├── cert.pem
 │   └── key.pem
-├── chisel/               # Reverse tunnel config
-└── tls/                  # Custom CA certificates
+├── chisel/                        # Edge tunnel private key
+│   └── private-key.pem
+└── tls/                           # Environment TLS material
 ```
+
+If database encryption is enabled, you must also preserve the same secret mounted at `/run/secrets/portainer` when restoring the instance.
 
 ## Method 1: Export via Docker Volume (CE and BE)
 
@@ -50,18 +55,18 @@ ls -lh portainer-config-*.tar.gz
 tar tzf portainer-config-$(date +%Y%m%d).tar.gz
 ```
 
-## Method 2: Export via Portainer BE API
+## Method 2: Export via Portainer API (CE and BE)
 
 ```bash
 PORTAINER_URL="https://portainer.example.com:9443"
-TOKEN="your-api-token"
+API_KEY="your-api-key"
 
-# Export configuration (BE only)
+# Export configuration
 curl -X POST \
   "${PORTAINER_URL}/api/backup" \
-  -H "Authorization: Bearer ${TOKEN}" \
+  -H "X-API-KEY: ${API_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"password": "ExportPassword123"}' \
+  -d '{"Password": "ExportPassword123"}' \
   --output portainer-export-$(date +%Y%m%d).tar.gz
 
 echo "Export complete: $(ls -lh portainer-export-*.tar.gz)"
@@ -73,12 +78,12 @@ echo "Export complete: $(ls -lh portainer-export-*.tar.gz)"
 
 ```bash
 # List all stacks via API
-curl -s -H "Authorization: Bearer ${TOKEN}" \
-  "${PORTAINER_URL}/api/stacks" | jq '.[].Name'
+curl -s -H "X-API-KEY: ${API_KEY}" \
+  "${PORTAINER_URL}/api/stacks" | jq -r '.[].Name'
 
 # Export a specific stack's compose file
 STACK_ID=1
-curl -s -H "Authorization: Bearer ${TOKEN}" \
+curl -s -H "X-API-KEY: ${API_KEY}" \
   "${PORTAINER_URL}/api/stacks/${STACK_ID}/file" \
   | jq -r '.StackFileContent' > stack-${STACK_ID}-compose.yml
 ```
@@ -87,7 +92,7 @@ curl -s -H "Authorization: Bearer ${TOKEN}" \
 
 ```bash
 # Export environment list
-curl -s -H "Authorization: Bearer ${TOKEN}" \
+curl -s -H "X-API-KEY: ${API_KEY}" \
   "${PORTAINER_URL}/api/endpoints" \
   | jq '[.[] | {Id, Name, URL, Type, PublicURL}]' \
   > portainer-endpoints.json
@@ -96,8 +101,8 @@ curl -s -H "Authorization: Bearer ${TOKEN}" \
 ## Method 4: Import Configuration on New Instance
 
 ```bash
-# Stop new Portainer if running
-docker stop portainer-new
+# Stop and remove Portainer on the new server if it is already running
+docker rm -f portainer 2>/dev/null || true
 
 # Restore the volume from backup
 docker run --rm \
@@ -107,6 +112,10 @@ docker run --rm \
   sh -c "cd /data && tar xzf /backup/portainer-config-20260320.tar.gz"
 
 # Start Portainer with the restored volume
+# Use the matching CE or BE image for the instance you are restoring.
+PORTAINER_IMAGE="portainer/portainer-ce:sts"  # Use portainer/portainer-ee:sts for BE
+
+# If database encryption is enabled, also mount the same secret file at /run/secrets/portainer.
 docker run -d \
   -p 8000:8000 \
   -p 9443:9443 \
@@ -114,23 +123,37 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data_new:/data \
-  portainer/portainer-ce:latest
+  ${PORTAINER_IMAGE}
 ```
 
-## Method 5: Import BE Backup via API
+## Method 5: Import Backup via Portainer API
 
 ```bash
-# Restore from BE backup file
+# Restore must be run against a fresh Portainer instance before initial setup
+BACKUP_FILE="portainer-export-20260320.tar.gz"
+
+od -An -v -t u1 "${BACKUP_FILE}" \
+  | tr -s '[:space:]' '\n' \
+  | sed '/^$/d' \
+  | jq -Rsc 'split("\n") | map(select(length > 0) | tonumber)' \
+  > file-content.json
+
+jq -n \
+  --arg fileName "$(basename "${BACKUP_FILE}")" \
+  --arg password "ExportPassword123" \
+  --slurpfile fileContent file-content.json \
+  '{FileName: $fileName, FileContent: $fileContent[0], Password: $password}' \
+  > restore-payload.json
+
 curl -X POST \
   "${PORTAINER_URL}/api/restore" \
-  -H "Content-Type: multipart/form-data" \
-  -F "file=@portainer-export-20260320.tar.gz" \
-  -F "password=ExportPassword123"
+  -H "Content-Type: application/json" \
+  --data @restore-payload.json
 ```
 
 ## Configuration Export Checklist
 
-| Component | Included in Volume Backup | Included in BE API Backup |
+| Component | Included in Volume Backup | Included in API Backup |
 |---|---|---|
 | Users and teams | Yes | Yes |
 | Environments/endpoints | Yes | Yes |
@@ -170,4 +193,4 @@ echo "Export complete: $(ls -lh ${BACKUP_DIR}/portainer-*.tar.gz | tail -1)"
 
 ## Conclusion
 
-Portainer configuration can be exported using volume-level backups (available in CE and BE) or the native API backup (BE only). Volume backups capture everything including certificates and the full BoltDB database. Always test your import process in a staging environment before relying on it for production recovery. Storing exports off-site (S3, NFS) ensures availability even if the host fails.
+Portainer configuration can be exported using volume-level backups or the native API backup, both of which are available in current CE and BE releases. Volume backups capture the full `/data` volume, including the Portainer database, stack files, and certificates. If database encryption is enabled, you must also preserve the external secret mounted at `/run/secrets/portainer`. Always test your import process in a staging environment before relying on it for production recovery. Storing exports off-site (S3, NFS) ensures availability even if the host fails.
