@@ -21,8 +21,6 @@ Running Portainer behind an Nginx reverse proxy is a common production pattern. 
 Create a `docker-compose.yml` that launches both Portainer and Nginx in the same network:
 
 ```yaml
-version: "3.8"
-
 services:
   portainer:
     image: portainer/portainer-ce:latest
@@ -70,7 +68,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name portainer.example.com;
 
     # SSL certificate paths
@@ -104,14 +103,13 @@ server {
 
 ## Step 3: Configure Trusted Origins in Portainer
 
-When Portainer is accessed via a different host header than it was started with, you must tell it to trust that origin. Add the `--http-enabled` flag or configure trusted origins via environment variable:
+If you see an `"Origin invalid"` error when accessing Portainer through the reverse proxy, configure trusted origins with the domain you use to reach Portainer. Do not use `--http-enabled` for this.
 
 ```yaml
   portainer:
     image: portainer/portainer-ce:latest
-    command: >
-      --http-enabled
-      --trusted-origins=https://portainer.example.com
+    environment:
+      - TRUSTED_ORIGINS=portainer.example.com
 ```
 
 ## Step 4: Deploy the Stack
@@ -146,7 +144,7 @@ docker logs portainer --tail 50
 
 ## Troubleshooting Common Issues
 
-**"Origin Invalid" error**: Add `--trusted-origins` to the Portainer command with your full domain URL.
+**"Origin Invalid" error**: Add `TRUSTED_ORIGINS=portainer.example.com` to the Portainer service, or use `--trusted-origins portainer.example.com`.
 
 **WebSocket errors in terminal**: Ensure `Upgrade` and `Connection` headers are set in the Nginx config.
 
