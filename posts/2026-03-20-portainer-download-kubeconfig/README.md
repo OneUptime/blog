@@ -8,37 +8,37 @@ Description: Learn how to download a kubeconfig file from Portainer for kubectl 
 
 ## Introduction
 
-Portainer generates user-specific kubeconfig files that provide scoped kubectl access to Kubernetes clusters managed by Portainer. This is especially useful in Portainer Business Edition where namespace-level access control is enforced. This guide walks through the full process of downloading and configuring your kubeconfig.
+Portainer generates user-specific kubeconfig files that provide scoped kubectl access to Kubernetes clusters managed by Portainer. This guide walks through the full process of downloading and configuring your kubeconfig.
 
 ## Prerequisites
 
-- Portainer BE with Kubernetes environment(s) configured
-- kubectl access enabled by an admin for your user account
-- kubectl installed on your local machine (v1.20+)
+- Portainer with Kubernetes environment(s) configured
+- Access Portainer over HTTPS
+- Kubeconfig download enabled for non-admin users, or an administrator account
+- kubectl installed on your local machine
+- `jq` installed locally if you plan to use the API examples
 
-## Step 1: Enable kubectl Access (Admin Task)
+## Step 1: Enable Kubeconfig Download (Admin Task)
 
-An administrator must first enable kubectl access before users can download kubeconfig files:
+An administrator may need to confirm kubeconfig download is enabled before users can download kubeconfig files:
 
-1. Log into Portainer as admin.
-2. Select the Kubernetes environment.
-3. Go to environment **Settings** (gear icon).
-4. Enable **Allow users to use kubectl shell**.
+1. Log into Portainer as an administrator.
+2. Go to **Settings**.
+3. Under **Kubernetes settings**, review the **Kubeconfig** section.
+4. Make sure kubeconfig download for non-admin users is not disabled.
 5. Set a kubeconfig expiry time (optional but recommended).
-6. Save.
+6. Apply changes.
 
 ## Step 2: Download Your Kubeconfig via the UI
 
 As a regular user:
 
-1. Log into Portainer.
-2. Click your **username** in the top-right corner of the page.
-3. Click **My account**.
-4. Scroll down to the **Kubeconfig** section.
-5. From the **Environment** dropdown, select the cluster you need access to.
-6. Click **Download kubeconfig**.
+1. Log into Portainer over HTTPS.
+2. From the **Home** page, click the **kubeconfig** button.
+3. Select the Kubernetes environment or environments you need access to.
+4. Click **Download File**.
 
-The file will be downloaded as `portainer-kubeconfig.yaml`.
+For the commands below, save the downloaded file as `~/.kube/portainer-kubeconfig.yaml`.
 
 ## Step 3: Download Kubeconfig via the Portainer API
 
@@ -51,10 +51,13 @@ TOKEN=$(curl -s -X POST https://portainer.example.com/api/auth \
   -H "Content-Type: application/json" \
   -d '{"username":"myuser","password":"mypassword"}' | jq -r '.jwt')
 
-# Step 2: Download kubeconfig for endpoint ID 1
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/endpoints/1/kubernetes/config" \
-  -o portainer-kubeconfig.yaml
+# Step 2: Download kubeconfig for environment ID 1
+mkdir -p ~/.kube
+curl -s \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/yaml" \
+  "https://portainer.example.com/api/kubernetes/config?ids=1" \
+  -o ~/.kube/portainer-kubeconfig.yaml
 
 echo "Kubeconfig downloaded."
 ```
@@ -63,18 +66,18 @@ echo "Kubeconfig downloaded."
 
 ```bash
 # Option A: Replace default kubeconfig
-cp portainer-kubeconfig.yaml ~/.kube/config
+cp ~/.kube/portainer-kubeconfig.yaml ~/.kube/config
 
 # Option B: Use as an additional context alongside existing configs
-export KUBECONFIG=~/.kube/config:~/portainer-kubeconfig.yaml
+export KUBECONFIG=~/.kube/config:~/.kube/portainer-kubeconfig.yaml
 
 # Option C: Merge into existing kubeconfig
-KUBECONFIG=~/.kube/config:~/portainer-kubeconfig.yaml \
+KUBECONFIG=~/.kube/config:~/.kube/portainer-kubeconfig.yaml \
   kubectl config view --flatten > /tmp/merged.yaml
 mv /tmp/merged.yaml ~/.kube/config
 
 # Make it permanent in your shell profile
-echo 'export KUBECONFIG=~/.kube/config:~/portainer-kubeconfig.yaml' >> ~/.zshrc
+echo 'export KUBECONFIG=~/.kube/config:~/.kube/portainer-kubeconfig.yaml' >> ~/.zshrc
 source ~/.zshrc
 ```
 
@@ -82,7 +85,7 @@ source ~/.zshrc
 
 ```bash
 # View the kubeconfig structure
-cat portainer-kubeconfig.yaml
+cat ~/.kube/portainer-kubeconfig.yaml
 
 # Check available contexts
 kubectl config get-contexts
@@ -112,7 +115,7 @@ kubectl get pods -n staging --context=portainer-staging
 
 ## Handling Kubeconfig Expiry
 
-When the kubeconfig token expires, you will see this error:
+When the kubeconfig token expires, or if Portainer restarts, you may see this error:
 
 ```text
 error: You must be logged in to the server (Unauthorized)
@@ -126,12 +129,14 @@ TOKEN=$(curl -s -X POST https://portainer.example.com/api/auth \
   -H "Content-Type: application/json" \
   -d '{"username":"myuser","password":"mypassword"}' | jq -r '.jwt')
 
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/endpoints/1/kubernetes/config" \
-  -o portainer-kubeconfig.yaml
+curl -s \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/yaml" \
+  "https://portainer.example.com/api/kubernetes/config?ids=1" \
+  -o ~/.kube/portainer-kubeconfig.yaml
 
 # Re-merge with your kubeconfig
-KUBECONFIG=~/.kube/config:~/portainer-kubeconfig.yaml \
+KUBECONFIG=~/.kube/config:~/.kube/portainer-kubeconfig.yaml \
   kubectl config view --flatten > /tmp/merged.yaml && mv /tmp/merged.yaml ~/.kube/config
 
 echo "Kubeconfig refreshed."
@@ -152,8 +157,11 @@ TOKEN=$(curl -s -X POST "${PORTAINER_URL}/api/auth" \
   -H "Content-Type: application/json" \
   -d "{\"username\":\"${PORTAINER_USER}\",\"password\":\"${PORTAINER_PASS}\"}" | jq -r '.jwt')
 
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/kubernetes/config" \
+mkdir -p ~/.kube
+curl -s \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/yaml" \
+  "${PORTAINER_URL}/api/kubernetes/config?ids=${ENDPOINT_ID}" \
   -o ~/.kube/portainer-kubeconfig.yaml
 
 echo "Kubeconfig refreshed at $(date)"
