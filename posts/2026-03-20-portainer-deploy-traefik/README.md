@@ -142,7 +142,7 @@ labels:
 
 ## Wildcard Certificate with DNS Challenge
 
-For a wildcard certificate (*.example.com):
+For a wildcard certificate (`*.example.com`), configure DNS challenge and explicitly request the wildcard domain on the router:
 
 ```yaml
 command:
@@ -152,6 +152,11 @@ command:
 environment:
   - CF_API_EMAIL=admin@example.com
   - CF_API_KEY=your_cloudflare_api_key
+
+labels:
+  - "traefik.http.routers.myapp.tls.certresolver=letsencrypt"
+  - "traefik.http.routers.myapp.tls.domains[0].main=example.com"
+  - "traefik.http.routers.myapp.tls.domains[0].sans=*.example.com"
 ```
 
 ## Conclusion
