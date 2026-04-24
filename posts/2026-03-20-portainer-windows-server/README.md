@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Windows Server, Docker, Windows Containers
 
-Description: Learn how to install Portainer on Windows Server 2022 to manage Docker containers running on Windows, including both Linux containers via Hyper-V and native Windows containers.
+Description: Learn how to install Portainer on Windows Server 2022 to manage Docker containers running on Windows using native Windows containers.
 
 ## Prerequisites
 
@@ -14,13 +14,12 @@ Description: Learn how to install Portainer on Windows Server 2022 to manage Doc
 
 ## Step 1: Install Docker on Windows Server
 
-Docker Desktop is for desktop OS. Windows Server uses Docker Engine (Mirantis Container Runtime) or Docker's native Windows engine:
+Docker Desktop is for desktop OS. On Windows Server, use a supported Windows container runtime such as Moby or Mirantis Container Runtime:
 
 ```powershell
-# Install Containers and Hyper-V features
-
-Install-WindowsFeature -Name Containers
-Install-WindowsFeature -Name Hyper-V -IncludeManagementTools
+# Download and run Microsoft's Docker installation script
+Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/microsoft/Windows-Containers/Main/helpful_tools/Install-DockerCE/install-docker-ce.ps1" -OutFile install-docker-ce.ps1
+.\install-docker-ce.ps1
 
 # Restart required
 Restart-Computer -Force
@@ -29,13 +28,6 @@ Restart-Computer -Force
 After restart:
 
 ```powershell
-# Install Docker using PowerShell
-Install-Module DockerMsftProvider -Repository PSGallery -Force
-Install-Package Docker -ProviderName DockerMsftProvider -Force
-
-# Start Docker
-Start-Service Docker
-
 # Verify installation
 docker version
 ```
@@ -54,7 +46,7 @@ docker run -d `
   --restart always `
   -v \\.\pipe\docker_engine:\\.\pipe\docker_engine `
   -v portainer_data:C:\data `
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 Note: Windows uses `\\.\pipe\docker_engine` instead of a Unix socket.
@@ -69,15 +61,9 @@ New-NetFirewallRule `
   -Protocol TCP `
   -LocalPort 9443 `
   -Action Allow
-
-# Allow Portainer HTTP port
-New-NetFirewallRule `
-  -DisplayName "Portainer HTTP" `
-  -Direction Inbound `
-  -Protocol TCP `
-  -LocalPort 9000 `
-  -Action Allow
 ```
+
+If you also publish `-p 9000:9000` for legacy HTTP access, add a matching firewall rule for port `9000`.
 
 ## Step 4: Access Portainer
 
@@ -88,46 +74,40 @@ https://SERVER_IP:9443
 
 Complete the initial setup to create your admin account.
 
-## Step 5: Switching Container Modes
+## Step 5: Container Mode Notes
 
-Windows Server can run both Linux containers (via Hyper-V) and Windows containers:
+Windows Server supports Windows Server containers and Hyper-V-isolated Windows containers. Linux Containers on Windows (LCOW) on Windows Server has been deprecated, so you should not rely on switching this host between Linux and Windows container modes.
 
-```powershell
-# Switch to Windows containers
-& $Env:ProgramFiles\Docker\Docker\DockerCli.exe -SwitchWindowsEngine
-
-# Switch to Linux containers (via Hyper-V)
-& $Env:ProgramFiles\Docker\Docker\DockerCli.exe -SwitchLinuxEngine
-```
+If you need to manage Linux containers in Portainer, add a separate Linux Docker environment.
 
 ## Running a Test Container
 
 ```powershell
-# Linux container (if in Linux mode)
-docker run -d -p 8080:80 --name nginx-test nginx:alpine
-
-# Windows container (if in Windows mode)
+# Windows container test
 docker run -d -p 8081:80 --name iis-test mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2022
 ```
 
 ## Portainer with Docker Compose on Windows
 
 ```powershell
-# Install Docker Compose
-Invoke-WebRequest "https://github.com/docker/compose/releases/latest/download/docker-compose-windows-x86_64.exe" `
-  -OutFile "$Env:ProgramFiles\Docker\docker-compose.exe"
+# Install Docker Compose standalone (legacy)
+Start-BitsTransfer -Source "https://github.com/docker/compose/releases/download/v5.1.2/docker-compose-windows-x86_64.exe" `
+  -Destination $Env:ProgramFiles\Docker\docker-compose.exe
 
-# Use from Portainer stacks normally
+# Verify installation
+docker-compose.exe version
 ```
+
+Note: This standalone installation is a legacy option and uses the `docker-compose` syntax. Portainer stacks can consume Compose-formatted YAML directly in the UI.
 
 ## Common Issues
 
 | Issue | Cause | Fix |
 |-------|-------|-----|
 | Named pipe error | Wrong volume mount for Docker socket | Use `\\.\pipe\docker_engine` |
-| Container not starting | Image architecture mismatch | Ensure correct container mode |
+| Container not starting | Host/image version mismatch | Use a Windows image compatible with the host version |
 | Port conflict | Windows services using port 80 | Check IIS or other services |
 
 ## Conclusion
 
-Portainer on Windows Server 2022 provides a familiar web-based management interface for Docker on Windows. The primary difference from Linux installations is the Docker socket path (named pipe instead of Unix socket). Once running, Portainer manages both Windows and Linux containers through the same interface.
+Portainer on Windows Server 2022 provides a familiar web-based management interface for Docker on Windows. The primary difference from Linux installations is the Docker socket path (named pipe instead of Unix socket). If you also manage Linux containers, add a separate Linux environment to Portainer rather than trying to run Linux containers directly on the Windows Server host.
