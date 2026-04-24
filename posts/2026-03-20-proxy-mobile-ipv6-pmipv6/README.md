@@ -8,7 +8,7 @@ Description: Understand Proxy Mobile IPv6 (PMIPv6), a network-based mobility pro
 
 ## Introduction
 
-Proxy Mobile IPv6 (PMIPv6), defined in RFC 5213, is a network-based approach to IPv6 mobility. Unlike host-based MIPv6, the Mobile Node does not need any mobility software - the network infrastructure handles Binding Updates on the MN's behalf. This makes PMIPv6 ideal for LTE/4G and 5G core networks.
+Proxy Mobile IPv6 (PMIPv6), defined in RFC 5213, is a network-based approach to IPv6 mobility. Unlike host-based MIPv6, the Mobile Node does not need any mobility software - the network infrastructure handles Binding Updates on the MN's behalf. This makes PMIPv6 useful for network-based localized mobility and for some LTE/EPC architectures.
 
 ## PMIPv6 vs MIPv6
 
@@ -18,7 +18,7 @@ Proxy Mobile IPv6 (PMIPv6), defined in RFC 5213, is a network-based approach to 
 | Signaling initiated by | Mobile Node | Network (MAG) |
 | MN awareness | MN is aware of mobility | MN is transparent |
 | Deployment | End-device support needed | Network-only deployment |
-| Standard usage | VPN-like mobility | LTE/4G/5G mobile cores |
+| Standard usage | Host-based IPv6 mobility | Network-based localized mobility |
 
 ## PMIPv6 Architecture
 
@@ -30,7 +30,7 @@ graph TB
     CN["Correspondent Node"]
 
     MN <-->|"Standard IPv6\n(MN unaware of mobility)"| MAG
-    MAG <-->|"PBU/PBA (Proxy BU)\nvia GRE/IPv6 tunnel"| LMA
+    MAG <-->|"PBU/PBA signaling\n+ IPv6-in-IPv6 tunnel"| LMA
     LMA <-->|"Native IPv6"| CN
 ```
 
@@ -38,39 +38,41 @@ graph TB
 
 ### Mobile Access Gateway (MAG)
 
-The MAG runs at the access router/base station and:
+The MAG runs at the access router or gateway and:
 1. Detects when an MN attaches to the network
 2. Authenticates the MN (via RADIUS/AAA)
 3. Sends Proxy Binding Updates (PBU) to the LMA
-4. Creates a GRE or IPv4-in-IPv6 tunnel to the LMA
+4. Creates or reuses the bi-directional tunnel to the LMA
 5. Routes traffic between MN and LMA through the tunnel
 
 ### Local Mobility Anchor (LMA)
 
 The LMA is the PMIPv6 equivalent of the MIPv6 Home Agent:
-1. Maintains the Binding Cache (MN-ID → MAG address)
+1. Maintains the Binding Cache for each MN's mobility session
 2. Anchors the MN's stable IPv6 prefix
 3. Tunnels traffic to the appropriate MAG
 
 ## PMIPv6 Message Types
 
-### Proxy Binding Update (PBU) - MH Type 3 (same as standard BU with P flag)
+### Proxy Binding Update (PBU) - MH Type 5 (Binding Update with the P flag set)
 
 ```text
 Sent by MAG to LMA when MN attaches:
   Handoff Indicator: 1 (new attachment)
-  Access Technology Type: e.g., 8 (LTE)
-  Home Network Prefix Option: MN's assigned prefix
-  Mobile Node Identifier: NAI or MAC address
+  Access Technology Type: e.g., 8 (3GPP E-UTRAN / LTE)
+  Home Network Prefix Option: requested or assigned prefix
+  Mobile Node Identifier: NAI or other stable identifier
+  Sequence Number or Timestamp: required for ordering
 ```
 
-### Proxy Binding Acknowledgement (PBA) - MH Type 4
+### Proxy Binding Acknowledgement (PBA) - MH Type 6 (Binding Acknowledgement with the P flag set)
 
 ```text
 Sent by LMA to MAG confirming binding:
-  Status: 0 (success)
-  Home Network Prefix Option: confirmed prefix
-  IPv6 Home Address Option
+  Status: 0 (Proxy Binding Update Accepted)
+  Mobile Node Identifier Option: echoed from request
+  Home Network Prefix Option: confirmed or allocated prefix
+  Handoff Indicator / Access Technology Type: echoed from request
 ```
 
 ## Simplified PMIPv6 MAG Logic
@@ -84,7 +86,7 @@ class MobileAccessGateway:
         self.mag_address = mag_address
         self.attached_nodes = {}
 
-    def on_mn_attach(self, mn_identifier: str, access_type: str):
+    def on_mn_attach(self, mn_identifier: str, access_type: int):
         """Called when a Mobile Node attaches to this MAG."""
         print(f"MN attached: {mn_identifier} via {access_type}")
 
@@ -102,10 +104,10 @@ class MobileAccessGateway:
         )
         self.send_to_lma(pbu)
 
-    def on_pba_received(self, pba: ProxyBindingAck):
+    def on_pba_received(self, pba: "ProxyBindingAck"):
         """Process the LMA's confirmation."""
         if pba.status == 0:
-            # Establish GRE tunnel to LMA for this MN
+            # Ensure tunnel and routing state exist for this MN
             self.create_tunnel(
                 mn_id=pba.mn_identifier,
                 lma_address=self.lma_address,
@@ -123,24 +125,15 @@ class MobileAccessGateway:
         self.remove_tunnel(mn_identifier)
 ```
 
-## Linux PMIPv6 with OAI or OpenMobility
+## Linux PMIPv6 with OAI
 
 ```bash
-# Install UMIP with PMIPv6 support
-
-sudo apt-get install umip-pmip
-
-# /etc/mip6d.conf - MAG configuration
-NodeConfig MAG;
-
-MagAddressIngress 2001:db8:access::1;
-MagAddressEgress 2001:db8:core::1;
-LmaAddress 2001:db8:lma::1;
-
-MagDefaultRetransmitDelay 1.0;
-DefaultBindingAcl Allow;
+# OAI PMIPv6 was historically implemented as project-specific patches on
+# top of UMIP 0.4. Use the exact build and configuration steps from the
+# implementation's own documentation instead of a generic `apt-get install`
+# command or stock UMIP config snippet.
 ```
 
 ## Conclusion
 
-PMIPv6 enables IPv6 mobility for devices that do not support MIPv6, making it the standard for 4G/LTE and 5G mobile cores. The network (MAG and LMA) handles all mobility signaling transparently. Monitor LMA Binding Cache counts and PBU success rates with OneUptime to ensure mobile core health.
+PMIPv6 enables IPv6 mobility for devices that do not support MIPv6 and is used for network-based localized mobility, including some LTE/EPC PMIPv6 deployments. The network (MAG and LMA) handles all mobility signaling transparently. Monitor LMA Binding Cache counts and PBU success rates with OneUptime to ensure mobile core health.
