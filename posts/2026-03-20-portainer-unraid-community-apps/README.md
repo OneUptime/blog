@@ -12,7 +12,7 @@ Unraid has a built-in Docker manager, but Portainer provides additional capabili
 
 ## Prerequisites
 
-- Unraid 6.11 or later
+- Unraid 6.12 or later
 - Community Applications plugin installed
 - Docker service enabled in Unraid settings
 
@@ -29,7 +29,7 @@ If not already installed:
 
 1. Click the **Apps** tab in Unraid WebUI
 2. Search for `Portainer`
-3. Find the **Portainer-CE** template (by official Portainer or a trusted contributor)
+3. Find a Portainer template from a trusted maintainer
 4. Click **Install**
 
 ### Configure the Template
@@ -39,9 +39,9 @@ The CA template will pre-fill most settings. Review and adjust:
 | Field | Value |
 |-------|-------|
 | Name | portainer |
-| Repository | portainer/portainer-ce:latest |
-| WebUI | http://[IP]:[PORT:9000] |
-| Port 9000 | 9000 |
+| Repository | portainer/portainer-ce:lts |
+| WebUI | https://[IP]:[PORT:9443] |
+| Port 9000 | 9000 (optional legacy HTTP) |
 | Port 9443 | 9443 |
 
 **Volume Paths:**
@@ -61,19 +61,21 @@ If you prefer not to use CA, install manually:
 2. Click **Add Container**
 3. Fill in:
    - **Name**: portainer
-   - **Repository**: portainer/portainer-ce:latest
+   - **Repository**: portainer/portainer-ce:lts
    - **Restart Policy**: Unless Stopped
 
 4. Click **Add another Path, Port, Variable, Label or Device**
-5. Add Port:
+5. Add Port for legacy HTTP (optional):
    - Name: WebUI
    - Container Port: 9000
    - Host Port: 9000
    - Connection Type: TCP
 
-6. Add Port:
+6. Add Port for HTTPS:
+   - Name: HTTPS
    - Container Port: 9443
    - Host Port: 9443
+   - Connection Type: TCP
 
 7. Add Path for data:
    - Container Path: `/data`
@@ -87,9 +89,9 @@ If you prefer not to use CA, install manually:
 
 9. Click **Apply**
 
-## Step 4: Via SSH with docker-compose
+## Step 4: Via SSH with Docker Compose
 
-For a reproducible setup, SSH into Unraid and create a compose file:
+For a reproducible setup outside Unraid's native Docker UI, if you already have Compose available on your Unraid system, SSH into Unraid and create a compose file in a persistent location:
 
 ```bash
 # SSH into Unraid
@@ -100,17 +102,15 @@ ssh root@<unraid-ip>
 mkdir -p /mnt/user/appdata/portainer
 
 # Create compose file
-cat > /tmp/portainer-compose.yml << 'EOF'
-version: "3.8"
-
+cat > /mnt/user/appdata/portainer/portainer-compose.yml << 'EOF'
 services:
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:lts
     container_name: portainer
     restart: unless-stopped
     ports:
-      - "9000:9000"
       - "9443:9443"
+      - "9000:9000" # Optional legacy HTTP access
     volumes:
       # Docker socket for container management
       - /var/run/docker.sock:/var/run/docker.sock
@@ -119,12 +119,12 @@ services:
 EOF
 
 # Deploy
-docker-compose -f /tmp/portainer-compose.yml up -d
+docker compose -f /mnt/user/appdata/portainer/portainer-compose.yml up -d
 ```
 
 ## Step 5: Access Portainer
 
-Navigate to `http://<unraid-ip>:9000` and create your admin account.
+Navigate to `https://<unraid-ip>:9443` and create your admin account. If you exposed the legacy HTTP port, `http://<unraid-ip>:9000` will also work.
 
 ## Integrating Portainer with Unraid
 
@@ -137,17 +137,17 @@ Portainer will automatically detect all containers managed by Unraid's Docker ma
 Portainer's stack feature works independently of Unraid's Docker manager. Use it for multi-container applications that Unraid's single-container approach doesn't handle well:
 
 1. In Portainer, navigate to **Stacks > Add stack**
-2. Give it a name and paste your docker-compose content
+2. Give it a name and paste your Compose content
 3. Click **Deploy the stack**
 
-Unraid will not be aware of these stack-managed containers in its Docker tab.
+Unraid does not natively manage Docker Compose deployments in its Docker tab, so ongoing management is typically done through Portainer or the Docker CLI.
 
 ## Updating Portainer on Unraid
 
 ### Via Community Applications
 
-1. Navigate to **Apps > My Apps** or **Docker** tab
-2. Click the update button next to the Portainer container
+1. Navigate to the **Apps** tab and open **Action Center**
+2. Click **Actions > Update** for the Portainer app
 3. CA will pull the new image and recreate the container
 
 ### Via Command Line
@@ -159,7 +159,7 @@ ssh root@<unraid-ip>
 # Update Portainer
 docker stop portainer
 docker rm portainer
-docker pull portainer/portainer-ce:latest
+docker pull portainer/portainer-ce:lts
 
 # Recreate with original settings
 # (Unraid stores the container config - use the Docker tab to recreate)
@@ -171,7 +171,7 @@ docker run -d \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /mnt/user/appdata/portainer:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Conclusion
