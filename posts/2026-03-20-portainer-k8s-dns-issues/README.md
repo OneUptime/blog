@@ -17,7 +17,7 @@ DNS is the backbone of Kubernetes service discovery. When DNS fails, services ca
 
 Error: getaddrinfo ENOTFOUND my-service.production.svc.cluster.local
 dial tcp: lookup postgres on 10.96.0.10:53: no such host
-Connection refused: could not resolve host "redis"
+curl: (6) Could not resolve host: redis
 ```
 
 ## Step 1: Verify CoreDNS is Running
@@ -26,7 +26,7 @@ Connection refused: could not resolve host "redis"
 # Check CoreDNS pods
 kubectl get pods -n kube-system -l k8s-app=kube-dns
 
-# Should see 2+ Running pods
+# Should see one or more Running pods
 # NAME                       READY   STATUS    RESTARTS   AGE
 # coredns-5d78c9869d-8xbdj   1/1     Running   0          5d
 
@@ -68,11 +68,11 @@ kubectl get svc kube-dns -n kube-system
 # NAME       TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)         AGE
 # kube-dns   ClusterIP   10.96.0.10   <none>        53/UDP,53/TCP   30d
 
-# Verify endpoints exist
-kubectl get endpoints kube-dns -n kube-system
+# Verify EndpointSlices exist
+kubectl get endpointslice -n kube-system -l kubernetes.io/service-name=kube-dns
 ```
 
-If endpoints are empty, CoreDNS pods aren't matching the service selector.
+If no EndpointSlices appear, check that the CoreDNS Service selector still matches the CoreDNS pods.
 
 ## Step 4: Diagnose Service Name Resolution
 
@@ -85,8 +85,8 @@ nslookup my-service               # Short name (works within same namespace)
 nslookup my-service.production    # Namespace-qualified
 nslookup my-service.production.svc.cluster.local  # Fully qualified
 
-# Get the cluster domain
-kubectl get configmap coredns -n kube-system -o yaml | grep cluster.local
+# Inspect the kubernetes line in the Corefile to see the cluster domain
+kubectl get configmap coredns -n kube-system -o jsonpath='{.data.Corefile}' | grep '^ *kubernetes '
 ```
 
 ## Step 5: Check NetworkPolicy Blocking DNS
@@ -114,14 +114,19 @@ spec:
   policyTypes:
   - Egress
   egress:
-  # Allow DNS
-  - ports:
+  # Allow DNS to CoreDNS in kube-system
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
     - port: 53
       protocol: UDP
     - port: 53
       protocol: TCP
-  # Allow all other egress (add specific rules as needed)
-  - {}
 ```
 
 ## Step 6: Fix CoreDNS Configuration Issues
@@ -161,7 +166,8 @@ Common issues in the Corefile:
 # Apply updated CoreDNS config
 kubectl edit configmap coredns -n kube-system
 
-# Restart CoreDNS to apply changes
+# Wait a minute or two for the updated ConfigMap to propagate,
+# or restart CoreDNS if you need the change applied immediately
 kubectl rollout restart deployment/coredns -n kube-system
 ```
 
@@ -169,7 +175,7 @@ kubectl rollout restart deployment/coredns -n kube-system
 
 The `ndots:5` setting means any hostname with fewer than 5 dots goes through search domain expansion before being tried as absolute. This causes latency:
 
-```bash
+```yaml
 # In your pod spec, customize DNS config
 spec:
   dnsConfig:
@@ -184,11 +190,12 @@ spec:
 
 ```bash
 # More detailed DNS debugging
-kubectl run dig-debug --image=tutum/dnsutils --rm -it --restart=Never -- bash
+kubectl run dig-debug --image=tutum/dnsutils --rm -it --restart=Never -- sh
 
 # Inside the pod:
-dig @10.96.0.10 my-service.production.svc.cluster.local
-dig @10.96.0.10 google.com
+# Replace <kube-dns-cluster-ip> with the ClusterIP from Step 3
+dig @<kube-dns-cluster-ip> my-service.production.svc.cluster.local
+dig @<kube-dns-cluster-ip> google.com
 
 # Check for SERVFAIL
 # Check response time (Query time)
@@ -196,11 +203,12 @@ dig @10.96.0.10 google.com
 
 ## CoreDNS Performance Tuning
 
-```yaml
+```bash
 # Increase CoreDNS replicas if under heavy load
 kubectl scale deployment coredns --replicas=3 -n kube-system
 
-# Enable autopath for faster resolution
+# Consider autopath for faster resolution only if you also change
+# the kubernetes plugin to `pods verified`
 # In Corefile, add:
 # autopath @kubernetes
 ```
@@ -216,7 +224,7 @@ kubectl get pods -n kube-system -l k8s-app=kube-dns
 echo ""
 echo "=== CoreDNS Service ==="
 kubectl get svc kube-dns -n kube-system
-kubectl get ep kube-dns -n kube-system
+kubectl get endpointslice -n kube-system -l kubernetes.io/service-name=kube-dns
 
 echo ""
 echo "=== CoreDNS ConfigMap ==="
