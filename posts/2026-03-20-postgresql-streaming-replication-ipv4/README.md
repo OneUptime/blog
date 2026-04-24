@@ -36,8 +36,8 @@ max_wal_senders = 5              # Allow up to 5 standby connections
 wal_keep_size = 256              # Keep 256MB of WAL segments (for slow standbys)
 max_replication_slots = 5        # Allow replication slots if needed
 
-# Optional: synchronous replication (guarantees no data loss)
-# synchronous_standby_names = 'standby1'
+# Optional: synchronous replication (waits for standby confirmation before commit)
+# synchronous_standby_names = 'standby1'   # Match the standby's application_name
 ```
 
 ### pg_hba.conf
@@ -54,8 +54,8 @@ CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'ReplPass123!';
 ```
 
 ```bash
-# Reload PostgreSQL to apply pg_hba.conf changes
-pg_ctlcluster 15 main reload
+# Restart PostgreSQL to apply these replication settings
+pg_ctlcluster 15 main restart
 ```
 
 ## Standby Server Setup
@@ -63,16 +63,20 @@ pg_ctlcluster 15 main reload
 ### Step 1: Copy Primary Data
 
 ```bash
+# Stop PostgreSQL on the standby first
+pg_ctlcluster 15 main stop
+
 # Create a base backup on the standby server
+# /var/lib/postgresql/15/main must be empty before running this command
 # Run as the postgres user
 pg_basebackup \
   -h 10.0.0.10 \
   -U replicator \
   -D /var/lib/postgresql/15/main \
-  -Fp \      # Plain format
-  -Xs \      # Stream WAL during backup
-  -P         # Show progress
-  # Enter the replicator password when prompted
+  -Fp \
+  -Xs \
+  -P
+# Enter the replicator password when prompted
 ```
 
 ### Step 2: Configure postgresql.conf on Standby
@@ -91,7 +95,7 @@ touch /var/lib/postgresql/15/main/standby.signal
 
 # Add primary connection info to postgresql.conf (or recovery.conf for PG < 12)
 cat >> /etc/postgresql/15/main/postgresql.conf << EOF
-primary_conninfo = 'host=10.0.0.10 port=5432 user=replicator password=ReplPass123!'
+primary_conninfo = 'host=10.0.0.10 port=5432 user=replicator password=ReplPass123! application_name=standby1'
 EOF
 ```
 
@@ -108,9 +112,10 @@ pg_ctlcluster 15 main start
 SELECT client_addr, state, sent_lsn, write_lsn, flush_lsn, replay_lsn
 FROM pg_stat_replication;
 
--- On the standby: check replication status
-SELECT now() - pg_last_xact_replay_timestamp() AS replication_delay;
--- Close to 0 seconds means replication is nearly real-time
+-- On the standby: check replay status
+SELECT pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn(),
+       pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() AS replay_caught_up;
+-- replay_caught_up = t means the standby has replayed all WAL it has received
 ```
 
 ## Key Takeaways
@@ -118,4 +123,4 @@ SELECT now() - pg_last_xact_replay_timestamp() AS replication_delay;
 - Set `wal_level = replica` and `max_wal_senders >= 1` on the primary.
 - Use `pg_basebackup` to copy the primary's data directory to the standby.
 - Create `standby.signal` (PG 12+) and set `primary_conninfo` on the standby.
-- Monitor lag with `pg_stat_replication` on the primary and `pg_last_xact_replay_timestamp()` on the standby.
+- Monitor lag with `pg_stat_replication` on the primary and `pg_last_wal_receive_lsn()` / `pg_last_wal_replay_lsn()` on the standby.
