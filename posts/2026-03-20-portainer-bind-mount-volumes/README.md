@@ -13,7 +13,7 @@ Bind mounts map a host directory or file directly into a container. Unlike named
 ## Prerequisites
 
 - Portainer installed with a connected Docker environment
-- The host path you want to mount must exist before creating the container
+- Create the host directory or file you want to mount before creating the container for predictable results
 
 ## Named Volume vs. Bind Mount
 
@@ -21,20 +21,26 @@ Bind mounts map a host directory or file directly into a container. Unlike named
 |--------|-------------|------------|
 | Path control | Docker manages | Explicit host path |
 | Portability | High | Low (host-path dependent) |
-| Pre-existing path | Not required | Required (or create first) |
+| Pre-existing path | Not required | Create first for predictable results |
 | Use case | Databases, app data | Config files, dev code |
 
-## Step 1: Create the Host Directory
+## Step 1: Create the Host Path
 
-The host path must exist before creating the bind mount:
+Create the host path before creating the bind mount, especially if you're mounting individual files:
 
 ```bash
-# Create the host directory:
+# Create the host directories:
 
-mkdir -p /data/nginx/config
+mkdir -p /data/nginx/conf.d
 mkdir -p /data/nginx/html
+mkdir -p /data/nginx/logs
 mkdir -p /data/myapp/logs
+mkdir -p /data/myapp/uploads
 mkdir -p /etc/myapp
+
+# If you bind-mount individual files, create those files too and populate
+# them with valid content (for example /data/nginx/nginx.conf or
+# /etc/myapp/config.yaml).
 
 # Set ownership if needed:
 chown -R 1000:1000 /data/myapp/
@@ -46,15 +52,15 @@ chown -R www-data:www-data /data/nginx/
 
 1. Navigate to **Containers > Add container**.
 2. Set the container name and image.
-3. Scroll to the **Volumes** tab.
+3. Scroll to **Advanced container settings** and open the **Volumes** section.
 4. Click **+ map additional volume**.
-5. Under **Volume**, select **Bind** (not a named volume).
+5. Under **Mapping type**, select **Bind** (not a named volume).
 6. Fill in:
 
 ```text
 Container path: /etc/nginx/conf.d
-Type:           Bind
-Host path:      /data/nginx/config
+Mapping type:   Bind
+Host path:      /data/nginx/conf.d
 Read/Write:     Read only  ← Config files should be read-only
 ```
 
@@ -62,7 +68,7 @@ Or:
 
 ```text
 Container path: /app/logs
-Type:           Bind
+Mapping type:   Bind
 Host path:      /data/myapp/logs
 Read/Write:     Read/Write  ← Logs need write access
 ```
@@ -71,7 +77,6 @@ Read/Write:     Read/Write  ← Logs need write access
 
 ```yaml
 # docker-compose.yml with bind mounts
-version: "3.8"
 
 services:
   nginx:
@@ -109,6 +114,12 @@ services:
 services:
   postgres:
     image: postgres:15-alpine
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
     volumes:
       # Custom PostgreSQL config
       - /etc/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
@@ -180,7 +191,7 @@ services:
 File permissions on bind mounts can be tricky:
 
 ```bash
-# The file/directory is accessible in the container as the SAME UID/GID as the host
+# The file/directory is accessible in the container using the SAME numeric UID/GID as the host
 # If the container runs as UID 1000 and the host directory is owned by root → Permission denied
 
 # Fix: Set correct ownership on host
@@ -226,15 +237,15 @@ services:
 ```bash
 # Verify the bind mount is working:
 docker exec my-container ls -la /etc/nginx/conf.d/
-# Should show files from /data/nginx/config on the host
+# Should show files from /data/nginx/conf.d on the host
 
 # Check mount info:
 docker inspect my-container | jq '.[].Mounts'
-# Output shows Type: "bind" and Source: "/data/nginx/config"
+# Output shows Type: "bind" and Source: "/data/nginx/conf.d"
 ```
 
 In Portainer: container details → **Inspect** tab → `Mounts` section.
 
 ## Conclusion
 
-Bind mounts in Portainer provide direct access to host files and directories from containers. They're ideal for config files, development code, SSL certificates, and log directories where the host path matters. Always create the host path before creating the container, set appropriate file permissions, and use read-only mounts for config files to prevent accidental modification by the container.
+Bind mounts in Portainer provide direct access to host files and directories from containers. They're ideal for config files, development code, SSL certificates, and log directories where the host path matters. Create the host path first for predictable results, set appropriate file permissions, and use read-only mounts for config files to prevent accidental modification by the container.
