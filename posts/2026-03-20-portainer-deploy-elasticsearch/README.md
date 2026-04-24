@@ -8,7 +8,7 @@ Description: Deploy Elasticsearch via Portainer as a powerful full-text search a
 
 ## Introduction
 
-Elasticsearch is a distributed, RESTful search and analytics engine used for log analysis, full-text search, and real-time monitoring. Deploying it via Portainer with security enabled and proper JVM settings gives you a production-capable search engine.
+Elasticsearch is a distributed, RESTful search and analytics engine used for log analysis, full-text search, and real-time monitoring. Deploying it via Portainer with security enabled and proper JVM settings gives you a practical self-hosted search engine.
 
 ## Prerequisites
 
@@ -22,10 +22,10 @@ Before deploying, configure the Docker host for Elasticsearch:
 ```bash
 # Increase virtual memory limits (required for Elasticsearch)
 
-sudo sysctl -w vm.max_map_count=262144
+sudo sysctl -w vm.max_map_count=1048576
 
 # Make persistent
-echo 'vm.max_map_count=262144' | sudo tee /etc/sysctl.d/99-elasticsearch.conf
+echo 'vm.max_map_count=1048576' | sudo tee /etc/sysctl.d/99-elasticsearch.conf
 sudo sysctl --system
 ```
 
@@ -38,7 +38,7 @@ version: "3.8"
 
 services:
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
     container_name: elasticsearch
     environment:
       # Single-node cluster
@@ -47,7 +47,7 @@ services:
       - node.name=es-node-1
       # Cluster name
       - cluster.name=my-cluster
-      # Security (enabled by default in ES 8.x)
+      # Security
       - xpack.security.enabled=true
       - xpack.security.http.ssl.enabled=false   # Disable SSL for simplicity
       # JVM heap size (set to 50% of available RAM)
@@ -79,10 +79,10 @@ services:
 
   # Kibana - Elasticsearch visualization
   kibana:
-    image: docker.elastic.co/kibana/kibana:8.13.0
+    image: docker.elastic.co/kibana/kibana:9.3.3
     container_name: kibana
     environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - 'ELASTICSEARCH_HOSTS=["http://elasticsearch:9200"]'
       - ELASTICSEARCH_USERNAME=kibana_system
       - ELASTICSEARCH_PASSWORD=kibana_password
     ports:
@@ -105,7 +105,7 @@ After deployment, reset the Kibana system user password:
 docker exec -it elasticsearch bash
 
 # Reset kibana_system user password
-/usr/share/elasticsearch/bin/elasticsearch-users passwd kibana_system
+/usr/share/elasticsearch/bin/elasticsearch-reset-password -i -u kibana_system
 # Enter: kibana_password (must match ELASTICSEARCH_PASSWORD in Kibana service)
 ```
 
@@ -173,4 +173,4 @@ curl -s "http://localhost:9200/_cat/indices?v" \
 
 ## Conclusion
 
-Elasticsearch deployed via Portainer provides a powerful search and analytics engine with Kibana for visualization. The security-enabled default in Elasticsearch 8.x ensures data is protected from unauthorized access. Persistent volumes ensure your indexed data survives container restarts and updates.
+Elasticsearch deployed via Portainer provides a powerful search and analytics engine with Kibana for visualization. Security is enabled by default in current Elasticsearch releases, and persistent volumes ensure your indexed data survives container restarts and updates. For internet-exposed or production deployments, enable HTTPS for the Elasticsearch and Kibana HTTP layer before going live.
