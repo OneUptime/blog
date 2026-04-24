@@ -17,9 +17,9 @@ Work through these checks in order:
 1. Network connectivity (can Portainer reach the LDAP server?)
 2. Service account bind (can Portainer authenticate?)
 3. User search (can Portainer find users?)
-4. User bind (can Portainer verify user credentials?)
-5. Group search (can Portainer find group memberships?)
-6. Portainer configuration (are settings saved correctly?)
+4. Specific user search (does the username attribute and Base DN find the user?)
+5. TLS/certificate validation (can Portainer trust the LDAP server certificate?)
+6. Portainer configuration and logs (are settings saved correctly and are LDAP errors visible?)
 
 ## Check 1: Network Connectivity
 
@@ -32,9 +32,6 @@ nc -zv ldap.example.com 636  # For LDAPS
 
 # From inside the Portainer container
 docker exec portainer nc -zv ldap.example.com 389
-
-# Or use wget
-docker exec portainer wget -q --spider ldap://ldap.example.com:389
 
 # DNS resolution check
 docker exec portainer nslookup ldap.example.com
@@ -88,7 +85,7 @@ ldapsearch -x \
 - Base DN doesn't exist
 - Typo in Base DN
 
-**Fix**: Use `ldapsearch -b "dc=example,dc=com" -s one "(objectClass=organizationalUnit)"` to discover valid OUs.
+**Fix**: Use `ldapsearch -x -H ldap://ldap.example.com:389 -D "cn=portainer-bind,dc=example,dc=com" -w "bindpassword" -b "dc=example,dc=com" -s one "(|(objectClass=organizationalUnit)(objectClass=container))" dn` to discover valid OUs or containers.
 
 ## Check 4: Specific User Search
 
@@ -121,7 +118,7 @@ openssl s_client -connect ldap.example.com:389 -starttls ldap < /dev/null 2>&1 \
 
 **"Verify return code: 21 (unable to verify the first certificate)"**: CA certificate not trusted.
 
-**Fix**: Add the CA certificate to the Portainer LDAP settings.
+**Fix**: Upload the CA certificate to the TLS CA certificate field in the Portainer LDAP settings.
 
 ## Check 6: Portainer Configuration Issues
 
@@ -136,7 +133,7 @@ TOKEN=$(curl -s -X POST \
 curl -s \
   -H "Authorization: Bearer $TOKEN" \
   https://portainer.example.com/api/settings \
-  | python3 -c "import sys,json; s=json.load(sys.stdin); print(json.dumps(s.get('ldapsettings',{}), indent=2))"
+  | python3 -c "import sys,json; s=json.load(sys.stdin); print(json.dumps(s.get('LDAPSettings',{}), indent=2))"
 ```
 
 ## Error Reference Table
@@ -156,10 +153,10 @@ curl -s \
 # View Portainer logs for LDAP errors
 docker logs portainer 2>&1 | grep -i "ldap\|auth\|login" | tail -30
 
-# Enable debug logging (if available in your version)
-docker run portainer/portainer-ce:latest --log-level=debug
+# Enable debug logging when starting Portainer (if available in your version)
+docker run portainer/portainer-ce:latest --log-level=DEBUG
 ```
 
 ## Conclusion
 
-LDAP troubleshooting follows a systematic path from network to application layer. Start with connectivity, verify the bind account, confirm user search works, and finally test the full authentication flow. The ldapsearch tool is your best diagnostic companion - it simulates exactly what Portainer does without going through the Portainer UI. Most issues fall into three categories: network problems, incorrect DN/filter configuration, and certificate issues.
+LDAP troubleshooting follows a systematic path from network to application layer. Start with connectivity, verify the bind account, confirm user search works, then review TLS, Portainer settings, and logs. The ldapsearch tool is your best diagnostic companion - it lets you validate the same server, bind, and search settings Portainer relies on without going through the Portainer UI. Most issues fall into three categories: network problems, incorrect DN/filter configuration, and certificate issues.
