@@ -20,7 +20,6 @@ Set up an IAM OIDC identity provider and role:
 resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 }
 
 resource "aws_iam_role" "github_actions" {
@@ -49,7 +48,7 @@ GitHub Actions workflow:
 
 ```yaml
 - name: Configure AWS credentials
-  uses: aws-actions/configure-aws-credentials@v4
+  uses: aws-actions/configure-aws-credentials@v6
   with:
     role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole
     aws-region: us-east-1
@@ -59,8 +58,7 @@ GitHub Actions workflow:
 
 ```bash
 # Create Azure service principal and federated credential (CLI)
-az ad app create --display-name "opentofu-github-actions"
-APP_ID=$(az ad app list --display-name "opentofu-github-actions" --query "[0].appId" -o tsv)
+APP_ID=$(az ad app create --display-name "opentofu-github-actions" --query appId -o tsv)
 
 az ad sp create --id $APP_ID
 
@@ -69,7 +67,7 @@ az ad app federated-credential create \
   --id $APP_ID \
   --parameters '{
     "name": "github-actions",
-    "issuer": "https://token.actions.githubusercontent.com",
+    "issuer": "https://token.actions.githubusercontent.com/",
     "subject": "repo:my-org/my-repo:ref:refs/heads/main",
     "audiences": ["api://AzureADTokenExchange"]
   }'
@@ -90,7 +88,7 @@ GitHub Actions:
 
 ```yaml
 - name: Azure login via OIDC
-  uses: azure/login@v1
+  uses: azure/login@v2
   with:
     client-id: ${{ secrets.AZURE_CLIENT_ID }}
     tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -111,14 +109,17 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   workload_identity_pool_provider_id = "github-provider"
 
   oidc {
-    issuer_uri = "https://token.actions.githubusercontent.com"
+    issuer_uri = "https://token.actions.githubusercontent.com/"
   }
 
   attribute_mapping = {
-    "google.subject"       = "assertion.sub"
-    "attribute.repository" = "assertion.repository"
-    "attribute.actor"      = "assertion.actor"
+    "google.subject"            = "assertion.sub"
+    "attribute.repository"      = "assertion.repository"
+    "attribute.repository_owner" = "assertion.repository_owner"
+    "attribute.actor"           = "assertion.actor"
   }
+
+  attribute_condition = "assertion.repository_owner == 'my-org'"
 }
 
 resource "google_service_account" "opentofu" {
@@ -137,7 +138,7 @@ GitHub Actions:
 
 ```yaml
 - name: Authenticate to GCP
-  uses: google-github-actions/auth@v2
+  uses: google-github-actions/auth@v3
   with:
     workload_identity_provider: projects/123456/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
     service_account: opentofu-github-actions@my-project.iam.gserviceaccount.com
@@ -160,23 +161,23 @@ jobs:
   apply:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # AWS
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: us-east-1
 
       # Azure
-      - uses: azure/login@v1
+      - uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # GCP
-      - uses: google-github-actions/auth@v2
+      - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_SA_EMAIL }}
