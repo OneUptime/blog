@@ -4,16 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Health Check, Microservice, Docker, Docker Compose, Reliability
 
-Description: Learn how to configure Docker health checks for microservices in Portainer to enable automatic restart on failure and dependency-aware startup ordering.
+Description: Learn how to configure Docker health checks for microservices in Portainer to improve health visibility and, with Docker Compose on standalone Docker, dependency-aware startup ordering.
 
 ---
 
-Docker health checks tell Portainer (and Docker Swarm) whether a container is functioning correctly. Proper health checks enable automatic restarts on failure, dependency ordering on startup, and accurate status in the Portainer UI.
+Docker health checks tell Docker whether a container is functioning correctly. Portainer surfaces this health status in its UI. In Docker Compose on standalone Docker, health checks can also be used for dependency-aware startup ordering.
 
 ## Defining Health Checks in Compose
 
 ```yaml
-version: "3.8"
 services:
   api:
     image: myapi:latest
@@ -55,10 +54,9 @@ test: ["CMD", "redis-cli", "ping"]
 
 ## Dependency Health Ordering
 
-Use health check conditions to start services only when dependencies are healthy:
+With Docker Compose on standalone Docker, use health check conditions to start services only when dependencies are healthy:
 
 ```yaml
-version: "3.8"
 services:
   db:
     image: postgres:16-alpine
@@ -79,27 +77,31 @@ services:
       retries: 3
 ```
 
+This `depends_on: condition: service_healthy` behavior is a Docker Compose feature for standalone Docker. Docker Swarm stack deployments use the legacy Compose v3 format and do not support this startup ordering.
+
 ## Viewing Health Status in Portainer
 
-In Portainer's container list, containers show their health status:
+Portainer surfaces the container's Docker health status in the UI:
 
-- Green circle: **Healthy**
-- Yellow circle: **Starting** (within `start_period`)
-- Red circle: **Unhealthy** (exceeded retries)
-- Grey circle: **No health check**
+- **Healthy**
+- **Starting** (before the container becomes healthy)
+- **Unhealthy** (exceeded retries)
+- **No health check**
 
-## Auto-Restart on Unhealthy
+## Health Checks and Restart Policies
 
-Combine health checks with restart policies for automatic recovery:
+Combine health checks with restart policies carefully:
 
 ```yaml
 services:
   api:
     image: myapi:latest
-    restart: unless-stopped    # Restart if container exits or becomes unhealthy
+    restart: unless-stopped    # Restart if the container exits
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       retries: 3
 ```
 
-Docker will restart the container when health check fails after `retries` consecutive failures.
+Docker marks the container as `unhealthy` after `retries` consecutive failures. A restart policy only restarts the container if its main process exits.
+
+For Swarm services, use `deploy.restart_policy` instead of `restart`. It also applies when tasks exit, not when a health check reports `unhealthy`.
