@@ -84,12 +84,6 @@ services:
       - /opt/cloudflared:/etc/cloudflared:ro    # Mount config directory
     networks:
       - proxy
-    healthcheck:
-      test: ["CMD", "cloudflared", "tunnel", "info"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
 
 networks:
   proxy:
@@ -122,18 +116,16 @@ networks:
 Set the environment variable in Portainer's **Environment variables** section:
 - `CLOUDFLARE_TUNNEL_TOKEN`: `your-token-here`
 
-## Step 3: Configure DNS via Cloudflare CLI
+## Step 3: Configure DNS via Cloudflare CLI (Config Mode)
 
-Before the tunnel works, create DNS routes pointing to the tunnel:
+For the locally-managed tunnel, create DNS routes pointing to the tunnel:
 
 ```bash
 # Create DNS CNAME records routing to the tunnel
+# Requires the cert.pem created by `cloudflared tunnel login`
 cloudflared tunnel route dns portainer-tunnel portainer.example.com
 cloudflared tunnel route dns portainer-tunnel traefik.example.com
 cloudflared tunnel route dns portainer-tunnel myapp.example.com
-
-# Verify DNS records were created
-cloudflared tunnel route list
 ```
 
 These create CNAME records like `portainer.example.com → UUID.cfargotunnel.com` in Cloudflare DNS automatically.
@@ -170,14 +162,15 @@ echo "Current: $CURRENT"
 echo "Latest: $LATEST"
 ```
 
-## Step 6: Multi-Tunnel Setup for High Availability
+## Step 6: Multi-Replica Setup for Higher Availability
 
 ```yaml
-# Run two cloudflared containers for redundancy
+# Run two cloudflared replicas for redundancy
 services:
   cloudflared-1:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
+    command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: "${CLOUDFLARE_TUNNEL_TOKEN}"
     networks:
@@ -186,14 +179,15 @@ services:
   cloudflared-2:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
+    command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: "${CLOUDFLARE_TUNNEL_TOKEN}"    # Same token, creates additional connections
     networks:
       - proxy
 ```
 
-Both containers connect to the same tunnel using the same token, creating 8 total connections (4 per container) for higher availability.
+Both containers connect to the same tunnel using the same token, creating 8 total connections (4 per container). For host-level redundancy, run the replicas on different Docker hosts.
 
 ## Conclusion
 
-Deploying cloudflared as a Portainer stack integrates Cloudflare Tunnel management into your standard container workflow. Config-file mode allows routing multiple public hostnames to different services on your Docker network, while token mode is simpler for single-tunnel setups. The key advantage is having tunnel lifecycle management - updates, restarts, and log access - through the same Portainer interface you use for everything else, rather than a separate deployment mechanism.
+Deploying cloudflared as a Portainer stack integrates Cloudflare Tunnel management into your standard container workflow. Config-file mode allows routing multiple public hostnames to different services on your Docker network, while token mode is simpler when the tunnel configuration is managed in Cloudflare instead of a local config file. The key advantage is having tunnel lifecycle management - updates, restarts, and log access - through the same Portainer interface you use for everything else, rather than a separate deployment mechanism.
