@@ -8,18 +8,20 @@ Description: Configure persistent storage for databases in Rancher using Storage
 
 ## Introduction
 
-Databases require persistent storage that survives pod restarts, rescheduling, and node failures. Rancher provides multiple storage options: built-in cloud provider storage classes, local storage, and Longhorn (Rancher's own storage solution). This guide covers configuring storage for database workloads with the right performance and reliability characteristics.
+Databases require persistent storage that survives pod restarts, rescheduling, and node failures. Rancher provides multiple storage options: built-in cloud provider storage classes, local storage, and Longhorn, a Kubernetes-native distributed block storage system that integrates with Rancher. This guide covers configuring storage for database workloads with the right performance and reliability characteristics.
 
 ## Prerequisites
 
 - Rancher-managed cluster
 - kubectl with cluster-admin access
-- Longhorn or a cloud storage provider configured
+- A cloud storage provider configured, or permissions to install Longhorn
+- If using Longhorn, each node meets the Longhorn installation requirements (for example, `open-iscsi` installed and a supported filesystem such as `ext4` or `xfs`)
 - Helm 3.x
+- jq
 
 ## Step 1: Install Longhorn for Persistent Storage
 
-Longhorn is Rancher's recommended distributed block storage:
+Longhorn is a distributed block storage system that integrates with Rancher:
 
 ```bash
 # Install Longhorn from Rancher Apps catalog
@@ -32,7 +34,6 @@ helm install longhorn longhorn/longhorn \
   --namespace longhorn-system \
   --create-namespace \
   --set defaultSettings.defaultReplicaCount=3 \
-  --set defaultSettings.backupTarget=s3://my-backups@us-east-1/ \
   --wait
 
 # Verify Longhorn is running
@@ -78,7 +79,7 @@ parameters:
   numberOfReplicas: "2"
   staleReplicaTimeout: "2880"
 ---
-# Fast, ephemeral storage for temp data (no replication)
+# Fast, node-local storage for temp data (no replication)
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -90,6 +91,10 @@ volumeBindingMode: WaitForFirstConsumer
 
 ## Step 3: Create PersistentVolumeClaims for Databases
 
+```bash
+kubectl create namespace databases
+```
+
 ```yaml
 # mysql-pvcs.yaml - PVCs for MySQL deployment
 # Data volume
@@ -98,9 +103,6 @@ kind: PersistentVolumeClaim
 metadata:
   name: mysql-data
   namespace: databases
-  annotations:
-    # Longhorn backup schedule
-    backup.longhorn.io/backup-schedule: "0 2 * * *"
 spec:
   accessModes:
     - ReadWriteOnce
@@ -142,6 +144,19 @@ spec:
 
 ```yaml
 # mysql-statefulset.yaml - MySQL with proper storage configuration
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: databases
+spec:
+  clusterIP: None
+  selector:
+    app: mysql
+  ports:
+    - port: 3306
+      targetPort: 3306
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -149,7 +164,7 @@ metadata:
   namespace: databases
 spec:
   serviceName: mysql
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: mysql
@@ -161,6 +176,8 @@ spec:
       containers:
         - name: mysql
           image: mysql:8.0
+          args:
+            - --log-bin=/var/lib/mysql-binlog/mysql-bin
           env:
             - name: MYSQL_ROOT_PASSWORD
               valueFrom:
@@ -176,47 +193,19 @@ spec:
             # Separate volume for binary logs
             - name: binlog
               mountPath: /var/lib/mysql-binlog
-          # Tune filesystem settings for MySQL
-          lifecycle:
-            postStart:
-              exec:
-                command:
-                  - /bin/bash
-                  - -c
-                  - "echo never > /sys/kernel/mm/transparent_hugepage/enabled || true"
-      # Tune kernel settings for database performance
-      initContainers:
-        - name: tune-system
-          image: busybox
-          securityContext:
-            privileged: true
-          command:
-            - /bin/sh
-            - -c
-            - |
-              # Increase vm.swappiness for database workloads
-              sysctl -w vm.swappiness=10
-              # Increase dirty ratio
-              sysctl -w vm.dirty_ratio=15
-              sysctl -w vm.dirty_background_ratio=5
-  volumeClaimTemplates:
-    # Automatically provision PVCs for each pod
-    - metadata:
-        name: data
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        storageClassName: database-ssd
-        resources:
-          requests:
-            storage: 50Gi
-    - metadata:
-        name: binlog
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        storageClassName: database-standard
-        resources:
-          requests:
-            storage: 20Gi
+            # Optional target for logical dumps
+            - name: backup
+              mountPath: /backup
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mysql-data
+        - name: binlog
+          persistentVolumeClaim:
+            claimName: mysql-binlog
+        - name: backup
+          persistentVolumeClaim:
+            claimName: mysql-backup
 ```
 
 ## Step 5: Resize Persistent Volumes
@@ -239,13 +228,14 @@ kubectl exec -n databases mysql-0 -- df -h /var/lib/mysql
 
 ```yaml
 # longhorn-backup-schedule.yaml - Longhorn recurring job for database backups
+# Requires a configured Longhorn backup target (for example, S3 or NFS)
 apiVersion: longhorn.io/v1beta2
 kind: RecurringJob
 metadata:
   name: database-backup
   namespace: longhorn-system
 spec:
-  # Backup to S3 daily
+  # Run a daily backup
   cron: "0 2 * * *"
   task: backup
   groups:
@@ -256,28 +246,34 @@ spec:
     backup-type: scheduled
 ```
 
-Tag database volumes with the backup group:
+Label database PVCs with the backup group:
 
 ```bash
-# Apply backup label to PVC via annotation
-kubectl annotate pvc mysql-data \
+# Allow Longhorn to sync recurring job labels from the PVCs to the volumes
+kubectl label pvc mysql-data \
   -n databases \
-  "recurring-job-group.longhorn.io/databases=enabled"
+  recurring-job.longhorn.io/source=enabled \
+  recurring-job-group.longhorn.io/databases=enabled
+
+kubectl label pvc mysql-binlog \
+  -n databases \
+  recurring-job.longhorn.io/source=enabled \
+  recurring-job-group.longhorn.io/databases=enabled
 ```
 
 ## Step 7: Monitor Storage Usage
 
 ```bash
-# Check PVC usage across namespaces
-kubectl get pvc --all-namespaces -o json | \
-  jq -r '.items[] | select(.metadata.namespace | contains("database")) | "\(.metadata.namespace)/\(.metadata.name): \(.spec.resources.requests.storage)"'
+# Check PVC requested storage in the databases namespace
+kubectl get pvc -n databases -o json | \
+  jq -r '.items[] | "\(.metadata.namespace)/\(.metadata.name): requested=\(.spec.resources.requests.storage)"'
 
 # Longhorn volume details
-kubectl get volume -n longhorn-system
+kubectl get volumes.longhorn.io -n longhorn-system
 
-# Check node disk usage
-kubectl get node -o json | \
-  jq -r '.items[] | "\(.metadata.name): \(.status.allocatable.storage)"'
+# Check Longhorn disk availability per node
+kubectl get nodes.longhorn.io -n longhorn-system -o json | \
+  jq -r '.items[] | .metadata.name as $node | .status.diskStatus | to_entries[] | "\($node)/\(.key): available=\(.value.storageAvailable)"'
 ```
 
 ## Step 8: Database Storage Best Practices
@@ -289,7 +285,7 @@ kubectl get node -o json | \
 # MySQL/MariaDB:
 #   - Separate volumes for data, binlogs, and backup
 #   - Use ReadWriteOnce access mode
-#   - Enable WAL archiving
+#   - Enable binary logging for point-in-time recovery
 #
 # PostgreSQL:
 #   - Main data: high IOPS SSD storage
