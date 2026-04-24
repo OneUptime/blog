@@ -14,15 +14,15 @@ Cloudflare Tunnel (formerly Argo Tunnel) creates an encrypted outbound connectio
 
 - A Cloudflare account with a domain managed by Cloudflare
 - Docker installed on your host
-- Port outbound access to Cloudflare (typically already open)
+- Outbound access to Cloudflare on port `7844` (TCP/UDP)
 
 ## Step 1: Create a Tunnel via Cloudflare Dashboard
 
 1. Log into [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/)
-2. Go to **Networks** → **Tunnels** → **Create a tunnel**
+2. Go to **Networks** → **Connectors** → **Cloudflare Tunnels** → **Create a tunnel**
 3. Choose **Cloudflared**
 4. Name your tunnel: `portainer-tunnel`
-5. Copy the tunnel token - you'll need it for the container configuration
+5. Copy the tunnel token from the generated `cloudflared` command - you'll need it for the container configuration
 
 The tunnel token looks like:
 ```text
@@ -33,16 +33,18 @@ eyJhIjoiYWNjb3VudC1pZCIsInQiOiJ0dW5uZWwtaWQiLCJzIjoic2VjcmV0LWtleSJ9...
 
 Still in the tunnel setup wizard:
 
-1. Under **Public Hostname**, add a route:
+1. Under **Published application routes**, add a route:
    ```text
    Subdomain:  portainer
    Domain:     example.com
    Path:       (leave blank)
-   Type:       HTTP
-   URL:        portainer:9000
+   Type:       HTTPS
+   URL:        portainer:9443
    ```
 
-   The URL `portainer:9000` refers to the Portainer container name on the shared Docker network.
+   The URL `portainer:9443` refers to the Portainer container name on the shared Docker network. Portainer's default web UI listens on HTTPS port `9443`.
+
+   Because Portainer uses a self-signed certificate by default, set **Additional application settings** → **TLS Settings** → **No TLS Verify** to `true` unless you have configured Portainer with a trusted certificate.
 
 2. Click **Save tunnel**
 
@@ -50,8 +52,6 @@ Still in the tunnel setup wizard:
 
 ```yaml
 # docker-compose.yml
-
-version: "3.8"
 
 services:
   cloudflared:
@@ -93,7 +93,7 @@ docker compose up -d
 
 # Verify cloudflared connected
 docker logs cloudflared --follow
-# Expected: "Connection registered" messages
+# Expected: "Registered tunnel connection" messages
 ```
 
 ## Step 4: Verify Tunnel Connection
@@ -102,20 +102,19 @@ docker logs cloudflared --follow
 # Check cloudflared is connected
 docker logs cloudflared 2>&1 | grep -i "registered\|connected\|error"
 
-# Expected output:
+# Expected output includes lines such as:
 # INF Registered tunnel connection connIndex=0 connection=UUID...
-# INF Registered tunnel connection connIndex=1 connection=UUID...
 
 # Test access
 curl -I https://portainer.example.com
-# Expected: 200 or Portainer's initial setup page
+# Expected: an HTTP response from Portainer, such as 200 OK or 302 Found
 ```
 
 ## Step 5: Secure the Tunnel with Cloudflare Access
 
 Add authentication so only your team can access Portainer:
 
-1. In Cloudflare Zero Trust → **Access** → **Applications** → **Add an application**
+1. In Cloudflare Zero Trust → **Access controls** → **Applications** → **Add an application**
 2. Choose **Self-hosted**
 3. Configure:
    ```text
@@ -143,26 +142,32 @@ If Portainer console disconnects:
 ```yaml
 # In the tunnel public hostname configuration, set:
 Additional application settings:
+  TLS Settings:
+    No TLS Verify: true (if Portainer uses self-signed cert internally)
   HTTP Settings:
     HTTP Host Header: portainer.example.com
-    No TLS Verify: true (if Portainer uses self-signed cert internally)
 ```
 
 ## Step 7: Monitor Tunnel Status
 
-```bash
-# Check tunnel metrics
-curl http://localhost:2000/metrics    # cloudflared metrics endpoint
-
-# Expose metrics port in docker-compose
+```yaml
+# Add to the cloudflared service in docker-compose.yml
 services:
   cloudflared:
     ports:
       - "127.0.0.1:2000:2000"    # Metrics only on localhost
     command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 run
+```
 
-# View connection status
-docker exec cloudflared cloudflared tunnel info
+```bash
+# Recreate cloudflared after updating the compose file
+docker compose up -d cloudflared
+
+# Check tunnel metrics
+curl http://localhost:2000/metrics
+
+# View recent connection status
+docker logs cloudflared --tail 50
 ```
 
 ## Conclusion
