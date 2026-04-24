@@ -12,15 +12,19 @@ A container security audit identifies misconfigurations before attackers can exp
 
 ## Running Docker Bench for Security
 
-Docker Bench for Security checks your host and containers against CIS Docker Benchmark recommendations:
+Docker Bench for Security checks your host and containers against CIS Docker Benchmark recommendations. The published `docker/docker-bench-security` image is out of date, so build the current image first:
 
 ```bash
+git clone https://github.com/docker/docker-bench-security.git
+cd docker-bench-security
+docker build --no-cache -t docker-bench-security .
+
 docker run --rm \
   --net host \
   --pid host \
   --userns host \
   --cap-add audit_control \
-  -e DOCKER_CONTENT_TRUST=false \
+  -e DOCKER_CONTENT_TRUST=$DOCKER_CONTENT_TRUST \
   -v /etc:/etc:ro \
   -v /lib/systemd/system:/lib/systemd/system:ro \
   -v /usr/bin/containerd:/usr/bin/containerd:ro \
@@ -28,7 +32,8 @@ docker run --rm \
   -v /usr/lib/systemd:/usr/lib/systemd:ro \
   -v /var/lib:/var/lib:ro \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  docker/docker-bench-security
+  --label docker_bench_security \
+  docker-bench-security
 ```
 
 Results are categorized as `[PASS]`, `[WARN]`, `[INFO]`, and `[NOTE]`. Focus on `[WARN]` items first.
@@ -69,7 +74,7 @@ check() {
     fi
 }
 
-docker ps --format '{{.Names}}' | while read name; do
+while read -r name; do
     # Check: not privileged
     priv=$(docker inspect "$name" --format '{{.HostConfig.Privileged}}')
     [ "$priv" = "false" ] && check "$name" "Not privileged" "PASS" || check "$name" "Not privileged" "Container is PRIVILEGED"
@@ -79,17 +84,24 @@ docker ps --format '{{.Names}}' | while read name; do
     [ "$mem" != "0" ] && check "$name" "Memory limit set" "PASS" || check "$name" "Memory limit set" "No memory limit"
 
     # Check: no docker socket mount
-    sock=$(docker inspect "$name" --format '{{.HostConfig.Binds}}' | grep -c "docker.sock" || true)
+    sock=$(docker inspect "$name" --format '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}' | grep -c "/var/run/docker.sock" || true)
     [ "$sock" = "0" ] && check "$name" "Docker socket not mounted" "PASS" || check "$name" "Docker socket not mounted" "Docker socket IS mounted"
 
     # Check: non-root user
-    user=$(docker exec -i "$name" id -u 2>/dev/null || echo "unknown")
-    [ "$user" != "0" ] && check "$name" "Non-root user" "PASS" || check "$name" "Non-root user" "Running as root (uid 0)"
+    user=$(docker inspect "$name" --format '{{if .Config.User}}{{.Config.User}}{{else}}root{{end}}')
+    case "$user" in
+        0|0:*|root|root:*)
+            check "$name" "Non-root user" "Running as root"
+            ;;
+        *)
+            check "$name" "Non-root user" "PASS"
+            ;;
+    esac
 
     # Check: no-new-privileges
-    nnp=$(docker inspect "$name" --format '{{.HostConfig.SecurityOpt}}' | grep -c "no-new-privileges" || true)
+    nnp=$(docker inspect "$name" --format '{{range .HostConfig.SecurityOpt}}{{println .}}{{end}}' | grep -c "no-new-privileges" || true)
     [ "$nnp" -gt 0 ] && check "$name" "no-new-privileges set" "PASS" || check "$name" "no-new-privileges set" "Not set"
-done
+done < <(docker ps --format '{{.Names}}')
 
 echo ""
 echo "Audit complete: $PASS checks passed, $WARN warnings"
@@ -97,19 +109,7 @@ echo "Audit complete: $PASS checks passed, $WARN warnings"
 
 ## Portainer Activity Logs for Audit Trails
 
-Portainer Business Edition records all user actions in an activity log. Query the audit log via the API:
-
-```bash
-TOKEN=$(curl -s -X POST https://portainer.example.com/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"Username":"admin","Password":"adminpassword"}' | jq -r .jwt)
-
-# Get activity logs for the last 24 hours
-
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/audit?limit=100" | \
-  jq '.logs[] | {time: .Timestamp, user: .Username, action: .Action}'
-```
+Portainer Business Edition records all user actions in an activity log. Review it in the UI under **Logs** -> **Activity**, then filter by date range, user, or environment and export the filtered results as CSV for archival or compliance reporting.
 
 ## Scheduling Regular Audits
 
@@ -117,8 +117,7 @@ Run the Docker Bench scan weekly and save reports:
 
 ```bash
 # Weekly audit cron job
-0 0 * * 0 docker run --rm ... docker/docker-bench-security \
-  > /var/reports/docker-bench-$(date +%Y%m%d).txt 2>&1
+0 0 * * 0 docker run --rm --net host --pid host --userns host --cap-add audit_control -e DOCKER_CONTENT_TRUST=$DOCKER_CONTENT_TRUST -v /etc:/etc:ro -v /lib/systemd/system:/lib/systemd/system:ro -v /usr/bin/containerd:/usr/bin/containerd:ro -v /usr/bin/runc:/usr/bin/runc:ro -v /usr/lib/systemd:/usr/lib/systemd:ro -v /var/lib:/var/lib:ro -v /var/run/docker.sock:/var/run/docker.sock:ro --label docker_bench_security docker-bench-security > /var/reports/docker-bench-$(date +\%Y\%m\%d).txt 2>&1
 ```
 
 Compare reports over time to track security posture improvement and detect regressions after new deployments.
