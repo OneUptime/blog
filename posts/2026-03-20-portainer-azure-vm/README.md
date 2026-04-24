@@ -24,48 +24,47 @@ az group create \
   --name portainer-rg \
   --location eastus
 
-# Create VM (Ubuntu 22.04 LTS)
+# Create VM (Ubuntu 22.04 LTS, Standard_B2s = 2 vCPU, 4 GB RAM)
 az vm create \
   --resource-group portainer-rg \
   --name portainer-vm \
   --image Ubuntu2204 \
-  --size Standard_B2s \    # 2 vCPU, 4GB RAM
+  --size Standard_B2s \
   --admin-username azureuser \
   --generate-ssh-keys \
-  --public-ip-sku Standard
+  --public-ip-sku Standard \
+  --nsg-rule NONE
 ```
 
 ## Step 2: Configure Network Security Group
 
 ```bash
+# Get the NSG name created with the VM
+az network nsg list \
+  --resource-group portainer-rg \
+  --query "[].name" \
+  --output table
+
 # Allow SSH (for setup)
 az network nsg rule create \
   --resource-group portainer-rg \
-  --nsg-name portainer-vmNSG \
+  --nsg-name <NSG_NAME> \
   --name AllowSSH \
-  --protocol tcp \
+  --protocol Tcp \
   --priority 1000 \
-  --destination-port-range 22 \
+  --direction Inbound \
+  --destination-port-ranges 22 \
   --access Allow
 
 # Allow Portainer HTTPS
 az network nsg rule create \
   --resource-group portainer-rg \
-  --nsg-name portainer-vmNSG \
+  --nsg-name <NSG_NAME> \
   --name AllowPortainerHTTPS \
-  --protocol tcp \
+  --protocol Tcp \
   --priority 1010 \
-  --destination-port-range 9443 \
-  --access Allow
-
-# Allow Portainer HTTP (for initial setup or redirect)
-az network nsg rule create \
-  --resource-group portainer-rg \
-  --nsg-name portainer-vmNSG \
-  --name AllowPortainerHTTP \
-  --protocol tcp \
-  --priority 1020 \
-  --destination-port-range 9000 \
+  --direction Inbound \
+  --destination-port-ranges 9443 \
   --access Allow
 ```
 
@@ -77,7 +76,8 @@ az vm show -d -g portainer-rg -n portainer-vm --query publicIps -o tsv
 ssh azureuser@<PUBLIC_IP>
 
 # Install Docker
-curl -fsSL https://get.docker.com | sh
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
 sudo usermod -aG docker azureuser
 newgrp docker
 
@@ -91,7 +91,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 4: Configure a DNS Name
@@ -106,9 +106,10 @@ az network public-ip list \
 # Set a DNS label
 az network public-ip update \
   --resource-group portainer-rg \
-  --name portainer-vmPublicIP \
-  --dns-name portainer-mycompany
-# Portainer accessible at: portainer-mycompany.eastus.cloudapp.azure.com
+  --name <PUBLIC_IP_RESOURCE_NAME> \
+  --dns-name portainer-mycompany \
+  --allocation-method Static
+# Portainer accessible at: https://portainer-mycompany.eastus.cloudapp.azure.com:9443
 ```
 
 ## Step 5: Secure with Azure Bastion (Optional)
@@ -116,21 +117,51 @@ az network public-ip update \
 For environments where you don't want to expose SSH publicly:
 
 ```bash
-# Create Bastion for secure SSH without public IP exposure
+# Get the VNet name created with the VM
+az network vnet list \
+  --resource-group portainer-rg \
+  --query "[].name" \
+  --output table
+
+# Create the required Azure Bastion subnet
+# Use an unused /26 or larger range inside the VNet address space
+az network vnet subnet create \
+  --name AzureBastionSubnet \
+  --resource-group portainer-rg \
+  --vnet-name <VNET_NAME> \
+  --address-prefix 10.0.1.0/26
+
+# Create a Standard public IP for Bastion
+az network public-ip create \
+  --resource-group portainer-rg \
+  --name portainer-bastion-ip \
+  --sku Standard \
+  --location eastus
+
+# Create Bastion for secure SSH without exposing port 22 publicly
 az network bastion create \
   --name portainer-bastion \
   --resource-group portainer-rg \
-  --vnet-name portainer-vmVNET \
-  --public-ip-address portainer-bastion-ip
+  --vnet-name <VNET_NAME> \
+  --public-ip-address portainer-bastion-ip \
+  --location eastus \
+  --sku Basic
+
+# After Bastion is working, remove the public SSH rule
+az network nsg rule delete \
+  --resource-group portainer-rg \
+  --nsg-name <NSG_NAME> \
+  --name AllowSSH
 ```
 
 ## Step 6: Set Up Auto-Shutdown for Cost Control
 
 ```bash
+# Time format is hhmm in UTC
 az vm auto-shutdown \
   --resource-group portainer-rg \
   --name portainer-vm \
-  --time 2300 \        # 11 PM UTC
+  --time 2300 \
   --email your@email.com
 ```
 
@@ -145,11 +176,11 @@ Complete the initial setup to create your admin account.
 
 ## Cost Optimization
 
-| VM Size | vCPU | RAM | Monthly Cost (approx.) |
+| VM Size | vCPU | RAM | Monthly Cost (approx., East US Linux compute only) |
 |---------|------|-----|----------------------|
 | Standard_B1s | 1 | 1GB | ~$8 |
 | Standard_B2s | 2 | 4GB | ~$30 |
-| Standard_B2ms | 2 | 8GB | ~$60 |
+| Standard_B2ms | 2 | 8GB | ~$61 |
 
 Use B-series burstable VMs for dev/test Portainer instances.
 
