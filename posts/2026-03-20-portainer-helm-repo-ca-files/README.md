@@ -8,11 +8,11 @@ Description: Learn how to configure CA certificate files for private Helm reposi
 
 ## Introduction
 
-When hosting a private Helm repository with a self-signed or internal CA-signed TLS certificate, Portainer needs the CA certificate to verify the repository's identity. Without it, Portainer will fail to fetch the chart index with a TLS verification error. This guide covers how to configure CA files for Helm repositories in Portainer.
+When hosting a private Helm repository with a self-signed or internal CA-signed TLS certificate, Portainer Business Edition can use a CA certificate file to verify the repository's identity. Without it, Portainer will fail to fetch the chart index with a TLS verification error. This guide covers how to configure CA files for Helm repositories in Portainer.
 
 ## Prerequisites
 
-- Portainer CE or BE with a Kubernetes environment
+- Portainer Business Edition with a Kubernetes environment
 - A private Helm repository with TLS enabled
 - The CA certificate (PEM format) that signed the repository's TLS certificate
 - Admin access to Portainer
@@ -29,16 +29,20 @@ You do NOT need a CA file for repositories using certificates from public CAs (L
 
 ## Step 1: Obtain Your CA Certificate
 
-Get your CA certificate in PEM format:
+Get your CA certificate in PEM format. The safest option is to obtain the issuing CA certificate directly from your internal PKI or repository administrator. If the server presents the certificate chain, you can inspect it first:
 
 ```bash
-# Extract CA cert from your server (if accessible)
+# Save the certificate chain presented by the server
+openssl s_client -connect helm.internal.company.com:443 \
+  -servername helm.internal.company.com -showcerts </dev/null 2>/dev/null | \
+  awk '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/ { print }' > chain.pem
 
-openssl s_client -connect helm.internal.company.com:443 -showcerts </dev/null 2>/dev/null | \
-  openssl x509 -outform PEM > internal-ca.pem
+# Inspect the presented certificates and identify the issuing CA certificate you need
+openssl crl2pkcs7 -nocrl -certfile chain.pem | \
+  openssl pkcs7 -print_certs -text -noout
 
-# Verify the certificate
-openssl x509 -in internal-ca.pem -text -noout | grep -E "(Issuer|Subject|Not)"
+# Verify the CA certificate
+openssl x509 -in internal-ca.pem -text -noout | grep -E "(Issuer:|Subject:|Not Before|Not After)"
 
 # Convert DER format to PEM if needed
 openssl x509 -inform DER -in ca.der -out ca.pem
@@ -46,40 +50,34 @@ openssl x509 -inform DER -in ca.der -out ca.pem
 
 ## Step 2: Configure CA File in Portainer UI
 
-1. Log into Portainer as admin.
-2. Select your Kubernetes environment.
-3. Click the **gear icon** to open environment settings.
-4. Scroll to the **Helm repository** section.
-5. Click **Add a Helm repository**.
-6. Enter the repository URL (e.g., `https://helm.internal.company.com`).
-7. In the **TLS** section, toggle **Use TLS**.
-8. Check **Skip TLS verification** if you want to skip verification (NOT recommended for production).
-9. For the preferred approach, upload the CA certificate by clicking **CA certificate** and pasting the PEM content.
-10. Click **Save**.
+In current Portainer releases, the Helm CA file is configured in **Settings** and applies to both the global Helm repository and Helm repositories you add for your user.
 
-## Step 3: Configure CA via the Portainer API
+1. Log into Portainer as an admin.
+2. Go to **Settings**.
+3. Scroll to **Certificate Authority file for Kubernetes Helm repositories**.
+4. Upload the CA certificate file in PEM format.
+5. Click **Apply Changes**.
+6. If the repository URL is not already configured, go to **My account** > **Helm repositories**, enter the repository URL (for example, `https://helm.internal.company.com`), and click **Save Helm repository**.
+
+## Step 3: Add the Helm Repository via the Portainer API
 
 ```bash
-# Read your CA certificate
-CA_CERT=$(cat internal-ca.pem)
+# Use an API access token created under My account > Access tokens
+API_KEY="your_api_key_here"
 
-# Authenticate
-TOKEN=$(curl -s -X POST https://portainer.example.com/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' | jq -r '.jwt')
+# Get the current user's ID
+USER_ID=$(curl -s -H "X-API-Key: ${API_KEY}" \
+  "https://portainer.example.com/api/users/me" | jq -r '.Id')
 
-# Add Helm repo with CA certificate
-curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+# Add the Helm repository URL for that user
+curl -s -X POST \
+  -H "X-API-Key: ${API_KEY}" \
   -H "Content-Type: application/json" \
-  "https://portainer.example.com/api/endpoints/1/kubernetes/helm/repositories" \
-  -d "{
-    \"url\": \"https://helm.internal.company.com\",
-    \"name\": \"internal-repo\",
-    \"TLSConfig\": {
-      \"TLSCACert\": $(echo "$CA_CERT" | jq -Rs .)
-    }
-  }"
+  "https://portainer.example.com/api/users/${USER_ID}/helm/repositories" \
+  -d '{"url":"https://helm.internal.company.com"}'
 ```
+
+The Helm CA file itself is configured separately in **Settings** under **Certificate Authority file for Kubernetes Helm repositories**.
 
 ## Step 4: Deploy ChartMuseum with TLS
 
@@ -87,13 +85,12 @@ If you are running ChartMuseum as your private Helm repository, here is a Docker
 
 ```yaml
 # docker-compose.yml - ChartMuseum with TLS
-version: "3.8"
 services:
   chartmuseum:
-    image: ghcr.io/helm/chartmuseum:v0.16.1
+    image: ghcr.io/helm/chartmuseum:v0.16.5
     container_name: chartmuseum
     ports:
-      - "443:8443"
+      - "443:8080"
     volumes:
       - ./charts:/charts                    # Chart storage directory
       - ./certs/server.crt:/certs/tls.crt  # Server certificate
@@ -115,7 +112,9 @@ For testing or internal use, generate your own CA and sign a certificate:
 # Step 1: Generate CA key and certificate
 openssl genrsa -out ca.key 4096
 openssl req -new -x509 -days 3650 -key ca.key -out ca.crt \
-  -subj "/CN=Internal Helm CA/O=My Company"
+  -subj "/CN=Internal Helm CA/O=My Company" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign"
 
 # Step 2: Generate server key and CSR
 openssl genrsa -out server.key 2048
@@ -124,6 +123,9 @@ openssl req -new -key server.key -out server.csr \
 
 # Step 3: Sign the server certificate with your CA
 cat > server-ext.cnf << EOF
+basicConstraints = CA:FALSE
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
 subjectAltName = DNS:helm.internal.company.com
 EOF
 
@@ -148,7 +150,7 @@ helm repo add internal-repo https://helm.internal.company.com \
   --ca-file internal-ca.pem
 
 helm repo update
-helm search repo internal-repo/
+helm search repo internal-repo
 ```
 
 ## Troubleshooting TLS Issues
@@ -161,7 +163,10 @@ helm search repo internal-repo/
 openssl x509 -in server.crt -noout -dates
 
 # Check certificate chain
-openssl s_client -connect helm.internal.company.com:443 -CAfile ca.pem
+openssl s_client -connect helm.internal.company.com:443 \
+  -servername helm.internal.company.com \
+  -CAfile ca.pem \
+  -verify_hostname helm.internal.company.com
 
 # Verify hostname matches CN or SAN
 openssl x509 -in server.crt -text -noout | grep -A 3 "Subject Alternative"
@@ -169,4 +174,4 @@ openssl x509 -in server.crt -text -noout | grep -A 3 "Subject Alternative"
 
 ## Conclusion
 
-Configuring CA files for Helm repositories in Portainer is essential when working with private or self-signed TLS certificates. Upload your CA certificate through the Portainer UI or API to establish trusted connections to internal chart repositories. This approach maintains full TLS verification while supporting internal PKI infrastructure - always prefer proper CA configuration over disabling TLS verification.
+Configuring CA files for Helm repositories in Portainer is essential when working with private or self-signed TLS certificates. Upload your CA certificate in Portainer Settings, then add the repository through the UI or API to establish trusted connections to internal chart repositories. This approach maintains full TLS verification while supporting internal PKI infrastructure - always prefer proper CA configuration over disabling TLS verification.
