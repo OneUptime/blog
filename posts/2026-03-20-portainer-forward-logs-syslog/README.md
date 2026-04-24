@@ -15,8 +15,6 @@ The Docker syslog log driver sends container output directly to a syslog server 
 Set the syslog driver in your Portainer stack's logging section:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     image: my-api:latest
@@ -44,9 +42,9 @@ services:
 | Option | Description | Example |
 |--------|-------------|---------|
 | `syslog-address` | Destination syslog server | `tcp://host:514`, `udp://host:514` |
-| `tag` | Syslog program name | `"myapp/{{.Name}}"` |
+| `tag` | Tag appended to the syslog `APP-NAME` field | `"myapp/{{.Name}}"` |
 | `syslog-facility` | Syslog facility | `daemon`, `local0`–`local7` |
-| `syslog-format` | Log format | `rfc5424` (default), `rfc3164` |
+| `syslog-format` | Log format | `local` (default), `rfc3164`, `rfc5424`, `rfc5424micro` |
 | `syslog-tls-ca-cert` | CA certificate for TLS | `/path/to/ca.pem` |
 | `syslog-tls-cert` | Client certificate for mTLS | `/path/to/cert.pem` |
 
@@ -73,26 +71,18 @@ Restart Docker: `sudo systemctl restart docker`. All new containers use this dri
 Deploy rsyslog as a Portainer stack to receive and store Docker logs:
 
 ```yaml
-version: "3.8"
-
 services:
   rsyslog:
-    image: rsyslog/syslog_appliance_alpine:latest
+    image: rsyslog/rsyslog-collector:latest
     ports:
       - "514:514"
       - "514:514/udp"
     volumes:
-      - ./rsyslog.conf:/config/rsyslog.conf:ro
+      - /opt/rsyslog/rsyslog.conf:/etc/rsyslog.conf:ro
       - rsyslog_logs:/logs
-    networks:
-      - logging_net
 
 volumes:
   rsyslog_logs:
-
-networks:
-  logging_net:
-    external: true
 ```
 
 A minimal `rsyslog.conf`:
@@ -108,7 +98,7 @@ input(type="imudp" port="514")
 
 # Write Docker logs to separate files by tag
 template(name="DockerLogs" type="string"
-  string="/logs/%programname%.log")
+  string="/logs/%programname:::secpath-replace%.log")
 
 if $programname startswith "my-app" then {
   action(type="omfile" dynaFile="DockerLogs")
@@ -137,13 +127,13 @@ logging:
   driver: syslog
   options:
     syslog-address: "tcp+tls://syslog-server.example.com:6514"
-    syslog-tls-ca-cert: "/etc/docker/certs/syslog-ca.pem"
+    syslog-tls-ca-cert: "/etc/docker/certs/syslog.crt"
     syslog-format: "rfc5424"
 ```
 
 ## Fallback Behavior
 
-If the syslog server is unavailable and `syslog-async` is not set, Docker blocks on log writes, which can cause container performance issues. Use `syslog-async` to prevent blocking:
+If the syslog server is unavailable and Docker uses the default blocking delivery mode, log writes can block the application. Use `mode: "non-blocking"` to buffer log messages in memory instead:
 
 ```yaml
 logging:
@@ -151,6 +141,7 @@ logging:
   options:
     syslog-address: "tcp://syslog-server.example.com:514"
     tag: "my-app/{{.Name}}"
-    # Note: blocking is default behavior - use a reliable TCP syslog server
-    # or switch to fluentd with fluentd-async: "true" for non-blocking behavior
+    mode: "non-blocking"
+    max-buffer-size: "4m"
+    # Note: if the buffer fills up, new log messages are dropped.
 ```
