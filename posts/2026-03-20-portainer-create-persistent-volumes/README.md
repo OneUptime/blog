@@ -21,13 +21,13 @@ Kubernetes PersistentVolumes (PVs) provide cluster-wide storage resources that p
 Key terms before creating volumes:
 
 ```text
-PersistentVolume (PV)     - Cluster-level storage resource (admin creates)
+PersistentVolume (PV)     - Cluster-level storage resource (static or dynamically provisioned)
 PersistentVolumeClaim (PVC) - Namespace-level storage request (developer creates)
 StorageClass              - Dynamic provisioning template
 Access Modes:
-  ReadWriteOnce (RWO)     - Single node read-write
-  ReadOnlyMany (ROX)      - Multiple nodes read-only
-  ReadWriteMany (RWX)     - Multiple nodes read-write (NFS, CephFS)
+  ReadWriteOnce (RWO)     - Mounted read-write by a single node
+  ReadOnlyMany (ROX)      - Mounted read-only by many nodes
+  ReadWriteMany (RWX)     - Mounted read-write by many nodes (NFS, CephFS)
 Reclaim Policies:
   Retain                  - Keep data after PVC deletion (manual cleanup)
   Delete                  - Delete storage after PVC deletion
@@ -124,7 +124,7 @@ spec:
 Deploy both in one multi-document YAML for simple setups:
 
 ```yaml
-# HostPath PV (for single-node or testing environments)
+# HostPath PV (for single-node testing environments)
 
 ---
 apiVersion: v1
@@ -222,7 +222,7 @@ kubectl describe pvc my-app-data-pvc -n production | grep Events -A 10
 ## Step 7: Expand a PVC (If StorageClass Allows)
 
 ```yaml
-# Patch the PVC to request more storage
+# Edit the existing PVC manifest and increase the requested size
 # (StorageClass must have allowVolumeExpansion: true)
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -230,6 +230,9 @@ metadata:
   name: my-app-data-pvc
   namespace: production
 spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-storage
   resources:
     requests:
       storage: 100Gi    # Increased from 50Gi
@@ -244,17 +247,17 @@ kubectl patch pvc my-app-data-pvc -n production \
 
 ## Step 8: Reclaim a Released PV
 
-When a PVC is deleted and the PV policy is `Retain`:
+When a PVC is deleted and the PV policy is `Retain`, the data remains on the backing storage. If you want to reuse the same PV, verify or clean that retained data first:
 
 ```bash
-# PV enters Released state - data is preserved
+# PV enters Released state - data is preserved on the storage asset
 kubectl get pv | grep Released
 
-# To reuse a Released PV, remove the claimRef
+# After verifying or cleaning the retained data, remove the claimRef
 kubectl patch pv nfs-pv-production-data \
   -p '{"spec":{"claimRef": null}}'
 
-# PV returns to Available status
+# PV can return to Available status
 kubectl get pv nfs-pv-production-data
 ```
 
