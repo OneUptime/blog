@@ -8,7 +8,7 @@ Description: Use Python's requests library to make HTTP requests to IPv6 endpoin
 
 ## IPv6 URLs in Requests
 
-IPv6 addresses in URLs must be enclosed in square brackets (RFC 2732):
+IPv6 addresses in URLs must be enclosed in square brackets (RFC 2732 / RFC 3986):
 
 ```python
 import requests
@@ -29,7 +29,7 @@ response = requests.get(
 
 ## Forcing IPv6 for Hostname Connections
 
-By default, `requests` uses whatever address Python resolves (may be IPv4 or IPv6). Force IPv6 using a custom transport adapter:
+By default, `requests` relies on Python and `urllib3` address resolution, so a dual-stack hostname may connect over IPv4 or IPv6. Force IPv6 for a session using a custom transport adapter:
 
 ```python
 import requests
@@ -38,89 +38,125 @@ from requests.adapters import HTTPAdapter
 from urllib3.connection import HTTPConnection, HTTPSConnection
 from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
 
-class IPv6Connection(HTTPConnection):
-    """HTTP connection that forces IPv6."""
-    def connect(self):
-        # Resolve hostname to IPv6 specifically
-        addrs = socket.getaddrinfo(
-            self.host, self.port,
-            family=socket.AF_INET6,
-            type=socket.SOCK_STREAM
-        )
-        if not addrs:
-            raise ConnectionError(f"No IPv6 address for {self.host}")
-        af, socktype, proto, canonname, sockaddr = addrs[0]
-        self.sock = socket.socket(af, socktype)
-        self.sock.connect(sockaddr)
+def create_ipv6_connection(address, timeout=None, source_address=None):
+    """Open a TCP connection using IPv6 addresses only."""
+    host, port = address
+    err = None
 
-class IPv6ConnectionPool(HTTPConnectionPool):
-    ConnectionCls = IPv6Connection
+    for res in socket.getaddrinfo(host, port, socket.AF_INET6, socket.SOCK_STREAM):
+        af, socktype, proto, _, sockaddr = res
+        sock = None
+        try:
+            sock = socket.socket(af, socktype, proto)
+            if timeout is not None:
+                sock.settimeout(timeout)
+            if source_address:
+                sock.bind(source_address)
+            sock.connect(sockaddr)
+            return sock
+        except OSError as exc:
+            err = exc
+            if sock is not None:
+                sock.close()
+
+    if err is not None:
+        raise err
+    raise OSError(f"No IPv6 address found for {host}")
+
+class IPv6HTTPConnection(HTTPConnection):
+    def _new_conn(self):
+        return create_ipv6_connection(
+            (self._dns_host, self.port),
+            timeout=self.timeout,
+            source_address=self.source_address,
+        )
+
+class IPv6HTTPSConnection(HTTPSConnection):
+    def _new_conn(self):
+        return create_ipv6_connection(
+            (self._dns_host, self.port),
+            timeout=self.timeout,
+            source_address=self.source_address,
+        )
+
+class IPv6HTTPConnectionPool(HTTPConnectionPool):
+    ConnectionCls = IPv6HTTPConnection
+
+class IPv6HTTPSConnectionPool(HTTPSConnectionPool):
+    ConnectionCls = IPv6HTTPSConnection
 
 class IPv6Adapter(HTTPAdapter):
-    def get_connection(self, url, proxies=None):
-        return IPv6ConnectionPool(self._get_host(url), self._get_port(url))
+    def init_poolmanager(self, connections, maxsize, block=False, **pool_kwargs):
+        super().init_poolmanager(connections, maxsize, block=block, **pool_kwargs)
+        self.poolmanager.pool_classes_by_scheme = {
+            "http": IPv6HTTPConnectionPool,
+            "https": IPv6HTTPSConnectionPool,
+        }
 
-# Mount the IPv6 adapter for specific hosts
+# Mount the IPv6 adapter for the host that should use IPv6
 session = requests.Session()
-session.mount("http://ipv6.example.com", IPv6Adapter())
+session.mount("https://ipv6.example.com", IPv6Adapter())
 
-response = session.get("http://ipv6.example.com/api")
+response = session.get("https://ipv6.example.com/api", timeout=5)
 ```
 
 ## Simpler Approach: Force IPv6 via getaddrinfo Patch
 
-A simpler approach for testing: monkey-patch socket.getaddrinfo to prefer IPv6:
+A simpler approach for testing: monkey-patch `socket.getaddrinfo` so unresolved calls use IPv6 only. Because this affects the whole process, limit it to short-lived tests:
 
 ```python
 import requests
 import socket
 
-# Save original getaddrinfo
 original_getaddrinfo = socket.getaddrinfo
 
-def ipv6_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-    """Prefer IPv6 addresses in resolution."""
-    results = original_getaddrinfo(host, port, family, type, proto, flags)
-    # Sort IPv6 first
-    ipv6_results = [r for r in results if r[0] == socket.AF_INET6]
-    ipv4_results = [r for r in results if r[0] == socket.AF_INET]
-    return ipv6_results + ipv4_results
+def ipv6_only_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    """Resolve AF_UNSPEC lookups as IPv6-only."""
+    if family in (0, socket.AF_UNSPEC):
+        family = socket.AF_INET6
+    return original_getaddrinfo(host, port, family, type, proto, flags)
 
-# Apply patch
-socket.getaddrinfo = ipv6_getaddrinfo
+socket.getaddrinfo = ipv6_only_getaddrinfo
 
-# Now requests will prefer IPv6 when both are available
-response = requests.get("https://google.com")
-print(f"Connected via: {'IPv6' if ':' in response.raw._connection.sock.getpeername()[0] else 'IPv4'}")
-
-# Restore original
-socket.getaddrinfo = original_getaddrinfo
+try:
+    # api64.ipify.org returns the public IP address used for the request
+    response = requests.get("https://api64.ipify.org", timeout=5)
+    print(f"Public IP used: {response.text.strip()}")
+finally:
+    socket.getaddrinfo = original_getaddrinfo
 ```
 
 ## Testing IPv6 Connectivity with requests
 
 ```python
 import requests
+import socket
 
 def test_ipv6_connectivity() -> dict:
-    """Test IPv6 connectivity using external services."""
+    """Test IPv6 DNS resolution and outbound HTTP connectivity."""
     results = {}
 
-    # Test 1: Direct IPv6 address
+    # Test 1: Does the service publish an IPv6 address?
     try:
-        r = requests.get("http://[2001:4860:4860::8888]", timeout=5)
-        results["direct_ipv6"] = "reachable"
-    except requests.exceptions.ConnectionError:
-        results["direct_ipv6"] = "unreachable"
+        addrs = socket.getaddrinfo(
+            "api64.ipify.org",
+            443,
+            family=socket.AF_INET6,
+            type=socket.SOCK_STREAM,
+        )
+        results["ipv6_dns"] = addrs[0][4][0]
+    except socket.gaierror:
+        results["ipv6_dns"] = "no AAAA record"
 
-    # Test 2: IPv6 test site
+    # Test 2: Does the outbound HTTP request use IPv6?
     try:
-        r = requests.get("https://ipv6.icanhazip.com", timeout=5)
-        if ':' in r.text.strip():
-            results["ipv6_internet"] = r.text.strip()
+        r = requests.get("https://api64.ipify.org", timeout=5)
+        ip = r.text.strip()
+        if ':' in ip:
+            results["ipv6_internet"] = ip
         else:
-            results["ipv6_internet"] = "connected via IPv4 despite request"
-    except requests.exceptions.ConnectionError:
+            results["ipv6_internet"] = f"connected via IPv4 ({ip})"
+    except requests.exceptions.RequestException:
         results["ipv6_internet"] = "unreachable"
 
     return results
@@ -159,11 +195,11 @@ class IPv6APIClient:
         return self.session.post(url, json=data, **kwargs)
 
 # Example: API hosted on IPv6
-client = IPv6APIClient("http://[2001:db8::api]/v1")
+client = IPv6APIClient("http://[2001:db8::1]/v1")
 # response = client.get("/devices")
-# response = client.post("/devices", {"name": "router-1", "address": "2001:db8::1"})
+# response = client.post("/devices", {"name": "router-1", "address": "2001:db8::2"})
 ```
 
 ## Conclusion
 
-Python's `requests` library works with IPv6 when URLs use the bracket notation for IPv6 addresses. To force IPv6 for hostname connections, use a custom adapter or monkey-patch `socket.getaddrinfo`. For production code, consider using `httpx` which has better built-in IPv6 support and async capabilities.
+Python's `requests` library works with IPv6 when URLs use the bracket notation for IPv6 addresses. To force IPv6 for hostname connections, use a custom adapter or monkey-patch `socket.getaddrinfo`. If you need async capabilities as well, consider `httpx`.
