@@ -14,20 +14,20 @@ Automatic edge onboarding allows you to pre-configure edge agents and have them 
 
 - Portainer Business Edition
 - Edge computing features enabled
-- Network access from devices to Portainer
+- Network access from devices to the Portainer API port and tunnel port (`9443` and `8000` by default)
 
 ## Step 1: Enable Automatic Edge Onboarding
 
 1. Log in to Portainer Business Edition
 2. Go to **Settings** → **Edge Compute**
-3. Enable **Automatically create edge environments on agent connection**
-4. Configure the default group for auto-created environments
-5. Configure default tags (optional)
-6. Save settings
+3. Enable **Edge Compute features**
+4. Set **Portainer API server URL** and **Portainer tunnel server address**
+5. Save settings
+6. Go to **Environment-related** → **Auto onboarding**
 
 ## Step 2: Create a Pre-Staged Edge Key
 
-Generate an edge key that multiple agents can use:
+Generate a general edge key that multiple agents can use:
 
 ```bash
 TOKEN=$(curl -s -X POST \
@@ -36,16 +36,13 @@ TOKEN=$(curl -s -X POST \
   -d '{"username":"admin","password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Create an edge key for auto-onboarding
-
-curl -X POST \
+# Generate a general Edge key for auto-onboarding
+EDGE_KEY=$(curl -s -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/edge/keys \
-  -d '{
-    "name": "factory-default-key",
-    "allowAutoOnboarding": true
-  }'
+  https://portainer.example.com/api/endpoints/edge/generate-key \
+  -d '{}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['edgeKey'])")
 ```
 
 ## Step 3: Pre-Stage Agent Deployment
@@ -58,38 +55,45 @@ Create a deployment script that all devices run during provisioning:
 # Run this during device initial setup/imaging
 
 # Generate a unique device ID (use hardware identifier if possible)
-DEVICE_ID=$(cat /proc/cpuinfo | grep Serial | awk '{print $3}' 2>/dev/null || hostname)
-DEVICE_ID=$(echo $DEVICE_ID | tr -d ' :')
+DEVICE_ID=$(awk '/Serial/ {print $3; exit}' /proc/cpuinfo)
+DEVICE_ID=${DEVICE_ID:-$(cat /etc/machine-id 2>/dev/null)}
+DEVICE_ID=${DEVICE_ID:-$(hostname)}
+DEVICE_ID=$(echo "$DEVICE_ID" | tr -d ' :')
 
-# Portainer connection details (embed during imaging)
-PORTAINER_URL="https://portainer.example.com"
+# General Edge key from Portainer auto-onboarding
 EDGE_KEY="pre-staged-edge-key"
+# Match the agent image tag to your Portainer Server release.
+AGENT_IMAGE="portainer/agent:lts"
 
 echo "Installing Portainer Edge Agent for device: $DEVICE_ID"
 
+# Set EDGE_INSECURE_POLL=1 if Portainer uses a self-signed certificate.
+docker volume create portainer_agent_data >/dev/null
+
 docker run -d \
   --name portainer_edge_agent \
-  --restart unless-stopped \
+  --restart always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  -v /var/run/portainer:/var/run/portainer \
+  -v /:/host \
+  -v portainer_agent_data:/data \
   -e EDGE=1 \
   -e EDGE_ID="$DEVICE_ID" \
   -e EDGE_KEY="$EDGE_KEY" \
   -e EDGE_INSECURE_POLL=0 \
-  portainer/agent:latest
+  "$AGENT_IMAGE"
 
 echo "Edge agent installed. Device will appear in Portainer as: $DEVICE_ID"
 ```
 
 ## Step 4: The Waiting Room
 
-When auto-onboarding is enabled, new devices appear in the **Waiting Room** (not immediately as active environments):
+When the waiting room is enabled, new devices appear in the **Waiting Room** instead of being trusted immediately:
 
-1. Go to **Environments** → **Waiting Room**
+1. Go to **Edge Compute** → **Waiting Room**
 2. Review new devices
-3. Approve or reject each device
-4. Approved devices become active environments
+3. Associate or reject each device
+4. Associated devices become active environments
 
 Or via API:
 
@@ -97,15 +101,16 @@ Or via API:
 # List devices in waiting room
 curl -s \
   -H "Authorization: Bearer $TOKEN" \
-  https://portainer.example.com/api/edge/waiting-room \
+  "https://portainer.example.com/api/endpoints?edgeDeviceUntrusted=true" \
   | python3 -m json.tool
 
-# Approve a device
-DEVICE_ID="device-id-from-waiting-room"
+# Associate a device from the waiting room
+ENDPOINT_ID=12
 curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
-  https://portainer.example.com/api/edge/waiting-room/approve \
-  -d "[\"$DEVICE_ID\"]"
+  -H "Content-Type: application/json" \
+  https://portainer.example.com/api/endpoints/edge/trust \
+  -d "{\"EndpointIDs\":[${ENDPOINT_ID}]}"
 ```
 
 ## Fully Automated Onboarding (Skip Waiting Room)
@@ -113,7 +118,7 @@ curl -X POST \
 For trusted environments, skip the waiting room:
 
 1. Settings → Edge Compute
-2. Enable **Skip waiting room for auto-onboarding**
+2. Disable **Enable Edge Environment Waiting Room**
 
 Devices are immediately activated as environments when they connect.
 
