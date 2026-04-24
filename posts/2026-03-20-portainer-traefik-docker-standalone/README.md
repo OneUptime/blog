@@ -76,8 +76,6 @@ accessLog: {}
 
 ```yaml
 # /opt/traefik/docker-compose.yml
-version: "3.8"
-
 services:
   traefik:
     image: traefik:v3.0
@@ -128,8 +126,6 @@ services:
       - "traefik.http.routers.portainer.tls.certresolver=letsencrypt"
       - "traefik.http.routers.portainer.service=portainer"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
-      # Portainer HTTPS internal port requires scheme setting
-      - "traefik.http.services.portainer.loadbalancer.server.scheme=https"
 
 networks:
   proxy:
@@ -177,7 +173,7 @@ curl -v https://portainer.example.com 2>&1 | grep -i "Let's Encrypt"
 ## Step 6: Verify the Setup
 
 1. Open `https://portainer.example.com` - should show Portainer setup page
-2. Open `https://traefik.example.com` - should show Traefik dashboard (with auth)
+2. Open `https://traefik.example.com/dashboard/` - should show Traefik dashboard (with auth)
 3. HTTP should redirect to HTTPS automatically
 
 ```bash
@@ -214,7 +210,7 @@ networks:
     external: true  # Use the existing proxy network
 ```
 
-Deploy via Portainer (which auto-detects the labels and routes traffic).
+Deploy via Portainer; Traefik will auto-detect the labels and route traffic.
 
 ## Conclusion
 
