@@ -8,19 +8,17 @@ Description: Deploy Ghost blog platform via Portainer with MySQL, persistent con
 
 ## Introduction
 
-Ghost is a modern, open-source publishing platform focused on professional blogging and newsletters. It's faster and leaner than WordPress, with built-in membership and newsletter features. Deploying via Portainer with MySQL gives you a production-ready Ghost instance.
+Ghost is a modern, open-source publishing platform focused on professional blogging and newsletters. It's faster and leaner than WordPress, with built-in membership and newsletter features. Deploying via Portainer with MySQL gives you a solid self-hosted Ghost instance.
 
 ## Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   ghost:
-    image: ghost:5-alpine
+    image: ghost:6-alpine
     container_name: ghost
     environment:
-      # URL - change to your domain
+      # URL - change to your site URL. Use https:// behind a TLS reverse proxy.
       url: http://ghost.example.com
       
       # Database
@@ -31,7 +29,7 @@ services:
       database__connection__user: ghost
       database__connection__password: ghost_password
       
-      # Email (Mailgun example)
+      # Transactional email (Mailgun SMTP example)
       mail__transport: SMTP
       mail__from: noreply@example.com
       mail__options__host: smtp.mailgun.org
@@ -83,12 +81,12 @@ Complete the setup wizard to create your admin account.
 
 In Ghost Admin:
 
-1. Navigate to **Settings > Membership**
+1. Navigate to **Settings > Membership > Access**
 2. Enable member signups
-3. Configure subscription tiers (free/paid)
+3. Configure paid tiers if needed
 4. Set up Stripe for payments (optional)
 
-For newsletter delivery, configure your email provider in the stack environment variables or in **Settings > Email newsletter**.
+The stack environment variables above configure Ghost's standard SMTP mail transport for member sign-in and other transactional emails. For bulk newsletter delivery on self-hosted Ghost, go to **Settings > Membership > Email newsletter** and configure Mailgun API keys.
 
 ## Ghost with Traefik
 
@@ -97,6 +95,7 @@ services:
   ghost:
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
       - "traefik.http.routers.ghost.rule=Host(`blog.example.com`)"
       - "traefik.http.routers.ghost.entrypoints=websecure"
       - "traefik.http.routers.ghost.tls.certresolver=letsencrypt"
@@ -104,6 +103,10 @@ services:
     networks:
       - traefik-public
       - default
+
+networks:
+  traefik-public:
+    external: true
 ```
 
 ## Custom Theme Deployment
@@ -116,7 +119,7 @@ docker cp ./my-theme ghost:/var/lib/ghost/content/themes/my-theme
 # Restart to load theme
 docker restart ghost
 
-# In Ghost Admin: Settings > Design > Install theme
+# In Ghost Admin: Settings > Site > Theme > Change theme, then activate the copied theme from Installed
 ```
 
 ## Backup Ghost Content
@@ -134,7 +137,7 @@ docker exec ghost-db mysqldump \
   > /backups/ghost-db-$(date +%Y%m%d).sql
 
 # Export content via Ghost Admin
-# Settings > Labs > Export content (JSON)
+# Settings > Advanced > Import/Export > Export (JSON)
 ```
 
 ## Conclusion
