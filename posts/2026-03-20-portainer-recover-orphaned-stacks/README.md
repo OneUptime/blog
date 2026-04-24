@@ -4,116 +4,96 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Stack, Recovery, Troubleshooting, DevOps
 
-Description: Learn how to recover orphaned Docker stacks in Portainer - containers running outside Portainer's knowledge that need to be brought back under management.
+Description: Learn how to recover orphaned Docker stacks in Portainer after an environment is removed and re-added, and how this differs from stacks deployed outside Portainer.
 
 ## Introduction
 
-Orphaned stacks occur when Docker containers are running but Portainer has lost track of them. This happens when Portainer is reinstalled, when containers are deployed directly via CLI without Portainer's knowledge, or when Portainer's database is reset. The containers are healthy and serving traffic, but they don't appear in Portainer's Stacks list. This guide covers how to identify, recover, and re-manage these orphaned deployments.
+In Portainer, orphaned stacks are stacks that were previously created in Portainer but whose environment is no longer registered. This most commonly happens when a Docker environment is removed and re-added, or when you change the way Portainer connects to the same Docker node. Workloads deployed directly with `docker compose` or `docker stack deploy`, or workloads left behind after Portainer data loss, are different - Portainer treats those as external resources with limited control rather than orphaned stacks. This guide covers the supported orphaned-stack recovery flow.
 
 ## Prerequisites
 
-- Portainer installed with a connected Docker environment
-- Docker CLI access on the host
-- Knowledge of the original Compose file content (if available)
+- Portainer installed with a connected Docker environment that points to the same Docker node or Swarm as the original stack
+- Portainer administrator access
+- Docker CLI access on the host (optional, for verification)
 
 ## What Causes Orphaned Stacks
 
-1. **Portainer reinstall/data loss**: Portainer's data volume (`portainer_data`) is deleted or corrupted.
-2. **Direct CLI deployment**: `docker compose up` or `docker stack deploy` run directly on the host, bypassing Portainer.
-3. **Environment re-addition**: A Docker endpoint is removed from Portainer and re-added - Portainer loses the stack metadata.
-4. **Portainer version migration**: Some upgrades don't preserve stack association metadata.
+1. **Environment re-addition**: A Docker environment is removed from Portainer and then added again.
+2. **Connection method changes**: You switch the same Docker host from one connection method to another (for example, direct socket to socket proxy) and recreate the environment entry.
+3. **Environment recreation on the same node**: Portainer still has the stack record, but the original environment entry no longer exists, so the stack must be re-associated.
 
-## Step 1: Identify Orphaned Containers
+Direct CLI deployments and Portainer data loss do not create orphaned stack records in Portainer. Those scenarios result in external workloads, which are covered separately below.
 
-Identify containers that Portainer isn't managing:
+## Step 1: Identify Orphaned Stacks
 
-```bash
-# List all running containers and their Compose project labels:
+Use Portainer's stack list to identify actual orphaned stacks:
 
-docker ps --format "table {{.Names}}\t{{.Labels}}" | grep "compose.project"
+1. In Portainer, open the environment you want to recover stacks into.
+2. Navigate to **Stacks**.
+3. Open the three-dot menu in the top-right corner and select **Show all orphaned stacks**.
+4. Any stacks shown with the **Orphaned** status can be re-associated.
 
-# Show all containers grouped by Compose project:
-docker ps --format '{{.Labels}}' | \
-  grep -o 'com.docker.compose.project=[^,]*' | \
-  sort -u
+If the stack does not appear after enabling orphaned stacks, it is not an orphaned Portainer stack record. It is more likely an external deployment or a case of Portainer data loss.
 
-# Example output:
-# com.docker.compose.project=myapp
-# com.docker.compose.project=monitoring
-# com.docker.compose.project=traefik
-```
+## Step 2: Verify the Stack Still Exists on the Same Environment
 
-Compare this list to what appears in Portainer's Stacks view. Projects present in `docker ps` but missing from Portainer are orphaned.
-
-## Step 2: Reconstruct the Compose File
-
-If you don't have the original Compose file, reconstruct it from running containers:
+Orphaned stacks can only be re-associated when the new environment points at the same Docker node or Swarm that still has the stack resources:
 
 ```bash
-# Install docker-autocompose or use manual inspection:
-# Option 1: docker-autocompose tool
-docker run --rm \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  red5d/docker-autocompose \
-  myapp_web_1 myapp_api_1 myapp_postgres_1 > reconstructed-stack.yml
+# Compose stack: confirm containers still exist, even if stopped
+docker ps -a --filter "label=com.docker.compose.project=myapp"
 
-# Option 2: Manually inspect each container:
-docker inspect myapp_web_1 | jq '.[0] | {
-  image: .Config.Image,
-  environment: .Config.Env,
-  ports: .HostConfig.PortBindings,
-  volumes: .Mounts,
-  networks: (.NetworkSettings.Networks | keys)
-}'
+# Swarm stack: confirm services still exist
+docker stack services myapp
 ```
 
-## Step 3: Re-Import the Stack into Portainer
+If the workload is still running, Portainer can re-associate the orphaned stack and show it as active again. If the workload is gone, the stack can still be re-associated, but it will come back as inactive until you redeploy or start it.
 
-### Method 1: Web Editor Import
+## Step 3: Re-Associate the Stack in Portainer
 
-1. Copy the reconstructed Compose YAML.
-2. In Portainer, navigate to **Stacks** → **Add stack**.
-3. Enter the **exact same stack name** as the running Compose project (e.g., `myapp`).
-4. Select **Web editor** and paste the Compose content.
-5. Click **Deploy the stack**.
+### Method 1: Use the Portainer UI
 
-Portainer detects that containers with this project label already exist and associates them with the new stack record.
+1. In Portainer, navigate to **Stacks** and enable **Show all orphaned stacks** if needed.
+2. Click the orphaned stack you want to recover.
+3. Click **Associate** or **Associate to this environment**.
+4. Confirm the association.
+
+Portainer re-attaches the existing stack record to the current environment. If the underlying containers or services are still present on that same environment, the stack returns with full control.
 
 ### Method 2: Use the Portainer API
 
 ```bash
-# Get the current Compose file content from container labels:
-STACK_NAME="myapp"
+ENDPOINT_ID=1
+STACK_ID=12
 
-# Create the stack entry via API (Portainer will sync with running containers):
-curl -X POST \
+# List orphaned stacks visible for an environment:
+curl --get \
   "${PORTAINER_URL}/api/stacks" \
   -H "X-API-Key: ${PORTAINER_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "Name": "'${STACK_NAME}'",
-    "SwarmID": "",
-    "StackFileContent": "'"$(cat reconstructed-stack.yml | jq -Rs .)"'",
-    "Env": [],
-    "EndpointId": 1
-  }'
+  --data-urlencode "filters={\"EndpointID\":${ENDPOINT_ID},\"IncludeOrphanedStacks\":true}"
+
+# Associate an orphaned standalone stack back to that environment.
+# For swarm stacks, add &swarmId=<your swarm id> to the URL.
+curl -X PUT \
+  "${PORTAINER_URL}/api/stacks/${STACK_ID}/associate?endpointId=${ENDPOINT_ID}&orphanedRunning=true" \
+  -H "X-API-Key: ${PORTAINER_TOKEN}"
 ```
 
 ## Step 4: Handle External Stacks (Deployed via CLI)
 
-Portainer BE has an **External stacks** feature that shows stacks deployed outside Portainer:
+Stacks deployed directly with `docker compose up` or `docker stack deploy` are not orphaned stacks in Portainer. Portainer marks resources deployed outside Portainer as `external`, and control over them is limited.
 
-1. Navigate to **Stacks** in Portainer.
-2. Look for an **External stacks** tab or section.
-3. These show stacks that Docker knows about but Portainer didn't deploy.
-4. Click **Associate** to bring them under Portainer management.
+1. You may see these workloads in Portainer as external or limited-control resources.
+2. The orphaned-stack **Associate** flow does not apply to them.
+3. If you want Portainer to manage them fully again, use the original Compose or stack file and redeploy them from Portainer during a maintenance window, or leave them as externally managed workloads.
 
 ## Step 5: Prevent Future Orphaning
 
 Strategies to prevent stacks from becoming orphaned:
 
 ```bash
-# Strategy 1: Always deploy via Portainer (never direct CLI for managed hosts)
+# Strategy 1: If you want Portainer to retain full stack control,
+# deploy the stack from Portainer instead of creating it directly with the Docker CLI
 
 # Strategy 2: Backup Portainer data volume regularly:
 docker run --rm \
@@ -121,9 +101,8 @@ docker run --rm \
   -v /backup:/backup \
   alpine tar czf /backup/portainer_data_$(date +%Y%m%d).tar.gz -C /source .
 
-# Strategy 3: Use Git-based stacks - the source of truth is in Git, not Portainer:
-# Even if Portainer loses the stack record, you can redeploy from Git
-# and the containers will reconnect to existing volumes
+# Strategy 3: Use Git-based stacks so the source of truth is in Git
+# and Portainer keeps a Git reference for the stack definition
 
 # Strategy 4: Export stack definitions regularly:
 # Portainer UI: Stacks → (each stack) → copy Compose YAML → save to version control
@@ -134,21 +113,17 @@ docker run --rm \
 If you reinstalled Portainer and lost all stack records:
 
 ```bash
-# 1. List all running Compose projects:
-docker ps --format '{{.Labels}}' | \
+# 1. List all Compose projects that still have containers on the host:
+docker ps -a --format '{{.Labels}}' | \
   grep -o 'com.docker.compose.project=[^,]*' | \
   sort -u | sed 's/com.docker.compose.project=//'
 
-# 2. For each project, find its compose file (might still be on disk):
-find /opt/stacks /home -name "docker-compose.yml" 2>/dev/null
-
-# 3. For each found compose file, redeploy as a stack in Portainer
-#    using the same name - containers continue running, Portainer
-#    re-associates with them
-
-# 4. Verify each service shows as Running in Portainer after re-association
+# 2. Look for Compose files using current and legacy filenames:
+find /opt/stacks /home -type f \( -name 'compose.yaml' -o -name 'compose.yml' -o -name 'docker-compose.yaml' -o -name 'docker-compose.yml' \) 2>/dev/null
 ```
+
+At that point, Portainer no longer has the original stack records, so those workloads are not recoverable as orphaned stacks. If you have a Portainer backup, restore it to recover the original stack metadata. If you do not have a backup, treat the running workloads as external resources or plan a fresh redeploy from Portainer using the saved Compose or Git source.
 
 ## Conclusion
 
-Orphaned stacks are a common consequence of Portainer data loss or direct CLI deployments. Recovery involves identifying Compose project labels on running containers, reconstructing or locating the original Compose YAML, and deploying a new stack in Portainer with the same project name to re-associate running containers. Going forward, always deploy stacks through Portainer (not directly via CLI), back up Portainer's data volume regularly, and use Git-based stacks so the configuration is never exclusively stored in Portainer's database.
+Orphaned stacks in Portainer are stack records whose original environment was removed and later re-added. The supported recovery path is to show orphaned stacks in Portainer and re-associate them with the same environment. Workloads deployed outside Portainer, or workloads left behind after Portainer data loss, are external resources rather than orphaned stacks and require either a Portainer backup restore or a fresh deployment from Portainer if you want full management again.
