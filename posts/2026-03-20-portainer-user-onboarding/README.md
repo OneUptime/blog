@@ -13,8 +13,8 @@ As teams grow, manually onboarding new users to Portainer becomes tedious. The P
 ## Prerequisites
 
 - Portainer BE (for advanced RBAC and teams)
-- Admin API access
-- Python 3.8+ or shell scripting
+- Admin access token
+- Python 3.8+ with `requests` installed, or shell scripting
 
 ## The Onboarding Script
 
@@ -25,11 +25,11 @@ As teams grow, manually onboarding new users to Portainer becomes tedious. The P
 import requests
 import secrets
 import string
-import json
 import sys
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from typing import Optional
 
 PORTAINER_URL = "https://portainer.example.com"
 ADMIN_API_KEY = "your-admin-api-key"
@@ -68,7 +68,22 @@ def get_teams() -> list:
     return resp.json()
 
 
-def get_team_by_name(name: str) -> dict:
+def get_roles() -> list:
+    """Get all available RBAC roles."""
+    resp = requests.get(f"{PORTAINER_URL}/api/roles", headers=headers)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_role_id_by_name(name: str) -> int:
+    """Find an RBAC role ID by role name."""
+    for role in get_roles():
+        if role["Name"].lower() == name.lower():
+            return role["Id"]
+    raise ValueError(f"Role not found: {name}")
+
+
+def get_team_by_name(name: str) -> Optional[dict]:
     """Find a team by name."""
     teams = get_teams()
     for team in teams:
@@ -94,35 +109,38 @@ def add_user_to_team(user_id: int, team_id: int, role: int = 2) -> bool:
     role: 1=Leader, 2=Regular Member
     """
     resp = requests.post(
-        f"{PORTAINER_URL}/api/teams/{team_id}/memberships",
+        f"{PORTAINER_URL}/api/team_memberships",
         headers=headers,
         json={"UserID": user_id, "TeamID": team_id, "Role": role}
     )
-    return resp.status_code == 200
+    resp.raise_for_status()
+    return True
 
 
-def grant_environment_access(endpoint_id: int, user_id: int, access_level: int = 2) -> bool:
+def grant_environment_access(endpoint_id: int, user_id: int, role_id: int) -> bool:
     """
     Grant user access to an environment.
-    access_level: 1=ReadOnly, 2=Standard, 3=Advanced
+    role_id must be a valid Portainer RBAC role ID from /api/roles.
     """
     # Get current endpoint
     resp = requests.get(
         f"{PORTAINER_URL}/api/endpoints/{endpoint_id}",
         headers=headers
     )
+    resp.raise_for_status()
     endpoint = resp.json()
     
     # Add user access policy
     user_policies = endpoint.get('UserAccessPolicies', {})
-    user_policies[str(user_id)] = {"RoleId": access_level}
+    user_policies[str(user_id)] = {"RoleId": role_id}
     
     resp = requests.put(
         f"{PORTAINER_URL}/api/endpoints/{endpoint_id}",
         headers=headers,
         json={"UserAccessPolicies": user_policies}
     )
-    return resp.status_code == 200
+    resp.raise_for_status()
+    return True
 
 
 def send_welcome_email(to_email: str, username: str, password: str, team: str):
@@ -158,7 +176,8 @@ def onboard_user(
     email: str,
     team_name: str,
     environment_ids: list,
-    is_admin: bool = False
+    is_admin: bool = False,
+    environment_role: str = "Helpdesk"
 ):
     """Complete user onboarding workflow."""
     
@@ -172,6 +191,7 @@ def onboard_user(
     user = create_user(username, password, role)
     user_id = user['Id']
     print(f"  Created user ID: {user_id}")
+    environment_role_id = get_role_id_by_name(environment_role)
     
     # 3. Get or create team
     team = get_team_by_name(team_name)
@@ -185,8 +205,8 @@ def onboard_user(
     
     # 5. Grant environment access
     for env_id in environment_ids:
-        if grant_environment_access(env_id, user_id):
-            print(f"  Granted access to environment: {env_id}")
+        if grant_environment_access(env_id, user_id, environment_role_id):
+            print(f"  Granted {environment_role} access to environment: {env_id}")
     
     # 6. Send welcome email
     send_welcome_email(email, username, password, team_name)
@@ -197,14 +217,36 @@ def onboard_user(
 
 
 if __name__ == '__main__':
-    # Example usage
-    onboard_user(
-        username="jdoe",
-        email="jdoe@example.com",
-        team_name="backend-team",
-        environment_ids=[1, 2],  # Development and Staging
-        is_admin=False
-    )
+    if len(sys.argv) > 1:
+        if len(sys.argv) < 5:
+            print(
+                f"Usage: {sys.argv[0]} USERNAME EMAIL TEAM ENV_IDS [IS_ADMIN] [ENVIRONMENT_ROLE]",
+                file=sys.stderr
+            )
+            sys.exit(1)
+
+        onboard_user(
+            username=sys.argv[1],
+            email=sys.argv[2],
+            team_name=sys.argv[3],
+            environment_ids=[
+                int(env_id.strip())
+                for env_id in sys.argv[4].replace(",", ";").split(";")
+                if env_id.strip()
+            ],
+            is_admin=len(sys.argv) > 5 and sys.argv[5].lower() in {"1", "true", "yes"},
+            environment_role=sys.argv[6] if len(sys.argv) > 6 else "Helpdesk"
+        )
+    else:
+        # Example usage
+        onboard_user(
+            username="jdoe",
+            email="jdoe@example.com",
+            team_name="backend-team",
+            environment_ids=[1, 2],  # Development and Staging
+            is_admin=False,
+            environment_role="Helpdesk"
+        )
 ```
 
 ## Bulk Onboarding from CSV
@@ -229,20 +271,29 @@ done < "$CSV_FILE"
 echo "Bulk onboarding complete"
 ```
 
-## LDAP/AD Auto-Provisioning (Portainer BE)
+## LDAP Auto-Provisioning (Portainer BE)
 
 ```bash
-# Configure LDAP so users auto-provision on first login
+# Configure LDAP authentication and automatic user provisioning
 curl -X PUT \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
+    "AuthenticationMethod": 2,
     "LDAPSettings": {
       "AutoCreateUsers": true,
+      "URLs": ["ldap.example.com:389"],
+      "ReaderDN": "cn=readonly,dc=example,dc=com",
+      "Password": "readonly-password",
+      "SearchSettings": [{
+        "BaseDN": "ou=people,dc=example,dc=com",
+        "Filter": "(objectClass=person)",
+        "UserNameAttribute": "uid"
+      }],
       "GroupSearchSettings": [{
         "GroupBaseDN": "ou=groups,dc=example,dc=com",
-        "GroupFilter": "(member={dn})",
-        "GroupAttribute": "cn"
+        "GroupFilter": "(&(objectClass=groupOfNames)(cn=Portainer*))",
+        "GroupAttribute": "member"
       }]
     }
   }' \
@@ -251,4 +302,4 @@ curl -X PUT \
 
 ## Conclusion
 
-Automated user onboarding saves administrators time and ensures consistent access configuration. The Python script handles the full workflow from account creation to environment access to welcome email delivery. For organizations using LDAP/AD with Portainer Business Edition, auto-provisioning eliminates manual steps entirely, allowing users to log in immediately with their corporate credentials.
+Automated user onboarding saves administrators time and ensures consistent access configuration. The Python script handles the full workflow from account creation to environment access to welcome email delivery. For organizations using LDAP with Portainer Business Edition, auto-provisioning can remove most manual steps, allowing users to log in immediately with their corporate credentials when directory groups match Portainer teams.
