@@ -21,10 +21,12 @@ Kubernetes Ingress resources provide HTTP/HTTPS routing rules that direct extern
 
 Portainer does not install an Ingress Controller for you. Install one first:
 
+For example, on a bare-metal or local cluster:
+
 ```bash
 # Install NGINX Ingress Controller
 
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/baremetal/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/baremetal/deploy.yaml
 
 # Verify it's running
 kubectl get pods -n ingress-nginx
@@ -33,30 +35,31 @@ kubectl get svc -n ingress-nginx
 
 ## Step 2: Configure Ingress in Portainer Settings
 
-In Portainer, enable Ingress management:
+In Portainer, verify your Ingress classes are available:
 
 1. Go to **Cluster** → **Setup**.
-2. Under **Networking**, ensure **Allow users to use ingress controllers** is enabled.
-3. Add your Ingress Controller class (e.g., `nginx`) in the Ingress Controllers section.
+2. Under **Networking** → **Ingresses**, confirm your Ingress Class (for example, `nginx`) is listed and allowed. Portainer auto-detects installed ingress controllers and allows them by default.
+3. If your cluster does not define an `IngressClass` resource, optionally enable **Allow Ingress class to be set to "none"**.
 4. Save settings.
 
 ## Step 3: Create an Ingress via Portainer UI
 
-### From the Application Deployment Form
+### From the Ingress Form
 
-When deploying an application:
+When creating an Ingress in Portainer:
 
-1. Go to **Applications** → **Add application**.
-2. After configuring the service, scroll to **Ingress**.
-3. Click **Add ingress**.
+1. Go to **Networking** → **Ingresses**.
+2. Click **Add with form**.
+3. Select the namespace.
 4. Set:
+   - **Name**: `myapp-ingress`
    - **Ingress class**: `nginx`
    - **Hostname**: `myapp.example.com`
    - **Service**: Select your service
    - **Service port**: `80`
    - **Path**: `/`
    - **Path type**: `Prefix`
-5. Deploy.
+5. Click **Create**.
 
 ### Via KubeShell YAML
 
@@ -67,10 +70,8 @@ kind: Ingress
 metadata:
   name: myapp-ingress
   namespace: production
-  annotations:
-    kubernetes.io/ingress.class: "nginx"
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
+  ingressClassName: nginx
   rules:
     - host: myapp.example.com
       http:
@@ -109,10 +110,8 @@ kind: Ingress
 metadata:
   name: myapp-ingress-tls
   namespace: production
-  annotations:
-    kubernetes.io/ingress.class: "nginx"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - myapp.example.com
@@ -141,9 +140,8 @@ kind: Ingress
 metadata:
   name: multi-service-ingress
   namespace: production
-  annotations:
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   rules:
     - host: example.com
       http:
@@ -168,10 +166,9 @@ spec:
 
 Via Portainer UI:
 
-1. Go to **Applications** → **Ingresses**.
-2. Click the Ingress name to view details.
-3. Click **Edit** to modify the YAML.
-4. To delete, select and click **Remove**.
+1. Go to **Networking** → **Ingresses**.
+2. Click the Ingress name to review its details.
+3. To delete, select it and click **Remove**.
 
 Via KubeShell:
 
@@ -181,6 +178,9 @@ kubectl get ingress -n production
 
 # Describe for debugging
 kubectl describe ingress myapp-ingress -n production
+
+# Edit an ingress
+kubectl edit ingress myapp-ingress -n production
 
 # Delete an ingress
 kubectl delete ingress myapp-ingress -n production
@@ -193,7 +193,7 @@ kubectl delete ingress myapp-ingress -n production
 kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx --tail=50
 
 # Check ingress events
-kubectl get events -n production --field-selector reason=Sync
+kubectl get events -n production --field-selector involvedObject.kind=Ingress,involvedObject.name=myapp-ingress
 
 # Test DNS resolution
 nslookup myapp.example.com
