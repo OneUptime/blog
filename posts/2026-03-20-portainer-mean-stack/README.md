@@ -12,7 +12,8 @@ The MEAN stack (MongoDB, Express.js, Angular, Node.js) is a popular JavaScript-c
 
 ## Prerequisites
 
-- Portainer CE or BE installed and running
+- Portainer installed and connected to a Docker Standalone environment
+- Portainer Business Edition if you want the development bind-mount setup below; Portainer CE can deploy the production image-based stack
 - Docker Engine 20.10+
 - Familiarity with Node.js and Angular basics
 
@@ -28,16 +29,16 @@ mean-app/
 ├── backend/           # Express + Node.js API
 │   ├── Dockerfile
 │   └── ...
+├── mongo/
+│   └── init.js
 └── docker-compose.yml
 ```
 
 ## Step 2: Create the Docker Compose Stack in Portainer
 
-Navigate to **Stacks** → **Add Stack** → **Web Editor** and name it `mean-app`:
+Navigate to **Stacks** → **Add Stack** → **Git Repository**, point Portainer at the repository containing this project, enable **Relative path volumes**, choose a writable **Local filesystem path**, and name it `mean-app`:
 
 ```yaml
-version: "3.8"
-
 services:
   # MongoDB database
   mongodb:
@@ -67,7 +68,8 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3000
-      MONGODB_URI: mongodb://admin:adminpassword@mongodb:27017/meanapp?authSource=admin
+      CORS_ORIGIN: http://localhost:4200
+      MONGODB_URI: mongodb://meanuser:meanpassword@mongodb:27017/meanapp
       JWT_SECRET: your-jwt-secret-change-in-production
     ports:
       - "3000:3000"
@@ -95,7 +97,7 @@ services:
     networks:
       - mean-net
 
-  # Mongo Express - web-based MongoDB admin UI
+  # Mongo Express - web-based MongoDB admin UI for private development only
   mongo-express:
     image: mongo-express:latest
     container_name: mean-mongo-express
@@ -103,10 +105,8 @@ services:
     ports:
       - "8081:8081"
     environment:
-      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
-      ME_CONFIG_MONGODB_ADMINPASSWORD: adminpassword
       ME_CONFIG_MONGODB_URL: mongodb://admin:adminpassword@mongodb:27017/
-      ME_CONFIG_BASICAUTH: "false"
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: "true"
     depends_on:
       - mongodb
     networks:
@@ -124,7 +124,7 @@ networks:
 ## Step 3: MongoDB Initialization Script
 
 ```javascript
-// mongo/init.js - creates the application database and user
+// mongo/init.js - creates the application database and user used by the backend
 db = db.getSiblingDB('meanapp');
 
 db.createUser({
@@ -152,7 +152,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors({ origin: 'http://localhost:4200' }));
+app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:4200' }));
 app.use(express.json());
 
 // MongoDB connection
@@ -194,7 +194,7 @@ app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
 // frontend/src/environments/environment.ts
 export const environment = {
   production: false,
-  apiUrl: 'http://localhost:3000/api'
+  apiUrl: 'http://localhost:3000/api' // Replace localhost with your Docker host when accessing the stack remotely
 };
 ```
 
@@ -224,7 +224,7 @@ For production, build and use actual Docker images instead of running npm instal
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY src/ ./src/
 
 FROM node:20-alpine
@@ -244,7 +244,17 @@ COPY . .
 RUN npx ng build --configuration=production
 
 FROM nginx:alpine
-COPY --from=builder /app/dist/frontend/browser /usr/share/nginx/html
+RUN rm -rf /usr/share/nginx/html/*
+COPY --from=builder /app/dist /tmp/dist
+RUN set -eux; \
+    for dir in /tmp/dist/* /tmp/dist/*/browser; do \
+      if [ -f "$dir/index.html" ]; then \
+        cp -r "$dir"/. /usr/share/nginx/html/; \
+        break; \
+      fi; \
+    done; \
+    test -f /usr/share/nginx/html/index.html; \
+    rm -rf /tmp/dist
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 ```
@@ -252,7 +262,7 @@ EXPOSE 80
 ## Step 7: Verify the Stack
 
 ```bash
-# Verify all containers are healthy
+# Verify all containers are running
 docker ps | grep mean
 
 # Test the backend API
@@ -265,9 +275,9 @@ curl http://localhost:3000/api/items
 # Stacks → mean-app → click each service to view logs
 
 # Direct MongoDB access
-docker exec -it mean-mongodb mongosh -u admin -p adminpassword
+docker exec -it mean-mongodb mongosh -u admin -p adminpassword --authenticationDatabase admin meanapp
 ```
 
 ## Conclusion
 
-Deploying the MEAN stack via Portainer provides a consistent, containerized environment with MongoDB data persisted in named volumes. The development configuration enables hot-reload for both the Angular frontend and Express backend. For production, swap the development service configurations for pre-built Docker images with multi-stage builds to reduce image size. Mongo Express provides a convenient browser-based interface for database administration, and all credentials should be moved to Portainer's environment variable store before going to production.
+Deploying the MEAN stack via Portainer provides a consistent, containerized environment with MongoDB data persisted in named volumes. The development configuration enables hot-reload for both the Angular frontend and Express backend. For production, swap the development service configurations for pre-built Docker images with multi-stage builds to reduce image size. Mongo Express can be useful during development, but it should remain private and not be exposed in production, and all credentials should be moved to Portainer's environment variable store before going to production.
