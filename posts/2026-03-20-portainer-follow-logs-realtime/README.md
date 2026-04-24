@@ -8,27 +8,24 @@ Description: Learn how to enable real-time log following (tail -f) for Docker co
 
 ## Introduction
 
-Following logs in real time is essential when monitoring a deployment, debugging a live issue, or watching a container start up. Portainer's log viewer supports live log streaming, letting you watch new log lines appear as they're emitted - similar to `tail -f` or `docker logs -f`.
+Following logs in real time is essential when monitoring a deployment, debugging a live issue, or watching a container start up. Portainer's log viewer supports automatic refresh, letting you watch new log lines appear as the view updates - similar in practice to `tail -f` or `docker logs -f`.
 
 ## Prerequisites
 
 - Portainer installed with a connected Docker environment
-- A running container using `json-file` or `journald` logging driver
+- A running container whose logs are readable through Docker (for example, `json-file`, `local`, or `journald`)
 
 ## Step 1: Enable Real-Time Log Following
 
 1. Navigate to **Containers** in Portainer.
-2. Click on the container name or the Logs icon.
-3. In the log viewer, look for the **Auto-refresh** or **Follow** toggle.
-4. Enable it.
+2. Select the container, then click **Logs**.
+3. In the log viewer, enable **Auto refresh**.
 
-New log lines will appear at the bottom of the viewer as they are emitted.
+New log lines will appear as Portainer refreshes the view.
 
-## Step 2: Combine with Auto-Scroll
+## Step 2: Keep the Latest Output in View
 
-With log following enabled:
-1. Enable **Auto-scroll** (if available) to automatically scroll to the latest line.
-2. This gives you a live scrolling view of new log output.
+With **Auto refresh** enabled, keep the log view scrolled to the bottom to watch the newest lines as Portainer refreshes the output.
 
 ```bash
 # Equivalent Docker CLI (runs in your terminal):
@@ -101,12 +98,12 @@ docker compose logs -f
 # Follow specific services:
 docker compose logs -f api database nginx
 
-# Follow with specific timestamp format:
+# Follow with timestamps:
 docker compose logs -f --timestamps
 
 # Since a specific time:
 docker compose logs --since="10m" -f   # Last 10 minutes
-docker compose logs --since="2026-03-20T10:00:00" -f
+docker compose logs --since="2026-03-20T10:00:00Z" -f
 ```
 
 ## Step 5: Log Following Best Practices
@@ -133,6 +130,7 @@ logger.info("Application started")
 ```javascript
 // Node.js: console.log goes to stdout
 console.log('Server started on port', process.env.PORT);
+const err = new Error('Database connection failed');
 console.error('Error:', err.message);  // Goes to stderr
 ```
 
@@ -148,13 +146,6 @@ services:
     environment:
       - PYTHONUNBUFFERED=1   # Forces Python to flush output immediately
     command: python app.py
-```
-
-```yaml
-# Node.js: force stdout flush (usually not needed, node doesn't buffer)
-# But if using a log library, ensure it writes synchronously or flushes:
-environment:
-  - NODE_ENV=production
 ```
 
 ### Include Context in Log Messages
@@ -178,10 +169,10 @@ ERROR: connection failed
 If a container produces very high-volume logs, real-time following in the browser can be slow:
 
 ```bash
-# Filter at the Docker level - only follow ERROR logs:
+# Filter the log stream in your shell:
 docker logs -f my-container 2>&1 | grep -E "(ERROR|CRITICAL)"
 
-# Or use Docker log filtering (if the app supports structured logs):
+# Or filter structured JSON logs in your shell:
 docker logs -f my-container 2>&1 | jq 'select(.level == "error")'
 ```
 
