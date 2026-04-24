@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Window, PowerShell, Network Configuration, Automation
+Tags: IPv6, Windows, PowerShell, Network Configuration, Automation
 
 Description: A comprehensive reference for PowerShell cmdlets used to manage IPv6 network configuration on Windows, covering addresses, routes, DNS, and network adapter settings.
 
@@ -24,7 +24,7 @@ Import-Module NetAdapter
 # Show all IPv6 addresses
 Get-NetIPAddress -AddressFamily IPv6
 
-# Show IPv6 configuration for a specific interface
+# Show IP configuration for a specific interface, including IPv6 details
 Get-NetIPConfiguration -InterfaceAlias "Ethernet"
 
 # Show IPv6 addresses with full properties
@@ -79,8 +79,8 @@ New-NetRoute `
 # Add a specific route
 New-NetRoute `
     -InterfaceAlias "Ethernet" `
-    -DestinationPrefix "2001:db8:remote::/48" `
-    -NextHop "2001:db8::gateway"
+    -DestinationPrefix "2001:db8:100::/48" `
+    -NextHop "2001:db8::1"
 
 # Remove a route
 Remove-NetRoute `
@@ -98,12 +98,12 @@ Find-NetRoute -RemoteIPAddress "2001:4860:4860::8888"
 # Set IPv6 DNS servers
 Set-DnsClientServerAddress `
     -InterfaceAlias "Ethernet" `
-    -ServerAddresses "2001:4860:4860::8888", "2001:4860:4860::8844", "8.8.8.8"
+    -ServerAddresses "2001:4860:4860::8888", "2001:4860:4860::8844"
 
 # View current DNS servers
-Get-DnsClientServerAddress -InterfaceAlias "Ethernet"
+Get-DnsClientServerAddress -InterfaceAlias "Ethernet" -AddressFamily IPv6
 
-# Set DNS to automatic (DHCP)
+# Reset DNS servers to automatic/default assignment
 Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ResetServerAddresses
 
 # Flush DNS cache
@@ -137,7 +137,7 @@ param(
     [string]$IPv6Address = "2001:db8::10",
     [int]$PrefixLength = 64,
     [string]$Gateway = "2001:db8::1",
-    [string[]]$DnsServers = @("2001:4860:4860::8888", "8.8.8.8")
+    [string[]]$DnsServers = @("2001:4860:4860::8888", "2001:4860:4860::8844")
 )
 
 # Remove existing manual IPv6 addresses
