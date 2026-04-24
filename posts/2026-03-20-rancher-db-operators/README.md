@@ -15,7 +15,7 @@ Kubernetes operators extend the platform's capabilities to manage complex statef
 | Operator | Databases | Maturity |
 |----------|-----------|----------|
 | CloudNativePG | PostgreSQL | Stable |
-| MongoDB Community Operator | MongoDB | Stable |
+| MongoDB Controllers for Kubernetes | MongoDB Community/Enterprise | Stable |
 | Percona Operator for MySQL | MySQL/PXC/ProxySQL | Stable |
 | K8ssandra | Cassandra | Stable |
 | Strimzi | Kafka | Stable |
@@ -31,6 +31,14 @@ helm repo add cnpg https://cloudnative-pg.github.io/charts
 helm install cnpg cnpg/cloudnative-pg \
   --namespace cnpg-system \
   --create-namespace
+
+# Create the target namespace and application credentials
+kubectl create namespace databases
+kubectl create secret generic app-credentials \
+  --from-literal=username=appuser \
+  --from-literal=password='change-me' \
+  --type=kubernetes.io/basic-auth \
+  -n databases
 
 # Create a PostgreSQL cluster
 kubectl apply -f - << 'EOF'
@@ -63,6 +71,12 @@ helm install percona-operator percona/pxc-operator \
   --namespace databases \
   --create-namespace
 
+# Create the backup credentials secret
+kubectl create secret generic aws-s3-secret \
+  --from-literal=AWS_ACCESS_KEY_ID=REPLACE_ME \
+  --from-literal=AWS_SECRET_ACCESS_KEY=REPLACE_ME \
+  -n databases
+
 # Deploy a PerconaXtraDB Cluster (Galera-based)
 kubectl apply -f - << 'EOF'
 apiVersion: pxc.percona.com/v1
@@ -71,11 +85,11 @@ metadata:
   name: cluster1
   namespace: databases
 spec:
-  crVersion: 1.14.0
+  crVersion: 1.19.0
   secretsName: my-cluster-secrets
   pxc:
     size: 3
-    image: percona/percona-xtradb-cluster:8.0
+    image: percona/percona-xtradb-cluster:8.0.44-35.1
     volumeSpec:
       persistentVolumeClaim:
         resources:
@@ -88,14 +102,14 @@ spec:
   proxysql:
     enabled: true
     size: 2
-    image: percona/proxysql2:2.5.3
+    image: percona/percona-xtradb-cluster-operator:1.19.0-proxysql
     resources:
       requests:
         memory: 256Mi
   haproxy:
     enabled: false
   backup:
-    image: percona/percona-xtradb-cluster-operator:1.14.0-pxc8.0-backup
+    image: percona/percona-xtradb-cluster-operator:1.19.0-backup
     storages:
       s3-backup:
         type: s3
@@ -106,18 +120,27 @@ spec:
     schedule:
       - name: "daily-backup"
         schedule: "0 2 * * *"
-        keep: 7
+        retention:
+          count: 7
+          type: count
+          deleteFromStorage: true
         storageName: s3-backup
 EOF
 ```
 
-## Step 3: Install MongoDB Community Operator
+## Step 3: Install MongoDB Controllers for Kubernetes Operator
 
 ```bash
-# Install MongoDB Community Operator
-helm install community-operator mongodb/community-operator \
-  --namespace mongodb-operator \
+# Install MongoDB Controllers for Kubernetes Operator
+helm repo add mongodb https://mongodb.github.io/helm-charts
+helm upgrade --install mongodb-kubernetes-operator mongodb/mongodb-kubernetes \
+  --namespace mongodb \
   --create-namespace
+
+# Create the MongoDB application user password secret
+kubectl create secret generic user-password \
+  --from-literal=password='change-me' \
+  -n mongodb
 ```
 
 ```yaml
@@ -126,11 +149,11 @@ apiVersion: mongodbcommunity.mongodb.com/v1
 kind: MongoDBCommunity
 metadata:
   name: mongodb-prod
-  namespace: databases
+  namespace: mongodb
 spec:
   members: 3
   type: ReplicaSet
-  version: "7.0.0"
+  version: "7.0.31"
   security:
     authentication:
       modes: ["SCRAM"]
@@ -139,6 +162,7 @@ spec:
       db: myapp
       passwordSecretRef:
         name: user-password
+        key: password
       roles:
         - name: readWrite
           db: myapp
@@ -186,9 +210,13 @@ metadata:
 spec:
   clusterSize: 3
   clusterVersion: v7
+  persistenceEnabled: true
+  kubernetesConfig:
+    image: quay.io/opstree/redis:latest
+    imagePullPolicy: IfNotPresent
   redisExporter:
     enabled: true
-    image: quay.io/opstree/redis-exporter:v1.44.0
+    image: quay.io/opstree/redis-exporter:latest
   redisLeader:
     serviceType: ClusterIP
     resources:
@@ -198,20 +226,28 @@ spec:
       limits:
         cpu: 500m
         memory: 512Mi
-    storage:
-      volumeClaimTemplate:
-        spec:
-          accessModes: ["ReadWriteOnce"]
-          resources:
-            requests:
-              storage: 5Gi
   redisFollower:
     serviceType: ClusterIP
     resources:
       requests:
         cpu: 100m
         memory: 128Mi
-  persistenceEnabled: true
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: standard
+        resources:
+          requests:
+            storage: 5Gi
+    nodeConfVolume: true
+    nodeConfVolumeClaimTemplate:
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: standard
+        resources:
+          requests:
+            storage: 1Gi
 ```
 
 ## Step 5: Manage Operator Permissions with RBAC
@@ -246,7 +282,24 @@ rules:
 # - Redis: 763
 # - MySQL (Percona): 13596
 
-# Create a combined PrometheusRule
+# Create a PodMonitor for CloudNativePG and an example alert
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: postgres-cluster
+  namespace: cattle-monitoring-system
+  labels:
+    release: rancher-monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+      - databases
+  selector:
+    matchLabels:
+      cnpg.io/cluster: postgres-cluster
+  podMetricsEndpoints:
+    - port: metrics
+---
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -258,13 +311,13 @@ spec:
   groups:
     - name: database-operators
       rules:
-        - alert: PostgreSQLClusterNotReady
-          expr: cnpg_cluster_ready != 1
+        - alert: PostgreSQLInstanceDown
+          expr: min by (cluster) (cnpg_collector_up) < 1
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "CloudNativePG cluster {{ $labels.namespace }}/{{ $labels.cluster }} is not ready"
+            summary: "CloudNativePG cluster {{ $labels.cluster }} has an unavailable instance"
 ```
 
 ## Step 7: Rancher UI Integration
@@ -284,4 +337,4 @@ kubectl get rediscluster --all-namespaces
 
 ## Conclusion
 
-Database operators dramatically simplify managing stateful databases on Rancher-managed Kubernetes clusters. They encode operational expertise into automated controllers, handling tasks that would otherwise require manual intervention. CloudNativePG for PostgreSQL, the MongoDB Community Operator, and the Percona Operator for MySQL are mature, production-ready choices. Combine operators with Rancher's monitoring stack for complete visibility into your database fleet.
+Database operators dramatically simplify managing stateful databases on Rancher-managed Kubernetes clusters. They encode operational expertise into automated controllers, handling tasks that would otherwise require manual intervention. CloudNativePG for PostgreSQL, MongoDB Controllers for Kubernetes, and the Percona Operator for MySQL are mature, production-ready choices. Combine operators with Rancher's monitoring stack for complete visibility into your database fleet.
