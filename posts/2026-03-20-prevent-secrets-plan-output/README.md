@@ -8,7 +8,7 @@ Description: Learn how to use OpenTofu's sensitive variable and output markings,
 
 ## Introduction
 
-By default, OpenTofu prints resource attribute values in plan output. Without explicit suppression, database passwords, API keys, and other credentials appear in terminal logs and CI/CD artifacts. OpenTofu provides several mechanisms to prevent this.
+By default, OpenTofu can print resource attribute values in plan output. Without explicit suppression or provider-defined sensitivity, database passwords, API keys, and other credentials can appear in terminal logs and CI/CD artifacts. OpenTofu provides several mechanisms to reduce that risk.
 
 ## Marking Variables as Sensitive
 
@@ -20,7 +20,7 @@ The simplest protection: mark the variable as `sensitive = true`:
 variable "db_password" {
   type        = string
   description = "Database master password"
-  sensitive   = true   # Redacts value in all plan/apply output
+  sensitive   = true   # Redacts value in normal plan/apply output
 }
 
 variable "api_key" {
@@ -57,9 +57,9 @@ Outputs:
 db_connection_string = <sensitive>
 ```
 
-## Marking Resource Attributes as Sensitive (Provider-Level)
+## Marking Computed Values as Sensitive
 
-Many provider resources automatically mark sensitive attributes. For custom providers or overlooked attributes, you can wrap values with the `sensitive()` function:
+Many provider resources automatically mark sensitive attributes in their schemas. For computed values inside your own module, you can wrap the result with the `sensitive()` function:
 
 ```hcl
 locals {
@@ -70,33 +70,45 @@ locals {
 
 ## Preventing Sensitive Values in State (Write-Only Attributes)
 
-OpenTofu 1.10+ supports write-only attributes that are never stored in state:
+OpenTofu 1.11+ supports write-only attributes that are written as `null` in state and plan data. Some resources pair them with a version argument so updates can be detected:
 
 ```hcl
-resource "aws_iam_user_login_profile" "ops" {
-  user = aws_iam_user.ops.name
+resource "aws_secretsmanager_secret" "app" {
+  name = "app-config"
+}
 
-  # Write-only: stored in the provider but never in state file
-  pgp_key = var.pgp_public_key
-  # password_reset_required is write-only as of provider v5.x
+resource "aws_secretsmanager_secret_version" "app" {
+  secret_id = aws_secretsmanager_secret.app.arn
+
+  # Write-only: OpenTofu stores null for this attribute in state and plan
+  secret_string_wo         = jsonencode({ api_key = var.api_key })
+  secret_string_wo_version = 1
 }
 ```
 
 ## Using Nonsensitive() When Downstream Logic Requires It
 
-In some cases you may need to use a sensitive value in a non-sensitive context temporarily. Use `nonsensitive()` only after confirming the value cannot leak:
+In some cases you may derive a non-sensitive value from a sensitive one. Use `nonsensitive()` only after confirming the derived value cannot leak secret data:
 
 ```hcl
-# Only use nonsensitive() when you are certain the value is safe to display
+variable "db_config_json" {
+  type      = string
+  sensitive = true
+}
+
+locals {
+  db_config = jsondecode(var.db_config_json)
+}
+
 output "db_host_with_port" {
-  # Port and host are not secret; only the password was sensitive
-  value = nonsensitive("${aws_db_instance.main.address}:${aws_db_instance.main.port}")
+  # Host and port are safe to expose even though the source JSON was sensitive
+  value = nonsensitive("${local.db_config.host}:${local.db_config.port}")
 }
 ```
 
 ## Checking for Sensitive Value Leaks in CI
 
-Add a post-plan check that fails if the word "password" appears unredacted in plan output:
+Add a simple post-plan check that fails if a quoted password assignment appears unredacted in the human-readable plan output:
 
 ```bash
 #!/bin/bash
@@ -113,4 +125,4 @@ echo "Plan output looks clean."
 
 ## Conclusion
 
-Mark all secret variables and outputs with `sensitive = true`, use the `sensitive()` function for computed values, and rely on write-only attributes for values that should never appear in state. These three layers together ensure secrets stay out of plan output, apply logs, and CI/CD artifacts.
+Mark all secret variables and outputs with `sensitive = true`, use the `sensitive()` function for computed values, and rely on write-only attributes for values that should never appear in OpenTofu state or plan data. These measures help keep secrets out of normal plan output, apply logs, and CI/CD artifacts, but you should still treat state, saved plans, and machine-readable output as sensitive.
