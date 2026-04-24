@@ -13,8 +13,6 @@ Prowlarr is the indexer manager/proxy for the *arr ecosystem. Instead of configu
 ## Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
@@ -50,12 +48,13 @@ Navigate to **Indexers > Add Indexer**:
 Navigate to **Settings > Apps** and add each application:
 
 **Sonarr:**
-- Prowlarr URL: `http://prowlarr:9696`
-- API URL: `http://sonarr:8989`
+- Prowlarr Server: `http://prowlarr:9696`
+- Sonarr Server: `http://sonarr:8989`
 - API Key: (from Sonarr Settings > General)
 
 **Radarr:**
-- API URL: `http://radarr:7878`
+- Prowlarr Server: `http://prowlarr:9696`
+- Radarr Server: `http://radarr:7878`
 - API Key: (from Radarr Settings > General)
 
 After saving, click **Sync App Indexers** to immediately push indexers to each app.
@@ -63,8 +62,6 @@ After saving, click **Sync App Indexers** to immediately push indexers to each a
 ## Prowlarr in the Full Media Stack
 
 ```yaml
-version: "3.8"
-
 services:
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
@@ -127,10 +124,9 @@ volumes:
 
 ## Testing Indexers
 
-In Prowlarr, click **Test All** to verify all indexers are responding. The results show:
-- Response time
-- Number of results
-- Any errors
+In Prowlarr, click **Test All Indexers** to verify all enabled indexers are responding. Prowlarr reports:
+- Whether each enabled indexer passed validation
+- Any validation or connectivity errors for indexers that fail the test
 
 ## Conclusion
 
