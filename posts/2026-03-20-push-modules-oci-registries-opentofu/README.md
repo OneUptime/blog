@@ -8,7 +8,7 @@ Description: Learn how to package and push OpenTofu modules to OCI-compatible re
 
 ## Introduction
 
-OpenTofu supports sourcing modules from OCI registries using the `oci::` source prefix. Pushing modules to OCI registries packages your module directories as OCI artifacts, enabling version-controlled module distribution through the same container registry infrastructure you already use for Docker images.
+OpenTofu supports sourcing modules from OCI registries using the `oci://` source address scheme. Pushing modules to OCI registries packages your module directories as OCI artifacts, enabling version-controlled module distribution through the same container registry infrastructure you already use for Docker images.
 
 ## Packaging a Module for OCI
 
@@ -23,15 +23,17 @@ my-vpc-module/
 └── README.md
 
 # Create a module archive
-tar -czf my-vpc-module-1.0.0.tgz \
-  --exclude='.terraform' \
-  --exclude='*.tfstate' \
-  --exclude='*.tfstate.backup' \
-  --exclude='.git' \
-  -C my-vpc-module/ .
+(
+  cd my-vpc-module
+  zip -r ../my-vpc-module-1.0.0.zip . \
+    -x '.terraform/*' \
+    -x '*.tfstate' \
+    -x '*.tfstate.*' \
+    -x '.git/*'
+)
 
 # Verify archive contents
-tar -tzf my-vpc-module-1.0.0.tgz
+unzip -l my-vpc-module-1.0.0.zip
 ```
 
 ## Pushing to OCI with oras
@@ -53,15 +55,13 @@ MODULE="vpc"
 VERSION="1.0.0"
 
 oras push "${REGISTRY}/${NAMESPACE}/module-${MODULE}:${VERSION}" \
-  --config /dev/null:application/vnd.opentofu.module.config.v1+json \
-  my-vpc-module-${VERSION}.tgz:application/vnd.opentofu.module.v1.tar+gzip
+  --artifact-type application/vnd.opentofu.modulepkg \
+  my-vpc-module-${VERSION}.zip:archive/zip
 
 echo "Module pushed: ${REGISTRY}/${NAMESPACE}/module-${MODULE}:${VERSION}"
 
 # Tag as latest
-oras tag "${REGISTRY}" \
-  "${NAMESPACE}/module-${MODULE}:${VERSION}" \
-  "${NAMESPACE}/module-${MODULE}:latest"
+oras tag "${REGISTRY}/${NAMESPACE}/module-${MODULE}:${VERSION}" latest
 ```
 
 ## Automated Push Script
@@ -78,28 +78,28 @@ REGISTRY="${REGISTRY:-registry.internal.company.com}"
 NAMESPACE="${NAMESPACE:-mycompany}"
 
 MODULE_NAME=$(basename "$MODULE_DIR")
-ARCHIVE="${MODULE_NAME}-${VERSION}.tgz"
+ARCHIVE="${MODULE_NAME}-${VERSION}.zip"
 OCI_REF="${REGISTRY}/${NAMESPACE}/module-${MODULE_NAME}:${VERSION}"
 
 echo "Packaging module: $MODULE_DIR"
-tar -czf "/tmp/$ARCHIVE" \
-  --exclude='.terraform' \
-  --exclude='*.tfstate*' \
-  --exclude='.git' \
-  -C "$MODULE_DIR" .
+(
+  cd "$MODULE_DIR"
+  zip -r "/tmp/$ARCHIVE" . \
+    -x '.terraform/*' \
+    -x '*.tfstate*' \
+    -x '.git/*'
+)
 
 echo "Pushing to: $OCI_REF"
 oras push "$OCI_REF" \
-  --config /dev/null:application/vnd.opentofu.module.config.v1+json \
-  "/tmp/$ARCHIVE:application/vnd.opentofu.module.v1.tar+gzip"
+  --artifact-type application/vnd.opentofu.modulepkg \
+  "/tmp/$ARCHIVE:archive/zip"
 
 # Add semantic version tags
 MAJOR=$(echo "$VERSION" | cut -d. -f1)
 MINOR=$(echo "$VERSION" | cut -d. -f1-2)
 
-oras tag "${REGISTRY}" "${NAMESPACE}/module-${MODULE_NAME}:${VERSION}" "${NAMESPACE}/module-${MODULE_NAME}:${MAJOR}"
-oras tag "${REGISTRY}" "${NAMESPACE}/module-${MODULE_NAME}:${VERSION}" "${NAMESPACE}/module-${MODULE_NAME}:${MINOR}"
-oras tag "${REGISTRY}" "${NAMESPACE}/module-${MODULE_NAME}:${VERSION}" "${NAMESPACE}/module-${MODULE_NAME}:latest"
+oras tag "$OCI_REF" "$MAJOR" "$MINOR" latest
 
 rm -f "/tmp/$ARCHIVE"
 echo "Done: $OCI_REF"
@@ -128,15 +128,15 @@ jobs:
 
       - name: Install oras
         run: |
-          curl -LO https://github.com/oras-project/oras/releases/download/v1.1.0/oras_1.1.0_linux_amd64.tar.gz
-          tar -xzf oras_1.1.0_linux_amd64.tar.gz
+          curl -LO https://github.com/oras-project/oras/releases/download/v1.3.0/oras_1.3.0_linux_amd64.tar.gz
+          tar -xzf oras_1.3.0_linux_amd64.tar.gz
           sudo mv oras /usr/local/bin/
 
       - name: Validate module
         run: |
-          curl -Lo /usr/local/bin/tofu.zip \
-            https://github.com/opentofu/opentofu/releases/download/v1.7.0/opentofu_1.7.0_linux_amd64.zip
-          unzip /usr/local/bin/tofu.zip -d /usr/local/bin/
+          curl -Lo tofu.zip \
+            https://github.com/opentofu/opentofu/releases/download/v1.11.6/tofu_1.11.6_linux_amd64.zip
+          sudo unzip tofu.zip tofu -d /usr/local/bin/
           tofu init -backend=false
           tofu validate
 
@@ -157,20 +157,18 @@ jobs:
           ORG="${{ github.repository_owner }}"
 
           # Create archive
-          tar -czf "${MODULE_NAME}-${VERSION}.tgz" \
-            --exclude='.terraform' \
-            --exclude='*.tfstate*' \
-            --exclude='.git' .
+          zip -r "${MODULE_NAME}-${VERSION}.zip" . \
+            -x '.terraform/*' \
+            -x '*.tfstate*' \
+            -x '.git/*'
 
           # Push to GHCR
           oras push "ghcr.io/${ORG}/module-${MODULE_NAME}:${VERSION}" \
-            --config /dev/null:application/vnd.opentofu.module.config.v1+json \
-            "${MODULE_NAME}-${VERSION}.tgz:application/vnd.opentofu.module.v1.tar+gzip"
+            --artifact-type application/vnd.opentofu.modulepkg \
+            "${MODULE_NAME}-${VERSION}.zip:archive/zip"
 
           # Also tag as latest
-          oras tag "ghcr.io" \
-            "${ORG}/module-${MODULE_NAME}:${VERSION}" \
-            "${ORG}/module-${MODULE_NAME}:latest"
+          oras tag "ghcr.io/${ORG}/module-${MODULE_NAME}:${VERSION}" latest
 ```
 
 ## Inspecting Pushed Modules
@@ -186,7 +184,7 @@ oras manifest fetch registry.internal.company.com/mycompany/module-vpc:1.0.0
 mkdir -p /tmp/module-inspect
 oras pull registry.internal.company.com/mycompany/module-vpc:1.0.0 \
   --output /tmp/module-inspect/
-tar -tzf /tmp/module-inspect/*.tgz
+unzip -l /tmp/module-inspect/*.zip
 ```
 
 ## Version Inventory Script
@@ -203,13 +201,18 @@ echo "Registry: $REGISTRY"
 echo "================================="
 
 # List all module repositories
-oras repo ls "${REGISTRY}/${NAMESPACE}" --prefix module- | while read -r repo; do
-  MODULE=$(echo "$repo" | sed 's/module-//')
-  TAGS=$(oras repo tags "${REGISTRY}/${NAMESPACE}/${repo}" 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
-  echo "  ${MODULE}: ${TAGS}"
+oras repo ls "${REGISTRY}/${NAMESPACE}" | while read -r repo; do
+  REPO_NAME=$(basename "$repo")
+  case "$REPO_NAME" in
+    module-*)
+      MODULE="${REPO_NAME#module-}"
+      TAGS=$(oras repo tags "${REGISTRY}/${NAMESPACE}/${REPO_NAME}" 2>/dev/null | paste -sd ',' - | sed 's/,/, /g')
+      echo "  ${MODULE}: ${TAGS}"
+      ;;
+  esac
 done
 ```
 
 ## Conclusion
 
-Pushing modules to OCI registries uses `oras push` with the `application/vnd.opentofu.module.v1.tar+gzip` content type to package module directories as `.tgz` archives. Use semantic version tags (major, minor, patch, and latest) to give consumers flexibility in version constraints. The GitHub Actions pipeline shows the full automated workflow: validate → package → push - triggered on version tags. Once pushed, modules are referenced in configurations using the `oci::` source prefix.
+Pushing modules to OCI registries uses `oras push` with `--artifact-type application/vnd.opentofu.modulepkg` and a single `archive/zip` layer to package module directories as `.zip` archives. Use explicit tags such as major, minor, patch, and `latest` so consumers can choose the tag they want in the module source string. The GitHub Actions pipeline shows the full automated workflow: validate → package → push - triggered on version tags. Once pushed, modules are referenced in configurations using the `oci://` source address scheme.
