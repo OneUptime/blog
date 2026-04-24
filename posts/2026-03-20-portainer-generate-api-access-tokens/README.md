@@ -27,7 +27,8 @@ Portainer provides two types of authentication for API access: JWT tokens (short
 4. Scroll to **Access tokens**
 5. Click **Add access token**
 6. Enter a descriptive name (e.g., `ci-cd-pipeline`, `monitoring-script`)
-7. Copy the generated token immediately - it's shown only once
+7. Re-enter your password when prompted
+8. Copy the generated token immediately - it's shown only once
 
 ## Method 2: Generate Token via API
 
@@ -40,17 +41,24 @@ JWT=$(curl -s -X POST \
   -d '{"username":"admin","password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Step 2: Create an API access token
+# Step 2: Look up your current user ID
+USER_ID=$(curl -s \
+  -H "Authorization: Bearer $JWT" \
+  https://portainer.example.com/api/users/me \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['Id'])")
+
+# Step 3: Create an API access token
 curl -X POST \
   -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/users/me/tokens \
+  https://portainer.example.com/api/users/${USER_ID}/tokens \
   -d '{
-    "description": "ci-cd-pipeline"
+    "description": "ci-cd-pipeline",
+    "password": "adminpassword"
   }'
 
 # Response includes the token (shown only once):
-# {"rawAPIKey":"ptr_abc123...","apiKey":{"id":1,"description":"ci-cd-pipeline","userID":1,"prefix":"ptr_abc","lastUsed":""}}
+# {"rawAPIKey":"ptr_abc123...","apiKey":{"id":1,"description":"ci-cd-pipeline","userId":1,"prefix":"ptr_abc"}}
 ```
 
 ## Using an API Access Token
@@ -73,15 +81,14 @@ curl -s \
   https://portainer.example.com/api/endpoints/1/docker/containers/json \
   | python3 -m json.tool
 
-# Deploy a stack
+# Deploy a standalone stack
 curl -X POST \
   -H "X-API-Key: $API_TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/stacks \
+  "https://portainer.example.com/api/stacks/create/standalone/string?endpointId=1" \
   -d '{
-    "name": "my-app",
-    "swarmID": "",
-    "stackFileContent": "version: \"3\"\nservices:\n  web:\n    image: nginx"
+    "Name": "my-app",
+    "StackFileContent": "version: \"3\"\nservices:\n  web:\n    image: nginx"
   }'
 ```
 
@@ -113,17 +120,23 @@ jobs:
           # Read stack file
           STACK_CONTENT=$(cat docker-compose.yml)
 
-          # Update existing stack
+          # Find the stack on the selected environment
           STACK_ID=$(curl -s \
             -H "X-API-Key: $PORTAINER_TOKEN" \
             "${PORTAINER_URL}/api/stacks" \
-            | python3 -c "import sys,json; stacks=json.load(sys.stdin); [print(s['Id']) for s in stacks if s['Name']=='${STACK_NAME}']")
+            | python3 -c "import os,sys,json; stacks=json.load(sys.stdin); name=os.environ['STACK_NAME']; endpoint_id=int(os.environ['ENDPOINT_ID']); print(next((str(s['Id']) for s in stacks if s['Name']==name and s['EndpointId']==endpoint_id), ''))")
 
+          if [ -z "$STACK_ID" ]; then
+            echo "Stack ${STACK_NAME} not found on endpoint ${ENDPOINT_ID}" >&2
+            exit 1
+          fi
+
+          # Update existing file-based stack
           curl -X PUT \
             -H "X-API-Key: $PORTAINER_TOKEN" \
             -H "Content-Type: application/json" \
             "${PORTAINER_URL}/api/stacks/${STACK_ID}?endpointId=${ENDPOINT_ID}" \
-            -d "{\"stackFileContent\": $(echo "$STACK_CONTENT" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")}"
+            -d "{\"StackFileContent\": $(echo "$STACK_CONTENT" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")}"
 ```
 
 ## Listing and Revoking Tokens
@@ -132,14 +145,14 @@ jobs:
 # List all tokens for the current user
 curl -s \
   -H "Authorization: Bearer $JWT" \
-  https://portainer.example.com/api/users/me/tokens \
+  https://portainer.example.com/api/users/${USER_ID}/tokens \
   | python3 -m json.tool
 
 # Revoke a specific token by ID
 TOKEN_ID=1
 curl -X DELETE \
   -H "Authorization: Bearer $JWT" \
-  "https://portainer.example.com/api/users/me/tokens/${TOKEN_ID}"
+  "https://portainer.example.com/api/users/${USER_ID}/tokens/${TOKEN_ID}"
 ```
 
 ## Security Best Practices
