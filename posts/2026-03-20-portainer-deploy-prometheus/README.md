@@ -8,11 +8,11 @@ Description: Deploy Prometheus via Portainer with persistent storage, scrape con
 
 ## Introduction
 
-Prometheus is a leading open-source monitoring and alerting system that collects metrics from configured targets, stores them in a time-series database, and evaluates alert rules. Deploying via Portainer with configuration files makes it easy to manage scrape targets and alert rules.
+Prometheus is a leading open-source monitoring and alerting system that collects metrics from configured targets, stores them in a time-series database, and evaluates alert rules. Deploying via Portainer with configuration files stored on the Docker host makes it easy to manage scrape targets and alert rules.
 
 ## Deploy as a Stack
 
-In Portainer, create a stack named `prometheus`:
+In Portainer, create a stack named `prometheus` and bind configuration files from the Docker host (for example, `/opt/prometheus`):
 
 ```yaml
 version: "3.8"
@@ -24,15 +24,14 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=30d'   # 30-day retention
-      - '--storage.tsdb.retention.size=10GB'  # Max 10GB storage
       - '--web.enable-lifecycle'              # Allow config reload via API
-      - '--web.enable-admin-api'              # Enable admin API
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./rules:/etc/prometheus/rules:ro
+      - /opt/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /opt/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
@@ -45,17 +44,15 @@ services:
 
   # Node Exporter for host metrics
   node-exporter:
-    image: prom/node-exporter:latest
+    image: quay.io/prometheus/node-exporter:latest
     container_name: node-exporter
     command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+      - '--path.rootfs=/host'
+      - '--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/kubelet/.+)($$|/)'
     volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
+      - /:/host:ro,rslave
     network_mode: host
+    pid: host
     restart: unless-stopped
 
   # cAdvisor for container metrics
@@ -65,7 +62,7 @@ services:
     privileged: true
     volumes:
       - /:/rootfs:ro
-      - /var/run:/var/run:ro
+      - /var/run:/var/run:rw
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
     ports:
@@ -78,29 +75,36 @@ volumes:
 
 ## Prometheus Configuration
 
-Create `prometheus.yml`:
+Create `/opt/prometheus/prometheus.yml` on the Docker host:
 
 ```yaml
 # prometheus.yml - global configuration
 
 global:
   scrape_interval: 15s      # Default scrape interval
-  evaluation_interval: 15s   # Rule evaluation interval
+  evaluation_interval: 15s  # Rule evaluation interval
   
   # External labels added to metrics
   external_labels:
     datacenter: home-lab
     environment: production
 
-# Alert manager configuration
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets: ['alertmanager:9093']
-
 # Load alert rules
 rule_files:
   - "/etc/prometheus/rules/*.yml"
+
+# TSDB retention configuration
+storage:
+  tsdb:
+    retention:
+      time: 30d
+      size: 10GB
+
+# Optional Alertmanager configuration
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
 
 # Scrape configurations
 scrape_configs:
@@ -113,7 +117,7 @@ scrape_configs:
   - job_name: 'node'
     static_configs:
       - targets:
-          - 'localhost:9100'
+          - 'host.docker.internal:9100'
           - '192.168.1.11:9100'
           - '192.168.1.12:9100'
 
@@ -122,36 +126,36 @@ scrape_configs:
     static_configs:
       - targets: ['cadvisor:8080']
 
-  # Application metrics via HTTP
-  - job_name: 'myapp'
-    metrics_path: /metrics
-    static_configs:
-      - targets: ['myapp:8000']
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: instance
+  # Optional application metrics via HTTP
+  # - job_name: 'myapp'
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets: ['myapp:8000']
+  #   relabel_configs:
+  #     - source_labels: [__address__]
+  #       target_label: instance
 
-  # Blackbox exporter (external URL monitoring)
-  - job_name: 'blackbox'
-    metrics_path: /probe
-    params:
-      module: [http_2xx]
-    static_configs:
-      - targets:
-          - https://example.com
-          - https://api.example.com/health
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: __param_target
-      - source_labels: [__param_target]
-        target_label: instance
-      - target_label: __address__
-        replacement: blackbox-exporter:9115
+  # Optional Blackbox Exporter (external URL monitoring)
+  # - job_name: 'blackbox'
+  #   metrics_path: /probe
+  #   params:
+  #     module: [http_2xx]
+  #   static_configs:
+  #     - targets:
+  #         - https://example.com
+  #         - https://api.example.com/health
+  #   relabel_configs:
+  #     - source_labels: [__address__]
+  #       target_label: __param_target
+  #     - source_labels: [__param_target]
+  #       target_label: instance
+  #     - target_label: __address__
+  #       replacement: blackbox-exporter:9115
 ```
 
 ## Alert Rules
 
-Create `rules/host-alerts.yml`:
+Create `/opt/prometheus/rules/host-alerts.yml` on the Docker host:
 
 ```yaml
 groups:
@@ -189,7 +193,11 @@ groups:
 curl 'http://localhost:9090/api/v1/query?query=node_memory_MemAvailable_bytes'
 
 # Range query (last 1 hour with 15s step)
-curl 'http://localhost:9090/api/v1/query_range?query=rate(http_requests_total[5m])&start=now-1h&end=now&step=15s'
+curl -G 'http://localhost:9090/api/v1/query_range' \
+  --data-urlencode 'query=rate(http_requests_total[5m])' \
+  --data-urlencode "start=$(($(date +%s)-3600))" \
+  --data-urlencode "end=$(date +%s)" \
+  --data-urlencode 'step=15s'
 
 # Reload configuration without restart
 curl -X POST http://localhost:9090/-/reload
