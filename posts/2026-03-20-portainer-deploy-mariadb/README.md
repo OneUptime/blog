@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, MariaDB, Database, Self-Hosted, MySQL
 
-Description: Deploy MariaDB via Portainer as a MySQL-compatible database with Galera clustering support, persistent storage, and optimized configuration.
+Description: Deploy MariaDB via Portainer as a MySQL-compatible database with persistent storage, optional custom configuration, and replication support.
 
 ## Introduction
 
-MariaDB is a community-driven MySQL fork offering better performance, additional storage engines, and Galera clustering for high availability. It is the default MySQL replacement in many Linux distributions and is fully compatible with MySQL applications.
+MariaDB is a community-driven MySQL fork with additional storage engines and Galera clustering options for high availability. It is the default MySQL replacement in many Linux distributions and is highly compatible with MySQL protocols, connectors, and many applications, though there are compatibility differences to test.
 
 ## Deploy as a Stack
 
@@ -29,10 +29,9 @@ services:
     volumes:
       # Persistent data
       - mariadb_data:/var/lib/mysql
-      # Custom configuration
-      - ./mariadb.cnf:/etc/mysql/conf.d/custom.cnf:ro
-      # Initialization scripts
-      - ./init:/docker-entrypoint-initdb.d:ro
+      # Optional: mount host paths for custom configuration or init scripts
+      # - /opt/stacks/mariadb/mariadb.cnf:/etc/mysql/conf.d/custom.cnf:ro
+      # - /opt/stacks/mariadb/init:/docker-entrypoint-initdb.d:ro
     ports:
       - "3306:3306"
     restart: unless-stopped
@@ -59,7 +58,7 @@ volumes:
 
 ## MariaDB-Specific Configuration
 
-Create `mariadb.cnf`:
+Create `mariadb.cnf` and mount it into `/etc/mysql/conf.d/custom.cnf` if you want a custom server configuration:
 
 ```ini
 [mysqld]
@@ -71,7 +70,6 @@ collation-server = utf8mb4_unicode_ci
 # InnoDB settings
 innodb_buffer_pool_size = 512M
 innodb_log_file_size = 128M
-innodb_flush_method = O_DIRECT
 innodb_flush_log_at_trx_commit = 1
 
 # MariaDB-specific: Aria storage engine (replacement for MyISAM)
@@ -98,14 +96,14 @@ log_queries_not_using_indexes = ON
 | Feature | MariaDB | MySQL |
 |---------|---------|-------|
 | JSON support | Yes (different implementation) | Yes |
-| Galera Clustering | Built-in | Requires InnoDB Cluster |
+| Galera Clustering | Available via MariaDB Galera Cluster | Requires InnoDB Cluster |
 | Virtual columns | More features | Basic |
-| Storage engines | Aria, RocksDB, ColumnStore | InnoDB, MyISAM |
-| Default auth plugin | ed25519 | caching_sha2_password |
+| Storage engines | Aria, MyRocks, ColumnStore | InnoDB, MyISAM |
+| Default auth plugin | mysql_native_password | caching_sha2_password |
 
 ## Setting Up MariaDB Replication
 
-For read scaling with a replica:
+For read scaling with a replica, the primary needs binary logging enabled and the replica needs a unique server ID:
 
 ```yaml
 version: "3.8"
@@ -114,6 +112,7 @@ services:
   mariadb-primary:
     image: mariadb:11.4
     container_name: mariadb-primary
+    command: --log-bin --log-basename=mariadb
     environment:
       MARIADB_ROOT_PASSWORD: root_password
       MARIADB_DATABASE: myapp
@@ -121,7 +120,6 @@ services:
       MARIADB_REPLICATION_PASSWORD: replication_password
     volumes:
       - primary_data:/var/lib/mysql
-      - ./primary.cnf:/etc/mysql/conf.d/primary.cnf:ro
     ports:
       - "3306:3306"
     restart: unless-stopped
@@ -129,6 +127,7 @@ services:
   mariadb-replica:
     image: mariadb:11.4
     container_name: mariadb-replica
+    command: --server-id=2 --log-basename=mariadb
     environment:
       MARIADB_ROOT_PASSWORD: root_password
       MARIADB_REPLICATION_USER: replicator
@@ -136,7 +135,6 @@ services:
       MARIADB_MASTER_HOST: mariadb-primary
     volumes:
       - replica_data:/var/lib/mysql
-      - ./replica.cnf:/etc/mysql/conf.d/replica.cnf:ro
     ports:
       - "3307:3306"
     depends_on:
@@ -169,4 +167,4 @@ docker exec mariadb mariadb-dump \
 
 ## Conclusion
 
-MariaDB deployed via Portainer is an excellent MySQL-compatible database choice with better clustering options and performance features. The adminer interface provides lightweight database management, and the persistent volume ensures data survives container updates. MariaDB's compatibility with MySQL means any MySQL application runs without modification.
+MariaDB deployed via Portainer is a strong MySQL-compatible database choice with flexible clustering and replication options. The Adminer interface provides lightweight database management, and the persistent volume ensures data survives container updates. MariaDB works with many MySQL connectors and applications, but you should still validate compatibility for your specific workload.
