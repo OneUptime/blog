@@ -123,31 +123,27 @@ Change only the volume mount and password - keep everything else identical.
 
 ## Using Docker Compose for Proper Scaling
 
-While duplicating containers manually works for quick tasks, for production scaling, use Docker Compose replicas:
+While duplicating containers manually works for quick tasks, use Docker Compose for repeatable single-host deployments and scaling:
 
 ```yaml
-# docker-compose.yml with scaling
-version: "3.8"
-
+# compose.yaml with scaling
 services:
   web:
     image: myorg/webapp:latest
     restart: unless-stopped
-    deploy:
-      replicas: 3   # Run 3 copies automatically
+    scale: 3   # Run 3 copies automatically
     ports:
-      - "8080-8082:8080"  # Map a range of host ports
+      - "8080-8082:8080"  # Publish port 8080 on available host ports in this range
 ```
 
-Or with a load balancer:
+Or with a reverse proxy:
 
 ```yaml
 services:
   web:
     image: myorg/webapp:latest
-    deploy:
-      replicas: 3
-    # No direct host port mapping - nginx routes to all instances
+    scale: 3
+    # No direct host port mapping - web is only exposed on the internal Compose network
 
   nginx:
     image: nginx:alpine
@@ -159,12 +155,12 @@ services:
       - web
 ```
 
-Nginx upstream configuration:
+Nginx configuration:
 
 ```nginx
-# nginx.conf for load balancing across duplicated containers
+# nginx.conf snippet for proxying to the web service
 upstream web_backend {
-    server web:8080;  # Docker DNS resolves to all container IPs
+    server web:8080;  # Reach the web service by name on the Compose network
 }
 ```
 
@@ -182,8 +178,8 @@ For production scaling needs, use Docker Swarm services or Kubernetes instead.
 | Action | Purpose |
 |--------|---------|
 | **Duplicate** | Create a second copy alongside the original |
-| **Edit (same name)** | Update settings; must remove old container first |
-| **Recreate** | Remove old container, create new one with updated config |
+| **Edit (same name)** | Update settings; Portainer recreates the container and replaces the original after confirmation |
+| **Recreate** | Manually remove the old container, then create a new one with updated config |
 
 ## Step 5: Track Duplicated Containers
 
@@ -200,4 +196,4 @@ This makes it easy to identify and manage duplicated containers in large environ
 
 ## Conclusion
 
-Duplicating containers in Portainer is a quick way to create copies of existing containers for scaling, testing, or creating dev copies of production configs. It's most useful for ad-hoc operations where you need a second instance quickly. For systematic scaling and production workloads, use Docker Compose replicas or Docker Swarm services to manage multiple instances as a unit rather than individually.
+Duplicating containers in Portainer is a quick way to create copies of existing containers for scaling, testing, or creating dev copies of production configs. It's most useful for ad-hoc operations where you need a second instance quickly. For systematic single-host scaling, use Docker Compose. For orchestrated production scaling, use Docker Swarm services or Kubernetes to manage multiple instances as a unit rather than individually.
