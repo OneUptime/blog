@@ -53,7 +53,7 @@ openssl x509 -in certificate.crt -inform DER -text -noout 2>/dev/null && echo "D
 openssl x509 -inform DER -in certificate.der -out certificate.pem
 
 # DER private key to PEM
-openssl rsa -inform DER -in private.der -out private.pem
+openssl pkey -inform DER -in private.der -out private.pem
 
 # Verify conversion
 openssl x509 -in certificate.pem -text -noout | head -5
@@ -65,7 +65,7 @@ Windows IIS and Azure commonly use PFX format:
 
 ```bash
 # Extract everything from PFX
-openssl pkcs12 -in certificate.pfx -out all-certs.pem -nodes
+openssl pkcs12 -in certificate.pfx -out all-certs.pem -noenc
 
 # Extract only the server certificate (no CA certs, no key)
 openssl pkcs12 -in certificate.pfx -nokeys -clcerts -out server-cert.pem
@@ -74,7 +74,7 @@ openssl pkcs12 -in certificate.pfx -nokeys -clcerts -out server-cert.pem
 openssl pkcs12 -in certificate.pfx -nokeys -cacerts -out chain.pem
 
 # Extract only the private key (no certificates)
-openssl pkcs12 -in certificate.pfx -nocerts -nodes -out private.key
+openssl pkcs12 -in certificate.pfx -nocerts -noenc -out private.key
 
 # Assemble for Portainer
 cat server-cert.pem chain.pem > fullchain.pem
@@ -106,12 +106,15 @@ openssl x509 -in certificate.pem -text -noout | grep -E "Subject:|Issuer:"
 
 ```bash
 # Step 1: Convert JKS to PKCS#12
+# Replace your-alias with the private key entry alias from the keystore
 keytool -importkeystore \
   -srckeystore keystore.jks \
+  -srcstoretype JKS \
   -destkeystore keystore.p12 \
   -deststoretype PKCS12 \
-  -srcalias portainer \
+  -srcalias your-alias \
   -deststorepass changeit \
+  -destkeypass changeit \
   -srcstorepass changeit
 
 # Step 2: Convert PKCS#12 to PEM
@@ -121,7 +124,7 @@ openssl pkcs12 -in keystore.p12 \
   -passin pass:changeit
 
 openssl pkcs12 -in keystore.p12 \
-  -nocerts -nodes \
+  -nocerts -noenc \
   -out private.key \
   -passin pass:changeit
 ```
@@ -133,35 +136,29 @@ openssl pkcs12 -in keystore.p12 \
 openssl x509 -in server-cert.pem -noout -text | grep -E "Subject:|Valid"
 
 # Verify private key matches certificate
-CERT_MODULUS=$(openssl x509 -in server-cert.pem -noout -modulus | md5sum)
-KEY_MODULUS=$(openssl rsa -in private.key -noout -modulus | md5sum)
-
-if [ "${CERT_MODULUS}" = "${KEY_MODULUS}" ]; then
+if diff <(openssl x509 -in server-cert.pem -pubkey -noout) \
+        <(openssl pkey -in private.key -pubout) >/dev/null; then
   echo "Certificate and key match"
 else
   echo "ERROR: Certificate and key do not match!"
 fi
 
-# Verify the chain
-openssl verify -CAfile chain.pem server-cert.pem
+# Verify the chain (replace root-ca.pem with your root CA file)
+openssl verify -CAfile root-ca.pem -untrusted chain.pem server-cert.pem
 ```
 
 ## Deploy to Portainer
 
 ```bash
-# Copy converted PEM files to Portainer
-docker run --rm \
+# Start Portainer with the converted PEM files
+docker run -d -p 9443:9443 -p 8000:8000 \
+  --name portainer --restart always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  -v $(pwd):/certs \
-  alpine \
-  sh -c "mkdir -p /data/certs && \
-    cp /certs/fullchain.pem /data/certs/cert.pem && \
-    cp /certs/private.key /data/certs/key.pem && \
-    chmod 644 /data/certs/cert.pem && \
-    chmod 600 /data/certs/key.pem"
-
-# Restart Portainer
-docker restart portainer
+  -v "$(pwd)":/certs:ro \
+  portainer/portainer-ce:sts \
+  --sslcert /certs/fullchain.pem \
+  --sslkey /certs/private.key
 
 # Verify
 echo | openssl s_client -connect localhost:9443 2>/dev/null \
@@ -172,9 +169,9 @@ echo | openssl s_client -connect localhost:9443 2>/dev/null \
 
 ```bash
 # DER → PEM cert:    openssl x509 -inform DER -in cert.der -out cert.pem
-# DER → PEM key:     openssl rsa -inform DER -in key.der -out key.pem
+# DER → PEM key:     openssl pkey -inform DER -in key.der -out key.pem
 # PFX → PEM cert:    openssl pkcs12 -in cert.pfx -nokeys -clcerts -out cert.pem
-# PFX → PEM key:     openssl pkcs12 -in cert.pfx -nocerts -nodes -out key.pem
+# PFX → PEM key:     openssl pkcs12 -in cert.pfx -nocerts -noenc -out key.pem
 # PFX → chain:       openssl pkcs12 -in cert.pfx -nokeys -cacerts -out chain.pem
 # P7B → PEM:         openssl pkcs7 -print_certs -in cert.p7b -out cert.pem
 # JKS → P12 → PEM:   keytool then openssl (two-step process)
