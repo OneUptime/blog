@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Swarm, Service, Monitoring, DevOps
 
-Description: Learn how to monitor individual Swarm service task status, placement, and health in Portainer.
+Description: Learn how to monitor individual Swarm service task status, placement, and lifecycle in Portainer.
 
 ## Introduction
 
@@ -29,25 +29,31 @@ Each task shows:
 
 | Column | Description |
 |--------|-------------|
-| **ID** | Short task identifier |
+| **Status** | Current task state |
+| **ID** | Task name and short task identifier |
+| **Actions** | Quick links for logs and inspect, and in agent-backed environments stats and console |
 | **Slot** | Task slot number (e.g., 1, 2, 3) |
 | **Node** | Hostname of the node running this task |
-| **Status** | Current task state |
-| **Image** | Docker image version for this task |
-| **Last updated** | Timestamp of last state change |
+| **Last Update** | Timestamp of last state change |
 
 ## Task Status Values
 
 | Status | Meaning |
 |--------|---------|
-| `running` | Task is healthy and running |
-| `starting` | Task is being started |
-| `pending` | Task waiting for resources or node |
-| `complete` | Task completed (for one-shot tasks) |
-| `failed` | Task exited with an error |
-| `rejected` | Swarm rejected the task (e.g., constraint not met) |
-| `shutdown` | Task was gracefully stopped |
-| `orphaned` | Node with this task is unreachable |
+| `new` | Task was initialized |
+| `pending` | Resources for the task were allocated |
+| `assigned` | Docker assigned the task to a node |
+| `accepted` | A worker node accepted the task |
+| `ready` | The worker node is ready to start the task |
+| `preparing` | Docker is preparing the task |
+| `starting` | Docker is starting the task |
+| `running` | Task is executing |
+| `complete` | Task exited without an error code |
+| `failed` | Task exited with an error code |
+| `shutdown` | Docker requested the task to shut down |
+| `rejected` | A worker node rejected the task |
+| `orphaned` | The node was down or unreachable for too long |
+| `remove` | The service was removed or scaled down |
 
 ## Step 3: Understand Task Slots
 
@@ -70,16 +76,18 @@ During update (start-first order):
 
 Portainer shows current and historical tasks for the service. Historical tasks that have been shut down or failed appear with their status for debugging.
 
-Filter to show only current tasks or include history using the filter options.
+Use the status and last update columns to distinguish the current running task from older shutdown or failed attempts.
 
 ## Step 5: Click Into a Specific Task
 
-Click on a running task ID to navigate to the container detail:
+Click on a task entry to inspect it. In agent-backed environments, Portainer links directly to the container detail:
 
 - **Logs** - View the container's stdout/stderr
 - **Stats** - CPU, memory, network usage
 - **Console** - Exec into the container
 - **Inspect** - Full container JSON details
+
+Without an agent-backed environment, Portainer exposes task inspect and logs views instead.
 
 ## Step 6: Diagnose Common Task States
 
@@ -93,7 +101,7 @@ docker service ps --no-trunc web-frontend
 # Common reasons:
 # - No nodes satisfy placement constraints
 # - Insufficient resources on all nodes
-# - Image cannot be pulled
+# - Nodes are drained or unavailable
 ```
 
 Check the **error** column in `docker service ps` for details:
@@ -108,10 +116,10 @@ Resolution: Review constraints or add nodes that satisfy them.
 
 ```bash
 # View failed task logs
-docker service logs --no-trunc web-frontend
+docker service logs --no-trunc <task-id>
 
-# Or check the specific task's exit code
-docker inspect <task-id>
+# Or inspect the specific task object
+docker inspect --type task <task-id>
 ```
 
 ### Task repeatedly cycling (crash loop)
@@ -132,7 +140,7 @@ This is a crash loop. Check application logs for the root cause.
 
 ### Task stuck in `orphaned`
 
-The node running the task became unreachable:
+The node running the task was down or unreachable for too long:
 
 ```bash
 # Check node status
@@ -144,11 +152,10 @@ docker node rm --force <node-id>
 
 ## Step 7: Filtering Tasks in Portainer
 
-Use Portainer's filter options to narrow the task view:
+Use Portainer's task table controls to narrow the task view:
 
-- **Show only running tasks** - Hide historical/failed tasks
-- **Filter by state** - Focus on pending or failed tasks
-- **Filter by node** - See tasks on a specific node
+- **Filter by state** - Focus on `pending`, `failed`, `running`, or other task states
+- **Search by task ID** - Quickly locate a specific task entry
 
 ## CLI Reference for Task Inspection
 
@@ -156,20 +163,23 @@ Use Portainer's filter options to narrow the task view:
 # List all tasks for a service
 docker service ps web-frontend
 
-# List only failed tasks
-docker service ps --filter desired-state=failed web-frontend
+# List historical tasks (including failed ones)
+docker service ps --filter desired-state=shutdown web-frontend
 
 # Show detailed task info
-docker inspect <task-id>
+docker inspect --type task <task-id>
+
+# View logs for a specific task
+docker service logs --no-trunc <task-id>
 
 # Get the container ID from a task
-docker inspect --format '{{.Status.ContainerStatus.ContainerID}}' <task-id>
+docker inspect --type task --format '{{.Status.ContainerStatus.ContainerID}}' <task-id>
 
-# Access logs for a specific task's container
-CONTAINER_ID=$(docker inspect --format '{{.Status.ContainerStatus.ContainerID}}' <task-id>)
+# Access logs for a specific task's container (if it still exists)
+CONTAINER_ID=$(docker inspect --type task --format '{{.Status.ContainerStatus.ContainerID}}' <task-id>)
 docker logs $CONTAINER_ID
 ```
 
 ## Conclusion
 
-Task status visibility is key to operating reliable Docker Swarm services. Portainer's task view gives you a clear picture of where each replica is running, its current health, and historical task information for debugging. By understanding the different task states and knowing how to diagnose each, you can quickly identify and resolve deployment issues in your Swarm cluster.
+Task status visibility is key to operating reliable Docker Swarm services. Portainer's task view gives you a clear picture of where each replica is running, its current state, and historical task information for debugging. By understanding the different task states and knowing how to diagnose each, you can quickly identify and resolve deployment issues in your Swarm cluster.
