@@ -28,15 +28,16 @@ Docker supports multiple logging drivers that control how container logs are col
 | `gcplogs` | Send to Google Cloud Logging | GCP deployments |
 | `splunk` | Send to Splunk HTTP Event Collector | Splunk users |
 | `gelf` | Send to GELF endpoint (Graylog) | Graylog users |
-| `loki` | Send to Grafana Loki | Loki/Grafana stack |
+| `loki` | Send to Grafana Loki (via Docker plugin) | Loki/Grafana stack |
 | `none` | Disable logging | High-throughput, no logging needed |
 
 ## Step 1: Configure Logging Driver in Portainer
 
 1. Navigate to **Containers > Add container**.
-2. Scroll to the **Logging** tab.
-3. Under **Logging driver**, select from the dropdown.
-4. Add driver-specific options as key-value pairs.
+2. Expand **Advanced container settings**.
+3. Open **Command & logging**.
+4. Under **Driver**, select the logging driver.
+5. Add driver-specific options as key-value pairs.
 
 ## Step 2: Configure Common Logging Drivers
 
@@ -88,7 +89,8 @@ First, install the Loki plugin on the Docker host:
 
 ```bash
 # Install Grafana Loki logging driver plugin
-docker plugin install grafana/loki-docker-driver:latest \
+# Add -arm64 to the tag on ARM64 hosts
+docker plugin install grafana/loki-docker-driver:3.7.0 \
     --alias loki \
     --grant-all-permissions
 ```
@@ -99,14 +101,14 @@ Then configure:
 logging:
   driver: loki
   options:
-    loki-url: "http://loki:3100/loki/api/v1/push"
+    loki-url: "http://192.168.1.50:3100/loki/api/v1/push"
     loki-batch-size: "400"
     loki-external-labels: "container_name={{.Name}},site=${SITE:-default}"
 ```
 
 In Portainer logging options:
 ```text
-loki-url: http://loki:3100/loki/api/v1/push
+loki-url: http://192.168.1.50:3100/loki/api/v1/push
 loki-batch-size: 400
 loki-external-labels: container_name={{.Name}}
 ```
@@ -119,16 +121,15 @@ logging:
   options:
     awslogs-region: "us-east-1"
     awslogs-group: "/docker/production"
-    awslogs-stream: "{{.Name}}"
+    tag: "{{.Name}}"
     awslogs-create-group: "true"
 ```
 
 ## Step 3: Set a Default Logging Driver for All Containers
 
-Instead of configuring per-container, set a default in Docker daemon:
+Instead of configuring per-container, set a default in Docker daemon (`/etc/docker/daemon.json` on Linux):
 
 ```json
-// /etc/docker/daemon.json
 {
   "log-driver": "json-file",
   "log-opts": {
@@ -163,14 +164,18 @@ Options:
 
 ## Log Availability in Portainer
 
-Important: **Portainer's built-in log viewer only works with the `json-file` and `journald` drivers**.
+Important: **Portainer's log viewer shows the Docker logs for your container**.
 
-If you use `fluentd`, `loki`, `syslog`, or other remote drivers:
-- Portainer cannot display logs in the web UI.
-- Logs are forwarded to the remote system.
-- View logs in the remote system (Grafana, Graylog, etc.).
+For drivers that support reading logs directly (`local`, `json-file`, and `journald`), logs remain available in the web UI.
 
-If you need both Portainer log viewing AND forwarding, use `json-file` locally and a log shipping agent (like Fluent Bit) to forward logs to your central system.
+If you use `fluentd`, `syslog`, `splunk`, `awslogs`, or other remote drivers:
+- Docker's dual logging cache is enabled by default, so Portainer can still display recent local logs unless caching is disabled.
+- If dual logging is disabled (`cache-disabled: "true"`), Portainer cannot display local logs in the web UI.
+- Logs are still forwarded to the remote system, where you can view the full stream.
+
+The `loki` driver also keeps `docker logs` working by default. If you set `no-file: "true"`, local log viewing in Portainer is disabled for that container.
+
+If you want predictable Portainer log viewing and centralized forwarding, use `json-file` or `local` locally and a log shipping agent (like Fluent Bit) to forward logs to your central system.
 
 ## Best Practices
 
