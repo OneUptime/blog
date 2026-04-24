@@ -31,10 +31,13 @@ Access at `https://localhost:9443`.
 ## Full Production Command
 
 ```bash
+# 8000: Optional Edge Agent tunnel port
+# 9000: HTTP UI (legacy/optional)
+# 9443: HTTPS UI
 docker run -d \
-  -p 8000:8000 \      # Portainer agent tunnel port
-  -p 9000:9000 \      # HTTP (optional)
-  -p 9443:9443 \      # HTTPS UI
+  -p 8000:8000 \
+  -p 9000:9000 \
+  -p 9443:9443 \
   --name portainer \
   --hostname portainer \
   --restart=always \
@@ -50,14 +53,23 @@ docker run -d \
 
 ```bash
 docker run \
-  -d \                   # Run in detached (background) mode
-  -p 8000:8000 \         # Expose agent port (host:container)
-  -p 9443:9443 \         # Expose HTTPS port (host:container)
-  --name portainer \     # Container name for easy management
-  --restart=always \     # Auto-restart: always, unless-stopped, on-failure
-  -v /var/run/docker.sock:/var/run/docker.sock \  # Docker socket access
-  -v portainer_data:/data \  # Persistent data storage
-  portainer/portainer-ce:latest   # Image name and tag
+  -d \
+  -p 8000:8000 \
+  -p 9443:9443 \
+  --name portainer \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:latest
+
+# -d: Run in detached (background) mode
+# -p 8000:8000: Expose the optional Edge Agent tunnel port (host:container)
+# -p 9443:9443: Expose HTTPS port (host:container)
+# --name portainer: Container name for easy management
+# --restart=always: Auto-restart policy. Other common values include unless-stopped and on-failure
+# -v /var/run/docker.sock:/var/run/docker.sock: Docker socket access
+# -v portainer_data:/data: Persistent data storage
+# portainer/portainer-ce:latest: Image name and tag
 ```
 
 ## Custom Port Configuration
@@ -87,7 +99,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:2.20.2    # Specific version tag
+  portainer/portainer-ce:2.40.0    # Specific version tag
 ```
 
 ## With Custom TLS Certificates
@@ -117,7 +129,9 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
-  --http-enabled
+  --http-enabled \
+  --bind-https ""
+# Access at: http://localhost:9000
 ```
 
 ## With Admin Password Pre-configured
@@ -142,13 +156,14 @@ docker run -d \
 ## Limit Container Resources
 
 ```bash
+# Limit the container to 256 MB of memory and half a CPU
 docker run -d \
   -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
   --restart=always \
-  --memory="256m" \      # Limit memory
-  --cpus="0.5" \         # Limit CPU
+  --memory="256m" \
+  --cpus="0.5" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest
