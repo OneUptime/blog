@@ -24,26 +24,36 @@ sudo dnf update -y
 
 ## Step 2: Remove Conflicting Packages
 
-Oracle Linux ships with Podman which can conflict:
+Oracle Linux commonly ships with Podman tooling, which can conflict with Docker CE packages:
 
 ```bash
 # Check for conflicting packages
+rpm -qa | grep -E 'docker|podman|containerd|runc'
 
-rpm -qa | grep -E 'docker|podman|containerd'
-
-# Remove podman if desired
-sudo dnf remove -y podman podman-docker buildah skopeo 2>/dev/null
+# Remove conflicting packages if present
+sudo dnf remove -y \
+  docker \
+  docker-client \
+  docker-client-latest \
+  docker-common \
+  docker-latest \
+  docker-latest-logrotate \
+  docker-logrotate \
+  docker-engine \
+  podman \
+  podman-docker \
+  runc 2>/dev/null
 ```
 
 ## Step 3: Install Docker CE
 
 ```bash
 # Install prerequisites
-sudo dnf install -y dnf-plugins-core
+sudo dnf install -y dnf-plugins-core jq
 
-# Add Docker repository (uses CentOS repo, compatible with Oracle Linux)
+# Add Docker repository (use Docker's RHEL repo on Oracle Linux)
 sudo dnf config-manager --add-repo \
-  https://download.docker.com/linux/centos/docker-ce.repo
+  https://download.docker.com/linux/rhel/docker-ce.repo
 
 # Install Docker CE
 sudo dnf install -y \
@@ -68,9 +78,9 @@ newgrp docker
 getenforce
 # Oracle Linux enables SELinux Enforcing by default
 
-# Verify Docker SELinux policies are loaded
-rpm -qa | grep docker
-# Should include docker-selinux or similar
+# Verify the SELinux container policy package is present
+rpm -q container-selinux
+# Docker on EL systems uses container-selinux, not docker-selinux
 ```
 
 ## Step 5: Configure Firewall
@@ -81,7 +91,8 @@ sudo firewall-cmd --permanent --add-port=9443/tcp
 sudo firewall-cmd --permanent --add-port=8000/tcp
 sudo firewall-cmd --reload
 
-# For OCI instances, also configure the OCI VCN Security List:
+# Port 8000 is only needed if you plan to use Edge agents
+# For OCI instances, also configure the OCI VCN Security List or NSG:
 # TCP port 9443 from your IP
 # TCP port 8000 from your IP
 ```
@@ -92,15 +103,16 @@ sudo firewall-cmd --reload
 # Create data volume
 docker volume create portainer_data
 
-# Deploy Portainer CE (with SELinux :z label)
+# Deploy Portainer CE (SELinux-enabled Oracle Linux requires --privileged)
 docker run -d \
   -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
   --restart=always \
-  -v /var/run/docker.sock:/var/run/docker.sock:z \
+  --privileged \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 
 # Verify
 docker ps | grep portainer
@@ -111,7 +123,8 @@ docker logs portainer
 
 ```bash
 # For OCI instances, get the public IP
-PUBLIC_IP=$(curl -s http://169.254.169.254/opc/v1/vnics/ | jq -r '.[0].publicIp')
+PUBLIC_IP=$(curl -s -H "Authorization: Bearer Oracle" \
+  http://169.254.169.254/opc/v2/vnics/ | jq -r '.[0].publicIp')
 echo "Portainer URL: https://${PUBLIC_IP}:9443"
 
 # For on-premises
@@ -125,9 +138,9 @@ echo "Portainer URL: https://$(hostname -I | awk '{print $1}'):9443"
 uname -r
 # Output will show UEK (Unbreakable Enterprise Kernel) or RHCK
 
-# UEK provides enhanced cgroup support
-# Verify cgroups
-cat /sys/fs/cgroup/cgroup.controllers
+# Check which cgroup version is mounted
+stat -fc %T /sys/fs/cgroup
+# cgroup2fs indicates cgroup v2; tmpfs typically indicates cgroup v1
 ```
 
 ## Deploying on OCI (Oracle Cloud Infrastructure)
@@ -140,7 +153,8 @@ When running on OCI:
 
 ```bash
 # Get OCI instance public IP via metadata
-curl -s http://169.254.169.254/opc/v1/instance/ | jq '.metadata'
+curl -s -H "Authorization: Bearer Oracle" \
+  http://169.254.169.254/opc/v2/vnics/ | jq -r '.[0].publicIp'
 ```
 
 ## Conclusion
