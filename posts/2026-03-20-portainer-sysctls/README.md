@@ -17,21 +17,20 @@ Sysctls are Linux kernel parameters that can be tuned at runtime via the `/proc/
 
 ## What Sysctls Can Be Set?
 
-Docker only allows setting sysctls that are namespaced per-container (safe to change without affecting the host):
+Docker only allows setting sysctls that are namespaced per-container:
 
-**Safe (namespaced) sysctls:**
-- `net.ipv4.*` - TCP/IP settings
-- `net.ipv6.*` - IPv6 settings
-- `net.core.somaxconn` - Socket connection queue
-- `net.unix.*` - Unix socket settings
+**Safe (namespaced) sysctls Docker supports:**
+- `net.*` - Network namespace parameters
 - `kernel.msgmax`, `kernel.msgmnb`, `kernel.msgmni` - IPC message queues
 - `kernel.sem` - Semaphores
-- `kernel.shmmax`, `kernel.shmall` - Shared memory
+- `kernel.shmall`, `kernel.shmmax`, `kernel.shmmni`, `kernel.shm_rmid_forced` - Shared memory
+- `fs.mqueue.*` - POSIX message queues
 
-**Unsafe (require `--privileged`):**
-- `fs.*` - Filesystem parameters
+**Not supported as per-container sysctls:**
+- `vm.*` - Memory management parameters such as `vm.overcommit_memory`
+- Most `fs.*` values except `fs.mqueue.*`
 - `kernel.sysrq` - System request key
-- Most non-namespaced sysctls
+- Most other non-namespaced sysctls
 
 ## Step 1: Configure Sysctls in Portainer
 
@@ -55,11 +54,12 @@ services:
     sysctls:
       # Allow more simultaneous connections
       net.core.somaxconn: 65535
-      # Enable TCP fast open (reduce connection setup time)
+      # Enable TCP Fast Open support in the namespace
+      # The application may also need to enable it per listener
       net.ipv4.tcp_fastopen: 3
       # Allow reuse of TIME_WAIT sockets (useful for high connection rate)
       net.ipv4.tcp_tw_reuse: 1
-      # Reduce time_wait timeout
+      # Shorten the orphaned FIN_WAIT_2 timeout
       net.ipv4.tcp_fin_timeout: 15
 ```
 
@@ -70,10 +70,10 @@ services:
   postgres:
     image: postgres:15-alpine
     sysctls:
-      # Increase shared memory limits for PostgreSQL
+      # Increase System V shared memory limits
       kernel.shmmax: 268435456    # 256 MB
       kernel.shmall: 65536
-      # IPC semaphores for PostgreSQL connections
+      # IPC semaphores for database workloads
       kernel.sem: "250 32000 100 128"
 ```
 
@@ -84,10 +84,7 @@ services:
   redis:
     image: redis:7-alpine
     sysctls:
-      # Disable THP (Transparent Huge Pages) notification
-      # Redis recommends disabling THP for performance
-      vm.overcommit_memory: 1
-      # Increase socket buffer sizes
+      # Raise socket buffer ceilings for high-throughput messaging
       net.core.rmem_max: 134217728
       net.core.wmem_max: 134217728
 ```
@@ -113,32 +110,26 @@ services:
   realtime-app:
     image: myorg/realtime:latest
     sysctls:
-      # Minimize TCP latency
-      net.ipv4.tcp_low_latency: 1
-      # Disable Nagle algorithm (reduce latency for small packets)
-      net.ipv4.tcp_nodelay: 1
+      # Keep the congestion window after idle periods for bursty traffic
+      net.ipv4.tcp_slow_start_after_idle: 0
+      # Limit queued bytes per TCP socket to help reduce bufferbloat
+      net.ipv4.tcp_limit_output_bytes: 262144
 ```
 
-## Step 3: Enable Sysctls in Docker Daemon (Alternative)
+## Step 3: Configure Host-Wide Sysctls (Alternative)
 
-For sysctls that need to be set on all containers system-wide, or for unsafe sysctls:
+For sysctls that are not namespaced and must be applied host-wide, configure them on the Linux host instead of inside Portainer or Docker. Docker does not provide a daemon-wide `default-sysctls` setting in `daemon.json`.
 
-```json
-// /etc/docker/daemon.json
-{
-  "default-sysctls": {
-    "net.ipv4.ip_local_port_range": "1024 65535"
-  }
-}
+```conf
+# /etc/sysctl.d/99-container-host.conf
+vm.overcommit_memory = 1
+fs.file-max = 200000
 ```
 
-For unsafe sysctls, you need `--privileged` or must enable them in the daemon:
+Then reload the host sysctls:
 
 ```bash
-# Unsafe sysctl - requires privileged container or daemon config
-docker run --privileged \
-  --sysctl net.ipv4.ip_forward=1 \
-  myimage
+sudo sysctl --system
 ```
 
 ## Step 4: Verify Sysctls Inside the Container
@@ -155,29 +146,26 @@ sysctl -a 2>/dev/null | grep net.core
 
 # Compare with host (run on host):
 sysctl net.core.somaxconn
-# net.core.somaxconn = 128 (default host value, unchanged)
+# net.core.somaxconn = 4096 (example host value, unchanged)
 ```
 
-The container sysctl values are independent of the host.
+For namespaced sysctls, the container value is isolated from the host value.
 
 ## Important Restrictions
 
-Some sysctls fail with an error in non-privileged containers:
+Some sysctls fail because they are not namespaced, or because the container is sharing the host namespace.
 
-```text
-Error response from daemon: invalid argument "vm.swappiness=10"
-for sysctl: not valid for kernel version
-```
-
-This means the sysctl is not namespaced and cannot be set per-container without `--privileged`.
+- `vm.*` sysctls cannot be set per-container.
+- `net.*` sysctls are not allowed with `--network=host`.
+- IPC sysctls and `fs.mqueue.*` are not allowed with `--ipc=host`.
 
 ## Security Considerations
 
 - **Only set sysctls you understand** - incorrect values can degrade performance or cause instability.
-- **Avoid unsafe sysctls** unless absolutely necessary, as they affect the host kernel.
+- **Avoid host-wide sysctl changes** unless absolutely necessary, as they affect the host kernel.
 - **Test sysctl changes** in a development environment before applying to production.
 - **Document sysctl rationale** in your docker-compose.yml comments.
 
 ## Conclusion
 
-Sysctls in Portainer provide a way to tune Linux kernel parameters for individual containers without affecting the host system. This is particularly valuable for high-performance applications like web servers, databases, and message queues that benefit from fine-tuned network or IPC settings. By using namespaced sysctls, you achieve per-container kernel tuning safely within Docker's isolation boundaries.
+Sysctls in Portainer provide a way to tune namespaced Linux kernel parameters for individual containers without changing the host's value. This is particularly valuable for high-performance applications like web servers, databases, and message queues that benefit from fine-tuned network or IPC settings. By using namespaced sysctls, you achieve per-container kernel tuning within Docker's isolation boundaries.
