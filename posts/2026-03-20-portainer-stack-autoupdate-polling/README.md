@@ -12,7 +12,7 @@ Portainer's Git polling auto-update feature checks your repository at a defined 
 
 ## Prerequisites
 
-- Portainer BE (Business Edition) or Portainer CE 2.14+
+- A supported Portainer CE or BE release
 - A Git repository with a Docker Compose file
 - The stack deployed from Git in Portainer
 
@@ -29,18 +29,18 @@ Portainer's Git polling auto-update feature checks your repository at a defined 
 ## Step 1: Create a Git-Based Stack with Polling Enabled
 
 1. Navigate to **Stacks** → **Add stack**.
-2. Select **Repository** as the build method.
+2. Select **Git Repository** as the build method.
 3. Configure Git settings:
 
 ```text
 Repository URL:  https://github.com/myorg/my-infra
-Repository ref:  refs/heads/main
+Repository ref:  main
 Compose path:    docker-compose.yml
 ```
 
-4. Under **Automatic updates**, enable the toggle.
-5. Set **Polling interval**: `5m` (5 minutes), `15m`, `1h`, etc.
-6. Optionally enable **Force re-pull images** to always pull the latest image even if the tag hasn't changed.
+4. Under **GitOps updates**, enable the toggle.
+5. Select **Polling** as the mechanism and set **Fetch interval**: `5m` (5 minutes), `15m`, `1h`, etc.
+6. Optionally enable **Re-pull image** to always pull the latest image whenever the stack is updated.
 7. Click **Deploy the stack**.
 
 ## Step 2: Enable Polling on an Existing Git Stack
@@ -48,10 +48,10 @@ Compose path:    docker-compose.yml
 For an already-deployed Git stack:
 
 1. Navigate to **Stacks** → click the stack name.
-2. Scroll to the **Git repository** section.
-3. Under **Automatic updates**, enable **Polling**.
-4. Set the interval.
-5. Click **Update the stack**.
+2. At the bottom of the **Stack details** view, click **Edit Git settings**.
+3. Under **GitOps updates**, select **Polling**.
+4. Set the **Fetch interval**.
+5. Optionally check **Redeploy** if you want the stack to redeploy immediately, then click **Save settings**.
 
 ## Step 3: Configure the Polling Interval
 
@@ -65,12 +65,7 @@ Choose an interval based on how quickly you need changes deployed:
 24h - Very stable configurations
 ```
 
-Portainer polls the Git API for each stack separately. With many stacks and short intervals, consider the API rate limits of your Git provider:
-
-```text
-GitHub: 60 requests/hour (unauthenticated), 5000/hour (authenticated)
-→ For 10 stacks with 5m polling: 120 requests/hour - use authentication
-```
+Portainer checks each configured stack separately. With many stacks and short intervals, monitor the load on both Portainer and your Git host and increase the interval if needed.
 
 ## Step 4: Trigger a Deployment by Pushing to Git
 
@@ -91,9 +86,9 @@ git push origin main
 # and automatically redeploy the stack
 ```
 
-## Step 5: Force Re-Pull Images with Polling
+## Step 5: Use Re-Pull Image with Polling
 
-Enable force re-pull to handle mutable tags like `latest`:
+Enable **Re-pull image** if you want Portainer to pull the latest image whenever a redeploy is triggered:
 
 ```yaml
 # Compose file uses mutable tag:
@@ -102,10 +97,10 @@ services:
     image: myorg/api:latest   # Tag doesn't change, but digest might
 ```
 
-With **Force re-pull images** enabled:
-- Portainer runs `docker pull` before each redeployment check.
-- If the image digest changed, the service is recreated with the new image.
-- Without this, `latest` would never trigger a redeployment if the tag name doesn't change.
+With **Re-pull image** enabled:
+- When polling detects a new Git commit and triggers an update, Portainer pulls the image again as part of that update.
+- If the tag now points to a different digest, the service can be recreated with the newer image.
+- By itself, **Re-pull image** does not make Portainer redeploy when only the registry image changes and the Git commit stays the same. For that, you also need a Git change or **Force redeployment**.
 
 For production, prefer immutable tags and update the tag in Git:
 
@@ -116,15 +111,15 @@ services:
     image: myorg/api:${IMAGE_TAG:-latest}
 ```
 
-Change `IMAGE_TAG` in the stack environment variables or in the Compose file.
+Change the image tag in the Compose file, commit, and push.
 
 ## Step 6: Monitor Auto-Update Activity
 
 Check what Portainer deployed and when:
 
 1. In Portainer, navigate to **Stacks** → click the stack name.
-2. The **Git repository** section shows the current deployed commit SHA.
-3. Compare with your latest Git commit to confirm it's up to date.
+2. Click **Edit Git settings** to review the repository details and GitOps configuration.
+3. Compare the latest Git commit on the configured branch with the stack details Portainer shows to confirm it's up to date. If your Portainer UI shows the deployed commit, the SHAs should match.
 
 ```bash
 # Get latest commit SHA on main branch:
@@ -139,14 +134,14 @@ Deploy the same repo to multiple environments with different branches:
 
 ```text
 Stack: myapp-production
-  Branch: refs/heads/main
+  Branch: main
   Polling: 15m
-  Force re-pull: false
+  Re-pull image: false
 
 Stack: myapp-staging
-  Branch: refs/heads/develop
+  Branch: develop
   Polling: 5m
-  Force re-pull: true  (always use latest images on staging)
+  Re-pull image: true  (pull the tag again on each redeploy)
 ```
 
 Push to `develop` → staging updates within 5 minutes.
@@ -154,4 +149,4 @@ Merge PR to `main` → production updates within 15 minutes.
 
 ## Conclusion
 
-Git polling auto-updates in Portainer provide a zero-configuration GitOps workflow - no webhooks to set up, no CI/CD pipeline changes required. Set a polling interval, push to Git, and Portainer handles the rest. The trade-off is latency: changes take up to the interval duration to deploy. For faster deployments, use the webhook-based auto-update method instead. Use polling for stable services and environments where the interval latency is acceptable, and enable Force re-pull when using mutable image tags to ensure the latest image is always deployed.
+Git polling auto-updates in Portainer provide a lightweight GitOps workflow - no webhooks to set up, no CI/CD pipeline changes required. Set a polling interval, push to Git, and Portainer handles the rest. The trade-off is latency: changes take up to the interval duration to deploy. For faster deployments, use the webhook-based auto-update method instead. Use polling for stable services and environments where the interval latency is acceptable, and use **Re-pull image** when you want updated tags fetched during a redeploy. If you need redeployments even when Git hasn't changed, enable **Force redeployment** as well.
