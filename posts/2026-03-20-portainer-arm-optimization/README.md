@@ -8,13 +8,13 @@ Description: Learn how to tune Portainer and Docker for optimal performance on r
 
 ## ARM Devices Running Portainer
 
-Portainer supports ARM32 (armv7) and ARM64 (aarch64) architectures. Common devices:
+Portainer's ARM images primarily target ARM64, with ARMv7 support also available. Common devices:
 
 | Device | Arch | RAM | Notes |
 |--------|------|-----|-------|
-| Raspberry Pi 3 | armv7 | 1GB | Limited RAM, use arm32v7 images |
-| Raspberry Pi 4 | arm64 | 2-8GB | Good performance with 4GB+ |
-| Raspberry Pi 5 | arm64 | 4-8GB | Best Pi for Portainer |
+| Raspberry Pi 3 | arm64 / armv7 | 1GB | Limited RAM, ARMv7 support is available |
+| Raspberry Pi 4 | arm64 | 1-8GB | Good performance with 4GB+ |
+| Raspberry Pi 5 | arm64 | 1-16GB | Best Pi for Portainer |
 | NVIDIA Jetson Nano | arm64 | 4GB | GPU available |
 | Orange Pi 5 | arm64 | 4-32GB | High performance ARM |
 
@@ -22,14 +22,15 @@ Portainer supports ARM32 (armv7) and ARM64 (aarch64) architectures. Common devic
 
 ```bash
 docker run -d \
-  -p 9000:9000 \
+  -p 8000:8000 \
+  -p 9443:9443 \
   --name portainer \
   --restart=always \
-  --memory=256m \           # Limit Portainer to 256MB
-  --memory-swap=512m \      # Allow 256MB swap
+  --memory=256m \
+  --memory-swap=512m \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 2: Enable Swap on the Host
@@ -54,30 +55,44 @@ sudo sysctl -p
 
 ## Step 3: Use a Fast Storage Device
 
-ARM device performance is heavily limited by SD card speed. Use an SSD:
+ARM device performance is heavily limited by SD card speed. Use an SSD. On fresh Docker Engine 29+ installs, image data may also be stored under `/var/lib/containerd`, so place both Docker and containerd data on fast storage. If you are migrating an existing installation, copy the current contents of `/var/lib/docker` and `/var/lib/containerd` to the new locations before restarting the services.
 
 ```bash
 # Check current storage speed
 dd if=/dev/zero of=/tmp/test bs=1M count=1000 oflag=sync
-# SD card: ~30 MB/s; USB3 SSD: ~300 MB/s; NVMe (Pi 5): ~900 MB/s
+rm -f /tmp/test
 
-# Move Docker data directory to SSD
 sudo systemctl stop docker
+sudo systemctl stop containerd
+sudo mkdir -p /mnt/ssd/docker /mnt/ssd/containerd-data
+```
 
-# Edit /etc/docker/daemon.json
+Set `/etc/docker/daemon.json` to:
+
+```json
 {
   "data-root": "/mnt/ssd/docker"
 }
+```
 
+In `/etc/containerd/config.toml`, set:
+
+```toml
+version = 2
+root = "/mnt/ssd/containerd-data"
+```
+
+```bash
+sudo systemctl start containerd
 sudo systemctl start docker
 ```
 
 ## Step 4: Optimize Docker Daemon for ARM
 
+Merge these settings into the existing `/etc/docker/daemon.json` file instead of overwriting it:
+
 ```json
-# /etc/docker/daemon.json
 {
-  "storage-driver": "overlay2",
   "log-driver": "json-file",
   "log-opts": {
     "max-size": "10m",
@@ -93,24 +108,27 @@ sudo systemctl start docker
 Always use ARM-native images, not emulated x86 images:
 
 ```bash
-# Check image architecture
-docker inspect nginx:alpine | jq '.[].Architecture'
-# Should be "arm64" or "arm"
+# Pull the image for your device's native platform
+docker pull nginx:alpine
 
-# Check what's available
-docker manifest inspect nginx:alpine | jq '.manifests[].platform'
+# Check the pulled image architecture
+docker image inspect --format '{{.Architecture}}' nginx:alpine
+# Should match your device, such as "arm64" or "arm"
+
+# Check what platforms the image publishes
+docker buildx imagetools inspect nginx:alpine
 ```
 
 Use multi-arch images from official sources - they automatically pull the correct architecture.
 
-## Step 6: Limit Portainer Polling
+## Step 6: Limit Edge Agent Polling
 
-Reduce Portainer's background activity on low-memory devices:
+Reduce Edge Agent background activity on low-memory devices:
 
-- **Settings → Edge Compute**: Increase heartbeat interval from 15s to 60s
+- If you use Edge Agents, **Settings → General**: increase **Edge agent default poll frequency** from 5s to a higher interval, such as 60s
 - Avoid running resource-intensive stacks on the same device as Portainer
 
-## Step 7: Reduce Python/Go Overhead in Containers
+## Step 7: Reduce Python Overhead in Containers
 
 For Python applications on ARM:
 
@@ -118,7 +136,10 @@ For Python applications on ARM:
 # Use slim or alpine variants
 FROM python:3.12-slim-bookworm
 
-# Pre-compile Python files
+WORKDIR /app
+COPY . /app
+
+# Pre-compile Python files after copying the application code
 RUN python -m compileall /app
 ```
 
@@ -129,10 +150,10 @@ RUN python -m compileall /app
 watch -n 5 'free -h && docker stats --no-stream --format "{{.Name}}\t{{.MemUsage}}"'
 
 # Check if swap is being used heavily
-vmstat 5 | awk '{print $7, $8}'    # si=swap in, so=swap out
+vmstat 5 | awk 'NR > 2 {print $7, $8}'    # si=swap in, so=swap out
 # High values indicate RAM pressure
 ```
 
 ## Conclusion
 
-Portainer runs well on ARM devices with proper tuning. The most impactful changes are adding swap memory, moving Docker storage to a fast SSD, and ensuring you're using native ARM images. On Raspberry Pi 4 with 4GB+ RAM and an SSD, Portainer performs comparably to a low-spec x86 server.
+Portainer runs well on ARM devices with proper tuning. The most impactful changes are adding swap memory, moving Docker storage to a fast SSD, and ensuring you're using native ARM images. On Raspberry Pi 4 with 4GB+ RAM and an SSD, Portainer can perform well for small deployments.
