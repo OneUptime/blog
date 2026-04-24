@@ -20,9 +20,9 @@ Container logs can grow large quickly. Finding a specific error, request, or eve
 In the log viewer:
 
 1. Navigate to the container's logs.
-2. Look for the **Search** or filter box in the log viewer toolbar.
+2. Use the **Search** box in the log viewer toolbar.
 3. Type your search term.
-4. The viewer highlights or filters to matching lines.
+4. Optionally enable **Filter search results** to show only matching lines.
 
 Common search terms:
 ```text
@@ -35,7 +35,7 @@ Common search terms:
 
 ## Step 2: Filter by Time Range
 
-Portainer allows setting how many lines to show (from the end). But for time-based filtering, use Docker CLI:
+Portainer includes a **Date picker** and lets you choose how many lines to show. For precise time-based filtering or CLI automation, use Docker:
 
 ```bash
 # Show logs from the last hour:
@@ -43,10 +43,10 @@ Portainer allows setting how many lines to show (from the end). But for time-bas
 docker logs --since 1h my-container
 
 # Show logs from a specific time:
-docker logs --since "2026-03-20T10:00:00" my-container
+docker logs --since "2026-03-20T10:00:00Z" my-container
 
 # Show logs between two times:
-docker logs --since "2026-03-20T10:00:00" --until "2026-03-20T11:00:00" my-container
+docker logs --since "2026-03-20T10:00:00Z" --until "2026-03-20T11:00:00Z" my-container
 
 # Show logs from last 30 minutes with timestamps:
 docker logs --since 30m -t my-container
@@ -61,7 +61,7 @@ For more powerful filtering, use the Docker CLI combined with grep:
 docker logs --since 1h my-container 2>&1 | grep "ERROR"
 
 # Case-insensitive search:
-docker logs my-container 2>&1 | grep -i "error\|exception\|failed"
+docker logs my-container 2>&1 | grep -Ei "error|exception|failed"
 
 # Find lines containing "timeout" with 3 lines of context:
 docker logs --since 24h my-container 2>&1 | grep -C 3 "timeout"
@@ -114,7 +114,7 @@ docker compose logs 2>&1 | grep "ERROR"
 docker compose logs --timestamps 2>&1 | grep -E "web.*ERROR|api.*ERROR"
 
 # Find errors in the last hour across all services:
-docker compose logs --since 1h 2>&1 | grep -i "error\|failed\|exception"
+docker compose logs --since 1h 2>&1 | grep -Ei "error|failed|exception"
 ```
 
 ## Step 6: Create a Log Analysis Script
@@ -134,14 +134,14 @@ echo ""
 
 echo "--- Error Count by Type ---"
 docker logs --since "${HOURS}h" "${CONTAINER}" 2>&1 | \
-    grep -i "error\|exception\|failed" | \
-    grep -oE '"message":"[^"]*"' | \
+    grep -Ei "error|exception|failed" | \
+    grep -oE '"message"[[:space:]]*:[[:space:]]*"[^"]*"' | \
     sort | uniq -c | sort -rn | head -10
 
 echo ""
 echo "--- HTTP Error Status Codes ---"
 docker logs --since "${HOURS}h" "${CONTAINER}" 2>&1 | \
-    grep -oE '"status":[45][0-9]{2}' | \
+    grep -oE '"status"[[:space:]]*:[[:space:]]*[45][0-9]{2}' | \
     sort | uniq -c | sort -rn
 
 echo ""
@@ -157,49 +157,50 @@ docker logs --since "${HOURS}h" -t "${CONTAINER}" 2>&1 | \
     sort | uniq -c
 ```
 
-## Step 7: Centralized Log Search (Production)
+## Step 7: Centralized Log Search
 
-For production environments, use a centralized log aggregation stack:
+For larger environments, use a centralized log aggregation stack. For a self-hosted Docker Compose example, you can run Loki, Grafana, and Grafana Alloy; Grafana recommends Helm or Tanka for production deployments:
 
 ```yaml
 # loki-stack.yml: centralized logging for all containers
-version: "3.8"
-
+# Requires companion alloy-local-config.yaml and loki-config.yaml files.
 services:
-  # Promtail: collects Docker container logs
-  promtail:
-    image: grafana/promtail:3.0.0
+  # Grafana Alloy: collects Docker container logs
+  alloy:
+    image: grafana/alloy:latest
     restart: unless-stopped
     volumes:
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/log:/var/log:ro
-      - ./promtail-config.yml:/etc/promtail/config.yml:ro
-    command: -config.file=/etc/promtail/config.yml
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./alloy-local-config.yaml:/etc/alloy/config.alloy:ro
+    command: run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
 
   # Loki: log aggregation and storage
   loki:
-    image: grafana/loki:3.0.0
+    image: grafana/loki:latest
     restart: unless-stopped
+    volumes:
+      - ./loki-config.yaml:/etc/loki/config.yaml:ro
+    command: -config.file=/etc/loki/config.yaml
     ports:
       - "3100:3100"
 
   # Grafana: search and visualization
   grafana:
-    image: grafana/grafana:10.3.0
+    image: grafana/grafana:latest
     restart: unless-stopped
     ports:
       - "3000:3000"
 ```
 
-With Grafana + Loki, you can search logs across all containers with LogQL:
+With Grafana + Loki, you can search logs across all containers and build alert-oriented queries with LogQL. If your Alloy config promotes container names to a `container` label, queries can look like:
 
 ```text
 # LogQL examples in Grafana:
-{container_name="my-app"} |= "ERROR"
-{container_name=~"api.*"} | json | latency_ms > 1000
-{job="docker"} |= "timeout" | rate[5m] > 10
+{container="my-app"} |= "ERROR"
+{container=~"api.*"} | json | latency_ms > 1000
+sum(rate({container=~".+"} |= "timeout" [5m])) > 10
 ```
 
 ## Conclusion
 
-Effective log filtering is key to fast debugging. Portainer's built-in search handles simple keyword filtering. For time-range filtering, JSON parsing, and cross-container search, combine Docker's CLI with grep and jq. For production environments with high log volume, invest in a centralized logging stack like Grafana Loki to enable full-text search, alerting, and correlation across your entire container fleet.
+Effective log filtering is key to fast debugging. Portainer's built-in search handles simple keyword filtering. For time-range filtering, JSON parsing, and cross-container search, combine Docker's CLI with grep and jq. For production environments with high log volume, invest in a centralized logging stack like Grafana Loki and deploy it with a production-ready method for your environment.
