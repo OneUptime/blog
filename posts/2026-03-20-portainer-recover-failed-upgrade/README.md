@@ -8,19 +8,15 @@ Description: Learn how to recover Portainer after a failed upgrade by rolling ba
 
 ---
 
-A failed Portainer upgrade can leave the UI inaccessible or the database in a partially migrated state. This guide provides step-by-step recovery procedures.
+A failed Portainer upgrade can leave the UI inaccessible or the database unusable. This guide provides step-by-step recovery procedures.
+
+The examples below use Portainer's current default ports: `9443` for HTTPS and `8000` for the Edge Agent tunnel server. Add `-p 9000:9000` only if you intentionally keep legacy HTTP enabled.
 
 ## Signs of a Failed Upgrade
 
 ```bash
-# Check Portainer logs for migration failures
-
-docker logs portainer 2>&1 | grep -i "migration\|panic\|fatal\|error"
-
-# Common failure messages:
-# "FATAL: failed to migrate database"
-# "panic: database migration error"
-# "bolt: timeout"
+# Check Portainer logs for migration-related failures
+docker logs portainer 2>&1 | grep -Ei "migrat|panic|fatal|error|bolt"
 ```
 
 ## Option 1: Roll Back to Previous Image Version
@@ -31,71 +27,79 @@ If you have a backup:
 # 1. Stop the broken Portainer
 docker stop portainer && docker rm portainer
 
-# 2. Note: Portainer may have already run partial migrations
-# If the database is partially migrated, roll back the data volume too
-
-# 3. Restore pre-upgrade backup (if you took one)
+# 2. Restore the pre-upgrade data volume backup
 docker volume rm portainer_data
 docker volume create portainer_data
 docker run --rm \
   -v portainer_data:/data \
-  -v /tmp:/backup \
-  alpine tar xzpf /backup/portainer-pre-upgrade.tar.gz -C /
+  -v "$(pwd)":/backup \
+  alpine sh -c 'tar xzpf /backup/portainer-pre-upgrade.tar.gz -C /data'
 
-# 4. Start the previous version
+# 3. Start the previous version
 docker run -d \
   --name portainer \
-  -p 9000:9000 \
+  --restart=always \
+  -p 8000:8000 \
+  -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:2.19.5   # Use your previous working version
+  portainer/portainer-ce:<previous-version>   # Use the exact version that was working before the upgrade
 ```
 
-## Option 2: Force Database Reset
+## Option 2: Restore the Automatic Database Backup
 
-If you have no backup but the running containers are fine:
+If you do not have a manual backup, Portainer keeps an automatic backup of `portainer.db` during the upgrade:
 
 ```bash
-# Stop Portainer
+# Stop Portainer but keep the data volume
 docker stop portainer && docker rm portainer
 
-# Remove only the database file (keeps agent keys and certs)
-docker run --rm -v portainer_data:/data alpine rm /data/portainer.db
+# Restore the automatic database backup created during the upgrade
+docker run --rm \
+  -v portainer_data:/data \
+  alpine sh -c 'if [ -f /data/portainer.db ]; then \
+                  mv /data/portainer.db /data/portainer.db.failed-upgrade; \
+                fi && \
+                cp /data/backups/portainer.db.bak /data/portainer.db'
 
-# Start the NEW version - it will create a fresh database
+# Start the previous version again
 docker run -d \
   --name portainer \
-  -p 9000:9000 \
+  --restart=always \
+  -p 8000:8000 \
+  -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
-
-# You will need to re-configure users, environments, and registries
+  portainer/portainer-ce:<previous-version>   # Must match the version of the restored database backup
 ```
 
 ## Option 3: Retry the Migration with Debug Logging
 
-Sometimes a transient error during migration can be fixed by retrying:
+If the failure was caused by a transient issue, retrying with debug logging can help identify the exact error:
 
 ```bash
 docker stop portainer && docker rm portainer
 docker run -d \
   --name portainer \
-  -p 9000:9000 \
+  --restart=always \
+  -p 8000:8000 \
+  -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest \
+  portainer/portainer-ce:<target-version> \
   --log-level DEBUG
 
-# Watch for migration success or the specific error
-docker logs -f portainer 2>&1 | grep -i "migrat"
+# Watch for migration progress or the specific error
+docker logs -f portainer
 ```
 
 ## Prevention: Always Backup Before Upgrading
 
 ```bash
 # Pre-upgrade backup script
-docker run --rm -v portainer_data:/data alpine tar czpf - /data > \
-  portainer-pre-upgrade-$(date +%Y%m%d).tar.gz
+docker run --rm \
+  -v portainer_data:/data \
+  -v "$(pwd)":/backup \
+  alpine sh -c 'cd /data && tar czpf /backup/portainer-pre-upgrade.tar.gz .'
 echo "Backup ready. Proceeding with upgrade..."
 ```
