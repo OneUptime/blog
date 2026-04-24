@@ -19,7 +19,7 @@ services:
   jellyfin:
     image: jellyfin/jellyfin:latest
     container_name: jellyfin
-    # Use host network for DLNA discovery
+    # Host networking is only required if you plan to use the DLNA plugin
     network_mode: host
     environment:
       - JELLYFIN_PublishedServerUrl=http://192.168.1.100:8096
@@ -54,10 +54,10 @@ services:
       - /dev/dri/card0:/dev/dri/card0
     group_add:
       - "109"   # render group GID (check with: getent group render)
-      - "44"    # video group GID
+      - "44"    # video group GID (check with: getent group video)
 ```
 
-In Jellyfin Admin: **Dashboard > Playback > Hardware acceleration > Intel QuickSync (QSV)**
+In Jellyfin Admin: **Dashboard > Playback**, set **Hardware acceleration** to **Intel QuickSync (QSV)**
 
 ### NVIDIA
 
@@ -65,12 +65,18 @@ In Jellyfin Admin: **Dashboard > Playback > Hardware acceleration > Intel QuickS
 services:
   jellyfin:
     runtime: nvidia
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 ```
 
-In Jellyfin Admin: **Dashboard > Playback > Hardware acceleration > NVIDIA NVENC**
+Install the NVIDIA driver and NVIDIA Container Toolkit on the host first.
+
+In Jellyfin Admin: **Dashboard > Playback**, set **Hardware acceleration** to **NVIDIA NVENC**
 
 ## Initial Setup
 
@@ -95,17 +101,17 @@ Add libraries in **Dashboard > Libraries > Add Media Library**:
 
 Navigate to **Dashboard > Playback**:
 
-1. Set **Transcoding thread count** (leave auto for hardware)
+1. Leave **Transcoding thread count** on auto unless you need to limit CPU usage
 2. Enable hardware acceleration
-3. Set max simultaneous transcodes (2-4 recommended)
+3. Set max simultaneous transcodes based on your hardware capacity
 
 ## Jellyfin Plugins
 
-Install plugins via **Dashboard > Plugins > Catalog**:
+Install plugins via **Dashboard > Plugins > Catalog**. Some third-party plugins may require adding their repository first:
 
 - **Intro Skipper** - Automatically skip TV intros
 - **Open Subtitles** - Auto-download subtitles
-- **Last.fm** - Music scrobbling
+- **Last.FM** - Music scrobbling
 - **Merge Versions** - Combine multiple versions of the same film
 
 ## Conclusion
