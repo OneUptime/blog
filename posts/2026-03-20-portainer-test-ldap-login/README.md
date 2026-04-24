@@ -10,20 +10,20 @@ Description: Use Portainer's built-in LDAP test feature and CLI tools to verify 
 
 Before switching all users to LDAP authentication, you should thoroughly test the configuration with known credentials. Portainer provides a built-in LDAP test button, and you can supplement it with CLI tools for deeper diagnosis. This guide covers all testing approaches.
 
-## Step 1: Use Portainer's Built-in LDAP Test
+## Step 1: Use Portainer's Built-in LDAP Tests
 
 In Settings → Authentication → LDAP:
 
-1. After entering your LDAP server settings, scroll to the bottom
-2. Click **Test LDAP connectivity**
-3. Enter a test username (without domain, just the uid value)
+1. After entering your LDAP server settings, click **Test connectivity**
+2. Scroll to the **Test login** section
+3. Enter a test username using the format your Portainer configuration expects
 4. Enter the user's password
 5. Click **Test**
 
-Portainer will:
-- Connect to the LDAP server
-- Bind with the service account
-- Search for the user
+Portainer's built-in checks can:
+- Verify the LDAP server is reachable
+- Bind with the service account (or anonymously, if configured)
+- Search for the user using the configured Base DN, filter, and username attribute
 - Attempt to authenticate as the user
 - Return the result (success or specific error)
 
@@ -32,16 +32,16 @@ Portainer will:
 Before configuring Portainer, verify the LDAP server is accessible:
 
 ```bash
-# Test 1: Anonymous connectivity
+# Test 1: Anonymous connectivity against the root DSE
 
 ldapsearch -x \
   -H ldap://ldap.example.com:389 \
-  -b "dc=example,dc=com" \
+  -b "" \
   -s base "(objectClass=*)" \
   supportedLDAPVersion
 
-# Expected: returns server info
-# Error: "Can't contact LDAP server" means network issue
+# Expected: returns root DSE data such as supportedLDAPVersion
+# Error: "Can't contact LDAP server" usually means a network or listener issue
 
 # Test 2: Service account bind
 ldapsearch -x \
@@ -52,7 +52,7 @@ ldapsearch -x \
   -s base "(objectClass=*)"
 
 # Expected: "result: 0 Success"
-# Error: "49 Invalid credentials" means wrong DN or password
+# Error: "ldap_bind: Invalid credentials (49)" usually means the bind DN or password is wrong
 
 # Test 3: User search
 ldapsearch -x \
@@ -69,7 +69,7 @@ ldapsearch -x \
 ## Step 3: Test User Authentication
 
 ```bash
-# Attempt to bind as the actual user (simulates what Portainer does)
+# Attempt to bind as the actual user DN (tests the final bind step after Portainer resolves the user's DN)
 ldapsearch -x \
   -H ldap://ldap.example.com:389 \
   -D "uid=testuser,ou=users,dc=example,dc=com" \
@@ -77,7 +77,7 @@ ldapsearch -x \
   -b "ou=users,dc=example,dc=com" \
   "(uid=testuser)" uid cn
 
-# If this succeeds, Portainer should be able to authenticate this user
+# If this succeeds and Portainer's user-search settings resolve this same DN, Portainer should be able to authenticate this user
 ```
 
 ## Step 4: Test Group Membership
@@ -100,26 +100,33 @@ ldapsearch -x \
   "(sAMAccountName=testuser)" memberOf
 ```
 
-## Step 5: API-Based Testing
+## Step 5: API-Based Connectivity Check
 
-Test via Portainer's API without switching authentication mode:
+For a scriptable connectivity check via Portainer's API:
 
 ```bash
-TOKEN=$(curl -s -X POST \
-  https://portainer.example.com/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"adminpassword"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
+API_KEY="your_portainer_api_key"
 
-# Test LDAP connectivity with current settings
-curl -X POST \
-  -H "Authorization: Bearer $TOKEN" \
+# Test LDAP connectivity with the same values you plan to configure in the UI
+curl -i -X POST \
+  -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/settings/authentication/checkLDAP \
+  https://portainer.example.com/api/ldap/check \
   -d '{
-    "username": "testuser",
-    "password": "testpassword"
+    "LDAPSettings": {
+      "AnonymousMode": false,
+      "ReaderDN": "cn=portainer-bind,dc=example,dc=com",
+      "Password": "bindpassword",
+      "URL": "ldap.example.com:389",
+      "TLSConfig": {
+        "TLS": false,
+        "TLSSkipVerify": false
+      },
+      "StartTLS": false
+    }
   }'
+
+# Expected: HTTP/1.1 204 No Content
 ```
 
 ## Common Test Scenarios
@@ -135,9 +142,15 @@ ldapsearch -x -H ldap://ldap.example.com:389 \
 
 # If this returns entries, the issue is in the filter
 # Try a broader filter:
-ldapsearch ... "(uid=testuser)"
+ldapsearch -x -H ldap://ldap.example.com:389 \
+  -D "cn=portainer-bind,dc=example,dc=com" -w "bindpassword" \
+  -b "ou=users,dc=example,dc=com" \
+  "(uid=testuser)" uid cn
 # Then narrow it down:
-ldapsearch ... "(&(uid=testuser)(objectClass=inetOrgPerson))"
+ldapsearch -x -H ldap://ldap.example.com:389 \
+  -D "cn=portainer-bind,dc=example,dc=com" -w "bindpassword" \
+  -b "ou=users,dc=example,dc=com" \
+  "(&(uid=testuser)(objectClass=inetOrgPerson))" uid cn
 ```
 
 ### Scenario 2: User Found but Authentication Fails
