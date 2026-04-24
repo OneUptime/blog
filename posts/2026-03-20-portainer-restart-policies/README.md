@@ -23,7 +23,7 @@ Docker supports four restart policies:
 | `no` | Do not restart the container (default) |
 | `on-failure` | Restart only if exit code is non-zero (failure) |
 | `always` | Always restart the container |
-| `unless-stopped` | Always restart unless explicitly stopped by the user |
+| `unless-stopped` | Always restart unless the container was already stopped |
 
 ## Setting Restart Policies in Portainer
 
@@ -36,7 +36,7 @@ Docker supports four restart policies:
 
 ### For Existing Containers
 
-Restart policies cannot be changed on a running container without re-creating it:
+In Portainer, changing the restart policy for an existing container recreates the container with the updated settings:
 
 1. Navigate to the container.
 2. Click **Duplicate/Edit**.
@@ -48,7 +48,7 @@ Restart policies cannot be changed on a running container without re-creating it
 ### `no` - No Restart
 
 ```yaml
-# docker-compose.yml equivalent:
+# compose.yaml equivalent:
 
 services:
   one-shot-task:
@@ -89,7 +89,7 @@ services:
 Behavior:
 - Restarts even if the container exited with code 0.
 - **Restarts after Docker daemon restart or system reboot**.
-- Keeps restarting even if stopped manually (until the daemon is stopped).
+- If you stop it manually, it stays stopped until the Docker daemon restarts or you start the container again yourself.
 
 Use for:
 - Core production services that must always run
@@ -105,7 +105,7 @@ services:
 ```
 
 Behavior:
-- Same as `always` except: if you explicitly `docker stop` the container, it won't restart automatically after a Docker daemon restart or reboot.
+- Same as `always` except: if the container was already in a stopped state before the Docker daemon restarts or the host reboots, it won't be started automatically.
 - This is often the most practical choice for production services.
 
 Use for:
@@ -117,8 +117,6 @@ Use for:
 In Docker Compose files (used by Portainer Stacks):
 
 ```yaml
-version: "3.8"
-
 services:
   # Always running - restart after reboot
   postgres:
@@ -144,23 +142,23 @@ services:
 
 ## Restart Delay and Backoff
 
-Docker uses exponential backoff for restarts: 100ms, 200ms, 400ms, ... up to a maximum of 1 minute. This prevents rapid restart loops from overwhelming the system.
+Docker adds an increasing delay between restart attempts to prevent rapid restart loops from overwhelming the system.
 
 ```bash
 # Check restart count and last state
-docker inspect my-container | jq '.[].RestartCount, .[].State.Status'
+docker inspect --format '{{.RestartCount}} {{.State.Status}}' my-container
 
-# View in Portainer: container details page shows restart count
+# In Portainer, use Inspect or Logs to investigate repeated restarts
 ```
 
 ## Monitoring Restart Loops
 
-If a container is constantly restarting ("restart loop"), Portainer will show its status as **starting** or show a high restart count:
+If a container is constantly restarting ("restart loop"), use Portainer to inspect its status and review the logs:
 
 1. Navigate to the container in Portainer.
-2. Check **Restart count** in the container details.
+2. Click **Inspect** to review the container state, or use `docker inspect` to check `RestartCount`.
 3. Click **Logs** to see why the container is failing.
-4. Fix the underlying issue before the container exhausts its restart attempts.
+4. Fix the underlying issue before repeated restarts continue.
 
 ## Choosing the Right Policy
 
@@ -174,4 +172,4 @@ Batch job with retry:          restart: on-failure:5
 
 ## Conclusion
 
-Restart policies are a simple but critical configuration for container reliability. For production services, `unless-stopped` is usually the right choice - it ensures your service survives crashes and reboots, while giving you the ability to stop it intentionally during maintenance. Use `always` for truly critical services that should never stop regardless of operator intervention.
+Restart policies are a simple but critical configuration for container reliability. For production services, `unless-stopped` is usually the right choice - it ensures your service survives crashes and reboots, while giving you the ability to stop it intentionally during maintenance. Use `always` when you want a service to come back automatically when Docker restarts, even if it had been manually stopped before that restart.
