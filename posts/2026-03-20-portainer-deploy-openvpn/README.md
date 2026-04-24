@@ -37,8 +37,6 @@ docker run -v openvpn-data:/etc/openvpn --rm -it kylemanna/openvpn \
 ## Step 2: Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   openvpn:
     image: kylemanna/openvpn
@@ -54,6 +52,7 @@ services:
 volumes:
   openvpn_data:
     external: true   # Use the pre-initialized volume
+    name: openvpn-data
 ```
 
 ## Step 3: Create Client Certificates
@@ -75,7 +74,7 @@ The `.ovpn` file contains everything the client needs to connect.
 ```bash
 # Revoke a client certificate
 docker run -v openvpn-data:/etc/openvpn --rm -it kylemanna/openvpn \
-  ovpn_revokeclient CLIENTNAME remove
+  ovpn_revokeclient CLIENTNAME
 ```
 
 ## Step 5: Managing Clients via Portainer
@@ -102,7 +101,7 @@ case "$1" in
     ;;
   revoke)
     docker run -v ${VOLUME}:/etc/openvpn --rm -it ${IMAGE} \
-      ovpn_revokeclient "$2" remove
+      ovpn_revokeclient "$2"
     echo "Client '$2' revoked"
     ;;
   list)
