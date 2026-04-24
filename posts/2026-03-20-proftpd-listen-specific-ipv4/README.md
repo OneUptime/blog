@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ProFTPD, FTP, IPv4, Listen, Configuration, Server
 
-Description: Configure ProFTPD to listen on a specific IPv4 address using the ServerAddress and Port directives, bind to a single interface, and verify the configuration.
+Description: Configure ProFTPD to listen on a specific IPv4 address using the DefaultAddress and SocketBindTight directives, bind to a single interface, and verify the configuration.
 
 ## Introduction
 
-ProFTPD defaults to listening on all interfaces. In multi-homed servers, restricting ProFTPD to a specific IPv4 address isolates FTP traffic to a designated network interface, improves security, and prevents FTP from being accessible on management or internal interfaces.
+In standalone mode, ProFTPD listens on all addresses by default unless `SocketBindTight on` is used. In multi-homed servers, restricting ProFTPD to a specific IPv4 address isolates FTP traffic to a designated network interface, improves security, and prevents FTP from being accessible on management or internal interfaces.
 
 ## Basic Configuration
 
@@ -21,9 +21,10 @@ ServerName    "FTP Server"
 ServerType    standalone
 DefaultServer on
 
-# Bind to specific IPv4 address only
-ServerAddress 203.0.113.10
-Port          21
+# Bind the main server to a specific IPv4 address only
+DefaultAddress 203.0.113.10
+SocketBindTight on
+Port             21
 
 # Prevent IPv6 listening
 UseIPv6       off
@@ -48,6 +49,10 @@ TransferLog   /var/log/proftpd/xferlog
 ServerName    "Default Server"
 ServerType    standalone
 UseIPv6       off
+SocketBindTight on
+
+# Disable the main server so only the virtual hosts listen
+Port          0
 
 # First virtual host on IP 1
 <VirtualHost 203.0.113.10>
@@ -127,4 +132,4 @@ sudo tail -f /var/log/proftpd/proftpd.log
 
 ## Conclusion
 
-Use `ServerAddress` in `proftpd.conf` to bind ProFTPD to a specific IPv4 address, and set `UseIPv6 off` to prevent IPv6 binding. For multi-homed servers with different FTP services per IP, use `<VirtualHost>` blocks. Always test configuration syntax with `proftpd --configtest` before restarting the service.
+Use `DefaultAddress` for the main server address in `proftpd.conf`, and set `SocketBindTight on` so ProFTPD listens only on the configured IPv4 address. Set `UseIPv6 off` to prevent IPv6 binding. For multi-homed servers with different FTP services per IP, use `<VirtualHost>` blocks; if only the virtual hosts should listen, disable the main server with `Port 0`. Always test configuration syntax with `proftpd --configtest` before restarting the service.
