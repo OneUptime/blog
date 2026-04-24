@@ -107,7 +107,7 @@ radvd::interfaces:
     managed: false
     other_config: false
     prefixes:
-      '2001:db8:office::/64':
+      '2001:db8:100::/64':
         valid_lifetime: 86400
         preferred_lifetime: 14400
     rdnss:
@@ -119,7 +119,7 @@ radvd::interfaces:
 
   eth2:
     prefixes:
-      '2001:db8:dmz::/64':
+      '2001:db8:200::/64':
         valid_lifetime: 43200
         preferred_lifetime: 7200
 ```
@@ -130,10 +130,7 @@ radvd::interfaces:
 # site.pp or profiles
 
 node 'router01' {
-  # Enable IPv6 forwarding (required for routing)
-  class { 'ipv6':
-    enable_forwarding => true,
-  }
+  # Ensure IPv6 forwarding is enabled separately on the host.
 
   # Configure radvd using Hiera data
   include radvd
@@ -145,7 +142,7 @@ class { 'radvd':
   interfaces => {
     'eth1' => {
       'prefixes' => {
-        '2001:db8:net1::/64' => {
+        '2001:db8:101::/64' => {
           'valid_lifetime'     => 86400,
           'preferred_lifetime' => 14400,
         },
@@ -196,7 +193,7 @@ puppet agent --test
 
 # Verify radvd is running and sending RAs
 sudo systemctl status radvd
-sudo radvdump -d
+sudo radvdump
 ```
 
 Automating radvd with Puppet ensures consistent Router Advertisement configuration across all IPv6 gateways, with Hiera providing a clean interface for per-site prefix and DNS server customization without modifying the module itself.
