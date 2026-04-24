@@ -14,32 +14,33 @@ Manually assigning admin roles to users after OAuth login creates management ove
 
 - Portainer Business Edition
 - OAuth authentication configured
-- IdP configured to include group claims in tokens
-- Portainer team with the admin group name created
+- IdP configured to return the group claim in the ID token or user info/resource response
+- Admin group created in your IdP
 
 ## How Auto-Admin Assignment Works
 
 1. User logs in via OAuth
-2. Portainer reads the `groups` claim (or configured claim name)
-3. If any group matches the configured "admin group", user gets admin role
-4. If no admin group matches, user gets standard user role
+2. Portainer reads the configured claim name (`groups` is a common choice)
+3. If any claim value matches a configured admin-group regex, user gets admin role
+4. If no admin-group regex matches, user gets standard user role
 5. Role is re-evaluated on each login
 
 ## Step 1: Create Admin Group in IdP
 
-### Azure AD
+### Microsoft Entra ID (Azure AD)
 
 ```powershell
-# Create a security group for Portainer admins
+Connect-Entra -Scopes 'Group.ReadWrite.All','GroupMember.ReadWrite.All','User.Read.All'
 
-New-AzureADGroup -DisplayName "portainer-admins" `
+# Create a security group for Portainer admins
+$group = New-EntraGroup -DisplayName "portainer-admins" `
   -MailEnabled $false `
   -SecurityEnabled $true `
-  -MailNickName "portainer-admins"
+  -MailNickname "portainer-admins"
 
-# Add admin users to the group
-Add-AzureADGroupMember -ObjectId (Get-AzureADGroup -SearchString "portainer-admins").ObjectId `
-  -RefObjectId (Get-AzureADUser -UserPrincipalName "alice@corp.com").ObjectId
+# Add an admin user to the group
+$user = Get-EntraUser -UserId "alice@corp.com"
+Add-EntraGroupMember -GroupId $group.Id -MemberId $user.Id
 ```
 
 ### Keycloak
@@ -60,17 +61,24 @@ curl -X POST \
 
 Create a group named `portainer-admins` in Authentik's admin UI under **Directory** → **Groups**.
 
-## Step 2: Ensure Admin Group is in Token Claims
+## Step 2: Ensure Admin Group Claim Is Available to Portainer
 
-Verify the admin group name appears in the OAuth token's groups claim:
+Verify the group value you want Portainer to match is present in the OAuth data Portainer reads. For some providers this is in the ID token, while for others it is returned by the configured user info/resource endpoint.
 
 ```bash
-# Decode a test token to verify group names
-# (Get a token by logging in and capturing it, or use IdP testing tools)
-echo "eyJ..." | cut -d'.' -f2 | base64 -d | python3 -m json.tool | grep -A10 '"groups"'
+# If your IdP puts groups in the ID token, decode a test token and inspect the claim
+python3 - <<'PY'
+import base64, json
 
-# Expected output:
+token = "eyJ..."
+payload = token.split(".")[1]
+payload += "=" * (-len(payload) % 4)
+print(json.dumps(json.loads(base64.urlsafe_b64decode(payload)), indent=2))
+PY
+
+# Example output:
 # "groups": ["portainer-admins", "all-employees", "it-department"]
+# Microsoft Entra ID emits group Object IDs by default unless you changed the claim format.
 ```
 
 ## Step 3: Configure Auto-Admin in Portainer
@@ -78,9 +86,10 @@ echo "eyJ..." | cut -d'.' -f2 | base64 -d | python3 -m json.tool | grep -A10 '"g
 ### Via Web UI (Portainer BE)
 
 1. Go to Settings → Authentication → OAuth
-2. Under **Team settings**, find **Admin team/group claim**
-3. Enter the group name: `portainer-admins`
-4. Save settings
+2. Turn on **Automatic team membership**
+3. Set **Claim name** to the claim that contains your group values (commonly `groups`)
+4. Enable automatic admin assignment and add a regex that matches your admin group value (for example `portainer-admins`; for Microsoft Entra ID, use the group's Object ID)
+5. Save settings
 
 ### Via API
 
@@ -97,7 +106,7 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d '{
     "AuthenticationMethod": 3,
-    "oauthsettings": {
+    "OAuthSettings": {
       "ClientID": "your-client-id",
       "ClientSecret": "your-client-secret",
       "AuthorizationURI": "https://idp.example.com/oauth/authorize",
@@ -105,42 +114,37 @@ curl -X PUT \
       "ResourceURI": "https://idp.example.com/oauth/userinfo",
       "RedirectURI": "https://portainer.example.com/",
       "UserIdentifier": "email",
-      "Scopes": "openid profile email groups",
+      "Scopes": "openid profile email",
       "OAuthAutoCreateUsers": true,
+      "OAuthAutoMapTeamMemberships": true,
       "SSO": true,
+      "DefaultTeamID": 0,
       "TeamMemberships": {
         "OAuthClaimName": "groups",
-        "OAuthClaimMatchers": [
-          {
-            "ClaimValRegex": "portainer-admins",
-            "RoleId": 1,
-            "TeamId": 0
-          }
-        ]
+        "AdminAutoPopulate": true,
+        "AdminGroupClaimsRegexList": [
+          "portainer-admins"
+        ],
+        "OAuthClaimMappings": []
       }
     }
   }'
 ```
 
+For Microsoft Entra ID, replace `portainer-admins` in `AdminGroupClaimsRegexList` with the group's Object ID unless you explicitly changed the emitted claim format.
+
 ## Step 4: Test Admin Assignment
 
 1. Log in with an account that's a member of `portainer-admins`
 2. After login, check if you see the admin menu items (Settings, Users, Teams, etc.)
-3. Verify via API:
+3. If you already have a Portainer bearer token for that same user, verify via API:
 
 ```bash
-# The admin user's token should allow admin API calls
-ALICE_TOKEN=$(curl -s -X POST \
-  https://portainer.example.com/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"username":"alice","password":"alicepassword"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
-
-# Try an admin-only endpoint
-curl -s -H "Authorization: Bearer $ALICE_TOKEN" \
-  https://portainer.example.com/api/users \
+# Inspect the current user's role
+curl -s -H "Authorization: Bearer $PORTAINER_TOKEN" \
+  "https://portainer.example.com/api/users/me?noEndpointAuthorizations=true" \
   | python3 -m json.tool
-# Should return list of users (admin only endpoint)
+# Expect "Role": 1 for an administrator account
 ```
 
 ## Security Considerations
@@ -152,4 +156,4 @@ curl -s -H "Authorization: Bearer $ALICE_TOKEN" \
 
 ## Conclusion
 
-Auto-admin assignment based on OAuth groups centralizes role management in your identity provider. Granting or revoking Portainer admin privileges is now a matter of adding or removing users from the admin group in your IdP - no Portainer UI interaction required. This is particularly valuable in organizations where the IdP team manages group membership independently from the infrastructure team managing Portainer.
+Auto-admin assignment based on OAuth groups centralizes role management in your identity provider. Granting or revoking Portainer admin privileges is now a matter of adding or removing users from the admin group in your IdP and having them log in again - no Portainer UI interaction required. This is particularly valuable in organizations where the IdP team manages group membership independently from the infrastructure team managing Portainer.
