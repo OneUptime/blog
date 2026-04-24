@@ -85,8 +85,8 @@ docker run -d --name my-webserver -p 8080:80 nginx:alpine
 # Teaching script: Show port mapping effect
 
 echo "Container is accessible at:"
-echo "  Inside Docker: http://my-webserver:80"
-echo "  From your laptop: http://localhost:8080"
+echo "  Inside the container: http://localhost:80"
+echo "  Published on the Docker host: http://localhost:8080"
 curl -s http://localhost:8080 | grep -o '<title>.*</title>'
 ```
 
@@ -126,8 +126,8 @@ Teaching point: The same image becomes a different service based on environment 
 **Demonstration of data loss:**
 
 In Portainer:
-1. Create container with `nginx:alpine`, no volumes
-2. Connect to Console, create a file: `echo "my data" > /usr/share/nginx/html/test.txt`
+1. Create container with `nginx:alpine`, no volumes, and Interactive + TTY enabled
+2. Connect to Console using `/bin/ash`, create a file: `echo "my data" > /usr/share/nginx/html/test.txt`
 3. Stop and remove the container
 4. Recreate it - the file is gone
 
@@ -138,7 +138,7 @@ In Portainer: **Volumes > Add Volume**, then **Containers > Add Container**
 ```text
 Image: nginx:alpine
 Name: nginx-with-data
-Volume: mydata -> /usr/share/nginx/html (bind or named)
+Volume: mydata -> /usr/share/nginx/html (named volume)
 ```
 
 CLI equivalent:
@@ -158,17 +158,12 @@ docker run -d \
 In Portainer: **Stacks > Add Stack**
 
 ```yaml
-# Name: todo-app
-version: '3.8'
+# Name: postgres-demo
 services:
   app:
-    image: node:18-alpine
-    working_dir: /app
-    command: sh -c "npm install && node server.js"
+    image: adminer:5-standalone
     ports:
-      - "3000:3000"
-    environment:
-      - DB_HOST=db
+      - "8081:8080"
     depends_on:
       - db
 
