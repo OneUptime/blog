@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Terraform, Docker, Infrastructure, DevOps
 
-Description: Learn how to manage Docker containers, networks, volumes, and images through the Portainer Terraform provider for fully declarative container infrastructure management.
+Description: Learn how to manage Docker images, networks, volumes, and Compose-based application stacks through the Portainer Terraform provider for fully declarative container infrastructure management.
 
 ## Introduction
 
-The Portainer Terraform provider allows you to manage not just Portainer configuration but also the underlying Docker resources through Portainer's API proxy. This means you can define containers, networks, and volumes as Terraform resources and manage their entire lifecycle declaratively.
+The Portainer Terraform provider allows you to manage not just Portainer configuration but also the underlying Docker resources through Portainer's API proxy. This means you can define images, networks, and volumes as Terraform resources, and use Portainer stacks to declaratively deploy the containers that consume them.
 
 ## Prerequisites
 
@@ -16,83 +16,23 @@ The Portainer Terraform provider allows you to manage not just Portainer configu
 - Docker environment registered in Portainer
 - Terraform v1.0+
 
-## Step 1: Managing Docker Containers
+## Step 1: Managing Docker Images
 
 ```hcl
-# containers.tf
+# images.tf
 
-# Simple container deployment
+# Pull a public image
 
-resource "portainer_container" "nginx" {
+resource "portainer_docker_image" "nginx" {
   endpoint_id = portainer_environment.production.id
-  name        = "nginx-reverse-proxy"
   image       = "nginx:1.25"
-
-  restart_policy = "unless-stopped"
-
-  ports = [
-    {
-      host_port      = 80
-      container_port = 80
-      protocol       = "tcp"
-    },
-    {
-      host_port      = 443
-      container_port = 443
-      protocol       = "tcp"
-    }
-  ]
-
-  volumes = [
-    {
-      host_path      = "/opt/nginx/conf.d"
-      container_path = "/etc/nginx/conf.d"
-      read_only      = false
-    }
-  ]
-
-  environment = {
-    NGINX_HOST = "example.com"
-    NGINX_PORT = "80"
-  }
-
-  labels = {
-    "app"         = "nginx"
-    "managed-by"  = "terraform"
-    "environment" = "production"
-  }
 }
 
-# Container with resource limits
-resource "portainer_container" "app" {
-  endpoint_id = portainer_environment.production.id
-  name        = "my-application"
-  image       = "ghcr.io/my-org/myapp:${var.app_image_tag}"
-
-  restart_policy = "unless-stopped"
-
-  resource_limits = {
-    cpu_shares      = 512     # Relative CPU weight
-    memory          = 536870912  # 512MB in bytes
-    memory_swap     = 1073741824 # 1GB in bytes
-  }
-
-  ports = [
-    {
-      host_ip        = "127.0.0.1"  # Bind to localhost only
-      host_port      = 3000
-      container_port = 3000
-      protocol       = "tcp"
-    }
-  ]
-
-  environment = {
-    NODE_ENV     = "production"
-    DATABASE_URL = var.database_url
-    REDIS_URL    = "redis://redis:6379"
-  }
-
-  network_mode = "app-network"
+# Pull a private image with registry authentication
+resource "portainer_docker_image" "private_app" {
+  endpoint_id   = portainer_environment.production.id
+  image         = "ghcr.io/my-org/myapp:${var.app_image_tag}"
+  registry_auth = "${var.registry_username}:${var.registry_password}"
 }
 ```
 
@@ -102,12 +42,12 @@ resource "portainer_container" "app" {
 # networks.tf
 
 # Custom bridge network
-resource "portainer_network" "app_network" {
+resource "portainer_docker_network" "app_network" {
   endpoint_id = portainer_environment.production.id
   name        = "app-network"
   driver      = "bridge"
 
-  ipam_config = {
+  ipam_config {
     subnet  = "172.30.0.0/16"
     gateway = "172.30.0.1"
   }
@@ -123,13 +63,13 @@ resource "portainer_network" "app_network" {
 }
 
 # Overlay network for Swarm
-resource "portainer_network" "swarm_overlay" {
+resource "portainer_docker_network" "swarm_overlay" {
   endpoint_id = portainer_environment.production_swarm.id
   name        = "swarm-overlay"
   driver      = "overlay"
   attachable  = true  # Allow standalone containers to attach
 
-  ipam_config = {
+  ipam_config {
     subnet = "10.20.0.0/16"
   }
 }
@@ -141,7 +81,7 @@ resource "portainer_network" "swarm_overlay" {
 # volumes.tf
 
 # Named volume for persistent data
-resource "portainer_volume" "postgres_data" {
+resource "portainer_docker_volume" "postgres_data" {
   endpoint_id = portainer_environment.production.id
   name        = "postgres_data"
   driver      = "local"
@@ -153,7 +93,7 @@ resource "portainer_volume" "postgres_data" {
   }
 }
 
-resource "portainer_volume" "redis_data" {
+resource "portainer_docker_volume" "redis_data" {
   endpoint_id = portainer_environment.production.id
   name        = "redis_data"
   driver      = "local"
@@ -165,7 +105,7 @@ resource "portainer_volume" "redis_data" {
 }
 
 # NFS volume
-resource "portainer_volume" "shared_uploads" {
+resource "portainer_docker_volume" "shared_uploads" {
   endpoint_id = portainer_environment.production.id
   name        = "shared_uploads"
   driver      = "local"
@@ -184,78 +124,97 @@ resource "portainer_volume" "shared_uploads" {
 # complete_app.tf - Full application with all Docker resources
 
 # Network
-resource "portainer_network" "myapp_net" {
+resource "portainer_docker_network" "myapp_net" {
   endpoint_id = portainer_environment.production.id
   name        = "myapp-network"
   driver      = "bridge"
 }
 
 # Volumes
-resource "portainer_volume" "db_data" {
+resource "portainer_docker_volume" "db_data" {
   endpoint_id = portainer_environment.production.id
   name        = "myapp-db-data"
   driver      = "local"
 }
 
-resource "portainer_volume" "app_uploads" {
+resource "portainer_docker_volume" "app_uploads" {
   endpoint_id = portainer_environment.production.id
   name        = "myapp-uploads"
   driver      = "local"
 }
 
-# Database container
-resource "portainer_container" "database" {
-  endpoint_id = portainer_environment.production.id
-  name        = "myapp-db"
-  image       = "postgres:15-alpine"
-
-  restart_policy = "unless-stopped"
-
-  environment = {
-    POSTGRES_DB       = "myapp"
-    POSTGRES_USER     = "myapp"
-    POSTGRES_PASSWORD = var.db_password
-  }
-
-  volumes = [
-    {
-      volume_name    = portainer_volume.db_data.name
-      container_path = "/var/lib/postgresql/data"
-    }
-  ]
-
-  network_mode = portainer_network.myapp_net.name
+# Pull the application image ahead of deployment
+resource "portainer_docker_image" "myapp" {
+  endpoint_id   = portainer_environment.production.id
+  image         = "ghcr.io/myorg/myapp:${var.image_tag}"
+  registry_auth = "${var.registry_username}:${var.registry_password}"
 }
 
-# Application container
-resource "portainer_container" "app" {
-  endpoint_id = portainer_environment.production.id
-  name        = "myapp-web"
-  image       = "ghcr.io/myorg/myapp:${var.image_tag}"
+# Deploy the containers as a Portainer-managed standalone stack
+resource "portainer_stack" "myapp" {
+  endpoint_id      = portainer_environment.production.id
+  name             = "myapp"
+  deployment_type  = "standalone"
+  method           = "string"
 
-  restart_policy = "unless-stopped"
-
-  ports = [
-    {
-      host_port      = 8080
-      container_port = 3000
-    }
+  depends_on = [
+    portainer_docker_network.myapp_net,
+    portainer_docker_volume.db_data,
+    portainer_docker_volume.app_uploads,
+    portainer_docker_image.myapp
   ]
 
-  environment = {
-    DATABASE_URL = "postgresql://myapp:${var.db_password}@myapp-db:5432/myapp"
+  stack_file_content = <<-EOT
+    services:
+      database:
+        image: postgres:15-alpine
+        restart: unless-stopped
+        environment:
+          POSTGRES_DB: myapp
+          POSTGRES_USER: myapp
+          POSTGRES_PASSWORD: $${DB_PASSWORD}
+        volumes:
+          - myapp-db-data:/var/lib/postgresql/data
+        networks:
+          - myapp-network
+
+      app:
+        image: ghcr.io/myorg/myapp:$${IMAGE_TAG}
+        restart: unless-stopped
+        ports:
+          - "8080:3000"
+        environment:
+          DATABASE_URL: postgresql://myapp:$${DB_PASSWORD}@database:5432/myapp
+        volumes:
+          - myapp-uploads:/app/uploads
+        networks:
+          - myapp-network
+        depends_on:
+          - database
+
+    networks:
+      myapp-network:
+        external: true
+        name: myapp-network
+
+    volumes:
+      myapp-db-data:
+        external: true
+        name: myapp-db-data
+      myapp-uploads:
+        external: true
+        name: myapp-uploads
+  EOT
+
+  env {
+    name  = "DB_PASSWORD"
+    value = var.db_password
   }
 
-  volumes = [
-    {
-      volume_name    = portainer_volume.app_uploads.name
-      container_path = "/app/uploads"
-    }
-  ]
-
-  network_mode = portainer_network.myapp_net.name
-
-  depends_on = [portainer_container.database]
+  env {
+    name  = "IMAGE_TAG"
+    value = var.image_tag
+  }
 }
 
 # Outputs
@@ -267,6 +226,9 @@ output "app_url" {
 ## Step 5: Validate and Apply
 
 ```bash
+# Initialize the working directory
+terraform init
+
 # Validate configuration
 terraform validate
 
@@ -277,7 +239,7 @@ terraform plan
 terraform apply
 
 # View created resources in Portainer
-# Or check via Docker
+# Or check via Docker on the target host
 docker ps
 docker network ls
 docker volume ls
@@ -285,4 +247,4 @@ docker volume ls
 
 ## Conclusion
 
-Managing Docker resources via the Portainer Terraform provider gives you full declarative control over containers, networks, and volumes. Resources are defined in code, changes are reviewed through pull requests, and the Terraform state file tracks all managed resources. This approach is particularly valuable for reproducible deployment environments, disaster recovery scenarios, and ensuring environment parity between staging and production.
+Managing Docker resources via the Portainer Terraform provider gives you full declarative control over images, networks, volumes, and Compose-based application stacks. Resources are defined in code, changes are reviewed through pull requests, and the Terraform state file tracks the managed Portainer and Docker resources. This approach is particularly valuable for reproducible deployment environments, disaster recovery scenarios, and ensuring environment parity between staging and production.
