@@ -21,7 +21,7 @@ Browser → Traefik (443) → Checks certificate store
 
 ## ACME Challenge Methods
 
-Traefik supports two primary challenge types:
+Traefik supports multiple ACME challenge types. The two most common for this setup are:
 
 | Method | Requirements | Use Case |
 |--------|-------------|----------|
@@ -128,7 +128,7 @@ echo | openssl s_client -servername portainer.yourdomain.com \
 ## Troubleshooting Certificate Issues
 
 ```bash
-# Check for ACME rate limiting (20 certs per domain per week)
+# Check for ACME rate limiting (for example, 50 certificates per registered domain every 7 days)
 docker logs traefik 2>&1 | grep -i "rate limit"
 
 # Use Let's Encrypt staging for testing
