@@ -4,36 +4,34 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Windows Server, Docker, Windows Containers, Self-Hosted, Enterprise
 
-Description: Install Docker Engine and Portainer on Windows Server 2022 to manage both Linux containers (via WSL2) and native Windows containers from a single interface.
+Description: Install Docker Engine and Portainer on Windows Server 2022 to manage native Windows containers from a single interface.
 
 ## Introduction
 
-Windows Server 2022 supports Docker in two modes: Linux containers via WSL2 integration, and native Windows containers. Portainer runs on both and provides a unified management interface. This guide covers setting up Docker and Portainer on Windows Server 2022.
+Windows Server 2022 supports native Windows containers with a supported container runtime such as Moby, Mirantis Container Runtime, or containerd. WSL2 is also available on Windows Server 2022 for Linux-container development and testing, but Docker Desktop is not supported on Windows Server. This guide covers setting up Docker and Portainer on Windows Server 2022 using Windows containers.
 
 ## Prerequisites
 
 - Windows Server 2022 (Standard or Datacenter)
 - Administrator access
 - Internet connectivity
-- At least 8GB RAM and 2 vCPUs
+- Sufficient CPU and memory for Windows Server and the containers you plan to run
 
 ## Step 1: Install Required Windows Features
 
 Open PowerShell as Administrator:
 
 ```powershell
-# Install Hyper-V and containers features
-
-Install-WindowsFeature -Name Hyper-V -IncludeManagementTools -Restart
+# Optional: pre-enable the Containers feature
 Install-WindowsFeature -Name Containers
 
-# Or in one command
-Install-WindowsFeature -Name Hyper-V, Containers -IncludeManagementTools -Restart
+# Optional: install Hyper-V only if you plan to use Hyper-V isolation
+Install-WindowsFeature -Name Hyper-V -IncludeManagementTools
 ```
 
 ## Step 2: Install Docker on Windows Server 2022
 
-### Option A: Docker Engine (Community)
+### Option A: Docker Engine / Moby
 
 ```powershell
 # Install Docker Engine
@@ -41,54 +39,30 @@ Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/microsoft/
 .\install-docker-ce.ps1
 ```
 
-### Option B: Docker Desktop (for GUI)
+### Option B: Mirantis Container Runtime
 
-Download Docker Desktop for Windows from docker.com and install it.
+For an enterprise-supported runtime on Windows Server, install Mirantis Container Runtime using Mirantis' official documentation.
 
-### Option C: Manual Installation
+### Option C: Windows Admin Center
+
+You can also install the runtime through the Windows Admin Center Containers extension.
+
+## Step 3: Restart the Server
 
 ```powershell
-# Download and install Docker Engine
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Restart-Computer
+```
 
-# Install NuGet provider
-Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+If you used the Microsoft `install-docker-ce.ps1` script, restart the server after the script completes before continuing.
 
-# Install Docker module
-Install-Module -Name Docker -Force
+## Step 4: Verify Docker is Running
 
-# Install Docker
-Install-Package -Name docker -ProviderName DockerMsftProvider -Force
+```powershell
 Start-Service docker
 Set-Service docker -StartupType Automatic
-```
 
-## Step 3: Enable WSL2 for Linux Containers
-
-```powershell
-# Enable WSL
-dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
-dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
-
-# Restart
-Restart-Computer
-
-# After restart, set WSL2 as default
-wsl --set-default-version 2
-
-# Install Ubuntu (for Linux containers)
-wsl --install -d Ubuntu-22.04
-```
-
-## Step 4: Switch Docker to Linux Containers Mode
-
-```powershell
-# Switch to Linux containers (via WSL2)
-& "C:\Program Files\Docker\Docker\DockerCli.exe" -SwitchDaemon
-
-# Verify
 docker version
-docker info | Select-String "OS/Arch"
+docker info
 ```
 
 ## Step 5: Deploy Portainer
@@ -97,52 +71,51 @@ docker info | Select-String "OS/Arch"
 # Create Portainer data volume
 docker volume create portainer_data
 
-# Deploy Portainer (Linux container mode)
+# Deploy Portainer (Windows containers)
 docker run -d `
   --name portainer `
-  --restart=unless-stopped `
-  -p 9000:9000 `
+  --restart=always `
   -p 9443:9443 `
-  -v //./pipe/docker_engine://./pipe/docker_engine `
-  -v portainer_data:C:/data `
-  portainer/portainer-ce:latest
+  -p 9000:9000 `
+  -v \\.\pipe\docker_engine:\\.\pipe\docker_engine `
+  -v portainer_data:C:\data `
+  portainer/portainer-ce:lts
 ```
 
-Note the Windows-specific Docker socket path: `//./pipe/docker_engine`.
+Note the Windows named pipe mount: `\\.\pipe\docker_engine:\\.\pipe\docker_engine`.
+The `-p 9000:9000` mapping is only needed if you want Portainer's legacy HTTP endpoint in addition to HTTPS on `9443`.
 
 ## Step 6: Configure Windows Firewall
 
 ```powershell
-# Allow Portainer ports through Windows Firewall
-New-NetFirewallRule -DisplayName "Portainer HTTP" `
-  -Direction Inbound `
-  -Protocol TCP `
-  -LocalPort 9000 `
-  -Action Allow
-
+# Allow Portainer HTTPS through Windows Firewall
 New-NetFirewallRule -DisplayName "Portainer HTTPS" `
   -Direction Inbound `
   -Protocol TCP `
   -LocalPort 9443 `
   -Action Allow
+
+# Optional: allow the legacy HTTP endpoint if you published port 9000
+New-NetFirewallRule -DisplayName "Portainer HTTP" `
+  -Direction Inbound `
+  -Protocol TCP `
+  -LocalPort 9000 `
+  -Action Allow
 ```
 
 ## Step 7: Access Portainer
 
-Navigate to `http://localhost:9000` or `http://<server-ip>:9000`.
+Navigate to `https://localhost:9443` or `https://<server-ip>:9443`. If you kept the legacy HTTP mapping, `http://localhost:9000` is also available.
 
 ## Step 8: Managing Windows Containers with Portainer
 
-Switch Docker to Windows container mode:
-
 ```powershell
-# Switch to Windows containers
-& "C:\Program Files\Docker\Docker\DockerCli.exe" -SwitchDaemon
+# Pull a Windows base image
+docker pull mcr.microsoft.com/windows/nanoserver:ltsc2022
 
 # Deploy a Windows container via Portainer
 # In Portainer, create a new container:
-# Image: mcr.microsoft.com/windows/servercore:ltsc2022
-# (Windows container images are larger - typically 3-5GB)
+# Image: mcr.microsoft.com/windows/nanoserver:ltsc2022
 ```
 
 ## Troubleshooting
@@ -150,21 +123,32 @@ Switch Docker to Windows container mode:
 ### Docker Service Won't Start
 
 ```powershell
-# Check Windows Event Log
-Get-EventLog -LogName Application -Source "*Docker*" -Newest 20
+# Check the Docker service
+Get-Service docker
+
+# Check recent Docker-related Application log entries
+Get-WinEvent -LogName Application -MaxEvents 200 |
+  Where-Object { $_.ProviderName -like "*docker*" } |
+  Select-Object -First 20
 
 # Check Docker daemon logs
-Get-Content C:\ProgramData\Docker\config\daemon.json
+if (Test-Path C:\ProgramData\Docker\config\daemon.json) {
+  Get-Content C:\ProgramData\Docker\config\daemon.json
+}
 ```
 
 ### Port Already in Use
 
 ```powershell
-# Find what's using port 9000
-netstat -ano | findstr :9000
-Get-Process -Id <PID>
+# Find what's using Portainer's ports
+$ports = Get-NetTCPConnection -LocalPort 9443,9000 -State Listen
+$ports | Select-Object LocalPort, OwningProcess
+
+if ($ports) {
+  Get-Process -Id $ports.OwningProcess
+}
 ```
 
 ## Conclusion
 
-Portainer on Windows Server 2022 provides unified container management for both Linux and Windows containers. While the setup is more involved than on Linux, it enables enterprise scenarios where Windows Server workloads need to coexist with Linux containers. The WSL2 backend provides excellent Linux container performance even on Windows.
+Portainer on Windows Server 2022 provides a web-based management interface for Windows containers. WSL2 can also be used separately on Windows Server 2022 for Linux-container development and testing, but Docker Desktop and daemon switching are not supported on Windows Server. For a Windows Server deployment, use the documented Windows container installation path and access Portainer over HTTPS on port 9443.
