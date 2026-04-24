@@ -99,7 +99,7 @@ scrape_configs:
   - job_name: "k8s-pods-ipv6"
     kubernetes_sd_configs:
       - role: pod
-        api_server: "https://[2001:db8:k8s::1]:6443"
+        api_server: "https://[2001:db8::1]:6443"
         tls_config:
           ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
         bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
@@ -109,10 +109,10 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
         action: keep
         regex: "true"
-      # Use the pod's IPv6 address if available
-      - source_labels: [__meta_kubernetes_pod_ip]
-        regex: "([0-9a-f:]+)"
-        replacement: "[$1]:${1}"
+      # If you relabel __address__, rebuild it from the pod IPv6 and container port
+      - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_container_port_number]
+        regex: "([0-9A-Fa-f:]+);([0-9]+)"
+        replacement: "[$1]:$2"
         target_label: __address__
 ```
 
@@ -123,7 +123,8 @@ scrape_configs:
 curl -6 http://[::1]:9090/api/v1/targets | jq '.data.activeTargets[].labels'
 
 # Query a metric from an IPv6 target
-curl -6 "http://[::1]:9090/api/v1/query?query=up{instance=~'.*2001.*'}"
+curl -G -6 "http://[::1]:9090/api/v1/query" \
+  --data-urlencode 'query=up{instance=~".*2001.*"}'
 
 # Check for scrape errors
 curl -6 "http://[::1]:9090/api/v1/targets" | jq '.data.activeTargets[] | select(.health != "up")'
@@ -144,4 +145,4 @@ relabel_configs:
     replacement: ipv4
 ```
 
-Prometheus handles IPv6 targets natively - the only requirement is to enclose IPv6 addresses in brackets in the target specification, following standard URI syntax (RFC 2732).
+Prometheus handles IPv6 targets natively - when you specify literal IPv6 addresses or rebuild `__address__` yourself, enclose the address in brackets to follow standard URI syntax (RFC 3986).
