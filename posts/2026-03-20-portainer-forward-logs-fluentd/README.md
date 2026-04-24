@@ -8,21 +8,19 @@ Description: Learn how to configure Docker containers managed by Portainer to fo
 
 ---
 
-The Docker Fluentd log driver sends container logs directly to a Fluentd instance over TCP. Fluentd can then route logs to Elasticsearch, S3, Loki, syslog, or any other output. This makes it a flexible aggregation hub.
+The Docker Fluentd log driver sends container logs directly to a Fluentd instance over TCP. With the appropriate output plugins, Fluentd can then route logs to Elasticsearch, S3, Loki, syslog, or other destinations. This makes it a flexible aggregation hub.
 
 ## Deploying Fluentd
 
 First, deploy a Fluentd collector as a Portainer stack:
 
 ```yaml
-version: "3.8"
-
 services:
   fluentd:
     image: fluent/fluentd:v1.16-debian-1
     volumes:
-      - ./fluent.conf:/fluentd/etc/fluent.conf:ro
-      - fluentd_buffer:/fluentd/log/buffer
+      - /path/on/docker-host/fluent.conf:/fluentd/etc/fluent.conf:ro
+      - fluentd_buffer:/fluentd/log
     ports:
       - "24224:24224"
       - "24224:24224/udp"
@@ -40,7 +38,7 @@ networks:
 
 ## Basic Fluentd Configuration
 
-Create `fluent.conf` to receive Docker logs and write to files:
+Create `fluent.conf` on the Docker host to receive Docker logs and write to files:
 
 ```xml
 <source>
@@ -59,7 +57,8 @@ Create `fluent.conf` to receive Docker logs and write to files:
   <parse>
     @type json
     time_key time
-    time_format %Y-%m-%dT%H:%M:%S.%NZ
+    time_type string
+    time_format %iso8601
   </parse>
 </filter>
 
@@ -81,15 +80,15 @@ Create `fluent.conf` to receive Docker logs and write to files:
 
 ## Routing Logs to Multiple Destinations
 
-Route different services to different outputs:
+If your Fluentd image includes the relevant output plugins, route different services to different outputs:
 
 ```xml
 <match docker.my-app.**>
   @type elasticsearch
   host elasticsearch
   port 9200
-  index_name docker-my-app
   logstash_format true
+  logstash_prefix docker-my-app
   <buffer>
     flush_interval 5s
   </buffer>
@@ -115,8 +114,6 @@ Route different services to different outputs:
 Set the Fluentd log driver in application stacks:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     image: my-api:latest
@@ -125,7 +122,7 @@ services:
       options:
         fluentd-address: "localhost:24224"   # Fluentd on the same host
         tag: "docker.my-app.api"
-        fluentd-async: "true"               # Non-blocking; won't stall container if Fluentd is down
+        fluentd-async: "true"               # Lets the container start even if Fluentd is initially unavailable
         fluentd-retry-wait: "1s"
         fluentd-max-retries: "30"
 
@@ -175,15 +172,15 @@ Fluentd `<match>` directives support wildcards:
 
 ## Structured Log Forwarding
 
-Fluentd preserves JSON-structured logs. Use structured logging in your application for richer filtering:
+With the parser filter above, Fluentd can preserve JSON-structured logs. Use structured logging in your application for richer filtering:
 
 ```python
-import json, logging, sys
+import datetime, json, logging, sys
 
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         return json.dumps({
-            "time": self.formatTime(record),
+            "time": datetime.datetime.fromtimestamp(record.created, tz=datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
             "level": record.levelname,
             "msg": record.getMessage(),
             "service": "api",
