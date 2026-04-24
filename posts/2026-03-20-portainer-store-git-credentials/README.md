@@ -8,28 +8,28 @@ Description: Learn how to save and manage Git credentials in Portainer user sett
 
 ---
 
-Portainer can deploy stacks directly from Git repositories. For private repositories, you need to provide credentials. Storing them in user settings lets you reuse them without re-entering on every deployment.
+Portainer can deploy stacks directly from Git repositories. For private repositories, you need to provide credentials. In Portainer Business Edition, storing them in user settings lets you reuse them without re-entering on every deployment.
 
 ## Saving Git Credentials
 
 1. Log in to Portainer.
 2. Click your username → **My Account**.
 3. Scroll to **Git credentials**.
-4. Click **Add credentials**.
-5. Enter a **Name** (e.g., "GitHub Personal"), **Username**, and **Personal Access Token** (recommended over password).
-6. Click **Save credentials**.
+4. Click **Add git credential**.
+5. Enter a **Name** (e.g., "GitHub Personal"), choose the appropriate **Authorization type**, then enter your **Username** and **Personal Access Token** (recommended over password).
+6. Click **Save git credential**.
 
 ## Using a Personal Access Token (Recommended)
 
-GitHub, GitLab, and Bitbucket support PATs, which can be scoped to only repository read access:
+Git providers support tokens that can be limited to repository read access:
 
 **GitHub PAT:**
-1. Go to `github.com` → **Settings → Developer settings → Personal access tokens → Tokens (classic)**.
-2. Generate a new token with `repo` scope (or `read:repo` for read-only).
+1. Go to `github.com` → **Settings → Developer settings → Personal access tokens**.
+2. Generate either a fine-grained token with repository **Contents** permission set to **Read-only**, or a classic token with the `repo` scope.
 3. Copy the token and use it as the password in Portainer.
 
 **GitLab PAT:**
-1. Go to `gitlab.com` → **User Settings → Access Tokens**.
+1. Go to `gitlab.com` → your avatar → **Edit profile → Access → Personal access tokens**.
 2. Create a token with `read_repository` scope.
 
 ## Deploying a Stack from a Private Repository
@@ -37,25 +37,19 @@ GitHub, GitLab, and Bitbucket support PATs, which can be scoped to only reposito
 After saving credentials:
 
 1. In Portainer go to **Stacks > Add Stack**.
-2. Choose **Repository** as the build method.
+2. Choose **Git repository** as the deployment method.
 3. Enter the repository URL (e.g., `https://github.com/myorg/private-repo`).
-4. Under **Authentication**, select **Credentials** and choose your saved credentials.
-5. Set the branch and compose file path.
+4. Turn on **Authentication**, then choose your saved entry from **Git Credentials**.
+5. Set the repository reference and compose path.
 6. Click **Deploy the stack**.
 
 ## SSH Key Authentication
 
-For Git over SSH, add an SSH private key instead of a token:
-
-1. In **My Account > Git credentials**, click **Add credentials**.
-2. Select **SSH** as the type.
-3. Paste your private key.
-
-On the repository side, add the corresponding public key as a deploy key.
+For stack deployments from Git, Portainer documents saved credentials in **My Account > Git credentials** for HTTPS authentication with a username and token or password. Portainer's **SSH** credential type is documented for Kubernetes provisioning, not for Git repository authentication in stack deployments.
 
 ## Credential Security
 
-Portainer stores Git credentials encrypted in its BoltDB database. The encryption key is derived from the installation-specific `SECRET_KEY`. To protect credentials:
+Portainer stores its configuration, including Git credentials, in its BoltDB database under the `portainer_data` volume. To protect credentials at rest, enable Portainer database encryption with a secret when starting the Portainer Server. To protect credentials:
 
 - Back up the Portainer data volume securely
 - Use tokens with minimal required scopes
@@ -65,7 +59,7 @@ Portainer stores Git credentials encrypted in its BoltDB database. The encryptio
 
 After setting up credentials, enable automatic stack updates:
 
-1. In the stack settings, enable **Auto-update**.
-2. Set the polling interval (e.g., every 5 minutes).
+1. In the stack's Git settings, enable **GitOps updates**.
+2. Choose **Polling** or **Webhook**. If you use polling, set the fetch interval (e.g., every 5 minutes).
 
-Portainer will pull the repository and redeploy if the compose file changes.
+Portainer checks the latest commit hash and, when it changes, pulls the repository and redeploys using the configured Compose path.
