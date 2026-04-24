@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, Resource, Lifecycle, Protect_destroy, Infrastructure as Code, DevOps
+Tags: OpenTofu, Resource, Lifecycle, Prevent_destroy, Infrastructure as Code, DevOps
 
 Description: A guide to using prevent_destroy lifecycle in OpenTofu to protect critical resources from accidental deletion.
 
 ## Introduction
 
-The `prevent_destroy` lifecycle setting creates a safety guard against accidentally deleting critical resources. When set to `true`, any plan that would destroy the resource will fail with an error, forcing you to explicitly remove the protection before deletion is allowed.
+The `prevent_destroy` lifecycle setting creates a safety guard against accidentally deleting critical resources. When set to `true`, any plan that would destroy the resource will fail with an error, forcing you to remove the protection from the configuration before the destroy can proceed.
 
 ## Basic prevent_destroy
 
@@ -18,6 +18,7 @@ resource "aws_rds_cluster" "production" {
   engine             = "aurora-postgresql"
   master_username    = "admin"
   master_password    = var.db_password
+  skip_final_snapshot = true
 
   lifecycle {
     prevent_destroy = true  # Cannot be destroyed while this is set
@@ -43,7 +44,7 @@ tofu destroy
 # Resource aws_rds_cluster.production has lifecycle.prevent_destroy set,
 # but the plan calls for this resource to be destroyed. To avoid this error
 # and continue with the destruction, either remove the resource from the
-# Terraform configuration or remove the lifecycle.prevent_destroy block
+# OpenTofu configuration or remove the lifecycle.prevent_destroy block
 # from the resource configuration.
 ```
 
@@ -81,6 +82,7 @@ resource "aws_kms_key" "encryption" {
 # EKS cluster
 resource "aws_eks_cluster" "production" {
   name = "production-cluster"
+  # ...
 
   lifecycle {
     prevent_destroy = true
@@ -91,18 +93,17 @@ resource "aws_eks_cluster" "production" {
 ## Environment-Conditional Protection
 
 ```hcl
-variable "environment" {
-  type = string
-}
-
+# lifecycle settings accept only literal values.
+# To enable prevent_destroy only in production, use a production-specific
+# configuration or module variant with prevent_destroy set to true.
 resource "aws_db_instance" "main" {
-  identifier     = "${var.environment}-db"
+  identifier     = "prod-db"
   engine         = "postgres"
   instance_class = "db.t3.micro"
+  # ...
 
   lifecycle {
-    # Only prevent_destroy in production
-    prevent_destroy = var.environment == "prod"
+    prevent_destroy = true
   }
 }
 ```
@@ -118,25 +119,25 @@ resource "aws_db_instance" "main" {
 #   prevent_destroy = false  # or remove the lifecycle block
 # }
 
-# Step 2: Apply the configuration change
-tofu apply  # This updates the state, not the resource
-
-# Step 3: Now destroy is allowed
+# Step 2: Run destroy with the updated configuration
 tofu destroy -target=aws_rds_cluster.production
 
-# Step 4: Re-add protect_destroy after deletion (for remaining resources)
+# Step 3: Re-add prevent_destroy after deletion (for remaining resources)
 ```
 
 ## Combining with Other Lifecycle Settings
+
+You can combine `prevent_destroy` with other lifecycle settings, but any plan that still needs to destroy the existing object will be blocked while `prevent_destroy` is enabled.
 
 ```hcl
 resource "aws_rds_cluster" "production" {
   cluster_identifier = "production"
   engine             = "aurora-postgresql"
+  skip_final_snapshot = true
 
   lifecycle {
     prevent_destroy       = true   # Cannot be deleted
-    create_before_destroy = true   # Zero-downtime if replaced
+    create_before_destroy = true   # Does not override prevent_destroy
     ignore_changes        = [master_password]  # Ignore manual password changes
   }
 }
@@ -145,32 +146,25 @@ resource "aws_rds_cluster" "production" {
 ## prevent_destroy in Modules
 
 ```hcl
-# The lifecycle block must be in the module definition
-# You cannot set it from outside the module
+# The lifecycle block must be inside the resource definition in the module.
+# You cannot set it from a parent module, and lifecycle settings must use
+# literal values.
 
 # In modules/rds/main.tf:
 resource "aws_db_instance" "this" {
   # ...
 
   lifecycle {
-    prevent_destroy = var.prevent_destroy
+    prevent_destroy = true
   }
 }
 
-# In modules/rds/variables.tf:
-variable "prevent_destroy" {
-  type    = bool
-  default = false
-}
-
-# In root module, pass it to the child:
+# In root module:
 module "db" {
   source = "./modules/rds"
-
-  prevent_destroy = var.environment == "prod"
 }
 ```
 
 ## Conclusion
 
-`prevent_destroy` is a critical safety feature for production infrastructure. Apply it to databases, encryption keys, DNS zones, and any resource where accidental deletion would cause severe data loss or service disruption. Use conditional expressions based on environment to automatically enable it in production without affecting development flexibility. Remember that removing the guard requires a code change and apply, creating a natural "break glass" procedure for intentional deletions.
+`prevent_destroy` is a critical safety feature for production infrastructure. Apply it to databases, encryption keys, DNS zones, and any resource where accidental deletion would cause severe data loss or service disruption. Use production-specific configurations or module variants to enable it in production without affecting development flexibility. Remember that removing the guard requires a code change, creating a natural "break glass" procedure for intentional deletions.
