@@ -8,12 +8,12 @@ Description: Learn how to use the on_failure setting in OpenTofu provisioners to
 
 ## What is on_failure in Provisioners?
 
-When an OpenTofu provisioner (such as `remote-exec` or `local-exec`) encounters an error, the default behavior is to mark the resource as tainted and fail the apply. The `on_failure` setting gives you control over this behavior.
+When a creation-time OpenTofu provisioner (such as `remote-exec` or `local-exec`) encounters an error, the default behavior is to mark the resource as tainted and fail the apply. For destroy-time provisioners, a failure stops the apply and OpenTofu will try the provisioner again on the next `tofu apply`. The `on_failure` setting gives you control over this behavior.
 
 OpenTofu supports two values:
 
-- **`fail`** (default) - The provisioner failure causes the resource to be tainted and the apply to fail
-- **`continue`** - The failure is logged as a warning but execution continues
+- **`fail`** (default) - The provisioner failure causes the apply to fail; creation-time provisioners also taint the resource
+- **`continue`** - OpenTofu ignores the error and continues with creation or destruction
 
 ## Default Behavior: fail
 
@@ -50,6 +50,7 @@ resource "aws_instance" "app" {
 
   provisioner "remote-exec" {
     inline = [
+      "set -o errexit",
       "sudo apt-get update",
       "sudo apt-get install -y htop",   # Nice to have, not critical
     ]
@@ -92,9 +93,17 @@ resource "aws_instance" "app" {
     when = destroy
 
     inline = [
+      "set -o errexit",
       "sudo systemctl stop myapp",
       "/usr/local/bin/drain-connections.sh",
     ]
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file(var.private_key_path)
+      host        = self.public_ip
+    }
 
     on_failure = continue   # Don't block destroy if deregister fails
   }
@@ -114,13 +123,11 @@ resource "aws_route53_record" "app" {
   records = [aws_instance.app.public_ip]
 }
 
-resource "null_resource" "notify_slack" {
-  triggers = {
-    instance_id = aws_instance.app.id
-  }
+resource "terraform_data" "notify_slack" {
+  triggers_replace = [aws_instance.app.id]
 
   provisioner "local-exec" {
-    command = "curl -s -X POST ${var.slack_webhook} -d '{\"text\": \"New instance deployed\"}'"
+    command = "curl -fsS -X POST -H 'Content-type: application/json' --data '{\"text\":\"New instance deployed\"}' '${var.slack_webhook}'"
 
     on_failure = continue   # Don't fail deploy if Slack is unreachable
   }
@@ -143,7 +150,12 @@ resource "null_resource" "notify_slack" {
 ```bash
 # Show tainted resources
 
-tofu state list | xargs -I{} tofu state show {} | grep -i tainted
+tofu show -json | jq -r '
+  def tainted_resources(m):
+    (m.resources[]? | select(.tainted) | .address),
+    (m.child_modules[]? | tainted_resources(.));
+  tainted_resources(.values.root_module)
+'
 
 # Remove taint manually if you've fixed the issue
 tofu untaint aws_instance.web
@@ -153,7 +165,7 @@ tofu untaint aws_instance.web
 
 1. **Default to `fail`** - silent failures are harder to debug than explicit errors
 2. **Use `continue` for notify/register steps** that should not block resource creation
-3. **Always use `continue` for destroy provisioners** to prevent resource orphaning
+3. **Use `continue` for destroy provisioners when cleanup failure should not block deletion**
 4. **Log extensively in provisioner scripts** so failures are diagnosable
 5. **Consider alternatives to provisioners** - user data, Packer images, or configuration management tools are more reliable
 
