@@ -13,8 +13,6 @@ qBittorrent is a feature-rich, open-source BitTorrent client with a web UI. When
 ## Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest
@@ -24,8 +22,8 @@ services:
       - PGID=1000
       - TZ=America/New_York
       - WEBUI_PORT=8080
-      # qBittorrent version for specific releases
-      - DOCKER_MODS=linuxserver/mods:qbittorrent-vuetorrent   # Optional: Modern UI
+      - TORRENTING_PORT=6881
+      - DOCKER_MODS=ghcr.io/vuetorrent/vuetorrent-lsio-mod:latest   # Optional: VueTorrent alternate WebUI
     volumes:
       - qbittorrent_config:/config
       # Download directory
@@ -42,68 +40,72 @@ volumes:
 
 ## Initial Access
 
-Navigate to `http://<host>:8080`. Default credentials:
+Navigate to `http://<host>:8080`. Initial credentials:
 - Username: `admin`
-- Password: `adminadmin` (change this immediately!)
+- Password: temporary password shown in the container logs on first startup (change this immediately!)
 
 ## Configuring for *arr Integration
 
 In qBittorrent Web UI:
 
 1. **Options > Web UI**: Change password
-2. **Options > Downloads**: Set default save path to `/downloads`
-3. **Options > BitTorrent**: Configure port (6881 recommended)
+2. If using VueTorrent: enable **Use alternative WebUI** and set **Files location** to `/vuetorrent`
+3. **Options > Downloads**: Set default save path to `/downloads`
+4. **Options > Connection**: Configure listening port (6881 recommended)
 
 For Sonarr/Radarr integration, the download category is important:
 
-- In Sonarr: Create category `sonarr` in qBittorrent settings
-- In Radarr: Create category `radarr`
+- In Sonarr: Set the qBittorrent download client category to `sonarr`
+- In Radarr: Set the qBittorrent download client category to `radarr`
 
-qBittorrent separates downloads into category subdirectories:
-- `/downloads/sonarr/` - TV show downloads
-- `/downloads/radarr/` - Movie downloads
+If you configure category save paths in qBittorrent, you can separate downloads into folders:
+- `sonarr` → `/downloads/tvshows/`
+- `radarr` → `/downloads/movies/`
 
 ## VPN Kill Switch Configuration
 
-For privacy, use a VPN-enabled image:
+For privacy, use a VPN-enabled image. This example uses PIA with WireGuard:
 
 ```yaml
-version: "3.8"
-
 services:
   qbittorrent:
     image: binhex/arch-qbittorrentvpn:latest
     container_name: qbittorrent-vpn
-    cap_add:
-      - NET_ADMIN
+    privileged: true
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
     environment:
       - VPN_ENABLED=yes
       - VPN_USER=your_vpn_username
       - VPN_PASS=your_vpn_password
       - VPN_PROV=pia           # Private Internet Access
-      - VPN_CLIENT=wireguard   # or openvpn
-      - VPN_REGION=Netherlands
+      - VPN_CLIENT=wireguard
+      - LAN_NETWORK=192.168.1.0/24   # Replace with your LAN subnet
       - WEBUI_PORT=8080
       - PUID=1000
       - PGID=1000
-      - TZ=America/New_York
     volumes:
       - qbittorrent_config:/config
-      - /mnt/media/downloads:/downloads
+      - /mnt/media/downloads:/data
+      - /etc/localtime:/etc/localtime:ro
     ports:
       - "8080:8080"
+      - "58946:58946"
+      - "58946:58946/udp"
     restart: unless-stopped
 ```
 
 ## Download Categories and Paths
 
-Configure in qBittorrent **Options > Downloads**:
+Configure in qBittorrent:
+
+If you use the VPN image above, replace `/downloads` with `/data` because that image stores download data there.
 
 ```text
 Default save path: /downloads
 Keep incomplete torrents in: /downloads/incomplete
 
-Category mappings:
+Category save paths:
 sonarr  → /downloads/tvshows/
 radarr  → /downloads/movies/
 ```
@@ -112,9 +114,11 @@ radarr  → /downloads/movies/
 
 After downloads complete and Sonarr/Radarr import them, configure automatic removal:
 
-**Options > BitTorrent:**
-- Seeding ratio limit: 1.0
-- Delete torrent and data when seeding complete: Yes (or seed and then remove)
+**Options > BitTorrent > Share Ratio Limiting:**
+- Set a seeding ratio limit such as `1.0`
+- Configure qBittorrent to pause the torrent when that limit is reached
+
+In Sonarr/Radarr, enable the download client's `Remove` option so completed torrents are deleted after import once the seed goal is reached.
 
 ## Conclusion
 
