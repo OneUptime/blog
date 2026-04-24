@@ -93,8 +93,8 @@ docker run -d \
 
 ```bash
 # View structured JSON logs in a readable format
-docker logs portainer 2>&1 | jq -r '"\(.time) [\(.level)] \(.msg)"'
+docker logs portainer 2>&1 | jq -r '"\(.time | todateiso8601) [\(.level)] \(.message)"'
 
 # Filter for errors only
-docker logs portainer 2>&1 | jq -r 'select(.level == "error") | .msg'
+docker logs portainer 2>&1 | jq -r 'select(.level == "error") | .message'
 ```
