@@ -12,7 +12,7 @@ Pod events and logs are the primary sources of information when troubleshooting 
 
 ## Accessing Logs via Portainer
 
-Navigate to: **Kubernetes > Applications > Your App > Pod > Logs**
+Navigate to: **Kubernetes > Applications > Your App**, then open **Logs** from the **Application containers** section.
 
 Features available in Portainer's log viewer:
 - Select which container in a multi-container pod
@@ -43,47 +43,38 @@ curl -s \
 
 Navigate to: **Kubernetes > Applications > Your App > Events**
 
-Or for cluster-wide events: **Kubernetes > Cluster > Events**
+For node-related infrastructure events: **Kubernetes > Cluster > Details > Your Node > Events**
 
 ```bash
-# Get events via kubectl for more detail
-kubectl get events -n production --sort-by='.lastTimestamp'
+# Get recent events in the namespace
+kubectl events -n production
 
 # Watch events in real-time
-kubectl get events -n production -w
+kubectl events -n production --watch
 
 # Get events for a specific pod
-kubectl describe pod myapp-pod-xyz -n production | grep -A50 "Events:"
+kubectl events -n production --for pod/myapp-pod-xyz
 
 # Events older than the default retention
-# Kubernetes by default keeps events for 1 hour
+# kube-apiserver defaults --event-ttl to 1h0m0s unless changed by the cluster operator
 # Use an event aggregator for longer retention
 ```
 
 ## Log Aggregation with Loki
 
-```yaml
-# loki-stack.yml - deploy via Portainer for log aggregation
-version: '3.8'
-services:
-  loki:
-    image: grafana/loki:latest
-    ports:
-      - "3100:3100"
-    command: -config.file=/etc/loki/local-config.yaml
-    volumes:
-      - loki-data:/loki
+For Docker-based Portainer environments, use Grafana's current Loki + Alloy example rather than Promtail for new deployments.
 
-  promtail:
-    image: grafana/promtail:latest
-    volumes:
-      - /var/log:/var/log:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /etc/promtail:/etc/promtail
-    command: -config.file=/etc/promtail/config.yml
+```bash
+# Download Grafana's official Docker Compose example and config files
+mkdir loki
+cd loki
 
-volumes:
-  loki-data:
+wget https://raw.githubusercontent.com/grafana/loki/v3.7.0/examples/getting-started/docker-compose.yaml -O docker-compose.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v3.7.0/examples/getting-started/alloy-local-config.yaml -O alloy-local-config.yaml
+wget https://raw.githubusercontent.com/grafana/loki/v3.7.0/examples/getting-started/loki-config.yaml -O loki-config.yaml
+
+# Start the stack locally, or upload the same files as a stack in Portainer
+docker compose up -d
 ```
 
 ## Structured Logging Best Practices
@@ -104,6 +95,7 @@ class JSONFormatter(logging.Formatter):
         })
 
 logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 handler = logging.StreamHandler()
 handler.setFormatter(JSONFormatter())
 logger.addHandler(handler)
