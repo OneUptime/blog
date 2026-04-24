@@ -23,13 +23,12 @@ Before running a container, Docker needs the image on the host. Portainer lets y
 1. Log in to Portainer.
 2. Select your Docker environment.
 3. Click **Images** in the left sidebar.
-4. Click **Pull image**.
 
 ### Step 2: Enter the Image Details
 
-In the pull dialog:
+On the Images page:
 
-- **Image**: Enter the full image reference.
+- **Image**: Enter the image name and tag. In **Advanced mode**, you can specify a full registry reference.
 
 ```bash
 # Public Docker Hub images:
@@ -40,9 +39,12 @@ postgres:15-alpine
 node:20-slim
 
 # Specific image digests (for reproducibility):
-nginx@sha256:abc123...
+ubuntu@sha256:2e863c44b718727c860746568e1d54afd13b2fa71b160f5cd9058fc436217b30
 
-# Private registry images:
+# Image name when using a configured private registry:
+myapp:2.1.0
+
+# Full registry references (for advanced mode):
 myregistry.example.com:5000/myapp:2.1.0
 ghcr.io/myorg/myservice:latest
 ```
@@ -91,8 +93,8 @@ Password:          mypassword
 
 Once the registry is configured:
 
-1. Navigate to **Images > Pull image**.
-2. Enter the image name: `registry.example.com:5000/myapp:2.0`.
+1. Navigate to **Images**.
+2. Enter the image name: `myapp:2.0`.
 3. Under **Registry**, select **My Private Registry**.
 4. Click **Pull the image**.
 
@@ -103,10 +105,8 @@ Or during container creation, select the registry in the **Registry** dropdown.
 ### Via the Images Section
 
 1. Navigate to **Images**.
-2. Find your pulled image in the list.
-3. Click the image ID or tag.
-4. Click **Deploy a new container** (or the run button).
-5. Configure and deploy.
+2. Find your pulled image in the list to confirm the pull succeeded.
+3. Then go to **Containers > Add container** to deploy a container from that image.
 
 ### Via the Containers Section
 
@@ -150,21 +150,20 @@ In Portainer:
 To pull the latest version of an image:
 
 1. Navigate to **Images**.
-2. Find the image you want to update.
-3. If Portainer shows an **update available** indicator (a cloud icon), click it.
-4. Portainer pulls the new image.
-5. Re-create any containers using the old image to use the new version.
+2. Pull the same image name and tag again.
+3. Portainer downloads the newer image if that tag now points to a newer digest.
+4. Re-create any containers using the old image to use the new version.
 
 ## Troubleshooting
 
-- **Pull failed: unauthorized**: Add the registry credentials in **Settings > Registries**.
+- **Pull failed: unauthorized**: Add or update the registry credentials in **Registries**.
 - **Pull failed: not found**: Verify the image name and tag are correct.
 - **Pull very slow**: Check network connectivity and consider using a registry mirror.
 
 ```bash
-# Configure Docker Hub mirror (add to /etc/docker/daemon.json)
+# Configure a registry mirror (add to /etc/docker/daemon.json)
 {
-  "registry-mirrors": ["https://mirror.gcr.io"]
+  "registry-mirrors": ["https://<your-registry-mirror-host>"]
 }
 ```
 
