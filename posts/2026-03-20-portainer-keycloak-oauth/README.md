@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Keycloak, OAuth, OpenID Connect, Enterprise SSO, Self-Hosted
 
-Description: Configure Keycloak as an OIDC provider for Portainer with client creation, role mapping, and group-based access control.
+Description: Configure Keycloak as an OIDC provider for Portainer with client creation, claim mapping, and group-based access control.
 
 ## Introduction
 
@@ -13,7 +13,7 @@ Keycloak is Red Hat's enterprise-grade identity and access management solution. 
 ## Prerequisites
 
 - Keycloak server running (version 21+)
-- Portainer running on HTTPS
+- Portainer running on HTTPS (use Portainer Business Edition if you want automatic team membership from OAuth claims)
 - Keycloak realm created for your organization
 
 ## Step 1: Create a Keycloak Client
@@ -87,7 +87,7 @@ Logout URL:        https://keycloak.example.com/realms/myrealm/protocol/openid-c
 
 ## Step 3: Configure Groups Claim (Optional)
 
-To include group membership in the token:
+To include group membership in the claims returned to Portainer:
 
 1. Go to **Client Scopes** → create a new scope "groups" or use existing
 2. Add a **Group Membership** mapper:
@@ -123,7 +123,7 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d "{
     \"AuthenticationMethod\": 3,
-    \"oauthsettings\": {
+    \"OAuthSettings\": {
       \"ClientID\": \"${CLIENT_ID}\",
       \"ClientSecret\": \"${CLIENT_SECRET}\",
       \"AuthorizationURI\": \"${KEYCLOAK_URL}/realms/${REALM}/protocol/openid-connect/auth\",
@@ -133,8 +133,12 @@ curl -X PUT \
       \"UserIdentifier\": \"preferred_username\",
       \"Scopes\": \"openid profile email groups\",
       \"OAuthAutoCreateUsers\": true,
+      \"OAuthAutoMapTeamMemberships\": true,
       \"SSO\": true,
-      \"LogoutURI\": \"${KEYCLOAK_URL}/realms/${REALM}/protocol/openid-connect/logout?redirect_uri=https://portainer.example.com/\"
+      \"LogoutURI\": \"${KEYCLOAK_URL}/realms/${REALM}/protocol/openid-connect/logout?client_id=${CLIENT_ID}&post_logout_redirect_uri=https://portainer.example.com/\",
+      \"TeamMemberships\": {
+        \"OAuthClaimName\": \"groups\"
+      }
     }
   }"
 ```
@@ -156,16 +160,16 @@ curl -X POST \
   -d '{"name": "portainer-devops"}'
 ```
 
-Create matching teams in Portainer named `portainer-devops` for automatic team assignment.
+With `OAuthAutoMapTeamMemberships` enabled and `TeamMemberships.OAuthClaimName` set to `groups`, Portainer Business Edition will add users to matching teams such as `portainer-devops`.
 
 ## Restricting Access to Specific Keycloak Users
 
-In Keycloak, add an authorization policy to the Portainer client:
+Portainer does not use Keycloak Authorization Services to decide who can sign in. To restrict access:
 
-1. Enable Authorization in the client settings
-2. Under **Authorization** → **Policies** → Create a **Group policy**
-3. Under **Authorization** → **Permissions** → Create a permission using the group policy
+1. Set `OAuthAutoCreateUsers` to `false` in the Portainer OAuth settings
+2. In Portainer, create only the users you want to allow, using usernames that match the `UserIdentifier` claim (for this guide, `preferred_username`)
+3. Keep Keycloak client Authorization disabled for this client; Keycloak Authorization Services are for protecting a resource server, not for gating Portainer OIDC login
 
 ## Conclusion
 
-Keycloak's rich feature set makes it ideal for enterprise Portainer deployments. The OIDC configuration is standard, but Keycloak's group membership mapper and authorization policies enable precise access control. Combine Keycloak groups with Portainer team names for automatic team assignment, and leverage Keycloak's user federation for AD/LDAP backend integration.
+Keycloak's rich feature set makes it ideal for enterprise Portainer deployments. The OIDC configuration is standard, and Keycloak's group membership mapper combined with Portainer's OAuth team mapping enables precise access control. Combine Keycloak groups with Portainer team names for automatic team assignment, and leverage Keycloak's user federation for AD/LDAP backend integration.
