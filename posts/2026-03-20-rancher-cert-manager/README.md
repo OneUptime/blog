@@ -29,7 +29,7 @@ helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true \
+  --set crds.enabled=true \
   --set prometheus.enabled=true \
   --set prometheus.servicemonitor.enabled=true \
   --set prometheus.servicemonitor.labels.release=rancher-monitoring \
@@ -50,7 +50,7 @@ metadata:
   name: letsencrypt-staging
 spec:
   acme:
-    # Use staging server for testing (no rate limits)
+    # Use staging server for testing (higher rate limits)
     server: https://acme-staging-v02.api.letsencrypt.org/directory
     email: admin@example.com
     privateKeySecretRef:
@@ -58,7 +58,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ---
 # letsencrypt-prod.yaml - Let's Encrypt production
 apiVersion: cert-manager.io/v1
@@ -89,7 +89,7 @@ spec:
       # Use HTTP challenge for specific domains
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
         selector:
           dnsNames:
             - specific.example.com
@@ -143,17 +143,11 @@ spec:
   secretName: app-tls-cert
   duration: 2160h    # 90 days
   renewBefore: 360h  # Renew 15 days before expiry
-  subject:
-    organizations:
-      - Example Inc
   isCA: false
   privateKey:
     algorithm: RSA
     encoding: PKCS1
     size: 2048
-  usages:
-    - server auth
-    - client auth
   dnsNames:
     - app.example.com
     - www.app.example.com
@@ -247,7 +241,6 @@ spec:
     size: 256
   usages:
     - digital signature
-    - key encipherment
     - server auth
     - client auth
   dnsNames:
@@ -270,14 +263,12 @@ kubectl get certificaterequests --all-namespaces
 kubectl get certificates --all-namespaces -o json | \
   jq -r '.items[] | "\(.metadata.namespace)/\(.metadata.name): expires \(.status.notAfter)"'
 
-# Check for failed renewals
-kubectl get certificaterequests --all-namespaces | grep -v Approved
+# List CertificateRequests that are not Ready
+kubectl get certificaterequests --all-namespaces -o json | \
+  jq -r '.items[] | select(any(.status.conditions[]?; .type == "Ready" and .status != "True")) | "\(.metadata.namespace)/\(.metadata.name)"'
 
-# Manually trigger renewal
-kubectl annotate certificate app-certificate \
-  -n production \
-  cert-manager.io/issue-temporary-certificate=$(date +%s) \
-  --overwrite
+# Manually trigger renewal (requires cmctl)
+cmctl renew --namespace=production app-certificate
 ```
 
 ```yaml
