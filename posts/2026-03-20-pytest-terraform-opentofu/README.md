@@ -23,48 +23,40 @@ uv add pytest-terraform boto3 pytest
 
 ```python
 # conftest.py
-import pytest
-
-# Configure pytest-terraform to use tofu instead of terraform
-def pytest_configure(config):
-    config.addinivalue_line(
-        "markers", "terraform: mark test as requiring terraform/tofu"
-    )
-
-# pytest.ini or pyproject.toml
+# No special hook is required to use OpenTofu.
+# If `tofu` is on PATH, pytest-terraform will auto-detect it before `terraform`.
 ```
 
 ```ini
 # pytest.ini
 [pytest]
-terraform_binary = tofu
-terraform_dir = ../modules
+terraform-mod-dir = tests/fixtures
 ```
 
 ## Basic Module Test
 
 ```python
 # test_vpc_module.py
-import pytest
 from pytest_terraform import terraform
 
 @terraform("vpc", scope="module")
-def test_vpc_creation(vpc):
+def test_vpc_creation(vpc_vars, vpc):
     """Test that VPC is created with correct configuration."""
-    # vpc fixture provides access to outputs
-    assert vpc["vpc_id"] is not None
-    assert vpc["vpc_id"].startswith("vpc-")
+    # Module outputs are available via the .outputs mapping.
+    vpc_id = vpc.outputs["vpc_id"]["value"]
+    assert vpc_id is not None
+    assert vpc_id.startswith("vpc-")
 
-    private_subnets = vpc["private_subnet_ids"]
+    private_subnets = vpc.outputs["private_subnet_ids"]["value"]
     assert len(private_subnets) > 0
 
-    public_subnets = vpc["public_subnet_ids"]
+    public_subnets = vpc.outputs["public_subnet_ids"]["value"]
     assert len(public_subnets) > 0
 
 @terraform("vpc", scope="module")
-def test_vpc_cidr(vpc):
+def test_vpc_cidr(vpc_vars, vpc):
     """Test VPC CIDR block."""
-    assert vpc["vpc_cidr"] == "10.99.0.0/16"
+    assert vpc.outputs["vpc_cidr"]["value"] == "10.99.0.0/16"
 ```
 
 ## Using AWS Boto3 for Validation
@@ -72,13 +64,16 @@ def test_vpc_cidr(vpc):
 ```python
 # test_security_groups.py
 import boto3
-import pytest
+import os
 from pytest_terraform import terraform
 
 @terraform("security_groups", scope="function")
-def test_security_group_no_public_ssh(security_groups, aws_region="us-east-1"):
+def test_security_group_no_public_ssh(security_groups):
     """Verify no security group allows SSH from 0.0.0.0/0."""
-    sg_id = security_groups["web_security_group_id"]
+    sg_id = security_groups.outputs["web_security_group_id"]["value"]
+    aws_region = os.environ.get("AWS_DEFAULT_REGION") or os.environ.get(
+        "TF_VAR_aws_region", "us-east-1"
+    )
 
     ec2 = boto3.client("ec2", region_name=aws_region)
     response = ec2.describe_security_groups(GroupIds=[sg_id])
@@ -98,47 +93,64 @@ def test_security_group_no_public_ssh(security_groups, aws_region="us-east-1"):
 
 ```python
 # conftest.py
+import json
+import os
 import pytest
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
 def terraform_vars():
     """Common variables for all terraform tests."""
-    return {
-        "environment": "test",
-        "aws_region": "us-east-1",
+    defaults = {
+        "TF_VAR_environment": "test",
+        "TF_VAR_aws_region": "us-east-1",
+        "AWS_DEFAULT_REGION": "us-east-1",
     }
+    monkeypatch = pytest.MonkeyPatch()
+    for key, value in defaults.items():
+        if key not in os.environ:
+            monkeypatch.setenv(key, value)
+    yield
+    monkeypatch.undo()
 
 @pytest.fixture(scope="module")
 def vpc_vars(terraform_vars):
     """Variables specific to VPC tests."""
-    return {
-        **terraform_vars,
-        "vpc_cidr": "10.99.0.0/16",
-        "azs": ["us-east-1a", "us-east-1b"],
-        "private_subnet_cidrs": ["10.99.1.0/24", "10.99.2.0/24"],
-        "public_subnet_cidrs":  ["10.99.101.0/24", "10.99.102.0/24"],
+    defaults = {
+        "TF_VAR_vpc_cidr": "10.99.0.0/16",
+        "TF_VAR_azs": json.dumps(["us-east-1a", "us-east-1b"]),
+        "TF_VAR_private_subnet_cidrs": json.dumps(["10.99.1.0/24", "10.99.2.0/24"]),
+        "TF_VAR_public_subnet_cidrs": json.dumps(["10.99.101.0/24", "10.99.102.0/24"]),
     }
+    monkeypatch = pytest.MonkeyPatch()
+    for key, value in defaults.items():
+        if key not in os.environ:
+            monkeypatch.setenv(key, value)
+    yield
+    monkeypatch.undo()
 ```
 
 ## Testing with Parametrize
 
 ```python
 # test_instance_types.py
+import os
 import pytest
-from pytest_terraform import terraform
 
-@pytest.mark.parametrize("instance_type,expected_cpu", [
+@pytest.mark.parametrize("instance_type,expected_vcpus", [
     ("t3.micro", 2),
     ("t3.small", 2),
     ("t3.medium", 2),
 ])
-def test_instance_cpu_credits(instance_type, expected_cpu):
-    """Test that T-series instances have burstable CPU credits."""
+def test_instance_default_vcpus(instance_type, expected_vcpus):
+    """Test the default vCPU count for several T-series instance types."""
     import boto3
-    ec2 = boto3.client("ec2", region_name="us-east-1")
+    aws_region = os.environ.get("AWS_DEFAULT_REGION") or os.environ.get(
+        "TF_VAR_aws_region", "us-east-1"
+    )
+    ec2 = boto3.client("ec2", region_name=aws_region)
     types = ec2.describe_instance_types(InstanceTypes=[instance_type])
     instance_info = types["InstanceTypes"][0]
-    assert instance_info["VCpuInfo"]["DefaultVCpus"] == expected_cpu
+    assert instance_info["VCpuInfo"]["DefaultVCpus"] == expected_vcpus
 ```
 
 ## Directory Structure
@@ -168,10 +180,12 @@ pytest tests/ -v
 pytest tests/test_vpc_module.py -v
 
 # Run with specific AWS region
-AWS_DEFAULT_REGION=us-east-1 pytest tests/ -v
+TF_VAR_aws_region=us-east-1 AWS_DEFAULT_REGION=us-east-1 pytest tests/ -v
 
 # Keep infrastructure after tests (for debugging)
-pytest tests/ --terraform-no-cleanup
+# Example: set teardown=terraform.TEARDOWN_OFF on the @terraform decorator,
+# then rerun the test file you want to inspect.
+pytest tests/test_vpc_module.py -v
 
 # Verbose with output capture disabled
 pytest tests/ -v -s
