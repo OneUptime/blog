@@ -8,7 +8,7 @@ Description: Learn how to create and deploy Docker Compose stacks directly from 
 
 ## Introduction
 
-Portainer's web editor allows you to paste or type Docker Compose YAML directly in the browser and deploy it as a stack - no file uploads or Git repositories needed. This is the fastest way to get a multi-container application running in Portainer and is ideal for quick deployments, testing configurations, and learning Docker Compose. The editor includes syntax highlighting and immediate environment variable substitution.
+Portainer's web editor allows you to paste or type Docker Compose YAML directly in the browser and deploy it as a stack - no file uploads or Git repositories needed. This is the fastest way to get a multi-container application running in Portainer and is ideal for quick deployments, testing configurations, and learning Docker Compose. You can also define environment variables in Portainer and reference them from the Compose file during deployment.
 
 ## Prerequisites
 
@@ -17,7 +17,7 @@ Portainer's web editor allows you to paste or type Docker Compose YAML directly 
 
 ## What is a Portainer Stack
 
-A Portainer stack is a Docker Compose deployment managed through Portainer. It groups all containers, networks, and volumes defined in a Compose file into a single named unit that can be started, stopped, updated, or removed together.
+A Portainer stack is a Compose-based deployment managed through Portainer. It groups the services, containers, networks, and volumes defined in a stack file into a single named unit that can be started, stopped, updated, or removed together.
 
 ## Step 1: Navigate to Stacks
 
@@ -28,7 +28,7 @@ A Portainer stack is a Docker Compose deployment managed through Portainer. It g
 
 ## Step 2: Configure the Stack
 
-1. Enter a **Name** for the stack (lowercase, alphanumeric, hyphens allowed): `my-web-app`
+1. Enter a **Name** for the stack: `my-web-app`
 2. Select **Web editor** as the build method (should be selected by default).
 3. The editor pane opens for you to enter your Compose YAML.
 
@@ -37,81 +37,29 @@ A Portainer stack is a Docker Compose deployment managed through Portainer. It g
 Paste a complete Compose file in the editor:
 
 ```yaml
-# Full-stack web application
+# PostgreSQL database with Adminer
 
 version: "3.8"
 
 services:
-  # Nginx reverse proxy - receives external traffic
-  nginx:
-    image: nginx:alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-    volumes:
-      - nginx_conf:/etc/nginx/conf.d
-    networks:
-      - frontend
-      - backend
-    depends_on:
-      - api
-
-  # Node.js API server
-  api:
-    image: node:18-alpine
-    restart: unless-stopped
-    working_dir: /app
-    command: ["node", "server.js"]
-    volumes:
-      - app_data:/app
-    networks:
-      - backend
-      - data
-    environment:
-      - NODE_ENV=${NODE_ENV:-production}
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=${DB_NAME}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - REDIS_URL=redis://redis:6379
-
-  # PostgreSQL database
   postgres:
-    image: postgres:15-alpine
-    restart: unless-stopped
-    networks:
-      - data
+    image: postgres:18
     environment:
-      - POSTGRES_DB=${DB_NAME}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
 
-  # Redis cache
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
-    networks:
-      - data
-    volumes:
-      - redis_data:/data
-
-networks:
-  frontend:
-    driver: bridge
-  backend:
-    driver: bridge
-    internal: true
-  data:
-    driver: bridge
-    internal: true
+  adminer:
+    image: adminer:5
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
 
 volumes:
-  nginx_conf:
-  app_data:
   postgres_data:
-  redis_data:
 ```
 
 ## Step 4: Add Environment Variables
@@ -122,45 +70,47 @@ Below the editor, you'll find the **Environment variables** section:
 2. Enter the key and value:
 
 ```text
-DB_NAME        myapp_production
+DB_NAME        myapp
+DB_USER        myapp_user
 DB_PASSWORD    supersecretpassword
-NODE_ENV       production
 ```
 
-Or use the **Advanced mode** to paste a `.env` file format:
+Or use **Load variables from .env file** to upload a file like:
 
 ```text
-DB_NAME=myapp_production
+DB_NAME=myapp
+DB_USER=myapp_user
 DB_PASSWORD=supersecretpassword
-NODE_ENV=production
 ```
 
 ## Step 5: Deploy the Stack
 
 1. Review the configuration.
 2. Click **Deploy the stack**.
-3. Portainer pulls images, creates networks and volumes, and starts containers.
-4. You'll see the stack appear in the Stacks list with all container statuses.
+3. Portainer pulls images, creates the required network and volume resources, and starts the stack services.
+4. You'll see the stack appear in the Stacks list with its status.
 
 ## Step 6: Verify the Deployment
 
 After deployment, in Portainer:
-1. Click the stack name to see all containers.
-2. Check each container is in **Running** state.
-3. Click a container to view its logs if there are issues.
+1. Click the stack name to see the services or containers that belong to it.
+2. Confirm the services are running.
+3. Click a service or container to view its logs if there are issues.
 
 Via CLI:
 ```bash
-# List stack containers:
+# List stack tasks:
 docker stack ps my-web-app   # Swarm
-# or for Compose:
-docker ps --filter "label=com.docker.compose.project=my-web-app"
+# or for Docker Standalone:
+docker ps --filter "name=my-web-app"
 
 # View logs:
-docker logs my-web-app_api_1
+docker service logs my-web-app_adminer   # Swarm
+# or for Docker Standalone:
+docker logs <adminer-container-name-or-id>
 
 # Test the deployed service:
-curl http://localhost/health
+curl http://localhost:8080
 ```
 
 ## Step 7: Update the Stack via Web Editor
@@ -171,8 +121,8 @@ To modify the stack:
 3. Make changes directly in the editor.
 4. Click **Update the stack**.
 
-Portainer will apply only the changed services (rolling update).
+Portainer redeploys the stack with your updated configuration.
 
 ## Conclusion
 
-The web editor is the quickest way to deploy multi-container applications in Portainer. Paste your Docker Compose YAML, set environment variables in the UI, and click Deploy. All containers, networks, and volumes are created as a single managed unit. For production deployments that need version control and auditability, consider deploying from a Git repository instead - but the web editor is ideal for rapid iteration, testing, and learning Docker Compose without any external tooling.
+The web editor is the quickest way to deploy multi-container applications in Portainer. Paste your Docker Compose YAML, set environment variables in the UI, and click Deploy. All services, networks, and volumes are created as a single managed unit. For production deployments that need version control and auditability, consider deploying from a Git repository instead - but the web editor is ideal for rapid iteration, testing, and learning Docker Compose without any external tooling.
