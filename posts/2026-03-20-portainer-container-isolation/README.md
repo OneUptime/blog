@@ -8,15 +8,13 @@ Description: Learn how to configure container isolation in Portainer using netwo
 
 ---
 
-Container isolation ensures that a compromised or misbehaving container cannot access data or affect the behavior of other containers. Docker provides several isolation mechanisms that Portainer exposes through stack configuration and the container UI.
+Container isolation ensures that a compromised or misbehaving container cannot access data or affect the behavior of other containers. Docker provides several isolation mechanisms that Portainer can apply through stack configuration and container settings, while daemon-level options such as user namespace remapping are configured on the Docker host.
 
 ## Network Isolation
 
 The primary isolation boundary for containers is the network. Containers on different networks cannot communicate by default:
 
 ```yaml
-version: "3.8"
-
 services:
   frontend:
     image: nginx:alpine
@@ -44,7 +42,7 @@ networks:
     driver: bridge
   private:
     driver: bridge
-    internal: true   # No internet egress for this network
+    internal: true   # Externally isolated network
 ```
 
 ## User Namespace Remapping
@@ -64,8 +62,9 @@ This maps container UID 0 (root) to an unprivileged user on the host. Restart Do
 Verify remapping is active:
 
 ```bash
-docker info | grep -A 5 "Runtimes"
-# Should show: userns-remap: default
+id dockremap
+grep dockremap /etc/subuid /etc/subgid
+# Should show the dockremap user and subordinate UID/GID ranges
 
 ```
 
@@ -95,8 +94,8 @@ Prevent containers from communicating via shared memory by keeping IPC namespace
 services:
   api:
     image: my-api:latest
-    ipc: private   # Default; each container has its own IPC namespace
-    # Avoid: ipc: "host" or ipc: shareable (unless required)
+    ipc: private   # Explicit private IPC namespace
+    # Avoid shared IPC namespaces unless required
 ```
 
 ## Seccomp + Capabilities Combination
@@ -158,9 +157,9 @@ Test that containers cannot reach each other across isolated networks:
 ```bash
 # From frontend, try to reach database directly (should fail)
 docker exec -it $(docker ps -qf name=frontend) nc -zv database 5432
-# Expected: Connection refused or Connection timed out
+# Expected: Name resolution fails because frontend is not on the private network
 
-# From api, verify it can reach both frontend network and database
+# From api, verify it can reach the database on the private network
 docker exec -it $(docker ps -qf name=api) nc -zv database 5432
 # Expected: Connection succeeded
 ```
