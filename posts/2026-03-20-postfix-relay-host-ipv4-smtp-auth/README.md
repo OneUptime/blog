@@ -8,7 +8,7 @@ Description: Configure Postfix to relay all outbound mail through a specific IPv
 
 ## Introduction
 
-Relaying through a smarthost or SaaS email provider (SendGrid, Amazon SES, Mailgun) is common for transactional email. Postfix forwards all outbound mail to the relay's IPv4 address with SMTP AUTH credentials.
+Relaying through a smarthost or SaaS email provider (SendGrid, Amazon SES, Mailgun) is common for transactional email. Postfix forwards all outbound mail to the relay over IPv4, using either a bracketed IPv4 literal or a hostname that resolves over IPv4, with SMTP AUTH credentials.
 
 ## Basic Relay Host Configuration
 
@@ -19,21 +19,21 @@ Relaying through a smarthost or SaaS email provider (SendGrid, Amazon SES, Mailg
 
 relayhost = [203.0.113.100]:587
 
-# Or relay through a hostname
+# Or relay through a hostname that resolves over IPv4
 relayhost = [smtp.sendgrid.net]:587
 
 # Enable SASL for authentication with the relay
 smtp_sasl_auth_enable = yes
 smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
-smtp_sasl_security_options = noanonymous
 
 # TLS for the relay connection
 smtp_tls_security_level = encrypt
-smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
+smtp_sasl_tls_security_options = noanonymous
+smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt   # Example CA bundle path on Debian/Ubuntu
 
-# Force IPv4 for outbound connections
+# Force Postfix to use IPv4
 inet_protocols = ipv4
-smtp_bind_address = 203.0.113.10   # Your server's outbound IP
+smtp_bind_address = 203.0.113.10   # Local IPv4 address to bind for outbound SMTP
 ```
 
 ## Setting Up SASL Credentials
@@ -60,9 +60,9 @@ sudo chown root:root /etc/postfix/sasl_passwd /etc/postfix/sasl_passwd.db
 sudo postfix reload
 ```
 
-## Relay with Specific Source IP for SPF
+## Relay with Specific Source IP
 
-Ensure your SPF record at the relay matches your source:
+If your relay provider uses source-IP allowlisting, ensure this address is permitted:
 
 ```bash
 # /etc/postfix/main.cf
@@ -70,7 +70,7 @@ Ensure your SPF record at the relay matches your source:
 # Relay host
 relayhost = [smtp.relay.example.com]:587
 
-# Use specific IP as source (must be in relay's SPF allowlist)
+# Use a specific local IPv4 address as the SMTP client source
 smtp_bind_address = 203.0.113.10
 
 # TLS settings
@@ -86,18 +86,16 @@ sudo postconf relayhost
 sudo postfix check
 
 # Send test email
-echo "Test relay" | mail -s "Relay Test" recipient@example.com
+printf 'Subject: Relay Test\n\nTest relay\n' | /usr/sbin/sendmail -v recipient@example.com
 
 # Watch mail log for relay connection
-sudo tail -f /var/log/mail.log
+sudo tail -f /var/log/mail.log   # Debian/Ubuntu default path
 
 # Look for successful relay:
-# postfix/smtp[...]: connect to smtp.relay.example.com[203.0.113.100]:587
-# postfix/smtp[...]: AUTH: Login success
-# postfix/smtp[...]: 250 2.0.0 OK: queued as ...
+# postfix/smtp[...]: ... relay=smtp.relay.example.com[203.0.113.100]:587, ... status=sent (250 2.0.0 OK: queued as ...)
 
 # If auth fails:
-sudo tail -f /var/log/mail.log | grep "SASL\|auth\|relay"
+sudo grep -E "SASL|auth|relay" /var/log/mail.log
 ```
 
 ## Relay Only Specific Domains
@@ -126,4 +124,4 @@ sudo postfix reload
 
 ## Conclusion
 
-Postfix relay configuration requires four elements: `relayhost` with the IPv4 address in brackets (to skip MX lookup), `smtp_sasl_auth_enable = yes`, `smtp_sasl_password_maps` pointing to the credentials hash file, and `smtp_tls_security_level = encrypt` for secure authentication. Secure `sasl_passwd` with `chmod 600` since it contains plaintext credentials.
+Postfix relay configuration requires five core elements: `relayhost` with brackets around the IPv4 address or mailhub hostname (to skip MX lookup), `smtp_sasl_auth_enable = yes`, `smtp_sasl_password_maps` pointing to the credentials hash file, `smtp_sasl_tls_security_options = noanonymous` so common AUTH mechanisms can be used over TLS, and `smtp_tls_security_level = encrypt` for secure authentication. Secure `sasl_passwd` with `chmod 600` since it contains plaintext credentials.
