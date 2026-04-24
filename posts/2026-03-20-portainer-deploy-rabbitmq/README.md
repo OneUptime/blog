@@ -8,24 +8,18 @@ Description: Deploy RabbitMQ via Portainer with the management plugin enabled fo
 
 ## Introduction
 
-RabbitMQ is a widely-used message broker implementing AMQP, MQTT, and STOMP protocols. It's excellent for task queues, pub/sub messaging, and service decoupling. Deploying via Portainer with the management plugin gives you a complete message broker with a built-in web UI.
+RabbitMQ is a widely-used message broker that speaks AMQP 0-9-1 natively and can support protocols such as MQTT and STOMP via plugins. It's excellent for task queues, pub/sub messaging, and service decoupling. Deploying via Portainer with the management plugin gives you a complete message broker with a built-in web UI.
 
 ## Deploy as a Stack
 
 In Portainer, create a stack named `rabbitmq`:
 
 ```yaml
-version: "3.8"
-
 services:
   rabbitmq:
-    image: rabbitmq:3.13-management-alpine
+    image: rabbitmq:4-management-alpine
     container_name: rabbitmq
-    hostname: rabbitmq  # Important for cluster stability
-    environment:
-      RABBITMQ_DEFAULT_USER: admin
-      RABBITMQ_DEFAULT_PASS: change_this_password
-      RABBITMQ_DEFAULT_VHOST: /
+    hostname: rabbitmq  # Keeps the RabbitMQ node name stable
     volumes:
       # Persistent data storage
       - rabbitmq_data:/var/lib/rabbitmq
@@ -36,7 +30,6 @@ services:
     ports:
       - "5672:5672"    # AMQP port
       - "15672:15672"  # Management UI
-      - "1883:1883"    # MQTT (if enabled)
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
@@ -65,20 +58,20 @@ heartbeat = 60
 # Maximum message size (128MB)
 max_message_size = 134217728
 
-# Memory alarm threshold (80% of RAM)
+# Memory alarm threshold (relative to detected RAM)
 vm_memory_high_watermark.relative = 0.8
 
 # Disk alarm threshold (1GB free)
 disk_free_limit.absolute = 1GB
 
-# Enable management plugin
-management.load_definitions = /etc/rabbitmq/definitions.json
+# Load definitions at startup
+definitions.import_backend = local_filesystem
+definitions.local.path = /etc/rabbitmq/definitions.json
 
 # Logging
 log.console = true
 log.console.level = info
-log.file = /var/log/rabbitmq/rabbit.log
-log.file.level = info
+log.file = false
 ```
 
 ## Pre-Configure Exchanges and Queues
@@ -94,16 +87,32 @@ Create `definitions.json`:
   "users": [
     {
       "name": "admin",
-      "password_hash": "your_bcrypt_hash",
-      "tags": "administrator"
+      "password_hash": "AQIDBHF1oDbiF2MuXtjMRG4ktIR85WLSdQa7T2CHavV7CZzI",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": ["administrator"]
     },
     {
       "name": "app_user",
-      "password_hash": "your_bcrypt_hash",
-      "tags": ""
+      "password_hash": "CgsMDYe00GosIh65rSY9EirIZ1hNoc89E4Lo+NgWCDkjtsmU",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": []
     }
   ],
   "permissions": [
+    {
+      "user": "admin",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    },
+    {
+      "user": "admin",
+      "vhost": "myapp",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    },
     {
       "user": "app_user",
       "vhost": "myapp",
@@ -118,7 +127,9 @@ Create `definitions.json`:
       "vhost": "myapp",
       "type": "topic",
       "durable": true,
-      "auto_delete": false
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
     }
   ],
   "queues": [
@@ -145,7 +156,8 @@ Create `definitions.json`:
       "vhost": "myapp",
       "destination": "email_notifications",
       "destination_type": "queue",
-      "routing_key": "notification.email.#"
+      "routing_key": "notification.email.#",
+      "arguments": {}
     }
   ]
 }
@@ -163,7 +175,7 @@ connection = pika.BlockingConnection(
     pika.ConnectionParameters(
         host='localhost',
         virtual_host='myapp',
-        credentials=pika.PlainCredentials('app_user', 'password')
+        credentials=pika.PlainCredentials('app_user', 'change_this_app_password')
     )
 )
 channel = connection.channel()
@@ -194,7 +206,7 @@ def process_message(ch, method, properties, body):
 
 connection = pika.BlockingConnection(
     pika.ConnectionParameters(host='localhost', virtual_host='myapp',
-        credentials=pika.PlainCredentials('app_user', 'password'))
+        credentials=pika.PlainCredentials('app_user', 'change_this_app_password'))
 )
 channel = connection.channel()
 channel.basic_qos(prefetch_count=1)  # Process one message at a time
@@ -206,20 +218,20 @@ channel.start_consuming()
 
 ## Monitoring RabbitMQ
 
-Access the management UI at `http://<host>:15672` with your admin credentials. Key metrics to watch:
+Access the management UI at `http://<host>:15672` with username `admin` and password `change_this_admin_password`. Key metrics to watch:
 
 - **Queue depth**: Growing queues indicate consumer lag
 - **Message rates**: publish/deliver rates per queue
-- **Memory usage**: Should stay below 80% watermark
+- **Memory usage**: Should stay below the configured watermark
 - **Connections**: Track for connection leaks
 
 ```bash
 # CLI monitoring
-docker exec rabbitmq rabbitmqctl status
-docker exec rabbitmq rabbitmqctl list_queues name messages consumers
-docker exec rabbitmq rabbitmqctl list_exchanges
+docker exec rabbitmq rabbitmq-diagnostics -q status
+docker exec rabbitmq rabbitmqctl list_queues -p myapp name messages consumers
+docker exec rabbitmq rabbitmqctl list_exchanges -p myapp name type
 ```
 
 ## Conclusion
 
-RabbitMQ deployed via Portainer provides a production-ready message broker with the management UI included. Pre-configuring exchanges, queues, and bindings via the definitions file means your messaging topology is reproducible and version-controlled. The persistent volume ensures queued messages survive container restarts.
+RabbitMQ deployed via Portainer provides a production-ready message broker with the management UI included. Pre-configuring exchanges, queues, and bindings via the definitions file means your messaging topology is reproducible and version-controlled. The persistent volume, together with durable queues and persistent messages, helps queued messages survive container restarts.
