@@ -21,7 +21,7 @@ The Raspberry Pi 4 with 4GB or 8GB RAM is an excellent platform for running Port
 
 Use Raspberry Pi Imager to flash the SD card:
 1. Download Raspberry Pi Imager from https://www.raspberrypi.com/software/
-2. Select "Raspberry Pi OS (64-bit)" - must be 64-bit for ARM64 Docker
+2. Select "Raspberry Pi OS (64-bit)" - current Portainer CE releases support ARM64, not 32-bit ARM
 3. In advanced settings, enable SSH and set hostname/password
 4. Flash to MicroSD card and boot
 
@@ -30,7 +30,7 @@ Use Raspberry Pi Imager to flash the SD card:
 ```bash
 # SSH into your Pi
 
-ssh pi@raspberrypi.local
+ssh <your-user>@<your-hostname>.local
 
 # Update system
 sudo apt-get update && sudo apt-get upgrade -y
@@ -43,8 +43,8 @@ sudo apt-get update && sudo apt-get upgrade -y
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 
-# Add pi user to docker group
-sudo usermod -aG docker pi
+# Add your user to the docker group
+sudo usermod -aG docker $USER
 newgrp docker
 
 # Enable Docker on boot
@@ -72,7 +72,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 
 # Verify Portainer is running
 docker ps | grep portainer
@@ -100,25 +100,16 @@ sudo raspi-config
 # Advanced Options -> Memory Split -> 16
 ```
 
-## Move Docker Storage to USB SSD
+## Use a USB SSD for Docker Storage
 
-SD cards wear out quickly. Use a USB SSD for Docker data:
-
-```bash
-# After attaching and mounting USB SSD at /data:
-sudo systemctl stop docker
-sudo mv /var/lib/docker /data/docker
-sudo ln -s /data/docker /var/lib/docker
-sudo systemctl start docker
-```
+SD cards wear out quickly. For the cleanest setup, install Raspberry Pi OS directly onto a USB SSD instead of moving Docker data later. On current Docker releases, image data may also live under `/var/lib/containerd`, so moving only `/var/lib/docker` is incomplete.
 
 ## Managing Home Lab Containers with Portainer
 
 Use Portainer Stacks to manage multi-container apps:
 
 ```yaml
-# Example docker-compose stack (paste in Portainer Stacks UI)
-version: '3'
+# Example Compose stack (paste in Portainer Stacks UI)
 services:
   pihole:
     image: pihole/pihole:latest
@@ -134,7 +125,7 @@ services:
     ports:
       - "8123:8123"
     volumes:
-      - /home/pi/homeassistant:/config
+      - /home/<your-user>/homeassistant:/config
     restart: unless-stopped
     privileged: true
 ```
