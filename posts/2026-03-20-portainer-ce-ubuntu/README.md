@@ -8,12 +8,12 @@ Description: A step-by-step guide to installing Portainer Community Edition on U
 
 ## Overview
 
-Portainer CE is a lightweight, open-source container management UI that makes it easy to manage Docker environments without needing to master the Docker CLI. This guide covers installing Portainer CE on Ubuntu (20.04, 22.04, and 24.04) from scratch, including Docker installation, Portainer deployment, and initial configuration.
+Portainer CE is a lightweight, open-source container management UI that makes it easy to manage Docker environments without needing to master the Docker CLI. This guide covers installing Portainer CE on Ubuntu (22.04 and 24.04 LTS) from scratch, including Docker installation, Portainer deployment, and initial configuration.
 
 ## Prerequisites
 
-- Ubuntu 20.04, 22.04, or 24.04 LTS (fresh install recommended)
-- Minimum: 2GB RAM, 2 CPU cores, 20GB disk space
+- Ubuntu 22.04 or 24.04 LTS (fresh install recommended)
+- Sufficient disk space for Docker images, containers, and the Portainer data volume
 - Root or sudo access
 - Internet connectivity
 
@@ -28,8 +28,8 @@ sudo apt-get update && sudo apt-get upgrade -y
 ## Step 2: Install Docker
 
 ```bash
-# Remove any existing Docker installations
-sudo apt-get remove docker docker-engine docker.io containerd runc 2>/dev/null
+# Remove any conflicting Docker packages
+sudo apt remove $(dpkg --get-selections docker.io docker-compose docker-compose-v2 docker-doc podman-docker containerd runc | cut -f1)
 
 # Install prerequisites
 sudo apt-get install -y \
@@ -58,8 +58,11 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plug
 # Start and enable Docker
 sudo systemctl enable --now docker
 
-# Add current user to docker group (logout and back in to take effect)
+# Add current user to docker group
 sudo usermod -aG docker $USER
+
+# Apply the new group membership to the current shell
+newgrp docker
 ```
 
 ## Step 3: Verify Docker Installation
@@ -73,7 +76,7 @@ sudo docker run hello-world
 
 # Check Docker version
 docker --version
-# Output: Docker version 26.x.x, build xxxxxxx
+# Output: Docker version xx.x.x, build xxxxxxx
 ```
 
 ## Step 4: Install Portainer CE
@@ -96,19 +99,14 @@ docker run -d \
 docker ps | grep portainer
 ```
 
-## Step 5: Configure Firewall (if ufw is enabled)
+## Step 5: Review Firewall Settings (if ufw is enabled)
 
 ```bash
 # Check if ufw is active
 sudo ufw status
 
-# If active, allow Portainer ports
-sudo ufw allow 9443/tcp    # Portainer HTTPS UI
-sudo ufw allow 8000/tcp    # Portainer agent port
-
-# Reload firewall
-sudo ufw reload
-sudo ufw status
+# Docker-published ports bypass ufw rules on Ubuntu.
+# If you need to restrict access to Portainer, add rules to Docker's DOCKER-USER chain instead of relying on ufw allow/deny.
 ```
 
 ## Step 6: Access Portainer Web UI
@@ -123,27 +121,26 @@ You will see a certificate warning for the self-signed certificate - proceed to 
 
 **First-time setup:**
 1. Create an admin account with a strong password (minimum 12 characters)
-2. Click "Get Started" to manage the local Docker environment
-3. Select "Docker Standalone" environment
+2. Click "Get Started" to manage the automatically detected local Docker environment
 
 ## Step 7: Verify Installation
 
 ```bash
-# Check Portainer container is running and healthy
-docker inspect portainer --format='{{.State.Health.Status}}'
-# Output: healthy
+# Check Portainer container status
+docker inspect portainer --format='{{.State.Status}}'
+# Output: running
 
 # Check Portainer logs
 docker logs portainer
 ```
 
-## Optional: Enable HTTP to HTTPS Redirect
+## Optional: Enable Legacy HTTP Access on Port 9000
 
 ```bash
 # Stop and remove existing Portainer container
 docker stop portainer && docker rm portainer
 
-# Restart with HTTP port exposed for redirect
+# Restart with port 9000 exposed for HTTP access
 docker run -d \
   -p 8000:8000 \
   -p 9000:9000 \
@@ -195,8 +192,9 @@ docker run -d -p 9444:9443 ... portainer/portainer-ce:latest
 ls -la /var/run/docker.sock
 # Should show: srw-rw---- root docker
 
-# Add portainer to docker group if needed
-sudo usermod -aG docker portainer
+# Verify the Portainer container has the Docker socket mounted
+docker inspect portainer --format='{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}' | grep docker.sock
+# If no socket mount is shown, recreate Portainer using the install command above.
 ```
 
 ## Conclusion
