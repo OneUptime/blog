@@ -9,6 +9,7 @@ Description: Deploy and manage containerized network functions and edge applicat
 ---
 
 Telecommunications operators run distributed infrastructure across thousands of edge sites - central offices, cell towers, and data centers. Portainer's Edge Agent and Kubernetes integration support containerized network functions (CNFs) and edge applications at these sites.
+The Compose examples below use representative image names and endpoints; replace them with your vendor-supplied CNF images and site-specific management URLs.
 
 ## Telecom Edge Use Cases for Portainer
 
@@ -21,8 +22,6 @@ Telecommunications operators run distributed infrastructure across thousands of 
 
 ```yaml
 # vcpe-stack.yml - virtual CPE for enterprise customer edge
-
-version: "3.8"
 
 services:
   # Software-defined WAN router
@@ -47,6 +46,7 @@ services:
     cap_add:
       - NET_ADMIN
       - NET_RAW
+    network_mode: host   # Host networking so firewall rules apply to edge traffic
     environment:
       - POLICY_SERVER=https://policy.telecom.example.com
       - SITE_ID=${SITE_ID}
@@ -77,7 +77,6 @@ Multi-access edge computing applications run at the edge of the radio network fo
 
 ```yaml
 # mec-stack.yml
-version: "3.8"
 
 services:
   # AR/VR content cache and rendering offload
@@ -109,7 +108,7 @@ volumes:
 
 ## Step 3: Configure High Availability
 
-For critical telecom functions, configure service restart policies and health checks:
+For critical telecom functions, use restart policies supported by Docker Compose and add health checks:
 
 ```yaml
 services:
@@ -117,17 +116,12 @@ services:
     image: telecom/sdwan-agent:6.1.2
     restart: always
     healthcheck:
-      # Check that the SD-WAN agent is connected to its controller
+      # Example: replace with the health endpoint exposed by your CNF image
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 30s
-    deploy:
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 10
 ```
 
 ## Step 4: Monitor Network Function Health
@@ -135,27 +129,30 @@ services:
 Deploy a lightweight monitoring stack alongside network functions:
 
 ```yaml
+services:
   # Prometheus for NFV metrics
   prometheus:
-    image: prom/prometheus:v2.50.0
+    image: prom/prometheus:v3.11.2
     volumes:
       - /opt/telecom/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
     restart: unless-stopped
 
   # Node exporter for host metrics
   node-exporter:
-    image: prom/node-exporter:v1.7.0
+    image: quay.io/prometheus/node-exporter:v1.11.1
     pid: host
     network_mode: host
     volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
+      - /:/host:ro,rslave
     command:
-      - --path.procfs=/host/proc
-      - --path.sysfs=/host/sys
+      - --path.rootfs=/host
     restart: unless-stopped
+
+volumes:
+  prometheus-data:
 ```
 
 ## Compliance and Hardening
@@ -163,10 +160,10 @@ Deploy a lightweight monitoring stack alongside network functions:
 Telecom operators must meet strict compliance requirements:
 
 - Use signed and verified container images from a private registry
-- Enforce container security contexts (no-new-privileges, read-only root fs)
+- Enforce container runtime security settings such as `no-new-privileges` and a read-only root filesystem
 - Log all container operations to a centralized SIEM
-- Segment network functions using isolated Docker networks
+- Segment network functions using isolated Docker networks where host networking is not required
 
 ## Summary
 
-Portainer provides telecom operators with a practical approach to managing containerized network functions at edge sites. Its Edge Agent model - outbound connections only, no inbound firewall rules needed - is well-suited to the security requirements of telecom infrastructure.
+Portainer provides telecom operators with a practical approach to managing containerized network functions at edge sites. Its Edge Agent model lets remote edge environments connect outbound to the Portainer server, so you do not need inbound firewall rules on the edge sites, although the Portainer server still needs its UI and tunnel ports reachable.
