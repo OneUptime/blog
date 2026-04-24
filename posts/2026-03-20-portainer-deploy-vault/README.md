@@ -22,28 +22,11 @@ services:
     cap_add:
       - IPC_LOCK   # Required for memory locking (prevents secrets swapping to disk)
     environment:
-      VAULT_DEV_ROOT_TOKEN_ID: ""     # Leave empty for production
-      VAULT_LOCAL_CONFIG: |
-        {
-          "backend": {
-            "file": {
-              "path": "/vault/data"
-            }
-          },
-          "listener": {
-            "tcp": {
-              "address": "0.0.0.0:8200",
-              "tls_disable": 1
-            }
-          },
-          "default_lease_ttl": "168h",
-          "max_lease_ttl": "720h",
-          "ui": true
-        }
+      VAULT_ADDR: http://127.0.0.1:8200
     volumes:
       - vault_data:/vault/data
       - vault_logs:/vault/logs
-      - ./vault-config:/vault/config:ro
+      - /opt/vault/vault-config:/vault/config:ro
     ports:
       - "8200:8200"
     command: vault server -config=/vault/config/vault.hcl
@@ -56,10 +39,10 @@ volumes:
 
 ## Vault Configuration
 
-Create `vault-config/vault.hcl`:
+Create `/opt/vault/vault-config/vault.hcl` on the Docker host:
 
 ```hcl
-# vault.hcl - Production Vault configuration
+# vault.hcl - Example single-node Vault configuration
 
 storage "file" {
   path = "/vault/data"
@@ -80,13 +63,6 @@ api_addr = "http://vault.example.com:8200"
 # Default lease TTL
 default_lease_ttl = "168h"
 max_lease_ttl = "720h"
-
-# Audit logging
-# audit {
-#   file {
-#     path = "/vault/logs/audit.log"
-#   }
-# }
 ```
 
 ## Initialize and Unseal Vault
@@ -116,26 +92,29 @@ docker exec vault vault status
 
 ```bash
 # Log in with root token
-docker exec -e VAULT_TOKEN=hvs.roottoken vault vault login
+docker exec vault vault login hvs.roottoken
+
+# Enable file audit logging
+docker exec -e VAULT_TOKEN=hvs.roottoken vault \
+  vault audit enable file file_path=/vault/logs/audit.log
 
 # Enable KV secrets engine
-docker exec -e VAULT_ADDR=http://localhost:8200 \
-  -e VAULT_TOKEN=hvs.roottoken \
-  vault vault secrets enable -path=secret kv-v2
+docker exec -e VAULT_TOKEN=hvs.roottoken vault \
+  vault secrets enable -path=secret kv-v2
 
 # Store a secret
 docker exec -e VAULT_TOKEN=hvs.roottoken vault \
-  vault kv put secret/myapp \
+  vault kv put -mount=secret myapp \
   db_password=supersecret \
   api_key=abc123def456
 
 # Retrieve secrets
 docker exec -e VAULT_TOKEN=hvs.roottoken vault \
-  vault kv get secret/myapp
+  vault kv get -mount=secret myapp
 
 # Get specific field
 docker exec -e VAULT_TOKEN=hvs.roottoken vault \
-  vault kv get -field=db_password secret/myapp
+  vault kv get -mount=secret -field=db_password myapp
 ```
 
 ## Application Integration
@@ -145,7 +124,7 @@ Applications can retrieve secrets via Vault's HTTP API:
 ```bash
 # Get a secret via API
 curl -H "X-Vault-Token: $VAULT_TOKEN" \
-     http://vault:8200/v1/secret/data/myapp | \
+     "$VAULT_ADDR/v1/secret/data/myapp" | \
      jq '.data.data'
 ```
 
@@ -153,14 +132,12 @@ curl -H "X-Vault-Token: $VAULT_TOKEN" \
 
 ```bash
 # Create a policy for an application
-cat > /tmp/myapp-policy.hcl << 'EOF'
-path "secret/data/myapp/*" {
+cat << 'EOF' | docker exec -i -e VAULT_TOKEN=hvs.roottoken vault \
+  vault policy write myapp -
+path "secret/data/myapp" {
   capabilities = ["read"]
 }
 EOF
-
-docker exec -e VAULT_TOKEN=hvs.roottoken vault \
-  vault policy write myapp /tmp/myapp-policy.hcl
 
 # Create an app token with this policy
 docker exec -e VAULT_TOKEN=hvs.roottoken vault \
@@ -169,4 +146,4 @@ docker exec -e VAULT_TOKEN=hvs.roottoken vault \
 
 ## Conclusion
 
-HashiCorp Vault deployed via Portainer provides enterprise-grade secrets management for self-hosted environments. Centralizing secrets eliminates hardcoded credentials and provides audit logging of all access. The file backend is suitable for small deployments - for high availability, consider the Raft integrated storage backend with multiple Vault nodes.
+HashiCorp Vault deployed via Portainer provides enterprise-grade secrets management for self-hosted environments. Centralizing secrets eliminates hardcoded credentials and provides audit logging of all access. The file backend is suitable for small single-node deployments - for production use and high availability, prefer the Raft integrated storage backend.
