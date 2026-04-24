@@ -8,12 +8,13 @@ Description: Learn how to leverage Docker Compose v2 syntax features in your Por
 
 ## Introduction
 
-Docker Compose v2 introduced significant improvements over v1, including better performance, new features, and tighter integration with Docker Engine. Portainer supports Docker Compose v2 syntax in its stacks feature, allowing you to use all modern Compose capabilities. This guide covers the key v2 syntax features and how to use them in Portainer.
+Docker Compose v2 introduced significant improvements over v1, including better performance, new features, and tighter integration with the Docker CLI. In Portainer, these features are most relevant for Docker Standalone stacks, but support still depends on the Compose features available to your Portainer deployment path. This guide covers key v2 syntax features and the Portainer-specific caveats to keep in mind.
 
 ## Prerequisites
 
-- Portainer CE or BE 2.9+
-- Docker Engine 20.10+ with Compose plugin installed
+- Portainer CE or BE on a Docker Standalone environment
+- Docker Engine 20.10+ with Docker Compose v2 available
+- A recent enough Compose version for the features you plan to use (`include` requires Docker Compose 2.20.0+, `develop` requires 2.22.0+)
 - Familiarity with basic Docker Compose concepts
 
 ## Compose v2 vs v1: Key Differences
@@ -22,10 +23,10 @@ Docker Compose v2 introduced significant improvements over v1, including better 
 |---------|-----------|-----------|
 | CLI command | `docker-compose` | `docker compose` |
 | Installation | Standalone Python binary | Docker plugin |
-| Profile support | No | Yes |
-| `depends_on` conditions | Basic | Health check conditions |
-| `include` directive | No | Yes |
-| `extend` support | Limited | Improved |
+| Compose file format | Legacy 2.x/3.x format selection | Unified Compose Specification |
+| Top-level `version` key | Commonly used to select file format | Obsolete and informational only |
+| `include` directive | No | Yes (Docker Compose 2.20.0+) |
+| `develop` specification | No | Yes (Docker Compose 2.22.0+) |
 
 ## Step 1: Remove the Version Key (Optional)
 
@@ -93,7 +94,7 @@ services:
       - monitoring   # Only starts with 'monitoring' profile
 ```
 
-In Portainer, set the `COMPOSE_PROFILES` environment variable to activate profiles.
+Compose activates profiles through the `COMPOSE_PROFILES` environment variable or the `--profile` CLI flag. In Portainer, make sure `COMPOSE_PROFILES` is available during stack deployment.
 
 ## Step 4: Use the `include` Directive
 
@@ -126,6 +127,8 @@ volumes:
   pg-data:
 ```
 
+In Portainer, this is most practical with Git-based stacks so the included files are available alongside the main Compose file at deploy time.
+
 ## Step 5: Use Build Secrets
 
 Compose v2 supports build-time secrets that don't persist in image layers:
@@ -144,14 +147,16 @@ secrets:
     environment: GITHUB_TOKEN   # Read from environment variable
 ```
 
-## Step 6: Use `develop` for Watch Mode
+The `GITHUB_TOKEN` variable must exist in the environment where Compose is running, and your Dockerfile must consume the secret with BuildKit syntax such as `RUN --mount=type=secret,id=github_token ...`. Also note that Portainer documents build-step limitations for remote Docker environments, so build-based workflows are safest on local Docker Standalone environments or when images are built outside Portainer first.
 
-The `develop` key enables file watching and automatic rebuilds:
+## Step 6: Use `develop` for Local Watch Mode
+
+The `develop` key is part of Compose watch workflows and is used with `docker compose up --watch` or `docker compose watch`. Portainer stack deployments do not start watch mode, so treat this as a local development feature rather than a Portainer stack deployment feature:
 
 ```yaml
 services:
   frontend:
-    image: node:18
+    build: .
     command: npm run dev
     develop:
       watch:
@@ -198,14 +203,15 @@ services:
 3. Add any required environment variables
 4. Click **Deploy the stack**
 
-Portainer automatically uses the Docker Compose v2 plugin when deploying on standalone Docker environments.
+On Docker Standalone environments, Portainer deploys stacks from Compose YAML, but support for newer Compose features still depends on the Compose implementation available to Portainer and the kind of environment you are deploying to.
 
 ## Troubleshooting
 
 - **"version is obsolete" warning** - safe to ignore or remove the `version` key
-- **Profile not activating** - set `COMPOSE_PROFILES=profile-name` in stack environment variables
-- **`include` not found** - ensure referenced files exist in the repository when using Git-based stacks
+- **Profile not activating** - `COMPOSE_PROFILES` is the Compose variable that enables profiles; ensure it is available during deployment
+- **`include` not found** - use a Git-based stack or otherwise ensure referenced files exist alongside the main Compose file at deploy time
+- **Build fails on remote environments** - Portainer documents `build` directives as unsupported on remote Docker environments; build images externally and deploy by `image:` in that case
 
 ## Conclusion
 
-Docker Compose v2 brings powerful new capabilities to Portainer stacks. Features like health-check-based dependencies, profiles, and the `include` directive make it easier to manage complex applications. By adopting v2 syntax, your stacks become more robust, modular, and production-ready.
+Docker Compose v2 brings powerful new capabilities to Portainer stacks. Features like health-check-based dependencies, profiles, and the `include` directive make it easier to manage complex applications. When using Portainer, just keep in mind that some Compose features depend on the deployment path and environment, and `develop` is intended for local watch workflows rather than normal stack deployment.
