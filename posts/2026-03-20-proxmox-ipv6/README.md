@@ -40,17 +40,17 @@ iface vmbr0 inet6 static
 # Separate bridge for VM-only IPv6 traffic
 auto vmbr1
 iface vmbr1 inet6 static
-    address fd00:vms::1/64
+    address fd00:100::1/64
     bridge-ports none
     bridge-stp off
     bridge-fd 0
 ```
 
 ```bash
-# Apply network configuration (restart networking or reboot)
-systemctl restart networking
-# Or apply without reboot:
+# Apply manual changes without reboot (recommended)
 ifreload -a
+# Or reboot the node to apply the new configuration:
+reboot
 ```
 
 ## Configure IPv6 in Proxmox Web UI
@@ -67,20 +67,16 @@ ifreload -a
 ## KVM VM IPv6 Configuration
 
 ```bash
-# In Proxmox: create VM and attach to vmbr0
+# In Proxmox: attach the VM to vmbr0
 # The bridge provides the VM access to the IPv6 network
-# Configure IPv6 inside the guest OS
+# If the guest uses cloud-init, Proxmox can inject IPv4/IPv6 settings
+# Replace your-storage with a storage that supports image volumes
+# This example assumes the guest OS disk is already attached as scsi0
 
-# VM creation with cloud-init IPv6 (via Proxmox CLI)
-qm create 101 \
-    --name myvm \
-    --memory 2048 \
-    --net0 virtio,bridge=vmbr0 \
-    --ipconfig0 ip=192.168.1.100/24,gw=192.168.1.1,ip6=2001:db8::100/64,gw6=2001:db8::1
-
-# Create cloud-init disk
-qm set 101 --ide2 local:cloudinit
-qm set 101 --boot c --bootdisk scsi0
+qm set 101 --net0 virtio,bridge=vmbr0
+qm set 101 --ide2 your-storage:cloudinit
+qm set 101 --boot order=scsi0
+qm set 101 --ipconfig0 ip=192.168.1.100/24,gw=192.168.1.1,ip6=2001:db8::100/64,gw6=2001:db8::1
 
 # Start VM
 qm start 101
@@ -90,7 +86,8 @@ qm start 101
 
 ```bash
 # Create LXC container with IPv6
-pct create 102 local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst \
+# Replace VERSION with the exact template build available on your host
+pct create 102 local:vztmpl/ubuntu-22.04-standard_VERSION_amd64.tar.zst \
     --hostname mycontainer \
     --memory 512 \
     --net0 name=eth0,bridge=vmbr0,ip=192.168.1.101/24,gw=192.168.1.1,ip6=2001:db8::101/64,gw6=2001:db8::1
@@ -102,15 +99,18 @@ pct start 102
 pct exec 102 -- ip -6 addr show
 
 # Modify IPv6 of existing container
-pct set 102 --net0 name=eth0,bridge=vmbr0,ip=192.168.1.101/24,ip6=2001:db8::101/64,gw6=2001:db8::1
+pct set 102 --net0 name=eth0,bridge=vmbr0,ip=192.168.1.101/24,gw=192.168.1.1,ip6=2001:db8::101/64,gw6=2001:db8::1
 ```
 
 ## Enable IPv6 Forwarding on Proxmox Host
 
 ```bash
+# Needed only if the Proxmox host routes IPv6 between bridges or subnets
 # /etc/sysctl.d/99-proxmox-ipv6.conf
 net.ipv6.conf.all.forwarding = 1
-net.ipv6.conf.all.accept_ra = 2    # Accept RAs even with forwarding enabled
+
+# If the uplink bridge must still learn routes via RA, also set:
+net.ipv6.conf.vmbr0.accept_ra = 2
 
 # Apply
 sysctl -p /etc/sysctl.d/99-proxmox-ipv6.conf
@@ -133,7 +133,7 @@ interface vmbr1 {
     AdvSendAdvert on;
     MinRtrAdvInterval 3;
     MaxRtrAdvInterval 10;
-    prefix fd00:vms::/64 {
+    prefix fd00:100::/64 {
         AdvOnLink on;
         AdvAutonomous on;
     };
@@ -151,9 +151,10 @@ systemctl enable --now radvd
 
 # Or via CLI (/etc/pve/firewall/cluster.fw):
 # [RULES]
-# IN ACCEPT -source 2001:db8::/32 -dest ::/0 -proto ipv6
+# IN ACCEPT -source 2001:db8::/32 -proto tcp -dport 22
+# IN ACCEPT -proto icmpv6
 
-# Essential: allow ICMPv6 for IPv6 to work
+# Keep NDP enabled so Neighbor Discovery and SLAAC continue to work
 # Proxmox Web UI: Datacenter → Firewall → Options → NDP = Yes
 ```
 
@@ -167,16 +168,16 @@ ip -6 addr show vmbr0
 ip -6 route show
 
 # Test IPv6 connectivity from host
-ping6 2001:4860:4860::8888
+ping -6 2001:4860:4860::8888
 
 # Check VM/container IPv6
-qm guest exec 101 -- ip -6 addr show    # KVM VM (requires guest agent)
+qm guest exec 101 ip -6 addr show       # KVM VM (requires guest agent)
 pct exec 102 -- ip -6 addr show         # LXC container
 
 # Proxmox API: list VM network interfaces including IPv6
-pvesh get /nodes/proxmox/qemu/101/agent/network-get-interfaces
+pvesh get /nodes/your-node/qemu/101/agent/network-get-interfaces
 ```
 
 ## Conclusion
 
-Proxmox VE configures IPv6 through Linux bridge interfaces (`vmbr*`) in `/etc/network/interfaces` with `iface vmbr0 inet6 static` stanzas, or via the Proxmox Web UI Network configuration. KVM VMs receive IPv6 through their bridge attachment and guest OS configuration; cloud-init supports IPv6 via the `ip6=` and `gw6=` parameters. LXC containers configure IPv6 directly through the `pct create` or `pct set` `--net0 ip6=` parameter. Enable `net.ipv6.conf.all.forwarding=1` on the Proxmox host for inter-bridge IPv6 routing, and run radvd on VM bridges to provide SLAAC for guests.
+Proxmox VE configures IPv6 through Linux bridge interfaces (`vmbr*`) in `/etc/network/interfaces` with `iface vmbr0 inet6 static` stanzas, or via the Proxmox Web UI Network configuration. KVM VMs receive IPv6 through their bridge attachment and guest OS configuration; with cloud-init, Proxmox can inject IPv6 settings via the `ip6=` and `gw6=` parameters. LXC containers configure IPv6 directly through the `pct create` or `pct set` `--net0 ip6=` parameter. Enable `net.ipv6.conf.all.forwarding=1` on the Proxmox host only when it routes IPv6 between bridges or subnets, and run radvd on guest-only bridges to provide SLAAC for guests.
