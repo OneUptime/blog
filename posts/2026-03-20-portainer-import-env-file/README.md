@@ -8,7 +8,7 @@ Description: Learn how to import environment variables into a Portainer containe
 
 ## Introduction
 
-Managing environment variables one-by-one in the Portainer UI works fine for a few variables, but quickly becomes cumbersome when you have dozens. Portainer supports importing environment variables directly from a `.env` file, which is the standard format used by Docker Compose and most Twelve-Factor apps.
+Managing environment variables one-by-one in the Portainer UI works fine for a few variables, but quickly becomes cumbersome when you have dozens. Portainer supports importing environment variables directly from a `.env` file, which is a common format used with Docker Compose and other application deployments.
 
 ## Prerequisites
 
@@ -60,10 +60,9 @@ SENTRY_DSN=https://abc123@sentry.io/12345
 Create a `.env` file on your local machine following the format above.
 
 Important rules:
-- No spaces around the `=` sign.
-- Values with spaces must be quoted: `APP_DESCRIPTION="My Great App"`.
-- No trailing whitespace after values.
-- Use `#` for comments.
+- Use simple `KEY=VALUE` lines for best compatibility.
+- Values can be quoted when needed, especially if they contain spaces or `#`: `APP_DESCRIPTION="My Great App"`.
+- Use `#` for comments. For inline comments on unquoted values, add a space before the `#`.
 
 ```bash
 # Example .env for a Node.js app
@@ -99,11 +98,10 @@ The import fills the form - you still have full control before deploying.
 
 ## Step 4: Using .env Files with Stacks
 
-For Docker Compose stacks in Portainer, `.env` files work differently:
+For Portainer stacks, uploaded `.env` values are loaded into the stack's environment variable list and referenced from your Compose file:
 
 ```yaml
-# docker-compose.yml - references variables from .env
-version: "3.8"
+# compose.yaml - references variables defined for the stack
 
 services:
   app:
@@ -130,7 +128,7 @@ When creating a stack from the Portainer web editor:
 3. Under **Environment variables**, click **Load variables from .env file**.
 4. Or manually add key-value pairs.
 
-Variables are substituted when the stack is deployed.
+Portainer loads the uploaded `.env` file into the stack's **Environment variables** list, and those values are substituted when the stack is deployed. On Docker Standalone and Podman, you can also use `env_file: - stack.env` if you want those uploaded variables added to the container environment. Docker Swarm does not support `env_file` with `docker stack deploy`, so on Swarm you must define the variables explicitly in the Compose file.
 
 ## Managing .env Files Securely
 
@@ -174,8 +172,8 @@ When deploying to different Portainer environments, import the appropriate `.env
 ## Troubleshooting Import Issues
 
 - **Variables not imported**: Ensure the file is plain text, not a Word document or binary.
-- **Missing variables after import**: Check for lines with syntax errors (spaces around `=`).
-- **Values truncated**: Values with special characters may need quoting.
+- **Missing variables after import**: Check for malformed lines and confirm each entry is a valid `KEY=VALUE` pair.
+- **Values truncated**: Values with spaces or inline `#` characters may need quoting.
 - **Import button greyed out**: Check that you're in the Env tab of the container creation form.
 
 ## Conclusion
