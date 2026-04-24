@@ -8,7 +8,7 @@ Description: Use Portainer's stack feature to deploy and manage complex multi-co
 
 ## Introduction
 
-Portainer's Stacks feature brings full Docker Compose support to NAS devices. Instead of deploying containers one by one, you define your entire application stack in a single YAML file and deploy it with one click. This guide shows how to use Portainer Stacks effectively for common home server applications.
+Portainer's Stacks feature lets you deploy multi-container applications on NAS devices using a single Compose YAML file. Instead of deploying containers one by one, you define your entire application stack in a single YAML file and deploy it with one click. This guide shows how to use Portainer Stacks effectively for common home server applications.
 
 ## What Are Portainer Stacks?
 
@@ -28,17 +28,15 @@ In Portainer, click **Stacks** in the left sidebar, then **Add stack**.
 ### Step 2: Choose a Deployment Method
 
 - **Web editor**: Paste or type compose YAML directly
-- **Upload**: Upload a docker-compose.yml file
-- **Repository**: Pull from a Git repository (recommended for versioning)
-- **Template**: Use a pre-built template from the Portainer library
+- **Upload**: Upload a Compose YAML file
+- **Git repository**: Pull from a Git repository (recommended for versioning)
+- **Custom template**: Deploy from a custom stack template you've created in Portainer
 
 ## Example Stacks for Home Servers
 
 ### Media Server Stack
 
 ```yaml
-version: "3.8"
-
 # Media server stack: Jellyfin + Radarr + Sonarr + Prowlarr
 
 services:
@@ -100,8 +98,6 @@ services:
 ### Home Automation Stack
 
 ```yaml
-version: "3.8"
-
 services:
   # Home Assistant - home automation hub
   homeassistant:
@@ -118,9 +114,9 @@ services:
   mosquitto:
     image: eclipse-mosquitto:latest
     container_name: mosquitto
+    # Ensure mosquitto.conf exists in /volume1/Docker/mosquitto/config before first start
     ports:
       - "1883:1883"
-      - "9001:9001"
     volumes:
       - /volume1/Docker/mosquitto/config:/mosquitto/config
       - /volume1/Docker/mosquitto/data:/mosquitto/data
@@ -131,8 +127,6 @@ services:
 ### Productivity Stack
 
 ```yaml
-version: "3.8"
-
 services:
   # Nextcloud - self-hosted Google Drive alternative
   nextcloud:
@@ -145,21 +139,23 @@ services:
       - MYSQL_DATABASE=nextcloud
       - MYSQL_USER=nextcloud
       - MYSQL_PASSWORD=nextcloud_password
+      - REDIS_HOST=nextcloud-redis
     volumes:
       - /volume1/Docker/nextcloud:/var/www/html
       - /volume1/Nextcloud:/var/www/html/data
     depends_on:
       - nextcloud-db
+      - nextcloud-redis
     restart: unless-stopped
 
   nextcloud-db:
     image: mariadb:10.11
     container_name: nextcloud-db
     environment:
-      - MYSQL_ROOT_PASSWORD=root_password
-      - MYSQL_DATABASE=nextcloud
-      - MYSQL_USER=nextcloud
-      - MYSQL_PASSWORD=nextcloud_password
+      - MARIADB_ROOT_PASSWORD=root_password
+      - MARIADB_DATABASE=nextcloud
+      - MARIADB_USER=nextcloud
+      - MARIADB_PASSWORD=nextcloud_password
     volumes:
       - /volume1/Docker/nextcloud-db:/var/lib/mysql
     restart: unless-stopped
@@ -176,8 +172,6 @@ services:
 For sensitive values, use Portainer's **Environment variables** section at the bottom of the stack editor:
 
 ```yaml
-version: "3.8"
-
 services:
   myapp:
     image: myapp:latest
@@ -198,22 +192,22 @@ This keeps secrets out of your compose files.
 
 For versioned configuration management:
 
-1. In the stack editor, select **Repository**
+1. In the stack editor, select **Git repository**
 2. Enter your Git repository URL
 3. Set the **Compose path** (e.g., `stacks/media/docker-compose.yml`)
-4. Enable **GitOps updates** for automatic deployment on commits
+4. Enable **GitOps updates** to poll for repository changes or trigger updates via webhook
 
 ## Updating a Stack
 
 To update container images in a stack:
 
 1. Navigate to **Stacks** and click your stack
-2. Click **Pull and redeploy** to update all containers to latest tags
-3. Or edit the compose file to pin specific versions
+2. If the stack was deployed from Git, click **Pull and redeploy** and enable image re-pull if you want newer image tags fetched
+3. If the stack was created in the web editor or uploaded, edit the compose file and click **Update the stack**
 
 ## NAS Volume Path Conventions
 
-For consistent organization on NAS devices:
+On Synology NAS devices, a common convention is:
 
 ```text
 /volume1/Docker/          - Container configs (small, fast)
@@ -222,7 +216,7 @@ For consistent organization on NAS devices:
 /volume1/backups/         - Application backups
 ```
 
-Use this convention in all your stacks for predictable paths.
+Adjust the base path for your NAS platform if it does not use `/volume1`.
 
 ## Conclusion
 
