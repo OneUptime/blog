@@ -19,40 +19,50 @@ In a Docker Swarm deployment, Portainer typically runs as:
 ## Step 1: Backup Portainer Data
 
 ```bash
-# On the manager node where Portainer is running
+# On a swarm manager node
+
+# List the Portainer services and note the actual service names.
+# With the default stack deploy these are:
+# - Portainer Server: portainer_portainer
+# - Portainer Agent: portainer_agent
+# - Portainer data volume: portainer_portainer_data
+docker service ls | grep portainer
+
+PORTAINER_SERVICE=portainer_portainer
+AGENT_SERVICE=portainer_agent
+PORTAINER_VOLUME=portainer_portainer_data
 
 # Find which node is running Portainer
-docker service ps portainer --filter desired-state=running
+docker service ps --filter desired-state=running $PORTAINER_SERVICE
 
 # SSH to that node and backup
 docker run --rm \
-  -v portainer_data:/data \
+  -v $PORTAINER_VOLUME:/data \
   -v $(pwd):/backup \
   alpine tar czf /backup/portainer-swarm-backup-$(date +%Y%m%d).tar.gz -C /data .
 ```
 
-## Step 2: Pull New Image on All Swarm Nodes
+## Step 2: Pull the New Images on the Manager Node
 
 ```bash
-# Pull on all nodes (run on manager - Swarm will pull as needed)
-# Or manually pull on each node:
-for node in $(docker node ls -q); do
-  docker node inspect $node --format '{{.Status.Addr}}' | xargs -I{} ssh {} "docker pull portainer/portainer-ce:latest"
-done
+# Pull the matching Portainer Server and Agent images
+docker pull portainer/portainer-ce:lts
+docker pull portainer/agent:lts
 ```
 
 ## Step 3: Update the Portainer Service
 
 ```bash
-# Update the Portainer service to new image
+# Update the Portainer service to the latest LTS image
 docker service update \
-  --image portainer/portainer-ce:latest \
+  --image portainer/portainer-ce:lts \
+  --force \
   --update-parallelism 1 \
   --update-delay 30s \
-  portainer
+  $PORTAINER_SERVICE
 
 # Monitor the update
-docker service ps portainer
+docker service ps $PORTAINER_SERVICE
 ```
 
 ## Step 4: Update Portainer Agent
@@ -60,11 +70,12 @@ docker service ps portainer
 ```bash
 # Update the Portainer agent on all nodes
 docker service update \
-  --image portainer/agent:latest \
-  portainer_agent
+  --image portainer/agent:lts \
+  --force \
+  $AGENT_SERVICE
 
 # Monitor agent updates across all nodes
-docker service ps portainer_agent
+docker service ps $AGENT_SERVICE
 ```
 
 ## Step 5: Verify Upgrade
@@ -74,10 +85,11 @@ docker service ps portainer_agent
 docker service ls | grep portainer
 
 # Check all tasks are running
-docker service ps portainer --filter desired-state=running
+docker service ps --filter desired-state=running $PORTAINER_SERVICE
+docker service ps --filter desired-state=running $AGENT_SERVICE
 
 # Check logs
-docker service logs portainer --tail 50
+docker service logs $PORTAINER_SERVICE --tail 50
 ```
 
 ## Using Docker Stack for Managed Upgrades
@@ -90,7 +102,7 @@ version: '3.8'
 
 services:
   agent:
-    image: portainer/agent:latest
+    image: portainer/agent:lts
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
@@ -102,7 +114,7 @@ services:
         constraints: [node.platform.os == linux]
 
   portainer:
-    image: portainer/portainer-ce:latest    # Update version here
+    image: portainer/portainer-ce:lts
     command: -H tcp://tasks.agent:9001 --tlsskipverify
     ports:
       - "9443:9443"
