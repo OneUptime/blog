@@ -31,7 +31,7 @@ docker run -d \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ee:latest
+  portainer/portainer-ee:lts
 
 # Create Edge Groups by facility type in Portainer UI:
 # - Distribution Centers (large, high-throughput)
@@ -50,21 +50,22 @@ FACILITY_TYPE=$2   # dc, warehouse, crossdock, depot
 PORTAINER_EDGE_KEY=$3
 
 # Install Docker on facility server
-curl -fsSL https://get.docker.com | sh
+curl -fsSL https://get.docker.com | sudo sh
 sudo usermod -aG docker ubuntu
-sudo systemctl enable docker
+sudo systemctl enable --now docker
 
 # Start Edge agent
-docker run -d \
+sudo docker run -d \
   --name portainer-agent \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -v /:/host \
   -v portainer_agent_data:/data \
   -e EDGE=1 \
   -e EDGE_ID="${FACILITY_TYPE}-${FACILITY_ID}" \
   -e EDGE_KEY="$PORTAINER_EDGE_KEY" \
-  -e EDGE_SERVER_HOST="https://portainer.logistics.com:9443" \
-  portainer/agent:latest
+  portainer/agent:lts
 
 echo "Facility $FACILITY_ID ($FACILITY_TYPE) registered"
 ```
@@ -86,8 +87,6 @@ services:
       - DB_URL=postgresql://wms:${DB_PASSWORD}@db/wms
       - SYNC_INTERVAL=300
       - OFFLINE_MODE=true   # Operates during WAN outages
-    secrets:
-      - db_password
     depends_on:
       - db
     volumes:
@@ -116,9 +115,7 @@ services:
     environment:
       POSTGRES_DB: wms
       POSTGRES_USER: wms
-      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
-    secrets:
-      - db_password
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - wms-db:/var/lib/postgresql/data
 
@@ -130,10 +127,6 @@ services:
       - FACILITY_ID=${FACILITY_ID}
       - SYNC_INTERVAL=60
       - BUFFER_TRANSACTIONS=10000
-
-secrets:
-  db_password:
-    file: ./secrets/db_password.txt
 
 volumes:
   wms-data:
@@ -153,6 +146,9 @@ services:
       - SENSOR_PROTOCOL=modbus
       - SENSOR_IDS=zone-a,zone-b,zone-c,zone-d
       - INFLUX_URL=http://influxdb:8086
+      - INFLUX_ORG=${INFLUX_ORG}
+      - INFLUX_BUCKET=${INFLUX_BUCKET}
+      - INFLUX_TOKEN=${INFLUX_TOKEN}
       - ALERT_TEMP_HIGH=5    # Alert above 5°C for cold storage
       - ALERT_TEMP_LOW=-25   # Alert below -25°C for frozen
       - ALERT_WEBHOOK=https://ops.logistics.com/alerts
@@ -162,6 +158,13 @@ services:
   influxdb:
     image: influxdb:2.7-alpine
     restart: always
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_USERNAME}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_PASSWORD}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUX_ORG}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUX_BUCKET}
     volumes:
       - temp-data:/var/lib/influxdb2
 
@@ -180,9 +183,16 @@ services:
     restart: always
     environment:
       - INFLUX_URL=http://influxdb:8086
+      - INFLUX_ORG=${INFLUX_ORG}
+      - INFLUX_BUCKET=${INFLUX_BUCKET}
+      - INFLUX_TOKEN=${INFLUX_TOKEN}
       - PAGERDUTY_KEY=${PAGERDUTY_KEY}
       - CHECK_INTERVAL=60
       - FACILITY_ID=${FACILITY_ID}
+
+volumes:
+  temp-data:
+  grafana-data:
 ```
 
 ## Step 5: Last-Mile Delivery Route Optimization
@@ -201,10 +211,11 @@ services:
       - VEHICLE_COUNT=${VEHICLE_COUNT}
       - MAX_STOPS_PER_ROUTE=30
       - TIME_WINDOWS=enabled
-    resources:
-      limits:
-        cpus: '2'
-        memory: 2g
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2g
 
   driver-api:
     image: logistics/driver-mobile-api:v3.5
@@ -230,7 +241,7 @@ services:
 ```bash
 #!/bin/bash
 # update-all-facilities.sh
-PORTAINER_URL="https://portainer.logistics.com"
+PORTAINER_URL="https://portainer.logistics.com:9443"
 API_KEY="ops-api-key"
 NEW_VERSION=$1
 
@@ -242,19 +253,20 @@ ENVIRONMENTS=$(curl -s \
   "$PORTAINER_URL/api/endpoints?types=4" | \
   python3 -c "import sys,json; envs=json.load(sys.stdin); [print(e['Id'],e['Name']) for e in envs]")
 
-ONLINE=$(echo "$ENVIRONMENTS" | wc -l)
+ONLINE=$(printf '%s\n' "$ENVIRONMENTS" | sed '/^$/d' | wc -l)
 echo "Facilities online: $ONLINE"
 
 # Update the Edge Stack with new image version
-COMPOSE_CONTENT=$(sed "s/wms-api:v[0-9.]*/wms-api:$NEW_VERSION/g" wms-stack/docker-compose.yml)
+STACK_FILE_CONTENT=$(sed "s/wms-api:v[0-9.]*/wms-api:$NEW_VERSION/g" wms-stack/docker-compose.yml | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')
 
 curl -s -X PUT \
   -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
   -d "{
-    \"StackFileContent\": $(echo $COMPOSE_CONTENT | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))'),
+    \"StackFileContent\": $STACK_FILE_CONTENT,
     \"EdgeGroups\": [1, 2, 3],
-    \"UpdateVersion\": 2
+    \"DeploymentType\": 0,
+    \"UpdateVersion\": true
   }" \
   "$PORTAINER_URL/api/edge_stacks/1"
 
@@ -270,9 +282,13 @@ services:
   kafka:
     image: confluentinc/cp-kafka:7.4.0
     restart: always
+    depends_on:
+      - zookeeper
     environment:
+      KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
   shipment-events:
     image: logistics/shipment-processor:v2.8
