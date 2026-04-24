@@ -14,6 +14,7 @@ Accessing services via custom domain names (like `myapp.example.com`) instead of
 
 - Domain name with DNS management access
 - Portainer managing Docker containers
+- Shared Docker network created for the reverse proxy (for example, `docker network create proxy`)
 - Traefik or Nginx deployed via Portainer
 
 ## Option 1: Custom Domains with Traefik
@@ -34,12 +35,12 @@ services:
       - "443:443"
     environment:
       # For Let's Encrypt DNS challenge (Cloudflare example)
-      CF_API_TOKEN: "${CF_API_TOKEN}"
+      CF_DNS_API_TOKEN: "${CF_DNS_API_TOKEN}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik-certs:/letsencrypt
     command:
-      - --api.dashboard=true
+      - --api=true
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
@@ -122,16 +123,22 @@ services:
       - npm-letsencrypt:/etc/letsencrypt
     environment:
       DB_SQLITE_FILE: "/data/database.sqlite"
+    networks:
+      - proxy
 
 volumes:
   npm-data:
   npm-letsencrypt:
+
+networks:
+  proxy:
+    external: true
 ```
 
 Then in NPM Admin UI (port 81):
 1. **Hosts > Proxy Hosts > Add Proxy Host**
 2. Domain: `myapp.example.com`
-3. Forward Hostname: `myapp-container-name`
+3. Forward Hostname: `myapp`
 4. Forward Port: `3000`
 5. Enable **SSL > Request a new SSL Certificate**
 
@@ -146,7 +153,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name myapp.example.com;
 
     ssl_certificate /etc/letsencrypt/live/myapp.example.com/fullchain.pem;
@@ -169,7 +177,7 @@ server {
 # Add DNS records for each service
 # Using Cloudflare CLI (flarectl)
 
-# Create network
+# Create the shared network before deploying the stacks
 docker network create proxy
 
 # Add A records
