@@ -8,7 +8,7 @@ Description: Learn how to deploy Portainer on Hetzner Cloud servers, one of the 
 
 ## Why Hetzner for Portainer?
 
-Hetzner Cloud offers some of the best price-to-performance ratios in cloud hosting. A CX22 server (2 vCPU, 4GB RAM) costs ~€4/month - comparable performance to a $24/month Droplet elsewhere.
+Hetzner Cloud offers some of the best price-to-performance ratios in cloud hosting. A CX23 server (2 vCPU, 4GB RAM) currently starts at about €4/month.
 
 ## Step 1: Create a Server via hcloud CLI
 
@@ -24,7 +24,7 @@ hcloud context create portainer
 # Create server
 hcloud server create \
   --name portainer-server \
-  --type cx22 \
+  --type cx23 \
   --image ubuntu-22.04 \
   --location nbg1 \
   --ssh-key my-ssh-key \
@@ -40,12 +40,6 @@ Cloud-init file (`/tmp/cloud-init.yaml`):
 #cloud-config
 runcmd:
   - curl -fsSL https://get.docker.com | sh
-  - docker volume create portainer_data
-  - docker run -d -p 8000:8000 -p 9443:9443
-    --name portainer --restart=always
-    -v /var/run/docker.sock:/var/run/docker.sock
-    -v portainer_data:/data
-    portainer/portainer-ce:latest
 ```
 
 ## Step 2: Create a Firewall
@@ -60,12 +54,6 @@ hcloud firewall add-rule portainer-fw \
 
 hcloud firewall add-rule portainer-fw \
   --direction in --protocol tcp --port 9443 --source-ips 0.0.0.0/0
-
-hcloud firewall add-rule portainer-fw \
-  --direction in --protocol tcp --port 80 --source-ips 0.0.0.0/0
-
-hcloud firewall add-rule portainer-fw \
-  --direction in --protocol tcp --port 443 --source-ips 0.0.0.0/0
 
 # Apply to server
 hcloud firewall apply-to-resource portainer-fw \
@@ -84,50 +72,46 @@ hcloud volume create \
   --format ext4
 
 # The volume will be mounted at /mnt/HC_Volume_<ID>
-# SSH in and check:
+# After you SSH into the server, check:
 df -h | grep HC_Volume
 ```
 
-Use the volume for Docker data:
+Use the volume for Portainer data:
 
 ```bash
 # SSH into server
 ssh root@<SERVER_IP>
 
-# Move Docker data root to the volume
-cat > /etc/docker/daemon.json << 'EOF'
-{
-  "data-root": "/mnt/HC_Volume_123456789"
-}
-EOF
+# Store Portainer data on the attached volume
+mkdir -p /mnt/HC_Volume_<ID>/portainer
 
-systemctl restart docker
+docker run -d -p 8000:8000 -p 9443:9443 \
+  --name portainer --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /mnt/HC_Volume_<ID>/portainer:/data \
+  portainer/portainer-ce:lts
 ```
 
 ## Step 4: Configure Hetzner DNS
 
 ```bash
-# Using Hetzner DNS API
-ZONE_ID=$(curl -s "https://dns.hetzner.com/api/v1/zones" \
-  -H "Auth-API-Token: $HETZNER_DNS_TOKEN" | \
-  jq -r '.zones[] | select(.name == "yourdomain.com") | .id')
+# Create the zone in Hetzner Console if it does not exist yet
+hcloud zone create --name yourdomain.com
 
-# Create A record
-curl -X POST "https://dns.hetzner.com/api/v1/records" \
-  -H "Auth-API-Token: $HETZNER_DNS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"value\": \"$(hcloud server ip portainer-server)\", \"ttl\": 300, \"type\": \"A\", \"name\": \"portainer\", \"zone_id\": \"$ZONE_ID\"}"
+# Create or replace the A record
+hcloud zone set-records yourdomain.com portainer A \
+  --record "$(hcloud server ip portainer-server)"
 ```
 
 ## MTU Configuration for Docker Swarm on Hetzner
 
-Hetzner Cloud uses MTU 1450 for its network. Docker overlay networks default to MTU 1500 and can cause packet fragmentation:
+Hetzner Cloud private network interfaces use MTU 1450. If you run Docker Swarm over a Hetzner private network, set the overlay network MTU accordingly to avoid fragmentation:
 
-```json
-# /etc/docker/daemon.json
-{
-  "mtu": 1450
-}
+```bash
+docker network create \
+  --driver overlay \
+  --opt com.docker.network.driver.mtu=1450 \
+  my-overlay
 ```
 
 See also: fix-swarm-mtu-issues-portainer-hetzner guide.
@@ -136,9 +120,9 @@ See also: fix-swarm-mtu-issues-portainer-hetzner guide.
 
 | Type | vCPU | RAM | Price | Use Case |
 |------|------|-----|-------|----------|
-| CX22 | 2 | 4GB | ~€4/mo | Personal |
-| CX32 | 4 | 8GB | ~€7/mo | Team |
-| CX42 | 8 | 16GB | ~€14/mo | Production |
+| CX23 | 2 | 4GB | ~€4/mo | Personal |
+| CX33 | 4 | 8GB | ~€6.50/mo | Team |
+| CX43 | 8 | 16GB | ~€12/mo | Production |
 
 ## Conclusion
 
