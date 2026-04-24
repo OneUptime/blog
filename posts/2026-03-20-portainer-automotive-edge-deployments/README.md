@@ -41,7 +41,7 @@ docker run -d \
   -p 9443:9443 \
   -p 8000:8000 \
   -v portainer_data:/data \
-  portainer/portainer-ee:latest
+  portainer/portainer-ee:lts
 ```
 
 ## Step 2: Create Edge Groups by Vehicle Model or Region
@@ -56,7 +56,7 @@ Group vehicles by model year for targeted software updates - a new feature may o
 
 ## Step 3: Enroll Edge Compute Units
 
-For automotive-grade Linux targets (e.g., running Automotive Grade Linux or GENIVI):
+For automotive-grade Linux targets (e.g., running Automotive Grade Linux):
 
 ```bash
 # Initial enrollment script for edge compute module
@@ -69,7 +69,10 @@ docker run -d \
   -e EDGE_KEY=${FLEET_ENROLLMENT_KEY} \
   -e EDGE_INACTIVITY_TIMEOUT=75 \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  internal-registry.oem.com/portainer/agent:latest
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -v /:/host \
+  -v portainer_agent_data:/data \
+  portainer/agent:lts
 ```
 
 Use the Vehicle Identification Number (VIN) as the Edge ID for traceability.
@@ -78,8 +81,6 @@ Use the Vehicle Identification Number (VIN) as the Edge ID for traceability.
 
 ```yaml
 # vehicle-telemetry-stack.yml
-version: "3.8"
-
 services:
   telemetry-agent:
     image: internal-registry.oem.com/telemetry-agent:4.1.0
@@ -87,10 +88,8 @@ services:
       - VEHICLE_ID=${VIN}
       - TELEMETRY_ENDPOINT=https://telemetry.oem.com/ingest
       - SAMPLE_RATE_HZ=10
-    volumes:
-      - /dev/canbus0:/dev/canbus0   # CAN bus interface
     restart: unless-stopped
-    network_mode: host
+    network_mode: host  # SocketCAN interfaces such as can0 are accessed via the host network namespace
 
   ota-agent:
     image: internal-registry.oem.com/ota-client:2.0.3
@@ -113,9 +112,10 @@ For safety-critical automotive software, use staged rollouts:
 
 ```bash
 # Portainer API - update edge stack to previous version
-curl -X PUT https://portainer-fleet:9443/api/edge/stacks/42 \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"StackFileContent": "...previous-version-yaml..."}'
+curl -X PUT https://portainer-fleet:9443/api/edge_stacks/42 \
+  -H "X-API-Key: $PORTAINER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"StackFileContent":"...previous-version-yaml..."}'
 ```
 
 ## Summary
