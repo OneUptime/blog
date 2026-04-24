@@ -13,7 +13,6 @@ Rocky Linux is a RHEL-compatible distribution created after CentOS's transition 
 ## Prerequisites
 
 - Rocky Linux 8.x or 9.x
-- Minimum: 2GB RAM, 20GB disk
 - Root or sudo access
 
 ## Step 1: Update System
@@ -27,15 +26,22 @@ sudo dnf update -y
 ```bash
 # Remove any conflicting packages
 
-sudo dnf remove -y docker docker-common docker-selinux \
-  docker-engine podman runc 2>/dev/null
+sudo dnf remove -y \
+  docker \
+  docker-client \
+  docker-client-latest \
+  docker-common \
+  docker-latest \
+  docker-latest-logrotate \
+  docker-logrotate \
+  docker-engine
 
 # Install dnf plugins
 sudo dnf install -y dnf-plugins-core
 
-# Add Docker repository (uses CentOS repo, compatible with Rocky)
+# Add Docker repository for Rocky Linux
 sudo dnf config-manager --add-repo \
-  https://download.docker.com/linux/centos/docker-ce.repo
+  https://download.docker.com/linux/rhel/docker-ce.repo
 
 # Install Docker CE
 sudo dnf install -y \
@@ -48,35 +54,34 @@ sudo dnf install -y \
 # Start and enable Docker
 sudo systemctl enable --now docker
 
-# Add user to docker group
-sudo usermod -aG docker $USER
-newgrp docker
+# Add user to docker group (optional)
+sudo usermod -a -G docker $(whoami)
+# Log out and back in before running Docker without sudo
 ```
 
 ## Step 3: Verify Docker
 
 ```bash
 docker --version
-docker run hello-world
+sudo docker run hello-world
 sudo systemctl status docker
 ```
 
 ## Step 4: Configure SELinux
 
-Rocky Linux 9 has SELinux in Enforcing mode by default:
+Rocky Linux uses SELinux in Enforcing mode by default. Portainer's official Docker installation guide assumes SELinux is disabled; if you keep SELinux enabled, use `--privileged` when starting Portainer:
 
 ```bash
 # Check SELinux status
 getenforce
 
-# For production, keep SELinux Enforcing and use :z mount label
-# SELinux relabels the bind mount for container access
+# Portainer's Docker install docs require --privileged on SELinux-enabled hosts
 ```
 
 ## Step 5: Configure firewalld
 
 ```bash
-# Open Portainer ports
+# Open Portainer UI/API port and optional Edge tunnel port
 sudo firewall-cmd --permanent --add-port=9443/tcp
 sudo firewall-cmd --permanent --add-port=8000/tcp
 sudo firewall-cmd --reload
@@ -89,17 +94,18 @@ sudo firewall-cmd --list-ports
 
 ```bash
 # Create data volume
-docker volume create portainer_data
+sudo docker volume create portainer_data
 
-# Deploy with SELinux :z label for Enforcing mode
-docker run -d \
+# Deploy Portainer CE on Rocky Linux with SELinux enabled
+sudo docker run -d \
+  --privileged \
   -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
   --restart=always \
-  -v /var/run/docker.sock:/var/run/docker.sock:z \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 7: First Access
@@ -120,10 +126,10 @@ Navigate to the URL, accept the self-signed certificate, and create your admin a
 sudo dnf install -y dnf-automatic
 
 # Configure for security updates only
-sudo sed -i 's/upgrade_type = default/upgrade_type = security/' \
+sudo sed -i 's/^upgrade_type = .*/upgrade_type = security/' \
   /etc/dnf/automatic.conf
 
-sudo systemctl enable --now dnf-automatic.timer
+sudo systemctl enable --now dnf-automatic-install.timer
 ```
 
 ## Rocky Linux 8 vs Rocky Linux 9 Differences
@@ -133,28 +139,28 @@ sudo systemctl enable --now dnf-automatic.timer
 | Default cgroups | cgroups v1 | cgroups v2 |
 | SELinux | Enforcing | Enforcing |
 | Python | 3.6 | 3.9 |
-| Docker compatibility | Full | Full |
+| Docker compatibility | Supported | Supported |
 
 ```bash
 # Check cgroup version
-cat /sys/fs/cgroup/cgroup.controllers
-# If empty, using cgroups v1
-# If contains entries, using cgroups v2
+if [ -f /sys/fs/cgroup/cgroup.controllers ]; then
+  echo "cgroups v2"
+else
+  echo "cgroups v1"
+fi
 ```
 
 ## Troubleshooting
 
-### Docker Fails to Start with cgroups v2
+### Verify Docker cgroup Settings
+
+Docker 20.10 and later support cgroups v2, and Docker uses the `systemd` cgroup driver by default on cgroups v2 hosts.
 
 ```bash
-# Rocky Linux 9 with cgroups v2 - ensure containerd is configured
-sudo containerd config default > /etc/containerd/config.toml
-sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' \
-  /etc/containerd/config.toml
-sudo systemctl restart containerd
-sudo systemctl restart docker
+# Verify Docker's cgroup version and driver
+sudo docker info | grep -E 'Cgroup Version|Cgroup Driver'
 ```
 
 ## Conclusion
 
-Rocky Linux is an excellent CentOS replacement for enterprise Portainer deployments. Its binary compatibility with RHEL ensures that enterprise software designed for RHEL works without modification. The SELinux enforcement requires using `:z` volume labels, and firewalld needs explicit port rules - both are standard enterprise Linux practices. Rocky Linux's 10-year support lifecycle makes it a stable foundation for production Portainer deployments.
+Rocky Linux is an excellent CentOS replacement for enterprise Portainer deployments. Its binary compatibility with RHEL ensures that enterprise software designed for RHEL works without modification. With SELinux enabled, Portainer should be started with `--privileged`, and firewalld needs explicit port rules - both are standard enterprise Linux practices. Rocky Linux's 10-year support lifecycle makes it a stable foundation for production Portainer deployments.
