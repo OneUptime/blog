@@ -97,7 +97,6 @@ services:
 
       # Strip /app prefix before forwarding to backend
       - "traefik.http.middlewares.strip-app-prefix.stripprefix.prefixes=/app"
-      - "traefik.http.middlewares.strip-app-prefix.stripprefix.forceSlash=false"
 ```
 
 ## Step 5: IP Allowlist Middleware
@@ -154,13 +153,13 @@ services:
 
 ## Step 8: Define Reusable Middleware in Dynamic Config File
 
-Instead of repeating middleware definitions in every container, define them once in a config file:
+Instead of repeating middleware definitions in every container, define them once in a config file with the file provider enabled:
 
 ```yaml
 # /opt/traefik/config/middlewares.yml
 http:
   middlewares:
-    # Reusable: apply to any service with traefik.http.routers.X.middlewares=global-security
+    # Reusable: apply to any service with traefik.http.routers.X.middlewares=global-security@file
     global-security:
       headers:
         frameDeny: true
