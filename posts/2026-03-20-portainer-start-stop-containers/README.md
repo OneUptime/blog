@@ -25,7 +25,7 @@ Docker containers have several possible states:
 | **Stopped** (Exited) | Container process has exited |
 | **Paused** | Container execution is frozen |
 | **Restarting** | Container is in the restart cycle |
-| **Dead** | Container failed to start |
+| **Dead** | Container is defunct and can only be removed |
 | **Created** | Container created but not started |
 
 ## Stopping a Single Container
@@ -37,8 +37,8 @@ Docker containers have several possible states:
 3. Click the **Stop** button (square icon) in the container's row.
 
 Portainer sends `docker stop` to the container, which:
-1. Sends `SIGTERM` to the main process (PID 1).
-2. Waits for a grace period (default: 10 seconds).
+1. Sends the configured stop signal to the main process (PID 1), `SIGTERM` by default.
+2. Waits for a grace period (default: 10 seconds on Linux, 30 seconds on Windows).
 3. If still running, sends `SIGKILL`.
 
 ### Via the Container Details Page
@@ -52,7 +52,7 @@ Portainer sends `docker stop` to the container, which:
 docker stop my-container
 
 # With custom timeout (30 seconds before SIGKILL):
-docker stop --time 30 my-container
+docker stop --timeout 30 my-container
 ```
 
 ## Starting a Stopped Container
@@ -113,9 +113,7 @@ wait $APP_PID
 
 ### Setting Stop Timeout
 
-If your application needs more time to shut down, configure a longer timeout in Portainer:
-
-In the container details, or via docker-compose:
+If your application needs more time to shut down, configure a longer timeout in the container definition you deploy through Portainer, such as your Docker Compose file:
 
 ```yaml
 services:
@@ -141,11 +139,9 @@ services:
 
 ## Container Start Order (Dependencies)
 
-For stacks, control startup order with `depends_on`:
+For Docker Compose-managed applications, control startup order with `depends_on`:
 
 ```yaml
-version: "3.8"
-
 services:
   db:
     image: postgres:15-alpine
@@ -174,7 +170,7 @@ Or use the **Recreate** feature in Portainer which handles this automatically.
 
 ## Monitoring Container Start/Stop Events
 
-View container events in Portainer to see start/stop history:
+In Docker Standalone environments, you can view container events in Portainer to see start/stop history:
 
 ```bash
 # Equivalent: view container events
@@ -224,4 +220,4 @@ docker inspect my-container | jq '.[].State.ExitCode'
 
 ## Conclusion
 
-Starting and stopping containers in Portainer is straightforward through the web UI, with support for both individual and bulk operations. Understanding container states and stop behavior - particularly grace periods and stop signals - ensures your applications shut down cleanly without data corruption or incomplete operations. For complex service dependencies, use Docker Compose `depends_on` with health checks to manage startup order automatically.
+Starting and stopping containers in Portainer is straightforward through the web UI, with support for both individual and bulk operations. Understanding container states and stop behavior - particularly grace periods and stop signals - ensures your applications shut down cleanly without data corruption or incomplete operations. For Docker Compose-managed applications, use `depends_on` with health checks to manage startup order automatically.
