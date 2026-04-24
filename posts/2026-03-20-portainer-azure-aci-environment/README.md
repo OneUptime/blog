@@ -8,19 +8,19 @@ Description: Learn how to configure Azure Container Instances as a managed envir
 
 ## Introduction
 
-Azure Container Instances (ACI) allows you to run containers in Azure without managing underlying infrastructure. Portainer Business Edition supports ACI as a first-class environment type, letting you deploy and manage Azure containers from the same Portainer interface you use for Docker and Kubernetes environments.
+Azure Container Instances (ACI) allow you to run containers in Azure without managing underlying infrastructure. Portainer Business Edition supports ACI as a first-class environment type, letting you deploy and manage Azure containers from the same Portainer interface you use for Docker and Kubernetes environments.
 
 ## Prerequisites
 
 - Portainer Business Edition (BE)
 - An active Azure subscription
 - Azure CLI installed locally or access to Azure Cloud Shell
-- An Azure AD (Entra ID) Application registered with appropriate permissions
+- Permission in Microsoft Entra ID to register applications and create service principals
 - Admin access to Portainer
 
 ## Architecture Overview
 
-Portainer connects to ACI using Azure's API via an Azure AD service principal. The service principal must have the `Contributor` role on a resource group where containers will be deployed.
+Portainer connects to ACI using Azure's API via a Microsoft Entra ID service principal. For the flow shown here, the service principal needs `Contributor` on the resource group where containers will be deployed and `Reader` on the subscription so Portainer can enumerate subscription-scoped data.
 
 ## Step 1: Gather Azure Prerequisites
 
@@ -56,31 +56,38 @@ az group create \
 az group show --name portainer-aci-rg
 ```
 
-## Step 3: Register an Azure AD Application
+## Step 3: Register a Microsoft Entra ID Application
 
 ```bash
-# Create an Azure AD app registration
-APP=$(az ad app create \
+# Create a Microsoft Entra ID app registration
+APP_ID=$(az ad app create \
   --display-name "Portainer ACI Integration" \
-  --query '{appId: appId, objectId: id}' -o json)
+  --query appId -o tsv)
 
-APP_ID=$(echo $APP | jq -r '.appId')
 echo "Application (Client) ID: $APP_ID"
 ```
 
-## Step 4: Create a Service Principal and Assign Role
+## Step 4: Create a Service Principal and Assign Roles
 
 ```bash
 # Create a service principal for the app
-SP=$(az ad sp create --id $APP_ID --query 'id' -o tsv)
+SP_OBJECT_ID=$(az ad sp create --id $APP_ID --query 'id' -o tsv)
 
 # Assign Contributor role on the resource group
 az role assignment create \
-  --assignee $APP_ID \
+  --assignee-object-id $SP_OBJECT_ID \
+  --assignee-principal-type ServicePrincipal \
   --role "Contributor" \
   --scope "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/portainer-aci-rg"
 
-echo "Service principal created and role assigned."
+# Assign Reader role on the subscription for discovery operations
+az role assignment create \
+  --assignee-object-id $SP_OBJECT_ID \
+  --assignee-principal-type ServicePrincipal \
+  --role "Reader" \
+  --scope "/subscriptions/${SUBSCRIPTION_ID}"
+
+echo "Service principal created and roles assigned."
 ```
 
 ## Step 5: Create a Client Secret
@@ -100,24 +107,23 @@ echo "Client Secret: $SECRET"
 
 1. Log into Portainer as admin.
 2. Go to **Environments** → **Add environment**.
-3. Select **Azure ACI** as the environment type.
+3. Select **ACI** as the environment type and click **Start Wizard**.
 4. Fill in:
    - **Name**: `Azure Production ACI`
-   - **Subscription ID**: Your Azure subscription ID
-   - **Tenant ID**: Your Azure AD tenant ID
-   - **Application ID (Client ID)**: The app ID from step 3
-   - **Authentication key (Client Secret)**: The secret from step 5
+   - **Application ID**: The app ID from step 3
+   - **Tenant ID**: Your Microsoft Entra tenant ID
+   - **Authentication key**: The secret from step 5
 5. Click **Connect** to validate credentials.
-6. If successful, click **Save environment**.
+6. If successful, Portainer adds the environment. Click **Close** to return to the environment list.
 
 ## Step 7: Verify the ACI Environment
 
-After saving:
+After Portainer adds the environment:
 
 1. The ACI environment will appear in the Portainer home dashboard.
-2. Click on it to open the ACI management view.
-3. You should see an empty container list (ready for deployments).
-4. The available Azure regions and resource groups will be populated.
+2. Click on it to open the Azure ACI dashboard.
+3. The dashboard should display counts for subscriptions, resource groups, and container instances associated with the connection.
+4. From there, open **Container instances** to view or deploy ACI workloads.
 
 ## Configuring Environment Groups and Tags
 
@@ -129,12 +135,12 @@ Optionally, organize your ACI environment:
 
 ## Permissions Summary
 
-The Azure AD application needs at minimum:
+For the flow shown here, grant:
 
 | Permission | Scope | Purpose |
 |-----------|-------|---------|
 | `Contributor` | Resource Group | Create/delete ACI container groups |
-| `Reader` | Subscription | List available regions and resource groups |
+| `Reader` | Subscription | Enumerate subscription-scoped data such as locations and resource groups |
 
 ## Troubleshooting
 
@@ -149,9 +155,12 @@ az login --service-principal \
 az container list --resource-group portainer-aci-rg --output table
 
 # Check role assignments
-az role assignment list --assignee $APP_ID --output table
+az role assignment list \
+  --all \
+  --assignee-object-id $SP_OBJECT_ID \
+  --output table
 ```
 
 ## Conclusion
 
-Setting up Azure ACI as a Portainer environment enables you to manage serverless Azure containers from the same dashboard as your Docker and Kubernetes workloads. The integration uses an Azure AD service principal with scoped Contributor access, providing a secure and auditable connection. Once configured, you can deploy containers to ACI with the same familiar Portainer workflow.
+Setting up Azure ACI as a Portainer environment enables you to manage serverless Azure containers from the same dashboard as your Docker and Kubernetes workloads. The integration uses a Microsoft Entra ID service principal with scoped Azure RBAC access, providing a secure and auditable connection. Once configured, you can deploy containers to ACI with the same familiar Portainer workflow.
