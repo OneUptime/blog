@@ -102,13 +102,13 @@ spec:
 ```bash
 kubectl apply -f hpa.yaml
 
-# Monitor HPA status (also visible in Portainer: K8s > Workloads)
+# Monitor HPA status (also visible in Portainer under Applications)
 kubectl get hpa -n production -w
 ```
 
 ## Step 3: View HPA in Portainer
 
-Navigate to **Kubernetes > Workloads** in Portainer. The deployment shows the current replica count. The HPA events appear in **Kubernetes > Cluster > Events**.
+Navigate to **Applications** in Portainer and open the deployment. The application details show the current replica count and auto-scaling policy, and the **Events** tab shows application-related events.
 
 ```bash
 # Describe HPA for detailed status
@@ -122,15 +122,20 @@ kubectl describe hpa web-app-hpa -n production
 
 ## Step 4: Configure Custom Metrics HPA
 
-Scale based on application metrics (e.g., requests per second):
+Scale based on application metrics (e.g., requests per second) after configuring Prometheus Adapter to expose the metric through the custom metrics API:
 
 ```bash
 # Install Prometheus Adapter for custom metrics
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
 helm install prometheus-adapter prometheus-community/prometheus-adapter \
   --namespace monitoring \
+  --create-namespace \
   --set prometheus.url=http://prometheus.monitoring.svc \
   --set prometheus.port=9090
+
+# Verify the metric you want to use is exposed through the custom metrics API
+kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1"
 ```
 
 ```yaml
@@ -157,7 +162,7 @@ spec:
         averageValue: "100"   # 100 req/s per pod target
   behavior:
     scaleUp:
-      stabilizationWindowSeconds: 30   # Scale up quickly
+      stabilizationWindowSeconds: 0    # Scale up immediately
       policies:
       - type: Percent
         value: 100    # Can double replicas per period
@@ -177,6 +182,7 @@ KEDA (Kubernetes Event-driven Autoscaling) scales based on queue depth, database
 ```bash
 # Install KEDA
 helm repo add kedacore https://kedacore.github.io/charts
+helm repo update
 helm install keda kedacore/keda --namespace keda --create-namespace
 ```
 
@@ -203,9 +209,9 @@ spec:
 ## Step 6: Load Test to Verify Scaling
 
 ```bash
-# Install load testing tool
-kubectl run load-test --image=alpine/bombardier --rm -it --restart=Never \
-  -- bombardier -c 100 -d 120s http://web-app.production.svc.cluster.local
+# Generate load from a temporary Pod
+kubectl run load-generator -i --tty --rm --image=busybox:1.28 --restart=Never -- \
+  /bin/sh -c "while sleep 0.01; do wget -q -O- http://web-app.production.svc.cluster.local; done"
 
 # In another terminal, watch HPA
 kubectl get hpa web-app-hpa -n production -w
@@ -232,7 +238,7 @@ spec:
     metadata:
       timezone: "America/New_York"
       start: "0 8 * * 1-5"    # Scale up weekday 8 AM
-      end: "0 18 * * 1-5"     # Scale down weekday 6 PM
+      end: "0 18 * * 1-5"     # End weekday scale window at 6 PM
       desiredReplicas: "3"
 ```
 
@@ -255,4 +261,4 @@ kubectl get pod <pod-name> -n production \
 
 ## Conclusion
 
-Kubernetes HPA transforms container scaling from a manual operational task into an automatic, policy-driven process. Starting with CPU and memory-based scaling, then advancing to custom application metrics and KEDA for event-driven scaling, gives you fine-grained control over how your workloads respond to load. Portainer's Kubernetes workloads view provides real-time visibility into scaling events and current replica counts, making it easy to monitor autoscaling behavior. The scale behaviors configuration prevents oscillation and ensures smooth scale-up and scale-down transitions.
+Kubernetes HPA transforms container scaling from a manual operational task into an automatic, policy-driven process. Starting with CPU and memory-based scaling, then advancing to custom application metrics and KEDA for event-driven scaling, gives you fine-grained control over how your workloads respond to load. Portainer's application details view provides visibility into replica counts, auto-scaling policy, and related events, making it easy to monitor autoscaling behavior. The scale behaviors configuration prevents oscillation and ensures smooth scale-up and scale-down transitions.
