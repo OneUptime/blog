@@ -8,7 +8,7 @@ Description: Diagnose and resolve Kubernetes ResourceQuota exceeded errors when 
 
 ## Introduction
 
-ResourceQuota objects limit the total resource consumption within a Kubernetes namespace. When a deployment exceeds these quotas, pods fail to schedule with cryptic errors. Portainer surfaces these errors in the deployment UI, but understanding and resolving them requires knowledge of how quotas work. This guide walks through diagnosing quota issues and balancing resource allocation.
+ResourceQuota objects limit the total resource consumption within a Kubernetes namespace. When a deployment exceeds these quotas, Kubernetes can reject Pod creation with `Forbidden` errors, and a Deployment may fail to create all of its Pods. Portainer surfaces these errors in the deployment UI, but understanding and resolving them requires knowledge of how quotas work. This guide walks through diagnosing quota issues and balancing resource allocation.
 
 ## Understanding ResourceQuota Errors
 
@@ -53,47 +53,60 @@ services.loadbalancers  2       3
 ## Step 2: Find Which Workloads Consume the Most Resources
 
 ```bash
-# View resource requests by pod
-kubectl top pods -n production --sort-by=cpu
+# View current resource usage by pod
+kubectl top pod -n production --sort-by=cpu
 
-# Get requested resources (not actual usage)
+# Get requested CPU by pod (not actual usage)
 kubectl get pods -n production -o json | python3 -c "
 import sys, json
+from decimal import Decimal
+
+def parse_cpu(value):
+    value = str(value or '0')
+    if value.endswith('m'):
+        return Decimal(value[:-1])
+    return Decimal(value) * 1000
+
 data = json.load(sys.stdin)
 pods = []
 for pod in data['items']:
-    cpu_req = 0
-    mem_req = 0
-    for c in pod['spec'].get('containers', []):
-        req = c.get('resources', {}).get('requests', {})
-        cpu_str = req.get('cpu', '0m')
-        mem_str = req.get('memory', '0Mi')
-        # Parse cpu
-        if cpu_str.endswith('m'):
-            cpu_req += int(cpu_str[:-1])
-        else:
-            cpu_req += int(cpu_str) * 1000
-        pods.append((pod['metadata']['name'], cpu_req))
+    if pod.get('status', {}).get('phase') in ('Succeeded', 'Failed'):
+        continue
+    pod_spec = pod.get('spec', {})
+    pod_requests = pod_spec.get('resources', {}).get('requests', {})
+    if 'cpu' in pod_requests:
+        cpu_req = parse_cpu(pod_requests['cpu'])
+    else:
+        containers = pod_spec.get('containers', [])
+        init_containers = pod_spec.get('initContainers', [])
+        app_cpu = sum((parse_cpu(c.get('resources', {}).get('requests', {}).get('cpu')) for c in containers), Decimal('0'))
+        init_cpu = max((parse_cpu(c.get('resources', {}).get('requests', {}).get('cpu')) for c in init_containers), default=Decimal('0'))
+        cpu_req = max(app_cpu, init_cpu)
+    pods.append((pod['metadata']['name'], cpu_req))
 
 pods.sort(key=lambda x: x[1], reverse=True)
 for name, cpu in pods[:10]:
-    print(f'{cpu}m\t{name}')
+    print(f'{int(cpu)}m\t{name}')
 "
 ```
 
 ## Step 3: Identify Pods Without Resource Requests
 
-Pods without resource requests still count against some quota types. In Kubernetes, if your ResourceQuota includes `requests.cpu`, all pods in the namespace MUST have CPU requests set:
+Pods without explicit resource requests still count against some quota types. If your ResourceQuota covers CPU or memory, new Pods should set those requests or limits directly, or inherit defaults from a LimitRange:
 
 ```bash
-# Find pods without resource requests
+# Find containers missing CPU or memory requests
 kubectl get pods -n production -o json | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 for pod in data['items']:
+    if pod.get('status', {}).get('phase') in ('Succeeded', 'Failed'):
+        continue
     for container in pod['spec'].get('containers', []):
-        if not container.get('resources', {}).get('requests'):
-            print(f\"Pod: {pod['metadata']['name']}, Container: {container['name']} - NO REQUESTS\")
+        requests = container.get('resources', {}).get('requests', {})
+        missing = [resource for resource in ('cpu', 'memory') if resource not in requests]
+        if missing:
+            print(f\"Pod: {pod['metadata']['name']}, Container: {container['name']} - MISSING: {', '.join(missing)}\")
 "
 ```
 
@@ -157,7 +170,7 @@ Often the fix is reducing over-allocated resources on existing deployments:
 
 ```bash
 # Check actual vs requested usage
-kubectl top pods -n production
+kubectl top pod -n production
 
 # If a pod requests 1 CPU but uses 50m, it's over-allocated
 # Update the deployment
@@ -186,11 +199,11 @@ kubectl scale deployment staging-app --replicas=0 -n production
 Advanced quotas can apply to specific priority classes or scopes:
 
 ```yaml
-# Only count Burstable pods against quota
+# Only count low-priority pods against quota
 apiVersion: v1
 kind: ResourceQuota
 metadata:
-  name: burstable-quota
+  name: low-priority-quota
   namespace: production
 spec:
   hard:
@@ -219,11 +232,11 @@ kubectl describe limitrange -n "$NAMESPACE" 2>/dev/null || echo "No LimitRange s
 
 echo ""
 echo "=== Top Resource Consumers ==="
-kubectl top pods -n "$NAMESPACE" --sort-by=cpu 2>/dev/null | head -20
+kubectl top pod -n "$NAMESPACE" --sort-by=cpu 2>/dev/null | head -20
 
 echo ""
 echo "=== Recent Quota-Related Events ==="
-kubectl get events -n "$NAMESPACE" --field-selector reason=FailedCreate | grep -i quota
+kubectl get events -n "$NAMESPACE" --field-selector=reason=FailedCreate | grep -i quota
 ```
 
 ## Conclusion
