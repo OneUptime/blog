@@ -8,7 +8,7 @@ Description: Automate SSL/TLS certificate renewal for Portainer and its managed 
 
 ## Introduction
 
-SSL certificates expire, and manually renewing them risks service downtime. Portainer itself needs a valid TLS certificate, and services managed by Portainer need automatic renewal too. This guide covers three automation approaches: Certbot with cron, Traefik's built-in ACME, and a custom renewal container.
+SSL certificates expire, and manually renewing them risks service downtime. Portainer itself needs a valid TLS certificate, and services managed by Portainer need automatic renewal too. This guide covers four automation approaches: Certbot with automatic renewal, Certbot deploy hooks, Traefik's built-in ACME, and acme.sh.
 
 ## Method 1: Certbot with Automatic Renewal
 
@@ -18,11 +18,11 @@ SSL certificates expire, and manually renewing them risks service downtime. Port
 sudo apt-get install -y certbot python3-certbot-dns-cloudflare
 
 # Create Cloudflare credentials
-mkdir -p /root/.secrets
-cat > /root/.secrets/cloudflare.ini << 'EOF'
+sudo mkdir -p /root/.secrets
+sudo tee /root/.secrets/cloudflare.ini > /dev/null << 'EOF'
 dns_cloudflare_api_token = YOUR_CLOUDFLARE_TOKEN
 EOF
-chmod 600 /root/.secrets/cloudflare.ini
+sudo chmod 600 /root/.secrets/cloudflare.ini
 
 # Obtain certificate
 sudo certbot certonly \
@@ -34,17 +34,18 @@ sudo certbot certonly \
   -m admin@example.com
 
 # Configure Portainer to use the certificate
-docker stop portainer
+docker rm -f portainer
 docker run -d \
   --name portainer \
   --restart=always \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  -v /etc/letsencrypt/live/portainer.example.com:/certs:ro \
+  -v /etc/letsencrypt/live/portainer.example.com:/certs/live/portainer.example.com:ro \
+  -v /etc/letsencrypt/archive/portainer.example.com:/certs/archive/portainer.example.com:ro \
   portainer/portainer-ce:latest \
-  --sslcert /certs/fullchain.pem \
-  --sslkey /certs/privkey.pem
+  --sslcert /certs/live/portainer.example.com/fullchain.pem \
+  --sslkey /certs/live/portainer.example.com/privkey.pem
 ```
 
 ## Method 2: Renewal Hook for Portainer
@@ -63,8 +64,8 @@ EOF
 
 sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/restart-portainer.sh
 
-# Test renewal
-sudo certbot renew --dry-run
+# Test renewal and run deploy hooks during the dry run
+sudo certbot renew --dry-run --run-deploy-hooks
 
 # Set up automatic renewal via systemd timer
 sudo systemctl enable certbot.timer
@@ -76,6 +77,7 @@ sudo systemctl status certbot.timer
 
 ```yaml
 # traefik-auto-ssl.yml - Traefik handles all SSL automatically
+# Before starting: touch acme.json && chmod 600 acme.json
 version: '3.8'
 
 services:
@@ -87,7 +89,7 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik-certs:/letsencrypt
+      - ./acme.json:/letsencrypt/acme.json
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
@@ -96,6 +98,7 @@ services:
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --certificatesresolvers.le.acme.email=admin@example.com
       - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge=true
       - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
 
   portainer:
@@ -113,7 +116,6 @@ services:
       - traefik.http.services.portainer.loadbalancer.server.scheme=http
 
 volumes:
-  traefik-certs:
   portainer_data:
 ```
 
@@ -122,17 +124,17 @@ volumes:
 ```bash
 # Install acme.sh
 curl https://get.acme.sh | sh -s email=admin@example.com
-source ~/.bashrc
 
 # Issue certificate using DNS challenge (Cloudflare)
 export CF_Token="your-cloudflare-token"
-acme.sh --issue --dns dns_cf -d portainer.example.com
+~/.acme.sh/acme.sh --issue --dns dns_cf -d portainer.example.com
 
-# Install certificate to custom location
-acme.sh --install-cert -d portainer.example.com \
-  --cert-file /etc/portainer/certs/cert.pem \
-  --key-file /etc/portainer/certs/key.pem \
-  --fullchain-file /etc/portainer/certs/fullchain.pem \
+# Install certificate to a path mounted into Portainer
+mkdir -p "$HOME/portainer-certs"
+~/.acme.sh/acme.sh --install-cert -d portainer.example.com \
+  --cert-file "$HOME/portainer-certs/cert.pem" \
+  --key-file "$HOME/portainer-certs/key.pem" \
+  --fullchain-file "$HOME/portainer-certs/fullchain.pem" \
   --reloadcmd "docker restart portainer"
 
 # acme.sh automatically adds cron job for renewal
@@ -147,9 +149,10 @@ crontab -l | grep acme
 # Alert if certificate expires within 14 days
 
 DOMAIN="portainer.example.com"
+PORT="9443"
 WARN_DAYS=14
 
-EXPIRY=$(echo | openssl s_client -connect $DOMAIN:443 -servername $DOMAIN 2>/dev/null \
+EXPIRY=$(echo | openssl s_client -connect "${DOMAIN}:${PORT}" -servername "$DOMAIN" 2>/dev/null \
   | openssl x509 -noout -enddate 2>/dev/null \
   | cut -d= -f2)
 
@@ -157,11 +160,11 @@ EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s)
 NOW_EPOCH=$(date +%s)
 DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
 
-echo "Certificate for $DOMAIN expires in $DAYS_LEFT days"
+echo "Certificate for $DOMAIN:$PORT expires in $DAYS_LEFT days"
 
-if [ $DAYS_LEFT -lt $WARN_DAYS ]; then
+if [ "$DAYS_LEFT" -lt "$WARN_DAYS" ]; then
   echo "WARNING: Certificate expires soon! Triggering renewal..."
-  certbot renew --cert-name $DOMAIN
+  certbot renew --cert-name "$DOMAIN"
 fi
 ```
 
