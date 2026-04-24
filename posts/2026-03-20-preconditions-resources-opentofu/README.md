@@ -57,7 +57,7 @@ resource "aws_instance" "app" {
 }
 ```
 
-## Preconditions on Data Sources
+## Preconditions That Reference Data Sources
 
 ```hcl
 data "aws_ami" "ubuntu" {
@@ -77,7 +77,7 @@ resource "aws_instance" "web" {
   lifecycle {
     precondition {
       # Verify the AMI is recent (not older than 90 days)
-      condition     = timecmp(data.aws_ami.ubuntu.creation_date, timeadd(timestamp(), "-2160h")) > 0
+      condition     = timecmp(data.aws_ami.ubuntu.creation_date, timeadd(plantimestamp(), "-2160h")) > 0
       error_message = "The selected Ubuntu AMI is more than 90 days old. Please use a more recent image."
     }
 
@@ -104,8 +104,8 @@ resource "aws_subnet" "private" {
   lifecycle {
     precondition {
       # Ensure subnet CIDR is within VPC CIDR
-      condition     = cidrsubnet(var.vpc_cidr, 8, 0) != var.subnet_cidr
-      error_message = "Subnet CIDR ${var.subnet_cidr} conflicts with the first /24 block of VPC CIDR ${var.vpc_cidr}."
+      condition     = cidrcontains(aws_vpc.main.cidr_block, var.subnet_cidr)
+      error_message = "Subnet CIDR ${var.subnet_cidr} must be contained within VPC CIDR ${aws_vpc.main.cidr_block}."
     }
   }
 }
@@ -115,6 +115,7 @@ resource "aws_db_instance" "main" {
   engine            = "postgres"
   instance_class    = var.db_instance_class
   allocated_storage = var.db_storage
+  multi_az          = var.db_multi_az
 
   lifecycle {
     precondition {
@@ -180,9 +181,9 @@ resource "aws_s3_bucket" "data" {
     }
 
     precondition {
-      # No consecutive dots or hyphens
-      condition     = !can(regex("[.-]{2,}", var.bucket_name))
-      error_message = "Bucket name must not contain consecutive dots or hyphens."
+      # No consecutive dots
+      condition     = !can(regex("\\.\\.", var.bucket_name))
+      error_message = "Bucket name must not contain consecutive dots."
     }
   }
 }
@@ -191,7 +192,7 @@ resource "aws_s3_bucket" "data" {
 ## Preconditions vs Variable Validation
 
 ```hcl
-# Variable validation: runs during parsing, before any plan
+# Variable validation: validates an input value before it is used elsewhere
 
 variable "region" {
   type = string
@@ -201,7 +202,7 @@ variable "region" {
   }
 }
 
-# Resource precondition: runs during plan/apply, can reference data sources
+# Resource precondition: attaches a check directly to a resource and is evaluated as early as possible
 resource "aws_instance" "web" {
   ami           = data.aws_ami.latest.id
   instance_type = "t3.micro"
@@ -218,4 +219,4 @@ resource "aws_instance" "web" {
 
 ## Conclusion
 
-Preconditions in OpenTofu provide a powerful mechanism for catching configuration errors early, before infrastructure is actually created or modified. Unlike variable validation (which runs during parsing), preconditions can reference data sources and other computed values. Use preconditions to enforce business rules, environment-specific requirements, and cross-resource consistency checks. Multiple preconditions can be added to a single resource, each checking a different aspect of the configuration.
+Preconditions in OpenTofu provide a powerful mechanism for catching configuration errors early, before infrastructure is actually created or modified. Variable validation is useful for checking input values, while preconditions let you attach checks directly to resources, data sources, and outputs. Use preconditions to enforce business rules, environment-specific requirements, and cross-resource consistency checks. Multiple preconditions can be added to a single resource, each checking a different aspect of the configuration.
