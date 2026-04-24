@@ -8,13 +8,13 @@ Description: Learn how to view and interpret Docker Swarm cluster details, node 
 
 ## Introduction
 
-Portainer provides a comprehensive view of your Docker Swarm cluster, including node status, resource utilization, and cluster-wide service distribution. Understanding how to navigate these views helps you monitor cluster health and quickly identify issues. This guide covers all the ways to inspect your Swarm cluster through Portainer.
+Portainer provides a comprehensive view of your Docker Swarm cluster, including node status, available CPU and memory, and cluster-wide service distribution. Understanding how to navigate these views helps you monitor cluster health and quickly identify issues. This guide covers the main ways to inspect your Swarm cluster through Portainer.
 
 ## Prerequisites
 
-- Portainer installed on Docker Swarm
-- At least one manager and one worker node
-- Admin access to Portainer
+- A Docker Swarm environment added to Portainer
+- At least one manager node
+- Access to the environment in Portainer
 
 ## Step 1: Access the Swarm Environment
 
@@ -24,30 +24,27 @@ Portainer provides a comprehensive view of your Docker Swarm cluster, including 
 
 ## Step 2: View the Dashboard Overview
 
-The Swarm dashboard shows a summary:
+The Swarm dashboard shows cluster information and summary tiles for:
 
-```bash
-Docker Swarm Environment
-─────────────────────────────
-Services:          12         Running Swarm services
-Configs:            3         Docker configs stored
-Secrets:            8         Docker secrets
-Networks:           7         Overlay networks
-Volumes:           24         Named volumes
-Nodes:              5         Active cluster nodes
-```
+- Nodes in the cluster and a link to the cluster visualizer
+- Stacks
+- Services
+- Containers
+- Images
+- Networks
+- Volumes
 
 ## Step 3: View Swarm Node Details
 
-Navigate to **Swarm** in the sidebar to see node details:
+Navigate to **Swarm** in the sidebar to see cluster and node details:
 
 ### Cluster Information
 
 ```text
-Swarm ID:    9dh8x4...7f2a
-Managers:    1
-Workers:     4
-Total Nodes: 5
+Nodes:              5
+Docker API Version: 1.45
+Total CPU:          20
+Total Memory:       39.0 GiB
 ```
 
 ### Node Table
@@ -56,27 +53,24 @@ Each node shows:
 
 | Column | Description |
 |--------|-------------|
-| ID | Node short ID |
 | Hostname | Node hostname |
 | Role | Manager or Worker |
-| Status | Active, Down, or Paused |
+| IP Address | Node IP address |
+| CPUs / Memory | Resources available on the node |
+| Status | Node state such as Ready or Down |
 | Availability | Active, Pause, or Drain |
-| Manager Status | Leader, Reachable, or Unreachable |
 | Engine Version | Docker engine version |
 
 ## Step 4: Inspect a Specific Node
 
-Click on a node row to see detailed information:
+Click on a node name to see detailed information:
 
 ```text
-Node ID:           abc123def456
 Hostname:          worker-01
-IP Address:        10.0.1.11
 Role:              Worker
 Status:            Ready
 Availability:      Active
 OS:                linux
-Architecture:      x86_64
 CPU Count:         4
 Memory:            7.78 GiB
 Engine Version:    24.0.7
@@ -85,37 +79,41 @@ Labels:
   - ssd=true
 ```
 
-## Step 5: View Running Tasks per Node
+## Step 5: View Running Service Tasks
 
-In the node detail view, scroll down to see tasks (containers) running on that node:
+To inspect the tasks that make up a Swarm service:
 
 ```text
-Tasks on worker-01
+Service: web_frontend
 ──────────────────────────────────────────────────────
-ID           Service              State     Image
-7d8f93      web_frontend.3       Running   nginx:alpine
-a1b2c3      api_backend.1        Running   myapi:v2.1
-f9e8d7      portainer_agent.3    Running   portainer/agent:latest
+Task                 Current State
+web_frontend.1       Running 2 minutes ago
+web_frontend.2       Running 2 minutes ago
+web_frontend.3       Running 2 minutes ago
 ```
 
-This shows which service replicas are scheduled on each node.
+1. Navigate to **Services**
+2. Click the down-arrow to the left of the service you want to inspect
+3. The tasks that make up the service are shown
+
+For a cluster-wide view of which node tasks are running on, use the cluster visualizer in the next step.
 
 ## Step 6: View Swarm Visualizer
 
-Portainer includes a visual representation of your Swarm cluster (see the Swarm Visualizer guide for details). To access it:
+Portainer includes a visual representation of your Swarm cluster. To access it:
 
-1. Navigate to **Swarm → Visualizer**
-2. The grid view shows nodes as columns and tasks as colored boxes
+1. Navigate to **Swarm → Cluster visualizer**
+2. The visualizer shows the nodes in your cluster and the tasks on each node
 
-## Step 7: Monitor Node Resource Usage
+## Step 7: Review Node Resource Information
 
-To view CPU and memory usage per node:
+Portainer's Swarm views show the CPUs and total memory available on each node:
 
-1. Go to **Nodes** list
-2. Click on a node
-3. Click **Stats** in the node detail view
+1. Go to **Swarm**
+2. Review the **Nodes** table for per-node CPU and memory
+3. Click a node name to open its overview for host and engine details
 
-For aggregate cluster statistics, use the Portainer dashboard or deploy a monitoring stack (Prometheus + Grafana) to your Swarm.
+For live per-node CPU and memory utilization, deploy a monitoring stack such as Prometheus + Grafana.
 
 ## Step 8: Check Cluster Network Information
 
@@ -124,9 +122,9 @@ View overlay networks used for inter-service communication:
 1. Navigate to **Networks** in the sidebar
 2. Look for networks with **Overlay** driver
 3. Click a network to see:
-   - Connected services
-   - IP address ranges (IPAM)
    - Network ID
+   - Driver and scope
+   - IP address ranges (IPAM)
 
 ```bash
 # View overlay networks from CLI
@@ -141,8 +139,8 @@ docker network inspect ingress
 
 Docker Swarm configs and secrets are cluster-wide:
 
-- **Configs** → Navigate to **Swarm → Configs**
-- **Secrets** → Navigate to **Swarm → Secrets**
+- **Configs** → Navigate to **Configs**
+- **Secrets** → Navigate to **Secrets**
 
 These are distinct from environment variables - configs and secrets are distributed to containers that reference them in service definitions.
 
@@ -152,9 +150,8 @@ These are distinct from environment variables - configs and secrets are distribu
 |--------|-------------|---------|
 | Ready | Active | Node is healthy and accepts tasks |
 | Ready | Pause | Node is healthy but won't receive new tasks |
-| Ready | Drain | Node is draining; existing tasks are rescheduled |
-| Down | - | Node is unreachable |
-| Disconnected | - | Node lost contact with manager |
+| Ready | Drain | Node is draining; service tasks are rescheduled |
+| Down | - | Node is unreachable and cannot run new service tasks |
 
 ## Troubleshooting Unhealthy Nodes
 
@@ -162,8 +159,8 @@ These are distinct from environment variables - configs and secrets are distribu
 # Check why a node is down
 docker node inspect worker-01 --pretty
 
-# Force remove a permanently down node
-docker node rm worker-01
+# Force remove an inaccessible node
+docker node rm --force worker-01
 
 # Update a node's availability
 docker node update --availability pause worker-01
@@ -172,4 +169,4 @@ docker node update --availability active worker-01
 
 ## Conclusion
 
-Portainer's Swarm cluster views give you complete visibility into your multi-node Docker infrastructure. Regularly review node status, task distribution, and resource utilization to proactively identify and resolve issues before they impact your applications. Use the visualizer for a quick cluster overview and the node detail views for in-depth troubleshooting.
+Portainer's Swarm cluster views give you solid visibility into your multi-node Docker infrastructure. Regularly review node status, task distribution, and available cluster capacity to proactively identify and resolve issues before they impact your applications. Use the cluster visualizer for a quick cluster overview and the node detail views for host and engine details.
