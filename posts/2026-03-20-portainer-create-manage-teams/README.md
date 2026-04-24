@@ -13,18 +13,17 @@ Teams in Portainer are groups of users that share the same access permissions to
 ## Understanding Teams
 
 A team in Portainer:
-- Contains one or more users
+- Can contain zero or more users
 - Can be assigned access to one or more environments
-- Supports team leader roles (team leaders can manage team membership)
-- Integrates with LDAP and OAuth for automatic team population
+- Supports team leader roles for internally managed teams (team leaders can manage team membership)
+- Can integrate with LDAP and OAuth for automatic team population
 
 ## Creating Teams via the Web UI
 
 ### Step 1: Navigate to Teams
 
 1. Log in as administrator
-2. Go to **Settings** → **Teams**
-3. Click **Add team**
+2. Go to **User-related** → **Teams**
 
 ### Step 2: Name and Create the Team
 
@@ -42,7 +41,7 @@ Click **Create team**.
 TOKEN=$(curl -s -X POST \
   https://portainer.example.com/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"adminpassword"}' \
+  -d '{"Username":"admin","Password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
 # Create a team
@@ -51,7 +50,7 @@ curl -X POST \
   -H "Content-Type: application/json" \
   https://portainer.example.com/api/teams \
   -d '{
-    "name": "DevOps"
+    "Name": "DevOps"
   }'
 
 # Response: {"Id":1,"Name":"DevOps"}
@@ -76,7 +75,7 @@ curl -X PUT \
   -H "Content-Type: application/json" \
   https://portainer.example.com/api/teams/1 \
   -d '{
-    "name": "Platform Engineering"
+    "Name": "Platform Engineering"
   }'
 ```
 
@@ -115,11 +114,11 @@ Within a team, members can have one of two roles:
 curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/teams/1/memberships \
+  https://portainer.example.com/api/team_memberships \
   -d '{
-    "userID": 3,
-    "teamID": 1,
-    "role": 2
+    "UserID": 3,
+    "TeamID": 1,
+    "Role": 2
   }'
 
 # Role values:
@@ -129,7 +128,7 @@ curl -X POST \
 
 ## Assigning Teams to Environments
 
-After creating a team, grant it access to environments via the environment settings:
+After creating a team, grant it access to environments via the environment settings UI or by updating the environment's access policies with the API:
 
 ```bash
 # Get environment (endpoint) list
@@ -138,14 +137,14 @@ curl -s \
   https://portainer.example.com/api/endpoints \
   | python3 -c "import sys,json; [print(f'ID={e[\"Id\"]} Name={e[\"Name\"]}') for e in json.load(sys.stdin)]"
 
-# Assign team access to environment (via environment access settings)
-# This is done through the environment access API or UI
+# Assign team access by updating TeamAccessPolicies with PUT /api/endpoints/{id}
+# or use the environment access UI
 ```
 
 Via the UI:
-1. Go to **Environments** → click the environment
-2. Click **Manage access**
-3. Add the team with the desired role (Read-only, Standard User, or Operator)
+1. Go to **Environment-related** → **Environments**
+2. Locate the environment and click **Manage access**
+3. Add the team with the desired role
 
 ## Creating Teams at Scale with a Script
 
@@ -163,7 +162,7 @@ for team_name in "${TEAMS[@]}"; do
     "${PORTAINER_URL}/api/teams" \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
-    -d "{\"name\":\"${team_name}\"}")
+    -d "{\"Name\":\"${team_name}\"}")
 
   TEAM_ID=$(echo $RESULT | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('Id','error'))")
   echo "Created team '${team_name}' with ID: ${TEAM_ID}"
