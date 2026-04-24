@@ -4,89 +4,87 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, API, Documentation, DevOps, Automation
 
-Description: Learn how to access and navigate the Portainer API documentation, including the built-in Swagger UI, API versioning, and how to explore available endpoints.
+Description: Learn how to access and navigate the Portainer API documentation, including the official hosted API reference, API versioning, and how to explore available endpoints.
 
 ## Introduction
 
-Portainer exposes a comprehensive REST API that allows you to automate virtually every operation available in the UI. Before writing API scripts, it is important to know how to find and navigate the API documentation. Portainer ships with a built-in Swagger UI and also publishes documentation online.
+Portainer exposes a comprehensive REST API that allows you to automate virtually every operation available in the UI. Before writing API scripts, it is important to know how to find and navigate the API documentation. Portainer publishes versioned API documentation online. Current official API docs are hosted on `api-docs.portainer.io`.
 
 ## Prerequisites
 
 - Portainer CE or BE installed and running
 - Access to the Portainer web interface
+- A Portainer user account and either an API access token or username/password if you want to make authenticated requests
 - A web browser
 
-## Accessing the Built-in Swagger UI
+## Accessing the Official API Documentation
 
-Portainer includes an interactive Swagger UI accessible from your Portainer instance:
+Portainer publishes versioned API documentation online rather than exposing a built-in `/api/documentation` route:
 
 ### URL Format
 
 ```text
-https://portainer.example.com/api/documentation
+https://api-docs.portainer.io/?edition=ce&version=2.39.1
 ```
 
-or on a local installation:
+or for Business Edition:
 
 ```text
-http://localhost:9000/api/documentation
+https://api-docs.portainer.io/?edition=ee&version=2.39.1
 ```
 
-This opens the Swagger UI directly from your Portainer instance, showing the exact API version your deployment supports.
+This opens the official versioned API reference for the selected Portainer edition and published release.
 
-## Navigating the Swagger UI
+## Navigating the API Documentation
 
-The Swagger UI organizes endpoints by **tags** (resource categories):
+The Portainer API documentation organizes endpoints by **tags** (resource categories). Common tags include:
 
 | Tag | Description |
 |-----|-------------|
-| `auth` | Authentication (login, logout, token management) |
+| `auth` | Authentication (login and logout) |
 | `users` | User management |
 | `teams` | Team management |
 | `endpoints` | Environment management |
+| `endpoint_groups` | Environment group management |
 | `stacks` | Stack (Compose) management |
-| `containers` | Direct Docker container operations |
-| `images` | Container image management |
-| `volumes` | Volume management |
-| `networks` | Network management |
+| `docker` | Docker resource operations |
 | `registries` | Registry management |
 | `kubernetes` | Kubernetes-specific operations |
+| `helm` | Helm release operations |
+| `system` | Portainer system and status operations |
 | `webhooks` | Webhook management |
 
-### Making Test Requests in Swagger UI
+### Authenticating API Requests
 
-1. Open the Swagger UI.
-2. Click the **Authorize** button at the top.
-3. Enter your JWT token: `Bearer your-jwt-token`
-4. Click **Authorize**, then **Close**.
-5. Expand any endpoint group (e.g., `auth`).
-6. Click an individual endpoint (e.g., `POST /api/auth`).
-7. Click **Try it out**.
-8. Fill in the request body.
-9. Click **Execute**.
-10. View the response below.
+1. Generate a user access token in Portainer under **My account**, or authenticate with `POST /api/auth` to obtain a JWT.
+2. For API access tokens, send the token in the `X-API-Key` header.
+3. For JWTs returned by `POST /api/auth`, send `Authorization: Bearer your-jwt-token`.
+4. Use the API documentation to inspect the request and response schemas, then run the request with `curl`, HTTPie, Postman, or another API client.
 
 ## Accessing the Official Online Documentation
 
 Portainer publishes API documentation online:
 
 ```text
-https://app.swaggerhub.com/apis/portainer/portainer-ce/2.21.0
+https://api-docs.portainer.io/
 ```
 
-The version number in the URL corresponds to your Portainer version. Check your Portainer version first:
+Check your Portainer version first:
 
 ```bash
 # Check your Portainer version
 
-curl -s https://portainer.example.com/api/system/status | jq .Version
+curl -s https://portainer.example.com/api/system/status | jq -r .Version
 ```
 
-Then access the matching documentation:
+For current releases, select the matching edition and version from the dropdowns on `https://api-docs.portainer.io/`.
+
+Example direct link for current CE docs:
 
 ```bash
-PORTAINER_VERSION="2.21.0"
-echo "API Docs: https://app.swaggerhub.com/apis/portainer/portainer-ce/${PORTAINER_VERSION}"
+PORTAINER_VERSION="$(curl -s https://portainer.example.com/api/system/status | jq -r .Version)"
+echo "Running Portainer: ${PORTAINER_VERSION}"
+echo "Current docs portal: https://api-docs.portainer.io/"
 ```
 
 ## Understanding API Versioning
@@ -98,7 +96,7 @@ Key API URL patterns:
 ```bash
 # Global operations
 POST   /api/auth                         # Get JWT token
-GET    /api/users                         # List users
+GET    /api/users                         # List users (requires appropriate permissions)
 GET    /api/endpoints                     # List environments
 
 # Endpoint-scoped Docker operations
@@ -106,8 +104,8 @@ GET    /api/endpoints/{id}/docker/containers/json   # List containers
 POST   /api/endpoints/{id}/docker/containers/create # Create container
 GET    /api/endpoints/{id}/docker/volumes           # List volumes
 
-# Endpoint-scoped Kubernetes operations
-GET    /api/endpoints/{id}/kubernetes/api/v1/namespaces
+# Kubernetes and Helm operations
+GET    /api/kubernetes/{id}/namespaces
 GET    /api/endpoints/{id}/kubernetes/helm
 
 # Stack operations
@@ -120,15 +118,12 @@ POST   /api/stacks/create/standalone/string
 Download the raw OpenAPI spec for use with code generators:
 
 ```bash
-# Download the Portainer OpenAPI specification
-curl -s https://portainer.example.com/api/documentation/json -o portainer-openapi.json
+# Download the published Portainer CE OpenAPI specification
+PORTAINER_VERSION="2.39.1"
+curl -sSL "https://api-docs.portainer.io/versions/ce/${PORTAINER_VERSION}.yaml" -o portainer-openapi.yaml
 
-# Pretty print to review
-cat portainer-openapi.json | jq '{
-  title: .info.title,
-  version: .info.version,
-  paths: (.paths | keys | length)
-}'
+# Review the beginning of the spec
+head -20 portainer-openapi.yaml
 ```
 
 ## Generating Client SDKs from the API Spec
@@ -141,14 +136,14 @@ npm install -g @openapitools/openapi-generator-cli
 
 # Generate a Python client
 openapi-generator-cli generate \
-  -i portainer-openapi.json \
+  -i portainer-openapi.yaml \
   -g python \
   -o portainer-python-client \
   --package-name portainer_client
 
 # Generate a JavaScript/TypeScript client
 openapi-generator-cli generate \
-  -i portainer-openapi.json \
+  -i portainer-openapi.yaml \
   -g typescript-fetch \
   -o portainer-ts-client
 ```
@@ -156,7 +151,7 @@ openapi-generator-cli generate \
 ## Using the API with curl Examples
 
 ```bash
-# Quick reference: common API calls
+# Quick reference: common API calls using a JWT from /api/auth
 
 # 1. Authenticate
 curl -X POST https://portainer.example.com/api/auth \
@@ -171,11 +166,11 @@ curl -H "Authorization: Bearer TOKEN" \
 curl -H "Authorization: Bearer TOKEN" \
   https://portainer.example.com/api/stacks
 
-# 4. List users
+# 4. List users (requires appropriate permissions)
 curl -H "Authorization: Bearer TOKEN" \
   https://portainer.example.com/api/users
 ```
 
 ## Conclusion
 
-The Portainer API documentation is accessible through the built-in Swagger UI at `/api/documentation` on your Portainer instance, as well as online via SwaggerHub. Use the Swagger UI to explore and test endpoints interactively, download the OpenAPI spec for client generation, and always match documentation to your specific Portainer version for accuracy.
+The Portainer API documentation is published online through Portainer's versioned docs portal at `api-docs.portainer.io`. Use the API docs to inspect endpoints and schemas, authenticate with either an API access token or a JWT, download the published OpenAPI spec for client generation, and match the documentation to your Portainer edition and release for accuracy.
