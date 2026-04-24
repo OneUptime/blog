@@ -23,19 +23,16 @@ Applications → /metrics    ↗
 Go to **Stacks → Add Stack** and paste:
 
 ```yaml
-version: "3.8"
-
 services:
   prometheus:
     image: prom/prometheus:latest
     restart: unless-stopped
     volumes:
       - prometheus_data:/prometheus
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /opt/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=30d'
       - '--web.console.libraries=/etc/prometheus/console_libraries'
       - '--web.console.templates=/etc/prometheus/consoles'
       - '--web.enable-lifecycle'
@@ -75,7 +72,7 @@ services:
       - monitoring
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: ghcr.io/google/cadvisor:v0.55.0
     restart: unless-stopped
     volumes:
       - /:/rootfs:ro
@@ -100,7 +97,7 @@ networks:
 
 ## Prometheus Configuration
 
-Create `/opt/monitoring/prometheus.yml` before deploying:
+Create `/opt/monitoring/prometheus.yml` on the Docker host before deploying:
 
 ```yaml
 # prometheus.yml
@@ -108,6 +105,11 @@ Create `/opt/monitoring/prometheus.yml` before deploying:
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+
+storage:
+  tsdb:
+    retention:
+      time: 30d
 
 scrape_configs:
   - job_name: 'prometheus'
@@ -135,7 +137,7 @@ GRAFANA_PASSWORD=a-strong-password
 
 After deployment:
 - Prometheus: `http://server:9090`
-- Grafana: `http://server:3000` (admin / GRAFANA_PASSWORD)
+- Grafana: `http://server:3000` (admin / the value you set for `GRAFANA_PASSWORD`)
 
 ## Configuring Grafana
 
