@@ -8,11 +8,11 @@ Description: Diagnose and resolve Kubernetes service connectivity problems using
 
 ## Introduction
 
-Service connectivity issues in Kubernetes are common and can manifest as connection timeouts, DNS resolution failures, or load balancing problems. Portainer provides visibility into services and their endpoints, helping diagnose network issues.
+Service connectivity issues in Kubernetes are common and can manifest as connection timeouts, DNS resolution failures, or load balancing problems. Portainer provides visibility into services and their configuration, helping diagnose network issues.
 
 ## Step 1: Check Service Configuration in Portainer
 
-Navigate to: **Kubernetes > Services**
+Navigate to: **Networking > Services**
 
 Verify:
 - Service exists in the correct namespace
@@ -34,36 +34,37 @@ kubectl get pods -n production --show-labels | grep myapp
 # Service selector: app=myapp
 # Pod label: app=my-app  (hyphen vs no-hyphen!)
 
-# Fix by updating deployment labels
-kubectl patch deployment myapp -n production -p '{
-  "spec": {"template": {"metadata": {"labels": {"app": "myapp"}}}}
+# Fix by updating the Service selector to match the pods
+kubectl patch service myapp -n production -p '{
+  "spec": {"selector": {"app": "my-app"}}
 }'
 ```
 
 ## Step 3: Check Service Endpoints
 
 ```bash
-# Check if the service has endpoints (pods backing it)
-kubectl get endpoints myapp -n production
+# Check the EndpointSlices backing the Service
+kubectl get endpointslices -n production -l kubernetes.io/service-name=myapp
 
-# If ENDPOINTS shows "<none>", the selector doesn't match any pods
-# Expected: ENDPOINTS = 10.244.1.5:8080,10.244.2.3:8080,10.244.3.7:8080
+# If no EndpointSlices are returned or ENDPOINTS shows "<none>",
+# the selector doesn't match any ready pods
+# Expected: ENDPOINTS = 10.244.1.5,10.244.2.3,10.244.3.7
 
-# Describe endpoints for details
-kubectl describe endpoints myapp -n production
+# Get detailed EndpointSlice data
+kubectl get endpointslices -n production -l kubernetes.io/service-name=myapp -o yaml
 ```
 
 ## Step 4: Test Connectivity from Inside the Cluster
 
 ```bash
 # Deploy a debug pod
-kubectl run debug --rm -it --image=nicolaka/netshoot -n production -- bash
+kubectl run debug --rm -it --image=nicolaka/netshoot -n production --command -- bash
 
 # Inside the debug pod:
 # Test by service name
 curl http://myapp.production.svc.cluster.local:8080/health
 
-# Test by ClusterIP
+# Test by ClusterIP (replace with the actual ClusterIP)
 curl http://10.96.45.123:8080/health
 
 # DNS lookup
@@ -77,7 +78,7 @@ nc -zv myapp.production.svc.cluster.local 8080
 ## Step 5: Check kube-proxy and CoreDNS
 
 ```bash
-# Check kube-proxy is running
+# Check kube-proxy is running (if your cluster uses kube-proxy)
 kubectl get pods -n kube-system -l k8s-app=kube-proxy
 
 # Check CoreDNS is running  
@@ -103,8 +104,8 @@ kubectl get service myapp -n production
 # If EXTERNAL-IP is <pending>, check cloud provider or MetalLB configuration
 
 # Issue: NodePort not accessible externally
-# Check firewall rules allow the NodePort (30000-32767 range)
-# Verify node's firewall
+# Check firewall rules allow the assigned NodePort (default range: 30000-32767)
+# On iptables-based nodes, verify the local firewall
 sudo iptables -L -n | grep 30080
 
 # Issue: Slow first connection
@@ -128,22 +129,24 @@ kubectl describe networkpolicy allow-frontend-to-backend -n production
 ## Portainer Service Diagnostics
 
 ```bash
-# Via Portainer API: get service details
+# Via Portainer API: list services in the namespace, then filter for myapp
 curl -s \
   -H "X-API-Key: your-api-key" \
-  "https://portainer.example.com/api/endpoints/1/kubernetes/api/v1/namespaces/production/services/myapp" \
+  "https://portainer.example.com/api/kubernetes/1/namespaces/production/services" \
   | python3 -c "
 import sys, json
-svc = json.load(sys.stdin)
-spec = svc['spec']
-print(f'Type: {spec[\"type\"]}')
-print(f'ClusterIP: {spec.get(\"clusterIP\")}')
-print(f'Selector: {spec.get(\"selector\")}')
-for port in spec.get('ports', []):
-    print(f'Port: {port[\"port\"]} -> {port[\"targetPort\"]}')
+services = json.load(sys.stdin)
+svc = next((s for s in services if s['Name'] == 'myapp'), None)
+if not svc:
+    raise SystemExit('service not found')
+print(f'Type: {svc[\"Type\"]}')
+print(f'ClusterIPs: {svc.get(\"ClusterIPs\")}')
+print(f'Selector: {svc.get(\"Selector\")}')
+for port in svc.get('Ports', []):
+    print(f'Port: {port[\"Port\"]} -> {port.get(\"TargetPort\")}')
 "
 ```
 
 ## Conclusion
 
-Kubernetes service connectivity debugging follows a systematic path: verify service exists and has correct selector, check endpoints are populated, test connectivity from inside the cluster, and verify network policies. Portainer's Services view provides a quick overview, while debug pods deployed via Portainer enable hands-on network testing from within the cluster network.
+Kubernetes service connectivity debugging follows a systematic path: verify service exists and has correct selector, check backing endpoints are populated, test connectivity from inside the cluster, and verify network policies. Portainer's Services view provides a quick overview, while debug pods enable hands-on network testing from within the cluster network.
