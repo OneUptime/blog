@@ -13,7 +13,7 @@ GitOps for Portainer means that your Portainer configuration - environments, use
 ## Prerequisites
 
 - Portainer Terraform provider
-- GitHub or GitLab repository for Terraform state
+- GitHub or GitLab repository for Terraform configuration
 - Terraform Cloud (or S3/GCS backend for state)
 - CI/CD runner with Terraform installed
 
@@ -56,7 +56,7 @@ portainer-infra/
 # environments/production/main.tf
 
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.10"
 
   required_providers {
     portainer = {
@@ -67,18 +67,18 @@ terraform {
 
   # Use S3 backend for state (or Terraform Cloud)
   backend "s3" {
-    bucket         = "my-terraform-state"
-    key            = "portainer/production/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "terraform-state-lock"
+    bucket       = "my-terraform-state"
+    key          = "portainer/production/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 
 provider "portainer" {
-  endpoint       = var.portainer_url
-  api_key        = var.portainer_api_key
-  skip_tls_verify = false
+  endpoint        = var.portainer_url
+  api_key         = var.portainer_api_key
+  skip_ssl_verify = false
 }
 ```
 
@@ -95,12 +95,12 @@ variable "group_id" { type = number; default = 1 }
 variable "tag_ids"  { type = list(number); default = [] }
 
 resource "portainer_environment" "this" {
-  name             = var.name
-  environment_url  = var.url
-  environment_type = var.type
-  tls              = var.tls
-  group_id         = var.group_id
-  tag_ids          = var.tag_ids
+  name                = var.name
+  environment_address = var.url
+  type                = var.type
+  tls_enabled         = var.tls
+  group_id            = var.group_id
+  tag_ids             = var.tag_ids
 }
 
 output "id" { value = portainer_environment.this.id }
@@ -125,6 +125,7 @@ module "prod_k8s" {
   source = "../../modules/portainer-environment"
 
   name = "production-kubernetes"
+  url  = "https://kubernetes.example.com:6443"
   type = 5
 }
 ```
@@ -140,11 +141,16 @@ on:
   pull_request:
     paths:
       - 'environments/**/*.tf'
+      - 'environments/**/*.tfvars'
       - 'modules/**/*.tf'
+      - 'stacks/**/*.yml'
 
 jobs:
   plan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     strategy:
       matrix:
         environment: [production, staging]
@@ -154,7 +160,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.7.0"
+          terraform_version: "1.14.5"
 
       - name: Terraform Init
         working-directory: environments/${{ matrix.environment }}
@@ -165,6 +171,7 @@ jobs:
 
       - name: Terraform Plan
         id: plan
+        shell: bash
         working-directory: environments/${{ matrix.environment }}
         run: |
           terraform plan -var="portainer_api_key=$PORTAINER_API_KEY" \
@@ -181,11 +188,18 @@ jobs:
           script: |
             const fs = require('fs');
             const plan = fs.readFileSync('environments/${{ matrix.environment }}/plan-output.txt', 'utf8');
-            github.rest.issues.createComment({
+            const body = [
+              '## Terraform Plan - ${{ matrix.environment }}',
+              '```',
+              plan.slice(-3000),
+              '```',
+            ].join('\n');
+
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## Terraform Plan - ${{ matrix.environment }}\n```\n${plan.slice(-3000)}\n````
+              body,
             });
 ```
 
@@ -200,19 +214,21 @@ on:
     branches: [main]
     paths:
       - 'environments/**/*.tf'
+      - 'environments/**/*.tfvars'
+      - 'modules/**/*.tf'
       - 'stacks/**/*.yml'
 
 jobs:
   apply:
     runs-on: ubuntu-latest
-    environment: portainer-production  # Requires manual approval
+    environment: portainer-production  # Can require manual approval if required reviewers are configured
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.7.0"
+          terraform_version: "1.14.5"
 
       - name: Terraform Init
         working-directory: environments/production
@@ -246,14 +262,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.14.5"
 
       - name: Check for drift
+        shell: bash
         working-directory: environments/production
         run: |
           terraform init
+          set +e
           PLAN=$(terraform plan -var="portainer_api_key=$PORTAINER_API_KEY" \
             -detailed-exitcode -no-color 2>&1)
           EXIT_CODE=$?
+          set -e
 
           if [ $EXIT_CODE -eq 2 ]; then
             echo "DRIFT DETECTED!"
@@ -261,9 +282,14 @@ jobs:
             # Send alert via Slack/PagerDuty
           elif [ $EXIT_CODE -eq 0 ]; then
             echo "No drift detected."
+          else
+            echo "$PLAN"
+            exit $EXIT_CODE
           fi
         env:
           PORTAINER_API_KEY: ${{ secrets.PORTAINER_API_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 ```
 
 ## Conclusion
