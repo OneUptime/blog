@@ -24,11 +24,11 @@ graph TD
     TeamC --> EnvC[Environment: shared-infra]
 ```
 
-Teams can be granted access to one or more environments. Within an environment, access levels range from read-only viewer to full manager.
+Teams can be granted access to one or more environments. Community Edition supports basic user and team assignments, while Business Edition adds built-in RBAC roles such as Read-Only User, Operator, and Environment administrator.
 
 ## Step 1: Create Teams
 
-1. In Portainer, go to **Settings > Teams > Add team**.
+1. In Portainer, go to **User-related > Teams** and click **Add team**.
 2. Create teams for each tenant or group: `Team Alpha`, `Team Beta`, `DevOps`.
 
 Via the API:
@@ -59,36 +59,51 @@ curl -s -X POST https://portainer.example.com/api/users \
 # Role 1 = Administrator, Role 2 = Standard User
 
 # Add user to Team Alpha (team ID and user ID from previous API calls)
-curl -s -X PUT https://portainer.example.com/api/teams/1/memberships \
+curl -s -X POST https://portainer.example.com/api/team_memberships \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"UserID": 2}'
+  -d '{
+    "TeamID": 1,
+    "UserID": 2,
+    "Role": 2
+  }'
+# Role 1 = Team Leader, Role 2 = Team Member
 ```
 
 ## Step 3: Configure Environment Access
 
-Grant Team Alpha access to a specific environment with a specific role:
+Grant Team Alpha access to a specific environment. In Business Edition, you can pair that access with a built-in role:
 
-1. Go to **Environments > [environment name] > Access**.
-2. Under **Teams**, find Team Alpha.
-3. Set the access level:
+1. Go to **Environment-related > Environments**.
+2. Locate the environment and click **Manage access**.
+3. Select Team Alpha, then choose the appropriate role.
 
-| Role | Permissions |
+| Role (BE) | Permissions |
 |------|-------------|
-| `No access` | Cannot see environment |
-| `Standard user` | View, start/stop containers they own |
-| `Operator` | Can deploy stacks and manage containers |
-| `Helpdesk` | Read-only access |
-| `Administrator` | Full environment control |
+| `Read-Only User` | Read-only access to resources they are entitled to see |
+| `Helpdesk` | Read-only access without console or volume changes |
+| `Operator` | Can manage existing resources, but cannot create or delete them |
+| `Standard User` | Full control over resources deployed by the user or their team |
+| `Environment administrator` | Full access within the environment, excluding Portainer internal settings and host management |
 
 Via API:
 
 ```bash
-# Grant Team Alpha (ID 1) Operator access to Environment (ID 2)
-curl -s -X PUT https://portainer.example.com/api/environments/2/teams/1 \
+# Business Edition only: list available roles and note the Id for Operator
+curl -s https://portainer.example.com/api/roles \
+  -H "Authorization: Bearer $TOKEN"
+
+ROLE_ID=3  # Example only. Use the Id returned by /api/roles in your instance.
+
+# Grant Team Alpha (ID 1) access to Environment (ID 2)
+curl -s -X PUT https://portainer.example.com/api/endpoints/2 \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"Role": 3}'  # 1=Admin, 2=Standard, 3=Operator, 4=Helpdesk
+  -d "{
+    \"TeamAccessPolicies\": {
+      \"1\": {\"RoleId\": ${ROLE_ID}}
+    }
+  }"
 ```
 
 ## Step 4: Create Separate Environments per Tenant
@@ -98,14 +113,15 @@ For strong isolation, provision a separate Docker environment for each tenant:
 ```bash
 # On Tenant A's server, deploy Portainer Agent
 docker run -d \
-  --name portainer-agent \
+  -p 9001:9001 \
+  --name portainer_agent \
+  --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  -p 9001:9001 \
-  portainer/agent:latest
+  portainer/agent:lts
 
 # In Portainer, add the environment:
-# Environments > Add environment > Docker Standalone > Agent
+# Environment-related > Environments > Add environment > Docker Standalone > Agent
 # URL: tenant-a-host:9001
 ```
 
@@ -115,19 +131,21 @@ Each tenant's team only sees their environment.
 
 Use Portainer's Registry management to control which registries each team can pull from:
 
-1. Go to **Registries > [registry] > Access**.
-2. Assign registry access to specific teams.
-3. Teams without registry access cannot pull or use that registry in stacks.
+1. In a Docker Standalone environment, go to **Host > Registries**.
+2. Find the registry and click **Manage access**.
+3. Assign registry access to specific teams or users.
+4. Registry access assigned here applies only to the selected environment.
 
 ## Access Control Summary
 
 | Feature | CE | BE |
 |---------|----|----|
 | Teams | Yes | Yes |
-| Environment-level RBAC | Yes | Yes |
-| Custom roles | No | Yes |
-| Resource quotas per team | No | Yes |
-| Namespace isolation (K8s) | No | Yes |
-| Activity log per user | No | Yes |
+| Environment access assignment | Yes | Yes |
+| Environment-level RBAC roles | No | Yes |
+| Custom roles | No | No |
+| Namespace resource quotas (K8s) | Yes | Yes |
+| Namespace-scoped RBAC (K8s) | No | Yes |
+| Activity logs | No | Yes |
 
-For organizations needing custom roles or resource quotas, Portainer Business Edition provides these advanced multi-tenancy features.
+For organizations needing built-in RBAC roles, namespace-scoped Kubernetes access, or activity logs, Portainer Business Edition provides these advanced multi-tenancy features.
