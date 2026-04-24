@@ -25,16 +25,16 @@ docker run -d \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
+  -v /path/to/your/certs:/certs:ro \
   --name portainer \
   --restart always \
   portainer/portainer-ce:latest \
   --http-disabled \
-  --ssl \
   --sslcert /certs/portainer.crt \
   --sslkey /certs/portainer.key
 ```
 
-Without `--ssl`, Portainer uses a self-generated certificate on port 9443.
+Without providing `--sslcert` and `--sslkey`, Portainer uses a self-signed certificate on port 9443.
 
 ## Option 2: Docker Compose with HTTP Disabled
 
@@ -55,7 +55,6 @@ services:
       - ./certs:/certs:ro
     command: >
       --http-disabled
-      --ssl
       --sslcert /certs/portainer.crt
       --sslkey /certs/portainer.key
 
@@ -112,49 +111,22 @@ docker run -d \
   --restart always \
   portainer/portainer-ce:latest \
   --http-disabled \
-  --ssl \
   --sslcert /certs/fullchain.pem \
   --sslkey /certs/privkey.pem
 ```
 
 ## Kubernetes Deployment with HTTPS Only
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: portainer
-  namespace: portainer
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: portainer
-  template:
-    metadata:
-      labels:
-        app: portainer
-    spec:
-      containers:
-        - name: portainer
-          image: portainer/portainer-ce:latest
-          args:
-            - "--http-disabled"
-          ports:
-            - containerPort: 9443
-              name: https
-          volumeMounts:
-            - name: data
-              mountPath: /data
-            - name: docker-sock
-              mountPath: /var/run/docker.sock
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: portainer-pvc
-        - name: docker-sock
-          hostPath:
-            path: /var/run/docker.sock
+For Kubernetes, the supported way to enforce HTTPS-only access is to deploy Portainer with Helm and set `tls.force=true`:
+
+```bash
+helm repo add portainer https://portainer.github.io/k8s/
+helm repo update
+
+helm upgrade --install --create-namespace -n portainer portainer portainer/portainer \
+  --set service.type=LoadBalancer \
+  --set tls.force=true \
+  --set image.tag=lts
 ```
 
 ## Verify HTTPS-Only Access
@@ -165,7 +137,7 @@ After applying the configuration, verify that HTTP is rejected:
 # HTTPS should work
 curl -sk https://portainer.example.com:9443/api/status | python3 -m json.tool
 
-# HTTP should fail or redirect
+# HTTP should fail
 curl -v http://portainer.example.com:9000/api/status
 # Expected: Connection refused
 ```
