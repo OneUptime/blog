@@ -8,7 +8,7 @@ Description: Resolve missing or zero CPU and memory statistics in Portainer's co
 
 ## Introduction
 
-Portainer displays CPU and memory usage by polling the Docker stats API. When stats show as zero, "N/A", or don't update, the issue is almost always a Linux kernel cgroup configuration problem, Docker daemon settings, or a missing permission. This guide walks through all the fixes.
+Portainer displays CPU and memory usage by polling the Docker stats API. When stats show as zero, "N/A", or don't update, the issue is usually a Docker stats availability problem on the host, a cgroup configuration mismatch, or missing access to the Docker socket or Portainer Agent. This guide walks through the common fixes.
 
 ## Step 1: Verify Docker Stats Work from CLI
 
@@ -17,19 +17,24 @@ Portainer displays CPU and memory usage by polling the Docker stats API. When st
 
 docker stats --no-stream
 
-# If all values are 0 or N/A, the issue is at the Docker/kernel level
-# If values are present, the issue is Portainer-specific
+# If CPU and memory values are missing across running containers,
+# the issue is likely at the Docker/kernel level
+# If values are present, the issue is likely Portainer-specific
 ```
 
-## Step 2: Enable cgroup Memory Accounting (Most Common Fix)
+## Step 2: Enable cgroup Memory Accounting on cgroup v1 Hosts
 
-On many Linux distributions, memory accounting is disabled by default to save overhead:
+On older Linux systems using cgroup v1, memory accounting may be disabled by default:
 
 ```bash
-# Check current cgroup status
+# Check whether the host is using cgroup v1 or v2
+ls /sys/fs/cgroup/cgroup.controllers 2>/dev/null && echo "cgroup v2" || echo "cgroup v1"
+
+# On cgroup v1 hosts, memory stats live under the memory hierarchy
 cat /sys/fs/cgroup/memory/memory.stat 2>/dev/null | head -5
 
-# If the file doesn't exist, memory cgroups are disabled
+# If that file doesn't exist and the host is cgroup v1, memory cgroups may be disabled
+# On cgroup v2 hosts, skip this step and continue to Step 3
 # Check kernel boot parameters
 grep -i cgroup /proc/cmdline
 
@@ -50,39 +55,44 @@ sudo reboot
 
 ## Step 3: Check cgroup v1 vs v2
 
-Some distributions use cgroup v2 (unified hierarchy), which Docker supports but may need configuration:
+Docker supports cgroup v2, but the checks and fixes differ from cgroup v1:
 
 ```bash
-# Check cgroup version
-mount | grep cgroup
+# Check cgroup version and Docker cgroup settings
+docker info | grep -E 'Cgroup (Driver|Version)'
 
 # For cgroup v2 detection:
 ls /sys/fs/cgroup/cgroup.controllers 2>/dev/null && echo "cgroup v2" || echo "cgroup v1"
 
-# Configure Docker for cgroup v2
-cat > /etc/docker/daemon.json << 'EOF'
-{
-  "exec-opts": ["native.cgroupdriver=systemd"]
-}
-EOF
+# On cgroup v2, Docker usually uses the systemd cgroup driver automatically
+# If docker info already shows "Cgroup Driver: systemd", don't change daemon.json
 
+# If you do need to set it explicitly, merge this into your existing /etc/docker/daemon.json:
+# {
+#   "exec-opts": ["native.cgroupdriver=systemd"]
+# }
+
+# If you edited /etc/docker/daemon.json, validate it before restarting Docker
+sudo dockerd --validate --config-file=/etc/docker/daemon.json
 sudo systemctl restart docker
-docker restart portainer
+docker restart <portainer-container-name>
 ```
 
 ## Step 4: Fix on Raspberry Pi / ARM Devices
 
-Raspberry Pi OS requires specific boot configuration for cgroup memory:
+Raspberry Pi OS may use a different active boot cmdline path depending on the release, but the same kernel-argument approach applies:
 
 ```bash
-# Edit boot config
-sudo nano /boot/cmdline.txt
+# Edit the active boot cmdline file
+# Older releases often use /boot/cmdline.txt
+# Newer releases often use /boot/firmware/cmdline.txt
+sudo nano <active-cmdline-file>
 
 # Add to the end of the single line (don't add a new line):
-# cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory
+# cgroup_enable=cpuset cgroup_enable=memory swapaccount=1
 
 # The line should look like:
-# console=serial0,115200 console=tty1 root=PARTUUID=... cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory
+# console=serial0,115200 console=tty1 root=PARTUUID=... cgroup_enable=cpuset cgroup_enable=memory swapaccount=1
 
 sudo reboot
 ```
@@ -90,12 +100,11 @@ sudo reboot
 ## Step 5: Check Docker Daemon Configuration
 
 ```bash
-# Verify Docker daemon stats settings
-cat /etc/docker/daemon.json
+# Show the current daemon config if present
+sudo test -f /etc/docker/daemon.json && sudo cat /etc/docker/daemon.json
 
-# Some flags disable stats collection
-# Ensure these are NOT set:
-# "no-new-privileges": true  (may affect stats in some versions)
+# Validate the file if you edited it
+sudo test -f /etc/docker/daemon.json && sudo dockerd --validate --config-file=/etc/docker/daemon.json
 
 # Restart Docker after any changes
 sudo systemctl restart docker
@@ -103,17 +112,11 @@ sudo systemctl restart docker
 
 ## Step 6: Fix on LXC/Proxmox Containers
 
-Running Docker inside an LXC container requires specific LXC configuration:
+Proxmox recommends running Docker inside a QEMU VM rather than directly inside an LXC container. If you still run Docker inside LXC, start by enabling the container features Docker commonly needs:
 
 ```bash
-# On the Proxmox host, edit the LXC container configuration
-# /etc/pve/lxc/<container-id>.conf
-
-# Add these lines:
-lxc.apparmor.profile: unconfined
-lxc.cgroup2.devices.allow: a
-lxc.cap.drop:
-features: nesting=1,keyctl=1
+# On the Proxmox host
+pct set <container-id> --features nesting=1,keyctl=1
 ```
 
 Or use the Proxmox UI:
@@ -123,13 +126,15 @@ Or use the Proxmox UI:
 ## Step 7: Verify Portainer Has Access to Stats API
 
 ```bash
-# Test the Docker stats API directly
-curl --unix-socket /var/run/docker.sock \
-  "http://localhost/v1.44/containers/<container-id>/stats?stream=false" | jq .
+# Check the server API version first
+docker version
 
-# Check if cpu_stats and memory_stats have real values
-# If both show 0, it's a cgroup issue
-# If they have values, the issue is how Portainer reads them
+# Then query the stats endpoint with the server API version shown above
+curl --unix-socket /var/run/docker.sock \
+  "http://localhost/v<server-api-version>/containers/<container-id>/stats?stream=false" | jq .
+
+# If the payload contains real cpu_stats and memory_stats values,
+# the problem is likely in Portainer or the Portainer Agent path
 ```
 
 ## Step 8: Check Portainer Agent Configuration
@@ -138,25 +143,23 @@ When using the Portainer Agent, stats are fetched by the agent:
 
 ```bash
 # Check agent logs for stats errors
-docker logs portainer-agent 2>&1 | grep -i "stats\|cgroup\|memory"
+docker logs portainer_agent 2>&1 | grep -iE "stats|cgroup|memory"
 
 # Restart the agent
-docker restart portainer-agent
+docker restart portainer_agent
 ```
 
 ## Step 9: Fix for Specific Kernel Versions
 
-Some kernel versions have cgroup accounting bugs:
+Older kernels can also mean incomplete cgroup support, especially for cgroup v2:
 
 ```bash
 # Check kernel version
 uname -r
 
-# Update the kernel if significantly outdated
+# Docker requires kernel v4.15+ for cgroup v2, and recommends v5.2+
+# Update the kernel and userspace if the host is significantly behind
 sudo apt-get update && sudo apt-get dist-upgrade
-
-# On Ubuntu, install HWE kernel for better hardware support
-sudo apt-get install linux-generic-hwe-22.04
 sudo reboot
 ```
 
@@ -166,14 +169,19 @@ Use cAdvisor to verify metrics are available outside of Portainer:
 
 ```bash
 # Deploy cAdvisor
+VERSION=v0.x.y # use the latest release from https://github.com/google/cadvisor/releases
+
 docker run -d \
   --volume=/:/rootfs:ro \
   --volume=/var/run:/var/run:ro \
   --volume=/sys:/sys:ro \
   --volume=/var/lib/docker/:/var/lib/docker:ro \
+  --volume=/dev/disk/:/dev/disk:ro \
   --publish=8080:8080 \
   --name=cadvisor \
-  gcr.io/cadvisor/cadvisor:latest
+  --privileged \
+  --device=/dev/kmsg \
+  ghcr.io/google/cadvisor:$VERSION
 
 # Access at http://your-host:8080
 # If cAdvisor also shows zero stats, it's a kernel/cgroup issue
@@ -182,4 +190,4 @@ docker run -d \
 
 ## Conclusion
 
-Missing CPU/memory stats in Portainer are almost always caused by cgroup memory accounting being disabled in the kernel boot configuration. The fix is to add `cgroup_enable=memory swapaccount=1` to the kernel command line and reboot. On Raspberry Pi, add `cgroup_memory=1 cgroup_enable=memory` to `/boot/cmdline.txt`. If Docker CLI stats work but Portainer doesn't show them, update Portainer to the latest version.
+Missing CPU/memory stats in Portainer usually mean Docker itself is not exposing usable stats yet, or Portainer cannot read them. Start with `docker stats` and the Docker stats API. On older cgroup v1 systems, adding `cgroup_enable=memory swapaccount=1` to the kernel command line can fix missing memory accounting after a reboot. On newer cgroup v2 systems, verify `docker info` shows the expected cgroup version and driver before changing `daemon.json`. If Docker CLI stats and the stats API both return real values but Portainer still does not, move to a current supported Portainer release.
