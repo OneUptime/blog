@@ -8,11 +8,12 @@ Description: Learn how to configure namespace-level access control in Portainer 
 
 ## Introduction
 
-Portainer Business Edition provides team-based access control for Kubernetes namespaces. You can grant teams read-only or read-write access to specific namespaces, preventing unauthorized changes while enabling self-service deployment. This guide covers configuring namespace access control in Portainer.
+Portainer Business Edition provides RBAC-aware access control for Kubernetes namespaces. You can grant users or teams access to specific namespaces, and their effective permissions depend on the Portainer role assigned to them. This guide covers configuring namespace access control in Portainer.
 
 ## Prerequisites
 
 - Portainer BE with Kubernetes environment
+- Kubernetes RBAC enabled and working
 - Namespaces created
 - Teams configured in Portainer
 
@@ -21,18 +22,19 @@ Portainer Business Edition provides team-based access control for Kubernetes nam
 Portainer uses a role-based model with namespace granularity:
 
 ```text
-Admin → Full access to all environments and namespaces
-Team (with access) → Can view/deploy to assigned namespaces
-Team (without access) → Cannot see the namespace in Portainer
-User (team member) → Inherits team's namespace access
+Administrator → Full access to all environments and namespaces
+Environment Administrator → Full access within the assigned environment
+Namespace Operator / Standard User / Read-Only User → Access to assigned namespaces based on role
+Users or teams with cluster-wide roles (for example, Operator) → Cannot be assigned to individual namespaces
+User assigned via team → Inherits the team's namespace access
 ```
 
 ## Step 1: Create Teams in Portainer
 
 Before assigning namespace access, create teams:
 
-1. Go to **Settings → Teams**
-2. Click **+ Add team**
+1. Go to **User-related → Teams**
+2. Click **Add team**
 3. Create teams:
 
 ```text
@@ -44,77 +46,51 @@ Team name: data-team        Description: Data engineering team
 
 4. Add users to teams:
    - Click on a team
-   - Click **+ Add user**
-   - Select users to add
+   - Click **Add** next to each user you want to include
 
 ## Step 2: Assign Namespace Access
 
 1. In Portainer, select the Kubernetes environment
 2. Click **Namespaces** in the sidebar
-3. Click on a namespace (e.g., **production**)
-4. Go to the **Access control** section
-
-Or navigate to the access control UI directly:
-1. Click on a namespace
-2. Find the **Namespace access** panel
+3. Click **Manage access** on the row for the namespace (for example, **production**)
 
 ## Step 3: Configure Team Access
 
-Assign access levels to teams:
+Assign namespace access to teams:
 
 ```text
 Namespace: production
 ──────────────────────────────────────
-Team: ops-team        → Full (Admin) access
-Team: backend-team    → Read/Write access
-Team: frontend-team   → Read/Write access (specific namespaces)
-Team: data-team       → No access (they use different namespaces)
+Team: ops-team        → Namespace access granted
+Team: backend-team    → Namespace access granted
+Team: frontend-team   → Namespace access granted where needed
+Team: data-team       → No namespace access
 ```
 
-Access levels:
-- **None** - Team cannot see the namespace
-- **Read-only** - Can view resources but not create/update/delete
-- **Read/Write** - Full CRUD on namespace resources
-- **Admin** (some versions) - Can also manage quotas and access
+Effective access depends on the Portainer role already assigned to the user or team:
+- **Read-Only User** - Read-only access to entitled resources
+- **Standard User** - Full control over resources created by the user or their team
+- **Namespace Operator** - Operational control over all existing resources in assigned namespaces
+- Cluster-wide roles such as **Operator** cannot be assigned to individual namespaces
 
-## Step 4: Apply RBAC via Kubernetes Directly
+## Step 4: Understand the Kubernetes RBAC Mapping
 
-Portainer translates its access control settings into Kubernetes RBAC:
+Portainer relies on Kubernetes RBAC, so RBAC must already be enabled and working. Portainer BE documents these built-in mappings:
 
-```yaml
-# Portainer creates these automatically when you configure team access
-
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: portainer-rw
-  namespace: production
-rules:
-  - apiGroups: ["", "apps", "batch", "extensions", "autoscaling"]
-    resources: ["*"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["networking.k8s.io"]
-    resources: ["ingresses"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: portainer-rw-backend-team
-  namespace: production
-subjects:
-  - kind: Group
-    name: portainer-backend-team
-    apiGroup: rbac.authorization.k8s.io
-roleRef:
-  kind: Role
-  name: portainer-rw
-  apiGroup: rbac.authorization.k8s.io
+```text
+Standard User  → portainer-basic cluster role binding
+                 + portainer-edit / portainer-view on assigned namespaces
+Read-Only User → portainer-basic cluster role binding
+                 + portainer-view on assigned namespaces
+Operator       → portainer-operator, portainer-helpdesk
+                 + portainer-view on all non-system namespaces
+Helpdesk       → portainer-helpdesk
+                 + portainer-view on all non-system namespaces
 ```
 
 ## Step 5: Create Custom RBAC for Fine-Grained Control
 
-For more specific access control, create custom RBAC resources:
+For more specific Kubernetes-native access control, create your own RBAC resources and bind them to a real user, group, or service account:
 
 ```yaml
 # Read-only role for specific resources
@@ -128,8 +104,11 @@ rules:
     resources: ["deployments", "replicasets"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
-    resources: ["pods", "pods/log"]
+    resources: ["pods"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
   # No create/update/delete permissions
 
 ---
@@ -145,59 +124,83 @@ rules:
     verbs: ["get", "list", "watch", "create", "update", "patch"]
     # No delete permission
   - apiGroups: [""]
-    resources: ["pods", "pods/log", "configmaps"]
-    verbs: ["get", "list", "watch", "create", "update"]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: [""]
     resources: ["services"]
     verbs: ["get", "list", "watch"]
     # Can view but not modify services
+
+---
+# Bind a role to a real Kubernetes subject
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deployment-viewer-binding
+  namespace: production
+subjects:
+  - kind: User
+    name: jane
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: deployment-viewer
+  apiGroup: rbac.authorization.k8s.io
 ```
 
 ## Step 6: Test Access Control
 
-Verify access control works as expected:
+Verify access control works as expected. For Portainer-managed namespace access, sign in as a user from the target team and confirm that only the assigned namespaces are visible. If you created a custom Kubernetes RoleBinding in Step 5, you can also test it with `kubectl auth can-i`:
 
 ```bash
-# Test as a user in backend-team
-# (Assuming service account setup for testing)
-kubectl auth can-i create deployment \
+# Test the custom RoleBinding above as user jane
+# (Assuming you have permission to impersonate users)
+kubectl auth can-i get deployments.apps \
   --namespace=production \
-  --as=system:serviceaccount:portainer:backend-user
+  --as=jane
 
-kubectl auth can-i create deployment \
-  --namespace=staging \
-  --as=system:serviceaccount:portainer:backend-user
-# Should be: no (if staging is not accessible to backend-team)
+kubectl auth can-i delete deployments.apps \
+  --namespace=production \
+  --as=jane
+# Should be: no for the deployment-viewer role
 ```
 
 ## Step 7: Configure User-Level Access (Portainer BE)
 
 In addition to team access, you can grant direct user access:
 
-1. Navigate to a namespace access control panel
-2. Switch to **Users** tab
-3. Add individual users with specific access levels
+1. From **Namespaces**, click **Manage access** for the namespace
+2. Select the user in the users/teams list
+3. Click **Create access**
 
 This is useful for:
 - Temporarily granting access during an incident
-- Giving a consultant access to specific namespaces
-- Service account-level access
+- Giving a consultant access to a specific namespace
+- Granting access to a single Portainer user without changing team membership
 
 ## Step 8: Audit Access Configuration
+
+In Portainer, you can also use **User-related → Roles** and the Effective access viewer to confirm what a user can access.
 
 ```bash
 # View all RBAC bindings in a namespace
 kubectl get rolebindings -n production
 
-# View a specific binding
-kubectl describe rolebinding portainer-rw-backend-team -n production
+# View a specific custom binding
+kubectl describe rolebinding deployment-viewer-binding -n production
 
-# Check what a user can do
+# Check what a bound user can do
 kubectl auth can-i --list \
   --namespace=production \
-  --as=john.doe
+  --as=jane
 ```
 
 ## Conclusion
 
-Namespace access control in Portainer BE provides a clean way to implement team-based Kubernetes multi-tenancy. Teams can only see and manage their assigned namespaces, preventing accidental changes to unrelated environments. For organizations with complex permission requirements, combine Portainer's team access with custom Kubernetes RBAC roles for fine-grained control over specific resource types.
+Namespace access control in Portainer BE provides a clean way to implement team-based Kubernetes multi-tenancy. Teams can only see and manage their assigned namespaces, preventing accidental changes to unrelated environments. For organizations with complex permission requirements, combine Portainer's team access with custom Kubernetes RBAC roles and bindings for fine-grained control over specific resource types.
