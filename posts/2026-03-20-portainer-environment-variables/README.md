@@ -20,7 +20,7 @@ Environment variables are the primary way to configure containerized application
 1. Log in to Portainer.
 2. Navigate to **Containers > Add container**.
 3. Set the container name and image.
-4. Scroll to the **Env** tab.
+4. Expand **Advanced container settings** and open the **Environment Variables** section.
 
 You'll see a key-value editor where you can add environment variables.
 
@@ -76,8 +76,8 @@ Variables set in the image's Dockerfile `ENV` instruction are defaults - contain
 After creating the container:
 
 1. Click the container name.
-2. Scroll to the **ENV** section in the **Inspect** tab.
-3. All environment variables are listed.
+2. Review the listed environment variables on the container details page.
+3. If you want the raw configuration, open **Inspect**.
 
 Or in the container console/exec:
 
@@ -96,8 +96,7 @@ Avoid putting sensitive values (passwords, API keys) directly in environment var
 ### Option 1: Use Docker Secrets (Swarm Mode)
 
 ```yaml
-# docker-compose.yml using Docker secrets
-version: "3.8"
+# compose.yaml for a Swarm deployment using Docker secrets
 
 services:
   db:
@@ -115,12 +114,12 @@ secrets:
     external: true
 ```
 
-### Option 2: Use Portainer Secrets Feature (BE)
+### Option 2: Use Portainer's Secrets Menu (Swarm)
 
-In Portainer Business Edition:
+In Portainer for a Docker Swarm environment:
 1. Navigate to **Secrets**.
 2. Create a secret with the sensitive value.
-3. Reference it in the container or stack.
+3. Reference it in the service or stack.
 
 ### Option 3: Restrict Variable Visibility
 
@@ -179,4 +178,4 @@ For stacks, update the `.env` file or stack environment and re-deploy.
 
 ## Conclusion
 
-Environment variables in Portainer provide a clean, image-agnostic way to configure containerized applications. By setting them through the web UI or loading them from a file, you can manage configuration without ever modifying a Docker image. For sensitive values, combine environment variables with Docker secrets or Portainer's built-in secrets management to avoid storing credentials in plain text.
+Environment variables in Portainer provide a clean, image-agnostic way to configure containerized applications. By setting them through the web UI or loading them from a file, you can manage configuration without ever modifying a Docker image. For sensitive values, prefer Docker Swarm secrets in Swarm deployments instead of plain-text environment variables, and use Portainer access controls to limit visibility.
