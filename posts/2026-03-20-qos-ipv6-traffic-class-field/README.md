@@ -8,11 +8,11 @@ Description: Understand the IPv6 Traffic Class field and how it maps to DSCP val
 
 ---
 
-The IPv6 Traffic Class field is the QoS marking mechanism for IPv6, equivalent to the IPv4 ToS/DSCP field. Understanding its structure enables correct QoS implementation for voice, video, and data prioritization on IPv6 networks.
+The IPv6 Traffic Class field is the QoS marking mechanism for IPv6, equivalent to the IPv4 DS field (formerly the ToS field). Understanding its structure enables correct QoS implementation for voice, video, and data prioritization on IPv6 networks.
 
 ## IPv6 Header Traffic Class Field
 
-```yaml
+```text
 IPv6 Header Structure (40 bytes fixed):
 +-------+--------+-------------------+
 | Ver(4)| TC(8)  | Flow Label (20)   |  <- First 32 bits
@@ -20,26 +20,26 @@ IPv6 Header Structure (40 bytes fixed):
 ...
 
 Traffic Class (TC) Field: 8 bits
-Bits 0-5: DSCP (Differentiated Services Code Point)
-Bits 6-7: ECN (Explicit Congestion Notification)
+Bits 0-5 (upper 6 bits): DSCP (Differentiated Services Code Point)
+Bits 6-7 (lower 2 bits): ECN (Explicit Congestion Notification)
 
-Same 8-bit layout as IPv4 DSCP/ECN field in DS field
+Same 8-bit layout as the IPv4 DS field
 ```
 
 ## DSCP Values in IPv6 Traffic Class
 
 ```text
-DSCP Codepoints (6 bits) and their meanings:
+Common DSCP codepoints (6 bits) and service-class mappings:
 
 Class Selector (CS):
 CS0  = 000000 = 0x00 = 0  (Default/Best Effort)
-CS1  = 001000 = 0x08 = 8  (Scavenger/Background)
+CS1  = 001000 = 0x08 = 8  (Low-Priority Data / Background)
 CS2  = 010000 = 0x10 = 16 (OAM)
 CS3  = 011000 = 0x18 = 24 (Broadcast Video)
 CS4  = 100000 = 0x20 = 32 (Real-time Interactive)
 CS5  = 101000 = 0x28 = 40 (Signaling)
 CS6  = 110000 = 0x30 = 48 (Network Control)
-CS7  = 111000 = 0x38 = 56 (Reserved)
+CS7  = 111000 = 0x38 = 56 (Reserved for future use)
 
 Assured Forwarding (AF) - 12 classes:
 AF11 = 001010 = 0x0A = 10
@@ -58,16 +58,16 @@ EF   = 101110 = 0x2E = 46 (VoIP, low-latency)
 ```bash
 # View IPv6 Traffic Class in captured packets
 
-sudo tcpdump -i eth0 -nn ip6 -v | grep "class\|tc 0x"
+sudo tcpdump -i eth0 -nn -vv ip6 | grep "class 0x"
 
 # Example output:
-# IP6 (flowlabel 0x12345, hlim 64, next-header TCP (6) payload length: 40)
-# 2001:db8::client.54321 > 2001:db8::server.443: ...
-# ip6 class: 0x2e (DSCP EF)
+# IP6 (class 0xb8, flowlabel 0x12345, hlim 64, next-header TCP (6), payload length: 40)
+# 2001:db8::10.54321 > 2001:db8::20.443: ...
+# Here, class 0xb8 means DSCP EF (46) with ECN 00 (Not-ECT).
 
 # Use Wireshark display filter
 # ipv6.tclass != 0  (show packets with non-zero Traffic Class)
-# ipv6.dsfield.dscp == 46  (show EF-marked packets)
+# ipv6.tclass.dscp == 46  (show EF-marked packets)
 ```
 
 ## Setting IPv6 Traffic Class with ip6tables
@@ -75,25 +75,25 @@ sudo tcpdump -i eth0 -nn ip6 -v | grep "class\|tc 0x"
 ```bash
 # Mark outbound IPv6 packets with DSCP values
 
-# Mark VoIP traffic with EF (DSCP 46)
+# Mark SIP signaling with CS5
 sudo ip6tables -t mangle -A OUTPUT \
-  -p udp --dport 5060 \
-  -j DSCP --set-dscp-class EF
+  -p udp -m multiport --ports 5060 \
+  -j DSCP --set-dscp-class CS5
 
-# Mark video streaming with AF41
+# Mark interactive video with AF41
 sudo ip6tables -t mangle -A OUTPUT \
-  -p udp --dport 1234:1235 \
+  -p udp -m multiport --ports 1234:1235 \
   -j DSCP --set-dscp-class AF41
 
-# Mark SSH with AF31
+# Mark SSH with AF21
 sudo ip6tables -t mangle -A OUTPUT \
-  -p tcp --dport 22 \
-  -j DSCP --set-dscp-class AF31
+  -p tcp -m multiport --ports 22 \
+  -j DSCP --set-dscp-class AF21
 
-# Mark ICMP6 with CS7 (highest priority - network control)
+# Mark BGP routing traffic with CS6 (network control)
 sudo ip6tables -t mangle -A OUTPUT \
-  -p icmpv6 \
-  -j DSCP --set-dscp 56
+  -p tcp -m multiport --ports 179 \
+  -j DSCP --set-dscp-class CS6
 ```
 
 ## Reading Traffic Class in Python
@@ -133,19 +133,19 @@ print(f"Traffic Class: {tc}")
 ## ECN in IPv6 Traffic Class
 
 ```bash
-# ECN (Explicit Congestion Notification) - bits 6-7 of Traffic Class
+# ECN (Explicit Congestion Notification) - lower 2 bits of Traffic Class
 
 # ECN values:
-# 00 = Not ECN-capable
+# 00 = Not-ECT (Not ECN-capable transport)
 # 01 = ECT(1) - ECN-capable transport
 # 10 = ECT(0) - ECN-capable transport
 # 11 = CE - Congestion Experienced
 
-# Enable ECN on Linux for IPv6 connections
-sudo sysctl -w net.ipv4.tcp_ecn=1  # Also applies to IPv6 TCP
+# Enable ECN for TCP on Linux
+sudo sysctl -w net.ipv4.tcp_ecn=1  # Linux uses this sysctl for both IPv4 and IPv6 TCP
 
-# Check ECN is being used
-sudo tcpdump -i eth0 ip6 -v | grep "ECN"
+# Check for IPv6 packets where ECN is ECT(0), ECT(1), or CE
+sudo tcpdump -i eth0 -nn -vv 'ip6 and (ip6[0:2] & 0x30) != 0'
 ```
 
-The IPv6 Traffic Class field provides identical QoS marking capability to IPv4's DSCP field, with the same 6-bit DSCP codepoint values mapping to Expedited Forwarding for voice, Assured Forwarding classes for data applications, and Class Selector values for network control traffic.
+The IPv6 Traffic Class field uses the same 8-bit DS field structure as IPv4, carrying a 6-bit DSCP value and a 2-bit ECN value so IPv6 traffic can receive differentiated forwarding treatment across QoS-aware networks.
