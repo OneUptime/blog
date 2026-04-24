@@ -49,7 +49,7 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d '{
     "AuthenticationMethod": 3,
-    "oauthsettings": {
+    "OAuthSettings": {
       "ClientID": "your-client-id",
       "ClientSecret": "your-client-secret",
       "AuthorizationURI": "https://your-idp.com/oauth/authorize",
@@ -61,8 +61,7 @@ curl -X PUT \
       "OAuthAutoCreateUsers": true,
       "DefaultTeamID": 0,
       "SSO": true,
-      "LogoutURI": "https://your-idp.com/oauth/logout",
-      "HideInternalAuth": false
+      "LogoutURI": "https://your-idp.com/oauth/logout"
     }
   }'
 ```
@@ -75,7 +74,7 @@ The redirect URL is where the IdP sends users back after authentication. It must
 https://portainer.example.com/
 ```
 
-Note the trailing slash. This is Portainer's root URL. Ensure it exactly matches what you register with the IdP.
+Use your exact public Portainer URL, including any port or subpath. In a default root deployment, that means a trailing slash as shown above. Ensure it exactly matches what you register with the IdP.
 
 ## Scopes and Claims
 
@@ -105,7 +104,7 @@ When enabled, Portainer creates a user account on first OAuth login. When disabl
 
 1. Save OAuth settings
 2. Log out of Portainer
-3. On the login page, look for the OAuth login button (labeled with the provider name you configured)
+3. On the login page, look for the OAuth login button (`Login with Microsoft`, `Login with Google`, `Login with GitHub`, or `Login with OAuth` for a custom provider)
 4. Click it and complete the IdP authentication flow
 5. You should be redirected back to Portainer and logged in
 
