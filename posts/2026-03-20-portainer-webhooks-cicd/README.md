@@ -8,16 +8,17 @@ Description: Configure and use Portainer webhooks to trigger stack redeployments
 
 ## Introduction
 
-Portainer webhooks provide a simple HTTP endpoint that triggers a stack or service update when called. This is the simplest way to integrate Portainer with CI/CD pipelines - your pipeline pushes a new image and calls the webhook, Portainer pulls the latest image and restarts the service. No Portainer API key required.
+Portainer webhooks provide a simple HTTP endpoint that triggers a stack or service update when called. This is one of the simplest ways to integrate Portainer with CI/CD pipelines - your pipeline pushes a new image and calls the webhook, and Portainer redeploys the stack or service. No Portainer API key required. Stack webhooks require Portainer Business Edition, and Portainer webhooks are only available on non-Edge environments.
 
-## Step 1: Configure Portainer Stack Webhooks
+## Step 1: Configure Portainer Webhooks
 
 ### For Docker Compose Stacks:
 1. In Portainer, navigate to **Stacks**
 2. Click your stack name
-3. Scroll to **Stack Webhooks**
-4. Toggle **Enable stack webhook** to ON
-5. Copy the webhook URL
+3. Open the **Editor** tab
+4. Scroll to **Webhooks**
+5. Toggle **Create a stack webhook** to ON
+6. Copy the webhook URL
 
 ### For Docker Swarm Services:
 1. Navigate to **Services**
@@ -25,17 +26,22 @@ Portainer webhooks provide a simple HTTP endpoint that triggers a stack or servi
 3. Find the **Service webhook** section
 4. Copy the webhook URL
 
-The URL format: `https://portainer.yourdomain.com/api/webhooks/{uuid}`
+Stack webhook URL format: `https://portainer.yourdomain.com/api/stacks/webhooks/{uuid}`
+
+Service webhook URL format: `https://portainer.yourdomain.com/api/webhooks/{uuid}`
 
 ## Step 2: Test the Webhook
 
 ```bash
 # Test webhook with curl (no authentication required)
 
-curl -X POST "https://portainer.yourdomain.com/api/webhooks/your-webhook-uuid"
+WEBHOOK_URL="https://portainer.yourdomain.com/api/stacks/webhooks/your-stack-webhook-uuid"
+# or: https://portainer.yourdomain.com/api/webhooks/your-service-webhook-uuid
 
-# Expected response: 204 No Content (empty body)
-# Portainer will pull the latest image and redeploy
+curl -s -o /dev/null -w "%{http_code}\n" -X POST "$WEBHOOK_URL"
+
+# Expected response: a 2xx status code
+# Portainer will redeploy the stack or service
 ```
 
 ## Step 3: Integrate with GitHub Actions
@@ -48,15 +54,29 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - name: Log in to container registry
+        uses: docker/login-action@v4
+        with:
+          registry: registry.yourdomain.com
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
+          context: .
           push: true
           tags: registry.yourdomain.com/myapp:latest
 
@@ -65,12 +85,15 @@ jobs:
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}")
 
-          if [ "$HTTP_STATUS" = "204" ]; then
-            echo "Deployment triggered successfully"
-          else
-            echo "Webhook failed with HTTP $HTTP_STATUS"
-            exit 1
-          fi
+          case "$HTTP_STATUS" in
+            2*)
+              echo "Deployment triggered successfully"
+              ;;
+            *)
+              echo "Webhook failed with HTTP $HTTP_STATUS"
+              exit 1
+              ;;
+          esac
 ```
 
 ## Step 4: Integrate with GitLab CI
@@ -83,7 +106,11 @@ stages:
 
 build:
   stage: build
+  image: docker:24.0.5-cli
+  services:
+    - docker:24.0.5-dind
   script:
+    - echo "$REGISTRY_PASSWORD" | docker login registry.yourdomain.com -u "$REGISTRY_USERNAME" --password-stdin
     - docker build -t registry.yourdomain.com/myapp:latest .
     - docker push registry.yourdomain.com/myapp:latest
 
@@ -97,11 +124,14 @@ deploy:
       HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
         -X POST "$PORTAINER_WEBHOOK_URL")
 
-      [ "$HTTP" = "204" ] && echo "Deployed!" || exit 1
+      case "$HTTP" in
+        2*) echo "Deployed!" ;;
+        *) echo "Webhook failed with HTTP $HTTP"; exit 1 ;;
+      esac
   environment:
     name: production
-  only:
-    - main
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
 ```
 
 ## Step 5: Integrate with Jenkins
@@ -114,20 +144,27 @@ pipeline {
     stages {
         stage('Build') {
             steps {
-                sh 'docker build -t registry.yourdomain.com/myapp:latest .'
-                sh 'docker push registry.yourdomain.com/myapp:latest'
+                withCredentials([usernamePassword(credentialsId: 'registry-credentials', passwordVariable: 'REGISTRY_PASSWORD', usernameVariable: 'REGISTRY_USERNAME')]) {
+                    sh '''
+                        echo "$REGISTRY_PASSWORD" | docker login registry.yourdomain.com -u "$REGISTRY_USERNAME" --password-stdin
+                        docker build -t registry.yourdomain.com/myapp:latest .
+                        docker push registry.yourdomain.com/myapp:latest
+                    '''
+                }
             }
         }
 
         stage('Deploy via Webhook') {
             steps {
-                script {
-                    def response = httpRequest(
-                        url: "${PORTAINER_WEBHOOK_URL}",
-                        httpMode: 'POST',
-                        validResponseCodes: '200'
-                    )
-                    echo "Deployment triggered: ${response.status}"
+                withCredentials([string(credentialsId: 'portainer-webhook-url', variable: 'PORTAINER_WEBHOOK_URL')]) {
+                    script {
+                        def response = httpRequest(
+                            url: env.PORTAINER_WEBHOOK_URL,
+                            httpMode: 'POST',
+                            validResponseCodes: '200:299'
+                        )
+                        echo "Deployment triggered: ${response.status}"
+                    }
                 }
             }
         }
@@ -147,10 +184,13 @@ HEALTH_URL="${2:?Provide health check URL}"
 echo "Triggering deployment..."
 HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$WEBHOOK_URL")
 
-if [ "$HTTP" != "200" ]; then
-    echo "Webhook failed: HTTP $HTTP"
-    exit 1
-fi
+case "$HTTP" in
+    2*) ;;
+    *)
+        echo "Webhook failed: HTTP $HTTP"
+        exit 1
+        ;;
+esac
 
 echo "Webhook triggered. Waiting for deployment..."
 
@@ -180,7 +220,15 @@ PROD_WEBHOOK="${PROD_WEBHOOK:?Required}"
 
 # Always deploy to staging
 echo "Deploying to staging..."
-curl -s -X POST "$STAGING_WEBHOOK"
+STAGING_HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$STAGING_WEBHOOK")
+
+case "$STAGING_HTTP" in
+    2*) ;;
+    *)
+        echo "Staging webhook failed: HTTP $STAGING_HTTP"
+        exit 1
+        ;;
+esac
 
 # Verify staging
 sleep 30
@@ -193,22 +241,30 @@ if [ "$STAGING_HEALTH" != "200" ]; then
 fi
 
 echo "Staging healthy. Deploying to production..."
-curl -s -X POST "$PROD_WEBHOOK"
+PROD_HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$PROD_WEBHOOK")
+
+case "$PROD_HTTP" in
+    2*) ;;
+    *)
+        echo "Production webhook failed: HTTP $PROD_HTTP"
+        exit 1
+        ;;
+esac
 
 echo "Production deployment triggered!"
 ```
 
 ## Step 8: Secure Webhooks with a Proxy
 
-By default, webhooks require no authentication. For additional security, put Portainer behind a proxy that adds IP allowlisting:
+By default, webhooks require no authentication. For additional security, put Portainer behind a proxy that restricts access to static egress IPs that you control, such as self-hosted runners or internal CI servers:
 
 ```nginx
-# nginx.conf - Restrict webhook access to CI/CD servers
-location ~* ^/api/webhooks/ {
-    # Only allow GitHub Actions, GitLab CI, and your CI server
-    allow 140.82.112.0/20;  # GitHub Actions IPs
-    allow 34.74.90.64/28;   # GitLab.com CI
-    allow 10.0.0.100;        # Your internal CI server
+# nginx.conf - Restrict webhook access to CI/CD servers with static IPs
+location ~* ^/api/(stacks/)?webhooks/ {
+    # Only allow self-hosted runners or internal CI servers with fixed egress IPs
+    allow 203.0.113.10;
+    allow 203.0.113.11;
+    allow 10.0.0.100;
     deny all;
 
     proxy_pass http://portainer:9000;
@@ -233,4 +289,4 @@ docker inspect my_container | jq '.[].State.StartedAt'
 
 ## Conclusion
 
-Portainer webhooks provide the simplest possible CI/CD integration - a single HTTP POST triggers a full stack redeployment. The URL contains a secret UUID, making it reasonably secure without requiring API key management in your pipelines. Combine webhooks with health checks to verify deployments succeeded, and use multi-environment webhooks to promote changes through Dev → Staging → Production in a controlled pipeline.
+Portainer webhooks provide a simple CI/CD integration - a single HTTP POST can trigger a stack or service redeployment. Treat the webhook URL as a secret, because calling it does not require separate authentication. Combine webhooks with health checks to verify deployments succeeded, and use multi-environment webhooks to promote changes through Dev → Staging → Production in a controlled pipeline.
