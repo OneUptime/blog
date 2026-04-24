@@ -40,7 +40,7 @@ sudo systemctl restart docker
 ```
 
 Key settings explained:
-- `overlay2`: Fastest storage driver for Linux
+- `overlay2`: Recommended storage driver for Docker on Linux
 - `log-opts max-size/max-file`: Prevents log files from filling ARM's limited storage
 - `live-restore`: Keeps containers running during Docker daemon restarts
 - `max-concurrent-downloads`: Limits parallel image pulls (important for ARM with slow SD cards)
@@ -50,11 +50,12 @@ Key settings explained:
 ### Reduce Memory Overhead
 
 ```bash
-# Disable swap (if using SSD; enable if using SD card with limited RAM)
+# On Raspberry Pi OS, disable the disk-backed swap file
 
+sudo dphys-swapfile swapoff
 sudo systemctl disable dphys-swapfile
 
-# Or configure zram swap (faster than disk swap on ARM)
+# Or configure zram swap (especially useful on low-memory ARM systems)
 sudo apt install -y zram-tools
 sudo tee /etc/default/zramswap > /dev/null << 'EOF'
 # Use 50% of RAM for zram swap
@@ -67,7 +68,7 @@ sudo systemctl restart zramswap
 ### Increase File Descriptors
 
 ```bash
-# Increase system-wide file descriptor limits
+# Increase file descriptor limits for login sessions
 sudo tee /etc/security/limits.d/docker.conf > /dev/null << 'EOF'
 * soft nofile 65535
 * hard nofile 65535
@@ -110,11 +111,26 @@ sudo dd if=/tmp/test of=/dev/null bs=1M iflag=direct
 # Move Docker data to SSD
 sudo systemctl stop docker
 
-# Edit daemon.json to use SSD path
+# Update daemon.json to use the SSD path without dropping the earlier settings
 sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
 {
   "data-root": "/ssd/docker",
-  "storage-driver": "overlay2"
+  "storage-driver": "overlay2",
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  },
+  "default-ulimits": {
+    "nofile": {
+      "Name": "nofile",
+      "Hard": 64000,
+      "Soft": 64000
+    }
+  },
+  "live-restore": true,
+  "max-concurrent-downloads": 3,
+  "max-concurrent-uploads": 3
 }
 EOF
 
@@ -147,12 +163,13 @@ echo '0 3 * * 0 root docker system prune -f >> /var/log/docker-cleanup.log 2>&1'
 Run Portainer with memory limits to prevent it from consuming all available RAM:
 
 ```bash
+# 256MB RAM, 512MB total memory + swap, and half a CPU core
 docker run -d \
   --name portainer \
   --restart=unless-stopped \
-  --memory=256m \           # Limit to 256MB RAM
-  --memory-swap=512m \      # Allow 512MB swap
-  --cpus=0.5 \              # Limit to half a CPU core
+  --memory=256m \
+  --memory-swap=512m \
+  --cpus=0.5 \
   -p 9000:9000 \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -162,17 +179,15 @@ docker run -d \
 
 ### Configure Portainer Snapshot Interval
 
-Portainer periodically polls Docker for state. Reduce polling frequency for ARM:
+Portainer periodically takes environment snapshots. Reduce the snapshot frequency for ARM:
 
-In Portainer: **Settings > Environment-related settings > Snapshot interval**: Change from 5 seconds to 30 seconds.
+In Portainer: **Settings > General > Snapshot interval**: Increase from the default 5 minutes to 30 minutes.
 
 ## Container Resource Limits
 
 Always set resource limits on ARM to prevent any single container from starving others:
 
 ```yaml
-version: "3.8"
-
 services:
   myapp:
     image: myapp:latest
@@ -194,12 +209,10 @@ services:
 Deploy a lightweight monitoring container:
 
 ```yaml
-version: "3.8"
-
 services:
   # Lightweight cAdvisor for container metrics
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: ghcr.io/google/cadvisor:latest
     privileged: true
     ports:
       - "8080:8080"
@@ -208,6 +221,9 @@ services:
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
     restart: unless-stopped
 ```
 
