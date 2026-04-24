@@ -126,7 +126,7 @@ docker run --rm \
   -v portainer_data:/data \
   alpine rm /data/portainer.db
 
-# Optionally remove other data files
+# Inspect the remaining data files
 docker run --rm \
   -v portainer_data:/data \
   alpine ls -la /data/
@@ -140,9 +140,13 @@ docker start portainer
 Avoid the 5-minute initialization race:
 
 ```bash
-# Generate a bcrypt hash for your password
+# Stop and remove the existing container if present
+docker stop portainer 2>/dev/null || true
+docker rm portainer 2>/dev/null || true
+
+# Generate a bcrypt hash for your password (use at least 12 characters)
 HASH=$(docker run --rm httpd:2.4-alpine \
-  htpasswd -nbB admin newpassword | cut -d ':' -f 2)
+  htpasswd -nbB admin new-password-1234 | cut -d ':' -f 2)
 
 # Remove old volume
 docker volume rm portainer_data 2>/dev/null || true
@@ -158,7 +162,7 @@ docker run -d \
   portainer/portainer-ce:latest \
   --admin-password="$HASH"
 
-echo "Portainer reset complete. Admin password: newpassword"
+echo "Portainer reset complete. Admin password: new-password-1234"
 ```
 
 ## Step 8: Reset via Docker Compose
@@ -167,7 +171,6 @@ If using Docker Compose:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   portainer:
     image: portainer/portainer-ce:latest
@@ -211,17 +214,20 @@ If you exported stack files in Step 1:
 # Or via API
 TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"Username":"admin","Password":"newpassword"}' | jq -r .jwt)
+  -d '{"Username":"admin","Password":"new-password-1234"}' | jq -r .jwt)
+
+ENDPOINT_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+  http://localhost:9000/api/endpoints | jq -r '.[0].Id')
 
 for FILE in /opt/portainer-export/*.yml; do
   STACK_NAME=$(basename "$FILE" .yml)
-  CONTENT=$(cat "$FILE" | jq -Rs .)
+  CONTENT=$(jq -Rs . < "$FILE")
 
-  curl -X POST \
+  curl -s -X POST \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
-    "http://localhost:9000/api/stacks?type=2&method=string&endpointId=1" \
-    -d "{\"name\":\"$STACK_NAME\",\"stackFileContent\":$CONTENT}"
+    "http://localhost:9000/api/stacks/create/standalone/string?endpointId=$ENDPOINT_ID" \
+    -d "{\"Name\":\"$STACK_NAME\",\"StackFileContent\":$CONTENT}"
 
   echo "Re-imported: $STACK_NAME"
 done
