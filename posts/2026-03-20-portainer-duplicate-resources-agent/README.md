@@ -4,23 +4,23 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Troubleshooting, Agent, Resource
 
-Description: Fix the issue where Portainer shows duplicate containers, networks, or volumes when using agent-based endpoints, caused by multiple agent registrations or snapshot conflicts.
+Description: Fix the issue where Portainer shows duplicate containers, networks, or volumes when using agent-based endpoints, caused by duplicate environment registrations, overlapping Swarm and per-node views, or stale snapshot data.
 
 ## Introduction
 
-If you're seeing the same container listed twice in Portainer, or networks and volumes appearing multiple times, this is typically caused by the Portainer server having multiple endpoint registrations pointing to the same Docker host, or by agent cluster mode creating duplicate entries. This guide explains how to diagnose and resolve the issue.
+If you're seeing the same container listed twice in Portainer, or networks and volumes appearing multiple times, this is typically caused by the Portainer server having multiple environment registrations pointing to the same Docker host, or by mixing a Swarm agent endpoint with separate per-node endpoints. This guide explains how to diagnose and resolve the issue.
 
 ## Step 1: Check for Duplicate Environments
 
 ```bash
 # List all environments via Portainer API
 
-TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
+TOKEN=$(curl -sk -X POST https://localhost:9443/api/auth \
   -H "Content-Type: application/json" \
   -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
 
-curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/endpoints | \
+curl -sk -H "Authorization: Bearer $TOKEN" \
+  https://localhost:9443/api/endpoints | \
   jq '.[] | {id: .Id, name: .Name, url: .URL, type: .Type}'
 ```
 
@@ -39,16 +39,16 @@ Only the Portainer configuration is removed - the Docker host and its containers
 ## Step 3: Check for Multiple Agent Instances
 
 ```bash
-# On the Docker host, check how many agent containers are running
-docker ps | grep portainer-agent
+# On a standalone Docker host, check how many agent containers are running
+docker ps | grep portainer/agent
 
-# There should be EXACTLY ONE agent per Docker host
-# If you see multiple:
-docker stop portainer-agent portainer-agent2  # stop extras
-docker rm portainer-agent2  # remove the extra
+# There should be EXACTLY ONE agent container on a standalone Docker host
+# If you see multiple, stop and remove the extras by name or container ID:
+docker stop <extra-agent-container>
+docker rm <extra-agent-container>
 
 # Keep only one agent running
-docker restart portainer-agent
+docker restart <remaining-agent-container>
 ```
 
 ## Step 4: Fix Swarm Agent Cluster Duplicates
@@ -82,6 +82,8 @@ docker inspect portainer-agent | grep AGENT_CLUSTER_ADDR
 # to prevent cluster formation behavior:
 docker stop portainer-agent && docker rm portainer-agent
 
+# If your Portainer Server uses AGENT_SECRET, add:
+# -e AGENT_SECRET=yoursecret \
 docker run -d \
   -p 9001:9001 \
   --name portainer-agent \
@@ -98,34 +100,34 @@ Sometimes duplicates are a display artifact from a stale snapshot:
 
 ```bash
 # Trigger a fresh snapshot via API
-TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
+TOKEN=$(curl -sk -X POST https://localhost:9443/api/auth \
   -H "Content-Type: application/json" \
   -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
 
 # Get all endpoint IDs
-curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/endpoints | jq '.[].Id'
+curl -sk -H "Authorization: Bearer $TOKEN" \
+  https://localhost:9443/api/endpoints | jq '.[].Id'
 
 # Trigger snapshot for endpoint 1
-curl -s -X POST \
+curl -sk -X POST \
   -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/endpoints/1/docker/snapshot
+  https://localhost:9443/api/endpoints/1/snapshot
 
 # Refresh the Portainer UI after the snapshot completes
 ```
 
 ## Step 7: Check for Stale Endpoint Data
 
-If an old endpoint was removed but its data persists:
+If an old endpoint was removed but its data persists, inspect the Portainer data volume before attempting any manual cleanup:
 
 ```bash
-# Check Portainer database for stale endpoint references
-# This requires database inspection
+# Inspect the Portainer data volume
 docker run --rm \
   -v portainer_data:/data \
   alpine ls -la /data/
 
-# The portainer.db contains all endpoint data
+# Portainer stores its database in /data/portainer.db
+# Back it up before any manual database inspection or deletion
 # Deleting it resets all Portainer configuration (use as last resort)
 ```
 
@@ -141,21 +143,21 @@ Sometimes duplicate display is a browser rendering artifact:
 # DevTools → Application → Local Storage → Clear
 ```
 
-## Step 9: Check Volume and Network Ownership
+## Step 9: Check Volume and Network Labels
 
-Docker volumes and networks have labels indicating which container created them. If labels are missing or duplicated:
+Docker volumes and networks can have labels that help you tell whether similarly named resources are actually separate objects created by different projects or tools:
 
 ```bash
 # Check volume labels
-docker volume ls --format "{{.Name}}\t{{.Labels}}" | grep -v "^$"
+docker volume ls --format "{{.Name}}\t{{.Labels}}"
 
 # Check network labels
 docker network ls --format "{{.Name}}\t{{.Labels}}"
 
-# Volumes and networks without proper labels may appear multiple times
-# in Portainer's inventory
+# Compose-managed resources often include com.docker.compose.* labels
+# Different labels usually mean these are separate resources, not duplicate rows
 ```
 
 ## Conclusion
 
-Duplicate resources in Portainer almost always stem from having multiple environment registrations pointing to the same Docker host, or from running multiple agent instances on a single host. Start by checking for duplicate environments in the Portainer UI, then verify only one agent is running per Docker host. Force a snapshot refresh to clear any stale display artifacts.
+Duplicate resources in Portainer most often stem from having multiple environment registrations pointing to the same Docker host, or from combining a Swarm agent endpoint with separate per-node endpoints. Start by checking for duplicate environments in the Portainer UI, then verify only one agent container is running on standalone Docker hosts. Force a snapshot refresh to clear any stale snapshot data.
