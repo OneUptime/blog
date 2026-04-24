@@ -4,31 +4,32 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Swarm, Node Management, Maintenance, Operation
 
-Description: Drain Docker Swarm nodes for maintenance, manage node availability, and safely remove nodes using Portainer.
+Description: Drain Docker Swarm nodes for maintenance in Portainer, manage node availability, and safely remove nodes from the cluster.
 
 ## Introduction
 
-Node draining safely removes all running tasks from a Swarm node before maintenance. Portainer provides a GUI for managing node availability states (Active, Pause, Drain) and removing nodes from the cluster. This guide covers the complete node maintenance workflow.
+Node draining safely removes Swarm service tasks from a Swarm node before maintenance. Portainer provides a GUI for managing node availability states (Active, Pause, Drain). This guide covers the complete node maintenance workflow, including removing nodes from the cluster when needed.
 
 ## Node Availability States
 
 - **Active**: Node accepts new tasks and keeps existing ones
 - **Pause**: Node keeps existing tasks but doesn't accept new ones
-- **Drain**: Node gracefully evacuates all tasks to other nodes
+- **Drain**: Node doesn't accept new tasks; existing Swarm service tasks are shut down and rescheduled on available nodes
 
 ## Draining a Node via Portainer
 
-1. Go to **Swarm > Nodes**
-2. Select the node to drain
-3. Click **Edit**
-4. Change Availability to **Drain**
-5. Click **Update**
+1. Go to **Swarm > Details**
+2. Under **Nodes**, select the node to drain
+3. In **Node Details**, change Availability to **Drain**
+4. Apply the update
 
-Watch tasks migrate in **Swarm > Services**.
+Watch tasks migrate in **Services**.
 
 ## Draining via CLI
 
 ```bash
+# Run these commands from a swarm manager node
+
 # Check current node status
 
 docker node ls
@@ -37,7 +38,7 @@ docker node ls
 docker node update --availability drain worker1
 
 # Verify all tasks have migrated
-docker node ps worker1  # Should show nothing running
+docker node ps worker1 --filter desired-state=running  # Should show no running tasks
 
 # Or check from service perspective
 docker service ps myapp_web
@@ -50,13 +51,14 @@ docker service ps myapp_web
 ```bash
 #!/bin/bash
 # maintenance.sh - Safe node maintenance workflow
+# Run this from a swarm manager node
 
 NODE_NAME="${1:-worker1}"
 
 echo "=== Starting maintenance for $NODE_NAME ==="
 
 # Step 1: Get node ID
-NODE_ID=$(docker node ls --filter name=$NODE_NAME -q)
+NODE_ID=$(docker node ls --filter "name=$NODE_NAME" -q)
 if [ -z "$NODE_ID" ]; then
   echo "Error: Node $NODE_NAME not found"
   exit 1
@@ -66,14 +68,14 @@ echo "[1/5] Node ID: $NODE_ID"
 
 # Step 2: Drain the node
 echo "[2/5] Draining node..."
-docker node update --availability drain $NODE_ID
+docker node update --availability drain "$NODE_ID"
 
 # Step 3: Wait for tasks to migrate
 echo "[3/5] Waiting for task migration..."
 TIMEOUT=120
 ELAPSED=0
 while [ $ELAPSED -lt $TIMEOUT ]; do
-  RUNNING_TASKS=$(docker node ps $NODE_ID --filter desired-state=running -q | wc -l)
+  RUNNING_TASKS=$(docker node ps "$NODE_ID" --filter desired-state=running -q | wc -l)
   if [ $RUNNING_TASKS -eq 0 ]; then
     echo "All tasks migrated!"
     break
@@ -84,7 +86,9 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
 done
 
 if [ $ELAPSED -ge $TIMEOUT ]; then
-  echo "WARNING: Timeout waiting for task migration. Proceeding anyway."
+  echo "ERROR: Timed out waiting for task migration."
+  echo "Check service constraints, replica counts, and cluster capacity before maintenance."
+  exit 1
 fi
 
 # Step 4: Perform maintenance (example: OS updates)
@@ -96,13 +100,13 @@ echo "Maintenance complete"
 
 # Step 5: Return node to service
 echo "[5/5] Returning node to active state..."
-docker node update --availability active $NODE_ID
+docker node update --availability active "$NODE_ID"
 
 echo "=== Maintenance complete for $NODE_NAME ==="
-docker node ps $NODE_ID
+docker node ps "$NODE_ID"
 ```
 
-## Removing a Node from Portainer
+## Removing a Node from the Swarm
 
 ### Remove a Worker Node
 
@@ -117,6 +121,8 @@ docker node rm worker1
 ### Remove a Manager Node (Demote First)
 
 ```bash
+# Make sure the swarm will still maintain manager quorum after demotion
+
 # Demote manager to worker first
 docker node demote manager3
 
@@ -153,23 +159,30 @@ print(node['ID'])
 ")
 
 # Drain via Portainer API
-VERSION=$(curl -s \
+# Fetch the current node object so the update preserves role, labels, and name
+NODE_JSON=$(curl -s \
   -H "X-API-Key: your-api-key" \
-  "https://portainer.example.com/api/endpoints/1/docker/nodes/$NODE_ID" \
+  "https://portainer.example.com/api/endpoints/1/docker/nodes/$NODE_ID")
+
+VERSION=$(printf '%s' "$NODE_JSON" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['Version']['Index'])")
+
+NODE_SPEC=$(printf '%s' "$NODE_JSON" \
+  | python3 -c "
+import sys, json
+node = json.load(sys.stdin)
+spec = node['Spec']
+spec['Availability'] = 'drain'
+print(json.dumps(spec))
+")
 
 curl -X POST \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
-  -d '{
-    "Name": "worker1",
-    "Role": "worker",
-    "Availability": "drain",
-    "Labels": {}
-  }' \
+  -d "$NODE_SPEC" \
   "https://portainer.example.com/api/endpoints/1/docker/nodes/$NODE_ID/update?version=$VERSION"
 ```
 
 ## Conclusion
 
-Node drain management in Docker Swarm via Portainer enables safe, zero-downtime maintenance operations. The drain process gracefully migrates all tasks before any maintenance begins, ensuring service availability throughout. Portainer's UI and API both provide node management capabilities, giving operators flexibility in how they manage their cluster maintenance workflows.
+Node drain management in Docker Swarm via Portainer enables safer maintenance operations. The drain process gracefully migrates Swarm service tasks before maintenance begins when the cluster has enough capacity and your services can be rescheduled. Portainer's UI and API both provide node availability management, giving operators flexibility in how they manage cluster maintenance workflows.
