@@ -14,11 +14,11 @@ Portainer controls your entire container infrastructure. Exposing it to the publ
 - Zero-day vulnerabilities in Portainer itself.
 - Credential stuffing attacks.
 
-Running Portainer on a private network and requiring VPN access eliminates the attack surface almost entirely.
+Running Portainer on a private network and requiring VPN access significantly reduces the public attack surface.
 
 ## Option 1: WireGuard VPN (Recommended)
 
-WireGuard is a modern, fast VPN. Deploy it on the same server as Portainer, or on a separate jump host.
+WireGuard is a modern, fast VPN. Deploy it on the same server as Portainer, or on a separate jump host if you also route or proxy traffic to the Portainer host.
 
 ### Install WireGuard
 
@@ -43,10 +43,6 @@ wg genkey | tee client-private.key | wg pubkey > client-public.key
 Address = 10.200.0.1/24
 ListenPort = 51820
 PrivateKey = <server-private-key>
-
-# Enable routing for connected clients
-PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
 
 # Client 1 (Admin)
 [Peer]
@@ -79,12 +75,18 @@ PersistentKeepalive = 25
 ### Bind Portainer to VPN Interface Only
 
 ```bash
+# Create persistent Portainer data volume
+docker volume create portainer_data
+
 # Run Portainer only accessible via VPN IP
 docker run -d \
-  -p 10.200.0.1:9443:9443 \  # Only bind to WireGuard IP
-  -p 10.200.0.1:8000:8000 \  # Edge agent port
+  -p 10.200.0.1:9443:9443 \
+  -p 10.200.0.1:8000:8000 \
   --name portainer \
-  portainer/portainer-ce:latest
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:lts
 ```
 
 ## Option 2: Tailscale (Simpler Setup)
@@ -100,24 +102,24 @@ tailscale up
 tailscale ip -4
 # Example: 100.64.1.5
 
+# Create persistent Portainer data volume
+docker volume create portainer_data
+
 # Run Portainer bound to the Tailscale IP
 docker run -d \
   -p 100.64.1.5:9443:9443 \
   --name portainer \
-  portainer/portainer-ce:latest
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:lts
 ```
 
 Users connect via the Tailscale client on their devices and access Portainer at `https://100.64.1.5:9443`.
 
 ## Firewall Configuration
 
-Ensure the Portainer port is only accessible from the VPN subnet:
-
-```bash
-# UFW: Allow Portainer only from VPN subnet
-ufw allow from 10.200.0.0/24 to any port 9443 proto tcp
-ufw deny 9443
-```
+Binding Portainer to the WireGuard or Tailscale IP is the primary control here. If you publish container ports with Docker, do not rely on a generic `ufw allow/deny` pair alone. Docker documents that published ports can bypass `ufw`; if you need additional filtering, use Docker-specific firewall rules in the `DOCKER-USER` chain.
 
 ## Conclusion
 
