@@ -8,7 +8,7 @@ Description: DHCP starvation attacks exhaust the address pool by sending thousan
 
 ## How DHCP Starvation Works
 
-An attacker uses tools like `dhcpstarv` or `yersinia` to flood the network with DHCP Discovers, each using a different spoofed MAC address. The server assigns an IP to each "fake" device until the pool is exhausted. Legitimate clients then receive DHCPNAK or no response.
+An attacker uses tools like `dhcpstarv` or `yersinia` to flood the network with DHCPDISCOVER messages, each using a different spoofed MAC address. The server assigns an IP to each "fake" device until the pool is exhausted. Legitimate clients then receive no DHCPOFFER for new requests, and clients trying to reuse an invalid or expired address may receive DHCPNAK.
 
 ## Mitigation 1: DHCP Snooping with Rate Limiting (Cisco)
 
@@ -28,7 +28,7 @@ interface GigabitEthernet0/48
 
 ## Mitigation 2: Port Security (Cisco)
 
-Port security limits the number of MAC addresses per port, preventing MAC spoofing:
+Port security limits the number of MAC addresses learned on a port, which helps contain MAC churn during a starvation attempt:
 
 ```text
 interface GigabitEthernet0/2
@@ -37,32 +37,37 @@ interface GigabitEthernet0/2
   switchport port-security maximum 2     ! Max 2 MACs per port
   switchport port-security violation restrict
   switchport port-security aging time 5
+  switchport port-security aging type inactivity
 ```
 
-## Mitigation 3: Small Address Pools
+## Mitigation 3: Short Lease Times
 
-While not foolproof, smaller pools mean fewer wasted addresses during an attack:
+Short lease times can help the pool recover faster after an attack stops, but shrinking the pool by itself does not prevent starvation:
 
 ```text
 # /etc/dhcp/dhcpd.conf
 
-# Short lease times force faster pool recovery
+# Short lease times help the pool recover more quickly
 subnet 192.168.1.0 netmask 255.255.255.0 {
-    range 192.168.1.100 192.168.1.150;  # Small pool - 50 addresses
-    default-lease-time 300;              # 5 min lease - reclaim quickly
+    range 192.168.1.100 192.168.1.200;
+    default-lease-time 300;              # 5 min lease
     max-lease-time 600;
 }
 ```
 
 ## Mitigation 4: MAC-Based Access Control (dhcpd)
 
-Only serve known devices:
+Only serve known devices from the dynamic pool:
 
 ```text
 # /etc/dhcp/dhcpd.conf
 subnet 10.0.10.0 netmask 255.255.255.0 {
-    deny unknown-clients;           # Only serve known hosts
     option routers 10.0.10.1;
+
+    pool {
+        range 10.0.10.100 10.0.10.150;
+        deny unknown-clients;       # Only clients with host declarations can use this pool
+    }
 }
 
 host workstation-1 { hardware ethernet aa:bb:cc:dd:ee:01; fixed-address 10.0.10.10; }
@@ -72,11 +77,23 @@ host workstation-2 { hardware ethernet aa:bb:cc:dd:ee:02; fixed-address 10.0.10.
 ## Mitigation 5: Monitoring and Alerting
 
 ```bash
-# Monitor pool utilization and alert when > 80% full
 #!/bin/bash
-SCOPE="192.168.1.0"
+# Monitor pool utilization and alert when > 80% full
 POOL_SIZE=50  # Adjust to your pool size
-ACTIVE=$(grep -c "binding state active" /var/lib/dhcp/dhcpd.leases 2>/dev/null || echo 0)
+
+ACTIVE=$(awk '
+  $1 == "lease" && $3 == "{" { ip=$2; state=""; in_lease=1; next }
+  in_lease && $1 == "binding" && $2 == "state" { gsub(/;/, "", $3); state=$3; next }
+  in_lease && $1 == "}" { if (ip != "") latest[ip]=state; in_lease=0; ip=""; state=""; next }
+  END {
+      c=0
+      for (ip in latest)
+          if (latest[ip] == "active")
+              c++
+      print c
+  }
+' /var/lib/dhcp/dhcpd.leases 2>/dev/null)
+ACTIVE=${ACTIVE:-0}
 UTIL=$(( ACTIVE * 100 / POOL_SIZE ))
 
 if [ "$UTIL" -gt 80 ]; then
@@ -87,7 +104,7 @@ fi
 
 ## Key Takeaways
 
-- DHCP snooping with rate limiting (15 pkt/s per port) is the most effective defense.
-- Port security limits MAC addresses per port, preventing spoofed MAC floods.
-- `deny unknown-clients` in dhcpd blocks any device not explicitly registered.
+- DHCP snooping with rate limiting on untrusted access ports is a strong switch-level defense.
+- Port security limits learned MAC addresses per port, which can blunt spoofed-MAC floods.
+- `deny unknown-clients` in a `pool` declaration blocks dynamic leases to devices that are not explicitly registered.
 - Monitor pool utilization and alert when it exceeds 80% to detect attacks early.
