@@ -8,128 +8,81 @@ Description: Configure resource requests and limits for Rancher Agent pods to en
 
 ## Introduction
 
-Rancher deploys several agent components in managed downstream clusters: `cattle-cluster-agent`, `cattle-node-agent`, and Fleet agents. By default, these have minimal resource configurations. Properly tuning these ensures stable management communication without starving application workloads.
+Rancher deploys a `cattle-cluster-agent` in managed downstream clusters. Depending on cluster type, node-level operations are handled by `cattle-node-agent` on Rancher-created RKE clusters or by `rancher-system-agent` on Rancher-provisioned RKE2/K3s nodes. If you use Fleet, a `fleet-agent` is also deployed in the downstream cluster. Properly tuning agent resources ensures stable management communication without starving application workloads.
 
 ## Rancher Agent Components
 
 | Component | Location | Purpose |
 |---|---|---|
-| cattle-cluster-agent | cattle-system namespace | Manages cluster state, syncs with Rancher Server |
-| cattle-node-agent | DaemonSet, all nodes | Node-level operations, catalog deployment |
-| fleet-agent | fleet-system namespace | GitOps and application deployment |
+| cattle-cluster-agent | cattle-system namespace | Connects the downstream cluster to Rancher Server |
+| cattle-node-agent | DaemonSet on Rancher-created RKE clusters | Node-level cluster operations |
+| rancher-system-agent | systemd service on Rancher-provisioned RKE2/K3s nodes | Node lifecycle operations |
+| fleet-agent | cattle-fleet-system namespace | GitOps and application deployment |
 
 ## Step 1: Configure cattle-cluster-agent Resources
 
-The cluster agent is the most resource-intensive agent. Configure it based on cluster size:
+For an immediate change on an existing cluster, update the cluster agent Deployment resources:
 
-```yaml
-# Patch the cluster agent deployment resources
-
-kubectl patch deployment cattle-cluster-agent \
+```bash
+kubectl set resources deployment/cattle-cluster-agent \
   -n cattle-system \
-  --type=merge \
-  -p '{
-    "spec": {
-      "template": {
-        "spec": {
-          "containers": [{
-            "name": "cluster-register",
-            "resources": {
-              "requests": {
-                "cpu": "200m",
-                "memory": "256Mi"
-              },
-              "limits": {
-                "cpu": "1000m",
-                "memory": "1Gi"
-              }
-            }
-          }]
-        }
-      }
-    }
-  }'
+  --requests=cpu=200m,memory=256Mi \
+  --limits=cpu=1000m,memory=1Gi
 ```
 
 ## Step 2: Configure Agent Resources via Rancher Server
 
-For new clusters, configure agent resources in the cluster spec:
+For Rancher-managed RKE2/K3s clusters, configure agent resources in the cluster spec:
 
 ```yaml
-# Rancher cluster spec
-agentEnvVars:
-  - name: CATTLE_AGENT_LIVENESS_TIMEOUT
-    value: "120"
-
-# Agent resource settings (in Rancher 2.7+)
-cattle-cluster-agent:
-  resources:
-    requests:
-      cpu: "500m"
-      memory: "512Mi"
-    limits:
-      cpu: "2000m"
-      memory: "2Gi"
+apiVersion: provisioning.cattle.io/v1
+kind: Cluster
+spec:
+  clusterAgentDeploymentCustomization:
+    overrideResourceRequirements:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+      limits:
+        cpu: "2000m"
+        memory: "2Gi"
+  fleetAgentDeploymentCustomization:
+    overrideResourceRequirements:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
 ```
 
 ## Step 3: Configure cattle-node-agent Resources
 
-Node agents run on every node. Keep their footprint small:
+If your downstream cluster was created in Rancher with RKE and `cattle-node-agent` is present, keep its footprint small. Rancher-provisioned RKE2/K3s clusters use `rancher-system-agent` on the node instead of a `cattle-node-agent` DaemonSet.
 
 ```bash
-kubectl patch daemonset cattle-node-agent \
+kubectl set resources daemonset/cattle-node-agent \
   -n cattle-system \
-  --type=merge \
-  -p '{
-    "spec": {
-      "template": {
-        "spec": {
-          "containers": [{
-            "name": "agent",
-            "resources": {
-              "requests": {
-                "cpu": "50m",
-                "memory": "64Mi"
-              },
-              "limits": {
-                "cpu": "250m",
-                "memory": "256Mi"
-              }
-            }
-          }]
-        }
-      }
-    }
-  }'
+  --requests=cpu=50m,memory=64Mi \
+  --limits=cpu=250m,memory=256Mi
 ```
 
 ## Step 4: Assign Agents to Specific Nodes
 
-In large clusters, pin agent pods to control plane nodes to avoid competing with application workloads:
+The `cattle-cluster-agent` already prefers control plane nodes. If control plane labels are not visible in the cluster, label a node so Rancher will prefer scheduling the cluster agent there:
 
 ```bash
-kubectl patch deployment cattle-cluster-agent \
-  -n cattle-system \
-  --type=merge \
-  -p '{
-    "spec": {
-      "template": {
-        "spec": {
-          "nodeSelector": {
-            "node-role.kubernetes.io/control-plane": "true"
-          }
-        }
-      }
-    }
-  }'
+kubectl label node my-node cattle.io/cluster-agent=true
 ```
 
 ## Step 5: Monitor Agent Resource Usage
 
 ```bash
-# Check agent resource consumption
-kubectl top pods -n cattle-system
-kubectl top pods -n fleet-system
+# Requires Metrics Server to be installed
+kubectl top pod -n cattle-system
+
+# If Fleet is installed, check Fleet agent usage as well
+kubectl top pod -n cattle-fleet-system
 
 # Alert if cluster agent memory exceeds 80% of limit
 # (indicates need to increase limits)
@@ -137,4 +90,4 @@ kubectl top pods -n fleet-system
 
 ## Conclusion
 
-Properly sized Rancher Agent resources ensure stable cluster management without impacting application performance. For clusters with 100+ nodes or 500+ workloads, increase cluster agent limits to 2 CPU / 4GB RAM to handle the higher volume of state synchronization events.
+Properly sized Rancher Agent resources ensure stable cluster management without impacting application performance. Start with Rancher's documented `cattle-cluster-agent` baseline request of `50m` CPU and `100Mi` memory, then increase requests and limits based on observed usage in your environment.
