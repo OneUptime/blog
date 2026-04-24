@@ -69,7 +69,7 @@ docker ps -a --filter "label=com.docker.compose.project=mystackname"
 # Common exit codes:
 # 0  - Clean exit (intentional)
 # 1  - Application error
-# 137 - Killed by OOM killer (out of memory)
+# 137 - Killed with SIGKILL (often OOM or a forced stop)
 # 139 - Segfault
 # 143 - SIGTERM (graceful shutdown)
 ```
@@ -111,7 +111,7 @@ services:
   api:
     image: myapi:latest
     environment:
-      - DATABASE_URL=${DATABASE_URL}  # Will fail if not set
+      - DATABASE_URL=${DATABASE_URL}  # Resolves to an empty string if not set
 
 # Fix in Portainer: Add DATABASE_URL to stack environment variables
 # Or use a default value:
@@ -162,20 +162,28 @@ docker network rm myapp_default
 ```
 
 ```yaml
+services:
+  web:
+    networks:
+      - myapp-net
+
 networks:
-  myapp-net:        # Use a unique network name
+  myapp-net:
+    name: myapp-net-v2  # Use a unique actual network name
     driver: bridge
 ```
 
 ### Secrets Not Found
 
 ```bash
-# List available Docker secrets
+# Docker Swarm only: list available Docker secrets
 docker secret ls
 
-# Create a missing secret
+# Docker Swarm only: create a missing secret
 echo "mysecretvalue" | docker secret create db_password -
 ```
+
+For Compose-based standalone stacks, define the secret in the Compose file instead of using `docker secret`.
 
 ## Step 6: Check Resource Constraints
 
@@ -202,10 +210,10 @@ docker system prune --volumes
 
 ## Step 7: Debug with an Override File
 
-Create a `docker-compose.override.yml` to add debugging tools:
+Create a second Compose file such as `compose.debug.yaml` to add debugging tools:
 
 ```yaml
-# docker-compose.override.yml (only for debugging)
+# compose.debug.yaml (only for debugging)
 services:
   api:
     # Override entrypoint to keep container running for inspection
@@ -216,13 +224,15 @@ services:
       - DEBUG=true
 ```
 
+Use it locally with `docker compose -f docker-compose.yml -f compose.debug.yaml up`, or add it under **Additional paths** when deploying a Git-based stack in Portainer.
+
 ## Step 8: Check Portainer Agent Connectivity
 
 For remote environments, verify the Portainer agent is reachable:
 
 ```bash
 # Test agent connectivity
-curl -k https://agent-host:9001/ping
+curl -k https://agent-host:9001/ping  # Should return HTTP 204
 
 # Check agent logs
 docker logs portainer_agent
