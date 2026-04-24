@@ -1,4 +1,4 @@
-# How to Convert Docker Compose to Kubernetes Manifests with Portainer Terra (2)
+# How to Convert Docker Compose to Kubernetes Manifests with Portainer Terraform (2)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -25,8 +25,9 @@ Kompose converts Docker Compose files to Kubernetes manifests:
 # Install kompose
 
 curl -L https://github.com/kubernetes/kompose/releases/latest/download/kompose-linux-amd64 \
-  -o /usr/local/bin/kompose
-chmod +x /usr/local/bin/kompose
+  -o kompose
+chmod +x ./kompose
+sudo mv ./kompose /usr/local/bin/kompose
 
 # Verify installation
 kompose version
@@ -36,7 +37,6 @@ kompose version
 
 ```yaml
 # docker-compose.yml - Original Docker Compose
-version: "3.8"
 services:
   web:
     image: myapp:latest
@@ -51,6 +51,8 @@ services:
 
   db:
     image: postgres:15
+    expose:
+      - "5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
@@ -59,6 +61,8 @@ services:
 
   redis:
     image: redis:7-alpine
+    expose:
+      - "6379"
     volumes:
       - redis_data:/data
 
@@ -79,10 +83,10 @@ ls k8s/
 # web-service.yaml
 # db-deployment.yaml
 # db-service.yaml
-# db-persistentvolumeclaim.yaml
+# postgres-data-persistentvolumeclaim.yaml
 # redis-deployment.yaml
 # redis-service.yaml
-# redis-persistentvolumeclaim.yaml
+# redis-data-persistentvolumeclaim.yaml
 ```
 
 ## Step 4: Review and Enhance Generated Manifests
@@ -120,6 +124,11 @@ spec:
                 secretKeyRef:
                   name: myapp-secrets
                   key: database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: myapp-secrets
+                  key: redis-url
           resources:             # Added: resource limits
             requests:
               cpu: "100m"
@@ -146,35 +155,28 @@ spec:
 ```hcl
 # k8s_resources.tf - Deploy Kubernetes manifests via Portainer
 
-# Apply a Kubernetes manifest string
-resource "portainer_kubernetes_manifest" "namespace" {
-  endpoint_id = portainer_environment.k8s_production.id
-  namespace   = "default"
-
-  manifest = <<-EOT
-    apiVersion: v1
-    kind: Namespace
-    metadata:
-      name: myapp
-  EOT
+# Create the target namespace first
+resource "portainer_kubernetes_namespace" "namespace" {
+  environment_id = portainer_environment.k8s_production.id
+  name           = "myapp"
 }
 
-resource "portainer_kubernetes_manifest" "deployment" {
+resource "portainer_kubernetes_application" "deployment" {
   endpoint_id = portainer_environment.k8s_production.id
   namespace   = "myapp"
 
   manifest = file("${path.module}/k8s/web-deployment.yaml")
 
-  depends_on = [portainer_kubernetes_manifest.namespace]
+  depends_on = [portainer_kubernetes_namespace.namespace]
 }
 
-resource "portainer_kubernetes_manifest" "service" {
+resource "portainer_kubernetes_service" "service" {
   endpoint_id = portainer_environment.k8s_production.id
   namespace   = "myapp"
 
   manifest = file("${path.module}/k8s/web-service.yaml")
 
-  depends_on = [portainer_kubernetes_manifest.deployment]
+  depends_on = [portainer_kubernetes_application.deployment]
 }
 ```
 
@@ -183,13 +185,12 @@ resource "portainer_kubernetes_manifest" "service" {
 ```hcl
 # helm_releases.tf - Deploy via Helm through Portainer
 
-resource "portainer_helm_release" "postgresql" {
-  endpoint_id = portainer_environment.k8s_production.id
-  release_name = "postgresql"
-  namespace    = "myapp"
-  chart        = "postgresql"
-  chart_version = "14.0.0"
-  repository   = "https://charts.bitnami.com/bitnami"
+resource "portainer_kubernetes_helm" "postgresql" {
+  environment_id = portainer_environment.k8s_production.id
+  name           = "postgresql"
+  namespace      = "myapp"
+  chart          = "postgresql"
+  repo           = "https://charts.bitnami.com/bitnami"
 
   values = <<-EOT
     auth:
@@ -212,20 +213,29 @@ During migration, manage both environments simultaneously:
 
 # Docker Compose stack (old deployment)
 resource "portainer_stack" "myapp_docker" {
-  name        = "myapp-v1"
-  endpoint_id = portainer_environment.docker.id
+  name            = "myapp-v1"
+  deployment_type = "standalone"
+  method          = "file"
+  endpoint_id     = portainer_environment.docker.id
 
-  stack_file_content = file("docker-compose.yml")
+  stack_file_path = "${path.module}/docker-compose.yml"
 
   # Set to false when migration is complete
   count = var.use_docker_deployment ? 1 : 0
 }
 
 # Kubernetes deployment (new deployment)
-resource "portainer_kubernetes_manifest" "myapp_k8s" {
-  endpoint_id = portainer_environment.k8s.id
-  namespace   = "myapp"
-  manifest    = file("k8s/web-deployment.yaml")
+resource "portainer_stack" "myapp_k8s" {
+  name            = "myapp-v2"
+  deployment_type = "kubernetes"
+  method          = "string"
+  endpoint_id     = portainer_environment.k8s.id
+  namespace       = "myapp"
+
+  stack_file_content = join("\n---\n", [
+    file("${path.module}/k8s/web-deployment.yaml"),
+    file("${path.module}/k8s/web-service.yaml"),
+  ])
 
   # Enable when ready to migrate
   count = var.use_docker_deployment ? 0 : 1
@@ -245,7 +255,7 @@ variable "use_docker_deployment" {
 kubectl get pods -n myapp
 kubectl get svc -n myapp
 
-# Step 2: Update DNS to point to Kubernetes service
+# Step 2: Update DNS to point to your Kubernetes ingress or load balancer
 # (Update your load balancer/DNS outside of Terraform)
 
 # Step 3: Switch the Terraform variable
