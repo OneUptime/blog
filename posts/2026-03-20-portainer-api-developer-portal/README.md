@@ -13,7 +13,7 @@ A self-service developer portal empowers developers to spin up, manage, and tear
 ## Architecture Overview
 
 ```text
-Developers → Portal UI (React/Vue) → Backend API (Node.js) → Portainer API → Docker/K8s
+Developers → Portal UI (React/Vue) → Backend API (Node.js) → Portainer API → Docker Standalone
                                         ↓
                                     Auth (Keycloak/Auth0)
                                         ↓
@@ -22,7 +22,7 @@ Developers → Portal UI (React/Vue) → Backend API (Node.js) → Portainer API
 
 ## Prerequisites
 
-- Portainer BE (for team and RBAC features)
+- Portainer CE or BE (BE if you need team and RBAC features)
 - Node.js 18+
 - A database (PostgreSQL or SQLite for local)
 
@@ -31,12 +31,18 @@ Developers → Portal UI (React/Vue) → Backend API (Node.js) → Portainer API
 ```javascript
 // server.js - Express backend for the developer portal
 const express = require('express');
+const cors = require('cors');
 const axios = require('axios');
 const jwt = require('jsonwebtoken');
+const crypto = require('node:crypto');
 require('dotenv').config();
 
 const app = express();
+app.use(cors());
 app.use(express.json());
+
+const toSlug = (value) => value.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+const getStackPrefix = (username) => `dev-${toSlug(username)}-`;
 
 // Portainer client
 const portainer = axios.create({
@@ -54,7 +60,7 @@ services:
   app:
     image: node:18-alpine
     working_dir: /app
-    command: sleep infinity
+    command: ["tail", "-f", "/dev/null"]
     volumes:
       - app-code:/app
     ports:
@@ -90,12 +96,12 @@ services:
     image: node:18-alpine
     ports:
       - "{FRONTEND_PORT}:3000"
-    command: sleep infinity
+    command: ["tail", "-f", "/dev/null"]
   backend:
     image: node:18-alpine
     ports:
       - "{BACKEND_PORT}:8080"
-    command: sleep infinity
+    command: ["tail", "-f", "/dev/null"]
   db:
     image: postgres:15-alpine
     environment:
@@ -129,15 +135,20 @@ app.get('/api/templates', authenticateDeveloper, (req, res) => {
 // GET /api/environments - List developer's environments
 app.get('/api/environments', authenticateDeveloper, async (req, res) => {
     try {
-        const stacks = await portainer.get(`/stacks?endpointId=${process.env.DEV_ENDPOINT_ID}`);
+        const stackPrefix = getStackPrefix(req.user.username);
+        const stacks = await portainer.get('/stacks', {
+            params: {
+                filters: JSON.stringify({ EndpointID: process.env.DEV_ENDPOINT_ID })
+            }
+        });
         // Filter stacks belonging to this developer
         const myStacks = stacks.data.filter(s =>
-            s.Name.startsWith(`dev-${req.user.username}-`)
+            s.Name.startsWith(stackPrefix)
         );
         res.json(myStacks.map(s => ({
             id: s.Id,
-            name: s.Name.replace(`dev-${req.user.username}-`, ''),
-            status: s.Status === 1 ? 'running' : 'stopped',
+            name: s.Name.replace(stackPrefix, ''),
+            status: s.Status === 1 ? 'active' : 'inactive',
             created: s.CreationDate
         })));
     } catch (err) {
@@ -149,18 +160,22 @@ app.get('/api/environments', authenticateDeveloper, async (req, res) => {
 app.post('/api/environments', authenticateDeveloper, async (req, res) => {
     const { templateId, envName } = req.body;
     const username = req.user.username;
+    const envSlug = toSlug(envName || '');
 
     // Validate
     if (!ENVIRONMENT_TEMPLATES[templateId]) {
         return res.status(400).json({ error: 'Invalid template' });
     }
+    if (!envSlug) {
+        return res.status(400).json({ error: 'Environment name must contain letters, numbers, or hyphens' });
+    }
 
-    const stackName = `dev-${username}-${envName}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    const stackName = `${getStackPrefix(username)}${envSlug}`;
 
     try {
         // Generate environment-specific config
         const port = 10000 + Math.floor(Math.random() * 5000);
-        const dbPassword = Math.random().toString(36).substring(2, 12);
+        const dbPassword = crypto.randomBytes(18).toString('base64url');
 
         let composeContent = ENVIRONMENT_TEMPLATES[templateId].compose
             .replace(/{PORT}/g, port)
@@ -170,20 +185,25 @@ app.post('/api/environments', authenticateDeveloper, async (req, res) => {
 
         // Deploy via Portainer API
         const result = await portainer.post(
-            `/stacks/create/standalone/string?endpointId=${process.env.DEV_ENDPOINT_ID}`,
+            '/stacks/create/standalone/string',
             {
                 Name: stackName,
                 StackFileContent: composeContent,
                 Env: [
                     { name: 'DEVELOPER', value: username },
-                    { name: 'ENV_NAME', value: envName }
+                    { name: 'ENV_NAME', value: envSlug }
                 ]
+            },
+            {
+                params: {
+                    endpointId: process.env.DEV_ENDPOINT_ID
+                }
             }
         );
 
         res.json({
             id: result.data.Id,
-            name: envName,
+            name: envSlug,
             stackName,
             port,
             message: 'Environment created successfully'
@@ -195,12 +215,15 @@ app.post('/api/environments', authenticateDeveloper, async (req, res) => {
 
 // DELETE /api/environments/:name - Destroy an environment
 app.delete('/api/environments/:name', authenticateDeveloper, async (req, res) => {
-    const username = req.user.username;
-    const stackName = `dev-${username}-${req.params.name}`;
+    const stackName = `${getStackPrefix(req.user.username)}${toSlug(req.params.name)}`;
 
     try {
         // Find the stack
-        const stacks = await portainer.get(`/stacks?endpointId=${process.env.DEV_ENDPOINT_ID}`);
+        const stacks = await portainer.get('/stacks', {
+            params: {
+                filters: JSON.stringify({ EndpointID: process.env.DEV_ENDPOINT_ID })
+            }
+        });
         const stack = stacks.data.find(s => s.Name === stackName);
 
         if (!stack) {
@@ -208,9 +231,13 @@ app.delete('/api/environments/:name', authenticateDeveloper, async (req, res) =>
         }
 
         // Delete the stack
-        await portainer.delete(`/stacks/${stack.Id}?endpointId=${process.env.DEV_ENDPOINT_ID}`);
+        await portainer.delete(`/stacks/${stack.Id}`, {
+            params: {
+                endpointId: process.env.DEV_ENDPOINT_ID
+            }
+        });
 
-        res.json({ message: `Environment '${req.params.name}' destroyed` });
+        res.json({ message: `Environment '${toSlug(req.params.name)}' destroyed` });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -268,7 +295,7 @@ app.listen(3001, () => console.log('Developer portal backend running on port 300
 
         async function createEnvironment() {
             const template = document.getElementById('template').value;
-            const name = document.getElementById('env-name').value;
+            const name = document.getElementById('env-name').value.trim();
             await fetch(`${API}/environments`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
@@ -279,7 +306,7 @@ app.listen(3001, () => console.log('Developer portal backend running on port 300
 
         async function destroyEnv(name) {
             if (!confirm(`Destroy environment '${name}'?`)) return;
-            await fetch(`${API}/environments/${name}`, {
+            await fetch(`${API}/environments/${encodeURIComponent(name)}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${TOKEN}` }
             });
