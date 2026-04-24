@@ -16,14 +16,14 @@ Edge deployments often run on cellular data, satellite links, or throttled WAN c
 graph LR
     EdgeDevice[Edge Device<br/>Remote Site] -->|Outbound poll<br/>HTTPS| Tunnel[Portainer Tunnel Server]
     Tunnel --> PortainerBE[Portainer Instance]
-    PortainerBE -->|WebSocket| UI[Operator Browser]
+    PortainerBE -->|HTTPS| UI[Operator Browser]
 ```
 
-The Edge Agent initiates outbound connections (no inbound firewall rules needed), polls for commands, and only sends data when there's something to report.
+The Edge Agent initiates outbound connections from the edge device (so no inbound firewall rules are needed on the device), polls Portainer at the configured interval, and only opens the reverse tunnel when Portainer requests interactive access.
 
 ## Configuring the Edge Agent for Low Bandwidth
 
-Deploy the Edge Agent with a long check-in interval to minimize polling:
+Deploy the Edge Agent with the standard Edge environment variables, then reduce how often it polls in Portainer to minimize bandwidth:
 
 ```bash
 docker run -d \
@@ -33,13 +33,13 @@ docker run -d \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
   -v /:/host \
   -v portainer_agent_data:/data \
-  --network host \
-  portainer/agent:latest \
-  --edge \
-  --edge-id $EDGE_ID \
-  --edge-key $EDGE_KEY \
-  --edge-checkin-interval 300   # Check in every 5 minutes (default 5s)
+  -e EDGE=1 \
+  -e EDGE_ID="$EDGE_ID" \
+  -e EDGE_KEY="$EDGE_KEY" \
+  portainer/agent:lts
 ```
+
+In Portainer, go to **Settings > General** and increase the **Edge agent default poll frequency** setting beyond the 5-second default. Match the agent tag to your Portainer Server release, and add `-e EDGE_INSECURE_POLL=1` if your Portainer Server uses a self-signed certificate.
 
 | Check-In Interval | Bandwidth Usage | UI Responsiveness |
 |-------------------|-----------------|-------------------|
@@ -48,19 +48,24 @@ docker run -d \
 | 300s | Low | ~5 minute delay |
 | 1800s | Very low | ~30 minute delay |
 
-## Reducing Snapshot Data Size
+## Reducing Snapshot Overhead
 
-Large snapshot payloads consume significant bandwidth. Limit what's included:
+Snapshot traffic also adds overhead on slow links. On the Portainer Server, increase the snapshot interval if you do not need frequent environment refreshes:
 
 ```bash
-# Exclude image layer data from snapshots (reduces payload ~80%)
-
-portainer/portainer-ce:latest --snapshot-interval 600
+# Increase the Portainer Server snapshot interval from the default 5m
+docker run -d -p 8000:8000 -p 9443:9443 \
+  --name portainer \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:lts \
+  --snapshot-interval 10m
 ```
 
 ## Compressing Agent Communication
 
-The Edge Agent uses TLS which provides compression at the transport layer. Ensure your reverse proxy does not decompress and re-compress data:
+TLS encrypts Edge Agent traffic, but compression is handled at the HTTP layer. If you put Portainer behind Nginx, enable gzip explicitly for API responses:
 
 ```nginx
 # Enable gzip for Portainer API responses
@@ -68,35 +73,41 @@ gzip on;
 gzip_types application/json;
 gzip_min_length 1024;
 gzip_proxied any;
+gzip_vary on;
 ```
 
 ## Scheduling Updates for Off-Peak Hours
 
-When operating on metered bandwidth, schedule image pulls and stack updates for off-peak hours using Portainer's Git auto-update:
+When operating on metered bandwidth, schedule image pulls and stack updates for off-peak hours using Portainer's GitOps updates (Business Edition):
 
-1. In Portainer, edit your stack.
-2. Enable **Auto update** with Git polling.
-3. Set the polling interval to a time appropriate for your data plan.
+1. In Portainer, edit your Git-deployed stack or Edge Stack.
+2. Enable **GitOps updates**.
+3. Use **Webhook** for exact off-peak runs, or **Polling** with a longer fetch interval if periodic checks are sufficient.
 
-Or use a cron job on the edge device to trigger updates at night:
+Or, for Edge Stacks, use a cron job on the edge device to call the Portainer Server webhook at night:
 
 ```bash
 # /etc/cron.d/edge-update
-0 2 * * * root curl -X POST http://localhost:9001/api/stacks/webhooks/YOUR-UUID
+0 2 * * * root curl -fsS -X POST https://portainer.example.com:9443/api/edge_stacks/webhooks/YOUR-WEBHOOK-ID
 ```
+
+Use the webhook URL Portainer generates for the stack. If your Portainer Server still uses its default self-signed certificate, trust that certificate on the device or use `-k` only as a temporary workaround.
 
 ## Minimizing Image Sizes for Edge
 
 Smaller images mean faster pulls and less bandwidth:
 
 ```dockerfile
-# Use Alpine-based images instead of Debian
-FROM node:20-alpine   # ~60 MB vs ~350 MB for node:20
+# Use a smaller base image when your dependencies are compatible with musl
+FROM node:20-alpine
 
-# Remove build artifacts
-RUN apk add --no-cache curl && \
-    npm ci --only=production && \
+# Install only production dependencies
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev && \
     npm cache clean --force
+
+COPY . .
 ```
 
 ## Pre-Installing Images Before Deployment
@@ -118,4 +129,4 @@ After loading, Portainer deployments skip the pull and use the cached image.
 
 ## Monitoring Edge Connectivity
 
-Use OneUptime to monitor whether Edge Agents are checking in on time. Set an alert if an edge device hasn't reported for more than 2× its check-in interval - this indicates connectivity loss rather than a missed check-in.
+Use OneUptime to monitor whether Edge Agents are checking in on time. As a practical starting point, set an alert if an edge device hasn't reported for more than 2x its check-in interval; that usually indicates connectivity loss rather than a single delayed poll.
