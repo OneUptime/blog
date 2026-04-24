@@ -17,61 +17,58 @@ Edge Agent connections fail for different reasons than standard agent connection
 
 docker logs portainer_edge_agent --tail 50
 
-# Common successful log entries:
-# "Starting Portainer agent"
-# "Edge agent mode enabled"
-# "Connecting to tunnel server"
-# "Tunnel established"
-
-# Common error messages:
-# "Failed to connect to tunnel server: dial tcp..."
-# "Invalid edge key"
-# "TLS certificate verification failed"
+# Common log messages to look for:
+# "edge key loaded from options"
+# "edge key loaded from the filesystem"
+# "creating reverse tunnel client"
+# "unable to retrieve Edge key"
+# "poll request failure"
+# "unable to create tunnel"
 ```
 
 ## Step 2: Verify the Edge Key
 
-The edge key contains the Portainer server URL and authentication credentials. Decode it:
+The edge key contains the Portainer API URL, tunnel server address, tunnel fingerprint, and endpoint ID. Decode it:
 
 ```bash
-# Edge key is base64-encoded
+# Edge key is base64-encoded without padding
 EDGE_KEY="your-edge-key-here"
-echo $EDGE_KEY | base64 -d | python3 -m json.tool
+python3 - <<'PY' "$EDGE_KEY"
+import base64, sys
+edge_key = sys.argv[1]
+decoded = base64.b64decode(edge_key + "=" * (-len(edge_key) % 4)).decode()
+print(decoded)
+PY
 
 # Expected format:
-# {
-#   "portainerInstanceID": "...",
-#   "portainerURL": "https://portainer.example.com",
-#   "tunnelServerAddr": "portainer.example.com:8000",
-#   "credentials": "..."
-# }
+# https://portainer.example.com:9443|portainer.example.com:8000|<fingerprint>|<endpoint-id>
 ```
 
 Verify:
-- `portainerURL` is the correct Portainer HTTPS URL
-- `tunnelServerAddr` is accessible from the agent host
+- the first field is the correct Portainer API URL
+- the second field is the correct tunnel server address
+- the third field is the Portainer tunnel server fingerprint
+- the fourth field is the expected environment ID
 
 ## Step 3: Test Tunnel Server Connectivity
 
 ```bash
-# Test connectivity to the tunnel server (port 8000)
-nc -zv portainer.example.com 8000
+# Use the host and ports from the decoded edge key
+# Test connectivity to the Portainer API URL (default HTTPS port 9443)
+nc -zv portainer.example.com 9443
 
-# From inside the agent container
-docker exec portainer_edge_agent nc -zv portainer.example.com 8000
+# Test connectivity to the tunnel server (default port 8000)
+nc -zv portainer.example.com 8000
 ```
 
-If port 8000 is blocked, this is the most common cause.
+If either port 9443 or 8000 is blocked, the Edge Agent will not connect correctly.
 
 ## Step 4: Check Outbound Firewall Rules
 
 ```bash
 # On the agent host
-# Test outbound to Portainer tunnel server
-curl -v --connect-timeout 10 http://portainer.example.com:8000/
-
 # Check iptables for outbound blocks
-sudo iptables -L OUTPUT -n | grep -E "8000|portainer"
+sudo iptables -L OUTPUT -n | grep -E "9443|8000"
 
 # Check if DNS resolves
 nslookup portainer.example.com
@@ -80,16 +77,16 @@ nslookup portainer.example.com
 ## Step 5: Verify HTTPS Access to Portainer
 
 ```bash
-# Test HTTPS access to Portainer API
-curl -sk https://portainer.example.com/api/system/version
-# Should return version information
+# Use the Portainer API URL from the decoded edge key
+curl -v https://portainer.example.com:9443/api/system/status
+# Should return status information
 
-# If this fails, the agent can't register
+# If this fails, the agent won't be able to poll Portainer on its API URL
 ```
 
-## Step 6: Regenerate the Edge Key
+## Step 6: Retrieve the Current Edge ID and Edge Key
 
-If the edge key is invalid or expired:
+If the edge key was copied incorrectly or you need to redeploy the agent:
 
 ```bash
 TOKEN=$(curl -s -X POST \
@@ -104,33 +101,45 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   | python3 -c "
 import sys, json
 for e in json.load(sys.stdin):
-    if e.get('Type') in [4, 7, 8]:
-        print(f'Edge Env ID={e[\"Id\"]} Name={e[\"Name\"]} Key={e.get(\"EdgeKey\",\"\")}')
+    if e.get('Type') in [4, 7]:
+        print(f'Edge Env ID={e[\"Id\"]} Name={e[\"Name\"]} EdgeID={e.get(\"EdgeID\",\"\")} Key={e.get(\"EdgeKey\",\"\")}')
 "
 ```
 
-Update the agent with the new key:
+Update the agent with the retrieved values:
 ```bash
-docker stop portainer_edge_agent && docker rm portainer_edge_agent
+docker stop portainer_edge_agent
+docker rm portainer_edge_agent
+
+# Match the agent image tag to your Portainer Server version/support channel
+docker pull portainer/agent:lts
 
 docker run -d \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -v /:/host \
+  -v portainer_agent_data:/data \
+  --restart always \
   --name portainer_edge_agent \
   -e EDGE=1 \
-  -e EDGE_ID=device-id \
-  -e EDGE_KEY=new-edge-key \
-  portainer/agent:latest
+  -e EDGE_ID=retrieved-edge-id \
+  -e EDGE_KEY=retrieved-edge-key \
+  portainer/agent:lts
+
+# Add -e EDGE_INSECURE_POLL=1 if the Portainer API URL uses a self-signed certificate
+# If Portainer Server uses a custom AGENT_SECRET, add -e AGENT_SECRET=yoursecret
 ```
 
 ## Common Error Table
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `connection refused :8000` | Port 8000 blocked | Open outbound port 8000 |
-| `Invalid edge key` | Key corrupted or wrong | Regenerate key |
-| `TLS certificate verify failed` | Self-signed cert | Add `EDGE_INSECURE_POLL=1` |
-| `context deadline exceeded` | Network timeout | Check connectivity, increase timeout |
-| Environment shows "Down" | Agent not checking in | Check agent is running |
+| `connection refused :8000` | Port 8000 blocked or tunnel server not reachable | Open outbound port 8000 and verify the tunnel server address |
+| `invalid key format` | Key truncated, corrupted, or copied incorrectly | Retrieve the current Edge key again |
+| `x509: certificate signed by unknown authority` | Self-signed or untrusted certificate | Trust the CA or add `EDGE_INSECURE_POLL=1` |
+| `Connection reset by peer` | Network or firewall issue on the Portainer API URL | Verify outbound access to the API URL and tunnel port 8000 |
+| Environment shows "Down" | Agent not checking in | Check the agent is running and can reach the Portainer API URL and tunnel server |
 
 ## Conclusion
 
-Edge Agent connectivity issues almost always involve network access to port 8000 (tunnel server), edge key validity, or TLS certificate trust. The diagnostic path: check logs → decode and verify edge key → test port 8000 outbound → verify HTTPS access → regenerate key if needed. Start with the simplest checks before investigating complex network routing issues.
+Edge Agent connectivity issues almost always involve reachability to the Portainer API URL (usually port 9443), reachability to the tunnel server on port 8000, the edge key contents, or TLS certificate trust. The diagnostic path: check logs → decode and verify the edge key → test outbound access to the API URL and tunnel server → verify HTTPS access → retrieve the current Edge ID and Edge key and redeploy if needed. Start with the simplest checks before investigating complex network routing issues.
