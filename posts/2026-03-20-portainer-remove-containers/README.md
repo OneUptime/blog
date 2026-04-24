@@ -36,29 +36,28 @@ When you remove a container:
 docker rm my-container
 ```
 
-## Step 2: Remove a Running Container (Force Remove)
+## Step 2: Remove a Running Container
 
-Running containers cannot be removed without force:
+Running containers should be stopped before removal in Portainer:
 
-1. In Portainer, click the remove button on a running container.
-2. Portainer will warn you and ask for confirmation.
-3. Check **Force remove** in the dialog.
-4. Confirm.
+1. In Portainer, open the container you want to remove.
+2. Click **Stop** and wait for the container to exit.
+3. Click **Remove**.
+4. Confirm the removal.
 
 ```bash
 # Docker CLI force remove:
 docker rm --force my-running-container
 ```
 
-Force remove is equivalent to stop + remove in one step.
+`docker rm --force` sends `SIGKILL` to the container's main process and then removes it. If you want a graceful shutdown, stop the container first and then remove it.
 
 ## Step 3: Remove Multiple Containers at Once
 
 1. Navigate to **Containers**.
-2. Enable **Show stopped containers** to see all containers.
-3. Check the checkboxes next to containers to remove.
-4. Click **Remove** in the bulk action bar.
-5. Confirm the bulk removal.
+2. Check the checkboxes next to containers to remove.
+3. Click **Remove**.
+4. Confirm the bulk removal.
 
 ## Step 4: Remove a Container and Its Anonymous Volumes
 
@@ -69,7 +68,7 @@ By default, anonymous volumes are NOT removed with the container. To remove them
 docker rm --volumes my-container
 ```
 
-In Portainer's remove dialog, check the **Remove associated volumes** option (if available).
+In Portainer's remove dialog, choose to automatically remove **non-persistent volumes**.
 
 Note: Named volumes (created with `docker volume create` or named volumes in compose files) are never automatically removed. Manage them separately in **Volumes**.
 
@@ -88,24 +87,23 @@ docker container prune --force
 docker container prune --filter "until=24h"
 ```
 
-You can run this via Portainer's **Exec** console on the Docker host, or schedule it as a cron job.
+Run this directly on the Docker host (for example over SSH) or schedule it as a cron job.
 
 ## Step 6: Clean Up After a Stack Removal
 
 When you remove a Portainer stack:
-- Containers in the stack are removed.
-- Stack-defined named volumes are NOT removed.
-- Stack-defined networks are removed.
+- The stack is removed from the selected environment.
+- Named volumes used by the stack are NOT removed automatically.
 
-To also remove volumes when removing a stack in Portainer:
-1. Navigate to **Stacks**.
-2. Click the stack name.
-3. Click **Remove this stack**.
-4. Check **Remove associated volumes** if you want to delete the data.
+If you no longer need the stack's data after removing the stack:
+1. Navigate to **Volumes**.
+2. Locate the now-unused volume.
+3. Click **Remove**.
+4. Confirm the deletion.
 
 ## Preventing Accidental Removal
 
-For critical containers, Portainer's RBAC (Role-Based Access Control) can restrict who can remove containers.
+For critical containers, Portainer Business Edition's RBAC (Role-Based Access Control) can restrict who can remove containers.
 
 For development environments, use container labels to mark containers as "protected":
 
@@ -153,14 +151,14 @@ For automation, remove containers via the API:
 
 ```bash
 # Remove a specific container via Portainer API
-PORTAINER_URL="http://portainer:9000"
+PORTAINER_URL="https://portainer:9443"
 API_KEY="your-api-key"
 ENDPOINT_ID=1
 CONTAINER_ID="abc123def456"
 
 curl -X DELETE \
   -H "X-API-Key: ${API_KEY}" \
-  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}?force=true"
+  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}?force=1"
 ```
 
 ## Troubleshooting Removal Issues
@@ -184,4 +182,4 @@ lsof | grep /var/lib/docker/volumes/myvolume
 
 ## Conclusion
 
-Removing containers in Portainer keeps your environment clean and recovers disk space from accumulated stopped containers. The key points to remember: named volumes are preserved by default when removing containers, force remove handles running containers, and regular pruning via Portainer or Docker CLI prevents container sprawl. For critical containers, use RBAC or labels to prevent accidental deletion.
+Removing containers in Portainer keeps your environment clean and recovers disk space from accumulated stopped containers. The key points to remember: named volumes are preserved by default when removing containers, `docker rm --force` kills and removes a running container, and regular pruning via Docker CLI prevents container sprawl. For critical containers, use Portainer Business Edition RBAC or labels in your own automation to prevent accidental deletion.
