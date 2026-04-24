@@ -12,9 +12,10 @@ Consul Connect is HashiCorp's service mesh solution that provides service discov
 
 ## Prerequisites
 
-- Rancher-managed Kubernetes cluster (1.25+)
-- Helm 3.x installed
+- Rancher-managed Kubernetes cluster running a version supported by the Consul on Kubernetes compatibility matrix
+- Helm 3.6+ installed
 - kubectl with cluster-admin access
+- consul-k8s CLI installed for proxy troubleshooting
 - At least 3 nodes for production HA deployment
 
 ## Step 1: Add the HashiCorp Helm Repository
@@ -36,16 +37,11 @@ helm search repo hashicorp/consul
 global:
   name: consul
   datacenter: dc1
-  # Enable Consul Connect for service mesh
-  connectInject:
-    enabled: true
 
   # TLS configuration
   tls:
     enabled: true
     enableAutoEncrypt: true
-    serverAdditionalDNSSANs:
-      - consul.consul.svc.cluster.local
 
   # Gossip encryption
   gossipEncryption:
@@ -108,13 +104,7 @@ kubectl get pods -n consul
 
 ## Step 4: Enable Consul Connect Injection
 
-Annotate namespaces or deployments for automatic sidecar injection:
-
-```bash
-# Enable injection for a namespace
-kubectl label namespace production \
-  consul.hashicorp.com/connect-inject=true
-```
+Annotate the pod template for automatic sidecar injection:
 
 ```yaml
 # app-deployment.yaml - Deployment with Consul Connect
@@ -135,14 +125,27 @@ spec:
       annotations:
         # Enable Connect injection for this pod
         consul.hashicorp.com/connect-inject: "true"
-        # Define upstreams this service connects to
-        consul.hashicorp.com/connect-service-upstreams: "database:5432"
+        # Attach version metadata for traffic splitting examples
+        consul.hashicorp.com/service-meta-version: "v1"
     spec:
       containers:
         - name: backend
           image: registry.example.com/backend:v1.0
           ports:
             - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: production
+spec:
+  selector:
+    app: backend-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
 ```
 
 ## Step 5: Define Service Intentions (Access Control)
@@ -184,6 +187,7 @@ apiVersion: consul.hashicorp.com/v1alpha1
 kind: ServiceResolver
 metadata:
   name: backend-service
+  namespace: production
 spec:
   # Health check timeout
   connectTimeout: 5s
@@ -197,12 +201,15 @@ spec:
 
 ## Step 7: Configure Traffic Splitting
 
+To split traffic between versions, register both versions under the same `backend-service` Kubernetes Service and set `consul.hashicorp.com/service-meta-version` to `v1` and `v2` on the respective pod templates.
+
 ```yaml
 # service-splitter.yaml - Canary deployment via Consul traffic splitting
 apiVersion: consul.hashicorp.com/v1alpha1
 kind: ServiceSplitter
 metadata:
   name: backend-service
+  namespace: production
 spec:
   splits:
     # Send 90% of traffic to v1
@@ -212,12 +219,20 @@ spec:
     - weight: 10
       serviceSubset: v2
 ---
-# Service resolver for subsets
+# Update the service resolver to add subsets while keeping failover
 apiVersion: consul.hashicorp.com/v1alpha1
 kind: ServiceResolver
 metadata:
   name: backend-service
+  namespace: production
 spec:
+  connectTimeout: 5s
+  defaultSubset: v1
+  failover:
+    "*":
+      service: backend-service
+      datacenters:
+        - dc2  # Failover to DC2 if DC1 is unavailable
   subsets:
     v1:
       filter: "Service.Meta.version == v1"
@@ -228,40 +243,36 @@ spec:
 ## Step 8: Access the Consul UI
 
 ```bash
-# Port forward to the Consul UI
-kubectl port-forward -n consul svc/consul-ui 8500:80
+# Port forward to the Consul UI over HTTPS
+kubectl port-forward -n consul svc/consul-ui 8501:443
 
-# Or get the Consul bootstrap token
-kubectl get secret consul-bootstrap-acl-token \
+# If ACLs are enabled, get the Consul bootstrap token
+kubectl get secrets/consul-bootstrap-acl-token \
   -n consul \
-  -o jsonpath='{.data.token}' | base64 -d
+  --template='{{.data.token | base64decode }}'
 ```
 
 ## Step 9: Verify mTLS is Working
 
 ```bash
-# Check that services have valid certificates
-kubectl exec -n production deployment/backend-service \
-  -c consul-dataplane -- \
-  openssl s_client -connect localhost:20000 -brief
+# List the upstream IPs visible from a mesh-enabled pod
+consul-k8s troubleshoot upstreams -n production -pod <pod-name>
 
-# View service metrics
-kubectl exec -n production deployment/backend-service \
-  -c consul-dataplane -- \
-  curl -s localhost:19000/stats | grep "ssl.handshake"
+# Use one of the returned upstream IPs to validate certificates and proxy connectivity
+consul-k8s troubleshoot proxy -n production -pod <pod-name> -upstream-ip <upstream-ip>
 ```
 
 ## Troubleshooting
 
 ```bash
 # Check Consul server health
-kubectl exec -n consul consul-server-0 -- consul members
+kubectl exec -n consul consul-server-0 -c consul -- consul members
 
 # View Connect proxy logs
 kubectl logs deployment/backend-service -c consul-dataplane -n production
 
 # Check service catalog
-kubectl exec -n consul consul-server-0 -- \
+kubectl exec -n consul consul-server-0 -c consul -- \
   consul catalog services
 ```
 
