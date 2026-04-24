@@ -40,19 +40,14 @@ dig -x 2001:db8::10
 
 ## Requesting PTR Records from Your ISP/Hosting Provider
 
-Most hosting providers allow PTR records through a control panel or API:
+Most hosting providers allow PTR records through a control panel or API. Use the provider's IPv6 reverse DNS workflow:
 
 ```bash
-# AWS: Set reverse DNS on an Elastic IP via CLI
-aws ec2 update-address-attribute \
-    --allocation-id eipalloc-0123456789abcdef0 \
-    --domain-name mail.example.com
-
-# Hetzner Cloud: Use the Hetzner API
-curl -X PUT "https://api.hetzner.cloud/v1/primary_ips/<id>" \
+# Hetzner Cloud: change reverse DNS for an IPv6 Primary IP
+curl -X POST "https://api.hetzner.cloud/v1/primary_ips/<id>/actions/change_dns_ptr" \
     -H "Authorization: Bearer $HETZNER_TOKEN" \
     -H "Content-Type: application/json" \
-    -d '{"dns_ptr": "mail.example.com"}'
+    -d '{"ip":"2001:db8::10","dns_ptr":"mail.example.com"}'
 ```
 
 ## Configuring PTR Records on Your Own Zone (ARIN/RIPE Delegated)
@@ -85,17 +80,14 @@ getent hosts mail.example.com
 getent hosts 2001:db8::10
 ```
 
-## Testing with a Remote Mail Server Perspective
+## Testing Public DNS Visibility and SMTP Service
 
 ```bash
-# Use nslookup for reverse DNS from the server's perspective
-nslookup 2001:db8::10
-# Server: <your-resolver>
-# Address: ...
-# Name: mail.example.com
-# Address: 2001:db8::10
+# Query a public resolver to confirm the PTR is visible outside your network
+dig @1.1.1.1 -x 2001:db8::10 +short
+# Expected: mail.example.com.
 
-# Test actual SMTP greeting (receiving server will see your PTR)
+# Test the SMTP greeting on the IPv6 listener
 openssl s_client -connect [2001:db8::10]:25 -starttls smtp 2>/dev/null | head -5
 ```
 
@@ -109,8 +101,8 @@ sudo postconf -e 'myhostname = mail.example.com'
 sudo postconf -e 'smtp_helo_name = $myhostname'
 sudo systemctl reload postfix
 
-# Verify the HELO name used in outbound connections
-sudo grep "EHLO\|helo" /var/log/mail.log | head -5
+# Verify the configured hostnames Postfix will use
+postconf myhostname smtp_helo_name
 ```
 
 ## Common Issues
