@@ -21,9 +21,9 @@ Overlay networks are the backbone of Docker Swarm communication, enabling contai
 Overlay networks use VXLAN tunneling to create a virtual layer-2 network that spans all Swarm nodes. When a service joins an overlay network:
 
 1. Each task (container) gets an IP on the overlay subnet
-2. Containers on the same overlay network can reach each other by container name or service name
+2. Swarm services on the same overlay network can reach each other by service name, and standalone containers on attachable overlay networks can use container names
 3. The Swarm DNS resolver automatically handles service name resolution
-4. Traffic is encrypted by default between nodes
+4. Swarm management traffic is encrypted by default, but overlay application data is only encrypted when you enable it
 
 ## Step 1: Create an Overlay Network in Portainer
 
@@ -33,9 +33,9 @@ Overlay networks use VXLAN tunneling to create a virtual layer-2 network that sp
 4. Configure the network:
 
 ```text
-Name:           my-overlay-net
-Driver:         overlay
-Attachable:     true (or false for Swarm-only)
+Name:                               my-overlay-net
+Driver:                             overlay
+Enable manual container attachment: true (or false for Swarm-only)
 ```
 
 ### Advanced Options
@@ -84,7 +84,7 @@ networks:
     attachable: true    # Allow standalone containers to join
 ```
 
-For services that need to communicate with external load balancers or proxies.
+For services that need to communicate with reverse proxies or standalone containers that join the overlay network.
 
 ### Internal Service Network
 
@@ -145,6 +145,7 @@ services:
 networks:
   public-net:
     driver: overlay
+    attachable: true
   app-net:
     driver: overlay
     internal: false
@@ -158,13 +159,12 @@ networks:
 Docker Swarm's built-in DNS resolver enables service discovery:
 
 ```bash
-# Services can reach each other by service name
-# Inside the API container:
-curl http://database:5432        # Resolves to database service VIP
-curl http://frontend              # Resolves to frontend service VIP
+# Query the embedded DNS server from a container on the same network
+nslookup database
+nslookup frontend
 
-# DNS returns the service Virtual IP (VIP)
-# Swarm load-balances across all replicas behind the VIP
+# By default, Swarm uses a Virtual IP (VIP) for service discovery
+# and load-balances across all replicas behind that VIP
 ```
 
 ## Step 6: Overlay Network Encryption
@@ -176,10 +176,10 @@ networks:
   secure-net:
     driver: overlay
     driver_opts:
-      encrypted: "true"    # Encrypt overlay traffic with AES-256-GCM
+      encrypted: "true"    # Encrypt overlay application data with IPsec over VXLAN
 ```
 
-**Note:** Encryption adds CPU overhead (~10-20%). Enable only for sensitive internal traffic.
+**Note:** Encryption adds a non-negligible performance penalty. Test before using it in production.
 
 ```bash
 # Create encrypted overlay from CLI
@@ -198,16 +198,16 @@ docker network create \
 docker service inspect service-a --format '{{.Spec.TaskTemplate.Networks}}'
 docker service inspect service-b --format '{{.Spec.TaskTemplate.Networks}}'
 
-# Test connectivity from inside a container
-docker exec -it $(docker ps -q -f name=api) ping database
+# On a node where an api task is running, identify the container ID
+docker ps --filter name=api
 
-# Check DNS resolution
-docker exec -it $(docker ps -q -f name=api) nslookup database
+# Check DNS resolution from inside a task container
+docker exec -it <api-container-id> nslookup database
 ```
 
 ### MTU Issues
 
-On some cloud providers (e.g., Hetzner), overlay networks need custom MTU settings:
+In some environments, overlay networks need custom MTU settings:
 
 ```yaml
 networks:
@@ -219,7 +219,7 @@ networks:
 
 ### Overlay Network Not Accessible on Worker Node
 
-Workers must have connectivity on these ports:
+Swarm nodes must have connectivity on these ports:
 
 ```bash
 # Ensure these ports are open between all Swarm nodes:
@@ -227,9 +227,6 @@ Workers must have connectivity on these ports:
 # TCP 7946 - Node communication
 # UDP 7946 - Node communication
 # UDP 4789 - VXLAN overlay traffic
-
-# Test UDP 4789 (VXLAN)
-iperf3 -u -c worker-ip -p 4789
 ```
 
 ## Step 8: Remove an Overlay Network
