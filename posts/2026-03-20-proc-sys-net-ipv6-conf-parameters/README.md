@@ -17,7 +17,7 @@ Description: A comprehensive reference to the most important /proc/sys/net/ipv6/
 └── eth1/         # Settings specific to eth1
 ```
 
-Settings in `all/` apply globally but are overridden by interface-specific settings. The `default/` settings apply to interfaces created after sysctl is set.
+Settings in `all/` are special and change the settings for all interfaces. The `default/` settings apply to interfaces created after the sysctl is set.
 
 ## Key Parameters Reference
 
@@ -72,10 +72,10 @@ sysctl -w net.ipv6.conf.eth0.disable_ipv6=1
 
 ```bash
 cat /proc/sys/net/ipv6/conf/eth0/use_tempaddr
-# -1 = Disabled, kernel default
-# 0 = Disabled
+# <= 0 = Disabled
 # 1 = Enabled, prefer public address
-# 2 = Enabled, prefer temporary address (RFC 4941)
+# > 1 = Enabled, prefer temporary address (RFC 4941)
+# Default is 0 for most interfaces and -1 for loopback and point-to-point interfaces
 
 sysctl -w net.ipv6.conf.eth0.use_tempaddr=2
 ```
@@ -85,9 +85,8 @@ sysctl -w net.ipv6.conf.eth0.use_tempaddr=2
 ```bash
 cat /proc/sys/net/ipv6/conf/eth0/dad_transmits
 # Number of NS messages sent during DAD (default: 1)
-# 0 = Disable DAD
-# 1 = Normal DAD (send 1 NS, wait for NA)
-# 3 = Extra-robust DAD (send 3 NS messages)
+# 1 = Send 1 DAD probe (default)
+# 3 = Send 3 DAD probes
 
 sysctl -w net.ipv6.conf.eth0.dad_transmits=1
 ```
@@ -106,20 +105,19 @@ sysctl -w net.ipv6.conf.all.accept_redirects=0
 
 ```bash
 cat /proc/sys/net/ipv6/conf/eth0/router_solicitations
-# Number of Router Solicitations sent on startup (default: 3)
-# -1 = Send RS until RA received (unlimited)
+# Number of Router Solicitations sent before assuming no routers are present (default: 3)
 
 sysctl -w net.ipv6.conf.eth0.router_solicitations=3
 ```
 
-### max_addresses - Maximum IPv6 Addresses per Interface
+### max_addresses - Maximum Autoconfigured IPv6 Addresses per Interface
 
 ```bash
 cat /proc/sys/net/ipv6/conf/eth0/max_addresses
 # Default: 16
-# Maximum number of IPv6 addresses per interface
+# Maximum number of autoconfigured IPv6 addresses per interface
 
-# Increase for servers with many virtual IPs
+# Increase if an interface needs many autoconfigured addresses
 sysctl -w net.ipv6.conf.eth0.max_addresses=64
 ```
 
@@ -128,11 +126,11 @@ sysctl -w net.ipv6.conf.eth0.max_addresses=64
 ```bash
 cat /proc/sys/net/ipv6/conf/eth0/addr_gen_mode
 # 0 = EUI-64 (derived from MAC address)
-# 1 = Stable privacy (RFC 7217, random but stable per host/prefix)
-# 2 = Disable link-local generation
-# 3 = Stable privacy but doesn't override manual addresses
+# 1 = Don't generate a link-local address; use EUI-64 for autoconf addresses
+# 2 = Stable privacy using stable_secret (RFC 7217)
+# 3 = Stable privacy; use a random secret if stable_secret is unset
 
-sysctl -w net.ipv6.conf.eth0.addr_gen_mode=1
+sysctl -w net.ipv6.conf.eth0.addr_gen_mode=3
 ```
 
 ## Setting Multiple Parameters Persistently
@@ -148,8 +146,8 @@ net.ipv6.conf.all.use_tempaddr = 2
 net.ipv6.conf.default.use_tempaddr = 2
 
 # Stable privacy addressing
-net.ipv6.conf.all.addr_gen_mode = 1
-net.ipv6.conf.default.addr_gen_mode = 1
+net.ipv6.conf.all.addr_gen_mode = 3
+net.ipv6.conf.default.addr_gen_mode = 3
 
 # Disable accept_redirects on servers
 net.ipv6.conf.all.accept_redirects = 0
@@ -165,4 +163,4 @@ sysctl -p /etc/sysctl.d/99-ipv6-tuning.conf
 
 ## Summary
 
-The `/proc/sys/net/ipv6/conf/` hierarchy controls all IPv6 interface behavior. Key parameters: `accept_ra` (SLAAC/gateway from RA), `autoconf` (SLAAC address generation), `forwarding` (router mode), `use_tempaddr` (privacy extensions), `dad_transmits` (DAD robustness), `addr_gen_mode` (address generation algorithm). Use `sysctl.d` files for persistent changes. Settings in `all/` apply globally; settings in `default/` apply to new interfaces.
+The `/proc/sys/net/ipv6/conf/` hierarchy controls IPv6 interface behavior. Key parameters: `accept_ra` (SLAAC/gateway from RA), `autoconf` (SLAAC address generation), `forwarding` (router mode), `use_tempaddr` (privacy extensions), `dad_transmits` (DAD robustness), `addr_gen_mode` (address generation algorithm). Use `sysctl.d` files for persistent changes. Settings in `all/` are special and change interface settings system-wide; settings in `default/` apply to new interfaces.
