@@ -8,7 +8,7 @@ Description: Understand and manage the process of switching between Linux and Wi
 
 ## Introduction
 
-Docker on Windows supports two container modes: Linux containers (via WSL2 or Hyper-V) and native Windows containers. Portainer works with both, but you can only run one mode at a time on the same Docker daemon. This guide explains how to switch between modes and how to manage your Portainer setup through transitions.
+Docker Desktop on Windows supports two container modes: Linux containers (via WSL2 or Hyper-V) and native Windows containers. Portainer can manage both, but a single Docker daemon only runs one mode at a time. This guide explains how to switch between modes and how to manage your Portainer setup through transitions.
 
 ## Understanding the Two Modes
 
@@ -26,8 +26,8 @@ Docker on Windows supports two container modes: Linux containers (via WSL2 or Hy
 
 ## Prerequisites
 
-- Windows 10/11 Pro or Enterprise, or Windows Server 2022
-- Docker Desktop or Docker Engine with both modes available
+- Windows 10/11 Pro or Enterprise with Docker Desktop
+- If you're using Windows Server, use Windows Container Service instead of Docker Desktop; the Docker Desktop switching steps below do not apply
 - Portainer deployed
 
 ## Switching Container Modes
@@ -38,45 +38,42 @@ Docker on Windows supports two container modes: Linux containers (via WSL2 or Hy
 2. Click **Switch to Windows containers** or **Switch to Linux containers**
 3. Docker will restart the daemon
 
-### Via PowerShell
+### Via PowerShell (Docker Desktop 4.37+)
 
 ```powershell
 # Switch to Windows containers
+docker desktop engine use windows
 
-& "C:\Program Files\Docker\Docker\DockerCli.exe" -SwitchDaemon
+# Or switch back to Linux containers
+docker desktop engine use linux
 
 # Verify current mode
-docker info | findstr "OS/Arch"
+docker info --format '{{.OSType}}'
 ```
 
-### Via Docker Desktop CLI
+### Via Docker Desktop CLI (Docker Desktop 4.37+)
 
 ```powershell
-# Check current mode
-docker info --format "{{.OSType}}"
+# List available engines
+docker desktop engine ls
 
 # Switch modes
-Stop-Service com.docker.service
-# Edit Docker settings to change OS type
-# Then restart
-Start-Service com.docker.service
+docker desktop engine use windows
+docker desktop engine use linux
 ```
 
 ## Handling Portainer Through Mode Switches
 
-Portainer itself is a Linux container. When you switch to Windows containers mode, Portainer stops being accessible through the Windows Docker daemon.
+If Portainer is running as a Linux container on Docker Desktop or WSL, switching to Windows containers mode makes that Portainer container unavailable on that Docker daemon.
 
 ### Solution: Run Portainer with Separate Agents
 
-Run a Portainer server on a separate Linux host and connect agents to both your Windows Docker instances:
+Run a Portainer server on a separate Linux host and connect agents to the environments you want to manage:
 
 ```yaml
-# Linux host: portainer-server
-version: "3.8"
-
 services:
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:lts
     ports:
       - "9000:9000"
       - "9443:9443"
@@ -92,64 +89,64 @@ volumes:
 On Windows (Linux containers mode):
 
 ```powershell
-# Deploy Portainer Agent for Linux containers endpoint
+# Deploy Portainer Agent for a Docker Desktop / WSL Linux endpoint
 docker run -d `
   --name portainer-agent `
-  --restart=unless-stopped `
+  --restart=always `
   -p 9001:9001 `
-  -v //./pipe/docker_engine://./pipe/docker_engine `
-  portainer/agent:latest
+  -v /var/run/docker.sock:/var/run/docker.sock `
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes `
+  portainer/agent:lts
 ```
 
 ## Managing Both Modes from One Portainer
 
-In Portainer BE (Business Edition), you can add multiple environments:
+In Portainer, you can add multiple environments:
 
 1. Navigate to **Environments > Add environment**
-2. Add **Linux Agent** endpoint pointing to your Linux Docker host
-3. Add **Windows Agent** endpoint pointing to Windows Docker host (Linux containers mode)
+2. Add a **Docker Standalone** environment for your Linux containers endpoint
+3. Add a **Docker Standalone** environment for your Windows containers endpoint
 
 ## Script for Mode Detection and Switching
 
 ```powershell
 # PowerShell script to manage container mode switching
 function Get-DockerMode {
-    $info = docker info 2>$null | Select-String "OSType"
-    if ($info -match "windows") {
-        return "windows"
-    } else {
-        return "linux"
+    $mode = docker info --format '{{.OSType}}' 2>$null
+    if ($mode) {
+        return $mode.Trim()
     }
+    return "unknown"
 }
 
 function Switch-ToWindowsContainers {
     Write-Host "Switching to Windows containers..."
     
-    # Stop Portainer first (it's a Linux container)
+    # Stop Portainer first if it's running as a Linux container
     docker stop portainer 2>$null
     
     # Switch mode
-    & "C:\Program Files\Docker\Docker\DockerCli.exe" -SwitchDaemon
+    docker desktop engine use windows
     
     Start-Sleep -Seconds 10
     
     Write-Host "Now in Windows containers mode."
-    Write-Host "Portainer is not available in this mode."
+    Write-Host "A Portainer container running in Linux mode is not available on this daemon."
     Write-Host "Use: docker ps to manage Windows containers directly"
 }
 
 function Switch-ToLinuxContainers {
     Write-Host "Switching to Linux containers..."
     
-    & "C:\Program Files\Docker\Docker\DockerCli.exe" -SwitchDaemon
+    docker desktop engine use linux
     
     Start-Sleep -Seconds 10
     
     # Restart Portainer
-    docker start portainer
+    docker start portainer 2>$null
     
     Write-Host "Now in Linux containers mode."
-    Write-Host "Portainer is available at http://localhost:9000"
+    Write-Host "Portainer is available again at https://localhost:9443 if it was deployed in Linux mode."
 }
 
 # Main
@@ -163,7 +160,6 @@ Maintain separate compose files for each mode:
 
 **`docker-compose.linux.yml`** (Linux containers):
 ```yaml
-version: "3.8"
 services:
   webapp:
     image: nginx:alpine
@@ -173,7 +169,6 @@ services:
 
 **`docker-compose.windows.yml`** (Windows containers):
 ```yaml
-version: "3.8"
 services:
   webapp:
     image: mcr.microsoft.com/iis:latest
@@ -190,4 +185,4 @@ services:
 
 ## Conclusion
 
-Managing container mode switching requires planning, especially when Portainer itself runs as a Linux container. The cleanest solution for organizations needing both modes is to use a dedicated Linux host for Portainer BE with remote agents connecting to Windows Docker hosts. For simpler setups, maintaining the Linux containers mode as default and switching to Windows mode only when needed works well.
+Managing container mode switching requires planning, especially when your Portainer Server runs as a Linux container on Docker Desktop or WSL. The cleanest solution for organizations needing both modes is to use a dedicated Portainer server on Linux with remote agents connecting to Linux and Windows container environments. For simpler setups, maintaining the Linux containers mode as default and switching to Windows mode only when needed works well.
