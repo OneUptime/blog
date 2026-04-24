@@ -8,7 +8,7 @@ Description: Diagnose and fix Postfix mail delivery failures caused by failed IP
 
 ## Introduction
 
-On dual-stack servers, Postfix may attempt IPv6 delivery first, fail (if IPv6 routing is broken or the remote server doesn't support it), and not fall back to IPv4-causing mail to queue indefinitely. This guide diagnoses and resolves these failures.
+On dual-stack servers, Postfix may try IPv6 first, fail (for example, if local IPv6 routing is broken or the remote destination's IPv6 path is unreachable), and delay delivery instead of quickly succeeding over IPv4. On older Postfix versions or with an IPv6-first address preference, mail can remain deferred. This guide diagnoses and resolves these failures.
 
 ## Identifying IPv6 Delivery Failures
 
@@ -26,7 +26,7 @@ sudo grep "Connection refused\|Connection timed out\|Network unreachable" /var/l
 # IPv6 failure indicators:
 # connect to smtp.example.com[2001:db8::1]:25: Connection refused
 # connect to smtp.example.com[2001:db8::1]:25: Network unreachable
-# After this, Postfix should try IPv4 but sometimes doesn't
+# After this, delivery may remain deferred instead of quickly succeeding over IPv4
 ```
 
 ## Immediate Fix: Force IPv4
@@ -35,8 +35,9 @@ sudo grep "Connection refused\|Connection timed out\|Network unreachable" /var/l
 # /etc/postfix/main.cf
 inet_protocols = ipv4
 
-# Apply immediately
-sudo postfix reload
+# Apply immediately (inet_protocols changes require a stop/start)
+sudo postfix stop
+sudo postfix start
 
 # Flush deferred queue (retry all deferred messages)
 sudo postqueue -f
@@ -49,41 +50,46 @@ sudo tail -f /var/log/mail.log
 ## Check if IPv6 Is Causing Issues
 
 ```bash
-# Test IPv6 connectivity
-ping6 smtp.gmail.com
+# Find one MX host for the recipient domain
+MX_HOST="$(dig +short mx gmail.com | sort -n | awk 'NR==1 {sub(/\.$/, "", $2); print $2}')"
+
+# Test IPv6 connectivity to that MX host
+ping -6 "$MX_HOST"
 
 # Test if IPv6 SMTP works
-telnet -6 smtp.gmail.com 25
-# If "Connection refused" or "Network unreachable" → IPv6 is broken
+telnet -6 "$MX_HOST" 25
+# If IPv6 fails here while IPv4 succeeds, the IPv6 path or remote IPv6 endpoint is the issue
 
-# Test IPv4 SMTP
-telnet smtp.gmail.com 25
-# Should connect successfully
+# Test IPv4 SMTP to the same MX host
+telnet -4 "$MX_HOST" 25
+# Should connect successfully if IPv4 delivery is available
 ```
 
-## Fix DNS Resolution for IPv6-First Preference
+## Check MX Resolution and Address Preference
 
-Even with `inet_protocols = ipv4`, check if resolver prioritizes IPv6:
+If you keep both IPv4 and IPv6 enabled, Postfix documents `smtp_address_preference = any` with `smtp_balance_inet_protocols = yes` as the safe setting. Verify the current Postfix address preference and the MX host's A/AAAA records:
 
 ```bash
-# Check which IP Postfix resolves for Gmail
-postconf -e "smtp_address_preference = ipv4"
+# Show current Postfix address selection settings
+postconf smtp_address_preference smtp_balance_inet_protocols
 
-# Or check with dig
-dig -4 A smtp.gmail.com      # Only A records (IPv4)
-dig -6 AAAA smtp.gmail.com   # Only AAAA records (IPv6)
+# Check the recipient domain's MX host and its IP records
+MX_HOST="$(dig +short mx gmail.com | sort -n | awk 'NR==1 {sub(/\.$/, "", $2); print $2}')"
+dig +short "$MX_HOST" A
+dig +short "$MX_HOST" AAAA
 ```
 
 ## Debugging Delivery
 
 ```bash
-# Enable verbose SMTP delivery logs temporarily
-postconf -e "debug_peer_list = smtp.gmail.com"
+# Enable verbose SMTP delivery logs temporarily for one MX host
+MX_HOST="$(dig +short mx gmail.com | sort -n | awk 'NR==1 {sub(/\.$/, "", $2); print $2}')"
+postconf -e "debug_peer_list = $MX_HOST"
 postconf -e "debug_peer_level = 3"
 sudo postfix reload
 
 # Send a test email and watch verbose log
-echo "Debug test" | mail -s "Debug" test@gmail.com
+printf 'Subject: Debug\n\nDebug test\n' | sendmail -v test@gmail.com
 sudo tail -f /var/log/mail.log
 
 # Disable debug after investigation
@@ -97,6 +103,9 @@ sudo postfix reload
 Use transport maps for per-domain IPv4 forcing:
 
 ```bash
+# /etc/postfix/main.cf
+transport_maps = hash:/etc/postfix/transport
+
 # /etc/postfix/transport
 gmail.com     smtp4:
 yahoo.com     smtp4:
@@ -107,14 +116,13 @@ hotmail.com   smtp4:
 # /etc/postfix/master.cf
 smtp4 unix - - n - - smtp
     -o inet_protocols=ipv4
-    -o smtp_bind_address=203.0.113.10
 ```
 
 ```bash
-sudo postmap /etc/postfix/transport
+sudo postmap hash:/etc/postfix/transport
 sudo postfix reload
 ```
 
 ## Conclusion
 
-Postfix IPv6 delivery failures are solved by setting `inet_protocols = ipv4` in `main.cf` and reloading Postfix. This prevents any IPv6 SMTP attempts. After fixing, run `postqueue -f` to immediately retry deferred messages. For targeted fixes without disabling IPv6 globally, use transport maps with a custom `smtp4` service definition that overrides `inet_protocols` per destination domain.
+Postfix IPv6 delivery failures can be worked around by setting `inet_protocols = ipv4` in `main.cf` and restarting Postfix. This disables IPv6 for Postfix. After fixing, run `postqueue -f` to immediately retry deferred messages. For targeted fixes without disabling IPv6 globally, use transport maps with a custom `smtp4` service definition that overrides `inet_protocols` per destination domain.
