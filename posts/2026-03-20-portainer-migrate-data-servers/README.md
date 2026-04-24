@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Migration, Docker, Administration, Data Volume, Server Move
 
-Description: Learn how to migrate the Portainer data volume from one server to another, preserving all users, stacks, registries, and environment configurations.
+Description: Learn how to migrate the Portainer data volume from one server to another, preserving Portainer users, stack definitions, registries, and environment configuration stored in the data volume.
 
 ---
 
-Migrating Portainer to a new server involves copying the data volume and re-deploying the Portainer container. The migration preserves everything: users, settings, stack definitions, registry credentials, and edge keys.
+Migrating Portainer to a new server involves copying the data volume and re-deploying the Portainer container. The migration preserves the Portainer data stored in `/data`, including users, settings, stack definitions, registry credentials, and Edge metadata. It does not move the containers, images, volumes, or application data from the environments Portainer manages. If the Portainer server URL changes, existing Edge Agent deployments must be redeployed because the server URL is encoded into the Edge key.
 
 ## Step 1: Prepare the Source Server
 
@@ -60,15 +60,17 @@ docker run --rm -v portainer_data:/data alpine ls -la /data
 ## Step 4: Deploy Portainer on the New Server
 
 ```bash
+# Use the same tag/version that is running on the source server
+PORTAINER_TAG="lts"
+
 docker run -d \
   --name portainer \
   --restart=always \
-  -p 9000:9000 \
   -p 9443:9443 \
   -p 8000:8000 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:${PORTAINER_TAG}
 ```
 
 ## Step 5: Post-Migration Tasks
@@ -77,9 +79,10 @@ After migration:
 
 1. **Log in** with your existing admin credentials.
 2. **Update environment URLs** if agent host IPs changed.
-3. **Test agent connectivity** for each environment.
-4. **Verify stacks** are visible and can be deployed.
-5. **Update DNS** to point to the new server.
+3. **Redeploy Edge Agents** if the Portainer server URL, IP, or DNS name changed.
+4. **Test agent connectivity** for each environment.
+5. **Verify stacks** are visible and can be deployed.
+6. **Update DNS** to point to the new server.
 
 ## Step 6: Clean Up Old Server
 
