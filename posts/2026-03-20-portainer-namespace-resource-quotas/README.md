@@ -8,7 +8,7 @@ Description: Learn how to set and manage resource quotas on Kubernetes namespace
 
 ## Introduction
 
-ResourceQuotas constrain the total resource consumption within a namespace. Without quotas, a single namespace can consume all cluster resources, starving other namespaces. Portainer allows setting quotas through its namespace management interface. This guide covers configuring namespace-level resource quotas.
+ResourceQuotas constrain the total resource consumption within a namespace. Without quotas, a single namespace can consume all cluster resources, starving other namespaces. Portainer allows setting CPU and memory quotas through its namespace management interface, with separate controls for load balancers and storage quotas. This guide covers configuring namespace-level resource quotas.
 
 ## Prerequisites
 
@@ -38,14 +38,9 @@ CPU requests:       4 (cores)      - Total CPU requests across all pods
 CPU limits:         8 (cores)      - Total CPU limits
 Memory requests:    8Gi            - Total memory requests
 Memory limits:      16Gi           - Total memory limits
-
-Object counts:
-  Pods:             50
-  Services:         20
-  PVCs:             20
-  Secrets:          50
-  ConfigMaps:       50
 ```
+
+Load balancer and storage quotas are managed in separate sections on the namespace page when those options are available.
 
 ## Step 2: Apply ResourceQuota via YAML
 
@@ -84,8 +79,7 @@ spec:
     configmaps: "100"
     resourcequotas: "5"
 
-    # Count running pods by QoS class
-    count/pods: "100"
+    # Additional object count quotas
     count/deployments.apps: "30"
     count/statefulsets.apps: "10"
     count/jobs.batch: "20"
@@ -169,7 +163,7 @@ In Portainer: the namespace detail view shows quota usage.
 
 ## Step 5: Handle Quota Exceeded Errors
 
-When a deployment fails due to quota:
+When pod creation fails during a rollout due to quota:
 
 ```text
 Error from server (Forbidden): pods "my-app-xxx" is forbidden:
@@ -220,7 +214,7 @@ spec:
     requests.cpu: "10"
     requests.memory: 20Gi
   scopes:
-    - NotTerminating    # Only applies to long-running pods (not Jobs)
+    - NotTerminating    # Only applies to pods without activeDeadlineSeconds set
 ```
 
 ## Step 7: Automate Quota Alerts
@@ -240,8 +234,7 @@ spec:
       rules:
         - alert: NamespaceQuotaAlmostFull
           expr: |
-            kube_resourcequota{type="used"} /
-            kube_resourcequota{type="hard"} > 0.85
+            kube_resourcequota{type="used"} / ignoring(type) kube_resourcequota{type="hard"} > 0.85
           for: 5m
           labels:
             severity: warning
