@@ -18,18 +18,16 @@ Running your own Healthchecks instance via Portainer keeps your monitoring data 
 
 Before starting, ensure you have:
 
-- Docker Engine 20.10+ and Portainer CE or BE running
+- A Docker Standalone environment with Docker Engine 20.10+ and Portainer CE or BE running
 - An SMTP server or relay for outbound email (e.g., SendGrid, Mailgun, or self-hosted Postfix)
 - A domain name for the `SITE_ROOT` setting
 - Basic familiarity with Portainer Stacks
 
 ## Step 1: Create the Docker Compose Stack
 
-In Portainer, go to **Stacks > Add Stack**, name it `healthchecks`, and paste the following:
+In Portainer on a Docker Standalone environment, go to **Stacks > Add Stack**, name it `healthchecks`, and paste the following:
 
 ```yaml
-version: "3.8"
-
 services:
   db:
     image: postgres:15-alpine
@@ -41,7 +39,7 @@ services:
     environment:
       POSTGRES_DB: hc
       POSTGRES_USER: hcuser
-      # Use a strong password in production; consider Docker secrets for BE
+      # Use a strong password in production
       POSTGRES_PASSWORD: hcpassword
     networks:
       - healthchecks-net
@@ -58,9 +56,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    volumes:
-      # Persist uploaded media and static files
-      - healthchecks-data:/data
     ports:
       # Remove this if using a reverse proxy
       - "8000:8000"
@@ -88,15 +83,8 @@ services:
       EMAIL_HOST_PASSWORD: "smtp-password"
       EMAIL_USE_TLS: "True"
 
-      # Admin superuser - created automatically on first start
-      SUPERUSER_EMAIL: "admin@example.com"
-      SUPERUSER_PASSWORD: "change-this-admin-password"
-
       # Allow registration of new accounts (set to False to lock down)
       REGISTRATION_OPEN: "True"
-
-      # Timezone for the UI and scheduling calculations
-      TZ: "UTC"
     networks:
       - healthchecks-net
     labels:
@@ -110,8 +98,6 @@ services:
 volumes:
   healthchecks-db:
     driver: local
-  healthchecks-data:
-    driver: local
 
 networks:
   healthchecks-net:
@@ -120,23 +106,28 @@ networks:
 
 ## Step 2: Configure Environment Variables
 
-Before deploying, update the following values in the stack environment:
+Before deploying, update the following values in the compose file, or replace them with `${...}` placeholders and define them under Portainer's stack environment variables:
 
 | Variable | Description |
 |---|---|
 | `SECRET_KEY` | Random 64-character hex string. Generate with `openssl rand -hex 32` |
 | `SITE_ROOT` | Full URL where your instance is accessible |
 | `EMAIL_HOST` | SMTP server hostname |
-| `SUPERUSER_EMAIL` / `SUPERUSER_PASSWORD` | Initial admin credentials |
 | `DB_PASSWORD` | Must match `POSTGRES_PASSWORD` in the db service |
 
-For Portainer BE, use **Stack Environment Variables** to inject secrets at deploy time rather than hardcoding them in the compose file.
+If you want Portainer to inject these values, replace the hardcoded strings with `${VARIABLE}` placeholders and set them under **Stack Environment Variables** instead of storing literal secrets in the compose file.
 
 ## Step 3: Deploy the Stack
 
-Click **Deploy the stack**. Portainer will start the PostgreSQL container first and wait for the health check to pass before starting the Healthchecks application container. On first boot, Healthchecks runs Django migrations and creates the superuser account automatically.
+Click **Deploy the stack**. On a Docker Standalone environment, Portainer will start the PostgreSQL container first and wait for the health check to pass before starting the Healthchecks application container. On first boot, Healthchecks runs Django migrations automatically.
 
-Access the dashboard at `http://your-server-ip:8000` or your configured domain.
+After the stack is running, create the initial admin user from the Docker host:
+
+```bash
+docker exec -it healthchecks /opt/healthchecks/manage.py createsuperuser --email admin@example.com --password 'change-this-admin-password'
+```
+
+Access the dashboard at your configured domain.
 
 ## Step 4: Create Your First Check
 
@@ -194,12 +185,12 @@ fi
 
 Navigate to **Integrations** in the Healthchecks dashboard to configure where alerts are sent:
 
-- **Email**: Default channel using your SMTP configuration
+- **Email**: Available once your SMTP settings are configured
 - **Slack**: Paste a Slack Incoming Webhook URL
-- **PagerDuty**: Enter your PagerDuty integration key
-- **Telegram**: Use the Telegram bot token and chat ID
+- **PagerDuty**: Click **Connect PagerDuty** and authorize the integration with your PagerDuty account
+- **Telegram**: Set `TELEGRAM_BOT_NAME` and `TELEGRAM_TOKEN`, run `/opt/healthchecks/manage.py settelegramwebhook` inside the container, then connect the bot from **Integrations** after sending `/start` in Telegram
 
-Once a notification channel is created, assign it to individual checks or apply it globally.
+Once an integration is created, toggle it on for the checks in the same project that should use it.
 
 ## Step 7: Monitoring Container and System Jobs
 
