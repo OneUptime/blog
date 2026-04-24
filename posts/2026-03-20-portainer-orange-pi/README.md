@@ -4,16 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Orange Pi, ARM, Docker, Self-Hosted, Home Lab
 
-Description: Install Docker and Portainer on an Orange Pi single-board computer running Ubuntu or Debian to create an affordable home lab container platform.
+Description: Install Docker and Portainer on an Orange Pi single-board computer running Ubuntu to create an affordable home lab container platform.
 
 ## Introduction
 
-Orange Pi single-board computers offer an affordable alternative to Raspberry Pi, with models featuring Allwinner or Rockchip processors and up to 16GB RAM. Many models support Docker natively, making them suitable home lab platforms. This guide covers installing Portainer on Orange Pi 5 or similar models running Ubuntu Server.
+Orange Pi single-board computers offer an affordable alternative to Raspberry Pi, with models featuring Allwinner or Rockchip processors and up to 32GB RAM. Many models support Docker natively, making them suitable home lab platforms. This guide covers installing Portainer on Orange Pi 5 or similar models running Ubuntu Server.
 
 ## Prerequisites
 
 - Orange Pi model with ARM64 processor (Orange Pi 5, 5B, or 5 Plus recommended)
-- Ubuntu 22.04 or later (official Orange Pi Ubuntu image)
+- Ubuntu 22.04 (official Orange Pi Ubuntu image)
 - SSH access
 - MicroSD card or eMMC storage
 
@@ -56,7 +56,7 @@ sudo chmod a+r /etc/apt/keyrings/docker.gpg
 echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
   https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 # Install Docker Engine
@@ -76,15 +76,20 @@ docker run hello-world
 
 ## Step 3: Configure cgroup v2 (if needed)
 
-Some Orange Pi images use older kernels without full cgroup v2 support:
+Ubuntu 22.04 normally uses cgroup v2 already, so only change this if Docker still reports v1 on your image:
 
 ```bash
 # Check cgroup version
 docker info | grep "Cgroup Version"
 
-# If v1, enable v2 via kernel parameter
-sudo sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="/GRUB_CMDLINE_LINUX_DEFAULT="cgroup_no_v1=all systemd.unified_cgroup_hierarchy=1 /' /etc/default/grub
-sudo update-grub
+# If v1, enable v2 via kernel parameter on Orange Pi Linux images
+if ! grep -q 'systemd.unified_cgroup_hierarchy=1' /boot/orangepiEnv.txt; then
+  if grep -q '^extraargs=' /boot/orangepiEnv.txt; then
+    sudo sed -i '/^extraargs=/ s/$/ systemd.unified_cgroup_hierarchy=1/' /boot/orangepiEnv.txt
+  else
+    echo 'extraargs=systemd.unified_cgroup_hierarchy=1' | sudo tee -a /boot/orangepiEnv.txt
+  fi
+fi
 sudo reboot
 ```
 
@@ -97,12 +102,11 @@ docker volume create portainer_data
 # Deploy Portainer (ARM64 compatible)
 docker run -d \
   --name portainer \
-  --restart=unless-stopped \
-  -p 9000:9000 \
+  --restart=always \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 
 # Verify
 docker ps
@@ -110,12 +114,15 @@ docker ps
 
 ## Step 5: Configure Firewall
 
+Docker publishes container ports directly, so UFW does not block `-p 9443:9443` on its own. Use UFW for host services like SSH, and bind Portainer to `127.0.0.1` or a specific host IP in the `docker run` command if you do not want it exposed on all interfaces.
+
 ```bash
-# Allow Portainer through UFW
-sudo ufw allow 9000/tcp
-sudo ufw allow 9443/tcp
+# Allow SSH on the host
 sudo ufw allow ssh
 sudo ufw enable
+
+# Example for local-only access when starting Portainer:
+# -p 127.0.0.1:9443:9443
 ```
 
 ## Handling Allwinner/Rockchip Quirks
