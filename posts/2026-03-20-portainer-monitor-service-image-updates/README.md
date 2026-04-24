@@ -27,11 +27,7 @@ api-backend     myapp:v2.1             4/4
 database        postgres:15-alpine     1/1
 ```
 
-To see the specific image digest (not just the tag):
-
-1. Click on a service
-2. View the **Image** field in the service details
-3. The full image reference includes the registry and digest
+To see the exact image reference Swarm has pinned for the service (including the digest), use the CLI:
 
 ```bash
 # CLI: Check exact image digest in use
@@ -40,15 +36,15 @@ docker service inspect web-frontend --format '{{.Spec.TaskTemplate.ContainerSpec
 # Output: nginx:alpine@sha256:abc123...
 ```
 
-## Step 2: Enable Image Update Notifications (Portainer BE)
+## Step 2: Enable the Image Up-to-date Indicator (Portainer BE)
 
-Portainer Business Edition includes image update notifications:
+Portainer Business Edition can show whether a service image is up to date:
 
-1. Go to **Settings → Notifications**
-2. Enable image update alerts
-3. Configure notification channels (email, Slack, webhook)
-
-When a new image is available, Portainer notifies you through the configured channels.
+1. Open your Swarm environment
+2. Go to **Swarm → Setup**
+3. Enable **Show an image(s) up to date indicator for Stacks, Services and Containers**
+4. Return to **Services** and use the **Images up to date** column
+5. Click **Reload image indicators** to recheck all services, or click a single service's indicator to recheck just that service
 
 ## Step 3: Manual Image Update Check
 
@@ -58,8 +54,8 @@ To check if an image has updates:
 # Pull the latest version of the image
 docker pull nginx:alpine
 
-# Compare digests
-docker images --digests nginx:alpine
+# Inspect the digest that the tag currently resolves to locally
+docker inspect nginx:alpine --format '{{index .RepoDigests 0}}'
 # If the digest differs from what's in the service, an update is available
 
 # Check what the service is running
@@ -72,63 +68,40 @@ docker service inspect web-frontend --format '{{.Spec.TaskTemplate.ContainerSpec
 
 1. Click on the service
 2. Click **Edit this service**
-3. Optionally change the image tag
-4. Click **Update the service**
+3. Leave the same tag if you want to stay on that tag, or change it to a new tag
+4. If you want Portainer to resolve the tag again, enable **Pull latest image**
+5. Click **Update the service**
 
-Portainer uses `--force` update by default, which re-pulls the image.
+A rolling restart alone does not change the image digest already pinned in the service spec.
 
 ### Via CLI
 
 ```bash
-# Force update to pull the latest image with the same tag
-docker service update --force web-frontend
+# Re-resolve the current tag and update if it now points to a new digest
+docker service update --image nginx:alpine web-frontend
 
 # Update to a specific new tag
 docker service update --image nginx:1.25-alpine web-frontend
 
-# Update multiple services at once
-for svc in web-frontend api-backend; do
-    docker service update --force $svc
-done
+# Rolling restart without changing the pinned image digest
+docker service update --force web-frontend
 ```
 
-## Step 5: Automate Image Update Checks with Watchtower
+## Step 5: Automate Image Refreshes with Portainer Service Webhooks
 
-Deploy Watchtower to automatically update Swarm services when new images are available:
+For Swarm services, Portainer service webhooks let you trigger a redeploy from Docker Hub or your CI/CD system:
 
-```yaml
-# watchtower-swarm.yml
-version: "3.8"
+1. Open the service in Portainer
+2. Toggle **Service webhook** on
+3. Copy the generated webhook URL
+4. Configure Docker Hub or your pipeline to send a `POST` request to that URL
 
-services:
-  watchtower:
-    image: containrrr/watchtower
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      # Check for updates every hour
-      - WATCHTOWER_POLL_INTERVAL=3600
-      # Send Slack notification on update
-      - WATCHTOWER_NOTIFICATION_SLACK_HOOK_URL=${SLACK_WEBHOOK}
-      # Only update services with this label
-      - WATCHTOWER_LABEL_ENABLE=true
-      # Remove old images after update
-      - WATCHTOWER_CLEANUP=true
-    command: --label-enable --debug
-    deploy:
-      placement:
-        constraints:
-          - node.role == manager
-```
+```bash
+# Redeploy using the current tag
+curl -X POST "https://portainer.example.com:9443/api/webhooks/<webhook-id>"
 
-Label services you want Watchtower to manage:
-
-```yaml
-services:
-  web:
-    image: nginx:alpine
-    labels:
-      - com.centurylinklabs.watchtower.enable=true  # Watchtower will auto-update this
+# Redeploy and switch the service to a different tag
+curl -X POST "https://portainer.example.com:9443/api/webhooks/<webhook-id>?tag=1.25-alpine"
 ```
 
 ## Step 6: Use Image Tags vs Digests
@@ -138,7 +111,7 @@ services:
 ```yaml
 services:
   web:
-    image: nginx:alpine    # Updates when nginx:alpine changes
+    image: nginx:alpine    # Mutable tag; may resolve to a new digest over time
 ```
 
 Tags like `latest` or `alpine` float - they can point to new image digests.
@@ -153,15 +126,17 @@ services:
 
 Using digests ensures reproducibility but requires explicit updates.
 
-### Pinned Semver Tags (Best Practice)
+### Release Tags (Safer Than Floating Tags)
 
 ```yaml
 services:
   web:
-    image: nginx:1.25-alpine     # Specific version, still updated with patches
+    image: nginx:1.25-alpine     # Specific minor line; may move when the publisher updates this tag
   api:
-    image: myapp:v2.1.3          # Fully pinned to a release
+    image: myapp:v2.1.3          # Specific release tag by convention, but still mutable unless the registry enforces immutability
 ```
+
+These are usually steadier than `latest`, but only digests are guaranteed immutable.
 
 ## Step 7: Image Update Policy for Production
 
@@ -170,31 +145,34 @@ Implement a structured update process:
 ```bash
 #!/bin/bash
 # update-service-images.sh
-# Run monthly to update production services
+# Run monthly to refresh tag-based production services
 
-SERVICES=(web-frontend api-backend)
+declare -A IMAGES=(
+    [web-frontend]=nginx:alpine
+    [api-backend]=myapp:v2.1
+)
 LOG_FILE="/var/log/image-updates.log"
 
-for svc in "${SERVICES[@]}"; do
-    echo "$(date): Checking $svc" >> $LOG_FILE
+for svc in "${!IMAGES[@]}"; do
+    echo "$(date): Checking $svc" >> "$LOG_FILE"
 
     # Get current image
-    CURRENT=$(docker service inspect $svc --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}')
+    CURRENT=$(docker service inspect "$svc" --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}')
 
-    # Force update (pulls latest, only updates if digest changed)
-    docker service update --force $svc
+    # Re-resolve the configured tag to the registry's current digest
+    docker service update --image "${IMAGES[$svc]}" "$svc" >/dev/null
 
     # Get new image
-    NEW=$(docker service inspect $svc --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}')
+    NEW=$(docker service inspect "$svc" --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}')
 
     if [ "$CURRENT" != "$NEW" ]; then
-        echo "$(date): $svc updated: $CURRENT → $NEW" >> $LOG_FILE
+        echo "$(date): $svc updated: $CURRENT -> $NEW" >> "$LOG_FILE"
     else
-        echo "$(date): $svc unchanged" >> $LOG_FILE
+        echo "$(date): $svc unchanged" >> "$LOG_FILE"
     fi
 done
 ```
 
 ## Conclusion
 
-Monitoring and managing image updates for Swarm services is an important part of cluster maintenance. Portainer gives you visibility into current image versions, and tools like Watchtower can automate the update process. For production systems, implement a structured update policy that balances keeping images current with the stability needed for reliable operations.
+Monitoring and managing image updates for Swarm services is an important part of cluster maintenance. Portainer gives you visibility into current image versions, and service webhooks or explicit service updates let you refresh Swarm services in a controlled way. For production systems, implement a structured update policy that balances keeping images current with the stability needed for reliable operations.
