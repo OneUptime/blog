@@ -12,11 +12,9 @@ Apache HTTP Server remains one of the most widely used web servers, particularly
 
 ## Deploy as a Stack
 
-In Portainer, create a stack named `apache`:
+In Portainer, create a stack named `apache` and update the host paths to match where you've stored the files on your Docker host:
 
 ```yaml
-version: "3.8"
-
 services:
   apache:
     image: httpd:2.4-alpine
@@ -26,13 +24,13 @@ services:
       - "443:443"
     volumes:
       # Custom Apache configuration
-      - ./httpd.conf:/usr/local/apache2/conf/httpd.conf:ro
+      - /opt/portainer/apache/httpd.conf:/usr/local/apache2/conf/httpd.conf:ro
       # Virtual host configs
-      - ./vhosts:/usr/local/apache2/conf/extra/vhosts:ro
+      - /opt/portainer/apache/vhosts:/usr/local/apache2/conf/extra/vhosts:ro
       # Web content
-      - ./www:/var/www:ro
+      - /opt/portainer/apache/www:/var/www:ro
       # SSL certificates
-      - ./certs:/usr/local/apache2/conf/certs:ro
+      - /opt/portainer/apache/certs:/usr/local/apache2/conf/certs:ro
       # Logs
       - apache_logs:/usr/local/apache2/logs
     restart: unless-stopped
@@ -42,7 +40,7 @@ services:
     image: php:8.3-fpm-alpine
     container_name: php-fpm
     volumes:
-      - ./www:/var/www
+      - /opt/portainer/apache/www:/var/www
     restart: unless-stopped
 
 volumes:
@@ -58,11 +56,13 @@ Create `httpd.conf`:
 
 ServerRoot "/usr/local/apache2"
 Listen 80
+Listen 443
 
 # Required modules
 LoadModule mpm_event_module modules/mod_mpm_event.so
 LoadModule authn_core_module modules/mod_authn_core.so
 LoadModule authz_core_module modules/mod_authz_core.so
+LoadModule dir_module modules/mod_dir.so
 LoadModule mime_module modules/mod_mime.so
 LoadModule log_config_module modules/mod_log_config.so
 LoadModule env_module modules/mod_env.so
@@ -82,6 +82,7 @@ ServerSignature Off
 
 # Default document root
 DocumentRoot "/var/www/html"
+DirectoryIndex index.php index.html
 <Directory "/var/www/html">
     Options Indexes FollowSymLinks
     AllowOverride All
@@ -120,7 +121,7 @@ Create `vhosts/example.conf`:
 
     # PHP-FPM proxy
     <FilesMatch \.php$>
-        SetHandler "proxy:fcgi://php-fpm:9000"
+        SetHandler "proxy:fcgi://php:9000"
     </FilesMatch>
 
     # Security headers
@@ -156,7 +157,7 @@ Create `vhosts/example.conf`:
 
     # PHP-FPM for WordPress
     <FilesMatch \.php$>
-        SetHandler "proxy:fcgi://php-fpm:9000"
+        SetHandler "proxy:fcgi://php:9000"
     </FilesMatch>
 </VirtualHost>
 ```
