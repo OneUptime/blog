@@ -13,8 +13,6 @@ Mattermost is an open-source team messaging platform similar to Slack. It provid
 ## Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   mattermost:
     image: mattermost/mattermost-team-edition:latest
@@ -23,11 +21,13 @@ services:
       MM_SQLSETTINGS_DRIVERNAME: postgres
       MM_SQLSETTINGS_DATASOURCE: postgres://mattermost:mattermost_password@mattermost-db:5432/mattermost?sslmode=disable&connect_timeout=10
       MM_BLEVESETTINGS_INDEXDIR: /mattermost/bleve-indexes
-      MM_SERVICESETTINGS_SITEURL: https://chat.example.com
+      MM_SERVICESETTINGS_SITEURL: http://chat.example.com:8065
+      MM_SERVICESETTINGS_ENABLEEMAILINVITATIONS: "true"
       MM_EMAILSETTINGS_SENDEMAILNOTIFICATIONS: "true"
+      MM_EMAILSETTINGS_ENABLESMTPAUTH: "true"
       MM_EMAILSETTINGS_SMTPSERVER: smtp.example.com
       MM_EMAILSETTINGS_SMTPPORT: 587
-      MM_EMAILSETTINGS_CONNECTIONSCECURITY: STARTTLS
+      MM_EMAILSETTINGS_CONNECTIONSECURITY: STARTTLS
       MM_EMAILSETTINGS_SMTPUSERNAME: mattermost@example.com
       MM_EMAILSETTINGS_SMTPPASSWORD: smtp_password
       MM_EMAILSETTINGS_FEEDBACKEMAIL: mattermost@example.com
@@ -73,7 +73,7 @@ volumes:
 
 ## Initial Setup
 
-1. Access `http://<host>:8065`
+1. Access the URL configured in `MM_SERVICESETTINGS_SITEURL` (for example, `http://chat.example.com:8065`)
 2. Create the first admin account
 3. Create your team
 4. Invite team members via email or invitation link
@@ -92,14 +92,14 @@ By default, Mattermost creates `#town-square` and `#off-topic`. Add more:
 
 ### Webhook for CI/CD Notifications
 
-1. **Integrations > Incoming Webhooks > Add Incoming Webhook**
+1. **Product Menu > Integrations > Incoming Webhooks > Add Incoming Webhook**
 2. Select channel `#deployments`
 3. Copy the webhook URL
 
 Send notifications from scripts:
 
 ```bash
-curl -X POST "https://chat.example.com/hooks/your-webhook-token" \
+curl -X POST "http://chat.example.com:8065/hooks/your-webhook-token" \
   -H "Content-Type: application/json" \
   -d '{
     "text": ":white_check_mark: Deployment successful!\n**App:** myapp\n**Version:** 1.2.3\n**Environment:** production"
