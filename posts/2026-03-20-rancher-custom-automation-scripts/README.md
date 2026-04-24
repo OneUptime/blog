@@ -25,11 +25,13 @@ RANCHER_TOKEN="${RANCHER_TOKEN}"  # Format: token-xxx:secret
 
 # Validate token
 validate_auth() {
-  RESPONSE=$(curl -s -k \
+  local RESPONSE
+
+  RESPONSE=$(curl -sS \
     -o /dev/null \
     -w "%{http_code}" \
-    -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-    "${RANCHER_URL}/v3/users/me")
+    -u "${RANCHER_TOKEN}" \
+    "${RANCHER_URL}/v3/clusters?limit=1")
 
   if [ "${RESPONSE}" != "200" ]; then
     echo "ERROR: Authentication failed (HTTP ${RESPONSE})"
@@ -42,14 +44,20 @@ validate_auth() {
 rancher_api() {
   local METHOD="$1"
   local ENDPOINT="$2"
-  local DATA="$3"
+  local DATA="${3:-}"
+  local CURL_ARGS=(
+    -sS
+    --fail
+    -u "${RANCHER_TOKEN}"
+    -H "Content-Type: application/json"
+    -X "${METHOD}"
+  )
 
-  curl -s -k \
-    -X "${METHOD}" \
-    -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-    -H "Content-Type: application/json" \
-    ${DATA:+-d "${DATA}"} \
-    "${RANCHER_URL}${ENDPOINT}"
+  if [ -n "${DATA}" ]; then
+    CURL_ARGS+=(-d "${DATA}")
+  fi
+
+  curl "${CURL_ARGS[@]}" "${RANCHER_URL}${ENDPOINT}"
 }
 ```
 
@@ -60,47 +68,73 @@ rancher_api() {
 # rancher_client.py - Reusable Rancher API client
 
 import os
+from typing import Any, Dict, List, Optional
+
 import requests
-import json
-from typing import Optional, Dict, Any
 
 class RancherClient:
-    def __init__(self, url: str = None, token: str = None):
-        self.url = url or os.environ.get('RANCHER_URL')
+    def __init__(self, url: Optional[str] = None, token: Optional[str] = None):
+        self.url = (url or os.environ.get('RANCHER_URL', '')).rstrip('/')
         self.token = token or os.environ.get('RANCHER_TOKEN')
+        ca_bundle = os.environ.get('RANCHER_CA_BUNDLE')
+
+        if not self.url or not self.token:
+            raise ValueError('RANCHER_URL and RANCHER_TOKEN must be set')
+        if ':' not in self.token:
+            raise ValueError('RANCHER_TOKEN must use access-key:secret-key format')
+
+        access_key, secret_key = self.token.split(':', 1)
+
         self.session = requests.Session()
-        self.session.verify = False   # Set to True in production with proper CA
-        self.session.headers.update({
-            'Authorization': f'Bearer {self.token}',
-            'Content-Type': 'application/json'
-        })
+        self.session.auth = (access_key, secret_key)
+        self.session.headers.update({'Content-Type': 'application/json'})
+        self.session.verify = ca_bundle if ca_bundle else True
 
-    def get(self, endpoint: str, params: Dict = None) -> Dict:
+    def get_collection(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """GET a paginated Rancher collection"""
+        items: List[Dict[str, Any]] = []
+        next_url = f"{self.url}{endpoint}"
+        next_params = params or {}
+
+        while next_url:
+            resp = self.session.get(next_url, params=next_params, timeout=30)
+            resp.raise_for_status()
+            payload = resp.json()
+            items.extend(payload.get('data', []))
+
+            next_url = payload.get('pagination', {}).get('next')
+            if next_url and next_url.startswith('/'):
+                next_url = f"{self.url}{next_url}"
+            next_params = None
+
+        return items
+
+    def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """GET request to Rancher API"""
-        resp = self.session.get(f"{self.url}{endpoint}", params=params)
+        resp = self.session.get(f"{self.url}{endpoint}", params=params, timeout=30)
         resp.raise_for_status()
         return resp.json()
 
-    def post(self, endpoint: str, data: Dict) -> Dict:
+    def post(self, endpoint: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """POST request to Rancher API"""
-        resp = self.session.post(f"{self.url}{endpoint}", json=data)
+        resp = self.session.post(f"{self.url}{endpoint}", json=data, timeout=30)
         resp.raise_for_status()
         return resp.json()
 
-    def put(self, endpoint: str, data: Dict) -> Dict:
+    def put(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """PUT request to Rancher API"""
-        resp = self.session.put(f"{self.url}{endpoint}", json=data)
+        resp = self.session.put(f"{self.url}{endpoint}", json=data, timeout=30)
         resp.raise_for_status()
         return resp.json()
 
     def delete(self, endpoint: str) -> None:
         """DELETE request to Rancher API"""
-        resp = self.session.delete(f"{self.url}{endpoint}")
+        resp = self.session.delete(f"{self.url}{endpoint}", timeout=30)
         resp.raise_for_status()
 
-    def get_clusters(self) -> list:
+    def get_clusters(self) -> List[Dict[str, Any]]:
         """Get all clusters"""
-        return self.get('/v3/clusters').get('data', [])
+        return self.get_collection('/v3/clusters')
 
     def get_cluster_health(self, cluster_id: str) -> str:
         """Get cluster health status"""
@@ -154,20 +188,29 @@ if __name__ == '__main__':
 #!/bin/bash
 # bulk-namespaces.sh - Create namespaces across multiple clusters
 
+set -euo pipefail
+
+source rancher-auth.sh
+
 CLUSTERS_FILE="clusters.txt"
 NAMESPACES=("monitoring" "logging" "security" "ingress")
 
 while IFS= read -r cluster_id; do
   echo "Processing cluster: ${cluster_id}"
+  kubeconfig_file=$(mktemp)
+
+  rancher_api POST "/v3/clusters/${cluster_id}?action=generateKubeconfig" \
+    | jq -r '.config' > "${kubeconfig_file}"
 
   for ns in "${NAMESPACES[@]}"; do
     # Create namespace via kubectl using cluster-specific kubeconfig
-    kubectl --kubeconfig=<(rancher_api GET "/v3/clusters/${cluster_id}?action=generateKubeconfig" | jq -r '.config') \
-      create namespace "${ns}" \
-      --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null
+    kubectl --kubeconfig="${kubeconfig_file}" create namespace "${ns}" \
+      --dry-run=client -o yaml | kubectl --kubeconfig="${kubeconfig_file}" apply -f - >/dev/null
 
     echo "  Namespace ${ns} created/verified in ${cluster_id}"
   done
+
+  rm -f "${kubeconfig_file}"
 done < "${CLUSTERS_FILE}"
 ```
 
@@ -179,7 +222,8 @@ done < "${CLUSTERS_FILE}"
 # Deploys a Helm chart to all clusters with a specific label
 
 from rancher_client import RancherClient
-import json
+import subprocess
+import tempfile
 
 def deploy_app_to_clusters(label_key: str, label_value: str, app_config: dict):
     client = RancherClient()
@@ -199,31 +243,48 @@ def deploy_app_to_clusters(label_key: str, label_value: str, app_config: dict):
         cluster_name = cluster['name']
 
         try:
-            # Get the project ID for the cluster
-            projects = client.get(f'/v3/projects?clusterId={cluster_id}').get('data', [])
-            default_project = next((p for p in projects if p['name'] == 'Default'), None)
+            kubeconfig = client.post(
+                f'/v3/clusters/{cluster_id}?action=generateKubeconfig'
+            ).get('config')
 
-            if not default_project:
-                print(f"  SKIP: {cluster_name} - no Default project found")
+            if not kubeconfig:
+                print(f"  FAILED: {cluster_name} - unable to generate kubeconfig")
                 continue
 
-            # Deploy the Helm chart
-            app_data = {
-                **app_config,
-                'projectId': default_project['id'],
-            }
-            result = client.post('/v3/apps', app_data)
-            print(f"  Deployed to {cluster_name}: {result.get('id')}")
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml') as kubeconfig_file:
+                kubeconfig_file.write(kubeconfig)
+                kubeconfig_file.flush()
+
+                cmd = [
+                    'helm', 'upgrade', '--install',
+                    app_config['release_name'],
+                    app_config['chart_ref'],
+                    '--kubeconfig', kubeconfig_file.name,
+                    '--namespace', app_config['namespace'],
+                    '--create-namespace',
+                ]
+
+                if app_config.get('chart_version'):
+                    cmd.extend(['--version', app_config['chart_version']])
+
+                for key, value in app_config.get('set_values', {}).items():
+                    cmd.extend(['--set', f'{key}={value}'])
+
+                subprocess.run(cmd, check=True, capture_output=True, text=True)
+                print(f"  Deployed to {cluster_name}")
+        except subprocess.CalledProcessError as e:
+            error = e.stderr.strip() or str(e)
+            print(f"  FAILED: {cluster_name} - {error}")
         except Exception as e:
             print(f"  FAILED: {cluster_name} - {str(e)}")
 
 
 # Example usage
 app_config = {
-    'name': 'monitoring',
-    'targetNamespace': 'cattle-monitoring-system',
-    'externalId': 'catalog://?catalog=rancher-charts&type=clusterCatalog&template=rancher-monitoring&version=103.0.0',
-    'answers': {
+    'release_name': 'monitoring',
+    'chart_ref': 'oci://registry.example.com/charts/monitoring',
+    'namespace': 'cattle-monitoring-system',
+    'set_values': {
         'prometheus.prometheusSpec.retention': '30d',
     }
 }
@@ -237,10 +298,23 @@ deploy_app_to_clusters('env', 'production', app_config)
 #!/bin/bash
 # label-clusters.sh - Automatically label clusters based on naming convention
 
+set -euo pipefail
+
 # Example: cluster names like "prod-us-east-rke2" get labeled accordingly
 source rancher-auth.sh
 
-CLUSTERS=$(rancher_api GET /v3/clusters | jq -r '.data[] | [.id, .name] | @tsv')
+list_clusters() {
+  local endpoint="/v3/clusters?limit=1000"
+  local response
+  local next_endpoint
+
+  while [ -n "${endpoint}" ]; do
+    response=$(rancher_api GET "${endpoint}")
+    echo "${response}" | jq -r '.data[] | [.id, .name] | @tsv'
+    next_endpoint=$(echo "${response}" | jq -r '.pagination.next // empty | sub("^https?://[^/]+"; "")')
+    endpoint="${next_endpoint}"
+  done
+}
 
 while IFS=$'\t' read -r cluster_id cluster_name; do
   # Extract environment from cluster name
@@ -253,6 +327,7 @@ while IFS=$'\t' read -r cluster_id cluster_name; do
   fi
 
   # Extract region from cluster name
+  REGION="unknown"
   if [[ "${cluster_name}" == *us-east* ]]; then
     REGION="us-east"
   elif [[ "${cluster_name}" == *us-west* ]]; then
@@ -261,13 +336,20 @@ while IFS=$'\t' read -r cluster_id cluster_name; do
     REGION="eu-west"
   fi
 
+  CURRENT_LABELS=$(rancher_api GET "/v3/clusters/${cluster_id}" | jq '.labels // {}')
+  UPDATED_LABELS=$(jq -cn \
+    --argjson current "${CURRENT_LABELS}" \
+    --arg env "${ENV}" \
+    --arg region "${REGION}" \
+    '$current + {"env": $env, "region": $region}')
+
   # Update cluster labels
   rancher_api PUT "/v3/clusters/${cluster_id}" \
-    "{\"labels\": {\"env\": \"${ENV}\", \"region\": \"${REGION}\"}}" \
+    "{\"labels\": ${UPDATED_LABELS}}" \
     > /dev/null
 
   echo "Labeled ${cluster_name}: env=${ENV}, region=${REGION}"
-done <<< "${CLUSTERS}"
+done < <(list_clusters)
 ```
 
 ## Scheduling Scripts with CronJobs
@@ -280,7 +362,8 @@ metadata:
   name: rancher-health-check
   namespace: cattle-system
 spec:
-  schedule: "0 8 * * *"    # Daily at 8 AM
+  schedule: "0 8 * * *"    # Daily at 8 AM UTC
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
