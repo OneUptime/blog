@@ -44,9 +44,9 @@ kubectl create secret generic aws-credentials \
   --from-literal=access-key-id=AKIAIOSFODNN7EXAMPLE \
   --from-literal=secret-access-key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 
-# Create a SecretStore pointing to AWS
+# Create a ClusterSecretStore pointing to AWS
 cat << 'EOF' | kubectl apply -f -
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -76,9 +76,9 @@ kubectl create secret generic vault-token \
   --namespace external-secrets \
   --from-literal=token=hvs.YOUR_VAULT_TOKEN
 
-# Create SecretStore for Vault
+# Create ClusterSecretStore for Vault
 cat << 'EOF' | kubectl apply -f -
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -100,7 +100,7 @@ EOF
 
 ```yaml
 # external-secret-app.yml - sync secrets for myapp
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-secrets
@@ -131,7 +131,7 @@ spec:
 
 ## Step 5: Use Synced Secrets in Portainer-Managed Workloads
 
-The ESO creates standard Kubernetes Secrets, which Portainer can see and workloads can consume:
+The ESO creates standard Kubernetes Secrets, which Portainer can see and workloads can consume. Workloads that mount the Secret as a volume can observe refreshed values, while environment variables require a pod restart to pick up secret updates:
 
 ```yaml
 # Deploy via Portainer's Kubernetes interface
@@ -178,28 +178,28 @@ spec:
 ## Step 6: Monitor Secret Syncing
 
 ```bash
-# Check ExternalSecret status in Portainer
-# Kubernetes > Secrets > View myapp-secrets
+# Check the synced Secret in Portainer
+# ConfigMaps & Secrets > Secrets > myapp-secrets
 
 # Via kubectl
-kubectl get externalsecret -n production
+kubectl get externalsecrets -n production
 kubectl describe externalsecret myapp-secrets -n production
 
-# Watch for sync events
-kubectl get events -n production --field-selector reason=Updated
+# Watch the ExternalSecret status
+kubectl get externalsecrets myapp-secrets -n production -w
 ```
 
 ## Automatic Secret Rotation
 
 ```yaml
-# Configure for frequent rotation of short-lived secrets
-apiVersion: external-secrets.io/v1beta1
+# Configure frequent syncing for secrets rotated in Vault's KV engine
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-credentials
   namespace: production
 spec:
-  refreshInterval: 15m  # Sync every 15 minutes (for rotating credentials)
+  refreshInterval: 15m  # Sync every 15 minutes after the external secret is rotated
   secretStoreRef:
     name: vault-backend
     kind: ClusterSecretStore
@@ -214,14 +214,14 @@ spec:
   data:
   - secretKey: username
     remoteRef:
-      key: database/creds/myapp-role
+      key: database/myapp
       property: username
   - secretKey: password
     remoteRef:
-      key: database/creds/myapp-role
+      key: database/myapp
       property: password
 ```
 
 ## Conclusion
 
-The External Secrets Operator bridges external secret management systems with Kubernetes, creating standard Kubernetes Secrets that Portainer-managed workloads consume transparently. This approach provides the best of both worlds: enterprise-grade secret management with centralized control and audit logging, combined with Portainer's intuitive deployment and management interface.
+The External Secrets Operator bridges external secret management systems with Kubernetes, creating standard Kubernetes Secrets that Portainer-managed workloads consume using normal Kubernetes Secret references. This approach provides the best of both worlds: enterprise-grade secret management with centralized control and audit logging, combined with Portainer's intuitive deployment and management interface.
