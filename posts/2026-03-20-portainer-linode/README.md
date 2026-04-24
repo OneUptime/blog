@@ -17,14 +17,28 @@ Description: Learn how to deploy Portainer on a Linode (now Akamai Cloud) instan
 2. Select **Distributions → Ubuntu 22.04 LTS**
 3. Choose plan: **Nanode 1GB** (minimum) or **Linode 2GB** (recommended)
 4. Select region
-5. Under **Advanced Options → Add a StackScript** or use **User Data**:
+5. Expand **Add User Data** (or save the script as a StackScript first):
 
 ```bash
 #!/bin/bash
-# Install Docker
+# Install Docker from Docker's apt repository
+apt-get update
+apt-get install -y ca-certificates curl
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
 
-curl -fsSL https://get.docker.com | sh
-usermod -aG docker root
+cat >/etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+apt-get update
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 # Install Portainer
 docker volume create portainer_data
@@ -35,14 +49,14 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
 
 ## Option 2: Deploy via Linode CLI
 
 ```bash
 # Install and configure linode-cli
-pip install linode-cli
+pip3 install linode-cli --upgrade
 linode-cli configure
 
 # Create the instance
@@ -64,8 +78,24 @@ linode-cli linodes list --format "label,ipv4" --text | grep portainer
 # SSH into your Linode
 ssh root@<LINODE_IP>
 
-# Install Docker
-curl -fsSL https://get.docker.com | sh
+# Install Docker from Docker's apt repository
+apt-get update
+apt-get install -y ca-certificates curl
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+
+cat >/etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+apt-get update
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 # Create non-root user (recommended)
 adduser deploy
@@ -84,7 +114,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
 
 ## Configure Linode Firewall
@@ -95,22 +125,20 @@ linode-cli firewalls create \
   --label portainer-fw \
   --rules.inbound '[
     {"action":"ACCEPT","protocol":"TCP","ports":"22"},
-    {"action":"ACCEPT","protocol":"TCP","ports":"9443"},
-    {"action":"ACCEPT","protocol":"TCP","ports":"80,443"},
-    {"action":"DROP","protocol":"TCP","ports":"1-65535"}
+    {"action":"ACCEPT","protocol":"TCP","ports":"9443"}
   ]' \
   --rules.outbound_policy ACCEPT \
   --rules.inbound_policy DROP
 
 # Attach to Linode
-linode-cli firewalls devices-create <FIREWALL_ID> \
+linode-cli firewalls device-create <FIREWALL_ID> \
   --type linode \
   --id <LINODE_ID>
 ```
 
 ## Set Reverse DNS
 
-Linode allows setting rDNS for your IP:
+Linode allows setting rDNS for your IP after you create a matching A record for the hostname:
 
 ```bash
 linode-cli linodes ip-update <LINODE_ID> <LINODE_IP> \
