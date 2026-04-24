@@ -26,16 +26,11 @@ Create `caddy/Caddyfile`:
 portainer.example.com {
     # Reverse proxy to Portainer's HTTPS port
     reverse_proxy portainer:9443 {
-        # Trust Portainer's self-signed certificate
+        # Skip verification of Portainer's self-signed upstream certificate
         transport http {
             tls_insecure_skip_verify
         }
     }
-
-    # Set forwarded headers so Portainer knows the real client
-    header_up X-Forwarded-Proto {scheme}
-    header_up X-Forwarded-Host {host}
-    header_up X-Real-IP {remote_host}
 
     # Security headers
     header {
@@ -52,16 +47,12 @@ Alternatively, if Portainer is started with `--http-enabled`:
 portainer.example.com {
     # Proxy to HTTP port - simpler, no TLS verification needed
     reverse_proxy portainer:9000
-
-    header_up X-Forwarded-Proto {scheme}
 }
 ```
 
 ## Step 2: Create the Docker Compose File
 
 ```yaml
-version: "3.8"
-
 services:
   caddy:
     image: caddy:2-alpine
@@ -88,7 +79,7 @@ services:
     networks:
       - proxy
     command:
-      - "--trusted-origins=https://portainer.example.com"
+      - "--trusted-origins=portainer.example.com"
 
 networks:
   proxy:
@@ -116,19 +107,19 @@ curl -I https://portainer.example.com
 ## Step 4: Validate the Setup
 
 ```bash
-# Check Caddy's certificate status
-docker exec caddy caddy list-modules
+# Validate the Caddyfile syntax
+docker exec caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
 # Reload Caddy config without restart
-docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 
-# View Caddy access logs
-docker logs caddy 2>&1 | grep portainer
+# View Caddy runtime logs
+docker logs caddy --tail 50
 ```
 
 ## Using Caddy with Docker Labels (Automatic Discovery)
 
-For a more dynamic setup, use the `caddy-docker-proxy` plugin:
+For a more dynamic setup, use a `caddy-docker-proxy` image instead of plain `caddy:2-alpine`, then add labels like:
 
 ```yaml
   portainer:
@@ -142,11 +133,11 @@ For a more dynamic setup, use the `caddy-docker-proxy` plugin:
 
 ## Troubleshooting
 
-**Certificate not obtained**: Ensure DNS is pointing to your server and ports 80/443 are accessible. Caddy uses HTTP-01 challenge on port 80 first.
+**Certificate not obtained**: Ensure DNS is pointing to your server and ports 80/443 are accessible. Caddy's automatic HTTPS can use the HTTP-01 challenge on port 80 and the TLS-ALPN-01 challenge on port 443.
 
-**Trusted origins error**: Add `--trusted-origins=https://portainer.example.com` to Portainer's command.
+**Trusted origins error**: Add `--trusted-origins=portainer.example.com` to Portainer's command.
 
-**Caddy using staging certificates**: Check `/data/caddy/certificates` - if you see `acme-staging`, Caddy hit rate limits. Wait and force renewal.
+**Caddy using staging certificates**: Check the Caddy logs for ACME errors. During retries with Let's Encrypt, Caddy can switch to the staging environment to avoid rate-limit problems, so fix the underlying issuance issue and let Caddy retry.
 
 ## Conclusion
 
