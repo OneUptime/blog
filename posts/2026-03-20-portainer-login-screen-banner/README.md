@@ -18,29 +18,28 @@ Portainer Business Edition allows you to display a custom message on the login s
 ## Step 1: Configure Login Screen Banner via UI
 
 1. Log in to Portainer as admin
-2. Navigate to **Settings** → **Appearance**
-3. Find the **Login Screen** section
-4. Toggle **Enable login screen message**
-5. Enter your message in the text area
-6. Click **Save**
+2. Navigate to **Settings** → **General**
+3. Find the **Login screen banner** section
+4. Toggle **Login screen banner**
+5. Enter your message in the **Details** box
+6. Save your changes
 
-The message supports basic text formatting and will appear below the login form.
+The message is plain text and will appear on the login screen.
 
 ## Step 2: Configure via Portainer API
 
 ```bash
 PORTAINER_URL="https://portainer.example.com:9443"
-TOKEN="your-admin-token"
+API_KEY="your-admin-access-token"
 
-# Set login screen message
+# Set login screen banner
 
 curl -X PUT \
   "${PORTAINER_URL}/api/settings" \
-  -H "Authorization: Bearer ${TOKEN}" \
+  -H "X-API-Key: ${API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
-    "ShowKomposeBuildOption": false,
-    "customLoginBanner": "AUTHORIZED USE ONLY\n\nThis system is for authorized users only. By logging in, you agree to comply with organizational security policies. Unauthorized access is prohibited and may be subject to legal action."
+    "CustomLoginBanner": "AUTHORIZED USE ONLY\n\nThis system is for authorized users only. By logging in, you agree to comply with organizational security policies. Unauthorized access is prohibited and may be subject to legal action."
   }'
 ```
 
@@ -59,7 +58,7 @@ Evidence of unauthorized use may be provided to law enforcement.
 ### Maintenance Notice
 
 ```text
-SCHEDULED MAINTENANCE: This system will be unavailable on Saturday, March 22, 2026 from 02:00-04:00 UTC for maintenance.
+SCHEDULED MAINTENANCE: This system will be unavailable on Sunday, March 22, 2026 from 02:00-04:00 UTC for maintenance.
 
 For urgent support, contact: ops@example.com
 ```
@@ -88,22 +87,22 @@ Unauthorized access is strictly prohibited.
 
 ```bash
 # Retrieve current settings
-curl -s -H "Authorization: Bearer ${TOKEN}" \
+curl -s -H "X-API-Key: ${API_KEY}" \
   "${PORTAINER_URL}/api/settings" \
-  | jq '.customLoginBanner'
+  | jq '.CustomLoginBanner'
 ```
 
 ## Step 4: Clear/Remove Login Banner
 
 ```bash
-# Via UI: Settings → Appearance → Disable login screen message
+# Via UI: Settings → General → Toggle Login screen banner off
 
 # Via API
 curl -X PUT \
   "${PORTAINER_URL}/api/settings" \
-  -H "Authorization: Bearer ${TOKEN}" \
+  -H "X-API-Key: ${API_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"customLoginBanner": ""}'
+  -d '{"CustomLoginBanner": ""}'
 ```
 
 ## Automating Banner Updates
@@ -112,16 +111,16 @@ curl -X PUT \
 #!/bin/bash
 # Update banner during maintenance windows
 PORTAINER_URL="https://portainer.example.com:9443"
-TOKEN=$(curl -s -X POST "${PORTAINER_URL}/api/auth" \
+JWT_TOKEN=$(curl -s -X POST "${PORTAINER_URL}/api/auth" \
   -H "Content-Type: application/json" \
   -d '{"Username":"admin","Password":"'"${PORTAINER_PASS}"'"}' \
   | jq -r '.jwt')
 
 # Set maintenance banner
 curl -X PUT "${PORTAINER_URL}/api/settings" \
-  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Authorization: Bearer ${JWT_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "{\"customLoginBanner\": \"MAINTENANCE IN PROGRESS: Expected completion $(date -d '+2 hours' '+%H:%M %Z')\"}"
+  -d "{\"CustomLoginBanner\": \"MAINTENANCE IN PROGRESS: Expected completion $(date -d '+2 hours' '+%H:%M %Z')\"}"
 ```
 
 ## Conclusion
