@@ -8,7 +8,7 @@ Description: Compare Portainer and CasaOS for home server management, examining 
 
 ---
 
-CasaOS is a home server operating system overlay that provides an app store, file manager, and Docker management in a consumer-friendly interface. Portainer is a professional container management platform. Both run on top of Linux and Docker, but target very different users.
+CasaOS is a home server operating system overlay that provides an app store, file manager, and Docker management in a consumer-friendly interface. Portainer is a professional container management platform. For typical home server setups, both are commonly used on Linux with Docker, but Portainer also supports Docker Swarm and Kubernetes.
 
 ## Overview
 
@@ -16,22 +16,21 @@ CasaOS is a home server operating system overlay that provides an app store, fil
 |--------|-----------|--------|
 | Target user | DevOps/Operators | Home users/enthusiasts |
 | UI complexity | Moderate | Very simple |
-| App store | Template library | Consumer app store |
+| App store | App templates | Consumer app store |
 | File manager | No | Yes |
-| NAS features | No | Yes |
-| Docker Compose | Full | Limited |
+| Drive management | No | Yes |
+| Docker Compose | Advanced stack management | Compose-based apps |
 | Kubernetes | Yes | No |
-| Resource usage | ~100MB | ~200MB |
 
 ## CasaOS Features
 
-CasaOS positions itself as "the home cloud OS":
+CasaOS positions itself as a personal cloud OS:
 
 - **App Store** - one-click install for popular self-hosted apps (Plex, Nextcloud, etc.)
 - **File Manager** - browser-based file management
-- **Dashboard** - system overview with resource usage
+- **Dashboard** - system overview with resource usage widgets
 - **Widgets** - customizable dashboard with app widgets
-- **ZimaOS** (evolved version) - targets NAS-like hardware
+- **ZimaOS** (developed based on CasaOS) - targets NAS-like hardware and workflows
 
 Install CasaOS:
 
@@ -41,25 +40,25 @@ curl -fsSL https://get.casaos.io | sudo bash
 
 ## Portainer as a CasaOS Complement
 
-CasaOS actually supports running Portainer as an app from its app store. Many home server users run both:
+Portainer is available through the CasaOS app store, and many home server users run both:
 
 - **CasaOS** for its file manager, app store, and dashboard widgets
-- **Portainer** for advanced Docker Compose stack management
+- **Portainer** for advanced stack management
 
 ## When CasaOS Wins
 
 - You're a non-technical home user
 - You want an app store that hides Docker complexity
-- File management and NAS features matter to you
+- File management and storage-centric features matter to you
 - You use dedicated home server hardware (ZimaBlade, ZimaBoard, etc.)
 
 ## When Portainer Wins
 
-- You want full Docker Compose control
+- You want advanced Docker Compose stack control
 - You're comfortable with containers
 - Multi-environment management is needed
-- You need team access or RBAC
+- You need multi-user access or, in Business Edition, RBAC
 
 ## Summary
 
-CasaOS and Portainer serve different ends of the technical spectrum. CasaOS makes home server management approachable for non-technical users with its app store and file manager. Portainer gives technical users full control. They're complementary - CasaOS for consumer convenience, Portainer for power user control.
+CasaOS and Portainer serve different ends of the technical spectrum. CasaOS makes home server management approachable for non-technical users with its app store and file manager. Portainer gives technical users more control over stacks and environments. They're complementary - CasaOS for consumer convenience, Portainer for power user control.
