@@ -16,7 +16,7 @@ pip install pyroute2
 
 ```python
 from pyroute2 import IPRoute
-import ipaddress
+import socket
 
 def add_ipv6_address(interface: str, address: str, prefixlen: int):
     """Add an IPv6 address to an interface."""
@@ -29,7 +29,7 @@ def add_ipv6_address(interface: str, address: str, prefixlen: int):
                  index=idx,
                  address=address,
                  prefixlen=prefixlen,
-                 family=10)   # AF_INET6 = 10
+                 family=socket.AF_INET6)
         print(f"Added {address}/{prefixlen} to {interface}")
 
 def remove_ipv6_address(interface: str, address: str, prefixlen: int):
@@ -40,14 +40,14 @@ def remove_ipv6_address(interface: str, address: str, prefixlen: int):
                  index=idx,
                  address=address,
                  prefixlen=prefixlen,
-                 family=10)
+                 family=socket.AF_INET6)
         print(f"Removed {address}/{prefixlen} from {interface}")
 
 def list_ipv6_addresses(interface: str):
     """List all IPv6 addresses on an interface."""
     with IPRoute() as ipr:
         idx = ipr.link_lookup(ifname=interface)[0]
-        addrs = ipr.get_addr(family=10, index=idx)
+        addrs = ipr.get_addr(family=socket.AF_INET6, index=idx)
         for addr in addrs:
             ip = addr.get_attr("IFA_ADDRESS")
             prefix = addr["prefixlen"]
@@ -127,25 +127,28 @@ def get_ipv6_routes(table: int = 254):
 ## Watch for IPv6 Route Changes
 
 ```python
-from pyroute2 import IPRoute
+from pyroute2 import IPRSocket
+from pyroute2.netlink.rtnl import RTMGRP_IPV6_ROUTE
+import select
 import socket
-import threading
+import time
 
 def watch_ipv6_routes(duration: int = 30):
     """Monitor IPv6 routing table changes using netlink events."""
     print(f"Watching IPv6 routing changes for {duration}s...")
 
-    with IPRoute() as ipr:
-        # Subscribe to route events
-        ipr.bind()
-
-        import time
+    with IPRSocket() as ipr:
+        # Subscribe only to IPv6 route events
+        ipr.bind(groups=RTMGRP_IPV6_ROUTE)
         end_time = time.time() + duration
 
         while time.time() < end_time:
-            # Get pending events (non-blocking with timeout)
-            messages = ipr.get()
-            for msg in messages:
+            timeout = max(0, end_time - time.time())
+            readable, _, _ = select.select([ipr], [], [], timeout)
+            if not readable:
+                break
+
+            for msg in ipr.get():
                 if msg["family"] != socket.AF_INET6:
                     continue
                 event = msg.get("event", "unknown")
@@ -158,34 +161,36 @@ def watch_ipv6_routes(duration: int = 30):
 # watch_ipv6_routes(30)
 ```
 
-## IPDB: Higher-Level Interface
+## NDB: Higher-Level Interface
 
 ```python
-from pyroute2 import IPDB
+from pyroute2 import NDB
+import socket
 
 def configure_interface_ipv6(interface: str, address: str, prefixlen: int,
                               default_gw: str = None):
-    """Configure IPv6 on interface using IPDB (higher-level API)."""
-    with IPDB() as ipdb:
-        with ipdb.interfaces[interface] as iface:
+    """Configure IPv6 on interface using NDB (higher-level API)."""
+    with NDB() as ndb:
+        with ndb.interfaces[interface] as iface:
             # Add IPv6 address
-            iface.add_ip(f"{address}/{prefixlen}", family=10)
+            iface.add_ip(address=address, prefixlen=prefixlen)
+            iface_idx = iface["index"]
 
         # Add default route if specified
         if default_gw:
-            with ipdb.routes.add({
-                "family": 10,
-                "dst": "default",
-                "gateway": default_gw,
-            }) as route:
-                pass   # context manager commits the route
+            ndb.routes.create(
+                family=socket.AF_INET6,
+                dst="::/0",
+                gateway=default_gw,
+                oif=iface_idx,
+            ).commit()
 
         # Read back addresses
-        iface = ipdb.interfaces[interface]
+        iface = ndb.interfaces[interface]
         print(f"Interface {interface} IPv6 addresses:")
-        for addr in iface.ipaddr:
-            if ":" in str(addr[0]):  # IPv6 addresses contain colons
-                print(f"  {addr[0]}/{addr[1]}")
+        for addr in iface.ipaddr.summary():
+            if ":" in addr.address:  # IPv6 addresses contain colons
+                print(f"  {addr.address}/{addr.prefixlen}")
 
 # Example usage (requires root):
 # configure_interface_ipv6("eth0", "2001:db8::1", 64, "2001:db8::254")
@@ -193,4 +198,4 @@ def configure_interface_ipv6(interface: str, address: str, prefixlen: int,
 
 ## Conclusion
 
-`pyroute2` provides a Python netlink API to manage Linux IPv6 networking without subprocess calls to `ip`: `IPRoute.addr("add")` adds addresses, `IPRoute.route("add")` installs routes, and `ipr.bind()` enables subscription to real-time netlink events for route changes. Use `family=socket.AF_INET6` (value 10) in all calls to restrict operations to IPv6. `IPDB` provides a higher-level, transaction-based interface that automatically commits changes. All operations require root privileges or `CAP_NET_ADMIN`. Use `pyroute2` for network automation scripts, SDN controllers, and tools that need to programmatically manage Linux IPv6 routing without shelling out.
+`pyroute2` provides a Python netlink API to manage Linux IPv6 networking without subprocess calls to `ip`: `IPRoute.addr("add")` adds addresses, `IPRoute.route("add")` installs routes, and `bind()` on an RTNL socket subscribes to route-change events. Use `family=socket.AF_INET6` (value 10) in `IPRoute` calls to restrict operations to IPv6. `NDB` provides a higher-level, transaction-based interface that automatically commits changes. Changing routes, addresses, or interface configuration requires root privileges or `CAP_NET_ADMIN`. Use `pyroute2` for network automation scripts, SDN controllers, and tools that need to programmatically manage Linux IPv6 routing without shelling out.
