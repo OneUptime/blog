@@ -15,10 +15,10 @@ Healthcare organizations running containerized workloads face strict compliance 
 | HIPAA Requirement | Portainer Feature |
 |------------------|------------------|
 | Access controls | Role-based access control (RBAC) |
-| Audit logging | Activity logs per user and resource |
+| Audit logging | Activity logs with user, endpoint, and action details |
 | Encryption in transit | TLS/HTTPS enforcement |
 | Minimum necessary access | Team-level environment assignment |
-| Workforce training | Role-restricted UI views |
+| Unique user identification | LDAP/AD and individual user accounts |
 
 ## Step 1: Harden the Portainer Deployment
 
@@ -31,13 +31,13 @@ docker run -d \
   --security-opt no-new-privileges \
   --security-opt apparmor=docker-default \
   -p 9443:9443 \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \  # Read-only socket
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ee:latest \
-  --ssl \
+  -v /path/to/your/certs:/certs:ro \
+  portainer/portainer-ee:sts \
   --sslcert /certs/portainer.crt \
   --sslkey /certs/portainer.key \
-  --http-disabled  # Disable HTTP, HTTPS only
+  --http-disabled
 ```
 
 ## Step 2: Configure LDAP/AD Authentication
@@ -47,7 +47,9 @@ Healthcare organizations typically use Active Directory:
 ```bash
 # In Portainer: Settings > Authentication > LDAP
 # Configure:
-# LDAP Server: ldaps://ad.hospital.local:636
+# LDAP Server: ad.hospital.local
+# Port: 636
+# Use TLS: enabled
 # Reader DN: cn=portainer-reader,ou=service-accounts,dc=hospital,dc=local
 # Reader Password: <service-account-password>
 # Base DN: dc=hospital,dc=local
@@ -82,10 +84,10 @@ done
 
 ## Step 4: Deploy HIPAA-Compliant Application Stacks
 
-Healthcare applications must handle PHI (Protected Health Information) securely:
+Healthcare applications must handle PHI (Protected Health Information) securely; this example assumes a Docker Swarm stack deployed through Portainer:
 
 ```yaml
-# ehr-stack/docker-compose.yml
+# ehr-stack/docker-compose.yml (Docker Swarm stack file)
 version: '3.8'
 services:
   ehr-api:
@@ -138,7 +140,7 @@ secrets:
 networks:
   ehr-internal:
     driver: overlay
-    internal: true  # No external network access
+    internal: true  # Externally isolated network
 
 volumes:
   ehr-data:
@@ -154,22 +156,26 @@ volumes:
 HIPAA requires audit trails for all access to systems containing PHI:
 
 ```bash
-# Portainer BE provides detailed audit logs
-# Access: Settings > Logs
+# Portainer BE provides activity logs
+# Access: Logs > Activity
+# For SIEM streaming, configure Portainer's --syslog-* CLI flags when starting Portainer.
 
-# Export logs via API for SIEM integration
+# Export logs via API
 PORTAINER_URL="https://portainer.hospital.local"
 API_KEY="audit-reader-api-key"
 
-# Get audit logs for a date range
-curl -s \
-  -H "X-API-Key: $API_KEY" \
-  "$PORTAINER_URL/api/useractivity?limit=1000&offset=0" | \
+# Get activity logs for a date range
+curl -sS \
+  -H "X-API-KEY: $API_KEY" \
+  "$PORTAINER_URL/api/useractivity/logs?limit=1000&offset=0" | \
   python3 -c "
 import sys, json
-logs = json.load(sys.stdin)
-for entry in logs:
-    print(f\"{entry.get('Timestamp', '')} | User: {entry.get('Username', '')} | Action: {entry.get('Action', '')} | Resource: {entry.get('ResourceType', '')}\")
+from datetime import datetime, timezone
+response = json.load(sys.stdin)
+for entry in response.get('logs', []):
+    ts = entry.get('timestamp')
+    iso = datetime.fromtimestamp(ts, timezone.utc).isoformat() if ts else ''
+    print(f\"{iso} | User: {entry.get('username', '')} | Action: {entry.get('action', '')} | Context: {entry.get('context', '')}\")
 " >> /var/log/portainer-audit.log
 ```
 
@@ -179,13 +185,16 @@ for entry in logs:
 # Integrate Trivy for image scanning in CI/CD
 # GitHub Actions example:
 - name: Scan container image
-  uses: aquasecurity/trivy-action@master
+  uses: aquasecurity/trivy-action@v0.36.0
   with:
     image-ref: 'hospital/ehr-api:v2.3.1'
+    format: 'table'
+    ignore-unfixed: true
+    vuln-type: 'os,library'
     severity: 'CRITICAL,HIGH'
     exit-code: '1'  # Fail if HIGH or CRITICAL found
 
-# In Portainer BE: Images > [image] > Security scanning tab
+# Review scan results in your CI system before deploying through Portainer
 ```
 
 ## Step 7: Network Segmentation
@@ -195,7 +204,7 @@ for entry in logs:
 networks:
   phi-network:
     driver: overlay
-    internal: true      # No internet access
+    internal: true      # Externally isolated network
     driver_opts:
       encrypted: "true" # Encrypt overlay traffic
 
