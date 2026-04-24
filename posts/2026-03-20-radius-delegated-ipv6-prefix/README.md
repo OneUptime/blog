@@ -10,12 +10,12 @@ Description: Configure and use the RADIUS Delegated-IPv6-Prefix attribute (RFC 4
 
 | Attribute | RFC | Use Case |
 |---|---|---|
-| Framed-IPv6-Prefix (attr 97) | RFC 3162 | User's own interface address |
+| Framed-IPv6-Prefix (attr 97) | RFC 3162 | Prefix/address on the subscriber-facing interface |
 | Delegated-IPv6-Prefix (attr 123) | RFC 4818 | Prefix delegated to CPE router via DHCPv6-PD |
 
 A home subscriber typically gets:
-- Framed-IPv6-Prefix: `/128` for the WAN interface
-- Delegated-IPv6-Prefix: `/56` or `/48` to route to the home network
+- Framed-IPv6-Prefix: often `/128` for the WAN interface
+- Delegated-IPv6-Prefix: `/56` or `/48` for the subscriber LAN
 
 ## Attribute Wire Format (RFC 4818)
 
@@ -25,34 +25,34 @@ Delegated-IPv6-Prefix (Attribute 123):
   Length:  Variable
   Value:   reserved (1 byte) + prefix-len (1 byte) + prefix (variable)
 
-Example: 2001:db8:user:a000::/56
+Example: 2001:db8:100:ab00::/56
   Type:   123
-  Length: 10 (4 + 1 reserved + 1 prefix-len + 4 meaningful prefix bytes for /56)
+  Length: 11 (Type/Length/Reserved/Prefix-Length plus 7 prefix bytes for /56)
   Byte 3: 0x00 (reserved)
   Byte 4: 0x38 (56 decimal = /56)
-  Bytes 5+: 20 01 0d b8 00 00 a0 00 (first 7 bytes, /56 = 7 bytes)
+  Bytes 5+: 20 01 0d b8 01 00 ab (first 7 bytes, /56 = 7 bytes)
 ```
 
 ## FreeRADIUS Configuration
 
 ```text
-# /etc/freeradius/3.0/users
+# /etc/freeradius/3.0/mods-config/files/authorize
 
 # Assign delegated prefix to subscriber (CPE router)
 
 subscriber1  Cleartext-Password := "secret"
              Service-Type = Framed-User,
-             Framed-IPv6-Prefix = "2001:db8:wan::1/128",
-             Delegated-IPv6-Prefix = "2001:db8:home:a0::/56",
-             Framed-IPv6-Route = "2001:db8:home:a0::/56 ::"
+             Framed-IPv6-Prefix = "2001:db8:0:1::1/128",
+             Delegated-IPv6-Prefix = "2001:db8:100:ab00::/56",
+             Framed-IPv6-Route = "2001:db8:100:ab00::/56 :: 1"
 ```
 
 ```sql
 -- SQL: store delegated prefix per subscriber
 INSERT INTO radreply (username, attribute, op, value) VALUES
-('subscriber1', 'Framed-IPv6-Prefix',    '=', '2001:db8:wan::1/128'),
-('subscriber1', 'Delegated-IPv6-Prefix', '=', '2001:db8:home:a0::/56'),
-('subscriber1', 'Framed-IPv6-Route',     '=', '2001:db8:home:a0::/56 ::');
+('subscriber1', 'Framed-IPv6-Prefix',    '=', '2001:db8:0:1::1/128'),
+('subscriber1', 'Delegated-IPv6-Prefix', '=', '2001:db8:100:ab00::/56'),
+('subscriber1', 'Framed-IPv6-Route',     '=', '2001:db8:100:ab00::/56 :: 1');
 ```
 
 ## Cisco BNG: DHCPv6-PD with RADIUS
@@ -62,8 +62,8 @@ INSERT INTO radreply (username, attribute, op, value) VALUES
 ! RADIUS returns Delegated-IPv6-Prefix, BNG performs DHCPv6-PD toward CPE
 
 ipv6 dhcp pool DELEGATED_POOL
- prefix-delegation aaa
- ! "aaa" = use RADIUS-returned Delegated-IPv6-Prefix
+ prefix-delegation aaa method-list default
+ ! use AAA/RADIUS to obtain the delegated prefix
 
 interface Virtual-Template1
  ipv6 enable
@@ -74,9 +74,9 @@ interface Virtual-Template1
 ! Delegated /56 from Delegated-IPv6-Prefix (via DHCPv6-PD to CPE)
 
 show ipv6 dhcp binding
-! Client: FE80::CPE_LINK_LOCAL
+! Client: FE80::1
 !   IA PD: IA_ID 0x00000001
-!     Prefix: 2001:db8:home:a0::/56 valid 86400 preferred 43200
+!     Prefix: 2001:db8:100:ab00::/56 valid 86400 preferred 43200
 ```
 
 ## Juniper MX BNG: Delegated Prefix
@@ -84,20 +84,11 @@ show ipv6 dhcp binding
 ```text
 # Juniper MX - DHCPv6-PD with RADIUS-assigned prefix
 
-set access address-assignment pool DELEGATED_POOL
-    family inet6
-    prefix-length 56    # /56 per subscriber
-    range SUBSCRIBERS prefix 2001:db8:home::/40
-    dhcp-attributes
-        prefix-length 56
-        valid-lifetime 86400
-        preferred-lifetime 43200
+set access address-assignment pool DELEGATED_POOL family inet6 prefix 2001:db8:100::/40
+set access address-assignment pool DELEGATED_POOL family inet6 range SUBSCRIBERS prefix-length 56
 
-# RADIUS override: use Delegated-IPv6-Prefix from RADIUS instead of pool
-set access profile RADIUS_PROF radius
-    accounting accounting-server 2001:db8::radius
-    options
-        coa-dynamic-request-enable
+# RADIUS can return Delegated-IPv6-Prefix directly, or Jnpr-IPv6-Delegated-Pool-Name
+# to select a local delegated pool.
 
 # Verify DHCPv6-PD bindings
 show dhcpv6 server binding detail
@@ -105,21 +96,30 @@ show dhcpv6 server binding detail
 
 ## Linux: ISC Kea + FreeRADIUS Integration
 
-```bash
-# Kea DHCPv6 server uses RADIUS for prefix delegation
-# /etc/kea/kea-dhcp6.conf (excerpt)
+```json
+// Kea DHCPv6 server uses RADIUS for prefix delegation
+// /etc/kea/kea-dhcp6.conf (excerpt)
 
 {
     "Dhcp6": {
         "hooks-libraries": [
             {
+                "library": "/usr/lib/kea/hooks/libdhcp_host_cache.so"
+            },
+            {
                 "library": "/usr/lib/kea/hooks/libdhcp_radius.so",
                 "parameters": {
-                    "server": "2001:db8::radius",
-                    "port": 1812,
-                    "secret": "radiussecret",
-                    "nas-identifier": "bng-1",
-                    "extract-duid": true
+                    "dictionary": "/etc/kea/radius/dictionary",
+                    "identifier-type6": "duid",
+                    "access": {
+                        "servers": [
+                            {
+                                "name": "2001:db8::10",
+                                "port": 1812,
+                                "secret": "radiussecret"
+                            }
+                        ]
+                    }
                 }
             }
         ],
@@ -128,7 +128,7 @@ show dhcpv6 server binding detail
                 "subnet": "2001:db8::/32",
                 "pd-pools": [
                     {
-                        "prefix": "2001:db8:home::/40",
+                        "prefix": "2001:db8:100::",
                         "prefix-len": 40,
                         "delegated-len": 56
                     }
@@ -141,24 +141,21 @@ show dhcpv6 server binding detail
 
 ## FreeRADIUS Dynamic Prefix Pool
 
-```bash
-# /etc/freeradius/3.0/mods-enabled/delegated_pool
-# Allocate unique /56 per subscriber from a /40 pool
+```text
+# /etc/freeradius/3.0/mods-available/sqlippool
+# Use a separate sqlippool instance for delegated prefixes.
+# This example uses PostgreSQL so the pool schema can store IPv6 prefixes.
+# Prepopulate the pool table with the /56 prefixes from your /40 pool.
 
-ippool delegated_ipv6 {
-    # Store allocations in Redis
-    backend = redis
-    redis {
-        server = "[::1]:6379"
-        prefix = "delegated_"
-    }
-
-    range-start = 2001:db8:home:0000::/56
-    range-stop  = 2001:db8:home:ff00::/56
-    prefix-len  = 56
-
-    # Pool size: 2^8 = 256 possible /56 prefixes from a /48
-    lease-duration = 2592000  # 30 days
+sqlippool delegated_ipv6 {
+    sql_module_instance = "sql"
+    dialect = "postgresql"
+    pool_name = "Pool-Name"
+    ippool_table = "radippool"
+    lease_duration = 2592000
+    attribute_name = Delegated-IPv6-Prefix
+    req_attribute_name = Delegated-IPv6-Prefix
+    pool_key = "%{User-Name}"
 }
 ```
 
@@ -166,21 +163,16 @@ ippool delegated_ipv6 {
 
 ```bash
 # FreeRADIUS logs Delegated-IPv6-Prefix in accounting
-# /etc/freeradius/3.0/mods-config/sql/main/mysql/queries.conf
+# /etc/freeradius/3.0/mods-config/sql/main/mysql/schema.sql
 
-# radacct table should store delegated prefix
-# Add column if missing:
-mysql -u radius -p radius << 'EOF'
-ALTER TABLE radacct
-    ADD COLUMN delegatedipv6prefix VARCHAR(45) DEFAULT NULL;
-EOF
+# The default FreeRADIUS SQL schema already includes delegatedipv6prefix.
 
 # Query active delegations
 mysql -u radius -p radius << 'EOF'
 SELECT username, framedipv6prefix, delegatedipv6prefix, acctstarttime
 FROM radacct
 WHERE acctstoptime IS NULL
-  AND delegatedipv6prefix IS NOT NULL
+  AND delegatedipv6prefix <> ''
 ORDER BY acctstarttime;
 EOF
 ```
@@ -189,30 +181,30 @@ EOF
 
 ```bash
 # Test with radclient
-radclient -x [2001:db8::radius]:1812 auth testing123 << 'EOF'
+radclient -x [2001:db8::10]:1812 auth testing123 << 'EOF'
 User-Name = "subscriber1"
 User-Password = "secret"
-NAS-IPv6-Address = "2001:db8:bng::1"
+NAS-IPv6-Address = "2001:db8:ffff::1"
 NAS-Port = 100
 Service-Type = Framed-User
 EOF
 
 # Expected Access-Accept:
-#   Framed-IPv6-Prefix = 2001:db8:wan::1/128
-#   Delegated-IPv6-Prefix = 2001:db8:home:a0::/56
-#   Framed-IPv6-Route = 2001:db8:home:a0::/56 ::
+#   Framed-IPv6-Prefix = 2001:db8:0:1::1/128
+#   Delegated-IPv6-Prefix = 2001:db8:100:ab00::/56
+#   Framed-IPv6-Route = 2001:db8:100:ab00::/56 :: 1
 
 # Simulate accounting start with delegated prefix
-radclient -x [2001:db8::radius]:1813 acct testing123 << 'EOF'
+radclient -x [2001:db8::10]:1813 acct testing123 << 'EOF'
 User-Name = "subscriber1"
 Acct-Status-Type = Start
 Acct-Session-Id = "session-001"
-NAS-IPv6-Address = "2001:db8:bng::1"
-Framed-IPv6-Prefix = "2001:db8:wan::1/128"
-Delegated-IPv6-Prefix = "2001:db8:home:a0::/56"
+NAS-IPv6-Address = "2001:db8:ffff::1"
+Framed-IPv6-Prefix = "2001:db8:0:1::1/128"
+Delegated-IPv6-Prefix = "2001:db8:100:ab00::/56"
 EOF
 ```
 
 ## Conclusion
 
-Delegated-IPv6-Prefix (RADIUS attribute 123, RFC 4818) enables RADIUS-based control of DHCPv6-PD prefix delegation. Each subscriber receives a unique prefix (typically /56 for residential, /48 for enterprise) that the BNG delegates to the CPE router via DHCPv6-PD. Configure static assignments in the FreeRADIUS SQL `radreply` table or use the `ippool` module for automatic allocation from a pool. Cisco BNG applies the delegated prefix to the DHCPv6-PD pool (`prefix-delegation aaa`), while Juniper MX uses RADIUS CoA for dynamic updates. Always include `Framed-IPv6-Route` alongside the delegated prefix to ensure the BNG installs a route for the delegated block.
+Delegated-IPv6-Prefix (RADIUS attribute 123, RFC 4818) enables RADIUS-based control of DHCPv6-PD prefix delegation. Each subscriber receives a unique prefix (typically /56 for residential, /48 for enterprise) that the BNG delegates to the CPE router via DHCPv6-PD. Configure static assignments in the FreeRADIUS SQL `radreply` table or use a separate `sqlippool` instance with `attribute_name = Delegated-IPv6-Prefix` and a pool schema that can store IPv6 prefixes. Cisco BNG can obtain the delegated prefix from AAA with `prefix-delegation aaa`, while Juniper MX can use `Delegated-IPv6-Prefix` directly or `Jnpr-IPv6-Delegated-Pool-Name` to select a local delegated pool. Some NAS/BNG platforms also use `Framed-IPv6-Route` for the delegated block, but that is platform-specific rather than an RFC 4818 requirement.
