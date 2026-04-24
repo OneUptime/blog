@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Troubleshooting, Browser, UI, Cache
 
-Description: Fix Portainer UI issues by properly clearing browser cache, local storage, and cookies - the first troubleshooting step for most Portainer display and JavaScript errors.
+Description: Fix Portainer UI issues by properly clearing browser cache, local storage, and cookies - one of the first troubleshooting steps for most Portainer display and JavaScript errors.
 
 ## Introduction
 
-Many Portainer UI issues - blank screens, outdated interfaces after upgrades, JavaScript errors, authentication loops, and stale data displays - are caused by cached browser data from a previous version. Clearing the browser cache is always the first troubleshooting step before investigating backend issues.
+Many Portainer UI issues - blank screens, outdated interfaces after upgrades, JavaScript errors, authentication loops, and stale data displays - are caused by cached browser data from a previous version. Clearing the browser cache is often the first troubleshooting step before investigating backend issues.
 
 ## What Browser Data Affects Portainer
 
@@ -17,15 +17,13 @@ Many Portainer UI issues - blank screens, outdated interfaces after upgrades, Ja
 | HTTP Cache | JS/CSS files, images | Old UI code running |
 | Local Storage | Session tokens, UI state | Auth loops, wrong settings |
 | Session Storage | Temporary app state | Stale page data |
-| Cookies | Session ID, auth tokens | Login failures |
-| IndexedDB | Application data | Corrupted state |
-| Service Workers | Offline functionality | Outdated cached responses |
+| Cookies | Auth and CSRF cookies | Login failures |
 
 ## Method 1: Hard Reload (Fastest)
 
 Forces reload of all assets without clearing the full cache:
 
-```sql
+```text
 Windows/Linux: Ctrl + Shift + R
 Mac: Cmd + Shift + R
 
@@ -37,37 +35,30 @@ Or:
 
 ## Method 2: Chrome - Clear Site Data
 
-The most thorough method:
+The most thorough browser-based method for the current origin:
 
 ```text
 1. Open DevTools (F12)
 2. Click the "Application" tab
 3. In left panel: Storage
-4. Click "Clear site data"
-5. Check all boxes:
-   ✓ Unregister service workers
-   ✓ Local and session storage
-   ✓ IndexedDB
-   ✓ Web SQL
-   ✓ Cookies
-   ✓ Cache storage
-   ✓ Application cache
-6. Click "Clear site data"
-7. Reload the page
+4. Leave the available site-data categories checked
+5. Click "Clear site data"
+6. Reload the page
 ```
+
+The exact categories shown can vary by Chrome version and by what data exists for the Portainer origin.
 
 ## Method 3: Clear Cache via Browser Settings
 
 ### Chrome
 
 ```text
-1. Settings (⋮) → Settings
-2. Privacy and security → Clear browsing data
-3. Select: All time
-4. Check:
+1. Menu (⋮) → Delete browsing data
+2. Select: All time
+3. Check:
    ✓ Cookies and other site data
    ✓ Cached images and files
-5. Click "Clear data"
+4. Click "Delete data"
 ```
 
 Or use keyboard shortcut: `Ctrl+Shift+Delete`
@@ -75,14 +66,13 @@ Or use keyboard shortcut: `Ctrl+Shift+Delete`
 ### Firefox
 
 ```text
-1. Menu (☰) → History → Clear Recent History
-2. Time range: Everything
-3. Check:
-   ✓ Cookies
-   ✓ Cache
-   ✓ Active Logins
-   ✓ Site Preferences
-4. Click "OK"
+1. Menu (☰) → Settings
+2. Privacy & Security → Cookies and Site Data
+3. Click "Clear Data..."
+4. Check:
+   ✓ Cookies and Site Data
+   ✓ Temporary Cached Files and Pages
+5. Click "Clear"
 ```
 
 Or: `Ctrl+Shift+Delete`
@@ -90,36 +80,38 @@ Or: `Ctrl+Shift+Delete`
 ### Safari
 
 ```text
-1. Develop menu → Empty Caches
-2. And: Safari → Clear History
+1. Safari → Settings → Privacy
+2. Click "Manage Website Data"
+3. Search for your Portainer host
+4. Click "Remove" (or "Remove All")
+5. If needed, use History → Clear History
 ```
 
-Enable Develop menu: Safari → Settings → Advanced → Show Develop menu.
+## Method 4: Clear Portainer-Specific Web Storage via Console
 
-## Method 4: Clear Portainer-Specific Storage via Console
-
-Target only Portainer's data without clearing other sites:
+Target Portainer-prefixed web storage keys without clearing other sites:
 
 ```javascript
 // Open browser console on Portainer page (F12 → Console)
 
-// Clear all local storage for this origin
-localStorage.clear();
-console.log('localStorage cleared');
+function removePortainerKeys(storage, label) {
+  for (let i = storage.length - 1; i >= 0; i -= 1) {
+    const key = storage.key(i);
+    if (key && key.startsWith('portainer')) {
+      storage.removeItem(key);
+      console.log(`Removed ${label} key:`, key);
+    }
+  }
+}
 
-// Clear session storage
-sessionStorage.clear();
-console.log('sessionStorage cleared');
+removePortainerKeys(localStorage, 'localStorage');
+removePortainerKeys(sessionStorage, 'sessionStorage');
 
-// Clear cookies for this domain
-document.cookie.split(";").forEach(function(c) {
-  document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-});
-console.log('Cookies cleared');
-
-// Reload
-window.location.reload(true);
+// Reload the page
+window.location.reload();
 ```
+
+Use DevTools or browser site-data settings to clear cookies as well, especially HttpOnly auth cookies that JavaScript cannot remove reliably.
 
 ## Method 5: Incognito/Private Mode Test
 
@@ -133,35 +125,40 @@ Edge: Ctrl+Shift+N → new InPrivate window
 ```
 
 Navigate to Portainer in the private window:
-- **Issue gone** in private mode = browser cache is the problem
-- **Issue persists** in private mode = server-side issue
+- **Issue gone** in private mode = cached site data, extensions, or browser-profile state is likely involved
+- **Issue persists** in private mode = cached site data is less likely; investigate browser compatibility or server-side issues next
 
-## Method 6: Clear Service Workers
+## Method 6: Clear Service Workers (Only if DevTools Shows One)
 
-After Portainer upgrades, old service workers may serve cached responses:
+Current Portainer builds do not normally register a service worker. Use this only if DevTools shows a service worker or Cache Storage entries for the Portainer origin:
 
 ```javascript
 // In browser console:
-// List all registered service workers
-navigator.serviceWorker.getRegistrations().then(registrations => {
-  registrations.forEach(reg => {
-    reg.unregister();
-    console.log('Unregistered:', reg.scope);
-  });
-});
+async function clearOriginCaches() {
+  if ('serviceWorker' in navigator) {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(
+      registrations.map((reg) => {
+        console.log('Unregistered:', reg.scope);
+        return reg.unregister();
+      })
+    );
+  }
 
-// Clear all caches
-caches.keys().then(cacheNames => {
-  return Promise.all(
-    cacheNames.map(cacheName => {
-      console.log('Clearing cache:', cacheName);
-      return caches.delete(cacheName);
-    })
-  );
-});
+  if ('caches' in window) {
+    const cacheNames = await caches.keys();
+    await Promise.all(
+      cacheNames.map((cacheName) => {
+        console.log('Clearing cache:', cacheName);
+        return caches.delete(cacheName);
+      })
+    );
+  }
 
-// Reload
-window.location.reload(true);
+  window.location.reload();
+}
+
+clearOriginCaches();
 ```
 
 ## Method 7: Use a Different Browser
@@ -189,19 +186,19 @@ Test in a completely different browser to isolate the issue:
 
 ## Method 8: Fix After Portainer URL/Domain Change
 
-If you changed Portainer's domain, old cached data from the old URL may cause issues:
+If you changed Portainer's URL, remember that browser storage is scoped by origin:
 
 ```bash
-# Old URL cached data won't affect the new URL (different origin)
-# But if you're accessing via IP AND hostname, they're different origins
+# Protocol, hostname, and port each define a separate origin
+# If you switch between IP, hostname, or ports, each one keeps separate site data
 
 # Access consistently via either:
 # https://portainer.yourdomain.com (always)
 # OR
-# http://192.168.1.100:9000 (always)
+# https://192.168.1.100:9443 (always)
 # NOT a mix of both
 ```
 
 ## Conclusion
 
-Browser cache clearing is the fastest and most effective fix for the majority of Portainer UI issues. Always test in incognito mode first - if that works, clearing the full browser cache for the Portainer origin will resolve it. For post-upgrade issues, use the DevTools Application tab to clear all site data at once, including service workers and IndexedDB, to ensure no old code is cached.
+Browser cache clearing is one of the fastest and most effective fixes for many Portainer UI issues. Test in incognito/private mode first - if that works, clearing the Portainer origin's cached files, local/session storage, and cookies is the right next step. For post-upgrade issues, the DevTools Application tab is the fastest way to clear the current origin's site data in one place.
