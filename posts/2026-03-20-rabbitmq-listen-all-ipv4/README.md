@@ -8,20 +8,20 @@ Description: Configure RabbitMQ to listen on all IPv4 interfaces (0.0.0.0) for A
 
 ## Introduction
 
-RabbitMQ's default configuration already binds to 0.0.0.0 (all interfaces). Explicitly setting this and combining it with user permissions, virtual host ACLs, and firewall rules provides the right security model for environments where multiple interfaces are needed.
+RabbitMQ listens on port 5672 on all available interfaces by default. Explicitly setting `listeners.tcp.1 = 0.0.0.0:5672` forces an IPv4 all-interface listener, and combining it with user permissions, virtual host ACLs, and firewall rules provides the right security model for environments where multiple interfaces are needed.
 
 ## Default and Explicit All-Interface Binding
 
 ```bash
 # /etc/rabbitmq/rabbitmq.conf
 
-# Explicit all-interface binding (this is the default behavior)
+# Explicit IPv4 all-interface binding
 
 listeners.tcp.1 = 0.0.0.0:5672
 
 # Restrict management to localhost only (security best practice)
-management.listener.ip = 127.0.0.1
-management.listener.port = 15672
+management.tcp.ip = 127.0.0.1
+management.tcp.port = 15672
 ```
 
 ## Access Control via User Permissions
@@ -43,7 +43,7 @@ sudo rabbitmqctl set_permissions -p /myapp appuser ".*" ".*" ".*"
 sudo rabbitmqctl add_user readonly ReadOnlyPass
 sudo rabbitmqctl set_permissions -p /myapp readonly "" "" ".*"
 
-# Remove guest user (default, insecure)
+# Delete guest user if it is not needed (recommended in production)
 sudo rabbitmqctl delete_user guest
 ```
 
@@ -75,8 +75,8 @@ sudo rabbitmq-diagnostics listeners
 sudo ss -tlnp | grep :5672
 # Expected: 0.0.0.0:5672
 
-# Check which addresses RabbitMQ reports
-sudo rabbitmq-diagnostics network_info
+# Check listener interfaces with terse output
+sudo rabbitmq-diagnostics -s listeners
 
 # Test connectivity from multiple sources
 nc -zv 10.0.0.5 5672   # Via internal IP
@@ -98,4 +98,4 @@ sudo rabbitmqctl list_connections | head -20
 
 ## Conclusion
 
-RabbitMQ defaults to 0.0.0.0:5672 for AMQP. When listening on all interfaces, secure access through: removing the `guest` user, creating per-vhost users with minimal permissions, and firewall rules restricting which IPs can reach port 5672. Restrict management plugin to localhost and access it via SSH tunnel from remote admin workstations.
+RabbitMQ listens on port 5672 on all available interfaces by default. To force IPv4 all-interface binding, set `listeners.tcp.1 = 0.0.0.0:5672`. When listening on all interfaces, secure access through: creating per-vhost users with minimal permissions, deleting or changing the default `guest` user, and firewall rules restricting which IPs can reach port 5672. Restrict the management plugin to localhost with `management.tcp.ip = 127.0.0.1` and access it via SSH tunnel from remote admin workstations.
