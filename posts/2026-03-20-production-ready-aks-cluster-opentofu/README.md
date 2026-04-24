@@ -8,7 +8,7 @@ Description: Learn how to build a production-ready Azure Kubernetes Service clus
 
 ## Introduction
 
-A production-ready AKS cluster requires more than the default configuration. You need multiple node pools for workload isolation, Azure AD integration for RBAC, cluster autoscaling, Azure Monitor integration, pod identity or Workload Identity for secret access, and proper network policies. This guide covers all of these.
+A production-ready AKS cluster requires more than the default configuration. You need multiple node pools for workload isolation, Microsoft Entra integration for Azure RBAC, cluster autoscaling, Azure Monitor integration, Workload Identity for secret access, and proper network policies. This guide covers all of these.
 
 Resource Group and Networking
 
@@ -31,6 +31,14 @@ resource "azurerm_subnet" "aks_nodes" {
   virtual_network_name = azurerm_virtual_network.aks.name
   address_prefixes     = ["10.1.0.0/16"]
 }
+
+resource "azurerm_log_analytics_workspace" "aks" {
+  name                = "aks-${var.environment}-logs"
+  resource_group_name = azurerm_resource_group.aks.name
+  location            = azurerm_resource_group.aks.location
+  sku                 = "PerGB2018"
+  retention_in_days   = 30
+}
 ```
 
 ## AKS Cluster
@@ -44,7 +52,8 @@ resource "azurerm_kubernetes_cluster" "main" {
 
   kubernetes_version        = var.kubernetes_version
   sku_tier                  = var.environment == "prod" ? "Standard" : "Free"
-  local_account_disabled    = true  # enforce Azure AD auth only
+  automatic_upgrade_channel = "stable"
+  local_account_disabled    = true  # enforce Microsoft Entra auth only
 
   # System node pool
   default_node_pool {
@@ -53,7 +62,7 @@ resource "azurerm_kubernetes_cluster" "main" {
     node_count           = null  # use autoscaler
     min_count            = 2
     max_count            = 5
-    enable_auto_scaling  = true
+    auto_scaling_enabled = true
     only_critical_addons_enabled = true  # system workloads only
 
     vnet_subnet_id = azurerm_subnet.aks_nodes.id
@@ -65,9 +74,8 @@ resource "azurerm_kubernetes_cluster" "main" {
     }
   }
 
-  # Azure AD integration
+  # Microsoft Entra ID integration
   azure_active_directory_role_based_access_control {
-    managed            = true
     azure_rbac_enabled = true
     admin_group_object_ids = [var.aks_admin_group_object_id]
   }
@@ -77,8 +85,8 @@ resource "azurerm_kubernetes_cluster" "main" {
     network_plugin    = "azure"
     network_policy    = "azure"  # or "calico"
     load_balancer_sku = "standard"
-    service_cidr      = "10.96.0.0/16"
-    dns_service_ip    = "10.96.0.10"
+    service_cidr      = "172.20.0.0/16"
+    dns_service_ip    = "172.20.0.10"
   }
 
   # Workload Identity
@@ -106,7 +114,7 @@ resource "azurerm_kubernetes_cluster" "main" {
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [kubernetes_version]  # managed by upgrade policy
+    ignore_changes  = [kubernetes_version]  # managed by the auto-upgrade channel
   }
 }
 ```
@@ -121,7 +129,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "app" {
   node_count            = null
   min_count             = 2
   max_count             = 20
-  enable_auto_scaling   = true
+  auto_scaling_enabled  = true
   vnet_subnet_id        = azurerm_subnet.aks_nodes.id
   mode                  = "User"
 
@@ -139,7 +147,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "gpu" {
   node_count            = 0
   min_count             = 0
   max_count             = 5
-  enable_auto_scaling   = true
+  auto_scaling_enabled  = true
   vnet_subnet_id        = azurerm_subnet.aks_nodes.id
   mode                  = "User"
 
@@ -167,9 +175,10 @@ resource "azurerm_role_assignment" "aks_acr_pull" {
   scope                = azurerm_container_registry.main.id
   role_definition_name = "AcrPull"
   principal_id         = azurerm_kubernetes_cluster.main.kubelet_identity[0].object_id
+  skip_service_principal_aad_check = true
 }
 ```
 
 ## Summary
 
-A production-ready AKS cluster uses dedicated system and application node pools, Azure AD-based RBAC with local accounts disabled, Workload Identity for pod-level Azure authentication, Azure Network Policy for pod-to-pod traffic control, managed identity for the cluster itself, and Azure Monitor integration. Configure maintenance windows for automatic upgrades and use `lifecycle.prevent_destroy` to protect the cluster from accidental deletion.
+A production-ready AKS cluster uses dedicated system and application node pools, Microsoft Entra integration with Azure RBAC and local accounts disabled, Workload Identity for pod-level Azure authentication, Azure Network Policy for pod-to-pod traffic control, managed identity for the cluster itself, and Azure Monitor integration. Configure an automatic upgrade channel with maintenance windows and use `lifecycle.prevent_destroy` to protect the cluster from accidental deletion.
