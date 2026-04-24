@@ -8,11 +8,11 @@ Description: Diagnose and fix OOMKilled (Out of Memory) pod crashes in Kubernete
 
 ## Introduction
 
-OOMKilled is one of the most common Kubernetes failure modes. When a container exceeds its memory limit, the Linux kernel's Out-of-Memory (OOM) killer terminates it. In Portainer, you'll see pods restarting repeatedly with the status `OOMKilled`. This guide explains how to identify memory leaks, set appropriate limits, and prevent OOM kills.
+OOMKilled is one of the most common Kubernetes failure modes. When a container uses more memory than its limit, the Linux kernel may terminate it with an Out-of-Memory (OOM) kill. In Portainer, you'll see pods restarting repeatedly with the status `OOMKilled`. This guide explains how to identify memory leaks, set appropriate limits, and prevent OOM kills.
 
 ## Recognizing OOMKilled in Portainer
 
-In Portainer's **Kubernetes > Applications** view, OOMKilled pods show:
+In Portainer's **Applications** view, OOMKilled pods show:
 - Status: `OOMKilled` or `Error` with high restart count
 - The restart count increments rapidly
 
@@ -30,7 +30,7 @@ kubectl describe pod my-app-abc123 -n production
 #   Exit Code: 137
 ```
 
-Exit code 137 = 128 + 9 (SIGKILL), which always indicates OOM termination.
+Exit code 137 = 128 + 9 (SIGKILL). It commonly appears with OOM kills, but confirm `Reason: OOMKilled` in the pod status because exit code 137 only tells you the process was killed with `SIGKILL`.
 
 ## Step 1: Check Current Memory Limit
 
@@ -44,7 +44,7 @@ kubectl get deployment my-app -n production \
   -o jsonpath='{.spec.template.spec.containers[0].resources}'
 ```
 
-In Portainer: **Kubernetes > Applications > [App] > [Pod] > Inspect** shows the full resource configuration.
+In Portainer: **Applications > [App] > YAML** shows the deployed resource configuration.
 
 ## Step 2: View Memory Usage Before the Crash
 
@@ -52,8 +52,8 @@ In Portainer: **Kubernetes > Applications > [App] > [Pod] > Inspect** shows the 
 # Current memory usage (if pod is still running between crashes)
 kubectl top pod my-app-abc123 -n production
 
-# View pod metrics history (requires metrics-server)
-kubectl top pods -n production --containers
+# View current per-container metrics (requires Metrics Server)
+kubectl top pod my-app-abc123 -n production --containers
 
 # For longer history, check Prometheus/Grafana if available
 ```
@@ -65,10 +65,10 @@ kubectl top pods -n production --containers
 kubectl logs my-app-abc123 -n production --previous
 
 # For Java apps, look for heap dump indicators
-kubectl logs my-app-abc123 -n production --previous | grep -i "heap\|memory\|OOM"
+kubectl logs my-app-abc123 -n production --previous | grep -Ei "heap|memory|oom"
 
 # For Node.js apps
-kubectl logs my-app-abc123 -n production --previous | grep -i "heap\|javascript heap"
+kubectl logs my-app-abc123 -n production --previous | grep -Ei "heap|javascript heap"
 ```
 
 ## Step 4: Increase Memory Limit
@@ -76,12 +76,7 @@ kubectl logs my-app-abc123 -n production --previous | grep -i "heap\|javascript 
 The immediate fix is to increase the memory limit:
 
 ```yaml
-# deployment-patched.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-  namespace: production
+# deployment-patch.yaml
 spec:
   template:
     spec:
@@ -97,14 +92,14 @@ spec:
 ```
 
 ```bash
-kubectl apply -f deployment-patched.yaml
+kubectl patch deployment my-app -n production --patch-file deployment-patch.yaml
 
-# Or patch in-place
+# Or patch inline
 kubectl patch deployment my-app -n production \
   -p '{"spec":{"template":{"spec":{"containers":[{"name":"my-app","resources":{"limits":{"memory":"1Gi"}}}]}}}}'
 ```
 
-In Portainer: **Kubernetes > Applications > [App] > Edit > Resource Reservations > Memory Limit**
+In Portainer: **Applications > [App] > Edit this application** lets you update the app's resource settings.
 
 ## Step 5: Fix the Root Cause - Memory Leaks
 
@@ -115,10 +110,10 @@ Increasing limits is a temporary fix. Find and fix the leak:
 ```yaml
 # Set JVM heap size relative to container limits
 env:
-- name: JAVA_OPTS
+- name: JAVA_TOOL_OPTIONS
   value: "-Xms256m -Xmx768m -XX:MaxMetaspaceSize=128m"
 # Or use container-aware settings (Java 11+)
-- name: JAVA_OPTS
+- name: JAVA_TOOL_OPTIONS
   value: "-XX:MaxRAMPercentage=75.0"
 ```
 
@@ -133,11 +128,11 @@ env:
 ### For Python Applications
 
 ```bash
-# Memory profiling in the container
+# Profile a reproduction of the leaking code path in the container
 kubectl exec -it my-app-abc123 -n production -- python3 -c "
 import tracemalloc
 tracemalloc.start()
-# ... run workload ...
+# ... run the leaking code path here ...
 snapshot = tracemalloc.take_snapshot()
 top_stats = snapshot.statistics('lineno')
 for stat in top_stats[:10]:
@@ -149,6 +144,7 @@ for stat in top_stats[:10]:
 
 ```yaml
 # vpa-recommender.yaml
+# Requires Vertical Pod Autoscaler to be installed in the cluster
 apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler
 metadata:
@@ -181,6 +177,7 @@ kubectl describe vpa my-app-vpa -n production
 
 ```yaml
 # PrometheusRule for OOMKill alerts
+# Requires Prometheus Operator-compatible CRDs and kube-state-metrics
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
