@@ -61,11 +61,11 @@ module "vpc" {
 
   # Tags required for EKS
   public_subnet_tags = {
-    "kubernetes.io/role/elb" = 1
+    "kubernetes.io/role/elb" = "1"
   }
 
   private_subnet_tags = {
-    "kubernetes.io/role/internal-elb" = 1
+    "kubernetes.io/role/internal-elb" = "1"
   }
 
   tags = {
@@ -78,11 +78,40 @@ module "vpc" {
 ## VPC Endpoints to Keep Traffic Private
 
 ```hcl
+data "aws_region" "current" {}
+
+resource "aws_security_group" "vpc_endpoints" {
+  name        = "${var.environment}-vpc-endpoints"
+  description = "Allow HTTPS from private subnets to interface VPC endpoints"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    description = "HTTPS from private subnets"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = module.vpc.private_subnets_cidr_blocks
+  }
+
+  egress {
+    description = "Allow outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Environment = var.environment
+    ManagedBy   = "opentofu"
+  }
+}
+
 # S3 endpoint (gateway - free)
 
 resource "aws_vpc_endpoint" "s3" {
   vpc_id            = module.vpc.vpc_id
-  service_name      = "com.amazonaws.${var.region}.s3"
+  service_name      = "com.amazonaws.${data.aws_region.current.name}.s3"
   vpc_endpoint_type = "Gateway"
   route_table_ids   = module.vpc.private_route_table_ids
 }
@@ -90,7 +119,7 @@ resource "aws_vpc_endpoint" "s3" {
 # ECR endpoints (interface - required for ECS/EKS without internet access)
 resource "aws_vpc_endpoint" "ecr_api" {
   vpc_id              = module.vpc.vpc_id
-  service_name        = "com.amazonaws.${var.region}.ecr.api"
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.ecr.api"
   vpc_endpoint_type   = "Interface"
   subnet_ids          = module.vpc.private_subnets
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
@@ -99,7 +128,7 @@ resource "aws_vpc_endpoint" "ecr_api" {
 
 resource "aws_vpc_endpoint" "ecr_dkr" {
   vpc_id              = module.vpc.vpc_id
-  service_name        = "com.amazonaws.${var.region}.ecr.dkr"
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.ecr.dkr"
   vpc_endpoint_type   = "Interface"
   subnet_ids          = module.vpc.private_subnets
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
@@ -109,7 +138,7 @@ resource "aws_vpc_endpoint" "ecr_dkr" {
 # Secrets Manager endpoint
 resource "aws_vpc_endpoint" "secretsmanager" {
   vpc_id              = module.vpc.vpc_id
-  service_name        = "com.amazonaws.${var.region}.secretsmanager"
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.secretsmanager"
   vpc_endpoint_type   = "Interface"
   subnet_ids          = module.vpc.private_subnets
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
@@ -124,24 +153,24 @@ resource "aws_network_acl" "database" {
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.database_subnets
 
-  # Allow PostgreSQL from private subnets only
+  # Allow PostgreSQL from within the VPC
   ingress {
     rule_no    = 100
     action     = "allow"
     protocol   = "tcp"
     from_port  = 5432
     to_port    = 5432
-    cidr_block = "10.0.0.0/8"
+    cidr_block = var.vpc_cidr
   }
 
-  # Allow MySQL from private subnets only
+  # Allow MySQL from within the VPC
   ingress {
     rule_no    = 110
     action     = "allow"
     protocol   = "tcp"
     from_port  = 3306
     to_port    = 3306
-    cidr_block = "10.0.0.0/8"
+    cidr_block = var.vpc_cidr
   }
 
   # Deny everything else
@@ -160,7 +189,7 @@ resource "aws_network_acl" "database" {
     protocol   = "tcp"
     from_port  = 1024
     to_port    = 65535
-    cidr_block = "10.0.0.0/8"
+    cidr_block = var.vpc_cidr
   }
 }
 ```
