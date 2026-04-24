@@ -13,14 +13,16 @@ Ansible complements Terraform for Rancher automation-while Terraform manages clo
 ## Prerequisites
 
 - Ansible 2.14+ installed on control node
+- `ansible.posix`, `community.general`, and `kubernetes.core` collections installed on the control node
 - SSH access to target nodes
-- Python 3.8+ on target nodes
-- Rancher API access for cluster management tasks
+- RHEL-compatible Linux nodes for the example playbooks below
+- Python 3.9+ available on target nodes
+- Rancher API key/token access for cluster management tasks
 
 ## Step 1: Node Preparation Playbook
 
 ```yaml
-# prepare-nodes.yml - Prepare Linux nodes for RKE2/Rancher
+# prepare-nodes.yml - Prepare RHEL-compatible Linux nodes for RKE2/Rancher
 
 ---
 - name: Prepare Rancher nodes
@@ -33,6 +35,9 @@ Ansible complements Terraform for Rancher automation-while Terraform manages clo
       - curl
       - wget
       - jq
+      - firewalld
+      - python3-firewall
+      - python3-pip
       - nfs-utils
       - iptables
 
@@ -49,7 +54,9 @@ Ansible complements Terraform for Rancher automation-while Terraform manages clo
 
     - name: Disable swap
       ansible.builtin.command: swapoff -a
-      when: disable_swap
+      when:
+        - disable_swap
+        - ansible_swaptotal_mb | int > 0
 
     - name: Remove swap from fstab
       ansible.builtin.lineinfile:
@@ -85,9 +92,15 @@ Ansible complements Terraform for Rancher automation-while Terraform manages clo
         - { name: net.bridge.bridge-nf-call-ip6tables, value: "1" }
         - { name: net.ipv4.ip_forward, value: "1" }
         - { name: vm.swappiness, value: "10" }
-        - { name: vm.max_map_count, value: "262144" }
 
-    - name: Configure firewalld for RKE2
+    - name: Enable and start firewalld
+      ansible.builtin.systemd:
+        name: firewalld
+        enabled: true
+        state: started
+      when: configure_firewall
+
+    - name: Configure firewalld for RKE2 server nodes with Cilium
       ansible.posix.firewalld:
         port: "{{ item }}"
         permanent: true
@@ -95,13 +108,13 @@ Ansible complements Terraform for Rancher automation-while Terraform manages clo
         immediate: true
       loop:
         - 6443/tcp    # Kubernetes API
-        - 2376/tcp    # Docker TLS
+        - 9345/tcp    # RKE2 supervisor API
         - 10250/tcp   # Kubelet
-        - 10251/tcp   # kube-scheduler
-        - 10252/tcp   # kube-controller-manager
-        - 2379-2380/tcp  # etcd
-        - 8472/udp    # VXLAN
-        - 51820/udp   # Wireguard
+        - 2379-2381/tcp  # etcd client, peer, and metrics
+        - 30000-32767/tcp  # NodePort range
+        - 4240/tcp    # Cilium health checks
+        - 8472/udp    # Cilium VXLAN
+        - 51871/udp   # Cilium WireGuard
       when: configure_firewall
 ```
 
@@ -114,7 +127,7 @@ Ansible complements Terraform for Rancher automation-while Terraform manages clo
   hosts: rke2_servers
   become: true
   vars:
-    rke2_version: "v1.29.4+rke2r1"
+    rke2_channel: "stable"
     rke2_token: "{{ lookup('env', 'RKE2_TOKEN') }}"
     first_server: "{{ groups['rke2_servers'][0] }}"
 
@@ -130,13 +143,19 @@ Ansible complements Terraform for Rancher automation-while Terraform manages clo
         cmd: /tmp/install-rke2.sh
         creates: /usr/local/bin/rke2
       environment:
-        INSTALL_RKE2_VERSION: "{{ rke2_version }}"
+        INSTALL_RKE2_CHANNEL: "{{ rke2_channel }}"
 
     - name: Create RKE2 config directory
       ansible.builtin.file:
         path: /etc/rancher/rke2
         state: directory
         mode: '0755'
+
+    - name: Create Kubernetes audit log directory
+      ansible.builtin.file:
+        path: /var/log/kubernetes
+        state: directory
+        mode: '0750'
 
     - name: Configure first server node
       ansible.builtin.copy:
@@ -181,8 +200,9 @@ Ansible complements Terraform for Rancher automation-while Terraform manages clo
 ---
 - name: Install Rancher
   hosts: rke2_servers[0]
+  become: true
   vars:
-    rancher_version: "2.8.3"
+    rancher_version: "2.14.0"
     rancher_hostname: "rancher.example.com"
     rancher_bootstrap_password: "{{ lookup('env', 'RANCHER_BOOTSTRAP_PASSWORD') }}"
 
@@ -194,15 +214,18 @@ Ansible complements Terraform for Rancher automation-while Terraform manages clo
         remote_src: true
         mode: '0755'
 
-    - name: Set KUBECONFIG
-      ansible.builtin.lineinfile:
-        path: ~/.bashrc
-        line: 'export KUBECONFIG=/etc/rancher/rke2/rke2.yaml'
-
     - name: Install Helm
       ansible.builtin.shell:
         cmd: curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
         creates: /usr/local/bin/helm
+
+    - name: Install Python dependencies for kubernetes.core modules
+      ansible.builtin.pip:
+        executable: pip3
+        name:
+          - kubernetes>=24.2.0
+          - PyYAML>=3.11
+          - jsonpatch
 
     - name: Add cert-manager Helm repo
       kubernetes.core.helm_repository:
@@ -217,32 +240,34 @@ Ansible complements Terraform for Rancher automation-while Terraform manages clo
         release_namespace: cert-manager
         create_namespace: true
         kubeconfig: /etc/rancher/rke2/rke2.yaml
+        update_repo_cache: true
         values:
-          installCRDs: true
+          crds:
+            enabled: true
         wait: true
-        wait_condition:
-          type: Ready
-          status: "True"
+        timeout: 10m0s
 
     - name: Add Rancher Helm repo
       kubernetes.core.helm_repository:
-        name: rancher-stable
-        repo_url: https://releases.rancher.com/server-charts/stable
+        name: rancher-latest
+        repo_url: https://releases.rancher.com/server-charts/latest
         kubeconfig: /etc/rancher/rke2/rke2.yaml
 
     - name: Install Rancher
       kubernetes.core.helm:
         name: rancher
-        chart_ref: rancher-stable/rancher
+        chart_ref: rancher-latest/rancher
         chart_version: "{{ rancher_version }}"
         release_namespace: cattle-system
         create_namespace: true
         kubeconfig: /etc/rancher/rke2/rke2.yaml
+        update_repo_cache: true
         values:
           hostname: "{{ rancher_hostname }}"
           bootstrapPassword: "{{ rancher_bootstrap_password }}"
           replicas: 3
         wait: true
+        timeout: 10m0s
 ```
 
 ## Step 4: Cluster Management Playbook
@@ -255,11 +280,12 @@ Ansible complements Terraform for Rancher automation-while Terraform manages clo
   vars:
     rancher_url: "{{ lookup('env', 'RANCHER_URL') }}"
     rancher_token: "{{ lookup('env', 'RANCHER_TOKEN') }}"
+    target_cluster_id: "c-m-abcde"
 
   tasks:
     - name: Get cluster list
       ansible.builtin.uri:
-        url: "{{ rancher_url }}/v3/clusters"
+        url: "{{ rancher_url }}/apis/management.cattle.io/v3/clusters"
         method: GET
         headers:
           Authorization: "Bearer {{ rancher_token }}"
@@ -268,23 +294,28 @@ Ansible complements Terraform for Rancher automation-while Terraform manages clo
 
     - name: Display cluster names
       ansible.builtin.debug:
-        msg: "Cluster: {{ item.name }} - State: {{ item.state }}"
-      loop: "{{ clusters_response.json.data }}"
+        msg: "Cluster ID: {{ item.metadata.name }} - Name: {{ item.spec.displayName | default(item.metadata.name) }}"
+      loop: "{{ clusters_response.json.items }}"
       loop_control:
-        label: "{{ item.name }}"
+        label: "{{ item.metadata.name }}"
 
     - name: Create a new project
       ansible.builtin.uri:
-        url: "{{ rancher_url }}/v3/projects"
+        url: "{{ rancher_url }}/apis/management.cattle.io/v3/namespaces/{{ target_cluster_id }}/projects"
         method: POST
         headers:
           Authorization: "Bearer {{ rancher_token }}"
           Content-Type: "application/json"
         body_format: json
         body:
-          name: "new-project"
-          clusterId: "c-xxxxx"
-          description: "Created by Ansible"
+          apiVersion: management.cattle.io/v3
+          kind: Project
+          metadata:
+            generateName: p-
+            namespace: "{{ target_cluster_id }}"
+          spec:
+            clusterName: "{{ target_cluster_id }}"
+            displayName: "new-project"
         status_code: 201
       register: project_response
 ```
@@ -308,6 +339,12 @@ Ansible complements Terraform for Rancher automation-while Terraform manages clo
         path: "{{ backup_dir }}"
         state: directory
 
+    - name: Add Rancher charts Helm repo
+      kubernetes.core.helm_repository:
+        name: rancher-charts
+        repo_url: https://charts.rancher.io
+        kubeconfig: /etc/rancher/rke2/rke2.yaml
+
     - name: Install Rancher Backup Operator
       kubernetes.core.helm:
         name: rancher-backup
@@ -315,6 +352,7 @@ Ansible complements Terraform for Rancher automation-while Terraform manages clo
         release_namespace: cattle-resources-system
         create_namespace: true
         kubeconfig: /etc/rancher/rke2/rke2.yaml
+        update_repo_cache: true
 
     - name: Create Rancher backup
       kubernetes.core.k8s:
@@ -326,6 +364,7 @@ Ansible complements Terraform for Rancher automation-while Terraform manages clo
           metadata:
             name: "backup-{{ date_stamp }}"
           spec:
+            resourceSetName: rancher-resource-set-full
             storageLocation:
               s3:
                 bucketName: "{{ s3_bucket }}"
