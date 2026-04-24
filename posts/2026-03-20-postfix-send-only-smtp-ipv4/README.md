@@ -64,7 +64,7 @@ message_size_limit = 10240000
 # Accept relay requests only from localhost (IPv4)
 mynetworks = 127.0.0.0/8
 
-# Reject all other connections
+# Reject relay from anything outside mynetworks
 smtpd_relay_restrictions = permit_mynetworks, reject
 ```
 
@@ -75,13 +75,13 @@ smtpd_relay_restrictions = permit_mynetworks, reject
 postfix check && systemctl reload postfix
 
 # Send a test email from the command line
-echo "Test from Postfix send-only" | mail -s "Test Email" recipient@example.com
+printf 'To: recipient@example.com\nFrom: noreply@example.com\nSubject: Test Email\n\nTest from Postfix send-only\n' | sendmail -t
 
 # Monitor the mail queue
 mailq
 
 # Watch the mail log for delivery status
-tail -f /var/log/mail.log
+tail -f /var/log/mail.log   # Debian/Ubuntu; use /var/log/maillog on RHEL/Rocky
 ```
 
 ## Sending via a Smart Host (Relay)
@@ -97,7 +97,7 @@ relayhost = [smtp.sendgrid.net]:587
 # SASL authentication for the relay
 smtp_sasl_auth_enable = yes
 smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
-smtp_sasl_security_options = noanonymous
+smtp_sasl_tls_security_options = noanonymous
 smtp_tls_security_level = encrypt
 ```
 
@@ -108,7 +108,7 @@ smtp_tls_security_level = encrypt
 
 ```bash
 # Hash the password file and reload
-postmap /etc/postfix/sasl_passwd
+postmap hash:/etc/postfix/sasl_passwd
 chmod 600 /etc/postfix/sasl_passwd /etc/postfix/sasl_passwd.db
 systemctl reload postfix
 ```
