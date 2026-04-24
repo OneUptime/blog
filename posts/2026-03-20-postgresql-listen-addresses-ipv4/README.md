@@ -8,13 +8,13 @@ Description: Configure PostgreSQL listen_addresses in postgresql.conf to listen 
 
 ## Introduction
 
-PostgreSQL defaults to `listen_addresses = 'localhost'`, accepting only local socket connections. To accept TCP/IP connections from remote IPv4 clients, set `listen_addresses` to a specific IP or `*` (all interfaces), then configure `pg_hba.conf` to authorize those clients.
+PostgreSQL defaults to `listen_addresses = 'localhost'`, accepting only local TCP/IP loopback connections. To accept TCP/IP connections from remote IPv4 clients, set `listen_addresses` to a specific IP or `*` (all interfaces), then configure `pg_hba.conf` to authorize those clients.
 
 ## listen_addresses Values
 
 | Value | Behavior |
 |---|---|
-| `localhost` | Local connections only (default) |
+| `localhost` | Local TCP/IP loopback only (default) |
 | `127.0.0.1` | IPv4 loopback only |
 | `10.0.0.5` | Specific IPv4 address |
 | `10.0.0.5,10.0.0.6` | Multiple addresses |
@@ -49,13 +49,13 @@ port = 5432
 
 # Format: TYPE  DATABASE  USER  ADDRESS  METHOD
 
-# Allow from specific IP (MD5 password)
-host    all         all     10.0.0.5/32       md5
+# Allow from specific client IP
+host    all         all     10.0.0.25/32      scram-sha-256
 
 # Allow from subnet
-host    all         all     10.0.0.0/24       md5
+host    all         all     10.0.0.0/24       scram-sha-256
 
-# Allow specific user from specific IP with scram-sha-256 (recommended)
+# Allow specific user from specific client IP with scram-sha-256
 host    appdb       appuser 203.0.113.20/32   scram-sha-256
 
 # Allow SSL connections from subnet
@@ -65,14 +65,14 @@ hostssl all         all     192.168.1.0/24    scram-sha-256
 ## Applying Changes
 
 ```bash
-# Reload PostgreSQL (listen_addresses requires full restart)
+# Restart PostgreSQL (listen_addresses requires full restart)
 sudo systemctl restart postgresql
 
 # Verify PostgreSQL is listening on the new address
 sudo ss -tlnp | grep postgres
-# Expected: 10.0.0.5:5432
+# Expected: output includes 10.0.0.5:5432
 
-# Reload after pg_hba.conf changes (no restart needed)
+# Reload after only pg_hba.conf changes (no restart needed)
 sudo systemctl reload postgresql
 # or
 sudo -u postgres psql -c "SELECT pg_reload_conf();"
@@ -90,14 +90,14 @@ psql -h 10.0.0.5 -U appuser -d appdb -v ON_ERROR_STOP=1 \
 
 # Test connectivity first
 nc -zv 10.0.0.5 5432
-# Expected: Connection to 10.0.0.5 5432 port [tcp] succeeded
+# Expected: the TCP connection succeeds
 ```
 
 ## Firewall Rules
 
 ```bash
 # Allow PostgreSQL from trusted network
-sudo ufw allow from 10.0.0.0/24 to any port 5432
+sudo ufw allow proto tcp from 10.0.0.0/24 to any port 5432
 
 # iptables
 sudo iptables -A INPUT -p tcp --dport 5432 -s 10.0.0.0/24 -j ACCEPT
@@ -106,4 +106,4 @@ sudo iptables -A INPUT -p tcp --dport 5432 -j DROP
 
 ## Conclusion
 
-PostgreSQL requires two changes for remote access: `listen_addresses` in `postgresql.conf` (controls which IPs PostgreSQL creates sockets on) and `pg_hba.conf` entries (controls which clients are authorized to connect). Change `listen_addresses` requires a full restart; `pg_hba.conf` only requires a reload. Use `*` for `listen_addresses` with strict `pg_hba.conf` and firewall rules rather than restricting by address alone.
+PostgreSQL requires two changes for remote access: `listen_addresses` in `postgresql.conf` (controls which TCP/IP addresses PostgreSQL listens on) and `pg_hba.conf` entries (controls which clients are authorized to connect). Changing `listen_addresses` requires a full restart; `pg_hba.conf` only requires a reload. Use `*` for `listen_addresses` with strict `pg_hba.conf` and firewall rules rather than restricting by address alone.
