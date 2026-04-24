@@ -23,9 +23,9 @@ The working directory (`-w` / `WORKDIR`) determines the current directory when t
 
 ### User
 
-By default, containers run as root (UID 0). This is dangerous because:
-- A container escape vulnerability grants root on the host.
-- Files created by the container are owned by root.
+If the image does not set a default user, containers run as root (UID 0). This is dangerous because:
+- If a container escape occurs, running as root can increase the impact on the host.
+- Files created by the container are often owned by root unless you set a different user.
 - Principle of least privilege is violated.
 
 Running as a non-root user limits the blast radius of security issues.
@@ -35,8 +35,8 @@ Running as a non-root user limits the blast radius of security issues.
 In the container creation form in Portainer:
 
 1. Navigate to **Containers > Add container**.
-2. Scroll to the **Command & logging** tab or **Advanced** section.
-3. Find the **Working dir** field.
+2. Open the **Advanced** section.
+3. Find the **Working Dir** field.
 4. Enter the desired directory path.
 
 ```text
@@ -48,7 +48,7 @@ Working dir: /home/appuser
 Working dir: /opt/myservice
 ```
 
-This is equivalent to the `-w` flag in `docker run` or `WORKDIR` in a Dockerfile.
+This is equivalent to the `-w` flag in `docker run` and overrides any `WORKDIR` set in the image.
 
 ## Step 2: Set the Container User
 
@@ -71,7 +71,7 @@ User: 1000:1000
 User: 1000:appgroup
 ```
 
-Important: The user must exist inside the container image. If you specify a user that doesn't exist, the container will fail to start.
+Important: If you specify a user or group by name, it must exist inside the container image. Numeric UID:GID values do not require matching passwd or group entries.
 
 ## Step 3: Common Patterns
 
@@ -88,19 +88,17 @@ services:
     user: node           # Run as the non-root 'node' user
     command: node server.js
     volumes:
-      - ./app:/app:ro    # App files owned by node user
+      - ./app:/app:ro    # Mount app files read-only
 ```
 
 ### Running Nginx as Non-Root
 
-Standard Nginx images run the master process as root but workers as `nginx`:
+For a non-root Nginx setup, use the unprivileged image:
 
 ```yaml
 services:
   nginx:
-    image: nginx:alpine
-    # Use the rootless nginx image instead:
-    image: nginxinc/nginx-unprivileged:alpine
+    image: nginxinc/nginx-unprivileged:stable-alpine
     user: "101"          # nginx user UID in unprivileged image
     working_dir: /usr/share/nginx/html
     ports:
@@ -115,7 +113,7 @@ services:
     image: python:3.12-slim
     working_dir: /usr/src/app
     user: "1000:1000"    # Use UID:GID format
-    command: python -m uvicorn main:app --host 0.0.0.0 --port 8000
+    command: python -m http.server 8000
     volumes:
       - ./src:/usr/src/app:ro
 ```
@@ -125,10 +123,10 @@ services:
 If your image doesn't have a non-root user, add one:
 
 ```dockerfile
-FROM alpine:3.18
+FROM alpine:3.23
 
 # Create a non-root user and group
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN addgroup -S appgroup && adduser -S -G appgroup appuser
 
 # Set working directory and permissions
 WORKDIR /app
@@ -150,9 +148,9 @@ When mounting volumes, the host files must be accessible to the container user:
 # On the host: ensure the directory is owned by the container's UID
 sudo chown -R 1000:1000 /data/myapp
 
-# Or set group permissions if using a named group
-sudo chgrp -R docker /data/myapp
-sudo chmod -R g+rw /data/myapp
+# Or align the host group with the container's GID
+sudo chgrp -R 1000 /data/myapp
+sudo chmod -R g+rwX /data/myapp
 ```
 
 In Portainer, if a container fails to start with a permissions error:
@@ -171,7 +169,7 @@ docker exec my-container pwd
 
 # Verify running user:
 docker exec my-container id
-# Output: uid=1000(appuser) gid=1000(appgroup) groups=1000(appgroup)
+# Example output: uid=1000(appuser) gid=1000(appgroup) groups=1000(appgroup)
 
 # Or in Portainer: use the Container Console
 # Type: pwd && id
