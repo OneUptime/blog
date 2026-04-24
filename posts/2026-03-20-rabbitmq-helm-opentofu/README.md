@@ -15,6 +15,23 @@ RabbitMQ is a message broker supporting AMQP, MQTT, and STOMP protocols. OpenTof
 ```hcl
 # main.tf - Deploy RabbitMQ via Bitnami Helm chart
 
+terraform {
+  required_providers {
+    helm = {
+      source = "hashicorp/helm"
+    }
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+    }
+    random = {
+      source = "hashicorp/random"
+    }
+    rabbitmq = {
+      source = "registry.terraform.io/cyrilgdn/rabbitmq"
+    }
+  }
+}
+
 resource "random_password" "rabbitmq" {
   length  = 32
   special = false
@@ -25,15 +42,21 @@ resource "random_password" "rabbitmq_erlang_cookie" {
   special = false
 }
 
+resource "kubernetes_namespace" "rabbitmq" {
+  metadata {
+    name = "rabbitmq"
+  }
+}
+
 resource "kubernetes_secret" "rabbitmq_auth" {
   metadata {
     name      = "rabbitmq-auth"
-    namespace = "rabbitmq"
+    namespace = kubernetes_namespace.rabbitmq.metadata[0].name
   }
 
   data = {
-    rabbitmq-password     = random_password.rabbitmq.result
-    rabbitmq-erlang-cookie = random_password.rabbitmq_erlang_cookie.result
+    "rabbitmq-password"      = random_password.rabbitmq.result
+    "rabbitmq-erlang-cookie" = random_password.rabbitmq_erlang_cookie.result
   }
 }
 
@@ -42,14 +65,14 @@ resource "helm_release" "rabbitmq" {
   repository       = "https://charts.bitnami.com/bitnami"
   chart            = "rabbitmq"
   version          = "13.0.0"
-  namespace        = "rabbitmq"
-  create_namespace = true
+  namespace        = kubernetes_namespace.rabbitmq.metadata[0].name
+  create_namespace = false
 
   values = [yamlencode({
     auth = {
-      username       = "admin"
-      existingSecret = kubernetes_secret.rabbitmq_auth.metadata[0].name
-      existingErlangSecret = kubernetes_secret.rabbitmq_auth.metadata[0].name
+      username               = "admin"
+      existingPasswordSecret = kubernetes_secret.rabbitmq_auth.metadata[0].name
+      existingErlangSecret   = kubernetes_secret.rabbitmq_auth.metadata[0].name
     }
 
     # 3-node cluster for HA
@@ -67,22 +90,20 @@ resource "helm_release" "rabbitmq" {
     }
 
     # RabbitMQ configuration
-    rabbitmq = {
-      configuration = <<-RABBIT_CONF
-        ## Default vhost
-        default_vhost = /
-        default_user = admin
+    extraConfiguration = <<-RABBIT_CONF
+      ## Default vhost
+      default_vhost = /
+      default_user = admin
 
-        ## Memory high watermark
-        vm_memory_high_watermark.relative = 0.6
+      ## Memory high watermark
+      vm_memory_high_watermark.relative = 0.6
 
-        ## Disk free limit
-        disk_free_limit.absolute = 2GB
+      ## Disk free limit
+      disk_free_limit.absolute = 2GB
 
-        ## Enable quorum queues as default
-        classic_queue.default_version = 2
-      RABBIT_CONF
-    }
+      ## Use classic queue storage version 2 for any classic queues
+      classic_queue.default_version = 2
+    RABBIT_CONF
 
     # Enable plugins
     plugins = "rabbitmq_management rabbitmq_peer_discovery_k8s rabbitmq_prometheus"
@@ -123,7 +144,7 @@ resource "helm_release" "rabbitmq" {
 resource "kubernetes_pod_disruption_budget_v1" "rabbitmq" {
   metadata {
     name      = "rabbitmq-pdb"
-    namespace = "rabbitmq"
+    namespace = kubernetes_namespace.rabbitmq.metadata[0].name
   }
 
   spec {
@@ -131,7 +152,8 @@ resource "kubernetes_pod_disruption_budget_v1" "rabbitmq" {
     min_available = 2
     selector {
       match_labels = {
-        "app.kubernetes.io/name" = "rabbitmq"
+        "app.kubernetes.io/name"     = "rabbitmq"
+        "app.kubernetes.io/instance" = "rabbitmq"
       }
     }
   }
@@ -149,12 +171,26 @@ provider "rabbitmq" {
 }
 
 resource "rabbitmq_vhost" "app" {
-  name = "app-vhost"
+  depends_on = [helm_release.rabbitmq]
+
+  name               = "app-vhost"
+  default_queue_type = "quorum"
+}
+
+resource "rabbitmq_permissions" "app" {
+  user  = "admin"
+  vhost = rabbitmq_vhost.app.name
+
+  permissions {
+    configure = ".*"
+    write     = ".*"
+    read      = ".*"
+  }
 }
 
 resource "rabbitmq_exchange" "events" {
   name  = "app.events"
-  vhost = rabbitmq_vhost.app.name
+  vhost = rabbitmq_permissions.app.vhost
 
   settings {
     type        = "topic"
@@ -165,16 +201,16 @@ resource "rabbitmq_exchange" "events" {
 
 resource "rabbitmq_queue" "order_events" {
   name  = "order-events"
-  vhost = rabbitmq_vhost.app.name
+  vhost = rabbitmq_permissions.app.vhost
 
   settings {
     durable     = true
     auto_delete = false
     # Quorum queue for high availability
-    arguments = {
-      "x-queue-type"    = "quorum"
+    arguments_json = jsonencode({
+      "x-queue-type"     = "quorum"
       "x-delivery-limit" = 5
-    }
+    })
   }
 }
 ```
