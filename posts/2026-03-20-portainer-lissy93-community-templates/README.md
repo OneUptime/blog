@@ -26,12 +26,12 @@ It includes applications in categories such as:
 
 - **Media**: Plex, Jellyfin, Emby, Navidrome
 - **Downloads**: qBittorrent, Transmission, Sonarr, Radarr
-- **Development**: Gitea, Drone CI, code-server, Gitlab
-- **Productivity**: Nextcloud, OnlyOffice, Paperless
-- **Monitoring**: Prometheus, Grafana, Uptime Kuma, NetData
-- **Networking**: Pi-hole, Nginx Proxy Manager, WireGuard
+- **Development**: Gitea, Forgejo, code-server, GitLab CE
+- **Productivity**: Nextcloud, BookStack, Paperless NGX
+- **Monitoring**: Grafana, Uptime Kuma, Checkmate, NetData
+- **Networking**: Pi-Hole, Nginx Proxy Manager, WireGuard
 - **Home Automation**: Home Assistant, Node-RED
-- **Security**: Vaultwarden, Authentik, Keycloak
+- **Security**: Vaultwarden, Authentik, Authelia
 
 ## Step 1: Configure the Templates URL
 
@@ -49,7 +49,7 @@ https://raw.githubusercontent.com/Lissy93/portainer-templates/main/templates.jso
 ## Step 2: Browse the New Templates
 
 1. Select your Docker environment
-2. Click **App Templates** in the sidebar
+2. Expand **Templates** and click **Application**
 3. You now see the community template catalog with hundreds of applications
 4. Use the search bar to find specific apps
 
@@ -58,13 +58,13 @@ https://raw.githubusercontent.com/Lissy93/portainer-templates/main/templates.jso
 ### Example: Deploy Uptime Kuma
 
 1. Search for "Uptime Kuma" in the templates
-2. Click on the Uptime Kuma template
+2. Click on the **Uptime Kuma (container)** template
 3. Configure:
 
 ```text
 Container name: uptime-kuma
 Port:          3001 → 3001
-Volume:        /data/uptime-kuma → /app/data
+Volume:        /portainer/Files/AppData/Config/uptime-kuma → /app/data
 ```
 
 4. Click **Deploy the container**
@@ -73,28 +73,31 @@ Volume:        /data/uptime-kuma → /app/data
 ### Example: Deploy Vaultwarden (Bitwarden-compatible)
 
 1. Search for "Vaultwarden"
-2. Configure the stack template:
+2. Configure the container template:
 
 ```text
-Stack name:    vaultwarden
-Port:          80 → 80
-Data volume:   /data/vaultwarden → /data
-Admin token:   [generate-secure-token]
+Container name: vaultwarden
+Ports:          8010 → 80, 3012 → 3012
+Data volume:    /portainer/Files/AppData/Config/Bitwarden → /data
 ```
 
-3. Deploy and access the web vault
+3. Click **Deploy the container**
+4. Access Vaultwarden at `http://your-host:8010`
 
 ### Example: Deploy Pi-hole
 
-1. Search for "Pi-hole"
+1. Search for "Pi-Hole"
 2. Configure:
 
 ```text
 Container name:    pihole
-Web password:      [your-admin-password]
-DNS port:          53 → 53/udp
-Web UI port:       8080 → 80
+DNS ports:         53 → 53/tcp and 53 → 53/udp
+DHCP port:         67 → 67/udp (if needed)
+Web UI port:       1010 → 80
 ```
+
+3. Click **Deploy the container**
+4. Access Pi-Hole at `http://your-host:1010/admin`
 
 ## Step 4: Customize for Your Environment
 
@@ -110,12 +113,14 @@ PGID=1000                    # Group ID for file permissions
 
 ## Step 5: Combine with Your Own Templates
 
-To use both the Lissy93 collection AND your own templates, you need to merge the JSON files:
+If you want a single application templates source containing both the Lissy93 collection AND your own app templates, you need to merge the JSON files:
 
 ```bash
 # Download the community templates
 curl -s https://raw.githubusercontent.com/Lissy93/portainer-templates/main/templates.json \
   -o /tmp/community-templates.json
+
+mkdir -p /opt/portainer-templates
 
 # Create a merge script
 python3 << 'EOF'
@@ -127,7 +132,6 @@ with open('/tmp/community-templates.json') as f:
 
 # Your custom templates
 custom = {
-  "version": "2",
   "templates": [
     {
       "type": 1,
@@ -143,7 +147,7 @@ custom = {
 
 # Merge: community templates + custom templates
 merged = {
-    "version": "2",
+    "version": community.get("version", "2"),
     "templates": community["templates"] + custom["templates"]
 }
 
@@ -162,14 +166,15 @@ The community collection is regularly updated with new templates and fixes. To g
 
 ```bash
 # Re-download and re-merge periodically
-# Set up a cron job:
+# If you save the merge commands as /opt/portainer-templates/update-merged-templates.sh,
+# you can schedule it with cron:
 0 2 * * 0 /opt/portainer-templates/update-merged-templates.sh
 ```
 
 ## Important Notes
 
 - Community templates pull images from Docker Hub and other public registries
-- Review each template's Compose file before deploying in production
+- Review each template's container or stack definition before deploying in production
 - Not all applications in the collection are suitable for production use without additional hardening
 - Some templates may be outdated; always verify image tags are current
 
