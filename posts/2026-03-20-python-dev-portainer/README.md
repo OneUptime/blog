@@ -20,6 +20,11 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
+# Create and use a virtual environment inside the container
+ENV VIRTUAL_ENV=/opt/venv
+RUN python -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \
@@ -55,6 +60,8 @@ RUN pip install --no-cache-dir \
     # Database
     sqlalchemy \
     alembic \
+    celery[redis] \
+    flower \
     psycopg2-binary \
     # Utilities
     python-dotenv \
@@ -69,32 +76,35 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN useradd -m -u 1000 developer
 USER developer
 
-# Expose ports
-EXPOSE 8000   # FastAPI/Django
-EXPOSE 5678   # debugpy remote debugger
+# Expose application and debug ports
+EXPOSE 8000
+EXPOSE 5678
+```
+
+Build the image on the Docker host before deploying the stack in Portainer:
+
+```bash
+docker build -f Dockerfile.dev -t python-dev-env:latest .
 ```
 
 ## Step 2: Deploy the Dev Stack in Portainer
 
+Build the image first, and if you want Portainer to resolve the relative bind mounts below, deploy the stack from a Git repository in Portainer Business Edition with relative path volumes enabled.
+
 ```yaml
 # docker-compose.yml - Python Development Stack
-version: "3.8"
-
 networks:
   python_dev:
     driver: bridge
 
 volumes:
-  python_venv:
   postgres_data:
   redis_data:
 
 services:
   # Python application with hot-reload
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
+    image: python-dev-env:latest
     container_name: python_app
     restart: unless-stopped
     ports:
@@ -106,16 +116,14 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - DEBUG=true
     volumes:
-      # Mount source code for hot-reload
-      - ./src:/app/src
-      # Persistent virtual environment (faster rebuilds)
-      - python_venv:/app/.venv
+      # Mount the project for hot-reload, tests, and migrations
+      - .:/app
     command: >
       uvicorn src.main:app
       --host 0.0.0.0
       --port 8000
       --reload
-      --reload-dir src
+      --reload-dir /app/src
     networks:
       - python_dev
     depends_on:
@@ -147,6 +155,8 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     networks:
       - python_dev
 
@@ -165,17 +175,16 @@ services:
 
   # Celery worker for background tasks
   celery_worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
+    image: python-dev-env:latest
     container_name: celery_worker
     restart: unless-stopped
-    command: celery -A src.celery_app worker --loglevel=info --autoreload
+    command: celery -A src.celery_app worker --loglevel=info
     environment:
       - DATABASE_URL=postgresql://devuser:devpassword@postgres:5432/devdb
       - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
     volumes:
-      - ./src:/app/src
+      - .:/app
     networks:
       - python_dev
     depends_on:
@@ -184,9 +193,7 @@ services:
 
   # Celery Flower monitoring
   flower:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
+    image: python-dev-env:latest
     container_name: celery_flower
     restart: unless-stopped
     command: celery -A src.celery_app flower --port=5555
@@ -194,6 +201,9 @@ services:
       - "5555:5555"
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    volumes:
+      - .:/app
     networks:
       - python_dev
     depends_on:
@@ -209,12 +219,10 @@ services:
   "configurations": [
     {
       "name": "Python: Remote Attach",
-      "type": "python",
+      "type": "debugpy",
       "request": "attach",
-      "connect": {
-        "host": "localhost",
-        "port": 5678
-      },
+      "host": "localhost",
+      "port": 5678,
       "pathMappings": [
         {
           "localRoot": "${workspaceFolder}/src",
@@ -250,9 +258,10 @@ def root():
 # Run pytest in the container
 docker exec python_app pytest src/tests/ -v --cov=src --cov-report=html
 
-# View coverage report
-# Open coverage report in browser
-docker exec python_app python -m http.server 8001 --directory htmlcov/
+# Copy the coverage report to the host
+docker cp python_app:/app/htmlcov ./
+
+# Open htmlcov/index.html in your browser
 ```
 
 ## Step 5: Database Migrations with Alembic
@@ -280,18 +289,22 @@ docker exec python_app alembic downgrade -1
   "dockerComposeFile": "../docker-compose.yml",
   "service": "app",
   "workspaceFolder": "/app",
-  "extensions": [
-    "ms-python.python",
-    "ms-python.black-formatter",
-    "ms-python.pylint",
-    "ms-python.mypy-type-checker",
-    "ms-azuretools.vscode-docker"
-  ],
-  "settings": {
-    "python.defaultInterpreterPath": "/usr/local/bin/python",
-    "editor.formatOnSave": true,
-    "[python]": {
-      "editor.defaultFormatter": "ms-python.black-formatter"
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.black-formatter",
+        "ms-python.pylint",
+        "ms-python.mypy-type-checker",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/opt/venv/bin/python",
+        "editor.formatOnSave": true,
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.black-formatter"
+        }
+      }
     }
   },
   "forwardPorts": [8000, 5678, 5432, 6379]
