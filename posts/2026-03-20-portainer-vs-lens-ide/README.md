@@ -12,23 +12,23 @@ Choosing the right container management tool can significantly impact your team'
 
 ## Overview
 
-**Portainer** is a universal container management platform supporting Docker, Docker Swarm, and Kubernetes. It provides a web-based GUI, API, and CLI for managing containerized workloads.
+**Portainer** is a universal container management platform supporting Docker, Docker Swarm, and Kubernetes. It provides a web-based GUI and HTTP API for managing containerized workloads.
 
-**Lens** is designed with different priorities and use cases. Understanding these differences is key to choosing the right tool.
+**Lens** is a standalone Kubernetes desktop application for Linux, macOS, and Windows. It connects to clusters from kubeconfig files and works directly with the Kubernetes API.
 
 ## Feature Comparison
 
 | Feature | Portainer | Lens |
 |---------|-----------|--------|
-| Docker management | Yes | Varies |
-| Kubernetes support | Yes | Varies |
-| Web UI | Yes | Varies |
-| Multi-environment | Yes | Varies |
-| User management | Yes | Varies |
-| Stack management | Yes | Varies |
-| Open source | CE: Yes | Varies |
-| Self-hosted | Yes | Yes |
-| Enterprise features | BE edition | Varies |
+| Docker management | Yes | No |
+| Kubernetes support | Yes | Yes |
+| Web UI | Yes | No, desktop app |
+| Multi-environment | Yes | Yes |
+| User management | Yes | Via Lens Teamwork (premium) |
+| Stack management | Yes | No |
+| Open source | CE: Yes | Legacy OSS repo only |
+| Self-hosted | Yes | No |
+| Enterprise features | BE edition | Pro/Enterprise subscriptions |
 
 ## Portainer Strengths
 
@@ -42,11 +42,11 @@ Choosing the right container management tool can significantly impact your team'
 
 ## Lens Strengths
 
-- Specialized for its primary use case
-- Often simpler for its target audience
-- May have better integration with specific ecosystems
-- Different performance characteristics
-- Unique features not found in Portainer
+- Purpose-built for Kubernetes cluster management
+- Standalone desktop app for Linux, macOS, and Windows
+- Connects to clusters from kubeconfig files and respects Kubernetes RBAC
+- Built-in terminal, logs, metrics, and resource management views
+- Lens Teamwork provides shared cluster access and team permissions
 
 ## When to Choose Portainer
 
@@ -61,10 +61,10 @@ Choose Portainer when you need:
 ## When to Choose Lens
 
 Choose Lens when you need:
-- Its specific specialized features
-- Its particular workflow or integration
-- Its lightweight approach for specific use cases
-- When your team already uses it and is familiar with it
+- A Kubernetes-focused desktop IDE instead of a browser-based control plane
+- Direct access to clusters through kubeconfig files
+- Built-in terminal, logs, metrics, and Helm views
+- Lens Teamwork for shared cluster access and team workflows
 
 ## Deployment Comparison
 
@@ -72,47 +72,53 @@ Choose Lens when you need:
 ```bash
 # Deploy Portainer CE
 
+docker volume create portainer_data
+
 docker run -d \
-  -p 9000:9000 \
+  -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
-  --restart always \
+  --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
 
-**Lens deployment:**
+**Lens installation (Debian/Ubuntu example):**
 ```bash
-# Typical Lens deployment
-# Check official documentation for current install instructions
-curl -fsSL https://get-tool.example.com | sh
+# Install Lens K8S IDE
+curl -fsSL https://downloads.k8slens.dev/keys/gpg | gpg --dearmor | sudo tee /usr/share/keyrings/lens-archive-keyring.gpg > /dev/null
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/lens-archive-keyring.gpg] https://downloads.k8slens.dev/apt/debian stable main" | sudo tee /etc/apt/sources.list.d/lens.list > /dev/null
+sudo apt update && sudo apt install lens
+lens-desktop
 ```
+
+Lens requires activation on first launch.
 
 ## Migration Considerations
 
 Moving from Lens to Portainer:
-1. Export your current configurations
+1. Export or verify the kubeconfig files and cluster contexts you use in Lens
 2. Deploy Portainer alongside existing setup
-3. Recreate stacks as Portainer stacks
-4. Migrate users and access control
-5. Verify all services are running correctly
+3. Add the relevant Docker and Kubernetes environments to Portainer
+4. Configure Portainer access control and recreate any Compose-based stacks you need
+5. Verify cluster access and workloads are running correctly
 
 Moving from Portainer to Lens:
-1. Export Portainer stack configurations
-2. Document current environment setup
-3. Install and configure Lens
-4. Recreate deployments in new platform
-5. Test thoroughly before cutover
+1. Document current environment setup and cluster access
+2. Ensure you have working kubeconfig files for the Kubernetes clusters you want to manage
+3. Install, activate, and configure Lens
+4. Add clusters through local kubeconfig files or supported cloud integrations
+5. Recreate any Portainer-specific stack workflows outside Lens and test before cutover
 
 ## Community and Support
 
 | Aspect | Portainer | Lens |
 |--------|-----------|--------|
-| Community size | Large | Varies |
-| Documentation | Comprehensive | Varies |
-| Commercial support | Available (BE) | Varies |
-| GitHub activity | Very active | Varies |
+| Community size | Large | Large |
+| Documentation | Comprehensive | Comprehensive |
+| Commercial support | Available (BE) | Available (Pro/Enterprise) |
+| GitHub activity | Very active | Extensions active; core repo retired |
 
 ## Conclusion
 
