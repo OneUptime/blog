@@ -8,7 +8,7 @@ Description: A guide to properly configuring certificate chains (including inter
 
 ## Overview
 
-Enterprise PKI environments commonly use certificate chains: a root CA signs an intermediate CA, which signs server certificates. Browsers and API clients need the complete chain to verify trust. If only the server certificate is provided (without the intermediate), clients that don't have the intermediate in their trust store will fail verification. This guide covers assembling and configuring proper certificate chains in Portainer.
+Enterprise PKI environments commonly use certificate chains: a root CA signs an intermediate CA, which signs server certificates. Browsers and API clients generally expect the server to present the certificate chain needed to build trust. If only the server certificate is provided (without the intermediate), clients that don't already have or fetch the intermediate can fail verification. This guide covers assembling and configuring proper certificate chains in Portainer.
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ Root CA (self-signed, in OS/browser trust store)
 ```
 
 For TLS, the server must present: **Server Cert + Intermediate Cert(s)**  
-The Root CA is already trusted by clients.
+Clients are expected to trust the Root CA separately.
 
 ## Step 1: Assemble the Certificate Chain
 
@@ -84,8 +84,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest \
-  --ssl \
+  portainer/portainer-ce:sts \
   --sslcert /data/certs/cert.pem \
   --sslkey /data/certs/key.pem \
   --http-disabled
@@ -96,17 +95,22 @@ docker run -d \
 ```bash
 # Check the chain Portainer is presenting
 echo | openssl s_client -connect portainer.example.com:9443 \
-  -showcerts 2>/dev/null | grep -E "subject|issuer"
+  -servername portainer.example.com -showcerts 2>/dev/null \
+  | grep -E '^[[:space:]]*[0-9]+ s:|^[[:space:]]*i:'
 
-# Should show all certs in the chain:
-# subject=CN=portainer.example.com
-# issuer=CN=Intermediate CA, O=MyOrg
-# subject=CN=Intermediate CA, O=MyOrg
-# issuer=CN=Root CA, O=MyOrg
+# Should show the server cert followed by the intermediate cert(s):
+# 0 s:CN = portainer.example.com
+#   i:CN = Intermediate CA, O=MyOrg
+# 1 s:CN = Intermediate CA, O=MyOrg
+#   i:CN = Root CA, O=MyOrg
 
-# Verify no chain errors
-echo | openssl s_client -connect portainer.example.com:9443 2>/dev/null \
-  | grep -E "Verify return|Certificate chain"
+# Verify no chain errors against your root CA
+echo | openssl s_client -connect portainer.example.com:9443 \
+  -servername portainer.example.com \
+  -verify_hostname portainer.example.com \
+  -CAfile root.crt 2>/dev/null \
+  | grep -E "Verify return code"
+# Expected: Verify return code: 0 (ok)
 ```
 
 ## Common Chain Issues and Fixes
@@ -114,7 +118,8 @@ echo | openssl s_client -connect portainer.example.com:9443 2>/dev/null \
 ### "unable to verify the first certificate" Error
 
 ```bash
-# This means intermediate cert is missing from the chain
+# This often means an intermediate cert is missing from the chain
+# or the issuing root CA is not trusted by the client
 # Fix: Ensure fullchain.pem includes intermediate cert(s)
 cat server.crt intermediate.crt > fullchain.pem
 ```
@@ -133,10 +138,10 @@ openssl crl2pkcs7 -nocrl -certfile fullchain.pem | openssl pkcs7 -print_certs -t
 
 ```bash
 # This means the chain includes the root CA
-# Root CA should NOT be in the chain file - clients already have it
+# Root CA should NOT be in the chain file - clients trust it separately
 # Remove the last cert from your chain file if it's the root CA
-openssl x509 -in root.crt -noout -issuer
-# If Issuer == Subject, it's self-signed (root CA)
+openssl x509 -in root.crt -noout -subject -issuer
+# If Subject == Issuer, it's self-issued; root CAs are typically self-signed
 ```
 
 ## Using PKCS#12 (PFX) Bundle
@@ -145,12 +150,13 @@ openssl x509 -in root.crt -noout -issuer
 # If your CA provides a .pfx file, extract the components
 openssl pkcs12 -in portainer.pfx -nokeys -clcerts -out server.crt
 openssl pkcs12 -in portainer.pfx -nokeys -cacerts -out chain.crt
-openssl pkcs12 -in portainer.pfx -nocerts -nodes -out server.key
+openssl pkcs12 -in portainer.pfx -nocerts -noenc -out server.key
 
 # Assemble chain
+# Ensure chain.crt contains only intermediate CA cert(s), not the root CA
 cat server.crt chain.crt > fullchain.pem
 ```
 
 ## Conclusion
 
-Proper certificate chain configuration is essential for enterprise PKI environments. The key principle is: the certificate file (`cert.pem`) provided to Portainer must contain the server certificate followed by all intermediate certificates. The root CA is intentionally omitted because clients already trust it. Verify your chain with `openssl s_client` before deploying to production to avoid unexpected trust errors.
+Proper certificate chain configuration is essential for enterprise PKI environments. The key principle is: the certificate file (`cert.pem`) provided to Portainer must contain the server certificate followed by all intermediate certificates. The root CA is intentionally omitted because clients are expected to trust it separately. Verify your chain with `openssl s_client` against your trusted root before deploying to production to avoid unexpected trust errors.
