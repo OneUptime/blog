@@ -13,8 +13,9 @@ GitLab CI/CD provides a powerful pipeline platform that integrates well with Por
 ## Prerequisites
 
 - GitLab repository with your application
+- GitLab Runner configured to run Docker jobs (`docker:dind` requires runner support and privileged mode)
 - GitLab Container Registry or external Docker registry
-- Portainer with a container or stack webhook configured
+- Portainer with a service, container, or stack webhook configured on a non-Edge environment (stack webhooks are a Portainer Business Edition feature)
 - GitLab CI/CD variables configured
 
 ## Step 1: Configure GitLab CI/CD Variables
@@ -62,13 +63,18 @@ build:
     DOCKER_TLS_CERTDIR: "/certs"
   before_script:
     # Log in to GitLab Container Registry
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
     # Build image tagged with commit SHA
     - docker build -t $DOCKER_IMAGE:$DOCKER_TAG -t $DOCKER_IMAGE:latest .
     # Push both tags
     - docker push $DOCKER_IMAGE:$DOCKER_TAG
     - docker push $DOCKER_IMAGE:latest
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        docker tag $DOCKER_IMAGE:$DOCKER_TAG $DOCKER_IMAGE:$CI_COMMIT_TAG
+        docker push $DOCKER_IMAGE:$CI_COMMIT_TAG
+      fi
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_TAG
@@ -85,7 +91,7 @@ deploy-staging:
       HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
         -X POST \
         --max-time 30 \
-        "${PORTAINER_WEBHOOK_STAGING}")
+        "${PORTAINER_WEBHOOK_STAGING}?tag=${DOCKER_TAG}")
 
       if [ "$HTTP_STATUS" = "204" ]; then
         echo "✓ Staging deployment triggered"
@@ -111,7 +117,7 @@ deploy-production:
       HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
         -X POST \
         --max-time 30 \
-        "${PORTAINER_WEBHOOK_PROD}")
+        "${PORTAINER_WEBHOOK_PROD}?tag=${CI_COMMIT_TAG}")
 
       if [ "$HTTP_STATUS" = "204" ]; then
         echo "✓ Production deployment triggered"
@@ -124,7 +130,7 @@ deploy-production:
     url: https://production.example.com
   rules:
     - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/
-  when: manual   # Require manual approval for production
+      when: manual   # Require manual approval for production
 ```
 
 ## Step 3: Full Pipeline with Testing
@@ -169,7 +175,7 @@ build:
   variables:
     DOCKER_TLS_CERTDIR: "/certs"
   before_script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
     - |
       # Build with build args
@@ -189,23 +195,23 @@ build:
         docker tag $DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA $DOCKER_IMAGE:$CI_COMMIT_TAG
         docker push $DOCKER_IMAGE:$CI_COMMIT_TAG
       fi
-  only:
-    - main
-    - tags
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
 
 # Deploy to staging
 deploy-staging:
   stage: deploy
   image: alpine:latest
   before_script:
-    - apk add --no-cache curl jq
+    - apk add --no-cache curl
   script:
     - |
       echo "=== Deploying to Staging ==="
       echo "Image: $DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA"
 
       RESPONSE=$(curl -s -w "\n%{http_code}" \
-        -X POST "${PORTAINER_WEBHOOK_STAGING}" \
+        -X POST "${PORTAINER_WEBHOOK_STAGING}?tag=${CI_COMMIT_SHORT_SHA}" \
         --max-time 60)
 
       HTTP_CODE=$(echo "$RESPONSE" | tail -1)
@@ -219,8 +225,8 @@ deploy-staging:
   environment:
     name: staging
     url: https://staging.myapp.com
-  only:
-    - main
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
 
 # Verify staging deployment
 verify-staging:
@@ -250,8 +256,8 @@ verify-staging:
 
       echo "✗ Staging health check timed out"
       exit 1
-  only:
-    - main
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
   needs:
     - deploy-staging
 
@@ -267,7 +273,7 @@ deploy-production:
       echo "Version: $CI_COMMIT_TAG"
 
       HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-        -X POST "${PORTAINER_WEBHOOK_PROD}" \
+        -X POST "${PORTAINER_WEBHOOK_PROD}?tag=${CI_COMMIT_TAG}" \
         --max-time 60)
 
       if [ "$HTTP_STATUS" = "204" ]; then
@@ -279,15 +285,15 @@ deploy-production:
   environment:
     name: production
     url: https://myapp.com
-  when: manual
-  only:
-    - tags
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: manual
 ```
 
 ## Step 4: Rollback Pipeline
 
 ```yaml
-# .gitlab-ci.yml addition: manual rollback
+# .gitlab-ci.yml addition: manual rollback to a specific image tag
 rollback:
   stage: deploy
   image: alpine:latest
@@ -295,16 +301,30 @@ rollback:
     - apk add --no-cache curl
   script:
     - |
-      echo "Rolling back production to previous version..."
-      curl -X POST "${PORTAINER_WEBHOOK_PROD}"
-      echo "✓ Rollback triggered"
+      if [ -z "$ROLLBACK_TAG" ]; then
+        echo "Set ROLLBACK_TAG to the image tag you want to redeploy"
+        exit 1
+      fi
+
+      echo "Rolling back production to ${ROLLBACK_TAG}..."
+      HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+        -X POST "${PORTAINER_WEBHOOK_PROD}?tag=${ROLLBACK_TAG}" \
+        --max-time 60)
+
+      if [ "$HTTP_STATUS" = "204" ]; then
+        echo "✓ Rollback triggered for ${ROLLBACK_TAG}"
+      else
+        echo "✗ Rollback failed: HTTP $HTTP_STATUS"
+        exit 1
+      fi
   environment:
     name: production
-    action: stop   # Marks environment as stopped for rollback tracking
-  when: manual
-  only:
-    - main
-    - tags
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+    - if: $CI_COMMIT_TAG
+      when: manual
 ```
 
 ## Step 5: Notifications
@@ -329,8 +349,8 @@ notify-success:
           \"username\": \"GitLab CI\"
         }"
   when: on_success
-  only:
-    - tags
+  rules:
+    - if: $CI_COMMIT_TAG
 
 notify-failure:
   <<: *notify
@@ -340,12 +360,12 @@ notify-failure:
       curl -X POST "${SLACK_WEBHOOK_URL}" \
         -H "Content-Type: application/json" \
         -d "{
-          \"text\": \"❌ Deployment FAILED for ${CI_PROJECT_NAME} - check pipeline ${CI_PIPELINE_URL}\",
+          \"text\": \"❌ Pipeline FAILED for ${CI_PROJECT_NAME} - check pipeline ${CI_PIPELINE_URL}\",
           \"username\": \"GitLab CI\"
         }"
   when: on_failure
-  only:
-    - tags
+  rules:
+    - if: $CI_COMMIT_TAG
 ```
 
 ## Conclusion
