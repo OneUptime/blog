@@ -22,8 +22,10 @@ iface bond0 inet static
   bond-slaves eth0 eth1
   bond-mode active-backup
   bond-miimon 100
-  bond-primary eth0           # eth0 is preferred primary
-  bond-primary-reselect always  # Fail back to primary when it recovers
+  # eth0 is preferred primary
+  bond-primary eth0
+  # Fail back to primary when it recovers
+  bond-primary-reselect always
 ```
 
 ## Primary Reselect Modes
@@ -75,7 +77,17 @@ Name=eth0
 
 [Network]
 Bond=bond0
-PrimarySlave=yes   # eth0 is primary
+# eth0 is primary
+PrimarySlave=yes
+```
+
+```ini
+# /etc/systemd/network/eth1.network
+[Match]
+Name=eth1
+
+[Network]
+Bond=bond0
 ```
 
 ## nmcli: Set Primary Slave
