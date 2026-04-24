@@ -19,9 +19,9 @@ You can specify either `minAvailable` OR `maxUnavailable`, not both.
 
 ## Creating PDBs via Portainer
 
-In Portainer: **Kubernetes > Namespaces > Your Namespace > Applications > YAML**
+In Portainer: **Kubernetes > Applications > Create from code > Manifest**
 
-Or navigate to the namespace and create a resource via YAML.
+Then select the namespace and paste the resource YAML into the web editor.
 
 ```yaml
 # pdb-examples.yml - deploy via Portainer
@@ -77,10 +77,10 @@ spec:
 
 ## PDB and HPA Interaction
 
-When using PDBs with HPA, ensure the minimum available is lower than the minimum replicas:
+When using PDBs with HPA, ensure the PDB still allows an eviction when the HPA is at `minReplicas`:
 
 ```yaml
-# Deployment: 3 replicas minimum
+# Deployment: currently at 5 replicas
 spec:
   replicas: 5
 
@@ -92,8 +92,8 @@ spec:
 # PDB: allow losing up to 1 pod
 spec:
   maxUnavailable: 1
-# This means: even if HPA scales down to 3, you can drain 1 node
-# and 2 pods will continue serving traffic
+# This means: even if HPA scales down to 3, the PDB still allows
+# 1 pod eviction during a drain, leaving 2 pods serving traffic
 ```
 
 ## Viewing PDB Status
@@ -104,10 +104,10 @@ kubectl get pdb -n production
 
 # Detailed PDB information
 kubectl describe pdb web-app-pdb -n production
-# Output shows:
-# Allowed disruptions: X (current available - minAvailable)
-# Current: N pods
-# Desired: N pods
+# Output includes:
+# Allowed disruptions: X
+# Current healthy: N pods
+# Desired healthy: N pods
 
 # Via Portainer API
 curl -s \
@@ -158,7 +158,7 @@ kubectl get pdb -n production
 # Options:
 # 1. Wait for HPA to scale up more replicas
 # 2. Temporarily adjust the PDB (risky in production)
-# 3. Use --force with kubectl drain (violates PDB - use only for emergencies)
+# 3. Use --disable-eviction with kubectl drain (bypasses PDB checks by deleting pods directly - use only for emergencies)
 ```
 
 ## Best Practices
@@ -170,10 +170,10 @@ spec:
 
 # Good: Allow some disruption
 spec:
-  maxUnavailable: 1   # Can always drain 1 node
+  maxUnavailable: 1   # Allows 1 pod eviction at a time
 
 # Best: Combine with enough replicas for HA
-# 3 replicas + maxUnavailable: 1 = always 2 pods serving traffic
+# 3 replicas + maxUnavailable: 1 lets you evict 1 pod while 2 remain serving traffic
 ```
 
 ## Conclusion
