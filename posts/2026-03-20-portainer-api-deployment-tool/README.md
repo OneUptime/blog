@@ -54,7 +54,7 @@ pip install -r requirements.txt
 # config.yaml
 portainer:
   url: https://portainer.example.com
-  api_key: your-api-key-here
+  api_key: your-api-key-here  # Or set PORTAINER_API_KEY in the environment
 
 environments:
   development:
@@ -78,6 +78,7 @@ import click
 import yaml
 import requests
 import json
+import os
 import sys
 from rich.console import Console
 from rich.table import Table
@@ -101,8 +102,11 @@ class PortainerClient:
     def get_stacks(self, endpoint_id):
         """List all stacks for an endpoint."""
         resp = requests.get(
-            f"{self.url}/api/stacks?endpointId={endpoint_id}",
-            headers=self.headers
+            f"{self.url}/api/stacks",
+            headers=self.headers,
+            params={
+                "filters": json.dumps({"EndpointID": str(endpoint_id)})
+            }
         )
         resp.raise_for_status()
         return resp.json()
@@ -134,8 +138,7 @@ class PortainerClient:
         """Update an existing stack."""
         payload = {
             "StackFileContent": compose_content,
-            "Env": env_vars or [],
-            "Prune": True
+            "Env": env_vars or []
         }
         resp = requests.put(
             f"{self.url}/api/stacks/{stack_id}?endpointId={endpoint_id}",
@@ -163,9 +166,14 @@ def cli(ctx, config):
     ctx.ensure_object(dict)
     ctx.obj['config'] = load_config(config)
     cfg = ctx.obj['config']
+    api_key = os.environ.get('PORTAINER_API_KEY') or cfg['portainer'].get('api_key')
+    if not api_key:
+        raise click.ClickException(
+            "Set portainer.api_key in config.yaml or PORTAINER_API_KEY in the environment"
+        )
     ctx.obj['client'] = PortainerClient(
         cfg['portainer']['url'],
-        cfg['portainer']['api_key']
+        api_key
     )
 
 
@@ -190,7 +198,12 @@ def list_stacks(ctx, environment):
     table.add_column("Status", style="yellow")
 
     for stack in stacks:
-        status = "Running" if stack.get('Status') == 1 else "Stopped"
+        if stack.get('Status') == 1:
+            status = "Active"
+        elif stack.get('Status') == 2:
+            status = "Inactive"
+        else:
+            status = "Unknown"
         table.add_row(str(stack['Id']), stack['Name'], status)
 
     console.print(table)
