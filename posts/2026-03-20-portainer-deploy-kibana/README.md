@@ -12,7 +12,7 @@ Kibana is the visualization layer for the Elastic Stack, providing interactive c
 
 ## Prerequisites
 
-- Elasticsearch running (see Elasticsearch deployment guide)
+- Elasticsearch running on the same version as Kibana (`8.13.0` in this example; see Elasticsearch deployment guide)
 - Portainer installed
 
 ## Deploy as a Stack
@@ -26,14 +26,13 @@ services:
     container_name: kibana
     environment:
       # Elasticsearch connection
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_HOSTS='["http://elasticsearch:9200"]'
       - ELASTICSEARCH_USERNAME=kibana_system
       - ELASTICSEARCH_PASSWORD=kibana_system_password
       # Server settings
       - SERVER_NAME=kibana
       - SERVER_HOST=0.0.0.0
-      # Disable telemetry
-      - TELEMETRY_ENABLED=false
+      # Optional feature settings
       - XPACK_REPORTING_ENABLED=false
     volumes:
       - kibana_data:/usr/share/kibana/data
@@ -43,7 +42,7 @@ services:
       - elastic-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:5601/api/status | grep -q '\"overall\":{\"level\":\"available\"'"]
+      test: ["CMD-SHELL", "curl -fsS -u elastic:elastic_password http://localhost:5601/api/status | grep -q '\"overall\":{\"level\":\"available\"'"]
       interval: 30s
       timeout: 10s
       retries: 10
@@ -68,7 +67,7 @@ curl -X POST "http://localhost:9200/_security/user/kibana_system/_password" \
   -d '{"password": "kibana_system_password"}'
 ```
 
-## Creating Index Patterns
+## Creating Data Views
 
 1. Access Kibana at `http://<host>:5601`
 2. Log in with `elastic` / `elastic_password`
@@ -135,6 +134,7 @@ server {
 
     location / {
         proxy_pass http://kibana:5601;
+        proxy_set_header Authorization "";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
@@ -143,4 +143,4 @@ server {
 
 ## Conclusion
 
-Kibana deployed via Portainer transforms Elasticsearch data into interactive visualizations and dashboards. The healthcheck ensures Kibana only becomes available when fully initialized, preventing connection errors in dependent services. With data views and dashboard capabilities, you gain powerful log analysis and monitoring insights.
+Kibana deployed via Portainer transforms Elasticsearch data into interactive visualizations and dashboards. The healthcheck only marks Kibana healthy when fully initialized, which helps prevent connection errors in dependent services. With data views and dashboard capabilities, you gain powerful log analysis and monitoring insights.
