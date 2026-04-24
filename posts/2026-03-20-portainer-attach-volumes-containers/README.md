@@ -52,16 +52,16 @@ Portainer simplifies this process.
 ### Step 4: Deploy the Updated Container
 
 1. Click **Deploy the container**.
-2. If the old container is stopped, deploy with the same name.
-3. The new container has the same config plus the new volume.
+2. When Portainer asks for confirmation, click **Replace**.
+3. The replacement container keeps the same name and config, plus the new volume.
 
 ## Method 2: Docker Compose Stack Update
 
-For stack-managed containers, update the compose file:
+For stack-managed containers, update the Compose file.
+
+Original stack:
 
 ```yaml
-# Original stack:
-
 services:
   app:
     image: myorg/myapp:latest
@@ -69,7 +69,13 @@ services:
     volumes:
       - app_data:/app/data     # Existing volume
 
-# Updated stack (add new volumes):
+volumes:
+  app_data:
+```
+
+Updated stack (add new volumes):
+
+```yaml
 services:
   app:
     image: myorg/myapp:latest
@@ -80,35 +86,32 @@ services:
       - app_logs:/app/logs        # Another new volume
 
 volumes:
-  app_data:        # Existing - data preserved
-  app_uploads:     # New
-  app_logs:        # New
+  app_data:     # Existing - data preserved
+  app_uploads:  # New
+  app_logs:     # New
 ```
 
 In Portainer:
 1. Navigate to **Stacks**.
 2. Click the stack name.
-3. Click **Editor** and update the compose.
-4. Click **Update the stack**.
+3. If the stack was deployed using the Web Editor or uploaded, click **Editor** and update the Compose file. For Git-backed stacks, update the Compose file in the repository instead.
+4. Click **Update the stack**. For Git-backed stacks, redeploy after the repository change.
 
 Portainer recreates containers with the new volume configuration while preserving existing named volume data.
 
 ## Method 3: Access Container Data Without Adding Volumes
 
-If you just need to read data from a running container without recreating it, use exec or copy:
+If you just need to inspect or copy data from a running container without recreating it, use exec or copy:
 
 ```bash
+# Inspect files inside a running container:
+docker exec my-container ls -la /app/data
+
 # Copy files OUT of a running container:
 docker cp my-container:/app/data/important.db ./backup-important.db
 
 # Copy files INTO a running container:
 docker cp ./new-config.yaml my-container:/app/config.yaml
-
-# Access container filesystem via a temporary container:
-docker run --rm \
-  --volumes-from my-container \
-  alpine:latest \
-  ls -la /app/data
 ```
 
 ## Method 4: Volumes-from Pattern
@@ -116,8 +119,10 @@ docker run --rm \
 Share volumes from an existing container to a new one:
 
 ```bash
-# Container A has data on /app/data
-docker run -d --name app-a myapp:latest
+# Container A has a volume mounted at /app/data
+docker run -d --name app-a \
+  -v app_data:/app/data \
+  myapp:latest
 
 # Container B shares all volumes from Container A
 docker run -d --name app-b \
@@ -129,44 +134,23 @@ docker run -d --name app-b \
 
 In Portainer, this can be done by using the same named volume in multiple containers.
 
-## Method 5: Live Data Migration (Zero Downtime Approach)
+## Method 5: Near-Zero Downtime Rollout
 
-For production containers that can't afford downtime:
+For production workloads that can't afford a hard stop on a single container, start a replacement container with the new volume, verify it, then switch traffic over using your reverse proxy or load balancer. A single standalone container still has to be recreated to add the volume.
 
 ```bash
-#!/bin/bash
-# zero-downtime-volume-add.sh
-# Add a volume to a production container with minimal downtime
+# Start a replacement container with the extra volume on a temporary port.
+# Reuse the current container's image, env vars, and existing mounts as needed.
+docker volume create app-uploads
 
-CONTAINER_NAME="my-prod-app"
-NEW_VOLUME="app-uploads"
-MOUNT_PATH="/app/uploads"
-
-echo "Creating new volume: ${NEW_VOLUME}"
-docker volume create "${NEW_VOLUME}"
-
-echo "Getting container configuration..."
-# Export current container config
-CONFIG=$(docker inspect "${CONTAINER_NAME}" | jq '.[0]')
-
-echo "Stopping container: ${CONTAINER_NAME}"
-docker stop "${CONTAINER_NAME}"
-
-echo "Removing old container..."
-docker rm "${CONTAINER_NAME}"
-
-echo "Starting container with new volume..."
-# Recreate with original config + new volume
-# (In practice, recreate via Portainer or docker run with all original flags)
 docker run -d \
-  --name "${CONTAINER_NAME}" \
+  --name my-prod-app-v2 \
+  -p 127.0.0.1:8081:8080 \
   --restart unless-stopped \
-  $(docker inspect "${CONTAINER_NAME}_backup" --format '{{range .Config.Env}}-e {{.}} {{end}}') \
-  -v "${NEW_VOLUME}:${MOUNT_PATH}" \
-  $(docker inspect "${CONTAINER_NAME}_backup" --format '{{.Config.Image}}')
+  -v app-uploads:/app/uploads \
+  myorg/myapp:latest
 
-echo "Container restarted with new volume"
-echo "Total downtime: $(docker inspect ${CONTAINER_NAME} --format '{{.State.StartedAt}}')"
+# Verify my-prod-app-v2, then switch traffic to it and remove the old container.
 ```
 
 ## Best Practices for Volume Planning
@@ -185,6 +169,13 @@ services:
       - app_cache:/app/cache       # Cache directory
       - app_tmp:/tmp               # Temporary files
     # Even if some are empty now, they're ready when needed
+
+volumes:
+  app_data:
+  app_uploads:
+  app_logs:
+  app_cache:
+  app_tmp:
 ```
 
 ## Verify Volume Attachment
@@ -205,4 +196,4 @@ In Portainer: Container details → **Inspect** tab → `Mounts` section.
 
 ## Conclusion
 
-While Docker requires container recreation to add volumes, Portainer's edit and recreate flow makes this process straightforward. Plan your volume configuration before initial deployment to minimize recreations in production. When you do need to add volumes, use the duplicate/edit approach for individual containers or update the compose file for stack-managed workloads. For data access without recreation, use `docker cp` or exec to access container data directly.
+While Docker requires container recreation to add volumes, Portainer's edit and recreate flow makes this process straightforward. Plan your volume configuration before initial deployment to minimize recreations in production. When you do need to add volumes, use the duplicate/edit approach for individual containers or update the Compose file for stack-managed workloads. For data access without recreation, use `docker exec` or `docker cp` to work with container data directly.
