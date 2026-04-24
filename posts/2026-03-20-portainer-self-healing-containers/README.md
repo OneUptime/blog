@@ -9,17 +9,17 @@ Description: Build a self-healing container system that automatically detects an
 ## Introduction
 
 A self-healing container system automatically detects unhealthy containers and takes corrective action-restarting, re-deploying, or alerting as appropriate. By combining Docker health checks, restart policies, and the Portainer API, you can build a system that maintains high availability with minimal human intervention.
+Docker restart policies recover containers when the main process exits, while health checks mark degraded containers as unhealthy for higher-level automation to act on.
 
 ## Layer 1: Docker Restart Policies
 
 The first line of defense is Docker's built-in restart policies:
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
-    restart: unless-stopped  # Restart on failure, unless manually stopped
+    restart: unless-stopped  # Restart unless the container is explicitly stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -29,7 +29,7 @@ services:
 
   db:
     image: postgres:15
-    restart: always  # Always restart regardless of exit code
+    restart: always  # Restart whenever the container stops
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 30s
@@ -45,15 +45,16 @@ services:
 import requests
 import time
 import logging
+import os
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
 
-PORTAINER_URL = "https://portainer.example.com"
-API_KEY = "your-api-key"
-ENDPOINT_ID = 1
+PORTAINER_URL = os.getenv("PORTAINER_URL", "https://portainer.example.com").rstrip("/")
+API_KEY = os.getenv("PORTAINER_API_KEY", "your-api-key")
+ENDPOINT_ID = int(os.getenv("ENDPOINT_ID", "1"))
 CHECK_INTERVAL = 30   # Check every 30 seconds
 UNHEALTHY_THRESHOLD = 3    # Remediate after 3 consecutive failures
 RESTART_COOLDOWN = 300     # 5 minutes between restarts
@@ -68,7 +69,22 @@ last_restart = {}
 
 
 def get_containers():
-    resp = requests.get(f"{base}/containers/json", params={"all": "true"}, headers=headers)
+    resp = requests.get(
+        f"{base}/containers/json",
+        params={"all": "true"},
+        headers=headers,
+        timeout=30
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def inspect_container(container_id: str) -> dict:
+    resp = requests.get(
+        f"{base}/containers/{container_id}/json",
+        headers=headers,
+        timeout=30
+    )
     resp.raise_for_status()
     return resp.json()
 
@@ -88,12 +104,14 @@ def restart_container(container_id: str, name: str) -> bool:
 
 
 def redeploy_stack(stack_name: str) -> bool:
-    """Trigger a stack redeploy for persistent failures."""
+    """Trigger a file-based stack redeploy for persistent failures."""
     resp = requests.get(
         f"{PORTAINER_URL}/api/stacks",
         params={"endpointId": ENDPOINT_ID},
-        headers=headers
+        headers=headers,
+        timeout=30
     )
+    resp.raise_for_status()
     stacks = resp.json()
     
     for stack in stacks:
@@ -102,15 +120,18 @@ def redeploy_stack(stack_name: str) -> bool:
             # Get current compose file
             file_resp = requests.get(
                 f"{PORTAINER_URL}/api/stacks/{stack_id}/file",
-                headers=headers
+                headers=headers,
+                timeout=30
             )
+            file_resp.raise_for_status()
             compose = file_resp.json().get('StackFileContent', '')
             
             # Update/redeploy
             update_resp = requests.put(
                 f"{PORTAINER_URL}/api/stacks/{stack_id}?endpointId={ENDPOINT_ID}",
                 headers=headers,
-                json={"StackFileContent": compose, "Prune": False}
+                json={"StackFileContent": compose, "Prune": False},
+                timeout=30
             )
             if update_resp.status_code == 200:
                 logger.info(f"Redeployed stack: {stack_name}")
@@ -153,8 +174,15 @@ def check_and_heal():
     
     for container in containers:
         name = container['Names'][0].replace('/', '')
+        container_id = container['Id']
         state = container['State']
-        health = container.get('Health', {}).get('Status', 'none')
+        health = 'none'
+
+        # ContainerList uses a smaller summary representation, so inspect is
+        # required to read State.Health.Status.
+        if state == 'running':
+            details = inspect_container(container_id)
+            health = details.get('State', {}).get('Health', {}).get('Status', 'none')
         
         needs_healing = False
         reason = ""
@@ -194,7 +222,6 @@ if __name__ == '__main__':
 
 ```yaml
 # self-healer-stack.yml
-version: '3.8'
 services:
   self-healer:
     image: python:3.11-slim
