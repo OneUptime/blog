@@ -22,9 +22,9 @@ IPvlan is similar to Macvlan but with a key difference: instead of assigning eac
 |--------|---------|--------|
 | MAC address | Unique per container | Shared (parent's MAC) |
 | Promiscuous mode | Required | Not required |
-| Cloud VMs | Often blocked | Usually works |
-| DHCP per container | Possible | Not possible |
-| Modes | bridge, passthru | L2, L3 |
+| Cloud VMs | Often blocked by extra-MAC restrictions | Better fit when extra MACs are restricted |
+| DHCP per container | Not built in | Not built in |
+| Modes | bridge, vepa, passthru, private | L2, L3, L3S |
 
 ## IPvlan Modes
 
@@ -48,10 +48,10 @@ Driver:  ipvlan
 ```text
 Subnet:   192.168.1.0/24
 Gateway:  192.168.1.1
-IP Range: 192.168.1.200/26
+IP Range: 192.168.1.192/26
 ```
 
-5. Advanced options:
+5. Driver options:
 
 ```text
 parent: eth0
@@ -69,7 +69,7 @@ docker network create \
   --driver ipvlan \
   --subnet 192.168.1.0/24 \
   --gateway 192.168.1.1 \
-  --ip-range 192.168.1.200/26 \
+  --ip-range 192.168.1.192/26 \
   --opt parent=eth0 \
   ipvlan-l2
 
@@ -88,25 +88,22 @@ docker network inspect ipvlan-l2
 ## Step 3: Use IPvlan in Docker Compose
 
 ```yaml
-# docker-compose.yml with IPvlan L2
-version: "3.8"
+# compose.yaml using a pre-created IPvlan L2 network
 
 services:
-  # Service with dedicated IP on physical network
+  # Service attached directly to the physical network
   iot-gateway:
     image: myorg/iot-gateway:latest
     restart: unless-stopped
     networks:
-      ipvlan-l2:
-        ipv4_address: 192.168.1.205   # Fixed IP from the ip-range
+      - ipvlan-l2
 
   # Web interface accessible on physical network
   grafana:
     image: grafana/grafana:latest
     restart: unless-stopped
     networks:
-      ipvlan-l2:
-        ipv4_address: 192.168.1.206
+      - ipvlan-l2
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
 
@@ -141,22 +138,22 @@ For L3 containers to be reachable from the rest of the network, add a static rou
 
 ```text
 # On your network router:
-route add 10.10.0.0/24 via <docker-host-ip>
+Static route: 10.10.0.0/24 via <docker-host-ip>
 ```
 
 ## Step 5: IPvlan vs. Macvlan Decision Tree
 
 ```text
-Are you on a cloud VM (AWS EC2, GCP, Azure)?
-  → YES: Use IPvlan (Macvlan often blocked by hypervisor)
+Are you in an environment that restricts additional MAC addresses (for example, many cloud VMs)?
+  → YES: Use IPvlan
   → NO: Either works
 
-Does your switch/router allow MAC address learning?
+Does your network allow multiple MAC addresses on the same port?
   → YES: Macvlan or IPvlan both work
-  → NO (MAC filtering/portfast): Use IPvlan
+  → NO (MAC filtering/port security): Use IPvlan
 
-Do you need DHCP per container?
-  → YES: Use Macvlan
+Do you need addresses assigned by the upstream LAN DHCP server?
+  → YES: Docker's built-in Macvlan/IPvlan setup is not enough; use static IPs or a DHCP-capable IPAM/plugin
   → NO: Either works
 
 Do you need containers on a different subnet?
@@ -166,7 +163,7 @@ Do you need containers on a different subnet?
 
 ## Step 6: Cloud VM Configuration
 
-On cloud VMs, enable IP forwarding and disable source/destination check:
+On AWS EC2, disable source/destination check, and on the Docker host enable IP forwarding:
 
 ```bash
 # AWS EC2: disable source/destination check via AWS console or CLI
@@ -191,8 +188,9 @@ docker run -d \
   --ip 192.168.1.201 \
   alpine sleep 300
 
-# Container should be reachable from physical network:
+# From another machine on the same physical network:
 ping 192.168.1.201
+# Do not use the Docker host itself for this ping; the host namespace is intentionally isolated from ipvlan containers.
 
 # Check from inside the container:
 docker exec test-ipvlan ip addr show eth0
@@ -208,7 +206,7 @@ docker rm -f test-ipvlan
 
 ```bash
 # Error: "Error response from daemon: Invalid option: 'parent'"
-# → Ensure Docker version supports ipvlan (Docker 1.13+, Linux kernel 4.2+)
+# → Ensure your Docker Engine supports the ipvlan driver and the host is running Linux kernel 4.2+
 
 # Container not reachable:
 # → Check IP range doesn't conflict with DHCP pool
@@ -222,4 +220,4 @@ docker rm -f test-ipvlan
 
 ## Conclusion
 
-IPvlan networks in Portainer offer an alternative to Macvlan for giving containers direct network presence without unique MAC addresses. They work better in cloud environments, on managed switches with MAC filtering, and in scenarios where the hypervisor blocks promiscuous mode. Choose IPvlan L2 for simple LAN integration and IPvlan L3 for container subnets with the Docker host acting as a router.
+IPvlan networks in Portainer offer an alternative to Macvlan for giving containers direct network presence without unique MAC addresses. They are a better fit when multiple MAC addresses are filtered or limited, such as on some cloud platforms and managed switches. Choose IPvlan L2 for simple LAN integration and IPvlan L3 for container subnets with the Docker host acting as a router.
