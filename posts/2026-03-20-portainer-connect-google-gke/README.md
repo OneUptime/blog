@@ -13,6 +13,7 @@ Google Kubernetes Engine (GKE) is Google Cloud's managed Kubernetes service. Con
 ## Prerequisites
 
 - Google Cloud SDK (`gcloud`) installed and authenticated
+- `kubectl` installed
 - An existing GKE cluster
 - Portainer running and accessible
 
@@ -24,10 +25,10 @@ Google Kubernetes Engine (GKE) is Google Cloud's managed Kubernetes service. Con
 gcloud auth login
 
 # Get credentials for your GKE cluster
+KUBECONFIG=gke-portainer.kubeconfig \
 gcloud container clusters get-credentials my-gke-cluster \
-  --region us-central1 \
-  --project my-gcp-project \
-  --kubeconfig gke-portainer.kubeconfig
+  --location us-central1 \
+  --project my-gcp-project
 
 # Verify access
 kubectl --kubeconfig=gke-portainer.kubeconfig cluster-info
@@ -66,14 +67,14 @@ subjects:
 EOF
 ```
 
-## Step 3: Create a Static Token Kubeconfig
+## Step 3: Create a Self-Contained Kubeconfig
 
-GKE's default kubeconfig uses gcloud token refresh, which won't work with Portainer. Create a static service account token:
+GKE's default kubeconfig uses gcloud token refresh, which won't work with Portainer's kubeconfig import. Create a self-contained kubeconfig with a service account token:
 
 ```bash
 # Create a service account token (Kubernetes 1.24+)
 SA_TOKEN=$(kubectl --kubeconfig=gke-portainer.kubeconfig \
-  create token portainer-sa -n portainer --duration=8760h)
+  create token portainer-sa -n portainer)
 
 # Get cluster server
 CLUSTER_SERVER=$(kubectl --kubeconfig=gke-portainer.kubeconfig \
@@ -83,7 +84,7 @@ CLUSTER_SERVER=$(kubectl --kubeconfig=gke-portainer.kubeconfig \
 CLUSTER_CA=$(kubectl --kubeconfig=gke-portainer.kubeconfig \
   config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
 
-# Build static kubeconfig
+# Build self-contained kubeconfig
 cat > portainer-gke.kubeconfig << EOF
 apiVersion: v1
 kind: Config
@@ -104,51 +105,30 @@ contexts:
 current-context: portainer-gke
 EOF
 
-# Verify static kubeconfig works
+# Verify self-contained kubeconfig works
 kubectl --kubeconfig=portainer-gke.kubeconfig get namespaces
 ```
 
 ## Step 4: Import GKE into Portainer
 
-```bash
-TOKEN=$(curl -s -X POST \
-  https://portainer.example.com/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"adminpassword"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
+This kubeconfig import workflow is available in Portainer Business Edition and requires the cluster to have a load balancer configured and enabled.
 
-KUBECONFIG_B64=$(base64 -w 0 portainer-gke.kubeconfig)
-
-curl -X POST \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  https://portainer.example.com/api/endpoints/import \
-  -d "{
-    \"Name\": \"GKE US-Central Production\",
-    \"KubeConfig\": \"${KUBECONFIG_B64}\"
-  }"
-```
+1. In Portainer, go to **Environments** > **Add environment** > **Kubernetes**.
+2. Click **Start Wizard**, expand **More options**, and select **Import**.
+3. Upload `portainer-gke.kubeconfig`, give the environment a name, and click **Connect**.
 
 ## Method 2: Portainer Agent in GKE
 
+Portainer's Kubernetes agent should match your Portainer Server version. The safest approach is to let Portainer generate the command for you:
+
+1. In Portainer, go to **Environments** > **Add environment** > **Kubernetes**.
+2. Click **Start Wizard**, expand **More options**, and select **Agent**.
+3. Choose **Kubernetes via load balancer** or **Kubernetes via node port**.
+4. Copy the generated `kubectl apply ...` command and run it against your GKE cluster.
+
+After the agent is deployed, you can watch for the assigned service address:
+
 ```bash
-# Add Portainer Helm repo
-helm repo add portainer https://portainer.github.io/k8s/
-helm repo update
-
-# Install agent in GKE
-helm install portainer-agent \
-  --create-namespace \
-  -n portainer \
-  portainer/portainer-agent \
-  --kubeconfig=gke-portainer.kubeconfig
-
-# For external Portainer access, expose agent as LoadBalancer
-kubectl --kubeconfig=gke-portainer.kubeconfig \
-  patch svc portainer-agent -n portainer \
-  -p '{"spec":{"type":"LoadBalancer"}}'
-
-# Get external IP (takes 1-2 minutes)
 kubectl --kubeconfig=gke-portainer.kubeconfig \
   get svc portainer-agent -n portainer -w
 ```
@@ -157,33 +137,25 @@ kubectl --kubeconfig=gke-portainer.kubeconfig \
 
 ### GKE Autopilot
 
-GKE Autopilot enforces strict security policies. DaemonSets may be restricted. Use the Portainer Agent Deployment (not DaemonSet) for Autopilot:
-
-```bash
-helm install portainer-agent \
-  -n portainer \
-  portainer/portainer-agent \
-  --set deploymentKind=Deployment \
-  --kubeconfig=gke-portainer.kubeconfig
-```
+GKE Autopilot enforces stricter admission policies than Standard clusters. Portainer's current Kubernetes agent manifest uses a Deployment rather than a DaemonSet, which is a better fit for Autopilot.
 
 ### Private GKE Clusters
 
-Private GKE clusters don't have a public API endpoint:
+If your cluster's external control-plane endpoint is enabled, you can restrict direct API access to Portainer with master-authorized networks:
 ```bash
 # Add master-authorized networks to allow Portainer to connect
 gcloud container clusters update my-gke-cluster \
   --enable-master-authorized-networks \
   --master-authorized-networks PORTAINER_IP/32 \
-  --region us-central1
+  --location us-central1
 ```
 
-Or use the Portainer Agent which doesn't require API access from outside.
+If the external control-plane endpoint is disabled, an external Portainer instance can't use kubeconfig import directly. In that case, use the Portainer Agent or run Portainer from a network that can reach the cluster endpoint.
 
 ### Workload Identity
 
-If using GKE Workload Identity, ensure the Portainer service account has the necessary IAM bindings for any GCP APIs it needs to access.
+If Portainer or the agent needs to call GCP APIs, configure Workload Identity Federation for GKE so the Kubernetes service account is bound to an IAM service account with the required roles.
 
 ## Conclusion
 
-GKE integration with Portainer requires a static service account token rather than gcloud's OAuth-based token refresh. Once configured, the Portainer interface provides the same visual management capabilities for GKE as any other Kubernetes cluster. For private GKE clusters, the Portainer Agent is the cleanest solution as it initiates the connection from inside the cluster.
+For kubeconfig import, GKE integration with Portainer requires a self-contained kubeconfig rather than the default gcloud-generated config that depends on token refresh. Once configured, the Portainer interface provides the same visual management capabilities for GKE as any other Kubernetes cluster. For private clusters or environments where the control plane isn't reachable from Portainer, the Portainer Agent is usually the simpler connection method.
