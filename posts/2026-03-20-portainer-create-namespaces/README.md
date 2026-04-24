@@ -30,7 +30,7 @@ Multiple namespaces:
 
 1. Select your Kubernetes environment in Portainer
 2. Click **Namespaces** in the sidebar
-3. Click **+ Add namespace**
+3. Click **Add with form**
 4. Configure:
 
 ```text
@@ -38,16 +38,13 @@ Name:         production
 Annotations:
   description: "Production environment namespace"
   contact: ops@company.com
-Labels:
-  environment: production
-  team: platform
 ```
 
 5. Click **Create namespace**
 
 ## Step 2: Create Namespace via YAML
 
-In Portainer's YAML editor:
+In Portainer's **Create from manifest** editor:
 
 ```yaml
 apiVersion: v1
@@ -57,7 +54,7 @@ metadata:
   labels:
     environment: production
     team: platform
-    pod-security.kubernetes.io/enforce: restricted   # Pod security policy
+    pod-security.kubernetes.io/enforce: restricted   # Pod Security Admission
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted
   annotations:
@@ -107,14 +104,13 @@ metadata:
     purpose: monitoring
 ```
 
-## Step 4: Set Default Namespace in Portainer
+## Step 4: Restrict Access to the `default` Namespace in Portainer
 
-After creating namespaces, configure Portainer to show a specific namespace by default:
+After creating namespaces, you can make the built-in `default` namespace behave like a regular restricted namespace:
 
-1. In the Kubernetes environment, click **Settings**
-2. Set the **Default namespace** for the environment
-
-Or configure per-user default namespace in user settings.
+1. In the Kubernetes environment, expand **Cluster**
+2. Click **Setup**
+3. Enable **Restrict access to the default namespace**
 
 ## Step 5: Namespace Naming Conventions
 
@@ -141,8 +137,9 @@ testing
 Rules:
 - Lowercase alphanumeric and hyphens only
 - Must start with a letter or number
+- Must end with a letter or number
 - Maximum 63 characters
-- Cannot use `kube-` prefix (reserved for system)
+- Avoid the `kube-` prefix (reserved for Kubernetes system namespaces)
 
 ## Step 6: Reserved Namespaces
 
@@ -164,6 +161,8 @@ kubectl get namespaces
 # Output:
 # NAME              STATUS   AGE
 # default           Active   30d
+# kube-node-lease   Active   30d
+# kube-public       Active   30d
 # kube-system       Active   30d
 # production        Active   1m
 # staging           Active   1m
@@ -181,7 +180,7 @@ kubectl describe namespace production
 kubectl config set-context --current --namespace=production
 
 # Verify
-kubectl config view --minify | grep namespace
+kubectl config view --minify | grep namespace:
 
 # Now all kubectl commands use production namespace by default
 kubectl get pods    # Lists pods in production
@@ -235,6 +234,7 @@ spec:
 
 ---
 # 3. Default deny network policy
+# Requires a CNI plugin with NetworkPolicy support
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -249,4 +249,4 @@ spec:
 
 ## Conclusion
 
-Namespaces are the primary organizational unit in Kubernetes and the foundation for multi-tenancy. Portainer makes it easy to create namespaces and associate them with teams and resource quotas. Establish a clear naming convention from the start, and always apply resource quotas, limit ranges, and default network policies to new namespaces to ensure consistent governance across your cluster.
+Namespaces are the primary organizational unit in Kubernetes and the foundation for multi-tenancy. Portainer makes it easy to create namespaces and associate them with teams and resource quotas. Establish a clear naming convention from the start, and apply resource quotas, limit ranges, and, where your CNI supports NetworkPolicy enforcement, default network policies to new namespaces to ensure consistent governance across your cluster.
