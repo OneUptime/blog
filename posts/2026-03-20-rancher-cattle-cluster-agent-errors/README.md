@@ -13,8 +13,8 @@ The `cattle-cluster-agent` is the critical bridge between a downstream cluster a
 ## Architecture Overview
 
 The `cattle-cluster-agent` runs in the `cattle-system` namespace of every downstream cluster. It:
-- Maintains a WebSocket tunnel to the Rancher server.
-- Proxies `kubectl` commands from Rancher through the tunnel.
+- Maintains a tunnel to the Rancher server.
+- Proxies Kubernetes API requests from Rancher through the tunnel.
 - Handles cluster registration and configuration sync.
 
 ## Step 1: Check Agent Pod Status
@@ -42,14 +42,13 @@ kubectl get pod -n cattle-system -l app=cattle-cluster-agent -o json \
   | jq '.items[].spec.containers[].image'
 
 # For air-gapped environments, ensure the image is in your private registry
-# and the imagePullSecret is configured
-kubectl get secret -n cattle-system regcred
+# and verify any imagePullSecrets on the Deployment
+kubectl get deployment -n cattle-system cattle-cluster-agent -o json \
+  | jq '{images: [.spec.template.spec.containers[].image], imagePullSecrets: .spec.template.spec.imagePullSecrets}'
 kubectl describe pod -n cattle-system -l app=cattle-cluster-agent | grep "pull"
 
-# Override the agent image if pulling from a private registry
-kubectl set image deployment/cattle-cluster-agent \
-  -n cattle-system \
-  cluster-register=registry.example.com/rancher/rancher-agent:v2.9.0
+# Rancher normally manages the agent image reference. Fix the Rancher registry
+# settings first, then confirm the Deployment points at the expected registry.
 ```
 
 ### Connection Refused Errors
@@ -58,8 +57,9 @@ kubectl set image deployment/cattle-cluster-agent \
 # Agent logs showing: "dial tcp: connect: connection refused"
 # The Rancher server URL is unreachable
 
-# Verify the server URL from the agent's perspective
-kubectl get configmap -n cattle-system cattle-cluster-agent-config -o yaml
+# Verify the configured server URL from the Deployment
+kubectl get deployment -n cattle-system cattle-cluster-agent -o json \
+  | jq '.spec.template.spec.containers[].env[] | select(.name=="CATTLE_SERVER")'
 
 # Test from inside the cattle-system namespace
 kubectl run conn-test --rm -it \
@@ -74,11 +74,14 @@ kubectl run conn-test --rm -it \
 ```bash
 # Agent logs showing: "x509: certificate signed by unknown authority"
 
-# Check the CA certificate in the agent's ConfigMap
-kubectl get configmap -n cattle-system kube-root-ca.crt -o yaml
+# Check the checksum currently configured on the agent
+kubectl get deployment -n cattle-system cattle-cluster-agent -o json \
+  | jq '.spec.template.spec.containers[].env[] | select(.name=="CATTLE_CA_CHECKSUM")'
 
-# Get the correct CA checksum from Rancher
-curl -sk https://<rancher-url>/cacerts | sha256sum
+# If Rancher is using a private CA, get the expected checksum from Rancher's
+# `cacerts` setting
+curl -k -s -fL https://<rancher-url>/v3/settings/cacerts \
+  | jq -r .value | sha256sum | awk '{print $1}'
 
 # Update the agent with the correct CA checksum
 kubectl set env deployment/cattle-cluster-agent \
@@ -91,14 +94,13 @@ kubectl set env deployment/cattle-cluster-agent \
 ```bash
 # Agent logs showing: "forbidden: User 'system:serviceaccount:cattle-system:cattle'"
 
-# Check the ClusterRoleBinding for the cattle service account
-kubectl get clusterrolebinding cattle
+# Check that the agent service account exists
+kubectl get serviceaccount -n cattle-system cattle
 
-# Recreate if missing or corrupted
-kubectl create clusterrolebinding cattle \
-  --clusterrole=cluster-admin \
-  --serviceaccount=cattle-system:cattle \
-  --dry-run=client -o yaml | kubectl apply -f -
+# From the Rancher management cluster, force Rancher to reapply the agent
+# manifest so the expected RBAC objects are recreated
+kubectl annotate clusters.management.cattle.io <cluster-id> \
+  io.cattle.agent.force.deploy=true
 ```
 
 ## Step 3: Check the Agent Deployment Configuration
@@ -112,23 +114,22 @@ kubectl get deployment -n cattle-system cattle-cluster-agent -o json \
   | jq '.spec.template.spec.containers[].env[] | select(.name | IN(
       "CATTLE_SERVER",
       "CATTLE_CA_CHECKSUM",
-      "CATTLE_CLUSTER_AGENT_STOP_LOCAL_CLUSTER",
       "HTTP_PROXY",
       "HTTPS_PROXY",
       "NO_PROXY"
   ))'
 ```
 
-## Step 4: Force Re-registration
+## Step 4: Force Agent Re-deploy
 
 ```bash
-# Delete the agent deployment - Rancher will attempt to recreate it
-kubectl delete deployment -n cattle-system cattle-cluster-agent
+# Restart the agent on the downstream cluster
+kubectl rollout restart deployment/cattle-cluster-agent -n cattle-system
 
-# If Rancher can't reach the cluster to recreate it, manually apply:
-# 1. From Rancher UI: Cluster → Registration → copy the kubectl command
-# 2. Run on the downstream cluster:
-kubectl apply -f <registration-manifest-url>
+# If Rancher needs to regenerate the full agent manifest, force a redeploy
+# from the Rancher management cluster
+kubectl annotate clusters.management.cattle.io <cluster-id> \
+  io.cattle.agent.force.deploy=true
 ```
 
 ## Step 5: Check Node-Level Connectivity
@@ -160,16 +161,21 @@ EOF
 ## Step 6: Check Agent Resource Usage
 
 ```bash
-# The agent should not be CPU or memory constrained
+# The agent should not be CPU or memory constrained (requires Metrics Server)
 kubectl top pod -n cattle-system -l app=cattle-cluster-agent
+```
 
-# Increase resources if needed
-kubectl patch deployment cattle-cluster-agent -n cattle-system --type=json -p='[
-  {"op":"replace","path":"/spec/template/spec/containers/0/resources/requests/memory","value":"256Mi"},
-  {"op":"replace","path":"/spec/template/spec/containers/0/resources/limits/memory","value":"1Gi"}
-]'
+Rancher does not set default CPU or memory requests for the `cattle-cluster-agent`. If the pod is starved, configure reservations through Rancher's cluster agent customization instead of patching the managed Deployment directly:
+
+```yaml
+spec:
+  clusterAgentDeploymentCustomization:
+    overrideResourceRequirements:
+      requests:
+        cpu: 50m
+        memory: 100Mi
 ```
 
 ## Conclusion
 
-The `cattle-cluster-agent` is a single point of failure for Rancher's management connectivity to downstream clusters. Regular monitoring of agent pod status, restart counts, and log output is essential. The most common failures - TLS errors, connection refusals, and RBAC misconfiguration - all have clear signatures in the logs and can be resolved with targeted fixes. Adding an observability alert on `cattle-cluster-agent` restart count is highly recommended for production environments.
+The `cattle-cluster-agent` is the primary path Rancher uses for management connectivity to downstream clusters. On Rancher-provisioned RKE2 and K3s clusters, Rancher can fall back to the `rancher-system-agent` if the cluster agent is unavailable, but imported clusters rely directly on the cluster agent. Regular monitoring of agent pod status, restart counts, and log output is essential. The most common failures - TLS errors, connection refusals, and RBAC misconfiguration - all have clear signatures in the logs and can be resolved with targeted fixes. Adding an observability alert on `cattle-cluster-agent` restart count is highly recommended for production environments.
