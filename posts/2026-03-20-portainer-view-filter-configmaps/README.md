@@ -18,18 +18,18 @@ As Kubernetes clusters grow, the number of ConfigMaps can become large and unwie
 ## Step 1: Navigate to ConfigMaps in Portainer
 
 1. Select your Kubernetes environment in Portainer
-2. Select a namespace from the dropdown (or "All namespaces")
+2. Click **Filter** and select one or more namespaces (or leave all namespaces selected)
 3. In the sidebar, click **ConfigMaps & Secrets**
 4. Select the **ConfigMaps** tab
 
 The list displays:
 ```text
-Name                 Namespace      Keys    Created
-app-config           production     8       2 days ago
-db-config            production     5       2 days ago
-nginx-config         production     2       1 day ago
-feature-flags        production     12      3 hours ago
-monitoring-config    monitoring     6       5 days ago
+Name                 Namespace      Created
+app-config           production     2026-03-18 09:14:22
+db-config            production     2026-03-18 09:15:03
+nginx-config         production     2026-03-19 16:40:03
+feature-flags        production     2026-03-20 08:11:27
+monitoring-config    monitoring     2026-03-15 07:32:10
 ```
 
 ## Step 2: Search and Filter ConfigMaps
@@ -44,17 +44,16 @@ In the Portainer ConfigMaps list:
 
 3. Sort by clicking column headers:
    - Sort by **Name** for alphabetical browsing
-   - Sort by **Created** to find recently modified configs
+   - Sort by **Created** to find recently created configs
 
 ## Step 3: View ConfigMap Details in Portainer
 
-Click on a ConfigMap name to view its details:
+Click on a ConfigMap name to open it:
 
-1. **Metadata section**: name, namespace, labels, annotations, creation time
-2. **Data section**: all key-value pairs with their values
-3. **Events section**: recent events related to this ConfigMap
+1. Review metadata such as name, namespace, labels, annotations, and creation time
+2. Review the **Data** section for the key-value pairs stored in the ConfigMap
 
-For large multi-line values (like config files), the detail view shows the full content.
+ConfigMaps marked as **external** were created outside Portainer, so Portainer may show limited information for them.
 
 ## Step 4: Filter ConfigMaps via kubectl
 
@@ -103,8 +102,7 @@ kubectl get configmap app-config -n production \
 
 # Get all keys (not values)
 kubectl get configmap app-config -n production \
-  -o jsonpath='{.data}' | \
-  python3 -c "import sys, json; print('\n'.join(json.load(sys.stdin).keys()))"
+  -o json | jq -r '(.data // {}) | keys[]'
 
 # View large config file values
 kubectl get configmap nginx-config -n production \
@@ -122,17 +120,25 @@ kubectl get pods -n production -o json | \
     .spec.volumes[]?.configMap.name == "app-config"
   ) | .metadata.name'
 
-# Find pods that reference a ConfigMap via envFrom
+# Find pods that reference a ConfigMap via envFrom or env.valueFrom
 kubectl get pods -n production -o json | \
   jq -r '.items[] | select(
-    .spec.containers[].envFrom[]?.configMapRef.name == "app-config"
+    [(.spec.containers[]?.envFrom[]?.configMapRef.name),
+     (.spec.containers[]?.env[]?.valueFrom.configMapKeyRef.name),
+     (.spec.initContainers[]?.envFrom[]?.configMapRef.name),
+     (.spec.initContainers[]?.env[]?.valueFrom.configMapKeyRef.name)] |
+    any(. == "app-config")
   ) | .metadata.name'
 
 # Find deployments using a ConfigMap
 kubectl get deployments -n production -o json | \
   jq -r '.items[] | select(
-    (.spec.template.spec.volumes[]?.configMap.name == "app-config") or
-    (.spec.template.spec.containers[].envFrom[]?.configMapRef.name == "app-config")
+    [(.spec.template.spec.volumes[]?.configMap.name),
+     (.spec.template.spec.containers[]?.envFrom[]?.configMapRef.name),
+     (.spec.template.spec.containers[]?.env[]?.valueFrom.configMapKeyRef.name),
+     (.spec.template.spec.initContainers[]?.envFrom[]?.configMapRef.name),
+     (.spec.template.spec.initContainers[]?.env[]?.valueFrom.configMapKeyRef.name)] |
+    any(. == "app-config")
   ) | .metadata.name'
 ```
 
@@ -153,7 +159,10 @@ echo "ConfigMaps referenced by pods:"
 kubectl get pods -n $NAMESPACE -o json | \
   jq -r '[.items[].spec |
     (.volumes[]?.configMap.name // empty),
-    (.containers[].envFrom[]?.configMapRef.name // empty)
+    (.containers[]?.envFrom[]?.configMapRef.name // empty),
+    (.containers[]?.env[]?.valueFrom.configMapKeyRef.name // empty),
+    (.initContainers[]?.envFrom[]?.configMapRef.name // empty),
+    (.initContainers[]?.env[]?.valueFrom.configMapKeyRef.name // empty)
   ] | unique | .[]' | sort -u
 
 # Manually compare the two lists to find unreferenced ConfigMaps
@@ -162,7 +171,7 @@ kubectl get pods -n $NAMESPACE -o json | \
 ## Step 8: Export ConfigMaps for Backup or Migration
 
 ```bash
-# Export all ConfigMaps from a namespace (excluding system ones)
+# Export all ConfigMaps from a namespace
 kubectl get configmaps -n production \
   -o yaml > production-configmaps-backup.yaml
 
@@ -170,11 +179,16 @@ kubectl get configmaps -n production \
 kubectl get configmap app-config -n production \
   -o yaml > app-config-backup.yaml
 
-# Export without cluster-specific fields (for portability)
+# Export without common cluster-specific metadata (JSON example)
 kubectl get configmap app-config -n production \
-  -o yaml | \
-  grep -v "resourceVersion\|uid\|selfLink\|creationTimestamp: null" \
-  > app-config-clean.yaml
+  -o json | \
+  jq 'del(
+    .metadata.resourceVersion,
+    .metadata.uid,
+    .metadata.creationTimestamp,
+    .metadata.managedFields,
+    .metadata.selfLink
+  )' > app-config-clean.json
 
 # Export all ConfigMaps to individual files
 for cm in $(kubectl get configmaps -n production -o name); do
@@ -190,13 +204,11 @@ Verify staging and production configs match (except environment-specific values)
 ```bash
 # Get ConfigMap keys from production
 kubectl get configmap app-config -n production \
-  -o jsonpath='{.data}' | python3 -m json.tool | \
-  python3 -c "import sys, json; print(sorted(json.load(sys.stdin).keys()))"
+  -o json | jq -r '(.data // {}) | keys[]'
 
 # Get ConfigMap keys from staging
 kubectl get configmap app-config -n staging \
-  -o jsonpath='{.data}' | python3 -m json.tool | \
-  python3 -c "import sys, json; print(sorted(json.load(sys.stdin).keys()))"
+  -o json | jq -r '(.data // {}) | keys[]'
 
 # Compare key sets (should be identical, values will differ)
 ```
