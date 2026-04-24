@@ -87,10 +87,10 @@ scrape_configs:
           tier: cache
 ```
 
-## Per-Target Labels Using Relabeling
+## Per-Target Labels with Separate static_configs Entries
 
 ```yaml
-# Assign individual labels to specific targets:
+# Assign individual labels by placing each target in its own static_config entry:
 
 scrape_configs:
   - job_name: 'servers'
@@ -116,11 +116,11 @@ scrape_configs:
 promtool check config /etc/prometheus/prometheus.yml
 # Expected: SUCCESS: /etc/prometheus/prometheus.yml is valid prometheus config file syntax
 
-# Reload Prometheus configuration (no restart needed)
+# Reload Prometheus configuration over HTTP (requires --web.enable-lifecycle)
 curl -X POST http://10.0.0.5:9090/-/reload
 
-# Or with systemd
-sudo systemctl reload prometheus
+# Or send SIGHUP to the Prometheus process
+sudo kill -HUP <prometheus-pid>
 
 # Verify targets were loaded
 curl -s "http://10.0.0.5:9090/api/v1/targets" | \
