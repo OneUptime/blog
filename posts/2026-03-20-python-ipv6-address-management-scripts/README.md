@@ -15,7 +15,7 @@ import ipaddress
 import json
 import os
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 @dataclass
@@ -54,6 +54,14 @@ class IPv6IPAM:
                 f, indent=2
             )
 
+    def _has_active_overlap(self, candidate: ipaddress.IPv6Network) -> bool:
+        """Return True if candidate overlaps an active allocation."""
+        return any(
+            candidate.overlaps(ipaddress.IPv6Network(a.prefix))
+            for a in self.allocations.values()
+            if a.status == "allocated"
+        )
+
     def allocate(
         self,
         prefix_len: int,
@@ -62,18 +70,29 @@ class IPv6IPAM:
     ) -> Optional[PrefixAllocation]:
         """Allocate the next available prefix of given length."""
         for subnet in self.pool.subnets(new_prefix=prefix_len):
+            if self._has_active_overlap(subnet):
+                continue
+
             prefix_str = str(subnet)
-            if prefix_str not in self.allocations:
+            if prefix_str in self.allocations:
+                alloc = self.allocations[prefix_str]
+                alloc.prefix_len = prefix_len
+                alloc.assigned_to = assigned_to
+                alloc.purpose = purpose
+                alloc.allocated_at = datetime.now(timezone.utc).isoformat()
+                alloc.status = "allocated"
+            else:
                 alloc = PrefixAllocation(
                     prefix=prefix_str,
                     prefix_len=prefix_len,
                     assigned_to=assigned_to,
                     purpose=purpose,
-                    allocated_at=datetime.utcnow().isoformat()
+                    allocated_at=datetime.now(timezone.utc).isoformat()
                 )
                 self.allocations[prefix_str] = alloc
-                self._save()
-                return alloc
+
+            self._save()
+            return alloc
         return None
 
     def release(self, prefix_str: str) -> bool:
@@ -159,7 +178,7 @@ Auto-generate router configuration from IPAM data:
 def generate_router_config(allocations: list[PrefixAllocation]) -> str:
     """Generate network device configuration from IPAM allocations."""
     lines = ["# Auto-generated IPv6 routes"]
-    lines.append("# Generated: " + datetime.utcnow().isoformat())
+    lines.append("# Generated: " + datetime.now(timezone.utc).isoformat())
     lines.append("")
 
     for alloc in allocations:
