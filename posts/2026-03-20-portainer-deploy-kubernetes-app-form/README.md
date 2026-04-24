@@ -8,7 +8,7 @@ Description: Learn how to deploy Kubernetes applications using Portainer's form-
 
 ## Introduction
 
-Portainer's form-based application deployment makes Kubernetes accessible to teams who are not comfortable writing YAML manifests. The form wizard generates Kubernetes Deployments, Services, ConfigMaps, and other resources based on your inputs. This guide walks through deploying a complete application using the form interface.
+Portainer's form-based application deployment makes Kubernetes accessible to teams who are not comfortable writing YAML manifests. The form wizard generates Kubernetes workloads and related resources based on your inputs, such as Deployments or StatefulSets, Services, PersistentVolumeClaims, Ingresses, and HorizontalPodAutoscalers. Existing ConfigMaps and Secrets can also be attached through the form. This guide walks through deploying a complete application using the form interface.
 
 ## Prerequisites
 
@@ -20,8 +20,7 @@ Portainer's form-based application deployment makes Kubernetes accessible to tea
 
 1. Select your Kubernetes environment in Portainer
 2. Click **Applications** in the sidebar
-3. Click **+ Add application**
-4. Choose **Form** (not YAML or Helm)
+3. Click **Add with form**
 
 ## Step 2: Configure Basic Details
 
@@ -44,10 +43,11 @@ Registry:        Docker Hub (or your private registry)
 
 For private registries, select the registry from the dropdown - Portainer uses stored credentials automatically.
 
-## Step 4: Configure Replicas and Resources
+## Step 4: Configure Deployment and Resources
 
 ```text
-Replicas:        3
+Deployment type:  Replicated
+Instance count:   3
 
 Resource limits:
   Memory limit:   256Mi
@@ -68,135 +68,124 @@ NODE_ENV:        production
 LOG_LEVEL:       info
 ```
 
-Or reference from ConfigMap/Secret:
-
-```text
-DB_PASSWORD:     valueFrom → Secret: db-secret → key: password
-API_KEY:         valueFrom → ConfigMap: app-config → key: api_key
-```
+Use Portainer's separate **ConfigMaps** and **Secrets** sections if you want to attach existing configuration objects.
 
 ## Step 6: Configure Persistent Storage
 
-Under **Volumes**, click **+ Add volume**:
+Under **Persisted folders**, click **Add persisted folder**:
 
 ```text
-Volume type:       Persistent volume
-Mount path:        /data
-Persistent volume claim:
-  Create new:       [x]
-  Name:             my-web-app-data
-  Size:             5Gi
-  Storage class:    standard
-  Access mode:      ReadWriteOnce
+Path in container:   /data
+Volume:              New volume
+Requested size:      5 GB
+Storage:             standard
+
+Data access policy:  Shared
 ```
+
+Choose `Shared` to keep the application as a `Deployment` with shared storage. Choose `Isolated` to deploy it as a `StatefulSet` with per-instance data.
 
 ## Step 7: Configure Published Services
 
-Under **Ports**, click **+ Publish a new port**:
+Under **Publishing the application**, select the **NodePort**, **LoadBalancer**, or **ClusterIP** tab and click **Create service**:
 
 ```text
 Container port:    80
-Service type:      NodePort (or LoadBalancer, ClusterIP)
-Published port:    30080      (for NodePort)
+Service port:      80
+Service type:      NodePort
+Published port:    30080      (optional; leave blank for system allocation)
 ```
 
 For internal services (ClusterIP):
 
 ```text
 Container port:    8080
+Service port:      8080
 Service type:      ClusterIP
 ```
 
-## Step 8: Configure Health Checks (Optional but Recommended)
+For `LoadBalancer`, the cluster must allow external load balancers in **Cluster Setup**.
 
-Under **Health checks**:
+## Step 8: Configure ConfigMaps and Secrets (Optional)
 
-### Liveness Probe
-
-```text
-Type:         HTTP
-Path:         /health
-Port:         80
-Initial delay: 30s
-Period:       10s
-Failure threshold: 3
-```
-
-### Readiness Probe
+Use the **ConfigMaps** and **Secrets** sections to attach existing resources:
 
 ```text
-Type:         HTTP
-Path:         /ready
-Port:         80
-Initial delay: 10s
-Period:       5s
+ConfigMap:         app-config
+Mode:              Auto (all keys exposed as environment variables)
+
+Secret:            db-secret
+Mode:              Auto (all keys exposed as environment variables)
 ```
+
+Use **Override** if you want to control individual keys instead of exposing all keys automatically, including mounting keys as files.
 
 ## Step 9: Configure Auto-Scaling (Optional)
 
 ```text
 Auto-scaling:    Enabled
-Minimum replicas: 2
-Maximum replicas: 10
+Minimum instances: 2
+Maximum instances: 10
 
-CPU threshold:   70%     (scale up when avg CPU > 70%)
-Memory threshold: 80%   (scale up when avg memory > 80%)
+Target CPU usage: 70%
 ```
 
-This creates a HorizontalPodAutoscaler (HPA) automatically.
+This creates a HorizontalPodAutoscaler (HPA) automatically. It also requires the Kubernetes metrics server to be installed and metrics features to be enabled in the cluster setup.
 
-## Step 10: Configure Labels and Annotations
+## Step 10: Configure Annotations (Optional)
 
 ```text
-Labels:
-  app: my-web-app
-  environment: production
-  version: v2.0
-
 Annotations:
-  deployment.kubernetes.io/revision: "1"
   description: "Main web application"
 ```
+
+Portainer also lets you add annotations to published services if needed.
 
 ## Step 11: Deploy the Application
 
 1. Review all settings
-2. Click **Deploy the application**
+2. Click **Deploy application**
 3. Portainer creates the Kubernetes resources:
    - `Deployment`: manages the pods
    - `Service`: exposes the application
    - `PersistentVolumeClaim`: if storage was configured
    - `HorizontalPodAutoscaler`: if auto-scaling was configured
 
+If you chose `Isolated` for the data access policy, Portainer deploys a `StatefulSet` instead of a `Deployment`.
+
 ## Step 12: Verify the Deployment
 
 After deploying:
 
 1. Go to **Applications** to see the application listed
-2. Click on it to see pod status and events
-3. Check that all replicas are **Running**
+2. Click on it to see application details, pod status, and events
+3. Check that the application is **Running**
 
 ```bash
 # CLI verification
 
 kubectl get deployment my-web-app -n production
-kubectl get pods -n production -l app=my-web-app
+kubectl get pods -n production
 kubectl get svc -n production
 
-# Check events
+# Check details and recent events
 kubectl describe deployment my-web-app -n production
 ```
+
+If you selected `Isolated` storage access, inspect the `StatefulSet` instead of the `Deployment`.
 
 ## Viewing the Generated YAML
 
 Portainer generates YAML behind the scenes. To see it:
 
 1. Click on the application
-2. Click the **YAML** or **Edit** tab
+2. Click the **YAML** tab
 3. View the generated manifest
+
+The generated YAML is shown in the **YAML** tab. Editing from that tab is available in Portainer Business Edition.
 
 This is a great way to learn Kubernetes YAML by using the form first.
 
 ## Conclusion
 
-Portainer's form-based application deployment makes Kubernetes accessible without requiring YAML knowledge. The form covers all essential configuration including replicas, resources, environment variables, storage, and services. As you become more comfortable with Kubernetes, use the generated YAML as a learning tool and transition to YAML-based deployments for more advanced configurations.
+Portainer's form-based application deployment makes Kubernetes accessible without requiring YAML knowledge. The form covers all essential configuration including deployment mode, resource reservations, environment variables, persisted storage, configuration objects, and services. As you become more comfortable with Kubernetes, use the generated YAML as a learning tool and transition to YAML-based deployments for more advanced configurations.
