@@ -8,7 +8,7 @@ Description: Learn how to configure Content-Security-Policy and other security h
 
 ## Introduction
 
-Content-Security-Policy (CSP) and other security headers protect web applications against cross-site scripting (XSS), clickjacking, and other injection attacks. When running Portainer behind a reverse proxy like Nginx or Traefik, you can add these headers at the proxy layer to enhance the security of the Portainer management interface.
+Content-Security-Policy (CSP) and other security headers protect web applications against cross-site scripting (XSS), clickjacking, and other injection attacks. When running Portainer behind a reverse proxy like Nginx or Traefik, you can add many of these headers at the proxy layer to enhance the security of the Portainer management interface. Portainer already sends its own CSP header by default, so you should avoid stacking a second enforced CSP on top of it unless you intentionally disable Portainer's built-in CSP first.
 
 ## Prerequisites
 
@@ -33,7 +33,8 @@ Content-Security-Policy (CSP) and other security headers protect web application
 # /etc/nginx/sites-available/portainer.conf
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name portainer.example.com;
 
     # TLS configuration
@@ -44,17 +45,6 @@ server {
     ssl_prefer_server_ciphers off;
 
     # ===== Security Headers =====
-
-    # Prevent XSS - restrict content sources to same origin + Portainer CDN
-    add_header Content-Security-Policy "
-        default-src 'self';
-        script-src 'self' 'unsafe-inline' 'unsafe-eval';
-        style-src 'self' 'unsafe-inline';
-        img-src 'self' data: https:;
-        font-src 'self' data:;
-        connect-src 'self' wss://portainer.example.com;
-        frame-ancestors 'none';
-    " always;
 
     # Prevent embedding in iframes (clickjacking)
     add_header X-Frame-Options "DENY" always;
@@ -77,13 +67,14 @@ server {
         usb=()
     " always;
 
-    # Remove server version from responses
+    # Hide nginx version in the Server header
     server_tokens off;
-    add_header X-Powered-By "" always;
 
     location / {
         proxy_pass https://localhost:9443;
         proxy_http_version 1.1;
+        proxy_hide_header X-Content-Type-Options;
+        proxy_hide_header X-Powered-By;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
@@ -107,25 +98,13 @@ server {
 
 ## Step 2: Portainer-Specific CSP Considerations
 
-Portainer's UI uses some dynamic features that require careful CSP configuration:
+Portainer already sets a CSP header by default. Current Portainer builds send a policy similar to:
 
-```nginx
-# Portainer-compatible CSP
-add_header Content-Security-Policy "
-    default-src 'self';
-    script-src 'self' 'unsafe-inline' 'unsafe-eval';  # Angular.js requires these
-    style-src 'self' 'unsafe-inline';                   # Inline styles used in UI
-    img-src 'self' data: https: http:;                  # Docker Hub images previewed
-    font-src 'self' data:;
-    connect-src 'self' wss: https:;                     # WebSocket for terminal
-    worker-src blob:;                                    # Web workers if used
-    frame-src 'none';                                    # No iframes
-    frame-ancestors 'none';                              # Can't be embedded
-    object-src 'none';
-    base-uri 'self';
-    form-action 'self';
-" always;
+```http
+Content-Security-Policy: script-src 'self' https://js.hsforms.net https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; object-src 'none'; frame-ancestors 'none'; frame-src https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/
 ```
+
+If you add another enforced CSP header at the proxy layer, browsers will apply both policies and only the most restrictive result will take effect. If you want Nginx or Traefik to provide the CSP instead, start Portainer with `--no-csp` (or `--csp=false`) so the browser receives a single enforced policy.
 
 ## Step 3: Configure Headers in Traefik
 
@@ -137,7 +116,6 @@ http:
     portainer-security-headers:
       headers:
         contentTypeNosniff: true
-        browserXssFilter: true
         forceSTSHeader: true
         stsSeconds: 31536000
         stsIncludeSubdomains: true
@@ -147,7 +125,6 @@ http:
         customResponseHeaders:
           X-Powered-By: ""
           Server: ""
-        contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' wss:; frame-ancestors 'none'; object-src 'none'"
         permissionsPolicy: "camera=(), microphone=(), geolocation=(), payment=()"
 
   routers:
@@ -163,7 +140,7 @@ http:
     portainer:
       loadBalancer:
         servers:
-          - url: "https://portainer:9443"
+          - url: "http://portainer:9000"
 ```
 
 ## Step 4: Verify Header Configuration
@@ -173,11 +150,12 @@ http:
 curl -sI https://portainer.example.com | grep -i -E "(Content-Security|X-Frame|X-Content|Strict|Referrer|Permissions)"
 
 # Expected output:
-# content-security-policy: default-src 'self'; ...
+# content-security-policy: script-src 'self' https://js.hsforms.net ...
 # x-frame-options: DENY
 # x-content-type-options: nosniff
 # strict-transport-security: max-age=31536000; includeSubDomains; preload
 # referrer-policy: strict-origin-when-cross-origin
+# permissions-policy: camera=(), microphone=(), geolocation=(), payment=()
 
 # Use Mozilla Observatory for comprehensive header analysis
 # https://observatory.mozilla.org/analyze/portainer.example.com
@@ -189,18 +167,18 @@ curl -sI https://portainer.example.com | grep -i -E "(Content-Security|X-Frame|X
 # Use nikto for web security scanning
 docker run --rm sullo/nikto -h https://portainer.example.com
 
-# Use securityheaders.com API
-curl "https://securityheaders.com/?q=portainer.example.com&followRedirects=on"
+# Use securityheaders.com
+# https://securityheaders.com/?q=portainer.example.com&followRedirects=on
 
 # Use OWASP ZAP
-docker run --rm owasp/zap2docker-stable zap-baseline.py \
+docker run --rm -v "$(pwd)":/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
   -t https://portainer.example.com \
   -r security-report.html
 ```
 
 ## Step 6: Portainer Native HTTPS Headers
 
-If Portainer is directly exposed (not behind a proxy), some headers can be configured via Portainer startup flags:
+If Portainer is directly exposed (not behind a proxy), HTTPS can be configured via Portainer startup flags. Portainer also serves its own CSP header by default; if you want a reverse proxy to replace it later, start Portainer with `--no-csp` (or `--csp=false`).
 
 ```bash
 docker run -d \
@@ -208,13 +186,14 @@ docker run -d \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-be:latest \
-  --ssl \
-  --sslcert /certs/cert.pem \
-  --sslkey /certs/key.pem \
+  -v /path/to/your/certs:/certs:ro \
+  portainer/portainer-ee:sts \
+  --tlsverify \
+  --tlscert /certs/cert.pem \
+  --tlskey /certs/key.pem \
   --http-disabled  # Disable plain HTTP entirely
 ```
 
 ## Conclusion
 
-Configuring security headers for Portainer requires adding them at the reverse proxy layer since Portainer doesn't natively expose header configuration via its own settings. Set Content-Security-Policy carefully to allow Portainer's JavaScript requirements while blocking injection attacks, use X-Frame-Options to prevent clickjacking, and enforce HTTPS with HSTS. Regularly test your headers with Mozilla Observatory and keep up with CSP best practices as Portainer updates may change required script sources.
+Configuring security headers for Portainer typically means adding the non-CSP headers at the reverse proxy layer and keeping Portainer's built-in CSP intact. If you do replace the CSP at the proxy, disable Portainer's built-in CSP first so the browser only receives one enforced policy. Regularly test your headers with Mozilla Observatory and keep up with Portainer releases, as the built-in CSP sources may change over time.
