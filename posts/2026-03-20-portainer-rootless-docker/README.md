@@ -12,8 +12,8 @@ Rootless Docker allows non-root users to run Docker without requiring root privi
 
 ## Prerequisites
 
-- Linux host with kernel 5.11+ (or 4.18+ with certain patches)
-- Docker 20.10+ installed
+- Linux host with kernel 5.11+ for rootless `overlay2`, or 4.18+ with `fuse-overlayfs`
+- Docker 20.10+ packages installed, or the ability to install Docker with the rootless setup script
 - `newuidmap` and `newgidmap` utilities
 - A non-root user with proper subordinate UID/GID ranges
 
@@ -75,8 +75,8 @@ systemctl --user enable --now docker
 systemctl --user status docker
 
 # Verify rootless Docker is working
-docker info | grep "rootless"
-# Should show: rootless: true
+docker info | grep -i "rootless"
+# Should show "rootless" under Security Options
 ```
 
 ## Deploying Portainer with Rootless Docker
@@ -86,15 +86,15 @@ docker info | grep "rootless"
 docker volume create portainer_data
 
 # Run Portainer using the rootless Docker socket
-# Note: DOCKER_HOST must be set for this user
+# Note: your Docker CLI must point to the rootless daemon
+# (for example, via the rootless context or DOCKER_HOST)
 docker run -d \
   --name portainer \
-  --restart=always \
   -p 8000:8000 \
   -p 9443:9443 \
   -v /run/user/$(id -u)/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 
 # Verify Portainer is running
 docker ps
@@ -107,6 +107,7 @@ docker ps
 mkdir -p ~/.config/systemd/user/
 
 # Create the Portainer service file
+# Docker recommends using either restart policies or a process manager, not both.
 cat > ~/.config/systemd/user/portainer.service << 'EOF'
 [Unit]
 Description=Portainer Container Management
@@ -114,10 +115,12 @@ After=docker.service
 Requires=docker.service
 
 [Service]
-ExecStart=/home/myuser/bin/docker start -a portainer
-ExecStop=/home/myuser/bin/docker stop portainer
+Environment=DOCKER_HOST=unix://%t/docker.sock
+ExecStartPre=%h/bin/docker container inspect --format '{{.Id}}' portainer
+ExecStartPre=-%h/bin/docker stop portainer
+ExecStart=%h/bin/docker start -a portainer
+ExecStop=%h/bin/docker stop portainer
 Restart=always
-Environment=DOCKER_HOST=unix:///run/user/1000/docker.sock
 
 [Install]
 WantedBy=default.target
@@ -144,11 +147,11 @@ loginctl show-user myuser | grep Linger
 Rootless containers cannot bind to privileged ports (below 1024) by default:
 
 ```bash
-# Allow unprivileged port binding (requires root)
-sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80
+# Allow unprivileged port binding for ports below 1024 (requires root)
+sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
 
 # Make permanent
-echo "net.ipv4.ip_unprivileged_port_start=80" | sudo tee -a /etc/sysctl.conf
+echo "net.ipv4.ip_unprivileged_port_start=0" | sudo tee -a /etc/sysctl.conf
 
 # Or use port forwarding with iptables
 sudo iptables -t nat -A PREROUTING \
@@ -158,17 +161,16 @@ sudo iptables -t nat -A PREROUTING \
 
 ## Limitations of Rootless Docker
 
-- No host network mode support
-- `--pid=host` not available
-- Some storage drivers may not be available
-- AppArmor profiles may need adjustment
-- Container-to-host communication requires extra configuration
+- Only `overlay2` (kernel 5.11+), `fuse-overlayfs` or `btrfs` (kernel 4.18+), and `vfs` storage drivers are supported
+- cgroup-related resource limits require cgroup v2 and systemd
+- AppArmor, checkpoint, overlay network, and exposing SCTP ports are not supported
+- `--net=host` is namespaced inside RootlessKit, so published ports should still use `-p`
 
 ## Verifying Security Benefits
 
 ```bash
 # Check that Docker daemon runs as non-root
-ps aux | grep dockerd
+ps -ef | grep '[d]ockerd'
 # Should show your username, not root
 
 # Verify container processes are mapped to non-root UIDs
