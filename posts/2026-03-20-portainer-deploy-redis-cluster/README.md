@@ -8,7 +8,7 @@ Description: Deploy a Redis Cluster with 6 nodes (3 primaries and 3 replicas) vi
 
 ## Introduction
 
-Redis Cluster provides horizontal scaling and automatic failover across multiple Redis nodes. A minimal production Redis Cluster requires at least 6 nodes: 3 primaries handling different key slots, and 3 replicas for failover. This guide deploys a complete Redis Cluster using Portainer stacks.
+Redis Cluster provides horizontal scaling and automatic failover across multiple Redis nodes. For deployment, Redis strongly recommends a 6-node cluster: 3 primaries handling different key slots, and 3 replicas for failover. This guide deploys a complete Redis Cluster using Portainer stacks.
 
 ## Prerequisites
 
@@ -163,7 +163,11 @@ services:
       - redis-6
     command: >
       sh -c "
-        sleep 10 &&
+        for node in redis-1 redis-2 redis-3 redis-4 redis-5 redis-6; do
+          until redis-cli -h $$node -p 6379 -a cluster_password ping >/dev/null 2>&1; do
+            sleep 1;
+          done;
+        done &&
         redis-cli -a cluster_password --cluster create
         redis-1:6379 redis-2:6379 redis-3:6379
         redis-4:6379 redis-5:6379 redis-6:6379
@@ -210,7 +214,7 @@ cluster_size:3
 
 ## Connecting Applications to Redis Cluster
 
-Applications need a Redis Cluster-aware client:
+If your application runs on the same Docker network, use the Redis service names on port `6379` with a Redis Cluster-aware client:
 
 ```javascript
 // Node.js with ioredis
@@ -218,8 +222,8 @@ const Redis = require('ioredis');
 
 const cluster = new Redis.Cluster([
   { host: 'redis-1', port: 6379 },
-  { host: 'redis-2', port: 6380 },
-  { host: 'redis-3', port: 6381 },
+  { host: 'redis-2', port: 6379 },
+  { host: 'redis-3', port: 6379 },
 ], {
   redisOptions: {
     password: 'cluster_password'
@@ -232,10 +236,8 @@ const cluster = new Redis.Cluster([
 from redis.cluster import RedisCluster
 
 rc = RedisCluster(
-    startup_nodes=[
-        {"host": "redis-1", "port": 6379},
-        {"host": "redis-2", "port": 6380},
-    ],
+    host="redis-1",
+    port=6379,
     password="cluster_password"
 )
 ```
@@ -258,4 +260,4 @@ docker start redis-1
 
 ## Conclusion
 
-Redis Cluster deployed via Portainer provides horizontal scaling and automatic failover for high-traffic applications. The 6-node configuration ensures that the loss of any single node triggers automatic promotion of a replica to primary. Portainer's stack management makes it easy to update all cluster nodes simultaneously during maintenance windows.
+Redis Cluster deployed via Portainer provides horizontal scaling and automatic failover for high-traffic applications. The 6-node configuration allows the cluster to remain available after the loss of a single node, and if a primary fails its replica can be promoted automatically. Portainer's stack management makes it easy to update all cluster nodes simultaneously during maintenance windows.
