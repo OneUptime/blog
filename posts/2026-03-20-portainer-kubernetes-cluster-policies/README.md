@@ -8,38 +8,39 @@ Description: Learn how to configure Kubernetes cluster policies in Portainer inc
 
 ## Introduction
 
-Portainer provides cluster-level policy configuration for Kubernetes environments, allowing administrators to enforce resource limits, control deployments, and standardize workload configurations. This guide covers the available policy settings and how to configure them.
+Portainer provides cluster-level setup and security controls for Kubernetes environments, and it can work alongside Kubernetes-native policy objects such as `ResourceQuota`, `LimitRange`, `NetworkPolicy`, and Gatekeeper constraints. This guide covers the available Portainer settings and how to configure the related Kubernetes policies.
 
 ## Prerequisites
 
-- Portainer BE with Kubernetes environment
-- Cluster-admin or namespace-admin access
+- Portainer BE with a Kubernetes environment
+- Portainer administrator access to the environment
+- Cluster-admin access if you will install Gatekeeper or apply cluster-scoped resources
 
 ## Step 1: Access Cluster Policy Settings
 
 1. Select your Kubernetes environment in Portainer
-2. Navigate to **Settings → Cluster**
-3. Scroll to **Cluster policies** or **Deployment options**
+2. For environment-specific controls, expand **Cluster** and open **Setup** or **Security constraints**
+3. If the environment is managed by a Portainer policy, view it under **Cluster → Policies** and edit it as an admin under **Environment-related → Policies**
 
 ## Step 2: Configure Deployment Restrictions
 
-Portainer BE allows restricting what users can deploy:
+Portainer BE allows restricting how users deploy applications. Deployment restrictions are configured under **Cluster → Setup**:
 
 ```text
 Deployment options:
-  [ ] Require resources on namespaces   - Force resource quotas before allowing deployments
-  [x] Allow web editor                  - Users can write raw YAML
-  [x] Allow Helm charts                 - Users can deploy Helm charts
-  [x] Allow use of node ports           - Allow NodePort service creation
-  [ ] Restrict privileged containers    - Block privileged container deployments
+  [ ] Enforce code-based deployment              - Hide form-based deployment and editing
+  [x] Allow web editor and custom template use   - Allow raw YAML and custom templates
+  [x] Allow specifying of a manifest via a URL   - Allow manifest deployment from a URL
 ```
 
-## Step 3: Configure Default Namespace Resource Quotas
+To block privileged containers, enable **Restrict running privileged containers** under **Cluster → Security constraints**.
 
-Set default resource quotas for new namespaces:
+## Step 3: Configure Namespace Resource Quotas
+
+Portainer can manage CPU and memory resource assignment per namespace, or you can apply a standard `ResourceQuota` manifest:
 
 ```yaml
-# Apply default resource quota via Portainer YAML editor
+# Apply a ResourceQuota to a namespace
 
 apiVersion: v1
 kind: ResourceQuota
@@ -120,12 +121,12 @@ spec:
       app: api
 ```
 
-## Step 6: Configure Network Policies as Default
+## Step 6: Configure Network Policies
 
-Deploy default network policies for new namespaces:
+If your CNI supports `NetworkPolicy`, apply network policies to each namespace where you want these defaults enforced:
 
 ```yaml
-# Template for new namespaces
+# Apply per namespace
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -136,7 +137,7 @@ spec:
     - Ingress
     - Egress
 ---
-# Allow DNS
+# Allow egress on DNS ports
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -155,14 +156,17 @@ spec:
 
 ## Step 7: Enforce Resource Policies with OPA/Gatekeeper
 
-For complex policy enforcement, deploy OPA Gatekeeper:
+For custom policy enforcement beyond Portainer's built-in security constraints, deploy OPA Gatekeeper and install the required `ConstraintTemplate`:
 
 ```bash
 # Install Gatekeeper
-kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/release-3.14/deploy/gatekeeper.yaml
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.22.1/deploy/gatekeeper.yaml
+
+# Install the ConstraintTemplate used below
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper-library/master/library/general/containerresources/template.yaml
 ```
 
-Example constraint to require resource limits on all containers:
+Example constraint to require CPU and memory requests and limits on all Pod containers:
 
 ```yaml
 apiVersion: constraints.gatekeeper.sh/v1beta1
@@ -186,24 +190,24 @@ spec:
       - memory
 ```
 
-## Step 8: Portainer BE Cluster Policies
+## Step 8: Portainer BE Cluster Setup Options
 
-Configure in Portainer BE under **Settings → Cluster**:
+Configure these under **Cluster → Setup** or through a Kubernetes setup/security policy:
 
 Resource Over-commit
 
 ```text
 Allow resource over-commit:  [ ] disabled
-# When disabled: sum of resource requests cannot exceed cluster capacity
-# Prevents scheduling failures due to over-commitment
+# When disabled: Portainer won't let namespace allocations exceed cluster capacity
+# Helps reduce over-allocation across namespaces
 ```
 
 ### Default Namespace Isolation
 
 ```text
-Restrict default namespace: [x] enabled
-# Prevents deployments to the 'default' namespace
-# Forces use of dedicated namespaces
+Restrict access to the default namespace: [x] enabled
+# Limits use of the `default` namespace to admins and explicitly granted users
+# Helps keep workloads in dedicated namespaces
 ```
 
 ## Step 9: Monitor Policy Compliance
@@ -211,13 +215,15 @@ Restrict default namespace: [x] enabled
 ```bash
 # Check for pods without resource limits
 kubectl get pods --all-namespaces -o json | \
-  jq -r '.items[] | select(.spec.containers[].resources.limits == null) |
+  jq -r '.items[] | select(any(.spec.containers[]?; (.resources.limits | type) == "null")) |
   "\(.metadata.namespace)/\(.metadata.name)"'
 
-# Check for pods running as root
+# Check for pods not enforcing `runAsNonRoot`
 kubectl get pods --all-namespaces -o json | \
-  jq -r '.items[] | select(.spec.containers[].securityContext.runAsNonRoot != true) |
-  "\(.metadata.namespace)/\(.metadata.name)"'
+  jq -r '.items[] | . as $pod |
+  select(any($pod.spec.containers[]?;
+    ((.securityContext.runAsNonRoot // $pod.spec.securityContext.runAsNonRoot // false) != true))) |
+  "\($pod.metadata.namespace)/\($pod.metadata.name)"'
 ```
 
 ## Conclusion
