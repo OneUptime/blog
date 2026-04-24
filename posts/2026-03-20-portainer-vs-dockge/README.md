@@ -30,9 +30,9 @@ Dockge is a newer, opinionated Docker Compose stack manager that focuses exclusi
 | Image management | No | Yes |
 | Volume management | No | Yes |
 | Network management | No | Yes |
-| Multi-user access | No | Yes (BE) |
-| RBAC | No | Yes (BE) |
-| LDAP/SSO | No | Yes (BE) |
+| Multi-user access | No | Yes |
+| RBAC | No | No (BE only) |
+| LDAP/SSO | No | Yes |
 | API access | No | Yes |
 | Edge device management | No | Yes |
 | Stack file on filesystem | Yes (always) | Optional |
@@ -62,10 +62,12 @@ docker volume create portainer_data
 docker run -d \
   --name portainer \
   --restart=always \
+  -p 8000:8000 \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
+# Port 8000 is only required if you plan to use Edge Agents
 # Access at https://localhost:9443
 ```
 
@@ -83,7 +85,6 @@ ls /opt/stacks/
 
 # Edit the file directly and Dockge picks it up
 cat /opt/stacks/my-blog/compose.yaml
-# version: '3.8'
 # services:
 #   wordpress:
 #     image: wordpress:latest
@@ -104,7 +105,7 @@ curl -s -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "Name": "my-blog",
-    "StackFileContent": "version: '\''3.8'\''\nservices:\n  wordpress:\n    image: wordpress:latest",
+    "StackFileContent": "services:\n  wordpress:\n    image: wordpress:latest",
     "Env": []
   }' \
   "https://portainer.local:9443/api/stacks/create/standalone/string?endpointId=1"
@@ -115,12 +116,12 @@ curl -s -X POST \
 Both tools provide real-time container output, but differ in depth:
 
 ```bash
-# Dockge: Shows logs, CPU%, memory% per container
+# Dockge: Real-time terminal output and stack-focused management
 # Focus: Is my stack running? What are the logs?
 
-# Portainer: Shows logs, stats, network I/O, disk I/O
-# Can also inspect container details, exec into shell
-# Shows historical resource usage with graphs (BE)
+# Portainer: Shows logs, container statistics, and inspect details
+# Can also open a container console and manage resources beyond the stack
+# BE adds more advanced governance and observability features
 ```
 
 ## Step 5: Use Case Scenarios
@@ -131,7 +132,7 @@ Both tools provide real-time container output, but differ in depth:
 
 ```bash
 # If you run: Nextcloud, Vaultwarden, Immich, Jellyfin
-# All as docker-compose stacks
+# All as docker compose stacks
 # Single user, single server
 # You want simplicity
 
@@ -151,7 +152,7 @@ Both tools provide real-time container output, but differ in depth:
 # - Audit trails for compliance
 
 # Portainer BE handles all of this
-# Dockge cannot support multi-user or multiple environments
+# Dockge has no built-in multi-user access control and is not aimed at team governance
 ```
 
 ### Scenario C: Single Developer Managing Stacks on a VPS
@@ -172,13 +173,13 @@ Both tools provide real-time container output, but differ in depth:
 
 # Dockge
 docker stats dockge --no-stream
-# CPU: ~0.1%, Memory: ~50MB
+# Check the live CPU and memory usage on your host
 
 # Portainer
 docker stats portainer --no-stream
-# CPU: ~0.1%, Memory: ~150MB
+# Exact numbers vary by version, enabled features, and workload
 
-# Both are lightweight. Dockge uses less memory.
+# Compare both on the same host before treating one as materially lighter
 ```
 
 ## Step 7: Community and Support
@@ -186,14 +187,14 @@ docker stats portainer --no-stream
 ```bash
 # Dockge
 # - Created by Louis Lam (Uptime Kuma creator)
-# - GitHub stars: 15k+ (growing rapidly)
-# - Community: Reddit r/selfhosted, GitHub issues
-# - Support: Community only, GitHub issues
+# - GitHub stars: 22k+
+# - Community: GitHub Discussions, GitHub issues
+# - Support: Community only, via GitHub
 
 # Portainer
 # - Company-backed product since 2016
-# - GitHub stars: 28k+
-# - Community: Forums, Discord, GitHub
+# - GitHub stars: 37k+
+# - Community: GitHub Discussions, Slack, GitHub issues
 # - Support: CE = community, BE = professional SLA
 ```
 
@@ -206,7 +207,9 @@ docker stats portainer --no-stream
 # Upload each compose.yaml file - stacks are recreated
 
 # Migrating from Portainer to Dockge:
-# In Portainer: Stacks > [stack] > Editor tab > Copy content
+# If the stack was deployed with Portainer's web editor or upload flow:
+# Stacks > [stack] > Editor tab > Copy content
+# If the stack was deployed from Git, detach it first or copy the Compose file from the repository
 # Create /opt/stacks/<name>/compose.yaml with that content
 # Dockge will detect it immediately
 ```
