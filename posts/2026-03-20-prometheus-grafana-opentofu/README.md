@@ -30,7 +30,7 @@ resource "helm_release" "kube_prometheus_stack" {
   name             = "kube-prometheus-stack"
   repository       = "https://prometheus-community.github.io/helm-charts"
   chart            = "kube-prometheus-stack"
-  version          = "55.5.0"
+  version          = "84.0.0"
   namespace        = "monitoring"
   create_namespace = true
 
@@ -89,7 +89,7 @@ resource "helm_release" "kube_prometheus_stack" {
             receiver         = "slack"
 
             routes = [{
-              match    = { severity = "critical" }
+              matchers = ["severity=\"critical\""]
               receiver = "pagerduty"
             }]
           }
@@ -115,8 +115,13 @@ resource "helm_release" "kube_prometheus_stack" {
 
       # Grafana configuration
       grafana = {
-        enabled           = true
-        adminPassword     = var.grafana_admin_password
+        enabled = true
+        # Secret must exist in the monitoring namespace
+        admin = {
+          existingSecret = "grafana-admin"
+          userKey        = "admin-user"
+          passwordKey    = "admin-password"
+        }
         persistence = {
           enabled          = true
           storageClassName = "gp3"
@@ -124,9 +129,9 @@ resource "helm_release" "kube_prometheus_stack" {
         }
 
         ingress = {
-          enabled = true
+          enabled          = true
+          ingressClassName = "nginx"
           annotations = {
-            "kubernetes.io/ingress.class"    = "nginx"
             "cert-manager.io/cluster-issuer" = "letsencrypt-prod"
           }
           hosts = ["grafana.${var.domain}"]
@@ -156,35 +161,24 @@ resource "helm_release" "kube_prometheus_stack" {
 ## Custom Alerting Rules
 
 ```hcl
-resource "kubernetes_manifest" "custom_alert_rules" {
-  manifest = {
-    apiVersion = "monitoring.coreos.com/v1"
-    kind       = "PrometheusRule"
-    metadata = {
-      name      = "application-rules"
-      namespace = "monitoring"
-      labels = {
-        "prometheus"  = "kube-prometheus-stack-prometheus"
-        "app"         = "kube-prometheus-stack"
-      }
-    }
-    spec = {
-      groups = [{
-        name = "application"
-        rules = [
-          {
-            alert = "HighErrorRate"
-            expr  = "rate(http_requests_total{status=~'5..'}[5m]) / rate(http_requests_total[5m]) > 0.05"
-            for   = "5m"
-            labels = { severity = "warning" }
-            annotations = {
-              summary     = "High error rate detected"
-              description = "Error rate is {{ $value | humanizePercentage }} for {{ $labels.service }}"
-            }
+# Add this under the yamlencode({ ... }) values in monitoring.tf
+additionalPrometheusRulesMap = {
+  application = {
+    groups = [{
+      name = "application"
+      rules = [
+        {
+          alert = "HighErrorRate"
+          expr  = "rate(http_requests_total{status=~'5..'}[5m]) / rate(http_requests_total[5m]) > 0.05"
+          for   = "5m"
+          labels = { severity = "warning" }
+          annotations = {
+            summary     = "High error rate detected"
+            description = "Error rate is {{ $value | humanizePercentage }} for {{ $labels.service }}"
           }
-        ]
-      }]
-    }
+        }
+      ]
+    }]
   }
 }
 ```
