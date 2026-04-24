@@ -20,7 +20,7 @@ Container networking issues are among the most common problems in Docker environ
 | Symptom | Likely Cause |
 |---------|-------------|
 | Container can't reach another by name | Different networks or default bridge |
-| Container can't reach the internet | iptables rules, IP masquerade disabled |
+| Container can't reach the internet | Firewall rules, IP masquerade disabled |
 | Host can't reach container | Port not exposed or wrong binding |
 | Port binding conflict | Another process using the same port |
 | Intermittent connectivity | MTU mismatch, packet loss |
@@ -46,10 +46,11 @@ Deploy a debugging container on the same network:
 
 ```bash
 # Run a temporary debug container on the problematic network:
+# Image with networking troubleshooting tools
 docker run -it --rm \
   --network my-network \
   --name debug \
-  nicolaka/netshoot \   # Image with all networking tools
+  nicolaka/netshoot \
   /bin/bash
 
 # Inside the debug container:
@@ -89,17 +90,18 @@ docker inspect my-container --format '{{json .NetworkSettings.Ports}}'
 
 ## Step 4: Check iptables Rules
 
-Docker manages iptables to route container traffic. Incorrect iptables rules cause connectivity failures:
+On Linux hosts using Docker's default `iptables` firewall backend, incorrect firewall rules cause connectivity failures. If your host uses Docker's `nftables` backend instead, inspect `nftables` rules rather than `iptables`:
 
 ```bash
 # List Docker's iptables chains:
+sudo iptables -L DOCKER-USER -n
+sudo iptables -L DOCKER-FORWARD -n
 sudo iptables -L DOCKER -n
-sudo iptables -L DOCKER-ISOLATION-STAGE-1 -n
 
-# Check NAT rules (required for internet access):
+# Check NAT rules (required for internet access on bridge networks):
 sudo iptables -t nat -L DOCKER -n
 
-# If Docker rules are missing, restart Docker:
+# If Docker-managed rules are missing, restart Docker:
 sudo systemctl restart docker
 
 # Check if IP masquerade (NAT) is enabled for a network:
@@ -112,13 +114,13 @@ docker network inspect my-network | jq '.[].Options'
 MTU mismatches cause packet drops for large payloads while small requests succeed:
 
 ```bash
-# Check MTU on Docker's bridge interface:
+# Check MTU on Docker's default bridge interface (docker0):
 ip link show docker0 | grep mtu
 # mtu 1500
 
-# Test with progressively larger payloads:
-docker exec my-container ping -c 5 -s 1400 8.8.8.8   # Likely works
-docker exec my-container ping -c 5 -s 1472 8.8.8.8   # May fail if MTU issue
+# Test with progressively larger payloads without allowing fragmentation:
+docker exec my-container ping -M do -c 5 -s 1400 8.8.8.8   # Likely works
+docker exec my-container ping -M do -c 5 -s 1472 8.8.8.8   # May fail if MTU issue
 
 # Fix: Create a network with lower MTU (useful in VPN/overlay environments):
 docker network create \
@@ -161,13 +163,11 @@ sudo sysctl -w net.ipv4.ip_forward=1
 # Fix 4: Restart Docker networking if badly misconfigured:
 sudo systemctl restart docker
 
-# Fix 5: Reset Docker iptables:
-# Stop all containers, then:
-sudo iptables -F DOCKER
-sudo iptables -F DOCKER-ISOLATION-STAGE-1
+# Fix 5: If Docker-managed firewall rules were changed manually, let Docker recreate them:
+# Avoid flushing Docker-created chains by hand.
 sudo systemctl restart docker
 ```
 
 ## Conclusion
 
-Systematic troubleshooting starts with verifying both containers share the same custom network (not the default bridge), then testing connectivity with a debug container, checking iptables and port bindings, and investigating MTU mismatches for intermittent failures. The `nicolaka/netshoot` image is the most complete debugging toolkit - deploy it on any Docker network for comprehensive diagnostics. Most connectivity issues resolve by ensuring containers are on the same custom bridge network and that Docker's iptables rules are intact.
+Systematic troubleshooting starts with verifying both containers share the same custom network (not the default bridge), then testing connectivity with a debug container, checking firewall rules and port bindings, and investigating MTU mismatches for intermittent failures. The `nicolaka/netshoot` image is the most complete debugging toolkit - deploy it on any Docker network for comprehensive diagnostics. Most connectivity issues resolve by ensuring containers are on the same custom bridge network and that Docker's firewall rules are intact.
