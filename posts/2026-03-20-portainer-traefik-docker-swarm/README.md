@@ -4,17 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Traefik, Docker Swarm, Reverse Proxy, Clustering
 
-Description: Learn how to deploy Portainer and Traefik on Docker Swarm mode for a highly available container management and routing setup with automatic service discovery.
+Description: Learn how to deploy Portainer and Traefik on Docker Swarm mode for a cluster-aware container management and routing setup with automatic service discovery.
 
 ## Introduction
 
-Docker Swarm with Traefik and Portainer creates a robust, scalable infrastructure. Traefik handles service discovery and load balancing across the Swarm, while Portainer provides the management interface. This guide covers deploying both as Swarm stacks with Traefik reading service labels for automatic routing.
+Docker Swarm with Traefik and Portainer creates a robust, scalable management and routing setup. Traefik handles service discovery and load balancing across the Swarm, while Portainer provides the management interface. This guide covers deploying both as Swarm stacks with Traefik reading service labels for automatic routing.
 
 ## Prerequisites
 
 - Docker Swarm initialized with at least one manager node
-- Shared storage for TLS certificates (NFS, S3, or shared volume)
-- A domain name pointing to your Swarm cluster VIP or load balancer
+- Persistent storage for Traefik's `acme.json` and Portainer data
+- A domain name pointing to the manager node running Traefik, or to an external load balancer that forwards traffic to that node
+- If you have multiple manager nodes, pin Traefik and Portainer to the managers that hold their data or use cluster-accessible storage
 
 ## Step 1: Initialize Swarm (if not done)
 
@@ -33,11 +34,12 @@ docker swarm join-token worker
 # Create overlay network for Traefik
 docker network create --driver=overlay --attachable traefik-public
 
-# Create configs/secrets
-echo "your-admin-password-hash" | docker secret create traefik_dashboard_password -
+# Create a BasicAuth users file for the Traefik dashboard
+printf 'admin:your-password-hash\n' | docker secret create traefik_dashboard_users -
 
-# Create volume for certificates (shared between manager nodes)
+# Create volumes for persistent data
 docker volume create traefik_certs
+docker volume create portainer_data
 ```
 
 ## Step 3: Deploy Traefik as a Swarm Stack
@@ -75,6 +77,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_certs:/letsencrypt
 
+    secrets:
+      - traefik_dashboard_users
+
     networks:
       - traefik-public
 
@@ -91,6 +96,8 @@ services:
         - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
         - "traefik.http.routers.traefik-dashboard.tls=true"
         - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.traefik-dashboard.middlewares=traefik-dashboard-auth@swarm"
+        - "traefik.http.middlewares.traefik-dashboard-auth.basicauth.usersfile=/run/secrets/traefik_dashboard_users"
         - "traefik.http.services.traefik-dashboard.loadbalancer.server.port=8080"
 
 networks:
@@ -99,6 +106,10 @@ networks:
 
 volumes:
   traefik_certs:
+    external: true
+
+secrets:
+  traefik_dashboard_users:
     external: true
 ```
 
@@ -119,10 +130,10 @@ version: "3.8"
 
 services:
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:lts
     command:
       - -H
-      - tcp://portainer-agent:9001  # Connect to agents
+      - tcp://tasks.portainer-agent:9001  # Connect to agents
       - --tlsskipverify
 
     volumes:
@@ -148,7 +159,7 @@ services:
         - "traefik.http.routers.portainer.service=portainer"
 
   portainer-agent:
-    image: portainer/agent:latest
+    image: portainer/agent:lts
     environment:
       AGENT_CLUSTER_ADDR: tasks.portainer-agent  # Service discovery DNS
       AGENT_PORT: 9001
@@ -172,7 +183,7 @@ networks:
 
 volumes:
   portainer_data:
-    driver: local
+    external: true
 ```
 
 ```bash
@@ -237,4 +248,4 @@ docker service logs traefik_traefik --tail=50 | grep -i "cert\|acme"
 
 ## Conclusion
 
-Deploying Portainer and Traefik on Docker Swarm creates a production-grade container platform with automatic service discovery, HTTPS certificate management, and multi-node load balancing. Traefik reads Swarm service labels to route traffic, while Portainer uses the Swarm agent pattern to manage all nodes from a central interface. Services deployed through Portainer automatically participate in the Traefik routing by including the appropriate labels.
+Deploying Portainer and Traefik on Docker Swarm creates a cluster-aware container platform with automatic service discovery, HTTPS certificate management, and load balancing across Swarm services. Traefik reads Swarm service labels to route traffic, while Portainer uses the Swarm agent pattern to manage all nodes from a central interface. Services deployed through Portainer automatically participate in the Traefik routing by including the appropriate labels.
