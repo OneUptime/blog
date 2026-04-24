@@ -12,41 +12,46 @@ Portainer Business Edition implements a robust RBAC system that controls what us
 
 ## Role Hierarchy
 
-Portainer has two levels of roles:
-1. **System-level roles**: Apply globally across all environments
+Portainer has system-level roles, environment-level roles, and a namespace-scoped Kubernetes role:
+1. **System-level roles**: Apply globally across Portainer, or across all Edge environments in the case of Edge Administrator
 2. **Environment-level roles**: Apply to a specific environment or group
+3. **Namespace Operator**: Applies to specified namespaces in a Kubernetes environment
 
 ## System-Level Roles
 
 | Role | Description |
 |------|-------------|
 | **Administrator** | Full control over all environments, users, and settings |
-| **Standard User** | Access limited by environment-level role assignments |
+| **Standard User** | Base user role; effective access is determined by environment-level role assignments |
+| **Edge Administrator** | Full control over all resources in all Edge environments, plus access to Edge Compute features |
 
 ## Environment-Level Roles (BE)
 
-| Role | Level | Description |
-|------|-------|-------------|
-| **Environment Administrator** | 1 (highest) | Full control within the environment |
-| **Operator** | 2 | Manage containers/stacks but not create them |
-| **Helpdesk** | 3 | Read-only access to containers and logs |
-| **Standard User** | 4 | Create and manage own resources |
-| **Read-Only Viewer** | 5 | View resources, no changes |
+| Role | Description |
+|------|-------------|
+| **Environment Administrator** | Full access within the environment, but not host management, Portainer internal settings, or resource ownership changes |
+| **Operator** | Operate on existing resources, view logs, and use the container console, but cannot create or delete resources |
+| **Helpdesk** | Read-only access to deployed resources, but cannot make changes or open a container console |
+| **Standard User** | Complete control over the resources that the user, or members of their team, deploy |
+| **Read-Only User** | Read-only access to resources the user is entitled to see |
 
-## Permission Matrix
+For Kubernetes, Portainer also provides **Namespace Operator**, which scopes Operator-like access to specified namespaces instead of the entire environment.
 
-| Action | Env Admin | Operator | Standard User | Helpdesk |
-|--------|-----------|----------|---------------|----------|
-| View containers | ✓ | ✓ | ✓ | ✓ |
-| Start/stop containers | ✓ | ✓ | ✓ | ✗ |
-| Create containers | ✓ | ✗ | ✓ | ✗ |
-| Delete containers | ✓ | ✗ | Own only | ✗ |
-| Manage networks | ✓ | ✗ | ✓ | ✗ |
-| Manage volumes | ✓ | ✗ | ✓ | ✗ |
-| Deploy stacks | ✓ | ✗ | ✓ | ✗ |
-| Manage environment | ✓ | ✗ | ✗ | ✗ |
-| View logs | ✓ | ✓ | ✓ | ✓ |
-| Container console | ✓ | ✓ | ✓ | ✗ |
+## Permission Matrix (Docker/Swarm)
+
+| Action | Env Admin | Operator | Standard User | Helpdesk | Read-Only User |
+|--------|-----------|----------|---------------|----------|----------------|
+| View containers | ✓ | ✓ | ✓* | ✓ | ✓* |
+| Start/stop containers | ✓ | ✗ | ✓* | ✗ | ✗ |
+| Create containers | ✓ | ✗ | ✓ | ✗ | ✗ |
+| Delete containers | ✓ | ✗ | ✓* | ✗ | ✗ |
+| Create networks | ✓ | ✗ | ✓ | ✗ | ✗ |
+| Create volumes | ✓ | ✗ | ✓ | ✗ | ✗ |
+| Deploy stacks | ✓ | ✗ | ✓ | ✗ | ✗ |
+| View logs | ✓ | ✓ | ✓* | ✓ | ✓* |
+| Container console | ✓ | ✓ | ✓* | ✗ | ✗ |
+
+\* Standard User and Read-Only User permissions apply only to resources they are entitled to access. On Docker and Swarm, that access can be inherited from a stack. Kubernetes environments use Kubernetes RBAC plus Portainer's role mappings, so the exact permissions differ.
 
 ## Assign Environment Roles via API
 
@@ -57,26 +62,32 @@ TOKEN=$(curl -s -X POST \
   -d '{"username":"admin","password":"yourpassword"}' \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Assign a team to an environment with Operator role (role ID: 2)
+# Fetch the current team access policies, add Team ID 3 with the Operator role,
+# then update Environment ID 1
+PAYLOAD=$(curl -s \
+  https://localhost:9443/api/endpoints/1 \
+  -H "Authorization: Bearer $TOKEN" \
+  --insecure | python3 -c 'import sys,json; endpoint=json.load(sys.stdin); policies=endpoint.get("TeamAccessPolicies") or {}; policies["3"]={"RoleId":5}; print(json.dumps({"TeamAccessPolicies": policies}))')
 
-# Environment ID: 1, Team ID: 3
 curl -X PUT \
-  https://localhost:9443/api/endpoints/1/teamaccesspolicies \
+  https://localhost:9443/api/endpoints/1 \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"3": {"RoleID": 2}}' \
+  -d "$PAYLOAD" \
   --insecure
 ```
 
 ## Role IDs Reference
 
+For environment access policies, the built-in role IDs in current releases are shown below. You can confirm them in your instance with `GET /api/roles`.
+
 | Role Name | Role ID |
 |-----------|---------|
-| Environment Admin | 1 |
-| Operator | 2 |
-| Helpdesk | 3 |
-| Standard User | 4 |
-| Read-Only | 5 |
+| Environment Administrator | 1 |
+| Helpdesk | 2 |
+| Standard User | 3 |
+| Read-Only User | 4 |
+| Operator | 5 |
 
 ---
 
