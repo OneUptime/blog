@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Image, Cleanup, DevOps
 
-Description: Learn how to identify and remove dangling Docker images in Portainer to recover disk space consumed by intermediate build layers and replaced image versions.
+Description: Learn how to identify and remove dangling Docker images in Portainer to recover disk space consumed by untagged image revisions left behind when tags move to newer builds.
 
 ## Introduction
 
-Dangling images are Docker images that have no tag and are not referenced by any container. They're typically created during image builds (intermediate layers) or when a tag is moved to a newer image version. These images consume disk space silently. Portainer and Docker CLI both provide ways to clean them up.
+Dangling images are untagged Docker images that commonly appear as `<none>:<none>` after a tag is moved to a newer image version. These images consume disk space silently, and Docker removes them with `docker image prune`. Docker build cache can also consume disk space, but it is managed separately from dangling images. Portainer and Docker CLI both provide ways to clean up dangling images.
 
 ## Prerequisites
 
@@ -30,17 +30,17 @@ nginx         alpine    jkl012         2 weeks ago    42MB
 
 ### When Dangling Images Are Created
 
-1. **Image rebuild**: Building `myapp:latest` multiple times creates a new `abc123` image and the old one becomes dangling (`<none>`).
+1. **Image rebuild**: Building `myapp:latest` multiple times creates a new `abc123` image and the old image can become dangling (`<none>`).
 
-2. **Re-tagging**: Moving a tag to a new image leaves the old image untagged.
+2. **Re-tagging**: Moving a tag to a new image can leave the old image untagged.
    ```bash
    docker pull myapp:v2.0.0
-   docker tag myapp:v2.0.0 myapp:latest  # Old "latest" image becomes dangling
+   docker tag myapp:v2.0.0 myapp:latest  # Old "latest" image becomes untagged
    ```
 
-3. **Multi-stage builds**: Intermediate stages not tagged become dangling.
+3. **Repeated CI/CD rebuilds**: Rebuilding the same mutable tag on a host over time can leave older local image IDs untagged.
 
-4. **Failed builds**: Partially built images sometimes left as dangling layers.
+Modern multi-stage and failed builds more often leave build cache, which Docker manages separately from dangling images.
 
 ## Step 1: List Dangling Images
 
@@ -55,27 +55,26 @@ REPOSITORY   TAG       IMAGE ID       CREATED        SIZE
 # Count dangling images:
 docker images --filter "dangling=true" -q | wc -l
 
-# Show total size of dangling images:
-docker images --filter "dangling=true" --format "{{.Size}}" | \
-    awk '{sum += $1} END {print sum " MB (approx)"}'
+# Review image disk usage before pruning:
+docker system df -v
 ```
 
 ## Step 2: Remove Dangling Images via Portainer
 
 1. Navigate to **Images** in Portainer.
-2. Look for a filter to show **Unused** or **Dangling** images.
-3. Select the dangling images (showing `<none>:<none>`).
+2. Review the image list for entries showing `<none>:<none>`.
+3. Select the dangling images.
 4. Click **Remove**.
 
-Or use the **Prune** function:
+Or use the **Prune** function if your Portainer version exposes it:
 1. Navigate to **Images**.
 2. Click **Prune**.
-3. Select **Remove dangling images** (without the "all unused" option).
+3. Choose the dangling-images-only option rather than removing all unused images.
 
 ## Step 3: Remove Dangling Images via CLI
 
 ```bash
-# Remove only dangling images (safe - no tags or containers reference them):
+# Remove only dangling images:
 docker image prune
 
 # With confirmation bypass:
@@ -110,9 +109,6 @@ fi
 
 echo "${TIMESTAMP}: Found ${DANGLING_BEFORE} dangling images. Cleaning up..." >> "${LOG_FILE}"
 
-# Get space usage before
-SPACE_BEFORE=$(docker system df --format '{{.Size}}' | head -1)
-
 # Remove dangling images
 OUTPUT=$(docker image prune --force 2>&1)
 echo "${TIMESTAMP}: ${OUTPUT}" >> "${LOG_FILE}"
@@ -130,13 +126,13 @@ echo "" >> "${LOG_FILE}"
 # 15 3 * * * /opt/scripts/cleanup-dangling.sh
 ```
 
-## Step 5: Prevent Dangling Image Accumulation
+## Step 5: Reduce Image and Build Cache Accumulation
 
 ### Use BuildKit for Multi-Stage Builds
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-# BuildKit caches are managed more efficiently and produce fewer dangling images
+# BuildKit supports cache mounts, and Docker manages build cache separately from image cleanup
 FROM golang:1.22-alpine AS builder
 WORKDIR /build
 COPY . .
@@ -148,12 +144,14 @@ COPY --from=builder /build/myapp /myapp
 ENTRYPOINT ["/myapp"]
 ```
 
-### Use `--no-cache` for Production Builds
+### Prune Build Cache Separately When Needed
 
 ```bash
-# Build without cache to avoid intermediate image accumulation:
-docker build --no-cache -t myapp:v2.1.0 .
+# Remove build cache when disk usage is coming from builds rather than dangling images:
+docker builder prune -f
 ```
+
+This removes build cache. It does not remove existing dangling images.
 
 ### Clean Up After CI/CD Builds
 
@@ -162,10 +160,10 @@ In your CI/CD pipeline, clean up after build:
 ```yaml
 # .github/workflows/build.yml
 - name: Build image
-  run: docker build -t myapp:${{ github.sha }} .
+  run: docker build -t your-namespace/myapp:${{ github.sha }} .
 
 - name: Push image
-  run: docker push myapp:${{ github.sha }}
+  run: docker push your-namespace/myapp:${{ github.sha }}
 
 - name: Clean up local images
   if: always()
@@ -175,12 +173,11 @@ In your CI/CD pipeline, clean up after build:
 ## Step 6: Distinguish Dangling vs. Unused Images
 
 ```bash
-# Dangling images: no tags, no container references
+# Dangling images: untagged images left behind when a tag moves to a newer build
 docker images --filter "dangling=true"
 
-# Unused images: have tags but no containers use them
-docker images --filter "dangling=false" | grep -v "CONTAINER ID"
-# (more complex to identify without custom scripts)
+# Unused images: Docker doesn't provide a direct "unused only" listing filter.
+# docker image prune -a removes all images not used by any container.
 
 # All unused images (dangling + tagged but unreferenced):
 docker image prune -a  # Removes EVERYTHING not used by a container
@@ -212,4 +209,4 @@ The UNIQUE SIZE column shows how much disk space each image actually uses (vs. s
 
 ## Conclusion
 
-Dangling images are an inevitable byproduct of active Docker image building. Regular cleanup via `docker image prune` or Portainer's prune feature keeps your environment clean. For production hosts with frequent builds, automate cleanup in cron jobs and integrate cleanup into your CI/CD pipelines. Monitor disk usage with `docker system df` to catch accumulation before it causes issues.
+Dangling images are a normal byproduct of active Docker image building. Regular cleanup via `docker image prune` or Portainer's image-management features keeps your environment clean. For production hosts with frequent builds, automate cleanup in cron jobs and integrate cleanup into your CI/CD pipelines. Monitor disk usage with `docker system df` to catch accumulation before it causes issues, and remember that Docker build cache is cleaned separately from dangling images.
