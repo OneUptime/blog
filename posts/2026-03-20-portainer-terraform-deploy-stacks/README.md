@@ -22,8 +22,10 @@ Using Terraform to manage Portainer stacks enables declarative stack deployments
 # stacks.tf - Inline stack content
 
 resource "portainer_stack" "nginx" {
-  name        = "nginx-proxy"
-  endpoint_id = portainer_environment.production.id
+  name            = "nginx-proxy"
+  deployment_type = "standalone"
+  method          = "string"
+  endpoint_id     = portainer_environment.production.id
 
   stack_file_content = <<-EOT
     version: "3.8"
@@ -50,22 +52,23 @@ resource "portainer_stack" "nginx" {
 # stacks.tf - Stack content from file
 
 resource "portainer_stack" "wordpress" {
-  name        = "wordpress"
-  endpoint_id = portainer_environment.production.id
+  name            = "wordpress"
+  deployment_type = "standalone"
+  method          = "file"
+  endpoint_id     = portainer_environment.production.id
 
   # Read compose file from disk
-  stack_file_content = file("${path.module}/stacks/wordpress/docker-compose.yml")
+  stack_file_path = "${path.module}/stacks/wordpress/docker-compose.yml"
 
-  env = [
-    {
-      name  = "WORDPRESS_DB_PASSWORD"
-      value = var.wordpress_db_password
-    },
-    {
-      name  = "MYSQL_ROOT_PASSWORD"
-      value = var.mysql_root_password
-    }
-  ]
+  env {
+    name  = "WORDPRESS_DB_PASSWORD"
+    value = var.wordpress_db_password
+  }
+
+  env {
+    name  = "MYSQL_ROOT_PASSWORD"
+    value = var.mysql_root_password
+  }
 }
 
 variable "wordpress_db_password" {
@@ -83,51 +86,54 @@ variable "mysql_root_password" {
 
 ## Step 3: Deploy a Stack from a Template File
 
-Use Terraform's `templatefile` function for dynamic Compose content:
+Use Terraform's `templatefile` function for dynamic Compose content. For a Swarm deployment, you can template replica counts:
 
 ```hcl
 # stacks.tf - Templated stack
 
 locals {
   app_config = {
-    image_tag    = var.app_image_tag
-    app_env      = var.app_environment
+    image_tag     = var.app_image_tag
+    app_env       = var.app_environment
     replica_count = var.replica_count
     registry      = "ghcr.io/my-org"
   }
 }
 
 resource "portainer_stack" "application" {
-  name        = "my-application"
-  endpoint_id = portainer_environment.production.id
+  name            = "my-application"
+  deployment_type = "swarm"
+  method          = "string"
+  endpoint_id     = portainer_environment.production.id
 
   stack_file_content = templatefile(
     "${path.module}/stacks/app/docker-compose.tftpl",
     local.app_config
   )
 
-  env = [
-    {
-      name  = "DATABASE_URL"
-      value = var.database_url
-    },
-    {
-      name  = "REDIS_URL"
-      value = "redis://redis:6379"
-    }
-  ]
+  env {
+    name  = "DATABASE_URL"
+    value = var.database_url
+  }
+
+  env {
+    name  = "REDIS_URL"
+    value = "redis://redis:6379"
+  }
 }
+```
 
-# stacks/app/docker-compose.tftpl
+`stacks/app/docker-compose.tftpl`:
 
-# version: "3.8"
-# services:
-#   app:
-#     image: ${registry}/myapp:${image_tag}
-#     deploy:
-#       replicas: ${replica_count}
-#     environment:
-#       APP_ENV: ${app_env}
+```yaml
+version: "3.8"
+services:
+  app:
+    image: ${registry}/myapp:${image_tag}
+    deploy:
+      replicas: ${replica_count}
+    environment:
+      APP_ENV: ${app_env}
 ```
 
 ## Step 4: Deploy a Git-Connected Stack
@@ -135,31 +141,29 @@ resource "portainer_stack" "application" {
 ```hcl
 # git_stacks.tf - Stack from Git repository
 
-resource "portainer_stack_git" "infrastructure" {
-  name        = "infra-stack"
-  endpoint_id = portainer_environment.production.id
+resource "portainer_stack" "infrastructure" {
+  name            = "infra-stack"
+  deployment_type = "standalone"
+  method          = "repository"
+  endpoint_id     = portainer_environment.production.id
 
   repository_url            = "https://github.com/your-org/infrastructure"
-  repository_reference      = "refs/heads/main"
+  repository_reference_name = "refs/heads/main"
   file_path_in_repository   = "stacks/production/docker-compose.yml"
 
   # Authentication for private repos
-  repository_authentication = true
-  repository_username       = var.github_username
-  repository_password       = var.github_token  # PAT with repo:read scope
+  git_repository_authentication = true
+  repository_username           = var.github_username
+  repository_password           = var.github_token  # PAT or token with repository read access
 
   # Auto-update configuration
-  auto_update = {
-    interval     = "5m"
-    force_update = false
-  }
+  update_interval = "5m"
+  force_update    = false
 
-  env = [
-    {
-      name  = "IMAGE_TAG"
-      value = var.app_image_tag
-    }
-  ]
+  env {
+    name  = "IMAGE_TAG"
+    value = var.app_image_tag
+  }
 }
 ```
 
@@ -179,17 +183,20 @@ variable "stacks" {
 resource "portainer_stack" "apps" {
   for_each = var.stacks
 
-  name        = each.key
-  endpoint_id = portainer_environment.production.id
+  name            = each.key
+  deployment_type = "standalone"
+  method          = "file"
+  endpoint_id     = portainer_environment.production.id
 
-  stack_file_content = file("${path.module}/stacks/${each.value.compose_file}")
+  stack_file_path = "${path.module}/stacks/${each.value.compose_file}"
 
-  env = [
-    for k, v in each.value.env_vars : {
-      name  = k
-      value = v
+  dynamic "env" {
+    for_each = each.value.env_vars
+    content {
+      name  = env.key
+      value = env.value
     }
-  ]
+  }
 }
 ```
 
@@ -217,35 +224,41 @@ stacks = {
 ## Step 6: Stack Dependency Ordering
 
 ```hcl
-# Deploy in order: network deps → databases → application
+# Deploy in Terraform order: network deps → databases → application
 
 resource "portainer_stack" "networking" {
-  name               = "networking"
-  endpoint_id        = portainer_environment.production.id
-  stack_file_content = file("stacks/networking/docker-compose.yml")
+  name            = "networking"
+  deployment_type = "standalone"
+  method          = "file"
+  endpoint_id     = portainer_environment.production.id
+  stack_file_path = "${path.module}/stacks/networking/docker-compose.yml"
 }
 
 resource "portainer_stack" "databases" {
-  name               = "databases"
-  endpoint_id        = portainer_environment.production.id
-  stack_file_content = file("stacks/databases/docker-compose.yml")
+  name            = "databases"
+  deployment_type = "standalone"
+  method          = "file"
+  endpoint_id     = portainer_environment.production.id
+  stack_file_path = "${path.module}/stacks/databases/docker-compose.yml"
 
   depends_on = [portainer_stack.networking]
 }
 
 resource "portainer_stack" "application" {
-  name               = "application"
-  endpoint_id        = portainer_environment.production.id
-  stack_file_content = file("stacks/app/docker-compose.yml")
+  name            = "application"
+  deployment_type = "standalone"
+  method          = "file"
+  endpoint_id     = portainer_environment.production.id
+  stack_file_path = "${path.module}/stacks/app/docker-compose.yml"
 
   depends_on = [portainer_stack.databases]
 }
 ```
 
-## Step 7: Managing Stack Environment Variables Securely
+## Step 7: Managing Stack Environment Variables with Sensitive Inputs
 
 ```hcl
-# Use Terraform Cloud or Vault for sensitive vars
+# Sensitive variables redact CLI output, but stack env values still end up in Terraform state
 variable "stack_secrets" {
   description = "Sensitive environment variables for stacks"
   type = map(string)
@@ -253,21 +266,36 @@ variable "stack_secrets" {
 }
 
 resource "portainer_stack" "secure_app" {
-  name        = "secure-app"
-  endpoint_id = portainer_environment.production.id
+  name            = "secure-app"
+  deployment_type = "standalone"
+  method          = "file"
+  endpoint_id     = portainer_environment.production.id
 
-  stack_file_content = file("stacks/secure-app/docker-compose.yml")
+  stack_file_path = "${path.module}/stacks/secure-app/docker-compose.yml"
 
   # Mix of non-sensitive and sensitive env vars
-  env = [
-    { name = "APP_ENV",         value = "production" },
-    { name = "DATABASE_URL",    value = var.stack_secrets["database_url"] },
-    { name = "JWT_SECRET",      value = var.stack_secrets["jwt_secret"] },
-    { name = "API_KEY",         value = var.stack_secrets["api_key"] }
-  ]
+  env {
+    name  = "APP_ENV"
+    value = "production"
+  }
+
+  env {
+    name  = "DATABASE_URL"
+    value = var.stack_secrets["database_url"]
+  }
+
+  env {
+    name  = "JWT_SECRET"
+    value = var.stack_secrets["jwt_secret"]
+  }
+
+  env {
+    name  = "API_KEY"
+    value = var.stack_secrets["api_key"]
+  }
 }
 ```
 
 ## Conclusion
 
-Deploying Portainer stacks with Terraform brings stack deployments into your IaC workflow. Stack configuration, environment variables, and deployment parameters are version-controlled alongside your infrastructure. Use `templatefile` for dynamic compose generation, Git-connected stacks for auto-deployment, and `depends_on` for proper deployment ordering. Combine with Terraform Cloud or Vault for secure secrets management.
+Deploying Portainer stacks with Terraform brings stack deployments into your IaC workflow. Stack configuration, environment variables, and deployment parameters are version-controlled alongside your infrastructure. Use `templatefile` for dynamic compose generation, Git-connected stacks for auto-deployment, and `depends_on` for Terraform apply ordering between related stacks. Use Terraform Cloud or Vault to source sensitive values, and protect your Terraform state because stack environment variables are still persisted there.
