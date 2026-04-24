@@ -13,7 +13,6 @@ Portainer CE provides a user-friendly web interface for managing Docker containe
 ## Prerequisites
 
 - Debian 11 (Bullseye) or Debian 12 (Bookworm)
-- Minimum: 2GB RAM, 20GB disk
 - Root or sudo access
 - Internet connectivity
 
@@ -25,32 +24,29 @@ Portainer CE provides a user-friendly web interface for managing Docker containe
 sudo apt-get update && sudo apt-get upgrade -y
 
 # Install required packages
-sudo apt-get install -y \
-  apt-transport-https \
-  ca-certificates \
-  curl \
-  gnupg \
-  lsb-release
+sudo apt-get install -y ca-certificates curl
 ```
 
 ## Step 2: Install Docker on Debian
 
 ```bash
-# Remove old Docker versions
-sudo apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null
+# Remove conflicting Docker packages
+sudo apt-get remove -y $(dpkg --get-selections docker.io docker-compose docker-doc podman-docker containerd runc | cut -f1)
 
 # Add Docker GPG key
 sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/debian/gpg | \
-  sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
+sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
 
 # Add Docker repository
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/debian \
-  $(lsb_release -cs) stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/debian
+Suites: $(. /etc/os-release && echo "$VERSION_CODENAME")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 # Install Docker
 sudo apt-get update
@@ -94,30 +90,21 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
-## Step 5: Open Firewall Ports (if using iptables/nftables)
+## Step 5: Configure Firewall Rules (if using a host firewall)
 
-```bash
-# Check current firewall status
-sudo iptables -L -n
+The `docker run` command above already publishes ports `9443` and `8000` on the host.
 
-# Allow Portainer ports
-sudo iptables -A INPUT -p tcp --dport 9443 -j ACCEPT
-sudo iptables -A INPUT -p tcp --dport 8000 -j ACCEPT
-
-# Make firewall rules persistent
-sudo apt-get install -y iptables-persistent
-sudo netfilter-persistent save
-```
+If you use additional host firewall rules on Docker's default firewall backend, create them with `iptables` or `ip6tables` and add them to the `DOCKER-USER` chain rather than the `INPUT` chain. If you explicitly run Docker with its `nftables` backend, create your rules in your own nftables table instead of editing Docker's tables directly.
 
 ## Step 6: Access Portainer
 
 Navigate to `https://<server-ip>:9443` in your browser.
 
 1. Accept the self-signed certificate warning
-2. Set your admin username and password
+2. Set your admin username and a password that is at least 12 characters long and meets the listed requirements
 3. Select "Get Started" to manage your local Docker environment
 
 ## Step 7: Configure Portainer to Start on Boot
@@ -138,8 +125,8 @@ docker ps | grep portainer
 ## Keeping Portainer Updated
 
 ```bash
-# Update Portainer to latest version
-docker pull portainer/portainer-ce:latest
+# Update Portainer to the latest LTS version
+docker pull portainer/portainer-ce:lts
 docker stop portainer && docker rm portainer
 docker run -d \
   -p 8000:8000 \
@@ -148,7 +135,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Troubleshooting on Debian
@@ -175,7 +162,7 @@ newgrp docker
 docker logs portainer
 
 # Common error: port already in use
-sudo netstat -tlnp | grep -E '9443|8000'
+sudo ss -tlnp | grep -E '(:9443|:8000)'
 
 # Common error: volume mount issue
 docker volume inspect portainer_data
