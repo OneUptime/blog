@@ -4,26 +4,26 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Network Mirror, Provider Distribution, Enterprise, Infrastructure
 
-Description: Learn how to set up and use provider network mirrors in OpenTofu to serve provider downloads from an internal HTTP server, enabling centralized provider management across your organization.
+Description: Learn how to set up and use provider network mirrors in OpenTofu to serve provider downloads from an internal HTTPS server, enabling centralized provider management across your organization.
 
 ## Introduction
 
-A network mirror is an HTTP server that serves provider plugin archives in the format OpenTofu expects. Unlike a filesystem mirror (a local directory), a network mirror can be shared across an entire organization - every developer and CI/CD system downloads providers from the same internal server without needing internet access or local copies.
+A network mirror is an HTTPS server that serves provider plugin archives in the format OpenTofu expects. Unlike a filesystem mirror (a local directory), a network mirror can be shared across an entire organization - every developer and CI/CD system downloads providers from the same internal server without needing internet access or local copies.
 
 ## Network Mirror Protocol
 
-OpenTofu expects a network mirror to serve specific JSON API responses and binary files at predictable URLs:
+OpenTofu expects a network mirror to serve specific JSON responses and binary files at predictable URLs relative to the mirror base URL:
 
 ```text
-# Discovery endpoint
+# Available versions index
 
-GET /v1/providers/<namespace>/<type>/index.json
+GET /<hostname>/<namespace>/<type>/index.json
 
 # Version metadata
-GET /v1/providers/<namespace>/<type>/<version>/download/<os>/<arch>
+GET /<hostname>/<namespace>/<type>/<version>.json
 
-# Provider zip file
-GET /path/to/terraform-provider-<type>_<version>_<os>_<arch>.zip
+# Provider zip file (URL returned in the version metadata)
+GET /<hostname>/<namespace>/<type>/terraform-provider-<type>_<version>_<os>_<arch>.zip
 ```
 
 ## Setting Up nginx as a Network Mirror
@@ -32,7 +32,7 @@ GET /path/to/terraform-provider-<type>_<version>_<os>_<arch>.zip
 # Step 1: Create the mirror directory
 sudo mkdir -p /var/www/opentofu-mirror
 
-# Step 2: Populate using tofu providers mirror
+# Step 2: From a directory containing the providers you want to mirror, populate the mirror
 tofu providers mirror /var/www/opentofu-mirror/
 
 # Step 3: Configure nginx
@@ -75,7 +75,7 @@ server {
 ## Configuring OpenTofu to Use the Network Mirror
 
 ```hcl
-# ~/.terraform.rc or /etc/opentofu/terraform.rc
+# ~/.tofurc, ~/.terraformrc (compatibility), or a custom *.tfrc file
 
 provider_installation {
   network_mirror {
@@ -93,7 +93,7 @@ provider_installation {
 
 ```bash
 # Test the configuration
-export TF_CLI_CONFIG_FILE=/etc/opentofu/terraform.rc
+export TF_CLI_CONFIG_FILE=/etc/opentofu/mirror.tfrc
 tofu init  # Should download from internal mirror
 ```
 
@@ -207,14 +207,19 @@ server {
 ```
 
 ```hcl
-# If the mirror requires authentication (custom implementation)
+# If the mirror requires authentication for metadata requests
+credentials "tofu-mirror.internal.company.com" {
+  token = "replace-with-your-token"
+}
+
 provider_installation {
   network_mirror {
     url = "https://tofu-mirror.internal.company.com/"
-    # Note: OpenTofu doesn't natively support HTTP auth for mirrors
-    # Use network-level controls (IP allowlists, VPN) instead
   }
 }
+
+# Note: OpenTofu sends credentials to mirror metadata endpoints,
+# but not to archive URLs returned by the mirror
 ```
 
 ## Monitoring Mirror Health
@@ -238,4 +243,4 @@ fi
 
 ## Conclusion
 
-A network mirror is the recommended approach for enterprise OpenTofu deployments. It centralizes provider distribution on an internal nginx server populated by `tofu providers mirror`, requires no per-machine configuration beyond the `terraform.rc` file, and provides a single point for audit logging and version control. Update the mirror on a schedule to keep providers current, and use IP-based access controls to restrict access to internal networks.
+A network mirror is the recommended approach for enterprise OpenTofu deployments. It centralizes provider distribution on an internal nginx server populated by `tofu providers mirror`, requires no per-machine configuration beyond the OpenTofu CLI configuration file, and provides a single point for audit logging and version control. Update the mirror on a schedule to keep providers current, and use IP-based access controls to restrict access to internal networks.
