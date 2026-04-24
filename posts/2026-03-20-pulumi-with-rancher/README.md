@@ -13,8 +13,8 @@ Pulumi is an infrastructure-as-code tool that uses real programming languages (T
 ## Prerequisites
 
 - Pulumi CLI installed
-- Node.js 18+ (for TypeScript examples)
-- Rancher API token
+- Node.js 20 or 22 (for TypeScript examples)
+- Rancher API key (access key and secret key)
 
 ## Step 1: Create a New Pulumi Project
 
@@ -62,7 +62,7 @@ const teams = [
 // Reference the production cluster
 const cluster = rancher2.getCluster({ name: "production" }, { provider });
 
-// Create a project and namespace for each team (loop-not possible in HCL)
+// Create a project and namespace for each team
 for (const team of teams) {
     const project = new rancher2.Project(`${team.name}-project`, {
         name: team.name,
@@ -92,6 +92,11 @@ for (const team of teams) {
 ## Step 4: Deploy Helm Charts via Pulumi
 
 ```typescript
+// Use the Rancher cluster's kubeconfig with the Kubernetes provider
+const k8sProvider = new k8s.Provider("k8s", {
+    kubeconfig: cluster.then(c => c.kubeConfig),
+});
+
 // Deploy a Helm chart to the cluster
 const prometheus = new k8s.helm.v3.Release("prometheus", {
     chart: "kube-prometheus-stack",
@@ -114,7 +119,7 @@ const prometheus = new k8s.helm.v3.Release("prometheus", {
 ## Step 5: Deploy and Preview
 
 ```bash
-# Set credentials
+# Set Rancher API key credentials
 export RANCHER_ACCESS_KEY="token-xxxxx"
 export RANCHER_SECRET_KEY="yyyyy"
 
