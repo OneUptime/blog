@@ -8,7 +8,7 @@ Description: Learn how to create comprehensive container metrics dashboards in G
 
 ## Introduction
 
-Grafana dashboards transform raw Prometheus metrics into actionable visualizations. For Portainer-managed containers, a well-designed dashboard shows CPU and memory usage per container, identifies resource-hungry services, tracks network I/O, and surfaces container restarts. This guide covers creating a practical container metrics dashboard from scratch using cAdvisor data.
+Grafana dashboards transform raw Prometheus metrics into actionable visualizations. For Portainer-managed containers, a well-designed dashboard shows CPU and memory usage per container, identifies resource-hungry services, tracks network I/O, and shows when containers were last seen by cAdvisor. This guide covers creating a practical container metrics dashboard from scratch using cAdvisor data.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ Grafana dashboards transform raw Prometheus metrics into actionable visualizatio
 
 ## Step 1: Create a New Dashboard
 
-1. In Grafana, click **+** → **New Dashboard**
+1. In Grafana, click **Dashboards** → **New** → **New Dashboard**
 2. Click **Add visualization**
 3. Select **Prometheus** as the data source
 
@@ -28,16 +28,15 @@ Grafana dashboards transform raw Prometheus metrics into actionable visualizatio
 
 ```text
 Visualization: Time series
-Title: Container CPU Usage (%)
+Title: Container CPU Usage (% of one core)
 
 Query A:
-  Expression: rate(container_cpu_usage_seconds_total{image!="",name!=""}[5m]) * 100
+  Expression: sum by (name) (rate(container_cpu_usage_seconds_total{image!="",name!=""}[5m])) * 100
   Legend: {{name}}
 
 Panel settings:
   Unit: Percent (0-100)
   Min: 0
-  Max: 100
   Thresholds:
     Green: 0
     Yellow: 70
@@ -45,13 +44,15 @@ Panel settings:
 ```
 
 ```promql
-# Better query: per-container CPU percentage with filtering
+# Per-container CPU usage as a percentage of one CPU core.
+# Values above 100 mean the container is using more than one core.
 
-sum(rate(container_cpu_usage_seconds_total{
-  image!="",
-  container!="POD",
-  container!=""
-}[5m])) by (name) * 100
+sum by (name) (
+  rate(container_cpu_usage_seconds_total{
+    image!="",
+    name!=""
+  }[5m])
+) * 100
 ```
 
 ## Step 3: Memory Usage Panel
@@ -67,7 +68,7 @@ Query A:
   Legend: {{name}}
 
 Query B (memory limit):
-  Expression: container_memory_limit_bytes{image!="",name!=""} > 0
+  Expression: container_spec_memory_limit_bytes{image!="",name!=""} > 0
   Legend: {{name}} limit
 
 Panel settings:
@@ -80,7 +81,7 @@ Panel settings:
 (
   container_memory_working_set_bytes{image!="",name!=""}
   /
-  container_memory_limit_bytes{image!="",name!=""}
+  (container_spec_memory_limit_bytes{image!="",name!=""} > 0)
 ) * 100
 ```
 
@@ -107,10 +108,10 @@ Panel settings:
 
 ```text
 Visualization: Stat
-Title: Running Containers
+Title: Containers Seen
 
 Query:
-  Expression: count(container_last_seen{image!=""})
+  Expression: count(container_last_seen{image!="",name!=""})
   Instant: ON
   Legend: Containers
 
@@ -128,29 +129,29 @@ Visualization: Time series
 Title: Network I/O
 
 Query A (received):
-  Expression: rate(container_network_receive_bytes_total{image!="",name!=""}[5m])
+  Expression: sum by (name) (rate(container_network_receive_bytes_total{image!="",name!=""}[5m]))
   Legend: {{name}} RX
 
 Query B (transmitted):
-  Expression: rate(container_network_transmit_bytes_total{image!="",name!=""}[5m])
+  Expression: sum by (name) (rate(container_network_transmit_bytes_total{image!="",name!=""}[5m]))
   Legend: {{name}} TX
 
 Panel settings:
   Unit: bytes/sec (IEC)
-  Series override:
-    TX queries: Negative Y to show upload below axis
+  Field override:
+    Query B → Graph styles > Transform: Negative Y to show upload below axis
 ```
 
-## Step 6: Container Uptime and Restart Table
+## Step 6: Container Last Seen Table
 
-**Panel: Container Status Table**
+**Panel: Container Last Seen**
 
 ```text
 Visualization: Table
-Title: Container Status
+Title: Container Last Seen
 
 Query:
-  Expression: max(container_last_seen{image!=""}) by (name, image)
+  Expression: max(container_last_seen{image!="",name!=""} * 1000) by (name, image)
   Instant: ON
   Format: Table
 
@@ -169,7 +170,7 @@ Add a container selector variable:
 Type: Query
 Name: container
 Label: Container
-Query: label_values(container_cpu_usage_seconds_total{image!=""}, name)
+Query: label_values(container_cpu_usage_seconds_total{image!="",name!=""}, name)
 Refresh: On Dashboard Load
 Multi-value: ON
 Include All option: ON
@@ -177,8 +178,13 @@ Include All option: ON
 
 Update all panel queries to use the variable:
 ```promql
-# Instead of name!="" use name=~"$container"
-rate(container_cpu_usage_seconds_total{name=~"$container"}[5m]) * 100
+# Replace name!="" with name=~"$container" and keep the other filters
+sum by (name) (
+  rate(container_cpu_usage_seconds_total{
+    image!="",
+    name=~"$container"
+  }[5m])
+) * 100
 ```
 
 ## Step 8: Complete Dashboard JSON
@@ -196,7 +202,7 @@ curl -s -u "$AUTH" "${GRAFANA_URL}/api/search?type=dash-db" | jq '.[].uid'
 # Export specific dashboard
 DASHBOARD_UID="your-dashboard-uid"
 curl -s -u "$AUTH" "${GRAFANA_URL}/api/dashboards/uid/$DASHBOARD_UID" | \
-  jq '.dashboard' > /opt/monitoring/dashboards/container-metrics.json
+  jq '.dashboard | del(.id)' > /opt/monitoring/dashboards/container-metrics.json
 
 # Import dashboard from JSON file
 curl -s -X POST -u "$AUTH" \
