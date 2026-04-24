@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Resource, Provider, Multi-Region, Infrastructure as Code, DevOps
 
-Description: A guide to using the provider meta-argument in OpenTofu resources to specify which provider configuration to use for multi-region and multi-account deployments.
+Description: A guide to using the provider meta-argument in OpenTofu resources and data sources to specify which provider configuration to use for multi-region and multi-account deployments.
 
 ## Introduction
 
-The `provider` meta-argument lets you specify which provider configuration to use for a resource when multiple configurations of the same provider exist. This is essential for multi-region deployments, multi-account AWS setups, and any scenario requiring different provider configurations for different resources.
+The `provider` meta-argument lets you specify which provider configuration to use for a resource or data source when multiple configurations of the same provider exist. This is essential for multi-region deployments, multi-account AWS setups, and any scenario requiring different provider configurations for different resources.
 
 ## Provider Aliases
 
@@ -19,7 +19,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
 }
@@ -85,34 +85,49 @@ provider "aws" {
   region = "ap-southeast-1"
 }
 
+# Look up a current Amazon Linux 2023 AMI in each region
+data "aws_ssm_parameter" "us_east_al2023" {
+  name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
+}
+
+data "aws_ssm_parameter" "eu_west_al2023" {
+  provider = aws.eu_west
+  name     = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
+}
+
+data "aws_ssm_parameter" "ap_southeast_al2023" {
+  provider = aws.ap_southeast
+  name     = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
+}
+
 # Create EC2 instances in multiple regions
 resource "aws_instance" "us_east" {
-  ami           = "ami-0c55b159cbfafe1f0"  # US East AMI
+  ami           = data.aws_ssm_parameter.us_east_al2023.value
   instance_type = "t3.micro"
   # Uses default provider (us-east-1)
 }
 
 resource "aws_instance" "eu_west" {
   provider      = aws.eu_west
-  ami           = "ami-0d70546e43a941d70"  # EU West AMI
+  ami           = data.aws_ssm_parameter.eu_west_al2023.value
   instance_type = "t3.micro"
 }
 
 resource "aws_instance" "ap_southeast" {
   provider      = aws.ap_southeast
-  ami           = "ami-0801d4ffb40b33b4d"  # AP Southeast AMI
+  ami           = data.aws_ssm_parameter.ap_southeast_al2023.value
   instance_type = "t3.micro"
 }
 ```
 
-## Multi-Region Route53 with provider
+## ACM for CloudFront with provider
 
 ```hcl
 provider "aws" {
   region = var.primary_region
 }
 
-# Route53 is global, but must use us-east-1 for ACM certs
+# CloudFront-related ACM certificates must be created in us-east-1
 provider "aws" {
   alias  = "us_east_1"
   region = "us-east-1"
@@ -153,4 +168,4 @@ module "west_vpc" {
 
 ## Conclusion
 
-The `provider` meta-argument is essential for multi-region and multi-account OpenTofu deployments. By creating aliased provider configurations and using the `provider` meta-argument in resource blocks, you can manage infrastructure across different regions and accounts within a single OpenTofu configuration. This is particularly powerful for disaster recovery setups, global applications, and multi-account governance patterns.
+The `provider` meta-argument is essential for multi-region and multi-account OpenTofu deployments. By creating aliased provider configurations and using the `provider` meta-argument in resource and data blocks, you can manage infrastructure across different regions and accounts within a single OpenTofu configuration. This is particularly powerful for disaster recovery setups, global applications, and multi-account governance patterns.
