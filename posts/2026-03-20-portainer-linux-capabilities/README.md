@@ -71,7 +71,7 @@ services:
 
 ### Web Server Binding to Port 80
 
-Without this capability, non-root users can only bind to ports > 1024:
+On systems where privileged ports still start at 1024, non-root users can only bind to ports > 1024:
 
 ```yaml
 services:
@@ -80,7 +80,7 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_BIND_SERVICE   # Required to bind to port 80
+      - NET_BIND_SERVICE   # Add when binding to port 80 requires this capability
     ports:
       - "80:80"
     user: "101"   # Run as nginx user
@@ -112,7 +112,6 @@ services:
       - ALL
     cap_add:
       - DAC_READ_SEARCH  # Read files regardless of permissions
-      - SYS_RAWIO        # Direct I/O operations
 ```
 
 ### System Clock/Time Management
@@ -125,7 +124,6 @@ services:
       - ALL
     cap_add:
       - SYS_TIME   # Set system clock
-      - NET_ADMIN  # Configure network for NTP
 ```
 
 ### Ping (ICMP) Tool
@@ -137,7 +135,7 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_RAW   # Required for ping (ICMP raw sockets)
+      - NET_RAW   # Needed when ping uses raw sockets
     command: ["ping", "-c", "4", "google.com"]
 ```
 
@@ -190,6 +188,7 @@ services:
     security_opt:
       - no-new-privileges:true    # Prevent privilege escalation
       - seccomp:custom-profile.json  # Restrict system calls
+      - apparmor:docker-default   # Apply an AppArmor profile
     read_only: true               # Read-only container filesystem
     tmpfs:
       - /tmp
@@ -198,4 +197,4 @@ services:
 
 ## Conclusion
 
-Linux capabilities in Portainer provide a powerful way to implement least-privilege security for containers without resorting to full `--privileged` mode. By dropping all default capabilities and adding back only what your application needs, you significantly reduce the blast radius of container security incidents. Combine capability configuration with non-root users, `no-new-privileges`, and seccomp profiles for defense-in-depth security.
+Linux capabilities in Portainer provide a powerful way to implement least-privilege security for containers without resorting to full `--privileged` mode. By dropping all default capabilities and adding back only what your application needs, you significantly reduce the blast radius of container security incidents. Combine capability configuration with non-root users, `no-new-privileges`, seccomp profiles, and AppArmor policies for defense-in-depth security.
