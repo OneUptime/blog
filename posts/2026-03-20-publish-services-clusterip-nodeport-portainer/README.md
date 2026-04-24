@@ -16,11 +16,11 @@ Description: Learn how to expose Kubernetes applications using ClusterIP, NodePo
 
 ## Publishing a Service in Portainer
 
-When deploying or editing an application in Portainer:
+When deploying or editing a form-based application in Portainer:
 
-1. Scroll to the **Publishing** or **Network ports** section.
-2. Select the service type.
-3. Map container ports to service ports.
+1. Scroll to the **Publishing the application** section.
+2. Select the service type tab and click **Create service**.
+3. Configure the service ports (and annotations, if needed).
 
 ## ClusterIP (Internal Service)
 
@@ -42,7 +42,7 @@ spec:
       targetPort: 8080 # Container's listening port
 ```
 
-Other pods in the cluster access it via: `http://my-api.production.svc.cluster.local`
+In clusters using the default DNS domain, other pods access it via: `http://my-api.production.svc.cluster.local`
 
 ## NodePort (External via Node IP)
 
@@ -59,7 +59,7 @@ spec:
   ports:
     - port: 80
       targetPort: 8080
-      nodePort: 30080  # Must be in range 30000-32767
+      nodePort: 30080  # Must be within the node port range (default: 30000-32767)
 ```
 
 Access via: `http://<any-node-ip>:30080`
@@ -73,7 +73,7 @@ metadata:
   name: my-app
   namespace: production
   annotations:
-    # AWS: Use an internal ALB
+    # AWS: Request an internal load balancer
     service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
 spec:
   type: LoadBalancer
@@ -131,11 +131,11 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: my-app    # Must point to a ClusterIP service
+                name: my-app    # Must point to an existing Service
                 port:
                   number: 80
 ```
 
 ## Conclusion
 
-Portainer's service publishing options cover all standard Kubernetes service types. Use ClusterIP for internal services, NodePort for quick external access in on-prem clusters, and LoadBalancer for production cloud deployments.
+Portainer's form-based publishing options cover ClusterIP, NodePort, and LoadBalancer services. Use ClusterIP for internal services, NodePort for quick external access in on-prem clusters, and LoadBalancer for production cloud deployments.
