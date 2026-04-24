@@ -19,7 +19,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
 
     try:
         while True:
-            data = await reader.read(1024)
+            data = await reader.readline()
             if not data:
                 break
 
@@ -155,6 +155,7 @@ asyncio.run(scan_ipv6_hosts(hosts, ports))
 
 ```python
 import asyncio
+import socket
 
 class IPv6UDPServer(asyncio.DatagramProtocol):
     """Async IPv6 UDP server using protocol API."""
@@ -176,7 +177,7 @@ class IPv6UDPServer(asyncio.DatagramProtocol):
         print(f"Error: {exc}")
 
 async def main():
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     # Create IPv6 UDP server
     transport, protocol = await loop.create_datagram_endpoint(
@@ -185,7 +186,7 @@ async def main():
         family=socket.AF_INET6
     )
 
-    print("UDP IPv6 server on [:]:9090")
+    print("UDP IPv6 server on [::]:9090")
     try:
         await asyncio.sleep(3600)  # Run for 1 hour
     finally:
