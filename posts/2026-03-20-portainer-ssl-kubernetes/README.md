@@ -48,22 +48,21 @@ ingress:
     - host: portainer.example.com
       paths:
         - path: /
-          pathType: Prefix
+          port: 9443
   tls:
     - secretName: portainer-tls
       hosts:
         - portainer.example.com
 
 tls:
-  enabled: true
+  force: true
   existingSecret: portainer-tls
-  certFile: tls.crt
-  keyFile: tls.key
 ```
 
 ```bash
 helm upgrade portainer portainer/portainer \
   --namespace portainer \
+  --reuse-values \
   -f portainer-tls-values.yaml
 ```
 
@@ -84,7 +83,7 @@ ingress:
     - host: portainer.example.com
       paths:
         - path: /
-          pathType: Prefix
+          port: 9000
   tls:
     - secretName: portainer-tls-auto
       hosts:
@@ -97,7 +96,7 @@ helm repo add jetstack https://charts.jetstack.io
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true
+  --set crds.enabled=true
 
 # Create ClusterIssuer for Let's Encrypt
 kubectl apply -f - << 'EOF'
@@ -114,12 +113,13 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 EOF
 
 # Deploy Portainer with cert-manager
 helm upgrade portainer portainer/portainer \
   --namespace portainer \
+  --reuse-values \
   -f portainer-cert-manager-values.yaml
 ```
 
@@ -192,10 +192,13 @@ kubectl patch ingress portainer -n portainer \
   --type='json' \
   -p='[{"op":"replace","path":"/spec/tls/0/secretName","value":"portainer-tls-new"}]'
 
-# Rolling restart if using pod-level TLS
-kubectl rollout restart deployment/portainer -n portainer
+# Update Portainer to mount the new secret if using pod-level TLS
+helm upgrade portainer portainer/portainer \
+  --namespace portainer \
+  --reuse-values \
+  --set tls.existingSecret=portainer-tls-new
 ```
 
 ## Conclusion
 
-For Kubernetes Portainer deployments, cert-manager with Let's Encrypt provides fully automated certificate lifecycle management with zero manual intervention. For private clusters, use cert-manager with a custom CA Issuer. The Nginx Ingress handles TLS termination, so Portainer itself can use its default self-signed cert internally while presenting a valid certificate externally.
+For Kubernetes Portainer deployments, cert-manager with Let's Encrypt provides fully automated certificate lifecycle management with zero manual intervention. For private clusters, use cert-manager with a custom CA Issuer. The Nginx Ingress handles TLS termination, so Portainer itself can use HTTP internally, or its default self-signed certificate if you configure the Ingress to speak HTTPS to the backend.
