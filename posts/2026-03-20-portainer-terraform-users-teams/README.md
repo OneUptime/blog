@@ -14,7 +14,7 @@ Managing users and teams in Portainer through Terraform gives you version-contro
 
 - Portainer Terraform provider configured
 - Terraform v1.0+
-- Admin-level API access token
+- Admin-level API key or admin username/password
 
 ## Step 1: Basic User Management
 
@@ -49,6 +49,10 @@ resource "portainer_user" "devops_lead" {
   username = "charlie.admin"
   password = var.initial_passwords["charlie"]
   role     = 1  # Administrator
+
+  lifecycle {
+    ignore_changes = [password]
+  }
 }
 
 # Variables for initial passwords
@@ -56,7 +60,6 @@ variable "initial_passwords" {
   description = "Initial passwords for new users"
   type        = map(string)
   sensitive   = true
-  default     = {}
 }
 ```
 
@@ -174,29 +177,40 @@ resource "portainer_user" "members" {
 
 ## Step 6: Team-to-Environment Access Grants
 
-Combine with environment access:
+On Portainer Business Edition, combine this with environment access:
 
 ```hcl
 # access_policies.tf
 
-# Grant backend team read-only access to production
-resource "portainer_environment_access_policy" "backend_prod_readonly" {
-  environment_id = portainer_environment.production.id
-  team_id        = portainer_team.backend.id
-  access_level   = 3  # 1=admin, 2=operator, 3=read-only
+data "portainer_role" "helpdesk" {
+  name = "HelpDesk"
 }
 
-# Grant devops team admin access to all environments
-resource "portainer_environment_access_policy" "devops_prod_admin" {
-  environment_id = portainer_environment.production.id
-  team_id        = portainer_team.devops.id
-  access_level   = 1  # Admin
+data "portainer_role" "environment_admin" {
+  name = "Environment Administrator"
 }
 
-resource "portainer_environment_access_policy" "devops_staging_admin" {
-  environment_id = portainer_environment.staging.id
-  team_id        = portainer_team.devops.id
-  access_level   = 1
+# Production: backend gets read-only access, devops gets environment administrator access
+resource "portainer_environment" "production" {
+  name                = "production"
+  environment_address = "tcp://production-agent.example.com:9001"
+  type                = 2
+
+  team_access_policies = {
+    (tostring(portainer_team.backend.id)) = data.portainer_role.helpdesk.roles[0].id
+    (tostring(portainer_team.devops.id))  = data.portainer_role.environment_admin.roles[0].id
+  }
+}
+
+# Staging: devops gets environment administrator access
+resource "portainer_environment" "staging" {
+  name                = "staging"
+  environment_address = "tcp://staging-agent.example.com:9001"
+  type                = 2
+
+  team_access_policies = {
+    (tostring(portainer_team.devops.id)) = data.portainer_role.environment_admin.roles[0].id
+  }
 }
 ```
 
@@ -263,7 +277,7 @@ To remove a user, delete their Terraform resources:
 ```bash
 # Remove the user and their team memberships from .tf files
 # Then:
-terraform plan    # Shows: will destroy portainer_user.diana
+terraform plan    # Shows: will destroy portainer_team_membership.diana_frontend and portainer_user.diana
 terraform apply   # Removes user from Portainer
 ```
 
