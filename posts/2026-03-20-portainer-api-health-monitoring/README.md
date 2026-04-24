@@ -8,18 +8,18 @@ Description: Build a programmatic container health monitoring solution using the
 
 ## Introduction
 
-Portainer's UI shows container health status visually, but for automated alerting and remediation you need programmatic access. The Portainer API exposes container health check results, resource stats, and event streams, enabling you to build robust monitoring solutions.
+Portainer's UI shows container health status visually, but for automated alerting and remediation you need programmatic access. The Portainer API exposes container state, health check results, resource stats, and event streams, enabling you to build robust monitoring solutions.
 
 ## Prerequisites
 
 - Portainer with API access
 - Python 3.8+ with `requests` library
-- Container healthchecks configured (or rely on process exit codes)
+- Container healthchecks configured if you want Docker health status (without them you can still monitor running or exited state)
 
 ## Checking Container Health Status
 
 ```bash
-# Get all containers with their health status
+# Get all containers with their state and health summary
 
 curl -s \
   -H "X-API-Key: your-api-key" \
@@ -31,8 +31,8 @@ for c in containers:
     name = c['Names'][0].replace('/', '')
     state = c['State']
     status = c['Status']
-    health = c.get('Health', {}).get('Status', 'none')
-    print(f'{name}: state={state}, health={health}')
+    health = c.get('Health', {}).get('Status', 'none')  # Summary field on Docker API v1.52+
+    print(f'{name}: state={state}, status={status}, health={health}')
 "
 ```
 
@@ -42,12 +42,13 @@ for c in containers:
 #!/usr/bin/env python3
 # health_monitor.py
 
+import os
 import requests
 import time
 import json
 import logging
-from datetime import datetime
-from typing import List, Dict, Optional
+from datetime import datetime, timezone
+from typing import List, Dict
 
 logging.basicConfig(
     level=logging.INFO,
@@ -68,6 +69,16 @@ class ContainerHealthMonitor:
         resp = requests.get(
             f"{self.base_url}/api/endpoints/{self.endpoint_id}/docker/containers/json",
             params={"all": "true"},
+            headers=self.headers,
+            timeout=10
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_container_details(self, container_id: str) -> Dict:
+        """Inspect a container to retrieve detailed state and health data."""
+        resp = requests.get(
+            f"{self.base_url}/api/endpoints/{self.endpoint_id}/docker/containers/{container_id}/json",
             headers=self.headers,
             timeout=10
         )
@@ -96,21 +107,28 @@ class ContainerHealthMonitor:
 
     def calculate_cpu_percent(self, stats: Dict) -> float:
         """Calculate CPU usage percentage from Docker stats."""
-        cpu_delta = stats['cpu_stats']['cpu_usage']['total_usage'] - \
-                    stats['precpu_stats']['cpu_usage']['total_usage']
-        system_delta = stats['cpu_stats']['system_cpu_usage'] - \
-                       stats['precpu_stats']['system_cpu_usage']
-        num_cpus = stats['cpu_stats'].get('online_cpus', 1)
+        cpu_stats = stats.get('cpu_stats', {})
+        precpu_stats = stats.get('precpu_stats', {})
+        cpu_delta = cpu_stats.get('cpu_usage', {}).get('total_usage', 0) - \
+                    precpu_stats.get('cpu_usage', {}).get('total_usage', 0)
+        system_delta = cpu_stats.get('system_cpu_usage', 0) - \
+                       precpu_stats.get('system_cpu_usage', 0)
+        num_cpus = cpu_stats.get('online_cpus') or \
+                   len(cpu_stats.get('cpu_usage', {}).get('percpu_usage') or []) or 1
         if system_delta > 0:
             return (cpu_delta / system_delta) * num_cpus * 100.0
         return 0.0
 
     def calculate_memory_percent(self, stats: Dict) -> float:
-        """Calculate memory usage percentage."""
-        usage = stats['memory_stats']['usage']
-        limit = stats['memory_stats']['limit']
+        """Calculate memory usage percentage similar to docker stats."""
+        memory_stats = stats.get('memory_stats', {})
+        usage = memory_stats.get('usage', 0)
+        limit = memory_stats.get('limit', 0)
+        stat_values = memory_stats.get('stats', {})
+        cache = stat_values.get('inactive_file', stat_values.get('cache', 0))
+        used_memory = max(usage - cache, 0)
         if limit > 0:
-            return (usage / limit) * 100.0
+            return (used_memory / limit) * 100.0
         return 0.0
 
     def check_health(self):
@@ -123,54 +141,66 @@ class ContainerHealthMonitor:
                 name = container['Names'][0].replace('/', '')
                 container_id = container['Id']
                 state = container['State']
+                container_issues = []
 
                 # Check if container is running
                 if state != 'running':
-                    issues.append({
-                        'container': name,
+                    container_issues.append({
                         'issue': f'Container is {state}',
                         'severity': 'HIGH'
                     })
-                    self.failure_counts[name] = self.failure_counts.get(name, 0) + 1
-                    continue
+                else:
+                    try:
+                        details = self.get_container_details(container_id)
+                        health = details.get('State', {}).get('Health', {})
+                        if health.get('Status') == 'unhealthy':
+                            container_issues.append({
+                                'issue': 'Docker healthcheck reports unhealthy',
+                                'severity': 'HIGH'
+                            })
+                    except Exception as e:
+                        logger.warning(f"Could not inspect {name}: {e}")
 
-                # Check healthcheck status
-                health = container.get('Health', {})
-                if health.get('Status') == 'unhealthy':
+                    # Get resource stats
+                    try:
+                        stats = self.get_container_stats(container_id)
+                        cpu = self.calculate_cpu_percent(stats)
+                        mem = self.calculate_memory_percent(stats)
+
+                        if cpu > 90:
+                            container_issues.append({
+                                'issue': f'High CPU: {cpu:.1f}%',
+                                'severity': 'MEDIUM'
+                            })
+
+                        if mem > 90:
+                            container_issues.append({
+                                'issue': f'High Memory: {mem:.1f}%',
+                                'severity': 'HIGH'
+                            })
+
+                        logger.debug(f"{name}: CPU={cpu:.1f}% MEM={mem:.1f}%")
+
+                    except Exception as e:
+                        logger.warning(f"Could not get stats for {name}: {e}")
+
+                if container_issues:
+                    failures = self.failure_counts.get(name, 0) + 1
+                    self.failure_counts[name] = failures
                     issues.append({
                         'container': name,
-                        'issue': 'Docker healthcheck reports unhealthy',
-                        'severity': 'HIGH'
+                        'container_id': container_id,
+                        'issues': container_issues,
+                        'severity': 'HIGH' if any(i['severity'] == 'HIGH' for i in container_issues) else 'MEDIUM',
+                        'failures': failures
                     })
-
-                # Get resource stats
-                try:
-                    stats = self.get_container_stats(container_id)
-                    cpu = self.calculate_cpu_percent(stats)
-                    mem = self.calculate_memory_percent(stats)
-
-                    if cpu > 90:
-                        issues.append({
-                            'container': name,
-                            'issue': f'High CPU: {cpu:.1f}%',
-                            'severity': 'MEDIUM'
-                        })
-
-                    if mem > 90:
-                        issues.append({
-                            'container': name,
-                            'issue': f'High Memory: {mem:.1f}%',
-                            'severity': 'HIGH'
-                        })
-
-                    logger.debug(f"{name}: CPU={cpu:.1f}% MEM={mem:.1f}%")
-
-                except Exception as e:
-                    logger.warning(f"Could not get stats for {name}: {e}")
+                else:
+                    self.failure_counts[name] = 0
 
             # Process issues
             for issue in issues:
-                logger.warning(f"ISSUE [{issue['severity']}] {issue['container']}: {issue['issue']}")
+                for item in issue['issues']:
+                    logger.warning(f"ISSUE [{item['severity']}] {issue['container']}: {item['issue']}")
                 self.handle_issue(issue)
 
             if not issues:
@@ -182,25 +212,26 @@ class ContainerHealthMonitor:
     def handle_issue(self, issue: Dict):
         """Handle detected issues with automated remediation."""
         container_name = issue['container']
-        self.failure_counts[container_name] = self.failure_counts.get(container_name, 0) + 1
 
-        if self.failure_counts[container_name] >= self.unhealthy_threshold:
+        if issue['failures'] >= self.unhealthy_threshold:
             if issue['severity'] == 'HIGH':
-                logger.warning(f"Auto-restarting {container_name} after {self.failure_counts[container_name]} failures")
-                # In production, find container ID and restart
-                # self.restart_container(container_id)
-                self.failure_counts[container_name] = 0
-                self.send_alert(container_name, issue)
+                logger.warning(f"Auto-restarting {container_name} after {issue['failures']} failed checks")
+                restarted = self.restart_container(issue['container_id'])
+                action = 'container_restarted' if restarted else 'restart_failed'
+                if restarted:
+                    self.failure_counts[container_name] = 0
+                self.send_alert(container_name, issue, action)
 
-    def send_alert(self, container_name: str, issue: Dict):
+    def send_alert(self, container_name: str, issue: Dict, action: str):
         """Send alert to notification system."""
         # Replace with your actual alerting integration
         alert = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'container': container_name,
-            'issue': issue['issue'],
+            'issues': [item['issue'] for item in issue['issues']],
             'severity': issue['severity'],
-            'action': 'container_restarted'
+            'failures': issue['failures'],
+            'action': action
         }
         logger.error(f"ALERT: {json.dumps(alert)}")
 
@@ -214,11 +245,11 @@ class ContainerHealthMonitor:
 
 if __name__ == '__main__':
     monitor = ContainerHealthMonitor(
-        portainer_url="https://portainer.example.com",
-        api_key="your-api-key",
-        endpoint_id=1
+        portainer_url=os.environ.get("PORTAINER_URL", "https://portainer.example.com"),
+        api_key=os.environ.get("PORTAINER_API_KEY", "your-api-key"),
+        endpoint_id=int(os.environ.get("ENDPOINT_ID", "1"))
     )
-    monitor.run(interval=60)
+    monitor.run(interval=int(os.environ.get("CHECK_INTERVAL", "60")))
 ```
 
 ## Running as a Docker Container
@@ -228,19 +259,21 @@ if __name__ == '__main__':
 cat > Dockerfile << 'EOF'
 FROM python:3.11-slim
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir requests
 COPY health_monitor.py .
 CMD ["python", "health_monitor.py"]
 EOF
+
+docker build -t health-monitor:latest .
 
 # Run the monitor
 docker run -d \
   --name health-monitor \
   --restart=always \
   -e PORTAINER_URL=https://portainer.example.com \
-  -e PORTAINER_API_KEY=your-key \
+  -e PORTAINER_API_KEY=your-api-key \
   -e ENDPOINT_ID=1 \
+  -e CHECK_INTERVAL=60 \
   health-monitor:latest
 ```
 
