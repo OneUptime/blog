@@ -16,13 +16,16 @@ The KaaS provisioning feature allowed Portainer operators to provision fully-man
 
 ## Supported Cloud Providers
 
+- **Civo Kubernetes** - via API token credentials
+- **Akamai Connected Cloud / Linode Kubernetes Engine (LKE)** - via API token credentials
+- **DigitalOcean Kubernetes (DOKS)** - via API token credentials
+- **Google GKE** - via service account key JSON
 - **Amazon EKS** - via IAM access key/secret key credentials
 - **Azure AKS** - via service principal credentials
-- **Google GKE** - via service account key JSON
 
 ## How Provisioning Worked
 
-1. **Credentials setup** - Add cloud provider API credentials under **Settings > Credentials**
+1. **Credentials setup** - Add cloud provider API credentials under **Settings > Shared credentials**
 2. **Cluster configuration** - Select provider, region, node type, and node count
 3. **Provisioning** - Portainer called the cloud provider's API to create the cluster
 4. **Auto-registration** - Once the cluster was ready, it appeared as a Kubernetes environment in Portainer
@@ -59,19 +62,13 @@ For teams that were using KaaS provisioning:
 eksctl create cluster \
   --name production-k8s \
   --region us-east-1 \
-  --nodegroup-name workers \
   --node-type t3.medium \
   --nodes 3 \
   --nodes-min 2 \
-  --nodes-max 10 \
-  --managed
+  --nodes-max 10
 
-# Export kubeconfig
+# Update local kubeconfig for kubectl if needed
 aws eks update-kubeconfig --name production-k8s --region us-east-1
-
-# Add the cluster to Portainer as a Kubernetes environment
-# Settings > Environments > Add Environment > Kubernetes > Import existing
-# Paste the kubeconfig content
 ```
 
 For Azure AKS:
@@ -82,22 +79,23 @@ az aks create \
   --name production-k8s \
   --node-count 3 \
   --node-vm-size Standard_D2_v3 \
-  --enable-managed-identity
+  --enable-managed-identity \
+  --generate-ssh-keys
 
 az aks get-credentials --resource-group my-rg --name production-k8s
 ```
 
-After creating the cluster with native tools, you can still manage it through Portainer by adding it as an environment - only the provisioning step moves outside Portainer.
+After creating the cluster with native tools, you can still manage it through Portainer by adding it as a Kubernetes environment through a supported onboarding method such as the Edge Agent or Agent. Kubeconfig import remains available, but Portainer documents it as a legacy option with additional requirements.
 
 ## What Replaced It
 
-Portainer's recommendation for cluster provisioning is to use dedicated infrastructure-as-code tools:
+Common replacements for cluster provisioning are dedicated infrastructure-as-code tools:
 
 - **Terraform** with cloud-specific providers for repeatable, version-controlled cluster provisioning
 - **Crossplane** for Kubernetes-native infrastructure management
 - **Cluster API (CAPI)** for declarative Kubernetes cluster lifecycle management
 
-Once clusters are provisioned, Portainer manages applications running on them with full feature parity.
+Once clusters are provisioned and connected, Portainer can still manage applications running on them; only the KaaS-specific provisioning workflow is gone.
 
 ## Summary
 
