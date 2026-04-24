@@ -20,20 +20,17 @@ Once you've created users and teams in Portainer, the next step is assigning use
 
 ### Add User to a Team (from the Team View)
 
-1. Navigate to **Settings** → **Teams**
+1. Navigate to **User-related** → **Teams**
 2. Click on the team name (e.g., "DevOps")
-3. Under **Members**, click **Add member**
-4. Search for the user and select them
-5. Choose their role: **Member** or **Team Leader**
-6. Click **Add member**
+3. In the **Users** list, click **Add** next to the user
+4. To promote the user to **Team Leader**, use the **Leader** action in the **Members** list
 
-### Add User to Teams (from the User View)
+### Add User to Teams (during User Creation)
 
-1. Navigate to **Settings** → **Users**
-2. Click on the user
-3. Under **Team Memberships**, click **Add team membership**
-4. Select the team and role
-5. Save changes
+1. Navigate to **User-related** → **Users**
+2. Click **Add user**
+3. Enter the user's details and, under **Add to team(s)**, select one or more teams
+4. Click **Create user**
 
 ## Method 2: Assign Users via API
 
@@ -52,7 +49,7 @@ TOKEN=$(curl -s -X POST \
 curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/teams/1/memberships \
+  https://portainer.example.com/api/team_memberships \
   -d '{
     "userID": 3,
     "teamID": 1,
@@ -93,8 +90,10 @@ MEMBERSHIP_ID=$(curl -s \
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "https://portainer.example.com/api/teams/1/memberships/${MEMBERSHIP_ID}" \
+  "https://portainer.example.com/api/team_memberships/${MEMBERSHIP_ID}" \
   -d '{
+    "userID": 3,
+    "teamID": 1,
     "role": 1
   }'
 ```
@@ -105,7 +104,7 @@ curl -X PUT \
 # Delete membership by membership ID
 curl -X DELETE \
   -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/teams/1/memberships/${MEMBERSHIP_ID}"
+  "https://portainer.example.com/api/team_memberships/${MEMBERSHIP_ID}"
 ```
 
 ## Bulk Assignment Script
@@ -138,7 +137,7 @@ TARGET_USERS=("alice" "bob" "charlie")
 echo "$USERS" | while IFS=: read user_id username; do
   if [[ " ${TARGET_USERS[@]} " =~ " ${username} " ]]; then
     RESULT=$(curl -s -X POST \
-      "${PORTAINER_URL}/api/teams/${TEAM_ID}/memberships" \
+      "${PORTAINER_URL}/api/team_memberships" \
       -H "Authorization: Bearer $TOKEN" \
       -H "Content-Type: application/json" \
       -d "{\"userID\":${user_id},\"teamID\":${TEAM_ID},\"role\":2}")
@@ -160,6 +159,8 @@ Team leaders **cannot**:
 - Create or delete teams
 - Access environments not assigned to the team
 
+If external authentication is enabled and teams are synchronized from your identity provider, the team leader role is disabled.
+
 ## Verifying Team Memberships
 
 ```bash
@@ -173,4 +174,4 @@ curl -s \
 
 ## Conclusion
 
-Team membership is the primary mechanism for granting environment access to groups of users in Portainer. The API approach enables automation and integration with user provisioning systems. For LDAP and OAuth deployments, team membership can be synchronized automatically from directory group membership, eliminating manual assignment.
+Team membership is the primary mechanism for granting environment access to groups of users in Portainer. The API approach enables automation and integration with user provisioning systems. For LDAP and OAuth deployments, team membership can be synchronized automatically from LDAP group membership or OAuth claims, eliminating manual assignment.
