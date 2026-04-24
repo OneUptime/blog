@@ -4,22 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Storage, Overlay2, Devicemapper
 
-Description: Configure and optimize container storage drivers in Docker environments managed by Portainer for maximum performance and compatibility.
+Description: Configure and optimize classic Docker container storage drivers in Portainer-managed environments for maximum performance and compatibility.
 
 ## Introduction
 
-Docker storage drivers control how container image layers are stored and managed. The right storage driver improves performance, reduces disk usage, and ensures compatibility with your host OS. Portainer manages containers without enforcing a specific storage driver-the driver is configured at the Docker daemon level.
+Docker storage drivers control how container image layers are stored and managed. The right storage driver improves performance, reduces disk usage, and ensures compatibility with your host OS. Portainer manages containers without enforcing a specific storage driver-the driver is configured at the Docker daemon level. On fresh Docker Engine 29.0 and later installations, Docker uses the `containerd` image store by default; the classic storage drivers below apply when your host is using the legacy graph-driver backend.
 
 ## Supported Storage Drivers
 
-| Driver | Best For | OS Support |
-|--------|----------|------------|
-| overlay2 | Default, best performance | Linux (ext4, xfs) |
-| fuse-overlayfs | Rootless containers | Linux |
-| devicemapper | Legacy RHEL/CentOS | Linux |
-| btrfs | Btrfs filesystems | Linux |
-| zfs | ZFS filesystems | Linux |
-| vfs | Testing only | All |
+| Driver | Best For | Requirements |
+|--------|----------|--------------|
+| overlay2 | Default classic driver, best overall compatibility | Linux; `xfs` requires `ftype=1` |
+| fuse-overlayfs | Rootless Docker on hosts without rootless `overlay2` support | Linux rootless mode |
+| btrfs | Btrfs-backed hosts that need snapshots and subvolumes | Docker Engine CE on SLES, Ubuntu, and Debian |
+| zfs | ZFS-backed hosts with ZFS expertise | Linux; `/var/lib/docker` must be on ZFS |
+| vfs | Testing and debugging only | Linux; poor performance |
 
 ## Checking Current Storage Driver
 
@@ -31,17 +30,21 @@ docker info | grep "Storage Driver"
 # Full storage driver details
 docker info | grep -A 20 "Storage Driver"
 
-# Via Portainer: Go to Home > Local Environment > Info
+# Via Portainer: Select the environment, then go to Host > Details
 ```
 
 ## Configuring overlay2 (Recommended)
 
-overlay2 is the default and recommended driver for most Linux installations.
+For classic storage drivers, overlay2 is the default and recommended driver for most Linux installations.
 
 ```bash
-# Verify your filesystem supports overlay2
-df -T / | awk '{print $2}'
-# Should be ext4 or xfs
+# If you are changing drivers on an existing host, back up /var/lib/docker first.
+
+# Verify the backing filesystem for Docker's data root
+df -T /var/lib/docker | awk 'NR==2 {print $2}'
+
+# If the backing filesystem is xfs, verify ftype=1
+sudo xfs_info /var/lib/docker | grep ftype
 
 # Check if overlay module is loaded
 lsmod | grep overlay
@@ -66,34 +69,13 @@ docker info | grep "Storage Driver"
 
 ## Configuring devicemapper (Direct-lvm)
 
-For production environments on RHEL/CentOS without overlay2 support:
+The `devicemapper` storage driver was deprecated in Docker Engine v18.09, disabled by default in v23.0, and removed in v25.0. Do not use it for new deployments.
 
-```bash
-# Create a dedicated partition or use a raw block device
-# Assuming /dev/sdb is your dedicated device
-
-# Install lvm2
-sudo yum install -y lvm2
-
-# Configure Direct-lvm
-sudo tee /etc/docker/daemon.json << 'EOF'
-{
-  "storage-driver": "devicemapper",
-  "storage-opts": [
-    "dm.directlvm_device=/dev/sdb",
-    "dm.thinp_percent=95",
-    "dm.thinp_metapercent=1",
-    "dm.thinp_autoextend_threshold=80",
-    "dm.thinp_autoextend_percent=20",
-    "dm.directlvm_device_force=true"
-  ]
-}
-EOF
-
-sudo systemctl restart docker
-```
+If you still maintain an older host that uses `devicemapper`, migrate it to `overlay2` before upgrading Docker Engine to v25.0 or later.
 
 ## Configuring btrfs Driver
+
+Docker supports the `btrfs` storage driver with Docker Engine CE on SLES, Ubuntu, and Debian, and `/var/lib/docker` must be on a Btrfs filesystem.
 
 ```bash
 # Install btrfs tools
@@ -104,7 +86,7 @@ sudo mkfs.btrfs /dev/sdb
 
 # Mount it
 sudo mkdir -p /var/lib/docker
-sudo mount /dev/sdb /var/lib/docker
+sudo mount -t btrfs /dev/sdb /var/lib/docker
 
 # Add to fstab
 echo "/dev/sdb /var/lib/docker btrfs defaults 0 0" | sudo tee -a /etc/fstab
@@ -121,15 +103,14 @@ sudo systemctl restart docker
 
 ## Configuring zfs Driver
 
+Use the `zfs` driver only if you are already comfortable operating ZFS on Linux.
+
 ```bash
 # Install ZFS
 sudo apt-get install -y zfsutils-linux
 
-# Create a ZFS pool for Docker
-sudo zpool create -f docker-pool /dev/sdb
-
-# Create a dataset
-sudo zfs create -o mountpoint=/var/lib/docker docker-pool/docker
+# Create a ZFS pool for Docker and mount it at /var/lib/docker
+sudo zpool create -f docker-pool -m /var/lib/docker /dev/sdb
 
 # Configure Docker
 sudo tee /etc/docker/daemon.json << 'EOF'
@@ -160,31 +141,36 @@ EOF
 
 ## Monitoring Storage Usage in Portainer
 
-Navigate to Portainer's Host page to view:
-- Volume sizes and usage
-- Image layer disk usage
-- Container filesystem changes
+Navigate to the selected Docker Standalone environment's `Host > Details` page to view:
+- Docker root directory
+- Storage driver
+- Logging driver
+- Available volume and network plugins
 
 ```bash
-# CLI equivalent for monitoring
+# CLI equivalent for engine details
+docker info | grep -A 20 "Storage Driver"
+
+# Disk usage summary
 docker system df
 
-# Detailed breakdown
+# Detailed disk usage breakdown
 docker system df -v
 
-# Clean up unused resources
+# Clean up unused resources and anonymous volumes
 docker system prune -a --volumes
 ```
 
 ## Migrating Between Storage Drivers
 
 ```bash
-# Stop all containers
-docker stop $(docker ps -q)
+# Stop running containers, if any
+docker ps -q | xargs -r docker stop
 
-# Export important data
-docker save my-image > /backup/my-image.tar
-docker export my-container > /backup/my-container.tar
+# Back up images you need to keep
+docker save -o /backup/my-image.tar my-image
+
+# Back up named volumes separately; docker export does not include volume data
 
 # Stop Docker
 sudo systemctl stop docker
@@ -200,8 +186,10 @@ sudo systemctl start docker
 
 # Re-import images
 docker load < /backup/my-image.tar
+
+# Recreate containers and restore any volume backups
 ```
 
 ## Conclusion
 
-Choosing the right storage driver is crucial for Docker performance and reliability. overlay2 is recommended for most modern Linux systems. Portainer works seamlessly with all Docker storage drivers, providing visibility into volume and image storage usage. Always test storage driver changes in a non-production environment before deploying.
+Choosing the right storage driver is crucial for Docker performance and reliability. For hosts using classic Docker storage drivers, overlay2 is recommended for most modern Linux systems. Portainer surfaces the storage backend configured on the Docker host, including the storage driver and Docker root directory. Always test storage backend changes in a non-production environment before deploying.
