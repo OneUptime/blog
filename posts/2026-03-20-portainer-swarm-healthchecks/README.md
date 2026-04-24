@@ -8,7 +8,7 @@ Description: Configure Docker health checks for Swarm services managed by Portai
 
 ## Introduction
 
-Docker health checks run commands inside containers to verify they are functioning correctly. When a Swarm service task becomes unhealthy, Docker Swarm automatically replaces it. Portainer displays health status for all containers, making it easy to identify and diagnose issues.
+Docker health checks run commands inside containers to verify they are functioning correctly. When a Swarm service task becomes unhealthy, Docker Swarm automatically replaces it. Portainer lets you inspect container and service task status, making it easier to identify and diagnose issues.
 
 ## Health Check Configuration
 
@@ -24,7 +24,7 @@ services:
     deploy:
       replicas: 3
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: ["CMD", "curl", "-f", "http://localhost/"]
       interval: 30s      # How often to check
       timeout: 10s       # Timeout per check
       retries: 3         # Failures before marking unhealthy
@@ -36,7 +36,7 @@ services:
     deploy:
       replicas: 2
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health | grep -q '\"status\":\"ok\"'"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health > /dev/null"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -63,20 +63,20 @@ services:
     deploy:
       replicas: 1
     healthcheck:
-      test: ["CMD", "redis-cli", "--no-auth-warning", "ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 3
 
   # Elasticsearch
   elasticsearch:
-    image: elasticsearch:8.10.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.0
     deploy:
       replicas: 1
     healthcheck:
       test:
         - CMD-SHELL
-        - "curl -sf http://localhost:9200/_cluster/health | python3 -c \"import sys,json; d=json.load(sys.stdin); exit(0 if d['status'] in ['green','yellow'] else 1)\""
+        - "nc -z localhost 9200"
       interval: 30s
       timeout: 10s
       retries: 5
@@ -146,7 +146,7 @@ services:
     healthcheck:
       test: 
         - CMD-SHELL
-        - "curl -sf -H 'X-Health-Token: ${HEALTH_TOKEN}' http://localhost:8080/internal/health"
+        - 'curl -sf -H "X-Health-Token: $$HEALTH_TOKEN" http://localhost:8080/internal/health'
       interval: 30s
       timeout: 10s
       retries: 3
@@ -181,10 +181,10 @@ exit 0
 
 ## Viewing Health Status in Portainer
 
-Navigate to: **Environments > Containers** - containers show health status badges.
+Open the target environment in Portainer, then go to **Containers** to inspect container status and details.
 
-Or in **Swarm > Services** - see task health distribution per service.
+For Docker Swarm endpoints, go to **Services** and expand a service to view the status of its tasks.
 
 ## Conclusion
 
-Docker health checks with Swarm services in Portainer create self-healing infrastructure. When tasks fail their health checks, Swarm automatically replaces them, and Portainer displays the health status for operational visibility. Well-designed health check endpoints that test actual functionality (not just process availability) provide meaningful signals that enable genuine self-healing behavior.
+Docker health checks with Swarm services in Portainer create self-healing infrastructure. When tasks fail their health checks, Swarm automatically replaces them, and Portainer provides task and container visibility for operational troubleshooting. Well-designed health check endpoints that test actual functionality (not just process availability) provide meaningful signals that enable genuine self-healing behavior.
