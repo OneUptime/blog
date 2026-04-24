@@ -8,13 +8,13 @@ Description: Learn how to monitor disk space usage per volume in Portainer to pr
 
 ## Introduction
 
-Running containers without monitoring disk space can lead to unexpected failures, data loss, or degraded application performance. Portainer provides built-in tools to inspect volume usage, and combined with host-level commands, you can maintain full visibility into your storage consumption.
+Running containers without monitoring disk space can lead to unexpected failures, data loss, or degraded application performance. Portainer provides built-in tools to inspect volume metadata and attachments, and combined with Docker and host-level commands, you can maintain full visibility into your storage consumption.
 
 ## Prerequisites
 
 - Portainer CE or BE installed and running
 - At least one Docker environment connected to Portainer
-- Admin or operator-level access
+- Sufficient permissions to view volumes and open a container console
 
 ## Viewing Volume Usage in Portainer UI
 
@@ -24,57 +24,56 @@ Running containers without monitoring disk space can lead to unexpected failures
 2. From the left sidebar, select your **Environment** (e.g., local Docker).
 3. Click on **Volumes** in the left navigation menu.
 
-You will see a list of all volumes with their names, mount points, driver, and creation date.
+You will see a list of volumes and their metadata, such as name, driver, and creation date.
 
 ### Step 2: Inspect an Individual Volume
 
 Click on any volume name to open its details page. Here you can see:
 
 - **Driver**: e.g., `local`
-- **Mount Point**: the path on the host where the data lives
-- **Containers using this volume**: which containers are currently attached
+- **Mount Point**: for local Docker volumes, the path on the host where Docker stores the data
+- **Containers using this volume**: when Portainer can determine which containers are currently attached
 
 > Note: Portainer does not show real-time disk usage numbers in the volume list by default. Use the methods below to get actual byte consumption.
 
 ## Checking Disk Usage from the Container Console
 
-You can open a shell inside a running container that uses the volume and inspect the filesystem:
+You can open a shell inside a running container that uses the volume and inspect the mounted path:
 
 ```bash
 # Inside the container shell (open via Portainer > Container > Console)
 
-df -h /data
+du -sh /data
 
 # Example output:
-# Filesystem      Size  Used Avail Use% Mounted on
-# overlay         100G   12G   88G  12% /
-# /dev/sda1        50G   18G   32G  36% /data
+# 1.8G    /data
+
+# If you also want to see the capacity of the backing filesystem:
+# df -h /data
 ```
 
 ## Using the Portainer Exec / Console Feature
 
 1. Go to **Containers** and click your container.
 2. Click **Console** → **Connect**.
-3. Run `df -h` to see all mount points and their usage.
+3. Run `du -sh /data` to estimate the size of a mounted volume path. If you also want to see the backing filesystem capacity, run `df -h /data`.
 
 ## Monitoring Disk Usage via the Docker API (via Portainer API)
 
-You can also query disk usage programmatically using the Docker System API routed through Portainer:
+You can also query disk usage programmatically using the Docker System API routed through Portainer. For recurring automation, use a Portainer access token in the `X-API-Key` header:
 
 ```bash
-# Authenticate and get JWT token
-TOKEN=$(curl -s -X POST https://portainer.example.com/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' | jq -r '.jwt')
+PORTAINER_URL="https://portainer.example.com"
+PORTAINER_API_KEY="your-access-token"
 
 # Get disk usage info for environment ID 1
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/endpoints/1/docker/system/df" | jq .
+curl -s -H "X-API-Key: $PORTAINER_API_KEY" \
+  "${PORTAINER_URL}/api/endpoints/1/docker/system/df" | jq .
 
 # The Volumes array in the response includes UsageData.Size per volume
 ```
 
-The response includes a `Volumes` array where each entry has a `UsageData.Size` field showing byte consumption.
+The response includes a `Volumes` array where each entry has a `UsageData.Size` field showing Docker's reported byte consumption for that volume.
 
 ## Automating Volume Usage Alerts
 
@@ -85,18 +84,19 @@ You can write a simple monitoring script that alerts when a volume exceeds a thr
 # monitor-volumes.sh - Alert when volume usage exceeds threshold
 
 PORTAINER_URL="https://portainer.example.com"
-PORTAINER_TOKEN="your-jwt-token"
+PORTAINER_API_KEY="your-access-token"
 ENDPOINT_ID=1
 THRESHOLD_GB=10  # Alert if volume exceeds 10 GB
+THRESHOLD_BYTES=$((THRESHOLD_GB * 1073741824))
 
 # Fetch disk usage data
-USAGE=$(curl -s -H "Authorization: Bearer $PORTAINER_TOKEN" \
+USAGE=$(curl -s -H "X-API-Key: $PORTAINER_API_KEY" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/system/df")
 
 # Parse volumes and check size (size is in bytes)
-echo "$USAGE" | jq -r '.Volumes[] | "\(.Name) \(.UsageData.Size)"' | while read name size; do
-  size_gb=$(echo "scale=2; $size / 1073741824" | bc)
-  if (( $(echo "$size_gb > $THRESHOLD_GB" | bc -l) )); then
+echo "$USAGE" | jq -r '.Volumes[]? | "\(.Name) \(.UsageData.Size // 0)"' | while read -r name size; do
+  if [ "$size" -gt "$THRESHOLD_BYTES" ]; then
+    size_gb=$(echo "scale=2; $size / 1073741824" | bc)
     echo "ALERT: Volume $name is using ${size_gb}GB (threshold: ${THRESHOLD_GB}GB)"
     # Add notification logic here (e.g., curl to Slack webhook)
   fi
@@ -105,32 +105,35 @@ done
 
 ## Using Host-Level Commands
 
-If you have SSH access to the Docker host, you can check actual volume directory sizes:
+If you have SSH access to the Docker host, you can check the size of the path Docker reports for each volume:
 
 ```bash
 # List all Docker volumes with their disk usage on the host
-sudo du -sh /var/lib/docker/volumes/*
+docker volume ls -q | while read -r volume; do
+  mountpoint=$(docker volume inspect -f '{{ .Mountpoint }}' "$volume")
+  sudo du -sh "$mountpoint"
+done
 
 # Example output:
-# 2.1G   /var/lib/docker/volumes/myapp_postgres_data
-# 512M   /var/lib/docker/volumes/myapp_redis_data
-# 50M    /var/lib/docker/volumes/myapp_uploads
+# 2.1G   /var/lib/docker/volumes/myapp_postgres_data/_data
+# 512M   /var/lib/docker/volumes/myapp_redis_data/_data
+# 50M    /var/lib/docker/volumes/myapp_uploads/_data
 
 # Check a specific volume
-sudo du -sh /var/lib/docker/volumes/myapp_postgres_data/_data
+sudo du -sh "$(docker volume inspect -f '{{ .Mountpoint }}' myapp_postgres_data)"
 ```
 
 ## Setting Up Ongoing Monitoring with Prometheus
 
-For production environments, deploy cAdvisor and Prometheus to collect volume metrics automatically. You can then set alerts in Grafana or AlertManager when storage usage grows beyond defined thresholds.
+For production environments, Portainer does not expose per-volume Prometheus metrics directly, and cAdvisor's `container_fs_*` metrics are labeled by filesystem `device` rather than Docker volume name. To alert per volume, export Docker `system/df` or `du` results into Prometheus with a custom exporter, then alert on that custom metric.
 
 ```yaml
-# Add to your Prometheus alerting rules
+# Example alert after exporting a custom docker_volume_usage_bytes metric
 groups:
   - name: docker_volume_alerts
     rules:
       - alert: VolumeHighUsage
-        expr: container_fs_usage_bytes{volume!=""} > 10737418240  # 10GB
+        expr: docker_volume_usage_bytes{volume!=""} > 10737418240  # 10GiB
         for: 5m
         labels:
           severity: warning
@@ -140,4 +143,4 @@ groups:
 
 ## Conclusion
 
-Monitoring disk space per volume in Portainer is essential for maintaining reliable container workloads. Use the Portainer UI for quick inspections, the Docker API for programmatic access, and host-level commands for precise byte counts. For production environments, integrate Prometheus and AlertManager to receive proactive alerts before storage issues impact your services.
+Monitoring disk space per volume in Portainer is essential for maintaining reliable container workloads. Use the Portainer UI for quick inspections, the Docker API for programmatic access, and host-level commands for precise directory-size checks. For production environments, integrate Prometheus and AlertManager to receive proactive alerts before storage issues impact your services.
