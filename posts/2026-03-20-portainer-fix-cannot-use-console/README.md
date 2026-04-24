@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix 'Cannot use console' errors when tryi
 
 ## Introduction
 
-The "Cannot use console" error in Portainer appears when the container console (exec) feature can't be accessed. This can be caused by the wrong shell path, insufficient permissions, a stopped container, a distroless image, or network issues between Portainer and the Docker daemon. This guide covers each cause and its fix.
+The "Cannot use console" error in Portainer appears when the container console (exec) feature can't be accessed. This can be caused by the wrong shell path, insufficient permissions, a stopped container, a distroless image, or network issues between Portainer Server and the Docker environment or Portainer Agent. This guide covers each cause and its fix.
 
 ## Prerequisites
 
@@ -19,7 +19,7 @@ The "Cannot use console" error in Portainer appears when the container console (
 
 ### Cause 1: Wrong Shell Path
 
-The most common cause - you specified a shell that doesn't exist in the container.
+A common cause - you specified a shell that doesn't exist in the container.
 
 **Symptoms:**
 ```text
@@ -30,10 +30,10 @@ Error: "OCI runtime exec failed: exec failed: unable to start container process:
 ```bash
 # Check which shells are available:
 
-docker exec my-container ls /bin/sh /bin/bash /bin/ash 2>/dev/null
+docker exec my-container ls /bin/ash /bin/bash /bin/sh 2>/dev/null
 
-# For Alpine images, use /bin/sh:
-# In Portainer console dialog: Shell = /bin/sh
+# For Alpine images, use /bin/ash:
+# In Portainer console dialog: Shell = /bin/ash
 
 # For Ubuntu/Debian images, use /bin/bash:
 # In Portainer console dialog: Shell = /bin/bash
@@ -78,7 +78,7 @@ docker unpause my-container
 
 ### Cause 4: Distroless or Scratch Image (No Shell)
 
-Distroless images don't include a shell, making exec impossible.
+Distroless images don't include a shell, so Portainer's shell-based console access won't work.
 
 **Symptoms:**
 ```text
@@ -89,7 +89,7 @@ Error: "OCI runtime exec failed: exec failed: no such file or directory"
 **Fix: Use a debug sidecar**
 
 ```bash
-# Run a debug container sharing the target container's namespaces:
+# Run a debug container sharing the target container's PID/network namespaces and volumes:
 docker run -it --rm \
   --pid=container:my-distroless-app \
   --network=container:my-distroless-app \
@@ -102,8 +102,8 @@ docker run -it --rm \
 
 ```dockerfile
 # Switch to debug image temporarily:
-# Instead of: gcr.io/distroless/base:latest
-# Use:        gcr.io/distroless/base:debug
+# Instead of: gcr.io/distroless/base-debian12:latest
+# Use:        gcr.io/distroless/base-debian12:debug
 # (debug variant includes a shell)
 ```
 
@@ -111,7 +111,7 @@ docker run -it --rm \
 
 ```dockerfile
 # Debug Dockerfile - add shell to existing distroless image
-FROM gcr.io/distroless/base:latest AS production
+FROM gcr.io/distroless/base-debian12:latest AS production
 
 # Debug stage - add busybox shell
 FROM production AS debug
@@ -121,7 +121,7 @@ RUN ["/busybox", "ln", "-s", "/busybox", "/bin/sh"]
 
 ### Cause 5: Insufficient Portainer Permissions
 
-Your Portainer user role might not allow console access.
+Your Portainer user role or resource access might not allow console access.
 
 **Symptoms:**
 - Console button is absent or disabled.
@@ -129,17 +129,19 @@ Your Portainer user role might not allow console access.
 
 **Fix (Admin required):**
 1. Log in as Portainer admin.
-2. Navigate to **Settings > Team & Users** (or User Management).
-3. Edit the user's role for the environment.
-4. Grant them the `Operator` or `Administrator` role.
-5. Alternatively, assign a custom role that includes "Container console" access.
+2. Navigate to **Environment-related > Environments**.
+3. Select **Manage access** for the affected environment.
+4. Grant a role that allows container console access, or make sure the user has access to the specific container resource.
+5. If the container was deployed outside Portainer, review its access control as external resources are administrator-only by default.
 
 ```text
-Portainer roles and console access:
-- Read-only:    NO console access
-- Helpdesk:     NO console access (view logs only)
-- Operator:     YES console access
-- Administrator: YES console access
+Portainer role notes:
+- Read-only:              NO console access
+- Standard user:          YES, if they have access to the resource
+- Administrator:          YES console access
+- Helpdesk (BE):          NO console access (view logs only)
+- Operator (BE):          YES console access
+- Environment Administrator (BE): YES console access
 ```
 
 ### Cause 6: Portainer Agent Connection Issues
@@ -171,7 +173,7 @@ docker logs portainer_agent --tail 50
 telnet <remote-host> 9001
 
 # Or:
-curl http://<remote-host>:9001/ping
+curl -k -s -o /dev/null -w '%{http_code}\n' https://<remote-host>:9001/ping
 ```
 
 3. Check firewall rules on the remote host:
@@ -185,22 +187,15 @@ sudo firewall-cmd --add-port=9001/tcp --permanent && sudo firewall-cmd --reload
 
 ### Cause 7: TTY Issues
 
-Some container configurations don't allocate a TTY.
+Some containers were not created with the interactive and TTY options Portainer expects for console access.
 
 **Symptoms:**
 ```text
-Error: "cannot enable tty mode on non-tty input"
+Error: "the interactive-flag and TTY-flag are not set"
 ```
 
 **Fix:**
-The container was created without `-t` (TTY). For exec to work interactively, Docker needs TTY support. Portainer handles this automatically, but if the console doesn't work:
-
-```bash
-# Test exec with explicit TTY:
-docker exec -it my-container /bin/sh
-
-# If -it fails, the container itself may not support it
-```
+Edit the container in Portainer, open **Advanced container settings**, enable **Interactive & TTY**, redeploy the container, then try the console again.
 
 ### Cause 8: Resource Exhaustion
 
@@ -233,14 +228,16 @@ if ! docker inspect "${CONTAINER}" > /dev/null 2>&1; then
     exit 1
 fi
 
-# 2. Check container is running
+# 2. Check container state
 STATUS=$(docker inspect --format '{{.State.Status}}' "${CONTAINER}")
 echo "Status: ${STATUS}"
+
+[ "$STATUS" = "paused" ] && echo "✗ Container is paused - unpause it first" && exit 1
 [ "$STATUS" != "running" ] && echo "✗ Container is not running - start it first" && exit 1
 
 # 3. Check available shells
 echo "Available shells:"
-for shell in /bin/bash /bin/sh /bin/ash; do
+for shell in /bin/ash /bin/bash /bin/sh; do
     if docker exec "${CONTAINER}" test -f "${shell}" 2>/dev/null; then
         echo "  ✓ ${shell}"
     else
@@ -249,7 +246,7 @@ for shell in /bin/bash /bin/sh /bin/ash; do
 done
 
 echo ""
-echo "Recommendation: use the first available shell listed above"
+echo "Recommendation: for Alpine use /bin/ash; otherwise use an available shell listed above"
 ```
 
 ## Conclusion
