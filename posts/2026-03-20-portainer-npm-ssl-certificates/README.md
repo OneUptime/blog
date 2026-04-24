@@ -20,51 +20,49 @@ Nginx Proxy Manager handles SSL certificate provisioning and renewal through its
 
 The simplest certificate type - requires port 80 accessible from the internet:
 
-1. In NPM, go to **SSL Certificates** → **Add SSL Certificate**
-2. Select **Let's Encrypt**
-3. Configure:
+1. In NPM, go to **SSL Certificates** → **Add Certificate** → **Let's Encrypt via HTTP**
+2. Configure:
 
 ```text
 Domain Names:     portainer.example.com
-Email Address:    admin@example.com
-Use a DNS Challenge: OFF    (HTTP challenge)
-Agree to Let's Encrypt TOS: checked
 ```
 
+3. Ensure the email address on your NPM user account is set - NPM uses that for Let's Encrypt requests.
 4. Click **Save** - NPM provisions the certificate automatically.
 
 ## Step 2: Wildcard Certificate via DNS Challenge
 
 For `*.example.com` wildcard covering all subdomains:
 
-1. In NPM, go to **SSL Certificates** → **Add SSL Certificate**
-2. Select **Let's Encrypt**
-3. Configure:
+1. In NPM, go to **SSL Certificates** → **Add Certificate** → **Let's Encrypt via DNS**
+2. Configure:
 
 ```text
 Domain Names:
   *.example.com
   example.com        (include apex domain separately)
 
-Use a DNS Challenge: ON
-
 DNS Provider: Cloudflare
   Credentials File Content:
     dns_cloudflare_email = your-email@cloudflare.com
     dns_cloudflare_api_key = YOUR_GLOBAL_API_KEY
-    # OR use API Token (more secure):
+    # OR use API Token (recommended):
     dns_cloudflare_api_token = YOUR_API_TOKEN
 
   Propagation Seconds: 120    (wait for DNS to propagate before verification)
 ```
 
+NPM uses the email address on your user account for Let's Encrypt requests.
+
 **Other DNS providers configuration:**
 
 ```text
 # AWS Route53
-
-dns_route53_region = us-east-1
-# IAM credentials via environment or instance role
+[default]
+aws_access_key_id = YOUR_ACCESS_KEY_ID
+aws_secret_access_key = YOUR_SECRET_ACCESS_KEY
+# Or use other AWS credential methods supported by boto3,
+# such as environment variables or an instance role.
 
 # DigitalOcean
 dns_digitalocean_token = YOUR_DO_TOKEN
@@ -79,9 +77,8 @@ dns_namecheap_api_key = YOUR_API_KEY
 For self-signed or enterprise CA certificates:
 
 1. Generate the certificate (or obtain from your CA)
-2. In NPM, go to **SSL Certificates** → **Add SSL Certificate**
-3. Select **Custom**
-4. Upload:
+2. In NPM, go to **SSL Certificates** → **Add Certificate** → **Custom**
+3. Upload:
 
 ```text
 Certificate Key:     Your private key (.key file)
@@ -89,7 +86,7 @@ Certificate:         Your certificate (.crt file)
 Intermediate Certificate: Your CA chain/bundle (if applicable)
 ```
 
-5. Click **Save**
+4. Click **Save**
 
 ```bash
 # Generate self-signed certificate for testing
@@ -112,7 +109,7 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
 2. Edit the Portainer proxy host
 3. **SSL Tab**:
 
-```sql
+```text
 SSL Certificate:  Select your certificate from the dropdown
 Force SSL:        ON
 HTTP/2 Support:   ON
@@ -129,9 +126,8 @@ echo | openssl s_client -servername portainer.example.com \
   -connect portainer.example.com:443 2>/dev/null | \
   openssl x509 -noout -dates
 
-# Check NPM's certificate database
-docker exec nginx-proxy-manager sqlite3 /data/database.sqlite \
-  "SELECT domain_names, expires_on FROM certificate WHERE provider='letsencrypt';"
+# If you're using the default SQLite setup, query NPM's certificate database
+docker exec nginx-proxy-manager sh -lc 'cd /app && node --input-type=module -e "import Database from \"better-sqlite3\"; const db = new Database(\"/data/database.sqlite\", { readonly: true }); const rows = db.prepare(\"SELECT domain_names, expires_on FROM certificate WHERE provider = ?\").all(\"letsencrypt\"); console.log(JSON.stringify(rows, null, 2));"'
 
 # Check NPM logs for renewal activity
 docker logs nginx-proxy-manager 2>&1 | grep -i "renew\|certbot\|expire"
@@ -141,22 +137,22 @@ docker logs nginx-proxy-manager 2>&1 | grep -i "renew\|certbot\|expire"
 
 ```bash
 # Force renewal via NPM API
-PORTAINER_URL="http://YOUR_SERVER:81"
+NPM_URL="http://YOUR_SERVER:81"
 
 # Login to get NPM token
-TOKEN=$(curl -s -X POST "${PORTAINER_URL}/api/tokens" \
+TOKEN=$(curl -s -X POST "${NPM_URL}/api/tokens" \
   -H "Content-Type: application/json" \
   -d '{"identity":"admin@example.com","secret":"yourpassword"}' | \
   jq -r '.token')
 
 # Get certificate ID
 CERT_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/nginx/certificates" | \
+  "${NPM_URL}/api/nginx/certificates" | \
   jq -r '.[] | select(.domain_names[] | contains("portainer.example.com")) | .id')
 
 # Renew the certificate
 curl -s -X POST -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/nginx/certificates/${CERT_ID}/renew"
+  "${NPM_URL}/api/nginx/certificates/${CERT_ID}/renew"
 ```
 
 ## Step 7: Backup Certificates
@@ -166,11 +162,12 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
 docker cp nginx-proxy-manager:/data /backup/npm-data-$(date +%Y%m%d)
 docker cp nginx-proxy-manager:/etc/letsencrypt /backup/npm-letsencrypt-$(date +%Y%m%d)
 
-# Or via volumes
+# Or via named volumes (replace the volume names if yours differ)
 docker run --rm \
   -v npm_data:/data \
+  -v npm_letsencrypt:/etc/letsencrypt \
   -v /backup:/backup \
-  alpine tar czf /backup/npm-backup-$(date +%Y%m%d).tar.gz /data
+  alpine tar czf /backup/npm-backup-$(date +%Y%m%d).tar.gz /data /etc/letsencrypt
 ```
 
 ## Conclusion
