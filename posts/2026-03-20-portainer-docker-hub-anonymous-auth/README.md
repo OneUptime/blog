@@ -14,10 +14,10 @@ Portainer can pull Docker Hub images either anonymously or with authentication. 
 
 | Mode | Rate Limit | Private Repos | Setup Required |
 |------|-----------|--------------|---------------|
-| Anonymous | 100 pulls/6h per IP | No | None |
-| Free authenticated | 200 pulls/6h per user | No | Free account |
+| Anonymous | 100 pulls/6h per IPv4 address or IPv6 /64 subnet | No | None |
+| Personal authenticated | 200 pulls/6h per user | Yes (if authorized) | Personal account |
 | Pro authenticated | Unlimited | Yes | Paid plan |
-| Team/Organization | Unlimited | Yes | Paid plan |
+| Team/Business authenticated | Unlimited | Yes | Paid plan |
 
 ## Anonymous Access (Default)
 
@@ -30,7 +30,7 @@ By default, Portainer pulls Docker Hub public images without authentication. Thi
 - All images are public
 
 **Problems with anonymous access:**
-- Rate limits are per IP - all containers on one host share the limit
+- Rate limits are per IPv4 address or IPv6 /64 subnet - all hosts behind the same NAT can share the limit
 - 100 pulls/6h sounds like a lot but can be exhausted quickly with:
   - Multiple services restarting
   - CI/CD pipelines rebuilding frequently
@@ -64,26 +64,28 @@ curl -s --head -H "Authorization: Bearer $TOKEN" \
 
 ### Step 1: Create Docker Hub Credentials
 
-1. Log in to [hub.docker.com](https://hub.docker.com)
-2. Go to **Account Settings → Security**
-3. Click **New Access Token**
+1. Log in to [Docker Home](https://app.docker.com)
+2. Go to **Account Settings → Personal access tokens**
+3. Click **Generate new token**
 4. Name it "portainer-access"
-5. Set permission to **Read-only** (for pulling)
+5. Set access permission to **Read** (for pulling)
 6. Copy the generated token
 
 ### Step 2: Add Docker Hub Registry in Portainer
 
 1. Go to **Registries** in Portainer
-2. Click **+ Add registry**
-3. Select **Docker Hub**
+2. Click **Add registry**
+3. Select **DockerHub**
 4. Enter:
 
 ```text
+Name:          dockerhub-auth
 Username:      your-dockerhub-username
 Access token:  dckr_pat_xxxxxxxxxxxxxxxxxx
 ```
 
-5. Save
+5. Click **Test connection**
+6. Click **Add registry**
 
 ### Step 3: Verify Authentication Works
 
@@ -113,12 +115,12 @@ To explicitly use anonymous access only (e.g., to avoid accidentally exposing cr
 
 ## Managing Multiple Docker Hub Accounts
 
-For organizations with both free and paid accounts:
+For organizations with both Personal and paid accounts:
 
 ```bash
-Production Portainer: Authenticated with Pro account (unlimited pulls)
-Dev Portainer:        Authenticated with free account (200/6h)
-CI servers:           Use Docker Hub organization account
+Production Portainer: Authenticated with Pro/Team/Business account (unlimited pulls)
+Dev Portainer:        Authenticated with Personal account (200/6h)
+CI servers:           Use an organization access token (Team/Business)
 ```
 
 ## Avoiding Rate Limits with a Registry Mirror
@@ -127,7 +129,6 @@ The most effective solution for rate limit issues is a pull-through cache:
 
 ```yaml
 # Deploy a Docker Hub mirror
-version: "3"
 services:
   docker-hub-mirror:
     image: registry:2
@@ -152,7 +153,7 @@ Configure Docker to use the mirror:
 }
 ```
 
-With a mirror, all Docker Hub pulls are cached locally and don't count toward your rate limit after the first pull.
+With a mirror, repeated pulls can be served from the local cache after the first pull, reducing rate-limit pressure. Docker Hub mirrors are still subject to Docker's fair use policy, and if you configure upstream credentials you must secure the mirror because any private repositories that account can access become available through it.
 
 ## Docker Hub Private Repository Access
 
@@ -163,7 +164,7 @@ For private Docker Hub repositories, authenticated access is required:
 services:
   app:
     image: yourorg/private-image:latest   # Private → needs credentials
-    # Portainer uses stored Docker Hub credentials automatically
+    # Portainer uses the configured Docker Hub registry credentials for pulls
 ```
 
 Without credentials configured, this deployment fails with "pull access denied."
@@ -195,4 +196,4 @@ echo "Docker Hub Rate Limit: $REMAINING / $LIMIT remaining"
 
 ## Conclusion
 
-Choosing between anonymous and authenticated Docker Hub access in Portainer depends on your pull frequency and privacy needs. For most production environments, adding authenticated credentials is worth the minimal setup effort - you get double the rate limit and access to private repositories. For organizations with high pull volumes, a local registry mirror eliminates rate limit concerns entirely by caching images locally.
+Choosing between anonymous and authenticated Docker Hub access in Portainer depends on your pull frequency and privacy needs. For most production environments, adding authenticated credentials is worth the minimal setup effort - you get double the rate limit and, if the account is authorized, access to private repositories. For organizations with high pull volumes, a local registry mirror can reduce rate-limit pressure by caching images locally.
