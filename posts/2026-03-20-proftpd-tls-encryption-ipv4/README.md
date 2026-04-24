@@ -13,7 +13,7 @@ Plain FTP transmits credentials and data in cleartext. FTPS (FTP over TLS) encry
 ## Prerequisites
 
 ```bash
-# Enable mod_tls module (usually bundled with ProFTPD)
+# Install the TLS/SSL module package on Debian/Ubuntu
 
 apt install proftpd-mod-crypto -y  # Debian/Ubuntu
 ```
@@ -21,8 +21,11 @@ apt install proftpd-mod-crypto -y  # Debian/Ubuntu
 ## Generating a Certificate
 
 ```bash
+# Create the certificate directory
+install -d -m 700 /etc/proftpd/ssl
+
 # Generate a self-signed certificate (or use Let's Encrypt in production)
-openssl req -x509 -nodes -days 365 \
+openssl req -x509 -noenc -days 365 \
   -newkey rsa:2048 \
   -keyout /etc/proftpd/ssl/proftpd.key \
   -out    /etc/proftpd/ssl/proftpd.crt \
@@ -30,7 +33,7 @@ openssl req -x509 -nodes -days 365 \
 
 # Set secure permissions
 chmod 600 /etc/proftpd/ssl/proftpd.key
-chown proftpd:proftpd /etc/proftpd/ssl/proftpd.key
+chown root:root /etc/proftpd/ssl/proftpd.key
 ```
 
 ## ProFTPD TLS Configuration
@@ -42,6 +45,7 @@ chown proftpd:proftpd /etc/proftpd/ssl/proftpd.key
 LoadModule mod_tls.c
 
 # --- Bind to IPv4 ---
+UseIPv6  off
 Port       21
 ServerName "Secure FTP Server"
 
@@ -50,10 +54,10 @@ ServerName "Secure FTP Server"
     # Enable TLS support
     TLSEngine on
 
-    # Log TLS events (0=none, 1=connections, 3=verbose)
+    # Log TLS activity and diagnostics to a file
     TLSLog /var/log/proftpd/tls.log
 
-    # Require TLS for all connections (use 'on' to make it optional)
+    # Require TLS for all connections (use 'off' to make it optional)
     TLSRequired on
 
     # Certificate and key paths
@@ -69,10 +73,11 @@ ServerName "Secure FTP Server"
     # Require clients to present a certificate (for mutual TLS; optional)
     # TLSVerifyClient on
 
-    # Allow data connections to reuse the TLS session from the control connection
+    # Do not request client certs, enable extra TLS diagnostics, and relax
+    # data-channel session reuse for compatibility with some clients
     TLSOptions NoCertRequest EnableDiags NoSessionReuseRequired
 
-    # If TLS handshake fails, do not fall back to cleartext
+    # Explicitly disable TLS renegotiation requests
     TLSRenegotiate none
 </IfModule>
 
@@ -102,15 +107,18 @@ proftpd --configtest
 # Restart ProFTPD
 systemctl restart proftpd
 
-# Verify ProFTPD is listening on port 21
-ss -tlnp | grep proftpd
+# Verify ProFTPD is listening on IPv4 port 21
+ss -4 -tlnp | grep ':21 '
 ```
 
 ## Testing FTPS
 
 ```bash
-# Test with curl (explicit FTPS via STARTTLS on port 21)
-curl --ftp-ssl ftp://ftp.example.com/ --user user:password
+# If you used the self-signed certificate above, trust that certificate in
+# your client before testing.
+
+# Test with curl (explicit FTPS via AUTH TLS on port 21)
+curl --ssl-reqd ftp://ftp.example.com/ --user user:password
 
 # Test with lftp (interactive FTPS client)
 lftp -e "set ftp:ssl-force true; ls; quit" -u user,password ftp.example.com
@@ -120,5 +128,5 @@ lftp -e "set ftp:ssl-force true; ls; quit" -u user,password ftp.example.com
 
 - `TLSRequired on` forces all clients to negotiate TLS; `TLSRequired off` makes it optional.
 - `TLSProtocol TLSv1.2 TLSv1.3` disables weak SSL/TLS versions.
-- `NoSessionReuseRequired` is often needed for compatibility with Windows FTP clients.
+- `NoSessionReuseRequired` is often needed for compatibility with some FTP clients, including `curl`.
 - Use `TLSLog` to debug TLS handshake issues when clients can't connect.
