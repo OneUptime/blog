@@ -8,7 +8,7 @@ Description: Configure Portainer to connect to your LDAP server using LDAPS (LDA
 
 ## Introduction
 
-LDAPS (LDAP over SSL/TLS) uses port 636 and wraps the entire LDAP connection in TLS from the start - unlike StartTLS which upgrades a plain connection. LDAPS is simpler to configure and is the recommended encryption method for new deployments. This guide covers enabling LDAPS in Portainer.
+LDAPS (LDAP over SSL/TLS) uses port 636 and wraps the entire LDAP connection in TLS from the start - unlike StartTLS which upgrades a plain connection. LDAPS is one of the TLS options supported by Portainer and is often straightforward to configure when your directory service already exposes port 636. This guide covers enabling LDAPS in Portainer.
 
 ## Prerequisites
 
@@ -33,19 +33,23 @@ ldapsearch -x \
   -s base "(objectClass=*)"
 ```
 
-## Step 2: Export the Server Certificate
+## Step 2: Export the CA Certificate
 
 ```bash
-# Save the LDAP server's CA certificate
-openssl s_client -connect ldap.example.com:636 < /dev/null 2>/dev/null \
-  | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > ldap-server.pem
+# Save the certificate chain presented by the LDAP server
+openssl s_client -showcerts -connect ldap.example.com:636 < /dev/null 2>/dev/null \
+  | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > ldap-chain.pem
+
+# From ldap-chain.pem, copy the issuing CA certificate that signed the LDAP
+# server certificate into ldap-ca.pem. Portainer expects the CA certificate,
+# not just the leaf server certificate.
 
 # For Active Directory, get the CA cert from AD CS
-# The CA cert is usually available at:
+# If AD CS Web Enrollment is installed, the CA cert is commonly available at:
 # http://your-ca-server/certsrv/certcarc.asp
 
 # View certificate details
-openssl x509 -in ldap-server.pem -noout -text | grep -E "DNS:|IP:"
+openssl x509 -in ldap-ca.pem -noout -text | grep -E "Subject:|Issuer:|DNS:|IP Address:"
 ```
 
 ## Step 3: Configure Portainer for LDAPS
@@ -57,7 +61,7 @@ Server:             ldap.example.com:636
 Use TLS:            Enabled (LDAPS)
 StartTLS:           Disabled
 Skip TLS Verify:    Off (use cert verification in production)
-TLS CA Certificate: [paste PEM certificate here]
+TLS CA Certificate: [upload ldap-ca.pem]
 
 Reader DN:          cn=portainer-bind,dc=example,dc=com
 Reader Password:    bindpassword
@@ -66,14 +70,18 @@ Reader Password:    bindpassword
 ## Step 4: API Configuration
 
 ```bash
-# Read CA cert
-CA_PEM=$(cat ldap-server.pem)
-
 TOKEN=$(curl -s -X POST \
   https://portainer.example.com/api/auth \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
+
+# Upload the CA cert for LDAP TLS verification
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "folder=ldap" \
+  -F "file=@ldap-ca.pem" \
+  https://portainer.example.com/api/upload/tls/ca
 
 # Configure LDAPS
 curl -X PUT \
@@ -82,27 +90,22 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d "$(python3 -c "
 import json
-ca_cert = open('ldap-server.pem').read()
 config = {
   'AuthenticationMethod': 2,
-  'ldapsettings': {
-    'Servers': [
-      {
-        'Host': 'ldap.example.com',
-        'Port': 636,
-        'UseTLS': True,
-        'StartTLS': False,
-        'SkipVerify': False,
-        'TLSCACert': ca_cert,
-        'Anonymous': False,
-        'ReaderDN': 'cn=portainer-bind,dc=example,dc=com',
-        'Password': 'bindpassword'
-      }
-    ],
+  'LDAPSettings': {
+    'URL': 'ldap.example.com:636',
+    'TLSConfig': {
+      'TLS': True,
+      'TLSSkipVerify': False
+    },
+    'StartTLS': False,
+    'AnonymousMode': False,
+    'ReaderDN': 'cn=portainer-bind,dc=example,dc=com',
+    'Password': 'bindpassword',
     'SearchSettings': [
       {
         'BaseDN': 'ou=users,dc=example,dc=com',
-        'Username': 'uid',
+        'UserNameAttribute': 'uid',
         'Filter': '(objectClass=inetOrgPerson)'
       }
     ],
@@ -127,8 +130,8 @@ For Active Directory with LDAPS:
 ```text
 Server:             dc01.corp.example.com:636
 Use TLS:            Enabled
-Skip TLS Verify:    Off (unless using self-signed AD cert)
-TLS CA Certificate: [Root CA certificate from AD CS]
+Skip TLS Verify:    Off (preferred; upload the issuing CA certificate)
+TLS CA Certificate: [upload Root CA certificate from AD CS]
 
 Reader DN:          CN=portainer-bind,OU=Service Accounts,DC=corp,DC=example,DC=com
 Reader Password:    [service account password]
@@ -143,15 +146,18 @@ User Filter:        (&(objectClass=user)(objectCategory=person))
 Use Portainer's built-in test in the LDAP settings page. For manual testing:
 
 ```bash
-# Test from the Portainer container
-docker exec portainer \
-  wget -q -O- --no-check-certificate \
-  "https://ldap.example.com:636" 2>&1 | head -5
-
-# Or use openssl from Portainer host
+# Test the TLS handshake from the Portainer host
 openssl s_client -connect ldap.example.com:636 \
-  -CAfile ldap-server.pem < /dev/null
+  -CAfile ldap-ca.pem < /dev/null
 # Look for: "Verify return code: 0 (ok)"
+
+# Test an authenticated LDAP query over LDAPS
+ldapsearch -x \
+  -H ldaps://ldap.example.com:636 \
+  -D "cn=portainer-bind,dc=example,dc=com" \
+  -w bindpassword \
+  -b "dc=example,dc=com" \
+  -s base "(objectClass=*)"
 ```
 
 ## Handling Self-Signed Certificates
@@ -180,4 +186,4 @@ docker run --rm alpine nc -zv ldap.example.com 636
 
 ## Conclusion
 
-LDAPS provides the simplest and most reliable TLS configuration for LDAP authentication in Portainer. By using port 636, the entire connection is encrypted from the first byte, which is more secure than StartTLS. Always use certificate verification in production by providing the CA certificate, and test connectivity before configuring Portainer to save troubleshooting time.
+LDAPS provides a straightforward TLS configuration for LDAP authentication in Portainer. By using port 636, the entire connection is encrypted from the first byte, avoiding the StartTLS upgrade step. Always use certificate verification in production by providing the CA certificate, and test connectivity before configuring Portainer to save troubleshooting time.
