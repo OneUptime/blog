@@ -21,9 +21,9 @@ Portainer's container inspection view gives you a comprehensive look at a contai
 2. Click on any container name.
 3. You'll land on the container details page.
 
-## Step 2: Overview Tab
+## Step 2: Container Details Page
 
-The overview tab shows a human-friendly summary:
+The container details page shows a human-friendly summary. Depending on your container and environment, it can include:
 
 - **Status**: Running, Stopped, Paused
 - **Image**: Image name and ID
@@ -36,7 +36,7 @@ The overview tab shows a human-friendly summary:
 
 ## Step 3: Navigate to the Inspect Tab
 
-Click the **Inspect** tab (or **Details > Inspect**) to view the full JSON representation.
+Click the **Inspect** tab to open Portainer's tree view, then click **Text** to view the raw JSON representation.
 
 This is equivalent to:
 
@@ -73,7 +73,7 @@ docker inspect my-container | jq .
 
 Key fields to check:
 - `OOMKilled: true` → Container was killed due to out-of-memory.
-- `ExitCode: 137` → Killed by SIGKILL (OOM or manual kill).
+- `ExitCode: 137` → The container was terminated with `SIGKILL`; common causes include an OOM kill, `docker kill`, or a Docker daemon restart.
 - `Restarting: true` → Container is in a restart loop.
 
 ### Network Settings
@@ -81,7 +81,6 @@ Key fields to check:
 ```json
 {
   "NetworkSettings": {
-    "IPAddress": "172.17.0.2",
     "Networks": {
       "bridge": {
         "IPAddress": "172.17.0.2",
@@ -100,7 +99,7 @@ Key fields to check:
 }
 ```
 
-Useful for: verifying network connectivity, finding the correct IP address for inter-container communication.
+Useful for: verifying network connectivity, finding the correct per-network IP address for inter-container communication.
 
 ### Mounts (Volumes)
 
@@ -185,8 +184,8 @@ Useful for: verifying resource limits, security settings, restart policy.
 When working via CLI for automation:
 
 ```bash
-# Get container IP address:
-docker inspect my-container | jq '.[].NetworkSettings.IPAddress'
+# Get container IP addresses by network:
+docker inspect my-container | jq '.[].NetworkSettings.Networks | map_values(.IPAddress)'
 
 # Get all environment variables:
 docker inspect my-container | jq '.[].Config.Env[]'
@@ -203,8 +202,8 @@ docker inspect my-container | jq '.[].HostConfig.Memory'
 # Get restart policy:
 docker inspect my-container | jq '.[].HostConfig.RestartPolicy'
 
-# Get the exact image digest (for pinned deployments):
-docker inspect my-container | jq '.[].Image'
+# Get image manifest digest(s), if available:
+docker image inspect "$(docker inspect --format='{{.Image}}' my-container)" | jq '.[].RepoDigests[]?'
 ```
 
 ## Step 6: Common Debugging Scenarios
@@ -212,7 +211,7 @@ docker inspect my-container | jq '.[].Image'
 ### "Why can't my container reach service X?"
 
 Check the network configuration:
-```bash
+```text
 Inspect → NetworkSettings → Networks
 Verify both containers are on the same Docker network
 ```
