@@ -8,7 +8,7 @@ Description: Learn how to run commands as a specific user in the Docker containe
 
 ## Introduction
 
-By default, Portainer's container console runs commands as the container's configured user. But there are times when you need to run as a different user - as root to debug permission issues, or as a specific application user to test permissions or run user-specific commands. Portainer lets you specify the user when opening the console.
+Portainer's container console lets you run commands as the container's configured user or specify a different one when needed - as root to debug permission issues, or as a specific application user to test permissions or run user-specific commands.
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ By default, Portainer's container console runs commands as the container's confi
 2. Click on the container name.
 3. Click **Console**.
 4. In the console configuration dialog:
-   - **Shell**: `/bin/sh` or `/bin/bash`
+   - **Shell**: `/bin/sh`, `/bin/bash`, or `/bin/ash` for Alpine containers
    - **User**: Enter the user to run as
 5. Click **Connect**.
 
@@ -38,7 +38,7 @@ nobody         → Run as 'nobody' (very restricted)
 
 ## Step 2: Running as Root for Debugging
 
-Running as root gives you unrestricted access to the container:
+Running as root gives you broad access inside the container:
 
 ```bash
 # In Portainer console dialog:
@@ -69,6 +69,8 @@ kill -9 <pid>
 Common root-required debug tasks:
 
 ```bash
+# Some of these still depend on the container's Linux capabilities and security profile:
+
 # Install a debugging tool:
 # Alpine:
 apk add --no-cache curl wget strace tcpdump
@@ -131,8 +133,8 @@ su - appuser
 # Run a single command as another user:
 su - www-data -c "php artisan config:cache"
 
-# For containers without su, use nsenter from the host:
-# (requires Docker CLI access on host)
+# For containers without su, disconnect and open a new Portainer console
+# session with the target user instead
 ```
 
 ## Step 5: Running as User by UID/GID
@@ -145,7 +147,7 @@ User: 1000
 
 # Inside container:
 id
-# uid=1000 gid=0(root) groups=0(root)
+# Shows UID 1000; the username and primary GID depend on the image/runtime configuration
 # Note: the username may not be in /etc/passwd for this UID
 ```
 
@@ -198,26 +200,27 @@ Running as root in containers has risks:
 
 ```bash
 # Audit which users can access the console in Portainer:
-# (Portainer RBAC controls console access by role)
-# Only Operator and Admin roles can open consoles
+# In Portainer Business Edition, RBAC controls console access by role
+# Environment Administrators, Operators, and Standard Users with access to
+# the container can open consoles; Helpdesk and Read-only users cannot
 
 # In production, consider:
-# 1. Restricting who has Operator role
-# 2. Enabling audit logging in Portainer
-# 3. Using read-only console access where possible
+# 1. Restricting who has console-capable access to the environment and container
+# 2. Reviewing Activity logs in Portainer Business Edition
+# 3. Setting sensitive containers to administrators-only ownership when appropriate
 
-# For sensitive containers, disable console access entirely:
-# (via Portainer environment access controls)
+# For sensitive containers, restrict the container or environment to
+# administrators only using Portainer access control settings
 ```
 
 ## Step 8: Docker CLI Equivalent
 
 ```bash
 # Run as a specific user via Docker CLI:
-docker exec -it -u root my-container /bin/bash
+docker exec -it -u root my-container /bin/sh
 docker exec -it -u 1000 my-container /bin/sh
-docker exec -it -u appuser my-container /bin/bash
-docker exec -it -u 0:0 my-container /bin/bash   # root:root
+docker exec -it -u appuser my-container /bin/sh
+docker exec -it -u 0:0 my-container /bin/sh   # root:root
 
 # Run a single command as specific user:
 docker exec -u root my-container apt-get install -y curl
@@ -226,4 +229,4 @@ docker exec -u appuser my-container ls -la /data
 
 ## Conclusion
 
-Specifying the user when opening a container console in Portainer is a small but important feature for both debugging and security verification. Run as root when you need unrestricted access for diagnosing permission issues, installing tools, or inspecting sensitive files. Run as the application user to verify that your application has the correct permissions and can access the resources it needs. Always return to proper security practices after debugging - avoid leaving root console sessions open unnecessarily.
+Specifying the user when opening a container console in Portainer is a small but important feature for both debugging and security verification. Run as root when you need broad access inside the container for diagnosing permission issues, installing tools, or inspecting sensitive files. Run as the application user to verify that your application has the correct permissions and can access the resources it needs. Always return to proper security practices after debugging - avoid leaving root console sessions open unnecessarily.
