@@ -33,7 +33,7 @@ The auto-remove flag (`--rm` in Docker CLI) causes a container to be automatical
 
 1. Navigate to **Containers > Add container**.
 2. Set the container name and image.
-3. Scroll to the **Runtime & Resources** or **Advanced** section.
+3. Scroll to the **Actions** section.
 4. Find the **Auto remove** toggle.
 5. Enable it.
 
@@ -48,15 +48,13 @@ docker run --rm \
 
 ## Step 2: Auto-Remove and Restart Policy Conflict
 
-Auto-remove (`--rm`) and restart policies are mutually exclusive. If you set a restart policy, auto-remove has no effect (Docker won't remove a container it's configured to restart).
+Auto-remove (`--rm`) and restart policies are mutually exclusive. Docker returns an error if you try to combine them.
 
 ```bash
-# This combination doesn't work as expected:
-# --rm is ignored when restart policy is set
+# This combination fails because --rm and --restart conflict
 docker run --rm --restart always myimage
 
-# In Portainer: if you enable Auto-remove AND set a restart policy,
-# auto-remove behavior is overridden by the restart policy
+# In Portainer, keep the restart policy set to No when using Auto remove
 ```
 
 For one-shot tasks, ensure restart policy is set to **No** (none).
@@ -66,17 +64,17 @@ For one-shot tasks, ensure restart policy is set to **No** (none).
 ### Database Migration Pattern
 
 ```yaml
-# docker-compose.yml: run migration and remove on completion
+# docker-compose.yml: run migration once; clean up separately if needed
 services:
-  # Migration container - runs once and is removed
+  # Migration container - runs once; Compose does not auto-remove it
   db-migrate:
     image: myorg/myapp:latest
     command: ["python", "manage.py", "migrate", "--noinput"]
     environment:
       - DATABASE_URL=${DATABASE_URL}
     restart: "no"
-    # Note: in compose, no auto_remove option
-    # Use restart: "no" and handle cleanup separately
+    # Note: Compose service definitions do not have auto-remove
+    # Use restart: "no" and clean up exited containers separately
 
   app:
     image: myorg/myapp:latest
@@ -123,7 +121,7 @@ For automation, you can trigger auto-remove containers via the Portainer API:
 
 ```bash
 # Via Portainer API: create and start a one-shot container
-PORTAINER_URL="http://portainer:9000"
+PORTAINER_URL="https://portainer-url:9443"
 API_KEY="your-api-key"
 ENDPOINT_ID=1
 
@@ -151,12 +149,12 @@ echo "Container ${CONTAINER_ID} started - will auto-remove on exit"
 
 ## Step 5: Alternative - Portainer Edge Jobs
 
-For recurring one-shot tasks on edge devices, use **Edge Jobs** instead of auto-remove containers:
+For recurring host-side tasks on edge devices, use **Edge Jobs** instead of relying on auto-remove containers:
 
-- Edge Jobs run a container on a schedule.
-- The container exits when done.
-- Results are reported back to Portainer.
-- No need to manage container cleanup manually.
+- Edge Jobs schedule scripts on Edge hosts.
+- They run via the host's `crontab`, not in a container.
+- They require Edge Compute features to be enabled.
+- They are currently available for Docker Standalone edge environments that use `/etc/cron.d` for scheduling.
 
 ## Verify Auto-Remove Behavior
 
@@ -174,8 +172,8 @@ docker ps -a | grep my-container
 - **Name containers meaningfully** even with auto-remove - the name helps identify them in logs.
 - **Capture logs before the container is removed** if you need them - pipe to a file or log driver.
 - **Don't use auto-remove for production services** - use restart policies instead.
-- **Combine with Portainer Edge Jobs** for scheduled one-shot tasks on edge devices.
+- **Use Portainer Edge Jobs** for scheduled host-side tasks on edge devices.
 
 ## Conclusion
 
-Auto-remove is a simple but valuable feature for keeping your Docker environment clean. By enabling it for one-shot containers in Portainer, you ensure that migration jobs, initialization scripts, and test containers don't accumulate as stopped containers. For recurring cleanup jobs, combine auto-remove with Portainer's container scheduling or Edge Jobs features.
+Auto-remove is a simple but valuable feature for keeping your Docker environment clean. By enabling it for one-shot containers in Portainer, you ensure that migration jobs, initialization scripts, and test containers don't accumulate as stopped containers. For recurring host-side tasks on edge devices, consider Portainer Edge Jobs instead.
