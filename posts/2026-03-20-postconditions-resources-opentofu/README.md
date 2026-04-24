@@ -8,7 +8,7 @@ Description: A guide to adding postconditions to resources in OpenTofu to valida
 
 ## Introduction
 
-Postconditions in OpenTofu allow you to validate that a resource was created or modified correctly after the operation completes. If a postcondition fails, OpenTofu marks the apply as failed and reports an error. Postconditions are checked after the resource exists and its attributes are known.
+Postconditions in OpenTofu allow you to validate that a resource or data source has the characteristics you expect after it is evaluated. If a postcondition fails, OpenTofu reports an error and blocks dependent changes. Postconditions are checked after the object is evaluated and its attributes are known.
 
 ## Basic Postcondition Syntax
 
@@ -35,8 +35,8 @@ resource "aws_s3_bucket" "data" {
   lifecycle {
     postcondition {
       # Verify the bucket region matches expected
-      condition     = self.region == var.expected_region
-      error_message = "Bucket was created in ${self.region} but expected ${var.expected_region}."
+      condition     = self.bucket_region == var.expected_region
+      error_message = "Bucket was created in ${self.bucket_region} but expected ${var.expected_region}."
     }
   }
 }
@@ -108,13 +108,14 @@ resource "aws_security_group" "web" {
 }
 
 resource "aws_db_instance" "main" {
-  identifier             = "myapp-db"
-  engine                 = "postgres"
-  instance_class         = "db.t3.medium"
-  allocated_storage      = 20
-  publicly_accessible    = false
-  deletion_protection    = var.environment == "prod"
-  skip_final_snapshot    = var.environment != "prod"
+  identifier                = "myapp-db"
+  engine                    = "postgres"
+  instance_class            = "db.t3.medium"
+  allocated_storage         = 20
+  publicly_accessible       = false
+  deletion_protection       = var.environment == "prod"
+  skip_final_snapshot       = var.environment != "prod"
+  final_snapshot_identifier = var.environment == "prod" ? "myapp-db-final" : null
 
   lifecycle {
     postcondition {
@@ -179,13 +180,13 @@ resource "aws_instance" "app" {
   instance_type = var.instance_type
 
   lifecycle {
-    # Precondition: runs BEFORE apply, validates inputs
+    # Precondition: checked before the resource is evaluated, validates assumptions
     precondition {
       condition     = contains(["t3.micro", "t3.small", "t3.medium"], var.instance_type)
       error_message = "Instance type must be micro, small, or medium."
     }
 
-    # Postcondition: runs AFTER apply, validates outputs
+    # Postcondition: checked after the resource is evaluated, validates guarantees
     postcondition {
       condition     = self.instance_state == "running"
       error_message = "Instance must be in running state after creation. Got: ${self.instance_state}"
@@ -218,4 +219,4 @@ data "aws_vpc" "selected" {
 
 ## Conclusion
 
-Postconditions allow you to catch misconfigurations that only become apparent after a resource is created. Unlike preconditions (which validate inputs), postconditions use `self` to reference the resource's actual attributes after creation. They are particularly useful for validating computed attributes (like ARNs, DNS names, and assigned IPs), enforcing security requirements, and ensuring infrastructure meets compliance standards. Use postconditions when you need to verify the actual state of created resources, not just the intended configuration.
+Postconditions allow you to catch misconfigurations that only become apparent after a resource is created. Unlike preconditions, which are typically used to validate assumptions before a resource is evaluated, postconditions use `self` to reference the resource's actual attributes after creation. They are particularly useful for validating computed attributes (like ARNs, DNS names, and assigned IPs), enforcing security requirements, and ensuring infrastructure meets compliance standards. Use postconditions when you need to verify the actual state of created resources, not just the intended configuration.
