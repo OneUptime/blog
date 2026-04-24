@@ -34,7 +34,7 @@ services:
       - "9001:9001"    # MinIO Console (Web UI)
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 30s
       timeout: 20s
       retries: 3
@@ -49,7 +49,7 @@ volumes:
 - **Console UI**: `http://<host>:9001`
 - **S3 API endpoint**: `http://<host>:9000`
 
-Log in with `minioadmin` and the password you set.
+Log in with the `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` you set.
 
 ## Creating Buckets and Policies
 
@@ -65,18 +65,18 @@ Via MinIO CLI (mc):
 ```bash
 # Install mc and configure
 
-docker exec minio mc alias set local http://localhost:9000 minioadmin minio_secure_password
+mc alias set local http://localhost:9000 minioadmin minio_secure_password
 
 # Create buckets
-docker exec minio mc mb local/backups
-docker exec minio mc mb local/media
-docker exec minio mc mb local/uploads
+mc mb local/backups
+mc mb local/media
+mc mb local/uploads
 
 # Set bucket policy (public read for media)
-docker exec minio mc anonymous set download local/media
+mc anonymous set download local/media
 
 # List buckets
-docker exec minio mc ls local
+mc ls local
 ```
 
 ## Connecting Applications to MinIO
@@ -90,8 +90,8 @@ environment:
   S3_ACCESS_KEY: minioadmin
   S3_SECRET_KEY: minio_secure_password
   S3_BUCKET: myapp-uploads
-  S3_REGION: us-east-1    # MinIO accepts any region string
-  S3_FORCE_PATH_STYLE: "true"  # Required for MinIO path-style requests
+  S3_REGION: us-east-1    # Match the region configured on your MinIO server
+  S3_FORCE_PATH_STYLE: "true"  # Set this when your application needs path-style requests
 ```
 
 ## Example: Backing Up PostgreSQL to MinIO
@@ -106,16 +106,17 @@ DB_BACKUP=/tmp/db-backup-$(date +%Y%m%d).sql.gz
 docker exec postgres pg_dumpall -U postgres | gzip > $DB_BACKUP
 
 # Upload to MinIO
-docker exec minio mc cp $DB_BACKUP local/backups/
+mc cp "$DB_BACKUP" local/backups/
 
 # Clean up local file
-rm $DB_BACKUP
+rm "$DB_BACKUP"
 ```
 
 ## Using MinIO with AWS SDK
 
 ```python
 import boto3
+from botocore.config import Config
 
 # Connect to MinIO using boto3 (S3-compatible)
 s3_client = boto3.client(
@@ -124,7 +125,10 @@ s3_client = boto3.client(
     aws_access_key_id='minioadmin',
     aws_secret_access_key='minio_secure_password',
     region_name='us-east-1',
-    config=boto3.session.Config(signature_version='s3v4')
+    config=Config(
+        signature_version='s3v4',
+        s3={'addressing_style': 'path'}
+    )
 )
 
 # Upload a file
@@ -138,24 +142,33 @@ for obj in response.get('Contents', []):
 
 ## MinIO Distributed Mode
 
-For production, deploy multiple MinIO nodes for high availability:
+For production, each node in a distributed MinIO deployment must use the same `command` value, sequential hostnames, and its own storage volumes, for example:
 
 ```yaml
 version: "3.8"
 
 services:
-  minio-1:
+  minio1:
     image: minio/minio:latest
-    command: server http://minio-{1...4}/data --console-address ":9001"
+    hostname: minio1
+    command: server --console-address ":9001" http://minio{1...4}/data{1...2}
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minio_secure_password
     volumes:
-      - minio1_data:/data
+      - minio1_data1:/data1
+      - minio1_data2:/data2
     networks:
       - minio-network
 
-  # Add minio-2, minio-3, minio-4 with similar config
+  # Define minio2, minio3, and minio4 similarly with hostnames minio2, minio3, and minio4
+
+networks:
+  minio-network:
+
+volumes:
+  minio1_data1:
+  minio1_data2:
 ```
 
 ## Conclusion
