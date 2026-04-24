@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix the common Portainer issue where cust
 
 ## Introduction
 
-A common frustration with Portainer is configuring a custom private registry and then finding that images fail to pull because the credentials are seemingly ignored. This can happen for several reasons: URL mismatch between the registry configuration and the image reference, Docker credentials caching, or Portainer configuration issues. This guide covers systematic diagnosis and fixes.
+A common frustration with Portainer is configuring a custom private registry and then finding that images fail to pull because the credentials are seemingly ignored. This can happen for several reasons: a mismatch between the registry configuration and the image reference, Docker credential helper precedence during testing, or Portainer configuration issues. This guide covers systematic diagnosis and fixes.
 
 ## Common Symptoms
 
@@ -29,40 +29,41 @@ Pulling from docker.io instead of registry.company.com
 
 ### Cause 1: URL Mismatch
 
-The most common cause - the URL in Portainer's registry config doesn't match the image URL prefix.
+The most common cause - the image reference is not written for the same registry host and port configured in Portainer.
 
 ```text
-Portainer registry URL:  registry.company.com
-Image in stack:          https://registry.company.com/myimage:latest  ← Has https://
+Portainer registry URL:  https://registry.company.com
+Image in stack:          https://registry.company.com/myimage:latest  ← Invalid image reference
 
 Portainer registry URL:  registry.company.com:5000
 Image in stack:          registry.company.com/myimage:latest  ← Missing port
 ```
 
-Portainer matches credentials to images by comparing the URL prefix exactly.
+Docker image references use the registry host and optional port, not a URL scheme. Portainer can store the registry URL with or without a protocol, and if you omit it, Portainer assumes `https://` by default.
 
 **Fix:**
 
 ```yaml
 # If Portainer registry URL is: registry.company.com
+# Or: https://registry.company.com
 # Image in Compose must be:
 services:
   app:
     image: registry.company.com/myimage:latest   # No https://, correct port
 ```
 
-### Cause 2: Docker Credentials Cache
+### Cause 2: Docker Credential Helper Precedence
 
-Docker caches credentials in `~/.docker/config.json`. If there are cached but incorrect credentials for a registry, they override Portainer's stored ones.
+Docker CLI credentials live in `~/.docker/config.json` or an external credential store. Docker resolves credentials using `credHelpers` and `credsStore` before inline auth entries, which can confuse manual testing. This does not directly replace the credentials saved in Portainer.
 
 ```bash
-# Check Docker credential cache
+# Inspect Docker CLI credential configuration used for manual testing
 cat ~/.docker/config.json
 
-# Remove cached credentials for a specific registry
+# Remove CLI credentials for a specific registry before retesting
 docker logout registry.company.com
 
-# Or edit the file directly to remove the entry
+# If you're using a credential helper, inspect or clear that store as well
 ```
 
 ### Cause 3: Portainer Agent vs Direct Connection
@@ -71,21 +72,22 @@ For remote environments using the Portainer Agent, credentials are passed from t
 
 ```bash
 # Test connectivity from the Docker host (where agent runs), not from Portainer server
-curl -u user:pass https://registry.company.com/v2/_catalog
+curl -u user:pass https://registry.company.com/v2/
 ```
 
-### Cause 4: Portainer CE Limitations
+### Cause 4: Kubernetes Namespace Access
 
-In Portainer CE, registry credentials for Kubernetes are handled differently than for Docker. For Kubernetes environments, you need to create Kubernetes image pull secrets separately.
+For Kubernetes environments, registry access is namespace-scoped in Portainer. Make sure the registry is granted to the target namespace. When you assign registry access, Portainer creates the Kubernetes registry secret and adds it as an `imagePullSecret` on the default ServiceAccount for that namespace.
 
 ## Step 1: Verify the Registry URL Configuration
 
 ```bash
 # In Portainer, go to Registries and check the URL
-# The URL should match EXACTLY the prefix used in your image names
+# The image reference must use the same registry host and port
 
 # Example image: harbor.company.com/prod/myapp:latest
-# Registry URL should be: harbor.company.com  (NOT https://harbor.company.com)
+# Registry URL can be: harbor.company.com or https://harbor.company.com
+# The image reference itself should never include https://
 ```
 
 ## Step 2: Test Credentials from the Docker Host
@@ -95,9 +97,9 @@ In Portainer CE, registry credentials for Kubernetes are handled differently tha
 ssh user@docker-host
 
 # Test the exact credentials configured in Portainer
-docker login harbor.company.com \
+echo 'mypassword' | docker login harbor.company.com \
   --username portainer-user \
-  --password mypassword
+  --password-stdin
 
 # If this fails, the credentials are wrong - fix them in Portainer
 ```
@@ -105,30 +107,30 @@ docker login harbor.company.com \
 ## Step 3: Clear Docker Credential Cache
 
 ```bash
-# View current credentials cache
-cat /root/.docker/config.json
+# View Docker CLI credential configuration on the host you are testing from
+cat ~/.docker/config.json
 
-# Remove stale credentials
+# Remove stale CLI credentials
 docker logout harbor.company.com
 
-# Verify the cache entry is removed
-cat /root/.docker/config.json
+# Verify the registry entry is removed or that the configured credential helper is expected
+cat ~/.docker/config.json
 ```
 
 ## Step 4: Verify Portainer Version and Registry Support
 
 ```bash
 # Portainer versions have different registry handling
-docker exec portainer portainer --version
+docker exec portainer /portainer --version
 ```
 
 Known issues:
-- Some older Portainer CE versions have bugs with credential passing to Swarm agents
-- Portainer 2.x handles credentials differently than 1.x
+- Agent and server versions should match
+- If you are upgrading from Portainer 1.x, follow the official upgrade path and update to 2.0.0 before a current release
 
 ## Step 5: Use Docker Config Secret (Kubernetes)
 
-For Kubernetes environments, Portainer needs a Kubernetes secret, not just the registry entry:
+For Kubernetes environments, first make sure the registry has been granted access to the target namespace in Portainer. If you are deploying outside Portainer or need a manual fallback, create an image pull secret in the namespace:
 
 ```bash
 # Create image pull secret in the target namespace
@@ -164,10 +166,11 @@ Sometimes resetting the registry configuration in Portainer helps:
 If using remote agents, ensure the agent and server versions match:
 
 ```bash
-# Check agent version
-docker exec portainer_agent portainer-agent --version
+# Check the deployed Portainer and Agent image tags
+docker inspect --format '{{.Config.Image}}' portainer
+docker inspect --format '{{.Config.Image}}' portainer_agent
 
-# Agent and server should be the same version
+# Agent and server should be on the same Portainer release
 # Mismatched versions can cause credential passing failures
 ```
 
@@ -176,46 +179,48 @@ docker exec portainer_agent portainer-agent --version
 For deeper investigation:
 
 ```bash
-# Restart Portainer with debug logging
+# Start Portainer with debug logging
 docker run -d \
   --name portainer \
+  -p 9443:9443 \
+  -p 8000:8000 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest \
+  portainer/portainer-ce:lts \
   --log-level DEBUG
 
 # Check logs
-docker logs -f portainer | grep -i "registry\|credential\|auth"
+docker logs -f portainer | grep -Ei 'registry|credential|auth'
 ```
 
-## Step 9: Manual Docker Login as Workaround
+## Step 9: Manual Docker Login as Diagnostic Check
 
-If Portainer credentials still aren't working, manually log into the registry on the Docker host:
+If Portainer credentials still aren't working, test the registry manually from the Docker host:
 
 ```bash
-# This creates credentials that Docker daemon uses
-docker login registry.company.com \
+# This updates the Docker CLI's local credential store for the current user
+echo 'password' | docker login registry.company.com \
   --username user \
-  --password password
+  --password-stdin
 
-# The credentials persist in /root/.docker/config.json
-# Docker will use these when Portainer triggers a pull
+# It can confirm host reachability and account validity
+# It does not update Portainer's saved registry credentials
 ```
 
-This is a workaround, not a permanent fix. The root cause should still be identified.
+Use this to validate the host and account, not as a permanent Portainer fix.
 
 ## Prevention Checklist
 
 ```bash
-[ ] Registry URL in Portainer matches image URL prefix exactly
-[ ] No https:// prefix in the registry URL
+[ ] Image references use the correct registry host and port
+[ ] No https:// prefix appears in the image reference
 [ ] Port number included if non-standard (e.g., :5000)
 [ ] Credentials tested directly on the Docker host
-[ ] Docker credential cache checked for conflicts
-[ ] For Kubernetes: image pull secrets created in namespaces
+[ ] Docker CLI credential helper / cache checked during manual testing
+[ ] For Kubernetes: registry access granted to the target namespace in Portainer, or image pull secrets created manually if deploying outside Portainer
 [ ] Portainer agent and server versions match
 ```
 
 ## Conclusion
 
-The "custom registry credentials ignored" issue almost always comes down to a URL mismatch or credential caching problem. Verify that the Portainer registry URL exactly matches the prefix in your image names, test credentials directly on the Docker host, and clear any conflicting cached credentials. For Kubernetes deployments, remember that image pull secrets must be created as Kubernetes resources, not just as Portainer registry configurations.
+The "custom registry credentials ignored" issue almost always comes down to an image reference mismatch, namespace access on Kubernetes, or confusion between Portainer's saved credentials and the Docker CLI's own credential store. Verify that the image points to the same registry host and port configured in Portainer, test authentication directly on the Docker host, and if you're troubleshooting with `docker login`, clear stale CLI credentials so the test is repeatable. For Kubernetes deployments, ensure the registry is granted to the target namespace in Portainer or create the image pull secret manually when deploying outside Portainer.
