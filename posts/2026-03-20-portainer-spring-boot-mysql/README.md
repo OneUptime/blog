@@ -12,8 +12,8 @@ Spring Boot is the most widely used Java web framework, and MySQL is a popular r
 
 ## Prerequisites
 
-- Portainer CE or BE with Docker Engine 20.10+
-- A Spring Boot application JAR or Dockerfile
+- Portainer CE or BE managing a Docker Standalone environment with Docker Engine 20.10+
+- A Spring Boot container image available to the Portainer-managed Docker host or in a registry, or a Dockerfile you can build into one before deploying the stack
 - Basic knowledge of Spring Boot and JPA
 
 ## Step 1: Create the Spring Boot Dockerfile
@@ -51,13 +51,13 @@ ENTRYPOINT ["java", \
   "-jar", "app.jar"]
 ```
 
+Build this Dockerfile into an image and make that tag available to Portainer before deploying the stack (for example, by building it under **Images** in Portainer or by pushing it to a registry).
+
 ## Step 2: Create the Docker Compose Stack in Portainer
 
-Navigate to **Stacks** → **Add Stack** → **Web Editor** and name it `springboot-app`:
+Navigate to **Stacks** → **Add stack** → **Web editor** and name it `springboot-app`:
 
 ```yaml
-version: "3.8"
-
 services:
   # MySQL database
   mysql:
@@ -71,11 +71,9 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-springpassword}
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
-      - --default-authentication-plugin=mysql_native_password
     networks:
       - spring-net
     healthcheck:
@@ -92,23 +90,23 @@ services:
     restart: unless-stopped
     environment:
       # Spring datasource
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DB:-springdb}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DB:-springdb}?sslMode=DISABLED&allowPublicKeyRetrieval=true&serverTimezone=UTC
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-springuser}
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-springpassword}
-      SPRING_DATASOURCE_DRIVER_CLASS_NAME: com.mysql.cj.jdbc.Driver
+      SPRING_DATASOURCE_DRIVERCLASSNAME: com.mysql.cj.jdbc.Driver
 
       # HikariCP connection pool
-      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "20"
-      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "5"
-      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: "30000"
+      SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE: "20"
+      SPRING_DATASOURCE_HIKARI_MINIMUMIDLE: "5"
+      SPRING_DATASOURCE_HIKARI_CONNECTIONTIMEOUT: "30000"
 
       # JPA/Hibernate
-      SPRING_JPA_HIBERNATE_DDL_AUTO: validate   # Flyway handles migrations
-      SPRING_JPA_SHOW_SQL: "false"
+      SPRING_JPA_HIBERNATE_DDLAUTO: validate   # Flyway handles migrations
+      SPRING_JPA_SHOWSQL: "false"
 
       # Flyway migrations
       SPRING_FLYWAY_ENABLED: "true"
-      SPRING_FLYWAY_BASELINE_ON_MIGRATE: "true"
+      SPRING_FLYWAY_BASELINEONMIGRATE: "true"
 
       # Actuator
       MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics,prometheus
@@ -212,7 +210,6 @@ CREATE TABLE IF NOT EXISTS products (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_products_name ON products(name);
 ```
 
@@ -268,9 +265,9 @@ docker exec spring-mysql mysql -u springuser -pspringpassword springdb \
   -e "SELECT * FROM flyway_schema_history;"
 
 # Watch startup logs
-docker logs spring-app --tail 30 -f
+docker logs --tail 30 -f spring-app
 ```
 
 ## Conclusion
 
-Deploying Spring Boot with MySQL via Portainer provides a robust Java application environment with HikariCP connection pooling for database efficiency, Flyway for version-controlled schema migrations, and Spring Actuator health checks for monitoring. The MySQL health check ensures Spring Boot only starts after the database is accepting connections, preventing the common `Connection refused` startup failure. For production, use Docker secrets or a secrets manager rather than environment variables for database credentials, and consider enabling MySQL SSL with `useSSL=true` in the JDBC URL.
+Deploying Spring Boot with MySQL via Portainer provides a robust Java application environment with HikariCP connection pooling for database efficiency, Flyway for version-controlled schema migrations, and Spring Actuator health checks for monitoring. The MySQL health check ensures Spring Boot only starts after the database is accepting connections, preventing the common `Connection refused` startup failure. For production, use Docker secrets or a secrets manager rather than environment variables for database credentials, and consider enabling MySQL SSL with `sslMode=REQUIRED` or `sslMode=VERIFY_IDENTITY` in the JDBC URL.
