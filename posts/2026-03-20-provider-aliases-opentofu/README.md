@@ -63,7 +63,7 @@ data "aws_ami" "ubuntu_west" {
 
   filter {
     name   = "name"
-    values = ["ubuntu-22.04-*"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
 }
 
@@ -114,7 +114,7 @@ resource "aws_instance" "web" {
 
 ## Module with Required Provider Aliases
 
-Some modules require specific provider aliases to be passed in:
+Some modules declare specific aliased provider configuration names that callers must map:
 
 ```hcl
 # modules/dns/main.tf
@@ -136,6 +136,11 @@ resource "aws_acm_certificate" "cdn" {
 
 ```hcl
 # Root configuration
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+}
+
 module "dns" {
   source = "./modules/dns"
 
@@ -166,17 +171,20 @@ provider "aws" { alias = "primary"; region = var.primary_region }
 
 ## Checking Which Provider Is Used
 
-Use `data.aws_caller_identity` to verify:
+Use `data.aws_region` and `data.aws_caller_identity` to verify:
 
 ```hcl
+data "aws_region" "primary" {}
+data "aws_region" "west" { provider = aws.west }
+
 data "aws_caller_identity" "primary" {}
 data "aws_caller_identity" "west" { provider = aws.west }
 
 output "providers_info" {
   value = {
-    primary_region  = "us-east-1"
+    primary_region  = data.aws_region.primary.id
     primary_account = data.aws_caller_identity.primary.account_id
-    west_region     = "us-west-2"
+    west_region     = data.aws_region.west.id
     west_account    = data.aws_caller_identity.west.account_id
   }
 }
@@ -184,4 +192,4 @@ output "providers_info" {
 
 ## Conclusion
 
-Provider aliases are the mechanism for having multiple configurations of the same provider type. The default provider (no alias) handles the primary use case; aliases handle additional regions, accounts, or configurations. Always use meaningful alias names, pass aliases to modules via the `providers` argument, and use `configuration_aliases` in module `required_providers` when a module strictly requires a specific alias. Understanding aliases is fundamental to any multi-region or multi-account OpenTofu architecture.
+Provider aliases are the mechanism for having multiple configurations of the same provider type. The default provider (no alias) handles the primary use case; aliases handle additional regions, accounts, or configurations. Always use meaningful alias names, pass aliases to modules via the `providers` argument, and use `configuration_aliases` in module `required_providers` when a module uses additional aliased provider configuration names. Understanding aliases is fundamental to any multi-region or multi-account OpenTofu architecture.
