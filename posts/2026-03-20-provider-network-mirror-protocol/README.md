@@ -8,7 +8,7 @@ Description: Learn how to set up and use the OpenTofu provider network mirror pr
 
 ## What is the Provider Network Mirror?
 
-The OpenTofu provider network mirror protocol allows you to serve provider plugins from a local HTTP server or filesystem mirror instead of fetching them from the public registry. This is useful for:
+The OpenTofu provider network mirror protocol allows you to serve provider plugins from a local HTTPS server or filesystem mirror instead of fetching them directly from their origin registries. This is useful for:
 
 - **Air-gapped environments** with no internet access
 - **Faster CI/CD** by avoiding repeated downloads
@@ -17,12 +17,12 @@ The OpenTofu provider network mirror protocol allows you to serve provider plugi
 
 ## Mirror Types
 
-OpenTofu supports two mirror types:
+This guide focuses on two mirror types:
 
 | Type | Description |
 |---|---|
 | **Filesystem mirror** | Local directory with a specific structure |
-| **Network mirror** | HTTP server serving providers via the mirror protocol |
+| **Network mirror** | HTTPS server serving providers via the mirror protocol |
 
 ## Setting Up a Filesystem Mirror
 
@@ -33,9 +33,7 @@ Create a directory structure following the OpenTofu mirror format:
 └── registry.opentofu.org/
     └── hashicorp/
         └── aws/
-            └── 5.40.0/
-                ├── terraform-provider-aws_5.40.0_linux_amd64.zip
-                └── terraform-provider-aws_5.40.0_SHA256SUMS
+            └── terraform-provider-aws_5.40.0_linux_amd64.zip
 ```
 
 Download providers using `tofu providers mirror`:
@@ -53,7 +51,7 @@ This downloads all providers required by the current configuration.
 
 ## Configuring OpenTofu to Use the Mirror
 
-Create or edit `~/.terraformrc` (or `~/.tofurc`):
+Create or edit `~/.tofurc` (or legacy `~/.terraformrc`):
 
 ```hcl
 provider_installation {
@@ -68,7 +66,7 @@ provider_installation {
 }
 ```
 
-The `include`/`exclude` pattern controls which providers use the mirror vs the public registry.
+The `include`/`exclude` pattern controls which providers use the mirror vs direct downloads from their origin registries.
 
 ## Filesystem Mirror Only (Air-Gapped)
 
@@ -85,13 +83,14 @@ provider_installation {
 
 ## Setting Up a Network Mirror
 
-The network mirror protocol is an HTTP API that serves provider metadata and binaries. You can implement it with any HTTP server. The required endpoints are:
+The network mirror protocol is an HTTPS API that serves provider metadata. You can implement it with any HTTPS server. The required JSON endpoints are:
 
 ```text
 GET /<hostname>/<namespace>/<type>/index.json
 GET /<hostname>/<namespace>/<type>/<version>.json
-GET /<download-url>
 ```
+
+The version-specific JSON response returns the download URLs for the provider zip files. The easiest way to build these files is with `tofu providers mirror` and then serve the resulting directory over HTTPS.
 
 Example with a simple nginx configuration:
 
@@ -100,12 +99,15 @@ server {
     listen 443 ssl;
     server_name mirror.internal.example.com;
 
-    root /opt/tofu-providers;
-    autoindex on;
+    root /opt/tofu-mirror;
 
     location / {
+        try_files $uri =404;
+    }
+
+    location ~ \.json$ {
         default_type application/json;
-        add_header Content-Type application/json;
+        try_files $uri =404;
     }
 }
 ```
@@ -115,7 +117,7 @@ server {
 ```hcl
 provider_installation {
   network_mirror {
-    url     = "https://mirror.internal.example.com/providers/"
+    url     = "https://mirror.internal.example.com/"
     include = ["registry.opentofu.org/hashicorp/*"]
   }
 
@@ -176,15 +178,15 @@ After `tofu init`, verify providers are coming from the mirror:
 Initializing provider plugins...
 - Finding hashicorp/aws versions matching "~> 5.0"...
 - Installing hashicorp/aws v5.40.0...
-- Installed hashicorp/aws v5.40.0 (filesystem mirror)
+- Installed hashicorp/aws v5.40.0 (verified checksum)
 ```
 
-The `(filesystem mirror)` annotation confirms the mirror is being used.
+With a packed filesystem mirror created by `tofu providers mirror`, output like `(verified checksum)` is expected. If direct downloads are excluded and `tofu init` succeeds, the mirror is being used.
 
 ## Best Practices
 
 1. **Automate mirror syncing** via a scheduled job to keep it current
-2. **Include SHA256 checksums** in the mirror to maintain integrity verification
+2. **Use `tofu providers lock`** to record official checksums, especially if the mirror will be used across multiple platforms
 3. **Version-lock the mirror** - only include provider versions you have approved
 4. **Use a network mirror** for shared CI/CD infrastructure to avoid disk space issues per runner
 5. **Document your mirror configuration** so team members can set it up consistently
