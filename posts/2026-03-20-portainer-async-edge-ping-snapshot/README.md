@@ -8,46 +8,32 @@ Description: Fine-tune the async Edge Agent's ping interval and snapshot frequen
 
 ## Introduction
 
-The async Edge Agent has three separate timing controls: the ping interval (heartbeat), the command check interval, and the snapshot interval. Understanding each and configuring them appropriately is key to building efficient edge deployments.
+The async Edge Agent has three separate timing controls: the ping interval (heartbeat), the command check interval, and the snapshot interval. Async Edge Agent mode is available in Portainer Business Edition. In Portainer, these are configured on the async Edge environment itself, and the agent receives the effective intervals from Portainer during polling. Understanding each and configuring them appropriately is key to building efficient edge deployments.
 
 ## The Three Async Intervals Explained
 
-### EDGE_PING_INTERVAL (Heartbeat)
+### Ping interval (Heartbeat)
 
-How often the agent sends a heartbeat to Portainer. This keeps the agent registered as "online":
+How often the agent performs a heartbeat check-in with Portainer.
 
-```bash
--e EDGE_PING_INTERVAL=30  # Send heartbeat every 30 seconds
-```
+**Effect on UI**: This contributes to how frequently the agent checks in, but Portainer's "Last Check-in" updates on any async poll, including command and snapshot polls.
 
-**Effect on UI**: The "last seen" timestamp in Portainer updates this frequently.
+### Command interval (Command Polling)
 
-### EDGE_CMD_INTERVAL (Command Polling)
-
-How often the agent checks for queued commands from Portainer:
-
-```bash
--e EDGE_CMD_INTERVAL=10  # Check for commands every 10 seconds
-```
+How often the agent checks for queued commands from Portainer.
 
 **Effect on UI**: Time between issuing a command and it executing on the remote device.
 
-### EDGE_SNAPSHOT_INTERVAL (State Reporting)
+### Snapshot interval (State Reporting)
 
-How often the agent sends a full environment snapshot (container list, status, resource usage):
+How often the agent sends an environment snapshot to Portainer for snapshot browsing.
 
-```bash
--e EDGE_SNAPSHOT_INTERVAL=300  # Send snapshot every 5 minutes
-```
-
-**Effect on UI**: How fresh the container status information is in Portainer.
+**Effect on UI**: How fresh the snapshot browsing information is in Portainer.
 
 ## Configuring All Intervals
 
 ```yaml
-# docker-compose.yml
-
-version: "3.8"
+# compose.yaml
 
 services:
   edge-agent:
@@ -57,15 +43,6 @@ services:
       EDGE_ID: "remote-device-001"
       EDGE_KEY: "your-edge-key-here"
       EDGE_ASYNC: "1"
-      
-      # Heartbeat: frequent, small payload
-      EDGE_PING_INTERVAL: "30"
-      
-      # Commands: more frequent for better responsiveness
-      EDGE_CMD_INTERVAL: "15"
-      
-      # Snapshots: less frequent, larger payload
-      EDGE_SNAPSHOT_INTERVAL: "300"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
@@ -73,55 +50,62 @@ services:
     restart: always
 ```
 
+Set the `Ping interval`, `Snapshot interval`, and `Command interval` in Portainer when creating or editing the async Edge environment under **More settings**.
+
 ## Monitoring Interval Effectiveness
 
 ```bash
-# Watch agent logs to see actual check-in times
-docker logs portainer_async_agent -f | grep -E "ping|snapshot|command|check"
+# Follow agent logs from the Compose service
+docker compose logs -f edge-agent
 
-# In Portainer UI: Monitor the "Last Check-in" timestamp
-# It should update at approximately EDGE_PING_INTERVAL frequency
+# For per-poll messages, run the agent with LOG_LEVEL=DEBUG
+# and look for "sending async-poll" entries
+
+# In Portainer UI: Monitor the "Last Check-in" value
+# It updates whenever the async agent polls Portainer
 ```
 
 ## Tuning for Different Connectivity Types
 
+In current Portainer releases, the async interval selectors use preset values such as 1 minute, 1 hour, 1 day, and 1 week.
+
 ### High-Speed Fiber (Office Branch)
 ```bash
-EDGE_PING_INTERVAL=10
-EDGE_CMD_INTERVAL=5
-EDGE_SNAPSHOT_INTERVAL=60
+Ping interval: 60
+Command interval: 60
+Snapshot interval: 60
 ```
 
 ### 4G/LTE Connection
 ```bash
-EDGE_PING_INTERVAL=60
-EDGE_CMD_INTERVAL=30
-EDGE_SNAPSHOT_INTERVAL=300
+Ping interval: 60
+Command interval: 60
+Snapshot interval: 3600
 ```
 
 ### Satellite Internet (High Latency)
 ```bash
-EDGE_PING_INTERVAL=300
-EDGE_CMD_INTERVAL=60
-EDGE_SNAPSHOT_INTERVAL=1800
+Ping interval: 3600
+Command interval: 3600
+Snapshot interval: 86400
 ```
 
 ### Infrequent Check-In (Solar/Battery Powered)
 ```bash
-EDGE_PING_INTERVAL=3600
-EDGE_CMD_INTERVAL=300
-EDGE_SNAPSHOT_INTERVAL=7200
+Ping interval: 86400
+Command interval: 86400
+Snapshot interval: 604800
 ```
 
 ## Impact of Long Intervals on User Experience
 
-With a 1-hour ping interval:
-- Portainer shows the device as "offline" between check-ins
-- Commands may wait up to 1 hour to execute
-- Snapshots may be hours old
+With all active async intervals set to 1 hour:
+- Portainer updates the "Last Check-in" information about once an hour
+- Commands may wait up to 1 hour before the agent fetches them
+- Snapshot browsing data may be up to 1 hour old
 
-Portainer Business Edition shows a "last seen" timestamp and marks devices offline after 2x the ping interval without contact.
+Portainer tracks `Last Check-in` and marks async Edge environments offline only after roughly 2x the shortest active interval plus 20 seconds without contact.
 
 ## Conclusion
 
-The three async intervals give fine-grained control over the trade-off between responsiveness and bandwidth. Set the snapshot interval highest (it has the largest payload), the ping interval in the middle, and the command interval lowest for the best balance of efficiency and responsiveness.
+The three async intervals give fine-grained control over the trade-off between responsiveness and bandwidth. Start with the default 1-minute intervals, then raise the snapshot interval first if you need to reduce bandwidth. Increase the ping and command intervals only if slower status freshness and slower command pickup are acceptable.
