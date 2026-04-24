@@ -43,9 +43,10 @@ ls -lh /opt/backups/portainer-pre-change*.tar.gz | tail -3
 #!/bin/bash
 # pre-upgrade-checklist.sh
 
-CURRENT_VERSION=$(docker exec portainer /app/portainer --version 2>/dev/null | head -1)
+CURRENT_VERSION=$(docker exec portainer /portainer --version 2>/dev/null | head -1)
 BACKUP_DIR="/opt/backups/portainer"
 DATE=$(date +%Y%m%d-%H%M%S)
+PORTAINER_URL="https://localhost:9443"
 
 mkdir -p "$BACKUP_DIR"
 
@@ -56,16 +57,18 @@ echo "Backup location: $BACKUP_DIR"
 # 1. Document current state
 echo ""
 echo "=== Step 1: Documenting current state ==="
-TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"Username":"admin","Password":"'${PORTAINER_PASS}'"}'  | jq -r .jwt)
+TOKEN=$(jq -n --arg password "$PORTAINER_PASS" \
+  '{Username:"admin",Password:$password}' | \
+  curl -ks -X POST "$PORTAINER_URL/api/auth" \
+    -H "Content-Type: application/json" \
+    -d @- | jq -r .jwt)
 
-ENDPOINT_COUNT=$(curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/endpoints | jq 'length')
-STACK_COUNT=$(curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/stacks | jq 'length')
-USER_COUNT=$(curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/users | jq 'length')
+ENDPOINT_COUNT=$(curl -ks -H "Authorization: Bearer $TOKEN" \
+  "$PORTAINER_URL/api/endpoints" | jq 'length')
+STACK_COUNT=$(curl -ks -H "Authorization: Bearer $TOKEN" \
+  "$PORTAINER_URL/api/stacks" | jq 'length')
+USER_COUNT=$(curl -ks -H "Authorization: Bearer $TOKEN" \
+  "$PORTAINER_URL/api/users" | jq 'length')
 
 echo "  Environments: $ENDPOINT_COUNT"
 echo "  Stacks: $STACK_COUNT"
@@ -86,12 +89,12 @@ EOF
 echo ""
 echo "=== Step 2: Exporting stack definitions ==="
 mkdir -p "$BACKUP_DIR/stacks-$DATE"
-curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/stacks | jq -c '.[]' | while read -r stack; do
+curl -ks -H "Authorization: Bearer $TOKEN" \
+  "$PORTAINER_URL/api/stacks" | jq -c '.[]' | while read -r stack; do
   ID=$(echo "$stack" | jq -r '.Id')
   NAME=$(echo "$stack" | jq -r '.Name')
-  curl -s -H "Authorization: Bearer $TOKEN" \
-    "http://localhost:9000/api/stacks/$ID/file" | \
+  curl -ks -H "Authorization: Bearer $TOKEN" \
+    "$PORTAINER_URL/api/stacks/$ID/file" | \
     jq -r '.StackFileContent' > "$BACKUP_DIR/stacks-$DATE/$NAME.yml"
   echo "  Exported: $NAME"
 done
@@ -125,14 +128,17 @@ echo "  State: $BACKUP_DIR/state-$DATE.json"
 
 ```bash
 # Verify the backup is extractable
-BACKUP_FILE="/opt/backups/portainer-pre-upgrade-20260320-020000.tar.gz"
+BACKUP_FILE="/opt/backups/portainer/portainer-pre-upgrade-20260320-020000.tar.gz"
 
 # Test extraction
 tar -tzf "$BACKUP_FILE" | head -10
 
 # Verify portainer.db exists and has size > 0
-SIZE=$(tar -tvzf "$BACKUP_FILE" 2>/dev/null | grep "portainer.db" | awk '{print $3}' || \
-       tar -xzOf "$BACKUP_FILE" ./portainer.db 2>/dev/null | wc -c)
+DB_PATH=$(tar -tzf "$BACKUP_FILE" | grep -E '(^|/)(portainer\.db)$' | head -1)
+SIZE=0
+if [ -n "$DB_PATH" ]; then
+  SIZE=$(tar -xzOf "$BACKUP_FILE" "$DB_PATH" 2>/dev/null | wc -c)
+fi
 
 echo "portainer.db size in backup: $SIZE bytes"
 if [ "$SIZE" -gt 1000 ]; then
@@ -150,16 +156,17 @@ fi
 
 docker stop portainer && docker rm portainer
 
-docker pull portainer/portainer-ce:latest
+docker pull portainer/portainer-ce:sts
 
+# Add -p 9000:9000 if you still need legacy HTTP access
 docker run -d \
-  -p 9000:9000 \
+  -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
 
 ## Step 5: Rollback Procedure
@@ -178,12 +185,13 @@ docker volume create portainer_data
 docker run --rm \
   -v portainer_data:/data \
   -v /opt/backups:/backup \
-  alpine tar xzf /backup/portainer-pre-upgrade-20260320-020000.tar.gz -C /data
+  alpine tar xzf /backup/portainer/portainer-pre-upgrade-20260320-020000.tar.gz -C /data
 
 # 4. Start the previous Portainer version
-PREVIOUS_VERSION="2.20.3"  # The version before the upgrade
+PREVIOUS_VERSION="2.39.1"  # Replace with the exact version you were running before the upgrade
+# Add -p 9000:9000 if you still need legacy HTTP access
 docker run -d \
-  -p 9000:9000 \
+  -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
   --restart=unless-stopped \
@@ -197,13 +205,13 @@ echo "Rollback complete. Portainer is back to version $PREVIOUS_VERSION"
 ## Step 6: Backup Retention Policy
 
 ```bash
-# Keep only last 10 pre-change backups
-ls -t /opt/backups/portainer-pre-upgrade*.tar.gz | \
+# Keep only last 10 pre-upgrade backups
+ls -t /opt/backups/portainer/portainer-pre-upgrade*.tar.gz | \
   tail -n +11 | \
   xargs rm -f
 
 echo "Old backups removed. Current backups:"
-ls -lt /opt/backups/portainer-pre-upgrade*.tar.gz
+ls -lt /opt/backups/portainer/portainer-pre-upgrade*.tar.gz
 ```
 
 ## Conclusion
