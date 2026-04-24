@@ -8,78 +8,54 @@ Description: Learn how to view, manage, and clear notifications in Portainer, in
 
 ---
 
-Portainer's notification system captures important events - container failures, stack deployment results, agent connectivity changes - and displays them in the notification bell in the top navigation bar.
+Portainer keeps a record of the notification messages you receive in the UI - the popup messages that appear in the top right of the interface. The 50 most recent notifications are accessible from the notification bell, and the full Notifications page lets you search and remove stored notification records.
 
 ## Accessing Notifications
 
-Click the bell icon in the Portainer top navigation bar to open the notification panel. The number badge shows unread notifications.
+Click the bell icon in the top right of the Portainer UI to open the notification menu. When notifications are present, the bell shows a red indicator. The menu shows up to 50 recent notifications and includes a link to view all notifications.
 
 ## Notification Types
 
 | Type | Trigger |
 |---|---|
-| Info | Stack deployed successfully, container started |
-| Warning | Agent connection degraded, snapshot delayed |
-| Error | Stack deployment failed, container crashed, registry pull failed |
+| Success | A Portainer action completed successfully |
+| Warning | Portainer displayed a non-fatal warning |
+| Error | A Portainer action failed or returned an error |
 
 ## Viewing Notification Details
 
-Each notification shows:
+On the Notifications page, each notification shows:
 
-- **Timestamp**: When the event occurred
-- **Message**: Description of the event
-- **Environment**: Which Docker/Kubernetes environment was affected
-- **Action**: Link to the relevant resource (stack, container, etc.)
+- **Type**: Success, warning, or error
+- **Title**: The notification title
+- **Details**: The message body
+- **Time**: When the notification was created
 
-## Marking Notifications as Read
+## Opening Notifications from the Menu
 
-Click a notification to mark it as read. The badge count decreases. Click the **Mark all as read** option at the top of the notification panel to clear all unread indicators at once.
+Portainer notifications do not have a read/unread state or a **Mark all as read** option. Clicking a notification in the bell menu opens the full Notifications page and highlights that entry.
 
 ## Clearing Notifications
 
-```bash
-# Via Portainer UI:
-
-# 1. Open the notification panel
-# 2. Click "Clear all" to remove all notifications
-
-# Via API:
-TOKEN="ptr_xxxx"
-curl -X DELETE \
-  -H "X-API-Key: $TOKEN" \
-  http://localhost:9000/api/notifications
-```
+1. Open the notification menu from the bell icon.
+2. Click **Clear all** to remove all stored notifications for your user.
+3. To remove specific notification records, click **View all notifications**, select the entries, and delete them from the Notifications page.
 
 ## Notification Retention and Performance
 
-A large notification backlog can slow down Portainer's UI. In high-activity environments, clear notifications regularly:
+A large notification backlog can affect Portainer's UI responsiveness. In high-activity environments, clear notifications regularly:
 
 1. In Portainer go to the notification bell.
 2. Click **Clear all**.
 
-For automated cleanup, compact the database periodically:
+Portainer stores these notification records in the browser, so clearing them from the UI is the relevant cleanup step. Database compaction can reclaim Portainer database space, but it does not clear browser-stored notifications.
 
-```bash
-docker stop portainer
-docker run --rm -v portainer_data:/data portainer/portainer-ce:latest --compact-db
-docker start portainer
-```
+## Alert Notifications (Business Edition)
 
-## Webhook Notifications (Business Edition)
+In Portainer Business Edition, administrators can configure alert notification channels through Alerting. After enabling **Observability** under **Settings > General > Additional functionality**:
 
-In Portainer Business Edition, configure outbound webhooks to send notifications to Slack, Teams, or a custom endpoint:
-
-1. Go to **Settings > General > Notifications**.
-2. Add a webhook URL.
-3. Select which event types trigger notifications.
-
-```bash
-# Example Slack webhook payload sent by Portainer BE:
-{
-  "event": "stack.deployment.failed",
-  "stack": "myapp",
-  "environment": "production",
-  "timestamp": "2026-03-20T10:00:00Z",
-  "details": "Image pull failed: myimage:1.2.3 not found"
-}
-```
+1. Go to **Additional Functionality > Alerting**.
+2. Open the **Settings** tab.
+3. Click **Edit** on the `internal` instance, then click **Add Channel**.
+4. Choose **Slack**, **Email**, **Webhook**, or **Microsoft Teams V2** and complete the channel settings.
+5. Configure alert rules on the **Rules** tab to determine when notifications are sent.
