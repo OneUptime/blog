@@ -8,22 +8,22 @@ Description: Learn how to create and save custom Portainer templates directly fr
 
 ## Introduction
 
-The Portainer web editor is the quickest way to create custom templates. You write or paste a Docker Compose file directly in the browser, add template variables, and save it to your custom template catalog. This guide covers the complete process of creating templates via the web editor.
+The Portainer web editor is the quickest way to create custom templates. You write or paste a Compose file directly in the browser, add template variables, and save it to your custom template catalog. This guide covers the complete process of creating templates via the web editor.
 
 ## Prerequisites
 
-- Portainer CE or BE installed
-- Admin or environment-admin access
-- A Docker Compose file you want to templatize
+- Portainer BE installed
+- Access to a Docker environment in Portainer
+- A Compose file you want to templatize
 
 ## Step 1: Open the Custom Template Creator
 
 1. Log in to Portainer
-2. Select your Docker environment
-3. Click **App Templates** in the left sidebar
-4. Click the **Custom templates** tab
-5. Click **+ Add custom template**
-6. Select **Web editor** as the method
+2. Open your Docker environment
+3. Expand **Templates** in the left sidebar
+4. Click **Custom**
+5. Click **Add Custom Template**
+6. Select **Web editor** as the build method
 
 ## Step 2: Fill in Template Information
 
@@ -31,46 +31,42 @@ Complete the metadata section:
 
 ```text
 Title:       Monitoring Stack
-Description: Prometheus and Grafana monitoring with alerting
+Description: Prometheus and Grafana monitoring stack
 
-Categories:  monitoring, observability
-Platform:    linux
-Type:        Stack
-Logo URL:    https://raw.githubusercontent.com/grafana/grafana/main/public/img/grafana_icon.svg
+Platform:    Linux
+Type:        Standalone / Podman
+Logo:        https://raw.githubusercontent.com/grafana/grafana/main/public/img/grafana_icon.svg
 ```
 
 ## Step 3: Write the Compose File in the Editor
 
-The web editor provides syntax highlighting and basic validation. Enter your Compose file:
+Paste your Compose file into the web editor:
 
 ```yaml
-version: "3.8"
-
 services:
   prometheus:
-    image: prom/prometheus:{{ .prometheus_version | default "v2.48.0" }}
+    image: prom/prometheus
     ports:
-      - "{{ .prometheus_port | default "9090" }}:9090"
+      - "{{ prometheus_port }}:9090"
     volumes:
-      - prometheus-config:/etc/prometheus
       - prometheus-data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time={{ .retention | default "30d" }}"
+      - "--storage.tsdb.retention.time=30d"
       - "--web.enable-lifecycle"
     restart: unless-stopped
     networks:
       - monitoring
 
   grafana:
-    image: grafana/grafana:{{ .grafana_version | default "10.2.0" }}
+    image: grafana/grafana
     ports:
-      - "{{ .grafana_port | default "3000" }}:3000"
+      - "{{ grafana_port }}:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER={{ .admin_user | default "admin" }}
-      - GF_SECURITY_ADMIN_PASSWORD={{ .admin_password }}
-      - GF_USERS_ALLOW_SIGN_UP=false
+      GF_SECURITY_ADMIN_USER: "admin"
+      GF_SECURITY_ADMIN_PASSWORD: "{{ admin_password }}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - grafana-data:/var/lib/grafana
     depends_on:
@@ -79,21 +75,9 @@ services:
     networks:
       - monitoring
 
-  alertmanager:
-    image: prom/alertmanager:latest
-    ports:
-      - "{{ .alertmanager_port | default "9093" }}:9093"
-    volumes:
-      - alertmanager-data:/alertmanager
-    restart: unless-stopped
-    networks:
-      - monitoring
-
 volumes:
-  prometheus-config:
   prometheus-data:
   grafana-data:
-  alertmanager-data:
 
 networks:
   monitoring:
@@ -102,65 +86,60 @@ networks:
 
 ## Step 4: Add Variables to the Template
 
-Scroll down to the **Variables** section. Add entries for each variable used in the Compose file:
+With the web editor method, Portainer detects the variable names from the template. In the **Variables definition** section, fill in the label, description, and default value for each detected variable:
 
 ### Variable: admin_password (Required)
 
-```json
-{
-  "name": "admin_password",
-  "label": "Grafana admin password",
-  "description": "Password for the Grafana admin user",
-  "default": ""
-}
+```text
+Name:          admin_password
+Label:         Grafana admin password
+Description:   Password for the Grafana admin user
+Default value: leave blank
 ```
 
 ### Variable: prometheus_port (Optional)
 
-```json
-{
-  "name": "prometheus_port",
-  "label": "Prometheus port",
-  "description": "Host port for Prometheus UI",
-  "default": "9090"
-}
+```text
+Name:          prometheus_port
+Label:         Prometheus port
+Description:   Host port for Prometheus UI
+Default value: 9090
 ```
 
 ### Variable: grafana_port (Optional)
 
-```json
-{
-  "name": "grafana_port",
-  "label": "Grafana port",
-  "description": "Host port for Grafana UI",
-  "default": "3000"
-}
+```text
+Name:          grafana_port
+Label:         Grafana port
+Description:   Host port for Grafana UI
+Default value: 3000
 ```
 
-In the Portainer UI, click **Add variable** for each entry and fill in the name, label, description, and default value.
+When a variable has no default value, Portainer treats it as required at deploy time.
 
 ## Step 5: Use Mustache Variable Syntax
 
-Portainer uses Mustache-style syntax for template variables:
+Portainer custom templates use Mustache syntax for template variables:
 
 ```yaml
 # Basic variable substitution
 
-image: myapp:{{ .version }}
+image: "myapp:{{ version }}"
 
-# Variable with default value (uses pipe | default)
-port: {{ .port | default "8080" }}
+# Variable used in a port mapping
+ports:
+  - "{{ port }}:8080"
 
 # Variable used in a string
 environment:
-  - APP_URL=https://{{ .domain }}.example.com
+  APP_URL: "https://{{ domain }}.example.com"
 
 # Variable in a volume path
 volumes:
-  - {{ .data_dir | default "/data" }}:/app/data
+  - "{{ data_dir }}:/app/data"
 ```
 
-**Note:** The `.` (dot) before variable names is required.
+**Note:** Set default values in the **Variables definition** section rather than in the Compose file itself.
 
 ## Step 6: Preview the Resolved Template
 
@@ -174,7 +153,7 @@ grafana:
   ports:
     - "3001:3000"
   environment:
-    - GF_SECURITY_ADMIN_PASSWORD=secret123
+    GF_SECURITY_ADMIN_PASSWORD: "secret123"
 ```
 
 ## Step 7: Save the Template
@@ -193,14 +172,14 @@ grafana:
 
 ## Editing an Existing Template
 
-1. Go to **App Templates > Custom templates**
-2. Click the **Edit** (pencil) icon on your template
+1. Go to **Templates > Custom**
+2. Click **Edit** next to your template
 3. Modify the Compose file or variables
 4. Save changes
 
 ## Tips for Web Editor Templates
 
-- Use `default` filters liberally to make templates user-friendly
+- Use default values in the **Variables definition** section to make templates user-friendly
 - Test your Compose file without variables first, then add parameterization
 - Keep variable names short and descriptive
 - Group related variables logically in the template form
