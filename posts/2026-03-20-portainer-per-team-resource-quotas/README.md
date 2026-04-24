@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Resource Quota, Team, Multi-Tenancy, Business Edition, Kubernetes
 
-Description: Learn how to configure per-team resource quotas in Portainer Business Edition for Docker and Kubernetes environments to prevent resource overconsumption.
+Description: Learn how to configure per-team resource quotas in Portainer Business Edition for Kubernetes environments and use resource limits in Docker environments to prevent resource overconsumption.
 
 ---
 
-Resource quotas prevent a single team from monopolizing CPU, memory, or storage on a shared infrastructure. Portainer Business Edition supports quotas for Kubernetes namespaces and Docker environments.
+Resource quotas prevent a single team from monopolizing CPU, memory, or storage on a shared infrastructure. In Portainer Business Edition, quotas are configured per Kubernetes namespace. For Docker environments, use Portainer access control together with per-service or per-container resource limits.
 
 ## Portainer Business Edition Resource Quotas
 
-Portainer BE integrates with Kubernetes ResourceQuotas and Docker resource limits to enforce per-team boundaries.
+Portainer BE exposes namespace-level quota controls for Kubernetes. In Docker environments, Portainer can restrict access by team and apply resource limits on individual services or containers, but not aggregate per-team quotas across the entire environment.
 
 ### Kubernetes Namespace Quotas
 
-In Kubernetes environments, assign each team to a namespace and apply a ResourceQuota:
+In Kubernetes environments, give each team access to its own namespace and apply a ResourceQuota:
 
 ```yaml
 # Apply a ResourceQuota for Team A's namespace
@@ -29,21 +29,21 @@ metadata:
 spec:
   hard:
     requests.cpu: "4"        # Total CPU requests capped at 4 cores
-    requests.memory: 8Gi     # Total memory requests capped at 8 GB
+    requests.memory: 8Gi     # Total memory requests capped at 8 GiB
     limits.cpu: "8"          # Total CPU limits capped at 8 cores
-    limits.memory: 16Gi      # Total memory limits capped at 16 GB
+    limits.memory: 16Gi      # Total memory limits capped at 16 GiB
     pods: "20"               # Maximum 20 pods
     services: "10"           # Maximum 10 services
     persistentvolumeclaims: "5"  # Maximum 5 PVCs
 ```
 
-Apply this via Portainer's Kubernetes resource management or kubectl:
+Apply this with kubectl, or configure equivalent namespace quotas from Portainer's namespace UI:
 
 ```bash
 kubectl apply -f team-a-quota.yaml
 ```
 
-View the quota status in Portainer under **Kubernetes > Namespaces > team-a > Resource Quotas**.
+View the quota status in Portainer by opening **Namespaces**, selecting `team-a`, and checking the **Resource Quota** section.
 
 ### LimitRange for Default Container Limits
 
@@ -73,7 +73,7 @@ This ensures every container in the namespace has limits, even if the developer 
 
 ## Docker Stack Resource Limits
 
-For Docker environments, enforce limits at the stack level. Add a `resources` block to every service in tenant stacks:
+For Docker Standalone environments, Portainer does not provide aggregate per-team quotas. Instead, enforce limits on each service in tenant stacks:
 
 ```yaml
 version: "3.8"
@@ -81,23 +81,18 @@ version: "3.8"
 services:
   api:
     image: my-api:latest
-    deploy:
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 512M
-        reservations:
-          cpus: "0.25"
-          memory: 128M
+    cpus: "1.0"
+    mem_limit: 512M
+    mem_reservation: 128M
 ```
 
-## Portainer BE: Environment-Level Resource Quotas
+## Portainer BE: Namespace-Level Resource Quotas
 
-Portainer Business Edition allows setting resource quotas directly in the environment settings:
+Portainer Business Edition lets you set these quotas directly on Kubernetes namespaces:
 
-1. Go to **Environments > [environment name] > Configuration**.
-2. Under **Resource limits**, set CPU and memory quotas.
-3. These apply as Kubernetes ResourceQuotas or Docker daemon constraints.
+1. Go to **Namespaces** and select the namespace.
+2. Under **Resource Quota**, toggle **Resource assignment** on and set CPU and memory limits.
+3. Optionally configure storage quotas in the same namespace settings.
 
 ## Monitoring Resource Usage per Team
 
@@ -117,7 +112,7 @@ kubectl describe quota team-a-quota -n team-a
 # pods              8      20
 ```
 
-For Docker environments, check aggregate stats per team via the Portainer API or cAdvisor.
+For Docker environments, review CPU and memory usage per container in Portainer under **Containers > [container] > Stats**.
 
 ## Alerting on Quota Approach
 
