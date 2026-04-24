@@ -8,14 +8,22 @@ Description: A step-by-step guide to installing Portainer CE on openSUSE Linux w
 
 ## Prerequisites
 
-- openSUSE Leap 15.5+ or openSUSE Tumbleweed
+- openSUSE Leap 15.6 or newer, or openSUSE Tumbleweed
 - Root or sudo access
 - Internet connectivity
 
 ## Step 1: Update the System
 
+For Leap:
+
 ```bash
 sudo zypper refresh && sudo zypper update -y
+```
+
+For Tumbleweed:
+
+```bash
+sudo zypper refresh && sudo zypper dup -y
 ```
 
 ## Step 2: Install Docker
@@ -50,12 +58,12 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
 
 ## Step 5: Configure the Firewall
 
-openSUSE uses firewalld by default:
+If you want to allow access through the host firewall, openSUSE uses firewalld by default:
 
 ```bash
 sudo firewall-cmd --permanent --add-port=9443/tcp
@@ -75,12 +83,14 @@ Open a browser and navigate to `https://<server-ip>:9443`. Accept the self-signe
 
 **Docker socket permission:**
 ```bash
-sudo chmod 666 /var/run/docker.sock
+sudo usermod -aG docker $USER
+newgrp docker
 ```
 
 **AppArmor issues (Tumbleweed):**
 ```bash
-sudo aa-complain /etc/apparmor.d/docker
+sudo aa-status
+sudo dmesg | grep apparmor
 ```
 
 **View logs:**
@@ -93,7 +103,7 @@ docker ps -a
 
 ```bash
 docker stop portainer && docker rm portainer
-docker pull portainer/portainer-ce:latest
+docker pull portainer/portainer-ce:sts
 # Re-run the deploy command from Step 4
 
 ```
