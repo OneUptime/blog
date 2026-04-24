@@ -39,7 +39,7 @@ Portainer will refuse to remove volumes that are currently in use by containers 
 
 ## Step 3: Remove Unused Volumes (Prune)
 
-Remove all volumes not attached to any container:
+Remove unused volumes. In current Docker releases, `docker volume prune` removes unused anonymous volumes by default; add `--all` to include unused named volumes too:
 
 1. Navigate to **Volumes** in Portainer.
 2. Click **Prune** (if available).
@@ -47,18 +47,21 @@ Remove all volumes not attached to any container:
 Via Docker CLI:
 
 ```bash
-# Remove all unused volumes (not attached to any container):
+# Remove unused anonymous volumes:
 
 docker volume prune
 
-# WARNING: "unused" includes volumes from STOPPED containers
-# If you removed a container but might start it again, this removes its volume
+# Include unused named volumes too:
+docker volume prune --all
 
 # Without confirmation:
-docker volume prune --force
+docker volume prune --all --force
 
-# Remove volumes with specific labels:
-docker volume prune --filter "label=environment=test"
+# "unused" means not referenced by any container, including stopped containers.
+# A volume attached to a stopped container is not pruned until that container is removed.
+
+# Remove labeled unused volumes, including named volumes:
+docker volume prune --all --filter "label=environment=test"
 ```
 
 ## Step 4: Verify Volume Is Safe to Remove
@@ -66,17 +69,17 @@ docker volume prune --filter "label=environment=test"
 Before removing, check what's using a volume:
 
 ```bash
-# Check which containers use a volume:
-docker ps -aq | xargs docker inspect --format \
-  '{{.Name}} {{range .Mounts}}{{.Name}}{{end}}' | \
-  grep "my-volume-name"
+# Check which containers use a volume (running or stopped):
+for container in $(docker ps -aq); do
+  docker inspect --format \
+    '{{.Name}} {{range .Mounts}}{{if .Name}}{{.Name}} {{end}}{{end}}' \
+    "$container"
+done | grep -F "my-volume-name"
 
-# Or specifically:
-docker ps -aq --filter "volume=my-volume-name"
-# If empty: no running containers use this volume
+# If this returns nothing, no existing container references the volume.
 
-# Check stopped containers too:
-docker ps -aq --filter "volume=my-volume-name" --filter "status=exited"
+# To check only running containers:
+docker ps --filter "volume=my-volume-name"
 
 # Check volume size before deleting:
 docker run --rm \
@@ -110,7 +113,7 @@ docker run --rm \
   alpine:latest \
   tar czf "/backup/${VOLUME_NAME}_${TIMESTAMP}.tar.gz" -C /data .
 
-echo "Backup size: $(du -sh ${BACKUP_FILE} | cut -f1)"
+echo "Backup size: $(du -sh "${BACKUP_FILE}" | cut -f1)"
 echo "Backup complete: ${BACKUP_FILE}"
 echo ""
 echo "To restore: docker run --rm -v ${VOLUME_NAME}:/data -v ${BACKUP_DIR}:/backup alpine:latest tar xzf /backup/${VOLUME_NAME}_${TIMESTAMP}.tar.gz -C /data"
@@ -122,22 +125,23 @@ When removing a temporary service (container + volume):
 
 ```bash
 # Remove container and its anonymous volumes:
-docker rm --volumes my-container
+docker rm -f --volumes my-container
 
 # For named volumes, you must remove separately:
-docker rm my-container
+docker rm -f my-container
 docker volume rm my-named-volume
 
-# Remove via docker-compose (removes containers AND named volumes):
+# Remove via Docker Compose (removes attached anonymous volumes and
+# named volumes declared in the Compose file):
 docker compose down --volumes
-# WARNING: Permanently deletes all named volumes defined in the compose file
+# WARNING: External volumes are not removed
 ```
 
 In Portainer when removing a stack:
 1. Navigate to **Stacks**.
-2. Click the stack name.
-3. Click **Remove this stack**.
-4. Check **Remove associated volumes** (if data deletion is intended).
+2. Tick the checkbox next to the stack.
+3. Click **Remove**.
+4. Remove any now-unused volumes separately from **Volumes** if data deletion is intended.
 
 ## Step 7: Volume Removal for Different Scenarios
 
@@ -146,7 +150,8 @@ In Portainer when removing a stack:
 ```bash
 # Deployment created volumes but failed - clean up:
 docker compose down --volumes
-# Removes all containers, networks, and volumes defined in the compose file
+# Removes containers, networks, attached anonymous volumes, and
+# non-external volumes declared in the compose file
 ```
 
 ### Development Environment Cleanup
@@ -156,9 +161,10 @@ docker compose down --volumes
 docker volume ls --filter "label=environment=test" -q | \
     xargs docker volume rm 2>/dev/null || true
 
-# Nuclear option: remove everything in dev:
-docker system prune --volumes --force
-# WARNING: Removes ALL unused containers, networks, images, and volumes
+# Broader cleanup in dev:
+docker system prune -a --volumes --force
+# WARNING: Removes stopped containers, unused networks, unused images,
+# build cache, and anonymous volumes
 ```
 
 ### Production Volume Cleanup
@@ -167,14 +173,17 @@ docker system prune --volumes --force
 # Only remove a specific volume after verifying it's empty and unused:
 VOLUME="old-app-data-v1"
 
-# 1. Verify no containers use it:
-USERS=$(docker ps -aq --filter "volume=${VOLUME}" | wc -l)
-[ "$USERS" -gt 0 ] && echo "ERROR: Volume is in use!" && exit 1
+# 1. Verify Docker sees it as unused:
+docker volume ls -q --filter "dangling=true" --filter "name=${VOLUME}" | \
+  grep -Fxq "${VOLUME}" || { echo "ERROR: Volume is still in use or not found!"; exit 1; }
 
 # 2. Check it's actually empty:
 SIZE=$(docker run --rm -v "${VOLUME}:/data" alpine du -sk /data | cut -f1)
-[ "$SIZE" -gt 100 ] && echo "WARNING: Volume has ${SIZE} KB of data!" && read -p "Delete anyway? [y/N] " confirm
-[ "$confirm" != "y" ] && [ "$confirm" != "Y" ] && exit 0
+if [ "$SIZE" -gt 100 ]; then
+  echo "WARNING: Volume has ${SIZE} KB of data!"
+  read -r -p "Delete anyway? [y/N] " confirm
+  [ "$confirm" != "y" ] && [ "$confirm" != "Y" ] && exit 0
+fi
 
 # 3. Remove
 docker volume rm "${VOLUME}"
@@ -186,14 +195,11 @@ echo "Volume removed: ${VOLUME}"
 ```bash
 #!/bin/bash
 # volume-cleanup.sh
-# Remove volumes with cleanup labels and past their retention date
+# Remove volumes with cleanup labels
 
 # Remove volumes labeled for cleanup:
 docker volume ls --filter "label=auto-cleanup=true" -q | \
-    while read volume; do
-        # Check if created more than 30 days ago:
-        CREATED=$(docker volume inspect "${volume}" --format '{{.CreatedAt}}')
-        # (Parse date and compare - simplified here)
+    while read -r volume; do
         echo "Removing cleanup-labeled volume: ${volume}"
         docker volume rm "${volume}" 2>/dev/null || echo "  ${volume} is in use - skipped"
     done
@@ -203,10 +209,13 @@ docker volume ls --filter "label=auto-cleanup=true" -q | \
 
 ```bash
 # Error: "volume is in use"
-# Fix: find and remove/stop the container using it
-docker ps -aq --filter "volume=my-volume"
-docker stop <container_id>
-docker rm <container_id>
+# Fix: find and remove the container using it
+for container in $(docker ps -aq); do
+  docker inspect --format \
+    '{{.Id}} {{range .Mounts}}{{if .Name}}{{.Name}} {{end}}{{end}}' \
+    "$container"
+done | grep -F "my-volume"
+docker rm -f <container_id>
 docker volume rm my-volume
 
 # Error: "volume not found"
