@@ -21,30 +21,29 @@ Portainer's Helm integration lets you deploy applications from public and privat
 
 1. Log into Portainer.
 2. Select your **Kubernetes** environment.
-3. Click **Helm** in the left sidebar.
+3. Click **Applications** in the left sidebar, then click **Create from code**.
+4. Choose **Helm chart** as the deployment method.
 
-You will see a searchable catalog of all charts from your configured repositories.
+You can then select a Helm chart source and browse the available charts from that repository.
 
 ## Step 2: Browse and Search Charts
 
+- Select a **Helm chart source** using the dropdown
 - Use the **Search** bar to find a specific chart (e.g., `nginx`, `postgresql`, `grafana`)
-- Filter by **Repository** using the dropdown
-- Each chart card shows:
-  - Chart name and version
-  - Description
-  - Repository source
-  - App version (the underlying application version)
+- Filter the chart list by **Category**
+- Select a chart to view its available versions and default values
 
 ## Step 3: Install a Helm Chart
 
-1. Click the chart you want to install (e.g., `nginx` from the Bitnami repo).
-2. Click **Install** on the chart detail page.
-3. Fill in the deployment form:
+1. From **Applications** → **Create from code**, choose **Helm chart** if you are not already on that page.
+2. Fill in the deployment form:
 
    - **Release name**: A unique name for this deployment (e.g., `my-nginx`)
    - **Namespace**: Target namespace (e.g., `production`)
+   - **Helm chart source**: Select the repository or registry to browse
    - **Chart version**: Select the chart version to deploy
 
+3. Select the chart you want to install (e.g., `nginx` from the Bitnami repo).
 4. In the **Chart values** section, you can customize the deployment:
    - Edit directly in the YAML editor
    - Override specific values
@@ -56,7 +55,8 @@ replicaCount: 3
 
 service:
   type: LoadBalancer
-  port: 80
+  ports:
+    http: 80
 
 resources:
   limits:
@@ -69,8 +69,7 @@ resources:
 ingress:
   enabled: true
   hostname: nginx.example.com
-  annotations:
-    kubernetes.io/ingress.class: nginx
+  ingressClassName: nginx
 ```
 
 5. Click **Install**.
@@ -125,7 +124,8 @@ service:
 
 ```yaml
 # cert-manager-values.yaml
-installCRDs: true  # Install Custom Resource Definitions automatically
+crds:
+  enabled: true  # Install Custom Resource Definitions automatically
 
 replicaCount: 2
 
@@ -137,13 +137,13 @@ resources:
 
 ## Step 5: Monitor the Installation
 
-After clicking **Install**, Portainer shows the installation progress. You can:
+After clicking **Install**, Portainer returns you to the application's details page. You can:
 
-1. Watch the pod status update in real time.
-2. Check the **Helm releases** section for status: `deployed`, `pending`, `failed`.
+1. Check the **Resources** tab to see the deployed workloads and their status.
+2. Check the **Events** tab for installation progress and errors.
 
 ```bash
-# Check via KubeShell
+# Check via kubectl shell
 kubectl get pods -n production
 kubectl get svc -n production
 
@@ -178,15 +178,15 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
 
 To update chart values or upgrade to a new version:
 
-1. Go to **Helm** → **Releases**.
-2. Click the release name.
-3. Click **Upgrade**.
-4. Modify the values or select a new chart version.
-5. Click **Upgrade** to apply.
+1. Go to **Applications** and select the Helm application.
+2. Click **Edit/Upgrade**.
+3. Modify the values or select a new chart version.
+4. Click **Edit/Upgrade** to apply.
 
 ```bash
-# Via CLI in KubeShell
-helm upgrade my-nginx bitnami/nginx \
+# Via CLI in kubectl shell
+helm upgrade my-nginx nginx \
+  --repo https://charts.bitnami.com/bitnami \
   --namespace production \
   --set replicaCount=5 \
   --reuse-values
