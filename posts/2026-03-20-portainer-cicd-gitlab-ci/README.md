@@ -14,8 +14,8 @@ GitLab CI/CD combined with Portainer creates a fully self-hosted CI/CD pipeline.
 
 - Portainer CE or BE with a Docker environment
 - GitLab instance (cloud or self-hosted) with CI/CD enabled
-- Portainer webhook URL or API key
-- Docker runner configured in GitLab
+- Portainer webhook URL or API key (stack webhooks are available only on non-Edge environments)
+- Docker runner configured in GitLab with privileged mode enabled for Docker-in-Docker and `/certs/client` mounted when using TLS
 
 ## Architecture
 
@@ -46,7 +46,10 @@ stages:
 
 variables:
   DOCKER_DRIVER: overlay2
+  DOCKER_HOST: tcp://docker:2376
   DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_TLS_VERIFY: "1"
+  DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
   IMAGE_NAME: $CI_REGISTRY_IMAGE
   IMAGE_TAG: $CI_COMMIT_SHORT_SHA
 
@@ -57,9 +60,9 @@ test:
   script:
     - npm ci
     - npm test
-  only:
-    - merge_requests
-    - main
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 # ===== Build Stage =====
 build:
@@ -77,8 +80,8 @@ build:
   artifacts:
     reports:
       dotenv: build.env
-  only:
-    - main
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 # ===== Deploy Stage =====
 deploy:
@@ -89,7 +92,7 @@ deploy:
       artifacts: true
   script:
     - |
-      echo "Deploying image $IMAGE_NAME:$IMAGE_TAG to Portainer..."
+      echo "Triggering Portainer stack webhook redeploy..."
 
       HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
         -X POST "$PORTAINER_WEBHOOK_URL")
@@ -102,8 +105,8 @@ deploy:
         echo "ERROR: Webhook failed with status $HTTP_STATUS"
         exit 1
       fi
-  only:
-    - main
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
   environment:
     name: production
     url: https://myapp.example.com
@@ -111,7 +114,7 @@ deploy:
 
 ## Step 3: Advanced Pipeline with API-Based Deployment
 
-For more control, update the stack with the specific image tag:
+For more control, if your file-based stack references `${IMAGE_TAG}` in the image tag, update the stack with the specific image tag:
 
 ```yaml
 # .gitlab-ci.yml - Advanced version
@@ -141,21 +144,20 @@ deploy-advanced:
         "$PORTAINER_URL/api/stacks/$STACK_ID/file" | jq -r '.StackFileContent')
 
       # Update the stack
-      RESPONSE=$(curl -s -X PUT \
+      RESPONSE=$(curl -sf -X PUT \
         -H "X-API-Key: $PORTAINER_API_KEY" \
         -H "Content-Type: application/json" \
         "$PORTAINER_URL/api/stacks/$STACK_ID?endpointId=$PORTAINER_ENDPOINT_ID" \
         -d "{
-          \"stackFileContent\": $(echo "$COMPOSE" | jq -Rs .),
-          \"env\": [{\"name\": \"IMAGE_TAG\", \"value\": \"$IMAGE_TAG\"}],
-          \"pullImage\": true,
-          \"prune\": false
+          \"StackFileContent\": $(printf '%s' "$COMPOSE" | jq -Rs .),
+          \"Env\": [{\"name\": \"IMAGE_TAG\", \"value\": \"$IMAGE_TAG\"}],
+          \"RepullImageAndRedeploy\": true
         }")
 
       echo "Update response: $RESPONSE"
       echo "Deployment complete for version $IMAGE_TAG"
-  only:
-    - main
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
   needs:
     - job: build
       artifacts: true
@@ -163,7 +165,7 @@ deploy-advanced:
 
 ## Step 4: Multi-Environment Pipeline
 
-Deploy to staging on feature branches, production on main:
+Deploy file-based stacks to staging on `develop`, production on `main`:
 
 ```yaml
 # Multi-environment deployment
@@ -175,14 +177,14 @@ Deploy to staging on feature branches, production on main:
   script:
     - |
       echo "Deploying to $CI_ENVIRONMENT_NAME..."
-      curl -s -X POST \
+      curl -sf -X PUT \
         -H "X-API-Key: $PORTAINER_API_KEY" \
         -H "Content-Type: application/json" \
         "$PORTAINER_URL/api/stacks/$STACK_ID?endpointId=$ENDPOINT_ID" \
         -d "{
-          \"stackFileContent\": $(cat docker-compose.yml | jq -Rs .),
-          \"env\": [{\"name\": \"IMAGE_TAG\", \"value\": \"$IMAGE_TAG\"}],
-          \"pullImage\": true
+          \"StackFileContent\": $(jq -Rs . < docker-compose.yml),
+          \"Env\": [{\"name\": \"IMAGE_TAG\", \"value\": \"$IMAGE_TAG\"}],
+          \"RepullImageAndRedeploy\": true
         }"
 
 deploy-staging:
@@ -190,8 +192,8 @@ deploy-staging:
   variables:
     STACK_ID: "2"
     ENDPOINT_ID: "2"
-  only:
-    - develop
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
   environment:
     name: staging
     url: https://staging.example.com
@@ -201,9 +203,9 @@ deploy-production:
   variables:
     STACK_ID: "1"
     ENDPOINT_ID: "1"
-  only:
-    - main
-  when: manual  # Require manual approval for production
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
   environment:
     name: production
     url: https://myapp.example.com
@@ -232,10 +234,10 @@ verify-deployment:
       done
       echo "ERROR: Health check failed after 2 minutes"
       exit 1
-  only:
-    - main
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 ```
 
 ## Conclusion
 
-GitLab CI/CD and Portainer together provide a powerful, self-hostable CI/CD stack. GitLab's built-in Container Registry eliminates the need for an external registry, while Portainer handles container orchestration. Use the webhook approach for simplicity and the API approach when you need to pass dynamic environment variables like image tags to your deployed stacks.
+GitLab CI/CD and Portainer together provide a powerful, self-hostable CI/CD stack. GitLab's built-in Container Registry eliminates the need for an external registry, while Portainer handles stack deployment and environment management. Use the webhook approach for simplicity and the API approach when you need to pass dynamic environment variables like image tags to your deployed stacks.
