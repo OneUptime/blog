@@ -68,17 +68,17 @@ showmount -e 192.168.1.100  # Replace with NFS server IP
 sudo mkdir -p /mnt/nfs/{portainer,db-data,app-data,shared}
 
 # Mount NFS shares
-sudo mount -t nfs 192.168.1.100:/exports/portainer /mnt/nfs/portainer
-sudo mount -t nfs 192.168.1.100:/exports/db-data /mnt/nfs/db-data
-sudo mount -t nfs 192.168.1.100:/exports/app-data /mnt/nfs/app-data
-sudo mount -t nfs 192.168.1.100:/exports/shared /mnt/nfs/shared
+sudo mount -t nfs -o nfsvers=4 192.168.1.100:/exports/portainer /mnt/nfs/portainer
+sudo mount -t nfs -o nfsvers=4 192.168.1.100:/exports/db-data /mnt/nfs/db-data
+sudo mount -t nfs -o nfsvers=4 192.168.1.100:/exports/app-data /mnt/nfs/app-data
+sudo mount -t nfs -o nfsvers=4 192.168.1.100:/exports/shared /mnt/nfs/shared
 
 # Make permanent in /etc/fstab
 sudo tee -a /etc/fstab << 'EOF'
-192.168.1.100:/exports/portainer /mnt/nfs/portainer nfs4 defaults,_netdev,rw 0 0
-192.168.1.100:/exports/db-data   /mnt/nfs/db-data   nfs4 defaults,_netdev,rw 0 0
-192.168.1.100:/exports/app-data  /mnt/nfs/app-data  nfs4 defaults,_netdev,rw 0 0
-192.168.1.100:/exports/shared    /mnt/nfs/shared    nfs4 defaults,_netdev,rw 0 0
+192.168.1.100:/exports/portainer /mnt/nfs/portainer nfs defaults,nfsvers=4,_netdev 0 0
+192.168.1.100:/exports/db-data   /mnt/nfs/db-data   nfs defaults,nfsvers=4,_netdev 0 0
+192.168.1.100:/exports/app-data  /mnt/nfs/app-data  nfs defaults,nfsvers=4,_netdev 0 0
+192.168.1.100:/exports/shared    /mnt/nfs/shared    nfs defaults,nfsvers=4,_netdev 0 0
 EOF
 
 sudo mount -a
@@ -100,7 +100,7 @@ docker volume create \
 docker volume create \
   --driver local \
   --opt type=nfs \
-  --opt o=addr=192.168.1.100,vers=4,soft,timeo=180,bg,tcp,rw \
+  --opt o=addr=192.168.1.100,nfsvers=4,hard,timeo=600,tcp,rw \
   --opt device=:/exports/db-data \
   nfs-db-data-direct
 ```
@@ -147,8 +147,8 @@ volumes:
   nfs-db-data:
     driver: local
     driver_opts:
-      type: nfs4
-      o: "addr=192.168.1.100,rw,soft"
+      type: nfs
+      o: "addr=192.168.1.100,nfsvers=4,rw,hard"
       device: ":/exports/db-data"
 
 networks:
@@ -164,13 +164,13 @@ networks:
 
 ```bash
 # Optimize NFS mount options for Docker workloads
-# /etc/fstab entry with performance options
-192.168.1.100:/exports/db-data /mnt/nfs/db-data nfs4 \
-  rw,hard,intr,rsize=8192,wsize=8192,timeo=14,_netdev 0 0
+# /etc/fstab entry using NFSv4 and negotiated transfer sizes
+192.168.1.100:/exports/db-data /mnt/nfs/db-data nfs \
+  rw,hard,nfsvers=4,timeo=600,_netdev 0 0
 
 # For high-performance workloads
-192.168.1.100:/exports/app-data /mnt/nfs/app-data nfs4 \
-  rw,hard,rsize=65536,wsize=65536,timeo=600,retrans=2,_netdev 0 0
+192.168.1.100:/exports/app-data /mnt/nfs/app-data nfs \
+  rw,hard,nfsvers=4,rsize=1048576,wsize=1048576,timeo=600,_netdev 0 0
 ```
 
 ## Monitoring NFS Mounts
@@ -192,4 +192,4 @@ sudo mount /mnt/nfs/app-data
 
 ## Conclusion
 
-NFS shared storage provides a simple, reliable solution for persistent volumes in Docker Swarm clusters managed by Portainer. Services can be scheduled on any Swarm node while accessing the same data, enabling true high availability for stateful workloads. For production use, consider HA NFS solutions like GlusterFS-backed NFS or dedicated NAS appliances.
+NFS shared storage provides a simple, reliable solution for persistent volumes in Docker Swarm clusters managed by Portainer. Services can be rescheduled on another Swarm node while still accessing the same data, but true high availability for stateful workloads still depends on the application design and the availability of the NFS backend itself. For production use, consider HA NFS solutions like GlusterFS-backed NFS or dedicated NAS appliances.
