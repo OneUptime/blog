@@ -8,7 +8,7 @@ Description: Learn how to use Python's selectors module to efficiently multiplex
 
 ## Why selectors Over select()?
 
-The `selectors` module is the high-level, portable alternative to the low-level `select` module. It automatically uses the most efficient OS mechanism available (`epoll` on Linux, `kqueue` on macOS, `select` elsewhere) and presents a clean API.
+The `selectors` module is the high-level, portable alternative to the low-level `select` module. It automatically uses the most efficient implementation available on the current platform (`epoll`, `kqueue`, `poll`, `devpoll`, or `select`) and presents a clean API.
 
 ## Basic Multiplexed Echo Server
 
@@ -17,7 +17,7 @@ import selectors
 import socket
 import types
 
-# DefaultSelector picks the best available implementation (epoll/kqueue/select)
+# DefaultSelector picks the best available implementation for the platform
 
 sel = selectors.DefaultSelector()
 
@@ -34,9 +34,8 @@ def accept_connection(sock: socket.socket) -> None:
     # Attach arbitrary data to the selector key for context
     data = types.SimpleNamespace(addr=addr, inb=b"", outb=b"")
 
-    # Watch for both read (EVENT_READ) and write (EVENT_WRITE) events
-    events = selectors.EVENT_READ | selectors.EVENT_WRITE
-    sel.register(conn, events, data=data)
+    # Start by watching for reads; add write events only when output is queued
+    sel.register(conn, selectors.EVENT_READ, data=data)
 
 
 def service_connection(key: selectors.SelectorKey, mask: int) -> None:
@@ -49,11 +48,13 @@ def service_connection(key: selectors.SelectorKey, mask: int) -> None:
         if recv_data:
             # Buffer the received data to be echoed back
             data.outb += recv_data
+            sel.modify(sock, selectors.EVENT_READ | selectors.EVENT_WRITE, data=data)
         else:
             # Empty recv = client closed connection
             print(f"Closing connection to {data.addr}")
             sel.unregister(sock)
             sock.close()
+            return
 
     if mask & selectors.EVENT_WRITE:
         if data.outb:
@@ -61,6 +62,9 @@ def service_connection(key: selectors.SelectorKey, mask: int) -> None:
             sent = sock.send(data.outb)
             # Remove the bytes that were successfully sent
             data.outb = data.outb[sent:]
+
+        if not data.outb:
+            sel.modify(sock, selectors.EVENT_READ, data=data)
 
 
 # Create and register the listening server socket
@@ -117,9 +121,14 @@ def service_connection(key: selectors.SelectorKey, mask: int) -> None:
             response = f"Echo: {line.decode()}\n".encode()
             data.outb += response
 
+        if data.outb:
+            sel.modify(sock, selectors.EVENT_READ | selectors.EVENT_WRITE, data=data)
+
     if mask & selectors.EVENT_WRITE and data.outb:
         sent = sock.send(data.outb)
         data.outb = data.outb[sent:]
+        if not data.outb:
+            sel.modify(sock, selectors.EVENT_READ, data=data)
 ```
 
 ## Selector Event Constants
@@ -133,10 +142,10 @@ def service_connection(key: selectors.SelectorKey, mask: int) -> None:
 
 | Approach | Connections | OS Mechanism | Complexity |
 |----------|-------------|--------------|------------|
-| `threading` | ~1,000 | Threads | Low |
-| `selectors` | ~10,000+ | epoll/kqueue | Medium |
-| `asyncio` | ~10,000+ | epoll/kqueue | Medium |
+| `threading` | Depends on thread overhead and system resources | Threads | Low |
+| `selectors` | Scales well for many I/O-bound sockets | `select`-module primitives such as `epoll`, `kqueue`, `poll`, `devpoll`, or `select` | Medium |
+| `asyncio` | Similar event-driven model for I/O-bound workloads | Depends on the event loop and platform | Medium |
 
 ## Conclusion
 
-The `selectors` module provides efficient, portable I/O multiplexing for Python socket servers. It scales much better than threading for I/O-bound servers and is simpler to use than raw `select()`. For new projects, `asyncio` offers a similar performance profile with a more Pythonic async/await interface.
+The `selectors` module provides efficient, portable I/O multiplexing for Python socket servers. It generally scales better than one-thread-per-connection designs for I/O-bound servers and is simpler to use than raw `select()`. For new projects, `asyncio` offers a higher-level async/await interface built on event-loop-based I/O multiplexing.
