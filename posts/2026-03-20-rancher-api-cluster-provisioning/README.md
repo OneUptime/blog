@@ -17,19 +17,19 @@ Manually creating clusters through the Rancher UI is fine for occasional setups,
 First, create a Rancher API key:
 
 ```text
-Rancher UI → User Avatar → API Keys → Add Key
+Rancher UI → User Avatar → Account & API Keys → Create API Key
 - Description: automation-key
 - Expires: (set appropriate expiry)
-- Scope: No scope restriction (or restrict to specific clusters)
+- Scope: No scope restriction
 ```
 
 ```bash
-# Store credentials
+# Store credentials for Rancher API and Terraform
 
 export RANCHER_URL="https://rancher.example.com"
 export RANCHER_ACCESS_KEY="token-xxxxx"
 export RANCHER_SECRET_KEY="xxxxxxxxxxxxxxxxxx"
-export RANCHER_TOKEN="${RANCHER_ACCESS_KEY}:${RANCHER_SECRET_KEY}"
+export RANCHER_BEARER_TOKEN="${RANCHER_ACCESS_KEY}:${RANCHER_SECRET_KEY}"
 ```
 
 ## Using the Rancher API Directly
@@ -37,22 +37,27 @@ export RANCHER_TOKEN="${RANCHER_ACCESS_KEY}:${RANCHER_SECRET_KEY}"
 ### List Existing Clusters
 
 ```bash
-# List all clusters
+# List provisioning-managed clusters in the default fleet namespace
 curl -s -k \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "${RANCHER_URL}/v3/clusters" \
-  | jq '.data[] | {id: .id, name: .name, state: .state}'
+  -H "Authorization: Bearer ${RANCHER_BEARER_TOKEN}" \
+  "${RANCHER_URL}/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters" \
+  | jq '.items[] | {
+      name: .metadata.name,
+      kubernetesVersion: .spec.kubernetesVersion,
+      ready: ([.status.conditions[]? | select(.type == "Ready") | .status][0] // "Unknown")
+    }'
 ```
 
-### Provision an RKE2 Cluster on vSphere
+### Provision an RKE2 Cluster on AWS
 
 ```bash
-# Create an RKE2 cluster via Rancher API
+# Assumes the Rancher cloud credential and machine config objects already exist.
+# Create an RKE2 cluster via the Rancher Kubernetes API
 curl -s -k \
   -X POST \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
+  -H "Authorization: Bearer ${RANCHER_BEARER_TOKEN}" \
   -H "Content-Type: application/json" \
-  "${RANCHER_URL}/v1/provisioning.cattle.io.clusters" \
+  "${RANCHER_URL}/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters" \
   -d '{
     "apiVersion": "provisioning.cattle.io/v1",
     "kind": "Cluster",
@@ -61,31 +66,39 @@ curl -s -k \
       "namespace": "fleet-default",
       "labels": {
         "env": "production",
-        "region": "us-east"
+        "region": "us-east-1"
       }
     },
     "spec": {
-      "kubernetesVersion": "v1.28.6+rke2r1",
+      "cloudCredentialSecretName": "cattle-global-data:cc-aws-prod",
+      "kubernetesVersion": "v1.35.1+rke2r1",
       "rkeConfig": {
-        "nodePools": [
+        "machineGlobalConfig": {
+          "cni": "calico",
+          "profile": "cis",
+          "secrets-encryption-provider": "aescbc"
+        },
+        "machinePools": [
           {
             "name": "control-plane",
-            "count": 3,
+            "quantity": 3,
             "controlPlaneRole": true,
             "etcdRole": true,
             "workerRole": false,
-            "nodeConfig": {
-              "vmSize": "Standard_D4s_v3",
-              "diskSize": 50
+            "machineConfigRef": {
+              "kind": "Amazonec2Config",
+              "name": "nc-prod-control-plane-abcde"
             }
           },
           {
             "name": "workers",
-            "count": 5,
+            "quantity": 5,
+            "controlPlaneRole": false,
+            "etcdRole": false,
             "workerRole": true,
-            "nodeConfig": {
-              "vmSize": "Standard_D8s_v3",
-              "diskSize": 100
+            "machineConfigRef": {
+              "kind": "Amazonec2Config",
+              "name": "nc-prod-workers-fghij"
             }
           }
         ]
@@ -94,31 +107,44 @@ curl -s -k \
   }'
 ```
 
-### Wait for Cluster to Be Active
+### Wait for Cluster to Be Ready
 
 ```bash
 #!/bin/bash
 # wait-for-cluster.sh
-CLUSTER_ID="$1"
+CLUSTER_NAME="$1"
+CLUSTER_NAMESPACE="${2:-fleet-default}"
+MAX_ATTEMPTS=60
+ATTEMPT=0
 
-echo "Waiting for cluster ${CLUSTER_ID} to become active..."
-while true; do
-  STATE=$(curl -s -k \
-    -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-    "${RANCHER_URL}/v3/clusters/${CLUSTER_ID}" \
-    | jq -r '.state')
+echo "Waiting for cluster ${CLUSTER_NAMESPACE}/${CLUSTER_NAME} to become ready..."
+while [ "${ATTEMPT}" -lt "${MAX_ATTEMPTS}" ]; do
+  RESPONSE=$(curl -s -k \
+    -H "Authorization: Bearer ${RANCHER_BEARER_TOKEN}" \
+    "${RANCHER_URL}/apis/provisioning.cattle.io/v1/namespaces/${CLUSTER_NAMESPACE}/clusters/${CLUSTER_NAME}")
 
-  echo "Cluster state: ${STATE}"
+  READY=$(echo "${RESPONSE}" | jq -r '.status.conditions[]? | select(.type == "Ready") | .status // empty')
+  REASON=$(echo "${RESPONSE}" | jq -r '.status.conditions[]? | select(.type == "Ready") | .reason // "Unknown"')
+  MESSAGE=$(echo "${RESPONSE}" | jq -r '.status.conditions[]? | select(.type == "Ready") | .message // empty')
 
-  if [ "${STATE}" = "active" ]; then
-    echo "Cluster is active!"
-    break
-  elif [ "${STATE}" = "error" ]; then
-    echo "Cluster provisioning failed!"
-    exit 1
+  echo "Ready condition: ${READY:-Unknown} (${REASON})"
+  if [ -n "${MESSAGE}" ]; then
+    echo "${MESSAGE}"
   fi
+
+  if [ "${READY}" = "True" ]; then
+    echo "Cluster is ready!"
+    break
+  fi
+
+  ATTEMPT=$((ATTEMPT + 1))
   sleep 30
 done
+
+if [ "${ATTEMPT}" -eq "${MAX_ATTEMPTS}" ]; then
+  echo "Timed out waiting for cluster readiness."
+  exit 1
+fi
 ```
 
 ## Using Terraform with the Rancher2 Provider
@@ -130,8 +156,8 @@ done
 terraform {
   required_providers {
     rancher2 = {
-      source  = "rancher/rancher2"
-      version = "~> 4.0"
+      # Pin a provider version compatible with your Rancher minor release.
+      source = "rancher/rancher2"
     }
   }
 }
@@ -149,7 +175,7 @@ provider "rancher2" {
 # cluster.tf
 resource "rancher2_cluster_v2" "prod_cluster" {
   name                  = "prod-cluster-${var.environment}"
-  kubernetes_version    = "v1.28.6+rke2r1"
+  kubernetes_version    = "v1.35.1+rke2r1"
   cloud_credential_secret_name = rancher2_cloud_credential.aws.id
 
   rke_config {
@@ -162,7 +188,7 @@ resource "rancher2_cluster_v2" "prod_cluster" {
       quantity                     = 3
 
       machine_config {
-        kind = "Amazonec2Config"
+        kind = rancher2_machine_config_v2.control_plane.kind
         name = rancher2_machine_config_v2.control_plane.name
       }
     }
@@ -176,15 +202,15 @@ resource "rancher2_cluster_v2" "prod_cluster" {
       quantity                     = var.worker_count
 
       machine_config {
-        kind = "Amazonec2Config"
+        kind = rancher2_machine_config_v2.worker.kind
         name = rancher2_machine_config_v2.worker.name
       }
     }
 
     machine_global_config = yamlencode({
-      cni                   = "calico"
-      secrets-encryption    = true
-      profile               = "cis-1.23"
+      cni                         = "calico"
+      secrets-encryption-provider = "aescbc"
+      profile                     = "cis"
     })
   }
 
@@ -206,20 +232,46 @@ output "kubeconfig" {
 
 ```hcl
 # machine-config.tf
-resource "rancher2_machine_config_v2" "worker" {
-  generate_name = "worker-${var.environment}"
-  resource_version = "1"
+resource "rancher2_cloud_credential" "aws" {
+  name = "aws-${var.environment}"
+
+  amazonec2_credential_config {
+    access_key = var.aws_access_key
+    secret_key = var.aws_secret_key
+  }
+}
+
+resource "rancher2_machine_config_v2" "control_plane" {
+  generate_name = "control-plane-${var.environment}"
 
   amazonec2_config {
-    ami            = var.worker_ami_id
-    region         = var.aws_region
-    instance_type  = "m5.2xlarge"
-    root_size      = "100"
-    vpc_id         = var.vpc_id
-    subnet_id      = var.private_subnet_id
-    security_group = [var.worker_sg_id]
+    ami                  = var.control_plane_ami_id
+    region               = var.aws_region
+    zone                 = var.aws_availability_zone
+    instance_type        = "m5.xlarge"
+    root_size            = "50"
+    vpc_id               = var.vpc_id
+    subnet_id            = var.private_subnet_id
+    security_group       = [var.control_plane_sg_id]
+    iam_instance_profile = var.control_plane_iam_profile
+    tags                 = "env,${var.environment},managed-by,terraform"
+  }
+}
+
+resource "rancher2_machine_config_v2" "worker" {
+  generate_name = "worker-${var.environment}"
+
+  amazonec2_config {
+    ami                  = var.worker_ami_id
+    region               = var.aws_region
+    zone                 = var.aws_availability_zone
+    instance_type        = "m5.2xlarge"
+    root_size            = "100"
+    vpc_id               = var.vpc_id
+    subnet_id            = var.private_subnet_id
+    security_group       = [var.worker_sg_id]
     iam_instance_profile = var.worker_iam_profile
-    tags           = "env,${var.environment},managed-by,terraform"
+    tags                 = "env,${var.environment},managed-by,terraform"
   }
 }
 ```
@@ -234,7 +286,6 @@ resource "rancher2_app_v2" "monitoring" {
   namespace     = "cattle-monitoring-system"
   repo_name     = "rancher-charts"
   chart_name    = "rancher-monitoring"
-  chart_version = "103.0.0+up45.31.1"
 
   values = yamlencode({
     prometheus = {
@@ -294,6 +345,8 @@ jobs:
           TF_VAR_rancher_url: ${{ secrets.RANCHER_URL }}
           TF_VAR_rancher_access_key: ${{ secrets.RANCHER_ACCESS_KEY }}
           TF_VAR_rancher_secret_key: ${{ secrets.RANCHER_SECRET_KEY }}
+          TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           TF_VAR_environment: ${{ inputs.environment }}
           TF_VAR_worker_count: ${{ inputs.worker_count }}
         run: terraform apply -auto-approve
@@ -302,4 +355,4 @@ jobs:
 
 ## Conclusion
 
-Automating cluster provisioning with the Rancher API and Terraform enables repeatable, auditable infrastructure creation. The Rancher2 Terraform provider handles the full lifecycle of clusters, machine configurations, cloud credentials, and post-provisioning app installations. Combining Terraform with GitHub Actions provides a complete GitOps-style cluster provisioning pipeline where all changes are code-reviewed and version-controlled.
+Automating cluster provisioning with the Rancher API and Terraform enables repeatable, auditable infrastructure creation. The Rancher2 Terraform provider handles the full lifecycle of clusters, machine configurations, cloud credentials, and post-provisioning app installations. Combining Terraform with GitHub Actions provides a repeatable, version-controlled provisioning pipeline where all changes are code-reviewed and tracked in Git.
