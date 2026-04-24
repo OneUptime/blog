@@ -8,13 +8,13 @@ Description: Learn how to create a complete CI/CD pipeline using GitHub Actions 
 
 ## Introduction
 
-Combining GitHub Actions with Portainer webhooks creates a powerful, lightweight CI/CD pipeline: GitHub Actions builds and pushes the Docker image, then triggers Portainer to pull the new image and redeploy the container. No complex Kubernetes or CD tools needed.
+Combining GitHub Actions with Portainer webhooks creates a powerful, lightweight CI/CD pipeline: GitHub Actions builds and pushes the Docker image, then triggers Portainer to pull the new image and redeploy the stack. No complex Kubernetes or CD tools needed.
 
 ## Prerequisites
 
 - GitHub repository with your application
 - Docker registry (Docker Hub, GHCR, or private)
-- Portainer with a container or stack webhook configured
+- Portainer Business Edition on a non-Edge environment with a stack webhook configured
 - GitHub repository secrets configured
 
 ## Architecture
@@ -24,7 +24,7 @@ Developer pushes → GitHub Actions runs:
   1. Build Docker image
   2. Push to registry
   3. POST to Portainer webhook
-  → Portainer pulls new image → Redeploys container
+  → Portainer pulls new image → Redeploys stack
 ```
 
 ## Step 1: Configure GitHub Secrets
@@ -34,9 +34,9 @@ In your GitHub repository:
 2. Add the following secrets:
 
 ```bash
-DOCKER_USERNAME       → Docker Hub username (or GHCR username)
-DOCKER_PASSWORD       → Docker Hub password or access token
-PORTAINER_WEBHOOK_URL → Full webhook URL from Portainer
+DOCKER_USERNAME       → Docker Hub username
+DOCKER_PASSWORD       → Docker Hub access token
+PORTAINER_WEBHOOK_URL → Full stack webhook URL from Portainer Business Edition
 ```
 
 For private registries:
@@ -45,6 +45,8 @@ REGISTRY_URL          → e.g., registry.example.com
 REGISTRY_USERNAME     → Registry username
 REGISTRY_PASSWORD     → Registry password
 ```
+
+If you use GHCR or a private registry, set the `registry:` input in `docker/login-action` and update the image name accordingly.
 
 ## Step 2: Basic GitHub Actions Workflow
 
@@ -66,15 +68,15 @@ jobs:
     steps:
       # Step 1: Check out code
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Step 2: Set up Docker Buildx for multi-platform builds
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # Step 3: Log in to Docker Hub
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
@@ -82,7 +84,7 @@ jobs:
       # Step 4: Extract metadata (tags, labels)
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ secrets.DOCKER_USERNAME }}/myapp
           tags: |
@@ -92,7 +94,7 @@ jobs:
 
       # Step 5: Build and push Docker image
       - name: Build and push image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -140,18 +142,18 @@ jobs:
       image-tag: ${{ steps.meta.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
@@ -160,7 +162,7 @@ jobs:
             type=ref,event=branch
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -198,17 +200,8 @@ jobs:
             -X POST "${{ secrets.PORTAINER_PROD_WEBHOOK }}" | \
             grep -q 204 && echo "✓ Production deployment triggered"
 
-      - name: Create GitHub deployment
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.repos.createDeploymentStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              deployment_id: context.payload.deployment?.id || 0,
-              state: 'success',
-              environment_url: 'https://myapp.example.com'
-            });
+      # Because this job references the production environment,
+      # GitHub automatically creates the deployment record and status.
 ```
 
 ## Step 4: Rollback Workflow
@@ -223,7 +216,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to rollback to (e.g., v2.0.0)'
+        description: 'Image tag to roll back to (e.g., v2.0.0)'
         required: true
         type: string
       environment:
@@ -240,7 +233,7 @@ jobs:
     environment: ${{ inputs.environment }}
 
     steps:
-      - name: Rollback to version ${{ inputs.version }}
+      - name: Rollback to image tag ${{ inputs.version }}
         run: |
           WEBHOOK_URL=""
           if [ "${{ inputs.environment }}" == "staging" ]; then
@@ -249,11 +242,18 @@ jobs:
             WEBHOOK_URL="${{ secrets.PORTAINER_PROD_WEBHOOK }}"
           fi
 
-          # Update the container image tag in Portainer via API
-          # Then trigger redeployment via webhook
           echo "Rolling back ${{ inputs.environment }} to ${{ inputs.version }}"
-          curl -X POST "${WEBHOOK_URL}"
-          echo "✓ Rollback triggered"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST \
+            --max-time 30 \
+            "${WEBHOOK_URL}?tag=${{ inputs.version }}")
+
+          if [ "$HTTP_STATUS" == "204" ]; then
+            echo "✓ Rollback triggered"
+          else
+            echo "✗ Rollback failed: HTTP $HTTP_STATUS"
+            exit 1
+          fi
 ```
 
 ## Step 5: Health Check After Deployment
@@ -314,4 +314,4 @@ Add a health check step after triggering the webhook:
 
 ## Conclusion
 
-GitHub Actions + Portainer webhooks form a simple but effective CI/CD pipeline for containerized applications. With this setup, every push to main automatically builds a new image, pushes it to a registry, and triggers Portainer to deploy it - all within the GitHub ecosystem and without needing external CD infrastructure. Add health checks, rollback workflows, and Slack notifications to make the pipeline production-ready.
+GitHub Actions + Portainer webhooks form a simple but effective CI/CD pipeline for containerized applications. With this setup, every push to main automatically builds a new image, pushes it to a registry, and triggers Portainer to redeploy the stack - all within the GitHub ecosystem and without needing external CD infrastructure. Add health checks, rollback workflows, and Slack notifications to make the pipeline production-ready.
