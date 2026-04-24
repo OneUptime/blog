@@ -25,7 +25,7 @@ mkdir -p /opt/traefik/data
 
 # Create the ACME certificate storage file with correct permissions
 touch /opt/traefik/data/acme.json
-chmod 600 /opt/traefik/data/acme.json    # Required: Traefik won't start without this permission
+chmod 600 /opt/traefik/data/acme.json    # Required by Traefik for ACME storage
 ```
 
 ## Step 2: Configure Traefik with HTTP Challenge
@@ -92,8 +92,6 @@ Supported DNS providers include Cloudflare, Route53, DigitalOcean, Namecheap, an
 
 ```yaml
 # /opt/traefik/docker-compose.yml
-version: "3.8"
-
 services:
   traefik:
     image: traefik:v3.0
@@ -106,10 +104,10 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    environment:
-      # For DNS challenge with Cloudflare:
-      # CF_API_EMAIL: your-email@example.com
-      # CF_API_KEY: your-cloudflare-api-key
+    # Uncomment for DNS challenge with Cloudflare:
+    # environment:
+    #   CF_API_EMAIL: your-email@example.com
+    #   CF_API_KEY: your-cloudflare-api-key
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -197,7 +195,7 @@ certificatesResolvers:
         entryPoint: web
 ```
 
-```bash
+```yaml
 # In labels, use the staging resolver first
 - "traefik.http.routers.portainer.tls.certresolver=letsencrypt-staging"
 
