@@ -20,11 +20,11 @@ There are times when you need to share container logs with a team member, attach
 1. Navigate to **Containers** in Portainer.
 2. Click on the container name.
 3. Click **Logs**.
-4. Set the desired number of lines (or **All** for complete logs).
-5. Look for a **Download** or **Export** button in the log viewer toolbar.
-6. Click it to download the log file.
+4. Use the date picker and line limit controls to choose the logs you want to export.
+5. Click the **Download logs** button in the log viewer toolbar.
+6. Save the downloaded log file.
 
-The downloaded file is typically a plain text `.txt` or `.log` file containing the log lines as displayed.
+The downloaded file contains the log lines currently displayed in the viewer.
 
 Note: If Portainer doesn't show a download button, use the copy-to-clipboard option and paste into a file, or use the Docker CLI method below.
 
@@ -50,34 +50,32 @@ docker logs --since "2026-03-20T10:00:00" --until "2026-03-20T11:00:00" \
 # Compress the output for large logs:
 docker logs my-container 2>&1 | gzip > my-container-logs.txt.gz
 
-# Split into stdout and stderr separately:
-docker logs my-container > stdout.txt 2>stderr.txt
+# Note: docker logs returns the container's stdout and stderr together.
+# Shell redirection here only separates the Docker CLI's own output streams.
 ```
 
 ## Step 3: Access Log Files Directly on the Host
 
-For `json-file` logging driver, Docker stores logs as JSON files on the host:
+For the `json-file` logging driver, Docker stores logs as JSON files on the host. Docker recommends using the Docker CLI or API when possible, because these files are intended for exclusive access by the Docker daemon:
 
 ```bash
 # Find the log file location:
-docker inspect my-container --format='{{.LogPath}}'
-# Output: /var/lib/docker/containers/<container-id>/<container-id>-json.log
+LOG_PATH=$(docker inspect my-container --format='{{.LogPath}}')
+echo "${LOG_PATH}"
+# Example output on a Linux host:
+# /var/lib/docker/containers/<container-id>/<container-id>-json.log
 
 # View the raw log file:
-sudo cat /var/lib/docker/containers/<container-id>/<container-id>-json.log
+sudo cat "${LOG_PATH}"
 
-# Extract just the log messages from the JSON:
-sudo cat /var/lib/docker/containers/<container-id>/<container-id>-json.log | \
-    jq -r '.log'
+# If jq is installed, extract just the log messages from the JSON:
+sudo jq -r '.log' "${LOG_PATH}"
 
 # Extract with timestamps:
-sudo cat /var/lib/docker/containers/<container-id>/<container-id>-json.log | \
-    jq -r '[.time, .log] | @tsv'
+sudo jq -r '[.time, .log] | @tsv' "${LOG_PATH}"
 
 # Copy log file to current directory:
-CONTAINER_ID=$(docker inspect my-container --format='{{.Id}}')
-sudo cp "/var/lib/docker/containers/${CONTAINER_ID}/${CONTAINER_ID}-json.log" \
-    ./my-container-$(date +%Y%m%d).log
+sudo cp "${LOG_PATH}" "./my-container-$(date +%Y%m%d).json.log"
 ```
 
 ## Step 4: Automate Log Collection
@@ -158,22 +156,28 @@ echo "Attach this file to your incident report."
 
 ## Step 6: Download Logs via Portainer API
 
-For automated log collection without Docker CLI access:
+For automated log collection without Docker CLI access, Portainer can proxy Docker API requests. If you request both `stdout` and `stderr` together, Docker may return a multiplexed stream, so downloading one stream at a time is safer for plain-text files. If your Portainer instance uses its default self-signed certificate, trust the certificate first or add `-k` to `curl` for ad hoc testing:
 
 ```bash
 # Portainer API: get container logs
-PORTAINER_URL="http://portainer:9000"
+PORTAINER_URL="https://portainer:9443"
 API_KEY="your-api-key"
 ENDPOINT_ID=1
 CONTAINER_ID="abc123def456"
 
-# Download last 1000 lines of logs with timestamps
+# Download the last 1000 stdout log lines with timestamps
 curl -s \
   -H "X-API-Key: ${API_KEY}" \
-  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}/logs?stdout=1&stderr=1&timestamps=1&tail=1000" \
-  > container-logs.txt
+  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}/logs?stdout=1&stderr=0&timestamps=1&tail=1000" \
+  > container-stdout.txt
 
-echo "Logs downloaded: container-logs.txt"
+# Download stderr separately if needed
+curl -s \
+  -H "X-API-Key: ${API_KEY}" \
+  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}/logs?stdout=0&stderr=1&timestamps=1&tail=1000" \
+  > container-stderr.txt
+
+echo "Logs downloaded: container-stdout.txt and container-stderr.txt"
 ```
 
 ## Log Format Considerations
