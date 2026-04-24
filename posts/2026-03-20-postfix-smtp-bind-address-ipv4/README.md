@@ -8,7 +8,7 @@ Description: Configure Postfix smtp_bind_address to control which IPv4 address i
 
 ## Introduction
 
-When a server has multiple IPv4 addresses, Postfix may send mail from an unexpected IP. `smtp_bind_address` forces all outbound SMTP connections to originate from a specific IPv4, which is critical for SPF record alignment.
+When a server has multiple IPv4 addresses, Postfix may send mail from an unexpected IP. `smtp_bind_address` forces outbound IPv4 SMTP connections to originate from a specific IPv4, which is important when your SPF policy authorizes that address.
 
 ## Setting smtp_bind_address
 
@@ -19,11 +19,15 @@ When a server has multiple IPv4 addresses, Postfix may send mail from an unexpec
 
 smtp_bind_address = 203.0.113.10
 
-# For IPv6, use smtp_bind_address6 (leave empty to disable IPv6 sending)
+# Leave empty unless you also want to bind outbound IPv6 connections
 smtp_bind_address6 =
+```
 
-# Force IPv4 only (important on dual-stack servers)
-inet_protocols = ipv4
+```bash
+# /etc/postfix/master.cf
+# On dual-stack servers, edit the existing smtp delivery service to use IPv4 only
+smtp      unix  -       -       n       -       -       smtp
+    -o inet_protocols=ipv4
 ```
 
 Apply the changes:
@@ -36,7 +40,7 @@ sudo postfix reload
 
 ```bash
 # Send a test email and check the source IP in mail headers
-echo "Test" | mail -s "Test" test@example.com
+printf "Subject: Test\n\nTest\n" | sendmail test@example.com
 
 # Check outbound SMTP connection source
 sudo tcpdump -i eth0 port 25 -n | head -10
@@ -48,7 +52,7 @@ sudo tail -f /var/log/mail.log | grep smtp
 
 ## SPF Record Alignment
 
-Your SPF record must include the `smtp_bind_address` IP:
+Your SPF record must authorize the IP used by `smtp_bind_address`:
 
 ```dns
 ; DNS TXT record for your domain
@@ -80,9 +84,11 @@ yahoo.com       smtp_via_12:
 ```bash
 # /etc/postfix/master.cf
 smtp_via_11 unix - - n - - smtp
+    -o inet_protocols=ipv4
     -o smtp_bind_address=203.0.113.11
 
 smtp_via_12 unix - - n - - smtp
+    -o inet_protocols=ipv4
     -o smtp_bind_address=203.0.113.12
 ```
 
@@ -94,19 +100,19 @@ sudo postfix reload
 ## Testing SMTP Binding
 
 ```bash
-# Test SMTP connection with telnet
-telnet 10.0.0.1 25
-EHLO mail.example.com
-MAIL FROM:<test@example.com>
+# Send a test message through Postfix
+printf "Subject: Test\n\nTest\n" | sendmail test@example.com
+
+# Flush the queue if the message is deferred
+sudo postqueue -f
 
 # Check which IP appears in mail headers when received
 # Received: from mail.example.com (mail.example.com [203.0.113.10])
 
-# Verify SMTP binding in Postfix logs
-sudo postqueue -f
+# Verify SMTP binding in Postfix logs or with tcpdump
 sudo tail -f /var/log/mail.log
 ```
 
 ## Conclusion
 
-`smtp_bind_address` in Postfix controls which IPv4 the SMTP client (delivery agent) uses for outbound connections. Set it to the IP listed in your SPF record to ensure alignment. On dual-stack servers, also set `inet_protocols = ipv4` to prevent unexpected IPv6 delivery. Use `master.cf` service definitions with `-o smtp_bind_address=...` for per-destination IP selection.
+`smtp_bind_address` in Postfix controls which IPv4 the SMTP client uses for outbound IPv4 connections. Set it to an IP that your SPF policy authorizes. On dual-stack servers, force the SMTP client service to use IPv4 in `master.cf` if you want outbound delivery to stay on IPv4 without disabling IPv6 for the rest of Postfix. Use `master.cf` service definitions with `-o smtp_bind_address=...` for per-destination IP selection.
