@@ -8,7 +8,7 @@ Description: Deploy Apache Kafka via Portainer using KRaft mode (no ZooKeeper re
 
 ## Introduction
 
-Apache Kafka is a distributed event streaming platform for high-throughput, fault-tolerant message processing. Starting with Kafka 3.3, KRaft mode eliminates the ZooKeeper dependency, simplifying deployment significantly. This guide deploys Kafka with KRaft using Bitnami's well-maintained Docker images.
+Apache Kafka is a distributed event streaming platform for high-throughput, fault-tolerant message processing. Starting with Kafka 3.3, KRaft mode is production-ready for new clusters and eliminates the ZooKeeper dependency, simplifying deployment significantly. This guide deploys Kafka with KRaft using Bitnami's well-maintained Docker images.
 
 ## Deploy as a Stack
 
@@ -40,14 +40,14 @@ services:
       # Broker settings
       - KAFKA_CFG_NUM_PARTITIONS=3
       - KAFKA_CFG_DEFAULT_REPLICATION_FACTOR=1
+      - KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR=1
       - KAFKA_CFG_LOG_RETENTION_HOURS=168  # 7 days
       - KAFKA_CFG_LOG_SEGMENT_BYTES=1073741824  # 1GB
       
     volumes:
       - kafka_data:/bitnami/kafka
     ports:
-      - "9092:9092"    # Internal broker port
-      - "9094:9094"    # External access port
+      - "9094:9094"    # External client access port
     restart: unless-stopped
 
   # Kafka UI - web-based management
@@ -134,6 +134,7 @@ import json
 consumer = KafkaConsumer(
     'test-topic',
     bootstrap_servers=['localhost:9094'],
+    group_id='my-consumer-group',
     auto_offset_reset='earliest',
     value_deserializer=lambda m: json.loads(m.decode('utf-8'))
 )
@@ -151,7 +152,7 @@ kafka-consumer-groups.sh \
   --describe \
   --group my-consumer-group
 
-# Check broker metrics
+# Check log directory usage
 kafka-log-dirs.sh \
   --bootstrap-server localhost:9092 \
   --describe \
@@ -160,4 +161,4 @@ kafka-log-dirs.sh \
 
 ## Conclusion
 
-Apache Kafka deployed via Portainer with KRaft mode provides a modern, simplified event streaming platform without ZooKeeper complexity. Kafka UI gives you visual topic management, consumer group monitoring, and message inspection. The persistent volume ensures no messages are lost during container updates.
+Apache Kafka deployed via Portainer with KRaft mode provides a modern, simplified event streaming platform without ZooKeeper complexity. Kafka UI gives you visual topic management, consumer group monitoring, and message inspection. The persistent volume helps preserve broker data across container restarts and updates.
