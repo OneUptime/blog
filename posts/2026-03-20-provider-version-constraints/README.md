@@ -8,7 +8,7 @@ Description: Learn how to specify and manage provider version constraints in Ope
 
 ## Introduction
 
-Provider version constraints tell OpenTofu which versions of a provider are acceptable. Without constraints, `tofu init` installs the latest version, which can break configurations when providers release breaking changes. Pinning to version ranges ensures reproducibility while still allowing compatible updates.
+Provider version constraints tell OpenTofu which versions of a provider are acceptable. Without constraints, `tofu init` can select the newest available version when no lock file selection exists, which can break configurations when providers release breaking changes. Version ranges help control upgrades, while the lock file ensures reproducibility.
 
 ## Basic Version Constraint Syntax
 
@@ -32,15 +32,15 @@ terraform {
       source  = "hashicorp/aws"
 
       # Exact version
-      version = "5.31.0"
+      # version = "5.31.0"
 
       # Greater than or equal
-      version = ">= 5.0"
+      # version = ">= 5.0"
 
       # Greater than or equal AND less than
-      version = ">= 5.0, < 6.0"
+      # version = ">= 5.0, < 6.0"
 
-      # Pessimistic constraint (allows patch/minor updates)
+      # Pessimistic constraint (allows patch/minor updates depending on precision)
       # ~> 5.31.0 means >= 5.31.0, < 5.32.0 (patch updates only)
       # ~> 5.31   means >= 5.31, < 6.0       (minor updates allowed)
       version = "~> 5.31"
@@ -75,7 +75,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 4.0, < 6.0"  # Allow any v4 or v5, but not v6
+      version = ">= 4.0"  # Declare the minimum supported version; let the root module set the upper bound
     }
   }
 }
@@ -146,7 +146,7 @@ provider "registry.opentofu.org/hashicorp/aws" {
 # Update lock file to latest matching versions
 tofu init -upgrade
 
-# Verify lock file is consistent with constraints
+# Refresh lock file entries and checksums from origin registries
 tofu providers lock
 
 # Add hashes for all platforms (for CI that uses different OS)
@@ -162,10 +162,10 @@ tofu providers lock \
 # Upgrade all providers to latest matching constraints
 tofu init -upgrade
 
-# Check for available updates (informational)
+# Review provider requirements from configuration and state
 tofu providers
 
-# See current provider versions
+# See installed provider versions in this working directory
 tofu version
 ```
 
@@ -192,7 +192,7 @@ terraform {
 ## Version Constraint Best Practices
 
 1. Always specify version constraints - never omit them
-2. In reusable modules: use ranges (e.g., `>= 4.0, < 6.0`) for flexibility
+2. In reusable modules: declare the minimum provider version you support (e.g., `>= 4.0`)
 3. In root configurations: use pessimistic constraints (e.g., `~> 5.31`) for stability
 4. Commit `.terraform.lock.hcl` to version control for reproducibility
 5. Run `tofu init -upgrade` periodically to update lock file
@@ -200,4 +200,4 @@ terraform {
 
 ## Conclusion
 
-Provider version constraints prevent unexpected breaking changes when new provider versions are released. Use the pessimistic constraint operator (`~>`) for root configurations to allow patch updates while preventing major version changes. Use broader ranges in library modules to remain compatible with callers. Always commit the `.terraform.lock.hcl` file to ensure all team members and CI systems use identical provider versions.
+Provider version constraints prevent unexpected breaking changes when new provider versions are released. Use the pessimistic constraint operator (`~>`) for root configurations to set an upper bound while still allowing compatible updates. Use minimum-version constraints in library modules to remain compatible with callers. Always commit the `.terraform.lock.hcl` file to ensure all team members and CI systems use identical provider versions.
