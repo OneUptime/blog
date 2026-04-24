@@ -8,143 +8,135 @@ Description: A guide to migrating from Portainer version 1.x to the modern 2.x a
 
 ## Overview
 
-Portainer 2.x introduced a completely new architecture compared to 1.x, including a new authentication system, agent-based connectivity, and significantly expanded features. Portainer 1.x reached end-of-life and is no longer maintained. This guide covers the migration path from 1.x to 2.x.
+Portainer 1.x reached end-of-life and is no longer maintained, but Portainer documents a supported upgrade path to 2.x. The key point is that this is an in-place upgrade that reuses your existing Portainer data volume: if you are on a release older than 1.24.1, upgrade to 1.24.2 first, then to 2.0.0, and only then continue to a current 2.x release.
+
+The commands below use Portainer Community Edition images. If you are migrating a Business Edition installation, use the matching BE image and follow Portainer's BE upgrade or switch instructions instead.
 
 ## Key Differences: Portainer 1.x vs 2.x
 
 | Aspect | Portainer 1.x | Portainer 2.x |
 |---|---|---|
-| Architecture | Monolithic | Multi-tier (Server + Agents) |
-| Multi-node Docker Swarm | Direct socket mount | Portainer Agent required |
-| Kubernetes support | None | Full |
-| Authentication | Local only | Local, LDAP, OAuth (BE) |
-| RBAC | Basic | Advanced (BE) |
-| Stacks from Git | No | Yes |
-| Port (HTTP) | 9000 | 9000 (deprecated) |
-| Port (HTTPS) | None | 9443 |
-| Data directory | /data | /data |
+| Architecture | Portainer Server, with Agent available for Swarm/remote management | Portainer Server with Agent or Edge Agent options |
+| Kubernetes support | None | Supported |
+| Supported upgrade path | Upgrade older installs to `1.24.2` first | Upgrade to `2.0.0` before moving to newer 2.x releases |
+| UI access during upgrade | `http://server:9000` | `http://server:9000` on `2.0.0`, then `https://server:9443` on current 2.x releases |
+| Legacy HTTP access | `9000` | `9000` optional for legacy HTTP access |
+| Data directory | `/data` | `/data` |
 
 ## What Is Migrated
 
-Portainer 2.x can read some 1.x data:
-- Admin/user accounts (with password reset required)
-- Endpoint/environment configurations (must be re-added)
-- **NOT migrated**: Stacks, templates, custom configurations
+When you follow the supported upgrade path and keep the existing `/data` volume, Portainer upgrades the existing database in place:
+- Users, teams, and access control stored in Portainer
+- Environments and environment groups stored in Portainer
+- Stack definitions created in Portainer, registries, templates, and settings
 
 ## What Must Be Reconfigured
 
-- All environments (Docker, Swarm, Kubernetes)
-- Stack deployments (must be redeployed)
-- User permissions
-- Templates
-- Registry configurations
+- Nothing in Portainer itself should need to be recreated if you keep the existing `/data` volume
+- You should still validate environment connectivity and update any Agent or Edge Agent deployments to the same version as the Portainer Server
+- If you move from legacy HTTP on `9000` to HTTPS on `9443`, update bookmarks, reverse proxy settings, and firewall rules as needed
+- Application containers, images, volumes, and other Docker/Kubernetes resources outside Portainer's own database are not part of the Portainer configuration
 
 ## Migration Process
 
 ### Step 1: Document Your 1.x Configuration
 
-Before starting, document everything in your Portainer 1.x:
+Before starting, document your current Portainer version and configuration, and take a backup of the existing volume or bind mount used for `/data`:
 
 ```bash
-# List all endpoints configured in Portainer 1.x
-
-# Screenshot or export from Portainer 1.x UI:
-# - Endpoints list
-# - User list
-# - Teams and access policies
-# - Stack definitions (copy docker-compose content)
-# - Template configurations
+# Record the exact Portainer 1.x version first.
+# Then back up the existing Docker volume or bind mount used for /data.
+#
+# Also screenshot or export from the Portainer 1.x UI:
+# - Environments list
+# - User and team list
+# - Access policies
+# - Stack definitions managed by Portainer
+# - Template and registry configuration
 ```
 
-### Step 2: Export Stack Definitions
+### Step 2: Upgrade to Portainer 1.24.2 if Needed
 
-In Portainer 1.x, export all stack compose files:
-
-```text
-Portainer 1.x → Stacks → Each stack → Editor → Copy compose content
-```
-
-Save each to a file:
-```bash
-mkdir -p stacks-backup
-# Save each stack's compose content as stacks-backup/<stack-name>.yml
-```
-
-### Step 3: Deploy Portainer 2.x
+If you are running a version older than 1.24.1, you must first upgrade to 1.24.2:
 
 ```bash
-# Keep Portainer 1.x running during initial setup of 2.x
-# Deploy 2.x on different ports temporarily
-
-docker volume create portainer2_data
+# Skip this step if you are already on 1.24.1 or 1.24.2.
+# Replace portainer_data with the existing volume or bind mount backing /data.
+docker stop portainer
+docker rm portainer
 
 docker run -d \
-  -p 8001:8000 \
-  -p 9444:9443 \
-  --name portainer2 \
+  -p 8000:8000 \
+  -p 9000:9000 \
+  --name=portainer \
+  --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v portainer2_data:/data \
-  portainer/portainer-ce:latest
+  -v portainer_data:/data \
+  portainer/portainer:1.24.2
 ```
 
-### Step 4: Configure Portainer 2.x
+### Step 3: Upgrade to Portainer 2.0.0
 
 ```bash
-1. Access https://server:9444
-2. Create admin account (set a new password)
-3. Add environments:
-   - For Docker Standalone: Local Docker socket
-   - For Docker Swarm: Deploy Portainer Agent first
-   - For remote Docker: Add remote endpoint
+# Stop and remove the 1.24.x container, but keep the existing data volume.
+# Replace portainer_data with the existing volume or bind mount backing /data.
+docker stop portainer
+docker rm portainer
+docker pull portainer/portainer-ce:2.0.0
 
-# Deploy Portainer Agent for Swarm
-docker service create \
-  --name portainer_agent \
-  --constraint 'node.platform.os == linux' \
-  --mode global \
-  --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
-  --mount type=bind,src=/var/lib/docker/volumes,dst=/var/lib/docker/volumes \
-  --network portainer_agent_network \
-  -p 9001:9001 \
-  portainer/agent:latest
+docker run -d \
+  -p 8000:8000 \
+  -p 9000:9000 \
+  --name=portainer \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:2.0.0
 ```
 
-### Step 5: Redeploy Stacks
+### Step 4: Update to a Current 2.x Release
 
-In Portainer 2.x, redeploy each stack:
+```bash
+# Once 2.0.0 is running, continue with the standard 2.x update process.
+docker stop portainer
+docker rm portainer
+docker pull portainer/portainer-ce:lts
+
+docker run -d \
+  -p 8000:8000 \
+  -p 9443:9443 \
+  --name=portainer \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:lts
+
+# Add -p 9000:9000 only if you still need legacy HTTP access.
+```
+
+### Step 5: Review Environments and Agents
+
+In most cases, Portainer-managed users, environments, stacks, registries, and templates should already be present because the existing database was upgraded in place:
 
 ```text
-Portainer 2.x → Stacks → Add Stack
-→ Paste saved docker-compose content
-→ Configure environment variables
-→ Deploy
+1. Sign in to the upgraded Portainer instance.
+2. Verify your users, teams, environments, stacks, registries, and templates are present.
+3. If you manage remote or multi-node Swarm environments, update or redeploy the Portainer Agent or Edge Agent so the agent version matches the Portainer Server version.
+4. If you need to add a new Swarm environment, use the Add Environment wizard and follow the generated Agent or Edge Agent instructions.
 ```
 
 ### Step 6: Validate Migration
 
+- Verify you can sign in to `https://server:9443` (or `http://server:9000` if you kept legacy HTTP enabled)
 - Verify all environments are connected
 - Test deploying containers
 - Check user access
-- Validate stack deployments
+- Validate that Portainer-managed stacks are present and working as expected
 
-### Step 7: Decommission Portainer 1.x
+### Step 7: Finalize the Upgrade
 
-```bash
-# Stop and remove Portainer 1.x
-docker stop portainer && docker rm portainer
-docker volume rm portainer_data   # 1.x data (no longer needed)
-
-# Rename Portainer 2.x to standard ports
-docker stop portainer2 && docker rm portainer2
-docker run -d \
-  -p 8000:8000 \
-  -p 9443:9443 \
-  --name portainer \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v portainer2_data:/data \
-  portainer/portainer-ce:latest
-```
+If you followed the supported upgrade path above, there is no separate Portainer 1.x instance to decommission later because you replaced it in place. Do not delete the existing data volume until you have completed validation and confirmed your backup is usable.
 
 ## Conclusion
 
-Migrating from Portainer 1.x to 2.x is not a direct in-place upgrade but rather a fresh installation with manual reconfiguration of environments, users, and stacks. The good news is that Portainer 2.x is significantly more capable with Kubernetes support, better security, and agent-based multi-node management. Plan for a maintenance window of 1-2 hours to complete the migration and validate all environments are functioning correctly.
+Migrating from Portainer 1.x to 2.x is a supported in-place upgrade, not a parallel fresh installation. Keep the existing `/data` volume, upgrade older 1.x releases to 1.24.2 first, then move to 2.0.0 and continue to a current 2.x release. When the upgrade is done correctly, Portainer-managed users, environments, stacks, registries, templates, and settings should come forward with the upgraded database; the main work afterward is validation and any agent version alignment.
