@@ -8,7 +8,7 @@ Description: Learn how to monitor and aggregate logs from multiple microservice 
 
 ---
 
-When running multiple microservices, logs are scattered across containers. Portainer provides a basic per-container log viewer, and this guide shows how to aggregate logs from all services for cross-service tracing and debugging.
+When running multiple microservices, logs are scattered across containers. Portainer provides a basic per-container log viewer, and this guide shows how to centralize logs from all services for cross-service tracing and debugging.
 
 ## Viewing Logs per Container in Portainer
 
@@ -17,39 +17,46 @@ For a quick look at a single service:
 1. Go to **Containers** in Portainer.
 2. Click a container name.
 3. Select the **Logs** tab.
-4. Enable **Auto-refresh** and **Timestamps**.
+4. Enable **Auto refresh** and **Timestamp**.
 
 ## Viewing Stack Logs in Portainer
 
-For all containers in a stack:
+For containers deployed as a stack:
 
 1. Go to **Stacks**.
 2. Click the stack name.
-3. Each service in the stack shows its container status and a link to logs.
+3. Open the service or container you want to inspect, then open its **Logs** view.
 
 ## Aggregating Logs with Loki and Grafana
 
-For cross-service log queries, deploy the PLG stack (Promtail + Loki + Grafana):
+For cross-service log queries, deploy the Loki stack (Alloy + Loki + Grafana):
 
 ```yaml
-version: "3.8"
 services:
   loki:
     image: grafana/loki:latest
     restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yaml
     ports:
       - "3100:3100"
     volumes:
-      - loki_data:/loki
+      - ./loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki_data:/tmp/loki
 
-  promtail:
-    image: grafana/promtail:latest
+  alloy:
+    image: grafana/alloy:latest
     restart: unless-stopped
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    ports:
+      - "12345:12345"
     volumes:
-      - /var/log:/var/log:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./promtail-config.yml:/etc/promtail/config.yml:ro
+      - alloy_data:/var/lib/alloy/data
 
   grafana:
     image: grafana/grafana:latest
@@ -61,34 +68,83 @@ services:
 
 volumes:
   loki_data:
+  alloy_data:
   grafana_data:
 ```
 
-## Promtail Configuration
+## Loki and Alloy Configuration
 
 ```yaml
-# promtail-config.yml
+# loki-config.yaml
+
+auth_enabled: false
 
 server:
-  http_listen_port: 9080
+  http_listen_port: 3100
 
-clients:
-  - url: http://loki:3100/loki/api/v1/push
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /tmp/loki
 
-scrape_configs:
-  - job_name: docker-containers
-    docker_sd_configs:
-      - host: unix:///var/run/docker.sock
-    relabel_configs:
-      - source_labels: [__meta_docker_container_name]
-        target_label: container
-      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
-        target_label: service
+schema_config:
+  configs:
+    - from: 2024-04-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  filesystem:
+    directory: /tmp/loki/chunks
+```
+
+```hcl
+# config.alloy
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "logs" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex = "/(.*)"
+    target_label = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label = "service"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  labels        = {"job" = "docker-containers"}
+  relabel_rules = discovery.relabel.logs.rules
+  forward_to    = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
 ```
 
 ## Querying Cross-Service Logs in Grafana
 
-After setup, query logs across all microservices:
+After setup, add a Loki data source in Grafana with the URL `http://loki:3100`, then query logs across all microservices:
 
 ```logql
 # All errors from any container
@@ -103,7 +159,7 @@ After setup, query logs across all microservices:
 
 ## Using Portainer for Log Forwarding
 
-Configure each container's log driver to send to the centralized stack:
+If you prefer Docker's Loki logging driver instead of Alloy, install the Loki Docker plugin on each Docker host and configure the service:
 
 ```yaml
 services:
@@ -113,5 +169,6 @@ services:
       driver: loki
       options:
         loki-url: "http://loki:3100/loki/api/v1/push"
-        labels: "service,version"
 ```
+
+With Docker Compose, the Loki driver automatically adds `compose_project` and `compose_service` labels that you can filter on in Grafana.
