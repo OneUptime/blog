@@ -31,14 +31,14 @@ docker service create --replicas 3 --name my-service nginx:alpine
 Use replicated mode for:
 - Web applications
 - API services
-- Databases with specific replica counts
+- Stateful services that explicitly support clustering or replication
 
 ### Global Mode
 
-Run exactly one replica on every node in the cluster:
+Run exactly one task on every eligible node in the cluster:
 
 ```bash
-# Run on every node
+# Run on every eligible node
 docker service create --mode global --name my-agent myagent:latest
 ```
 
@@ -53,22 +53,22 @@ Use global mode for:
 ### Create a Service with Specific Replicas
 
 1. Go to **Services → Add service**
-2. In the **Scheduling** section:
-   - Select **Replicated** mode
+2. In the service form:
+   - Set **Scheduling mode** to **Replicated**
    - Set **Replicas**: `3`
 
 ### Edit Replicas on an Existing Service
 
-1. Click the service name
-2. Click **Update this service**
+1. Go to **Services**
+2. Click the scale control in the **Scheduling Mode** column for the service
 3. Change the **Replicas** count
-4. Click **Update the service**
+4. Click the tick icon to apply
 
 ## Placement Constraints
 
 Placement constraints control which nodes receive replicas:
 
-### Available Constraint Keys
+### Common Constraint Keys
 
 ```bash
 # Node properties
@@ -76,6 +76,8 @@ node.id == <node-id>
 node.hostname == worker-01
 node.role == manager
 node.role == worker
+node.platform.os == linux
+node.platform.arch == x86_64
 
 # Node labels (set per node)
 node.labels.zone == us-east-1a
@@ -83,7 +85,7 @@ node.labels.disk == ssd
 node.labels.gpu == true
 
 # Engine labels
-engine.labels.operatingsystem == ubuntu
+engine.labels.operatingsystem == ubuntu-24.04
 ```
 
 ### Setting Node Labels
@@ -148,7 +150,7 @@ deploy:
       - spread: node.labels.zone   # Spread evenly across zones
 ```
 
-This distributes replicas evenly across nodes with different `zone` label values. If you have 3 zones with 6 replicas, each zone gets 2 replicas.
+This attempts to distribute replicas as evenly as possible across `zone` label values. If you have 3 zone values with 6 replicas, each zone gets 2 replicas.
 
 ## Configure in Portainer Stack Editor
 
@@ -188,16 +190,16 @@ After deploying:
 
 ```bash
 # See where each replica is running
-docker service ps my-service --format "table {{.Name}}\t{{.Node}}\t{{.CurrentState}}"
+docker service ps my-service
 
 # Output:
-# NAME           NODE       CURRENT STATE
-# my-service.1   worker-01  Running 2 minutes ago
-# my-service.2   worker-02  Running 2 minutes ago
-# my-service.3   worker-03  Running 2 minutes ago
+# ID            NAME           IMAGE         NODE       DESIRED STATE  CURRENT STATE
+# abc123def456  my-service.1   nginx:alpine  worker-01  Running        Running 2 minutes ago
+# ghi789jkl012  my-service.2   nginx:alpine  worker-02  Running        Running 2 minutes ago
+# mno345pqr678  my-service.3   nginx:alpine  worker-03  Running        Running 2 minutes ago
 ```
 
-In Portainer: click the service name to see the **Tasks** list with node assignments.
+In Portainer: from **Services**, click the down-arrow next to the service to expand the **Tasks** list with node assignments.
 
 ## Handling Replica Failures
 
