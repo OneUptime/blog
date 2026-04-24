@@ -13,7 +13,7 @@ The Portainer API proxies the Docker Engine API, allowing you to manage containe
 ## Prerequisites
 
 - Portainer CE or BE with a Docker environment
-- Valid JWT token or API access token
+- Valid JWT token or API access token (`Authorization: Bearer` for JWTs, `X-API-Key` for API access tokens)
 - Target endpoint (environment) ID
 - `curl` and `jq` installed
 
@@ -24,19 +24,24 @@ PORTAINER_URL="https://portainer.example.com"
 TOKEN="your-token"
 ENDPOINT_ID=1
 
+# For a JWT from /api/auth:
+AUTH_HEADER="Authorization: Bearer $TOKEN"
+# For an API access token from My account, use:
+# AUTH_HEADER="X-API-Key: $TOKEN"
+
 # List running containers
 
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -s -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/json" | \
   jq '.[] | {id: .Id[0:12], name: .Names[0], image: .Image, status: .Status}'
 
 # List ALL containers (including stopped)
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -s -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/json?all=true" | \
   jq '.[] | {id: .Id[0:12], name: .Names[0], image: .Image, status: .State}'
 
 # Filter containers by label
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -s -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/json?filters=%7B%22label%22%3A%5B%22app%3Dmyapp%22%5D%7D" | jq .
 ```
 
@@ -46,7 +51,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 CONTAINER_ID="abc123def456"
 
 # Get full container configuration and state
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -s -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}/json" | jq '{
     id: .Id[0:12],
     name: .Name,
@@ -64,7 +69,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```bash
 # Create a new container
 CREATE_RESPONSE=$(curl -s -X POST \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "$AUTH_HEADER" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/create?name=my-nginx" \
   -d '{
@@ -91,7 +96,7 @@ CREATE_RESPONSE=$(curl -s -X POST \
     }
   }')
 
-CONTAINER_ID=$(echo $CREATE_RESPONSE | jq -r '.Id')
+CONTAINER_ID=$(printf '%s' "$CREATE_RESPONSE" | jq -r '.Id')
 echo "Container created with ID: $CONTAINER_ID"
 ```
 
@@ -101,25 +106,25 @@ echo "Container created with ID: $CONTAINER_ID"
 CONTAINER_ID="abc123def456"
 
 # Start a container
-curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+curl -s -X POST -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}/start"
 
 echo "Container started."
 
 # Stop a container (graceful, 10s timeout)
-curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+curl -s -X POST -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}/stop?t=10"
 
 echo "Container stopped."
 
 # Restart a container
-curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+curl -s -X POST -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}/restart?t=10"
 
 echo "Container restarted."
 
 # Kill a container (immediate, SIGKILL)
-curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+curl -s -X POST -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}/kill"
 ```
 
@@ -128,12 +133,14 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
 ```bash
 CONTAINER_ID="abc123def456"
 
+# Works for containers using the json-file or journald logging driver
+
 # Get last 100 log lines
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -s -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}/logs?stdout=true&stderr=true&tail=100"
 
 # Get logs with timestamps
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -s -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}/logs?stdout=true&stderr=true&timestamps=true&tail=50"
 ```
 
@@ -144,12 +151,13 @@ CONTAINER_ID="abc123def456"
 
 # Create an exec instance
 EXEC_ID=$(curl -s -X POST \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "$AUTH_HEADER" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}/exec" \
   -d '{
     "AttachStdout": true,
     "AttachStderr": true,
+    "Tty": true,
     "Cmd": ["sh", "-c", "ls -la /app && df -h"]
   }' | jq -r '.Id')
 
@@ -157,10 +165,10 @@ echo "Exec ID: $EXEC_ID"
 
 # Start the exec
 curl -s -X POST \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "$AUTH_HEADER" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/exec/${EXEC_ID}/start" \
-  -d '{"Detach": false, "Tty": false}'
+  -d '{"Detach": false, "Tty": true}'
 ```
 
 ## Step 7: Remove a Container
@@ -169,15 +177,15 @@ curl -s -X POST \
 CONTAINER_ID="abc123def456"
 
 # Remove stopped container
-curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
+curl -s -X DELETE -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}"
 
 # Force remove running container
-curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
+curl -s -X DELETE -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}?force=true"
 
 # Remove container and its anonymous volumes
-curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
+curl -s -X DELETE -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}?v=true&force=true"
 ```
 
@@ -186,11 +194,19 @@ curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
 ```bash
 CONTAINER_ID="abc123def456"
 
-# Get a one-time stats snapshot (stream=false)
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}/stats?stream=false" | \
+# Get a one-time stats snapshot
+curl -s -H "$AUTH_HEADER" \
+  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}/stats?stream=false&one-shot=true" | \
   jq '{
-    cpu_percent: (.cpu_stats.cpu_usage.total_usage / .cpu_stats.system_cpu_usage * 100),
+    cpu_percent: (
+      ((.cpu_stats.cpu_usage.total_usage // 0) - (.precpu_stats.cpu_usage.total_usage // 0)) as $cpu_delta |
+      ((.cpu_stats.system_cpu_usage // 0) - (.precpu_stats.system_cpu_usage // 0)) as $system_delta |
+      (.cpu_stats.online_cpus // (.cpu_stats.cpu_usage.percpu_usage | length) // 0) as $online_cpus |
+      if $cpu_delta > 0 and $system_delta > 0 and $online_cpus > 0
+      then ($cpu_delta / $system_delta) * $online_cpus * 100
+      else 0
+      end
+    ),
     memory_mb: (.memory_stats.usage / 1048576)
   }'
 ```
