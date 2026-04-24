@@ -20,42 +20,29 @@ Scaling from a handful of edge devices to thousands introduces challenges in dep
 
 At thousands of devices, the way your edge agents communicate with Portainer matters. Portainer supports two connectivity modes:
 
-1. **Standard (direct)** - Portainer connects to the agent. Requires the agent to be reachable.
-2. **Edge (async polling)** - The agent polls Portainer at intervals. Works behind NAT/firewalls and with intermittent connectivity.
+1. **Standard** - The agent polls Portainer and can open an on-demand tunnel for live management. Requires the device to reach the Portainer API port and tunnel port.
+2. **Async** - The agent stays outbound-only and sends periodic ping, snapshot, and command check-ins. This works well with intermittent or bandwidth-constrained connectivity and does not use the tunnel port.
 
-For large fleets, **Edge mode with async polling** is recommended.
-
-```text
-# Portainer Edge Agent polling interval (set in Portainer UI or via env var)
-
-# Default: 5 seconds
-# For large fleets, increase to reduce server load:
-EDGE_POLL_FREQUENCY=30  # seconds
-```
+For large fleets with intermittent connectivity or tight bandwidth limits, **Edge Agent Async** is often the better fit. If you need live interactive management, use **Standard** mode.
 
 ## Step 1: Organize Devices with Tags and Groups
 
 Use a consistent tagging taxonomy from day one:
 
-```bash
-# Example tagging scheme:
-# region=<continent>-<country>
-# env=<production|staging|dev>
-# role=<gateway|sensor|display|pos>
-# site=<site-id>
-
-docker run -d \
-  --name portainer_edge_agent \
-  -e EDGE_KEY="device_key" \
-  -e EDGE_TAGS="region=eu-de,env=production,role=gateway,site=berlin-factory-01" \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  portainer/agent:latest
+```text
+# Example Portainer tag names:
+# region=eu-de
+# env=production
+# role=gateway
+# site=berlin-factory-01
 ```
 
+Create the tags in Portainer and assign them to environments during creation or from the environment details page.
+
 Create dynamic Edge Groups based on these tags:
-- `All-Production-Gateways` → tags: `env=production`, `role=gateway`
-- `EU-Devices` → tags: `region=eu-*`
-- `Berlin-Factory` → tags: `site=berlin-factory-01`
+- `All-Production-Gateways` → **Full Match** on `env=production`, `role=gateway`
+- `EU-Devices` → **Partial Match** across tags such as `region=eu-de`, `region=eu-fr`, `region=eu-nl`
+- `Berlin-Factory` → **Full Match** on `site=berlin-factory-01`
 
 ## Step 2: Automate Edge Agent Provisioning
 
@@ -67,11 +54,10 @@ For thousands of devices, manual enrollment doesn't scale. Use a provisioning sc
 # Run this during device initialization / first boot
 
 # Variables passed from your provisioning system
-PORTAINER_URL="${PORTAINER_URL:?Required}"
 EDGE_KEY="${EDGE_KEY:?Required}"
-DEVICE_ID="${DEVICE_ID:?Required}"
-SITE="${SITE:?Required}"
-ROLE="${ROLE:?Required}"
+EDGE_ID="${EDGE_ID:?Required}"
+ALLOW_SELF_SIGNED_CERTS="${ALLOW_SELF_SIGNED_CERTS:-0}"
+PORTAINER_AGENT_IMAGE="${PORTAINER_AGENT_IMAGE:?Required; match your Portainer Server version}"
 
 # Pull and start the edge agent
 docker run -d \
@@ -79,12 +65,16 @@ docker run -d \
   --restart always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -v /:/host \
+  -v portainer_agent_data:/data \
+  -e EDGE=1 \
+  -e EDGE_ASYNC=1 \
+  -e EDGE_ID="${EDGE_ID}" \
   -e EDGE_KEY="${EDGE_KEY}" \
-  -e EDGE_INSECURE_POLL=1 \
-  -e EDGE_TAGS="device_id=${DEVICE_ID},site=${SITE},role=${ROLE},env=production" \
-  portainer/agent:latest
+  -e EDGE_INSECURE_POLL="${ALLOW_SELF_SIGNED_CERTS}" \
+  "${PORTAINER_AGENT_IMAGE}"
 
-echo "Edge agent provisioned for device: ${DEVICE_ID}"
+echo "Edge agent provisioned for edge ID: ${EDGE_ID}"
 ```
 
 Integrate this script with your device management platform (e.g., Ansible, Chef, SaltStack, or cloud device management services).
@@ -100,14 +90,14 @@ version: "3.8"
 services:
   # Telemetry agent on every device
   node-exporter:
-    image: prom/node-exporter:v1.7.0
+    image: quay.io/prometheus/node-exporter:v1.7.0
     restart: always
+    command:
+      - '--path.rootfs=/host'
     network_mode: host
     pid: host
     volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
+      - /:/host:ro,rslave
 
   # Log forwarder
   fluent-bit:
@@ -122,37 +112,48 @@ services:
 
 ## Step 4: Configure Polling Intervals for Scale
 
-On the Portainer server, tune polling intervals to prevent thundering herd problems:
+On the Portainer server, tune the check-in intervals that match the mode you deploy:
 
 ```text
 # In Portainer Settings > Edge Compute:
-# Edge agent default poll frequency: 30s (for large fleets)
-# Edge agent check-in interval: 60s
+
+# Standard mode:
+# Edge agent default poll frequency: 30s
+
+# Async mode:
+# Edge agent default ping frequency: 60s
+# Edge agent default snapshot frequency: 60s
+# Edge agent default command frequency: 60s
 ```
 
-Devices will stagger their polls naturally, but also consider:
-- Deploying multiple Portainer instances behind a load balancer for very large fleets (10,000+).
-- Using Portainer's **Tunnel Server** feature for edge connectivity.
+As you scale up, also consider:
+- Monitoring Portainer Server CPU and network usage as fleet size grows.
+- Ensuring the Portainer tunnel server is reachable for any environments that use **Edge Agent Standard** mode.
 
 ## Step 5: Monitor Fleet Health at Scale
 
-Use the **Edge Compute > Endpoints** view with filters to spot unhealthy devices:
+Use the environment list and Edge Stack deployment views to spot unhealthy devices:
 
-- Filter by **Last check-in > 5 minutes** to find offline devices.
-- Filter by **Status = Failed** to find devices with deployment issues.
+- Review Edge environments with stale **Last check-in** timestamps to find offline or delayed devices.
+- Review each Edge Stack's per-environment deployment status to find rollout errors.
 
 For programmatic fleet health monitoring, integrate with Portainer's API:
 
 ```bash
 # Portainer API: list all edge endpoints and their last check-in time
 curl -s -H "X-API-Key: ${PORTAINER_API_KEY}" \
-  "${PORTAINER_URL}/api/endpoints?type=4" | \
-  jq '.[] | {id: .Id, name: .Name, lastCheckIn: .LastCheckInDate, status: .Status}'
+  "${PORTAINER_URL}/api/endpoints?types=4" | \
+  jq '.[] | {
+    id: .Id,
+    name: .Name,
+    lastCheckIn: (.LastCheckInDate | todate),
+    status: (if .Status == 1 then "up" elif .Status == 2 then "down" else .Status end)
+  }'
 ```
 
 ## Step 6: Rolling Updates Across the Fleet
 
-For zero-downtime updates across thousands of devices, use Edge Group targeting:
+For staged, lower-risk updates across thousands of devices, use Edge Group targeting:
 
 1. Create a `Canary-10-Devices` group with 10 test devices.
 2. Deploy the new stack version to canary first.
@@ -169,4 +170,4 @@ For zero-downtime updates across thousands of devices, use Edge Group targeting:
 
 ## Conclusion
 
-Managing thousands of edge devices with Portainer requires disciplined organization, automation, and staged rollout strategies. By combining dynamic Edge Groups with automated provisioning scripts, async polling, and API-driven monitoring, you can operate a fleet of any size from a single Portainer instance with confidence and efficiency.
+Managing thousands of edge devices with Portainer requires disciplined organization, automation, and staged rollout strategies. By combining dynamic Edge Groups with automated provisioning scripts, async check-ins, and API-driven monitoring, you can operate a large fleet from a centralized Portainer deployment with confidence and efficiency.
