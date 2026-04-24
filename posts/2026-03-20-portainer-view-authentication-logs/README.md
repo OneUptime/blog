@@ -8,35 +8,38 @@ Description: Learn how to view and analyze authentication logs in Portainer Busi
 
 ---
 
-Portainer Business Edition logs every authentication event - successful logins, failed attempts, token usage, and OAuth flows. These logs are essential for security auditing and identifying brute-force attacks or compromised accounts.
+Portainer Business Edition logs authentication actions such as successful and failed logins. These logs are essential for security auditing and identifying repeated failed authentication attempts or compromised accounts.
 
 ## Accessing Authentication Logs
 
 1. Log in to Portainer with an admin account.
-2. Go to **Settings > Logs** (or **Authentication Logs** depending on version).
-3. Filter by date range, user, or event type.
+2. From the menu, expand **Logs** and select **Authentication**.
+3. Use the date range filter and search to narrow the results.
 
 ## What Is Logged
 
 | Event | Logged Data |
 |---|---|
-| Successful login | Username, source IP, method (local/LDAP/OAuth), timestamp |
-| Failed login | Username, source IP, failure reason, timestamp |
-| API token usage | Token name, source IP, endpoint accessed |
-| OAuth flow | User, provider, success/failure |
-| Session expiry | Username, session duration |
-| Password change | Username, timestamp |
+| Successful login | Date/time, origin IP address, context, user, result |
+| Failed login | Date/time, origin IP address, context, user, result |
+| Logout | Date/time, origin IP address, context, user, result |
 
 ## Filtering Authentication Logs
 
 ```bash
 # Via API - get authentication logs
 
-TOKEN="ptr_xxxx"
+TOKEN="your_access_token_here"
 
-curl -H "X-API-Key: $TOKEN" \
-  "http://localhost:9000/api/logs/auth?limit=100&offset=0" | \
-  jq '.logs[] | {user: .username, ip: .ip, event: .action, time: .timestamp}'
+curl -k -H "X-API-Key: $TOKEN" \
+  "https://localhost:9443/api/useractivity/authlogs?limit=100&offset=0" | \
+  jq '.[] | {
+    user: .username,
+    ip: .origin,
+    context: (if .context == 1 then "internal" elif .context == 2 then "ldap" elif .context == 3 then "oauth" else "unknown" end),
+    result: (if .type == 1 then "success" elif .type == 2 then "failure" elif .type == 3 then "logout" else "unknown" end),
+    time: .timestamp
+  }'
 ```
 
 ## Detecting Brute Force Attacks
@@ -45,18 +48,20 @@ Look for rapid repeated failures from the same IP:
 
 ```bash
 # Find IPs with multiple failed logins in the last hour
-curl -H "X-API-Key: $TOKEN" \
-  "http://localhost:9000/api/logs/auth?action=login.failed&limit=1000" | \
-  jq -r '.logs[].ip' | sort | uniq -c | sort -rn | head -20
+AFTER=$(date -u -d "1 hour ago" +%s)
 
-# IPs with counts >> 10 are suspicious
+curl -k -H "X-API-Key: $TOKEN" \
+  "https://localhost:9443/api/useractivity/authlogs?after=$AFTER&limit=1000" | \
+  jq -r '.[] | select(.type == 2) | .origin' | sort | uniq -c | sort -rn | head -20
+
+# IPs with repeated failures in a short window are suspicious
 ```
 
-## Setting Up Log Retention
+## Planning Log Retention
 
-1. Go to **Settings > General**.
-2. Under **Activity Logging**, set **Log retention period**.
-3. Recommended: 90 days for most compliance frameworks (PCI-DSS requires 1 year).
+1. Portainer's authentication log UI supports viewing, filtering, and exporting logs as CSV.
+2. Portainer's official documentation does not describe a retention setting for the authentication log screen.
+3. For longer retention or centralized analysis, stream authentication and activity logs to an external SIEM using Portainer's `--syslog-address` and related CLI flags when starting the Portainer container.
 
 ## Exporting for SIEM
 
@@ -64,14 +69,14 @@ Export authentication logs regularly for external analysis:
 
 ```bash
 # Export last 30 days of auth logs to CSV
-FROM=$(date -d "30 days ago" +%s)
-TO=$(date +%s)
+FROM=$(date -u -d "30 days ago" +%s)
+TO=$(date -u +%s)
 
-curl -H "X-API-Key: $TOKEN" \
-  "http://localhost:9000/api/logs/auth?after=$FROM&before=$TO&limit=10000" | \
-  jq -r '.logs[] | [.timestamp, .username, .ip, .action, .context] | @csv' > auth-logs.csv
+curl -k -H "X-API-Key: $TOKEN" \
+  "https://localhost:9443/api/useractivity/authlogs.csv?after=$FROM&before=$TO&limit=10000" \
+  -o auth-logs.csv
 ```
 
 ## Real-time Monitoring with OneUptime
 
-Configure OneUptime to periodically check for authentication failures via the Portainer API. Create a monitor that calls `/api/logs/auth?action=login.failed` and alerts if the count exceeds a threshold in a rolling time window.
+Configure OneUptime to periodically query the Portainer API. Create an API monitor that calls `/api/useractivity/authlogs` and uses a response-body check or JavaScript expression to alert when repeated failed authentication events (`type` = `2`) appear in the returned results.
