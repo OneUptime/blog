@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Plex, Media Server, Self-Hosted, Streaming
 
-Description: Deploy Plex Media Server via Portainer with access to your local media library, optional hardware transcoding, and remote access for streaming anywhere.
+Description: Deploy Plex Media Server via Portainer with access to your local media library, optional hardware transcoding, and remote access for streaming anywhere with the appropriate Plex subscription.
 
 ## Introduction
 
@@ -13,22 +13,19 @@ Plex Media Server organizes and streams your personal media library - movies, TV
 ## Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   plex:
     image: plexinc/pms-docker:latest
     container_name: plex
-    network_mode: host   # Required for local network discovery (GDM)
+    network_mode: host   # Recommended for simpler local network discovery (GDM)
     environment:
       TZ: America/New_York
-      # Get claim token from plex.tv/claim
+      # Get claim token from https://www.plex.tv/claim
       PLEX_CLAIM: "claim-xxxxxxxxxxxxxxxxxxxx"
-      ADVERTISE_IP: http://192.168.1.100:32400/
     volumes:
       # Plex configuration and database
       - plex_config:/config
-      # Transcode temp directory (use RAM disk for performance)
+      # Transcode temp directory
       - plex_transcode:/transcode
       # Media directories (bind mount to your actual media)
       - /mnt/media/movies:/movies:ro
@@ -44,8 +41,8 @@ volumes:
 
 ## Getting a Claim Token
 
-1. Go to `plex.tv/claim` while logged in to your Plex account
-2. Copy the claim token (valid for 4 minutes)
+1. Go to `https://www.plex.tv/claim` while logged in to your Plex account
+2. Copy the claim token
 3. Set it as `PLEX_CLAIM` in the environment
 
 ## Hardware Transcoding
@@ -68,7 +65,7 @@ services:
 ```yaml
 services:
   plex:
-    runtime: nvidia
+    runtime: nvidia   # Requires NVIDIA Container Toolkit on the host
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
@@ -78,33 +75,29 @@ services:
 ## Accessing Plex
 
 - Local: `http://<host>:32400/web`
-- Enable remote access in **Settings > Remote Access**
+- Enable remote access in **Settings > Remote Access**. Remote video streaming requires Plex Pass or Remote Watch Pass unless the server owner has Plex Pass.
 
 ## Optimizing Plex Performance
 
-```yaml
-environment:
-  # Use RAM-based transcode directory for better performance
-  PLEX_MEDIA_SERVER_TRANSCODER_TEMP_DIRECTORY: /dev/shm/plex-transcode
-```
-
-For better transcode performance, use a tmpfs mount:
+For better transcode performance, use a tmpfs mount for `/transcode`:
 
 ```yaml
-volumes:
-  - type: tmpfs
-    target: /transcode
-    tmpfs:
-      size: 4294967296  # 4GB RAM for transcoding
+services:
+  plex:
+    volumes:
+      - type: tmpfs
+        target: /transcode
+        tmpfs:
+          size: 4294967296  # 4 GiB RAM for transcoding
 ```
 
 ## Plex Pass Features
 
 With Plex Pass, you can enable:
-- Hardware transcoding (via **Settings > Transcoder**)
+- Hardware transcoding (via **Settings > Server > Transcoder**)
 - Live TV & DVR
-- Mobile sync
+- Downloads
 
 ## Conclusion
 
-Plex Media Server deployed via Portainer provides a polished media streaming experience for your entire media library. Host network mode ensures Plex discovery protocols work correctly on your local network. Persistent volumes separate configuration from media, making it safe to update Plex without risking your library metadata or settings.
+Plex Media Server deployed via Portainer provides a polished media streaming experience for your entire media library. Host network mode simplifies Plex discovery protocols on your local network. Persistent volumes separate configuration from media, making it safe to update Plex without risking your library metadata or settings.
