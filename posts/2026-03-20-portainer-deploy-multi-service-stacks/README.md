@@ -18,11 +18,12 @@ Portainer Stacks provide a powerful way to manage multi-service applications usi
 
 ## Understanding Portainer Stacks
 
-A Portainer Stack is essentially a Docker Compose file managed through the Portainer UI. Stacks can be deployed on:
+A Portainer Stack is essentially a Docker Compose file managed through the Portainer UI. In Portainer, stacks can be deployed on:
 
 - **Standalone Docker** - uses Docker Compose v2
-- **Docker Swarm** - uses Docker stack deploy under the hood
-- **Kubernetes** - converts Compose to Kubernetes manifests (limited support)
+- **Docker Swarm** - uses `docker stack deploy` under the hood
+
+For Kubernetes environments, Portainer uses **Applications** deployed from manifests or Helm charts rather than Docker stacks.
 
 ## Step 1: Navigate to Stacks
 
@@ -42,52 +43,41 @@ Choose one of the deployment methods:
 
 ## Step 3: Write Your Docker Compose File
 
-Here is an example multi-service application stack with a web app, API, and database:
+Here is an example multi-service application stack with a web app, API, database, and cache service:
 
 ```yaml
-version: "3.8"
-
 services:
   # Frontend web application
   frontend:
     image: nginx:alpine
     ports:
       - "80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - api
-    networks:
-      - app-network
 
   # Backend API service
   api:
-    image: node:18-alpine
-    working_dir: /app
-    command: node server.js
-    environment:
-      - NODE_ENV=production
-      - DB_HOST=database
-      - DB_PORT=5432
-      - DB_NAME=appdb
-    depends_on:
-      - database
-    networks:
-      - app-network
+    image: node:20-alpine
+    command:
+      - node
+      - -e
+      - |
+        require('http')
+          .createServer((req, res) => {
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ status: 'ok' }));
+          })
+          .listen(3000, '0.0.0.0');
+    ports:
+      - "3000:3000"
 
   # PostgreSQL database
   database:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     environment:
       - POSTGRES_DB=appdb
       - POSTGRES_USER=appuser
-      - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
     volumes:
       - db-data:/var/lib/postgresql/data
-    networks:
-      - app-network
-    secrets:
-      - db_password
 
   # Redis cache
   cache:
@@ -95,22 +85,10 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - cache-data:/data
-    networks:
-      - app-network
 
 volumes:
   db-data:
-    driver: local
   cache-data:
-    driver: local
-
-networks:
-  app-network:
-    driver: bridge
-
-secrets:
-  db_password:
-    external: true
 ```
 
 ## Step 4: Configure Stack Settings
@@ -118,7 +96,7 @@ secrets:
 Before deploying, configure additional settings:
 
 - **Stack name** - give your stack a meaningful name (e.g., `my-webapp`)
-- **Environment variables** - add `.env` variables or define them inline
+- **Environment variables** - define them in Portainer or load them from a `.env` file
 - **Access control** - restrict stack management to specific teams (BE only)
 
 ## Step 5: Deploy the Stack
@@ -147,7 +125,7 @@ From the stack detail page you can:
 
 ## Environment Variables in Stacks
 
-Use the **Environment variables** section in Portainer to inject secrets without hardcoding them:
+Use the **Environment variables** section in Portainer to inject configuration values without hardcoding them:
 
 ```yaml
 services:
@@ -158,7 +136,7 @@ services:
       - API_KEY=${API_KEY}
 ```
 
-In the Portainer UI, add `DB_PASSWORD` and `API_KEY` as environment variable entries before deploying.
+In the Portainer UI, add `DB_PASSWORD` and `API_KEY` as environment variable entries before deploying. For highly sensitive values, prefer Docker secrets where your deployment target supports them.
 
 ## Troubleshooting
 
