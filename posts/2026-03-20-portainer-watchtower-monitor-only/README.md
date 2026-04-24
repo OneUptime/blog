@@ -8,7 +8,7 @@ Description: Learn how to run Watchtower in monitor-only mode alongside Portaine
 
 ## Introduction
 
-Watchtower's monitor-only mode checks for new container image versions and sends notifications, but does not automatically pull new images or restart containers. This provides the visibility benefits of Watchtower - knowing when updates are available - without the risk of unexpected container restarts in production. This guide covers deploying and using Watchtower in monitor-only mode.
+Watchtower's monitor-only mode checks for new container image versions and sends notifications, but does not automatically replace or restart containers. Watchtower can still pull updated images to compare digests, even in monitor-only mode. This provides the visibility benefits of Watchtower - knowing when updates are available - without the risk of unexpected container restarts in production. This guide covers deploying and using Watchtower in monitor-only mode.
 
 ## Prerequisites
 
@@ -20,8 +20,6 @@ Watchtower's monitor-only mode checks for new container image versions and sends
 
 ```yaml
 # Portainer stack - monitor-only Watchtower
-
-version: "3.8"
 
 services:
   watchtower:
@@ -37,7 +35,7 @@ services:
       # Poll every 6 hours for update availability
       WATCHTOWER_POLL_INTERVAL: "21600"
 
-      # Notifications (required to get value from monitor-only mode)
+      # Notifications (recommended to get value from monitor-only mode)
       WATCHTOWER_NOTIFICATIONS: "slack"
       WATCHTOWER_NOTIFICATION_SLACK_HOOK_URL: "${SLACK_WEBHOOK_URL}"
       WATCHTOWER_NOTIFICATION_SLACK_IDENTIFIER: "Update Monitor@production"
@@ -74,33 +72,25 @@ Monitor-only mode pairs well with a manual update workflow via Portainer:
 
 ```bash
 #!/bin/bash
-# review-and-update.sh - Run weekly to apply pending updates
+# review-and-update.sh - Pull the latest image, then redeploy the stack manually
 
-# Get notification of outdated containers (from Watchtower monitor)
-# Then for each outdated container, update manually:
+CONTAINER_NAME="${1:?Usage: review-and-update.sh <container-name>}"
 
-CONTAINER_NAME="${1}"
+# 1. Get the current image reference
+IMAGE="$(docker inspect --format '{{.Config.Image}}' "$CONTAINER_NAME")"
 
-# 1. Pull the new image
-docker pull $(docker inspect "$CONTAINER_NAME" | jq -r '.[].Config.Image')
+# 2. Pull the latest image for that tag
+docker pull "$IMAGE"
 
-# 2. Get the current container config
-IMAGE=$(docker inspect "$CONTAINER_NAME" | jq -r '.[].Config.Image')
-ENV=$(docker inspect "$CONTAINER_NAME" | jq -r '.[].Config.Env[]' | awk '{print "-e " $0}' | tr '\n' ' ')
-
-# 3. Stop and remove the old container
-docker stop "$CONTAINER_NAME"
-docker rm "$CONTAINER_NAME"
-
-# 4. Start with new image (preserving volumes via docker-compose is safer)
-echo "Update $CONTAINER_NAME to new image: $IMAGE"
-echo "Use: docker compose pull && docker compose up -d in the stack directory"
+# 3. Redeploy the stack manually so Docker recreates the container
+echo "Pulled latest image for $CONTAINER_NAME: $IMAGE"
+echo "Next step: redeploy the stack in Portainer."
 ```
 
 In Portainer, the manual update workflow is:
 1. **Stacks** → select the stack with outdated containers
-2. Click **Pull and redeploy**
-3. Or edit the stack, change the image tag, and click **Update the stack**
+2. If the stack was deployed from Git, click **Pull and redeploy**
+3. If the stack was deployed from the Web Editor, edit the stack, change the image tag, and click **Update the stack**
 
 ## Step 4: Monitor Specific Containers Only
 
@@ -139,8 +129,9 @@ services:
       WATCHTOWER_NOTIFICATIONS: "slack"
       WATCHTOWER_NOTIFICATION_SLACK_HOOK_URL: "${SLACK_WEBHOOK_URL}"
       WATCHTOWER_NOTIFICATION_SLACK_IDENTIFIER: "PRODUCTION Monitor"
+```
 
----
+```yaml
 # Staging server: auto-update to validate new images
 services:
   watchtower:
@@ -162,13 +153,14 @@ Use monitor-only notification to trigger a human-approved deployment:
 # 1. Team reviews the update (release notes, security advisories)
 # 2. Approved team member triggers Portainer webhook manually
 
-# Portainer stack webhook for manual trigger:
-curl -X POST "https://portainer.example.com/api/stacks/webhooks/YOUR-WEBHOOK-UUID"
+# Portainer stack webhook for manual trigger (Business Edition only):
+curl -X POST "https://portainer.example.com:9443/api/stacks/webhooks/YOUR-WEBHOOK-UUID"
 
-# Or via Portainer API with auth:
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/stacks/1/git/redeploy" \
-  -d '{"pullImage": true}'
+# Or via Portainer API with auth for a Git-based stack:
+curl -X PUT -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  "https://portainer.example.com/api/stacks/1/git/redeploy?endpointId=1" \
+  -d '{"RepullImageAndRedeploy": true}'
 ```
 
 ## Step 7: Check Watchtower Monitor Logs
@@ -177,13 +169,13 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 # View monitor activity
 docker logs watchtower-monitor --follow
 
-# See what Watchtower found (debug level shows more details)
-docker logs watchtower-monitor 2>&1 | grep -i "found\|outdated\|update\|monitor"
+# See common update-related messages
+docker logs watchtower-monitor 2>&1 | grep -i "session done\|pull\|update\|monitor"
 
-# Sample output in monitor-only mode:
-# INF Checking container: nginx, image: nginx:alpine
-# INF Found newer image for container: nginx
-# INF Session done - Checked 8 containers, found 2 with new images
+# Sample output can vary by Watchtower version and log level:
+# DEBU Checking containers for updated images
+# DEBU Digests did not match, doing a pull.
+# INFO Session done                              Failed=0 Scanned=8 Updated=2
 # (No restarts because monitor-only is enabled)
 ```
 
