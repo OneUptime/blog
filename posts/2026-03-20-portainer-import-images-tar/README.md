@@ -38,7 +38,7 @@ docker save nginx:alpine | gzip > nginx-alpine.tar.gz
 # Export multiple images into one tar:
 docker save nginx:alpine redis:7-alpine postgres:15-alpine > all-images.tar
 
-# Export by image ID (includes all tags):
+# Export by image ID (the archive won't include repository:tag names):
 docker save 7abc123def45 > image-by-id.tar
 
 # Export a specific stack of images:
@@ -71,7 +71,7 @@ cp all-images.tar /media/usb/images/
 
 1. Navigate to **Images** in Portainer.
 2. Click the **Import** button.
-3. Click **Browse** or drag-and-drop the `.tar` or `.tar.gz` file.
+3. Click **Select file** and choose the `.tar`, `.tar.gz`, `.tar.bz2`, or `.tar.xz` file.
 4. Click **Upload**.
 
 Portainer loads the image(s) from the file and makes them available for container creation.
@@ -187,27 +187,28 @@ For automated imports without the UI:
 
 ```bash
 # Import image via Portainer API:
-PORTAINER_URL="http://portainer:9000"
+PORTAINER_URL="https://portainer:9443"
 API_KEY="your-api-key"
 ENDPOINT_ID=1
 
 curl -s -X POST \
   -H "X-API-Key: ${API_KEY}" \
-  -F "file=@nginx-alpine.tar" \
+  -H "Content-Type: application/x-tar" \
+  --data-binary "@nginx-alpine.tar" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/images/load"
 ```
 
 ## Image Tar File Considerations
 
 ```bash
-# Tar files include ALL tags for an image
-# When you load a tar, all tags are restored:
+# Tar files can include multiple tags for an image
+# When you load a tar, the tags stored in that archive are restored:
 docker save myapp:v2.0.0 myapp:v2.1.0 myapp:latest > myapp-all-versions.tar
 docker load -i myapp-all-versions.tar
 # Loads all three tags
 
 # Check tar file contents without importing:
-docker save myapp:latest | tar -t | grep "manifest\|json"
+docker save myapp:latest | tar -tf - | grep -E "manifest|json"
 tar -tzf myapp.tar.gz | head -20
 
 # Image tar size vs compressed image size:
