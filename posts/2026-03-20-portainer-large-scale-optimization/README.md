@@ -15,14 +15,14 @@ Portainer's performance degrades with scale when left at default settings. This 
 | Bottleneck | Symptom | Fix |
 |------------|---------|-----|
 | Snapshot interval too short | High CPU, slow UI | Increase `--snapshot-interval` |
-| BoltDB database growth | Slow page loads, high memory | Run `--compact-db` periodically |
-| Too many environments active | Slow dashboard | Reduce active endpoint polling |
-| Small `DockerSnapshotRaw` | Missing containers in UI | Already handled by Portainer |
+| BoltDB database growth | Slow page loads, high memory | Run Portainer with `--compact-db` on a scheduled restart |
+| Frequent external API polling | High API load | Cache responses and rate-limit clients |
+| Slow storage for `/data` volume | Slower database operations | Use SSD-backed storage |
 | Insufficient CPU/RAM | Portainer OOM killed | Increase container resource limits |
 
 ## Tuning Snapshot Interval
 
-The snapshot interval controls how often Portainer polls each Docker environment:
+The snapshot interval controls how often Portainer polls each Docker environment. Portainer expects a duration string such as `30s`, `5m`, or `1h`, and the default is `5m`:
 
 ```bash
 docker run -d \
@@ -31,18 +31,18 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
-  --snapshot-interval 120    # Poll every 2 minutes instead of default 60s
+  --snapshot-interval 10m    # Poll every 10 minutes instead of the default 5m
 ```
 
-For large environments (100+ containers, 20+ stacks), set to 300 seconds (5 minutes):
+For larger environments (100+ containers, 20+ stacks), start by testing a longer interval such as 15 minutes:
 
 ```bash
-  --snapshot-interval 300
+  --snapshot-interval 15m
 ```
 
 ## Setting Resource Limits
 
-Ensure Portainer has adequate CPU and memory for large workloads:
+For Docker Swarm deployments, ensure Portainer has adequate CPU and memory for large workloads:
 
 ```yaml
 version: "3.8"
@@ -51,8 +51,7 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     command:
-      - --snapshot-interval=120
-      - --log-level=warn         # Reduce logging overhead
+      - --snapshot-interval=10m
     deploy:
       resources:
         limits:
@@ -70,22 +69,22 @@ services:
 
 ## Compacting the BoltDB Database
 
-The Portainer database grows over time with snapshot data. Compact it to reclaim space and improve read/write performance:
+The Portainer database grows over time with snapshot metadata. The `--compact-db` flag compacts the database on startup, so schedule a restart with the flag enabled to reclaim space and improve read/write performance:
 
 ```bash
-# Stop Portainer before compacting
-
+# Stop and remove the existing Portainer container but keep the data volume
 docker stop portainer
+docker rm portainer
 
-# Run compaction
-docker run --rm \
+# Recreate Portainer with compaction enabled on startup
+docker run -d \
+  --name portainer \
+  -p 9000:9000 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
-  --data /data \
-  --compact-db
-
-# Restart Portainer
-docker start portainer
+  --compact-db \
+  --snapshot-interval 10m
 ```
 
 Check database size before and after:
@@ -98,43 +97,48 @@ docker run --rm -v portainer_data:/data alpine du -sh /data/portainer.db
 
 If many users or external systems are calling the Portainer API frequently, reduce unnecessary polling:
 
-```bash
-# Use API tokens with appropriate scopes - avoid admin tokens for read-only scripts
-# Implement caching in external scripts that poll Portainer
+Use access tokens from a least-privileged Portainer user instead of administrator tokens, and implement caching in external scripts that poll Portainer.
 
-# Rate-limit Portainer API via Nginx
-location /api/ {
-    limit_req zone=portainer_api burst=20 nodelay;
-    proxy_pass http://portainer:9000;
+```nginx
+http {
+    limit_req_zone $binary_remote_addr zone=portainer_api:10m rate=10r/s;
+
+    server {
+        location /api/ {
+            limit_req zone=portainer_api burst=20 nodelay;
+            proxy_pass http://portainer:9000;
+        }
+    }
 }
 ```
 
 ## Deploying on SSD Storage
 
-Portainer's BoltDB database is write-heavy during snapshots. Use SSD storage for the `portainer_data` volume:
+Portainer stores its BoltDB database and metadata in the `portainer_data` volume. Use SSD storage for that volume:
 
 ```bash
 # Create a volume on an SSD-backed mount point
+mkdir -p /mnt/ssd/portainer
+
 docker volume create \
+  --driver local \
   --opt type=none \
   --opt device=/mnt/ssd/portainer \
   --opt o=bind \
   portainer_ssd_data
 ```
 
-## Horizontal Scaling with Portainer Business
+## Scaling Portainer Business
 
-Portainer Business Edition supports cluster deployments for high availability. Configure two Portainer instances behind a load balancer sharing the same database backend for large-scale, fault-tolerant deployments.
+Portainer does not currently support running multiple instances of the Portainer Server container to manage the same clusters. For large-scale deployments, run a single Portainer Server on a dedicated management node and connect your environments through Portainer Agents or Edge Agents.
 
 ## Monitoring Portainer's Own Performance
 
-Use cAdvisor and Grafana to track Portainer's resource usage:
+Use cAdvisor and Grafana to track Portainer's resource usage, or use `docker stats` for a quick check:
 
 ```bash
 # Check Portainer CPU and memory in real time
 docker stats portainer --no-stream
 
-# Expected healthy values (adjust for your scale):
-# CPU: <10% at rest, <50% during snapshots
-# Memory: <512 MB for up to 50 environments
+# Watch for sustained CPU spikes during snapshot jobs and steady memory growth over time
 ```
