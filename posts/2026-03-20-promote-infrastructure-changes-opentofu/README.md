@@ -34,6 +34,10 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ case(github.ref == 'refs/heads/main', 'production', github.ref == 'refs/heads/staging', 'staging', 'dev') }}
+    env:
+      IMAGE_TAG: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,31 +45,33 @@ jobs:
         id: env
         run: |
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "environment=production" >> $GITHUB_OUTPUT
-            echo "tf_dir=environments/production" >> $GITHUB_OUTPUT
+            echo "environment=production" >> "$GITHUB_OUTPUT"
+            echo "tf_dir=environments/production" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.ref }}" = "refs/heads/staging" ]; then
-            echo "environment=staging" >> $GITHUB_OUTPUT
-            echo "tf_dir=environments/staging" >> $GITHUB_OUTPUT
+            echo "environment=staging" >> "$GITHUB_OUTPUT"
+            echo "tf_dir=environments/staging" >> "$GITHUB_OUTPUT"
           else
-            echo "environment=dev" >> $GITHUB_OUTPUT
-            echo "tf_dir=environments/dev" >> $GITHUB_OUTPUT
+            echo "environment=dev" >> "$GITHUB_OUTPUT"
+            echo "tf_dir=environments/dev" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
 
       - name: Init and Apply
         run: |
           tofu init
-          tofu apply -auto-approve -var="app_image=${{ env.IMAGE_TAG }}"
+          tofu apply -auto-approve \
+            -var="app_image=${IMAGE_TAG}" \
+            -var="git_commit_sha=${{ github.sha }}"
         working-directory: ${{ steps.env.outputs.tf_dir }}
 ```
 
 ## Validating Before Promotion
 
 ```hcl
-# environments/staging/validation.tf
-# Validation that must pass before promoting to production
+# environments/production/validation.tf
+# Validation that must pass before applying to production
 resource "terraform_data" "pre_promote_checks" {
   lifecycle {
     precondition {
@@ -83,8 +89,10 @@ data "aws_ssm_parameter" "staging_tests_passed" {
 
 ## Promoting Specific Changes
 
+For exceptional cases only, OpenTofu supports targeted plans and applies for a specific module.
+
 ```bash
-# Promote only the application module changes (not network or database)
+# Use targeted applies only when you need to isolate an application-only change
 cd environments/staging
 tofu plan -target=module.application
 
@@ -103,10 +111,10 @@ tofu apply -target=module.application
 output "deployed_versions" {
   description = "Versions currently deployed in this environment"
   value = {
-    app_image       = var.app_image
-    terraform_version = terraform.version
-    deployed_at     = timestamp()
-    git_commit      = var.git_commit_sha
+    app_image        = var.app_image
+    opentofu_version = var.opentofu_version
+    deployed_at      = timestamp()
+    git_commit       = var.git_commit_sha
   }
 }
 ```
