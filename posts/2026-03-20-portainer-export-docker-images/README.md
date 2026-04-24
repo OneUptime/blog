@@ -36,15 +36,16 @@ The most reliable way to export images:
 
 docker save myorg/myapp:v2.1.0 > myapp-v2.1.0.tar
 
-# Export with gzip compression (saves significant space):
+# Export with gzip compression (can reduce storage size):
 docker save myorg/myapp:v2.1.0 | gzip > myapp-v2.1.0.tar.gz
 
-# Export multiple images (all tagged versions):
+# Export multiple tags in one archive:
 docker save myorg/myapp:v2.0.0 myorg/myapp:v2.1.0 myorg/myapp:latest \
     > myapp-all-versions.tar
 
 # Export all images with a specific prefix:
-docker images --filter "reference=myorg/*" --format "{{.Repository}}:{{.Tag}}" | \
+IMAGES_TO_SAVE=$(docker images --filter "reference=myorg/*:*" --format "{{.Repository}}:{{.Tag}}")
+[ -n "${IMAGES_TO_SAVE}" ] && printf '%s\n' "${IMAGES_TO_SAVE}" | \
     xargs docker save | gzip > myorg-all-images.tar.gz
 
 # Export using image ID (exports the image regardless of tags):
@@ -58,21 +59,20 @@ For automation and scripting:
 
 ```bash
 # Export an image via Portainer API
-PORTAINER_URL="http://portainer:9000"
+PORTAINER_URL="https://portainer.example.com:9443"
 API_KEY="your-api-key"
 ENDPOINT_ID=1
 IMAGE_NAME="nginx:alpine"
+SAFE_NAME=$(printf '%s' "${IMAGE_NAME}" | tr '/:' '--')
 
-# URL-encode the image name
-ENCODED_IMAGE=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${IMAGE_NAME}'))")
-
-# Download the image as a tar stream
-curl -s \
+# Portainer proxies the Docker Engine API under /api/endpoints/{id}/docker
+curl -fsS --get \
   -H "X-API-Key: ${API_KEY}" \
-  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/images/${ENCODED_IMAGE}/get" \
-  > "${IMAGE_NAME//\//-}.tar"
+  --data-urlencode "names=${IMAGE_NAME}" \
+  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/images/get" \
+  -o "${SAFE_NAME}.tar"
 
-echo "Exported: ${IMAGE_NAME//\//-}.tar"
+echo "Exported: ${SAFE_NAME}.tar"
 ```
 
 ## Step 4: Bulk Export Script
@@ -123,7 +123,7 @@ echo ""
 echo "=== Export Summary ==="
 ls -lh "${EXPORT_DIR}"
 echo ""
-echo "Total size: $(du -sh ${EXPORT_DIR} | cut -f1)"
+echo "Total size: $(du -sh "${EXPORT_DIR}" | cut -f1)"
 ```
 
 ## Step 5: Export and Push to Archive Registry
@@ -170,30 +170,29 @@ ls -lh myapp-v2.1.0.tar.gz
 
 # Inspect the tar contents without loading:
 tar -tzf myapp-v2.1.0.tar.gz | head -20
-# Output shows:
+# Output typically includes files such as:
+# manifest.json
 # repositories
 # abc123.../layer.tar
-# manifest.json
-# config.json
+# abc123....json
 
 # Test the file integrity:
 gzip -t myapp-v2.1.0.tar.gz && echo "File is valid"
 
-# Test load (dry run - load then immediately remove):
+# Optional functional test (loads the image into Docker):
 docker load -i myapp-v2.1.0.tar.gz
-docker image rm myorg/myapp:v2.1.0
+docker image inspect myorg/myapp:v2.1.0 > /dev/null && echo "Image loaded successfully"
 ```
 
 ## Export Size Expectations
 
 ```bash
-# Image sizes vs. export file sizes:
-# nginx:alpine (42 MB)      → tar: 42 MB    → tar.gz: ~40 MB
-# postgres:15 (412 MB)      → tar: 410 MB   → tar.gz: ~140 MB
-# node:20 (600 MB)          → tar: 580 MB   → tar.gz: ~200 MB
-# ubuntu:22.04 (77 MB)      → tar: 77 MB    → tar.gz: ~28 MB
+# Export file sizes vary by image version, platform, and layer contents.
+# The uncompressed .tar is often close to the image size shown by `docker images`.
+# gzip can reduce the transfer size, but the savings vary widely by image.
 
-# Always use gzip compression for storage/transfer efficiency
+# Check the local image size before exporting:
+docker images myorg/myapp:v2.1.0
 ```
 
 ## Use Cases by Scenario
@@ -220,4 +219,4 @@ aws s3 cp myapp-v2.1.0.tar.gz s3://compliance-bucket/images/
 
 ## Conclusion
 
-Exporting Docker images from Portainer or Docker CLI creates portable tar files for backup, transfer, and air-gapped deployments. Always use gzip compression for storage and transfer efficiency. For systematic image archival in production, consider pushing to a dedicated archive registry rather than managing tar files - it provides versioning, tagging, and easy retrieval without large binary file management.
+Exporting Docker images from Portainer or Docker CLI creates portable tar files for backup, transfer, and air-gapped deployments. Consider gzip compression when you want smaller files for storage or transfer. For systematic image archival in production, consider pushing to a dedicated archive registry rather than managing tar files - it provides versioning, tagging, and easy retrieval without large binary file management.
