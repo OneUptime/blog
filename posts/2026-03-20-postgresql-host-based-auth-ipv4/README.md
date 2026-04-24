@@ -8,7 +8,7 @@ Description: Configure complete PostgreSQL remote access for IPv4 clients by com
 
 ## Introduction
 
-PostgreSQL host-based authentication combines `postgresql.conf` (binding) and `pg_hba.conf` (authorization). Both must be configured correctly for remote access. This guide covers the complete setup from both the server binding and authentication perspectives.
+PostgreSQL host-based authentication combines `postgresql.conf` (binding) and `pg_hba.conf` (client authentication rules). Both must be configured correctly for remote access. This guide covers the complete setup from both the server binding and authentication perspectives.
 
 ## Complete Remote Access Setup
 
@@ -16,7 +16,7 @@ PostgreSQL host-based authentication combines `postgresql.conf` (binding) and `p
 # Step 1: Configure listen_addresses
 
 sudo nano /etc/postgresql/16/main/postgresql.conf
-# listen_addresses = '*'    # Or specific IP: '10.0.0.5'
+# listen_addresses = '0.0.0.0'    # Or specific IP: '10.0.0.5'
 
 # Step 2: Configure pg_hba.conf
 sudo nano /etc/postgresql/16/main/pg_hba.conf
@@ -35,7 +35,7 @@ host    appdb           appuser         10.0.0.10/32            scram-sha-256
 host    postgres        monitor         10.0.0.30/32            scram-sha-256
 
 # Internal team (subnet access, limited databases)
-host    reporting       analyst         192.168.1.0/24          md5
+host    reporting       analyst         192.168.1.0/24          scram-sha-256
 
 # Reject all other IPv4 connections
 host    all             all             0.0.0.0/0               reject
@@ -48,14 +48,15 @@ sudo -u postgres psql
 
 -- Create application database and user
 CREATE DATABASE appdb;
-CREATE USER appuser WITH ENCRYPTED PASSWORD 'strongpassword';
+CREATE USER appuser WITH PASSWORD 'strongpassword';
 GRANT CONNECT ON DATABASE appdb TO appuser;
+\c appdb
 GRANT ALL PRIVILEGES ON SCHEMA public TO appuser;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO appuser;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO appuser;
 
 -- Create read-only monitoring user
-CREATE USER monitor WITH ENCRYPTED PASSWORD 'monpass';
+CREATE USER monitor WITH PASSWORD 'monpass';
 GRANT CONNECT ON DATABASE postgres TO monitor;
 GRANT pg_monitor TO monitor;   -- PostgreSQL 10+ monitoring role
 ```
@@ -71,9 +72,9 @@ sudo systemctl reload postgresql
 
 # Verify listening interfaces
 sudo ss -tlnp | grep postgres
-# Should show: *:5432 or specific IP:5432
+# Should show: 0.0.0.0:5432 or the specific configured IP:5432
 
-# Verify pg_hba.conf is loaded
+# Reload configuration and inspect pg_hba.conf rules
 sudo -u postgres psql -c "SELECT pg_reload_conf();"
 sudo -u postgres psql -c "SELECT * FROM pg_hba_file_rules;"
 ```
@@ -82,9 +83,9 @@ sudo -u postgres psql -c "SELECT * FROM pg_hba_file_rules;"
 
 ```bash
 # Allow PostgreSQL from app server only
-sudo ufw allow from 10.0.0.10 to any port 5432
-sudo ufw allow from 10.0.0.30 to any port 5432
-sudo ufw deny 5432
+sudo ufw allow proto tcp from 10.0.0.10 to any port 5432
+sudo ufw allow proto tcp from 10.0.0.30 to any port 5432
+sudo ufw deny proto tcp to any port 5432
 
 # iptables
 sudo iptables -A INPUT -p tcp --dport 5432 -s 10.0.0.10/32 -j ACCEPT
@@ -108,9 +109,9 @@ psql -h 10.0.0.5 -U monitor -d postgres \
 
 # Test that unauthorized IP is rejected
 psql -h 10.0.0.5 -U appuser -d appdb  # From unauthorized host
-# Expected: FATAL: no pg_hba.conf entry for host "10.0.0.99"
+# Expected: connection is rejected by pg_hba.conf
 ```
 
 ## Conclusion
 
-Complete PostgreSQL remote access requires: `listen_addresses = '*'` in `postgresql.conf`, specific `host` entries in `pg_hba.conf` with IP/subnet restrictions, corresponding database users created with `CREATE USER`, and firewall rules allowing port 5432 from authorized sources. A final `reject` rule in `pg_hba.conf` ensures unauthorized IPs are blocked even if the firewall allows the port.
+Complete PostgreSQL remote access requires: `listen_addresses` to include the server's IPv4 address in `postgresql.conf`, specific `host` entries in `pg_hba.conf` with IP/subnet restrictions, corresponding database users created with `CREATE USER`, and firewall rules allowing port 5432 from authorized sources. A final `reject` rule in `pg_hba.conf` ensures unauthorized IPs are blocked even if the firewall allows the port.
