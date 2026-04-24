@@ -15,6 +15,7 @@ Overlay networks enable containers running on different Docker Swarm nodes to co
 - Docker Swarm cluster initialized (at least one manager + worker nodes)
 - Portainer connected to the Swarm manager
 - Ports 4789 (UDP), 7946 (TCP/UDP), and 2377 (TCP) open between Swarm nodes
+- If you plan to use encrypted overlay networks, allow IP protocol 50 (IPSec ESP) between Swarm nodes as well
 
 ## When to Use Overlay Networks
 
@@ -40,7 +41,7 @@ docker swarm join \
 
 ## Step 2: Create Overlay Network via Portainer
 
-1. In Portainer, ensure you're in the Swarm context.
+1. In Portainer, make sure you're managing a Docker Swarm environment.
 2. Navigate to **Networks**.
 3. Click **Add network**.
 4. Configure:
@@ -60,8 +61,8 @@ Gateway: 10.0.1.1
 6. Options:
 
 ```text
-Attachable: true   (allows standalone containers to attach to this network)
-Encrypted:  true   (encrypt overlay traffic)
+Enable manual container attachment: true   (allows standalone containers to attach to this network)
+Driver option: encrypted=true              (encrypt overlay traffic)
 ```
 
 7. Click **Create the network**.
@@ -118,7 +119,7 @@ services:
       replicas: 2
       placement:
         constraints:
-          - node.role == worker
+          - node.role==worker
 
   postgres:
     image: postgres:15-alpine
@@ -132,7 +133,7 @@ services:
       replicas: 1
       placement:
         constraints:
-          - node.labels.storage == "ssd"   # Place on SSD node
+          - node.labels.storage==ssd   # Place on SSD node
 
   redis:
     image: redis:7-alpine
@@ -176,7 +177,7 @@ API_URL=http://api:8080
 # The VIP load-balances across all service replicas automatically
 ```
 
-## Step 6: Overlay Network for Portainer Edge (Swarm)
+## Step 6: Portainer Server and Agent on an Overlay Network
 
 For Portainer-managed Swarm deployments:
 
@@ -186,21 +187,24 @@ version: "3.8"
 
 services:
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:lts
+    command: -H tcp://tasks.portainer-agent:9001 --tlsskipverify
     ports:
+      - "9443:9443"
       - "9000:9000"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
     networks:
       - portainer-overlay
     deploy:
+      mode: replicated
+      replicas: 1
       placement:
         constraints:
-          - node.role == manager
+          - node.role==manager
 
   portainer-agent:
-    image: portainer/agent:latest
+    image: portainer/agent:lts
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
@@ -208,6 +212,9 @@ services:
       - portainer-overlay
     deploy:
       mode: global   # Run on every Swarm node
+      placement:
+        constraints:
+          - node.platform.os==linux
 
 networks:
   portainer-overlay:
@@ -226,8 +233,8 @@ docker network inspect myapp-overlay
 # - IP addresses assigned per node
 # - VXLAN settings
 
-# Check which nodes have containers on the network:
-docker network inspect myapp-overlay | jq '.[].Peers'
+# Check the overlay peers participating in the network:
+docker network inspect myapp-overlay | jq '.[0].Peers'
 ```
 
 ## Step 8: Firewall Requirements for Overlay Networks
@@ -236,9 +243,10 @@ Ensure these ports are open between Swarm nodes:
 
 ```bash
 # Required ports for Docker Swarm overlay:
-# TCP 2377 - cluster management (between managers)
+# TCP 2377 - cluster management and node join traffic
 # TCP/UDP 7946 - node discovery
 # UDP 4789 - overlay network traffic (VXLAN)
+# IP protocol 50 (ESP) - required for encrypted overlay networks
 
 # Linux iptables:
 iptables -A INPUT -p tcp --dport 2377 -j ACCEPT
@@ -250,6 +258,8 @@ iptables -A INPUT -p udp --dport 4789 -j ACCEPT
 ufw allow 2377/tcp
 ufw allow 7946
 ufw allow 4789/udp
+
+# If you use --opt encrypted, also allow IP protocol 50 (IPSec ESP) between nodes.
 ```
 
 ## Conclusion
