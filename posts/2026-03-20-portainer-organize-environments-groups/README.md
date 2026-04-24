@@ -12,14 +12,14 @@ As your Portainer installation grows to manage multiple environments, the enviro
 
 ## Creating Groups via Web UI
 
-1. Go to **Environments** in the left sidebar
-2. Click on **Groups** tab at the top
+1. Expand **Environment-related** in the left sidebar
+2. Click **Groups**
 3. Click **Add group**
 4. Fill in:
    - **Name**: e.g., "Production", "Europe", "Team A"
    - **Description**: Optional description
-   - **Environments**: Select which environments to include
-5. Click **Create group**
+   - **Associated environments**: Select which environments to include
+5. Click **Create**
 
 ## Creating Groups via API
 
@@ -27,7 +27,7 @@ As your Portainer installation grows to manage multiple environments, the enviro
 TOKEN=$(curl -s -X POST \
   https://portainer.example.com/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"adminpassword"}' \
+  -d '{"Username":"admin","Password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
 # Create a group with environments
@@ -37,9 +37,9 @@ curl -X POST \
   -H "Content-Type: application/json" \
   https://portainer.example.com/api/endpoint_groups \
   -d '{
-    "name": "Production",
-    "description": "All production environments",
-    "associatedEndpoints": [1, 2, 3]
+    "Name": "Production",
+    "Description": "All production environments",
+    "AssociatedEndpoints": [1, 2, 3]
   }'
 
 # Get all groups
@@ -49,15 +49,15 @@ curl -s \
   | python3 -m json.tool
 
 # Update a group
-GROUP_ID=1
+GROUP_ID=7  # Replace with your actual group ID. Group 1 is the built-in Unassigned group.
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "https://portainer.example.com/api/endpoint_groups/${GROUP_ID}" \
   -d '{
-    "name": "Production",
-    "description": "Production environments - all regions",
-    "associatedEndpoints": [1, 2, 3, 4]
+    "Name": "Production",
+    "Description": "Production environments - all regions",
+    "AssociatedEndpoints": [1, 2, 3, 4]
   }'
 
 # Delete a group
@@ -71,9 +71,9 @@ curl -X DELETE \
 ```bash
 # Add a single environment to a group
 ENDPOINT_ID=5
-GROUP_ID=1
+GROUP_ID=7  # Replace with your actual group ID.
 
-curl -X POST \
+curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   "https://portainer.example.com/api/endpoint_groups/${GROUP_ID}/endpoints/${ENDPOINT_ID}"
 
@@ -121,19 +121,19 @@ Groups enable bulk access assignments (covered in the per-group access control g
 # List all environments in a group
 curl -s \
   -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/endpoint_groups/${GROUP_ID}" \
+  "https://portainer.example.com/api/endpoints?groupIds=${GROUP_ID}" \
   | python3 -c "
 import sys, json
-group = json.load(sys.stdin)
-print(f'Group: {group[\"Name\"]}')
-print(f'Environments: {group.get(\"AssociatedEndpoints\", [])}')
+environments = json.load(sys.stdin)
+for env in environments:
+    print(f'{env[\"Id\"]}: {env[\"Name\"]}')
 "
 
 # Apply tags to all environments in a group via script
 GROUP_ENVS=$(curl -s \
   -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/endpoint_groups/${GROUP_ID}" \
-  | python3 -c "import sys,json; print(' '.join(map(str, json.load(sys.stdin).get('AssociatedEndpoints', []))))")
+  "https://portainer.example.com/api/endpoints?groupIds=${GROUP_ID}" \
+  | python3 -c "import sys,json; print(' '.join(str(env['Id']) for env in json.load(sys.stdin)))")
 
 for env_id in $GROUP_ENVS; do
   echo "Processing environment $env_id"
