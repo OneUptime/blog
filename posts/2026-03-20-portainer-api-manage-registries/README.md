@@ -12,31 +12,36 @@ Container image registries store and serve container images. Portainer supports 
 
 ## Prerequisites
 
-- Portainer CE or BE with admin access
-- Valid admin JWT token or API access token
+- Portainer CE or BE with admin access (GitHub registry examples require BE)
+- Valid admin JWT token or API access token sent in the `X-API-Key` header
 - Registry credentials (URL, username, password)
 
 ## Supported Registry Types
 
 | Type | Value | Examples |
 |------|-------|---------|
-| Custom (generic) | 6 | Any registry with Docker Registry API |
-| DockerHub | 1 | hub.docker.com |
-| Quay.io | 3 | quay.io |
-| Azure ACR | 4 | yourregistry.azurecr.io |
-| Custom GitLab | 5 | registry.gitlab.com |
-| GitHub CR | 7 | ghcr.io |
-| ProGet | 8 | proget.yourcompany.com |
+| Quay.io | 1 | quay.io |
+| Azure ACR | 2 | yourregistry.azurecr.io |
+| Custom (generic) | 3 | Any registry with Docker Registry API v2 |
+| GitLab | 4 | registry.gitlab.com |
+| ProGet | 5 | proget.yourcompany.com |
+| DockerHub | 6 | docker.io |
+| AWS ECR | 7 | 123456789012.dkr.ecr.us-east-1.amazonaws.com |
+| GitHub CR (BE only) | 8 | ghcr.io |
 
 ## Step 1: List All Configured Registries
 
 ```bash
 PORTAINER_URL="https://portainer.example.com"
-TOKEN="your-admin-token"
+JWT="your-admin-jwt"
+# Or use an API access token instead:
+# API_KEY="your-api-key"
+# AUTH_HEADER="X-API-Key: $API_KEY"
+AUTH_HEADER="Authorization: Bearer $JWT"
 
 # List all registries
 
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -s -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/registries" | \
   jq '.[] | {id: .Id, name: .Name, type: .Type, url: .URL}'
 ```
@@ -46,12 +51,12 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```bash
 # Add a generic private registry (e.g., self-hosted Harbor or generic registry)
 curl -s -X POST \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "$AUTH_HEADER" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/registries" \
   -d '{
     "Name": "Company Harbor",
-    "Type": 6,
+    "Type": 3,
     "URL": "registry.company.com",
     "Authentication": true,
     "Username": "portainer-svc",
@@ -64,34 +69,37 @@ curl -s -X POST \
 ```bash
 # Add Docker Hub with credentials (for private repos and rate limit bypass)
 curl -s -X POST \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "$AUTH_HEADER" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/registries" \
   -d '{
     "Name": "Docker Hub",
-    "Type": 1,
-    "URL": "https://index.docker.io",
+    "Type": 6,
+    "URL": "docker.io",
     "Authentication": true,
     "Username": "your-dockerhub-username",
     "Password": "your-dockerhub-token"
   }' | jq .
 ```
 
-## Step 4: Add GitHub Container Registry (GHCR)
+## Step 4: Add GitHub Container Registry (GHCR, BE only)
 
 ```bash
 # Add GitHub Container Registry
 curl -s -X POST \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "$AUTH_HEADER" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/registries" \
   -d '{
     "Name": "GitHub Container Registry",
-    "Type": 7,
+    "Type": 8,
     "URL": "ghcr.io",
     "Authentication": true,
     "Username": "your-github-username",
-    "Password": "ghp_your_github_personal_access_token"
+    "Password": "your-github-classic-pat",
+    "Github": {
+      "UseOrganisation": false
+    }
   }' | jq .
 ```
 
@@ -100,12 +108,12 @@ curl -s -X POST \
 ```bash
 # Add Azure Container Registry
 curl -s -X POST \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "$AUTH_HEADER" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/registries" \
   -d '{
     "Name": "Azure Production ACR",
-    "Type": 4,
+    "Type": 2,
     "URL": "yourregistry.azurecr.io",
     "Authentication": true,
     "Username": "service-principal-client-id",
@@ -119,7 +127,7 @@ curl -s -X POST \
 REGISTRY_ID=2
 
 # Get registry details
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -s -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/registries/${REGISTRY_ID}" | jq .
 
 # Note: Password is never returned in API responses
@@ -132,7 +140,7 @@ REGISTRY_ID=2
 
 # Update registry credentials
 curl -s -X PUT \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "$AUTH_HEADER" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/registries/${REGISTRY_ID}" \
   -d '{
@@ -151,25 +159,27 @@ REGISTRY_ID=2
 
 # Delete registry configuration from Portainer
 curl -s -X DELETE \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/registries/${REGISTRY_ID}"
 
 echo "Registry $REGISTRY_ID removed."
 ```
 
-## Step 9: List Registry Repositories and Tags
+## Step 9: Test a Registry Connection
 
 ```bash
-REGISTRY_ID=2
-
-# List all repositories in a registry
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/registries/${REGISTRY_ID}/repositories" | jq .
-
-# List tags for a specific repository
-REPO_NAME="myapp"
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/registries/${REGISTRY_ID}/repositories/${REPO_NAME}/tags" | jq .
+# Test connectivity and credentials before saving a registry
+curl -s -X POST \
+  -H "$AUTH_HEADER" \
+  -H "Content-Type: application/json" \
+  "${PORTAINER_URL}/api/registries/ping" \
+  -d '{
+    "Type": 3,
+    "URL": "registry.company.com",
+    "Username": "portainer-svc",
+    "Password": "registrypassword",
+    "TLS": true
+  }' | jq .
 ```
 
 ## Step 10: Automated Registry Setup Script
@@ -178,21 +188,28 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 #!/bin/bash
 # setup-registries.sh - Configure all registries from environment variables
 
+set -euo pipefail
+
 PORTAINER_URL="https://portainer.example.com"
 TOKEN=$(curl -s -X POST "${PORTAINER_URL}/api/auth" \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' | jq -r '.jwt')
+  -d '{"Username":"admin","Password":"yourpassword"}' | jq -r '.jwt')
 
 # Registry configurations
 declare -A REGISTRIES
-REGISTRIES["Company Harbor"]="6|registry.company.com|harbor-svc|${HARBOR_PASSWORD}"
-REGISTRIES["Docker Hub"]="1|https://index.docker.io|${DOCKERHUB_USER}|${DOCKERHUB_TOKEN}"
-REGISTRIES["GitHub CR"]="7|ghcr.io|${GITHUB_USER}|${GITHUB_TOKEN}"
+REGISTRIES["Company Harbor"]="3|registry.company.com|harbor-svc|${HARBOR_PASSWORD}"
+REGISTRIES["Docker Hub"]="6|docker.io|${DOCKERHUB_USER}|${DOCKERHUB_TOKEN}"
+REGISTRIES["GitHub CR"]="8|ghcr.io|${GITHUB_USER}|${GITHUB_TOKEN}"
 
 for REG_NAME in "${!REGISTRIES[@]}"; do
   IFS='|' read -r TYPE URL USERNAME PASSWORD <<< "${REGISTRIES[$REG_NAME]}"
 
   echo "Adding registry: $REG_NAME..."
+
+  EXTRA_FIELDS=""
+  if [ "$TYPE" -eq 8 ]; then
+    EXTRA_FIELDS=',"Github":{"UseOrganisation":false}'
+  fi
 
   RESPONSE=$(curl -s -X POST \
     -H "Authorization: Bearer $TOKEN" \
@@ -204,10 +221,10 @@ for REG_NAME in "${!REGISTRIES[@]}"; do
       \"URL\": \"$URL\",
       \"Authentication\": true,
       \"Username\": \"$USERNAME\",
-      \"Password\": \"$PASSWORD\"
+      \"Password\": \"$PASSWORD\"${EXTRA_FIELDS}
     }")
 
-  ID=$(echo $RESPONSE | jq -r '.Id // empty')
+  ID=$(printf '%s\n' "$RESPONSE" | jq -r '.Id // empty')
   if [ -n "$ID" ]; then
     echo "  Added '$REG_NAME' (ID: $ID)"
   else
