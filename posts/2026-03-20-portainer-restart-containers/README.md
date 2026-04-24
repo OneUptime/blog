@@ -8,7 +8,7 @@ Description: Learn how to restart Docker containers in Portainer, including grac
 
 ## Introduction
 
-Restarting a container is a common operation - needed after configuration changes, to recover from a hung state, or to apply log rotation. Portainer provides direct restart controls in the container list and details view. This guide covers when and how to restart containers, and the difference between restart, stop+start, and recreate.
+Restarting a container is a common operation - needed after application-level configuration changes, to recover from a hung state, or to apply log rotation. Portainer provides direct restart controls in the container list and details view. This guide covers when and how to restart containers, and the difference between restart, stop+start, and recreate.
 
 ## Prerequisites
 
@@ -18,8 +18,8 @@ Restarting a container is a common operation - needed after configuration change
 ## How Docker Restart Works
 
 `docker restart` performs:
-1. Sends `SIGTERM` to the container process.
-2. Waits for the grace period (default: 10 seconds).
+1. Sends the container's configured stop signal (default: `SIGTERM` if none is configured).
+2. Waits for the container's stop timeout (`--stop-timeout` if set, otherwise the daemon default: 10 seconds for Linux containers and 30 seconds for Windows containers).
 3. Sends `SIGKILL` if the process hasn't stopped.
 4. Starts the container again from the same configuration.
 
@@ -44,7 +44,7 @@ The container retains all its settings (volumes, environment, ports) - it just r
 docker restart my-container
 
 # With custom timeout:
-docker restart --time 30 my-container
+docker restart --timeout 30 my-container
 ```
 
 ## Step 2: Restart Multiple Containers
@@ -79,7 +79,7 @@ done
 
 ### Using Portainer Edge Jobs for Edge Devices
 
-For edge devices, create an Edge Job that restarts containers:
+On supported Docker Standalone Edge environments, create an Edge Job that restarts containers from the host:
 
 ```bash
 #!/bin/sh
@@ -121,23 +121,25 @@ docker restart my-app
 # This creates a new container with updated settings
 ```
 
-## Step 5: Automated Restart via Portainer Webhooks
+## Step 5: Automated Redeploy via Portainer Webhooks
 
-You can trigger a container restart via Portainer's webhook feature:
+For standalone containers in Portainer Business Edition on non-Edge environments, you can trigger a container redeploy via Portainer's webhook feature:
 
 ```bash
-# Trigger a container redeploy (pull + restart) via webhook
+# Trigger a container redeploy via webhook
 curl -X POST "https://portainer.example.com/api/webhooks/your-webhook-token"
+```
 
+```yaml
 # In CI/CD pipeline:
-- name: Restart app container
+- name: Redeploy app container
   run: |
     curl -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}"
 ```
 
-## Step 6: Health-Check-Triggered Restarts
+## Step 6: Health Checks and Restart Policies
 
-Configure Docker to automatically restart containers that fail health checks:
+Configure Docker to report container health and restart containers automatically if the main process exits:
 
 ```yaml
 # docker-compose.yml
@@ -146,7 +148,7 @@ services:
     image: myorg/myapp:latest
     restart: unless-stopped   # Restart policy for auto-restart on crash
     healthcheck:
-      # Docker restarts the container if health check consistently fails
+      # Docker marks the container unhealthy if the health check consistently fails
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
@@ -154,33 +156,33 @@ services:
       start_period: 40s
 ```
 
-When the healthcheck fails `retries` times, Docker marks the container as `unhealthy`. Combined with the restart policy, Docker will restart it automatically.
+When the healthcheck fails `retries` times, Docker marks the container as `unhealthy`. Docker restart policies apply when the container process exits; an `unhealthy` status by itself does not restart the container.
 
 ## Step 7: Monitoring Restart Behavior
 
 After restarting, verify the container is running properly:
 
 ```bash
-# Check container status:
-docker inspect my-container | jq '.[].State'
+# Check container status, restart count, and last start time:
+docker inspect -f 'Status={{.State.Status}} RestartCount={{.RestartCount}} StartedAt={{.State.StartedAt}}' my-container
 
 # In Portainer: navigate to container details
 # Check:
-# - Status: Running
-# - RestartCount: number of restarts
+# - Status: running
 # - StartedAt: last start time
+# - Inspect: RestartCount value
 ```
 
-Portainer shows the restart count on the container details page - a high count indicates a recurring problem.
+Portainer lets you inspect container details, and a high restart count indicates a recurring problem.
 
 ## Best Practices
 
-- **Use health checks** to enable automatic recovery without manual intervention.
+- **Use health checks** to detect failures early, and pair them with restart policies or external automation for recovery.
 - **Investigate before restarting in a loop** - a container that keeps restarting has a bug that needs fixing.
 - **Use `restart: unless-stopped`** for production services so they auto-recover.
-- **Restart before investigating memory issues** - a restart confirms whether the issue is a memory leak that's fixed by restart, or a deeper configuration problem.
+- **If you restart to restore service during a memory issue, investigate the root cause afterward** - a restart only clears the current process state.
 - **Schedule restarts during maintenance windows** for non-high-availability services that benefit from periodic restarts.
 
 ## Conclusion
 
-Restarting containers in Portainer is straightforward and covers most operational needs. For configuration changes that require modifying the container itself (environment variables, volumes), use the recreate approach instead. Combine Docker's built-in health checks with restart policies to minimize manual interventions and keep your services running automatically.
+Restarting containers in Portainer is straightforward and covers most operational needs. For configuration changes that require modifying the container itself (environment variables, volumes), use the recreate approach instead. Combine Docker's built-in health checks with restart policies and monitoring or automation to minimize manual interventions and keep your services running automatically.
