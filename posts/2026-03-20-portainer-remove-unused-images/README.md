@@ -16,10 +16,10 @@ Docker images accumulate over time as you pull new versions, build images, and u
 
 ## Understanding Image Usage
 
-An image is considered "unused" (dangling or unreferenced) when:
-- No running or stopped containers are using it.
-- It has no tags pointing to it (dangling/intermediate layer).
-- It's an old version replaced by a newer pull.
+Docker distinguishes between dangling and unused images:
+- A dangling image has no tag and is not referenced by any container.
+- An unused image may still have a tag, but no running or stopped container references it.
+- An older image version often becomes unused only after containers have been recreated on a newer image.
 
 ## Step 1: Remove a Single Image via Portainer
 
@@ -41,8 +41,8 @@ Portainer will refuse to remove images in use by containers (running or stopped)
 Portainer's prune feature removes all unused images at once:
 
 1. Navigate to **Images**.
-2. Click **Prune** or look for a cleanup option.
-3. Choose **Remove unused images**.
+2. Click **Prune** or look for the available cleanup option.
+3. Confirm the prune action.
 
 This removes all images not referenced by any container.
 
@@ -67,8 +67,8 @@ docker image prune -a --filter "until=24h"
 # Remove images with a specific label:
 docker image prune -a --filter "label=environment=test"
 
-# Remove images with a specific name pattern:
-docker images -q "myorg/*" | xargs docker rmi -f
+# Remove images matching a specific repository/tag pattern:
+docker images --filter=reference='myorg/*:*' -q | xargs docker rmi -f
 
 # Remove all images (aggressive - removes everything including in-use):
 # WARNING: This will break running containers if they need to restart
@@ -108,14 +108,14 @@ TIMESTAMP=$(date +%Y-%m-%d\ %H:%M:%S)
 echo "=== Docker Image Cleanup: ${TIMESTAMP} ===" >> "${LOG_FILE}"
 
 # Record disk usage before:
-BEFORE=$(docker system df --format '{{.TotalCount}} images, {{.Reclaimable}} reclaimable' 2>/dev/null || docker system df | grep Images)
+BEFORE=$(docker system df | awk '$1 == "Images" {print; exit}')
 echo "Before: ${BEFORE}" >> "${LOG_FILE}"
 
 # Remove unused images older than 7 days:
 docker image prune -a --filter "until=168h" --force >> "${LOG_FILE}" 2>&1
 
 # Record disk usage after:
-AFTER=$(docker system df --format '{{.TotalCount}} images, {{.Reclaimable}} reclaimable' 2>/dev/null || docker system df | grep Images)
+AFTER=$(docker system df | awk '$1 == "Images" {print; exit}')
 echo "After: ${AFTER}" >> "${LOG_FILE}"
 echo "" >> "${LOG_FILE}"
 
@@ -124,16 +124,16 @@ echo "Cleanup complete. See ${LOG_FILE} for details."
 
 ## Step 7: Full System Cleanup
 
-For a comprehensive cleanup of containers, images, volumes, and networks:
+For a comprehensive cleanup of unused Docker resources:
 
 ```bash
 # Remove all unused Docker resources (careful!):
 docker system prune
 
-# More aggressive: also removes unused volumes:
+# More aggressive: also removes unused anonymous volumes:
 docker system prune --volumes
 
-# Most aggressive: removes everything not currently used:
+# Most aggressive: removes unused containers, networks, images, build cache, and anonymous volumes:
 docker system prune -a --volumes --force
 ```
 
@@ -145,19 +145,15 @@ In Portainer, you can do this per-resource type:
 
 ## Step 8: Protecting Images from Cleanup
 
-Tag images you want to keep:
+If you want to mark images you care about, tag them clearly:
 
 ```bash
-# Label images to keep (won't protect from prune but useful for tracking):
+# Tag images for tracking (this does not protect them from prune):
 docker tag myapp:v2.1.0 myapp:release-keep
 
-# Actually protect: ensure at least one container (even stopped) uses the image
-# Or: keep a "keep-alive" container:
-docker run -d \
-  --name keep-image-alive \
-  --restart unless-stopped \
-  myapp:v2.1.0 \
-  sleep infinity
+# To protect an image from `docker image prune -a`, keep at least one
+# created, stopped, or running container that references it:
+docker create --name keep-image-reference myapp:v2.1.0
 
 # Better: use a private registry for long-term image storage
 # Local Docker host storage ≠ long-term image archive
