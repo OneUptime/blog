@@ -56,7 +56,6 @@ docker run -d \
 ## Step 3: Disable HTTP in Docker Compose
 
 ```yaml
-version: "3.8"
 services:
   portainer:
     image: portainer/portainer-ce:latest
@@ -78,9 +77,10 @@ volumes:
 ## Step 4: Disable HTTP in Docker Swarm
 
 ```bash
-# Update the Portainer stack with --http-disabled
+# Run this on a Swarm manager node
 docker service update \
   --args "--http-disabled" \
+  --publish-rm 9000 \
   portainer_portainer
 ```
 
@@ -88,7 +88,8 @@ docker service update \
 
 ```yaml
 # portainer-values.yaml
-httpEnabled: false
+tls:
+  force: true
 
 service:
   type: LoadBalancer
@@ -142,9 +143,8 @@ sudo firewall-cmd --reload
 # Verify SSL certificates are properly configured
 docker logs portainer | grep -i "ssl\|cert\|tls\|error"
 
-# Check certificate validity
-docker run --rm -v portainer_data:/data alpine \
-  sh -c "ls -la /data/certs/"
+# Inspect the certificate Portainer is presenting on 9443
+openssl s_client -connect localhost:9443 -servername localhost -showcerts </dev/null
 ```
 
 ## Conclusion
