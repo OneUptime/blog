@@ -27,13 +27,13 @@ az group create --name myResourceGroup --location eastus
 # Create an ACR instance
 az acr create \
   --resource-group myResourceGroup \
-  --name myContainerRegistry \
-  --sku Standard \
+  --name mycontainerregistry \
+  --sku Premium \
   --admin-enabled false
 
 # Get the ACR login server
 az acr show \
-  --name myContainerRegistry \
+  --name mycontainerregistry \
   --query loginServer \
   --output tsv
 # Output: mycontainerregistry.azurecr.io
@@ -44,7 +44,7 @@ az acr show \
 ```bash
 # Get the ACR resource ID
 ACR_ID=$(az acr show \
-  --name myContainerRegistry \
+  --name mycontainerregistry \
   --resource-group myResourceGroup \
   --query id \
   --output tsv)
@@ -84,17 +84,17 @@ For development or testing, you can use ACR admin credentials:
 ```bash
 # Enable admin user on ACR
 az acr update \
-  --name myContainerRegistry \
+  --name mycontainerregistry \
   --admin-enabled true
 
 # Get admin credentials
 ACR_USERNAME=$(az acr credential show \
-  --name myContainerRegistry \
+  --name mycontainerregistry \
   --query username \
   --output tsv)
 
 ACR_PASSWORD=$(az acr credential show \
-  --name myContainerRegistry \
+  --name mycontainerregistry \
   --query "passwords[0].value" \
   --output tsv)
 
@@ -108,14 +108,14 @@ kubectl create secret docker-registry acr-admin-credentials \
 
 ## Step 5: Attach ACR to AKS Cluster (Managed Identity)
 
-For AKS clusters managed by Rancher, use the built-in ACR integration:
+For AKS clusters managed by Rancher, use AKS's built-in ACR integration:
 
 ```bash
-# Attach ACR to AKS - automatically configures managed identity
+# Attach ACR to AKS - grants AcrPull to the kubelet managed identity
 az aks update \
   --name myAKSCluster \
   --resource-group myResourceGroup \
-  --attach-acr myContainerRegistry
+  --attach-acr mycontainerregistry
 
 # Verify the attachment
 az aks check-acr \
@@ -160,17 +160,17 @@ spec:
 
 ## Step 7: Configure ACR Geo-Replication
 
-For multi-region deployments, replicate ACR to multiple regions:
+For multi-region deployments, replicate ACR to multiple regions. Geo-replication requires the Premium SKU:
 
 ```bash
 # Add ACR replication to West Europe
 az acr replication create \
-  --registry myContainerRegistry \
+  --registry mycontainerregistry \
   --location westeurope
 
 # List replications
 az acr replication list \
-  --registry myContainerRegistry \
+  --registry mycontainerregistry \
   --output table
 ```
 
@@ -179,19 +179,20 @@ az acr replication list \
 ```bash
 # Create an ACR task to build and push on git commit
 az acr task create \
-  --registry myContainerRegistry \
+  --registry mycontainerregistry \
   --name build-push-task \
   --image production/my-app:{{.Run.ID}} \
-  --context https://github.com/myorg/my-app.git \
-  --branch main \
+  --context https://github.com/myorg/my-app.git#main \
   --file Dockerfile \
   --git-access-token $GITHUB_TOKEN
 ```
 
 ## Step 9: Configure ACR with Rancher Fleet
 
+For Rancher Fleet-managed Helm releases, pass the ACR image settings as chart values:
+
 ```yaml
-# fleet-values.yaml - Fleet configuration with ACR image
+# values.yaml - Example Helm values passed through Rancher Fleet
 image:
   repository: mycontainerregistry.azurecr.io/production/my-app
   tag: v1.0.0
@@ -204,26 +205,26 @@ image:
 ```bash
 # View ACR metrics
 az monitor metrics list \
-  --resource $(az acr show --name myContainerRegistry --query id -o tsv) \
+  --resource $(az acr show --name mycontainerregistry --query id -o tsv) \
   --metric TotalPullCount,TotalPushCount \
   --interval PT1H
 
 # List all repositories
-az acr repository list --name myContainerRegistry --output table
+az acr repository list --name mycontainerregistry --output table
 ```
 
 ## Troubleshooting
 
 ```bash
 # Test ACR login
-az acr login --name myContainerRegistry
+az acr login --name mycontainerregistry
 
 # Check service principal validity
 az ad sp show --id $SP_APP_ID
 
 # Verify ACR role assignment
 az role assignment list \
-  --scope $(az acr show --name myContainerRegistry --query id -o tsv) \
+  --scope $(az acr show --name mycontainerregistry --query id -o tsv) \
   --output table
 
 # Debug pod image pull issues
@@ -232,4 +233,4 @@ kubectl describe pod <pod-name> -n production
 
 ## Conclusion
 
-Azure Container Registry integrates well with Rancher-managed clusters, especially when running on Azure infrastructure. For AKS clusters, the managed identity integration is the most secure and maintenance-free approach. For non-AKS clusters, use service principals with appropriate RBAC roles. Always prefer service principals over admin credentials in production, and consider geo-replication for multi-region deployments.
+Azure Container Registry integrates well with Rancher-managed clusters, especially when running on Azure infrastructure. For AKS clusters, the managed identity integration is the most secure and maintenance-free approach. For non-AKS clusters, use service principals with appropriate RBAC roles. Always prefer service principals over admin credentials in production, and consider geo-replication on Premium registries for multi-region deployments.
