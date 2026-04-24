@@ -13,7 +13,7 @@ Cisco IOS uses Modular QoS CLI (MQC) for traffic shaping, policing, and prioriti
 Class maps identify traffic based on matching criteria:
 
 ```text
-! Match VoIP traffic (RTP on common port range and DSCP EF)
+! Match VoIP traffic (RTP or DSCP EF)
 class-map match-any VOIP
  match ip dscp ef
  match protocol rtp
@@ -21,7 +21,7 @@ class-map match-any VOIP
 ! Match interactive web traffic
 class-map match-any WEB
  match protocol http
- match protocol https
+ match protocol secure-http
 
 ! Match SSH traffic
 class-map match-any MANAGEMENT
@@ -40,7 +40,7 @@ policy-map WAN-QOS
  ! VoIP traffic: strict priority queue
  class VOIP
   priority percent 30
-  ! 30% of link bandwidth reserved exclusively for VoIP
+  ! Strict-priority treatment for up to 30% of link bandwidth during congestion
 
  ! Web traffic: minimum bandwidth guarantee
  class WEB
@@ -51,7 +51,7 @@ policy-map WAN-QOS
  class MANAGEMENT
   bandwidth percent 10
 
- ! Everything else: gets remaining bandwidth
+ ! Everything else: minimum 20% with per-flow fairness
  class class-default
   fair-queue
   bandwidth percent 20
@@ -63,6 +63,8 @@ policy-map WAN-QOS
 interface GigabitEthernet0/0
  description WAN Link
  ip address 203.0.113.1 255.255.255.252
+ ! Allow the policy's class percentages to total 100%
+ max-reserved-bandwidth 100
  ! Apply QoS outbound on the WAN interface
  service-policy output WAN-QOS
 ```
@@ -72,7 +74,7 @@ For inbound policing:
 ```text
 policy-map INBOUND-POLICE
  class class-default
-  police rate 50000000 bps
+  police cir 50000000
    conform-action transmit
    exceed-action drop
 
@@ -141,4 +143,4 @@ GigabitEthernet0/0
         (total drops) 0
 ```
 
-Cisco MQC provides a vendor-standard approach to QoS that is portable across IOS router platforms and integrates with DSCP-based end-to-end QoS designs.
+Cisco MQC provides a consistent approach to QoS across IOS router platforms and integrates with DSCP-based end-to-end QoS designs.
