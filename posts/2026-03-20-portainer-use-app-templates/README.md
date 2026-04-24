@@ -29,24 +29,23 @@ Both types can include variables that you fill in before deploying, such as pass
 
 1. Log in to Portainer
 2. Select your Docker environment
-3. Click **App Templates** in the left sidebar
+3. Expand **Templates**, then click **Application** in the left sidebar
 
-You will see the built-in template catalog, which includes popular applications like:
+If you're using Portainer's default built-in templates, the catalog includes popular applications like:
 
-- Nginx, Apache
-- MySQL, PostgreSQL, MongoDB, Redis
-- WordPress, Ghost, Nextcloud
-- Gitea, Drone CI
-- Prometheus, Grafana
+- Nginx, Httpd
+- MySQL, PostgreSQL, Mongo, Redis
+- WordPress, Ghost
+- Swarm monitoring (Prometheus + Grafana)
 - Portainer Agent
 
 ## Step 2: Browse and Search Templates
 
-Use the search bar to find templates by name or category:
+Use the search bar to find templates by name, or use the available category and Type filters to narrow the list:
 
 - Type `wordpress` to filter WordPress-related templates
-- Type `database` to see all database templates
-- Click category badges to filter by type
+- Use the category filter to focus on templates such as `database`
+- Use the **Type** dropdown to show only container or stack templates
 
 Each template card shows:
 
@@ -73,15 +72,11 @@ Restart policy: Unless stopped
 ## Step 4: Deploy a Stack Template
 
 1. Click on a stack template (e.g., **WordPress**)
-2. Configure the stack variables:
+2. Configure the stack settings. For the built-in WordPress template, this includes:
 
 ```text
-Stack name:       my-wordpress
-WordPress port:   8080
-MySQL root password: [your-secure-password]
-MySQL database:   wordpress
-MySQL user:       wpuser
-MySQL password:   [your-secure-password]
+Stack name:             my-wordpress
+Database root password: [your-secure-password]
 ```
 
 3. Click **Deploy the stack**
@@ -106,28 +101,29 @@ Deploys a basic Nginx web server. Variables typically include the port mapping a
 ```yaml
 # Underlying template Compose file (simplified)
 
-version: "3"
+version: "2"
 services:
+  db:
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_DATABASE_PASSWORD}"
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: wordpress
+    volumes:
+      - db_data:/var/lib/mysql
+    restart: always
   wordpress:
     image: wordpress:latest
     ports:
-      - "${PORT}:80"
+      - 80
     environment:
-      WORDPRESS_DB_HOST: db
-      WORDPRESS_DB_NAME: "${DB_NAME}"
-      WORDPRESS_DB_USER: "${DB_USER}"
-      WORDPRESS_DB_PASSWORD: "${DB_PASSWORD}"
-  db:
-    image: mysql:8
-    environment:
-      MYSQL_DATABASE: "${DB_NAME}"
-      MYSQL_USER: "${DB_USER}"
-      MYSQL_PASSWORD: "${DB_PASSWORD}"
-      MYSQL_ROOT_PASSWORD: "${DB_ROOT_PASSWORD}"
-    volumes:
-      - db-data:/var/lib/mysql
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+    restart: always
 volumes:
-  db-data:
+  db_data:
 ```
 
 ### Redis Template (Container)
@@ -147,7 +143,7 @@ Most templates allow you to customize:
 
 If the built-in templates don't cover your needs, you can:
 
-1. Add a custom template URL (see the guide on configuring App Templates URL)
+1. Add a custom template URL under **Settings** → **General** → **App Templates**
 2. Create your own templates via the **Custom Templates** section
 3. Use community template collections like Lissy93's templates
 
