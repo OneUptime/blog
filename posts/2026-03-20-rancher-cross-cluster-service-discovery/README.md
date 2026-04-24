@@ -8,13 +8,15 @@ Description: Configure cross-cluster service discovery in Rancher-managed cluste
 
 ## Introduction
 
-By default, Kubernetes services are only resolvable within their own cluster. Cross-cluster service discovery bridges this gap, allowing a microservice in cluster A to call a database service in cluster B using a consistent DNS name. This guide covers implementing cross-cluster service discovery using Submariner, a SUSE-backed project designed for Rancher environments.
+By default, Kubernetes services are only resolvable within their own cluster. Cross-cluster service discovery bridges this gap, allowing a microservice in cluster A to call a database service in cluster B using a consistent DNS name. This guide covers implementing cross-cluster service discovery using Submariner, a CNCF Sandbox project that works well with Rancher-managed clusters.
 
 ## Prerequisites
 
 - Rancher managing at least two clusters
 - Non-overlapping Pod and Service CIDR ranges across clusters
-- UDP port 4500 open between cluster nodes (for Submariner's VXLAN/IPsec tunnel)
+- IP reachability between gateway nodes on the default encapsulation port `4500/UDP`; if NAT traversal is used, also allow `4490/UDP`
+- `4800/UDP` allowed between cluster nodes and gateway nodes for Submariner's intra-cluster VXLAN path (not required with OVN-Kubernetes)
+- If gateway nodes are directly reachable without NAT, allow ESP on the gateway nodes
 
 ## Understanding Submariner
 
@@ -35,6 +37,10 @@ done
 # Cluster 1: pods=10.42.0.0/16,  services=10.43.0.0/16
 # Cluster 2: pods=10.44.0.0/16,  services=10.45.0.0/16
 # Cluster 3: pods=10.46.0.0/16,  services=10.47.0.0/16
+#
+# After installing subctl in Step 2, confirm Service CIDRs as well:
+# subctl show networks --kubeconfig /tmp/kc-cluster-1.yaml
+# subctl show networks --kubeconfig /tmp/kc-cluster-2.yaml
 ```
 
 ## Step 2: Install subctl CLI
@@ -47,13 +53,15 @@ subctl version
 
 ## Step 3: Deploy the Submariner Broker
 
-The broker is a coordination component installed on one cluster (typically the Rancher management cluster):
+The broker is a coordination component installed on one cluster whose Kubernetes API is reachable by all participating clusters:
 
 ```bash
-# Install the broker on the hub/management cluster
+# Install the broker on a cluster whose API server is reachable by all joined clusters
 subctl deploy-broker \
-  --kubeconfig /tmp/kc-management.yaml \
-  --globalnet   # Enable if CIDRs do overlap (uses virtual IPs)
+  --kubeconfig /tmp/kc-management.yaml
+
+# If Pod/Service CIDRs overlap across clusters, add --globalnet
+# to the deploy-broker command.
 
 # A broker-info.subm file is generated - this is needed to join other clusters
 ls broker-info.subm
@@ -65,17 +73,17 @@ ls broker-info.subm
 # Join cluster-1
 subctl join broker-info.subm \
   --kubeconfig /tmp/kc-cluster-1.yaml \
-  --clusterid cluster-1 \
-  --natt=false      # Set true if behind NAT
+  --clusterid cluster-1
 
 # Join cluster-2
 subctl join broker-info.subm \
   --kubeconfig /tmp/kc-cluster-2.yaml \
-  --clusterid cluster-2 \
-  --natt=false
+  --clusterid cluster-2
+
+# If gateways are directly reachable without NAT, you can add --natt=false.
 
 # Verify the connection
-subctl show connections
+subctl show connections --kubeconfig /tmp/kc-cluster-1.yaml
 # Expected:
 # Cluster cluster-1 → cluster-2: connected
 # Cluster cluster-2 → cluster-1: connected
@@ -92,11 +100,12 @@ kubectl --kubeconfig /tmp/kc-cluster-1.yaml \
 subctl diagnose all \
   --kubeconfig /tmp/kc-cluster-1.yaml
 
-# Test pod-to-pod connectivity across clusters
-subctl benchmark latency \
+# Verify end-to-end connectivity between clusters
+subctl verify \
   --kubeconfig /tmp/kc-cluster-1.yaml \
-  --remoteconfig /tmp/kc-cluster-2.yaml \
-  --intra-cluster
+  --toconfig /tmp/kc-cluster-2.yaml \
+  --only connectivity \
+  --verbose
 ```
 
 ## Step 6: Export a Service for Cross-Cluster Access
@@ -105,10 +114,10 @@ Services must be explicitly exported to be accessible from other clusters:
 
 ```bash
 # Export the database service from cluster-1
-kubectl --kubeconfig /tmp/kc-cluster-1.yaml \
-  annotate service postgres \
-  -n production \
-  "submariner.io/export=true"
+subctl export service \
+  --kubeconfig /tmp/kc-cluster-1.yaml \
+  --namespace production \
+  postgres
 
 # Or create a ServiceExport resource directly:
 kubectl --kubeconfig /tmp/kc-cluster-1.yaml \
@@ -126,7 +135,7 @@ EOF
 ```bash
 # Verify the service is visible from cluster-2
 kubectl --kubeconfig /tmp/kc-cluster-2.yaml \
-  get serviceimport -n production
+  get serviceimports -n production
 
 # Test DNS resolution from a pod in cluster-2
 kubectl --kubeconfig /tmp/kc-cluster-2.yaml \
@@ -150,7 +159,13 @@ metadata:
   name: myapp
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
         - name: myapp
@@ -170,24 +185,24 @@ kind: ServiceExport
 metadata:
   name: postgres-headless
   namespace: production
-# Individual pod DNS: postgres-0.postgres-headless.production.svc.clusterset.local
+# Individual pod DNS includes the cluster ID:
+# postgres-0.cluster-1.postgres-headless.production.svc.clusterset.local
 ```
 
 ## Step 10: Monitor Submariner Health
 
 ```bash
 # Check tunnel status
-subctl show connections
+subctl show connections --kubeconfig /tmp/kc-cluster-1.yaml
 
-# Check endpoint resources
-kubectl get endpoint -n submariner-operator
+# Check advertised Submariner endpoints
+subctl show endpoints --kubeconfig /tmp/kc-cluster-1.yaml
 
-# View Submariner metrics in Prometheus
-kubectl port-forward -n submariner-operator \
-  service/submariner-metrics 9898:9898
-curl http://localhost:9898/metrics | grep submariner
+# If Prometheus Operator is installed, confirm Submariner ServiceMonitors exist
+kubectl --kubeconfig /tmp/kc-cluster-1.yaml \
+  get servicemonitors -n submariner-operator
 ```
 
 ## Conclusion
 
-Cross-cluster service discovery with Submariner transforms isolated Kubernetes clusters into an interconnected service mesh. By exporting services with `ServiceExport` resources and consuming them via the `clusterset.local` DNS domain, applications can span multiple Rancher-managed clusters transparently. This enables powerful patterns like centralizing shared services (databases, message queues) in one cluster while application workloads run in separate clusters with full connectivity.
+Cross-cluster service discovery with Submariner transforms isolated Kubernetes clusters into a connected multi-cluster network. By exporting services with `ServiceExport` resources and consuming them via the `clusterset.local` DNS domain, applications can span multiple Rancher-managed clusters transparently. This enables powerful patterns like centralizing shared services (databases, message queues) in one cluster while application workloads run in separate clusters with full connectivity.
