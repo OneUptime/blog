@@ -4,16 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, kubeconfig, Import, Environment
 
-Description: Import an existing Kubernetes cluster into Portainer using a kubeconfig file for immediate visual management without deploying an agent.
+Description: Import an existing Kubernetes cluster into Portainer Business Edition using a self-contained kubeconfig file so Portainer can deploy and configure the Portainer Agent.
 
 ## Introduction
 
-The kubeconfig import method lets you connect any Kubernetes cluster to Portainer without installing an agent. If you already have a `~/.kube/config` for a cluster, you can paste it directly into Portainer. This is the fastest way to add a Kubernetes environment, especially for managed clusters like EKS, AKS, or GKE.
+The kubeconfig import method lets you import an existing Kubernetes cluster into Portainer Business Edition by uploading a supported kubeconfig file. Portainer uses that kubeconfig to connect to your environment, then deploy and configure the Portainer Agent for you. This is a legacy option, and for most new deployments Portainer recommends the Edge Agent.
 
 ## Prerequisites
 
-- Portainer running
-- A kubeconfig file with cluster-admin or sufficient permissions
+- Portainer Business Edition running
+- A Kubernetes cluster with a load balancer configured and enabled
+- A self-contained kubeconfig file that specifies `current-context`
+- Cluster-admin credentials in the kubeconfig so Portainer can deploy the agent
 - Network access from Portainer to the Kubernetes API server
 
 ## Step 1: Prepare the Kubeconfig
@@ -23,14 +25,15 @@ The kubeconfig import method lets you connect any Kubernetes cluster to Portaine
 
 kubectl config view --raw
 
-# Get kubeconfig for a specific context
-kubectl config view --raw --minify --context=my-cluster
+# Preview the kubeconfig for a specific context
+kubectl config view --raw --flatten --minify --context=my-cluster
 
-# If you have multiple clusters, extract just the one you need
-kubectl config view --raw --minify \
+# If you have multiple clusters, extract a self-contained kubeconfig for the one you need
+kubectl config view --raw --flatten --minify \
   --context=arn:aws:eks:us-east-1:123456:cluster/my-cluster > my-cluster-kubeconfig.yaml
 
-# Verify the kubeconfig works
+# Verify the kubeconfig has a current context and works
+kubectl --kubeconfig=my-cluster-kubeconfig.yaml config current-context
 kubectl --kubeconfig=my-cluster-kubeconfig.yaml cluster-info
 ```
 
@@ -39,41 +42,28 @@ kubectl --kubeconfig=my-cluster-kubeconfig.yaml cluster-info
 ### Via Web UI
 
 1. Go to **Environments** → **Add environment**
-2. Select **Kubernetes**
-3. Select **Import** (or "From kubeconfig")
-4. Paste the kubeconfig content or upload the file
+2. Select **Kubernetes** and click **Start Wizard**
+3. Under **More options**, select **Import**
+4. Upload the self-contained kubeconfig file
 5. Give the environment a name
 6. Click **Connect**
 
 ### Via Portainer API
 
-```bash
-TOKEN=$(curl -s -X POST \
-  https://portainer.example.com/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"adminpassword"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
-
-# Read and encode the kubeconfig
-KUBECONFIG_CONTENT=$(cat my-cluster-kubeconfig.yaml | base64 | tr -d '\n')
-
-# Import the cluster
-curl -X POST \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  https://portainer.example.com/api/endpoints/import \
-  -d "{
-    \"Name\": \"Production K8s Cluster\",
-    \"KubeConfig\": \"${KUBECONFIG_CONTENT}\"
-  }"
-```
+Portainer's current official documentation documents kubeconfig import through the web UI. The public API reference documents adding Docker environments via `/api/endpoints`, but does not document a supported kubeconfig-import request body or `/api/endpoints/import` flow. Use the web UI for kubeconfig-based Kubernetes imports.
 
 ## Step 3: Create a Dedicated Service Account for Portainer
 
-For security, don't use admin credentials. Create a dedicated service account:
+For security, don't use your personal admin kubeconfig. Create a dedicated cluster-admin service account for the import:
 
 ```yaml
 # portainer-k8s-sa.yml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: portainer
+
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -81,31 +71,14 @@ metadata:
   namespace: portainer
 
 ---
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: portainer
-
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: portainer
-rules:
-  # Full access for initial setup
-  - apiGroups: ["*"]
-    resources: ["*"]
-    verbs: ["*"]
-
----
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: portainer
+  name: portainer-cluster-admin
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: portainer
+  name: cluster-admin
 subjects:
   - kind: ServiceAccount
     name: portainer
@@ -115,28 +88,22 @@ subjects:
 ```bash
 kubectl apply -f portainer-k8s-sa.yml
 
-# Get the service account token (Kubernetes 1.24+)
+# Create a token for the service account
 kubectl create token portainer -n portainer --duration=8760h
-
-# For older K8s versions, get the automatically-created token
-SA_SECRET=$(kubectl get sa portainer -n portainer -o jsonpath='{.secrets[0].name}')
-kubectl get secret $SA_SECRET -n portainer -o jsonpath='{.data.token}' | base64 -d
-
-# Get cluster CA
-kubectl get secret $SA_SECRET -n portainer -o jsonpath='{.data.ca\.crt}'
 ```
 
 ```bash
 # Build a kubeconfig for the service account
+CLUSTER_NAME=$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].name}')
 CLUSTER_SERVER=$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.server}')
+CA_DATA=$(kubectl config view --raw --flatten --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
 SA_TOKEN=$(kubectl create token portainer -n portainer --duration=8760h)
-CA_DATA=$(kubectl get secret $SA_SECRET -n portainer -o jsonpath='{.data.ca\.crt}')
 
 cat > portainer-sa-kubeconfig.yaml << EOF
 apiVersion: v1
 kind: Config
 clusters:
-- name: my-cluster
+- name: ${CLUSTER_NAME}
   cluster:
     server: $CLUSTER_SERVER
     certificate-authority-data: $CA_DATA
@@ -147,15 +114,24 @@ users:
 contexts:
 - name: portainer-context
   context:
-    cluster: my-cluster
+    cluster: ${CLUSTER_NAME}
     user: portainer-sa
 current-context: portainer-context
 EOF
+
+# Verify the dedicated kubeconfig works
+kubectl --kubeconfig=portainer-sa-kubeconfig.yaml cluster-info
 ```
 
 ## Verifying the Import
 
 ```bash
+TOKEN=$(curl -s -X POST \
+  https://portainer.example.com/api/auth \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"adminpassword"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
+
 # Check the imported environment appears
 curl -s \
   -H "Authorization: Bearer $TOKEN" \
@@ -170,10 +146,10 @@ for env in json.load(sys.stdin):
 ENDPOINT_ID=6
 curl -s \
   -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/endpoints/${ENDPOINT_ID}/kubernetes/namespaces" \
+  "https://portainer.example.com/api/endpoints/${ENDPOINT_ID}/kubernetes/namespaces?withResourceQuota=false&withUnhealthyEvents=false" \
   | python3 -c "import sys,json; [print(ns['Name']) for ns in json.load(sys.stdin)]"
 ```
 
 ## Conclusion
 
-Kubeconfig import is the fastest way to add an existing Kubernetes cluster to Portainer. It works with any Kubernetes distribution - EKS, AKS, GKE, on-premises, or minikube. For production use, create a dedicated service account with appropriate permissions rather than using admin credentials. The agent-based method provides deeper integration (namespace-level RBAC, resource quotas), but kubeconfig import is perfect for quickly getting a cluster under Portainer management.
+Kubeconfig import is a legacy Portainer Business Edition workflow for bringing an existing Kubernetes cluster under Portainer management when you have a supported self-contained kubeconfig. Portainer uses that kubeconfig to connect to the cluster and deploy the Portainer Agent. For production use, create a dedicated service account with the required cluster-admin access rather than using your personal admin credentials.
