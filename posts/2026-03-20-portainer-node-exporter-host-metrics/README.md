@@ -35,7 +35,7 @@ services:
       - "--path.sysfs=/host/sys"                      # Read host sysfs
       - "--path.procfs=/host/proc"                    # Read host procfs
       - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
-      - "--collector.netclass.ignored-devices=^(veth.*|br-.*|docker.*)$$"    # Exclude Docker virtual interfaces
+      - "--collector.netdev.device-exclude=^(veth.*|br-.*|docker.*)$$"        # Exclude Docker virtual interfaces from netdev stats
       - "--no-collector.ipvs"                         # Disable IPVS collector
       - "--no-collector.nfs"                          # Disable NFS collector (if not using NFS)
     volumes:
@@ -70,31 +70,32 @@ curl -s http://localhost:9100/metrics | grep "^node_filesystem_avail_bytes"
 ```yaml
 # /opt/monitoring/prometheus.yml - Add Node Exporter job
 scrape_configs:
-  - job_name: "node-exporter"
+  - job_name: "node"
     scrape_interval: 15s
     static_configs:
-      - targets: ["node-exporter:9100"]
+      - targets: ["node-exporter:9100"]    # Prometheus must also be attached to the monitoring Docker network
     relabel_configs:
-      # Add instance label from hostname
+      # Override the instance label with a friendly name
       - source_labels: [__address__]
         target_label: instance
         replacement: "production-server-1"
 ```
 
 ```bash
-# Reload Prometheus
+# Reload Prometheus (requires --web.enable-lifecycle)
+# Otherwise, send SIGHUP to the Prometheus process
 curl -X POST http://localhost:9090/-/reload
 
 # Verify target is up
 curl -s http://localhost:9090/api/v1/targets | \
-  jq '.data.activeTargets[] | select(.labels.job=="node-exporter") | {health, scrapeUrl}'
+  jq '.data.activeTargets[] | select(.labels.job=="node") | {health, scrapeUrl}'
 ```
 
 ## Step 4: Key Node Exporter Metrics
 
 ```text
 CPU Metrics:
-  node_cpu_seconds_total{mode="user|system|idle|iowait|irq|softirq"}
+  node_cpu_seconds_total{mode=~"user|system|idle|iowait|irq|softirq"}
   node_load1, node_load5, node_load15                - System load averages
 
 Memory Metrics:
@@ -183,12 +184,12 @@ groups:
 
 ## Step 7: Multi-Host Node Exporter Configuration
 
-For Portainer managing multiple Docker environments, deploy Node Exporter on each host and add all targets to Prometheus:
+For Portainer managing multiple Docker environments, deploy Node Exporter on each host, publish port 9100 on an address Prometheus can reach, and add all targets to Prometheus:
 
 ```yaml
 # prometheus.yml - Multi-host Node Exporter scraping
 scrape_configs:
-  - job_name: "node-exporter"
+  - job_name: "node"
     static_configs:
       - targets:
           - "192.168.1.10:9100"    # Server 1
@@ -205,4 +206,4 @@ scrape_configs:
 
 ## Conclusion
 
-Node Exporter provides essential host-level metrics that complement cAdvisor's container metrics, giving you full infrastructure visibility through Prometheus and Grafana. The key metrics to monitor are CPU idle rate (inverted for usage), available memory bytes, filesystem availability, and disk I/O rates. Import Grafana dashboard ID 1860 (Node Exporter Full) for an immediate comprehensive view of your hosts, and configure alerts for disk space and memory thresholds to catch resource issues before they impact running containers.
+Node Exporter provides essential host-level metrics that complement cAdvisor's container metrics, giving you full infrastructure visibility through Prometheus and Grafana. The key metrics to monitor are CPU idle rate (inverted for usage), available memory bytes, filesystem availability, and disk I/O rates. Import Grafana dashboard ID 1860 (Node Exporter Full) for a quick host dashboard if you keep the default Prometheus job name `node`; some panels also expect the optional `--collector.systemd` and `--collector.processes` collectors. Configure alerts for disk space and memory thresholds to catch resource issues before they impact running containers.
