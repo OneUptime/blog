@@ -39,7 +39,7 @@ node.platform.arch == x86_64
 node.labels.zone == us-east-1a
 node.labels.disk == ssd
 node.labels.tier == web
-node.labels.gpu == "true"
+node.labels.gpu == true
 
 # Engine labels (Docker daemon labels)
 engine.labels.environment == production
@@ -150,7 +150,7 @@ deploy:
 
 ```bash
 == (equals)         node.role == worker
-!= (not equals)     node.labels.exclude != "true"
+!= (not equals)     node.labels.exclude != true
 ```
 
 ## Step 4: Configure Placement Preferences
@@ -184,20 +184,20 @@ After deploying, verify tasks are placed correctly:
 
 ```bash
 # Check which node each task is running on
-docker service ps my-service --format "table {{.Name}}\t{{.Node}}\t{{.CurrentState}}"
+docker service ps my-service
 
 # Output:
-# NAME          NODE       CURRENT STATE
-# service.1     worker-01  Running
-# service.2     worker-02  Running
-# service.3     worker-03  Running
+# ID             NAME           IMAGE         NODE       DESIRED STATE  CURRENT STATE
+# abc123def456   my-service.1   nginx:alpine  worker-01  Running        Running 10 seconds ago
+# def456ghi789   my-service.2   nginx:alpine  worker-02  Running        Running 10 seconds ago
+# ghi789jkl012   my-service.3   nginx:alpine  worker-03  Running        Running 10 seconds ago
 ```
 
-In Portainer, use the **Visualizer** to see the task distribution across nodes.
+In Portainer, use the **Cluster visualizer** to see the task distribution across nodes.
 
 ## Step 6: Troubleshoot Constraint Failures
 
-If tasks stay in `pending` state:
+If tasks stay in `Pending` state:
 
 ```bash
 # Check why tasks aren't scheduling
@@ -205,12 +205,12 @@ docker service ps --no-trunc my-service
 # Look for: "no suitable node (scheduling constraints not satisfied on N nodes)"
 
 # List nodes and their labels
-docker node ls --format '{{.Hostname}}: {{.Labels}}'
+docker node inspect --format '{{.Description.Hostname}}: {{json .Spec.Labels}}' $(docker node ls -q)
 ```
 
 Common issues:
 - **Label doesn't exist** - Run `docker node update --label-add` to add the label
-- **Wrong label value** - Check the exact value with `docker node inspect`
+- **Wrong label value** - Check the exact value with `docker node inspect --format '{{json .Spec.Labels}}' <node-name>`
 - **No nodes with required role** - Constraints too restrictive; review or relax
 
 ## Step 7: Update Constraints on Running Services
