@@ -8,13 +8,13 @@ Description: Learn how to set up Git webhooks in Portainer for instant stack red
 
 ## Introduction
 
-Git webhooks provide near-instant deployment triggers - when you push to your repository, the Git host immediately calls Portainer's webhook URL, triggering a stack update within seconds. This is faster than polling-based updates and the preferred approach when Portainer is accessible from the internet or your Git host.
+Git webhooks provide near-instant deployment triggers - when you push to your repository, the Git host immediately calls Portainer's webhook URL, triggering Portainer to check the configured Git reference on demand. This is faster than polling-based updates and the preferred approach when Portainer is reachable from your Git host or CI/CD runner.
 
 ## Prerequisites
 
 - Portainer CE or BE
 - A Git-connected stack in Portainer
-- Portainer accessible via HTTPS from your Git host
+- Portainer accessible via HTTPS from your Git host or CI/CD runner
 - Git repository on GitHub, GitLab, Gitea, or similar
 
 ## How Webhooks Work
@@ -22,9 +22,9 @@ Git webhooks provide near-instant deployment triggers - when you push to your re
 ```text
 1. Developer pushes commit to Git repository
 2. Git host sends POST request to Portainer webhook URL
-3. Portainer receives request → pulls latest commit
-4. Portainer redeploys the stack with updated configuration
-Total time: typically under 30 seconds
+3. Portainer receives request → checks the latest commit on the configured Git reference
+4. If the commit changed, Portainer pulls the repository contents and redeploys the stack
+Timing depends on your Git host, network, and Portainer environment
 ```
 
 ## Step 1: Enable Webhook on a Stack
@@ -33,39 +33,44 @@ Total time: typically under 30 seconds
 
 1. Log into Portainer.
 2. Go to **Stacks** and click your Git-connected stack.
-3. Find the **GitOps updates** section.
-4. Enable the **Webhook** toggle.
+3. Click **Edit Git settings**.
+4. In **GitOps updates**, enable updates if needed and select **Webhook** as the mechanism.
 5. Copy the generated webhook URL - it will look like:
    ```text
    https://portainer.example.com/api/stacks/webhooks/abc123-def456-ghi789
    ```
-6. Click **Save**.
+6. Click **Save settings**.
 
 ### Via the API
 
 ```bash
 PORTAINER_URL="https://portainer.example.com"
-TOKEN="your-auth-token"
+API_KEY="your-portainer-api-key"
 ENDPOINT_ID=1
 STACK_ID=3
+WEBHOOK_ID=$(uuidgen)
 
-# Enable webhook (Portainer generates the token automatically)
+# Configure the GitOps webhook for the stack
 
-curl -s -X PUT \
-  -H "Authorization: Bearer $TOKEN" \
+curl -s -X POST \
+  -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
-  "${PORTAINER_URL}/api/stacks/${STACK_ID}?endpointId=${ENDPOINT_ID}" \
-  -d '{
-    "AutoUpdate": {
-      "Webhook": "PORTAINER_GENERATED_TOKEN",
-      "FetchInterval": ""
+  "${PORTAINER_URL}/api/stacks/${STACK_ID}/git?endpointId=${ENDPOINT_ID}" \
+  -d "{
+    \"AutoUpdate\": {
+      \"Webhook\": \"${WEBHOOK_ID}\"
     }
-  }' | jq .
+  }" | jq .
 
-# Get the webhook URL from the stack
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/stacks/${STACK_ID}" | \
-  jq -r '.AutoUpdate.Webhook // "No webhook configured"'
+# Verify the webhook ID saved on the stack
+SAVED_WEBHOOK_ID=$(curl -s -H "X-API-Key: $API_KEY" \
+  "${PORTAINER_URL}/api/stacks/${STACK_ID}" | jq -r '.AutoUpdate.Webhook // empty')
+
+if [ -n "$SAVED_WEBHOOK_ID" ]; then
+  printf '%s/api/stacks/webhooks/%s\n' "$PORTAINER_URL" "$SAVED_WEBHOOK_ID"
+else
+  echo "No webhook configured"
+fi
 ```
 
 ## Step 2: Configure GitHub Webhook
@@ -75,12 +80,12 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 3. Configure:
    - **Payload URL**: Your Portainer webhook URL
    - **Content type**: `application/json`
-   - **Secret**: (optional, for signature verification)
+   - **Secret**: Leave this empty for a direct Portainer webhook URL; only set it if you are sending the webhook to middleware that validates GitHub signatures before forwarding to Portainer
    - **Which events**: Select **Just the push event**
 4. Ensure **Active** is checked.
 5. Click **Add webhook**.
 
-Test it immediately: GitHub shows a delivery history where you can verify the webhook was received with a 200 OK response.
+Test it immediately: GitHub sends a `ping` event after creation and shows a delivery history where you can verify the webhook received a 2xx response.
 
 ## Step 3: Configure GitLab Webhook
 
@@ -88,7 +93,7 @@ Test it immediately: GitHub shows a delivery history where you can verify the we
 2. Fill in:
    - **URL**: Your Portainer webhook URL
    - **Trigger**: Check **Push events**
-   - **Branch filter**: `main` (or leave empty for all branches)
+   - **Branch filter**: Optional; leave **All branches** selected or use a wildcard/regex that matches your deployment branch
 3. Click **Add webhook**.
 4. Click **Test** → **Push events** to verify.
 
@@ -99,12 +104,13 @@ Test it immediately: GitHub shows a delivery history where you can verify the we
 3. Set:
    - **Target URL**: Portainer webhook URL
    - **HTTP Method**: POST
+   - **POST Content Type**: `application/json`
    - **Trigger on**: Push events
 4. Click **Add webhook**.
 
 ## Step 5: Filter Webhooks by Branch
 
-By default, the webhook triggers on any push to any branch. To restrict to specific branches, you can use a middleware or configure branch filtering in your CI/CD system:
+By default, your Git provider may send the webhook on every push unless you add host-side filtering. Portainer still checks the stack's configured repository reference and only redeploys when that reference has a new commit. To reduce unnecessary webhook calls, you can use a middleware or configure branch filtering in your CI/CD system:
 
 ```yaml
 # GitHub Actions approach: only trigger on main branch push
@@ -120,7 +126,7 @@ jobs:
     steps:
       - name: Trigger Portainer webhook
         run: |
-          curl -s -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}"
+          curl -fsS -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}"
           echo "Deployment triggered"
 ```
 
@@ -136,12 +142,12 @@ The webhook URL itself is the secret - treat it like a password:
 # GitLab: Settings → CI/CD → Variables → PORTAINER_WEBHOOK_URL
 
 # Use from workflow
-curl -X POST "$PORTAINER_WEBHOOK_URL"
+curl -fsS -X POST "$PORTAINER_WEBHOOK_URL"
 ```
 
 Rotate the webhook if it's compromised:
-1. In Portainer, disable the webhook toggle.
-2. Re-enable it - Portainer generates a new token.
+1. In Portainer, open the stack's **Edit Git settings** screen.
+2. Reconfigure the webhook so it uses a new URL/token.
 3. Update the webhook URL in your Git repository settings.
 
 ## Step 7: Test the Webhook
@@ -152,47 +158,43 @@ WEBHOOK_URL="https://portainer.example.com/api/stacks/webhooks/YOUR_TOKEN"
 
 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$WEBHOOK_URL")
 
-if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "204" ]; then
-  echo "Webhook triggered successfully!"
-else
-  echo "Webhook failed with status: $HTTP_STATUS"
-fi
+case "$HTTP_STATUS" in
+  2??) echo "Webhook triggered successfully!" ;;
+  *) echo "Webhook failed with status: $HTTP_STATUS" ;;
+esac
 ```
 
 ## Step 8: Monitor Webhook Activity
 
 ```bash
 # Check Portainer logs for webhook activity
-docker logs portainer 2>&1 | grep -i "webhook" | tail -10
+docker logs <portainer-container-name> 2>&1 | grep -i "webhook" | tail -10
 
-# Example log entries:
-# time="2026-03-20" level=info msg="Webhook triggered for stack 3"
-# time="2026-03-20" level=info msg="Git pull completed, redeploying stack"
+# Exact log messages vary by Portainer version and log level.
 ```
 
-## Combining Polling and Webhooks
+## Using Polling Instead of Webhooks
 
-For maximum reliability, enable both:
+If Portainer isn't reachable from your Git host or CI/CD runner, use polling instead:
 
 ```bash
-# Enable both webhook AND polling (5m as backup)
-curl -s -X PUT \
-  -H "Authorization: Bearer $TOKEN" \
+# Enable polling every 15m
+curl -s -X POST \
+  -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
-  "${PORTAINER_URL}/api/stacks/${STACK_ID}?endpointId=${ENDPOINT_ID}" \
+  "${PORTAINER_URL}/api/stacks/${STACK_ID}/git?endpointId=${ENDPOINT_ID}" \
   -d '{
     "AutoUpdate": {
-      "Webhook": "your-webhook-token",
-      "FetchInterval": "15m",
+      "Interval": "15m",
       "ForceUpdate": false
     }
   }' | jq .
 ```
 
-This way:
-- Webhooks provide instant updates on push
-- Polling catches any missed webhooks (network issues, etc.)
+Choose the mechanism that fits your environment:
+- Polling checks the configured Git reference on a schedule
+- Webhook mode triggers the same check on demand
 
 ## Conclusion
 
-Git webhooks enable near-instant stack redeployment in Portainer, transforming your Git push into an automated deployment trigger. The setup is straightforward: enable the webhook in Portainer, copy the URL, and add it to your repository settings. For production environments, combine webhooks with polling as a fallback, and always store webhook URLs securely in your CI/CD secrets manager.
+Git webhooks enable near-instant stack redeployment in Portainer, transforming your Git push into an automated deployment trigger. The setup is straightforward: enable the webhook in Portainer, copy the URL, and add it to your repository settings. For production environments, use webhooks when Portainer is reachable from your Git host or CI/CD runner, use polling when inbound webhook delivery is impractical, and always store webhook URLs securely in your CI/CD secrets manager.
