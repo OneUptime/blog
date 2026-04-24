@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Troubleshooting, Security, Upgrade, CORS
 
-Description: Resolve 'Origin Invalid' or CORS-related errors that appear after upgrading Portainer, caused by stricter origin validation introduced in recent versions.
+Description: Resolve 'Origin Invalid' errors that can appear after upgrading Portainer behind a reverse proxy, caused by stricter origin validation in affected recent releases.
 
 ## Introduction
 
-Starting with Portainer 2.19+, stricter origin validation was introduced as a security measure to prevent CSRF attacks. If you access Portainer via an IP address, a different hostname than expected, or behind a proxy that doesn't set the correct headers, you'll see "Invalid Origin" errors. This guide explains the root cause and all available fixes.
+Portainer 2.27.7 and 2.27.8 have a documented known issue where deployments behind some reverse proxy configurations can return "Origin invalid" errors. Portainer added `--trusted-origins` and `TRUSTED_ORIGINS` as a workaround in 2.27.9 LTS and 2.31.3 STS. If you access Portainer via an IP address, a different hostname than expected, or behind a proxy that doesn't preserve the external host and scheme correctly, you'll see "Invalid Origin" errors. This guide explains the root cause and the available fixes.
 
 ## Why Origin Validation Was Added
 
-Without origin validation, a malicious website could make cross-origin requests to your Portainer instance using your browser's session cookies. Portainer now validates that the `Origin` header in requests matches the expected server URL.
+Portainer validates request origin as part of its CSRF protection. In affected releases, reverse proxy setups that changed the effective host or scheme seen by Portainer could trigger `Origin` / `Referer` validation failures.
 
 ## Step 1: Identify the Error
 
@@ -21,11 +21,11 @@ Without origin validation, a malicious website could make cross-origin requests 
 
 # Open F12 → Console
 # Error typically looks like:
-# "Invalid origin"
-# "CORS policy: No 'Access-Control-Allow-Origin' header"
+# "Forbidden - Origin invalid"
+# POST https://portainer.yourdomain.com/api/auth 403 (Forbidden)
 
 # Check Portainer logs
-docker logs portainer 2>&1 | grep -i "origin\|cors\|invalid" | tail -20
+docker logs portainer 2>&1 | grep -Ei "origin invalid|Failed to validate Origin or Referer" | tail -20
 ```
 
 ## Step 2: Access via the Correct URL
@@ -34,33 +34,32 @@ The most reliable fix is to access Portainer via a consistent, trusted URL:
 
 ```bash
 # After the upgrade, if you're getting "Invalid Origin":
-# 1. Clear browser cache (Ctrl+Shift+Delete)
+# 1. Open a private/incognito window or clear site data for Portainer
 # 2. Navigate to the HTTPS URL: https://portainer.yourdomain.com
 # 3. Do NOT mix IP access and hostname access
 
 # The issue often occurs when:
-# - You upgraded and now access via HTTPS but old cookies are from HTTP
-# - You're accessing via IP but Portainer is configured with a domain
+# - You're on an affected Portainer release behind a reverse proxy
+# - You're accessing via IP or a different hostname than the one you intend to trust
+# - The reverse proxy is not preserving the external host/scheme correctly
 ```
 
-## Step 3: Fix Origin Validation via --tunnel-addr Flag
+## Step 3: Fix Origin Validation via `--trusted-origins`
 
-Portainer uses the `--tunnel-addr` value to determine valid origins. If your URL doesn't match:
+Portainer added a dedicated flag for this issue when running behind a reverse proxy:
 
-```bash
-# This is NOT about Edge tunnels - when behind a reverse proxy
-# you need to tell Portainer its external URL
+```text
+# Use the hostname you access Portainer with
+# CLI flag:
+--trusted-origins portainer.yourdomain.com
 
-# Unfortunately, Portainer doesn't have a direct --external-url flag
-# The workaround is to ensure your reverse proxy sends the correct Host header
-
-# Test what origin Portainer receives
-docker logs portainer 2>&1 | grep "Origin" | head -5
+# Docker Compose / environment variable equivalent:
+TRUSTED_ORIGINS=portainer.yourdomain.com
 ```
 
 ## Step 4: Fix Reverse Proxy Configuration
 
-The most common cause is a reverse proxy not forwarding the correct `Host` and `Origin` headers:
+The most common cause is a reverse proxy not preserving the external host and scheme that Portainer uses during origin checks:
 
 ### Nginx
 
@@ -70,21 +69,17 @@ server {
     server_name portainer.yourdomain.com;
 
     location / {
-        proxy_pass https://localhost:9443;
+        proxy_pass http://127.0.0.1:9000;
         proxy_http_version 1.1;
 
-        # CRITICAL: Forward host header correctly
+        # Preserve the external host and scheme
         proxy_set_header Host $host;
-        proxy_set_header Origin $http_origin;
-
-        # WebSocket headers
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
 
         # Real IP headers
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 ```
@@ -92,51 +87,54 @@ server {
 ### Traefik
 
 ```yaml
-# Traefik middleware to handle headers
+# File provider example
 http:
-  middlewares:
-    portainer-headers:
-      headers:
-        customRequestHeaders:
-          X-Forwarded-Proto: "https"
-        # Don't strip the Origin header
-        accessControlAllowOriginList:
-          - "https://portainer.yourdomain.com"
+  routers:
+    portainer:
+      rule: Host(`portainer.yourdomain.com`)
+      entryPoints:
+        - websecure
+      service: portainer
+      tls: {}
+  services:
+    portainer:
+      loadBalancer:
+        servers:
+          - url: http://portainer:9000
 ```
 
 ### Caddy
 
 ```text
 portainer.yourdomain.com {
-    reverse_proxy localhost:9443 {
-        transport http {
-            tls
-            tls_insecure_skip_verify
-        }
-        # Caddy automatically forwards Host header
-    }
+    reverse_proxy 127.0.0.1:9000
 }
 ```
 
-## Step 5: Downgrade and Migrate
+## Step 5: Update to a Release with the Workaround
 
-If origin validation is breaking your specific setup:
+If you're on an affected release, update to a release that includes `--trusted-origins` support:
 
 ```bash
-# Temporarily downgrade to a pre-2.19 version while investigating
-docker stop portainer && docker rm portainer
+# Stop and remove the old container
+docker stop portainer
+docker rm portainer
+
+# Pull a current LTS image
+docker pull portainer/portainer-ce:lts
 
 docker run -d \
-  -p 9000:9000 \
+  -p 127.0.0.1:9000:9000 \
   -p 9443:9443 \
   --name portainer \
-  --restart=unless-stopped \
+  --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:2.18.4
+  portainer/portainer-ce:lts \
+  --trusted-origins portainer.yourdomain.com
 
-# Then investigate the proper proxy configuration
-# before upgrading again
+# Then confirm your reverse proxy points to the same hostname
+# you configured as trusted
 ```
 
 ## Step 6: Fix Docker Compose + Traefik Origin Issues
@@ -145,38 +143,45 @@ docker run -d \
 version: "3.8"
 services:
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:lts
+    command: -H unix:///var/run/docker.sock
+    restart: always
+    environment:
+      - TRUSTED_ORIGINS=portainer.yourdomain.com
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.portainer.rule=Host(`portainer.yourdomain.com`)"
+      - "traefik.http.routers.portainer.entrypoints=websecure"
       - "traefik.http.routers.portainer.tls=true"
       - "traefik.http.routers.portainer.tls.certresolver=letsencrypt"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
-      - "traefik.http.services.portainer.loadbalancer.server.scheme=http"
-      # Pass HTTPS indicator to Portainer
-      - "traefik.http.middlewares.portainer-https.headers.customrequestheaders.X-Forwarded-Proto=https"
-      - "traefik.http.routers.portainer.middlewares=portainer-https"
+volumes:
+  portainer_data:
 ```
 
-## Step 7: Clear All Portainer-Related Cookies
+## Step 7: Clear Portainer Site Data
 
-After fixing the reverse proxy, clear all Portainer cookies:
+After fixing the reverse proxy, clear any stale browser storage for the Portainer origin:
 
 ```javascript
-// In browser console on Portainer page:
-// Delete all cookies for this domain
+// In the browser console on the Portainer page:
+// This clears script-accessible cookies and storage for the current origin.
+// If you still have issues, use your browser's site-data UI to clear the rest.
 document.cookie.split(";").forEach(function(c) {
-  document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+  document.cookie = c
+    .replace(/^ +/, "")
+    .replace(/=.*/, "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/");
 });
 
-// Clear localStorage
+// Clear local and session storage
 localStorage.clear();
+sessionStorage.clear();
 
 // Reload
-location.reload(true);
+location.reload();
 ```
 
 ## Step 8: Use HTTPS Consistently
@@ -191,17 +196,18 @@ server {
     return 301 https://$host$request_uri;
 }
 
-# Make Portainer HTTPS-only
+# If you access Portainer directly rather than through a reverse proxy,
+# you can make Portainer HTTPS-only
 docker run -d \
   -p 9443:9443 \
   --name portainer \
-  --restart=unless-stopped \
+  --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest \
+  portainer/portainer-ce:lts \
   --http-disabled
 ```
 
 ## Conclusion
 
-"Origin Invalid" errors after upgrading Portainer are caused by the stricter CSRF protection added in v2.19+. The fix is almost always ensuring your reverse proxy correctly forwards the `Host` header and the `X-Forwarded-Proto: https` header, then clearing your browser cookies. Access Portainer via a consistent domain/URL rather than mixing IP and hostname access.
+"Origin Invalid" errors after upgrading Portainer are a documented issue for Portainer 2.27.7 and 2.27.8 behind some reverse proxy setups. The fix is to update to a release that supports `--trusted-origins` / `TRUSTED_ORIGINS`, ensure your reverse proxy preserves the external host and scheme, and then clear stale browser storage. Access Portainer via a consistent domain/URL rather than mixing IP and hostname access.
