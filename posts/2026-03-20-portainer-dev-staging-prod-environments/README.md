@@ -31,7 +31,7 @@ Use separate Portainer **Environments** for physical separation:
 | Staging | Separate Portainer environment | QA and integration testing |
 | Production | Separate Portainer environment | Live user traffic |
 
-Or use a single Portainer instance with separate **stacks** and network namespaces for cost efficiency.
+Or use a single Portainer instance with separate **stacks** and networks for cost efficiency.
 
 ## Shared Compose Base with Override Files
 
@@ -39,8 +39,6 @@ Use a base compose file with per-environment overrides:
 
 ```yaml
 # docker-compose.yml (base)
-
-version: "3.8"
 
 services:
   api:
@@ -74,7 +72,6 @@ networks:
 # docker-compose.dev.yml (development overrides)
 services:
   api:
-    build: .           # Build locally instead of pulling
     volumes:
       - .:/app         # Hot reload with bind mount
     environment:
@@ -99,41 +96,41 @@ services:
 # docker-compose.prod.yml (production overrides)
 services:
   api:
-    deploy:
-      replicas: 3
-      resources:
-        limits:
-          memory: 512M
+    scale: 3
+    mem_limit: 512M
     restart: always
 ```
 
 ## Environment-Specific .env Files
 
-Store environment variables in separate `.env` files committed to a secure config repository (not the application repo):
+Store environment variables in separate files in a secure config repository (not the application repo), then load the matching file into each Portainer stack:
 
 ```bash
 # .env.dev
 IMAGE_TAG=develop
 DATABASE_URL=postgresql://appuser:devpassword@postgres:5432/appdb_dev
+REDIS_URL=redis://dev-redis:6379/0
 POSTGRES_PASSWORD=devpassword
 LOG_LEVEL=debug
 
 # .env.staging
 IMAGE_TAG=staging
 DATABASE_URL=postgresql://appuser:stagingpassword@postgres:5432/appdb_staging
+REDIS_URL=redis://staging-redis:6379/0
 POSTGRES_PASSWORD=stagingpassword
 LOG_LEVEL=info
 
 # .env.production
-IMAGE_TAG=v1.5.0
+IMAGE_TAG=production
 DATABASE_URL=postgresql://appuser:prodpassword@postgres:5432/appdb
+REDIS_URL=redis://prod-redis:6379/0
 POSTGRES_PASSWORD=prodpassword
 LOG_LEVEL=warn
 ```
 
 ## Promotion Pipeline
 
-Promote images through environments using tagging:
+If you're using Portainer Business Edition on a non-Edge environment, you can promote images through environments using tagging and then trigger the target stack with a webhook:
 
 ```bash
 #!/bin/bash
@@ -145,15 +142,15 @@ TO_ENV=$2
 IMAGE="myregistry.example.com/my-app"
 
 # Get the current image digest for the source environment
-CURRENT_TAG=$(docker inspect "$IMAGE:$FROM_ENV" --format '{{index .RepoDigests 0}}')
+docker image pull "$IMAGE:$FROM_ENV"
+CURRENT_DIGEST=$(docker image inspect "$IMAGE:$FROM_ENV" --format '{{index .RepoDigests 0}}')
 
 echo "Promoting $IMAGE from $FROM_ENV to $TO_ENV"
-echo "Image: $CURRENT_TAG"
+echo "Image: $CURRENT_DIGEST"
 
 # Re-tag and push
-docker pull "$IMAGE:$FROM_ENV"
-docker tag  "$IMAGE:$FROM_ENV" "$IMAGE:$TO_ENV"
-docker push "$IMAGE:$TO_ENV"
+docker image tag  "$IMAGE:$FROM_ENV" "$IMAGE:$TO_ENV"
+docker image push "$IMAGE:$TO_ENV"
 
 # Trigger target environment deployment
 WEBHOOK_VAR="PORTAINER_${TO_ENV^^}_WEBHOOK"
