@@ -12,114 +12,50 @@ Keeping Docker images up-to-date is essential for security and feature delivery.
 
 ## Prerequisites
 
-- Portainer CE or BE with API access
+- Portainer CE or BE with API access (container and stack webhooks require Portainer BE)
 - Docker registry (Docker Hub, GHCR, private registry)
 - Python or shell scripting environment
 - Registry webhook support (optional)
 
 ## Method 1: Pull and Redeploy via API
 
+For single containers, Portainer's supported automation path is a container webhook. This requires Portainer Business Edition and a non-Edge environment.
+
 ```bash
 #!/bin/bash
 # update-container.sh
 
-# Usage: ./update-container.sh <container-name> <new-image-tag>
+# Usage: ./update-container.sh <new-image-tag>
 
-PORTAINER_URL="https://portainer.example.com"
-API_KEY="your-api-key"
-ENDPOINT_ID=1
-CONTAINER_NAME="${1:-my-app}"
-NEW_IMAGE="${2:-myapp:latest}"
+set -euo pipefail
 
-# Helper function for API calls
-portainer_api() {
-    curl -s \
-        -H "X-API-Key: $API_KEY" \
-        -H "Content-Type: application/json" \
-        "$@"
-}
+# Enable the container webhook in Portainer first, then copy the webhook URL.
+PORTAINER_WEBHOOK_URL="https://portainer.example.com/api/webhooks/your-webhook-token"
+NEW_TAG="${1:-latest}"
 
-echo "=== Portainer Image Update ==="
-echo "Container: $CONTAINER_NAME"
-echo "New Image: $NEW_IMAGE"
+echo "=== Portainer Container Update ==="
+echo "Tag: $NEW_TAG"
 
-# Step 1: Pull the new image
-echo "[1/4] Pulling new image: $NEW_IMAGE"
-portainer_api -X POST \
-    "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/images/create?fromImage=$NEW_IMAGE"
+curl -fsS -X POST "${PORTAINER_WEBHOOK_URL}?tag=${NEW_TAG}"
 
-# Step 2: Find the container
-echo "[2/4] Finding container: $CONTAINER_NAME"
-CONTAINER_ID=$(portainer_api \
-    "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/containers/json?all=true" \
-    | python3 -c "
-import sys, json
-containers = json.load(sys.stdin)
-for c in containers:
-    if any('$CONTAINER_NAME' in n for n in c['Names']):
-        print(c['Id'])
-        break
-")
-
-if [ -z "$CONTAINER_ID" ]; then
-    echo "Error: Container $CONTAINER_NAME not found"
-    exit 1
-fi
-
-echo "Found container ID: ${CONTAINER_ID:0:12}"
-
-# Step 3: Get container configuration
-echo "[3/4] Getting container configuration..."
-CONTAINER_CONFIG=$(portainer_api \
-    "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/containers/$CONTAINER_ID/json")
-
-# Extract config for recreation
-HOST_CONFIG=$(echo $CONTAINER_CONFIG | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d['HostConfig']))")
-ENV=$(echo $CONTAINER_CONFIG | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d['Config']['Env']))")
-
-# Step 4: Stop, remove, and recreate with new image
-echo "[4/4] Replacing container..."
-
-# Stop container
-portainer_api -X POST \
-    "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/containers/$CONTAINER_ID/stop"
-
-# Remove container
-portainer_api -X DELETE \
-    "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/containers/$CONTAINER_ID"
-
-# Create new container with updated image
-NEW_CONTAINER=$(portainer_api -X POST \
-    "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/containers/create?name=$CONTAINER_NAME" \
-    -d "{
-        \"Image\": \"$NEW_IMAGE\",
-        \"Env\": $ENV,
-        \"HostConfig\": $HOST_CONFIG
-    }")
-
-NEW_ID=$(echo $NEW_CONTAINER | python3 -c "import sys,json; print(json.load(sys.stdin)['Id'])")
-
-# Start new container
-portainer_api -X POST \
-    "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/containers/$NEW_ID/start"
-
-echo "Container updated successfully!"
-echo "New container ID: ${NEW_ID:0:12}"
+echo "Container redeployed successfully."
 ```
 
-## Method 2: Update a Stack with New Image Tags
+## Method 2: Update a File-Based Stack with New Image Tags
+
+For stacks created with the Web editor or Upload, update the stack's environment variables and redeploy it. This example assumes your Compose file uses an environment variable in the image reference, such as `image: ghcr.io/example/api:${API_TAG}`. For Git-deployed stacks, update the repository or use `/api/stacks/{id}/git/redeploy` instead.
 
 ```python
 #!/usr/bin/env python3
 # update_stack_image.py
 
+import os
 import requests
-import re
 import sys
 
-PORTAINER_URL = "https://portainer.example.com"
-API_KEY = "your-api-key"
-ENDPOINT_ID = 1
+PORTAINER_URL = os.environ["PORTAINER_URL"].rstrip("/")
+API_KEY = os.environ["PORTAINER_API_KEY"]
+ENDPOINT_ID = int(os.environ.get("PORTAINER_ENDPOINT_ID", "1"))
 
 headers = {
     "X-API-Key": API_KEY,
@@ -127,67 +63,62 @@ headers = {
 }
 
 
-def get_stack_by_name(stack_name: str) -> dict:
-    """Find a stack by name."""
+def get_stack_by_name(stack_name):
+    """Find a stack by name on the target environment."""
     resp = requests.get(
-        f"{PORTAINER_URL}/api/stacks?endpointId={ENDPOINT_ID}",
-        headers=headers
+        f"{PORTAINER_URL}/api/stacks",
+        headers=headers,
+        timeout=30,
     )
     resp.raise_for_status()
     stacks = resp.json()
     for stack in stacks:
-        if stack['Name'] == stack_name:
+        if stack["Name"] == stack_name and stack["EndpointId"] == ENDPOINT_ID:
             return stack
     return None
 
 
-def get_stack_file(stack_id: int) -> str:
-    """Get the compose file content for a stack."""
+def get_stack_file(stack_id):
+    """Get the stored compose file content for a file-based stack."""
     resp = requests.get(
         f"{PORTAINER_URL}/api/stacks/{stack_id}/file",
-        headers=headers
+        headers=headers,
+        timeout=30,
     )
     resp.raise_for_status()
-    return resp.json()['StackFileContent']
+    return resp.json()["StackFileContent"]
 
 
-def update_image_in_compose(compose_content: str, service: str, new_tag: str) -> str:
-    """Update the image tag for a service in compose content."""
-    # Match: "image: registry/name:old-tag" or "image: name:old-tag"
-    pattern = rf'([ \t]*image:\s+[^\s:]+):[^\s\n]+'
+def upsert_env_var(env_vars, name, value):
+    """Create or update a Portainer stack environment variable."""
+    env_vars = env_vars or []
+    updated = []
+    found = False
 
-    lines = compose_content.split('\n')
-    in_service = False
-    result = []
+    for item in env_vars:
+        if item["name"] == name:
+            updated.append({"name": name, "value": value})
+            found = True
+        else:
+            updated.append(item)
 
-    for line in lines:
-        if re.match(rf'^\s{2}{service}:', line):
-            in_service = True
-        elif re.match(r'^\s{2}\w+:', line) and not line.startswith('      '):
-            in_service = False
+    if not found:
+        updated.append({"name": name, "value": value})
 
-        if in_service and re.match(r'\s+image:', line):
-            # Extract image name without tag
-            parts = line.split('image:')
-            image_part = parts[1].strip()
-            image_name = image_part.split(':')[0]
-            line = f"{parts[0]}image: {image_name}:{new_tag}"
-
-        result.append(line)
-
-    return '\n'.join(result)
+    return updated
 
 
-def update_stack(stack_id: int, new_content: str, env_vars: list = None):
-    """Update a stack with new compose content."""
+def update_stack(stack, stack_file_content, env_vars):
+    """Update the stack definition and force a re-pull of the referenced images."""
     resp = requests.put(
-        f"{PORTAINER_URL}/api/stacks/{stack_id}?endpointId={ENDPOINT_ID}",
+        f"{PORTAINER_URL}/api/stacks/{stack['Id']}?endpointId={ENDPOINT_ID}",
         headers=headers,
         json={
-            "StackFileContent": new_content,
-            "Env": env_vars or [],
-            "Prune": False
-        }
+            "StackFileContent": stack_file_content,
+            "Env": env_vars,
+            "RepullImageAndRedeploy": True,
+        },
+        timeout=30,
     )
     resp.raise_for_status()
     return resp.json()
@@ -195,42 +126,47 @@ def update_stack(stack_id: int, new_content: str, env_vars: list = None):
 
 def main():
     stack_name = sys.argv[1] if len(sys.argv) > 1 else "my-app"
-    service_name = sys.argv[2] if len(sys.argv) > 2 else "api"
+    image_tag_var = sys.argv[2] if len(sys.argv) > 2 else "API_TAG"
     new_tag = sys.argv[3] if len(sys.argv) > 3 else "latest"
 
-    print(f"Updating {stack_name}/{service_name} to tag: {new_tag}")
+    print(f"Updating {stack_name}: {image_tag_var}={new_tag}")
 
-    # Get the stack
     stack = get_stack_by_name(stack_name)
     if not stack:
-        print(f"Stack '{stack_name}' not found")
+        print(f"Stack '{stack_name}' not found on endpoint {ENDPOINT_ID}")
         sys.exit(1)
 
-    # Get the compose file
-    compose_content = get_stack_file(stack['Id'])
+    if stack.get("GitConfig"):
+        print("This script updates file-based stacks. For Git-deployed stacks, update the repository or use /api/stacks/{id}/git/redeploy.")
+        sys.exit(1)
 
-    # Update the image tag
-    new_compose = update_image_in_compose(compose_content, service_name, new_tag)
+    compose_content = get_stack_file(stack["Id"])
+    env_vars = upsert_env_var(stack.get("Env"), image_tag_var, new_tag)
 
-    # Update the stack
-    result = update_stack(stack['Id'], new_compose)
-    print(f"Stack updated successfully! Status: {result.get('Status')}")
+    result = update_stack(stack, compose_content, env_vars)
+    print(f"Stack updated successfully! Updated by: {result.get('UpdatedBy')}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
 ```
 
 ## Method 3: Using Portainer Webhooks for Auto-Updates
 
-Portainer supports webhooks that trigger stack redeployments:
+Portainer supports stack webhooks that trigger stack redeployments. These are available in Portainer Business Edition on non-Edge environments:
 
 ```bash
-# In Portainer UI: Stacks > Your Stack > Webhooks > Enable
+# In Portainer UI: Stacks > Your Stack > Editor > Webhooks > Create a stack webhook
 # Copy the webhook URL
 
-# Trigger a stack update (pulls latest images and redeploys)
-curl -X POST "https://portainer.example.com/api/webhooks/your-webhook-token"
+# Trigger a stack redeploy using the current image tags
+curl -X POST "https://portainer.example.com/api/stacks/webhooks/your-webhook-token"
+
+# Trigger a stack redeploy using a different image tag
+curl -X POST "https://portainer.example.com/api/stacks/webhooks/your-webhook-token?tag=latest"
+
+# Optionally disable image pulling during the redeploy
+curl -X POST "https://portainer.example.com/api/stacks/webhooks/your-webhook-token?pullimage=false"
 
 # Integrate with Docker Hub webhooks
 # In Docker Hub: Repository > Webhooks > Add webhook URL
@@ -251,10 +187,11 @@ jobs:
     steps:
       - name: Update image in Portainer
         run: |
-          python update_stack_image.py my-app api ${{ github.sha }}
+          python update_stack_image.py my-app API_TAG ${{ github.sha }}
         env:
           PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
           PORTAINER_API_KEY: ${{ secrets.PORTAINER_API_KEY }}
+          PORTAINER_ENDPOINT_ID: "1"
 ```
 
 ## Conclusion
