@@ -15,7 +15,7 @@ Description: Diagnose and fix 'Connection Reset by Peer' errors in Portainer, wh
 1. Reverse proxy timeout closing idle WebSocket connections
 2. Missing WebSocket upgrade headers in proxy configuration
 3. TLS certificate mismatch or SNI issues
-4. Portainer session timeout
+4. Incorrect upstream protocol or port (`9000` for HTTP vs `9443` for HTTPS)
 5. Network equipment (load balancers, firewalls) closing long-lived connections
 
 ## Step 1: Identify When the Error Occurs
@@ -23,10 +23,10 @@ Description: Diagnose and fix 'Connection Reset by Peer' errors in Portainer, wh
 ```bash
 # Check Portainer logs during the error
 
-docker logs portainer -f --tail 50
+docker logs -f --tail 50 portainer
 
 # Check for WebSocket-related errors
-docker logs portainer 2>&1 | grep -i "websocket\|reset\|pipe\|EOF"
+docker logs portainer 2>&1 | grep -Ei "websocket|reset|pipe|eof"
 ```
 
 ## Scenario 1: Error Occurs in Browser Console
@@ -53,7 +53,7 @@ server {
 
     # Required for WebSocket connections in Portainer
     location / {
-        proxy_pass https://localhost:9443;
+        proxy_pass http://localhost:9000;
 
         proxy_http_version 1.1;
 
@@ -92,15 +92,10 @@ server {
     SSLCertificateKeyFile /etc/ssl/private/portainer.key
 
     # Enable required Apache modules
-    # a2enmod proxy proxy_http proxy_wstunnel rewrite ssl
+    # a2enmod proxy proxy_http headers ssl
 
-    # WebSocket proxying
-    RewriteEngine On
-    RewriteCond %{HTTP:Upgrade} =websocket [NC]
-    RewriteRule /(.*) wss://localhost:9443/$1 [P,L]
-
-    ProxyPass / https://localhost:9443/
-    ProxyPassReverse / https://localhost:9443/
+    ProxyPass / http://localhost:9000/ upgrade=websocket
+    ProxyPassReverse / http://localhost:9000/
 
     # Headers
     RequestHeader set X-Forwarded-Proto "https"
@@ -113,6 +108,8 @@ server {
 ```
 
 ## Scenario 4: Traefik - Fix Connection Reset
+
+Traefik handles WebSocket upgrades automatically, so the main fix is using the correct backend service:
 
 ```yaml
 # traefik.yml dynamic configuration
@@ -128,41 +125,35 @@ http:
     portainer:
       loadBalancer:
         servers:
-          - url: "https://portainer:9443"
-        # Disable sticky sessions if causing issues
-        sticky: null
-
-  middlewares:
-    portainer-headers:
-      headers:
-        # Required for WebSocket
-        customRequestHeaders:
-          X-Forwarded-Proto: "https"
+          - url: "http://portainer:9000/"
 ```
 
 ## Scenario 5: Cloudflare - Connection Reset by Peer
 
-Cloudflare's default WebSocket support settings can cause issues:
+Cloudflare supports proxied WebSockets, but the zone WebSocket setting and tunnel origin settings can still cause issues:
 
 ```bash
 # In Cloudflare dashboard:
-# 1. Network → WebSockets → Enable
-# 2. SSL/TLS → Edge Certificates → Minimum TLS Version → TLS 1.2
-# 3. Speed → Optimization → Disable Rocket Loader for Portainer domain
+# 1. Network → WebSockets → On
+# 2. SSL/TLS → Edge Certificates → Minimum TLS Version → TLS 1.2 or higher
+# 3. If Rocket Loader is enabled for the Portainer hostname, disable it and retest
 
 # For the Cloudflare tunnel, ensure WebSocket support:
 # Tunnels → Configuration → Add Public Hostname
-# Service: https://portainer:9443
+# Service: http://portainer:9000
 # Additional settings → HTTP Host Header: portainer.yourdomain.com
+#
+# If you must use https://portainer:9443, set No TLS Verify for a self-signed
+# origin certificate or install a certificate that cloudflared trusts.
 ```
 
 ## Scenario 6: AWS ALB / Load Balancer
 
 For AWS Application Load Balancers:
 
-1. Ensure the target group protocol is HTTPS
+1. Ensure the target group protocol matches your backend (`HTTP` on `9000` or `HTTPS` on `9443`)
 2. Set idle timeout to at least 600 seconds (default is 60)
-3. Enable sticky sessions if needed:
+3. If you use multiple target groups, verify the listener forwards Portainer to the intended one
 
 ```bash
 # AWS CLI: update ALB target group idle timeout
@@ -174,23 +165,26 @@ aws elbv2 modify-load-balancer-attributes \
 ## Scenario 7: Check for Network MTU Issues
 
 ```bash
-# MTU mismatches can cause TCP RST
+# MTU mismatches are less common, but can cause TCP RST
 # Check Docker network MTU
-docker network inspect bridge | grep '"com.docker.network.driver.mtu"'
+docker network inspect bridge --format '{{json .Options}}'
 
-# Check host interface MTU
-ip link show eth0
+# Check the default route and active interface MTU
+ip route show default
+ip link show
 
-# If Docker containers have different MTU than host
-cat > /etc/docker/daemon.json << 'EOF'
-{
-  "mtu": 1450
-}
-EOF
+# If Docker's bridge MTU needs to change, edit /etc/docker/daemon.json
+sudo mkdir -p /etc/docker
+sudoedit /etc/docker/daemon.json
+
+# Add or update:
+# {
+#   "mtu": 1450
+# }
 
 sudo systemctl restart docker
 ```
 
 ## Conclusion
 
-"Connection Reset by Peer" in Portainer is almost always a proxy configuration issue. The most critical fix is ensuring your reverse proxy has proper WebSocket upgrade headers (`Upgrade` and `Connection`) and sufficient timeouts for long-running operations like log streaming and container terminals. Apply the appropriate fix for your proxy (Nginx, Apache, Traefik, or Cloudflare) and the errors should resolve immediately.
+"Connection Reset by Peer" in Portainer is most often a proxy or network path issue. The most common fixes are using the correct backend port and protocol, ensuring WebSocket upgrades work end-to-end, and increasing idle timeouts for long-running operations like log streaming and container terminals. Apply the appropriate fix for your proxy (Nginx, Apache, Traefik, Cloudflare, or your load balancer) and the resets should stop once the underlying issue is corrected.
