@@ -27,10 +27,10 @@ Git polling is Portainer's mechanism for periodically checking your Git reposito
 
 1. Log into Portainer.
 2. Go to **Stacks** and click on your Git-connected stack.
-3. Click **Edit stack** or the **GitOps updates** section.
-4. Enable the **Fetch updates** toggle.
+3. Open the stack details and configure **GitOps updates**.
+4. Enable **GitOps updates** and select **Polling** as the mechanism.
 5. Set the polling interval.
-6. Click **Save**.
+6. Click **Save settings**.
 
 ## Step 2: Choose the Right Polling Interval
 
@@ -50,43 +50,54 @@ TOKEN="your-auth-token"
 ENDPOINT_ID=1
 STACK_ID=3
 
+# Example assumes a public Docker Standalone stack on refs/heads/main
+# with no Portainer-managed stack environment variables
 # Enable polling with a 5-minute interval
 
-curl -s -X PUT \
+curl -s -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "${PORTAINER_URL}/api/stacks/${STACK_ID}?endpointId=${ENDPOINT_ID}" \
+  "${PORTAINER_URL}/api/stacks/${STACK_ID}/git?endpointId=${ENDPOINT_ID}" \
   -d '{
+    "RepositoryReferenceName": "refs/heads/main",
+    "RepositoryAuthentication": false,
+    "TLSSkipVerify": false,
+    "Env": [],
     "AutoUpdate": {
-      "FetchInterval": "5m",
+      "Interval": "5m",
       "Webhook": "",
+      "ForcePullImage": false,
       "ForceUpdate": false
-    },
-    "pullImage": true,
-    "prune": false
+    }
   }' | jq .
 ```
 
 ## Step 4: Force Redeployment on Every Poll
 
-By default, Portainer only redeploys when the Git commit hash changes. Enable `ForceUpdate` to always redeploy even without new commits (useful for pulling latest image tags):
+By default, Portainer only redeploys when the Git commit hash changes. Enable `ForceUpdate` to redeploy even without new commits, and enable `ForcePullImage` if you also want Portainer to pull the latest image tags on each redeploy:
 
 ```bash
+# Example assumes a public Docker Standalone stack on refs/heads/main
+# with no Portainer-managed stack environment variables
 # Enable forced redeployment on every poll
-curl -s -X PUT \
+curl -s -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "${PORTAINER_URL}/api/stacks/${STACK_ID}?endpointId=${ENDPOINT_ID}" \
+  "${PORTAINER_URL}/api/stacks/${STACK_ID}/git?endpointId=${ENDPOINT_ID}" \
   -d '{
+    "RepositoryReferenceName": "refs/heads/main",
+    "RepositoryAuthentication": false,
+    "TLSSkipVerify": false,
+    "Env": [],
     "AutoUpdate": {
-      "FetchInterval": "5m",
+      "Interval": "5m",
+      "ForcePullImage": true,
       "ForceUpdate": true
-    },
-    "pullImage": true
+    }
   }' | jq .
 ```
 
-> **When to use ForceUpdate**: If your Compose file uses `:latest` tags and you want to always pull fresh images, enable this. If you use pinned image versions and only redeploy on actual config changes, keep it disabled.
+> **When to use ForceUpdate**: If your Compose file uses mutable tags like `:latest`, enable `ForcePullImage` to pull fresh images and `ForceUpdate` if you want a redeploy even when the Git commit has not changed. If you use pinned image versions and only redeploy on actual config changes, keep `ForceUpdate` disabled.
 
 ## Step 5: Deploy a Stack with Polling Configured
 
@@ -98,32 +109,33 @@ curl -s -X POST \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/stacks/create/standalone/repository?endpointId=${ENDPOINT_ID}" \
   -d '{
-    "name": "my-app",
-    "repositoryURL": "https://github.com/your-org/my-app",
-    "repositoryReferenceName": "refs/heads/main",
-    "filePathInRepository": "docker-compose.yml",
-    "repositoryAuthentication": false,
-    "autoUpdate": {
-      "interval": "5m",
-      "forcePullImage": true,
-      "forceUpdate": false
+    "Name": "my-app",
+    "RepositoryURL": "https://github.com/your-org/my-app",
+    "RepositoryReferenceName": "refs/heads/main",
+    "ComposeFile": "docker-compose.yml",
+    "RepositoryAuthentication": false,
+    "TLSSkipVerify": false,
+    "AutoUpdate": {
+      "Interval": "5m",
+      "ForcePullImage": true,
+      "ForceUpdate": false
     },
-    "env": []
+    "Env": []
   }' | jq .
 ```
 
 ## Step 6: Monitor Polling Activity
 
-Check when the last poll occurred and its result:
+Check the current Git config and auto-update settings:
 
 ```bash
-# Get stack details including last update info
+# Get stack details including current Git state
 curl -s -H "Authorization: Bearer $TOKEN" \
   "${PORTAINER_URL}/api/stacks/${STACK_ID}" | \
   jq '{
     name: .Name,
     git_hash: .GitConfig.ConfigHash,
-    last_poll: .GitConfig.LastPollTime,
+    reference: .GitConfig.ReferenceName,
     auto_update: .AutoUpdate
   }'
 ```
@@ -131,8 +143,8 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 Check Portainer logs for polling activity:
 
 ```bash
-# View Portainer container logs
-docker logs portainer 2>&1 | grep -i "polling\|git\|update" | tail -20
+# If Portainer runs in Docker, inspect its container logs
+docker logs <portainer-container-name> 2>&1 | grep -i "git\|update" | tail -20
 ```
 
 ## Step 7: Disable Polling
@@ -140,22 +152,25 @@ docker logs portainer 2>&1 | grep -i "polling\|git\|update" | tail -20
 To stop automatic updates:
 
 1. In the Portainer UI, go to the stack's GitOps settings.
-2. Disable the **Fetch updates** toggle.
-3. Save.
+2. Disable **GitOps updates**.
+3. Click **Save settings**.
 
 Via API:
 
 ```bash
-# Disable auto-update by setting interval to empty
-curl -s -X PUT \
+# Example assumes a public Docker Standalone stack on refs/heads/main
+# with no Portainer-managed stack environment variables
+# Disable GitOps auto-update
+curl -s -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "${PORTAINER_URL}/api/stacks/${STACK_ID}?endpointId=${ENDPOINT_ID}" \
+  "${PORTAINER_URL}/api/stacks/${STACK_ID}/git?endpointId=${ENDPOINT_ID}" \
   -d '{
-    "AutoUpdate": {
-      "FetchInterval": "",
-      "ForceUpdate": false
-    }
+    "RepositoryReferenceName": "refs/heads/main",
+    "RepositoryAuthentication": false,
+    "TLSSkipVerify": false,
+    "Env": [],
+    "AutoUpdate": null
   }' | jq .
 ```
 
@@ -165,7 +180,7 @@ curl -s -X PUT \
 |---------|---------|---------|
 | Network requirement | Portainer → Git (outbound) | Git → Portainer (inbound) |
 | Firewall-friendly | Yes | Requires open port/reverse proxy |
-| Update latency | 1-60 minutes | Near-instant (seconds) |
+| Update latency | At the configured interval (minimum 1 minute) | Near-instant (seconds) |
 | Git host support | Any | Requires webhook capability |
 | Configuration | Simple (interval setting) | Requires webhook setup in Git |
 
@@ -181,4 +196,4 @@ Use **webhooks** when:
 
 ## Conclusion
 
-Git polling in Portainer provides a reliable, pull-based mechanism for automatic stack updates. Configure an appropriate polling interval based on your update frequency requirements, enable force redeployment if using mutable image tags, and monitor polling activity through Portainer logs. For environments where inbound webhooks are possible, consider adding webhooks alongside polling for faster initial response with polling as a backup.
+Git polling in Portainer provides a reliable, pull-based mechanism for automatic stack updates. Configure an appropriate polling interval based on your update frequency requirements, enable re-pull image and force redeployment if you rely on mutable image tags, and monitor activity through Portainer's stack details and logs. If inbound webhooks are possible in your environment, choose webhooks instead when lower update latency matters more than the simplicity of polling.
