@@ -4,32 +4,32 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Stack, GitOps, Webhook, DevOps
 
-Description: Learn how to configure Portainer stack webhooks triggered by Git pushes for instant redeployment without polling delays.
+Description: Learn how to configure Portainer stack webhooks triggered by Git pushes for instant update checks without polling delays.
 
 ## Introduction
 
-While polling auto-update checks for changes at regular intervals, webhook-based auto-update triggers an immediate redeployment the moment a push is made to your Git repository. Portainer generates a unique webhook URL for each stack; your Git provider calls this URL on push, and Portainer immediately pulls the latest Compose file and redeploys. This eliminates polling latency and reduces API calls to your Git provider.
+While polling auto-update checks for changes at regular intervals, webhook-based auto-update triggers an immediate update check the moment a push is made to your Git repository. Portainer generates a unique webhook URL for each stack; your Git provider calls this URL on push, and Portainer immediately checks the repository for a newer commit. If the latest commit differs from the deployed commit (or Force redeployment is enabled), Portainer pulls the updated repository contents and redeploys. This eliminates polling latency and reduces API calls to your Git provider.
 
 ## Prerequisites
 
-- Portainer BE (Business Edition) or CE with webhook support
-- A Git-based stack in Portainer
-- Admin access to the Git repository (to configure webhooks)
+- A stack deployed from a Git repository in Portainer
+- Sufficient access in Portainer to configure GitOps updates for the stack
+- Admin or Maintainer access to the Git repository (to configure webhooks)
 
 ## How Webhook Auto-Update Works
 
 ```text
 1. Developer pushes to Git repository
 2. GitHub/GitLab/Bitbucket sends HTTP POST to Portainer webhook URL
-3. Portainer receives the request, pulls latest Compose from Git
-4. Portainer compares new content to deployed state
-5. Changed services are recreated immediately
+3. Portainer receives the request and checks the latest commit hash for the stack's Git repository
+4. If the commit changed (or Force redeployment is enabled), Portainer pulls the updated repository contents and redeploys
+5. Docker/Swarm/Kubernetes recreates only what changed, unless force redeployment is enabled
 ```
 
 ## Step 1: Enable Webhook on a Git-Based Stack
 
 1. Navigate to **Stacks** → click the stack name.
-2. Under **Automatic updates**, select **Webhook** (instead of Polling).
+2. Under **GitOps updates**, select **Webhook** as the mechanism (instead of Polling).
 3. Portainer generates and displays the webhook URL:
 
 ```text
@@ -48,7 +48,7 @@ https://your-portainer.example.com/api/stacks/webhooks/abc123def456...
 ```text
 Payload URL:   https://your-portainer.example.com/api/stacks/webhooks/abc123def456
 Content type:  application/json
-Secret:        (leave blank or set a secret)
+Secret:        (leave blank unless a reverse proxy validates GitHub signatures)
 Events:        Just the push event
 Active:        ✓ checked
 ```
@@ -64,7 +64,7 @@ Active:        ✓ checked
 
 ```text
 URL:           https://your-portainer.example.com/api/stacks/webhooks/abc123def456
-Secret token:  (optional)
+Secret token:  (leave blank unless a reverse proxy validates X-Gitlab-Token)
 Trigger:       Push events
                Branch filter: main
 SSL verify:    ✓ (if using valid SSL certificate)
@@ -92,10 +92,9 @@ jobs:
     name: Deploy Stack
     runs-on: ubuntu-latest
     steps:
-      - name: Notify Portainer to redeploy
+      - name: Trigger Portainer GitOps webhook
         run: |
-          curl -X POST \
-            -H "Content-Type: application/json" \
+          curl --fail -X POST \
             "${{ secrets.PORTAINER_WEBHOOK_URL }}"
         # PORTAINER_WEBHOOK_URL is stored as a GitHub secret
 ```
@@ -113,6 +112,9 @@ name: Build, Push, and Deploy
 on:
   push:
     branches: [main]
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -135,8 +137,8 @@ jobs:
       - name: Update image tag in Compose file
         run: |
           sed -i "s|image: myorg/api:.*|image: myorg/api:${{ github.sha }}|" docker-compose.yml
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docker-compose.yml
           git commit -m "Update API image to ${{ github.sha }}"
           git push
@@ -158,11 +160,15 @@ Protect the webhook endpoint from unauthorized access:
 #    Name: PORTAINER_WEBHOOK_URL
 #    Value: https://portainer.example.com/api/stacks/webhooks/abc123...
 
-# 3. Restrict Portainer webhook to known IP ranges (firewall):
-#    GitHub IP ranges: https://api.github.com/meta
-#    GitLab IP ranges: https://docs.gitlab.com/ee/user/gitlab_com/
+# 3. GitHub/GitLab webhook secrets are only useful if something in front of
+#    Portainer validates them before forwarding the request
 
-# 4. Use an nginx reverse proxy in front of Portainer with IP allowlisting
+# 4. Restrict Portainer webhook to known IP ranges (firewall):
+#    GitHub IP ranges: https://api.github.com/meta
+#    GitLab IP ranges: https://docs.gitlab.com/user/gitlab_com/
+
+# 5. Use an nginx reverse proxy in front of Portainer with IP allowlisting
+#    and optional signature/token validation
 ```
 
 ## Step 7: Test the Webhook Manually
@@ -172,10 +178,10 @@ Protect the webhook endpoint from unauthorized access:
 curl -X POST \
   "https://your-portainer.example.com/api/stacks/webhooks/abc123def456"
 
-# Expected response: HTTP 200 OK
-# The stack will redeploy immediately
+# Expected response: HTTP 204 No Content
+# Portainer performs the update check asynchronously
 ```
 
 ## Conclusion
 
-Webhook-based auto-updates provide instant redeployment with zero polling overhead. Configure Portainer to generate a webhook URL, add it to your Git repository's webhook settings, and every push triggers an immediate redeploy. For the most complete CI/CD workflow, combine this with GitHub Actions or GitLab CI: build and push the image, update the image tag in the Compose file (or environment variables), push to Git, and let the webhook fire automatically. Store webhook URLs as CI/CD secrets - they are effectively authentication tokens.
+Webhook-based auto-updates provide instant update checks with zero polling overhead. Configure Portainer to generate a webhook URL, add it to your Git repository's webhook settings, and every push triggers an immediate check for a newer Git commit. For the most complete CI/CD workflow, combine this with GitHub Actions or GitLab CI: build and push the image, update the image tag in the Compose file (or environment variables), push to Git, and let the webhook fire automatically. Store webhook URLs as CI/CD secrets - they are effectively authentication tokens.
