@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Volumes, Storage, DevOps
 
-Description: Learn how to browse and view the contents of Docker volumes directly in Portainer using the volume browser feature available with Swarm and Agent deployments.
+Description: Learn how to browse the contents of Docker volumes directly in Portainer using the volume browser feature available with Swarm and Agent deployments.
 
 ## Introduction
 
-Portainer Business Edition and environments using the Portainer Agent provide a built-in volume browser that lets you navigate volume contents, view files, and download or upload files - all from the web interface. This is extremely useful for debugging, data verification, and quick file management without SSH access.
+Portainer environments running Docker Swarm or using the Portainer Agent provide a built-in volume browser that lets you navigate volume contents and upload, download, rename, or delete files - all from the web interface. This is extremely useful for debugging, data verification, and quick file management without SSH access.
 
 ## Prerequisites
 
@@ -18,13 +18,12 @@ Portainer Business Edition and environments using the Portainer Agent provide a 
 
 ## Step 1: Access the Volume Browser
 
-The volume browser is available in environments managed via the Portainer Agent:
+The volume browser is available in environments running Docker Swarm or managed via the Portainer Agent:
 
-1. Navigate to the Docker environment managed by the Agent.
+1. Navigate to the Docker environment running Docker Swarm or managed by the Agent.
 2. Go to **Volumes** in the sidebar.
 3. Find the volume you want to browse.
-4. Click the volume name.
-5. Click the **Browse** button (folder icon).
+4. Click **Browse** next to the volume.
 
 ## Step 2: Navigate the Volume
 
@@ -34,24 +33,21 @@ The volume browser shows:
 - Last modified dates
 - File/directory icons
 
-Navigate by:
-- Clicking directories to enter them
-- Using the breadcrumb navigation at the top
-- Using the back button
+Navigate by clicking directories to enter them and using the browser controls to move around the volume.
 
-## Step 3: View File Contents
+## Step 3: Inspect a File
 
-1. In the volume browser, click on a file.
-2. Portainer displays the file content in a viewer.
-3. For text files (configs, logs), you can view the content directly.
-4. Binary files may not display correctly.
+1. In the volume browser, locate the file you want to inspect.
+2. Click **Download** for the file.
+3. Open the downloaded file in your local editor or viewer.
+4. If you want to inspect files without downloading them, use a container console as shown below.
 
 ## Step 4: Download Files from a Volume
 
 To download a specific file:
 
 1. Navigate to the file in the volume browser.
-2. Click the **Download** button or right-click the file.
+2. Click the **Download** button for the file.
 3. The file downloads to your local machine.
 
 This is useful for:
@@ -61,10 +57,10 @@ This is useful for:
 
 ## Step 5: Upload Files to a Volume
 
-To add or update files in a volume:
+To add files to a volume:
 
 1. Navigate to the target directory in the browser.
-2. Click **Upload** (or drag-and-drop).
+2. Click the upload icon in the top right.
 3. Select the file from your local machine.
 4. The file is uploaded to the volume.
 
@@ -131,7 +127,7 @@ docker run --rm \
 # Copy a file out of the volume:
 docker run --rm \
   -v my-volume:/data \
-  -v $(pwd):/output \
+  -v "$(pwd):/output" \
   alpine:latest \
   cp /data/important.db /output/
 ```
@@ -163,7 +159,7 @@ case "$ACTION" in
         docker run --rm -v "${VOLUME}:/vol" alpine du -sh "/vol${PATH_IN_VOLUME}"
         ;;
     copy-out)
-        local dest="${4:-$(basename ${PATH_IN_VOLUME})}"
+        dest="${4:-$(basename "${PATH_IN_VOLUME}")}"
         docker run --rm \
           -v "${VOLUME}:/vol" \
           -v "$(pwd):/output" \
@@ -171,11 +167,11 @@ case "$ACTION" in
         echo "Copied to: ${dest}"
         ;;
     copy-in)
-        local src="${4:?Source file required}"
+        src="${4:?Source file required}"
         docker run --rm \
           -v "${VOLUME}:/vol" \
-          -v "$(dirname ${src}):/input" \
-          alpine cp "/input/$(basename ${src})" "/vol${PATH_IN_VOLUME}"
+          -v "$(dirname "${src}"):/input" \
+          alpine cp "/input/$(basename "${src}")" "/vol${PATH_IN_VOLUME}"
         echo "Copied to volume: ${PATH_IN_VOLUME}"
         ;;
     *)
@@ -195,14 +191,14 @@ Usage:
 
 ## Step 6: Access Volume Data Directly on Host
 
-For direct access (when you have host access):
+For direct access to a local-driver volume on a Linux host (when you have host access):
 
 ```bash
 # Find volume path:
-docker volume inspect my-volume | jq '.[].Mountpoint'
+docker volume inspect --format '{{ .Mountpoint }}' my-volume
 # /var/lib/docker/volumes/my-volume/_data
 
-# Browse directly (requires root or docker group):
+# Browse directly (requires appropriate host filesystem permissions, often root):
 sudo ls -la /var/lib/docker/volumes/my-volume/_data/
 
 # View a file:
@@ -211,4 +207,4 @@ sudo cat /var/lib/docker/volumes/my-volume/_data/config.yaml
 
 ## Conclusion
 
-Portainer's volume browser (available with Agent-based environments) provides a convenient web-based way to inspect volume contents without SSH or CLI access. For non-Agent environments, use temporary Alpine containers to browse and manage volume contents. Both approaches give you full visibility into what's stored in your Docker volumes for debugging, data verification, and file management.
+Portainer's volume browser (available with Docker Swarm or Agent-based environments) provides a convenient web-based way to inspect volume contents without SSH or CLI access. For non-Agent environments, use temporary Alpine containers to browse and manage volume contents. Both approaches give you full visibility into what's stored in your Docker volumes for debugging, data verification, and file management.
