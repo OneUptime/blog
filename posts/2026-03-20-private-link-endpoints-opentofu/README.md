@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, OpenTofu, PrivateLink, VPC Endpoints, Security, Networking
 
-Description: Learn how to create and manage AWS PrivateLink VPC endpoints using OpenTofu to access AWS services and third-party APIs without traversing the public internet.
+Description: Learn how to create and manage AWS VPC endpoints using OpenTofu, including PrivateLink-powered interface endpoints and gateway endpoints, to access AWS services and third-party APIs without traversing the public internet.
 
 ## What is AWS PrivateLink?
 
 AWS PrivateLink allows you to access AWS services and services hosted by other AWS accounts (or AWS Marketplace partners) privately within your VPC, without exposing traffic to the public internet. Traffic stays on the AWS backbone network.
 
-VPC endpoints come in two types:
-- **Interface endpoints** - Uses an ENI in your VPC with a private IP (PrivateLink)
-- **Gateway endpoints** - For S3 and DynamoDB; uses route table entries
+For this guide, we'll use two VPC endpoint types:
+- **Interface endpoints** - Uses one or more ENIs in your VPC with private IPs (powered by AWS PrivateLink)
+- **Gateway endpoints** - For S3 and DynamoDB; uses route table entries and are not powered by AWS PrivateLink
 
 ## Creating an Interface Endpoint
 
@@ -134,12 +134,12 @@ resource "aws_vpc_endpoint" "s3_restricted" {
 # From an EC2 instance in the VPC
 
 # Test S3 without internet
-curl https://s3.amazonaws.com -I
+curl https://s3.us-east-1.amazonaws.com -I
 
 # Check if private DNS is working
 nslookup secretsmanager.us-east-1.amazonaws.com
 
-# Should resolve to a private 10.x.x.x address
+# Should resolve to a private RFC 1918 address from your VPC subnets
 ```
 
 ## Outputs
@@ -160,10 +160,10 @@ output "s3_endpoint_id" {
 
 1. **Enable `private_dns_enabled`** for interface endpoints so applications need no code changes
 2. **Create endpoints for SSM** to enable Systems Manager access without a bastion host
-3. **Create endpoints for ECR** to avoid internet egress for container image pulls
+3. **Create `ecr.api`, `ecr.dkr`, and the S3 gateway endpoint for ECR** to avoid internet egress for container image pulls
 4. **Apply endpoint policies** to restrict which resources can be accessed via the endpoint
-5. **Place endpoints in each AZ** for high availability
+5. **Place interface endpoints in each AZ you use** for high availability
 
 ## Conclusion
 
-AWS PrivateLink endpoints managed with OpenTofu eliminate internet exposure for AWS API calls from your VPC. By deploying interface endpoints for commonly used services (SSM, Secrets Manager, ECR, CloudWatch Logs), you can operate private subnets without NAT gateways and significantly reduce your network attack surface.
+AWS VPC endpoints managed with OpenTofu eliminate internet exposure for AWS API calls from your VPC. By deploying interface endpoints for commonly used services (SSM, Secrets Manager, ECR, CloudWatch Logs) and gateway endpoints where required, you can operate private subnets without NAT gateways and significantly reduce your network attack surface.
