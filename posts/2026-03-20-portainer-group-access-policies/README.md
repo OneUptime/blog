@@ -27,12 +27,12 @@ graph TD
 
 ### Via Web UI
 
-1. Go to **Environments** in the left sidebar
-2. Click the **Groups** tab
+1. From the menu, expand **Environment-related**
+2. Select **Groups**
 3. Click **Add group**
 4. Enter a name (e.g., "Production"), optional description
 5. Select the environments to include
-6. Click **Create group**
+6. Click **Create**
 
 ### Via API
 
@@ -60,21 +60,20 @@ curl -X POST \
 
 ### Via Web UI
 
-1. Navigate to **Environments** → **Groups**
-2. Click on the group you want to configure
-3. Scroll to the **Access control** section
-4. Click **Add access** or **Manage access**
-5. Select the team and the role to assign
-6. Save
+1. From the menu, expand **Environment-related** and select **Groups**
+2. Locate the group you want to configure
+3. Click **Manage access**
+4. Select the team and the role to assign
+5. Click **Create access**
 
 ### Via API
 
-Role IDs for Portainer Business Edition:
+Built-in role IDs used in these examples:
 - `1` = Environment Administrator
-- `2` = Operator
-- `3` = Helpdesk
-- `4` = Standard User
-- `5` = Read-Only Viewer
+- `2` = Helpdesk
+- `3` = Standard User
+- `4` = Read-Only User
+- `5` = Operator
 
 ```bash
 # Get all teams to find team IDs
@@ -89,34 +88,48 @@ GROUP_ID=1
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "https://portainer.example.com/api/endpoint_groups/${GROUP_ID}/teamaccesspolicies" \
-  -d '{"2": {"RoleID": 2}}'
+  "https://portainer.example.com/api/endpoint_groups/${GROUP_ID}" \
+  -d '{"TeamAccessPolicies": {"2": {"RoleId": 5}}}'
 
 # Assign Platform Team (ID: 1) as Environment Administrator
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "https://portainer.example.com/api/endpoint_groups/${GROUP_ID}/teamaccesspolicies" \
-  -d '{"1": {"RoleID": 1}, "2": {"RoleID": 2}}'
+  "https://portainer.example.com/api/endpoint_groups/${GROUP_ID}" \
+  -d '{"TeamAccessPolicies": {"1": {"RoleId": 1}, "2": {"RoleId": 5}}}'
 ```
 
 ## Step 3: Verify Access Propagation
 
-After assigning the policy to the group, verify that team members can access the environments:
+After assigning the policy to the group, verify that the group contains the expected team access policy and that the environment is associated with the group:
 
 ```bash
-# Get the access policies for a specific environment in the group
+# Check the group's team access policies
+GROUP_ID=1
 ENDPOINT_ID=1
+curl -s \
+  -H "Authorization: Bearer $TOKEN" \
+  "https://portainer.example.com/api/endpoint_groups/${GROUP_ID}" \
+  | python3 -c "
+import sys, json
+g = json.load(sys.stdin)
+print('Group team policies:', g.get('TeamAccessPolicies', {}))
+print('Group user policies:', g.get('UserAccessPolicies', {}))
+"
+
+# Check that the environment belongs to the group
 curl -s \
   -H "Authorization: Bearer $TOKEN" \
   "https://portainer.example.com/api/endpoints/${ENDPOINT_ID}" \
   | python3 -c "
 import sys, json
 e = json.load(sys.stdin)
-print('Team policies:', e.get('TeamAccessPolicies', {}))
-print('User policies:', e.get('UserAccessPolicies', {}))
+print('Environment group:', e.get('GroupId'))
+print('Environment team policies:', e.get('TeamAccessPolicies', {}))
 "
 ```
+
+Group-level access is inherited when Portainer evaluates authorization, so an environment's own `TeamAccessPolicies` can remain empty unless you also define an environment-level override.
 
 ## Bulk Access Policy Configuration Script
 
@@ -132,13 +145,13 @@ PORTAINER_URL="https://portainer.example.com"
 # Group access assignments: "group_id:team_id:role_id"
 ASSIGNMENTS=(
   "1:1:1"   # Production group: Platform Team = Environment Admin
-  "1:2:2"   # Production group: Backend Team = Operator
-  "1:3:3"   # Production group: Support Team = Helpdesk
+  "1:2:5"   # Production group: Backend Team = Operator
+  "1:3:2"   # Production group: Support Team = Helpdesk
   "2:1:1"   # Staging group: Platform Team = Environment Admin
-  "2:2:4"   # Staging group: Backend Team = Standard User
+  "2:2:3"   # Staging group: Backend Team = Standard User
   "3:1:1"   # Development group: Platform Team = Environment Admin
-  "3:2:4"   # Development group: Backend Team = Standard User
-  "3:4:4"   # Development group: Frontend Team = Standard User
+  "3:2:3"   # Development group: Backend Team = Standard User
+  "3:4:3"   # Development group: Frontend Team = Standard User
 )
 
 declare -A GROUP_POLICIES
@@ -147,20 +160,20 @@ declare -A GROUP_POLICIES
 for assignment in "${ASSIGNMENTS[@]}"; do
   IFS=':' read -r group_id team_id role_id <<< "$assignment"
   if [[ -z "${GROUP_POLICIES[$group_id]}" ]]; then
-    GROUP_POLICIES[$group_id]="{\"${team_id}\": {\"RoleID\": ${role_id}}"
+    GROUP_POLICIES[$group_id]="{\"${team_id}\": {\"RoleId\": ${role_id}}"
   else
-    GROUP_POLICIES[$group_id]="${GROUP_POLICIES[$group_id]}, \"${team_id}\": {\"RoleID\": ${role_id}}"
+    GROUP_POLICIES[$group_id]="${GROUP_POLICIES[$group_id]}, \"${team_id}\": {\"RoleId\": ${role_id}}"
   fi
 done
 
 # Apply policies to each group
 for group_id in "${!GROUP_POLICIES[@]}"; do
-  POLICY_JSON="${GROUP_POLICIES[$group_id]}}"
+  POLICY_JSON="{\"TeamAccessPolicies\": ${GROUP_POLICIES[$group_id]}}"
   echo "Applying to group ${group_id}: ${POLICY_JSON}"
   curl -s -X PUT \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
-    "${PORTAINER_URL}/api/endpoint_groups/${group_id}/teamaccesspolicies" \
+    "${PORTAINER_URL}/api/endpoint_groups/${group_id}" \
     -d "${POLICY_JSON}"
 done
 
@@ -173,7 +186,7 @@ When you add a new environment to an existing group, it inherits all team access
 
 ```bash
 # Add environment ID 5 to group ID 1 (inherits all team access policies)
-curl -X POST \
+curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   "https://portainer.example.com/api/endpoint_groups/1/endpoints/5"
 ```
@@ -187,16 +200,16 @@ The teams that had access to the Production group now automatically have access 
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "https://portainer.example.com/api/endpoint_groups/${GROUP_ID}/teamaccesspolicies" \
-  -d '{}'
+  "https://portainer.example.com/api/endpoint_groups/${GROUP_ID}" \
+  -d '{"TeamAccessPolicies": {}}'
 
 # Remove a specific team's access (keep others)
 # To remove Backend Team (ID: 2), only include the teams you want to KEEP
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "https://portainer.example.com/api/endpoint_groups/${GROUP_ID}/teamaccesspolicies" \
-  -d '{"1": {"RoleID": 1}}'
+  "https://portainer.example.com/api/endpoint_groups/${GROUP_ID}" \
+  -d '{"TeamAccessPolicies": {"1": {"RoleId": 1}}}'
 ```
 
 ## Best Practices
