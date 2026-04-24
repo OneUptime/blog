@@ -8,7 +8,7 @@ Description: Diagnose and fix Podman socket connection failures in Portainer, co
 
 ## Introduction
 
-Connecting Portainer to a Podman socket can fail for several reasons: the socket service is not running, file permissions prevent access, the socket path is wrong, or the Podman API version is incompatible. This guide covers systematic troubleshooting steps to resolve all common Podman socket connection issues in Portainer.
+Connecting Portainer to a Podman socket can fail for several reasons: the socket service is not running, file permissions prevent access, the socket path is wrong, or SELinux is blocking access. This guide covers systematic troubleshooting steps for Portainer's legacy local Podman socket connection, which Portainer currently officially supports in rootful mode.
 
 ## Common Error Messages
 
@@ -39,21 +39,17 @@ ls -la /run/user/$(id -u)/podman/podman.sock      # rootless
 ## Step 2: Test the Podman API Directly
 
 ```bash
-# Test rootful socket with Docker-compatible API
+# Test rootful socket with Podman's documented Docker-compatible API
 curl -s --unix-socket /run/podman/podman.sock \
-  http://d/v1.44/version | jq .
+  http://d/v1.40/version | jq .
 
-# Test rootless socket
-curl -s --unix-socket /run/user/1000/podman/podman.sock \
-  http://d/v1.44/version | jq .
+# Test rootless socket (rootless Podman is not officially supported by Portainer)
+curl -s --unix-socket /run/user/$(id -u)/podman/podman.sock \
+  http://d/v1.40/version | jq .
 
 # List containers to verify basic API functionality
 curl -s --unix-socket /run/podman/podman.sock \
-  http://d/v1.44/containers/json | jq '.[].Names'
-
-# If you get a 404 error on /v1.44, try a lower version:
-curl -s --unix-socket /run/podman/podman.sock \
-  http://d/v1.41/version | jq .
+  http://d/v1.40/containers/json | jq '.[].Names'
 ```
 
 ## Step 3: Check Socket File Permissions
@@ -64,26 +60,24 @@ ls -la /run/podman/podman.sock
 # Example output:
 # srw-rw---- 1 root root 0 Mar 20 10:00 /run/podman/podman.sock
 
-# The socket must be readable by the user running Portainer
-# Option A: Add the Portainer container user to the socket group
-sudo chmod 666 /run/podman/podman.sock  # Temporary (resets on restart)
+# The user running the Portainer Server container must be able to access the socket
+# Inspect the socket unit if you are using a custom override
+sudo systemctl cat podman.socket
 
-# Option B: Add user to the docker/podman group
-sudo usermod -aG docker portainer-user
-# Or create a podman group and update the socket
-sudo groupadd podman
-sudo chown root:podman /run/podman/podman.sock
-sudo chmod 660 /run/podman/podman.sock
+# Avoid changing ownership or mode on the live socket file directly:
+# systemd recreates it when podman.socket restarts
 
 # Verify Portainer container can access the socket
-docker exec portainer ls -la /var/run/docker.sock
+podman exec portainer ls -la /var/run/docker.sock
 ```
 
 ## Step 4: Verify Socket Mount in Portainer Container
 
+Socket-based Podman connections are only supported when the Portainer Server itself is running on Podman locally, not when Portainer Server is running on Docker.
+
 ```bash
 # Check how Portainer is mounted
-docker inspect portainer | jq '.[0].Mounts'
+podman inspect portainer | jq '.[0].Mounts'
 
 # The output should show the Podman socket mapped to Docker socket path:
 # {
@@ -93,16 +87,18 @@ docker inspect portainer | jq '.[0].Mounts'
 # }
 
 # If it's missing or wrong, recreate the container with correct mount:
-docker stop portainer && docker rm portainer
+podman stop portainer
+podman rm portainer
 
-docker run -d \
-  -p 9000:9000 \
+podman run -d \
+  -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
-  --restart=unless-stopped \
-  -v /run/podman/podman.sock:/var/run/docker.sock \  # Correct path
+  --restart=always \
+  --privileged \
+  -v /run/podman/podman.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 5: Resolve API Version Mismatches
@@ -110,23 +106,24 @@ docker run -d \
 ```bash
 # Check what API version Podman reports
 curl -s --unix-socket /run/podman/podman.sock \
-  http://d/v1.44/version | jq '.ApiVersion'
+  http://d/v1.40/version | jq '.ApiVersion'
 
 # Check Podman version
 podman version
 
-# Portainer requires Podman's Docker-compatible API (libpod/v4+)
+# Podman documents a Docker-compatible v1.40 API
+# Portainer's current official Podman support is Podman 5 on CentOS Stream 9 in rootful mode
 # Upgrade Podman if version is too old:
 sudo dnf update podman    # RHEL/Fedora
 sudo apt update && sudo apt upgrade podman  # Ubuntu/Debian
 
-# Test the minimum required endpoints:
-# /v1.44/containers/json
-# /v1.44/images/json
-# /v1.44/info
+# Test the Docker-compatible endpoints:
+# /v1.40/containers/json
+# /v1.40/images/json
+# /v1.40/info
 for endpoint in containers/json images/json info; do
   STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-    --unix-socket /run/podman/podman.sock "http://d/v1.44/$endpoint")
+    --unix-socket /run/podman/podman.sock "http://d/v1.40/$endpoint")
   echo "$endpoint: HTTP $STATUS"
 done
 ```
@@ -142,12 +139,17 @@ sudo grep "avc:  denied" /var/log/audit/audit.log | grep podman | tail -5
 
 # If denials exist, apply a fix:
 
-# Option A: Use a permissive label for Portainer container
-docker run -d \
-  --security-opt label:disable \  # Disable SELinux labels for this container
+# Option A: Disable SELinux labeling for the Portainer container
+podman run -d \
+  --name portainer \
+  --restart=always \
+  --privileged \
+  --security-opt label=disable \
+  -p 8000:8000 \
+  -p 9443:9443 \
   -v /run/podman/podman.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 
 # Option B: Generate and install a custom policy
 sudo ausearch -m AVC -ts recent | audit2allow -M portainer-podman
@@ -155,6 +157,8 @@ sudo semodule -i portainer-podman.pp
 ```
 
 ## Step 7: Debug Rootless Podman Lingering Issues
+
+Portainer with rootless Podman may work, but it is not officially supported.
 
 ```bash
 # For rootless Podman: ensure the user session persists
@@ -164,30 +168,34 @@ sudo loginctl enable-linger your-username
 loginctl show-user your-username | grep Linger
 
 # Check if the systemd user session has the socket
-sudo -u your-username systemctl --user status podman.socket
+sudo -iu your-username systemctl --user status podman.socket
 
 # The DBUS_SESSION_BUS_ADDRESS must be set for user services
 # Check environment in the context where Portainer runs
-systemctl --user show-environment | grep -E "XDG_RUNTIME_DIR|DBUS"
+sudo -iu your-username systemctl --user show-environment | grep -E "XDG_RUNTIME_DIR|DBUS"
 ```
 
 ## Step 8: Check for Port or Firewall Blocking (Remote Podman)
 
 ```bash
-# If using TCP-based Podman API
+# Socket connections are local-only.
+# If you are using Podman over TCP, Podman recommends SSH forwarding or mutual TLS.
+PORT=8080  # Example only; use the port configured for podman system service
+
 # Verify Podman is listening on the expected port
-ss -tlnp | grep 2375
+ss -tlnp | grep ":$PORT"
 
 # Test connectivity from Portainer host
-curl http://podman-host:2375/v1.44/version
+# Use https:// plus the appropriate TLS options here if you enabled TLS
+curl http://podman-host:$PORT/v1.40/version
 
 # Check firewall rules
-sudo firewall-cmd --list-all | grep 2375       # firewalld
-sudo iptables -L -n | grep 2375                # iptables
-sudo ufw status | grep 2375                    # ufw
+sudo firewall-cmd --list-all | grep "$PORT"       # firewalld
+sudo iptables -L -n | grep "$PORT"                # iptables
+sudo ufw status | grep "$PORT"                    # ufw
 
-# Open the port if blocked
-sudo firewall-cmd --add-port=2375/tcp --permanent
+# Open the configured port if blocked
+sudo firewall-cmd --add-port=$PORT/tcp --permanent
 sudo firewall-cmd --reload
 ```
 
@@ -195,10 +203,10 @@ sudo firewall-cmd --reload
 
 ```bash
 # Portainer container logs
-docker logs portainer --tail 50
+podman logs portainer --tail 50
 
 # Look for specific errors
-docker logs portainer 2>&1 | grep -i "error\|cannot connect\|socket\|podman"
+podman logs portainer 2>&1 | grep -i "error\|cannot connect\|socket\|podman"
 
 # Podman system service logs
 sudo journalctl -u podman.socket -n 50
@@ -210,4 +218,4 @@ journalctl --user -u podman.socket -n 50
 
 ## Conclusion
 
-Podman socket connection issues in Portainer typically fall into four categories: the socket service is not running, permissions prevent access, SELinux is blocking the socket, or the Podman API version is too old. Start by verifying the socket exists and the service is active, then confirm the Portainer container has the socket mounted at `/var/run/docker.sock`, and finally test the API directly with curl before restarting Portainer. For rootless Podman, always ensure linger is enabled so the socket service starts without requiring a user login session.
+Podman socket connection issues in Portainer typically fall into four categories: the socket service is not running, the socket path or mount is wrong, permissions or SELinux are blocking access, or the Portainer and Podman combination is outside the supported matrix. Start by verifying the socket exists and the service is active, then confirm Portainer is running on Podman with the socket mounted at `/var/run/docker.sock`, and finally test Podman's Docker-compatible v1.40 API directly with curl before restarting Portainer. Direct Podman socket connections are a legacy local-only option, and rootless Podman may work but is not officially supported by Portainer.
