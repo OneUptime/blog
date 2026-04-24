@@ -12,8 +12,8 @@ QinQ (IEEE 802.1ad) stacks two VLAN tags: an outer Service VLAN (S-VLAN) and an 
 
 ## Prerequisites
 
-- Linux kernel 3.10+
-- `8021q` kernel module
+- Linux system with `iproute2`
+- `8021q` kernel module or built-in VLAN support
 - Root access
 - Network infrastructure supporting 802.1ad (switches/routers)
 
@@ -96,11 +96,10 @@ ip -d link show ${PARENT}.${S_VLAN}.${C_VLAN}
 ## Verify QinQ Tagging with tcpdump
 
 ```bash
-# Capture on parent interface to see both tags
-tcpdump -i eth0 -e vlan
+# Capture on the parent interface and match the stacked VLAN tags
+tcpdump -i eth0 -e 'vlan 1000 && vlan 100'
 
-# Look for frames with TWO VLAN headers:
-# 802.1Q (outer 0x88A8 / 802.1ad) vlan#1000, then inner 802.1Q vlan#100
+# Look for frames whose outer VLAN ID is 1000 and inner VLAN ID is 100
 ```
 
 ## Conclusion
