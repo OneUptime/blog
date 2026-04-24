@@ -12,7 +12,7 @@ Docker Swarm node labels are key-value metadata attached to nodes that enable pl
 
 ## Managing Labels via Portainer
 
-In Portainer: **Swarm > Nodes > Select Node > Labels**
+In Portainer: **Swarm > Details > Select Node > Node Details > Labels**
 
 Add labels in the format: `key = value`
 
@@ -87,10 +87,10 @@ services:
           - spread: node.labels.region
 ```
 
-## Available Constraint Operators
+## Available Constraint Expressions
 
 ```yaml
-# Supported operators for placement constraints
+# Common expressions for placement constraints
 constraints:
   - node.id == <id>              # Specific node ID
   - node.hostname == worker1     # Specific hostname
@@ -142,6 +142,8 @@ curl -s \
   | python3 -c "import sys,json; n=json.load(sys.stdin); print(json.dumps(n['Spec']['Labels'], indent=2))"
 
 # Update node labels via Portainer API
+NODE_VERSION=$(docker node inspect --format '{{.Version.Index}}' worker1)
+
 curl -X POST \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
@@ -152,12 +154,11 @@ curl -X POST \
       "tier": "database"
     },
     "Role": "worker",
-    "Availability": "active",
-    "Version": {"Index": 25}
+    "Availability": "active"
   }' \
-  "https://portainer.example.com/api/endpoints/1/docker/nodes/$NODE_ID/update"
+  "https://portainer.example.com/api/endpoints/1/docker/nodes/$NODE_ID/update?version=$NODE_VERSION"
 ```
 
 ## Conclusion
 
-Node labels and constraints in Docker Swarm provide powerful workload scheduling control. Portainer makes label management accessible through its Swarm node UI, while Docker Compose labels in stacks enable precise service placement. By labeling nodes with their capabilities and constraints in service definitions, you create a self-documenting infrastructure where service placement decisions are explicit and version-controlled.
+Node labels and constraints in Docker Swarm provide powerful workload scheduling control. Portainer makes label management accessible through its Swarm node UI, while placement constraints in Compose files used for stacks enable precise service placement. By labeling nodes with their capabilities and constraints in service definitions, you create a self-documenting infrastructure where service placement decisions are explicit and version-controlled.
