@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Business Edition, License, CLI, Configuration
 
-Description: Apply and manage your Portainer Business Edition license key using the --license-key flag and UI settings to unlock enterprise features.
+Description: Apply and manage your Portainer Business Edition license key using the --license-key flag, PORTAINER_LICENSE_KEY, and the Licenses UI to unlock enterprise features.
 
 ## Introduction
 
@@ -15,9 +15,9 @@ Portainer Business Edition (BE) requires a license key to activate enterprise fe
 1. Purchase Portainer Business Edition at [portainer.io](https://www.portainer.io/pricing)
 2. Log in to the Portainer customer portal
 3. Navigate to **License Keys**
-4. Copy your license key (format: `XxXxXx-XXXX-XXXX-XXXX-XXXXXXXXXXXX`)
+4. Copy your license key (the exact format varies by license type)
 
-Free 5-node trial licenses are available without payment at [portainer.io/take-3](https://www.portainer.io/take-3).
+Free 3-node licenses are available without payment at [portainer.io/take-3](https://www.portainer.io/take-3).
 
 ## Step 1: Apply License at Startup
 
@@ -32,14 +32,14 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ee:latest \
-  --license-key="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+  --license-key="<YOUR-LICENSE-KEY>"
 
 # Note: Use portainer-ee (Enterprise Edition) image, not portainer-ce
 ```
 
 ## Step 2: Apply License via Environment Variable
 
-For more secure handling (keeps key out of process list):
+As an alternative to the CLI flag:
 
 ```bash
 # Set license as environment variable
@@ -48,7 +48,7 @@ docker run -d \
   -p 9443:9443 \
   --name portainer \
   --restart=unless-stopped \
-  -e PORTAINER_LICENSE_KEY="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" \
+  -e PORTAINER_LICENSE_KEY="<YOUR-LICENSE-KEY>" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ee:latest
@@ -59,21 +59,20 @@ docker run -d \
 If Portainer is already running without a license:
 
 1. Log in to Portainer
-2. Go to **Settings** → **License**
-3. Click **Apply License**
+2. Go to **Licenses**
+3. Click **Add license**
 4. Enter your license key
 5. Click **Submit**
 
 ## Step 4: Apply License via Docker Compose
 
 ```yaml
-version: "3.8"
 services:
   portainer:
     image: portainer/portainer-ee:latest
     container_name: portainer
     restart: unless-stopped
-    command: --license-key=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+    command: --license-key=<YOUR-LICENSE-KEY>
     ports:
       - "9000:9000"
       - "9443:9443"
@@ -85,17 +84,16 @@ volumes:
   portainer_data:
 ```
 
-Or use a secret for better security:
+Or load it from a `.env` file:
 
 ```yaml
-version: "3.8"
 services:
   portainer:
     image: portainer/portainer-ee:latest
     container_name: portainer
     restart: unless-stopped
     environment:
-      # Load from .env file: echo "PORTAINER_LICENSE=XXX" > .env
+      # Load from .env file: echo "PORTAINER_LICENSE_KEY=<YOUR-LICENSE-KEY>" > .env
       PORTAINER_LICENSE_KEY: "${PORTAINER_LICENSE_KEY}"
     ports:
       - "9000:9000"
@@ -103,6 +101,9 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
+
+volumes:
+  portainer_data:
 ```
 
 ## Step 5: Verify License Activation
@@ -114,16 +115,22 @@ TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
   -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
 
 curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/system/info | jq '{
-  Version: .Version,
-  InstanceID: .InstanceID
+  http://localhost:9000/api/system/version | jq '{
+  ServerVersion: .ServerVersion,
+  ServerEdition: .ServerEdition,
+  VersionSupport: .VersionSupport
 }'
 
-# Or check license status
+# Check license status
 curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/licenses | jq .
+  http://localhost:9000/api/licenses/info | jq '{
+  valid: .valid,
+  nodes: .nodes,
+  expiresAt: .expiresAt,
+  type: .type
+}'
 
-# In the UI: Settings → License → shows expiry date and node count
+# In the UI: Licenses → shows applied licenses, expiry date, and node count
 ```
 
 ## Step 6: Update an Expired License
@@ -141,49 +148,49 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ee:latest \
-  --license-key="NEW-LICENSE-KEY-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+  --license-key="<YOUR-NEW-LICENSE-KEY>"
 
 # Or update via API without restart
 curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   http://localhost:9000/api/licenses \
-  -d '{"key": "NEW-LICENSE-KEY-XXXX-XXXX-XXXX-XXXXXXXXXXXX"}'
+  -d '{"licenseKeys":["<YOUR-NEW-LICENSE-KEY>"]}'
 ```
 
 ## Step 7: Migrate License to New Portainer Instance
 
 ```bash
-# Export license info from old instance
-curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/licenses | jq '.key'
+# Stop the old instance before reusing the license
+docker stop portainer && docker rm portainer
 
-# Apply to new instance
+# Start the new instance with the same license key
 docker run -d \
   -p 9000:9000 \
+  -p 9443:9443 \
   --name portainer-new \
+  --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data_new:/data \
   portainer/portainer-ee:latest \
-  --license-key="YOUR-LICENSE-KEY"
+  --license-key="<YOUR-LICENSE-KEY>"
 ```
 
 ## Step 8: Use License Key File
 
 ```bash
 # Create a license key file
-echo "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" > /opt/portainer/license.key
+echo "<YOUR-LICENSE-KEY>" > /opt/portainer/license.key
 chmod 600 /opt/portainer/license.key
 
-# Mount and reference it
+# Read the key from the file at launch time
 docker run -d \
   -p 9000:9000 \
   --name portainer \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  -v /opt/portainer/license.key:/license.key:ro \
-  portainer/portainer-ee:latest \
-  --license-key="$(cat /opt/portainer/license.key)"
+  -e PORTAINER_LICENSE_KEY="$(cat /opt/portainer/license.key)" \
+  portainer/portainer-ee:latest
 
 # Or in a script:
 LICENSE=$(cat /opt/portainer/license.key)
@@ -191,19 +198,19 @@ docker run -d \
   --name portainer \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ee:latest \
-  --license-key="$LICENSE"
+  -e PORTAINER_LICENSE_KEY="$LICENSE" \
+  portainer/portainer-ee:latest
 ```
 
 ## Step 9: Check Features Unlocked by License
 
 After applying the license, verify BE features are available:
 
-1. **RBAC**: Settings → Users → Teams (should show team options)
-2. **Activity Logs**: Settings → Activity Logs (should be accessible)
-3. **Scheduled Backups**: Settings → Backup → S3 backup option visible
-4. **LDAP/SSO**: Settings → Authentication → OAuth/LDAP options
+1. **RBAC**: **User-related** → **Teams** should be available
+2. **Activity Logs**: **Logs** → **Activity** should be accessible
+3. **Scheduled Backups**: **Settings** → **Backup Portainer** should show **Store in S3** and scheduling options
+4. **LDAP/SSO**: **Settings** → **Authentication** should show OAuth/LDAP options
 
 ## Conclusion
 
-Applying the Portainer Business Edition license key via `--license-key` at startup is the most reliable method for automated deployments. For production environments, store the license key in an environment variable or Docker secret rather than passing it directly on the command line. The license unlocks enterprise features including RBAC, LDAP/OAuth SSO, activity auditing, and scheduled backups to S3.
+Applying the Portainer Business Edition license key via `--license-key` at startup is one supported method for automated deployments. For production environments, keep the license key out of hard-coded configuration where possible by supplying it through `PORTAINER_LICENSE_KEY` or reading it from a protected local file at runtime. The license unlocks enterprise features including RBAC, LDAP/OAuth SSO, activity logs, and scheduled backups to S3.
