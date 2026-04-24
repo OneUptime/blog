@@ -8,32 +8,43 @@ Description: Deploy Seafile via Portainer as a high-performance self-hosted file
 
 ## Introduction
 
-Seafile is a high-performance, reliable file sync and share platform. It offers end-to-end encryption for private libraries, fast delta sync, and native clients for all platforms. Deploying via Portainer with MySQL gives you a production-ready file storage solution.
+Seafile is a high-performance, reliable file sync and share platform. It offers client-side encrypted libraries, fast syncing, and native clients for major platforms. Deploying via Portainer with MariaDB gives you a production-ready file storage solution.
 
 ## Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   seafile:
-    image: seafileltd/seafile-mc:10.0-latest
+    image: seafileltd/seafile-mc:13.0-latest
     container_name: seafile
     environment:
-      DB_HOST: seafile-db
-      DB_ROOT_PASSWD: db_root_password
-      SEAFILE_ADMIN_EMAIL: admin@example.com
-      SEAFILE_ADMIN_PASSWORD: admin_password
+      SEAFILE_MYSQL_DB_HOST: seafile-db
+      SEAFILE_MYSQL_DB_PORT: 3306
+      SEAFILE_MYSQL_DB_USER: seafile
+      SEAFILE_MYSQL_DB_PASSWORD: seafile_db_password
+      INIT_SEAFILE_MYSQL_ROOT_PASSWORD: db_root_password
+      SEAFILE_MYSQL_DB_CCNET_DB_NAME: ccnet_db
+      SEAFILE_MYSQL_DB_SEAFILE_DB_NAME: seafile_db
+      SEAFILE_MYSQL_DB_SEAHUB_DB_NAME: seahub_db
+      INIT_SEAFILE_ADMIN_EMAIL: admin@example.com
+      INIT_SEAFILE_ADMIN_PASSWORD: admin_password
       SEAFILE_SERVER_HOSTNAME: seafile.example.com
-      SEAFILE_SERVER_LETSENCRYPT: "false"  # Handle SSL externally
+      SEAFILE_SERVER_PROTOCOL: http
       TIME_ZONE: America/New_York
+      JWT_PRIVATE_KEY: change-this-jwt-private-key
+      CACHE_PROVIDER: memcached
+      MEMCACHED_HOST: memcached
+      MEMCACHED_PORT: 11211
+      ENABLE_SEADOC: "false"
     volumes:
       - seafile_data:/shared
     ports:
       - "80:80"
     depends_on:
-      - seafile-db
-      - memcached
+      seafile-db:
+        condition: service_healthy
+      memcached:
+        condition: service_started
     restart: unless-stopped
 
   seafile-db:
@@ -41,17 +52,26 @@ services:
     container_name: seafile-db
     environment:
       MYSQL_ROOT_PASSWORD: db_root_password
-      MYSQL_LOG_CONSOLE: true
+      MYSQL_LOG_CONSOLE: "true"
+      MARIADB_AUTO_UPGRADE: "1"
     volumes:
       - seafile_db:/var/lib/mysql
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "--silent"]
-      interval: 10s
+      test:
+        [
+          "CMD",
+          "/usr/local/bin/healthcheck.sh",
+          "--connect",
+          "--mariadbupgrade",
+          "--innodb_initialized",
+        ]
+      interval: 20s
+      start_period: 30s
       timeout: 5s
-      retries: 5
+      retries: 10
 
-  # Memcached for session caching
+  # Memcached is still supported, though Redis is now the default in Seafile 13.
   memcached:
     image: memcached:1.6-alpine
     container_name: seafile-memcached
@@ -69,7 +89,7 @@ After deployment, access Seafile at `http://<host>:80`.
 
 Log in with your admin credentials and configure:
 
-1. **System Settings**: Set the service URL
+1. **System Settings**: Verify the service URL matches the hostname configured in the stack
 2. **Libraries**: Create your first encrypted library
 3. **Users**: Invite team members
 
@@ -78,17 +98,20 @@ Log in with your admin credentials and configure:
 ```bash
 # Access Seafile container
 
-docker exec -it seafile bash
+docker exec -it seafile /bin/bash
 
-# Check service status
-/opt/seafile/seafile-server-latest/seafile.sh status
-/opt/seafile/seafile-server-latest/seahub.sh status
+# Check service status inside the container
+cd /opt/seafile/seafile-server-latest
+./seafile.sh status
+./seahub.sh status
 
-# Create a user
-/opt/seafile/seafile-server-latest/reset-admin.sh
+# Add or reset an admin account
+./reset-admin.sh
 ```
 
 ## Enabling HTTPS with Nginx Proxy
+
+Before redeploying behind Nginx, change `SEAFILE_SERVER_PROTOCOL` to `https` in the Seafile service and redeploy the stack.
 
 ```yaml
 services:
@@ -113,21 +136,23 @@ server {
     ssl_certificate /etc/nginx/certs/fullchain.pem;
     ssl_certificate_key /etc/nginx/certs/privkey.pem;
 
-    proxy_set_header X-Forwarded-For $remote_addr;
-
     location / {
         proxy_pass http://seafile:80;
+        proxy_read_timeout 310s;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        client_max_body_size 10G;
-        proxy_read_timeout 3600;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_http_version 1.1;
+        client_max_body_size 0;
     }
 }
 ```
 
 ## Desktop Client Setup
 
-Download Seafile desktop client from seafile.com:
+Download Seafile desktop client from `https://www.seafile.com/en/download/`:
 
 1. Install on Windows, Mac, or Linux
 2. Add server: `https://seafile.example.com`
@@ -137,22 +162,22 @@ Download Seafile desktop client from seafile.com:
 ## Backup Strategy
 
 ```bash
-# Stop Seafile before backup
-docker stop seafile
+# Backup databases first
+docker exec seafile-db mariadb-dump -uroot -pdb_root_password --opt ccnet_db \
+  > /backups/ccnet_db-$(date +%Y%m%d).sql
+docker exec seafile-db mariadb-dump -uroot -pdb_root_password --opt seafile_db \
+  > /backups/seafile_db-$(date +%Y%m%d).sql
+docker exec seafile-db mariadb-dump -uroot -pdb_root_password --opt seahub_db \
+  > /backups/seahub_db-$(date +%Y%m%d).sql
 
-# Backup data directory
-tar czf /backups/seafile-data-$(date +%Y%m%d).tar.gz \
-  /var/lib/docker/volumes/seafile_data/_data/seafile-data
-
-# Backup database
-docker exec seafile-db mysqldump \
-  -u root -pdb_root_password \
-  --all-databases > /backups/seafile-db-$(date +%Y%m%d).sql
-
-# Restart Seafile
-docker start seafile
+# Backup the Seafile data volume
+docker run --rm \
+  -v seafile_data:/source:ro \
+  -v /backups:/backup \
+  alpine \
+  tar czf /backup/seafile-data-$(date +%Y%m%d).tar.gz -C /source .
 ```
 
 ## Conclusion
 
-Seafile deployed via Portainer provides a fast, reliable file sync platform that excels at handling large files and many small files alike. Its delta-sync algorithm is more efficient than rsync for large binary files, making it ideal for design assets, video files, and software repositories. End-to-end encryption for selected libraries provides strong privacy guarantees for sensitive data.
+Seafile deployed via Portainer provides a fast, reliable file sync platform that works well for large libraries and many small files alike. Its sync engine and deduplicated block storage make it a practical fit for design assets, video files, and software repositories. Client-side encrypted libraries provide strong privacy guarantees for sensitive file contents.
