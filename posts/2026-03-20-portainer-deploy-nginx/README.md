@@ -19,11 +19,9 @@ Navigate to **Containers > Add container**:
 
 ## Deploy as a Stack
 
-In Portainer, create a stack named `nginx`:
+In Portainer, create a stack named `nginx` and use absolute host paths for bind mounts:
 
 ```yaml
-version: "3.8"
-
 services:
   nginx:
     image: nginx:alpine
@@ -33,12 +31,12 @@ services:
       - "443:443"
     volumes:
       # Custom nginx configuration
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./conf.d:/etc/nginx/conf.d:ro
+      - /opt/portainer/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /opt/portainer/nginx/conf.d:/etc/nginx/conf.d:ro
       # Web content
-      - ./html:/usr/share/nginx/html:ro
+      - /opt/portainer/nginx/html:/usr/share/nginx/html:ro
       # SSL certificates
-      - ./certs:/etc/nginx/certs:ro
+      - /opt/portainer/nginx/certs:/etc/nginx/certs:ro
       # Access and error logs
       - nginx_logs:/var/log/nginx
     restart: unless-stopped
@@ -54,7 +52,7 @@ volumes:
 
 ## Custom Nginx Configuration
 
-Create `nginx.conf` in your stack directory:
+Create `/opt/portainer/nginx/nginx.conf` on the Docker host:
 
 ```nginx
 # nginx.conf - main configuration
@@ -91,7 +89,7 @@ http {
 }
 ```
 
-Create `conf.d/default.conf`:
+Create `/opt/portainer/nginx/conf.d/default.conf`:
 
 ```nginx
 # Default server block
@@ -101,8 +99,8 @@ server {
 
     # Health check endpoint
     location /health {
+        default_type text/plain;
         return 200 'OK';
-        add_header Content-Type text/plain;
     }
 
     # Static content
@@ -117,7 +115,7 @@ server {
 ## Using Nginx as a Reverse Proxy
 
 ```nginx
-# conf.d/reverse-proxy.conf
+# /opt/portainer/nginx/conf.d/reverse-proxy.conf
 server {
     listen 80;
     server_name app.example.com;
@@ -141,9 +139,10 @@ server {
 ## SSL Configuration
 
 ```nginx
-# conf.d/ssl.conf
+# /opt/portainer/nginx/conf.d/ssl.conf
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate /etc/nginx/certs/fullchain.pem;
@@ -176,11 +175,11 @@ server {
 After updating config files, reload Nginx without downtime:
 
 ```bash
-# Via Portainer Console or:
-docker exec nginx nginx -s reload
-
 # Test configuration before reloading
 docker exec nginx nginx -t
+
+# Via Portainer Console or:
+docker exec nginx nginx -s reload
 ```
 
 ## Updating Nginx
