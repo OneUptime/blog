@@ -30,7 +30,7 @@ print(addr)              # 2001:db8::1
 print(addr.version)      # 6
 print(addr.is_unicast())     # True
 print(addr.is_link_local())  # False
-print(addr.is_global())  # True
+print(addr.is_global())  # False
 
 # Integer representation
 print(int(addr))         # Very large number
@@ -39,7 +39,7 @@ print(int(addr))         # Very large number
 ## Working with IPv6 Networks (IPNetwork)
 
 ```python
-from netaddr import IPNetwork
+from netaddr import IPAddress, IPNetwork
 
 net = IPNetwork("2001:db8::/32")
 
@@ -68,13 +68,13 @@ for s in subnets[:3]:
 
 # Merge adjacent networks into summaries
 networks = [
+    IPNetwork("2001:db8::/48"),
     IPNetwork("2001:db8:1::/48"),
     IPNetwork("2001:db8:2::/48"),
     IPNetwork("2001:db8:3::/48"),
-    IPNetwork("2001:db8:4::/48"),
 ]
 merged = cidr_merge(networks)
-print(f"Merged: {merged}")   # ['2001:db8:1::/46']
+print(f"Merged: {[str(n) for n in merged]}")   # ['2001:db8::/46']
 
 # Exclude a subnet from a larger block
 remaining = cidr_exclude(IPNetwork("2001:db8::/32"), IPNetwork("2001:db8:1::/48"))
@@ -90,16 +90,16 @@ from netaddr import IPSet, IPNetwork, IPAddress
 
 # Create an IP set from multiple networks
 permitted_set = IPSet([
-    "2001:db8:prod::/48",
-    "2001:db8:staging::/48",
+    "2001:db8:100::/48",
+    "2001:db8:200::/48",
 ])
 
 # Check if an address is in the set
-test_addr = IPAddress("2001:db8:prod:1::100")
+test_addr = IPAddress("2001:db8:100:1::100")
 print(test_addr in permitted_set)    # True
 
 # Set operations
-blocked_set = IPSet(["2001:db8:prod:bad::/64"])
+blocked_set = IPSet(["2001:db8:100:bad::/64"])
 allowed = permitted_set - blocked_set
 
 print(f"Allowed count: {allowed.size}")
