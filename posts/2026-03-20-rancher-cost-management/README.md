@@ -20,66 +20,76 @@ Without proper cost visibility, Kubernetes infrastructure costs can spiral out o
 ## Step 1: Install OpenCost (Free, Open Source)
 
 ```bash
-# Install OpenCost with Prometheus integration
+# Install OpenCost with Rancher Monitoring's Prometheus service
 
-# (Rancher Monitoring must already be installed)
+# Rancher Monitoring must already be installed in cattle-monitoring-system
 
-helm repo add opencost https://opencost.github.io/opencost-helm-chart
+helm repo add opencost-charts https://opencost.github.io/opencost-helm-chart
 helm repo update
 
-helm install opencost opencost/opencost \
+helm install opencost opencost-charts/opencost \
   --namespace opencost \
   --create-namespace \
-  --set opencost.prometheus.existingSecretName="" \
-  --set opencost.prometheus.internal.enabled=false \
-  --set opencost.prometheus.external.enabled=true \
-  --set opencost.prometheus.external.url=http://rancher-monitoring-prometheus.cattle-monitoring-system.svc:9090
+  --set opencost.prometheus.internal.enabled=true \
+  --set opencost.prometheus.internal.namespaceName=cattle-monitoring-system \
+  --set opencost.prometheus.internal.serviceName=rancher-monitoring-prometheus \
+  --set opencost.prometheus.internal.port=9090
 
 # Access OpenCost UI
 kubectl port-forward svc/opencost 9090:9090 -n opencost
 ```
 
-## Step 2: Configure Cloud Pricing (AWS)
+## Step 2: Configure Cloud Costs (AWS)
 
-```yaml
-# AWS cloud pricing configuration
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cloud-costs
-  namespace: opencost
-data:
-  cloud_integration.json: |
-    {
-      "aws": {
-        "athenaBucketName": "my-cost-and-usage-report",
-        "athenaRegion": "us-east-1",
-        "athenaDatabase": "athenacurcfn",
-        "athenaTable": "my_cur",
-        "masterPayerARN": "arn:aws:iam::123456789012:role/CostAndUsageReportRole",
-        "serviceKeyName": "aws_access_key_id",
-        "serviceKeySecret": "aws_secret_access_key",
-        "projectID": "123456789012"
+```bash
+# Create the AWS cloud-integration secret used by OpenCost Cloud Costs
+cat > cloud-integration.json <<'EOF'
+{
+  "aws": {
+    "athena": [
+      {
+        "bucket": "s3://aws-athena-query-results-123456789012-us-east-1",
+        "region": "us-east-1",
+        "database": "athenacurcfn",
+        "table": "my_cur",
+        "workgroup": "primary",
+        "account": "123456789012",
+        "authorizer": {
+          "authorizerType": "AWSAccessKey",
+          "id": "REPLACE_WITH_AWS_ACCESS_KEY_ID",
+          "secret": "REPLACE_WITH_AWS_SECRET_ACCESS_KEY"
+        }
       }
-    }
+    ]
+  }
+}
+EOF
+
+kubectl create secret generic cloud-costs \
+  --from-file=cloud-integration.json \
+  --namespace opencost
+
+helm upgrade opencost opencost-charts/opencost \
+  --namespace opencost \
+  --reuse-values \
+  --set opencost.cloudIntegrationSecret=cloud-costs \
+  --set opencost.cloudCost.enabled=true
 ```
 
 ## Step 3: Install Kubecost (More Features, Free Tier Available)
 
 ```bash
-# Install Kubecost with Rancher integration
-helm repo add kubecost https://kubecost.github.io/cost-analyzer/
+# Install the current Kubecost chart (Kubecost 3.x requires Kubernetes 1.29+)
+helm repo add kubecost https://kubecost.github.io/kubecost/
 helm repo update
 
-helm install kubecost kubecost/cost-analyzer \
+helm install kubecost kubecost/kubecost \
   --namespace kubecost \
   --create-namespace \
-  --set global.prometheus.fqdn=http://rancher-monitoring-prometheus.cattle-monitoring-system.svc:9090 \
-  --set global.prometheus.enabled=false \
-  --set cost-analyzer.nodeSelector."kubernetes.io/os"=linux
+  --set global.clusterId=rancher-cluster-1
 
 # Access Kubecost UI
-kubectl port-forward svc/kubecost-cost-analyzer 9090:9090 -n kubecost
+kubectl port-forward svc/kubecost-frontend 9090:9090 -n kubecost
 ```
 
 ## Step 4: Cost Allocation Labels
@@ -100,12 +110,22 @@ metadata:
     environment: production
     project: user-onboarding      # Project label
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-service
   template:
     metadata:
       labels:
         app: api-service
         team: platform-engineering
         cost-center: "CC-1234"
+        environment: production
+        project: user-onboarding
+    spec:
+      containers:
+        - name: api-service
+          image: nginx:1.27
 ```
 
 ## Step 5: Budget Alerts
@@ -125,9 +145,10 @@ spec:
         - alert: NamespaceBudgetExceeded
           expr: |
             sum by(namespace) (
-              opencost_container_cpu_cost_hourly +
-              opencost_container_memory_cost_hourly
-            ) * 24 * 30 > 500
+              container_cpu_allocation * on (node) group_left node_cpu_hourly_cost +
+              container_memory_allocation_bytes * on (node) group_left node_ram_hourly_cost / (1024 * 1024 * 1024) +
+              pod_pvc_allocation * on (persistentvolume) group_left pv_hourly_cost / (1024 * 1024 * 1024)
+            ) * 730 > 500
           for: 1h
           labels:
             severity: warning
@@ -138,7 +159,11 @@ spec:
         # Alert if cluster monthly cost exceeds threshold
         - alert: ClusterCostSpike
           expr: |
-            sum(opencost_container_cpu_cost_hourly + opencost_container_memory_cost_hourly) * 24 * 30 > 10000
+            sum(
+              container_cpu_allocation * on (node) group_left node_cpu_hourly_cost +
+              container_memory_allocation_bytes * on (node) group_left node_ram_hourly_cost / (1024 * 1024 * 1024) +
+              pod_pvc_allocation * on (persistentvolume) group_left pv_hourly_cost / (1024 * 1024 * 1024)
+            ) * 730 > 10000
           for: 2h
           labels:
             severity: critical
@@ -151,36 +176,55 @@ spec:
 ### Find Over-Provisioned Workloads
 
 ```bash
-# Query Prometheus for CPU utilization vs requests
-# Low utilization = over-provisioned = wasted money
+# Spot-check current CPU usage
+# Low current usage relative to requests can indicate over-provisioning
 
-kubectl top pods -A --sort-by=cpu | head -20
+kubectl top pod -A --sort-by=cpu | head -20
 
-# Kubecost API to find savings opportunities
-curl "http://kubecost.kubecost.svc:9090/model/savings" \
-  | jq '.requestSizings[] | {name: .name, namespace: .namespace, monthlySavings: .monthlySavings}' \
-  | sort -t: -k4 -rn \
+# Kubecost request right-sizing recommendations
+curl -G "http://kubecost-frontend.kubecost.svc:9090/model/savings/requestSizingV2" \
+  --data-urlencode "window=7d" \
+  | jq -r '.[] | [
+      .namespace,
+      .controllerKind,
+      .controllerName,
+      .containerName,
+      ((.monthlySavings.cpu + .monthlySavings.memory) | tostring)
+    ] | @tsv' \
+  | sort -k5 -rn \
   | head -20
 ```
 
 ### Identify Unused Volumes
 
 ```bash
-# Find PVCs not attached to any pod
-kubectl get pvc -A | grep -v Bound
-kubectl get pv | grep Released
+# Find bound PVCs that are not referenced by any pod
+join -t $'\t' -v1 \
+  <(
+    kubectl get pvc -A -o json \
+      | jq -r '.items[]
+        | select(.status.phase == "Bound")
+        | [.metadata.namespace + "/" + .metadata.name, .spec.resources.requests.storage] | @tsv' \
+      | sort
+  ) \
+  <(
+    kubectl get pods -A -o json \
+      | jq -r '.items[]
+        | .metadata.namespace as $ns
+        | .spec.volumes[]?
+        | select(.persistentVolumeClaim != null)
+        | "\($ns)/\(.persistentVolumeClaim.claimName)"' \
+      | sort -u
+  )
 
-# Cost of unused PVCs (they still incur storage costs)
-kubectl get pvc -A -o json \
-  | jq -r '.items[] | select(.status.phase == "Bound") |
-    {name: .metadata.name, namespace: .metadata.namespace, capacity: .spec.resources.requests.storage}' \
-  | grep "Released"
+# Released PVs are no longer bound, but may still require manual cleanup
+kubectl get pv | grep Released
 ```
 
 ### VPA Recommendations for Right-Sizing
 
 ```yaml
-# Install VPA in recommendation mode (no auto-update)
+# Create a VPA in recommendation mode (the VPA controller and CRDs must already be installed)
 apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler
 metadata:
@@ -206,13 +250,12 @@ kubectl get vpa api-service-vpa -n production -o json \
 
 ```bash
 # Generate monthly cost report per team
-curl "http://kubecost.kubecost.svc:9090/model/allocation" \
-  --get \
+curl -G "http://kubecost-frontend.kubecost.svc:9090/model/allocation" \
   --data-urlencode "window=month" \
   --data-urlencode "aggregate=label:team" \
   --data-urlencode "accumulate=true" \
-  | jq '.data[0] | to_entries[] | {team: .key, totalCost: .value.totalCost}' \
-  | sort -t: -k4 -rn
+  | jq -r '.data[0] | to_entries[] | [.key, (.value.totalCost | tostring)] | @tsv' \
+  | sort -k2 -rn
 ```
 
 ## Step 8: Chargeback and Showback
@@ -222,21 +265,24 @@ curl "http://kubecost.kubecost.svc:9090/model/allocation" \
 # generate-chargeback-report.sh
 # Generate monthly chargeback report per team
 
-MONTH="${1:-$(date +%Y-%m)}"
+MONTH="${1:-$(date -u +%Y-%m)}"
+START="$(date -u -d "${MONTH}-01" +%Y-%m-%dT00:00:00Z)"
+END="$(date -u -d "${MONTH}-01 +1 month" +%Y-%m-%dT00:00:00Z)"
 
 echo "Generating chargeback report for ${MONTH}"
 echo ""
 echo "Team,Namespace,CPU Cost,Memory Cost,Storage Cost,Total Cost"
 
-# Query OpenCost API for namespace costs
-curl -s "http://opencost.opencost.svc:9090/allocation/compute" \
-  --get \
-  --data-urlencode "window=${MONTH}" \
-  --data-urlencode "aggregate=namespace" \
+# Query OpenCost API for team and namespace costs
+curl -sG "http://opencost.opencost.svc:9003/allocation" \
+  --data-urlencode "window=${START},${END}" \
+  --data-urlencode "aggregate=label:team,namespace" \
+  --data-urlencode "accumulate=true" \
   | jq -r '.data[0] | to_entries[] |
+    (.key | split("/")) as $key |
     [
-      (.value.properties.labels.team // "untagged"),
-      .key,
+      (if ($key[0] // "__unallocated__") == "__unallocated__" then "untagged" else $key[0] end),
+      ($key[1] // "__unallocated__"),
       (.value.cpuCost | tostring),
       (.value.ramCost | tostring),
       (.value.pvCost | tostring),
