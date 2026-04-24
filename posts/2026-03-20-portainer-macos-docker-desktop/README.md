@@ -8,23 +8,23 @@ Description: A guide to installing and running Portainer CE on macOS using Docke
 
 ## Overview
 
-Docker Desktop for macOS provides a seamless Docker experience on both Apple Silicon (M1/M2/M3) and Intel Macs. Portainer CE can be deployed as a container in this environment, providing a visual container management interface for macOS developers. This guide covers the complete setup.
+Docker Desktop for macOS provides a seamless Docker experience on both Apple Silicon and Intel Macs. Portainer CE can be deployed as a container in this environment, providing a visual container management interface for macOS developers. This guide covers the complete setup.
 
 ## Prerequisites
 
-- macOS 12 (Monterey) or newer
+- A supported version of macOS (Docker Desktop supports the current and two previous major macOS releases)
 - Docker Desktop for macOS installed
-- 4GB+ RAM recommended
+- At least 4GB of RAM
 
 ## Step 1: Install Docker Desktop for macOS
 
 ```bash
 # Install via Homebrew (recommended)
 
-brew install --cask docker
+brew install --cask docker-desktop
 
 # Or download from: https://www.docker.com/products/docker-desktop
-# - Choose Apple Silicon (M1/M2/M3) or Intel depending on your Mac
+# - Choose Apple Silicon or Intel depending on your Mac
 ```
 
 Open Docker Desktop from Applications and wait for it to start (whale icon in menu bar).
@@ -36,7 +36,7 @@ docker --version
 docker run hello-world
 
 # Check architecture
-docker info | grep Architecture
+docker info --format '{{.Architecture}}'
 # Apple Silicon: aarch64
 # Intel: x86_64
 ```
@@ -48,6 +48,7 @@ docker info | grep Architecture
 docker volume create portainer_data
 
 # Deploy Portainer CE
+# Port 8000 is optional unless you plan to use Edge agents
 docker run -d \
   -p 8000:8000 \
   -p 9443:9443 \
@@ -55,7 +56,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 
 # Verify
 docker ps | grep portainer
@@ -68,13 +69,13 @@ Open your browser and navigate to:
 https://localhost:9443
 ```
 
-Accept the self-signed certificate warning (click "Advanced" → "Proceed to localhost") and complete the setup.
+Accept the self-signed certificate warning in your browser and complete the setup.
 
 ## Step 5: Create a Bookmark or App Shortcut
 
 For quick access, add a bookmark in Safari/Chrome to `https://localhost:9443`.
 
-Or use the Portainer CLI for quick launch:
+Or add a shell alias for quick launch:
 
 ```bash
 # Add to ~/.zshrc for quick Portainer access
@@ -85,15 +86,15 @@ alias portainer='open https://localhost:9443'
 
 ### Docker Desktop Subscription
 
-As of 2022, Docker Desktop requires a paid subscription for businesses with 250+ employees or >$10M revenue. For individuals and small teams, it remains free.
+Docker Desktop is free for personal use, education, non-commercial open source projects, and small businesses with fewer than 250 employees and less than $10M in annual revenue. Larger organizations and government entities require a paid subscription.
 
 **Alternative: OrbStack (macOS-native Docker)**
 
 ```bash
-# OrbStack is a fast, free Docker alternative for macOS
-brew install orbstack
-# After installing, OrbStack replaces Docker Desktop
-# Portainer works the same way with OrbStack
+# OrbStack is a fast Docker Desktop alternative for macOS
+brew install --cask orbstack
+# Personal use is free; business and commercial use require a license
+# Portainer works with OrbStack too when the /var/run/docker.sock compatibility symlink is available
 ```
 
 ### Volume Performance
@@ -111,10 +112,10 @@ Resource Allocation
 Configure Docker Desktop resources:
 
 ```bash
-Docker Desktop → Settings → Resources
+Docker Desktop → Settings → Resources → Advanced
 - Memory: 4-8GB (more = better container performance)
 - CPUs: 4+ for multiple containers
-- Disk image size: 60GB+
+- Disk usage limit: 60GB+
 ```
 
 ## Running Multiple Containers with Docker Desktop
@@ -123,7 +124,6 @@ Portainer makes it easy to manage multi-container apps via Stacks:
 
 ```yaml
 # Create a Stack in Portainer UI → Stacks → Add Stack
-version: '3'
 services:
   webapp:
     image: nginx:latest
@@ -147,13 +147,14 @@ volumes:
 ## Keeping Portainer Updated
 
 ```bash
-# Pull latest image
-docker pull portainer/portainer-ce:latest
+# Pull latest LTS image
+docker pull portainer/portainer-ce:lts
 
 # Stop and remove old container
 docker stop portainer && docker rm portainer
 
 # Start new container
+# Port 8000 is optional unless you plan to use Edge agents
 docker run -d \
   -p 8000:8000 \
   -p 9443:9443 \
@@ -161,9 +162,9 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Conclusion
 
-Portainer CE on macOS with Docker Desktop provides an excellent development environment for managing local containers. Both Apple Silicon and Intel Macs are supported with native architecture images. The `localhost:9443` access makes it immediately accessible from any macOS browser. For developers transitioning away from Docker Desktop, OrbStack provides an excellent alternative that is fully compatible with Portainer.
+Portainer CE on macOS with Docker Desktop provides an excellent development environment for managing local containers. Both Apple Silicon and Intel Macs are supported. The `localhost:9443` access makes it immediately accessible from any macOS browser. For developers transitioning away from Docker Desktop, OrbStack provides an excellent alternative that is compatible with Portainer.
