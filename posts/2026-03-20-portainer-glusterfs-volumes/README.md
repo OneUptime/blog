@@ -8,14 +8,15 @@ Description: Configure GlusterFS distributed storage for Docker Swarm clusters m
 
 ## Introduction
 
-GlusterFS is a distributed filesystem that provides replicated, scalable storage across multiple nodes. When running Docker Swarm with Portainer, GlusterFS ensures persistent data is available regardless of which node a container is scheduled on.
+GlusterFS is a distributed filesystem that provides replicated, scalable storage across multiple nodes. When running Docker Swarm with Portainer, GlusterFS can keep persistent data available regardless of which node a container is scheduled on, as long as the volume is mounted on each Docker host.
 
 ## Prerequisites
 
 - 3+ Linux nodes in Docker Swarm (managed by Portainer)
 - Each node with a dedicated disk for GlusterFS
 - Network connectivity between all nodes
-- Port 24007-24008 open between nodes
+- Hostnames resolvable between nodes and clients (via DNS or `/etc/hosts`)
+- Ports 24007-24008 and the configured Gluster brick port range open between nodes
 
 ## Step 1: Install GlusterFS on All Nodes
 
@@ -26,7 +27,7 @@ GlusterFS is a distributed filesystem that provides replicated, scalable storage
 sudo apt-get update && sudo apt-get install -y glusterfs-server
 sudo systemctl enable --now glusterd
 
-# RHEL/CentOS
+# CentOS (using the CentOS Storage SIG repository)
 sudo yum install -y centos-release-gluster
 sudo yum install -y glusterfs-server
 sudo systemctl enable --now glusterd
@@ -46,7 +47,7 @@ sudo parted /dev/sdb mklabel gpt
 sudo parted -a optimal /dev/sdb mkpart primary xfs 0% 100%
 
 # Format with XFS (recommended for GlusterFS)
-sudo mkfs.xfs /dev/sdb1
+sudo mkfs.xfs -i size=512 /dev/sdb1
 
 # Create mount point
 sudo mkdir -p /data/glusterfs/brick1
@@ -75,8 +76,7 @@ sudo gluster volume create portainer-data \
   replica 3 \
   gluster1:/data/glusterfs/brick1/vol1 \
   gluster2:/data/glusterfs/brick1/vol1 \
-  gluster3:/data/glusterfs/brick1/vol1 \
-  force
+  gluster3:/data/glusterfs/brick1/vol1
 
 # Start the volume
 sudo gluster volume start portainer-data
@@ -90,19 +90,26 @@ sudo gluster volume info portainer-data
 
 ```bash
 # On all Docker Swarm nodes: install GlusterFS client
+# Ubuntu/Debian
 sudo apt-get install -y glusterfs-client
 
 # Create mount point
 sudo mkdir -p /mnt/glusterfs
 
+# Ensure gluster1/gluster2 are resolvable on every client via DNS or /etc/hosts
+
 # Mount the GlusterFS volume
-sudo mount -t glusterfs gluster1:/portainer-data /mnt/glusterfs
+sudo mount -t glusterfs -o backupvolfile-server=gluster2 \
+  gluster1:/portainer-data /mnt/glusterfs
 
 # Make permanent in fstab
-echo "gluster1:/portainer-data /mnt/glusterfs glusterfs defaults,_netdev 0 0" \
+echo "gluster1:/portainer-data /mnt/glusterfs glusterfs defaults,_netdev,backupvolfile-server=gluster2 0 0" \
   | sudo tee -a /etc/fstab
 
 sudo mount -a
+
+# Create application directories used by Docker bind mounts
+sudo mkdir -p /mnt/glusterfs/app-data /mnt/glusterfs/web-content /mnt/glusterfs/db-data
 
 # Verify mount
 df -h /mnt/glusterfs
@@ -111,20 +118,13 @@ df -h /mnt/glusterfs
 ## Step 5: Create Docker Volumes Using GlusterFS
 
 ```bash
-# Create a Docker volume backed by GlusterFS
-docker volume create \
-  --driver local \
-  --opt type=glusterfs \
-  --opt device=gluster1:/portainer-data/app-data \
-  app-data
-
-# Or use bind mount to GlusterFS mount point
+# Create a Docker volume backed by the GlusterFS mount point
 docker volume create \
   --driver local \
   --opt type=none \
   --opt device=/mnt/glusterfs/app-data \
   --opt o=bind \
-  app-data-gluster
+  app-data
 ```
 
 ## Step 6: Deploy Stacks Using GlusterFS Volumes in Portainer
@@ -190,11 +190,11 @@ sudo gluster volume info portainer-data
 # Check replication status
 sudo gluster volume heal portainer-data info
 
-# Rebalance after adding nodes
+# Rebalance after expanding the volume with additional bricks
 sudo gluster volume rebalance portainer-data start
 sudo gluster volume rebalance portainer-data status
 ```
 
 ## Conclusion
 
-GlusterFS provides reliable distributed storage for Docker Swarm clusters managed by Portainer. With replica volumes, data is automatically synchronized across nodes, enabling containers to migrate between nodes without data loss. This setup is ideal for stateful services in Swarm clusters that require high availability storage.
+GlusterFS provides reliable distributed storage for Docker Swarm clusters managed by Portainer. With replica volumes, data is automatically synchronized across nodes, enabling containers to migrate between nodes without data loss. This setup is useful for shared persistent data in Swarm clusters that require high availability storage.
