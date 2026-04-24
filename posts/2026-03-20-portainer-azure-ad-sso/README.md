@@ -45,39 +45,34 @@ Redirect URI:           Web | https://portainer.example.com/
 2. Confirm these delegated permissions are present:
    - `Microsoft Graph > openid`
    - `Microsoft Graph > profile`
-   - `Microsoft Graph > email`
-3. If needed, click **Add a permission** → **Microsoft Graph** → **Delegated permissions** and add them
+   - `Microsoft Graph > User.Read`
+3. If needed, click **Add a permission** → **Microsoft Graph** → **Delegated permissions** and add them (`email` is optional unless you plan to use an email-based claim in a custom override)
 4. Click **Grant admin consent** if required by your organization
 
 ## Step 4: Configure Portainer
 
-Collect the endpoint URLs from the Azure AD overview:
+Portainer has a built-in Microsoft provider, so in Portainer Settings → Authentication → OAuth → Microsoft you only need:
 
 ```text
 Tenant ID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 
-Authorization URL: https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/authorize
-Access Token URL:  https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/token
-Resource URL:      https://graph.microsoft.com/oidc/userinfo
+Application ID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+Application key: (your secret value)
 ```
 
-In Portainer Settings → Authentication → OAuth → Microsoft:
+If you click **Override default configuration**, Portainer's current Microsoft defaults are:
 
 ```text
-Client ID:              xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-Client Secret:          (your secret value)
 Authorization URL:      https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/authorize
 Access Token URL:       https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/token
-Resource URL:           https://graph.microsoft.com/oidc/userinfo
+Resource URL:           https://graph.microsoft.com/v1.0/me
+Logout URL:             https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/logout
 Redirect URL:           https://portainer.example.com/
-User Identifier:        unique_name
-Scopes:                 openid email profile
+User Identifier:        userPrincipalName
+Scopes:                 profile openid
 ```
 
-**User Identifier options for Azure AD:**
-- `unique_name` - UPN (user@corp.onmicrosoft.com) - most readable
-- `sub` - Object ID (stable unique identifier)
-- `email` - User's email
+Portainer's built-in Microsoft provider uses `userPrincipalName` from `https://graph.microsoft.com/v1.0/me` as the default user identifier.
 
 ## Step 5: Configure via API
 
@@ -98,15 +93,17 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d "{
     \"AuthenticationMethod\": 3,
-    \"oauthsettings\": {
+    \"OAuthSettings\": {
       \"ClientID\": \"${CLIENT_ID}\",
       \"ClientSecret\": \"${CLIENT_SECRET}\",
       \"AuthorizationURI\": \"https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/authorize\",
       \"AccessTokenURI\": \"https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token\",
-      \"ResourceURI\": \"https://graph.microsoft.com/oidc/userinfo\",
+      \"ResourceURI\": \"https://graph.microsoft.com/v1.0/me\",
+      \"LogoutURI\": \"https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/logout\",
       \"RedirectURI\": \"https://portainer.example.com/\",
-      \"UserIdentifier\": \"unique_name\",
-      \"Scopes\": \"openid email profile\",
+      \"UserIdentifier\": \"userPrincipalName\",
+      \"Scopes\": \"profile openid\",
+      \"AuthStyle\": 1,
       \"OAuthAutoCreateUsers\": true,
       \"SSO\": true
     }
@@ -124,7 +121,7 @@ curl -X PUT \
 
 ## Restricting Access to Specific Users or Groups
 
-In the Azure AD App Registration:
+In the Enterprise application for your Portainer app:
 1. Go to **Enterprise applications** → find your Portainer app
 2. Under **Properties**, set **Assignment required** to Yes
 3. Under **Users and groups**, add the users/groups who should have access
@@ -133,4 +130,4 @@ This prevents unauthorized Azure AD users from logging into Portainer.
 
 ## Conclusion
 
-Azure AD SSO with Portainer provides a seamless login experience for Microsoft 365 organizations. Once configured, users click "Sign in with Microsoft," authenticate once, and gain access to Portainer based on their Portainer role. Combine this with Portainer's team mapping for automatic access control based on Azure AD group membership.
+Azure AD SSO with Portainer provides a seamless login experience for Microsoft 365 organizations. Once configured, users click "Sign in with Microsoft," authenticate once, and gain access to Portainer based on their Portainer role. Combine this with Portainer's team mapping by adding a groups claim in Entra ID and mapping Azure AD group Object IDs in Portainer for automatic access control based on group membership.
