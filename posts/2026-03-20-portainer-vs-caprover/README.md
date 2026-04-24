@@ -8,27 +8,27 @@ Description: Evaluate Portainer and Caprover to determine the best self-hosted P
 
 ## Introduction
 
-Choosing the right container management tool can significantly impact your team's productivity and operational efficiency. This guide compares Portainer with Caprover, examining their strengths, weaknesses, and ideal use cases to help you make an informed decision.
+Choosing the right self-hosted deployment platform can significantly impact your team's productivity and operational efficiency. This guide compares Portainer with Caprover, examining their strengths, weaknesses, and ideal use cases to help you make an informed decision.
 
 ## Overview
 
-**Portainer** is a universal container management platform supporting Docker, Docker Swarm, and Kubernetes. It provides a web-based GUI, API, and CLI for managing containerized workloads.
+**Portainer** is a universal container management platform supporting Docker, Docker Swarm, and Kubernetes. It provides a web-based GUI and API for managing containerized workloads across multiple environments.
 
-**Caprover** is designed with different priorities and use cases. Understanding these differences is key to choosing the right tool.
+**Caprover** is a self-hosted PaaS built on Docker Swarm. It focuses on application deployment, built-in HTTPS, and simplified operations rather than broad multi-orchestrator infrastructure management.
 
 ## Feature Comparison
 
 | Feature | Portainer | Caprover |
 |---------|-----------|--------|
-| Docker management | Yes | Varies |
-| Kubernetes support | Yes | Varies |
-| Web UI | Yes | Varies |
-| Multi-environment | Yes | Varies |
-| User management | Yes | Varies |
-| Stack management | Yes | Varies |
-| Open source | CE: Yes | Varies |
+| Docker management | Yes | Yes (Docker/Swarm-based) |
+| Kubernetes support | Yes | No |
+| Web UI | Yes | Yes |
+| Multi-environment | Yes | Single-cluster focus |
+| User management | Basic in CE, RBAC in BE | Single admin account, app tokens for deployment |
+| Stack management | Yes | Partial Docker Compose support |
+| Source availability | CE: Open source | Public source repository |
 | Self-hosted | Yes | Yes |
-| Enterprise features | BE edition | Varies |
+| Enterprise features | BE edition | No separate enterprise edition |
 
 ## Portainer Strengths
 
@@ -37,33 +37,34 @@ Choosing the right container management tool can significantly impact your team'
 - Stack management with Docker Compose support
 - Active development and community
 - Edge computing capabilities (BE)
-- Multi-team RBAC (BE)
-- Available as both free (CE) and commercial (BE) editions
+- Multi-team RBAC in Business Edition, with basic user and group access in CE
+- Available as both free/open source CE and commercial BE editions
 
 ## Caprover Strengths
 
-- Specialized for its primary use case
-- Often simpler for its target audience
-- May have better integration with specific ecosystems
-- Different performance characteristics
-- Unique features not found in Portainer
+- Self-hosted PaaS workflow focused on app deployment
+- Built-in HTTPS with Let's Encrypt and Nginx-based reverse proxying
+- One-click apps and partial Docker Compose support
+- CLI and web UI for server setup and deployment
+- Docker Swarm-based clustering and scaling
 
 ## When to Choose Portainer
 
 Choose Portainer when you need:
 - A general-purpose container management platform
-- Support for multiple environments (dev, staging, prod)
+- Support for multiple environments from one interface
 - Team-based access control
-- Integration with CI/CD pipelines
 - Edge device management
 - Both Docker and Kubernetes support
+- Broad environment and stack administration beyond app deployment
 
 ## When to Choose Caprover
 
 Choose Caprover when you need:
-- Its specific specialized features
-- Its particular workflow or integration
-- Its lightweight approach for specific use cases
+- A self-hosted PaaS for deploying web apps quickly
+- Built-in HTTPS, custom domains, and reverse proxying
+- One-click apps and simple deployment workflows
+- Docker Swarm-based scaling without Kubernetes
 - When your team already uses it and is familiar with it
 
 ## Deployment Comparison
@@ -71,49 +72,53 @@ Choose Caprover when you need:
 **Portainer deployment:**
 ```bash
 # Deploy Portainer CE
+docker volume create portainer_data
 
 docker run -d \
-  -p 9000:9000 \
+  -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
-  --restart always \
+  --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
 
 **Caprover deployment:**
 ```bash
-# Typical Caprover deployment
-# Check official documentation for current install instructions
-curl -fsSL https://get-tool.example.com | sh
+# Install CapRover
+docker run -p 80:80 -p 443:443 -p 3000:3000 \
+  -e ACCEPTED_TERMS=true \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /captain:/captain \
+  caprover/caprover
 ```
 
 ## Migration Considerations
 
 Moving from Caprover to Portainer:
-1. Export your current configurations
+1. Document your apps, domains, environment variables, port mappings, and persistent data
 2. Deploy Portainer alongside existing setup
-3. Recreate stacks as Portainer stacks
-4. Migrate users and access control
-5. Verify all services are running correctly
+3. Recreate apps or stacks in Docker or Swarm under Portainer
+4. Recreate users and access control in Portainer
+5. Verify routing, storage, and service health before cutover
 
 Moving from Portainer to Caprover:
-1. Export Portainer stack configurations
-2. Document current environment setup
-3. Install and configure Caprover
-4. Recreate deployments in new platform
+1. Export Portainer stack configurations and document environment settings
+2. Install and initialize Caprover with a root domain
+3. Recreate apps, domains, environment variables, and persistent storage in Caprover
+4. Reconfigure HTTPS, port mappings, and scaling as needed
 5. Test thoroughly before cutover
 
 ## Community and Support
 
 | Aspect | Portainer | Caprover |
 |--------|-----------|--------|
-| Community size | Large | Varies |
-| Documentation | Comprehensive | Varies |
-| Commercial support | Available (BE) | Varies |
-| GitHub activity | Very active | Varies |
+| Community channels | Docs, GitHub, Slack, Discord | Docs, GitHub, Slack |
+| Documentation | Comprehensive | Official docs available |
+| Commercial support | Available (BE) | Available |
+| GitHub activity | Active | Active |
 
 ## Conclusion
 
-Both Portainer and Caprover are valuable tools in the container management ecosystem. Portainer excels as a universal, scalable management platform that grows with your organization from a single developer to large enterprise teams. Caprover may be preferable for specific scenarios where its specialized features provide clear advantages. Consider your team size, technical requirements, budget, and long-term scalability when making your decision - and remember that many teams successfully use multiple tools for different purposes.
+Both Portainer and Caprover are valuable self-hosted deployment tools, but they solve different problems. Portainer is a broader container management platform for Docker, Swarm, and Kubernetes environments, while Caprover is a Docker Swarm-based self-hosted PaaS focused on fast app deployment, HTTPS, and simple operations. Consider whether you need broad environment management or an app-centric PaaS workflow when making your decision.
