@@ -4,16 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Cluster Management, DevOps
 
-Description: Learn how to connect an existing Kubernetes cluster to Portainer using the Portainer Agent or kubeconfig for centralized management.
+Description: Learn how to connect an existing Kubernetes cluster to Portainer using the Portainer Agent, Edge Agent, or kubeconfig import for centralized management.
 
 ## Introduction
 
-Portainer can manage Kubernetes clusters that it's not running in. By installing the Portainer Agent on a cluster and registering it in Portainer, or by providing a kubeconfig, you can manage multiple Kubernetes clusters from a single Portainer interface. This guide covers both connection methods.
+Portainer can manage Kubernetes clusters that it's not running in. You can connect a cluster by installing the Portainer Agent and registering it in Portainer, by importing a kubeconfig file, or by using the Edge Agent for clusters that Portainer can't reach directly. Portainer currently recommends the Edge Agent for most new Kubernetes connections; the classic Agent and kubeconfig import options are legacy workflows. This guide covers all three connection methods.
 
 ## Prerequisites
 
 - Portainer CE or BE running (on Docker or Kubernetes)
-- Target Kubernetes cluster accessible from Portainer
+- Target Kubernetes cluster accessible from Portainer, or able to reach Portainer for Edge Agent deployments
 - kubectl access to the target cluster
 - Admin access to Portainer
 
@@ -21,9 +21,9 @@ Portainer can manage Kubernetes clusters that it's not running in. By installing
 
 | Method | How it works | Best for |
 |--------|-------------|---------|
-| **Portainer Agent** | Agent runs in cluster, connects to Portainer | Most clusters, firewalled environments |
-| **Kubeconfig** | Portainer connects directly using kubeconfig | Simple setups, clusters with direct access |
-| **Edge Agent** | For clusters behind firewalls | Air-gapped, NAT environments |
+| **Portainer Agent** | Portainer connects to an Agent running in the cluster | Legacy option when Portainer can reach the cluster directly |
+| **Kubeconfig** | Portainer uses a self-contained kubeconfig to connect and deploy/configure the agent | Legacy BE-only import workflow |
+| **Edge Agent** | Agent runs in the cluster and connects outbound to Portainer | Clusters that Portainer cannot reach directly |
 
 ## Method A: Connect via Portainer Agent
 
@@ -31,101 +31,59 @@ Portainer can manage Kubernetes clusters that it's not running in. By installing
 
 1. In Portainer, go to **Environments**
 2. Click **+ Add environment**
-3. Select **Kubernetes**
-4. Select **Portainer Agent**
+3. Select **Kubernetes** and click **Start Wizard**
+4. Under **More options**, select **Agent**
 5. Copy the agent installation command
 
 ### Step 2: Install the Portainer Agent on the Target Cluster
 
 ```bash
-# Install Portainer Agent using Helm
-
-helm repo add portainer https://portainer.github.io/k8s/
-helm repo update
-
-helm install portainer-agent portainer/portainer-agent \
-  --namespace portainer \
-  --create-namespace \
-  --set env.EDGE=0 \
-  --set env.EDGE_KEY="your-edge-key-from-portainer"
-
-# Or via YAML manifest provided by Portainer
-kubectl apply -f https://downloads.portainer.io/ce2-21/portainer-agent-k8s-lb.yaml
+# Portainer provides the current install command in the UI.
+# For a CE LoadBalancer deployment, it looks like this:
+kubectl apply -f https://downloads.portainer.io/ce-lts/portainer-agent-k8s-lb.yaml
 ```
 
 ### Step 3: Get the Agent Service IP
 
 ```bash
-# Get the Portainer Agent service IP
-kubectl get svc -n portainer
-
-# For LoadBalancer:
-kubectl get svc portainer-agent -n portainer -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+# Get the Portainer Agent service details
+kubectl get svc portainer-agent -n portainer
 ```
 
 ### Step 4: Register the Environment in Portainer
 
 1. In Portainer, fill in the **Environment details**:
    ```text
-   Name:        production-k8s
-   Endpoint URL: https://agent-ip:9001
+   Name:            production-k8s
+   Environment URL: agent-ip-or-dns:9001
    ```
 2. Click **Connect**
 
-## Method B: Connect via Kubeconfig
+## Method B: Connect via Kubeconfig (BE only)
 
 ### Step 1: Get the Kubeconfig
 
 ```bash
-# Get the cluster kubeconfig
-cat ~/.kube/config
-
-# Or export for a specific cluster
-kubectl config view --minify --flatten > portainer-kubeconfig.yaml
+# Generate a self-contained kubeconfig for import
+kubectl config view --flatten=true --minify=true > portainer-kubeconfig.yaml
 ```
 
-### Step 2: Create a Service Account for Portainer
+### Step 2: Verify the Kubeconfig Meets Portainer's Requirements
 
-Instead of using admin credentials, create a dedicated service account:
+Portainer's kubeconfig import requires:
 
-```yaml
-# portainer-sa.yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: portainer
-  namespace: portainer
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: portainer
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  ref: cluster-admin    # Or create a custom role with limited permissions
-subjects:
-  - kind: ServiceAccount
-    name: portainer
-    namespace: portainer
-```
-
-```bash
-kubectl apply -f portainer-sa.yaml
-
-# Get the service account token
-kubectl create token portainer \
-  --namespace portainer \
-  --duration=87600h    # 10 years; adjust as needed
-```
+- Portainer Business Edition
+- A cluster with a working load balancer
+- A self-contained kubeconfig file with `current-context`
+- Cluster-admin credentials so Portainer can deploy and configure the Portainer Agent
 
 ### Step 3: Add Kubeconfig Environment in Portainer
 
 1. In Portainer, go to **Environments → + Add environment**
-2. Select **Kubernetes**
-3. Choose **Import an existing Kubernetes environment using a kubeconfig file**
-4. Paste the kubeconfig content
-5. Click **Create environment**
+2. Select **Kubernetes** and click **Start Wizard**
+3. Under **More options**, choose **Import**
+4. Upload the `portainer-kubeconfig.yaml` file
+5. Click **Connect**
 
 ## Method C: Edge Agent (Firewalled Clusters)
 
@@ -134,24 +92,15 @@ For clusters that cannot be directly reached by Portainer:
 ### Step 1: Add Edge Environment in Portainer
 
 1. Go to **Environments → + Add environment**
-2. Select **Kubernetes**
-3. Select **Edge Agent**
-4. Copy the provided edge key
+2. Select **Kubernetes** and click **Start Wizard**
+3. Select **Edge Agent Standard**
+4. Enter the environment details and copy the generated deployment command
 
 ### Step 2: Install Edge Agent on the Target Cluster
 
-```bash
-# Install Edge Agent (it connects OUT to Portainer, not in)
-helm install portainer-edge-agent portainer/portainer-agent \
-  --namespace portainer \
-  --create-namespace \
-  --set env.EDGE=1 \
-  --set env.EDGE_KEY="your-edge-key" \
-  --set env.EDGE_INSECURE_POLL=1 \
-  --set env.URL="https://portainer.example.com:9443"
-```
+Run the exact deployment command generated by Portainer on the target cluster.
 
-The Edge Agent initiates an outbound connection to Portainer - no inbound firewall rules needed.
+The Edge Agent initiates an outbound connection to Portainer, so the cluster does not need inbound firewall rules. The agent must still be able to reach the Portainer Server on ports 9443 and 8000 (or the Kubernetes NodePort equivalents).
 
 ## Step 4: Verify the Connection
 
@@ -189,24 +138,26 @@ To remove a cluster from Portainer:
 Then clean up the agent:
 
 ```bash
-# Remove Portainer Agent from the cluster
-helm uninstall portainer-agent --namespace portainer
+# Remove the agent resources from the cluster
 kubectl delete namespace portainer
 ```
 
 ## Troubleshooting Connection Issues
 
 ```bash
-# Test agent connectivity from Portainer host
-curl -k https://agent-ip:9001/api/status
+# For Agent-based connections, test connectivity from the Portainer host
+curl -k https://agent-ip:9001/ping
+
+# For Edge Agent deployments, test outbound connectivity to Portainer
+curl -v https://portainer.example.com:9443
 
 # Check agent pod logs
 kubectl logs -n portainer -l app=portainer-agent
 
-# Verify network policy allows agent communication
+# Verify network policies allow the required traffic
 kubectl get networkpolicies -n portainer
 ```
 
 ## Conclusion
 
-Connecting Kubernetes clusters to Portainer provides centralized management across your entire container infrastructure. Use the Portainer Agent for most scenarios, kubeconfig for simple setups, and the Edge Agent when clusters are behind firewalls. Once connected, you can manage namespaces, deployments, Helm charts, and configuration objects from a single unified interface.
+Connecting Kubernetes clusters to Portainer provides centralized management across your entire container infrastructure. Use the Edge Agent for most new deployments, the legacy Portainer Agent when Portainer can reach the cluster directly, and kubeconfig import when you need the BE-only import workflow. Once connected, you can manage namespaces, deployments, Helm charts, and configuration objects from a single unified interface.
