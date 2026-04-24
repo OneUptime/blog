@@ -12,7 +12,7 @@ DNS resolution failures are one of the most common networking issues in Docker. 
 
 ## Diagnosing DNS Issues
 
-Test DNS from inside a container:
+Test DNS from inside a container (if the image includes `nslookup` or `dig`):
 
 ```bash
 # Test internal DNS (service name resolution)
@@ -35,7 +35,7 @@ docker exec -it $(docker ps -qf name=api) dig google.com +short
 
 Symptom: `nslookup postgres` returns `NXDOMAIN`.
 
-Cause: Containers are on different networks, or one uses the default `docker0` bridge which doesn't support DNS.
+Cause: Containers are on different networks, or one is attached only to the default `docker0` bridge, which does not provide automatic container-name DNS resolution.
 
 ```bash
 # Check which network each container is on
@@ -50,15 +50,15 @@ docker network connect my-app_backend $(docker ps -qf name=api)
 
 Symptom: `nslookup google.com` times out.
 
-Cause: The container's DNS server (usually `127.0.0.11`) cannot forward queries.
+Cause: On user-defined networks, Docker's embedded DNS server (`127.0.0.11`) cannot forward queries to an upstream resolver, or the host itself has broken DNS. Containers on the default `bridge` network instead inherit the host's `/etc/resolv.conf`.
 
 ```bash
 # Check if the host has working DNS
 nslookup google.com
 
-# Check Docker's embedded DNS resolver
+# Check the container's DNS configuration
 docker exec -it $(docker ps -qf name=api) cat /etc/resolv.conf
-# Should show: nameserver 127.0.0.11
+# On a user-defined network this typically shows: nameserver 127.0.0.11
 
 # Test directly against a public DNS server
 docker exec -it $(docker ps -qf name=api) nslookup google.com 8.8.8.8
@@ -78,19 +78,14 @@ Then restart Docker: `sudo systemctl restart docker`
 
 Symptom: DNS works sometimes but fails randomly.
 
-Cause: DNS timeout under high load or `ndots` setting causing unnecessary external lookups.
+Cause: Resolver retries under load, or resolver options and search domains causing extra lookup attempts.
 
 ```yaml
 # Fix in your Compose stack by tuning DNS options
 services:
   api:
-    dns:
-      - 127.0.0.11
-      - 8.8.8.8
-    dns_search:
-      - .
     dns_opt:
-      - ndots:1      # Reduce from default 5 - fewer unnecessary lookups
+      - ndots:1      # Use a lower ndots value if your environment sets it higher
       - timeout:2    # Seconds before retry
       - attempts:3   # Retry count
 ```
@@ -99,18 +94,18 @@ services:
 
 Symptom: Application startup is slow; DNS queries take >1 second.
 
-Cause: High `ndots` value causing the resolver to try multiple search domains before the bare hostname.
+Cause: A high `ndots` value or long search list causes the resolver to try multiple names before the bare hostname.
 
 ```bash
-# Check the current ndots setting
+# Check the current resolver options
 docker exec -it $(docker ps -qf name=api) cat /etc/resolv.conf | grep options
 
-# Set ndots:1 in your stack (see above)
+# If resolv.conf shows a high ndots value, set ndots:1 in your stack (see above)
 ```
 
 ### Issue 5: DNS on the Default Bridge Network
 
-Containers on the default `docker0` bridge cannot use DNS names - only IPs. Move containers to a custom network:
+Containers on the default `docker0` bridge do not get automatic container-name DNS resolution. Move containers to a custom network:
 
 ```yaml
 services:
@@ -123,27 +118,29 @@ networks:
     driver: bridge
 ```
 
-## Network-Level DNS Configuration
+## DNS Configuration in Compose
 
-Override DNS per-network in a Compose stack:
+Compose does not provide a per-network DNS override; set DNS options per service:
 
 ```yaml
-networks:
-  app_net:
-    driver: bridge
-    driver_opts:
-      com.docker.network.bridge.name: my-bridge0
+services:
+  api:
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    dns_opt:
+      - ndots:1
 ```
 
 ## Checking Docker's Embedded DNS
 
-Docker's embedded DNS resolver runs at `127.0.0.11:53` inside each container. If this is unreachable:
+On user-defined networks, Docker's embedded DNS resolver runs at `127.0.0.11:53` inside the container. If this is unreachable:
 
 ```bash
-# Test DNS directly
+# Test DNS directly against Docker's embedded resolver
 docker exec -it $(docker ps -qf name=api) \
   nslookup postgres 127.0.0.11
 
-# Check iptables rules for the Docker embedded DNS
-sudo iptables -L DOCKER -n | grep 53
+# Confirm the container is attached to a user-defined network
+docker inspect $(docker ps -qf name=api) | jq '.[0].NetworkSettings.Networks | keys'
 ```
