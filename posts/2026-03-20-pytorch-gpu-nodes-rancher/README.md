@@ -104,7 +104,7 @@ spec:
 ## Step 3: Distributed PyTorch with PyTorchJob
 
 ```yaml
-# pytorch-distributed.yaml (requires PyTorch Operator from Kubeflow)
+# pytorch-distributed.yaml (requires the Kubeflow Training Operator; PyTorchJob is the legacy v1 API)
 apiVersion: kubeflow.org/v1
 kind: PyTorchJob
 metadata:
@@ -122,13 +122,10 @@ spec:
             image: registry.example.com/ml/pytorch-trainer:2.1.0
             command:
             - python
-            - -m
-            - torch.distributed.launch
-            - --nproc_per_node=4
             - train_distributed.py
             resources:
               limits:
-                nvidia.com/gpu: "4"
+                nvidia.com/gpu: "1"
                 memory: "64Gi"
                 cpu: "16"
           nodeSelector:
@@ -139,7 +136,7 @@ spec:
             effect: NoSchedule
     
     Worker:
-      replicas: 4               # 4 workers x 4 GPUs = 16 GPUs
+      replicas: 4               # 4 workers + 1 master = 5 GPUs total
       restartPolicy: OnFailure
       template:
         spec:
@@ -148,13 +145,10 @@ spec:
             image: registry.example.com/ml/pytorch-trainer:2.1.0
             command:
             - python
-            - -m
-            - torch.distributed.launch
-            - --nproc_per_node=4
             - train_distributed.py
             resources:
               limits:
-                nvidia.com/gpu: "4"
+                nvidia.com/gpu: "1"
           nodeSelector:
             nvidia.com/gpu.present: "true"
           tolerations:
@@ -195,6 +189,7 @@ spec:
         - "torchserve"
         - "--start"
         - "--model-store=/model-store"
+        - "--disable-token-auth"
         - "--models"
         - "resnet50=resnet50.mar"
         resources:
@@ -253,12 +248,15 @@ spec:
       - name: mlflow
         image: ghcr.io/mlflow/mlflow:v2.7.0
         command:
-        - mlflow
-        - server
-        - --backend-store-uri=postgresql://mlflow:password@postgres:5432/mlflow
-        - --default-artifact-root=s3://ml-artifacts/mlflow
-        - --host=0.0.0.0
-        - --port=5000
+        - /bin/sh
+        - -c
+        - >
+          pip install --no-cache-dir psycopg2-binary boto3 &&
+          exec mlflow server
+          --backend-store-uri=postgresql://mlflow:password@postgres:5432/mlflow
+          --artifacts-destination=s3://ml-artifacts/mlflow
+          --host=0.0.0.0
+          --port=5000
         ports:
         - containerPort: 5000
 ```
