@@ -39,16 +39,22 @@ import requests
 import time
 import os
 
-PORTAINER_URL = os.environ["PORTAINER_URL"]
+PORTAINER_URL = os.environ["PORTAINER_URL"].rstrip("/")
 PORTAINER_TOKEN = os.environ["PORTAINER_TOKEN"]
+PORTAINER_CA_CERT = os.environ.get("PORTAINER_CA_CERT")
+PORTAINER_VERIFY_TLS = os.environ.get("PORTAINER_VERIFY_TLS", "true").lower() == "true"
 DATADOG_API_KEY = os.environ["DD_API_KEY"]
 DATADOG_SITE = os.environ.get("DD_SITE", "datadoghq.com")
 ENDPOINT_ID = int(os.environ.get("PORTAINER_ENDPOINT_ID", "1"))
 
+def portainer_verify():
+    return PORTAINER_CA_CERT or PORTAINER_VERIFY_TLS
+
 def get_containers():
     resp = requests.get(
         f"{PORTAINER_URL}/api/endpoints/{ENDPOINT_ID}/docker/containers/json",
-        headers={"Authorization": f"Bearer {PORTAINER_TOKEN}"},
+        headers={"X-API-Key": PORTAINER_TOKEN},
+        verify=portainer_verify(),
         params={"all": "false"}  # Only running containers
     )
     resp.raise_for_status()
@@ -57,19 +63,26 @@ def get_containers():
 def get_container_stats(container_id):
     resp = requests.get(
         f"{PORTAINER_URL}/api/endpoints/{ENDPOINT_ID}/docker/containers/{container_id}/stats",
-        headers={"Authorization": f"Bearer {PORTAINER_TOKEN}"},
+        headers={"X-API-Key": PORTAINER_TOKEN},
+        verify=portainer_verify(),
         params={"stream": "false"}
     )
     resp.raise_for_status()
     return resp.json()
 
 def calculate_cpu_percent(stats):
-    cpu_delta = stats["cpu_stats"]["cpu_usage"]["total_usage"] - \
-                stats["precpu_stats"]["cpu_usage"]["total_usage"]
-    system_delta = stats["cpu_stats"]["system_cpu_usage"] - \
-                   stats["precpu_stats"]["system_cpu_usage"]
-    num_cpus = len(stats["cpu_stats"]["cpu_usage"].get("percpu_usage", [1]))
-    return (cpu_delta / system_delta) * num_cpus * 100
+    cpu_stats = stats.get("cpu_stats", {})
+    precpu_stats = stats.get("precpu_stats", {})
+    cpu_delta = cpu_stats.get("cpu_usage", {}).get("total_usage", 0) - \
+                precpu_stats.get("cpu_usage", {}).get("total_usage", 0)
+    system_delta = cpu_stats.get("system_cpu_usage", 0) - \
+                   precpu_stats.get("system_cpu_usage", 0)
+    num_cpus = cpu_stats.get("online_cpus") or len(
+        cpu_stats.get("cpu_usage", {}).get("percpu_usage", [1])
+    )
+    if cpu_delta <= 0 or system_delta <= 0:
+        return 0.0
+    return (cpu_delta / system_delta) * num_cpus * 100.0
 
 def submit_to_datadog(metrics):
     now = int(time.time())
@@ -119,6 +132,8 @@ if __name__ == "__main__":
 
 ## Step 4: Deploy as a Portainer Stack
 
+Because Portainer serves HTTPS with a self-signed certificate by default, either provide a trusted CA bundle with `PORTAINER_CA_CERT` or set `PORTAINER_VERIFY_TLS=false` for internal testing. If you deploy this from Git in Portainer, place `collector.py` next to the compose file and enable relative path volumes so `./collector.py` resolves correctly.
+
 ```yaml
 version: "3.8"
 services:
@@ -128,8 +143,10 @@ services:
       sh -c "pip install requests -q &&
              while true; do python /app/collector.py; sleep 30; done"
     environment:
-      - PORTAINER_URL=https://portainer:9443
+      - PORTAINER_URL=https://your-portainer-host:9443
+      - PORTAINER_ENDPOINT_ID=${PORTAINER_ENDPOINT_ID}
       - PORTAINER_TOKEN=${PORTAINER_TOKEN}
+      - PORTAINER_VERIFY_TLS=false
       - DD_API_KEY=${DD_API_KEY}
       - DD_SITE=datadoghq.com
     volumes:
