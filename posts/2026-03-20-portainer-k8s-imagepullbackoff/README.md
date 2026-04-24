@@ -31,8 +31,8 @@ kubectl describe pod failing-pod -n production | grep -A5 "Events"
 
 # Verify image exists
 docker pull myapp:latest
-# Or check registry:
-curl -s https://registry.hub.docker.com/v2/repositories/myapp/tags/ | python3 -m json.tool
+# Or inspect the manifest without pulling layers
+docker manifest inspect myapp:latest
 ```
 
 ### Cause 2: Private Registry Authentication
@@ -68,7 +68,13 @@ metadata:
   name: myapp
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       imagePullSecrets:
       - name: registry-credentials   # Must be created first
@@ -77,31 +83,30 @@ spec:
         image: registry.example.com/myorg/myapp:1.2.3
 ```
 
-Also configure in Portainer: **Registries > Add Registry**
+Also configure in Portainer: **Cluster > Registries > Add Registry**
 
 ### Cause 3: Registry Not Accessible from Cluster
 
 ```bash
 # Test connectivity from within the cluster
-kubectl run test --rm -it --image=busybox \
+kubectl run test --rm -it --restart=Never --image=busybox \
   -n production -- nslookup registry.example.com
 
 # Check if registry is accessible
-kubectl run test --rm -it --image=busybox \
+kubectl run test --rm -it --restart=Never --image=busybox \
   -n production -- wget -qO- https://registry.example.com/v2/
 
-# If registry is behind a proxy, configure node proxy settings
+# If your nodes use Docker as the container runtime, configure the Docker daemon proxy settings
 sudo tee /etc/docker/daemon.json << 'EOF'
 {
   "proxies": {
-    "default": {
-      "httpProxy": "http://proxy.example.com:3128",
-      "httpsProxy": "http://proxy.example.com:3128",
-      "noProxy": "localhost,127.0.0.1,10.0.0.0/8"
-    }
+    "http-proxy": "http://proxy.example.com:3128",
+    "https-proxy": "http://proxy.example.com:3128",
+    "no-proxy": "localhost,127.0.0.1,10.0.0.0/8"
   }
 }
 EOF
+sudo systemctl restart docker
 ```
 
 ### Cause 4: Image Not Found (404)
@@ -110,13 +115,12 @@ EOF
 # Verify image exists in registry
 docker manifest inspect myimage:mytag
 
-# For private registry
+# For an insecure private registry (HTTP or self-signed cert)
 docker manifest inspect \
   --insecure registry.example.com/myimage:mytag
 
-# Check if the tag was pushed
-curl -s \
-  -H "Authorization: Bearer $(echo -n 'user:password' | base64)" \
+# If your registry accepts basic auth, list tags directly
+curl -s -u user:password \
   https://registry.example.com/v2/myimage/tags/list
 ```
 
@@ -132,33 +136,34 @@ NAMESPACE="${2:-default}"
 echo "Diagnosing ImagePullBackOff for $POD_NAME in $NAMESPACE"
 
 # Get the failing image
-IMAGE=$(kubectl get pod $POD_NAME -n $NAMESPACE \
+IMAGE=$(kubectl get pod "$POD_NAME" -n "$NAMESPACE" \
   -o jsonpath='{.spec.containers[0].image}')
 echo "Image: $IMAGE"
 
 # Get events
 echo ""
 echo "Events:"
-kubectl describe pod $POD_NAME -n $NAMESPACE | grep -A20 "Events:"
+kubectl describe pod "$POD_NAME" -n "$NAMESPACE" | grep -A20 "Events:"
 
 # Check imagePullSecrets
 echo ""
 echo "ImagePullSecrets:"
-kubectl get pod $POD_NAME -n $NAMESPACE \
-  -o jsonpath='{.spec.imagePullSecrets}' | python3 -m json.tool 2>/dev/null || echo "None"
+IMAGE_PULL_SECRETS=$(kubectl get pod "$POD_NAME" -n "$NAMESPACE" \
+  -o jsonpath='{.spec.imagePullSecrets[*].name}')
+echo "${IMAGE_PULL_SECRETS:-None}"
 
 # Check registry credentials exist
 echo ""
 echo "Registry secrets in namespace:"
-kubectl get secrets -n $NAMESPACE --field-selector type=kubernetes.io/dockerconfigjson
+kubectl get secrets -n "$NAMESPACE" --field-selector type=kubernetes.io/dockerconfigjson
 ```
 
 ## Portainer Registry Management
 
-1. **Portainer > Registries > Add Registry**
-2. Select registry type (Docker Hub, ECR, GCR, custom)
+1. **Portainer > Cluster > Registries > Add Registry**
+2. Select the appropriate registry type (Docker Hub, ECR, custom, or another supported provider)
 3. Enter credentials
-4. Portainer will propagate credentials to the Kubernetes cluster as a pull secret
+4. Grant the target namespace access to the registry, then select it when deploying the application
 
 ## Conclusion
 
