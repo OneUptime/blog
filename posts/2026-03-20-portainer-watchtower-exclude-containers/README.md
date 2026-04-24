@@ -47,48 +47,42 @@ volumes:
 
 ## Step 2: Add Exclusion Label to Running Container
 
-If a container is already running without the exclusion label:
+If a container is already running without the exclusion label, you need to recreate it with the label or update the Portainer stack and redeploy:
 
 ```bash
-# Method 1: Stop, remove, and recreate with the label
+# Method 1: For standalone containers, stop, remove, and recreate with the label
 docker stop postgres
 docker rm postgres
 docker run -d \
   --name postgres \
   --label "com.centurylinklabs.watchtower.enable=false" \
-  -v postgres_data:/var/lib/postgresql/data \
+  -v db_data:/var/lib/postgresql/data \
   -e POSTGRES_PASSWORD=secret \
   postgres:15-alpine
 
-# Method 2: Update the Portainer stack definition
+# Method 2: For Portainer-managed stacks, update the stack definition
 # Edit the stack in Portainer to add the label, then redeploy
 ```
 
 ## Step 3: Name-Based Container Exclusion
 
-Exclude containers by name without adding labels to each one:
+Exclude containers by their actual container names without adding labels to each one:
 
 ```yaml
 # Watchtower stack configuration
 services:
   watchtower:
     image: containrrr/watchtower:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       WATCHTOWER_POLL_INTERVAL: "86400"
       WATCHTOWER_CLEANUP: "true"
-
       # Exclude specific container names (comma-separated)
-      # Note: This is NOT an environment variable - use the --ignore flag
-    command: >
-      --interval 86400
-      --cleanup
-      --ignore postgres
-      --ignore portainer
-      --ignore redis-master
-      --ignore watchtower
+      WATCHTOWER_DISABLE_CONTAINERS: "postgres,portainer,redis-master,watchtower"
 ```
 
-Or using the environment approach with a startup script:
+Or use an include list instead of an exclude list:
 
 ```yaml
 services:
@@ -96,7 +90,7 @@ services:
     image: containrrr/watchtower:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    # Specify which containers to watch (include list instead of exclude)
+    # Specify which actual container names to watch (include list instead of exclude)
     # This updates ONLY nginx and myapp:
     command: --interval 3600 --cleanup nginx myapp
 ```
@@ -110,6 +104,8 @@ Instead of opt-out (exclude specific), use opt-in (must explicitly include):
 services:
   watchtower:
     image: containrrr/watchtower:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       WATCHTOWER_LABEL_ENABLE: "true"    # Opt-in mode
       WATCHTOWER_POLL_INTERVAL: "86400"
@@ -145,6 +141,8 @@ Prevent updates during business hours using a schedule:
 services:
   watchtower:
     image: containrrr/watchtower:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       # Only update at 2 AM on weekdays
       WATCHTOWER_SCHEDULE: "0 0 2 * * 1-5"    # Mon-Fri at 02:00
@@ -155,13 +153,14 @@ For containers that should never be updated automatically (only during maintenan
 
 ## Step 6: Exclude Watchtower Itself
 
-Watchtower can accidentally update itself. While it generally handles self-updates gracefully, you may want to pin the version:
+Watchtower can accidentally update itself. While it generally handles self-updates gracefully, you may want to pin the version and exclude the Watchtower container itself:
 
 ```yaml
 services:
   watchtower:
     image: containrrr/watchtower:1.7.1    # Pin to specific version
-    # Or use latest but exclude itself:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       WATCHTOWER_POLL_INTERVAL: "86400"
     labels:
@@ -174,10 +173,7 @@ services:
 # Check Watchtower logs to confirm containers are being skipped
 docker logs watchtower 2>&1 | grep -i "skip\|ignor\|exclud"
 
-# Enable debug logging temporarily
-docker exec watchtower sh -c 'kill -USR1 1'    # Some versions support signal-based log level change
-
-# Or restart with debug logging
+# Run a one-off check with debug logging
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
   containrrr/watchtower \
@@ -195,8 +191,8 @@ docker run --rm \
 echo "=== Container Watchtower Update Status ==="
 echo ""
 echo "Excluded containers (com.centurylinklabs.watchtower.enable=false):"
-docker ps --format '{{.Names}}' | while read name; do
-  LABEL=$(docker inspect "$name" | jq -r '.[].Config.Labels["com.centurylinklabs.watchtower.enable"] // "not-set"')
+docker ps -a --format '{{.Names}}' | while read name; do
+  LABEL=$(docker inspect "$name" | jq -r '.[0].Config.Labels["com.centurylinklabs.watchtower.enable"] // "not-set"')
   if [ "$LABEL" = "false" ]; then
     echo "  EXCLUDED: $name"
   fi
@@ -204,8 +200,8 @@ done
 
 echo ""
 echo "Opted-in containers (com.centurylinklabs.watchtower.enable=true):"
-docker ps --format '{{.Names}}' | while read name; do
-  LABEL=$(docker inspect "$name" | jq -r '.[].Config.Labels["com.centurylinklabs.watchtower.enable"] // "not-set"')
+docker ps -a --format '{{.Names}}' | while read name; do
+  LABEL=$(docker inspect "$name" | jq -r '.[0].Config.Labels["com.centurylinklabs.watchtower.enable"] // "not-set"')
   if [ "$LABEL" = "true" ]; then
     echo "  INCLUDED: $name"
   fi
