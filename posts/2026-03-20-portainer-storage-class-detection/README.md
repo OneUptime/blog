@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Kubernetes, Troubleshooting, Storage, PersistentVolume
 
-Description: Resolve storage class detection errors in Portainer's Kubernetes environment view, including missing storage class CRDs, permission issues, and cluster configuration problems.
+Description: Resolve storage class detection errors in Portainer's Kubernetes environment view, including storage API availability, permission issues, and cluster configuration problems.
 
 ## Introduction
 
@@ -35,11 +35,11 @@ kubectl get sc
 # NAME                 PROVISIONER           RECLAIMPOLICY
 # standard (default)   rancher.io/local-path  Delete
 
-# If no storage classes exist:
-kubectl describe storageclass
+# If storage classes exist and you want more detail:
+kubectl describe storageclass <storage-class-name>
 
 # Check if storage class API is available
-kubectl api-resources | grep storageclass
+kubectl api-resources --api-group=storage.k8s.io | grep storageclasses
 ```
 
 ## Step 3: Check Portainer's Kubernetes Service Account Permissions
@@ -47,38 +47,27 @@ kubectl api-resources | grep storageclass
 Portainer needs RBAC permissions to list storage classes:
 
 ```bash
-# Check Portainer's service account
-kubectl get serviceaccount portainer -n portainer
+# Find the service account used by the Portainer deployment
+PORTAINER_SA=$(kubectl get deployment portainer -n portainer -o jsonpath='{.spec.template.spec.serviceAccountName}')
+kubectl get serviceaccount "$PORTAINER_SA" -n portainer
 
 # Check cluster role bindings
 kubectl get clusterrolebinding | grep portainer
 
-# Describe the cluster role
-kubectl describe clusterrole portainer-cr 2>/dev/null
+# Check whether the service account can list storage classes
+kubectl auth can-i list storageclasses.storage.k8s.io \
+  --as=system:serviceaccount:portainer:$PORTAINER_SA
 
-# If permissions are missing, create a cluster role with storage class access
+# If permissions are missing in a custom least-privilege setup, create a cluster role with storage class read access
 cat << 'EOF' | kubectl apply -f -
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: portainer-cr
+  name: portainer-storageclass-reader
 rules:
-  # All core resources
-  - apiGroups: [""]
-    resources: ["*"]
-    verbs: ["*"]
-  # Apps resources (deployments, etc.)
-  - apiGroups: ["apps"]
-    resources: ["*"]
-    verbs: ["*"]
-  # Storage classes
   - apiGroups: ["storage.k8s.io"]
-    resources: ["storageclasses", "persistentvolumes"]
-    verbs: ["get", "list", "watch", "create", "delete"]
-  # Networking
-  - apiGroups: ["networking.k8s.io"]
-    resources: ["ingresses", "ingressclasses"]
-    verbs: ["*"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
 EOF
 ```
 
@@ -86,23 +75,24 @@ EOF
 
 ```bash
 # Bind the cluster role to Portainer's service account
-cat << 'EOF' | kubectl apply -f -
+PORTAINER_SA=$(kubectl get deployment portainer -n portainer -o jsonpath='{.spec.template.spec.serviceAccountName}')
+cat <<EOF | kubectl apply -f -
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: portainer-crb
+  name: portainer-storageclass-reader-binding
 subjects:
   - kind: ServiceAccount
-    name: portainer
+    name: ${PORTAINER_SA}
     namespace: portainer
 roleRef:
   kind: ClusterRole
-  name: portainer-cr
+  name: portainer-storageclass-reader
   apiGroup: rbac.authorization.k8s.io
 EOF
 
 # Verify the binding
-kubectl describe clusterrolebinding portainer-crb
+kubectl describe clusterrolebinding portainer-storageclass-reader-binding
 ```
 
 ## Step 5: Install a Storage Class Provisioner
@@ -113,7 +103,7 @@ If your cluster has no storage classes, install one:
 
 ```bash
 # Install Rancher Local Path Provisioner
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.35/deploy/local-path-storage.yaml
 
 # Set as default storage class
 kubectl patch storageclass local-path \
@@ -127,10 +117,10 @@ kubectl get storageclass
 
 ```bash
 # Install Longhorn storage
-kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.6.1/deploy/longhorn.yaml
+kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.11.1/deploy/longhorn.yaml
 
 # Wait for Longhorn to be ready
-kubectl rollout status deployment longhorn-manager -n longhorn-system
+kubectl get pods --namespace longhorn-system --watch
 ```
 
 ## Step 6: Fix kubeconfig Credentials
@@ -157,10 +147,10 @@ kubectl config view --minify --flatten > portainer-kubeconfig.yaml
 
 ```bash
 # Check Kubernetes API server version
-kubectl version --short
+kubectl version
 
 # Check available API groups
-kubectl api-versions | grep storage
+kubectl api-versions | grep storage.k8s.io
 
 # Expected for modern Kubernetes:
 # storage.k8s.io/v1
@@ -174,29 +164,29 @@ kubectl api-versions | grep storage
 If Portainer is deployed in the cluster itself:
 
 ```bash
-# Uninstall and reinstall with correct permissions
+# Uninstall and reinstall using the official Helm chart
 helm uninstall portainer -n portainer
 
-# Install with full cluster admin access
-helm install portainer portainer/portainer \
-  --namespace portainer \
-  --create-namespace \
-  --set serviceAccount.annotations.eks.amazonaws.com/role-arn="" \
-  --set rbac.create=true \
-  --set rbac.clusterAdmin=true
+# Add the official Portainer Helm repository
+helm repo add portainer https://portainer.github.io/k8s/
+helm repo update
+
+# Reinstall Portainer in the supported namespace
+helm upgrade --install --create-namespace -n portainer portainer portainer/portainer \
+  --set image.tag=lts \
+  --set localMgmt=true
 ```
 
 ## Step 9: Test Storage Class via Portainer API
 
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
+PORTAINER_URL=https://localhost:9443
+API_KEY=your_portainer_api_key
 
-# List storage classes via Portainer API
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:9000/api/endpoints/1/kubernetes/api/v1/storageclasses" | \
-  jq '.items[].metadata.name'
+# List storage classes via Portainer's Kubernetes API gateway
+curl -sk -H "X-API-Key: $API_KEY" \
+  "$PORTAINER_URL/api/endpoints/1/kubernetes/apis/storage.k8s.io/v1/storageclasses" | \
+  jq -r '.items[].metadata.name'
 ```
 
 ## Step 10: Configure Dynamic Provisioning
@@ -204,9 +194,9 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 After storage classes are available, enable dynamic provisioning in Portainer:
 
 1. Go to **Environments** → select your Kubernetes cluster
-2. Click **Configure Cluster**
-3. Enable **Allow users to use the default storage class**
-4. Set the default storage class from the dropdown
+2. In the left menu, expand **Cluster** and click **Setup**
+3. In **Available storage options**, confirm the default storage class is enabled
+4. Save the changes if prompted
 
 ## Conclusion
 
