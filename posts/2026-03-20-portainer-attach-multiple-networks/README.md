@@ -8,7 +8,7 @@ Description: Learn how to attach Docker containers to multiple networks in Porta
 
 ## Introduction
 
-Attaching containers to multiple networks is a core pattern for multi-tier application architectures. A container can belong to several Docker networks simultaneously, enabling it to act as a bridge between network segments - for example, an API server that is reachable from a frontend network while also accessing a private database network. Portainer makes this straightforward both at container creation and for running containers.
+Attaching containers to multiple networks is a core pattern for multi-tier application architectures. A container can belong to several Docker networks simultaneously, allowing it to span network segments - for example, an API server that is reachable from a frontend network while also accessing a private database network. In Portainer, you typically assign the first network when creating the container, then connect additional networks after deployment.
 
 ## Prerequisites
 
@@ -32,7 +32,7 @@ Frontend Network (dmz)    ←→    nginx (proxy)    ←→    App Network (back
 ## Step 1: Create Networks First
 
 ```bash
-# Create three isolated networks:
+# Create three user-defined bridge networks:
 
 docker network create --driver bridge dmz-network
 docker network create --driver bridge --internal app-network
@@ -42,25 +42,27 @@ docker network create --driver bridge --internal data-network
 docker network ls | grep -E "dmz|app|data"
 ```
 
-## Step 2: Attach Multiple Networks at Container Creation (Portainer UI)
+## Step 2: Attach the First Network at Container Creation (Portainer UI)
 
 1. Navigate to **Containers** in Portainer.
 2. Click **Add container**.
-3. Scroll to the **Network** section.
-4. Select the first network from the dropdown and click **+Add network**.
-5. Repeat to add additional networks.
+3. Open **Advanced container settings** and go to the **Network** section.
+4. Select the network to attach the container to from the dropdown.
+5. Complete the rest of the container settings.
 6. Click **Deploy the container**.
 
-Note: Portainer may only show one network selection in the basic view. Deploy with one network, then connect additional networks post-creation (Step 3).
+Note: Portainer's documented add-container flow lets you choose the initial network during deployment. To place the same container on additional networks, deploy it first and then connect the extra networks afterward (Step 3).
 
 ## Step 3: Connect a Running Container to Additional Networks
 
 ### Via Portainer UI
 
 1. Navigate to the container's detail page.
-2. Scroll to **Connected networks**.
+2. Scroll to the section listing the container's attached networks.
 3. Click the network dropdown and select the network to join.
 4. Click **Join network**.
+
+If you created the network in Portainer, enable **manual container attachment** on that network.
 
 ### Via CLI
 
@@ -71,15 +73,13 @@ docker network connect data-network my-api-container
 
 # Verify the container is on multiple networks:
 docker inspect my-api-container --format '{{range $name, $conf := .NetworkSettings.Networks}}{{$name}} {{end}}'
-# Output: dmz-network app-network data-network
+# Example output (order may vary): dmz-network app-network data-network
 ```
 
 ## Step 4: Multi-Network Docker Compose Configuration
 
 ```yaml
 # docker-compose.yml - multi-tier architecture
-version: "3.8"
-
 services:
   nginx:
     image: nginx:alpine
@@ -100,7 +100,7 @@ services:
       - backend    # Receives proxied requests from nginx
       - data       # Accesses databases
     environment:
-      - DATABASE_URL=postgresql://user:pass@postgres:5432/mydb
+      - DATABASE_URL=postgresql://user:${DB_PASSWORD}@postgres:5432/mydb
       - REDIS_URL=redis://redis:6379
 
   postgres:
@@ -109,7 +109,9 @@ services:
     networks:
       - data       # Only accessible from data network
     environment:
+      - POSTGRES_USER=user
       - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=mydb
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -126,11 +128,11 @@ networks:
 
   backend:
     driver: bridge
-    internal: true   # No direct internet access
+    internal: true   # Externally isolated network
 
   data:
     driver: bridge
-    internal: true   # No direct internet access
+    internal: true   # Externally isolated network
 
 volumes:
   postgres_data:
@@ -187,4 +189,4 @@ docker network inspect data-network | jq '.[].Containers | to_entries[] | {name:
 
 ## Conclusion
 
-Attaching containers to multiple networks is the standard pattern for implementing network segmentation in Docker. An nginx proxy joins both the public-facing DMZ and the internal backend network, while database containers remain isolated on a data-only network. Portainer supports this through the UI's connected networks section and the Join network action on running containers. Combined with Docker Compose's network definitions, this pattern provides defense-in-depth for containerized applications without complex firewall rules.
+Attaching containers to multiple networks is the standard pattern for implementing network segmentation in Docker. An nginx proxy joins both the public-facing DMZ and the internal backend network, while database containers remain isolated on a data-only network. In Portainer, you typically deploy the container onto its first network, then use the container detail page to join additional networks afterward. Combined with Docker Compose's network definitions, this pattern provides defense-in-depth for containerized applications without complex firewall rules.
