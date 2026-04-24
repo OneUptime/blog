@@ -31,14 +31,14 @@ docker run -d \
   portainer/portainer-ce:latest \
   --bind :8888
 
-# Bind HTTP to only the loopback interface (localhost only)
+# Publish HTTP on the host loopback interface only (localhost only)
 docker run -d \
   --name portainer \
   -p 127.0.0.1:9000:9000 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest \
-  --bind 0.0.0.0:9000
+  --bind :9000
 ```
 
 ## Using --bind-https to Change the HTTPS Port
@@ -56,7 +56,7 @@ docker run -d \
 
 ## Binding to a Specific IP
 
-When the host has multiple network interfaces, bind Portainer to only one:
+When the host has multiple network interfaces, and you're using Docker host networking on Linux, bind Portainer to only one:
 
 ```bash
 # Only serve on the management network interface (e.g., 192.168.10.1)
@@ -88,7 +88,6 @@ docker run -d \
 ## Docker Compose Example
 
 ```yaml
-version: "3.8"
 services:
   portainer:
     image: portainer/portainer-ce:latest
