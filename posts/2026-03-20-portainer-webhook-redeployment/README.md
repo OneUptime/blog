@@ -12,7 +12,7 @@ Once you've created a webhook for a Portainer container, triggering redeployment
 
 ## Prerequisites
 
-- Portainer with a container webhook configured
+- Portainer Business Edition on a non-Edge environment, with a container webhook configured
 - The webhook URL from Portainer
 
 ## How the Redeploy Webhook Works
@@ -22,10 +22,10 @@ Trigger: HTTP POST → webhook URL
 Response: 204 No Content (success) or 4xx/5xx (error)
 
 Behind the scenes:
-1. docker pull <image>:<tag>     (pulls latest image)
-2. docker stop <container>       (stops old container)
-3. docker rm <container>         (removes old container)
-4. docker run <original-config>  (starts new container)
+1. Portainer receives the POST request at the webhook URL
+2. Portainer pulls the most up-to-date image for the current tag
+3. Portainer recreates the container using the saved configuration
+4. Add ?tag=<tag> to the webhook URL to redeploy with a different image tag
 ```
 
 ## Method 1: cURL (Command Line)
@@ -52,7 +52,7 @@ curl -X POST --max-time 30 \
 ```bash
 #!/bin/bash
 # redeploy.sh
-# Triggers Portainer webhook and waits for confirmation
+# Triggers Portainer webhook and checks for a successful response
 
 WEBHOOK_URL="${PORTAINER_WEBHOOK_URL:?PORTAINER_WEBHOOK_URL is required}"
 CONTAINER_NAME="${1:-my-container}"
@@ -85,18 +85,12 @@ exit 1
 ## Method 3: Deploy Specific Version via Tag Parameter
 
 ```bash
-# Override the image tag at deployment time
+# Redeploy the container with a different image tag
 VERSION="2.1.0"
 WEBHOOK_URL="https://portainer.example.com/api/webhooks/YOUR-TOKEN"
 
-# Portainer checks SERVICE_TAG environment variable
-# Or you can pass tag as a query parameter (Portainer BE feature)
-curl -X POST "${WEBHOOK_URL}" \
-  -H "Content-Type: application/json" \
-  -d '{"Tag": "'"${VERSION}"'"}'
-
-# Standard approach: update container's image tag via API,
-# then trigger the webhook
+# Portainer container webhooks accept the tag as a query parameter
+curl -X POST "${WEBHOOK_URL}?tag=${VERSION}"
 ```
 
 ## Method 4: Webhook via Wget (for minimal environments)
@@ -165,12 +159,10 @@ if __name__ == "__main__":
 ## Handling Webhook Responses
 
 ```bash
-# Portainer webhook responses:
-# 204 No Content    → Webhook accepted, redeployment queued
-# 400 Bad Request   → Malformed request
-# 403 Forbidden     → Invalid webhook token
+# Common Portainer webhook responses:
+# 204 No Content    → Webhook accepted, redeployment triggered
 # 404 Not Found     → Webhook not found (deleted or wrong URL)
-# 500 Internal Error → Portainer internal error
+# 5xx Server Error  → Portainer failed while processing the redeploy
 
 # Handle different responses:
 RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
@@ -179,10 +171,6 @@ RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
 case "$RESPONSE" in
     204)
         echo "✓ Deployment triggered"
-        ;;
-    403)
-        echo "✗ Unauthorized - check webhook URL/token"
-        exit 1
         ;;
     404)
         echo "✗ Webhook not found - verify the URL"
@@ -208,23 +196,26 @@ For deploying dependencies in order:
 # ordered-deploy.sh
 # Deploys services in dependency order
 
-PORTAINER_URL="https://portainer.example.com"
-
 trigger_and_wait() {
     local service="$1"
     local webhook_url="$2"
-    local health_url="$3"
+    local health_check_cmd="$3"
     local wait_seconds="${4:-30}"
 
     echo "→ Deploying ${service}..."
 
     # Trigger redeployment
-    curl -s -X POST "${webhook_url}" > /dev/null
+    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+      -X POST "${webhook_url}")
+    if [ "${HTTP_STATUS}" != "204" ]; then
+        echo "  ✗ Webhook failed with HTTP ${HTTP_STATUS}"
+        return 1
+    fi
 
     # Wait for service to come up
     echo "  Waiting up to ${wait_seconds}s for ${service} to be healthy..."
     for i in $(seq 1 $((wait_seconds / 5))); do
-        if curl -sf "${health_url}" > /dev/null 2>&1; then
+        if sh -c "${health_check_cmd}" > /dev/null 2>&1; then
             echo "  ✓ ${service} is healthy"
             return 0
         fi
@@ -236,17 +227,18 @@ trigger_and_wait() {
 }
 
 # Deploy in order: database → cache → app
+# Use a protocol-appropriate readiness check for each service
 trigger_and_wait "database" \
   "${WEBHOOK_DB}" \
-  "http://localhost:5432" || exit 1
+  "pg_isready -h localhost -p 5432" || exit 1
 
 trigger_and_wait "cache" \
   "${WEBHOOK_REDIS}" \
-  "http://localhost:6379" || exit 1
+  "redis-cli -h localhost -p 6379 ping | grep -q PONG" || exit 1
 
 trigger_and_wait "app" \
   "${WEBHOOK_APP}" \
-  "http://localhost:8080/health" || exit 1
+  "curl -sf http://localhost:8080/health" || exit 1
 
 echo "✓ Full deployment complete"
 ```
