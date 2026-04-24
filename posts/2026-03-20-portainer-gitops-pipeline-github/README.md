@@ -8,7 +8,7 @@ Description: Learn how to build a complete end-to-end GitOps pipeline using GitH
 
 ## Introduction
 
-A complete GitOps pipeline with Portainer and GitHub means: code changes in GitHub trigger automated builds, the resulting images are stored in GitHub Container Registry (GHCR), and Portainer automatically deploys the updated containers. This guide walks through every component of this pipeline.
+A complete GitOps pipeline with Portainer and GitHub means: code changes in GitHub trigger automated builds, the resulting images are stored in GitHub Container Registry (GHCR), and GitHub Actions updates the Portainer stack so the updated containers are redeployed. This guide walks through every component of this pipeline.
 
 ## Architecture Overview
 
@@ -20,7 +20,7 @@ Developer → Push to GitHub main branch
        ├── Build Docker image
        └── Push to GHCR (ghcr.io)
            ↓
-       Trigger Portainer webhook
+       Update Portainer stack via API
            ↓
        Portainer pulls image from GHCR
        └── Redeploys container
@@ -54,9 +54,9 @@ my-app/
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 COPY . .
-RUN npm run build
+RUN npm run build && npm prune --omit=dev
 
 FROM node:20-alpine AS runtime
 WORKDIR /app
@@ -73,8 +73,6 @@ CMD ["node", "dist/server.js"]
 
 ```yaml
 # docker-compose.yml - Portainer stack definition
-version: "3.8"
-
 services:
   app:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/my-app:${IMAGE_TAG:-latest}
@@ -112,16 +110,15 @@ Go to **Settings** → **Secrets and variables** → **Actions**:
 
 | Secret | Value |
 |--------|-------|
-| `PORTAINER_WEBHOOK_URL` | Webhook URL from Portainer |
 | `PORTAINER_API_KEY` | API access token |
 | `PORTAINER_URL` | https://portainer.example.com |
 
-### Package Permissions
+### Workflow Permissions
 
-Enable package permissions:
-1. Go to **Settings** → **Actions** → **General**.
-2. Under **Workflow permissions**, select **Read and write permissions**.
-3. Check **Allow GitHub Actions to create and approve pull requests**.
+The workflow below grants the `GITHUB_TOKEN` the permissions it needs at the job level:
+
+- `contents: read`
+- `packages: write`
 
 ## Step 5: Create the Complete CI/CD Workflow
 
@@ -170,7 +167,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     outputs:
       image_digest: ${{ steps.push.outputs.digest }}
-      image_tag: ${{ steps.meta.outputs.version }}
+      image_tag: git-${{ github.sha }}
 
     permissions:
       contents: read
@@ -196,7 +193,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest
-            type=sha,format=short,prefix=git-
+            type=sha,format=long,prefix=git-
             type=raw,value={{date 'YYYYMMDD-HHmmss'}}
 
       - name: Build and push
@@ -233,27 +230,41 @@ jobs:
         env:
           PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
           PORTAINER_API_KEY: ${{ secrets.PORTAINER_API_KEY }}
-          IMAGE_TAG: "git-${{ github.sha }}"
+          IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
           STACK_NAME: my-app
         run: |
-          # Find the stack
-          STACK_ID=$(curl -sf -H "X-API-Key: $PORTAINER_API_KEY" \
+          # Find the stack and its environment
+          STACK_DATA=$(curl -sf -H "X-API-Key: $PORTAINER_API_KEY" \
             "$PORTAINER_URL/api/stacks" | \
-            jq -r --arg n "$STACK_NAME" '.[] | select(.Name == $n) | .Id')
+            jq -c --arg n "$STACK_NAME" '.[] | select(.Name == $n)')
 
-          # Update stack with new image tag
-          curl -s -X PUT \
+          if [ -z "$STACK_DATA" ]; then
+            echo "ERROR: Stack '$STACK_NAME' not found in Portainer."
+            exit 1
+          fi
+
+          STACK_ID=$(echo "$STACK_DATA" | jq -r '.Id')
+          ENDPOINT_ID=$(echo "$STACK_DATA" | jq -r '.EndpointId')
+
+          PAYLOAD=$(jq -n \
+            --rawfile stackFile docker-compose.yml \
+            --arg imageTag "$IMAGE_TAG" \
+            --arg owner "${{ github.repository_owner }}" \
+            '{
+              StackFileContent: $stackFile,
+              Env: [
+                {name: "IMAGE_TAG", value: $imageTag},
+                {name: "GITHUB_REPOSITORY_OWNER", value: $owner}
+              ],
+              RepullImageAndRedeploy: true
+            }')
+
+          # Update the file-based stack with the new image tag
+          curl -sf -X PUT \
             -H "X-API-Key: $PORTAINER_API_KEY" \
             -H "Content-Type: application/json" \
-            "$PORTAINER_URL/api/stacks/$STACK_ID?endpointId=1" \
-            -d "{
-              \"stackFileContent\": $(cat docker-compose.yml | jq -Rs .),
-              \"env\": [
-                {\"name\": \"IMAGE_TAG\", \"value\": \"$IMAGE_TAG\"},
-                {\"name\": \"GITHUB_REPOSITORY_OWNER\", \"value\": \"${{ github.repository_owner }}\"}
-              ],
-              \"pullImage\": true
-            }"
+            "$PORTAINER_URL/api/stacks/$STACK_ID?endpointId=$ENDPOINT_ID" \
+            -d "$PAYLOAD"
 
           echo "Deployed with tag: $IMAGE_TAG"
 
@@ -283,8 +294,8 @@ For private images (default), ensure Portainer can pull from GHCR:
 
 1. In Portainer, add GHCR as a registry.
 2. Go to **Registries** → **Add registry**.
-3. Select **GitHub container registry** type.
-4. Enter GitHub username and Personal Access Token with `read:packages` scope.
+3. In Portainer BE, you can select **GitHub** as the registry provider. In Portainer CE, add GHCR as a **Custom registry** and use `ghcr.io` as the registry URL.
+4. Enter your GitHub username and a Personal Access Token (classic). For a custom `ghcr.io` registry used only to pull private images, GitHub requires the `read:packages` scope. If you use Portainer BE's dedicated GitHub registry provider, follow the token scope requirements shown in Portainer.
 
 ## Step 7: Create a Deployment Environment in GitHub
 
