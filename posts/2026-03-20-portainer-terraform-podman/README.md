@@ -8,14 +8,15 @@ Description: Use the Portainer Terraform provider to manage Podman-backed Portai
 
 ## Introduction
 
-The Portainer Terraform provider (`portainer/portainer`) allows you to manage Portainer resources - environments, stacks, users, teams, and settings - using Terraform HCL. When Portainer is connected to a Podman backend via the Docker-compatible socket, the same provider works seamlessly. This guide shows how to configure and use the Terraform provider against a Podman-backed Portainer instance.
+The Portainer Terraform provider (`portainer/portainer`) allows you to manage Portainer resources - environments, stacks, users, teams, and settings - using Terraform HCL. When Portainer is connected to a Podman backend through a supported connection method, the same provider can manage those Portainer resources. This guide shows how to configure and use the Terraform provider against a Podman-backed Portainer instance using the Portainer Agent connection method.
 
 ## Prerequisites
 
-- Portainer CE or BE running and connected to a Podman socket
+- Portainer CE or BE running
 - Terraform 1.0+ installed
 - Portainer API access token or admin credentials
-- Podman 4.0+ with socket enabled on the host
+- A Podman host running CentOS Stream 9 with Podman 5.x in rootful mode
+- Port `9001` reachable from the Portainer Server to the Podman host if using the Portainer Agent
 
 ## Step 1: Install the Portainer Terraform Provider
 
@@ -28,7 +29,7 @@ terraform {
   required_providers {
     portainer = {
       source  = "portainer/portainer"
-      version = "~> 1.0"
+      version = "~> 1.28"
     }
   }
 }
@@ -51,11 +52,11 @@ provider "portainer" {
   api_key = var.portainer_api_key
 
   # Or use username/password
-  # username = "admin"
-  # password = var.portainer_password
+  # api_user     = "admin"
+  # api_password = var.portainer_password
 
   # Skip TLS verification if using self-signed certs
-  skip_tls_verify = true
+  skip_ssl_verify = true
 }
 
 variable "portainer_api_key" {
@@ -76,23 +77,23 @@ export TF_VAR_portainer_api_key="ptr_xxxxxxxxxxxxxxxxxxxxxxxx"
 ```hcl
 # environments.tf
 
-# Register the Podman host as a Docker Standalone environment
-# (Portainer sees it as Docker due to the compatible API)
-resource "portainer_endpoint" "podman_host" {
-  name           = "podman-production"
-  endpoint_type  = 1  # Docker Standalone
-  url            = "tcp://podman-host:2375"
-
-  # Or use the socket directly if Portainer is on the same host
-  # url = "unix:///run/podman/podman.sock"
-
-  public_url     = "podman-host"
+# Register the Podman host with the Portainer Agent
+resource "portainer_environment" "podman_host" {
+  name                = "podman-production"
+  type                = 2  # Agent
+  environment_address = "tcp://podman-host:9001"
+  public_ip           = "podman-host"
 
   # Group assignment
   group_id = portainer_endpoint_group.podman_group.id
 
   # Tag the environment
   tag_ids = [portainer_tag.production.id]
+
+  # Optional: grant the developers team access once created in users.tf
+  team_access_policies = {
+    (tostring(portainer_team.dev_team.id)) = 2
+  }
 }
 
 resource "portainer_endpoint_group" "podman_group" {
@@ -111,9 +112,10 @@ resource "portainer_tag" "production" {
 # stacks.tf
 
 resource "portainer_stack" "webapp" {
-  name         = "webapp"
-  endpoint_id  = portainer_endpoint.podman_host.id
-  stack_type   = 2  # Docker Compose (standalone)
+  name            = "webapp"
+  endpoint_id     = portainer_environment.podman_host.id
+  deployment_type = "standalone"
+  method          = "string"
 
   # Inline compose file
   stack_file_content = <<-YAML
@@ -174,13 +176,6 @@ resource "portainer_team_membership" "dev_membership" {
   role    = 1  # Leader (2 = member)
 }
 
-# Grant team access to the Podman environment
-resource "portainer_endpoint_access" "podman_dev_access" {
-  endpoint_id  = portainer_endpoint.podman_host.id
-  team_id      = portainer_team.dev_team.id
-  access_level = 2  # Read-Write
-}
-
 variable "dev_user_password" {
   sensitive = true
 }
@@ -195,8 +190,8 @@ resource "portainer_settings" "global" {
   # Authentication settings
   authentication_method = 1  # Internal (2=LDAP, 3=OAuth)
 
-  # Snapshot interval in seconds
-  snapshot_interval = "300"
+  # Snapshot interval
+  snapshot_interval = "5m"
 
   # Edge agent settings
   enable_edge_compute_features = false
@@ -220,7 +215,7 @@ terraform show
 terraform plan  # Shows what would change
 
 # Import existing Portainer resources
-terraform import portainer_stack.existing_stack "endpoint_id:stack_id"
+terraform import portainer_stack.existing_stack "1-42-standalone-string"
 
 # Destroy all managed resources
 terraform destroy
@@ -253,15 +248,17 @@ jobs:
         env:
           TF_VAR_portainer_api_key: ${{ secrets.PORTAINER_API_KEY }}
           TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+          TF_VAR_dev_user_password: ${{ secrets.DEV_USER_PASSWORD }}
         run: terraform plan -out=tfplan
 
       - name: Terraform Apply
         env:
           TF_VAR_portainer_api_key: ${{ secrets.PORTAINER_API_KEY }}
           TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+          TF_VAR_dev_user_password: ${{ secrets.DEV_USER_PASSWORD }}
         run: terraform apply tfplan
 ```
 
 ## Conclusion
 
-The Portainer Terraform provider works identically whether Portainer is backed by Docker or Podman, since Portainer interacts with Podman through its Docker-compatible API. Using Terraform to manage Portainer enables version-controlled, reproducible infrastructure definitions for environments, stacks, users, and settings. For production Podman environments, combine Terraform state storage in a remote backend (S3, Terraform Cloud) with CI/CD pipelines to automate deployments whenever stack definitions change.
+The Portainer Terraform provider can manage Podman-backed Portainer environments using the same Portainer resources you use for Docker-backed environments. Using Terraform to manage Portainer enables version-controlled, reproducible infrastructure definitions for environments, stacks, users, and settings. For production Podman environments, follow Portainer's current Podman support matrix and combine Terraform state storage in a remote backend (S3, Terraform Cloud) with CI/CD pipelines to automate deployments whenever stack definitions change.
