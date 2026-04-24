@@ -13,21 +13,21 @@ Aqua Security is a comprehensive Cloud-Native Application Protection Platform (C
 ## Prerequisites
 
 - Aqua Security license and account at https://portal.aquasec.com
-- Rancher v2.7+ with RKE2 or K3s clusters
-- PostgreSQL database for Aqua server (or use embedded)
-- TLS certificate for Aqua web UI
+- Rancher-managed RKE2 or K3s cluster
+- External PostgreSQL database for production deployments (the chart can also deploy the bundled database for POCs and testing)
+- TLS certificate for Aqua web UI if you plan to expose it over HTTPS
 
 ## Step 1: Deploy Aqua Server
 
 ```bash
 # Add Aqua Helm repository
 
-helm repo add aqua https://helm.aquasec.com
+helm repo add aqua-helm https://helm.aquasec.com
 helm repo update
 
 # Create namespace and registry secret
 kubectl create namespace aqua
-kubectl create secret docker-registry aqua-registry \
+kubectl create secret docker-registry aqua-registry-secret \
   --namespace aqua \
   --docker-server=registry.aquasec.com \
   --docker-username="${AQUA_REGISTRY_USERNAME}" \
@@ -38,177 +38,139 @@ kubectl create secret docker-registry aqua-registry \
 # aqua-server-values.yaml
 imageCredentials:
   create: false
-  name: aqua-registry
+  name: aqua-registry-secret
 
-db:
-  external:
-    enabled: true
-    name: aqua
-    host: postgres.aqua.svc
-    port: 5432
-    user: aqua
-    password: "${AQUA_DB_PASSWORD}"
+admin:
+  token: "${AQUA_LICENSE_TOKEN}"
+  password: "${AQUA_ADMIN_PASSWORD}"
 
-server:
+global:
+  platform: rancher
+  db:
+    external:
+      enabled: true
+      name: aqua
+      host: postgres.aqua.svc
+      port: 5432
+      user: aqua
+      password: "${AQUA_DB_PASSWORD}"
+
+web:
   image:
-    repository: registry.aquasec.com/console
-    tag: "2024.4"
+    repository: console
+    tag: "2022.4"
   service:
     type: LoadBalancer
-  # Admin credentials
-  admin:
-    token: "${AQUA_ADMIN_TOKEN}"
-    password: "${AQUA_ADMIN_PASSWORD}"
 
-license:
-  token: "${AQUA_LICENSE_TOKEN}"
+gateway:
+  service:
+    type: LoadBalancer
 ```
 
 ```bash
-helm install aqua aqua/aqua \
+helm upgrade --install aqua aqua-helm/server \
   --namespace aqua \
   --values aqua-server-values.yaml
 ```
 
 ## Step 2: Deploy Aqua Enforcers on Each Cluster
 
-The Aqua Enforcer runs as a DaemonSet and provides runtime security:
+On each protected cluster, create the `aqua` namespace and the same `aqua-registry-secret` image pull secret, then install the enforcer chart. The Aqua Enforcer runs as a DaemonSet and provides runtime security:
 
 ```bash
-# Get enforcer token from Aqua UI: Administration → Enforcers → Add Enforcer
+# Create an enforcer token in the Aqua UI first.
+# Use aqua-gateway-svc.aqua for same-cluster installs, or an externally reachable
+# gateway DNS name / load balancer address for remote Rancher-managed clusters.
 
-helm install aqua-enforcer aqua/enforcer \
+helm upgrade --install aqua-enforcer aqua-helm/enforcer \
   --namespace aqua \
-  --set token="${AQUA_ENFORCER_TOKEN}" \
-  --set gateway.host=aqua-gateway.aqua.svc \
-  --set gateway.port=8443 \
-  --set enforcerMode=enforce    # or "audit" for monitoring only
+  --set global.platform=rancher \
+  --set enforcerToken="${AQUA_ENFORCER_TOKEN}" \
+  --set global.gateway.address="${AQUA_GATEWAY_ADDRESS}" \
+  --set global.gateway.port=8443
 ```
 
-```yaml
+```bash
 # Enforcer DaemonSet verification
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: aqua-agent
-  namespace: aqua
-spec:
-  selector:
-    matchLabels:
-      app: aqua-agent
-  template:
-    spec:
-      hostPID: true
-      containers:
-        - name: aqua-agent
-          image: registry.aquasec.com/enforcer:2024.4
-          securityContext:
-            privileged: false
-            capabilities:
-              add:
-                - SYS_ADMIN
-                - NET_ADMIN
-                - NET_RAW
+kubectl get daemonset aqua-enforcer-ds -n aqua
+kubectl get pods -n aqua -l aqua.component=enforcer
 ```
 
 ## Step 3: Configure Image Scanning
 
 ### Registry Integration
 
-Connect Aqua to your container registries:
+Deploy Aqua Scanner if you want Aqua to scan images and registries from within the platform:
 
 ```bash
-# Add registry via Aqua CLI
-aquactl registry add \
-  --name harbor-internal \
-  --type Harbor \
-  --url https://harbor.example.com \
-  --username aqua-scanner \
-  --password "${HARBOR_PASSWORD}"
-
-# Trigger a registry scan
-aquactl scan registry scan --name harbor-internal
+helm upgrade --install scanner aqua-helm/scanner \
+  --namespace aqua \
+  --set platform=rancher \
+  --set imageCredentials.create=false \
+  --set imageCredentials.name=aqua-registry-secret \
+  --set user="${AQUA_SCANNER_USERNAME}" \
+  --set password="${AQUA_SCANNER_PASSWORD}"
 ```
 
 ### CI/CD Pipeline Integration
 
 ```yaml
-# GitHub Actions: Scan image with Aqua before push
+# GitHub Actions: Scan image with Trivy before push
 name: Build and Security Scan
 on: [push]
 
 jobs:
   build-and-scan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
       - name: Build image
-        run: docker build -t myapp:${{ github.sha }} .
+        run: docker build -t docker.io/my-organization/myapp:${{ github.sha }} .
 
-      - name: Aqua Security Scan
-        env:
-          AQUA_SERVER: ${{ secrets.AQUA_SERVER }}
-          AQUA_TOKEN: ${{ secrets.AQUA_TOKEN }}
-        run: |
-          # Download and run trivy-cli (Aqua's scanner)
-          docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            -e AQUA_SERVER="${AQUA_SERVER}" \
-            -e AQUA_TOKEN="${AQUA_TOKEN}" \
-            registry.aquasec.com/scanner:2024.4 \
-            --host ${AQUA_SERVER} \
-            --user scanner \
-            --password ${AQUA_TOKEN} \
-            --register-compliant \
-            --jsonfile scan-results.json \
-            docker:myapp:${{ github.sha }}
-
-      - name: Check scan results
-        run: |
-          CRITICAL=$(jq '.vulnerability_summary.critical' scan-results.json)
-          if [ "${CRITICAL}" -gt 0 ]; then
-            echo "FAIL: ${CRITICAL} critical vulnerabilities found"
-            exit 1
-          fi
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: docker.io/my-organization/myapp:${{ github.sha }}
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
 ```
 
 ## Step 4: Configure Runtime Policies
 
 ```yaml
-# Aqua container policy via API
-# Block containers from running as root
-POST /api/v1/containerpolicies
-{
-  "name": "production-policy",
-  "description": "Production runtime policy",
-  "runtime_mode": "enforce",
-  "block_privileged_containers": true,
-  "block_root_user": true,
-  "block_non_compliant_images": true,
-  "audit_success": false,
-  "containers_allowed": ["registry.example.com/*"],
-  "block_exec_console": false,
-  "drift_prevention": {
-    "enabled": true,
-    "exec_allowed": false,
-    "bypass_scope": {
-      "enabled": false
-    }
-  },
-  "network": {
-    "block_metadata_service": true,
-    "allow_internal_networking": true
-  }
-}
+# Configure a runtime policy in the Aqua UI:
+# Policies → Runtime Policies
+#
+# Recommended production controls:
+# - Runtime mode: Enforce
+# - Block privileged containers
+# - Block containers running as root
+# - Allow only approved registries/images
+# - Enable drift prevention where appropriate
+# - Restrict access to the cloud metadata service when not required
 ```
 
 ## Step 5: Kubernetes Assurance Policies
 
-```yaml
-# Aqua Kubernetes Assurance Policy - block non-compliant workloads
-# Configure via Aqua UI: Policies → Kubernetes Assurance
+```bash
+# KubeEnforcer is the component that enforces Kubernetes Assurance policies.
+# Use aqua-gateway-svc.aqua for same-cluster installs, or an externally reachable
+# gateway DNS name / load balancer address for remote Rancher-managed clusters.
+helm upgrade --install kube-enforcer aqua-helm/kube-enforcer \
+  --namespace aqua \
+  --set global.platform=rancher \
+  --set aquaSecret.kubeEnforcerToken="${AQUA_KUBEENFORCER_TOKEN}" \
+  --set global.gateway.address="${AQUA_GATEWAY_ADDRESS}" \
+  --set global.gateway.port=8443 \
+  --set certsSecret.autoGenerate=true
+```
 
+```yaml
+# Configure the assurance policy in the Aqua UI after KubeEnforcer is deployed.
 # Example checks:
 # - Pod Security Admission level: restricted
 # - Container runs as non-root
@@ -220,50 +182,15 @@ POST /api/v1/containerpolicies
 
 ## Step 6: Configure NVD/CVE Feeds
 
-```bash
-# Aqua continuously updates its CVE database
-# Verify feed update status:
-curl -H "Authorization: Bearer ${AQUA_TOKEN}" \
-  https://aqua.example.com/api/v1/vulnerability/nvd_feed \
-  | jq '{status: .status, last_update: .last_update}'
-```
+Aqua continuously updates its vulnerability data. Verify feed health and last update time in the Aqua UI under the administration settings for the deployment.
 
 ## Step 7: Compliance Reporting
 
-```bash
-# Generate CIS Docker/Kubernetes benchmark report
-curl -H "Authorization: Bearer ${AQUA_TOKEN}" \
-  -X POST https://aqua.example.com/api/v1/compliance/check \
-  -d '{
-    "compliance_type": "kubernetes_cis",
-    "cluster_id": "prod-cluster-01"
-  }'
-
-# Download report
-curl -H "Authorization: Bearer ${AQUA_TOKEN}" \
-  "https://aqua.example.com/api/v1/reports/compliance/prod-cluster-01" \
-  -o compliance-report.pdf
-```
+Generate CIS Docker or Kubernetes benchmark reports from the Aqua UI after Scanner and KubeEnforcer data is available, then export the report for sharing or audit evidence.
 
 ## Step 8: Alert Integration
 
-```yaml
-# Configure Aqua to send alerts to your monitoring system
-# Aqua UI: Administration → Integrations → Webhooks
-
-POST /api/v1/settings/integrations
-{
-  "type": "webhook",
-  "name": "slack-alerts",
-  "url": "https://hooks.slack.com/services/xxx",
-  "events": [
-    "scan_failed",
-    "runtime_incident",
-    "non_compliant_workload",
-    "drift_detected"
-  ]
-}
-```
+Configure Aqua alert integrations from the Aqua UI under Administration → Integrations. Common targets include webhook endpoints, Slack, SIEMs, and ticketing systems.
 
 ## Conclusion
 
