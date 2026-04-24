@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, WordPress, Template, DevOps
 
-Description: Step-by-step guide to deploying a production-ready WordPress site using Portainer's stack template feature.
+Description: Step-by-step guide to deploying a WordPress site using Portainer's stack template feature and then hardening it for production.
 
 ## Introduction
 
@@ -17,10 +17,10 @@ WordPress is one of the most popular applications deployed in Docker environment
 - A domain name (optional, but recommended for production)
 - At least 1GB RAM available on the host
 
-## Step 1: Access App Templates
+## Step 1: Access Templates
 
 1. In Portainer, select your Docker environment
-2. Click **App Templates** in the sidebar
+2. Expand **Templates** in the sidebar and click **Application**
 3. Search for "WordPress"
 4. Select the **WordPress** stack template
 
@@ -29,17 +29,8 @@ WordPress is one of the most popular applications deployed in Docker environment
 Fill in the template variables:
 
 ```text
-Stack name:           wordpress-site
-
-WordPress port:       80          (or 8080 to avoid conflicts)
-WordPress DB host:    db
-WordPress DB name:    wordpress
-WordPress DB user:    wpuser
-
-MySQL root password:  [generate-strong-password]
-MySQL database:       wordpress
-MySQL user:           wpuser
-MySQL password:       [generate-strong-password]
+Stack name:             wordpress-site
+Database root password: [generate-strong-password]
 ```
 
 **Tip:** Use a password manager to generate strong passwords (at least 24 characters with mixed case, numbers, and symbols).
@@ -48,16 +39,16 @@ MySQL password:       [generate-strong-password]
 
 Click **Deploy the stack**. The deployment process:
 
-1. Creates the `wordpress` and `db` networks
-2. Creates named volumes for data persistence
-3. Pulls `wordpress:latest` and `mysql:8` images
+1. Creates the default stack network
+2. Creates the `db_data` named volume for MySQL data persistence
+3. Pulls `wordpress:latest` and `mysql:5.7` images
 4. Starts both containers
 
 Watch the output for any errors.
 
 ## Step 4: Complete WordPress Installation
 
-1. Open your browser and navigate to `http://your-host:80`
+1. Open your browser and navigate to `http://your-host:<published-port>` (check the published port in Portainer or with `docker ps`)
 2. The WordPress installation wizard appears
 3. Complete the setup:
 
@@ -76,8 +67,8 @@ Email:           admin@example.com
 
 After installation, update the site URL:
 
-```php
-// In wp-admin → Settings → General:
+```text
+In wp-admin → Settings → General:
 WordPress Address (URL): https://myblog.example.com
 Site Address (URL):      https://myblog.example.com
 ```
@@ -93,7 +84,7 @@ Via `wp-admin → Plugins → Add New`, install:
 
 ## Step 6: Set Up a Reverse Proxy with SSL
 
-For production, place WordPress behind Nginx Proxy Manager or Traefik:
+For production, place WordPress behind Nginx Proxy Manager or Traefik and ensure the proxy forwards the `X-Forwarded-Proto` header:
 
 ```yaml
 # Add to your WordPress stack Compose file
@@ -109,12 +100,6 @@ services:
       WORDPRESS_DB_NAME: wordpress
       WORDPRESS_DB_USER: wpuser
       WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD}
-      # Required for HTTPS behind a proxy
-      WORDPRESS_CONFIG_EXTRA: |
-        define('FORCE_SSL_ADMIN', true);
-        if (strpos($_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) {
-          $_SERVER['HTTPS'] = 'on';
-        }
     labels:
       # Traefik labels for automatic HTTPS
       - "traefik.enable=true"
@@ -156,8 +141,8 @@ services:
     volumes:
       # Persist entire WordPress installation
       - wordpress-data:/var/www/html
-      # Or just persist uploads
-      - wp-uploads:/var/www/html/wp-content/uploads
+      # Or, instead of the line above, persist only uploads
+      # - wp-uploads:/var/www/html/wp-content/uploads
 
 volumes:
   wordpress-data:
@@ -175,10 +160,9 @@ services:
     image: alpine:latest
     volumes:
       - wordpress-data:/wordpress:ro
-      - mysql-data:/mysql:ro
       - /data/backups:/backups
     command: >
-      sh -c "tar czf /backups/wordpress-$$(date +%Y%m%d).tar.gz /wordpress &&
+      sh -c "tar czf /backups/wordpress-files-$$(date +%Y%m%d).tar.gz /wordpress &&
              echo 'Backup complete'"
     # Run as a one-shot or scheduled task
 ```
@@ -187,9 +171,10 @@ For automated daily backups, use a separate Docker container with a cron schedul
 
 ```bash
 # Manual backup via Portainer console or CLI
-docker exec wordpress-site_db_1 \
-  mysqldump -u wpuser -p${MYSQL_PASSWORD} wordpress > \
-  /data/backups/wordpress-$(date +%Y%m%d).sql
+# Replace your-db-container with the running database container name
+docker exec -i your-db-container \
+  sh -c 'exec mysqldump -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' > \
+  /data/backups/wordpress-db-$(date +%Y%m%d).sql
 ```
 
 ## Step 9: Update WordPress
@@ -201,7 +186,7 @@ To update WordPress:
 ```yaml
 services:
   wordpress:
-    image: wordpress:6.4  # Specify a version or use :latest
+    image: wordpress:6.9.4  # Specify a version or use :latest
 ```
 
 2. Click **Update the stack**
