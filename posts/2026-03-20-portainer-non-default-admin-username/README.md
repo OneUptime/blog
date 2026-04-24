@@ -40,81 +40,73 @@ curl -s -X POST "${PORTAINER_URL}/api/users/admin/init" \
   -d "{
     \"username\": \"${ADMIN_USERNAME}\",
     \"password\": \"${ADMIN_PASSWORD}\"
-  }" | jq .
+  }" | jq '{Id, Username, Role}'
 
 echo "Admin created: ${ADMIN_USERNAME}"
 echo "Password: ${ADMIN_PASSWORD}"
 # Store the password securely!
 ```
 
-## Method 2: Add a New Admin and Remove the Default
+## Method 2: Rename the Existing Admin Username
 
 If Portainer is already set up with the default `admin` user:
 
-### Step 1: Create a New Admin User
+### Step 1: Authenticate as the Current Admin
 
 ```bash
-TOKEN=$(curl -s -X POST https://portainer.example.com/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"currentpassword"}' | jq -r '.jwt')
+PORTAINER_URL="https://portainer.example.com:9443"
+CURRENT_PASSWORD="CurrentSecurePassword123!"
 
-# Create a new admin account
-NEW_ADMIN=$(curl -s -X POST https://portainer.example.com/api/users \
+TOKEN=$(curl -s -X POST "${PORTAINER_URL}/api/auth" \
+  -H "Content-Type: application/json" \
+  -d "{\"username\":\"admin\",\"password\":\"${CURRENT_PASSWORD}\"}" | jq -r '.jwt')
+```
+
+### Step 2: Rename the Existing Admin Account
+
+```bash
+# Find the current admin's user ID
+CURRENT_ADMIN_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+  "${PORTAINER_URL}/api/users" | \
+  jq -r '.[] | select(.Username == "admin") | .Id')
+
+# Update the username on the existing admin account
+UPDATED_ADMIN=$(curl -s -X PUT "${PORTAINER_URL}/api/users/${CURRENT_ADMIN_ID}" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "username": "portainer-ops",
-    "password": "NewSecurePassword123!",
-    "role": 1
+    "username": "portainer-ops"
   }')
 
-NEW_ADMIN_ID=$(echo $NEW_ADMIN | jq -r '.Id')
-echo "New admin created with ID: $NEW_ADMIN_ID"
+echo "$UPDATED_ADMIN" | jq .
 ```
 
-### Step 2: Verify New Admin Login Works
+### Step 3: Verify Login with the New Username
 
 ```bash
-# Test authentication with the new admin
-NEW_TOKEN=$(curl -s -X POST https://portainer.example.com/api/auth \
+# Test authentication with the renamed admin account
+NEW_TOKEN=$(curl -s -X POST "${PORTAINER_URL}/api/auth" \
   -H "Content-Type: application/json" \
-  -d '{"username":"portainer-ops","password":"NewSecurePassword123!"}' | jq -r '.jwt')
+  -d "{\"username\":\"portainer-ops\",\"password\":\"${CURRENT_PASSWORD}\"}" | jq -r '.jwt')
 
 if [ -n "$NEW_TOKEN" ] && [ "$NEW_TOKEN" != "null" ]; then
-  echo "New admin authentication successful!"
+  echo "Admin username updated successfully!"
 else
-  echo "ERROR: New admin login failed. Do NOT proceed with deleting old admin."
+  echo "ERROR: Updated admin login failed."
   exit 1
 fi
 ```
 
-### Step 3: Delete the Default Admin Account
+## Method 3: Create a Second Admin (Optional)
 
-```bash
-# Use the new admin token to delete the old admin
-# First, find the old admin's user ID
-OLD_ADMIN_ID=$(curl -s -H "Authorization: Bearer $NEW_TOKEN" \
-  https://portainer.example.com/api/users | \
-  jq -r '.[] | select(.Username == "admin") | .Id')
-
-echo "Deleting old admin (ID: $OLD_ADMIN_ID)..."
-
-curl -s -X DELETE -H "Authorization: Bearer $NEW_TOKEN" \
-  "https://portainer.example.com/api/users/${OLD_ADMIN_ID}"
-
-echo "Default admin account deleted."
-```
-
-## Method 3: Rename Existing Admin (Limited Support)
-
-Portainer doesn't directly support renaming users. The create-new + delete-old pattern is the standard approach.
+Portainer also supports creating additional administrator accounts. If you take this approach, note that the initial administrator account (user ID `1`) is protected and cannot be deleted through the API, so renaming the existing account is the better option if your goal is to stop using `admin`.
 
 ## Choosing a Good Admin Username
 
 Avoid predictable usernames:
 - `admin`, `administrator`, `root`, `superuser` - Targeted by default
 - Your company name alone - Too predictable
-- `portainer` - Known default for some setups
+- `portainer` - Product-specific and predictable
 
 Use less predictable options:
 - `infra-ops` - Function-based
@@ -128,7 +120,7 @@ Use less predictable options:
 #!/bin/bash
 # portainer-init-secure.sh - Initialize with custom admin username
 
-PORTAINER_URL="${PORTAINER_URL:-https://portainer.example.com}"
+PORTAINER_URL="${PORTAINER_URL:-https://portainer.example.com:9443}"
 
 # Generate secure random credentials
 ADMIN_USERNAME="${ADMIN_USERNAME:-portainer-ops-$(openssl rand -hex 4)}"
@@ -153,10 +145,12 @@ if echo "$RESPONSE" | jq -e '.Id' > /dev/null 2>&1; then
   echo "Username: ${ADMIN_USERNAME}"
   echo "Password: ${ADMIN_PASSWORD}"
 
-  # Save to a secrets file (ensure this file is secured)
-  echo "PORTAINER_ADMIN_USER=${ADMIN_USERNAME}" > /run/secrets/portainer-admin
-  echo "PORTAINER_ADMIN_PASS=${ADMIN_PASSWORD}" >> /run/secrets/portainer-admin
-  chmod 600 /run/secrets/portainer-admin
+  # Save to a local credentials file with restrictive permissions
+  umask 077
+  {
+    echo "PORTAINER_ADMIN_USER=${ADMIN_USERNAME}"
+    echo "PORTAINER_ADMIN_PASS=${ADMIN_PASSWORD}"
+  } > ./portainer-admin-credentials
 else
   echo "ERROR: ${RESPONSE}"
   exit 1
@@ -165,4 +159,4 @@ fi
 
 ## Conclusion
 
-Using a non-default admin username in Portainer is a simple but effective security measure that reduces your exposure to automated attacks targeting default credentials. Set the custom username during initial setup for the cleanest approach, or use the create-new + delete-old pattern for existing installations. Combine this with a strong password, HTTPS, IP restrictions, and RBAC for a comprehensive security posture.
+Using a non-default admin username in Portainer is a simple but effective security measure that reduces your exposure to automated attacks targeting default credentials. Set the custom username during initial setup for the cleanest approach, or rename the existing administrator username for existing installations. Combine this with a strong password, HTTPS, IP restrictions, and RBAC for a comprehensive security posture.
