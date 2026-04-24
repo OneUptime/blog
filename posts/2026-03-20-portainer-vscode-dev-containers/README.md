@@ -12,7 +12,7 @@ VS Code Dev Containers allow you to develop entirely inside a Docker container w
 
 ## How Dev Containers and Portainer Interact
 
-VS Code Dev Containers use Docker on your host machine. When VS Code attaches to a dev container, that container appears in Portainer like any other container. You can:
+VS Code Dev Containers use Docker in your development environment. When VS Code attaches to a dev container, that container appears in Portainer like any other container. You can:
 
 - View dev container logs in Portainer
 - Monitor resource usage
@@ -23,10 +23,10 @@ VS Code Dev Containers use Docker on your host machine. When VS Code attaches to
 
 Create `.devcontainer/devcontainer.json` in your project:
 
-```json
+```jsonc
 {
   "name": "My Development Environment",
-  "image": "mcr.microsoft.com/devcontainers/python:3.12-bullseye",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
 
   // VS Code extensions to install in the container
   "customizations": {
@@ -54,7 +54,7 @@ Create `.devcontainer/devcontainer.json` in your project:
 
 Dev Containers support Compose for multi-container development:
 
-```json
+```jsonc
 // .devcontainer/devcontainer.json
 {
   "name": "Django Dev",
@@ -70,7 +70,6 @@ Dev Containers support Compose for multi-container development:
 ```yaml
 # .devcontainer/docker-compose.yml
 
-version: "3.8"
 services:
   app:
     image: mcr.microsoft.com/devcontainers/python:3.12
@@ -89,7 +88,7 @@ services:
 After VS Code attaches, the dev container appears in Portainer:
 
 1. Go to **Containers** in Portainer.
-2. Look for containers with names like `vsc-<project-name>-<hash>`.
+2. Look for containers created for your project, often with names like `vsc-<project-name>-<hash>`.
 3. View logs, exec commands, or inspect environment variables.
 
 ## Fixing Dev Container Issues via Portainer
@@ -104,4 +103,4 @@ If VS Code loses connection to the dev container:
 docker restart vsc-myproject-xxxx
 ```
 
-Then reconnect from VS Code: **Command Palette > Remote-Containers: Reopen in Container**.
+Then reconnect from VS Code: **Command Palette > Dev Containers: Reopen in Container**.
