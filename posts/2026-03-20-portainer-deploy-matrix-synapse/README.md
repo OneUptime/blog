@@ -14,7 +14,8 @@ Matrix is an open standard for decentralized, real-time communication with end-t
 
 - A domain name (matrix.example.com)
 - DNS configured
-- Port 8448 accessible for federation (optional but recommended)
+- HTTPS configured for `matrix.example.com`
+- Port 8448 accessible for federation, or federation delegated through port 443
 
 ## Step 1: Generate Synapse Configuration
 
@@ -22,12 +23,12 @@ Matrix is an open standard for decentralized, real-time communication with end-t
 # Generate initial Synapse configuration
 
 docker run --rm \
-  -v $(pwd)/synapse-config:/data \
-  -e SYNAPSE_SERVER_NAME=example.com \
+  -v /opt/matrix/synapse-config:/data \
+  -e SYNAPSE_SERVER_NAME=matrix.example.com \
   -e SYNAPSE_REPORT_STATS=no \
   matrixdotorg/synapse:latest generate
 
-# This creates homeserver.yaml in ./synapse-config/
+# This creates homeserver.yaml in /opt/matrix/synapse-config/
 ```
 
 ## Deploy as a Stack
@@ -40,13 +41,13 @@ services:
     image: matrixdotorg/synapse:latest
     container_name: synapse
     environment:
-      - SYNAPSE_SERVER_NAME=example.com
+      - SYNAPSE_SERVER_NAME=matrix.example.com
       - SYNAPSE_REPORT_STATS=no
     volumes:
-      - ./synapse-config:/data
+      - /opt/matrix/synapse-config:/data
     ports:
-      - "8008:8008"    # Client-Server API
-      - "8448:8448"    # Server-Server Federation
+      - "8008:8008"    # Synapse HTTP listener
+      - "8448:8448"    # Federation only if Synapse TLS is configured on 8448
     depends_on:
       - synapse-db
     restart: unless-stopped
@@ -68,7 +69,7 @@ services:
     image: vectorim/element-web:latest
     container_name: element
     volumes:
-      - ./element-config.json:/app/config.json:ro
+      - /opt/matrix/element-config.json:/app/config.json:ro
     ports:
       - "8080:80"
     restart: unless-stopped
@@ -79,7 +80,7 @@ volumes:
 
 ## Configure Synapse for PostgreSQL
 
-Edit `synapse-config/homeserver.yaml`:
+Edit `/opt/matrix/synapse-config/homeserver.yaml`:
 
 ```yaml
 # Database configuration (replace SQLite with PostgreSQL)
@@ -95,24 +96,27 @@ database:
 
 # Registration
 enable_registration: false   # Disable public registration
-registration_requires_token: true
+registration_shared_secret: "change-this-secret"
 
 # Turn server for VoIP
 turn_uris:
-  - "turn:turn.example.com?transport=udp"
-  - "turn:turn.example.com?transport=tcp"
+  - "turn:turn.matrix.example.com?transport=udp"
+  - "turn:turn.matrix.example.com?transport=tcp"
+turn_shared_secret: "turn_shared_secret"
+turn_user_lifetime: 86400000
+turn_allow_guests: true
 ```
 
 ## Element Web Configuration
 
-Create `element-config.json`:
+Create `/opt/matrix/element-config.json`:
 
 ```json
 {
   "default_server_config": {
     "m.homeserver": {
       "base_url": "https://matrix.example.com",
-      "server_name": "example.com"
+      "server_name": "matrix.example.com"
     }
   },
   "disable_custom_urls": false,
@@ -127,13 +131,13 @@ Create `element-config.json`:
 ## Create Admin User
 
 ```bash
-# Register an admin user
+# Register an admin user (requires registration_shared_secret in homeserver.yaml)
 docker exec -it synapse register_new_matrix_user \
+  http://localhost:8008 \
   -c /data/homeserver.yaml \
   -u admin \
   -p admin_password \
-  -a \    # -a = admin
-  http://localhost:8008
+  -a
 ```
 
 ## Conclusion
