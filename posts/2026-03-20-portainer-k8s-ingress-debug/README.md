@@ -34,7 +34,7 @@ kubectl get ingress -A
 kubectl describe ingress my-app-ingress -n production
 ```
 
-Look for the `Address` field in the describe output - it should show the load balancer IP or hostname. If it's empty, the Ingress Controller isn't assigning an address.
+Look for the `Address` field in the describe output - it should show the load balancer IP or hostname. If it's empty, the controller may not be publishing status yet, or the load balancer isn't ready.
 
 ## Step 2: Verify the Ingress Controller is Running
 
@@ -53,18 +53,16 @@ kubectl get ingressclass
 
 If the Ingress Controller pods are crashing, fix them first before debugging routing.
 
-## Step 3: Verify the IngressClass Annotation
+## Step 3: Verify the IngressClass
 
 ```yaml
-# Your Ingress must specify the correct IngressClass
+# Prefer spec.ingressClassName; the older kubernetes.io/ingress.class annotation is deprecated
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: my-app-ingress
-  annotations:
-    kubernetes.io/ingress.class: "nginx"  # Or use spec.ingressClassName
 spec:
-  ingressClassName: nginx  # Kubernetes 1.18+
+  ingressClassName: nginx
   rules:
   - host: app.example.com
     http:
@@ -78,6 +76,8 @@ spec:
               number: 80
 ```
 
+Some older controllers still honor the deprecated `kubernetes.io/ingress.class` annotation, but `spec.ingressClassName` is the current field to use.
+
 ```bash
 # Check if a default IngressClass is set
 kubectl get ingressclass -o yaml | grep default
@@ -88,11 +88,11 @@ kubectl get ingressclass -o yaml | grep default
 The Ingress routes to a Service, so the Service must be working:
 
 ```bash
-# Verify the service exists and has endpoints
+# Verify the service exists and has EndpointSlices
 kubectl get svc my-app-service -n production
-kubectl get endpoints my-app-service -n production
+kubectl get endpointslices -n production -l 'kubernetes.io/service-name=my-app-service'
 
-# If endpoints are empty, your pods aren't matching the service selector
+# If no EndpointSlices appear for a selector-based Service, your pods aren't matching the service selector
 kubectl describe svc my-app-service -n production
 ```
 
@@ -136,8 +136,10 @@ A common issue is incorrect path types:
 # If your app is behind a prefix, ensure path stripping is configured
 metadata:
   annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
+  ingressClassName: nginx
   rules:
   - host: app.example.com
     http:
@@ -188,11 +190,14 @@ curl -v https://app.example.com/api/health
 #!/bin/bash
 # ingress-debug.sh - Diagnose Ingress routing issues
 
-NAMESPACE=${1:-default}
-INGRESS_NAME=$2
-
-if [ -z "$INGRESS_NAME" ]; then
-  echo "Usage: $0 <namespace> <ingress-name>"
+if [ $# -eq 1 ]; then
+  NAMESPACE=default
+  INGRESS_NAME=$1
+elif [ $# -eq 2 ]; then
+  NAMESPACE=$1
+  INGRESS_NAME=$2
+else
+  echo "Usage: $0 [namespace] <ingress-name>"
   exit 1
 fi
 
@@ -205,7 +210,8 @@ SERVICES=$(kubectl get ingress "$INGRESS_NAME" -n "$NAMESPACE" \
   -o jsonpath='{.spec.rules[*].http.paths[*].backend.service.name}')
 for svc in $SERVICES; do
   echo "Service: $svc"
-  kubectl get endpoints "$svc" -n "$NAMESPACE" 2>/dev/null || echo "  ERROR: Service not found"
+  kubectl get endpointslices -n "$NAMESPACE" -l "kubernetes.io/service-name=$svc" 2>/dev/null || \
+  echo "  ERROR: Service or EndpointSlices not found"
 done
 
 echo ""
@@ -215,7 +221,7 @@ kubectl get pods -n ingress-nginx 2>/dev/null
 
 echo ""
 echo "=== Recent Ingress Controller Events ==="
-kubectl get events -n ingress-nginx --sort-by='.lastTimestamp' | tail -10
+kubectl events -n ingress-nginx | tail -10
 ```
 
 ## Common Issues and Fixes
@@ -223,11 +229,11 @@ kubectl get events -n ingress-nginx --sort-by='.lastTimestamp' | tail -10
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
 | 404 on all paths | Wrong IngressClass | Add `ingressClassName` to spec |
-| 502 Bad Gateway | Backend pods down | Check pod status and endpoints |
+| 502 Bad Gateway | Backend pods down | Check pod status and EndpointSlices |
 | SSL certificate error | Wrong TLS secret | Verify secret name and namespace |
-| 308 redirect loop | HTTP→HTTPS redirect with HTTP backend | Set `ssl-redirect: "false"` annotation |
+| 308 redirect loop | TLS termination or SSL offloading mismatch | Set `nginx.ingress.kubernetes.io/ssl-redirect: "false"` if appropriate |
 | Routing to wrong service | Path conflict | Check path specificity order |
 
 ## Conclusion
 
-Debugging Kubernetes Ingress requires systematic verification of each layer: Ingress Controller health, IngressClass assignment, Service endpoints, pod readiness, and TLS configuration. Portainer's Ingress view provides a clear starting point, but the CLI commands above allow deeper inspection of the routing chain. Most Ingress issues fall into a small set of patterns: missing IngressClass, empty endpoints, path matching errors, and TLS misconfiguration.
+Debugging Kubernetes Ingress requires systematic verification of each layer: Ingress Controller health, IngressClass assignment, Service EndpointSlices, pod readiness, and TLS configuration. Portainer's Ingress view provides a clear starting point, but the CLI commands above allow deeper inspection of the routing chain. Most Ingress issues fall into a small set of patterns: missing IngressClass, missing EndpointSlices, path matching errors, and TLS misconfiguration.
