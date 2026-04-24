@@ -15,18 +15,38 @@ Redis is an ultra-fast in-memory data structure store used as a cache, message b
 In Portainer, create a stack named `redis`:
 
 ```yaml
-version: "3.8"
-
 services:
   redis:
     image: redis:7.2-alpine
     container_name: redis
-    command: redis-server /etc/redis/redis.conf
+    environment:
+      REDISCLI_AUTH: your_redis_password
+    command: >
+      redis-server
+      --requirepass your_redis_password
+      --bind 0.0.0.0
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --rdbcompression yes
+      --rdbfilename dump.rdb
+      --dir /data
+      --appendonly yes
+      --appendfilename appendonly.aof
+      --appendfsync everysec
+      --auto-aof-rewrite-percentage 100
+      --auto-aof-rewrite-min-size 64mb
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 300
+      --timeout 0
+      --loglevel notice
+      --hz 10
+      --lazyfree-lazy-eviction yes
+      --lazyfree-lazy-expire yes
     volumes:
       # Persist Redis data to disk
       - redis_data:/data
-      # Custom configuration
-      - ./redis.conf:/etc/redis/redis.conf:ro
     ports:
       - "6379:6379"
     restart: unless-stopped
@@ -38,10 +58,14 @@ services:
 
   # Redis Commander - web-based Redis management
   redis-commander:
-    image: rediscommander/redis-commander:latest
+    image: ghcr.io/joeferner/redis-commander:latest
     container_name: redis-commander
+    user: redis
     environment:
-      REDIS_HOSTS: local:redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: your_redis_password
+      REDIS_DB: 0
       HTTP_USER: admin
       HTTP_PASSWORD: commander_password
     ports:
@@ -56,7 +80,7 @@ volumes:
 
 ## Redis Configuration
 
-Create `redis.conf`:
+The stack above passes the equivalent of these Redis settings directly to `redis-server`:
 
 ```conf
 # redis.conf
@@ -94,7 +118,6 @@ timeout 0
 
 # Logging
 loglevel notice
-logfile ""          # Empty string = log to stdout (Docker captures it)
 
 # Performance
 hz 10
@@ -124,7 +147,7 @@ services:
 
 ```bash
 # Test session storage via redis-cli
-docker exec redis redis-cli -a your_redis_password
+docker exec -it redis redis-cli -a your_redis_password
 
 # Set a session key with 1-hour expiry
 SET session:user123 '{"userId":123,"role":"admin"}' EX 3600
@@ -139,11 +162,11 @@ TTL session:user123
 ### Rate Limiting
 
 ```bash
-# Increment counter with expiry (rate limiting)
-# Allow 100 requests per minute
-SET rate:192.168.1.1 0
-EXPIRE rate:192.168.1.1 60
+# Simple per-IP rate-limit counter for a 60-second window
+MULTI
 INCR rate:192.168.1.1
+EXPIRE rate:192.168.1.1 60
+EXEC
 ```
 
 ### Pub/Sub Messaging
@@ -171,4 +194,4 @@ docker exec redis redis-cli -a your_redis_password INFO memory
 
 ## Conclusion
 
-Redis deployed via Portainer provides an ultra-fast caching layer for your applications. The persistent volume with AOF enabled ensures data survives container restarts. Redis Commander gives you visual access to explore keys and data structures, while the healthcheck ensures dependent services wait for Redis to be ready.
+Redis deployed via Portainer provides an ultra-fast caching layer for your applications. The persistent volume with AOF enabled ensures data survives container restarts. Redis Commander gives you visual access to explore keys and data structures, while the healthcheck gives you a quick readiness signal for the Redis container.
