@@ -8,7 +8,7 @@ Description: Learn how to force Portainer to pull the latest version of Docker i
 
 ## Introduction
 
-Docker caches images locally to speed up deployments. When you update a stack, Docker only pulls an image if its tag is not already present locally - meaning `myapp:latest` will not be re-pulled if that tag already exists on the host, even if the upstream image was updated. For stacks using mutable tags (like `latest`, `main`, or `stable`), this behavior prevents getting the newest image. Portainer's **Force re-pull images** option and CLI techniques solve this problem.
+Docker caches images locally to speed up deployments, and stack redeploys can continue using the image digest that was already resolved for an unchanged tag. This is especially noticeable with mutable tags like `latest`, `main`, or `stable`. Without explicitly re-pulling the image, a stack update can leave the old image running even when the upstream tag now points to a newer digest. Portainer's **Re-pull image** option and CLI techniques solve this problem.
 
 ## Prerequisites
 
@@ -21,24 +21,23 @@ Docker caches images locally to speed up deployments. When you update a stack, D
 Scenario:
 1. You build and push myorg/api:latest to Docker Hub
 2. Docker host already has myorg/api:latest cached
-3. Stack update runs - Docker sees tag exists, skips pull
-4. Old image is still running - your update is NOT deployed!
+3. Stack update runs without a re-pull
+4. The stack keeps using the previously resolved image digest
 
-Fix: Force pull ensures Docker always contacts the registry
-     and downloads the latest digest for the tag
+Fix: Re-pull makes Docker or Swarm check the registry again
+     for the tag's current digest before redeploying
 ```
 
 ## Step 1: Force Pull During Stack Update (Portainer UI)
 
-When updating an existing stack:
+When manually redeploying an existing stack:
 
 1. Navigate to **Stacks** → click the stack name.
-2. Make any changes to the Compose YAML or environment variables.
-3. Find the **Update** section below the editor.
-4. Check **Re-pull image** (or **Force re-pull images**).
-5. Click **Update the stack**.
+2. Choose **Pull and redeploy** or open the stack update action.
+3. Enable **Re-pull image** (or **Re-pull image and redeploy**, depending on the screen).
+4. Confirm the redeploy or update.
 
-Portainer will run `docker pull` for every image in the stack before recreating containers.
+Portainer will check the registry for the current digest of each tagged image before redeploying the stack.
 
 ## Step 2: Force Pull with Git-Based Stacks
 
@@ -46,8 +45,8 @@ For Git-based stacks with automatic updates:
 
 1. Navigate to **Stacks** → click the stack name.
 2. In the **Automatic updates** section.
-3. Enable **Force re-pull images**.
-4. This applies on every auto-update cycle (both polling and webhook).
+3. Enable **Re-pull image**.
+4. This applies whenever an update is triggered by polling or webhook.
 
 ## Step 3: Force Pull via CLI
 
@@ -56,16 +55,17 @@ For Git-based stacks with automatic updates:
 
 docker pull myorg/api:latest
 
-# Then restart the container to use the new image:
-docker compose pull && docker compose up -d
+# For Compose stacks:
+docker compose pull --policy always
+docker compose up -d
 
 # For a specific service only:
-docker compose pull api
+docker compose pull --policy always api
 docker compose up -d api
 
 # For Swarm services:
 docker service update --image myorg/api:latest my-stack_api
-# This forces a pull and rolling update
+# Swarm resolves the tag to its current digest and rolls the service if it changed
 ```
 
 ## Step 4: Use Image Digests for Certainty
@@ -105,7 +105,7 @@ services:
     image: myorg/api:${IMAGE_TAG:-latest}
 ```
 
-In your CI/CD pipeline (GitHub Actions example):
+In your CI/CD pipeline (GitHub Actions example for a Git-based stack):
 
 ```yaml
 - name: Deploy new image version
@@ -114,9 +114,9 @@ In your CI/CD pipeline (GitHub Actions example):
     PORTAINER_TOKEN: ${{ secrets.PORTAINER_TOKEN }}
     STACK_ID: ${{ secrets.STACK_ID }}
   run: |
-    # Update the IMAGE_TAG env var in Portainer:
+    # Redeploy the Git-based stack with an updated IMAGE_TAG env var:
     curl -X PUT \
-      "${PORTAINER_URL}/api/stacks/${STACK_ID}" \
+      "${PORTAINER_URL}/api/stacks/${STACK_ID}/git/redeploy" \
       -H "X-API-Key: ${PORTAINER_TOKEN}" \
       -H "Content-Type: application/json" \
       -d "{
@@ -124,7 +124,7 @@ In your CI/CD pipeline (GitHub Actions example):
           {\"name\": \"IMAGE_TAG\", \"value\": \"${{ github.sha }}\"}
         ],
         \"Prune\": false,
-        \"PullImage\": true
+        \"RepullImageAndRedeploy\": true
       }"
 ```
 
@@ -133,17 +133,17 @@ In your CI/CD pipeline (GitHub Actions example):
 After a force pull update, confirm the new image is running:
 
 ```bash
-# Check image ID/digest of the running container:
+# Check the image ID of the running container:
 docker inspect my-stack_api_1 --format '{{.Image}}'
-# sha256:abc123... (the image digest)
+# sha256:abc123... (the local image ID in use)
 
-# Compare with the latest pulled image:
+# Compare with the locally tagged image:
 docker image inspect myorg/api:latest --format '{{.Id}}'
 
-# Check when the image was pulled:
-docker image inspect myorg/api:latest --format '{{.Metadata.LastTagTime}}'
+# Check the pulled repo digest:
+docker image inspect myorg/api:latest --format '{{index .RepoDigests 0}}'
 
-# View image history to confirm it's the latest build:
+# View recent image layers:
 docker history myorg/api:latest | head -3
 ```
 
@@ -160,12 +160,10 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     command: --interval 300 --cleanup   # Check every 5 minutes, remove old images
-    environment:
-      - WATCHTOWER_POLL_INTERVAL=300
 ```
 
 Note: Watchtower is powerful but can cause unexpected restarts in production. Use with caution and prefer explicit image tag updates via CI/CD for production services.
 
 ## Conclusion
 
-Force pulling images in Portainer ensures mutable tags like `latest` always deploy the newest version of your application. Use the **Re-pull image** checkbox during manual stack updates and enable **Force re-pull images** for automatic Git-based updates. For production environments, the most reliable approach is to use specific image tags (version numbers or commit SHAs) that change with each build, making the image version explicit in your Compose file and eliminating reliance on mutable tags.
+Force pulling images in Portainer helps ensure mutable tags like `latest` deploy the newest version of your application. Use **Pull and redeploy** with **Re-pull image** for manual redeploys and enable **Re-pull image** for automatic Git-based updates. For production environments, the most reliable approach is to use specific image tags (version numbers or commit SHAs) that change with each build, making the image version explicit in your Compose file and eliminating reliance on mutable tags.
