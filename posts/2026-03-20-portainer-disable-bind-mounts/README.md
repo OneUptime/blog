@@ -24,12 +24,9 @@ A malicious or careless user with bind mount access can:
 
 # Mount /etc/cron.d - plant a cron job on the host
 -v /etc/cron.d:/host_cron
-
-# Mount /tmp with noexec bypass - execute scripts
--v /tmp:/host_tmp
 ```
 
-All of these are container escape vectors. Disabling bind mounts for non-admin users eliminates this entire class of risk.
+All of these provide access to sensitive host resources and can lead to host compromise. Disabling bind mounts for non-admin users eliminates this entire class of risk.
 
 ## Step 1: Disable Bind Mounts in Environment Settings
 
@@ -39,9 +36,9 @@ All of these are container escape vectors. Disabling bind mounts for non-admin u
 2. Select your Docker environment.
 3. Click the **gear icon** (environment settings).
 4. Scroll to the **Security** section.
-5. Find **Disable bind mounts for non-administrators**.
+5. Find **Hide bind mounts for non-administrators**.
 6. Enable this toggle.
-7. Click **Save environment settings**.
+7. Click **Save configuration**.
 
 ### Via Portainer API
 
@@ -56,7 +53,7 @@ curl -s -X PUT \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/settings" \
   -d '{
-    "disableBindMountsForRegularUsers": true
+    "allowBindMountsForRegularUsers": false
   }' | jq .
 ```
 
@@ -66,7 +63,7 @@ After enabling, log in as a non-admin user and try to create a container with a 
 
 1. Navigate to **Containers** → **Add container**.
 2. Under **Volumes**, try to add a **Bind** type volume.
-3. The option should be disabled or produce an authorization error.
+3. The option should be hidden in the UI or produce an authorization error.
 
 Non-admin users will still be able to use **named volumes** (safer) but cannot bind-mount host paths.
 
@@ -83,20 +80,20 @@ TOKEN=$(curl -s -X POST "${PORTAINER_URL}/api/auth" \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"yourpassword"}' | jq -r '.jwt')
 
-# Get all Docker environments
+# Get all Docker environments (standalone, agent, and Edge agent)
 ENDPOINTS=$(curl -s -H "Authorization: Bearer $TOKEN" \
   "${PORTAINER_URL}/api/endpoints" | \
-  jq -c '.[] | select(.Type == 1 or .Type == 2)')
+  jq -c '.[] | select(.Type == 1 or .Type == 2 or .Type == 4)')
 
 echo "$ENDPOINTS" | while read -r ENDPOINT; do
-  ID=$(echo $ENDPOINT | jq -r '.Id')
-  NAME=$(echo $ENDPOINT | jq -r '.Name')
+  ID=$(echo "$ENDPOINT" | jq -r '.Id')
+  NAME=$(echo "$ENDPOINT" | jq -r '.Name')
 
   curl -s -X PUT \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     "${PORTAINER_URL}/api/endpoints/${ID}/settings" \
-    -d '{"disableBindMountsForRegularUsers": true}' > /dev/null
+    -d '{"allowBindMountsForRegularUsers": false}' > /dev/null
 
   echo "Disabled bind mounts on environment: $NAME (ID: $ID)"
 done
@@ -129,8 +126,7 @@ Provide users with safe alternatives:
 ### Named Volumes (Recommended)
 
 ```yaml
-# docker-compose.yml - Using named volumes (safe for all users)
-version: "3.8"
+# compose.yaml - Using named volumes (safe for all users)
 services:
   app:
     image: myapp:latest
@@ -143,11 +139,10 @@ volumes:
   app_config:
 ```
 
-### Volume Plugins for Shared Storage
+### NFS-Backed Volumes for Shared Storage
 
 ```yaml
-# Using an NFS volume plugin (admin sets up, users consume)
-version: "3.8"
+# Using an NFS-backed volume via Docker's local driver
 services:
   app:
     image: myapp:latest
@@ -177,7 +172,7 @@ Admin users retain the ability to use bind mounts for legitimate operations:
 # Example: Admin-deployed nginx with config bind mount
 docker run -d \
   --name nginx \
-  -v /etc/nginx/sites-available:/etc/nginx/conf.d:ro \  # Admin only
+  -v /etc/nginx/sites-available:/etc/nginx/conf.d:ro \
   -p 80:80 \
   nginx:latest
 ```
