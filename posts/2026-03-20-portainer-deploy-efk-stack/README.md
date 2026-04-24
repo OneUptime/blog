@@ -20,6 +20,7 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
     environment:
       discovery.type: single-node
+      bootstrap.memory_lock: "true"
       ES_JAVA_OPTS: "-Xms512m -Xmx512m"
       xpack.security.enabled: "false"   # Disable for dev; enable in production
       xpack.security.http.ssl.enabled: "false"
@@ -45,7 +46,7 @@ services:
       FLUENT_ELASTICSEARCH_SCHEME: "http"
       FLUENT_UID: "0"
     volumes:
-      - ./fluent.conf:/fluentd/etc/fluent.conf:ro
+      - /path/on/host/fluent.conf:/fluentd/etc/fluent.conf:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
     ports:
@@ -61,7 +62,6 @@ services:
     image: docker.elastic.co/kibana/kibana:8.12.0
     environment:
       ELASTICSEARCH_HOSTS: '["http://elasticsearch:9200"]'
-      XPACK_SECURITY_ENABLED: "false"
     ports:
       - "5601:5601"
     networks:
@@ -79,7 +79,7 @@ networks:
 
 ## Fluentd Configuration
 
-Create `fluent.conf` to collect Docker container logs:
+Create `fluent.conf` on the Docker host at `/path/on/host/fluent.conf` to collect Docker container logs:
 
 ```xml
 <source>
@@ -92,29 +92,31 @@ Create `fluent.conf` to collect Docker container logs:
   @type tail
   path /var/lib/docker/containers/*/*-json.log
   pos_file /var/log/fluentd-docker.pos
-  tag docker.*
-  format json
+  path_key container_log_path
+  tag docker.containers
   read_from_head true
+  follow_inodes true
   <parse>
     @type json
+    time_type string
     time_format %Y-%m-%dT%H:%M:%S.%NZ
   </parse>
 </source>
 
 <filter docker.**>
   @type record_transformer
+  enable_ruby true
   <record>
-    container_id ${tag_parts[2]}
+    container_id ${record["container_id"] || record["container_log_path"].split("/")[5]}
     log_source docker
   </record>
+  remove_keys container_log_path
 </filter>
 
 <match docker.**>
   @type elasticsearch
   host elasticsearch
   port 9200
-  index_name docker-logs
-  type_name _doc
   logstash_format true
   logstash_prefix docker-logs
   include_timestamp true
@@ -124,7 +126,6 @@ Create `fluent.conf` to collect Docker container logs:
     flush_mode interval
     flush_interval 5s
     chunk_limit_size 2M
-    queue_limit_length 32
     retry_max_interval 30
     retry_forever true
   </buffer>
@@ -133,7 +134,7 @@ Create `fluent.conf` to collect Docker container logs:
 
 ## Configuring Application Containers to Use Fluentd
 
-Direct all application containers to send logs to Fluentd:
+If you want application containers to send logs directly to Fluentd, configure them like this:
 
 ```yaml
 services:
@@ -147,13 +148,13 @@ services:
         fluentd-async: "true"
 ```
 
-## Setting Up Kibana Index Pattern
+## Setting Up Kibana Data View
 
 After deployment, configure Kibana:
 
 1. Open `http://localhost:5601`.
-2. Go to **Stack Management > Index Patterns**.
-3. Create an index pattern: `docker-logs-*`.
+2. Go to **Stack Management > Data Views**.
+3. Create a data view: `docker-logs-*`.
 4. Set the time field to `@timestamp`.
 5. Go to **Discover** to search logs.
 
@@ -162,24 +163,23 @@ After deployment, configure Kibana:
 ```text
 # Find all ERROR logs
 
-log_level: "ERROR" AND container_id: *
+log: "ERROR"
 
-# Find logs from a specific container
-container_name: "my-app_api_1" AND log: *exception*
+# Find stderr logs
+source: stderr OR stream: stderr
 
-# Find slow requests
-response_time: [>1000 TO *]
+# Find recent logs
+@timestamp > now-15m
 ```
 
 ## Production Elasticsearch Settings
 
-For production, increase Elasticsearch resources and enable security:
+For production, increase Elasticsearch resources. If you also enable Elastic security, update Kibana and Fluentd to use Elasticsearch credentials and HTTPS.
 
 ```yaml
   elasticsearch:
     environment:
-      xpack.security.enabled: "true"
-      ELASTIC_PASSWORD: "securepassword"
+      bootstrap.memory_lock: "true"
       ES_JAVA_OPTS: "-Xms2g -Xmx2g"
     deploy:
       resources:
