@@ -8,15 +8,15 @@ Description: Implement Kubernetes cluster federation with Rancher using KubeFed 
 
 ## Introduction
 
-Cluster federation enables you to manage resources across multiple Kubernetes clusters as if they were a single unified cluster. Use cases include global application deployments, disaster recovery, and policy enforcement across cluster boundaries. This guide covers implementing federation using both Rancher Fleet (for policy and config) and KubeFed (for workload federation).
+Cluster federation enables you to manage resources across multiple Kubernetes clusters as if they were a single unified cluster. Use cases include global application deployments, disaster recovery, and policy enforcement across cluster boundaries. This guide covers implementing federation using Rancher Fleet (for policy and config), the archived KubeFed project (for workload federation), and Submariner (for cross-cluster service discovery).
 
 ## Approaches to Federation in Rancher
 
 | Approach | Best For | Component |
 |---|---|---|
 | **Rancher Fleet** | GitOps-driven config/policy sync | Built into Rancher |
-| **KubeFed** | Workload federation with failover | Open-source KubeFed |
-| **Submariner** | Cross-cluster service discovery | SUSE-backed project |
+| **KubeFed** | Workload federation with failover | Archived open-source KubeFed |
+| **Submariner** | Cross-cluster service discovery | CNCF sandbox project |
 
 This guide covers all three.
 
@@ -40,29 +40,27 @@ spec:
   paths:
     - deploy/
   targets:
-    # Deploy to all production clusters in any region
+    # Deploy to all production clusters in any region.
+    # Use fleet.yaml targetCustomizations for per-cluster Helm values.
     - name: all-production
       clusterSelector:
         matchLabels:
           environment: production
-      # Override replica counts per cluster
-      helm:
-        values:
-          replicaCount: 3
 ```
 
 ## Part 2: KubeFed for Workload Federation
 
-KubeFed provides richer federation semantics: cross-cluster placement, replica scheduling, and status aggregation.
+KubeFed provides richer federation semantics: cross-cluster placement, replica scheduling, and status aggregation, but the project was archived in April 2023 and is no longer under active development.
 
 ### Install KubeFed
 
 ```bash
-# Install KubeFed on the Rancher management cluster
+# KubeFed is archived, so pin the last chart release on the Rancher management cluster
 helm repo add kubefed-charts https://raw.githubusercontent.com/kubernetes-sigs/kubefed/master/charts
 helm repo update
 
-helm install kubefed kubefed-charts/kubefed \
+helm upgrade -i kubefed kubefed-charts/kubefed \
+  --version 0.10.0 \
   --namespace kube-federation-system \
   --create-namespace
 ```
@@ -150,7 +148,6 @@ metadata:
   namespace: production
 spec:
   targetKind: FederatedDeployment
-  targetName: myapp
   totalReplicas: 10
   clusters:
     cluster-us-east:
@@ -164,23 +161,20 @@ spec:
 Submariner enables services in one cluster to communicate with services in another cluster using their Kubernetes DNS names.
 
 ```bash
-# Install Submariner using the operator
-helm repo add submariner-latest https://submariner-io.github.io/submariner-charts/charts
-helm repo update
+# Install subctl
+curl -Ls https://get.submariner.io | bash
+export PATH=$PATH:~/.local/bin
 
-# Install the broker on the hub cluster
-helm install submariner-broker submariner-latest/submariner-operator \
-  --namespace submariner-operator \
-  --create-namespace \
-  --set broker.server=true
+# Create the broker on the hub cluster
+subctl deploy-broker --context rancher-management
 
 # Join cluster-us-east
-subctl join broker-info.subm --kubecontext rancher-prod-us \
+subctl join broker-info.subm --context rancher-prod-us \
   --clusterid cluster-us-east \
   --natt=false
 
 # Join cluster-eu-west
-subctl join broker-info.subm --kubecontext rancher-prod-eu \
+subctl join broker-info.subm --context rancher-prod-eu \
   --clusterid cluster-eu-west \
   --natt=false
 ```
@@ -202,8 +196,7 @@ metadata:
 kubectl get kubefedcluster -n kube-federation-system
 
 # Check Federated resource propagation
-kubectl get federateddeployment -n production -o json \
-  | jq '.items[].status.clusters[] | {cluster: .name, ready: .readyReplicas}'
+kubectl get federateddeployment myapp -n production -o yaml
 
 # Check Submariner connectivity
 subctl show connections
@@ -211,4 +204,4 @@ subctl show connections
 
 ## Conclusion
 
-Cluster federation with Rancher spans multiple levels of sophistication: Fleet provides simple, GitOps-driven resource synchronization; KubeFed adds intelligent placement and cross-cluster replica scheduling; and Submariner enables cross-cluster service discovery. Choose the approach that matches your complexity requirements - most organizations start with Fleet and add KubeFed or Submariner as their multi-cluster architecture matures.
+Cluster federation with Rancher spans multiple levels of sophistication: Fleet provides simple, GitOps-driven resource synchronization; KubeFed adds intelligent placement and cross-cluster replica scheduling but is archived; and Submariner enables cross-cluster service discovery. Choose the approach that matches your complexity requirements - most organizations start with Fleet and add Submariner or carefully evaluate KubeFed's archived status before adopting it.
