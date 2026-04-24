@@ -8,18 +8,19 @@ Description: Deploy Docker Compose stacks to Podman environments using Portainer
 
 ## Introduction
 
-With Podman's Docker-compatible API and `podman-compose` support, Portainer can deploy and manage multi-container stacks on Podman-backed environments. This guide shows how to deploy stacks to Podman via Portainer with the appropriate configuration for Podman's networking and storage model.
+With Podman's Docker-compatible API, Portainer can deploy and manage multi-container stacks on Podman-backed environments. Portainer's documented Podman support is currently focused on Podman 5.x in rootful mode, and this guide shows how to deploy stacks to Podman via Portainer with the appropriate configuration for Podman's networking and storage model.
 
 ## Prerequisites
 
-- Portainer connected to a Podman socket
-- `podman-compose` installed on the Podman host
-- Podman 4.0+
+- Portainer connected to a Podman environment
+- Podman 5.x running in rootful mode (Portainer's officially supported configuration is CentOS Stream 9 with rootful Podman)
+- A Compose provider installed on the Podman host if you want to run `podman compose` directly
 
-## Step 1: Install podman-compose
+## Step 1: Install a Compose Provider
 
 ```bash
-# Install podman-compose on the Podman host
+# Install a Compose provider on the Podman host if you also want to run
+# Compose workloads directly with `podman compose`
 
 pip3 install podman-compose
 
@@ -28,12 +29,12 @@ sudo dnf install podman-compose    # RHEL/Fedora
 sudo apt install podman-compose    # Ubuntu/Debian (may need PPA)
 
 # Verify
-podman-compose --version
+podman compose version
 ```
 
 ## Step 2: Create a Stack in Portainer
 
-Navigate to **Stacks** → **Add Stack** → **Web Editor** in Portainer (when connected to a Podman environment):
+Navigate to **Stacks** → **Add Stack** → **Web Editor** in Portainer (when connected to a supported Podman environment):
 
 ```yaml
 version: "3.8"
@@ -73,21 +74,21 @@ networks:
 
 ## Step 3: Podman-Specific Compose Considerations
 
-Podman Compose has some differences from Docker Compose:
+Podman-backed environments have some differences from Docker Compose:
 
 ```yaml
-# For rootless Podman, user namespace mapping may be needed
+# Portainer's documented Podman support is rootful.
+# If you use rootless Podman anyway, UID/GID mapping and networking need extra care.
 services:
   myapp:
     image: myapp:latest
-    # Podman-specific: run as specific user
+    # Run as a specific user when you need predictable file ownership
     user: "1000:1000"
-    # Podman uses --userns=keep-id for rootless
     security_opt:
-      - label:disable   # Disable SELinux labels (or configure properly)
+      - label=disable   # Disable SELinux labels only if you intentionally need it
 
-# Podman doesn't support --network=host the same way in rootless mode
-# Use slirp4netns for rootless networking:
+# Rootless Podman uses user-mode networking.
+# Current Podman defaults to pasta; slirp4netns is also supported.
 networks:
   default:
     driver: bridge
@@ -107,16 +108,14 @@ podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 ## Step 5: Using Podman Pods Instead of Individual Containers
 
-Podman's native concept is pods (like Kubernetes pods):
+Podman's native concept is pods (like Kubernetes pods), but Portainer stack deployment still uses Compose-format services and containers:
 
-```yaml
-# While Portainer uses Docker Compose format,
-# the underlying Podman can use pod-based deployment
-
-# Create a pod on Podman host
+```bash
+# Create a pod on the Podman host if you want Podman's native pod workflow
 podman pod create --name myapp-pod -p 8080:80 -p 5432:5432
 
-# Then Portainer manages containers that run in this pod
+# List pods
+podman pod ps
 ```
 
 ## Step 6: Volume Management in Podman
@@ -131,10 +130,12 @@ volumes:
       type: none
       device: /opt/myapp/data  # Bind to host path
       o: bind
+```
 
-# Or use Podman's container storage
+```yaml
+# Or use Podman's default named-volume storage
 volumes:
-  mydata:  # Uses Podman's default storage
+  mydata:
 ```
 
 ```bash
@@ -151,37 +152,37 @@ podman volume create mydata
 ## Step 7: Networking in Rootless Podman
 
 ```yaml
-# Rootless Podman uses CNI or netavark for networking
-# Port mapping works differently for rootless:
+# Portainer's supported Podman configuration is rootful.
+# If you use rootless Podman, low host ports (<1024) need extra host configuration.
 
 services:
   webapp:
     image: nginx:alpine
     ports:
-      # Rootless Podman can only bind to ports > 1024
-      - "8080:80"    # OK for rootless
-      # - "80:80"    # NOT allowed without special config
+      - "8080:80"    # OK for an unprivileged user
+      # - "80:80"    # Requires lowering net.ipv4.ip_unprivileged_port_start or running rootful
 
+# Current Podman defaults to user-mode networking with pasta for rootless containers.
+# slirp4netns is also supported.
 # To allow ports < 1024 in rootless:
-# echo "net.ipv4.ip_unprivileged_port_start=80" | sudo tee -a /etc/sysctl.conf
-# sudo sysctl -p
+# echo "net.ipv4.ip_unprivileged_port_start=80" | sudo tee /etc/sysctl.d/99-unprivileged-ports.conf
+# sudo sysctl --system
 ```
 
 ## Step 8: Persistent Stacks Configuration
 
 ```bash
-# Export stack files that work with both Docker and Podman
-# The Docker Compose v3 format is compatible
+# Compose files that work with Docker Compose can also be run with `podman compose`
 
-# Deploy directly with podman-compose
+# Deploy directly with podman compose
 cd /opt/stacks/myapp
-podman-compose up -d
+podman compose up -d
 
-# List running stacks
-podman-compose ps
+# List running services
+podman compose ps
 
 # View logs
-podman-compose logs -f
+podman compose logs -f
 ```
 
 ## Step 9: Healthchecks in Podman
@@ -201,7 +202,7 @@ services:
 
 ```bash
 # Check health status in Podman
-podman inspect webapp-container | jq '.[0].State.Health.Status'
+podman inspect --format '{{.State.Health.Status}}' webapp-container
 ```
 
 ## Step 10: Handle Podman SELinux Labels
@@ -220,4 +221,4 @@ services:
 
 ## Conclusion
 
-Deploying stacks to Podman via Portainer uses the same Docker Compose format, with some considerations for rootless Podman networking (ports above 1024) and SELinux volume labels. Portainer communicates with Podman through its Docker-compatible API, so most stack operations work transparently. For production Podman deployments, pay special attention to rootless vs rootful mode and the networking implications for port binding.
+Deploying stacks to Podman via Portainer uses the same Docker Compose format, but Portainer's documented Podman support is currently limited to Podman 5.x running rootful on CentOS Stream 9. Portainer communicates with Podman through its Docker-compatible API, so most stack operations work transparently on supported setups. If you use rootless Podman anyway, pay close attention to port binding, user mapping, and SELinux volume labels.
