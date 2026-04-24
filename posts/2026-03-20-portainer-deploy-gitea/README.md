@@ -8,7 +8,7 @@ Description: Deploy Gitea via Portainer as a lightweight self-hosted Git service
 
 ## Introduction
 
-Gitea is a lightweight, self-hosted Git service written in Go. It uses far fewer resources than GitLab (as little as 100MB RAM) while providing most features teams need: repositories, pull requests, issues, wikis, and CI/CD via Gitea Actions. Deploy it via Portainer for a fast, private Git server.
+Gitea is a lightweight, self-hosted Git service written in Go. It uses far fewer resources than GitLab while providing most features teams need: repositories, pull requests, issues, wikis, and CI/CD via Gitea Actions. Gitea's documentation notes that 2 CPU cores and 1GB RAM is typically sufficient for small teams/projects. Deploy it via Portainer for a fast, private Git server.
 
 ## Deploy as a Stack
 
@@ -17,7 +17,7 @@ version: "3.8"
 
 services:
   gitea:
-    image: gitea/gitea:latest
+    image: docker.gitea.com/gitea:latest
     container_name: gitea
     environment:
       - USER_UID=1000
@@ -29,7 +29,7 @@ services:
       - GITEA__database__PASSWD=gitea_password
       - GITEA__server__DOMAIN=git.example.com
       - GITEA__server__HTTP_PORT=3000
-      - GITEA__server__SSH_PORT=22
+      - GITEA__server__SSH_PORT=222
       - GITEA__service__DISABLE_REGISTRATION=false
       - GITEA__mailer__ENABLED=true
       - GITEA__mailer__SMTP_ADDR=smtp.example.com
@@ -93,7 +93,7 @@ git remote add origin ssh://git@git.example.com:222/username/repo.git
 
 ## Gitea Actions CI/CD
 
-Gitea 1.19+ includes Gitea Actions (GitHub Actions compatible). Create `.gitea/workflows/ci.yml`:
+Starting with Gitea 1.19, Gitea Actions are available as a built-in CI/CD solution and are mostly compatible with GitHub Actions. Since 1.21, Actions are enabled by default; on 1.19-1.20, enable them in `app.ini`. Also enable **Repository Actions** in the repository settings before creating `.gitea/workflows/ci.yml`:
 
 ```yaml
 name: CI Pipeline
@@ -108,10 +108,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
       
@@ -121,9 +121,8 @@ jobs:
       - name: Run tests
         run: npm test
       
-      - name: Build Docker image
-        run: |
-          docker build -t myapp:${{ gitea.sha }} .
+      - name: Build app
+        run: npm run build --if-present
 ```
 
 Deploy an Actions runner:
@@ -133,16 +132,14 @@ version: "3.8"
 
 services:
   gitea-runner:
-    image: gitea/act_runner:latest
+    image: docker.io/gitea/act_runner:latest
     container_name: gitea-runner
     environment:
-      GITEA_INSTANCE_URL: http://gitea:3000
+      GITEA_INSTANCE_URL: http://git.example.com:3000
       GITEA_RUNNER_REGISTRATION_TOKEN: YOUR_RUNNER_TOKEN
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - gitea_runner_data:/data
-    depends_on:
-      - gitea
     restart: unless-stopped
 
 volumes:
@@ -153,10 +150,10 @@ volumes:
 
 | Metric | Gitea | GitLab CE |
 |--------|-------|-----------|
-| Minimum RAM | 100MB | 4GB |
-| Disk Space | 200MB | 10GB+ |
-| Startup Time | 2-5 seconds | 2-5 minutes |
-| Full Featured | Yes (lighter) | Yes (heavier) |
+| RAM guidance | 1GB RAM is typically sufficient for small teams/projects | 8GB minimum in some cases; 16GB recommended for up to 1,000 users |
+| CPU guidance | 2 CPU cores are typically sufficient for small teams/projects | 8 vCPU recommended for up to 1,000 users |
+| Storage guidance | No fixed minimum published in the official docs | At least 40GB for a basic installation |
+| Resource profile | Low RAM/CPU usage | Heavier resource requirements |
 
 ## Conclusion
 
