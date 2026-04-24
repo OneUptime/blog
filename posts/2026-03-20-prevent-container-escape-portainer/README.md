@@ -4,50 +4,42 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Security, Container Escape, Privilege Escalation, Hardening
 
-Description: Harden Docker containers against escape attacks by disabling privileged mode, restricting mounts, enabling seccomp, and applying the no-new-privileges flag via Portainer.
+Description: Harden Docker containers against escape attacks by disabling privileged mode, restricting mounts, keeping Docker's default seccomp profile enabled, and applying the no-new-privileges flag via Portainer.
 
 ## Introduction
 
-Container escape attacks allow a process inside a container to break out to the host system, gaining full root access. Common vectors include privileged container abuse, dangerous mounts (like `/var/run/docker.sock`), kernel exploit paths via unrestricted syscalls, and setuid binary escalation. This guide covers specific configurations in Portainer that close the most common escape paths.
+Container escape attacks allow a process inside a container to break out to the host system, potentially gaining elevated access to host resources. Common vectors include privileged container abuse, dangerous mounts (like `/var/run/docker.sock`), kernel exploit paths via dangerous syscalls, and setuid binary escalation. This guide covers specific configurations in Portainer that close the most common escape paths.
 
 ## Step 1: Never Use Privileged Mode
 
-Privileged containers are equivalent to root on the host:
+Privileged containers give a container nearly all the same access to the host as processes running outside containers on the host:
 
 ```yaml
-# DANGEROUS - allows container escape
-
-services:
-  api:
-    privileged: true  # Never do this unless absolutely required
-
-# SECURE - disabled privileged mode (default)
 services:
   api:
     image: myapp/api:latest
-    # No 'privileged: true' - this is the safe default
 
-# If you see 'privileged: true' in a compose file, question it.
-# Most services claiming to need it don't actually need it.
-# Alternatives:
-#   - Use specific cap_add instead of full privilege
-#   - Use device mappings for hardware access
-#   - Use specific mounts instead of full host access
+    # DANGEROUS - do not enable unless absolutely required
+    # privileged: true
+
+    # Prefer narrower alternatives instead:
+    # cap_add:
+    #   - NET_ADMIN
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
 ```
 
 ```bash
 # Audit for privileged containers
-docker ps -q | xargs docker inspect --format \
-  '{{.Name}}: privileged={{.HostConfig.Privileged}}' | grep "true"
+docker ps -q | xargs -r docker inspect --format \
+  '{{.Name}}: privileged={{.HostConfig.Privileged}}' | grep 'privileged=true$'
 # Any output here is a security concern
 ```
 
 ## Step 2: Block Privilege Escalation
 
 ```yaml
-# docker-compose.yml - Prevent setuid/setgid escalation
-version: "3.8"
-
+# compose.yaml - Prevent setuid/setgid escalation
 services:
   api:
     image: myapp/api:latest
@@ -69,23 +61,22 @@ services:
 
 ## Step 3: Secure or Avoid Docker Socket Mounts
 
-Mounting the Docker socket inside a container gives it full Docker daemon access:
+Mounting the Docker socket inside a container gives that container control over the Docker daemon:
 
 ```yaml
-# DANGEROUS - container can create new privileged containers
 services:
   app:
+    image: myapp/api:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock  # Avoid this
 
-# If you MUST mount the socket (e.g., Portainer agent, Watchtower):
-services:
-  portainer_agent:
-    image: portainer/agent:latest
+  docker_api_client:
+    image: myapp/docker-api-client:latest
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro  # Read-only
-      # ro prevents writing but still allows read of sensitive data
-    # Consider using Portainer's TLS-based agent instead
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # Read-only socket mounts can reduce risk for tools that support them.
+    # Portainer Agent and Edge Agent deployments officially mount the socket
+    # read-write, so treat them as highly privileged infrastructure components.
 
 # Alternatives to Docker socket mounting:
 # 1. Use Docker TCP API with TLS authentication
@@ -93,11 +84,11 @@ services:
 # 3. Use Podman's rootless daemon socket
 ```
 
+For Portainer specifically, direct Docker socket connections are a legacy option; Portainer recommends Edge Agent for most use cases.
+
 ## Step 4: Restrict Host Filesystem Mounts
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     image: myapp/api:latest
@@ -122,48 +113,26 @@ volumes:
 
 ## Step 5: Seccomp to Block Kernel Exploit Vectors
 
-```json
-// /etc/docker/seccomp/hardened.json
-// Block syscalls commonly used in container escape exploits
-{
-  "defaultAction": "SCMP_ACT_ERRNO",
-  "syscalls": [
-    {
-      "names": [
-        "accept4", "bind", "brk", "chdir", "clock_gettime",
-        "close", "connect", "dup", "dup2", "epoll_create1",
-        "epoll_ctl", "epoll_wait", "exit", "exit_group",
-        "fcntl", "fstat", "futex", "getdents64", "getegid",
-        "geteuid", "getgid", "getpid", "getppid", "getrandom",
-        "gettid", "getuid", "ioctl", "listen", "lseek",
-        "mmap", "mprotect", "munmap", "nanosleep", "newfstatat",
-        "open", "openat", "poll", "read", "recv", "recvfrom",
-        "rt_sigaction", "rt_sigprocmask", "rt_sigreturn",
-        "send", "sendto", "set_robust_list", "setgid", "setuid",
-        "socket", "stat", "uname", "write", "writev"
-      ],
-      "action": "SCMP_ACT_ALLOW"
-    }
-    // Blocked: ptrace, mount, umount, kexec_load, keyctl,
-    // add_key, request_key, pivot_root, clone (with CLONE_NEWUSER)
-  ]
-}
-```
+Docker already applies its default seccomp profile unless you disable or override it. Keep that default profile enabled: Docker documents it as an allowlist that blocks dozens of significant syscalls, and does not recommend changing it unless you have a tested reason to do so.
 
 ```yaml
 services:
   api:
     security_opt:
-      - seccomp:/etc/docker/seccomp/hardened.json
       - no-new-privileges:true
+
+      # DANGEROUS - disables seccomp entirely
+      # - seccomp:unconfined
+
+      # If you maintain a tested custom profile on the Docker host, use:
+      # - seccomp:/etc/docker/seccomp/my-profile.json
 ```
 
 ## Step 6: User Namespace Remapping
 
-User namespace remapping maps root inside the container to an unprivileged user on the host:
+User namespace remapping maps root inside the container to an unprivileged subordinate UID/GID range on the host. This reduces the blast radius of a breakout, but the Docker daemon itself still runs as root:
 
 ```json
-// /etc/docker/daemon.json - Enable user namespace remapping
 {
   "userns-remap": "default"
 }
@@ -173,37 +142,43 @@ User namespace remapping maps root inside the container to an unprivileged user 
 # Apply daemon change
 sudo systemctl restart docker
 
-# Now root (UID 0) inside container maps to high UID on host
-# Even if container escape happens, attacker is unprivileged on host
+# Now root (UID 0) inside the container maps to a high subordinate UID/GID on the host
 
 # Verify
-docker run --rm alpine id
+docker run -d --name userns-test alpine sleep 300
+docker exec userns-test id
 # Inside container: uid=0(root) gid=0(root)
-# But on host, this process runs as uid=165536 (unprivileged)
-ps aux | grep alpine
-# Shows host uid=165536
+
+ps -o uid=,gid=,pid=,comm= -p "$(docker inspect -f '{{.State.Pid}}' userns-test)"
+# Shows a high subordinate UID/GID from /etc/subuid and /etc/subgid on the host
+
+docker rm -f userns-test
 ```
 
 ## Step 7: Runtime Security with Falco
 
 ```yaml
-# docker-compose.yml - Falco runtime threat detection
-version: "3.8"
-
+# compose.yaml - Falco runtime threat detection
 services:
   falco:
-    image: falcosecurity/falco-no-driver:latest
+    image: falcosecurity/falco:latest
     container_name: falco
     restart: unless-stopped
-    privileged: true  # Falco itself needs kernel access
+    cap_drop:
+      - ALL
+    cap_add:
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - SYS_PTRACE
     volumes:
-      - /var/run/docker.sock:/host/var/run/docker.sock:ro
-      - /dev:/host/dev:ro
+      - /sys/kernel/tracing:/sys/kernel/tracing:ro
+      - /var/run/docker.sock:/host/var/run/docker.sock
       - /proc:/host/proc:ro
-      - /boot:/host/boot:ro
-      - /lib/modules:/host/lib/modules:ro
-      - /usr:/host/usr:ro
-      - /etc/falco:/etc/falco
+      - /etc:/host/etc:ro
+    # On AppArmor-enabled hosts such as Ubuntu, also add:
+    # security_opt:
+    #   - apparmor:unconfined
+    # On some systems, tracefs is /sys/kernel/debug/tracing instead.
     # Falco detects container escapes in real-time:
     # - Shell spawned in container
     # - Sensitive file reads (/etc/shadow, /etc/passwd)
