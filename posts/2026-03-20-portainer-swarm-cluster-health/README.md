@@ -14,10 +14,10 @@ A healthy Docker Swarm cluster requires monitoring at multiple levels: node heal
 
 Portainer provides several views for Swarm health:
 
-1. **Home > Swarm Environment**: Overall cluster status, node count
-2. **Swarm > Nodes**: Individual node health and resource usage
-3. **Swarm > Services**: Service task distribution and health
-4. **Swarm > Tasks**: Individual task states across the cluster
+1. **Swarm > Details**: Overall cluster status, node count
+2. **Swarm > Details > Nodes**: Individual node health and resource usage
+3. **Services**: Service task distribution and health
+4. **Services > expand a service**: Individual task states and logs
 
 ## Health Check Script
 
@@ -57,20 +57,20 @@ echo ""
 echo "--- Services ---"
 curl -s \
   -H "X-API-Key: $API_KEY" \
-  "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/services" \
+  "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/services?status=true" \
   | python3 -c "
 import sys, json
 services = json.load(sys.stdin)
 for s in services:
     name = s['Spec']['Name']
-    mode = s['Spec']['Mode']
-    if 'Replicated' in mode:
-        desired = mode['Replicated'].get('Replicas', 0)
-        running = s.get('ServiceStatus', {}).get('RunningTasks', 0)
-        status_icon = '✓' if running >= desired else '!'
+    service_status = s.get('ServiceStatus', {})
+    running = service_status.get('RunningTasks', 0)
+    desired = service_status.get('DesiredTasks', 0)
+    status_icon = '✓' if running >= desired else '!'
+    if 'Replicated' in s['Spec']['Mode']:
         print(f'{status_icon} {name:30} {running}/{desired} replicas')
     else:
-        print(f'✓ {name:30} global')
+        print(f'{status_icon} {name:30} {running}/{desired} tasks')
 "
 
 echo ""
@@ -81,13 +81,24 @@ curl -s \
   | python3 -c "
 import sys, json
 from datetime import datetime, timezone, timedelta
+
+def parse_ts(value):
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace('Z', '+00:00'))
+
 tasks = json.load(sys.stdin)
 cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
-failed = [t for t in tasks 
-          if t['Status']['State'] in ('failed', 'rejected', 'orphaned')]
+failed = []
+for t in tasks:
+    state = t['Status']['State']
+    ts = parse_ts(t['Status'].get('Timestamp'))
+    if state in ('failed', 'rejected', 'orphaned') and ts and ts >= cutoff:
+        failed.append((ts, t))
+failed.sort(key=lambda item: item[0])
 if failed:
-    for t in failed[-10:]:
-        svc = t.get('ServiceID', 'N/A')[:12]
+    for _, t in failed[-10:]:
+        svc = t.get('Name', t.get('ServiceID', 'N/A'))[:40]
         state = t['Status']['State']
         err = t['Status'].get('Err', 'no error')[:50]
         print(f'  ✗ {svc}: {state} - {err}')
@@ -112,8 +123,12 @@ services:
           - node.role == manager
     ports:
       - "9090:9090"
+    configs:
+      - source: prometheus-config
+        target: /etc/prometheus/prometheus.yml
+      - source: swarm-alerts
+        target: /etc/prometheus/swarm-alerts.yml
     volumes:
-      - prometheus-config:/etc/prometheus
       - prometheus-data:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -122,23 +137,26 @@ services:
       - monitoring
 
   node-exporter:
-    image: prom/node-exporter:latest
+    image: quay.io/prometheus/node-exporter:latest
     deploy:
       mode: global       # Run on every node
     volumes:
+      - /:/host:ro,rslave
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
     command:
+      - --path.rootfs=/host
       - --path.procfs=/host/proc
       - --path.sysfs=/host/sys
     networks:
       - monitoring
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: ghcr.io/google/cadvisor:v0.56.2
     deploy:
       mode: global       # Container metrics from every node
     volumes:
+      - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
@@ -158,8 +176,13 @@ services:
     networks:
       - monitoring
 
-volumes:
+configs:
   prometheus-config:
+    file: ./prometheus.yml
+  swarm-alerts:
+    file: ./swarm-alerts.yml
+
+volumes:
   prometheus-data:
   grafana-data:
 
@@ -172,7 +195,7 @@ networks:
 ## Key Metrics to Monitor
 
 ```yaml
-# prometheus.yml rules for Swarm health
+# swarm-alerts.yml
 groups:
   - name: swarm_health
     rules:
@@ -185,9 +208,9 @@ groups:
         annotations:
           summary: "Swarm node {{ $labels.instance }} is down"
 
-      # Service under-replicated
-      - alert: SwarmServiceUnderReplicated
-        expr: docker_swarm_service_running_tasks < docker_swarm_service_desired_tasks
+      # High memory on a node
+      - alert: SwarmNodeHighMemory
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
         for: 5m
         labels:
           severity: warning
