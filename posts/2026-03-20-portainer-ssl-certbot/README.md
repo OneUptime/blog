@@ -8,7 +8,7 @@ Description: A detailed guide to using Certbot to obtain and manage SSL certific
 
 ## Overview
 
-Certbot is the official ACME client for Let's Encrypt. It automates the process of obtaining, installing, and renewing SSL certificates. This guide covers using Certbot specifically for Portainer, including standalone mode, webroot mode, DNS-01 challenges for private networks, and automated renewal hooks.
+Certbot is a recommended ACME client for Let's Encrypt. It automates the process of obtaining, installing, and renewing SSL certificates. This guide covers using Certbot specifically for Portainer, including standalone mode, webroot mode, DNS-01 challenges for private networks, and automated renewal hooks.
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ Certbot is the official ACME client for Let's Encrypt. It automates the process 
 # Ubuntu 22.04/24.04
 
 sudo snap install --classic certbot
-sudo ln -s /snap/bin/certbot /usr/bin/certbot
+sudo ln -s /snap/bin/certbot /usr/local/bin/certbot
 
 # Ubuntu 20.04 / Debian
 sudo apt-get install -y certbot
@@ -40,7 +40,7 @@ certbot --version
 Certbot runs its own web server on port 80 to prove domain ownership:
 
 ```bash
-# Portainer must not be on port 80 (it's not by default)
+# Nothing else can be using port 80 while Certbot runs
 sudo certbot certonly --standalone \
   -d portainer.example.com \
   --agree-tos \
@@ -89,8 +89,10 @@ For Portainer instances not reachable from the internet:
 
 ```bash
 # DNS-01 requires DNS API access
-# Example with Cloudflare
-sudo pip3 install certbot-dns-cloudflare
+# Example with Cloudflare using the Certbot snap
+# If you installed Certbot via apt or dnf, install the matching distro plugin package instead
+sudo snap set certbot trust-plugin-with-root=ok
+sudo snap install certbot-dns-cloudflare
 
 # Create Cloudflare credentials
 sudo mkdir -p /etc/letsencrypt
@@ -114,23 +116,26 @@ sudo certbot certonly \
 ```bash
 #!/bin/bash
 # deploy-cert-to-portainer.sh
-DOMAIN="portainer.example.com"
-CERT_PATH="/etc/letsencrypt/live/${DOMAIN}"
+# Use the Certificate Name from "certbot certificates"
+CERT_NAME="portainer.example.com"
+PORTAINER_IMAGE="portainer/portainer-ce:sts"
 
-# Copy certs to Portainer volume
-docker run --rm \
+docker stop portainer
+docker rm portainer
+
+docker run -d \
+  -p 9443:9443 -p 8000:8000 \
+  --name portainer \
+  --restart always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  -v "${CERT_PATH}:/certs:ro" \
-  alpine \
-  sh -c "mkdir -p /data/certs && \
-    cp /certs/fullchain.pem /data/certs/cert.pem && \
-    cp /certs/privkey.pem /data/certs/key.pem && \
-    chmod 644 /data/certs/cert.pem && \
-    chmod 600 /data/certs/key.pem"
+  -v "/etc/letsencrypt/live/${CERT_NAME}:/certs/live/${CERT_NAME}:ro" \
+  -v "/etc/letsencrypt/archive/${CERT_NAME}:/certs/archive/${CERT_NAME}:ro" \
+  "${PORTAINER_IMAGE}" \
+  --sslcert "/certs/live/${CERT_NAME}/fullchain.pem" \
+  --sslkey "/certs/live/${CERT_NAME}/privkey.pem"
 
-# Restart Portainer to pick up new cert
-docker restart portainer
-echo "Certificate deployed and Portainer restarted"
+echo "Portainer restarted with the Let's Encrypt certificate"
 ```
 
 ## Step 5: Configure Automatic Renewal with Deploy Hook
@@ -139,17 +144,13 @@ echo "Certificate deployed and Portainer restarted"
 # Create renewal hook
 sudo tee /etc/letsencrypt/renewal-hooks/deploy/portainer.sh << 'EOF'
 #!/bin/bash
-DOMAIN="portainer.example.com"
-CERT_PATH="/etc/letsencrypt/live/${DOMAIN}"
+# Use the Certificate Name from "certbot certificates"
+CERT_NAME="portainer.example.com"
 
-docker run --rm \
-  -v portainer_data:/data \
-  -v "${CERT_PATH}:/certs:ro" \
-  alpine \
-  sh -c "cp /certs/fullchain.pem /data/certs/cert.pem && cp /certs/privkey.pem /data/certs/key.pem"
-
-docker restart portainer
-logger "Portainer: Let's Encrypt certificate renewed and deployed"
+if [ "$RENEWED_LINEAGE" = "/etc/letsencrypt/live/${CERT_NAME}" ]; then
+  docker restart portainer
+  logger "Portainer: Let's Encrypt certificate renewed and Portainer restarted"
+fi
 EOF
 
 sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/portainer.sh
@@ -172,10 +173,10 @@ sudo certbot certificates
 #     Certificate Path: /etc/letsencrypt/live/portainer.example.com/fullchain.pem
 
 # Set up expiry monitoring
-echo | openssl s_client -connect portainer.example.com:9443 2>/dev/null \
+echo | openssl s_client -servername portainer.example.com -connect portainer.example.com:9443 2>/dev/null \
   | openssl x509 -noout -enddate
 ```
 
 ## Conclusion
 
-Certbot with multiple challenge methods covers Portainer deployments across all network environments - standalone for simple setups, webroot for servers already running Nginx, and DNS-01 for private/internal Portainer instances. Renewal hooks ensure certificates are automatically deployed to Portainer without manual intervention, maintaining continuous HTTPS availability.
+Certbot with multiple challenge methods covers a range of Portainer deployments - standalone for simple setups, webroot for servers already running Nginx, and DNS-01 for private/internal Portainer instances. Renewal hooks ensure certificates are automatically deployed to Portainer without manual intervention, maintaining continuous HTTPS availability.
