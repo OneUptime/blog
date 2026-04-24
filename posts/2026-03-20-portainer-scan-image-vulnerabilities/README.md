@@ -66,7 +66,7 @@ curl -X POST "$PORTAINER_WEBHOOK"
 
 ```yaml
 - name: Scan image with Trivy
-  uses: aquasecurity/trivy-action@master
+  uses: aquasecurity/trivy-action@v0.35.0
   with:
     image-ref: 'ghcr.io/${{ github.repository }}:${{ github.sha }}'
     format: 'table'
@@ -122,7 +122,7 @@ docker run --rm \
   --output /reports/scan-$(date +%Y%m%d).json \
   my-app:latest
 
-# SARIF format for GitHub Security tab
+# SARIF report for later upload to GitHub code scanning
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$(pwd)/reports":/reports \
@@ -138,10 +138,12 @@ Create a `.trivyignore` file to acknowledge accepted risk:
 
 ```text
 # .trivyignore
-CVE-2023-12345   # Not exploitable in our configuration - review by 2026-06-01
-CVE-2023-67890   # No fix available yet
+# Not exploitable in our configuration - review by 2026-06-01
+CVE-2023-12345 exp:2026-06-01
+# No fix available yet
+CVE-2023-67890
 ```
 
-## Portainer Business Edition Image Scanning
+## Portainer Business Edition Deployment Integration
 
-Portainer Business Edition includes built-in image scanning via the **Images** view. Click any image and select **Scan** to see vulnerabilities categorized by severity without leaving the Portainer UI.
+Portainer Business Edition supports webhook-driven redeployments for stacks and applications, but vulnerability scanning itself remains external to Portainer. Run Trivy before triggering a Portainer webhook or deployment.
