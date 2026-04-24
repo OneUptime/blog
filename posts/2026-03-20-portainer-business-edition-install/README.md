@@ -8,13 +8,13 @@ Description: A guide to installing Portainer Business Edition with license activ
 
 ## Overview
 
-Portainer Business Edition (BE) adds enterprise features on top of Portainer CE including multi-cluster management, RBAC with teams and roles, LDAP/AD integration, audit logging, Git integration for stacks, and automated backups. This guide covers installing Portainer BE and activating your license.
+Portainer Business Edition (BE) adds enterprise features on top of Portainer CE including advanced RBAC with teams and roles, Active Directory integration, audit logging, advanced GitOps features for stacks, and automated backups. This guide covers installing Portainer BE and activating your license.
 
 ## Obtaining a Portainer Business License
 
 1. Visit https://www.portainer.io/pricing
-2. Choose a plan (Starter, Teams, or Business)
-3. Purchase or start a free trial
+2. Choose an option that fits your deployment (3 Nodes Free, Extended Free Trial, Starter, Scale, or Enterprise)
+3. Purchase a license, request 3 Nodes Free, or start an extended free trial
 4. You'll receive a license key via email
 
 ## Installation on Docker Standalone
@@ -32,7 +32,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ee:latest    # Note: portainer-ee for Business Edition
+  portainer/portainer-ee:lts    # Note: portainer-ee for Business Edition
 
 # Verify
 docker ps | grep portainer
@@ -41,33 +41,25 @@ docker ps | grep portainer
 ## Installation on Docker Swarm
 
 ```bash
-# Deploy Portainer BE as a Docker Swarm service
-docker service create \
-  --name portainer \
-  --constraint 'node.role == manager' \
-  --publish mode=host,target=9443,published=9443 \
-  --publish mode=host,target=8000,published=8000 \
-  --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
-  --mount type=volume,src=portainer_data,dst=/data \
-  --replicas=1 \
-  portainer/portainer-ee:latest
+# Deploy Portainer BE and the Portainer Agent on Docker Swarm
+curl -L https://downloads.portainer.io/ee-lts/portainer-agent-stack.yml -o portainer-agent-stack.yml
+docker stack deploy -c portainer-agent-stack.yml portainer
 ```
 
 ## Installation on Kubernetes
 
 ```bash
-# Install Portainer BE on Kubernetes
-kubectl apply -f https://downloads.portainer.io/ee2-20/portainer.yaml
+# Install Portainer BE on Kubernetes using the default NodePort manifest
+kubectl apply -n portainer -f https://downloads.portainer.io/ee-lts/portainer.yaml
 
-# Or via Helm
+# Or via Helm with a LoadBalancer service
 helm repo add portainer https://portainer.github.io/k8s/
 helm repo update
 
-helm install portainer portainer/portainer \
-  --namespace portainer \
-  --create-namespace \
-  --set enterpriseEdition.enabled=true \
+helm upgrade --install --create-namespace -n portainer portainer portainer/portainer \
   --set service.type=LoadBalancer \
+  --set enterpriseEdition.enabled=true \
+  --set enterpriseEdition.image.tag=lts \
   --set tls.force=true
 ```
 
@@ -75,12 +67,12 @@ helm install portainer portainer/portainer \
 
 ### Via the Web UI
 
-1. Access Portainer BE at `https://your-server:9443`
-2. Complete the initial admin account setup
-3. On the first screen, enter your license key
+1. Access Portainer BE at the URL exposed by your deployment (for example `https://your-server:9443` for Docker or Swarm, or `https://<node-ip>:30779` for the default Kubernetes NodePort manifest)
+2. Create the initial admin account
+3. Enter your license key when prompted
 4. Click "Submit"
 
-### Via Docker Run Command
+### Via a Docker Environment Variable
 
 ```bash
 # Pre-activate license during deployment
@@ -89,68 +81,75 @@ docker run -d \
   -p 9443:9443 \
   --name portainer \
   --restart=always \
+  -e PORTAINER_LICENSE_KEY="YOUR-LICENSE-KEY-HERE" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ee:latest \
-  --license-key="YOUR-LICENSE-KEY-HERE"
+  portainer/portainer-ee:lts
 ```
 
 ## Portainer BE vs CE Feature Comparison
 
-| Feature | CE | BE Starter | BE Teams | BE Business |
-|---|---|---|---|---|
-| Price | Free | $5/node/mo | $10/node/mo | $25/node/mo |
-| Nodes | Unlimited | 3 | 10 | Unlimited |
-| RBAC | Basic | Advanced | Advanced | Advanced |
-| Teams | No | No | Yes | Yes |
-| LDAP/AD | No | No | Yes | Yes |
-| Audit Logs | No | No | Yes | Yes |
-| Git Integration (Stacks) | No | No | Yes | Yes |
-| Automated Backups | No | No | No | Yes |
-| Registry Management | Basic | Full | Full | Full |
-| Multi-cluster | No | No | Yes | Yes |
-| Support | Community | Email | Priority | Premium |
+All current Business Edition plans include the same BE feature set. Pricing, node options, and support levels differ by plan.
 
-## Setting Up LDAP/AD Integration (BE Feature)
+| Feature | CE | BE Starter | BE Scale | BE Enterprise |
+|---|---|---|---|---|
+| Price | Free | From $99/month or $995/year | From $199/month or $1995/year | Contact sales |
+| Node options | Unlimited | 5, 10, or 15 | 5, 10, 15, 20, or 25 | Custom |
+| Advanced RBAC roles | No | Yes | Yes | Yes |
+| Active Directory authentication | No | Yes | Yes | Yes |
+| Authentication and activity logs | No | Yes | Yes | Yes |
+| Registry browsing and management | No | Yes | Yes | Yes |
+| S3 backups and scheduled backups | No | Yes | Yes | Yes |
+| Support | Community | Community | 9x5 next business day | Prioritized 9x5, with a 24/7 option |
+
+## Setting Up LDAP/AD Integration
 
 ```text
-Portainer UI → Settings → Authentication → LDAP
+Portainer UI → Settings → Authentication
 
-Configuration:
-- Server type: Active Directory (or OpenLDAP)
-- Server URL: ldap://ad.company.com:389 (or ldaps for SSL)
-- Service Account DN: CN=portainer-svc,OU=Service,DC=company,DC=com
-- Password: [service account password]
-- Base DN: DC=company,DC=com
-- Username attribute: sAMAccountName
-- Group membership attribute: memberOf
+For LDAP:
+- Authentication method: LDAP Authentication
+- Server type: Custom or OpenLDAP template
+- Server URL: ldap://ldap.company.com:389
+- Reader DN: cn=portainer-svc,dc=company,dc=com
+- BaseDN: dc=company,dc=com
+- Username attribute: uid
+- Group Membership Attribute: member
+
+For Active Directory:
+- Authentication method: Microsoft Active Directory
+- AD Controller: dc.company.com
+- Service Account: portainer-svc@company.com
+- User Search Path: OU=Users,DC=company,DC=com
+- Allowed Groups: CN=PortainerUsers,OU=Groups,DC=company,DC=com
 ```
 
-## Setting Up Team-Based Access (BE Feature)
+## Setting Up Team-Based Access
 
 ```text
-Portainer UI → Settings → Teams → Add Team
+Portainer UI → User-related → Teams → Add Team
 
 Create teams:
-- "DevOps Team" - maps to AD group "CN=k8s-admins,..."
-- "Developers" - maps to AD group "CN=k8s-developers,..."
-- "Read Only" - maps to AD group "CN=k8s-readonly,..."
+- "DevOps"
+- "Developers"
+- "Read Only"
 
-Then assign teams to environments with appropriate roles.
+Then assign teams to environments or environment groups with appropriate roles.
 ```
 
 ## Configuring Automated Backups (BE Feature)
 
 ```text
-Portainer UI → Settings → Backup → Configure Backup
+Portainer UI → Settings → Back up Portainer
 
 Options:
-- Schedule: Cron expression (e.g., 0 2 * * * for 2 AM daily)
-- Destination: S3, Azure Blob, or local file
-- Retention: Number of backups to keep
-- Encryption: Enable with a password
+- Destination: Download backup file or Store in S3
+- Schedule automatic backups: Available when storing to S3
+- Cron rule: For example, 41 3 * * 2 for 3:41 AM every Tuesday
+- S3 compatible host: Optional for providers such as MinIO
+- Password protect: Optional
 ```
 
 ## Conclusion
 
-Portainer Business Edition extends Portainer CE with enterprise features that are essential for team environments: RBAC with teams, LDAP/AD integration, audit logging, and automated backups. The installation process is nearly identical to Portainer CE, with the key difference being the `portainer-ee` image name and license activation. The Business Edition transforms Portainer from a personal management tool into an enterprise-ready container management platform.
+Portainer Business Edition extends Portainer CE with enterprise features that are essential for team environments: RBAC with teams, Active Directory integration, audit logging, and automated backups. The installation process is nearly identical to Portainer CE, with the key difference being the `portainer-ee` image or Business Edition manifests plus license activation. The Business Edition transforms Portainer from a personal management tool into an enterprise-ready container management platform.
