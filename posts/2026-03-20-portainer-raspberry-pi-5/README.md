@@ -12,19 +12,19 @@ The Raspberry Pi 5 offers significantly better performance than its predecessors
 
 ## Prerequisites
 
-- Raspberry Pi 5 (4GB or 8GB RAM)
+- Raspberry Pi 5
 - MicroSD card (32GB+) or NVMe SSD via PCIe HAT (recommended)
-- Raspberry Pi OS 64-bit (Bookworm)
-- Active cooling solution (Pi 5 runs hotter than Pi 4)
+- Raspberry Pi OS 64-bit
+- Active cooling solution (recommended for sustained heavy workloads)
 
 ## Step 1: Flash and Boot Raspberry Pi OS
 
-Use Raspberry Pi Imager to flash Raspberry Pi OS (Bookworm, 64-bit) to your storage device. Enable SSH in the advanced settings.
+Use Raspberry Pi Imager to flash Raspberry Pi OS (64-bit) to your storage device. Enable SSH and set a username/password in the customisation settings.
 
 ## Step 2: Update System
 
 ```bash
-ssh pi@raspberrypi.local
+ssh <username>@raspberrypi.local
 sudo apt-get update && sudo apt-get upgrade -y
 sudo reboot
 ```
@@ -37,7 +37,7 @@ sudo reboot
 curl -fsSL https://get.docker.com | sudo sh
 
 # Add user to docker group
-sudo usermod -aG docker pi
+sudo usermod -aG docker $USER
 newgrp docker
 
 # Enable Docker
@@ -63,21 +63,23 @@ sudo parted /dev/nvme0n1 mklabel gpt
 sudo parted /dev/nvme0n1 mkpart primary ext4 0% 100%
 sudo mkfs.ext4 /dev/nvme0n1p1
 
-# Mount for Docker storage
+# Mount NVMe storage
 sudo mkdir -p /nvme
 sudo mount /dev/nvme0n1p1 /nvme
 
 # Add to fstab for persistence
 echo '/dev/nvme0n1p1 /nvme ext4 defaults 0 2' | sudo tee -a /etc/fstab
 
-# Configure Docker to use NVMe
-cat > /etc/docker/daemon.json << 'EOF'
+# Configure Docker data-root to use NVMe
+sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
 {
   "data-root": "/nvme/docker"
 }
 EOF
 sudo systemctl restart docker
 ```
+
+On Docker Engine 29.0 and later, `data-root` does not move the containerd image store on fresh installs; configure containerd separately if you also want image and container snapshot data on the NVMe SSD.
 
 ## Step 5: Deploy Portainer CE
 
@@ -93,25 +95,25 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
 
 ## Step 6: Performance Comparison vs Pi 4
 
-The Pi 5 offers significant improvements for container workloads:
+The Pi 5 offers significant hardware improvements for container workloads:
 
 | Feature | Pi 4 (8GB) | Pi 5 (8GB) |
 |---|---|---|
 | CPU | Cortex-A72, 1.8GHz | Cortex-A76, 2.4GHz |
 | CPU Performance | Baseline | ~2-3x faster |
-| RAM Speed | LPDDR4X | LPDDR4X (faster) |
+| RAM Speed | LPDDR4-3200 | LPDDR4X-4267 |
 | Storage | MicroSD/USB | PCIe NVMe support |
-| Container startup | ~5s | ~2s |
-| Portainer UI load | ~3s | ~1s |
+| USB bandwidth | Baseline | More than 2x aggregate bandwidth |
+| SD card performance | Baseline | Up to 2x peak SD performance |
 
 ## Step 7: Thermal Management
 
-The Pi 5 requires active cooling:
+For sustained heavy loads, active cooling helps avoid throttling:
 
 ```bash
 # Monitor temperature
@@ -133,4 +135,4 @@ echo "Portainer URL: https://$(hostname -I | awk '{print $1}'):9443"
 
 ## Conclusion
 
-The Raspberry Pi 5 is a substantial upgrade for home lab Docker deployments. The improved CPU performance means containers start faster, Portainer's UI is more responsive, and you can run more containers simultaneously. The optional NVMe SSD eliminates SD card wear as a concern. Portainer CE makes the Pi 5 an accessible and capable home lab management platform.
+The Raspberry Pi 5 is a substantial upgrade for home lab Docker deployments. The improved CPU performance, faster memory, and PCIe NVMe support make it a stronger platform for running Portainer CE and multiple containers. The optional NVMe SSD can also reduce reliance on microSD storage for Portainer data and other Docker volumes. Portainer CE makes the Pi 5 an accessible and capable home lab management platform.
