@@ -12,9 +12,9 @@ The Puppet Forge provides community-maintained modules that simplify IPv6 config
 
 | Module | Author | Purpose |
 |---|---|---|
-| `puppetlabs/firewall` | Puppet Labs | ip6tables management |
-| `herculesteam/augeasproviders_sysctl` | Hercules Team | sysctl management |
-| `puppet/network` | Various | Network interface config |
+| `puppetlabs/firewall` | puppetlabs | ip6tables management |
+| `puppet/augeasproviders_sysctl` | Vox Pupuli | sysctl management |
+| `puppet/network` | Vox Pupuli | Network interface config |
 | `saz/sysctl` | saz | Alternative sysctl module |
 
 ## Installing Modules
@@ -23,7 +23,7 @@ The Puppet Forge provides community-maintained modules that simplify IPv6 config
 # Install required modules
 
 puppet module install puppetlabs-firewall
-puppet module install herculesteam-augeasproviders_sysctl
+puppet module install puppet-augeasproviders_sysctl
 puppet module install puppet-network
 
 # List installed modules
@@ -34,8 +34,9 @@ puppet module list
 
 ```puppet
 # Manage IPv6 kernel parameters declaratively
-class profile::ipv6::sysctl {
-  include sysctl::base
+class profile::ipv6::sysctl (
+  $forwarding = '0',
+) {
 
   sysctl { 'net.ipv6.conf.all.disable_ipv6':
     value => '0',
@@ -50,7 +51,7 @@ class profile::ipv6::sysctl {
   }
 
   sysctl { 'net.ipv6.conf.all.forwarding':
-    value => '0',
+    value => $forwarding,
   }
 
   sysctl { 'net.ipv6.conf.all.use_tempaddr':
@@ -65,18 +66,15 @@ The puppetlabs/firewall module supports both iptables and ip6tables:
 
 ```puppet
 class profile::ipv6::firewall {
-  # Ensure ip6tables service is running
-  service { 'ip6tables':
-    ensure => running,
-    enable => true,
-  }
+  # Install firewall dependencies and manage rules
+  class { 'firewall': }
 
-  # Purge unmanaged ip6tables rules
+  # Purge unmanaged firewall rules
   resources { 'firewall':
     purge => true,
   }
 
-  # Rules with provider => ip6tables target IPv6
+  # Rules with protocol => ip6tables target IPv6
   Firewall {
     before  => Class['profile::ipv6::firewall::post'],
     require => Class['profile::ipv6::firewall::pre'],
@@ -87,48 +85,51 @@ class profile::ipv6::firewall {
 
 class profile::ipv6::firewall::pre {
   firewall { '000 ip6 accept loopback':
-    provider => ip6tables,
+    protocol => 'ip6tables',
     chain    => 'INPUT',
+    proto    => 'all',
     iniface  => 'lo',
-    action   => 'accept',
+    jump     => 'accept',
   }
 
   firewall { '001 ip6 accept established':
-    provider => ip6tables,
+    protocol => 'ip6tables',
     chain    => 'INPUT',
+    proto    => 'all',
     state    => ['ESTABLISHED', 'RELATED'],
-    action   => 'accept',
+    jump     => 'accept',
   }
 
   firewall { '002 ip6 accept icmpv6':
-    provider => ip6tables,
+    protocol => 'ip6tables',
     chain    => 'INPUT',
     proto    => 'ipv6-icmp',
-    action   => 'accept',
+    jump     => 'accept',
   }
 
   firewall { '010 ip6 accept ssh':
-    provider => ip6tables,
+    protocol => 'ip6tables',
     chain    => 'INPUT',
     dport    => 22,
     proto    => 'tcp',
-    action   => 'accept',
+    jump     => 'accept',
   }
 
   firewall { '020 ip6 accept http https':
-    provider => ip6tables,
+    protocol => 'ip6tables',
     chain    => 'INPUT',
     dport    => [80, 443],
     proto    => 'tcp',
-    action   => 'accept',
+    jump     => 'accept',
   }
 }
 
 class profile::ipv6::firewall::post {
   firewall { '999 ip6 drop all':
-    provider => ip6tables,
+    protocol => 'ip6tables',
     chain    => 'INPUT',
-    action   => 'drop',
+    proto    => 'all',
+    jump     => 'drop',
     before   => undef,
   }
 }
@@ -138,22 +139,17 @@ class profile::ipv6::firewall::post {
 
 ```puppet
 class profile::ipv6::interface {
-  # Ubuntu/Debian: Manage /etc/network/interfaces
-  network::interface { 'eth0':
-    ipaddress => '10.0.0.10',
-    netmask   => '255.255.255.0',
-    # IPv6 managed separately via augeas/template
-  }
-
-  # Add IPv6 address via augeas
-  augeas { 'eth0_ipv6':
-    context => '/files/etc/network/interfaces',
-    changes => [
-      "set iface[. = 'eth0 inet6 static'] eth0 inet6 static",
-      "set iface[. = 'eth0 inet6 static']/address 2001:db8::10",
-      "set iface[. = 'eth0 inet6 static']/netmask 64",
-      "set iface[. = 'eth0 inet6 static']/gateway 2001:db8::1",
-    ],
+  # Debian/Ubuntu ifupdown systems: manage an IPv6 stanza in /etc/network/interfaces
+  network_config { 'eth0':
+    ensure    => 'present',
+    family    => 'inet6',
+    method    => 'static',
+    ipaddress => '2001:db8::10',
+    netmask   => '64',
+    onboot    => 'true',
+    options   => {
+      'gateway' => '2001:db8::1',
+    },
   }
 }
 ```
@@ -162,23 +158,25 @@ class profile::ipv6::interface {
 
 ```puppet
 # profiles/manifests/ipv6/base.pp
-class profile::ipv6::base {
-  include profile::ipv6::sysctl
+class profile::ipv6::base (
+  $forwarding = '0',
+) {
+  class { 'profile::ipv6::sysctl':
+    forwarding => $forwarding,
+  }
   include profile::ipv6::firewall
 }
 
 # profiles/manifests/ipv6/router.pp
 class profile::ipv6::router {
-  include profile::ipv6::base
-
-  sysctl { 'net.ipv6.conf.all.forwarding':
-    value => '1',
+  class { 'profile::ipv6::base':
+    forwarding => '1',
   }
 }
 
 # Role assignments
 node 'webserver01' {
-  include profile::ipv6::base
+  class { 'profile::ipv6::base': }
 }
 
 node 'router01' {
@@ -187,10 +185,10 @@ node 'router01' {
 ```
 
 ```bash
-# Deploy to all nodes
+# Run an agent test on a node
 puppet agent --test --verbose
 
-# Check module version and update
+# Upgrade the module to the latest release
 puppet module upgrade puppetlabs-firewall
 
 # Run tests for module
