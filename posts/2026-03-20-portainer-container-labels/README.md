@@ -17,7 +17,7 @@ Docker labels are key-value metadata attached to containers, images, volumes, an
 ## Step 1: Add Labels During Container Creation
 
 1. Navigate to **Containers > Add container**.
-2. Scroll to the **Labels** tab.
+2. Open the advanced container settings and find the **Labels** section.
 3. Click **+ add label** for each label.
 4. Enter the **Name** (key) and **Value**.
 
@@ -39,7 +39,7 @@ Value:  john.doe@example.com
 
 ## Step 2: Common Label Conventions
 
-Docker recommends using reverse-DNS notation for label keys:
+Docker recommends using reverse-DNS notation for label keys, especially for labels shared across tools and teams:
 
 ```text
 # Reverse DNS format (recommended)
@@ -47,7 +47,7 @@ com.example.environment=production
 com.example.project=myapp
 com.example.component=web
 
-# Simple format (also common)
+# Short format (common in CLI examples)
 environment=production
 app=myapp
 tier=frontend
@@ -58,9 +58,7 @@ tier=frontend
 Traefik, a popular reverse proxy, uses Docker labels for automatic routing configuration:
 
 ```yaml
-# docker-compose.yml with Traefik labels
-version: "3.8"
-
+# compose.yaml with Traefik labels
 services:
   web:
     image: myorg/webapp:latest
@@ -84,20 +82,21 @@ In Portainer's label form, add each of these as a label row.
 
 ## Step 4: Prometheus Service Discovery via Labels
 
-Prometheus can auto-discover containers to scrape using Docker labels:
+A common pattern is to use custom Docker labels with Prometheus Docker service discovery:
 
 ```yaml
 # Labels for Prometheus scraping
 services:
   app:
     image: myorg/myapp:latest
+    expose:
+      # Expose the metrics port so Docker SD can discover it
+      - "9090"
     labels:
-      # Tell Prometheus to scrape this container
+      # Mark this container for scraping
       - "prometheus.scrape=true"
       # Metrics endpoint path
       - "prometheus.path=/metrics"
-      # Metrics port
-      - "prometheus.port=9090"
 ```
 
 Prometheus `prometheus.yml` with Docker service discovery:
@@ -120,15 +119,15 @@ scrape_configs:
 
 ## Step 5: Labels for Watchtower Automation
 
-Watchtower uses labels to control automatic container updates:
+Watchtower uses labels to include, exclude, and scope container updates:
 
 ```yaml
 labels:
-  # Enable automatic updates for this container
+  # Include this container when Watchtower runs with --label-enable
   - "com.centurylinklabs.watchtower.enable=true"
-  # Or disable updates for this container
+  # Or exclude this container from updates
   - "com.centurylinklabs.watchtower.enable=false"
-  # Custom image pull credentials
+  # Match this container to a scoped Watchtower instance
   - "com.centurylinklabs.watchtower.scope=production"
 ```
 
@@ -138,8 +137,8 @@ After creating a container, view its labels:
 
 1. Navigate to **Containers**.
 2. Click the container name.
-3. Go to the **Inspect** tab.
-4. Find the `Labels` section in the JSON.
+3. Select **Inspect**.
+4. Click **Text** to view the raw JSON, then find the `Labels` section.
 
 ```bash
 # Equivalent Docker CLI command:
@@ -156,7 +155,7 @@ docker inspect my-container --format '{{json .Config.Labels}}' | jq .
 
 ## Step 7: Filter Containers by Labels
 
-In Portainer, use the search/filter feature in the Containers list to find containers by label values. Via CLI:
+Docker CLI can filter containers by labels:
 
 ```bash
 # Find all containers with a specific label
