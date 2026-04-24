@@ -39,8 +39,8 @@ docker ps -a | grep portainer  # Should show "Exited"
 docker volume ls | grep portainer
 # Example output: local   portainer_data
 
-# If using a bind mount, check the container config
-docker inspect portainer | grep -A5 '"Mounts"'
+# If using a bind mount, inspect the mounts and look for the line ending in -> /data
+docker inspect --format '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}' portainer
 ```
 
 ### Step 3: Run the Password Reset Helper
@@ -51,8 +51,9 @@ docker run --rm \
   -v portainer_data:/data \
   portainer/helper-reset-password
 
-# Expected output:
-# {"Username":"admin","Password":"randomGeneratedPassword"}
+# Example output:
+# 2020/06/04 00:13:58 Password successfully updated for user: admin
+# 2020/06/04 00:13:58 Use the following password to login: &_4#\3^5V8vLTd)E"NWiJBs26G*9HPl1
 ```
 
 Note the generated password - it's displayed only once.
@@ -84,9 +85,9 @@ After logging in, immediately change the password:
 # Stop the portainer service
 docker compose stop portainer
 
-# Run the helper with the same volume
+# Run the helper against whatever the stopped service mounts at /data
 docker run --rm \
-  -v $(docker compose config --volumes | grep portainer | head -1):/data \
+  -v "$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' "$(docker compose ps --all -q portainer)")":/data \
   portainer/helper-reset-password
 
 # Restart portainer
@@ -108,6 +109,7 @@ docker run --rm \
 # Scale down the Portainer deployment
 kubectl scale deployment portainer -n portainer --replicas=0
 
+# If your PVC has a different name, change claimName below.
 # Run the helper as a temporary pod with the same PVC
 kubectl run password-reset \
   --image=portainer/helper-reset-password \
@@ -132,7 +134,11 @@ If Portainer has never been initialized (first run), use the `--admin-password` 
 docker run --rm httpd:2.4-alpine htpasswd -nbB admin 'yourNewPassword' | cut -d ":" -f 2
 
 # Start Portainer with the pre-set password
-docker run -d portainer/portainer-ce:latest \
+docker run -d -p 9443:9443 -p 8000:8000 \
+  --name portainer --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:sts \
   --admin-password='$2y$05$hash...'
 ```
 
