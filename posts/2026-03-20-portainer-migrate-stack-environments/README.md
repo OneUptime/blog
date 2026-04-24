@@ -8,7 +8,7 @@ Description: Learn how to migrate Docker Compose stacks from one environment to 
 
 ## Introduction
 
-Moving a stack between environments - from development to staging, staging to production, or from one Docker host to another - requires migrating both the stack configuration and any persistent data in volumes. Portainer doesn't have a built-in "move stack" feature, but the process is straightforward: export the configuration, transfer the data, and redeploy in the target environment. This guide covers the complete migration workflow.
+Moving a stack between environments - from development to staging, staging to production, or from one Docker host to another - requires migrating both the stack configuration and any persistent data in volumes. Portainer does have a built-in stack migration action, but it does not relocate the content of persistent volumes, so you still need to transfer the data separately. This guide covers a practical export, backup, and redeploy workflow.
 
 ## Prerequisites
 
@@ -29,12 +29,14 @@ Source Environment          Target Environment
 
 ## Step 1: Export the Stack Configuration
 
-In Portainer (source environment):
+In Portainer (source environment), if the stack was deployed using the web editor or an uploaded Compose file:
 
 1. Navigate to **Stacks** → click the stack name.
-2. In the editor, copy the complete Compose YAML.
-3. Note the environment variables (check the Variables section).
+2. Open the **Editor** tab and copy the complete Compose YAML.
+3. Note the environment variables (expand the Environment variables section).
 4. Save locally as `myapp-stack.yml`.
+
+For stacks deployed from Git, use the Compose file from the repository instead. If you detach the stack from Git, Portainer stores the main Compose file, but not any additional Compose files or `.env` files from the repository.
 
 Or via CLI on the source host:
 
@@ -50,10 +52,15 @@ cp docker-compose.yml myapp-stack.yml
 
 ## Step 2: Backup Volumes from the Source
 
+If the stack contains a live database or other write-heavy service, stop the stack first for a file-level backup, or use an application-native backup tool instead. For PostgreSQL, prefer `pg_dump` for a consistent logical backup while the database is running.
+
 ```bash
+# Optional but recommended for file-level backups of live data:
+docker compose stop
+
 # List volumes used by the stack:
-docker compose ps -q | xargs docker inspect \
-  --format '{{range .Mounts}}{{.Name}} {{end}}' | tr ' ' '\n' | sort -u
+docker compose ps -aq | xargs docker inspect \
+  --format '{{range .Mounts}}{{.Name}} {{end}}' | tr ' ' '\n' | grep -v '^$' | sort -u
 
 # Backup each volume as a tar archive:
 docker run --rm \
@@ -68,6 +75,9 @@ docker run --rm \
 
 # Verify backups were created:
 ls -lh /backup/
+
+# If you stopped the stack for backup and want to keep the source online:
+docker compose start
 ```
 
 ## Step 3: Transfer Files to Target Host
@@ -135,7 +145,8 @@ docker ps --filter "label=com.docker.compose.project=myapp"
 curl https://api.example.com/health
 
 # Check the database contains migrated data:
-docker exec myapp_postgres_1 psql -U appuser -d myapp -c "SELECT count(*) FROM users;"
+cd /opt/stacks/myapp/
+docker compose exec -T postgres psql -U appuser -d myapp -c "SELECT count(*) FROM users;"
 
 # Compare row counts with source:
 # (run same query on source and compare)
