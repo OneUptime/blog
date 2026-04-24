@@ -8,17 +8,17 @@ Description: Learn how to configure Horizontal Pod Autoscaling (HPA) for Kuberne
 
 ## Introduction
 
-Horizontal Pod Autoscaling (HPA) automatically adjusts the number of pod replicas in a deployment based on observed CPU utilization or custom metrics. Portainer provides a UI for configuring HPA when deploying applications. This guide covers setting up auto-scaling for Kubernetes applications.
+Horizontal Pod Autoscaling (HPA) automatically adjusts the number of pod replicas in a deployment based on observed CPU or memory utilization, or custom/external metrics. Portainer provides a UI for configuring HPA when deploying applications. This guide covers setting up auto-scaling for Kubernetes applications.
 
 ## Prerequisites
 
 - Portainer with Kubernetes environment
-- Metrics Server installed in the cluster (required for CPU/memory HPA)
+- Metrics Server installed in the cluster (required for CPU/memory HPA in Portainer)
 - Application with resource requests configured
 
-## Step 1: Install Metrics Server (Required for HPA)
+## Step 1: Install Metrics Server (Required for CPU/Memory HPA)
 
-HPA requires the metrics-server to function:
+HPA using CPU or memory metrics requires the Metrics API, typically provided by metrics-server:
 
 ```bash
 # Install metrics-server
@@ -30,7 +30,7 @@ kubectl get deployment metrics-server -n kube-system
 kubectl top nodes    # Should work after metrics-server is ready
 ```
 
-For some clusters (kubeadm, k3s), metrics-server needs extra flags:
+If your kubelet certificates are not signed by the cluster CA, metrics-server needs an extra flag:
 
 ```bash
 # If using self-signed certificates, add --kubelet-insecure-tls
@@ -48,11 +48,10 @@ When creating or editing an application:
 3. Configure:
 
 ```text
-Min replicas:      2         (never go below this)
-Max replicas:      10        (never exceed this)
+Min replicas:       2         (never go below this)
+Max replicas:       10        (never exceed this)
 
-CPU threshold:     70        (scale up when avg CPU > 70%)
-Memory threshold:  80        (scale up when avg memory > 80%)
+Target CPU usage:   70        (maintain avg CPU around 70% of requests)
 ```
 
 ## Step 3: Configure HPA via YAML
@@ -65,8 +64,14 @@ metadata:
   name: my-api
   namespace: production
 spec:
-  replicas: 3    # Initial replica count (HPA will override this)
+  replicas: 3    # Initial replica count before HPA adjusts it
+  selector:
+    matchLabels:
+      app: my-api
   template:
+    metadata:
+      labels:
+        app: my-api
     spec:
       containers:
         - name: api
@@ -113,7 +118,7 @@ spec:
   # Behavior: control scale up/down speed
   behavior:
     scaleUp:
-      stabilizationWindowSeconds: 60    # Wait 60s before scaling up again
+      stabilizationWindowSeconds: 60    # Smooth repeated scale-up decisions over 60s
       policies:
         - type: Percent
           value: 100        # Double the replicas at most per scale event
@@ -124,7 +129,7 @@ spec:
       selectPolicy: Max     # Use whichever allows more scaling
 
     scaleDown:
-      stabilizationWindowSeconds: 300   # Wait 5 min before scaling down
+      stabilizationWindowSeconds: 300   # Consider the last 5 min of recommendations before scaling down
       policies:
         - type: Percent
           value: 25         # Remove at most 25% of replicas per scale event
@@ -164,7 +169,7 @@ kubectl get events -n production --field-selector reason=SuccessfulRescale
 Test that HPA responds to load:
 
 ```bash
-# Generate CPU load to trigger scale-up
+# Generate request load to trigger scale-up (assumes a Service named my-api exists)
 kubectl run load-generator \
   --image=busybox:1.35 \
   --restart=Never \
@@ -178,12 +183,12 @@ watch kubectl get hpa my-api-hpa -n production
 kubectl delete pod load-generator -n production
 ```
 
-## Step 7: Custom Metrics HPA
+## Step 7: External Metrics HPA
 
 For business-metric scaling (queue length, requests/second):
 
 ```yaml
-# Custom metrics HPA (requires custom metrics adapter)
+# External metrics HPA (requires an adapter that exposes external.metrics.k8s.io)
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -211,7 +216,7 @@ spec:
 
 ## Step 8: Vertical Pod Autoscaling (VPA)
 
-For automatically right-sizing resource requests:
+If VPA is installed and you are not using HPA on the same CPU or memory metric, you can use it for automatically right-sizing resource requests:
 
 ```yaml
 # VPA recommendation mode (doesn't auto-apply changes)
@@ -227,15 +232,15 @@ spec:
     name: my-api
   updatePolicy:
     updateMode: "Off"    # "Off" for recommendations only
-                         # "Auto" for automatic resizing
+                         # Use "Recreate", "Initial", or "InPlaceOrRecreate" to apply changes automatically
 ```
 
 ```bash
 # View recommendations
 kubectl describe vpa my-api-vpa -n production
-# Shows recommended cpu/memory requests and limits
+# Shows recommended cpu/memory requests
 ```
 
 ## Conclusion
 
-Auto-scaling ensures your Kubernetes applications can handle variable workloads automatically without manual intervention. Portainer's HPA configuration UI makes it simple to set minimum/maximum replicas and scaling thresholds without writing YAML. For production deployments, tune the scale-up and scale-down policies to balance responsiveness with stability, and monitor HPA events to understand scaling behavior over time.
+Auto-scaling ensures your Kubernetes applications can handle variable workloads automatically without manual intervention. Portainer's HPA configuration UI makes it simple to set minimum/maximum replicas and target CPU usage without writing YAML. For production deployments, tune the scale-up and scale-down policies to balance responsiveness with stability, and monitor HPA events to understand scaling behavior over time.
