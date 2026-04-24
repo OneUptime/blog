@@ -8,11 +8,11 @@ Description: Learn how to configure inter-service communication between containe
 
 ---
 
-Services in a Portainer-managed Docker environment communicate through Docker networks. Understanding how Docker's built-in DNS resolves container names enables reliable service-to-service communication.
+Services in a Portainer-managed Docker environment communicate through shared Docker networks. Understanding how Docker's built-in DNS resolves service names on user-defined networks enables reliable service-to-service communication.
 
 ## Docker's Built-in Service DNS
 
-When containers share a Docker network, they can reach each other by container name or service name (in Compose stacks). Docker's embedded DNS automatically resolves these names to container IPs:
+When containers share a user-defined Docker network, they can reach each other by container name or alias. In Compose stacks, services on the same network are also discoverable by service name. Docker's embedded DNS automatically resolves these names to container IPs:
 
 ```bash
 # From inside container A, reach container B by service name
@@ -29,7 +29,6 @@ curl http://user-service:3001/api/users
 Services in the same Compose stack share a default network automatically:
 
 ```yaml
-version: "3.8"
 services:
   web:
     image: nginx:alpine
@@ -41,7 +40,6 @@ services:
 **Option 2: Named Network for Cross-Stack Communication**
 
 ```yaml
-version: "3.8"
 networks:
   shared_net:
     name: shared_network    # Fixed name so other stacks can join
@@ -56,7 +54,6 @@ services:
 In a second stack, join the same network:
 
 ```yaml
-version: "3.8"
 networks:
   shared_net:
     external: true          # Network already exists
@@ -73,22 +70,20 @@ services:
 ## Testing Connectivity
 
 ```bash
-# Test from inside a container via Portainer Exec console
+# Test from inside a container via Portainer Console (if curl is installed)
 curl -f http://api:3000/health && echo "Connected" || echo "Failed"
 
-# DNS resolution test
+# DNS resolution test (if nslookup is installed)
 nslookup api
-# Returns: Address: 172.18.0.x (container IP)
+# Returns the IP address for 'api' on the shared network
 ```
 
 ## Service Communication Patterns
 
 ```javascript
-// Node.js service calling another service by container name
-const fetch = require('node-fetch');
-
+// Node.js service calling another service by service name
 async function getUserById(userId) {
-  // Use service name (not IP) - DNS resolves dynamically
+  // Use the service name, not a container IP
   const res = await fetch(`http://user-service:3001/users/${userId}`);
   return res.json();
 }
