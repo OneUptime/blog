@@ -8,11 +8,11 @@ Description: Configure what Standard Users can see and do in Portainer environme
 
 ## Introduction
 
-The Standard User role is the default role for most Portainer users - it provides full management capabilities within assigned environments without global admin privileges. This guide covers what Standard Users can do, how to configure their environment access, and how to restrict capabilities further using resource controls.
+The Standard User role provides full management capabilities over the resources a user is allowed to manage within environments they can access, without global admin privileges. This guide covers what Standard Users can do, how to configure their environment access, and how to restrict capabilities further using resource controls.
 
 ## Standard User Capabilities
 
-In environments they have access to, Standard Users can:
+In environments they have access to, and for resources they are allowed to manage, Standard Users can:
 
 **Container Management:**
 - Create, start, stop, restart, kill, pause containers
@@ -24,7 +24,7 @@ In environments they have access to, Standard Users can:
 **Image Management:**
 - Pull images from registries
 - Build images from Dockerfiles
-- Tag and remove images
+- Add and remove image tags
 
 **Stack/Service Management:**
 - Deploy and update stacks from compose files
@@ -32,12 +32,12 @@ In environments they have access to, Standard Users can:
 - Manage services in Docker Swarm
 
 **Volume and Network Management:**
-- Create and remove volumes
+- Create and remove volumes when volume management for non-administrators is enabled
 - Create and remove networks
 - Manage network configurations
 
 **Registry Access:**
-- Pull from registries the admin has made available
+- Use registries the admin has made available
 
 ## What Standard Users Cannot Do
 
@@ -45,7 +45,7 @@ In environments they have access to, Standard Users can:
 - Create or manage other users
 - Configure global settings (authentication, templates)
 - Access environments not assigned to them
-- Manage registries (only use them)
+- Add or configure registries
 
 ## Assigning Standard User Access to Environments
 
@@ -61,19 +61,23 @@ TOKEN=$(curl -s -X POST \
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/endpoints/1/teamaccesspolicies \
+  https://portainer.example.com/api/endpoints/1 \
   -d '{
-    "2": {"RoleId": 4}
+    "TeamAccessPolicies": {
+      "2": {"RoleId": 3}
+    }
   }'
-# RoleId 4 = Standard User
+# RoleId 3 = Standard User
 
 # Assign individual user (ID: 5) to environment 1
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/endpoints/1/useraccesspolicies \
+  https://portainer.example.com/api/endpoints/1 \
   -d '{
-    "5": {"RoleId": 4}
+    "UserAccessPolicies": {
+      "5": {"RoleId": 3}
+    }
   }'
 ```
 
@@ -85,14 +89,14 @@ Portainer supports resource-level ownership to control which users can manage sp
 All Standard Users with access to the environment can manage public resources.
 
 ### Restricted Resources
-Only the owner (and admins) can manage restricted resources.
+Only the users or teams explicitly granted access (and admins) can manage restricted resources.
 
 When a Standard User creates a container, they can set it as:
-- **Public**: Visible and manageable by all team members
+- **Public**: Visible and manageable by all users who can access the environment
 - **Restricted**: Only the creator and designated users/teams can manage it
 
 ```bash
-# Create a container with restricted access (via API)
+# Create a container with restricted access via Portainer's Docker API proxy
 curl -X POST \
   -H "Authorization: Bearer $USER_TOKEN" \
   -H "Content-Type: application/json" \
@@ -100,35 +104,39 @@ curl -X POST \
   -d '{
     "Image": "nginx:latest",
     "Labels": {
-      "io.portainer.accesscontrol.public": "false",
-      "io.portainer.accesscontrol.users": "5"
+      "io.portainer.accesscontrol.users": "alice"
     }
   }'
 ```
 
 ## Configuring Available Docker Features
 
-Admins can control which Docker features are available to Standard Users per environment:
+Admins can control which Docker features are available to non-administrator users per environment:
 
-1. Go to **Environments** → select environment → **Settings**
-2. Under **Security settings**:
-   - **Allow users to use the host PID namespace**: Off by default (security risk)
-   - **Allow users to use the host network**: Off by default
-   - **Allow users to use privileged containers**: Off by default
-   - **Allow users to use volumes mounted on the host**: Off by default
+1. Go to **Host** → **Setup** for Docker Standalone environments, or **Swarm** → **Setup** for Docker Swarm environments
+2. Under **Docker Security Settings**:
+   - **Disable the use of host PID 1 for non-administrators**
+   - **Disable privileged mode for non-administrators**
+   - **Disable bind mounts for non-administrators**
+   - **Disable device mappings for non-administrators**
+   - **Disable container capabilities for non-administrators**
+   - **Disable sysctl settings for non-administrators**
+   - **Disable the use of Stacks for non-administrators**
+3. Under **Host and Filesystem**:
+   - **Enable volume management for non-administrators** if Standard Users should be able to manage volumes
 
-These settings apply to all Standard Users in that environment.
+These settings apply to all non-administrator users in that environment, including Standard Users.
 
 ## Available Registries for Standard Users
 
-Admins must explicitly enable registries for each environment:
+For custom registries, admins add them globally and then grant access within each environment:
 
-1. Go to **Environments** → select environment → **Registries**
-2. Click **Add registry**
-3. Select from globally configured registries
+1. Go to **Host** → **Registries** for Docker Standalone environments, or **Swarm** → **Registries** for Docker Swarm environments
+2. Click **Add registry** if the registry has not already been added globally
+3. For an existing registry, click **Manage access** and grant the required users or teams access
 
-Standard Users can then pull images from enabled registries but cannot configure new ones.
+Standard Users can then use the registries they have been granted access to, but cannot add or configure registries themselves.
 
 ## Conclusion
 
-The Standard User role provides a comprehensive set of container management capabilities while keeping global administration centralized. Fine-tune access using environment-level security settings to enable or disable specific Docker capabilities, and use resource controls to allow ownership-based access to individual containers and stacks. Most development and operations staff should be Standard Users in their assigned environments.
+The Standard User role provides a comprehensive set of management capabilities for assigned resources while keeping global administration centralized. Fine-tune access using environment-level security settings to enable or disable specific Docker capabilities, and use resource controls to allow ownership-based access to individual containers and stacks. Most development and operations staff should be Standard Users in the environments where they need access.
