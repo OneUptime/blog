@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Security, Registry, Docker, Policy
 
-Description: Learn how to restrict Portainer users from pulling container images from public registries, enforcing the use of approved private registries only.
+Description: Learn how to limit Portainer users to approved registries, hide anonymous Docker Hub in the UI, and use supporting controls when you need stricter enforcement.
 
 ## Introduction
 
-Unrestricted access to public image registries (Docker Hub, GitHub Container Registry, etc.) can introduce unvetted, potentially malicious images into your environment. Portainer allows administrators to restrict users to approved registries only, enforcing image provenance policies.
+Unrestricted access to public image registries (Docker Hub, GitHub Container Registry, etc.) can introduce unvetted, potentially malicious images into your environment. Portainer lets administrators add approved registries, hide anonymous Docker Hub from the registry selector, and limit registry access per environment. For full enforcement against public pulls, combine Portainer with engine-level, network, or admission-policy controls.
 
 ## Why Restrict Public Registries?
 
@@ -20,14 +20,14 @@ Unrestricted access to public image registries (Docker Hub, GitHub Container Reg
 
 ## Step 1: Configure Approved Registries
 
-Before restricting public access, add your approved registries:
+Before limiting registry access in Portainer, add your approved registries:
 
 1. Go to Portainer **Registries**.
 2. Add your private registry (Harbor, ECR, GHCR with org scope, etc.).
 3. Configure authentication.
 
 ```bash
-TOKEN="your-admin-token"
+TOKEN="your-jwt-token"
 PORTAINER_URL="https://portainer.example.com"
 
 # Add your private registry
@@ -38,7 +38,7 @@ curl -s -X POST \
   "${PORTAINER_URL}/api/registries" \
   -d '{
     "Name": "Company Registry",
-    "Type": 6,
+    "Type": 3,
     "URL": "registry.company.com",
     "Authentication": true,
     "Username": "portainer-svc",
@@ -46,48 +46,61 @@ curl -s -X POST \
   }' | jq '{id: .Id, name: .Name}'
 ```
 
-## Step 2: Enable Registry Restrictions for Users
+## Step 2: Limit Registry Access for Users
 
-### Via Portainer UI (Global Settings)
+### Via Portainer UI (Registries)
 
-1. Go to **Settings** → **Registries**.
-2. Enable **Restrict users from pulling Docker Hub images**.
-3. Optionally enable **Restrict public images** (require only authenticated registries).
-4. Save settings.
+1. Go to Portainer **Registries**.
+2. On **Docker Hub (anonymous)**, click **Hide for all users** if you do not want it shown in the registry selector.
+3. For each approved private registry, open the target environment and go to **Host** → **Registries** (or **Swarm** / **Cluster** → **Registries**, depending on the environment type).
+4. Click **Manage access** on the registry.
+5. Grant access only to the users or teams that should use it, or the namespaces that should be able to use it on Kubernetes.
 
-### Via Environment-Specific Settings
+Hiding anonymous Docker Hub does **not** fully disable Docker Hub access. Portainer's documentation notes that it only hides the option from the Portainer UI, and Docker Hub can still be used directly by Docker itself.
 
-For environment-level restrictions:
+### Via Registry Policies (Portainer BE)
 
-1. Select your Docker environment.
-2. Go to **Settings**.
-3. Find the registry restriction options.
-4. Check **Restrict users to use defined registries only**.
-5. Select which registries are allowed in this environment.
+If you're using Portainer Business Edition, you can centralize registry access with policies:
+
+1. Go to **Environment-related** → **Policies** → **Create policy**.
+2. Select **Docker** → **Registry**.
+3. Choose the registry and the users or teams that should have access.
+4. Apply the policy to the relevant environment groups.
+
+Policies are a Business Edition feature and can only be applied to Edge (Standard) Agent environments running Portainer 2.37.0 or later.
 
 ## Step 3: Configure via API
 
 ```bash
-# Restrict to approved registries only in global settings
+# Grant team ID 2 access to registry ID 3 on environment ID 1
+ENDPOINT_ID=1
+REGISTRY_ID=3
+
 curl -s -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "${PORTAINER_URL}/api/settings" \
+  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/registries/${REGISTRY_ID}" \
   -d '{
-    "allowPrivilegedModeForRegularUsers": false,
-    "enableHostManagementFeatures": false
-  }' | jq .
+    "UserAccessPolicies": {},
+    "TeamAccessPolicies": {
+      "2": { "RoleId": 1 }
+    }
+  }' -o /dev/null -w "%{http_code}\n"
 ```
+
+For Kubernetes environments, the same endpoint uses a `Namespaces` array instead of user and team access policies.
 
 ## Step 4: Mirror Public Images to Private Registry
 
-When restricting public registries, mirror commonly needed images to your private registry:
+When limiting registry access, mirror commonly needed images to your private registry:
 
 ```bash
 #!/bin/bash
 # mirror-images.sh - Mirror approved public images to private registry
 
 PRIVATE_REGISTRY="registry.company.com"
+
+# Assumes docker login "$PRIVATE_REGISTRY" has already been completed.
 APPROVED_IMAGES=(
   "nginx:1.25"
   "nginx:1.24"
@@ -133,25 +146,21 @@ For a complete supply chain security solution, scan images before mirroring:
 PRIVATE_REGISTRY="registry.company.com"
 IMAGE=$1  # e.g., "nginx:1.25"
 
-echo "Scanning $IMAGE for vulnerabilities..."
+echo "Scanning $IMAGE for CRITICAL vulnerabilities..."
 
-# Pull and scan with Trivy
 docker pull "$IMAGE"
-SCAN_RESULT=$(docker run --rm aquasec/trivy:latest image --severity HIGH,CRITICAL "$IMAGE")
-HIGH_COUNT=$(echo "$SCAN_RESULT" | grep -c "HIGH" || true)
-CRITICAL_COUNT=$(echo "$SCAN_RESULT" | grep -c "CRITICAL" || true)
 
-echo "Scan results: $HIGH_COUNT HIGH, $CRITICAL_COUNT CRITICAL vulnerabilities"
+# Scan the local image via the Docker socket and fail if any CRITICAL findings exist.
+docker run --rm \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$HOME/.cache/trivy:/root/.cache/" \
+  aquasec/trivy:latest image --severity CRITICAL --exit-code 1 "$IMAGE"
 
-if [ "$CRITICAL_COUNT" -gt 0 ]; then
-  echo "REJECTED: Image has CRITICAL vulnerabilities"
-  exit 1
-fi
-
-if [ "$HIGH_COUNT" -gt 10 ]; then
-  echo "REJECTED: Too many HIGH vulnerabilities ($HIGH_COUNT > 10 threshold)"
-  exit 1
-fi
+echo "No CRITICAL vulnerabilities found. Review HIGH findings before approving the image."
+docker run --rm \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$HOME/.cache/trivy:/root/.cache/" \
+  aquasec/trivy:latest image --severity HIGH "$IMAGE"
 
 echo "APPROVED: Mirroring to private registry..."
 PRIVATE_IMAGE="${PRIVATE_REGISTRY}/approved/${IMAGE}"
@@ -163,24 +172,18 @@ echo "Available at: $PRIVATE_IMAGE"
 
 ## Step 6: Notification on Policy Violation
 
-Configure alerts when users attempt to use unapproved registries:
+In Portainer Business Edition, use **Logs** → **Activity** for review, or stream Portainer auth and activity logs to your SIEM. Portainer documents SIEM streaming as an experimental feature:
 
 ```bash
-# Monitor Portainer logs for registry denial events
-docker logs portainer 2>&1 | grep -i "registry\|unauthorized\|denied" | tail -20
-
-# Set up a log monitoring script
-#!/bin/bash
-# monitor-registry-violations.sh
-
-PORTAINER_LOGS=$(docker logs portainer 2>&1 | tail -100)
-VIOLATIONS=$(echo "$PORTAINER_LOGS" | grep -i "registry.*denied\|unauthorized.*registry")
-
-if [ -n "$VIOLATIONS" ]; then
-  echo "Registry policy violations detected:"
-  echo "$VIOLATIONS"
-  # Send to Slack, PagerDuty, email, etc.
-fi
+docker run -d -p 8000:8000 -p 9443:9443 \
+  --name portainer \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ee:lts \
+  --syslog-addr=syslog.company.com \
+  --syslog-port=514 \
+  --syslog-source-hostname="portainer-prod"
 ```
 
 ## Step 7: Exception Process
@@ -202,4 +205,4 @@ request:
 
 ## Conclusion
 
-Restricting public repository usage in Portainer creates a controlled image supply chain. Add your approved private registries, mirror commonly needed images with security scanning, and configure Portainer to block access to unapproved public registries. Document an exception and approval process for new images, and schedule regular reviews to remove outdated approved images from your mirror.
+Restricting registry usage in Portainer creates a more controlled image workflow. Add your approved private registries, hide anonymous Docker Hub in the Portainer UI, and limit registry access per environment or with Business Edition policies where supported. Mirror commonly needed images with security scanning, document an exception process for new images, and use additional engine-level or admission controls when you need to fully block public registry usage.
