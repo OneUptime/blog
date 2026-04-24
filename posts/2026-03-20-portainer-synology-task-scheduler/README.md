@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Synology, NAS, Docker, Task Scheduler, Self-Hosted, Home Lab
 
-Description: Use Synology's Task Scheduler to automatically install and start Portainer on DSM 7 without requiring manual SSH access each time.
+Description: Use Synology's Task Scheduler to automatically install and start Portainer on DSM 7.2+ without requiring manual SSH access each time.
 
 ## Introduction
 
@@ -12,7 +12,7 @@ While SSH is the most direct way to install Portainer on a Synology NAS, using T
 
 ## Prerequisites
 
-- Synology NAS with DSM 7.x
+- Synology NAS with DSM 7.2 or later
 - Container Manager installed from Package Center
 - Admin access to DSM
 
@@ -40,11 +40,14 @@ In the **Task Settings** tab, paste the following script in the **Run command** 
 # Runs at boot to ensure Portainer is always running
 
 PORTAINER_CONTAINER="portainer"
-PORTAINER_IMAGE="portainer/portainer-ce:latest"
+PORTAINER_IMAGE="portainer/portainer-ce:lts"
 PORTAINER_DATA_VOLUME="portainer_data"
 
 # Wait for Docker to be fully ready
-sleep 10
+until docker info > /dev/null 2>&1; do
+    echo "Waiting for Docker daemon..."
+    sleep 5
+done
 
 # Check if Portainer is already running
 if docker ps --filter "name=${PORTAINER_CONTAINER}" --filter "status=running" | grep -q "${PORTAINER_CONTAINER}"; then
@@ -65,7 +68,7 @@ if ! docker volume ls | grep -q "${PORTAINER_DATA_VOLUME}"; then
     docker volume create "${PORTAINER_DATA_VOLUME}"
 fi
 
-# Pull latest image
+# Pull Portainer LTS image
 echo "Pulling Portainer image..."
 docker pull "${PORTAINER_IMAGE}"
 
@@ -98,15 +101,15 @@ Script:
 # Weekly Portainer update script for Synology NAS
 
 PORTAINER_CONTAINER="portainer"
-PORTAINER_IMAGE="portainer/portainer-ce:latest"
+PORTAINER_IMAGE="portainer/portainer-ce:lts"
 PORTAINER_DATA_VOLUME="portainer_data"
 
 echo "Checking for Portainer updates..."
 
-# Pull the latest image
+# Pull the latest Portainer LTS image
 docker pull "${PORTAINER_IMAGE}"
 
-# Check if the running container is using the latest image
+# Check if the running container is using the latest Portainer LTS image
 RUNNING_IMAGE_ID=$(docker inspect --format='{{.Image}}' "${PORTAINER_CONTAINER}" 2>/dev/null)
 LATEST_IMAGE_ID=$(docker inspect --format='{{.Id}}' "${PORTAINER_IMAGE}" 2>/dev/null)
 
@@ -115,7 +118,7 @@ if [ "${RUNNING_IMAGE_ID}" = "${LATEST_IMAGE_ID}" ]; then
     exit 0
 fi
 
-echo "Updating Portainer to latest version..."
+echo "Updating Portainer to the latest LTS version..."
 
 # Stop and remove old container
 docker stop "${PORTAINER_CONTAINER}"
@@ -139,12 +142,13 @@ echo "Portainer updated successfully."
 
 ## Step 4: Save Task Output to Log File
 
-For better debugging, modify the Task Settings to output results to a log file:
+For better debugging, enable Task Scheduler's built-in output logging or use output redirection in the script:
 
-In Task Scheduler, select your task and click **Action > Edit**. Under **Task Settings**, check **Send run details by email** or use output redirection in the script:
+In Task Scheduler, click **Settings**, enable **Save output results**, and choose a folder. You can also use output redirection in the script:
 
 ```bash
 # Add to the top of your script
+/bin/mkdir -p /volume1/docker/logs
 exec >> /volume1/docker/logs/portainer-install.log 2>&1
 echo "=== $(date) ==="
 ```
@@ -162,14 +166,14 @@ To test without rebooting:
 After the task runs:
 
 1. Open **Container Manager** - you should see the Portainer container running
-2. Access Portainer at `http://<synology-ip>:9000`
+2. Access Portainer at `https://<synology-ip>:9443` (recommended) or `http://<synology-ip>:9000` if you want HTTP access
 
 ## Handling DSM Updates
 
-After major DSM updates, Container Manager sometimes stops containers. The boot-up task ensures Portainer restarts automatically. For extra reliability, also create a task triggered by **Container Manager** service startup:
+After major DSM updates, Container Manager can take longer to become available. The boot-up task ensures Portainer restarts automatically. For extra reliability, use an availability check in the boot-up task instead of a fixed delay:
 
 ```bash
-# Add this check for Container Manager being available
+# Add this check for the Docker daemon being available
 until docker info > /dev/null 2>&1; do
     echo "Waiting for Docker daemon..."
     sleep 5
