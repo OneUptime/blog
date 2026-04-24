@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Template, JSON, DevOps
 
-Description: Learn how to build a well-structured Portainer template definition JSON file from scratch to create a complete custom template catalog.
+Description: Learn how to build a well-structured Portainer template definition JSON file from scratch to create a custom template catalog.
 
 ## Introduction
 
-The Portainer template catalog is driven entirely by a JSON definition file. Understanding the complete structure of this file lets you build rich, full-featured templates with variables, volumes, networks, labels, and more. This guide is a comprehensive reference for building template definition JSON files.
+The Portainer template catalog is driven entirely by a JSON definition file. Understanding the documented structure of this file lets you build rich, full-featured templates with variables, volumes, networks, labels, and more. This guide is a practical reference for building template definition JSON files.
 
 ## Top-Level Structure
 
@@ -19,19 +19,19 @@ The Portainer template catalog is driven entirely by a JSON definition file. Und
 }
 ```
 
-The `version` field must be `"2"` for Portainer 2.x.
+The examples below use Portainer's documented v2 app template format, so the top-level `version` field is `"2"`.
 
 ## Template Types
 
 | `type` value | Description |
 |-------------|-------------|
 | `1` | Container template (single Docker container) |
-| `2` | Stack template (Docker Compose / Swarm stack) |
-| `3` | Swarm stack template |
+| `2` | Swarm stack template |
+| `3` | Compose stack template |
 
 ## Container Template (Type 1)
 
-Full reference for a container template:
+Example container template:
 
 ```json
 {
@@ -82,13 +82,13 @@ Full reference for a container template:
 }
 ```
 
-## Stack Template (Type 2)
+## Compose Stack Template (Type 3)
 
-Full reference for a stack template using a repository:
+Example Compose stack template using a repository:
 
 ```json
 {
-  "type": 2,
+  "type": 3,
   "title": "WordPress with MySQL",
   "description": "WordPress content management system with MySQL 8 database",
   "categories": ["CMS", "blog", "website"],
@@ -132,11 +132,13 @@ Full reference for a stack template using a repository:
 
 ## Field Reference
 
+The tables below cover the most commonly used fields in Portainer's documented schema.
+
 ### Common Fields (All Types)
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | integer | Yes | Template type (1, 2, or 3) |
+| `type` | integer | Yes | Template type (`1` = container, `2` = Swarm stack, `3` = Compose stack) |
 | `title` | string | Yes | Display name in Portainer UI |
 | `description` | string | Yes | Short description |
 | `categories` | array | No | Category tags for filtering |
@@ -163,8 +165,8 @@ Full reference for a stack template using a repository:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `repository.url` | string | Git repository URL |
-| `repository.stackfile` | string | Path to Compose file in repo |
+| `repository.url` | string | Public Git repository URL |
+| `repository.stackfile` | string | Path to the stack file in the repository |
 
 ## Environment Variable Definition
 
@@ -191,7 +193,7 @@ Full reference for a stack template using a repository:
 
 Field descriptions:
 - `name`: Environment variable name (required)
-- `label`: Display label in UI (required)
+- `label`: Display label in UI (required unless `select` is present)
 - `description`: Tooltip description (optional)
 - `default`: Default value (optional)
 - `preset`: If true, hidden from user with preset default
@@ -258,7 +260,7 @@ for i, t in enumerate(data['templates']):
     if 'description' not in t: errors.append('missing description')
     if 'type' not in t: errors.append('missing type')
     if t.get('type') == 1 and 'image' not in t: errors.append('container missing image')
-    if t.get('type') == 2 and 'repository' not in t: errors.append('stack missing repository')
+    if t.get('type') in (2, 3) and 'repository' not in t: errors.append('stack missing repository')
 
     if errors:
         print(f"Template {i} ({t.get('title','unknown')}): {', '.join(errors)}")
@@ -269,4 +271,4 @@ EOF
 
 ## Conclusion
 
-Building a Portainer template JSON file gives you complete control over your application catalog. By understanding the full field reference - container vs stack templates, environment variable definitions, port mappings, and volume configurations - you can create rich, user-friendly templates that deploy complex applications with just a few inputs. Start with simple templates and gradually add complexity as your catalog grows.
+Building a Portainer template JSON file gives you complete control over your application catalog. By understanding the documented field patterns - container vs stack templates, environment variable definitions, port mappings, and volume configurations - you can create rich, user-friendly templates that deploy complex applications with just a few inputs. Start with simple templates and gradually add complexity as your catalog grows.
