@@ -28,20 +28,19 @@ Split large workloads across multiple environments. Each environment has its own
 
 ## Optimal Portainer Configuration
 
-For environments with 500+ containers each:
+For environments with 500+ containers each, this Swarm service configuration is a reasonable starting point:
 
 ```yaml
 services:
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:lts
     command:
-      - --snapshot-interval=600     # 10 minutes between snapshots
-      - --log-level=warn            # Minimal logging
-      - --log-mode=file             # Log to file, not stdout
-      - --hide-label=maintenance    # Hide maintenance containers
+      - --snapshot-interval=10m                  # 10 minutes between snapshots
+      - --log-level=WARN                         # Minimal logging
+      - --hide-label=com.portainer.hide=true    # Hide matching containers in the UI
     environment:
       GOGC: "50"           # More aggressive GC
-      GOMEMLIMIT: "2GiB"   # Hard memory limit
+      GOMEMLIMIT: "2GiB"   # Soft memory limit for the Go runtime
     deploy:
       resources:
         limits:
@@ -54,7 +53,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
     ports:
-      - "9000:9000"
+      - "9443:9443"
+      - "8000:8000"        # Required if you use Edge Agents
 ```
 
 ## Docker Swarm for Efficient Management
@@ -74,59 +74,68 @@ docker service create \
 
 ## BoltDB Optimization at Scale
 
-The database grows proportionally with the number of containers and snapshot frequency. At large scale, compact the database weekly:
+The database grows with snapshot frequency and environment state. At large scale, compact the database during a planned maintenance restart by starting Portainer with `--compact-db`:
 
-```bash
-#!/bin/bash
-# weekly-compact.sh
-docker stop portainer
-docker run --rm -v portainer_data:/data \
-  portainer/portainer-ce:latest --compact-db
-docker start portainer
-echo "Compaction complete: $(docker exec portainer du -sh /data/portainer.db)"
+```yaml
+command:
+  - --compact-db
 ```
 
-## Filtering Containers from Snapshots
+## Hiding Containers in the UI
 
-Use labels to exclude ephemeral containers (job runners, test containers) from Portainer's snapshot to reduce noise:
+Use labels to hide ephemeral containers (job runners, test containers) from the Portainer UI to reduce noise:
 
 ```yaml
 services:
   job-runner:
     image: my-jobs:latest
     labels:
-      - "com.portainer.hide=true"   # Portainer hides these from the UI
+      - "com.portainer.hide=true"   # Matches Portainer's hidden-container filter
 ```
 
-Configure Portainer to respect this label:
+Configure Portainer with the same label filter:
 
 ```bash
-portainer/portainer-ce:latest --hide-label "com.portainer.hide=true"
+docker run -d \
+  -p 9443:9443 \
+  -p 8000:8000 \
+  --name portainer \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:lts \
+  --hide-label=com.portainer.hide=true
 ```
 
 ## Pagination and Filtering in the UI
 
 For environments with thousands of containers, use Portainer's filtering:
 
-- In **Containers**, use the search box to filter by name, image, or status.
+- In **Containers**, use the search box to narrow large lists.
 - Use **Stacks** view instead of Containers for organized access.
-- Use **Quick Filters** to show only running containers.
+- In Swarm environments, use **Services** view to work at the service level instead of browsing individual task containers.
 
 ## Portainer Agent on Edge Nodes
 
-For distributed deployments (IoT, edge, remote offices), use the Edge Agent with a check-in interval appropriate for your network:
+For distributed deployments (IoT, edge, remote offices), use the Edge Agent. Portainer controls the poll frequency for standard Edge Agents, and the default is 5 seconds:
 
 ```bash
+# If Portainer uses a self-signed certificate, include -e EDGE_INSECURE_POLL=1
 docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  portainer/agent:latest \
-  --edge \
-  --edge-id $EDGE_ID \
-  --edge-key $EDGE_KEY \
-  --edge-checkin-interval 300   # Check in every 5 minutes
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -v /:/host \
+  -v portainer_agent_data:/data \
+  --restart=always \
+  -e EDGE=1 \
+  -e EDGE_ID=$EDGE_ID \
+  -e EDGE_KEY=$EDGE_KEY \
+  -e EDGE_INSECURE_POLL=1 \
+  --name portainer_edge_agent \
+  portainer/agent:lts
 ```
 
-## Hardware Requirements at Scale
+## Hardware Estimates at Scale
 
 | Container Count | CPU | RAM | Storage (SSD) |
 |-----------------|-----|-----|----------------|
@@ -135,4 +144,4 @@ docker run -d \
 | 2,000–5,000     | 8 vCPU | 4 GB | 50 GB |
 | 5,000+          | 16 vCPU | 8 GB | 100 GB |
 
-These are estimates for Portainer itself - the containers it manages run on separate hosts.
+These are practical starting estimates for Portainer Server itself - the containers it manages run on separate hosts.
