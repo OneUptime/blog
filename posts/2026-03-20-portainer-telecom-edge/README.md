@@ -14,18 +14,19 @@ How to Set Up Portainer for Telecommunications Edge Infrastructure covers a spec
 
 - Portainer Business Edition with Edge Computing features
 - Docker installed on edge devices
-- Central Portainer server accessible from edge locations
+- Central Portainer server accessible from edge locations on ports 9443 and 8000
 - Appropriate hardware for your edge use case
 
 ## Architecture Overview
 
-The deployment follows a hub-and-spoke model where central Portainer manages edge nodes:
+The deployment follows a hub-and-spoke model where edge agents poll the Portainer API over port 9443 and establish an on-demand TLS tunnel over port 8000:
 
 ```text
 Central Portainer (Cloud/DC)
-        |
-   Edge Tunnel (Port 8000)
-        |
+      /     \
+9443 API   8000 TLS Tunnel
+ Polling     (On Demand)
+    |             |
   +-----+------+-------+
   |     |      |       |
 Edge1 Edge2  Edge3  Edge4
@@ -60,27 +61,31 @@ systemctl restart docker
 ## Step 2: Register Edge Devices in Portainer
 
 1. Go to **Environments** > **Add Environment**
-2. Select **Edge Agent**
-3. Configure environment settings:
+2. Select **Docker Standalone**
+3. Click **Start Wizard**, then select **Edge Agent Standard**
+4. Configure environment settings:
    - Name: descriptive device name
    - Edge Group: appropriate group
    - Tags: location, type, function
 
-4. Copy the generated edge key
+5. Copy the generated Edge ID and Edge key
 
-5. Run on the device:
+6. Run on the device:
 
 ```bash
 # Deploy Portainer Edge Agent
+# Add -e EDGE_INSECURE_POLL=1 only if your Portainer server uses a self-signed certificate.
 docker run -d \
-  --name portainer-agent \
+  --name portainer_edge_agent \
   --restart always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -v /:/host \
+  -v portainer_agent_data:/data \
   -e EDGE=1 \
+  -e EDGE_ID="YOUR_EDGE_ID" \
   -e EDGE_KEY="YOUR_EDGE_KEY" \
-  -e EDGE_INSECURE_POLL=1 \
-  portainer/agent:latest
+  portainer/agent:<matching-portainer-version>
 ```
 
 ## Step 3: Create Application Stack
@@ -88,15 +93,13 @@ docker run -d \
 Deploy your application via Portainer Edge Stacks:
 
 ```yaml
-# docker-compose.yml
-version: "3.8"
+# compose.yaml
 
 services:
   app:
     image: your-app:latest
     restart: always
     environment:
-      - DEVICE_ID=${HOSTNAME}
       - ENV=production
     volumes:
       - app-data:/data
@@ -108,20 +111,18 @@ services:
 
   # Local monitoring agent
   node-exporter:
-    image: prom/node-exporter:latest
+    image: quay.io/prometheus/node-exporter:latest
     restart: always
+    network_mode: host
     pid: host
     volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
+      - /:/host:ro,rslave
     command:
-      - '--path.procfs=/host/proc'
-      - '--path.rootfs=/rootfs'
-      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/host'
 
 volumes:
   app-data:
+  cache-data:
 ```
 
 ## Step 4: Configure Edge Groups
@@ -139,7 +140,7 @@ Use Portainer's edge monitoring features:
 
 - **Last Check-in**: When did each device last contact Portainer?
 - **Container Status**: Are all containers running?
-- **Resource Usage**: CPU/memory utilization per device
+- **Host Details and Container Stats**: Review CPU/memory information and per-container statistics on each device
 - **Edge Jobs**: Run diagnostic commands across the fleet
 
 ## Step 6: Handle Offline Devices
