@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, WSL2, Docker, Troubleshooting, Window, Docker Socket
+Tags: Portainer, WSL2, Docker, Troubleshooting, Windows, Docker Socket
 
 Description: Diagnose and fix common Docker socket issues that prevent Portainer from working correctly in WSL2 environments on Windows.
 
@@ -55,6 +55,8 @@ sudo chmod 660 /var/run/docker.sock
 
 **Symptom**: Docker commands fail with "cannot connect to daemon".
 
+If you are using Docker Desktop with WSL integration, start Docker Desktop on Windows and do not manage `dockerd` with `service` or `systemctl` inside the distro. The commands below apply when Docker Engine is installed directly inside the WSL distro.
+
 **Diagnosis**:
 
 ```bash
@@ -70,15 +72,11 @@ systemctl status docker  # If systemd is enabled
 # Start Docker daemon manually
 sudo service docker start
 
-# Add to .bashrc for automatic start
-cat >> ~/.bashrc << 'EOF'
-if ! service docker status > /dev/null 2>&1; then
-    sudo service docker start > /dev/null 2>&1
-fi
-EOF
+# If you are using Docker Engine directly in the distro without systemd,
+# repeat this after restarting WSL.
 ```
 
-**Fix With Systemd (Ubuntu 22.04+ in WSL2)**:
+**Fix With Systemd Enabled in WSL2**:
 
 ```bash
 # Enable systemd in WSL2
@@ -102,9 +100,8 @@ sudo systemctl enable --now docker
 **Diagnosis**:
 
 ```bash
-# Test socket connectivity from within Portainer container
-docker exec portainer curl --unix-socket /var/run/docker.sock \
-    http://localhost/v1.41/containers/json
+# Confirm that the Docker socket is mounted into the Portainer container
+docker inspect portainer --format '{{json .Mounts}}' | grep docker.sock
 
 # Check Portainer logs
 docker logs portainer --tail 50
@@ -116,16 +113,18 @@ Ensure the socket is properly mounted when running Portainer:
 
 ```bash
 # Remove and recreate Portainer with correct socket mount
-docker stop portainer && docker rm portainer
+docker rm -f portainer
+
+docker volume create portainer_data
 
 docker run -d \
-  --name portainer \
-  --restart=unless-stopped \
-  -p 9000:9000 \
+  -p 8000:8000 \
   -p 9443:9443 \
+  --name portainer \
+  --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Issue 4: WSL2 Clock Skew
@@ -137,20 +136,15 @@ WSL2 can drift from the Windows clock, causing TLS certificate validation failur
 **Fix**:
 
 ```bash
-# Sync clock
+# From PowerShell or Command Prompt on Windows
+# wsl --shutdown
+# Reopen the distro so WSL resyncs with the Windows host clock
+
+# If hwclock is available in the distro
 sudo hwclock -s
-# or
-sudo ntpdate pool.ntp.org
-# or
+
+# If systemd is enabled and a time sync service is available
 sudo timedatectl set-ntp true
-```
-
-Add to a cron job or WSL startup script:
-
-```bash
-# In /etc/wsl.conf
-[boot]
-command = "hwclock -s"
 ```
 
 ## Issue 5: WSL2 Network Interface Issues
@@ -165,7 +159,7 @@ ip addr show eth0 | grep "inet "
 # WSL2 IP is usually 172.x.x.x
 
 # Check if port is listening
-ss -tlnp | grep 9000
+ss -tlnp | grep -E "9443|9000"
 ```
 
 **Fix for Port Forwarding**:
@@ -175,7 +169,7 @@ In WSL2, localhost forwarding should work automatically. If not:
 ```powershell
 # In PowerShell on Windows
 # Set up port proxy if WSL2 localhost forwarding isn't working
-netsh interface portproxy add v4tov4 listenport=9000 listenaddress=0.0.0.0 connectport=9000 connectaddress=$(wsl hostname -I)
+netsh interface portproxy add v4tov4 listenport=9443 listenaddress=0.0.0.0 connectport=9443 connectaddress=$(wsl hostname -I)
 ```
 
 ## Issue 6: Docker Desktop vs Docker Engine Conflicts
@@ -185,7 +179,7 @@ If both Docker Desktop and Docker Engine are installed:
 ```bash
 # Check which Docker CLI is being used
 which docker
-# Should be /usr/bin/docker (engine) or /mnt/c/.../docker (desktop)
+# Path varies by installation and PATH order
 
 # Check context
 docker context ls
@@ -200,11 +194,11 @@ docker context use desktop-linux
 # Check Docker API version
 docker version | grep -A3 "Server:"
 
-# Check minimum Portainer-supported Docker version
-# Portainer CE requires Docker Engine 19.03+
+# Check the Portainer requirements page for the Docker versions
+# supported by the Portainer release you are running.
 
-# If using old Docker version, update
-curl -fsSL https://get.docker.com | sh
+# If your Docker version is out of support, update it using Docker's
+# supported installation method for your Linux distribution.
 ```
 
 ## Diagnostic Script
@@ -215,8 +209,20 @@ Run this script to diagnose common issues:
 #!/bin/bash
 echo "=== WSL2 Docker/Portainer Diagnostic ==="
 
-echo -e "\n--- Docker Daemon Status ---"
-service docker status 2>&1 | head -5
+echo -e "\n--- Docker Context ---"
+docker context ls 2>&1 | head -10
+
+echo -e "\n--- Docker Daemon Reachability ---"
+docker version 2>&1 | head -10
+
+echo -e "\n--- Docker Service Status (Docker Engine in distro only) ---"
+if command -v systemctl > /dev/null 2>&1 && systemctl cat docker > /dev/null 2>&1; then
+    systemctl status docker --no-pager 2>&1 | head -5
+elif [ -x /etc/init.d/docker ]; then
+    service docker status 2>&1 | head -5
+else
+    echo "Docker service is not managed inside this distro."
+fi
 
 echo -e "\n--- Docker Socket ---"
 ls -la /var/run/docker.sock 2>&1
@@ -230,13 +236,16 @@ docker version 2>&1 | head -10
 echo -e "\n--- Portainer Container Status ---"
 docker ps -a --filter name=portainer --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
+echo -e "\n--- Portainer Mounts ---"
+docker inspect portainer --format '{{json .Mounts}}' 2>&1
+
 echo -e "\n--- Portainer Logs (last 20 lines) ---"
 docker logs portainer 2>&1 | tail -20
 
 echo -e "\n--- Port Listening Check ---"
-ss -tlnp | grep -E "9000|9443"
+ss -tlnp | grep -E "9443|9000"
 ```
 
 ## Conclusion
 
-WSL2 Docker socket issues with Portainer are almost always related to daemon startup, socket permissions, or port forwarding. The systematic diagnostic approach - checking daemon status, socket permissions, and network connectivity in that order - resolves the vast majority of issues. Enabling systemd in WSL2 Ubuntu 22.04+ provides the most reliable Docker startup experience.
+WSL2 Docker socket issues with Portainer are almost always related to daemon startup, socket permissions, or port forwarding. The systematic diagnostic approach - checking whether Docker Desktop or an in-distro Docker Engine is providing the daemon, then checking socket permissions and network connectivity - resolves the vast majority of issues. If you run Docker Engine directly inside WSL, enabling systemd in WSL2 provides the most reliable Docker startup experience.
