@@ -4,44 +4,44 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Compliance, Reporting, CIS, Security
 
-Description: Learn how to generate, export, and present compliance reports from Rancher's CIS scanning tool for audits and security reviews.
+Description: Learn how to generate, export, and present compliance reports from Rancher's Compliance Scans feature for audits and security reviews.
 
-Compliance reporting is a critical requirement for organizations operating Kubernetes clusters in regulated industries. Rancher's CIS scanning integration provides detailed compliance reports that can be exported in various formats for auditors and stakeholders. This guide covers how to generate comprehensive compliance reports from Rancher.
+Compliance reporting is a critical requirement for organizations operating Kubernetes clusters in regulated industries. Rancher's Compliance Scans feature provides downloadable CSV reports in the UI, and the underlying scan data can also be retrieved with `kubectl` for custom reporting workflows. This guide covers how to generate comprehensive compliance reports from Rancher.
 
 ## Prerequisites
 
-- Rancher with CIS Benchmark app installed and scans configured
-- Completed CIS scans with results
-- Cluster access permissions
+- Rancher with the `rancher-compliance` app installed and scans configured
+- Completed compliance scans with results
+- Cluster-owner or administrator access, or equivalent permissions to view and download `ClusterScanReport` resources
 - Python 3 installed (for report processing scripts)
 
 ## Step 1: Access Scan Reports in Rancher UI
 
-1. Navigate to your cluster in the Rancher UI
-2. Go to **CIS Benchmark** → **Scans**
-3. Click on a completed scan to view results
-4. The report shows:
+1. In the Rancher UI, go to **Cluster Management**
+2. Open your cluster with **Explore**
+3. Go to **Compliance** → **Scan**
+4. Click on a completed scan to view results
+5. The report shows:
    - Overall pass/fail summary
    - Detailed results by CIS section
    - Remediation guidance for failed checks
-5. Click **Download** to export the report
+6. Click **Download** to export the report as CSV
 
 ## Step 2: Retrieve Reports via kubectl
 
 ```bash
 # List all scan reports
-
-kubectl get clusterscanreport -A
+kubectl get clusterscanreports.compliance.cattle.io
 
 # Get the most recent scan report name
-LATEST_REPORT=$(kubectl get clusterscanreport \
+LATEST_REPORT=$(kubectl get clusterscanreports.compliance.cattle.io \
   --sort-by='.metadata.creationTimestamp' \
   -o jsonpath='{.items[-1].metadata.name}')
 
 echo "Latest report: $LATEST_REPORT"
 
 # Export the full report as JSON
-kubectl get clusterscanreport $LATEST_REPORT \
+kubectl get clusterscanreports.compliance.cattle.io "$LATEST_REPORT" \
   -o jsonpath='{.spec.reportJSON}' > compliance-report.json
 
 echo "Report exported to compliance-report.json"
@@ -58,33 +58,31 @@ import sys
 from datetime import datetime
 
 def generate_summary(report_file):
-    with open(report_file) as f:
+    with open(report_file, encoding='utf-8') as f:
         report = json.load(f)
 
-    total_pass = 0
-    total_fail = 0
-    total_skip = 0
-    total_warn = 0
-    failed_checks = []
+    total_pass = report.get('pass', 0)
+    total_fail = report.get('fail', 0)
+    total_skip = report.get('skip', 0)
+    total_warn = report.get('warn', 0)
+    total_not_applicable = report.get('notApplicable', 0)
+    total = report.get(
+        'total',
+        total_pass + total_fail + total_skip + total_warn + total_not_applicable
+    )
+    checks_requiring_review = []
 
     for result in report.get('results', []):
         for check in result.get('checks', []):
             state = check.get('state', '')
-            if state == 'pass':
-                total_pass += 1
-            elif state == 'fail':
-                total_fail += 1
-                failed_checks.append({
+            if state in {'fail', 'mixed'}:
+                checks_requiring_review.append({
                     'id': check.get('id'),
+                    'state': state,
                     'description': check.get('description'),
                     'remediation': check.get('remediation', 'No remediation provided')
                 })
-            elif state == 'skip':
-                total_skip += 1
-            elif state == 'warn':
-                total_warn += 1
 
-    total = total_pass + total_fail + total_skip + total_warn
     pass_rate = (total_pass / total * 100) if total > 0 else 0
 
     print("=" * 60)
@@ -97,14 +95,18 @@ def generate_summary(report_file):
     print(f"  Failed:       {total_fail}")
     print(f"  Skipped:      {total_skip}")
     print(f"  Warnings:     {total_warn}")
+    print(f"  Not Applicable: {total_not_applicable}")
     print(f"\nCOMPLIANCE STATUS: {'COMPLIANT' if total_fail == 0 else 'NON-COMPLIANT'}")
 
-    if failed_checks:
-        print(f"\nFAILED CHECKS ({len(failed_checks)} items requiring remediation):")
+    if checks_requiring_review:
+        print(f"\nCHECKS REQUIRING REVIEW ({len(checks_requiring_review)} items):")
         print("-" * 60)
-        for check in failed_checks:
-            print(f"\n[{check['id']}] {check['description']}")
-            print(f"  Remediation: {check['remediation'][:200]}...")
+        for check in checks_requiring_review:
+            remediation = check['remediation']
+            if len(remediation) > 200:
+                remediation = remediation[:200] + "..."
+            print(f"\n[{check['id']}] ({check['state']}) {check['description']}")
+            print(f"  Remediation: {remediation}")
 
 if __name__ == '__main__':
     generate_summary(sys.argv[1] if len(sys.argv) > 1 else 'compliance-report.json')
@@ -121,21 +123,39 @@ python3 generate-compliance-summary.py compliance-report.json
 #!/usr/bin/env python3
 # generate-html-report.py - Generate an HTML compliance report
 
+import html as html_lib
 import json
 from datetime import datetime
 
 def generate_html_report(report_file, output_file='compliance-report.html'):
-    with open(report_file) as f:
+    with open(report_file, encoding='utf-8') as f:
         report = json.load(f)
 
-    checks_by_state = {'pass': [], 'fail': [], 'skip': [], 'warn': []}
+    checks_by_state = {
+        'pass': [],
+        'fail': [],
+        'skip': [],
+        'warn': [],
+        'notApplicable': [],
+        'mixed': [],
+        'other': [],
+    }
 
     for result in report.get('results', []):
         for check in result.get('checks', []):
             state = check.get('state', 'skip')
+            if state not in checks_by_state:
+                state = 'other'
             checks_by_state[state].append(check)
 
-    html = f"""<!DOCTYPE html>
+    checks_requiring_review = checks_by_state['fail'] + checks_by_state['mixed']
+    total_pass = report.get('pass', len(checks_by_state['pass']))
+    total_fail = report.get('fail', len(checks_by_state['fail']))
+    total_skip = report.get('skip', len(checks_by_state['skip']))
+    total_warn = report.get('warn', len(checks_by_state['warn']))
+    total_not_applicable = report.get('notApplicable', len(checks_by_state['notApplicable']))
+
+    html_output = f"""<!DOCTYPE html>
 <html>
 <head>
     <title>CIS Compliance Report</title>
@@ -161,83 +181,71 @@ def generate_html_report(report_file, output_file='compliance-report.html'):
             <th>Status</th>
             <th>Count</th>
         </tr>
-        <tr class="pass"><td>Pass</td><td>{len(checks_by_state['pass'])}</td></tr>
-        <tr class="fail"><td>Fail</td><td>{len(checks_by_state['fail'])}</td></tr>
-        <tr class="skip"><td>Skip</td><td>{len(checks_by_state['skip'])}</td></tr>
-        <tr class="warn"><td>Warn</td><td>{len(checks_by_state['warn'])}</td></tr>
+        <tr class="pass"><td>Pass</td><td>{total_pass}</td></tr>
+        <tr class="fail"><td>Fail</td><td>{total_fail}</td></tr>
+        <tr class="skip"><td>Skip</td><td>{total_skip}</td></tr>
+        <tr class="warn"><td>Warn</td><td>{total_warn}</td></tr>
+        <tr class="skip"><td>Not Applicable</td><td>{total_not_applicable}</td></tr>
     </table>
 
-    <h2>Failed Checks</h2>
+    <h2>Checks Requiring Review</h2>
     <table>
         <tr>
+            <th>State</th>
             <th>Check ID</th>
             <th>Description</th>
             <th>Remediation</th>
         </tr>"""
 
-    for check in checks_by_state['fail']:
-        html += f"""
+    for check in checks_requiring_review:
+        remediation = check.get('remediation', 'N/A')
+        if len(remediation) > 300:
+            remediation = remediation[:300] + "..."
+        html_output += f"""
         <tr>
-            <td>{check.get('id', '')}</td>
-            <td>{check.get('description', '')}</td>
-            <td>{check.get('remediation', 'N/A')[:300]}</td>
+            <td>{html_lib.escape(check.get('state', ''))}</td>
+            <td>{html_lib.escape(check.get('id', ''))}</td>
+            <td>{html_lib.escape(check.get('description', ''))}</td>
+            <td>{html_lib.escape(remediation)}</td>
         </tr>"""
 
-    html += """
+    if not checks_requiring_review:
+        html_output += """
+        <tr>
+            <td colspan="4">No failing or mixed checks found.</td>
+        </tr>"""
+
+    html_output += """
     </table>
 </body>
 </html>"""
 
-    with open(output_file, 'w') as f:
-        f.write(html)
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write(html_output)
 
     print(f"HTML report generated: {output_file}")
 
-generate_html_report('compliance-report.json')
+if __name__ == '__main__':
+    generate_html_report('compliance-report.json')
 ```
 
 ## Step 5: Schedule Automated Report Generation
 
 ```bash
-# Create a CronJob to generate and store reports
+# Create a scheduled scan that generates a new report every Monday at 8 AM
 kubectl apply -f - <<EOF
-apiVersion: batch/v1
-kind: CronJob
+apiVersion: compliance.cattle.io/v1
+kind: ClusterScan
 metadata:
-  name: compliance-report-generator
-  namespace: cattle-cis-system
+  name: weekly-compliance-scan
 spec:
-  # Generate report weekly on Monday at 8 AM
-  schedule: "0 8 * * 1"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          serviceAccountName: cis-report-sa
-          containers:
-          - name: report-generator
-            image: bitnami/kubectl:latest
-            command:
-            - /bin/sh
-            - -c
-            - |
-              REPORT=$(kubectl get clusterscanreport \
-                --sort-by='.metadata.creationTimestamp' \
-                -o jsonpath='{.items[-1].metadata.name}')
-              kubectl get clusterscanreport \$REPORT \
-                -o jsonpath='{.spec.reportJSON}' \
-                > /reports/compliance-\$(date +%Y%m%d).json
-            volumeMounts:
-            - name: reports-volume
-              mountPath: /reports
-          restartPolicy: OnFailure
-          volumes:
-          - name: reports-volume
-            persistentVolumeClaim:
-              claimName: compliance-reports-pvc
+  # Leave scanProfileName unset to use Rancher's default profile for this cluster type
+  scheduledScanConfig:
+    cronSchedule: "0 8 * * 1"
+    retentionCount: 4
 EOF
 ```
 
 ## Conclusion
 
-Generating comprehensive compliance reports from Rancher's CIS scanning tool provides the documentation needed for security audits and ongoing compliance monitoring. By automating report generation and combining JSON exports with custom reporting scripts, you can create audit-ready compliance documentation that satisfies regulatory requirements. These reports serve as evidence of your organization's commitment to Kubernetes security best practices.
+Generating comprehensive compliance reports from Rancher's Compliance Scans feature provides the documentation needed for security audits and ongoing compliance monitoring. By automating report generation and combining JSON exports with custom reporting scripts, you can create audit-ready compliance documentation that satisfies regulatory requirements. These reports serve as evidence of your organization's commitment to Kubernetes security best practices.
