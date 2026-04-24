@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, mTLS, Mutual-tls, Security, Business-edition, Certificate
 
-Description: A guide to configuring mutual TLS (mTLS) authentication for Portainer Business Edition to enforce client certificate authentication.
+Description: A guide to configuring mutual TLS (mTLS) authentication for Docker endpoints managed by Portainer Business Edition using client and server certificates.
 
 ## Overview
 
-Mutual TLS (mTLS) requires both the server and the client to present certificates, providing stronger authentication than username/password alone. Portainer Business Edition supports mTLS for securing the communication between Portainer and connected agents, as well as for Docker endpoints. This guide covers configuring mTLS for agent communication and Docker TLS.
+Mutual TLS (mTLS) requires both the server and the client to present certificates, providing stronger authentication than username/password alone. Portainer Business Edition supports separate mTLS certificates for Edge Agent communication, and Portainer can also connect to Docker endpoints secured with TLS client certificates. This guide focuses on configuring a Docker endpoint that requires Portainer to present a client certificate.
 
 ## Prerequisites
 
@@ -18,9 +18,10 @@ Mutual TLS (mTLS) requires both the server and the client to present certificate
 
 ## Understanding mTLS in Portainer Context
 
-Portainer uses TLS in two contexts:
-1. **Web UI/API TLS**: Portainer server certificate for browser/API connections
-2. **Docker Endpoint TLS**: Portainer connects to Docker daemons using TLS client certs
+Portainer uses TLS in three contexts:
+1. **Web UI/API TLS**: Portainer server certificate for browser/API connections (`--sslcert` and `--sslkey`)
+2. **Edge Agent mTLS**: Portainer Business Edition can use separate mTLS certificates for Edge Agent communication (`--mtlscacert`, `--mtlscert`, and `--mtlskey`)
+3. **Docker Endpoint TLS**: Portainer connects to Docker daemons using a client certificate and validates the Docker daemon certificate
 
 ## Step 1: Create a Certificate Authority
 
@@ -38,30 +39,37 @@ openssl req -new -x509 -days 3650 \
   -subj "/C=US/ST=CA/O=MyOrg/CN=PortainerCA"
 ```
 
-## Step 2: Generate Server Certificate (Portainer)
+## Step 2: Generate Server Certificate (Docker Daemon)
+
+Replace `docker-host.example.com` and `192.0.2.10` with the DNS name and IP address clients will use to reach the Docker host.
 
 ```bash
 # Server key
-openssl genrsa -out /opt/mtls-ca/keys/portainer-server.key 2048
+openssl genrsa -out /opt/mtls-ca/keys/docker-server.key 2048
 
 # Server CSR
 openssl req -new \
-  -key /opt/mtls-ca/keys/portainer-server.key \
-  -out /opt/mtls-ca/requests/portainer-server.csr \
-  -subj "/CN=portainer.example.com" \
-  -addext "subjectAltName=DNS:portainer.example.com"
+  -key /opt/mtls-ca/keys/docker-server.key \
+  -out /opt/mtls-ca/requests/docker-server.csr \
+  -subj "/CN=docker-host.example.com"
+
+# Extensions for the Docker daemon certificate
+cat > /opt/mtls-ca/requests/docker-server-ext.cnf << 'EOF'
+subjectAltName=DNS:docker-host.example.com,IP:192.0.2.10
+extendedKeyUsage=serverAuth
+EOF
 
 # Sign server cert with CA
 openssl x509 -req -days 365 \
-  -in /opt/mtls-ca/requests/portainer-server.csr \
+  -in /opt/mtls-ca/requests/docker-server.csr \
   -CA /opt/mtls-ca/certs/ca.crt \
   -CAkey /opt/mtls-ca/keys/ca.key \
   -CAcreateserial \
-  -out /opt/mtls-ca/certs/portainer-server.crt \
-  -extfile <(echo "subjectAltName=DNS:portainer.example.com")
+  -out /opt/mtls-ca/certs/docker-server.crt \
+  -extfile /opt/mtls-ca/requests/docker-server-ext.cnf
 ```
 
-## Step 3: Generate Client Certificate
+## Step 3: Generate Client Certificate (Portainer)
 
 ```bash
 # Client key
@@ -73,18 +81,26 @@ openssl req -new \
   -out /opt/mtls-ca/requests/portainer-client.csr \
   -subj "/CN=portainer-client/O=MyOrg"
 
+# Extensions for client authentication
+cat > /opt/mtls-ca/requests/portainer-client-ext.cnf << 'EOF'
+extendedKeyUsage=clientAuth
+EOF
+
 # Sign client cert
 openssl x509 -req -days 365 \
   -in /opt/mtls-ca/requests/portainer-client.csr \
   -CA /opt/mtls-ca/certs/ca.crt \
   -CAkey /opt/mtls-ca/keys/ca.key \
   -CAcreateserial \
-  -out /opt/mtls-ca/certs/portainer-client.crt
+  -out /opt/mtls-ca/certs/portainer-client.crt \
+  -extfile /opt/mtls-ca/requests/portainer-client-ext.cnf
 ```
 
 ## Step 4: Configure Docker Daemon for TLS
 
 On each Docker host that Portainer will connect to:
+
+If your `dockerd` service already sets `-H` flags via systemd, remove that duplicate host configuration before using `hosts` in `daemon.json` or Docker will fail to start.
 
 ```bash
 # Configure Docker daemon to require TLS client certs
@@ -114,28 +130,28 @@ sudo systemctl restart docker
 
 Via Portainer UI:
 1. Navigate to **Environments** → **Add environment**
-2. Select **Docker Standalone**
-3. Enter the Docker host URL: `tcp://docker-host:2376`
-4. Enable **TLS**
-5. Upload:
+2. Select **Docker Standalone** and click **Start Wizard**
+3. Under **More options**, select **API**
+4. Enter the Docker host URL: `tcp://docker-host.example.com:2376`
+5. Enable **TLS**
+6. Upload:
    - **TLS CA certificate**: `ca.crt`
    - **TLS certificate**: `portainer-client.crt`
    - **TLS key**: `portainer-client.key`
-6. Click **Connect**
+7. Click **Connect**
 
 Via API:
 ```bash
 curl -X POST \
   "https://portainer.example.com:9443/api/endpoints" \
-  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Authorization: Bearer ${JWT}" \
   -F "Name=tls-docker-host" \
   -F "EndpointCreationType=1" \
-  -F "URL=tcp://docker-host:2376" \
+  -F "URL=tcp://docker-host.example.com:2376" \
   -F "TLS=true" \
-  -F "TLSSkipVerify=false" \
-  -F "TLSCACert=@/opt/mtls-ca/certs/ca.crt" \
-  -F "TLSCert=@/opt/mtls-ca/certs/portainer-client.crt" \
-  -F "TLSKey=@/opt/mtls-ca/keys/portainer-client.key"
+  -F "TLSCACertFile=@/opt/mtls-ca/certs/ca.crt" \
+  -F "TLSCertFile=@/opt/mtls-ca/certs/portainer-client.crt" \
+  -F "TLSKeyFile=@/opt/mtls-ca/keys/portainer-client.key"
 ```
 
 ## Verify mTLS Connection
@@ -146,15 +162,15 @@ docker --tlsverify \
   --tlscacert=/opt/mtls-ca/certs/ca.crt \
   --tlscert=/opt/mtls-ca/certs/portainer-client.crt \
   --tlskey=/opt/mtls-ca/keys/portainer-client.key \
-  -H tcp://docker-host:2376 \
+  -H tcp://docker-host.example.com:2376 \
   version
 
 # Check that connection without client cert fails
-docker --tls \
+docker --tlsverify \
   --tlscacert=/opt/mtls-ca/certs/ca.crt \
-  -H tcp://docker-host:2376 \
+  -H tcp://docker-host.example.com:2376 \
   version
-# Expected: Error response: tls: certificate required
+# Expected: the TLS handshake fails because the daemon requires a client certificate
 ```
 
 ## Conclusion
