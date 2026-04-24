@@ -46,37 +46,38 @@ services:
 
 ### Via Portainer UI
 
-1. Go to **Swarm > Services > Your Service**
-2. Click **Edit**
-3. Update the image tag to the new version
-4. Click **Update the service**
+1. Go to **Services** and select your service
+2. Under **Change container image**, update the image tag to the new version
+3. Click **Apply changes**
 
 Portainer shows the update progress in real-time.
 
 ### Via Portainer API
 
 ```bash
-# Update a service image via API
-SERVICE_ID=$(docker service ls --filter name=myapp_web -q)
+# Update a service image via the Portainer gateway to the Docker API
+SERVICE_ID=myapp_web
+
+SERVICE_JSON=$(curl -s -H "X-API-Key: your-api-key" \
+  "https://portainer.example.com/api/endpoints/1/docker/services/$SERVICE_ID")
+
+VERSION=$(printf '%s' "$SERVICE_JSON" | jq '.Version.Index')
+SPEC=$(printf '%s' "$SERVICE_JSON" | jq -c '
+  .Spec
+  | .TaskTemplate.ContainerSpec.Image = "myapp:1.2.0"
+  | .UpdateConfig = {
+      Parallelism: 2,
+      Delay: 30000000000,
+      FailureAction: "rollback",
+      Monitor: 60000000000,
+      MaxFailureRatio: 0.3,
+      Order: "start-first"
+    }')
 
 curl -X POST \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
-  -d '{
-    "Name": "myapp_web",
-    "TaskTemplate": {
-      "ContainerSpec": {
-        "Image": "myapp:1.2.0"
-      }
-    },
-    "UpdateConfig": {
-      "Parallelism": 2,
-      "Delay": 30000000000,
-      "FailureAction": "rollback",
-      "Monitor": 60000000000,
-      "Order": "start-first"
-    }
-  }' \
+  --data-binary "$SPEC" \
   "https://portainer.example.com/api/endpoints/1/docker/services/$SERVICE_ID/update?version=$VERSION"
 ```
 
@@ -92,9 +93,9 @@ curl -s -H "X-API-Key: your-api-key" \
   | python3 -c "
 import sys, json
 s = json.load(sys.stdin)
-update = s['UpdateStatus']
-print(f'State: {update[\"State\"]}')
-print(f'Message: {update[\"Message\"]}')
+update = s.get('UpdateStatus') or {}
+print(f'State: {update.get(\"State\", \"n/a\")}')
+print(f'Message: {update.get(\"Message\", \"No update currently in progress\")}')
 "
 ```
 
@@ -110,21 +111,24 @@ services:
     image: myapp:1.0.0
     deploy:
       replicas: 3
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.app.rule=Host(`myapp.example.com`)"
+        - "traefik.http.services.app.loadbalancer.server.port=8080"
     networks:
       - frontend
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.app.rule=Host(`myapp.example.com`)"
 
   # Green: new version, not yet receiving traffic
   green:
     image: myapp:2.0.0
     deploy:
       replicas: 3
+      labels:
+        - "traefik.enable=false"  # Not routing traffic yet
+        - "traefik.http.routers.app.rule=Host(`myapp.example.com`)"
+        - "traefik.http.services.app.loadbalancer.server.port=8080"
     networks:
       - frontend
-    labels:
-      - "traefik.enable=false"  # Not routing traffic yet
 
 networks:
   frontend:
@@ -145,4 +149,4 @@ docker service rm myapp_blue
 
 ## Conclusion
 
-Rolling updates in Docker Swarm via Portainer enable zero-downtime deployments with automatic failure detection and rollback. The `update_config` parameters give fine-grained control over update speed, failure tolerance, and rollback behavior. Using `start-first` order ensures new tasks are running and healthy before old tasks are removed, maintaining continuous service availability throughout the update.
+Rolling updates in Docker Swarm via Portainer enable zero-downtime deployments with automatic failure detection and rollback. The `update_config` parameters give fine-grained control over update speed, failure tolerance, and rollback behavior. Using `start-first` order starts new tasks before old tasks are stopped, helping maintain continuous service availability throughout the update.
