@@ -17,11 +17,9 @@ User/Operator
      |
   [OIDC/LDAP Authentication]
      |
-  Boundary Controller (public)
+  Boundary Controller (public control plane) ----> [Vault credential brokering]
      |
-  Boundary Worker (in private network)
-     |
-  [Dynamic credentials via Vault]
+  Boundary Worker (session proxy in private network)
      |
   Kubernetes API / Internal Services
   (Rancher-managed clusters)
@@ -29,23 +27,20 @@ User/Operator
 
 ## Prerequisites
 
-- HashiCorp Boundary v0.14+ (HCP Boundary or self-hosted)
-- HashiCorp Vault (for dynamic credentials)
+- HashiCorp Boundary v0.20.x (HCP Boundary or self-hosted)
+- HashiCorp Vault 1.11+ (for dynamic credentials)
 - Rancher v2.7+ with managed clusters
+- PostgreSQL for self-hosted Boundary controllers
 - OIDC identity provider configured
+- `kubectl` installed on the operator workstation
 
 ## Step 1: Deploy Boundary Controller
 
 ```bash
-# Install Boundary controller using Helm
-
-helm repo add hashicorp https://helm.releases.hashicorp.com
-helm install boundary hashicorp/boundary \
-  --namespace boundary \
-  --create-namespace \
-  --set controller.enabled=true \
-  --set worker.enabled=true \
-  --set global.enabled=true
+# Self-hosted Boundary only. Run database initialization once from a
+# controller node, then start the controller service.
+boundary database init -config=/etc/boundary.d/boundary-controller.hcl
+boundary server -config=/etc/boundary.d/boundary-controller.hcl
 ```
 
 ### Boundary Configuration
@@ -57,7 +52,7 @@ controller {
   description = "Boundary controller for Rancher clusters"
 
   database {
-    url = "postgresql://boundary:${DB_PASSWORD}@postgres:5432/boundary"
+    url = "env://BOUNDARY_PG_URL"
   }
 }
 
@@ -77,9 +72,25 @@ listener "tcp" {
 kms "transit" {
   purpose    = "root"
   address    = "https://vault.example.com"
-  token      = "${VAULT_TOKEN}"
   mount_path = "transit/"
   key_name   = "boundary-root"
+  key_id     = "global_root"
+}
+
+kms "transit" {
+  purpose    = "worker-auth"
+  address    = "https://vault.example.com"
+  mount_path = "transit/"
+  key_name   = "boundary-worker-auth"
+  key_id     = "global_worker-auth"
+}
+
+kms "transit" {
+  purpose    = "recovery"
+  address    = "https://vault.example.com"
+  mount_path = "transit/"
+  key_name   = "boundary-recovery"
+  key_id     = "global_recovery"
 }
 ```
 
@@ -95,38 +106,56 @@ metadata:
   name: boundary-worker
   namespace: boundary
 spec:
-  replicas: 2
+  replicas: 1
+  selector:
+    matchLabels:
+      app: boundary-worker
   template:
+    metadata:
+      labels:
+        app: boundary-worker
     spec:
       containers:
         - name: boundary-worker
-          image: hashicorp/boundary:latest
+          image: hashicorp/boundary:0.20.1
           args:
             - server
             - -config=/boundary/config.hcl
           env:
-            - name: BOUNDARY_CLUSTER_ID
+            - name: BOUNDARY_WORKER_ACTIVATION_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: boundary-worker-credentials
-                  key: cluster-id
+                  key: activation-token
           volumeMounts:
             - name: config
               mountPath: /boundary
+            - name: auth-storage
+              mountPath: /var/lib/boundary
       volumes:
         - name: config
           configMap:
             name: boundary-worker-config
+        - name: auth-storage
+          persistentVolumeClaim:
+            claimName: boundary-worker-auth-storage
 ```
 
 ```hcl
 # boundary-worker.hcl
-worker {
-  name        = "k8s-worker-01"
-  description = "Boundary worker in Kubernetes cluster"
-  address     = "boundary-worker.boundary.svc:9202"
+listener "tcp" {
+  address     = "0.0.0.0:9202"
+  purpose     = "proxy"
+  tls_disable = true
+}
 
-  initial_upstreams = ["boundary-controller.boundary.svc:9201"]
+worker {
+  auth_storage_path = "/var/lib/boundary"
+
+  # For HCP Boundary, use hcp_boundary_cluster_id instead of initial_upstreams.
+  initial_upstreams = ["boundary-controller.example.com:9201"]
+  controller_generated_activation_token = "env://BOUNDARY_WORKER_ACTIVATION_TOKEN"
+  public_addr = "boundary-worker.example.com:9202"
 
   tags {
     type   = ["kubernetes"]
@@ -144,7 +173,7 @@ worker {
 resource "boundary_scope" "org" {
   name        = "Engineering Organization"
   description = "Engineering team scope"
-  scope_id    = boundary_scope.global.id
+  scope_id    = "global"
   auto_create_admin_role   = true
   auto_create_default_role = true
 }
@@ -209,32 +238,43 @@ resource "boundary_target" "kubernetes_api" {
 # vault-k8s-credentials.hcl
 # Configure Vault to issue short-lived Kubernetes ServiceAccount tokens
 
-# Vault Kubernetes auth backend
+# Vault Kubernetes secrets engine
 resource "vault_kubernetes_secret_backend" "k8s" {
-  path       = "kubernetes"
-  kubernetes_host = "https://k8s-api.example.com:6443"
-  kubernetes_ca_cert = file("k8s-ca.crt")
-  service_account_jwt = data.kubernetes_secret.vault_sa.data["token"]
+  path                = "kubernetes"
+  kubernetes_host     = var.kubernetes_host
+  kubernetes_ca_cert  = file("k8s-ca.crt")
+  service_account_jwt = var.vault_service_account_jwt
 }
 
 resource "vault_kubernetes_secret_backend_role" "developer" {
-  backend    = vault_kubernetes_secret_backend.k8s.path
-  name       = "k8s-developer"
+  backend                       = vault_kubernetes_secret_backend.k8s.path
+  name                          = "k8s-developer"
   allowed_kubernetes_namespaces = ["development", "staging"]
-  kubernetes_role_name = "developer"    # Binds to ClusterRole
-  token_ttl  = "1h"
-  token_max_ttl = "4h"
+  kubernetes_role_name          = "developer"    # Binds generated ServiceAccounts to an existing ClusterRole
+  kubernetes_role_type          = "ClusterRole"
+  token_default_ttl             = 3600
+  token_max_ttl                 = 14400
 }
 ```
 
 ```hcl
-# Boundary credential library using Vault
+# Boundary credential store and library using Vault
+resource "boundary_credential_store_vault" "main" {
+  name     = "Kubernetes Vault Store"
+  scope_id = boundary_scope.kubernetes.id
+  address  = var.vault_addr
+  token    = var.boundary_vault_token   # Use a periodic, renewable, orphan token
+}
+
 resource "boundary_credential_library_vault" "k8s_token" {
-  name            = "K8s Developer Token"
+  name                = "K8s Developer Token"
   credential_store_id = boundary_credential_store_vault.main.id
-  path            = "kubernetes/creds/k8s-developer"
-  http_method     = "GET"
-  credential_type = "kubernetes"
+  path                = "kubernetes/creds/k8s-developer"
+  http_method         = "POST"
+  http_request_body   = jsonencode({
+    kubernetes_namespace = "development"
+  })
+  credential_type     = "json"
 }
 ```
 
@@ -250,27 +290,24 @@ boundary authenticate oidc \
 boundary targets list -scope-id=p_xxxxxxxxx
 
 # Connect to production Kubernetes API
-# Boundary creates a local proxy with dynamic credentials
-boundary connect kubernetes \
+# Boundary invokes kubectl through the authenticated proxy
+boundary connect kube \
   -target-id=ttcp_xxxxxxxxx \
-  -k8s-connect-port=6443
-
-# This sets KUBECONFIG automatically
-kubectl get nodes   # Uses Boundary proxy with short-lived credentials
+  -- get nodes
 ```
 
 ## Step 6: Audit Access
 
 ```bash
-# View Boundary session logs
+# View Boundary sessions
 boundary sessions list -scope-id=p_xxxxxxxxx
 
 # View specific session details
 boundary sessions read -id=s_xxxxxxxxx
 
 # Export for compliance
-boundary sessions list -scope-id=p_xxxxxxxxx -format=json \
-  | jq '.items[] | {user: .user_id, target: .target_id, start: .created_time, end: .terminated_time}'
+boundary sessions list -scope-id=p_xxxxxxxxx -include-terminated -format=json \
+  | jq '.items[] | {user: .user_id, target: .target_id, start: .created_time, end: ([.states[]? | select(.status == "terminated") | .start_time] | .[0]), status: .status}'
 ```
 
 ## Conclusion
