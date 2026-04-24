@@ -19,10 +19,15 @@ The Rancher server state is stored in its backing Kubernetes cluster's etcd. The
 ```bash
 # Install from Rancher Apps catalog or via Helm
 
-helm repo add rancher-charts https://releases.rancher.com/server-charts/stable
-helm install rancher-backup rancher-charts/rancher-backup \
+helm repo add rancher-charts https://charts.rancher.io
+helm repo update
+helm install rancher-backup-crd rancher-charts/rancher-backup-crd \
   --namespace cattle-resources-system \
   --create-namespace \
+  --wait
+helm install rancher-backup rancher-charts/rancher-backup \
+  --namespace cattle-resources-system \
+  --wait \
   --set persistence.enabled=true \
   --set persistence.storageClass=longhorn
 ```
@@ -35,11 +40,11 @@ apiVersion: resources.cattle.io/v1
 kind: Backup
 metadata:
   name: rancher-daily-backup
-  namespace: cattle-resources-system
 spec:
-  # Schedule: daily at 1:00 AM UTC
+  # Schedule: daily at 1:00 AM
   schedule: "0 1 * * *"
   retentionCount: 14    # Keep 14 days of backups
+  resourceSetName: rancher-resource-set-full
 
   # Backup destination: S3
   storageLocation:
@@ -49,7 +54,7 @@ spec:
       folder: "rancher-server"
       credentialSecretName: s3-backup-secret
       credentialSecretNamespace: cattle-resources-system
-      endpoint: ""   # Leave empty for AWS S3
+      endpoint: "s3.us-east-1.amazonaws.com"
 
   # Encryption
   encryptionConfigSecretName: rancher-backup-encryption
@@ -87,6 +92,7 @@ etcd-s3-region: us-east-1
 etcd-s3-access-key: "${AWS_ACCESS_KEY_ID}"
 etcd-s3-secret-key: "${AWS_SECRET_ACCESS_KEY}"
 etcd-s3-folder: "cluster-name"
+etcd-s3-retention: 10
 ```
 
 ### Trigger Manual Snapshot
@@ -94,33 +100,38 @@ etcd-s3-folder: "cluster-name"
 ```bash
 # Trigger an immediate etcd snapshot
 rke2 etcd-snapshot save \
-  --name pre-upgrade-snapshot-$(date +%Y%m%d-%H%M%S)
+  --name pre-upgrade-snapshot
 
 # List local snapshots
 rke2 etcd-snapshot list
 
 # List snapshots on S3
-rke2 etcd-snapshot ls \
+rke2 etcd-snapshot \
   --s3 \
   --s3-bucket rke2-etcd-snapshots \
-  --s3-region us-east-1
+  --s3-region us-east-1 \
+  --s3-access-key "${AWS_ACCESS_KEY_ID}" \
+  --s3-secret-key "${AWS_SECRET_ACCESS_KEY}" \
+  ls
 ```
 
 ## Level 3: Automate Longhorn Volume Backups
 
 ### Configure Longhorn Backup Target
 
-```yaml
+```bash
 # Set S3 backup target in Longhorn settings
-# Rancher UI → Cluster → Apps → Longhorn → Settings
+# Longhorn UI → Backup and Restore → Backup Targets
 # Or patch directly:
-kubectl -n longhorn-system patch settings.longhorn.io backup-target \
-  --type=merge \
-  -p '{"value": "s3://longhorn-backups@us-east-1/"}'
+kubectl create secret generic aws-secret \
+  --from-literal=AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}" \
+  --from-literal=AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}" \
+  -n longhorn-system \
+  --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl -n longhorn-system patch settings.longhorn.io backup-target-credential-secret \
+kubectl -n longhorn-system patch backuptargets.longhorn.io default \
   --type=merge \
-  -p '{"value": "minio-secret"}'
+  -p '{"spec":{"backupTargetURL":"s3://longhorn-backups@us-east-1/","credentialSecret":"aws-secret"}}'
 ```
 
 ### Create Recurring Jobs
@@ -136,14 +147,12 @@ spec:
   cron: "0 2 * * *"        # Daily at 2 AM
   task: backup
   groups:
-    - default
     - production
   retain: 14                # 14 days retention
   concurrency: 2            # Max 2 concurrent backups
   labels:
     backup-type: daily
----
-# Weekly snapshot (faster than backup)
+# Hourly snapshot (faster than backup)
 apiVersion: longhorn.io/v1beta2
 kind: RecurringJob
 metadata:
@@ -154,7 +163,7 @@ spec:
   task: snapshot
   groups:
     - default
-  retain: 48                # Keep 48 hours of snapshots
+  retain: 48                # Keep 48 hourly snapshots
   concurrency: 5
 ```
 
@@ -168,6 +177,7 @@ metadata:
   name: database-data
   namespace: production
   labels:
+    recurring-job.longhorn.io/source: "enabled"
     recurring-job-group.longhorn.io/production: "enabled"
 spec:
   storageClassName: longhorn
@@ -180,25 +190,41 @@ spec:
 
 ## Level 4: Application-Level Backups with Velero
 
-For application-consistent backups:
+For application-level Kubernetes backups with optional volume snapshots:
 
 ```bash
 # Install Velero
+cat > credentials-velero <<EOF
+[default]
+aws_access_key_id=${AWS_ACCESS_KEY_ID}
+aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}
+EOF
+
 helm repo add vmware-tanzu https://vmware-tanzu.github.io/helm-charts
+helm repo update
 helm install velero vmware-tanzu/velero \
   --namespace velero \
   --create-namespace \
-  --set-json='configuration.backupStorageLocation[0]={"name":"default","provider":"aws","bucket":"velero-backups","config":{"region":"us-east-1"}}' \
-  --set-json='configuration.volumeSnapshotLocation[0]={"name":"default","provider":"aws","config":{"region":"us-east-1"}}' \
-  --set credentials.useSecret=true \
-  --set credentials.secretContents.cloud="[default]\naws_access_key_id=${AWS_ACCESS_KEY_ID}\naws_secret_access_key=${AWS_SECRET_ACCESS_KEY}\n"
+  --set configuration.backupStorageLocation[0].name=default \
+  --set configuration.backupStorageLocation[0].provider=aws \
+  --set configuration.backupStorageLocation[0].bucket=velero-backups \
+  --set configuration.backupStorageLocation[0].config.region=us-east-1 \
+  --set configuration.volumeSnapshotLocation[0].name=default \
+  --set configuration.volumeSnapshotLocation[0].provider=aws \
+  --set configuration.volumeSnapshotLocation[0].config.region=us-east-1 \
+  --set-file credentials.secretContents.cloud=./credentials-velero \
+  --set initContainers[0].name=velero-plugin-for-aws \
+  --set initContainers[0].image=velero/velero-plugin-for-aws:${VELERO_AWS_PLUGIN_VERSION} \
+  --set initContainers[0].volumeMounts[0].mountPath=/target \
+  --set initContainers[0].volumeMounts[0].name=plugins
 ```
 
 ```bash
 # Schedule daily Velero backup
 velero schedule create daily-backup \
   --schedule="0 3 * * *" \
-  --include-namespaces production,staging \
+  --include-namespaces production \
+  --include-namespaces staging \
   --exclude-resources events \
   --ttl 336h     # 14 days retention
 ```
@@ -212,23 +238,24 @@ Automate backup verification with a CronJob:
 # verify-backups.sh - Runs daily to verify backup health
 
 # Check Rancher backup
-LAST_BACKUP=$(kubectl get backup -n cattle-resources-system \
-  -o jsonpath='{.items[-1:].status.conditions[-1:].type}' 2>/dev/null)
+LAST_BACKUP=$(kubectl get backups.resources.cattle.io \
+  --sort-by=.metadata.creationTimestamp \
+  -o jsonpath='{.items[-1:].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)
 
-if [ "${LAST_BACKUP}" != "Ready" ]; then
+if [ "${LAST_BACKUP}" != "True" ]; then
   echo "ERROR: Rancher backup not healthy - last status: ${LAST_BACKUP}"
   # Send alert to your monitoring system
 fi
 
 # Check RKE2 etcd snapshots
-SNAPSHOT_COUNT=$(rke2 etcd-snapshot ls 2>/dev/null | wc -l)
+SNAPSHOT_COUNT=$(rke2 etcd-snapshot list 2>/dev/null | tail -n +2 | wc -l)
 if [ "${SNAPSHOT_COUNT}" -lt 3 ]; then
   echo "WARNING: Less than 3 etcd snapshots available"
 fi
 
 # Check Longhorn backup target connection
-BACKUP_STATUS=$(kubectl -n longhorn-system get setting backup-target-availability \
-  -o jsonpath='{.value}' 2>/dev/null)
+BACKUP_STATUS=$(kubectl -n longhorn-system get backuptargets.longhorn.io default \
+  -o jsonpath='{.status.available}' 2>/dev/null)
 if [ "${BACKUP_STATUS}" != "true" ]; then
   echo "ERROR: Longhorn backup target is not reachable"
 fi
