@@ -12,99 +12,86 @@ The Edge Agent's poll frequency determines how often it checks in with the Porta
 
 ## Standard Mode Poll Interval
 
-In standard mode, the `EDGE_POLL_INTERVAL` controls how frequently the agent checks for new commands:
+In standard mode, Portainer stores the poll frequency on the environment. Set the **Poll frequency** in Portainer when you create or edit the environment. The default is 5 seconds, and the agent deployment command does not include a separate poll-interval environment variable. Set `PORTAINER_VERSION` to match your Portainer Server version:
 
 ```bash
-# Default: 5 seconds
+PORTAINER_VERSION=your-portainer-version
 
 docker run -d \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -v /:/host \
+  -v portainer_agent_data:/data \
+  --restart always \
   -e EDGE=1 \
   -e EDGE_ID=device-id \
   -e EDGE_KEY=edge-key \
-  -e EDGE_POLL_INTERVAL=5 \
-  portainer/agent:latest
+  --name portainer_edge_agent \
+  portainer/agent:$PORTAINER_VERSION
 ```
 
 ## Async Mode Intervals
 
-Async mode has three independent interval settings:
+In Portainer Business Edition, async mode has three independent interval settings: **Ping**, **Snapshot**, and **Command**. Configure these in Portainer when you create or edit the environment, or set their defaults under **Settings** > **Edge Compute**. The default for each is once a minute, and the agent deployment command only adds `EDGE_ASYNC=1`:
 
 ```bash
+PORTAINER_VERSION=your-portainer-version
+
 docker run -d \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -v /:/host \
+  -v portainer_agent_data:/data \
+  --restart always \
   -e EDGE=1 \
   -e EDGE_ID=device-id \
   -e EDGE_KEY=edge-key \
   -e EDGE_ASYNC=1 \
-  -e EDGE_PING_INTERVAL=30 \        # Heartbeat interval (seconds)
-  -e EDGE_CMD_INTERVAL=10 \         # Command check interval (seconds)
-  -e EDGE_SNAPSHOT_INTERVAL=300 \   # State snapshot interval (seconds)
-  portainer/agent:latest
+  --name portainer_edge_agent \
+  portainer/agent:$PORTAINER_VERSION
 ```
 
 ## Interval Selection Guide
 
+Portainer's async interval selectors offer **Use default interval**, **Disabled**, **1 minute**, **1 hour**, **1 day**, and **1 week**. Example combinations:
+
 | Scenario | Ping | Commands | Snapshot |
 |----------|------|---------|---------|
-| Low-latency, good connectivity | 5s | 5s | 60s |
-| Standard office/branch | 30s | 10s | 300s |
-| Metered/cellular connection | 60s | 30s | 600s |
-| Very remote / satellite | 300s | 60s | 3600s |
-| IoT with daily check-in | 3600s | 300s | 86400s |
+| Low-latency, good connectivity | 1 minute | 1 minute | 1 minute |
+| Standard office/branch | 1 minute | 1 minute | 1 hour |
+| Metered/cellular connection | 1 hour | 1 hour | 1 day |
+| Very remote / satellite | 1 day | 1 day | 1 week |
+| IoT with daily check-in | 1 day | 1 day | 1 day |
 
 ## Updating Poll Interval on Running Agent
 
-```bash
-# To change poll interval, stop and recreate the container
-docker stop portainer_edge_agent
-docker rm portainer_edge_agent
+To change the interval for an existing Edge environment:
 
-# Restart with new interval
-docker run -d \
-  --name portainer_edge_agent \
-  -e EDGE=1 \
-  -e EDGE_ID=device-id \
-  -e EDGE_KEY=edge-key \
-  -e EDGE_ASYNC=1 \
-  -e EDGE_PING_INTERVAL=60 \
-  -e EDGE_CMD_INTERVAL=20 \
-  -e EDGE_SNAPSHOT_INTERVAL=600 \
-  portainer/agent:latest
-```
+1. Open **Environments** in Portainer and select the Edge environment.
+2. Edit the environment and change **Poll frequency** for standard mode, or the **Ping**, **Snapshot**, and **Command** intervals for async mode.
+3. Save the changes.
+
+You do not need to recreate the agent container just to change these intervals.
 
 ## Bandwidth Estimation
 
-Calculate monthly bandwidth usage:
+Calculate monthly bandwidth usage for standard mode using Portainer's documented figure of about 324 bytes per second per agent at the default 5-second poll interval:
 
 ```bash
-# Approximate payload sizes:
-# Ping: ~1KB per check-in
-# Command poll: ~2KB per check
-# Snapshot: ~10-100KB per snapshot (depends on container count)
-
 python3 << 'EOF'
-PING_INTERVAL = 30          # seconds
-CMD_INTERVAL = 10           # seconds
-SNAPSHOT_INTERVAL = 300     # seconds
+AGENTS = 1
 DAYS = 30
 
-PING_KB = 1
-CMD_KB = 2
-SNAPSHOT_KB = 50  # average
+BYTES_PER_SECOND_PER_AGENT = 324
 
-pings_per_day = 86400 / PING_INTERVAL
-cmds_per_day = 86400 / CMD_INTERVAL
-snapshots_per_day = 86400 / SNAPSHOT_INTERVAL
-
-daily_mb = (pings_per_day * PING_KB + cmds_per_day * CMD_KB + snapshots_per_day * SNAPSHOT_KB) / 1024
+daily_mb = (AGENTS * BYTES_PER_SECOND_PER_AGENT * 86400) / (1024 * 1024)
 monthly_mb = daily_mb * DAYS
 
-print(f"Pings/day: {pings_per_day:.0f} ({pings_per_day * PING_KB / 1024:.1f} MB/day)")
-print(f"Commands/day: {cmds_per_day:.0f} ({cmds_per_day * CMD_KB / 1024:.1f} MB/day)")
-print(f"Snapshots/day: {snapshots_per_day:.0f} ({snapshots_per_day * SNAPSHOT_KB / 1024:.1f} MB/day)")
-print(f"Total: {daily_mb:.1f} MB/day, {monthly_mb:.0f} MB/month")
+print(f"Agents: {AGENTS}")
+print(f"Total: {daily_mb:.2f} MB/day, {monthly_mb:.1f} MB/month")
 EOF
 ```
 
 ## Conclusion
 
-Poll frequency configuration is a key tuning parameter for edge deployments. Start with the defaults (5s for standard mode) and increase intervals if bandwidth or cost is a concern. For IoT or remote monitoring scenarios where hours-long response times are acceptable, use very long intervals to minimize data usage while maintaining management capability.
+Poll frequency configuration is a key tuning parameter for edge deployments. Start with the defaults (5s for standard mode, 1 minute each for async mode) and increase intervals if bandwidth or cost is a concern. For IoT or remote monitoring scenarios where hours-long response times are acceptable, use longer intervals to minimize data usage while maintaining management capability.
