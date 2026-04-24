@@ -8,66 +8,52 @@ Description: Learn how to enable application data caching for Kubernetes environ
 
 ---
 
-Portainer's Kubernetes integration can make many calls to the Kubernetes API server per page load. Application data caching stores frequently accessed resources (namespaces, deployments, services) server-side, dramatically improving UI response times for large clusters.
+Portainer's Kubernetes integration can make many calls to the Kubernetes API server per page load. Application data caching stores Kubernetes environment data in the front-end for your user session, helping improve page load times when viewing the cluster.
 
 ## When to Enable Caching
 
 Enable caching when:
 
-- Kubernetes API server response times exceed 500ms
-- Portainer UI is slow when switching between Kubernetes namespaces
-- Your cluster has many resources (100+ deployments, 50+ namespaces)
-- Multiple users access the same Kubernetes environment simultaneously
+- You want faster page loads when viewing Kubernetes environments in Portainer
+- The Portainer UI feels slow when browsing Kubernetes resources or switching namespaces
+- You can accept that changes made by other users or outside Portainer may take up to five minutes to appear in your session
+- You understand this is a per-user front-end cache for Kubernetes environments
 
 ## Enabling Caching in Portainer UI
 
-1. In Portainer go to **Environments**.
-2. Select your Kubernetes environment.
-3. Click **Edit**.
-4. Under **Kubernetes Settings**, find **Application data caching**.
-5. Toggle it **On**.
-6. Click **Update Environment**.
+1. In Portainer, click your username in the top-right corner and select **My account**.
+2. Under **Application settings**, find **Enable front-end data caching for Kubernetes environments**.
+3. Toggle it **On**.
+4. Click **Save**.
 
 ## What Gets Cached
 
-| Resource Type | Cache Duration |
+| Cached Data | Cache Duration |
 |---|---|
-| Namespaces | Until next sync |
-| Deployments | Until next sync |
-| Services | Until next sync |
-| ConfigMaps | Until next sync |
-| Pods | Short TTL (pods change frequently) |
+| Kubernetes environment data shown in Portainer | Up to 5 minutes |
 
-The cache is refreshed on a configurable interval and when you manually trigger a refresh from the UI.
+This caching only applies to Kubernetes environments.
 
 ## Cache Refresh Behavior
 
-```bash
-# The cache sync interval is tied to the snapshot interval
-
-# To force an immediate cache refresh, restart Portainer
-docker restart portainer
-
-# After restart, Portainer re-syncs all Kubernetes environment data
-# The first page load after restart may be slower as cache is warming
-```
+Portainer's front-end cache for Kubernetes data expires after five minutes. In the current implementation, Portainer also clears the Kubernetes cache when you make Kubernetes write requests through the UI.
 
 ## Monitoring Cache Effectiveness
 
-Check Portainer logs to see cache hit/miss rates:
+Portainer does not document cache hit/miss counters for this feature. For general troubleshooting, inspect the Portainer container logs:
 
 ```bash
-# Enable debug logging to see cache behavior
-docker run -d ... portainer/portainer-ce:latest --log-level DEBUG
-
-docker logs portainer 2>&1 | grep -i "cache" | tail -20
+docker ps -a
+docker container logs <portainer-container-id>
 ```
+
+Portainer also supports the `--log-level DEBUG` CLI option, and debug logging can be enabled through **Settings**.
 
 ## Trade-offs
 
 | Setting | Performance | Data Freshness |
 |---|---|---|
-| Caching OFF | Slower - live API calls | Always current |
-| Caching ON | Faster - cached responses | May be seconds/minutes stale |
+| Caching OFF | No front-end cache for Kubernetes data | Fresh data on each request |
+| Caching ON | Faster page loads in Kubernetes views | Changes made by other users or outside Portainer may take up to five minutes to appear |
 
-For development clusters where you need to see changes immediately, keep caching off. For production monitoring where stability is prioritized, enable caching.
+If you need the freshest view in your session, keep caching off. If faster page loads matter more and a short delay in seeing external changes is acceptable, enable caching.
