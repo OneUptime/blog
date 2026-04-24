@@ -21,10 +21,10 @@ For organizations that cannot use public platforms like GitHub, hosting Portaine
 
 ```text
 Portainer → HTTP GET → Web Server → templates.json
-                                  → stacks/*/docker-compose.yml
+Portainer → Git clone/fetch → Internal Git Repository → docker-compose.yml
 ```
 
-Portainer fetches the `templates.json` file via HTTP/HTTPS. Stack templates reference Compose files that Portainer also fetches directly from the web server or Git repository.
+Portainer fetches the `templates.json` file via HTTP/HTTPS. For stack templates, `repository.url` must point to a Git repository that the Portainer Server can access, and `stackfile` identifies the Compose file within that repository.
 
 ## Option A: Host with Nginx in Docker
 
@@ -33,11 +33,13 @@ Portainer fetches the `templates.json` file via HTTP/HTTPS. Stack templates refe
 ```bash
 # Create directory structure on the web server
 
-mkdir -p /opt/portainer-templates/stacks/{wordpress,monitoring,gitea}
+mkdir -p /opt/portainer-templates
 mkdir -p /opt/portainer-templates/logos
 ```
 
 ### Step 2: Create the Templates JSON
+
+For stack templates, the `repository.url` value must point to a Git repository rather than a web server URL.
 
 ```bash
 cat > /opt/portainer-templates/templates.json << 'EOF'
@@ -62,14 +64,14 @@ cat > /opt/portainer-templates/templates.json << 'EOF'
       "restart_policy": "unless-stopped"
     },
     {
-      "type": 2,
+      "type": 3,
       "title": "Monitoring Stack",
       "description": "Prometheus and Grafana",
       "categories": ["monitoring"],
       "platform": "linux",
       "repository": {
-        "url": "http://templates.internal.company.com",
-        "stackfile": "stacks/monitoring/docker-compose.yml"
+        "url": "https://git.internal.company.com/devops/monitoring-stack.git",
+        "stackfile": "docker-compose.yml"
       },
       "env": [
         {
@@ -83,11 +85,11 @@ cat > /opt/portainer-templates/templates.json << 'EOF'
 EOF
 ```
 
-### Step 3: Create a Compose File for a Stack Template
+### Step 3: Create a Compose File in Your Git Repository
 
 ```yaml
-# /opt/portainer-templates/stacks/monitoring/docker-compose.yml
-version: "3.8"
+# In your internal Git repository: docker-compose.yml
+version: "2"
 
 services:
   prometheus:
@@ -119,8 +121,6 @@ volumes:
 
 ```yaml
 # /opt/portainer-templates/docker-compose.yml
-version: "3.8"
-
 services:
   template-server:
     image: nginx:alpine
@@ -143,15 +143,6 @@ server {
     root /usr/share/nginx/html;
     index templates.json;
 
-    # Enable CORS for Portainer
-    add_header Access-Control-Allow-Origin "*";
-    add_header Access-Control-Allow-Methods "GET, OPTIONS";
-
-    # Serve JSON with correct content type
-    location ~* \.json$ {
-        add_header Content-Type "application/json";
-    }
-
     # Cache static files
     location ~* \.(yml|yaml|json)$ {
         expires 5m;
@@ -169,8 +160,6 @@ docker compose -f /opt/portainer-templates/docker-compose.yml up -d
 
 ```yaml
 # docker-compose.yml for Caddy-based template server
-version: "3.8"
-
 services:
   template-server:
     image: caddy:alpine
@@ -188,15 +177,11 @@ volumes:
   caddy-data:
 ```
 
-```text
+```caddyfile
 # Caddyfile
 templates.company.com {
     root * /srv
     file_server
-
-    # Allow CORS for Portainer
-    header Access-Control-Allow-Origin *
-    header Content-Type application/json {path}/*.json
 }
 ```
 
@@ -222,22 +207,27 @@ https://templates.internal.company.com/templates.json
 ```
 
 3. Save settings
-4. Go to **App Templates** to verify
+4. Go to **Templates** > **Application** to verify
 
 ## Automating Template Updates
 
-Set up a cron job or CI/CD pipeline to update templates automatically:
+If you keep the catalog files in Git, set up a cron job or CI/CD pipeline to update templates automatically:
 
 ```bash
 #!/bin/bash
 # /opt/portainer-templates/update-templates.sh
 
-# Pull latest templates from internal Git
 cd /opt/portainer-templates
-git pull origin main
 
-# Nginx will serve the updated files immediately (no restart needed)
-echo "Templates updated at $(date)"
+if [ -d .git ]; then
+  git pull --ff-only
+
+  # Nginx will serve the updated files immediately (no restart needed)
+  echo "Templates updated at $(date)"
+else
+  echo "/opt/portainer-templates is not a Git checkout"
+  exit 1
+fi
 ```
 
 ```bash
@@ -270,7 +260,7 @@ curl http://templates.internal.company.com:8080/templates.json | python3 -m json
 # Check Nginx logs
 docker logs portainer-template-server
 
-# Verify CORS headers
+# Inspect response headers
 curl -I http://templates.internal.company.com:8080/templates.json
 ```
 
