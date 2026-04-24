@@ -28,16 +28,16 @@ services:
     volumes:
       # Persistent data storage
       - mongodb_data:/data/db
-      # MongoDB configuration
-      - ./mongod.conf:/etc/mongod.conf:ro
-      # Initialization scripts
-      - ./init:/docker-entrypoint-initdb.d:ro
+      # MongoDB configuration on the Docker host
+      - /opt/portainer/mongodb/mongod.conf:/etc/mongod.conf:ro
+      # Initialization scripts on the Docker host
+      - /opt/portainer/mongodb/init:/docker-entrypoint-initdb.d:ro
     ports:
       - "27017:27017"
     command: ["mongod", "--config", "/etc/mongod.conf"]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--username", "admin", "--password", "change_this_root_password", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -48,9 +48,9 @@ services:
     image: mongo-express:latest
     container_name: mongo-express
     environment:
-      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
-      ME_CONFIG_MONGODB_ADMINPASSWORD: change_this_root_password
-      ME_CONFIG_MONGODB_SERVER: mongodb
+      ME_CONFIG_MONGODB_URL: mongodb://admin:change_this_root_password@mongodb:27017/?authSource=admin
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: "true"
+      ME_CONFIG_BASICAUTH_ENABLED: "true"
       ME_CONFIG_BASICAUTH_USERNAME: admin
       ME_CONFIG_BASICAUTH_PASSWORD: express_password
     ports:
@@ -66,23 +66,17 @@ volumes:
 
 ## MongoDB Configuration
 
-Create `mongod.conf`:
+Create `/opt/portainer/mongodb/mongod.conf`:
 
 ```yaml
 # mongod.conf
 
 storage:
   dbPath: /data/db
-  engine: wiredTiger
   wiredTiger:
     engineConfig:
-      # Cache size: 50% of RAM (MongoDB default)
+      # Example fixed cache size for a memory-limited container
       cacheSizeGB: 1.0
-
-systemLog:
-  destination: file
-  logAppend: true
-  path: /var/log/mongodb/mongod.log
 
 net:
   port: 27017
@@ -99,7 +93,7 @@ operationProfiling:
 
 ## Initialization Script
 
-Create `init/01-create-user.js`:
+Create `/opt/portainer/mongodb/init/01-create-user.js`:
 
 ```javascript
 // Create application user with limited permissions
@@ -146,6 +140,9 @@ docker exec mongodb mongodump \
 
 # Copy backup from container
 docker cp mongodb:/tmp/backup ./mongodb-backup-$(date +%Y%m%d)
+
+# Copy the backup back into the container before restore
+docker cp ./mongodb-backup-YYYYMMDD mongodb:/tmp/backup
 
 # Restore
 docker exec mongodb mongorestore \
