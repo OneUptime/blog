@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Output, Preconditions, Validation, Infrastructure as Code, DevOps
 
-Description: A guide to adding precondition checks to OpenTofu output values to validate assumptions before exposing values to consumers.
+Description: A guide to adding precondition checks to OpenTofu output values to validate guarantees before exposing values to consumers.
 
 ## Introduction
 
-Preconditions in output blocks validate assumptions about the state of your infrastructure before the output value is used. Unlike variable validations that check input values, output preconditions verify that the infrastructure you've created meets certain requirements.
+Preconditions in output blocks validate guarantees about the values your module exposes before OpenTofu finalizes them. Unlike variable validations that check input values, output preconditions verify that the infrastructure or data behind an output meets certain requirements.
 
 ## Basic Output Precondition
 
@@ -157,4 +157,4 @@ output "ami_id" {
 
 ## Conclusion
 
-Output preconditions are a powerful tool for encoding infrastructure assumptions and compliance requirements directly in your configuration. They run during the apply phase after resources are created, verifying that your infrastructure meets the requirements before values are exposed to consumers. This is especially valuable for security-sensitive outputs where you want to guarantee certain properties before the output is used.
+Output preconditions are a powerful tool for encoding infrastructure guarantees and compliance requirements directly in your configuration. OpenTofu evaluates them as early as possible: during planning when the referenced values are already known, or during apply when they are not. For outputs specifically, the precondition is checked before OpenTofu finalizes the output value, helping prevent invalid values from being saved to state. This is especially valuable for security-sensitive outputs where you want to guarantee certain properties before the output is used.
