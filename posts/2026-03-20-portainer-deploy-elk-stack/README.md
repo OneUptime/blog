@@ -14,16 +14,18 @@ The ELK Stack (Elasticsearch + Logstash + Kibana) is the most popular open-sourc
 
 - Docker host with at least 6GB RAM
 - Portainer installed
-- vm.max_map_count set to 262144
+- vm.max_map_count set to 1048576
 
 ## System Configuration
 
 ```bash
-sudo sysctl -w vm.max_map_count=262144
-echo 'vm.max_map_count=262144' | sudo tee /etc/sysctl.d/99-elastic.conf
+sudo sysctl -w vm.max_map_count=1048576
+echo 'vm.max_map_count=1048576' | sudo tee /etc/sysctl.d/99-elastic.conf
 ```
 
 ## Deploy the Complete ELK Stack
+
+Before deploying the stack, create the `/opt/elk/logstash/pipeline` directory on the Docker host and save the `main.conf` file from the next section there.
 
 In Portainer, create a stack named `elk-stack`:
 
@@ -32,7 +34,7 @@ version: "3.8"
 
 services:
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
     container_name: elasticsearch
     environment:
       - discovery.type=single-node
@@ -55,20 +57,19 @@ services:
       - elk-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -s -u elastic:elastic_password http://localhost:9200 > /dev/null"]
+      test: ["CMD-SHELL", "curl -s -u elastic:elastic_password http://localhost:9200 | grep -q cluster_name"]
       interval: 20s
       timeout: 10s
       retries: 10
       start_period: 60s
 
   logstash:
-    image: docker.elastic.co/logstash/logstash:8.13.0
+    image: docker.elastic.co/logstash/logstash:9.3.3
     container_name: logstash
     environment:
       - LS_JAVA_OPTS=-Xmx512m -Xms512m
     volumes:
-      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
-      - ./logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - /opt/elk/logstash/pipeline:/usr/share/logstash/pipeline:ro
     ports:
       - "5044:5044"
       - "5000:5000/udp"
@@ -81,12 +82,12 @@ services:
     restart: unless-stopped
 
   kibana:
-    image: docker.elastic.co/kibana/kibana:8.13.0
+    image: docker.elastic.co/kibana/kibana:9.3.3
     container_name: kibana
     environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=kibana_system_password
+      ELASTICSEARCH_HOSTS: '["http://elasticsearch:9200"]'
+      ELASTICSEARCH_USERNAME: kibana_system
+      ELASTICSEARCH_PASSWORD: kibana_system_password
     volumes:
       - kibana_data:/usr/share/kibana/data
     ports:
@@ -109,7 +110,7 @@ volumes:
 
 ## Logstash Pipeline
 
-Create `logstash/pipeline/main.conf`:
+Create `/opt/elk/logstash/pipeline/main.conf` on the Docker host:
 
 ```ruby
 input {
@@ -142,6 +143,20 @@ filter {
   mutate {
     add_field => { "environment" => "production" }
   }
+
+  if [@metadata][beat] and [@metadata][version] {
+    mutate {
+      add_field => { "[@metadata][target_index]" => "%{[@metadata][beat]}-%{[@metadata][version]}-%{+YYYY.MM.dd}" }
+    }
+  } else if [type] == "syslog" {
+    mutate {
+      add_field => { "[@metadata][target_index]" => "syslog-%{+YYYY.MM.dd}" }
+    }
+  } else {
+    mutate {
+      add_field => { "[@metadata][target_index]" => "logstash-%{+YYYY.MM.dd}" }
+    }
+  }
 }
 
 output {
@@ -149,7 +164,7 @@ output {
     hosts => ["http://elasticsearch:9200"]
     user => "elastic"
     password => "elastic_password"
-    index => "%{[@metadata][beat]}-%{[@metadata][version]}-%{+YYYY.MM.dd}"
+    index => "%{[@metadata][target_index]}"
     ilm_enabled => false
   }
 }
@@ -160,15 +175,16 @@ output {
 ```bash
 # Set kibana_system password
 
-curl -X POST "http://localhost:9200/_security/user/kibana_system/_password" \
+curl -X POST \
   -u elastic:elastic_password \
   -H "Content-Type: application/json" \
+  "http://localhost:9200/_security/user/kibana_system/_password" \
   -d '{"password": "kibana_system_password"}'
 
 # Verify all services
-curl -s "http://localhost:9200/_cluster/health?pretty" -u elastic:elastic_password
+curl -s -u elastic:elastic_password "http://localhost:9200/_cluster/health?pretty"
 curl -s "http://localhost:9600/_node/stats?pretty" | head -20
-curl -s "http://localhost:5601/api/status" | python3 -m json.tool
+curl -s -u elastic:elastic_password "http://localhost:5601/api/status" | python3 -m json.tool
 ```
 
 ## Sending Logs to the ELK Stack
@@ -178,7 +194,8 @@ Install Filebeat on a host to ship logs:
 ```yaml
 # filebeat.yml
 filebeat.inputs:
-  - type: log
+  - type: filestream
+    id: nginx-access
     enabled: true
     paths:
       - /var/log/nginx/access.log
