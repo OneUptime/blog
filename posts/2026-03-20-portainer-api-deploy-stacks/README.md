@@ -32,13 +32,15 @@ This is the most common method for CI/CD pipelines:
 
 ```bash
 PORTAINER_URL="https://portainer.example.com"
-TOKEN="your-jwt-or-api-key"
+JWT_TOKEN="your-jwt-token"
+AUTH_HEADER="Authorization: Bearer $JWT_TOKEN"
+# If you're using an API access token instead, use:
+# AUTH_HEADER="X-API-Key: your-api-access-token"
 ENDPOINT_ID=1   # Your Docker environment ID
 
 # Create a new stack by passing the Compose content as a string
 
 COMPOSE_CONTENT=$(cat << 'EOF'
-version: "3.8"
 services:
   web:
     image: nginx:1.25
@@ -58,7 +60,7 @@ EOF
 )
 
 curl -s -X POST \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "$AUTH_HEADER" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/stacks/create/standalone/string?endpointId=${ENDPOINT_ID}" \
   -d "{
@@ -76,9 +78,8 @@ curl -s -X POST \
 ```bash
 # Deploy using a Compose file upload
 curl -s -X POST \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "$AUTH_HEADER" \
   -F "Name=my-web-app" \
-  -F "EndpointId=${ENDPOINT_ID}" \
   -F "file=@/path/to/docker-compose.yml" \
   "${PORTAINER_URL}/api/stacks/create/standalone/file?endpointId=${ENDPOINT_ID}" | jq .
 ```
@@ -87,15 +88,16 @@ curl -s -X POST \
 
 ```bash
 # List all stacks
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -s -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/stacks" | \
   jq '.[] | {id: .Id, name: .Name, status: .Status, endpoint: .EndpointId}'
 
-# Stack status: 1 = active, 2 = inactive
+# Stack status: 1 = active, 2 = inactive, 3 = deploying, 4 = error
 
 # Filter stacks by endpoint
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/stacks?filters={\"EndpointID\":${ENDPOINT_ID}}" | jq .
+curl -s -G -H "$AUTH_HEADER" \
+  --data-urlencode "filters={\"EndpointID\":\"${ENDPOINT_ID}\"}" \
+  "${PORTAINER_URL}/api/stacks" | jq .
 ```
 
 ## Step 4: Update an Existing Stack
@@ -105,25 +107,33 @@ STACK_ID=3
 
 # Update stack with new Compose content
 NEW_COMPOSE=$(cat << 'EOF'
-version: "3.8"
 services:
   web:
     image: nginx:1.26   # Updated version
     ports:
       - "80:80"
     restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
 EOF
 )
 
 curl -s -X PUT \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "$AUTH_HEADER" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/stacks/${STACK_ID}?endpointId=${ENDPOINT_ID}" \
   -d "{
     \"stackFileContent\": $(echo "$NEW_COMPOSE" | jq -Rs .),
     \"env\": [],
     \"prune\": true,
-    \"pullImage\": true
+    \"repullImageAndRedeploy\": true
   }" | jq .
 ```
 
@@ -134,12 +144,12 @@ STACK_ID=3
 
 # Stop a stack (bring down all services)
 curl -s -X POST \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/stacks/${STACK_ID}/stop?endpointId=${ENDPOINT_ID}" | jq .
 
 # Start a stopped stack
 curl -s -X POST \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/stacks/${STACK_ID}/start?endpointId=${ENDPOINT_ID}" | jq .
 ```
 
@@ -148,10 +158,10 @@ curl -s -X POST \
 ```bash
 STACK_ID=3
 
-# Delete a stack (removes all containers, networks but NOT volumes by default)
-curl -s -X DELETE \
-  -H "Authorization: Bearer $TOKEN" \
-  "${PORTAINER_URL}/api/stacks/${STACK_ID}?endpointId=${ENDPOINT_ID}" | jq .
+# Delete a stack (successful deletes return HTTP 204 No Content)
+curl -sS -o /dev/null -w "HTTP %{http_code}\n" -X DELETE \
+  -H "$AUTH_HEADER" \
+  "${PORTAINER_URL}/api/stacks/${STACK_ID}?endpointId=${ENDPOINT_ID}"
 ```
 
 ## Step 7: CI/CD Pipeline Integration
@@ -165,7 +175,7 @@ Here is a complete GitHub Actions-style deployment script:
 set -euo pipefail
 
 PORTAINER_URL="${PORTAINER_URL:-https://portainer.example.com}"
-API_KEY="${PORTAINER_API_KEY}"
+API_KEY="${PORTAINER_API_KEY:-}"
 ENDPOINT_ID="${PORTAINER_ENDPOINT_ID:-1}"
 STACK_NAME="${STACK_NAME:-my-app}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
@@ -173,10 +183,13 @@ IMAGE_TAG="${IMAGE_TAG:-latest}"
 
 # Authenticate if using username/password
 if [ -z "${API_KEY:-}" ]; then
-  API_KEY=$(curl -s -X POST "${PORTAINER_URL}/api/auth" \
+  : "${PORTAINER_USER:?PORTAINER_USER is required when PORTAINER_API_KEY is not set}"
+  : "${PORTAINER_PASS:?PORTAINER_PASS is required when PORTAINER_API_KEY is not set}"
+
+  JWT_TOKEN=$(curl -fsS -X POST "${PORTAINER_URL}/api/auth" \
     -H "Content-Type: application/json" \
-    -d "{\"username\":\"${PORTAINER_USER}\",\"password\":\"${PORTAINER_PASS}\"}" | jq -r '.jwt')
-  AUTH_HEADER="Authorization: Bearer $API_KEY"
+    -d "{\"username\":\"${PORTAINER_USER}\",\"password\":\"${PORTAINER_PASS}\"}" | jq -er '.jwt')
+  AUTH_HEADER="Authorization: Bearer $JWT_TOKEN"
 else
   AUTH_HEADER="X-API-Key: $API_KEY"
 fi
@@ -184,16 +197,17 @@ fi
 COMPOSE_CONTENT=$(cat "$COMPOSE_FILE")
 
 # Check if stack exists
-EXISTING_STACK=$(curl -s -H "$AUTH_HEADER" \
+EXISTING_STACK=$(curl -fsS -H "$AUTH_HEADER" \
   "${PORTAINER_URL}/api/stacks" | \
-  jq --arg name "$STACK_NAME" '.[] | select(.Name == $name)')
+  jq -c --arg name "$STACK_NAME" --arg endpoint "$ENDPOINT_ID" \
+    '.[] | select(.Name == $name and (.EndpointId | tostring) == $endpoint)')
 
 if [ -n "$EXISTING_STACK" ]; then
   # Update existing stack
-  STACK_ID=$(echo $EXISTING_STACK | jq -r '.Id')
+  STACK_ID=$(echo "$EXISTING_STACK" | jq -r '.Id')
   echo "Updating existing stack '$STACK_NAME' (ID: $STACK_ID)..."
 
-  curl -s -X PUT \
+  curl -fsS -X PUT \
     -H "$AUTH_HEADER" \
     -H "Content-Type: application/json" \
     "${PORTAINER_URL}/api/stacks/${STACK_ID}?endpointId=${ENDPOINT_ID}" \
@@ -201,7 +215,7 @@ if [ -n "$EXISTING_STACK" ]; then
       \"stackFileContent\": $(echo "$COMPOSE_CONTENT" | jq -Rs .),
       \"env\": [{\"name\": \"IMAGE_TAG\", \"value\": \"$IMAGE_TAG\"}],
       \"prune\": true,
-      \"pullImage\": true
+      \"repullImageAndRedeploy\": true
     }" > /dev/null
 
   echo "Stack updated successfully."
@@ -209,7 +223,7 @@ else
   # Create new stack
   echo "Creating new stack '$STACK_NAME'..."
 
-  curl -s -X POST \
+  curl -fsS -X POST \
     -H "$AUTH_HEADER" \
     -H "Content-Type: application/json" \
     "${PORTAINER_URL}/api/stacks/create/standalone/string?endpointId=${ENDPOINT_ID}" \
