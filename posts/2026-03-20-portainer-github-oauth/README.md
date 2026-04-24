@@ -12,7 +12,7 @@ GitHub OAuth is a natural choice for development teams already using GitHub for 
 
 ## Prerequisites
 
-- GitHub account with organization membership (if restricting access to an org)
+- GitHub account (and organization admin access if you want the OAuth app owned by an org)
 - Portainer running on HTTPS
 - Ability to register OAuth applications in GitHub
 
@@ -38,7 +38,7 @@ For GitHub Organizations:
 
 ## Step 2: GitHub OAuth Endpoints
 
-GitHub uses a non-standard OAuth flow (not OIDC). The endpoints are:
+GitHub OAuth Apps use OAuth 2.0 rather than OIDC. The endpoints are:
 
 ```text
 Authorization URL: https://github.com/login/oauth/authorize
@@ -48,7 +48,7 @@ Resource URL:      https://api.github.com/user
 
 ## Step 3: Configure Portainer for GitHub OAuth
 
-In Settings → Authentication → OAuth → GitHub:
+In Settings → Authentication → OAuth → GitHub, enter the **Client ID** and **Client secret**. Portainer fills in the standard GitHub.com endpoints. If you click **Override default configuration**, use the following GitHub.com values:
 
 ```text
 Client ID:         your-github-client-id
@@ -58,10 +58,10 @@ Access Token URL:  https://github.com/login/oauth/access_token
 Resource URL:      https://api.github.com/user
 Redirect URL:      https://portainer.example.com/
 User Identifier:   login
-Scopes:            user:email read:org
+Scopes:            read:user
 ```
 
-**Note**: `login` is the GitHub username. You can also use `email` but note GitHub allows users to hide their email.
+**Note**: `login` is the GitHub username. You can also use `email`, but with `https://api.github.com/user` that only works if the user has a public email address.
 
 ## Step 4: Configure via API
 
@@ -78,7 +78,7 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d '{
     "AuthenticationMethod": 3,
-    "oauthsettings": {
+    "OAuthSettings": {
       "ClientID": "your-github-client-id",
       "ClientSecret": "your-github-client-secret",
       "AuthorizationURI": "https://github.com/login/oauth/authorize",
@@ -86,7 +86,7 @@ curl -X PUT \
       "ResourceURI": "https://api.github.com/user",
       "RedirectURI": "https://portainer.example.com/",
       "UserIdentifier": "login",
-      "Scopes": "user:email read:org",
+      "Scopes": "read:user",
       "OAuthAutoCreateUsers": true,
       "SSO": true
     }
@@ -95,17 +95,13 @@ curl -X PUT \
 
 ## Restricting Access to GitHub Organization Members
 
-To restrict access to members of a specific GitHub organization, add the `allow_organizations` parameter:
+GitHub OAuth Apps do not support an `allowed_organizations` or `allow_organizations` authorization parameter for limiting sign-in to a specific organization.
 
-```text
-Authorization URL: https://github.com/login/oauth/authorize?allowed_organizations=your-org-name
-```
+GitHub's OAuth app access restrictions can still protect organization resources, but they do not by themselves restrict Portainer sign-ins to organization members:
 
-However, the most reliable way to restrict access is to configure org-level OAuth application access controls in GitHub:
-
-1. Go to your org → **Settings** → **OAuth App access restrictions**
-2. Enable "Restrict access to OAuth Apps"
-3. Approve only the Portainer OAuth app
+1. Go to your organization → **Settings** → **OAuth app policy**
+2. Enable OAuth app access restrictions if needed
+3. Review and approve only the Portainer OAuth app
 
 ## GitHub Enterprise Configuration
 
@@ -117,7 +113,7 @@ Access Token URL:  https://github.yourcompany.com/login/oauth/access_token
 Resource URL:      https://github.yourcompany.com/api/v3/user
 ```
 
-Register the OAuth app in your GitHub Enterprise instance's admin panel or in your organization settings.
+Register the OAuth app in your GitHub Enterprise Server instance under your personal account or an organization you administer.
 
 ## Verifying Access
 
@@ -125,7 +121,10 @@ Register the OAuth app in your GitHub Enterprise instance's admin panel or in yo
 # Test the GitHub OAuth token manually
 
 GITHUB_TOKEN="your-github-oauth-token"
-curl -H "Authorization: token $GITHUB_TOKEN" \
+curl \
+  -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "X-GitHub-Api-Version: 2026-03-10" \
   https://api.github.com/user \
   | python3 -m json.tool
 
@@ -138,8 +137,8 @@ curl -H "Authorization: token $GITHUB_TOKEN" \
 
 **Blank callback page**: Redirect URI mismatch. The callback URL must exactly match what's in GitHub OAuth settings.
 
-**User sees 404 after login**: Portainer `--trusted-origins` is not configured. Add `--trusted-origins=https://portainer.example.com`.
+**User sees "Origin invalid" or a 403 after login behind a reverse proxy**: Portainer `--trusted-origins` is not configured. Add `--trusted-origins=https://portainer.example.com`.
 
 ## Conclusion
 
-GitHub OAuth is straightforward to set up and ideal for development teams. The user identifier `login` gives usernames that match GitHub usernames, making it easy to identify who's who in Portainer. For teams needing to restrict access to an organization, combine GitHub OAuth with org-level OAuth app restrictions for effective access control.
+GitHub OAuth is straightforward to set up and ideal for development teams. The user identifier `login` maps Portainer users to GitHub usernames, making it easy to identify who's who in Portainer. If you need to protect GitHub organization resources, GitHub's OAuth app policy can control the app's org access, but it does not by itself restrict Portainer sign-ins to organization members.
