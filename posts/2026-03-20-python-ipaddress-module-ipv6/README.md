@@ -113,11 +113,11 @@ import ipaddress
 # IPv4-mapped IPv6: ::ffff:1.2.3.4
 mapped = ipaddress.IPv6Address("::ffff:192.0.2.1")
 print(mapped.ipv4_mapped)        # IPv4Address('192.0.2.1')
-print(mapped.is_private)         # True (IPv4 RFC 5737)
+print(mapped.is_private)         # True (inherits embedded IPv4 classification)
 
-# IPv4-compatible (deprecated): ::1.2.3.4
-compat = ipaddress.IPv6Address("::192.0.2.1")
-print(compat.ipv4_compatible)    # IPv4Address('192.0.2.1')
+# Not every embedded-IPv4 form is IPv4-mapped
+not_mapped = ipaddress.IPv6Address("::192.0.2.1")
+print(not_mapped.ipv4_mapped)    # None
 
 # Normalize: extract IPv4 from mapped
 def normalize_address(addr_str: str) -> str:
