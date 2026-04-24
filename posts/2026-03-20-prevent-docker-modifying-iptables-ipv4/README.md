@@ -8,7 +8,7 @@ Description: Configure Docker to stop modifying iptables rules by disabling ipta
 
 ## Introduction
 
-By default, Docker automatically manages iptables rules to implement port publishing, NAT for containers, and inter-container policies. On servers with strict firewall policies managed by tools like `ufw`, `firewalld`, or custom iptables scripts, Docker's modifications can break or bypass firewall rules. Disabling Docker's iptables management lets you control the rules manually.
+By default, Docker automatically manages iptables rules to implement port publishing, NAT for containers, and inter-container policies. On servers with strict firewall policies managed by tools like `ufw`, `firewalld`, or custom iptables scripts, Docker's modifications can break or bypass firewall rules. Disabling Docker's iptables management stops Docker from creating most of these rules, but you must replace the required firewall rules yourself.
 
 ## Disabling iptables Management
 
@@ -27,27 +27,27 @@ sudo systemctl restart docker
 ## What Docker Normally Creates
 
 Before disabling, Docker typically creates:
-- `DOCKER` chain (container-specific rules)
 - `DOCKER-USER` chain (user policy insertion point)
-- `DOCKER-ISOLATION-STAGE-1` and `STAGE-2` (inter-network isolation)
-- NAT rules in the `nat` table for port publishing
-- MASQUERADE rules for outbound container NAT
+- `DOCKER-FORWARD` chain (first-stage forwarding rules)
+- `DOCKER`, `DOCKER-BRIDGE`, and `DOCKER-INTERNAL` chains (bridge-specific filtering and published-port rules)
+- `DOCKER-CT` chain (per-bridge connection tracking rules)
+- `DOCKER-INGRESS` chain (Swarm ingress rules)
+- NAT rules in the `nat` table for port publishing and masquerading
 
 ## Adding Required Rules Manually
 
-After disabling Docker's iptables management, you must add rules manually for containers to work:
+After disabling Docker's iptables management, you must add replacement rules manually. Assuming IP forwarding is enabled, a minimal example for the default `docker0` bridge is:
 
 ```bash
-# Allow forwarding between container bridge and host
+# Allow containers on docker0 to reach the WAN interface
+sudo iptables -A FORWARD -i docker0 -o eth0 -j ACCEPT
 
-sudo iptables -A FORWARD -i docker0 -j ACCEPT
-sudo iptables -A FORWARD -o docker0 -j ACCEPT
+# Allow return traffic back into docker0
+sudo iptables -A FORWARD -i eth0 -o docker0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 
-# NAT for outbound container traffic (replace eth0 with your WAN interface)
+# NAT for outbound container traffic (replace eth0 with your WAN interface,
+# and 172.17.0.0/16 if you changed Docker's default bridge subnet)
 sudo iptables -t nat -A POSTROUTING -s 172.17.0.0/16 -o eth0 -j MASQUERADE
-
-# Allow established connections back into the container network
-sudo iptables -A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT
 ```
 
 ## Publishing Ports Manually
@@ -55,15 +55,15 @@ sudo iptables -A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT
 When `iptables: false`, Docker's `-p` flag does not create iptables rules. Do it yourself:
 
 ```bash
-# Publish container port 80 as host port 8080
+# Run the container without -p; publish it manually with iptables
 docker run -d --name web nginx
 
-# Get the container IP
-CONTAINER_IP=$(docker inspect web --format '{{.NetworkSettings.IPAddress}}')
+# Get the container IP on the bridge network
+CONTAINER_IP=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' web)
 
-# Forward host port 8080 to container port 80
+# Forward incoming connections on host port 8080 to container port 80
 sudo iptables -t nat -A PREROUTING -p tcp --dport 8080 -j DNAT --to-destination $CONTAINER_IP:80
-sudo iptables -A FORWARD -p tcp -d $CONTAINER_IP --dport 80 -j ACCEPT
+sudo iptables -A FORWARD -p tcp -d $CONTAINER_IP --dport 80 -m conntrack --ctstate NEW,ESTABLISHED,RELATED -j ACCEPT
 ```
 
 ## Using DOCKER-USER Chain Instead
@@ -88,4 +88,4 @@ sudo iptables -I DOCKER-USER -i eth0 ! -s 192.168.1.0/24 -j REJECT
 
 ## Conclusion
 
-Disable Docker's iptables management with `"iptables": false` in `daemon.json` for maximum control. You must then manually add NAT and FORWARD rules. For most environments, using the `DOCKER-USER` chain to prepend custom policies is a better balance of control and simplicity.
+Disable Docker's iptables management with `"iptables": false` in `daemon.json` only when you are prepared to replace Docker's bridge-network firewall rules yourself. It prevents Docker from creating most iptables rules, but not all firewall rule creation can be disabled entirely. For most environments, using the `DOCKER-USER` chain to prepend custom policies is a better balance of control and simplicity.
