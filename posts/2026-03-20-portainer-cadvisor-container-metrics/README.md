@@ -12,7 +12,7 @@ cAdvisor (Container Advisor) is Google's open-source tool for analyzing resource
 
 ## Prerequisites
 
-- Portainer CE or BE running
+- Portainer CE or BE connected to a Docker Standalone environment
 - Prometheus deployed (see the Prometheus/Grafana deployment guide)
 - Docker host with access to system metrics
 
@@ -27,7 +27,7 @@ version: "3.8"
 
 services:
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: ghcr.io/google/cadvisor:v0.56.2
     container_name: cadvisor
     restart: unless-stopped
     privileged: true    # Required to read cgroup and hardware metrics
@@ -44,11 +44,11 @@ services:
       - "--housekeeping_interval=10s"         # Metric collection frequency
       - "--docker_only=true"                  # Only report Docker containers
       - "--store_container_labels=true"       # Store container labels as metric labels
-      - "--disable_metrics=percpu,sched,tcp,udp,disk,diskIO,accelerator"    # Reduce cardinality
+      - "--disable_metrics=percpu,sched,tcp,udp"    # Reduce cardinality
     networks:
       - monitoring
     ports:
-      - "127.0.0.1:8080:8080"    # Only expose locally (Prometheus scrapes from same network)
+      - "127.0.0.1:8080:8080"    # Optional local host access to the cAdvisor UI and metrics
 
 networks:
   monitoring:
@@ -82,19 +82,19 @@ scrape_configs:
     scrape_interval: 15s
     static_configs:
       - targets: ["cadvisor:8080"]    # Container name on monitoring network
-    metric_relabeling:
+    metric_relabel_configs:
       # Drop high-cardinality metrics to reduce storage
       - source_labels: [__name__]
         regex: "container_tasks_state|container_memory_failures_total"
         action: drop
-      # Only keep containers with a name (exclude system containers)
+      # Only keep Docker Compose-managed containers
       - source_labels: [container_label_com_docker_compose_service]
         regex: ""
         action: drop
 ```
 
 ```bash
-# Reload Prometheus configuration
+# Reload Prometheus configuration (requires --web.enable-lifecycle)
 curl -X POST http://localhost:9090/-/reload
 
 # Verify cAdvisor target is up
@@ -112,8 +112,8 @@ CPU Metrics:
 
 Memory Metrics:
   container_memory_usage_bytes          - Current memory usage (including cache)
-  container_memory_working_set_bytes    - Memory that cannot be reclaimed
-  container_memory_limit_bytes          - Memory limit (0 = no limit)
+  container_memory_working_set_bytes    - Current working set memory
+  container_spec_memory_limit_bytes     - Configured memory limit for the container
   container_memory_rss                  - RSS memory (actual in-use memory)
 
 Network Metrics:
@@ -129,47 +129,32 @@ Disk I/O Metrics:
 ## Step 5: Useful Prometheus Queries
 
 ```promql
-# CPU usage percentage per container (rate over 5 minutes)
-rate(container_cpu_usage_seconds_total{image!=""}[5m]) * 100
+# CPU usage per container (CPU cores used, rate over 5 minutes)
+rate(container_cpu_usage_seconds_total{image!=""}[5m])
 
 # Top 5 containers by memory usage
 topk(5, container_memory_working_set_bytes{image!=""})
 
 # Memory usage as percentage of limit
-container_memory_working_set_bytes / container_memory_limit_bytes * 100
+container_memory_working_set_bytes{image!=""} / container_spec_memory_limit_bytes{image!=""} * 100
 
 # Network receive rate (bytes per second)
 rate(container_network_receive_bytes_total[5m])
 
 # Containers using more than 80% of their memory limit
-(container_memory_working_set_bytes / container_memory_limit_bytes) > 0.8
+(container_memory_working_set_bytes{image!=""} / container_spec_memory_limit_bytes{image!=""}) > 0.8
 ```
 
 ## Step 6: Import cAdvisor Grafana Dashboard
 
-```bash
-# Import the Docker containers dashboard (ID: 14282) via Grafana API
-curl -s -X POST -u "admin:password" \
-  -H "Content-Type: application/json" \
-  "http://localhost:3000/api/dashboards/import" \
-  -d '{
-    "id": 14282,
-    "overwrite": true,
-    "inputs": [{
-      "name": "DS_PROMETHEUS",
-      "type": "datasource",
-      "pluginId": "prometheus",
-      "value": "Prometheus"
-    }]
-  }'
-```
+In Grafana, go to **Dashboards** → **New** → **Import dashboard**, paste dashboard ID `21743`, select your Prometheus data source, and click **Import**.
 
 The dashboard shows:
 - CPU usage per container
-- Memory usage vs limit
+- Memory usage per container
+- Memory cached per container
 - Network traffic per container
-- Filesystem usage
-- Container uptime
+- Container restarts
 
 ## Step 7: Alert on Container Resource Issues
 
@@ -182,7 +167,7 @@ groups:
     rules:
       # Alert if container uses > 90% of its memory limit
       - alert: ContainerMemoryHigh
-        expr: (container_memory_working_set_bytes / container_memory_limit_bytes) > 0.9
+        expr: (container_memory_working_set_bytes{image!=""} / container_spec_memory_limit_bytes{image!=""}) > 0.9
         for: 5m
         labels:
           severity: warning
@@ -192,7 +177,7 @@ groups:
 
       # Alert if container restarts repeatedly
       - alert: ContainerFrequentRestarts
-        expr: rate(container_start_time_seconds[1h]) > 3
+        expr: changes(container_start_time_seconds{image!=""}[1h]) > 3
         for: 5m
         labels:
           severity: critical
@@ -202,4 +187,4 @@ groups:
 
 ## Conclusion
 
-cAdvisor provides deep per-container metrics that are essential for understanding resource consumption in Portainer-managed environments. The key metrics to monitor are `container_memory_working_set_bytes` (real memory in use), CPU rate calculations, and network I/O. Deploy with `--docker_only=true` and selective metric disabling to reduce Prometheus storage requirements, and use the Grafana dashboard import to quickly visualize container performance without building dashboards from scratch.
+cAdvisor provides deep per-container metrics that are essential for understanding resource consumption in Portainer-managed environments. The key metrics to monitor are `container_memory_working_set_bytes` (working set memory), CPU rate calculations, and network I/O. Deploy with `--docker_only=true` and selective metric disabling to reduce Prometheus storage requirements, and use the Grafana dashboard import to quickly visualize container performance without building dashboards from scratch.
