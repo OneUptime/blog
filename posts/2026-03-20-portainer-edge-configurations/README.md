@@ -8,7 +8,7 @@ Description: Learn how to create, manage, and distribute edge configurations to 
 
 ## Introduction
 
-Managing configuration files across a large fleet of edge devices is one of the most challenging aspects of edge operations. Portainer's Edge Configurations feature allows you to centrally store configuration files and distribute them to your edge endpoints automatically, keeping all devices in sync without manual intervention.
+Managing configuration files across a large fleet of edge devices is one of the most challenging aspects of edge operations. Portainer's Edge Configurations feature allows you to centrally store configuration packages and distribute them to your edge endpoints automatically, keeping all devices in sync without manual intervention.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ Managing configuration files across a large fleet of edge devices is one of the 
 
 ## What Are Edge Configurations?
 
-Edge Configurations are files stored in Portainer that get synchronized to edge devices. Common use cases include:
+Edge Configurations are sets of files stored in Portainer that get synchronized to edge devices. Common use cases include:
 
 - Application configuration files (e.g., `nginx.conf`, `app.yaml`)
 - Certificate files
@@ -36,7 +36,18 @@ Edge Configurations are files stored in Portainer that get synchronized to edge 
 Provide the following:
 
 - **Name**: A descriptive identifier (e.g., `nginx-config-production`).
-- **Content**: Paste the file content directly.
+- **Type**: Choose `General configuration` to deploy the same files to all devices in the selected edge groups, or `Device specific configuration` to match files or folders to devices by `PORTAINER_EDGE_ID`.
+- **Configuration package**: Upload a ZIP package containing the files you want to distribute.
+
+For example, your ZIP package might contain files like:
+
+```text
+edge-configs.zip
+|- nginx.conf
+`- app.yaml
+```
+
+One of those files could be an `nginx.conf` like this:
 
 ```nginx
 # Example: nginx.conf for an edge-deployed reverse proxy
@@ -74,19 +85,19 @@ http {
 }
 ```
 
-## Step 3: Set the Target Path
+## Step 3: Set the Target Directory
 
-Specify where the file should be written on the edge device:
+Specify the directory on the edge device where the package contents should be written:
 
 ```text
 # Target directory on edge host:
-/etc/edge-configs/nginx/nginx.conf
+/etc/edge-configs/nginx
 
 # Or for app config:
-/opt/myapp/config/app.yaml
+/opt/myapp/config
 ```
 
-The edge agent will create the directory if it does not exist and write the file to the specified path.
+Portainer deploys the files from the ZIP package into this directory on the edge device. The directory should be the same on all target devices and writable by the user the Edge Agent runs as. For example, if your ZIP package contains `nginx.conf` and you use `/etc/edge-configs/nginx` as the directory, the file will be available at `/etc/edge-configs/nginx/nginx.conf`.
 
 ## Step 4: Assign to Edge Groups
 
@@ -96,7 +107,7 @@ Select the edge groups that should receive this configuration:
 - `Production-US`
 - `Factory-Floor-Berlin`
 
-All endpoints in the selected groups will receive the file.
+All edge environments in the selected groups will receive the configuration package.
 
 ## Step 5: Reference Configurations in Edge Stacks
 
@@ -104,8 +115,6 @@ Once configurations are distributed, your Edge Stack can use them via bind mount
 
 ```yaml
 # docker-compose.yml - uses the edge-distributed config file
-version: "3.8"
-
 services:
   nginx:
     image: nginx:alpine
@@ -129,23 +138,21 @@ services:
 To roll out a configuration change:
 1. Go to **Edge Compute > Edge Configurations**.
 2. Click on the configuration name.
-3. Edit the content.
+3. Upload an updated ZIP package or adjust the configuration settings.
 4. Click **Save**.
 
-Portainer will push the updated file to all assigned edge groups on the next agent synchronization cycle.
+Portainer will push the updated files to all assigned edge groups on the next agent synchronization cycle.
 
 ## Step 7: Monitor Synchronization Status
 
-On the configuration detail page, you can see:
-- Which endpoints have acknowledged the configuration.
-- The sync status per endpoint (`Acknowledged`, `Pending`, `Failed`).
+On the **Edge Configurations** page, you can monitor the progress of the rollout across your edge environments and confirm which edge groups each configuration applies to.
 
 ## Best Practices
 
 - **Version your configurations**: Include a version comment in files so you know what revision is deployed.
 - **Use separate configurations per environment**: For example, `nginx-config-production` vs `nginx-config-staging`.
 - **Combine with Edge Stacks**: Distribute config files first, then deploy stacks that reference them.
-- **Avoid secrets in edge configurations**: Use Portainer Secrets or inject secrets via environment variables instead.
+- **Avoid secrets in edge configurations**: Use your platform's native secret mechanism or another dedicated secret manager instead.
 
 ```yaml
 # Example: app.yaml configuration distributed via Edge Configurations
@@ -165,4 +172,4 @@ app:
 
 ## Conclusion
 
-Portainer Edge Configurations solve the configuration distribution problem at scale. By centralizing your config files in Portainer and letting agents synchronize them automatically, you eliminate the need for SSH-based config management tools like Ansible for your edge fleet. Combined with Edge Stacks, this gives you a complete, declarative deployment pipeline for remote devices.
+Portainer Edge Configurations solve the configuration distribution problem at scale. By centralizing your config packages in Portainer and letting agents synchronize them automatically, you can reduce or eliminate the need for SSH-based distribution of application configuration files across your edge fleet. Combined with Edge Stacks, this gives you a more declarative deployment pipeline for remote devices.
