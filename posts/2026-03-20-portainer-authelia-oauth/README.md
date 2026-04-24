@@ -27,16 +27,19 @@ identity_providers:
     hmac_secret: "your_hmac_secret_here"
 
     # RSA private key for signing ID tokens
-    # Generate with: openssl genrsa -out private.pem 2048
-    issuer_private_key: |
-      -----BEGIN RSA PRIVATE KEY-----
-      (your private key here)
-      -----END RSA PRIVATE KEY-----
+    jwks:
+      - key_id: portainer
+        algorithm: RS256
+        use: sig
+        key: |
+          -----BEGIN PRIVATE KEY-----
+          (your private key here)
+          -----END PRIVATE KEY-----
 
     clients:
-      - id: portainer
-        description: Portainer Container Management
-        secret: "$pbkdf2-sha512$310000$hashed_client_secret"
+      - client_id: portainer
+        client_name: Portainer Container Management
+        client_secret: "$pbkdf2-sha512$310000$hashed_client_secret"
         # Generate hashed secret: authelia crypto hash generate pbkdf2 --variant sha512 --password 'your_secret'
 
         public: false
@@ -52,9 +55,9 @@ identity_providers:
           - code
         grant_types:
           - authorization_code
-        access_token_signed_response_alg: RS256
-        userinfo_signed_response_alg: RS256
-        token_endpoint_auth_method: client_secret_basic
+        access_token_signed_response_alg: none
+        userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_post
 ```
 
 ```bash
@@ -106,6 +109,7 @@ Resource URL:      https://authelia.example.com/api/oidc/userinfo
 Redirect URL:      https://portainer.example.com/
 User Identifier:   preferred_username
 Scopes:            openid profile email groups
+Auth Style:        In Params
 ```
 
 ## Step 4: Configure via API
@@ -123,7 +127,7 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d '{
     "AuthenticationMethod": 3,
-    "oauthsettings": {
+    "OAuthSettings": {
       "ClientID": "portainer",
       "ClientSecret": "your-portainer-client-secret",
       "AuthorizationURI": "https://authelia.example.com/api/oidc/authorization",
@@ -132,6 +136,7 @@ curl -X PUT \
       "RedirectURI": "https://portainer.example.com/",
       "UserIdentifier": "preferred_username",
       "Scopes": "openid profile email groups",
+      "AuthStyle": 1,
       "OAuthAutoCreateUsers": true,
       "SSO": true
     }
@@ -140,22 +145,7 @@ curl -X PUT \
 
 ## Authelia Access Control Rules
 
-Configure which Authelia users can access Portainer:
-
-```yaml
-# In Authelia configuration.yml
-access_control:
-  rules:
-    # Allow IT admins without 2FA
-    - domain: portainer.example.com
-      policy: one_factor
-      subject:
-        - group:it-admins
-
-    # Require 2FA for everyone else
-    - domain: portainer.example.com
-      policy: two_factor
-```
+For this setup, you do not use Authelia `access_control` rules to authorize the OIDC client. Access for Portainer is controlled by the OIDC client's `authorization_policy` setting above.
 
 ## Verifying the Setup
 
