@@ -56,9 +56,9 @@ if __name__ == "__main__":
 ## IPv6 TCP Client with Twisted
 
 ```python
-from twisted.internet import reactor
-from twisted.internet.protocol import Protocol, ClientFactory
-from twisted.internet.endpoints import clientFromString
+from twisted.internet import reactor, defer
+from twisted.internet.protocol import Protocol, Factory
+from twisted.internet.endpoints import TCP6ClientEndpoint
 
 class IPv6ClientProtocol(Protocol):
     """IPv6 TCP client protocol."""
@@ -78,7 +78,7 @@ class IPv6ClientProtocol(Protocol):
     def connectionLost(self, reason):
         self.on_done.callback(None)
 
-class IPv6ClientFactory(ClientFactory):
+class IPv6ClientFactory(Factory):
     def __init__(self, message: str, on_done):
         self.message = message
         self.on_done = on_done
@@ -86,18 +86,12 @@ class IPv6ClientFactory(ClientFactory):
     def buildProtocol(self, addr):
         return IPv6ClientProtocol(self.message, self.on_done)
 
-    def clientConnectionFailed(self, connector, reason):
-        self.on_done.errback(reason)
-
 def connect_ipv6(host: str, port: int, message: str):
-    from twisted.internet import defer
-
     done = defer.Deferred()
 
-    # tcp6 endpoint for IPv6 connection
-    endpoint_str = f"tcp6:{port}:host={host}"
-    endpoint = clientFromString(reactor, endpoint_str)
-    endpoint.connect(IPv6ClientFactory(message, done))
+    endpoint = TCP6ClientEndpoint(reactor, host, port)
+    d = endpoint.connect(IPv6ClientFactory(message, done))
+    d.addErrback(done.errback)
 
     return done
 
@@ -114,13 +108,12 @@ run()
 
 ## Dual-Stack Server
 
-Twisted can create both IPv4 and IPv6 servers simultaneously:
+Twisted can listen on separate IPv4 and IPv6 endpoints simultaneously:
 
 ```python
 from twisted.internet import reactor
 from twisted.internet.protocol import Factory, Protocol
 from twisted.internet.endpoints import serverFromString
-from twisted.application import service
 
 class EchoProtocol(Protocol):
     def dataReceived(self, data):
@@ -135,12 +128,11 @@ def start_dual_stack_server(port: int):
     """Start both IPv4 and IPv6 TCP servers on the same port."""
     factory = EchoFactory()
 
-    # IPv4 server
-    v4_endpoint = serverFromString(reactor, f"tcp:{port}")
+    # Bind explicit loopback addresses so both listeners can coexist on the same port.
+    v4_endpoint = serverFromString(reactor, f"tcp:{port}:interface=127.0.0.1")
     v4_endpoint.listen(factory)
 
-    # IPv6 server
-    v6_endpoint = serverFromString(reactor, f"tcp6:{port}")
+    v6_endpoint = serverFromString(reactor, f"tcp6:{port}:interface=\\:\\:1")
     v6_endpoint.listen(factory)
 
     print(f"Dual-stack echo server on port {port}")
@@ -182,11 +174,11 @@ reactor.run()
 
 | Endpoint String | Meaning |
 |----------------|---------|
-| `tcp6:8080` | IPv6 TCP server on all interfaces |
-| `tcp6:8080:interface=eth0` | IPv6 TCP on specific interface |
-| `tcp6:8080:host=2001:db8::1` | IPv6 TCP on specific address |
-| `tcp6:8080:host=\:\:` | Dual-stack (IPv6+IPv4) |
+| `tcp6:8080` | IPv6 TCP server on all IPv6 interfaces |
+| `tcp6:8080:backlog=100` | IPv6 TCP server with a custom listen backlog |
+| `tcp6:port=8080:interface=2001\:db8\:\:1` | IPv6 TCP on a specific address |
+| `tcp:8080` and `tcp6:8080` | Separate IPv4 and IPv6 listeners |
 
 ## Conclusion
 
-Twisted provides first-class IPv6 support through its endpoint system. The `tcp6:` endpoint prefix creates IPv6-only listeners, while string-based endpoint specifications make it easy to configure addresses programmatically. Twisted's stable event loop and extensive protocol library make it a solid choice for production IPv6 network services.
+Twisted provides first-class IPv6 support through its endpoint system. The `tcp6:` endpoint prefix creates an IPv6 listener, and if you need both IPv4 and IPv6 coverage you can configure separate `tcp:` and `tcp6:` listeners. String-based endpoint specifications make it easy to configure addresses programmatically, and Twisted's stable event loop and extensive protocol library make it a solid choice for production IPv6 network services.
