@@ -12,24 +12,24 @@ Whether recovering from a hardware failure, migrating to a new server, or undoin
 
 ## Prerequisites
 
-- A backup file (`portainer-YYYYMMDD.tar.gz` or `.tar.bz2`)
+- A backup file (`portainer-YYYYMMDD.tar.gz`)
 - Portainer installed on the target server
 - Docker available on the target server
 
 ## Method 1: Restore via Portainer UI (Recommended)
 
-This method works when you have a backup created via Portainer's API or BE backup feature:
+This method works when you have a `tar.gz` backup created by Portainer's built-in backup feature and are restoring to a fresh Portainer instance with an empty data volume:
 
-1. Open Portainer at `http://your-host:9000`
-2. If fresh installation: during initial setup, click **Restore Portainer from backup**
+1. Open Portainer at `https://your-host:9443`
+2. During initial setup, expand **Restore Portainer from backup**
 3. Upload your backup file
 4. Enter the backup password (if encrypted)
 5. Click **Restore**
-6. Portainer restarts with restored configuration
+6. When the restore completes, Portainer redirects you to the login page with the restored configuration
 
 ## Method 2: Manual Volume Restoration
 
-For backups created by the manual `tar` method:
+For backups created by archiving the contents of the Portainer data volume:
 
 ```bash
 # Step 1: Stop Portainer
@@ -48,8 +48,8 @@ BACKUP_FILE="/opt/backups/portainer/portainer-20260320-020000.tar.gz"
 
 docker run --rm \
   -v portainer_data:/data \
-  -v $(dirname $BACKUP_FILE):/backup \
-  alpine tar xzf "/backup/$(basename $BACKUP_FILE)" -C /data
+  -v "$(dirname "$BACKUP_FILE"):/backup" \
+  alpine tar xzf "/backup/$(basename "$BACKUP_FILE")" -C /data
 
 # Step 5: Verify restoration
 docker run --rm \
@@ -83,9 +83,10 @@ When restoring to a completely new server:
 # 1. Transfer the backup file
 scp backup-server:/opt/backups/portainer/portainer-20260320.tar.gz /tmp/
 
-# 2. Pull the same Portainer version as the source
-# (Check source: docker exec portainer /app/portainer --version)
-docker pull portainer/portainer-ce:2.21.0
+# 2. Pull the same Portainer image tag as the source
+# (Check source: docker inspect --format '{{.Config.Image}}' portainer)
+PORTAINER_IMAGE="<exact-image-tag-from-source>"
+docker pull "$PORTAINER_IMAGE"
 
 # 3. Create volume and restore
 docker volume create portainer_data
@@ -103,7 +104,7 @@ docker run -d \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:2.21.0
+  "$PORTAINER_IMAGE"
 
 # 5. Verify everything loaded
 # - Check environments are listed
@@ -137,11 +138,13 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 After restoration on a new server, remote environments may show as offline:
 
 ```bash
-# The environments are listed in Portainer but agents need to reconnect
-# Option A: Restart agents on remote Docker hosts
-ssh remote-host "docker restart portainer-agent"
+# The environments are listed in Portainer, but their saved connection details
+# may need attention after the move
+# Option A: Restart the remote Portainer Agent or Edge Agent container if needed
+ssh remote-host "docker restart your-agent-container-name"
 
-# Option B: Update environment URL if the new server has a different IP
+# Option B: Update environment URL if the new server reaches the environment
+# at a different address
 # Portainer UI: Environments → Edit → update URL
 ```
 
@@ -159,7 +162,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   http://localhost:9000/api/stacks | \
   jq '.[] | {name: .Name, status: .Status}'
 
-# Status 1 = active, 2 = inactive
+# Status 1 = active, 2 = inactive, 3 = deploying, 4 = error
 
 # Re-deploy any stacks that were active but show as inactive
 # In Portainer UI: Stacks → select stack → Start
@@ -177,4 +180,4 @@ After restoration:
 
 ## Conclusion
 
-Portainer restoration is straightforward once you have a backup: stop Portainer, restore the data volume contents, and restart. The manual `tar` extraction method works for any backup created by compressing the volume contents. For backups created via Portainer's API or BE backup feature, use the built-in restore UI. Always verify the restoration by testing login and checking that environments, stacks, and users are all present.
+Portainer restoration is straightforward once you have a backup: stop Portainer, restore the data volume contents, and restart. The manual `tar` extraction method works for backups created by archiving the contents of the Portainer data volume. For Portainer-generated `tar.gz` backups, use the built-in restore UI on a fresh Portainer instance with an empty data volume. Always verify the restoration by testing login and checking that environments, stacks, and users are all present.
