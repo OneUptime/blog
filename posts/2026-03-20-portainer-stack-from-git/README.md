@@ -33,8 +33,6 @@ my-app-infra/
 Example `docker-compose.yml` in the repository:
 
 ```yaml
-version: "3.8"
-
 services:
   web:
     image: myorg/web:${IMAGE_TAG:-latest}
@@ -73,40 +71,39 @@ volumes:
   postgres_data:
 ```
 
-## Step 2: Generate a Deploy Key (Private Repos)
+## Step 2: Prepare Git Credentials (Private Repos)
 
-For private repositories, create a deploy key:
+For private repositories, create credentials Portainer can use to access the repository:
 
-```bash
-# Generate an SSH key pair:
+```text
+# GitHub:
+# Settings → Developer settings → Personal access tokens
+# Create a token with read access to the repository
 
-ssh-keygen -t ed25519 -C "portainer-deploy" -f portainer_deploy_key -N ""
+# In Portainer, use:
+Username: your-github-username
+Personal Access Token: <your-token>
 
-# Add the PUBLIC key to your repository:
-# GitHub: Settings → Deploy keys → Add deploy key
-cat portainer_deploy_key.pub
-
-# Keep the PRIVATE key to paste into Portainer:
-cat portainer_deploy_key
+# GitLab, Bitbucket, or self-hosted Git:
+# Use the equivalent username + token / app password required by your provider
 ```
 
 ## Step 3: Create the Stack from Git
 
 1. Navigate to **Stacks** → **Add stack**.
 2. Enter the stack **Name**: `my-app`.
-3. Select **Repository** as the build method.
+3. Select **Git repository** as the build method.
 4. Configure the Git settings:
 
 ```text
-Repository URL:  https://github.com/myorg/my-app-infra
-                 (or git@github.com:myorg/my-app-infra for SSH)
-Repository ref:  refs/heads/main
-Compose path:    docker-compose.yml
+Repository URL:        https://github.com/myorg/my-app-infra.git
+Repository reference:  refs/heads/main
+Compose path:          docker-compose.yml
 ```
 
 5. For private repositories, enable **Authentication**:
-   - For HTTPS: enter your username and a personal access token.
-   - For SSH: paste the private key content.
+   - Enter your Git username and a personal access token.
+   - Or select a saved Git credential if you already have one configured in Portainer.
 
 6. Click **Deploy the stack**.
 
@@ -122,7 +119,7 @@ DB_PASSWORD      securepassword
 REDIS_URL        redis://redis:6379
 ```
 
-These are injected at deploy time and override any `.env` file in the repo.
+These are supplied by Portainer at deploy time. If the repository also contains a `.env` file, Portainer only uses it for variables you have not already defined in Portainer.
 
 ## Step 5: Use a Specific Branch or Tag
 
@@ -130,34 +127,31 @@ Target specific branches or tags for environment-specific deployments:
 
 ```text
 # For production (from main branch):
-Repository ref: refs/heads/main
+Repository reference: refs/heads/main
 
 # For staging (from develop branch):
-Repository ref: refs/heads/develop
+Repository reference: refs/heads/develop
 
 # For a pinned release:
-Repository ref: refs/tags/v1.2.3
-
-# For a specific commit:
-Repository ref: <40-char commit SHA>
+Repository reference: refs/tags/v1.2.3
 ```
 
-## Step 6: Enable Auto-Update (Polling)
+## Step 6: Enable GitOps Updates (Polling)
 
 For automatic redeployment when the repository changes:
 
-1. In the stack creation form, enable **Automatic updates**.
-2. Set the polling interval: `5m` (every 5 minutes).
-3. Enable **Force re-pull images** if you want to always pull the latest image tags.
+1. In the stack creation form, enable **GitOps updates**.
+2. Choose **Polling** and set the fetch interval: `5m` (every 5 minutes).
+3. Enable **Re-pull image** if you want Portainer to pull the image again during GitOps-triggered redeploys.
 
-Portainer will check the repository at the interval and redeploy if the commit hash has changed.
+Portainer will check the repository at the interval and redeploy if the latest commit hash for the selected reference has changed.
 
 ## Step 7: Verify and Manage
 
 After deployment:
 
 ```bash
-# Check containers are running:
+# On Docker Standalone, check containers are running:
 docker ps --filter "label=com.docker.compose.project=my-app"
 
 # View which Git commit is deployed:
@@ -169,4 +163,4 @@ docker ps --filter "label=com.docker.compose.project=my-app"
 
 ## Conclusion
 
-Deploying stacks from Git repositories is the production-grade approach to stack management in Portainer. Your Compose files gain version history, peer review via pull requests, and rollback capability. Combined with Portainer's auto-update polling, your infrastructure automatically stays synchronized with your Git repository - achieving a GitOps workflow without requiring a dedicated CD tool. Use environment variables in Portainer to inject secrets that should not be committed to the repository.
+Deploying stacks from Git repositories is the production-grade approach to stack management in Portainer. Your Compose files gain version history, peer review via pull requests, and rollback capability. Combined with Portainer's GitOps updates, your infrastructure automatically stays synchronized with your Git repository - achieving a GitOps workflow without requiring a dedicated CD tool. Use environment variables in Portainer to inject secrets that should not be committed to the repository.
