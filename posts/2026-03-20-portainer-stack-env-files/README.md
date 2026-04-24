@@ -8,7 +8,7 @@ Description: Learn how to use .env files with Docker Compose stacks in Portainer
 
 ## Introduction
 
-Docker Compose supports loading environment variables from a `.env` file automatically when it resides in the same directory as the `docker-compose.yml`. In Portainer's context, `.env` files can be used with Git-based stacks (where the `.env` file lives in the repository) or uploaded alongside a Compose file. Understanding how `.env` files interact with Portainer's environment variable system helps you choose the right approach for each environment.
+Docker Compose supports loading environment variables from a `.env` file automatically when it is placed in the project directory next to the Compose file. In Portainer, you can define stack environment variables in the UI or use **Load variables from .env file** to import them. For Docker Standalone stacks, Docker Compose can also use a repository `.env` file; for Docker Swarm stacks, `.env` substitution is not supported by `docker stack deploy`.
 
 ## Prerequisites
 
@@ -87,7 +87,7 @@ SMTP_PASSWORD=         # Set in deployment environment
 
 For Git-based stacks in Portainer:
 
-**Option A: Commit a non-secret .env file to Git** (safe for non-sensitive configs):
+**Option A: Commit a non-secret .env file to Git** (safe for non-sensitive configs on Docker Standalone):
 ```text
 repository/
 ├── docker-compose.yml
@@ -95,7 +95,7 @@ repository/
 └── .env.example          # Template for secrets
 ```
 
-Then in Portainer, set only the sensitive variables via the UI (they override `.env` file values).
+Then in Portainer, add any remaining sensitive variables via the UI or by uploading a separate `.env` file instead of storing them in Git.
 
 **Option B: Do not commit .env, set everything in Portainer**:
 ```text
@@ -104,15 +104,15 @@ repository/
 └── .env.example          # Template only - not the actual .env
 ```
 
-Set all variables in Portainer's **Environment variables** section.
+Set all variables in Portainer's **Environment variables** section or use **Load variables from .env file**.
 
-## Step 3: Portainer's env_file Directive
+For Docker Swarm stacks, prefer Portainer's environment variables or an uploaded `.env` file, because `.env` substitution is a Docker Compose CLI feature and is not supported by `docker stack deploy`.
+
+## Step 3: Docker Compose env_file Directive in Portainer
 
 You can reference external env files within your Compose YAML:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     image: myorg/api:latest
@@ -124,19 +124,17 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
 ```
 
-Note: `env_file` paths are relative to the Compose file location. For Git-based stacks, these files must exist in the repository.
+Note: `env_file` paths are relative to the Compose file's parent folder. This pattern works for Docker Standalone stacks when the referenced files are present with the stack content. Docker Swarm stacks deployed through Portainer cannot use `env_file` with `docker stack deploy`.
 
-## Step 4: Load .env Variables in Portainer's Advanced Mode
+## Step 4: Load .env Variables in Portainer
 
 To use an existing `.env` file with any stack type:
 
 1. Navigate to **Stacks** → create or edit a stack.
 2. Scroll to **Environment variables**.
-3. Click **Advanced mode**.
-4. Copy the contents of your `.env` file and paste them in.
-5. Remove or blank out any comment lines (lines starting with `#`).
-6. Click **Simple mode** to verify parsing.
-7. Remove lines with empty values for secrets - add those as separate entries.
+3. Click **Load variables from .env file**.
+4. Select your `.env` file.
+5. Review the imported variables and adjust any values as needed.
 
 ## Step 5: Multiple Environment Files
 
@@ -159,8 +157,8 @@ REPLICAS=1
 ```
 
 When creating stacks in Portainer:
-- For production stack: paste contents of `.env.production` in Advanced mode.
-- For staging stack: paste contents of `.env.staging`.
+- For production stack: use **Load variables from .env file** and select `.env.production`.
+- For staging stack: use **Load variables from .env file** and select `.env.staging`.
 
 ## Step 6: Verify Variable Substitution
 
@@ -171,8 +169,8 @@ docker compose --env-file .env.production config
 
 # This shows the fully-substituted Compose file - confirms all variables resolve
 
-# Check for missing variables (undefined with no default):
-docker compose config 2>&1 | grep "variable is not set"
+# Show the variables Compose used for interpolation:
+docker compose --env-file .env.production config --environment
 ```
 
 ## Step 7: .gitignore for .env Files
@@ -180,17 +178,19 @@ docker compose config 2>&1 | grep "variable is not set"
 Ensure secrets don't leak via Git:
 
 ```bash
-# .gitignore entries:
-.env
+# .gitignore entries for secret env files:
 .env.local
 .env.production
 .env.staging
 *.env.local
 
+# Add this too if your main .env contains secrets:
+# .env
+
 # Always commit .env.example
-# NEVER commit actual .env with secrets
+# Only commit a real .env if it contains no secrets
 ```
 
 ## Conclusion
 
-`.env` files and Docker Compose variable substitution provide a clean pattern for managing configuration across environments. For Portainer stacks, the practical approach is to keep non-sensitive defaults in the `.env.example` (committed to Git), and inject secrets via Portainer's environment variable UI (never committed). Portainer's Advanced mode accepts the standard `KEY=VALUE` format, making it easy to load a full environment configuration at once. Always test variable substitution locally with `docker compose config` before deploying to confirm everything resolves correctly.
+`.env` files and Docker Compose variable substitution provide a clean pattern for managing configuration across environments. For Portainer stacks, keep `.env.example` as a committed template, store non-sensitive runtime defaults in a committed `.env` only when that is safe, and inject secrets via Portainer's environment variable UI or **Load variables from .env file**. On Docker Swarm, remember that `.env` substitution and `env_file` do not work the same way because `docker stack deploy` does not support Docker Compose's `.env` substitution features. Always test variable substitution locally with `docker compose config` before deploying to confirm everything resolves correctly.
