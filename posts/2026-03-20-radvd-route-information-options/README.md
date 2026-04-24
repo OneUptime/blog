@@ -8,7 +8,7 @@ Description: Configure radvd Route Information Options per RFC 4191 to advertise
 
 ## Introduction
 
-RFC 4191 defines the Route Information Option for IPv6 Router Advertisements. This option allows a router to advertise specific prefixes and their associated next-hop to clients, enabling scenarios like multi-router networks where different prefixes are reachable via different gateways.
+RFC 4191 defines the Route Information Option for IPv6 Router Advertisements. This option allows a router to advertise specific prefixes as reachable via the advertising router, enabling scenarios like multi-router networks where different prefixes are reachable via different gateways.
 
 ## When to Use Route Information Options
 
@@ -45,25 +45,27 @@ interface eth1 {
 };
 ```
 
+On Linux, more-specific Route Information Options are accepted only up to `net.ipv6.conf.<interface>.accept_ra_rt_info_max_plen`. Set it to at least the advertised prefix length (for example, `48` for a `/48` route) or the kernel will ignore the route.
+
 ## Route Preference Values
 
-RFC 4191 defines three preference levels that map to router preference:
+RFC 4191 defines three preference levels, encoded the same way as default router preference:
 
 ```text
 # High preference: use this route preferentially over others
-route 2001:db8:fast::/48 {
+route 2001:db8:10::/48 {
     AdvRouteLifetime 1800;
     AdvRoutePreference high;
 };
 
 # Medium preference: default, use when no high-preference route exists
-route 2001:db8:normal::/48 {
+route 2001:db8:20::/48 {
     AdvRouteLifetime 1800;
     AdvRoutePreference medium;
 };
 
 # Low preference: fallback route, only use if no higher-preference route
-route 2001:db8:backup::/48 {
+route 2001:db8:30::/48 {
     AdvRouteLifetime 1800;
     AdvRoutePreference low;
 };
@@ -88,7 +90,7 @@ interface eth1 {
     };
 
     # Router 1 handles the primary corporate prefix
-    route 2001:db8:corp::/48 {
+    route 2001:db8:100::/48 {
         AdvRouteLifetime 1800;
         AdvRoutePreference high;
     };
@@ -105,7 +107,7 @@ interface eth1 {
     # No prefix block - Router 1 handles SLAAC
 
     # Router 2 only provides routes to the DMZ
-    route 2001:db8:dmz::/48 {
+    route 2001:db8:200::/48 {
         AdvRouteLifetime 1800;
         AdvRoutePreference high;
     };
@@ -120,10 +122,10 @@ On a client that receives these RAs:
 # Check if the route information was installed
 ip -6 route show
 
-# Expected output includes:
-# 2001:db8:2::/48 via fe80::<router-link-local> dev eth0 proto ra metric 100
+# Expected output includes a route learned from RA, for example:
+# 2001:db8:2::/48 via fe80::<router-link-local> dev eth0 proto ra
 
-# Use rdisc6 to see the raw RA including route information options
+# Use rdisc6 to inspect the received RA, including route information options
 rdisc6 eth0
 # Look for "Route Information" sections in the output
 ```
@@ -140,8 +142,8 @@ route ::/0 {
 };
 ```
 
-This is useful when two routers advertise a default route and you want to control which one clients prefer.
+On hosts that process Route Information Options, this overrides the default-route preference and lifetime from the RA header. For general default-router preference, `AdvDefaultPreference` in the RA header is still the usual setting.
 
 ## Conclusion
 
-Route Information Options in radvd extend the basic default-gateway-only model of standard Router Advertisements to support multi-router environments and specific prefix routing. By combining prefix options, RDNSS, DNSSL, and route information in a single RA, you can achieve fully stateless IPv6 client configuration for complex network topologies. Use route preferences to control failover and load balancing between multiple routers.
+Route Information Options in radvd extend the basic default-gateway-only model of standard Router Advertisements to support multi-router environments and specific prefix routing. By combining prefix options, RDNSS, DNSSL, and route information in a single RA, you can achieve fully stateless IPv6 client configuration for complex network topologies. Use route preferences to control failover and route selection between multiple routers.
