@@ -19,6 +19,7 @@ pip install pyroute2
 Add, list, and remove IPv6 addresses on interfaces:
 
 ```python
+import socket
 from pyroute2 import IPRoute
 
 with IPRoute() as ipr:
@@ -30,7 +31,7 @@ with IPRoute() as ipr:
         "add",
         index=idx,
         address="2001:db8:1::10",
-        mask=64,  # Prefix length
+        prefixlen=64,
         family=socket.AF_INET6
     )
     print("IPv6 address added")
@@ -47,7 +48,7 @@ with IPRoute() as ipr:
         "delete",
         index=idx,
         address="2001:db8:1::10",
-        mask=64,
+        prefixlen=64,
         family=socket.AF_INET6
     )
     print("IPv6 address removed")
@@ -68,7 +69,7 @@ with IPRoute() as ipr:
     # Add a static IPv6 route
     ipr.route(
         "add",
-        dst="2001:db8:remote::/48",
+        dst="2001:db8:100::/48",
         dst_len=48,
         gateway="2001:db8:1::1",  # Next hop
         oif=idx,
@@ -97,7 +98,7 @@ with IPRoute() as ipr:
     # Delete a route
     ipr.route(
         "delete",
-        dst="2001:db8:remote::/48",
+        dst="2001:db8:100::/48",
         dst_len=48,
         family=socket.AF_INET6
     )
@@ -119,7 +120,7 @@ with IPRoute() as ipr:
     # Add a route to a custom table
     ipr.route(
         "add",
-        dst="2001:db8:custom::/48",
+        dst="2001:db8:200::/48",
         dst_len=48,
         gateway="2001:db8:1::1",
         oif=idx,
@@ -131,7 +132,7 @@ with IPRoute() as ipr:
     ipr.rule(
         "add",
         family=socket.AF_INET6,
-        src="2001:db8:vrf::/48",
+        src="2001:db8:300::/48",
         table=CUSTOM_TABLE,
         priority=100
     )
@@ -144,28 +145,28 @@ Use Netlink notifications to react to routing changes:
 ```python
 import socket
 from pyroute2 import IPRoute
-import threading
 
 def monitor_ipv6_routes():
     """Monitor IPv6 routing table changes in real-time."""
     with IPRoute() as ipr:
-        # Subscribe to route notifications
+        # Subscribe to RTNL notifications
         ipr.bind()
 
         print("Monitoring IPv6 routing events...")
         while True:
             messages = ipr.get()
             for msg in messages:
-                if msg["family"] == socket.AF_INET6:
-                    event = msg.get("event", "RTM_UNKNOWN")
-                    dst = msg.get_attr("RTA_DST") or "::"
-                    prefix_len = msg.get("dst_len", 0)
-                    print(f"Event: {event} → {dst}/{prefix_len}")
+                event = msg.get("event")
+                if event not in {"RTM_NEWROUTE", "RTM_DELROUTE"}:
+                    continue
+                if msg.get("family") != socket.AF_INET6:
+                    continue
 
-# Start monitoring in background
+                dst = msg.get_attr("RTA_DST") or "::"
+                prefix_len = msg.get("dst_len", 0)
+                print(f"Event: {event} → {dst}/{prefix_len}")
 
-monitor_thread = threading.Thread(target=monitor_ipv6_routes, daemon=True)
-monitor_thread.start()
+monitor_ipv6_routes()
 ```
 
 ## Getting IPv6 Interface Statistics
