@@ -64,14 +64,11 @@ https://gitlab.com/your-org/infrastructure.git
 
 # Gitea (self-hosted)
 https://git.company.com/devops/infrastructure.git
-
-# SSH (for private repos)
-git@github.com:your-org/infrastructure.git
 ```
 
 ### Repository Reference
 
-Specify which branch, tag, or commit to deploy from:
+Specify which branch or tag to deploy from. Portainer expects Git refs such as:
 
 ```text
 # Branch
@@ -81,9 +78,6 @@ refs/heads/v2-release
 
 # Tag
 refs/tags/v1.2.3
-
-# Specific commit
-a1b2c3d4e5f6...  (full commit hash)
 ```
 
 ### Compose File Path
@@ -107,33 +101,13 @@ For private repositories, enable **Authentication**:
 
 ### Username/Password or Personal Access Token
 
+- **Authorization type**: If your Portainer version shows this field, choose the mode your Git host expects. GitHub, GitLab, and Bitbucket Cloud use **Basic** authorization in Portainer even when you authenticate with a token.
 - **Username**: Your Git username or service account
 - **Password/Token**:
-  - GitHub: Personal Access Token (PAT) with `repo` scope
+  - GitHub: Personal Access Token (classic) with the repository permissions required for private repository access
   - GitLab: Personal Access Token with `read_repository` scope
-  - Gitea: Application password
-
-```bash
-# Create GitHub PAT with necessary scopes
-# GitHub → Settings → Developer Settings → Personal Access Tokens → Tokens (classic)
-# Scopes needed: repo (for private repos)
-```
-
-### SSH Key Authentication
-
-1. Select **SSH** in the authentication type.
-2. Paste your SSH private key.
-3. Add the corresponding public key to your Git repository as a deploy key.
-
-```bash
-# Generate a deploy key for Portainer
-ssh-keygen -t ed25519 -C "portainer-deploy-key" -f portainer-deploy-key -N ""
-
-# Add portainer-deploy-key.pub to your repo's deploy keys
-# Keep portainer-deploy-key (private) for Portainer
-
-cat portainer-deploy-key  # paste this into Portainer
-```
+  - Bitbucket Cloud: token or app password with `Repository: Read`
+  - Azure DevOps: Personal Access Token with `Code: Read`
 
 ## Step 5: Configure Environment Variables
 
@@ -160,7 +134,7 @@ In Portainer, add the environment variables in the **Environment variables** sec
 2. Click **Deploy the stack**.
 
 Portainer will:
-1. Clone the repository to a temporary location
+1. Clone the entire repository
 2. Read the Compose file at the specified path
 3. Deploy the stack on your Docker environment
 
@@ -171,7 +145,7 @@ After deployment:
 1. Go to **Stacks** to see your stack listed.
 2. Click the stack name to see:
    - **Stack status**: Running/stopped
-   - **Git info**: Current commit hash, last updated time
+   - **Git info**: Repository URL, repository reference, compose file path, current commit hash
    - **Services/containers**: List of deployed services
 
 ## Step 8: Update a Git-Connected Stack
@@ -195,7 +169,7 @@ curl -s -X PUT \
   -H "Content-Type: application/json" \
   "https://portainer.example.com/api/stacks/${STACK_ID}/git/redeploy?endpointId=${ENDPOINT_ID}" \
   -d '{
-    "pullImage": true,
+    "repullImageAndRedeploy": true,
     "prune": false
   }' | jq .
 ```
@@ -205,9 +179,9 @@ curl -s -X PUT \
 To deploy from a different branch:
 
 1. Click on the stack.
-2. Click **Git** settings.
+2. Click **Edit Git settings**.
 3. Change the **Repository reference** to the new branch.
-4. Click **Save** and then **Pull and redeploy**.
+4. Check **Redeploy** if you want the stack updated immediately, then click **Save settings**.
 
 ## Conclusion
 
