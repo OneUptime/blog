@@ -13,8 +13,8 @@ GitLab CE (Community Edition) provides everything a development team needs: Git 
 ## Prerequisites
 
 - Docker host with at least 8GB RAM (GitLab is resource-intensive)
-- 10GB+ available disk space
-- A domain name (recommended)
+- 40GB+ available disk space
+- A public domain name pointing to the host (recommended for HTTPS and the integrated container registry)
 
 ## Deploy as a Stack
 
@@ -28,14 +28,14 @@ services:
     hostname: gitlab.example.com  # Change to your domain
     environment:
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://gitlab.example.com'
+        external_url 'https://gitlab.example.com'
         gitlab_rails['gitlab_shell_ssh_port'] = 2224
         gitlab_rails['time_zone'] = 'UTC'
         
         # Reduce memory usage
         puma['worker_processes'] = 2
         puma['max_threads'] = 4
-        sidekiq['max_concurrency'] = 5
+        sidekiq['concurrency'] = 5
         
         # Email settings
         gitlab_rails['smtp_enable'] = true
@@ -48,7 +48,7 @@ services:
         gitlab_rails['smtp_enable_starttls_auto'] = true
         
         # Container registry
-        registry_external_url 'http://registry.example.com'
+        registry_external_url 'https://gitlab.example.com:5050'
     volumes:
       - gitlab_config:/etc/gitlab
       - gitlab_logs:/var/log/gitlab
@@ -56,6 +56,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "5050:5050"
       - "2224:22"     # SSH port (using non-standard to avoid host conflict)
     shm_size: '256m'   # Required for GitLab
     restart: unless-stopped
@@ -68,7 +69,7 @@ volumes:
 
 ## Initial Access
 
-After deployment (allow 2-5 minutes for initialization):
+After deployment (allow several minutes for initialization):
 
 ```bash
 # Get initial root password
@@ -76,7 +77,7 @@ After deployment (allow 2-5 minutes for initialization):
 docker exec gitlab grep 'Password:' /etc/gitlab/initial_root_password
 ```
 
-Navigate to `http://gitlab.example.com` and log in with `root` and the initial password.
+Navigate to `https://gitlab.example.com` and log in with `root` and the initial password.
 
 ## GitLab CI/CD Pipeline Example
 
@@ -84,55 +85,52 @@ Create `.gitlab-ci.yml` in your repository:
 
 ```yaml
 # GitLab CI pipeline
+default:
+  image: docker:24-cli
+
 stages:
   - build
   - test
-  - push
+  - release
   - deploy
 
 variables:
-  DOCKER_REGISTRY: registry.example.com
-  IMAGE_NAME: myapp
+  CONTAINER_TEST_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+  CONTAINER_RELEASE_IMAGE: $CI_REGISTRY_IMAGE:latest
+
+before_script:
+  - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
 
 build:
   stage: build
-  image: docker:24
-  services:
-    - docker:24-dind
   script:
-    - docker build -t ${DOCKER_REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_SHA} .
-    - docker tag ${DOCKER_REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_SHA} ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
-  only:
-    - main
+    - docker build --pull -t $CONTAINER_TEST_IMAGE .
+    - docker push $CONTAINER_TEST_IMAGE
 
 test:
   stage: test
-  image: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_SHA}
   script:
-    - npm test
-  only:
-    - main
+    - docker pull $CONTAINER_TEST_IMAGE
+    - docker run --rm $CONTAINER_TEST_IMAGE npm test
 
-push:
-  stage: push
-  image: docker:24
-  services:
-    - docker:24-dind
+release:
+  stage: release
   script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $DOCKER_REGISTRY
-    - docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_SHA}
-    - docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
-  only:
-    - main
+    - docker pull $CONTAINER_TEST_IMAGE
+    - docker tag $CONTAINER_TEST_IMAGE $CONTAINER_RELEASE_IMAGE
+    - docker push $CONTAINER_RELEASE_IMAGE
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
 
 deploy:
   stage: deploy
   image: curlimages/curl:latest
+  before_script: []
   script:
-    # Trigger Portainer webhook to redeploy
-    - curl -X POST ${PORTAINER_WEBHOOK_URL}
-  only:
-    - main
+    # Trigger Portainer stack webhook to redeploy (Business Edition)
+    - curl -X POST "$PORTAINER_WEBHOOK_URL"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
 ```
 
 ## GitLab Runner for Portainer-Deployed Apps
@@ -155,17 +153,19 @@ volumes:
   gitlab_runner_config:
 ```
 
-Register the runner:
+Register the runner with a runner authentication token:
 
 ```bash
 docker exec -it gitlab-runner gitlab-runner register \
-  --url http://gitlab.example.com \
-  --registration-token YOUR_REGISTRATION_TOKEN \
+  --non-interactive \
+  --url https://gitlab.example.com \
+  --token YOUR_RUNNER_AUTH_TOKEN \
   --executor docker \
-  --docker-image docker:24 \
+  --description "docker-runner" \
+  --docker-image docker:24-cli \
   --docker-volumes /var/run/docker.sock:/var/run/docker.sock
 ```
 
 ## Conclusion
 
-GitLab CE deployed via Portainer provides a complete self-hosted DevSecOps platform. The persistent volumes store your repositories, pipelines, and configurations safely. The integrated container registry and CI/CD pipelines make it possible to build complete continuous deployment workflows, with Portainer webhooks providing the deployment trigger.
+GitLab CE deployed via Portainer provides a complete self-hosted DevSecOps platform. The persistent volumes store your repositories, pipelines, and configurations safely. The integrated container registry and CI/CD pipelines make it possible to build complete continuous deployment workflows, with Portainer Business Edition webhooks providing the deployment trigger.
