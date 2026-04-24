@@ -8,7 +8,7 @@ Description: Diagnose and resolve HTTP 500 errors that occur when recreating con
 
 ## Introduction
 
-An HTTP 500 error when recreating a container in Portainer means the Docker API returned an internal server error while trying to create the new container. This can happen due to naming conflicts, volume issues, image problems, or resource constraints. This guide helps you find the exact cause.
+An HTTP 500 error when recreating a container in Portainer usually means Portainer hit an internal server error while trying to create the replacement container through the Docker API. This can happen due to naming conflicts, volume issues, image problems, or resource constraints. This guide helps you find the exact cause.
 
 ## Step 1: Check Portainer and Docker Logs
 
@@ -47,7 +47,7 @@ docker run -d \
 
 ## Step 3: Fix Container Name Conflict
 
-The most common cause of 500 errors during recreation is a container name conflict:
+A common cause of 500 errors during recreation is a container name conflict:
 
 ```bash
 # The old container wasn't fully removed before Portainer tried to create the new one
@@ -66,7 +66,7 @@ docker rm -f container-name
 
 ```bash
 # Check if a volume or bind mount path is causing the issue
-docker inspect <container-name> | jq '.[0].HostConfig.Binds, .[0].HostConfig.Mounts'
+docker inspect <container-name> | jq '.[0].Mounts, .[0].HostConfig.Binds'
 
 # Test if the volume path exists and has correct permissions
 ls -la /path/to/mounted/directory
@@ -94,6 +94,7 @@ docker images | grep image-name
 
 # Check for image size issues (disk full?)
 df -h /var/lib/docker
+df -h /var/lib/containerd 2>/dev/null  # On newer Docker Engine installs using the containerd image store
 docker system df  # Show Docker disk usage
 ```
 
@@ -150,19 +151,22 @@ docker network prune
 Use the API to get more detailed error information:
 
 ```bash
+# Replace with your actual Portainer URL. On current versions, HTTPS on 9443 is the default.
+# Use http://localhost:9000 only if HTTP is enabled in your Portainer deployment.
+PORTAINER_URL=https://localhost:9443
+
 # Authenticate
-TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
+TOKEN=$(curl -sk -X POST "$PORTAINER_URL/api/auth" \
   -H "Content-Type: application/json" \
   -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
 
 # Try to create the container via API to see the full error
-curl -v -X POST \
+curl -vk -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  http://localhost:9000/api/endpoints/1/docker/containers/create \
+  "$PORTAINER_URL/api/endpoints/1/docker/containers/create?name=test-container" \
   -d '{
-    "Image": "nginx:latest",
-    "name": "test-container"
+    "Image": "nginx:latest"
   }'
 ```
 
@@ -171,7 +175,7 @@ curl -v -X POST \
 If all else fails, export the container configuration and recreate from scratch:
 
 ```bash
-# Export the container's run command using docker inspect
+# Export the container's configuration using docker inspect
 docker inspect <container-name> | jq '.[0]' > /tmp/container-backup.json
 
 # Use a tool to convert inspect output to a run command
@@ -192,4 +196,4 @@ docker run -d \
 
 ## Conclusion
 
-HTTP 500 errors during container recreation in Portainer almost always correspond to a specific Docker API error. The fastest path to diagnosis is to try the same operation from the Docker CLI - you'll get a descriptive error message instead of a generic 500. The most common causes are stale container names not fully cleaned up, missing volumes or network resources, and image pull failures due to registry authentication issues.
+HTTP 500 errors during container recreation in Portainer often correspond to a specific Docker API or Portainer-side error. The fastest path to diagnosis is to try the same operation from the Docker CLI - you'll get a descriptive error message instead of a generic 500. Common causes are stale container names not fully cleaned up, missing volumes or network resources, and image pull failures due to registry authentication issues.
