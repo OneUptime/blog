@@ -16,11 +16,11 @@ The `prefix` block in radvd's configuration is the most important part of the Ro
 |---|---|---|
 | `AdvOnLink` | bool | Prefix is on-link (reachable directly without routing) |
 | `AdvAutonomous` | bool | Clients can form addresses using SLAAC |
-| `AdvRouterAddr` | bool | Router includes its own address in the RA |
-| `AdvValidLifetime` | seconds | How long the address is valid (max 18.2 hours for temp) |
+| `AdvRouterAddr` | bool | Advertise the interface address instead of a network prefix (Mobile IPv6) |
+| `AdvValidLifetime` | seconds | How long the prefix remains valid for on-link determination and SLAAC |
 | `AdvPreferredLifetime` | seconds | How long the address is preferred for new connections |
-| `DeprecatePrefix` | bool | Mark prefix as deprecated (for renumbering) |
-| `DecrementLifetimes` | bool | Decrement lifetimes in each RA |
+| `DeprecatePrefix` | bool | Deprecate the prefix in radvd's shutdown RA |
+| `DecrementLifetimes` | bool | Decrement lifetimes in each RA to track prefix aging |
 | `Base6to4Interface` | iface | Generate prefix from a 6to4 interface |
 
 ## Standard SLAAC Prefix Configuration
@@ -41,9 +41,6 @@ interface eth1 {
 
         # Clients can use this prefix to form their own IPv6 addresses
         AdvAutonomous on;
-
-        # Include router's address in the RA for clients to use as gateway
-        AdvRouterAddr on;
 
         # Address is valid for 24 hours
         AdvValidLifetime 86400;
@@ -74,7 +71,7 @@ This is used when `AdvManagedFlag on` is set and all addressing is managed via D
 
 ## Deprecating a Prefix (Network Renumbering)
 
-When renumbering a network, deprecate the old prefix while advertising the new one:
+When renumbering a network, advertise the new prefix and deprecate the old one by setting its preferred lifetime to `0`:
 
 ```text
 # New prefix - fully advertised
@@ -93,13 +90,12 @@ prefix 2001:db8:1:1::/64 {
     AdvAutonomous on;
     AdvValidLifetime 3600;      # Only valid for 1 more hour
     AdvPreferredLifetime 0;     # Immediately deprecated - no new connections
-    DeprecatePrefix on;         # Explicitly mark as deprecated
 };
 ```
 
 ## Using DecrementLifetimes for Controlled Expiry
 
-The `DecrementLifetimes` option causes radvd to count down the lifetime in each RA, so clients see the address expiring naturally:
+The `DecrementLifetimes` option causes radvd to count down the lifetime in each RA, so clients see the prefix aging naturally. This is mainly useful when the advertised prefix lifetime should track a delegated prefix:
 
 ```text
 prefix 2001:db8:1:1::/64 {
@@ -129,7 +125,7 @@ interface eth1 {
     };
 
     # Secondary prefix (e.g., from a different ISP)
-    prefix 2001:db9:2:1::/64 {
+    prefix 2001:db8:3:1::/64 {
         AdvOnLink on;
         AdvAutonomous on;
         AdvValidLifetime 86400;
@@ -147,10 +143,10 @@ rdisc6 eth0
 # Check what prefixes the client has acted on
 ip -6 addr show scope global
 
-# Verify that temporary and stable addresses were generated
-ip -6 addr show | grep -E "(temporary|mngtmpaddr)"
+# If privacy extensions are enabled, look for temporary addresses
+ip -6 addr show | grep temporary
 ```
 
 ## Conclusion
 
-radvd prefix options give precise control over how clients autoconfigure IPv6 addresses. The combination of `AdvOnLink`, `AdvAutonomous`, and the lifetime values drives the client's address selection policy. During network renumbering, use `DeprecatePrefix` and `DecrementLifetimes` to gracefully transition clients to new addresses without abrupt connectivity loss.
+radvd prefix options give precise control over how clients autoconfigure IPv6 addresses. The combination of `AdvOnLink`, `AdvAutonomous`, and the lifetime values drives the client's address selection policy. During network renumbering, use a zero preferred lifetime and a reduced valid lifetime to gracefully transition clients to new addresses. Use `DecrementLifetimes` when the advertised prefix should age alongside a delegated prefix, and `DeprecatePrefix` when you want radvd's shutdown RA to deprecate the prefix.
