@@ -14,10 +14,10 @@ Proxy authentication requires clients to provide credentials before the proxy fo
 
 | Method | Description | Security |
 |--------|-------------|---------|
-| Basic | Username/password in Base64 | Low (plaintext unless HTTPS) |
+| Basic | Username/password in Base64 | Low (unless the proxy connection uses TLS) |
 | Digest | Hashed challenge-response | Medium |
 | NTLM/Kerberos | Windows domain auth | High (enterprise) |
-| LDAP | Directory service auth | High |
+| LDAP-backed Basic | Basic auth checked against a directory service | Medium to High (depends on TLS) |
 
 ## Setting Up Basic Authentication with Squid
 
@@ -50,6 +50,7 @@ auth_param basic casesensitive on
 acl authenticated_users proxy_auth REQUIRED
 
 # Step 3: Allow only authenticated users
+http_access deny !authenticated_users
 http_access allow authenticated_users
 http_access deny all
 ```
@@ -77,6 +78,7 @@ acl authenticated_users proxy_auth REQUIRED
 http_access allow trusted_net
 
 # External/guest: auth required
+http_access deny !authenticated_users
 http_access allow authenticated_users
 
 # Deny everything else
@@ -98,7 +100,9 @@ auth_param basic program /usr/lib/squid/basic_ldap_auth \
 
 auth_param basic realm "Corporate Proxy"
 acl ldap_users proxy_auth REQUIRED
+http_access deny !ldap_users
 http_access allow ldap_users
+http_access deny all
 ```
 
 ## Configuring Clients to Use the Authenticated Proxy
@@ -110,19 +114,19 @@ http_access allow ldap_users
 curl --proxy http://user1:password@proxy.example.com:3128 \
      http://example.com
 
-# HTTPS proxy
+# HTTPS destination through the same proxy
 curl --proxy-user user1:password \
-     --proxy https://proxy.example.com:3128 \
+     --proxy http://proxy.example.com:3128 \
      https://example.com
 ```
 
-### System-Wide Environment Variables
+### Shell Environment Variables
 
 ```bash
-# Set in ~/.bashrc or /etc/environment
+# Set in ~/.bashrc or export in your current shell
 export http_proxy="http://user1:password@proxy.example.com:3128"
 export https_proxy="http://user1:password@proxy.example.com:3128"
-export no_proxy="localhost,127.0.0.1,10.0.0.0/8"
+export no_proxy="localhost,127.0.0.1,.internal.example.com"
 ```
 
 ## Logging Authentication Events
@@ -130,10 +134,9 @@ export no_proxy="localhost,127.0.0.1,10.0.0.0/8"
 ```bash
 # Monitor authenticated proxy access
 sudo tail -f /var/log/squid/access.log | \
-  awk '{print $3, $7, $8, $11}' | \
-  grep -v '-'   # Show lines with username in field 11
+  awk '$8 != "-" {print $3, $6, $7, $8}'
 ```
 
 ## Conclusion
 
-Proxy authentication with Squid is straightforward to configure using basic auth for small deployments or LDAP/Kerberos for enterprise environments. Always tunnel proxy credentials over HTTPS to prevent credential interception.
+Proxy authentication with Squid is straightforward to configure using basic auth for small deployments or LDAP/Kerberos for enterprise environments. Because Basic credentials are only Base64-encoded, use TLS to the proxy itself on untrusted networks to prevent credential interception.
