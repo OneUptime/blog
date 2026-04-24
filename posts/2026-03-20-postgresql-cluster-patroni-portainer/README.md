@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, PostgreSQL, Patroni, High Availability, Database, Clustering
 
-Description: Deploy a highly available PostgreSQL cluster using Patroni for automatic failover and HAProxy for connection pooling via Portainer.
+Description: Deploy a highly available PostgreSQL cluster using Patroni for automatic failover and HAProxy for connection routing via Portainer.
 
 ## Introduction
 
-Patroni is the most popular tool for managing highly available PostgreSQL clusters. It uses etcd (or Consul/ZooKeeper) as a distributed configuration store to elect a leader and manage failover. This guide deploys a 3-node Patroni cluster with HAProxy as a connection router, managed through Portainer.
+Patroni is the most popular tool for managing highly available PostgreSQL clusters. It uses etcd (or Consul/ZooKeeper) as a distributed configuration store to elect a leader and manage failover. This guide deploys a 3-node Patroni cluster backed by a 3-node etcd cluster, with HAProxy as a connection router, managed through Portainer.
 
 ## Architecture
 
@@ -21,8 +21,11 @@ HAProxy (routes writes to primary, reads to replicas)
     ├──▶ PostgreSQL Primary (Leader)
     ├──▶ PostgreSQL Replica 1 (Standby)
     └──▶ PostgreSQL Replica 2 (Standby)
-         │
-         └──▶ etcd (Distributed Lock)
+
+Patroni nodes coordinate through etcd quorum:
+    ├──▶ etcd 1
+    ├──▶ etcd 2
+    └──▶ etcd 3
 ```
 
 ## Step 1: Deploy the Patroni Stack
@@ -40,16 +43,18 @@ networks:
         - subnet: 172.29.0.0/24
 
 volumes:
-  etcd_data:
+  etcd1_data:
+  etcd2_data:
+  etcd3_data:
   pg1_data:
   pg2_data:
   pg3_data:
 
 services:
-  # etcd - distributed coordination
-  etcd:
+  # etcd - distributed coordination quorum
+  etcd1:
     image: quay.io/coreos/etcd:v3.5.0
-    container_name: etcd
+    container_name: etcd1
     restart: unless-stopped
     networks:
       patroni_net:
@@ -57,17 +62,57 @@ services:
     ports:
       - "2379:2379"
     environment:
-      - ETCD_NAME=etcd0
+      - ETCD_NAME=etcd1
       - ETCD_DATA_DIR=/etcd-data
       - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
       - ETCD_ADVERTISE_CLIENT_URLS=http://172.29.0.10:2379
       - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
       - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://172.29.0.10:2380
-      - ETCD_INITIAL_CLUSTER=etcd0=http://172.29.0.10:2380
+      - ETCD_INITIAL_CLUSTER=etcd1=http://172.29.0.10:2380,etcd2=http://172.29.0.20:2380,etcd3=http://172.29.0.30:2380
       - ETCD_INITIAL_CLUSTER_TOKEN=patroni-cluster
       - ETCD_INITIAL_CLUSTER_STATE=new
     volumes:
-      - etcd_data:/etcd-data
+      - etcd1_data:/etcd-data
+
+  etcd2:
+    image: quay.io/coreos/etcd:v3.5.0
+    container_name: etcd2
+    restart: unless-stopped
+    networks:
+      patroni_net:
+        ipv4_address: 172.29.0.20
+    environment:
+      - ETCD_NAME=etcd2
+      - ETCD_DATA_DIR=/etcd-data
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://172.29.0.20:2379
+      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
+      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://172.29.0.20:2380
+      - ETCD_INITIAL_CLUSTER=etcd1=http://172.29.0.10:2380,etcd2=http://172.29.0.20:2380,etcd3=http://172.29.0.30:2380
+      - ETCD_INITIAL_CLUSTER_TOKEN=patroni-cluster
+      - ETCD_INITIAL_CLUSTER_STATE=new
+    volumes:
+      - etcd2_data:/etcd-data
+
+  etcd3:
+    image: quay.io/coreos/etcd:v3.5.0
+    container_name: etcd3
+    restart: unless-stopped
+    networks:
+      patroni_net:
+        ipv4_address: 172.29.0.30
+    environment:
+      - ETCD_NAME=etcd3
+      - ETCD_DATA_DIR=/etcd-data
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://172.29.0.30:2379
+      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
+      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://172.29.0.30:2380
+      - ETCD_INITIAL_CLUSTER=etcd1=http://172.29.0.10:2380,etcd2=http://172.29.0.20:2380,etcd3=http://172.29.0.30:2380
+      - ETCD_INITIAL_CLUSTER_TOKEN=patroni-cluster
+      - ETCD_INITIAL_CLUSTER_STATE=new
+    volumes:
+      - etcd3_data:/etcd-data
 
   # PostgreSQL Node 1
   pg1:
@@ -87,7 +132,7 @@ services:
       - PATRONI_RESTAPI_CONNECT_ADDRESS=172.29.0.11:8008
       - PATRONI_POSTGRESQL_LISTEN=0.0.0.0:5432
       - PATRONI_POSTGRESQL_CONNECT_ADDRESS=172.29.0.11:5432
-      - PATRONI_ETCD3_HOSTS=172.29.0.10:2379
+      - PATRONI_ETCD3_HOSTS=172.29.0.10:2379,172.29.0.20:2379,172.29.0.30:2379
       - PATRONI_SUPERUSER_USERNAME=postgres
       - PATRONI_SUPERUSER_PASSWORD=postgres_super_password
       - PATRONI_REPLICATION_USERNAME=replicator
@@ -95,9 +140,10 @@ services:
       - PATRONI_SCOPE=postgres-ha
     volumes:
       - pg1_data:/home/postgres/data
-      - ./patroni/patroni.yml:/etc/patroni/patroni.yml
     depends_on:
-      - etcd
+      - etcd1
+      - etcd2
+      - etcd3
 
   # PostgreSQL Node 2
   pg2:
@@ -117,7 +163,7 @@ services:
       - PATRONI_RESTAPI_CONNECT_ADDRESS=172.29.0.12:8008
       - PATRONI_POSTGRESQL_LISTEN=0.0.0.0:5432
       - PATRONI_POSTGRESQL_CONNECT_ADDRESS=172.29.0.12:5432
-      - PATRONI_ETCD3_HOSTS=172.29.0.10:2379
+      - PATRONI_ETCD3_HOSTS=172.29.0.10:2379,172.29.0.20:2379,172.29.0.30:2379
       - PATRONI_SUPERUSER_USERNAME=postgres
       - PATRONI_SUPERUSER_PASSWORD=postgres_super_password
       - PATRONI_REPLICATION_USERNAME=replicator
@@ -125,9 +171,10 @@ services:
       - PATRONI_SCOPE=postgres-ha
     volumes:
       - pg2_data:/home/postgres/data
-      - ./patroni/patroni.yml:/etc/patroni/patroni.yml
     depends_on:
-      - etcd
+      - etcd1
+      - etcd2
+      - etcd3
 
   # PostgreSQL Node 3
   pg3:
@@ -147,7 +194,7 @@ services:
       - PATRONI_RESTAPI_CONNECT_ADDRESS=172.29.0.13:8008
       - PATRONI_POSTGRESQL_LISTEN=0.0.0.0:5432
       - PATRONI_POSTGRESQL_CONNECT_ADDRESS=172.29.0.13:5432
-      - PATRONI_ETCD3_HOSTS=172.29.0.10:2379
+      - PATRONI_ETCD3_HOSTS=172.29.0.10:2379,172.29.0.20:2379,172.29.0.30:2379
       - PATRONI_SUPERUSER_USERNAME=postgres
       - PATRONI_SUPERUSER_PASSWORD=postgres_super_password
       - PATRONI_REPLICATION_USERNAME=replicator
@@ -155,9 +202,10 @@ services:
       - PATRONI_SCOPE=postgres-ha
     volumes:
       - pg3_data:/home/postgres/data
-      - ./patroni/patroni.yml:/etc/patroni/patroni.yml
     depends_on:
-      - etcd
+      - etcd1
+      - etcd2
+      - etcd3
 
   # HAProxy for connection routing
   haproxy:
@@ -205,7 +253,7 @@ listen stats
 # Uses Patroni REST API for health checks
 listen postgres_primary
     bind *:5000
-    option httpchk GET /master
+    option httpchk GET /primary
     http-check expect status 200
     default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
     server pg1 172.29.0.11:5432 maxconn 100 check port 8008
@@ -230,18 +278,18 @@ listen postgres_replicas
 curl http://localhost:8009/cluster | jq .
 
 # Check which node is leader
-curl http://localhost:8009/master
+curl http://localhost:8009/primary
 
 # Check replica status
 curl http://localhost:8010/replica
 
 # Use patronictl
-docker exec pg1 patronictl -c /etc/patroni/patroni.yml list
+docker exec pg1 patronictl -c /home/postgres/postgres0.yml list
 
-# Manual failover to pg2
-docker exec pg1 patronictl -c /etc/patroni/patroni.yml failover \
+# Manual switchover to pg2
+docker exec pg1 patronictl -c /home/postgres/postgres0.yml switchover \
   postgres-ha \
-  --master pg1 \
+  --leader pg1 \
   --candidate pg2 \
   --force
 ```
