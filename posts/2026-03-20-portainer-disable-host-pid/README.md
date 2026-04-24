@@ -8,7 +8,7 @@ Description: Learn how to prevent non-admin users from running containers with h
 
 ## Introduction
 
-The `--pid=host` option in Docker shares the host's process namespace with a container. This allows a container to see and interact with all processes on the host, including sensitive system processes. In a shared Portainer environment, this is a critical security risk. Portainer allows administrators to disable this for non-admin users.
+The `--pid=host` option in Docker shares the host's process namespace with a container. This allows a container to see and interact with all processes on the host, including sensitive system processes. In a shared Portainer environment, this is a critical security risk. Portainer includes a control to block this for non-admin users, and on new environments the restriction is enabled by default.
 
 ## Why Host PID Is Dangerous
 
@@ -39,11 +39,11 @@ cat /proc/HOST_PID/mem  # With appropriate permissions
 
 1. Log into Portainer as admin.
 2. Select your Docker environment.
-3. Go to environment **Settings** (gear icon).
-4. Scroll to the **Security** section.
-5. Find the **Disable host PID namespace for non-administrators** toggle.
-6. Enable it.
-7. Click **Save environment settings**.
+3. Open **Host > Setup** for Docker Standalone, or **Swarm > Setup** for Docker Swarm.
+4. Scroll to the **Docker Security Settings** section.
+5. Find the host PID restriction toggle for non-administrators.
+6. Ensure it is enabled.
+7. Click **Save configuration**.
 
 ### Via Portainer API
 
@@ -58,7 +58,7 @@ curl -s -X PUT \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/settings" \
   -d '{
-    "disableHostPidForRegularUsers": true
+    "allowHostNamespaceForRegularUsers": false
   }' | jq .
 
 echo "Host PID access disabled for non-admin users on endpoint $ENDPOINT_ID"
@@ -68,18 +68,18 @@ echo "Host PID access disabled for non-admin users on endpoint $ENDPOINT_ID"
 
 After enabling this restriction:
 
-- Non-admin users **cannot** create containers with `--pid=host`
-- Non-admin users **cannot** create containers with `"PidMode": "host"` via Docker Compose
+- Non-admin users **cannot** create containers with `--pid=host` through Portainer
+- Non-admin users **cannot** deploy a Portainer-managed stack or Compose application with `pid: "host"`
 - Admin users retain the ability to use host PID when genuinely required
 
 Legitimate use cases for host PID (admin-only):
 
 ```bash
-# Performance profiling tools that need host PID visibility
-docker run --pid=host --name profiler nicholasgasior/nstat
+# Debugging or profiling tools that need host PID visibility
+docker run --rm -it --pid=host alpine
 
-# System monitoring containers (node exporters, etc.)
-docker run --pid=host -v /proc:/host/proc:ro prom/node-exporter
+# Process tracing against host processes generally also needs extra permissions
+docker run --rm -it --pid=host --cap-add SYS_PTRACE --security-opt seccomp=unconfined alpine
 
 # Docker-in-Docker scenarios (with appropriate controls)
 ```
@@ -88,37 +88,36 @@ docker run --pid=host -v /proc:/host/proc:ro prom/node-exporter
 
 ```bash
 #!/bin/bash
-# apply-security-restrictions.sh - Apply all restrictions to all environments
+# apply-security-restrictions.sh - Apply Docker security restrictions to all Docker environments
 
 PORTAINER_URL="https://portainer.example.com"
 TOKEN=$(curl -s -X POST "${PORTAINER_URL}/api/auth" \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"yourpassword"}' | jq -r '.jwt')
 
-# Get all Docker environments (Type 1 or 2)
+# Get all Docker environments (Type 1, 2, or 4)
 ENDPOINTS=$(curl -s -H "Authorization: Bearer $TOKEN" \
   "${PORTAINER_URL}/api/endpoints" | \
-  jq -c '.[] | select(.Type == 1 or .Type == 2)')
+  jq -c '.[] | select(.Type == 1 or .Type == 2 or .Type == 4)')
 
 echo "$ENDPOINTS" | while read -r ENDPOINT; do
-  ID=$(echo $ENDPOINT | jq -r '.Id')
-  NAME=$(echo $ENDPOINT | jq -r '.Name')
+  ID=$(echo "$ENDPOINT" | jq -r '.Id')
+  NAME=$(echo "$ENDPOINT" | jq -r '.Name')
 
-  RESULT=$(curl -s -X PUT \
+  curl -s -X PUT \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     "${PORTAINER_URL}/api/endpoints/${ID}/settings" \
     -d '{
-      "disableBindMountsForRegularUsers": true,
-      "disablePrivilegeModeForRegularUsers": true,
-      "disableHostPidForRegularUsers": true,
-      "disableHostNetworkForRegularUsers": true
-    }')
+      "allowBindMountsForRegularUsers": false,
+      "allowPrivilegedModeForRegularUsers": false,
+      "allowHostNamespaceForRegularUsers": false
+    }' > /dev/null
 
   echo "Applied security restrictions to: $NAME (ID: $ID)"
 done
 
-echo "All environments secured."
+echo "Core Docker security restrictions applied to all matching environments."
 ```
 
 ## Step 4: Comprehensive Security Restrictions
@@ -126,18 +125,20 @@ echo "All environments secured."
 Disable host PID as part of a broader security hardening:
 
 ```bash
-# Apply all container security restrictions via API
+# Apply broader Docker security restrictions via API
 curl -s -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/settings" \
   -d '{
-    "disableBindMountsForRegularUsers": true,
-    "disablePrivilegeModeForRegularUsers": true,
-    "disableHostPidForRegularUsers": true,
-    "disableHostNetworkModeForRegularUsers": true,
-    "disableDeviceMappingForRegularUsers": true,
-    "disableSysctlSettingForRegularUsers": true
+    "allowBindMountsForRegularUsers": false,
+    "allowPrivilegedModeForRegularUsers": false,
+    "allowHostNamespaceForRegularUsers": false,
+    "allowDeviceMappingForRegularUsers": false,
+    "allowStackManagementForRegularUsers": false,
+    "allowContainerCapabilitiesForRegularUsers": false,
+    "allowSysctlSettingForRegularUsers": false,
+    "allowSecurityOptForRegularUsers": false
   }'
 ```
 
@@ -147,7 +148,6 @@ Teach users to rely on secure container defaults:
 
 ```yaml
 # Secure docker-compose.yml - No host namespace sharing needed
-version: "3.8"
 services:
   app:
     image: myapp:latest
@@ -168,18 +168,30 @@ services:
       - "3000:3000"             # Expose via port mapping, not host network
 ```
 
-## Step 6: Monitor for Violation Attempts
+## Step 6: Validate the Restriction
 
-Check Portainer logs for attempts to create containers with restricted options:
+Verify the restriction with a non-admin Portainer account:
 
 ```bash
-# Monitor Portainer logs for security-related events
-docker logs portainer 2>&1 | grep -i "pid\|privilege\|bind\|restricted" | tail -20
+USER_TOKEN="your-non-admin-token"
 
-# Or in a loop for real-time monitoring
-docker logs -f portainer 2>&1 | grep -i "restricted\|denied\|unauthorized"
+HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+  -X POST \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  -H "Content-Type: application/json" \
+  "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/create?name=pid-host-test" \
+  -d '{
+    "Image": "alpine:latest",
+    "Cmd": ["sleep", "60"],
+    "HostConfig": {
+      "PidMode": "host"
+    }
+  }')
+
+echo "Portainer response: HTTP $HTTP_STATUS"
+# Expected for a non-admin user with the restriction enabled: HTTP 403
 ```
 
 ## Conclusion
 
-Disabling host PID access for non-admin users in Portainer eliminates a significant container escape vector. Combined with disabling privileged mode, bind mounts, and host network mode, these restrictions create a strong multi-layered container security policy. Admin users retain full flexibility for legitimate operational tools, while standard users operate within a safe, isolated container environment.
+Disabling host PID access for non-admin users in Portainer removes a significant isolation bypass in Portainer-managed deployments. Combined with disabling privileged mode, bind mounts, device mappings, stack management, container capabilities, sysctl settings, and `security-opt`, these restrictions create a strong multi-layered container security policy. Admin users retain full flexibility for legitimate operational tools, while standard users operate within a safer Portainer environment.
