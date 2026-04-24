@@ -8,7 +8,7 @@ Description: Learn how to use lifecycle preconditions on OpenTofu resources to v
 
 ## Introduction
 
-Resource preconditions run during the planning phase, before a resource is created or modified. If a precondition fails, the plan or apply is rejected with an error. Use preconditions to validate that inputs, variables, or related resource states meet requirements before making changes.
+Resource preconditions are evaluated as early as possible, usually during planning, before a resource is created or modified. If a condition depends on unknown values, OpenTofu defers the check until apply. If a precondition fails, the plan or apply is rejected with an error. Use preconditions to validate that inputs, variables, or related resource states meet requirements before making changes.
 
 ## Basic Precondition Syntax
 
@@ -141,7 +141,7 @@ resource "aws_db_instance" "main" {
 
   lifecycle {
     precondition {
-      condition = !var.is_production || can(regex("^db\\.r[0-9]\\.", var.instance_class))
+      condition = !var.is_production || startswith(var.instance_class, "db.r")
       error_message = "Production databases require memory-optimized instance classes (db.r* family), got: ${var.instance_class}"
     }
   }
@@ -156,7 +156,7 @@ tofu plan
 # Error: Resource precondition failed
 #
 #   on main.tf line 25, in resource "aws_db_instance" "main":
-#   25:       condition = !var.is_production || can(regex("^db\\.r[0-9]\\.", var.instance_class))
+#   25:       condition = !var.is_production || startswith(var.instance_class, "db.r")
 #     ├────────────────
 #     │ var.instance_class is "db.t3.micro"
 #     │ var.is_production is true
@@ -166,4 +166,4 @@ tofu plan
 
 ## Conclusion
 
-Preconditions are powerful gatekeepers that prevent incorrect configurations from reaching your infrastructure. Use them to validate inputs at the resource level, check data source results, and enforce workspace-specific requirements. Unlike variable validation (which validates variables in isolation), preconditions have access to all values that the resource has access to, enabling cross-resource and context-aware validation.
+Preconditions are powerful gatekeepers that prevent incorrect configurations from reaching your infrastructure. Use them to validate inputs at the resource level, check data source results, and enforce workspace-specific requirements. Unlike variable validation, which is declared on an input variable, preconditions are declared on the resource itself and evaluated in that resource's context, making cross-resource and context-aware validation easier to place where the assumption matters.
