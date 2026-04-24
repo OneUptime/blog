@@ -8,12 +8,12 @@ Description: Learn how to configure resource quotas in Portainer's Kubernetes en
 
 ## Introduction
 
-Resource quotas in Kubernetes limit the total compute resources (CPU, memory) and object counts (pods, services, PVCs) that can be consumed within a namespace. Portainer provides a UI to configure these quotas, making it easier for administrators to enforce fair resource sharing across teams and environments.
+Resource quotas in Kubernetes limit the total compute resources (CPU, memory) and object counts (pods, services, PVCs) that can be consumed within a namespace. Portainer provides a UI to configure namespace CPU and memory quotas, and `kubectl` gives you access to the broader Kubernetes `ResourceQuota` feature set.
 
 ## Prerequisites
 
 - Portainer CE or BE with a Kubernetes environment
-- Admin or namespace-admin access
+- Portainer admin access, or a role with permission to manage the target namespace
 - Kubernetes cluster with multiple namespaces
 
 ## Understanding Resource Quotas
@@ -25,26 +25,26 @@ A ResourceQuota object in Kubernetes defines limits for:
 - **Storage**: Total PVC capacity, storage class limits
 - **Priority classes**: Resource limits per priority class
 
-## Step 1: Enable Resource Quotas in Portainer
+## Step 1: Enable CPU and Memory Quotas in Portainer
 
 ### Via Portainer UI
 
-1. Log into Portainer as admin.
+1. Log into Portainer.
 2. Select your Kubernetes environment.
 3. Go to **Namespaces**.
 4. Click on the target namespace or create a new one.
 5. In the namespace settings, find the **Resource quota** section.
-6. Enable **Resource quota** toggle.
+6. Enable the **Resource assignment** toggle.
 7. Configure:
    - **CPU**: Total CPU cores limit (e.g., `4` cores)
-   - **Memory**: Total memory limit (e.g., `8 Gi`)
-8. Save.
+   - **Memory**: Total memory limit (e.g., `8Gi`)
+8. Click **Update namespace**. If you're creating a new namespace, click **Create namespace**.
 
-Portainer creates the ResourceQuota object automatically.
+Portainer creates or updates the ResourceQuota object automatically.
 
-## Step 2: Create Resource Quotas via KubeShell
+## Step 2: Create Resource Quotas via kubectl shell
 
-For more granular control, use `kubectl` in the KubeShell:
+For more granular control, use `kubectl` in Portainer's `kubectl shell`:
 
 ```yaml
 # resource-quota-team.yaml - Team namespace quota
@@ -74,13 +74,13 @@ spec:
 ```
 
 ```bash
-# Apply in KubeShell
+# Apply in kubectl shell
 kubectl apply -f resource-quota-team.yaml
 ```
 
 ## Step 3: Set Default Resource Requests with LimitRange
 
-Resource quotas require containers to specify resource requests. Use LimitRange to set defaults:
+If your quota covers CPU or memory, pods must specify requests or limits. Use LimitRange to set defaults:
 
 ```yaml
 # limitrange-defaults.yaml
@@ -116,13 +116,13 @@ kubectl apply -f limitrange-defaults.yaml -n backend-team
 ## Step 4: Configure Quotas via the Portainer API
 
 ```bash
-TOKEN="your-portainer-token"
+API_KEY="your-portainer-api-key"
 ENDPOINT_ID=1
 NAMESPACE="backend-team"
 
-# Apply ResourceQuota via Kubernetes API through Portainer
+# Apply ResourceQuota via the Kubernetes API through Portainer's proxy
 curl -s -X POST \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
   "https://portainer.example.com/api/endpoints/${ENDPOINT_ID}/kubernetes/api/v1/namespaces/${NAMESPACE}/resourcequotas" \
   -d '{
@@ -162,18 +162,20 @@ kubectl describe quota -n backend-team
 # requests.memory         2Gi     8Gi
 
 # Check via Portainer API
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -s -H "X-API-Key: $API_KEY" \
   "https://portainer.example.com/api/endpoints/${ENDPOINT_ID}/kubernetes/api/v1/namespaces/${NAMESPACE}/resourcequotas" | \
   jq .
 ```
 
 ## Step 6: Quota Enforcement in Action
 
-When a deployment exceeds the quota:
+When a workload exceeds the quota:
 
 ```bash
 # Attempt to deploy more pods than allowed
-kubectl run test-pod-$i --image=nginx -n backend-team
+for i in $(seq 1 21); do
+  kubectl run test-pod-$i --image=nginx -n backend-team
+done
 
 # Error when quota exceeded:
 # Error from server (Forbidden): pods "test-pod-21" is forbidden:
@@ -188,9 +190,28 @@ Create a script to provision new team namespaces with standard quotas:
 #!/bin/bash
 # create-team-namespace.sh - Provision a new team namespace with quotas
 
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: $0 <team-name> [cpu-cores] [memory-limit]"
+  exit 1
+fi
+
 TEAM_NAME=$1
 CPU_LIMIT="${2:-4}"
 MEMORY_LIMIT="${3:-8Gi}"
+
+if ! [[ "$CPU_LIMIT" =~ ^[0-9]+$ ]]; then
+  echo "CPU limit must be a whole number of cores, for example: 4"
+  exit 1
+fi
+
+if ! [[ "$MEMORY_LIMIT" =~ ^[0-9]+Gi$ ]]; then
+  echo "Memory limit must use whole Gi units, for example: 8Gi"
+  exit 1
+fi
+
+MEMORY_LIMIT_GI="${MEMORY_LIMIT%Gi}"
 
 echo "Creating namespace for team: $TEAM_NAME"
 
@@ -207,7 +228,7 @@ spec:
     requests.cpu: "${CPU_LIMIT}"
     requests.memory: "${MEMORY_LIMIT}"
     limits.cpu: "$((CPU_LIMIT * 2))"
-    limits.memory: "$((${MEMORY_LIMIT%Gi} * 2))Gi"
+    limits.memory: "$((MEMORY_LIMIT_GI * 2))Gi"
     pods: "30"
     services: "15"
     persistentvolumeclaims: "10"
@@ -233,4 +254,4 @@ echo "Namespace $TEAM_NAME created with quotas: CPU=$CPU_LIMIT, Memory=$MEMORY_L
 
 ## Conclusion
 
-Resource quotas in Portainer's Kubernetes environments ensure fair resource sharing between teams and prevent runaway workloads from consuming all cluster resources. Configure quotas at the namespace level through Portainer's UI or kubectl, use LimitRange to enforce per-container defaults, and script namespace provisioning to ensure every new team gets appropriate resource boundaries from day one.
+Resource quotas in Portainer's Kubernetes environments ensure fair resource sharing between teams and prevent runaway workloads from consuming all cluster resources. Configure CPU and memory quotas through Portainer's UI, use `kubectl` when you need the full Kubernetes `ResourceQuota` feature set, use LimitRange to enforce per-container defaults, and script namespace provisioning to ensure every new team gets appropriate resource boundaries from day one.
