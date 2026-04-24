@@ -31,6 +31,7 @@ services:
     environment:
       WATCHTOWER_POLL_INTERVAL: "86400"
       WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_NOTIFICATION_REPORT: "true"
 
       # Slack configuration
       WATCHTOWER_NOTIFICATIONS: "slack"
@@ -39,8 +40,8 @@ services:
       WATCHTOWER_NOTIFICATION_SLACK_CHANNEL: "#container-updates"
       WATCHTOWER_NOTIFICATION_SLACK_ICON_EMOJI: ":whale:"
 
-      # Only notify on successful updates (not on scan with no updates)
-      WATCHTOWER_NOTIFICATIONS_LEVEL: "info"    # debug, info, warn, error, fatal
+      # Filter notifications by severity
+      WATCHTOWER_NOTIFICATIONS_LEVEL: "info"    # panic, fatal, error, warn, info, debug, trace
 ```
 
 Set the Portainer environment variable `SLACK_WEBHOOK_URL` to your Slack incoming webhook URL.
@@ -54,6 +55,7 @@ services:
     environment:
       WATCHTOWER_POLL_INTERVAL: "86400"
       WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_NOTIFICATION_REPORT: "true"
 
       # Email (SMTP) configuration
       WATCHTOWER_NOTIFICATIONS: "email"
@@ -63,7 +65,7 @@ services:
       WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PORT: "587"
       WATCHTOWER_NOTIFICATION_EMAIL_SERVER_USER: "watchtower@gmail.com"
       WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PASSWORD: "${SMTP_PASSWORD}"
-      WATCHTOWER_NOTIFICATION_EMAIL_SUBJECT_TAG: "[production]"    # Prefix for subject line
+      WATCHTOWER_NOTIFICATION_EMAIL_SUBJECTTAG: "[production]"    # Prefix for subject line
       WATCHTOWER_NOTIFICATION_EMAIL_DELAY: "2"    # Seconds between checks before sending email
 ```
 
@@ -73,15 +75,16 @@ services:
 services:
   watchtower:
     environment:
+      WATCHTOWER_NOTIFICATION_REPORT: "true"
       WATCHTOWER_NOTIFICATIONS: "msteams"
       WATCHTOWER_NOTIFICATION_MSTEAMS_HOOK_URL: "${TEAMS_WEBHOOK_URL}"
       WATCHTOWER_NOTIFICATION_MSTEAMS_USE_LOG_DATA: "true"    # Include log details in message
 ```
 
 Create the Teams webhook:
-1. In Teams, go to your channel → **...** → **Connectors**
-2. Find **Incoming Webhook** → Configure
-3. Copy the webhook URL
+1. In Teams, open the channel and select **...**
+2. Select **Manage channel** → **Edit**
+3. Search for **Incoming Webhook**, select **Add**, then copy the webhook URL
 
 ## Step 4: Generic Webhook (for Custom Integrations)
 
@@ -91,9 +94,9 @@ Send notifications to any HTTP endpoint:
 services:
   watchtower:
     environment:
-      WATCHTOWER_NOTIFICATIONS: "gotify"    # or use shoutrrr for generic webhooks
-      # For generic webhooks, use shoutrrr URL format:
-      WATCHTOWER_NOTIFICATION_URL: "generic+https://webhook.example.com/watchtower?template=json&headers=Authorization=Bearer+TOKEN"
+      WATCHTOWER_NOTIFICATION_REPORT: "true"
+      # Generic webhook via shoutrrr:
+      WATCHTOWER_NOTIFICATION_URL: "generic://webhook.example.com/watchtower?template=json&@Authorization=Bearer+TOKEN"
 ```
 
 ## Step 5: Shoutrrr URL Format (Multi-Provider)
@@ -105,21 +108,21 @@ services:
   watchtower:
     environment:
       # Multiple notification channels using WATCHTOWER_NOTIFICATION_URL
-      # Slack via shoutrrr
-      WATCHTOWER_NOTIFICATION_URL: "slack://WORKSPACE/CHANNEL/WEBHOOK_TOKEN"
+      WATCHTOWER_NOTIFICATION_URL: >
+        slack://hook:WEBHOOK_TOKEN@webhook?botname=Watchtower
+        discord://TOKEN@CHANNELID
 
-      # For multiple notifications, use comma separation (some versions)
-      # Or set WATCHTOWER_NOTIFICATION_URL multiple times with numbered suffixes
+      # For multiple notifications, space-separate the URLs
 ```
 
 ```bash
 # Shoutrrr URL examples:
-# Slack:     slack://TOKEN:WEBHOOK@CHANNEL
+# Slack:     slack://hook:WEBHOOK_TOKEN@webhook
 # Discord:   discord://TOKEN@CHANNELID
-# Telegram:  telegram://TOKEN@telegram?channels=CHATID
+# Telegram:  telegram://TOKEN@telegram?chats=CHATID
 # Email:     smtp://USER:PASS@HOST:PORT/?from=FROM&to=TO
 # Gotify:    gotify://HOSTNAME/TOKEN
-# Pushover:  pushover://TOKEN@USER/?devices=DEVICE
+# Pushover:  pushover://shoutrrr:APITOKEN@USERKEY/?devices=DEVICE
 ```
 
 ## Step 6: Notification Level Control
@@ -130,17 +133,17 @@ Control the verbosity of notifications:
 services:
   watchtower:
     environment:
-      # Send notification even when no updates found (debug)
+      # Send verbose notifications, including debug entries
       WATCHTOWER_NOTIFICATIONS_LEVEL: "debug"
 
-      # Only notify on actual updates or errors (info - recommended)
+      # Default: send info, warning, and error notifications
       WATCHTOWER_NOTIFICATIONS_LEVEL: "info"
 
       # Only notify on warnings and errors (warn)
       WATCHTOWER_NOTIFICATIONS_LEVEL: "warn"
 
-      # Report containers that were updated (vs all containers checked)
-      WATCHTOWER_INCLUDE_RESTARTING: "true"    # Include containers being restarted
+      # Use the session report for update/failure summaries
+      WATCHTOWER_NOTIFICATION_REPORT: "true"
 ```
 
 ## Step 7: Test Notifications Before Deployment
@@ -157,27 +160,19 @@ docker run --rm \
   --run-once \
   --debug
 
-# You should receive a test notification in Slack immediately
+# You should receive a startup/debug notification in Slack immediately
 ```
 
 ## Step 8: Sample Notification Message
 
-A typical Watchtower Slack notification looks like:
+A typical Watchtower session report notification looks like:
 
 ```text
-Watchtower@production-server: Updated containers
-
-Updated:
-- /nginx (containrrr/nginx:alpine → containrrr/nginx:alpine@sha256:abc123)
-- /myapp (mycompany/myapp:v1.2.3 → mycompany/myapp:v1.2.4)
-
-Stopped/Removed:
-- /nginx (old container)
-- /myapp (old container)
-
-All containers updated successfully
+2 Scanned, 2 Updated, 0 Failed
+- nginx (containrrr/nginx:alpine): abc123def456 updated to fedcba654321
+- myapp (mycompany/myapp:v1.2.3): 123abc456def updated to 456def123abc
 ```
 
 ## Conclusion
 
-Watchtower notifications are essential visibility into your automated update process. Configure Slack or Teams webhooks for real-time team awareness when containers get updated, and use email for formal audit trails. Set `WATCHTOWER_NOTIFICATIONS_LEVEL=info` to avoid noise from successful scans with no updates - you want to be notified about changes, not every poll cycle. Store sensitive credentials like SMTP passwords and webhook tokens as Portainer environment variables rather than hardcoding them in the stack definition.
+Watchtower notifications are essential visibility into your automated update process. Configure Slack or Teams webhooks for real-time team awareness when containers get updated, and use email for formal audit trails. Set `WATCHTOWER_NOTIFICATION_REPORT=true` if you want concise update/failure summaries instead of a message for every poll cycle, and keep `WATCHTOWER_NOTIFICATIONS_LEVEL=info` as a sensible default severity threshold. Store sensitive credentials like SMTP passwords and webhook tokens as Portainer environment variables rather than hardcoding them in the stack definition.
