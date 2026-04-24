@@ -8,7 +8,7 @@ Description: Configure PROXY Protocol v2 to carry IPv6 client addresses through 
 
 ## Introduction
 
-PROXY Protocol is a network protocol that prepends a header to TCP connections carrying the original client IP address and port. Version 2 uses a binary format and supports IPv6 addresses (16 bytes) natively. It is used by HAProxy, Nginx, AWS ELB, and other load balancers to pass the real client IP to backends without relying on HTTP headers.
+PROXY Protocol is a network protocol that prepends a header to TCP connections carrying the original client IP address and port. Version 2 uses a binary format and supports IPv6 addresses (16 bytes) natively. It is used by HAProxy, Nginx, AWS Network Load Balancer, and other load balancers to pass the real client IP to backends without relying on HTTP headers.
 
 ## How PROXY Protocol v2 Works
 
@@ -49,12 +49,18 @@ backend app_servers
 ```nginx
 # /etc/nginx/conf.d/proxy-protocol.conf
 
+# This file is included from the http {} block in nginx.conf
+
+# Include client IPv6 in access log
+log_format proxy_proto '$proxy_protocol_addr - $remote_user [$time_local] '
+                       '"$request" $status $body_bytes_sent';
+
 server {
-    # Accept PROXY Protocol v2 on this port
+    # Accept PROXY Protocol headers on this port
     listen 8080 proxy_protocol;
     listen [::]:8080 proxy_protocol;
 
-    # Real client IP is now available from proxy_protocol header
+    # Real client IP is now available from the PROXY protocol header
     # $proxy_protocol_addr contains the IPv6 address from the header
     set_real_ip_from 10.0.0.0/8;
     set_real_ip_from fd00::/8;
@@ -66,14 +72,8 @@ server {
         # Pass the original client IPv6 address downstream
         proxy_set_header X-Forwarded-For $proxy_protocol_addr;
         proxy_set_header X-Real-IP       $proxy_protocol_addr;
-
-        # Log shows real client IPv6 address
-        # access_log uses $proxy_protocol_addr
     }
 
-    # Include client IPv6 in access log
-    log_format proxy_proto '$proxy_protocol_addr - $remote_user [$time_local] '
-                           '"$request" $status $body_bytes_sent';
     access_log /var/log/nginx/access.log proxy_proto;
 }
 ```
@@ -82,12 +82,11 @@ server {
 
 ```haproxy
 frontend internal
-    # Accept PROXY Protocol v2 from upstream load balancer
+    # Accept PROXY Protocol from the upstream load balancer
     bind [::]:8080 accept-proxy
 
-    # %[fc_pp_authority] gives the client IP from PROXY Protocol header
+    # %ci logs the client IP from the PROXY Protocol header when accept-proxy is set
     log-format "%ci:%cp [%t] %ft %b/%s %Tw/%Tc/%Tt %B %ts"
-    # %ci = client IP (from PROXY Protocol if accept-proxy is set)
 
     default_backend app
 ```
@@ -116,6 +115,8 @@ def parse_proxy_v2_header(data: bytes) -> dict:
     ver_cmd = data[12]
     fam_proto = data[13]
     length = struct.unpack('!H', data[14:16])[0]
+    if len(data) < PROXY_V2_HEADER_LEN + length:
+        raise ValueError("Incomplete PROXY Protocol v2 header")
 
     version = (ver_cmd >> 4) & 0x0F
     command = ver_cmd & 0x0F
@@ -123,8 +124,11 @@ def parse_proxy_v2_header(data: bytes) -> dict:
     address_family = (fam_proto >> 4) & 0x0F
     protocol = fam_proto & 0x0F
 
-    # AF_INET6 = 2
-    if address_family == 2 and length >= 36:
+    if version != 2:
+        raise ValueError(f"Unsupported PROXY Protocol version: {version}")
+
+    # PROXY command = 1, AF_INET6 = 2, STREAM = 1
+    if command == 1 and address_family == 2 and protocol == 1 and length >= 36:
         payload = data[16:16 + length]
         src_addr = ipaddress.ip_address(payload[0:16])
         dst_addr = ipaddress.ip_address(payload[16:32])
@@ -144,10 +148,19 @@ def parse_proxy_v2_header(data: bytes) -> dict:
 
 def handle_connection(conn: socket.socket) -> None:
     """Handle an incoming connection with PROXY Protocol v2."""
-    # Read enough data to parse the header
+    # Read the first chunk, then pull the rest of the header if the signature matches.
     data = conn.recv(1024)
 
     try:
+        if len(data) >= PROXY_V2_HEADER_LEN and data[:12] == PROXY_V2_SIGNATURE:
+            length = struct.unpack('!H', data[14:16])[0]
+            required = PROXY_V2_HEADER_LEN + length
+            while len(data) < required:
+                chunk = conn.recv(required - len(data))
+                if not chunk:
+                    break
+                data += chunk
+
         info = parse_proxy_v2_header(data)
         client_ipv6 = info["src_addr"]
         client_port = info["src_port"]
@@ -165,30 +178,37 @@ def handle_connection(conn: socket.socket) -> None:
 ## Testing PROXY Protocol v2
 
 ```bash
-# Test with haproxy sending PROXY Protocol v2 to local port
+# Test by sending a PROXY Protocol v2 header to a local port
 
-# Use haproxy in client mode or the pp2 tool:
+# curl's --haproxy-protocol option sends a PROXY protocol v1 header, not v2.
+# To test v2 specifically, send a binary header directly:
+python3 - <<'PY'
+import ipaddress
+import socket
+import struct
 
-# Install proxychains or pp2 test client
-# Send a test connection with PROXY v2 header carrying IPv6 source
+sig = b'\r\n\r\n\x00\r\nQUIT\n'
+src = ipaddress.IPv6Address("2001:db8::1").packed
+dst = ipaddress.IPv6Address("::1").packed
+ports = struct.pack("!HH", 1234, 8080)
+addr_block = src + dst + ports
+header = sig + b'\x21' + b'\x21' + struct.pack("!H", len(addr_block)) + addr_block
 
-# Alternatively, test with socat:
-# socat accepts PROXY Protocol v2 and forwards
-socat -v TCP6-LISTEN:8081,fork \
-    PROXY2:backend:8080,proxyport=8081,socktype=1
-
-# Check Nginx accepts PROXY Protocol:
-curl --haproxy-protocol -6 http://[::1]:8080/
+with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as sock:
+    sock.connect(("::1", 8080))
+    sock.sendall(header + b"GET / HTTP/1.1\r\nHost: [::1]\r\nConnection: close\r\n\r\n")
+    print(sock.recv(4096).decode(errors="replace"))
+PY
 ```
 
 ## Common Pitfalls
 
 | Issue | Cause | Fix |
 |-------|-------|-----|
-| Connection refused after enabling | Backend doesn't accept PROXY Protocol | Enable `proxy_protocol` on listener |
-| `$proxy_protocol_addr` is empty | `real_ip_header proxy_protocol` not set | Add `real_ip_header proxy_protocol` |
-| HAProxy shows old client IP | Backend using `$remote_addr` | Switch to `$proxy_protocol_addr` |
-| Binary garbage in HTTP logs | PROXY v2 header not stripped | Use `proxy_protocol` listen flag |
+| Connection refused or HTTP 400 after enabling | Backend doesn't accept PROXY Protocol | Enable `proxy_protocol` in Nginx, `accept-proxy` in HAProxy, or add application-side parsing |
+| `$proxy_protocol_addr` is empty | `proxy_protocol` is not enabled on the listener, or no valid PROXY header arrived | Enable `proxy_protocol` on the listener and verify the upstream sends PROXY Protocol |
+| Nginx logs show the load balancer IP | Logging `$remote_addr` without RealIP or PROXY variables | Use `$proxy_protocol_addr` or set `real_ip_header proxy_protocol` |
+| Binary garbage in HTTP logs | PROXY v2 header not parsed by the listener | Enable `proxy_protocol` in Nginx or `accept-proxy` in HAProxy |
 
 ## Conclusion
 
