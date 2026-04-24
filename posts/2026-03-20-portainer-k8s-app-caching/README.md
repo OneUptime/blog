@@ -4,164 +4,133 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Performance, Caching, Configuration
 
-Description: Enable and configure application data caching for Kubernetes environments in Portainer to dramatically reduce API response times and improve UI performance for large clusters.
+Description: Enable Portainer's front-end data caching for Kubernetes environments to improve repeated UI navigation performance on large clusters.
 
 ## Introduction
 
-When managing large Kubernetes clusters in Portainer, the UI can become slow because every page navigation triggers live Kubernetes API calls to list resources. Portainer's application data caching feature stores a snapshot of the Kubernetes cluster state in memory, serving cached responses from Portainer rather than querying the Kubernetes API every time.
+When managing large Kubernetes clusters in Portainer, the UI can become slow because the browser needs to repeatedly fetch Kubernetes data through Portainer as you move between views. Portainer's front-end data caching feature stores cached Kubernetes responses in your user session, allowing the UI to reuse them during navigation instead of refetching the same data every time.
 
 ## What Application Data Caching Does
 
 When enabled, Portainer:
-1. Periodically queries the Kubernetes API and caches the results
-2. Serves UI requests from the cache instead of live Kubernetes API calls
-3. Provides a configurable refresh interval
+1. Caches eligible Kubernetes responses in the front-end for your user session
+2. Reuses cached responses on subsequent UI requests
+3. Expires cached entries automatically after five minutes
 
 **Benefits:**
-- Dramatically faster page loads for large clusters
-- Reduces load on the Kubernetes API server
-- Consistent UI performance regardless of cluster size
+- Faster repeated navigation through Kubernetes views
+- Reduces repeated requests from the browser to Portainer for the same data
+- Improves perceived UI performance on large clusters
 
-**Tradeoff:** Data may be slightly stale (up to the cache interval).
+**Tradeoff:** Data may be slightly stale for up to five minutes.
 
 ## Step 1: Enable Caching in Portainer UI
 
 1. Log in to Portainer
-2. Navigate to **Environments** → select your Kubernetes cluster
-3. Click **Edit** (the pencil icon)
-4. Scroll to **Kubernetes Settings**
-5. Find **Application data caching** toggle
-6. Enable it
-7. Set the **Cache refresh interval** (default: 60 seconds)
-8. Click **Update environment**
+2. Click your username in the top-right corner
+3. Select **My account**
+4. Scroll to **Application settings**
+5. Enable **Enable front-end data caching for Kubernetes environments**
+6. Click **Save**
+7. Allow Portainer to reload the page after the setting is saved
 
 ## Step 2: Enable via Portainer API
 
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
+PORTAINER_URL="https://localhost:9443" # use http://localhost:9000 only if legacy HTTP is enabled
+
+TOKEN=$(curl -s -X POST "$PORTAINER_URL/api/auth" \
   -H "Content-Type: application/json" \
   -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
 
-# Get current endpoint configuration
-
+# Get the current user and confirm the existing cache setting
 curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/endpoints/2 | jq '.Kubernetes'
+  "$PORTAINER_URL/api/users/me" | jq '{Id, Username, UseCache}'
 
-# Update Kubernetes environment to enable caching
-curl -X PUT \
+USER_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+  "$PORTAINER_URL/api/users/me" | jq -r .Id)
+
+# Update the user setting to enable front-end caching
+curl -s -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  http://localhost:9000/api/endpoints/2 \
+  "$PORTAINER_URL/api/users/$USER_ID" \
   -d '{
-    "Name": "my-k8s-cluster",
-    "Kubernetes": {
-      "Configuration": {
-        "UseLoadBalancer": false,
-        "UseServerMetrics": false,
-        "EnableResourceOverCommit": false,
-        "StorageClasses": []
-      }
-    }
-  }'
+    "UseCache": true
+  }' | jq '{Id, Username, UseCache}'
 ```
 
 ## Step 3: Verify Caching Is Working
 
 ```bash
-# Measure response time WITHOUT caching
-time curl -s -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:9000/api/endpoints/2/kubernetes/api/v1/namespaces" -o /dev/null
+# Confirm the current user has caching enabled
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$PORTAINER_URL/api/users/me" | jq '{Username, UseCache}'
 
-# Enable caching, wait for first cache population
-sleep 65  # Wait for first cache refresh
-
-# Measure response time WITH caching
-time curl -s -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:9000/api/endpoints/2/kubernetes/api/v1/namespaces" -o /dev/null
-
-# Should be significantly faster with caching
+# Confirm Portainer marks Kubernetes proxy responses as cacheable
+curl -sk -D - -o /dev/null \
+  -H "Authorization: Bearer $TOKEN" \
+  "$PORTAINER_URL/api/endpoints/2/kubernetes/api/v1/namespaces" | grep -i '^X-Portainer-Cache:'
 ```
 
-## Step 4: Configure Cache Refresh Interval
+Actual cache hits happen in the browser session, so use your browser's Network tab while navigating Portainer's Kubernetes views to observe repeated requests being served from the front-end cache.
 
-The refresh interval controls how often the cache is updated:
+## Step 4: Understand the Cache Duration
 
-| Interval | Use Case |
-|----------|----------|
-| 30 seconds | Dynamic environments with frequent changes |
-| 60 seconds (default) | Standard production cluster |
-| 120-300 seconds | Stable clusters, reduce API load |
-| 600 seconds | Very large clusters, minimal changes |
+Portainer uses a fixed cache lifetime for this feature.
 
-In Portainer UI: **Environments** → Edit → **Cache refresh interval (seconds)**
+| Setting | Value |
+|---------|-------|
+| Cache duration | 5 minutes |
+| Configurable in UI | No |
+| Configurable via endpoint API | No |
+
+In Portainer UI: **My account** → **Application settings** lets you enable or disable the feature, but not change its duration.
 
 ## Step 5: Understand Cache Invalidation
 
-```bash
-# Cache is invalidated/refreshed when:
-# 1. Interval expires (automatic)
-# 2. User manually triggers a refresh
-
-# Force cache refresh via API
-curl -X POST \
-  -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/endpoints/2/kubernetes/cache/refresh
-
-# Or in Portainer UI: click the refresh button on any resource list
-```
+The front-end cache is cleared when the five-minute lifetime expires, when you use Portainer's page refresh control, when your session performs Kubernetes write requests such as `POST`, `PUT`, `PATCH`, or `DELETE`, and when you log in or log out. There is no documented environment-level cache refresh endpoint for this feature.
 
 ## Step 6: Monitor Caching Performance
 
-```bash
-# Check Portainer logs for cache activity
-docker logs portainer 2>&1 | grep -i "cache\|kubernetes\|refresh" | tail -20
-
-# Monitor Portainer's memory usage (cache lives in memory)
-docker stats portainer --no-stream
-
-# Large clusters can require more memory for caching
-# Consider increasing Portainer's memory limit
-docker run -d \
-  --memory="1g" \
-  --name portainer \
-  [other options] \
-  portainer/portainer-ce:latest
-```
+Because this is a front-end cache, the most reliable way to observe it is in your browser's developer tools while using Portainer. Portainer container logs and container memory usage do not provide a direct measure of whether this Kubernetes UI cache is being hit.
 
 ## Step 7: Caching for Multiple Kubernetes Environments
 
-Each Kubernetes environment has its own cache. Configure appropriately per cluster size:
+This setting is per user and applies across the Kubernetes environments that the user can access:
 
 ```bash
 # Get all Kubernetes environments
 curl -s -H "Authorization: Bearer $TOKEN" \
-  http://localhost:9000/api/endpoints | \
-  jq '.[] | select(.Type == 3) | {id: .Id, name: .Name}'
+  "$PORTAINER_URL/api/endpoints" | \
+  jq '.[] | select(.Type == 5 or .Type == 6 or .Type == 7) | {id: .Id, name: .Name, type: .Type}'
 
-# Enable caching for each Kubernetes endpoint separately
-# via Portainer UI: Environments → Edit for each cluster
+# Enable caching once per user
+# via Portainer UI: My account → Application settings
 ```
 
 ## Step 8: What Gets Cached
 
-The following Kubernetes resources are cached when enabled:
-- Namespaces
-- Pods
-- Services
-- Deployments, StatefulSets, DaemonSets
-- ConfigMaps and Secrets (names only)
-- Persistent Volumes and Claims
-- Ingresses
-- Node information
+Portainer documents this feature as front-end data caching for Kubernetes environments rather than a resource-by-resource server-side cache. In practice, Portainer marks Kubernetes proxy responses with `X-Portainer-Cache: true`, and the browser session caches the eligible responses used by the UI.
 
 ## Step 9: Disable Caching for Troubleshooting
 
 If you suspect the cache is serving stale data:
 
-1. **Portainer UI**: Environments → Edit → toggle caching off → Save
-2. **API**: Set `Kubernetes.Configuration.UseCache` to false
-3. **Workaround**: Click the refresh button to force a cache bust
+1. **Portainer UI**: Click your username → **My account** → disable **Enable front-end data caching for Kubernetes environments** → **Save**
+2. **API**: Set `UseCache` to `false` for the current user
+3. **Workaround**: Use Portainer's page refresh button or reload the page to clear cached Kubernetes responses
+
+```bash
+curl -s -X PUT \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  "$PORTAINER_URL/api/users/$USER_ID" \
+  -d '{
+    "UseCache": false
+  }' | jq '{Id, Username, UseCache}'
+```
 
 ## Conclusion
 
-Application data caching for Kubernetes is one of the most impactful performance features in Portainer for large clusters. Enable it for any Kubernetes environment with more than 50 namespaces or 200+ resources. The default 60-second interval works well for most deployments - increase it to 300+ seconds for stable production clusters to minimize Kubernetes API server load.
+Application data caching for Kubernetes in Portainer can materially improve repeated navigation in large clusters, but it is a per-user front-end cache with a fixed five-minute lifetime rather than a per-environment server-side cache. Enable it for users who want faster repeated navigation in Kubernetes views, and disable it when they need the freshest possible view of cluster state.
