@@ -51,8 +51,8 @@ docker pull imagename:tag
 docker login myregistry.com
 # Enter username and password when prompted
 
-# Or with explicit credentials
-docker login myregistry.com -u username -p password
+# Or non-interactively
+echo "$REGISTRY_PASSWORD" | docker login myregistry.com -u username --password-stdin
 
 # Test pulling from the registry
 docker pull myregistry.com/myimage:v1.0
@@ -65,7 +65,7 @@ docker pull myregistry.com/myimage:v1.0
 1. Go to **Registries** → **Add Registry**
 2. Select **Custom Registry** (or Docker Hub if using private Docker Hub images)
 3. Enter:
-   - **Registry URL**: `https://myregistry.com` (with scheme)
+   - **Registry URL**: `https://myregistry.com` (or omit the scheme and Portainer will assume `https://`)
    - **Username** and **Password**
 4. Click **Add Registry**
 
@@ -78,11 +78,12 @@ Docker Hub rate limits unauthenticated pulls:
 ```bash
 # Even for public images, authenticate to avoid rate limits
 docker login
-# Enter your Docker Hub credentials
+# Follow the web-based login flow
+# Or use: docker login -u your-dockerhub-username
 
 # In Portainer, add Docker Hub as a registry:
 # Registries → Add Registry → DockerHub
-# Enter your Docker Hub username and password
+# Enter your Docker Hub username and access token
 ```
 
 ## Step 6: Fix Private Image Access in Stacks
@@ -90,7 +91,6 @@ docker login
 When your compose file references private images:
 
 ```yaml
-version: "3.8"
 services:
   myapp:
     # Private image - requires registry credentials in Portainer
@@ -99,8 +99,8 @@ services:
 ```
 
 In Portainer, when deploying the stack:
-1. Portainer will automatically use the matching registry credentials based on the image URL
-2. Ensure the registry URL prefix matches exactly
+1. Portainer will use configured registries during stack deployment
+2. If you have multiple registries from the same provider, explicitly select the correct registry so Docker uses the right credentials
 
 ## Step 7: Fix Authentication for ECR (Amazon ECR)
 
@@ -112,19 +112,18 @@ aws ecr get-login-password --region us-east-1 | \
   docker login --username AWS --password-stdin \
   123456789.dkr.ecr.us-east-1.amazonaws.com
 
-# In Portainer, update the ECR registry credentials:
-# 1. Go to Registries → select ECR registry
-# 2. Update the password with the fresh token
-# 3. Save
-
-# Automate with a cron job
-# */6 * * * * /opt/scripts/refresh-ecr-credentials.sh
+# In Portainer, prefer adding AWS ECR as the registry provider:
+# 1. Go to Registries → Add Registry → AWS ECR
+# 2. Enter the registry URL
+# 3. Enable Authentication
+# 4. Enter the AWS Access Key, AWS Secret Access Key, and Region
+# 5. Save
 ```
 
 ## Step 8: Fix Authentication for GitHub Container Registry (GHCR)
 
 ```bash
-# Create a GitHub Personal Access Token with read:packages scope
+# Create a GitHub Personal Access Token (classic) with read:packages scope
 # Then login:
 echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
 
@@ -136,7 +135,7 @@ echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
 
 ## Step 9: Fix Image Reference Format Issues
 
-```bash
+```text
 # Different registries use different URL formats:
 
 # Docker Hub (public)
@@ -144,7 +143,7 @@ image: nginx:latest
 image: username/myimage:v1.0
 
 # Docker Hub (private, explicit registry)
-image: registry-1.docker.io/username/myimage:v1.0
+image: docker.io/username/myimage:v1.0
 
 # Custom registry without port
 image: myregistry.com/myimage:v1.0
