@@ -8,46 +8,44 @@ Description: Learn how to use Portainer's image update indicators to detect when
 
 ## Introduction
 
-Keeping container images up to date is important for security patches and new features. Portainer can check whether newer versions of your images are available on Docker Hub or private registries and show visual indicators in the UI. This guide covers how to use this feature and automate image update checks.
+Keeping container images up to date is important for security patches and new features. Portainer Business Edition can compare local and remote image digests and show visual indicators in the UI when newer tagged images are available in the registry. This guide covers how to use this feature and automate image update checks.
 
 ## Prerequisites
 
-- Portainer installed with a connected Docker environment
-- Containers running and connected to registries
+- Portainer Business Edition installed with a connected Docker environment
+- Containers or stacks using images that are available in Docker Hub or a compatible registry
 
 ## Step 1: Enable Image Update Checking in Portainer
 
-Portainer can periodically check for image updates:
+Portainer's image up-to-date indicator is enabled per environment:
 
-1. Navigate to **Settings** in Portainer.
-2. Look for **Image update checking** or **Registry settings**.
-3. Enable **Check for image updates**.
-4. Set the check frequency (e.g., daily).
+1. Select your Docker Standalone or Docker Swarm environment.
+2. Navigate to **Host** > **Setup** for Docker Standalone, or **Swarm** > **Setup** for Docker Swarm.
+3. In the **Other** section, enable **Show an image(s) up to date indicator for Stacks, Services and Containers**.
 
 ## Step 2: Identify the Update Indicator
 
-In the Portainer container list, containers with newer image versions available show a visual indicator:
+In Portainer, when the feature is enabled, the **Images up to date** column appears for containers, stacks, and services:
 
-- A **cloud icon** or **upgrade arrow** appears next to the container.
-- Hovering shows "An update is available for this container."
+- A **green tick** indicates the image is up to date.
+- An **orange cross** indicates a newer version of the tagged image is available at the registry.
+- A **grey hyphen** indicates Portainer could not determine whether an update is available.
 
-In the **Images** view, images with available updates show similar indicators.
+You can use the reload button to recheck all rows, or click the indicator for a single container, stack, or service.
 
 ## Step 3: Manual Update Check
 
 To manually check for updates:
 
 ```bash
-# Docker CLI: check if a new image digest is available
+# Docker CLI: check if a newer image is available for a tag
 
-# Compare local digest vs. registry digest
-
-# Get local image digest:
-docker inspect nginx:alpine --format '{{.Id}}'
+# Get the current local image ID:
+docker image inspect nginx:alpine --format '{{.Id}}'
 # sha256:abc123...
 
-# Get registry digest (requires network request):
-docker pull --quiet nginx:alpine
+# Pull the tag from the registry:
+docker pull nginx:alpine
 # If output shows "Status: Downloaded newer image" → update available
 # If output shows "Status: Image is up to date" → no update needed
 ```
@@ -63,24 +61,18 @@ echo "=== Docker Image Update Check: $(date) ==="
 echo ""
 
 # Get list of images used by running containers
-declare -A CHECKED_IMAGES
-
-docker ps --format "{{.Image}}" | sort -u | while read image; do
-    # Skip already checked images
-    [ "${CHECKED_IMAGES[$image]}" == "1" ] && continue
-    CHECKED_IMAGES[$image]=1
-
-    # Get local image ID
-    LOCAL_ID=$(docker inspect "${image}" --format '{{.Id}}' 2>/dev/null)
+docker ps --format "{{.Image}}" | sort -u | while IFS= read -r image; do
+    # Get current local image ID
+    LOCAL_ID=$(docker image inspect "${image}" --format '{{.Id}}' 2>/dev/null)
 
     # Pull and check if a new image is available
     PULL_OUTPUT=$(docker pull "${image}" 2>&1)
 
     if echo "${PULL_OUTPUT}" | grep -q "Downloaded newer image"; then
         echo "⬆️  UPDATE AVAILABLE: ${image}"
-        echo "   Local:    ${LOCAL_ID:0:12}..."
-        NEW_ID=$(docker inspect "${image}" --format '{{.Id}}' 2>/dev/null)
-        echo "   Registry: ${NEW_ID:0:12}..."
+        echo "   Before pull: ${LOCAL_ID:0:12}..."
+        NEW_ID=$(docker image inspect "${image}" --format '{{.Id}}' 2>/dev/null)
+        echo "   After pull:  ${NEW_ID:0:12}..."
     elif echo "${PULL_OUTPUT}" | grep -q "Image is up to date"; then
         echo "✓  Up to date: ${image}"
     else
@@ -95,8 +87,6 @@ Deploy Watchtower to automatically update containers when new images are availab
 
 ```yaml
 # watchtower-stack.yml
-version: "3.8"
-
 services:
   watchtower:
     image: containrrr/watchtower:latest
@@ -104,9 +94,10 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      # Check for updates every 6 hours (21600 seconds)
+      # Check for updates at minute 0 every 6th hour (cron format with seconds)
       - WATCHTOWER_SCHEDULE=0 0 */6 * * *
       # Send notification to Slack
+      - WATCHTOWER_NOTIFICATIONS=slack
       - WATCHTOWER_NOTIFICATION_SLACK_HOOK_URL=${SLACK_WEBHOOK}
       # Only notify, don't actually update (dry run):
       - WATCHTOWER_MONITOR_ONLY=true   # Remove for actual updates
@@ -116,19 +107,19 @@ services:
       - WATCHTOWER_DEBUG=false
 ```
 
-With `WATCHTOWER_MONITOR_ONLY=true`, Watchtower only notifies about updates without applying them - safer for production.
+With `WATCHTOWER_MONITOR_ONLY=true`, Watchtower checks for new images and sends notifications without restarting containers - safer for production.
 
 ## Step 6: Portainer's Automatic Update for Stacks
 
-For stacks, enable Git-based auto-updates in Portainer:
+For stacks deployed from a Git repository, enable Git-based auto-updates in Portainer:
 
 1. Navigate to **Stacks**.
 2. Click your stack name.
 3. Enable **Auto update**.
-4. Choose **Polling** (check every N minutes) or **Webhook**.
-5. Enable **Force re-pull image** to pull new image versions on each update.
+4. Choose **Polling** (check the Git repository on an interval) or **Webhook**.
+5. Enable **Re-pull image** to pull the current tagged image during an update.
 
-This ensures Portainer re-pulls images whenever the stack is updated.
+This ensures Portainer re-pulls images whenever the stack is updated from Git.
 
 ## Step 7: Image Update Notification Pattern
 
@@ -148,12 +139,12 @@ send_notification() {
         -d "{\"text\": \"${message}\"}"
 }
 
-docker ps --format "{{.Names}}\t{{.Image}}" | while IFS=$'\t' read name image; do
-    LOCAL_ID=$(docker inspect "${image}" --format '{{.Id}}' 2>/dev/null | cut -c1-12)
+docker ps --format "{{.Names}}\t{{.Image}}" | while IFS=$'\t' read -r name image; do
+    LOCAL_ID=$(docker image inspect "${image}" --format '{{.Id}}' 2>/dev/null | cut -c1-12)
 
-    # Pull image silently
+    # Pull image and compare the local ID before and after
     PULL_OUTPUT=$(docker pull "${image}" 2>&1)
-    NEW_ID=$(docker inspect "${image}" --format '{{.Id}}' 2>/dev/null | cut -c1-12)
+    NEW_ID=$(docker image inspect "${image}" --format '{{.Id}}' 2>/dev/null | cut -c1-12)
 
     if [ "${LOCAL_ID}" != "${NEW_ID}" ]; then
         send_notification "🔔 Image update available for container *${name}*\nImage: \`${image}\`\nOld: ${LOCAL_ID}\nNew: ${NEW_ID}"
@@ -163,24 +154,24 @@ done
 
 ## Step 8: Digest-Based Update Detection
 
-For more reliable update detection using image digests:
+For more reliable update detection using image digests (requires Docker Buildx and `jq`):
 
 ```bash
 #!/bin/bash
 # digest-check.sh
-# More reliable update detection using content-addressable digests
+# More reliable update detection using registry digests
 
 check_update() {
     local image="$1"
 
-    # Get the image's current digest
-    LOCAL_DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' "${image}" 2>/dev/null)
+    # Get the image's current local repo digest
+    LOCAL_DIGEST=$(docker image inspect --format '{{index .RepoDigests 0}}' "${image}" 2>/dev/null)
 
-    # Get the registry digest without pulling
-    REGISTRY_DIGEST=$(docker manifest inspect "${image}" 2>/dev/null | \
-        jq -r '.config.digest' 2>/dev/null)
+    # Get the current registry digest without pulling the image
+    REGISTRY_DIGEST=$(docker buildx imagetools inspect "${image}" --format '{{json .Manifest}}' 2>/dev/null | \
+        jq -r '.digest' 2>/dev/null)
 
-    if [ -z "${LOCAL_DIGEST}" ] || [ -z "${REGISTRY_DIGEST}" ]; then
+    if [ -z "${LOCAL_DIGEST}" ] || [ -z "${REGISTRY_DIGEST}" ] || [ "${REGISTRY_DIGEST}" = "null" ]; then
         echo "Could not determine digest for: ${image}"
         return
     fi
