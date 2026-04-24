@@ -8,15 +8,15 @@ Description: Troubleshoot and fix common Portainer connectivity issues caused by
 
 ## Introduction
 
-After Synology DSM updates, firewall rules are sometimes reset or reordered, which can block access to Portainer and other Docker containers. This guide covers how to diagnose and permanently fix these issues so your Portainer installation survives future updates.
+After Synology DSM updates, it is worth rechecking the active firewall profile and rule order, because either can block access to Portainer and other Docker containers. This guide covers how to diagnose and fix these issues so your Portainer installation survives future updates.
 
 ## Understanding the Problem
 
-Synology DSM's built-in firewall manages access to the NAS at the system level. Docker containers expose ports through the host network, so they are subject to the same firewall rules. After DSM updates:
+Synology DSM's built-in firewall manages access to the NAS at the system level. Published container ports are exposed through the NAS host, so they are subject to the same firewall rules. After DSM updates:
 
-- Custom firewall rules may be reset to defaults
-- Rule ordering may change, with deny-all rules taking precedence
-- Docker's iptables rules may conflict with DSM firewall rules
+- The active firewall profile may need to be checked again
+- Rule ordering may change, with broader deny rules taking precedence
+- Docker's published-port firewall rules may need to be recreated
 
 ## Step 1: Diagnose the Issue
 
@@ -25,9 +25,9 @@ Synology DSM's built-in firewall manages access to the NAS at the system level. 
 First, verify Portainer is actually running:
 
 ```bash
-# SSH into Synology
+# SSH into Synology with an account in the administrators group
 
-ssh admin@<synology-ip>
+ssh <administrator-account>@<synology-ip>
 
 # Check container status
 sudo docker ps | grep portainer
@@ -38,13 +38,11 @@ sudo docker logs portainer --tail 50
 
 ### Check Port Binding
 
-Verify the port is bound on the host:
+Verify Portainer's published ports:
 
 ```bash
-# Check if port 9000 is listening
-sudo netstat -tlnp | grep 9000
-# or
-sudo ss -tlnp | grep 9000
+# Show Portainer's published ports
+sudo docker port portainer
 ```
 
 ### Test Local Connectivity
@@ -52,10 +50,14 @@ sudo ss -tlnp | grep 9000
 Test from the Synology itself:
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}" http://localhost:9000
+# Portainer uses HTTPS on 9443 by default
+curl -k -s -o /dev/null -w "%{http_code}" https://localhost:9443
+
+# If you explicitly enabled legacy HTTP on 9000:
+# curl -s -o /dev/null -w "%{http_code}" http://localhost:9000
 ```
 
-If this returns `200` but you can't access it from your network, the issue is the firewall.
+If this returns `200` or `302` but you can't access it from your network, DSM firewall or other host-level filtering is the likely issue.
 
 ## Step 2: Fix the DSM Firewall
 
@@ -63,95 +65,88 @@ If this returns `200` but you can't access it from your network, the issue is th
 
 1. Go to **Control Panel > Security > Firewall**
 2. Click **Edit Rules** for the active profile
-3. Check if a deny-all rule exists at the top of the list
-4. Look for rules allowing ports 9000 and 9443
+3. Check the **All Interfaces** table and your active interface for deny rules that match Portainer
+4. Look for a rule allowing port `9443`; only check `9000` if you explicitly enabled Portainer's legacy HTTP port
 
 If the rules are missing, add them:
 
 1. Click **Create**
-2. Set **Ports**: Custom, TCP, `9000`
-3. Set **Source IP**: Specific IP or subnet (e.g., `192.168.1.0/24`)
+2. Set **Ports**: Custom, TCP, `9443`
+3. Set **Source IP**: Specific IP or range for your LAN (e.g., `192.168.1.1/255.255.255.0`)
 4. Set **Action**: Allow
-5. Repeat for port `9443`
-6. **Drag** the allow rules above any deny-all rule
+5. If you explicitly enabled legacy HTTP, repeat for port `9000`
+6. **Drag** the allow rules above any broader deny rule in the same table
 
 ### Understanding Rule Order
 
-DSM firewall rules are evaluated top-to-bottom. The first matching rule wins:
+DSM firewall rules are matched by priority. Rules in **All Interfaces** are evaluated before rules in a specific interface, and within each table the first matching rule wins:
 
 ```text
-# Correct order:
-1. ALLOW TCP 9000 from 192.168.1.0/24  ← Must be ABOVE the deny rule
-2. ALLOW TCP 9443 from 192.168.1.0/24
+# Example order:
+1. ALLOW TCP 9443 from 192.168.1.1/255.255.255.0
+2. ALLOW TCP 9000 from 192.168.1.1/255.255.255.0  ← Only if legacy HTTP is enabled
 3. DENY ALL (default)
 ```
 
-## Step 3: Fix Docker iptables Conflicts
+## Step 3: Recreate Docker's Published-Port Rules
 
-DSM updates can reset iptables rules that Docker relies on. Fix this by restarting Docker:
-
-```bash
-# Restart Container Manager to restore Docker iptables rules
-sudo synoservicectl --restart pkgctl-ContainerManager
-```
+On Linux, Docker creates firewall rules for published ports. If your DSM firewall rules look correct but Portainer is still unreachable, restart Container Manager so Docker can recreate those rules.
 
 Or via DSM:
 1. Open **Package Center**
 2. Click on **Container Manager**
 3. Click **Stop**, wait 10 seconds, then **Start**
 
-## Step 4: Create a Persistent Firewall Fix Script
+## Step 4: Create a Persistent Post-Boot Check
 
-Create a Task Scheduler script that runs after boot to ensure firewall rules are correct:
+Create a Task Scheduler script that runs after startup and verifies that Portainer is reachable locally:
 
 ```bash
-#!/bin/bash
-# Fix Docker container firewall rules after DSM updates
-# Run this as a boot-up task in Task Scheduler (root user)
+#!/bin/sh
+# Verify Portainer after startup.
+# Run this as a triggered task in Task Scheduler.
 
 # Wait for network services to start
-sleep 15
+sleep 30
 
-# Add iptables rules to allow Portainer ports
-# These supplement DSM firewall rules at the kernel level
-iptables -I INPUT -p tcp --dport 9000 -j ACCEPT
-iptables -I INPUT -p tcp --dport 9443 -j ACCEPT
+if ! curl -k -fsS --connect-timeout 5 https://localhost:9443 >/dev/null; then
+    echo "Portainer HTTPS on 9443 did not respond locally after startup."
+    exit 1
+fi
 
-# Also allow Docker daemon API port (internal use only)
-iptables -I INPUT -s 172.17.0.0/16 -j ACCEPT
-
-echo "Firewall rules applied at $(date)" >> /var/log/docker-firewall.log
+echo "Portainer HTTPS on 9443 is reachable locally."
 ```
 
-Add this as a boot-up task in Task Scheduler:
-- Task name: `Fix Docker Firewall`
+Add this as a triggered task in Task Scheduler:
+- Task name: `Check Portainer After Startup`
+- Task type: `Triggered Task > User-defined script`
 - User: `root`
-- Event: Boot-up
+- Select the startup event available in your DSM version
+- Optional: enable **Save output results** in Task Scheduler **Settings**
 
 ## Step 5: Prevent Future Issues with Firewall Profile
 
 Create a dedicated firewall profile that you can reapply after updates:
 
-1. In **Control Panel > Security > Firewall**, click **Create profile**
+1. In **Control Panel > Security > Firewall**, click the **+** icon in the **Firewall Profile** section
 2. Name it `Docker Services`
 3. Add all your Docker port rules to this profile
 4. Before applying a DSM update, note which profile is active
-5. After the update, reapply your profile if it was reset
+5. After the update, reapply your profile if it was reset or another profile became active
 
-## Step 6: Fix Docker Network Interface Issues
+## Step 6: Check Docker Network Interface Issues
 
-Sometimes DSM updates remove Docker's bridge network interface:
+If Docker's default bridge network is missing, verify it with Docker:
 
 ```bash
-# Check if docker0 interface exists
-ip link show docker0
-
-# If missing, restart Docker
-sudo synoservicectl --restart pkgctl-ContainerManager
-
-# Verify Docker networks are restored
+# Check that Docker's default bridge network exists
 sudo docker network ls
+
+# Inspect the default bridge network
+sudo docker network inspect bridge
 ```
+
+If `bridge` is missing or `inspect` fails, restart **Container Manager** from **Package Center** and then verify again.
 
 ## Step 7: Verify All Container Ports
 
@@ -161,16 +156,16 @@ After any DSM update, do a quick audit:
 # List all running containers with their ports
 sudo docker ps --format "table {{.Names}}\t{{.Ports}}"
 
-# Test connectivity to each
-for port in 9000 9443 3000 8080; do
-    if curl -s -o /dev/null --connect-timeout 3 http://localhost:$port; then
-        echo "Port $port: OK"
-    else
-        echo "Port $port: FAILED"
-    fi
-done
+# Show Portainer's published ports
+sudo docker port portainer
+
+# Test Portainer's default HTTPS listener
+curl -k -s -o /dev/null -w "9443: %{http_code}\n" https://localhost:9443
+
+# If you explicitly enabled legacy HTTP on 9000:
+# curl -s -o /dev/null -w "9000: %{http_code}\n" http://localhost:9000
 ```
 
 ## Conclusion
 
-Firewall issues after Synology DSM updates are a common frustration for home lab users. The key is understanding that DSM firewall rules may be reset and that Docker's iptables rules need to be in the correct state. By creating persistent boot-up tasks and a dedicated firewall profile, you can ensure Portainer and your other containers remain accessible after every update.
+Firewall issues after Synology DSM updates are a common frustration for home lab users. The key is understanding that DSM firewall rules may be reset and that Docker's published-port rules also need to be in the correct state. By keeping a dedicated firewall profile and a post-startup check, you can catch problems quickly and restore access to Portainer after an update.
