@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Network Policies, Security, Zero Trust
 
-Description: Implement Kubernetes Network Policies to enforce zero-trust networking between pods using Portainer's YAML manifest interface.
+Description: Implement Kubernetes Network Policies to enforce zero-trust networking between pods using Portainer's web editor for Kubernetes manifests.
 
 ## Introduction
 
@@ -13,7 +13,7 @@ Kubernetes Network Policies control traffic flow between pods, namespaces, and e
 ## Prerequisites
 
 - Kubernetes cluster with a CNI plugin that supports Network Policies (Calico, Cilium, Weave Net)
-- Note: Flannel does NOT support Network Policies
+- Note: Flannel by itself does NOT support Network Policies
 
 ## Default Deny Policies
 
@@ -71,6 +71,27 @@ spec:
     - protocol: TCP
       port: 8080
 ---
+# Allow frontend pods to send traffic to backend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-egress
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: backend
+    ports:
+    - protocol: TCP
+      port: 8080
+---
 # Allow backend to access database
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -88,6 +109,27 @@ spec:
     - podSelector:
         matchLabels:
           app: backend
+    ports:
+    - protocol: TCP
+      port: 5432
+---
+# Allow backend pods to send traffic to database
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-egress
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: database
     ports:
     - protocol: TCP
       port: 5432
@@ -174,6 +216,8 @@ spec:
   podSelector:
     matchLabels:
       app: read-api
+  policyTypes:
+  - Ingress
   ingress:
   - from:
     - namespaceSelector:
@@ -187,22 +231,24 @@ spec:
 ## Testing Network Policies
 
 ```bash
-# Test connectivity using a debug pod
+# Test frontend -> backend from a pod that matches the allow policy
+kubectl run frontend-test --image=busybox --rm -it --restart=Never \
+  --labels="app=frontend" -n production --command -- nc -zv backend 8080
+
+# Test a pod without the required label - should fail
 kubectl run debug --image=busybox --rm -it --restart=Never \
-  -n production -- sh
+  -n production --command -- nc -zv backend 8080
 
-# Inside the debug pod, test connections:
-# Should succeed (explicitly allowed)
-nc -zv backend 8080
+# Test outbound internet access from a pod without needs-internet=true - should fail
+kubectl run debug-egress --image=busybox --rm -it --restart=Never \
+  -n production --command -- nc -zv example.com 443
 
-# Should fail (blocked by default deny)
-nc -zv external-service.example.com 443
-
-# Test from a different namespace
-kubectl run debug --image=busybox --rm -it --restart=Never \
-  -n staging -- nc -zv backend.production.svc.cluster.local 8080
+# Test cross-namespace access from a staging API client - should succeed
+kubectl run api-client-test --image=busybox --rm -it --restart=Never \
+  --labels="role=api-client" -n staging --command -- \
+  nc -zv read-api.production.svc.cluster.local 8080
 ```
 
 ## Conclusion
 
-Network Policies deployed via Portainer implement zero-trust networking in Kubernetes. By starting with a default-deny posture and adding explicit allow rules, you limit the blast radius of any compromised pod. Portainer's YAML editor makes managing multiple network policies straightforward, and the namespace view provides an overview of all policies in each namespace.
+Network Policies deployed via Portainer implement zero-trust networking in Kubernetes. By starting with a default-deny posture and adding explicit allow rules, you limit the blast radius of any compromised pod. Portainer's web editor makes applying and updating manifest-based network policies straightforward.
