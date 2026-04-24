@@ -49,7 +49,7 @@ resource "aws_subnet" "app" {
 
 ## Query a Resource by Filter
 
-AWS data sources support `filter` blocks that map directly to the AWS `Describe*` API filter parameters.
+Many AWS data sources support `filter` blocks that map directly to the underlying AWS API filter parameters.
 
 ```hcl
 # Find the most recent Amazon Linux 2 AMI
@@ -118,7 +118,8 @@ resource "aws_ecs_task_definition" "app" {
   family = "app"
 
   container_definitions = jsonencode([{
-    name = "app"
+    name  = "app"
+    image = "nginx:latest"
     environment = [
       { name = "DB_HOST", value = data.aws_ssm_parameter.db_host.value },
       { name = "DB_PORT", value = data.aws_ssm_parameter.db_port.value },
@@ -144,7 +145,7 @@ resource "aws_route53_record" "api" {
   name    = "api.example.com"
   type    = "A"
   ttl     = 300
-  records = [aws_instance.api.public_ip]
+  records = ["203.0.113.10"]
 }
 ```
 
