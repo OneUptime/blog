@@ -17,7 +17,7 @@ version: "3.8"
 
 services:
   n8n:
-    image: n8nio/n8n:latest
+    image: docker.n8n.io/n8nio/n8n
     container_name: n8n
     environment:
       # Database
@@ -29,13 +29,9 @@ services:
       DB_POSTGRESDB_PASSWORD: n8n_db_password
       
       # n8n settings
-      N8N_BASIC_AUTH_ACTIVE: "true"
-      N8N_BASIC_AUTH_USER: admin
-      N8N_BASIC_AUTH_PASSWORD: admin_password
-      N8N_HOST: n8n.example.com
+      N8N_HOST: "<host>"
       N8N_PORT: 5678
-      N8N_PROTOCOL: https
-      WEBHOOK_URL: https://n8n.example.com
+      N8N_PROTOCOL: http
       
       # Timezone
       GENERIC_TIMEZONE: America/New_York
@@ -74,7 +70,7 @@ volumes:
 
 ## Access and Setup
 
-Navigate to `http://<host>:5678`. Log in with your basic auth credentials.
+Navigate to `http://<host>:5678`. On first launch, create the owner account in the setup screen, then sign in with that account.
 
 ## Example Workflows
 
@@ -84,25 +80,25 @@ Create a workflow that:
 1. **Webhook Trigger** → receives alerts from Prometheus Alertmanager
 2. **Switch** node → routes by severity (critical vs. warning)
 3. **Slack** node → sends critical alerts to `#incidents`
-4. **Email** node → sends warning alerts to ops team
+4. **Send Email** node → sends warning alerts to ops team
 
 ### Database Backup Notification
 
 1. **Schedule Trigger** → runs daily at 3 AM
-2. **Execute Command** → runs backup script
+2. **SSH** node → runs backup script on the target host
 3. **IF** node → checks if backup succeeded
 4. **Slack** → posts success/failure status
 
 ### GitHub → Mattermost Pipeline
 
 1. **GitHub Trigger** → fires on pull request events
-2. **Function** node → formats message
+2. **Code** node → formats message
 3. **Mattermost** → posts to `#engineering` channel
 
-## n8n API Example
+## n8n Code Node Example
 
 ```javascript
-// Custom Function node in n8n
+// Custom Code node in n8n
 // Process webhook data and format for Slack
 
 const payload = items[0].json;
@@ -125,13 +121,18 @@ return [{
 ## Installing Community Nodes
 
 ```bash
-# Install community nodes via CLI
+# Manually install a community node from npm
 
-docker exec n8n n8n install-community-nodes n8n-nodes-minio
+docker exec -it n8n sh
+mkdir -p ~/.n8n/nodes
+cd ~/.n8n/nodes
+npm i n8n-nodes-minio
 ```
+
+Then restart n8n.
 
 Or in the UI: **Settings > Community Nodes > Install**
 
 ## Conclusion
 
-n8n deployed via Portainer provides a powerful, self-hosted automation platform that replaces Zapier and Make for many use cases. The visual workflow editor makes it accessible to non-developers, while the code node provides full JavaScript flexibility for complex transformations. Over 400 built-in integrations cover most automation needs, and the webhook trigger enables real-time reactive automations.
+n8n deployed via Portainer provides a powerful, self-hosted automation platform that replaces Zapier and Make for many use cases. The visual workflow editor makes it accessible to non-developers, while the Code node provides full JavaScript flexibility for complex transformations. Hundreds of built-in integrations cover most automation needs, and the Webhook node enables real-time reactive automations.
