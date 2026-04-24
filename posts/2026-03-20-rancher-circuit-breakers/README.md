@@ -8,7 +8,7 @@ Description: Implement circuit breakers in Rancher using Istio's DestinationRule
 
 ## Introduction
 
-Circuit breakers prevent cascade failures in microservice architectures by temporarily blocking requests to unhealthy services. When a service is failing, instead of queuing up requests that will all fail, the circuit "opens" and fails fast, allowing the system to recover. Istio implements circuit breaking through the DestinationRule resource using two mechanisms: connection pool settings (to limit concurrent requests) and outlier detection (to eject unhealthy hosts).
+Circuit breakers prevent cascade failures in microservice architectures by failing fast when downstream services are overloaded or unhealthy. When a service is failing, instead of queuing up requests that will all fail, the circuit breaker applies backpressure and allows the system to recover. Istio implements this behavior through the DestinationRule resource using two mechanisms: connection pool settings (to limit concurrent connections, requests, and retries) and outlier detection (to eject unhealthy hosts).
 
 ## Prerequisites
 
@@ -18,10 +18,12 @@ Circuit breakers prevent cascade failures in microservice architectures by tempo
 
 ## Understanding Circuit Breaker States
 
-The circuit breaker has three states:
+Application-level circuit breakers typically have three states:
 - **Closed**: Normal operation, requests flow through
-- **Open**: Service is failing, requests fail immediately
+- **Open**: Requests fail immediately while the breaker blocks calls
 - **Half-Open**: Testing if service has recovered
+
+Istio and Envoy do not expose one global Closed/Open/Half-Open state for a service. Instead, they enforce resource limits per upstream cluster and temporarily eject unhealthy hosts from load balancing.
 
 ## Step 1: Configure Connection Pool Limits
 
@@ -30,7 +32,7 @@ Connection pool limits prevent overwhelming downstream services:
 ```yaml
 # connection-pool-limits.yaml - Limit concurrent connections
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-dr
@@ -49,11 +51,11 @@ spec:
           time: 7200s
           interval: 75s
       http:
-        # Maximum concurrent HTTP/1.1 requests
+        # Maximum queued requests waiting for a connection
         http1MaxPendingRequests: 50
-        # Maximum concurrent HTTP/2 requests per connection
+        # Maximum active requests to the destination
         http2MaxRequests: 200
-        # Maximum number of connection retries
+        # Maximum requests allowed per upstream connection
         maxRequestsPerConnection: 100
         # Remove connections idle for more than 1 hour
         idleTimeout: 1h
@@ -65,7 +67,7 @@ Outlier detection monitors host health and ejects failing instances:
 
 ```yaml
 # outlier-detection.yaml - Eject unhealthy hosts automatically
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: database-service-dr
@@ -84,7 +86,7 @@ spec:
       baseEjectionTime: 30s
       # Maximum percentage of hosts that can be ejected
       maxEjectionPercent: 50
-      # Minimum requests before ejection analysis starts
+      # Disable outlier detection if healthy hosts drop below 50%
       minHealthPercent: 50
 ```
 
@@ -94,7 +96,7 @@ Combine connection pool limits and outlier detection:
 
 ```yaml
 # full-circuit-breaker.yaml - Production-grade circuit breaker
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: orders-service-dr
@@ -116,7 +118,7 @@ spec:
       interval: 30s
       baseEjectionTime: 60s
       maxEjectionPercent: 100
-      # Minimum time between ejections
+      # Track locally originated failures separately from upstream 5xxs
       splitExternalLocalOriginErrors: true
   subsets:
     - name: v1
@@ -161,31 +163,36 @@ spec:
             - containerPort: 8080
 EOF
 
-# Generate traffic to test circuit breaker
-kubectl exec -n production deployment/fortio-deploy -- \
-  fortio load \
-  -c 10 \            # 10 concurrent connections
-  -qps 100 \         # 100 queries per second
-  -t 30s \           # Run for 30 seconds
-  http://payment-service:8080/api/payment
+# Generate traffic to exceed the orders-service limits from Step 3
+kubectl exec -n production deployment/fortio-deploy -c fortio -- \
+  /usr/bin/fortio load \
+  -c 60 \
+  -qps 0 \
+  -n 600 \
+  http://orders-service:8080/api/orders
 ```
 
 ## Step 5: Monitor Circuit Breaker Metrics
 
+Istio exposes only a minimal set of Envoy stats by default. If you want these circuit breaker and outlier detection metrics in Prometheus, enable the relevant Envoy stats with `proxyStatsMatcher` and restart the affected proxies first, then query Rancher Monitoring:
+
 ```bash
-# Query Prometheus for circuit breaker metrics
-kubectl exec -n istio-system deployment/prometheus -- \
-  curl -s 'http://localhost:9090/api/v1/query?query=sum(envoy_cluster_upstream_rq_pending_overflow)by(cluster_name)' | \
-  jq '.data.result[] | {service: .metric.cluster_name, overflow_count: .value[1]}'
+# In a separate terminal, forward Rancher Monitoring's Prometheus instance
+kubectl -n cattle-monitoring-system port-forward deployment/prometheus-rancher-monitoring-prometheus 9090:9090
+
+# Query Prometheus for circuit breaker overflow counters
+curl -G -s 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=sum by (__name__, cluster_name) ({__name__=~"envoy_cluster_upstream_rq_(pending|active)_overflow"})' | \
+  jq '.data.result[] | {metric: .metric.__name__, service: .metric.cluster_name, overflow_count: .value[1]}'
 
 # Check ejected hosts
-kubectl exec -n istio-system deployment/prometheus -- \
-  curl -s 'http://localhost:9090/api/v1/query?query=sum(envoy_cluster_outlier_detection_ejections_active)by(cluster_name)' | \
+curl -G -s 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=sum by (cluster_name) (envoy_cluster_outlier_detection_ejections_active)' | \
   jq '.data.result[] | {service: .metric.cluster_name, ejected_hosts: .value[1]}'
 
 # Check upstream request timeouts
-kubectl exec -n istio-system deployment/prometheus -- \
-  curl -s 'http://localhost:9090/api/v1/query?query=rate(envoy_cluster_upstream_rq_timeout[5m])' | \
+curl -G -s 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=rate(envoy_cluster_upstream_rq_timeout[5m])' | \
   jq '.data.result'
 ```
 
@@ -204,16 +211,18 @@ spec:
   groups:
     - name: circuit-breaker
       rules:
-        # Alert when circuit breaker is tripping
-        - alert: CircuitBreakerOpen
+        # Alert when circuit breaker starts rejecting requests
+        - alert: CircuitBreakerRejectingRequests
           expr: |
-            sum(rate(envoy_cluster_upstream_rq_pending_overflow[5m])) by (cluster_name) > 10
+            sum by (cluster_name) (
+              rate({__name__=~"envoy_cluster_upstream_rq_(pending|active)_overflow"}[5m])
+            ) > 10
           for: 2m
           labels:
             severity: warning
           annotations:
-            summary: "Circuit breaker tripping for {{ $labels.cluster_name }}"
-            description: "{{ $value }} requests per second being rejected by circuit breaker"
+            summary: "Circuit breaker rejecting requests for {{ $labels.cluster_name }}"
+            description: "{{ $value }} requests per second are being rejected by circuit breaking thresholds"
 
         # Alert on high host ejection rate
         - alert: HighOutlierEjectionRate
@@ -228,7 +237,7 @@ spec:
 
 ## Step 7: Implement Application-Level Circuit Breaker
 
-For application-level circuit breaking, use Resilience4j in Java or similar:
+For application-level circuit breaking in a Spring Boot application using the Resilience4j starter, you can configure it like this:
 
 ```yaml
 # app-with-circuit-breaker.yaml - Application with built-in circuit breaker
@@ -238,37 +247,45 @@ metadata:
   name: frontend-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: frontend-app
   template:
+    metadata:
+      labels:
+        app: frontend-app
     spec:
       containers:
         - name: frontend
           image: registry.example.com/frontend:v1.0
           env:
             # Resilience4j circuit breaker configuration
-            - name: RESILIENCE4J_CIRCUITBREAKER_INSTANCES_BACKEND_FAILURE_RATE_THRESHOLD
+            - name: RESILIENCE4J_CIRCUITBREAKER_INSTANCES_BACKEND_FAILURERATETHRESHOLD
               value: "50"
-            - name: RESILIENCE4J_CIRCUITBREAKER_INSTANCES_BACKEND_SLOW_CALL_RATE_THRESHOLD
+            - name: RESILIENCE4J_CIRCUITBREAKER_INSTANCES_BACKEND_SLOWCALLRATETHRESHOLD
               value: "70"
-            - name: RESILIENCE4J_CIRCUITBREAKER_INSTANCES_BACKEND_SLOW_CALL_DURATION_THRESHOLD
+            - name: RESILIENCE4J_CIRCUITBREAKER_INSTANCES_BACKEND_SLOWCALLDURATIONTHRESHOLD
               value: "2s"
-            - name: RESILIENCE4J_CIRCUITBREAKER_INSTANCES_BACKEND_WAIT_DURATION_IN_OPEN_STATE
+            - name: RESILIENCE4J_CIRCUITBREAKER_INSTANCES_BACKEND_WAITDURATIONINOPENSTATE
               value: "60s"
 ```
 
 ## Step 8: Verify Circuit Breaker Behavior
 
+If you enabled the Envoy stats above, you can also inspect them directly from a sidecar proxy:
+
 ```bash
 # Check Envoy statistics for the service
 kubectl exec -n production -c istio-proxy deployment/frontend-app -- \
-  curl -s localhost:15000/stats | grep "payment_service.*overflow\|ejection"
+  pilot-agent request GET stats | grep -E 'orders-service.*(upstream_rq_pending_overflow|upstream_rq_active_overflow|outlier_detection)'
 
 # Check outlier detection status
 kubectl exec -n production -c istio-proxy deployment/frontend-app -- \
-  curl -s localhost:15000/clusters | grep "outlier_detection"
+  pilot-agent request GET clusters | grep -E 'orders-service.*outlier'
 
 # View Envoy cluster configuration
 kubectl exec -n production -c istio-proxy deployment/frontend-app -- \
-  curl -s localhost:15000/config_dump | jq '.configs[] | select(.["@type"] | contains("ClusterDiscoveryService"))'
+  pilot-agent request GET config_dump | jq '.configs[] | select(.["@type"] | contains("ClustersConfigDump"))'
 ```
 
 ## Conclusion
