@@ -13,10 +13,10 @@ The Portainer REST API exposes all the data visible in the Portainer UI, plus mo
 ## Prerequisites
 
 - Portainer CE or BE with API access
-- API token or credentials
+- Portainer access token or credentials
 - Basic knowledge of HTML, JavaScript, and REST APIs
 
-## Getting Your API Token
+## Getting Your Access Token
 
 ```bash
 # Authenticate and retrieve a JWT token
@@ -35,14 +35,15 @@ TOKEN=$(curl -s -X POST \
 echo "Token: $TOKEN"
 ```
 
-For permanent access, use an API key:
+For longer-lived access, create a Portainer access token:
 
 ```bash
-# Create an API key via the Portainer UI:
-# Settings > My Account > API Keys > Add API Key
+# In the Portainer UI:
+# Click your username in the top-right > My account
+# Then create a token in the Access tokens section
 
-# Use the API key in headers
-curl -H "X-API-Key: your-api-key" \
+# Use the access token in headers
+curl -H "X-API-Key: your-access-token" \
   https://portainer.example.com/api/endpoints
 ```
 
@@ -99,24 +100,37 @@ Create `dashboard.html`:
 
     <script>
         // Configuration
-        const PORTAINER_URL = 'https://portainer.example.com';
-        const API_KEY = 'your-api-key-here';
+        // Serve this page from the same origin as Portainer, such as behind the same reverse proxy.
+        const PORTAINER_API_BASE = '/api';
         const ENDPOINT_ID = 1;
-        
-        const headers = { 'X-API-Key': API_KEY };
+        let accessToken = '';
+
+        function getHeaders() {
+            if (!accessToken) {
+                accessToken = window.prompt('Enter your Portainer access token');
+                if (!accessToken) {
+                    throw new Error('A Portainer access token is required.');
+                }
+            }
+
+            return { 'X-API-Key': accessToken };
+        }
 
         async function loadData() {
             try {
                 // Fetch all containers
                 const resp = await fetch(
-                    `${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/json?all=true`,
-                    { headers }
+                    `${PORTAINER_API_BASE}/endpoints/${ENDPOINT_ID}/docker/containers/json?all=true`,
+                    { headers: getHeaders() }
                 );
+                if (!resp.ok) {
+                    throw new Error(`Portainer API request failed: ${resp.status}`);
+                }
                 const containers = await resp.json();
 
                 // Calculate stats
                 const running = containers.filter(c => c.State === 'running').length;
-                const stopped = containers.filter(c => c.State === 'exited').length;
+                const notRunning = containers.filter(c => c.State !== 'running').length;
                 const total = containers.length;
 
                 // Render stats
@@ -130,15 +144,15 @@ Create `dashboard.html`:
                         <div>Running</div>
                     </div>
                     <div class="stat-box">
-                        <div class="stat-number" style="color:#f44336">${stopped}</div>
-                        <div>Stopped</div>
+                        <div class="stat-number" style="color:#f44336">${notRunning}</div>
+                        <div>Not Running</div>
                     </div>
                 `;
 
                 // Render containers
                 const containerHTML = containers.map(c => `
                     <div class="card ${c.State === 'running' ? 'running' : 'stopped'}">
-                        <h3>${c.Names[0].replace('/', '')}</h3>
+                        <h3>${(c.Names?.[0] || c.Id).replace('/', '')}</h3>
                         <p><strong>Image:</strong> ${c.Image}</p>
                         <p><strong>Status:</strong> 
                             <span class="badge ${c.State === 'running' ? 'badge-green' : 'badge-red'}">
@@ -165,6 +179,8 @@ Create `dashboard.html`:
 ```
 
 ## Serving the Dashboard
+
+Serve the dashboard from the same origin as Portainer, such as behind your existing reverse proxy. If you serve it from a different origin, browser CORS rules apply to the custom `X-API-Key` header.
 
 ```bash
 # Serve with Python
