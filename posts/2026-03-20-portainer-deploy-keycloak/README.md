@@ -8,7 +8,7 @@ Description: Deploy Keycloak via Portainer as a comprehensive single sign-on and
 
 ## Introduction
 
-Keycloak is an open-source Identity and Access Management solution providing SSO, social login, and identity brokering. It supports OAuth 2.0, OpenID Connect, and SAML 2.0 protocols. Deploying via Portainer with PostgreSQL gives you a production-ready identity provider.
+Keycloak is an open-source Identity and Access Management solution providing SSO, social login, and identity brokering. It supports OAuth 2.0, OpenID Connect, and SAML 2.0 protocols. Deploying via Portainer with PostgreSQL gives you a solid self-hosted identity provider, and placing it behind a reverse proxy with strong secrets and TLS makes it suitable for production use.
 
 ## Deploy as a Stack
 
@@ -17,9 +17,9 @@ version: "3.8"
 
 services:
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0
+    image: quay.io/keycloak/keycloak:26.6.1
     container_name: keycloak
-    command: start --optimized
+    command: start
     environment:
       # Admin credentials
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
@@ -33,24 +33,22 @@ services:
       
       # Hostname (change to your domain)
       KC_HOSTNAME: keycloak.example.com
-      KC_HOSTNAME_STRICT: "false"
       KC_HTTP_ENABLED: "true"
       
       # Proxy settings (if behind reverse proxy)
-      KC_PROXY: edge
+      KC_PROXY_HEADERS: xforwarded
       
       # Performance
       KC_HEALTH_ENABLED: "true"
       KC_METRICS_ENABLED: "true"
     ports:
       - "8080:8080"
-      - "8443:8443"
     depends_on:
       keycloak-db:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:8080/health/ready | grep -q 'UP'"]
+      test: ["CMD", "bash", "-c", "{ printf 'HEAD /health/ready HTTP/1.0\\r\\n\\r\\n' >&0; grep 'HTTP/1.0 200'; } 0<>/dev/tcp/localhost/9000"]
       interval: 30s
       timeout: 10s
       retries: 10
@@ -78,7 +76,7 @@ volumes:
 
 ## Initial Configuration
 
-1. Access Keycloak at `http://<host>:8080`
+1. Access Keycloak at the hostname you configured, for example `https://keycloak.example.com` through your reverse proxy or `http://<host>:8080` for direct access
 2. Click **Administration Console**
 3. Log in with `admin/admin_password`
 
@@ -93,21 +91,23 @@ volumes:
 1. Navigate to **Clients > Create client**
 2. Client type: **OpenID Connect**
 3. Client ID: `myapp`
-4. Authentication flow: **Standard flow** (for web apps)
-5. Set **Valid redirect URIs**: `https://app.example.com/callback`
-6. Set **Web origins**: `https://app.example.com`
+4. Turn **Client authentication**: **On**
+5. Enable **Standard flow** (for web apps)
+6. Copy the generated **Client secret** from the **Credentials** tab
+7. Set **Valid redirect URIs**: `https://app.example.com/callback`
+8. Set **Web origins**: `https://app.example.com`
 
 ## Creating Users
 
 ```bash
 # Via Keycloak Admin API
 
-TOKEN=$(curl -s http://keycloak:8080/realms/master/protocol/openid-connect/token \
+TOKEN=$(curl -s http://<host>:8080/realms/master/protocol/openid-connect/token \
   -d "client_id=admin-cli&username=admin&password=admin_password&grant_type=password" \
   | jq -r '.access_token')
 
 # Create user
-curl -X POST "http://keycloak:8080/admin/realms/mycompany/users" \
+curl -X POST "http://<host>:8080/admin/realms/mycompany/users" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -127,13 +127,14 @@ from flask import Flask, redirect, url_for
 from authlib.integrations.flask_client import OAuth
 
 app = Flask(__name__)
+app.secret_key = 'replace-with-a-random-secret'
 oauth = OAuth(app)
 
 keycloak = oauth.register(
     name='keycloak',
     client_id='myapp',
     client_secret='your-client-secret',
-    server_metadata_url='http://keycloak:8080/realms/mycompany/.well-known/openid-configuration',
+    server_metadata_url='https://keycloak.example.com/realms/mycompany/.well-known/openid-configuration',
     client_kwargs={'scope': 'openid email profile'}
 )
 
