@@ -12,7 +12,7 @@ Portainer service webhooks provide an HTTP endpoint that, when called, triggers 
 
 ## Prerequisites
 
-- Portainer CE or BE on Docker Swarm
+- Portainer CE or BE managing a non-Edge Docker Swarm environment
 - A Swarm service to update
 - A CI/CD system (GitHub Actions, GitLab CI, Jenkins, etc.)
 
@@ -36,13 +36,13 @@ Test the webhook with curl to verify it works:
 
 ```bash
 # Trigger a service update via webhook
+# Add --insecure only if Portainer is using a self-signed certificate.
 
 curl -X POST \
-  "https://portainer.example.com:9443/api/webhooks/abc123def456" \
-  --insecure
+  "https://portainer.example.com:9443/api/webhooks/abc123def456"
 
-# Expected: HTTP 200 OK
-# Portainer will pull the latest image and update the service
+# Expected: HTTP 204 No Content
+# Portainer asks Swarm to redeploy the service using the current image tag
 ```
 
 ## Step 3: Integrate with GitHub Actions
@@ -61,16 +61,16 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
@@ -98,14 +98,16 @@ stages:
 
 build:
   stage: build
-  image: docker:24
+  image: docker:24.0.5-cli
   services:
-    - docker:24-dind
+    - docker:24.0.5-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
   script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - docker build -t $CI_REGISTRY_IMAGE:latest -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
-    - docker push $CI_REGISTRY_IMAGE:latest
-    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+    - docker build -t "$CI_REGISTRY_IMAGE:latest" -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" .
+    - docker push "$CI_REGISTRY_IMAGE:latest"
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
 
 deploy:
   stage: deploy
@@ -116,9 +118,11 @@ deploy:
       curl -X POST "$PORTAINER_WEBHOOK_URL" \
         --fail \
         --max-time 30
-  only:
-    - main
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
 ```
+
+For this example, the GitLab Runner must be configured to run Docker-in-Docker in privileged mode.
 
 ## Step 5: Integrate with Jenkins
 
@@ -130,11 +134,15 @@ pipeline {
     stages {
         stage('Build') {
             steps {
-                sh '''
-                    docker build -t myapp:${BUILD_NUMBER} .
-                    docker tag myapp:${BUILD_NUMBER} myapp:latest
-                    docker push myapp:latest
-                '''
+                withCredentials([usernamePassword(credentialsId: 'docker-hub', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                    sh '''
+                        echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+                        docker build -t myorg/myapp:${BUILD_NUMBER} .
+                        docker tag myorg/myapp:${BUILD_NUMBER} myorg/myapp:latest
+                        docker push myorg/myapp:${BUILD_NUMBER}
+                        docker push myorg/myapp:latest
+                    '''
+                }
             }
         }
 
@@ -158,15 +166,13 @@ pipeline {
 When the webhook is called:
 
 1. Portainer receives the POST request
-2. For each task in the service, Portainer pulls the **latest** version of the configured image tag
-3. If the digest has changed, Portainer updates the service
-4. If the digest is the same (image unchanged), behavior depends on the **Force update** setting
+2. Portainer inspects the service and prepares a Docker Swarm service update using the service's image tag
+3. Portainer enables a forced service update and asks Swarm to query the registry for the current digest of that tag
+4. Swarm redeploys the service tasks, reusing a cached image or pulling it from the registry when needed
 
 ### Force Update
 
-To always recreate tasks even if the image digest is unchanged:
-
-In the service webhook settings, enable **Force update**. This is useful when using the `latest` tag, where you want to force a re-pull and re-create even if the tag points to the same digest.
+Service webhooks already trigger a forced service update. In practice, that means the webhook recreates tasks even when the image tag still resolves to the same digest.
 
 ## Step 7: Secure the Webhook
 
