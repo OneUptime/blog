@@ -52,9 +52,21 @@ When testing a module that requires an aliased provider:
 ```hcl
 # modules/replication/main.tf
 
-resource "aws_s3_bucket_replication_configuration" "replication" {
+terraform {
+  required_providers {
+    aws = {
+      source                = "hashicorp/aws"
+      configuration_aliases = [aws.source, aws.destination]
+    }
+  }
+}
+
+data "aws_region" "source" {
+  provider = aws.source
+}
+
+data "aws_region" "destination" {
   provider = aws.destination
-  ...
 }
 ```
 
@@ -171,6 +183,12 @@ run "cross_account_test" {
 ## Verifying Provider Configuration
 
 ```hcl
+# main.tf
+
+data "aws_region" "current" {}
+
+# main.tftest.hcl
+
 run "check_region" {
   command = plan
 
