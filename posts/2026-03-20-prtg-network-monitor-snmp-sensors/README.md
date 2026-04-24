@@ -29,7 +29,7 @@ rocommunity public 192.168.1.50   # PRTG probe's IPv4
 rocommunity public 192.168.1.0/24
 
 # Bind to the server's IPv4 address
-agentAddress udp:192.168.1.10:161
+agentaddress udp:192.168.1.10:161
 
 systemctl enable --now snmpd
 ```
@@ -53,21 +53,21 @@ systemctl enable --now snmpd
 4. Select the interfaces to monitor (e.g., `eth0`, `bond0`).
 5. Click **Create Sensor**.
 
-This creates a sensor showing bytes in/out, utilization %, errors, and discards.
+By default, this creates channels for traffic in, traffic out, and traffic total. You can also enable additional error and discard channels when you add the sensor.
 
 ### SNMP CPU Load Sensor
 
 1. **Add Sensor** → Search **SNMP CPU Load**.
-2. PRTG reads the `UCD-SNMP-MIB::ssCpuUser` and related OIDs.
+2. PRTG reads the `HOST-RESOURCES-MIB::hrProcessorLoad` table and reports per-processor and total CPU load.
 3. Set alert thresholds (e.g., alert at 90% for 5 minutes).
 
 ### Custom SNMP OID Sensor
 
-For monitoring a specific metric (e.g., disk IOPS from a custom MIB):
+For monitoring a specific metric (e.g., a vendor-specific OID from a custom MIB, or context switches on a Net-SNMP host):
 
-1. **Add Sensor** → **SNMP Custom Value**.
-2. Enter the OID: e.g., `.1.3.6.1.4.1.2021.11.60.0` (UCD-SNMP cpu steal).
-3. Set the **value type** (integer, counter, gauge).
+1. **Add Sensor** → **SNMP Custom**.
+2. Enter the OID: e.g., `.1.3.6.1.4.1.2021.11.60.0` (`UCD-SNMP-MIB::ssRawContexts`).
+3. Set the **Value Type** (for example, **Delta (counter)** for a monotonically increasing counter).
 4. Add unit label and alert thresholds.
 
 ## SNMP v3 Configuration (Secure)
@@ -75,26 +75,30 @@ For monitoring a specific metric (e.g., disk IOPS from a custom MIB):
 SNMP v3 adds authentication and encryption.
 
 ```bash
-# /etc/snmp/snmpd.conf - SNMP v3 setup
+# Persistent Net-SNMP snmpd.conf (createUser belongs here)
 createUser prtguser SHA "AuthPass123!" AES "PrivPass456!"
+
+# /etc/snmp/snmpd.conf
 rouser prtguser priv
+
+systemctl restart snmpd
 ```
 
 In PRTG:
 1. Device settings → **SNMP Version**: **v3**.
-2. Set **Username**: `prtguser`.
-3. **Authentication**: SHA, **Auth Password**: `AuthPass123!`.
-4. **Encryption**: AES, **Priv Password**: `PrivPass456!`.
+2. Set **Authentication Method**: **SHA**.
+3. Set **User Name**: `prtguser`, **Password**: `AuthPass123!`.
+4. Set **Encryption Type**: **AES**, **Encryption Key**: `PrivPass456!`.
 
 ## Testing SNMP Connectivity
 
 ```bash
 # Test from the PRTG probe server to the device (SNMP v2c)
-snmpwalk -v2c -c public 192.168.1.10 system
+snmpwalk -v2c -c public 192.168.1.10 1.3.6.1.2.1.1
 
 # Test SNMP v3
 snmpwalk -v3 -u prtguser -l authPriv -a SHA -A "AuthPass123!" -x AES -X "PrivPass456!" \
-  192.168.1.10 system
+  192.168.1.10 1.3.6.1.2.1.1
 ```
 
 ## Key Takeaways
@@ -102,4 +106,4 @@ snmpwalk -v3 -u prtguser -l authPriv -a SHA -A "AuthPass123!" -x AES -X "PrivPas
 - Configure `snmpd.conf` to allow access from the PRTG probe's IPv4 address.
 - Use SNMP v3 with authentication (SHA) and encryption (AES) in production.
 - PRTG auto-discovers interfaces with the SNMP Traffic sensor - select only the interfaces you need.
-- Use the **SNMP Custom Value** sensor for any specific OID not covered by PRTG's built-in sensor library.
+- Use the **SNMP Custom** sensor for any specific OID not covered by PRTG's built-in sensor library.
