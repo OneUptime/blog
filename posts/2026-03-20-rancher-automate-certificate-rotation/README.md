@@ -18,29 +18,42 @@ The recommended approach for Rancher TLS is to use cert-manager, which automatic
 
 ```bash
 # Install cert-manager
+# Rancher was last tested with cert-manager v1.13.1
+helm repo add jetstack https://charts.jetstack.io --force-update
+helm repo update
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --version v1.13.1 \
+  --set crds.enabled=true
 
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
-
-# Wait for cert-manager to be ready
-kubectl wait --for=condition=ready pod \
-  -l app=cert-manager \
-  -n cert-manager \
-  --timeout=120s
+# Verify the cert-manager components are running
+kubectl get pods --namespace cert-manager
 ```
 
 ### Install Rancher with cert-manager
 
 ```bash
+# Add the Rancher chart repository
+helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+helm repo update
+
 # Install Rancher using cert-manager for automatic certificate management
 helm install rancher rancher-stable/rancher \
   --namespace cattle-system \
+  --create-namespace \
   --set hostname=rancher.example.com \
   --set ingress.tls.source=letsEncrypt \
   --set letsEncrypt.email=admin@example.com \
+  --set letsEncrypt.ingress.class=nginx \
   --set letsEncrypt.environment=production
 ```
 
+On Rancher v2.9+ new installs default `agentTLSMode` to `strict`. If you keep that default with Let's Encrypt, also set `privateCA=true` and upload the Let's Encrypt CA certificate so downstream agents can trust Rancher.
+
 ### ClusterIssuer Configuration
+
+For custom or internal CAs, install Rancher with `ingress.tls.source=secret` and have cert-manager keep the `tls-rancher-ingress` secret updated.
 
 ```yaml
 # ClusterIssuer for Let's Encrypt production certificates
@@ -57,7 +70,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ```yaml
@@ -68,7 +81,7 @@ metadata:
   name: internal-ca-issuer
 spec:
   ca:
-    secretName: internal-ca-secret
+    secretName: internal-ca-secret # Secret must exist in the cert-manager namespace
 ---
 # Certificate resource - cert-manager renews 30 days before expiry
 apiVersion: cert-manager.io/v1
@@ -89,34 +102,29 @@ spec:
 
 ## RKE2 Cluster Certificate Rotation
 
-RKE2 manages its own cluster certificates and provides a built-in rotation command:
+RKE2 manages its own client and server certificates and provides built-in commands to check and rotate them. Cluster CA certificates are handled separately with `rke2 certificate rotate-ca`.
 
 ### Check Certificate Expiry
 
 ```bash
-# Check when cluster certificates expire
-# On RKE2 server node:
-rke2 certificate rotate --help
-
-# View current certificate expiry dates
-for cert in /var/lib/rancher/rke2/server/tls/*.crt; do
-  echo "Certificate: $cert"
-  openssl x509 -in "$cert" -noout -enddate 2>/dev/null
-  echo "---"
-done
+# Check current client and server certificate expiry dates on an RKE2 node
+rke2 certificate check --output table
 ```
 
 ### Manual Certificate Rotation
 
 ```bash
-# Stop RKE2 before rotation
+# Stop RKE2 on server nodes before rotation
 systemctl stop rke2-server
 
-# Rotate all certificates
+# Rotate server-side client and server certificates
 rke2 certificate rotate
 
 # Start RKE2 with new certificates
 systemctl start rke2-server
+
+# On agent nodes, renew agent certificates by restarting the agent service
+systemctl restart rke2-agent
 ```
 
 ### Automated Certificate Rotation Script
@@ -124,30 +132,31 @@ systemctl start rke2-server
 ```bash
 #!/bin/bash
 # auto-rotate-rke2-certs.sh
-# Run as a CronJob 30 days before expiry
+# Run from cron on each RKE2 server node, with staggered schedules.
 
-CERT_FILE="/var/lib/rancher/rke2/server/tls/server-ca.crt"
-DAYS_THRESHOLD=30
+set -euo pipefail
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
 
-# Check expiry
-EXPIRY=$(openssl x509 -in "${CERT_FILE}" -noout -enddate | cut -d= -f2)
-EXPIRY_EPOCH=$(date -d "${EXPIRY}" +%s)
-NOW_EPOCH=$(date +%s)
-DAYS_REMAINING=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
+CHECK_OUTPUT=$(rke2 certificate check --output table)
+echo "${CHECK_OUTPUT}"
 
-echo "Certificate expires in ${DAYS_REMAINING} days"
-
-if [ "${DAYS_REMAINING}" -lt "${DAYS_THRESHOLD}" ]; then
-  echo "Certificate expiry within ${DAYS_THRESHOLD} days. Starting rotation..."
+if echo "${CHECK_OUTPUT}" | awk '
+  NF == 0 { next }
+  $1 == "FILENAME" || $1 ~ /^-+$/ { next }
+  $3 == "CertSign" { next }
+  $NF != "OK" { found=1 }
+  END { exit(found ? 0 : 1) }
+'; then
+  echo "One or more RKE2 client/server certificates need rotation. Starting rotation..."
 
   # Notify operators
-  curl -X POST "${SLACK_WEBHOOK}" \
+  curl -H "Content-Type: application/json" -X POST "${SLACK_WEBHOOK}" \
     -d "{\"text\": \"RKE2 certificate rotation starting on ${HOSTNAME}\"}"
 
-  # Stop RKE2 (do this on all nodes in order)
+  # Stop RKE2 on the server node
   systemctl stop rke2-server
 
-  # Rotate certificates
+  # Rotate server-side client and server certificates
   rke2 certificate rotate
 
   # Start RKE2
@@ -158,46 +167,21 @@ if [ "${DAYS_REMAINING}" -lt "${DAYS_THRESHOLD}" ]; then
   kubectl get nodes
 
   echo "Certificate rotation complete"
-  curl -X POST "${SLACK_WEBHOOK}" \
+  curl -H "Content-Type: application/json" -X POST "${SLACK_WEBHOOK}" \
     -d "{\"text\": \"RKE2 certificate rotation completed on ${HOSTNAME}\"}"
 fi
 ```
 
-### Schedule as a CronJob
+CA rotation is a separate, disruptive operation. Use `rke2 certificate rotate-ca` instead of `rke2 certificate rotate` when rotating the cluster CA.
 
-```yaml
-# CronJob to check and rotate certificates monthly
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: cert-rotation-check
-  namespace: kube-system
-spec:
-  schedule: "0 2 1 * *"    # Monthly on the 1st at 2 AM
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          hostPID: true
-          serviceAccountName: cert-rotation-sa
-          containers:
-            - name: cert-checker
-              image: registry.example.com/cert-rotation-tool:latest
-              env:
-                - name: NODE_NAME
-                  valueFrom:
-                    fieldRef:
-                      fieldPath: spec.nodeName
-              securityContext:
-                privileged: true    # Required for RKE2 operations
-          nodeSelector:
-            node-role.kubernetes.io/control-plane: "true"
-          restartPolicy: OnFailure
-          tolerations:
-            - key: "node-role.kubernetes.io/control-plane"
-              operator: "Exists"
-              effect: "NoSchedule"
+### Schedule with cron
+
+```bash
+# Run the check monthly on each RKE2 server node
+0 2 1 * * /usr/local/bin/auto-rotate-rke2-certs.sh >> /var/log/auto-rotate-rke2-certs.log 2>&1
 ```
+
+In multi-server clusters, stagger the schedules so only one server node rotates at a time.
 
 ## Monitoring Certificate Expiry
 
@@ -217,23 +201,24 @@ spec:
         # Alert if any certificate on Rancher ingress expires within 30 days
         - alert: CertificateExpiringSoon
           expr: |
-            (ssl_certificate_expiry_seconds{job="rancher-monitoring"} - time()) / 86400 < 30
+            probe_ssl_earliest_cert_expiry - time() < 30 * 24 * 3600
           for: 1h
           labels:
             severity: warning
           annotations:
-            summary: "Certificate expiring in {{ $value | humanizeDuration }}"
-            description: "Certificate for {{ $labels.server_name }} expires soon"
+            summary: "Certificate expires in {{ $value | humanizeDuration }}"
+            description: "Certificate probe for {{ $labels.instance }} expires soon"
 
         # Critical: expires within 7 days
         - alert: CertificateCriticalExpiry
           expr: |
-            (ssl_certificate_expiry_seconds{job="rancher-monitoring"} - time()) / 86400 < 7
+            probe_ssl_earliest_cert_expiry - time() < 7 * 24 * 3600
           for: 1h
           labels:
             severity: critical
           annotations:
-            summary: "Certificate expiring in less than 7 days!"
+            summary: "Certificate expires in less than 7 days!"
+            description: "Certificate probe for {{ $labels.instance }} is near expiry"
 ```
 
 ## Blackbox Exporter for Certificate Monitoring
@@ -252,6 +237,7 @@ data:
         prober: http
         timeout: 10s
         http:
+          fail_if_not_ssl: true
           valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
           tls_config:
             insecure_skip_verify: false
