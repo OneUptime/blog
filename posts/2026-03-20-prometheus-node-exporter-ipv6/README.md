@@ -6,7 +6,7 @@ Tags: Prometheus, Node Exporter, IPv6, Metric, Linux, Monitoring
 
 Description: A guide to collecting IPv6 network metrics from Linux hosts using Prometheus Node Exporter, including configuration and useful PromQL queries.
 
-Prometheus Node Exporter collects Linux system metrics including network interface statistics. IPv6 metrics are exposed automatically alongside IPv4 metrics through the `node_network_*` metrics family.
+Prometheus Node Exporter collects Linux system metrics including network interface statistics. The `node_network_*` metrics show per-interface totals and are not separated by IP version, while IPv6 stack counters are exposed through the `node_netstat_*` metrics family.
 
 ## Step 1: Start Node Exporter on IPv6
 
@@ -16,7 +16,8 @@ Prometheus Node Exporter collects Linux system metrics including network interfa
 node_exporter \
   --web.listen-address="[::]:9100" \
   --collector.netstat \
-  --collector.netdev
+  --collector.netdev \
+  --collector.netstat.fields='^(Ip6_.*|Icmp6_.*|TcpExt_TCPSynRetrans)$'
 ```
 
 Systemd unit with IPv6 listening:
@@ -32,6 +33,7 @@ ExecStart=/usr/local/bin/node_exporter \
   --web.listen-address=[::]:9100 \
   --collector.netstat \
   --collector.netdev \
+  --collector.netstat.fields=^(Ip6_.*|Icmp6_.*|TcpExt_TCPSynRetrans)$ \
   --collector.network_route
 Restart=on-failure
 
@@ -41,18 +43,20 @@ WantedBy=multi-user.target
 
 ## Step 2: Key IPv6 Metrics Available
 
-Node Exporter exposes the following relevant metrics:
+With the `--collector.netstat.fields` pattern above, Node Exporter exposes the following relevant metrics:
 
 ```promql
-# Network interface transmit/receive bytes (shows all interfaces including IPv6-capable ones)
+# Network interface transmit/receive bytes (per-interface totals, not split by IPv4 vs IPv6)
 node_network_receive_bytes_total
 node_network_transmit_bytes_total
 
-# Network interface errors (also applies to IPv6 traffic)
+# Network interface errors (per-interface totals, not split by IPv4 vs IPv6)
 node_network_receive_errs_total
 node_network_transmit_errs_total
 
 # IPv6 statistics from /proc/net/snmp6
+node_netstat_Ip6_InOctets
+node_netstat_Ip6_OutOctets
 node_netstat_Ip6_InReceives
 node_netstat_Ip6_OutRequests
 node_netstat_Ip6_InDelivers
@@ -63,24 +67,24 @@ node_netstat_Icmp6_InMsgs
 node_netstat_Icmp6_OutMsgs
 node_netstat_Icmp6_InErrors
 
-# TCP over IPv6 statistics
+# TCP retransmission statistics
 node_netstat_TcpExt_TCPSynRetrans
 ```
 
-## Step 3: Enable the netstat Collector for IPv6
+## Step 3: Expose the IPv6 netstat Fields
 
-The `netstat` collector gathers statistics from `/proc/net/snmp6`:
+The `netstat` collector is enabled by default and reads `/proc/net/netstat`, `/proc/net/snmp`, and `/proc/net/snmp6`. The `--collector.netstat.fields` pattern above ensures the IPv6 counters used in this guide are exported:
 
 ```bash
-# Verify the snmp6 collector is working
+# Verify the IPv6 netstat metrics are present
 curl -s http://[::1]:9100/metrics | grep "node_netstat_Ip6"
 ```
 
 ## Step 4: Useful IPv6 PromQL Queries
 
 ```promql
-# IPv6 receive rate (bytes per second per interface)
-rate(node_network_receive_bytes_total[5m])
+# IPv6 receive rate (bytes per second for the host)
+rate(node_netstat_Ip6_InOctets[5m])
 
 # IPv6 packet input rate (from /proc/net/snmp6)
 rate(node_netstat_Ip6_InReceives[5m])
@@ -103,15 +107,11 @@ rate(node_netstat_Ip6_FragOKs[5m])     # Successful fragmentations
 ## Step 5: Grafana Dashboard Query for IPv6 Traffic
 
 ```promql
-# IPv6 inbound traffic rate for a specific interface
-rate(node_network_receive_bytes_total{
-  instance="[2001:db8::10]:9100",
-  device="eth0"
-}[5m])
+# Host-wide IPv6 inbound traffic rate
+rate(node_netstat_Ip6_InOctets{instance="[2001:db8::10]:9100"}[5m])
 
-# Compare IPv4 vs IPv6 packet rates (if eth0 carries both)
-# IPv6 input packets
-rate(node_netstat_Ip6_InDelivers{instance="[2001:db8::10]:9100"}[5m])
+# Host-wide IPv6 outbound traffic rate
+rate(node_netstat_Ip6_OutOctets{instance="[2001:db8::10]:9100"}[5m])
 ```
 
 ## Step 6: Alert on IPv6 Routing Failures
@@ -139,4 +139,4 @@ groups:
           summary: "ICMPv6 errors on {{ $labels.instance }}"
 ```
 
-Node Exporter's `/proc/net/snmp6` integration provides deep IPv6 stack telemetry with no additional configuration, making it the primary data source for IPv6 network health monitoring on Linux hosts.
+Node Exporter's `/proc/net/snmp6` integration provides deep IPv6 stack telemetry with minimal additional configuration, making it a primary data source for IPv6 network health monitoring on Linux hosts.
