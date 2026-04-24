@@ -8,27 +8,27 @@ Description: Learn how to filter and view applications by namespace in Portainer
 
 ## Introduction
 
-In a Kubernetes cluster with multiple namespaces and dozens of applications, finding the right workload quickly is essential. Portainer provides namespace filtering throughout its interface, allowing you to focus on applications belonging to a specific team, environment, or purpose. This guide covers how to effectively use namespace filtering in Portainer.
+In a Kubernetes cluster with multiple namespaces and dozens of applications, finding the right workload quickly is essential. Portainer provides namespace-aware filtering in its Kubernetes views, allowing you to focus on applications belonging to a specific team, environment, or purpose. This guide covers how to effectively use namespace filtering in Portainer.
 
 ## Prerequisites
 
 - Portainer with a connected Kubernetes environment
 - Multiple namespaces with deployed applications
 
-## Step 1: Set the Active Namespace in Portainer
+## Step 1: Set the Namespace Filter in Portainer
 
-Portainer's Kubernetes interface has a namespace selector at the top of the screen:
+On the **Applications** page, Portainer provides a **Namespace** dropdown for filtering the list:
 
 1. Open your Kubernetes environment in Portainer
-2. Look for the **Namespace** dropdown in the top navigation bar
-3. Select a specific namespace (e.g., `production`)
-4. All resource views (Applications, Services, ConfigMaps, etc.) now filter to that namespace
+2. Click **Applications** in the left sidebar
+3. Look for the **Namespace** dropdown above the applications list
+4. Select a specific namespace (e.g., `production`) to show only applications from that namespace
 
-Available options:
+The dropdown lists the namespaces you have access to, for example:
 ```text
-All namespaces      - Show resources from every namespace
+All namespaces      - Show applications across accessible namespaces
 default             - The default Kubernetes namespace
-kube-system         - System components (hidden by default)
+kube-system         - A Kubernetes system namespace, if visible to your account
 production          - Your production namespace
 staging             - Your staging namespace
 development         - Your development namespace
@@ -42,7 +42,7 @@ Navigate to **Applications** in the sidebar:
 2. Click **Applications** in the left sidebar
 3. The applications list shows all deployed workloads
 4. Use the namespace dropdown to filter by namespace
-5. Use the search bar to filter by application name within the selected namespace
+5. Review the **Namespace** column to confirm which namespace each application belongs to
 
 The list shows:
 ```text
@@ -98,34 +98,31 @@ kubectl get pods    # Same as: kubectl get pods -n production
 kubectl config set-context --current --namespace=staging
 ```
 
-## Step 5: Use Namespace Selectors in Portainer BE
+## Step 5: Use Namespace Access Controls in Portainer BE
 
-Portainer Business Edition provides additional filtering capabilities:
+Portainer Business Edition provides namespace-scoped access control when Kubernetes RBAC is enabled:
 
-1. **Environment-level namespace access** - Team members only see their assigned namespaces
-2. **Namespace quick-switch** - Switch between namespaces without leaving the current view
-3. **Cross-namespace search** - Search across all namespaces in the global search
+1. **Namespace access management** - From **Namespaces**, admins can assign users or teams to specific namespaces
+2. **Assigned namespace visibility** - User and Read-Only roles can be limited to only their assigned namespaces
+3. **Cluster-wide roles stay broader** - Operator and Helpdesk roles apply across all non-system namespaces
 
 For teams, this means:
-- The backend team logs in and only sees `production` and `staging` (their assigned namespaces)
-- The data team logs in and only sees `data-platform` namespace
-- Admins see all namespaces
+- A backend team can be granted access to only `production` and `staging`
+- A data team can be granted access to only `data-platform`
+- Environment administrators retain cluster-wide visibility
 
 ## Step 6: Filter Other Resources by Namespace
 
-The namespace filter applies to all Kubernetes resource types in Portainer:
+Portainer exposes namespace filtering and namespace context differently depending on the Kubernetes page:
 
 ```text
-Applications (Deployments, StatefulSets, DaemonSets)
-Services
-ConfigMaps
-Secrets
-Persistent Volume Claims
-Ingresses
-Pods (in the pod view)
+Applications         - Namespace dropdown
+ConfigMaps & Secrets - Filter menu with namespace checkboxes
+Services             - Namespace shown in the list
+Volumes              - Namespace shown in the list
 ```
 
-Navigate to each section and the selected namespace persists across views.
+Navigate to the relevant section and use the namespace control provided on that page.
 
 ## Step 7: Find Applications Across Namespaces via kubectl
 
@@ -138,7 +135,7 @@ kubectl get pods -A -l app=my-api
 
 # Find services exposing a specific port
 kubectl get services -A -o json | \
-  jq -r '.items[] | select(.spec.ports[].port == 8080) |
+  jq -r '.items[] | select(.spec.ports[]?.port == 8080) |
   "\(.metadata.namespace)/\(.metadata.name)"'
 
 # Find recently deployed apps (sorted by creation time)
@@ -163,7 +160,7 @@ metadata:
     version: v2.0.0
 ```
 
-Filter by label in Portainer's search or kubectl:
+Filter by label with kubectl:
 
 ```bash
 # Filter by team label
@@ -178,4 +175,4 @@ kubectl get all -A -l environment=production
 
 ## Conclusion
 
-Namespace filtering in Portainer keeps your workspace organized and focused. Use the namespace dropdown to limit views to specific environments or teams, leverage labels for fine-grained filtering, and set kubectl default namespaces to reduce repetitive flags. In multi-team clusters, Portainer BE's access control ensures each team only sees relevant namespaces automatically, making filtering a natural part of the workflow.
+Namespace filtering in Portainer keeps your workspace organized and focused. Use the Applications namespace dropdown to limit the app list to specific environments or teams, leverage labels for fine-grained filtering with `kubectl`, and set kubectl default namespaces to reduce repetitive flags. In multi-team clusters, Portainer BE's access control ensures each team only sees relevant namespaces automatically, making filtering a natural part of the workflow.
