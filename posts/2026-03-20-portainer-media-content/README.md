@@ -8,7 +8,7 @@ Description: Deploy and manage video streaming, content delivery, and media proc
 
 ## Introduction
 
-Media and broadcasting organizations run some of the most demanding containerized workloads: live video transcoding, adaptive bitrate streaming, content delivery networks, and metadata management systems. Portainer provides the operational visibility and deployment automation that media teams need to manage high-throughput, latency-sensitive container infrastructure. This guide covers common media workloads and how to manage them effectively with Portainer.
+Media and broadcasting organizations run some of the most demanding containerized workloads: live video transcoding, adaptive bitrate streaming, content delivery networks, and metadata management systems. Portainer provides the operational visibility and deployment automation that media teams need to manage high-throughput, latency-sensitive container infrastructure. This guide covers common media workloads and how to manage them effectively with Portainer. It assumes you are managing a Docker Swarm environment in Portainer, because Portainer's service management and scaling features apply to Swarm endpoints.
 
 ## Media Infrastructure Architecture
 
@@ -32,7 +32,7 @@ services:
     restart: always
     ports:
       - "1935:1935"   # RTMP ingest
-      - "9000:9000"   # SRT ingest
+      - "9000:9000/udp"   # SRT ingest
     environment:
       - MAX_STREAMS=100
       - QUEUE_URL=redis://queue:6379
@@ -98,11 +98,9 @@ services:
     restart: always
     ports:
       - "80:80"
-      - "443:443"
     volumes:
       - ./nginx-origin.conf:/etc/nginx/nginx.conf:ro
       - /data/media:/usr/share/nginx/html:ro
-      - ./certs:/etc/nginx/certs:ro
     deploy:
       replicas: 3
       update_config:
@@ -114,12 +112,11 @@ services:
     image: varnish:7.4
     restart: always
     ports:
-      - "6081:6081"
+      - "6081:80"
     environment:
       - VARNISH_SIZE=2G
     volumes:
       - ./varnish.vcl:/etc/varnish/default.vcl:ro
-    command: -F -s malloc,${VARNISH_SIZE}
 ```
 
 ```nginx
@@ -131,6 +128,9 @@ events {
 }
 
 http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
     # Enable sendfile for efficient file serving
     sendfile on;
     tcp_nopush on;
@@ -164,18 +164,25 @@ http {
 # autoscale-transcoders.sh
 PORTAINER_URL="https://portainer.media.com"
 API_KEY="ops-api-key"
-SERVICE_NAME="transcoder"
+ENDPOINT_ID=1
+STACK_NAME="transcoding-stack"
+SERVICE_NAME="${STACK_NAME}_transcoder"
 QUEUE_URL="redis://queue.media.local:6379"
 
 # Get current queue depth from Redis
-QUEUE_DEPTH=$(redis-cli -u $QUEUE_URL LLEN transcode_queue)
+QUEUE_DEPTH=$(redis-cli -u "$QUEUE_URL" LLEN transcode_queue)
 echo "Current queue depth: $QUEUE_DEPTH"
 
-# Get current replica count
-CURRENT_REPLICAS=$(curl -s \
+# Get current service spec and replica count
+SERVICE_JSON=$(curl -s \
   -H "X-API-Key: $API_KEY" \
-  "$PORTAINER_URL/api/endpoints/1/docker/services/transcoder" | \
+  "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/services/$SERVICE_NAME")
+
+CURRENT_REPLICAS=$(printf '%s' "$SERVICE_JSON" | \
   python3 -c "import sys,json; s=json.load(sys.stdin); print(s['Spec']['Mode']['Replicated']['Replicas'])")
+
+SERVICE_VERSION=$(printf '%s' "$SERVICE_JSON" | \
+  python3 -c "import sys,json; s=json.load(sys.stdin); print(s['Version']['Index'])")
 
 # Calculate desired replicas (1 transcoder per 10 items in queue)
 DESIRED_REPLICAS=$(( ($QUEUE_DEPTH / 10) + 1 ))
@@ -184,11 +191,14 @@ DESIRED_REPLICAS=$(( DESIRED_REPLICAS > MAX_REPLICAS ? MAX_REPLICAS : DESIRED_RE
 
 if [ "$DESIRED_REPLICAS" != "$CURRENT_REPLICAS" ]; then
   echo "Scaling from $CURRENT_REPLICAS to $DESIRED_REPLICAS replicas"
+  UPDATED_SPEC=$(printf '%s' "$SERVICE_JSON" | \
+    python3 -c "import json,sys; s=json.load(sys.stdin); s['Spec']['Mode']['Replicated']['Replicas']=int(sys.argv[1]); print(json.dumps(s['Spec']))" "$DESIRED_REPLICAS")
+
   curl -s -X POST \
     -H "X-API-Key: $API_KEY" \
     -H "Content-Type: application/json" \
-    -d "{\"Replicas\": $DESIRED_REPLICAS}" \
-    "$PORTAINER_URL/api/endpoints/1/docker/services/transcoder/scale"
+    -d "$UPDATED_SPEC" \
+    "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/services/$SERVICE_NAME/update?version=$SERVICE_VERSION"
 fi
 ```
 
@@ -215,8 +225,9 @@ services:
       - STREAMS_ENDPOINT=http://media-server:8080/stat
       - ALERT_WEBHOOK=https://hooks.slack.com/your-webhook
       - CHECK_INTERVAL=30
-    depends_on:
-      - media-server
+
+volumes:
+  live-segments:
 ```
 
 ## Step 5: Content Processing with Watermarking
@@ -227,11 +238,12 @@ docker service create \
   --name watermark-service \
   --replicas 3 \
   --constraint 'node.labels.gpu==true' \
+  --network transcoding-stack_default \
   --mount type=volume,source=media-input,target=/input \
   --mount type=volume,source=media-output,target=/output \
   -e WATERMARK_TEXT="© MediaCo 2026" \
   -e WATERMARK_OPACITY=0.3 \
-  -e QUEUE_URL=redis://queue:6379 \
+  -e QUEUE_URL=redis://transcoding-stack_queue:6379 \
   media/watermarker:v2.1
 ```
 
@@ -259,6 +271,9 @@ services:
       nofile:
         soft: 262144
         hard: 262144
+
+volumes:
+  analytics-data:
 ```
 
 ## Conclusion
