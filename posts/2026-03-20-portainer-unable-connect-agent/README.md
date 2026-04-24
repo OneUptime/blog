@@ -8,7 +8,7 @@ Description: Diagnose and fix 'Unable to Connect to Agent' errors in Portainer, 
 
 ## Introduction
 
-When Portainer shows "Unable to Connect to Agent" for an environment, it means the Portainer server cannot establish a connection to the Portainer Agent running on a remote Docker host. This guide covers every possible cause and its resolution.
+When Portainer shows "Unable to Connect to Agent" for an environment, it means the Portainer server cannot establish a connection to the Portainer Agent running on a remote Docker host. This guide covers the most common causes and their resolution.
 
 ## Prerequisites
 
@@ -28,13 +28,14 @@ docker ps | grep portainer-agent
 docker start portainer-agent
 
 # If not installed, deploy the agent
+# Replace <portainer-server-version> with the exact Portainer Server version
 docker run -d \
   -p 9001:9001 \
   --name portainer-agent \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  portainer/agent:latest
+  portainer/agent:<portainer-server-version>
 
 # Check agent logs
 docker logs portainer-agent --tail 50
@@ -54,7 +55,7 @@ nc -zv agent-host 9001
 
 # If nc returns "Connection refused", the agent isn't listening
 # If nc returns "No route to host", there's a routing issue
-# If nc hangs, there's a firewall blocking the connection
+# If nc hangs, a firewall or network filter is blocking the connection
 ```
 
 ## Step 3: Check Firewall Rules on the Agent Host
@@ -62,7 +63,7 @@ nc -zv agent-host 9001
 ```bash
 # Ubuntu/Debian - UFW
 sudo ufw status
-sudo ufw allow from portainer-server-ip to any port 9001
+sudo ufw allow from <portainer-server-ip> to any port 9001 proto tcp
 # Or allow from anywhere (less secure)
 sudo ufw allow 9001/tcp
 
@@ -80,13 +81,16 @@ sudo iptables -L INPUT -n -v | grep 9001
 1. In Portainer, go to **Environments**
 2. Click on the affected environment to edit it
 3. Verify:
-   - **URL** format: `tcp://agent-host:9001` or `agent-host:9001`
+   - **URL** format: `agent-host:9001`
+   - Do not include `tcp://`, `http://`, or `https://`
    - The IP/hostname resolves correctly from the Portainer server
 
 ```bash
 # Test DNS resolution from the Portainer server host
-docker exec portainer nslookup agent-host
-docker exec portainer ping -c 2 agent-host
+getent hosts agent-host
+# or, if nslookup is installed:
+nslookup agent-host
+ping -c 2 agent-host
 ```
 
 ## Step 5: Check for Secret/Token Mismatch
@@ -95,15 +99,18 @@ When using `AGENT_SECRET` for secure communication:
 
 ```bash
 # Check what secret the agent is using
-docker inspect portainer-agent | grep AGENT_SECRET
+docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' portainer-agent | grep '^AGENT_SECRET='
 
-# The Portainer server must use the same secret when adding the environment
-# In Portainer UI: Environments → Edit → Agent → Agent secret
+# Check whether the Portainer Server container is also using AGENT_SECRET
+docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' <portainer-container-name> | grep '^AGENT_SECRET='
+
+# If Portainer Server is started with AGENT_SECRET, the agent must use the exact same value
 ```
 
 If the secrets don't match, redeploy the agent with the correct secret:
 
 ```bash
+# Replace <portainer-server-version> with the exact Portainer Server version
 docker stop portainer-agent && docker rm portainer-agent
 docker run -d \
   -p 9001:9001 \
@@ -112,57 +119,55 @@ docker run -d \
   -e AGENT_SECRET="your-shared-secret" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  portainer/agent:latest
+  portainer/agent:<portainer-server-version>
 ```
 
 ## Step 6: Check TLS Configuration
 
 ```bash
-# Check agent logs for TLS errors
-docker logs portainer-agent 2>&1 | grep -i "tls\|cert\|ssl\|handshake"
+# Check agent logs for TLS/certificate errors
+docker logs portainer-agent 2>&1 | grep -Ei 'tls|cert|ssl|handshake'
 
-# If TLS errors occur, the agent and server TLS settings must match
-# Either both use TLS or neither does
-
-# To disable TLS on the agent (for testing only):
-docker run -d \
-  -p 9001:9001 \
-  --name portainer-agent \
-  -e AGENT_SECRET="your-secret" \
-  -e LOG_LEVEL=DEBUG \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  portainer/agent:latest
+# Standard Portainer Agent deployments use HTTPS on port 9001 with
+# certificates generated automatically by the agent.
+# In Portainer, use agent-host:9001 with no protocol prefix.
+# There is no separate "disable TLS" switch for the standard Portainer Agent.
 ```
 
 ## Step 7: Check Agent Version Compatibility
 
 ```bash
-# Check agent version
-docker inspect portainer-agent | grep Image
+# Check agent image
+docker inspect --format '{{.Config.Image}}' portainer-agent
 
-# Check Portainer server version
-docker exec portainer /app/portainer --version
+# Check Portainer server image
+docker inspect --format '{{.Config.Image}}' <portainer-container-name>
 
-# The major versions should match
-# If Portainer is 2.21.x, use portainer/agent:2.21.x or latest
-docker pull portainer/agent:latest
+# Match the agent version to the Portainer Server version exactly
+# If the Portainer Server uses a floating tag such as lts or sts,
+# confirm the running version in the Portainer UI and use that exact version here
+# Replace <portainer-server-version> with that exact version
+docker pull portainer/agent:<portainer-server-version>
 docker stop portainer-agent && docker rm portainer-agent
 
-# Redeploy with latest agent
+# Redeploy with the matching agent version
 docker run -d \
   -p 9001:9001 \
   --name portainer-agent \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  portainer/agent:latest
+  portainer/agent:<portainer-server-version>
 ```
 
 ## Step 8: Enable Debug Logging
 
 ```bash
 # Run agent with debug logging to see exactly what's happening
+# Replace <portainer-server-version> with the exact Portainer Server version
+# If Portainer Server uses AGENT_SECRET, add:
+#   -e AGENT_SECRET="your-shared-secret" \
+# to the docker run command below
 docker stop portainer-agent && docker rm portainer-agent
 docker run -d \
   -p 9001:9001 \
@@ -171,7 +176,7 @@ docker run -d \
   -e LOG_LEVEL=DEBUG \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  portainer/agent:latest
+  portainer/agent:<portainer-server-version>
 
 # Watch the logs
 docker logs -f portainer-agent
@@ -181,13 +186,14 @@ docker logs -f portainer-agent
 
 ```bash
 # Test the agent API from Portainer server host
-curl -v http://agent-host:9001/ping
+# Use -k because the standard Portainer Agent uses a self-signed HTTPS certificate
+curl -vk https://agent-host:9001/ping
 
-# Expected: some response (even if 401 or similar)
+# Expected: HTTP/1.1 204 No Content
 # "Connection refused" = agent not running or port blocked
-# "Connection timed out" = firewall blocking
+# "Connection timed out" = firewall or network filtering
 ```
 
 ## Conclusion
 
-"Unable to Connect to Agent" errors always come down to one of four causes: the agent isn't running, the network path is blocked by a firewall, the agent secret doesn't match, or there's a version incompatibility. Start with connectivity testing using `nc` or `telnet`, verify the agent is running, check firewall rules, and ensure the secrets match on both sides.
+"Unable to Connect to Agent" errors usually come down to the agent not running, the network path to port `9001` being blocked, the environment URL being wrong, `AGENT_SECRET` not matching, TLS/certificate issues, or the agent version not matching the Portainer Server version. Start with connectivity testing using `nc` or `curl -vk https://agent-host:9001/ping`, verify the agent is running, check the environment URL format, and ensure any configured secrets and versions match on both sides.
