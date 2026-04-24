@@ -19,13 +19,13 @@ pip install netaddr
 ## Basic IPv6 Operations
 
 ```python
-from netaddr import IPAddress, IPNetwork, IPSet, cidr_merge, cidr_exclude
+from netaddr import IPAddress, IPNetwork
 
 # Create IPv6 address
 
 addr = IPAddress("2001:db8::1")
 print(addr.version)        # 6
-print(addr.is_private())   # False
+print(addr.is_ipv6_unique_local())  # False
 print(addr.is_loopback())  # False
 print(addr.is_link_local()) # False
 
@@ -33,9 +33,9 @@ print(addr.is_link_local()) # False
 net = IPNetwork("2001:db8::/32")
 print(net.network)         # 2001:db8::
 print(net.prefixlen)       # 32
-print(net.size)            # 2^96
-print(net.first)           # IPAddress('2001:db8::')
-print(net.last)            # IPAddress('2001:db8:ffff:ffff:ffff:ffff:ffff:ffff')
+print(net.size)            # 79228162514264337593543950336 (2**96)
+print(IPAddress(net.first))  # 2001:db8::
+print(IPAddress(net.last))   # 2001:db8:ffff:ffff:ffff:ffff:ffff:ffff
 ```
 
 ## Subnetting IPv6
@@ -67,13 +67,13 @@ from netaddr import IPSet
 # Define allowed IPv6 ranges
 allowed = IPSet([
     "2001:db8::/32",        # Internal network
-    "2001:db8:admin::/48",  # Admin subnet
+    "2001:db8:ad00::/48",   # Admin subnet
     "::1/128",              # Loopback
 ])
 
 # Define blocked ranges
 blocked = IPSet([
-    "2001:db8:blocked::/48",
+    "2001:db8:dead::/48",
 ])
 
 # Final allowed set (subtract blocked)
@@ -84,8 +84,8 @@ def is_allowed(ip: str) -> bool:
     from netaddr import IPAddress
     return IPAddress(ip) in final_allowed
 
-print(is_allowed("2001:db8::1"))          # True
-print(is_allowed("2001:db8:blocked::1"))  # False
+print(is_allowed("2001:db8::1"))       # True
+print(is_allowed("2001:db8:dead::1"))  # False
 ```
 
 ## CIDR Merge
@@ -95,21 +95,21 @@ from netaddr import cidr_merge
 
 # Merge multiple IPv6 prefixes into the smallest CIDR representation
 prefixes = [
+    "2001:db8::/48",
     "2001:db8:1::/48",
     "2001:db8:2::/48",
     "2001:db8:3::/48",
-    "2001:db8:4::/48",
 ]
 
 merged = cidr_merge(prefixes)
 for net in merged:
-    print(net)  # 2001:db8:1::/46 (or similar)
+    print(net)  # 2001:db8::/46
 ```
 
 ## CIDR Exclude (Punch Holes)
 
 ```python
-from netaddr import cidr_exclude
+from netaddr import IPNetwork, cidr_exclude
 
 # Allocate from a /32 but exclude specific /48s
 total = IPNetwork("2001:db8::/32")
@@ -127,7 +127,7 @@ for used_net in used:
     available = new_available
 
 print(f"Available prefixes: {len(available)}")
-print(f"First available: {available[0]}")  # 2001:db8:2::/47 ...
+print(f"First available: {available[0]}")  # 2001:db8:2::/47
 ```
 
 ## IPv6 Address Type Classification
@@ -140,7 +140,7 @@ def classify_ipv6(addr_str: str) -> dict:
     return {
         "address": str(addr),
         "is_loopback": addr.is_loopback(),
-        "is_private": addr.is_private(),
+        "is_unique_local": addr.is_ipv6_unique_local(),
         "is_link_local": addr.is_link_local(),
         "is_multicast": addr.is_multicast(),
         "is_unicast": addr.is_unicast(),
@@ -164,7 +164,7 @@ def eui64_from_mac(mac: str, prefix: str) -> str:
     return str(ipv6)
 
 print(eui64_from_mac("AA:BB:CC:DD:EE:FF", "2001:db8:1::/64"))
-# 2001:db8:1::a8bb:ccff:fedd:eeff
+# 2001:db8:1:0:a8bb:ccff:fedd:eeff
 ```
 
 ## Conclusion
