@@ -37,7 +37,7 @@ Authorized redirect URIs:
 ## Step 2: Configure the OAuth Consent Screen
 
 1. Go to **APIs & Services** → **OAuth consent screen**
-2. For internal use, select **Internal** (limits to your Google Workspace org)
+2. For Google Workspace-only use, select **Internal** if the project belongs to a Google Cloud organization; otherwise select **External**
 3. Fill in application name: "Portainer"
 4. Add required scopes: `email`, `profile`, `openid`
 5. Save
@@ -52,7 +52,7 @@ Access Token URL:  https://oauth2.googleapis.com/token
 Resource URL:      https://openidconnect.googleapis.com/v1/userinfo
 ```
 
-In Settings → Authentication → OAuth → Google:
+In Settings → Authentication → OAuth → Google, enter the client ID and secret. If you want to use Google's current OIDC endpoints, click **Override default configuration** and use:
 
 ```text
 Client ID:         your-client-id.apps.googleusercontent.com
@@ -63,6 +63,7 @@ Resource URL:      https://openidconnect.googleapis.com/v1/userinfo
 Redirect URL:      https://portainer.example.com/
 User Identifier:   email
 Scopes:            openid email profile
+Auth Style:        In Params
 ```
 
 ## Step 4: Configure via API
@@ -71,7 +72,7 @@ Scopes:            openid email profile
 TOKEN=$(curl -s -X POST \
   https://portainer.example.com/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"adminpassword"}' \
+  -d '{"Username":"admin","Password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
 curl -X PUT \
@@ -80,7 +81,7 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d '{
     "AuthenticationMethod": 3,
-    "oauthsettings": {
+    "OAuthSettings": {
       "ClientID": "123456789-abcdefg.apps.googleusercontent.com",
       "ClientSecret": "GOCSPX-your_secret",
       "AuthorizationURI": "https://accounts.google.com/o/oauth2/v2/auth",
@@ -89,6 +90,7 @@ curl -X PUT \
       "RedirectURI": "https://portainer.example.com/",
       "UserIdentifier": "email",
       "Scopes": "openid email profile",
+      "AuthStyle": 1,
       "OAuthAutoCreateUsers": true,
       "SSO": true
     }
@@ -97,19 +99,19 @@ curl -X PUT \
 
 ## Restricting Access to Specific Domains (Google Workspace)
 
-Add the `hd` parameter to the authorization URL to restrict login to your organization's domain:
+For Google Workspace-only access, use the OAuth consent screen's **Internal** audience:
 
 ```text
-Authorization URL: https://accounts.google.com/o/oauth2/v2/auth?hd=yourcompany.com
+OAuth consent screen → User type: Internal
 ```
 
-This ensures only users with `@yourcompany.com` Google accounts can log in.
+This limits authorization requests to users in your Google Cloud organization. Do not rely on the `hd` parameter alone for access control.
 
 ## Restricting Access to Specific Users
 
-In Google Cloud Console:
-1. Set the consent screen to **Internal** - only your Workspace users can log in
-2. If you need to allow specific external emails, add them as test users during development
+In Portainer:
+1. Disable automatic user provisioning (`OAuthAutoCreateUsers: false`)
+2. Pre-create only the Portainer users you want to allow, using usernames that match the configured `User Identifier` value (for Google, typically `email`)
 
 ## Verifying the Configuration
 
@@ -135,4 +137,4 @@ echo "https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&redire
 
 ## Conclusion
 
-Google OAuth provides a simple SSO experience for teams already using Google accounts. The setup requires only a few minutes in Google Cloud Console and Portainer's settings. For Google Workspace organizations, the `hd` parameter domain restriction ensures only corporate accounts can access Portainer - a simple but effective access control measure.
+Google OAuth provides a simple SSO experience for teams already using Google accounts. The setup requires only a few minutes in Google Cloud Console and Portainer's settings. For Google Workspace organizations, using an **Internal** app audience limits sign-in to users in your organization.
