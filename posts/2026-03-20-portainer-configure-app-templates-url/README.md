@@ -13,7 +13,7 @@ By default, Portainer loads its application template catalog from the official P
 ## Prerequisites
 
 - Portainer CE or BE with admin access
-- A hosted JSON template file (on GitHub, a web server, or internal service)
+- A hosted JSON template file reachable by the Portainer Server instance (on GitHub, a web server, or internal service)
 - Understanding of the Portainer template JSON format
 
 ## Understanding the Template URL
@@ -22,14 +22,14 @@ Portainer fetches template definitions from a URL that returns a JSON file in th
 
 ```json
 {
-  "version": "2",
+  "version": "3",
   "templates": [
     {
+      "id": 1,
       "type": 1,
       "title": "My Container App",
       "description": "Internal application template",
-      "image": "registry.company.com/myapp:latest",
-      ...
+      "image": "registry.company.com/myapp:latest"
     }
   ]
 }
@@ -37,7 +37,7 @@ Portainer fetches template definitions from a URL that returns a JSON file in th
 
 The default URL points to:
 ```text
-https://raw.githubusercontent.com/portainer/templates/master/templates-2.0.json
+https://raw.githubusercontent.com/portainer/templates/v3/templates.json
 ```
 
 ## Step 1: Navigate to Settings
@@ -52,7 +52,7 @@ You will see:
 
 ```text
 App Templates URL
-[https://raw.githubusercontent.com/portainer/templates/master/templates-2.0.json]
+[https://raw.githubusercontent.com/portainer/templates/v3/templates.json]
 ```
 
 This is the currently configured URL.
@@ -82,14 +82,14 @@ https://mybucket.s3.us-east-1.amazonaws.com/portainer-templates.json
 ## Step 4: Save the Settings
 
 1. Click **Save settings**
-2. Navigate to **App Templates** to verify the new templates load correctly
+2. Navigate to **Templates** > **Application** to verify the new templates load correctly
 
 ## Step 5: Verify Templates Load
 
-1. Go to the environment of your choice
-2. Click **App Templates**
-3. You should see templates from your custom URL
-4. The old built-in templates will be replaced by your custom ones
+1. Go to an environment compatible with the template type in your JSON file
+2. Click **Templates** and then **Application**
+3. You should see templates from your custom URL that apply to that environment
+4. The built-in catalog will be replaced by the contents of your custom URL
 
 ## Template JSON Format Reference
 
@@ -97,9 +97,10 @@ Here is the complete structure for a template definition:
 
 ```json
 {
-  "version": "2",
+  "version": "3",
   "templates": [
     {
+      "id": 1,
       "type": 1,
       "title": "Nginx",
       "description": "Web server and reverse proxy",
@@ -133,6 +134,7 @@ Here is the complete structure for a template definition:
       ]
     },
     {
+      "id": 2,
       "type": 2,
       "title": "WordPress",
       "description": "WordPress CMS with MySQL",
@@ -141,7 +143,7 @@ Here is the complete structure for a template definition:
       "logo": "https://example.com/wp-logo.png",
       "repository": {
         "url": "https://github.com/myorg/templates",
-        "stackfile": "stacks/wordpress/docker-compose.yml"
+        "stackfile": "stacks/wordpress/docker-stack.yml"
       },
       "env": [
         {
@@ -167,7 +169,7 @@ Portainer currently allows only one template URL. To combine the default Portain
 
 ```bash
 curl -o templates.json \
-  https://raw.githubusercontent.com/portainer/templates/master/templates-2.0.json
+  https://raw.githubusercontent.com/portainer/templates/v3/templates.json
 ```
 
 2. Edit the file to add your custom templates to the `templates` array
@@ -212,7 +214,7 @@ To restore the default Portainer templates:
 2. Enter the original URL:
 
 ```text
-https://raw.githubusercontent.com/portainer/templates/master/templates-2.0.json
+https://raw.githubusercontent.com/portainer/templates/v3/templates.json
 ```
 
 3. Save settings
