@@ -33,7 +33,7 @@ Cockpit is a Red Hat-developed web console for Linux servers. It provides:
 - **Storage** - manage disk partitions, RAID, and LVM
 - **Networking** - configure network interfaces, bonding, VLANs
 - **Services** - start/stop/enable systemd services
-- **Terminal** - browser-based SSH terminal
+- **Terminal** - browser-based terminal
 - **Virtual Machines** - manage KVM VMs via the Machines plugin
 - **Podman containers** - limited container management via the podman plugin
 
@@ -44,6 +44,9 @@ Cockpit install:
 
 sudo dnf install cockpit
 sudo systemctl enable --now cockpit.socket
+# Open the firewall if necessary
+sudo firewall-cmd --add-service=cockpit --permanent
+sudo firewall-cmd --reload
 # Access at https://server-ip:9090
 ```
 
@@ -70,13 +73,19 @@ A powerful combination for production Linux servers:
 # Cockpit on port 9090 (HTTPS)
 sudo dnf install cockpit
 sudo systemctl enable --now cockpit.socket
+sudo firewall-cmd --add-service=cockpit --permanent
+sudo firewall-cmd --reload
 
 # Portainer on port 9443 (HTTPS)
+docker volume create portainer_data
+# If SELinux is enabled on the host, add --privileged
 docker run -d \
+  --name portainer \
+  --restart=always \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## When to Choose Each
