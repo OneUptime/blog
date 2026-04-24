@@ -81,8 +81,8 @@ class IPv6ClientFactory(protocol.ClientFactory):
         print(f"Connection failed: {reason.getErrorMessage()}")
         reactor.stop()
 
-# Connect to IPv6 server - bracket notation in endpoint string
-endpoint = clientFromString(reactor, "tcp6:host=2001\\:db8\\:\\:1:port=8080")
+# Connect to IPv6 server - use tcp: and escape colons in the literal
+endpoint = clientFromString(reactor, "tcp:host=2001\\:db8\\:\\:1:port=8080")
 endpoint.connect(IPv6ClientFactory(b"Hello IPv6!"))
 reactor.run()
 ```
@@ -90,9 +90,8 @@ reactor.run()
 ## Dual-Stack Server (IPv4 + IPv6)
 
 ```python
-from twisted.internet import reactor, protocol
+from twisted.internet import reactor, protocol, defer
 from twisted.internet.endpoints import serverFromString
-from twisted.application import service, internet
 
 class ChatProtocol(protocol.Protocol):
     """Simple chat server protocol."""
@@ -123,12 +122,20 @@ factory = ChatFactory()
 ipv6_endpoint = serverFromString(reactor, "tcp6:port=9000:interface=\\:\\:")
 ipv4_endpoint = serverFromString(reactor, "tcp4:port=9000:interface=0.0.0.0")
 
-# On dual-stack Linux with IPV6_V6ONLY=0, tcp6 :: also accepts IPv4
-# Use explicit both for guaranteed dual-stack
-ipv6_endpoint.listen(factory)
-ipv4_endpoint.listen(factory)
+# Whether both listeners can share the same port depends on the platform's
+# IPv6 socket settings. If the IPv6 listener also accepts IPv4-mapped
+# connections, the separate IPv4 bind may fail with address already in use.
+d1 = ipv6_endpoint.listen(factory)
+d2 = ipv4_endpoint.listen(factory)
 
-print("Dual-stack chat server on port 9000")
+def started(_):
+    print("Dual-stack chat server on port 9000")
+
+def listen_failed(failure):
+    print(f"Listen failed: {failure.getErrorMessage()}")
+    reactor.stop()
+
+defer.gatherResults([d1, d2]).addCallbacks(started, listen_failed)
 reactor.run()
 ```
 
@@ -160,11 +167,10 @@ reactor.run()
 ```python
 from twisted.internet import reactor
 from twisted.web.client import Agent, readBody
-from twisted.internet.endpoints import HostnameEndpoint
 from twisted.web.http_headers import Headers
 
 def fetch_ipv6_page(url: str):
-    """Fetch a web page, preferring IPv6."""
+    """Fetch a web page over IPv6 using an IPv6 literal URL."""
     from twisted.web.client import Agent
     from twisted.internet import reactor
 
@@ -193,10 +199,10 @@ def fetch_ipv6_page(url: str):
     d.addErrback(handle_error)
 
 # Note: brackets required for IPv6 literal in URL
-fetch_ipv6_page("http://[2001:4860:4860::8888]/")
+fetch_ipv6_page("http://[::1]:8080/")
 reactor.run()
 ```
 
 ## Conclusion
 
-Twisted uses endpoint strings to specify IPv6: `tcp6:port=8080:interface=\\:\\:` binds to all IPv6 interfaces, `tcp6:host=2001\\:db8\\:\\:1:port=80` connects to an IPv6 address (colons must be escaped as `\\:` in endpoint strings). For UDP, pass `interface="::"` to `reactor.listenUDP()`. Create dual-stack servers by listening on both `tcp4` and `tcp6` endpoints with the same factory. Twisted's `Agent` automatically resolves AAAA records for domain names, preferring IPv6 when available. Use Twisted for high-performance, event-driven IPv6 servers where async I/O and protocol composition (TLS, compression, framing) are needed.
+Twisted uses endpoint strings to specify IPv6: `tcp6:port=8080:interface=\\:\\:` binds to all IPv6 interfaces, and `tcp:host=2001\\:db8\\:\\:1:port=80` connects to an IPv6 literal (colons must be escaped as `\\:` in endpoint strings). For UDP, pass `interface="::"` to `reactor.listenUDP()`. Binding separate `tcp4` and `tcp6` listeners can provide dual-stack service, but whether both sockets can share the same port depends on the platform's IPv6 socket settings. Twisted's `Agent` accepts absolute HTTP/HTTPS URIs; using an IPv6 literal such as `http://[::1]:8080/` forces an IPv6 connection, while hostname connections use `HostnameEndpoint` and connect to the first resolved address that succeeds. Use Twisted for high-performance, event-driven IPv6 servers where async I/O and protocol composition (TLS, compression, framing) are needed.
