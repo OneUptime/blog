@@ -13,7 +13,7 @@ Macvlan networks give each container a unique MAC address and an IP address on t
 ## Prerequisites
 
 - Portainer installed with a connected Docker environment
-- A network interface that supports promiscuous mode
+- A Linux Docker host (macvlan is not supported on Docker Desktop for Mac/Windows or rootless Docker)
 - Network subnet and gateway information
 
 ## When to Use Macvlan
@@ -26,36 +26,13 @@ Macvlan networks give each container a unique MAC address and an IP address on t
 | IoT gateway (OPC-UA, Modbus TCP) | PLC can reach container directly |
 | DNS server needing port 53 | No port mapping conflict |
 
-## Step 1: Enable Promiscuous Mode on the Host Interface
+## Step 1: Verify the Parent Interface and Upstream Network
 
-Macvlan requires the host interface to be in promiscuous mode:
+Macvlan requires a Linux host and a parent interface whose upstream network can accept multiple MAC addresses. On physical Linux hosts, you usually do not need to force `promisc` on with `ip link set`; on virtualized hosts, you may need to enable promiscuous mode or MAC spoofing in the hypervisor or virtual switch.
 
 ```bash
-# Enable promiscuous mode on eth0:
-
-sudo ip link set eth0 promisc on
-
-# Verify:
-ip link show eth0 | grep promisc
-# Should show: PROMISC
-
-# Make it persistent (add to /etc/rc.local or systemd):
-sudo tee /etc/systemd/system/macvlan-promisc.service << 'EOF'
-[Unit]
-Description=Enable promiscuous mode for Macvlan
-After=network.target
-
-[Service]
-Type=oneshot
-ExecStart=/sbin/ip link set eth0 promisc on
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl enable macvlan-promisc
-sudo systemctl start macvlan-promisc
+# Verify the parent interface exists:
+ip -brief link show eth0
 ```
 
 ## Step 2: Create Macvlan Network via Portainer
@@ -69,15 +46,16 @@ Name:       macvlan-lan
 Driver:     macvlan
 ```
 
-4. Under **Network configuration**:
+4. Under **IPv4 Network configuration**:
 
-```bash
+```text
 Subnet:       192.168.1.0/24   (your physical network subnet)
 Gateway:      192.168.1.1      (your router/gateway)
 IP Range:     192.168.1.128/26 (range for Docker containers: .128-.191)
+Excluded IP:  192.168.1.200    (reserve for a host macvlan interface, if needed)
 ```
 
-5. Under **Advanced configuration** > **Options**:
+5. Under **Driver options**:
 
 ```text
 parent: eth0   (the physical network interface)
@@ -94,6 +72,7 @@ docker network create \
   --subnet 192.168.1.0/24 \
   --gateway 192.168.1.1 \
   --ip-range 192.168.1.128/26 \
+  --aux-address="host=192.168.1.200" \
   --opt parent=eth0 \
   macvlan-lan
 
@@ -105,8 +84,7 @@ docker network inspect macvlan-lan
 ## Step 4: Assign IPs to Containers
 
 ```yaml
-# docker-compose.yml with macvlan
-version: "3.8"
+# compose.yaml with macvlan and fixed IPs
 
 services:
   # Container gets IP 192.168.1.130 from macvlan network
@@ -140,19 +118,28 @@ services:
 
 networks:
   macvlan-lan:
-    external: true   # Use the pre-created macvlan network
+    driver: macvlan
+    driver_opts:
+      parent: eth0
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
+          ip_range: 192.168.1.128/26
+          gateway: 192.168.1.1
+          aux_addresses:
+            host: 192.168.1.200
 ```
 
 ## Step 5: Host-to-Container Communication with Macvlan
 
 A limitation of macvlan: the host cannot directly communicate with containers on the macvlan network (the host interface doesn't route to child macvlan interfaces).
 
-Workaround: create a macvlan sub-interface on the host:
+Workaround: create a macvlan sub-interface on the host and use the excluded IP from Step 2/3:
 
 ```bash
 # Create macvlan interface on host for host-to-container communication:
 sudo ip link add macvlan-host link eth0 type macvlan mode bridge
-sudo ip addr add 192.168.1.200/24 dev macvlan-host
+sudo ip addr add 192.168.1.200/32 dev macvlan-host
 sudo ip link set macvlan-host up
 
 # Add route for the container IP range:
@@ -167,7 +154,8 @@ ping 192.168.1.130   # DNS server container
 For VLAN-tagged macvlan (one physical interface, multiple VLANs):
 
 ```bash
-# Create VLAN interface first:
+# Docker can create the VLAN sub-interface automatically when `parent`
+# contains a dot, but creating it explicitly also works:
 sudo ip link add link eth0 name eth0.100 type vlan id 100
 sudo ip link set eth0.100 up
 
@@ -191,8 +179,8 @@ docker run -d \
   myorg/critical-service:latest
 
 # Verify the IP assignment:
-docker exec critical-service ip addr show eth0
-# inet 192.168.1.130/24 brd 192.168.1.255 scope global eth0
+docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' critical-service
+# 192.168.1.130
 
 # Test from another machine on the network:
 ping 192.168.1.130
@@ -203,8 +191,9 @@ curl http://192.168.1.130:8080/health
 
 ```text
 Use Bridge when:
-  - Containers on the same host need to talk to each other
+  - Containers mainly need to talk to each other on the same host
   - External access via port mapping is sufficient
+  - Services do not need their own IP on the physical network
   - Standard web applications
 
 Use Macvlan when:
@@ -218,18 +207,19 @@ Use Macvlan when:
 
 ```bash
 # Container not getting network connectivity:
-# Check promiscuous mode is enabled:
-ip link show eth0 | grep PROMISC
+# Verify the parent interface exists:
+ip -brief link show eth0
 
 # Container IP not reachable from network:
-# Check the IP is in the correct range and not in use:
-arp-scan 192.168.1.128-192.168.1.191
+# Check Docker assigned the expected IP and subnet:
+docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' critical-service
+docker network inspect macvlan-lan
 
 # Container can't reach gateway:
 # On VMs (VMware/VirtualBox), enable promiscuous mode in VM settings
-# Check hypervisor networking settings allow MAC spoofing
+# Check hypervisor networking settings allow multiple MAC addresses / MAC spoofing
 ```
 
 ## Conclusion
 
-Macvlan networks in Portainer give containers a first-class presence on your physical network with their own MAC and IP addresses. This is the right choice for containers that need to be reachable directly from the network without port mapping - particularly useful for DNS servers, industrial OPC-UA servers, and network monitoring tools. Remember that the host needs promiscuous mode enabled on the parent interface, and host-to-container communication requires a macvlan sub-interface workaround.
+Macvlan networks in Portainer give containers a first-class presence on your physical network with their own MAC and IP addresses. This is the right choice for containers that need to be reachable directly from the network without port mapping - particularly useful for DNS servers, industrial OPC-UA servers, and network monitoring tools. Remember that the upstream network or hypervisor must allow multiple MAC addresses on the parent interface, and host-to-container communication requires a macvlan sub-interface workaround.
