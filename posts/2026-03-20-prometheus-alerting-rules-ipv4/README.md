@@ -8,7 +8,7 @@ Description: Write Prometheus alerting rules targeting IPv4 infrastructure metri
 
 ## Introduction
 
-Prometheus alerting rules evaluate PromQL expressions at regular intervals. When an expression returns results, an alert fires. Rules are grouped in YAML files and loaded by Prometheus. Good alerting rules focus on user-visible symptoms and avoid alert fatigue through appropriate thresholds and durations.
+Prometheus alerting rules evaluate PromQL expressions at regular intervals. When an expression returns results, an alert becomes active; if a `for` duration is set, it fires only after the expression stays active for that long. Rules are grouped in YAML files and loaded by Prometheus. Good alerting rules focus on user-visible symptoms and avoid alert fatigue through appropriate thresholds and durations.
 
 ## Alert Rule File Structure
 
@@ -22,7 +22,7 @@ groups:
     rules:
       - alert: AlertName
         expr: <PromQL expression>
-        for: <duration>    # Alert must fire continuously for this duration
+        for: <duration>    # Expression must stay active for this duration before firing
         labels:
           severity: <critical|warning|info>
         annotations:
@@ -86,6 +86,9 @@ groups:
 ## Network-Specific Alerts
 
 ```yaml
+# /etc/prometheus/rules/ipv4_infra_alerts.yml
+
+groups:
   - name: network_alerts
     rules:
       # High network bandwidth
@@ -124,7 +127,7 @@ rule_files:
 promtool check rules /etc/prometheus/rules/ipv4_infra_alerts.yml
 # Expected: SUCCESS
 
-# Reload Prometheus
+# Reload Prometheus (requires `--web.enable-lifecycle`)
 curl -X POST http://127.0.0.1:9090/-/reload
 
 # Check alert status
