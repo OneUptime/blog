@@ -8,17 +8,17 @@ Description: Learn how Traefik uses Docker labels for automatic service discover
 
 ## Introduction
 
-Traefik reads Docker container labels to automatically discover services and configure routing rules without any manual configuration files. When containers are deployed through Portainer, adding the right labels means they are automatically routed by Traefik - no restart, no config reload required. This guide covers the complete Traefik label reference for Portainer-managed services.
+Traefik reads Docker container labels in standalone mode, and service labels in Swarm mode, to automatically discover services and configure routing rules without any manual configuration files. When services are deployed through Portainer, adding the right labels means Traefik can route them automatically - no restart, no config reload required. This guide covers the complete Traefik label reference for Portainer-managed services.
 
 ## Prerequisites
 
 - Traefik deployed and running (see the Traefik standalone deployment guide)
 - Portainer running on the same Docker host
-- Both connected to the same Docker network (e.g., `proxy`)
+- Traefik and the services you want to expose connected to the same Docker network (e.g., `proxy`)
 
 ## Step 1: Core Label Reference
 
-Every service needs these foundational labels:
+These are the core labels you'll use most often. In standalone Docker, Traefik can infer the first exposed port, but explicitly setting the backend port is clearer and is mandatory in Swarm:
 
 ```yaml
 labels:
@@ -53,10 +53,10 @@ labels:
   - "traefik.http.routers.app.rule=Host(`app.example.com`) || Host(`www.app.example.com`)"
 
   # Match by header
-  - "traefik.http.routers.app.rule=Host(`example.com`) && Headers(`X-App-Version`, `v2`)"
+  - "traefik.http.routers.app.rule=Host(`example.com`) && Header(`X-App-Version`, `v2`)"
 
-  # Match any host (wildcard - use carefully)
-  - "traefik.http.routers.app.rule=HostRegexp(`{subdomain:[a-z]+}.example.com`)"
+  # Match subdomains (wildcard - use carefully)
+  - "traefik.http.routers.app.rule=HostRegexp(`^.+\\.example\\.com$`)"
 ```
 
 ## Step 3: TLS Labels
@@ -73,13 +73,15 @@ labels:
   # Use ACME resolver for automatic certificate
   - "traefik.http.routers.myapp.tls.certresolver=letsencrypt"
 
-  # Or specify a static certificate (for self-signed/enterprise CA)
+  # Or reference TLS options defined by the file provider
   - "traefik.http.routers.myapp.tls.options=myTLSOptions@file"
 ```
 
+User-defined certificates themselves are configured through the file provider in `tls.certificates`, not via router labels.
+
 ## Step 4: Network Labels (Multi-Network Containers)
 
-When a container is connected to multiple Docker networks, specify which Traefik should use:
+In standalone Docker, when a container is connected to multiple networks, specify which one Traefik should use:
 
 ```yaml
 labels:
@@ -110,6 +112,8 @@ networks:
   backend:
     driver: bridge
 ```
+
+In Swarm, use `traefik.swarm.network` instead of `traefik.docker.network`.
 
 ## Step 5: Multiple Services from One Container
 
@@ -166,10 +170,10 @@ After deploying through Portainer, Traefik automatically detects the new contain
 ## Step 7: Verify Service Discovery
 
 ```bash
-# Check that Traefik picked up the service
+# If the Traefik API/dashboard is enabled locally, check that Traefik picked up the service
 curl -s http://localhost:8080/api/http/routers | jq '.[] | select(.name | contains("webapp"))'
 
-# Check Traefik dashboard
+# Check Traefik dashboard (if exposed)
 # Open: https://traefik.example.com - your service should appear under HTTP Routers
 
 # Test the routing
@@ -178,4 +182,4 @@ curl -I https://webapp.example.com
 
 ## Conclusion
 
-Traefik's Docker label-based service discovery makes Portainer deployments self-configuring for routing. By attaching labels at deploy time, each new container automatically registers itself with Traefik - eliminating manual proxy configuration updates. The key patterns to remember are: use `traefik.enable=true` to opt in, specify the correct network when containers have multiple attachments, and always define both the router rule and the service port.
+Traefik's Docker label-based service discovery makes Portainer deployments self-configuring for routing. By attaching labels at deploy time, each new container or service automatically registers itself with Traefik - eliminating manual proxy configuration updates. The key patterns to remember are: use `traefik.enable=true` to opt in, specify the correct network when containers have multiple attachments, and define the router rule and service port explicitly when Traefik cannot infer them automatically.
