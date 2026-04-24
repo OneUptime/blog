@@ -13,8 +13,6 @@ Paperless-ngx is a community-maintained document management system that scans in
 ## Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   paperless:
     image: ghcr.io/paperless-ngx/paperless-ngx:latest
@@ -37,6 +35,10 @@ services:
       PAPERLESS_TIME_ZONE: America/New_York
       # URL for the application
       PAPERLESS_URL: https://paperless.example.com
+      # Optional Office document and .eml support
+      PAPERLESS_TIKA_ENABLED: 1
+      PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://gotenberg:3000
+      PAPERLESS_TIKA_ENDPOINT: http://tika:9998
       # Workers
       PAPERLESS_TASK_WORKERS: 2
       PAPERLESS_THREADS_PER_WORKER: 2
@@ -52,6 +54,8 @@ services:
     depends_on:
       - paperless-db
       - paperless-redis
+      - gotenberg
+      - tika
     restart: unless-stopped
 
   paperless-db:
@@ -70,16 +74,16 @@ services:
     container_name: paperless-redis
     restart: unless-stopped
 
-  # Gotenberg - for converting Office documents to PDF
+  # Gotenberg - for converting Office documents and .eml files to PDF
   gotenberg:
     image: gotenberg/gotenberg:8
     container_name: gotenberg
     command: gotenberg --chromium-disable-javascript=true --chromium-allow-list=file:///tmp/.*
     restart: unless-stopped
 
-  # Tika - for extracting text from Office documents
+  # Tika - for extracting text from Office documents and .eml files
   tika:
-    image: ghcr.io/paperless-ngx/tika:latest
+    image: apache/tika:latest
     container_name: tika
     restart: unless-stopped
 
@@ -98,9 +102,9 @@ Drop documents into the consume folder for automatic processing:
 ```bash
 # Copy a document to the consume folder
 
-cp invoice.pdf /var/lib/docker/volumes/paperless_consume/_data/
+docker cp invoice.pdf paperless:/usr/src/paperless/consume/
 
-# Or configure Paperless to watch a network share
+# Or replace the consume volume with a bind mount and point a network share at that path
 ```
 
 Paperless will automatically:
@@ -113,14 +117,9 @@ Paperless will automatically:
 
 Configure Paperless to import documents from email:
 
-```yaml
-environment:
-  PAPERLESS_EMAIL_HOST: imap.example.com
-  PAPERLESS_EMAIL_PORT: 993
-  PAPERLESS_EMAIL_HOST_USER: documents@example.com
-  PAPERLESS_EMAIL_HOST_PASSWORD: email_password
-  PAPERLESS_EMAIL_SECURITY: SSL
-```
+1. Navigate to **Settings** -> **Mail**
+2. Add an IMAP email account
+3. Create one or more mail rules for folders, filters, and actions
 
 ## Configuring Document Classification
 
@@ -133,9 +132,9 @@ environment:
 
 Point mobile document scanner apps to the consume folder:
 
-1. Mount consume folder on a network share (Samba/NFS)
-2. Point scanner app to network share
-3. Documents are automatically imported to Paperless
+1. Replace the `paperless_consume` volume with a bind mount and share that host path via Samba/NFS
+2. Point the scanner app to that network share
+3. If the share does not support `inotify` (common with NFS), set `PAPERLESS_CONSUMER_POLLING` so Paperless detects new files
 
 ## Conclusion
 
