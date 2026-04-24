@@ -4,52 +4,56 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Container, Debugging, DevOps
 
-Description: Learn how to view the running processes inside a Docker container using Portainer's built-in top view, equivalent to running docker top.
+Description: Learn how to view the running processes inside a Docker container using the process list in Portainer's container Stats view, equivalent to running docker top.
 
 ## Introduction
 
-Sometimes you need to see what processes are running inside a container - useful for debugging, verifying that only expected processes are running, or identifying runaway processes consuming resources. Portainer provides a "top" view for containers that shows running processes without needing to exec into the container.
+Sometimes you need to see what processes are running inside a container - useful for debugging, verifying that only expected processes are running, or identifying runaway processes consuming resources. Portainer's container Stats view includes a list of running processes without needing to exec into the container.
 
 ## Prerequisites
 
 - Portainer installed with a connected Docker environment
 - A running container to inspect
 
-## Step 1: Access the Top View
+## Step 1: Access the Stats View
 
 1. Navigate to **Containers** in Portainer.
 2. Click on a running container's name.
-3. Look for the **Top** button or tab on the container details page.
+3. Click **Stats** on the container details page.
 
-This shows a table of all processes running inside the container, similar to the Unix `top` or `ps` commands.
+This view shows real-time container statistics and a table of running processes, similar to `docker top`.
 
 ## Step 2: Understanding the Process List
 
-The top view shows columns similar to `ps aux`:
+The process list is equivalent to `docker top`. The exact columns come from the Docker API / host `ps` output; a common default is:
 
 ```text
-PID     USER     TIME     COMMAND
-1       root     0:00     nginx: master process nginx -g daemon off;
-30      101      0:00     nginx: worker process
-31      101      0:00     nginx: worker process
+UID     PID     PPID    C    STIME   TTY   TIME       CMD
+root    13642   13607   0    10:00   ?     00:00:00   nginx: master process nginx -g daemon off;
+101     13685   13642   0    10:00   ?     00:00:01   nginx: worker process
+101     13686   13642   0    10:00   ?     00:00:01   nginx: worker process
 ```
 
 | Column | Description |
 |--------|-------------|
-| PID | Process ID inside the container |
-| USER | User running the process |
+| UID | User or UID running the process |
+| PID | Process ID reported by Docker / `ps` |
+| PPID | Parent process ID |
+| C | CPU utilization field from `ps` output |
+| STIME | Process start time |
+| TTY | Controlling terminal, if any |
 | TIME | CPU time used |
-| COMMAND | Full command that started the process |
+| CMD | Full command that started the process |
 
 ## Step 3: What to Look For
 
 ### Expected Processes
 
-A healthy Nginx container should only show:
+For example, a typical Nginx container should show a master process and one or more worker processes:
 ```text
-1    root    nginx: master process
-30   nginx   nginx: worker process
-31   nginx   nginx: worker process
+root  13642  nginx: master process
+101   13685  nginx: worker process
+101   13686  nginx: worker process
 ```
 
 ### Unexpected Processes (Red Flags)
@@ -65,11 +69,11 @@ A production container should only run the processes its image was designed to r
 ### Zombie Processes
 
 ```text
-PID     STATUS    COMMAND
-1234    Z         [my-app] <defunct>
+UID     PID     PPID    C    STIME   TTY   TIME       CMD
+root    1234    1       0    10:00   ?     00:00:00   [my-app] <defunct>
 ```
 
-`Z` status = zombie (process completed but parent hasn't collected its exit status). This often indicates a missing `init` process or improper signal handling.
+`<defunct>` indicates a zombie process. In `ps` output that includes a status column, `Z` means zombie (process completed but parent hasn't collected its exit status). This often indicates a missing `init` process or improper signal handling.
 
 ## Step 4: Docker CLI Equivalent
 
@@ -81,7 +85,7 @@ docker top my-container
 # With ps options:
 docker top my-container aux
 
-# Output:
+# Example default output:
 UID     PID    PPID   C    STIME   TTY   TIME       CMD
 root    1234   1219   0    10:00   ?     00:00:00   nginx: master process
 101     1256   1234   0    10:00   ?     00:00:01   nginx: worker process
@@ -89,21 +93,25 @@ root    1234   1219   0    10:00   ?     00:00:00   nginx: master process
 
 ## Step 5: Investigating High CPU Processes
 
-If `docker stats` shows high CPU but you don't know which process:
+If Portainer's Stats view shows high CPU but you don't know which process:
 
-1. Open the Top view in Portainer.
-2. Identify the process consuming CPU.
-3. Note its PID.
+1. Open the **Stats** view in Portainer to confirm the container is busy.
+2. Use the console or `docker exec` to run `ps aux` or `top` inside the container.
+3. Note the PID from inside the container before inspecting `/proc`.
 
 ```bash
-# Get more details about a specific process (from inside the container):
+# Identify a busy process from inside the container:
+docker exec my-container ps aux
+docker exec my-container top -b -n 1 | head -20
+
+# Get more details about a specific process (using its PID from inside the container):
 docker exec my-container cat /proc/1234/status
-docker exec my-container strace -p 1234   # Trace system calls (if strace available)
+docker exec my-container strace -p 1234   # Trace system calls if strace is available and ptrace is permitted
 ```
 
 ## Step 6: Process Investigation with Exec
 
-For deeper investigation, combine Top with Exec:
+For deeper investigation, combine the process list with Exec:
 
 ```bash
 # Via Portainer console or docker exec:
@@ -154,7 +162,7 @@ CMD ["/app/my-app"]
 
 ## Step 8: Security Auditing with Process View
 
-Use the top view for quick security audits:
+Use the process list for quick security audits:
 
 ```bash
 #!/bin/bash
@@ -168,7 +176,7 @@ for container in $(docker ps -q); do
     echo "=== Checking: ${name} ==="
 
     # Get running processes
-    procs=$(docker top "$container" --format "{{.Command}}" 2>/dev/null | tail -n +2)
+    procs=$(docker top "$container" aux 2>/dev/null | tail -n +2)
 
     echo "${procs}"
 
@@ -179,15 +187,15 @@ for container in $(docker ps -q); do
 done
 ```
 
-## Step 9: When Top Doesn't Work
+## Step 9: When the Process List Doesn't Work
 
-If the Top view is unavailable or empty:
+If the process list is unavailable or empty:
 
-- **Container uses `pid: host`**: Container shares host PID namespace; shows host processes.
-- **Container is stopped**: Top only works on running containers.
-- **Minimal container**: Some distroless images have very minimal process tables.
-- **Permission denied**: Portainer user may not have the necessary Docker permissions.
+- **Container is stopped**: `docker top` / Portainer process listing only works on running containers.
+- **Container uses the host PID namespace**: The container shares the host PID namespace, so you'll see host processes instead of an isolated container-only list.
+- **Windows container**: Docker's container `top` endpoint is only supported on Unix systems.
+- **Portainer can't retrieve process data for that container**: Try `docker top <container>` on the Docker host to confirm whether the engine can return the process list.
 
 ## Conclusion
 
-Portainer's container top view provides a quick window into the processes running inside your containers - essential for debugging performance issues, verifying container contents, auditing security, and identifying zombie processes. Combined with the exec console for deeper investigation, you have powerful tools for container introspection directly from the Portainer web interface.
+Portainer's container Stats view provides a quick window into the processes running inside your containers - essential for debugging performance issues, verifying container contents, auditing security, and identifying zombie processes. Combined with the exec console for deeper investigation, you have powerful tools for container introspection directly from the Portainer web interface.
