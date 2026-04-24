@@ -12,29 +12,32 @@ Macvlan allows Docker containers to appear as physical devices on your LAN, each
 
 ## Prerequisites
 
-- A physical network interface (e.g., `eth0`)
+- A Linux Docker host with a physical network interface (e.g., `eth0`)
 - IP address range on your LAN available for container assignment
-- Promiscuous mode enabled on the interface (often required on VMs)
+- Network equipment or a VM virtual switch that allows multiple MAC addresses (some VM platforms require promiscuous mode)
 
 ```bash
-# Enable promiscuous mode on the host interface (VMs only)
+# If your VM platform requires it, enable promiscuous mode inside the guest
 
 sudo ip link set eth0 promisc on
 
-# Make it persistent
+# Optional: make it persistent on the guest
 echo 'ACTION=="add", KERNEL=="eth0", RUN+="/sbin/ip link set %k promisc on"' \
   | sudo tee /etc/udev/rules.d/99-promisc.rules
 ```
+
+On virtualized platforms, you may also need to allow promiscuous mode or multiple MAC addresses on the hypervisor's virtual switch or port group.
 
 ## Creating a Macvlan Network in Portainer
 
 In Portainer, go to **Networks > Add network**:
 
 - **Driver**: `macvlan`
-- **Configuration > Parent network card**: `eth0` (your physical interface)
+- **Driver options**: set `parent=eth0`
 - **Subnet**: Your LAN subnet, e.g., `192.168.1.0/24`
 - **Gateway**: Your router, e.g., `192.168.1.1`
-- **IP range**: A range of IPs reserved for containers, e.g., `192.168.1.200/29` (gives .200-.207)
+- **IPv4 range**: A range of IPs reserved for containers, e.g., `192.168.1.200/29` (usable addresses are `.201`-`.206` before exclusions)
+- **Excluded IP**: Reserve one address such as `192.168.1.206` if you plan to create a host-side macvlan interface later
 
 Or create via CLI:
 
@@ -44,28 +47,28 @@ docker network create \
   --subnet 192.168.1.0/24 \
   --gateway 192.168.1.1 \
   --ip-range 192.168.1.200/29 \
+  --aux-address host=192.168.1.206 \
   --opt parent=eth0 \
   lan_macvlan
 ```
 
 ## Using the Macvlan Network in a Stack
 
-Assign a specific IP to each container:
+If you prefer to define the macvlan network in the stack itself, assign a specific IP to each container:
 
 ```yaml
-version: "3.8"
-
 services:
   pihole:
     image: pihole/pihole:latest
     hostname: pihole
     networks:
       lan_macvlan:
-        ipv4_address: 192.168.1.200   # Fixed LAN IP for Pi-hole
+        ipv4_address: 192.168.1.201   # Fixed LAN IP for Pi-hole
     environment:
       TZ: America/New_York
-      WEBPASSWORD: adminpassword
-      DNSMASQ_LISTENING: all
+      FTLCONF_webserver_api_password: adminpassword
+      FTLCONF_dns_listeningMode: 'ALL'
+      FTLCONF_misc_etc_dnsmasq_d: 'true'
     volumes:
       - pihole_data:/etc/pihole
       - dnsmasq_data:/etc/dnsmasq.d
@@ -75,7 +78,7 @@ services:
     hostname: adguard
     networks:
       lan_macvlan:
-        ipv4_address: 192.168.1.201   # Different LAN IP for AdGuard
+        ipv4_address: 192.168.1.202   # Different LAN IP for AdGuard
     volumes:
       - adguard_data:/opt/adguardhome/work
       - adguard_conf:/opt/adguardhome/conf
@@ -88,17 +91,26 @@ volumes:
 
 networks:
   lan_macvlan:
-    external: true   # Reference the pre-created macvlan network
+    driver: macvlan
+    driver_opts:
+      parent: eth0
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
+          gateway: 192.168.1.1
+          ip_range: 192.168.1.200/29
+          aux_addresses:
+            host: 192.168.1.206
 ```
 
 ## Accessing Containers from the Host
 
-A limitation of macvlan is that the host cannot directly communicate with containers on the macvlan network (they have different MAC addresses on the same interface). Create a macvlan interface on the host to work around this:
+A limitation of macvlan is that the host cannot directly communicate with containers on the macvlan network; this is a restriction in the Linux kernel. Reserve one address for the host (for example `192.168.1.206`) and create a macvlan interface to work around this:
 
 ```bash
 # Create a host-side macvlan interface to communicate with containers
 sudo ip link add macvlan0 link eth0 type macvlan mode bridge
-sudo ip addr add 192.168.1.205/32 dev macvlan0
+sudo ip addr add 192.168.1.206/32 dev macvlan0
 sudo ip link set macvlan0 up
 
 # Add a route to the container IP range
@@ -107,14 +119,10 @@ sudo ip route add 192.168.1.200/29 dev macvlan0
 
 ## 802.1Q VLAN Tagging
 
-For setups with VLAN-tagged traffic, use a dot-notation parent:
+For setups with VLAN-tagged traffic, use a dot-notation parent. Docker creates the VLAN sub-interface automatically:
 
 ```bash
-# First create the VLAN interface on the host
-sudo ip link add link eth0 name eth0.100 type vlan id 100
-sudo ip link set eth0.100 up
-
-# Create a macvlan on the VLAN interface
+# Docker interprets eth0.100 as VLAN 100 on eth0
 docker network create \
   --driver macvlan \
   --opt parent=eth0.100 \
