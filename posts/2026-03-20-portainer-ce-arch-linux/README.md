@@ -60,28 +60,23 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
 
-## Step 5: Firewall Configuration (if using ufw or iptables)
+## Step 5: Firewall Configuration (if using a host firewall)
 
 ```bash
-# If using ufw
-sudo pacman -S ufw
-sudo ufw allow 9443/tcp
-sudo ufw allow 8000/tcp
-sudo ufw enable
+# Docker publishes container ports directly. If you use ufw,
+# review Docker's firewall documentation before relying on ufw rules
+# for published container ports.
 
-# If using nftables (Arch default)
-# Add rules to /etc/nftables.conf
-sudo tee -a /etc/nftables.conf << 'EOF'
-table inet filter {
-  chain input {
-    tcp dport { 8000, 9443 } accept
-  }
-}
-EOF
-sudo systemctl restart nftables
+# If using nftables, add a rule to your existing input chain
+# Adjust the table/chain names if your ruleset uses different names
+sudo nft add rule inet filter input tcp dport { 8000, 9443 } accept
+
+# To make the change persistent, add the equivalent rule to your
+# existing /etc/nftables.conf and reload nftables
+sudo systemctl reload nftables
 ```
 
 ## Step 6: Optional - Install via AUR
@@ -106,7 +101,7 @@ sudo systemctl enable --now portainer
 
 ```bash
 # Get IP
-ip addr show | grep 'inet ' | grep -v 127 | awk '{print $2}'
+ip -4 addr show scope global | awk '/inet / {print $2}' | cut -d/ -f1
 # Navigate to https://<ip>:9443
 ```
 
@@ -114,7 +109,7 @@ ip addr show | grep 'inet ' | grep -v 127 | awk '{print $2}'
 
 ```bash
 # Pull and update Portainer
-docker pull portainer/portainer-ce:latest
+docker pull portainer/portainer-ce:sts
 docker stop portainer && docker rm portainer
 docker run -d \
   -p 8000:8000 \
@@ -123,7 +118,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
 
 ## Conclusion
