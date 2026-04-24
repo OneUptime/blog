@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Wikijs, Wiki, Documentation, Self-Hosted
 
-Description: Deploy Wiki.js via Portainer as a powerful, modern wiki platform with multiple storage backends, rich editing options, and extensive authentication methods.
+Description: Deploy Wiki.js via Portainer as a powerful, modern wiki platform with external storage sync options, rich editing options, and extensive authentication methods.
 
 ## Introduction
 
-Wiki.js is a modern, full-featured wiki platform built on Node.js. It supports multiple storage backends (Git, database, cloud storage), many authentication providers, and multiple editors (Markdown, WYSIWYG, AsciiDoc). Deploy via Portainer with PostgreSQL for a production-ready knowledge base.
+Wiki.js is a modern, full-featured wiki platform built on Node.js. It stores content in a database and can back it up or synchronize it to external storage targets such as Git and cloud storage. It supports many authentication providers and multiple editors (Markdown, Visual Editor, Code, AsciiDoc). Deploy via Portainer with PostgreSQL for a production-ready knowledge base.
 
 ## Deploy as a Stack
 
@@ -66,10 +66,11 @@ Back up content to a Git repository:
 1. Navigate to **Administration > Storage**
 2. Enable **Git**
 3. Configure:
-   - Repository URL
+   - Dedicated repository URL
    - Branch: `main`
-   - Auth: SSH key or token
-4. Set sync direction: **Push to Git**
+   - Auth: SSH key
+4. Set sync direction: **Bi-directional**
+5. Click **Apply Changes**
 
 ## Configure Authentication
 
@@ -87,7 +88,7 @@ Wiki.js supports many auth providers:
 
 Wiki.js organizes content by path:
 
-- `/home` - Main page
+- `/` - Root homepage
 - `/engineering/docker/setup` - Nested path
 - `/hr/onboarding/day-one` - Any depth
 
@@ -98,7 +99,6 @@ Wiki.js supports:
 - **Visual Editor** - WYSIWYG HTML editing
 - **Code** - Raw HTML
 - **AsciiDoc** - Alternative markup
-- **Tabular** - Structured tabular data
 
 ## Conclusion
 
