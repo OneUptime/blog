@@ -45,20 +45,22 @@ kubectl port-forward service/argocd-server -n argocd 8080:443 &
 
 ```yaml
 # argocd-ingress.yaml
+# Requires ingress-nginx with --enable-ssl-passthrough
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: argocd-server
   namespace: argocd
   annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 spec:
   ingressClassName: nginx
   tls:
     - hosts:
         - argocd.example.com
-      secretName: argocd-tls
+      secretName: argocd-server-tls
   rules:
     - host: argocd.example.com
       http:
@@ -69,7 +71,7 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  name: https
 ```
 
 ```bash
@@ -88,9 +90,11 @@ argocd login argocd.example.com \
 # List available contexts (one per Rancher cluster)
 kubectl config get-contexts
 
-# Add a downstream cluster to ArgoCD
+# Add a downstream cluster to ArgoCD and label it for ApplicationSet targeting
 argocd cluster add rancher-prod-cluster \
   --name rancher-production \
+  --label environment=production \
+  --label cloud=aws \
   --grpc-web
 
 # Verify
@@ -120,7 +124,7 @@ spec:
 
   # Destination: a specific Rancher-managed cluster and namespace
   destination:
-    server: https://rancher-production.example.com:6443
+    name: rancher-production
     namespace: production
 
   # Sync policy
@@ -218,11 +222,12 @@ data:
 ## Step 7: Integrate with Rancher SSO
 
 ```bash
-# Configure ArgoCD to use the same OIDC provider as Rancher
+# Configure ArgoCD to use the same external OIDC provider that Rancher uses
 # argocd-cm.yaml (patch)
 kubectl patch configmap argocd-cm -n argocd --patch '{
   "data": {
-    "oidc.config": "name: Rancher\nissuer: https://rancher.example.com/oidc\nclientID: argocd\nclientSecret: $oidc.rancher.clientSecret\nrequestedScopes: [\"openid\",\"profile\",\"email\",\"groups\"]\nrequestedIDTokenClaims: {\"groups\": {\"essential\": true}}"
+    "url": "https://argocd.example.com",
+    "oidc.config": "name: Corporate SSO\nissuer: https://idp.example.com/realms/platform\nclientID: argocd\nclientSecret: $oidc.argocd.clientSecret\nrequestedScopes: [\"openid\",\"profile\",\"email\",\"groups\"]\nrequestedIDTokenClaims: {\"groups\": {\"essential\": true}}"
   }
 }'
 ```
