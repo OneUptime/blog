@@ -19,26 +19,27 @@ Before running a container, you need the image on the Docker host. Portainer pro
 
 For private registries, add credentials first:
 
-1. Go to **Settings** (or **Admin > Registries**).
+1. Go to **Registries** (or **Host > Registries** for environment-specific access).
 2. Click **Add registry**.
 3. Select the registry type:
    - **Docker Hub**: For Docker Hub (official and private repos).
-   - **GitHub Container Registry (GHCR)**: For `ghcr.io`.
+   - **AWS ECR**: For Amazon Elastic Container Registry.
    - **Quay.io**: For Red Hat's Quay registry.
-   - **Custom registry**: For any other registry.
+   - **Custom registry**: For `ghcr.io` and any other registry.
 
 ### Docker Hub
 
-```bash
-Registry type: Docker Hub
-Username:      myusername
-Password:      mydockerpassword  (or access token - recommended)
+```text
+Registry type:           DockerHub
+Name:                    My Docker Hub Account
+DockerHub username:      myusername
+DockerHub access token:  dckr_pat_xxxxxxxxxxxxxxxx
 ```
 
 To generate a Docker Hub access token:
-1. Log in to hub.docker.com.
-2. Go to **Account Settings > Security > New Access Token**.
-3. Copy the token and use it as the password in Portainer.
+1. Log in to Docker Home.
+2. Go to **Account Settings > Personal access tokens > Generate new token**.
+3. Copy the token and use it as the access token in Portainer.
 
 ### Private Registry
 
@@ -57,16 +58,19 @@ Registry type: Custom registry
 Name:          GitHub Container Registry
 Registry URL:  ghcr.io
 Username:      your-github-username
-Password:      ghp_xxxxxxxxxxxxxxxx  (GitHub personal access token with read:packages scope)
+Password:      YOUR_GITHUB_PAT_CLASSIC  (GitHub personal access token (classic) with at least read:packages scope)
 ```
 
 ### AWS ECR
 
 ```text
 Registry type: AWS ECR
+Name:          My ECR Registry
+Registry URL:  123456789012.dkr.ecr.us-east-1.amazonaws.com
+Authentication: enabled
 Region:        us-east-1
-Access Key ID: AKIAXXXXXXXXXXXXXXXX
-Secret Key:    xxxxxxxxxxxxxxxxxxxxxxxxx
+AWS Access Key:        AKIAXXXXXXXXXXXXXXXX
+AWS Secret Access Key: xxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 ## Step 2: Pull an Image via the Images Section
@@ -78,21 +82,22 @@ Secret Key:    xxxxxxxxxxxxxxxxxxxxxxxxx
 ```bash
 Image: nginx:latest           (Docker Hub public image)
 Image: myorg/myapp:v2.1.0     (Docker Hub private image)
-Image: ghcr.io/myorg/myapp:latest  (GHCR)
-Image: registry.example.com/myapp:v1  (private registry)
+Image: myorg/myapp:latest     (GHCR, with ghcr.io selected in Registry)
+Image: myapp:v1               (private registry, with your registry selected)
 ```
 
-4. Select the **Registry** from the dropdown (for private images).
+4. Select the **Registry** from the dropdown. If the registry is not already added in Portainer, switch to **Advanced mode** and enter the registry URL and image manually.
 5. Click **Pull the image**.
 
 ## Step 3: Pull Images During Container Creation
 
-You don't need to pre-pull - Portainer pulls automatically:
+You don't need to pre-pull. If the image is not already on the host, Portainer pulls it automatically:
 
 1. Navigate to **Containers > Add container**.
 2. Enter the image name.
-3. Select the registry (for private images).
-4. Click **Deploy the container** - image is pulled automatically.
+3. Select the registry (or switch to **Advanced mode** for a one-off registry).
+4. Optionally enable **Always pull the image** to force a fresh pull even if a local copy exists.
+5. Click **Deploy the container**.
 
 ## Step 4: Pull Using Docker CLI Syntax
 
@@ -116,19 +121,17 @@ docker login registry.example.com
 docker pull registry.example.com/myapp:v1
 
 # Pull specific digest (immutable):
-docker pull nginx@sha256:abc123def456...
+docker pull ubuntu@sha256:2e863c44b718727c860746568e1d54afd13b2fa71b160f5cd9058fc436217b30
 ```
 
 ## Step 5: Configure Registry Mirror
 
-For faster pulls or to work offline, configure a registry mirror:
+For faster pulls, or to reduce repeated upstream pulls across hosts, configure a registry mirror:
 
 ```json
-// /etc/docker/daemon.json
 {
   "registry-mirrors": [
-    "https://mirror.gcr.io",           // Google Container Registry mirror
-    "https://registry-1.docker.io"     // Docker Hub
+    "https://mirror.example.com"
   ]
 }
 ```
@@ -142,7 +145,7 @@ For an internal mirror (e.g., Harbor, Nexus):
 ```
 
 ```bash
-# Apply daemon config:
+# Apply daemon config on Linux hosts that use systemd:
 systemctl restart docker
 ```
 
@@ -202,7 +205,7 @@ docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
 
 ```bash
 # Error: "unauthorized: access token has insufficient scopes"
-# Fix: use a token with read:packages scope
+# Fix: use a personal access token (classic) with at least read:packages scope
 
 # Error: "no such host" / "dial tcp: connection refused"
 # Fix: check registry URL and network connectivity
@@ -211,7 +214,7 @@ curl -s https://registry.example.com/v2/ | jq .
 # Error: "toomanyrequests: Rate limit exceeded"
 # Fix: Docker Hub rate limits unauthenticated pulls
 # Add Docker Hub credentials in Portainer > Registries
-# Authenticated users get more pull quota
+# Authenticated users generally get higher pull limits than anonymous users
 
 # Error: "Image not found"
 # Fix: verify image name, tag, and registry are correct
@@ -220,4 +223,4 @@ docker search myapp  # Search Docker Hub
 
 ## Conclusion
 
-Pulling images in Portainer is straightforward once your registry credentials are configured. Add your private registries in Portainer's registry settings, then pull images from the Images section or let Portainer pull them automatically during container creation. For environments with many images, pre-pull scripts ensure fast container startup and offline resilience.
+Pulling images in Portainer is straightforward once your registry credentials are configured. Add your private registries in Portainer's **Registries** section, then pull images from the Images section or let Portainer pull them automatically during container creation. For environments with many images, pre-pull scripts ensure fast container startup and offline resilience.
