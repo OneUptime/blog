@@ -27,8 +27,8 @@ Kubernetes Secrets are base64-encoded, not encrypted, by default. For production
 ### Via Form
 
 1. Select your Kubernetes environment
-2. Click **Secrets** in the sidebar
-3. Click **+ Add secret**
+2. Click **ConfigMaps & Secrets** in the sidebar, then open the **Secrets** tab
+3. Click **Add with form**
 4. Configure:
 
 ```text
@@ -37,7 +37,7 @@ Namespace: production
 Type:      Opaque
 ```
 
-5. Add key-value pairs (Portainer encodes values automatically):
+5. Add key-value pairs:
 
 ```text
 Key: DB_PASSWORD    Value: MySecurePassword123!
@@ -46,7 +46,7 @@ Key: REDIS_PASSWORD Value: RedisPass456!
 Key: API_SECRET     Value: sk-xxxxxxxxxxxxxxxxxxxx
 ```
 
-6. Click **Create secret**
+6. Click **Create Secret**
 
 ### Via YAML
 
@@ -64,7 +64,7 @@ stringData:    # Use stringData for plain text (auto-encoded)
   API_SECRET: "sk-xxxxxxxxxxxxxxxxxxxx"
 ```
 
-**Note:** In Portainer's YAML editor, you can use `stringData` for plain text. Kubernetes stores it as base64-encoded `data`.
+**Note:** When creating the Secret from a manifest in Portainer, you can use `stringData` for plain text. Kubernetes stores it as base64-encoded `data`.
 
 ## Step 2: Attach Secret as Environment Variables
 
@@ -72,20 +72,16 @@ stringData:    # Use stringData for plain text (auto-encoded)
 
 When creating/editing an application:
 
-1. Go to the **Environment** section
-2. Click **+ From Secret**
-3. Configure:
+1. Go to the **Secrets** section
+2. Select `db-credentials`
+3. Portainer exposes all keys as environment variables by default:
 
-```sql
+```text
 Secret: db-credentials
-  [x] Import all keys as environment variables
-
-  Or select specific keys:
-  Key: DB_PASSWORD   → Env var: DB_PASSWORD
-  Key: API_SECRET    → Env var: API_SECRET
+Default behavior: expose all keys as environment variables
 ```
 
-### Via YAML
+### In a Pod spec
 
 ```yaml
 spec:
@@ -113,7 +109,7 @@ spec:
 
 ## Step 3: Attach Secret as a Volume (File Mount)
 
-For applications that read credentials from files (like PostgreSQL's `PGPASSWORD_FILE`):
+In a Pod spec, for applications that read credentials from files (like the official PostgreSQL image's `POSTGRES_PASSWORD_FILE`):
 
 ```yaml
 spec:
@@ -220,17 +216,20 @@ kubectl exec -it <pod-name> -n production -- cat /run/secrets/db-password
 
 ## Step 7: Rotate Secrets
 
-To rotate a secret without redeploying:
+To rotate a secret in place:
 
 ```bash
-# Update the secret
+# Recreate the Secret manifest with every key you want to keep, then apply it
 kubectl create secret generic db-credentials \
   --from-literal=DB_PASSWORD="NewSecurePassword!" \
+  --from-literal=DB_USER="appuser" \
+  --from-literal=REDIS_PASSWORD="RedisPass456!" \
+  --from-literal=API_SECRET="sk-xxxxxxxxxxxxxxxxxxxx" \
   --namespace=production \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-For file-mounted secrets, Kubernetes updates the file in running pods automatically (~1-2 minutes). For environment variables from Secrets, restart the pods:
+For file-mounted secrets, Kubernetes updates the projected files in running Pods automatically on an eventually consistent basis. For environment variables from Secrets, restart the Pods:
 
 ```bash
 kubectl rollout restart deployment myapp -n production
