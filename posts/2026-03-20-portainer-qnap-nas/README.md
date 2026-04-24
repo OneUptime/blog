@@ -15,7 +15,7 @@ QNAP's Container Station provides basic Docker management, but it lacks many adv
 - QNAP NAS running QTS 5.x or QuTS hero
 - Container Station 3.x installed from App Center
 - At least 2GB RAM available
-- SSH access enabled (Control Panel > Network & Virtual Switch > Services > SSH)
+- SSH access enabled (Control Panel > Network & File Services > Telnet/SSH)
 
 ## Method 1: Via Container Station UI
 
@@ -24,20 +24,20 @@ QNAP's Container Station provides basic Docker management, but it lacks many adv
 1. Open **Container Station**
 2. Click **Images** in the left sidebar
 3. Click **Pull**
-4. Enter `portainer/portainer-ce` and tag `latest`
+4. Enter `portainer/portainer-ce` and tag `lts`
 5. Click **Pull**
 
 ### Step 2: Create the Container
 
 1. Click **Containers > Create**
-2. Select the `portainer/portainer-ce:latest` image
+2. Select the `portainer/portainer-ce:lts` image
 3. Click **Advanced Settings**
 
 Configure the following:
 
-**Network:** Select `Host` or create a bridge mapping:
-- Host port `9000` → Container port `9000`
+**Network:** Use a bridge mapping:
 - Host port `9443` → Container port `9443`
+- Optional: Host port `9000` → Container port `9000` for legacy HTTP access
 
 **Storage:**
 - Click **Add Volume**
@@ -55,7 +55,7 @@ Configure the following:
 SSH into your QNAP NAS:
 
 ```bash
-ssh admin@<qnap-ip>
+ssh <admin-username>@<qnap-ip>
 ```
 
 Install Portainer via Docker CLI:
@@ -69,15 +69,16 @@ docker volume create portainer_data
 docker run -d \
   --name portainer \
   --restart=unless-stopped \
-  -p 9000:9000 \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 
 # Check it's running
 docker ps | grep portainer
 ```
+
+If you need legacy HTTP access, add `-p 9000:9000` to the `docker run` command.
 
 ## Method 3: Via Container Station Compose (QTS 5.1+)
 
@@ -89,16 +90,14 @@ Container Station 3.x supports Docker Compose. Create a new application:
 4. Paste this compose file:
 
 ```yaml
-version: "3.8"
-
 services:
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:lts
     container_name: portainer
     restart: unless-stopped
     ports:
-      - "9000:9000"
       - "9443:9443"
+      # - "9000:9000"  # Enable only if you need legacy HTTP access
     volumes:
       # Mount Docker socket for container management
       - /var/run/docker.sock:/var/run/docker.sock
@@ -114,16 +113,16 @@ volumes:
 
 ## Step 3: Configure QNAP Firewall
 
-If QNAP's network firewall is enabled:
+If QuFirewall is enabled:
 
-1. Go to **Control Panel > Security > Security Level**
-2. Click **Edit Rules**
-3. Add rules to allow TCP ports `9000` and `9443` from your local subnet
-4. Ensure the allow rules are ordered before any deny rules
+1. Open **QuFirewall**
+2. Edit your active firewall profile
+3. Add rules to allow TCP port `9443` and, if you enabled legacy HTTP access, `9000` from your local subnet
+4. Ensure the allow rules are ordered before any deny-all rule
 
 ## Step 4: Access Portainer
 
-Navigate to `http://<qnap-ip>:9000` in your browser. Create your admin account on first access.
+Navigate to `https://<qnap-ip>:9443` in your browser. Portainer uses a self-signed certificate by default, so your browser may show a warning on first access. Create your admin account on first access.
 
 ## Troubleshooting QNAP-Specific Issues
 
@@ -134,10 +133,9 @@ QNAP may have different socket permissions:
 ```bash
 # Check socket permissions
 ls -la /var/run/docker.sock
-
-# Fix if needed
-chmod 666 /var/run/docker.sock
 ```
+
+If your SSH session does not have sufficient administrator permission, switch to an administrator shell with `sudo -i` and retry instead of making the Docker socket world-writable.
 
 ### Container Station Conflict
 
@@ -153,45 +151,46 @@ docker info | grep -i "docker root"
 
 ### Port Already in Use
 
-If 9000 is already used by QNAP services:
+If you enabled legacy HTTP on port 9000 and it is already used by QNAP services:
 
 ```bash
 # Check which process uses port 9000
 netstat -tlnp | grep 9000
 
-# Use an alternative port
+# Use an alternative host port for legacy HTTP access
 docker run -d \
   --name portainer \
   --restart=unless-stopped \
-  -p 19000:9000 \    # Map to 19000 instead
-  -p 19443:9443 \
+  -p 9443:9443 \
+  -p 19000:9000 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Updating Portainer on QNAP
 
 ```bash
 # SSH into QNAP
-ssh admin@<qnap-ip>
+ssh <admin-username>@<qnap-ip>
 
 # Stop and remove old container
 docker stop portainer && docker rm portainer
 
 # Pull latest image
-docker pull portainer/portainer-ce:latest
+docker pull portainer/portainer-ce:lts
 
 # Recreate (data volume is preserved)
 docker run -d \
   --name portainer \
   --restart=unless-stopped \
-  -p 9000:9000 \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
+
+Add `-p 9000:9000` to the recreate command only if you still need legacy HTTP access.
 
 ## Conclusion
 
