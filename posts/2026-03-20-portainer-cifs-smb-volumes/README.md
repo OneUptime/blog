@@ -54,6 +54,7 @@ username=myuser
 password=mypassword
 domain=MYDOMAIN
 EOF
+chmod 600 /tmp/smb-creds
 sudo mount -t cifs //smb-server/share /mnt/test-smb -o credentials=/tmp/smb-creds
 ```
 
@@ -66,14 +67,18 @@ sudo mount -t cifs //smb-server/share /mnt/test-smb -o credentials=/tmp/smb-cred
 ```text
 Name:    smb-shared-files
 Driver:  local
+Use NFS volume:  Off
+Use CIFS volume: On
 ```
 
-4. Under **Driver options**, add:
+4. Under **CIFS Settings**, enter:
 
 ```text
-Key: type     Value: cifs
-Key: o        Value: addr=smb-server.example.com,username=myuser,password=mypassword,vers=3.0
-Key: device   Value: //smb-server.example.com/sharename
+Address:       smb-server.example.com
+Share:         sharename
+CIFS Version:  3.0
+Username:      myuser
+Password:      mypassword
 ```
 
 ## Step 4: CIFS Volume via Docker CLI
@@ -103,8 +108,6 @@ docker volume inspect cifs-shared
 
 ```yaml
 # docker-compose.yml with CIFS/SMB volumes
-version: "3.8"
-
 services:
   app:
     image: myorg/myapp:latest
@@ -132,7 +135,7 @@ volumes:
       device: "//nas.internal/archive"
 ```
 
-Note: Never hardcode passwords in compose files. Use environment variables or Docker secrets.
+Note: Never hardcode passwords in compose files. Use environment variables or a credentials file on the Docker host.
 
 ## Step 6: Secure Credential Management
 
@@ -188,8 +191,8 @@ SMB Version   | Use When
 vers=1.0      | Legacy Windows XP, very old Samba (insecure)
 vers=2.0      | Windows Vista/Server 2008
 vers=2.1      | Windows 7/Server 2008 R2
-vers=3.0      | Windows 8/Server 2012 (recommended)
-vers=3.1.1    | Windows 10/Server 2016+ (most secure)
+vers=3.0      | Windows 8/Server 2012
+vers=3.1.1    | Windows 10/Server 2016+ (preferred when supported)
 ```
 
 ```yaml
