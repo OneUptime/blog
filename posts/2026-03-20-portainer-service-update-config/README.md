@@ -8,7 +8,7 @@ Description: Learn how to configure rolling update policies for Docker Swarm ser
 
 ## Introduction
 
-The service update configuration in Docker Swarm controls how new versions are deployed - how many replicas update simultaneously, how long to wait between batches, and what to do if an update fails. Portainer exposes these settings through its service editor, enabling zero-downtime deployments. This guide covers all update configuration options.
+The service update configuration in Docker Swarm controls how new versions are deployed - how many replicas update simultaneously, how long to wait between batches, and what to do if an update fails. Portainer exposes these settings through its service editor, letting you configure rolling updates and, for compatible services, zero-downtime deployments. This guide covers all update configuration options.
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ The service update configuration in Docker Swarm controls how new versions are d
 | `parallelism` | How many replicas to update at once | 1 |
 | `delay` | Time to wait between update batches | 0s |
 | `failure_action` | What to do if update fails (`continue`, `pause`, `rollback`) | `pause` |
-| `monitor` | Time to monitor after each batch before moving to next | 0s |
+| `monitor` | Time to monitor after each batch before moving to next | 5s |
 | `max_failure_ratio` | Maximum allowed proportion of failed tasks | 0.0 |
 | `order` | Task replacement order (`stop-first` or `start-first`) | `stop-first` |
 
@@ -38,14 +38,14 @@ Replica 2: Stop old → Start new
 
 Best for: Services where running 2 versions simultaneously would cause issues (e.g., database migrations).
 
-### start-first (Zero-Downtime)
+### start-first (Can Avoid Downtime)
 
 ```text
-Replica 1: Start new → Wait for healthy → Stop old (no downtime)
-Replica 2: Start new → Wait for healthy → Stop old
+Replica 1: Start new → Old and new overlap briefly → Stop old
+Replica 2: Start new → Old and new overlap briefly → Stop old
 ```
 
-Best for: Stateless web services, APIs. Requires enough capacity for N+parallelism containers.
+Best for: Stateless web services and APIs that can tolerate old and new tasks briefly overlapping. Requires enough capacity for N+parallelism containers.
 
 ## Step 1: Configure Update Policy in Portainer
 
@@ -70,7 +70,7 @@ Update configuration:
 version: "3.8"
 
 services:
-  # Zero-downtime web service
+  # Web service using overlap-based updates
   web:
     image: nginx:alpine
     deploy:
@@ -81,9 +81,9 @@ services:
         failure_action: rollback  # Auto-rollback on failure
         monitor: 30s           # Monitor 30s per batch
         max_failure_ratio: 0.1 # Allow up to 10% failure rate
-        order: start-first     # Zero-downtime: start new before stopping old
+        order: start-first     # Start new task before stopping old
 
-  # API with health-check-aware updates
+  # API with health checks and a longer monitor window
   api:
     image: myapi:latest
     healthcheck:
@@ -98,21 +98,21 @@ services:
         parallelism: 2       # 2 at a time
         delay: 15s
         failure_action: rollback
-        monitor: 60s         # Wait for health checks
+        monitor: 60s         # Monitor long enough to catch startup failures
         max_failure_ratio: 0.2
         order: start-first
 
-  # Database: careful sequential updates
+  # Stateful service: careful sequential updates
   redis:
     image: redis:7
     deploy:
       replicas: 3
       update_config:
-        parallelism: 1       # One at a time for Redis cluster
+        parallelism: 1       # One at a time for stateful workloads
         delay: 30s           # Wait for Redis to stabilize
         failure_action: pause  # Pause (not rollback) for manual review
         monitor: 60s
-        order: stop-first    # For Redis, stop old before starting new
+        order: stop-first    # Avoid overlapping old and new tasks
 ```
 
 ## Step 3: Production Update Strategies
@@ -169,7 +169,7 @@ docker service update \
   --image myapp:v2.0 \
   my-service
 
-# Force update (re-pull same tag)
+# Force a rolling restart without changing the image
 docker service update --force my-service
 
 # Update only the update config, not the image
@@ -196,20 +196,23 @@ watch docker service ps my-service
 # service.4   app:v1    worker-04  Running        (not yet updated)
 ```
 
-## Step 6: Pause and Resume Updates
+## Step 6: Handle a Paused Update
 
 If you need to intervene during an update:
 
 ```bash
-# Pause an in-progress update
-docker service update --rollback my-service  # Triggers rollback
-# Or pause by removing nodes from drain
+# Resume a paused update after fixing the issue
+docker service update my-service
+
+# Or roll back to the previous service spec
+docker service rollback my-service
 
 # Check update state
 docker service inspect --format '{{.UpdateStatus.State}}' my-service
-# Returns: updating, paused, completed, rollback_started, rollback_paused, rollback_completed
+# Example output while paused:
+# paused
 ```
 
 ## Conclusion
 
-Service update configuration is how you achieve safe, zero-downtime deployments in Docker Swarm. By using `start-first` order, `rollback` failure action, and appropriate monitoring windows, you can deploy new versions with confidence knowing that failures will be automatically caught and rolled back. Configure your update policy based on the risk tolerance and availability requirements of each service.
+Service update configuration is how you achieve safe, low-downtime deployments in Docker Swarm. By using `start-first` order where appropriate, `rollback` failure action, and appropriate monitoring windows, you can deploy new versions with confidence knowing that failures during the monitored update window can trigger an automatic rollback. Configure your update policy based on the risk tolerance and availability requirements of each service.
