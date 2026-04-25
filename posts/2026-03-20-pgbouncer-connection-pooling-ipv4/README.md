@@ -48,6 +48,7 @@ listen_port = 5432
 # Authentication
 auth_type = md5
 auth_file = /etc/pgbouncer/userlist.txt
+admin_users = appuser       # Required to run SHOW commands on the admin console
 
 # Pooling mode
 pool_mode = transaction
@@ -55,7 +56,7 @@ pool_mode = transaction
 # Connection limits
 max_client_conn = 200       # Max clients PgBouncer accepts
 default_pool_size = 20      # Backend connections per database/user pair
-min_pool_size = 5           # Keep at least 5 backend connections alive
+min_pool_size = 5           # Pre-warm backend connections once the pool is in use
 reserve_pool_size = 5       # Extra connections for bursts
 reserve_pool_timeout = 5    # Seconds to wait before using reserve pool
 
@@ -75,17 +76,18 @@ pidfile = /var/run/pgbouncer/pgbouncer.pid
 
 ```bash
 # /etc/pgbouncer/userlist.txt
-# Format: "username" "password_hash"
-# Generate MD5 hash: echo -n "passwordusername" | md5sum → prepend "md5"
+# Format: "username" "password"
+# Plain-text passwords work with PostgreSQL backends using MD5 or SCRAM authentication
 
-"appuser" "md5a2c0f4d567a9b8e1c3f4a5b6c7d8e9f"
-"readonly" "md5abc123..."
+"appuser" "mypassword"
+"readonly" "readonlypassword"
 ```
 
 ```bash
+# If the backend still uses MD5 authentication, you can store an MD5 hash instead
 # Generate the correct md5 hash (password + username concatenated)
 echo -n "mypasswordappuser" | md5sum
-# Prepend "md5" to the output
+# Prepend "md5" to the output before placing it in userlist.txt
 ```
 
 ## Starting and Verifying
@@ -100,12 +102,12 @@ ss -tlnp | grep :5432
 psql -h 192.168.1.5 -p 5432 -U appuser myapp_db
 
 # View pool statistics
-psql -h 192.168.1.5 -p 5432 -U pgbouncer pgbouncer -c "SHOW POOLS;"
+psql -h 192.168.1.5 -p 5432 -U appuser pgbouncer -c "SHOW POOLS;"
 ```
 
 ## Key Takeaways
 
-- `transaction` pooling mode provides the best performance for web application backends.
+- `transaction` pooling mode usually provides the best balance of performance and compatibility for stateless web application backends.
 - Set `max_client_conn` to handle the maximum number of application connections expected.
 - `default_pool_size` is the key tuning parameter - it controls how many real PostgreSQL connections are maintained.
 - Use `SHOW POOLS;` via the PgBouncer admin interface to monitor active and idle connections.
