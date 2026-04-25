@@ -8,7 +8,7 @@ Description: A detailed guide to configuring and managing OpenTofu's plugin cach
 
 ## Introduction
 
-The plugin cache directory tells OpenTofu where to store downloaded provider binaries. When the same provider version is needed again, OpenTofu symlinks from the cache instead of re-downloading, making `tofu init` nearly instant for cached providers.
+The plugin cache directory tells OpenTofu where to store downloaded provider binaries. When the same provider version is needed again, OpenTofu can use the previously-downloaded copy from the cache instead of re-downloading it, and when possible it symlinks that cached plugin into the working directory.
 
 ## Method 1: Environment Variable
 
@@ -19,17 +19,17 @@ export TF_PLUGIN_CACHE_DIR="/home/ci/.terraform.d/plugin-cache"
 mkdir -p "$TF_PLUGIN_CACHE_DIR"
 
 # Verify
-tofu init   # Should show "Reusing previously-installed hashicorp/aws" on second run
+tofu init   # Populates the cache on first run; later fresh init runs can reuse it
 ```
 
 ## Method 2: CLI Configuration File
 
 ```hcl
-# ~/.terraformrc (Linux/macOS) or %APPDATA%/terraform.rc (Windows)
+# ~/.tofurc (Linux/macOS) or %APPDATA%/tofu.rc (Windows)
 plugin_cache_dir = "/home/ci/.terraform.d/plugin-cache"
 
-# Can also use a relative path to the home directory
-plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"
+# Or use the home directory environment variable
+# plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"
 ```
 
 ## Method 3: Per-Project Configuration
@@ -74,25 +74,25 @@ rm -rf "$CACHE_DIR/5.38.0" "$CACHE_DIR/5.39.0"
 rm -rf "$CACHE_DIR"
 ```
 
-## Plugin Cache May Dir
+## Plugin Cache May Break Dependency Lock File
 
-The `plugin_cache_may_break_dependency_lock_file` flag relaxes the lock file check when using the cache:
+The `plugin_cache_may_break_dependency_lock_file` flag allows OpenTofu to use a cached provider even when this configuration does not already have a matching checksum entry in the dependency lock file:
 
 ```hcl
-# ~/.terraformrc
+# ~/.tofurc
 plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"
-# Allow cache to be used even if checksums differ from the lock file
-# (useful in some corporate mirror setups)
+# Allow cache to be used even if this configuration does not yet have
+# a matching checksum entry in .terraform.lock.hcl
 plugin_cache_may_break_dependency_lock_file = true
 ```
 
 ## Troubleshooting Stale Cache
 
 ```bash
-# If init reports "Failed to retrieve provider ... from cache"
-# The cache may have a corrupted binary - delete the specific version
+# If init reports an error importing a provider from the shared cache directory
+# the cache may have a corrupted package - delete the specific platform build
 
-PROVIDER_CACHE="$HOME/.terraform.d/plugin-cache/registry.opentofu.org/hashicorp/aws/5.40.0"
+PROVIDER_CACHE="$HOME/.terraform.d/plugin-cache/registry.opentofu.org/hashicorp/aws/5.40.0/linux_amd64"
 rm -rf "$PROVIDER_CACHE"
 
 # Re-run init to download fresh
@@ -102,11 +102,13 @@ tofu init
 ## Verifying Cache is Being Used
 
 ```bash
-TF_LOG=DEBUG tofu init 2>&1 | grep -i "cache\|reusing"
-# Look for: "Reusing previously-installed hashicorp/aws v5.40.0"
-# vs: "Installing hashicorp/aws v5.40.0" (downloading fresh)
+# Run this from a fresh working directory that uses the same provider
+TF_LOG=DEBUG tofu init 2>&1 | grep -Ei "shared cache directory|previously-installed"
+# Look for: "Using hashicorp/aws v5.40.0 from the shared cache directory"
+# or: "Detected previously-installed hashicorp/aws v5.40.0 in the shared cache directory"
+# vs: "Installing hashicorp/aws v5.40.0 to the shared cache directory..."
 ```
 
 ## Conclusion
 
-The plugin cache directory is a simple configuration that pays dividends across every `tofu init` after the first. Configure it via `TF_PLUGIN_CACHE_DIR` in CI/CD, persist it between pipeline runs with a cache action, and periodically prune old versions to keep the cache lean. In air-gapped environments, pre-populate the cache directory and ship it as part of your CI runner image.
+The plugin cache directory is a simple configuration that pays dividends across every `tofu init` after the first. Configure it via `TF_PLUGIN_CACHE_DIR` in CI/CD, persist it between pipeline runs with a cache action, and periodically prune old versions to keep the cache lean. In air-gapped environments, use a provider mirror rather than relying on the cache directory alone, and optionally ship a pre-populated cache directory as part of your CI runner image.
