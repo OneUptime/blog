@@ -56,16 +56,18 @@ Switch-A(config-vlan)# remote-span
 Switch-A(config)# monitor session 1 source interface GigabitEthernet0/1
 Switch-A(config)# monitor session 1 destination remote vlan 999
 
+Switch-B(config)# vlan 999
+Switch-B(config-vlan)# remote-span
 Switch-B(config)# monitor session 1 source remote vlan 999
 Switch-B(config)# monitor session 1 destination interface GigabitEthernet0/24
 ```
 
 ## Linux Software Mirroring with tc
 
-On Linux, you can mirror traffic using the Traffic Control (tc) tool:
+On Linux, you can mirror ingress traffic using the Traffic Control (tc) tool:
 
 ```bash
-# Mirror all traffic on eth0 to eth1
+# Mirror ingress traffic on eth0 to eth1
 
 sudo tc qdisc add dev eth0 ingress
 sudo tc filter add dev eth0 parent ffff: protocol all u32 match u32 0 0 action mirred egress mirror dev eth1
@@ -90,7 +92,7 @@ sudo tcpdump -i eth1 -w capture.pcap
 sudo tcpdump -i eth1 tcp port 80 -w http-capture.pcap
 
 # Capture with timestamp and verbose output
-sudo tcpdump -i eth1 -v -tttt -w verbose-capture.pcap
+sudo tcpdump -i eth1 -v -tttt
 ```
 
 ## Analyzing with Wireshark
@@ -128,7 +130,9 @@ Switch(config-mon-erspan-src)# source interface GigabitEthernet0/1 both
 Switch(config-mon-erspan-src)# destination
 Switch(config-mon-erspan-src-dst)# erspan-id 1
 Switch(config-mon-erspan-src-dst)# ip address 10.0.0.99
-Switch(config-mon-erspan-src-dst)# no shutdown
+Switch(config-mon-erspan-src-dst)# origin ip address 10.0.0.1
+Switch(config-mon-erspan-src-dst)# exit
+Switch(config-mon-erspan-src)# no shutdown
 ```
 
 ## Best Practices
