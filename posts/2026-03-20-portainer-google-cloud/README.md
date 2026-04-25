@@ -20,9 +20,10 @@ Description: Learn how to deploy Portainer on a Google Cloud Compute Engine inst
 gcloud config set project YOUR_PROJECT_ID
 
 # Create a VM instance
+# e2-medium provides 2 vCPU and 4GB RAM
 gcloud compute instances create portainer-vm \
   --zone=us-central1-a \
-  --machine-type=e2-medium \          # 2 vCPU, 4GB RAM
+  --machine-type=e2-medium \
   --image-family=ubuntu-2204-lts \
   --image-project=ubuntu-os-cloud \
   --boot-disk-size=30GB \
@@ -49,15 +50,17 @@ gcloud compute firewall-rules create allow-portainer-https \
   --target-tags=portainer-server \
   --description="Allow Portainer HTTPS"
 
-# Allow HTTP for Portainer (port 9000)
-gcloud compute firewall-rules create allow-portainer-http \
+# Optional: allow the Portainer Edge tunnel (port 8000)
+gcloud compute firewall-rules create allow-portainer-edge \
   --direction=INGRESS \
   --priority=1000 \
   --network=default \
   --action=ALLOW \
-  --rules=tcp:9000 \
+  --rules=tcp:8000 \
   --source-ranges=0.0.0.0/0 \
   --target-tags=portainer-server
+
+# If you need legacy HTTP access on port 9000, open tcp:9000 instead.
 
 # Optional: restrict to your IP only
 # --source-ranges=YOUR_IP/32
@@ -72,8 +75,7 @@ gcloud compute addresses create portainer-static-ip \
 
 # Assign to the instance
 gcloud compute instances delete-access-config portainer-vm \
-  --zone=us-central1-a \
-  --access-config-name="External NAT"
+  --zone=us-central1-a
 
 gcloud compute instances add-access-config portainer-vm \
   --zone=us-central1-a \
@@ -87,7 +89,8 @@ gcloud compute instances add-access-config portainer-vm \
 gcloud compute ssh portainer-vm --zone=us-central1-a
 
 # Install Docker
-curl -fsSL https://get.docker.com | sh
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
 sudo usermod -aG docker $USER
 newgrp docker
 
@@ -101,15 +104,15 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 ```
 
 ## Step 5: Configure Cloud DNS (Optional)
 
 ```bash
-# Create a DNS zone
+# Create a DNS zone for your domain
 gcloud dns managed-zones create portainer-zone \
-  --dns-name=portainer.yourdomain.com. \
+  --dns-name=yourdomain.com. \
   --description="Portainer DNS"
 
 # Add an A record
@@ -133,24 +136,25 @@ gcloud compute instances create portainer-vm \
   --image-project=ubuntu-os-cloud \
   --tags=portainer-server \
   --metadata=startup-script='#!/bin/bash
-curl -fsSL https://get.docker.com | sh
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
 docker volume create portainer_data
 docker run -d -p 8000:8000 -p 9443:9443 \
   --name portainer --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest'
+  portainer/portainer-ce:sts'
 ```
 
 ## Cost Estimation
 
-| Machine Type | vCPU | RAM | Monthly (24/7) |
+| Machine Type | vCPU | RAM | Monthly (24/7, us-central1) |
 |-------------|------|-----|----------------|
-| e2-micro | 0.25 | 1GB | ~$6 |
-| e2-small | 0.5 | 2GB | ~$14 |
-| e2-medium | 1 | 4GB | ~$27 |
+| e2-micro | 2 | 1GB | ~$6.11 |
+| e2-small | 2 | 2GB | ~$12.23 |
+| e2-medium | 2 | 4GB | ~$24.46 |
 
-Use committed use discounts (1-year) for 37% savings on production instances.
+Approximate on-demand VM cost in `us-central1`, excluding disks and network egress. Use committed use discounts (1-year) for about 37% savings on eligible production instances.
 
 ## Conclusion
 
