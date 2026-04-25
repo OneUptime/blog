@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Networking, IPv4, Container, CNI, Linux
+Tags: Podman, Networking, IPv4, Container, Linux
 
 Description: Configure custom IPv4 subnets for Podman containers using Podman networks to isolate workloads and control address allocation.
 
 ## Introduction
 
-Podman is a daemonless container engine compatible with Docker's CLI. It uses CNI (Container Network Interface) or Netavark for networking. You can create custom networks with specific IPv4 subnets to organize and isolate container workloads, much like Docker's user-defined networks.
+Podman is a daemonless container engine compatible with Docker's CLI. Current Podman releases use Netavark for networking. You can create custom networks with specific IPv4 subnets to organize and isolate container workloads, much like Docker's user-defined networks.
 
 ## Creating a Custom IPv4 Network
 
@@ -39,16 +39,17 @@ podman network inspect myapp-net
 podman run -d \
   --name db \
   --network myapp-net \
-  --ip 10.89.0.10 \       # Static IPv4 within the subnet
+  --ip 10.89.0.10 \
   -e POSTGRES_PASSWORD=secret \
   postgres:15
 
 # Run an app container that connects to the database by name
+# Podman DNS resolves 'db' on the user-defined bridge network
 podman run -d \
   --name api \
   --network myapp-net \
   --ip 10.89.0.11 \
-  -e DB_HOST=db \          # Podman DNS resolves 'db' to 10.89.0.10
+  -e DB_HOST=db \
   myapp:latest
 ```
 
@@ -57,7 +58,7 @@ podman run -d \
 Podman supports Kubernetes-style pods where containers share a network namespace:
 
 ```bash
-# Create a pod with a defined subnet
+# Create a pod on the custom network with a static IP
 podman pod create \
   --name mypod \
   --network myapp-net \
@@ -77,9 +78,10 @@ podman run -d \
 
 ## Podman Compose with Custom Networks
 
+Podman's `podman compose` command uses an external Compose provider, so use a standard Compose file:
+
 ```yaml
-# podman-compose.yml (compatible with docker-compose)
-version: "3.8"
+# compose.yaml
 
 services:
   db:
@@ -109,13 +111,13 @@ networks:
 
 ## Rootless Networking
 
-Podman supports rootless containers. Rootless networks use `slirp4netns` or `pasta` instead of CNI:
+Podman supports rootless containers. In rootless mode, the default networking tool is `pasta` (or `slirp4netns` if configured), and you can still create user-defined networks:
 
 ```bash
 # Create a rootless network (no root required)
 podman network create --subnet 10.90.0.0/24 rootless-net
 
-# Run as a non-root user
+# Run as a non-root user on the custom network
 podman run --network rootless-net --ip 10.90.0.5 nginx
 ```
 
@@ -125,10 +127,10 @@ podman run --network rootless-net --ip 10.90.0.5 nginx
 # Check container IP addresses
 podman inspect db --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'
 
-# Test DNS resolution inside a container
-podman exec -it api ping db
+# Test DNS resolution inside a container (if the image includes ping)
+podman exec api ping -c 1 db
 ```
 
 ## Conclusion
 
-Podman provides flexible IPv4 networking through CNI or Netavark with full support for custom subnets, static IPs, and pod-level network sharing. It is a drop-in alternative to Docker with enhanced security through rootless operation.
+Podman provides flexible IPv4 networking through Netavark with full support for custom subnets, static IPs, and pod-level network sharing. It is a drop-in alternative to Docker with enhanced security through rootless operation.
