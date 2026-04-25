@@ -8,14 +8,14 @@ Description: Configure WireGuard VPN on pfSense for IPv4 remote access, includin
 
 ## Introduction
 
-WireGuard is a modern, high-performance VPN protocol built into pfSense 2.5+. It uses UDP and asymmetric cryptography with minimal configuration compared to OpenVPN.
+WireGuard is a modern, high-performance VPN protocol available on pfSense via the WireGuard package. It uses UDP and asymmetric cryptography with minimal configuration compared to OpenVPN.
 
-## Step 1: Install WireGuard Package (pfSense < 2.6)
+## Step 1: Install WireGuard Package
 
-Navigate to **System > Package Manager > Available Packages**:
+Navigate to **System > Packages > Available Packages**:
 - Install: `WireGuard`
 
-(WireGuard is built-in from pfSense 2.6+)
+(Earlier base-system WireGuard support was removed after pfSense Plus 21.02-p1 / pfSense CE 2.5.0; on current pfSense releases, install the package.)
 
 ## Step 2: Create WireGuard Tunnel
 
@@ -32,10 +32,11 @@ Copy the **Public Key** - clients need this.
 
 ## Step 3: Add Client Peer
 
-Navigate to the tunnel > **Peers > Add Peer**:
+Navigate to **VPN > WireGuard > Peers > Add Peer**:
 
 ```text
 Description:    Laptop-Alice
+Dynamic Endpoint: checked
 Public key:     <Alice's WireGuard public key>
 Allowed IPs:    10.6.0.2/32   (this client's tunnel IP)
 Endpoint:       (leave blank for road warrior - dynamic IP)
@@ -44,18 +45,21 @@ Keepalive:      25
 
 ## Step 4: Assign WireGuard Interface
 
+If **System > Routing** is using an automatic default gateway, set it to your WAN gateway before assigning the WireGuard interface.
+
 Navigate to **Interfaces > Assignments**:
 - Add `tun_wg0` → creates `OPT2` (or similar)
 
 Navigate to **Interfaces > OPT2**:
 - Enable: checked
-- IPv4 Configuration Type: Static
+- IPv4 Configuration Type: Static IPv4
 - IPv4 Address: `10.6.0.1/24`
 
 ## Step 5: Firewall Rules
 
 Navigate to **Firewall > Rules > WAN > Add**:
 ```text
+Action: Pass
 Protocol: UDP
 Destination: WAN address
 Destination port: 51820
@@ -75,14 +79,14 @@ Description: Allow WireGuard clients to LAN
 ```ini
 [Interface]
 PrivateKey = <Alice's private key>
-Address = 10.6.0.2/32
-DNS = 192.168.1.1
+Address = 10.6.0.2/24
+DNS = 10.6.0.1
 
 [Peer]
 PublicKey = <pfSense WireGuard public key>
 Endpoint = 203.0.113.1:51820
 AllowedIPs = 0.0.0.0/0         # Full tunnel (all traffic via VPN)
-# AllowedIPs = 192.168.1.0/24  # Split tunnel (LAN only)
+# AllowedIPs = 10.6.0.1/32, 192.168.1.0/24  # Split tunnel (tunnel IP + LAN only)
 
 PersistentKeepalive = 25
 ```
@@ -102,9 +106,9 @@ Navigate to **VPN > WireGuard > Status**:
 - Shows connected peers, transfer stats, last handshake time
 
 ```bash
-# pfSense CLI (Diagnostics > Command Prompt)
-wg show wg0
-wg show wg0 latest-handshakes
+# pfSense shell (console/SSH or Diagnostics > Command Prompt)
+wg show tun_wg0
+wg show tun_wg0 latest-handshakes
 ```
 
 ## Conclusion
