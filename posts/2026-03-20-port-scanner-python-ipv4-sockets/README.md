@@ -8,7 +8,7 @@ Description: Learn how to build a multi-threaded TCP port scanner in Python usin
 
 ## How Port Scanning Works
 
-A TCP port scanner attempts to `connect()` to each port. If the connection succeeds, the port is open. If it raises `ConnectionRefusedError`, the port is closed. A timeout usually means the port is filtered by a firewall.
+A TCP port scanner attempts a TCP connection to each port. If the connection succeeds, the port is open. If the OS refuses the connection, the port is closed. A timeout often means traffic is being dropped or filtered, though other network issues can also cause it.
 
 ## Simple Sequential Port Scanner
 
@@ -50,6 +50,7 @@ def worker(host: str, port_queue: Queue, open_ports: list, timeout: float) -> No
     while True:
         port = port_queue.get()
         if port is None:
+            port_queue.task_done()
             break   # Poison pill to stop the thread
 
         try:
@@ -75,6 +76,7 @@ def scan_host(host: str, start_port: int = 1, end_port: int = 1024,
         while True:
             port = port_queue.get()
             if port is None:
+                port_queue.task_done()
                 break
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -122,7 +124,7 @@ if __name__ == "__main__":
     print(f"\nOpen ports on {target}:")
     for port in open_ports:
         try:
-            service = socket.getservbyport(port)
+            service = socket.getservbyport(port, "tcp")
         except OSError:
             service = "unknown"
         print(f"  {port}/tcp  {service}")
@@ -153,4 +155,4 @@ Port scanning your own systems or systems you have explicit permission to test i
 
 ## Conclusion
 
-A Python port scanner uses `connect_ex()` on non-blocking sockets with timeouts. Threading and a work queue dramatically reduce scan time. For production security work, use dedicated tools like `nmap` which offer SYN scanning, OS fingerprinting, and many other capabilities.
+A Python port scanner uses `connect_ex()` with socket timeouts to test whether a TCP port accepts connections. Threading and a work queue dramatically reduce scan time. For production security work, use dedicated tools like `nmap` which offer SYN scanning, OS fingerprinting, and many other capabilities.
