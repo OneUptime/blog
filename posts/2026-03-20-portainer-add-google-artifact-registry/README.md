@@ -20,7 +20,7 @@ Google Artifact Registry (GAR) is Google Cloud's universal package and container
 ## Google Artifact Registry URL Format
 
 ```text
-{region}-docker.pkg.dev/{project-id}/{repository-name}/{image-name}:{tag}
+{location}-docker.pkg.dev/{project-id}/{repository-name}/{image-name}:{tag}
 
 # Examples:
 
@@ -31,11 +31,14 @@ europe-west1-docker.pkg.dev/myproject/api-images/api:v2.0
 ## Step 1: Enable Artifact Registry API
 
 ```bash
+# Get the current project ID
+PROJECT_ID=$(gcloud config get-value project)
+
 # Enable the API if not already enabled
 gcloud services enable artifactregistry.googleapis.com
 
 # Verify
-gcloud services list --filter="name:artifactregistry"
+gcloud services list --enabled --filter="name:artifactregistry.googleapis.com"
 ```
 
 ## Step 2: Create an Artifact Registry Repository
@@ -60,9 +63,7 @@ gcloud iam service-accounts create portainer-reader \
   --description="Used by Portainer to pull images from Artifact Registry"
 
 # Get the service account email
-SA_EMAIL=$(gcloud iam service-accounts list \
-  --filter="displayName=Portainer Registry Reader" \
-  --format='value(email)')
+SA_EMAIL="portainer-reader@${PROJECT_ID}.iam.gserviceaccount.com"
 
 echo "Service Account: $SA_EMAIL"
 ```
@@ -100,7 +101,7 @@ The key file looks like:
   "type": "service_account",
   "project_id": "myproject",
   "private_key_id": "xxx",
-  "private_key": "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----\n",
+  "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
   "client_email": "portainer-reader@myproject.iam.gserviceaccount.com",
   "client_id": "123456789",
   "auth_uri": "https://accounts.google.com/o/oauth2/auth",
@@ -113,11 +114,12 @@ The key file looks like:
 1. Go to **Registries** in Portainer
 2. Click **+ Add registry**
 3. Select **Custom registry**
-4. Configure:
+4. Enable **Authentication** and configure:
 
 ```text
 Name:      Google Artifact Registry
 URL:       us-central1-docker.pkg.dev
+Authentication: Enabled
 Username:  _json_key
 Password:  {paste entire contents of portainer-key.json as a single line}
 ```
@@ -137,9 +139,9 @@ For temporary access (testing), use a short-lived access token:
 gcloud auth print-access-token
 
 # Use in Docker
-docker login us-central1-docker.pkg.dev \
+gcloud auth print-access-token | docker login \
   --username oauth2accesstoken \
-  --password "$(gcloud auth print-access-token)"
+  --password-stdin https://us-central1-docker.pkg.dev
 ```
 
 For Portainer, this requires manual refresh every hour - use the service account key method for production.
@@ -166,7 +168,7 @@ version: "3.8"
 services:
   app:
     image: us-central1-docker.pkg.dev/myproject/myrepo/myapp:latest
-    # Portainer uses stored GAR credentials
+    # Portainer uses the stored GAR credentials for this environment
 
   api:
     image: us-central1-docker.pkg.dev/myproject/myrepo/api:v2.0
@@ -212,7 +214,7 @@ Verify the JSON key is pasted correctly and the username is exactly `_json_key`.
 
 ### Repository Not Found
 
-Ensure the region prefix matches your repository location:
+Ensure the location prefix matches your repository location:
 
 ```text
 us-central1-docker.pkg.dev  ← Correct for us-central1
@@ -220,4 +222,4 @@ us-central1-docker.pkg.dev  ← Correct for us-central1
 
 ## Conclusion
 
-Integrating Google Artifact Registry with Portainer requires creating a dedicated service account with read-only Artifact Registry access, generating a service account key, and configuring Portainer with the `_json_key` username pattern. Once set up, all Portainer deployments automatically use the stored credentials to pull images from your GAR repositories securely.
+Integrating Google Artifact Registry with Portainer requires creating a dedicated service account with read-only Artifact Registry access, generating a service account key, and configuring Portainer with the `_json_key` username pattern. Once set up, Portainer environments with access to that registry can use the stored credentials to pull images from your GAR repositories securely.
