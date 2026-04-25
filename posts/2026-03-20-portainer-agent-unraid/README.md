@@ -17,6 +17,8 @@ The Portainer Agent allows you to manage a remote Docker host from a central Por
 - Network connectivity between the Portainer server and the Unraid host
 - Port 9001 available on the Unraid host
 
+Use the Portainer Agent image tag that matches your central Portainer Server version or release channel. For example, use `lts` if your Portainer Server is running the LTS release.
+
 ## Step 1: Install the Portainer Agent on Unraid
 
 ### Via Unraid Docker UI
@@ -25,7 +27,7 @@ The Portainer Agent allows you to manage a remote Docker host from a central Por
 2. Click **Add Container**
 3. Fill in:
    - **Name**: portainer-agent
-   - **Repository**: portainer/agent:latest
+   - **Repository**: portainer/agent:lts
    - **Network Type**: Bridge
    - **Restart Policy**: Unless Stopped
 
@@ -60,17 +62,19 @@ docker run -d \
   -p 9001:9001 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  portainer/agent:latest
+  portainer/agent:lts
 
 # Verify it's running
 docker ps | grep portainer-agent
 ```
 
+If your Portainer Server uses `AGENT_SECRET`, add `-e AGENT_SECRET=<same-secret>` to the `docker run` command.
+
 ## Step 2: Configure Unraid Firewall
 
 Allow port 9001 inbound from your Portainer server:
 
-If using Unraid's network settings or a separate firewall, allow TCP port `9001` from the IP address of your central Portainer server.
+If you use a firewall, router ACL, or other network filtering between Portainer and Unraid, allow TCP port `9001` from the IP address of your central Portainer server.
 
 ## Step 3: Add the Unraid Host to Central Portainer
 
@@ -112,16 +116,18 @@ Portainer Agent does not replace Unraid's Docker manager. Both can manage contai
 You can customize the agent behavior with environment variables:
 
 ```bash
+# Example: enable debug logging
 docker run -d \
   --name portainer-agent \
   --restart=unless-stopped \
   -p 9001:9001 \
-  -e AGENT_CLUSTER_ADDR=<unraid-ip>    # For Swarm mode
-  -e LOG_LEVEL=DEBUG                    # Enable debug logging
+  -e LOG_LEVEL=DEBUG \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  portainer/agent:latest
+  portainer/agent:lts
 ```
+
+If your Portainer Server uses `AGENT_SECRET`, add `-e AGENT_SECRET=<same-secret>` to the command above as well.
 
 ## Updating the Portainer Agent
 
@@ -132,8 +138,8 @@ ssh root@<unraid-ip>
 # Stop and remove old agent
 docker stop portainer-agent && docker rm portainer-agent
 
-# Pull latest
-docker pull portainer/agent:latest
+# Pull the matching tag (for example, lts)
+docker pull portainer/agent:lts
 
 # Redeploy
 docker run -d \
@@ -142,8 +148,10 @@ docker run -d \
   -p 9001:9001 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  portainer/agent:latest
+  portainer/agent:lts
 ```
+
+If your Portainer Server uses `AGENT_SECRET`, include the same `-e AGENT_SECRET=<same-secret>` flag when redeploying the agent.
 
 ## Conclusion
 
