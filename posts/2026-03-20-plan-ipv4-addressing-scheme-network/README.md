@@ -19,7 +19,7 @@ Description: A well-planned IPv4 addressing scheme assigns logical, hierarchical
 ```text
 Total space: 10.0.0.0/8
 
-Site A (HQ):     10.0.0.0/16    (65,534 addresses)
+Site A (HQ):     10.0.0.0/16    (65,534 usable hosts)
   Servers:       10.0.0.0/24    (254 hosts)
   Users-VLAN10:  10.0.10.0/23   (510 hosts)
   Users-VLAN20:  10.0.20.0/23   (510 hosts)
@@ -43,38 +43,40 @@ import ipaddress
 def allocate_subnets(parent: str, allocations: list) -> list:
     """
     Allocate named subnets from a parent block.
-    allocations: list of (name, prefix_len) tuples, largest first.
+    allocations: list of (name, prefix_len) tuples in assignment order.
     Returns list of (name, subnet) tuples.
     """
     parent_net = ipaddress.IPv4Network(parent)
     results = []
-    subnets = iter(parent_net.subnets(new_prefix=allocations[0][1]))
+    next_addr = parent_net.network_address
 
     for name, prefix_len in allocations:
-        subnet = ipaddress.IPv4Network(f"{next(subnets).network_address}/{prefix_len}")
+        try:
+            subnet = next(
+                candidate
+                for candidate in parent_net.subnets(new_prefix=prefix_len)
+                if candidate.network_address >= next_addr
+            )
+        except StopIteration as exc:
+            raise ValueError(f"Not enough space in {parent_net} for {name} /{prefix_len}") from exc
+
         results.append((name, subnet))
-        # Advance past the allocated block
-        subnets = iter(ipaddress.IPv4Network(parent).address_exclude(subnet))
+        next_addr = subnet.broadcast_address + 1
 
     return results
 
 # Simpler sequential allocation
 
-parent = ipaddress.IPv4Network("10.0.0.0/16")
+parent = "10.0.0.0/16"
 vlans = [
-    ("Servers",   24),  # 254 hosts
-    ("UserVLAN10", 23), # 510 hosts
-    ("UserVLAN20", 23), # 510 hosts
-    ("Mgmt",      24),  # 254 hosts
+    ("Servers",    24),  # 254 usable hosts
+    ("UserVLAN10", 23),  # 510 usable hosts
+    ("UserVLAN20", 23),  # 510 usable hosts
+    ("Mgmt",       24),  # 254 usable hosts
 ]
 
-allocated = []
-gen = parent.subnets(new_prefix=23)
-# Demonstrate iterating and assigning
-for i, (name, pfx) in enumerate(vlans):
-    net = ipaddress.IPv4Network(f"10.0.{i*2}.0/{pfx}")
-    allocated.append((name, net))
-    print(f"{name:12s}: {net}  ({net.num_addresses - 2} hosts)")
+for name, net in allocate_subnets(parent, vlans):
+    print(f"{name:12s}: {net}  ({net.num_addresses - 2} usable hosts)")
 ```
 
 ## VLAN-to-Subnet Mapping Best Practice
