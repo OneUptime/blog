@@ -14,7 +14,7 @@ Self-hosted photo managers let you store, organize, and share your photo library
 
 - Portainer installed and running
 - Large storage volume for photos
-- At least 4GB RAM (8GB recommended for ML features)
+- At least 6GB RAM (8GB recommended for larger libraries and ML features)
 - Optionally: NVIDIA GPU for faster AI processing
 
 ## Option 1: Deploy Immich (Google Photos Alternative)
@@ -36,9 +36,9 @@ volumes:
   immich_model_cache:
 
 services:
-  # PostgreSQL with pgvector extension for ML search
+  # PostgreSQL with the current Immich vector extension image
   immich_postgres:
-    image: tensorchord/pgvecto-rs:pg14-v0.2.0
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
     container_name: immich_postgres
     restart: unless-stopped
     environment:
@@ -55,9 +55,9 @@ services:
       interval: 10s
       retries: 5
 
-  # Redis for caching and job queues
+  # Valkey (Redis-compatible) for caching and job queues
   immich_redis:
-    image: redis:7-alpine
+    image: docker.io/valkey/valkey:9
     container_name: immich_redis
     restart: unless-stopped
     volumes:
@@ -80,7 +80,7 @@ services:
       immich_redis:
         condition: service_healthy
     ports:
-      - "2283:3001"
+      - "2283:2283"
     environment:
       # Database connection
       - DB_HOSTNAME=immich_postgres
@@ -90,11 +90,11 @@ services:
       - DB_PASSWORD=postgres_secure_password
       # Redis connection
       - REDIS_HOSTNAME=immich_redis
-      # Upload location
-      - UPLOAD_LOCATION=/usr/src/app/upload
     volumes:
       # Photo storage - point to your photo library
-      - /mnt/photos:/usr/src/app/upload
+      - /mnt/photos:/data
+      # Optional: uncomment to mount an existing library for External Libraries
+      # - /mnt/external-photos:/mnt/external-photos:ro
       # Timezone data
       - /etc/localtime:/etc/localtime:ro
     networks:
@@ -104,34 +104,35 @@ services:
       - "traefik.http.routers.immich.rule=Host(`photos.yourdomain.com`)"
       - "traefik.http.routers.immich.entrypoints=websecure"
       - "traefik.http.routers.immich.tls.certresolver=letsencrypt"
-      - "traefik.http.services.immich.loadbalancer.server.port=3001"
+      - "traefik.http.services.immich.loadbalancer.server.port=2283"
 
   # Immich machine learning (face recognition, CLIP search)
   immich_machine_learning:
+    # For NVIDIA GPU acceleration in Portainer, change the tag to :release-cuda
     image: ghcr.io/immich-app/immich-machine-learning:release
     container_name: immich_machine_learning
     restart: unless-stopped
     volumes:
       - immich_model_cache:/cache
-    environment:
-      - TRANSFORMERS_CACHE=/cache
     networks:
       - immich_network
-    # Uncomment for NVIDIA GPU acceleration
+    # Uncomment for NVIDIA GPU acceleration in Portainer
     # deploy:
     #   resources:
     #     reservations:
     #       devices:
-    #         - capabilities: [gpu]
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
 ```
 
 ### Configure External Libraries
 
 ```bash
-# Point Immich to your existing photo library
-# In Immich admin panel: Settings > Libraries > External Libraries
-# Add path: /mnt/photos/existing-library
-# Run library scan to import without moving files
+# Uncomment the optional bind mount above to mount your existing library read-only
+# In Immich admin panel: Administration > External Libraries
+# Add path: /mnt/external-photos
+# Run a library scan to import without moving files
 ```
 
 ## Option 2: Deploy PhotoPrism
@@ -152,7 +153,7 @@ volumes:
 services:
   # MariaDB database
   photoprism_db:
-    image: mariadb:10.11
+    image: mariadb:11
     container_name: photoprism_db
     restart: unless-stopped
     command: >
@@ -166,6 +167,8 @@ services:
       --innodb-lock-wait-timeout=120
     environment:
       - MARIADB_ROOT_PASSWORD=root_password
+      - MARIADB_AUTO_UPGRADE=1
+      - MARIADB_INITDB_SKIP_TZINFO=1
       - MARIADB_DATABASE=photoprism
       - MARIADB_USER=photoprism
       - MARIADB_PASSWORD=photoprism_password
@@ -195,7 +198,7 @@ services:
       - PHOTOPRISM_ADMIN_PASSWORD=secure_admin_password
 
       # Site configuration
-      - PHOTOPRISM_SITE_URL=https://photoprism.yourdomain.com
+      - PHOTOPRISM_SITE_URL=http://your-server-ip:2342/
       - PHOTOPRISM_SITE_TITLE=My Photos
       - PHOTOPRISM_SITE_CAPTION=My Personal Gallery
 
@@ -214,10 +217,10 @@ services:
       # Disable authentication for local-only access
       # - PHOTOPRISM_AUTH_MODE=public
 
-      # Enable TensorFlow for AI features
-      - PHOTOPRISM_TENSORFLOW_OFF=false
+      # Install TensorFlow support for AI features on first startup
+      - PHOTOPRISM_INIT=tensorflow
 
-      # Face recognition
+      # NSFW detection
       - PHOTOPRISM_DETECT_NSFW=false
 
       # Workers
@@ -226,12 +229,12 @@ services:
       # Your photo library
       - /mnt/photos:/photoprism/originals
       # Import folder for new photos
-      - /mnt/photos/import:/photoprism/import
+      - /mnt/photoprism-import:/photoprism/import
       # Storage for thumbnails and sidecar files
       - /opt/photoprism/storage:/photoprism/storage
     networks:
       - photoprism_network
-    # For GPU acceleration (optional)
+    # For Intel VAAPI/QSV acceleration (optional)
     # devices:
     #   - /dev/dri:/dev/dri
 ```
@@ -242,7 +245,7 @@ services:
 1. Install Immich app from App Store or Play Store
 2. Set server URL: `https://photos.yourdomain.com`
 3. Log in with your credentials
-4. Enable **Backup** > **Auto Backup** for automatic photo sync
+4. Open the backup screen, select the albums to sync, and tap **Enable Backup**
 
 ### Immich CLI for Bulk Import
 
@@ -251,10 +254,10 @@ services:
 npm install -g @immich/cli
 
 # Authenticate
-immich login https://photos.yourdomain.com your-api-key
+immich login https://photos.yourdomain.com/api your-api-key
 
 # Upload existing photos
-immich upload /path/to/photos --recursive --album "Imported Photos"
+immich upload /path/to/photos --recursive --album-name "Imported Photos"
 ```
 
 ## Step 4: Set Up Automated Backups
@@ -267,7 +270,7 @@ BACKUP_DIR="/opt/backups/photos"
 mkdir -p "$BACKUP_DIR"
 
 # Backup Immich database
-docker exec immich_postgres pg_dump -U postgres immich | \
+docker exec -t immich_postgres pg_dump --clean --if-exists --dbname=immich --username=postgres | \
   gzip > "$BACKUP_DIR/immich_db_$DATE.sql.gz"
 
 # Note: Photos themselves are in /mnt/photos - back up that directory separately
@@ -286,7 +289,7 @@ environment:
   # RAM-based thumbnail caching
   - PHOTOPRISM_THUMB_UNCACHED=true
   # JPEG quality for thumbnails
-  - PHOTOPRISM_THUMB_JPEG_QUALITY=95
+  - PHOTOPRISM_JPEG_QUALITY=95
 ```
 
 ## Conclusion
