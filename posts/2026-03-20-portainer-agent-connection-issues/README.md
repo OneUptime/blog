@@ -28,7 +28,7 @@ ss -tlnp | grep 9001
 # OR
 netstat -tlnp | grep 9001
 
-# Expected output: 0.0.0.0:9001 LISTEN
+# Expected: a LISTEN entry on :9001
 ```
 
 ## Step 3: Test Network Connectivity
@@ -38,11 +38,9 @@ netstat -tlnp | grep 9001
 nc -zv AGENT_HOST_IP 9001
 # Expected: "Connection to AGENT_HOST_IP 9001 port [tcp/*] succeeded!"
 
-# Or use curl
-curl -v http://AGENT_HOST_IP:9001/ping
-
-# Test from inside Portainer container
-docker exec portainer nc -zv AGENT_HOST_IP 9001
+# Or probe the agent's HTTPS endpoint
+curl -vk https://AGENT_HOST_IP:9001/ping
+# Expected: HTTP/1.1 204 No Content
 ```
 
 ## Step 4: Check Firewall Rules
@@ -61,18 +59,11 @@ sudo ufw allow from PORTAINER_SERVER_IP to any port 9001 proto tcp
 If an agent secret is configured, it must match on both sides:
 
 ```bash
-# Check agent has the secret configured
-docker inspect portainer_agent | python3 -c "
-import sys, json
-c = json.load(sys.stdin)
-env = c[0]['Config']['Env']
-for e in env:
-    if 'AGENT_SECRET' in e:
-        print('Agent secret:', e)
-        break
-else:
-    print('No AGENT_SECRET set')
-"
+# Check the agent-side secret
+docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' portainer_agent | grep '^AGENT_SECRET=' || echo 'No AGENT_SECRET set'
+
+# Check the Portainer Server secret
+docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' portainer | grep '^AGENT_SECRET=' || echo 'No AGENT_SECRET set'
 ```
 
 ## Common Error Messages and Fixes
@@ -81,8 +72,8 @@ else:
 |-------|-------|-----|
 | `connection refused` | Agent not running or wrong port | Start agent, check port |
 | `connection timed out` | Firewall blocking | Open port 9001 |
-| `authentication failed` | Secret mismatch | Sync secrets |
-| `certificate error` | TLS mismatch | Check TLS settings |
+| `authentication failed` | Secret mismatch | Sync `AGENT_SECRET` on both sides |
+| `certificate error` | HTTP used instead of HTTPS, or strict validation of the agent's self-signed cert | Use HTTPS and trust the cert, or use `curl -k` for manual tests |
 
 ## Restarting the Agent
 
@@ -93,13 +84,13 @@ docker restart portainer_agent
 docker logs portainer_agent -f
 ```
 
-## Force Reconnect in Portainer
+## Review the Environment Configuration in Portainer
 
 1. Go to Environments
 2. Click on the problematic environment
-3. Click **Reconnect** or **Update**
-4. Save settings
+3. Verify the Environment URL / Address is the agent host or DNS name with port `9001` and no protocol
+4. Save settings if you updated the address
 
 ## Conclusion
 
-Most agent connection issues fall into four categories: the agent is not running, port 9001 is blocked by a firewall, the agent secret doesn't match, or there's a TLS configuration mismatch. Work through the checklist systematically, starting with the simplest check (is the agent running?) before investigating network issues.
+Most agent connection issues fall into four categories: the agent is not running, port 9001 is blocked by a firewall, the agent secret doesn't match, or the connection check is using HTTP or strict certificate validation against the agent's self-signed HTTPS endpoint. Work through the checklist systematically, starting with the simplest check (is the agent running?) before investigating network issues.
