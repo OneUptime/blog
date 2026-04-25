@@ -69,13 +69,10 @@ echo "Tenant ID: $TENANT_ID"
 3. Fill in:
 
 ```text
-Name:            Azure East US
-Subscription ID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-Tenant ID:       xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-Client ID:       xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-Client Secret:   your-client-secret
-Resource Group:  portainer-containers
-Location:        eastus
+Name:               Azure East US
+Application ID:     xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+Tenant ID:          xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+Authentication Key: your-client-secret
 ```
 
 4. Click **Connect**
@@ -91,64 +88,43 @@ TOKEN=$(curl -s -X POST \
 
 curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
   https://portainer.example.com/api/endpoints \
-  -d '{
-    "name": "Azure East US ACI",
-    "endpointCreationType": 3,
-    "type": 3,
-    "AzureCredentials": {
-      "ApplicationID": "your-client-id",
-      "TenantID": "your-tenant-id",
-      "AuthenticationKey": "your-client-secret"
-    },
-    "AzureSubscriptionID": "your-subscription-id",
-    "AzureResourceGroup": "portainer-containers",
-    "AzureLocation": "eastus"
-  }'
+  -F "Name=Azure East US ACI" \
+  -F "EndpointCreationType=3" \
+  -F "AzureApplicationID=your-client-id" \
+  -F "AzureTenantID=your-tenant-id" \
+  -F "AzureAuthenticationKey=your-client-secret"
 ```
 
-## Step 4: Deploy a Container to ACI
+## Step 4: Deploy a Container Instance to ACI
 
-Once connected, deploy containers to ACI from Portainer:
+Once connected, deploy container instances to ACI from Portainer:
 
 1. Click on the ACI environment
-2. Go to **Containers** → **Add container**
+2. Go to **Container instances** → **Add container**
 3. Configure:
 
 ```text
-Name:    my-web-app
-Image:   nginx:latest
-Port:    80
+Subscription:   <your-subscription>
+Resource Group: portainer-containers
+Location:       eastus
+Name:           my-web-app
+Image:          nginx:latest
+OS:             Linux
+Port:           80/TCP
 
 Resource limits:
-  CPU:    0.5 vCPU
-  Memory: 0.5 GB
+  CPU:    1 vCPU
+  Memory: 1 GB
 ```
 
 4. Click **Deploy the container**
 
 The container runs in Azure ACI and gets a public IP address.
 
-## Deploying via Stacks (Docker Compose on ACI)
+## Deploying Multi-Container ACI Workloads
 
-```yaml
-# Deploy a multi-container app to ACI
-version: "3.8"
-
-services:
-  web:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-
-  api:
-    image: your-registry/api:latest
-    environment:
-      DATABASE_URL: "..."
-```
-
-ACI runs multi-container deployments as container groups.
+Portainer's Azure ACI integration manages container instances rather than Portainer stacks. If you need a multi-container deployment, use Azure Container Instances YAML, ARM, or Docker Compose tooling directly. ACI runs multi-container deployments as container groups.
 
 ## Viewing and Managing ACI Containers
 
@@ -156,20 +132,26 @@ ACI runs multi-container deployments as container groups.
 # Via Portainer API - list containers in ACI environment
 ENDPOINT_ID=7  # ACI environment ID
 
-# ACI uses a different API path
+# Get a subscription ID available to this ACI environment
+SUBSCRIPTION_ID=$(curl -s \
+  -H "Authorization: Bearer $TOKEN" \
+  "https://portainer.example.com/api/endpoints/${ENDPOINT_ID}/azure/subscriptions?api-version=2016-06-01" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['value'][0]['subscriptionId'])")
+
+# ACI uses Azure subscription-scoped API paths
 curl -s \
   -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/endpoints/${ENDPOINT_ID}/azure/containergroups" \
+  "https://portainer.example.com/api/endpoints/${ENDPOINT_ID}/azure/subscriptions/${SUBSCRIPTION_ID}/providers/Microsoft.ContainerInstance/containerGroups?api-version=2018-04-01" \
   | python3 -m json.tool
 ```
 
 ## Limitations of ACI in Portainer
 
 - No Docker Swarm support
-- Limited networking options (vs. VNet integration)
-- No persistent volumes (ephemeral only, or use Azure Files)
-- Container logs are limited to the last 4MB
+- Limited networking options compared with full Azure networking features
+- Persistent storage requires Azure Files if you need data to survive container restarts
+- Container logs are limited to the last 4 MB
 
 ## Conclusion
 
-ACI environments in Portainer provide a convenient interface for deploying serverless containers to Azure without the Azure portal learning curve. The service principal approach gives Portainer the minimum permissions needed (Contributor on one resource group) to manage ACI containers. This is ideal for running stateless workloads, batch jobs, or microservices without managing virtual machines.
+ACI environments in Portainer provide a convenient interface for deploying serverless containers to Azure without the Azure portal learning curve. Scoping the service principal to one resource group helps limit Portainer's access while still allowing it to manage ACI container groups in that resource group. This is ideal for running stateless workloads, batch jobs, or microservices without managing virtual machines.
