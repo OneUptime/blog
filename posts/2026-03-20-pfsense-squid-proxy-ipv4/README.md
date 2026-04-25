@@ -8,7 +8,7 @@ Description: Install and configure the Squid proxy package on pfSense for IPv4 w
 
 ## Introduction
 
-Squid on pfSense provides HTTP/HTTPS caching and filtering for LAN clients. In transparent mode, clients need no manual proxy configuration - pfSense intercepts port 80/443 traffic automatically.
+Squid on pfSense provides HTTP caching and web filtering for LAN clients. In transparent mode, clients need no manual proxy configuration - pfSense intercepts port 80 traffic automatically, and port 443 only when HTTPS/SSL Interception is enabled. Netgate currently marks Squid, SquidGuard, and Lightsquid as deprecated in pfSense Plus and pfSense CE due to unfixed upstream security vulnerabilities and warns they will stop functioning in a future major release.
 
 ## Install Squid Package
 
@@ -27,7 +27,7 @@ Proxy Port:             3128
 Allow Users on Interface: checked (allow LAN subnet)
 
 Transparent HTTP Proxy: checked
-Transparent Proxy Interface: LAN
+Transparent Proxy Interface(s): LAN
 
 Logging:
   Enable Access Logging: checked
@@ -36,47 +36,40 @@ Logging:
 
 ## Cache Configuration
 
-Navigate to **Services > Squid Proxy Server > Cache Mgmt**:
+Navigate to **Services > Squid Proxy Server > Local Cache**:
 
 ```text
 Hard Disk Cache Size:    2048 MB
 Hard Disk Cache System:  ufs
-Level 1 Subdirs:         16
-Level 2 Subdirs:         256
+Level 1 Directories:     16
 Memory Cache Size:       256 MB
 Maximum Object Size:     512 MB
 ```
 
+The current pfSense package fixes the Level 2 directory count at `256` internally instead of exposing it as a GUI field.
+
 ## SSL/HTTPS Interception (SSL Bump)
 
 ```text
-WARNING: SSL interception requires distributing pfSense CA cert to clients.
+WARNING: HTTPS/SSL Interception requires installing the pfSense CA on client devices.
 
 Navigate to: Services > Squid Proxy Server > General
-  Enable SSL Interception:    checked
-  SSL Interception Interface: LAN
-  CA Certificate:             pfSense-CA (create in Cert Manager)
-  SSL/TLS Method:             Modern
+  HTTPS/SSL Interception:     checked
+  SSL/MITM Mode:              Splice Whitelist, Bump Otherwise
+  SSL Intercept Interface(s): LAN
+  CA:                         pfSense-CA (create under System > Certificates)
+  SSL Proxy Compatibility Mode: Modern
 ```
 
-Deploy the CA cert to clients via GPO or MDM.
+Deploy the CA certificate to clients via GPO or MDM.
 
 ## Transparent Proxy Firewall Rules
 
-Navigate to **Firewall > NAT > Port Forward > Add**:
-```text
-Interface:   LAN
-Protocol:    TCP
-Source:      LAN net
-Dest port:   80
-Redirect to: 127.0.0.1:3128
-Description: Transparent proxy redirect
-
-```
+Do not create a manual **Firewall > NAT > Port Forward** rule for Squid transparent mode. When **Transparent HTTP Proxy** is enabled, the package installs the required redirect rules automatically. If **HTTPS/SSL Interception** is also enabled, the package adds the port `443` redirect to the SSL proxy port automatically as well.
 
 ## SquidGuard URL Filtering
 
-Navigate to **Services > SquidGuard Proxy Filter > General**:
+Navigate to **Services > SquidGuard Proxy Filter > General settings**:
 - Enable: checked
 
 Navigate to **Target categories**:
@@ -87,18 +80,23 @@ Navigate to **Common ACL**:
 - Target Rules: `BLOCKED-SITES → deny`
 - Default access: `allow`
 
+Return to **General settings** and click **Apply**.
+
 ## Monitor Squid
 
-Navigate to **Status > Squid Proxy Stats**:
-- Cache hit rate, request counts, bandwidth saved
+Navigate to **Services > Squid Proxy Server > Status**:
+- Overall proxy and cache statistics
+
+Navigate to **Services > Squid Proxy Server > Real Time**:
+- Access, cache, and SquidGuard logs
 
 ```bash
 # pfSense CLI
 
-squid -k check
+/usr/local/sbin/squid -k check -f /usr/local/etc/squid/squid.conf
 tail -f /var/squid/logs/access.log
 ```
 
 ## Conclusion
 
-Squid on pfSense enables transparent IPv4 web caching and filtering with minimal client configuration. Enable the transparent proxy, configure cache storage, optionally enable SSL interception for HTTPS filtering, and use SquidGuard for URL blocklists. The firewall NAT rule silently redirects port 80 traffic to Squid without requiring client proxy settings.
+Squid on pfSense enables transparent IPv4 web caching and filtering with minimal client configuration. Enable the transparent proxy, configure cache storage, optionally enable HTTPS/SSL Interception for HTTPS filtering, and use SquidGuard for URL blocklists. When transparent proxy mode is enabled, the package installs the redirect rules automatically rather than requiring a manual firewall NAT port-forward rule.
