@@ -8,7 +8,7 @@ Description: Planning subnets for a multi-site network requires hierarchical add
 
 ## Design Principles
 
-1. **One /16 per site** (or /20 for smaller sites) - enables route summarization.
+1. **One /16 per site** (or /20 for smaller sites if the VLAN numbering plan fits within that block) - enables route summarization.
 2. **Consistent VLAN-to-subnet mapping** - VLAN 10 = third octet .10, etc.
 3. **Dedicated P2P block** for WAN links.
 4. **Management block** - out-of-band management IPs.
@@ -74,7 +74,7 @@ for i, (a, b) in enumerate(WAN_CONNECTIONS):
 
 ## Route Summarization Per Site
 
-With this design, each site advertises a single /16:
+With this design, each site can advertise a single /16 once its more-specific routes are present in the BGP table:
 ```bash
 # Site router: advertise only the summary
 
