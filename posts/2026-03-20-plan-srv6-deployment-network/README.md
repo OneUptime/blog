@@ -13,12 +13,12 @@ Deploying SRv6 requires planning across multiple dimensions: address allocation,
 ## Step 1: Address Space Planning
 
 ```javascript
-Allocate SRv6 address space from 5f00::/16 or your own prefix:
+Allocate SRv6 address space from an operator-owned IPv6 prefix. The `5f00::/16` values below are example placeholders:
 
-Recommended hierarchy:
+Example hierarchy:
   5f00:SSSS:NNNN:PPPP:FFFF:AAAA:AAAA:AAAA
         │     │    │    │    └── Arguments (service parameters)
-        │     │    │    └─────── Function (behavior code)
+        │     │    │    └─────── Function (locally assigned behavior ID)
         │     │    └──────────── Port/PoP (data center or pop)
         │     └───────────────── Node ID
         └─────────────────────── Site/Region
@@ -40,7 +40,7 @@ def allocate_node_sids(site: int, node: int,
                        functions: dict) -> dict:
     """
     Allocate SIDs for a node.
-    functions: {name: function_value} e.g., {"End": 0, "DT6": 0xe000}
+    functions: {name: locally_assigned_function_value}
     """
     locator = f"5f00:{site:04x}:{node:04x}::/48"
     base = int(ipaddress.IPv6Address(f"5f00:{site:04x}:{node:04x}::"))
@@ -66,19 +66,19 @@ for name, sid in node_sids['sids'].items():
 ## Step 2: Hardware Assessment
 
 ```bash
-# Check if routers support SRv6 in hardware
+# Check if routers support SRv6 and whether forwarding is in hardware or software
 
-# Linux: verify kernel version and SRv6 support
-uname -r         # Need 4.14+
-ip -6 route add 5f00:test::/32 encap seg6local action End dev lo
-ip -6 route del 5f00:test::/32
+# Linux: verify kernel/iproute2 SRv6 support
+uname -r
+ip -6 route add 2001:db8:1:1::1/128 encap seg6local action End dev lo
+ip -6 route del 2001:db8:1:1::1/128 dev lo
 
-# Vendor hardware support matrix:
-# Cisco: IOS-XR 7.0+ on NCS 5500, ASR 9000, 8000
-# Juniper: Junos 19.4+ on MX, PTX
-# Arista: EOS 4.27+ on select 7500R
-# Linux: kernel 4.14+ (software forwarding)
-# P4: fully programmable SRv6 hardware
+# Vendor hardware support is platform- and release-specific:
+# Cisco: verify the SRv6 support matrix for your exact IOS XR release and platform
+# Juniper: SRv6 network-programming examples start with Junos 20.3R1 on supported hardware
+# Arista: verify current EOS SRv6 documentation/TOIs for your exact platform and release
+# Linux: requires kernel and iproute2 with seg6/seg6local support
+# P4 targets: SRv6 capability depends on the pipeline program and target ASIC/NIC limits
 ```
 
 ## Step 3: Phased Deployment Plan
@@ -113,7 +113,7 @@ Phase 4: Scale and Optimize (Month 7+)
 ```text
 ! IS-IS configuration template
 router isis CORE
- net 49.0001.0000.0001.00
+ net 49.0001.0000.0000.0001.00
  is-type level-2-only
  metric-style wide
  !
@@ -144,28 +144,30 @@ metrics_required:
     - Locator prefix reachability (ping each locator)
 
   performance:
-    - Per-path latency (ping to each SID)
+    - Per-path latency (ping each locator or use SRv6 OAM to probe SIDs)
     - Throughput through service chains (iperf3)
     - CPU utilization on SRv6 nodes
 
   alerting:
     - SID unreachable > 30 seconds → critical
     - Locator withdrawn from IS-IS → critical
-    - BGP SRv6 session down → critical
+    - BGP session carrying SRv6 services or SR Policy down → critical
 ```
 
 ## Rollback Plan
 
 ```bash
-# Quick rollback: disable SRv6 encap without removing config
-# (traffic falls back to normal IPv6 forwarding)
+# Quick rollback: remove SRv6 steering routes so traffic can use the non-SRv6 path
+# (assuming a non-SRv6 route already exists)
 
 # Linux: remove encap routes
 ip -6 route flush table 200
-ip -6 route del 2001:db8:service::/48 encap seg6 mode encap dev eth0
+ip -6 route del 2001:db8:100::/48 table 200
 
-# Cisco: disable SRv6 globally
-# no segment-routing srv6
+# Cisco IOS XR example: remove SRv6 from the affected protocol context
+# router isis CORE
+#  address-family ipv6 unicast
+#   no segment-routing srv6
 
 # Log the rollback with timestamp
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) SRv6 rollback executed" >> /var/log/network-changes.log
