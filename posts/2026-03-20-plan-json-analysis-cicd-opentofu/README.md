@@ -14,7 +14,7 @@ Integrating plan analysis in CI/CD transforms infrastructure pipelines from simp
 flowchart TD
     PR[Pull Request] --> Init[tofu init]
     Init --> Plan[tofu plan -out=tfplan]
-    Plan --> JSON[tofu show -json tfplan]
+    Plan --> JSON[tofu show -json -plan=tfplan]
     JSON --> Analyze[Policy Analysis Script]
     Analyze --> Summary[Post PR Comment]
     Analyze --> Gate{Passed?}
@@ -32,11 +32,15 @@ name: Infrastructure PR Check
 on:
   pull_request:
     paths: ["infra/**"]
+  push:
+    branches: [main]
+    paths: ["infra/**"]
 
 jobs:
   plan:
     runs-on: ubuntu-latest
     permissions:
+      contents: read       # Required for actions/checkout
       pull-requests: write  # Required to post PR comments
       id-token: write       # For OIDC auth
 
@@ -50,17 +54,16 @@ jobs:
           aws-region: us-east-1
 
       - name: Install OpenTofu
-        run: |
-          curl -Lo tofu.tar.gz \
-            https://github.com/opentofu/opentofu/releases/latest/download/tofu_linux_amd64.tar.gz
-          tar -xzf tofu.tar.gz && sudo mv tofu /usr/local/bin/
+        uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_wrapper: false
 
       - name: Init and Plan
         working-directory: infra
         run: |
           tofu init
           tofu plan -out=tfplan -no-color 2>&1 | tee plan-human.txt
-          tofu show -json tfplan > plan.json
+          tofu show -json -plan=tfplan > plan.json
 
       - name: Upload Plan Artifacts
         uses: actions/upload-artifact@v4
@@ -130,14 +133,20 @@ sys.exit(1 if destructive else 0)
       - name: Analyze Plan
         id: analyze
         working-directory: infra
-        run: |
-          python3 ../scripts/ci-plan-summary.py plan.json
-          echo "has_destructive=$?" >> $GITHUB_OUTPUT
+        continue-on-error: true
+        run: python3 ../scripts/ci-plan-summary.py plan.json
 
       - name: Post PR Comment
+        if: github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           path: infra/plan-summary.md
+
+      - name: Fail on Destructive Changes
+        if: steps.analyze.outcome == 'failure'
+        run: |
+          echo "Destructive changes detected in the OpenTofu plan."
+          exit 1
 ```
 
 ## Step 4: Gate the Apply Job
@@ -146,19 +155,40 @@ sys.exit(1 if destructive else 0)
   apply:
     needs: plan
     runs-on: ubuntu-latest
-    # Only run apply on merge to main, not on PRs
+    permissions:
+      contents: read
+      id-token: write
+    # Only run apply on pushes to main, not on PRs
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: production
 
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/github-actions-plan
+          aws-region: us-east-1
+
+      - name: Install OpenTofu
+        uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_wrapper: false
+
       - name: Download Plan
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: plan-artifacts
+          path: infra
+
+      - name: Init
+        working-directory: infra
+        run: tofu init
 
       - name: Apply
         working-directory: infra
-        run: tofu apply -auto-approve tfplan
+        run: tofu apply tfplan
 ```
 
 ## Conclusion
