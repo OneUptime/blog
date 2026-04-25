@@ -34,27 +34,33 @@ scrape_configs:
           ip_version: 'ipv6'
           dc: 'us-east-1'
 
-  # Dual-stack service discovery (Kubernetes)
+  # Kubernetes service discovery with explicit IPv4/IPv6 address formatting
   - job_name: 'kubernetes-pods'
     kubernetes_sd_configs:
       - role: pod
     relabel_configs:
-      # Use pod IP (works for both IPv4 and IPv6 pods in dual-stack clusters)
+      # If you rewrite __address__ from __meta_kubernetes_pod_ip,
+      # handle IPv6 and IPv4 separately.
       - source_labels: [__meta_kubernetes_pod_ip]
-        regex: (.+)
+        regex: '(.+:.*)'
         target_label: __address__
         replacement: '[${1}]:8080'  # Bracket notation for IPv6 compatibility
+      - source_labels: [__meta_kubernetes_pod_ip]
+        regex: '([0-9.]+)'
+        target_label: __address__
+        replacement: '${1}:8080'
 ```
 
 ## Step 2: Verify Prometheus Scrapes IPv6 Targets
 
 ```bash
-# Check Prometheus targets page
+# Check Prometheus targets API
 
-curl -6 http://[::1]:9090/api/v1/targets | python3 -m json.tool | grep -A5 ipv6
+curl -6 "http://[::1]:9090/api/v1/targets" | python3 -m json.tool | grep -A5 ipv6
 
 # Query metric from IPv6 target
-curl -6 "http://[::1]:9090/api/v1/query?query=up{ip_version='ipv6'}"
+curl -6 -G "http://[::1]:9090/api/v1/query" \
+    --data-urlencode "query=up{ip_version='ipv6'}"
 
 # Run Prometheus with IPv6 listening
 prometheus \
@@ -84,15 +90,15 @@ groups:
       - alert: IPv6TrafficDrop
         expr: |
           (
-            rate(nginx_http_requests_total{ip_version="ipv6"}[5m]) == 0
+            sum(rate(http_requests_total{ip_version="ipv6"}[5m])) == 0
           ) and (
-            rate(nginx_http_requests_total[5m]) > 0
+            sum(rate(http_requests_total{ip_version="ipv4"}[5m])) > 0
           )
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "No IPv6 traffic on {{ $labels.instance }}"
+          summary: "IPv6 traffic dropped to zero"
           description: "IPv6 traffic dropped to zero while IPv4 traffic is flowing - possible dual-stack routing issue"
 
       # Alert on high IPv6 error rate
@@ -114,7 +120,6 @@ groups:
 Add an IPv6 traffic panel to existing dashboards:
 
 ```json
-// Grafana panel JSON for IPv4/IPv6 traffic split
 {
   "title": "HTTP Requests by IP Version",
   "type": "timeseries",
@@ -145,7 +150,7 @@ topk(10, sum by (client_ip) (
   rate(http_requests_total{ip_version="ipv6"}[5m])
 ))
 
-# Dual-stack service availability
+# IPv6 target availability
 count(up{ip_version="ipv6"} == 1) / count(up{ip_version="ipv6"})
 ```
 
@@ -153,11 +158,11 @@ count(up{ip_version="ipv6"} == 1) / count(up{ip_version="ipv6"})
 
 | Component | Change Required |
 |-----------|----------------|
-| Prometheus | Add IPv6 targets; bind to `[::]:9090` |
-| Alertmanager | Bind to `[::]:9093`; update receiver webhooks for IPv6 |
-| Grafana | Add IPv6 panels; bind to `[::]:3000` |
+| Prometheus | Add IPv6 targets; enable IPv6 web listening if needed |
+| Alertmanager | Enable IPv6 listening if needed; update receiver URLs if they use literal IPv6 addresses |
+| Grafana | Add IPv6 panels; update `http_addr` / `http_port` if Grafana must be reachable over IPv6 |
 | Blackbox exporter | Add IPv6 HTTP/TCP probes |
-| node_exporter | Bind to `[::]:9100` |
+| node_exporter | Enable IPv6 listening if you scrape it over IPv6 |
 | Log aggregation | Update filters for IPv6 patterns |
 | SNMP monitoring | Enable IPv6 for device polling |
 | Uptime monitors | Add AAAA record checks |
@@ -196,10 +201,12 @@ modules:
   relabel_configs:
     - source_labels: [__address__]
       target_label: __param_target
+    - source_labels: [__param_target]
+      target_label: instance
     - target_label: __address__
       replacement: '[::1]:9115'  # Blackbox exporter
 ```
 
 ## Conclusion
 
-Monitoring IPv6 requires changes at every observability layer. Prometheus supports IPv6 scrape targets with bracket notation in the target address. Bind all monitoring services to `[::]:port` to accept connections from both IPv4 and IPv6 management stations. Add `ip_version` labels to metrics during collection, then use them in alert rules and dashboards to distinguish IPv6 and IPv4 traffic. A key alert to create immediately is "IPv6 traffic dropped to zero while IPv4 is flowing" - this catches dual-stack routing failures that affect IPv6 users but appear normal from IPv4-only monitoring.
+Monitoring IPv6 requires changes at every observability layer. Prometheus supports IPv6 scrape targets with bracket notation in the target address. Enable IPv6 listeners on the monitoring components that need to be reachable over IPv6, and configure separate IPv4 and IPv6 listeners when your runtime does not provide dual-stack sockets by default. Add `ip_version` labels to metrics during collection, then use them in alert rules and dashboards to distinguish IPv6 and IPv4 traffic. A key alert to create immediately is "IPv6 traffic dropped to zero while IPv4 is flowing" - this catches dual-stack routing failures that affect IPv6 users but appear normal from IPv4-only monitoring.
