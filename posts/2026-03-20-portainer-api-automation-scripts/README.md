@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, API, Automation, DevOps, Infrastructure
 
-Description: Learn how to write comprehensive automation scripts using the Portainer API to configure environments, users, registries, and stacks in a repeatable, infrastructure-as-code style.
+Description: Learn how to write comprehensive automation scripts using the Portainer API to configure environments, teams, registries, and stacks in a repeatable, infrastructure-as-code style.
 
 ## Introduction
 
-The Portainer API enables you to script your entire Portainer configuration - from initial setup through user provisioning, registry configuration, and stack deployments. This guide shows how to build idempotent automation scripts that can provision a fresh Portainer instance or update an existing one consistently.
+The Portainer API enables you to script your entire Portainer configuration - from initial setup through team creation, registry configuration, and stack deployments. This guide shows how to build idempotent automation scripts that can provision a fresh Portainer instance or safely re-run against an existing one without creating duplicate resources.
 
 ## Prerequisites
 
@@ -48,17 +48,17 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 # ===== Helper Functions =====
 
 api_get() {
-  curl -s -H "Authorization: Bearer $TOKEN" "$PORTAINER_URL/api/$1"
+  curl -fsS -H "Authorization: Bearer $TOKEN" "$PORTAINER_URL/api/$1"
 }
 
 api_post() {
-  curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+  curl -fsS -X POST -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     "$PORTAINER_URL/api/$1" -d "$2"
 }
 
 api_put() {
-  curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
+  curl -fsS -X PUT -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     "$PORTAINER_URL/api/$1" -d "$2"
 }
@@ -71,27 +71,33 @@ done
 log "Portainer is ready."
 
 # ===== Step 2: Initialize or authenticate =====
-IS_INITIALIZED=$(curl -s "$PORTAINER_URL/api/system/status" | jq -r '.isAdmin')
+ADMIN_CHECK_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" "$PORTAINER_URL/api/users/admin/check")
 
-if [ "$IS_INITIALIZED" = "false" ]; then
+if [ "$ADMIN_CHECK_STATUS" = "404" ]; then
   log "Initializing admin user..."
-  curl -s -X POST "$PORTAINER_URL/api/users/admin/init" \
+  INIT_PAYLOAD=$(jq -n --arg username "$ADMIN_USER" --arg password "$ADMIN_PASS" \
+    '{Username: $username, Password: $password}')
+  curl -fsS -X POST "$PORTAINER_URL/api/users/admin/init" \
     -H "Content-Type: application/json" \
-    -d "{\"username\":\"$ADMIN_USER\",\"password\":\"$ADMIN_PASS\"}" > /dev/null
+    -d "$INIT_PAYLOAD" > /dev/null
   log "Admin user created."
+elif [ "$ADMIN_CHECK_STATUS" != "204" ]; then
+  log "Admin check returned unexpected status: $ADMIN_CHECK_STATUS"
+  exit 1
 fi
 
-TOKEN=$(curl -s -X POST "$PORTAINER_URL/api/auth" \
+AUTH_PAYLOAD=$(jq -n --arg username "$ADMIN_USER" --arg password "$ADMIN_PASS" \
+  '{Username: $username, Password: $password}')
+TOKEN=$(curl -fsS -X POST "$PORTAINER_URL/api/auth" \
   -H "Content-Type: application/json" \
-  -d "{\"username\":\"$ADMIN_USER\",\"password\":\"$ADMIN_PASS\"}" | jq -r '.jwt')
+  -d "$AUTH_PAYLOAD" | jq -er '.jwt')
 log "Authenticated."
 
 # ===== Step 3: Configure settings =====
 log "Configuring global settings..."
 api_put "settings" '{
-  "enableTelemetry": false,
-  "authenticationMethod": 1,
-  "snapshotInterval": "5m"
+  "AuthenticationMethod": 1,
+  "SnapshotInterval": "5m"
 }' > /dev/null
 log "Settings updated."
 
@@ -100,12 +106,12 @@ EXISTING_EP=$(api_get "endpoints" | jq -r '.[] | select(.Name == "production") |
 
 if [ -z "$EXISTING_EP" ]; then
   log "Creating 'production' environment..."
-  EP=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+  EP=$(curl -fsS -X POST -H "Authorization: Bearer $TOKEN" \
     -F "Name=production" \
     -F "EndpointCreationType=1" \
     -F "URL=$DOCKER_HOST_URL" \
     "$PORTAINER_URL/api/endpoints")
-  EP_ID=$(echo $EP | jq -r '.Id')
+  EP_ID=$(echo "$EP" | jq -er '.Id')
   log "Environment 'production' created (ID: $EP_ID)."
 else
   EP_ID=$EXISTING_EP
@@ -117,14 +123,19 @@ EXISTING_REG=$(api_get "registries" | jq -r --arg url "$REGISTRY_URL" '.[] | sel
 
 if [ -z "$EXISTING_REG" ]; then
   log "Adding registry '$REGISTRY_URL'..."
-  api_post "registries" "{
-    \"Name\": \"Company Registry\",
-    \"Type\": 6,
-    \"URL\": \"$REGISTRY_URL\",
-    \"Authentication\": true,
-    \"Username\": \"$REGISTRY_USER\",
-    \"Password\": \"$REGISTRY_PASS\"
-  }" > /dev/null
+  REGISTRY_PAYLOAD=$(jq -n \
+    --arg url "$REGISTRY_URL" \
+    --arg user "$REGISTRY_USER" \
+    --arg pass "$REGISTRY_PASS" \
+    '{
+      Name: "Company Registry",
+      Type: 3,
+      URL: $url,
+      Authentication: true,
+      Username: $user,
+      Password: $pass
+    }')
+  api_post "registries" "$REGISTRY_PAYLOAD" > /dev/null
   log "Registry added."
 else
   log "Registry '$REGISTRY_URL' already exists."
@@ -134,34 +145,36 @@ fi
 for TEAM in "devops" "backend" "frontend"; do
   EXISTING=$(api_get "teams" | jq -r --arg n "$TEAM" '.[] | select(.Name == $n) | .Id // empty')
   if [ -z "$EXISTING" ]; then
-    api_post "teams" "{\"name\": \"$TEAM\"}" > /dev/null
+    TEAM_PAYLOAD=$(jq -n --arg name "$TEAM" '{Name: $name}')
+    api_post "teams" "$TEAM_PAYLOAD" > /dev/null
     log "Team '$TEAM' created."
   else
     log "Team '$TEAM' already exists."
   fi
 done
 
-# ===== Step 7: Deploy a default stack (idempotent) =====
-STACK_NAME="monitoring"
-EXISTING_STACK=$(api_get "stacks" | jq -r --arg n "$STACK_NAME" '.[] | select(.Name == $n) | .Id // empty')
+# ===== Step 7: Deploy a sample stack (idempotent) =====
+STACK_NAME="sample-web"
+EXISTING_STACK=$(api_get "stacks" | jq -r --arg n "$STACK_NAME" --arg eid "$EP_ID" '.[] | select(.Name == $n and (.EndpointId | tostring) == $eid) | .Id // empty')
 
 COMPOSE_CONTENT=$(cat << 'EOF'
 version: "3.8"
 services:
-  portainer-agent:
-    image: portainer/agent:latest
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+  web:
+    image: nginx:latest
+    ports:
+      - "8080:80"
     restart: unless-stopped
 EOF
 )
 
 if [ -z "$EXISTING_STACK" ]; then
   log "Creating stack '$STACK_NAME'..."
-  api_post "stacks/create/standalone/string?endpointId=${EP_ID}" "{
-    \"name\": \"$STACK_NAME\",
-    \"stackFileContent\": $(echo "$COMPOSE_CONTENT" | jq -Rs .)
-  }" > /dev/null
+  STACK_PAYLOAD=$(jq -n --arg name "$STACK_NAME" --arg content "$COMPOSE_CONTENT" '{
+    Name: $name,
+    StackFileContent: $content
+  }')
+  api_post "stacks/create/standalone/string?endpointId=${EP_ID}" "$STACK_PAYLOAD" > /dev/null
   log "Stack '$STACK_NAME' deployed."
 else
   log "Stack '$STACK_NAME' already exists."
