@@ -8,11 +8,11 @@ Description: Plan and implement application-level changes for IPv6 support inclu
 
 ## Introduction
 
-Applications need changes at several layers to fully support IPv6 clients: server socket binding must use `::` instead of `0.0.0.0`, URL and IP address parsing must handle IPv6's colon-containing format, logging must avoid truncating IPv6 addresses, and session/rate-limiting code based on client IP must handle 39-character IPv6 strings.
+Applications need changes at several layers to fully support IPv6 clients: IPv4-only server sockets bound to `0.0.0.0` will not accept IPv6 clients, URL and IP address parsing must handle IPv6's colon-containing format, logging must avoid truncating IPv6 addresses, and session/rate-limiting code based on client IP must handle full IPv6 text representations.
 
 ## Change 1: Server Socket Binding
 
-Most common issue - servers bound to `0.0.0.0` miss IPv6 clients:
+Most common issue - IPv4-only listeners bound to `0.0.0.0` miss IPv6 clients:
 
 ```python
 # BEFORE - IPv4 only
@@ -21,15 +21,15 @@ import socket
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.bind(('0.0.0.0', 8080))
 
-# AFTER - Dual-stack (accepts IPv4 and IPv6 on Linux/macOS)
+# AFTER - AF_INET6 listener; dual-stack where the platform supports it
 server = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-server.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)  # 0 = dual-stack
+server.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)  # 0 = allow dual-stack where supported
 server.bind(('::', 8080))
 ```
 
 ```go
-// Go: listen on all interfaces (dual-stack automatically on most OS)
-listener, err := net.Listen("tcp", ":8080")  // ":8080" = all interfaces, both families
+// Go: empty host means "listen on available local addresses"
+listener, err := net.Listen("tcp", ":8080")  // ":8080" = empty host, all available local addresses
 
 // If you need explicit IPv6-only:
 listener6, err := net.Listen("tcp6", "[::]:8080")
@@ -43,7 +43,7 @@ listener6, err := net.Listen("tcp6", "[::]:8080")
 HOST=0.0.0.0
 PORT=8080
 
-# AFTER (dual-stack)
+# AFTER (IPv6 bind address; dual-stack still depends on runtime/socket settings)
 HOST=::
 PORT=8080
 ```
@@ -52,7 +52,7 @@ PORT=8080
 # Kubernetes Pod environment
 env:
   - name: LISTEN_ADDR
-    value: "::"   # All interfaces, both families
+    value: "::"   # IPv6 unspecified address; dual-stack depends on the listener implementation
   - name: LISTEN_PORT
     value: "8080"
 ```
@@ -66,12 +66,12 @@ import re
 def parse_client_ip(raw: str) -> str | None:
     """
     Parse a client IP from various input formats.
-    Handles IPv4, IPv6, and IPv6-in-URI formats.
+    Handles IPv4, IPv6, and bracketed IPv6 host:port forms.
     """
     if not raw:
         return None
 
-    # Strip URI brackets: [2001:db8::1]:8080
+    # Strip brackets from IPv6 host:port input: [2001:db8::1]:8080
     bracket_match = re.match(r'^\[([^\]]+)\]', raw)
     if bracket_match:
         raw = bracket_match.group(1)
@@ -186,4 +186,4 @@ CREATE INDEX idx_access_logs_ip ON access_logs USING GIST (client_ip inet_ops);
 
 ## Conclusion
 
-Application IPv6 changes fall into predictable categories: socket binding (use `::` with dual-stack flag), IP address parsing (handle brackets and colons), rate limiting (use /64 for privacy extension handling), session management (normalize before storage), and database schema (increase IP field length or use native `inet` type). Build a code scanning tool to find `0.0.0.0`, `AF_INET` (without 6), and `VARCHAR(15)` patterns, then systematically address each finding. Test with an IPv6-only test client to verify each change before release.
+Application IPv6 changes fall into predictable categories: socket binding (replace IPv4-only listeners with IPv6-capable or dual-stack listeners), IP address parsing (handle brackets and colons), rate limiting (consider /64 grouping to reduce churn from privacy addresses), session management (normalize before storage), and database schema (increase IP field length or use native `inet` type). Build a code scanning tool to find hard-coded `0.0.0.0`, `AF_INET`, and `VARCHAR(15)` patterns, then review each finding in context. Test with an IPv6-only test client to verify each change before release.
