@@ -8,19 +8,19 @@ Description: Design a systematic IPv4 CIDR allocation strategy for multi-region 
 
 ## Introduction
 
-GCP's global VPC requires careful CIDR planning because all subnets in all regions share one VPC address space. Poor planning leads to overlapping ranges that break VPC peering, Shared VPC, and hybrid connectivity. A structured approach prevents address exhaustion and enables seamless expansion.
+GCP's global VPC requires careful CIDR planning because all primary and secondary subnet ranges in a VPC must be unique across regions. Poor planning leads to overlapping ranges that block VPC peering, complicate Shared VPC designs, and disrupt hybrid connectivity. A structured approach prevents address exhaustion and enables seamless expansion.
 
 ## GCP CIDR Planning Principles
 
 1. **Reserve blocks per region** - allocate a supernet per region so regional subnets stay contiguous
-2. **Reserve secondary ranges** - GKE pods and services need dedicated secondary ranges
+2. **Reserve secondary ranges** - GKE Pods need dedicated secondary ranges, and Services need one when you use user-managed Service ranges
 3. **Avoid RFC 1918 overlap** - don't use ranges already used by on-premises or peered networks
 4. **Plan for peering** - peered VPCs cannot have overlapping ranges
 
 ## Multi-Region CIDR Allocation Example
 
 ```text
-prod-vpc: 10.0.0.0/8 (total address space)
+prod-vpc planned allocation: 10.0.0.0/12
 
 ├── us-central1:     10.1.0.0/16
 │   ├── web-subnet:      10.1.1.0/24
@@ -54,11 +54,11 @@ gcloud compute networks subnets create web-uscentral \
   --region=us-central1 \
   --range=10.1.1.0/24
 
-gcloud compute networks subnets create app-uscentral \
+gcloud compute networks subnets create gke-uscentral \
   --project=$PROJECT_ID \
   --network=prod-vpc \
   --region=us-central1 \
-  --range=10.1.2.0/24 \
+  --range=10.1.10.0/22 \
   --secondary-range gke-pods=10.1.64.0/18,gke-services=10.1.128.0/20
 
 # us-east1 subnets
@@ -78,10 +78,10 @@ gcloud compute networks subnets create web-euwest \
 
 ## VPC Peering Considerations
 
-If you peer with a dev or staging VPC, use separate supernets:
+If you peer with a dev or staging VPC, use separate non-overlapping allocation blocks:
 
 ```text
-prod-vpc:    10.0.0.0/8
+prod-vpc:    10.0.0.0/12
 staging-vpc: 172.16.0.0/12
 dev-vpc:     192.168.0.0/16
 on-premises: 10.200.0.0/16 (must not overlap with prod-vpc)
@@ -89,11 +89,12 @@ on-premises: 10.200.0.0/16 (must not overlap with prod-vpc)
 
 ## GKE Secondary Range Sizing
 
-| Cluster Size | Pod CIDR | Service CIDR |
+Pod range size depends on the maximum node count and max Pods per node. Service range size depends on how many Kubernetes Services you expect to create. In Autopilot 1.27+ and Standard 1.29+, GKE can use the GKE-managed `34.118.224.0/20` Service range by default instead of a user-managed secondary range.
+
+| Example Requirement | Pod CIDR | Service CIDR |
 |---|---|---|
-| Small (<110 pods/node, <100 nodes) | /19 (8,192 IPs) | /22 (1,024 IPs) |
-| Medium (<110 pods/node, <1000 nodes) | /14 (262,144 IPs) | /20 (4,096 IPs) |
-| Large | /11 | /18 |
+| Up to 100 Standard nodes at the default 110 Pods/node and up to 1,024 Services | /17 (32,768 IPs) | /22 (1,024 Services) |
+| Up to 900 Standard nodes at the default 110 Pods/node and up to 4,096 Services | /14 (262,144 IPs) | /20 (4,096 Services) |
 
 ## Checking for CIDR Conflicts
 
@@ -112,7 +113,7 @@ Maintain a CIDR registry:
 # cidr-registry.yaml
 vpc:
   name: prod-vpc
-  address_space: 10.0.0.0/8
+  planned_allocation_space: 10.0.0.0/12
 
 regions:
   us-central1:
@@ -121,9 +122,9 @@ regions:
       - name: web-uscentral
         cidr: 10.1.1.0/24
         purpose: web-tier
-      - name: app-uscentral
-        cidr: 10.1.2.0/24
-        purpose: app-tier
+      - name: gke-uscentral
+        cidr: 10.1.10.0/22
+        purpose: gke-nodes
         secondary_ranges:
           gke-pods: 10.1.64.0/18
           gke-services: 10.1.128.0/20
@@ -131,4 +132,4 @@ regions:
 
 ## Conclusion
 
-Allocate one supernet (e.g., /16) per region within a larger VPC address space. Reserve secondary ranges for GKE pod and service IPs. Document your CIDR registry before creating any subnets. Ensure peered VPCs use completely separate supernets to avoid conflicts when expanding. Use `10.0.0.0/8` for prod and distinct RFC 1918 ranges for staging and dev environments.
+Allocate one supernet (e.g., `/16`) per region within a larger private address plan reserved for the VPC. Google Cloud doesn't enforce a single parent CIDR on a custom VPC, but all primary and secondary subnet ranges must be unique within that network. Reserve secondary ranges for GKE Pod IPs, and for Service IPs when you use user-managed Service ranges. Document your CIDR registry before creating any subnets. Ensure peered VPCs use completely separate non-overlapping allocation blocks when expanding. A block such as `10.0.0.0/12` can work for prod if it doesn't overlap with on-premises or peered environments.
