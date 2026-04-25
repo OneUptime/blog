@@ -10,8 +10,8 @@ Description: Learn how to configure Kubernetes pod affinity and anti-affinity ru
 
 Kubernetes scheduler uses affinity and anti-affinity rules to influence where pods are placed relative to other pods:
 
-- **Pod Affinity** - Schedule a pod on the same node (or zone) as another pod with a matching label
-- **Pod Anti-Affinity** - Schedule a pod away from nodes already running pods with a matching label
+- **Pod Affinity** - Schedule a pod in the same topology domain, such as a node or zone, as pods with a matching label
+- **Pod Anti-Affinity** - Schedule a pod away from the same topology domain as pods with a matching label
 
 These rules are critical for:
 - **High availability**: Spreading replicas across failure domains
@@ -20,7 +20,7 @@ These rules are critical for:
 
 ## Configuring via Portainer
 
-In Portainer, navigate to your Kubernetes cluster → **Applications** → create or edit a deployment. In the **Advanced settings** section, you can paste a full YAML spec including affinity rules.
+In Portainer, navigate to your Kubernetes environment → **Applications**. For a new application, click **Create from code** and choose **Manifest**, then paste a full YAML manifest including affinity rules into the **Web editor**. For an existing application, Portainer lets you edit manifests deployed from the Web Editor, and Portainer Business Edition also provides a **YAML** tab for direct YAML edits.
 
 ## Pod Anti-Affinity for High Availability
 
@@ -56,7 +56,7 @@ spec:
           image: myapp/web:v2.0.0
 ```
 
-This ensures no two `web-app` pods land on the same node.
+This ensures no two scheduled `web-app` pods land on the same node. If the cluster does not have enough eligible nodes, extra replicas remain Pending.
 
 ## Preferred Anti-Affinity (Soft Rule)
 
@@ -96,7 +96,7 @@ This places the cache pod on the same node as `my-app` pods when possible.
 
 ## Topology Keys
 
-Common `topologyKey` values:
+Common `topologyKey` values, if those labels are present on your nodes:
 
 | Key | Scope |
 |---|---|
@@ -121,12 +121,12 @@ topologySpreadConstraints:
 ## Applying in Portainer
 
 1. Navigate to **Kubernetes → Applications**
-2. Click **Add application** or edit an existing one
-3. Switch to **Advanced** mode
-4. Paste the full YAML with the `affinity` section
-5. Click **Deploy** or **Update**
+2. Click **Create from code** for a new application, or open an existing application and click **Edit this application**
+3. For a new application, choose **Manifest** and paste the full YAML with the `affinity` section into the **Web editor**
+4. For an existing application, edit the manifest in the **Web editor** if it was deployed that way, or use the **YAML** tab in Portainer Business Edition
+5. Click **Deploy** or **Update application**
 
-Alternatively, use Portainer's **Manifests** (GitOps) feature to manage YAML from a Git repository.
+Alternatively, deploy the manifest from a Git repository and enable Portainer's **GitOps updates**.
 
 ## Troubleshooting
 
@@ -141,7 +141,7 @@ Look for `FailedScheduling` events indicating affinity constraints cannot be sat
 kubectl get nodes --show-labels
 ```
 
-**Simulate scheduling:**
+**Inspect scheduling details:**
 ```bash
 kubectl describe pod <pending-pod>
 ```
