@@ -37,24 +37,28 @@ pip install requests --proxy http://user:password@proxy.example.com:3128
 
 ### Option 3: pip Configuration File
 
-Create or edit `~/.config/pip/pip.conf` (Linux/macOS) or `%APPDATA%\pip\pip.ini` (Windows):
+Create or edit `~/.config/pip/pip.conf` (Linux), `~/Library/Application Support/pip/pip.conf` or `~/.config/pip/pip.conf` (macOS), or `%APPDATA%\pip\pip.ini` (Windows):
 
 ```ini
-# ~/.config/pip/pip.conf
+# pip.conf
 [global]
 proxy = http://proxy.example.com:3128
 # With authentication
 # proxy = http://user:password@proxy.example.com:3128
 
-# Disable SSL verification for corporate MITM proxies (not recommended for production)
-# trusted-host = pypi.org pypi.python.org files.pythonhosted.org
+# Only if you must bypass TLS verification for specific hosts (not recommended);
+# prefer installing the corporate CA instead.
+# trusted-host =
+#     pypi.org
+#     pypi.python.org
+#     files.pythonhosted.org
 ```
 
 ### Verifying pip Proxy Works
 
 ```bash
 # Test pip through the proxy
-pip install --dry-run requests
+pip install --dry-run --ignore-installed requests
 ```
 
 ## Configuring npm to Use a Proxy
@@ -117,7 +121,7 @@ npm config delete https-proxy
 Some corporate proxies decrypt and re-encrypt HTTPS using a corporate CA certificate:
 
 ```bash
-# For pip: add corporate CA to trusted hosts or bundle
+# For pip: point pip at the corporate CA bundle
 pip install requests --cert /etc/ssl/certs/corporate-ca.crt
 
 # For npm: configure the CA certificate
@@ -131,12 +135,11 @@ sudo update-ca-certificates
 ## Using a Private Registry with a Proxy
 
 ```bash
-# pip: use internal PyPI mirror (bypass proxy for internal registry)
+# pip: use internal PyPI mirror (with pypi.internal.example.com in no_proxy)
 pip install mypackage \
-  --index-url http://pypi.internal.example.com/simple/ \
-  --proxy http://proxy.example.com:3128
+  --index-url http://pypi.internal.example.com/simple/
 
-# npm: set internal registry (no proxy needed for internal)
+# npm: set internal registry (add it to noproxy if it should bypass the proxy)
 npm config set registry http://npm.internal.example.com/
 ```
 
