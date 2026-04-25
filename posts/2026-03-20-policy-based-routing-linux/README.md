@@ -12,7 +12,7 @@ Policy-Based Routing (PBR) allows routing decisions based on criteria beyond jus
 
 - **Source IP address** - route different clients through different uplinks
 - **Packet mark** - route marked packets via a VPN
-- **IP TOS/DSCP** - prioritize certain traffic classes
+- **IP TOS/DSCP** - route certain traffic classes differently
 - **Incoming interface** - route based on which interface traffic arrived on
 
 ## How PBR Works on Linux
@@ -37,7 +37,7 @@ ip rule show
 Scenario: Two ISP uplinks. Route 192.168.1.0/24 through ISP1 and 192.168.2.0/24 through ISP2.
 
 ```bash
-# Step 1: Create custom routing tables
+# Step 1: Register named routing tables
 echo "100 isp1" >> /etc/iproute2/rt_tables
 echo "200 isp2" >> /etc/iproute2/rt_tables
 
@@ -68,7 +68,7 @@ Use iptables to mark packets, then route marked packets through VPN:
 # Mark packets from a specific application using iptables
 iptables -t mangle -A OUTPUT -m owner --uid-owner vpnuser -j MARK --set-mark 100
 
-# Create VPN table
+# Register VPN table name
 echo "300 vpntable" >> /etc/iproute2/rt_tables
 ip route add default via 10.8.0.1 dev tun0 table vpntable
 
@@ -78,17 +78,17 @@ ip rule add fwmark 100 lookup vpntable priority 300
 
 ## Example: Route by Incoming Interface
 
-Route traffic arriving on eth0 back out eth0 (useful for multi-homed servers):
+Route forwarded traffic arriving on eth0 using a dedicated table (useful on routers/firewalls):
 
 ```bash
-# Create a table for eth0
+# Register a table name for eth0
 echo "101 eth0rt" >> /etc/iproute2/rt_tables
 
 # Add routes to eth0 table
-ip route add default via 192.168.1.1 table eth0rt
 ip route add 192.168.1.0/24 dev eth0 table eth0rt
+ip route add default via 192.168.1.1 dev eth0 table eth0rt
 
-# Rule: packets arriving on eth0 (reply traffic) use eth0 table
+# Rule: forwarded packets arriving on eth0 use eth0 table
 ip rule add iif eth0 lookup eth0rt priority 150
 ```
 
@@ -138,7 +138,7 @@ traceroute -s 192.168.2.10 8.8.8.8   # Source 192.168.2.10
 ## Key Takeaways
 
 - Linux PBR uses `ip rule` to select routing tables based on traffic attributes.
-- Custom routing tables are defined in `/etc/iproute2/rt_tables`.
+- Named custom routing tables are typically added in `/etc/iproute2/rt_tables`.
 - Rules are evaluated by priority (lower = first); first match wins.
 - `ip route get DEST from SOURCE` tests which route applies for a given source/destination pair.
 
