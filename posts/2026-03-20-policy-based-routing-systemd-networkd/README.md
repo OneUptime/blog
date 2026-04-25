@@ -69,13 +69,15 @@ networkctl reload
 
 # Verify routing rules
 ip rule show
+# 0: from all lookup local
 # 100: from 10.0.0.10 lookup 200
 # 32766: from all lookup main
+# 32767: from all lookup default
 
 # Verify table 200 routes
 ip route show table 200
 # default via 10.0.0.1 dev eth1
-# 10.0.0.0/24 dev eth1 proto static
+# 10.0.0.0/24 dev eth1 proto static scope link
 
 # Test: traffic from eth1's IP uses ISP2
 ip route get 8.8.8.8 from 10.0.0.10
@@ -91,11 +93,11 @@ Table=300
 Priority=200
 ```
 
-## Advanced: Route by DSCP Mark
+## Advanced: Route by DS Field
 
 ```ini
 [RoutingPolicyRule]
-TypeOfService=46      # DSCP EF (real-time traffic)
+TypeOfService=184     # DS field value for DSCP EF (46) with ECN 0
 Table=400
 Priority=50
 ```
@@ -126,7 +128,7 @@ Table=200
 Priority=100
 
 [RoutingPolicyRule]
-IncomingInterface=eth1
+IncomingInterface=eth1  # Match packets arriving on eth1
 Table=200
 Priority=101
 ```
