@@ -8,7 +8,7 @@ Description: Learn how to configure and use activity logs in Portainer Business 
 
 ---
 
-Portainer Business Edition includes an activity logging system that records every user action: who deployed a stack, who restarted a container, and who changed settings. This is essential for compliance and incident investigation.
+Portainer Business Edition includes authentication and activity logs that record sign-ins and actions such as who deployed a stack, who restarted a container, and who changed settings. This is essential for compliance and incident investigation.
 
 ## Prerequisites
 
@@ -17,68 +17,59 @@ Portainer Business Edition includes an activity logging system that records ever
 
 ## Enabling Activity Logging
 
-Activity logging is enabled by default in Business Edition. Verify it is active:
+Portainer Business Edition exposes activity logs in the UI. Verify activity logging is working:
 
-1. Go to **Settings > General**.
-2. Under **Activity Logging**, confirm the feature is enabled.
-3. Set the **Retention Period** (e.g., 90 days).
+1. In the Portainer menu, expand **Logs** and select **Activity**.
+2. Confirm recent actions appear in the log.
+3. Use the date range, user, and environment filters as needed.
 
 ## What Gets Logged
 
 | Action | Logged Data |
 |---|---|
-| User login | Username, IP, timestamp, success/failure |
-| Container start/stop/restart | User, container name, environment |
-| Stack deploy/update | User, stack name, compose diff |
-| Settings changes | User, setting changed, old/new value |
-| User management | Admin, action, affected user |
-| Environment changes | User, environment, change type |
+| Authentication events (login success/failure, logout) | Date and time, origin IP address, context, user, result |
+| User activity events (for example stack deploy/update, container actions, settings changes) | Date and time, user, endpoint/context, action, inspectable payload |
 
 ## Viewing Activity Logs
 
-In Portainer go to **Settings > Authentication Logs** or the dedicated **Logs** section:
+In Portainer, expand **Logs** and select **Activity** for activity logs or **Authentication** for authentication events:
 
 1. Select a date range.
-2. Filter by user, environment, or action type.
+2. Filter by user or environment, or search by keyword.
 3. Export logs as CSV for external analysis.
 
 ## Streaming to an External System
 
-For SIEM integration, stream activity logs to syslog:
+For SIEM integration, Portainer can stream authentication and activity logs to syslog. This is an experimental feature configured with Portainer CLI flags, which must be specified after the image name:
 
 ```bash
-# Start Portainer with syslog logging enabled
+# Start Portainer with syslog streaming enabled
 
-docker run -d \
+docker run -d -p 8000:8000 -p 9443:9443 \
   --name portainer \
-  --log-driver syslog \
-  --log-opt syslog-address=udp://syslog-server:514 \
-  --log-opt syslog-facility=daemon \
-  --log-opt tag="portainer" \
+  --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ee:latest
+  portainer/portainer-ee:sts \
+  --syslog-addr=syslog.mydomain.com \
+  --syslog-port=514 \
+  --syslog-source-hostname="my-portainer-instance"
 ```
 
 ## Querying Logs via API
 
 ```bash
-# Get activity logs via the Portainer API
-TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"Username":"admin","Password":"yourpassword"}' | jq -r .jwt)
-
-# Query activity logs
-curl -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:9000/api/logs/activity?limit=100&after=1709000000"
+# Query activity logs via the Portainer API using an existing access token
+curl -H "X-API-Key: your_api_key_here" \
+  "https://localhost:9443/api/useractivity/logs?limit=100&after=1709000000"
 ```
 
-## Log Retention Configuration
+## Retention and Archiving
 
-Set up automatic log cleanup:
+Portainer lets you export filtered logs for archiving:
 
-1. In Portainer go to **Settings > General**.
-2. Under **Activity Logging**, set **Log retention period** to the desired number of days.
-3. Logs older than the retention period are automatically deleted.
+1. In Portainer, open **Logs > Activity** or **Logs > Authentication**.
+2. Filter to the desired date range.
+3. Click **Export as CSV** or **Export to CSV** to archive the results.
 
-For compliance requirements, export and archive logs before the retention period expires using the CSV export feature or API.
+For longer-term retention, Portainer also documents streaming authentication and activity logs to an external SIEM over syslog.
