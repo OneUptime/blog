@@ -38,7 +38,7 @@ Section: Corporate Network
 
 ```bash
 BASE="http://localhost/api/myapp"
-TOKEN="your-api-token"
+TOKEN="your-api-token" # Retrieved from POST /api/myapp/user/
 
 # Create parent subnet
 
@@ -49,15 +49,14 @@ curl -X POST \
     "subnet": "10.100.0.0",
     "mask": "16",
     "sectionId": "1",
-    "description": "Production Network",
-    "isFolder": "1"
+    "description": "Production Network"
   }' \
   "$BASE/subnets/"
 
 # Get the ID of the parent subnet
 PARENT_ID=$(curl -H "token: $TOKEN" \
   "$BASE/subnets/search/10.100.0.0/16/" \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['id'])")
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['data'][0]['id'])")
 
 # Create child subnet under the parent
 curl -X POST \
@@ -88,7 +87,7 @@ Via API:
 # Get the subnet ID
 SUBNET_ID=$(curl -H "token: $TOKEN" \
   "$BASE/subnets/search/10.100.1.0/24/" \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['id'])")
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['data'][0]['id'])")
 
 # Assign 10.100.1.10 to a host
 curl -X POST \
@@ -99,7 +98,7 @@ curl -X POST \
     \"ip\": \"10.100.1.10\",
     \"hostname\": \"web01.corp.example.com\",
     \"description\": \"Production Web Server 01\",
-    \"state\": \"1\"
+    \"tag\": \"1\"
   }" \
   "$BASE/addresses/"
 ```
@@ -130,7 +129,7 @@ curl -H "token: $TOKEN" \
 curl -H "token: $TOKEN" \
   "$BASE/subnets/$SUBNET_ID/usage/" \
   | python3 -m json.tool
-# Returns: used, free, maxhosts, percent
+# Returns keys such as: used, freehosts, maxhosts, Used_percent, freehosts_percent
 ```
 
-phpIPAM's nested subnet structure with first-free IP allocation makes it easy to integrate into provisioning automation while maintaining a visual overview of address space utilization.
+phpIPAM's nested subnet structure with first-free IP lookup makes it easy to integrate into provisioning automation while maintaining a visual overview of address space utilization.
