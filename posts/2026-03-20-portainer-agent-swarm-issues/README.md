@@ -26,7 +26,7 @@ docker node inspect <node-id> --pretty
 
 ## Step 2: Deploy Portainer Agent as a Global Service
 
-The Portainer Agent should run on **every** Swarm node as a global service:
+The Portainer Agent should run on **every** Swarm node as a global service. Create the overlay network in Step 3 first, then deploy the service:
 
 ```bash
 docker service create \
@@ -43,8 +43,8 @@ docker service create \
 
 Key flags:
 - `--mode global` - runs on every node
-- `--publish mode=host` - uses host networking, not mesh routing
-- `AGENT_CLUSTER_ADDR` - enables agent cluster discovery
+- `--publish mode=host` - publishes port `9001` on the node running the task, bypassing Swarm's routing mesh
+- `AGENT_CLUSTER_ADDR` - optional on current Portainer Agent releases; if you set it manually, use the service DNS name
 
 ## Step 3: Create the Required Overlay Network
 
@@ -55,7 +55,7 @@ docker network create \
   --attachable \
   portainer-agent-network
 
-# Verify the network exists on all nodes
+# Verify the network exists and inspect it from a manager node
 docker network ls | grep portainer-agent
 docker network inspect portainer-agent-network
 ```
@@ -126,25 +126,24 @@ docker network inspect portainer-agent-network
 # Look at "Peers" section - should list all Swarm nodes
 # If nodes are missing, they can't communicate
 
-# Test connectivity between nodes
-# From a container on node1, ping a container on node2
-docker exec -it $(docker ps -q -f name=portainer-agent) ping tasks.portainer-agent
+# Test name resolution and connectivity from a temporary container on the overlay network
+docker run --rm --network portainer-agent-network busybox ping -c 3 tasks.portainer-agent
 ```
 
 ## Step 6: Fix Node Communication Issues
 
 ```bash
-# Check required Swarm ports are open between nodes
-# Port 2377 - Swarm management (TCP)
-# Port 7946 - Node communication (TCP/UDP)
-# Port 4789 - Overlay network traffic (UDP)
+# Check required Swarm and Portainer ports are open
+# Port 2377 - Swarm management (TCP, manager nodes)
+# Port 7946 - Node communication (TCP/UDP, all Swarm nodes)
+# Port 4789 - Overlay network traffic (UDP, all Swarm nodes)
 
-# On each node, verify these ports are accessible
+# Allow these ports through the firewall as needed
 sudo ufw allow 2377/tcp
 sudo ufw allow 7946/tcp
 sudo ufw allow 7946/udp
 sudo ufw allow 4789/udp
-sudo ufw allow 9001/tcp  # Portainer agent
+sudo ufw allow 9001/tcp  # Portainer Agent
 ```
 
 ## Step 7: Check Service Logs Across All Nodes
@@ -153,8 +152,9 @@ sudo ufw allow 9001/tcp  # Portainer agent
 # View logs for the agent service across all nodes
 docker service logs portainer_portainer-agent
 
-# View logs for specific node
-docker service logs portainer_portainer-agent 2>&1 | grep <node-id>
+# View logs for a specific task on a specific node
+docker service ps portainer_portainer-agent
+docker service logs <task-id>
 
 # Follow logs in real time
 docker service logs -f portainer_portainer-agent
@@ -162,7 +162,7 @@ docker service logs -f portainer_portainer-agent
 
 ## Step 8: Fix AGENT_CLUSTER_ADDR Issues
 
-The `AGENT_CLUSTER_ADDR` variable tells each agent where to find its peers:
+The `AGENT_CLUSTER_ADDR` variable can be used to tell each agent where to find its peers. On current Portainer Agent releases running in Swarm mode, it is optional because the agent can infer the service DNS name automatically when it is unset:
 
 ```bash
 # Wrong: using a fixed IP (breaks when containers restart)
@@ -171,7 +171,7 @@ The `AGENT_CLUSTER_ADDR` variable tells each agent where to find its peers:
 # Correct: using the service's DNS name in Swarm
 # AGENT_CLUSTER_ADDR=tasks.portainer-agent
 
-# If you deployed without this variable, update the service:
+# If you need to correct a wrong value, update the service:
 docker service update \
   --env-add AGENT_CLUSTER_ADDR=tasks.portainer-agent \
   portainer_portainer-agent
@@ -180,12 +180,14 @@ docker service update \
 ## Step 9: Verify Agent Cluster Formation
 
 ```bash
-# Check agent logs for cluster membership messages
-docker service logs portainer_portainer-agent 2>&1 | grep -i "cluster\|member\|join"
+# Check the agent service has one Running task per eligible node
+docker service ps portainer_portainer-agent
 
-# Look for messages like:
-# "Cluster member detected: 10.0.1.2"
-# If you only see one member, agents aren't discovering each other
+# Review recent logs for DNS or cluster startup errors
+docker service logs --tail 50 portainer_portainer-agent
+
+# Repeated "unable to retrieve a list of IP associated to the host",
+# "unable to create cluster", or task restarts indicate discovery problems
 ```
 
 ## Step 10: Force Restart Agent Service
@@ -200,4 +202,4 @@ docker service ps portainer_portainer-agent
 
 ## Conclusion
 
-Agent communication issues on Docker Swarm are almost always caused by missing overlay network configuration, using mesh routing instead of `mode=host` for the agent port, or the `AGENT_CLUSTER_ADDR` variable pointing to the wrong address. The full stack deployment with the overlay network and global service mode is the most reliable approach and avoids most of these pitfalls.
+Agent communication issues on Docker Swarm usually come down to overlay network problems, missing inter-node port access, or service placement issues. If you expose the agent on port `9001`, publishing it with `mode=host` avoids Swarm's routing mesh. On current Portainer Agent releases, `AGENT_CLUSTER_ADDR` is optional on Swarm, but if you set it manually it should match the Swarm service DNS name.
