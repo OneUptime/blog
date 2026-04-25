@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, PHP, Laravel, Development Environment, Docker, Xdebug, Composer
 
-Description: Learn how to set up a PHP Laravel development environment with Xdebug and hot-reload in a Docker container managed by Portainer.
+Description: Learn how to set up a PHP Laravel development environment with Xdebug and bind-mounted source code in a Docker container managed by Portainer.
 
 ---
 
 Running Laravel development in Docker via Portainer ensures your team uses the same PHP version, extensions, and tools. Xdebug integration enables breakpoint debugging from VS Code or PhpStorm.
 
+Build the PHP image ahead of time and replace the bind-mount paths below with paths on your Docker host.
+
 ## Dev Environment Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   mysql:
     image: mysql:8.0
@@ -34,16 +34,15 @@ services:
     restart: unless-stopped
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
+    image: laravel-dev:latest
     restart: unless-stopped
     depends_on:
       - mysql
       - redis
+    extra_hosts:
+      - "host.docker.internal=host-gateway"
     ports:
       - "8000:8000"    # App
-      - "9003:9003"    # Xdebug
     environment:
       APP_ENV: local
       DB_HOST: mysql
@@ -51,10 +50,10 @@ services:
       DB_USERNAME: laravel
       DB_PASSWORD: secret
       REDIS_HOST: redis
-      XDEBUG_MODE: develop,debug
-      XDEBUG_CONFIG: client_host=host.docker.internal
+      REDIS_CLIENT: phpredis
     volumes:
-      - ./app:/app
+      - /path/to/your/laravel-app:/app
+      - /path/to/your/xdebug.ini:/usr/local/etc/php/conf.d/99-xdebug.ini:ro
     working_dir: /app
     command: php artisan serve --host=0.0.0.0 --port=8000
 
@@ -73,22 +72,23 @@ RUN apk add --no-cache \
     git curl zip unzip libzip-dev oniguruma-dev \
     && docker-php-ext-install pdo pdo_mysql zip mbstring
 
-# Install Xdebug
-RUN pecl install xdebug && docker-php-ext-enable xdebug
+# Install Xdebug and Redis support for Laravel
+RUN pecl install xdebug \
+    && pecl install redis \
+    && docker-php-ext-enable xdebug redis
 
 # Install Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 ```
 
 ## Xdebug Configuration
 
-Create `php/xdebug.ini`:
+Create `/path/to/your/xdebug.ini` on the Docker host:
 
 ```ini
 [xdebug]
-zend_extension=xdebug.so
 xdebug.mode=develop,debug
 xdebug.start_with_request=yes
 xdebug.client_host=host.docker.internal
@@ -108,7 +108,7 @@ xdebug.idekey=VSCODE
       "request": "launch",
       "port": 9003,
       "pathMappings": {
-        "/app": "${workspaceFolder}/app"
+        "/app": "${workspaceFolder}"
       }
     }
   ]
