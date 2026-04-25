@@ -8,7 +8,7 @@ Description: Learn how to build a plan approval workflow for OpenTofu that requi
 
 ## Introduction
 
-Applying infrastructure changes without review is risky. A plan approval workflow publishes the `tofu plan` output, waits for human approval, then applies only after explicit sign-off. This guide implements an approval workflow using GitHub Actions environments and pull request reviews.
+Applying infrastructure changes without review is risky. A plan approval workflow publishes the `tofu plan` output, waits for human approval, then applies only after explicit sign-off. This guide implements an approval workflow using GitHub Actions environments and pull request comments.
 
 ## GitHub Actions Workflow with Environments
 
@@ -55,9 +55,10 @@ jobs:
 
       - name: OpenTofu Plan
         id: plan
+        shell: bash
         run: |
           tofu plan -no-color -out=tfplan 2>&1 | tee plan_output.txt
-          echo "summary=$(grep '^Plan:' plan_output.txt || echo 'No changes.')" >> $GITHUB_OUTPUT
+          echo "summary=$(grep '^Plan:' plan_output.txt || echo 'No changes.')" >> "$GITHUB_OUTPUT"
         working-directory: environments/${{ matrix.environment }}
 
       - name: Post Plan to PR
@@ -94,6 +95,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.9.0"
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -123,6 +126,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.9.0"
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -147,7 +152,9 @@ In your repository settings:
 3. Add **Required reviewers** (your senior engineers or team leads)
 4. Optionally add **Deployment branches** to restrict to `main` only
 
-When the `apply-prod` job runs, GitHub will pause and notify the required reviewers, who can inspect the plan artifact and approve or reject the deployment.
+On GitHub Free, GitHub Pro, and GitHub Team, required reviewers are only available for public repositories.
+
+When the `apply-prod` job runs, GitHub will pause and notify the required reviewers, who can inspect the pull request comment or download the saved plan artifact and review it with `tofu show` before approving or rejecting the deployment. Because saved plan files can contain sensitive data in cleartext, keep artifact retention short and limit who can access workflow artifacts.
 
 ## Sending Plan Summary to Slack for Review
 
@@ -159,7 +166,7 @@ PLAN_FILE="$1"
 ENVIRONMENT="$2"
 SLACK_WEBHOOK="${SLACK_WEBHOOK_URL}"
 
-PLAN_SUMMARY=$(tofu show -no-color "$PLAN_FILE" | grep -E "^Plan:|^No changes" | head -1)
+PLAN_SUMMARY=$(tofu show -no-color -plan="$PLAN_FILE" | grep -E "^Plan:|^No changes" | head -1)
 
 curl -s -X POST "$SLACK_WEBHOOK" \
   -H "Content-Type: application/json" \
