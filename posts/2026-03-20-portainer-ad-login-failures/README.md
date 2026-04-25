@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Active Directory, Troubleshooting, Authentication, LDAP
 
-Description: Diagnose and fix Active Directory login failures in Portainer covering credential errors, account lockouts, and AD-specific configuration issues.
+Description: Diagnose and fix Active Directory login failures in Portainer Business Edition covering credential errors, account lockouts, and AD-specific configuration issues.
 
 ## Introduction
 
-AD login failures in Portainer have unique characteristics compared to generic LDAP issues. AD has strict password policies, account lockout thresholds, and specific authentication requirements that can cause confusing failures. This guide covers AD-specific troubleshooting scenarios.
+AD login failures in Portainer Business Edition have unique characteristics compared to generic LDAP issues. AD has strict password policies, account lockout thresholds, and specific authentication requirements that can cause confusing failures. This guide covers AD-specific troubleshooting scenarios.
 
 ## Common AD Authentication Errors
 
@@ -72,7 +72,7 @@ Unlock-ADAccount -Identity portainer-svc
 ### Step 3: Test Service Account Connectivity from Portainer Host
 
 ```bash
-# Test LDAP bind with service account
+# Test LDAP bind with the service account using the same transport Portainer is configured for
 ldapsearch -x \
   -H ldap://dc01.corp.example.com:389 \
   -D "portainer-svc@corp.example.com" \
@@ -105,7 +105,7 @@ ldapsearch -x \
 ### Step 5: Test User Authentication
 
 ```bash
-# Attempt bind as the user directly
+# Attempt bind as the user directly using the same transport Portainer is configured for
 ldapsearch -x \
   -H ldap://dc01.corp.example.com:389 \
   -D "alice@corp.example.com" \
@@ -120,44 +120,54 @@ ldapsearch -x \
 
 ### Issue: Users Can Bind to AD but Can't Log into Portainer
 
-Check that the `sAMAccountName` attribute matches what the user is entering:
+Check that Portainer's configured username format matches what the user is entering:
 
 ```bash
-# Get the exact sAMAccountName
+# Get the login attributes Portainer may use
 ldapsearch -x -H ldap://dc01.corp.example.com:389 \
   -D "portainer-svc@corp.example.com" -w "ServicePass" \
   -b "DC=corp,DC=example,DC=com" \
-  "(displayName=Alice Smith)" sAMAccountName
+  "(displayName=Alice Smith)" sAMAccountName userPrincipalName
 
-# User should log in with the sAMAccountName value, not email or display name
+# If Portainer Username Format is `username`, use the `sAMAccountName`
+# If Portainer Username Format is `username@domainname`, use that format (often the UPN)
+# Do not use the `displayName`
 ```
 
 ### Issue: Group Membership Not Working
 
 ```bash
-# Check if memberOf is populated for the user
+# Get the user's DN, since Portainer checks group membership using the user's DN
+USER_DN=$(ldapsearch -x -LLL -H ldap://dc01.corp.example.com:389 \
+  -D "portainer-svc@corp.example.com" -w "ServicePass" \
+  -b "DC=corp,DC=example,DC=com" \
+  "(sAMAccountName=alice)" | sed -n 's/^dn: //p')
+
+# Check which groups contain that DN
 ldapsearch -x -H ldap://dc01.corp.example.com:389 \
   -D "portainer-svc@corp.example.com" -w "ServicePass" \
   -b "DC=corp,DC=example,DC=com" \
-  "(sAMAccountName=alice)" memberOf
+  "(member=$USER_DN)" cn
 
-# Verify the group names match Portainer team names exactly
-# Check for case sensitivity
+# In Portainer, make sure the relevant groups are included in the Group Search configuration
+# If team sync is enabled, the AD group name must match an existing Portainer team name
+# Team name matching is case-insensitive
 ```
 
 ### Issue: Service Account Getting Locked Out
 
-The service account may be getting locked due to stale cached credentials. To avoid lockouts:
+The service account may be getting locked due to an outdated password saved in Portainer or another LDAP client. To avoid repeated lockouts while you update the saved credentials:
 
 ```powershell
-# Configure the service account to be exempt from account lockout policy
+# Configure a fine-grained password policy with no lockout threshold
 # (Requires AD Fine-Grained Password Policies or PSO)
 
 New-ADFineGrainedPasswordPolicy `
   -Name "NoLockoutPolicy" `
   -Precedence 10 `
   -LockoutThreshold 0 `
-  -ComplexityEnabled $false
+  -LockoutDuration "00:30:00" `
+  -LockoutObservationWindow "00:30:00"
 
 Add-ADFineGrainedPasswordPolicySubject `
   -Identity "NoLockoutPolicy" `
@@ -178,4 +188,4 @@ curl -X POST https://portainer.example.com/api/auth \
 
 ## Conclusion
 
-Active Directory login failures require checking both the Portainer configuration and the AD server state. The most common issues are expired or locked service account credentials, incorrect DN format, and user accounts in different OUs than the configured base DN. Always test with `ldapsearch` using the exact credentials Portainer uses before escalating to AD administrators - it usually pinpoints the issue within seconds.
+Active Directory login failures require checking both the Portainer configuration and the AD server state. The most common issues are expired or locked service account credentials, incorrect bind or username-format configuration, and user accounts in different OUs than the configured base DN. Always test with `ldapsearch` using the exact bind account, transport, and search base Portainer uses before escalating to AD administrators - it usually pinpoints the issue within seconds.
