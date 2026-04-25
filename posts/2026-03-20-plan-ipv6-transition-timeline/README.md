@@ -43,12 +43,12 @@ gantt
 ### Inventory All IPv4 Dependencies
 
 ```bash
-# Scan your network for IPv4-only devices and services
+# Inventory active IPv4 hosts before identifying IPv4-only systems
 
 nmap -sn 192.168.0.0/16 -oX inventory.xml
 
-# Check which services listen only on IPv4
-ss -4 -tlnp  # on servers: list IPv4-only listeners
+# Compare IPv4 and IPv6 listening sockets
+ss -4 -tlnp  # on servers: list IPv4 listeners
 ss -6 -tlnp  # compare: list IPv6 listeners
 
 # Check DNS for missing AAAA records
@@ -71,14 +71,14 @@ Identify team members who need IPv6 training:
 Document your IPv6 address allocation before deploying anything:
 
 ```text
-Organization IPv6 Prefix: 2001:db8:acme::/48 (received from ISP or RIR)
+Organization IPv6 Prefix: 2001:db8:ac1e::/48 (documentation example; replace with the /48 received from your ISP or RIR)
 
 Subnets:
-  2001:db8:acme:0001::/64  - Data center servers
-  2001:db8:acme:0002::/64  - Management network
-  2001:db8:acme:0100::/64  - Office network - HQ
-  2001:db8:acme:0101::/64  - Office network - Branch 1
-  2001:db8:acme:1000::/52  - Reserved for future expansion
+  2001:db8:ac1e:0001::/64  - Data center servers
+  2001:db8:ac1e:0002::/64  - Management network
+  2001:db8:ac1e:0100::/64  - Office network - HQ
+  2001:db8:ac1e:0101::/64  - Office network - Branch 1
+  2001:db8:ac1e:1000::/52  - Reserved for future expansion
 ```
 
 ### Set Up Lab Environment
@@ -93,15 +93,15 @@ Test all components with IPv6 before touching production:
 
 Deploy dual-stack on a small non-critical subnet first:
 
-```bash
+```text
 # Enable dual-stack on a test subnet router interface
 # Example: Cisco IOS
 interface GigabitEthernet0/1
   ip address 192.168.1.1 255.255.255.0
-  ipv6 address 2001:db8:acme:1::/64 eui-64
-  ipv6 nd ra-interval 30
+  ipv6 address 2001:db8:ac1e:1::/64 eui-64
+  ipv6 nd ra interval 30
 
-# Verify IPv6 neighbors are reachable
+# Inspect the IPv6 neighbor cache
 show ipv6 neighbors
 ```
 
