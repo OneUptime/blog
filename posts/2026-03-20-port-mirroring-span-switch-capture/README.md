@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Span, Port Mirroring, Switch, Packet Capture, Network Monitoring
 
-Description: Learn how to configure Switched Port Analyzer (SPAN) port mirroring on Cisco, Arista, and Linux bridge switches to copy traffic from monitored ports to a capture device running Wireshark or tcpdump.
+Description: Learn how to configure Switched Port Analyzer (SPAN) port mirroring on Cisco, Arista, and Linux systems using tc to copy traffic from monitored ports to a capture device running Wireshark or tcpdump.
 
 ## What Is SPAN/Port Mirroring?
 
@@ -21,7 +21,7 @@ graph LR
 
 ## Step 1: Configure SPAN on Cisco IOS
 
-```yaml
+```text
 ! Monitor a single port (GigabitEthernet0/1)
 ! Send copy to GigabitEthernet0/10 (where capture device is connected)
 
@@ -55,15 +55,14 @@ Switch# show monitor session 1
 ! Mirror multiple specific ports
 Switch(config)# monitor session 1 source interface GigabitEthernet0/1 - 5 both
 
-! Mirror an entire VLAN (all traffic in VLAN 100)
+! Or mirror traffic entering or leaving VLAN 100
 Switch(config)# monitor session 1 source vlan 100
 
-! Mirror multiple VLANs
+! Or mirror traffic entering or leaving multiple VLANs
 Switch(config)# monitor session 1 source vlan 100, 200, 300
 
-! Combine ports and VLANs in one session
-Switch(config)# monitor session 1 source interface GigabitEthernet0/1 both
-Switch(config)# monitor session 1 source vlan 100
+! Cisco IOS does not allow source interfaces and source VLANs
+! to be combined in the same SPAN session
 
 ! Remove a SPAN session
 Switch(config)# no monitor session 1
@@ -91,29 +90,27 @@ Switch-Dest(config)# monitor session 1 source remote vlan 999
 Switch-Dest(config)# monitor session 1 destination interface GigabitEthernet0/10
 ```
 
-## Step 4: Configure Port Mirroring on Linux Bridge
+## Step 4: Configure Port Mirroring on Linux with tc
 
 ```bash
-# Linux bridge with tc (traffic control) mirroring
+# Linux interface mirroring with tc (traffic control)
 
 # Add mirror rule: copy all traffic from eth1 to eth2 (capture device)
 
-sudo tc qdisc add dev eth1 handle ffff: ingress
-sudo tc filter add dev eth1 parent ffff: u32 match u8 0 0 \
+sudo tc qdisc add dev eth1 clsact
+sudo tc filter add dev eth1 ingress matchall \
     action mirred egress mirror dev eth2
 
 # Mirror outgoing traffic too
-sudo tc qdisc add dev eth1 root handle 1: prio
-sudo tc filter add dev eth1 parent 1: u32 match u8 0 0 \
+sudo tc filter add dev eth1 egress matchall \
     action mirred egress mirror dev eth2
 
 # Verify mirrors are active
-tc filter show dev eth1 parent ffff:
-tc filter show dev eth1 parent 1:
+tc filter show dev eth1 ingress
+tc filter show dev eth1 egress
 
 # Remove mirror
-sudo tc qdisc del dev eth1 root
-sudo tc qdisc del dev eth1 handle ffff: ingress
+sudo tc qdisc del dev eth1 clsact
 ```
 
 ## Step 5: Configure on Arista EOS
@@ -122,25 +119,24 @@ sudo tc qdisc del dev eth1 handle ffff: ingress
 ! Arista EOS SPAN configuration
 
 Switch# configure
-Switch(config)# monitor session 1
-Switch(config-monitor-session-1)# source Ethernet1 both
-Switch(config-monitor-session-1)# destination Ethernet10
-Switch(config-monitor-session-1)# no shutdown
+Switch(config)# monitor session 1 source Ethernet1 both
+Switch(config)# monitor session 1 destination Ethernet10
 
 ! Verify
 Switch# show monitor session 1
-Session 1 (active)
-  Source interfaces:
-    Ethernet1 (tx, rx)
-  Destination interfaces:
-    Ethernet10
+Session 1
+------------------------
+Source Ports:
+  Both:        Et1
+Destination Port: Et10
 ```
 
 ## Step 6: Capture and Analyze Mirrored Traffic
 
 ```bash
 # On the capture device connected to SPAN destination port
-# The NIC must be in promiscuous mode to receive all mirrored traffic
+# The capture NIC must accept frames not addressed to it.
+# tcpdump enables promiscuous mode by default unless you use -p.
 
 # Enable promiscuous mode
 sudo ip link set eth0 promisc on
@@ -162,22 +158,22 @@ wireshark /tmp/span-capture.pcap
 
 ```text
 Limitations:
-1. SPAN destination port cannot be used for regular traffic
+1. SPAN destination port is typically dedicated to monitoring traffic
 2. SPAN may drop packets during congestion (hardware limit)
 3. Too many source ports can oversubscribe destination
-4. Some switches limit SPAN sessions (typically 2-4 per switch)
+4. SPAN session limits are platform-dependent and can be low on some switches
 
 Best Practices:
-1. Use rx-only SPAN when possible (half the traffic)
-2. Filter at SPAN level if switch supports it:
+1. Use RX-only mirroring when possible to reduce capture load
+2. Filter at SPAN level if your platform supports filtered mirroring:
    Switch(config)# monitor session 1 filter ip access-group ACL_NAME
 
 3. Monitor SPAN session health:
    Switch# show monitor session all
 
-4. Use a dedicated NIC for capture device (multiple ports = multi-threading)
+4. Use a dedicated NIC for the capture device so mirrored traffic does not interfere with normal host traffic
 ```
 
 ## Conclusion
 
-SPAN/port mirroring copies traffic from source ports to a capture device at the switch hardware level. Configure on Cisco IOS with `monitor session 1 source interface Gi0/1 both` + `monitor session 1 destination interface Gi0/10`. On Linux, use `tc filter` with `action mirred egress mirror`. Set the capture device NIC to promiscuous mode with `ip link set eth0 promisc on`, then run `tcpdump -i eth0` to capture all mirrored traffic. Use RSPAN to extend port mirroring across multiple switches to a centralized capture location.
+SPAN/port mirroring copies traffic from source ports to a capture device at the switch hardware level. Configure on Cisco IOS with `monitor session 1 source interface Gi0/1 both` + `monitor session 1 destination interface Gi0/10`. On Linux, use `tc filter` with `action mirred egress mirror`. The capture NIC must accept mirrored frames; `tcpdump` normally enables promiscuous mode unless `-p` is used. Use RSPAN to extend port mirroring across multiple switches to a centralized capture location.
