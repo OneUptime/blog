@@ -8,13 +8,13 @@ Description: Resolve authentication failures between Portainer server and agent 
 
 ## Introduction
 
-When using `AGENT_SECRET` for secure agent-to-server communication, both sides must use the exact same secret. A mismatch results in the agent rejecting connections from the Portainer server (or vice versa), manifesting as a "Unable to connect to agent" or authentication error. This guide explains how to diagnose and fix this.
+When using `AGENT_SECRET` for secure agent-to-server communication, both the Portainer Server container and the agent container must use the exact same secret. A mismatch results in authentication failures, often surfacing as "Unable to connect to agent" or signature/authentication errors. This guide explains how to diagnose and fix this.
 
 ## How AGENT_SECRET Works
 
 The `AGENT_SECRET` is a pre-shared key used to authenticate connections between the Portainer server and the Agent. When set:
-- The Agent only accepts connections from a Portainer server that sends the matching secret
-- The Portainer server sends the secret when connecting to the environment
+- The Agent only accepts connections from Portainer instances configured with the matching `AGENT_SECRET`
+- The Portainer Server container must also be started with the same `AGENT_SECRET` value
 - Both must be identical - case-sensitive
 
 ## Step 1: Check the Agent's Secret
@@ -31,26 +31,30 @@ docker inspect portainer-agent | grep -i "AGENT_SECRET"
 docker exec portainer-agent env | grep AGENT_SECRET
 ```
 
-## Step 2: Check the Portainer Server's Environment Configuration
+## Step 2: Check the Portainer Server's Secret
 
-1. In Portainer UI, go to **Environments**
-2. Click the affected environment to **Edit**
-3. Scroll to the **Agent** section
-4. Look for the **Agent secret** field
+```bash
+# Replace "portainer" with your Portainer Server container name if different
 
-If the field is empty but the agent has a secret set, that's the mismatch.
+# Check what secret the Portainer Server is configured with
+docker inspect portainer | grep -i "AGENT_SECRET"
 
-## Step 3: Fix - Update the Environment in Portainer
+# Check via environment
+docker exec portainer env | grep AGENT_SECRET
+```
 
-1. In **Environments** → Edit the failing environment
-2. Find the **Agent secret** field
-3. Enter the exact same value as `AGENT_SECRET` on the agent
-4. Click **Save**
-5. Portainer will retry the connection immediately
+If the Portainer Server has no `AGENT_SECRET` set, or it is different from the agent's value, that's the mismatch.
+
+## Step 3: Fix - Update the Portainer Server Secret
+
+1. Stop and remove the current Portainer Server container
+2. Redeploy it using your normal Portainer Server install command, but add `-e AGENT_SECRET="the-agent-secret"`
+3. Start it again
+4. Verify the value with `docker exec portainer env | grep AGENT_SECRET`
 
 ## Step 4: Fix - Update the Agent Secret
 
-If you want to change the secret to match what Portainer expects:
+If you want to change the secret to match what the Portainer Server is using:
 
 ```bash
 # Stop and remove the current agent
@@ -70,6 +74,8 @@ docker run -d \
 # Verify the secret is set
 docker exec portainer-agent env | grep AGENT_SECRET
 ```
+
+After changing the agent secret, make sure the Portainer Server container is also restarted with the same `AGENT_SECRET` value.
 
 ## Step 5: Set Up a Strong Secret from Scratch
 
@@ -92,7 +98,8 @@ docker run -d \
 
 # In Portainer, when adding the environment:
 # URL: agent-host:9001
-# Agent secret: 4a8f2c1e9d3b7a6e5f8c2d1b4e7a9f3c2b1d8e7f6a5c4b3d2e1f9a8b7c6d5e4f
+# Make sure the Portainer Server container is also started with:
+# -e AGENT_SECRET="4a8f2c1e9d3b7a6e5f8c2d1b4e7a9f3c2b1d8e7f6a5c4b3d2e1f9a8b7c6d5e4f"
 ```
 
 ## Step 6: Fix for Docker Compose Deployments
@@ -104,7 +111,7 @@ services:
     ports:
       - "9001:9001"
     environment:
-      # Must match what's configured in Portainer Environments settings
+      # Must match the AGENT_SECRET set on the Portainer Server container/service
       AGENT_SECRET: "your-shared-secret-here"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -116,6 +123,7 @@ services:
 
 ```bash
 # Update the service environment variable
+# The Portainer Server service must use the same AGENT_SECRET value
 docker service update \
   --env-add AGENT_SECRET="the-correct-secret" \
   portainer_portainer-agent
@@ -147,31 +155,31 @@ docker logs -f portainer-agent | grep -i "auth\|secret\|signature\|invalid"
 ## Step 9: Common Mistakes to Avoid
 
 ```bash
-# WRONG: Secret with trailing newline (common when using echo)
-echo "mysecret" > /tmp/secret  # Adds newline - don't do this
-AGENT_SECRET=$(cat /tmp/secret)  # Will include the newline
+# WRONG: Secret file with hidden Windows line endings or whitespace
+printf 'mysecret\r\n' > /tmp/secret
+AGENT_SECRET=$(cat /tmp/secret)  # Will include the hidden \r character
 
-# CORRECT: Use printf or specify exact value
-printf "mysecret" > /tmp/secret
-AGENT_SECRET=$(cat /tmp/secret)
+# CORRECT: Strip line endings when reading from a file
+AGENT_SECRET=$(tr -d '\r\n' < /tmp/secret)
 
 # Or just specify directly in the run command:
 -e AGENT_SECRET="mysecret"
 
 # WRONG: Different case
 # Agent: AGENT_SECRET="MySecret"
-# Portainer config: Agent secret: "mysecret"  ← case mismatch
+# Portainer Server: AGENT_SECRET="mysecret"  ← case mismatch
 
 # CORRECT: Exact same string
 # Both use: "MySecret"
 ```
 
-## Step 10: Remove the Secret (Disable Authentication)
+## Step 10: Remove the Secret (Use Default Claim-Based Authentication)
 
-For internal networks where you don't need secret-based auth:
+For internal networks where you want to use the agent's default single-Portainer claim behavior:
 
 ```bash
-# Deploy agent WITHOUT a secret (allows any Portainer server to connect)
+# Deploy agent WITHOUT a secret
+# The first Portainer instance to claim the agent becomes the only one allowed
 docker run -d \
   -p 9001:9001 \
   --name portainer-agent \
@@ -180,11 +188,11 @@ docker run -d \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
   portainer/agent:latest
 
-# In Portainer, leave the "Agent secret" field empty
+# On the Portainer Server, do not set AGENT_SECRET
 ```
 
-> **Security Note**: Only use this approach on isolated, trusted networks. Without a secret, any Portainer instance can connect to your agent.
+> **Security Note**: Without `AGENT_SECRET`, the first Portainer instance that successfully claims the agent becomes the only instance allowed to manage it. Use `AGENT_SECRET` when you want multiple Portainer instances with the same secret to be able to connect.
 
 ## Conclusion
 
-Agent secret mismatches are simple to fix but easy to miss: both the `AGENT_SECRET` environment variable on the agent and the "Agent secret" field in Portainer's environment configuration must contain the exact same string. Always generate a strong random secret with `openssl rand -hex 32`, set it in both places simultaneously, and avoid trailing newlines or whitespace that can silently corrupt the value.
+Agent secret mismatches are simple to fix but easy to miss: the `AGENT_SECRET` environment variable on both the Portainer Server and the agent must contain the exact same string. Always generate a strong random secret with `openssl rand -hex 32`, set it in both places simultaneously, and avoid hidden carriage returns or whitespace that can silently corrupt the value.
