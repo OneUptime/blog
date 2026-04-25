@@ -12,7 +12,7 @@ GitHub Container Registry (GHCR) is GitHub's native container registry integrate
 
 ## Prerequisites
 
-- Portainer CE or BE installed
+- Portainer CE or BE installed (Portainer Business Edition on a non-Edge environment is required if you want webhook-triggered redeploys)
 - A GitHub account with a repository
 - Images pushed to GHCR (or a GitHub Actions workflow to build them)
 - Admin access to Portainer
@@ -85,10 +85,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Log in to Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -96,7 +96,7 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -106,7 +106,7 @@ jobs:
             type=sha,prefix=sha-
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -115,6 +115,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Optional: trigger a Portainer stack webhook after a successful push (Business Edition, non-Edge only)
       - name: Deploy to Portainer
         run: |
           curl -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}" \
@@ -124,12 +125,12 @@ jobs:
 
 ## Step 4: Make Images Public or Manage Visibility
 
-By default, GHCR images inherit repository visibility:
+By default, newly published GHCR packages are private. If a package is linked to a repository before publishing, it inherits the repository's access permissions by default, but not its visibility:
 
-- **Public repository** → Image is public (no auth needed to pull)
-- **Private repository** → Image is private (auth required)
+- **Public package** → No auth needed to pull
+- **Private package** → Auth required
 
-To change image visibility:
+To change package visibility:
 
 1. Go to **GitHub → Packages** (in your profile or organization)
 2. Click on the package (image)
@@ -159,14 +160,14 @@ For build workflows, you don't need a PAT - the built-in `GITHUB_TOKEN` works:
 
 ```yaml
 # In GitHub Actions workflow (for pushing to GHCR during build)
-- uses: docker/login-action@v3
+- uses: docker/login-action@v4
   with:
     registry: ghcr.io
     username: ${{ github.actor }}
     password: ${{ secrets.GITHUB_TOKEN }}  # Auto-generated, no setup needed
 ```
 
-However, for Portainer to pull images, you need a separate PAT with `read:packages` scope.
+However, for Portainer to pull private images, you need a separate PAT with `read:packages` scope.
 
 ## Step 7: Organization Image Access
 
@@ -178,10 +179,7 @@ ghcr.io/myorg/myimage:latest
 
 Ensure the PAT belongs to a user with at least `read` access to the organization packages.
 
-Or create an organization-level PAT for Portainer:
-
-1. Go to **Organization Settings → Developer settings**
-2. Create a PAT with `read:packages` scope
+If the organization uses SAML SSO, authorize the PAT for the organization after creating it.
 
 ## Troubleshooting
 
@@ -194,6 +192,7 @@ Error: denied: denied
 - Verify the PAT has `read:packages` scope
 - Ensure the user has access to the package
 - For organization images, confirm the organization has granted access
+- If the organization uses SAML SSO, authorize the PAT for that organization
 
 ### Image Not Found (404)
 
@@ -212,4 +211,4 @@ Error: manifest unknown
 
 ## Conclusion
 
-GitHub Container Registry integration with Portainer creates a seamless GitHub-native deployment workflow. Use `GITHUB_TOKEN` in GitHub Actions for secure image builds with zero secrets management, then use a minimal-scope PAT in Portainer for deployment pulls. This approach keeps all your code, CI/CD, and container images in one ecosystem.
+GitHub Container Registry integration with Portainer creates a seamless GitHub-native deployment workflow. Use `GITHUB_TOKEN` in GitHub Actions for secure image builds with zero secrets management, then use a minimal-scope PAT in Portainer for pulling private images during deployment. This approach keeps all your code, CI/CD, and container images in one ecosystem.
