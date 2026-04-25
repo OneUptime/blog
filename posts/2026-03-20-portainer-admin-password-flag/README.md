@@ -78,14 +78,13 @@ docker run -d \
 
 ## Step 4: Use --admin-password-file (More Secure)
 
-The `--admin-password-file` flag reads the hash from a file, keeping it out of the process list:
+The `--admin-password-file` flag reads the plain-text password from a file, keeping it out of the process list. Portainer hashes the password before storing it:
 
 ```bash
-# Create the password hash file
-docker run --rm httpd:2.4-alpine htpasswd -nbB admin yourpassword | \
-  cut -d ':' -f 2 > /tmp/portainer-passwd
+# Create the password file
+echo -n 'yourpassword' > /tmp/portainer-password
 
-chmod 600 /tmp/portainer-passwd
+chmod 600 /tmp/portainer-password
 
 # Start Portainer with password file
 docker run -d \
@@ -95,9 +94,9 @@ docker run -d \
   --restart=unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  -v /tmp/portainer-passwd:/tmp/portainer-passwd:ro \
+  -v /tmp/portainer-password:/tmp/portainer-password:ro \
   portainer/portainer-ce:latest \
-  --admin-password-file=/tmp/portainer-passwd
+  --admin-password-file=/tmp/portainer-password
 ```
 
 ## Step 5: Use in Docker Compose
@@ -110,7 +109,8 @@ services:
     container_name: portainer
     restart: unless-stopped
     # Use double $$ to escape $ in compose files
-    command: --admin-password='$$2y$$05$$8qOfvkl7D4FtcC/eCIbVGeFNQtYjC6.gg5bflnEsOxOinqPgXHzaC'
+    command:
+      - --admin-password=$$2y$$05$$8qOfvkl7D4FtcC/eCIbVGeFNQtYjC6.gg5bflnEsOxOinqPgXHzaC
     ports:
       - "9000:9000"
       - "9443:9443"
@@ -141,7 +141,7 @@ services:
 
 secrets:
   portainer-admin-password:
-    file: ./portainer-password-hash.txt
+    file: ./portainer-password.txt
 
 volumes:
   portainer_data:
@@ -151,9 +151,7 @@ volumes:
 
 ```bash
 # Create the secret in Swarm
-docker run --rm httpd:2.4-alpine htpasswd -nbB admin yourpassword | \
-  cut -d ':' -f 2 | \
-  docker secret create portainer-admin-password -
+echo -n 'yourpassword' | docker secret create portainer-admin-password -
 
 # Deploy Portainer with the secret
 docker service create \
@@ -165,7 +163,8 @@ docker service create \
   --secret portainer-admin-password \
   --constraint 'node.role == manager' \
   portainer/portainer-ce:latest \
-  --admin-password-file=/run/secrets/portainer-admin-password
+  --admin-password-file=/run/secrets/portainer-admin-password \
+  -H unix:///var/run/docker.sock
 ```
 
 ## Step 7: Automate Portainer Deployment
@@ -220,17 +219,15 @@ fi
 ## Important Notes
 
 ```bash
-# The --admin-password flag ONLY takes effect on first startup
-# (when portainer.db doesn't exist or has no admin user)
+# The --admin-password and --admin-password-file flags ONLY take effect on first startup
+# (when Portainer doesn't already have an admin user)
 #
-# On subsequent restarts, the stored password in portainer.db takes precedence
+# On subsequent restarts, the stored password in the Portainer database takes precedence
 #
-# To RESET the admin password, you must:
-# 1. Stop Portainer
-# 2. Delete portainer.db (or the entire volume)
-# 3. Restart with --admin-password
+# To make either startup flag apply again, restart Portainer with an empty data volume/database
 #
-# OR use the Portainer API to change the password:
+# To change the password on an existing installation, use the Portainer UI,
+# helper-reset-password, or the Portainer API:
 TOKEN=$(curl -s -X POST http://localhost:9000/api/auth \
   -H "Content-Type: application/json" \
   -d '{"Username":"admin","Password":"oldpassword"}' | jq -r .jwt)
@@ -239,9 +236,9 @@ curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   http://localhost:9000/api/users/1/passwd \
-  -d '{"Password":"newpassword"}'
+  -d '{"Password":"oldpassword","NewPassword":"newpassword"}'
 ```
 
 ## Conclusion
 
-The `--admin-password` flag is the recommended way to set the Portainer admin password in automated deployments. Use `--admin-password-file` for better security as it keeps the hash out of the process list. Remember that this flag only configures the password on initial database creation - for existing installations, use the Portainer UI or API to change passwords.
+The `--admin-password` flag is a supported way to set the Portainer admin password in automated deployments. Use `--admin-password-file` for better security as it keeps the plain-text password out of the process list. Remember that these flags only configure the password during initial admin creation - for existing installations, use the Portainer UI, helper-reset-password, or API to change passwords.
