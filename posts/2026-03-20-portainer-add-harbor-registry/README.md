@@ -8,7 +8,7 @@ Description: Learn how to add a Harbor container registry to Portainer for secur
 
 ## Introduction
 
-Harbor is an open-source cloud-native registry that provides security, identity, and management features beyond what the basic Docker Registry offers. It includes vulnerability scanning, image signing, RBAC, and replication policies. Portainer has native support for Harbor, providing a tighter integration than generic custom registries. This guide covers adding Harbor to Portainer.
+Harbor is an open-source cloud-native registry that provides security, identity, and management features beyond what the basic Docker Registry offers. It includes vulnerability scanning, image signing, RBAC, and replication policies. Portainer can connect to Harbor as a custom registry, and Portainer BE can browse registries that support the Docker Registry HTTP API V2. This guide covers adding Harbor to Portainer.
 
 ## Prerequisites
 
@@ -29,41 +29,43 @@ harbor.company.com/team/api:v2.0
 
 ## Step 1: Create a Harbor Robot Account
 
-Robot accounts are the recommended way to give Portainer access to Harbor - they are dedicated to automation and have controlled scopes:
+Robot accounts are the recommended way to give Portainer access to Harbor - they are dedicated to automation and have controlled scopes. The main flow below uses a system robot account so one Portainer registry entry can access multiple Harbor projects. If you only need a single project, see Step 7.
 
-1. Log in to your Harbor instance as admin
+1. Log in to your Harbor instance as a system administrator
 2. Go to **Administration → Robot Accounts**
-3. Click **+ New Robot Account**
+3. Click **New Robot Account**
 4. Configure:
    ```text
    Name:         portainer-pull
-   Duration:     365 (days)
+   Expiration:   365 (days)
    Description:  Portainer deployment access
-   Level:        System level (for all projects) or Project level (specific projects)
    ```
-5. Under **Permissions**, grant:
-   - `Repository:Pull` (read access to all repositories)
-   - `Artifact:Read` (read artifact metadata)
-   - `Tag:List` (if Portainer needs to list tags)
-6. Click **Add**
-7. Copy the **Name** (format: `robot$portainer-pull`) and **Secret**
+5. Click **Next**
+6. Under **Projects and Permissions**, associate the account with the Harbor projects Portainer needs and grant only the required access:
+   - `Pull Repository` (required to pull images)
+   - `Read Artifact` (read artifact metadata)
+   - `List Tag` (if Portainer needs to list tags)
+   - `Read Artifact Addition` (if you plan to query vulnerability reports via the Harbor API)
+7. Click **Finish**
+8. Copy the **Name** (default format: `robot$portainer-pull`) and **Secret**
 
 ## Step 2: Add Harbor Registry in Portainer
 
 1. Go to **Registries** in Portainer
 2. Click **+ Add registry**
-3. Select **Harbor**
+3. Select **Custom registry**
 
 ## Step 3: Configure Harbor Connection
 
 ```text
 Name:     Harbor Registry
 URL:      https://harbor.company.com
-Username: robot$portainer-pull      (include the "robot$" prefix)
+Authentication: Enabled
+Username: robot$portainer-pull
 Password: [robot account secret]
 ```
 
-**Note:** Harbor robot account usernames always start with `robot$`.
+**Note:** Harbor robot account names use the configured robot prefix. The default prefix is `robot$`, but Harbor administrators can change it.
 
 4. Click **Add registry**
 
@@ -72,14 +74,9 @@ Password: [robot account secret]
 Portainer validates the connection when saving. If it fails:
 
 ```bash
-# Test Harbor API connectivity
-curl -u 'robot$portainer-pull:secret' \
-  https://harbor.company.com/api/v2.0/projects
-
-# Test image pull
-docker login harbor.company.com \
-  -u 'robot$portainer-pull' \
-  -p 'your-robot-secret'
+printf '%s\n' 'your-robot-secret' | docker login harbor.company.com \
+  --username 'robot$portainer-pull' \
+  --password-stdin
 
 docker pull harbor.company.com/myproject/myapp:latest
 ```
@@ -92,7 +89,7 @@ version: "3.8"
 services:
   app:
     image: harbor.company.com/production/myapp:v2.1.0
-    # Portainer uses stored Harbor robot account credentials
+    # Portainer uses the stored registry credentials
 
   database-proxy:
     image: harbor.company.com/infrastructure/pgbouncer:latest
@@ -103,65 +100,50 @@ services:
 Portainer Business Edition allows browsing registry contents directly:
 
 1. Go to **Registries**
-2. Click on the Harbor registry
-3. Click **Browse** (BE feature)
-4. Navigate through projects → repositories → tags
+2. Click **Browse** next to the Harbor registry
+3. Navigate through repositories → tags
 
-This lets you select images directly without typing full image paths.
+This lets you inspect repository names and tags without typing full image paths by hand.
 
 ## Step 7: Configure Per-Project Robot Accounts
 
 For fine-grained access control, create a separate robot account per project:
 
-```bash
-# Project-level robot accounts limit access to specific Harbor projects
-# Creates: robot$portainer-prod+pull (project-scoped)
+```text
+# Project robot account names follow:
+<prefix><project_name>+<account_name>
+# Example:
+robot$production+pull
 ```
 
 In Harbor:
-1. Navigate to **Project → {project-name} → Robot Accounts**
+1. Navigate to **Projects → {project-name} → Robot Accounts**
 2. Create a project-specific robot account
-3. This account only has access to that project's repositories
+3. Use the full generated name when authenticating
+4. This account only has access to that project's repositories
 
 ## Step 8: Harbor Content Trust (Image Signing)
 
-Harbor integrates with Notary for image signing. When content trust is enabled:
+Current Harbor releases support content trust through Cosign and Notation. Project administrators can enforce signed artifacts at the Harbor project level. For example, you can sign an image with Cosign:
 
 ```bash
-# Enable content trust on the Docker client
-export DOCKER_CONTENT_TRUST=1
-export DOCKER_CONTENT_TRUST_SERVER=https://harbor.company.com:4443
-
-# Pull only signed images
-docker pull harbor.company.com/myproject/myapp:latest
+cosign sign --key cosign.key harbor.company.com/myproject/myapp:latest
 ```
 
-For Portainer to enforce content trust, configure the Docker daemon:
-
-```json
-// /etc/docker/daemon.json
-{
-  "content-trust": {
-    "mode": "enforced",
-    "trust-pinning": {
-      "official-library-images": true
-    }
-  }
-}
-```
+In Harbor, go to **Projects → {project} → Configuration**, enable **Cosign** or **Notation**, and click **Save**.
 
 ## Step 9: Harbor Vulnerability Scanning
 
 Harbor can scan images for vulnerabilities automatically. Configure scan policies in Harbor:
 
-1. **Harbor → Interrogation Services → Scanners** - Add Trivy or Clair
-2. **Harbor → Projects → {project} → Configuration → Vulnerability scanning** - Enable
-3. Configure vulnerability policy to prevent pulling images with critical CVEs
+1. **Harbor → Administration → Interrogation Services** - confirm Trivy is enabled or add an additional scanner
+2. **Harbor → Projects → {project} → Configuration** - enable **Automatically scan images on push**
+3. Optional: enable **Prevent vulnerable images from running** and set a severity threshold
 
 ```bash
-# Check vulnerability scan status via API
+# Export a vulnerability report via API
 curl -u 'robot$portainer-pull:secret' \
-  "https://harbor.company.com/api/v2.0/projects/myproject/repositories/myapp/artifacts/latest/scan"
+  "https://harbor.company.com/api/v2.0/projects/myproject/repositories/myapp/artifacts/latest/additions/vulnerabilities"
 ```
 
 ## Troubleshooting
@@ -172,8 +154,8 @@ curl -u 'robot$portainer-pull:secret' \
 Error: unauthorized: unauthorized to access repository
 ```
 
-- Verify the robot account name includes `robot$` prefix
-- Check that the robot account has `Repository:Pull` permission
+- Verify that you are using the full generated robot account name
+- Check that the robot account has `Pull Repository` permission
 - Ensure the account has not expired
 
 ### Certificate Error
@@ -192,4 +174,4 @@ sudo systemctl restart docker
 
 ## Conclusion
 
-Harbor provides enterprise-grade features on top of the basic Docker registry, and Portainer's native Harbor support makes integration seamless. Use robot accounts with minimal permissions for deployment access, leverage Harbor's vulnerability scanning to ensure you only deploy secure images, and use Portainer BE's registry browsing feature to navigate Harbor's project structure directly from the Portainer interface.
+Harbor provides enterprise-grade features on top of the basic Docker registry, and Portainer can connect to it cleanly as a custom registry. Use robot accounts with minimal permissions for deployment access, leverage Harbor's vulnerability scanning to ensure you only deploy secure images, and use Portainer BE's registry browsing feature to navigate Harbor repositories directly from the Portainer interface.
