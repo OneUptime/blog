@@ -8,11 +8,11 @@ Description: Learn how to configure node affinity, pod affinity, and tolerations
 
 ## Overview
 
-Kubernetes offers fine-grained control over pod placement through node selectors, node affinity rules, pod affinity/anti-affinity, and tolerations. Portainer exposes these through its application deployment form.
+Kubernetes offers fine-grained control over pod placement through node selectors, node affinity rules, pod affinity/anti-affinity, and tolerations. In Portainer, the application form exposes node-label placement rules directly, while advanced scheduling settings are configured through a Kubernetes manifest.
 
 ## Node Selector (Simple Placement)
 
-The simplest placement constraint - requires the pod to run on a node with a specific label:
+The simplest placement constraint - requires the pod to run on a node with specific labels:
 
 ```yaml
 spec:
@@ -49,7 +49,7 @@ spec:
 
 ## Pod Anti-Affinity (Spread Across Nodes)
 
-Prevent all replicas from landing on the same node:
+Prefer to spread replicas across nodes:
 
 ```yaml
 spec:
@@ -89,11 +89,11 @@ spec:
 
 In Portainer's application deployment form:
 
-1. Scroll to **Placement** or **Advanced settings**.
-2. Add **Node selectors** as key-value pairs.
-3. Click **Add placement rule** to add affinity rules if available.
+1. Scroll to **Placement preferences and constraints**.
+2. Click **add rule** to add placement rules based on node labels.
+3. Choose **Mandatory** or **Preferred** for the placement policy.
 
-For full affinity control, use the **Advanced deployment (YAML)** mode.
+For full control of node affinity, pod affinity/anti-affinity, and tolerations, use **Create from code** with a Kubernetes manifest.
 
 ## Labeling Nodes for Placement
 
@@ -109,4 +109,4 @@ kubectl get nodes --show-labels
 
 ## Conclusion
 
-Placement controls in Kubernetes ensure your workloads land on the right hardware and are spread for high availability. Portainer exposes node selectors directly in the form, and for advanced affinity rules, the YAML editor provides full control.
+Placement controls in Kubernetes ensure your workloads land on the right hardware and are spread for high availability. Portainer exposes node-label placement rules directly in the form, and for advanced scheduling fields such as affinity and tolerations, use **Create from code** with a Kubernetes manifest.
