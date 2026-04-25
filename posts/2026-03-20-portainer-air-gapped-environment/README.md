@@ -24,14 +24,15 @@ Air-gapped environments have no internet connectivity, which is common in defens
 # download-portainer-images.sh - Run on internet-connected machine
 
 OUTPUT_DIR="./portainer-air-gap"
-mkdir -p $OUTPUT_DIR
+PORTAINER_TAG="lts"
+mkdir -p "$OUTPUT_DIR"
 
 # Define images to download
 
 IMAGES=(
-  "portainer/portainer-ce:latest"
-  "portainer/portainer-agent:latest"
-  "portainer/portainer-be:latest"  # If using BE
+  "portainer/portainer-ce:${PORTAINER_TAG}"
+  "portainer/agent:${PORTAINER_TAG}"
+  "portainer/portainer-ee:${PORTAINER_TAG}"  # If using BE
 )
 
 for IMAGE in "${IMAGES[@]}"; do
@@ -45,7 +46,7 @@ for IMAGE in "${IMAGES[@]}"; do
 done
 
 echo "Images saved to $OUTPUT_DIR"
-ls -lh $OUTPUT_DIR
+ls -lh "$OUTPUT_DIR"
 ```
 
 ## Step 2: Download Additional Required Images
@@ -53,9 +54,9 @@ ls -lh $OUTPUT_DIR
 ```bash
 # Additional images for common use cases
 
-# Portainer Agent for remote environments
-docker pull portainer/agent:latest
-docker save portainer/agent:latest -o portainer-air-gap/portainer-agent.tar
+# Local registry image used later in this guide
+docker pull registry:3
+docker save registry:3 -o portainer-air-gap/registry-3.tar
 
 # Common base images your applications might need
 COMMON_IMAGES=(
@@ -103,7 +104,7 @@ for TAR_FILE in *.tar; do
 done
 
 # Verify all images are loaded
-docker images | grep -E "(portainer|nginx|postgres|redis)"
+docker images | grep -E "(portainer|registry|nginx|postgres|redis)"
 ```
 
 ## Step 5: Install Portainer on Air-Gapped Host
@@ -119,8 +120,7 @@ docker run -d \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest \
-  --no-analytics     # Disable analytics (requires internet)
+  portainer/portainer-ce:lts
 
 echo "Portainer started. Access at: https://$(hostname -I | awk '{print $1}'):9443"
 ```
@@ -136,11 +136,11 @@ docker run -d \
   --restart=unless-stopped \
   -p 5000:5000 \
   -v /opt/registry/data:/var/lib/registry \
-  registry:2
+  registry:3
 
 # Push images to local registry
-docker tag portainer/portainer-ce:latest localhost:5000/portainer-ce:latest
-docker push localhost:5000/portainer-ce:latest
+docker tag portainer/portainer-ce:lts localhost:5000/portainer-ce:lts
+docker push localhost:5000/portainer-ce:lts
 
 # Tag and push all common images
 for IMAGE in nginx:1.25-alpine postgres:15-alpine redis:7-alpine alpine:3.19; do
@@ -157,19 +157,19 @@ done
 3. Enter:
    - **Type**: Custom Registry
    - **Name**: Local Air-Gap Registry
-   - **URL**: `your-server-ip:5000`
-   - **Authentication**: If TLS/auth is configured
+   - **URL**: `http://your-server-ip:5000`
+   - **Authentication**: Enable if your registry requires it
 4. Save.
 
 Now all image deployments can reference `your-server-ip:5000/image:tag`.
 
 ## Step 8: Configure Docker Daemon to Trust Local Registry
 
+Example `/etc/docker/daemon.json` for an HTTP registry:
+
 ```json
-// /etc/docker/daemon.json - Allow insecure local registry
 {
-  "insecure-registries": ["your-server-ip:5000", "local-registry:5000"],
-  "registry-mirrors": [],
+  "insecure-registries": ["your-server-ip:5000"],
   "live-restore": true
 }
 ```
@@ -184,13 +184,13 @@ When Portainer releases new versions:
 
 ```bash
 # On internet-connected machine:
-PORTAINER_VERSION="2.22.0"
-docker pull portainer/portainer-ce:${PORTAINER_VERSION}
-docker save portainer/portainer-ce:${PORTAINER_VERSION} -o portainer-ce-${PORTAINER_VERSION}.tar
+PORTAINER_TAG="lts"
+docker pull portainer/portainer-ce:${PORTAINER_TAG}
+docker save portainer/portainer-ce:${PORTAINER_TAG} -o portainer-ce-${PORTAINER_TAG}.tar
 
 # Transfer to air-gapped environment
 # On air-gapped machine:
-docker load -i portainer-ce-${PORTAINER_VERSION}.tar
+docker load -i portainer-ce-${PORTAINER_TAG}.tar
 
 # Stop old container and start with new image
 docker stop portainer && docker rm portainer
@@ -200,27 +200,32 @@ docker run -d \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:${PORTAINER_VERSION}
+  portainer/portainer-ce:${PORTAINER_TAG}
 ```
 
 ## Step 10: Helm Charts for Air-Gapped Kubernetes
 
 For Kubernetes deployments:
 
+Make sure each Kubernetes node can reach and trust `your-server-ip:5000` in its configured container runtime before installing the chart.
+
 ```bash
 # On internet-connected machine: download Helm chart
+PORTAINER_CHART_VERSION="2.39.0"
+mkdir -p charts
 helm repo add portainer https://portainer.github.io/k8s/
-helm pull portainer/portainer --version 1.0.51 --destination ./charts/
+helm repo update
+helm pull portainer/portainer --version "${PORTAINER_CHART_VERSION}" --destination ./charts/
 
 # Package charts directory
 tar -czf helm-charts-offline.tar.gz charts/
 
 # On air-gapped cluster: install from local chart
-helm install portainer ./charts/portainer-1.0.51.tgz \
+helm install portainer ./charts/portainer-${PORTAINER_CHART_VERSION}.tgz \
   --namespace portainer \
   --create-namespace \
-  --set image.repository=local-registry:5000/portainer-ce \
-  --set image.tag=latest
+  --set image.repository=your-server-ip:5000/portainer-ce \
+  --set image.tag=lts
 ```
 
 ## Conclusion
