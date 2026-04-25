@@ -25,7 +25,7 @@ Edit the Docker systemd service:
 # Create override for docker service
 
 sudo mkdir -p /etc/systemd/system/docker.service.d/
-sudo cat > /etc/systemd/system/docker.service.d/override.conf << 'EOF'
+sudo tee /etc/systemd/system/docker.service.d/override.conf > /dev/null << 'EOF'
 [Service]
 ExecStart=
 ExecStart=/usr/bin/dockerd -H fd:// -H tcp://0.0.0.0:2375
@@ -44,53 +44,56 @@ Generate CA, server, and client certificates:
 
 ```bash
 # Create certificate directory
-mkdir -p /etc/docker/certs && cd /etc/docker/certs
+sudo mkdir -p /etc/docker/certs && cd /etc/docker/certs
 
 # 1. Generate CA key and certificate
-openssl genrsa -aes256 -out ca-key.pem 4096
-openssl req -new -x509 -days 3650 -key ca-key.pem -sha256 -out ca.pem \
+sudo openssl genrsa -aes256 -out ca-key.pem 4096
+sudo openssl req -new -x509 -days 3650 -key ca-key.pem -sha256 -out ca.pem \
   -subj "/C=US/ST=State/L=City/O=Org/CN=Docker CA"
 
 # 2. Generate server key and CSR
-openssl genrsa -out server-key.pem 4096
-openssl req -subj "/CN=docker-host.example.com" -sha256 \
+sudo openssl genrsa -out server-key.pem 4096
+sudo openssl req -subj "/CN=docker-host.example.com" -sha256 \
   -new -key server-key.pem -out server.csr
 
 # 3. Sign server certificate
-echo "subjectAltName = DNS:docker-host.example.com,IP:192.168.1.50,IP:127.0.0.1" > extfile.cnf
-openssl x509 -req -days 3650 -sha256 \
+printf '%s\n' \
+  'subjectAltName = DNS:docker-host.example.com,IP:192.168.1.50,IP:127.0.0.1' \
+  'extendedKeyUsage = serverAuth' \
+  | sudo tee extfile.cnf > /dev/null
+sudo openssl x509 -req -days 3650 -sha256 \
   -in server.csr -CA ca.pem -CAkey ca-key.pem \
   -CAcreateserial -out server-cert.pem -extfile extfile.cnf
 
 # 4. Generate client key and certificate
-openssl genrsa -out key.pem 4096
-openssl req -subj '/CN=client' -new -key key.pem -out client.csr
-echo "extendedKeyUsage = clientAuth" > extfile-client.cnf
-openssl x509 -req -days 3650 -sha256 \
+sudo openssl genrsa -out key.pem 4096
+sudo openssl req -subj '/CN=client' -new -key key.pem -out client.csr
+printf '%s\n' 'extendedKeyUsage = clientAuth' | sudo tee extfile-client.cnf > /dev/null
+sudo openssl x509 -req -days 3650 -sha256 \
   -in client.csr -CA ca.pem -CAkey ca-key.pem \
   -CAcreateserial -out cert.pem -extfile extfile-client.cnf
 
 # 5. Set permissions
-chmod -v 0400 ca-key.pem key.pem server-key.pem
-chmod -v 0444 ca.pem server-cert.pem cert.pem
+sudo chmod -v 0400 ca-key.pem key.pem server-key.pem
+sudo chmod -v 0444 ca.pem server-cert.pem cert.pem
 ```
 
 Configure Docker with TLS:
 
 ```bash
-# /etc/docker/daemon.json
-cat > /etc/docker/daemon.json << 'EOF'
-{
-  "hosts": ["fd://", "tcp://0.0.0.0:2376"],
-  "tls": true,
-  "tlsverify": true,
-  "tlscacert": "/etc/docker/certs/ca.pem",
-  "tlscert": "/etc/docker/certs/server-cert.pem",
-  "tlskey": "/etc/docker/certs/server-key.pem"
-}
+# Create override for docker service
+sudo mkdir -p /etc/systemd/system/docker.service.d/
+sudo tee /etc/systemd/system/docker.service.d/override.conf > /dev/null << 'EOF'
+[Service]
+ExecStart=
+ExecStart=/usr/bin/dockerd --tlsverify --tlscacert=/etc/docker/certs/ca.pem --tlscert=/etc/docker/certs/server-cert.pem --tlskey=/etc/docker/certs/server-key.pem -H fd:// -H tcp://0.0.0.0:2376
 EOF
 
+sudo systemctl daemon-reload
 sudo systemctl restart docker
+
+# Verify
+ss -tlnp | grep 2376
 ```
 
 ## Step 2: Add the Remote Environment in Portainer
@@ -107,11 +110,6 @@ sudo systemctl restart docker
 ### Via Portainer API
 
 ```bash
-# Upload TLS certificates first
-CA_CERT=$(cat ca.pem | base64 | tr -d '\n')
-CLIENT_CERT=$(cat cert.pem | base64 | tr -d '\n')
-CLIENT_KEY=$(cat key.pem | base64 | tr -d '\n')
-
 TOKEN=$(curl -s -X POST \
   https://portainer.example.com/api/auth \
   -H "Content-Type: application/json" \
@@ -121,18 +119,15 @@ TOKEN=$(curl -s -X POST \
 # Add Docker remote environment with TLS
 curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
   https://portainer.example.com/api/endpoints \
-  -d "{
-    \"name\": \"Production Docker Host\",
-    \"endpointCreationType\": 1,
-    \"URL\": \"tcp://docker-host.example.com:2376\",
-    \"TLS\": true,
-    \"TLSSkipVerify\": false,
-    \"TLSCACert\": \"${CA_CERT}\",
-    \"TLSCert\": \"${CLIENT_CERT}\",
-    \"TLSKey\": \"${CLIENT_KEY}\"
-  }"
+  -F "Name=Production Docker Host" \
+  -F "URL=tcp://docker-host.example.com:2376" \
+  -F "EndpointCreationType=1" \
+  -F "TLS=true" \
+  -F "TLSSkipVerify=false" \
+  -F "TLSCACertFile=@ca.pem" \
+  -F "TLSCertFile=@cert.pem" \
+  -F "TLSKeyFile=@key.pem"
 ```
 
 ## Step 3: Firewall Configuration
