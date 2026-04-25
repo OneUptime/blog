@@ -8,7 +8,7 @@ Description: Learn how to allocate and organize the 10.0.0.0/8 private address s
 
 ## Why Use 10.0.0.0/8?
 
-The 10.0.0.0/8 space offers 16,777,214 usable addresses - enough for thousands of sites and hundreds of thousands of hosts. It's the recommended choice for large enterprises because:
+The 10.0.0.0/8 space contains 16,777,216 total addresses - enough for thousands of sites and hundreds of thousands of hosts. It's a common choice for large enterprises because:
 - Room for hierarchical allocation without running out
 - Supports clean route summarization
 - Commonly supported by network equipment
@@ -40,7 +40,7 @@ Choose an organizational hierarchy. Common approaches:
 ```text
 10.0.0.0/8 - All Enterprise Networks
 
-/12 blocks (4M addresses each):
+/12 blocks (1,048,576 addresses each):
   10.0.0.0/12   = Production (10.0.0.0 - 10.15.255.255)
   10.16.0.0/12  = Development / Lab
   10.32.0.0/12  = DMZ / Internet-facing
@@ -55,7 +55,7 @@ Choose an organizational hierarchy. Common approaches:
 ```text
 10.0.0.0/12 - Production Networks
 
-/16 blocks per region (65K addresses each):
+/16 blocks per site (65,536 addresses each):
   10.0.0.0/16  = Headquarters
   10.1.0.0/16  = NYC Office
   10.2.0.0/16  = London Office
@@ -124,12 +124,32 @@ allocation_plan = {
     ]
 }
 
-# Validate no overlaps
-all_networks = [ip_network(b['cidr']) for b in allocation_plan['blocks']]
-for i, n1 in enumerate(all_networks):
-    for j, n2 in enumerate(all_networks):
-        if i < j and n1.overlaps(n2):
-            print(f"OVERLAP: {n1} overlaps {n2}")
+# Validate sibling overlaps and parent-child containment
+def validate_allocations(items, parent_cidr=None):
+    parent_network = ip_network(parent_cidr) if parent_cidr else None
+    child_networks = []
+
+    for item in items:
+        network = ip_network(item['cidr'])
+        child_networks.append(network)
+
+        if parent_network and not (
+            network.network_address in parent_network
+            and network.broadcast_address in parent_network
+        ):
+            print(f"OUTSIDE: {network} is not contained in {parent_network}")
+
+        for child_key in ('blocks', 'sites', 'vlans'):
+            if child_key in item:
+                validate_allocations(item[child_key], item['cidr'])
+
+    for i, n1 in enumerate(child_networks):
+        for n2 in child_networks[i + 1:]:
+            if n1.overlaps(n2):
+                print(f"OVERLAP: {n1} overlaps {n2}")
+
+
+validate_allocations(allocation_plan['blocks'], allocation_plan['root'])
 
 print("Validation complete")
 print(json.dumps(allocation_plan, indent=2))
