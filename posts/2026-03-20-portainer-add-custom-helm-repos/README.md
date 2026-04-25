@@ -8,64 +8,66 @@ Description: Learn how to add custom Helm repositories in Portainer to enable de
 
 ## Introduction
 
-Helm repositories are collections of packaged Kubernetes applications (charts). Portainer supports adding custom Helm repositories, allowing you to deploy applications from your organization's private charts, community repositories, or any publicly accessible Helm repo directly from the Portainer UI.
+Helm repositories are collections of packaged Kubernetes applications (charts). Portainer supports adding custom Helm repositories, allowing you to deploy applications from your organization's own charts, community repositories, or any publicly accessible Helm repo directly from the Portainer UI.
 
 ## Prerequisites
 
 - Portainer CE or BE with a Kubernetes environment connected
-- Admin access to Portainer
-- A Helm repository URL (HTTP/HTTPS)
+- A Portainer user account (admin access is only required to change the global default Helm repository in **Settings**)
+- A publicly reachable Helm repository URL (HTTP/HTTPS)
 
 ## Understanding Helm in Portainer
 
 Portainer uses Helm to deploy applications from chart repositories. When you add a repository:
 1. Portainer fetches the repository index
-2. Available charts appear in the **Helm charts** list
+2. The repository becomes available as a **Helm chart source** when you deploy an application from a Helm repository
 3. Users can deploy charts with customizable values directly from the UI
 
 ## Step 1: Navigate to Helm Repository Settings
 
-1. Log into Portainer as an admin.
-2. Select your **Kubernetes** environment.
-3. Click the **gear icon** (environment settings).
-4. Scroll to the **Helm repository** section.
+1. Log into Portainer.
+2. Click your username in the top-right and select **My account**.
+3. Scroll to the **Helm repositories** section.
 
-Alternatively, for global Helm repo settings:
+Alternatively, to replace the default Bitnami Helm repository for all users:
 1. Go to **Settings** in the admin sidebar.
-2. Click **App Templates** or **Helm repositories** section.
+2. Under **Kubernetes settings**, use the **Helm Repository** field in **General**.
 
-## Step 2: Add a Custom Repository via Environment Settings
+## Step 2: Add a Custom Repository via My Account
 
-In environment-level Helm settings:
+In your account-level Helm settings:
 
-1. Click **Add a Helm repository**.
+1. Click **Add Helm repository**.
 2. Enter the repository URL:
    - Example: `https://charts.yourcompany.com`
-   - Example: `https://helm.nginx.com/stable`
+   - Example: `https://kubernetes.github.io/ingress-nginx`
    - Example: `https://charts.jetstack.io` (cert-manager)
-3. If the repository requires authentication:
-   - Enter a **username** and **password**
-   - Or provide a **CA certificate** file for private repos with self-signed certs
-4. Click **Save**.
+3. Click **Save Helm repository**.
+4. Repositories added here are only available to your user.
+
+For repositories that use certificates signed by a private CA, Portainer documents CA upload under **Settings** > **General** > **Certificate Authority file for Kubernetes Helm repositories** (BE only).
 
 ## Step 3: Add Helm Repository via Portainer API
 
-For automated setup, add repos via the API:
+For automated setup, add a user-scoped repository via the API:
 
 ```bash
 # Authenticate
 
 TOKEN=$(curl -s -X POST https://portainer.example.com/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' | jq -r '.jwt')
+  -d '{"Username":"admin","Password":"yourpassword"}' | jq -r '.jwt')
 
-# Add a custom Helm repository to endpoint 1
+# Get the current user ID
+USER_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://portainer.example.com/api/users/me" | jq -r '.Id')
+
+# Add a user-scoped Helm repository
 curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  "https://portainer.example.com/api/endpoints/1/kubernetes/helm/repositories" \
+  "https://portainer.example.com/api/users/$USER_ID/helm/repositories" \
   -d '{
-    "url": "https://charts.yourcompany.com",
-    "name": "company-charts"
+    "url": "https://charts.yourcompany.com"
   }'
 ```
 
@@ -73,7 +75,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
 
 Add these popular community repositories:
 
-```bash
+```text
 # These can be added via Portainer UI or helm CLI on the host
 
 # Ingress NGINX
@@ -102,23 +104,23 @@ https://argoproj.github.io/argo-helm
 
 After adding a repository:
 
-1. In the Kubernetes environment, go to **Helm** in the left sidebar.
-2. You will see all available charts from configured repositories.
-3. Click a chart name to see details and available versions.
-4. Click **Install**.
-5. Fill in:
-   - **Release name**: e.g., `my-nginx`
-   - **Namespace**: Select or create a namespace
-   - **Chart values**: Customize in the YAML editor
+1. In the Kubernetes environment, go to **Applications** and click **Create from code**.
+2. In **Deploy from**, select **Helm repository**.
+3. Select a **Namespace** and enter a **Release name**.
+4. Choose your Helm chart source from the dropdown, then select a chart.
+5. Review the chart version and customize values in the YAML editor if needed.
 6. Click **Install**.
 
-## Step 6: Setting Up a Private Helm Repository
+## Step 6: Setting Up Your Own Helm Repository
 
-If you host your own charts (e.g., via GitHub Pages, S3, or ChartMuseum):
+If you host your own charts (e.g., via GitHub Pages, S3, or ChartMuseum) and expose a standard Helm repository URL that Portainer can reach:
 
 ```bash
 # Option 1: Helm push to ChartMuseum
 helm plugin install https://github.com/chartmuseum/helm-push
+
+# Add the ChartMuseum repo to Helm
+helm repo add my-repo https://chartmuseum.yourcompany.com
 
 # Package your chart
 helm package ./my-chart
@@ -146,18 +148,19 @@ helm repo index charts/ --url https://your-org.github.io/helm-charts/charts/
 
 ## Verifying the Repository
 
-After adding a repository, verify it appears in the Helm charts list:
+After adding a repository, verify it appears in your Helm repository list and is available when you deploy from a Helm repository:
 
 ```bash
-# Check repos configured on the Kubernetes environment
+# Check repos configured for the current user
 curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/endpoints/1/kubernetes/helm/repositories" | jq .
+  "https://portainer.example.com/api/users/$USER_ID/helm/repositories" | jq .
 
-# List available charts from a repo
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/endpoints/1/kubernetes/helm/charts?repo=https://charts.yourcompany.com" | jq .
+# Search charts from a repo
+curl -Gs -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode "repo=https://charts.yourcompany.com" \
+  "https://portainer.example.com/api/templates/helm"
 ```
 
 ## Conclusion
 
-Adding custom Helm repositories in Portainer extends the platform's application catalog with your organization's preferred charts. Whether you're using public community repos or a private ChartMuseum instance, the configuration is straightforward and can be automated via the API for consistent multi-cluster setups.
+Adding custom Helm repositories in Portainer extends the platform's application catalog with your organization's preferred charts. Whether you're using public community repos or an internally hosted ChartMuseum instance that Portainer can reach, the configuration is straightforward and can be automated via the API for consistent setups.
