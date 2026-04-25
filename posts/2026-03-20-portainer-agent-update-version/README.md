@@ -8,7 +8,7 @@ Description: Keep the Portainer Agent version synchronized with your Portainer s
 
 ## Introduction
 
-The Portainer Agent and Portainer server are versioned together. Running mismatched versions can cause connection failures or missing features. This guide covers updating agents on Docker standalone, Swarm, and Kubernetes.
+The Portainer Agent and Portainer server should use the same version. Portainer recommends updating the server before the agents, because newer servers can usually talk to older agents but the reverse is not always true. This guide covers updating agents on Docker standalone, Swarm, and Kubernetes.
 
 ## Checking Current Versions
 
@@ -26,73 +26,66 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   | python3 -m json.tool
 
 # Check agent version
-docker inspect portainer_agent | python3 -c "
-import sys, json
-c = json.load(sys.stdin)
-print('Agent Image:', c[0]['Config']['Image'])
-"
+docker inspect --format 'Agent Image: {{.Config.Image}}' portainer_agent
 ```
 
 ## Update Agent on Docker Standalone
 
 ```bash
-# 1. Pull the new version
-docker pull portainer/agent:latest
-# Or specify version: portainer/agent:2.21.0
+# 1. Set the agent version to match your Portainer server
+PORTAINER_VERSION=2.39.1
 
-# 2. Stop and remove old agent
+# 2. Pull the matching version
+docker pull portainer/agent:${PORTAINER_VERSION}
+
+# 3. Stop and remove old agent
 docker stop portainer_agent
 docker rm portainer_agent
 
-# 3. Run new agent with same configuration
+# 4. Run new agent with same configuration
 docker run -d \
   --name portainer_agent \
   --restart always \
   -p 9001:9001 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  portainer/agent:latest
+  portainer/agent:${PORTAINER_VERSION}
 
-# 4. Verify new version
-docker inspect portainer_agent | grep -i "Image"
+# 5. Verify new version
+docker inspect --format '{{.Config.Image}}' portainer_agent
 ```
 
 ## Update Agent on Docker Swarm
 
 ```bash
-# Update the global agent service to new image
+# Set the agent version to match your Portainer server
+PORTAINER_VERSION=2.39.1
+
+# Update the global agent service to the matching image
+# Replace portainer_agent if your service name differs.
+docker pull portainer/agent:${PORTAINER_VERSION}
 docker service update \
-  --image portainer/agent:latest \
-  --update-parallelism 1 \
-  --update-delay 10s \
-  portainer-agent_agent
+  --image portainer/agent:${PORTAINER_VERSION} \
+  --force \
+  portainer_agent
 
 # Monitor the update
-docker service ps portainer-agent_agent
+docker service ps portainer_agent
 
 # Check all replicas updated
-docker service ls | grep agent
+docker service ls | grep portainer
 ```
 
-## Update Agent on Kubernetes via Helm
+## Update Agent on Kubernetes
 
 ```bash
-# Update Helm repos
-helm repo update
+# Set the agent version to match your Portainer server
+PORTAINER_VERSION=2.39.1
 
-# Check available versions
-helm search repo portainer/portainer-agent --versions | head -10
-
-# Upgrade to latest
-helm upgrade portainer-agent \
-  -n portainer \
-  portainer/portainer-agent
-
-# Or upgrade to specific version
-helm upgrade portainer-agent \
-  -n portainer \
-  portainer/portainer-agent \
-  --version 1.0.58
+# Update the agent DaemonSet image
+kubectl set image daemonset/portainer-agent \
+  portainer-agent=portainer/agent:${PORTAINER_VERSION} \
+  -n portainer
 
 # Monitor rollout
 kubectl rollout status daemonset/portainer-agent -n portainer
@@ -106,11 +99,12 @@ kubectl rollout status daemonset/portainer-agent -n portainer
 
 AGENTS=("192.168.1.50" "192.168.1.51" "192.168.1.52")
 SSH_USER="ubuntu"
+PORTAINER_VERSION="2.39.1" # Match your Portainer server version
 
 for agent in "${AGENTS[@]}"; do
   echo "Updating agent on $agent..."
-  ssh "$SSH_USER@$agent" '
-    docker pull portainer/agent:latest
+  ssh "$SSH_USER@$agent" "
+    docker pull portainer/agent:${PORTAINER_VERSION}
     docker stop portainer_agent
     docker rm portainer_agent
     docker run -d \
@@ -119,13 +113,13 @@ for agent in "${AGENTS[@]}"; do
       -p 9001:9001 \
       -v /var/run/docker.sock:/var/run/docker.sock \
       -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-      portainer/agent:latest
-    docker inspect portainer_agent --format "{{.Config.Image}}"
-  '
+      portainer/agent:${PORTAINER_VERSION}
+    docker inspect portainer_agent --format '{{.Config.Image}}'
+  "
   echo "Agent updated on $agent"
 done
 ```
 
 ## Conclusion
 
-Keeping agent versions synchronized with the Portainer server is an important maintenance task. Pin agent versions to match the server version in production (e.g., `portainer/agent:2.21.0` not `latest`), and update both server and agents together during maintenance windows to avoid version skew.
+Keeping agent versions synchronized with the Portainer server is an important maintenance task. Pin agent versions to match the server version in production (for example, `portainer/agent:<server-version>` not `latest`), and update Portainer Server first, then the agents during maintenance windows to avoid version skew.
