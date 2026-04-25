@@ -50,7 +50,7 @@ tofu plan
 #   ~ enable_dns_hostnames = false -> true
 ```
 
-When the plan shows "updated in-place" after import, it means your HCL configuration doesn't match the actual resource. Fix the configuration to match reality.
+When the plan shows "updated in-place" after import, it means your HCL configuration doesn't match the actual resource. If your goal is a zero-change import, fix the configuration to match reality before applying.
 
 ## Saving an Import Plan
 
@@ -59,7 +59,7 @@ When the plan shows "updated in-place" after import, it means your HCL configura
 tofu plan -out=import.tfplan
 
 # Review the saved plan
-tofu show import.tfplan
+tofu show -plan=import.tfplan
 
 # Apply exactly what was planned
 tofu apply import.tfplan
@@ -67,13 +67,13 @@ tofu apply import.tfplan
 
 ## Using -generate-config-out for Preview
 
-Generate configuration to see exactly what attributes the resource has:
+Generate configuration for import targets that do not already exist in your configuration. The generated file is a starting point, and `preview.tf` must be a new file:
 
 ```bash
-# Preview what config would be generated
+# Preview what config would be generated for missing resource blocks
 tofu plan -generate-config-out=preview.tf
 
-# Review the generated config without applying
+# Review the generated config before applying
 cat preview.tf
 
 # If satisfied, proceed with apply
@@ -129,4 +129,4 @@ tofu plan
 
 ## Conclusion
 
-Previewing imports with `tofu plan` before applying is essential for understanding what will be imported and catching configuration mismatches early. Save import plans with `-out` for reproducible, reviewable deployments. The goal of every import is for `tofu plan` to show no changes after the import is applied - your configuration should accurately describe the existing resource.
+Previewing imports with `tofu plan` before applying is essential for understanding what will be imported and catching configuration mismatches early. Save import plans with `-out` for reproducible, reviewable deployments. For a zero-change import, the goal is for `tofu plan` to show no changes after the import is applied - your configuration should accurately describe the existing resource.
