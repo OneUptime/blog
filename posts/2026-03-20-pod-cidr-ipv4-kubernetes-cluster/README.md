@@ -12,13 +12,14 @@ The Pod CIDR defines the IPv4 address pool from which Kubernetes assigns address
 
 ```text
 Recommended: 10.244.0.0/16 (default for Flannel)
-Alternative: 192.168.0.0/16 (default for Calico)
+Alternative: 192.168.0.0/16 (common default for Calico manifests)
 Custom:      10.100.0.0/16 (use any private range not in use)
 
-With /16 Pod CIDR and /24 per-node allocation:
+With /16 Pod CIDR and the default /24 per-node allocation:
 - Total addresses: 65,536
-- Addresses per node: 256 (minus reserved = ~254 pods per node)
-- Maximum nodes: 256
+- Addresses per node block: 256 (~254 usable in a /24)
+- Maximum node CIDR blocks: 256
+- Actual pods per node also depend on kubelet maxPods (110 by default) and CNI behavior
 ```
 
 ## Setting Pod CIDR with kubeadm
@@ -27,7 +28,7 @@ With /16 Pod CIDR and /24 per-node allocation:
 # Create a kubeadm configuration file
 
 cat > kubeadm-config.yaml << 'EOF'
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 networking:
   # IPv4 CIDR for pod addresses
@@ -65,28 +66,31 @@ kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.pod
 
 ## Per-Node CIDR Allocation
 
-The kube-controller-manager automatically carves the Pod CIDR into per-node blocks:
+When kubeadm is given a Pod CIDR, it configures the kube-controller-manager to carve the cluster Pod CIDR into per-node blocks. With the default IPv4 mask size, these are /24 blocks:
 
 ```bash
 # Check what CIDR is assigned to a specific node
 kubectl get node worker-1 -o jsonpath='{.spec.podCIDR}'
-# Expected: 10.244.1.0/24
+# Example: 10.244.1.0/24
 
 kubectl get node worker-2 -o jsonpath='{.spec.podCIDR}'
-# Expected: 10.244.2.0/24
+# Example: 10.244.2.0/24
 ```
 
 ## What Happens After cluster init
 
-After setting the Pod CIDR, install a CNI plugin that understands it:
+After setting the Pod CIDR, install a CNI plugin and make sure its configured pod range matches:
 
 ```bash
-# For Flannel (uses podCIDR automatically from node spec)
-kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
+# For Flannel, this manifest assumes podSubnet 10.244.0.0/16
+kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+# If you chose a different podSubnet, download the manifest and change the
+# Network value in net-conf.json before applying it.
 
-# For Calico (specify the pod CIDR in the Calico config)
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
-# Then configure the CALICO_IPV4POOL_CIDR env var to match your podSubnet
+# For Calico, set CALICO_IPV4POOL_CIDR in the manifest before the first apply
+curl -O https://raw.githubusercontent.com/projectcalico/calico/v3.31.4/manifests/calico.yaml
+# Edit calico.yaml so CALICO_IPV4POOL_CIDR matches your podSubnet
+kubectl apply -f calico.yaml
 ```
 
 ## Verifying Pod IP Assignment
