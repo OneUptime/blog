@@ -76,15 +76,19 @@ SERVICE_PRINCIPAL_NAME="portainer-acr-pull"
 ACR_REGISTRY_ID=$(az acr show --name $ACR_NAME --query id --output tsv)
 
 # Create service principal with acrpull role
-SP=$(az ad sp create-for-rbac \
+SP_PASSWORD=$(az ad sp create-for-rbac \
   --name $SERVICE_PRINCIPAL_NAME \
   --role acrpull \
   --scopes $ACR_REGISTRY_ID \
-  --years 2)
+  --years 2 \
+  --query password \
+  --output tsv)
 
-# Extract credentials
-SP_ID=$(echo $SP | jq -r .appId)
-SP_PASSWORD=$(echo $SP | jq -r .password)
+# Get the appId for the service principal
+SP_ID=$(az ad sp list \
+  --display-name $SERVICE_PRINCIPAL_NAME \
+  --query '[].appId' \
+  --output tsv)
 
 echo "Service Principal ID: $SP_ID"
 echo "Service Principal Password: $SP_PASSWORD"
@@ -168,9 +172,13 @@ Service principal credentials should be rotated periodically:
 
 ```bash
 # Reset service principal password
-az ad sp credential reset \
+NEW_SP_PASSWORD=$(az ad sp credential reset \
   --id $SP_ID \
-  --years 2
+  --years 2 \
+  --query password \
+  --output tsv)
+
+echo "New Service Principal Password: $NEW_SP_PASSWORD"
 
 # Update Portainer with the new password:
 # Go to Registries → Edit the ACR registry → Update password
@@ -178,7 +186,7 @@ az ad sp credential reset \
 
 ## Step 9: Use Managed Identity (Azure Kubernetes Service)
 
-If Portainer runs on AKS with managed identity:
+If Portainer deploys workloads to AKS and the cluster uses managed identity:
 
 ```bash
 # Grant AKS kubelet identity pull access to ACR
@@ -187,8 +195,10 @@ az aks update \
   --resource-group myrg \
   --attach-acr myregistry
 
-# AKS nodes can now pull from ACR without explicit credentials
+# AKS nodes can now pull from ACR without separate image pull secrets
 ```
+
+This affects AKS workload pulls. To connect ACR as a registry inside Portainer itself, add the registry in Portainer with admin or service principal credentials as shown above.
 
 ## Geo-Replication (Multiple Regions)
 
@@ -211,7 +221,7 @@ Error: unauthorized: authentication required
 
 - Verify the service principal or admin credentials
 - Check that the SP has `acrpull` role assignment
-- Ensure the SP is not expired: `az ad sp show --id $SP_ID`
+- Ensure the SP credential is not expired: `az ad sp credential list --id $SP_ID`
 
 ### Repository Not Found
 
