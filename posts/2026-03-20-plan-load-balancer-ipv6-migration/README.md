@@ -34,8 +34,8 @@ frontend web_ipv4
     default_backend web_servers
 
 frontend web_ipv6
-    bind :::80
-    bind :::443 ssl crt /etc/ssl/certs/example.com.pem
+    bind [::]:80 v6only
+    bind [::]:443 v6only ssl crt /etc/ssl/certs/example.com.pem
     # IPv6 client address in X-Forwarded-For
     option forwardfor
     default_backend web_servers
@@ -83,7 +83,7 @@ http {
         location / {
             proxy_pass http://app_servers;
             # Pass IPv6 client address in headers
-            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header Host $host;
             proxy_set_header X-Forwarded-Proto $scheme;
@@ -95,14 +95,15 @@ http {
 ## Kubernetes LoadBalancer Service
 
 ```yaml
-# Dual-stack LoadBalancer service for Kubernetes
+# Dual-stack LoadBalancer service for Kubernetes on AWS
 apiVersion: v1
 kind: Service
 metadata:
   name: web-service
   annotations:
-    # Cloud-specific annotations for dual-stack LB
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    # AWS Load Balancer Controller annotations for a public dual-stack NLB
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
     service.beta.kubernetes.io/aws-load-balancer-ip-address-type: "dualstack"
 spec:
   type: LoadBalancer
@@ -158,8 +159,8 @@ curl -6 -f http://[2001:db8::10]:8080/health
 curl -6 -f https://[2001:db8::10]:8443/health
 
 # Verify load balancer reaches backends via IPv6
-# In HAProxy stats:
-# echo "show servers state web_servers" | socat /var/run/haproxy/admin.sock stdio
+# Via HAProxy Runtime API:
+# echo "show servers state web_servers" | socat stdio unix-connect:/var/run/haproxy/admin.sock
 ```
 
 ## Migration Steps
