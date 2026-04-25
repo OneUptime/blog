@@ -39,12 +39,13 @@ echo 1 > /proc/sys/net/ipv4/ip_forward
 iptables -t nat -A PREROUTING -i eth1 -p tcp --dport 80 \
     -j DNAT --to-destination 192.168.1.10:80
 
-# Allow forwarded traffic
-iptables -A FORWARD -i eth1 -p tcp -d 192.168.1.10 --dport 80 \
-    -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+# Allow new forwarded traffic to the web server
+iptables -A FORWARD -i eth1 -o eth0 -p tcp -d 192.168.1.10 --dport 80 \
+    -m conntrack --ctstate NEW -j ACCEPT
 
-# MASQUERADE for return traffic
-iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+# Allow return traffic
+iptables -A FORWARD -i eth0 -o eth1 \
+    -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 ```
 
 ### Example 2: Forward External Port 2222 to Internal SSH (port 22)
@@ -53,7 +54,11 @@ iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 iptables -t nat -A PREROUTING -i eth1 -p tcp --dport 2222 \
     -j DNAT --to-destination 192.168.1.20:22
 
-iptables -A FORWARD -i eth1 -p tcp -d 192.168.1.20 --dport 22 -j ACCEPT
+iptables -A FORWARD -i eth1 -o eth0 -p tcp -d 192.168.1.20 --dport 22 \
+    -m conntrack --ctstate NEW -j ACCEPT
+
+iptables -A FORWARD -i eth0 -o eth1 \
+    -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 ```
 
 ## Port Forwarding with nftables
@@ -63,18 +68,19 @@ table inet nat {
     chain prerouting {
         type nat hook prerouting priority -100;
         # Forward port 80 to internal web server
-        tcp dport 80 dnat to 192.168.1.10:80
+        tcp dport 80 dnat ip to 192.168.1.10:80
         # Forward port 2222 to internal SSH
-        tcp dport 2222 dnat to 192.168.1.20:22
+        tcp dport 2222 dnat ip to 192.168.1.20:22
     }
     chain postrouting {
         type nat hook postrouting priority 100;
-        masquerade
     }
 }
 ```
 
 ## Port Forwarding on Cisco IOS
+
+Assume the inside and outside interfaces are already configured with `ip nat inside` and `ip nat outside`.
 
 ```cisco
 ! Forward TCP port 80 to 192.168.1.10
@@ -90,9 +96,9 @@ ip nat inside source static udp 192.168.1.53 53 203.0.113.1 53
 ## Port Range Forwarding
 
 ```bash
-# Forward ports 8000-8010 to internal host
+# Forward ports 8000-8010 to the same ports on the internal host
 iptables -t nat -A PREROUTING -i eth1 -p tcp --dport 8000:8010 \
-    -j DNAT --to-destination 192.168.1.10:8000-8010
+    -j DNAT --to-destination 192.168.1.10
 ```
 
 ## Verify Port Forwarding
@@ -121,9 +127,9 @@ nc -zv 203.0.113.1 2222
 ## Key Takeaways
 
 - Port forwarding uses DNAT in the PREROUTING chain to redirect incoming traffic.
-- Always add a corresponding FORWARD rule to allow the forwarded traffic.
-- MASQUERADE or POSTROUTING SNAT ensures return traffic is handled correctly.
-- On Cisco, `ip nat inside source static tcp private_ip port public_ip port` enables port forwarding.
+- If your FORWARD policy is restrictive, add a corresponding FORWARD rule to allow the forwarded traffic.
+- SNAT or MASQUERADE is only needed when replies would not otherwise pass back through the NAT device, such as hairpin NAT.
+- On Cisco, `ip nat inside source static tcp private_ip port public_ip port` creates the port mapping after inside and outside interfaces are defined.
 
 **Related Reading:**
 
