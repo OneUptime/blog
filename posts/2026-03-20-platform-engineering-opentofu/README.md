@@ -86,6 +86,18 @@ data "aws_ssm_parameter" "environment" {
   name = "/platform/environment"
 }
 
+data "aws_ssm_parameter" "cluster_name" {
+  name = "/platform/ecs-cluster-name"
+}
+
+data "aws_ssm_parameter" "private_subnets" {
+  name = "/platform/private-subnet-ids"
+}
+
+data "aws_ssm_parameter" "alert_topic" {
+  name = "/platform/alert-sns-topic-arn"
+}
+
 # ECS service with platform-enforced settings
 resource "aws_ecs_service" "main" {
   name            = var.service_name
@@ -109,7 +121,7 @@ resource "aws_ecs_service" "main" {
   }
 
   network_configuration {
-    subnets         = data.aws_ssm_parameter.private_subnets.value
+    subnets         = split(",", data.aws_ssm_parameter.private_subnets.value)
     security_groups = [aws_security_group.service.id]
   }
 }
@@ -126,7 +138,7 @@ resource "aws_cloudwatch_metric_alarm" "high_cpu" {
   threshold           = 80
 
   dimensions = {
-    ClusterName = data.aws_ecs_cluster.platform.name
+    ClusterName = data.aws_ssm_parameter.cluster_name.value
     ServiceName = var.service_name
   }
 
@@ -159,6 +171,12 @@ module "orders_api" {
 ```hcl
 # service_catalog.tf
 # Platform stores shared configuration in SSM for consuming modules
+resource "aws_ssm_parameter" "environment" {
+  name  = "/platform/environment"
+  type  = "String"
+  value = var.environment
+}
+
 resource "aws_ssm_parameter" "cluster_name" {
   name  = "/platform/ecs-cluster-name"
   type  = "String"
