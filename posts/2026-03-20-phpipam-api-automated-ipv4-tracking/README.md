@@ -16,6 +16,7 @@ phpIPAM is an open-source IP Address Management (IPAM) tool with a full REST API
 2. Navigate to **Administration > phpIPAM settings > Feature settings**
 3. Enable **API** and set the API key encryption method
 4. Create an API application under **Administration > API** with your desired permissions
+5. Ensure URL rewriting is enabled on the web server, because phpIPAM requires it for API routes
 
 ## Authentication
 
@@ -25,7 +26,7 @@ phpIPAM supports token-based authentication:
 # Authenticate and obtain a token
 
 TOKEN=$(curl -s -X POST \
-  "http://phpipam.example.com/api/myapp/user/" \
+  "https://phpipam.example.com/api/myapp/user/" \
   -H "Content-Type: application/json" \
   -u "admin:adminpassword" | jq -r '.data.token')
 
@@ -37,7 +38,7 @@ echo "Token: ${TOKEN}"
 ```bash
 # Get all subnets in section 1 (Local)
 curl -s \
-  "http://phpipam.example.com/api/myapp/subnets/" \
+  "https://phpipam.example.com/api/myapp/sections/1/subnets/" \
   -H "token: ${TOKEN}" | jq '.data[] | {id, subnet, mask, description}'
 ```
 
@@ -48,7 +49,7 @@ SUBNET_ID=5   # Subnet ID from the list command
 
 # Request the first available IP from subnet 5
 AVAILABLE_IP=$(curl -s \
-  "http://phpipam.example.com/api/myapp/subnets/${SUBNET_ID}/first_free/" \
+  "https://phpipam.example.com/api/myapp/subnets/${SUBNET_ID}/first_free/" \
   -H "token: ${TOKEN}" | jq -r '.data')
 
 echo "Next available IP: ${AVAILABLE_IP}"
@@ -61,7 +62,7 @@ Once you have the IP, register it with the new host's details:
 ```bash
 # Register the IP with hostname and description
 curl -s -X POST \
-  "http://phpipam.example.com/api/myapp/addresses/" \
+  "https://phpipam.example.com/api/myapp/addresses/" \
   -H "Content-Type: application/json" \
   -H "token: ${TOKEN}" \
   -d "{
@@ -74,14 +75,14 @@ curl -s -X POST \
   }"
 ```
 
-Tag values: `1` = Offline, `2` = Used, `3` = Reserved, `4` = DHCP
+Default tag values in a stock phpIPAM install are: `1` = Offline, `2` = Used, `3` = Reserved, `4` = DHCP. If your installation uses custom tags, verify them with `/api/myapp/addresses/tags/`.
 
 ## Searching for an IP Address
 
 ```bash
 # Search for a specific IP
 curl -s \
-  "http://phpipam.example.com/api/myapp/addresses/search/${AVAILABLE_IP}/" \
+  "https://phpipam.example.com/api/myapp/addresses/search/${AVAILABLE_IP}/" \
   -H "token: ${TOKEN}" | jq '.data[] | {id, ip, hostname, description}'
 ```
 
@@ -92,7 +93,7 @@ IP_RECORD_ID=42   # Get this from the search or create response
 
 # Update hostname and description
 curl -s -X PATCH \
-  "http://phpipam.example.com/api/myapp/addresses/${IP_RECORD_ID}/" \
+  "https://phpipam.example.com/api/myapp/addresses/${IP_RECORD_ID}/" \
   -H "Content-Type: application/json" \
   -H "token: ${TOKEN}" \
   -d '{"hostname": "web-prod-07-renamed.example.com", "tag": 2}'
@@ -103,7 +104,7 @@ curl -s -X PATCH \
 ```bash
 # Release an IP record when the server is decommissioned
 curl -s -X DELETE \
-  "http://phpipam.example.com/api/myapp/addresses/${IP_RECORD_ID}/" \
+  "https://phpipam.example.com/api/myapp/addresses/${IP_RECORD_ID}/" \
   -H "token: ${TOKEN}"
 ```
 
@@ -112,8 +113,16 @@ curl -s -X DELETE \
 Use the Terraform phpIPAM provider for infrastructure-as-code IPAM integration:
 
 ```hcl
+terraform {
+  required_providers {
+    phpipam = {
+      source = "lord-kyron/phpipam"
+    }
+  }
+}
+
 provider "phpipam" {
-  server    = "http://phpipam.example.com"
+  endpoint  = "https://phpipam.example.com/api"
   username  = "api-user"
   password  = var.phpipam_password
   app_id    = "myapp"
@@ -130,6 +139,13 @@ resource "phpipam_address" "vm_ip" {
   ip_address  = data.phpipam_first_free_address.next_ip.ip_address
   hostname    = "web-prod-07.example.com"
   description = "Terraform managed"
+
+  lifecycle {
+    ignore_changes = [
+      subnet_id,
+      ip_address,
+    ]
+  }
 }
 ```
 
