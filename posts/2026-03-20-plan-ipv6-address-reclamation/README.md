@@ -16,7 +16,7 @@ IPv6 address reclamation recovers prefixes and addresses that are assigned in IP
 flowchart TD
     A[Identify Unused Addresses] --> B{Last seen on network?}
     B -->|< 30 days| C[Keep - may be offline]
-    B -->|> 30 days| D[Mark as Deprecated in IPAM]
+    B -->|> 30 days| D[Flag in IPAM for Review]
     D --> E{Confirmed decommissioned?}
     E -->|No| F[Notify owner, wait 14 days]
     F --> G{Response?}
@@ -25,40 +25,40 @@ flowchart TD
     E -->|Yes| H
     H --> I[Remove DNS records]
     H --> J[Remove firewall rules]
-    H --> K[Mark IPAM address as Available]
+    H --> K[Mark IPAM address as Deprecated]
 ```
 
 ## Step 1: Identify Reclamation Candidates
+
+Use monitoring or IPAM metadata for your actual 30-day policy; the example below is a probe-based screening pass from a single host, so the NDP check only reflects that host's local neighbor cache.
 
 ```python
 #!/usr/bin/env python3
 # find_reclamation_candidates.py
 
 import pynetbox
-import dns.resolver
 import subprocess
 import ipaddress
-from datetime import datetime
 
 nb = pynetbox.api("http://netbox.internal", token="your-token")
 
 def is_address_reachable(ipv6_addr: str) -> bool:
     """Check if an IPv6 address responds to ping."""
     result = subprocess.run(
-        ["ping6", "-c", "2", "-W", "3", ipv6_addr],
+        ["ping", "-6", "-c", "2", "-W", "3", ipv6_addr],
         capture_output=True
     )
     return result.returncode == 0
 
 def is_in_ndp(ipv6_addr: str) -> bool:
-    """Check if address is in the local NDP table."""
+    """Check if address is in the validation host's local NDP table."""
     result = subprocess.run(
-        ["ip", "-6", "neigh", "show", ipv6_addr],
+        ["ip", "-6", "neigh", "show", "to", ipv6_addr],
         capture_output=True, text=True
     )
     return bool(result.stdout.strip())
 
-# Find active IPAM addresses not seen recently
+# Find active IPv6 addresses that do not respond to checks from this host
 
 print("Checking reclamation candidates...")
 candidates = []
@@ -105,7 +105,7 @@ IPv6 Address Reclamation Notice
 Address: {address}
 Description: {description}
 
-This IPv6 address has not been seen active on the network for 30+ days.
+This IPv6 address has not been observed as active for 30+ days.
 It will be reclaimed in 14 days unless you confirm it is still required.
 
 To retain this address, reply to this email or update the IPAM record
@@ -129,15 +129,16 @@ def reclaim_ipv6_address(address: str, reason: str = "Unused"):
     """
     Reclaim an IPv6 address:
     1. Remove DNS records
-    2. Update firewall rule annotations
-    3. Mark IPAM as available
+    2. Clear IPAM assignment
+    3. Mark IPAM as deprecated
     """
     import subprocess
+    from datetime import datetime
 
     # Find in IPAM
     ip_obj = nb.ipam.ip_addresses.get(address=f"{address}/128")
     if not ip_obj:
-        ip_obj = nb.ipam.ip_addresses.filter(address__startswith=address)
+        ip_obj = nb.ipam.ip_addresses.filter(address__isw=address)
         ip_obj = list(ip_obj)[0] if ip_obj else None
 
     if not ip_obj:
@@ -151,13 +152,13 @@ def reclaim_ipv6_address(address: str, reason: str = "Unused"):
     if dns_name:
         result = subprocess.run(
             ["nsupdate", "-k", "/etc/named.key", "-v"],
-            input=f"zone example.com\ndel {dns_name}. AAAA\nsend\n".encode(),
+            input=f"zone example.com\nupdate delete {dns_name}. AAAA\nsend\n".encode(),
             capture_output=True
         )
         if result.returncode == 0:
             print(f"Removed DNS: {dns_name} AAAA")
 
-    # Update IPAM: mark as available
+    # Update IPAM: clear assignment and mark as deprecated
     nb.ipam.ip_addresses.update([{
         "id": ip_obj.id,
         "status": "deprecated",
@@ -174,18 +175,18 @@ def reclaim_ipv6_address(address: str, reason: str = "Unused"):
 
 ```bash
 # After reclamation, verify address is no longer reachable
-ping6 -c 3 2001:db8::10
+ping -6 -c 3 2001:db8::10
 # Should fail
 
 # Verify DNS is removed
-dig AAAA server-01.example.com
+dig server-01.example.com AAAA
 # Should return NXDOMAIN or no AAAA record
 
-# Verify NDP table no longer contains address
-ip -6 neigh show 2001:db8::10
+# Verify the validation host's NDP table no longer contains address
+ip -6 neigh show to 2001:db8::10
 # Should return empty or "FAILED" state
 ```
 
 ## Conclusion
 
-IPv6 address reclamation follows a workflow: identify candidates (not seen on network or in NDP table), notify owners with a 14-day grace period, then reclaim by removing DNS records, clearing IPAM assignments, and marking the address as deprecated. Automation reduces the operational burden - schedule monthly reclamation scans and batch process candidates rather than handling individually. Keep reclaimed addresses in IPAM as "deprecated" rather than deleting them to preserve audit history showing when and why addresses were used.
+IPv6 address reclamation follows a workflow: identify candidates using monitoring data or host-side validation checks, notify owners with a 14-day grace period, then reclaim by removing DNS records, clearing IPAM assignments, and marking the address as deprecated. Automation reduces the operational burden - schedule monthly reclamation scans and batch process candidates rather than handling individually. Keep reclaimed addresses in IPAM as "deprecated" rather than deleting them to preserve audit history showing when and why addresses were used.
