@@ -51,11 +51,11 @@ Rancher Management Cluster
 ```bash
 # Questions to guide topology decisions:
 
-# 1. Compliance: Do any workloads require dedicated infrastructure?
+# 1. Compliance: Do any workloads require stronger isolation or dedicated infrastructure?
 
-#    - PCI-DSS: Requires network isolation for cardholder data
-#    - HIPAA: PHI must be isolated from non-PHI workloads
-#    - FedRAMP: Government workloads may require air-gapped clusters
+#    - PCI-DSS: Use segmentation to reduce scope and protect cardholder data environments
+#    - HIPAA: ePHI requires administrative, physical, and technical safeguards; stronger isolation may be appropriate based on risk analysis
+#    - FedRAMP: Authorization boundary and boundary-protection requirements may justify dedicated environments
 
 # 2. Team boundaries: Do teams need cluster-level RBAC separation?
 #    - Namespace RBAC in Rancher Projects handles most multi-team needs
@@ -69,31 +69,31 @@ Rancher Management Cluster
 ## Step 2: Size Your Clusters
 
 ```yaml
-# Cluster sizing guidelines
+# Example starting points; validate against workload profiles and load tests
 
 # Small cluster (dev/test):
-#   3 control plane nodes: 4 vCPU, 8 GB RAM
-#   3-10 worker nodes: 4-8 vCPU, 16-32 GB RAM
+#   3 control plane nodes: 4 vCPU, 8 GB RAM each
+#   3-10 worker nodes: 4-8 vCPU, 16-32 GB RAM each
 #   Use case: development, CI/CD, testing
 
 # Medium cluster (staging):
-#   3 control plane nodes: 4 vCPU, 16 GB RAM
-#   5-20 worker nodes: 8-16 vCPU, 32-64 GB RAM
+#   3 control plane nodes: 4 vCPU, 16 GB RAM each
+#   5-20 worker nodes: 8-16 vCPU, 32-64 GB RAM each
 #   Use case: staging, UAT, load testing
 
 # Large cluster (production):
-#   3-5 control plane nodes: 8 vCPU, 32 GB RAM
-#   20-100 worker nodes: 16-32 vCPU, 64-128 GB RAM
+#   3-5 control plane nodes: 8 vCPU, 32 GB RAM each
+#   20-100 worker nodes: 16-32 vCPU, 64-128 GB RAM each
 #   Use case: production workloads, scale-tested
 
 # Rancher management cluster:
-#   3 nodes: 8 vCPU, 32 GB RAM (for up to 300 downstream clusters)
+#   3 nodes: 8 vCPU, 32 GB RAM each (Rancher medium upstream cluster baseline for up to 300 downstream clusters)
 ```
 
 ## Step 3: Plan Node Pools
 
 ```yaml
-# RKE2 cluster with specialized node pools
+# RKE2 cluster with specialized machine pools
 apiVersion: provisioning.cattle.io/v1
 kind: Cluster
 metadata:
@@ -101,14 +101,15 @@ metadata:
   namespace: fleet-default
 spec:
   rkeConfig:
-    nodePools:
-      # Control plane pool
+    machinePools:
+      # Control plane + etcd pool
       - name: control-plane
         quantity: 3
         machineConfigRef:
           kind: VmwarevsphereConfig
           name: control-plane-vm
-        roles: [controlplane, etcd]
+        controlPlaneRole: true
+        etcdRole: true
 
       # General workload pool
       - name: workers-general
@@ -116,7 +117,7 @@ spec:
         machineConfigRef:
           kind: VmwarevsphereConfig
           name: worker-vm
-        roles: [worker]
+        workerRole: true
 
       # Memory-optimized pool for databases
       - name: workers-db
@@ -124,9 +125,7 @@ spec:
         machineConfigRef:
           kind: VmwarevsphereConfig
           name: worker-memory-vm
-        roles: [worker]
-        labels:
-          workload-type: database
+        workerRole: true
 ```
 
 ## Step 4: Namespace Organization
@@ -136,22 +135,35 @@ spec:
 # Recommended namespace naming convention:
 #   {team}-{environment}  e.g., payments-prod, payments-staging
 
-# Create a Project for each team in Rancher
-# Project maps to ResourceQuota + LimitRange + RBAC roles
+# Create a Project in Rancher's management cluster
+# Assign namespaces to the Project with the field.cattle.io/projectId annotation
 
 apiVersion: management.cattle.io/v3
 kind: Project
 metadata:
-  name: payments-team
+  name: p-payments
+  namespace: c-m-abcde
 spec:
+  clusterName: c-m-abcde
   displayName: "Payments Team"
-  namespaces:
-    - payments-prod
-    - payments-staging
   resourceQuota:
     limit:
       limitsCpu: "40"
       limitsMemory: "80Gi"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: payments-prod
+  annotations:
+    field.cattle.io/projectId: c-m-abcde:p-payments
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: payments-staging
+  annotations:
+    field.cattle.io/projectId: c-m-abcde:p-payments
 ```
 
 ## Step 5: Plan for Cross-Cluster Communication
@@ -163,11 +175,16 @@ spec:
 # Option 3: Submariner for cross-cluster pod networking
 
 # Shared services (monitoring, logging) pattern:
-# Deploy central Prometheus in management cluster
+# Deploy shared observability in a shared services cluster
 # Use remote_write from downstream clusters
-prometheus:
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: cluster-monitoring
+  namespace: cattle-monitoring-system
+spec:
   remoteWrite:
-    - url: "https://prometheus.management.company.com/api/v1/write"
+    - url: "https://metrics.shared-services.company.com/api/v1/write"
       basicAuth:
         username:
           name: prometheus-remote-write-secret
