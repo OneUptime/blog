@@ -8,7 +8,7 @@ Description: Configure Kubernetes Pod Disruption Budgets through Portainer to en
 
 ---
 
-A Pod Disruption Budget (PDB) tells Kubernetes the minimum number of pods for a workload that must remain available during voluntary disruptions (node drains, rolling upgrades, maintenance). Without PDBs, a cluster upgrade could simultaneously evict all replicas of a service and cause an outage. Portainer's manifest interface makes PDB management straightforward.
+A Pod Disruption Budget (PDB) tells Kubernetes how many pods for a workload must remain available during voluntary disruptions such as node drains, cluster upgrades, and maintenance operations. Without PDBs, a cluster upgrade could simultaneously evict all replicas of a service and cause an outage. Portainer's manifest workflow makes PDB management straightforward.
 
 ## When PDBs Are Critical
 
@@ -21,12 +21,12 @@ A Pod Disruption Budget (PDB) tells Kubernetes the minimum number of pods for a 
 
 Before creating a PDB, decide whether to express availability as:
 
-- `minAvailable` - minimum pods that must remain running
+- `minAvailable` - minimum pods that must remain available
 - `maxUnavailable` - maximum pods that can be simultaneously unavailable
 
 ## Step 2: Create a PDB via Portainer Manifest
 
-Go to **Kubernetes > Advanced Deployment** in Portainer:
+Go to **Applications > Create from code** in Portainer and use the **Web editor**:
 
 ```yaml
 # web-api-pdb.yaml
@@ -67,45 +67,44 @@ metadata:
   name: postgres-pdb
   namespace: production
 spec:
-  # For a 3-replica Postgres cluster, only 1 can be down at a time
+  # For a 3-pod Postgres StatefulSet, keep at least 2 available
   minAvailable: 2
   selector:
     matchLabels:
       app: postgres
-      role: replica
 ```
 
 ## Step 4: PDB Rules and Limits
 
 A few important constraints:
 
-- `minAvailable: 100%` (or equal to total replicas) will block all voluntary disruptions - drains will hang until the PDB is removed
+- `minAvailable: 100%` (or equal to total replicas) will block all voluntary disruptions - drains will not complete until the budget is relaxed or more healthy replicas are available
 - PDBs do not protect against hardware failures (involuntary disruptions)
 - Setting `minAvailable: 0` or `maxUnavailable: 100%` effectively disables the PDB
 
 ## Step 5: Verify PDB Status in Portainer
 
-Check PDB enforcement through the Portainer terminal or the Kubernetes namespaces view:
+Check PDB enforcement through Portainer's `kubectl shell` or any terminal configured for the cluster:
 
 ```bash
 # Check PDB status
-kubectl get pdb -n production
+kubectl get poddisruptionbudgets -n production
 
-# Detailed view showing current and desired availability
-kubectl describe pdb web-api-pdb -n production
+# Detailed view showing current and desired healthy pod counts
+kubectl get poddisruptionbudget web-api-pdb -n production -o yaml
 ```
 
 The output shows:
 
-```text
-Min available:    2
-Allowed disruptions: 1
-Current:          3
-Desired:          3
-Total:            3
+```yaml
+status:
+  currentHealthy: 3
+  desiredHealthy: 2
+  disruptionsAllowed: 1
+  expectedPods: 3
 ```
 
-`Allowed disruptions: 1` means exactly one pod can be voluntarily evicted right now.
+`disruptionsAllowed: 1` means exactly one pod can be voluntarily evicted right now.
 
 ## Step 6: Test with a Node Drain
 
@@ -116,8 +115,8 @@ Simulate a maintenance event:
 kubectl drain node-worker-1 --ignore-daemonsets --delete-emptydir-data
 ```
 
-If the drain would violate the PDB, it blocks and waits until the workload redistributes across other nodes.
+If the drain would violate the PDB, `kubectl drain` keeps retrying the eviction until enough healthy replicas exist or the command times out.
 
 ## Summary
 
-Pod Disruption Budgets are a lightweight but essential safety mechanism for production Kubernetes workloads. Deploying them via Portainer's manifest interface ensures they are version-controlled alongside your Deployments and StatefulSets, giving your operations team confidence that maintenance windows will not cause unexpected service disruptions.
+Pod Disruption Budgets are a lightweight but essential safety mechanism for production Kubernetes workloads. Deploying them via Portainer's manifest workflow lets you manage them alongside your Deployments and StatefulSets, giving your operations team confidence that maintenance windows will not cause unexpected service disruptions.
