@@ -14,16 +14,16 @@ Amazon Elastic Container Registry (ECR) is a fully managed Docker registry servi
 
 - Portainer CE or BE installed
 - An AWS account with ECR repositories
-- AWS Access Key ID and Secret Access Key (or IAM role if Portainer runs on EC2)
+- AWS Access Key ID and Secret Access Key
 - Admin access to Portainer
 
 ## Understanding ECR Authentication
 
-ECR tokens are temporary (12 hours) and require AWS credentials to generate. Portainer BE handles token refresh automatically. For CE, you may need to manually refresh tokens or use a workaround.
+ECR tokens are temporary (12 hours) and require AWS credentials to generate. When Amazon ECR is configured as a registry in Portainer with valid AWS credentials, Portainer refreshes the authorization token automatically when needed.
 
 ## Step 1: Create an IAM User for Portainer
 
-Create a dedicated IAM user with minimal ECR permissions:
+Create a dedicated IAM user with read-only ECR permissions:
 
 ```json
 {
@@ -72,12 +72,14 @@ aws iam create-access-key --user-name portainer-ecr
 
 1. Go to **Registries** in Portainer
 2. Click **+ Add registry**
-3. Select **AWS Elastic Container Registry**
+3. Select **AWS ECR**
 
 ## Step 3: Fill in ECR Configuration
 
 ```text
+Name:           my-ecr-registry
 Registry type:  AWS ECR
+Registry URL:   123456789012.dkr.ecr.us-east-1.amazonaws.com
 Region:         us-east-1         (your AWS region)
 Access key ID:  AKIAIOSFODNN7EXAMPLE
 Secret key:     wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
@@ -88,6 +90,8 @@ For cross-account ECR access:
 ```text
 Registry URL:   123456789012.dkr.ecr.us-east-1.amazonaws.com
 ```
+
+Your IAM principal must also be granted pull access to the repository in the other account through an ECR repository policy or an identity-based IAM policy.
 
 4. Click **Add registry**
 
@@ -119,56 +123,28 @@ version: "3.8"
 services:
   app:
     image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:latest
-    # Portainer uses stored ECR credentials and handles token refresh
+    # Portainer uses stored ECR credentials and refreshes the authorization token when needed
 
   worker:
     image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/myworker:v2.0
 ```
 
-## Step 6: Handle ECR Token Expiration (Portainer CE)
+## Step 6: Handle ECR Token Expiration
 
-ECR tokens expire after 12 hours. In Portainer CE, you need to refresh manually or use a cron job:
-
-```bash
-#!/bin/bash
-# refresh-ecr-token.sh
-# Run every 6 hours via cron
-
-AWS_REGION="us-east-1"
-AWS_ACCOUNT="123456789012"
-
-# Get ECR token
-TOKEN=$(aws ecr get-login-password --region $AWS_REGION)
-
-# Update Docker credentials
-docker login \
-  --username AWS \
-  --password-stdin \
-  ${AWS_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com << EOF
-$TOKEN
-EOF
-
-echo "ECR token refreshed at $(date)"
-```
-
-```bash
-# Cron job - refresh every 6 hours
-0 */6 * * * /opt/scripts/refresh-ecr-token.sh >> /var/log/ecr-refresh.log 2>&1
-```
+ECR tokens expire after 12 hours. When you configure Amazon ECR as a registry in Portainer with valid AWS credentials, Portainer refreshes the authorization token automatically when needed. You do not need a cron job that periodically runs `docker login` on the Portainer host.
 
 ## Step 7: Use IAM Roles (EC2/ECS/EKS)
 
-If Portainer runs on an EC2 instance, use an IAM role instead of access keys:
+If you pull from ECR directly on an EC2 host outside Portainer, use an IAM role instead of long-lived access keys:
 
 ```bash
-# Attach IAM role to EC2 instance with ECR read permissions
-# The instance automatically uses the role's credentials
+# Example: native Docker login on an EC2 instance with an attached IAM role
 aws ecr get-login-password --region us-east-1 | \
   docker login --username AWS --password-stdin \
   123456789012.dkr.ecr.us-east-1.amazonaws.com
 ```
 
-In Portainer settings, leave the access key fields empty and Portainer will use the instance metadata.
+For a private Amazon ECR registry configured inside Portainer, the Portainer ECR form requires an AWS Access Key ID, Secret Access Key, and Region when authentication is enabled.
 
 ## Step 8: Multi-Region ECR
 
@@ -192,7 +168,7 @@ Registry 2: eu-west-1 ECR (Europe)
 Error: no basic auth credentials
 ```
 
-ECR token has expired. Refresh it manually or via cron (CE) or wait for Portainer BE auto-refresh.
+Verify that the ECR registry is configured in Portainer, the stored AWS credentials are valid, and the image URI matches the configured registry URL. Portainer refreshes ECR authorization tokens automatically when needed.
 
 ### Access Denied
 
@@ -200,7 +176,7 @@ ECR token has expired. Refresh it manually or via cron (CE) or wait for Portaine
 Error: AccessDeniedException: User is not authorized to perform: ecr:GetAuthorizationToken
 ```
 
-Add `ecr:GetAuthorizationToken` to the IAM policy.
+Add `ecr:GetAuthorizationToken` to the IAM policy. For cross-account pulls, also verify the permissions granted to your IAM principal and the target repository.
 
 ### Image Not Found
 
@@ -212,4 +188,4 @@ Verify the full image URI including account ID and region.
 
 ## Conclusion
 
-Integrating AWS ECR with Portainer requires understanding ECR's token-based authentication model. For Portainer BE, this is largely automated. For CE, set up a token refresh cron job to ensure Portainer always has valid credentials. Using IAM users with minimal permissions (read-only ECR access) follows the principle of least privilege for your container infrastructure.
+Integrating AWS ECR with Portainer requires understanding ECR's token-based authentication model. When the registry is configured with valid AWS credentials, Portainer handles the temporary ECR authorization token for you. Using a dedicated IAM user with read-only ECR permissions and granting explicit access for cross-account repositories follows the principle of least privilege for your container infrastructure.
