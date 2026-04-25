@@ -8,29 +8,29 @@ Description: Verify that Kubernetes pods have received IPv6 addresses in dual-st
 
 ## Introduction
 
-In dual-stack Kubernetes clusters, pods should receive both IPv4 and IPv6 addresses from the pod CIDRs. The `status.podIPs` field in the pod spec shows all assigned IP addresses. IPv6 addresses are visible inside the container via `ip -6 addr show`. Verifying pod IPv6 assignment is an important step after configuring a dual-stack cluster or CNI plugin.
+In dual-stack Kubernetes clusters, pods should receive both IPv4 and IPv6 addresses from the pod CIDRs. The `status.podIPs` field in the pod status shows all assigned IP addresses. IPv6 addresses are visible inside the container via `ip -6 addr show`. Verifying pod IPv6 assignment is an important step after configuring a dual-stack cluster or CNI plugin.
 
 ## Check Pod IPv6 Addresses
 
 ```bash
 # Check pod IPs for a specific pod
-
-kubectl get pod mypod -o jsonpath='{.status.podIPs}'
-# [{"ip":"10.244.0.5"},{"ip":"fd00:10:244::5"}]
+kubectl get pod mypod -o jsonpath='{range .status.podIPs[*]}{.ip}{"\n"}{end}'
+# 10.244.0.5
+# fd00:10:244::5
 
 # Get only the IPv6 address
 kubectl get pod mypod -o jsonpath='{range .status.podIPs[*]}{.ip}{"\n"}{end}' | grep ":"
 
 # Check pods in all namespaces
-kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: {range .status.podIPs[*]}{.ip} {end}{"\n"}{end}'
+kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{" "}{range .status.podIPs[*]}{.ip}{" "}{end}{"\n"}{end}'
 
 # Filter only pods with IPv6 addresses
-kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.name}: {.status.podIPs}{"\n"}{end}' | \
-    grep -v "\[\]" | grep ":"
+kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{" "}{range .status.podIPs[*]}{.ip}{" "}{end}{"\n"}{end}' | \
+    grep ":"
 
 # Count pods with IPv6 addresses
-kubectl get pods -A -o jsonpath='{range .items[*]}{.status.podIPs}{"\n"}{end}' | \
-    grep -c '":[0-9a-f]'
+kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{" "}{range .status.podIPs[*]}{.ip}{" "}{end}{"\n"}{end}' | \
+    grep -c ":"
 ```
 
 ## Verify IPv6 Inside the Container
@@ -39,22 +39,15 @@ kubectl get pods -A -o jsonpath='{range .items[*]}{.status.podIPs}{"\n"}{end}' |
 # Exec into a pod and check IPv6 configuration
 kubectl exec mypod -- ip -6 addr show
 
-# Expected output:
-# 1: lo: <LOOPBACK,UP,LOWER_UP>
-#     inet6 ::1/128 scope host
-# 3: eth0@if8: <BROADCAST,MULTICAST,UP,LOWER_UP>
-#     inet6 fd00:10:244::5/64 scope global dynamic
+# Output varies by CNI plugin, but it should include a global IPv6 address on the pod interface
 
 # Check IPv6 routing inside pod
 kubectl exec mypod -- ip -6 route show
-# Expected: default via fd00:10:244::1 dev eth0
-
-# Verify pod can reach the pod gateway
-kubectl exec mypod -- ping6 -c 1 fd00:10:244::1
+# Output varies by CNI plugin; inspect the IPv6 routes configured for the pod interface
 
 # Test IPv6 connectivity to another pod
 OTHER_POD_IPV6=$(kubectl get pod otherpod -o jsonpath='{range .status.podIPs[*]}{.ip}{"\n"}{end}' | grep ":")
-kubectl exec mypod -- ping6 -c 3 "$OTHER_POD_IPV6"
+kubectl exec mypod -- ping -6 -c 3 "$OTHER_POD_IPV6"
 ```
 
 ## Script: Verify All Pods Have IPv6
@@ -72,7 +65,7 @@ while IFS= read -r line; do
     NS=$(echo "$line" | awk '{print $1}')
     NAME=$(echo "$line" | awk '{print $2}')
     POD_IPS=$(kubectl get pod "$NAME" -n "$NS" \
-        -o jsonpath='{.status.podIPs}' 2>/dev/null)
+        -o jsonpath='{range .status.podIPs[*]}{.ip}{"\n"}{end}' 2>/dev/null)
 
     if echo "$POD_IPS" | grep -q ":"; then
         echo "PASS: $NS/$NAME has IPv6"
@@ -92,17 +85,19 @@ echo "Results: $PASS pods with IPv6, $FAIL pods without IPv6"
 
 ```bash
 # Issue: Pod only has IPv4, no IPv6
-kubectl get pod mypod -o jsonpath='{.status.podIPs}'
-# [{"ip":"10.244.0.5"}]  <- only IPv4
+kubectl get pod mypod -o jsonpath='{range .status.podIPs[*]}{.ip}{"\n"}{end}'
+# 10.244.0.5  <- only IPv4
 
 # Check 1: Is the node's pod CIDR dual-stack?
 NODE=$(kubectl get pod mypod -o jsonpath='{.spec.nodeName}')
-kubectl get node "$NODE" -o jsonpath='{.spec.podCIDRs}'
-# Must show: ["10.244.x.0/24","fd00:10:244:x::/64"]
+kubectl get node "$NODE" -o jsonpath='{range .spec.podCIDRs[*]}{.}{"\n"}{end}'
+# Must show both an IPv4 and an IPv6 pod CIDR, for example:
+# 10.244.1.0/24
+# fd00:10:244:1::/64
 
 # Check 2: Is the CNI plugin configured for IPv6?
 # Check CNI-specific logs (e.g., Calico)
-kubectl -n calico-system logs daemonset/calico-node | grep -i "ipv6"
+kubectl -n calico-system logs daemonset/calico-node --all-pods=true | grep -i "ipv6"
 
 # Check 3: Was the pod scheduled after CNI restart?
 # Try deleting and recreating the pod
@@ -110,11 +105,11 @@ kubectl delete pod mypod
 # Recreate and check again
 
 # Check 4: Node has IPv6 enabled
-ssh node1 "ip -6 addr show eth0"
+ssh node1 "ip -6 addr show"
 ssh node1 "cat /proc/sys/net/ipv6/conf/all/disable_ipv6"
 # Must be 0
 ```
 
 ## Conclusion
 
-Verify pod IPv6 addresses using `kubectl get pod -o jsonpath='{.status.podIPs}'` - in dual-stack clusters, this should return an array with both IPv4 and IPv6 entries. Check IPv6 inside containers with `kubectl exec pod -- ip -6 addr show eth0`. If pods only show IPv4, check that the node's `podCIDRs` includes an IPv6 range, the CNI plugin is configured for IPv6, and IPv6 is enabled on the node. Use the batch verification script to check all pods at once after cluster configuration changes.
+Verify pod IPv6 addresses using `kubectl get pod mypod -o jsonpath='{range .status.podIPs[*]}{.ip}{"\n"}{end}'` - in dual-stack clusters, this should list both IPv4 and IPv6 addresses. Check IPv6 inside containers with `kubectl exec mypod -- ip -6 addr show`. If pods only show IPv4, check that the node's `podCIDRs` includes an IPv6 range, the CNI plugin is configured for IPv6, and IPv6 is enabled on the node. Use the batch verification script to check all pods at once after cluster configuration changes.
