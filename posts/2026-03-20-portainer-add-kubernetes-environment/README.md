@@ -8,138 +8,44 @@ Description: Connect a Kubernetes cluster to Portainer for visual management of 
 
 ## Introduction
 
-Portainer can manage Kubernetes clusters, providing a visual interface for deployments, services, configmaps, and other resources. You can connect Kubernetes via the Portainer Agent deployed in the cluster, or via kubeconfig for remote access. This guide covers both methods.
+Portainer can manage Kubernetes clusters, providing a visual interface for deployments, services, ConfigMaps, and other resources. You can connect Kubernetes via the Portainer Agent deployed in the cluster, or via kubeconfig import in Portainer Business Edition. Portainer currently documents both the Agent and kubeconfig import methods as legacy options, and recommends the Edge Agent for most new deployments. This guide covers both legacy methods.
 
-## Method 1: Deploy Portainer Agent in Kubernetes (Recommended)
+## Method 1: Deploy Portainer Agent in Kubernetes (Legacy)
 
-### Step 1: Create Portainer Namespace and Service Account
+### Step 1: Generate the Portainer Agent deployment command
 
-```bash
-# Create namespace
+1. Go to **Environments** → **Add environment**
+2. Select **Kubernetes** and click **Start Wizard**
+3. Under **More options**, select **Agent**
+4. Choose **Kubernetes via load balancer** or **Kubernetes via node port**
+5. Copy the generated `kubectl apply -f ...` command
 
-kubectl create namespace portainer
+### Step 2: Run the generated command on your cluster
 
-# Create service account and RBAC
-kubectl apply -f - << 'EOF'
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: portainer-sa
-  namespace: portainer
-
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: portainer-crb
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: cluster-admin
-subjects:
-  - kind: ServiceAccount
-    name: portainer-sa
-    namespace: portainer
-EOF
-```
-
-### Step 2: Deploy Portainer Agent via Helm
-
-```bash
-# Add Portainer Helm repo
-helm repo add portainer https://portainer.github.io/k8s/
-helm repo update
-
-# Install agent
-helm install --create-namespace \
-  -n portainer \
-  portainer-agent \
-  portainer/portainer-agent \
-  --set env.key=AGENT_SECRET \
-  --set env.value=shared-agent-secret
-```
-
-Or via Kubernetes manifest:
-
-```yaml
-# portainer-agent-k8s.yml
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: portainer-agent
-  namespace: portainer
-spec:
-  selector:
-    matchLabels:
-      app: portainer-agent
-  template:
-    metadata:
-      labels:
-        app: portainer-agent
-    spec:
-      serviceAccountName: portainer-sa
-      containers:
-      - name: portainer-agent
-        image: portainer/agent:latest
-        env:
-        - name: LOG_LEVEL
-          value: "INFO"
-        - name: KUBERNETES_POD_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.podIP
-        ports:
-        - containerPort: 9001
-          protocol: TCP
-        resources:
-          limits:
-            memory: "256Mi"
-            cpu: "100m"
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: portainer-agent
-  namespace: portainer
-spec:
-  selector:
-    app: portainer-agent
-  ports:
-    - port: 9001
-      targetPort: 9001
-  type: ClusterIP
-```
-
-```bash
-kubectl apply -f portainer-agent-k8s.yml
-
-# Get agent service cluster IP
-kubectl get svc portainer-agent -n portainer
-```
+Run the generated `kubectl apply -f ...` command on a control-plane node with cluster-admin access. Portainer's generated manifest creates the required `portainer` namespace, ServiceAccount, ClusterRoleBinding, and agent services for the exposure mode you selected.
 
 ### Step 3: Add Kubernetes Environment in Portainer
 
-1. Go to **Environments** → **Add environment**
-2. Select **Kubernetes**
-3. Select **Agent** as connection type
-4. Enter the agent URL: `tcp://portainer-agent.portainer.svc.cluster.local:9001` (if Portainer is in cluster)
-   OR `tcp://CLUSTER_IP:9001` (if Portainer is external)
-5. Click **Connect**
-
-## Method 2: Kubeconfig Import
-
-1. Go to **Environments** → **Add environment**
-2. Select **Kubernetes**
-3. Select **Import** and paste your kubeconfig content
+1. Enter a descriptive environment name
+2. For **Environment URL**, enter the IP address or DNS name of the Kubernetes host and the port used by the generated manifest:
+   - NodePort: `HOST_OR_IP:30778`
+   - LoadBalancer: `HOST_OR_IP:9001`
+3. Do not include a protocol prefix such as `tcp://` or `https://`
 4. Click **Connect**
 
-```bash
-# Get your current kubeconfig
-cat ~/.kube/config
+## Method 2: Kubeconfig Import (Business Edition, Legacy)
 
-# Or for a specific cluster
-kubectl config view --raw --minify
+This option is only available in Portainer Business Edition. Your cluster must have a load balancer configured and enabled, and the kubeconfig file must be self-contained, include `current-context`, and provide cluster-admin credentials so Portainer can deploy the agent.
+
+1. Go to **Environments** → **Add environment**
+2. Select **Kubernetes** and click **Start Wizard**
+3. Under **More options**, select **Import**
+4. Enter a name and upload your kubeconfig file
+5. Click **Connect**
+
+```bash
+# Generate a self-contained kubeconfig file for the current cluster
+kubectl config view --flatten=true --minify=true > kubeconfig.yml
 ```
 
 ## Verifying the Kubernetes Environment
@@ -158,29 +64,33 @@ curl -s \
   | python3 -c "
 import sys, json
 for env in json.load(sys.stdin):
-    if env.get('Type') in [6, 7]:  # Type 6/7 = Kubernetes
+    if env.get('Type') in [5, 6, 7]:  # Type 5/6/7 = Kubernetes
         print(f'K8s: ID={env[\"Id\"]} Name={env[\"Name\"]} Status={env[\"Status\"]}')
 "
 
-# Check namespaces in the K8s environment
+# Check namespaces in the K8s environment through Portainer's Kubernetes API proxy
 ENDPOINT_ID=6
 curl -s \
   -H "Authorization: Bearer $TOKEN" \
-  "https://portainer.example.com/api/endpoints/${ENDPOINT_ID}/kubernetes/namespaces" \
-  | python3 -c "import sys,json; [print(ns['Name']) for ns in json.load(sys.stdin)]"
+  "https://portainer.example.com/api/endpoints/${ENDPOINT_ID}/kubernetes/api/v1/namespaces" \
+  | python3 -c "
+import sys, json
+for ns in json.load(sys.stdin).get('items', []):
+    print(ns['metadata']['name'])
+"
 ```
 
 ## Configuring Kubernetes Environment Options
 
 After connecting, configure the environment:
 
-1. Click on the environment → **Settings**
+1. Open the Kubernetes environment, then go to **Cluster** → **Setup**
 2. Configure:
-   - **Allow users to use specific storage classes**: Enable/disable specific storage
-   - **Enable features using the metrics server**: For resource usage display
-   - **Restrict default namespace**: Prevent users from deploying to `default`
-   - **Namespace access management**: Enable per-namespace access control
+   - **Available storage options**: Select which storage classes are available for application deployments
+   - **Enable features using the metrics API**: Requires Kubernetes metrics-server or Prometheus for resource usage graphs
+   - **Restrict access to the default namespace**: Prevent non-admin users from deploying to `default`
+3. To manage namespace access, go to **Namespaces** → **Manage access**. Kubernetes RBAC must be enabled for namespace-level access control to work in Portainer.
 
 ## Conclusion
 
-Kubernetes environments in Portainer provide a user-friendly interface to manage complex Kubernetes resources. The agent-based method is recommended for security and functionality - it provides deeper integration including the Portainer-specific RBAC for namespace-level access control. Once connected, your team can deploy applications, manage configurations, and troubleshoot Kubernetes workloads without kubectl expertise.
+Kubernetes environments in Portainer provide a user-friendly interface to manage complex Kubernetes resources. The Portainer Agent and kubeconfig import methods remain available for connecting clusters, but Portainer documents both as legacy options and recommends the Edge Agent for most new deployments. Once connected, your team can deploy applications, manage configurations, and troubleshoot Kubernetes workloads from the Portainer UI, while namespace access control depends on Kubernetes RBAC being enabled.
