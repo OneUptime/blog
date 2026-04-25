@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Azure, ACI, Security, Authentication
 
-Description: Learn how to create and manage an Azure AD client secret for the Portainer ACI integration, including rotation best practices and secret storage guidance.
+Description: Learn how to create and manage a Microsoft Entra ID client secret for the Portainer ACI integration, including rotation best practices and secret storage guidance.
 
 ## Introduction
 
-After registering an Azure AD application for Portainer's ACI integration, you need to create a client secret - the credential Portainer uses to authenticate with Azure APIs. This guide covers secret creation, proper storage, and rotation procedures.
+After registering a Microsoft Entra ID application for Portainer's ACI integration, you need to create a client secret - the credential Portainer uses to authenticate with Azure APIs. This guide covers secret creation, proper storage, and rotation procedures.
 
 ## Prerequisites
 
-- An Azure AD app registration created for Portainer ACI
+- A Microsoft Entra ID app registration created for Portainer ACI
 - Azure Portal access or Azure CLI installed
 - The Application (Client) ID of your registered app
 
 ## Understanding Client Secrets
 
-A client secret is essentially a password for your Azure AD application. Key characteristics:
+A client secret is essentially a password for your Microsoft Entra ID application. Key characteristics:
 
 - Has an **expiry date** (up to 24 months from creation)
 - Is only displayed **once** at creation - you cannot retrieve it again
@@ -38,7 +38,7 @@ A client secret is essentially a password for your Azure AD application. Key cha
 1. Under **Client secrets**, click **New client secret**.
 2. Fill in:
    - **Description**: `Portainer ACI Integration - Created 2026-03`
-   - **Expires**: Select an expiry period (recommend **12 months** for production)
+   - **Expires**: Select an expiry period (Microsoft recommends **less than 12 months**)
 3. Click **Add**.
 
 ### Step 3: Copy the Secret Value
@@ -60,14 +60,13 @@ APP_ID="your-application-client-id"
 
 # Create a client secret with 1-year expiry
 SECRET=$(az ad app credential reset \
-  --id $APP_ID \
+  --id "$APP_ID" \
   --years 1 \
   --display-name "Portainer-Secret-2026" \
   --query 'password' \
   -o tsv)
 
-echo "Client Secret: $SECRET"
-# Store this value securely immediately
+# Store $SECRET securely immediately; avoid printing it in shared terminals or CI logs
 ```
 
 ## Method 3: Create Additional Secrets (for rotation)
@@ -76,14 +75,15 @@ You can have multiple active secrets simultaneously, which enables zero-downtime
 
 ```bash
 # Add a new secret WITHOUT removing the existing one
-SECRET_EXPIRY=$(date -d "+1 year" --iso-8601)
-
-# Use the az rest command to add a password credential
-az ad app credential reset \
-  --id $APP_ID \
+NEW_SECRET=$(az ad app credential reset \
+  --id "$APP_ID" \
   --append \
   --years 1 \
-  --display-name "Portainer-Secret-Rotation-2026"
+  --display-name "Portainer-Secret-Rotation-2026" \
+  --query 'password' \
+  -o tsv)
+
+# Store $NEW_SECRET securely immediately; avoid printing it in shared terminals or CI logs
 ```
 
 ## Storing the Client Secret Securely
@@ -135,7 +135,7 @@ PORTAINER_URL="https://portainer.example.com"
 
 # Step 1: Create a new secret (old one remains valid)
 NEW_SECRET=$(az ad app credential reset \
-  --id $APP_ID \
+  --id "$APP_ID" \
   --append \
   --years 1 \
   --display-name "Portainer-Rotated-$(date +%Y-%m)" \
@@ -152,16 +152,16 @@ TOKEN=$(curl -s -X POST "${PORTAINER_URL}/api/auth" \
 curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "${PORTAINER_URL}/api/endpoints/5" \
-  -d "{\"AzureCredentials\": {\"ApplicationID\": \"$APP_ID\", \"AuthenticationKey\": \"$NEW_SECRET\"}}"
+  -d "{\"AzureApplicationID\":\"$APP_ID\",\"AzureAuthenticationKey\":\"$NEW_SECRET\"}"
 
 echo "Portainer updated with new secret."
 
-# Step 3: Remove the old secret from Azure AD
+# Step 3: Remove the old secret from Microsoft Entra ID
 # List credentials to find the old one by keyId
-az ad app credential list --id $APP_ID --output table
-# Then: az ad app credential delete --id $APP_ID --key-id OLD_KEY_ID
+az ad app credential list --id "$APP_ID" --output table
+# Then: az ad app credential delete --id "$APP_ID" --key-id OLD_KEY_ID
 
-echo "Old secret should be manually removed from Azure AD after verifying Portainer works."
+echo "Old secret should be manually removed from Microsoft Entra ID after verifying Portainer works."
 ```
 
 ## Checking Secret Expiry
@@ -169,7 +169,7 @@ echo "Old secret should be manually removed from Azure AD after verifying Portai
 ```bash
 # List all credentials and their expiry dates
 az ad app credential list \
-  --id $APP_ID \
+  --id "$APP_ID" \
   --query '[].{Description: displayName, Expiry: endDateTime}' \
   --output table
 ```
