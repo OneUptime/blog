@@ -8,7 +8,7 @@ Description: Learn how to add Docker Hub credentials to Portainer to pull privat
 
 ## Introduction
 
-Adding Docker Hub credentials to Portainer serves two purposes: it enables pulling private Docker Hub repositories, and it significantly increases the rate limit for image pulls (authenticated users get 200 pulls per 6 hours vs 100 for anonymous users). This guide covers adding and managing Docker Hub credentials in Portainer.
+Adding Docker Hub credentials to Portainer serves two purposes: it enables pulling private Docker Hub repositories, and it increases the pull rate limit for Docker Personal accounts (200 pulls per 6 hours vs 100 for unauthenticated users). Paid Docker Hub plans are not subject to the pull rate limit. This guide covers adding and managing Docker Hub credentials in Portainer.
 
 ## Prerequisites
 
@@ -19,48 +19,41 @@ Adding Docker Hub credentials to Portainer serves two purposes: it enables pulli
 ## Why Add Docker Hub Credentials
 
 1. **Private repositories** - Without credentials, Portainer cannot pull images from private Docker Hub repos
-2. **Rate limits** - Docker Hub limits unauthenticated pulls; authentication significantly increases limits
-3. **Docker Hub Pro/Team** - Paid accounts have much higher rate limits
+2. **Rate limits** - Docker Hub limits unauthenticated pulls; authentication increases limits for Docker Personal accounts
+3. **Docker Hub Pro/Team** - Paid accounts are not subject to the pull rate limit
 4. **Security** - Using a dedicated access token is safer than using your account password
 
 ## Step 1: Create a Docker Hub Access Token
 
 Using an access token is more secure than using your Docker Hub password:
 
-1. Log in to [hub.docker.com](https://hub.docker.com)
+1. Log in to [Docker Home](https://app.docker.com)
 2. Click your profile icon → **Account Settings**
-3. Click **Security** in the left menu
-4. Click **New Access Token**
+3. Click **Personal access tokens**
+4. Click **Generate new token**
 5. Enter a description (e.g., "Portainer - Production")
-6. Select permissions:
-   - **Read-only** - For pulling images only
-   - **Read/Write** - If Portainer also needs to push
-7. Click **Generate**
-8. **Copy the token immediately** - it won't be shown again
+6. Choose an expiration date
+7. Grant at least **Read** access for pulling images
+8. Click **Generate**
+9. **Copy the token immediately** - it won't be shown again
 
 ## Step 2: Add Docker Hub Registry in Portainer
 
 1. Log in to Portainer as admin
 2. Click **Registries** in the left sidebar
 3. Click **+ Add registry**
-4. Select **Docker Hub**
+4. Select **DockerHub**
 
 ## Step 3: Fill in Docker Hub Credentials
 
-```bash
-Registry type:    Docker Hub
-Username:         your-docker-hub-username
-Access token:     dckr_pat_xxxxx...   (your personal access token)
-```
-
-Or use your Docker Hub password if you don't have an access token:
-
 ```text
-Username:         your-docker-hub-username
-Password:         your-docker-hub-password
+Name:                      dockerhub-auth
+DockerHub username:        your-docker-hub-username
+DockerHub access token:    dckr_pat_xxxxx...   (your personal access token)
 ```
 
-5. Click **Add registry**
+5. Click **Test connection**
+6. After the test succeeds, click **Add registry**
 
 ## Step 4: Verify the Registry Works
 
@@ -75,7 +68,7 @@ After adding:
 ```bash
 # CLI verification
 
-docker login -u your-username -p your-access-token
+printf '%s\n' 'your-access-token' | docker login --username your-username --password-stdin
 docker pull your-username/private-repo:tag
 ```
 
@@ -83,42 +76,45 @@ docker pull your-username/private-repo:tag
 
 ### Containers
 
-When creating a container or deploying a stack, Portainer automatically uses the configured credentials for Docker Hub images.
+When creating a container or deploying a stack, Portainer can use the configured Docker Hub credentials for Docker Hub images.
 
 ### Stacks with Private Images
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     image: your-org/private-app:latest   # Portainer uses stored Docker Hub creds
 ```
 
-No additional configuration needed - Portainer automatically uses the stored credentials.
+No additional Compose configuration is needed - just reference the Docker Hub image in the stack file.
 
 ## Step 6: Configure Per-Environment Registry Access
 
-In Portainer BE, you can control which teams/environments have access to specific registries:
+Portainer manages registry access per environment:
 
-1. Go to **Registries**
-2. Click on a registry
-3. Under **Registry access** (BE feature), select which environments can use this registry
+1. Open the environment where you want to manage registry access
+2. Go to **Host → Registries** (or **Swarm/Cluster → Registries**, depending on the environment type)
+3. Find the registry and click **Manage access**
+4. Select the users or teams that should have access, then click **Create access**
 
 ## Checking Docker Hub Rate Limits
 
 Monitor your pull rate limit status:
 
 ```bash
-# Check rate limit status for your account
-TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ratelimitpreview/test:pull" | jq -r .token)
+# Check rate limit status for an authenticated account
+DOCKERHUB_USER='your-username'
+DOCKERHUB_PAT='your-access-token'
+
+TOKEN=$(curl -s --user "${DOCKERHUB_USER}:${DOCKERHUB_PAT}" \
+  "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ratelimitpreview/test:pull" | jq -r .token)
 
 curl -s --head -H "Authorization: Bearer $TOKEN" \
   https://registry-1.docker.io/v2/ratelimitpreview/test/manifests/latest | \
   grep -i "ratelimit"
 
-# Output:
-# ratelimit-limit: 200;w=21600   (200 pulls per 6 hours for authenticated)
+# Example output for an authenticated Personal account:
+# ratelimit-limit: 200;w=21600
 # ratelimit-remaining: 195;w=21600
 ```
 
@@ -126,7 +122,7 @@ curl -s --head -H "Authorization: Bearer $TOKEN" \
 
 ### Authentication Failed
 
-```bash
+```text
 Error response from daemon: pull access denied for myorg/myimage,
 repository does not exist or may require 'docker login'
 ```
@@ -145,13 +141,14 @@ Rate limit exceeded.
 
 **Fixes:**
 - Add Docker Hub credentials if not already configured
-- Upgrade to Docker Hub Pro for higher limits
-- Cache images locally using a registry mirror
+- Upgrade to a paid Docker Hub plan for unlimited pull-rate limits
+- Use a registry mirror for public images
 
 ### Setting Up a Registry Mirror
 
+Example `/etc/docker/daemon.json` for Google's public Docker Hub mirror:
+
 ```json
-// /etc/docker/daemon.json - Docker Hub mirror
 {
   "registry-mirrors": ["https://mirror.gcr.io"]
 }
@@ -159,4 +156,4 @@ Rate limit exceeded.
 
 ## Conclusion
 
-Adding Docker Hub credentials to Portainer is quick and provides immediate benefits: access to private repositories and increased pull rate limits. Using a personal access token instead of your account password is the recommended approach for better security. If you're pulling images frequently, consider also setting up a local registry cache to reduce external pulls entirely.
+Adding Docker Hub credentials to Portainer is quick and provides immediate benefits: access to private repositories and higher pull limits for Docker Personal accounts. Using a personal access token instead of your account password is the recommended approach for better security. If you're pulling public images frequently, consider also setting up a registry mirror to reduce direct Docker Hub pulls.
