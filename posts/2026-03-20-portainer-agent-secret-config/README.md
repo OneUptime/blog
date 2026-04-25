@@ -8,7 +8,7 @@ Description: Configure a shared agent secret to secure the communication channel
 
 ## Introduction
 
-By default, the Portainer Agent accepts connections from any Portainer server. To prevent unauthorized servers from connecting to your agents, you can configure a shared secret. Both the Portainer server and agents must use the same secret for communication to succeed.
+By default, the Portainer Agent waits for a Portainer instance to claim it, and after that only the claiming Portainer instance can manage it. If you want to use a shared secret, set `AGENT_SECRET` on the Portainer server and on each agent. Both the Portainer server and agents must use the same secret for communication to succeed.
 
 ## Setting the Agent Secret on the Agent Side
 
@@ -41,16 +41,33 @@ services:
 
 ## Setting the Agent Secret on the Portainer Server Side
 
-When adding an environment that uses an agent with a secret, provide the secret in the connection settings:
+Set the same `AGENT_SECRET` value when starting the Portainer Server container. The agent secret is not configured per environment in the connection settings.
+
+```bash
+# Add this to your existing Portainer Server docker run command
+-e AGENT_SECRET=your-shared-secret-here
+```
+
+```yaml
+# docker-compose.yml (Portainer Server service)
+services:
+  portainer:
+    environment:
+      AGENT_SECRET: "your-shared-secret-here"
+```
+
+After restarting Portainer Server with that value, add the environment normally:
 
 ### Via Web UI
 
 1. Environments → Add environment → Docker Standalone or Swarm
 2. Select **Agent**
 3. Enter the agent URL
-4. Enter the **Agent secret** in the provided field
+4. Click **Connect**
 
 ### Via API
+
+The secret is not passed in the endpoint creation request. Start Portainer Server with `AGENT_SECRET`, then create the agent environment normally:
 
 ```bash
 TOKEN=$(curl -s -X POST \
@@ -61,15 +78,13 @@ TOKEN=$(curl -s -X POST \
 
 curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
   https://portainer.example.com/api/endpoints \
-  -d '{
-    "name": "Secured Agent Host",
-    "endpointCreationType": 2,
-    "URL": "tcp://agent-host.example.com:9001",
-    "TLS": false,
-    "AgentSecret": "your-shared-secret-here"
-  }'
+  -F "Name=Secured Agent Host" \
+  -F "EndpointCreationType=2" \
+  -F "URL=agent-host.example.com:9001" \
+  -F "TLS=true" \
+  -F "TLSSkipVerify=true" \
+  -F "TLSSkipClientVerify=true"
 ```
 
 ## Generating a Strong Secret
@@ -93,26 +108,26 @@ docker stop portainer_agent
 docker rm portainer_agent
 docker run -d \
   --name portainer_agent \
+  --restart always \
   -e AGENT_SECRET=new-stronger-secret \
   -p 9001:9001 \
   -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
   portainer/agent:latest
 
-# 3. Update the environment in Portainer with new secret
-curl -X PUT \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  https://portainer.example.com/api/endpoints/1 \
-  -d '{"AgentSecret": "new-stronger-secret"}'
+# 3. Recreate Portainer Server with the same new AGENT_SECRET value
+# Add AGENT_SECRET=new-stronger-secret to the Portainer Server container config and restart it
 ```
 
 ## Verifying Secret Authentication
 
 ```bash
-# Agent log should show authenticated connections
-docker logs portainer_agent | grep -i "auth\|secret\|connect"
+# Reachability check only; /ping does not verify AGENT_SECRET
+curl -k -i https://agent-host.example.com:9001/ping
 ```
+
+`AGENT_SECRET` is verified when Portainer Server connects successfully to the agent. If the server and agent secrets do not match, the environment connection fails.
 
 ## Conclusion
 
-The agent secret provides an additional authentication layer between Portainer and its agents. Use a unique, cryptographically random secret per environment, store it securely, and rotate it periodically. All agents in a cluster (Swarm) should use the same secret.
+The `AGENT_SECRET` setting adds a shared-secret requirement to the authentication flow between Portainer Server and its agents. Use a strong, cryptographically random secret, store it securely, and rotate it by recreating both Portainer Server and its agents with the same new value. All agents managed by the same Portainer Server instance should use the same secret.
