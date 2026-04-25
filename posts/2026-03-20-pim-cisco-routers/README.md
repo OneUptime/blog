@@ -15,12 +15,12 @@ PIM (Protocol Independent Multicast) is the routing protocol that builds multica
 ```text
 ! Step 1: Enable IP multicast routing globally:
 ip multicast-routing
-ip multicast-routing distributed  ! For distributed CEF platforms
+! Some IOS XE platforms/releases also support the optional 'distributed' keyword
 
 ! Step 2: Enable PIM on each interface:
 interface GigabitEthernet0/0
  ip pim sparse-mode
- ip pim query-interval 30    ! PIM hello interval (default 30s)
+ ip pim query-interval 30    ! PIM hello/query interval (default 30s)
 
 interface GigabitEthernet0/1
  ip pim sparse-mode
@@ -53,9 +53,10 @@ ip access-list standard 224-groups
  permit 239.0.0.0 0.255.255.255
 
 ! Verify RP configuration:
-show ip pim rp
-! Group/mask   RP              Type   Uptime   Expires
-! 224.0.0.0/4  192.168.100.1  static 00:30:00 never
+show ip pim rp mapping
+! PIM Group-to-RP Mappings
+! Group(s) 224.0.0.0/4, Static
+!   RP 192.168.100.1 (?)
 
 ! On the RP router itself:
 ! The RP must have PIM enabled and be reachable via unicast
@@ -83,7 +84,9 @@ ip access-list standard 224-acl
 ! On Mapping Agent router:
 ip pim send-rp-discovery Loopback0 scope 16
 
-! Enable sparse-dense mode on all interfaces (required for Auto-RP):
+! Auto-RP needs either sparse-dense mode on transit interfaces, or
+! 'ip pim autorp listener' globally while interfaces stay in sparse mode.
+! One common option is sparse-dense mode:
 interface GigabitEthernet0/0
  ip pim sparse-dense-mode
 
@@ -157,27 +160,28 @@ show ip mroute 239.1.1.1 pruned
 
 ! Check all PIM interfaces and neighbors:
 show ip pim interface detail
-show ip pim neighbor detail
+show ip pim neighbor
 
 ! Verify DR (Designated Router) election:
 show ip pim interface GigabitEthernet0/0
-! DR is elected per segment; highest IP wins (default priority 1)
+! DR is elected per segment; highest priority wins, then highest IP if tied
 
 ! Debug PIM events (use carefully in production):
 debug ip pim 239.1.1.1     ! Debug specific group
 debug ip igmp              ! Debug IGMP join/leave
 
 ! Check multicast traffic statistics:
-show ip mroute count 239.1.1.1
+show ip mroute 239.1.1.1 count
 
-! View PIM state machine:
-show ip pim state
+! View multicast state for a group:
+show ip mroute 239.1.1.1
 
-! Ping multicast group (sends to all group members):
-ping 239.1.1.1 repeat 5 ttl 10
-! Should receive replies from all receivers in group
+! Ping a multicast group after configuring routers to join it with
+! 'ip igmp join-group'; useful as a router-based reachability test:
+ping 239.1.1.1
+! This does not imply that arbitrary multicast receivers or hosts will reply
 ```
 
 ## Conclusion
 
-PIM-SM is the standard multicast routing protocol for enterprise networks. Enable it with `ip multicast-routing` globally and `ip pim sparse-mode` on each interface. Configure a static RP with `ip pim rp-address` on all routers, or use Auto-RP for dynamic RP discovery. The RP must be reachable via unicast routing. Verify operation with `show ip mroute` (shows distribution trees), `show ip igmp groups` (shows active receivers), and `show ip pim neighbor` (shows PIM adjacencies). Use `ping <multicast-group>` to test end-to-end delivery.
+PIM-SM is the standard multicast routing protocol for enterprise networks. Enable it with `ip multicast-routing` globally and `ip pim sparse-mode` on each interface. Configure a static RP with `ip pim rp-address` on all routers, or use Auto-RP for dynamic RP discovery. The RP must be reachable via unicast routing. Verify operation with `show ip mroute` (shows distribution trees), `show ip igmp groups` (shows active receivers), and `show ip pim neighbor` (shows PIM adjacencies). Use `ping <multicast-group>` only as a multicast reachability test when routers are configured to respond to multicast pings.
