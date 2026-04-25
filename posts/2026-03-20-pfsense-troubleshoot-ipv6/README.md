@@ -20,12 +20,12 @@ Diagnose and resolve common IPv6 connectivity issues on pfSense using built-in d
 
 Navigate to **System → Advanced → Networking** and ensure:
 - **Allow IPv6** is checked
-- IPv6 over IPv4 tunneling options are set appropriately
+- IPv6 over IPv4 tunneling is enabled only if you need to forward protocol 41 to a downstream tunnel endpoint
 
 ```text
 System → Advanced → Networking
   ✓ Allow IPv6
-  ✓ IPv6 over IPv4 Tunneling (if using tunnels)
+  IPv6 over IPv4 Tunneling: enable only if required
 ```
 
 ## WAN IPv6 Configuration
@@ -34,23 +34,23 @@ System → Advanced → Networking
 ```nginx
 Interfaces → WAN
   IPv6 Configuration Type: SLAAC
-  (Automatically receives IPv6 from upstream router)
+  (Receives IPv6 from upstream router advertisements; usually only useful in appliance-style deployments)
 ```
 
 ### DHCPv6
 ```text
 Interfaces → WAN
-  IPv6 Configuration Type: DHCPv6
+  IPv6 Configuration Type: DHCP6
   Request only an IPv6 prefix: checked (for PD)
-  DHCPv6 Prefix Delegation Size: 48 or 56 (check with ISP)
+  DHCPv6 Prefix Delegation Size: ISP-assigned size (commonly 48-64)
 ```
 
 ### Static IPv6
 ```nginx
 Interfaces → WAN
   IPv6 Configuration Type: Static IPv6
-  IPv6 Address: 2001:db8:wan::2/64
-  IPv6 Upstream Gateway: Add New Gateway → 2001:db8:wan::1
+  IPv6 Address: 2001:db8:0:1::2/64
+  IPv6 Upstream Gateway: Add New Gateway → 2001:db8:0:1::1
 ```
 
 ## LAN IPv6 Configuration
@@ -59,17 +59,20 @@ Interfaces → WAN
 Interfaces → LAN
   IPv6 Configuration Type: Track Interface
   IPv6 Interface: WAN
-  IPv6 Prefix ID: 0  (uses first /64 from delegated prefix)
+  IPv6 Prefix ID: 0  (hex; uses the first /64 from the delegated prefix)
 ```
 
 ## DHCPv6 Server Setup
 
 ```text
-Services → DHCPv6 Server & RA → LAN
+Services → DHCPv6 Server → LAN
   ✓ Enable DHCPv6 server on interface LAN
-  Range From: 2001:db8:lan::100
-  Range To:   2001:db8:lan::200
+  Range From: 2001:db8:1000:0::100
+  Range To:   2001:db8:1000:0::200
   DNS Servers: 2001:4860:4860::8888
+
+Services → Router Advertisement → LAN
+  Router Mode: Managed or Assisted
 ```
 
 ## Essential IPv6 Firewall Rules
@@ -84,7 +87,8 @@ Firewall → Rules → LAN → Add
   ICMP Type: Any (or specific: router solicitation, neighbor solicitation/advertisement)
 
 # Allow LAN to WAN IPv6
-Firewall → Rules → LAN → Add
+# Fresh installs already include default LAN allow rules for IPv4 and IPv6.
+Firewall → Rules → LAN → Verify/Add
   Action: Pass
   TCP/IP Version: IPv6
   Protocol: Any
@@ -97,11 +101,11 @@ Firewall → Rules → LAN → Add
 ```text
 # pfSense built-in diagnostics
 Diagnostics → Ping → IPv6 address
-Diagnostics → DNS Lookup → AAAA record
+Diagnostics → DNS Lookup → hostname (check for AAAA results)
 Diagnostics → Traceroute → IPv6 target
 
 # Check interfaces from CLI (via Diagnostics → Command Prompt)
-ifconfig em0 | grep inet6
+ifconfig | grep inet6
 netstat -rn -f inet6
 ```
 
@@ -111,4 +115,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your pfSense firewall's IPv6 W
 
 ## Conclusion
 
-How to Troubleshoot IPv6 on pfSense primarily uses the pfSense WebGUI under the Interfaces and Services menus. Always allow ICMPv6 in firewall rules as it is required for IPv6 operation. Use the built-in Diagnostics tools for quick troubleshooting before diving into packet captures.
+How to Troubleshoot IPv6 on pfSense primarily uses the pfSense WebGUI under the Interfaces and Services menus. Avoid blanket blocking of ICMPv6, since NDP and other control traffic are required for IPv6 operation. Use the built-in Diagnostics tools for quick troubleshooting before diving into packet captures.
