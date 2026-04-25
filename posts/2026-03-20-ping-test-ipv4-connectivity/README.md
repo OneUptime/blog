@@ -20,8 +20,8 @@ ping 8.8.8.8
 # Send exactly 4 packets
 ping -c 4 8.8.8.8
 
-# Ping by hostname
-ping google.com
+# Ping by hostname (force IPv4)
+ping -4 google.com
 
 # Ping a local gateway
 ping -c 4 192.168.1.1
@@ -31,17 +31,17 @@ ping -c 4 192.168.1.1
 
 ```bash
 ping -c 5 8.8.8.8
-# PING 8.8.8.8 (8.8.8.8): 56 data bytes
+# PING 8.8.8.8 (8.8.8.8) 56(84) bytes of data.
 # 64 bytes from 8.8.8.8: icmp_seq=1 ttl=118 time=12.3 ms
 # 64 bytes from 8.8.8.8: icmp_seq=2 ttl=118 time=11.9 ms
 # ...
 # --- 8.8.8.8 ping statistics ---
-# 5 packets transmitted, 5 received, 0% packet loss
+# 5 packets transmitted, 5 received, 0% packet loss, time 4007ms
 # rtt min/avg/max/mdev = 11.9/12.1/12.3/0.2 ms
 
 # Key fields:
 # icmp_seq:  sequence number (gaps indicate loss)
-# ttl:       Time to Live remaining (hints at hop count: 128-ttl or 64-ttl)
+# ttl:       Time to Live remaining in the reply (can hint at hop count only if you know the sender's starting TTL)
 # time:      Round-trip time in milliseconds
 # % packet loss: critical for reliability assessment
 ```
@@ -49,15 +49,14 @@ ping -c 5 8.8.8.8
 ## Advanced Ping Options
 
 ```bash
-# Set packet size (useful for MTU testing)
-ping -s 1400 -c 4 8.8.8.8
+# Set packet size and prohibit fragmentation (useful for MTU testing)
+ping -M do -s 1400 -c 4 8.8.8.8
 
 # Set TTL (limit hops - useful to detect path segments)
-ping -m 5 -c 4 8.8.8.8   # macOS
 ping -t 5 -c 4 8.8.8.8   # Linux (iputils-ping)
 
-# Set interval between packets (flood testing - needs root)
-sudo ping -i 0.1 -c 100 192.168.1.1
+# Set interval between packets
+ping -i 0.1 -c 100 192.168.1.1
 
 # Flood ping (very fast, for stress testing)
 sudo ping -f -c 1000 192.168.1.1
@@ -90,8 +89,8 @@ ping -c 2 $GATEWAY &>/dev/null && echo "OK: Gateway $GATEWAY" || echo "FAIL: Gat
 # Test 3: internet host by IP (confirms routing)
 ping -c 2 $TARGET &>/dev/null && echo "OK: Internet ($TARGET)" || echo "FAIL: No internet routing"
 
-# Test 4: internet host by name (confirms DNS)
-ping -c 2 google.com &>/dev/null && echo "OK: DNS resolution" || echo "FAIL: DNS not working"
+# Test 4: internet host by name over IPv4 (confirms DNS)
+ping -4 -c 2 google.com &>/dev/null && echo "OK: DNS resolution" || echo "FAIL: DNS not working"
 ```
 
 ## Detecting Packet Loss Patterns
@@ -109,4 +108,4 @@ ping -c 100 -i 0.5 10.20.0.1 | tail -5
 
 ## Conclusion
 
-Ping is the starting point for any network diagnosis. A successful ping confirms Layer 3 reachability and gives you baseline latency. Packet loss reveals link instability. Varying TTL values explore the path. Large packet sizes test MTU. Use ping's options to go beyond simple reachability testing and extract maximum diagnostic value.
+Ping is the starting point for any network diagnosis. A successful ping confirms Layer 3 reachability and gives you baseline latency. Packet loss reveals link instability. Varying TTL values can help explore the path. Large packet sizes combined with PMTU options help test MTU. Use ping's options to go beyond simple reachability testing and extract maximum diagnostic value.
