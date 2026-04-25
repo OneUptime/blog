@@ -32,16 +32,20 @@ Organizations often run their own container registries for security, compliance,
 
 If you don't already have a registry, deploy one quickly:
 
+This example uses HTTPS with basic auth, since Docker does not support basic auth on an insecure HTTP registry.
+
 ```yaml
 # registry.yml
 
-version: "3"
 services:
   registry:
-    image: registry:2
+    image: registry:3
     ports:
-      - "5000:5000"
+      - "443:443"
     environment:
+      REGISTRY_HTTP_ADDR: 0.0.0.0:443
+      REGISTRY_HTTP_TLS_CERTIFICATE: /certs/domain.crt
+      REGISTRY_HTTP_TLS_KEY: /certs/domain.key
       REGISTRY_AUTH: htpasswd
       REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
       REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
@@ -49,14 +53,16 @@ services:
     volumes:
       - registry-data:/var/lib/registry
       - /opt/registry/auth:/auth
+      - /opt/registry/certs:/certs
 
 volumes:
   registry-data:
 ```
 
 ```bash
-# Create registry credentials
-mkdir -p /opt/registry/auth
+# Create registry credentials and place your TLS certificate and key in
+# /opt/registry/certs/domain.crt and /opt/registry/certs/domain.key
+mkdir -p /opt/registry/auth /opt/registry/certs
 docker run --rm --entrypoint htpasswd httpd:2 \
   -Bbn registryuser strongpassword > /opt/registry/auth/htpasswd
 
@@ -88,7 +94,11 @@ For registries using a different port:
 URL: registry.company.com:5000
 ```
 
-For insecure (HTTP) registries, you must also configure the Docker daemon:
+For insecure (HTTP) registries used only for isolated testing and without basic auth, enter the full URL in Portainer and configure the Docker daemon:
+
+```text
+URL: http://registry.company.com:5000
+```
 
 ```json
 // /etc/docker/daemon.json on all Docker hosts
@@ -96,6 +106,8 @@ For insecure (HTTP) registries, you must also configure the Docker daemon:
   "insecure-registries": ["registry.company.com:5000"]
 }
 ```
+
+Docker does not support basic auth on insecure registries, so use HTTPS for authenticated private registries.
 
 4. Click **Add registry**
 
@@ -105,14 +117,12 @@ For production, always use HTTPS. If using a self-signed certificate:
 
 ```bash
 # Add the CA cert to the Docker daemon on each host
+# If the registry uses a non-default port, include it in the directory name
 sudo mkdir -p /etc/docker/certs.d/registry.company.com
 sudo cp ca.crt /etc/docker/certs.d/registry.company.com/ca.crt
-
-# Restart Docker to apply
-sudo systemctl restart docker
 ```
 
-Or configure the daemon to trust the CA system-wide:
+Or configure the daemon to trust the CA system-wide (Debian/Ubuntu example):
 
 ```bash
 sudo cp ca.crt /usr/local/share/ca-certificates/company-registry.crt
@@ -138,18 +148,16 @@ docker pull registry.company.com/team/myapp:latest
 In your Compose file, reference the private registry image:
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     image: registry.company.com/team/myapp:latest
-    # Portainer uses the stored registry credentials automatically
+    # Portainer can use stored registry credentials during deployment
 
   db-proxy:
     image: registry.company.com/infra/pgbouncer:1.21
 ```
 
-Portainer recognizes the registry URL prefix and uses the matching stored credentials.
+Portainer can use configured registry credentials during stack deployment. If you have multiple registries from the same provider or hostname, explicitly select the correct registry in Portainer so Docker uses the right credentials.
 
 ## Step 7: Test Registry Connectivity
 
@@ -167,7 +175,7 @@ curl -u registryuser:strongpassword \
 
 ## Step 8: Configure Registry Mirrors
 
-For caching public images through your private registry, configure Docker to use it as a mirror:
+For caching Docker Hub images through a pull-through cache registry, configure Docker to use it as a mirror:
 
 ```json
 // /etc/docker/daemon.json
