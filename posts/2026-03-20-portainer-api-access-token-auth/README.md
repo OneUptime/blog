@@ -14,7 +14,7 @@ While JWT tokens are the primary authentication method for interactive sessions,
 
 - Portainer CE or BE
 - A Portainer user account
-- Admin or API access enabled
+- The required permissions for the environments or resources you want to manage
 
 ## Access Tokens vs JWT Tokens
 
@@ -23,7 +23,7 @@ While JWT tokens are the primary authentication method for interactive sessions,
 | Expiry | Configurable (hours/days) | Never expires until revoked |
 | Acquisition | Username + password | Created in account settings |
 | Use case | Interactive sessions | CI/CD, automation |
-| Revocation | Token expires or re-login | Individual revocation |
+| Revocation | Logout or expiry | Individual revocation |
 | Storage | Temp files, memory | Secrets manager |
 
 ## Step 1: Create an API Access Token
@@ -36,7 +36,8 @@ While JWT tokens are the primary authentication method for interactive sessions,
 4. Scroll to the **Access tokens** section.
 5. Click **Add access token**.
 6. Enter a descriptive name: e.g., `GitHub Actions CI/CD`, `Terraform Pipeline`
-7. Click **Add access token**.
+7. If your Portainer instance uses internal authentication, re-enter your current password.
+8. Click **Add access token**.
 
 > **IMPORTANT**: Copy the token value immediately. It will only be shown once.
 
@@ -56,13 +57,14 @@ USER_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
 echo "User ID: $USER_ID"
 
 # Step 3: Create an API access token
+# For internal-auth users, include your current password in the payload
 API_TOKEN_RESPONSE=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "https://portainer.example.com/api/users/${USER_ID}/tokens" \
-  -d '{"description": "GitHub Actions CI/CD Token"}')
+  -d '{"password":"yourpassword","description":"GitHub Actions CI/CD Token"}')
 
 # Extract the raw access token
-RAW_TOKEN=$(echo $API_TOKEN_RESPONSE | jq -r '.rawAPIKey')
+RAW_TOKEN=$(echo "$API_TOKEN_RESPONSE" | jq -r '.rawAPIKey')
 echo "API Token: $RAW_TOKEN"
 # Save this immediately - it cannot be retrieved again
 ```
@@ -86,10 +88,9 @@ curl -s -H "X-API-Key: $API_KEY" \
 # Create a container
 curl -s -X POST -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
-  "https://portainer.example.com/api/endpoints/1/docker/containers/create" \
+  "https://portainer.example.com/api/endpoints/1/docker/containers/create?name=my-nginx" \
   -d '{
-    "Image": "nginx:latest",
-    "name": "my-nginx"
+    "Image": "nginx:latest"
   }'
 ```
 
