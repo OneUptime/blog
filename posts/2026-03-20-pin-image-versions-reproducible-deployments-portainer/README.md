@@ -41,7 +41,7 @@ services:
     image: redis:7.2.4-alpine
 ```
 
-This ensures every deployment pulls exactly the same image version.
+This pins deployments to a specific tag, which is much safer than `latest`.
 
 ## Pinning by Digest (Most Reliable)
 
@@ -50,14 +50,14 @@ Tags are mutable - a registry owner can push a new image to the same tag. Digest
 ```yaml
 services:
   app:
-    image: nginx@sha256:a484819eb60211f5299034ac80f6a681b06f89e65866ce91f356ed7c72af059c
+    image: nginx@sha256:9ff236ed47fe39cf1f0acf349d0e5137f8b8a6fd0b46e5117a401010e56222e1
 ```
 
 Find the digest for a current image:
 
 ```bash
 docker pull nginx:1.25.4
-docker inspect nginx:1.25.4 --format='{{index .RepoDigests 0}}'
+docker image inspect nginx:1.25.4 --format='{{index .RepoDigests 0}}'
 ```
 
 ## Managing Image Versions in Portainer
@@ -67,7 +67,6 @@ docker inspect nginx:1.25.4 --format='{{index .RepoDigests 0}}'
 In Portainer, navigate to **Stacks → Add Stack** and paste a compose file with pinned versions:
 
 ```yaml
-version: "3.8"
 services:
   web:
     image: myapp/web:v2.3.1
@@ -100,7 +99,6 @@ If a new version causes issues:
 ## Using Environment Variables for Versions
 
 ```yaml
-version: "3.8"
 services:
   app:
     image: myapp/web:${APP_VERSION:-v2.3.1}
@@ -117,10 +115,16 @@ In your CI/CD pipeline, build and tag images with the git commit SHA:
 docker build -t myapp/web:${GITHUB_SHA} .
 docker push myapp/web:${GITHUB_SHA}
 
-# Update Portainer stack via API
-curl -X PUT https://portainer.example.com/api/stacks/1 \
+# Update a file-based Portainer stack via API
+curl -X PUT 'https://portainer.example.com/api/stacks/1?endpointId=1' \
   -H "Authorization: Bearer $PORTAINER_TOKEN" \
-  -d "{\"stackFileContent\": \"...image: myapp/web:${GITHUB_SHA}...\"}"
+  -H "Content-Type: application/json" \
+  --data-binary @- <<EOF
+{
+  "StackFileContent": "services:\n  web:\n    image: myapp/web:${GITHUB_SHA}\n",
+  "RepullImageAndRedeploy": true
+}
+EOF
 ```
 
 ## Image Version Tracking
@@ -134,7 +138,7 @@ DB_IMAGE=postgres:16.2-alpine
 CACHE_IMAGE=redis:7.2.4-alpine
 ```
 
-Reference it in your compose file and in Portainer's environment variable configuration.
+Reference these variables in your compose file, then load them into Portainer as stack environment variables when you deploy.
 
 ## Best Practices
 
