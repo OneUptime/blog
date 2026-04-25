@@ -8,19 +8,19 @@ Description: Configure IPv6 Pod CIDR ranges in Kubernetes, understand how pod CI
 
 ## Introduction
 
-The pod CIDR in Kubernetes defines the IP address range from which pods receive their addresses. In dual-stack clusters, the pod CIDR includes both IPv4 and IPv6 ranges, typically specified as comma-separated values. Each node receives a slice of the cluster-wide pod CIDR - in dual-stack, each node gets one IPv4 and one IPv6 block. The CNI plugin uses these per-node CIDRs to assign addresses to pods.
+The pod CIDR in Kubernetes defines the cluster-wide IP address ranges used for pod networking. In dual-stack clusters, the pod CIDR includes both IPv4 and IPv6 ranges, typically specified as comma-separated values. Each node receives a slice of the cluster-wide pod CIDR - in dual-stack, each node gets one IPv4 and one IPv6 block. Depending on the CNI and IPAM mode, pod addresses are allocated from these per-node CIDRs or from CNI-managed IP pools that align with the cluster ranges.
 
 ## Configure Pod CIDR in kubeadm
 
 ```yaml
 # kubeadm-config.yaml - dual-stack pod CIDR
 
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
-kubernetesVersion: v1.29.0
 networking:
-  # IPv4 /16 = 65536 IPs, each node gets /24 (256 pods/node)
-  # IPv6 /56 = 256 /64 subnets, each node gets a /64
+  # Cluster-wide pod CIDRs.
+  # By default, kube-controller-manager allocates /24 IPv4
+  # and /64 IPv6 PodCIDRs per node.
   podSubnet: "10.244.0.0/16,fd00:10:244::/56"
   serviceSubnet: "10.96.0.0/12,fd00:10:96::/108"
 ```
@@ -39,12 +39,12 @@ sudo kubeadm init \
 
 ```bash
 # Each node gets a portion of the cluster pod CIDR
-kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: {.spec.podCIDRs}{"\n"}{end}'
+kubectl get nodes -o go-template='{{range .items}}{{.metadata.name}}: {{range .spec.podCIDRs}}{{printf "%s " .}}{{end}}{{printf "\n"}}{{end}}'
 
 # Example output:
-# node1: ["10.244.0.0/24","fd00:10:244::/64"]
-# node2: ["10.244.1.0/24","fd00:10:244:1::/64"]
-# node3: ["10.244.2.0/24","fd00:10:244:2::/64"]
+# node1: 10.244.0.0/24 fd00:10:244::/64
+# node2: 10.244.1.0/24 fd00:10:244:1::/64
+# node3: 10.244.2.0/24 fd00:10:244:2::/64
 
 # Detailed node inspection
 kubectl describe node node1 | grep -A5 "PodCIDR"
@@ -60,15 +60,18 @@ kubectl run testpod --image=nginx --restart=Never
 kubectl wait --for=condition=Ready pod/testpod --timeout=60s
 
 # Check pod IPs
-kubectl get pod testpod -o jsonpath='{.status.podIPs}'
-# [{"ip":"10.244.0.5"},{"ip":"fd00:10:244::5"}]
+kubectl get pod testpod -o go-template='{{range .status.podIPs}}{{printf "%s\n" .ip}}{{end}}'
+# 10.244.0.5
+# fd00:10:244::5
 
-# Verify IPv6 is from the node's pod CIDR
-kubectl exec testpod -- ip -6 addr show eth0
-# inet6 fd00:10:244::5/64 scope global
+# Verify both pod IPs inside the container and compare them with the node's PodCIDRs
+kubectl exec testpod -- cat /etc/hosts
+# ...
+# 10.244.0.5    testpod
+# fd00:10:244::5    testpod
 
 # Get all pod IPs across the cluster
-kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.name}: {.status.podIPs}{"\n"}{end}'
+kubectl get pods -A -o go-template='{{range .items}}{{.metadata.namespace}}/{{.metadata.name}}: {{range .status.podIPs}}{{printf "%s " .ip}}{{end}}{{printf "\n"}}{{end}}'
 ```
 
 ## Configure CNI for Pod CIDR
@@ -118,21 +121,21 @@ data:
 ## Expand Pod CIDR (Advanced)
 
 ```bash
-# Pod CIDRs cannot be changed after cluster initialization
-# If you need more addresses, you must recreate the cluster
+# kubeadm does not support changing podSubnet after cluster initialization
+# If you need a different podSubnet, recreate the cluster with the new CIDRs
 
-# Check current pod CIDR
-kubectl cluster-info dump | grep podCIDR
+# Check the configured podSubnet stored by kubeadm
+kubectl -n kube-system get cm kubeadm-config -o go-template='{{index .data "ClusterConfiguration"}}' | grep podSubnet
 
 # Plan your CIDR sizing:
-# /16 IPv4 = 65536 addresses, ~256 nodes at /24 each (254 pods/node)
-# /56 IPv6 = 256 /64 subnets, one per node
+# /16 IPv4 = 65536 addresses, about 256 /24 node CIDRs
+# /56 IPv6 = 256 /64 node CIDRs
 
-# Recommended sizing for production:
-# IPv4 pod CIDR: 10.244.0.0/14 (1M addresses)
-# IPv6 pod CIDR: fd00::/56 (256 /64 node subnets)
+# Example larger sizing:
+# IPv4 pod CIDR: 10.244.0.0/14 (262144 addresses, about 1024 /24 node CIDRs)
+# IPv6 pod CIDR: fd00::/56 (256 /64 node CIDRs)
 ```
 
 ## Conclusion
 
-Configure dual-stack pod CIDRs in Kubernetes by providing comma-separated IPv4 and IPv6 CIDRs in `podSubnet` or `--pod-network-cidr`. Each node receives a slice of the cluster pod CIDR - visible in `node.spec.podCIDRs`. The CNI plugin (Calico, Cilium, Flannel) must be configured with matching IPv4 and IPv6 IP pools. Pods in dual-stack clusters automatically receive both IPv4 and IPv6 addresses within their node's CIDR slices. Size your pod CIDRs at cluster creation - they cannot be changed without recreating the cluster.
+Configure dual-stack pod CIDRs in Kubernetes by providing comma-separated IPv4 and IPv6 CIDRs in `podSubnet` or `--pod-network-cidr`. Each node receives an IPv4 and IPv6 PodCIDR slice, visible in `node.spec.podCIDRs`. The CNI plugin must be configured to use matching IPv4 and IPv6 pod network ranges; for example, Calico IP pools should fall within the Kubernetes pod CIDRs, while Flannel should use matching `Network` and `IPv6Network` values. Pods in dual-stack clusters receive both IPv4 and IPv6 addresses when the CNI supports dual-stack networking. For kubeadm-managed clusters, size your pod CIDRs at cluster creation because kubeadm does not support changing `podSubnet` later.
