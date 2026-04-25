@@ -17,12 +17,12 @@ PPPoE:             1492 byte MTU
 
 When a packet is too large for a link:
   - Without DF bit: router fragments the packet
-  - With DF bit:    router drops the packet and sends ICMP "too big"
+  - With DF bit:    router drops the packet and sends ICMP "fragmentation needed"
 
 An "MTU black hole" occurs when:
-  - DF bit is set (as in TCP SYN)
-  - A router drops the oversized packet
-  - But ICMP "too big" is blocked by a firewall
+  - DF bit is set on outbound IPv4 packets
+  - A router drops an oversized packet
+  - But ICMP "fragmentation needed" is blocked by a firewall
   → Connection hangs silently
 ```
 
@@ -37,8 +37,8 @@ An "MTU black hole" occurs when:
 ping -M do -s 1472 -c 3 192.168.1.1
 # -s 1472 + 28 (IP+ICMP headers) = 1500 total bytes
 
-# Expected if MTU is 1500:
-# 64 bytes from 192.168.1.1: icmp_seq=1 ttl=64 time=0.8 ms
+# Expected if path MTU is at least 1500:
+# 1480 bytes from 192.168.1.1: icmp_seq=1 ttl=64 time=0.8 ms
 
 # Expected if MTU is less than 1500:
 # ping: local error: Message too long, mtu=1420
@@ -47,21 +47,21 @@ ping -M do -s 1472 -c 3 192.168.1.1
 
 ## Binary Search for Path MTU
 
-Find the exact maximum packet size that passes through:
+Find the exact maximum IPv4 packet size up to 1500 bytes that passes through:
 
 ```bash
 #!/bin/bash
 # find-pmtu.sh - Binary search for path MTU
 
 HOST="${1:-8.8.8.8}"
-LOW=576
-HIGH=1500
+LOW=0
+HIGH=1473  # exclusive upper bound for a 1500-byte IPv4 packet
 
 echo "Finding path MTU to $HOST..."
 
 while [ $((HIGH - LOW)) -gt 1 ]; do
     MID=$(( (HIGH + LOW) / 2 ))
-    if ping -M do -s "$MID" -c 1 -W 2 "$HOST" > /dev/null 2>&1; then
+    if ping -4 -M do -s "$MID" -c 1 -W 2 "$HOST" > /dev/null 2>&1; then
         LOW=$MID
     else
         HIGH=$MID
@@ -95,22 +95,22 @@ echo "VXLAN 1450 MTU test"
 
 ## Diagnose an MTU Black Hole
 
-If large pings fail but small ones work, you have an MTU black hole:
+If large pings fail but small ones work, you likely have an MTU black hole:
 
 ```bash
 # Small packet works fine
-ping -M do -s 100 -c 3 web-server.example.com
+ping -4 -M do -s 100 -c 3 web-server.example.com
 # OK
 
 # Large packet silently fails
-ping -M do -s 1400 -c 3 web-server.example.com
-# No response (ICMP "too big" blocked by firewall)
+ping -4 -M do -s 1400 -c 3 web-server.example.com
+# No response (ICMP "fragmentation needed" blocked by firewall)
 
-# Fix: clamp TCP MSS to match discovered MTU
-sudo iptables -A FORWARD -p tcp --tcp-flags SYN,RST SYN \
-  -j TCPMSS --set-mss 1300
+# Fix: clamp TCP MSS to the path MTU
+sudo iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN \
+  -j TCPMSS --clamp-mss-to-pmtu
 
-# Or set path MTU discovery on the interface
+# Or lower the interface MTU
 sudo ip link set eth0 mtu 1400
 ```
 
@@ -120,10 +120,10 @@ sudo ip link set eth0 mtu 1400
 Total Packet  Payload (-s)  Use case
 ------------  ------------  ----------------------------
    84 bytes     56 bytes    Default ping
-  576 bytes    548 bytes    Minimum MTU (RFC 791)
+  576 bytes    548 bytes    IPv4 host receive requirement (RFC 791)
  1500 bytes   1472 bytes    Standard Ethernet
  1492 bytes   1464 bytes    PPPoE
- 1480 bytes   1452 bytes    GRE tunnel
+ 1476 bytes   1448 bytes    GRE over IPv4
  1450 bytes   1422 bytes    VXLAN
  1420 bytes   1392 bytes    WireGuard
 ```
