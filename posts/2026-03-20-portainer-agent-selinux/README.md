@@ -35,13 +35,13 @@ sudo setenforce 1
 
 ```bash
 # Check for AVC (Access Vector Cache) denial messages
-sudo ausearch -m AVC -ts recent
+sudo ausearch -m AVC,USER_AVC,SELINUX_ERR,USER_SELINUX_ERR -ts recent
 
 # Or check the audit log directly
-sudo cat /var/log/audit/audit.log | grep portainer | tail -20
+sudo grep -i 'avc:.*denied' /var/log/audit/audit.log | tail -20
 
-# Filter for denied actions specifically
-sudo ausearch -m AVC -c docker --raw | grep DENIED
+# If setroubleshoot is installed, check its summaries too
+sudo journalctl -t setroubleshoot --since today
 
 # Get a summary of all denials
 sudo aureport --avc
@@ -49,110 +49,11 @@ sudo aureport --avc
 
 ## Step 3: Fix Docker Socket Access
 
-The most common SELinux issue is the agent being denied access to `/var/run/docker.sock`:
+On SELinux-enabled Linux hosts, Portainer documents `--privileged` as the required deployment mode for the Agent:
 
 ```bash
-# The :z label option tells Docker to relabel the socket for the container
 docker stop portainer-agent && docker rm portainer-agent
 
-docker run -d \
-  -p 9001:9001 \
-  --name portainer-agent \
-  --restart=unless-stopped \
-  -v /var/run/docker.sock:/var/run/docker.sock:z \
-  -v /var/lib/docker/volumes:/var/lib/docker/volumes:z \
-  portainer/agent:latest
-
-# :z = shared relabeling (other containers can also access)
-# :Z = private relabeling (exclusive access for this container)
-```
-
-## Step 4: Fix Volume Path Access
-
-If the agent can't access Docker volume paths:
-
-```bash
-# Check the SELinux context on Docker volumes directory
-ls -lZ /var/lib/docker/volumes/
-
-# Set the correct SELinux context
-sudo chcon -Rt svirt_sandbox_file_t /var/lib/docker/volumes/
-
-# Alternatively, use the :Z mount option
-docker run -d \
-  -p 9001:9001 \
-  --name portainer-agent \
-  --restart=unless-stopped \
-  -v /var/run/docker.sock:/var/run/docker.sock:z \
-  -v /var/lib/docker/volumes:/var/lib/docker/volumes:Z \
-  portainer/agent:latest
-```
-
-## Step 5: Create a Custom SELinux Policy Module
-
-For a permanent, precise fix:
-
-```bash
-# Install SELinux tools
-sudo dnf install -y policycoreutils-python-utils selinux-policy-devel
-
-# Generate a policy module from denial messages
-sudo ausearch -m AVC -ts recent --raw | audit2allow -M portainer-agent
-
-# Review the generated policy
-cat portainer-agent.te
-
-# Install the policy module
-sudo semodule -i portainer-agent.pp
-
-# Verify installation
-sudo semodule -l | grep portainer
-```
-
-## Step 6: Allow Network Port Access
-
-If the agent port (9001) is blocked by SELinux:
-
-```bash
-# Check if port 9001 has an SELinux context
-sudo semanage port -l | grep 9001
-
-# Add the port to the allowed list for container use
-sudo semanage port -a -t http_port_t -p tcp 9001
-
-# Or add to container ports
-sudo semanage port -a -t container_port_t -p tcp 9001
-
-# Verify
-sudo semanage port -l | grep 9001
-```
-
-## Step 7: Enable Container_manage_cgroup Boolean
-
-On RHEL/CentOS, enable the SELinux boolean that allows containers to manage cgroups:
-
-```bash
-# Check current boolean states
-sudo getsebool -a | grep container
-
-# Enable key booleans for Docker/container access
-sudo setsebool -P container_manage_cgroup true
-sudo setsebool -P container_use_cephfs true  # If using Ceph storage
-
-# For network access
-sudo setsebool -P container_connect_any true  # Allow containers to connect to any port
-
-# Make changes permanent (-P flag)
-sudo setsebool -P domain_kernel_load_modules true
-```
-
-## Step 8: Use the Privileged Flag (Last Resort)
-
-If precise SELinux policy fixing is not feasible:
-
-```bash
-# Run agent with --privileged (bypasses SELinux type enforcement for the container)
-# WARNING: This reduces container isolation
 docker run -d \
   -p 9001:9001 \
   --name portainer-agent \
@@ -160,40 +61,116 @@ docker run -d \
   --privileged \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  portainer/agent:latest
+  portainer/agent:lts
+
+# Match the Agent image tag to your Portainer Server release track/version
 ```
 
-## Step 9: Check and Fix SELinux Context on Agent Data Volume
+## Step 4: Fix Volume Path Access
+
+If the agent can't access Docker volume paths:
 
 ```bash
-# Check the SELinux context of the agent data directory
-ls -lZ /var/lib/docker/volumes/portainer_agent_data/_data/
+# Check the SELinux context on Docker-managed storage
+ls -ldZ /var/lib/docker /var/lib/docker/volumes
 
-# Set correct context for Docker volume data
-sudo chcon -Rt container_file_t \
-  /var/lib/docker/volumes/portainer_agent_data/_data/
+# Restore the default SELinux contexts if they drifted
+sudo restorecon -Rv /var/lib/docker /var/lib/docker/volumes
+
+# If Docker uses a non-standard data root, map it to Docker's default context
+sudo semanage fcontext -a -e /var/lib/docker /srv/data/docker
+sudo restorecon -Rv /srv/data/docker
 ```
 
-## Step 10: Permanent Solution with Dockerfile Label
+## Step 5: Create a Custom SELinux Policy Module
 
-For the most SELinux-compatible deployment, use Docker Compose with explicit SELinux labels:
+For a permanent, precise fix after ruling out labeling issues:
+
+```bash
+# Install SELinux tools
+sudo dnf install -y policycoreutils-python-utils selinux-policy-devel
+# On older RHEL/CentOS releases, use yum instead of dnf
+
+# Generate a policy module from denial messages
+sudo ausearch -m AVC,USER_AVC -ts recent --raw | audit2allow -M portainer-agent
+
+# Review the generated policy carefully
+cat portainer-agent.te
+
+# Install the policy module
+sudo semodule -i portainer-agent.pp
+
+# Verify installation
+sudo semodule -l | grep portainer-agent
+```
+
+## Step 6: Allow Network Port Access
+
+If the audit log shows a bind denial on port 9001:
+
+```bash
+# Check whether 9001 already has an SELinux port label
+sudo semanage port -l | grep -w 9001
+
+# Add 9001 for container processes if it is not already defined
+sudo semanage port -a -t container_port_t -p tcp 9001
+
+# Or, if 9001 already exists with a different type, modify it instead
+sudo semanage port -m -t container_port_t -p tcp 9001
+
+# Verify
+sudo semanage port -l | grep -w 9001
+```
+
+## Step 7: Enable container_manage_cgroup Only If Denials Mention Cgroups
+
+On RHEL/CentOS, this boolean is relevant only when AVC denials mention cgroup access:
+
+```bash
+# Check the current state
+sudo getsebool -a | grep container_manage_cgroup
+
+# Enable it permanently if the denials point to cgroup access
+sudo setsebool -P container_manage_cgroup on
+```
+
+## Step 8: Verify the Privileged Flag Is Set
+
+On SELinux-enabled Linux hosts, confirm the agent is actually running with `--privileged`:
+
+```bash
+docker inspect portainer-agent --format '{{.HostConfig.Privileged}}'
+# Expected output: true
+```
+
+## Step 9: Check SELinux Context on Edge Agent Data Volume
+
+```bash
+# If you are also using an Edge Agent data volume, check its context
+ls -ldZ /var/lib/docker/volumes/portainer_agent_data
+ls -lZ /var/lib/docker/volumes/portainer_agent_data/_data/
+
+# Restore Docker's default contexts if the labels drifted
+sudo restorecon -Rv /var/lib/docker/volumes/portainer_agent_data
+```
+
+## Step 10: Permanent Solution with Docker Compose
+
+For the same deployment in Docker Compose, use privileged mode on SELinux-enabled hosts:
 
 ```yaml
 services:
   portainer-agent:
-    image: portainer/agent:latest
+    image: portainer/agent:lts  # Match the Agent tag to your Portainer Server release track/version
+    privileged: true
     ports:
       - "9001:9001"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:z
-      - /var/lib/docker/volumes:/var/lib/docker/volumes:z
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/volumes:/var/lib/docker/volumes
     restart: unless-stopped
-    security_opt:
-      - label:disable  # Disable SELinux label enforcement for this container
-      # Or use a specific label:
-      # - label:type:container_runtime_t
 ```
 
 ## Conclusion
 
-SELinux issues with the Portainer Agent are best fixed by using the `:z` or `:Z` volume mount label, which tells Docker to relabel the mounted paths for SELinux access. For network port issues, use `semanage port` to add port 9001 to the allowed list. Avoid disabling SELinux entirely - instead, use `audit2allow` to generate a precise policy module that allows only what Portainer needs.
+SELinux issues with the Portainer Agent are best addressed by deploying the Agent with `--privileged` on SELinux-enabled Linux hosts, which is Portainer's documented requirement. Use the audit logs to confirm whether you also have mislabeled Docker storage or a port-labeling issue, and prefer restoring correct contexts or adding a narrow local policy module over disabling SELinux entirely.
