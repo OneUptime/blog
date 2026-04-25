@@ -8,7 +8,7 @@ Description: Install and configure the Portainer Agent on a Docker standalone ho
 
 ## Introduction
 
-The Portainer Agent is a lightweight service that runs on Docker hosts and enables remote management from a central Portainer server. Unlike direct socket or API connections, the agent handles the communication complexity and supports advanced features like browsing volumes and multi-host cluster management.
+The Portainer Agent is a lightweight service that runs on Docker hosts and enables remote management from a central Portainer server. Unlike direct socket or API connections, the agent handles the communication complexity and supports advanced features like browsing volumes and multi-host cluster management. Portainer currently documents the Docker Standalone agent as a legacy option and recommends the Edge Agent for most new deployments.
 
 ## Why Use an Agent
 
@@ -23,6 +23,8 @@ The Portainer Agent is a lightweight service that runs on Docker hosts and enabl
 ## Prerequisites
 
 - Docker installed on the target host
+- sudo, root, or Administrator access on the target host
+- Docker accessible via the local Unix socket on the target host
 - Port 9001 accessible from the Portainer server
 - Portainer server already running
 
@@ -31,33 +33,37 @@ The Portainer Agent is a lightweight service that runs on Docker hosts and enabl
 ```bash
 docker run -d \
   --name portainer_agent \
-  --restart always \
+  --restart=always \
   -p 9001:9001 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  portainer/agent:latest
+  portainer/agent:lts
 ```
+
+If SELinux is enabled on the host, add `--privileged`. If you use a custom `AGENT_SECRET` on the Portainer server, pass the same value to the agent with `-e AGENT_SECRET=...`. To enable host management features, also add `-v /:/host`.
 
 ## Step 2: Install via Docker Compose
 
 ```yaml
 # docker-compose-agent.yml
 
-version: "3.8"
-
 services:
   agent:
-    image: portainer/agent:latest
+    image: portainer/agent:lts
     container_name: portainer_agent
     restart: always
+    # If SELinux is enabled on the host, uncomment:
+    # privileged: true
     ports:
       - "9001:9001"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
-    environment:
-      # Optional: Set agent secret
-      AGENT_SECRET: "shared-secret-with-portainer-server"
+      # Optional: Enable host management features
+      # - /:/host
+    # environment:
+    #   # Set this only if the Portainer server was started with AGENT_SECRET
+    #   AGENT_SECRET: "shared-secret-with-portainer-server"
 ```
 
 ```bash
@@ -66,24 +72,7 @@ docker compose -f docker-compose-agent.yml up -d
 
 ## Step 3: Add the Agent-Managed Environment to Portainer
 
-```bash
-TOKEN=$(curl -s -X POST \
-  https://portainer.example.com/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"adminpassword"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
-
-curl -X POST \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  https://portainer.example.com/api/endpoints \
-  -d '{
-    "name": "Docker Host 1",
-    "endpointCreationType": 2,
-    "URL": "tcp://192.168.1.100:9001",
-    "TLS": false
-  }'
-```
+In Portainer, go to **Environments** > **Add environment**, select **Docker Standalone**, click **Start Wizard**, and choose **Agent** under **More options**. In **Environment URL**, enter the agent host and port as `192.168.1.100:9001` and do not include `tcp://`, `http://`, or `https://`, because Portainer connects to the agent over HTTPS automatically. Click **Connect** to finish adding the environment.
 
 ## Step 4: Verify Agent Connection
 
@@ -118,7 +107,7 @@ print('Image:', c[0]['Config']['Image'])
 "
 
 # Update agent to match server
-docker pull portainer/agent:latest
+docker pull portainer/agent:lts
 docker stop portainer_agent
 docker rm portainer_agent
 # Re-run docker run command above
@@ -126,4 +115,4 @@ docker rm portainer_agent
 
 ## Conclusion
 
-The Portainer Agent provides the most capable connection method for remote Docker hosts. It enables volume browsing, handles authentication, and supports Swarm cluster-wide management. Install it on each host you want to manage centrally, ensure port 9001 is open from the Portainer server, and add the environment in Portainer pointing to the agent's address.
+The Portainer Agent remains a capable connection method for remote Docker hosts. It enables volume browsing, handles authentication, and supports Swarm cluster-wide management, but for most new deployments Portainer recommends the Edge Agent. If you use the standard agent, install it on each host you want to manage centrally, ensure port 9001 is open from the Portainer server, and add the environment in Portainer pointing to the agent's address.
