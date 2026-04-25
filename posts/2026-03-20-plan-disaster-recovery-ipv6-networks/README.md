@@ -12,7 +12,7 @@ Disaster recovery planning for IPv6 networks introduces unique considerations: I
 
 ## IPv6-Specific DR Considerations
 
-Unlike IPv4, where organizations often use private RFC1918 space internally, IPv6 uses global unicast addresses even internally (or ULA). This affects DR planning:
+Unlike IPv4, where organizations often use private RFC1918 space internally, IPv6 deployments often use global unicast addresses internally, though ULA is also an option. This affects DR planning:
 
 ```text
 Key IPv6 DR considerations:
@@ -29,24 +29,24 @@ Key IPv6 DR considerations:
 # Document your primary and DR IPv6 allocations
 
 # Primary site
-PRIMARY_PREFIX="2001:db8:primary::/48"
+PRIMARY_PREFIX="2001:db8:1000::/48"
 # DR site
-DR_PREFIX="2001:db8:dr::/48"
+DR_PREFIX="2001:db8:2000::/48"
 
 # Infrastructure subnets should be mirrored:
-# Primary: 2001:db8:primary:0001::/64  (servers)
-# DR:      2001:db8:dr:0001::/64       (servers)
+# Primary: 2001:db8:1000:0001::/64  (servers)
+# DR:      2001:db8:2000:0001::/64  (servers)
 
 # Keep a network documentation file
 cat > /etc/network/ipv6-dr-plan.txt << 'EOF'
-Primary Web:    2001:db8:primary:0001::/64
-DR Web:         2001:db8:dr:0001::/64
+Primary Web:    2001:db8:1000:0001::/64
+DR Web:         2001:db8:2000:0001::/64
 
-Primary DB:     2001:db8:primary:0002::/64
-DR DB:          2001:db8:dr:0002::/64
+Primary DB:     2001:db8:1000:0002::/64
+DR DB:          2001:db8:2000:0002::/64
 
-Primary Mgmt:   2001:db8:primary:fffe::/64
-DR Mgmt:        2001:db8:dr:fffe::/64
+Primary Mgmt:   2001:db8:1000:fffe::/64
+DR Mgmt:        2001:db8:2000:fffe::/64
 EOF
 ```
 
@@ -57,16 +57,14 @@ Low DNS TTLs enable fast failover:
 ```bash
 # Primary DNS records with low TTL for DR readiness
 # zone file
-webapp  60  IN  AAAA  2001:db8:primary:0001::10
-webapp  60  IN  AAAA  2001:db8:primary:0001::11
+webapp  60  IN  AAAA  2001:db8:1000:0001::10
 
 # DR failover: update to DR addresses
-# webapp  60  IN  AAAA  2001:db8:dr:0001::10
-# webapp  60  IN  AAAA  2001:db8:dr:0001::11
+# webapp  60  IN  AAAA  2001:db8:2000:0001::10
 
 # For health-check-based failover, use a DNS failover service:
 # - AWS Route 53 Health Checks with AAAA records
-# - Cloudflare Health Checks
+# - Cloudflare Load Balancing with Health Checks
 # - Automated script to update DNS via API
 ```
 
@@ -79,7 +77,7 @@ webapp  60  IN  AAAA  2001:db8:primary:0001::11
 CLOUDFLARE_API_TOKEN="your_token"
 ZONE_ID="your_zone_id"
 RECORD_NAME="webapp.example.com"
-DR_IPV6="2001:db8:dr:0001::10"
+DR_IPV6="2001:db8:2000:0001::10"
 
 # Get the current AAAA record ID
 RECORD_ID=$(curl -s -X GET \
@@ -88,7 +86,7 @@ RECORD_ID=$(curl -s -X GET \
   | jq -r '.result[0].id')
 
 # Update to DR IPv6 address
-curl -s -X PUT \
+curl -s -X PATCH \
   "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/$RECORD_ID" \
   -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
   -H "Content-Type: application/json" \
@@ -106,19 +104,26 @@ echo "DNS failover to DR IPv6 completed"
 
 ```bash
 # If you have your own IPv6 PI block, configure BGP for DR:
-# Primary site: announce 2001:db8::/32 with higher preference
-# DR site: announce 2001:db8::/32 as backup (higher MED or lower local-pref)
+# Primary site: announce 2001:db8:1000::/48 as preferred path
+# DR site: announce 2001:db8:1000::/48 as backup (for example, with higher MED)
 
-# Example Quagga/FRR BGP config for DR site:
+# Example FRR BGP config for DR site:
 router bgp 65001
   bgp router-id 192.0.2.2
-  neighbor 2001:db8::upstream-isp peer-group
+  no bgp default ipv4-unicast
+  neighbor UPSTREAM peer-group
+  neighbor UPSTREAM remote-as 64496
+  neighbor 2001:db8:ffff::1 peer-group UPSTREAM
 
   address-family ipv6 unicast
-    network 2001:db8::/32
-    neighbor 2001:db8::upstream-isp activate
+    network 2001:db8:1000::/48
+    neighbor UPSTREAM activate
     # Higher MED = less preferred
-    neighbor 2001:db8::upstream-isp route-map SET_MED out
+    neighbor UPSTREAM route-map SET_MED out
+  exit-address-family
+
+route-map SET_MED permit 10
+  set metric 200
 ```
 
 ## Testing DR Procedures for IPv6
@@ -128,21 +133,21 @@ router bgp 65001
 # test_ipv6_dr.sh - Validate DR readiness
 
 PRIMARY_SERVICES=(
-  "webapp.example.com:2001:db8:primary:0001::10:443"
-  "api.example.com:2001:db8:primary:0001::11:443"
-  "db.example.com:2001:db8:primary:0002::10:5432"
+  "webapp.example.com|2001:db8:1000:0001::10|443"
+  "api.example.com|2001:db8:1000:0001::11|443"
+  "db.example.com|2001:db8:1000:0002::10|5432"
 )
 
 DR_SERVICES=(
-  "webapp.example.com:2001:db8:dr:0001::10:443"
-  "api.example.com:2001:db8:dr:0001::11:443"
-  "db.example.com:2001:db8:dr:0002::10:5432"
+  "webapp.example.com|2001:db8:2000:0001::10|443"
+  "api.example.com|2001:db8:2000:0001::11|443"
+  "db.example.com|2001:db8:2000:0002::10|5432"
 )
 
 echo "=== Testing DR IPv6 Service Reachability ==="
 
 for svc in "${DR_SERVICES[@]}"; do
-  IFS=':' read -r name addr port <<< "$svc"
+  IFS='|' read -r name addr port <<< "$svc"
   if nc -6 -w 3 "$addr" "$port" < /dev/null > /dev/null 2>&1; then
     echo "OK: $name DR endpoint [$addr]:$port"
   else
