@@ -8,25 +8,25 @@ Description: Learn how to implement the Pilot Light disaster recovery strategy u
 
 ## Overview
 
-The Pilot Light DR strategy keeps core critical components (databases, AMIs) running at minimal capacity in the DR region. During failover, additional resources are provisioned rapidly from pre-configured templates. OpenTofu manages both the steady-state "pilot light" and the failover scale-up process.
+The Pilot Light DR strategy keeps core critical components, such as a database replica, running at minimal capacity in the DR region and keeps pre-built AMIs ready for failover. During failover, additional resources are provisioned rapidly from pre-configured templates. OpenTofu manages both the steady-state "pilot light" and the failover scale-up process.
 
 ## Step 1: Pilot Light - Database Replica
 
 ```hcl
 # main.tf - Pilot light DR setup
 
-# Only the database replica runs continuously in DR
+# The database replica stays warm continuously in DR
 resource "aws_db_instance" "pilot_light" {
   provider            = aws.dr
   identifier          = "app-db-pilot-light"
-  replicate_source_db = aws_db_instance.primary.arn
+  replicate_source_db = var.promote_dr_db ? null : aws_db_instance.primary.arn
   instance_class      = "db.t3.micro"  # Minimal size - just keeping replica warm
 
   # No multi-AZ in pilot light (cost saving)
   multi_az = false
 
-  # Stop automated backups on replica (primary handles backups)
-  backup_retention_period = 0
+  # Keep backups off in steady state, but enable them when promoting
+  backup_retention_period = var.promote_dr_db ? 1 : 0
 }
 ```
 
@@ -73,7 +73,7 @@ variable "dr_mode" {
   description = "Set to true during DR failover to scale up DR resources"
 }
 
-# ALB exists in DR (zero-cost endpoint, load balancer charges per hour)
+# Pre-created ALB in DR keeps the endpoint ready (incurs hourly and LCU charges)
 resource "aws_lb" "dr" {
   provider           = aws.dr
   name               = "app-dr-alb"
@@ -105,30 +105,17 @@ resource "aws_autoscaling_group" "pilot_light" {
 ## Step 4: Failover Execution
 
 ```hcl
-# Promote DR replica to standalone (run during failover)
-# This is applied with: tofu apply -var="dr_mode=true" -var="promote_dr_db=true"
+# Promote DR replica to standalone during failover.
+# OpenTofu promotes the replica by omitting replicate_source_db from aws_db_instance.pilot_light.
+# Run this only after the pilot-light replica already exists:
+# tofu apply -var="dr_mode=true" -var="promote_dr_db=true"
+# Wait for the DB instance to return to "available" before routing traffic.
 variable "promote_dr_db" {
   type    = bool
   default = false
-}
-
-resource "null_resource" "promote_replica" {
-  count = var.promote_dr_db ? 1 : 0
-
-  provisioner "local-exec" {
-    command = <<-EOT
-      aws rds promote-read-replica \
-        --db-instance-identifier ${aws_db_instance.pilot_light.id} \
-        --region us-west-2
-    EOT
-  }
-
-  triggers = {
-    promote = var.promote_dr_db
-  }
 }
 ```
 
 ## Summary
 
-The Pilot Light DR strategy configured with OpenTofu minimizes DR costs by running only the database replica continuously (the "pilot light"), keeping all other infrastructure at zero capacity. During failover, a single `tofu apply -var="dr_mode=true"` provisions the full application tier in minutes using pre-built AMIs and pre-configured launch templates. This achieves an RTO of 15-30 minutes with near-zero RPO for the database, at a fraction of the cost of a warm standby environment.
+The Pilot Light DR strategy configured with OpenTofu minimizes DR costs by keeping the database replica continuously available in the recovery Region while application compute stays at zero capacity. Supporting resources such as launch templates, AMIs, and the ALB are pre-created so failover can scale quickly. During failover, `tofu apply -var="dr_mode=true" -var="promote_dr_db=true"` promotes the replica and provisions the application tier from pre-built AMIs and pre-configured launch templates. Because Amazon RDS read replicas use asynchronous replication, actual RTO and RPO depend on replica lag, promotion time, and application startup time, but Pilot Light typically targets recovery in the tens of minutes at a lower cost than warm standby environments.
