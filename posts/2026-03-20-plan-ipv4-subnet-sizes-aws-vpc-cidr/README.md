@@ -56,7 +56,7 @@ VPC: 10.0.0.0/16  (65,536 IPs)
 10.0.22.0/24  - db-1c
 
 ─── Reserved for future expansion ───
-10.0.100.0/22 - Kubernetes pod subnet
+10.0.100.0/22 - EKS expansion subnet
 10.0.200.0/24 - Management/VPN
 ```
 
@@ -89,8 +89,8 @@ print("No overlaps found - plan is valid") if not any(
 
 ## Sizing for EKS
 
-Kubernetes pods need many IPs. Reserve large subnets (/22 or bigger) for EKS node groups and a separate CIDR range (e.g., 100.64.0.0/10) for pod networking.
+Kubernetes pods can consume many IPs. By default, Amazon VPC CNI assigns Pod IPs from the node subnet. If you use EKS custom networking, plan a secondary VPC CIDR range (for example, from `100.64.0.0/10`) for Pod networking.
 
 ## Conclusion
 
-Plan subnets before creating the VPC. Use /24 for small tiers, /23 for app tiers (double density), and /28 for services needing only a few IPs (RDS subnet groups, NAT subnets). Document the allocation in a CIDR spreadsheet and reserve space for future AZs and services.
+Plan subnets before creating the VPC. Use /24 for small tiers, /23 for app tiers (double density), and /28 only for very small-purpose subnets. RDS subnet groups typically need larger subnets so Amazon RDS has spare addresses for failover and maintenance. Document the allocation in a CIDR spreadsheet and reserve space for future AZs and services.
