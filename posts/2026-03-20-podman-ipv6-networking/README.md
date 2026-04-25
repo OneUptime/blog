@@ -2,11 +2,11 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, IPv6, Container Networking, CNI, Rootless, Linux
+Tags: Podman, IPv6, Container Networking, Netavark, Rootless, Linux
 
 Description: A guide to configuring Podman container networking with IPv6 support, including custom networks, dual-stack configuration, and rootless IPv6 containers.
 
-Podman uses CNI (Container Network Interface) plugins for container networking, which supports IPv6 natively. Both root and rootless Podman can use IPv6 networks with appropriate configuration.
+Podman uses Netavark for container networking, which supports IPv6 natively. Both root and rootless Podman can use IPv6 networks with appropriate configuration.
 
 ## Enabling IPv6 in Podman
 
@@ -17,8 +17,8 @@ Podman's default network configuration may not include IPv6. Enable it per-netwo
 
 podman network inspect podman
 
-# Check if IPv6 is enabled on default bridge
-cat /etc/cni/net.d/87-podman.conflist | python3 -m json.tool | grep ipv6
+# Check if IPv6 is enabled on the default bridge
+podman network inspect podman --format '{{.IPv6Enabled}}'
 ```
 
 ## Creating an IPv6-Enabled Network
@@ -30,15 +30,15 @@ podman network create \
   --subnet 10.88.0.0/16 \
   --gateway 10.88.0.1 \
   --ipv6 \
-  --subnet fd00:podman::/64 \
-  --gateway fd00:podman::1 \
+  --subnet fd52:2a5a:747e:3acd::/64 \
+  --gateway fd52:2a5a:747e:3acd::1 \
   ipv6-network
 
 # IPv6-only network
 podman network create \
   --ipv6 \
-  --subnet fd00:podman-ipv6::/64 \
-  --gateway fd00:podman-ipv6::1 \
+  --subnet fd52:2a5a:747e:3ace::/64 \
+  --gateway fd52:2a5a:747e:3ace::1 \
   ipv6-only
 
 # List networks
@@ -55,17 +55,18 @@ podman network inspect ipv6-network
 podman run -d \
   --name web \
   --network ipv6-network \
+  --ip6 fd52:2a5a:747e:3acd::20 \
   -p 80:80 \
   nginx:alpine
 
 # Check container's IPv6 address
-podman inspect web | python3 -m json.tool | grep -A 5 "IPAddress\|IPv6"
+podman inspect web --format '{{range .NetworkSettings.Networks}}{{.GlobalIPv6Address}}{{end}}'
 
 # Or using exec
 podman exec web ip -6 addr show
 
 # Test IPv6 connectivity to container
-curl -6 http://[fd00:podman::2]/
+curl -6 http://[fd52:2a5a:747e:3acd::20]/
 ```
 
 ## Pods with IPv6
@@ -80,12 +81,12 @@ podman pod create \
 # Run containers in the pod
 podman run -d \
   --pod my-pod \
-  --name web \
+  --name pod-web \
   nginx:alpine
 
 podman run -d \
   --pod my-pod \
-  --name app \
+  --name pod-app \
   my-app:latest
 
 # Check pod network configuration
@@ -95,9 +96,7 @@ podman pod inspect my-pod | python3 -m json.tool | grep -A 10 "Networks"
 ## Podman Compose with IPv6
 
 ```yaml
-# docker-compose.yml (works with podman-compose)
-
-version: '3.9'
+# compose.yaml (works with podman compose via an external compose provider)
 
 networks:
   ipv6:
@@ -106,7 +105,7 @@ networks:
     ipam:
       config:
         - subnet: 10.30.0.0/24
-        - subnet: fd00:compose::/64
+        - subnet: fd52:2a5a:747e:3ad0::/64
 
 services:
   web:
@@ -123,24 +122,24 @@ services:
 ```
 
 ```bash
-# Deploy with podman-compose
-podman-compose up -d
+# Deploy with podman compose
+podman compose up -d
 
-# Verify IPv6 addresses
-podman-compose ps
+# Verify the web service has an IPv6 address
+podman compose exec web ip -6 addr show
 ```
 
 ## Rootless Podman with IPv6
 
-Rootless Podman requires `slirp4netns` which has limited IPv6 support, or the newer `pasta` networking:
+Rootless Podman requires a user-mode networking tool. Current Podman releases use `pasta` (provided by `passt`) by default:
 
 ```bash
-# Using pasta (better IPv6 support for rootless)
-# Install pasta
+# Using pasta (default on current rootless Podman releases)
+# Install pasta if it is not already available
 sudo apt-get install passt
 
 # Run rootless container with pasta networking
-podman run --network pasta --name web nginx:alpine
+podman run --network pasta --name rootless-web nginx:alpine
 
 # Or configure pasta as default in containers.conf
 mkdir -p ~/.config/containers
@@ -150,40 +149,27 @@ default_rootless_network_cmd = "pasta"
 EOF
 
 # Verify rootless container has IPv6
-podman exec web ip -6 addr show
+podman exec rootless-web ip -6 addr show
 ```
 
 ## Configuring the Default Network for IPv6
 
-```json
-// /etc/cni/net.d/87-podman.conflist
-{
-  "cniVersion": "0.4.0",
-  "name": "podman",
-  "plugins": [
-    {
-      "type": "bridge",
-      "bridge": "cni-podman0",
-      "isGateway": true,
-      "ipMasq": true,
-      "ipam": {
-        "type": "host-local",
-        "ranges": [
-          [{"subnet": "10.88.0.0/16"}],
-          [{"subnet": "fd00:podman::/64"}]
-        ],
-        "routes": [
-          {"dst": "0.0.0.0/0"},
-          {"dst": "::/0"}
-        ]
-      }
-    },
-    {
-      "type": "portmap",
-      "capabilities": {"portMappings": true}
-    }
-  ]
-}
+```bash
+# Recreate the default bridge with IPv6 enabled
+# Stop and remove containers attached to the default network first.
+sudo podman network rm podman
+
+sudo podman network create \
+  --driver bridge \
+  --subnet 10.88.0.0/16 \
+  --gateway 10.88.0.1 \
+  --ipv6 \
+  --subnet fd52:2a5a:747e:3acf::/64 \
+  --gateway fd52:2a5a:747e:3acf::1 \
+  podman
+
+# Verify the default network
+sudo podman network inspect podman
 ```
 
 ## Verifying IPv6 Container Networking
@@ -193,10 +179,11 @@ podman exec web ip -6 addr show
 podman ps -q | xargs -I{} podman inspect {} --format '{{.Name}}: {{range .NetworkSettings.Networks}}{{.GlobalIPv6Address}}{{end}}'
 
 # Test inter-container IPv6 communication
-podman exec web ping6 -c 3 fd00:podman::app-address
+podman run -d --name app --network ipv6-network alpine tail -f /dev/null
+podman exec web ping -6 -c 3 app
 
 # Check IPv6 routing from container
 podman exec web ip -6 route show
 ```
 
-Podman's CNI-based networking with explicit IPv6 subnet configuration provides reliable dual-stack container networking, with the newer pasta networking backend improving rootless IPv6 support.
+Podman's Netavark-based networking with explicit IPv6 subnet configuration provides reliable dual-stack container networking, with pasta improving rootless IPv6 support.
