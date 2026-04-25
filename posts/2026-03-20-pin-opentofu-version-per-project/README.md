@@ -35,7 +35,7 @@ tofu version  # Will show 1.9.0 when using tofuenv
 cd /path/to/your/project
 
 # Set the local version
-asdf local opentofu 1.9.0
+asdf set opentofu 1.9.0
 
 # This creates/updates .tool-versions
 cat .tool-versions
@@ -65,7 +65,8 @@ terraform {
 
 ```bash
 # If someone tries to run with a different version, they get:
-# Error: OpenTofu version 1.8.5 does not satisfy the required version constraint "= 1.9.0"
+# Error: Unsupported OpenTofu Core version
+# This configuration does not support OpenTofu version 1.8.5.
 ```
 
 ## Method 4: Docker-based Version Pinning
@@ -141,7 +142,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.9.0"  # Exact version pin
 
