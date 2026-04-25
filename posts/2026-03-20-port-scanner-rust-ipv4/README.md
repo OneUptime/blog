@@ -80,7 +80,7 @@ fn scan_range(
 
     // Collect results
     let total = (end - start + 1) as usize;
-    let mut results = rx.take(total).flatten().collect::<Vec<_>>();
+    let mut results = rx.into_iter().take(total).flatten().collect::<Vec<_>>();
     results.sort_unstable();
 
     for handle in handles {
@@ -148,4 +148,4 @@ Port scanning systems you own or have explicit permission to test is legal. Scan
 
 ## Conclusion
 
-Rust port scanners use `TcpStream::connect_timeout` for non-blocking probes. The multi-threaded approach with `mpsc::channel` distributes work across a fixed number of threads. For the most ergonomic parallel scanner, `rayon`'s `into_par_iter()` automatically distributes work across all CPU cores. Always use responsibly on authorized targets.
+Rust port scanners can use `TcpStream::connect_timeout` for TCP connection attempts with a timeout. The multi-threaded approach with `mpsc::channel` distributes work across a fixed number of threads. For the most ergonomic parallel scanner, `rayon`'s `into_par_iter()` distributes work across Rayon's thread pool. Always use responsibly on authorized targets.
