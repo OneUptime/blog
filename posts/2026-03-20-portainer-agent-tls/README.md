@@ -1,134 +1,90 @@
-# How to Configure TLS for Portainer Agent Communication
+# How TLS Works for Portainer Agent Communication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Agent, TLS, Security, Certificate, Encryption
 
-Description: Secure the communication channel between the Portainer server and Portainer Agent using mutual TLS (mTLS) with custom certificates.
+Description: Understand how the standard Portainer Agent secures port 9001 by default, and when to use Docker API TLS or Edge Agent mTLS instead.
 
 ## Introduction
 
-By default, the Portainer Agent on port 9001 uses TLS with a self-generated certificate. For production environments, you should configure TLS with your own certificates to ensure the authenticity of both the Portainer server and the Agent. This guide covers setting up TLS for the Agent-to-server communication channel.
+The standard Portainer Agent on port 9001 already uses HTTPS with a self-generated certificate. For standard Agent deployments, Portainer connects to the Agent over HTTPS and skips certificate verification because the Agent generates its own certificate at startup.
+
+Custom CA-signed certificates and mutual TLS are not supported for the standard Portainer Agent on port 9001. If you need user-managed certificates, use a direct Docker API connection over TLS or Portainer Edge Agent mTLS instead.
 
 ## Prerequisites
 
-- Portainer server running with accessible port 9000/9443
-- Portainer Agent deployed on remote hosts
-- OpenSSL installed for certificate generation
+- Portainer server running with accessible port 9443 (or 9000 for legacy HTTP)
+- Portainer Agent deployed on remote hosts, or ready to deploy
+- OpenSSL installed if you plan to secure a direct Docker API connection or use Edge Agent mTLS
 - Basic understanding of TLS/PKI concepts
 
 ## Understanding Agent TLS Architecture
 
 ```mermaid
 graph LR
-    PS[Portainer Server<br/>:9000/9443] -->|TLS on port 9001| PA[Portainer Agent<br/>:9001]
-    PA -->|Presents server cert| PS
-    PS -->|Validates CA| PA
+    PS[Portainer Server<br/>:9443] -->|HTTPS on port 9001| PA[Portainer Agent<br/>:9001]
+    PA -->|Self-generated certificate| PS
+    PS -->|Signed requests| PA
 ```
 
-The Portainer server connects to the Agent on port 9001. The Agent presents a certificate; the server validates it against a trusted CA.
+The Portainer server connects to the standard Agent on port 9001 over HTTPS. The Agent generates its own certificate at startup, and the Portainer server authenticates to the Agent using signed requests rather than a client certificate.
 
-## Step 1: Generate a CA and Certificates
+## Step 1: Understand What You Can Configure
 
-```bash
-mkdir -p /opt/portainer-certs
-cd /opt/portainer-certs
+For the standard Portainer Agent on port 9001:
 
-# Generate CA key and certificate
+- TLS is enabled automatically.
+- The Agent generates a self-signed certificate at startup.
+- The Agent does not support `--tlscacert`, `--tlscert`, or `--tlskey` flags for port 9001.
+- The `--mtlscacert`, `--mtlscert`, and `--mtlskey` flags are for Edge Agent mTLS, not the standard Agent.
+- If you need custom certificates, use a direct Docker API connection over TLS on port 2376, or Portainer Edge Agent mTLS in Business Edition.
 
-openssl genrsa -out ca.key 4096
-openssl req -new -x509 -days 3650 \
-  -key ca.key \
-  -out ca.crt \
-  -subj "/C=US/O=MyOrg/CN=Portainer CA"
-
-# Generate Agent server key and CSR
-openssl genrsa -out agent.key 2048
-openssl req -new \
-  -key agent.key \
-  -out agent.csr \
-  -subj "/C=US/O=MyOrg/CN=portainer-agent"
-
-# Sign the Agent certificate with the CA
-openssl x509 -req -days 365 \
-  -in agent.csr \
-  -CA ca.crt \
-  -CAkey ca.key \
-  -CAcreateserial \
-  -out agent.crt
-
-# Generate Portainer server client certificate (for mTLS)
-openssl genrsa -out server.key 2048
-openssl req -new \
-  -key server.key \
-  -out server.csr \
-  -subj "/C=US/O=MyOrg/CN=portainer-server"
-
-openssl x509 -req -days 365 \
-  -in server.csr \
-  -CA ca.crt \
-  -CAkey ca.key \
-  -CAcreateserial \
-  -out server.crt
-
-# Verify certificates
-openssl verify -CAfile ca.crt agent.crt server.crt
-```
-
-## Step 2: Deploy Agent with Custom TLS Certificates
+## Step 2: Deploy Agent with Its Built-In TLS
 
 ```bash
-# Copy certificates to the agent host
-scp ca.crt agent.crt agent.key user@agent-host:/opt/portainer-certs/
-
-# On the agent host, deploy the agent with TLS
+# Add -e AGENT_SECRET=your-secret if the Portainer Server uses AGENT_SECRET
 docker run -d \
   -p 9001:9001 \
+  --name portainer_agent \
+  --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  -v /opt/portainer-certs:/certs:ro \
-  --name portainer_agent \
-  --restart always \
-  portainer/agent:latest \
-  --tlscacert /certs/ca.crt \
-  --tlscert /certs/agent.crt \
-  --tlskey /certs/agent.key
+  -v /:/host \
+  portainer/agent:<match-your-portainer-version>
 ```
 
-## Step 3: Configure Docker Compose for Agent TLS
+The standard Agent serves HTTPS on port 9001 automatically. No certificate flags are required.
+
+## Step 3: Configure Docker Compose for Agent Deployment
 
 ```yaml
-version: "3.8"
-
 services:
   portainer_agent:
-    image: portainer/agent:latest
+    image: portainer/agent:<match-your-portainer-version>
     container_name: portainer_agent
     restart: always
     ports:
       - "9001:9001"
+    environment:
+      # Set this only if the Portainer Server uses AGENT_SECRET
+      # AGENT_SECRET: your-secret
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
-      - /opt/portainer-certs:/certs:ro
-    command: >
-      --tlscacert /certs/ca.crt
-      --tlscert /certs/agent.crt
-      --tlskey /certs/agent.key
+      - /:/host
 ```
 
-## Step 4: Add the TLS-Secured Agent to Portainer
+## Step 4: Add the Agent to Portainer
 
 When adding the environment in Portainer:
 
 1. Go to **Environments** → **Add environment** → **Docker Standalone** → **Agent**
-2. Enter the Agent URL: `tcp://agent-host:9001`
-3. Enable **TLS**
-4. Upload:
-   - **TLS CA certificate**: `ca.crt`
-   - **TLS certificate**: `server.crt` (the client certificate for mTLS)
-   - **TLS key**: `server.key`
-5. Click **Add environment**
+2. Enter the Agent address as `agent-host:9001`
+3. Do not include `http://` or `tcp://`; Portainer uses HTTPS to the Agent automatically
+4. Click **Connect**
+
+If your Portainer Server was started with `AGENT_SECRET`, deploy the Agent with the same secret before connecting it.
 
 ### Via API
 
@@ -139,73 +95,57 @@ TOKEN=$(curl -s -X POST \
   -d '{"username":"admin","password":"adminpassword"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Add TLS-secured agent
+# Add a standard Agent environment
 curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -F "Name=Production Agent" \
-  -F "EndpointCreationType=1" \
+  -F "EndpointCreationType=2" \
   -F "URL=tcp://agent-host:9001" \
   -F "TLS=true" \
-  -F "TLSSkipVerify=false" \
-  -F "TLSSkipClientVerify=false" \
-  -F "TLSCACert=@/opt/portainer-certs/ca.crt" \
-  -F "TLSCert=@/opt/portainer-certs/server.crt" \
-  -F "TLSKey=@/opt/portainer-certs/server.key" \
+  -F "TLSSkipVerify=true" \
+  -F "TLSSkipClientVerify=true" \
   https://portainer.example.com/api/endpoints
 ```
 
 ## Certificate Rotation
 
-When certificates expire, rotate them without downtime:
+The standard Agent does not support installing or rotating a custom certificate for port 9001. Restarting the container generates a new self-signed certificate:
 
 ```bash
-# 1. Generate new certificates (keeping the same CA)
-openssl genrsa -out agent-new.key 2048
-openssl req -new -key agent-new.key -out agent-new.csr \
-  -subj "/C=US/O=MyOrg/CN=portainer-agent"
-openssl x509 -req -days 365 \
-  -in agent-new.csr -CA ca.crt -CAkey ca.key \
-  -CAcreateserial -out agent-new.crt
-
-# 2. Copy new certs to agent host
-scp agent-new.crt agent-new.key user@agent-host:/opt/portainer-certs/
-
-# 3. Rename and restart agent
-ssh user@agent-host "
-  mv /opt/portainer-certs/agent-new.crt /opt/portainer-certs/agent.crt
-  mv /opt/portainer-certs/agent-new.key /opt/portainer-certs/agent.key
-  docker restart portainer_agent
-"
+docker restart portainer_agent
 ```
+
+If you need controlled certificate issuance and rotation, use Docker API TLS or Edge Agent mTLS instead.
 
 ## Verify TLS Connection
 
 ```bash
-# Test TLS handshake
-openssl s_client \
-  -connect agent-host:9001 \
-  -CAfile /opt/portainer-certs/ca.crt \
-  -cert /opt/portainer-certs/server.crt \
-  -key /opt/portainer-certs/server.key
+# The standard Agent exposes a public /ping endpoint over HTTPS.
+# -k is required here because the Agent uses a self-signed certificate.
+curl -sk -o /dev/null -w "%{http_code}\n" https://agent-host:9001/ping
 
 # Expected output includes:
-# Verify return code: 0 (ok)
+# 204
 ```
 
 ## Troubleshooting
 
 **"x509: certificate signed by unknown authority":**
-- Ensure the CA certificate is uploaded to Portainer when adding the environment
-- Verify the Agent certificate was signed by the same CA
+- This is expected if you test the Agent directly with a client that verifies certificates
+- The standard Agent uses a self-signed certificate on port 9001
+- When connecting an Agent environment, Portainer skips certificate verification by design
 
-**"remote error: tls: certificate required":**
-- mTLS is enforced but the Portainer server hasn't provided its client certificate
-- Upload the server client certificate when configuring the environment in Portainer
+**Agent won't connect after enabling `AGENT_SECRET`:**
+- If the Portainer Server uses `AGENT_SECRET`, the Agent must be deployed with the same `AGENT_SECRET` value
+- Redeploy or restart the Agent after correcting the secret
 
 **Connection timeout on port 9001:**
 - Check firewall rules: `nc -zv agent-host 9001`
 - Verify the Agent is listening: `ss -tlnp | grep 9001`
+- When testing manually, use `https://` rather than `http://`
 
 ## Conclusion
 
-Configuring TLS for Portainer Agent communication provides end-to-end encryption and mutual authentication between the server and agents. This is especially important in production environments where agents may be exposed on network interfaces accessible to multiple systems. Using a dedicated CA for your Portainer infrastructure gives you full control over certificate issuance and revocation.
+The standard Portainer Agent already encrypts traffic on port 9001, but it does not support user-supplied certificates or mutual TLS for that connection. For most Agent deployments, the correct approach is to deploy the Agent normally and let Portainer connect over the built-in HTTPS channel.
+
+If you need CA-managed certificates or client-certificate authentication, use one of the supported alternatives: a direct Docker API connection over TLS or Portainer Edge Agent mTLS.
