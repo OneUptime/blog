@@ -119,26 +119,31 @@ flowchart TD
 
 ```yaml
 # .github/workflows/test.yml
+on:
+  pull_request:
+  push:
+    branches: [main]
+
 jobs:
   plan-tests:
     runs-on: ubuntu-latest
-    on: [pull_request]
+    if: github.event_name == 'pull_request'
     steps:
+      - uses: actions/checkout@v5
       - uses: opentofu/setup-opentofu@v1
       - run: tofu init
       # Only plan-mode tests-fast and free
-      - run: tofu test -filter=tests/unit/
+      - run: tofu test -test-directory=tests/unit
 
   apply-tests:
     runs-on: ubuntu-latest
-    on:
-      push:
-        branches: [main]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
+      - uses: actions/checkout@v5
       - uses: opentofu/setup-opentofu@v1
       - run: tofu init
       # Full apply tests-thorough but slow
-      - run: tofu test -filter=tests/integration/
+      - run: tofu test -test-directory=tests/integration
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
