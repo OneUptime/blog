@@ -2,17 +2,18 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Active Directory, LDAP, Authentication, Window, Enterprise
+Tags: Portainer, Active Directory, LDAP, Authentication, Windows, Enterprise
 
-Description: Configure Portainer to authenticate users against Microsoft Active Directory using LDAP with AD-specific settings and service accounts.
+Description: Configure Portainer Business Edition to authenticate users against Microsoft Active Directory using LDAP with AD-specific settings and service accounts.
 
 ## Introduction
 
-Active Directory (AD) is Microsoft's directory service used in most enterprise Windows environments. Portainer connects to AD using the LDAP protocol, but AD has specific conventions that differ from OpenLDAP - different attribute names, DN formats, and filter syntax. This guide covers AD-specific configuration.
+Active Directory (AD) is Microsoft's directory service used in most enterprise Windows environments. Portainer Business Edition can connect to AD using its Microsoft Active Directory authentication option. With Simple binding, Portainer queries AD over LDAP, but AD-specific defaults differ from OpenLDAP - different attribute names, username formats, and filter syntax. This guide covers the Simple binding configuration.
 
 ## Prerequisites
 
 - Active Directory domain controller accessible from Portainer
+- Portainer Business Edition instance with administrator access
 - Service account in AD with read access (Domain Users is usually sufficient)
 - Domain name and DC server address
 
@@ -53,26 +54,31 @@ nslookup -type=SRV _ldap._tcp.corp.example.com
 Get-ADOrganizationalUnit -Filter * | Select Name,DistinguishedName
 ```
 
-## Step 3: Configure Portainer LDAP for Active Directory
+## Step 3: Configure Portainer Active Directory Authentication
 
-In Settings → Authentication → LDAP:
+In Settings → Authentication, select Microsoft Active Directory and use Simple binding:
 
 ```text
-Server:             dc01.corp.example.com:389
-                    (or use LDAPS: dc01.corp.example.com:636)
+AD Controller:              dc01.corp.example.com:389
+                            (or use LDAPS: dc01.corp.example.com:636)
+Binding:                    Simple
 
-Service Account:
-  Using UPN:        portainer-svc@corp.example.com
-  OR using DN:      CN=portainer-svc,OU=Service Accounts,DC=corp,DC=example,DC=com
-Password:           ServiceP@ssword123
+Service Account:            portainer-svc@corp.example.com
+                            (or CN=portainer-svc,OU=Service Accounts,DC=corp,DC=example,DC=com)
+Service Account Password:   ServiceP@ssword123
 
-User Base DN:       DC=corp,DC=example,DC=com
-Username Attribute: sAMAccountName
-User Filter:        (&(objectClass=user)(objectCategory=person))
+User Search Configuration:
+  Username Format:          username
+                            (uses sAMAccountName; use user@domainname for userPrincipalName)
+  Root Domain:              DC=corp,DC=example,DC=com
+  User Search Path:         optional, e.g. OU=Users,DC=corp,DC=example,DC=com
+  User Filter:              (objectClass=user)
+                            (Portainer adds memberOf clauses here when you restrict Allowed Groups)
 
-Group Base DN:      DC=corp,DC=example,DC=com
-Group Attribute:    memberOf
-Group Filter:       (objectClass=group)
+Group Search Configuration:
+  Group Search Path:        optional, e.g. OU=Groups,DC=corp,DC=example,DC=com
+  Group Base DN:            DC=corp,DC=example,DC=com
+  Group Filter:             (objectClass=group)
 ```
 
 ## Step 4: API Configuration for Active Directory
@@ -90,30 +96,30 @@ curl -X PUT \
   https://portainer.example.com/api/settings \
   -d '{
     "AuthenticationMethod": 2,
-    "ldapsettings": {
-      "Servers": [
-        {
-          "Host": "dc01.corp.example.com",
-          "Port": 389,
-          "UseTLS": false,
-          "StartTLS": false,
-          "SkipVerify": false,
-          "Anonymous": false,
-          "ReaderDN": "portainer-svc@corp.example.com",
-          "Password": "ServiceP@ssword123"
-        }
+    "LDAPSettings": {
+      "ServerType": 2,
+      "URLs": [
+        "dc01.corp.example.com:389"
       ],
+      "AnonymousMode": false,
+      "ReaderDN": "portainer-svc@corp.example.com",
+      "Password": "ServiceP@ssword123",
+      "TLSConfig": {
+        "TLS": false,
+        "TLSSkipVerify": false
+      },
+      "StartTLS": false,
       "SearchSettings": [
         {
           "BaseDN": "DC=corp,DC=example,DC=com",
-          "Username": "sAMAccountName",
-          "Filter": "(&(objectClass=user)(objectCategory=person))"
+          "UserNameAttribute": "sAMAccountName",
+          "Filter": "(objectClass=user)"
         }
       ],
       "GroupSearchSettings": [
         {
           "GroupBaseDN": "DC=corp,DC=example,DC=com",
-          "GroupAttribute": "memberOf",
+          "GroupAttribute": "member",
           "GroupFilter": "(objectClass=group)"
         }
       ],
@@ -126,17 +132,17 @@ curl -X PUT \
 
 | Setting | Active Directory | OpenLDAP |
 |---------|----------------|---------|
-| Username Attribute | `sAMAccountName` | `uid` |
-| User Filter | `(&(objectClass=user)(objectCategory=person))` | `(objectClass=inetOrgPerson)` |
+| Username Attribute | `sAMAccountName` or `userPrincipalName` | `uid` |
+| User Filter | `(objectClass=user)` | `(objectClass=inetOrgPerson)` |
 | Group Filter | `(objectClass=group)` | `(objectClass=groupOfNames)` |
-| Group Membership | `memberOf` on user object | `member` on group object |
+| Group Membership | `member` on group object (`memberOf` is commonly used in AD user filters) | `member` on group object |
 | Bind Account Format | `user@domain.com` or CN=... | `cn=user,dc=...` |
 | Disabled Accounts | Filter with `userAccountControl` | No standard method |
 
 ## Filtering Out Disabled Accounts
 
 ```text
-User Filter: (&(objectClass=user)(objectCategory=person)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))
+User Filter: (&(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))
 ```
 
 The `userAccountControl` bitmask filter excludes disabled AD accounts.
@@ -155,4 +161,4 @@ ldapsearch -x \
 
 ## Conclusion
 
-Active Directory authentication in Portainer is LDAP-based but requires AD-specific attribute names and filter syntax. The key differences are using `sAMAccountName` (or UPN) as the username attribute, `objectClass=user` with `objectCategory=person` as the user filter, and using the `memberOf` attribute for group membership. Once configured correctly, AD authentication works identically to OpenLDAP from the user's perspective.
+Active Directory authentication in Portainer Business Edition uses the Microsoft Active Directory authentication option and, with Simple binding, requires AD-specific defaults. The key differences are using `sAMAccountName` (or `userPrincipalName`) for the username format, `(objectClass=user)` as the base user filter, and using the `member` attribute on group objects for Portainer group synchronization. If you restrict logins to specific AD groups, Portainer adds `memberOf` clauses to the user filter. Once configured correctly, AD authentication works identically to OpenLDAP from the user's perspective.
