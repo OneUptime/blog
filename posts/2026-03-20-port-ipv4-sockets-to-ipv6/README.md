@@ -87,7 +87,7 @@ int create_ipv6_server(int port) {
     int reuse = 1;
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 
-    /* Optional: dual-stack to also accept IPv4 */
+    /* Optional: allow IPv4-mapped connections on dual-stack platforms */
     int v6only = 0;
     setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only));
 
@@ -119,7 +119,7 @@ int create_ipv6_server(int port) {
 ## Best Practice: Use getaddrinfo (Protocol-Independent)
 
 ```c
-/* Best approach: rewrite using getaddrinfo for full portability */
+/* Best approach: use getaddrinfo to avoid hard-coding the address family */
 #include <sys/socket.h>
 #include <netdb.h>
 #include <unistd.h>
@@ -127,22 +127,37 @@ int create_ipv6_server(int port) {
 #include <stdio.h>
 
 int create_server(const char *port) {
-    struct addrinfo hints, *result;
+    struct addrinfo hints, *result, *rp;
+    int sockfd = -1;
 
     memset(&hints, 0, sizeof(hints));
-    hints.ai_family   = AF_UNSPEC;     /* Works with IPv4 AND IPv6 */
+    hints.ai_family   = AF_UNSPEC;     /* Request IPv4 or IPv6 results */
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags    = AI_PASSIVE;
 
     if (getaddrinfo(NULL, port, &hints, &result) != 0) return -1;
 
-    int sockfd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
-    int reuse = 1;
-    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    /* Try each returned address until bind succeeds */
+    for (rp = result; rp != NULL; rp = rp->ai_next) {
+        sockfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (sockfd == -1) continue;
 
-    bind(sockfd, result->ai_addr, result->ai_addrlen);
-    listen(sockfd, 5);
+        int reuse = 1;
+        setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+        if (bind(sockfd, rp->ai_addr, rp->ai_addrlen) == 0) break;
+
+        close(sockfd);
+        sockfd = -1;
+    }
+
     freeaddrinfo(result);
+
+    if (sockfd == -1) return -1;
+    if (listen(sockfd, 5) == -1) {
+        close(sockfd);
+        return -1;
+    }
     return sockfd;
 }
 ```
@@ -163,14 +178,17 @@ memset(&hints, 0, sizeof(hints));
 hints.ai_family   = AF_UNSPEC;
 hints.ai_socktype = SOCK_STREAM;
 
-getaddrinfo("example.com", "80", &hints, &result);
-/* Try each result */
-for (struct addrinfo *p = result; p != NULL; p = p->ai_next) {
-    sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-    if (connect(sockfd, p->ai_addr, p->ai_addrlen) == 0) break;
-    close(sockfd);
+if (getaddrinfo("example.com", "80", &hints, &result) == 0) {
+    /* Try each result */
+    for (struct addrinfo *p = result; p != NULL; p = p->ai_next) {
+        sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (sockfd == -1) continue;
+        if (connect(sockfd, p->ai_addr, p->ai_addrlen) == 0) break;
+        close(sockfd);
+        sockfd = -1;
+    }
+    freeaddrinfo(result);
 }
-freeaddrinfo(result);
 ```
 
 ## Compile and Test
@@ -181,8 +199,8 @@ freeaddrinfo(result);
 gcc -o server server.c -Wall -Wextra
 
 # Verify server listens on IPv6
-ss -tlnp | grep <port>
-# Should show ::: prefix for IPv6
+ss -tlnp -6 | grep <port>
+# Should list the port in the IPv6 socket table
 
 # Test with IPv6 client
 nc -6 ::1 <port>
@@ -190,4 +208,4 @@ nc -6 ::1 <port>
 
 ## Conclusion
 
-Porting IPv4 socket code to IPv6 requires changing address structures from `sockaddr_in` to `sockaddr_in6`, updating address constants, and replacing `inet_ntoa()`/`inet_aton()` with `inet_ntop()`/`inet_pton()`. The ideal approach is a full rewrite using `getaddrinfo()` with `AF_UNSPEC`, which automatically supports both IPv4 and IPv6 without separate code paths and is more future-proof.
+Porting IPv4 socket code to IPv6 requires changing address structures from `sockaddr_in` to `sockaddr_in6`, updating address constants, and replacing `inet_ntoa()`/`inet_aton()` with `inet_ntop()`/`inet_pton()`. The ideal approach is a full rewrite using `getaddrinfo()` with `AF_UNSPEC`, which removes hard-coded address families and is more future-proof. For servers, you may still need to bind more than one returned address or deliberately configure dual-stack behavior.
