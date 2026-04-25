@@ -8,7 +8,7 @@ Description: Understand the implications of using FQDN versus IP address for you
 
 ## Introduction
 
-When configuring Active Directory authentication in Portainer, you must specify the domain controller's address. You can use either its FQDN (e.g., `dc01.corp.example.com`) or IP address (e.g., `192.168.1.10`). The choice matters significantly when using LDAPS (TLS), where certificate validation depends on the hostname matching.
+When configuring Active Directory authentication in Portainer Business Edition, you must specify the domain controller's address. You can use either its FQDN (e.g., `dc01.corp.example.com`) or IP address (e.g., `192.168.1.10`). The choice matters significantly when using LDAPS (TLS), where certificate validation depends on the hostname matching.
 
 ## FQDN vs IP Address: Key Differences
 
@@ -21,19 +21,15 @@ When configuring Active Directory authentication in Portainer, you must specify 
 
 ## Recommendation
 
-**Always use FQDN** unless you have a specific reason not to. The FQDN must match the Common Name (CN) or Subject Alternative Name (SAN) in the AD domain controller's certificate.
+**Always use FQDN** unless you have a specific reason not to. The certificate presented by the domain controller should include that FQDN, typically as a DNS name in the Subject Alternative Name (SAN).
 
 ## Using FQDN (Recommended)
 
 ```bash
 # Verify DNS resolution from Portainer host
-
 nslookup dc01.corp.example.com
 # or
 dig dc01.corp.example.com
-
-# Verify from Portainer container
-docker exec portainer nslookup dc01.corp.example.com
 
 # Test LDAP connectivity via FQDN
 ldapsearch -x \
@@ -46,25 +42,27 @@ ldapsearch -x \
 
 **Portainer configuration with FQDN:**
 ```text
-Server: dc01.corp.example.com:389
+AD Controller: dc01.corp.example.com:389
 ```
 
-## Using the Domain Name (Load Balanced)
+## Using Multiple AD Controllers
 
-For load balancing across multiple domain controllers, use the domain name itself - Windows DNS SRV records will handle distribution:
+In multi-DC environments, add each controller separately in Portainer. Portainer supports multiple AD controllers for authentication fallback:
 
 ```text
-Server: corp.example.com:389
+AD Controller:
+  dc01.corp.example.com:389
+  dc02.corp.example.com:389
 ```
 
-This is the most resilient approach in multi-DC environments.
+This is the supported approach in multi-DC environments.
 
 ## Using IP Address (When FQDN Doesn't Resolve)
 
 If DNS is unavailable or unreliable, you may need to use an IP address:
 
 ```text
-Server: 192.168.1.10:389
+AD Controller: 192.168.1.10:389
 ```
 
 **Important**: When using an IP address with LDAPS, certificate verification will fail unless:
@@ -84,8 +82,11 @@ If DNS resolution is the problem, add a hosts entry on the Docker host:
 ```bash
 # Add to /etc/hosts on the Docker host
 echo "192.168.1.10 dc01.corp.example.com" | sudo tee -a /etc/hosts
+```
 
-# Add to Portainer container's hosts via compose
+Add it to the Portainer service in Compose if you need the mapping inside the container:
+
+```yaml
 services:
   portainer:
     extra_hosts:
@@ -99,26 +100,22 @@ The `extra_hosts` Docker Compose option adds entries to the container's `/etc/ho
 When using LDAPS with FQDN:
 
 ```bash
-# Verify certificate matches FQDN
+# Inspect the certificate names presented for the FQDN
 openssl s_client -connect dc01.corp.example.com:636 < /dev/null 2>/dev/null \
-  | openssl x509 -noout -text \
-  | grep -E "Subject:|DNS:|IP:"
+  | openssl x509 -noout -subject -ext subjectAltName
 
 # Expected output for a well-configured AD cert:
-# Subject: CN=dc01.corp.example.com
-# DNS:dc01.corp.example.com
-# DNS:dc01
-# DNS:corp.example.com
+# subject=CN = dc01.corp.example.com
+# X509v3 Subject Alternative Name:
+#     DNS:dc01.corp.example.com, DNS:dc01, DNS:corp.example.com
 ```
 
 ## Docker Compose with Extra Hosts
 
 ```yaml
-version: "3.8"
-
 services:
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ee:sts
     extra_hosts:
       # Ensure FQDN resolves inside the container
       - "dc01.corp.example.com:192.168.1.10"
@@ -135,4 +132,4 @@ volumes:
 
 ## Conclusion
 
-Use FQDN for Active Directory connections in Portainer - it's required for proper TLS certificate validation and follows AD best practices. If DNS resolution is unreliable in your Docker network, use `extra_hosts` in Docker Compose to add the domain controller's hostname manually. Only fall back to IP addresses when absolutely necessary, and disable certificate verification only as a last resort in non-production environments.
+Use FQDN for Active Directory connections in Portainer - it's the preferred choice for TLS certificate validation and follows AD best practices. If DNS resolution is unreliable in your Docker network, use `extra_hosts` in Docker Compose to add the domain controller's hostname manually. In multi-DC environments, add each domain controller separately in Portainer for authentication fallback. Only fall back to IP addresses when absolutely necessary, and disable certificate verification only as a last resort in non-production environments.
