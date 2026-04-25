@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, PHP, Laravel, Development, MySQL, Redis
 
-Description: Build a complete PHP Laravel development environment with Nginx, MySQL, Redis, and hot-reload using Docker and Portainer.
+Description: Build a complete PHP Laravel development environment with Nginx, MySQL, Redis, and Mailhog using Docker and Portainer.
 
 ## Introduction
 
@@ -86,7 +86,6 @@ server {
     root /var/www/html/public;
 
     add_header X-Frame-Options "SAMEORIGIN";
-    add_header X-XSS-Protection "1; mode=block";
     add_header X-Content-Type-Options "nosniff";
 
     index index.php;
@@ -123,7 +122,6 @@ server {
 
 ```yaml
 # docker-compose.yml - Laravel Development Stack
-version: "3.8"
 
 networks:
   laravel_dev:
@@ -142,7 +140,6 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
     volumes:
       - ./:/var/www/html
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
@@ -159,8 +156,9 @@ services:
     container_name: laravel_app
     restart: unless-stopped
     environment:
-      - PHP_OPCACHE_ENABLE=0
       - XDEBUG_MODE=develop,debug,coverage
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       # Mount source code
       - ./:/var/www/html
@@ -186,7 +184,6 @@ services:
       - MYSQL_PASSWORD=laravel_password
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     networks:
       - laravel_dev
@@ -274,7 +271,7 @@ DB_USERNAME=laravel
 DB_PASSWORD=laravel_password
 
 # Cache
-CACHE_DRIVER=redis
+CACHE_STORE=redis
 QUEUE_CONNECTION=redis
 SESSION_DRIVER=redis
 
@@ -289,7 +286,7 @@ MAIL_HOST=mailhog
 MAIL_PORT=1025
 MAIL_USERNAME=null
 MAIL_PASSWORD=null
-MAIL_ENCRYPTION=null
+MAIL_SCHEME=null
 MAIL_FROM_ADDRESS=dev@laravel.local
 ```
 
@@ -319,8 +316,11 @@ docker exec laravel_app php artisan cache:clear
 docker exec laravel_app php artisan config:clear
 docker exec laravel_app php artisan view:clear
 
+# Install frontend dependencies
+docker exec laravel_app npm install
+
 # Build frontend assets
-docker exec laravel_app npm run dev
+docker exec laravel_app npm run build
 ```
 
 ## Step 6: Configure Xdebug in VS Code
