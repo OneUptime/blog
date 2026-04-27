@@ -6,7 +6,7 @@ Tags: OpenTofu, Terraform, IaC, Provider, Cache
 
 Description: Learn how to configure the OpenTofu provider plugin cache to avoid re-downloading providers on every tofu init.
 
-The provider plugin cache is a local directory where OpenTofu stores downloaded providers. When you initialize a new workspace, OpenTofu copies providers from the cache instead of downloading them again - saving time and bandwidth.
+The provider plugin cache is a local directory where OpenTofu stores downloaded providers. When you initialize a new workspace, OpenTofu reuses providers from the cache (using symbolic links where the filesystem supports them, falling back to copies otherwise) instead of downloading them again - saving time and bandwidth.
 
 ## How the Plugin Cache Works
 
@@ -20,8 +20,8 @@ Workspace C: tofu init → downloads aws 5.38.0 (20MB) again
 With cache:
 ```hcl
 Workspace A: tofu init → downloads aws 5.38.0 → stores in cache
-Workspace B: tofu init → copies from cache (instant!)
-Workspace C: tofu init → copies from cache (instant!)
+Workspace B: tofu init → links from cache (instant!)
+Workspace C: tofu init → links from cache (instant!)
 ```
 
 ## Enabling the Plugin Cache
@@ -57,10 +57,10 @@ tofu init  # Subsequent times: uses cache
 
 ## Shared Team Cache
 
-For teams, a shared cache on a network share or read-only mount:
+For teams, a shared cache on a network share can be used, but note that the cache directory must be **writable** (OpenTofu writes new providers into it on cache misses) and that the official docs warn the plugin cache is **not concurrency-safe** - behavior with simultaneous `tofu init` calls is undefined. For air-gapped or controlled distribution to multiple users, prefer a [provider mirror](https://opentofu.org/docs/cli/config/config-file/#provider-installation) instead.
 
 ```bash
-# Mount a shared NFS cache
+# Mount a shared NFS cache (writable, single-writer semantics)
 mount nfs-server:/terraform-providers /mnt/tf-cache
 
 # Configure OpenTofu to use it
@@ -78,7 +78,12 @@ plugin_cache_dir = "/mnt/tf-cache"
 # Dockerfile
 FROM ubuntu:22.04
 
-RUN apt-get update && apt-get install -y opentofu
+# OpenTofu is not in the default Ubuntu repos - use the official installer
+RUN apt-get update && apt-get install -y curl ca-certificates && \
+    curl -fsSL https://get.opentofu.org/install-opentofu.sh -o install-opentofu.sh && \
+    chmod +x install-opentofu.sh && \
+    ./install-opentofu.sh --install-method deb && \
+    rm install-opentofu.sh
 
 # Pre-cache providers in the image
 COPY providers-cache/ /root/.terraform.d/plugin-cache/
@@ -94,7 +99,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Cache Terraform providers
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.terraform.d/plugin-cache
           key: terraform-plugins-${{ hashFiles('**/.terraform.lock.hcl') }}
@@ -164,3 +169,5 @@ rm -rf ~/.terraform.d/plugin-cache/*
 ## Conclusion
 
 The plugin cache is one of the simplest performance improvements for OpenTofu workflows. Configure it once with `TF_PLUGIN_CACHE_DIR` or in your `.tofurc` file and all your workspaces will share downloaded providers. In CI/CD, combine it with cache actions to avoid downloading providers on every pipeline run.
+
+One caveat to be aware of: when providers are installed only from the cache, OpenTofu records `h1:` hashes in `.terraform.lock.hcl` but cannot record the `zh:` hashes that come from the registry, which produces an "Incomplete lock file information for providers" warning. Run `tofu providers lock -platform=linux_amd64 -platform=darwin_arm64 ...` for the platforms you need to populate the lock file fully.
