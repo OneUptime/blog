@@ -99,28 +99,32 @@ sudo /var/ossec/bin/ossec-control status
 ```xml
 <!-- /var/ossec/etc/rules/local_rules.xml -->
 
-<!-- Alert on SSH brute force from IPv6 -->
-<rule id="100001" level="10" frequency="5" timeframe="120">
-  <if_matched_sid>5760</if_matched_sid>
-  <description>SSH brute force attack from IPv6 address.</description>
-  <group>authentication_failures,</group>
-</rule>
+<group name="local,syslog,">
 
-<!-- Alert on new IPv6 connection to server -->
-<rule id="100002" level="5">
-  <if_sid>5501</if_sid>
-  <match>from [0-9a-fA-F:]+:[0-9a-fA-F:]</match>
-  <description>SSH login from IPv6 address.</description>
-  <group>authentication_success,</group>
-</rule>
+  <!-- Alert on SSH brute force from IPv6 -->
+  <rule id="100001" level="10" frequency="5" timeframe="120">
+    <if_matched_sid>5716</if_matched_sid>
+    <description>SSH brute force attack from IPv6 address.</description>
+    <group>authentication_failures,</group>
+  </rule>
 
-<!-- ip6tables BLOCK alert -->
-<rule id="100003" level="7">
-  <decoded_as>ip6tables</decoded_as>
-  <match>BLOCK</match>
-  <description>ip6tables blocked IPv6 traffic.</description>
-  <group>firewall,</group>
-</rule>
+  <!-- Alert on new IPv6 connection to server -->
+  <rule id="100002" level="5">
+    <if_sid>5501</if_sid>
+    <match>from [0-9a-fA-F:]+:[0-9a-fA-F:]</match>
+    <description>SSH login from IPv6 address.</description>
+    <group>authentication_success,</group>
+  </rule>
+
+  <!-- ip6tables BLOCK alert -->
+  <rule id="100003" level="7">
+    <decoded_as>ip6tables</decoded_as>
+    <match>BLOCK</match>
+    <description>ip6tables blocked IPv6 traffic.</description>
+    <group>firewall,</group>
+  </rule>
+
+</group>
 ```
 
 ## Active Response for IPv6 Threats
