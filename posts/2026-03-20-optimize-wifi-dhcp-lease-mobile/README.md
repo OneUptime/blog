@@ -111,7 +111,7 @@ ping-check true;
 ping-timeout 2;
 
 # Or with dnsmasq - probe before assigning
-# (dnsmasq does ARP probing by default)
+# (dnsmasq sends an ICMP echo request by default; disable with --no-ping)
 
 # For faster IP reclaim, reduce lease time but provide DHCP option
 # to suggest preferred client polling behavior
