@@ -39,10 +39,10 @@ credentials "registry.acme-corp.com" {
 Or use an environment variable:
 
 ```bash
-export TF_TOKEN_registry_acme_corp_com="YOUR_REGISTRY_TOKEN"
+export TF_TOKEN_registry_acme__corp_com="YOUR_REGISTRY_TOKEN"
 ```
 
-The environment variable format replaces `.` and `-` with `_` and prefixes with `TF_TOKEN_`.
+The environment variable name is `TF_TOKEN_` followed by the hostname, with `.` encoded as a single underscore (`_`) and `-` encoded as a double underscore (`__`). So `registry.acme-corp.com` becomes `registry_acme__corp_com`.
 
 ## Using HCP Terraform as a Private Registry
 
@@ -83,7 +83,6 @@ Popular self-hosted options:
 # GitHub Actions: configure registry credentials before tofu init
 - name: Configure registry credentials
   run: |
-    mkdir -p ~/.config/opentofu
     cat > ~/.tofurc << EOF
     credentials "registry.acme-corp.com" {
       token = "${{ secrets.REGISTRY_TOKEN }}"
@@ -96,7 +95,7 @@ Popular self-hosted options:
 
 ## Network Configuration for Air-Gapped Environments
 
-For environments without internet access, configure the registry as a provider mirror and serve modules locally:
+For environments without internet access, you can override service discovery to point at an internal registry serving modules locally:
 
 ```hcl
 # ~/.tofurc
