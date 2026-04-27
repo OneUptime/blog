@@ -77,7 +77,7 @@ tofu plan
 
 ```hcl
 terraform {
-  required_version = "~> 1.6"     # 1.6.x only
+  required_version = "~> 1.6.0"   # 1.6.x only
   # or
   required_version = ">= 1.6, < 2.0"  # Explicit range
   # or
