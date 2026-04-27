@@ -44,14 +44,13 @@ Key Rancher tuning parameters are set via environment variables:
 extraEnv:
   - name: CATTLE_AGENT_IMAGE
     value: "rancher/rancher-agent:v2.9.0"
-  - name: CATTLE_CLUSTER_AGENT_DEFAULT_AFFINITY
-    value: "prefer"
-  # Reduce the frequency of Rancher's reconciliation loops
-  - name: CATTLE_RESYNC_DEFAULT
-    value: "30"    # Default is 15 seconds; increase to reduce CPU
-  # Limit concurrent cluster reconciliations
-  - name: CATTLE_WORKER_COUNT
-    value: "50"    # Default 50; reduce if CPU is saturated
+  # Disable the periodic full resync of objects (runs every 10 hours by default).
+  # Accepts a comma-separated list of controller types: mgmt, user.
+  - name: CATTLE_SYNC_ONLY_CHANGED_OBJECTS
+    value: "mgmt,user"
+  # Raise the minimum TLS version negotiated by the Rancher server
+  - name: CATTLE_TLS_MIN_VERSION
+    value: "1.2"
 ```
 
 ## Step 3: Optimize the Local Cluster (etcd)
@@ -99,18 +98,18 @@ auditLog:
 
 ## Step 6: Database Tuning (External PostgreSQL)
 
-For large deployments, migrate from SQLite to PostgreSQL:
+Rancher v2 stores its data in the Kubernetes resources of the local cluster it runs on, so the "database" you tune is the datastore of that underlying cluster (etcd by default, or — when Rancher is running on K3s — the embedded SQLite). For large deployments running on K3s, switching K3s from SQLite to an external PostgreSQL is a common scaling step. This is configured on the K3s server, not via Rancher's `extraEnv`:
 
-```yaml
-# rancher-values.yaml - external database
-extraEnv:
-  - name: CATTLE_DB_CATTLE_MYSQL_HOST
-    value: "postgres.databases.svc.cluster.local"
-  - name: CATTLE_DB_CATTLE_MYSQL_PORT
-    value: "5432"
-  - name: CATTLE_DB_CATTLE_MYSQL_NAME
-    value: "rancher"
+```bash
+# On each K3s server node (set before starting k3s)
+export K3S_DATASTORE_ENDPOINT="postgres://rancher:password@postgres.example.com:5432/rancher?sslmode=require"
+
+# Or pass as a flag
+k3s server \
+  --datastore-endpoint="postgres://rancher:password@postgres.example.com:5432/rancher?sslmode=require"
 ```
+
+If the underlying cluster is RKE2 (which uses etcd), no SQL database migration is needed — instead, focus on the etcd tuning in Steps 3 and 4.
 
 ## Step 7: Monitor Rancher Server Performance
 
