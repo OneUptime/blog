@@ -26,7 +26,7 @@ cd ~/openvpn-ca
 
 ## Step 2: Collect the Required Files
 
-For each client you need these five files:
+For each client you need these four files:
 
 ```text
 ca.crt          - The CA certificate (shared by all clients)
