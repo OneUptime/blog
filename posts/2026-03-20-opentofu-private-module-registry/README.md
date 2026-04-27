@@ -75,14 +75,14 @@ credentials "registry.example.com" {
 ## Publishing to Terraform Cloud Registry
 
 ```bash
-# Install the TFC CLI
+# Install the Terraform CLI (or use OpenTofu's `tofu login`)
 brew install hashicorp/tap/terraform
 
 # Login to TFC
 terraform login
 
 # Or using environment variable
-export TFE_TOKEN="your-token"
+export TF_TOKEN_app_terraform_io="your-token"
 ```
 
 ```hcl
