@@ -25,7 +25,7 @@ templatestring(template, vars)
 ```hcl
 variable "template_content" {
   type    = string
-  default = "Hello, ${name}! Environment: ${env}"
+  default = "Hello, $${name}! Environment: $${env}"
 }
 
 output "rendered" {
@@ -36,6 +36,8 @@ output "rendered" {
   # Returns "Hello, World! Environment: production"
 }
 ```
+
+The `$${...}` escapes prevent OpenTofu from interpreting the placeholders when the variable's default is parsed; the stored string is the literal `${name}` and `${env}`, which `templatestring` then renders.
 
 ## Practical Use Cases
 
@@ -68,12 +70,12 @@ variable "config_template" {
   type    = string
   default = <<-EOT
     [database]
-    host = ${db_host}
-    port = ${db_port}
+    host = $${db_host}
+    port = $${db_port}
     
     [app]
-    environment = ${env}
-    debug = ${debug}
+    environment = $${env}
+    debug = $${debug}
   EOT
 }
 
@@ -121,7 +123,7 @@ resource "aws_instance" "app" {
 ```hcl
 variable "alert_message_template" {
   type    = string
-  default = "ALERT: ${service} in ${environment} has ${metric} = ${value}"
+  default = "ALERT: $${service} in $${environment} has $${metric} = $${value}"
 }
 
 locals {
@@ -146,7 +148,7 @@ Like `templatefile`, `templatestring` supports:
 
 ```hcl
 locals {
-  hosts_template = "Hosts:\n%{ for h in hosts ~}\n- ${h}\n%{ endfor ~}"
+  hosts_template = "Hosts:\n%%{ for h in hosts ~}\n- $${h}\n%%{ endfor ~}"
 
   hosts_rendered = templatestring(local.hosts_template, {
     hosts = ["server1", "server2", "server3"]
