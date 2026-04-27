@@ -145,13 +145,23 @@ resource "pagerduty_service" "database" {
       type    = "constant"
       urgency = "low"
     }
+  }
 
-    support_hours {
-      type       = "fixed_time_per_week"
-      time_zone  = "America/New_York"
-      start_time = "09:00:00"
-      end_time   = "17:00:00"
-      days_of_week = [1, 2, 3, 4, 5]  # Monday through Friday
+  support_hours {
+    type         = "fixed_time_per_day"
+    time_zone    = "America/New_York"
+    start_time   = "09:00:00"
+    end_time     = "17:00:00"
+    days_of_week = [1, 2, 3, 4, 5]  # Monday through Friday
+  }
+
+  scheduled_actions {
+    type       = "urgency_change"
+    to_urgency = "high"
+
+    at {
+      type = "named_time"
+      name = "support_hours_start"
     }
   }
 }
@@ -168,10 +178,14 @@ resource "pagerduty_service_integration" "cloudwatch" {
   service = pagerduty_service.api.id
 }
 
-# Datadog integration
+# Datadog integration (uses the vendor data source)
+data "pagerduty_vendor" "datadog" {
+  name = "Datadog"
+}
+
 resource "pagerduty_service_integration" "datadog" {
-  name    = "Datadog"
-  type    = "datadog_inbound_integration"
+  name    = data.pagerduty_vendor.datadog.name
+  vendor  = data.pagerduty_vendor.datadog.id
   service = pagerduty_service.api.id
 }
 
