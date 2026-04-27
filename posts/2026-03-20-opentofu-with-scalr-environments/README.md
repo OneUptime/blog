@@ -24,7 +24,7 @@ resource "scalr_environment" "platform" {
   name       = "platform-team"
   account_id = var.scalr_account_id
 
-  # Default OpenTofu version for all workspaces in this environment
+  # Provider configurations automatically assigned to all workspaces in this environment
   default_provider_configurations = [scalr_provider_configuration.aws.id]
 }
 
@@ -62,21 +62,16 @@ Apply OPA policies across all workspaces in an environment:
 
 ```hcl
 resource "scalr_policy_group" "platform_standards" {
-  name       = "platform-standards"
-  account_id = var.scalr_account_id
+  name            = "platform-standards"
+  account_id      = var.scalr_account_id
+  opa_version     = "0.59.0"
+  vcs_provider_id = var.scalr_vcs_provider_id
 
-  policies = [
-    {
-      name    = "require-tags"
-      module  = "github.com/your-org/scalr-policies//require-tags"
-      enabled = true
-    },
-    {
-      name    = "restrict-instance-types"
-      module  = "github.com/your-org/scalr-policies//approved-instance-types"
-      enabled = true
-    }
-  ]
+  vcs_repo {
+    identifier = "your-org/scalr-policies"
+    path       = "policies/platform"
+    branch     = "main"
+  }
 }
 
 resource "scalr_policy_group_linkage" "platform" {
@@ -88,17 +83,26 @@ resource "scalr_policy_group_linkage" "platform" {
 ## Team Access Control
 
 ```hcl
-resource "scalr_team" "platform_engineers" {
+resource "scalr_iam_team" "platform_engineers" {
   name       = "platform-engineers"
   account_id = var.scalr_account_id
 
   users = var.platform_team_user_ids
 }
 
-# Grant platform engineers admin access to platform environment
-resource "scalr_environment_allowed_account" "platform_access" {
-  environment_id = scalr_environment.platform.id
-  account_id     = var.scalr_account_id
+# Grant platform engineers access to the platform environment
+resource "scalr_access_policy" "platform_access" {
+  subject {
+    type = "team"
+    id   = scalr_iam_team.platform_engineers.id
+  }
+
+  scope {
+    type = "environment"
+    id   = scalr_environment.platform.id
+  }
+
+  role_ids = [var.scalr_admin_role_id]
 }
 ```
 
