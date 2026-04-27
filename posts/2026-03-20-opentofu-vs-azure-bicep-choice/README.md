@@ -186,12 +186,12 @@ resource "azurerm_kubernetes_cluster" "main" {
   identity { type = "SystemAssigned" }
 
   default_node_pool {
-    name                = "systempool"
-    node_count          = 3
-    vm_size             = "Standard_D2s_v3"
-    enable_auto_scaling = true
-    min_count           = 1
-    max_count           = 5
+    name                 = "systempool"
+    node_count           = 3
+    vm_size              = "Standard_D2s_v3"
+    auto_scaling_enabled = true
+    min_count            = 1
+    max_count            = 5
   }
 }
 ```
