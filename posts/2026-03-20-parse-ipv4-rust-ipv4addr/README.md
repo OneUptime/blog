@@ -100,7 +100,8 @@ fn classify(ip: Ipv4Addr) {
     println!("  is_multicast:    {}", ip.is_multicast());    // 224.0.0.0/4
     println!("  is_broadcast:    {}", ip.is_broadcast());    // 255.255.255.255
     println!("  is_unspecified:  {}", ip.is_unspecified());  // 0.0.0.0
-    println!("  is_global:       {}", ip.is_global());       // (nightly only)
+    // is_global() is unstable; on nightly enable with #![feature(ip)]
+    // println!("  is_global:       {}", ip.is_global());
 }
 
 fn main() {
