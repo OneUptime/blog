@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix OSPF neighbor adjacency failures caus
 
 ---
 
-OSPF requires that two routers on the same link agree on the subnet mask before forming a full adjacency. A subnet mask mismatch is one of the most common causes of OSPF neighbors getting stuck in the `ExStart` or `Down` state.
+OSPF requires that two routers on the same broadcast or NBMA link agree on the subnet mask before forming an adjacency. When the masks do not match, the receiving router silently discards the Hello packet (per RFC 2328 §10.5) and the neighbor never appears, staying in `Down` state.
 
 ## How Subnet Mask Mismatches Break OSPF
 
@@ -22,8 +22,8 @@ Router B: 192.168.1.2/30  → Hello contains mask 255.255.255.252
 
 ## Symptoms
 
-- OSPF neighbor stays in `Init` or `Down` state.
-- Log messages: `ospf_hello: Packet from 192.168.1.2 network address mismatch`
+- OSPF neighbor never forms; the remote router does not appear in `show ip ospf neighbor`.
+- FRR log message: `Packet 192.168.1.2 [Hello:RECV]: NetworkMask mismatch on eth0 (configured prefix length is 24, but hello packet indicates 30).`
 - `show ip ospf neighbor` shows no neighbor for the expected link.
 
 ## Diagnosing the Mismatch
@@ -41,20 +41,19 @@ vtysh -c "show ip ospf interface eth0"
 
 # Enable OSPF debugging to see Hello packet details
 vtysh << 'EOF'
-debug ospf hello
-debug ospf packet hello detail
+debug ospf packet hello recv detail
 EOF
 
 # View debug output in syslog or the FRR log
-tail -f /var/log/frr/frr.log | grep -i "network address mismatch"
+tail -f /var/log/frr/frr.log | grep -i "NetworkMask mismatch"
 ```
 
 ### Cisco IOS
 
 ```text
-debug ip ospf hello
+debug ip ospf adj
 show ip ospf interface GigabitEthernet0/0
-! Look for: Subnet Mask: 255.255.255.0
+! Look for: Internet Address 192.168.1.1/24, Area 0
 ```
 
 ## Common Causes
@@ -98,5 +97,5 @@ interface eth1
 
 - Both routers on an OSPF link must have identical subnet masks for adjacency to form.
 - Use `show ip ospf interface` to compare the mask OSPF is advertising vs. what it should be.
-- `debug ospf hello` (FRR) or `debug ip ospf hello` (Cisco) reveals mask mismatch errors in real time.
+- `debug ospf packet hello recv detail` (FRR) or `debug ip ospf adj` (Cisco) reveals mask mismatch errors in real time.
 - Use `ip ospf network point-to-point` on transit links to bypass mask checking.
