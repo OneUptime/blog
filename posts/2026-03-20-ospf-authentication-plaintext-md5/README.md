@@ -34,7 +34,7 @@ Both routers on the link must have the same password.
 
 ## Method 2: Interface-Level MD5 Authentication
 
-MD5 authentication uses a key chain that can include multiple keys for key rotation:
+MD5 authentication is configured per interface using a key ID and key string. Multiple `message-digest-key` entries can be added on the same interface for key rotation:
 
 ```text
 Router(config)# interface GigabitEthernet0/0
@@ -112,11 +112,15 @@ Router# show log | include OSPF|auth
 ## Common Authentication Errors
 
 ```text
-! This log message means MD5 key mismatch
+! This log message means the authentication TYPE is mismatched
+! (e.g., one side configured for MD5, the other for plain text or null)
 %OSPF-4-BADAUTH: Bad authentication type. Message ignored from 10.0.0.2, GigabitEthernet0/0
 
-! This means passwords don't match
+! This means plain text passwords don't match
 %OSPF-4-BADAUTH: Message has wrong authentication password from 10.0.0.2
+
+! This means MD5 key ID or key string doesn't match
+%OSPF-4-BADAUTH: Mismatched key id (No message digest key 1 on interface) from 10.0.0.2
 ```
 
 ## Conclusion
