@@ -88,8 +88,6 @@ locals {
 # This creates 2 × 3 × 3 = 18 security groups
 
 resource "aws_security_group" "tier_sgs" {
-  provider = aws.${replace(each.value.region, "-", "_")}
-
   for_each    = local.deployment_map
   name        = "sg-${each.value.tier}-${each.value.env}-${each.value.region}"
   description = "${each.value.tier} tier for ${each.value.env} in ${each.value.region}"
@@ -117,7 +115,8 @@ locals {
     security = ["prod", "staging", "dev"]
   }
 
-  # Generate team/environment combinations using setproduct per team
+  # Generate team/environment bindings (nested for, since each team has a different
+  # set of allowed environments — setproduct would over-generate combinations here)
   team_env_bindings = flatten([
     for team in local.teams : [
       for env in local.team_env_access[team] : {
