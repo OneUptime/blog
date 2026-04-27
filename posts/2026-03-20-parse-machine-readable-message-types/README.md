@@ -47,7 +47,7 @@ Emitted at startup with version information:
 ```json
 {
   "type": "version",
-  "terraform": "1.6.0",
+  "tofu": "1.6.0",
   "ui": "1.0"
 }
 ```
@@ -99,9 +99,9 @@ Summary of all planned changes:
 Lifecycle events for resource operations:
 
 ```json
-{"type": "apply_start", "hook": {"resource": {"addr": "aws_vpc.main"}, "action": "creating"}}
-{"type": "apply_complete", "hook": {"resource": {"addr": "aws_vpc.main"}, "action": "creating", "elapsed_seconds": 3.2}}
-{"type": "apply_errored", "hook": {"resource": {"addr": "aws_vpc.main"}, "action": "creating"}}
+{"type": "apply_start", "hook": {"resource": {"addr": "aws_vpc.main"}, "action": "create"}}
+{"type": "apply_complete", "hook": {"resource": {"addr": "aws_vpc.main"}, "action": "create", "elapsed_seconds": 3.2}}
+{"type": "apply_errored", "hook": {"resource": {"addr": "aws_vpc.main"}, "action": "create"}}
 ```
 
 ## Parsing with jq
