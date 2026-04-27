@@ -16,7 +16,7 @@ OSPFv3 uses Link State Advertisements (LSAs) to build the topology database. OSP
 |------|------|-------|---------|
 | 1 | Router LSA | Area | Router's links and their interface IDs (no addresses) |
 | 2 | Network LSA | Area | DR-generated, lists all routers on a broadcast segment |
-| 3 | Inter-Area Prefix LSA | Area | IPv6 prefixes from other areas (replaces Type 3/4 of OSPFv2) |
+| 3 | Inter-Area Prefix LSA | Area | IPv6 prefixes from other areas (replaces Type 3 summary LSA of OSPFv2) |
 | 4 | Inter-Area Router LSA | Area | Path to an ASBR in another area |
 | 5 | AS External LSA | AS-wide | External IPv6 prefixes redistributed into OSPF |
 | 7 | NSSA External LSA | Area | External routes in NSSA areas (converted to Type 5 by ABR) |
@@ -32,15 +32,15 @@ In OSPFv2, Router LSAs (Type 1) contain IP addresses. In OSPFv3, Router LSAs con
 ```bash
 # Show all LSAs in the OSPF database
 
-vtysh -c "show ipv6 ospf database"
+vtysh -c "show ipv6 ospf6 database"
 
 # Show specific LSA types
-vtysh -c "show ipv6 ospf database router"    # Type 1
-vtysh -c "show ipv6 ospf database network"   # Type 2
-vtysh -c "show ipv6 ospf database inter-prefix"  # Type 3
-vtysh -c "show ipv6 ospf database as-external"   # Type 5
-vtysh -c "show ipv6 ospf database link"      # Type 8
-vtysh -c "show ipv6 ospf database intra-prefix"  # Type 9
+vtysh -c "show ipv6 ospf6 database router"    # Type 1
+vtysh -c "show ipv6 ospf6 database network"   # Type 2
+vtysh -c "show ipv6 ospf6 database inter-prefix"  # Type 3
+vtysh -c "show ipv6 ospf6 database as-external"   # Type 5
+vtysh -c "show ipv6 ospf6 database link"      # Type 8
+vtysh -c "show ipv6 ospf6 database intra-prefix"  # Type 9
 ```
 
 ## Viewing LSAs on Cisco
