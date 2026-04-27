@@ -138,7 +138,10 @@ output "az_cidr_map" {
 tofu console
 
 > zipmap(["x", "y"], [10, 20])
-{x = 10, y = 20}
+{
+  "x" = 10
+  "y" = 20
+}
 ```
 
 ## Conclusion
