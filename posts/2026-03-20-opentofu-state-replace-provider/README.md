@@ -55,24 +55,32 @@ tofu state replace-provider \
   registry.opentofu.org/hashicorp/aws
 ```
 
-## Dry Run
+## Previewing Changes
+
+`tofu state replace-provider` does not have a `-dry-run` flag. By default, it prints the planned changes and asks for interactive confirmation, which lets you review before anything is written. Type anything other than `yes` to abort.
 
 ```bash
-# Preview changes without modifying state
 tofu state replace-provider \
-  -dry-run \
   registry.terraform.io/hashicorp/aws \
   registry.opentofu.org/hashicorp/aws
 
 # Output:
-# Showing planned state changes:
-# replace provider "registry.terraform.io/hashicorp/aws" 
-# with "registry.opentofu.org/hashicorp/aws"
-# Affected resources:
+# Terraform will perform the following actions:
+#
+#   ~ Updating provider:
+#     - registry.terraform.io/hashicorp/aws
+#     + registry.opentofu.org/hashicorp/aws
+#
+# Changing 3 resources:
+#
 #   aws_instance.web
 #   aws_vpc.main
 #   module.networking.aws_subnet.public[0]
-#   ...
+#
+# Do you want to make these changes?
+# Only 'yes' will be accepted to continue.
+#
+# Enter a value:
 ```
 
 ## Complete Migration Workflow
@@ -170,4 +178,4 @@ tofu plan
 
 ## Conclusion
 
-`tofu state replace-provider` is the correct tool for migrating between provider sources without affecting your infrastructure. Use it when switching from Terraform to OpenTofu registries, adopting official providers over forks, or when providers move between registry namespaces. Always dry-run first, back up your state, and verify with a clean plan after the migration.
+`tofu state replace-provider` is the correct tool for migrating between provider sources without affecting your infrastructure. Use it when switching from Terraform to OpenTofu registries, adopting official providers over forks, or when providers move between registry namespaces. Always review the interactive confirmation prompt before approving, rely on the automatic state backup, and verify with a clean plan after the migration.
