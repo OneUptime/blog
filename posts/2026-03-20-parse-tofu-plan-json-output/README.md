@@ -28,13 +28,18 @@ The top-level keys of the JSON plan are:
 
 ```json
 {
-  "format_version": "1.2",
-  "terraform_version": "1.8.0",
-  "variables": { ... },
-  "planned_values": { ... },
-  "resource_changes": [ ... ],
+  "format_version": "1.0",
+  "prior_state": { ... },
   "configuration": { ... },
-  "relevant_attributes": [ ... ]
+  "planned_values": { ... },
+  "variables": { ... },
+  "resource_changes": [ ... ],
+  "resource_drift": [ ... ],
+  "relevant_attributes": [ ... ],
+  "output_changes": { ... },
+  "checks": [ ... ],
+  "timestamp": "2026-03-20T12:00:00Z",
+  "errored": false
 }
 ```
 
@@ -49,7 +54,7 @@ The most useful section for automation is `resource_changes`, which lists every 
   "mode": "managed",
   "type": "aws_instance",
   "name": "web",
-  "provider_name": "registry.opentofu.org/hashicorp/aws",
+  "provider_name": "aws",
   "change": {
     "actions": ["create"],
     "before": null,
@@ -62,7 +67,7 @@ The most useful section for automation is `resource_changes`, which lists every 
 }
 ```
 
-The `actions` array can contain: `["create"]`, `["update"]`, `["delete"]`, `["delete", "create"]` (replace), or `["no-op"]`.
+The `actions` array can contain: `["no-op"]`, `["create"]`, `["read"]`, `["update"]`, `["delete"]`, `["delete", "create"]` (replace, destroy-then-create), `["create", "delete"]` (replace, create-before-destroy), or `["forget"]`.
 
 ## Parsing with Python
 
