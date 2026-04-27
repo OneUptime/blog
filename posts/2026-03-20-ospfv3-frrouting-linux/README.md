@@ -117,30 +117,29 @@ write memory
 vtysh
 
 # Show OSPFv3 neighbor state
-show ipv6 ospf neighbor
+show ipv6 ospf6 neighbor
 
 # Show OSPFv3 interfaces
-show ipv6 ospf interface
+show ipv6 ospf6 interface
 
 # Show OSPFv3 Link State Database
-show ipv6 ospf database
+show ipv6 ospf6 database
 
 # Show OSPFv3 routes
-show ipv6 ospf route
+show ipv6 ospf6 route
 
 # Show IPv6 routing table including OSPFv3 routes
-show ipv6 route ospf
+show ipv6 route ospf6
 ```
 
 ## Sample Output
 
 ```text
-Router# show ipv6 ospf neighbor
+Router# show ipv6 ospf6 neighbor
 
-OSPFv3 Process (1)
-Neighbor ID     Pri    DeadTime    State       IfState             I/F[State]
-2.2.2.2           1    00:00:34    Full/BDR    2001:db8::2/64      eth0[DR]
-3.3.3.3           1    00:00:38    Full/  -    2001:db8::3/64      eth1[P2P]
+Neighbor ID     Pri    DeadTime    State/IfState         Duration I/F[State]
+2.2.2.2           1    00:00:34    Full/BDR              00:18:21 eth0[DR]
+3.3.3.3           1    00:00:38    Full/PointToPoint     00:15:45 eth1[PointToPoint]
 ```
 
 ## Redistributing Static Routes
@@ -175,4 +174,4 @@ tail -f /var/log/frr/ospf6d.log
 
 ## Summary
 
-FRRouting OSPFv3 is configured through `vtysh` or the `/etc/frr/ospf6d.conf` file. Enable the `ospf6d` daemon, set a Router ID, and assign interfaces to areas with `ipv6 ospf6 area <id>`. Verify with `show ipv6 ospf neighbor` and confirm IPv6 routes appear in the routing table with `show ipv6 route ospf`.
+FRRouting OSPFv3 is configured through `vtysh` or the `/etc/frr/ospf6d.conf` file. Enable the `ospf6d` daemon, set a Router ID, and assign interfaces to areas with `ipv6 ospf6 area <id>`. Verify with `show ipv6 ospf6 neighbor` and confirm IPv6 routes appear in the routing table with `show ipv6 route ospf6`.
