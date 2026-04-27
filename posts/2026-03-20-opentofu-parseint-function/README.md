@@ -17,7 +17,7 @@ parseint(string, base)
 ```
 
 - **string** - the string representation of an integer
-- **base** - the radix/base to interpret the string in (2–36)
+- **base** - the radix/base to interpret the string in (2–62)
 - Returns an integer
 
 ## Basic Examples
