@@ -49,7 +49,7 @@ resource "aws_eks_cluster" "main" {
   name = "my-cluster"
 
   vpc_config {
-    # Read vpc_id from the networking configuration's outputs
+    # Read subnet IDs from the networking configuration's outputs
     subnet_ids = data.terraform_remote_state.networking.outputs.private_subnet_ids
   }
 }
