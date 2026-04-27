@@ -56,7 +56,10 @@ cat ./.opentofu-version
 # 3. .opentofu-version in parent directories (walks up)
 # If not in current dir, tofuenv checks parent directories
 
-# 4. ~/.tofuenv/version (global default)
+# 4. .opentofu-version in your home directory
+cat ~/.opentofu-version
+
+# 5. ${TOFUENV_CONFIG_DIR}/version (global default, typically ~/.tofuenv/version)
 cat ~/.tofuenv/version
 ```
 
