@@ -92,7 +92,7 @@ cat /proc/net/sockstat
 # mem = pages in use for socket buffers
 
 # Calculate memory used (multiply pages by 4096 for bytes)
-MEM_PAGES=$(cat /proc/net/sockstat | awk '/^TCP:/{print $9}')
+MEM_PAGES=$(cat /proc/net/sockstat | awk '/^TCP:/{print $11}')
 echo "TCP buffer memory: $((MEM_PAGES * 4096 / 1024 / 1024)) MB"
 ```
 
