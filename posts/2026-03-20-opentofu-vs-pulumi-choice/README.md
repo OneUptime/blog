@@ -118,11 +118,19 @@ run "s3_bucket_created" {
 // Unit test with Jest
 import * as pulumi from "@pulumi/pulumi";
 
+pulumi.runtime.setMocks({
+  newResource: (args) => ({ id: `${args.name}_id`, state: args.inputs }),
+  call: (args) => args.inputs,
+});
+
 describe("S3 Bucket", () => {
-  it("has correct name", async () => {
-    const { bucket } = await import("./index");
-    const bucketName = await bucket.bucket;
-    expect(bucketName).toBe("mycompany-dev-us-east-1-assets");
+  it("has correct name", (done) => {
+    import("./index").then(({ bucket }) => {
+      bucket.bucket.apply((name) => {
+        expect(name).toBe("mycompany-dev-us-east-1-assets");
+        done();
+      });
+    });
   });
 });
 ```
