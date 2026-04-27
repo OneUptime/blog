@@ -73,8 +73,8 @@ tc filter add dev eth0 parent 1:0 protocol ipv6 prio 2 \
 sysctl -w net.core.rmem_default=262144
 sysctl -w net.core.wmem_default=262144
 
-# Enable IPv6 TCP low-latency hint
-sysctl -w net.ipv6.tcp_low_latency=1
+# Enable TCP low-latency hint (applies to both IPv4 and IPv6 sockets)
+sysctl -w net.ipv4.tcp_low_latency=1
 
 # Reduce network device TX queue length
 ip link set eth0 txqueuelen 500
