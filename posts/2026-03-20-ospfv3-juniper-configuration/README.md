@@ -125,9 +125,14 @@ ID               Interface            State      Pri   Dead
 3.3.3.3          ge-0/0/1.0           Full       128   35
 
 user@router> show ospf3 route
-Prefix                            Path  Route      NH       Metric  NextHop
-2001:db8:2::/64                   Intra IPv6-Unicast       10      2.2.2.2
-2001:db8:3::/64                   Intra IPv6-Unicast       20      3.3.3.3
+Topology default Route Table:
+
+Prefix                                       Path  Route      NH   Metric
+                                             Type  Type       Type
+2001:db8:2::/64                              Intra Network    IP   10
+  NH-interface ge-0/0/0.0, NH-addr fe80::2a0:a5ff:fe12:3456
+2001:db8:3::/64                              Intra Network    IP   20
+  NH-interface ge-0/0/1.0, NH-addr fe80::2a0:a5ff:fe78:9abc
 ```
 
 ## Enabling OSPFv3 Authentication (IPsec)
