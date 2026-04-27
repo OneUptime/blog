@@ -8,7 +8,7 @@ Description: Learn how to use the `override_resource` block in OpenTofu tests to
 
 ## Introduction
 
-OpenTofu 1.7 introduced fine-grained resource overrides for tests. While `mock_provider` replaces an entire provider, `override_resource` lets you replace only a specific resource within an otherwise real (or mock) provider configuration. This is useful when most of your module uses mock providers but a few resources need specific computed values.
+OpenTofu 1.8 introduced fine-grained resource overrides for tests. While `mock_provider` replaces an entire provider, `override_resource` lets you replace only a specific resource within an otherwise real (or mock) provider configuration. This is useful when most of your module uses mock providers but a few resources need specific computed values.
 
 ## Basic `override_resource` Syntax
 
