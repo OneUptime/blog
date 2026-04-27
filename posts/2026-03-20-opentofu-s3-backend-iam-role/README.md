@@ -15,11 +15,13 @@ IAM role assumption in the S3 backend allows OpenTofu to access state stored in 
 ```hcl
 terraform {
   backend "s3" {
-    bucket   = "central-tofu-state"
-    key      = "production/terraform.tfstate"
-    region   = "us-east-1"
+    bucket = "central-tofu-state"
+    key    = "production/terraform.tfstate"
+    region = "us-east-1"
 
-    role_arn = "arn:aws:iam::SHARED-SERVICES-ACCOUNT:role/TerraformStateAccess"
+    assume_role = {
+      role_arn = "arn:aws:iam::SHARED-SERVICES-ACCOUNT:role/TerraformStateAccess"
+    }
   }
 }
 ```
@@ -33,14 +35,16 @@ terraform {
 
 terraform {
   backend "s3" {
-    bucket   = "acme-terraform-state"  # In shared services account
-    key      = "workload-prod/terraform.tfstate"
-    region   = "us-east-1"
-    encrypt  = true
+    bucket  = "acme-terraform-state"  # In shared services account
+    key     = "workload-prod/terraform.tfstate"
+    region  = "us-east-1"
+    encrypt = true
 
     # Assume a role in the shared services account
-    role_arn     = "arn:aws:iam::111111111111:role/TerraformStateReader"
-    session_name = "terraform-prod-apply"
+    assume_role = {
+      role_arn     = "arn:aws:iam::111111111111:role/TerraformStateReader"
+      session_name = "terraform-prod-apply"
+    }
 
     dynamodb_table = "terraform-state-lock"
   }
@@ -99,11 +103,14 @@ resource "aws_iam_role_policy" "terraform_state_access" {
 ```hcl
 terraform {
   backend "s3" {
-    bucket       = "central-tofu-state"
-    key          = "production/terraform.tfstate"
-    region       = "us-east-1"
-    role_arn     = "arn:aws:iam::111111111111:role/TerraformStateAccess"
-    external_id  = "terraform-state-access-prod"
+    bucket = "central-tofu-state"
+    key    = "production/terraform.tfstate"
+    region = "us-east-1"
+
+    assume_role = {
+      role_arn    = "arn:aws:iam::111111111111:role/TerraformStateAccess"
+      external_id = "terraform-state-access-prod"
+    }
   }
 }
 ```
@@ -113,7 +120,7 @@ terraform {
 For security, avoid committing the role ARN:
 
 ```hcl
-# backend.tf - commited to version control
+# backend.tf - committed to version control
 terraform {
   backend "s3" {
     bucket = "central-tofu-state"
@@ -123,10 +130,16 @@ terraform {
 }
 ```
 
+```hcl
+# backend-prod.hcl - not committed, supplied at init time
+assume_role = {
+  role_arn = "arn:aws:iam::111111111111:role/TerraformStateAccess"
+}
+```
+
 ```bash
-# Provide role_arn at init time
-tofu init \
-  -backend-config="role_arn=arn:aws:iam::111111111111:role/TerraformStateAccess"
+# Provide the assume_role configuration at init time
+tofu init -backend-config=backend-prod.hcl
 ```
 
 ## Chained Role Assumption
@@ -137,10 +150,13 @@ The backend role can be different from the provider role:
 # Backend uses one role for state access
 terraform {
   backend "s3" {
-    bucket   = "central-state"
-    key      = "prod.tfstate"
-    region   = "us-east-1"
-    role_arn = "arn:aws:iam::STATE-ACCOUNT:role/StateAccess"
+    bucket = "central-state"
+    key    = "prod.tfstate"
+    region = "us-east-1"
+
+    assume_role = {
+      role_arn = "arn:aws:iam::STATE-ACCOUNT:role/StateAccess"
+    }
   }
 }
 
