@@ -86,8 +86,8 @@ On a router in Area 1, check that Area 0 routes appear as inter-area (O IA):
 ```text
 R1# show ip route ospf
 
-! O     10.0.0.0/24 [110/2] via 172.16.1.254     <- Area 0 route (intra-area)
-! O IA  10.1.0.0/24 [110/3] via 172.16.1.254     <- Inter-area route from other area
+! O     172.16.2.0/24 [110/2] via 172.16.1.254     <- Area 1 route (intra-area)
+! O IA  10.0.0.0/24   [110/3] via 172.16.1.254     <- Area 0 route (inter-area)
 ```
 
 `O` = intra-area, `O IA` = inter-area (learned from another area via an ABR)
