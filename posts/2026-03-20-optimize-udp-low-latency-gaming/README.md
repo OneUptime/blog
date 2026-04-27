@@ -38,8 +38,8 @@ sysctl -w net.core.wmem_default=131072   # 128 KB send
 # Disable IPv4 forwarding if this is a gaming client (not a router):
 sysctl -w net.ipv4.ip_forward=0
 
-# TCP optimizations that also help UDP path:
-sysctl -w net.core.netdev_max_backlog=10000  # Larger NIC queue
+# Increase the per-CPU input packet queue (helps under bursty load):
+sysctl -w net.core.netdev_max_backlog=10000  # Kernel input queue depth
 ```
 
 ## QoS - Prioritize Gaming Traffic
@@ -60,10 +60,10 @@ tc qdisc replace dev eth0 root cake bandwidth 100mbit
 # Mark gaming traffic for high-priority queuing:
 iptables -t mangle -A OUTPUT -d game-server-ip -j DSCP --set-dscp 46  # EF (Expedited Forwarding)
 
-# Use HTB with priority classes:
+# Use the prio qdisc with priority bands (band 1:1 is highest priority):
 tc qdisc add dev eth0 root handle 1: prio
 tc filter add dev eth0 parent 1: protocol ip u32 \
-  match ip dst game-server-ip/32 flowid 1:1  # Class 1 = highest priority
+  match ip dst game-server-ip/32 flowid 1:1  # Band 1:1 = highest priority
 ```
 
 ## Reduce Interrupt Coalescing
