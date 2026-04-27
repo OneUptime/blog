@@ -62,7 +62,7 @@ public class SocketAddrParser {
     public static InetSocketAddress parseBracketed(String s) throws URISyntaxException {
         // Use URI parsing to handle brackets
         URI uri = new URI("tcp://" + s);
-        String host = uri.getHost();  // Returns address without brackets
+        String host = uri.getHost();  // For IPv6, includes the surrounding brackets
         int port = uri.getPort();
 
         if (host == null || port == -1) {
@@ -99,7 +99,7 @@ public class URLIPv6Parser {
         URI uri = new URI(rawUrl);
         URL url = uri.toURL();
 
-        String host = url.getHost();  // Returns address without brackets
+        String host = url.getHost();  // For IPv6, includes the surrounding brackets
         int port = url.getPort();
         String path = url.getPath();
 
@@ -140,10 +140,10 @@ public class LogIPv6Extractor {
     // Simplified IPv6 pattern - handles common formats
     private static final Pattern IPV6_PATTERN = Pattern.compile(
         "(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}" +
+        "|(?:[0-9a-fA-F]{1,4}:)+:(?:[0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4}" +
         "|(?:[0-9a-fA-F]{1,4}:){1,7}:" +
-        "|:(?::[0-9a-fA-F]{1,4}){1,7}" +
         "|::(?:[0-9a-fA-F]{1,4}:){0,5}[0-9a-fA-F]{1,4}" +
-        "|::1|::"
+        "|::"
     );
 
     public static List<String> extractIPv6(String line) {
@@ -219,4 +219,4 @@ public class PacketIPv6Parser {
 
 ## Conclusion
 
-Java's `InetAddress.getByName()` is the primary IPv6 parsing entry point - it accepts all standard IPv6 formats including compressed notation and IPv4-mapped addresses. For socket addresses, `URI` parsing handles the bracket notation. Regex extraction from logs needs post-parsing validation via `InetAddress` to confirm validity. Raw bytes parse via `InetAddress.getByAddress(byte[16])`. Always catch `UnknownHostException` and convert it into a meaningful application exception at the API boundary.
+Java's `InetAddress.getByName()` is the primary IPv6 parsing entry point - it accepts all standard IPv6 formats including compressed notation. Note that IPv4-mapped IPv6 addresses (e.g. `::ffff:192.168.1.1`) are accepted but converted to an `Inet4Address`, so they will not pass an `instanceof Inet6Address` check. For socket addresses, `URI` parsing handles the bracket notation. Regex extraction from logs needs post-parsing validation via `InetAddress` to confirm validity. Raw bytes parse via `InetAddress.getByAddress(byte[16])`. Always catch `UnknownHostException` and convert it into a meaningful application exception at the API boundary.
