@@ -72,7 +72,7 @@ write memory
 
 ## Customizing the Default Route Cost
 
-The ABR injects a default route into the stub area. You can control its cost:
+The ABR injects a default route into the stub area. On Cisco, you can control its cost with `area default-cost`:
 
 ```text
 ! Cisco: Set default route cost for stub area
@@ -81,21 +81,14 @@ Router-ABR(config-router)# address-family ipv6 unicast
 Router-ABR(config-router-af)# area 1 default-cost 100
 ```
 
-```bash
-# FRRouting: Set default-metric for the stub area
-
-vtysh
-configure terminal
-router ospf6
- area 0.0.0.1 default-cost 100
-end
-```
+Note: FRRouting's `ospf6d` (OSPFv3) does not currently implement an `area ... default-cost` command — only the IPv4 `ospfd` daemon does. To influence the cost of the default route advertised into a stub area in FRR, adjust the interface cost on the ABR (`ipv6 ospf6 cost <value>` under the relevant interface).
 
 ## Verifying Stub Area Configuration
 
 ```text
-! Cisco: Verify stub area flag in OSPF database
-Router# show ospfv3 database summary
+! Cisco: Verify the area is flagged as stub
+Router# show ospfv3
+! Should show: "It is a stub area" under Area 1
 
 ! Verify the default route is in the branch router's routing table
 Router-Branch# show ipv6 route ospf
@@ -104,7 +97,7 @@ Router-Branch# show ipv6 route ospf
 
 ```bash
 # FRRouting: Verify stub area configuration
-vtysh -c "show ipv6 ospf"
+vtysh -c "show ipv6 ospf6"
 # Should show: Area 0.0.0.1 is a stub area
 
 # Verify default route in branch routing table
