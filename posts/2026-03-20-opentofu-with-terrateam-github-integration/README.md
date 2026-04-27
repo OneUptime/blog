@@ -18,41 +18,46 @@ Terrateam provides GitHub-native OpenTofu automation: plan output in PR comments
 # Terrateam configuration for OpenTofu
 
 engine:
-  name: opentofu
+  name: tofu
   version: "1.7.0"
 
 # Define directories containing OpenTofu configurations
 dirs:
   environments/prod/networking:
-    stacks:
-      - env:
-          ENVIRONMENT: prod
-        hooks:
-          pre_plan:
-            - type: run
-              cmd: echo "Planning networking..."
-          post_apply:
-            - type: run
-              cmd: ./scripts/notify-slack.sh "Networking updated"
+    tags:
+      - prod
+      - networking
 
   environments/prod/app:
-    depends_on:
-      - environments/prod/networking
-    stacks:
-      - {}
+    tags:
+      - prod
+      - app
+    when_modified:
+      # Re-plan app when shared networking changes
+      depends_on: "dir:environments/prod/networking"
 
   environments/dev:
-    stacks:
-      - env:
-          ENVIRONMENT: dev
+    tags:
+      - dev
 
-# Who can apply changes
+# Default trigger behavior applied to all dirs unless overridden
 when_modified:
   autoapply: false
   autoplan: true
   file_patterns:
-    - "**/*.tf"
-    - "**/*.tfvars"
+    - "${DIR}/*.tf"
+    - "${DIR}/*.tfvars"
+
+# Top-level hooks run before/after plan or apply for every dir
+hooks:
+  plan:
+    pre:
+      - type: run
+        cmd: ["echo", "Planning..."]
+  apply:
+    post:
+      - type: run
+        cmd: ["./scripts/notify-slack.sh", "Apply finished"]
 ```
 
 ## PR Workflow with Cost Estimation
@@ -60,19 +65,24 @@ when_modified:
 ```yaml
 # .terrateam/config.yml
 engine:
-  name: opentofu
+  name: tofu
   version: "1.7.0"
 
-integrations:
-  # Enable Infracost for cost estimation
-  infracost:
-    enabled: true
-    api_key: "${INFRACOST_API_KEY}"
+# Cost estimation is a top-level option. Set INFRACOST_API_KEY as a
+# GitHub Actions Secret on the repo and Terrateam will use it automatically.
+cost_estimation:
+  enabled: true
+  provider: infracost
+  currency: USD
 
-  # Enable tfsec for security scanning
-  tfsec:
-    enabled: true
-    min_severity: MEDIUM
+# Run tfsec as a post-plan hook so security findings appear alongside
+# the plan output in PR comments.
+hooks:
+  plan:
+    post:
+      - type: run
+        cmd: ["tfsec", ".", "--minimum-severity", "MEDIUM"]
+        capture_output: true
 ```
 
 ## Access Control Configuration
@@ -80,39 +90,43 @@ integrations:
 ```yaml
 # .terrateam/config.yml
 access_control:
-  # Who can trigger plans
-  plan:
-    teams:
-      - my-org/engineers
-      - my-org/platform-team
+  enabled: true
+  # Each policy applies to dirspaces matching its tag_query.
+  # Teams are referenced by their GitHub team slug as "team:<slug>".
+  policies:
+    - tag_query: ""
+      plan:
+        - "team:engineers"
+        - "team:platform-team"
+      apply:
+        - "team:platform-team"
 
-  # Who can trigger applies
-  apply:
-    teams:
-      - my-org/platform-team
-
-  # Require separate person to approve vs plan
-  separate_plan_and_apply: true
+# Require a PR approval before apply will run
+apply_requirements:
+  checks:
+    - tag_query: ""
+      approved:
+        enabled: true
 ```
 
 ## Environment-Specific Configuration
 
 ```yaml
+# dirs supports glob patterns - the most specific match wins.
 dirs:
   "environments/*/networking":
     tags:
       - networking
 
-  "environments/prod/*":
+  "environments/prod/**":
+    tags:
+      - prod
     when_modified:
       autoapply: false  # Never auto-apply to prod
-    hooks:
-      pre_apply:
-        - type: run
-          cmd: |
-            echo "Applying to PRODUCTION - ensure approval is received"
 
-  "environments/dev/*":
+  "environments/dev/**":
+    tags:
+      - dev
     when_modified:
       autoapply: true  # Auto-apply dev changes
 ```
@@ -131,13 +145,15 @@ terrateam unlock           # Release lock
 ## Notifications Configuration
 
 ```yaml
+# Control how Terrateam manages PR comments as new plans run.
+# comment_strategy options:
+#   minimize - collapse old comments (default)
+#   append   - leave old comments untouched
+#   delete   - remove old comments
 notifications:
-  - type: github_check
-    # Post results as GitHub check runs
-
-  - type: pull_request_comment
-    # Post plan output as PR comments
-    collapsed: true  # Collapse large outputs
+  policies:
+    - tag_query: ""
+      comment_strategy: minimize
 ```
 
 ## Conclusion
