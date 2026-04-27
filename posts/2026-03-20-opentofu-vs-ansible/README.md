@@ -66,7 +66,7 @@ Ansible configures the software on those resources:
 | Target | Cloud APIs | SSH/WinRM to servers |
 | Idempotency | Native (plan/apply) | Task-level idempotency |
 | Multi-cloud | Yes (3,000+ providers) | Yes (via modules) |
-| Drift detection | `tofu plan -refresh-only` | `ansible --check` |
+| Drift detection | `tofu plan -refresh-only` | `ansible-playbook --check` |
 | Secrets | SOPS, Vault, write-only | Ansible Vault |
 | Agent required | No | No (agentless) |
 | License | MPL 2.0 | GPL 3.0 |
