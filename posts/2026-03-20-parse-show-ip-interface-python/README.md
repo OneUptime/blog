@@ -169,7 +169,7 @@ target = ipaddress.ip_address('8.8.8.8')
 matching = [
     r for r in routes
     if r.get('network') and target in ipaddress.ip_network(
-        f"{r['network']}/{r.get('mask', '32')}", strict=False
+        f"{r['network']}/{r.get('prefix_length', '32')}", strict=False
     )
 ]
 print(f"Routes matching 8.8.8.8: {matching}")
