@@ -22,7 +22,8 @@ resource "spacelift_stack" "app" {
   description = "Production application infrastructure"
 
   # Use OpenTofu instead of Terraform
-  opentofu_version = "1.7.0"
+  terraform_workflow_tool = "OPEN_TOFU"
+  terraform_version       = "1.7.0"
 
   repository   = "my-org/infrastructure"
   branch       = "main"
@@ -43,7 +44,7 @@ package spacelift
 
 # Deny if any resource destruction would affect critical resources
 deny[sprintf("Destroying critical resource: %s (%s)", [resource.address, resource.type])] {
-    resource := input.spacelift.run.changes.resources[_]
+    resource := input.terraform.resource_changes[_]
     resource.change.actions[_] == "delete"
     critical_types := {
         "aws_db_instance",
@@ -59,26 +60,26 @@ deny[sprintf("Destroying critical resource: %s (%s)", [resource.address, resourc
 
 ```rego
 # policies/require-approval.rego
-# Require human approval for any production changes that affect > 5 resources
+# Auto-approve safe runs; everything else falls through to human approval
 
 package spacelift
 
-approve["Auto-approved: no significant changes"] {
-    count(input.spacelift.run.changes.resources) == 0
+import future.keywords.every
+
+# Auto-approve runs with no resource changes
+approve {
+    count(input.run.changes) == 0
 }
 
-approve["Auto-approved: only additions"] {
-    changes := input.spacelift.run.changes.resources
-    every change in changes {
-        change.change.actions == ["create"]
+# Auto-approve runs that only add resources
+approve {
+    every change in input.run.changes {
+        change.action == "added"
     }
 }
 
-# Everything else requires human approval
-warn["Human approval required for production changes with modifications"] {
-    some change in input.spacelift.run.changes.resources
-    change.change.actions[_] == "update"
-}
+# Any run with modifications or deletions has no `approve` rule firing,
+# so it requires human approval before it can proceed.
 ```
 
 ## Tag Compliance Policy
@@ -92,7 +93,7 @@ package spacelift
 required_tags := {"Environment", "Project", "Team"}
 
 warn[sprintf("Resource %s is missing required tags: %v", [resource.address, missing])] {
-    resource := input.spacelift.run.changes.resources[_]
+    resource := input.terraform.resource_changes[_]
     resource.change.actions[_] == "create"
     after_tags := {k | k := object.keys(resource.change.after.tags)[_]}
     missing := required_tags - after_tags
@@ -128,8 +129,8 @@ admin {
     input.session.teams[_] == "my-org/platform-team"
 }
 
-# All engineers can read
-read {
+# All engineers can log in as non-admin users
+allow {
     input.session.teams[_] == "my-org/engineering"
 }
 ```
