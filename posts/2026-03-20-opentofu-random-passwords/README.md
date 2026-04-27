@@ -112,7 +112,9 @@ resource "aws_db_instance" "app" {
   username = "dbadmin"
   password = random_password.db_password.result  # Use directly
 
-  # lifecycle block prevents password from causing destroy/recreate
+  lifecycle {
+    ignore_changes = [password]  # Prevents password from causing destroy/recreate
+  }
 }
 
 # Trigger rotation: change the keeper to regenerate
