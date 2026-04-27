@@ -113,7 +113,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.7.0"
 
@@ -130,7 +130,7 @@ jobs:
         run: tofu plan -no-color -out=tfplan
 
       - name: Upload Plan
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tfplan
           path: tfplan
@@ -144,7 +144,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.7.0"
 
@@ -155,7 +155,7 @@ jobs:
           aws-region: us-east-1
 
       - name: Download Plan
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: tfplan
 
