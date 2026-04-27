@@ -38,7 +38,7 @@ source "amazon-ebs" "web_server" {
   region        = var.aws_region
   source_ami_filter {
     filters = {
-      name                = "ubuntu/images/hvm-ssd/ubuntu-22.04-amd64-server-*"
+      name                = "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"
       virtualization-type = "hvm"
     }
     owners      = ["099720109477"]  # Canonical
