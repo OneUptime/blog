@@ -71,7 +71,7 @@ tofu test
 tofu test -test-directory=tests/
 
 # Run a specific test file
-tofu test tests/unit.tftest.hcl
+tofu test -filter=tests/unit.tftest.hcl
 
 # Verbose output showing each assertion
 tofu test -verbose
@@ -187,7 +187,7 @@ export TF_VAR_region=us-east-1
 export AWS_PROFILE=test-account
 export AWS_DEFAULT_REGION=us-east-1
 
-tofu test tests/integration.tftest.hcl
+tofu test -filter=tests/integration.tftest.hcl
 ```
 
 ## Conclusion
