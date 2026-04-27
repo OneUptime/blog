@@ -118,6 +118,7 @@ def recv_file(host: str, port: int, output_dir: str = ".") -> None:
 
 ```python
 import socket
+import struct
 import threading
 import os
 
