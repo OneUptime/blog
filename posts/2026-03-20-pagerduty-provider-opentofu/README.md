@@ -8,12 +8,12 @@ Description: Learn how to configure the PagerDuty provider in OpenTofu to manage
 
 ## Introduction
 
-This guide covers How to Configure the PagerDuty Provider in OpenTofu using OpenTofu with practical examples and production-ready configurations.
+This guide covers how to configure the PagerDuty provider in OpenTofu with practical examples for managing teams, users, escalation policies, schedules, and services.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- API credentials for the relevant service
+- A PagerDuty account and a REST API token with permission to manage the resources you intend to create
 - Basic understanding of OpenTofu concepts
 
 ## Step 1: Install and Configure the Provider
@@ -22,23 +22,19 @@ This guide covers How to Configure the PagerDuty Provider in OpenTofu using Open
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    # Provider configuration depends on the specific service
-    # Replace with the actual provider source and version
-    example = {
-      source  = "hashicorp/example"
-      version = "~> 1.0"
+    pagerduty = {
+      source  = "PagerDuty/pagerduty"
+      version = "~> 3.0"
     }
   }
 }
 
-# Configure the provider with credentials
+provider "pagerduty" {
+  # Reads the token from PAGERDUTY_TOKEN by default. You can also pass it
+  # explicitly with token = var.pagerduty_token.
 
-provider "example" {
-  # Use environment variables for credentials
-  # EXAMPLE_API_KEY, EXAMPLE_TOKEN, etc.
-  
-  # Or specify directly (not recommended for secrets)
-  # api_key = var.api_key
+  # Set service_region = "eu" if your account is in the EU service region.
+  # The default selects the US service region.
 }
 ```
 
@@ -46,90 +42,101 @@ provider "example" {
 
 ```bash
 # Use environment variables for authentication
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_TOKEN="your-token"
-export PROVIDER_ORG="your-organization"
+export PAGERDUTY_TOKEN="your-pagerduty-api-token"
+
+# Optional: select the EU service region
+# export PAGERDUTY_SERVICE_REGION="eu"
 ```
 
 ```hcl
-variable "api_key" {
-  description = "API key for authentication"
+variable "pagerduty_token" {
+  description = "PagerDuty REST API token"
   type        = string
   sensitive   = true
-}
-
-variable "organization" {
-  description = "Organization name or ID"
-  type        = string
 }
 ```
 
 ## Step 3: Create Basic Resources
 
 ```hcl
-# Example resource creation
-# Replace with actual resource types for the provider
-
-resource "example_project" "main" {
-  name        = "${var.environment}-project"
-  description = "Managed by OpenTofu"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+resource "pagerduty_team" "engineering" {
+  name        = "engineering"
+  description = "Engineering on-call team"
 }
 
-# Configure access control
-resource "example_team" "developers" {
-  name    = "developers"
-  project = example_project.main.id
-  role    = "contributor"
+resource "pagerduty_user" "primary" {
+  name  = "Jane Doe"
+  email = "jane@example.com"
+  role  = "user"
+}
+
+# pagerduty_user.teams is deprecated; manage team membership separately.
+resource "pagerduty_team_membership" "primary" {
+  user_id = pagerduty_user.primary.id
+  team_id = pagerduty_team.engineering.id
+  role    = "responder"
+}
+
+resource "pagerduty_escalation_policy" "default" {
+  name      = "Engineering Escalation"
+  num_loops = 2
+  teams     = [pagerduty_team.engineering.id]
+
+  rule {
+    escalation_delay_in_minutes = 15
+
+    target {
+      type = "user_reference"
+      id   = pagerduty_user.primary.id
+    }
+  }
 }
 ```
 
 ## Step 4: Configure Advanced Settings
 
 ```hcl
-# Monitoring and alerting configuration
-resource "example_alert" "main" {
-  name      = "critical-alert"
-  project   = example_project.main.id
-  severity  = "critical"
-  threshold = 90
+# Weekly on-call rotation schedule
+resource "pagerduty_schedule" "primary" {
+  name      = "Primary On-Call"
+  time_zone = "America/New_York"
 
-  notification {
-    channel = var.notification_channel
+  layer {
+    name                         = "Weekday Layer"
+    start                        = "2026-01-01T09:00:00-05:00"
+    rotation_virtual_start       = "2026-01-01T09:00:00-05:00"
+    rotation_turn_length_seconds = 604800 # one week
+    users                        = [pagerduty_user.primary.id]
   }
 }
 
-# Backup and retention policies
-resource "example_backup_policy" "main" {
-  name              = "daily-backup"
-  project           = example_project.main.id
-  retention_days    = 30
-  schedule          = "0 2 * * *"  # Daily at 2 AM
+# Service that incidents are created against
+resource "pagerduty_service" "api" {
+  name                    = "API Service"
+  auto_resolve_timeout    = 14400 # four hours
+  acknowledgement_timeout = 600   # ten minutes
+  escalation_policy       = pagerduty_escalation_policy.default.id
 }
 ```
 
 ## Step 5: Define Outputs
 
 ```hcl
-output "project_id" {
-  description = "The ID of the created project"
-  value       = example_project.main.id
+output "service_id" {
+  description = "The ID of the created PagerDuty service"
+  value       = pagerduty_service.api.id
 }
 
-output "project_name" {
-  description = "The name of the created project"
-  value       = example_project.main.name
+output "escalation_policy_id" {
+  description = "The ID of the escalation policy"
+  value       = pagerduty_escalation_policy.default.id
 }
 ```
 
 ## Step 6: Deploy
 
 ```bash
-# Initialize OpenTofu and download provider
+# Initialize OpenTofu and download the provider
 tofu init
 
 # Validate configuration syntax
@@ -145,14 +152,14 @@ tofu apply
 ## Common Issues and Solutions
 
 ### Authentication Errors
-Verify API keys are valid and have the required permissions. Check for typos in environment variable names.
+Verify `PAGERDUTY_TOKEN` is set and that the token has the required permissions for the resources you are creating. If your account lives in the EU service region, also set `PAGERDUTY_SERVICE_REGION=eu` (or `service_region = "eu"` in the provider block).
 
 ### Rate Limiting
-Add `depends_on` to serialize resource creation and avoid hitting API rate limits.
+The PagerDuty REST API enforces per-token rate limits and returns `HTTP 429` with a `Retry-After` header when exceeded. For large configurations, use `-parallelism=N` on `tofu apply` to reduce concurrent requests, and consider splitting state across multiple workspaces.
 
 ### Provider Version Conflicts
-Pin to a specific provider version range to ensure reproducible deployments.
+Pin the `PagerDuty/pagerduty` provider to a tested version range (for example `~> 3.0`) and commit the `.terraform.lock.hcl` file generated by `tofu init` for reproducible deployments.
 
 ## Conclusion
 
-You have successfully configured How to Configure the PagerDuty Provider in OpenTofu using OpenTofu. This provider enables you to manage all aspects of the service as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials.
+You have successfully configured the PagerDuty provider in OpenTofu to manage teams, users, escalation policies, schedules, and services. Managing PagerDuty as code keeps on-call configuration consistent across environments and enables GitOps workflows for incident response. Always store API tokens in environment variables or a secret store, and protect your OpenTofu state backend because resource attributes such as integration keys are persisted there.
