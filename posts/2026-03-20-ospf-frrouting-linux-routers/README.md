@@ -84,7 +84,7 @@ hostname# configure terminal
 
 ! Activate OSPF on eth0 in Area 0
 hostname(config)# interface eth0
-hostname(config-if)# ip ospf 1 area 0
+hostname(config-if)# ip ospf area 0
 hostname(config-if)# ip ospf cost 10
 hostname(config-if)# ip ospf hello-interval 10
 hostname(config-if)# ip ospf dead-interval 40
