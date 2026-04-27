@@ -84,12 +84,14 @@ module "networking" {
 }
 ```
 
-## Local Path with Subdirectory
+## Local Paths Are Not Packages
+
+Local paths are not packages, so the `//` subdirectory syntax does not apply — the entire local path is treated as the module itself. Use a normal relative path to reference a nested module:
 
 ```hcl
-# Local paths also support subdirectory traversal
+# Local paths use a regular relative path, not //
 module "app" {
-  source = "./platform//application/web"
+  source = "./platform/application/web"
 }
 ```
 
@@ -175,4 +177,4 @@ module "eks" {
 
 ## Conclusion
 
-The `//` subdirectory notation is a flexible way to work with modular repositories. Whether you're pulling from a GitHub monorepo, an S3 archive, or a local directory structure, subdirectory references let you access exactly the module you need. Always combine subdirectory references with version pins (`?ref=`) to ensure reproducible deployments.
+The `//` subdirectory notation is a flexible way to work with modular package sources. Whether you're pulling from a GitHub monorepo, an S3 archive, or a registry module with submodules, subdirectory references let you access exactly the module you need. Always combine subdirectory references with version pins (`?ref=`) to ensure reproducible deployments.
