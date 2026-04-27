@@ -16,9 +16,9 @@ The `pathexpand` function in OpenTofu expands the tilde (`~`) in a filesystem pa
 pathexpand(path)
 ```
 
-- Replaces a leading `~` with the value of `$HOME`
+- Replaces a leading `~` segment with the current user's home directory (typically the value of `$HOME`)
 - Returns the path unchanged if it doesn't start with `~`
-- Returns an absolute path
+- Operates on the string only — it does not access the filesystem
 
 ## Basic Examples
 
