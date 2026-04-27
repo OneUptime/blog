@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, Terraform, Licensing, Open Source, BSL, MPLS
+Tags: OpenTofu, Terraform, Licensing, Open Source, BSL, MPL
 
 Description: Learn the key differences between OpenTofu's Mozilla Public License and HashiCorp Terraform's Business Source License, and what each means for your organization.
 
@@ -38,7 +38,7 @@ OpenTofu uses the Mozilla Public License 2.0, a weak copyleft license that is:
 HashiCorp relicensed Terraform under BSL 1.1. BSL is:
 
 - **Source-available, not open source** - Not OSI-approved
-- **Time-limited restriction** - After a conversion period (typically 4 years), code converts to a more permissive license (Apache 2.0 for HashiCorp)
+- **Time-limited restriction** - After a conversion period (typically 4 years), code converts to a more permissive license (MPL 2.0 for HashiCorp)
 - **Production use allowed** with restrictions
 - **Competitive use restricted** - The key restriction
 
@@ -77,7 +77,7 @@ Under BSL 1.1, the following are **restricted**:
 | Modifications must be open source | Only MPL files | No |
 | Patent protection | Yes | Yes |
 | Trademark use | No (separate policy) | No |
-| Converts to permissive license | N/A (already permissive) | Apache 2.0 after 4 years |
+| Converts to a more permissive license | N/A (already open source) | MPL 2.0 after 4 years |
 
 ## Why Organizations Chose OpenTofu
 
