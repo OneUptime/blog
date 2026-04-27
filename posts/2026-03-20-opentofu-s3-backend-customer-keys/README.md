@@ -29,8 +29,8 @@ terraform {
     region = "us-east-1"
 
     # Customer-provided encryption key (base64-encoded 256-bit key)
-    sse_customer_algorithm = "AES256"
-    sse_customer_key       = var.state_encryption_key
+    # The algorithm is implicitly AES256 when sse_customer_key is set.
+    sse_customer_key = var.state_encryption_key
   }
 }
 ```
@@ -94,7 +94,6 @@ terraform {
 ```bash
 # Provide the SSE-C key at init time
 tofu init \
-  -backend-config="sse_customer_algorithm=AES256" \
   -backend-config="sse_customer_key=$(cat /secure/state-key.b64)"
 ```
 
