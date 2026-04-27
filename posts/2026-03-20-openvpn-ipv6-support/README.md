@@ -35,16 +35,13 @@ dh dh.pem
 server 10.8.0.0 255.255.255.0
 
 # IPv6 tunnel network (assign a /64 from your prefix)
-server-ipv6 2001:db8:vpn::/64
+server-ipv6 2001:db8:0:1::/64
 
 # Push IPv6 default route to clients
-push "route-ipv6 2000::/3"
+push "route-ipv6 ::/0"
 
 # Push IPv6 DNS server
-push "dhcp-option DNS6 2001:4860:4860::8888"
-
-# Enable IPv6 routing
-push "route-ipv6 ::/0"
+push "dhcp-option DNS 2001:4860:4860::8888"
 
 # Logging and persistence
 keepalive 10 120
@@ -65,7 +62,7 @@ echo "net.ipv6.conf.all.forwarding=1" >> /etc/sysctl.conf
 sudo sysctl -p
 
 # Enable NAT for IPv6 (if not using a routable prefix)
-sudo ip6tables -t nat -A POSTROUTING -s 2001:db8:vpn::/64 \
+sudo ip6tables -t nat -A POSTROUTING -s 2001:db8:0:1::/64 \
   -o eth0 -j MASQUERADE
 ```
 
@@ -78,8 +75,8 @@ client
 dev tun
 proto udp6         # Connect to server over IPv6
 
-# Connect to server's IPv6 address (use brackets for IPv6)
-remote 2001:db8::vpn-server 1194
+# Connect to server's IPv6 address (no brackets in OpenVPN's remote directive)
+remote 2001:db8::1 1194
 
 # Or connect via dual-stack hostname (resolves to IPv4 or IPv6)
 # remote vpn.example.com 1194
@@ -91,7 +88,8 @@ ca ca.crt
 cert client.crt
 key client.key
 
-# Accept IPv6 routes
+# Note: tun-ipv6 is auto-enabled in OpenVPN 2.4+ and is only needed
+# for older clients that require it explicitly.
 tun-ipv6
 
 # Pull IPv6 configuration from server
@@ -140,7 +138,7 @@ sudo journalctl -u openvpn@server -f
 sudo ss -6 -ulnp | grep 1194
 
 # Test connectivity to VPN server over IPv6
-nmap -6 -p 1194 -sU 2001:db8::vpn-server
+nmap -6 -p 1194 -sU 2001:db8::1
 ```
 
 OpenVPN's native IPv6 support means both the control channel (connecting to the VPN server) and the data channel (routing IPv6 traffic through the tunnel) can use IPv6, enabling full dual-stack or IPv6-only VPN deployments.
