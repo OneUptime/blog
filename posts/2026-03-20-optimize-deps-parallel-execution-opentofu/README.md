@@ -125,8 +125,8 @@ Compare apply times before and after optimization:
 # Time the apply
 time tofu apply -auto-approve
 
-# Count independent resource groups in the graph
-tofu graph | grep -c '^    "\[root\]'
+# Count resource nodes in the graph
+tofu graph | grep -c '\[label'
 ```
 
 ## Conclusion
