@@ -55,7 +55,7 @@ locals {
 }
 
 resource "aws_instance" "app" {
-  instance_class = local.instance_type
+  instance_type = local.instance_type
   # ... other config
 }
 ```
