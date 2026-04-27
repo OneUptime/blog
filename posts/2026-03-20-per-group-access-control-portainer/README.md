@@ -48,11 +48,10 @@ print('User Policies:', e.get('UserAccessPolicies', {}))
 
 | Role ID | Role Name | Typical Use |
 |---------|-----------|-------------|
-| 1 | Environment Admin | Team leads, senior engineers |
-| 2 | Operator | Operations team |
-| 3 | Helpdesk | Support staff, auditors |
-| 4 | Standard User | Developers |
-| 5 | Read-Only | Viewers, stakeholders |
+| 1 | Environment Administrator | Team leads, senior engineers |
+| 2 | Helpdesk | Support staff, auditors |
+| 3 | Standard User | Developers, operations team |
+| 4 | Read-Only User | Viewers, stakeholders |
 
 ## Best Practices
 
