@@ -55,8 +55,8 @@ router ospf 1
 router ospf
  graceful-restart grace-period 60
  graceful-restart helper enable
- ! OR: disable strict LSA checking for more permissive helper
- ! graceful-restart helper lsa-check-disable
+ ! For stricter helper behavior, opt in to strict LSA checking:
+ ! graceful-restart helper strict-lsa-checking
 ```
 
 ## Step 4: Verify Graceful Restart Configuration
@@ -93,7 +93,7 @@ The helper continues forwarding traffic to the restarting router during this win
 - If the router fully power-cycles, GR provides no benefit (both planes go down)
 - The GR helper won't help if the OSPF topology changes during the restart window (with strict-lsa-checking)
 - GR is most useful for planned upgrades on platforms with NSF (Non-Stop Forwarding) hardware
-- Maximum grace-period should not exceed the Dead interval to avoid confusion
+- The grace-period typically exceeds the Dead interval-that's the whole point of GR (helpers maintain the adjacency despite missed Hellos). Per RFC 3623, the grace-period should not exceed LSRefreshTime (1800 seconds) to avoid the restarting router's LSAs aging out
 
 ## Step 7: Test Graceful Restart (Lab Only)
 
