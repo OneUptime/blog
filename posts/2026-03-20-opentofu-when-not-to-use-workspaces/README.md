@@ -72,8 +72,8 @@ Workspace state lives in the same backend path:
 
 ```text
 s3://bucket/
-├── prefix/terraform.tfstate         # default
-└── prefix/env:/production/          # production
+├── prefix/terraform.tfstate                  # default
+└── env:/production/prefix/terraform.tfstate  # production
 ```
 
 A backend migration moves all workspaces together. You cannot independently move one environment's state to a new backend.
