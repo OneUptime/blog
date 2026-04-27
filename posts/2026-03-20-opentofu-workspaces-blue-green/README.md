@@ -86,15 +86,19 @@ The load balancer lives outside workspace-specific state so it can point to eith
 
 ```hcl
 # lb.tf  (applied in the default workspace or via a separate state)
-resource "aws_lb_target_group_attachment" "active" {
-  # This value is set via a variable, updated when you flip traffic
-  target_group_arn = var.active_target_group_arn
-  target_id        = var.active_asg_name
-}
-
 variable "active_slot" {
   description = "Which slot is currently active: blue or green"
   default     = "blue"
+}
+
+variable "target_group_arn" {
+  description = "ARN of the target group serving live traffic"
+}
+
+resource "aws_autoscaling_attachment" "active" {
+  # The ASG name is derived from the active slot, updated when you flip traffic
+  autoscaling_group_name = "app-${var.active_slot}"
+  lb_target_group_arn    = var.target_group_arn
 }
 ```
 
