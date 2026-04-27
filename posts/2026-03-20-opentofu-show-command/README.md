@@ -140,7 +140,7 @@ tofu show
 tofu show -json
 
 # Show state from a specific file
-tofu show -state=backup.tfstate
+tofu show backup.tfstate
 ```
 
 ## Conclusion
