@@ -119,7 +119,7 @@ tofu console
 > regex("([a-z]+)=([0-9]+)", "count=42")
 ["count", "42"]
 > regex("(?P<key>[a-z]+)=(?P<val>[0-9]+)", "size=100")
-{key = "key", val = "100"}  # Wait, named captures return map
+{key = "size", val = "100"}
 ```
 
 ## RE2 Syntax
