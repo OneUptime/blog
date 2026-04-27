@@ -8,7 +8,7 @@ Description: Compare OpenTofu and AWS CDK - their programming models, testing ap
 
 ## Introduction
 
-OpenTofu and AWS CDK are both used to provision AWS infrastructure, but through different approaches. OpenTofu uses declarative HCL. AWS CDK uses TypeScript, Python, Go, or Java to synthesize CloudFormation templates. CDK is developer-friendly but AWS-only; OpenTofu is multi-cloud but requires learning HCL.
+OpenTofu and AWS CDK are both used to provision AWS infrastructure, but through different approaches. OpenTofu uses declarative HCL. AWS CDK uses TypeScript, JavaScript, Python, Java, C#, or Go to synthesize CloudFormation templates. CDK is developer-friendly but AWS-only; OpenTofu is multi-cloud but requires learning HCL.
 
 ## How They Work
 
@@ -50,12 +50,12 @@ const apiHandler = new lambda.Function(this, 'ApiHandler', {
 
 | Feature | OpenTofu | AWS CDK |
 |---------|----------|---------|
-| Language | HCL | TypeScript, Python, Go, Java |
+| Language | HCL | TypeScript, JavaScript, Python, Java, C#, Go |
 | Multi-cloud | Yes | No (AWS only via CloudFormation) |
 | Output | Direct API calls | CloudFormation templates |
 | State management | .tfstate files | CloudFormation stacks |
 | Constructs/Modules | HCL modules | L2/L3 construct libraries |
-| Testing | Terratest | CDK assertions (`aws-cdk-assert`) |
+| Testing | Terratest | CDK assertions (`aws-cdk-lib/assertions`) |
 | IDE support | HCL plugins | Native TypeScript/Python |
 | Abstractions | Limited | High-level constructs (L2, L3) |
 | Rollback | Manual | CloudFormation automatic |
