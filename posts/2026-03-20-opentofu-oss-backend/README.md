@@ -51,12 +51,10 @@ tofu init
 ```bash
 # Using aliyun CLI
 
-aliyun oss mb oss://acme-tofu-state --region cn-hangzhou
+aliyun oss mb oss://acme-tofu-state -e oss-cn-hangzhou.aliyuncs.com
 
 # Enable versioning
-aliyun oss bucket-versioning --method put oss://acme-tofu-state \
-  --payer BucketOwner \
-  --status Enabled
+aliyun oss bucket-versioning --method put oss://acme-tofu-state enabled
 ```
 
 ## State Locking with TableStore
@@ -80,13 +78,9 @@ terraform {
 Create the TableStore table:
 
 ```bash
-# Create TableStore instance and table via console or aliyun CLI
-# Table schema: primary key = "LockID" (string)
-aliyun tablestore CreateTable \
-  --InstanceName tofu-lock \
-  --TableMeta.TableName terraform_lock \
-  --TableMeta.PrimaryKey.0.Name LockID \
-  --TableMeta.PrimaryKey.0.Type STRING
+# Create the TableStore instance via the console, then create the table with the
+# Tablestore CLI (ts). The table must have primary key "LockID" of type String.
+ts create -t terraform_lock --pk '[{"c":"LockID", "t":"string"}]'
 ```
 
 ## Encryption at Rest
@@ -94,21 +88,22 @@ aliyun tablestore CreateTable \
 ```hcl
 terraform {
   backend "oss" {
-    region          = "cn-hangzhou"
-    bucket          = "acme-tofu-state"
-    prefix          = "production"
-    encrypt         = true
-    acl             = "private"
-    server_side_encryption = "AES256"
+    region  = "cn-hangzhou"
+    bucket  = "acme-tofu-state"
+    prefix  = "production"
+    encrypt = true
+    acl     = "private"
   }
 }
 ```
+
+Setting `encrypt = true` enables server-side encryption with AES256 on the state object.
 
 ## STS Token Authentication (for short-lived credentials)
 
 ```bash
 # Obtain STS credentials
-CREDS=$(aliyun sts AssumeRole --RoleArn acs:ram::123456789:role/TofuStateRole --RoleSessionName tofu-session)
+CREDS=$(aliyun sts AssumeRole --RoleArn acs:ram::1234567890123456:role/TofuStateRole --RoleSessionName tofu-session)
 
 export ALICLOUD_ACCESS_KEY=$(echo $CREDS | jq -r '.Credentials.AccessKeyId')
 export ALICLOUD_SECRET_KEY=$(echo $CREDS | jq -r '.Credentials.AccessKeySecret')
