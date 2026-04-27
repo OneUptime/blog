@@ -8,7 +8,7 @@ Description: Learn how to create truly optional resource blocks in OpenTofu usin
 
 ## Introduction
 
-OpenTofu 1.3+ introduced the `optional()` modifier for object type constraints, allowing object attributes to be omitted by callers. Combined with `count` and `dynamic` blocks, this enables rich optional configuration patterns in modules.
+OpenTofu supports the `optional()` modifier for object type constraints (inherited from Terraform 1.3+), allowing object attributes to be omitted by callers. Combined with `count` and `dynamic` blocks, this enables rich optional configuration patterns in modules.
 
 ## Optional Object Attributes with optional()
 
