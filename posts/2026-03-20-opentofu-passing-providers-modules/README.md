@@ -46,7 +46,7 @@ module "eu_vpc" {
     aws = aws.eu   # Map module's "aws" to the eu alias
   }
 
-  cidr_block = "172.16.0.0/12"
+  cidr_block = "172.16.0.0/16"
 }
 ```
 
@@ -185,7 +185,7 @@ terraform {
     aws = {
       source                = "hashicorp/aws"
       version               = ">= 5.0"
-      # Optional alias - module can work without it
+      # Caller must always pass this alias; the replica resource below uses it conditionally
       configuration_aliases = [aws.replica]
     }
   }
