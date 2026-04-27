@@ -105,8 +105,8 @@ tofu apply import.tfplan
 tofu plan -out=import.tfplan
 tofu show -json import.tfplan | jq '
   .resource_changes[] |
-  select(.change.actions[] == "import") |
-  {address, before: .change.before, after: .change.after}
+  select(.change.importing != null) |
+  {address, import_id: .change.importing.id, actions: .change.actions, before: .change.before, after: .change.after}
 '
 ```
 
