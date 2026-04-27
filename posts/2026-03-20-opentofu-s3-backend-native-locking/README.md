@@ -45,11 +45,11 @@ When a run starts, it creates the lock file. Concurrent runs that detect the loc
 | Lock file location | Same bucket | DynamoDB table |
 | Infrastructure required | S3 bucket only | S3 bucket + DynamoDB table |
 | Reliability | High | High |
-| OpenTofu version | 1.7+ | All versions |
+| OpenTofu version | 1.10+ | All versions |
 
 ## S3 Bucket Requirements
 
-The S3 bucket must have object versioning enabled for native locking to work reliably:
+Enabling object versioning on the S3 bucket is highly recommended for state recovery and reliable lock file management:
 
 ```hcl
 resource "aws_s3_bucket_versioning" "tofu_state" {
@@ -85,7 +85,7 @@ The lock file is a JSON file created during operations:
   "Operation": "OperationTypePlan",
   "Info": "",
   "Who": "user@hostname",
-  "Version": "1.8.0",
+  "Version": "1.10.0",
   "Created": "2026-03-20T10:00:00Z",
   "Path": "production/terraform.tfstate"
 }
@@ -139,4 +139,4 @@ tofu init -reconfigure
 
 ## Conclusion
 
-Native S3 locking simplifies the backend setup by eliminating the DynamoDB dependency while providing equivalent concurrency protection. Enable it with `use_lockfile = true` on OpenTofu 1.7 or later. Ensure the S3 bucket has versioning enabled for reliable lock file management, and use `tofu force-unlock` or direct S3 deletion to clear stuck locks.
+Native S3 locking simplifies the backend setup by eliminating the DynamoDB dependency while providing equivalent concurrency protection. Enable it with `use_lockfile = true` on OpenTofu 1.10 or later. Enabling versioning on the S3 bucket is highly recommended for state recovery and reliable lock file management, and use `tofu force-unlock` or direct S3 deletion to clear stuck locks.
