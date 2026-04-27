@@ -120,20 +120,38 @@ terraform {
 
 ## Migration: Enabling Encryption on Existing State
 
-Add the encryption block with `enforced = false` first to allow reading unencrypted state during the transition:
+To migrate from unencrypted state, declare an `unencrypted` method and reference it in a `fallback` block. OpenTofu will read existing unencrypted state via the fallback and write back using the new encrypted method:
 
 ```hcl
-state {
-  method   = method.aes_gcm.main
-  enforced = false  # Allow reading unencrypted state during migration
+terraform {
+  encryption {
+    key_provider "pbkdf2" "main" {
+      passphrase = var.state_passphrase
+    }
+
+    method "aes_gcm" "main" {
+      keys = key_provider.pbkdf2.main
+    }
+
+    # Allow reading existing unencrypted state during migration
+    method "unencrypted" "migrate" {}
+
+    state {
+      method = method.aes_gcm.main
+      fallback {
+        method = method.unencrypted.migrate
+      }
+    }
+  }
 }
 ```
 
 ```bash
-# Step 1: Apply with enforced = false to encrypt existing state
-tofu apply -refresh-only
+# Step 1: Apply to re-encrypt existing state with the new method
+tofu apply
 
-# Step 2: Change enforced = true to prevent reading unencrypted state
+# Step 2: Remove the fallback block and the unencrypted method,
+# then optionally add `enforced = true` to refuse unencrypted reads/writes
 ```
 
 ## Verifying Encryption
@@ -152,4 +170,4 @@ tofu show
 
 ## Conclusion
 
-PBKDF2 state encryption provides strong end-to-end protection without requiring external key management services. Configure it with a strong passphrase stored in a secrets manager, use `enforced = false` during migration from unencrypted state, and extend encryption to plan files for complete protection of sensitive infrastructure data.
+PBKDF2 state encryption provides strong end-to-end protection without requiring external key management services. Configure it with a strong passphrase stored in a secrets manager, use a `fallback` block with an `unencrypted` method during migration from unencrypted state, and extend encryption to plan files for complete protection of sensitive infrastructure data.
