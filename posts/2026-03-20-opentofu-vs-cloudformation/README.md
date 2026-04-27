@@ -111,10 +111,10 @@ tofu plan
 
 ```bash
 # Use former2 to generate OpenTofu from existing AWS resources
-pip install former2  # or use the web interface at former2.com
+npm install -g former2  # or use the web interface at former2.com
 
 # Export resources to OpenTofu HCL
-former2 generate --services EC2 --output terraform
+former2 generate --services EC2 --output-terraform output.tf
 ```
 
 ## Conclusion
