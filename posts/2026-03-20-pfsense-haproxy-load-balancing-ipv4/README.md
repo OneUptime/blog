@@ -56,7 +56,7 @@ Use backend: api-backend  when: is-api
 
 ## HTTPS Termination
 
-```sql
+```text
 Frontend bind:  0.0.0.0:443
 Type: HTTP/HTTPS (SSL offloading)
 SSL Offloading: checked
