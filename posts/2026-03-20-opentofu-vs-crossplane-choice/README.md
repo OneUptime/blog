@@ -15,7 +15,7 @@ OpenTofu and Crossplane both provision cloud infrastructure as code, but from ve
 ### OpenTofu: Standalone IaC Tool
 
 ```hcl
-resource "aws_rds_instance" "db" {
+resource "aws_db_instance" "db" {
   identifier     = "production-db"
   engine         = "postgres"
   engine_version = "15.4"
@@ -99,8 +99,11 @@ spec:
   group: platform.example.com
   names:
     kind: XPostgreSQLInstance
+    plural: xpostgresqlinstances
   versions:
     - name: v1alpha1
+      served: true
+      referenceable: true
       schema:
         openAPIV3Schema:
           properties:
