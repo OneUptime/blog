@@ -19,12 +19,14 @@ terraform {
   required_version = ">= 1.7"
 
   encryption {
-    key_provider "azure_keyvault" "main" {
-      key_id = "https://my-keyvault.vault.azure.net/keys/tofu-state-key/abc123def456"
+    key_provider "azure_vault" "main" {
+      vault_uri      = "https://my-keyvault.vault.azure.net"
+      vault_key_name = "tofu-state-key"
+      key_length     = 32
     }
 
     method "aes_gcm" "main" {
-      keys = key_provider.azure_keyvault.main
+      keys = key_provider.azure_vault.main
     }
 
     state {
@@ -34,7 +36,7 @@ terraform {
 
   backend "azurerm" {
     resource_group_name  = "terraform-state-rg"
-    storage_account_name = "mytofu state"
+    storage_account_name = "mytofustate"
     container_name       = "terraform-state"
     key                  = "production.terraform.tfstate"
   }
@@ -104,12 +106,15 @@ export ARM_SUBSCRIPTION_ID="your-subscription-id"
 az login
 ```
 
-## Using Key Version (for Key Pinning)
+## Using a Symmetric HSM-Backed Key
 
 ```hcl
-key_provider "azure_keyvault" "main" {
-  # Pin to a specific key version for maximum reproducibility
-  key_id = "https://my-keyvault.vault.azure.net/keys/tofu-state-key/SPECIFIC_VERSION"
+key_provider "azure_vault" "main" {
+  vault_uri          = "https://my-hsm.managedhsm.azure.net/"
+  vault_key_name     = "tofu-state-key"
+  key_length         = 32
+  symmetric          = true
+  symmetric_key_size = 256
 }
 ```
 
