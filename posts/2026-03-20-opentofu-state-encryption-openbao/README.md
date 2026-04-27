@@ -39,10 +39,10 @@ terraform {
 
   encryption {
     key_provider "openbao" "main" {
-      address    = "https://openbao.acme-corp.com:8200"
-      token      = var.openbao_token
-      transit_key = "tofu-state-key"
-      mount       = "transit"
+      address             = "https://openbao.acme-corp.com:8200"
+      token               = var.openbao_token
+      key_name            = "tofu-state-key"
+      transit_engine_path = "/transit"
     }
 
     method "aes_gcm" "main" {
@@ -64,24 +64,30 @@ terraform {
 
 ### Token Authentication
 
+The OpenBao key provider authenticates with a token, either passed via the `token` argument or read from the `BAO_TOKEN` environment variable.
+
 ```hcl
 key_provider "openbao" "main" {
-  address     = "https://openbao.acme-corp.com:8200"
-  token       = var.openbao_token
-  transit_key = "tofu-state-key"
+  address  = "https://openbao.acme-corp.com:8200"
+  token    = var.openbao_token
+  key_name = "tofu-state-key"
 }
 ```
 
 ### AppRole Authentication
 
-```hcl
-key_provider "openbao" "main" {
-  address     = "https://openbao.acme-corp.com:8200"
-  auth_method = "approle"
-  role_id     = var.openbao_role_id
-  secret_id   = var.openbao_secret_id
-  transit_key = "tofu-state-key"
-}
+The key provider itself only accepts a token, so AppRole login is performed outside OpenTofu (for example in a CI/CD job) and the resulting client token is passed in via `BAO_TOKEN`:
+
+```bash
+# Log in with AppRole and capture the resulting client token
+export BAO_ADDR="https://openbao.acme-corp.com:8200"
+BAO_TOKEN=$(bao write -field=token auth/approle/login \
+  role_id="$OPENBAO_ROLE_ID" \
+  secret_id="$OPENBAO_SECRET_ID")
+export BAO_TOKEN
+
+tofu init
+tofu apply
 ```
 
 ## OpenBao Policy for Transit
@@ -114,13 +120,11 @@ bao write -f transit/keys/tofu-state-key/rotate
 
 ## Environment Variable Configuration
 
-```bash
-export VAULT_ADDR="https://openbao.acme-corp.com:8200"
-export VAULT_TOKEN="your-openbao-token"
+The OpenBao key provider reads `BAO_ADDR` and `BAO_TOKEN` from the environment, so you can omit `address` and `token` from the HCL configuration:
 
-# Or use AppRole
-export VAULT_ROLE_ID="your-role-id"
-export VAULT_SECRET_ID="your-secret-id"
+```bash
+export BAO_ADDR="https://openbao.acme-corp.com:8200"
+export BAO_TOKEN="your-openbao-token"
 ```
 
 ## Benefits Over PBKDF2
@@ -135,4 +139,4 @@ export VAULT_SECRET_ID="your-secret-id"
 
 ## Conclusion
 
-OpenBao Transit engine provides enterprise-grade key management for OpenTofu state encryption. Use it for centralized key governance, automatic rotation, and a full audit trail of all encryption operations. The AppRole authentication method is suitable for CI/CD pipelines, while Kubernetes auth works for workloads running on Kubernetes with OpenBao.
+OpenBao Transit engine provides enterprise-grade key management for OpenTofu state encryption. Use it for centralized key governance, automatic rotation, and a full audit trail of all encryption operations. Because the key provider only accepts a token, integrations like AppRole or Kubernetes auth are handled outside OpenTofu by exchanging credentials for a client token (via `bao login` or the OpenBao API) and exposing it through `BAO_TOKEN`.
