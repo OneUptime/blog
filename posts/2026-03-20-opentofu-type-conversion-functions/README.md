@@ -169,35 +169,29 @@ resource "aws_db_subnet_group" "main" {
 
 ## type()
 
-Returns the type of a value as a string (useful for debugging):
+Returns the type of a value (only available in the `tofu console` command, useful for debugging):
 
 ```hcl
 > type("hello")
-"string"
+string
 
 > type(42)
-"number"
+number
 
 > type(true)
-"bool"
+bool
 
 > type(["a", "b"])
-"tuple"
+tuple
 
 > type({"key" = "value"})
-"object"
+object
 
 > type(toset(["a", "b"]))
-"set of string"
+set of string
 ```
 
-```hcl
-# Useful in debugging with output
-
-output "debug_type" {
-  value = type(var.some_variable)
-}
-```
+The `type()` function is intended only for debugging in `tofu console` and cannot be used in regular configuration expressions such as `output` blocks.
 
 ## Practical: Normalizing Mixed-Type Inputs
 
