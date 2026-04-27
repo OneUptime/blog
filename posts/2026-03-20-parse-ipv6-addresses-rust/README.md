@@ -101,7 +101,7 @@ use regex::Regex;
 fn extract_ipv6_from_log(line: &str) -> Vec<Ipv6Addr> {
     // Match IPv6 addresses in various formats (simplified pattern)
     let re = Regex::new(
-        r"\b([0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4}){7}|(?:[0-9a-fA-F]{1,4}:){1,7}:|::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4})\b"
+        r"((?:[0-9a-fA-F]{1,4}:){1,7}(?::[0-9a-fA-F]{1,4})+|(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|::(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4})*)?|(?:[0-9a-fA-F]{1,4}:){1,7}:)"
     ).unwrap();
 
     re.captures_iter(line)
@@ -130,11 +130,15 @@ url = "2"
 
 ```rust
 use std::net::IpAddr;
-use url::Url;
+use url::{Host, Url};
 
 fn extract_host_ip(raw_url: &str) -> Option<IpAddr> {
     let url = Url::parse(raw_url).ok()?;
-    url.host()?.to_owned().parse().ok()
+    match url.host()? {
+        Host::Ipv4(addr) => Some(IpAddr::V4(addr)),
+        Host::Ipv6(addr) => Some(IpAddr::V6(addr)),
+        Host::Domain(_) => None,
+    }
 }
 
 fn main() {
