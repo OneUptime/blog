@@ -166,7 +166,7 @@ ansible-playbook -i inventory/hosts.yml playbooks/deploy.yml
 ## Best Practices for Using Both
 
 - Use OpenTofu to provision all cloud infrastructure.
-- Use Ansible for anything that requires agent-based or SSH-based configuration.
+- Use Ansible for anything that requires SSH-based or WinRM-based configuration.
 - Pass OpenTofu outputs to Ansible via generated inventory files.
 - Store OpenTofu state remotely; Ansible doesn't need state files.
 - Run OpenTofu in a separate pipeline stage before Ansible configuration.
