@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cgroups, tc, Traffic Control, Bandwidth, IPv4, Linux, QoS
 
-Description: Use Linux cgroups (v2) combined with tc and eBPF or net_cls to apply per-application IPv4 bandwidth limits by tagging traffic by cgroup membership.
+Description: Use Linux cgroups (v1) combined with tc and the net_cls controller to apply per-application IPv4 bandwidth limits by tagging traffic by cgroup membership.
 
 ## Introduction
 
@@ -25,8 +25,9 @@ sudo mount -t cgroup -o net_cls net_cls /sys/fs/cgroup/net_cls
 # Create a cgroup for your application
 sudo mkdir /sys/fs/cgroup/net_cls/myapp
 
-# Assign a class ID (format: major:minor in hex, e.g., 0x00100001 = 16:1)
-echo 0x00100001 | sudo tee /sys/fs/cgroup/net_cls/myapp/net_cls.classid
+# Assign a class ID (format: 0xMMMMmmmm where MMMM is major and mmmm is minor in hex,
+# e.g., 0x00010001 = tc class 1:1)
+echo 0x00010001 | sudo tee /sys/fs/cgroup/net_cls/myapp/net_cls.classid
 ```
 
 ## Step 2: Assign the Application's Processes to the cgroup
@@ -52,17 +53,19 @@ sudo tc class add dev eth0 parent 1: classid 1:99 htb \
   ceil 1gbit
 
 # Rate-limited class for myapp (10 Mbit/s)
+# rate is the guaranteed bandwidth; ceil is the maximum (no burst here)
 sudo tc class add dev eth0 parent 1: classid 1:1 htb \
-  rate 10mbit \     # Guaranteed bandwidth
-  ceil 10mbit       # Maximum bandwidth (no burst)
+  rate 10mbit \
+  ceil 10mbit
 ```
 
 ## Step 4: Add a Filter to Match cgroup Traffic
 
 ```bash
-# Match traffic tagged with cgroup class 0x00100001 → tc class 1:1
-sudo tc filter add dev eth0 parent 1: protocol ip handle 0x00100001 \
-  cgroup classid 1:1
+# Attach the cgroup classifier. It reads net_cls.classid from each
+# packet's source-process cgroup and uses that value as the tc class ID,
+# so traffic from the myapp cgroup (0x00010001) lands in class 1:1.
+sudo tc filter add dev eth0 parent 1: protocol ip prio 10 cgroup
 ```
 
 Now any packet sent by a process in the `myapp` cgroup will be rate-limited to 10 Mbit/s.
@@ -83,7 +86,12 @@ sudo cgexec -g net_cls:myapp iperf3 -c iperf-server.example.com -t 10
 
 ## Applying Limits to Both Ingress and Egress
 
-Egress (outbound) is directly controlled by tc. Ingress (inbound) requires an IFB device:
+Egress (outbound) is directly controlled by tc. Ingress (inbound) requires an IFB
+device, but note an important caveat: the `cgroup` classifier only works for
+locally generated packets (per `tc-cgroup(8)`). On ingress the packet has not yet
+been delivered to a local socket, so it has no cgroup association and the
+classifier cannot match. To rate-limit ingress for a specific application, match
+on its destination port or IP instead. For example:
 
 ```bash
 # Load IFB module
@@ -91,15 +99,15 @@ sudo modprobe ifb numifbs=1
 sudo ip link set dev ifb0 up
 
 # Redirect ingress to IFB
-sudo tc qdisc add dev eth0 ingress
+sudo tc qdisc add dev eth0 handle ffff: ingress
 sudo tc filter add dev eth0 parent ffff: protocol ip u32 \
   match u32 0 0 action mirred egress redirect dev ifb0
 
-# Apply HTB with the same cgroup filter on ifb0
+# Apply HTB on ifb0 and match the application's destination port (e.g., 8080)
 sudo tc qdisc add dev ifb0 root handle 1: htb default 99
 sudo tc class add dev ifb0 parent 1: classid 1:1 htb rate 10mbit ceil 10mbit
-sudo tc filter add dev ifb0 parent 1: protocol ip handle 0x00100001 \
-  cgroup classid 1:1
+sudo tc filter add dev ifb0 parent 1: protocol ip prio 10 u32 \
+  match ip dport 8080 0xffff flowid 1:1
 ```
 
 ## Cleanup
