@@ -55,6 +55,7 @@ encryption {
   key_provider "aws_kms" "primary" {
     kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/abc-123"
     region     = "us-east-1"
+    key_spec   = "AES_256"
   }
 
   method "aes_gcm" "primary" {
@@ -76,11 +77,13 @@ encryption {
   key_provider "aws_kms" "new_key" {
     kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/new-key-id"
     region     = "us-east-1"
+    key_spec   = "AES_256"
   }
 
   key_provider "aws_kms" "old_key" {
     kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/old-key-id"
     region     = "us-east-1"
+    key_spec   = "AES_256"
   }
 
   method "aes_gcm" "new" {
