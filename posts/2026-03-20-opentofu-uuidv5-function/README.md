@@ -129,9 +129,9 @@ resource "aws_ssm_parameter" "cluster_id" {
 tofu console
 
 > uuidv5("dns", "example.com")
-"9073926b-929f-31c2-abc9-fad77ae3e8eb"
+"cfbff0d1-9375-5685-968c-48ce8b15ae17"
 > uuidv5("dns", "example.com")  # Same result every time
-"9073926b-929f-31c2-abc9-fad77ae3e8eb"
+"cfbff0d1-9375-5685-968c-48ce8b15ae17"
 ```
 
 ## uuidv5 vs uuid vs random_uuid
