@@ -39,7 +39,7 @@ GigabitEthernet0/0 is up, line protocol is up
 
 ## Step 2: Set Priority to Ensure a Specific Router Becomes DR
 
-Set the priority to 100 on the router you want to be DR, and 50 on the BDR:
+Set the priority to 200 on the router you want to be DR, and 100 on the BDR:
 
 ```text
 ! On the intended DR - high priority
