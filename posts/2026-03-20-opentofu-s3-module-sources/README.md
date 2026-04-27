@@ -15,9 +15,10 @@ OpenTofu can download modules directly from AWS S3 buckets. This is ideal for or
 ```hcl
 module "example" {
   source = "s3::https://s3.amazonaws.com/my-bucket/path/to/module.zip"
-  
-  # Or with AWS region-specific endpoint
-  source = "s3::https://s3.us-east-1.amazonaws.com/my-bucket/module.zip"
+
+  # Or with a region-specific endpoint (note: buckets in us-east-1
+  # must use s3.amazonaws.com, not s3-us-east-1.amazonaws.com)
+  source = "s3::https://s3-eu-west-1.amazonaws.com/my-bucket/module.zip"
 }
 ```
 
