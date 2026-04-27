@@ -45,7 +45,7 @@ infrastructure/
 └── dns.tf               # Route53 records
 ```
 
-## Pattern 3: Multi-Environment with Workspaces
+## Pattern 3: Multi-Environment with Variable Files
 
 ```text
 infrastructure/
@@ -162,10 +162,8 @@ output "public_subnet_ids" {
 ```gitignore
 # .gitignore for OpenTofu projects
 .terraform/
-.terraform.tfstate
-.terraform.tfstate.backup
 *.tfstate
-*.tfstate.backup
+*.tfstate.*
 *.tfplan
 *.auto.tfvars
 !example.auto.tfvars   # Keep examples
@@ -173,6 +171,7 @@ output "public_subnet_ids" {
 terraform.rc
 *.sensitive.tfvars     # Sensitive variable files
 crash.log
+crash.*.log
 ```
 
 ## Documentation Standards
