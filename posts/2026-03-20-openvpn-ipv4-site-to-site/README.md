@@ -79,8 +79,8 @@ push "route 192.168.1.0 255.255.255.0"
 # Allow clients to announce their subnets to each other and the server
 route 192.168.2.0 255.255.255.0
 
-# Required for routes to work with certificate-based clients
-client-to-client
+# Per-client config directory (required so the CCD file below is read)
+client-config-dir /etc/openvpn/ccd
 ```
 
 Add a CCD file for the remote site's OpenVPN client:
@@ -88,8 +88,8 @@ Add a CCD file for the remote site's OpenVPN client:
 ```conf
 # /etc/openvpn/ccd/remote-site
 
-# Fixed IP for the remote site's OpenVPN client
-ifconfig-push 10.8.0.10 10.8.0.11
+# Fixed IP for the remote site's OpenVPN client (net30 /30 endpoints)
+ifconfig-push 10.8.0.10 10.8.0.9
 
 # Route for the remote site's LAN, through this client
 iroute 192.168.2.0 255.255.255.0
