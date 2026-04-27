@@ -54,21 +54,17 @@ resource "aws_key_pair" "windows" {
 
 # Launch a Windows EC2 instance
 resource "aws_instance" "windows" {
-  ami           = data.aws_ami.windows.id
-  instance_type = "t3.medium"
-  key_name      = aws_key_pair.windows.key_name
+  ami               = data.aws_ami.windows.id
+  instance_type     = "t3.medium"
+  key_name          = aws_key_pair.windows.key_name
+  get_password_data = true
 
   tags = {
     Name = "windows-server"
   }
 }
 
-# Wait for password to be available and decrypt it
-data "aws_instance" "windows_data" {
-  instance_id = aws_instance.windows.id
-}
-
-# Note: AWS provides encrypted_password after instance initialization
+# Note: password_data is only populated when get_password_data = true
 output "windows_password" {
   sensitive = true
   value     = rsadecrypt(
@@ -120,10 +116,9 @@ locals {
 }
 
 resource "aws_ssm_parameter" "token" {
-  name      = "/app/bootstrap-token"
-  type      = "SecureString"
-  value     = local.bootstrap_token
-  sensitive = true
+  name  = "/app/bootstrap-token"
+  type  = "SecureString"
+  value = local.bootstrap_token
 }
 ```
 
