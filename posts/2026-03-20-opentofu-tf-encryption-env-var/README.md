@@ -39,6 +39,7 @@ export TF_ENCRYPTION='
 key_provider "aws_kms" "main" {
   kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/abc-123"
   region     = "us-east-1"
+  key_spec   = "AES_256"
 }
 method "aes_gcm" "main" {
   keys = key_provider.aws_kms.main
@@ -101,6 +102,7 @@ jobs:
           key_provider "aws_kms" "main" {
             kms_key_id = "${{ vars.PROD_KMS_KEY_ARN }}"
             region     = "us-east-1"
+            key_spec   = "AES_256"
           }
           method "aes_gcm" "main" {
             keys = key_provider.aws_kms.main
@@ -114,9 +116,9 @@ jobs:
           echo "TF_ENCRYPTION=$TF_ENCRYPTION" >> $GITHUB_ENV
 ```
 
-## Disabling Encryption via Environment
+## Disabling Enforcement via Environment
 
-To temporarily disable encryption (useful for debugging):
+To temporarily remove the enforcement check (useful for debugging):
 
 ```bash
 # Override to remove enforcement
@@ -126,6 +128,8 @@ state {
 }
 '
 ```
+
+Note that setting `enforced = false` only stops OpenTofu from erroring when encryption is missing — it does not decrypt existing state. To fully migrate away from encryption, you must use the `unencrypted` method together with a `fallback` block referencing your existing method, then run `tofu apply` to rewrite state in plaintext.
 
 ## Security Considerations
 
@@ -143,13 +147,12 @@ export TF_ENCRYPTION="key_provider \"pbkdf2\" \"main\" { passphrase = \"${VAULT_
 ## Verifying Configuration
 
 ```bash
-# Check what encryption configuration is active
-tofu providers schema -json | jq '.encryption'
-
 # Run a plan to verify encryption is working
 tofu plan
 # State operations should succeed with the configured encryption
 ```
+
+If the encryption configuration is invalid or the keys are wrong, OpenTofu will fail early with a descriptive error during initialization or any state operation. There is no dedicated CLI command to dump the active encryption configuration, so a successful `tofu plan` is the practical way to confirm it is working.
 
 ## Conclusion
 
