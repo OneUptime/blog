@@ -45,7 +45,7 @@ Router(config)# interface Tunnel0
 Router(config-if)# ip ospf network point-to-point
 ```
 
-With Point-to-Point, there's no DR/BDR election, and OSPF forms a full adjacency directly (no 2-way state).
+With Point-to-Point, there's no DR/BDR election, and OSPF forms a full adjacency directly (routers don't stop at 2-way state like DROthers do on broadcast networks).
 
 ## Step 3: Configure NBMA for Frame Relay Hub-and-Spoke
 
@@ -105,7 +105,7 @@ After changing network type, reset the OSPF process to force re-election and re-
 Router# clear ip ospf process
 
 ! Verify the new network type
-Router# show ip ospf interface GigabitEthernet0/0 | include network type
+Router# show ip ospf interface GigabitEthernet0/0 | include Network Type
 ```
 
 ## Conclusion
