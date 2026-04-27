@@ -42,7 +42,8 @@ push "dhcp-option DNS 8.8.8.8"
 
 # Push the internal DNS search domain
 push "dhcp-option DOMAIN corp.example.com"
-push "dhcp-option DOMAIN-SEARCH corp.example.com internal.example.com"
+push "dhcp-option DOMAIN-SEARCH corp.example.com"
+push "dhcp-option DOMAIN-SEARCH internal.example.com"
 ```
 
 ## Per-Client Route Configuration with CCD
@@ -62,8 +63,8 @@ Create a file named after the client's certificate Common Name:
 # Push an additional route only to client1
 push "route 10.200.0.0 255.255.0.0"
 
-# Assign a fixed IPv4 address to client1
-ifconfig-push 10.8.0.10 10.8.0.11
+# Assign a fixed IPv4 address to client1 (valid net30 pair)
+ifconfig-push 10.8.0.9 10.8.0.10
 ```
 
 ## Pushing NTP and WINS Servers
