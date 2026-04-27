@@ -48,7 +48,7 @@ jobs:
           tofu_version: 1.7.0
 
       - name: Run Digger
-        uses: diggerhq/digger@v0.3.0
+        uses: diggerhq/digger@v0.6.144
         with:
           setup-aws: false  # Already configured above
           aws-role-to-assume: arn:aws:iam::123456789:role/github-actions-tofu
@@ -67,49 +67,51 @@ projects:
     dir: environments/prod/networking
     opentofu: true
 
-    # Trigger plan when these files change
-    depends_on:
-      - "environments/prod/networking/**"
+    # Trigger plan when files in these paths change
+    include_patterns:
       - "modules/**"
 
     # Approval required before apply
-    require_approval: true
+    apply_requirements: [mergeable, approved]
 
   - name: prod-app
     dir: environments/prod/app
     opentofu: true
-    depends_on:
-      - "environments/prod/app/**"
-    require_approval: true
+    apply_requirements: [mergeable, approved]
 
   - name: dev-all
     dir: environments/dev
     opentofu: true
-    depends_on:
-      - "environments/dev/**"
-    # No approval required for dev
-    require_approval: false
+    # Default apply_requirements is [mergeable] — no approval required
 ```
 
 ## Adding Pre-Plan Checks
 
+Custom commands are added through workflow `steps`. Reference a named workflow from the project, then define the workflow under the top-level `workflows` key:
+
 ```yaml
-# digger.yml with custom hooks
+# digger.yml with custom workflow steps
 projects:
   - name: prod-app
     dir: environments/prod/app
+    workflow: with-checks
 
-    # Run before plan
-    pre_plan_hooks:
-      - |
-        echo "Running security scan..."
-        checkov -d . --framework terraform --quiet
-
-    # Run after successful apply
-    post_apply_hooks:
-      - |
-        echo "Running smoke tests..."
-        ./scripts/smoke-test.sh
+workflows:
+  with-checks:
+    plan:
+      steps:
+        - init
+        - run: |
+            echo "Running security scan..."
+            checkov -d . --framework terraform --quiet
+        - plan
+    apply:
+      steps:
+        - init
+        - apply
+        - run: |
+            echo "Running smoke tests..."
+            ./scripts/smoke-test.sh
 ```
 
 ## PR Comment Triggers
@@ -126,12 +128,21 @@ digger unlock        # Remove plan lock
 
 ## Using Digger Cloud for State Locking
 
+Digger Cloud is configured through inputs on the GitHub Action, not in `digger.yml`:
+
 ```yaml
-# digger.yml with Digger Cloud for enhanced locking
-backend:
-  backend_type: backend.digger.cloud
-  hostname: https://cloud.digger.dev
-  auth_token: ${{ secrets.DIGGER_TOKEN }}
+      - name: Run Digger
+        uses: diggerhq/digger@v0.6.144
+        with:
+          setup-aws: false
+          aws-role-to-assume: arn:aws:iam::123456789:role/github-actions-tofu
+          aws-region: us-east-1
+          digger-hostname: https://cloud.digger.dev
+          digger-organisation: my-org
+          digger-token: ${{ secrets.DIGGER_TOKEN }}
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ## Conclusion
