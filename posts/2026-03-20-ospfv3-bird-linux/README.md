@@ -18,7 +18,7 @@ BIRD (BIRD Internet Routing Daemon) is a lightweight and feature-rich routing da
 sudo apt install bird2
 
 # RHEL/CentOS/Fedora
-sudo dnf install bird2
+sudo dnf install bird
 
 # Verify installation
 bird --version
@@ -35,12 +35,12 @@ router id 1.1.1.1;
 # Log to syslog
 log syslog all;
 
-# Protocol: device (required - learns connected routes)
+# Protocol: device (required - monitors network interfaces from the kernel)
 protocol device {
     scan time 10;
 }
 
-# Protocol: direct (imports connected routes into BIRD)
+# Protocol: direct (generates routes for directly connected networks)
 protocol direct {
     ipv6;
     interface "eth0", "eth1", "lo";
@@ -114,7 +114,7 @@ protocol ospf v3 OSPF_V6 {
 
     area 0.0.0.1 {
         stub yes;         # Configure as stub area
-        stub cost 20;     # Cost of the default route injected
+        default cost 20;  # Cost of the default route injected
 
         interface "eth1" { type broadcast; };
     };
@@ -162,13 +162,13 @@ sudo birdc
 
 # In birdc:
 # Show OSPFv3 neighbors
-show ospf neighbor "OSPF_V6"
+show ospf neighbors OSPF_V6
 
 # Show OSPFv3 state
-show ospf "OSPF_V6"
+show ospf state OSPF_V6
 
 # Show OSPFv3 topology database
-show ospf topology "OSPF_V6"
+show ospf topology OSPF_V6
 
 # Show routes imported from OSPFv3
 show route protocol OSPF_V6
