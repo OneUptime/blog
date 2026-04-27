@@ -87,11 +87,11 @@ resource "aws_cloudwatch_metric_alarm" "high_cpu" {
 
 ```text
 s3://acme-tofu-state/
-├── infrastructure/terraform.tfstate           (default workspace)
-└── infrastructure/env:/
-    ├── development/terraform.tfstate
-    ├── staging/terraform.tfstate
-    └── production/terraform.tfstate
+├── infrastructure/terraform.tfstate                   (default workspace)
+└── env:/
+    ├── development/infrastructure/terraform.tfstate
+    ├── staging/infrastructure/terraform.tfstate
+    └── production/infrastructure/terraform.tfstate
 ```
 
 ## Workspace Validation
