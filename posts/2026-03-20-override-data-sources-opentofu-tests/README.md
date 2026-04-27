@@ -56,7 +56,7 @@ override_data {
 
 run "bucket_policy_uses_account_id" {
   assert {
-    condition     = contains(aws_s3_bucket_policy.this.policy, "123456789012")
+    condition     = strcontains(aws_s3_bucket_policy.this.policy, "123456789012")
     error_message = "Bucket policy should reference the current account ID"
   }
 }
