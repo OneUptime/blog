@@ -12,7 +12,7 @@ Enable the Kea DHCPv6 server in OPNsense to provide stateful IPv6 address assign
 
 ## Prerequisites
 
-- OPNsense 23.x or later
+- OPNsense 25.1 or later (Kea DHCPv6 was introduced in 25.1 "Ultimate Unicorn"; on earlier releases use the legacy ISC DHCPv6 server)
 - Admin access to the OPNsense WebGUI
 - IPv6 connectivity or tunnel provider
 
@@ -21,7 +21,7 @@ Enable the Kea DHCPv6 server in OPNsense to provide stateful IPv6 address assign
 OPNsense is built on FreeBSD and uses a web interface for all IPv6 configuration. Navigate through:
 
 - **Interfaces → [WAN/LAN]**: For interface IPv6 config
-- **Services → DHCPv6**: For DHCPv6 server
+- **Services → Kea DHCP → DHCPv6**: For DHCPv6 server (legacy ISC lives at **Services → ISC DHCPv6**)
 - **Services → Router Advertisements**: For RA/SLAAC
 - **Firewall → Rules**: For IPv6 firewall rules
 
@@ -59,11 +59,15 @@ Interfaces → LAN → IPv6 Configuration
 ## DHCPv6 Server
 
 ```text
-Services → DHCPv6 → [LAN]
-  ✓ Enable DHCPv6 server
-  Range from: 2001:db8:lan::100
-  Range to: 2001:db8:lan::200
-  DNS Servers: 2001:4860:4860::8888, 2001:4860:4860::8844
+Services → Kea DHCP → DHCPv6
+  Settings tab:
+    ✓ Enable
+    Interfaces: LAN
+  Subnets tab → Add:
+    Subnet: 2001:db8:lan::/64
+    Pools: 2001:db8:lan::100-2001:db8:lan::200
+  Options tab → Add (or set on the subnet):
+    DNS Servers: 2001:4860:4860::8888, 2001:4860:4860::8844
 ```
 
 ## Router Advertisements
@@ -117,7 +121,7 @@ Services → Unbound DNS → Host Overrides
 
 ```text
 # Diagnostic tools
-Interfaces → Diagnostics → ARP Table  (shows IPv6 NDP)
+Interfaces → Diagnostics → NDP Table  (IPv6 neighbor discovery; ARP Table is IPv4 only)
 Interfaces → Diagnostics → Ping       (test IPv6)
 
 # Packet capture with IPv6 filter
