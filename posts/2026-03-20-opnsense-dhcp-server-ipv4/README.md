@@ -52,8 +52,8 @@ Navigate to **Services > ISC DHCPv4 > [LAN]**:
 Additional BOOTP/DHCP Options:
   Number  Type    Value
   066     text    10.1.30.5        # TFTP server (VoIP phones)
-  150     ip      10.1.30.5        # Cisco TFTP option
-  121     hex     c0a81400810101   # Classless static route
+  150     ipaddrs 10.1.30.5        # Cisco TFTP option
+  121     hex     18c0a814c0a80101 # Classless static route 192.168.20.0/24 via 192.168.1.1
 ```
 
 ## DHCP on Multiple Interfaces
@@ -77,7 +77,7 @@ Or navigate to **Services > ISC DHCPv4 > [Interface] > Leases**
 
 ## DHCP Relay for Multiple Subnets
 
-Navigate to **Services > ISC DHCPv4 > Relay**:
+Navigate to **Services > DHCPv4 Relay**:
 
 ```text
 Enable DHCP relay:   checked
@@ -88,7 +88,7 @@ Interface(s):        VLAN10, VLAN20, VLAN30
 ## OPNsense ISC DHCP Config (Behind the Scenes)
 
 ```nginx
-# /var/etc/dhcpd.conf (generated)
+# /var/dhcpd/etc/dhcpd.conf (generated; dhcpd runs chrooted under /var/dhcpd)
 
 subnet 192.168.1.0 netmask 255.255.255.0 {
   range 192.168.1.100 192.168.1.200;
