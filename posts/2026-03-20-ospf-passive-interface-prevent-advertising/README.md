@@ -75,7 +75,7 @@ Router# show ip ospf interface brief
 
 Interface    PID   Area     IP Addr/Mask    Cost  State   Nbrs F/C
 Gi0/0          1   0        10.0.0.1/24       1   BDR      1/1
-Gi1/0          1   0        192.168.1.1/24    1   WAIT     0/0  <- WAIT = passive
+Gi1/0          1   0        192.168.1.1/24    1   DR       0/0  <- 0/0 neighbors (passive)
 
 ! Detailed view shows passive status
 Router# show ip ospf interface GigabitEthernet1/0
@@ -107,9 +107,11 @@ Even with passive interface, the subnet should still appear in other routers' OS
 
 ```text
 ! On a remote router - verify the passive subnet is learned via OSPF
-RemoteRouter# show ip route 192.168.1.0/24
+RemoteRouter# show ip route ospf | include 192.168.1
 
-! O    192.168.1.0/24 [110/2] via 10.0.0.1    <- Subnet is advertised despite passive
+O    192.168.1.0/24 [110/2] via 10.0.0.1, 00:01:23, GigabitEthernet0/0
+                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+! Subnet is advertised despite the passive interface on the originating router
 ```
 
 ## Conclusion
