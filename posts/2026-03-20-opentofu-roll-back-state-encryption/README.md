@@ -28,18 +28,22 @@ terraform {
     key_provider "aws_kms" "old_key" {
       kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/abc-123"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
     method "aes_gcm" "encrypted" {
       keys = key_provider.aws_kms.old_key
     }
 
+    # Explicit unencrypted method for the migration
+    method "unencrypted" "migrate" {}
+
     state {
-      method   = null         # No encryption for new writes
-      enforced = false        # Allow reading encrypted state
+      method   = method.unencrypted.migrate  # No encryption for new writes
+      enforced = false                       # Allow reading encrypted state
 
       fallback {
-        method = method.aes_gcm.encrypted  # Decrypt existing state
+        method = method.aes_gcm.encrypted    # Decrypt existing state
       }
     }
   }
@@ -50,7 +54,7 @@ terraform {
 
 ### Step 1: Configure Fallback
 
-Add the configuration above, setting `method = null` and `enforced = false`.
+Add the configuration above, defining a `method "unencrypted" "migrate" {}` block and pointing the state `method` at it while keeping the encrypted method in `fallback`.
 
 ### Step 2: Trigger State Rewrite
 
@@ -122,8 +126,10 @@ encryption {
     keys = key_provider.pbkdf2.old
   }
 
+  method "unencrypted" "migrate" {}
+
   state {
-    method   = null     # No new encryption
+    method   = method.unencrypted.migrate  # No new encryption
     enforced = false
     fallback {
       method = method.aes_gcm.old
