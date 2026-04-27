@@ -82,9 +82,9 @@ const bucket = new s3.Bucket(this, 'Bucket', {
   encryption: s3.BucketEncryption.S3_MANAGED,
 });
 
-// L3 - Pattern that creates website + CloudFront + Route53
-const website = new patterns.StaticWebsite(this, 'Site', {
-  domainName: 'example.com',
+// L3 - Pattern that creates a load-balanced Fargate service (ALB, target group, task definition, etc.)
+const service = new ecsPatterns.ApplicationLoadBalancedFargateService(this, 'Service', {
+  taskImageOptions: { image: ecs.ContainerImage.fromRegistry('nginx') },
 });
 ```
 
