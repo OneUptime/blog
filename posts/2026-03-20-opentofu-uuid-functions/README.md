@@ -14,10 +14,10 @@ Generates a random UUID (version 4) each time it's called:
 
 ```hcl
 > uuid()
-"b5ee72a3-54dd-90af-1f1e-8a94a76fb7a6"
+"b5ee72a3-54dd-4f3a-9f1e-8a94a76fb7a6"
 
 > uuid()
-"a91b0f73-e23c-a8d2-c9f5-3d0e8b2a5c4f"  # Different every call!
+"a91b0f73-e23c-48d2-89f5-3d0e8b2a5c4f"  # Different every call!
 ```
 
 **Important**: `uuid()` generates a new value on every plan/apply. This means:
@@ -63,7 +63,7 @@ Generates a deterministic UUID (version 5) based on a namespace UUID and a name 
 
 # URL namespace  
 > uuidv5("url", "https://example.com/path")
-"90c00a69-f4b2-5b8f-a9f8-e9a4d5df7c0f"
+"0a3c3c32-4c00-5e0b-8943-2eb8d80ab693"
 
 # OID namespace
 > uuidv5("oid", "2.16.840")
