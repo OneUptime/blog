@@ -121,11 +121,10 @@ tofu providers schema -json | jq '
 
 ```bash
 # What version of each provider is installed?
-tofu providers schema -json | jq '
-  .provider_schemas |
-  to_entries[] |
-  {provider: .key, version: .value.provider.version}
-'
+tofu version
+
+# Or read the dependency lock file for selected versions
+cat .terraform.lock.hcl
 ```
 
 ## Conclusion
