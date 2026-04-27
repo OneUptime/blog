@@ -23,7 +23,7 @@ ping -c 20 remote-server.example.com
 # You need at least 18 MB of buffer for full line-rate at 150ms RTT
 
 # Current theoretical maximum with 128KB default:
-# Max = 131,072 / 0.150 = 874,480 bytes/sec = 7 Mbps
+# Max = 131,072 / 0.150 = 873,813 bytes/sec = 7 Mbps
 ```
 
 ## Configuring Buffers for Long-Distance
@@ -37,7 +37,7 @@ sysctl -w net.core.wmem_max=33554432
 
 # Enable all features needed for high BDP connections
 sysctl -w net.ipv4.tcp_window_scaling=1
-sysctl -w net.ipv4.tcp_timestamps=1   # Required for PAWS (anti-spoofing) with large windows
+sysctl -w net.ipv4.tcp_timestamps=1   # Required for PAWS (Protection Against Wrapped Sequences) with large windows
 sysctl -w net.ipv4.tcp_sack=1         # SACK for efficient loss recovery on lossy links
 
 # Persist
