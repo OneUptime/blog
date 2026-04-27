@@ -62,13 +62,13 @@ OSPFv3 removes network-layer addressing from OSPF packets and LSAs. Key changes:
 vtysh
 
 # Show OSPFv3 neighbors
-show ipv6 ospf neighbor
+show ipv6 ospf6 neighbor
 
 # Show the OSPFv3 link-state database
-show ipv6 ospf database
+show ipv6 ospf6 database
 
 # Show OSPFv3 routes
-show ipv6 route ospf
+show ipv6 route ospf6
 ```
 
 ## Router ID Requirement
