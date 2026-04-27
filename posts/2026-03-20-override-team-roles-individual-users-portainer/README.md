@@ -12,11 +12,19 @@ While team-based access control scales well, sometimes a specific user needs a d
 
 ## How User Policy Overrides Work
 
-When both team and individual user policies exist for an environment, the **most permissive** role wins. This means:
-- Team Operator + User Standard User → User gets Operator access
-- Team Helpdesk + User Standard User → User gets Standard User access
+Portainer resolves a user's effective authorizations on an environment by checking these sources **in order**, and the first one that matches wins:
 
-To restrict a user below their team level, you cannot use additive overrides - you'd need to remove them from the team and assign individually.
+1. User policy on the environment
+2. User policy on the environment's group
+3. Team policy on the environment (highest-priority role across the user's teams)
+4. Team policy on the environment's group
+
+That means an individual user policy on the environment always overrides the team policy on the same environment - regardless of which role is more permissive. For example:
+
+- Team `HelpDesk` + User `Standard User` on the same environment → User gets Standard User access.
+- Team `Endpoint Administrator` + User `Read-Only User` on the same environment → User gets Read-Only access.
+
+The built-in roles in Portainer CE are Endpoint Administrator (RoleId `1`), HelpDesk (`2`), Standard User (`3`), and Read-Only User (`4`). To restrict a user below their team level, simply assign an individual policy with the lower role - the user policy will replace the team's effective role on that environment.
 
 ## Assign Individual User Policy
 
@@ -38,12 +46,14 @@ print('Team Policies:', e.get('TeamAccessPolicies', {}))
 print('User Policies:', e.get('UserAccessPolicies', {}))
 "
 
-# Grant user ID 7 Operator access (overriding their team's Standard User role)
+# Grant user ID 7 Endpoint Administrator access (overriding their team's HelpDesk role)
+# Note: UserAccessPolicies in the body REPLACES the existing user policies for this environment,
+# so include every user that should retain access.
 curl -X PUT \
-  https://localhost:9443/api/endpoints/1/useraccesspolicies \
+  https://localhost:9443/api/endpoints/1 \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"7": {"RoleID": 2}}' \
+  -d '{"UserAccessPolicies": {"7": {"RoleId": 1}}}' \
   --insecure
 
 echo "User override policy applied"
@@ -53,33 +63,33 @@ echo "User override policy applied"
 
 ```bash
 # Remove the user-specific override (user falls back to team role)
-# Pass an empty object for the user ID to remove their individual policy
+# Send an empty UserAccessPolicies map to clear all user policies for this environment.
 curl -X PUT \
-  https://localhost:9443/api/endpoints/1/useraccesspolicies \
+  https://localhost:9443/api/endpoints/1 \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{}' \
+  -d '{"UserAccessPolicies": {}}' \
   --insecure
-# Note: This removes ALL user policies. Use cautiously.
+# Note: This removes ALL user policies on this environment. Use cautiously.
 ```
 
 ## Practical Use Cases
 
-**Temporary elevated access**: Grant an on-call engineer Operator access to a production environment for a limited period:
+**Temporary elevated access**: Grant an on-call engineer Endpoint Administrator access to a production environment for a limited period:
 
 ```bash
-# Grant temporary operator access to on-call user
-curl -X PUT https://localhost:9443/api/endpoints/2/useraccesspolicies \
+# Grant temporary Endpoint Administrator access to on-call user
+curl -X PUT https://localhost:9443/api/endpoints/2 \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"12": {"RoleID": 2}}' --insecure
-echo "Temporary operator access granted to user 12"
+  -d '{"UserAccessPolicies": {"12": {"RoleId": 1}}}' --insecure
+echo "Temporary admin access granted to user 12"
 
 # After incident resolves, remove the override
-curl -X PUT https://localhost:9443/api/endpoints/2/useraccesspolicies \
+curl -X PUT https://localhost:9443/api/endpoints/2 \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{}' --insecure
+  -d '{"UserAccessPolicies": {}}' --insecure
 echo "Temporary access removed"
 ```
 
