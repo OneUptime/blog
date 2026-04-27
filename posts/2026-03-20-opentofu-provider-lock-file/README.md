@@ -17,8 +17,8 @@ provider "registry.opentofu.org/hashicorp/aws" {
   version     = "5.38.0"                        # Exact version installed
   constraints = "~> 5.0"                        # Your version constraint
   hashes = [
-    "h1:abc123...",                              # Hash for this platform
-    "zh:def456...",                              # Zip hash for verification
+    "h1:abc123...",                              # Hash of unpacked package contents (h1 scheme)
+    "zh:def456...",                              # Zip hash from the registry
     "zh:789ghi...",
   ]
 }
