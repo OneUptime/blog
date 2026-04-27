@@ -111,7 +111,6 @@ config router ospf
     config ospf-interface
         edit "WAN-OSPF"
             set interface "wan1"
-            set area 0.0.0.0
             set hello-interval 10
             set dead-interval 40
         next
