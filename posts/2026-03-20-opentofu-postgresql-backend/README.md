@@ -68,23 +68,25 @@ GRANT ALL PRIVILEGES ON DATABASE terraform_state TO tofu_user;
 -- Connect to the database
 \c terraform_state
 
--- Grant schema privileges (OpenTofu creates its own tables)
-GRANT ALL ON SCHEMA public TO tofu_user;
+-- Grant CREATE on the database so OpenTofu can create its own schema
+-- (default schema name is terraform_remote_state)
+GRANT CREATE ON DATABASE terraform_state TO tofu_user;
 ```
 
 ## Database Schema
 
-OpenTofu automatically creates the required tables:
+OpenTofu automatically creates a schema (default `terraform_remote_state`) containing a `states` table:
 
 ```sql
--- OpenTofu creates this table structure
-terraform_state (
-  id    BIGSERIAL PRIMARY KEY,
-  name  TEXT UNIQUE NOT NULL,  -- workspace/path identifier
-  state BYTEA,                 -- state file content
-  lock  TEXT                   -- lock information
+-- OpenTofu creates this table structure (in the terraform_remote_state schema by default)
+states (
+  id    SERIAL PRIMARY KEY,           -- key used for advisory locks
+  name  TEXT UNIQUE NOT NULL,         -- workspace name
+  data  TEXT                          -- state file content
 )
 ```
+
+State locking is handled by PostgreSQL advisory locks keyed on the row's `id`, so there is no separate lock column.
 
 ## Multiple States with Workspaces
 
@@ -143,8 +145,8 @@ terraform {
 # Backup state from PostgreSQL
 pg_dump \
   --no-owner \
-  --schema=public \
-  --table=terraform_state \
+  --schema=terraform_remote_state \
+  --table='terraform_remote_state.states' \
   terraform_state > state-backup.sql
 
 # Restore
