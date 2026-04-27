@@ -14,9 +14,11 @@ OpenTofu supports OCI (Open Container Initiative) registries as module sources. 
 
 ```hcl
 module "example" {
-  source = "oci://registry.example.com/namespace/module-name:tag"
+  source = "oci://registry.example.com/namespace/module-name?tag=v1.0.0"
 }
 ```
+
+OpenTofu uses query parameters (`?tag=...` or `?digest=...`) to select a specific version, not Docker-style `:tag` suffixes. If no parameter is supplied, OpenTofu defaults to the artifact tagged `latest`.
 
 ## Examples
 
@@ -24,7 +26,7 @@ module "example" {
 
 ```hcl
 module "vpc" {
-  source = "oci://registry.mycompany.com/terraform-modules/vpc:v2.1.0"
+  source = "oci://registry.mycompany.com/terraform-modules/vpc?tag=v2.1.0"
 
   cidr_block  = "10.0.0.0/16"
   environment = var.environment
@@ -35,8 +37,8 @@ module "vpc" {
 
 ```hcl
 module "example" {
-  source = "oci://registry-1.docker.io/myorg/terraform-module:latest"
-  # Use specific tag in production, not 'latest'
+  source = "oci://registry-1.docker.io/myorg/terraform-module"
+  # Defaults to the 'latest' tag. Use ?tag=vX.Y.Z in production.
 }
 ```
 
@@ -44,7 +46,7 @@ module "example" {
 
 ```hcl
 module "infra_module" {
-  source = "oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/terraform-modules/vpc:v1.0.0"
+  source = "oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/terraform-modules/vpc?tag=v1.0.0"
 
   cidr_block  = "10.0.0.0/16"
   environment = var.environment
@@ -55,7 +57,7 @@ module "infra_module" {
 
 ```hcl
 module "gcp_module" {
-  source = "oci://us-central1-docker.pkg.dev/my-project/terraform-modules/networking:v1.2.0"
+  source = "oci://us-central1-docker.pkg.dev/my-project/terraform-modules/networking?tag=v1.2.0"
 
   project_id = var.project_id
   region     = "us-central1"
@@ -71,14 +73,19 @@ module "gcp_module" {
 
 brew install oras  # macOS
 
-# Package your module
+# Package your module as a ZIP archive (OpenTofu requires zip, not tar.gz)
 cd modules/vpc
-tar -czf vpc-module.tar.gz .
+zip -r ../vpc-module.zip .
+cd ..
 
-# Push to registry
-oras push registry.mycompany.com/terraform-modules/vpc:v1.0.0 \
-  vpc-module.tar.gz:application/vnd.opentofu.modulesource+tar+gzip
+# Push to registry with the OpenTofu module package artifact type
+oras push \
+  --artifact-type=application/vnd.opentofu.modulepkg \
+  registry.mycompany.com/terraform-modules/vpc:v1.0.0 \
+  vpc-module.zip:archive/zip
 ```
+
+OpenTofu requires the OCI Image Manifest's `artifactType` to be `application/vnd.opentofu.modulepkg` and the manifest to contain exactly one layer with `mediaType` set to `archive/zip`.
 
 ### Using OpenTofu's Built-In Push (Future)
 
