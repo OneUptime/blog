@@ -12,7 +12,7 @@ OpenTofu can source modules from OCI (Open Container Initiative) registries - th
 
 ```hcl
 module "vpc" {
-  source = "oci://registry.example.com/terraform-modules/vpc:v2.1.0"
+  source = "oci://registry.example.com/terraform-modules/vpc?tag=v2.1.0"
 
   cidr_block  = "10.0.0.0/16"
   environment = var.environment
@@ -25,17 +25,17 @@ module "vpc" {
 # Docker Hub
 
 module "example" {
-  source = "oci://docker.io/myorg/terraform-vpc:v1.0.0"
+  source = "oci://docker.io/myorg/terraform-vpc?tag=v1.0.0"
 }
 
 # GitHub Container Registry
 module "vpc" {
-  source = "oci://ghcr.io/myorg/terraform-vpc:v1.0.0"
+  source = "oci://ghcr.io/myorg/terraform-vpc?tag=v1.0.0"
 }
 
 # AWS ECR
 module "vpc" {
-  source = "oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/terraform-modules/vpc:v1.0.0"
+  source = "oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/terraform-modules/vpc?tag=v1.0.0"
 }
 ```
 
@@ -63,23 +63,26 @@ echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
 # Install oras (OCI Registry AS Storage)
 brew install oras
 
-# Package your module
-tar -czf vpc-module.tar.gz ./modules/vpc/
+# Package your module as a .zip archive
+cd ./modules/vpc/
+zip -r ../../vpc-module.zip .
+cd ../..
 
 # Push to OCI registry
-oras push registry.example.com/terraform-modules/vpc:v2.1.0 \
-  vpc-module.tar.gz:application/vnd.opentofu.module.v1+tar+gzip
+oras push \
+  --artifact-type=application/vnd.opentofu.modulepkg \
+  registry.example.com/terraform-modules/vpc:v2.1.0 \
+  vpc-module.zip:archive/zip
 
 # Tag as latest
-oras tag registry.example.com/terraform-modules/vpc:v2.1.0 \
-  registry.example.com/terraform-modules/vpc:latest
+oras tag registry.example.com/terraform-modules/vpc:v2.1.0 latest
 ```
 
 ## Complete Example
 
 ```hcl
 terraform {
-  required_version = ">= 1.7"
+  required_version = ">= 1.10"
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -89,7 +92,7 @@ terraform {
 }
 
 module "vpc" {
-  source = "oci://ghcr.io/mycompany/terraform-aws-vpc:v2.0.0"
+  source = "oci://ghcr.io/mycompany/terraform-aws-vpc?tag=v2.0.0"
 
   vpc_cidr            = "10.0.0.0/16"
   availability_zones  = ["us-east-1a", "us-east-1b", "us-east-1c"]
@@ -97,7 +100,7 @@ module "vpc" {
 }
 
 module "eks" {
-  source = "oci://ghcr.io/mycompany/terraform-aws-eks:v1.5.0"
+  source = "oci://ghcr.io/mycompany/terraform-aws-eks?tag=v1.5.0"
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnet_ids
