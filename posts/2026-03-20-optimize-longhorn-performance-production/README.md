@@ -198,19 +198,20 @@ kubectl patch settings.longhorn.io replica-replenishment-wait-interval \
 ### Key Prometheus Metrics for Performance
 
 ```promql
-# Volume read/write latency (p99)
-histogram_quantile(0.99, rate(longhorn_volume_read_latency_microseconds_bucket[5m]))
+# Volume read/write latency (gauge, nanoseconds)
+longhorn_volume_read_latency
+longhorn_volume_write_latency
 
-# IOPS per volume
-rate(longhorn_volume_read_iops[5m])
-rate(longhorn_volume_write_iops[5m])
+# IOPS per volume (gauge)
+longhorn_volume_read_iops
+longhorn_volume_write_iops
 
-# Throughput
-rate(longhorn_volume_read_throughput[5m])
-rate(longhorn_volume_write_throughput[5m])
+# Throughput (gauge, bytes/s)
+longhorn_volume_read_throughput
+longhorn_volume_write_throughput
 
-# Disk usage alert threshold
-longhorn_disk_storage_available_bytes / longhorn_disk_storage_maximum_bytes < 0.25
+# Disk free-space alert threshold (alert when free drops below 25%)
+(longhorn_disk_capacity_bytes - longhorn_disk_usage_bytes) / longhorn_disk_capacity_bytes < 0.25
 ```
 
 ### Performance Baseline Checklist
