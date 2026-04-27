@@ -99,8 +99,10 @@ sudo tc qdisc add dev eth0 parent 1:30 handle 30: sfq perturb 10
 
 # Classify by DSCP value - IPv6 TC field
 # EF (DSCP 46) -> VoIP class
+# Use the ip6 priority selector to match the 8-bit Traffic Class
+# (it spans two bytes in the IPv6 header, so a raw "at 1" offset is wrong)
 sudo tc filter add dev eth0 parent 1: protocol ipv6 \
-  u32 match u8 0xb8 0xfc at 1 flowid 1:10
+  u32 match ip6 priority 0xb8 0xfc flowid 1:10
 ```
 
 ## Step 4: Tune IPv6 for Low Latency
@@ -111,9 +113,6 @@ sudo tc filter add dev eth0 parent 1: protocol ipv6 \
 # Use BBR or Vegas for low-latency TCP
 net.ipv4.tcp_congestion_control = bbr
 net.core.default_qdisc = fq
-
-# Reduce TCP delayed ACK interval (ms) - important for RTP over TCP
-net.ipv4.tcp_delack_min = 1
 
 # Disable IPv6 temporary addresses for consistent routing
 net.ipv6.conf.all.use_tempaddr = 0
