@@ -60,7 +60,7 @@ tofu apply -parallelism=3
 
 ```bash
 # Some providers have strict rate limits
-# GitHub API: 1,000 requests/hour (unauthenticated: 60/hour)
+# GitHub API: 5,000 requests/hour (unauthenticated: 60/hour)
 tofu apply -parallelism=2  # Very conservative for rate-limited APIs
 ```
 
