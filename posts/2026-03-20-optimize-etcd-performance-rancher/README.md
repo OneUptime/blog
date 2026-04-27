@@ -30,7 +30,7 @@ fio --rw=write --ioengine=sync --fdatasync=1 \
 For Rancher nodes, use separate disks for etcd:
 
 ```yaml
-# RKE2 cluster.yaml - dedicated etcd disk
+# RKE cluster.yml - dedicated etcd disk
 nodes:
   - address: 10.0.0.10
     user: ubuntu
@@ -94,7 +94,7 @@ spec:
           hostNetwork: true
           containers:
             - name: defrag
-              image: rancher/hardened-etcd:v3.5.12
+              image: rancher/hardened-etcd:v3.5.13-k3s1-build20240910
               command: ["/bin/sh", "-c", "/usr/local/bin/defrag-etcd.sh"]
 ```
 
