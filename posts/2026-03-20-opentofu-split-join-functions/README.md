@@ -95,11 +95,6 @@ locals {
 }
 
 resource "aws_autoscaling_group" "app" {
-  launch_template {
-    id      = aws_launch_template.app.id
-    version = "$Latest"
-  }
-
   mixed_instances_policy {
     instances_distribution {
       on_demand_percentage_above_base_capacity = 20
@@ -144,7 +139,7 @@ locals {
 }
 
 output "tag_summary" {
-  value = local.tag_summary  # "environment=production, service=api, team=platform"
+  value = local.tag_string  # "environment=production, service=api, team=platform"
 }
 ```
 
