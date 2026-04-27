@@ -31,6 +31,7 @@ After running `tofu providers mirror /opt/tf-mirror`:
 └── registry.opentofu.org/
     └── hashicorp/
         └── aws/
+            ├── index.json            # Lists available versions
             ├── 5.38.0.json           # Version metadata
             └── terraform-provider-aws_5.38.0_linux_amd64.zip
 ```
@@ -161,7 +162,7 @@ tofu providers lock \
 FROM ubuntu:22.04 AS provider-downloader
 
 RUN apt-get update && apt-get install -y wget && \
-    wget -O tofu.deb https://releases.opentofu.org/opentofu/1.7.0/tofu_1.7.0_linux_amd64.deb && \
+    wget -O tofu.deb https://github.com/opentofu/opentofu/releases/download/v1.7.0/tofu_1.7.0_amd64.deb && \
     dpkg -i tofu.deb
 
 WORKDIR /workspace
