@@ -82,8 +82,6 @@ locals {
 
 # Create a VPC for each env/region combination
 resource "aws_vpc" "env_vpcs" {
-  provider = aws.${replace(each.value.region, "-", "_")}
-
   for_each   = local.flat_env_region_map
   cidr_block = each.value.config.vpc_cidr
 
@@ -133,7 +131,8 @@ locals {
 
 output "prod_required_tags" {
   value = keys(local.tag_policy_matrix.required_tags["prod"])
-  # ["Environment", "CostCenter", "Owner", "DataClass"]
+  # keys() returns lexicographical order:
+  # ["CostCenter", "DataClass", "Environment", "Owner"]
 }
 ```
 
@@ -202,9 +201,9 @@ resource "aws_subnet" "planned" {
 output "subnet_plan" {
   value = local.subnet_plan
   # {
-  #   public  = { a = "10.0.0.0/20",  b = "10.0.16.0/20",  c = "10.0.32.0/20" }
-  #   private = { a = "10.0.64.0/20", b = "10.0.80.0/20",  c = "10.0.96.0/20" }
-  #   data    = { a = "10.0.128.0/20",b = "10.0.144.0/20" }
+  #   public  = { a = "10.0.0.0/24",  b = "10.0.1.0/24",   c = "10.0.2.0/24"  }
+  #   private = { a = "10.0.16.0/24", b = "10.0.17.0/24",  c = "10.0.18.0/24" }
+  #   data    = { a = "10.0.32.0/24", b = "10.0.33.0/24" }
   # }
 }
 ```
