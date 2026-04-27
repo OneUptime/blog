@@ -101,7 +101,8 @@ tofu test -var="environment=staging"
 # Multiple variables
 tofu test -var="environment=production" -var="instance_type=m5.large"
 
-# These override values in the test file's variables blocks
+# Note: variables blocks in the test file override -var flags,
+# so -var only takes effect for variables not already set in a variables block.
 tofu test tests/unit.tftest.hcl -var="region=eu-west-1"
 ```
 
@@ -138,12 +139,13 @@ tofu test
 
 ## Variable Precedence (Highest to Lowest)
 
-1. `-var` command-line flags
-2. `-var-file` command-line files
-3. `TF_VAR_*` environment variables
-4. Per-run `variables {}` block (overrides top-level)
-5. Top-level `variables {}` block in test file
-6. Variable default values in the module
+1. Per-run `variables {}` block (overrides top-level)
+2. Top-level `variables {}` block in test file
+3. `-var` and `-var-file` command-line flags (in the order they appear)
+4. `tfvars` files in the tests directory (`tests/terraform.tfvars` and `tests/*.auto.tfvars`)
+5. `tfvars` files in the current directory (`terraform.tfvars` and `*.auto.tfvars`)
+6. `TF_VAR_*` environment variables
+7. Variable default values in the module
 
 ## Practical Patterns
 
