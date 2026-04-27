@@ -43,8 +43,9 @@ Acceptance tests use the `resource.Test` function from the testing framework:
 package provider_test
 
 import (
-    "testing"
+    "fmt"
     "os"
+    "testing"
 
     "github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
@@ -103,23 +104,25 @@ resource "petstore_pet" "test" {
 
 ```go
 // internal/provider/test_helpers_test.go
+package provider_test
+
+import (
+    "github.com/hashicorp/terraform-plugin-framework/providerserver"
+    "github.com/hashicorp/terraform-plugin-go/tfprotov6"
+
+    "github.com/your-org/terraform-provider-petstore/internal/provider"
+)
+
 var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
-    "petstore": providerserver.NewProviderServer(
-        providerserver.NewProviderServerConfig{
-            NewProvider: func() provider.Provider {
-                return &PetstoreProvider{}
-            },
-        },
-    ),
+    "petstore": providerserver.NewProtocol6WithError(&provider.PetstoreProvider{}),
 }
 ```
 
 ## Running Tests
 
 ```bash
-# Run unit tests
-
-go test ./internal/provider/ -v -run TestUnit
+# Run unit tests (TF_ACC is unset, so acceptance tests skip themselves)
+go test ./internal/provider/ -v
 
 # Run acceptance tests (requires real API credentials)
 PETSTORE_API_KEY=your-key \
