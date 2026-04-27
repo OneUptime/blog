@@ -31,8 +31,8 @@ module "vpc" {
 | `>= 1.2.0` | At least | `version = ">= 1.2.0"` |
 | `< 2.0.0` | Less than | `version = "< 2.0.0"` |
 | `<= 1.9.0` | At most | `version = "<= 1.9.0"` |
-| `~> 1.2` | Allows 1.2.x | `version = "~> 1.2"` |
-| `~> 1.2.0` | Only 1.2.x | `version = "~> 1.2.0"` |
+| `~> 1.2` | Allows >= 1.2, < 2.0 | `version = "~> 1.2"` |
+| `~> 1.2.0` | Allows >= 1.2.0, < 1.3.0 | `version = "~> 1.2.0"` |
 
 ## Practical Examples
 
