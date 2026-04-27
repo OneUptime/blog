@@ -22,6 +22,7 @@ terraform {
     key_provider "aws_kms" "main" {
       kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/abc-123-def-456"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
     method "aes_gcm" "main" {
@@ -96,6 +97,7 @@ resource "aws_iam_role_policy" "tofu_kms" {
 key_provider "aws_kms" "main" {
   kms_key_id = "alias/opentofu-state"  # Use alias instead of ARN
   region     = "us-east-1"
+  key_spec   = "AES_256"
 }
 ```
 
@@ -106,6 +108,7 @@ key_provider "aws_kms" "main" {
 key_provider "aws_kms" "main" {
   kms_key_id = "mrk-abc123def456"  # Multi-Region Key ID
   region     = "us-east-1"
+  key_spec   = "AES_256"
 }
 ```
 
