@@ -21,8 +21,9 @@ Use `textencodebase64` when a target service requires a specific character encod
 
 ```hcl
 locals {
-  # Encode a PowerShell script for use with Windows EC2 user data
-  # Windows EC2 user data scripts must be UTF-16LE encoded
+  # Encode a PowerShell script for tools that expect a
+  # Base64-encoded UTF-16LE string (for example, PowerShell's
+  # -EncodedCommand parameter)
   powershell_script = <<-EOT
     Write-Host "Configuring server..."
     Install-WindowsFeature -Name Web-Server
@@ -33,12 +34,8 @@ locals {
   encoded_script = textencodebase64(local.powershell_script, "UTF-16LE")
 }
 
-resource "aws_instance" "windows_server" {
-  ami           = "ami-windows-server-2022"
-  instance_type = "t3.medium"
-
-  # Windows user data must be the Base64 of a UTF-16LE encoded script
-  user_data = "<powershell>${local.powershell_script}</powershell>"
+output "encoded_powershell_script" {
+  value = local.encoded_script
 }
 ```
 
