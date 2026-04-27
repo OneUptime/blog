@@ -54,13 +54,17 @@ Configure Atlantis to use OpenTofu instead of Terraform:
 
 ```yaml
 # atlantis server configuration
-tofu-version: 1.7.0
+default-tf-distribution: opentofu
+default-tf-version: 1.7.0
 ```
 
 Or using environment variables:
 ```bash
-ATLANTIS_TOFU_VERSION=1.7.0
+ATLANTIS_DEFAULT_TF_DISTRIBUTION=opentofu
+ATLANTIS_DEFAULT_TF_VERSION=1.7.0
 ```
+
+You can also override the distribution per-project in `atlantis.yaml` with the `terraform_distribution: opentofu` field.
 
 PR workflow with Atlantis:
 ```hcl
@@ -104,9 +108,9 @@ env0 uses a configuration file for per-repo settings:
 environments:
   - name: production
     workspace: production
-    terraformVersion: "1.7.0"
+    opentofuVersion: "1.7.0"
     isTerragrunt: false
-    # env0 detects OpenTofu based on version
+    # Use opentofuVersion to select OpenTofu; leave terraformVersion empty
     autoApprove: false
     approvalRequired: true
     requiredApprovals: 2
@@ -119,12 +123,12 @@ Scalr configuration via its provider:
 
 ```hcl
 resource "scalr_workspace" "production" {
-  name           = "production"
-  environment_id = scalr_environment.prod.id
-  iac_platform   = "opentofu"
-  opentofu_version = "1.7.0"
-  auto_apply     = false
-  operations     = true
+  name              = "production"
+  environment_id    = scalr_environment.prod.id
+  iac_platform      = "opentofu"
+  terraform_version = "1.7.0"
+  auto_apply        = false
+  operations        = true
 }
 ```
 
