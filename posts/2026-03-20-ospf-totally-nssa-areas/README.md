@@ -15,9 +15,9 @@ A Totally NSSA (Not-So-Stubby Area) blocks Type 3, 4, and 5 LSAs from flooding i
 | Area Type | Blocks | Allows |
 |-----------|--------|--------|
 | Standard | Nothing | All LSAs |
-| Stub | Type 5 (External) | Types 1, 2, 3, 4 |
+| Stub | Types 4, 5 | Types 1, 2, 3 |
 | Totally Stub | Types 3, 4, 5 | Types 1, 2 + default |
-| NSSA | Type 5 | Types 1, 2, 3, 4, 7 |
+| NSSA | Types 4, 5 | Types 1, 2, 3, 7 |
 | Totally NSSA | Types 3, 4, 5 | Types 1, 2, 7 + default |
 
 A Totally NSSA is the most restrictive while still allowing local external redistribution.
@@ -53,23 +53,23 @@ router ospf
 ```text
 # ABR connecting backbone (area 0) to NSSA area 1
 frr defaults traditional
-
+!
+! Backbone interface
+interface eth0
+ ip ospf area 0
+ ip ospf hello-interval 10
+ ip ospf dead-interval 40
+!
+! Area 1 interface
+interface eth1
+ ip ospf area 1
+!
 router ospf
-  ospf router-id 10.0.0.1
-
-  ! Backbone interface
-  interface eth0
-    ip ospf area 0
-    ip ospf hello-interval 10
-    ip ospf dead-interval 40
-
-  ! Area 1 interface
-  interface eth1
-    ip ospf area 1
-
-  ! Configure area 1 as Totally NSSA
-  area 1 nssa no-summary
-  ! ABR injects a default route into area 1 automatically
+ ospf router-id 10.0.0.1
+ ! Configure area 1 as Totally NSSA
+ area 1 nssa no-summary
+ ! ABR injects a default route into area 1 automatically
+!
 ```
 
 ## Cisco IOS Equivalent
