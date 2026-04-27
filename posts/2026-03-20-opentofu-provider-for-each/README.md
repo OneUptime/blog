@@ -14,12 +14,14 @@ OpenTofu supports `for_each` on provider blocks, allowing you to create multiple
 
 ```hcl
 provider "PROVIDER" {
+  alias    = "STATIC_NAME"
   for_each = MAP
 
   # Use each.key and each.value to configure each instance
-  alias  = each.key
 }
 ```
+
+The `alias` is a fixed string that names the multi-instance provider configuration as a group. Individual instances are selected later using bracket notation with the `for_each` key, for example `PROVIDER.STATIC_NAME[each.key]`.
 
 ## Multi-Region AWS Example
 
@@ -36,8 +38,8 @@ variable "aws_regions" {
 }
 
 provider "aws" {
+  alias    = "by_region"
   for_each = var.aws_regions
-  alias    = each.key
   region   = each.key
 }
 ```
@@ -48,17 +50,19 @@ Pass dynamically created providers to module instances using `for_each`:
 
 ```hcl
 module "regional_vpc" {
-  for_each = var.aws_regions
+  for_each = { for region, config in var.aws_regions : region => config }
 
   source = "./modules/vpc"
   providers = {
-    aws = aws[each.key]  # Reference the dynamic provider instance
+    aws = aws.by_region[each.key]  # Reference the dynamic provider instance
   }
 
   name = "vpc-${each.key}"
   cidr = each.value.cidr
 }
 ```
+
+Note that the module's `for_each` expression is written differently from the provider's `for_each` expression. OpenTofu requires these two expressions to differ (even if they evaluate to the same map) so that provider instances outlive the resources that use them during destroy operations.
 
 ## Multi-Account Deployment
 
@@ -81,8 +85,8 @@ variable "aws_accounts" {
 }
 
 provider "aws" {
+  alias    = "by_account"
   for_each = var.aws_accounts
-  alias    = each.key
   region   = each.value.region
 
   assume_role {
@@ -91,11 +95,11 @@ provider "aws" {
 }
 
 module "account_baseline" {
-  for_each = var.aws_accounts
+  for_each = { for name, config in var.aws_accounts : name => config }
 
   source = "./modules/account-baseline"
   providers = {
-    aws = aws[each.key]
+    aws = aws.by_account[each.key]
   }
 
   account_name = each.key
@@ -114,8 +118,8 @@ variable "eks_clusters" {
 }
 
 provider "kubernetes" {
+  alias    = "by_cluster"
   for_each = var.eks_clusters
-  alias    = each.key
 
   host                   = each.value.endpoint
   cluster_ca_certificate = base64decode(each.value.cluster_ca_certificate)
@@ -125,10 +129,11 @@ provider "kubernetes" {
 
 ## Important Notes
 
-- Provider `for_each` is an OpenTofu-specific feature not available in Terraform.
-- The `alias` must be set to `each.key` so each instance has a unique identifier.
-- Values used in `for_each` must be known before `tofu init` runs.
-- Reference dynamic providers using bracket notation: `aws[each.key]`.
+- Provider `for_each` was introduced in OpenTofu 1.9 and is not available in stock Terraform.
+- The `alias` must be a static string. It names the multi-instance provider configuration; individual instances are distinguished by the `for_each` key.
+- The value passed to `for_each` must be a map, an object, or a set of strings, and it must be known at plan time.
+- Reference dynamic providers using `<PROVIDER>.<ALIAS>[<KEY>]`, for example `aws.by_region[each.key]`.
+- The `for_each` expression on a resource or module must not be the exact same expression as the `for_each` on its provider, so that provider instances outlive their associated resources during destroy.
 
 ## Conclusion
 
