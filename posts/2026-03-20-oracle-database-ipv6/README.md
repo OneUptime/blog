@@ -47,7 +47,7 @@ LISTENER =
 LISTENER_IPV6 =
   (DESCRIPTION_LIST =
     (DESCRIPTION =
-      (ADDRESS = (PROTOCOL = TCP)(HOST = 2001:db8::oracle)(PORT = 1521))
+      (ADDRESS = (PROTOCOL = TCP)(HOST = 2001:db8::1)(PORT = 1521))
     )
   )
 
@@ -68,7 +68,7 @@ ORCL_IPV6 =
   (DESCRIPTION =
     (ADDRESS_LIST =
       (ADDRESS = (PROTOCOL = TCP)
-                 (HOST = 2001:db8::oracle)
+                 (HOST = 2001:db8::1)
                  (PORT = 1521))
     )
     (CONNECT_DATA =
@@ -118,13 +118,13 @@ ss -6 -tlnp | grep 1521
 tnsping ORCL_IPV6
 
 # Connect with SQLPlus over IPv6
-sqlplus system@"(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=2001:db8::oracle)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=ORCL)))"
+sqlplus system@"(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=2001:db8::1)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=ORCL)))"
 
 # Or using tnsnames alias
 sqlplus system@ORCL_IPV6
 
 # Test with connection string
-sqlplus "system/password@//(2001:db8::oracle):1521/ORCL"
+sqlplus "system/password@//[2001:db8::1]:1521/ORCL"
 ```
 
 ## Firewall Configuration for Oracle IPv6
@@ -132,15 +132,15 @@ sqlplus "system/password@//(2001:db8::oracle):1521/ORCL"
 ```bash
 # Allow Oracle listener port over IPv6
 sudo ip6tables -A INPUT -p tcp \
-  -s 2001:db8:clients::/48 \
+  -s 2001:db8:1::/48 \
   --dport 1521 -j ACCEPT
 
 # Allow from specific client
 sudo ip6tables -A INPUT -p tcp \
-  -s 2001:db8::app-server \
+  -s 2001:db8::dba \
   --dport 1521 -j ACCEPT
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 
 # Verify access
 ss -6 -tlnp | grep 1521
@@ -162,4 +162,4 @@ TCP.CONNECT_TIMEOUT = 10
 # (Relies on OS DNS resolution which uses AAAA)
 ```
 
-Oracle Database listener IPv6 support via the `HOST = ::` binding in listener.ora allows the TNS listener to accept connections from IPv6 clients, with JDBC thin drivers also supporting IPv6 through bracket notation in connection URLs (`jdbc:oracle:thin:@//[2001:db8::oracle]:1521/ORCL`).
+Oracle Database listener IPv6 support via the `HOST = ::` binding in listener.ora allows the TNS listener to accept connections from IPv6 clients, with JDBC thin drivers also supporting IPv6 through bracket notation in connection URLs (`jdbc:oracle:thin:@//[2001:db8::1]:1521/ORCL`).
