@@ -60,7 +60,7 @@ nmcli connection add \
 nmcli connection up "eth0.100"
 ```
 
-## Debian (/ etc/network/interfaces)
+## Debian (/etc/network/interfaces)
 
 ```bash
 # /etc/network/interfaces
