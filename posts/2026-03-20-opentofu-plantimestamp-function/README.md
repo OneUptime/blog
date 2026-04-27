@@ -29,7 +29,7 @@ output "plan_time" {
 }
 
 output "formatted_plan_time" {
-  value = formatdate("YYYY-MM-DD HH:mm", plantimestamp())
+  value = formatdate("YYYY-MM-DD hh:mm", plantimestamp())
 }
 ```
 
@@ -41,7 +41,7 @@ output "formatted_plan_time" {
 locals {
   deploy_time     = plantimestamp()
   deploy_date     = formatdate("YYYY-MM-DD", local.deploy_time)
-  deploy_datetime = formatdate("YYYY-MM-DD HH:mm:ss", local.deploy_time)
+  deploy_datetime = formatdate("YYYY-MM-DD hh:mm:ss", local.deploy_time)
 }
 
 resource "aws_instance" "app" {
@@ -71,7 +71,7 @@ resource "aws_instance" "worker" {
 
 ```hcl
 locals {
-  deploy_version = formatdate("YYYYMMDD-HHmmss", plantimestamp())
+  deploy_version = formatdate("YYYYMMDD-hhmmss", plantimestamp())
 }
 
 resource "aws_s3_object" "app_bundle" {
@@ -112,13 +112,14 @@ resource "aws_ssm_parameter" "last_deploy" {
 2. Format it with `formatdate()` as needed.
 3. Use the formatted string in tags, names, or S3 keys.
 
-```bash
-tofu console
+Note: `plantimestamp()` is not available in the OpenTofu console. To inspect its value, expose it through an `output` and run `tofu plan`:
 
-> plantimestamp()
-"2026-03-20T14:30:00Z"
-> formatdate("YYYYMMDD", plantimestamp())
-"20260320"
+```bash
+$ tofu plan
+...
+Changes to Outputs:
+  + plan_time           = "2026-03-20T14:30:00Z"
+  + formatted_plan_time = "20260320"
 ```
 
 ## plantimestamp vs timestamp
