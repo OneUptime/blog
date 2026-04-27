@@ -39,16 +39,17 @@ Redirection URL:    (leave blank - redirect to original URL after login)
 
 Navigate to **Services > Captive Portal > [GUEST] > HTML Page Contents**:
 - Upload or paste custom HTML login form
-- Must contain `<form method="post">` with `auth_user` and `auth_pass` fields
+- Form must POST to `$PORTAL_ACTION$` and include `auth_user`, `auth_pass`, a hidden `redirurl` field, and a submit button named `accept`
 
 ```html
 <html>
 <body>
 <h1>Guest Wi-Fi Login</h1>
-<form method="post">
+<form method="post" action="$PORTAL_ACTION$">
   Username: <input type="text" name="auth_user"><br>
   Password: <input type="password" name="auth_pass"><br>
-  <input type="submit" value="Login">
+  <input type="hidden" name="redirurl" value="$PORTAL_REDIRURL$">
+  <input type="submit" name="accept" value="Login">
 </form>
 </body>
 </html>
@@ -93,7 +94,11 @@ Navigate to **Status > Captive Portal**:
 ```bash
 # pfSense CLI
 
-pfctl -t captiveportal -T show   # Authenticated IPs
+# List authenticated users for a zone (replace GUEST with your zone name)
+/usr/local/bin/php-cgi -q /usr/local/bin/captiveportal_gather_stats.php 'GUEST' 'loggedin'
+
+# Inspect captive portal pf anchors and rules
+pfSsh.php playback pfanchordrill
 ```
 
 ## Conclusion
