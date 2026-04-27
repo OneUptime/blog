@@ -8,13 +8,13 @@ Description: Learn how to use OCI (Open Container Initiative) registries as modu
 
 ## Introduction
 
-OpenTofu supports OCI (Open Container Initiative) registries as module sources using the `oci::` prefix. This allows teams to store and distribute OpenTofu modules as OCI artifacts, leveraging existing container registry infrastructure like Docker Hub, Amazon ECR, Google Artifact Registry, or Azure Container Registry.
+OpenTofu supports OCI (Open Container Initiative) registries as module sources using the `oci://` prefix. This allows teams to store and distribute OpenTofu modules as OCI artifacts, leveraging existing container registry infrastructure like Docker Hub, Amazon ECR, Google Artifact Registry, or Azure Container Registry.
 
 ## Syntax
 
 ```hcl
 module "name" {
-  source = "oci://REGISTRY/REPOSITORY:TAG"
+  source = "oci://REGISTRY/REPOSITORY?tag=TAG"
 }
 ```
 
@@ -24,7 +24,7 @@ module "name" {
 # Fetch a module stored as an OCI artifact
 
 module "vpc" {
-  source = "oci://registry.acme-corp.com/terraform-modules/vpc:v2.1.0"
+  source = "oci://registry.acme-corp.com/terraform-modules/vpc?tag=v2.1.0"
 
   name       = "production"
   cidr_block = "10.0.0.0/16"
@@ -35,7 +35,7 @@ module "vpc" {
 
 ```hcl
 module "eks" {
-  source = "oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/terraform-modules/eks:v1.5.0"
+  source = "oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/terraform-modules/eks?tag=v1.5.0"
 
   cluster_name    = "prod-cluster"
   cluster_version = "1.28"
@@ -46,7 +46,7 @@ module "eks" {
 
 ```hcl
 module "gke" {
-  source = "oci://us-central1-docker.pkg.dev/my-project/terraform-modules/gke:v1.3.0"
+  source = "oci://us-central1-docker.pkg.dev/my-project/terraform-modules/gke?tag=v1.3.0"
 
   project      = var.gcp_project
   cluster_name = "prod-cluster"
@@ -82,9 +82,10 @@ brew install oras
 zip -r vpc-module.zip ./modules/vpc/
 
 # Push to OCI registry
-oras push registry.acme-corp.com/terraform-modules/vpc:v2.1.0 \
-  --artifact-type application/vnd.opentofu.module.v1+zip \
-  vpc-module.zip:application/zip
+oras push \
+  --artifact-type=application/vnd.opentofu.modulepkg \
+  registry.acme-corp.com/terraform-modules/vpc:v2.1.0 \
+  vpc-module.zip:archive/zip
 
 # Tag the latest version
 oras tag registry.acme-corp.com/terraform-modules/vpc:v2.1.0 latest
@@ -97,7 +98,7 @@ For the highest reproducibility, pin to an immutable digest rather than a mutabl
 ```hcl
 # Pin to an immutable digest
 module "vpc" {
-  source = "oci://registry.acme-corp.com/terraform-modules/vpc@sha256:abc123def456..."
+  source = "oci://registry.acme-corp.com/terraform-modules/vpc?digest=sha256:abc123def456..."
 }
 ```
 
@@ -109,12 +110,12 @@ locals {
 }
 
 module "networking" {
-  source = "oci://${local.registry}/vpc:v3.0.0"
+  source = "oci://${local.registry}/vpc?tag=v3.0.0"
   name   = "main"
 }
 
 module "compute" {
-  source = "oci://${local.registry}/ecs:v2.0.0"
+  source = "oci://${local.registry}/ecs?tag=v2.0.0"
   vpc_id = module.networking.vpc_id
 }
 ```
