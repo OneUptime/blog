@@ -14,9 +14,9 @@ By default, OSPFv3 only carries IPv6 routing information. RFC 5838 extends OSPFv
 
 OSPFv3 address families are identified by an **Instance ID** field in the Hello packet:
 - Instance IDs 0-31: IPv6 unicast (base OSPFv3)
-- Instance IDs 64-95: IPv6 multicast
-- Instance IDs 128-159: IPv4 unicast (RFC 5838 extension)
-- Instance IDs 192-223: IPv4 multicast
+- Instance IDs 32-63: IPv6 multicast
+- Instance IDs 64-95: IPv4 unicast (RFC 5838 extension)
+- Instance IDs 96-127: IPv4 multicast
 
 ## Default OSPFv3 (IPv6 Unicast AF)
 
@@ -107,8 +107,7 @@ The Instance ID field allows multiple OSPFv3 instances on the same link without 
 
 ```bash
 # On a Cisco router, set a non-default instance ID for testing
-Router(config-if)# ospfv3 1 ipv6 area 0
-Router(config-if)# ospfv3 instance-id 10    # Custom instance ID
+Router(config-if)# ospfv3 1 ipv6 area 0 instance 10    # Custom instance ID
 ```
 
 ## Summary
