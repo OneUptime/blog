@@ -23,8 +23,8 @@ services:
     container_name: portainer
     restart: unless-stopped
     command:
-      # Increase snapshot interval to reduce load (default: 60s)
-      - "--snapshot-interval=300"     # 5 minutes
+      # Increase snapshot interval to reduce load (default: 5m)
+      - "--snapshot-interval=10m"     # 10 minutes
       # Enable Edge compute features
       - "--edge-compute"
       # Specify data directory
@@ -32,8 +32,6 @@ services:
       # Bind to specific interface
       - "--bind=:9000"
       - "--bind-https=:9443"
-      # Disable analytics to reduce overhead
-      - "--no-analytics"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - portainer_data:/data
@@ -47,7 +45,6 @@ services:
         reservations:
           cpus: "0.5"
           memory: 512M
-    restart: unless-stopped
 
 volumes:
   portainer_data:
@@ -79,7 +76,7 @@ services:
     environment:
       # Cluster support for Swarm
       - AGENT_CLUSTER_ADDR=tasks.portainer_agent
-      # Reduce polling frequency for large environments
+      # Reduce log verbosity for large environments
       - LOG_LEVEL=WARN
     networks:
       - portainer_agent_network
@@ -205,16 +202,13 @@ services:
 ```
 
 ```yaml
-# prometheus.yml - Scrape Portainer and Docker metrics
+# prometheus.yml - Scrape Docker and container metrics
+# Note: Portainer does not expose Prometheus-format metrics natively.
+# Monitor the Portainer container via cAdvisor and the Docker daemon below.
 global:
   scrape_interval: 30s  # Reduced from default 15s for scale
 
 scrape_configs:
-  - job_name: "portainer"
-    static_configs:
-      - targets: ["portainer:9000"]
-    metrics_path: /api/status
-
   - job_name: "docker"
     static_configs:
       - targets: ["localhost:9323"]  # Docker daemon metrics
