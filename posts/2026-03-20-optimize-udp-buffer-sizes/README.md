@@ -87,7 +87,8 @@ sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 64 * 1024 * 1024)
 # Set send buffer to 64 MB
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 64 * 1024 * 1024)
 
-# Verify (OS may halve the requested value)
+# Verify (Linux doubles the requested value internally for bookkeeping,
+# so getsockopt typically returns 2x what was requested, capped at 2*rmem_max)
 actual_rcvbuf = sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
 print(f"Actual receive buffer: {actual_rcvbuf / 1048576:.1f} MB")
 ```
@@ -132,9 +133,6 @@ net.core.rmem_max = 26214400    # 25 MB (sufficient for VoIP bursts)
 net.core.wmem_max = 26214400
 net.core.rmem_default = 4194304 # 4 MB default
 net.core.wmem_default = 4194304
-
-# Disable DSCP remarking (preserve VoIP QoS marking)
-net.ipv4.ip_default_ttl = 64
 EOF
 ```
 
@@ -147,10 +145,11 @@ watch -n 1 "netstat -su 2>/dev/null | grep -E 'packets|error|overflow'"
 # Count drops per second with sar
 sar -n UDP 1 60
 
-# Output:
-# udp/s    udperr/s  rcv/s    snd/s
-# 45023    125       45023    44900
-# udperr/s > 0 = packets being dropped
+# Output columns: idgm/s (input datagrams/sec), odgm/s (output datagrams/sec),
+# noport/s (datagrams to closed ports/sec), idgmerr/s (input datagram errors/sec)
+#    idgm/s    odgm/s  noport/s idgmerr/s
+#    45023.00  44900.00 0.00    125.00
+# idgmerr/s > 0 = packets being dropped (often due to full receive buffer)
 
 # Use ss to find large receive queues
 ss -upe | awk '$2 > 1000 {print "LARGE QUEUE:", $0}'
