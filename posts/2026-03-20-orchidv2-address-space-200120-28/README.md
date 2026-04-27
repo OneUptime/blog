@@ -15,11 +15,11 @@ ORCHIDv2 (Overlay Routable Cryptographic Hash IDentifiers version 2), defined in
 ```text
 2001:20::/28 - ORCHIDv2 prefix
   Prefix: 2001:20:: (28 bits)
-  Hash: 100 bits derived from public key/hash input
+  Suffix: 4-bit OGA ID + 96-bit hash output (Encode_96)
 
 Format:
-  |  28-bit prefix  |  4-bit suffix  |    96-bit hash    |
-  |  2001:20::/28   |    0-F         |  SHA-256 hash     |
+  |  28-bit prefix  |  4-bit OGA ID  |    96-bit hash    |
+  |  2001:20::/28   |   algorithm    |  Encode_96(Hash)  |
 ```
 
 ## Generating an ORCHIDv2 Address
@@ -30,28 +30,37 @@ import ipaddress
 import os
 
 def generate_orchidv2(public_key: bytes,
-                      context_id: bytes = None) -> str:
+                      context_id: bytes = None,
+                      oga_id: int = 0) -> str:
     """
     Generate an ORCHIDv2 address from a public key.
-    RFC 7343 §6.1
+    RFC 7343 §2 (Cryptographic Hash Identifier Construction).
+    The Context ID is allocated per protocol (e.g., HIPv2 in RFC 7401);
+    RFC 7343 itself defines no specific value.
     """
     if context_id is None:
-        # Default ORCHIDv2 context ID
+        # Placeholder 128-bit Context ID for illustration only.
+        # Real deployments use the value defined by their protocol.
         context_id = bytes.fromhex(
-            "7561767261534461796e75466f6d6f7265"
-        )[:16]
+            "f0eff02fbff43d0fe7930c3c6e6174ea"
+        )
 
-    # Hash input: context_id || public_key
+    # Hash input: Context ID || Input
     hash_input = context_id + public_key
     hash_value = hashlib.sha256(hash_input).digest()
 
-    # Take first 96 bits (12 bytes) of hash
-    hash_96 = int.from_bytes(hash_value[:12], 'big')
+    # Encode_96: extract the middle 96 bits of the hash (RFC 7343 §2).
+    # SHA-256 -> 32 bytes; middle 12 bytes are bytes [10:22].
+    hash_96 = int.from_bytes(hash_value[10:22], 'big')
 
     # ORCHIDv2 prefix: 2001:20::/28
     prefix_int = int(ipaddress.IPv6Address("2001:20::"))
-    # Keep only 28 prefix bits, then add 4-bit type + 96-bit hash
-    orchid_int = (prefix_int & ~((1 << 100) - 1)) | hash_96
+    # Keep only the 28 prefix bits, then add 4-bit OGA ID + 96-bit hash.
+    orchid_int = (
+        (prefix_int & ~((1 << 100) - 1))
+        | ((oga_id & 0xF) << 96)
+        | hash_96
+    )
 
     return str(ipaddress.IPv6Address(orchid_int))
 
