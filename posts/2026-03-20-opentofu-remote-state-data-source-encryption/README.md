@@ -84,11 +84,11 @@ terraform {
 
     remote_state_data_sources {
       # Named source - matches the data source name in configuration
-      source "data.terraform_remote_state.networking" {
+      remote_state_data_source "networking" {
         method = method.aes_gcm.networking
       }
 
-      source "data.terraform_remote_state.database" {
+      remote_state_data_source "database" {
         method = method.aes_gcm.database
       }
     }
@@ -111,8 +111,7 @@ terraform {
 
     remote_state_data_sources {
       default {
-        method   = method.aes_gcm.remote_state
-        enforced = false  # Allow reading if remote state is unencrypted
+        method = method.aes_gcm.remote_state
       }
     }
   }
