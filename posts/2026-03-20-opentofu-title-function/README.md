@@ -18,7 +18,7 @@ title(string)
 
 - **string** - any string value
 - Returns the string with the first letter of each word capitalized
-- All other letters are lowercased
+- Other letters are left unchanged (the function does not lowercase the rest of the string)
 
 ## Basic Examples
 
@@ -28,7 +28,7 @@ output "simple_title" {
 }
 
 output "uppercase_input" {
-  value = title("HELLO WORLD")         # Returns "Hello World"
+  value = title("HELLO WORLD")         # Returns "HELLO WORLD" (unchanged; first letters are already uppercase)
 }
 
 output "mixed_input" {
