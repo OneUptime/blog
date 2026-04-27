@@ -30,7 +30,7 @@ dh dh.pem
 server 10.8.0.0 255.255.255.0
 
 # IPv6 tunnel addresses
-server-ipv6 fd00:vpn:1::/64
+server-ipv6 fd00:abcd:1::/64
 
 # Push both IPv4 and IPv6 routes
 push "redirect-gateway def1"          # Route IPv4 default through VPN
@@ -97,14 +97,14 @@ proto udp
 local 192.0.2.1     # Bind to specific IPv4 address
 port 1194
 server 10.8.0.0 255.255.255.0
-server-ipv6 fd00:vpn:1::/64
+server-ipv6 fd00:abcd:1::/64
 
 # server-ipv6.conf
 proto udp6
-local 2001:db8::vpn   # Bind to specific IPv6 address
+local 2001:db8::1     # Bind to specific IPv6 address
 port 1194
 server 10.9.0.0 255.255.255.0
-server-ipv6 fd00:vpn:2::/64
+server-ipv6 fd00:abcd:2::/64
 ```
 
 ## Per-Client IPv6 Address Assignment
@@ -119,7 +119,7 @@ mkdir -p /etc/openvpn/ccd
 cat > /etc/openvpn/ccd/client1 << 'EOF'
 # Assign specific IPv4 and IPv6 addresses
 ifconfig-push 10.8.0.10 10.8.0.9
-ifconfig-ipv6-push fd00:vpn:1::10/64
+ifconfig-ipv6-push fd00:abcd:1::10/64
 EOF
 ```
 
