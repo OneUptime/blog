@@ -56,7 +56,7 @@ This creates:
 # Generate DH parameters (takes several minutes)
 ./easyrsa gen-dh
 
-# Or use a pre-generated DH param from OpenVPN (faster)
+# Or generate DH parameters directly with openssl
 openssl dhparam -out pki/dh.pem 2048
 ```
 
