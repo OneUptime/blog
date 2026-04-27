@@ -60,7 +60,8 @@ def get_external_ip_port(local_port: int = 0) -> tuple[str, int]:
                         ip    = socket.inet_ntoa(struct.pack("!I", xaddr ^ 0x2112A442))
                         sock.close()
                         return ip, port
-                offset += 4 + attr_length
+                # Attribute values are padded to 4-byte boundary (RFC 5389 §15)
+                offset += 4 + ((attr_length + 3) & ~3)
         except Exception:
             continue
 
