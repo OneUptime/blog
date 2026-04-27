@@ -8,7 +8,7 @@ Description: Compare OpenTofu and Google Cloud Deployment Manager for GCP infras
 
 ## Introduction
 
-For GCP infrastructure, OpenTofu and Google Cloud Deployment Manager (now partly superseded by Config Connector and Deployment Manager v2) are the two main choices. Deployment Manager is GCP-native and integrated with the Google Cloud console; OpenTofu is multi-cloud and has a richer tooling ecosystem.
+For GCP infrastructure, OpenTofu and Google Cloud Deployment Manager have historically been the two main choices. Deployment Manager is GCP-native and integrated with the Google Cloud console; OpenTofu is multi-cloud and has a richer tooling ecosystem. Note that Google has since introduced Infrastructure Manager (a managed Terraform service) and Config Connector (a Kubernetes operator) as the recommended successors to Deployment Manager.
 
 ## Syntax Comparison
 
@@ -88,11 +88,11 @@ resources:
 | Drift detection | `tofu plan` | Manual |
 | Policy as code | OPA, Checkov | OPA, Cloud Policy |
 | License | MPL 2.0 | Proprietary (Google) |
-| Maintenance status | Active | Maintenance mode |
+| Maintenance status | Active | End of support (March 31, 2026) |
 
 ## Important Note: Deployment Manager Status
 
-Google has shifted focus to Config Connector (a Kubernetes operator for GCP) and is not actively developing new Deployment Manager features. For new GCP projects, OpenTofu or Config Connector are better long-term choices.
+Google Cloud Deployment Manager reached end of support on March 31, 2026. Google now recommends Infrastructure Manager (a managed Terraform service that runs Terraform configurations in an ephemeral Cloud Build environment) or Config Connector (a Kubernetes operator for GCP) as the successors. For new GCP projects, OpenTofu, Infrastructure Manager, or Config Connector are the appropriate choices.
 
 ## GCP Config Connector vs OpenTofu
 
@@ -130,7 +130,7 @@ resource "aws_instance" "dr" { /* ... */ }
 ```hcl
 module "gke" {
   source  = "terraform-google-modules/kubernetes-engine/google"
-  version = "~> 30.0"
+  version = "~> 43.0"
 
   project_id = var.project_id
   name       = "prod-cluster"
@@ -159,10 +159,10 @@ checkov -d . --framework terraform --check CKV_GCP_62,CKV_GCP_65,CKV_GCP_79
 - You want continuous drift reconciliation
 
 **Avoid Deployment Manager for:**
-- New projects (maintenance mode)
+- New projects (end of support reached March 31, 2026)
 - Complex infrastructure
 - Multi-cloud scenarios
 
 ## Conclusion
 
-For new GCP infrastructure projects, OpenTofu is the recommended choice over Deployment Manager, which is in maintenance mode. OpenTofu's `google` provider supports all GCP APIs, integrates with the rich Terraform module ecosystem, and works seamlessly in multi-cloud environments. For Kubernetes-native platforms, consider GCP Config Connector as a complementary or alternative tool. Avoid investing heavily in Deployment Manager for new workloads.
+For new GCP infrastructure projects, OpenTofu is the recommended choice over Deployment Manager, which reached end of support on March 31, 2026. OpenTofu's `google` provider supports all GCP APIs, integrates with the rich Terraform module ecosystem, and works seamlessly in multi-cloud environments. For Kubernetes-native platforms, consider GCP Config Connector as a complementary or alternative tool, and for a Google-managed Terraform runtime consider Infrastructure Manager. Avoid investing in Deployment Manager for new workloads.
