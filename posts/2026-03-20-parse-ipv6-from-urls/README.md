@@ -40,7 +40,7 @@ def parse_ipv6_url(url: str) -> dict:
     # Classify the host
     is_ipv6 = False
     if host:
-        # Decode percent-encoded zone ID
+        # Strip zone ID (e.g., "fe80::1%25eth0") before IP validation
         host_clean = host.split('%')[0]
         try:
             addr = ipaddress.ip_address(host_clean)
@@ -82,11 +82,14 @@ function parseIPv6URL(rawURL) {
   try {
     const parsed = new URL(rawURL);
 
-    // URL API handles brackets automatically in hostname
-    const host = parsed.hostname;  // Returns address without brackets
+    // WHATWG URL keeps brackets around IPv6 hostnames (e.g. "[::1]")
+    const rawHost = parsed.hostname;
+    const host = rawHost.startsWith('[') && rawHost.endsWith(']')
+      ? rawHost.slice(1, -1)
+      : rawHost;
     const port = parsed.port;
 
-    // Check if it's an IPv6 address
+    // net.isIPv6 expects the bare address, without brackets
     const isIPv6 = require('net').isIPv6(host);
 
     return {
