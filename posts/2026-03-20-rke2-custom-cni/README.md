@@ -40,7 +40,7 @@ sudo tar xzvfC cilium-linux-amd64.tar.gz /usr/local/bin
 helm repo add cilium https://helm.cilium.io/
 helm install cilium cilium/cilium \
   --namespace kube-system \
-  --set kubeProxyReplacement=strict \
+  --set kubeProxyReplacement=true \
   --set k8sServiceHost=<api-server-ip> \
   --set k8sServicePort=6443
 
@@ -56,7 +56,7 @@ Calico provides flexible network policy and BGP routing:
 
 ```bash
 # Install Calico operator
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.5/manifests/tigera-operator.yaml
 
 # Configure Calico with a custom pod CIDR
 kubectl apply -f - <<EOF
@@ -153,4 +153,4 @@ kubectl describe node <node-name> | grep -A 10 Conditions
 
 - Set `cni: none` before installing RKE2 - changing CNI plugins after installation requires a cluster reinstall or careful manual migration.
 - Match the `cluster-cidr` in RKE2 config exactly with the pod CIDR configured in the CNI - a mismatch causes pod networking failures.
-- For Cilium with `kubeProxyReplacement: strict`, ensure kube-proxy is also disabled in RKE2 to avoid conflicts.
+- For Cilium with `kubeProxyReplacement: true`, ensure kube-proxy is also disabled in RKE2 to avoid conflicts.
