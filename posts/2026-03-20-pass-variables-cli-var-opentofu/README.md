@@ -53,10 +53,10 @@ tofu plan -var='server_config={"instance_type":"t3.large","disk_size_gb":100}'
 
 ```bash
 # -var overrides .tfvars file values
-# Precedence: -var > -var-file > .auto.tfvars > terraform.tfvars
+# Precedence (highest to lowest): command-line -var/-var-file (last specified wins) > *.auto.tfvars > terraform.tfvars > TF_VAR_ env vars
 tofu plan \
   -var-file="defaults.tfvars" \    # base configuration
-  -var="region=us-east-1"          # -var overrides the region from the file
+  -var="region=us-east-1"          # later -var overrides the region from the file
 ```
 
 ---
@@ -114,9 +114,10 @@ tofu apply -var="region=us-east-1"
 tofu destroy -var="region=us-east-1"
 tofu import -var="region=us-east-1" aws_instance.web i-123456
 
-# Does NOT work with:
-# tofu init (no resources to deploy)
-# tofu validate (doesn't evaluate variable values)
+# OpenTofu also accepts -var on tofu init and tofu validate, primarily
+# for variables referenced in module sources or backend configuration:
+tofu init -var="region=us-east-1"
+tofu validate -var="region=us-east-1"
 ```
 
 ---
