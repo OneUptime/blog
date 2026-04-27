@@ -49,7 +49,7 @@ This is why you must always specify the outgoing interface (dev eth0) when using
 
 ```bash
 # FRRouting: show OSPFv3 neighbors with their link-local addresses
-vtysh -c "show ipv6 ospf neighbor"
+vtysh -c "show ipv6 ospf6 neighbor"
 
 # Output includes link-local addresses of neighbors:
 # Neighbor ID     State    DeadTime   Interface    Address
@@ -96,7 +96,7 @@ sudo ip6tables -A OUTPUT -o eth0 -p 89 -j ACCEPT
 # nftables equivalent
 # table ip6 filter {
 #     chain input {
-#         ip6 nexthdr ospf accept
+#         ip6 nexthdr 89 accept
 #     }
 # }
 ```
