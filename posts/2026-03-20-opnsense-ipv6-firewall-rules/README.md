@@ -32,8 +32,8 @@ OPNsense is built on FreeBSD and uses a web interface for all IPv6 configuration
 ```text
 Interfaces → WAN → IPv6 Configuration
   IPv6 Configuration Type: DHCPv6
-  Request Prefix Size: /48
-  Send IPv6 Prefix Hint: ✓
+  Prefix delegation size: 48
+  Send IPv6 prefix hint: ✓
   Use IPv4 connectivity: unchecked (for native IPv6)
 ```
 
@@ -70,9 +70,9 @@ Services → DHCPv6 → [LAN]
 
 ```text
 Services → Router Advertisements → [LAN]
-  Router Advertisements: Assisted (RA + DHCPv6)
+  Router Advertisements: Assisted   # RA + stateful DHCPv6
   # OR
-  Router Advertisements: Unmanaged (SLAAC only)
+  Router Advertisements: Unmanaged  # SLAAC only
   
   Advertise DNS: ✓
   DNS servers: 2001:4860:4860::8888
@@ -86,8 +86,8 @@ Services → Router Advertisements → [LAN]
 Firewall → Rules → LAN
   Action: Pass
   TCP/IP Version: IPv6
-  Protocol: ICMP
-  ICMP type: any
+  Protocol: IPV6-ICMP
+  ICMPv6 type: any
 
 # Allow LAN IPv6 to any
 Firewall → Rules → LAN
@@ -106,7 +106,7 @@ Services → Unbound DNS → General
   Network Interfaces: All (includes IPv6)
   
 # Add AAAA record for internal host
-Services → Unbound DNS → Host Overrides
+Services → Unbound DNS → Overrides → Host Overrides
   Host: server
   Domain: home.lab
   Type: AAAA
@@ -117,7 +117,7 @@ Services → Unbound DNS → Host Overrides
 
 ```text
 # Diagnostic tools
-Interfaces → Diagnostics → ARP Table  (shows IPv6 NDP)
+Interfaces → Diagnostics → NDP Table  (shows IPv6 neighbors)
 Interfaces → Diagnostics → Ping       (test IPv6)
 
 # Packet capture with IPv6 filter
