@@ -191,12 +191,12 @@ resource "aws_instance" "web" {
     environment = {
       # Common self attributes
       INSTANCE_ID    = self.id
+      ARN            = self.arn
       PUBLIC_IP      = self.public_ip
       PRIVATE_IP     = self.private_ip
       PUBLIC_DNS     = self.public_dns
       PRIVATE_DNS    = self.private_dns
       SUBNET_ID      = self.subnet_id
-      VPC_ID         = self.vpc_id
       INSTANCE_TYPE  = self.instance_type
       INSTANCE_STATE = self.instance_state
     }
