@@ -130,7 +130,7 @@ jobs:
         run: tofu plan -no-color -out=tfplan
 
       - name: Upload Plan
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tfplan
           path: tfplan
@@ -155,7 +155,7 @@ jobs:
           aws-region: us-east-1
 
       - name: Download Plan
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: tfplan
 
@@ -214,7 +214,7 @@ If you encounter issues:
 
 1. Enable debug logging: `export TF_LOG=DEBUG`
 2. Check provider credentials: Verify environment variables
-3. Review state consistency: Run `tofu refresh` then `tofu plan`
+3. Review state consistency: Run `tofu apply -refresh-only` then `tofu plan`
 4. Consult provider documentation for service-specific errors
 
 ## Conclusion
