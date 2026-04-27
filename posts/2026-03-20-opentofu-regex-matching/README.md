@@ -59,7 +59,7 @@ locals {
   # Extract environment from resource name (prod-app-server-01)
   resource_name = "prod-app-server-01"
   env_from_name = regex("^(dev|staging|prod)-", local.resource_name)[0]
-  # Result: "prod-"
+  # Result: "prod"
 }
 ```
 
