@@ -189,7 +189,7 @@ terraform {
 }
 ```
 
-The root module's version takes precedence when there's a conflict, but the provider must satisfy all constraints.
+OpenTofu treats version constraints from the root module and any child modules as equal, so the selected provider version must satisfy all of them. If the constraints cannot be reconciled, `tofu init` fails.
 
 ## Initializing Providers
 
