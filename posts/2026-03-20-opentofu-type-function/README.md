@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Terraform, IaC, DevOps
 
-Description: Learn how to use the type function in OpenTofu to determine the type of a value for debugging and type-aware configuration logic.
+Description: Learn how to use the type function in OpenTofu to determine the type of a value for debugging in the interactive console.
 
 ## Introduction
 
-The `type` function in OpenTofu returns a string describing the type of a given value. It is primarily a debugging and introspection tool, useful for understanding what type you are working with when dealing with complex or dynamic expressions.
+The `type` function in OpenTofu displays OpenTofu's evaluation of a given value's type. It is a special function which is **only available in the `tofu console` command** and cannot be used in regular configuration files (such as `output`, `locals`, or `variable` blocks). It is intended purely as a debugging and introspection tool.
 
 ## Syntax
 
@@ -16,101 +16,117 @@ The `type` function in OpenTofu returns a string describing the type of a given 
 type(value)
 ```
 
-- Returns a string representation of the value's type
-- Useful for debugging in `tofu console`
+- Displays a representation of the value's type
+- Only available inside `tofu console`
+- Should not be used in more complex expressions
 
 ## Basic Examples
 
-```hcl
-output "string_type" {
-  value = type("hello")         # Returns "string"
-}
+Because `type` is console-only, all examples are run inside `tofu console`:
 
-output "number_type" {
-  value = type(42)              # Returns "number"
-}
+```bash
+tofu console
 
-output "bool_type" {
-  value = type(true)            # Returns "bool"
-}
+> type("hello")
+string
 
-output "list_type" {
-  value = type(["a", "b"])      # Returns "tuple"
-}
+> type(42)
+number
 
-output "map_type" {
-  value = type({a = 1})         # Returns "object"
-}
+> type(true)
+bool
 
-output "null_type" {
-  value = type(null)            # Returns "null"
-}
+> type(["a", "b"])
+tuple([
+  string,
+  string,
+])
+
+> type({a = 1})
+object({
+  a: number,
+})
+
+> type(null)
+dynamic
 ```
 
 ## Practical Use Cases
 
 ### Debugging Variable Types
 
-The `type` function is most useful interactively in `tofu console`:
+The `type` function is used interactively in `tofu console`:
 
 ```bash
 tofu console
 
 > type(var.my_variable)
-"string"
+string
 
 > type(local.computed_value)
-"list of string"
+list of string
 
 > type(aws_instance.app.tags)
-"map of string"
+map of string
 ```
 
 ### Understanding Expression Results
+
+Given the following configuration:
 
 ```hcl
 locals {
   my_list = [1, 2, 3]
   my_set  = toset([1, 2, 3])
 }
-
-# In tofu console:
-
-# > type(local.my_list)
-# "tuple"
-# > type(local.my_set)
-# "set of number"
 ```
 
-### Type Inspection in Validation
+You can inspect the inferred types in `tofu console`:
+
+```bash
+> type(local.my_list)
+tuple([
+  number,
+  number,
+  number,
+])
+> type(local.my_set)
+set of number
+```
+
+### Inspecting a Flexible Input
+
+For a variable typed as `any`, you can inspect what concrete type was supplied:
 
 ```hcl
 variable "flexible_input" {
-  type = any  # Accept any type
+  type = any
 }
+```
 
-locals {
-  input_type = type(var.flexible_input)
-}
+Then in `tofu console`:
 
-output "detected_type" {
-  value = local.input_type
-}
+```bash
+> type(var.flexible_input)
+object({
+  name: string,
+  count: number,
+})
 ```
 
 ## Type Names Reference
 
-| Value | Type String |
-|-------|-------------|
-| `"hello"` | `"string"` |
-| `42` | `"number"` |
-| `true` | `"bool"` |
-| `null` | `"null"` |
-| `["a", "b"]` | `"tuple"` |
-| `tolist(["a"])` | `"list of string"` |
-| `{a = 1}` | `"object"` |
-| `tomap({a = "x"})` | `"map of string"` |
-| `toset(["a"])` | `"set of string"` |
+| Value | Reported Type |
+|-------|---------------|
+| `"hello"` | `string` |
+| `42` | `number` |
+| `true` | `bool` |
+| `null` | `dynamic` |
+| `["a", "b"]` | `tuple([string, string])` |
+| `tolist(["a"])` | `list of string` |
+| `{a = 1}` | `object({ a: number })` |
+| `tomap({a = "x"})` | `map of string` |
+| `toset(["a"])` | `set of string` |
 
 ## Step-by-Step Usage
 
@@ -122,17 +138,20 @@ tofu console
 
 # Check types of various expressions
 > type(var.instance_type)
-"string"
+string
 > type(var.subnet_ids)
-"list of string"
+list of string
 > type(local.config)
-"object"
+object({
+  region: string,
+  size: number,
+})
 ```
 
 ## Limitations
 
-The `type` function cannot be used for conditional logic based on types (OpenTofu is statically typed). Use it only for debugging and documentation purposes.
+The `type` function is only available inside `tofu console`. It cannot be referenced from `output`, `locals`, `variable`, or any other regular configuration block, and it cannot be used to drive conditional logic. Use it only for debugging and documentation purposes during development.
 
 ## Conclusion
 
-The `type` function in OpenTofu is a debugging aid for understanding what types your expressions and variables produce. Use it in `tofu console` during development to diagnose type mismatches and understand the structure of complex computed values. It is not intended for runtime conditional logic.
+The `type` function in OpenTofu is a console-only debugging aid for understanding what types your expressions and variables produce. Use it in `tofu console` during development to diagnose type mismatches and understand the structure of complex computed values. It cannot be used in regular configuration and is not intended for runtime conditional logic.
