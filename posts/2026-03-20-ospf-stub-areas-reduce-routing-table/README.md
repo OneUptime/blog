@@ -76,8 +76,8 @@ Area 1
 R1# show ip route ospf
 
 ! Should see inter-area routes (O IA) and a default route
-! O IA  0.0.0.0/0 [110/11] via 172.16.1.254      <- Default from ABR
-! O IA  10.0.0.0/24 [110/2] via 172.16.1.254      <- Area 0 networks
+! O*IA 0.0.0.0/0 [110/11] via 172.16.1.254      <- Default from ABR (candidate default)
+! O IA 10.0.0.0/24 [110/2] via 172.16.1.254      <- Area 0 networks
 
 ! External routes (O E1/E2) should NOT appear
 ```
