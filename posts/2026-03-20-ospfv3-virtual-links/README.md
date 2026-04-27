@@ -46,23 +46,9 @@ Router-R2(config-router)# address-family ipv6 unicast
 Router-R2(config-router-af)# area 1 virtual-link 1.1.1.1
 ```
 
-## Configuring Virtual Links on FRRouting
+## A Note on FRRouting
 
-```bash
-vtysh
-configure terminal
-
-! On R1 - virtual link through Area 1 to R2 (router-id 2.2.2.2)
-router ospf6
- area 0.0.0.1 virtual-link 2.2.2.2
-
-! On R2 - virtual link through Area 1 to R1 (router-id 1.1.1.1)
-router ospf6
- area 0.0.0.1 virtual-link 1.1.1.1
-
-end
-write memory
-```
+FRRouting's `ospf6d` does **not** implement OSPFv3 virtual links. There is no `area ... virtual-link` configuration command in `ospf6d`, and the daemon explicitly drops packets received over virtual links (the source code in `ospf6_message.c` carries the comment "Message may be via Virtual Link: not supported"). If you need OSPFv3 virtual link functionality on a free/open-source platform today, use a vendor implementation that supports it (Cisco IOS/IOS XE, Juniper Junos, Arista EOS, etc.), or design the topology so that no area is disconnected from the backbone.
 
 ## Virtual Link Requirements
 
@@ -85,12 +71,6 @@ Virtual Link OSPF_VL0 to router 2.2.2.2 is up
   Transit area 0.0.0.1, via interface GigabitEthernet0/0
   Hello interval 10, Dead interval 40, Wait interval 40, Retransmit 5
   State POINT_TO_POINT, Hello due in 00:00:06
-```
-
-```bash
-# FRRouting: Check virtual link status
-
-vtysh -c "show ipv6 ospf virtual-link"
 ```
 
 ## Troubleshooting Virtual Links
