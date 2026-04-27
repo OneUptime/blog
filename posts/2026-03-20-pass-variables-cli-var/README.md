@@ -118,19 +118,20 @@ echo "Deployed to $ENVIRONMENT with $INSTANCE_COUNT x $INSTANCE_TYPE"
 
 ## Variable Precedence with -var
 
-The `-var` flag has higher precedence than default values and `.tfvars` files but lower than environment variables with `TF_VAR_` prefix:
+The `-var` flag has the highest precedence along with `-var-file`, overriding values from environment variables, `.tfvars` files, and defaults:
 
 ```bash
 # Precedence (lowest to highest):
 # 1. Default values in variable blocks
-# 2. terraform.tfvars and *.auto.tfvars
-# 3. -var-file flags
-# 4. -var flags
-# 5. TF_VAR_ environment variables
+# 2. TF_VAR_ environment variables
+# 3. terraform.tfvars and terraform.tfvars.json
+# 4. *.auto.tfvars and *.auto.tfvars.json (lexical order)
+# 5. -var and -var-file flags (in the order they appear on the command line)
 
 # This -var overrides any .tfvars file value
 tofu apply -var-file="prod.tfvars" -var="instance_count=10"
 # instance_count from prod.tfvars will be overridden by the -var flag
+# because -var comes after -var-file on the command line
 ```
 
 ## Security Considerations
