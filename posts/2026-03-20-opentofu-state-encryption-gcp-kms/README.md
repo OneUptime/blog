@@ -21,6 +21,7 @@ terraform {
   encryption {
     key_provider "gcp_kms" "main" {
       kms_encryption_key = "projects/my-project/locations/us-central1/keyRings/terraform-state/cryptoKeys/state-key"
+      key_length         = 32
     }
 
     method "aes_gcm" "main" {
@@ -89,6 +90,7 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/sa-key.json"
 key_provider "gcp_kms" "main" {
   # Use a multi-region key ring
   kms_encryption_key = "projects/my-project/locations/us/keyRings/terraform-state/cryptoKeys/state-key"
+  key_length         = 32
 }
 ```
 
@@ -98,6 +100,7 @@ key_provider "gcp_kms" "main" {
 encryption {
   key_provider "gcp_kms" "main" {
     kms_encryption_key = "projects/my-project/locations/us-central1/keyRings/terraform-state/cryptoKeys/state-key"
+    key_length         = 32
   }
 
   method "aes_gcm" "main" {
