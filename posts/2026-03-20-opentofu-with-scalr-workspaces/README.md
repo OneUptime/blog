@@ -42,7 +42,8 @@ resource "scalr_workspace" "environments" {
 
   name           = "app-${each.key}"
   environment_id = scalr_environment.production.id
-  opentofu_version = "1.7.0"
+  iac_platform      = "opentofu"
+  terraform_version = "1.7.0"
 
   # Auto-apply changes pushed to the workspace
   auto_apply     = each.key == "prod" ? false : true
@@ -66,9 +67,10 @@ resource "scalr_variable" "environment" {
 ## Team Access Configuration
 
 ```hcl
-resource "scalr_team" "platform" {
-  name           = "platform-team"
-  environment_id = scalr_environment.production.id
+resource "scalr_iam_team" "platform" {
+  name        = "platform-team"
+  account_id  = var.scalr_account_id
+  description = "Platform engineering team"
 }
 
 resource "scalr_workspace_run_schedule" "prod" {
