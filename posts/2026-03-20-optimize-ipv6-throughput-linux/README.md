@@ -49,10 +49,7 @@ net.ipv4.tcp_window_scaling = 1
 # Enable selective acknowledgements (reduces retransmissions)
 net.ipv4.tcp_sack = 1
 
-# Enable forward acknowledgements
-net.ipv4.tcp_fack = 1
-
-# Increase the maximum number of packets in the NIC tx queue
+# Increase the maximum number of packets in the per-CPU receive (input) backlog queue
 net.core.netdev_max_backlog = 250000
 
 # Increase the socket listen backlog
