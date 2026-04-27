@@ -87,7 +87,7 @@ tc qdisc replace dev eth0 root fq flow_limit 100 maxrate 100mbit
 # For 10% of packets as FEC overhead, you can recover 1 lost packet per group of 10
 # This "costs" 10% bandwidth but dramatically improves quality on 1-3% loss links
 
-# GStreamer example with SRTP FEC:
+# GStreamer example with ULP-FEC (RFC 5109):
 # gst-launch-1.0 videotestsrc ! x264enc ! rtph264pay ! \
 #   rtpulpfecenc percentage=20 ! udpsink host=10.20.0.5 port=5004
 
@@ -107,7 +107,7 @@ gst-inspect-1.0 | grep -i fec
 # latency=200: 200ms jitter buffer (increase for higher jitter networks)
 
 # VLC streaming with jitter buffer:
-# --network-caching 500   ← 500ms jitter/network buffer (default)
+# --network-caching 1000  ← 1000ms jitter/network buffer (VLC default)
 ```
 
 ## Monitor Streaming Quality
