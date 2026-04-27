@@ -50,7 +50,7 @@ This suppresses both the summary and the component routes from other areas.
 
 ## Step 4: Set Summary Cost
 
-The default summary cost is the highest cost among the component routes. Override it:
+The default summary cost is the lowest cost among the component routes. Override it:
 
 ```text
 ! Explicitly set the summary cost
@@ -101,7 +101,7 @@ This Null route is automatically created-it's normal behavior, not a problem.
 | Protocol | OSPF | BGP |
 | Applied at | ABR | BGP router |
 | LSA type suppressed | Type-3 | BGP UPDATE |
-| Automatic null route | Yes | No (add manually) |
+| Automatic null route | Yes | Yes |
 
 ## Conclusion
 
