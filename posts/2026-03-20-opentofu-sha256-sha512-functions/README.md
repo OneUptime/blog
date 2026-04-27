@@ -35,8 +35,10 @@ A common use case is embedding a hash to verify artifact integrity or force upda
 
 ```hcl
 locals {
-  # Hash the Lambda deployment package to detect code changes
-  lambda_hash = sha256(filebase64("${path.module}/dist/function.zip"))
+  # Hash the Lambda deployment package to detect code changes.
+  # Lambda's source_code_hash expects a Base64-encoded SHA-256 of the file,
+  # so use filebase64sha256 (the SHA-256 family helper for files).
+  lambda_hash = filebase64sha256("${path.module}/dist/function.zip")
 }
 
 resource "aws_lambda_function" "api" {
