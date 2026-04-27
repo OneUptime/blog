@@ -14,11 +14,12 @@ Drift occurs when real infrastructure diverges from the OpenTofu state and HCL c
 
 ```hcl
 resource "spacelift_stack" "app" {
-  name             = "production-app"
-  opentofu_version = "1.7.0"
-  repository       = "my-org/infrastructure"
-  branch           = "main"
-  project_root     = "environments/prod"
+  name                    = "production-app"
+  terraform_workflow_tool = "OPEN_TOFU"
+  terraform_version       = "1.7.0"
+  repository              = "my-org/infrastructure"
+  branch                  = "main"
+  project_root            = "environments/prod"
 }
 
 # Enable scheduled drift detection
@@ -34,9 +35,6 @@ resource "spacelift_drift_detection" "app" {
 
   # Timezone for schedule
   timezone = "America/New_York"
-
-  # Ignore specific resources from drift detection
-  ignored_run_updaters = []
 }
 ```
 
@@ -52,15 +50,15 @@ package spacelift
 
 # For drift detection runs, only warn - don't block
 warn[sprintf("Drift detected in %s: %v", [resource.address, resource.change.actions])] {
-    input.spacelift.run.type == "DRIFT_DETECTION"
-    resource := input.spacelift.run.changes.resources[_]
+    input.spacelift.run.drift_detection
+    resource := input.terraform.resource_changes[_]
     count(resource.change.actions) > 0
 }
 
 # For regular runs, block if there's significant drift
 deny["Drift detected: manual changes found outside of OpenTofu management"] {
-    input.spacelift.run.type != "DRIFT_DETECTION"
-    drift_resources := [r | r := input.spacelift.run.changes.resources[_]; r.change.actions[_] == "update"]
+    not input.spacelift.run.drift_detection
+    drift_resources := [r | r := input.terraform.resource_changes[_]; r.change.actions[_] == "update"]
     count(drift_resources) > 10
 }
 ```
@@ -92,18 +90,18 @@ expected_drift_attrs := {
     "aws_ecs_service.desired_count"
 }
 
-# Allow drift in auto-scaling attributes without alerting
-approve["Expected auto-scaling drift"] {
-    input.spacelift.run.type == "DRIFT_DETECTION"
-    changes := input.spacelift.run.changes.resources
-    count(changes) > 0
+# Warn only on drift that is NOT in expected auto-scaling attributes
+warn[sprintf("Unexpected drift in %s: %v", [resource.address, resource.change.actions])] {
+    input.spacelift.run.drift_detection
+    resource := input.terraform.resource_changes[_]
+    count(resource.change.actions) > 0
+    not is_expected_drift(resource)
+}
 
-    # All changed attributes are auto-scaling related
-    every change in changes {
-        change.change.actions == ["update"]
-        every attr in object.keys(change.change.after) {
-            expected_drift_attrs[sprintf("%s.%s", [change.address, attr])]
-        }
+is_expected_drift(resource) {
+    resource.change.actions == ["update"]
+    every attr in object.keys(resource.change.after) {
+        expected_drift_attrs[sprintf("%s.%s", [resource.address, attr])]
     }
 }
 ```
@@ -113,9 +111,10 @@ approve["Expected auto-scaling drift"] {
 ```hcl
 # Use separate stacks for resources that legitimately drift frequently
 resource "spacelift_stack" "stateful_resources" {
-  name             = "prod-stateful"
-  opentofu_version = "1.7.0"
-  project_root     = "environments/prod/stateful"
+  name                    = "prod-stateful"
+  terraform_workflow_tool = "OPEN_TOFU"
+  terraform_version       = "1.7.0"
+  project_root            = "environments/prod/stateful"
 }
 
 # No drift detection on stateful resources that change frequently
