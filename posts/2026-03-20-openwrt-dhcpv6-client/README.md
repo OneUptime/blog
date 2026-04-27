@@ -12,7 +12,7 @@ Configure the odhcp6c DHCPv6 client on OpenWrt to obtain IPv6 addresses and pref
 
 ## Prerequisites
 
-- OpenWrt 21.02+ (for improved IPv6 support with fw4/nftables)
+- OpenWrt 21.02+ (22.03+ for fw4/nftables IPv6 firewall)
 - SSH access to the router
 - IPv6 connectivity from ISP or tunnel
 
@@ -96,7 +96,8 @@ uci add firewall rule
 uci set firewall.@rule[-1].name='Allow-ICMPv6'
 uci set firewall.@rule[-1].proto='icmp'
 uci set firewall.@rule[-1].family='ipv6'
-uci set firewall.@rule[-1].icmp_type='echo-request destination-unreachable'
+uci add_list firewall.@rule[-1].icmp_type='echo-request'
+uci add_list firewall.@rule[-1].icmp_type='destination-unreachable'
 uci set firewall.@rule[-1].target='ACCEPT'
 uci commit firewall
 ```
