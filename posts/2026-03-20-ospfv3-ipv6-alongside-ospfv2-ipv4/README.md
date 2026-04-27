@@ -91,17 +91,20 @@ ipv6 router ospf 1
 
 ## OSPFv3 Address Families (AF - IPv4 over OSPFv3)
 
-OSPFv3 can also carry IPv4 routes via the Address Family feature (RFC 5838), eliminating the need for a separate OSPFv2 process:
+OSPFv3 can also carry IPv4 routes via the Address Family feature (RFC 5838), eliminating the need for a separate OSPFv2 process. Note that FRR's `ospf6d` does not currently implement RFC 5838, so this feature is typically used on Cisco IOS / IOS XR:
 
-```bash
-# FRR: Enable OSPFv3 AF for IPv4
-vtysh << 'EOF'
-conf t
-router ospf6
-  ospf6 router-id 10.0.0.1
+```text
+! Cisco IOS XE: OSPFv3 with IPv4 AF
+router ospfv3 1
+  router-id 10.0.0.1
   address-family ipv4 unicast
-    area 0.0.0.0 range 10.0.0.0/8
-EOF
+    exit-address-family
+  address-family ipv6 unicast
+    exit-address-family
+
+interface GigabitEthernet0/0
+  ospfv3 1 ipv4 area 0
+  ospfv3 1 ipv6 area 0
 ```
 
 ## Key Differences: OSPFv2 vs OSPFv3
