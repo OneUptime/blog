@@ -89,8 +89,8 @@ textencodebase64(text, "UTF-16BE")
 # Latin-1 / ISO-8859-1 (Western European)
 textencodebase64(text, "ISO-8859-1")
 
-# Windows CP1252
-textencodebase64(text, "CP1252")
+# Windows-1252
+textencodebase64(text, "windows-1252")
 ```
 
 ## Difference from base64encode()
