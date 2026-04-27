@@ -31,7 +31,7 @@ resource "aws_instance" "web" {
 ```hcl
 data "aws_ami" "app" {
   most_recent = true
-  owners      = ["self"]
+  owners      = [var.ami_owner_account]
 
   filter {
     name   = "name"
@@ -40,8 +40,8 @@ data "aws_ami" "app" {
 
   lifecycle {
     precondition {
-      condition     = self.architecture == "x86_64"
-      error_message = "AMI must be x86_64 architecture. Found: ${self.architecture}"
+      condition     = can(regex("^[0-9]{12}$", var.ami_owner_account))
+      error_message = "ami_owner_account must be a 12-digit AWS account ID. Got: ${var.ami_owner_account}"
     }
   }
 }
