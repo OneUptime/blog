@@ -12,7 +12,7 @@ IPv6 routing table lookups use the Linux FIB (Forwarding Information Base) trie 
 
 ## Step 1: Understand the IPv6 Route Cache
 
-Linux removed the IPv6 route cache in kernel 3.12+. Routes are now looked up directly in the FIB trie for each packet. Check your current route table size:
+Linux reworked the IPv6 dst cache in kernel 4.2 (commit `45e4fd26683c` by Martin KaFai Lau), so the FIB no longer accumulates cache entries on every lookup; only PMTU/redirect exceptions are cached separately. RCU-based lookups landed in 4.15. Routes are looked up directly in the FIB6 radix tree for each packet. Check your current route table size:
 
 ```bash
 # Count IPv6 routes in the main table
@@ -27,14 +27,17 @@ cat /proc/net/fib_triestat 2>/dev/null || \
   cat /proc/net/rt6_stats
 ```
 
-## Step 2: Tune FIB Hash Table Size
+## Step 2: Tune the IPv6 Route Cache and GC Parameters
+
+The IPv6 FIB itself is a radix tree (not a hash table); the sysctls below govern the dst exception cache (PMTU/redirect entries) and its garbage collection.
 
 ```bash
-# View current FIB table size limits
+# View current route cache size limit
 sysctl net.ipv6.route.max_size
 
-# Increase maximum IPv6 routing table size
-# Default is 4096, increase for BGP full-table hosts
+# Bound the maximum number of cached route exceptions
+# Historically defaulted to 4096; from kernel 6.3 the default is INT_MAX
+# and the knob is deprecated (GC manages cache entries).
 echo "net.ipv6.route.max_size = 2147483647" | \
   sudo tee -a /etc/sysctl.d/99-ipv6-routing.conf
 
@@ -80,9 +83,12 @@ ip -6 route add 2001:db8:100::/48 \
 # Verify ECMP route
 ip -6 route show 2001:db8:100::/48
 
-# Enable per-flow ECMP hashing (default in modern kernels)
+# Configure ECMP hashing
 sysctl net.ipv6.fib_multipath_hash_policy
-# 0 = L3 (src+dst IP), 1 = L4 (adds ports)
+# 0 = L3 (src+dst addresses + flow label), default
+# 1 = L4 (5-tuple, adds ports)
+# 2 = L3 inner (uses inner header on encapsulated traffic)
+# 3 = Custom fields driven by net.ipv6.fib_multipath_hash_fields
 echo "net.ipv6.fib_multipath_hash_policy = 1" | \
   sudo tee -a /etc/sysctl.d/99-ipv6-routing.conf
 ```
@@ -100,7 +106,7 @@ iperf3 -6 -c 2001:db8::1 -t 60 -P 8 --format m
 
 # Check for route lookup errors
 ip -6 -s route show | grep -i error
-netstat -s6 | grep -i "route\|forward"
+netstat -s -6 | grep -i "route\|forward"
 ```
 
 ## Common Optimization Patterns
