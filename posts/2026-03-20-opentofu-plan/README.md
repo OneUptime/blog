@@ -70,7 +70,7 @@ tofu plan -target=module.networking
 ## Detailed Plan Output
 
 ```bash
-# Show all resource attributes (including unchanged ones)
+# Return a granular exit code based on the plan result
 tofu plan -detailed-exitcode
 
 # Exit codes:
