@@ -31,17 +31,17 @@ OpenTofu parses and merges all `.tf` files in the directory:
 
 ### Step 2: Module Loading
 
-Loads referenced modules from registry, Git, or local paths:
+Loads referenced modules from `.terraform/modules/` (installed earlier by `tofu init`):
 
 ```bash
 # What happens:
-# - Resolves module source addresses
-# - Downloads modules not in .terraform/modules/
-# - Validates module versions against constraints
+# - Reads the module manifest from .terraform/modules/modules.json
+# - Loads module source code from .terraform/modules/
+# - Verifies installed modules match the configuration's source addresses
 
 # Errors:
 # Error: Module not installed (run tofu init)
-# Error: Module source version constraint mismatch
+# Error: Module source has changed (re-run tofu init)
 ```
 
 ### Step 3: Provider Configuration
