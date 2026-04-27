@@ -103,7 +103,7 @@ tofu state pull | jq '
 
 ```bash
 # List all module paths
-tofu state pull | jq -r '.resources[].module // "root" | unique'
+tofu state pull | jq -r '[.resources[] | .module // "root"] | unique[]'
 
 # Resources in a specific module
 tofu state pull | jq '
