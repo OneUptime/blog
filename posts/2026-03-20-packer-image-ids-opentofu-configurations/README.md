@@ -152,10 +152,13 @@ Have Packer write the AMI ID to SSM after building:
 # In Packer post-processor
 post-processor "shell-local" {
   inline = [
-    "aws ssm put-parameter --name /app/production/ami-id --value ${var.app_version} --type String --overwrite"
+    "AMI_ID=$(echo '{{ .ArtifactId }}' | cut -d: -f2)",
+    "aws ssm put-parameter --name /app/production/ami-id --value $AMI_ID --type String --overwrite"
   ]
 }
 ```
+
+The amazon-ebs builder's `.ArtifactId` is formatted as `region:ami-id`, so we extract the AMI ID before writing it to SSM.
 
 Read in OpenTofu:
 
@@ -210,13 +213,12 @@ jobs:
 
 ## Managing AMI Lifecycle
 
-Use an OpenTofu data source to automatically deregister old AMIs:
+Use an OpenTofu data source to enumerate AMIs you've built so a separate cleanup process can deregister old ones:
 
 ```hcl
-# Keep only the last 5 AMIs
-data "aws_ami" "old_apps" {
-  most_recent = false
-  owners      = ["self"]
+# List all AMIs tagged with App=myapp, sorted by creation date
+data "aws_ami_ids" "old_apps" {
+  owners = ["self"]
 
   filter {
     name   = "tag:App"
@@ -225,7 +227,7 @@ data "aws_ami" "old_apps" {
 }
 ```
 
-Or use a lifecycle policy via AWS Image Builder, which Packer supports as a post-processor.
+Note that data sources only read state — they do not deregister AMIs. You'll need a separate process (a script, scheduled job, or AWS Lambda) to call `aws ec2 deregister-image` against AMIs older than your retention threshold. Alternatively, use a lifecycle policy via AWS Image Builder, which Packer supports as a post-processor.
 
 ## Best Practices
 
