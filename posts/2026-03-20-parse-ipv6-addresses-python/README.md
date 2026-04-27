@@ -62,28 +62,22 @@ print(f"Network: {network}")     # 2001:db8:1::/64
 
 ## Handling Zone IDs (Link-Local Scope)
 
-IPv6 link-local addresses often include a zone ID (e.g., `fe80::1%eth0`). Python's ipaddress module does not support zone IDs - strip them first:
+IPv6 link-local addresses often include a zone ID (e.g., `fe80::1%eth0`). Since Python 3.9, the `ipaddress` module supports zone IDs directly and exposes them via the `scope_id` attribute:
 
 ```python
 import ipaddress
-import re
 
 def parse_ipv6_with_zone(address: str) -> tuple:
     """
     Parse an IPv6 address that may include a zone ID.
     Returns (IPv6Address, zone_id) tuple.
     """
-    # Split on % to separate address from zone ID
-    parts = address.split('%', 1)
-    addr_str = parts[0]
-    zone_id = parts[1] if len(parts) > 1 else None
-
-    addr = ipaddress.IPv6Address(addr_str)
-    return (addr, zone_id)
+    addr = ipaddress.IPv6Address(address)
+    return (addr, addr.scope_id)
 
 # Example with zone ID
 addr, zone = parse_ipv6_with_zone("fe80::1%eth0")
-print(f"Address: {addr}, Zone: {zone}")   # Address: fe80::1, Zone: eth0
+print(f"Address: {addr}, Zone: {zone}")   # Address: fe80::1%eth0, Zone: eth0
 ```
 
 ## Parsing IPv4-Mapped IPv6 Addresses
@@ -152,11 +146,11 @@ import re
 
 # IPv6 regex pattern (simplified - handles most cases)
 IPV6_PATTERN = re.compile(
-    r'\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b|'
-    r'\b(?:[0-9a-fA-F]{1,4}:){1,7}:\b|'
-    r'\b:(?::[0-9a-fA-F]{1,4}){1,7}\b|'
-    r'\b::(?:[0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4}\b|'
-    r'\b::\b'
+    r'\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b|'              # full 8-group form
+    r'\b(?:[0-9a-fA-F]{1,4}:){1,7}(?::[0-9a-fA-F]{1,4}){1,7}\b|'  # :: in the middle
+    r'\b(?:[0-9a-fA-F]{1,4}:){1,7}:|'                              # ends with ::
+    r'::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}\b|'             # starts with ::
+    r'::'                                                           # just ::
 )
 
 def extract_ipv6_addresses(text: str) -> list[ipaddress.IPv6Address]:
