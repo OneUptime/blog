@@ -23,8 +23,7 @@ sha1(string)
 ```hcl
 output "sha1_hash" {
   value = sha1("hello world")
-  # Returns "2aae6c69ec0d0328f6a52aca7f68c5f0"...
-  # (actual: "2aae6c69ec0db7e1f5c0f6c58f0c5c6c...")
+  # Returns "2aae6c35c94fcfb415dbe95f408b9ce91ee846ed"
 }
 ```
 
