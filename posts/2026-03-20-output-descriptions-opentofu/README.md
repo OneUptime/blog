@@ -8,7 +8,7 @@ Description: A guide to writing effective output descriptions in OpenTofu to doc
 
 ## Introduction
 
-The `description` attribute in output blocks serves as self-documentation for your infrastructure. It appears in `tofu output` display, module documentation, and helps other engineers understand what each output represents. Good descriptions make modules more maintainable and easier to use.
+The `description` attribute in output blocks serves as self-documentation for your infrastructure. It is consumed by module documentation generators, IDE tooling, and module registries, and helps other engineers understand what each output represents. Good descriptions make modules more maintainable and easier to use.
 
 ## Adding Descriptions to Outputs
 
@@ -119,17 +119,18 @@ output "hosted_zone_id" {
 
 ## Viewing Descriptions
 
+The `tofu output` command itself does not display descriptions — it only prints output names and values. Descriptions are also not included in `tofu output -json`, which exposes only `value`, `type`, and `sensitive` per output. To surface the descriptions you have written, use a documentation generator or your IDE:
+
 ```bash
-# tofu output shows descriptions in the display
-tofu output
+# Generate a markdown table of outputs (with descriptions) using terraform-docs,
+# which works against OpenTofu modules as well.
+terraform-docs markdown table .
 
-# Example output:
-# database_endpoint = "mydb.abc123.us-east-1.rds.amazonaws.com:5432"
-# # Shows description when using: tofu output -json | jq .[].description
-
-# Get description via JSON
-tofu output -json | jq 'to_entries | .[] | {name: .key, description: .value.description}'
+# Inspect the raw configuration to see descriptions alongside values
+tofu show
 ```
+
+Modern IDE plugins for OpenTofu/Terraform also display output descriptions in hover tooltips, and modules published to a registry render their descriptions on the module documentation page.
 
 ## Conclusion
 
