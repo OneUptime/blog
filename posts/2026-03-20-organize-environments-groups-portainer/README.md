@@ -41,28 +41,25 @@ curl -s https://localhost:9443/api/endpoints \
 import sys, json
 envs = json.load(sys.stdin)
 for e in envs:
-    tags = [t['Name'] for t in e.get('Tags', [])]
+    tag_ids = e.get('TagIds', [])
     group = e.get('GroupId', 0)
-    print(f'  ID: {e[\"Id\"]}, Name: {e[\"Name\"]}, Group: {group}, Tags: {tags}')
+    print(f'  ID: {e[\"Id\"]}, Name: {e[\"Name\"]}, Group: {group}, TagIds: {tag_ids}')
 "
 ```
 
 ## Installing the Portainer Agent (for Cloud K8s)
 
-For EKS, AKS, and GKE environments, deploy the agent via Helm:
+For EKS, AKS, and GKE environments, deploy the agent by applying the official manifest with `kubectl` (Helm charts for agent-only deployments are not yet available):
 
 ```bash
-# Add the Portainer Helm repository
-helm repo add portainer https://portainer.github.io/k8s/
-helm repo update
+# LoadBalancer variant (most cloud Kubernetes clusters)
+kubectl apply -n portainer -f https://downloads.portainer.io/ce-lts/portainer-agent-k8s-lb.yaml
 
-# Install the Portainer Agent
-helm install portainer-agent portainer/portainer-agent \
-  -n portainer \
-  --create-namespace \
-  --set env.serverAddress="wss://portainer.example.com" \
-  --set env.edgeId="<your-edge-id>" \
-  --set env.edgeKey="<your-edge-key>"
+# NodePort variant (clusters without a load balancer)
+kubectl apply -n portainer -f https://downloads.portainer.io/ce-lts/portainer-agent-k8s-nodeport.yaml
+
+# Verify the agent is running
+kubectl get pods --namespace=portainer
 ```
 
 ## Best Practices
