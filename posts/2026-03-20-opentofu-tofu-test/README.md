@@ -36,7 +36,7 @@ tofu test
 tofu test -test-directory=tests
 
 # Run a specific test file
-tofu test tests/basic.tftest.hcl
+tofu test -filter=tests/basic.tftest.hcl
 
 # Verbose output
 tofu test -verbose
