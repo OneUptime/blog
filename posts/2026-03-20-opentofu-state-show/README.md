@@ -71,8 +71,8 @@ tofu state show 'module.regional["eu-west-1"].aws_vpc.main'
 tofu state show -state=prod.tfstate aws_instance.web
 
 # Useful for comparing between environments
-tofu state show -state=dev.tfstate aws_rds_instance.db
-tofu state show -state=prod.tfstate aws_rds_instance.db
+tofu state show -state=dev.tfstate aws_db_instance.db
+tofu state show -state=prod.tfstate aws_db_instance.db
 ```
 
 ## Common Use Cases
