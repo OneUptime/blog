@@ -115,8 +115,8 @@ output "required_connections" {
 ```bash
 tofu console
 
-> setproduct(["x", "y"], [1, 2])
-[["x", 1], ["x", 2], ["y", 1], ["y", 2]]
+> setproduct(["x", "y"], ["1", "2"])
+[["x", "1"], ["x", "2"], ["y", "1"], ["y", "2"]]
 ```
 
 ## Conclusion
