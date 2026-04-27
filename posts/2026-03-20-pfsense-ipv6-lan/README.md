@@ -49,8 +49,8 @@ Interfaces → WAN
 ```nginx
 Interfaces → WAN
   IPv6 Configuration Type: Static IPv6
-  IPv6 Address: 2001:db8:wan::2/64
-  IPv6 Upstream Gateway: Add New Gateway → 2001:db8:wan::1
+  IPv6 Address: 2001:db8:1::2/64
+  IPv6 Upstream Gateway: Add New Gateway → 2001:db8:1::1
 ```
 
 ## LAN IPv6 Configuration
@@ -67,8 +67,8 @@ Interfaces → LAN
 ```text
 Services → DHCPv6 Server & RA → LAN
   ✓ Enable DHCPv6 server on interface LAN
-  Range From: 2001:db8:lan::100
-  Range To:   2001:db8:lan::200
+  Range From: 2001:db8:2::100
+  Range To:   2001:db8:2::200
   DNS Servers: 2001:4860:4860::8888
 ```
 
