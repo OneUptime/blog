@@ -26,7 +26,7 @@ vtysh
 configure terminal
 
 router ospf6
- redistribute static metric 20 metric-type type-1
+ redistribute static metric 20 metric-type 1
 
 end
 write memory
@@ -66,7 +66,7 @@ router ospfv3 1
 ```bash
 # FRRouting
 router ospf6
- redistribute bgp metric 100 metric-type type-2
+ redistribute bgp metric 100 metric-type 2
 ```
 
 ## Using Route Maps for Selective Redistribution
@@ -75,7 +75,7 @@ Route maps allow granular control over which routes are redistributed and what m
 
 ```bash
 ! Cisco - Redistribute only specific static routes
-ip prefix-list OSPF_EXPORT seq 10 permit 2001:db8:1::/48 le 64
+ipv6 prefix-list OSPF_EXPORT seq 10 permit 2001:db8:1::/48 le 64
 
 route-map STATIC_TO_OSPF permit 10
  match ipv6 address prefix-list OSPF_EXPORT
