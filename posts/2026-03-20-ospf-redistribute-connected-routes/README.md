@@ -96,7 +96,10 @@ vtysh -c "show ip ospf database external detail"
 vtysh -c "show ip route 192.168.100.0/24"
 # Should show: O E2 192.168.100.0/24 via ...
 
-# On the redistributing router, confirm OSPF sees it
+# On the redistributing router, confirm it is acting as an ASBR
+vtysh -c "show ip ospf" | grep -i "autonomous system boundary"
+
+# From a remote OSPF router, confirm the redistributing router is seen as an ASBR
 vtysh -c "show ip ospf border-routers"
 ```
 
