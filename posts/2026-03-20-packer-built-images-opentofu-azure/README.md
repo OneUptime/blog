@@ -33,9 +33,6 @@ source "azure-arm" "web_server" {
   # Azure credentials from environment variables:
   # ARM_CLIENT_ID, ARM_CLIENT_SECRET, ARM_TENANT_ID, ARM_SUBSCRIPTION_ID
 
-  resource_group_name          = "packer-images-rg"
-  storage_account_name         = "packerimagestorage"
-
   # Use a managed image (recommended)
   managed_image_resource_group_name = "packer-images-rg"
   managed_image_name               = "web-server-${var.app_version}"
