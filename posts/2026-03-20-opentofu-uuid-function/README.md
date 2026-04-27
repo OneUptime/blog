@@ -18,7 +18,7 @@ The `uuid` function in OpenTofu generates a random UUID (Universally Unique Iden
 uuid()
 ```
 
-- Returns a randomly generated UUID v4 string (e.g., `"6b9f4b38-c65a-4b1d-a86e-..."``)
+- Returns a randomly generated UUID v4 string (e.g., `"6b9f4b38-c65a-4b1d-a86e-..."`)
 - Generates a new UUID each time it is evaluated
 
 ## Basic Examples
