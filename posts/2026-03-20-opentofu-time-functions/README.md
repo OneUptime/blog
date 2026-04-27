@@ -10,7 +10,7 @@ OpenTofu provides time functions for working with dates and timestamps. These ar
 
 ## timestamp()
 
-Returns the current UTC time as an RFC 3339 string. Note: this is evaluated at plan time and changes on every run:
+Returns the current UTC time as an RFC 3339 string. Note: this is evaluated at apply time and changes on every run:
 
 ```hcl
 > timestamp()
