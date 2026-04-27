@@ -63,7 +63,7 @@ services:
 
 ## Per-Container Update Schedules
 
-Watchtower supports per-container custom check intervals using cron-style schedules via the `monitor-only` label and scope feature:
+Watchtower supports per-container custom check intervals by running multiple Watchtower instances with different scopes. Each scoped instance can have its own poll interval and only manages containers carrying the matching scope label:
 
 ```yaml
 services:
@@ -78,7 +78,11 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     command: --scope frontend-scope --interval 60
+    labels:
+      - "com.centurylinklabs.watchtower.scope=frontend-scope"
 ```
+
+The `--interval` flag takes a value in seconds. If you need cron-style schedules instead, use `--schedule` (or `WATCHTOWER_SCHEDULE`) with a 6-field cron expression - note that `--interval` and `--schedule` are mutually exclusive.
 
 ## Monitor-Only Mode
 
