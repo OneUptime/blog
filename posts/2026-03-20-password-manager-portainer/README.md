@@ -77,7 +77,7 @@ services:
       - LOG_LEVEL=warn
 
       # Enable web notifications
-      - WEBSOCKET_ENABLED=true
+      - ENABLE_WEBSOCKET=true
     volumes:
       # Persistent data storage
       - /opt/vaultwarden/data:/data
@@ -85,15 +85,13 @@ services:
       - proxy
     labels:
       # Traefik configuration
+      # Since Vaultwarden 1.29.0, WebSocket traffic is served on the
+      # same HTTP port as the API, so no separate WebSocket router is needed.
       - "traefik.enable=true"
       - "traefik.http.routers.vaultwarden.rule=Host(`vault.yourdomain.com`)"
       - "traefik.http.routers.vaultwarden.entrypoints=websecure"
       - "traefik.http.routers.vaultwarden.tls.certresolver=letsencrypt"
       - "traefik.http.services.vaultwarden.loadbalancer.server.port=80"
-      # WebSocket support for live sync
-      - "traefik.http.routers.vaultwarden-ws.rule=Host(`vault.yourdomain.com`) && Path(`/notifications/hub`)"
-      - "traefik.http.routers.vaultwarden-ws.entrypoints=websecure"
-      - "traefik.http.services.vaultwarden-ws.loadbalancer.server.port=3012"
 ```
 
 ## Step 3: Configure Nginx Proxy Manager (Alternative to Traefik)
@@ -105,8 +103,10 @@ If using Nginx Proxy Manager instead:
 # Add in the "Advanced" tab of NPM
 
 # Enable WebSocket support
+# Since Vaultwarden 1.29.0, WebSocket traffic is served on the same
+# HTTP port as the API (80), so it proxies to the same upstream.
 location /notifications/hub {
-    proxy_pass http://vaultwarden:3012;
+    proxy_pass http://vaultwarden:80;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
 }
@@ -197,8 +197,8 @@ environment:
   # Disable organization creation
   - ORG_CREATION_USERS=admin@yourdomain.com
 
-  # Set session lifetime (seconds)
-  - SESSION_JWT_EXPIRATION=86400
+  # Limit how long an admin panel session stays active (minutes)
+  - ADMIN_SESSION_LIFETIME=20
 ```
 
 ## Monitoring Vaultwarden
