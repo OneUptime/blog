@@ -43,7 +43,7 @@ interface GigabitEthernet0/0
 ```text
 ! Use ESP for both authentication and encryption
 interface GigabitEthernet0/0
- ospfv3 encryption ipsec spi 400 esp 3des sha1 <encryption-key> <auth-key>
+ ospfv3 encryption ipsec spi 400 esp 3des <encryption-key> sha1 <auth-key>
 ```
 
 ## Configuring OSPFv3 IPsec Authentication on FRRouting
@@ -82,7 +82,7 @@ sudo ip xfrm policy add src fe80::2 dst fe80::1 proto 89 \
 ```text
 ! Cisco: Verify IPsec is active on OSPFv3 interface
 Router# show ospfv3 interface GigabitEthernet0/0 | include auth
-! Should show: Authentication SPF, algorithm SHA
+! Should show: Authentication SPI 256, secure socket UP
 
 ! Check IPsec Security Associations
 Router# show crypto ipsec sa
