@@ -17,20 +17,16 @@ regex(pattern, string)
 Returns the matched string, or a list/map of captured groups:
 
 ```hcl
-# Simple match
+# Simple match - no capture groups, returns matched string
 
 > regex("[0-9]+", "server-123-prod")
 "123"
-
-# With capture group - returns string
-> regex("([a-z]+)-([0-9]+)", "server-123")
-# Returns the whole match, not captures in this form
 
 # Named capture groups - returns map
 > regex("(?P<name>[a-z]+)-(?P<num>[0-9]+)", "server-123")
 {"name" = "server", "num" = "123"}
 
-# Multiple unnamed groups - returns list
+# Unnamed capture groups - returns list
 > regex("([a-z]+)-([0-9]+)", "server-123")
 ["server", "123"]
 ```
