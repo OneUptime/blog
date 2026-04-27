@@ -36,7 +36,7 @@ dh dh.pem
 server 10.8.0.0 255.255.255.0
 
 # IPv6 addresses inside the tunnel (server gets ::1, clients get ::2, ::3, etc.)
-server-ipv6 fd00:vpn::/64
+server-ipv6 fd00:abcd:1::/64
 
 # Push IPv6 default route to clients (all IPv6 traffic through tunnel)
 push "route-ipv6 ::/0"
@@ -58,8 +58,8 @@ sudo sysctl -w net.ipv6.conf.all.forwarding=1
 # NAT IPv6 traffic from tunnel clients to Internet
 # (Server uses its public IPv6 as source)
 sudo ip6tables -t nat -A POSTROUTING \
-  -s fd00:vpn::/64 \
-  ! -d fd00:vpn::/64 \
+  -s fd00:abcd:1::/64 \
+  ! -d fd00:abcd:1::/64 \
   -j MASQUERADE
 
 # Allow forwarding for tunnel traffic
@@ -97,11 +97,11 @@ verb 3
 ```bash
 # After connecting, verify IPv6 address in tunnel
 ip -6 addr show tun0
-# Should show fd00:vpn::X address
+# Should show fd00:abcd:1::X address
 
 # Check IPv6 default route goes through tunnel
 ip -6 route show default
-# Should show: default via fd00:vpn::1 dev tun0
+# Should show: default via fd00:abcd:1::1 dev tun0
 
 # Test IPv6 connectivity through tunnel
 ping6 -c 3 2001:4860:4860::8888    # Google DNS
@@ -116,8 +116,8 @@ Instead of routing all IPv6 traffic, route only specific prefixes:
 
 ```ini
 # Server config: push specific routes
-push "route-ipv6 2001:db8:internal::/48"
-push "route-ipv6 fd00:services::/64"
+push "route-ipv6 2001:db8:1::/48"
+push "route-ipv6 fd00:abcd:2::/64"
 ```
 
 ## Script Hooks for IPv6 Route Management
