@@ -62,7 +62,7 @@ tofu test \
   -var="instance_type=t3.small"
 ```
 
-Command-line `-var` values take precedence over inline `variables` blocks.
+Inline `variables` blocks in the test file take precedence over command-line `-var` values, so use `-var` to override values that are not already set in the test file's `variables` blocks.
 
 ## Method 3: Variable Files (`-var-file`)
 
@@ -115,22 +115,20 @@ When the same variable is set in multiple places, OpenTofu uses this precedence 
 
 ```mermaid
 flowchart TD
-    A[Environment variables TF_VAR_*] --> B["-var-file" flag]
-    B --> C["-var" flag]
-    C --> D["run block variables{}"]
-    D --> E["Top-level variables{}"]
+    A["run block variables{}"] --> B["Top-level variables{}"]
+    B --> C["-var and -var-file flags"]
+    C --> D["tfvars files (terraform.tfvars, *.auto.tfvars)"]
+    D --> E[Environment variables TF_VAR_*]
 ```
 
 ## Practical Example: Multi-Environment Tests
 
+Because top-level `variables` blocks in a test file outrank CLI `-var` values, leave environment-specific values out of the test file when you want CI to be able to override them — let the module's variable defaults supply local values instead.
+
 ```hcl
 # tests/bucket.tftest.hcl
-
-# Defaults suitable for local testing
-variables {
-  bucket_prefix = "test"
-  region        = "us-east-1"
-}
+# bucket_prefix and region rely on the defaults declared in the
+# module's variables.tf so that CLI -var flags can override them.
 
 run "bucket_name_includes_prefix" {
   assert {
@@ -141,10 +139,10 @@ run "bucket_name_includes_prefix" {
 ```
 
 ```bash
-# Local run with defaults
+# Local run uses the module's variable defaults
 tofu test
 
-# CI run pointing at staging
+# CI run overrides via CLI
 tofu test -var="bucket_prefix=staging" -var="region=eu-west-1"
 ```
 
