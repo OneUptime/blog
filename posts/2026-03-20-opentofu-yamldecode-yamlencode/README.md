@@ -119,7 +119,7 @@ resource "helm_release" "app" {
 }
 ```
 
-### Multi-Document YAML
+### Decoding YAML from a Variable
 
 ```hcl
 variable "config_yaml" {
