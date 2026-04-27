@@ -85,7 +85,7 @@ Router# show ospfv3 database
 ! Should show area is NSSA
 
 ! Check for Type 7 LSAs in the area
-Router# show ospfv3 database nssa
+Router# show ospfv3 database nssa-external
 
 ! Check converted Type 5 LSAs on the ABR
 Router# show ospfv3 database external
@@ -94,11 +94,11 @@ Router# show ospfv3 database external
 ```bash
 # FRRouting: Verify NSSA configuration
 
-vtysh -c "show ipv6 ospf"
+vtysh -c "show ipv6 ospf6"
 # Area 0.0.0.1 is [NSSA]
 
 # Check Type 7 LSAs
-vtysh -c "show ipv6 ospf database as-nssa"
+vtysh -c "show ipv6 ospf6 database type-7"
 ```
 
 ## NSSA Default Route
