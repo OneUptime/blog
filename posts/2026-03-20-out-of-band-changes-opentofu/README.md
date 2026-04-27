@@ -96,10 +96,12 @@ tofu plan   # Shows: ~ aws_security_group.web (will revert unauthorized port)
 tofu apply
 
 # 4. Investigate via CloudTrail
+# SourceIPAddress is inside the CloudTrailEvent JSON, not a top-level field,
+# so we surface the top-level fields here and parse the full event with jq if needed.
 aws cloudtrail lookup-events \
   --lookup-attributes AttributeKey=EventName,AttributeValue=AuthorizeSecurityGroupIngress \
   --start-time "2026-03-19T00:00:00Z" \
-  --query "Events[*].{Time:EventTime, User:Username, IP:SourceIPAddress}"
+  --query "Events[*].{Time:EventTime, User:Username, EventId:EventId}"
 ```
 
 ## Preventing Out-of-Band Changes
