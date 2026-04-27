@@ -46,7 +46,7 @@ tofu plan
 # Skip refresh (fast, but may miss drift)
 tofu plan -refresh=false
 
-# Refresh only, generate plan showing drift impact
+# Explicitly enable refresh (this is the default behavior)
 tofu plan -refresh=true
 ```
 
