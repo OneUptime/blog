@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: pfSense, IPv6, Router Advertisement, SLAAC, Radvd
 
-Description: Configure Router Advertisement Daemon (radvd) settings in pfSense for IPv6 SLAAC autoconfiuration on the LAN.
+Description: Configure Router Advertisement Daemon (radvd) settings in pfSense for IPv6 SLAAC autoconfiguration on the LAN.
 
 ## Overview
 
-Configure Router Advertisement Daemon (radvd) settings in pfSense for IPv6 SLAAC autoconfiuration on the LAN.
+Configure Router Advertisement Daemon (radvd) settings in pfSense for IPv6 SLAAC autoconfiguration on the LAN.
 
 ## Prerequisites
 
