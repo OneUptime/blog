@@ -69,9 +69,9 @@ check "health" {
 }
 ```
 
-## OpenTofu-Exclusive Features
+## Notable OpenTofu Features
 
-### 1. Provider Iteration (OpenTofu 1.8+)
+### 1. Provider Iteration (OpenTofu 1.9+)
 
 ```hcl
 # Deploy to multiple regions without aliases
@@ -93,7 +93,9 @@ module "regional_vpc" {
 }
 ```
 
-### 2. Write-Only Attributes (OpenTofu 1.10+)
+### 2. Write-Only Attributes (OpenTofu 1.11+)
+
+Also available in Terraform 1.11+. Providers expose write-only variants of sensitive arguments using the `_wo` suffix, paired with a `_wo_version` argument that you increment to trigger an update.
 
 ```hcl
 # Passwords and secrets never stored in state
@@ -102,12 +104,13 @@ resource "aws_db_instance" "postgres" {
   engine         = "postgres"
   instance_class = "db.t3.medium"
 
-  # password is write-only: written to AWS, never stored in .tfstate
-  password = var.db_password
+  # password_wo is write-only: written to AWS, never stored in .tfstate
+  password_wo         = var.db_password
+  password_wo_version = 1
 }
 ```
 
-### 3. Native State Encryption (OpenTofu 1.8+)
+### 3. Native State Encryption (OpenTofu 1.7+)
 
 ```hcl
 terraform {
@@ -128,6 +131,8 @@ terraform {
 ```
 
 ### 4. Loopable Import Blocks (OpenTofu 1.7+)
+
+Also available in Terraform 1.7+.
 
 ```hcl
 # Import multiple resources with for_each
@@ -150,13 +155,14 @@ These features exist in Terraform but not in OpenTofu:
 
 ## Version Alignment
 
-| OpenTofu | Terraform Equivalent | Key Additions |
-|----------|---------------------|---------------|
-| 1.6.x | ~1.6.x | Fork stabilization |
-| 1.7.x | N/A | Loopable import blocks |
-| 1.8.x | N/A | Provider iteration, native state encryption |
-| 1.9.x | N/A | Variable validation improvements |
-| 1.10.x | N/A | Write-only attributes, ephemeral resources |
+| OpenTofu | Approx. Terraform | Key OpenTofu Additions |
+|----------|-------------------|------------------------|
+| 1.6.x | ~1.6.x | Fork stabilization, `tofu test` |
+| 1.7.x | ~1.7.x | Native state encryption, loopable import blocks, provider-defined functions, removed blocks |
+| 1.8.x | ~1.8.x | Early variable/locals evaluation, `.tofu` file extension, provider mocking in tests |
+| 1.9.x | ~1.9.x | Provider iteration (`for_each` on providers), `-exclude` flag |
+| 1.10.x | ~1.10.x | OCI registry support, native S3 state locking, deprecation marks, external key providers |
+| 1.11.x | ~1.11.x | Write-only attributes, ephemeral resources, `enabled` meta-argument |
 
 ## State File Compatibility
 
@@ -165,10 +171,10 @@ These features exist in Terraform but not in OpenTofu:
 # You can switch between tools without state migration
 
 # Verify format
-cat .terraform/terraform.tfstate | jq '.version'
+cat terraform.tfstate | jq '.version'
 # Both output: 4
 ```
 
 ## Conclusion
 
-OpenTofu maintains full compatibility with Terraform ≤ 1.5.7 and has since added exclusive features: provider iteration, write-only attributes, native state encryption, and loopable import blocks. Terraform has continued development under BSL with its own features like Stacks. For open-source licensing requirements or access to the OpenTofu-exclusive features, OpenTofu is the clear choice. For organizations already invested in Terraform Enterprise and Terraform Cloud, the migration decision depends on licensing preferences and which feature set better matches requirements.
+OpenTofu maintains full compatibility with Terraform ≤ 1.5.7 and has since added several notable features, including some that are OpenTofu-exclusive (provider iteration, native state encryption) and others that have parallel implementations in Terraform (loopable import blocks, write-only attributes, ephemeral resources). Terraform has continued development under BUSL with its own features like Stacks. For open-source licensing requirements or access to the OpenTofu-exclusive features, OpenTofu is the clear choice. For organizations already invested in Terraform Enterprise and Terraform Cloud, the migration decision depends on licensing preferences and which feature set better matches requirements.
