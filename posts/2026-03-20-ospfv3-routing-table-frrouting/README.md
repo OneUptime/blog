@@ -35,9 +35,9 @@ Router# show ipv6 route ospf
 Codes: K - kernel route, C - connected, S - static, R - RIPng, O - OSPFv3,
        I - IS-IS, B - BGP, N - NHRP, T - Table, v - VNC, V - VNC-Direct
 
-O>* 2001:db8:1::/48 [110/20] via fe80::2, eth0, weight 1, 00:05:32
-O>* 2001:db8:2::/48 [110/30] via fe80::3, eth1, weight 1, 00:08:10
-O>  2001:db8:3::/48 [110/50] via fe80::2, eth0, weight 1, 00:02:15
+O>* 2001:db8:1::/48 [110/20] via fe80::2, eth0, 00:05:32
+O>* 2001:db8:2::/48 [110/30] via fe80::3, eth1, 00:08:10
+O>  2001:db8:3::/48 [110/50] via fe80::2, eth0, 00:02:15
 ```
 
 Code meanings:
@@ -82,10 +82,10 @@ vtysh -c "show ipv6 ospf route detail"
 # FRRouting distinguishes route types in the OSPFv3 route table
 vtysh -c "show ipv6 ospf route"
 
-# Route types:
-# N - Intra-area network route (within the same area)
-# N IA - Inter-area network route (from another area via ABR)
-# E - External type 1 or 2
+# Route types (destination type N = network, followed by path-type code):
+# N IA - Intra-area network route (within the same area)
+# N IE - Inter-area network route (from another area via ABR)
+# N E1 / N E2 - External type 1 or type 2 (redistributed routes)
 ```
 
 ## Checking ECMP Installation
