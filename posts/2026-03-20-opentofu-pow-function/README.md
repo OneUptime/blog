@@ -31,10 +31,6 @@ output "two_to_ten" {
   value = pow(2, 10)  # Returns 1024
 }
 
-output "cube_root" {
-  value = pow(27, 1/3)  # Returns 3 (cube root)
-}
-
 output "square_root" {
   value = pow(9, 0.5)  # Returns 3 (square root)
 }
