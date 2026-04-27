@@ -55,7 +55,6 @@ package main
 
 import (
     "fmt"
-    "net"
     "net/url"
     "net/netip"
 )
