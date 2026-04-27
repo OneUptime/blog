@@ -40,10 +40,12 @@ sudo ip6tables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 sudo ip6tables -P INPUT DROP  # Deny all else
 
 # Block tunneling attempts (PCI DSS prohibits unauthorized tunnels)
-sudo ip6tables -A INPUT -p ipv6 -j DROP  # Block 6in4
+sudo ip6tables -A INPUT -p ipv6 -j DROP  # Block IPv6-in-IPv6 (proto 41)
+# Note: 6in4 (IPv6 over IPv4) is IPv4 traffic with proto 41 -
+# block it on the IPv4 firewall: sudo iptables -A INPUT -p 41 -j DROP
 
-# Save rules
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+# Save rules (iptables-persistent default path on Debian/Ubuntu)
+sudo ip6tables-save > /etc/iptables/rules.v6
 
 # Document all firewall rules (required for PCI audit)
 sudo ip6tables -L -n -v > /tmp/pci_ipv6_fw_rules.txt
@@ -100,7 +102,7 @@ sudo grep "2001:\|ipv6\|::" /var/log/auth.log | head -20
 # Annual penetration testing must include IPv6
 
 # 1. External IPv6 vulnerability scan
-# nmap -6 -sV -sC 2001:db8::cde-server
+# nmap -6 -sV -sC 2001:db8::1
 
 # 2. Test for IPv6-specific vulnerabilities
 # - Rogue Router Advertisements
@@ -109,7 +111,7 @@ sudo grep "2001:\|ipv6\|::" /var/log/auth.log | head -20
 # - Unauthorized IPv6 tunnels
 
 # 3. Verify all CDE servers are scanned via IPv6
-nmap -6 -p 443,80 2001:db8::cde-server
+nmap -6 -p 443,80 2001:db8::1
 
 # 4. ASV (Approved Scanning Vendor) scans must include IPv6
 # Confirm with your ASV that scans target IPv6 addresses
