@@ -97,16 +97,19 @@ func main() {
 
 ```java
 import java.net.*;
+import java.util.regex.Pattern;
 
 public class IPv4FromUrl {
+    private static final Pattern IPV4 = Pattern.compile(
+        "^((25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\.){3}(25[0-5]|2[0-4]\\d|[01]?\\d\\d?)$"
+    );
+
     public static String extractIPv4(String rawUrl) {
         try {
             URI uri = new URI(rawUrl);
             String host = uri.getHost();
             if (host == null) return null;
-            InetAddress addr = InetAddress.getByName(host);
-            if (!(addr instanceof Inet4Address)) return null;
-            return host;
+            return IPV4.matcher(host).matches() ? host : null;
         } catch (Exception e) {
             return null;
         }
