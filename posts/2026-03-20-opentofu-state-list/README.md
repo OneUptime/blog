@@ -31,27 +31,33 @@ module.database.aws_db_instance.main
 ## Filtering by Resource Address
 
 ```bash
-# List resources matching a pattern
-tofu state list 'aws_instance.*'
+# Filter to a specific resource (matches all instances when count/for_each is used)
+tofu state list aws_instance.app
 # Output:
-# aws_instance.web
 # aws_instance.app[0]
 # aws_instance.app[1]
 
-# Filter to a specific module
-tofu state list 'module.networking.*'
+# Filter to a specific module (lists every resource inside the module)
+tofu state list 'module.networking'
 # Output:
 # module.networking.aws_vpc.main
 # module.networking.aws_subnet.public[0]
 # module.networking.aws_subnet.public[1]
 # module.networking.aws_subnet.private[0]
 
-# Filter by resource type
-tofu state list 'module.database.*'
+# Filter to another module
+tofu state list 'module.database'
 # Output:
 # module.database.aws_db_instance.main
 # module.database.aws_db_subnet_group.main
 # module.database.aws_security_group.db
+
+# To filter by resource type alone, pipe through grep
+tofu state list | grep '^aws_instance\.'
+# Output:
+# aws_instance.web
+# aws_instance.app[0]
+# aws_instance.app[1]
 ```
 
 ## Specifying State File
@@ -83,10 +89,12 @@ tofu state list | grep '^module\.' | cut -d. -f1-2 | sort | uniq -c | sort -rn
 ### Finding Orphaned Resources
 
 ```bash
-# Compare state resources with current config
+# Save current state inventory for reference
 tofu state list > state-resources.txt
-tofu show -json | jq -r '.values.root_module | .. | .resources? | .[]? | .address' | sort > config-resources.txt
-diff state-resources.txt config-resources.txt
+
+# Run a plan and find resources marked for deletion (orphans no longer in config)
+tofu plan -out=tfplan
+tofu show -json tfplan | jq -r '.resource_changes[] | select(.change.actions == ["delete"]) | .address'
 ```
 
 ### Checking After Import
