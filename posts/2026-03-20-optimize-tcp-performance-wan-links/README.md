@@ -48,10 +48,12 @@ net.ipv4.tcp_window_scaling = 1
 net.ipv4.tcp_timestamps = 1
 net.ipv4.tcp_sack = 1
 
-# Slow start after idle - reduce to avoid large initial bursts
+# Disable cwnd reset after idle - preserves the grown congestion window so
+# bursty WAN traffic does not have to slow-start back up after every idle gap
 net.ipv4.tcp_slow_start_after_idle = 0
 
-# Increase keepalive settings for WAN idle connections
+# More aggressive keepalive (defaults: 7200s / 75s / 9) so dead WAN connections
+# and NAT/firewall idle-timeouts are detected faster
 net.ipv4.tcp_keepalive_time = 300       # Start probing after 5 min idle
 net.ipv4.tcp_keepalive_intvl = 30       # Probe every 30 seconds
 net.ipv4.tcp_keepalive_probes = 10      # Drop after 10 failed probes
@@ -78,12 +80,14 @@ sysctl net.ipv4.tcp_slow_start_after_idle
 For interactive WAN applications (SSH, Telnet, database queries) with low data rates, TCP thin streams mode reduces retransmission delays:
 
 ```bash
-# Enable thin stream detection
+# Enable linear timeouts for thin streams (<4 packets in flight)
 sudo sysctl -w net.ipv4.tcp_thin_linear_timeouts=1
-sudo sysctl -w net.ipv4.tcp_thin_dupack=1
 
-# These modes use linear (not exponential) timeouts for thin streams
-# Reduces latency for interactive applications over lossy WAN
+# Uses linear (not exponential) timeouts for thin streams,
+# reducing latency for interactive applications over lossy WAN.
+# Note: net.ipv4.tcp_thin_dupack was removed in Linux 4.11 once
+# RACK loss detection was enabled by default, so it is no longer
+# needed (and not available) on modern kernels.
 ```
 
 ## Step 5: Tune TCP Retransmission Behavior
