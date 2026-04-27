@@ -56,7 +56,7 @@ import re
 OCTET = r"(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)"
 IPV4_RE = re.compile(rf"\b{OCTET}\.{OCTET}\.{OCTET}\.{OCTET}\b")
 
-text = "App v1.2.3.4 connected from 192.168.1.10 to server 10.0.0.5"
+text = "App version 1.2.3.4 connected from 192.168.1.10 to server 10.0.0.5"
 matches = IPV4_RE.findall(text)
 print(matches)  # ['1.2.3.4', '192.168.1.10', '10.0.0.5']
 # Note: 1.2.3.4 is technically a valid IP - filter using is_private / is_global
