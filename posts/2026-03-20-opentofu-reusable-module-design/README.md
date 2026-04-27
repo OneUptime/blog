@@ -173,8 +173,8 @@ locals {
 
   # Caller tags override defaults, but not required tags
   merged_tags = merge(
-    local.required_tags,
-    var.tags
+    var.tags,
+    local.required_tags
   )
 }
 
