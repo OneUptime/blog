@@ -72,17 +72,12 @@ resource "aws_iam_policy" "tofu_lock" {
 
 ## Lock File Entry
 
-When a run starts, DynamoDB contains:
+When a run starts, DynamoDB contains a single item with two attributes: `LockID` and `Info`. The `Info` attribute holds the lock metadata as a JSON string:
 
 ```json
 {
   "LockID": {"S": "my-tofu-state/production/terraform.tfstate"},
-  "ID": {"S": "abc-123"},
-  "Operation": {"S": "OperationTypeApply"},
-  "Who": {"S": "user@hostname"},
-  "Version": {"S": "1.8.0"},
-  "Created": {"S": "2026-03-20T10:00:00Z"},
-  "Info": {"S": ""}
+  "Info": {"S": "{\"ID\":\"abc-123\",\"Operation\":\"OperationTypeApply\",\"Info\":\"\",\"Who\":\"user@hostname\",\"Version\":\"1.8.0\",\"Created\":\"2026-03-20T10:00:00Z\",\"Path\":\"my-tofu-state/production/terraform.tfstate\"}"}
 }
 ```
 
@@ -108,14 +103,14 @@ tofu apply
 If a run crashes and leaves a lock:
 
 ```bash
-# Get the lock ID from the error message or DynamoDB
+# Get the lock info from DynamoDB (Info is a JSON string; parse it to read the ID)
 aws dynamodb get-item \
   --table-name tofu-state-lock \
   --key '{"LockID": {"S": "my-tofu-state/production/terraform.tfstate"}}' \
-  --query 'Item.ID.S' \
+  --query 'Item.Info.S' \
   --output text
 
-# Force-unlock using the lock ID
+# Force-unlock using the lock ID (also shown in the error output of the failing run)
 tofu force-unlock abc-123
 ```
 
