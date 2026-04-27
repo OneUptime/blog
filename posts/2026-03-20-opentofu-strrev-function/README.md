@@ -130,7 +130,7 @@ tofu console
 > strrev("abcba") == "abcba"
 true
 > strrev("OpenTofu")
-"ufuTnepO"
+"ufoTnepO"
 ```
 
 ## Combining with Other Functions
@@ -140,7 +140,7 @@ locals {
   base_name = "myservice"
   # Reverse, take first 4 chars, uppercase for a unique code
   service_code = upper(substr(strrev(local.base_name), 0, 4))
-  # Returns "CIVR" → useful for short unique identifiers
+  # Returns "ECIV" → useful for short unique identifiers
 }
 ```
 
