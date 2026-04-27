@@ -21,7 +21,8 @@ projects:
   - name: prod-networking
     dir: environments/prod/networking
     workspace: default
-    terraform_version: tofu1.7.0
+    terraform_version: v1.7.0
+    terraform_distribution: opentofu
     autoplan:
       when_modified: ["*.tf", "*.tfvars", "../../../modules/**/*.tf"]
       enabled: true
@@ -29,7 +30,8 @@ projects:
   - name: prod-app
     dir: environments/prod/app
     workspace: default
-    terraform_version: tofu1.7.0
+    terraform_version: v1.7.0
+    terraform_distribution: opentofu
     autoplan:
       when_modified: ["*.tf", "*.tfvars"]
       enabled: true
@@ -47,10 +49,9 @@ gh-token: "${GITHUB_TOKEN}"
 gh-webhook-secret: "${WEBHOOK_SECRET}"
 
 # Use OpenTofu instead of Terraform
-terraform-download-url: https://github.com/opentofu/opentofu/releases/download/v{version}/tofu_{version}_linux_amd64.zip
+default-tf-distribution: opentofu
 
-repo-config-file: /config/repos.yaml
-allow-repo-config: true
+repo-config: /config/repos.yaml
 
 port: 4141
 ```
@@ -66,9 +67,6 @@ repos:
 
     workflow: production
     apply_requirements: [approved, mergeable]
-
-    # Require two approvals for production
-    pr_review_count: 2
 
 workflows:
   production:
