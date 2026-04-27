@@ -28,7 +28,7 @@ graph LR
 ```bash
 # FRRouting
 
-vtysh -c "show ipv6 ospf neighbor"
+vtysh -c "show ipv6 ospf6 neighbor"
 
 # Cisco
 show ospfv3 neighbor
@@ -46,7 +46,7 @@ Both routers see each other's Hellos but not in each other's neighbor list:
 
 ```bash
 # Check Hello parameters - all must match:
-vtysh -c "show ipv6 ospf interface eth0"
+vtysh -c "show ipv6 ospf6 interface eth0"
 # Verify: Hello interval, Dead interval, Area ID
 
 # Common mismatch: Hello interval differs
@@ -56,7 +56,7 @@ vtysh -c "show ipv6 ospf interface eth0"
 
 ### Stuck in 2-Way (Non-DR/BDR)
 
-On a broadcast network with more than two routers, only DR and BDR form Full adjacency with each other. Others stay at 2-Way - this is **normal and expected**.
+On a broadcast network with more than two routers, DROTHER routers form Full adjacency only with the DR and BDR. Two DROTHER routers stay at 2-Way with each other - this is **normal and expected**.
 
 ### Stuck in ExStart/Exchange
 
@@ -129,7 +129,7 @@ sudo tcpdump -i eth0 -n -v "ip6 proto 89"
 
 ```bash
 # FRRouting: verify area assignment
-vtysh -c "show ipv6 ospf interface eth0" | grep "Area\|Network Type"
+vtysh -c "show ipv6 ospf6 interface eth0" | grep "Area\|Network Type"
 
 # Common issues:
 # - One side in Area 0, other in Area 1
