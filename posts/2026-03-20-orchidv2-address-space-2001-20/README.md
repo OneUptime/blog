@@ -15,11 +15,12 @@ Description: Understand the ORCHIDv2 address space 2001:20::/28 (RFC 7343), its 
 | Property | Value |
 |---|---|
 | Prefix | 2001:20::/28 |
-| RFC | RFC 7343 (updates RFC 4843) |
-| Source | False (not for regular source) |
-| Destination | False (not for regular routing) |
-| Forwardable | No |
-| Globally Reachable | No |
+| RFC | RFC 7343 (obsoletes RFC 4843) |
+| Source | True |
+| Destination | True |
+| Forwardable | True |
+| Globally Reachable | True |
+| Reserved-by-Protocol | False |
 
 ## What is HIP?
 
@@ -47,41 +48,41 @@ import struct
 ORCHID_PREFIX = 0x2001  # First 16 bits
 ORCHID_PREFIX_BITS = 28  # /28
 
-def generate_orchid(context_id: bytes, public_key: bytes) -> str:
+OGA_ID_HIP_SHA1 = 3  # HIPv2 OGA ID for truncated SHA-1 (RFC 7401)
+
+def generate_orchid(context_id: bytes, input_bits: bytes, oga_id: int = OGA_ID_HIP_SHA1) -> str:
     """
     Generate an ORCHIDv2 address (RFC 7343).
-    context_id: 128-bit context identifier (defined per application)
-    public_key: Host Identity public key bytes
+    context_id: 128-bit context identifier (defined per usage context)
+    input_bits: typically a Host Identity public key encoding
+    oga_id: 4-bit ORCHID Generation Algorithm ID (per the context's registry)
     """
-    # Hash input = Context_ID || HI
-    hash_input = context_id + public_key
+    # Hash Input = Context ID | Input
+    hash_input = context_id + input_bits
 
-    # SHA1 hash (RFC 4843 used SHA1; ORCHIDv2 uses SHA1 for compatibility)
-    sha1 = hashlib.sha1(hash_input).digest()
+    # ORCHIDv2 supports algorithm agility via the OGA ID. For HIPv2 with
+    # OGA ID 3, the hash function is truncated SHA-1 (RFC 7401 Appendix E).
+    sha1 = hashlib.sha1(hash_input).digest()  # 160 bits
 
-    # Take the last 96 bits (12 bytes) of the hash
-    hash_96 = sha1[-12:]
+    # Encode_96: extract the MIDDLE 96 bits of the hash output (RFC 7343 §2).
+    # For a 160-bit SHA-1 digest, drop 32 bits from each end → bytes [4:16].
+    hash_96 = int.from_bytes(sha1[4:16], 'big')
 
-    # Construct ORCHID: 2001:20::/28 | hash_bits
-    # First 28 bits = 0x20012000 >> 4  (we use the first 4 bytes = 32 bits)
-    # Actually: first 28 bits are prefix, then 96 bits of hash, total 124...
-    # RFC 7343 §3: 28-bit prefix + 4 unused bits + 96 bits hash = 128 bits
-
-    prefix_int = 0x20012000  # 2001:2000::/28 base
-    # Shift hash to lower 96 bits
-    hash_int = int.from_bytes(sha1[-12:], 'big')
-    orchid_int = (prefix_int << 96) | hash_int
+    # ORCHID := Prefix (28 bits) | OGA ID (4 bits) | Encode_96(Hash) (96 bits)
+    prefix_28 = 0x2001002            # 28-bit ORCHID prefix (2001:20::/28)
+    prefix_oga = (prefix_28 << 4) | (oga_id & 0xF)  # 32-bit prefix||OGA
+    orchid_int = (prefix_oga << 96) | hash_96
 
     return str(ipaddress.IPv6Address(orchid_int))
 
-# HIP context ID for ESP (RFC 7343 §9.3)
+# HIPv2 ORCHID Context ID (RFC 7401 §3.2)
 
-HIP_ESP_CONTEXT = bytes.fromhex("8b9dfb2e9b2a8d8e1d25d5b1a7ba56d6")
+HIP_CONTEXT_ID = bytes.fromhex("F0EFF02FBFF43D0FE7930C3C6E6174EA")
 
 # Simulate a host public key
 fake_public_key = b"example-host-public-key-material-32b"
 
-orchid = generate_orchid(HIP_ESP_CONTEXT, fake_public_key)
+orchid = generate_orchid(HIP_CONTEXT_ID, fake_public_key)
 print(f"Generated ORCHID: {orchid}")
 print(f"In 2001:20::/28: {ipaddress.IPv6Address(orchid) in ipaddress.IPv6Network('2001:20::/28')}")
 ```
