@@ -145,6 +145,7 @@ terraform {
     key_provider "aws_kms" "main" {
       kms_key_id = "alias/tofu-state-encryption-key"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
     method "aes_gcm" "main" {
       keys = key_provider.aws_kms.main
