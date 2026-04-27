@@ -121,7 +121,7 @@ resource "null_resource" "always_run" {
 tofu console
 
 > timestamp()
-"2026-03-20T14:30:00.000Z"
+"2026-03-20T14:30:00Z"
 ```
 
 ## timestamp vs plantimestamp
