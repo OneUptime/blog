@@ -151,24 +151,18 @@ data "google_compute_image" "app_server_v1" {
 
 # Find latest image with label filters
 data "google_compute_image" "app_server_prod" {
-  project = var.project_id
-  filter  = "labels.application=app-server AND labels.stage=prod-ready"
-  # most_recent = true (default for family/filter queries)
+  project     = var.project_id
+  filter      = "labels.application=app-server AND labels.stage=prod-ready"
+  most_recent = true  # Required when the filter matches multiple images
 }
 ```
 
 ## Validating Image Freshness
 
 ```hcl
-locals {
-  # Alert if the AMI is older than 30 days
-  ami_age_days = (
-    parseint(formatdate("D", timestamp()), 10) -
-    parseint(formatdate("D", data.aws_ami.app_server.creation_date), 10)
-  )
-}
-
-# Use a check block to warn about stale images
+# Use a check block to warn about stale images.
+# RFC 3339 timestamps sort lexicographically, so a string ">" comparison
+# is equivalent to a chronological comparison.
 check "ami_freshness" {
   assert {
     condition     = data.aws_ami.app_server.creation_date > timeadd(timestamp(), "-720h")
