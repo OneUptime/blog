@@ -68,7 +68,7 @@ domain_name   = "acme-corp.com"
 ```bash
 # Apply with the matching var file
 tofu workspace select production
-tofu apply -var-file="environments/${$(tofu workspace show)}.tfvars"
+tofu apply -var-file="environments/$(tofu workspace show).tfvars"
 ```
 
 ## Pattern 3: TF_VAR_ Environment Variables
