@@ -63,7 +63,7 @@ ospf.msg == 4
 ospf.msg == 5
 
 # Filter by Router ID
-ospf.routerid == 1.1.1.1
+ospf.srcrouter == 1.1.1.1
 ```
 
 ## Diagnosing Adjacency Formation
@@ -77,7 +77,7 @@ tshark -i eth0 -Y ospf \
   -e frame.time_relative \
   -e ip6.src \
   -e ospf.msg \
-  -e ospf.routerid
+  -e ospf.srcrouter
 
 # Output:
 # 0.000    fe80::1    1 (Hello)    1.1.1.1
@@ -94,8 +94,8 @@ tshark -i eth0 -Y ospf \
 tshark -i eth0 -Y "ospf.msg == 1" \
   -T fields \
   -e ip6.src \
-  -e ospf.hello.hellointervall \
-  -e ospf.hello.deadintervall \
+  -e ospf.hello.hello_interval \
+  -e ospf.hello.router_dead_interval \
   -e ospf.hello.designated_router
 
 # If two routers show different hello intervals:
@@ -112,7 +112,7 @@ If adjacency stalls at ExStart/Exchange, look at DBD packets for MTU mismatch:
 tshark -r /tmp/ospfv3.pcap -Y "ospf.msg == 2" \
   -T fields \
   -e ip6.src \
-  -e ospf.db_desc.interface_mtu
+  -e ospf.db.interface_mtu
 
 # Different MTU values from each side = ExStart stall
 ```
