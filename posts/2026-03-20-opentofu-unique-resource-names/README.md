@@ -18,7 +18,10 @@ Resource naming in OpenTofu must balance uniqueness requirements (globally uniqu
 variable "project"     { type = string }
 variable "environment" { type = string }
 variable "component"   { type = string }
-variable "suffix"      { type = string; default = "" }
+variable "suffix" {
+  type    = string
+  default = ""
+}
 
 locals {
   # Max safe length for most resources
@@ -55,7 +58,7 @@ locals {
   suffix = random_id.suffix.hex
 
   names = {
-    bucket          = "s3://${var.project}-${var.environment}-assets-${local.suffix}"
+    bucket          = "${var.project}-${var.environment}-assets-${local.suffix}"
     storage_account = lower("${var.project}${var.environment}${local.suffix}")
     key_vault       = "${var.project}-${var.environment}-kv-${local.suffix}"
     function_app    = "${var.project}-${var.environment}-func-${local.suffix}"
