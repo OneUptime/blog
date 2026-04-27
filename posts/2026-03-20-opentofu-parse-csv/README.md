@@ -46,7 +46,7 @@ resource "aws_iam_user" "from_csv" {
 # name,type,value,ttl
 # api,A,203.0.113.10,300
 # www,CNAME,app.example.com,3600
-# mail,MX,mail.example.com,3600
+# mail,MX,10 mail.example.com,3600
 
 locals {
   dns_records = csvdecode(file("${path.module}/data/dns-records.csv"))
