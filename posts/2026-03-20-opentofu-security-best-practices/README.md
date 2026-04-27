@@ -106,6 +106,7 @@ The IAM role used by OpenTofu in CI/CD should have only the permissions needed.
 
 ```json
 {
+  "Version": "2012-10-17",
   "Statement": [
     {
       "Effect": "Allow",
@@ -126,7 +127,6 @@ The IAM role used by OpenTofu in CI/CD should have only the permissions needed.
         "ec2:Describe*",
         "ec2:CreateVpc",
         "ec2:DeleteVpc"
-        // Only the specific actions needed
       ],
       "Resource": "*"
     }
