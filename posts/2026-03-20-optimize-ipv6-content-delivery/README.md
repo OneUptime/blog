@@ -142,9 +142,10 @@ done
 
 ```bash
 # Parse NGINX access logs to compare cache hit rates per IP version
+# $NF is the last field (upstream_cache_status) per the cdn_log format
 awk '{
     is_ipv6 = ($1 ~ /:/) ? "ipv6" : "ipv4"
-    status[$12 " " is_ipv6]++
+    status[$NF " " is_ipv6]++
     total[is_ipv6]++
 }
 END {
