@@ -21,7 +21,7 @@ Navigate to **Firewall > pfBlockerNG > General**:
 - Enable pfBlockerNG: checked
 - Keep Settings: checked
 
-Run the wizard: **Firewall > pfBlockerNG > DNSBL > Wizard**
+Run the wizard: **Firewall > pfBlockerNG > Wizard**
 
 ## Configure IPv4 GeoIP
 
@@ -43,7 +43,7 @@ Sources:
 
 ### Select Countries to Block
 
-Navigate to **Firewall > pfBlockerNG > IP > MaxMind GeoIP**:
+Navigate to **Firewall > pfBlockerNG > IP > GeoIP**:
 
 ```sql
 Country:    Select countries to block
