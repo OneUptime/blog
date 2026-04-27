@@ -8,7 +8,7 @@ Description: Learn how to use OpenTofu output values to dynamically generate Ans
 
 ## Introduction
 
-OpenTofu provisions infrastructure; Ansible configures it. Connecting the two tools requires feeding infrastructure data (IP addresses, hostnames, roles) from OpenTofu into Ansible. This guide covers generating static inventory files from outputs and using the `terraform-inventory` dynamic inventory plugin.
+OpenTofu provisions infrastructure; Ansible configures it. Connecting the two tools requires feeding infrastructure data (IP addresses, hostnames, roles) from OpenTofu into Ansible. This guide covers generating static INI and YAML inventory files from outputs and writing a Python-based dynamic inventory script.
 
 ## Defining OpenTofu Outputs for Ansible
 
@@ -65,7 +65,7 @@ OUTPUTS=$(tofu output -json)
 # Generate inventory file
 cat > inventory/hosts.ini << EOF
 [bastion]
-$(echo $OUTPUTS | jq -r '.bastion_host.value | "\(.ansible_host) ansible_user=\(.ansible_user)"')
+bastion-01 ansible_host=$(echo $OUTPUTS | jq -r '.bastion_host.value.ansible_host') ansible_user=$(echo $OUTPUTS | jq -r '.bastion_host.value.ansible_user')
 
 [web_servers]
 $(echo $OUTPUTS | jq -r '.web_servers.value | to_entries[] | "\(.key) ansible_host=\(.value.ansible_host) ansible_user=\(.value.ansible_user) private_ip=\(.value.private_ip)"')
@@ -77,7 +77,7 @@ $(echo $OUTPUTS | jq -r '.db_servers.value | to_entries[] | "\(.key) ansible_hos
 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 
 [db_servers:vars]
-ansible_ssh_common_args='-o ProxyJump=bastion'
+ansible_ssh_common_args='-o ProxyJump=ubuntu@$(echo $OUTPUTS | jq -r ".bastion_host.value.ansible_host")'
 EOF
 
 echo "Inventory generated at inventory/hosts.ini"
