@@ -22,13 +22,13 @@ module "vpc" {
 ## Using S3 with Path-Style URL
 
 ```hcl
-# Path-style URL (works in all regions)
+# Path-style URL (s3.amazonaws.com resolves to us-east-1)
 
 module "vpc" {
   source = "s3::https://s3.amazonaws.com/my-modules-bucket/modules/vpc-v2.1.0.zip"
 }
 
-# Regional endpoint
+# Regional endpoint (use this for buckets outside us-east-1)
 module "vpc" {
   source = "s3::https://s3.us-east-1.amazonaws.com/my-modules-bucket/vpc-v2.1.0.zip"
 }
@@ -84,12 +84,13 @@ MODULE_NAME="vpc"
 VERSION="v2.1.0"
 BUCKET="my-terraform-modules"
 
-# Create archive
-tar -czf "${MODULE_NAME}-${VERSION}.tar.gz" "./modules/${MODULE_NAME}/"
+# Create archive (extension must match the source URL — OpenTofu picks
+# the decompressor based on the URL extension)
+(cd "./modules/${MODULE_NAME}/" && zip -r "../../${MODULE_NAME}-${VERSION}.zip" .)
 
 # Upload to S3
-aws s3 cp "${MODULE_NAME}-${VERSION}.tar.gz" \
-  "s3://${BUCKET}/modules/${MODULE_NAME}-${VERSION}.tar.gz"
+aws s3 cp "${MODULE_NAME}-${VERSION}.zip" \
+  "s3://${BUCKET}/modules/${MODULE_NAME}-${VERSION}.zip"
 
 echo "Published ${MODULE_NAME} ${VERSION} to S3"
 ```
