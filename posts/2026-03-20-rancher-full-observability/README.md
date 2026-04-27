@@ -75,10 +75,10 @@ helm install loki grafana/loki \
   --namespace observability \
   --set loki.storage.type=s3 \
   --set loki.storage.s3.endpoint=minio.observability.svc.cluster.local:9000 \
-  --set loki.storage.s3.bucketnames=loki-chunks \
-  --set loki.storage.s3.access_key_id=admin \
-  --set loki.storage.s3.secret_access_key=SecureMinIOPass \
-  --set loki.storage.s3.s3forcepathstyle=true \
+  --set loki.storage.bucketNames.chunks=loki-chunks \
+  --set loki.storage.s3.accessKeyId=admin \
+  --set loki.storage.s3.secretAccessKey=SecureMinIOPass \
+  --set loki.storage.s3.s3ForcePathStyle=true \
   --set loki.storage.s3.insecure=true
 
 # Deploy Promtail log collector
@@ -92,15 +92,15 @@ helm install promtail grafana/promtail \
 ```bash
 helm install tempo grafana/tempo-distributed \
   --namespace observability \
-  --set tempo.storage.trace.backend=s3 \
-  --set tempo.storage.trace.s3.bucket=tempo-traces \
-  --set tempo.storage.trace.s3.endpoint=minio.observability.svc.cluster.local:9000 \
-  --set tempo.storage.trace.s3.access_key=admin \
-  --set tempo.storage.trace.s3.secret_key=SecureMinIOPass \
-  --set tempo.storage.trace.s3.insecure=true \
-  --set tempo.distributor.receivers.otlp.protocols.grpc.endpoint=0.0.0.0:4317 \
-  --set tempo.metricsGenerator.enabled=true \
-  --set tempo.metricsGenerator.storage.remote_write[0].url=http://rancher-monitoring-prometheus.cattle-monitoring-system.svc.cluster.local:9090/api/v1/write
+  --set storage.trace.backend=s3 \
+  --set storage.trace.s3.bucket=tempo-traces \
+  --set storage.trace.s3.endpoint=minio.observability.svc.cluster.local:9000 \
+  --set storage.trace.s3.access_key=admin \
+  --set storage.trace.s3.secret_key=SecureMinIOPass \
+  --set storage.trace.s3.insecure=true \
+  --set distributor.receivers.otlp.protocols.grpc.endpoint=0.0.0.0:4317 \
+  --set metricsGenerator.enabled=true \
+  --set metricsGenerator.storage.remote_write[0].url=http://rancher-monitoring-prometheus.cattle-monitoring-system.svc.cluster.local:9090/api/v1/write
 ```
 
 ## Step 4: Deploy Mimir (Long-Term Metrics)
@@ -165,8 +165,8 @@ spec:
         endpoint: tempo-distributor.observability.svc.cluster.local:4317
         tls:
           insecure: true
-      loki:
-        endpoint: http://loki.observability.svc.cluster.local:3100/loki/api/v1/push
+      otlphttp/loki:
+        endpoint: http://loki.observability.svc.cluster.local:3100/otlp
       prometheusremotewrite:
         endpoint: http://mimir-nginx.observability.svc.cluster.local/api/v1/push
         headers:
@@ -180,7 +180,7 @@ spec:
         logs:
           receivers: [otlp]
           processors: [memory_limiter, k8sattributes, batch]
-          exporters: [loki]
+          exporters: [otlphttp/loki]
         metrics:
           receivers: [otlp]
           processors: [memory_limiter, k8sattributes, batch]
@@ -224,7 +224,7 @@ data:
       - name: Tempo
         type: tempo
         uid: tempo
-        url: http://tempo-query-frontend.observability.svc.cluster.local:3100
+        url: http://tempo-query-frontend.observability.svc.cluster.local:3200
         jsonData:
           tracesToLogs:
             datasourceUid: loki
@@ -250,8 +250,8 @@ kubectl port-forward -n observability svc/loki 3100:3100 &
 curl "http://localhost:3100/loki/api/v1/query?query={namespace=\"observability\"}" | jq '.data.result | length'
 
 # Test trace flow
-kubectl port-forward -n observability svc/tempo-query-frontend 3101:3100 &
-curl http://localhost:3101/api/echo
+kubectl port-forward -n observability svc/tempo-query-frontend 3200:3200 &
+curl http://localhost:3200/api/echo
 ```
 
 ## Conclusion
