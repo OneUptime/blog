@@ -54,8 +54,6 @@ source "googlecompute" "web_server" {
     version     = replace(var.app_version, ".", "-")
     managed_by  = "packer"
   }
-
-  image_family = "web-server"
 }
 
 build {
@@ -107,7 +105,6 @@ data "google_compute_image" "web_server_v1_2" {
 resource "google_compute_instance_template" "web" {
   name_prefix  = "web-server-"
   machine_type = "n2-standard-2"
-  region       = var.region
 
   disk {
     source_image = data.google_compute_image.web_server.self_link
