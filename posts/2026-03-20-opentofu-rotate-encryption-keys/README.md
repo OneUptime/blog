@@ -21,39 +21,43 @@ The rotation process has three phases:
 ## Phase 1: Configure New Key with Fallback
 
 ```hcl
-encryption {
-  # New key provider
-  key_provider "aws_kms" "new_key" {
-    kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/new-key-abc"
-    region     = "us-east-1"
-  }
-
-  # Old key provider (kept for decryption)
-  key_provider "aws_kms" "old_key" {
-    kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/old-key-xyz"
-    region     = "us-east-1"
-  }
-
-  method "aes_gcm" "new" {
-    keys = key_provider.aws_kms.new_key
-  }
-
-  method "aes_gcm" "old" {
-    keys = key_provider.aws_kms.old_key
-  }
-
-  state {
-    method = method.aes_gcm.new    # Encrypt new writes with new key
-
-    fallback {
-      method = method.aes_gcm.old  # Decrypt existing state with old key
+terraform {
+  encryption {
+    # New key provider
+    key_provider "aws_kms" "new_key" {
+      kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/new-key-abc"
+      key_spec   = "AES_256"
+      region     = "us-east-1"
     }
-  }
 
-  plan {
-    method = method.aes_gcm.new
-    fallback {
-      method = method.aes_gcm.old
+    # Old key provider (kept for decryption)
+    key_provider "aws_kms" "old_key" {
+      kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/old-key-xyz"
+      key_spec   = "AES_256"
+      region     = "us-east-1"
+    }
+
+    method "aes_gcm" "new" {
+      keys = key_provider.aws_kms.new_key
+    }
+
+    method "aes_gcm" "old" {
+      keys = key_provider.aws_kms.old_key
+    }
+
+    state {
+      method = method.aes_gcm.new    # Encrypt new writes with new key
+
+      fallback {
+        method = method.aes_gcm.old  # Decrypt existing state with old key
+      }
+    }
+
+    plan {
+      method = method.aes_gcm.new
+      fallback {
+        method = method.aes_gcm.old
+      }
     }
   }
 }
@@ -75,19 +79,22 @@ tofu apply -refresh-only
 After verifying state was re-encrypted, remove the fallback:
 
 ```hcl
-encryption {
-  key_provider "aws_kms" "new_key" {
-    kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/new-key-abc"
-    region     = "us-east-1"
-  }
+terraform {
+  encryption {
+    key_provider "aws_kms" "new_key" {
+      kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/new-key-abc"
+      key_spec   = "AES_256"
+      region     = "us-east-1"
+    }
 
-  method "aes_gcm" "new" {
-    keys = key_provider.aws_kms.new_key
-  }
+    method "aes_gcm" "new" {
+      keys = key_provider.aws_kms.new_key
+    }
 
-  state {
-    method = method.aes_gcm.new   # Only new key now
-    # fallback block removed
+    state {
+      method = method.aes_gcm.new   # Only new key now
+      # fallback block removed
+    }
   }
 }
 ```
@@ -97,26 +104,30 @@ encryption {
 The same pattern works for passphrase-based keys:
 
 ```hcl
-key_provider "pbkdf2" "new_passphrase" {
-  passphrase = var.new_passphrase
-}
+terraform {
+  encryption {
+    key_provider "pbkdf2" "new_passphrase" {
+      passphrase = var.new_passphrase
+    }
 
-key_provider "pbkdf2" "old_passphrase" {
-  passphrase = var.old_passphrase
-}
+    key_provider "pbkdf2" "old_passphrase" {
+      passphrase = var.old_passphrase
+    }
 
-method "aes_gcm" "new" {
-  keys = key_provider.pbkdf2.new_passphrase
-}
+    method "aes_gcm" "new" {
+      keys = key_provider.pbkdf2.new_passphrase
+    }
 
-method "aes_gcm" "old" {
-  keys = key_provider.pbkdf2.old_passphrase
-}
+    method "aes_gcm" "old" {
+      keys = key_provider.pbkdf2.old_passphrase
+    }
 
-state {
-  method = method.aes_gcm.new
-  fallback {
-    method = method.aes_gcm.old
+    state {
+      method = method.aes_gcm.new
+      fallback {
+        method = method.aes_gcm.old
+      }
+    }
   }
 }
 ```
