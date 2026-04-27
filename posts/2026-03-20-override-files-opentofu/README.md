@@ -15,10 +15,10 @@ Override files in OpenTofu allow you to override specific resource attributes, v
 OpenTofu automatically loads files named with `_override.tf` or `override.tf` suffix. These files are processed after all regular `.tf` files, and their contents override the values in the original files.
 
 Override files that OpenTofu looks for:
-- `override.tf`
-- `override.tf.json`
-- `*_override.tf` (e.g., `dev_override.tf`)
-- `*_override.tf.json`
+- `override.tf` / `override.tofu`
+- `override.tf.json` / `override.tofu.json`
+- `*_override.tf` / `*_override.tofu` (e.g., `dev_override.tf`)
+- `*_override.tf.json` / `*_override.tofu.json`
 
 ## Basic Override Example
 
@@ -54,11 +54,12 @@ resource "aws_instance" "web" {
   ami           = "ami-0c55b159cbfafe1f0"  # From main.tf
   instance_type = "t3.micro"               # Overridden by dev_override.tf
   tags = {
-    Name        = "web-server"             # From main.tf
-    Environment = "development"            # Overridden by dev_override.tf
+    Environment = "development"            # tags is an attribute, so the whole map is replaced
   }
 }
 ```
+
+Note that `tags` is an attribute argument (assigned with `=`), so the override replaces the entire map rather than merging it key-by-key. The `Name` tag from `main.tf` is gone in the merged result. The same rule applies to all attribute arguments: an override replaces the original argument outright. Nested blocks (introduced without `=`) are also replaced as a whole, with a few documented exceptions such as `lifecycle` and `required_providers`.
 
 ## Common Use Cases
 
@@ -121,17 +122,9 @@ override.tf.json
 !example_override.tf
 ```
 
-## Override File Warnings
+## A Note on Visibility
 
-```bash
-# OpenTofu warns you about loaded override files
-tofu plan
-
-# Output:
-# The following override files are being used:
-#   - dev_override.tf
-# Please be aware that override files are not standard configuration files.
-```
+OpenTofu does not print a special warning when override files are applied — they are loaded silently as part of the normal configuration. The official documentation cautions that over-use of override files hurts readability, since a reader looking only at the original files cannot easily see that some portions have been overridden. Inspect the merged result with `tofu plan` (and check which `*_override.tf` / `override.tf` files exist in the working directory) before applying changes.
 
 ## Override Variables
 
