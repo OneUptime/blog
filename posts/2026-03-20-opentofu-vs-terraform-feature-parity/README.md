@@ -81,7 +81,7 @@ terraform {
 
 State and plan files are encrypted before being stored, protecting sensitive values in state backends.
 
-### 2. Provider-Defined Functions (OpenTofu 1.8+)
+### 2. Provider-Defined Functions (OpenTofu 1.7+)
 
 Providers can expose custom functions callable in HCL:
 
@@ -130,9 +130,9 @@ terraform {
 
 OpenTofu can connect to HCP Terraform via the `remote` backend, but without all native features.
 
-### Stacks (Terraform 1.9+)
+### Stacks
 
-HashiCorp introduced "Stacks" - a new deployment model for Terraform - as a HCP Terraform feature. This is not in OpenTofu.
+HashiCorp introduced "Stacks" - a new deployment model for Terraform - as an HCP Terraform feature. This is not in OpenTofu.
 
 ## Migration from Terraform to OpenTofu
 
@@ -184,8 +184,8 @@ terraform {
 | OpenTofu Version | Terraform Parity Baseline |
 |---|---|
 | 1.6.x | Terraform 1.6.x |
-| 1.7.x | Terraform 1.7.x + state encryption |
-| 1.8.x | Terraform 1.8.x + provider functions |
+| 1.7.x | Terraform 1.7.x + state encryption + provider-defined functions |
+| 1.8.x | Terraform 1.8.x + early variable evaluation + `.tofu` files |
 
 ## Compatibility Testing
 
