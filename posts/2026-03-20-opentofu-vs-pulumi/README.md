@@ -8,7 +8,7 @@ Description: Compare OpenTofu and Pulumi - their language models, state manageme
 
 ## Introduction
 
-OpenTofu and Pulumi are both popular infrastructure as code tools, but they take fundamentally different approaches. OpenTofu uses HCL (a declarative domain-specific language), while Pulumi uses general-purpose programming languages like TypeScript, Python, Go, and C#.
+OpenTofu and Pulumi are both popular infrastructure as code tools, but they take fundamentally different approaches. OpenTofu uses HCL (a declarative domain-specific language), while Pulumi uses general-purpose programming languages like TypeScript, Python, Go, C#, and Java.
 
 ## Language and Syntax
 
@@ -50,14 +50,14 @@ export const instanceId = webServer.id;
 
 | Feature | OpenTofu | Pulumi |
 |---------|----------|--------|
-| Language | HCL (declarative DSL) | TypeScript, Python, Go, C#, YAML |
+| Language | HCL (declarative DSL) | TypeScript, JavaScript, Python, Go, C#, Java, YAML |
 | Learning curve | Low for ops teams | Low for dev teams |
 | State management | Local files or remote backends | Pulumi Cloud or self-managed |
 | Provider ecosystem | 3,000+ via registry | Same providers via bridged layer |
 | Testing | Terratest, tofu validate | Unit tests in native language |
-| Policy as code | OPA/Rego, Checkov | CrossGuard (policy in TypeScript) |
+| Policy as code | OPA/Rego, Checkov | CrossGuard (TypeScript, Python, or OPA) |
 | License | MPL 2.0 (open source) | Apache 2.0 (open source) |
-| Managed service | OpenTofu Cloud | Pulumi Cloud |
+| Managed service | Third-party (Spacelift, env0, Scalr) | Pulumi Cloud |
 | Loops/conditionals | Limited (count, for_each) | Full language constructs |
 | IDE support | HCL plugins | Native language IDE support |
 
@@ -91,11 +91,9 @@ import * as terraform from "@pulumi/terraform";
 
 const tfState = new terraform.state.RemoteStateReference("vpc", {
     backendType: "s3",
-    config: {
-        bucket: "my-company-tofu-state",
-        key: "production/networking/terraform.tfstate",
-        region: "us-east-1",
-    },
+    bucket: "my-company-tofu-state",
+    key: "production/networking/terraform.tfstate",
+    region: "us-east-1",
 });
 
 const vpcId = tfState.getOutput("vpc_id");
