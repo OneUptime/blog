@@ -15,14 +15,15 @@ Running your own dedicated game server gives you full control over game settings
 - Portainer installed with Docker
 - At least 4-8 GB RAM (varies by game and player count)
 - Adequate disk space (10-50 GB)
-- Required ports open in firewall: 8211:8211/udp 27015:27015/udp
+- Required ports open in firewall: 8211/udp, 27015/udp
 
 ## Step 1: Open Required Firewall Ports
 
 ```bash
 # Open game server ports
 
-ufw allow 8211:8211/udp 27015:27015/udp
+ufw allow 8211/udp
+ufw allow 27015/udp
 ufw reload
 ```
 
@@ -40,12 +41,16 @@ services:
     container_name: game-server
     restart: unless-stopped
     ports:
-      - "8211:8211/udp 27015:27015/udp"
+      - "8211:8211/udp"
+      - "27015:27015/udp"
     volumes:
       # Persist game world and configuration data
-      - palworld-data:/game-data
+      - palworld-data:/palworld
     environment:
-      PLAYERS=16 SERVER_PASSWORD=secret MULTITHREADING=true COMMUNITY=false
+      PLAYERS: 16
+      SERVER_PASSWORD: "secret"
+      MULTITHREADING: true
+      COMMUNITY: false
     healthcheck:
       test: ["CMD", "true"]
       interval: 60s
@@ -57,6 +62,8 @@ services:
       options:
         max-size: "100m"
         max-file: "5"
+    networks:
+      - game-net
 
   # Automated backup service
   game-backup:
@@ -69,9 +76,9 @@ services:
     command: >
       sh -c "
         while true; do
-          DATE=\$(date +%Y%m%d_%H%M%S);
-          tar czf /backups/world-\$DATE.tar.gz -C /game-data .;
-          echo 'Backup created: world-'\$DATE'.tar.gz';
+          DATE=$$(date +%Y%m%d_%H%M%S);
+          tar czf /backups/world-$$DATE.tar.gz -C /game-data .;
+          echo 'Backup created: world-'$$DATE'.tar.gz';
           ls -t /backups/*.tar.gz | tail -n +8 | xargs rm -f;
           sleep 21600;
         done
@@ -123,9 +130,9 @@ Many game server images support automatic updates:
 ```yaml
 # Add to environment variables
 environment:
-  - AUTO_UPDATE=true
-  - AUTO_REBOOT=true
-  - CRON_AUTO_UPDATE="0 4 * * *"  # Update daily at 4 AM
+  - AUTO_UPDATE_ENABLED=true
+  - AUTO_REBOOT_ENABLED=true
+  - AUTO_UPDATE_CRON_EXPRESSION="0 4 * * *"  # Update daily at 4 AM
 ```
 
 Configure restart policy in Portainer:
@@ -159,8 +166,8 @@ Admin commands and management:
 # Connect to server console (if supported)
 docker attach game-server
 
-# Restart server without full container restart
-docker exec game-server /restart-server.sh
+# Restart the server container
+docker restart game-server
 
 # Check connected players (if applicable)
 docker logs game-server | grep "connected" | tail -20
