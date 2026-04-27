@@ -28,7 +28,7 @@ resource "aws_s3_bucket" "app" {
 # Base64 URL-safe encoding (shorter)
 resource "aws_s3_bucket" "assets" {
   bucket = "app-assets-${random_id.bucket_suffix.b64_url}"
-  # Result: app-assets-PyrJw02K (shorter than hex)
+  # Result: app-assets-PyrJw02K3eY (shorter than hex)
 }
 ```
 
