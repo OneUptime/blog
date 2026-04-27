@@ -26,7 +26,7 @@ resource "aws_instance" "web" {
 
 ## Naming Conventions
 
-Resource Names
+### Resource Names
 
 ```hcl
 # Use snake_case (underscores)
