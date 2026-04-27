@@ -117,8 +117,8 @@ Router# show ip route 172.16.0.0
 ! Trigger SPF recalculation after cost change
 ! OSPF automatically detects interface cost changes and runs SPF
 
-! Verify new best path
-Router# show ip ospf topology detail | include cost
+! Verify new best path and total OSPF cost
+Router# show ip route ospf
 ```
 
 ## Conclusion
