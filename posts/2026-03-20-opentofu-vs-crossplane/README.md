@@ -97,8 +97,11 @@ spec:
   group: platform.example.com
   names:
     kind: XPostgreSQLInstance
+    plural: xpostgresqlinstances
   versions:
     - name: v1alpha1
+      served: true
+      referenceable: true
       schema:
         openAPIV3Schema:
           properties:
@@ -115,7 +118,7 @@ spec:
 
 Some organizations use OpenTofu for foundational infrastructure and Crossplane for developer self-service:
 
-```hcl
+```text
 Platform team: OpenTofu manages
   - VPCs, subnets, route tables
   - EKS clusters
