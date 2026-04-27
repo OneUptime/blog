@@ -35,7 +35,7 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-data "aws_vpc" "selected" {
+data "aws_subnet" "selected" {
   tags = {
     Environment = var.environment
   }
@@ -44,7 +44,7 @@ data "aws_vpc" "selected" {
 resource "aws_instance" "app" {
   ami           = data.aws_ami.ubuntu.id
   instance_type = var.instance_type
-  subnet_id     = data.aws_vpc.selected.id
+  subnet_id     = data.aws_subnet.selected.id
 }
 ```
 
@@ -67,10 +67,10 @@ run "override_ami_and_vpc" {
   }
 
   override_data {
-    target = data.aws_vpc.selected
+    target = data.aws_subnet.selected
     values = {
-      id         = "vpc-mock12345"
-      cidr_block = "10.0.0.0/16"
+      id         = "subnet-mock12345"
+      cidr_block = "10.0.1.0/24"
     }
   }
 
@@ -151,8 +151,8 @@ run "subnets_use_three_azs" {
   override_data {
     target = data.aws_availability_zones.available
     values = {
-      names = ["us-east-1a", "us-east-1b", "us-east-1c"]
-      ids   = ["use1-az1", "use1-az2", "use1-az3"]
+      names    = ["us-east-1a", "us-east-1b", "us-east-1c"]
+      zone_ids = ["use1-az1", "use1-az2", "use1-az3"]
     }
   }
 
@@ -193,9 +193,9 @@ run "full_offline_test" {
   }
 
   override_data {
-    target = data.aws_vpc.selected
+    target = data.aws_subnet.selected
     values = {
-      id = "vpc-mock"
+      id = "subnet-mock"
     }
   }
 
