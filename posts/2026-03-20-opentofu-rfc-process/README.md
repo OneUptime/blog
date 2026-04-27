@@ -23,69 +23,73 @@ Small bug fixes, documentation improvements, and minor enhancements do not need 
 
 ## RFC Repository Structure
 
+RFCs live in the `rfc/` directory of the main OpenTofu repository and are named using the pattern `${isodate}-${rfc-title}.md`:
+
 ```text
 opentofu/opentofu/
 └── rfc/
-    ├── README.md          – RFC process documentation
-    ├── TEMPLATE.md        – Template for new RFCs
-    ├── 0001-example.md    – Accepted RFC example
-    └── 0042-my-feature.md – Your RFC
+    ├── README.md                       – RFC process documentation
+    ├── yyyymmdd-template.md            – Template for new RFCs
+    ├── 20231213-provider-iteration.md  – Accepted RFC example
+    └── 20260320-my-feature.md          – Your RFC
 ```
 
 ## Writing an RFC
 
+The OpenTofu template asks you to describe the change so that both technical and non-technical readers can follow the discussion:
+
 ```markdown
-# RFC-XXXX: Feature Name
+# RFC Title
 
-| Field       | Value                  |
-|-------------|------------------------|
-| Status      | Proposed               |
-| Author      | Your Name              |
-| Date        | 2026-03-20             |
-| Discussion  | Link to GitHub issue   |
+Issue: https://github.com/opentofu/opentofu/issues/XXXX
 
-## Summary
-One paragraph describing the proposed change.
-
-## Motivation
-Why is this change needed? What problem does it solve?
+## Introduction
+Briefly describe the problem in language accessible to non-technical
+readers.
 
 Include concrete examples of the pain point:
-```hcl
-# Current: requires repetitive code
 
-provider "aws" { alias = "us_east_1" region = "us-east-1" }
-provider "aws" { alias = "eu_west_1" region = "eu-west-1" }
-provider "aws" { alias = "ap_south" region = "ap-southeast-1" }
-# Problem: 20 accounts = 20 provider blocks
-```
+    # Current: requires repetitive code
+    provider "aws" { alias = "us_east_1" region = "us-east-1" }
+    provider "aws" { alias = "eu_west_1" region = "eu-west-1" }
+    provider "aws" { alias = "ap_south" region = "ap-southeast-1" }
+    # Problem: 20 accounts = 20 provider blocks
 
-## Guide-Level Explanation
+## Background
+Context, prior art, and references to related issues or RFCs.
+
+## Proposed Solution
+
+### Overview
+A short summary of the proposal.
+
+### User Documentation
 Explain the feature as if writing documentation. Show examples of the
-new behavior with `before` and `after` code blocks.
+new behavior with before/after code blocks.
 
-## Reference-Level Explanation
-Technical specification:
-- Exact syntax changes to the HCL grammar
+### Technical Approach
+Implementation details from a code perspective:
+- Syntax changes to the HCL grammar
 - Semantic behavior including edge cases
 - Impact on the plan/apply graph
 - Error messages for invalid configurations
 
-## Drawbacks
-- Implementation complexity
-- Potential confusion for users
-- Performance implications
-
-## Rationale and Alternatives
-Why is this design the best approach? What alternatives were considered?
-
-## Unresolved Questions
+### Open Questions
 - Edge case A: how should X behave?
 - Edge case B: should Y be allowed?
 - Implementation question: which internal package should own this?
-```hcl
+
+### Future Considerations
+Potential extensions that are out of scope for this RFC but worth
+noting.
+
+## Potential Alternatives
+Other designs that were considered and why they were not chosen.
+```
 
 ## Submitting an RFC
+
+RFCs are typically created in response to a GitHub issue that has been labeled `needs-rfc`. Find or open such an issue first, then:
 
 ```bash
 # 1. Fork the OpenTofu repository
@@ -96,17 +100,17 @@ cd opentofu
 git checkout -b rfc/my-feature-name
 
 # 3. Copy the template and fill it in
-cp rfc/TEMPLATE.md rfc/0000-my-feature.md
+cp rfc/yyyymmdd-template.md rfc/20260320-my-feature.md
 # Edit the file
 
 # 4. Commit and push
-git add rfc/0000-my-feature.md
+git add rfc/20260320-my-feature.md
 git commit -m "rfc: add proposal for my feature"
 git push origin rfc/my-feature-name
 
-# 5. Open a pull request
-# Title: RFC: My Feature Name
-# Request review from core maintainers
+# 5. Open a pull request linked to the originating issue.
+#    It's fine to open a draft PR for early feedback on
+#    an incomplete RFC.
 ```
 
 ## RFC Lifecycle
@@ -117,8 +121,10 @@ flowchart LR
     Discussion --> Accepted
     Discussion --> Rejected
     Accepted --> Implementation
-    Implementation --> Merged
+    Implementation --> Closed
 ```
+
+Acceptance requires majority approval from the OpenTofu Core Team. Once accepted, a tracking issue is created to coordinate implementation work, and approved RFCs may still be amended during implementation if new information emerges.
 
 ## Participating in Existing RFCs
 
