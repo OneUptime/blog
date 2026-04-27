@@ -8,7 +8,7 @@ Description: Configure IPv6 support in Palo Alto Prisma SD-WAN (formerly CloudGe
 
 ---
 
-Palo Alto Networks Prisma SD-WAN uses ION (Intelligent Orchestrated Network) devices managed through the Prisma SD-WAN portal. IPv6 is supported on LAN interfaces for client connectivity and WAN interfaces for ISP transport.
+Palo Alto Networks Prisma SD-WAN uses ION (Instant-On Network) devices managed through the Prisma SD-WAN portal. IPv6 is supported on LAN interfaces for client connectivity and WAN interfaces for ISP transport.
 
 ## Prisma SD-WAN ION Device IPv6
 
@@ -43,18 +43,21 @@ import requests
 import json
 
 BASE_URL = "https://api.sase.paloaltonetworks.com"
+AUTH_URL = "https://auth.apps.paloaltonetworks.com/am/oauth2/access_token"
 CLIENT_ID = "your-client-id"
 CLIENT_SECRET = "your-client-secret"
+TSG_ID = "your-tenant-service-group-id"
 
 def get_token():
-    """Get authentication token."""
+    """Get OAuth2 access token via client_credentials grant."""
     resp = requests.post(
-        f"{BASE_URL}/auth/v1/generate_token",
-        json={"client_id": CLIENT_ID, "client_secret": CLIENT_SECRET}
+        AUTH_URL,
+        auth=(CLIENT_ID, CLIENT_SECRET),
+        data={"grant_type": "client_credentials", "scope": f"tsg_id:{TSG_ID}"}
     )
-    return resp.json()["token"]
+    return resp.json()["access_token"]
 
-def configure_interface_ipv6(element_id, interface_id, ipv6_prefix, token):
+def configure_interface_ipv6(site_id, element_id, interface_id, ipv6_prefix, token):
     """Configure IPv6 on ION interface."""
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
@@ -86,7 +89,7 @@ def configure_interface_ipv6(element_id, interface_id, ipv6_prefix, token):
     }
 
     resp = requests.put(
-        f"{BASE_URL}/sdwan/v2.1/api/elements/{element_id}/interfaces/{interface_id}",
+        f"{BASE_URL}/sdwan/v2.1/api/sites/{site_id}/elements/{element_id}/interfaces/{interface_id}",
         headers=headers,
         json=payload
     )
@@ -120,9 +123,10 @@ def create_ipv6_policy_rule(site_id, token):
 if __name__ == '__main__':
     token = get_token()
     result = configure_interface_ipv6(
+        site_id="site-id",
         element_id="element-id",
         interface_id="interface-4-id",
-        ipv6_prefix="2001:db8:site-a::1/64",
+        ipv6_prefix="2001:db8:a::1/64",
         token=token
     )
     print(json.dumps(result, indent=2))
