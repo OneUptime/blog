@@ -16,8 +16,8 @@ OSPFv3 convergence time is the duration from a topology change to when all route
 |-------|---------|--------|
 | Hello Interval | 10s (broadcast), 30s (NBMA) | Frequency of Hello packets |
 | Dead Interval | 4 × Hello | Time before neighbor declared dead |
-| SPF Delay | 200ms | Wait after topology change before running SPF |
-| SPF Hold | 1000ms | Minimum time between SPF runs |
+| SPF Delay | 0ms (FRR), 5000ms (Cisco) | Wait after topology change before running SPF |
+| SPF Initial Hold | 50ms (FRR), 10000ms (Cisco) | Initial hold time between SPF runs |
 | LSA Arrival Rate | 1000ms | Minimum time between same LSA retransmissions |
 
 ## Monitoring Convergence on FRRouting
@@ -25,7 +25,7 @@ OSPFv3 convergence time is the duration from a topology change to when all route
 ```bash
 # Show OSPFv3 SPF calculation statistics
 
-vtysh -c "show ipv6 ospf"
+vtysh -c "show ipv6 ospf6"
 
 # Output includes SPF timing:
 # SPF algorithm last ran: 00:00:05.234 ago
@@ -41,7 +41,7 @@ vtysh
 configure terminal
 
 router ospf6
- ! timerspf delay initial-hold max-hold (all in milliseconds)
+ ! timers throttle spf delay initial-hold max-hold (all in milliseconds)
  timers throttle spf 50 200 5000
  ! 50ms delay, 200ms initial hold, 5000ms max hold
 
@@ -69,15 +69,13 @@ interface GigabitEthernet0/0
 ## Monitoring LSA Flooding
 
 ```bash
-# FRRouting - check LSA statistics
-vtysh -c "show ipv6 ospf database count"
+# FRRouting - inspect the OSPFv3 LSA database
+vtysh -c "show ipv6 ospf6 database"
 
-# Count of each LSA type:
-# Router LSA:          5
-# Network LSA:         2
-# Inter-Area Prefix:   8
-# AS External:         12
-# Intra-Area Prefix:   5
+# Output lists each LSA by type (Router, Network, Inter-Area Prefix,
+# AS External, Intra-Area Prefix). Pipe to wc -l or awk to count
+# entries by LSA type, e.g.:
+vtysh -c "show ipv6 ospf6 database" | awk '/Router/ {n++} END {print n}'
 ```
 
 ## Watching Neighbor State Changes
@@ -97,19 +95,21 @@ journalctl -u frr -f | grep "ospf6\|FULL\|DOWN\|2WAY"
 
 ```bash
 # OSPFv3 SNMP OIDs for monitoring (via net-snmp or Prometheus SNMP exporter)
-# ospfv3SpfRuns: Total SPF calculations
-# ospfv3IfStateChangeCount: Interface state changes
-# ospfv3NbrStateChangeCount: Neighbor state changes
+# Per RFC 5643 (OSPFV3-MIB):
+# ospfv3AreaSpfRuns:   Per-area SPF calculations (in ospfv3AreaTable)
+# ospfv3IfEvents:      Per-interface state changes/errors (in ospfv3IfTable)
+# ospfv3NbrEvents:     Per-neighbor state changes (in ospfv3NbrTable)
 
-# Query with snmpget (MIB: OSPFV3-MIB)
-snmpget -v2c -c public router-ip OSPFV3-MIB::ospfv3SpfRuns.0
+# These are columnar (table) objects, so walk rather than get:
+snmpwalk -v2c -c public router-ip OSPFV3-MIB::ospfv3AreaSpfRuns
 ```
 
 ## Using Prometheus and FRR Exporter
 
 ```bash
-# Install frr-exporter for Prometheus metrics
-# (FRR exposes statistics via its gRPC telemetry API)
+# Install frr_exporter for Prometheus metrics
+# (frr_exporter connects to FRR daemon Unix sockets in /var/run/frr,
+#  or optionally via vtysh, to scrape JSON output)
 curl -s http://localhost:9342/metrics | grep ospf6
 
 # Key metrics:
@@ -132,4 +132,4 @@ Router# show ospfv3 statistics
 
 ## Summary
 
-OSPFv3 convergence is optimized by tuning SPF throttle timers and reducing Hello/Dead intervals on critical links. Monitor convergence using `show ipv6 ospf` on FRRouting, `show ospfv3 statistics` on Cisco, and Prometheus with the FRR exporter for continuous observability. Log adjacency changes to catch flapping neighbors early.
+OSPFv3 convergence is optimized by tuning SPF throttle timers and reducing Hello/Dead intervals on critical links. Monitor convergence using `show ipv6 ospf6` on FRRouting, `show ospfv3 statistics` on Cisco, and Prometheus with the FRR exporter for continuous observability. Log adjacency changes to catch flapping neighbors early.
