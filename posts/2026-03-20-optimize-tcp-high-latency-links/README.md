@@ -68,7 +68,7 @@ sysctl -w net.ipv4.tcp_slow_start_after_idle=0
 # 7. Enable ECN for congestion signaling
 sysctl -w net.ipv4.tcp_ecn=1
 
-# 8. Increase initial congestion window for known low-latency paths
+# 8. Increase initial congestion window to skip slow-start on high-RTT paths
 ip route change default via $(ip route | awk '/default/{print $3}') initcwnd 20
 
 echo "All optimizations applied"
@@ -105,7 +105,7 @@ iperf3 -c remote-host -t 30
 tcpdump -i eth0 -n -v 'tcp[tcpflags] & tcp-syn != 0' -c 3 2>/dev/null | grep wscale
 
 # Verify BBR is active on connections
-ss -tin state established | grep cc:bbr | wc -l
+ss -tin state established | grep -w bbr | wc -l
 ```
 
 ## Conclusion
