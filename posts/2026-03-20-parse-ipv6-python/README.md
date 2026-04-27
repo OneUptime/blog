@@ -52,12 +52,17 @@ def classify_ipv6(addr_str):
     if addr.version != 6:
         return "ipv4"
 
-    if addr.is_loopback:       return "loopback (::1)"
-    if addr.is_link_local:     return "link-local (fe80::/10)"
-    if addr.is_private:        return "ULA (fc00::/7)"
-    if addr.is_multicast:      return "multicast (ff00::/8)"
+    # Note: is_private for IPv6 covers more than just ULA (it includes the
+    # documentation range, unspecified, and IPv4-mapped when the embedded
+    # IPv4 is private), so check the more specific cases first and use an
+    # explicit fc00::/7 membership test for ULA.
     if addr.is_unspecified:    return "unspecified (::)"
+    if addr.is_loopback:       return "loopback (::1)"
     if addr.ipv4_mapped:       return f"IPv4-mapped (::ffff:{addr.ipv4_mapped})"
+    if addr.is_link_local:     return "link-local (fe80::/10)"
+    if addr.is_multicast:      return "multicast (ff00::/8)"
+    if addr in ipaddress.ip_network("fc00::/7"):
+        return "ULA (fc00::/7)"
     if addr.is_global:         return "global unicast"
     return "other"
 
@@ -94,7 +99,7 @@ def get_subscriber_prefix(base_net, subscriber_id, prefix_len=56):
     subnets = list(base_net.subnets(new_prefix=prefix_len))
     return subnets[subscriber_id % len(subnets)]
 
-base = ipaddress.ip_network("2001:db8:home::/40")
+base = ipaddress.ip_network("2001:db8::/40")
 for sid in [0, 1, 100, 255]:
     print(f"Subscriber {sid}: {get_subscriber_prefix(base, sid)}")
 ```
@@ -107,16 +112,21 @@ Extract and normalize IPv6 addresses from log lines.
 import re
 import ipaddress
 
-# IPv6 regex (handles full and compressed forms)
+# IPv6 regex (handles full and compressed forms).
+# Order matters: try the most specific alternatives first so the engine
+# does not commit to a shorter match (e.g. "2001:db8::" before "2001:db8::1").
+# \b can't be used as a boundary because it does not match between two
+# non-word chars (e.g. between a space and a leading "::"), so we use
+# explicit lookarounds that exclude word chars, ":", and ".".
 IPV6_PATTERN = re.compile(
-    r'\b(?:'
-    r'(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|'          # full
-    r'(?:[0-9a-fA-F]{1,4}:){1,7}:|'                          # ::
-    r':(?::[0-9a-fA-F]{1,4}){1,7}|'                          # ::x
-    r'(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|'        # x::x
+    r'(?<![\w:.])(?:'
     r'::(?:[fF]{4}(?::0{1,4})?:)?(?:25[0-5]|(?:2[0-4]|1?\d)?\d)'
-    r'(?:\.(?:25[0-5]|(?:2[0-4]|1?\d)?\d)){3}'              # IPv4-mapped
-    r')\b'
+    r'(?:\.(?:25[0-5]|(?:2[0-4]|1?\d)?\d)){3}|'              # IPv4-mapped
+    r'(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|'             # full
+    r'(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|'          # x::x
+    r'(?:[0-9a-fA-F]{1,4}:){1,7}:|'                          # x::
+    r':(?::[0-9a-fA-F]{1,4}){1,7}'                           # ::x
+    r')(?![\w:.])'
 )
 
 log_lines = [
