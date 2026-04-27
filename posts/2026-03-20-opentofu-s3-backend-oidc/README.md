@@ -143,7 +143,7 @@ jobs:
 ```yaml
 # .gitlab-ci.yml
 deploy:
-  image: hashicorp/terraform:latest
+  image: ghcr.io/opentofu/opentofu:latest
   id_tokens:
     GITLAB_OIDC_TOKEN:
       aud: https://gitlab.com
