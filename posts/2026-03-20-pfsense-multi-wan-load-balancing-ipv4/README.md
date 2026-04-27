@@ -72,8 +72,8 @@ Gateway:         LOAD_BALANCE   ← Change from default to gateway group
 
 Navigate to **System > Advanced > Miscellaneous**:
 ```text
-Sticky Connections:   checked
-Source tracking timeout: 0 (use state timeout)
+Sticky Connections:      checked
+Source tracking timeout: blank (default - expires with states)
 ```
 
 This ensures a user's session stays on the same WAN during an active connection.
