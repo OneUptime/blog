@@ -45,12 +45,27 @@ for e in envs:
     print(f'  ID: {e[\"Id\"]}, Name: {e[\"Name\"]}, Type: {e.get(\"Type\",\"?\")}')
 "
 
-# Assign ops-team (team ID 4) as Operator (role ID 2) on environment 2
+# Look up the Operator role ID. Operator is a Portainer Business Edition role,
+# and role IDs differ between installations - always resolve by name via /api/roles.
+OPERATOR_ROLE_ID=$(curl -s https://localhost:9443/api/roles \
+  -H "Authorization: Bearer $TOKEN" --insecure | python3 -c "
+import sys, json
+roles = json.load(sys.stdin)
+for r in roles:
+    if r['Name'] == 'Operator':
+        print(r['Id'])
+        break
+")
+echo "Operator role ID: $OPERATOR_ROLE_ID"
+
+# Assign ops-team (team ID 4) as Operator on environment 2.
+# Environment access policies are updated via PUT /api/endpoints/{id} with
+# TeamAccessPolicies in the body. The role identifier JSON key is "RoleId".
 curl -X PUT \
-  https://localhost:9443/api/endpoints/2/teamaccesspolicies \
+  https://localhost:9443/api/endpoints/2 \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"4": {"RoleID": 2}}' \
+  -d "{\"TeamAccessPolicies\": {\"4\": {\"RoleId\": $OPERATOR_ROLE_ID}}}" \
   --insecure
 
 echo "Operator role assigned to ops-team on Kubernetes environment"
