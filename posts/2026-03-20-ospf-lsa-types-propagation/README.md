@@ -61,7 +61,7 @@ Router# show ip ospf database summary
 ! Each entry shows:
 ! Link State ID: 172.16.0.0 (prefix being summarized)
 ! Advertising Router: 10.0.0.2 (the ABR)
-! Network Mask: /24
+! Network Mask: 255.255.255.0
 ```
 
 If a route from another area is missing, check whether the ABR is generating Type-3 LSAs for it.
@@ -96,8 +96,8 @@ Router# show ip ospf database summary | include 172.16.5.0
 ABR# show ip route 172.16.5.0
 ABR# show ip ospf database router | include 172.16.5
 
-! If found but no route - check for filtering
-Router# show ip ospf 1 database filter-list
+! If found but no route - check for filtering (filter-lists per area)
+Router# show ip ospf 1 | include Filter
 ```
 
 ## Step 6: Verify LSA Age (MaxAge Flushing)
@@ -130,7 +130,7 @@ Router# show ip ospf database external
 |---|---|---|
 | Missing inter-area route | ABR not generating Type-3 | `show ip ospf database summary` on ABR |
 | Missing external route | ASBR redistribution issue | `show ip ospf database external` on ASBR |
-| Route not installed despite LSA present | Route filtering | `show ip ospf database filter-list` |
+| Route not installed despite LSA present | Route filtering | `show ip ospf \| include Filter` |
 | Type-5 in stub area | Incomplete stub config | Verify all routers have `area X stub` |
 
 ## Conclusion
