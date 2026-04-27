@@ -44,10 +44,10 @@ tofu graph -type=plan
 tofu graph -type=apply
 
 # Destroy graph
-tofu graph -type=destroy-plan
+tofu graph -type=plan-destroy
 
 # Refresh graph
-tofu graph -type=refresh-only-plan
+tofu graph -type=plan-refresh-only
 ```
 
 ## Visualizing with Graphviz
@@ -148,10 +148,13 @@ resource "aws_instance" "app" {
 
 ### Module Dependencies
 
+The `tofu graph` output includes module internals by default. Modules appear as DOT subgraphs in the output, so you can grep for a module path or render the full graph to inspect cross-module edges:
+
 ```bash
-# Graph that includes module internals
-tofu graph -module-depth=2
+tofu graph | dot -Tsvg > graph.svg
 ```
+
+Note: the `-module-depth` flag is deprecated and no longer affects output.
 
 ## Practical Example: VPC Graph
 
