@@ -33,8 +33,8 @@ The `data "http" "health_check"` is only available inside this `check` block - i
 ```hcl
 check "app_endpoint_accessible" {
   data "http" "app" {
-    url             = "https://app.acme-corp.com"
-    request_timeout = 10000  # 10 seconds
+    url                = "https://app.acme-corp.com"
+    request_timeout_ms = 10000  # 10 seconds
   }
 
   assert {
@@ -93,14 +93,14 @@ check "deployment_verification" {
 ## Querying Cloud Resources for Validation
 
 ```hcl
-check "rds_instance_available" {
-  data "aws_db_instance" "main" {
-    db_instance_identifier = aws_db_instance.main.identifier
+check "ec2_instance_running" {
+  data "aws_instance" "main" {
+    instance_id = aws_instance.main.id
   }
 
   assert {
-    condition     = data.aws_db_instance.main.db_instance_status == "available"
-    error_message = "RDS instance is in status '${data.aws_db_instance.main.db_instance_status}', expected 'available'."
+    condition     = data.aws_instance.main.instance_state == "running"
+    error_message = "EC2 instance is in state '${data.aws_instance.main.instance_state}', expected 'running'."
   }
 }
 ```
