@@ -48,7 +48,8 @@ def parse_ethernet_frame(raw_bytes: bytes) -> None:
     print(f"  Length:      {ip.len} bytes")
     print(f"  Header len:  {ip.hl * 4} bytes")
     print(f"  ID:          {ip.id}")
-    print(f"  Flags/Frag:  {ip.off}")
+    print(f"  Flags:       DF={ip.df} MF={ip.mf}")
+    print(f"  Frag offset: {ip.offset}")
     print(f"  Checksum:    {ip.sum:#06x}")
 ```
 
@@ -110,7 +111,8 @@ def parse_udp(ip: dpkt.ip.IP) -> None:
 | DSCP/ToS | `ip.tos` | Differentiated Services |
 | Total length | `ip.len` | Total packet length |
 | ID | `ip.id` | Identification for fragmentation |
-| Flags/Fragment offset | `ip.off` | Fragment control |
+| Flags | `ip.df`, `ip.mf` | Don't Fragment / More Fragments bits |
+| Fragment offset | `ip.offset` | Fragment offset (13 bits) |
 | TTL | `ip.ttl` | Time to Live |
 | Protocol | `ip.p` | Upper layer protocol |
 | Checksum | `ip.sum` | Header checksum |
