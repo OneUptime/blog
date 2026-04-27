@@ -36,8 +36,8 @@ terraform {
 
       # ~>: pessimistic constraint (most common)
       version = "~> 5.0"     # >=5.0.0, <6.0.0
-      version = "~> 5.30"    # >=5.30.0, <5.31.0 (lock minor version)
-      version = "~> 5.30.0"  # >=5.30.0, <5.31.0 (same as above)
+      version = "~> 5.30"    # >=5.30.0, <6.0.0 (allow minor updates)
+      version = "~> 5.30.0"  # >=5.30.0, <5.31.0 (lock to patch updates only)
     }
   }
 }
@@ -52,10 +52,10 @@ terraform {
   required_providers {
     aws = {
       source = "hashicorp/aws"
-      # ~> X.Y allows X.Y.0 through X.(Y+1).0 (exclusive)
+      # ~> X.Y allows X.Y.0 through (X+1).0.0 (exclusive) - rightmost component (minor) can increment
       version = "~> 5.30"   # >=5.30, <6.0
 
-      # ~> X.Y.Z allows X.Y.Z through X.Y.(Z+1) (exclusive)  
+      # ~> X.Y.Z allows X.Y.Z through X.(Y+1).0 (exclusive) - rightmost component (patch) can increment
       version = "~> 5.30.1"  # >=5.30.1, <5.31.0
     }
   }
@@ -100,7 +100,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.38"  # Locked to minor version
+      version = "~> 5.38.0"  # Locked to a specific minor version (only patch updates)
     }
   }
 }
@@ -175,10 +175,10 @@ terraform {
       version = "~> 5.0"
     }
 
-    # Provider with frequent breaking changes - lock minor version
+    # Provider with frequent breaking changes - lock minor version (only patch updates)
     google-beta = {
       source  = "hashicorp/google-beta"
-      version = "~> 5.30"
+      version = "~> 5.30.0"
     }
 
     # Mature, stable provider - just set minimum
