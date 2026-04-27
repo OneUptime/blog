@@ -32,8 +32,8 @@ OPNsense is built on FreeBSD and uses a web interface for all IPv6 configuration
 ```text
 Interfaces → WAN → IPv6 Configuration
   IPv6 Configuration Type: DHCPv6
-  Request Prefix Size: /48
-  Send IPv6 Prefix Hint: ✓
+  Prefix delegation size: 48
+  Send IPv6 prefix hint: ✓
   Use IPv4 connectivity: unchecked (for native IPv6)
 ```
 
@@ -117,7 +117,7 @@ Services → Unbound DNS → Host Overrides
 
 ```text
 # Diagnostic tools
-Interfaces → Diagnostics → ARP Table  (shows IPv6 NDP)
+Interfaces → Diagnostics → NDP Table  (shows IPv6 neighbors)
 Interfaces → Diagnostics → Ping       (test IPv6)
 
 # Packet capture with IPv6 filter
