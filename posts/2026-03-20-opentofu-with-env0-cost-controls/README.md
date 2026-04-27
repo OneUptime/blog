@@ -8,38 +8,13 @@ Description: Learn how to configure env0's cost estimation and control features 
 
 ## Introduction
 
-env0 integrates with OpenTofu to provide cost estimation at plan time. You can set budget thresholds that trigger warnings, require manual approval for deployments that exceed cost limits, and track actual vs estimated costs over time.
+env0 integrates with OpenTofu to provide cost estimation at plan time via Infracost. You can set project-level budgets that fire notifications when exceeded, require manual approval for deployments, and track actual costs through env0's cost API.
 
 ## Configuring Cost Estimation in env0
 
-```yaml
-# .env0/configuration.yml
-
-version: 2
-
-cost_estimation:
-  enabled: true
-
-environments:
-  - name: production
-    opentofu_version: "1.7.0"
-    workspace: prod
-
-    # Cost thresholds
-    cost_estimation:
-      monthly_budget: 5000  # USD
-
-      # Auto-approve if monthly cost change is below $100
-      auto_approve_threshold: 100
-
-      # Require approval if cost increases by more than 10%
-      approval_required_threshold_percentage: 10
-```
-
-## Cost Policy via env0 API
+Cost estimation is enabled per project through a project policy and budgets are tracked via the `env0_project_budget` resource. Both can be managed with the env0 Terraform provider:
 
 ```hcl
-# Configure env0 project with cost controls via Terraform provider
 provider "env0" {
   api_key    = var.env0_api_key
   api_secret = var.env0_api_secret
@@ -50,47 +25,82 @@ resource "env0_project" "production" {
   description = "Production OpenTofu configurations"
 }
 
-resource "env0_cost_credentials" "aws" {
-  name       = "AWS Cost Credentials"
+resource "env0_project_policy" "production" {
+  project_id              = env0_project.production.id
+  include_cost_estimation = true
+}
+
+resource "env0_project_budget" "production" {
   project_id = env0_project.production.id
+  amount     = 5000 # USD
+  timeframe  = "MONTHLY"
+
+  # Notification thresholds as percentages of the budget
+  thresholds = [50, 80, 100]
 }
 ```
 
+Note: cost estimation in env0 requires an Infracost API key, configured at the organization level via the `INFRACOST_API_KEY` variable.
+
+## Cost Credentials via env0 Terraform Provider
+
+To pull actual cloud spend into env0, configure cloud-specific cost credentials. There is no unified `env0_cost_credentials` resource — env0 ships a separate resource per cloud:
+
+```hcl
+resource "env0_aws_cost_credentials" "aws" {
+  name = "AWS Cost Credentials"
+  arn  = aws_iam_role.env0_cost.arn
+}
+```
+
+For GCP use `env0_gcp_cost_credentials` (BigQuery billing export `secret` and `table_id`); for Azure use `env0_azure_cost_credentials` (`client_id`, `client_secret`, `subscription_id`, `tenant_id`).
+
 ## Environment TTL for Cost Savings
 
-env0 supports automatic environment destruction to save costs in non-production environments:
+env0 supports automatic environment destruction to save costs in non-production environments. Project-level TTL defaults and limits are set on `env0_project_policy`, and individual environments take an absolute ISO timestamp via the `ttl` argument:
 
-```yaml
-# .env0/configuration.yml
-environments:
-  - name: feature-branch
-    opentofu_version: "1.7.0"
+```hcl
+# Project-wide TTL policy: default 12h, max 1 week
+resource "env0_project_policy" "non_prod" {
+  project_id  = env0_project.non_prod.id
+  default_ttl = "12-h"
+  max_ttl     = "1-w"
+}
 
-    # Auto-destroy feature branch environments after 8 hours
-    ttl:
-      type: hours
-      value: 8
+# Feature-branch environment auto-destroyed at a specific time
+resource "env0_environment" "feature_branch" {
+  name        = "feature-branch"
+  project_id  = env0_project.non_prod.id
+  template_id = env0_template.app.id
+  ttl         = timeadd(timestamp(), "8h") # ISO timestamp 8 hours from now
+}
 
-  - name: staging
-    ttl:
-      type: business_days
-      value: 5  # Keep for 5 business days
-
-  - name: production
-    # No TTL for production
+# Production environment: omit ttl for infinite TTL
+resource "env0_environment" "production" {
+  name        = "production"
+  project_id  = env0_project.production.id
+  template_id = env0_template.app.id
+}
 ```
+
+For recurring deploy/destroy schedules (for example, destroying staging every weekday evening), use `env0_environment_scheduling` with cron expressions.
 
 ## Cost Notification Configuration
 
-```yaml
-# Notify when cost estimates change significantly
-notifications:
-  - type: slack
-    channel: "#infrastructure-costs"
-    events:
-      - cost_exceeds_budget
-      - cost_increased_by_percentage:
-          threshold: 15
+Notifications in env0 are managed as endpoints (Slack, Teams, Email, Webhook) that are then assigned to projects with the events that should trigger them. The `budgetExceeded` event fires when a project budget threshold is hit:
+
+```hcl
+resource "env0_notification" "slack_costs" {
+  name  = "infrastructure-costs"
+  type  = "Slack"
+  value = var.slack_webhook_url
+}
+
+resource "env0_notification_project_assignment" "costs" {
+  project_id               = env0_project.production.id
+  notification_endpoint_id = env0_notification.slack_costs.id
+  event_names              = ["budgetExceeded"]
+}
 ```
 
 ## Tagging for Cost Attribution
@@ -116,18 +126,25 @@ resource "aws_instance" "app" {
 ## Cost Report Module
 
 ```hcl
-# Use env0 API to get cost reports programmatically
+# Use env0 API to get cost reports programmatically.
+# env0 uses HTTP Basic auth with API key id and secret.
 data "http" "cost_report" {
-  url    = "https://api.env0.com/environments/${var.env0_environment_id}/cost"
+  url    = "https://api.env0.com/costs/environments/${var.env0_environment_id}"
   method = "GET"
 
   request_headers = {
-    Authorization = "Bearer ${var.env0_api_token}"
+    Authorization = "Basic ${base64encode("${var.env0_api_key}:${var.env0_api_secret}")}"
   }
 }
 
-output "current_monthly_cost" {
-  value = jsondecode(data.http.cost_report.response_body).monthlyToDate
+# Response is an array of daily cost records: [{date, total: {AWS, GCP, AZURE}, id, isStale}, ...]
+locals {
+  cost_records = jsondecode(data.http.cost_report.response_body)
+  latest_total = local.cost_records[length(local.cost_records) - 1].total
+}
+
+output "latest_aws_cost" {
+  value = lookup(local.latest_total, "AWS", 0)
 }
 ```
 
