@@ -26,7 +26,7 @@ vtysh
 
 # Enable OSPF Hello debugging (neighbor state transitions)
 conf t
-  debug ospf hello
+  debug ospf packet hello recv
   debug ospf event
 
 # Or use the shell command directly
@@ -40,12 +40,12 @@ vtysh -c "no debug ospf all"
 
 | Command | What It Shows |
 |---------|--------------|
-| `debug ospf hello` | Hello packet transmit/receive |
-| `debug ospf event` | State machine transitions |
+| `debug ospf packet hello (send\|recv) [detail]` | Hello packet transmit/receive |
+| `debug ospf event` | State machine and SPF scheduling events |
 | `debug ospf packet all recv` | All received OSPF packets |
-| `debug ospf packet lsa` | LSA flooding events |
+| `debug ospf lsa flooding` | LSA flooding events |
 | `debug ospf lsa install` | LSA installation in LSDB |
-| `debug ospf spf` | SPF calculation triggers |
+| `debug ospf lsa generate` | Self-originated LSA generation |
 | `debug ospf nsm` | Neighbor state machine |
 
 ### Viewing FRR Debug Output
@@ -64,7 +64,6 @@ journalctl -f -u frr | grep -i ospf
 
 ```bash
 # Enable hello debugging to see if hellos are being received
-debug ospf hello
 debug ospf packet hello recv detail
 
 # Look for:
@@ -87,8 +86,8 @@ debug ospf nsm    # Neighbor State Machine
 debug ospf lsa install
 # Verify LSAs are being installed into the LSDB
 
-debug ospf spf
-# Verify SPF is recalculating when LSAs change
+debug ospf event
+# SPF scheduling and recalculation events are logged here
 ```
 
 ## Cisco IOS Debug Commands
@@ -97,11 +96,11 @@ debug ospf spf
 ! Enable OSPF debugging
 debug ip ospf hello
 debug ip ospf events
-debug ip ospf database
+debug ip ospf flood
 debug ip ospf adj
 
-! Filter to a specific neighbor (reduces output volume)
-debug ip ospf hello detail
+! Show packet contents in detail (per-packet field decode)
+debug ip ospf packet detail
 
 ! Disable all OSPF debug
 no debug ip ospf all
@@ -120,7 +119,7 @@ show logging
 
 ## Key Takeaways
 
-- Use `debug ospf hello` first - most adjacency problems are visible in hello packet processing.
+- Use hello packet debugging first (`debug ospf packet hello recv detail` on FRR, `debug ip ospf hello` on Cisco) - most adjacency problems are visible in hello packet processing.
 - On FRR, check `/var/log/frr/frr.log` for debug output; on Cisco, use `show logging` after `logging buffered`.
 - Always disable debugging with `no debug ospf all` / `undebug all` after diagnosis.
 - For production routers, consider using `show` commands and OSPF event logging instead of interactive debug to minimize CPU impact.
