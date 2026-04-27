@@ -177,7 +177,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: opentofu/setup-opentofu@v1
         with:
-          tofu_version: "1.9.0"
+          tofu_version: "1.11.6"
       - run: tofu fmt -check -recursive
       - run: tofu init
       - run: tofu validate
