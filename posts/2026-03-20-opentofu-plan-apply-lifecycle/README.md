@@ -52,8 +52,8 @@ tofu plan
 # You can specify variables at plan time
 tofu plan -var="environment=prod" -var-file="prod.tfvars"
 
-# Use a specific directory
-tofu plan -chdir=environments/prod
+# Use a specific directory (-chdir is a global flag, placed before the subcommand)
+tofu -chdir=environments/prod plan
 ```
 
 ## Stage 2: Plan Output Explained
