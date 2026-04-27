@@ -80,12 +80,10 @@ systemctl stop docker
 # Move Docker data
 rsync -av /var/lib/docker/ /mnt/ssd/docker/
 
-# Update daemon.json
-cat >> /etc/docker/daemon.json << 'EOF'
-{
-  "data-root": "/mnt/ssd/docker"
-}
-EOF
+# Update daemon.json — add "data-root" to the existing JSON object.
+# daemon.json must be a single JSON object, so merge the key in (here using jq):
+jq '. + {"data-root": "/mnt/ssd/docker"}' /etc/docker/daemon.json \
+  > /etc/docker/daemon.json.tmp && mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json
 
 # Start Docker
 systemctl start docker
@@ -146,8 +144,8 @@ cgroup_enable=memory cgroup_memory=1
 # Disable swap (or use a fast SSD swap)
 swapoff -a
 
-# Increase GPU memory split for headless (no GUI) operation
-# Add to /boot/firmware/config.txt
+# Minimize GPU memory allocation for headless (no GUI) operation
+# to free RAM for system/containers. Add to /boot/firmware/config.txt
 gpu_mem=16
 
 # Enable zram for compressed memory
