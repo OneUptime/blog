@@ -12,7 +12,7 @@ Enable IPv6 support on OpenWrt routers by configuring the IPv6 stack and verifyi
 
 ## Prerequisites
 
-- OpenWrt 21.02+ (for improved IPv6 support with fw4/nftables)
+- OpenWrt 22.03+ (for fw4/nftables-based IPv6 firewall); 21.02+ also works with fw3/iptables
 - SSH access to the router
 - IPv6 connectivity from ISP or tunnel
 
@@ -81,7 +81,8 @@ config dhcp 'lan'
     option leasetime '12h'
     option dhcpv6 'server'
     option ra 'server'
-    option ra_management '1'
+    list ra_flags 'managed-config'
+    list ra_flags 'other-config'
     list dns '2001:4860:4860::8888'
 ```
 
@@ -96,7 +97,8 @@ uci add firewall rule
 uci set firewall.@rule[-1].name='Allow-ICMPv6'
 uci set firewall.@rule[-1].proto='icmp'
 uci set firewall.@rule[-1].family='ipv6'
-uci set firewall.@rule[-1].icmp_type='echo-request destination-unreachable'
+uci add_list firewall.@rule[-1].icmp_type='echo-request'
+uci add_list firewall.@rule[-1].icmp_type='destination-unreachable'
 uci set firewall.@rule[-1].target='ACCEPT'
 uci commit firewall
 ```
