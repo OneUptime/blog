@@ -20,13 +20,18 @@ OSPF (Open Shortest Path First) is a link-state interior gateway routing protoco
 ```bash
 # Ubuntu/Debian
 
-curl -s https://deb.frrouting.org/frr/keys.asc | sudo apt-key add -
-echo "deb https://deb.frrouting.org/frr $(lsb_release -s -c) frr-stable" | \
-    sudo tee /etc/apt/sources.list.d/frr.list
+curl -s https://deb.frrouting.org/frr/keys.gpg | \
+    sudo tee /usr/share/keyrings/frrouting.gpg > /dev/null
+FRRVER="frr-stable"
+echo deb '[signed-by=/usr/share/keyrings/frrouting.gpg]' https://deb.frrouting.org/frr \
+    $(lsb_release -s -c) $FRRVER | sudo tee -a /etc/apt/sources.list.d/frr.list
 sudo apt update && sudo apt install frr frr-pythontools
 
-# RHEL/CentOS
-sudo yum install frr
+# RHEL/Rocky 9 (adjust el9 to match your distro: el7, el8, el9, el10)
+FRRVER="frr-stable"
+curl -O https://rpm.frrouting.org/repo/$FRRVER-repo.el9.noarch.rpm
+sudo yum install ./$FRRVER-repo.el9.noarch.rpm
+sudo yum install frr frr-pythontools
 ```
 
 ## Enable OSPF Daemon
