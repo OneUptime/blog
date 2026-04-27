@@ -77,7 +77,7 @@ X-Forwarded-For: 2001:db8::1, 203.0.113.5
 # Trusted proxies (load balancer IPs)
 set_real_ip_from 10.0.0.0/8;
 set_real_ip_from fd00::/8;
-set_real_ip_from 2001:db8:lb::/48;
+set_real_ip_from 2001:db8:abcd::/48;
 
 # Get the leftmost untrusted IP as the real client IP
 real_ip_header X-Forwarded-For;
@@ -98,7 +98,7 @@ from flask import request
 TRUSTED_PROXIES = [
     ipaddress.ip_network("10.0.0.0/8"),
     ipaddress.ip_network("fd00::/8"),
-    ipaddress.ip_network("2001:db8:lb::/48"),
+    ipaddress.ip_network("2001:db8:abcd::/48"),
 ]
 
 def is_trusted_proxy(ip_str: str) -> bool:
