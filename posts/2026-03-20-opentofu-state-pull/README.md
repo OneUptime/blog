@@ -32,7 +32,7 @@ tofu state pull | jq '{version: .version, serial: .serial, terraform_version: .t
 tofu state pull | jq '.resources | length'
 
 # List all resource addresses
-tofu state pull | jq -r '.resources[] | .module + (if .module != "" then "." else "" end) + .type + "." + .name'
+tofu state pull | jq -r '.resources[] | (if .module then .module + "." else "" end) + .type + "." + .name'
 ```
 
 ## Creating State Backups
