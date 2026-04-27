@@ -63,12 +63,13 @@ Path cost is the sum of interface costs along the path. Default interface cost =
 Router# show ospfv3 route
 
 OSPFv3 1 address-family ipv6 (router-id 1.1.1.1)
-Codes: C - connected, D - Discard, O - OSPF, IA - OSPF inter area
-       N1 - OSPF NSSA external type 1, N2 - OSPF NSSA external type 2
-       E1 - OSPF external type 1, E2 - OSPF external type 2, * - best path
 
-O  2001:db8:1::/48 [0/20] area 0, via fe80::2 on GigabitEthernet0/0
-O  2001:db8:2::/48 [0/30] area 0, via fe80::3 on GigabitEthernet0/1
+Codes: * - Best, > - Installed
+
+*>  2001:db8:1::/48, Intra, cost 20, area 0
+        via FE80::2, GigabitEthernet0/0
+*>  2001:db8:2::/48, Intra, cost 30, area 0
+        via FE80::3, GigabitEthernet0/1
 ```
 
 ## Verifying a Specific Route
