@@ -41,20 +41,15 @@ resource "azurerm_subnet" "app" {
 Azure Bicep:
 
 ```bicep
-// Bicep: Deploy Azure resources
-param location string = 'East US'
-
-resource rg 'Microsoft.Resources/resourceGroups@2023-07-01' = {
-  name: 'prod-rg'
-  location: location
-  tags: {
-    Environment: 'production'
-  }
-}
+// Bicep: Deploy Azure resources (deployed into an existing resource group)
+param location string = resourceGroup().location
 
 resource vnet 'Microsoft.Network/virtualNetworks@2023-09-01' = {
   name: 'prod-vnet'
   location: location
+  tags: {
+    Environment: 'production'
+  }
   properties: {
     addressSpace: {
       addressPrefixes: ['10.0.0.0/16']
@@ -83,7 +78,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-09-01' = {
 | Policy as code | OPA, Checkov | Azure Policy |
 | IDE support | VS Code HCL extension | Bicep VS Code extension |
 | Rollback | Manual | ARM deployment history |
-| What-if | `tofu plan` | `az deployment what-if` |
+| What-if | `tofu plan` | `az deployment group what-if` |
 | License | MPL 2.0 | MIT (open source) |
 
 ## Azure Bicep Advantages
@@ -117,7 +112,7 @@ resource "azurerm_resource_group" "main" { /* ... */ }
 resource "aws_s3_bucket" "backup" { /* ... */ }
 ```
 
-**Rich module ecosystem** - The `terraform-azurerm-modules` organization provides battle-tested modules:
+**Rich module ecosystem** - The `Azure` organization on the Terraform Registry provides battle-tested modules:
 
 ```hcl
 module "aks" {
