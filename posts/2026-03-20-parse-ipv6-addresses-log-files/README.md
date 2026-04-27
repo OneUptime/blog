@@ -186,7 +186,7 @@ def normalize_ipv6(addr_str: str) -> str:
 # Examples
 print(normalize_ipv6("2001:0db8:0000:0000:0000:0000:0000:0001"))  # 2001:db8::1
 print(normalize_ipv6("[2001:db8::1]"))  # 2001:db8::1
-print(normalize_ipv6("::FFFF:192.168.1.1"))  # ::ffff:192.168.1.1
+print(normalize_ipv6("::FFFF:192.168.1.1"))  # ::ffff:c0a8:101
 ```
 
 ## Conclusion
