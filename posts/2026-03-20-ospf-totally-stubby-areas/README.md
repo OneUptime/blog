@@ -71,7 +71,7 @@ Area 1
 R1# show ip route ospf
 
 ! Should only see:
-! O IA  0.0.0.0/0 [110/11] via 172.16.1.254     <- Only the default route
+! O*IA  0.0.0.0/0 [110/11] via 172.16.1.254     <- Only the default route (candidate default)
 ! O     172.16.2.0/24 [110/2] via 172.16.1.254  <- Intra-area routes
 
 ! No inter-area summaries, no external routes
