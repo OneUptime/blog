@@ -8,7 +8,7 @@ Description: Tune Portainer's snapshot interval settings to balance real-time co
 
 ## Introduction
 
-Portainer snapshots are periodic captures of the Docker environment state - running containers, images, volumes, networks, and services. By default, Portainer takes a snapshot every 60 seconds. On a host with hundreds of containers, this generates significant Docker API load. Understanding how snapshots work and tuning the interval appropriately for your environment is key to maintaining Portainer's responsiveness while minimizing overhead.
+Portainer snapshots are periodic captures of the Docker environment state - running containers, images, volumes, networks, and services. By default, Portainer takes a snapshot every 5 minutes. On a host with hundreds of containers, lowering this interval to get near real-time visibility can generate significant Docker API load. Understanding how snapshots work and tuning the interval appropriately for your environment is key to maintaining Portainer's responsiveness while minimizing overhead.
 
 ## Step 1: Understanding Portainer Snapshots
 
@@ -46,20 +46,23 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     command:
-      # Small environment (< 20 containers): 60s is fine
-      # - "--snapshot-interval=60"
+      # The flag value is a Go duration string (e.g. 30s, 5m, 1h).
+      # Default is 5m if --snapshot-interval is omitted.
 
-      # Medium environment (20-100 containers): 120-180s
-      # - "--snapshot-interval=120"
+      # Small environment (< 20 containers): 1m for near real-time
+      # - "--snapshot-interval=1m"
 
-      # Large environment (100-500 containers): 300s
-      - "--snapshot-interval=300"
+      # Medium environment (20-100 containers): 2-3m
+      # - "--snapshot-interval=2m"
 
-      # Very large / edge environments (500+ containers): 600s
-      # - "--snapshot-interval=600"
+      # Large environment (100-500 containers): 5m (default)
+      - "--snapshot-interval=5m"
 
-      # Edge-only deployments (minimal polling needed): 1800s
-      # - "--snapshot-interval=1800"
+      # Very large / edge environments (500+ containers): 10m
+      # - "--snapshot-interval=10m"
+
+      # Edge-only deployments (minimal polling needed): 30m
+      # - "--snapshot-interval=30m"
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -100,7 +103,7 @@ curl -s -H "Authorization: Bearer $PORTAINER_TOKEN" \
 # Trigger snapshot for endpoint ID 1
 curl -s -X POST \
   -H "Authorization: Bearer $PORTAINER_TOKEN" \
-  "$PORTAINER_URL/api/endpoints/1/docker/snapshot"
+  "$PORTAINER_URL/api/endpoints/1/snapshot"
 
 # Trigger for all endpoints
 curl -s -H "Authorization: Bearer $PORTAINER_TOKEN" \
@@ -110,7 +113,7 @@ curl -s -H "Authorization: Bearer $PORTAINER_TOKEN" \
     echo "Snapshotting endpoint $endpoint_id..."
     curl -s -X POST \
       -H "Authorization: Bearer $PORTAINER_TOKEN" \
-      "$PORTAINER_URL/api/endpoints/$endpoint_id/docker/snapshot"
+      "$PORTAINER_URL/api/endpoints/$endpoint_id/snapshot"
   done
 ```
 
@@ -124,7 +127,7 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     command:
-      - "--snapshot-interval=300"
+      - "--snapshot-interval=5m"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - portainer_data:/data
@@ -183,7 +186,7 @@ docker service create \
   --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
   --mount type=volume,src=portainer_data,dst=/data \
   portainer/portainer-ce:latest \
-  --snapshot-interval=600  # 10 min for large Swarm clusters
+  --snapshot-interval=10m  # 10 min for large Swarm clusters
 ```
 
 ## Conclusion
