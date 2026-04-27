@@ -97,8 +97,9 @@ resource "kubernetes_secret" "windows_creds" {
     name = "windows-credentials"
   }
 
-  data = {
-    # Store as UTF-16LE for Windows compatibility
+  binary_data = {
+    # Store as UTF-16LE for Windows compatibility.
+    # Use binary_data because the value is already base64-encoded.
     password = textencodebase64(var.windows_password, "UTF-16LE")
   }
 }
