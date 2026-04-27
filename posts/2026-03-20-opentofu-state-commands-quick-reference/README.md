@@ -25,8 +25,8 @@ tofu state list | grep aws_s3_bucket
 # List resources in a module
 tofu state list module.networking
 
-# List resources with a specific prefix
-tofu state list 'aws_security_group.*'
+# List a specific resource address
+tofu state list aws_security_group.web
 
 # Use a specific state file
 tofu state list -state=terraform.tfstate
@@ -154,8 +154,8 @@ tofu plan  # verify no unexpected changes
 # For state mv operations, use -dry-run first
 tofu state mv -dry-run old.address new.address
 
-# Use -lock=false only for read-only operations in emergencies
-tofu state list -lock=false
+# Use -lock=false only when a lock is stuck and no one else is operating
+tofu state rm -lock=false aws_s3_bucket.old
 ```
 
 ## Summary
