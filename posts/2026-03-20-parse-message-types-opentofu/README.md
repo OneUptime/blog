@@ -133,13 +133,19 @@ Detected when current infrastructure differs from state:
   "change": {
     "action": "update",
     "resource": {
-      "addr": "aws_security_group.web"
-    },
-    "before": { "description": "old" },
-    "after": { "description": "modified manually" }
+      "addr": "aws_security_group.web",
+      "module": "",
+      "resource": "aws_security_group.web",
+      "implied_provider": "aws",
+      "resource_type": "aws_security_group",
+      "resource_name": "web",
+      "resource_key": null
+    }
   }
 }
 ```
+
+This message does not include the exact attribute changes that caused the drift. For that detail, use the JSON plan output.
 
 ```bash
 # Find all drifted resources
@@ -151,9 +157,9 @@ cat plan.jsonl | jq -r 'select(.type == "resource_drift") | .change.resource.add
 Track apply progress per resource:
 
 ```json
-{"type": "apply_start", "hook": {"resource": {"addr": "aws_vpc.main"}, "action": "creating"}}
-{"type": "apply_complete", "hook": {"resource": {"addr": "aws_vpc.main"}, "action": "creating", "elapsed_seconds": 1.234}}
-{"type": "apply_errored", "hook": {"resource": {"addr": "aws_instance.web"}, "action": "creating", "elapsed_seconds": 5.6}}
+{"type": "apply_start", "hook": {"resource": {"addr": "aws_vpc.main"}, "action": "create"}}
+{"type": "apply_complete", "hook": {"resource": {"addr": "aws_vpc.main"}, "action": "create", "elapsed_seconds": 1.234}}
+{"type": "apply_errored", "hook": {"resource": {"addr": "aws_instance.web"}, "action": "create", "elapsed_seconds": 5.6}}
 ```
 
 ```bash
