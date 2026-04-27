@@ -117,8 +117,8 @@ Services → Unbound DNS → Host Overrides
 
 ```text
 # Diagnostic tools
-Interfaces → Diagnostics → ARP Table  (shows IPv6 NDP)
-Interfaces → Diagnostics → Ping       (test IPv6)
+Interfaces → Diagnostics → NDP Table   (shows IPv6 neighbors)
+Interfaces → Diagnostics → Ping        (test IPv6)
 
 # Packet capture with IPv6 filter
 Interfaces → Diagnostics → Packet Capture
