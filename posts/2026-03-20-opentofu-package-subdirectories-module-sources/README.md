@@ -125,7 +125,7 @@ module "gcp_vpc" {
 ## Important Notes
 
 - OpenTofu downloads the entire package (repository or archive) regardless of which sub-directory you reference. For large repos, this can be slow.
-- The `//` separator must appear after any query parameters separator in Git URLs: use `?ref=tag` after `//`, not before.
+- The `//` separator must appear before any query parameters in Git URLs: use `?ref=tag` after `//`, not before.
 - For Git sources, the sub-directory path is relative to the repository root.
 
 ## Conclusion
