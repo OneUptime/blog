@@ -77,13 +77,13 @@ ip route show vrf VRF-A
 ip route show vrf VRF-B
 
 # VRF-specific routing
-ip route show vrf VRF-A ospf
+ip route show vrf VRF-A proto ospf
 ```
 
 ## Enabling VRF-Aware Routing in the Kernel
 
 ```bash
-# Enable VRF-aware forwarding
+# Disable strict reverse path filtering (needed for asymmetric paths in VRFs)
 echo "net.ipv4.conf.default.rp_filter = 0" >> /etc/sysctl.conf
 echo "net.ipv4.conf.all.rp_filter = 0" >> /etc/sysctl.conf
 sysctl -p
