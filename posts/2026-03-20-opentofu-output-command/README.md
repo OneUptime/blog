@@ -28,10 +28,10 @@ tofu output
 ```bash
 # Get a single output by name
 tofu output bucket_name
-# acme-data-production
+# "acme-data-production"
 
 tofu output cluster_endpoint
-# https://ABCDEF.gr7.us-east-1.eks.amazonaws.com
+# "https://ABCDEF.gr7.us-east-1.eks.amazonaws.com"
 ```
 
 ## JSON Output for Scripting
@@ -74,7 +74,7 @@ output "db_password" {
 ```bash
 # Sensitive outputs show as <sensitive> by default
 tofu output db_password
-# (sensitive value)
+# db_password = <sensitive>
 
 # Access raw value explicitly (with care)
 tofu output -raw db_password
@@ -117,7 +117,7 @@ resource "aws_instance" "web" {
 ## Output Formats
 
 ```bash
-# Display output as a table (default)
+# Display outputs in human-readable form (default)
 tofu output
 
 # JSON format - full metadata
