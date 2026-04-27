@@ -25,7 +25,7 @@ urldecode(string)
 
 ```hcl
 output "encode_spaces" {
-  value = urlencode("hello world")       # Returns "hello%20world"
+  value = urlencode("hello world")       # Returns "hello+world"
 }
 
 output "encode_special" {
@@ -143,15 +143,15 @@ output "environment" {
 tofu console
 
 > urlencode("hello world!")
-"hello%20world%21"
+"hello+world%21"
 > urldecode("a%3D1%26b%3D2")
 "a=1&b=2"
 ```
 
 ## Characters Encoded by urlencode
 
-Characters that are not URL-safe are percent-encoded:
-- Spaces → `%20`
+Characters that are not URL-safe are encoded:
+- Spaces → `+` (query-string style encoding)
 - `=` → `%3D`
 - `&` → `%26`
 - `+` → `%2B`
