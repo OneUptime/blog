@@ -29,7 +29,7 @@ formatdate(spec, timestamp)
 | `MMM` | Abbreviated month | Mar |
 | `MMMM` | Full month | March |
 | `DD` | 2-digit day | 20 |
-| `HH` | Hour (24h) | 14 |
+| `hh` | Hour (24h) | 14 |
 | `mm` | Minutes | 30 |
 | `ss` | Seconds | 45 |
 | `ZZZ` | Timezone | UTC |
@@ -94,7 +94,7 @@ resource "aws_iam_user" "temp" {
 
 ```hcl
 locals {
-  snapshot_date = formatdate("YYYYMMDD-HHmm", timestamp())
+  snapshot_date = formatdate("YYYYMMDD-hhmm", timestamp())
 }
 
 resource "aws_db_snapshot" "manual" {
