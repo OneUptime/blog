@@ -28,7 +28,7 @@ Create an `okteto.yaml` in your project root:
 ```yaml
 # okteto.yaml
 name: myapp
-image: okteto/dev:latest    # Developer image with common tools pre-installed
+image: okteto/node:18       # Developer image with Node.js and common tools pre-installed
 
 command: bash               # Start a shell in the development container
 
@@ -69,8 +69,8 @@ Inside the container shell, all cluster services are reachable:
 
 ```bash
 # You're now inside the Kubernetes network
-curl http://postgres.databases.svc.cluster.local:5432    # Direct DB access
-curl http://redis.cache.svc.cluster.local:6379
+nc -zv postgres.databases.svc.cluster.local 5432    # Verify DB reachability
+nc -zv redis.cache.svc.cluster.local 6379           # Verify Redis reachability
 
 # Run your app directly
 npm install
