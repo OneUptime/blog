@@ -17,7 +17,7 @@ The NAT64 Well-Known Prefix `64:ff9b::/96` is defined in RFC 6052. It is used to
 
 Example:
   IPv4: 93.184.216.34 (example.com)
-  Binary: 0x5DB8D822
+  Hex: 0x5DB8D822
   IPv6: 64:ff9b::5db8:d822
        = 64:ff9b::93.184.216.34
 
