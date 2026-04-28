@@ -21,9 +21,9 @@ Kernel:
   - Will accept SEND-signed NDP if user-space daemon validates them
 
 User-space implementations:
-  - sendd (DoCoMo research): Reference implementation, rarely maintained
-  - OpenSEND: Alternative implementation
-  - Both require significant setup and are not production-ready
+  - USL sendd (DoCoMo Labs USA): Reference implementation, discontinued
+  - Easy-SEND, ipv6-send-cga: Alternative implementations
+  - All require significant setup and are not production-ready
 
 Practical conclusion:
   Full SEND on Linux is not available in major distributions as a
@@ -37,11 +37,12 @@ For academic/research use of SEND on Linux:
 ## Verifying Kernel SEND Hooks
 
 ```bash
-# Check if the kernel has CONFIG_IPV6_SIOCSIFADDR hooks
-
-# (required for SEND user-space interaction)
+# The mainline Linux kernel has no in-tree SEND implementation,
+# so this grep typically returns nothing. SEND/CGA must be handled
+# by a user-space daemon that intercepts NDP via raw sockets or NFQUEUE.
 zcat /boot/config-$(uname -r) | grep -E "SEND|CGA"
-# Look for CONFIG_IPV6_OPTIMISTIC_DAD and other relevant options
+# CONFIG_IPV6_OPTIMISTIC_DAD is unrelated to SEND but is a real option
+zcat /boot/config-$(uname -r) | grep CONFIG_IPV6_OPTIMISTIC_DAD
 
 # Check if sendd is installed (unlikely on most distros)
 which sendd 2>/dev/null || echo "sendd not installed"
@@ -90,10 +91,12 @@ sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbor-advertisement \
 # 2. Install development versions of sendd from source
 # git clone https://github.com/... (check current repositories)
 
-# Enable kernel experimental features for SEND testing
+# Ensure the IPv6 stack is loaded
 sudo modprobe ipv6
 echo 1 | sudo tee /proc/sys/net/ipv6/conf/eth0/use_optimistic
-# Optimistic DAD is related to SEND functionality
+# Note: use_optimistic controls RFC 4429 Optimistic DAD source-address
+# selection and is independent of SEND (RFC 3971); it is shown here only
+# because some lab setups exercise both together.
 
 # Generate RSA keys for testing CGA
 openssl genrsa -out send_key.pem 2048
