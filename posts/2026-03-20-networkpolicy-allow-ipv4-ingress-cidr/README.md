@@ -117,7 +117,7 @@ kubectl run test-allowed --image=alpine --restart=Never \
 
 # From a pod outside the allowed CIDR, connection should fail
 kubectl run test-blocked --image=alpine --restart=Never \
-  -- sh -c "wget -qO- --timeout=5 http://my-api-service:8080/health && echo FAIL || echo BLOCKED"
+  -- sh -c "wget -qO- -T 5 http://my-api-service:8080/health && echo FAIL || echo BLOCKED"
 
 # Verify by viewing the policy
 kubectl get networkpolicy -n production
