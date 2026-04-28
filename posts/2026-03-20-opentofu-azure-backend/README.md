@@ -8,7 +8,7 @@ Description: Learn how to configure the Azure Blob Storage backend (azurerm) in 
 
 ## Introduction
 
-The `azurerm` backend stores OpenTofu state in Azure Blob Storage. It provides built-in state locking using blob leases and supports versioning through blob snapshots. This is the standard remote backend for Azure-based infrastructure.
+The `azurerm` backend stores OpenTofu state in Azure Blob Storage. It provides built-in state locking using blob leases and supports state history when blob versioning is enabled on the storage account. This is the standard remote backend for Azure-based infrastructure.
 
 ## Prerequisites
 
@@ -119,7 +119,8 @@ resource "azurerm_storage_account" "tofu_state" {
   account_replication_type = "GRS"
 
   identity {
-    type = "SystemAssigned"
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.state.id]
   }
 
   customer_managed_key {
