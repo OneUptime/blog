@@ -174,7 +174,7 @@ Virtualization Considerations:
 Hypervisor-level protection:
   - VMware vSphere: Enable "Forged Transmits" = Reject on vSwitch
     → Blocks VMs from sending NAs with non-assigned MACs
-  - Hyper-V: Enable "MAC Spoofing Protection" on virtual switch
+  - Hyper-V: Ensure "MAC address spoofing" is disabled (default) on VM network adapters
   - KVM/Linux Bridge: Use ebtables for L2 filtering
 
 Container environments (Docker/Kubernetes):
