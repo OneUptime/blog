@@ -33,7 +33,7 @@ Computes the SHA-1 hash (40-character hex string):
 
 ```hcl
 > sha1("hello world")
-"2aae6c69ec0ba598f52e244b22f0e0c6e3b5a7be"
+"2aae6c35c94fcfb415dbe95f408b9ce91ee846ed"
 ```
 
 ## sha256()
@@ -42,7 +42,7 @@ Computes the SHA-256 hash (64-character hex string):
 
 ```hcl
 > sha256("hello world")
-"b94d27b9934d3e08a52e52d7da7dabfac484efe04294e576b14..."
+"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
 ```
 
 Useful for creating content-based fingerprints:
