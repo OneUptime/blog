@@ -91,7 +91,7 @@ locals {
     region = var.region
   }))
 
-  # Base64 URL-safe encoding (for Kubernetes)
+  # Standard base64 encoding (RFC 4648 section 4)
   secret_data = base64encode("my-secret-value")
 }
 
@@ -104,15 +104,16 @@ resource "aws_instance" "app" {
   )
 }
 
-# Kubernetes secret with base64-encoded values
+# Kubernetes secret — provider auto-encodes `data` values, so pass plaintext.
+# Use `binary_data` when you need to supply pre-encoded base64 values.
 resource "kubernetes_secret" "app" {
   metadata {
     name = "app-secrets"
   }
 
   data = {
-    api-key  = base64encode(var.api_key)
-    db-pass  = base64encode(random_password.db.result)
+    api-key = var.api_key
+    db-pass = random_password.db.result
   }
 }
 ```
