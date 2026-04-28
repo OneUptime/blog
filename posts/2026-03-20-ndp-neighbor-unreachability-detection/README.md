@@ -55,7 +55,7 @@ stateDiagram-v2
     INCOMPLETE --> FAILED : No response after MAX_MULTICAST_SOLICIT
     REACHABLE --> STALE : REACHABLE_TIME expires
     STALE --> DELAY : Packet sent using this neighbor
-    STALE --> REACHABLE : Unsolicited NA with O=1 received
+    STALE --> REACHABLE : Solicited NA received
     DELAY --> REACHABLE : Upper-layer confirmation received
     DELAY --> PROBE : DELAY_FIRST_PROBE_TIME expires
     PROBE --> REACHABLE : Solicited NA received
@@ -86,7 +86,7 @@ sudo sysctl -w net.ipv6.neigh.eth0.base_reachable_time_ms=3000
 sudo sysctl -w net.ipv6.neigh.eth0.delay_first_probe_time=1
 sudo sysctl -w net.ipv6.neigh.eth0.retrans_time_ms=500
 sudo sysctl -w net.ipv6.neigh.eth0.ucast_solicit=2
-# Total FAILED detection: ~4 seconds (1s DELAY + 2×0.5s probes)
+# Total FAILED detection: ~2 seconds (1s DELAY + 2×0.5s probes)
 ```
 
 ## Monitoring NUD in Action
