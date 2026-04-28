@@ -117,9 +117,9 @@ spec:
 PCI Requirement 2.2: Develop configuration standards for all system components.
 
 ```bash
-# Run CIS Benchmark scans
+# Run CIS Benchmark scans (replace ${HOST_ID} with each host ID from /v1/host)
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/bench/host/all" \
+  "https://neuvector-manager:8443/v1/bench/host/${HOST_ID}/kubernetes" \
   -H "X-Auth-Token: ${TOKEN}"
 
 # Block containers running as root in CDE
@@ -149,7 +149,7 @@ curl -sk -X POST \
       "category": "Kubernetes",
       "comment": "PCI 2.2: Block privileged containers in CDE",
       "criteria": [
-        {"name": "privileged", "op": "=", "value": "true"},
+        {"name": "runAsPrivileged", "op": "=", "value": "true"},
         {"name": "namespace", "op": "containsAny", "value": "payment-processing"}
       ],
       "rule_type": "deny"
@@ -190,7 +190,7 @@ curl -sk -X POST \
       "category": "Kubernetes",
       "comment": "PCI 6.3: Block images with critical CVEs in CDE",
       "criteria": [
-        {"name": "cveCriticalCount", "op": "biggerEqualThan", "value": "1"},
+        {"name": "cveCriticalCount", "op": ">=", "value": "1"},
         {"name": "namespace", "op": "containsAny", "value": "payment-processing"}
       ],
       "rule_type": "deny"
@@ -205,7 +205,7 @@ PCI Requirements 3 and 4 require protecting cardholder data at rest and in trans
 ```bash
 # Create DLP sensor for cardholder data
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/dpi/dlp/sensor" \
+  "https://neuvector-manager:8443/v1/dlp/sensor" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
@@ -301,13 +301,13 @@ echo "Active network rules: ${RULE_COUNT}" >> pci-report-${DATE}.txt
 echo "" >> pci-report-${DATE}.txt
 echo "=== Requirement 6: Vulnerability Management ===" >> pci-report-${DATE}.txt
 
-# Vulnerability summary
+# Vulnerability summary (NeuVector folds critical CVEs into the high count)
 curl -sk \
-  "https://neuvector-manager:8443/v1/scan/workload?start=0&limit=1000" \
+  "https://neuvector-manager:8443/v1/workload" \
   -H "X-Auth-Token: ${TOKEN}" | jq -r '"
-Scanned containers: \(.total)
-Critical CVEs: \([.workloads[].critical] | add)
-High CVEs: \([.workloads[].high] | add)
+Scanned containers: \(.workloads | length)
+High CVEs: \([.workloads[].scan_summary.high] | add)
+Medium CVEs: \([.workloads[].scan_summary.medium] | add)
 "' >> pci-report-${DATE}.txt
 
 echo "PCI report generated: pci-report-${DATE}.txt"
