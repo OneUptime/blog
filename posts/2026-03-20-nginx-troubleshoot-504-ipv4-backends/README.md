@@ -30,11 +30,11 @@ Check the error log for the specific timeout type:
 ```bash
 sudo tail -f /var/log/nginx/error.log
 
-# 504 indicators:
+# 504 indicators (Linux uses errno 110; macOS/BSD uses errno 60):
 
-# upstream timed out (110: Connection timed out) while reading response header
+# upstream timed out (110: Connection timed out) while reading response header from upstream
 # upstream timed out (110: Connection timed out) while sending request to upstream
-# upstream timed out (60: Operation timed out) while reading upstream
+# upstream timed out (110: Connection timed out) while reading upstream
 ```
 
 ## Step 2: Measure Backend Response Time Directly
@@ -71,13 +71,13 @@ server {
     location / {
         proxy_pass http://slow_backend;
 
-        # Time to establish TCP connection (default 60s - usually fine)
+        # Time to establish TCP connection with upstream (default 60s; max 75s)
         proxy_connect_timeout 10s;
 
-        # Time to send the full request body (increase for large uploads)
+        # Timeout between successive write operations to upstream (increase for large uploads)
         proxy_send_timeout 120s;
 
-        # Time to receive the FIRST byte of response (increase for slow queries)
+        # Timeout between successive reads from upstream (increase for slow queries)
         proxy_read_timeout 300s;
 
         proxy_set_header Host $host;
