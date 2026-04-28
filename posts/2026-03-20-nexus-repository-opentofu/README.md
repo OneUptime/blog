@@ -177,6 +177,10 @@ resource "null_resource" "configure_maven_proxy" {
           "httpClient": {
             "blocked": false,
             "autoBlock": false
+          },
+          "maven": {
+            "versionPolicy": "RELEASE",
+            "layoutPolicy": "STRICT"
           }
         }'
     EOF
