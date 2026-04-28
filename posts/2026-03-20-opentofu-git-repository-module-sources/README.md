@@ -8,7 +8,7 @@ Description: Learn how to use Git repository URLs as module sources in OpenTofu 
 
 ## What are Git Module Sources?
 
-Git repository sources allow you to reference OpenTofu modules stored in any Git repository. OpenTofu will clone the repository at plan time and use the files as the module source. This enables sharing modules across teams, organizations, and repositories with version pinning.
+Git repository sources allow you to reference OpenTofu modules stored in any Git repository. OpenTofu will clone the repository during `tofu init` and use the files as the module source. This enables sharing modules across teams, organizations, and repositories with version pinning.
 
 ## Syntax
 
@@ -80,10 +80,11 @@ module "private_module" {
   source = "git::ssh://git@github.com/acme-corp/private-modules.git//vpc?ref=v1.0.0"
 }
 
-# Option 2: HTTPS with credentials in environment
-# Set GIT_USERNAME and GIT_PASSWORD environment variables, or use token in URL
-# export GIT_TOKEN=ghp_...
-# source = "git::https://${GIT_TOKEN}@github.com/acme-corp/private-modules.git//vpc?ref=v1.0.0"
+# Option 2: HTTPS with credentials configured via Git
+# OpenTofu delegates auth to Git, so configure a credential helper or use .netrc.
+# Example with git credential store: git config --global credential.helper store
+# Or embed a token directly (avoid committing this to source control):
+# source = "git::https://oauth2:ghp_xxx@github.com/acme-corp/private-modules.git//vpc?ref=v1.0.0"
 ```
 
 ## Using with tofu init
