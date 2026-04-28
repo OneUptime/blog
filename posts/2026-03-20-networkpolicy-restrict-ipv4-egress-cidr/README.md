@@ -146,7 +146,7 @@ kubectl exec -it <database-pod> -- nc -zv 10.100.0.5 5432
 # Should succeed
 
 # Check which connections are blocked via Cilium Hubble
-hubble observe --namespace production --verdict DROPPED --type l4
+hubble observe --namespace production --verdict DROPPED --type drop
 ```
 
 **Important:** Always add a DNS egress rule when applying egress policies, otherwise pods will lose the ability to resolve hostnames.
