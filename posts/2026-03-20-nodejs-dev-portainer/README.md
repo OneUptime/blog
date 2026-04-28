@@ -55,8 +55,10 @@ COPY tsconfig.json ./
 RUN npm install
 
 # Expose ports
-EXPOSE 3000   # Application
-EXPOSE 9229   # Node.js debugger
+# 3000 - Application
+EXPOSE 3000
+# 9229 - Node.js debugger
+EXPOSE 9229
 ```
 
 ## Step 2: Deploy the Node.js Stack
