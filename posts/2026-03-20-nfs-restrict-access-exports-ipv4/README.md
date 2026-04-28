@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NFS, IPv4, Security, Export, Access Control, Firewall
 
-Description: Restrict NFS share access to specific IPv4 clients using /etc/exports rules, iptables firewall policies, and TCP wrappers for defense-in-depth security.
+Description: Restrict NFS share access to specific IPv4 clients using /etc/exports rules, iptables firewall policies, and static RPC port assignments for defense-in-depth security.
 
 ## Introduction
 
-NFS has limited built-in authentication-it trusts IP addresses. Securing NFS requires multiple layers: `/etc/exports` defines which IPs can mount, iptables restricts which IPs can even reach NFS ports, and optional TCP wrappers add another filter. All three layers together provide meaningful access control.
+NFS has limited built-in authentication-it trusts IP addresses. Securing NFS requires multiple layers: `/etc/exports` defines which IPs can mount, iptables restricts which IPs can even reach NFS ports, and static port assignments for NFSv3 RPC services make those firewall rules predictable. All three layers together provide meaningful access control.
 
 ## Layer 1: /etc/exports (Primary Access Control)
 
@@ -60,9 +60,11 @@ sudo iptables-save | sudo tee /etc/iptables/rules.v4
 
 # /etc/default/nfs-kernel-server (Debian/Ubuntu)
 RPCMOUNTDOPTS="--manage-gids --port 2050"
+
+# /etc/default/nfs-common (Debian/Ubuntu) - statd lives here, not in nfs-kernel-server
 STATDOPTS="--port 2051 --outgoing-port 2052"
 
-# /etc/sysconfig/nfs (RHEL/CentOS)
+# /etc/sysconfig/nfs (RHEL/CentOS 7; on RHEL 8+ prefer /etc/nfs.conf)
 LOCKD_TCPPORT=2053
 LOCKD_UDPPORT=2053
 MOUNTD_PORT=2050
@@ -99,4 +101,4 @@ sudo showmount -a localhost
 
 ## Conclusion
 
-Restrict NFS access at two levels: `/etc/exports` for mount-level control (only listed IPs can mount) and iptables for network-level control (only listed IPs can reach NFS ports). For NFSv3, fix mountd/statd/lockd to static ports so iptables rules are predictable. Never export to 0.0.0.0/0 or use wildcards in production environments.
+Restrict NFS access at multiple layers: `/etc/exports` for mount-level control (only listed IPs can mount) and iptables for network-level control (only listed IPs can reach NFS ports). For NFSv3, fix mountd/statd/lockd to static ports so iptables rules are predictable. Never export to 0.0.0.0/0 or use wildcards in production environments.
