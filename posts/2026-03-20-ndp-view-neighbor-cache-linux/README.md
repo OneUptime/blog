@@ -37,8 +37,8 @@ ip -6 neigh show nud failed
 # Show all entries including PERMANENT (static) entries
 ip -6 neigh show nud all
 
-# Show with numeric output (no hostname resolution)
-ip -6 -n neigh show
+# Resolve hostnames (numeric is the default)
+ip -6 -r neigh show
 
 # Show neighbor statistics
 ip -6 -s neigh show
@@ -63,8 +63,8 @@ ip -6 neigh show | grep -v lladdr
 # Find neighbors on specific subnet
 ip -6 neigh show | grep "^2001:db8:1::"
 
-# Find all routers in neighbor cache (link-local with REACHABLE state)
-ip -6 neigh show | grep "fe80::"
+# Find all router neighbors (entries with the 'router' flag)
+ip -6 neigh show | grep router
 ```
 
 ## Monitoring Neighbor Cache Changes
