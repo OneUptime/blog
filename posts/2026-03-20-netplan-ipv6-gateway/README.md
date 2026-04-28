@@ -18,7 +18,7 @@ Set a default IPv6 gateway and per-route IPv6 next-hops in Netplan YAML configur
 
 ## Netplan File Location
 
-Netplan configuration files are in  with  extension. Files are processed in lexicographic order.
+Netplan configuration files are in `/etc/netplan/` with `.yaml` extension. Files are processed in lexicographic order.
 
 ```bash
 # List existing Netplan configs
@@ -141,4 +141,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your server's IPv6 connectivit
 
 ## Conclusion
 
-How to Configure IPv6 Gateway with Netplan with Netplan uses clean YAML syntax. Key options are `dhcp6: true` for DHCPv6, `accept-ra: true` for SLAAC, `ipv6-privacy: true` for RFC 4941 temporary addresses, and static addresses in the `addresses` list. Always use `netplan try` before `netplan apply` to test changes safely.
+Configuring an IPv6 gateway with Netplan uses clean YAML syntax. Key options are `dhcp6: true` for DHCPv6, `accept-ra: true` for SLAAC, `ipv6-privacy: true` for RFC 4941 temporary addresses, and static addresses in the `addresses` list. Always use `netplan try` before `netplan apply` to test changes safely.
