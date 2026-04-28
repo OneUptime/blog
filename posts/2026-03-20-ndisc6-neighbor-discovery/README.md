@@ -33,10 +33,10 @@ ndisc6 2001:db8::1 eth0
 # For link-local neighbors
 ndisc6 fe80::1 eth0
 
-# Multiple probes for reliability
-ndisc6 -m 3 2001:db8::1 eth0
+# Send up to 3 solicitations before giving up (default: 3)
+ndisc6 -r 3 2001:db8::1 eth0
 
-# Wait longer for slow links (default: 1 second)
+# Wait longer for slow links (default: 1000ms)
 ndisc6 -w 3000 2001:db8::1 eth0  # 3000ms timeout
 ```
 
@@ -61,8 +61,8 @@ ndisc6 2001:db8::1 eth0
 # Output: Target link-layer address: 52:54:00:ab:cd:ef
 
 # Timeout - host not responding
-ndisc6 -m 2 -w 2000 2001:db8::2 eth0
-# Timeout! No answer from 2001:db8::2
+ndisc6 -r 2 -w 2000 2001:db8::2 eth0
+# Timed out.
 
 # Wrong interface - no route
 ndisc6 2001:db8::1 eth1
@@ -98,7 +98,7 @@ ip -6 neigh show dev "$INTERFACE" | while read addr via lladdr mac state; do
     if [[ "$addr" =~ ^fe80 ]]; then
         echo "  $addr → $mac ($state)"
         # Confirm with ndisc6
-        result=$(ndisc6 -m 1 -w 500 "$addr" "$INTERFACE" 2>/dev/null)
+        result=$(ndisc6 -r 1 -w 500 "$addr" "$INTERFACE" 2>/dev/null)
         if [ -n "$result" ]; then
             echo "    ndisc6 confirmed: reachable"
         fi
@@ -128,14 +128,14 @@ ndisc6 2001:db8::1 eth0
 # Should show MAC address of the neighbor
 
 # Scenario 3: Check if a new IPv6 address is reachable
-ndisc6 2001:db8::new eth0
+ndisc6 2001:db8::100 eth0
 # Success = address is assigned to a host on this link
 
 # Scenario 4: Multiple probes for intermittent issues
 for i in {1..5}; do
     echo -n "Probe $i: "
-    ndisc6 -m 1 -w 1000 2001:db8::1 eth0 2>/dev/null | \
-        grep "link-layer\|Timeout"
+    ndisc6 -r 1 -w 1000 2001:db8::1 eth0 2>/dev/null | \
+        grep "link-layer\|Timed out"
     sleep 1
 done
 ```
@@ -165,7 +165,7 @@ def get_ipv6_mac(ipv6_addr: str, interface: str) -> str | None:
     """Get the MAC address for an IPv6 neighbor using ndisc6."""
     try:
         result = subprocess.run(
-            ['ndisc6', '-m', '2', '-w', '2000', ipv6_addr, interface],
+            ['ndisc6', '-r', '2', '-w', '2000', ipv6_addr, interface],
             capture_output=True, text=True, timeout=10
         )
         match = re.search(r'link-layer address: ([0-9a-f:]{17})', result.stdout)
