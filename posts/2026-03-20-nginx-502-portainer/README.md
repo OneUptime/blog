@@ -126,8 +126,8 @@ In NPM Advanced tab:
 # Test direct connectivity from NPM container
 docker exec nginx-proxy-manager curl -v http://portainer:9000
 
-# Check the actual Nginx error log
-docker exec nginx-proxy-manager cat /data/logs/error.log | tail -20
+# Check the actual Nginx error log (per-proxy-host log; replace {id} with the host ID, or use the fallback log)
+docker exec nginx-proxy-manager sh -c 'tail -20 /data/logs/proxy-host-*_error.log /data/logs/fallback_error.log'
 
 # Test from outside
 curl -I https://portainer.yourdomain.com
