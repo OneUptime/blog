@@ -57,12 +57,11 @@ tofu init -upgrade
 git diff .terraform.lock.hcl
 ```
 
-To upgrade a specific provider:
+To upgrade a specific provider, update its version constraint in `required_providers` and re-run `tofu init -upgrade`. There is no per-provider flag on `tofu init`, but `tofu providers lock` accepts a provider source address to refresh just that entry:
 
 ```bash
-# Upgrade only the aws provider
-tofu init -upgrade -plugin-dir=""
-# (Note: targeted upgrade is done by adjusting version constraints)
+# Refresh the lock entry for a single provider
+tofu providers lock registry.opentofu.org/hashicorp/aws
 ```
 
 ## Adding New Platforms
