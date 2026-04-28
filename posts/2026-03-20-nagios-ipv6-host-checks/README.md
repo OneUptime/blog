@@ -57,7 +57,7 @@ define host {
 ```cfg
 # /etc/nagios/conf.d/commands-ipv6.cfg - IPv6-capable check commands
 
-# ICMP ping over IPv6 using check_ping -6 flag
+# ICMP ping over IPv6 (check_ping auto-detects IPv6 literals in $HOSTADDRESS$)
 define command {
     command_name    check-host-alive-ipv6
     command_line    $USER1$/check_ping -H $HOSTADDRESS$ -w 3000.0,80% -c 5000.0,100% -p 1 -t 20
