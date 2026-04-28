@@ -43,10 +43,11 @@ sudo ss -tlnp | grep mysql
 # Connect to MySQL
 sudo mysql -u root -p
 
--- Grant access from specific IP
-GRANT ALL PRIVILEGES ON mydb.* TO 'appuser'@'10.0.0.5' IDENTIFIED BY 'password';
+-- Grant access from specific IP (MySQL 8.0+ requires CREATE USER first)
+CREATE USER 'appuser'@'10.0.0.5' IDENTIFIED BY 'password';
+GRANT ALL PRIVILEGES ON mydb.* TO 'appuser'@'10.0.0.5';
 
--- Grant access from a subnet (MySQL 8.0+ requires CREATE USER first)
+-- Grant access from a subnet
 CREATE USER 'appuser'@'10.0.0.%' IDENTIFIED BY 'password';
 GRANT SELECT, INSERT, UPDATE, DELETE ON mydb.* TO 'appuser'@'10.0.0.%';
 
