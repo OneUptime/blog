@@ -61,7 +61,7 @@ Infrastructure addresses:   2001:db8:0:ffxx::/64  (routers, switches)
 Server subnets:             2001:db8:0:01xx::/64
 User subnets:               2001:db8:0:10xx::/64
 DMZ:                        2001:db8:0:20xx::/64
-Management:                 fd00:mgmt::/48 (ULA)
+Management:                 fd12:3456:789a::/48 (ULA - generate per RFC 4193)
 ```
 
 ### 5. Transition Technology Security
@@ -76,9 +76,10 @@ netsh interface 6to4 set state disabled
 ```
 
 ```bash
-# Linux: Disable automatic tunnel modules
+# Linux: Disable automatic tunnel modules (sit covers 6to4, 6in4, ISATAP)
 echo "blacklist sit" >> /etc/modprobe.d/disable-ipv6-tunnels.conf
-echo "blacklist ipv6" >> /etc/modprobe.d/disable-ipv6-tunnels.conf
+echo "blacklist ip6_tunnel" >> /etc/modprobe.d/disable-ipv6-tunnels.conf
+echo "blacklist ip6_gre" >> /etc/modprobe.d/disable-ipv6-tunnels.conf
 modprobe -r sit
 ```
 
@@ -119,7 +120,7 @@ ip6tables -A INPUT -j LOG --log-prefix "IPv6-INPUT-DROP: " --log-level 4
 ip6tables -A FORWARD -j LOG --log-prefix "IPv6-FWD-DROP: " --log-level 4
 
 # Ensure NetFlow/IPFIX captures IPv6
-# Check with: tcpdump -i eth0 'udp port 9995 or udp port 9996'
+# Check with: tcpdump -i eth0 'udp port 2055 or udp port 4739'
 ```
 
 ### 8. DNS Security for IPv6
