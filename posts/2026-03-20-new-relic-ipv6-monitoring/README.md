@@ -17,30 +17,32 @@ The Infrastructure Agent collects system metrics and reports them to New Relic. 
 
 license_key: "{{ your_license_key }}"
 
-# Agent connects to New Relic over IPv6 if preferred
-# Force IPv6 for agent communication (optional)
-collector_url: "https://infra-api.newrelic.com"
+# The agent uses the host's resolver/network stack, so it will use
+# IPv6 to reach the New Relic collector when the OS prefers IPv6.
 
-# Enable network interface collection
+# Filter out unwanted interfaces from NetworkSample. Default filters
+# already exclude lo, dummy, vmnet, sit, tun, tap, veth — extend here
+# if you need to hide additional interfaces by prefix or by suffix
+# after a leading digit (index-1).
 network_interface_filters:
   prefix:
     - "lo"
-  index:
-    - 1
+  index-1:
+    - "tun"
 ```
 
-Start the agent:
+Start the agent and confirm it's running:
 
 ```bash
 sudo systemctl start newrelic-infra
 
-# Verify the agent is running and sending data
-sudo newrelic-infra --dry_run 2>&1 | grep -i "ipv6\|network"
+# Verify the agent service is active
+sudo systemctl status newrelic-infra
 ```
 
-## Step 2: Configure the Network Check Integration for IPv6
+## Step 2: Configure a Flex Integration for IPv6 Ping Checks
 
-New Relic's `nri-network-telemetry` or `nrping` integrations monitor IPv6 targets:
+The `nri-flex` integration (bundled with the Infrastructure Agent) lets you wrap any command — including `ping6` — and ship the parsed output to New Relic as a custom event:
 
 ```yaml
 # /etc/newrelic-infra/integrations.d/ipv6-ping.yml - Ping check for IPv6
@@ -74,24 +76,23 @@ curl -X POST "https://api.newrelic.com/graphql" \
   }'
 ```
 
-## Step 4: Scripted Synthetic Monitor for IPv6
+## Step 4: Scripted API Monitor for IPv6
+
+For more control — for example, hitting a literal IPv6 address while sending a specific Host header — use a Scripted API monitor. The `$http` global is provided by the runtime (powered by `got`, with a request-compatible surface), so you do not need to `require` it:
 
 ```javascript
-// New Relic Scripted Browser: Test IPv6 endpoint
+// New Relic Scripted API monitor: Test IPv6 endpoint
 var assert = require('assert');
-var $http = require('request');
 
 // Target the IPv6 address directly (using brackets in URL)
 var options = {
-    uri: 'http://[2001:db8::10]:80/',
-    method: 'GET',
-    timeout: 10000,
+    url: 'http://[2001:db8::10]:80/',
     headers: {
         'Host': 'www.example.com'
     }
 };
 
-$http(options, function(error, response, body) {
+$http.get(options, function(error, response, body) {
     assert.equal(error, null, 'Error: ' + error);
     assert.equal(response.statusCode, 200, 'Expected HTTP 200, got: ' + response.statusCode);
     $util.insights.set('ipv6_response_time_ms', response.timingPhases.total);
@@ -124,16 +125,27 @@ SINCE 1 hour ago
 
 ## Step 6: Create a New Relic Alert for IPv6 Failures
 
+NerdGraph is the preferred API for managing alert conditions, but the REST v2 endpoint still works. The endpoint is scoped to a specific policy, and each term needs `duration` (minutes) and `time_function`:
+
 ```bash
-# Create alert condition for IPv6 synthetic monitor failures
-curl -X POST "https://api.newrelic.com/v2/alerts_nrql_conditions.json" \
+# Create a static NRQL alert condition under an existing policy
+curl -X POST "https://api.newrelic.com/v2/alerts_nrql_conditions/policies/${POLICY_ID}.json" \
   -H "Api-Key: $NR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "nrql_condition": {
       "name": "IPv6 Endpoint Failure",
-      "nrql": { "query": "SELECT percentage(count(*), WHERE result = \"FAILED\") FROM SyntheticCheck WHERE monitorName = \"IPv6 Web Check\"" },
-      "terms": [{"threshold": 50, "operator": "above", "priority": "critical"}]
+      "enabled": true,
+      "type": "static",
+      "value_function": "single_value",
+      "nrql": { "query": "SELECT percentage(count(*), WHERE result = '\''FAILED'\'') FROM SyntheticCheck WHERE monitorName = '\''IPv6 Web Check'\''" },
+      "terms": [{
+        "threshold": "50",
+        "operator": "above",
+        "priority": "critical",
+        "duration": "5",
+        "time_function": "all"
+      }]
     }
   }'
 ```
