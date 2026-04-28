@@ -30,8 +30,8 @@ Step 2: Hash1 = SHA1(Modifier + SubnetPrefix + CollisionCount + Key + ExtFields)
 
 Step 3: Interface Identifier (64 bits):
   - Take the first 64 bits of Hash1
-  - Zero bits 0-2 (bits u and g in IPv6 notation) to 0b000
-  - Set bits 5-7 (the "sec" bits) to Sec value
+  - Set bits 0-2 (the "sec" bits, leftmost three bits) to Sec value
+  - Zero bits 6 and 7 (bits u and g in IPv6 notation)
   - Result: 64-bit interface identifier
 
 Step 4: CGA = SubnetPrefix + InterfaceIdentifier
@@ -44,12 +44,12 @@ IPv6 CGA Interface Identifier layout (64 bits):
 
  0 1 2 3 4 5 6 7  (first byte)
 +-+-+-+-+-+-+-+-+
-|0|0|S|S|S|0|0|0|  ← bits set: sec(2-4)=000 or Sec value, others from hash
+|S|S|S|H|H|H|0|0|  ← bits 0-2: Sec value; bits 3-5: from hash; bits 6-7: u/g cleared
 +-+-+-+-+-+-+-+-+
 
-Bits 0-1: 00 (u and g bits: universal scope, individual address)
-Bits 2-4: Sec value (0b000 to 0b111, indicating security parameter)
-Bits 5-63: From SHA1 hash of (Modifier + SubnetPrefix + ColCount + PubKey)
+Bits 0-2: Sec value (0b000 to 0b111, indicating security parameter)
+Bits 6-7: 00 (u and g bits set to zero)
+Other bits (3-5 of first byte, plus bytes 1-7): From SHA1 hash of (Modifier + SubnetPrefix + ColCount + PubKey)
 
 The Sec value controls cost of generating a forgeable CGA:
 Sec=0: Attacker needs ~2^59 hash operations
@@ -82,7 +82,7 @@ def verify_cga(
     addr_bytes = socket.inet_pton(socket.AF_INET6, ipv6_address)
     interface_id = addr_bytes[8:]  # Low 64 bits
 
-    # Verify Sec value matches bits 5-7 of interface ID
+    # Verify Sec value matches the leftmost 3 bits (bits 0-2) of interface ID
     advertised_sec = (interface_id[0] >> 5) & 0x07
     if advertised_sec != sec:
         return False
@@ -91,15 +91,11 @@ def verify_cga(
     if sec > 0:
         hash2_input = modifier + b'\x00' * 9 + public_key_der
         hash2 = hashlib.sha1(hash2_input).digest()
-        # First 2*Sec bits of Hash2 must be 0
-        required_zero_bits = 2 * sec
+        # First 16*Sec bits of Hash2 must be 0
+        required_zero_bits = 16 * sec
         for i in range(required_zero_bits // 8):
             if hash2[i] != 0:
                 return False
-        # Check partial byte if needed
-        remaining = required_zero_bits % 8
-        if remaining and (hash2[required_zero_bits // 8] >> (8 - remaining)) != 0:
-            return False
 
     # Step 2: Compute Hash1 and verify interface identifier
     hash1_input = (
@@ -112,15 +108,12 @@ def verify_cga(
 
     # Interface identifier from Hash1 (first 64 bits, with adjustments)
     computed_id = bytearray(hash1[:8])
-    computed_id[0] &= 0x1F  # Clear bits 0-2 and keep only lower 5 bits pattern
-    computed_id[0] |= (sec << 5)  # Set Sec bits
+    # Mask 0x1C = 0b00011100 keeps middle bits 3-5 and clears Sec (0-2) and u,g (6-7)
+    computed_id[0] &= 0x1C
+    computed_id[0] |= (sec << 5)  # Set Sec bits to Sec value
 
-    # Compare with actual interface identifier
-    actual_id = bytearray(interface_id)
-    actual_id[0] &= 0x1F   # Clear u, g, sec bits for comparison
-    actual_id[0] |= (sec << 5)
-
-    return bytes(computed_id) == bytes(actual_id)
+    # A valid CGA already has u/g = 0 and Sec set, so compare directly
+    return bytes(computed_id) == bytes(interface_id)
 ```
 
 ## Conclusion
