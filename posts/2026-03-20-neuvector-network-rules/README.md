@@ -71,7 +71,7 @@ For automation and GitOps workflows:
 
 ```bash
 # Create an allow rule between frontend and backend
-curl -sk -X POST \
+curl -sk -X PATCH \
   "https://neuvector-manager:8443/v1/policy/rule" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
@@ -85,7 +85,7 @@ curl -sk -X POST \
           "to": "nv.backend-api.production",
           "ports": "tcp/8080",
           "action": "allow",
-          "cfg_type": "user"
+          "cfg_type": "user_created"
         }
       ]
     }
@@ -101,48 +101,68 @@ Define network rules declaratively using NeuVector CRDs:
 apiVersion: neuvector.com/v1
 kind: NvSecurityRule
 metadata:
-  name: frontend-to-backend
+  name: nv.frontend.production
   namespace: production
 spec:
   target:
     policymode: Protect
     selector:
-      matchLabels:
-        app: frontend
+      name: nv.frontend.production
+      criteria:
+        - key: service
+          op: "="
+          value: frontend.production
+        - key: domain
+          op: "="
+          value: production
   ingress: []
   egress:
     - action: allow
       name: allow-backend-api
       selector:
-        matchLabels:
-          app: backend-api
-      ports:
-        - protocol: TCP
-          port: 8080
+        name: nv.backend-api.production
+        criteria:
+          - key: service
+            op: "="
+            value: backend-api.production
+          - key: domain
+            op: "="
+            value: production
+      ports: "tcp/8080"
       applications:
         - HTTP
 ---
 apiVersion: neuvector.com/v1
 kind: NvSecurityRule
 metadata:
-  name: backend-to-database
+  name: nv.backend-api.production
   namespace: production
 spec:
   target:
     policymode: Protect
     selector:
-      matchLabels:
-        app: backend-api
+      name: nv.backend-api.production
+      criteria:
+        - key: service
+          op: "="
+          value: backend-api.production
+        - key: domain
+          op: "="
+          value: production
   ingress: []
   egress:
     - action: allow
       name: allow-postgres
       selector:
-        matchLabels:
-          app: postgres
-      ports:
-        - protocol: TCP
-          port: 5432
+        name: nv.postgres.production
+        criteria:
+          - key: service
+            op: "="
+            value: postgres.production
+          - key: domain
+            op: "="
+            value: production
+      ports: "tcp/5432"
       applications:
         - PostgreSQL
 ```
@@ -166,24 +186,23 @@ spec:
   target:
     policymode: Protect
     selector:
-      matchLabels:
-        ns: production
+      name: production-containers
+      criteria:
+        - key: domain
+          op: "="
+          value: production
   egress:
     - action: deny
       name: deny-all-external
       selector:
-        matchLabels:
-          nv.ip.ext: ""
-      comment: "Block all outbound internet connections by default"
+        name: external
+        criteria: []
     - action: allow
-      name: allow-specific-external
+      name: allow-https-external
       selector:
-        matchLabels:
-          nv.ip.ext: ""
-      ports:
-        - protocol: TCP
-          port: 443
-      comment: "Allow HTTPS to external services"
+        name: external
+        criteria: []
+      ports: "tcp/443"
 ```
 
 ```bash
@@ -196,7 +215,7 @@ NeuVector can enforce application-layer protocols for precise control:
 
 ```bash
 # Create an HTTP-specific rule
-curl -sk -X POST \
+curl -sk -X PATCH \
   "https://neuvector-manager:8443/v1/policy/rule" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
@@ -205,13 +224,13 @@ curl -sk -X POST \
       "after": 0,
       "rules": [
         {
-          "comment": "Only allow HTTP GET to API",
+          "comment": "Only allow HTTP to API",
           "from": "nv.frontend.default",
           "to": "nv.api.default",
           "ports": "tcp/80",
           "applications": ["HTTP"],
           "action": "allow",
-          "cfg_type": "user"
+          "cfg_type": "user_created"
         }
       ]
     }
@@ -224,7 +243,7 @@ Implement a default deny posture:
 
 ```bash
 # Add a deny-all rule at the end of the rule list
-curl -sk -X POST \
+curl -sk -X PATCH \
   "https://neuvector-manager:8443/v1/policy/rule" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
@@ -238,7 +257,7 @@ curl -sk -X POST \
           "to": "any",
           "ports": "any",
           "action": "deny",
-          "cfg_type": "user"
+          "cfg_type": "user_created"
         }
       ]
     }
@@ -250,15 +269,15 @@ curl -sk -X POST \
 Review network violations to fine-tune your policy:
 
 ```bash
-# Get network security events
+# Get network policy violations
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=network&start=0&limit=50" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '.events[] | {
-    from_workload: .workload_name,
-    to_workload: .remote_workload_name,
-    port: .port,
-    action: .action,
-    timestamp: .at
+  "https://neuvector-manager:8443/v1/log/violation" \
+  -H "X-Auth-Token: ${TOKEN}" | jq '.violations[] | {
+    from_workload: .client_name,
+    to_workload: .server_name,
+    port: .server_port,
+    action: .policy_action,
+    timestamp: .reported_at
   }'
 ```
 
