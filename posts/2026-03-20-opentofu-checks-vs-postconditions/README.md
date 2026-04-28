@@ -14,7 +14,7 @@ OpenTofu provides three validation mechanisms: variable validation, precondition
 
 | Mechanism | Timing | On Failure | References |
 |---|---|---|---|
-| Variable validation | Before plan | Errors, blocks plan | Only the variable |
+| Variable validation | Before plan | Errors, blocks plan | The variable, other variables, locals, data sources |
 | Precondition | Before resource created | Errors, blocks plan | Inputs and data sources |
 | Postcondition | After resource created | Errors, blocks apply | `self` (the resource's computed attributes) |
 | Check block | After all resources applied | Warns only | Any resource, scoped data sources |
