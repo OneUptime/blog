@@ -73,9 +73,9 @@ apt-get install -y ndppd
 # /etc/ndppd.conf
 cat > /etc/ndppd.conf << 'EOF'
 proxy eth0 {
+    autowire yes
     rule 2001:db8:1::/64 {
         iface eth1
-        autowire yes
     }
 }
 EOF
@@ -94,9 +94,15 @@ journalctl -u ndppd -f
 In overlay networks, NDP proxy reduces broadcast NDP traffic:
 
 ```bash
-# Configure bridge with NDP suppression
+# Configure bridge (neigh_suppress is a per-port flag, set on the slave below)
 ip link add br100 type bridge
-ip link set br100 type bridge neigh_suppress on
+ip link set br100 up
+
+# Attach a VXLAN port and enable neigh_suppress on it
+ip link add vxlan100 type vxlan id 100 dstport 4789 local 192.0.2.1
+ip link set vxlan100 master br100
+ip link set vxlan100 up
+bridge link set dev vxlan100 neigh_suppress on
 
 # Add static NDP entries to suppress NS flooding
 ip -6 neigh add 2001:db8:100::10 \
@@ -104,8 +110,8 @@ ip -6 neigh add 2001:db8:100::10 \
     dev br100 \
     nud permanent
 
-# Verify neighbor suppression is active
-bridge link show | grep neigh_suppress
+# Verify neighbor suppression is active (-d shows per-port flags)
+bridge -d link show | grep neigh_suppress
 ```
 
 ## NDP Proxy for Mobile Networks
