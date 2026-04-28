@@ -131,7 +131,7 @@ Modules should follow semantic versioning:
 # MAJOR version: breaking changes
 module "vpc" {
   source  = "my-company/vpc/aws"
-  version = "~> 3.0"  # Pin to major version 3, any patch
+  version = "~> 3.0"  # Pin to major version 3, any minor or patch
 }
 
 # MINOR version: new features, backward compatible
