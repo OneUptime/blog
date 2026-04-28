@@ -57,7 +57,7 @@ Via API:
 ```bash
 # Get process profile for a group
 curl -sk \
-  "https://neuvector-manager:8443/v1/process/profile/group/nv.nginx.default" \
+  "https://neuvector-controller:10443/v1/process_profile/nv.nginx.default" \
   -H "X-Auth-Token: ${TOKEN}" | jq '.process_profile.process_list'
 ```
 
@@ -68,22 +68,24 @@ Define which processes are allowed to run inside containers:
 ```bash
 # Allow specific processes
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/process/profile/group/nv.nginx.default" \
+  "https://neuvector-controller:10443/v1/process_profile/nv.nginx.default" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "process_profile": {
-      "mode": "Protect",
-      "process_list": [
+    "process_profile_config": {
+      "group": "nv.nginx.default",
+      "process_change_list": [
         {
           "name": "nginx",
           "path": "/usr/sbin/nginx",
-          "action": "allow"
+          "action": "allow",
+          "group": "nv.nginx.default"
         },
         {
           "name": "sh",
           "path": "/bin/sh",
-          "action": "deny"
+          "action": "deny",
+          "group": "nv.nginx.default"
         }
       ]
     }
@@ -99,30 +101,47 @@ Define allowed inbound and outbound network connections:
 apiVersion: neuvector.com/v1
 kind: NvSecurityRule
 metadata:
-  name: nginx-network-policy
+  name: nv.nginx.default
   namespace: default
 spec:
   target:
     selector:
-      matchLabels:
-        app: nginx
+      name: nv.nginx.default
+      criteria:
+        - key: service
+          op: "="
+          value: nginx.default
+        - key: domain
+          op: "="
+          value: default
+    policymode: Monitor
   ingress:
-    - selector:
-        matchLabels:
-          app: frontend
-      ports:
-        - protocol: TCP
-          port: 80
+    - name: nv.nginx.default-ingress-0
+      selector:
+        name: nv.frontend.default
+        criteria:
+          - key: service
+            op: "="
+            value: frontend.default
+      action: allow
+      applications:
+        - HTTP
+      ports: "tcp/80"
   egress:
-    - selector:
-        matchLabels:
-          app: backend-api
-      ports:
-        - protocol: TCP
-          port: 8080
-    - action: deny
-      # Deny all other egress
+    - name: nv.nginx.default-egress-0
+      selector:
+        name: nv.backend-api.default
+        criteria:
+          - key: service
+            op: "="
+            value: backend-api.default
+      action: allow
+      ports: "tcp/8080"
+  process: []
+  file: []
 ```
+
+In Protect mode, NeuVector blocks any network traffic that does not match an allow rule, so an explicit deny-all rule is not required.
 
 ```bash
 kubectl apply -f neuvector-network-policy.yaml
@@ -133,25 +152,27 @@ kubectl apply -f neuvector-network-policy.yaml
 Protect mode enforces the policy by blocking violations. Transition carefully:
 
 ```bash
-# First, set a group to Monitor mode to test without blocking
+# First, set a service to Monitor mode to test without blocking
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/group/nv.nginx.default" \
+  "https://neuvector-controller:10443/v1/service/config" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "mode": "Monitor"
+      "services": ["nginx.default"],
+      "policy_mode": "Monitor"
     }
   }'
 
 # After validating no false positives, switch to Protect
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/group/nv.nginx.default" \
+  "https://neuvector-controller:10443/v1/service/config" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "mode": "Protect"
+      "services": ["nginx.default"],
+      "policy_mode": "Protect"
     }
   }'
 ```
@@ -161,15 +182,15 @@ curl -sk -X PATCH \
 When NeuVector detects a violation in Protect mode, it generates a security event and takes action:
 
 ```bash
-# View recent security events via API
+# View recent security events via API (returns threats, incidents, and violations)
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=security&start=0&limit=50" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '.events[] | {
-    type: .type,
+  "https://neuvector-controller:10443/v1/log/security" \
+  -H "X-Auth-Token: ${TOKEN}" | jq '.threats[] | {
     name: .name,
-    container: .workload_name,
+    severity: .severity,
+    target: .target,
     action: .action,
-    timestamp: .at
+    timestamp: .reported_at
   }'
 ```
 
@@ -184,21 +205,34 @@ In the UI:
 
 ## Step 7: Handle Common Runtime Threats
 
-Configure specific responses to common runtime threats:
+Configure specific responses to common runtime threats. To quarantine a workload that exhibits malicious behavior, patch the workload directly:
 
 ```bash
-# Enable automatic quarantine for containers exhibiting malicious behavior
+# Quarantine a specific workload by ID
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/system/config" \
+  "https://neuvector-controller:10443/v1/workload/${WORKLOAD_ID}" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "auto_profile_collect": true,
+      "quarantine": true,
+      "quarantine_reason": "suspicious behavior"
+    }
+  }'
+
+# Enable service mesh monitoring at the system level
+curl -sk -X PATCH \
+  "https://neuvector-controller:10443/v1/system/config" \
+  -H "Content-Type: application/json" \
+  -H "X-Auth-Token: ${TOKEN}" \
+  -d '{
+    "config": {
       "monitor_service_mesh": true
     }
   }'
 ```
+
+To trigger quarantine automatically on specific events, configure Response Rules in the NeuVector UI under **Policy** > **Response Rules**.
 
 ## Step 8: Test Your Runtime Protection
 
