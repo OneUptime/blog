@@ -152,7 +152,7 @@ resource "aws_db_instance" "main" {
 
 ```hcl
 locals {
-  # OpenTofu numbers are always float64 internally
+  # OpenTofu numbers are arbitrary-precision floating-point internally
   integer_value = 42
   float_value   = 3.14
 
