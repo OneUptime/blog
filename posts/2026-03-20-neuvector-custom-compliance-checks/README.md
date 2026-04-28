@@ -56,8 +56,8 @@ exit "${FAILED}"
 
 ```bash
 # Create a custom compliance check for a group
-curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/custom_check/group/nv.webapp.production" \
+curl -sk -X PATCH \
+  "https://neuvector-manager:8443/v1/custom_check/nv.webapp.production" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
@@ -202,8 +202,8 @@ CHECK_SCRIPT="#!/bin/sh\n# Standard organization check\nif [ \$(id -u) -eq 0 ]; 
 
 for GROUP in "${GROUPS[@]}"; do
   echo "Adding check to ${GROUP}..."
-  curl -sk -X POST \
-    "https://neuvector-manager:8443/v1/custom_check/group/${GROUP}" \
+  curl -sk -X PATCH \
+    "https://neuvector-manager:8443/v1/custom_check/${GROUP}" \
     -H "Content-Type: application/json" \
     -H "X-Auth-Token: ${TOKEN}" \
     -d "{
@@ -224,13 +224,13 @@ done
 ## Step 6: View Custom Check Results
 
 ```bash
-# Run a custom check and get results
+# Get the compliance report for a container and filter custom check results
 curl -sk \
-  "https://neuvector-manager:8443/v1/custom_check/workload/<workload-id>" \
+  "https://neuvector-manager:8443/v1/workload/<workload-id>/compliance" \
   -H "X-Auth-Token: ${TOKEN}" | jq '{
-    checks: .compliance.customs[],
-    passed: [.compliance.customs[] | select(.level == "PASS")] | length,
-    failed: [.compliance.customs[] | select(.level == "FAIL")] | length
+    checks: [.items[] | select(.category == "custom")],
+    passed: [.items[] | select(.category == "custom" and .level == "PASS")] | length,
+    failed: [.items[] | select(.category == "custom" and .level == "FAIL")] | length
   }'
 ```
 
