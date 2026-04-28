@@ -29,7 +29,7 @@ openstack subnet create \
 openstack subnet create \
     --network my-network \
     --ip-version 6 \
-    --subnet-range 2001:db8:cloud:1::/64 \
+    --subnet-range 2001:db8:c10d:1::/64 \
     --ipv6-address-mode slaac \
     --ipv6-ra-mode slaac \
     --dns-nameserver 2001:db8::53 \
@@ -39,7 +39,7 @@ openstack subnet create \
 openstack subnet create \
     --network my-network \
     --ip-version 6 \
-    --subnet-range fd00:cloud:1::/64 \
+    --subnet-range fd00:c10d:1::/64 \
     --ipv6-address-mode dhcpv6-stateless \
     --ipv6-ra-mode dhcpv6-stateless \
     my-subnet-v6-stateless
@@ -48,10 +48,10 @@ openstack subnet create \
 openstack subnet create \
     --network my-network \
     --ip-version 6 \
-    --subnet-range fd00:cloud:2::/64 \
+    --subnet-range fd00:c10d:2::/64 \
     --ipv6-address-mode dhcpv6-stateful \
     --ipv6-ra-mode dhcpv6-stateful \
-    --allocation-pool start=fd00:cloud:2::100,end=fd00:cloud:2::200 \
+    --allocation-pool start=fd00:c10d:2::100,end=fd00:c10d:2::200 \
     my-subnet-v6-stateful
 ```
 
@@ -88,7 +88,7 @@ openstack server create \
 openstack server show my-ipv6-server | grep -A10 addresses
 
 # Expected:
-# addresses: my-network=10.0.1.101, 2001:db8:cloud:1:5054:ff:feab:cdef
+# addresses: my-network=10.0.1.101, 2001:db8:c10d:1:5054:ff:feab:cdef
 #                                    ^ SLAAC-generated from MAC
 
 # Assign a floating IP (IPv4) if external access needed
@@ -147,11 +147,11 @@ network_vlan_ranges = physnet1:100:200
 ```bash
 # Create an IPv6 subnet with prefix delegation (for router prefixes)
 
-# Create a PD subnet using the external router's prefix
+# Create a PD subnet using the default subnet pool
 openstack subnet create \
     --network my-tenant-network \
     --ip-version 6 \
-    --use-default-subnetpool \     # Use PD subnetpool
+    --use-default-subnet-pool \
     --ipv6-address-mode slaac \
     --ipv6-ra-mode slaac \
     my-pd-subnet
