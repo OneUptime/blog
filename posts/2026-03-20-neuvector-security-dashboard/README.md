@@ -57,12 +57,15 @@ Key metrics to monitor:
 ```bash
 # Get summary metrics via API
 curl -sk \
-  "https://neuvector-manager:8443/v1/system/summary" \
+  "https://neuvector-svc-controller:10443/v1/system/summary" \
   -H "X-Auth-Token: ${TOKEN}" | jq '{
-    total_pods: .summary.total_workloads,
-    critical_cve: .summary.crit_security_event,
-    protect_mode_groups: .summary.groups,
-    score: .summary.policy_status
+    running_pods: .summary.running_pods,
+    running_workloads: .summary.running_workloads,
+    services: .summary.services,
+    policy_rules: .summary.policy_rules,
+    enforcers: .summary.enforcers,
+    disconnected_enforcers: .summary.disconnected_enforcers,
+    cvedb_version: .summary.cvedb_version
   }'
 ```
 
@@ -80,9 +83,9 @@ Use the Security Events panel to track violations:
 ```bash
 # Get recent security events via API
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=security&start=0&limit=50" \
+  "https://neuvector-svc-controller:10443/v1/log/security" \
   -H "X-Auth-Token: ${TOKEN}" | jq '
-  .events |
+  [.threats[]?, .incidents[]?, .violations[]?] |
   group_by(.level) |
   map({level: .[0].level, count: length})'
 ```
@@ -92,25 +95,27 @@ curl -sk \
 Track CVE counts over time:
 
 ```bash
-# Get vulnerability statistics
-curl -sk \
-  "https://neuvector-manager:8443/v1/scan/workload?start=0&limit=1000" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '{
-    total_scanned: .total,
-    critical_total: [.workloads[].critical] | add,
+# Get vulnerability statistics across all scanned workloads
+curl -sk -X POST \
+  "https://neuvector-svc-controller:10443/v1/scan/workloads/scan_report" \
+  -H "Content-Type: application/json" \
+  -H "X-Auth-Token: ${TOKEN}" \
+  -d '{}' | jq '{
+    total_scanned: (.workloads | length),
     high_total: [.workloads[].high] | add,
-    medium_total: [.workloads[].medium] | add,
-    low_total: [.workloads[].low] | add
+    medium_total: [.workloads[].medium] | add
   }'
 
 # Find most vulnerable containers
-curl -sk \
-  "https://neuvector-manager:8443/v1/scan/workload?start=0&limit=1000" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '[
+curl -sk -X POST \
+  "https://neuvector-svc-controller:10443/v1/scan/workloads/scan_report" \
+  -H "Content-Type: application/json" \
+  -H "X-Auth-Token: ${TOKEN}" \
+  -d '{}' | jq '[
     .workloads[] |
-    select(.critical > 0 or .high > 5) |
-    {name: .name, namespace: .namespace, critical: .critical, high: .high}
-  ] | sort_by(.critical) | reverse | .[0:10]'
+    select(.high > 5) |
+    {name: .display_name, namespace: .domain, high: .high, medium: .medium}
+  ] | sort_by(.high) | reverse | .[0:10]'
 ```
 
 ## Step 5: Monitor Network Activity
@@ -128,17 +133,6 @@ The Network Activity view shows real-time container communications:
    - Bytes transferred
    - Policy action (allowed/blocked/alerted)
 
-```bash
-# Get network connection statistics
-curl -sk \
-  "https://neuvector-manager:8443/v1/network/statistics" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '{
-    total_connections: .total,
-    internal: .ingress,
-    external: .egress
-  }'
-```
-
 ## Step 6: Use the Risk Reports View
 
 NeuVector generates risk reports that aggregate security findings:
@@ -152,14 +146,10 @@ NeuVector generates risk reports that aggregate security findings:
 3. Click any CVE to see all affected containers
 
 ```bash
-# Get risk report summary
+# Get risk score metrics
 curl -sk \
-  "https://neuvector-manager:8443/v1/security/risk" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '{
-    high_risk_workloads: .workloads.high_risk,
-    compliance_score: .compliance.score,
-    vulnerability_score: .vulnerability.score
-  }'
+  "https://neuvector-svc-controller:10443/v1/system/score/metrics" \
+  -H "X-Auth-Token: ${TOKEN}" | jq '.'
 ```
 
 ## Step 7: Set Up Dashboard Alerts
@@ -168,18 +158,20 @@ Configure the dashboard to highlight specific conditions:
 
 ```bash
 # Create a response rule to alert on critical events
-curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/response/rule" \
+curl -sk -X PATCH \
+  "https://neuvector-svc-controller:10443/v1/response/rule" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "config": {
-      "event": "security-event",
-      "comment": "Alert on critical container security events",
-      "conditions": [{"type": "level", "value": "critical"}],
-      "actions": ["webhook"],
-      "webhooks": ["slack-security-channel"],
-      "disable": false
+    "insert": {
+      "rules": [{
+        "event": "security-event",
+        "comment": "Alert on critical container security events",
+        "conditions": [{"type": "level", "value": "critical"}],
+        "actions": ["webhook"],
+        "webhooks": ["slack-security-channel"],
+        "disable": false
+      }]
     }
   }'
 ```
@@ -197,11 +189,12 @@ echo "" >> report.md
 
 # Vulnerability summary
 echo "## Vulnerability Summary" >> report.md
-curl -sk \
-  "https://neuvector-manager:8443/v1/scan/workload?start=0&limit=1000" \
-  -H "X-Auth-Token: ${TOKEN}" | jq -r '"
-Total Containers Scanned: \(.total)
-Critical CVEs: \([.workloads[].critical] | add)
+curl -sk -X POST \
+  "https://neuvector-svc-controller:10443/v1/scan/workloads/scan_report" \
+  -H "Content-Type: application/json" \
+  -H "X-Auth-Token: ${TOKEN}" \
+  -d '{}' | jq -r '"
+Total Containers Scanned: \(.workloads | length)
 High CVEs: \([.workloads[].high] | add)
 Medium CVEs: \([.workloads[].medium] | add)
 "' >> report.md
@@ -210,11 +203,12 @@ Medium CVEs: \([.workloads[].medium] | add)
 echo "" >> report.md
 echo "## Security Events (Last 24 Hours)" >> report.md
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=security&start=0&limit=1000" \
+  "https://neuvector-svc-controller:10443/v1/log/security" \
   -H "X-Auth-Token: ${TOKEN}" | jq -r '
-  "Total Events: \(.events | length)
-Critical: \([.events[] | select(.level == "Critical")] | length)
-High: \([.events[] | select(.level == "High")] | length)"' >> report.md
+  ([.threats[]?, .incidents[]?, .violations[]?]) as $events |
+  "Total Events: \($events | length)
+Critical: \([$events[] | select(.level == "Critical")] | length)
+High: \([$events[] | select(.level == "High")] | length)"' >> report.md
 
 echo "Report generated: report.md"
 ```
