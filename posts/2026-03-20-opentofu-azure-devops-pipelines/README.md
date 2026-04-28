@@ -53,16 +53,16 @@ stages:
               azureSubscription: 'production-service-connection'
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
+              addSpnToEnvironment: true
               inlineScript: |
+                export ARM_USE_OIDC=true
+                export ARM_CLIENT_ID=$servicePrincipalId
+                export ARM_TENANT_ID=$tenantId
+                export ARM_OIDC_TOKEN=$idToken
+                export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
                 cd $(working_directory)
                 tofu init -input=false
                 tofu plan -out=tfplan -input=false -no-color 2>&1 | tee $(Build.ArtifactStagingDirectory)/plan.txt
-              addSpnToEnvironment: true
-            env:
-              ARM_USE_OIDC: true
-              ARM_CLIENT_ID: $(servicePrincipalId)
-              ARM_TENANT_ID: $(tenantId)
-              ARM_SUBSCRIPTION_ID: $(subscriptionId)
 
           - publish: $(Build.ArtifactStagingDirectory)
             artifact: 'tfplan'
@@ -87,11 +87,16 @@ stages:
                     azureSubscription: 'production-service-connection'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
+                    addSpnToEnvironment: true
                     inlineScript: |
+                      export ARM_USE_OIDC=true
+                      export ARM_CLIENT_ID=$servicePrincipalId
+                      export ARM_TENANT_ID=$tenantId
+                      export ARM_OIDC_TOKEN=$idToken
+                      export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
                       cd $(working_directory)
                       tofu init -input=false
                       tofu apply -input=false -auto-approve $(Pipeline.Workspace)/tfplan/tfplan
-                    addSpnToEnvironment: true
 ```
 
 ## Setting Up the Approval Gate
