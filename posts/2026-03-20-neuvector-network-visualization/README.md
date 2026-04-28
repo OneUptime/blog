@@ -63,22 +63,22 @@ Focus on specific parts of your environment:
 # Get network connection data via API
 
 curl -sk \
-  "https://neuvector-manager:8443/v1/conversation/group" \
+  "https://neuvector-manager:8443/v1/conversation" \
   -H "X-Auth-Token: ${TOKEN}" | jq '{
     total_connections: .conversations | length,
     by_protocol: [.conversations[] | .ports] | flatten | group_by(.) | map({port: .[0], count: length})
   }'
 
-# Get connections for a specific group
+# Get connections involving a specific group
 GROUP="nv.webapp.production"
 curl -sk \
-  "https://neuvector-manager:8443/v1/conversation/group/${GROUP}" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '.conversations[] | {
+  "https://neuvector-manager:8443/v1/conversation" \
+  -H "X-Auth-Token: ${TOKEN}" | jq --arg g "${GROUP}" '.conversations[] | select(.from == $g or .to == $g) | {
     from: .from,
     to: .to,
     ports: .ports,
     bytes: .bytes,
-    action: .policyAction
+    action: .policy_action
   }'
 ```
 
@@ -89,7 +89,7 @@ Look for connections that shouldn't exist:
 ```bash
 # Find connections to external IPs (potential data exfiltration)
 curl -sk \
-  "https://neuvector-manager:8443/v1/conversation/group" \
+  "https://neuvector-manager:8443/v1/conversation" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq '[.conversations[] | select(.to | startswith("nv.ip."))] | {
     external_connections: length,
@@ -98,9 +98,9 @@ curl -sk \
 
 # Find connections on unexpected ports
 curl -sk \
-  "https://neuvector-manager:8443/v1/conversation/group" \
+  "https://neuvector-manager:8443/v1/conversation" \
   -H "X-Auth-Token: ${TOKEN}" | \
-  jq '[.conversations[] | select(.ports | contains("4444") or contains("1337") or contains("31337"))]'
+  jq '[.conversations[] | select(.ports // [] | any(test("4444|1337|31337")))]'
 ```
 
 ## Step 5: Export Network Topology Data
@@ -113,9 +113,9 @@ Export the network map for documentation or analysis:
 
 # Export all connections
 curl -sk \
-  "https://neuvector-manager:8443/v1/conversation/group" \
+  "https://neuvector-manager:8443/v1/conversation" \
   -H "X-Auth-Token: ${TOKEN}" | \
-  jq -r '.conversations[] | [.from, .to, .ports, .bytes, .policyAction] | @csv' | \
+  jq -r '.conversations[] | [.from, .to, (.ports // [] | join(",")), .bytes, .policy_action] | @csv' | \
   awk 'BEGIN{print "\"From\",\"To\",\"Ports\",\"Bytes\",\"Action\""}{print}' \
   > network-topology.csv
 
@@ -128,12 +128,12 @@ echo "```mermaid" >> network-diagram.md
 echo "graph LR" >> network-diagram.md
 
 curl -sk \
-  "https://neuvector-manager:8443/v1/conversation/group" \
+  "https://neuvector-manager:8443/v1/conversation" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq -r '.conversations[] |
-    (.from | gsub("nv."; ""; "g") | gsub("\\."; "_"; "g")) as $from |
-    (.to | gsub("nv."; ""; "g") | gsub("\\."; "_"; "g")) as $to |
-    "    \($from) -->|" + .ports + "| \($to)"' >> network-diagram.md
+    (.from | gsub("nv\\."; "") | gsub("\\."; "_")) as $from |
+    (.to | gsub("nv\\."; "") | gsub("\\."; "_")) as $to |
+    "    \($from) -->|\((.ports // []) | join(","))| \($to)"' >> network-diagram.md
 
 echo "```" >> network-diagram.md
 
@@ -153,15 +153,15 @@ TOKEN="your-token"
 
 # Get all allow connections
 curl -sk \
-  "https://neuvector-manager:8443/v1/conversation/group" \
+  "https://neuvector-manager:8443/v1/conversation" \
   -H "X-Auth-Token: ${TOKEN}" | \
-  jq '.conversations[] | select(.policyAction == "allow")' > observed-connections.json
+  jq '.conversations[] | select(.policy_action == "allow")' > observed-connections.json
 
 # Generate policy rules from observed connections
-cat observed-connections.json | jq -r '[.from, .to, .ports] | @tsv' | \
+cat observed-connections.json | jq -r '[.from, .to, ((.ports // []) | join(","))] | @tsv' | \
 while IFS=$'\t' read -r FROM TO PORTS; do
   echo "Creating rule: ${FROM} -> ${TO} (${PORTS})"
-  curl -sk -X POST \
+  curl -sk -X PATCH \
     "https://neuvector-manager:8443/v1/policy/rule" \
     -H "Content-Type: application/json" \
     -H "X-Auth-Token: ${TOKEN}" \
@@ -174,7 +174,7 @@ while IFS=$'\t' read -r FROM TO PORTS; do
           \"to\": \"${TO}\",
           \"ports\": \"${PORTS}\",
           \"action\": \"allow\",
-          \"cfg_type\": \"user\"
+          \"cfg_type\": \"user_created\"
         }]
       }
     }"
@@ -191,7 +191,7 @@ Set up alerts when new unexpected connections appear:
 
 # First, capture the baseline
 curl -sk \
-  "https://neuvector-manager:8443/v1/conversation/group" \
+  "https://neuvector-manager:8443/v1/conversation" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq '[.conversations[] | {from: .from, to: .to, ports: .ports}]' \
   > baseline-connections.json
@@ -200,7 +200,7 @@ echo "Baseline captured with $(cat baseline-connections.json | jq length) connec
 
 # Later, compare against the baseline to find new connections
 curl -sk \
-  "https://neuvector-manager:8443/v1/conversation/group" \
+  "https://neuvector-manager:8443/v1/conversation" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq --slurpfile baseline baseline-connections.json '
     [.conversations[] | {from: .from, to: .to, ports: .ports}] as $current |
@@ -215,7 +215,7 @@ Look for unusual traffic patterns:
 ```bash
 # Find high-volume connections (potential data exfiltration)
 curl -sk \
-  "https://neuvector-manager:8443/v1/conversation/group" \
+  "https://neuvector-manager:8443/v1/conversation" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq '[.conversations[] | select(.bytes > 1073741824)] |
     sort_by(.bytes) | reverse | .[0:10] |
