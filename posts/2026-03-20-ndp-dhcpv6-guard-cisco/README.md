@@ -82,7 +82,7 @@ interface GigabitEthernet1/0/24
  ipv6 dhcp guard attach-policy SERVER_GUARD
 
 ! The binding table is populated when DHCPv6 REPLY is seen on server port:
-show ipv6 neighbor binding
+show ipv6 neighbors binding
 ```
 
 ## Handling DHCPv6 Relay Agents
@@ -143,27 +143,22 @@ interface GigabitEthernet1/0/24
 ## Verification Commands
 
 ```text
-! Show DHCPv6 Guard policies defined
+! Show DHCPv6 Guard policies defined and the targets they are attached to
 show ipv6 dhcp guard policy
 
-! Show DHCPv6 Guard status on interface
-show ipv6 dhcp guard interface GigabitEthernet1/0/1
+! Show details for a specific policy (lists attached interfaces/VLANs)
+show ipv6 dhcp guard policy HOST_DHCP
 
-! Show DHCPv6 Guard statistics (dropped server messages)
-show ipv6 dhcp guard statistics
+! Show IPv6 snooping policies and where they are attached
+show ipv6 snooping policies
 
 ! Show binding table (populated by snooping + DHCPv6)
-show ipv6 neighbor binding
+show ipv6 neighbors binding
 
-! Show all FHS features active
-show ipv6 first-hop-security summary
-
-! Example output for host port:
-! GigabitEthernet1/0/1
-!   DHCPv6 Guard policy: HOST_DHCP
-!   Device role: CLIENT
-!   DHCPv6 server messages received: 3
-!   DHCPv6 server messages dropped: 3  ← All server msgs blocked
+! Example output for show ipv6 dhcp guard policy HOST_DHCP:
+! Dhcp guard policy: HOST_DHCP
+!         Device Role: dhcp client
+!         Target: Gi1/0/1 Gi1/0/2 Gi1/0/3 ...
 ```
 
 ## Conclusion
