@@ -24,27 +24,25 @@ NeuVector scans for secrets through:
 
 ## Step 1: Enable Secrets Detection in Image Scanning
 
-NeuVector's registry scanner automatically checks for secrets in image layers:
+NeuVector's registry scanner automatically checks for secrets in image layers as part of every registry scan:
 
 1. In NeuVector UI, go to **Assets > Registries**
-2. Click your registry and enable **Secrets Scanning**
-3. Run a scan or wait for scheduled scan
+2. Click your registry and confirm scanning is configured
+3. Run a scan or wait for the scheduled scan
 
 Or trigger via API:
 
 ```bash
-# Trigger a scan with secrets detection enabled
+# Trigger a registry scan (secrets detection runs automatically)
 
 curl -sk -X POST \
   -H "X-Auth-Token: $TOKEN" \
-  -H "Content-Type: application/json" \
-  https://neuvector.example.com/v1/scan/registry/<registry-id>/scan \
-  -d '{"secrets": true}'
+  https://neuvector.example.com/v1/scan/registry/<registry-name>/scan
 
 # Check scan results for secret violations
 curl -sk \
   -H "X-Auth-Token: $TOKEN" \
-  https://neuvector.example.com/v1/scan/registry/<registry-id>/image/<image-id> \
+  https://neuvector.example.com/v1/scan/registry/<registry-name>/image/<image-id> \
   | jq '.report.secrets'
 ```
 
@@ -61,17 +59,20 @@ curl -sk -X POST \
   -H "Content-Type: application/json" \
   https://neuvector.example.com/v1/admission/rule \
   -d '{
-    "category": "Kubernetes",
-    "comment": "Block deployments that expose API keys in env vars",
-    "criteria": [
-      {
-        "name": "envVarSecrets",
-        "op": "containsAny",
-        "value": "AWS_SECRET_ACCESS_KEY,GITHUB_TOKEN,DATABASE_PASSWORD,API_KEY,PRIVATE_KEY"
-      }
-    ],
-    "rule_type": "deny",
-    "action": "deny"
+    "config": {
+      "category": "Kubernetes",
+      "comment": "Block deployments that expose API keys in env vars",
+      "criteria": [
+        {
+          "name": "envVarSecrets",
+          "op": "containsAny",
+          "value": "AWS_SECRET_ACCESS_KEY,GITHUB_TOKEN,DATABASE_PASSWORD,API_KEY,PRIVATE_KEY",
+          "type": "envVarSecrets"
+        }
+      ],
+      "rule_type": "deny",
+      "cfg_type": "user"
+    }
   }'
 ```
 
@@ -79,34 +80,29 @@ curl -sk -X POST \
 
 ## Step 3: Custom Compliance Check for Secret Detection
 
-Create a custom compliance check that runs inside containers to detect exposed credentials:
+Create a custom compliance check that runs inside containers in a NeuVector group to detect exposed credentials. Custom checks are attached to a group via `PATCH /v1/custom_check/<group>`:
 
 ```bash
-curl -sk -X POST \
+curl -sk -X PATCH \
   -H "X-Auth-Token: $TOKEN" \
   -H "Content-Type: application/json" \
-  https://neuvector.example.com/v1/bench/custom_check \
+  https://neuvector.example.com/v1/custom_check/<group-name> \
   -d '{
-    "entries": [
-      {
-        "test_number": "SEC-010",
-        "level": "ERROR",
-        "description": "No AWS credentials in environment",
-        "type": "CONTAINER",
-        "commands": {
-          "test": "! (env | grep -qE \"AWS_SECRET|AWS_ACCESS_KEY\") && echo pass || echo fail"
-        }
-      },
-      {
-        "test_number": "SEC-011",
-        "level": "ERROR",
-        "description": "No private keys in /etc or /app",
-        "type": "CONTAINER",
-        "commands": {
-          "test": "! find /etc /app -name \"*.pem\" -o -name \"id_rsa\" 2>/dev/null | grep -q . && echo pass || echo fail"
-        }
+    "config": {
+      "update": {
+        "group": "<group-name>",
+        "scripts": [
+          {
+            "name": "no_aws_credentials",
+            "script": "! (env | grep -qE \"AWS_SECRET|AWS_ACCESS_KEY\") && echo pass || echo fail"
+          },
+          {
+            "name": "no_private_keys",
+            "script": "! find /etc /app -name \"*.pem\" -o -name \"id_rsa\" 2>/dev/null | grep -q . && echo pass || echo fail"
+          }
+        ]
       }
-    ]
+    }
   }'
 ```
 
@@ -131,11 +127,21 @@ NeuVector's process monitor can alert when a process accesses sensitive files:
 ## Step 5: Review Secret Exposure Reports
 
 ```bash
-# Get all containers with detected secrets
+# Get the scan report for a specific workload (includes detected secrets)
 curl -sk \
   -H "X-Auth-Token: $TOKEN" \
-  https://neuvector.example.com/v1/workload?brief=false \
-  | jq '.workloads[] | select(.secrets != null and (.secrets | length) > 0) | {name:.display_name, secrets:.secrets}'
+  https://neuvector.example.com/v1/scan/workload/<workload-id> \
+  | jq '.report.secrets'
+
+# Iterate over all workloads and report any with detected secrets
+curl -sk -H "X-Auth-Token: $TOKEN" \
+  https://neuvector.example.com/v1/workload \
+  | jq -r '.workloads[].id' \
+  | while read id; do
+      curl -sk -H "X-Auth-Token: $TOKEN" \
+        "https://neuvector.example.com/v1/scan/workload/$id" \
+        | jq --arg id "$id" '(.report.secrets // []) | select(length > 0) | {workload: $id, secrets: .}'
+    done
 ```
 
 ---
