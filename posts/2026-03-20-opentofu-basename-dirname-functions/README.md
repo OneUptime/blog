@@ -122,9 +122,9 @@ resource "aws_s3_object" "configs" {
 
 ## Important Notes
 
-- `basename` and `dirname` use forward slashes as path separators on all platforms; they do not convert Windows-style backslash paths.
+- `basename` and `dirname` are platform-aware: on Unix they use forward slashes (`/`), and on Windows they use backslashes (`\`). Avoid relying on a specific separator if your modules run on multiple operating systems.
 - `dirname` on a path with no directory component (e.g., just a filename) returns `"."`.
-- `basename` on a path ending with a slash returns an empty string - avoid trailing slashes.
+- `basename` strips trailing slashes before returning the last component, so `basename("/foo/bar/")` returns `"bar"` rather than an empty string.
 - These functions perform pure string manipulation; they do not check whether the path exists on disk.
 
 ## Conclusion
