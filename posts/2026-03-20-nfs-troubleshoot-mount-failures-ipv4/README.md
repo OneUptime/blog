@@ -68,7 +68,7 @@ sudo exportfs -v
 sudo exportfs -ra
 
 # Verify the client IP is now listed:
-sudo showmount -a localhost
+sudo showmount -e localhost
 ```
 
 ### mount.nfs: Stale file handle
@@ -115,8 +115,8 @@ nc -zv 203.0.113.10 111    # Test portmapper
 ```bash
 # Cause: Server unreachable but using 'hard' mount option
 
-# Kill the hung mount with Ctrl+C (if 'intr' option present)
-# or:
+# Try to interrupt the hung process (note: 'intr' option is a no-op since kernel 2.6.25)
+# Kill the hung mount process:
 sudo kill -9 $(pgrep mount.nfs)
 
 # Use soft mount to get error instead of hang:
