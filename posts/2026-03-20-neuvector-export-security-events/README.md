@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NeuVector, Security Events, Export, SIEM, Compliance
 
-Description: Learn how to export NeuVector security events using the REST API, syslog, and webhooks for SIEM integration, compliance reporting, and forensic analysis.
+Description: Learn how to export NeuVector security events using the REST API for SIEM integration, compliance reporting, and forensic analysis.
 
 ## Introduction
 
-Exporting security events from NeuVector is essential for compliance reporting, forensic analysis, and SIEM integration. NeuVector stores security events, audit logs, and compliance findings that can be exported through multiple methods. This guide covers the REST API for on-demand export, syslog for streaming, and automation scripts for scheduled exports.
+Exporting security events from NeuVector is essential for compliance reporting, forensic analysis, and SIEM integration. NeuVector stores security events, audit logs, and compliance findings that can be exported through the REST API. This guide covers the REST API for on-demand export and automation scripts for scheduled exports.
 
 ## Event Types Available
 
@@ -54,7 +54,7 @@ ALL_EVENTS=()
 
 while true; do
   RESPONSE=$(curl -sk \
-    "${NV_URL}/v1/event?start=${START}&limit=${PAGE_SIZE}&type=security" \
+    "${NV_URL}/v1/log/event?start=${START}&limit=${PAGE_SIZE}&category=security" \
     -H "X-Auth-Token: ${TOKEN}")
 
   COUNT=$(echo "${RESPONSE}" | jq '.events | length')
@@ -84,9 +84,11 @@ NOW=$(date +%s)
 YESTERDAY=$((NOW - 86400))
 
 curl -sk \
-  "${NV_URL}/v1/event?start=0&limit=1000&start_time=${YESTERDAY}&end_time=${NOW}" \
+  "${NV_URL}/v1/log/event?start=0&limit=1000" \
   -H "X-Auth-Token: ${TOKEN}" | \
-  jq '.events' > last-24h-events.json
+  jq --argjson since "${YESTERDAY}" \
+    '[.events[] | select(.reported_timestamp >= $since)]' \
+  > last-24h-events.json
 
 echo "Events from last 24 hours exported"
 ```
@@ -94,66 +96,69 @@ echo "Events from last 24 hours exported"
 ## Step 3: Export Vulnerability Reports
 
 ```bash
-# Export all vulnerability scan results
+# Export per-workload vulnerability summary (high/medium counts come from scan_summary)
 curl -sk \
-  "${NV_URL}/v1/scan/workload?start=0&limit=1000" \
+  "${NV_URL}/v1/workload" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq '[.workloads[] | {
-    name: .name,
-    namespace: .namespace,
+    name: .display_name,
+    namespace: .domain,
     image: .image,
-    critical: .critical,
-    high: .high,
-    medium: .medium,
-    low: .low,
-    scanned_at: .scanned_at
+    high: .scan_summary.high,
+    medium: .scan_summary.medium,
+    scanned_at: .scan_summary.scanned_at
   }]' > vulnerability-export.json
 
-# Export detailed CVE list for all workloads
-curl -sk \
-  "${NV_URL}/v1/scan/workload?start=0&limit=1000" \
-  -H "X-Auth-Token: ${TOKEN}" | \
-  jq -r '.workloads[] |
-    .name as $name |
-    .namespace as $ns |
-    .vulnerabilities[]? |
-    [$name, $ns, .name, .severity, (.score|tostring), .package_name, .fixed_version] |
-    @csv' | \
-  awk 'BEGIN{print "Container,Namespace,CVE,Severity,Score,Package,Fixed Version"}{print}' \
-  > cve-export.csv
+# Export detailed CVE list by iterating over each workload
+echo "Container,Namespace,CVE,Severity,Score,Package,Fixed Version" > cve-export.csv
+
+curl -sk "${NV_URL}/v1/workload" -H "X-Auth-Token: ${TOKEN}" | \
+  jq -r '.workloads[] | [.id, .display_name, .domain] | @tsv' | \
+  while IFS=$'\t' read -r WL_ID WL_NAME WL_NS; do
+    curl -sk "${NV_URL}/v1/scan/workload/${WL_ID}" \
+      -H "X-Auth-Token: ${TOKEN}" | \
+      jq -r --arg name "${WL_NAME}" --arg ns "${WL_NS}" \
+        '.report.vulnerabilities[]? |
+         [$name, $ns, .name, .severity, (.score_v3|tostring), .package_name, .fixed_version] |
+         @csv' >> cve-export.csv
+  done
 ```
 
 ## Step 4: Export Compliance Reports
 
 ```bash
-# Export compliance check results
-curl -sk \
-  "${NV_URL}/v1/bench/host" \
-  -H "X-Auth-Token: ${TOKEN}" | \
-  jq -r '.hosts[] |
-    .host as $host |
-    .items[]? |
-    select(.level != "PASS") |
-    [$host, .test_number, .description, .level, .remediation] |
-    @csv' | \
-  awk 'BEGIN{print "Host,Check ID,Description,Level,Remediation"}{print}' \
-  > compliance-export.csv
+# Export Kubernetes compliance check results for every host
+echo "Host,Check ID,Description,Level,Remediation" > compliance-export.csv
+
+curl -sk "${NV_URL}/v1/host" -H "X-Auth-Token: ${TOKEN}" | \
+  jq -r '.hosts[] | [.id, .name] | @tsv' | \
+  while IFS=$'\t' read -r HOST_ID HOST_NAME; do
+    curl -sk "${NV_URL}/v1/bench/host/${HOST_ID}/kubernetes" \
+      -H "X-Auth-Token: ${TOKEN}" | \
+      jq -r --arg host "${HOST_NAME}" \
+        '.items[]? |
+         select(.level != "PASS") |
+         [$host, .test_number, .description, .level, .remediation] |
+         @csv' >> compliance-export.csv
+  done
 ```
 
 ## Step 5: Export Audit Logs
 
 ```bash
-# Export user audit trail
+# Export the audit log
 curl -sk \
-  "${NV_URL}/v1/audit?start=0&limit=1000" \
+  "${NV_URL}/v1/log/audit?start=0&limit=1000" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq '[.audits[] | {
-    timestamp: .reported_timestamp,
+    timestamp: .reported_at,
+    name: .name,
+    level: .level,
     user: .user,
-    action: .action,
-    resource: .resource_name,
-    result: .result,
-    remote_ip: .remote_ip
+    host: .host_name,
+    workload: .workload_name,
+    image: .image,
+    message: .message
   }]' > audit-export.json
 ```
 
@@ -192,7 +197,7 @@ spec:
 
                   # Export security events
                   curl -sk \
-                    "https://neuvector-svc-controller:10443/v1/event?start=0&limit=5000" \
+                    "https://neuvector-svc-controller:10443/v1/log/event?start=0&limit=5000" \
                     -H "X-Auth-Token: ${TOKEN}" \
                     > /exports/security-events-${DATE}.json
 
@@ -240,4 +245,4 @@ echo "Exported to s3://${BUCKET}/neuvector/$(date +%Y/%m/%d)/"
 
 ## Conclusion
 
-Exporting NeuVector security events ensures you have a complete audit trail for compliance, forensic investigation, and historical analysis. By combining on-demand API exports with streaming syslog output and automated CronJob exports, you can meet the event retention requirements of PCI DSS, HIPAA, SOC 2, and other compliance frameworks. Store exports in an immutable storage backend (AWS S3, Azure Blob with immutability policies) to prevent tampering.
+Exporting NeuVector security events ensures you have a complete audit trail for compliance, forensic investigation, and historical analysis. By combining on-demand API exports with automated CronJob exports, you can meet the event retention requirements of PCI DSS, HIPAA, SOC 2, and other compliance frameworks. Store exports in an immutable storage backend (AWS S3, Azure Blob with immutability policies) to prevent tampering.
