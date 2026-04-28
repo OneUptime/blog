@@ -18,7 +18,7 @@ Safely apply and test Netplan IPv6 configuration changes using netplan try for a
 
 ## Netplan File Location
 
-Netplan configuration files are in  with  extension. Files are processed in lexicographic order.
+Netplan configuration files are in `/etc/netplan/` with `.yaml` extension. Files are processed in lexicographic order.
 
 ```bash
 # List existing Netplan configs
