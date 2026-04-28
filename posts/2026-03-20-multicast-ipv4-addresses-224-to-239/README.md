@@ -38,13 +38,15 @@ The entire `224.0.0.0/4` block (224.0.0.0 through 239.255.255.255) is reserved f
 
 ```bash
 # View multicast group memberships
-
 ip maddr show
 
 # View IGMP group membership
 cat /proc/net/igmp
+```
 
-# Join a multicast group with Python
+Join a multicast group with Python:
+
+```python
 import socket
 import struct
 
