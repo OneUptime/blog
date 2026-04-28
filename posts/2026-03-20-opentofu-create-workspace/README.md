@@ -62,10 +62,10 @@ terraform.tfstate.d/
     └── terraform.tfstate
 ```
 
-For S3:
+For S3, the state path is `<workspace_key_prefix>/<workspace_name>/<key>` (the default `workspace_key_prefix` is `env:`):
 ```text
-s3://bucket/prefix/env:/staging/terraform.tfstate
-s3://bucket/prefix/env:/production/terraform.tfstate
+s3://bucket/env:/staging/terraform.tfstate
+s3://bucket/env:/production/terraform.tfstate
 ```
 
 ## Using the Workspace in Configuration
