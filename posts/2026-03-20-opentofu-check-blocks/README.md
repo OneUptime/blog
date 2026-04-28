@@ -15,7 +15,7 @@ Check blocks are OpenTofu's continuous validation mechanism. Unlike precondition
 ```hcl
 check "s3_bucket_public_access" {
   assert {
-    condition     = aws_s3_bucket.data.bucket_acl == "private"
+    condition     = aws_s3_bucket_acl.data.acl == "private"
     error_message = "S3 bucket must not be public."
   }
 }
