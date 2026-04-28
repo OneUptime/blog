@@ -81,10 +81,10 @@ aws ecr get-login-password --region us-east-1 | \
   helm registry login \
   --username AWS \
   --password-stdin \
-  123456789.dkr.ecr.us-east-1.amazonaws.com
+  123456789012.dkr.ecr.us-east-1.amazonaws.com
 
 helm push my-app-1.0.0.tgz \
-  oci://123456789.dkr.ecr.us-east-1.amazonaws.com/helm-charts
+  oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/helm-charts
 ```
 
 ## Conclusion
