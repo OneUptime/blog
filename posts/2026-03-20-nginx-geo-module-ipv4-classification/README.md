@@ -129,7 +129,7 @@ For real geographic classification, combine `geo` with the `geoip` module and Ma
 # Install GeoIP module and database
 
 sudo apt install nginx-module-geoip
-wget -O /etc/nginx/GeoIP.dat \
+wget -O /etc/nginx/GeoIP.dat.gz \
   https://dl.miyuru.lk/geoip/maxmind/country/maxmind4.dat.gz && \
   gunzip /etc/nginx/GeoIP.dat.gz
 ```
