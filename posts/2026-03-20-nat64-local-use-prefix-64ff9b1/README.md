@@ -29,7 +29,7 @@ The `64:ff9b:1::/48` prefix provides a larger allocation from which operators ca
   64:ff9b:1:0000::/96   - NAT64 for VLAN A
   64:ff9b:1:0001::/96   - NAT64 for VLAN B
   64:ff9b:1:0002::/96   - NAT64 for VLAN C
-  ... up to 65536 /96 deployments
+  ... up to 2^48 /96 deployments
 ```
 
 ## Address Synthesis with Local-Use Prefix
@@ -64,7 +64,7 @@ print(synthesize_nat64_local("8.8.8.8", subnet=1))
 options {
     # Use local-use prefix instead of well-known
     dns64 64:ff9b:1::/96 {
-        clients { 2001:db8:clients::/48; };
+        clients { 2001:db8:cafe::/48; };
         mapped { !10.0.0.0/8; !172.16.0.0/12; !192.168.0.0/16; any; };
     };
 };
@@ -93,7 +93,7 @@ ip6tables -A FORWARD \
   -j DROP
 
 # Route the prefix to the NAT64 gateway
-ip -6 route add 64:ff9b:1::/48 via 2001:db8::nat64-gw
+ip -6 route add 64:ff9b:1::/48 via 2001:db8::1
 ```
 
 ## Conclusion
