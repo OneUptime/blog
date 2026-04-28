@@ -23,8 +23,10 @@ terraform {
     use_lockfile   = true  # native S3 locking (OpenTofu 1.10+, no DynamoDB needed)
 
     # IAM role assumption (optional)
-    role_arn       = "arn:aws:iam::123456789012:role/OpenTofuStateRole"
-    session_name   = "opentofu-state"
+    assume_role = {
+      role_arn     = "arn:aws:iam::123456789012:role/OpenTofuStateRole"
+      session_name = "opentofu-state"
+    }
   }
 }
 ```
@@ -84,7 +86,7 @@ terraform {
     path = "terraform.tfstate"
   }
 }
-# Note: Local backend has no locking and is not suitable for team use
+# Note: Local backend uses system file locks, but state is not shared, so it is not suitable for team use
 
 ```
 
