@@ -33,7 +33,7 @@ http {
 
 ```nginx
 http {
-    # Try 8.8.8.8 first, fall back to 1.1.1.1
+    # Query 8.8.8.8 and 1.1.1.1 in round-robin fashion
     resolver 8.8.8.8 1.1.1.1 ipv6=off;
 
     # ...
