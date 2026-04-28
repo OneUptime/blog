@@ -169,6 +169,9 @@ ipv6 snooping policy ND_SNOOP
  security-level guard
  tracking enable
  limit address-count 10
+ipv6 snooping policy ND_TRUST
+ trusted-port
+ device-role node
 
 ! IPv6 Source Guard
 ipv6 source-guard policy SRC_GUARD
@@ -184,7 +187,7 @@ interface range GigabitEthernet1/0/1 - 23
 interface GigabitEthernet1/0/24
  ipv6 nd raguard attach-policy ROUTER_RA
  ipv6 dhcp guard attach-policy SERVER_DHCP
- ipv6 snooping trust
+ ipv6 snooping attach-policy ND_TRUST
 ```
 
 ## Conclusion
