@@ -26,13 +26,15 @@ sudo mv nebula nebula-cert /usr/local/bin/
 nebula-cert ca -name "My Org CA"
 
 # Create a certificate for the lighthouse (discovery server)
-nebula-cert sign -name "lighthouse" -ip "192.168.100.1/24" \
+# Note: -ip is deprecated; use -networks (comma-separated CIDRs)
+nebula-cert sign -name "lighthouse" -networks "192.168.100.1/24" \
   -groups "lighthouses"
 
-# Create certificates for nodes with IPv6 overlay addresses
-# Nebula overlay addresses are IPv4 currently; IPv6 is underlay-only
-nebula-cert sign -name "node1" -ip "192.168.100.2/24" -groups "nodes"
-nebula-cert sign -name "node2" -ip "192.168.100.3/24" -groups "nodes"
+# Create certificates for nodes
+# As of Nebula v1.10.0 (Dec 2025), -networks accepts both IPv4 and IPv6
+# CIDRs when issuing v2 certs, enabling IPv6 addresses in the overlay too.
+nebula-cert sign -name "node1" -networks "192.168.100.2/24" -groups "nodes"
+nebula-cert sign -name "node2" -networks "192.168.100.3/24" -groups "nodes"
 ```
 
 ## Lighthouse Configuration
@@ -84,7 +86,7 @@ pki:
 
 # Connect to lighthouse using its IPv6 address
 static_host_map:
-  "192.168.100.1": ["[2001:db8::lighthouse]:4242"]
+  "192.168.100.1": ["[2001:db8::1]:4242"]
   # IPv6 address in brackets, same notation as HTTP URLs
 
 lighthouse:
@@ -130,8 +132,8 @@ Nebula automatically uses IPv6 for peer connections when:
 # Multiple endpoints for a lighthouse (IPv4 and IPv6)
 static_host_map:
   "192.168.100.1":
-    - "203.0.113.10:4242"          # IPv4
-    - "[2001:db8::lighthouse]:4242"  # IPv6
+    - "203.0.113.10:4242"     # IPv4
+    - "[2001:db8::1]:4242"    # IPv6
 ```
 
 ## Starting Nebula
@@ -144,7 +146,7 @@ sudo systemctl start nebula
 # Or run directly
 sudo nebula -config /etc/nebula/config-node.yaml
 
-# Check connection to lighthouse
+# Validate that the config parses (does not actually dial the lighthouse)
 sudo nebula -config /etc/nebula/config-node.yaml -test
 
 # Verify tunnel interface
