@@ -129,11 +129,11 @@ sudo systemctl enable --now tayga
 # 8.8.8.8 = 64:ff9b::8.8.8.8 = 64:ff9b::808:808
 ping -6 64:ff9b::8.8.8.8
 
-# Test with curl
-curl -6 http://64:ff9b::93.184.216.34/    # Example domain IPv4 via NAT64
+# Test with curl (IPv6 literals in URLs must be in square brackets)
+curl -6 'http://[64:ff9b::93.184.216.34]/'    # Example domain IPv4 via NAT64
 
-# Check TAYGA mappings
-sudo tayga --config /etc/tayga.conf --dump
+# Check TAYGA dynamic mappings (stored in data-dir)
+sudo cat /var/db/tayga/dynamic.map
 ```
 
 ## Conclusion
