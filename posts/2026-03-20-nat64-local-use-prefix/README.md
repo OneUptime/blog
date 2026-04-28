@@ -53,9 +53,9 @@ print(embed_ipv4(gw2_prefix, "8.8.8.8"))  # 64:ff9b:1:2::808:808
 ```bash
 # Unbound - configure DNS64 with local-use prefix
 # /etc/unbound/unbound.conf
-module-config: "dns64 validator iterator"
-dns64:
-  prefix: 64:ff9b:1:1::/96   # Use local-use prefix, not WKP
+server:
+    module-config: "dns64 validator iterator"
+    dns64-prefix: 64:ff9b:1:1::/96   # Use local-use prefix, not WKP
 
 # BIND - DNS64 with non-default prefix
 # /etc/named.conf
