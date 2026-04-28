@@ -112,24 +112,26 @@ resource "aws_db_instance" "main" {
 
 ## enabled (OpenTofu 1.11+)
 
-Conditionally enable or disable a resource.
+Conditionally enable or disable a resource. `enabled` is a `lifecycle` argument (not a top-level meta-argument) and cannot be combined with `count` or `for_each`.
 
 ```hcl
 resource "aws_shield_protection" "main" {
-  enabled = var.environment == "prod"  # cleaner than count = ? 1 : 0
-  name    = "myapp-shield"
+  name         = "myapp-shield"
   resource_arn = aws_lb.main.arn
+
+  lifecycle {
+    enabled = var.environment == "prod"  # cleaner than count = condition ? 1 : 0
+  }
 }
 ```
 
 ## Meta-Arguments on Modules
 
-All meta-arguments work on module blocks too.
+All meta-arguments work on module blocks too. Note that modules use `providers` (plural, a map) rather than `provider`.
 
 ```hcl
 module "monitoring" {
-  source  = "./modules/monitoring"
-  enabled = var.enable_monitoring  # conditional module
+  source = "./modules/monitoring"
 
   providers = {
     aws = aws.monitoring  # specific provider instance
@@ -137,24 +139,34 @@ module "monitoring" {
 
   depends_on = [module.cluster]  # explicit dependency
 
-  for_each = var.monitored_environments
+  for_each     = var.monitored_environments
   cluster_name = each.value.cluster_name
+}
+
+# Conditional module using lifecycle.enabled (OpenTofu 1.11+).
+# Cannot be combined with count or for_each.
+module "shield" {
+  source = "./modules/shield"
+
+  lifecycle {
+    enabled = var.enable_shield
+  }
 }
 ```
 
 ## Meta-Argument Comparison
 
 ```text
-Meta-argument     When to use
---------------    -----------
-count             Simple numerical repetition, boolean flags
-for_each          Map/set-driven repetition (preferred)
-depends_on        Relationships not visible through attribute refs
-provider          Multi-region, multi-account, or multi-alias
-lifecycle         Prevent destroy, ignore drift, ordering control
-enabled           Conditional resource creation (cleaner than count=0/1)
+Meta-argument       When to use
+------------------  -----------
+count               Simple numerical repetition, boolean flags
+for_each            Map/set-driven repetition (preferred)
+depends_on          Relationships not visible through attribute refs
+provider/providers  Multi-region, multi-account, or multi-alias
+lifecycle           Prevent destroy, ignore drift, ordering control
+lifecycle.enabled   Conditional resource creation (cleaner than count=0/1)
 ```
 
 ## Summary
 
-Meta-arguments give you control over how resources are created and managed independently of their provider-specific configuration. Prefer `for_each` over `count` for multiple instances (it produces cleaner resource addresses). Use `lifecycle.prevent_destroy = true` on production databases, `lifecycle.ignore_changes` for attributes managed outside OpenTofu, and `enabled` (OpenTofu 1.11+) for conditional resources instead of `count = condition ? 1 : 0`.
+Meta-arguments give you control over how resources are created and managed independently of their provider-specific configuration. Prefer `for_each` over `count` for multiple instances (it produces cleaner resource addresses). Use `lifecycle.prevent_destroy = true` on production databases, `lifecycle.ignore_changes` for attributes managed outside OpenTofu, and `lifecycle.enabled` (OpenTofu 1.11+) for conditional resources instead of `count = condition ? 1 : 0`.
