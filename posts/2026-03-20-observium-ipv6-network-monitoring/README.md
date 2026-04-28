@@ -12,10 +12,9 @@ Observium is a network monitoring platform with auto-discovery capabilities. It 
 
 ```php
 <?php
-// /opt/observium/config.php - Enable IPv6 in Observium
-
-// Allow Observium to discover and use IPv6 addresses
-$config['ipv6'] = true;
+// /opt/observium/config.php - Configure SNMP for IPv6 monitoring
+// Observium's default SNMP transports already include udp6 and tcp6,
+// so IPv6 monitoring works out of the box - no global toggle needed.
 
 // SNMP community strings to try when discovering devices
 $config['snmp']['community'] = ['public', 'monitoring'];
@@ -33,9 +32,11 @@ $config['snmp']['v3'][0]['cryptoalgo'] = 'AES';
 
 ```bash
 # Add device by IPv6 address
+# Syntax: ./add_device.php <hostname> [community] [v1|v2c] [port] [udp|udp6|tcp|tcp6]
+# Use udp6 transport for IPv6 devices.
 
 cd /opt/observium
-./addhost.php 2001:db8::router1 v2c public 161 udp
+./add_device.php 2001:db8::router1 public v2c 161 udp6
 
 # Or add via the web UI:
 # Devices > Add Device
@@ -48,20 +49,21 @@ cd /opt/observium
 ```php
 // config.php - Set IPv6 network ranges for autodiscovery
 // Networks listed here will be scanned for new SNMP-capable devices
-$config['autodiscovery']['networks'][] = '10.0.0.0/8';
-$config['autodiscovery']['networks'][] = '2001:db8::/32';    // IPv6 range
-$config['autodiscovery']['networks'][] = 'fd00::/8';         // ULA range
+$config['autodiscovery']['ip_nets'][] = '10.0.0.0/8';
+$config['autodiscovery']['ip_nets'][] = '2001:db8::/32';    // IPv6 range
+$config['autodiscovery']['ip_nets'][] = 'fd00::/8';         // ULA range
 
 // Enable xDP (CDP/LLDP) discovery which works over IPv6
 $config['autodiscovery']['xdp'] = 1;
 ```
 
 ```bash
-# Run autodiscovery for the IPv6 network
+# Run discovery against all known devices (autodiscovery walks
+# their neighbour tables and the configured ip_nets ranges)
 ./discovery.php -h all
 
-# Or run for a specific IPv6 range
-./discovery.php -n 2001:db8::/32
+# Or only newly added devices
+./discovery.php -h new
 ```
 
 ## Step 4: Poll IPv6 Device Data
@@ -90,22 +92,27 @@ Observium automatically collects:
 
 ## Step 6: View IPv6 Routing Table
 
-```bash
-# Poll routing table data for IPv6 device
-./poller.php -h 2001:db8::router1 -m routes
+Routing data is collected by the standard polling cycle - no extra
+module flag is needed. Once the device has been polled, view the
+routing tables in the Observium UI:
 
-# View in UI: Devices > [Device] > Routing > IPv6 Routes
 ```
+Devices > [Device] > Routing
+```
+
+IPv6 routes appear alongside IPv4 routes when the device exposes them
+via the appropriate routing MIBs.
 
 ## Step 7: Monitor IPv6 BGP Sessions
 
-```bash
-# Enable BGP polling module
-# config.php
-$config['poller_modules']['bgp-peers'] = 1;
+```php
+// Enable BGP session collection in config.php
+$config['enable_bgp'] = 1;
+```
 
-# Poll BGP data
-./poller.php -h 2001:db8::router1 -m bgp-peers
+```bash
+# Re-run the poller for the device after enabling BGP collection
+./poller.php -h 2001:db8::router1
 ```
 
 Navigate to **Routing → BGP** to see all BGP sessions including IPv6 peer addresses.
@@ -113,23 +120,29 @@ Navigate to **Routing → BGP** to see all BGP sessions including IPv6 peer addr
 ## Step 8: Set Up Email Alerts for IPv6 Device Issues
 
 ```php
-// config.php - Alert configuration
+// config.php - Email transport configuration
+$config['email']['enable']      = 1;
 $config['email']['default']     = 'admin@example.com';
 $config['email']['from']        = 'observium@example.com';
 $config['email']['smtp_host']   = 'smtp.example.com';
 $config['email']['smtp_port']   = 587;
-
-// Alert when a device goes down
-$config['alerts']['email_down'] = 1;
 ```
+
+Device-down notifications are not toggled by a single config flag in
+Observium. Instead, configure an alert checker in the web UI under
+**Alerts → Add Alert Check**, set the entity type to *Device*, and
+select a condition such as `device_status = 0`. Associate the checker
+with a contact (the address configured above) to receive emails when
+matching devices go down.
 
 ## Verify IPv6 Monitoring
 
 ```bash
 # Check SNMP connectivity to IPv6 device
-snmpget -v2c -c public "[2001:db8::router1]" sysDescr.0
+# net-snmp requires the udp6: transport prefix for IPv6 targets
+snmpget -v2c -c public udp6:[2001:db8::router1]:161 sysDescr.0
 
-# Verify Observium can reach the IPv6 device
+# Verify Observium can reach the IPv6 device (debug mode)
 ./poller.php -h 2001:db8::router1 -d
 
 # Check Observium error log
