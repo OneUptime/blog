@@ -27,7 +27,7 @@ device.open()
 
 # Load intended config from file
 
-device.load_merge_candidate(filename='/etc/network/configs/router01.cfg')
+device.load_replace_candidate(filename='/etc/network/configs/router01.cfg')
 
 # Get the diff between running and intended
 diff = device.compare_config()
@@ -97,7 +97,7 @@ def check_drift(device_info):
 
     try:
         device.open()
-        device.load_merge_candidate(filename=str(config_file))
+        device.load_replace_candidate(filename=str(config_file))
         diff = device.compare_config()
         device.discard_config()
         device.close()
@@ -194,4 +194,4 @@ generate_drift_report(devices, '/tmp/drift-report.json')
 
 ## Conclusion
 
-NAPALM's `load_merge_candidate()` + `compare_config()` + `discard_config()` pattern enables non-destructive configuration drift detection. Load the intended config from a file, compare it to the running config, and review the diff without making changes. Run this regularly in CI/CD pipelines or as a cron job to detect unauthorized configuration changes. Use `get_config()` to capture baselines and `compare_config()` to identify deviations from the desired state.
+NAPALM's `load_replace_candidate()` + `compare_config()` + `discard_config()` pattern enables non-destructive configuration drift detection. Load the intended config from a file, compare it to the running config, and review the diff without making changes. Run this regularly in CI/CD pipelines or as a cron job to detect unauthorized configuration changes. Use `get_config()` to capture baselines and `compare_config()` to identify deviations from the desired state.
