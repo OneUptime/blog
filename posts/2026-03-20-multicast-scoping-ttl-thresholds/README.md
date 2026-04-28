@@ -35,9 +35,9 @@ Sub-ranges within 239.0.0.0/8:
 
 | Range | Scope |
 |---|---|
-| 239.255.0.0/16 | Link-local scope (do not route) |
-| 239.192.0.0/14 | Organization-local scope |
-| 239.0.0.0/8 | Site-local scope (organizational boundary) |
+| 239.255.0.0/16 | IPv4 Local Scope (minimal enclosing scope, e.g. a single site) |
+| 239.192.0.0/14 | IPv4 Organization Local Scope |
+| 239.0.0.0/8 | Administratively-scoped IPv4 multicast (overall block) |
 
 ## Configuring TTL Thresholds on Cisco Routers
 
