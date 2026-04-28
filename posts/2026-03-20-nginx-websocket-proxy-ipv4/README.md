@@ -60,11 +60,6 @@ server {
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
 
-    # HTTP → HTTPS redirect
-    if ($scheme = http) {
-        return 301 https://$host$request_uri;
-    }
-
     location /ws {
         proxy_pass http://ws_backend;   # backend is plain ws://
         proxy_http_version 1.1;
@@ -121,7 +116,7 @@ server {
 
 | Directive | Purpose |
 |-----------|---------|
-| `proxy_http_version 1.1` | Required - HTTP/1.0 does not support keep-alive |
+| `proxy_http_version 1.1` | Required - WebSocket's Upgrade mechanism is defined for HTTP/1.1 |
 | `proxy_set_header Upgrade $http_upgrade` | Forward the WebSocket upgrade request |
 | `proxy_set_header Connection "upgrade"` | Tell backend to keep the connection |
 | `proxy_read_timeout 3600s` | Prevent Nginx from closing idle WebSocket connections |
