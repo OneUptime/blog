@@ -92,7 +92,7 @@ upstream app_backends {
     server 10.0.1.11:8080;
     server 10.0.1.12:8080;
 
-    keepalive 32;   # Maintain up to 32 idle connections per worker to each backend
+    keepalive 32;   # Max idle keepalive connections cached per worker (total across upstream)
 }
 
 server {
