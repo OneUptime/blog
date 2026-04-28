@@ -147,7 +147,7 @@ sudo tcpdump -i eth0 -v "icmp6 and ip6[40] == 134"
 
 # Check if RA Guard is active (Cisco switch CLI):
 # show ipv6 nd raguard policy
-# show ipv6 nd raguard interface GigabitEthernet0/1
+# show ipv6 nd raguard policy interface GigabitEthernet0/1
 ```
 
 ## Limitations of RA Guard
@@ -155,7 +155,7 @@ sudo tcpdump -i eth0 -v "icmp6 and ip6[40] == 134"
 ```text
 RA Guard Limitations:
 
-1. IPv6 Extension Headers (CVE-2011-2176 class):
+1. IPv6 Extension Headers (RFC 7113 evasion class):
    Attackers can wrap RA in fragmented packets or
    use routing headers to bypass some RA Guard implementations.
    Fix: Use updated switch firmware; some vendors added deep
