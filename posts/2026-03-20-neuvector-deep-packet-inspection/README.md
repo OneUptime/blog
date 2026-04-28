@@ -41,24 +41,27 @@ kubectl logs -n neuvector -l app=neuvector-enforcer-pod \
 curl -sk \
   "https://neuvector-manager:8443/v1/system/summary" \
   -H "X-Auth-Token: ${TOKEN}" | jq '{
-    total_enforcers: .summary.total_enforcers,
-    total_connections: .summary.total_connections
+    enforcers: .summary.enforcers,
+    disconnected_enforcers: .summary.disconnected_enforcers,
+    running_workloads: .summary.running_workloads
   }'
 ```
 
-## Step 2: Enable DPI at the Group Level
+## Step 2: Enable DPI by Setting Service Policy Mode
 
-DPI is enabled per group. Enable it for specific workloads:
+DPI is active when a service is in **Monitor** or **Protect** mode. Switch the
+desired services into one of those modes:
 
 ```bash
-# Enable DPI for a group
+# Move services into Protect mode (DPI is active in Monitor and Protect)
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/group/nv.webapp.default" \
+  "https://neuvector-manager:8443/v1/service/config" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "mode": "Protect",
+      "services": ["webapp.default"],
+      "policy_mode": "Protect",
       "not_scored": false
     }
   }'
@@ -66,7 +69,7 @@ curl -sk -X PATCH \
 
 In the NeuVector UI:
 1. Go to **Policy** > **Groups**
-2. Select a group
+2. Select a service group (one prefixed with `nv.`)
 3. Click **Edit**
 4. Ensure the group mode is set to **Monitor** or **Protect** (DPI is active in these modes)
 
@@ -75,8 +78,8 @@ In the NeuVector UI:
 DPI enables protocol-level filtering in network rules:
 
 ```bash
-# Create a rule that enforces HTTP protocol on port 8080
-curl -sk -X POST \
+# Insert rules that enforce application protocols on specific ports
+curl -sk -X PATCH \
   "https://neuvector-manager:8443/v1/policy/rule" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
@@ -142,19 +145,20 @@ Configure rules to use these protocol names in the `applications` field.
 
 ## Step 5: Monitor DPI-Generated Traffic Events
 
-DPI generates detailed events for protocol violations:
+DPI generates detailed threat logs that include the detected application protocol:
 
 ```bash
-# View network events with protocol details
+# View threat logs with protocol details
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=network&start=0&limit=50" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '.events[] | {
-    from: .workload_name,
-    to: .remote_workload_name,
+  "https://neuvector-manager:8443/v1/log/threat" \
+  -H "X-Auth-Token: ${TOKEN}" | jq '.threats[] | {
+    from: .client_workload_name,
+    to: .server_workload_name,
     protocol: .application,
-    port: .port,
+    port: .server_port,
     action: .action,
-    reason: .reason
+    severity: .severity,
+    message: .message
   }'
 ```
 
@@ -163,54 +167,71 @@ curl -sk \
 DPI is required for WAF (Web Application Firewall) rules to work:
 
 ```bash
-# Create a WAF sensor that uses DPI-inspected HTTP traffic
+# Create a WAF sensor (rules live inside a sensor)
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/dpi/waf/rule" \
+  "https://neuvector-manager:8443/v1/waf/sensor" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
       "name": "sql-injection-detection",
       "comment": "Detect SQL injection in HTTP requests",
-      "patterns": [
+      "rules": [
         {
-          "key": "request",
-          "op": "regex",
-          "value": "(?i)(select|insert|update|delete|drop|union).*from",
-          "context": "uri",
-          "name": "sql-inject-pattern"
+          "name": "sql-inject-pattern",
+          "id": 0,
+          "cfg_type": "user_created",
+          "patterns": [
+            {
+              "key": "pattern",
+              "op": "regex",
+              "value": "(?i)(select|insert|update|delete|drop|union).*from",
+              "context": "url"
+            }
+          ]
         }
       ]
     }
   }'
 ```
+
+After the sensor exists, attach it to a group via the WAF group endpoint
+(`PATCH /v1/waf/group/{name}`) so its rules are applied to that group's traffic.
 
 ## Step 7: Configure DPI for DLP Sensors
 
 DLP requires DPI to inspect packet payloads:
 
 ```bash
-# Create a DLP rule to detect credit card numbers in traffic
+# Create a DLP sensor (rules live inside a sensor)
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/dpi/dlp/rule" \
+  "https://neuvector-manager:8443/v1/dlp/sensor" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
       "name": "credit-card-detection",
       "comment": "Detect credit card numbers",
-      "patterns": [
+      "rules": [
         {
-          "key": "packet",
-          "op": "regex",
-          "value": "\\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14})\\b",
-          "context": "packet",
-          "name": "cc-pattern"
+          "name": "cc-pattern",
+          "id": 0,
+          "cfg_type": "user_created",
+          "patterns": [
+            {
+              "key": "pattern",
+              "op": "regex",
+              "value": "\\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14})\\b"
+            }
+          ]
         }
       ]
     }
   }'
 ```
+
+Attach the sensor to a group via `PATCH /v1/dlp/group/{name}` so its rules are
+applied to that group's traffic.
 
 ## Step 8: Tune DPI Performance
 
@@ -223,14 +244,15 @@ kubectl top pods -n neuvector -l app=neuvector-enforcer-pod
 # Scale enforcers if necessary (DaemonSet, so one per node automatically)
 # Adjust node resources or limit DPI to critical namespaces
 
-# Disable DPI for low-priority groups
+# Disable DPI for low-priority services by moving them back to Discover mode
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/group/nv.batch-jobs.default" \
+  "https://neuvector-manager:8443/v1/service/config" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "mode": "Discover"
+      "services": ["batch-jobs.default"],
+      "policy_mode": "Discover"
     }
   }'
 ```
