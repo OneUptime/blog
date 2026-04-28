@@ -81,7 +81,7 @@ services:
       # Mailer (optional, for account verification)
       - MAILER_HOST=smtp.gmail.com
       - MAILER_PORT=587
-      - MAILER_SECURE=false
+      - MAILER_SECURITY=starttls
       - MAILER_AUTH_USER=your-email@gmail.com
       - MAILER_AUTH_PASSWORD=your-app-password
       - MAILER_NOREPLY_NAME=Joplin
@@ -220,7 +220,7 @@ Use Portainer to:
 docker logs joplin_server --tail=50
 
 # Verify database connectivity
-docker exec joplin_db psql -U joplin -c "SELECT COUNT(*) FROM notes;"
+docker exec joplin_db psql -U joplin -c "SELECT COUNT(*) FROM items;"
 ```
 
 ## Conclusion
