@@ -51,7 +51,7 @@ netsh interface ipv6 show routes
 netsh interface ipv6 add route ::/0 "Ethernet" 2001:db8::1
 
 :: Add a specific route
-netsh interface ipv6 add route 2001:db8:remote::/48 "Ethernet" 2001:db8::gateway
+netsh interface ipv6 add route 2001:db8:1::/48 "Ethernet" 2001:db8::1
 
 :: Add a route with metric
 netsh interface ipv6 add route ::/0 "Ethernet" 2001:db8::1 metric=10
@@ -92,12 +92,11 @@ netsh interface ipv6 show interface "Ethernet"
 netsh interface ipv6 set interface "Ethernet" routerdiscovery=enabled
 netsh interface ipv6 set interface "Ethernet" routerdiscovery=disabled
 
-:: Set DHCPv6
-netsh interface ipv6 set interface "Ethernet" dhcp=enabled
-netsh interface ipv6 set interface "Ethernet" dhcp=disabled
-
 :: Set interface forwarding
 netsh interface ipv6 set interface "Ethernet" forwarding=enabled
+
+:: Set interface MTU
+netsh interface ipv6 set interface "Ethernet" mtu=1500
 ```
 
 ## Neighbor Cache (IPv6 ARP equivalent)
