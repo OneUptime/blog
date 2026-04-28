@@ -47,7 +47,7 @@ network:
 After saving the file, validate and apply the configuration:
 
 ```bash
-# Validate the YAML syntax before applying
+# Apply temporarily and auto-revert if not confirmed
 sudo netplan try
 
 # Apply the configuration permanently
