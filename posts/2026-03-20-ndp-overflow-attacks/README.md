@@ -39,8 +39,9 @@ echo "INCOMPLETE entries: ${INCOMPLETE}"
 tcpdump -i eth0 -n 'icmp6 and ip6[40]==135' -q 2>/dev/null | \
     pv -l -r > /dev/null  # pv shows rate in packets/sec
 
-# Check CPU usage from NDP processing
-top -b -n 1 | grep softirq
+# Check CPU usage from NDP softirq processing
+mpstat -P ALL 1 1   # %soft column shows softirq load per CPU
+cat /proc/softirqs  # NET_RX counters increase under NS flood
 ```
 
 ## Defense 1: Reduce NDP Cache Size and Aggressiveness
@@ -105,18 +106,17 @@ ip6tables -A FORWARD -d 2001:db8:1::/64 \
 ## Defense 4: Cisco First Hop Security
 
 ```text
-! Cisco IOS - IPv6 First Hop Security (RA Guard + NDP Inspection)
+! Cisco IOS - IPv6 First Hop Security (NDP Inspection)
 ipv6 nd inspection policy INSPECT
  validate source-mac
- validate address
  !
 
 interface GigabitEthernet0/1
  ipv6 nd inspection attach-policy INSPECT
 
-! Limit neighbor discovery cache
-ipv6 neighbor max-attempts 2
-ipv6 neighbor sync-period 5
+! Limit neighbor discovery cache size and entry lifetime
+ipv6 nd cache interface-limit 1024
+ipv6 nd cache expire 60
 ```
 
 ## Defense 5: Limit Address Space per Prefix
