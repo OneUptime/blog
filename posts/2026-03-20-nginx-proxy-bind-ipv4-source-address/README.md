@@ -92,18 +92,13 @@ server {
 }
 ```
 
-Transparent proxy requires kernel configuration:
+Transparent proxy requires kernel routing configuration so return packets from the upstream are intercepted and delivered back to Nginx (which is bound to the client's IP):
 
 ```bash
-# Allow Nginx to bind to non-local addresses
+# Mark return traffic from the upstream (source port 80) so it can be policy-routed
+iptables -t mangle -A PREROUTING -p tcp --sport 80 -j MARK --set-xmark 0x1/0xffffffff
 
-echo 1 > /proc/sys/net/ipv4/ip_nonlocal_bind
-
-# Redirect inbound traffic to Nginx (transparent intercept)
-iptables -t mangle -A PREROUTING -p tcp --dport 80 -j TPROXY \
-  --tproxy-mark 0x1/0x1 --on-port 80
-
-# Route marked packets through loopback
+# Route marked packets locally via loopback so Nginx can receive them
 ip rule add fwmark 1 lookup 100
 ip route add local 0.0.0.0/0 dev lo table 100
 ```
