@@ -14,15 +14,9 @@ NAPALM provides a unified Python API for managing network devices from multiple 
 
 ```bash
 pip install napalm
-
-# Install vendor-specific extras
-
-pip install napalm[ios]       # Cisco IOS
-pip install napalm[iosxr]     # Cisco IOS-XR
-pip install napalm[junos]     # Juniper JunOS
-pip install napalm[eos]       # Arista EOS
-pip install napalm[nxos_ssh]  # Cisco NX-OS
 ```
+
+A single `pip install napalm` ships every supported driver (Cisco IOS, IOS-XR, NX-OS, Arista EOS, Juniper JunOS), so no vendor-specific extras are needed. NAPALM 5.x requires Python 3.9 or newer.
 
 ## Step 1: Connect to a Device
 
@@ -47,7 +41,7 @@ def connect_device(host: str, platform: str = "iosxr"):
     return device
 
 # Example usage
-device = connect_device("2001:db8::router1")  # Connect via IPv6
+device = connect_device("2001:db8::1")  # Connect via IPv6
 ```
 
 ## Step 2: Retrieve IPv6 Interface Information
@@ -65,7 +59,7 @@ def get_ipv6_interfaces(device) -> dict:
     return ipv6_interfaces
 
 # Usage
-device = connect_device("2001:db8::router1")
+device = connect_device("2001:db8::1")
 ipv6_ifaces = get_ipv6_interfaces(device)
 
 for iface, addrs in ipv6_ifaces.items():
@@ -139,9 +133,9 @@ from concurrent.futures import ThreadPoolExecutor
 import napalm
 
 DEVICES = [
-    {"host": "2001:db8::r1", "platform": "iosxr"},
-    {"host": "2001:db8::r2", "platform": "junos"},
-    {"host": "2001:db8::r3", "platform": "eos"},
+    {"host": "2001:db8::a1", "platform": "iosxr"},
+    {"host": "2001:db8::a2", "platform": "junos"},
+    {"host": "2001:db8::a3", "platform": "eos"},
 ]
 
 def audit_device(device_info: dict) -> dict:
