@@ -34,11 +34,11 @@ tofu workspace new production
 tofu workspace list
 #   default
 #   development
-#   production
-# * staging
+# * production
+#   staging
 ```
 
-Workspaces are listed alphabetically, not in creation order.
+Workspaces are listed alphabetically, not in creation order. Note that `tofu workspace new` both creates and switches to the new workspace, so `production` (the last one created) is the active workspace here.
 
 ## Using in Scripts
 
