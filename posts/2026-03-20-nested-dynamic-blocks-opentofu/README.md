@@ -13,28 +13,34 @@ Nested dynamic blocks allow you to generate multiple levels of configuration blo
 ## Basic Nested Dynamic Block
 
 ```hcl
-variable "security_rules" {
+variable "networks" {
   type = list(object({
-    name      = string
-    priority  = number
-    cidr_ranges = list(string)
+    network    = string
+    public_ips = list(string)
   }))
 }
 
-resource "google_compute_firewall" "app" {
-  name    = "app-firewall"
-  network = google_compute_network.main.name
+resource "google_compute_instance" "app" {
+  name         = "app-server"
+  machine_type = "e2-medium"
+  zone         = "us-central1-a"
 
-  dynamic "allow" {
-    for_each = var.security_rules
+  boot_disk {
+    initialize_params {
+      image = "debian-cloud/debian-11"
+    }
+  }
+
+  dynamic "network_interface" {
+    for_each = var.networks
     content {
-      protocol = "tcp"
+      network = network_interface.value.network
 
-      # Nested dynamic inside allow block
-      dynamic "ports" {
-        for_each = allow.value.cidr_ranges
+      # Nested dynamic inside network_interface block
+      dynamic "access_config" {
+        for_each = network_interface.value.public_ips
         content {
-          # ... nested content
+          nat_ip = access_config.value
         }
       }
     }
@@ -173,36 +179,44 @@ resource "kubernetes_deployment" "app" {
 ## Iterator Names in Nested Blocks
 
 ```hcl
-variable "vpc_configs" {
+variable "stages" {
   type = list(object({
     name = string
-    subnets = list(object({
-      cidr = string
-      az   = string
+    actions = list(object({
+      name     = string
+      provider = string
     }))
   }))
 }
 
-resource "aws_cloudformation_stack" "network" {
-  name = "network-stack"
+resource "aws_codepipeline" "main" {
+  name     = "app-pipeline"
+  role_arn = aws_iam_role.pipeline.arn
+
+  artifact_store {
+    location = aws_s3_bucket.artifacts.bucket
+    type     = "S3"
+  }
 
   # Use explicit iterator names to avoid confusion in nested blocks
-  dynamic "parameter" {
-    for_each = var.vpc_configs
-    iterator = vpc_config  # Explicit name
+  dynamic "stage" {
+    for_each = var.stages
+    iterator = pipeline_stage  # Explicit name
 
     content {
-      key   = "VpcName${vpc_config.key}"
-      value = vpc_config.value.name
+      name = pipeline_stage.value.name
 
       # Nested dynamic with its own iterator
-      dynamic "parameter" {
-        for_each = vpc_config.value.subnets
-        iterator = subnet_config  # Different name from outer iterator
+      dynamic "action" {
+        for_each = pipeline_stage.value.actions
+        iterator = pipeline_action  # Different name from outer iterator
 
         content {
-          key   = "SubnetCidr${vpc_config.key}${subnet_config.key}"
-          value = subnet_config.value.cidr
+          name     = pipeline_action.value.name
+          category = "Source"
+          owner    = "AWS"
+          provider = pipeline_action.value.provider
+          version  = "1"
         }
       }
     }
