@@ -46,16 +46,17 @@ sudo mount -t nfs 203.0.113.10:/srv/data /mnt/nfs-data
 ```bash
 # Mount with performance options
 sudo mount -t nfs \
-  -o rw,soft,intr,rsize=8192,wsize=8192,timeo=14 \
+  -o rw,soft,rsize=8192,wsize=8192,timeo=14 \
   203.0.113.10:/srv/data /mnt/nfs-data
 
 # Mount options explained:
 # rw          - Read-write
 # soft        - Return error if server unreachable (vs. hang indefinitely)
-# intr        - Allow interrupting hung NFS operations
 # rsize=8192  - Read buffer size in bytes
 # wsize=8192  - Write buffer size in bytes
 # timeo=14    - Timeout in tenths of a second (1.4 seconds)
+# Note: the intr option is deprecated and ignored on Linux kernels >= 2.6.25;
+# only SIGKILL can interrupt a pending NFS operation on hard mounts.
 
 # For performance (large transfers):
 sudo mount -t nfs \
@@ -70,7 +71,7 @@ sudo mount -t nfs \
 | `vers=4` | Force NFSv4 |
 | `soft` | Return error on timeout (safe for non-critical data) |
 | `hard` | Retry indefinitely (for critical data) |
-| `intr` | Allow Ctrl+C to interrupt hung operations |
+| `intr` | Deprecated and ignored on Linux >= 2.6.25; SIGKILL interrupts hung operations |
 | `rsize=65536` | Large read buffer for throughput |
 | `wsize=65536` | Large write buffer for throughput |
 | `noatime` | Don't update access times (performance) |
@@ -112,4 +113,4 @@ sudo rpcinfo -p 203.0.113.10 | grep nfs
 
 ## Conclusion
 
-Mount NFS shares with `mount -t nfs server_ip:/path /local/mountpoint`. Use `nfs4` type for NFSv4 or add `-o vers=3` for NFSv3. Choose `soft` for mounts where a timeout-induced error is acceptable, and `hard` with `intr` for mounts carrying critical data. Verify with `mount | grep nfs` and `df -h` after mounting.
+Mount NFS shares with `mount -t nfs server_ip:/path /local/mountpoint`. Use `nfs4` type for NFSv4 or add `-o vers=3` for NFSv3. Choose `soft` for mounts where a timeout-induced error is acceptable, and `hard` for mounts carrying critical data (use SIGKILL to interrupt hung operations on modern kernels, since the legacy `intr` option is now ignored). Verify with `mount | grep nfs` and `df -h` after mounting.
