@@ -33,8 +33,8 @@ public class SelectorEchoServer {
 
         serverChannel = ServerSocketChannel.open();
         serverChannel.configureBlocking(false);
-        serverChannel.bind(new InetSocketAddress("0.0.0.0", port));
         serverChannel.setOption(StandardSocketOptions.SO_REUSEADDR, true);
+        serverChannel.bind(new InetSocketAddress("0.0.0.0", port));
 
         // Register for ACCEPT events
         serverChannel.register(selector, SelectionKey.OP_ACCEPT);
