@@ -50,7 +50,7 @@ ipv6 nd raguard policy ROUTER_VALIDATED
  device-role router
  trusted-port
  match ra prefix-list ALLOWED_PREFIXES
- match ra ipv6 access-list ROUTER_SOURCES
+ match ipv6 access-list ROUTER_SOURCES
 
 ! Define allowed prefixes (what routers are allowed to advertise)
 ipv6 prefix-list ALLOWED_PREFIXES permit 2001:db8::/64
@@ -113,20 +113,21 @@ interface GigabitEthernet1/0/1
 Use these commands to confirm RA Guard is active and blocking correctly.
 
 ```text
-! Show all RA Guard policies defined
+! Show all RA Guard policies defined and where they are attached
 show ipv6 nd raguard policy
 
-! Show RA Guard status on specific interface
-show ipv6 nd raguard interface GigabitEthernet1/0/1
+! Show details for a specific policy (lists attached interfaces and VLANs)
+show ipv6 nd raguard policy HOST_POLICY
 
-! Show RA Guard statistics (dropped RA count)
-show ipv6 nd raguard statistics
+! Show RA Guard counters (received, bridged, dropped per interface)
+show ipv6 nd raguard counters
 
 ! Show binding table (built by IPv6 snooping)
 show ipv6 neighbor binding
 
-! Show FHS configuration summary
-show ipv6 first-hop-security summary
+! Show snooping features and policies attached to interfaces/VLANs
+show ipv6 snooping features
+show ipv6 snooping policies
 
 ! Example output for host port:
 ! GigabitEthernet1/0/1
@@ -140,10 +141,10 @@ show ipv6 first-hop-security summary
 
 ```text
 ! Enable RA Guard debug (use carefully in production)
-debug ipv6 nd raguard
+debug ipv6 snooping raguard
 
 ! Check if RA is being dropped due to policy
-show ipv6 nd raguard statistics interface GigabitEthernet1/0/1
+show ipv6 nd raguard counters interface GigabitEthernet1/0/1
 
 ! Common issues:
 !
