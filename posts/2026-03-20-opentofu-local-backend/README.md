@@ -78,7 +78,7 @@ tofu workspace new prod
 
 ## Limitations
 
-- **No locking**: concurrent runs can corrupt state
+- **Locking is local only**: the local backend locks state via OS file locks, so it protects against concurrent runs on the same machine but cannot coordinate runs across different machines or users
 - **Not shareable**: state lives on one machine
 - **No versioning**: only one backup exists
 - **No remote access**: CI/CD requires state file transfer
@@ -116,6 +116,8 @@ echo "*.tfstate.backup" >> .gitignore
 ```
 
 ## Using -state Flag for Temporary Overrides
+
+The `-state` flag is a legacy option preserved for backward compatibility with the local backend. It is not recommended for new systems, but it can still be used for one-off operations:
 
 ```bash
 # Use a different state file for one-off operations
