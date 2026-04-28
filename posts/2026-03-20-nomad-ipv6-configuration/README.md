@@ -19,9 +19,9 @@ bind_addr = "::"    # Bind to all interfaces, including IPv6
 # Advertise IPv6 address for client registration
 
 advertise {
-  http = "2001:db8::nomad-client:4646"
-  rpc  = "2001:db8::nomad-client:4647"
-  serf = "2001:db8::nomad-client:4648"
+  http = "[2001:db8::1]:4646"
+  rpc  = "[2001:db8::1]:4647"
+  serf = "[2001:db8::1]:4648"
 }
 
 client {
@@ -142,7 +142,7 @@ When Nomad uses Consul for service discovery, services can be discovered via IPv
 ```hcl
 # In Consul configuration
 bind_addr = "::"
-advertise_addr = "2001:db8::consul-node"
+advertise_addr = "2001:db8::2"
 
 # Services registered by Nomad are discoverable via IPv6
 # DNS: web.service.consul resolves to both IPv4 and IPv6
@@ -196,7 +196,7 @@ nomad alloc status <alloc_id>
 nomad alloc exec -task nginx <alloc_id> ip -6 addr show
 
 # Verify service is reachable via IPv6
-curl -6 http://[2001:db8::nomad-client]/
+curl -6 http://[2001:db8::1]/
 ```
 
 Nomad's flexible networking modes allow IPv6 adoption at the cluster level (IPv6 server communication) and at the workload level (host networking for direct IPv6 access or bridge networking for isolated IPv6 containers).
