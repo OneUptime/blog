@@ -63,11 +63,14 @@ yum install graphviz
 # Default: plan graph (what would happen on apply)
 tofu graph
 
-# Destroy graph: visualize destroy order
-tofu graph -type=destroy
-
-# Plan-destroy: same as destroy graph
+# Plan-destroy graph: visualize destroy order
 tofu graph -type=plan-destroy
+
+# Plan-refresh-only graph
+tofu graph -type=plan-refresh-only
+
+# Apply graph (when a plan file is passed as the second argument)
+tofu graph -type=apply
 ```
 
 ## Draw a Specific Module's Dependencies
