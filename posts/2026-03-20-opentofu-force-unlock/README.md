@@ -38,11 +38,15 @@ tofu force-unlock 12345678-1234-1234-1234-123456789012
 
 # Confirmation prompt:
 # Do you really want to force-unlock?
-#   Terraform will remove the lock on the remote state.
-# Only 'yes' will be accepted to confirm.
+#   OpenTofu will remove the lock on the remote state.
+#   This will allow local OpenTofu commands to modify this state, even though it
+#   may still be in use. Only 'yes' will be accepted to confirm.
 # Enter a value: yes
 
-# Lock "12345678-1234-1234-1234-123456789012" has been successfully unlocked!
+# OpenTofu state has been successfully unlocked!
+#
+# The state has been unlocked, and OpenTofu commands should now be able to
+# obtain a new lock on the remote state.
 ```
 
 ## Skip Confirmation
