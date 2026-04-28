@@ -8,7 +8,7 @@ Description: Configure IPv6 Neighbor Discovery (ND) Inspection to validate NDP m
 
 ## Introduction
 
-IPv6 ND Inspection (also called IPv6 Snooping on Cisco or ND Security on Juniper) is a switch feature that inspects all NDP messages in hardware as they transit the switch. It validates message content, builds a binding table of address-to-port-to-MAC mappings, and can drop spoofed NDP messages. ND Inspection provides the binding table that IPv6 Source Guard uses for data-plane enforcement, and complements RA Guard (which operates on the control plane).
+IPv6 ND Inspection (called IPv6 Snooping on Cisco or Neighbor Discovery Inspection on Juniper) is a switch feature that inspects all NDP messages as they transit the switch. It validates message content, builds a binding table of address-to-port-to-MAC mappings, and can drop spoofed NDP messages. ND Inspection provides the binding table that IPv6 Source Guard uses for data-plane enforcement, and complements RA Guard (which operates on the control plane).
 
 ## What ND Inspection Examines
 
@@ -63,9 +63,13 @@ vlan configuration 10
 interface GigabitEthernet1/0/1
  ipv6 snooping attach-policy ND_INSPECT
 
-! Mark trusted ports (not inspected, or inspected differently)
+! Mark trusted ports via a separate snooping policy
+ipv6 snooping policy ND_TRUST
+ trusted-port                 ← Trust bindings learned on this port
+ device-role node             ← Or 'router' for router-facing ports
+
 interface GigabitEthernet1/0/24
- ipv6 snooping trust          ← Uplink/router port
+ ipv6 snooping attach-policy ND_TRUST   ← Uplink/router port
 
 ! View binding table built by ND Inspection
 show ipv6 neighbor binding
@@ -176,31 +180,34 @@ interface range GigabitEthernet1/0/1 - 23
 ! filling the binding table and causing legitimate addresses to be evicted
 ```
 
-## Juniper ND Security (ND Inspection)
+## Juniper Neighbor Discovery Inspection
 
-On Juniper EX switches, ND Inspection is called ND Security.
+On Juniper EX switches, ND Inspection is called Neighbor Discovery Inspection
+and is configured under the dhcp-security hierarchy. Enabling it automatically
+enables DHCPv6 snooping for the same VLAN, since the inspection validates ND
+messages against the DHCPv6 snooping binding table.
 
 ```text
-# Enable ND security on VLAN (enables inspection of NDP messages)
+# Enable ND inspection on a VLAN (DHCPv6 snooping is auto-enabled)
+set vlans v10 forwarding-options dhcp-security neighbor-discovery-inspection
 
-set vlans v10 forwarding-options nd-security
+# Also enable IPv6 source guard so the binding table is enforced in the data plane
+set vlans v10 forwarding-options dhcp-security ipv6-source-guard
 
-# Mark trusted port (uplink/router port)
-set interfaces ge-0/0/23 unit 0 family ethernet-switching nd-security-trusted
+# Mark trusted ports (e.g. uplink to a DHCPv6 server) via a security group
+set vlans v10 forwarding-options dhcp-security group SERVERS overrides trusted
+set vlans v10 forwarding-options dhcp-security group SERVERS interface ge-0/0/23.0
 
-# Set maximum bindings per interface (prevents exhaustion)
-set vlans v10 forwarding-options nd-security maximum-bindings 10
+# View the DHCPv6 snooping binding table that ND inspection validates against
+show dhcp-security binding
 
-# View binding table
-show nd-security binding
+# View ND inspection statistics
+show neighbor-discovery-inspection statistics
 
-# View statistics
-show nd-security statistics
-
-# View per-interface status
-show nd-security interface ge-0/0/1
+# Clear ND inspection statistics
+clear neighbor-discovery-inspection statistics
 ```
 
 ## Conclusion
 
-IPv6 ND Inspection validates NDP messages at the switch level and builds a binding table of address-to-port mappings. It detects and drops spoofed Neighbor Advertisements, DAD attacks, and invalid NDP messages. The binding table it creates is used by IPv6 Source Guard for data-plane validation. On Cisco, ND Inspection is configured via IPv6 Snooping policies; on Juniper, it is the ND Security feature. Together with RA Guard and DHCPv6 Guard, ND Inspection forms the complete IPv6 First Hop Security protection suite.
+IPv6 ND Inspection validates NDP messages at the switch level and builds a binding table of address-to-port mappings. It detects and drops spoofed Neighbor Advertisements, DAD attacks, and invalid NDP messages. The binding table it creates is used by IPv6 Source Guard for data-plane validation. On Cisco, ND Inspection is configured via IPv6 Snooping policies; on Juniper, it is the Neighbor Discovery Inspection feature under dhcp-security. Together with RA Guard and DHCPv6 Guard, ND Inspection forms the complete IPv6 First Hop Security protection suite.
