@@ -12,7 +12,7 @@ Good documentation is what separates a module that gets used from one that gets 
 
 Every module should have a README.md with these sections:
 
-```markdown
+````markdown
 # Module Name
 
 Brief description of what this module creates.
@@ -59,7 +59,7 @@ module "example" {
 
 - [Basic usage](./examples/basic)
 - [Advanced configuration](./examples/advanced)
-```hcl
+````
 
 ## Documenting Variables
 
