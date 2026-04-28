@@ -43,7 +43,7 @@ module "eu_vpc" {
     aws = aws.eu
   }
 
-  cidr_block = "172.16.0.0/12"
+  cidr_block = "172.16.0.0/16"
 }
 ```
 
