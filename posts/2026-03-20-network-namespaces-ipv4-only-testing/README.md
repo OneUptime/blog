@@ -27,9 +27,9 @@ ip netns add ipv4-test
 # Bring up loopback (required for localhost connectivity)
 ip netns exec ipv4-test ip link set lo up
 
-# Verify: no IPv6 by default in new namespaces
+# Verify: no external IPv6 addresses by default in new namespaces
 ip netns exec ipv4-test ip -6 addr show
-# (empty - good)
+# (only ::1/128 on lo - the kernel adds this automatically when lo is brought up)
 ```
 
 ## Disabling IPv6 in the Namespace
@@ -61,9 +61,9 @@ ip netns exec ipv4-test ip route add default via 10.99.0.1
 ## Testing Application Behavior in IPv4-Only Environment
 
 ```bash
-# Test DNS resolution (IPv4 only)
+# Test DNS resolution (DNS queries themselves travel over IPv4)
 ip netns exec ipv4-test dig +short example.com A    # Should return IPv4
-ip netns exec ipv4-test dig +short example.com AAAA  # Should not resolve if no IPv6
+ip netns exec ipv4-test dig +short example.com AAAA  # Still returns AAAA records - DNS resolution is unaffected by local IPv6 disablement; only application connections to IPv6 addresses will fail
 
 # Test HTTP client with IPv4 only
 ip netns exec ipv4-test curl -4 http://example.com
