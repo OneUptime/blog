@@ -17,7 +17,7 @@ Node 1: 10.0.0.1:3306 (Group Replication port: 33061)
 Node 2: 10.0.0.2:3306 (Group Replication port: 33061)
 Node 3: 10.0.0.3:3306 (Group Replication port: 33061)
          ↕ Paxos-based consensus
-    All nodes can accept writes (multi-primary)
+    Single-primary mode: one node accepts writes, others are read-only
 ```
 
 ## Configuration (All Nodes)
@@ -37,7 +37,7 @@ enforce-gtid-consistency = ON
 binlog-format = ROW
 log-bin = mysql-bin
 log-replica-updates = ON
-binary-log-checksum = NONE
+binlog-checksum = NONE
 
 # Group Replication plugin
 plugin-load-add = group_replication.so
