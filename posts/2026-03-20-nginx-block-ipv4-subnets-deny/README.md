@@ -133,16 +133,18 @@ By default blocked clients receive 403. You can return 444 (connection close) to
 server {
     listen 80;
 
+    # Convert the default 403 from deny into 444 (close connection without
+    # sending a response) for stealth blocking that saves bandwidth.
+    error_page 403 = @blocked;
+
+    location @blocked {
+        return 444;
+    }
+
     location / {
         deny 198.51.100.0/24;
-
-        # Return 444 = close connection without response (saves bandwidth)
-        # Replace 'allow all' with this for stealth blocking
-        if ($forbidden_ip = "1") {
-            return 444;
-        }
-
         allow all;
+
         proxy_pass http://backend;
     }
 }
@@ -153,6 +155,13 @@ server {
 Monitor what you are blocking:
 
 ```nginx
+# Define a flag variable for conditional logging (http context).
+# access_log skips the entry when the variable is "0" or empty.
+map $status $status_is_403 {
+    403     1;
+    default 0;
+}
+
 # Custom log format to track blocked requests
 log_format blocked '$remote_addr [$time_local] "$request" '
                    '$status "$http_user_agent"';
