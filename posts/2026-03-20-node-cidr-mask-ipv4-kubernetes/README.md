@@ -11,13 +11,13 @@ The node CIDR mask size determines how large a subnet each node receives from th
 ## How CIDR Allocation Works
 
 ```text
-Cluster Pod CIDR: 10.244.0.0/16 (65,534 addresses)
+Cluster Pod CIDR: 10.244.0.0/16 (65,536 addresses)
 Node CIDR mask:   /24 (256 addresses per node)
-Maximum nodes:    65,534 / 256 = 256 nodes
+Maximum nodes:    65,536 / 256 = 256 nodes
 Pods per node:    256 - 2 (network/broadcast) - reserved ≈ 110
 
 Node CIDR mask:   /26 (64 addresses per node)
-Maximum nodes:    65,534 / 64 = 1,023 nodes
+Maximum nodes:    65,536 / 64 = 1,024 nodes
 Pods per node:    64 - 2 - reserved ≈ 60
 ```
 
