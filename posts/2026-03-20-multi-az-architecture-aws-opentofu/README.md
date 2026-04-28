@@ -88,9 +88,10 @@ resource "aws_ecs_service" "app" {
     security_groups = [aws_security_group.ecs.id]
   }
 
-  # Force spreading across AZs
-  placement_constraints {
-    type       = "distinctInstance"
+  # Force spreading across AZs (EC2 launch type)
+  ordered_placement_strategy {
+    type  = "spread"
+    field = "attribute:ecs.availability-zone"
   }
 }
 ```
