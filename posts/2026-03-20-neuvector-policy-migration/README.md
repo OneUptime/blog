@@ -37,38 +37,39 @@ Or export via the NeuVector REST API:
 # Get NeuVector access token
 
 TOKEN=$(curl -sk -X POST \
-  https://neuvector.example.com/auth \
+  https://neuvector.example.com/v1/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin"}' \
+  -d '{"password":{"username":"admin","password":"admin"}}' \
   | jq -r '.token.token')
 
 # Export all network rules
 curl -sk \
   -H "X-Auth-Token: $TOKEN" \
-  https://neuvector.example.com/v1/policy/rule?scope=local \
+  "https://neuvector.example.com/v1/policy/rule?scope=local" \
   > network-rules-export.json
 
 # Export groups
 curl -sk \
   -H "X-Auth-Token: $TOKEN" \
-  https://neuvector.example.com/v1/group?scope=local \
+  "https://neuvector.example.com/v1/group?scope=local" \
   > groups-export.json
 ```
 
 ---
 
-## Step 2: Export via NeuVector CLI
+## Step 2: Export Full Configuration via REST API
+
+For a complete policy bundle (all rule types in one file), use NeuVector's `/v1/file/config` endpoint. The download is a YAML configuration file:
 
 ```bash
-# Install the NeuVector CLI (neuvector-ctl)
-# Export complete policy package
-kubectl exec -n neuvector \
-  $(kubectl get pod -n neuvector -l app=neuvector-manager-pod -o name) \
-  -- /usr/local/bin/cli export -o /tmp/nv-policy-export.conf
-
-# Copy the export file
-kubectl cp neuvector/$(kubectl get pod -n neuvector -l app=neuvector-manager-pod -o jsonpath='{.items[0].metadata.name}'):/tmp/nv-policy-export.conf ./nv-policy-export.conf
+# Download the full configuration as YAML
+curl -sk \
+  -H "X-Auth-Token: $TOKEN" \
+  "https://neuvector.example.com/v1/file/config?section=all" \
+  -o nv-policy-export.yaml
 ```
+
+You can also restrict the export to local (non-federated) policy by passing `scope=local`.
 
 ---
 
@@ -77,11 +78,11 @@ kubectl cp neuvector/$(kubectl get pod -n neuvector -l app=neuvector-manager-pod
 Before importing to another cluster, review the export for cluster-specific references:
 
 ```bash
-# Check for IP addresses that may be cluster-specific
-grep -E '"ip_range":|"cidr":' nv-policy-export.conf
+# Check for IP addresses or CIDR ranges that may be cluster-specific
+grep -E 'ip_range:|cidr:' nv-policy-export.yaml
 
 # Check for namespace references that differ between clusters
-grep '"namespace":' nv-policy-export.conf | sort | uniq
+grep 'namespace:' nv-policy-export.yaml | sort | uniq
 ```
 
 ---
@@ -91,17 +92,16 @@ grep '"namespace":' nv-policy-export.conf | sort | uniq
 ```bash
 # Get token for the target cluster
 TARGET_TOKEN=$(curl -sk -X POST \
-  https://neuvector-target.example.com/auth \
+  https://neuvector-target.example.com/v1/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin"}' \
+  -d '{"password":{"username":"admin","password":"admin"}}' \
   | jq -r '.token.token')
 
-# Import network rules
-curl -sk -X PUT \
+# Import the full configuration bundle exported in Step 2
+curl -sk -X POST \
   -H "X-Auth-Token: $TARGET_TOKEN" \
-  -H "Content-Type: application/json" \
-  https://neuvector-target.example.com/v1/policy/rule?scope=local \
-  -d @network-rules-export.json
+  -F "configuration=@nv-policy-export.yaml" \
+  "https://neuvector-target.example.com/v1/file/config"
 ```
 
 ---
@@ -114,13 +114,13 @@ After import, verify policies are active in the target cluster:
 # Check rule count
 curl -sk \
   -H "X-Auth-Token: $TARGET_TOKEN" \
-  https://neuvector-target.example.com/v1/policy/rule \
+  "https://neuvector-target.example.com/v1/policy/rule" \
   | jq '.rules | length'
 
 # Compare with source
 curl -sk \
   -H "X-Auth-Token: $TOKEN" \
-  https://neuvector.example.com/v1/policy/rule \
+  "https://neuvector.example.com/v1/policy/rule" \
   | jq '.rules | length'
 ```
 
