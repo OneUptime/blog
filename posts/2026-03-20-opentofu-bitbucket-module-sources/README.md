@@ -8,7 +8,7 @@ Description: Learn how to use Bitbucket repository module sources in OpenTofu wi
 
 ## Introduction
 
-OpenTofu supports Bitbucket as a module source with a shorthand syntax similar to GitHub. This enables teams using Atlassian Bitbucket for version control to reference their infrastructure modules directly.
+OpenTofu supports Bitbucket as a module source with a shorthand syntax similar to GitHub. This enables teams using Atlassian Bitbucket for version control to reference their infrastructure modules directly. Note that the shorthand only works for public repositories, because OpenTofu must call the Bitbucket API to detect the repository type; for private repositories use an explicit Git source URL (for example `git::ssh://git@bitbucket.org/...` or `git::https://bitbucket.org/...`).
 
 ## Syntax
 
@@ -60,15 +60,16 @@ module "rds" {
 
 ## Authentication
 
-### App Passwords (HTTPS)
+### API Tokens (HTTPS)
+
+Bitbucket Cloud App Passwords have been deprecated: creation was disabled on September 9, 2025, and existing App Passwords stop working on June 9, 2026. Use API tokens instead.
 
 ```bash
-# Create an App Password in Bitbucket: Settings > Security > App passwords
+# Create an API token at https://id.atlassian.com/manage-profile/security/api-tokens
 
-export BITBUCKET_USER="myusername"
-export BITBUCKET_APP_PASSWORD="your-app-password"
+export BITBUCKET_API_TOKEN="your-api-token"
 
-git config --global url."https://${BITBUCKET_USER}:${BITBUCKET_APP_PASSWORD}@bitbucket.org".insteadOf "https://bitbucket.org"
+git config --global url."https://x-bitbucket-api-token-auth:${BITBUCKET_API_TOKEN}@bitbucket.org".insteadOf "https://bitbucket.org"
 ```
 
 ### SSH Keys
@@ -100,9 +101,9 @@ pipelines:
 1. Create or identify your Bitbucket module repository.
 2. Tag a release in Bitbucket.
 3. Reference with the shorthand syntax.
-4. Configure authentication (App Password or SSH).
+4. Configure authentication (API token or SSH).
 5. Run `tofu init`.
 
 ## Conclusion
 
-Bitbucket module sources work identically to GitHub sources in OpenTofu, with a shorthand that accepts `bitbucket.org/<workspace>/<repo>` format. Configure authentication via App Passwords for HTTPS or SSH keys for key-based access, especially in CI/CD pipelines.
+Bitbucket module sources work similarly to GitHub sources in OpenTofu, with a shorthand that accepts `bitbucket.org/<workspace>/<repo>` format for public repositories. For private repositories, use an explicit Git source URL and configure authentication via API tokens for HTTPS or SSH keys for key-based access, especially in CI/CD pipelines.
