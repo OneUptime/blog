@@ -75,14 +75,14 @@ provider_installation {
 }
 ```
 
-## Using TOFU_PROVIDER_MIRROR Environment Variable
+## Pointing to a Custom CLI Config or Plugin Directory
 
 ```bash
-# Alternative: use environment variable
-export TOFU_PROVIDER_MIRROR=/opt/terraform-mirror
+# Alternative: point to a custom CLI config file that configures the mirror
+export TF_CLI_CONFIG_FILE=/opt/terraform-mirror.tofurc
 
-# Or Terraform-compatible variable
-export TF_CLI_ARGS_providers_lock="-fs-mirror=/opt/terraform-mirror"
+# Or, for a one-time override, pass the mirror to tofu init via -plugin-dir
+tofu init -plugin-dir=/opt/terraform-mirror
 ```
 
 ## Populating the Mirror for Specific Providers
