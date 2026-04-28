@@ -76,7 +76,7 @@ func (p *PetstoreProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
 }
 ```
 
-Resource Implementation
+## Resource Implementation
 
 ```go
 // internal/provider/pet_resource.go
@@ -127,6 +127,8 @@ package main
 
 import (
     "context"
+
+    tfprovider "github.com/hashicorp/terraform-plugin-framework/provider"
     "github.com/hashicorp/terraform-plugin-framework/providerserver"
     "github.com/your-org/terraform-provider-petstore/internal/provider"
 )
