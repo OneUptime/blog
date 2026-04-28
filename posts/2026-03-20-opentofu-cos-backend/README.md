@@ -88,7 +88,7 @@ terraform {
 
 ## State Locking
 
-The COS backend supports state locking using Tencent Cloud's object tagging or a DynamoDB-compatible table. Configure locking explicitly:
+The COS backend supports state locking out of the box using Tencent Cloud's Tag service. Locking is automatic and requires `CreateTag`, `DeleteTag`, and `DescribeTags` permissions on the tag key `tencentcloud-terraform-lock`. No extra configuration is needed:
 
 ```hcl
 terraform {
@@ -124,10 +124,10 @@ terraform {
     {
       "effect": "allow",
       "action": [
-        "cos:GetObject",
-        "cos:PutObject",
-        "cos:DeleteObject",
-        "cos:GetBucket"
+        "name/cos:GetObject",
+        "name/cos:PutObject",
+        "name/cos:DeleteObject",
+        "name/cos:GetBucket"
       ],
       "resource": [
         "qcs::cos:ap-guangzhou:uid/1234567890:acme-tofu-state-1234567890/production/*"
