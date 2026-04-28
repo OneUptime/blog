@@ -55,7 +55,7 @@ network:
 ## Applying the Configuration
 
 ```bash
-# Validate syntax
+# Apply with automatic rollback if not confirmed
 sudo netplan try
 
 # Apply and generate NetworkManager connection files
@@ -68,8 +68,8 @@ Netplan writes connection profiles to `/run/NetworkManager/system-connections/`.
 # List generated NetworkManager profiles
 ls /run/NetworkManager/system-connections/
 
-# Inspect a generated profile
-sudo nmcli connection show eth0
+# Inspect a generated profile (Netplan names connections as netplan-<id>)
+sudo nmcli connection show netplan-eth0
 ```
 
 ## Verifying NetworkManager is Running
@@ -94,8 +94,12 @@ network:
       renderer: networkd       # Server NIC managed by networkd
       addresses:
         - 10.0.0.5/24
+  wifis:
     wlan0:
       renderer: NetworkManager # WiFi managed by NetworkManager
+      access-points:
+        "MyHomeWiFi":
+          password: "wifi-password"
       dhcp4: true
 ```
 
