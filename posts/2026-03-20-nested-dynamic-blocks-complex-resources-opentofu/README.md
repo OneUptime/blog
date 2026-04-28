@@ -101,7 +101,7 @@ resource "aws_ecs_service" "app" {
 }
 ```
 
-## Triple-Nested Dynamic: CloudWatch Metric Alarms with Multiple Dimensions
+## `for_each` with CloudWatch Metric Alarms and Dimensions
 
 ```hcl
 variable "metric_alarms" {
@@ -134,14 +134,8 @@ resource "aws_cloudwatch_metric_alarm" "alarms" {
   evaluation_periods  = each.value.evaluation_periods
   alarm_actions       = each.value.alarm_actions
 
-  # Generate one dimension block per dimension entry
-  dynamic "metric_query" {
-    for_each = length(each.value.dimensions) > 0 ? [] : [1]
-    content {
-      # Simple alarm without metric queries
-    }
-  }
-
+  # `dimensions` is a map argument on this resource, not a block, so it is built
+  # with a `for` expression rather than a dynamic block.
   dimensions = {
     for dim in each.value.dimensions : dim.name => dim.value
   }
