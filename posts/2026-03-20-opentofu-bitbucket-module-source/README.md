@@ -6,7 +6,7 @@ Tags: OpenTofu, Terraform, IaC, Module, Bitbucket
 
 Description: Learn how to use Bitbucket repositories as OpenTofu module sources for teams using Atlassian's platform.
 
-OpenTofu supports a `bitbucket.org` shorthand for referencing modules stored in Bitbucket repositories, similar to the GitHub shorthand.
+OpenTofu supports a `bitbucket.org` shorthand for referencing modules stored in Bitbucket repositories, similar to the GitHub shorthand. Note that this shorthand only works for public repositories, because OpenTofu must call the Bitbucket API to determine whether the repository uses Git or Mercurial. For private repositories, use the full `git::` URL form shown below.
 
 ## Bitbucket Shorthand
 
