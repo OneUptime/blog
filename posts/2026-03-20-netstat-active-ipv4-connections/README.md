@@ -28,7 +28,7 @@ netstat -u
 netstat -l
 
 # Combine: all IPv4 TCP connections (active + listening)
-netstat -4t
+netstat -4ta
 ```
 
 ## Show Connections Without DNS Resolution
@@ -85,7 +85,7 @@ sudo netstat -4tnlp
 
 ```bash
 # Count TCP connections by state
-netstat -4tn | awk 'NR>2 {print $6}' | sort | uniq -c | sort -rn
+netstat -4tna | awk 'NR>2 {print $6}' | sort | uniq -c | sort -rn
 
 # Expected output:
 #  45 ESTABLISHED
