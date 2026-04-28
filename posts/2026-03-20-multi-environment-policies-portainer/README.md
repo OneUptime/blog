@@ -8,7 +8,7 @@ Description: Configure consistent access control policies that apply across mult
 
 ---
 
-How to Set Up Multi-Environment Policies in Portainer in Portainer is a key management task for maintaining a well-organized and secure container infrastructure.
+Setting up multi-environment policies in Portainer is a key management task for maintaining a well-organized and secure container infrastructure.
 
 ## Overview
 
@@ -56,19 +56,19 @@ For EKS, AKS, and GKE environments, deploy the agent via Helm:
 helm repo add portainer https://portainer.github.io/k8s/
 helm repo update
 
-# Install the Portainer Agent
+# Install the Portainer Edge Agent
 helm install portainer-agent portainer/portainer-agent \
   -n portainer \
   --create-namespace \
-  --set env.serverAddress="wss://portainer.example.com" \
-  --set env.edgeId="<your-edge-id>" \
-  --set env.edgeKey="<your-edge-key>"
+  --set env.edge.enabled=true \
+  --set env.edge.id="<your-edge-id>" \
+  --set env.edge.key="<your-edge-key>"
 ```
 
 ## Best Practices
 
 - Use descriptive names for environments (include location and type)
-- Apply consistent tags for filtering (e.g., , )
+- Apply consistent tags for filtering (e.g., `production`, `staging`)
 - Group related environments together for bulk operations
 - Review environment list quarterly and remove decommissioned environments
 
