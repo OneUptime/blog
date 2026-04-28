@@ -85,11 +85,11 @@ table ip6 filter {
         # Block all other ICMPv6
         ip6 nexthdr icmpv6 drop
 
-        # Bogon sources
-        ip6 saddr { ::/128, ::1/128, 2001:db8::/32, fc00::/7 } drop
-
         # SSH from management network
-        tcp dport 22 ip6 saddr fd00:mgmt::/48 accept
+        tcp dport 22 ip6 saddr fd00:abcd:1::/48 accept
+
+        # Bogon sources
+        ip6 saddr { ::/128, ::1/128, 2001:db8::/32 } drop
 
         # Web services
         tcp dport { 80, 443 } accept
@@ -145,8 +145,8 @@ ip6 daddr 2001:db8:server::1/128
 ip6 saddr { 2001:db8:site1::/48, 2001:db8:site2::/48 }
 
 # Match fragment header
-frag exists    # Packet has fragment header
-frag offset 0  # First fragment
+exthdr frag exists    # Packet has fragment header
+frag frag-off 0       # First fragment
 ```
 
 ### Rate Limiting in nftables
