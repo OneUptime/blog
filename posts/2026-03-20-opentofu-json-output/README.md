@@ -20,7 +20,7 @@ tofu show -json tfplan.binary > tfplan.json
 
 # View the JSON structure
 cat tfplan.json | jq 'keys'
-# ["configuration", "format_version", "output_changes", "prior_state", "resource_changes", "variables"]
+# ["configuration", "format_version", "output_changes", "planned_values", "prior_state", "resource_changes", "terraform_version", "timestamp", "variables"]
 ```
 
 ## Key Sections of the JSON Plan
