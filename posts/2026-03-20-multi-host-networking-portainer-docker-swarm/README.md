@@ -13,7 +13,7 @@ Docker Swarm's overlay networks allow containers on different hosts to communica
 ## Prerequisites
 
 - A Docker Swarm cluster with at least 2 nodes
-- Portainer Business Edition with Swarm environment configured
+- Portainer (Community or Business Edition) with a Swarm environment configured
 - Ports 2377 (TCP), 7946 (TCP/UDP), 4789 (UDP) open between Swarm nodes
 
 ## Step 1: Create an Overlay Network in Portainer
