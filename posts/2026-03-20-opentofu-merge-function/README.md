@@ -155,7 +155,10 @@ locals {
 tofu console
 
 > merge({a = 1}, {b = 2}, {a = 99})
-{a = 99, b = 2}
+{
+  "a" = 99
+  "b" = 2
+}
 ```
 
 ## Conclusion
