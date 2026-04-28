@@ -54,7 +54,7 @@ server {
         # Serve stale content if upstream is down or slow
         proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
 
-        # Add cache status header (HIT, MISS, BYPASS, EXPIRED)
+        # Add cache status header (MISS, BYPASS, EXPIRED, STALE, UPDATING, REVALIDATED, HIT)
         add_header X-Cache-Status $upstream_cache_status;
 
         proxy_set_header Host $host;
