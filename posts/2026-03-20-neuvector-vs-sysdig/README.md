@@ -50,10 +50,17 @@ NeuVector uses behavioral learning at the container level. During a learning pha
 apiVersion: neuvector.com/v1
 kind: NvSecurityRule
 metadata:
-  name: crypto-mining-block
+  name: nv.webapps.default
+  namespace: default
 spec:
-  selector:
-    name: webapps
+  target:
+    policymode: Protect
+    selector:
+      name: nv.webapps.default
+      criteria:
+        - key: service
+          op: =
+          value: webapps.default
   process:
     - name: xmrig        # Block known crypto-mining binary
       action: deny
@@ -116,7 +123,7 @@ Sysdig pricing is subscription-based, typically priced per node per month. Costs
 - Zero-cost container security is a priority
 - Zero-trust network segmentation with Layer 7 inspection is needed
 - You use Rancher and want native integration
-- CNCF-backed open-source tooling is preferred
+- A fully open-source platform under Apache 2.0 is preferred
 
 ## When to Choose Sysdig
 
