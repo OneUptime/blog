@@ -25,7 +25,7 @@ Portainer Server
 ├── Stack: valheim-server (Port 2456-2458)
 ├── Stack: cs2-server (Port 27015)
 ├── Stack: factorio-server (Port 34197)
-└── Stack: ark-server (Port 7777, 27015, 32330)
+└── Stack: ark-server (Port 7777, 7778, 27015)
 ```
 
 ## Step 1: Plan Resource Allocation
@@ -38,7 +38,7 @@ Before deploying, calculate resource needs:
 | Valheim (10 players) | 2 GB | 2 cores | 5 GB | 2456-2458 |
 | CS2 (10 players) | 2 GB | 2 cores | 20 GB | 27015 |
 | Factorio (8 players) | 1 GB | 1 core | 2 GB | 34197 |
-| ARK (20 players) | 8 GB | 4 cores | 50 GB | 7777, 32330 |
+| ARK (20 players) | 8 GB | 4 cores | 50 GB | 7777, 7778, 27015 |
 
 ## Step 2: Deploy Each Game Server as Separate Stacks
 
@@ -143,10 +143,10 @@ global:
   scrape_interval: 30s
 
 scrape_configs:
-  # Scrape cAdvisor for container metrics
+  # Discover Docker containers and keep only those labeled as game servers
   - job_name: 'game-servers'
-    static_configs:
-      - targets: ['cadvisor:8080']
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
     relabel_configs:
       - source_labels: [__meta_docker_container_label_game_server]
         regex: "true"
@@ -194,7 +194,7 @@ Configure scheduled restarts via Portainer Edge Jobs:
 
 # Announce restart to players (if RCON available)
 for server in minecraft; do
-  docker exec $server rcon-cli "broadcast Server restarting in 5 minutes!" 2>/dev/null || true
+  docker exec $server rcon-cli "say Server restarting in 5 minutes!" 2>/dev/null || true
 done
 
 sleep 300  # Wait 5 minutes
