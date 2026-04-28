@@ -47,18 +47,18 @@ docker run -d \
 
 ```bash
 # Tag image for IPv6 registry
-docker tag myapp:latest [2001:db8::registry]:5000/myapp:latest
+docker tag myapp:latest [2001:db8::1]:5000/myapp:latest
 
 # Push to IPv6 registry
-docker push [2001:db8::registry]:5000/myapp:latest
+docker push [2001:db8::1]:5000/myapp:latest
 
 # Pull from IPv6 registry
-docker pull [2001:db8::registry]:5000/myapp:latest
+docker pull [2001:db8::1]:5000/myapp:latest
 
 # For insecure (HTTP) IPv6 registry: add to Docker daemon config
 # /etc/docker/daemon.json
 {
-    "insecure-registries": ["[2001:db8::registry]:5000"]
+    "insecure-registries": ["[2001:db8::1]:5000"]
 }
 # Restart Docker
 systemctl restart docker
@@ -73,7 +73,7 @@ openssl req -newkey rsa:2048 -nodes \
     -out /etc/docker/registry/tls.crt \
     -x509 -days 365 \
     -subj "/CN=registry" \
-    -addext "subjectAltName=IP:2001:db8::registry,DNS:registry.example.com"
+    -addext "subjectAltName=IP:2001:db8::1,DNS:registry.example.com"
 
 # Configure registry with TLS
 cat > /etc/docker/registry/config.yml << 'EOF'
@@ -98,7 +98,7 @@ hostname: registry.example.com
 # Ensure DNS resolves to AAAA record for hostname
 
 # Or use IPv6 literal:
-# hostname: [2001:db8::harbor]   (NOTE: Harbor may not support IPv6 literals in hostname)
+# hostname: [2001:db8::1]   (NOTE: Harbor may not support IPv6 literals in hostname)
 
 # HTTP settings
 http:
@@ -121,7 +121,7 @@ networks:
     enable_ipv6: true
     ipam:
       config:
-        - subnet: "fd00:harbor::/64"
+        - subnet: "fd00:1::/64"
 ```
 
 ## containerd Configuration for IPv6 Registry
@@ -133,15 +133,15 @@ networks:
   [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
     # Mirror requests to IPv6 registry
     [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-      endpoint = ["https://[2001:db8::registry]:5000"]
+      endpoint = ["https://[2001:db8::1]:5000"]
 
   [plugins."io.containerd.grpc.v1.cri".registry.configs]
     # Auth for IPv6 registry
-    [plugins."io.containerd.grpc.v1.cri".registry.configs."[2001:db8::registry]:5000".auth]
+    [plugins."io.containerd.grpc.v1.cri".registry.configs."[2001:db8::1]:5000".auth]
       username = "admin"
       password = "password"
     # TLS config for IPv6 registry
-    [plugins."io.containerd.grpc.v1.cri".registry.configs."[2001:db8::registry]:5000".tls]
+    [plugins."io.containerd.grpc.v1.cri".registry.configs."[2001:db8::1]:5000".tls]
       ca_file = "/etc/containerd/certs.d/registry/ca.crt"
       insecure_skip_verify = false
 ```
@@ -151,7 +151,7 @@ networks:
 ```bash
 # Create imagePullSecret for IPv6 registry
 kubectl create secret docker-registry ipv6-registry \
-    --docker-server="[2001:db8::registry]:5000" \
+    --docker-server="[2001:db8::1]:5000" \
     --docker-username="user" \
     --docker-password="password" \
     --docker-email="admin@example.com" \
@@ -171,7 +171,7 @@ metadata:
 spec:
   containers:
     - name: myapp
-      image: "[2001:db8::registry]:5000/myapp:latest"
+      image: "[2001:db8::1]:5000/myapp:latest"
   imagePullSecrets:
     - name: ipv6-registry
 ```
@@ -181,26 +181,26 @@ spec:
 ```bash
 # Copy image from IPv6 source to IPv6 destination
 skopeo copy \
-    "docker://[2001:db8::source]:5000/myapp:latest" \
-    "docker://[2001:db8::dest]:5000/myapp:latest" \
+    "docker://[2001:db8::1]:5000/myapp:latest" \
+    "docker://[2001:db8::2]:5000/myapp:latest" \
     --src-tls-verify=false \
     --dest-tls-verify=false
 
 # Copy from public to private IPv6 registry
 skopeo copy \
-    "docker://nginx:latest" \
-    "docker://[2001:db8::registry]:5000/nginx:latest"
+    "docker://docker.io/library/nginx:latest" \
+    "docker://[2001:db8::1]:5000/nginx:latest"
 ```
 
 ## Verify IPv6 Registry Operation
 
 ```bash
 # Check registry API (catalog)
-curl -6 "http://[2001:db8::registry]:5000/v2/_catalog"
+curl -6 "http://[2001:db8::1]:5000/v2/_catalog"
 # Expected: {"repositories":["myapp"]}
 
 # List image tags
-curl -6 "http://[2001:db8::registry]:5000/v2/myapp/tags/list"
+curl -6 "http://[2001:db8::1]:5000/v2/myapp/tags/list"
 # Expected: {"name":"myapp","tags":["latest","1.0.0"]}
 
 # Check registry is listening on IPv6
