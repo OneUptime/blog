@@ -42,7 +42,7 @@ server {
         proxy_pass http://backend;
 
         # Pass client address - works for both IPv4 and IPv6
-        proxy_set_header X-Forwarded-For   $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Real-IP         $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Host              $host;
@@ -61,7 +61,7 @@ When Nginx is behind another proxy, configure `real_ip` to extract the actual cl
 
 set_real_ip_from 10.0.0.0/8;
 set_real_ip_from 172.16.0.0/12;
-set_real_ip_from fd00::/8;          # ULA internal proxies
+set_real_ip_from fc00::/7;          # ULA internal proxies (RFC 4193)
 set_real_ip_from 2001:db8::/32;     # Internal IPv6 range
 
 # Use X-Forwarded-For to get real client IP
@@ -126,11 +126,10 @@ server {
 
 ```nginx
 upstream backend_v6 {
-    server [2001:db8::10]:8080;
-    server [2001:db8::11]:8080;
-
-    # Passive health checks (built-in)
-    # mark backend as down after 3 failed connections
+    # Passive health checks (built-in): mark a backend as unavailable
+    # after max_fails errors within fail_timeout (default: 1 / 10s).
+    server [2001:db8::10]:8080 max_fails=3 fail_timeout=30s;
+    server [2001:db8::11]:8080 max_fails=3 fail_timeout=30s;
 }
 
 server {
