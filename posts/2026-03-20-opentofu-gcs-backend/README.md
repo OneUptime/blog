@@ -8,7 +8,7 @@ Description: Learn how to configure the Google Cloud Storage (GCS) backend in Op
 
 ## Introduction
 
-The GCS backend stores OpenTofu state in Google Cloud Storage. It provides built-in state locking using GCS object locks and automatic encryption using Google-managed or customer-managed keys. This is the standard remote backend for GCP-based infrastructure.
+The GCS backend stores OpenTofu state in Google Cloud Storage. It provides built-in state locking using a lock object in the bucket and automatic encryption using Google-managed or customer-managed keys. This is the standard remote backend for GCP-based infrastructure.
 
 ## Prerequisites
 
@@ -99,9 +99,9 @@ gs://acme-tofu-state/
 ```hcl
 terraform {
   backend "gcs" {
-    bucket          = "acme-tofu-state"
-    prefix          = "production"
-    encryption_key  = "projects/my-project/locations/us/keyRings/tofu-state/cryptoKeys/state-key"
+    bucket             = "acme-tofu-state"
+    prefix             = "production"
+    kms_encryption_key = "projects/my-project/locations/us/keyRings/tofu-state/cryptoKeys/state-key"
   }
 }
 ```
@@ -147,13 +147,11 @@ gs://acme-tofu-state/
 ```yaml
 # cloudbuild.yaml
 steps:
-  - name: 'hashicorp/terraform'
-    entrypoint: tofu
+  - name: 'ghcr.io/opentofu/opentofu'
     args: ['init']
     # Cloud Build service account with GCS and KMS permissions
 
-  - name: 'hashicorp/terraform'
-    entrypoint: tofu
+  - name: 'ghcr.io/opentofu/opentofu'
     args: ['apply', '-auto-approve']
 ```
 
