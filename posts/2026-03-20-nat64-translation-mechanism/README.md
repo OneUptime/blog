@@ -68,13 +68,13 @@ When translating from IPv6 to IPv4, the NAT64 gateway performs these transformat
 
 ## Custom NAT64 Prefixes
 
-Organizations can use their own prefix instead of `64:ff9b::/96`. RFC 6052 defines the allowed prefix lengths: /32, /40, /48, /56, /64, and /96. The IPv4 address occupies bits 96–127 in all cases.
+Organizations can use their own prefix instead of `64:ff9b::/96`. RFC 6052 defines the allowed prefix lengths: /32, /40, /48, /56, /64, and /96. Only the /96 form places the IPv4 address at bits 96–127; for shorter prefixes the IPv4 address is split around bits 64–71, which are reserved (the "u" octet) and MUST be set to zero.
 
 Example with a custom /48 prefix:
 
 ```text
 NAT64 prefix: 2001:db8:cafe::/48
-IPv4: 192.0.2.1 → 2001:db8:cafe::c000:0201
+IPv4: 192.0.2.1 → 2001:db8:cafe:c000:2:100::
 ```
 
 ## Limitations of NAT64
