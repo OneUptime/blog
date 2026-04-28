@@ -71,9 +71,9 @@ data "aws_ami" "ubuntu" {
 
   lifecycle {
     precondition {
-      # Ensure a matching AMI was found before proceeding
-      condition     = self.id != ""
-      error_message = "No matching Ubuntu 22.04 AMI found in this region."
+      # Restrict AMI lookups to regions we have validated
+      condition     = contains(["us-east-1", "us-west-2", "eu-west-1"], var.aws_region)
+      error_message = "AMI lookup is only supported in us-east-1, us-west-2, and eu-west-1."
     }
   }
 }
@@ -127,7 +127,7 @@ resource "aws_lb" "main" {
 
 ## Combining Conditions with Output Validation
 
-You can also add preconditions and postconditions to output blocks.
+You can also add preconditions to output blocks.
 
 ```hcl
 output "db_endpoint" {
