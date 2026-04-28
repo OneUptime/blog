@@ -11,8 +11,8 @@ Description: Learn how to configure Azure NAT Gateway to give private subnet res
 Azure NAT Gateway provides:
 - **Outbound connectivity** for resources without public IPs
 - **Static outbound IPs** - all outbound traffic appears from one or more known IPs
-- **High scalability** - up to 64 public IPs × 64K ports each = millions of SNAT ports
-- **Zone-redundant** options for HA
+- **High scalability** - up to 16 public IPs × 64K ports each = ~1 million SNAT ports
+- **Availability zone** options for HA - zonal with the Standard SKU, zone-redundant with the StandardV2 SKU
 
 ## Architecture
 
@@ -30,7 +30,7 @@ Private Subnet (no public IPs)
    - Name: my-nat-gateway
    - Region: same as VNet
    - Idle timeout: 4 minutes (default)
-   - Availability zone: Zone-redundant or specific zone
+   - Availability zone: No Zone or a specific zone (1, 2, or 3) for Standard SKU; StandardV2 SKU is zone-redundant
 4. **Outbound IP**: Create or assign a Public IP or Public IP prefix
 5. **Subnet**: Associate with your private subnet
 6. Review and Create
