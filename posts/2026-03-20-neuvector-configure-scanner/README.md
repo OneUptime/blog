@@ -135,8 +135,8 @@ curl -sk -X PATCH \
   -d '{
     "config": {
       "auto_scan": true,
-      "scan_layers": true,
-      "cve_db_modify_time": ""
+      "enable_auto_scan_workload": true,
+      "enable_auto_scan_host": true
     }
   }'
 ```
@@ -173,19 +173,18 @@ kubectl patch deployment neuvector-scanner-pod \
   }'
 ```
 
-## Step 6: Configure Scan Report Retention
+## Step 6: Configure Unused Group Aging
 
-Configure how long scan results are retained:
+Configure how long unused groups are retained before being aged out (in hours, range 0-168):
 
 ```bash
-# Set retention period via API
+# Set unused group aging via API
 curl -sk -X PATCH \
   "https://neuvector-manager:8443/v1/system/config" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "scan_report_retention": 30,
       "unused_group_aging": 24
     }
   }'
