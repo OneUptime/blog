@@ -117,8 +117,7 @@ tofu get
 # CI pipeline: initialize everything in one step
 tofu init -input=false
 
-# Or separately if providers are pre-installed
-tofu init -input=false -get-plugins=false
+# Or refresh modules later without re-running init
 tofu get -update
 ```
 
