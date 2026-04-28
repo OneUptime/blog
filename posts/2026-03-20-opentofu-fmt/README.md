@@ -136,7 +136,7 @@ tofu fmt production.tfvars
 
 ## Editor Integration
 
-Most editors support automatic formatting via the `terraform-ls` language server, which uses the same formatting rules as `tofu fmt`. Configure your editor to format on save for a seamless experience.
+Most editors support automatic formatting via the `tofu-ls` language server (the official OpenTofu language server), which uses the same formatting rules as `tofu fmt`. Configure your editor to format on save for a seamless experience.
 
 ## Conclusion
 
