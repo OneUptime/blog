@@ -51,17 +51,19 @@ kind: NvClusterSecurityRule
 metadata:
   name: database-isolation
 spec:
-  selector:
-    name: "database-tier"
-    criteria:
-      - key: namespace
-        value: production
-        op: "="
+  target:
+    selector:
+      name: "database-tier"
+      criteria:
+        - key: domain
+          value: production
+          op: "="
   ingress:
-    - selector:
-        name: "app-tier"
-      ports: "tcp/5432"
+    - name: allow-app-tier
       action: allow
+      ports: "tcp/5432"
+      selector:
+        name: "app-tier"
   egress: []
 ```
 
