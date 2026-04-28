@@ -103,6 +103,9 @@ controller:
 enforcer:
   tolerations:
     - effect: NoSchedule
+      key: node-role.kubernetes.io/control-plane
+      operator: Exists
+    - effect: NoSchedule
       key: node-role.kubernetes.io/master
       operator: Exists
 
@@ -110,17 +113,16 @@ manager:
   svc:
     type: LoadBalancer
 
-scanner:
-  replicas: 2
-
-# Container runtime
-k8s:
-  platform: containerd
+# Container runtime is auto-detected in NeuVector 5.3+.
+# Override the runtime socket path only if needed:
+# runtimePath: /run/containerd/containerd.sock
 
 cve:
   updater:
     enabled: true
     schedule: "0 0 * * *"
+  scanner:
+    replicas: 2
 ```
 
 ## Step 7: Complete the Installation
