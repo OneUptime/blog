@@ -59,7 +59,7 @@ const server = net.createServer((socket) => {
   // Enable keepalive with 30-second initial delay
   socket.setKeepAlive(true, 30000);
   
-  // Additional keepalive parameters (via undici or os-level tuning)
+  // Additional keepalive parameters (interval, probe count) require OS-level tuning
   console.log(`Keep-alive enabled for ${socket.remoteAddress}`);
   
   socket.on('data', (data) => {
