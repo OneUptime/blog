@@ -34,8 +34,8 @@ sysctl -w net.ipv6.neigh.eth0.retrans_time_ms=500  # 500ms
 
 # Reduce number of NS probes
 # Default: 3
-sysctl -w net.ipv6.neigh.eth0.ucast_solicit=3
-sysctl -w net.ipv6.neigh.eth0.mcast_solicit=3
+sysctl -w net.ipv6.neigh.eth0.ucast_solicit=2
+sysctl -w net.ipv6.neigh.eth0.mcast_solicit=2
 
 # Persist settings
 cat >> /etc/sysctl.d/99-ndp-failover.conf << 'EOF'
@@ -58,7 +58,7 @@ vrrp_instance VI_IPv6 {
     advert_int 1      # Check every 1 second
 
     virtual_ipaddress {
-        2001:db8::vip/64 dev eth0
+        2001:db8::100/64 dev eth0
     }
 
     # Scripts to send gratuitous NDP on failover
@@ -73,7 +73,7 @@ vrrp_instance VI_IPv6 {
 #!/bin/bash
 STATE=$1
 IFACE="eth0"
-VIP="2001:db8::vip"
+VIP="2001:db8::100"
 
 case ${STATE} in
     MASTER)
@@ -121,7 +121,7 @@ watch -n 0.5 "ip -6 neigh show dev eth0"
 # /etc/radvd.conf - Faster RA for quicker gateway discovery
 interface eth0 {
     AdvSendAdvert on;
-    MaxRtrAdvInterval 10;     # Default 200s - reduce to 10s
+    MaxRtrAdvInterval 10;     # Default 600s - reduce to 10s
     MinRtrAdvInterval 3;      # Default 0.33*Max - set to 3s
     AdvRouterLifetime 30;     # How long to trust this router
 
@@ -140,7 +140,7 @@ interface eth0 {
 #!/bin/bash
 # measure-failover.sh - Time IPv6 failover detection
 
-TARGET="2001:db8::vip"
+TARGET="2001:db8::100"
 INTERVAL=0.1
 
 echo "Monitoring ${TARGET} with ${INTERVAL}s interval..."
