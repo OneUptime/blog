@@ -140,7 +140,7 @@ jobs:
       - name: Write Inventory
         run: |
           echo "${{ needs.provision.outputs.server_ips }}" | \
-            jq -r '.[] | "[app_servers]\n" + . + " ansible_user=ubuntu"' \
+            jq -r '"[app_servers]", (.[] | "\(.) ansible_user=ubuntu")' \
             > inventory.ini
 
       - name: Run Ansible
