@@ -80,7 +80,7 @@ upstream app-servers {
 }
 ```
 
-`max_conns` limits the number of active connections to each backend (Nginx Plus or OpenResty feature for Nginx OSS with specific modules).
+`max_conns` limits the number of simultaneous active connections to each backend (available in Nginx OSS since version 1.11.5).
 
 ## Viewing Upstream Status
 
