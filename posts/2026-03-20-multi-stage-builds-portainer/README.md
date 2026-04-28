@@ -267,7 +267,7 @@ docker exec app pg_isready -h postgres -U appuser
 docker exec app ls -la /app/data
 
 # Network connectivity
-docker exec app curl -I http://postgres:5432
+docker exec app nc -zv postgres 5432
 ```
 
 ## Conclusion
