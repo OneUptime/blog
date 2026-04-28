@@ -48,10 +48,9 @@ tofu providers mirror /path/to/provider-mirror/
 #   registry.opentofu.org/
 #     hashicorp/
 #       aws/
-#         5.0.0/
-#           terraform-provider-aws_5.0.0_linux_amd64.zip
-#           terraform-provider-aws_5.0.0_SHA256SUMS
-#           terraform-provider-aws_5.0.0_SHA256SUMS.sig
+#         index.json
+#         5.0.0.json
+#         terraform-provider-aws_5.0.0_linux_amd64.zip
 
 # Transfer the entire mirror directory to the air-gapped environment
 tar -czf provider-mirror.tar.gz /path/to/provider-mirror/
@@ -61,10 +60,10 @@ tar -czf provider-mirror.tar.gz /path/to/provider-mirror/
 ## Configuring OpenTofu to Use the Local Mirror
 
 ```hcl
-# ~/.terraform.d/plugins/
-# or set via CLI config file: ~/.terraform.rc (or %APPDATA%/terraform.rc on Windows)
+# Set via the CLI config file: ~/.terraformrc on Unix (or %APPDATA%/terraform.rc on Windows).
+# OpenTofu also accepts ~/.tofurc / %APPDATA%/tofu.rc as native names.
 
-# terraform.rc (or .terraform.rc)
+# terraform.rc / .terraformrc
 provider_installation {
   filesystem_mirror {
     path    = "/opt/opentofu/provider-mirror"
@@ -98,7 +97,8 @@ mkdir -p /tmp/module-bundle
 git clone https://github.com/terraform-aws-modules/terraform-aws-vpc.git \
   /tmp/module-bundle/terraform-aws-vpc
 
-# For registry modules, use tofu get with a special config:
+# For registry modules, use tofu init with a stub config to populate the module cache:
+mkdir -p /tmp/download-config
 cat > /tmp/download-config/main.tf << 'EOF'
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
@@ -108,7 +108,7 @@ EOF
 
 cd /tmp/download-config
 tofu init
-# Providers are downloaded to .terraform/modules/
+# Modules are downloaded to .terraform/modules/
 
 # Copy the .terraform/modules directory
 cp -r .terraform/modules /tmp/module-bundle/
