@@ -33,8 +33,8 @@ mtr -6 --report --no-dns 2001:4860:4860::8888
 # Run for 100 cycles then print report
 mtr -6 --report-cycles 100 --report 2001:4860:4860::8888
 
-# Use ICMP (instead of UDP, better for firewalls)
-mtr -6 --icmp ipv6.google.com
+# Use UDP instead of ICMP (ICMP is the default; UDP can help when ICMP is blocked)
+mtr -6 --udp ipv6.google.com
 
 # Use TCP (requires root, useful for TCP-specific path testing)
 sudo mtr -6 --tcp --port 443 ipv6.google.com
@@ -104,7 +104,7 @@ sudo mtr -6 --address 2001:db8::11 --report --no-dns --report-cycles 20 \
 TARGETS=(
     "2001:4860:4860::8888"   # Google IPv6 DNS
     "2606:4700:4700::1111"   # Cloudflare IPv6 DNS
-    "2620:fe::fe"            # Hurricane Electric DNS
+    "2620:fe::fe"            # Quad9 DNS
 )
 
 for target in "${TARGETS[@]}"; do
@@ -152,4 +152,4 @@ mtr -4 --report --no-dns --report-cycles 20 google.com 2>/dev/null | tail -5
 
 ## Conclusion
 
-`mtr -6` provides real-time IPv6 network quality metrics that single-shot traceroute cannot match. Use `--report` for scripted output, `--icmp` for better firewall penetration, and `--aslookup` to see autonomous system numbers for each hop. Focus on sustained packet loss (not single hops showing 100% which is normal for routers that rate-limit ICMP) and high jitter as indicators of network problems.
+`mtr -6` provides real-time IPv6 network quality metrics that single-shot traceroute cannot match. Use `--report` for scripted output, `--udp` or `--tcp` when ICMP is filtered, and `--aslookup` to see autonomous system numbers for each hop. Focus on sustained packet loss (not single hops showing 100% which is normal for routers that rate-limit ICMP) and high jitter as indicators of network problems.
