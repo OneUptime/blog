@@ -39,7 +39,7 @@ netstat -f inet6
 ## Reading netstat IPv6 Output
 
 ```text
-Active Internet connections (only servers)
+Active Internet connections (servers and established)
 Proto  Recv-Q  Send-Q  Local Address          Foreign Address  State
 tcp6        0       0  :::22                  :::*             LISTEN
 tcp6        0       0  :::80                  :::*             LISTEN
@@ -133,7 +133,7 @@ fi
 
 echo ""
 echo "--- IPv6 Protocol Statistics ---"
-netstat -s 2>/dev/null | grep -A 20 "^Ip6:"
+netstat -s6 2>/dev/null | grep -A 20 "^Ip6:"
 ```
 
 ## macOS IPv6 Monitoring
