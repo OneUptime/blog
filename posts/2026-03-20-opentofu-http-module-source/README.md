@@ -19,14 +19,13 @@ module "vpc" {
 }
 ```
 
-## With Checksums
+## Pinning to a Specific Version
 
-For security, you can pin to a specific file hash:
+For reproducible builds, pin to a specific versioned archive URL rather than a "latest" path:
 
 ```hcl
 module "vpc" {
   source = "https://releases.mycompany.com/modules/vpc-2.1.0.tar.gz"
-  # OpenTofu verifies the checksum if you provide it
 }
 ```
 
@@ -58,14 +57,15 @@ module "database" {
 
 ## Authenticating with HTTP Sources
 
-```bash
-# Set credentials in environment
-export TF_HTTP_USERNAME="myuser"
-export TF_HTTP_PASSWORD="mypassword"
+If an HTTP/HTTPS URL requires authentication, OpenTofu reads credentials from a `.netrc` file in your home directory. You can override the default location with the `NETRC` environment variable.
 
-# Or use netrc for more control
+```bash
+# Configure credentials via netrc
 echo "machine modules.example.com login myuser password mypassword" >> ~/.netrc
 chmod 600 ~/.netrc
+
+# Optional: point OpenTofu at a non-default netrc file
+export NETRC=/path/to/custom/.netrc
 ```
 
 ## Practical: CI/CD with Pre-built Module Archives
@@ -92,4 +92,4 @@ module "vpc" {
 
 ## Conclusion
 
-HTTP URL sources are flexible for organizations with existing artifact repositories or web servers. They work with any HTTP server that can serve files. For production use, always pin to specific versioned archives, use HTTPS for security, and consider pairing with checksums for integrity verification.
+HTTP URL sources are flexible for organizations with existing artifact repositories or web servers. They work with any HTTP server that can serve files. For production use, always pin to specific versioned archives and use HTTPS so transport is encrypted and the server's identity is verified.
