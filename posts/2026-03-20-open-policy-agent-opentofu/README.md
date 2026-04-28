@@ -19,8 +19,9 @@ Open Policy Agent (OPA) is a general-purpose policy engine that evaluates JSON i
 
 brew install conftest   # macOS
 # or
-curl -LO https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_linux_amd64.tar.gz
-tar -xzf conftest_linux_amd64.tar.gz && sudo mv conftest /usr/local/bin/
+VERSION=$(curl -s https://api.github.com/repos/open-policy-agent/conftest/releases/latest | grep tag_name | cut -d '"' -f 4 | sed 's/v//')
+curl -LO "https://github.com/open-policy-agent/conftest/releases/download/v${VERSION}/conftest_${VERSION}_Linux_x86_64.tar.gz"
+tar -xzf conftest_${VERSION}_Linux_x86_64.tar.gz && sudo mv conftest /usr/local/bin/
 
 conftest --version
 ```
@@ -72,8 +73,8 @@ deny[msg] {
     resource.type in taggable_types
     resource.change.actions[_] in ["create", "update"]
 
-    # Find required tags that are missing
-    missing := required_tags - {k | k := resource.change.after.tags[_]}
+    # Find required tags that are missing (iterate keys of the tags object)
+    missing := required_tags - {k | resource.change.after.tags[k]}
     count(missing) > 0
 
     msg := sprintf(
