@@ -35,7 +35,9 @@ export GITHUB_TOKEN="ghp_your_token_here"
 git config --global url."https://oauth2:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
 
 # Using SSH
-# github.com/myorg/... automatically uses SSH if configured
+# The github.com/ shorthand always clones over HTTPS.
+# To use SSH, use the explicit form instead:
+# source = "git@github.com:myorg/repo.git"
 ```
 
 ## Practical Example
@@ -49,7 +51,7 @@ module "vpc_registry" {
 
 # Same module from GitHub directly
 module "vpc_github" {
-  source = "github.com/terraform-aws-modules/terraform-aws-vpc//modules/vpc?ref=v5.5.0"
+  source = "github.com/terraform-aws-modules/terraform-aws-vpc?ref=v5.5.0"
 }
 
 # Your org's private modules on GitHub
