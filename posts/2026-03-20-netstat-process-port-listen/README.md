@@ -108,13 +108,14 @@ fi
 ## Persistent Service Identification
 
 ```bash
-# Some processes show as "-" without root privileges
-# Example: UDP port 53 shows "1100/-" without root
-# Always run with sudo for complete process information
+# Without root privileges, the PID/Program name column shows "-"
+# for sockets you don't own (per the netstat man page).
+# Always run with sudo for complete process information.
 
-# If PID column shows "-/":
-# 1. You need root, or
-# 2. The process closed after binding (unusual), or
+# If the PID/Program column shows "-":
+# 1. You need root to see the owning process, or
+# 2. The socket belongs to the kernel (e.g. a kernel service,
+#    or the process has exited but the socket hasn't finished closing)
 # 3. Use ss -tlnp with root for more reliable output
 sudo ss -tlnp
 ```
