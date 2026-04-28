@@ -102,15 +102,16 @@ tofu plan
 # OpenTofu will perform the following actions:
 #
 #   # aws_s3_bucket.existing will be imported
-#   ~ resource "aws_s3_bucket" "existing" {
-#       + id = "my-existing-bucket"
+#     resource "aws_s3_bucket" "existing" {
+#         bucket = "my-existing-bucket"
+#         id     = "my-existing-bucket"
 #         # ...
 #     }
 #
 # Plan: 1 to import, 0 to add, 0 to change, 0 to destroy.
 ```
 
-The `~` with "will be imported" shows an import operation.
+The `# ... will be imported` comment line indicates the import operation, and the summary count includes "1 to import".
 
 ## Handling Attribute Mismatches
 
