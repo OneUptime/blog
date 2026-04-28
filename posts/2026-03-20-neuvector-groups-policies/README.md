@@ -20,12 +20,17 @@ NeuVector creates groups automatically through two mechanisms:
 ### Auto-Generated Group Naming
 
 ```text
-Pattern: nv.<deployment-name>.<namespace>
+Pattern: nv.<service-name>.<namespace>
 
 Examples:
-nv.nginx.default          - nginx deployment in default namespace
-nv.backend-api.production - backend-api deployment in production namespace
-nv.ext.ip                 - External IP addresses
+nv.nginx.default          - nginx service in default namespace
+nv.backend-api.production - backend-api service in production namespace
+nv.ip.internet            - Internet IP address group
+
+Reserved special groups (no nv. prefix):
+external                  - All external network traffic
+nodes                     - All nodes (hosts) in the cluster
+containers                - All containers in the cluster
 ```
 
 ## Prerequisites
@@ -166,38 +171,51 @@ Manage groups and policies through Kubernetes manifests:
 apiVersion: neuvector.com/v1
 kind: NvSecurityRule
 metadata:
-  name: web-tier-policy
+  name: nv.web.production
   namespace: production
 spec:
   target:
     policymode: Protect
     selector:
-      matchLabels:
-        tier: web
-        env: production
+      name: nv.web.production
+      criteria:
+        - key: service
+          op: "="
+          value: web.production
+        - key: domain
+          op: "="
+          value: production
   ingress:
     - action: allow
       name: allow-lb-ingress
       selector:
-        matchLabels:
-          app: ingress-nginx
-      ports:
-        - protocol: TCP
-          port: 80
-        - protocol: TCP
-          port: 443
+        name: nv.ingress-nginx.ingress-nginx
+        criteria:
+          - key: service
+            op: "="
+            value: ingress-nginx.ingress-nginx
+          - key: domain
+            op: "="
+            value: ingress-nginx
+      applications:
+        - HTTP
+        - SSL
+      ports: tcp/80,tcp/443
   egress:
     - action: allow
       name: allow-api-egress
       selector:
-        matchLabels:
-          tier: api
-      ports:
-        - protocol: TCP
-          port: 8080
-    - action: deny
-      name: deny-all-other
-      selector: {}
+        name: nv.api.production
+        criteria:
+          - key: service
+            op: "="
+            value: api.production
+          - key: domain
+            op: "="
+            value: production
+      applications:
+        - HTTP
+      ports: tcp/8080
   process:
     - name: nginx
       path: /usr/sbin/nginx
@@ -205,20 +223,21 @@ spec:
     - name: sh
       path: /bin/sh
       action: deny
+  file: []
 ```
 
 ```bash
 kubectl apply -f security-groups.yaml
 ```
 
-## Step 5: Use the Global Group for Default Policies
+## Step 5: Use Reserved Groups for Cluster-Wide Policies
 
-The `nodes` and `fed.nodes` groups allow you to set default policies for all nodes:
+The `nodes` group represents all nodes (hosts) in the cluster, and `fed.nodes` is its federated equivalent. Setting the mode on these reserved groups applies to all nodes at once:
 
 ```bash
-# Set default policy for all managed groups
+# Set policy mode for the all-nodes group
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/group/nv.ip.internet" \
+  "https://neuvector-manager:8443/v1/group/nodes" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
