@@ -174,7 +174,7 @@ output "instance_private_ips" {
 ## Handling Duplicate Keys
 
 ```hcl
-# When the source list may have duplicates, use grouping
+# When the source list may have duplicate values for a single field, use a composite key
 locals {
   dns_records = [
     { zone = "example.com", type = "A",   name = "www",  value = "1.2.3.4" },
