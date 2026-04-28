@@ -93,6 +93,10 @@ jobs:
 ## GitLab CI OIDC Provider
 
 ```hcl
+data "tls_certificate" "gitlab" {
+  url = "https://gitlab.com"
+}
+
 resource "aws_iam_openid_connect_provider" "gitlab" {
   url            = "https://gitlab.com"
   client_id_list = ["sts.amazonaws.com"]
