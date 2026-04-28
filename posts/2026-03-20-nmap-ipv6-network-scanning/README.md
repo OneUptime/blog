@@ -48,8 +48,8 @@ cat << 'EOF' > /tmp/ipv6-targets.txt
 EOF
 nmap -6 -iL /tmp/ipv6-targets.txt
 
-# Scan using hostnames from DNS
-nmap -6 2001:db8::1-ff   # Sequential range (256 addresses)
+# Scan a smaller CIDR range (16 addresses)
+nmap -6 2001:db8::/124
 ```
 
 ## IPv6 Host Discovery
@@ -91,16 +91,16 @@ nmap -6 -sV -p 22,80,443,8080 2001:db8::1
 ## nmap NSE Scripts for IPv6
 
 ```bash
-# Run all safe IPv6-related scripts
-nmap -6 --script ipv6* 2001:db8::1
+# Run all IPv6-related scripts (note: includes intrusive ones like ipv6-ra-flood)
+nmap -6 --script 'ipv6*' 2001:db8::1
 
-# Discover IPv6 addresses via NDP
+# List multicast listeners on the local link via MLD
 nmap -6 --script ipv6-multicast-mld-list -e eth0
 
-# Router Advertisement spoofing test
+# Router Advertisement flood (DANGEROUS: DoS - lab/authorized use only)
 sudo nmap -6 --script ipv6-ra-flood -e eth0
 
-# Check for IPv6 address privacy extensions
+# Query IPv6 Node Information (RFC 4620) for hostnames and addresses
 nmap -6 --script ipv6-node-info 2001:db8::1
 ```
 
@@ -160,7 +160,7 @@ nmap -6 -sU -p 53,123,500 2001:db8::1   # UDP services
 nmap -6 -sT -p 22,25,80,443 2001:db8::1  # TCP services
 
 # Check for firewall rules blocking specific ports
-nmap -6 -p 25 --open 2001:db8::mail-server
+nmap -6 -p 25 --open 2001:db8::25
 ```
 
 ## Conclusion
