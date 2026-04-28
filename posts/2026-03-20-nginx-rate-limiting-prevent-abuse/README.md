@@ -8,7 +8,7 @@ Description: Learn how to use Nginx's limit_req and limit_conn modules to enforc
 
 ## Why Rate Limiting?
 
-Without rate limiting, a single client can flood your server with requests, causing degraded performance for legitimate users or enabling credential-stuffing attacks. Nginx's built-in `ngx_http_limit_req_module` provides token-bucket rate limiting with minimal configuration.
+Without rate limiting, a single client can flood your server with requests, causing degraded performance for legitimate users or enabling credential-stuffing attacks. Nginx's built-in `ngx_http_limit_req_module` provides leaky-bucket rate limiting with minimal configuration.
 
 ## Defining a Rate Limiting Zone
 
