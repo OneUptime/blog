@@ -24,7 +24,7 @@ module "example" {
 
 - Path must start with `./` or `../`
 - The path is relative to the calling module's directory
-- OpenTofu copies the module directory to a `.terraform` cache
+- Local modules are not copied; OpenTofu references them directly from the source location
 
 ## Project Structure Example
 
@@ -107,7 +107,7 @@ module "database" {
 1. **No versioning overhead** - changes take effect immediately
 2. **Easy debugging** - edit module code without publishing
 3. **Monorepo-friendly** - all code in one repository
-4. **Fast iteration** - no `tofu init` needed for source changes
+4. **Fast iteration** - no `tofu init` needed for module code changes
 
 ## Limitations
 
@@ -136,7 +136,7 @@ tofu apply
 
 ## No tofu init Needed for Module Code Changes
 
-When you only change the module's `.tf` files (not the source reference), you don't need to re-run `tofu init`. OpenTofu copies local modules to `.terraform/modules/` on init, but re-reads the source on each plan.
+When you only change the module's `.tf` files (not the source reference), you don't need to re-run `tofu init`. Unlike remote modules, local modules are not copied into `.terraform/modules/` — OpenTofu references them directly from their source directory, so any code edits are picked up on the next `tofu plan`.
 
 ## Conclusion
 
