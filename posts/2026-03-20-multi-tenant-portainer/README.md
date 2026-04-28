@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Multi-Tenant, Team, Access Control, Enterprise
 
-Description: Configure Portainer for multiple teams with isolated environments, role-based access control, and resource quotas so each tenant manages their own containers securely.
+Description: Configure Portainer for multiple teams with isolated environments, role-based access control, and per-environment security policies so each tenant manages their own containers securely.
 
 ## Introduction
 
-Multi-tenant container management allows different teams, departments, or customers to manage their own containers through a single Portainer instance without visibility into each other's workloads. Portainer Business Edition provides Teams, Role-Based Access Control (RBAC), and resource quotas. The CE edition offers basic user management with environment access control. This guide covers configuring Portainer for multi-tenancy at both the CE and Business tiers.
+Multi-tenant container management allows different teams, departments, or customers to manage their own containers through a single Portainer instance without visibility into each other's workloads. Portainer Business Edition provides Teams, Role-Based Access Control (RBAC) with built-in environment roles, and Kubernetes namespace resource quotas. The CE edition offers basic user management with environment access control and Docker security restrictions for standard users. This guide covers configuring Portainer for multi-tenancy at both the CE and Business tiers.
 
 ## Step 1: Create User Accounts for Each Tenant
 
@@ -66,11 +66,11 @@ curl -s \
 
 # Add users to teams
 # TEAM_ID=1 (Team Alpha), USER_ID=2 (team-alpha-user)
-curl -s -X PUT \
+curl -s -X POST \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  "$PORTAINER_URL/api/teams/1/memberships" \
-  -d '{"Role": 1}'  # 1=Team Leader, 2=Team Member
+  "$PORTAINER_URL/api/team_memberships" \
+  -d '{"TeamID": 1, "UserID": 2, "Role": 1}'  # 1=Team Leader, 2=Team Member
 ```
 
 ## Step 3: Create Isolated Environments per Tenant
@@ -80,28 +80,25 @@ curl -s -X PUT \
 # Each team gets their own Portainer endpoint
 
 # Register Team Alpha's Docker host
+# /api/endpoints expects multipart/form-data, not JSON.
+# EndpointCreationType: 1=Local Docker, 2=Agent, 3=Azure, 4=Edge Agent, 5=Local Kubernetes.
+# Port 9001 is the Portainer Agent default, so use type 2.
 curl -s -X POST \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
   "$PORTAINER_URL/api/endpoints" \
-  -d '{
-    "Name": "Team Alpha Production",
-    "EndpointCreationType": 1,
-    "URL": "tcp://team-alpha-docker.internal:9001",
-    "TLS": true,
-    "TLSSkipVerify": false
-  }'
+  --form "Name=Team Alpha Production" \
+  --form "EndpointCreationType=2" \
+  --form "URL=team-alpha-docker.internal:9001" \
+  --form "TLS=true" \
+  --form "TLSSkipVerify=false"
 
 # Register Team Beta's Docker host
 curl -s -X POST \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
   "$PORTAINER_URL/api/endpoints" \
-  -d '{
-    "Name": "Team Beta Production",
-    "EndpointCreationType": 1,
-    "URL": "tcp://team-beta-docker.internal:9001"
-  }'
+  --form "Name=Team Beta Production" \
+  --form "EndpointCreationType=2" \
+  --form "URL=team-beta-docker.internal:9001"
 ```
 
 ## Step 4: Configure Access Control per Environment
@@ -110,27 +107,26 @@ curl -s -X POST \
 # Grant Team Alpha access ONLY to their environment
 # Environment ID: 1 (Team Alpha Production)
 # Team ID: 1 (Team Alpha)
+# Role IDs are not fixed - query GET /api/roles to find the IDs for
+# Endpoint Administrator, Helpdesk, Standard User, Read-Only User, and Operator.
 
 curl -s -X PUT \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  "$PORTAINER_URL/api/endpoints/1/access" \
+  "$PORTAINER_URL/api/endpoints/1" \
   -d '{
-    "AuthorizedTeams": [1],
-    "AuthorizedUsers": [],
     "TeamAccessPolicies": {
       "1": {"RoleId": 1}
-    }
+    },
+    "UserAccessPolicies": {}
   }'
-# RoleId: 1=Endpoint Administrator, 2=Operator, 3=Helpdesk, 4=Standard User, 5=Read-Only
 
 # Grant Team Beta access to their environment (ID: 2)
 curl -s -X PUT \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  "$PORTAINER_URL/api/endpoints/2/access" \
+  "$PORTAINER_URL/api/endpoints/2" \
   -d '{
-    "AuthorizedTeams": [2],
     "TeamAccessPolicies": {
       "2": {"RoleId": 1}
     }
@@ -189,23 +185,23 @@ services:
       - "portainer.team=beta"
 ```
 
-## Step 6: Implement Resource Quotas (Business Edition)
+## Step 6: Restrict What Regular Users Can Do per Environment
 
 ```bash
-# Set resource quotas per environment (Business Edition)
+# Update per-environment security settings via PUT /api/endpoints/{id}/settings
+# (these flags exist in CE; the dedicated handler unwraps them onto the
+# endpoint's SecuritySettings object).
 curl -s -X PUT \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  "$PORTAINER_URL/api/endpoints/1" \
+  "$PORTAINER_URL/api/endpoints/1/settings" \
   -d '{
-    "SecuritySettings": {
-      "allowBindMountsForRegularUsers": false,
-      "allowPrivilegedModeForRegularUsers": false,
-      "allowHostNamespaceForRegularUsers": false,
-      "allowDeviceMappingForRegularUsers": false,
-      "allowSysctlSettingForRegularUsers": false,
-      "allowContainerCapabilitiesForRegularUsers": false
-    }
+    "AllowBindMountsForRegularUsers": false,
+    "AllowPrivilegedModeForRegularUsers": false,
+    "AllowHostNamespaceForRegularUsers": false,
+    "AllowDeviceMappingForRegularUsers": false,
+    "AllowSysctlSettingForRegularUsers": false,
+    "AllowContainerCapabilitiesForRegularUsers": false
   }'
 
 # Regular users cannot:
