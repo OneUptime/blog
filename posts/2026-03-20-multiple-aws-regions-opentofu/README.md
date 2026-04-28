@@ -198,7 +198,7 @@ data "aws_ami" "ubuntu_primary" {
   owners      = ["099720109477"]
   filter {
     name   = "name"
-    values = ["ubuntu-22.04-*"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
 }
 
@@ -209,7 +209,7 @@ data "aws_ami" "ubuntu_secondary" {
   owners      = ["099720109477"]
   filter {
     name   = "name"
-    values = ["ubuntu-22.04-*"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
 }
 ```
