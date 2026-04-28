@@ -27,7 +27,7 @@ A typical Go application without multi-stage builds might produce a 1GB image wi
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Stage 2: Build
 FROM node:20-alpine AS builder
