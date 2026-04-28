@@ -73,7 +73,7 @@ mount -t nfs \
 ## Testing Performance
 
 ```bash
-# Write performance test (no caching: direct I/O)
+# Write performance test (synchronous I/O: forces each write to commit to the server)
 dd if=/dev/zero of=/mnt/nfs/testfile bs=1M count=1024 oflag=dsync
 # Look for: MB/s throughput
 
