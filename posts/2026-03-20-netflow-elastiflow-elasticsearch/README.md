@@ -52,48 +52,39 @@ sudo systemctl start elasticsearch kibana
 ## Step 2: Install ElastiFlow Unified Flow Collector
 
 ```bash
-# Download ElastiFlow (community edition)
-# Check latest version at: https://github.com/elastiflow/elastiflow_for_elasticsearch
+# Download ElastiFlow Unified Flow Collector
+# Check latest version at: https://docs.elastiflow.com/
 
-wget https://github.com/elastiflow/elastiflow_for_elasticsearch/releases/download/v7.3.0/elastiflow_unified_collector_7.3.0_linux_amd64.deb
-sudo dpkg -i elastiflow_unified_collector_7.3.0_linux_amd64.deb
+wget https://elastiflow-packages.s3.amazonaws.com/flow-collector/flow-collector_7.5.0_linux_amd64.deb
+
+# Use apt to install so libpcap-dev is pulled in automatically
+sudo apt install -y ./flow-collector_7.5.0_linux_amd64.deb
 ```
 
 ## Step 3: Configure ElastiFlow
 
-Edit the ElastiFlow configuration:
+The Unified Flow Collector is configured via environment variables. You can either set them in the systemd unit override at `/etc/systemd/system/flowcoll.service.d/flowcoll.conf`, or use the YAML configuration file at `/etc/elastiflow/flowcoll.yml`. The YAML file uses the same `EF_*` keys as the environment variables.
 
 ```yaml
-# /etc/elastiflow/elastiflow.yml
+# /etc/elastiflow/flowcoll.yml
 
-# Input: where to receive flows
-flow:
-  input:
-    netflow:
-      enabled: true
-      host: "0.0.0.0"
-      port: 2055
-    sflow:
-      enabled: true
-      host: "0.0.0.0"
-      port: 6343
-    ipfix:
-      enabled: true
-      host: "0.0.0.0"
-      port: 4739
+# Accept the EULA (required to start the collector)
+EF_LICENSE_ACCEPTED: 'true'
+
+# Input: UDP listener for NetFlow (2055), IPFIX (4739), and sFlow (6343)
+EF_FLOW_SERVER_UDP_IP: '0.0.0.0'
+EF_FLOW_SERVER_UDP_PORT: '2055,4739,6343,9995'
 
 # Output: send to Elasticsearch
-output:
-  elasticsearch:
-    hosts:
-      - "http://localhost:9200"
-    index: "elastiflow-flow-codex-*"
-    compress: true
+EF_OUTPUT_ELASTICSEARCH_ENABLE: 'true'
+EF_OUTPUT_ELASTICSEARCH_ADDRESSES: '127.0.0.1:9200'
+EF_OUTPUT_ELASTICSEARCH_TLS_ENABLE: 'false'
 ```
 
 ```bash
-sudo systemctl enable elastiflow
-sudo systemctl start elastiflow
+sudo systemctl daemon-reload
+sudo systemctl enable flowcoll
+sudo systemctl start flowcoll
 ```
 
 ## Step 4: Configure Network Devices to Send Flows
@@ -130,7 +121,7 @@ Access Kibana at `http://server-ip:5601` and navigate to Dashboard > ElastiFlow 
 
 ```bash
 # Check ElastiFlow is receiving data
-sudo journalctl -u elastiflow -f
+sudo journalctl -u flowcoll -f
 
 # Verify Elasticsearch is receiving documents
 curl "http://localhost:9200/elastiflow-flow-*/_count?pretty"
