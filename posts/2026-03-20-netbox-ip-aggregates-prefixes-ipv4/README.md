@@ -77,6 +77,7 @@ curl -X POST \
   http://localhost:8080/api/ipam/prefixes/
 
 # Create sub-prefixes (tiers within the site)
+# Pass the role's primary key (integer ID) for foreign key fields
 curl -X POST \
   -H "Authorization: Token <TOKEN>" \
   -H "Content-Type: application/json" \
@@ -84,7 +85,7 @@ curl -X POST \
     "prefix": "10.100.1.0/24",
     "status": "active",
     "description": "Production - Web Tier",
-    "role": {"name": "web-tier"}
+    "role": 1
   }' \
   http://localhost:8080/api/ipam/prefixes/
 ```
