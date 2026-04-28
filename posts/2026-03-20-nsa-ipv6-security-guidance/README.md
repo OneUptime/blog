@@ -120,11 +120,11 @@ NSA recommends hardening network infrastructure for IPv6:
 ```bash
 # Cisco: Restrict management access to IPv6
 line vty 0 4
- access-class IPv6-MGMT-ACL in
+ ipv6 access-class IPv6-MGMT-ACL in
 
 ! Create ACL allowing only management network
 ipv6 access-list IPv6-MGMT-ACL
-  permit ipv6 fd00:mgmt::/48 any
+  permit ipv6 fd00:dead:beef::/48 any
   deny   ipv6 any any log
 
 ! Disable unused IPv6 features
