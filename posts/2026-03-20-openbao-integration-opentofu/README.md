@@ -16,7 +16,7 @@ OpenBao is a community-maintained fork of HashiCorp Vault under the Mozilla Publ
 # Docker (development mode - not for production)
 
 docker run --rm -p 8200:8200 \
-  -e VAULT_DEV_ROOT_TOKEN_ID=root \
+  -e BAO_DEV_ROOT_TOKEN_ID=root \
   quay.io/openbao/openbao:latest server -dev
 
 # Verify OpenBao is running
@@ -122,10 +122,19 @@ resource "vault_mount" "pki" {
   max_lease_ttl_seconds     = 86400
 }
 
+# Define a role that controls what certificates can be issued
+resource "vault_pki_secret_backend_role" "server" {
+  backend          = vault_mount.pki.path
+  name             = "server-role"
+  allowed_domains  = ["example.com"]
+  allow_subdomains = true
+  max_ttl          = 86400
+}
+
 # Issue a certificate for a service
-data "vault_pki_secret_backend_cert" "app_cert" {
+resource "vault_pki_secret_backend_cert" "app_cert" {
   backend     = vault_mount.pki.path
-  name        = "server-role"
+  name        = vault_pki_secret_backend_role.server.name
   common_name = "app.example.com"
   ttl         = "24h"
 }
