@@ -8,7 +8,7 @@ Description: Deploy the complete IPv6 First Hop Security suite on Cisco IOS swit
 
 ## Introduction
 
-Cisco IOS implements IPv6 First Hop Security (FHS) as a coordinated set of features under the `ipv6 first-hop-security` umbrella. The four components - RA Guard, DHCPv6 Guard, IPv6 Snooping, and IPv6 Source Guard - work together to protect IPv6 networks from first-hop attacks. This guide provides a complete, production-ready configuration for Cisco Catalyst switches running IOS 15.0 or later.
+Cisco IOS implements IPv6 First Hop Security (FHS) as a coordinated set of features built on the IPv6 Snooping binding table. The four components - RA Guard, DHCPv6 Guard, IPv6 Snooping, and IPv6 Source Guard - work together to protect IPv6 networks from first-hop attacks. This guide provides a complete, production-ready configuration for Cisco Catalyst switches running IOS 15.0 or later.
 
 ## Prerequisites and Requirements
 
@@ -81,6 +81,11 @@ ipv6 snooping policy FHS_SNOOP
  tracking enable
  limit address-count 10
 !
+! Trusted snooping policy for uplink/router ports
+ipv6 snooping policy FHS_SNOOP_TRUSTED
+ trusted-port
+ device-role node
+!
 ! Snooping for VLAN 10
 vlan configuration 10
  ipv6 snooping attach-policy FHS_SNOOP
@@ -123,7 +128,7 @@ interface GigabitEthernet1/0/24
  switchport mode trunk
  ipv6 nd raguard attach-policy FHS_ROUTER_RA
  ipv6 dhcp guard attach-policy FHS_SERVER_DHCP
- ipv6 snooping trust
+ ipv6 snooping attach-policy FHS_SNOOP_TRUSTED
 ```
 
 ## Step 7: Deploy Source Guard After Binding Table Populated
@@ -136,8 +141,8 @@ show ipv6 neighbor binding
 ! Expected: Each active host has entries for link-local + global addresses
 
 ! Add static entries for any hosts not auto-learned
-ipv6 neighbor binding vlan 10 interface GigabitEthernet1/0/5 \
-  2001:db8::1 hardware-address 0011.2233.4455
+ipv6 neighbor binding vlan 10 2001:db8::1 \
+  interface GigabitEthernet1/0/5 0011.2233.4455
 
 ! Only after binding table is complete, enable Source Guard
 interface range GigabitEthernet1/0/1 - 23
@@ -147,28 +152,28 @@ interface range GigabitEthernet1/0/1 - 23
 ## Verification Commands
 
 ```text
-! Verify all FHS policies configured
-show ipv6 first-hop-security summary
+! List active FHS features and all attached snooping policies
+show ipv6 snooping features
+show ipv6 snooping policies
 
-! Verify RA Guard status per interface
+! Verify RA Guard policy and where it is attached
 show ipv6 nd raguard policy FHS_HOST_RA
-show ipv6 nd raguard interface GigabitEthernet1/0/1
+show ipv6 nd raguard policy FHS_ROUTER_RA
+show ipv6 nd raguard counters interface GigabitEthernet1/0/1
 
-! Verify DHCPv6 Guard status
+! Verify DHCPv6 Guard policy
 show ipv6 dhcp guard policy FHS_HOST_DHCP
-show ipv6 dhcp guard interface GigabitEthernet1/0/1
+show ipv6 dhcp guard policy FHS_SERVER_DHCP
 
-! Verify snooping and binding table
+! Verify snooping policy and binding table
 show ipv6 snooping policy FHS_SNOOP
+show ipv6 snooping counters interface GigabitEthernet1/0/1
 show ipv6 neighbor binding
 show ipv6 neighbor binding count
 
-! Verify Source Guard
+! Verify Source Guard policy
 show ipv6 source-guard policy FHS_SRC_GUARD
-show ipv6 source-guard interface GigabitEthernet1/0/1
-
-! View combined FHS statistics
-show ipv6 first-hop-security statistics
+show ipv6 snooping policies interface GigabitEthernet1/0/1
 
 ! Example output summary:
 ! FHS Features Active:
@@ -194,18 +199,20 @@ show ipv6 first-hop-security statistics
 !   4. Re-add Source Guard
 
 ! Problem: Legitimate RA being dropped
-! Check: show ipv6 nd raguard interface GigabitEthernet1/0/24
+! Check: show ipv6 nd raguard policy FHS_ROUTER_RA
+!        show ipv6 snooping counters interface GigabitEthernet1/0/24
 ! Fix: Ensure ROUTER policy is applied to uplink port, not HOST policy
 
 ! Problem: DHCPv6 clients not getting addresses
-! Check: show ipv6 dhcp guard interface GigabitEthernet1/0/24
+! Check: show ipv6 dhcp guard policy FHS_SERVER_DHCP
+!        show ipv6 snooping counters interface GigabitEthernet1/0/24
 ! Fix: Apply SERVER_DHCP policy to DHCP server/relay port
 
 ! Enable debug (use carefully in production)
-debug ipv6 nd raguard
+debug ipv6 snooping raguard
 debug ipv6 snooping
 ```
 
 ## Conclusion
 
-Complete Cisco IPv6 First Hop Security deployment requires all four components: RA Guard, DHCPv6 Guard, IPv6 Snooping, and IPv6 Source Guard. Deploy in order - RA Guard and DHCPv6 Guard first (immediate benefit, no risk), then Snooping (builds binding table), then Source Guard (only after binding table is populated). Use `show ipv6 first-hop-security summary` to verify all features are active. Regular review of binding table counts and statistics confirms the protection is functioning.
+Complete Cisco IPv6 First Hop Security deployment requires all four components: RA Guard, DHCPv6 Guard, IPv6 Snooping, and IPv6 Source Guard. Deploy in order - RA Guard and DHCPv6 Guard first (immediate benefit, no risk), then Snooping (builds binding table), then Source Guard (only after binding table is populated). Use `show ipv6 snooping features` and `show ipv6 snooping policies` to verify all features are active, and `show ipv6 neighbor binding` plus `show ipv6 snooping counters` to confirm the protection is functioning.
