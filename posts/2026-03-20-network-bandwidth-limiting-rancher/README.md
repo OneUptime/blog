@@ -120,8 +120,8 @@ kubectl exec -n production   $(kubectl get pods -n production -o name | head -1)
 # View network statistics
 kubectl exec -n production   $(kubectl get pods -n production -o name | head -1)   -- netstat -tunapl
 
-# Check bandwidth usage with cilium/calico CLI
-kubectl exec -n kube-system   $(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1)   -- calico-node -show-status
+# Check Calico node status (BGP peering, Felix readiness)
+kubectl exec -n kube-system   $(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1)   -- calico-node -bird-ready
 ```
 
 ## Step 6: Configure Prometheus Metrics for Network
@@ -169,9 +169,9 @@ kubectl run dns-test   --image=busybox   --rm -it   --restart=Never   -- nslooku
 journalctl -u kubelet --since "1 hour ago" | grep -i cni
 
 # Check pod network namespace
-kubectl exec -n kube-system   $(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1)   -- calico-node -show-status 2>/dev/null || true
+kubectl exec -n kube-system   $(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1)   -- calico-node -felix-ready 2>/dev/null || true
 ```
 
 ## Conclusion
 
-How to Set Up Network Bandwidth Limiting in Rancher configuration in Rancher requires careful understanding of the underlying CNI plugin and network topology. Test thoroughly in a staging environment before applying changes to production. Monitor network metrics and set up alerts to detect issues early.
+Network bandwidth limiting in Rancher requires careful understanding of the underlying CNI plugin and network topology. Test thoroughly in a staging environment before applying changes to production. Monitor network metrics and set up alerts to detect issues early.
