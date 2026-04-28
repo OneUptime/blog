@@ -98,7 +98,7 @@ def solicited_node_multicast(ipv6_addr: str) -> str:
     addr_bytes = socket.inet_pton(socket.AF_INET6, ipv6_addr)
     # ff02::1:ff + last 3 bytes of IPv6 address
     snm_bytes = (b'\xff\x02' + b'\x00' * 9 +
-                 b'\xff' + addr_bytes[-3:])
+                 b'\x01\xff' + addr_bytes[-3:])
     return socket.inet_ntop(socket.AF_INET6, snm_bytes)
 
 # Address resolution NS for 2001:db8::1
