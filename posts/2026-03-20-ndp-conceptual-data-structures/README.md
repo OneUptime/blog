@@ -29,7 +29,7 @@ RFC 4861 defines four conceptual data structures that every IPv6 node maintains 
    Purpose: List of on-link prefixes learned from RA
    Key:     Prefix + prefix length
    Value:   Valid Lifetime, Preferred Lifetime
-   Linux:   ip -6 route show (kernel proto routes)
+   Linux:   ip -6 route show proto ra
 
 4. Default Router List
    Purpose: List of routers to use as default gateways
@@ -87,8 +87,8 @@ sudo ip -6 route flush cache
 ## Prefix List
 
 ```bash
-# View prefix list (shown as on-link routes)
-ip -6 route show | grep "proto kernel"
+# View prefix list (RA-installed on-link routes)
+ip -6 route show proto ra
 
 # Each entry contains:
 # - Prefix and prefix length
@@ -104,7 +104,7 @@ ip -6 route show | grep "proto kernel"
 # - Controlling SLAAC address formation (A=1 entries)
 
 # Example on-link routes:
-# 2001:db8::/64 dev eth0 proto kernel metric 256 expires 2591899sec
+# 2001:db8::/64 dev eth0 proto ra metric 256 expires 2591899sec
 ```
 
 ## Default Router List
