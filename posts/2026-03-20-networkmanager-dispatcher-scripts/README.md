@@ -45,8 +45,8 @@ chmod +x /etc/NetworkManager/dispatcher.d/10-custom.sh
 |---|---|
 | `up` | Interface connected and configured |
 | `down` | Interface disconnected |
-| `pre-up` | Before interface comes up |
-| `pre-down` | Before interface goes down |
+| `pre-up` | Before interface comes up (script must be in `dispatcher.d/pre-up.d/`) |
+| `pre-down` | Before interface goes down (script must be in `dispatcher.d/pre-down.d/`) |
 | `dhcp4-change` | IPv4 DHCP lease changed |
 | `dhcp6-change` | IPv6 DHCP lease changed |
 | `vpn-up` | VPN connected |
