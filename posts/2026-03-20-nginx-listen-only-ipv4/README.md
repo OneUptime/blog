@@ -12,10 +12,13 @@ By default, Nginx may listen on both IPv4 and IPv6 addresses. In some environmen
 
 ## Default Nginx Listen Behavior
 
-The default `listen 80` in Nginx behaves differently across Linux distributions:
+Nginx's `listen` directives behave as follows:
 
-- On systems where `net.ipv6.bindv6only = 0` (common on many Linux distributions): `listen [::]:80` binds to both IPv4 and IPv6.
-- On systems where `net.ipv6.bindv6only = 1`: IPv4 and IPv6 need separate `listen` directives.
+- `listen 80;` (equivalent to `listen *:80;`) binds to all IPv4 interfaces on port 80.
+- `listen [::]:80;` binds to all IPv6 interfaces on port 80. Since Nginx 0.7.42, the `ipv6only` parameter defaults to `on`, so the IPv6 socket accepts only IPv6 connections.
+- To accept both IPv4 and IPv6 connections on a single socket, you would need `listen [::]:80 ipv6only=off;` (and the kernel's `net.ipv6.bindv6only` set to 0).
+
+In practice, this means IPv4 and IPv6 are typically configured with separate `listen` directives, and a configuration that has only `listen 80;` (without `listen [::]:80;`) is already IPv4-only.
 
 ## Method 1: Explicitly Specify IPv4 in listen
 
@@ -57,7 +60,7 @@ Simply do not include `listen [::]:80`:
 # nginx.conf or conf.d/default.conf
 
 server {
-    listen 80;        # IPv4 only (when bindv6only = 0)
+    listen 80;        # IPv4 only (binds to 0.0.0.0:80)
     # Do NOT add: listen [::]:80;
     server_name example.com;
     ...
