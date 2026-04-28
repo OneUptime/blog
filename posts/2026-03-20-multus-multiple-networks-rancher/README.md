@@ -55,7 +55,8 @@ data:
       "cniVersion": "0.4.0",
       "plugins": [
         {
-          "type": "main-cni-plugin",
+          "type": "bridge",
+          "bridge": "cni0",
           "ipam": {
             "type": "host-local",
             "ranges": [[{"subnet": "10.244.0.0/24"}]]
@@ -121,7 +122,7 @@ kubectl exec -n production   $(kubectl get pods -n production -o name | head -1)
 kubectl exec -n production   $(kubectl get pods -n production -o name | head -1)   -- netstat -tunapl
 
 # Check bandwidth usage with cilium/calico CLI
-kubectl exec -n kube-system   $(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1)   -- calico-node -show-status
+kubectl exec -n kube-system   $(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1)   -- calicoctl node status
 ```
 
 ## Step 6: Configure Prometheus Metrics for Network
@@ -169,7 +170,7 @@ kubectl run dns-test   --image=busybox   --rm -it   --restart=Never   -- nslooku
 journalctl -u kubelet --since "1 hour ago" | grep -i cni
 
 # Check pod network namespace
-kubectl exec -n kube-system   $(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1)   -- calico-node -show-status 2>/dev/null || true
+kubectl exec -n kube-system   $(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1)   -- calicoctl node status 2>/dev/null || true
 ```
 
 ## Conclusion
