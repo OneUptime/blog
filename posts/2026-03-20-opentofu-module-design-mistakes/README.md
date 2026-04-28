@@ -31,7 +31,7 @@ module "database"   { source = "./modules/rds" }
 ## Mistake 2: Hard-Coded Values
 
 ```hcl
-# Bad - hard-coded region and account ID
+# Bad - hard-coded bucket name
 resource "aws_iam_role_policy" "this" {
   policy = jsonencode({
     Resource = "arn:aws:s3:::my-company-bucket"  # Hard-coded bucket name
