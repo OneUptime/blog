@@ -81,8 +81,7 @@ metadata:
   name: myapp
   namespace: production
   annotations:
-    nginx.ingress.kubernetes.io/rate-limit: "100"
-    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    nginx.ingress.kubernetes.io/limit-rpm: "100"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     nginx.ingress.kubernetes.io/configuration-snippet: |
@@ -134,7 +133,6 @@ data:
         forward . /etc/resolv.conf {
           max_concurrent 1000
         }
-        # Increase ndots for service discovery efficiency
         loop
         reload
         loadbalance
@@ -150,6 +148,7 @@ data:
 # Install lightweight alternative: Linkerd
 curl --proto '=https' --tlsv1.2 -sSfL https://run.linkerd.io/install | sh
 linkerd check --pre
+linkerd install --crds | kubectl apply -f -
 linkerd install | kubectl apply -f -
 
 # Enable mTLS for a namespace
