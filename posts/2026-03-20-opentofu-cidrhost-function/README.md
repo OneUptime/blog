@@ -17,7 +17,7 @@ cidrhost(prefix, hostnum)
 ```
 
 - **prefix** - a CIDR notation block (e.g., `"10.0.0.0/24"`)
-- **hostnum** - the host number within the block (0 = network address, -1 = last host, etc.)
+- **hostnum** - the host number within the block (0 = network address, -1 = last address, etc.)
 - Returns an IP address string
 
 ## Basic Examples
