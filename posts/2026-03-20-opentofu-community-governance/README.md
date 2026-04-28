@@ -30,7 +30,7 @@ The OpenTofu Steering Committee governs the project:
 - Meets regularly and publishes meeting notes publicly
 - Cannot be controlled by any single company (Linux Foundation ensures neutrality)
 
-Current steering committee members represent organizations including Gruntwork, Spacelift, env0, Harness, Massdriver, and the broader community.
+Current steering committee members represent organizations including Gruntwork, Spacelift, env0, Harness, Scalr, and the broader community.
 
 ## RFC Process: How Features Are Added
 
@@ -41,7 +41,8 @@ New features go through a public RFC (Request for Comments) process:
    └── Discusses in GitHub issues or OpenTofu Slack
 
 2. RFC author drafts a proposal
-   └── File: github.com/opentofu/opentofu/blob/main/rfc/
+   └── Folder: github.com/opentofu/opentofu/tree/main/rfc/
+       (RFC files use date-based naming: YYYYMMDD-feature-name.md)
 
 3. Community review period (2+ weeks)
    └── Comments, suggestions, alternative approaches
@@ -59,9 +60,9 @@ New features go through a public RFC (Request for Comments) process:
 ```
 
 Example RFCs that became features:
-- RFC-0001: Provider iteration (became OpenTofu 1.8)
-- RFC-0003: Native state encryption (became OpenTofu 1.8)
-- Write-only attributes (became OpenTofu 1.10)
+- Client-side state encryption (became OpenTofu 1.7)
+- `for_each` in provider configuration blocks (became OpenTofu 1.9)
+- Ephemeral resources and write-only attributes (became OpenTofu 1.11)
 
 ## Contributing to OpenTofu
 
@@ -71,7 +72,7 @@ Example RFCs that became features:
 git clone https://github.com/opentofu/opentofu.git
 cd opentofu
 
-# Install Go 1.21+
+# Install Go (see go.mod for the current required version, e.g. 1.26+)
 go version
 
 # Build OpenTofu from source
@@ -92,17 +93,17 @@ GitHub:  github.com/opentofu/opentofu
          - Discussions: design discussions
          - PRs: code contributions
 
-Slack:   opentofu.slack.com
-         - #general: general discussion
-         - #dev: development discussion
-         - #help: community support
+Slack:   #opentofu channel on the CNCF Slack workspace
+         - Invite: opentofu.org/slack
+         - Used for community support, dev discussion, and announcements
 
 Website: opentofu.org
          - Docs, registry, blog
 
-Weekly Meeting:
-         - Public community calls
-         - Meeting notes published to GitHub
+Public meetings:
+         - Community Meeting: weekly, Wednesdays at 12:30 UTC
+         - Technical Steering Committee: every other Tuesday at 4pm UTC
+         - Agendas and notes: github.com/opentofu/org/tree/main/TSC
 ```
 
 ## Release Cadence
@@ -136,13 +137,15 @@ github.com/opentofu/registry
 
 ```text
 Security vulnerabilities in OpenTofu:
-  Email: security@opentofu.org
+  Report via GitHub Private Vulnerability Reporting:
+  https://github.com/opentofu/opentofu/security/advisories/new
 
-Response commitments:
-  - Acknowledgment: within 48 hours
-  - Initial assessment: within 7 days
-  - Fix timeline: Depends on severity
-  - CVE coordination: Handled by security team
+  Full policy: https://github.com/opentofu/opentofu/security/policy
+
+Response process (handled by the Product Security Team):
+  - Acknowledgment email after report is received
+  - Triage, fix, and coordinated disclosure
+  - CVE coordination handled by the PST
 
 Bug bounty:
   - No formal bug bounty program (community project)
@@ -159,13 +162,15 @@ Bug bounty:
 # https://github.com/opentofu/opentofu/tree/main/rfc
 
 # 3. Improve documentation
-# https://github.com/opentofu/opentofu.io
+# https://github.com/opentofu/opentofu.org
 
 # 4. Help with community support
 # Answer questions in GitHub Discussions and Slack
 
 # 5. Test pre-release versions
-tofu install --version 1.9.0-alpha1
+# Download alpha/beta/rc builds from the GitHub releases page:
+# https://github.com/opentofu/opentofu/releases
+# Or try nightly builds: https://nightlies.opentofu.org/nightlies
 # Report issues at github.com/opentofu/opentofu/issues
 ```
 
