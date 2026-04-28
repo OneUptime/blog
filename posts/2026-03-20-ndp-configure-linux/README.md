@@ -94,7 +94,8 @@ net.ipv6.conf.default.accept_redirects = 0
 # Disable forwarding RA through router interfaces
 # (prevent rogue RA from being forwarded)
 net.ipv6.conf.all.forwarding = 1  # Enable forwarding (for routers)
-# When forwarding=1: accept_ra defaults to 2 (accept but don't process as host)
+# When forwarding=1: RAs are ignored by default (accept_ra=1 only takes effect
+# when forwarding is disabled). To accept RAs while forwarding, set accept_ra=2.
 EOF
 
 sudo sysctl -p /etc/sysctl.d/99-ipv6-security.conf
