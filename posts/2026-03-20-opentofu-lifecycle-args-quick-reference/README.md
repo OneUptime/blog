@@ -29,8 +29,8 @@ resource "aws_db_instance" "production" {
 # Error: Instance cannot be destroyed
 # Resource ... has lifecycle.prevent_destroy set to true.
 
-# To destroy, you must first remove prevent_destroy from config
-# then run tofu apply, THEN tofu destroy
+# To destroy, remove prevent_destroy from config (or set it to false),
+# then run tofu destroy
 ```
 
 ## ignore_changes
