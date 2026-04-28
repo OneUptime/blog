@@ -15,24 +15,28 @@ Key provider aliasing in OpenTofu's state encryption system allows you to define
 Each key provider and method block has a type and a name (alias):
 
 ```hcl
-encryption {
-  # Two different key providers with different aliases
-  key_provider "aws_kms" "primary" {
-    kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/primary-key"
-    region     = "us-east-1"
-  }
+terraform {
+  encryption {
+    # Two different key providers with different aliases
+    key_provider "aws_kms" "primary" {
+      kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/primary-key"
+      key_spec   = "AES_256"
+      region     = "us-east-1"
+    }
 
-  key_provider "aws_kms" "secondary" {
-    kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/secondary-key"
-    region     = "us-east-1"
-  }
+    key_provider "aws_kms" "secondary" {
+      kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/secondary-key"
+      key_spec   = "AES_256"
+      region     = "us-east-1"
+    }
 
-  method "aes_gcm" "with_primary" {
-    keys = key_provider.aws_kms.primary
-  }
+    method "aes_gcm" "with_primary" {
+      keys = key_provider.aws_kms.primary
+    }
 
-  method "aes_gcm" "with_secondary" {
-    keys = key_provider.aws_kms.secondary
+    method "aes_gcm" "with_secondary" {
+      keys = key_provider.aws_kms.secondary
+    }
   }
 }
 ```
@@ -42,28 +46,30 @@ encryption {
 During rotation, use the new key as primary and old key as fallback:
 
 ```hcl
-encryption {
-  key_provider "pbkdf2" "new_pass" {
-    passphrase = var.new_passphrase
-  }
+terraform {
+  encryption {
+    key_provider "pbkdf2" "new_pass" {
+      passphrase = var.new_passphrase
+    }
 
-  key_provider "pbkdf2" "old_pass" {
-    passphrase = var.old_passphrase
-  }
+    key_provider "pbkdf2" "old_pass" {
+      passphrase = var.old_passphrase
+    }
 
-  method "aes_gcm" "new" {
-    keys = key_provider.pbkdf2.new_pass
-  }
+    method "aes_gcm" "new" {
+      keys = key_provider.pbkdf2.new_pass
+    }
 
-  method "aes_gcm" "old" {
-    keys = key_provider.pbkdf2.old_pass
-  }
+    method "aes_gcm" "old" {
+      keys = key_provider.pbkdf2.old_pass
+    }
 
-  state {
-    method = method.aes_gcm.new    # Encrypt new state writes with new key
+    state {
+      method = method.aes_gcm.new    # Encrypt new state writes with new key
 
-    fallback {
-      method = method.aes_gcm.old  # Decrypt existing state with old key
+      fallback {
+        method = method.aes_gcm.old  # Decrypt existing state with old key
+      }
     }
   }
 }
@@ -74,32 +80,35 @@ encryption {
 Use different key types for different purposes:
 
 ```hcl
-encryption {
-  # KMS for production state
-  key_provider "aws_kms" "kms" {
-    kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/prod-key"
-    region     = "us-east-1"
-  }
+terraform {
+  encryption {
+    # KMS for production state
+    key_provider "aws_kms" "kms" {
+      kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/prod-key"
+      key_spec   = "AES_256"
+      region     = "us-east-1"
+    }
 
-  # PBKDF2 for plan files (developer access needed)
-  key_provider "pbkdf2" "dev_key" {
-    passphrase = var.plan_passphrase
-  }
+    # PBKDF2 for plan files (developer access needed)
+    key_provider "pbkdf2" "dev_key" {
+      passphrase = var.plan_passphrase
+    }
 
-  method "aes_gcm" "kms_method" {
-    keys = key_provider.aws_kms.kms
-  }
+    method "aes_gcm" "kms_method" {
+      keys = key_provider.aws_kms.kms
+    }
 
-  method "aes_gcm" "pbkdf2_method" {
-    keys = key_provider.pbkdf2.dev_key
-  }
+    method "aes_gcm" "pbkdf2_method" {
+      keys = key_provider.pbkdf2.dev_key
+    }
 
-  state {
-    method = method.aes_gcm.kms_method       # State: KMS-encrypted
-  }
+    state {
+      method = method.aes_gcm.kms_method       # State: KMS-encrypted
+    }
 
-  plan {
-    method = method.aes_gcm.pbkdf2_method    # Plans: passphrase-encrypted
+    plan {
+      method = method.aes_gcm.pbkdf2_method    # Plans: passphrase-encrypted
+    }
   }
 }
 ```
@@ -109,32 +118,36 @@ encryption {
 Use different aliases for remote state and local state:
 
 ```hcl
-encryption {
-  key_provider "aws_kms" "local_state" {
-    kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/this-config-key"
-    region     = "us-east-1"
-  }
+terraform {
+  encryption {
+    key_provider "aws_kms" "local_state" {
+      kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/this-config-key"
+      key_spec   = "AES_256"
+      region     = "us-east-1"
+    }
 
-  key_provider "aws_kms" "remote_state" {
-    kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/networking-config-key"
-    region     = "us-east-1"
-  }
+    key_provider "aws_kms" "remote_state" {
+      kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/networking-config-key"
+      key_spec   = "AES_256"
+      region     = "us-east-1"
+    }
 
-  method "aes_gcm" "local" {
-    keys = key_provider.aws_kms.local_state
-  }
+    method "aes_gcm" "local" {
+      keys = key_provider.aws_kms.local_state
+    }
 
-  method "aes_gcm" "remote" {
-    keys = key_provider.aws_kms.remote_state
-  }
+    method "aes_gcm" "remote" {
+      keys = key_provider.aws_kms.remote_state
+    }
 
-  state {
-    method = method.aes_gcm.local
-  }
+    state {
+      method = method.aes_gcm.local
+    }
 
-  remote_state_data_sources {
-    default {
-      method = method.aes_gcm.remote
+    remote_state_data_sources {
+      default {
+        method = method.aes_gcm.remote
+      }
     }
   }
 }
