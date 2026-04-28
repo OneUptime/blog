@@ -32,7 +32,8 @@ resource "aws_lambda_function" "processor" {
   role          = aws_iam_role.lambda.arn
 
   # AWS Lambda uses Base64-encoded SHA-256 to detect code changes
-  # filebase64sha256 is equivalent to base64sha256(filebase64("..."))
+  # filebase64sha256 is equivalent to base64sha256(file("...")) but also
+  # works on binary files such as ZIP archives, which file() cannot read.
   source_code_hash = filebase64sha256("${path.module}/dist/processor.zip")
 }
 ```
@@ -56,8 +57,9 @@ resource "aws_s3_object" "config" {
   key     = "app/config.json"
   content = var.config_content
 
-  # S3 can use this as a checksum to verify integrity
-  content_sha256 = local.config_hash
+  # source_hash triggers a re-upload when the content (and therefore
+  # the hash) changes, even when server-side encryption is in use.
+  source_hash = local.config_hash
 }
 ```
 
@@ -105,16 +107,17 @@ locals {
 
 ```hcl
 locals {
-  # Read and hash the Lambda source code
-  lambda_zip  = filebase64("${path.module}/dist/api.zip")
-  lambda_hash = base64sha256(local.lambda_zip)
+  # Hash the raw bytes of the Lambda deployment package. Use
+  # filebase64sha256 directly so that binary ZIP content is hashed
+  # as-is rather than the Base64 encoding of it.
+  lambda_hash = filebase64sha256("${path.module}/dist/api.zip")
 }
 
 resource "aws_lambda_function" "api" {
   function_name = "api-handler"
   filename      = "${path.module}/dist/api.zip"
-  handler       = "main.handler"
-  runtime       = "go1.x"
+  handler       = "bootstrap"
+  runtime       = "provided.al2023"
   role          = aws_iam_role.lambda.arn
 
   # When the ZIP content changes, this hash changes,
