@@ -89,82 +89,68 @@ tofu show tfplan
 tofu apply tfplan
 ```
 
-## Step 4: Set Up Automation
+## Step 4: Set Up Automation with Atlantis
+
+Atlantis is a self-hosted server that listens for pull request events from GitHub, GitLab, or Bitbucket and runs OpenTofu commands when triggered by PR comments. It posts plan and apply output back to the PR, providing a GitOps workflow for infrastructure changes.
+
+### Run the Atlantis Server
+
+The fastest way to get Atlantis running is with the official Docker image:
+
+```bash
+docker run -d -p 4141:4141 \
+  --name atlantis \
+  -e ATLANTIS_GH_USER=your-github-bot-user \
+  -e ATLANTIS_GH_TOKEN=ghp_your_token \
+  -e ATLANTIS_GH_WEBHOOK_SECRET=your-webhook-secret \
+  -e ATLANTIS_REPO_ALLOWLIST="github.com/your-org/*" \
+  -e ATLANTIS_DEFAULT_TF_DISTRIBUTION=opentofu \
+  -e ATLANTIS_DEFAULT_TF_VERSION=1.7.0 \
+  -e ATLANTIS_ATLANTIS_URL=https://atlantis.example.com \
+  ghcr.io/runatlantis/atlantis:latest
+```
+
+Setting `ATLANTIS_DEFAULT_TF_DISTRIBUTION=opentofu` tells Atlantis to download and execute the OpenTofu binary instead of Terraform.
+
+### Configure the GitHub Webhook
+
+In your GitHub repository or organization settings, add a webhook:
+
+- Payload URL: `https://atlantis.example.com/events`
+- Content type: `application/json`
+- Secret: matches `ATLANTIS_GH_WEBHOOK_SECRET`
+- Events: select `Pull request reviews`, `Pushes`, `Issue comments`, and `Pull requests`
+
+### Add atlantis.yaml to Your Repository
+
+Commit this file at the repo root so Atlantis knows which projects to track and which OpenTofu version to use:
 
 ```yaml
-# .github/workflows/infrastructure.yml
-name: Infrastructure Deployment
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-permissions:
-  id-token: write
-  contents: read
-  pull-requests: write
-
-jobs:
-  plan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.7.0"
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Plan
-        run: tofu plan -no-color -out=tfplan
-
-      - name: Upload Plan
-        uses: actions/upload-artifact@v3
-        with:
-          name: tfplan
-          path: tfplan
-
-  apply:
-    needs: plan
-    runs-on: ubuntu-latest
-    environment: production
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.7.0"
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: Download Plan
-        uses: actions/download-artifact@v3
-        with:
-          name: tfplan
-
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Apply
-        run: tofu apply -auto-approve tfplan
+# atlantis.yaml
+version: 3
+projects:
+  - name: production
+    dir: .
+    workspace: default
+    terraform_distribution: opentofu
+    terraform_version: v1.7.0
+    autoplan:
+      when_modified: ["*.tf", "*.tfvars"]
+      enabled: true
+    apply_requirements: [approved, mergeable]
 ```
+
+With `autoplan.enabled: true`, Atlantis runs `tofu plan` automatically whenever a PR modifies a matching file. The `apply_requirements` setting blocks `atlantis apply` until the PR is approved and mergeable.
+
+### Use Atlantis from Pull Requests
+
+Once configured, trigger Atlantis with PR comments:
+
+- `atlantis plan` — run a plan and post the output to the PR
+- `atlantis plan -- -var-file=staging.tfvars` — pass extra args through to `tofu plan`
+- `atlantis apply` — apply the most recent plan
+- `atlantis unlock` — remove all locks for the PR
+- `atlantis help` — show available commands
 
 ## Step 5: Monitor and Verify
 
