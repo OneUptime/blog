@@ -36,7 +36,7 @@ The original packet starts at byte 8 of the option (after headers)
 ```text
 Complete Redirect message structure:
 
-Redirect fixed body (20 bytes):
+Redirect fixed body (40 bytes):
   Type (1) + Code (1) + Checksum (2) + Reserved (4)
   + Target Address (16) + Destination Address (16)
 
