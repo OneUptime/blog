@@ -107,7 +107,7 @@ sudo nft add rule ip firewall inbound tcp dport 8080 accept
 sudo nft insert rule ip firewall inbound tcp dport 9090 accept
 
 # Add a rule with a comment
-sudo nft add rule ip firewall inbound tcp dport 3000 comment "NodeJS app" accept
+sudo nft add rule ip firewall inbound tcp dport 3000 accept comment "NodeJS app"
 ```
 
 ## NAT with nftables
@@ -142,8 +142,8 @@ sudo nft add rule ip firewall inbound ip saddr @allowed_ips tcp dport 22 accept
 ## Saving and Loading Rules
 
 ```bash
-# Save current ruleset
-sudo nft list ruleset > /etc/nftables.conf
+# Save current ruleset (prepend "flush ruleset" so it reloads cleanly)
+sudo sh -c '{ echo "flush ruleset"; nft list ruleset; } > /etc/nftables.conf'
 
 # Load at boot
 sudo systemctl enable nftables
