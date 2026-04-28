@@ -40,8 +40,8 @@ networksetup -setv6manual "Wi-Fi" 2001:db8::10 64 2001:db8::1
 # Disable IPv6
 networksetup -setv6off "Wi-Fi"
 
-# View current IPv6 configuration
-networksetup -getv6additional "Wi-Fi"
+# Display additional IPv6 routes configured for the service
+networksetup -getv6additionalroutes "Wi-Fi"
 ```
 
 ## DNS Configuration Commands
@@ -135,9 +135,9 @@ done
 ## Getting Network Service Names for Scripting
 
 ```bash
-# Get the hardware device name for a service
-networksetup -getairportnetwork en0          # Wi-Fi specific
-networksetup -listallhardwareports           # Map ports to devices
+# Get current Wi-Fi network (SSID) for a Wi-Fi device
+networksetup -getairportnetwork en0          # Wi-Fi specific (returns SSID)
+networksetup -listallhardwareports           # Map service names to devices
 
 # Example output from -listallhardwareports:
 # Hardware Port: Wi-Fi
@@ -151,4 +151,4 @@ networksetup -listallhardwareports           # Map ports to devices
 
 ## Summary
 
-`networksetup` is the primary command-line tool for macOS network configuration, including IPv6. Key IPv6 commands: `-setv6automatic` (SLAAC), `-setv6manual <service> <ip> <prefix> <gw>` (static), `-setv6linklocal` (link-local only), `-setv6off` (disable), `-getv6additional` (view config). DNS is managed with `-setdnsservers` and `-getdnsservers`. All commands require the network service name (from `-listallnetworkservices`), not the device name (en0, en1).
+`networksetup` is the primary command-line tool for macOS network configuration, including IPv6. Key IPv6 commands: `-setv6automatic` (SLAAC), `-setv6manual <service> <ip> <prefix> <gw>` (static), `-setv6linklocal` (link-local only), `-setv6off` (disable), `-getv6additionalroutes` (view additional IPv6 routes). Use `-getinfo` to view the current IPv6 configuration. DNS is managed with `-setdnsservers` and `-getdnsservers`. All commands require the network service name (from `-listallnetworkservices`), not the device name (en0, en1).
