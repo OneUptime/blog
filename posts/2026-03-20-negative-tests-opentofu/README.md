@@ -196,25 +196,6 @@ run "rejects_neither_ami_option_specified" {
 }
 ```
 
-## Testing Type Constraints
-
-```hcl
-# tests/type_negative.tftest.hcl
-mock_provider "aws" {}
-
-# Test that string-typed variable rejects non-strings
-run "rejects_wrong_type_for_name" {
-  command = plan
-
-  variables {
-    # This will cause a type error
-    name = 123  # Expected string, got number
-  }
-
-  expect_failures = [var.name]
-}
-```
-
 ## Conclusion
 
 Negative tests with `expect_failures` document your module's invariants and guard against regression when validation rules are accidentally removed or weakened. Write at least one negative test for every `validation` block, `precondition`, and `postcondition` in your modules. A module without negative tests is incomplete - it only documents what valid input looks like, not what the module protects against.
