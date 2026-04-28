@@ -117,5 +117,4 @@ modprobe nf_nat_pptp          # PPTP NAT
 **Related Reading:**
 
 - [How to Configure Source NAT (SNAT) on Linux](https://oneuptime.com/blog/post/2026-03-20-configure-snat-linux/view)
-- [How to Configure NAT for IPsec VPN Tunnels](https://oneuptime.com/blog/post/2026-03-20-nat-ipsec-vpn/view)
 - [How to Use NAT with IPsec VPN Tunnels](https://oneuptime.com/blog/post/2026-03-20-nat-ipsec-vpn/view)
