@@ -65,7 +65,7 @@ ping6 -c 1 2001:db8::1
 ip -6 neigh show | grep 2001:db8::1
 # Should show REACHABLE immediately after successful ping
 
-# Add a permanent (static) entry (always REACHABLE)
+# Add a static entry (never expires; state will be PERMANENT, not REACHABLE)
 sudo ip -6 neigh add 2001:db8::1 lladdr 00:11:22:33:44:55 dev eth0
 ip -6 neigh show | grep PERMANENT
 ```
