@@ -110,7 +110,7 @@ When you change local module code, you do not need to run `tofu init` again - th
 - The path must start with `./` or `../`. A path without these prefixes is treated as a registry module, not a local path.
 - Local modules do not support version constraints.
 - When you move to sharing modules across repositories, switch to Git-based or registry sources.
-- `tofu init` copies local module contents into `.terraform/modules/` - re-run it if you rename a module.
+- `tofu init` records local module references in `.terraform/modules/modules.json` (the files themselves are read in place from disk, not copied) - re-run it if you add, remove, or change a module's `source` address.
 
 ## Conclusion
 
