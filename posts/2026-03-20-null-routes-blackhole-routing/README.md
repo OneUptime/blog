@@ -17,13 +17,9 @@ A null route (also called a blackhole route) silently discards all traffic desti
 
 ip route add blackhole 192.0.2.0/24
 
-# Alternative: use the null device explicitly
-ip route add 192.0.2.0/24 dev null0 2>/dev/null || \
-ip route add unreachable 192.0.2.0/24
-
 # Verify the blackhole route
 ip route show 192.0.2.0/24
-# blackhole 192.0.2.0/24 proto static
+# blackhole 192.0.2.0/24
 
 # Test - packets to this range are silently dropped
 ping -c 3 192.0.2.1
