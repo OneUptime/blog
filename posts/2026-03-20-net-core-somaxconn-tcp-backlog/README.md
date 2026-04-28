@@ -21,11 +21,11 @@ Applications pass a `backlog` value to `listen()`, but the OS caps it at `somaxc
 # Check current somaxconn limit
 
 sysctl net.core.somaxconn
-# Default: 128 (very low for production)
+# Default: 4096 on Linux 5.4+ (was 128 on older kernels) — still low for very high-traffic servers
 
 # Check SYN backlog
 sysctl net.ipv4.tcp_max_syn_backlog
-# Default: 512
+# Default: scales with system memory (commonly 128-2048)
 
 # Check if SYN cookies are enabled (protection against SYN flood)
 sysctl net.ipv4.tcp_syncookies
@@ -157,4 +157,4 @@ echo "* hard nofile 1048576" >> /etc/security/limits.conf
 
 ## Conclusion
 
-The `net.core.somaxconn` parameter limits how many pending connections the OS will queue before dropping new ones. The default of 128 is far too low for production servers. Set it to 65535 along with `net.ipv4.tcp_max_syn_backlog`, and ensure your application calls `listen()` with a matching backlog value. Monitor for overflows with `netstat -s | grep overflow` to confirm the changes resolved the connection drops.
+The `net.core.somaxconn` parameter limits how many pending connections the OS will queue before dropping new ones. The default (128 on older kernels, 4096 on Linux 5.4+) is often too low for production servers under heavy load. Set it to 65535 along with `net.ipv4.tcp_max_syn_backlog`, and ensure your application calls `listen()` with a matching backlog value. Monitor for overflows with `netstat -s | grep overflow` to confirm the changes resolved the connection drops.
