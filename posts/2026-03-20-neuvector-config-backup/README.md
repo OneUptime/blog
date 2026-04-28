@@ -18,9 +18,9 @@ NeuVector stores its configuration in an internal database. Regular backups prot
 # Authenticate to NeuVector
 
 TOKEN=$(curl -sk -X POST \
-  https://neuvector.example.com/auth \
+  https://neuvector.example.com/v1/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin"}' \
+  -d '{"password":{"username":"admin","password":"admin"}}' \
   | jq -r '.token.token')
 
 # Export the complete configuration
@@ -66,10 +66,10 @@ spec:
                 - -c
                 - |
                   # Authenticate
-                  TOKEN=$(curl -sk -X POST https://neuvector-svc.neuvector.svc.cluster.local/auth \
+                  TOKEN=$(curl -sk -X POST https://neuvector-svc.neuvector.svc.cluster.local/v1/auth \
                     -H "Content-Type: application/json" \
-                    -d "{\"username\":\"backup-user\",\"password\":\"$NV_PASSWORD\"}" \
-                    | grep -o '"token":"[^"]*' | cut -d'"' -f4)
+                    -d "{\"password\":{\"username\":\"backup-user\",\"password\":\"$NV_PASSWORD\"}}" \
+                    | grep -o '"token":"[^"]*' | tail -n1 | cut -d'"' -f4)
                   # Export and upload
                   FILENAME="nv-backup-$(date +%Y%m%d%H%M%S).conf"
                   curl -sk -H "X-Auth-Token: $TOKEN" \
@@ -102,17 +102,16 @@ Store these in a secrets manager (Vault, AWS Secrets Manager) rather than in pla
 ```bash
 # Authenticate to the target NeuVector instance
 TOKEN=$(curl -sk -X POST \
-  https://neuvector-new.example.com/auth \
+  https://neuvector-new.example.com/v1/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin"}' \
+  -d '{"password":{"username":"admin","password":"admin"}}' \
   | jq -r '.token.token')
 
-# Restore configuration from backup file
+# Restore configuration from backup file (uploaded as multipart/form-data)
 curl -sk -X POST \
   -H "X-Auth-Token: $TOKEN" \
-  -H "Content-Type: application/json" \
   https://neuvector-new.example.com/v1/file/config \
-  --data-binary @nv-config-backup-20260320.conf
+  -F "configuration=@nv-config-backup-20260320.conf"
 ```
 
 ---
