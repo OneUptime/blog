@@ -152,14 +152,17 @@ Panel type: Time series
 Set an alert when active connections exceed a threshold:
 
 ```yaml
-# Grafana alert rule
-rule:
-  expr: nginx_connections_active > 1000
-  for: 2m
-  labels:
-    severity: warning
-  annotations:
-    summary: "Nginx active connections high ({{ $value }})"
+# Prometheus alerting rule
+groups:
+  - name: nginx
+    rules:
+      - alert: NginxHighActiveConnections
+        expr: nginx_connections_active > 1000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Nginx active connections high ({{ $value }})"
 ```
 
 ## Step 6: Separate IPv4 and IPv6 Metrics
