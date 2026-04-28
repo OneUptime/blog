@@ -117,9 +117,9 @@ Useful for local testing or when you only need to validate configuration.
 ## CI/CD Usage
 
 ```bash
-# Typical CI/CD init pattern
+# Typical CI/CD init pattern (-input=false makes it non-interactive)
 tofu init \
-  -input=false \         # Non-interactive
+  -input=false \
   -backend-config="key=${ENVIRONMENT}/terraform.tfstate"
 ```
 
