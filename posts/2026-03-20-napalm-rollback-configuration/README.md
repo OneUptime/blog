@@ -96,8 +96,9 @@ def apply_with_manual_rollback(device_info, config_to_apply):
         device.commit_config()
         print("Rolled back to previous configuration.")
     else:
-        device.save_config()
-        print("Configuration saved.")
+        # commit_config() already persists to startup-config on IOS
+        # (NAPALM runs `write memory` internally as part of commit).
+        print("Configuration kept.")
 
     device.close()
 
@@ -130,7 +131,16 @@ def commit_with_timer(device_info, config, confirm_timeout=60):
     Simulates JunOS 'commit confirmed' behavior.
     """
     driver_class = napalm.get_network_driver(device_info['driver'])
-    device = driver_class(**device_info)
+
+    def _build_device():
+        return driver_class(
+            hostname=device_info['host'],
+            username=device_info['username'],
+            password=device_info['password'],
+            optional_args=device_info.get('optional_args', {}),
+        )
+
+    device = _build_device()
     device.open()
 
     # Save current config for rollback
@@ -146,7 +156,7 @@ def commit_with_timer(device_info, config, confirm_timeout=60):
 
     # Start rollback timer
     def auto_rollback():
-        device2 = driver_class(**device_info)
+        device2 = _build_device()
         device2.open()
         device2.load_replace_candidate(config=backup)
         device2.commit_config()
