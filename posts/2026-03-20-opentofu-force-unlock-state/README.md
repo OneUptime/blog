@@ -102,10 +102,10 @@ For local state files, the lock is stored in a `.terraform.tfstate.lock.info` fi
 
 ```bash
 # Manually remove a local lock file if tofu force-unlock doesn't work
-rm terraform.tfstate.lock.info
+rm .terraform.tfstate.lock.info
 
 # Or use the force-unlock command with the lock ID from the JSON file
-cat terraform.tfstate.lock.info
+cat .terraform.tfstate.lock.info
 ```
 
 The lock info JSON looks like:
