@@ -83,17 +83,21 @@ policy = jsonencode({
 ## for_each and count
 
 ```hcl
-# for_each with a map
+# for_each with a set (converted from a list)
 resource "aws_s3_bucket" "env" {
   for_each = toset(["dev", "staging", "prod"])
   bucket   = "myapp-${each.key}"
 }
 
-# for_each with a set
+# for_each with a set of CIDRs
 resource "aws_security_group_rule" "ingress" {
-  for_each  = var.allowed_cidrs
-  type      = "ingress"
-  cidr_ipv4 = each.value
+  for_each          = var.allowed_cidrs
+  type              = "ingress"
+  security_group_id = aws_security_group.app.id
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  cidr_blocks       = [each.value]
 }
 
 # count
@@ -114,8 +118,13 @@ instance_type = var.environment == "prod" ? "m5.large" : "t3.micro"
 # Count-based conditional
 count = var.create_bucket ? 1 : 0
 
-# enabled meta-argument (OpenTofu 1.11+)
-enabled = var.enable_feature
+# enabled meta-argument (OpenTofu 1.11+) — must be inside a lifecycle block
+resource "aws_instance" "example" {
+  # ...
+  lifecycle {
+    enabled = var.enable_feature
+  }
+}
 ```
 
 ## for Expressions
@@ -155,19 +164,23 @@ resource "aws_security_group" "app" {
 ## Type Constraints
 
 ```hcl
-variable "examples" {
-  type = string          # string
-  type = number          # number
-  type = bool            # boolean
-  type = list(string)    # list of strings
-  type = set(string)     # set (no duplicates)
-  type = map(string)     # map with string values
-  type = object({        # object with specific shape
+# Each variable accepts exactly one type. Examples:
+
+variable "example_string" { type = string }       # string
+variable "example_number" { type = number }       # number
+variable "example_bool"   { type = bool }         # boolean
+variable "example_list"   { type = list(string) } # list of strings
+variable "example_set"    { type = set(string) }  # set (no duplicates)
+variable "example_map"    { type = map(string) }  # map with string values
+
+variable "example_object" {                       # object with specific shape
+  type = object({
     name = string
     port = number
   })
-  type = any             # any type
 }
+
+variable "example_any"    { type = any }          # any type
 ```
 
 ## Summary
