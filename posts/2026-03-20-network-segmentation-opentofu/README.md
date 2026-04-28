@@ -37,7 +37,7 @@ module "vpc" {
   version = "~> 5.0"
 
   name             = "segmented-vpc"
-  cidr             = "10.0.0.0/8"
+  cidr             = "10.0.0.0/16"
   azs              = ["us-east-1a", "us-east-1b", "us-east-1c"]
   public_subnets   = local.zones.public.cidrs
   private_subnets  = local.zones.application.cidrs
