@@ -147,7 +147,7 @@ tofu console
 
 ## Handling Plan Diffs
 
-Since bcrypt uses random salts, the hash changes on every run. To prevent constant resource updates:
+Since bcrypt uses random salts, the hash changes on every run - even when the input string is unchanged. Wrapping a stable input (like `random_password`) in `bcrypt()` does not help, because the salt is regenerated on every call. The practical workaround is to apply `lifecycle.ignore_changes` to the attribute that holds the hash, so the resource is not updated on subsequent plans:
 
 ```hcl
 resource "random_password" "app_password" {
@@ -155,9 +155,18 @@ resource "random_password" "app_password" {
   special = true
 }
 
-locals {
-  # Use random_password to ensure hash is only computed once
-  hashed = bcrypt(random_password.app_password.result)
+resource "kubernetes_secret" "app_credentials" {
+  metadata {
+    name = "app-credentials"
+  }
+
+  data = {
+    password_hash = bcrypt(random_password.app_password.result)
+  }
+
+  lifecycle {
+    ignore_changes = [data]
+  }
 }
 ```
 
