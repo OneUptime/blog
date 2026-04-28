@@ -47,7 +47,7 @@ kubectl get pod -n neuvector \
   -o jsonpath='{.items[0].status.containerStatuses[0].lastState.terminated.reason}'
 
 # Fix: Increase scanner memory limits
-kubectl patch daemonset neuvector-scanner-pod -n neuvector --type merge -p '{
+kubectl patch deployment neuvector-scanner-pod -n neuvector --type merge -p '{
   "spec": {
     "template": {
       "spec": {
@@ -125,10 +125,10 @@ kubectl top pod -n neuvector -l app=neuvector-scanner-pod
 # Verify the CVE database is current
 # NeuVector UI: Dashboard > CVE Database Version
 
-# Manually trigger a CVE database update
-curl -sk -X POST \
-  -H "X-Auth-Token: $TOKEN" \
-  https://neuvector.example.com/v1/scan/database
+# Manually trigger a CVE database update via the updater CronJob
+kubectl create job --from=cronjob/neuvector-updater-pod \
+  manual-update-$(date +%s) \
+  -n neuvector
 
 # Force re-scan of a specific image
 curl -sk -X POST \
