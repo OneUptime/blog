@@ -31,15 +31,7 @@ kubectl create namespace neuvector
 
 ## Step 2: Create Service Accounts and RBAC
 
-NeuVector requires specific RBAC permissions to monitor and enforce security policies:
-
-```bash
-# Apply the NeuVector RBAC configuration
-kubectl apply -f https://raw.githubusercontent.com/neuvector/manifests/main/kubernetes/5.x/rbac/cluster-role.yaml
-kubectl apply -f https://raw.githubusercontent.com/neuvector/manifests/main/kubernetes/5.x/rbac/cluster-role-binding.yaml
-```
-
-Alternatively, create the RBAC manually:
+NeuVector requires specific RBAC permissions to monitor and enforce security policies. Create the service accounts and RBAC manually:
 
 ```yaml
 # neuvector-rbac.yaml
@@ -47,6 +39,12 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: controller
+  namespace: neuvector
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: enforcer
   namespace: neuvector
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -88,6 +86,9 @@ subjects:
   - kind: ServiceAccount
     name: controller
     namespace: neuvector
+  - kind: ServiceAccount
+    name: enforcer
+    namespace: neuvector
 ```
 
 ```bash
@@ -100,7 +101,7 @@ NeuVector uses CRDs to define its security policies:
 
 ```bash
 # Apply NeuVector CRDs
-kubectl apply -f https://raw.githubusercontent.com/neuvector/manifests/main/kubernetes/5.x/crd-k8s-1.19.yaml
+kubectl apply -f https://raw.githubusercontent.com/neuvector/manifests/main/kubernetes/5.3.0/crd-k8s-1.19.yaml
 ```
 
 ## Step 4: Deploy NeuVector Components
