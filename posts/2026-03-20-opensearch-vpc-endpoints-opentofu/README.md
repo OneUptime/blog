@@ -37,9 +37,9 @@ resource "aws_opensearch_domain" "private" {
   # VPC configuration - deploys domain inside the VPC
   vpc_options {
     subnet_ids = [
-      aws_subnet.private_a.id,
-      aws_subnet.private_b.id,
-      aws_subnet.private_c.id,
+      aws_subnet.opensearch_a.id,
+      aws_subnet.opensearch_b.id,
+      aws_subnet.opensearch_c.id,
     ]
     security_group_ids = [aws_security_group.opensearch.id]
   }
