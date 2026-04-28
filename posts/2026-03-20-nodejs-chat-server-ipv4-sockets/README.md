@@ -149,9 +149,11 @@ const server = net.createServer((socket) => {
   // Handle disconnect
   function handleDisconnect() {
     if (username) {
-      users.delete(username);
-      broadcast(`*** ${username} has left the chat ***\n`);
-      console.log(`${username} disconnected`);
+      const leftUser = username;
+      username = null;
+      users.delete(leftUser);
+      broadcast(`*** ${leftUser} has left the chat ***\n`);
+      console.log(`${leftUser} disconnected`);
     }
   }
 
