@@ -61,7 +61,7 @@ def solicited_node_multicast(ipv6_addr: str) -> str:
     multicast_bytes = (
         b'\xff\x02' +            # ff02
         b'\x00' * 9 +            # 9 zero bytes
-        b'\xff' +                 # ff
+        b'\x01\xff' +            # 01 ff (the 1 from ff02::1, then ff)
         last_3_bytes             # Last 3 bytes of unicast address
     )
 
@@ -87,7 +87,7 @@ test_addresses = [
     "2001:db8::1234:5678",
     "fe80::dead:beef",
     "2001:db8::100",
-    "2001:db8::200",  # Note: same last 24 bits as 2001:db8::200 vs ::100
+    "2001:db8::200",  # Different low 24 bits from ::100 -> different SNM group
 ]
 
 print(f"{'IPv6 Address':<30} {'Solicited-Node Multicast':<40} {'Ethernet MAC'}")
