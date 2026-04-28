@@ -100,7 +100,7 @@ EOF
 ip -6 neigh show | wc -l
 
 # Show neighbor table statistics
-ip -6 neigh show | awk '{print $5}' | sort | uniq -c
+ip -6 neigh show | awk '{print $NF}' | sort | uniq -c
 # Output: count per state (REACHABLE, STALE, FAILED, etc.)
 
 # Check if approaching gc_thresh2 (GC kicks in)
@@ -109,7 +109,7 @@ THRESH2=$(sysctl -n net.ipv6.neigh.default.gc_thresh2)
 echo "Cache: ${CURRENT}/${THRESH2} entries ($(( CURRENT * 100 / THRESH2 ))%)"
 
 # Monitor cache over time
-watch -n 5 "echo 'IPv6 neighbors:'; ip -6 neigh show | awk '{print \$5}' | sort | uniq -c"
+watch -n 5 "echo 'IPv6 neighbors:'; ip -6 neigh show | awk '{print \$NF}' | sort | uniq -c"
 ```
 
 ## RA-Announced Timer Values
@@ -121,7 +121,7 @@ Routers can announce recommended timer values in Router Advertisements:
 interface eth0 {
     AdvSendAdvert on;
 
-    # Announce preferred reachability time (1/10th of actual)
+    # Announced reachable time in ms; hosts randomize 0.5x-1.5x per RFC 4861
     AdvReachableTime 15000;    # ms - hint for hosts
 
     # Announce retransmit timer
