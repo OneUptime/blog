@@ -100,7 +100,7 @@ terraform.tfstate.d/old-feature/   # This directory is deleted
 
 For S3 backends, the state object is removed:
 ```text
-s3://bucket/prefix/env:/old-feature/terraform.tfstate  # This object is deleted
+s3://bucket/env:/old-feature/terraform.tfstate  # This object is deleted
 ```
 
 ## Verifying Deletion
