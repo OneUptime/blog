@@ -12,7 +12,7 @@ Nginx's `stream` module can proxy layer-4 TCP and UDP traffic, making it suitabl
 
 ## Prerequisites
 
-Nginx must be compiled with `--with-stream` and `--with-stream_udp` modules:
+Nginx must be compiled with the `--with-stream` flag (UDP support has been built into the stream module since Nginx 1.9.13):
 
 ```bash
 # Check if stream module is available
