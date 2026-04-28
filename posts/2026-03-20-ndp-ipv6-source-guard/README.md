@@ -95,14 +95,11 @@ interface range GigabitEthernet1/0/1 - 23
 ! Show IPv6 Source Guard policies
 show ipv6 source-guard policy
 
-! Show Source Guard status per interface
-show ipv6 source-guard interface GigabitEthernet1/0/1
+! Show snooping policies attached per interface
+show ipv6 snooping policies interface GigabitEthernet1/0/1
 
 ! Show binding table (validate entries exist for your hosts)
 show ipv6 neighbor binding
-
-! Show Source Guard statistics (dropped spoofed packets)
-show ipv6 source-guard statistics
 
 ! Example binding table output:
 ! Binding Table has 3 entries:
@@ -148,19 +145,19 @@ On Linux hosts, source validation can be approximated with ip6tables.
 
 ```bash
 # On a Linux router/gateway: validate IPv6 source addresses
+# using reverse path filtering (RPF)
 
-# using strict reverse path filtering (RPF)
+# Note: Unlike IPv4, the Linux kernel has no rp_filter
+# sysctl for IPv6. The accept_source_route knob only
+# controls IPv6 routing header acceptance (RFC 5095),
+# not RPF. IPv6 RPF must be enforced via the ip6tables
+# rpfilter match, which is valid in the raw or mangle
+# table, PREROUTING chain.
 
-# Enable strict RPF for IPv6
-echo 2 | sudo tee /proc/sys/net/ipv6/conf/eth1/accept_source_route
-# Or use:
-sudo sysctl -w net.ipv6.conf.eth1.rp_filter=1
-
-# Note: IPv6 RPF uses ip6tables RPFILTER module
 # Block packets that fail reverse path check
-sudo ip6tables -A FORWARD -m rpfilter --invert -j DROP
+sudo ip6tables -t mangle -A PREROUTING -m rpfilter --invert -j DROP
 
-# This rejects packets where the source address
+# This drops packets where the source address
 # is not reachable through the interface it arrived on
 ```
 
