@@ -36,10 +36,11 @@ source ~/.bashrc
 # Test autocompletion - type "tofu " and press Tab
 tofu <TAB>
 # Expected output:
-# apply          console        destroy        force-unlock   import
-# init           login          logout         output         plan
-# providers      refresh        show           state          taint
-# test           untaint        validate       version        workspace
+# apply          console        destroy        fmt            force-unlock
+# get            graph          import         init           login
+# logout         metadata       output         plan           providers
+# refresh        show           state          taint          test
+# untaint        validate       version        workspace
 ```
 
 ---
