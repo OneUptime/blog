@@ -127,7 +127,7 @@ resource "null_resource" "always_run" {
 
 ## Modern Alternative: terraform_data
 
-OpenTofu 1.4+ provides `terraform_data` as a cleaner alternative that doesn't require the null provider:
+OpenTofu provides `terraform_data` (inherited from Terraform 1.4+) as a cleaner alternative that doesn't require the null provider:
 
 ```hcl
 resource "terraform_data" "configure" {
