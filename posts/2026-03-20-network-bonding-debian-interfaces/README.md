@@ -89,7 +89,7 @@ iface bond-lacp inet static
     bond-mode 802.3ad
     bond-miimon 100
     bond-lacp-rate fast
-    bond-xmit_hash_policy layer3+4
+    bond-xmit-hash-policy layer3+4
 ```
 
 ## Apply the Configuration
