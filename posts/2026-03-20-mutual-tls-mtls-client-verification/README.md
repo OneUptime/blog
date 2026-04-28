@@ -84,8 +84,9 @@ server {
     ssl_verify_depth 2;                               # Allow intermediate CAs
 
     # Pass client certificate info to the backend application
-    proxy_set_header X-SSL-Client-Cert $ssl_client_cert;
+    proxy_set_header X-SSL-Client-Cert $ssl_client_escaped_cert;
     proxy_set_header X-SSL-Client-DN $ssl_client_s_dn;
+    proxy_set_header X-SSL-Client-Verify $ssl_client_verify;
 
     location / {
         # Return 403 if client cert validation fails
@@ -161,8 +162,9 @@ def api_resource():
     if client_verify != 'SUCCESS':
         return {'error': 'Client certificate required'}, 403
 
-    # Extract CN from DN: "/C=US/O=My Company/CN=api-client-01"
-    cn = dict(item.split('=') for item in client_dn.lstrip('/').split('/'))
+    # Modern Nginx (1.11.6+) returns DN in RFC 2253 format:
+    # "CN=api-client-01,O=My Company,C=US"
+    cn = dict(item.split('=', 1) for item in client_dn.split(','))
     client_name = cn.get('CN', 'unknown')
 
     return {'authenticated_as': client_name, 'data': 'secure response'}
