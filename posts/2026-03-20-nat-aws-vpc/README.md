@@ -123,7 +123,7 @@ curl -I https://aws.amazon.com
 
 ## NAT Gateway Cost Optimization
 
-```bash
+```hcl
 # Use one NAT Gateway per AZ for HA
 # But for dev/test, one NAT Gateway is sufficient
 
