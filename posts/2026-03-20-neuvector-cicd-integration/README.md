@@ -35,10 +35,9 @@ curl -sk -X POST \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${ADMIN_TOKEN}" \
   -d '{
-    "config": {
-      "username": "ci-pipeline",
+    "user": {
+      "fullname": "ci-pipeline",
       "password": "CIPipelineSecure456!",
-      "fullname": "CI/CD Pipeline Account",
       "role": "ciops",
       "timeout": 300
     }
@@ -58,6 +57,11 @@ IMAGE="${1}"
 MAX_CRITICAL="${2:-0}"
 MAX_HIGH="${3:-5}"
 
+# Split <repository>:<tag> for the NeuVector API, which requires the
+# repository and tag as separate fields.
+REPOSITORY="${IMAGE%:*}"
+TAG="${IMAGE##*:}"
+
 NV_URL="${NEUVECTOR_URL}"
 NV_USER="${NEUVECTOR_USER:-ci-pipeline}"
 NV_PASS="${NEUVECTOR_PASSWORD}"
@@ -76,14 +80,16 @@ fi
 
 echo "Scanning image: ${IMAGE}"
 
-# Submit scan request
+# Submit scan request. POST /v1/scan/repository is a long-poll request that
+# returns the scan report synchronously in the response body.
 SCAN_RESULT=$(curl -sk -X POST \
-  "${NV_URL}/v1/scan/image" \
+  "${NV_URL}/v1/scan/repository" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d "{
     \"request\": {
-      \"tag\": \"${IMAGE}\",
+      \"repository\": \"${REPOSITORY}\",
+      \"tag\": \"${TAG}\",
       \"registry\": \"${REGISTRY_URL}\",
       \"username\": \"${REGISTRY_USER}\",
       \"password\": \"${REGISTRY_PASSWORD}\"
@@ -91,10 +97,10 @@ SCAN_RESULT=$(curl -sk -X POST \
   }")
 
 # Parse results
-CRITICAL=$(echo "${SCAN_RESULT}" | jq '[.report.vulnerability[] | select(.severity=="Critical")] | length // 0')
-HIGH=$(echo "${SCAN_RESULT}" | jq '[.report.vulnerability[] | select(.severity=="High")] | length // 0')
-MEDIUM=$(echo "${SCAN_RESULT}" | jq '[.report.vulnerability[] | select(.severity=="Medium")] | length // 0')
-LOW=$(echo "${SCAN_RESULT}" | jq '[.report.vulnerability[] | select(.severity=="Low")] | length // 0')
+CRITICAL=$(echo "${SCAN_RESULT}" | jq '[.report.vulnerabilities[] | select(.severity=="Critical")] | length // 0')
+HIGH=$(echo "${SCAN_RESULT}" | jq '[.report.vulnerabilities[] | select(.severity=="High")] | length // 0')
+MEDIUM=$(echo "${SCAN_RESULT}" | jq '[.report.vulnerabilities[] | select(.severity=="Medium")] | length // 0')
+LOW=$(echo "${SCAN_RESULT}" | jq '[.report.vulnerabilities[] | select(.severity=="Low")] | length // 0')
 
 echo ""
 echo "=== Vulnerability Scan Results ==="
@@ -222,13 +228,13 @@ security-scan:
         -d "{\"password\":{\"username\":\"${NV_USER}\",\"password\":\"${NV_PASSWORD}\"}}" \
         | jq -r '.token.token')
 
-      RESULT=$(curl -sk -X POST "${NEUVECTOR_URL}/v1/scan/image" \
+      RESULT=$(curl -sk -X POST "${NEUVECTOR_URL}/v1/scan/repository" \
         -H "Content-Type: application/json" \
         -H "X-Auth-Token: ${TOKEN}" \
-        -d "{\"request\":{\"tag\":\"$CI_PROJECT_NAME:$CI_COMMIT_SHA\"}}")
+        -d "{\"request\":{\"repository\":\"$CI_PROJECT_NAME\",\"tag\":\"$CI_COMMIT_SHA\",\"registry\":\"$CI_REGISTRY\",\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}")
 
-      CRITICAL=$(echo "$RESULT" | jq '[.report.vulnerability[] | select(.severity=="Critical")] | length')
-      HIGH=$(echo "$RESULT" | jq '[.report.vulnerability[] | select(.severity=="High")] | length')
+      CRITICAL=$(echo "$RESULT" | jq '[.report.vulnerabilities[] | select(.severity=="Critical")] | length')
+      HIGH=$(echo "$RESULT" | jq '[.report.vulnerabilities[] | select(.severity=="High")] | length')
 
       echo "Critical: $CRITICAL, High: $HIGH"
 
@@ -256,14 +262,19 @@ push:
 
 ```yaml
 # tekton-nv-scan-task.yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: neuvector-image-scan
 spec:
   params:
-    - name: image
-      description: Image to scan
+    - name: repository
+      description: Image repository to scan (e.g. library/nginx)
+    - name: tag
+      description: Image tag to scan (e.g. 1.24)
+    - name: registry
+      description: Registry URL
+      default: "https://registry-1.docker.io/"
     - name: max-critical
       default: "0"
     - name: max-high
@@ -280,12 +291,12 @@ spec:
           | jq -r '.token.token')
 
         RESULT=$(curl -sk -X POST \
-          "${NEUVECTOR_URL}/v1/scan/image" \
+          "${NEUVECTOR_URL}/v1/scan/repository" \
           -H "Content-Type: application/json" \
           -H "X-Auth-Token: ${TOKEN}" \
-          -d "{\"request\":{\"tag\":\"$(params.image)\"}}")
+          -d "{\"request\":{\"repository\":\"$(params.repository)\",\"tag\":\"$(params.tag)\",\"registry\":\"$(params.registry)\"}}")
 
-        CRITICAL=$(echo "${RESULT}" | jq '[.report.vulnerability[] | select(.severity=="Critical")] | length')
+        CRITICAL=$(echo "${RESULT}" | jq '[.report.vulnerabilities[] | select(.severity=="Critical")] | length')
 
         if [ "${CRITICAL}" -gt "$(params.max-critical)" ]; then
           echo "Scan FAILED: ${CRITICAL} critical CVEs"
