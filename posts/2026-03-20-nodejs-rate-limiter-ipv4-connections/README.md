@@ -17,7 +17,7 @@ Rate limiting prevents individual IPv4 clients from overwhelming your server wit
 'use strict';
 
 /**
- * Token bucket rate limiter for TCP connections by source IP
+ * Sliding-window rate limiter for TCP connections by source IP
  */
 class IPRateLimiter {
   constructor(options = {}) {
@@ -193,9 +193,10 @@ for i in {1..15}; do
 done
 wait
 
-# Expected: first 10 connections succeed, subsequent ones are rejected
+# Expected: the first few connections succeed, then subsequent attempts are rejected
+# once either the concurrent limit (maxConnections) or rate limit (maxRate) is hit.
 ```
 
 ## Conclusion
 
-A per-IP connection rate limiter is an essential defense layer for any publicly accessible TCP server. This token bucket/sliding-window implementation handles concurrent connection limits and connection rate enforcement with automatic unblocking after a configurable cooldown period.
+A per-IP connection rate limiter is an essential defense layer for any publicly accessible TCP server. This sliding-window implementation handles concurrent connection limits and connection rate enforcement with automatic unblocking after a configurable cooldown period.
