@@ -10,7 +10,7 @@ Description: Address NDP scalability challenges in large L2 IPv6 networks includ
 
 In large L2 domains (e.g., data center VLANs with thousands of VMs), NDP creates significant challenges:
 
-- **NS flooding**: Neighbor Solicitations sent to multicast (solicited-node multicast or all-nodes) flood the entire L2 domain
+- **NS flooding**: Neighbor Solicitations sent to the solicited-node multicast address flood the entire L2 domain (most switches do not perform IPv6 MLD snooping by default)
 - **Cache overflow**: Gateway devices need NDP cache entries for every host
 - **ND storms**: Mass VM startup events trigger simultaneous DAD/NS flooding
 
@@ -22,16 +22,18 @@ A flat VLAN with 10,000 VMs generates significant NDP traffic:
 ## NDP Suppression on Linux Bridge/VXLAN
 
 ```bash
-# Enable NDP suppression on a bridge (Linux 4.10+)
+# Enable NDP suppression on a bridge port (Linux 4.15+)
 
 # Bridge learns addresses from NA/NS messages and responds locally
 
-ip link add br100 type bridge
-ip link set br100 type bridge neigh_suppress on
-ip link set br100 type bridge vlan_filtering on
+ip link add br100 type bridge vlan_filtering 1
 
-# Verify
-bridge link show | grep neigh_suppress
+# neigh_suppress is a per-port attribute, applied on a bridge slave
+# (e.g., a VXLAN interface or tap once added with `ip link set <dev> master br100`)
+bridge link set dev <port> neigh_suppress on
+
+# Verify (use -d to show port-level attributes)
+bridge -d link show | grep neigh_suppress
 
 # Add static NDP entries (pre-populate from CMDB)
 ip -6 neigh add 2001:db8:100::10 \
@@ -56,8 +58,10 @@ ip link add vxlan100 type vxlan \
     nolearning  # Disable data-plane learning (use BGP EVPN)
 
 ip link add br100 type bridge
-ip link set br100 type bridge neigh_suppress on
 ip link set vxlan100 master br100
+
+# neigh_suppress is set on the slave port, not the bridge
+bridge link set dev vxlan100 neigh_suppress on
 
 # BGP EVPN distributes Type 2 routes (MAC/IP)
 # VTEP responds locally to NS without flooding
@@ -142,8 +146,8 @@ tcpdump -i eth0 -n 'icmp6 and (ip6[40]==135 or ip6[40]==136)' \
     -ttt -l 2>/dev/null | \
     awk '{ns++} NR%100==0 {print "Rate: " ns/10 " NDP/s"; ns=0}'
 
-# Monitor cache entries per state
-watch -n 5 "ip -6 neigh show | awk '{print \$5}' | sort | uniq -c"
+# Monitor cache entries per state (state is the last field; column count varies)
+watch -n 5 "ip -6 neigh show | awk '{print \$NF}' | sort | uniq -c"
 
 # Check for NDP overflow (failed entries)
 FAILED=$(ip -6 neigh show nud failed | wc -l)
