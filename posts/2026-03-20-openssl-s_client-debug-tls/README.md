@@ -121,12 +121,15 @@ openssl s_client -connect example.com:443 -status 2>/dev/null | \
   grep -A 5 "OCSP response"
 
 # Output with stapling:
-# OCSP Response Status: successful (0x0)
-# OCSP Response Data: cert NOT revoked
+# OCSP response:
+# ======================================
+# OCSP Response Data:
+#     OCSP Response Status: successful (0x0)
+#     ...
+#     Cert Status: good
 
 # Output without stapling:
-# OCSP Response Data:
-# OCSP Response Status: no response sent
+# OCSP response: no response sent
 ```
 
 ## Step 7: Test with Client Certificate (mTLS)
