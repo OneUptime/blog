@@ -123,7 +123,6 @@ resource "kubernetes_ingress_v1" "app_ingress" {
     name      = "app-ingress"
     namespace = "production"
     annotations = {
-      "kubernetes.io/ingress.class"                  = "nginx"
       "nginx.ingress.kubernetes.io/ssl-redirect"     = "true"
       "nginx.ingress.kubernetes.io/proxy-body-size"  = "10m"
       "cert-manager.io/cluster-issuer"               = "letsencrypt-prod"
@@ -131,6 +130,8 @@ resource "kubernetes_ingress_v1" "app_ingress" {
   }
 
   spec {
+    ingress_class_name = "nginx"
+
     tls {
       hosts       = ["app.example.com"]
       secret_name = "app-tls-secret"
