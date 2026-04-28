@@ -61,7 +61,8 @@ ssh-add ~/.ssh/id_rsa
 #   IdentityFile ~/.ssh/id_rsa_github
 
 # HTTPS with token
-# Set GIT_CREDENTIALS or configure git credentials helper
+# Configure a git credential helper (e.g. `git config --global credential.helper store`)
+# which reads tokens from ~/.git-credentials
 ```
 
 ## Conclusion
