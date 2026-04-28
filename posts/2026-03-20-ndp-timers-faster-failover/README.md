@@ -29,9 +29,9 @@ Tuned NUD failover time (fast failover):
 
 Ultra-fast NUD (aggressive, higher NDP traffic):
   REACHABLE state: 2s (base_reachable_time_ms = 2000ms)
-  DELAY state: 0.5s (delay_first_probe_time = 1, tuned OS)
-  PROBE state: 2 × 0.25s = 0.5s
-  Total: ~3 seconds
+  DELAY state: 1s (delay_first_probe_time = 1, the minimum integer value in seconds)
+  PROBE state: 2 × 0.25s = 0.5s (ucast_solicit=2, retrans_time_ms=250)
+  Total: ~3.5 seconds
 ```
 
 ## Tuning Host-Side NUD Timers
@@ -78,8 +78,8 @@ interface eth0 {
     MinRtrAdvInterval 10;    # Minimum 10 seconds between RAs
     MaxRtrAdvInterval 30;    # Maximum 30 seconds between RAs
 
-    # Router Lifetime must be at least 3x MaxRtrAdvInterval
-    # Set to 90s for 30s MaxRtrAdvInterval
+    # Router Lifetime must be 0 or between MaxRtrAdvInterval and 9000s.
+    # Default is 3x MaxRtrAdvInterval; 90s gives resilience to lost RAs.
     AdvDefaultLifetime 90;
 
     # Advertise NUD parameters to hosts
