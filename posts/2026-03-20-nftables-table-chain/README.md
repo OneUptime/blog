@@ -68,7 +68,7 @@ hook prerouting: Before routing decision (DNAT here)
 hook postrouting: After routing decision (SNAT/masquerade here)
 
 priority 0:      Order of processing (lower runs first)
-                 Standard priorities: -200 (conntrack), 0 (filter), 100 (mangle)
+                 Standard priorities: -200 (conntrack), -150 (mangle), 0 (filter), 100 (srcnat)
 
 policy drop:     Default action if no rule matches
 policy accept:   Default action if no rule matches (permissive)
