@@ -36,47 +36,50 @@ Trigger a compliance scan from the NeuVector UI:
 3. Select the node(s) or workload(s) to scan
 4. Wait for results (typically 1-5 minutes)
 
-Via API:
+Via API (the REST API is served by the Controller on port 10443; port 8443 is the Manager web console):
 
 ```bash
-# Trigger compliance scan on all nodes
+# Look up the NeuVector host ID
+NODE_ID=$(curl -sk \
+  "https://neuvector-svc-controller:10443/v1/host" \
+  -H "X-Auth-Token: ${TOKEN}" | jq -r '.hosts[0].id')
 
+# Trigger the Docker CIS bench scan on that host
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/bench/host/all" \
+  "https://neuvector-svc-controller:10443/v1/bench/host/${NODE_ID}/docker" \
   -H "X-Auth-Token: ${TOKEN}"
 
-# Trigger scan on specific node
-NODE_ID="node-hostname"
+# Trigger the Kubernetes CIS bench scan on that host
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/bench/host/${NODE_ID}" \
+  "https://neuvector-svc-controller:10443/v1/bench/host/${NODE_ID}/kubernetes" \
   -H "X-Auth-Token: ${TOKEN}"
 ```
 
 ## Step 2: View Compliance Results
 
 ```bash
-# Get compliance results for all nodes
+# List hosts to discover their NeuVector IDs
 curl -sk \
-  "https://neuvector-manager:8443/v1/bench/host" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '.hosts[] | {
-    host: .host,
-    pass: .passed,
-    warn: .warned,
-    fail: .failed,
-    total: .total
-  }'
+  "https://neuvector-svc-controller:10443/v1/host" \
+  -H "X-Auth-Token: ${TOKEN}" | jq '.hosts[] | {id, name, state}'
 
-# Get detailed results for a specific node
+# Get the consolidated compliance report for a specific host
+# (merges custom-host-checks, Docker CIS, and Kubernetes CIS results)
 curl -sk \
-  "https://neuvector-manager:8443/v1/bench/host/${NODE_ID}/docker" \
+  "https://neuvector-svc-controller:10443/v1/host/${NODE_ID}/compliance" \
   -H "X-Auth-Token: ${TOKEN}" | jq '.items[] |
-    select(.level != "PASS") | {
+    select(.level != "PASS" and .level != "NOTE") | {
       id: .test_number,
       description: .description,
       level: .level,
       category: .category,
       remediation: .remediation
     }'
+
+# Or fetch only the Docker CIS bench report for that host
+curl -sk \
+  "https://neuvector-svc-controller:10443/v1/bench/host/${NODE_ID}/docker" \
+  -H "X-Auth-Token: ${TOKEN}" | jq '.items[]'
 ```
 
 ## Step 3: View Container Compliance Results
@@ -87,7 +90,7 @@ Check compliance status for individual containers:
 # Get container compliance results
 WORKLOAD_ID="abc123"
 curl -sk \
-  "https://neuvector-manager:8443/v1/bench/workload/${WORKLOAD_ID}" \
+  "https://neuvector-svc-controller:10443/v1/workload/${WORKLOAD_ID}/compliance" \
   -H "X-Auth-Token: ${TOKEN}" | jq '.items[] | {
     test: .test_number,
     description: .description,
@@ -107,11 +110,11 @@ In the UI:
 Focus on specific compliance categories:
 
 ```bash
-# Get results filtered by category
+# Get results filtered by category (valid categories: docker, kubernetes, custom)
 curl -sk \
-  "https://neuvector-manager:8443/v1/bench/host/${NODE_ID}/docker" \
+  "https://neuvector-svc-controller:10443/v1/host/${NODE_ID}/compliance" \
   -H "X-Auth-Token: ${TOKEN}" | jq '[.items[] |
-    select(.category == "cis" and .level != "PASS")]'
+    select(.category == "kubernetes" and .level != "PASS")]'
 ```
 
 ## Step 5: Map Compliance Checks to Frameworks
@@ -130,19 +133,21 @@ In the UI:
 Add organization-specific compliance requirements:
 
 ```bash
-# Create a custom compliance check
-curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/custom_check/group/nv.webapp.production" \
+# Add a custom compliance check to a service group
+curl -sk -X PATCH \
+  "https://neuvector-svc-controller:10443/v1/custom_check/nv.webapp.production" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "scripts": [
-        {
-          "name": "check-env-vars",
-          "script": "#!/bin/bash\n# Check no passwords in env vars\nif env | grep -i -E \"password|secret|key\" | grep -v \"SECRET_FILE\" > /dev/null; then\n  exit 1\nfi\nexit 0"
-        }
-      ]
+      "add": {
+        "scripts": [
+          {
+            "name": "check-env-vars",
+            "script": "#!/bin/bash\n# Check no passwords in env vars\nif env | grep -i -E \"password|secret|key\" | grep -v \"SECRET_FILE\" > /dev/null; then\n  exit 1\nfi\nexit 0"
+          }
+        ]
+      }
     }
   }'
 ```
@@ -166,20 +171,31 @@ spec:
         spec:
           containers:
             - name: compliance-scanner
-              image: curlimages/curl:latest
+              image: alpine:3.19
               command:
                 - /bin/sh
                 - -c
                 - |
+                  apk add --no-cache curl jq
+
                   TOKEN=$(curl -sk -X POST \
                     "https://neuvector-svc-controller:10443/v1/auth" \
                     -H "Content-Type: application/json" \
                     -d '{"password":{"username":"admin","password":"'"${NV_PASSWORD}"'"}}' \
                     | jq -r '.token.token')
 
-                  curl -sk -X POST \
-                    "https://neuvector-svc-controller:10443/v1/bench/host/all" \
-                    -H "X-Auth-Token: ${TOKEN}"
+                  HOST_IDS=$(curl -sk \
+                    "https://neuvector-svc-controller:10443/v1/host" \
+                    -H "X-Auth-Token: ${TOKEN}" | jq -r '.hosts[].id')
+
+                  for HOST_ID in $HOST_IDS; do
+                    curl -sk -X POST \
+                      "https://neuvector-svc-controller:10443/v1/bench/host/${HOST_ID}/docker" \
+                      -H "X-Auth-Token: ${TOKEN}"
+                    curl -sk -X POST \
+                      "https://neuvector-svc-controller:10443/v1/bench/host/${HOST_ID}/kubernetes" \
+                      -H "X-Auth-Token: ${TOKEN}"
+                  done
 
                   echo "Compliance scan triggered"
               env:
@@ -198,13 +214,13 @@ kubectl apply -f compliance-scan-cronjob.yaml
 ## Step 8: Generate Compliance Reports
 
 ```bash
-# Generate a compliance summary report
+# Generate a cluster-wide compliance summary - one row per failing/warning check
 curl -sk \
-  "https://neuvector-manager:8443/v1/bench/host" \
+  "https://neuvector-svc-controller:10443/v1/compliance/asset" \
   -H "X-Auth-Token: ${TOKEN}" | \
-  jq -r '"Host,Passed,Warned,Failed,Total",(
-    .hosts[] |
-    [.host, .passed, .warned, .failed, .total] |
+  jq -r '"Test,Category,Level,Description,Nodes,Workloads",(
+    .compliances[] |
+    [.name, .category, .level, .description, (.nodes | length), (.workloads | length)] |
     @csv
   )' > compliance-report.csv
 
