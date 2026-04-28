@@ -31,7 +31,7 @@ variable "required_tag" {
   default  = "opentofu-managed"
   nullable = false  # null is not accepted; default is used instead
 
-  # If someone tries to set this to null, OpenTofu rejects it
+  # If someone tries to set this to null, OpenTofu uses the default value instead
 }
 ```
 
@@ -45,10 +45,16 @@ variable "optional_config" {
   # nullable = true (implicit)
 }
 
-# If you explicitly pass null:
-# tofu apply -var="optional_config=null"
+# If you explicitly pass null via a tfvars file:
+#   # terraform.tfvars
+#   optional_config = null
 # Result: var.optional_config = null
 # (null overrides the default when nullable = true)
+#
+# Note: with a string-typed variable, the -var CLI flag treats values as
+# literal strings, so `-var="optional_config=null"` would set the value to
+# the string "null" rather than actual null. Use a .tfvars file (or omit the
+# variable) to pass HCL null from the CLI.
 ```
 
 ## nullable = false Behavior
@@ -59,9 +65,10 @@ variable "tag_value" {
   default  = "auto-generated"
   nullable = false  # null is rejected
 
-  # If someone sets this to null:
-  # Error: Inappropriate value for attribute "value": null value is not allowed
-  # OR the default "auto-generated" is used
+  # If a caller passes null and a default is set (as here),
+  # OpenTofu silently substitutes the default "auto-generated".
+  # If there is NO default and null is passed, OpenTofu errors with:
+  #   Invalid value for variable: required variable may not be set to null.
 }
 ```
 
