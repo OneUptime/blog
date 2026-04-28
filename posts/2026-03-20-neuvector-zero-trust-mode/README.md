@@ -71,22 +71,23 @@ echo "Found $(echo ${LEARNED_RULES} | jq length) learned rules to review"
 Implement explicit default-deny at the network level:
 
 ```bash
-# Add a deny-all rule at the lowest priority
-curl -sk -X POST \
+# Add a deny-all rule at the lowest priority (omit "after" to insert last)
+curl -sk -X PATCH \
   "https://neuvector-manager:8443/v1/policy/rule" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "insert": {
-      "after": 9999,
       "rules": [
         {
+          "id": 0,
           "comment": "Zero Trust: Deny all unmatched traffic",
-          "from": "any",
-          "to": "any",
+          "from": "containers",
+          "to": "containers",
           "ports": "any",
+          "applications": [],
           "action": "deny",
-          "cfg_type": "user"
+          "cfg_type": "user_created"
         }
       ]
     }
@@ -102,14 +103,20 @@ Remove permissive process rules and define explicit allowlists:
 apiVersion: neuvector.com/v1
 kind: NvSecurityRule
 metadata:
-  name: zero-trust-webapp
+  name: nv.webapp.production
   namespace: production
 spec:
   target:
     policymode: Protect
     selector:
-      matchLabels:
-        app: webapp
+      name: nv.webapp.production
+      criteria:
+        - key: service
+          op: "="
+          value: webapp.production
+        - key: domain
+          op: "="
+          value: production
   process:
     # Explicitly allow only required processes
     - name: node
@@ -118,16 +125,10 @@ spec:
     - name: npm
       path: /usr/local/bin/npm
       action: allow
-    # Explicitly deny attack vectors
+    # Explicitly deny attack vectors (path is optional for deny rules)
     - name: sh
       action: deny
     - name: bash
-      action: deny
-    - name: sh
-      path: /bin/sh
-      action: deny
-    - name: bash
-      path: /bin/bash
       action: deny
     - name: curl
       action: deny
@@ -162,50 +163,75 @@ spec:
   target:
     policymode: Protect
     selector:
-      matchLabels:
-        env: production
+      name: nv.web.production
+      criteria:
+        - key: service
+          op: "="
+          value: web.production
+        - key: domain
+          op: "="
+          value: production
   ingress:
     # Only allow ingress from the load balancer
     - action: allow
       name: allow-lb-to-web
       selector:
-        matchLabels:
-          app: ingress-nginx
-      ports:
-        - protocol: TCP
-          port: 8080
+        name: nv.ingress-nginx.ingress-nginx
+        criteria:
+          - key: service
+            op: "="
+            value: ingress-nginx.ingress-nginx
+      ports: tcp/8080
+      applications:
+        - HTTP
   egress:
     # Allow web to API only
     - action: allow
       name: allow-web-to-api
       selector:
-        matchLabels:
-          tier: api
-      ports:
-        - protocol: TCP
-          port: 3000
+        name: nv.api.production
+        criteria:
+          - key: service
+            op: "="
+            value: api.production
+      ports: tcp/3000
+      applications:
+        - HTTP
     # Allow API to database only
     - action: allow
       name: allow-api-to-db
       selector:
-        matchLabels:
-          tier: database
-      ports:
-        - protocol: TCP
-          port: 5432
+        name: nv.db.production
+        criteria:
+          - key: service
+            op: "="
+            value: db.production
+      ports: tcp/5432
+      applications:
+        - PostgreSQL
     # Allow DNS resolution
     - action: allow
       name: allow-dns
       selector:
-        matchLabels:
-          k8s-app: kube-dns
-      ports:
-        - protocol: UDP
-          port: 53
-    # Block all other egress (including internet)
+        name: nv.kube-dns.kube-system
+        criteria:
+          - key: service
+            op: "="
+            value: kube-dns.kube-system
+      ports: udp/53
+      applications:
+        - DNS
+    # Block all other egress to external destinations
     - action: deny
       name: deny-all-other-egress
-      selector: {}
+      selector:
+        name: external
+        criteria:
+          - key: address
+            op: "="
+            value: external
+      ports: any
+      applications: []
 ```
 
 ## Step 6: Enable Auto-Quarantine for Breaches
@@ -213,22 +239,28 @@ spec:
 Configure automatic quarantine for containers that violate zero-trust policies:
 
 ```bash
-# Create response rule for auto-quarantine
-curl -sk -X POST \
+# Create response rule for auto-quarantine (PATCH with insert.rules)
+curl -sk -X PATCH \
   "https://neuvector-manager:8443/v1/response/rule" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "config": {
-      "event": "security-event",
-      "comment": "Zero Trust: Auto-quarantine on critical violations",
-      "conditions": [
-        {"type": "level", "value": "critical"},
-        {"type": "name", "value": "process-violation"}
-      ],
-      "actions": ["quarantine", "webhook"],
-      "webhooks": ["security-oncall"],
-      "disable": false
+    "insert": {
+      "rules": [
+        {
+          "id": 0,
+          "event": "security-event",
+          "comment": "Zero Trust: Auto-quarantine on critical violations",
+          "group": "containers",
+          "conditions": [
+            {"name": "level", "value": "critical"}
+          ],
+          "actions": ["quarantine", "webhook"],
+          "webhooks": ["security-oncall"],
+          "disable": false,
+          "cfg_type": "user_created"
+        }
+      ]
     }
   }'
 ```
@@ -243,24 +275,29 @@ Move namespaces to Protect mode incrementally:
 
 NAMESPACE="production"
 
-# Get all groups in namespace
-GROUPS=$(curl -sk \
-  "https://neuvector-manager:8443/v1/group?start=0&limit=100" \
+# Get all service groups in the namespace (services have a domain field that
+# matches the Kubernetes namespace)
+SERVICES=$(curl -sk \
+  "https://neuvector-manager:8443/v1/group" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq -r --arg ns "$NAMESPACE" \
-  '.groups[] | select(.name | contains("." + $ns)) | .name')
+  '.groups[] | select(.domain == $ns) | .name')
 
-# Move each group to Monitor first
-for GROUP in $GROUPS; do
-  echo "Setting ${GROUP} to Monitor mode..."
-  curl -sk -X PATCH \
-    "https://neuvector-manager:8443/v1/group/${GROUP}" \
-    -H "Content-Type: application/json" \
-    -H "X-Auth-Token: ${TOKEN}" \
-    -d '{"config": {"mode": "Monitor"}}'
-done
+# Build a JSON array of service names for the batch service config call
+SERVICE_JSON=$(echo "${SERVICES}" | jq -R . | jq -s .)
 
-echo "All groups in ${NAMESPACE} now in Monitor mode. Review events before switching to Protect."
+# Move all services in the namespace to Monitor mode in one batch request.
+# Policy mode is set on services via PATCH /v1/service/config using the
+# RESTServiceBatchConfig schema (services + policy_mode).
+echo "Setting services in ${NAMESPACE} to Monitor mode..."
+curl -sk -X PATCH \
+  "https://neuvector-manager:8443/v1/service/config" \
+  -H "Content-Type: application/json" \
+  -H "X-Auth-Token: ${TOKEN}" \
+  -d "$(jq -n --argjson services "${SERVICE_JSON}" \
+    '{config: {services: $services, policy_mode: "Monitor"}}')"
+
+echo "All services in ${NAMESPACE} now in Monitor mode. Review events before switching to Protect."
 ```
 
 ## Step 8: Monitor Zero-Trust Effectiveness
@@ -268,15 +305,15 @@ echo "All groups in ${NAMESPACE} now in Monitor mode. Review events before switc
 Track violations to measure the effectiveness of zero-trust:
 
 ```bash
-# Daily violation summary
+# Daily violation summary - events are at /v1/log/event
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=security&start=0&limit=1000" \
+  "https://neuvector-manager:8443/v1/log/event" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq '[.events[] | {
-    type: .type,
-    action: .action
-  }] | group_by(.type) | map({
-    type: .[0].type,
+    name: .name,
+    level: .level
+  }] | group_by(.name) | map({
+    name: .[0].name,
     count: length
   })'
 ```
