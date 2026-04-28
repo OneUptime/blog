@@ -34,8 +34,8 @@ After the learning period, review what files your containers access:
 # Get file access profile for a group
 
 curl -sk \
-  "https://neuvector-manager:8443/v1/file/profile/group/nv.webapp.default" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '.process_profile.process_list'
+  "https://neuvector-manager:8443/v1/file_monitor/nv.webapp.default" \
+  -H "X-Auth-Token: ${TOKEN}" | jq '.profile.filters'
 ```
 
 In the NeuVector UI:
@@ -62,29 +62,29 @@ Action: Allow
 
 ```bash
 # Add a file access rule to allow nginx to read its config
-curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/file/profile/group/nv.nginx.default" \
+curl -sk -X PATCH \
+  "https://neuvector-manager:8443/v1/file_monitor/nv.nginx.default" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "process_profile": {
-      "process_list": [
+    "config": {
+      "add_filters": [
         {
           "filter": "/etc/nginx/",
           "recursive": true,
-          "behavior": "monitor change",
+          "behavior": "monitor_change",
           "applications": ["nginx"]
         },
         {
           "filter": "/var/log/nginx/",
           "recursive": true,
-          "behavior": "monitor change",
+          "behavior": "monitor_change",
           "applications": ["nginx"]
         },
         {
           "filter": "/usr/share/nginx/html/",
           "recursive": true,
-          "behavior": "block access",
+          "behavior": "block_access",
           "applications": ["sh", "bash", "curl", "wget"]
         }
       ]
@@ -99,37 +99,41 @@ curl -sk -X POST \
 apiVersion: neuvector.com/v1
 kind: NvSecurityRule
 metadata:
-  name: webapp-file-access
+  name: nv.webapp.default
   namespace: default
 spec:
   target:
     policymode: Protect
     selector:
-      matchLabels:
-        app: webapp
+      name: nv.webapp.default
+      criteria:
+        - key: service
+          op: "="
+          value: webapp.default
+        - key: domain
+          op: "="
+          value: default
   file:
     # Monitor changes to critical config files
     - filter: /etc/passwd
       recursive: false
-      behavior: monitor change
+      behavior: monitor_change
     - filter: /etc/shadow
       recursive: false
-      behavior: block access
+      behavior: block_access
     # Block writes to binary directories
     - filter: /usr/bin/
       recursive: true
-      behavior: block access
-      applications:
-        - deny-write
+      behavior: block_access
     # Monitor application config changes
     - filter: /app/config/
       recursive: true
-      behavior: monitor change
+      behavior: monitor_change
     # Block shell access to web root
     - filter: /var/www/html/
       recursive: true
-      behavior: block access
-      applications:
+      behavior: block_access
+      app:
         - sh
         - bash
         - python3
@@ -145,32 +149,32 @@ Configure strict access controls for common sensitive paths:
 
 ```bash
 # Deny access to credential files
-curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/file/profile/group/nv.myapp.production" \
+curl -sk -X PATCH \
+  "https://neuvector-manager:8443/v1/file_monitor/nv.myapp.production" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "process_profile": {
-      "process_list": [
+    "config": {
+      "add_filters": [
         {
           "filter": "/etc/ssl/private/",
           "recursive": true,
-          "behavior": "block access"
+          "behavior": "block_access"
         },
         {
           "filter": "/.ssh/",
           "recursive": false,
-          "behavior": "block access"
+          "behavior": "block_access"
         },
         {
           "filter": "/proc/",
           "recursive": true,
-          "behavior": "monitor change"
+          "behavior": "monitor_change"
         },
         {
           "filter": "/sys/",
           "recursive": true,
-          "behavior": "monitor change"
+          "behavior": "monitor_change"
         }
       ]
     }
@@ -182,15 +186,15 @@ curl -sk -X POST \
 File access rules double as a file integrity monitoring (FIM) system:
 
 ```bash
-# View file access violation events
+# View file access violation incidents
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=file&start=0&limit=50" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '.events[] | {
+  "https://neuvector-manager:8443/v1/log/incident?start=0&limit=50" \
+  -H "X-Auth-Token: ${TOKEN}" | jq '.incidents[] | {
     container: .workload_name,
     file: .file_name,
     process: .proc_name,
     action: .action,
-    timestamp: .at
+    timestamp: .reported_at
   }'
 ```
 
@@ -207,23 +211,29 @@ Applications that have initialization phases may need temporary write access:
 apiVersion: neuvector.com/v1
 kind: NvSecurityRule
 metadata:
-  name: app-startup-file-rules
+  name: nv.myapp.default
   namespace: default
 spec:
   target:
     policymode: Monitor  # Use Monitor during initial deployment
     selector:
-      matchLabels:
-        app: myapp
+      name: nv.myapp.default
+      criteria:
+        - key: service
+          op: "="
+          value: myapp.default
+        - key: domain
+          op: "="
+          value: default
   file:
     - filter: /app/data/
       recursive: true
-      behavior: monitor change
-      applications:
+      behavior: monitor_change
+      app:
         - myapp
     - filter: /tmp/
       recursive: true
-      behavior: monitor change
+      behavior: monitor_change
 ```
 
 ## Step 8: Audit File Access Patterns
@@ -231,13 +241,13 @@ spec:
 Export file access data for compliance and auditing:
 
 ```bash
-# Export file access events for the last 24 hours
+# Export file access incidents for the last 24 hours
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=file&start=0&limit=1000" \
+  "https://neuvector-manager:8443/v1/log/incident?start=0&limit=1000" \
   -H "X-Auth-Token: ${TOKEN}" | \
-  jq '[.events[] | {
-    timestamp: .at,
-    namespace: .namespace,
+  jq '[.incidents[] | {
+    timestamp: .reported_at,
+    namespace: .workload_domain,
     container: .workload_name,
     file: .file_name,
     process: .proc_name,
