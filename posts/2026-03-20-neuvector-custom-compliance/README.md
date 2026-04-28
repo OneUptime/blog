@@ -25,60 +25,53 @@ NeuVector includes built-in CIS benchmark checks but also allows you to define c
 
 ## Step 1: Create Custom Compliance Checks via API
 
-NeuVector's compliance checks are defined as scripts that run inside containers. Create a custom check:
+NeuVector custom compliance checks are shell scripts attached to a group. Scripts run on the enforcer in the host's namespaces (for node groups like the predefined `nodes` group) or in the container context (for container groups). The exit code determines the result: `0` is `PASS`, non-zero is `WARN`, and an execution error is `ERROR`. Create a custom check by `PATCH`ing the target group:
 
 ```bash
-# Create a custom compliance check via NeuVector API
+# Add a custom compliance script to the predefined "nodes" group
 
-curl -sk -X POST \
+curl -sk -X PATCH \
   -H "X-Auth-Token: $TOKEN" \
   -H "Content-Type: application/json" \
-  https://neuvector.example.com/v1/bench/custom_check \
+  https://neuvector.example.com/v1/custom_check/nodes \
   -d '{
-    "entries": [
-      {
-        "test_number": "MY-001",
-        "level": "WARN",
-        "scored": true,
-        "description": "Ensure container images do not run as root",
-        "remediation": "Set runAsNonRoot: true and runAsUser to a non-zero value",
-        "type": "HOST",
-        "commands": {
-          "test": "[ $(id -u) -ne 0 ] && echo pass || echo fail"
-        },
-        "tags": ["custom", "security"]
+    "config": {
+      "add": {
+        "scripts": [
+          {
+            "name": "ensure_non_root",
+            "script": "#!/bin/sh\n# Ensure host processes do not run as root\n[ $(id -u) -ne 0 ] && exit 0 || exit 1\n"
+          }
+        ]
       }
-    ]
+    }
   }'
 ```
+
+The `name` must be unique within the group. Use `update` to change an existing script and `delete` to remove one. List configured scripts with `GET /v1/custom_check/<group>`.
 
 ---
 
 ## Step 2: Custom Check for Environment Variable Compliance
 
-Check that containers do not expose sensitive environment variables:
+Attach a script to a container group (e.g., the predefined `containers` group, or a service group you have created) so the enforcer runs it against matching workloads. This script fails the check if `AWS_SECRET_ACCESS_KEY` is exposed in the container environment:
 
 ```bash
-# Check for hardcoded secrets in environment variables
-curl -sk -X POST \
+curl -sk -X PATCH \
   -H "X-Auth-Token: $TOKEN" \
   -H "Content-Type: application/json" \
-  https://neuvector.example.com/v1/bench/custom_check \
+  https://neuvector.example.com/v1/custom_check/containers \
   -d '{
-    "entries": [
-      {
-        "test_number": "SEC-001",
-        "level": "ERROR",
-        "scored": true,
-        "description": "Containers must not have AWS_SECRET_ACCESS_KEY in environment",
-        "remediation": "Use a secrets manager or Kubernetes Secrets instead of env vars",
-        "type": "CONTAINER",
-        "commands": {
-          "test": "! env | grep -q AWS_SECRET_ACCESS_KEY && echo pass || echo fail"
-        },
-        "tags": ["secrets", "aws"]
+    "config": {
+      "add": {
+        "scripts": [
+          {
+            "name": "no_aws_secret_in_env",
+            "script": "#!/bin/sh\n# Fail if AWS_SECRET_ACCESS_KEY is present in the container env\nenv | grep -q AWS_SECRET_ACCESS_KEY && exit 1 || exit 0\n"
+          }
+        ]
       }
-    ]
+    }
   }'
 ```
 
@@ -87,22 +80,21 @@ curl -sk -X POST \
 ## Step 3: Custom Check for File Permission Compliance
 
 ```bash
-curl -sk -X POST \
+curl -sk -X PATCH \
   -H "X-Auth-Token: $TOKEN" \
   -H "Content-Type: application/json" \
-  https://neuvector.example.com/v1/bench/custom_check \
+  https://neuvector.example.com/v1/custom_check/nodes \
   -d '{
-    "entries": [
-      {
-        "test_number": "FILE-001",
-        "level": "WARN",
-        "description": "Sensitive config files should not be world-readable",
-        "type": "HOST",
-        "commands": {
-          "test": "! find /etc -maxdepth 2 -name \"*.conf\" -perm -o+r 2>/dev/null | grep -q . && echo pass || echo fail"
-        }
+    "config": {
+      "add": {
+        "scripts": [
+          {
+            "name": "config_files_not_world_readable",
+            "script": "#!/bin/sh\n# Fail if any /etc/*.conf file is world-readable\nfind /etc -maxdepth 2 -name \"*.conf\" -perm -o+r 2>/dev/null | grep -q . && exit 1 || exit 0\n"
+          }
+        ]
       }
-    ]
+    }
   }'
 ```
 
@@ -110,20 +102,27 @@ curl -sk -X POST \
 
 ## Step 4: Run Compliance Scan
 
+Custom scripts are executed automatically by the enforcer on its bench schedule once they are configured. To trigger a CIS benchmark run on a specific host on demand, use the per-host bench endpoints (these accept no request body):
+
 ```bash
-# Trigger a compliance scan
+# Look up the NeuVector host ID
+HOST_ID=$(curl -sk -H "X-Auth-Token: $TOKEN" \
+  https://neuvector.example.com/v1/host | jq -r '.hosts[0].id')
+
+# Trigger the Kubernetes CIS benchmark for that host
 curl -sk -X POST \
   -H "X-Auth-Token: $TOKEN" \
-  https://neuvector.example.com/v1/bench/run \
-  -H "Content-Type: application/json" \
-  -d '{"host": true, "container": true}'
+  https://neuvector.example.com/v1/bench/host/$HOST_ID/kubernetes
 
-# Get compliance scan results
+# Fetch the consolidated compliance report for that host
+# (merges custom-host-checks, Docker CIS, and Kubernetes CIS results)
 curl -sk \
   -H "X-Auth-Token: $TOKEN" \
-  https://neuvector.example.com/v1/bench/report \
+  https://neuvector.example.com/v1/host/$HOST_ID/compliance \
   | jq '.items[] | select(.level == "ERROR") | {test: .test_number, desc: .description}'
 ```
+
+For a cluster-wide view aggregated by check, use `GET /v1/compliance/asset`. For a per-workload view, use `GET /v1/workload/<container_id>/compliance`.
 
 ---
 
@@ -139,7 +138,7 @@ In the NeuVector UI:
 
 ## Best Practices
 
-- Name custom checks with a consistent prefix (e.g., `MY-001`) to distinguish them from built-in checks.
+- Name custom-check scripts with a consistent prefix (e.g., `myorg_`) to distinguish them from built-in checks.
 - Keep compliance scripts idempotent - they may run multiple times per day.
-- Schedule compliance scans weekly or before audits using NeuVector's recurring scan feature.
+- Use exit codes deliberately: exit `0` for `PASS`, non-zero for `WARN`. Anything written to stdout/stderr is captured in the report message.
 - Integrate compliance reports with your ticketing system (Jira, ServiceNow) for remediation tracking.
